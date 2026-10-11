@@ -529,6 +529,7 @@ func taskgenGit(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	repeats := fs.Int("repeats", 0, "run each baseline this many times to catch flaky tests")
 	noValidate := fs.Bool("no-validate", false, "skip the baseline and reference-solution runs (tasks are then unverified: for dry runs only)")
 	commits := fs.String("commits", "", "mine exactly these changes instead of scanning history: a file with one per line, a commit id or a JSON object {commit, parent, issue: {ref, title, body}, source} whose issue becomes the prompt")
+	seal := fs.String("seal", "", sealUsage)
 	if _, err := parseInterspersed(fs, args); err != nil {
 		return err
 	}
@@ -559,6 +560,10 @@ func taskgenGit(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	if len(g.setup) > 0 {
 		opts.Setup = []string(g.setup)
 	}
+	if *seal != "" {
+		// --repo-path then names the directory of the sealed repositories.
+		opts.Seal, opts.SealPath, g.repoPath = *seal, g.repoPath, ""
+	}
 	if opts.Since, err = parseDate(*since); err != nil {
 		return fmt.Errorf("rl taskgen git: --since: %w", err)
 	}
@@ -577,7 +582,20 @@ func taskgenGit(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	if err != nil {
 		return fmt.Errorf("rl taskgen git: %w", err)
 	}
-	return g.finish(tasks, rep, blobsDir, stdout, stderr)
+	if err := g.finish(tasks, rep, blobsDir, stdout, stderr); err != nil {
+		return err
+	}
+	reportSealed(stdout, *seal, len(tasks))
+	return nil
+}
+
+const sealUsage = "write each task's start state to DIR/<task id>.git, a repository with one commit (the start tree, without history), and point the task at it; with --repo-path the tasks name it <repo-path>/<task id>.git"
+
+// reportSealed says where --seal wrote the start states, when it was given.
+func reportSealed(stdout io.Writer, dir string, n int) {
+	if dir != "" {
+		fmt.Fprintf(stdout, "  start states sealed in %s (%d repositories, one commit each)\n", dir, n)
+	}
 }
 
 // readPicks reads the --commits file of rl taskgen git (see taskgen.ReadPicks).

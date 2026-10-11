@@ -133,6 +133,15 @@ type GitOptions struct {
 	// Issue optionally resolves closing references in commit messages.
 	Issue IssueResolver
 
+	// Seal, when set, writes the start state of every accepted task as a sealed
+	// repository, <Seal>/<task id>.git (see Seal), and points the task at it: the
+	// repository mined from, with its later commits, is then not what the task
+	// names. SealPath is how the tasks name the Seal directory (default: its
+	// absolute path); a relative one is resolved by a rollout against the
+	// directory it runs in.
+	Seal     string
+	SealPath string
+
 	Progress func(string)
 }
 
@@ -185,7 +194,9 @@ type nameStatus struct {
 // message, the verifier is the commit's test files (hidden and protected) plus a
 // test command restricted to them where the language allows. With
 // GitOptions.Picks it mines exactly the listed changes instead of scanning
-// history, and a pick's issue, when given, is the prompt.
+// history, and a pick's issue, when given, is the prompt. With GitOptions.Seal
+// each accepted task names a sealed copy of its start state (Seal) instead of
+// repoPath.
 //
 // Unless NoValidate is set every candidate is validated by running the
 // verifier twice in the real environment: it must FAIL on the parent (else the
@@ -309,11 +320,24 @@ func FromGit(ctx context.Context, repoPath string, opts GitOptions) ([]rl.Task, 
 			}(j)
 		}
 		wg.Wait()
-		for _, o := range outs {
+		for j, o := range outs {
 			switch {
 			case o.task != nil:
 				if opts.Max > 0 && len(tasks) >= opts.Max {
 					continue
+				}
+				if opts.Seal != "" {
+					// The sealed start has the parent's tree, which validation ran on.
+					if err := sealTask(ctx, g, gd, o.task, opts.Seal, opts.SealPath, SealOptions{}); err != nil {
+						if ctx.Err() != nil {
+							return tasks, rep, ctx.Err()
+						}
+						if len(rep.InfraErrors) < 500 {
+							ci := commits[i+j]
+							rep.InfraErrors = append(rep.InfraErrors, Rejection{Commit: ci.Hash, Subject: ci.Subject, Reason: ReasonInfra, Detail: err.Error()})
+						}
+						continue
+					}
 				}
 				tasks = append(tasks, *o.task)
 				rep.Accepted++

@@ -52,6 +52,15 @@ they do not indicate whether a change has been released.
   option nothing changes; prompt and tool-schema bytes are unchanged
   (`core.ToolSpec` gains the scheduling hint `NoTreeWrites`, set on the
   swarm's task, mail, note and spawn tools, which is never rendered).
+- `sleipnir rl taskgen git --seal DIR` writes each task's start state as a
+  repository of its own, `DIR/<task id>.git`, with one commit (the start tree,
+  no history, a fixed author and date) and no other object, and the task's
+  `repo` names it: `repo.commit` is the sealed commit and `repo.path` the
+  sealed repository (`<--repo-path>/<task id>.git` when `--repo-path` is
+  given). The source commits stay in `meta.commit` and `meta.parent`. Without
+  `--seal` tasks are written as before. Sealed tasks need their repositories
+  next to the tasks file, and `rl tasks split` treats each sealed repository
+  as a repository of its own (`docs/TRAINING-DATA.md`, section 3.2).
 - A `json-score` verifier's score line may carry a breakdown of the score,
   `"units"` and `"guards"` (`docs/TRAINING-DATA.md`, section 3.1). Verifier
   results, outcome events, the episode's `outcome.verifier` and the results in

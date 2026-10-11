@@ -393,6 +393,7 @@
   {"name":"require-net-isolation","arg":"bool","default":null,"repeatable":false,"desc":"refuse to run where network isolation is unavailable"},
   {"name":"rev","arg":"string","default":"HEAD","repeatable":false,"desc":"revision to generate from"},
   {"name":"rewards","arg":"string","default":null,"defaultNote":"the documented defaults","repeatable":false,"desc":"rewards.json with weights, caps and detectors (default: the documented defaults)"},
+  {"name":"seal","arg":"string","default":null,"repeatable":false,"desc":"write each task's start state to DIR/<task id>.git, a repository with one commit (the start tree, without history), and point the task at it; with --repo-path the tasks name it <repo-path>/<task id>.git"},
   {"name":"set-env","arg":"string","default":null,"repeatable":true,"desc":"NAME=value forced into the agent's and verifier's environment, repeatable (e.g. GOCACHE=/shared/cache: faster, less isolated)"},
   {"name":"setup","arg":"string","default":null,"defaultNote":"detected","repeatable":true,"desc":"setup command run once per task snapshot, repeatable (default: detected)"},
   {"name":"since","arg":"string","default":null,"repeatable":false,"desc":"only commits authored on or after this date (2006-01-02)"},

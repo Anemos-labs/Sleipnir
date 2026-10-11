@@ -15,6 +15,8 @@
 //	           reports of go test -json, pytest's junit XML or cargo test.
 //	           RecordSuite and BuildUnits choose its units and guards from runs on
 //	           the start and the reference solution.
+//	Seal       a task's start state written as a repository of its own: one
+//	           commit, the start tree, no history (GitOptions.Seal).
 //
 // # The whole-suite scorer
 //
@@ -47,7 +49,10 @@
 // Prompts come from the cleaned commit message: trailers, links to the upstream
 // commit or pull request and bare commit ids are removed, and workspaces are
 // history-free (see package env), so the agent cannot look the solution up.
-// Hidden test files are stored by content hash in a blob store that travels with
+// The repository a task names is still on disk with its later commits; a sealed
+// task (Seal) names a repository that holds the start tree and nothing else, so
+// neither the future nor what a generator removed from the start is there to
+// read. Hidden test files are stored by content hash in a blob store that travels with
 // the tasks file (GitOptions.HiddenBlobs); without one they are inlined as text,
 // which puts verifier content in tasks.jsonl. Task.Meta records the source commit
 // and author date for date-based splits (env.Holdout) and the changed files that

@@ -979,6 +979,10 @@ than the fix, and its title sets the task kind. `issue.ref` and `source` are rec
 `source`) and never shown to the agent. Every other filter applies, and a listed change that fails one is reported
 with its reason.
 
+`--seal DIR` writes the start state of each task as a repository of its own, `DIR/<task id>.git`: one commit with the
+start tree and no history, so the source repository's later commits are not what the task names
+(`docs/TRAINING-DATA.md`, section 3.2). `--repo-path` then says how the tasks name DIR.
+
 <!-- flags: rl taskgen git -->
 ```text
 usage: sleipnir rl taskgen git --repo PATH [flags]
@@ -1052,6 +1056,8 @@ flags:
         revision to generate from (default HEAD)
   -rewards string
         rewards.json with weights, caps and detectors (default: the documented defaults)
+  -seal string
+        write each task's start state to DIR/<task id>.git, a repository with one commit (the start tree, without history), and point the task at it; with --repo-path the tasks name it <repo-path>/<task id>.git
   -set-env value
         NAME=value forced into the agent's and verifier's environment, repeatable (e.g. GOCACHE=/shared/cache: faster, less isolated)
   -setup value
