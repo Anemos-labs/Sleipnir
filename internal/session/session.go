@@ -87,9 +87,16 @@ type Options struct {
 	// who started the run pre-approved on the command line, which is the one place a run with nobody to ask can get an answer.
 	Allow []string
 	// OutagePatience is how long an agent keeps retrying a request that fails because the endpoint is down or overloaded (an HTTP
-	// status of 500 or more, or 429), beyond the six attempts every failure gets. Zero is DefaultOutagePatience; negative is
-	// the six attempts only (what a rollout wants: the runner repeats the rollout, and waiting would eat the run's own clock).
+	// status of 500 or more, or 429), counted from the request's first failure, beyond the six attempts every failure gets. Zero
+	// is DefaultOutagePatience; negative is the six attempts only.
 	OutagePatience time.Duration
+	// WaitUnreachable makes a failure in which nothing answered (a refused or reset connection, no response in time) an outage
+	// too, for OutagePatience (agent.Config.WaitUnreachable): for an endpoint known to exist, such as a rollout's gateway.
+	WaitUnreachable bool
+	// WrapProvider, if set, is put in front of every provider the session builds from the configuration (the main model when
+	// Provider is nil, the roles' models, the compactor's, a /model switch): a rollout watches them all for outages. The
+	// Provider given here is the caller's and is used as given.
+	WrapProvider func(provider.Provider) provider.Provider
 
 	// Swarm runs a manager plus workers instead of a single agent.
 	Swarm bool
@@ -497,12 +504,22 @@ func (s *Session) buildProvider(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	p, m, err := BuildProvider(s.cfg, ref, ProviderOptions{CaptureTokens: o.CaptureTokens})
+	p, m, err := s.clientFor(ref)
 	if err != nil {
 		return err
 	}
 	s.Provider, s.Model, s.modelRef = p, s.describe(ctx, p, m), ref.String()
 	return nil
+}
+
+// clientFor is BuildProvider for this session: the client of ref, with the session's token capture, behind Options.WrapProvider
+// when one is set.
+func (s *Session) clientFor(ref ModelRef) (provider.Provider, cost.Model, error) {
+	p, m, err := BuildProvider(s.cfg, ref, ProviderOptions{CaptureTokens: s.opts.CaptureTokens})
+	if err == nil && s.opts.WrapProvider != nil {
+		p = s.opts.WrapProvider(p)
+	}
+	return p, m, err
 }
 
 func (s *Session) buildPerm() error {
@@ -754,7 +771,7 @@ func (s *Session) build(ctx context.Context) error {
 				Planner: planner, KVPolicy: kvPol, SessionID: s.ID, Est: est, Now: o.Now,
 				BlockingCompaction: s.cfg.Cache.CompactionMode == "blocking",
 				MaxSteps:           orDefault(o.MaxSteps, 200), BudgetUSD: o.BudgetUSD, CaptureTokens: o.CaptureTokens,
-				Hooks: s.agentHooks(), OutagePatience: outagePatience(o.OutagePatience),
+				Hooks: s.agentHooks(), OutagePatience: outagePatience(o.OutagePatience), WaitUnreachable: o.WaitUnreachable,
 			})
 		}
 		a, err := mk()
@@ -818,6 +835,7 @@ func (s *Session) build(ctx context.Context) error {
 		Workdir: o.Cwd, Root: o.Root, Params: params, Effort: &s.effort, Planner: planner, KVPolicy: kvPol, Est: est, Limits: limits, Now: o.Now,
 		NewSink: o.NewSink, CaptureTokens: o.CaptureTokens, OnWrite: s.Ckpt.After, Hooks: s.agentHooks(),
 		OutagePatience:     outagePatience(o.OutagePatience),
+		WaitUnreachable:    o.WaitUnreachable,
 		BlockingCompaction: s.cfg.Cache.CompactionMode == "blocking",
 	}
 	if len(o.RoleModels) > 0 {
@@ -833,7 +851,7 @@ func (s *Session) build(ctx context.Context) error {
 			if err != nil {
 				return fmt.Errorf("role model %s=%s: %w", role, ref, err)
 			}
-			p, m, err := BuildProvider(s.cfg, mr, ProviderOptions{CaptureTokens: o.CaptureTokens})
+			p, m, err := s.clientFor(mr)
 			if err != nil {
 				return fmt.Errorf("role model %s=%s: %w", role, ref, err)
 			}
@@ -852,7 +870,7 @@ func (s *Session) build(ctx context.Context) error {
 			if err != nil {
 				return fmt.Errorf("role %s: model %s: %w", d.Name, d.Model, err)
 			}
-			p, m, err := BuildProvider(s.cfg, mr, ProviderOptions{CaptureTokens: o.CaptureTokens})
+			p, m, err := s.clientFor(mr)
 			if err != nil {
 				return fmt.Errorf("role %s: model %s: %w", d.Name, d.Model, err)
 			}
@@ -879,7 +897,7 @@ func (s *Session) build(ctx context.Context) error {
 			if err != nil {
 				return fmt.Errorf("models.roles.%s = %s: %w", role, ref, err)
 			}
-			p, m, err := BuildProvider(s.cfg, mr, ProviderOptions{CaptureTokens: o.CaptureTokens})
+			p, m, err := s.clientFor(mr)
 			if err != nil {
 				return fmt.Errorf("models.roles.%s = %s: %w", role, ref, err)
 			}
@@ -934,7 +952,7 @@ func (s *Session) buildCompactor(ctx context.Context, o Options) (provider.Provi
 	if err != nil {
 		return nil, cost.Model{}, fmt.Errorf("compactor model %s: %w", ref, err)
 	}
-	p, m, err := BuildProvider(s.cfg, mr, ProviderOptions{CaptureTokens: o.CaptureTokens})
+	p, m, err := s.clientFor(mr)
 	if err != nil {
 		return nil, cost.Model{}, fmt.Errorf("compactor model %s: %w", ref, err)
 	}

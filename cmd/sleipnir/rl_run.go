@@ -225,6 +225,7 @@ type rigFlags struct {
 	verifyPolicy                          string
 	infraRetries                          int
 	maxWall                               time.Duration
+	outagePatience, maxOutagePause        time.Duration
 	noNetIsolation, requireNetIsolation   bool
 	keepFailed                            bool
 	passEnv                               string
@@ -243,7 +244,9 @@ func (r *rigFlags) register(fs *flag.FlagSet) {
 	fs.IntVar(&r.verifyRepeats, "verify-repeats", 0, "run the verifier this many times to catch flaky tests")
 	fs.StringVar(&r.verifyPolicy, "verify-policy", "", "with repeats: all | any | majority")
 	fs.IntVar(&r.infraRetries, "infra-retries", 0, "retries of a rollout that failed for infrastructure reasons (default 2; -1 disables)")
-	fs.DurationVar(&r.maxWall, "max-wall", 0, "wall-clock cap of a rollout whose task sets none (default 1h)")
+	fs.DurationVar(&r.maxWall, "max-wall", 0, "wall-clock cap of a rollout whose task sets none, not counting the time the policy endpoint is down (see --max-outage-pause) (default 1h)")
+	fs.DurationVar(&r.outagePatience, "outage-patience", 0, "how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)")
+	fs.DurationVar(&r.maxOutagePause, "max-outage-pause", 0, "how much outage, in all, one rollout attempt sits out with its wall clock stopped before it ends as an infra failure, not retried (default 3h; negative: the wall clock runs through outages)")
 	fs.BoolVar(&r.noNetIsolation, "no-net-isolation", false, "do not isolate the network of tasks that do not need it")
 	fs.BoolVar(&r.requireNetIsolation, "require-net-isolation", false, "refuse to run where network isolation is unavailable")
 	fs.BoolVar(&r.keepFailed, "keep-failed", false, "keep the workspaces of failed rollouts for debugging")
@@ -357,6 +360,7 @@ func (rf *rigFlags) build(h env.Harness, out, tasksFile string, stderr io.Writer
 		Concurrency: rf.concurrency, HiddenBlobs: hidden,
 		VerifyRepeats: rf.verifyRepeats, VerifyPassPolicy: rf.verifyPolicy,
 		InfraRetries: rf.infraRetries, MaxWall: rf.maxWall, MaxSpendUSD: rf.maxSpend,
+		OutagePatience: rf.outagePatience, MaxOutagePause: rf.maxOutagePause,
 		Logf: func(f string, a ...any) { fmt.Fprintf(stderr, f+"\n", a...) },
 	}
 	return &rig{Runner: rn, Pipe: pipe, Reward: cfg, closeF: ws.Close}, nil
@@ -431,6 +435,13 @@ func progressPrinter(w io.Writer) func(env.Progress) {
 			fmt.Fprintln(w, line)
 		case "rollout.retry":
 			fmt.Fprintf(w, "%s/%d: retrying (attempt %d): %s\n", p.Task, p.Sample, p.Attempt, p.Error)
+		case "rollout.outage":
+			if p.Status == "down" {
+				fmt.Fprintf(w, "%s/%d: the policy endpoint is down (%s): waiting, with the rollout's clock stopped\n", p.Task, p.Sample, p.Error)
+			} else {
+				fmt.Fprintf(w, "%s/%d: the policy endpoint answers again after %s: the rollout's clock runs\n", p.Task, p.Sample,
+					(time.Duration(p.OutageMs) * time.Millisecond).Round(time.Second))
+			}
 		}
 	}
 }

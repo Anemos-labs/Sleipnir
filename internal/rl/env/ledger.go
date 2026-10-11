@@ -36,6 +36,10 @@ type LedgerEntry struct {
 	// Retries are the requests the endpoint did not answer (429, 5xx, dropped connections): repeated, never charged
 	// to the request budget.
 	Retries int `json:"retries,omitempty"`
+	// ActiveWallMs is how long the attempt's agent ran against its wall-clock budget, and PausedMs how long the policy
+	// endpoint was down meanwhile, which the budget does not count (RolloutResult); absent without a pausable clock.
+	ActiveWallMs int64 `json:"active_wall_ms,omitempty"`
+	PausedMs     int64 `json:"paused_ms,omitempty"`
 }
 
 // ledger appends entries to LedgerFile and keeps the running total.
@@ -142,6 +146,7 @@ func (rn *run) recordAttempt(j job, dir string, attempt int, out attemptOutcome)
 	e := LedgerEntry{
 		Time: rn.r.now().UTC(), Run: rn.id, Task: j.task.ID, Sample: j.sample, Attempt: attempt, Status: status,
 		Error: out.result.Error, CostUSD: usd, Requests: requests, Retries: retries,
+		ActiveWallMs: out.result.ActiveWallMs, PausedMs: out.result.PausedMs,
 	}
 	if err := rn.ledger.add(e); err != nil {
 		rn.r.logf("env: %s/%d: writing the ledger: %v", j.task.ID, j.sample, err)

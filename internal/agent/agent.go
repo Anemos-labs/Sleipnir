@@ -215,13 +215,19 @@ type Config struct {
 	BudgetUSD float64 // 0: unlimited
 	Priority  int
 
-	// OutagePatience is how long, in all, the agent keeps repeating a request that fails because the endpoint is down or
-	// overloaded (an HTTP status of 500 or more, or 429): the waits between its attempts, the first six included, add up to
-	// at most this. Every failure gets six attempts; this is what lets such a failure get more. The endpoint answered, so it is
-	// there and the request is not wrong: waiting is what a person would do, and a worker that gives up after forty seconds
-	// takes its task with it. Zero (the default) is the six attempts only. A failure with no status (nothing answered: a
-	// misspelt URL, a refused connection) never gets it, so a misconfiguration fails as fast as ever.
+	// OutagePatience is how long the agent keeps repeating a request that fails because the endpoint is down or overloaded
+	// (an HTTP status of 500 or more, or 429; provider.OutageAnswered), counted from the request's first failure. Every
+	// failure gets six attempts; this is what lets such a failure get more. The endpoint answered, so it is there and the
+	// request is not wrong: waiting is what a person would do, and a worker that gives up after forty seconds takes its task
+	// with it. Zero (the default) is the six attempts only. A failure with no status (nothing answered: a refused or reset
+	// connection, no response in time; provider.OutageUnanswered) gets it only with WaitUnreachable, so a misspelt URL fails
+	// as fast as ever.
 	OutagePatience time.Duration
+	// WaitUnreachable makes a failure in which nothing answered an outage too, waited out under OutagePatience: for an
+	// endpoint known to exist, such as the gateway a rollout runner has been using, whose outages are timeouts and refused
+	// connections as often as 502s. It also keeps repeating a request the endpoint swallowed twice (provider.MaxSilentAttempts)
+	// for as long as the patience lasts.
+	WaitUnreachable bool
 
 	// MaxToolCallsPerTurn is how many of the tool calls in one model turn are run
 	// (default DefaultMaxToolCalls). The rest are answered with an error that tells
@@ -707,7 +713,9 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 	defer func() {
 		if err := ctx.Err(); err != nil {
 			cause := "canceled"
-			if errors.Is(err, context.DeadlineExceeded) {
+			// A deadline that pauses (a rollout's wall clock, which stops during outages) ends the context by cancelling it, with a
+			// cause that says it was a deadline.
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(context.Cause(ctx), context.DeadlineExceeded) {
 				cause = "deadline"
 			}
 			a.emit(events.TypeAgentCancel, map[string]any{"phase": phase, "cause": cause, "steps": res.Steps})

@@ -67,6 +67,9 @@ type Summary struct {
 	BudgetRate   float64 `json:"budget_rate"`
 	// InfraRate is infra / (completed + infra).
 	InfraRate float64 `json:"infra_rate"`
+	// PausedMs is how long, summed over the rollouts (completed or not), their wall clocks stood still because the policy
+	// endpoint was down.
+	PausedMs int64 `json:"paused_ms,omitempty"`
 	// Efficiency holds the means of the best-of-n signals over completed rollouts.
 	Efficiency Efficiency `json:"efficiency"`
 	// Closures sums, over completed rollouts, how the swarm board closed its tasks ("done:verified", "failed:superseded",
@@ -153,6 +156,7 @@ func buildSummary(runID string, started, ended time.Time, tasks []rl.Task, group
 	var n, passed, hacks, budgets int
 	var score, reward, usd, ite, req, steps, wall float64
 	for _, r := range results {
+		s.PausedMs += r.PausedMs
 		switch r.Status {
 		case StatusOK:
 			s.Completed++
@@ -285,6 +289,10 @@ type ManifestConfig struct {
 	Group         string            `json:"group,omitempty"`
 	KeepFailed    bool              `json:"keep_failed,omitempty"`
 	Force         bool              `json:"force,omitempty"`
+	// OutagePatienceMs and MaxOutagePauseMs are the resolved outage settings (Runner.OutagePatience, Runner.MaxOutagePause); -1:
+	// off.
+	OutagePatienceMs int64 `json:"outage_patience_ms"`
+	MaxOutagePauseMs int64 `json:"max_outage_pause_ms"`
 }
 
 // ManifestPolicy identifies the policy. The endpoint is scheme and host only and
@@ -343,6 +351,7 @@ func (rn *run) writeManifest(status string) error {
 		Concurrency: max(r.Concurrency, 1), Seed: rn.opts.Seed, Capture: rn.opts.Capture, Swarm: rn.opts.Swarm, Single: rn.opts.Single,
 		Agents: rn.opts.Agents, RoleModels: rn.opts.RoleModels, TargetPrice: rn.opts.TargetPrice,
 		InfraRetries: r.retries(), VerifyRepeats: max(r.VerifyRepeats, 1), PassPolicy: r.VerifyPassPolicy,
+		OutagePatienceMs: msOrOff(r.outagePatience()), MaxOutagePauseMs: msOrOff(r.maxOutagePause()),
 		WorkspaceMode: r.Workspaces.opts.Mode, Group: rn.opts.Group, KeepFailed: rn.opts.KeepFailed, Force: rn.opts.Force,
 	}
 	m.Policy = ManifestPolicy{
@@ -362,4 +371,12 @@ func (rn *run) writeManifest(status string) error {
 	m.Warnings = r.Workspaces.Warnings()
 	m.Extra = rn.opts.Extra
 	return writeJSONAtomic(path, m)
+}
+
+// msOrOff is a resolved duration setting in milliseconds, with -1 for off.
+func msOrOff(d time.Duration) int64 {
+	if d < 0 {
+		return -1
+	}
+	return d.Milliseconds()
 }

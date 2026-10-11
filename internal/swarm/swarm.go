@@ -154,9 +154,10 @@ type Deps struct {
 	CompactorModel cost.Model
 	// Plans holds each agent's plan (internal/plan); nil: no plan tool.
 	Plans *plan.Store
-	// OutagePatience is agent.Config.OutagePatience for every agent of the swarm.
-	OutagePatience time.Duration
-	Registry       *tools.Registry
+	// OutagePatience and WaitUnreachable are agent.Config's for every agent of the swarm.
+	OutagePatience  time.Duration
+	WaitUnreachable bool
+	Registry        *tools.Registry
 	// ToolSpecs is the frozen tool list (must include the swarm tools).
 	ToolSpecs []core.ToolSpec
 	Const     *kv.Layer
