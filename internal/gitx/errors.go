@@ -220,9 +220,18 @@ func classify(text string) Kind {
 	// Concurrent ref deletion can remove an empty parent directory between Git's
 	// directory creation and lock-file creation. Retry only that lock failure;
 	// missing revisions, index paths, permissions, and expected-value conflicts
-	// keep their ordinary classifications.
+	// keep their ordinary classifications. (The same race worded "unable to
+	// create directory for" says no reason, so it stays unclassified and gets a
+	// few retries of its own: refDirVanished.)
 	case strings.Contains(l, "cannot lock ref 'refs/") && strings.Contains(l, "unable to create '") &&
 		strings.Contains(l, ".lock': no such file or directory"):
+		return KindLocked
+	// The reflog's side of the same race: git writes the new ref's reflog before it
+	// commits the ref, and the log directory vanished under it ("cannot update the
+	// ref 'refs/...': unable to create directory for '.git/logs/refs/...': No such
+	// file or directory"). The ref was not created, and the errno names the race.
+	case strings.Contains(l, "cannot update the ref 'refs/") && strings.Contains(l, "unable to create directory for '") &&
+		strings.Contains(l, "': no such file or directory"):
 		return KindLocked
 	case worktreeAdminChanging(l):
 		return KindLocked
