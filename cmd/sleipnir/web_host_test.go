@@ -210,6 +210,7 @@ func newWebRig(t *testing.T, d webDefaults, base session.Options) *webRig {
 		t.Fatal(err)
 	}
 	h.base = base
+	h.base.NoBudget = h.unlimitedByDefault()        // as newWebHost leaves it
 	h.bridge = h.newBridge(testFloor, defaultGrace) // a floor that a loaded machine cannot outrun between seeing a question and answering it
 	srv, err := web.New(web.Config{Addr: "127.0.0.1:0", Routes: h.register, Hub: webHubConfig})
 	if err != nil {
@@ -736,7 +737,7 @@ func TestWebHostHostsSeveralSessions(t *testing.T) {
 	r.json("POST", "/api/sessions/"+second.ID+"/messages", wire.MessageRequest{Text: "two"}, 200, nil)
 	r.waitEv(second.ID, "final", nil)
 
-	r.json("POST", "/api/sessions", wire.NewSessionRequest{Cwd: t.TempDir()}, 403, nil)
+	r.json("POST", "/api/sessions", wire.NewSessionRequest{Cwd: t.TempDir()}, 428, nil) // a folder of no project asks first (web_fs_test.go)
 	r.json("DELETE", "/api/sessions/"+first.ID, nil, 200, nil)
 	r.waitFor("tab remove", func(f frame) bool { return f.event == "tab" && strings.Contains(string(f.data), `"op":"remove"`) })
 	if code, body := r.do("DELETE", "/api/sessions/"+second.ID, nil); code != 409 || !strings.Contains(string(body), "last") {
@@ -887,12 +888,15 @@ func TestWebHostRoutesAreBehindTheEnvelope(t *testing.T) {
 			t.Errorf("a restart with %q = %d %s", flags, code, body)
 		}
 	}
-	// A directory that is not a listed project is refused whatever its spelling.
+	// A folder that is not a listed project is confirmed first, whatever its spelling, and one that does not exist is refused.
 	other := t.TempDir()
 	for _, flags := range [][]string{{"--cwd", other}, {"--cwd=" + other + "/."}} {
-		if code, body := r.do("POST", "/api/sessions/"+tab.ID+"/restart", wire.RestartRequest{Kind: "restart", Flags: flags}); code != 403 || !strings.Contains(string(body), "not_a_project") {
+		if code, body := r.do("POST", "/api/sessions/"+tab.ID+"/restart", wire.RestartRequest{Kind: "restart", Flags: flags}); code != 428 || !strings.Contains(string(body), "not one of this server's projects") {
 			t.Errorf("a restart with %q = %d %s", flags, code, body)
 		}
+	}
+	if code, body := r.do("POST", "/api/sessions/"+tab.ID+"/restart", wire.RestartRequest{Kind: "restart", Flags: []string{"--cwd", filepath.Join(other, "gone")}}); code != 404 || !strings.Contains(string(body), "no_dir") {
+		t.Errorf("a restart into a folder that does not exist = %d %s", code, body)
 	}
 }
 

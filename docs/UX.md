@@ -90,9 +90,14 @@ open the address again; nothing is shown from the session until then.
 ### Sessions and views
 
 One page shows every session the server hosts, one tab each in the session strip; a tab keeps running, and can ask questions,
-while another is in front. `+ New` starts a session with every chat flag, seeded from the flags `sleipnir web` was started
-with; its directory is one of the server's projects, never a free path, and the directory list names a project's trust when it
-is not trusted (`not trusted`, `changed since trusted`, `partial` when not every file could be scanned, `unreadable`). When the
+while another is in front. `+ New` starts a session with every chat flag, seeded from the flags `sleipnir web` was started with. Its folder is a path typed in a
+field that completes folder names as it is typed (`Tab` completes, the arrow keys choose, `Enter` takes one; `~` is the home folder) and says
+under it what the path is: a project, a folder that will be made, a git repository or not. A new or empty folder can be made a git
+repository with an empty first commit (on by default); a folder that has files is never made one. The `Projects` button lists the folders the
+server knows, with their trust when the project's files are not trusted (`not trusted`, `changed since trusted`, `partial` when not every
+file could be scanned, `unreadable`). Whatever needs explaining has a `?` beside it that says in plain words what it is, on hover, on keyboard focus and on a tap (`Escape` hides it before it closes the dialog): the workers, the isolation, `--verify` (the
+command that checks a worker's task before it counts as done, with the checks the folder's build files suggest), the team and trust options,
+and `--allow` (actions answered yes in advance, with examples to click and a check of the form of a rule that was typed; read-only in `bypass` and `yolo`, which never ask, and the rules are kept for another mode and not sent). The budget starts at `off`, no limit: the cap that a team has in the terminal where nobody chose a budget (`swarm.budget_usd`, $50 built in) is not applied to the sessions of the page, unless `sleipnir web --budget-usd` or the configuration sets a budget, and the command line under the dialog sets `SLEIPNIR_SWARM_BUDGET_USD=0` for a team so that it means the same. When the
 server answers that the project's own files need trust, for a new session and for a resume alike, the trust dialog lists every
 file it named, with their count and size, and each path that could not be read; its yes stays disabled until that list is on
 screen and repeats the request with the confirmation of exactly that list. A project that could not be read whole is trusted for

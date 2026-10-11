@@ -397,8 +397,11 @@ func TestPrivilegedRoutesAskForAConfirmation(t *testing.T) {
 	if code, b, _ := call(t, r, "POST", "/api/sessions", e.Error, nil); code == 201 {
 		t.Errorf("a request that is not JSON created a tab: %s", b)
 	}
-	if code, b, _ := call(t, r, "POST", "/api/sessions", `{"cwd":"/etc","trustProject":false}`, nil); code != 403 || errorCode(b) != "not_a_project" {
-		t.Errorf("a directory that is not a project = %d %s", code, b)
+	if code, b, _ := call(t, r, "POST", "/api/sessions", `{"cwd":"/etc","trustProject":false}`, nil); code != 428 || errorCode(b) != "confirm_required" {
+		t.Errorf("a folder that is not a project asks first = %d %s", code, b)
+	}
+	if code, b, _ := call(t, r, "POST", "/api/sessions", `{"cwd":"/no/such/folder","trustProject":false}`, nil); code != 404 || errorCode(b) != "no_dir" {
+		t.Errorf("a folder that does not exist = %d %s", code, b)
 	}
 	if code, _, _ := call(t, r, "POST", "/api/sessions", `{"cwd":"`+Cwd+`","name":"fresh","goalText":"do it"}`, nil); code != 201 {
 		t.Errorf("a trusted project needs no step: %d", code)

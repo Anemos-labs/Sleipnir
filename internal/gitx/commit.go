@@ -162,6 +162,19 @@ func hasConflictMarkers(data []byte) bool {
 	return false
 }
 
+// commitInputs checks a commit message and renders the identity of its author as the variables git reads.
+func (r *Repo) commitInputs(msg string, author Author) (string, []string, error) {
+	msg = strings.TrimSpace(msg)
+	if msg == "" {
+		return "", nil, newErr(KindInvalid, "commit", "empty commit message")
+	}
+	if strings.ContainsRune(msg, 0) {
+		return "", nil, newErr(KindInvalid, "commit", "commit message contains a NUL byte")
+	}
+	idEnv, err := author.env(r.s.now)
+	return msg, idEnv, err
+}
+
 // CommitAll stages every change (`add -A`: modifications, deletions, new
 // non-ignored files) and commits it with the given message and identity. It
 // returns the new commit, or "" with a nil error when there was nothing to
@@ -173,14 +186,7 @@ func (r *Repo) CommitAll(ctx context.Context, msg string, author Author) (string
 	if r.bare {
 		return "", &Error{Kind: KindNotARepo, Op: "commit", ExitCode: -1, Detail: "bare repository has no work tree"}
 	}
-	msg = strings.TrimSpace(msg)
-	if msg == "" {
-		return "", newErr(KindInvalid, "commit", "empty commit message")
-	}
-	if strings.ContainsRune(msg, 0) {
-		return "", newErr(KindInvalid, "commit", "commit message contains a NUL byte")
-	}
-	idEnv, err := author.env(r.s.now)
+	msg, idEnv, err := r.commitInputs(msg, author)
 	if err != nil {
 		return "", err
 	}
@@ -209,6 +215,28 @@ func (r *Repo) CommitAll(ctx context.Context, msg string, author Author) (string
 	if merging {
 		args = append(args, "--allow-empty")
 	}
+	if _, err := b.run(ctx, call{args: args, stdin: strings.NewReader(msg + "\n"), env: idEnv, mutating: true}); err != nil {
+		return "", err
+	}
+	return r.Head(ctx)
+}
+
+// CommitEmpty records a commit that changes nothing: the first commit of a repository that has none yet, which a work tree needs to
+// start from. Whatever is staged is committed with it (nothing is staged by this call). It returns the new commit. Hooks, signing and
+// editors are disabled (see the package doc).
+func (r *Repo) CommitEmpty(ctx context.Context, msg string, author Author) (string, error) {
+	if r.bare {
+		return "", &Error{Kind: KindNotARepo, Op: "commit", ExitCode: -1, Detail: "bare repository has no work tree"}
+	}
+	msg, idEnv, err := r.commitInputs(msg, author)
+	if err != nil {
+		return "", err
+	}
+	b, err := r.begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	args := []string{"commit", "--allow-empty", "--no-verify", "--no-gpg-sign", "--cleanup=whitespace", "-F", "-"}
 	if _, err := b.run(ctx, call{args: args, stdin: strings.NewReader(msg + "\n"), env: idEnv, mutating: true}); err != nil {
 		return "", err
 	}

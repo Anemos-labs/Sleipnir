@@ -7,11 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/web"
+	"github.com/anemos-labs/sleipnir/internal/web/dirs"
 	"github.com/anemos-labs/sleipnir/internal/web/seam"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
@@ -147,6 +150,16 @@ func (rt *router) live() {
 	srv.Handle("GET /api/stream", srv.Hub().ServeSSE(func(*http.Request) (string, bool) { return seam.Topic, true }), web.RouteOpts{})
 	rt.get("/api/sessions", func(*http.Request) (any, error) { return map[string]any{"tabs": h.Tabs()}, nil })
 	rt.get("/api/projects", func(r *http.Request) (any, error) { return map[string]any{"projects": h.Projects(r.Context())}, nil })
+	rt.get("/api/fs/dirs", func(r *http.Request) (any, error) {
+		l, err := dirs.Complete(r.URL.Query().Get("path"), dirs.Options{Home: homeDir(), Base: Cwd})
+		if err != nil {
+			return nil, werr(400, "bad_path", err.Error())
+		}
+		for _, p := range h.Projects(r.Context()) {
+			l.State.Known = l.State.Known || p.Dir == l.State.Path
+		}
+		return l, nil
+	})
 
 	srv.HandleFunc("POST /api/sessions", rt.newSession, web.RouteOpts{})
 	srv.HandleFunc("POST /api/sessions/resume", rt.resume, web.RouteOpts{})
@@ -432,9 +445,34 @@ func (rt *router) newSession(w http.ResponseWriter, r *http.Request) {
 			proj = &p
 		}
 	}
-	if proj == nil {
-		web.Error(w, http.StatusForbidden, "not_a_project", "start a session in one of the listed projects")
-		return
+	if proj == nil { // a folder of no project: it must exist (or be made) and the request is confirmed first, nothing is made here
+		st := dirs.Inspect(body.Cwd)
+		switch {
+		case !filepath.IsAbs(body.Cwd):
+			web.Error(w, http.StatusBadRequest, "bad_path", "the folder is an absolute path")
+		case st.Exists && !st.Dir:
+			web.Error(w, http.StatusBadRequest, "not_a_dir", "that is a file, not a folder")
+		case !st.Exists && (!body.CreateDir || !st.ParentOK):
+			web.Error(w, http.StatusNotFound, "no_dir", "that folder does not exist")
+		default:
+			reasons := []string{"work in the folder " + body.Cwd + ", which is not one of this server's projects"}
+			if !st.Exists {
+				reasons[0] = "make the folder " + body.Cwd + " and work in it"
+			}
+			if body.GitInit {
+				reasons = append(reasons, "make "+body.Cwd+" a git repository, with an empty first commit")
+			}
+			scope := "session:" + D16(map[string]any{"dir": body.Cwd, "create": !st.Exists, "git": body.GitInit})
+			if r.Header.Get(web.ConfirmHeader) == "" {
+				w.Header().Set("X-Confirm-Scope", scope)
+				web.ErrorDetail(w, http.StatusPreconditionRequired, "confirm_required", "this action needs a confirmation", map[string]any{"scope": scope, "reasons": reasons})
+			} else if rt.srv.RequireConfirm(w, r, scope) {
+				proj = &wire.Project{Dir: body.Cwd, Root: body.Cwd, Name: filepath.Base(body.Cwd), Trust: "none"}
+			}
+		}
+		if proj == nil {
+			return
+		}
 	}
 	if body.TrustProject && proj.Trust != "trusted" {
 		digest := D16(map[string]string{"dir": proj.Dir, "files": fmt.Sprint(proj.Files)})
@@ -817,4 +855,10 @@ func (rt *router) control() {
 	})
 	step("reset", func(t *Tab) any { t.Reset(); return map[string]any{"remaining": t.Remaining()} })
 	step("ask", func(t *Tab) any { t.Ask(); return okBody })
+}
+
+// homeDir is the home folder a path starting with ~ is read from: the real one, as the fake lists real folders.
+func homeDir() string {
+	h, _ := os.UserHomeDir()
+	return h
 }

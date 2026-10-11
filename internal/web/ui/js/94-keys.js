@@ -21,7 +21,8 @@
       if (!mod) SL.time.noteKey();
       if (e.key === 'Escape') {
         if (SL.time.holdWanted()) { const S = SL.sessions.active; S.hold.pinned = false; S.hold.vtSaved = null; SL.time.pin(false); SL.time.release(); e.preventDefault(); return; }
-        if (ui.hasModal()) { e.preventDefault(); ui.closeModal(); return; }
+        /* a field with a list open (the folder field of New session) takes the key first: it closes the list, and the next one closes the dialog */
+        if (ui.hasModal()) { if (t && t.hasAttribute && t.hasAttribute('data-popup-open')) return; e.preventDefault(); ui.closeModal(); return; }
         if (ui.inbox && ui.inbox.isOpen()) { ui.inbox.close(); e.preventDefault(); return; }
         if ($('.sessmenu') || $('.budpop') || $('.modemenu')) return;
         if (ui.drawerOpen && ui.drawerOpen()) { e.preventDefault(); ui.closeDrawer(); return; }

@@ -318,8 +318,9 @@ interrupted, as the terminal chat does. A first session that cannot start is rep
 session and offers a new one. Every session of the page runs in this one process; a restart (`/new`, `/clear`, `/swarm N`,
 `/restart`, a team's model or role change, Run settings Apply) closes the session first, an isolated team's verified work being
 applied to the checkout as at the end of a chat, and starts the next in the same tab. `/swarm N`, Apply and "run it again" carry
-the manager's conversation, as in the chat; `/new` and `/clear` start empty. A new session starts only in a directory of the
-projects list: `--cwd`, each `--project`, the directories of the open sessions, of the recorded sessions and of the trust ledger.
+the manager's conversation, as in the chat; `/new` and `/clear` start empty. A new session starts in any folder that exists, or that the page makes: a folder that is not one of the projects (`--cwd`,
+each `--project`, the folders of the open sessions, of the recorded sessions and of the trust ledger) is confirmed first, and a new or
+empty folder can be made a git repository with an empty first commit, which the confirmation lists as well.
 Asking for `--trust-project` on a project whose files are not trusted shows them first and records the answer, as `sleipnir
 trust add` does.
 
@@ -333,7 +334,7 @@ confirmation stops forged, replayed and stale requests and is where the page sho
 credential. A new session or a resume is measured against the server's own flags, a restart against the session it replaces; trust
 given to one directory does not follow a session into another, so a restart or a resume in another project asks for that project's
 files. A restart that keeps trusting its project reads the project's files again, and when they are not the ones confirmed for the
-session (an agent rewrote `AGENTS.md`), it needs a confirmation that names what changed before it starts. A restart into a directory that is not in the projects list is refused, as a new session there is. A project whose own files
+session (an agent rewrote `AGENTS.md`), it needs a confirmation that names what changed before it starts. A restart into a folder that is not in the projects list needs a confirmation that names the folder, as a new session there does; one that does not exist is refused. A project whose own files
 cannot all be read (a link that leaves it, more files than a scan reads) is listed as `partial`, never as having nothing to trust;
 trusting it names what could not be read and lasts for that session only.
 

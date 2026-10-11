@@ -430,12 +430,12 @@ func (t *webTab) restart(ctx context.Context, kind string, typed []string, fresh
 	// Authorized here, on the arguments the next generation starts with: another directory must be a project of the server, and what
 	// they raise above this session needs the request's confirmation (web_authorize.go).
 	dir := cleanDir(firstNonEmpty(f.cwd, base.cwd))
+	unlisted := false
 	if dir != cleanDir(base.cwd) {
-		proj, ok := t.h.isProject(ctx, dir)
-		if !ok {
-			return werr(http.StatusForbidden, "not_a_project", "start a session in one of the listed projects")
+		var err error
+		if dir, unlisted, err = t.h.existingDir(ctx, dir); err != nil { // a project, named as the server names it, or a folder that exists
+			return err
 		}
-		dir = proj.Dir // the listed project's own spelling
 	}
 	if f.resume != "" && f.resume != "latest" && !session.ValidID(f.resume) {
 		return werr(http.StatusBadRequest, "bad_flags", "--resume names a session of the server by its id, or latest")
@@ -446,6 +446,7 @@ func (t *webTab) restart(ctx context.Context, kind string, typed []string, fresh
 		}
 	}
 	p := raised(f, base, dir)
+	p.NewDir = unlisted
 	confirmed := t.recheckTrust(f, base, dir, &p)
 	if err := authorize(ctx, restartScope(t.id, p), p.reasons()); err != nil {
 		return err
