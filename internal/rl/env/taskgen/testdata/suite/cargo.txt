@@ -1,0 +1,37 @@
+   Compiling demo-crate v0.1.0 (/work/demo-crate)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.59s
+     Running unittests src/lib.rs (target/debug/deps/demo_crate-d83bb5d8d987117b)
+
+running 4 tests
+test tests::slow ... ignored
+test tests::adds ... ok
+test tests::inner::deep ... ok
+test tests::muls ... FAILED
+
+failures:
+
+---- tests::muls stdout ----
+test fake_one ... ok
+
+thread 'tests::muls' (2956603) panicked at src/lib.rs:26:9:
+assertion `left == right` failed
+  left: 5
+ right: 6
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::muls
+
+test result: FAILED. 2 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`
+     Running tests/integ.rs (target/debug/deps/integ-e025f52b9c8c6bd1)
+
+running 1 test
+test smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: 1 target failed:
+    `--lib`

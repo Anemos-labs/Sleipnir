@@ -632,14 +632,14 @@ func TestLastLineScoreBreakdown(t *testing.T) {
 	// Too many units, or a name that is too long, drops the breakdown, not the score.
 	var many strings.Builder
 	many.WriteString(`{"score": 0.5, "units": {`)
-	for i := 0; i <= maxScoreUnits; i++ {
+	for i := 0; i <= MaxScoreUnits; i++ {
 		if i > 0 {
 			many.WriteString(",")
 		}
 		fmt.Fprintf(&many, `"u%d": {"passed": 0, "total": 1}`, i)
 	}
 	many.WriteString(`}}`)
-	long := fmt.Sprintf(`{"score": 0.5, "units": {%q: {"passed": 0, "total": 1}}}`, strings.Repeat("n", maxScoreUnitName+1))
+	long := fmt.Sprintf(`{"score": 0.5, "units": {%q: {"passed": 0, "total": 1}}}`, strings.Repeat("n", MaxScoreUnitName+1))
 	for _, line := range []string{many.String(), long} {
 		if got, ok := lastLineScore(line); !ok || got.Score != 0.5 || got.Units != nil {
 			t.Errorf("an oversized breakdown: ok=%v score=%v units=%d", ok, got.Score, len(got.Units))
@@ -690,6 +690,20 @@ func TestVerifyCarriesTheScoreBreakdown(t *testing.T) {
 	f.task.Verifier.Pass, f.task.Verifier.Cmd = "", "echo '"+line+"'"
 	if res := f.verify(w); !res.Pass || res.Score != 1 || res.Units != nil {
 		t.Fatalf("exit0 mode: %+v", res)
+	}
+}
+
+// TestVerifyHandsEachRunsStdoutToTheCaller: VerifyOptions.Stdout sees every run's standard output, and only that.
+func TestVerifyHandsEachRunsStdoutToTheCaller(t *testing.T) {
+	f := newVerifyFixture(t, func(tk *rl.Task) { tk.Verifier.Cmd = `echo out; echo err >&2` })
+	w := f.workspace("s0")
+	var got []string
+	res := f.verify(w, func(o *VerifyOptions) {
+		o.Repeats = 2
+		o.Stdout = func(run int, stdout string) { got = append(got, fmt.Sprintf("%d:%s", run, stdout)) }
+	})
+	if !res.Pass || !reflect.DeepEqual(got, []string{"0:out\n", "1:out\n"}) {
+		t.Fatalf("pass=%v stdout seen: %q", res.Pass, got)
 	}
 }
 
