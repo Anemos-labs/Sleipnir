@@ -315,7 +315,7 @@ func WriteSuite(task *rl.Task, spec SuiteSpec, hidden events.Blobs) error {
 		return err
 	}
 	base := suiteBase(task)
-	h := make(map[string]string, len(task.Verifier.Hidden)+len(files))
+	h := map[string]string{}
 	for p, ref := range task.Verifier.Hidden {
 		if !strings.HasPrefix(p, base+"/") {
 			h[p] = ref
