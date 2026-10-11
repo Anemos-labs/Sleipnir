@@ -32,9 +32,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync/atomic"
@@ -143,7 +145,36 @@ func (h *Harness) Run(ctx context.Context, spec env.RunSpec) (env.RunResult, err
 		return env.RunResult{}, env.Infra("session", err)
 	}
 	watch.attach(sess.Log)
-	res, runErr := sess.Run(ctx, spec.Task.Prompt)
+	if hook := spec.Savepoints; hook != nil {
+		hook.Bind(func(ctx context.Context, capture func(context.Context) error) (env.SavepointInfo, error) {
+			r, err := sess.Savepoint(ctx, hook.Polite, hook.Firm, capture)
+			info := env.SavepointInfo{N: r.N, Consistent: r.Consistent, LogBytes: r.LogBytes, Seq: r.Seq}
+			if len(r.Agents) > 0 {
+				info.Agents = make(map[string]string, len(r.Agents))
+				for id, h := range r.Agents {
+					info.Agents[id] = string(h)
+				}
+			}
+			return info, err
+		})
+	}
+	// A resumed session has the task in its thread already: it is told to go on.
+	prompt := spec.Task.Prompt
+	switch {
+	case spec.Resume && opts.Swarm:
+		prompt = env.ResumeNoteTeam
+	case spec.Resume:
+		prompt = env.ResumeNote
+	}
+	if spec.Resume && spec.CompactFirst {
+		// A branch that summarises first: its siblings fold the same state, each with its own seed. A compaction that cannot
+		// run (too little to fold) leaves the branch to go on as it is; the episode shows whether one happened.
+		_, _ = sess.Compact(ctx, "")
+	}
+	res, runErr := sess.Run(ctx, prompt)
+	if spec.Savepoints != nil {
+		spec.Savepoints.Bind(nil) // no savepoint of a session that is closing
+	}
 	watch.attach(nil) // a request still returning must not write to a log that is being closed
 	// The runner appends the outcome events to the same log afterwards, so the log
 	// has to be closed before this function returns.
@@ -212,8 +243,9 @@ func (h *Harness) options(spec env.RunSpec, cfg *config.Config, p provider.Provi
 		Config: cfg, Model: spec.Policy.Model, Provider: p, ModelInfo: &model,
 		CaptureTokens: spec.Capture,
 		ID:            sessionID(spec), Dir: spec.RunDir,
-		Mode:     h.mode(), // no Prompter: nobody answers, and the engine then refuses with the reason and what to do instead
-		MaxSteps: spec.Budget.Steps, BudgetUSD: spec.Budget.USD,
+		Savepoints: spec.Savepoints != nil,
+		Mode:       h.mode(), // no Prompter: nobody answers, and the engine then refuses with the reason and what to do instead
+		MaxSteps:   spec.Budget.Steps, BudgetUSD: spec.Budget.USD,
 		ContextWindow: firstPositive(spec.Budget.ContextWindow, h.ContextTokens),
 		TrustProject:  !h.IgnoreRepoInstructions,
 		NoWeb:         !task.Network, Offline: true,
@@ -229,6 +261,10 @@ func (h *Harness) options(spec env.RunSpec, cfg *config.Config, p provider.Provi
 			"seed": spec.Seed, "capture": spec.Capture, "policy": spec.Policy.Model, "sampling": json.RawMessage(nonEmpty(spec.Policy.Sampling)),
 			"endpoint": hostOf(spec.Policy.BaseURL), "role_models": spec.RoleModels, "target_price": spec.TargetPrice,
 		}},
+	}
+	if spec.Resume {
+		// The run directory's log, cut back to a savepoint by the runner, is the session to continue.
+		o.ID, o.Dir, o.Resume = loggedSession(spec.RunDir), "", spec.RunDir
 	}
 	if o.ShellEnv == nil {
 		// Never fall back to the operator's environment: keys and cloud
@@ -521,6 +557,23 @@ func sessionID(spec env.RunSpec) string {
 		id = "task"
 	}
 	return fmt.Sprintf("%s-s%d-a%d", id, spec.Sample, max(spec.Attempt, 1))
+}
+
+// loggedSession is the session id the first event of the run directory's log
+// carries ("" when there is none): a resumed rollout goes on under it.
+func loggedSession(dir string) string {
+	f, err := os.Open(filepath.Join(dir, "events.jsonl"))
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	var e struct {
+		Session string `json:"session"`
+	}
+	if json.NewDecoder(io.LimitReader(f, 1<<20)).Decode(&e) != nil || unsafeID.MatchString(e.Session) {
+		return ""
+	}
+	return e.Session
 }
 
 // homeOf finds the HOME of the prepared environment; instruction files and

@@ -35,6 +35,7 @@ in a clean checkout, scores it, and writes trainer-ready data (docs/TRAINING-DAT
   taskgen    make tasks from git history, compose swarm tasks, generate recall tasks or mutations
   tasks      validate, filter, split and check task files
   rollout    run G samples per task with a policy and write a run directory
+  branch     continue a finished long rollout from its savepoints, K times each
   eval       run held-out tasks and report pass@k, cost and protocol quality
   serve      HTTP rollout server for a trainer
   reward     re-score a run directory with different reward weights
@@ -112,6 +113,7 @@ func rlExport(_ context.Context, args []string, stdout, stderr io.Writer) error 
 	minReward := fs.Float64("min-reward", 0, "sft, dpo and kto: smallest episode reward that counts as a positive example")
 	topK := fs.Int("top-k", 0, "sft: keep the K best episodes per task (0 keeps all that qualify); with --select best, per group (0 means 1)")
 	selectEp := fs.String("select", export.SelectAll, "sft: all (every verified episode, --top-k by reward) | best (the best verified episode of each group by the best-of-n ranking)")
+	sftPrefix := fs.String("sft-prefix", "", "sft: best also exports each failed episode up to its best-scoring savepoint (--score-savepoints runs); empty: verified episodes only")
 	pair := fs.String("pair", export.PairReward, "dpo: reward (best vs worst reward) | best-worst (rank 1 vs rank last of each group; rank 1 verified and strictly better)")
 	keepFlagged := fs.Bool("keep-flagged", false, "export episodes with hard flags too (infra errors, truncation, reward hacking, ...)")
 	keepFlat := fs.Bool("keep-flat", false, "keep groups whose rewards are all equal (they carry no learning signal)")
@@ -189,7 +191,7 @@ func rlExport(_ context.Context, args []string, stdout, stderr io.Writer) error 
 	o := export.DefaultOptions(f)
 	o.Roles = splitList(*roles)
 	o.MinReward, o.TopK = *minReward, *topK
-	o.Select, o.Pair = *selectEp, *pair
+	o.Select, o.Pair, o.SFTPrefix = *selectEp, *pair, *sftPrefix
 	o.DropFlagged = !*keepFlagged
 	o.KeepFlat, o.KeepWeak = *keepFlat, *keepWeak
 	o.TeacherOK = splitList(*teacher)

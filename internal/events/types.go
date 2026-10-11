@@ -144,4 +144,9 @@ const (
 	// and class) or answered again (phase "end": how long it was down). The rollout's wall clock stops in between. Both carry
 	// active_ms and paused_ms, the clock's two totals at that moment.
 	TypeRLOutage = "rl.outage"
+	// TypeRLFork: the log of a branch of a long rollout (rl branch) starts here. Everything before it is a copy of the trunk's
+	// log up to one of its savepoints; the branch continues from that savepoint. Payload: parent (the trunk's sample),
+	// savepoint, sibling and siblings (this branch's number and how many branches the point has), horizon_ms (0: the rest
+	// of the budget).
+	TypeRLFork = "rl.fork"
 )

@@ -380,8 +380,9 @@ type Agent struct {
 
 	stepInRun   int
 	lastMaskReq int
-	lastSnap    core.Hash // the blob of the newest snapshot written
-	recoverable *Snapshot // the newest snapshot taken at a tool-batch boundary (Config.Barrier)
+	lastSnap    core.Hash     // the blob of the newest snapshot written
+	recoverable *Snapshot     // the newest snapshot taken at a tool-batch boundary (Config.Barrier)
+	pending     *pendingBatch // a batch that cannot write, running (Config.Barrier; see Recoverable)
 
 	comp compactionState
 
@@ -865,12 +866,18 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 // toolBatch runs one batch of calls and appends their results (and any mail and
 // guard notes) to the thread, holding Config.Barrier shared for the whole of it
 // when the batch may write (batchWrites), and notes the recoverable snapshot
-// before releasing it. stuck is the repeat
-// guard's verdict that the run must end.
+// before releasing it. stuck is the repeat guard's verdict that the run must
+// end.
 func (a *Agent) toolBatch(ctx context.Context, calls []core.Block) (stuck error) {
-	if b := a.cfg.Barrier; b != nil && a.batchWrites(calls) {
-		b.RLock()
-		defer b.RUnlock()
+	if b := a.cfg.Barrier; b != nil {
+		if a.batchWrites(calls) {
+			b.RLock()
+			defer b.RUnlock()
+		} else {
+			// A savepoint does not wait for it (a manager's wait lasts hours): it
+			// records the batch as interrupted where it has got to.
+			a.beginPending(calls)
+		}
 	}
 	results, exitFailed := a.runTools(ctx, calls)
 	blocks := results

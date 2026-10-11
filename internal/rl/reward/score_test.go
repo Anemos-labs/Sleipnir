@@ -810,3 +810,22 @@ func TestScoreWithRealisticSwarm(t *testing.T) {
 	// Workers evidenced their claims (tests were run before done in the same agent).
 	near(t, "worker evidence", ep.Agents[1].Reward.Components[CompEvidence], 1)
 }
+
+// The progress terms read the scores at savepoints as a curve over agent time
+// from the baseline to the outcome: its mean height, and its falls.
+func TestProgressTerms(t *testing.T) {
+	pts := []rl.ProgressPoint{{Savepoint: 1, ActiveWallMs: 100, Score: 0.5}, {Savepoint: 2, ActiveWallMs: 200, Score: 0.3}, {Savepoint: 3, ActiveWallMs: 300, Score: 1}}
+	mean, drops := progressTerms(pts, 0, 1, 400)
+	// Trapezoids: 0..100 (0,0.5)=25, 100..200 (0.5,0.3)=40, 200..300 (0.3,1)=65, 300..400 (1,1)=100: 230/400.
+	if math.Abs(mean-0.575) > 1e-9 || drops != 1 {
+		t.Errorf("mean %v drops %v, want 0.575 and 1", mean, drops)
+	}
+	if m, d := progressTerms(nil, 0, 1, 400); m != 0 || d != 0 {
+		t.Errorf("no points: %v %v", m, d)
+	}
+	early, _ := progressTerms([]rl.ProgressPoint{{Savepoint: 1, ActiveWallMs: 50, Score: 1}}, 0, 1, 400)
+	late, _ := progressTerms([]rl.ProgressPoint{{Savepoint: 1, ActiveWallMs: 350, Score: 0}}, 0, 1, 400)
+	if early <= late {
+		t.Errorf("getting far early (%v) should beat getting far late (%v)", early, late)
+	}
+}

@@ -17,11 +17,15 @@ import (
 // time; the model traffic, which training data rests on, is parsed strictly in
 // run.go.
 type view struct {
-	spawns    []spawnEv
-	ends      []endEv
-	commits   []commitEv // compact.commit
-	layers    []layerEv  // layer.commit
-	rejects   int        // compact.reject
+	spawns  []spawnEv
+	ends    []endEv
+	commits []commitEv // compact.commit
+	layers  []layerEv  // layer.commit
+	// restores are the agent.restore events: agent -> their seqs (a resumed session restored the agent from a snapshot).
+	restores map[string][]uint64
+	// fork is the branch's rl.fork event (rl branch), the last of them in a branch of a branch, or nil.
+	fork      *rl.Fork
+	rejects   int // compact.reject
 	mails     []mailEv
 	delivers  []deliverEv
 	outcomes  []outcomeEv
@@ -156,6 +160,18 @@ func (r *Run) buildView() *view {
 		case events.TypeSessionEnd:
 			t := e.TS
 			v.sessionEnd = &t
+		case events.TypeRLFork:
+			// A branch of a branch has a fork event per generation: the last is its own.
+			var p rl.Fork
+			if json.Unmarshal(e.Data, &p) == nil {
+				p.Seq = e.Seq
+				v.fork = &p
+			}
+		case events.TypeAgentRestore:
+			if v.restores == nil {
+				v.restores = map[string][]uint64{}
+			}
+			v.restores[e.Agent] = append(v.restores[e.Agent], e.Seq)
 		case events.TypeAgentSpawn:
 			var p struct {
 				ID, Role, Parent, By, Model, Task string

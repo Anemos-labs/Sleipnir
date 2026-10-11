@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -129,7 +130,8 @@ func (w *Workspace) Capture(ctx context.Context, storeDir string) (tree string, 
 }
 
 // ensureStore creates the capture store: a bare repository whose alternates
-// point at the snapshot's objects.
+// point at the snapshot's objects, besides any it already borrows from (a
+// branch's store borrows its trunk's).
 func (m *Workspaces) ensureStore(ctx context.Context, storeDir string, snap *snapshot) error {
 	if _, err := os.Stat(filepath.Join(storeDir, "objects")); err != nil {
 		if err := os.MkdirAll(filepath.Dir(storeDir), 0o700); err != nil {
@@ -139,7 +141,16 @@ func (m *Workspaces) ensureStore(ctx context.Context, storeDir string, snap *sna
 			return err
 		}
 	}
-	return os.WriteFile(filepath.Join(storeDir, "objects", "info", "alternates"), []byte(snap.altObjects()+"\n"), 0o644)
+	path := filepath.Join(storeDir, "objects", "info", "alternates")
+	lines := []string{snap.altObjects()}
+	if b, err := os.ReadFile(path); err == nil {
+		for _, ln := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+			if ln = strings.TrimSpace(ln); ln != "" && !slices.Contains(lines, ln) {
+				lines = append(lines, ln)
+			}
+		}
+	}
+	return os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o644)
 }
 
 // maxRestoreBytes bounds the patch a restore applies.
