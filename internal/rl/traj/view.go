@@ -58,6 +58,9 @@ type endEv struct {
 	state string
 }
 
+// commitEv is one compact.commit. req is the compactor request whose patch the commit applied ("" when
+// none was asked: a mask or emergency compaction); hasReq is false for a log written before commits named
+// their request, whose commits are linked to a compactor call by a heuristic instead (compactEdges).
 type commitEv struct {
 	seq      uint64
 	idx      int
@@ -66,6 +69,8 @@ type commitEv struct {
 	keepFrom core.TurnID
 	reason   string
 	fallback bool
+	req      string
+	hasReq   bool
 }
 
 type layerEv struct {
@@ -174,9 +179,14 @@ func (r *Run) buildView() *view {
 				KeepFrom core.TurnID `json:"keep_from"`
 				Reason   string      `json:"reason"`
 				Fallback bool        `json:"fallback"`
+				Req      *string     `json:"req"`
 			}
 			_ = json.Unmarshal(e.Data, &p)
-			v.commits = append(v.commits, commitEv{seq: e.Seq, idx: i, ts: e.TS, agent: e.Agent, keepFrom: p.KeepFrom, reason: p.Reason, fallback: p.Fallback})
+			c := commitEv{seq: e.Seq, idx: i, ts: e.TS, agent: e.Agent, keepFrom: p.KeepFrom, reason: p.Reason, fallback: p.Fallback}
+			if p.Req != nil {
+				c.req, c.hasReq = *p.Req, true
+			}
+			v.commits = append(v.commits, c)
 		case events.TypeLayerCommit:
 			var p struct{ Scope, Hash string }
 			_ = json.Unmarshal(e.Data, &p)

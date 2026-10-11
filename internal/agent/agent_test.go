@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -278,6 +279,7 @@ func TestBackgroundCompactionShrinksPromptAndCacheRecovers(t *testing.T) {
 	if c.Fallback || c.RemovedTokens < 2000 || c.SpineAdded > c.RemovedTokens/5 {
 		t.Fatalf("commit should fold a lot into a tiny spine using the model's patch: %+v", c)
 	}
+	checkCompactionLinks(t, r.log)
 	// The spine and notes must now be part of the rendered prompt.
 	stk := r.agent.Stack()
 	if !strings.Contains(stk.Spine.Text(), "Built the project repeatedly") {
@@ -362,6 +364,53 @@ func TestCompactorGarbageFallsBackToMechanical(t *testing.T) {
 	}
 	if len(r.log.OfType(events.TypeCompactReject)) == 0 {
 		t.Fatal("the bad model reply should be logged as a rejection")
+	}
+	// The fallback commit still names the compactor request whose answer it replaced.
+	checkCompactionLinks(t, r.log)
+}
+
+// checkCompactionLinks checks that every compact.patch and compact.commit names, in req, a compactor
+// model.request that precedes it, and that every commit names a request a ready patch named (the
+// patch it applies, whether the compactor's or the mechanical one that replaced it).
+func checkCompactionLinks(t *testing.T, log *events.MemLog) {
+	t.Helper()
+	compactor := map[string]uint64{} // req -> seq of its model.request
+	var ready []string
+	for _, e := range log.All() {
+		var p struct {
+			Req   *string `json:"req"`
+			Kind  string  `json:"kind"`
+			Stage string  `json:"stage"`
+		}
+		if err := json.Unmarshal(e.Data, &p); err != nil {
+			continue
+		}
+		switch e.Type {
+		case events.TypeModelRequest:
+			if p.Kind == agent.KindCompactor && p.Req != nil {
+				compactor[*p.Req] = e.Seq
+			}
+		case events.TypeCompactPatch:
+			if p.Req == nil {
+				t.Fatalf("compact.patch without req: %s", e.Data)
+			}
+			if _, ok := compactor[*p.Req]; !ok {
+				t.Fatalf("compact.patch names %q, which is not an earlier compactor request: %s", *p.Req, e.Data)
+			}
+			if p.Stage == "ready" {
+				ready = append(ready, *p.Req)
+			}
+		case events.TypeCompactCommit:
+			if p.Req == nil {
+				t.Fatalf("compact.commit without req: %s", e.Data)
+			}
+			if at, ok := compactor[*p.Req]; !ok || at >= e.Seq {
+				t.Fatalf("compact.commit names %q, which is not an earlier compactor request: %s", *p.Req, e.Data)
+			}
+			if !slices.Contains(ready, *p.Req) {
+				t.Fatalf("compact.commit names %q, which no ready patch named (%v)", *p.Req, ready)
+			}
+		}
 	}
 }
 

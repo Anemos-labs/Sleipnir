@@ -5,6 +5,7 @@ import (
 	"math"
 	"math/rand"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -479,19 +480,20 @@ func TestCompactorStepsAreSeparateSamples(t *testing.T) {
 		return eps
 	}
 	// Scored episodes: each compactor call is scored on its own reward, in the
-	// compactor role's baseline (8 samples), apart from the workers' (4 samples).
+	// compactor role's baseline of its compaction number (4 first and 4 second
+	// calls), apart from the workers' (4 samples).
 	eps := build(true)
 	rep := mustApply(t, eps, DefaultSpec())
-	roles := map[string]int{}
+	groups := map[string]int{}
 	for _, g := range rep.Groups {
-		roles[g.Role] = g.N
+		groups[g.Role+"#"+fmt.Sprint(g.Compaction)] = g.N
 	}
-	if roles[rl.RoleWorker] != 4 || roles[rl.RoleCompactor] != 8 {
-		t.Errorf("groups: %v", roles)
+	if !reflect.DeepEqual(groups, map[string]int{"worker#0": 4, "compactor#1": 4, "compactor#2": 4}) {
+		t.Errorf("groups: %v", groups)
 	}
-	rew := []float64{10, 11, 12, 13, 20, 19, 18, 17}
-	mean, std := meanStdRef(rew)
+	mean, std := meanStdRef([]float64{10, 11, 12, 13})
 	near(t, "compactor step advantage", eps[0].Agents[0].Steps[1].Advantage, (10-mean)/(std+DefaultEps))
+	mean, std = meanStdRef([]float64{20, 19, 18, 17})
 	near(t, "second compactor step", eps[3].Agents[0].Steps[3].Advantage, (17-mean)/(std+DefaultEps))
 	// The main steps of the same agent are normalised among workers.
 	wr := []float64{0, 1, 2, 3}
@@ -514,6 +516,87 @@ func TestCompactorStepsAreSeparateSamples(t *testing.T) {
 		if ep.Agents[0].Steps[1].Advantage == 0 && i > 0 {
 			t.Errorf("episode %d: compactor call got no advantage", i)
 		}
+	}
+}
+
+func TestCompactionsAreBaselinedByNumber(t *testing.T) {
+	// Three samples of one task. Each worker calls the compactor at the given step
+	// indices with the given rewards; sample 2 compacts a third time, and the first
+	// call of sample 1 ran on a teacher (not trainable) but still counts as its first
+	// compaction.
+	type comp struct {
+		at     int
+		reward float64
+	}
+	plans := [][]comp{
+		{{1, 1}, {3, 5}},
+		{{1, 2}, {3, 6}},
+		{{1, 3}, {3, 7}, {5, 30}},
+	}
+	build := func() []*rl.Episode {
+		var eps []*rl.Episode
+		for i, plan := range plans {
+			w := mkAgent("w", "worker", float64(i), 6)
+			for _, c := range plan {
+				w.Steps[c.at].Kind, w.Steps[c.at].Role, w.Steps[c.at].Reward = rl.KindCompactor, rl.RoleCompactor, c.reward
+			}
+			eps = append(eps, mkEp(fmt.Sprintf("t/%d", i), "t", w))
+		}
+		eps[1].Agents[0].Steps[1].Trainable = false
+		return eps
+	}
+	adv := func(ep *rl.Episode, si int) float64 { return ep.Agents[0].Steps[si].Advantage }
+
+	eps := build()
+	rep := mustApply(t, eps, DefaultSpec())
+	stats := map[int]GroupStat{}
+	for _, g := range rep.Groups {
+		if g.Role == rl.RoleCompactor {
+			stats[g.Compaction] = g
+		}
+	}
+	if len(stats) != 3 || stats[1].N != 2 || stats[2].N != 3 || stats[3].N != 1 || stats[2].Key != "t@m#|compactor#2" {
+		t.Fatalf("compactor groups: %+v", stats)
+	}
+
+	// First compactions are compared with first compactions only (sample 1's was not
+	// trainable), second ones with second ones.
+	m, s := meanStdRef([]float64{1, 3})
+	near(t, "first compaction of sample 0", adv(eps[0], 1), (1-m)/(s+DefaultEps))
+	near(t, "first compaction of sample 2", adv(eps[2], 1), (3-m)/(s+DefaultEps))
+	if adv(eps[1], 1) != 0 {
+		t.Errorf("a teacher's compaction gets no advantage: %v", adv(eps[1], 1))
+	}
+	m, s = meanStdRef([]float64{5, 6, 7})
+	near(t, "second compaction of sample 0", adv(eps[0], 3), (5-m)/(s+DefaultEps))
+	near(t, "second compaction of sample 1", adv(eps[1], 3), (6-m)/(s+DefaultEps))
+	near(t, "second compaction of sample 2", adv(eps[2], 3), (7-m)/(s+DefaultEps))
+	// One pooled baseline (1, 3, 5, 6, 7, 30: mean 8.7) would call the best second
+	// compaction below average because another sample compacted a third time.
+	if adv(eps[2], 3) <= 0 {
+		t.Errorf("the best second compaction is judged against second compactions only: %v", adv(eps[2], 3))
+	}
+
+	// Only sample 2 compacted a third time: the singleton group is flat, its call gets
+	// no advantage under grpo and keeps its reward under broadcast, as any single
+	// sample does.
+	if adv(eps[2], 5) != 0 || !stats[3].Flat || !slices.Contains(rep.Flat, "t@m#|compactor#3") {
+		t.Errorf("a third compaction no other sample reached: advantage %v, stat %+v, flat %v", adv(eps[2], 5), stats[3], rep.Flat)
+	}
+	eps = build()
+	b := DefaultSpec()
+	b.Method = MethodBroadcast
+	mustApply(t, eps, b)
+	near(t, "broadcast keeps the reward of a lone third compaction", adv(eps[2], 5), 30)
+
+	// With PerRole off, one global baseline per rollout group: no split by role or
+	// compaction number.
+	eps = build()
+	g := DefaultSpec()
+	g.PerRole = false
+	rep = mustApply(t, eps, g)
+	if len(rep.Groups) != 1 || rep.Groups[0].Key != "t@m#|*" || rep.Groups[0].Compaction != 0 || rep.Groups[0].N != 3+6 {
+		t.Errorf("global baseline: %+v", rep.Groups)
 	}
 }
 
