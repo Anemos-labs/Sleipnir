@@ -107,7 +107,12 @@ func TestConfinementHidesTheCurrentDirectoryWithoutRepoBase(t *testing.T) {
 // hidden (NetworkManager's or resolvconf's copy under /run), a command without
 // the network does not, and a protected directory stays hidden.
 func TestConfinementResolverDirectory(t *testing.T) {
-	root := t.TempDir()
+	// The real path: the resolver's directory is found through symlinks (macOS's
+	// temporary directories are behind /var -> /private/var).
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	run := filepath.Join(root, "run")
 	nm := filepath.Join(run, "NetworkManager")
 	if err := os.MkdirAll(nm, 0o755); err != nil {
