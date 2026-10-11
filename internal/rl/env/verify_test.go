@@ -571,6 +571,128 @@ func TestVerifyPassModes(t *testing.T) {
 	}
 }
 
+// TestLastLineScoreBreakdown: the score line may carry units and guards. A malformed breakdown is dropped whole and
+// never costs the score, and no breakdown ever changes the score.
+func TestLastLineScoreBreakdown(t *testing.T) {
+	unitsAB := map[string]rl.UnitScore{"a": {Passed: 1, Total: 2, Weight: 2}, "b": {Passed: 0, Total: 3, Weight: 1}}
+	tests := []struct {
+		name   string
+		line   string
+		score  float64
+		units  map[string]rl.UnitScore
+		guards *rl.GuardScore
+	}{
+		{"absent", `{"score": 0.25}`, 0.25, nil, nil},
+		{"units and guards", `{"score": 0.4, "units": {"a": {"passed": 1, "total": 2, "weight": 2}, "b": {"passed": 0, "total": 3, "weight": 1}}, "guards": {"kept": 4, "total": 5}}`,
+			0.4, unitsAB, &rl.GuardScore{Kept: 4, Total: 5}},
+		{"weight defaults to one", `{"score": 0.5, "units": {"x": {"passed": 1, "total": 2}}}`, 0.5, map[string]rl.UnitScore{"x": {Passed: 1, Total: 2, Weight: 1}}, nil},
+		{"integral floats count", `{"score": 0.5, "guards": {"kept": 2.0, "total": 4e0}}`, 0.5, nil, &rl.GuardScore{Kept: 2, Total: 4}},
+		{"zero weight and empty unit", `{"score": 0, "units": {"x": {"passed": 0, "total": 0, "weight": 0}}}`, 0, map[string]rl.UnitScore{"x": {}}, nil},
+		{"the breakdown does not set the score", `{"score": 0.1, "units": {"x": {"passed": 9, "total": 9}}, "guards": {"kept": 1, "total": 1}}`,
+			0.1, map[string]rl.UnitScore{"x": {Passed: 9, Total: 9, Weight: 1}}, &rl.GuardScore{Kept: 1, Total: 1}},
+		{"null breakdown", `{"score": 1, "units": null, "guards": null}`, 1, nil, nil},
+		{"units not an object", `{"score": 0.5, "units": [1, 2], "guards": {"kept": 1, "total": 1}}`, 0.5, nil, &rl.GuardScore{Kept: 1, Total: 1}},
+		{"empty units", `{"score": 0.5, "units": {}}`, 0.5, nil, nil},
+		{"passed above total", `{"score": 0.5, "units": {"a": {"passed": 3, "total": 2}}}`, 0.5, nil, nil},
+		{"negative count", `{"score": 0.5, "units": {"a": {"passed": -1, "total": 2}}}`, 0.5, nil, nil},
+		{"fractional count", `{"score": 0.5, "units": {"a": {"passed": 0.5, "total": 2}}}`, 0.5, nil, nil},
+		{"string count", `{"score": 0.5, "units": {"a": {"passed": "1", "total": 2}}}`, 0.5, nil, nil},
+		{"missing total", `{"score": 0.5, "units": {"a": {"passed": 1}}}`, 0.5, nil, nil},
+		{"negative weight", `{"score": 0.5, "units": {"a": {"passed": 1, "total": 2, "weight": -1}}}`, 0.5, nil, nil},
+		{"null weight", `{"score": 0.5, "units": {"x": {"passed": 1, "total": 2, "weight": null}}}`, 0.5, nil, nil},
+		{"one bad unit drops them all", `{"score": 0.5, "units": {"a": {"passed": 1, "total": 2}, "b": {"passed": 5, "total": 2}}}`, 0.5, nil, nil},
+		{"empty unit name", `{"score": 0.5, "units": {"": {"passed": 1, "total": 2}}}`, 0.5, nil, nil},
+		{"kept above total", `{"score": 0.5, "guards": {"kept": 3, "total": 2}}`, 0.5, nil, nil},
+		{"guards missing kept", `{"score": 0.5, "guards": {"total": 2}}`, 0.5, nil, nil},
+		{"guards not an object", `{"score": 0.5, "guards": 7}`, 0.5, nil, nil},
+		{"clamped score keeps its breakdown", `{"score": 3, "guards": {"kept": 0, "total": 0}}`, 1, nil, &rl.GuardScore{}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := lastLineScore("log line\n" + tc.line + "\n")
+			if !ok {
+				t.Fatalf("score line %s refused", tc.line)
+			}
+			if got.Score != tc.score || !reflect.DeepEqual(got.Units, tc.units) || !reflect.DeepEqual(got.Guards, tc.guards) {
+				t.Fatalf("got %+v units=%v guards=%v, want %v units=%v guards=%v", got.Score, got.Units, got.Guards, tc.score, tc.units, tc.guards)
+			}
+			// The score is the one the line would give without its breakdown.
+			var bare struct {
+				Score float64 `json:"score"`
+			}
+			if err := json.Unmarshal([]byte(tc.line), &bare); err != nil {
+				t.Fatal(err)
+			}
+			plain, _ := json.Marshal(bare)
+			if alone, ok := lastLineScore(string(plain)); !ok || alone.Score != got.Score {
+				t.Fatalf("the breakdown changed the score: %v alone, %v with it", alone.Score, got.Score)
+			}
+		})
+	}
+	// Too many units, or a name that is too long, drops the breakdown, not the score.
+	var many strings.Builder
+	many.WriteString(`{"score": 0.5, "units": {`)
+	for i := 0; i <= maxScoreUnits; i++ {
+		if i > 0 {
+			many.WriteString(",")
+		}
+		fmt.Fprintf(&many, `"u%d": {"passed": 0, "total": 1}`, i)
+	}
+	many.WriteString(`}}`)
+	long := fmt.Sprintf(`{"score": 0.5, "units": {%q: {"passed": 0, "total": 1}}}`, strings.Repeat("n", maxScoreUnitName+1))
+	for _, line := range []string{many.String(), long} {
+		if got, ok := lastLineScore(line); !ok || got.Score != 0.5 || got.Units != nil {
+			t.Errorf("an oversized breakdown: ok=%v score=%v units=%d", ok, got.Score, len(got.Units))
+		}
+	}
+	// A breakdown never rescues a line without a score.
+	if _, ok := lastLineScore(`{"units": {"a": {"passed": 1, "total": 1}}}`); ok {
+		t.Error("a line without a score was accepted")
+	}
+}
+
+// TestVerifyCarriesTheScoreBreakdown: a json-score verifier's breakdown reaches each run, the result (the last run's)
+// and its verdict, and is printed in the log header; it never changes the verdict.
+func TestVerifyCarriesTheScoreBreakdown(t *testing.T) {
+	line := `{"score": 0.5, "units": {"core": {"passed": 1, "total": 2, "weight": 3}}, "guards": {"kept": 2, "total": 2}}`
+	f := newVerifyFixture(t, func(tk *rl.Task) {
+		tk.Verifier.Pass = "json-score"
+		tk.Verifier.Cmd = "echo noise; echo '" + line + "'"
+	})
+	w := f.workspace("s0")
+	res := f.verify(w, func(o *VerifyOptions) { o.Repeats = 2 })
+	want := map[string]rl.UnitScore{"core": {Passed: 1, Total: 2, Weight: 3}}
+	if res.Pass || res.Score != 0.5 || !reflect.DeepEqual(res.Units, want) || res.Guards == nil || *res.Guards != (rl.GuardScore{Kept: 2, Total: 2}) {
+		t.Fatalf("result: pass=%v score=%v units=%v guards=%v", res.Pass, res.Score, res.Units, res.Guards)
+	}
+	for i, r := range res.Runs {
+		if !reflect.DeepEqual(r.Units, want) || r.Guards == nil {
+			t.Errorf("run %d: units=%v guards=%v", i, r.Units, r.Guards)
+		}
+	}
+	v := res.Verdict()
+	if !reflect.DeepEqual(v.Units, want) || v.Guards == nil || v.Score != 0.5 {
+		t.Fatalf("verdict: %+v", v)
+	}
+	v.Units["core"] = rl.UnitScore{}
+	if res.Units["core"].Passed != 1 {
+		t.Error("the verdict shares its breakdown with the result")
+	}
+	if !strings.Contains(res.Log, `breakdown: "core" 1/2 (weight 3), guards kept 2/2`) {
+		t.Errorf("log header lacks the breakdown:\n%s", res.Log)
+	}
+
+	// A verifier without a breakdown has none, and other pass modes never parse one.
+	f.task.Verifier.Cmd = `echo '{"score": 1}'`
+	if res := f.verify(w); !res.Pass || res.Units != nil || res.Guards != nil || strings.Contains(res.Log, "breakdown:") {
+		t.Fatalf("no breakdown: %+v", res)
+	}
+	f.task.Verifier.Pass, f.task.Verifier.Cmd = "", "echo '"+line+"'"
+	if res := f.verify(w); !res.Pass || res.Score != 1 || res.Units != nil {
+		t.Fatalf("exit0 mode: %+v", res)
+	}
+}
+
 func TestVerifyExitCommandNotFoundIsAFailureNotInfra(t *testing.T) {
 	// The agent can make a command vanish (delete a script it names); treating
 	// that as infra would be an escape hatch from a bad reward.
@@ -996,5 +1118,30 @@ func TestVerifyRejectsAnInvalidTaskAsInfra(t *testing.T) {
 	bad.Verifier.Pass = "bogus"
 	if _, err := Verify(ctxT(t), bad, w, VerifyOptions{}); err == nil || !IsInfra(err) || !strings.Contains(err.Error(), "verifier.pass") {
 		t.Fatalf("got %v", err)
+	}
+}
+
+// The minimal extractor keeps an outcome's verdict when its breakdown is
+// malformed, as the trajectory reader does: the breakdown describes the score
+// and has no say in whether the episode exists.
+func TestMinimalExtractorIgnoresAMalformedBreakdown(t *testing.T) {
+	dir := t.TempDir()
+	log, err := events.Open(dir, "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := log.Emit("", events.TypeOutcome, map[string]any{"kind": "verifier", "pass": true, "score": 1, "units": "not an object", "guards": []int{1}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := log.Close(); err != nil {
+		t.Fatal(err)
+	}
+	ep, err := MinimalExtractor(dir, rl.Task{ID: "t"}, 0, "g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := ep.Outcome.Verifier
+	if v == nil || !v.Pass || v.Score != 1 || v.Units != nil || v.Guards != nil {
+		t.Fatalf("verdict %+v", v)
 	}
 }
