@@ -27,7 +27,7 @@ func (s *Session) SwitchModel(ctx context.Context, ref string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	p, m, err := BuildProvider(s.cfg, mr, ProviderOptions{CaptureTokens: s.opts.CaptureTokens})
+	p, m, err := s.clientFor(mr)
 	if err != nil {
 		return "", err
 	}

@@ -136,4 +136,8 @@ const (
 
 	// Outcome signals used as training labels.
 	TypeOutcome = "outcome"
+	// TypeRLOutage: a rollout's policy endpoint went down (phase "start": the first failure that was an outage, its kind, status
+	// and class) or answered again (phase "end": how long it was down). The rollout's wall clock stops in between. Both carry
+	// active_ms and paused_ms, the clock's two totals at that moment.
+	TypeRLOutage = "rl.outage"
 )
