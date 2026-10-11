@@ -237,11 +237,18 @@ func TestQueueKeepsArrivalOrderWhileTheQueuedEventIsDelivered(t *testing.T) {
 	}
 	submit(Submission{Tree: holder, Task: "holder", VerifyCmd: fmt.Sprintf("while [ ! -f %q ]; do sleep 0.02; done", gate)})
 	waitFor(t, func() bool { st := e.q.Status(); return st.Active != nil && st.Active.Phase == "verifying" })
+	tickets := func() int {
+		e.q.turn.mu.Lock()
+		defer e.q.turn.mu.Unlock()
+		return len(e.q.turn.q)
+	}
 	submit(Submission{Tree: trees[0], Task: "w-0"})
 	waitFor(t, func() bool { return len(e.q.Status().Waiting) == 1 })
+	// w-0 is now held in its event, with or without a ticket depending on where Submit takes it; nothing else can
+	// take one while the holder has the turn, so the next ticket is w-1's.
+	before := tickets()
 	submit(Submission{Tree: trees[1], Task: "w-1"})
-	waitFor(t, func() bool { return len(e.q.Status().Waiting) == 2 })
-	time.Sleep(100 * time.Millisecond) // let w-1 reach its turn's wait while w-0 is still in the event
+	waitFor(t, func() bool { return tickets() == before+1 })
 	close(hold)
 	if err := os.WriteFile(gate, nil, 0o600); err != nil {
 		t.Fatal(err)
