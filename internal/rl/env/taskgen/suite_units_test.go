@@ -306,6 +306,8 @@ log_format = """"quoted""""
 	for _, bad := range []string{
 		"[tool.pytest.ini_options]\naddopts = \"\"\"-q\n",
 		"[tool.pytest.ini_options]\naddopts = \"\"\"\\q\"\"\"\n",
+		"[tool.pytest.ini_options]\naddopts = \"\"\"\\uD800\"\"\"\n",
+		"[tool.pytest.ini_options]\naddopts = \"\"\"\\U00110000\"\"\"\n",
 		"[tool.pytest.ini_options]\nenv = {A = \"1\"}\n",
 		"[tool.pytest.ini_options]\naddopts = [1, 2]\n",
 		"[tool.pytest.ini_options]\naddopts = \"unterminated\n",

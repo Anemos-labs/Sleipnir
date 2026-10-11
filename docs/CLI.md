@@ -946,8 +946,7 @@ Project provider settings are never read by `rl`; configure the policy in your u
 and `--api-key-env`. `sleipnir rl <command> -h` prints a command's flags and exits 0.
 
 ```text
-sleipnir rl taskgen <generator>    make tasks from history, chains of merged pull requests, authored fixtures, mutations or recall questions, or compose swarm tasks
-sleipnir rl taskgen <generator>    make tasks from history, authored fixtures, mutations, recall questions or libraries rebuilt from their specification, or compose swarm tasks
+sleipnir rl taskgen <generator>    make tasks from history, chains of merged pull requests, authored fixtures, mutations, recall questions or libraries rebuilt from their specification, or compose swarm tasks
 sleipnir rl tasks <command> FILE   validate, filter, split and check task files
 sleipnir rl rollout                run G samples per task with a policy and write a run directory
 sleipnir rl eval                   run held-out tasks and report pass@k, cost and protocol quality
@@ -1155,7 +1154,7 @@ flags:
   -repeats int
         runs of the test suite recorded at the start and after each pull request: a test counts only where they all agree (default 3)
   -repo-path string
-        how the tasks name the repository (default: the absolute path of --repo); a path relative to the directory the rollouts run in keeps the tasks file independent of this machine
+        how the tasks name REPO (default: its absolute path) or, with --seal, the --seal directory (<repo-path>/<task id>.git); a path relative to the directory the rollouts run in keeps the tasks file independent of this machine
   -report string
         also write the generation report (counts, every rejection with its reason, each chain's self-check) as JSON
   -require-net-isolation

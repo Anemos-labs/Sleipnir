@@ -307,6 +307,19 @@ func TestRebuildGoStubs(t *testing.T) {
 	if task.Repo.Path != filepath.Join(opts.Seal, task.ID+".git") || !strings.HasPrefix(task.ID, "rb-rebuild-stubs-") {
 		t.Errorf("repo %+v, id %s", task.Repo, task.ID)
 	}
+	// A later run of the same scope that is rejected leaves the accepted start alone: tasks files still name it.
+	again := opts
+	again.Gates.MinTests = 100000
+	if _, _, err := Rebuild(context.Background(), f.Dir, again); err == nil {
+		t.Fatal("a scope over the test gate was accepted")
+	}
+	if out, err := exec.Command("git", "--git-dir="+task.Repo.Path, "rev-parse", "HEAD").Output(); err != nil ||
+		strings.TrimSpace(string(out)) != task.Repo.Commit {
+		t.Errorf("after a rejected run the accepted start is %q (%v), want commit %s", out, err, task.Repo.Commit)
+	}
+	if entries, _ := os.ReadDir(opts.Seal); len(entries) != 1 {
+		t.Errorf("the seal directory holds %v, want only the accepted start", entries)
+	}
 	if !strings.Contains(task.Prompt, "reduced to stubs") || !strings.Contains(task.Prompt, "- `example.com/rebuild/util` (util/") ||
 		strings.Index(task.Prompt, "rebuild/util`") > strings.Index(task.Prompt, "rebuild/core`") {
 		t.Errorf("prompt:\n%s", task.Prompt)
@@ -538,8 +551,13 @@ func TestRebuildPython(t *testing.T) {
 		opts.Gates.MinTests = 4
 		_, rep, err := Rebuild(context.Background(), f.Dir, opts)
 		leaky.Close()
+		// The check prints resolved paths (a temporary directory may lie behind a symlink, as /var does on macOS).
+		real, rerr := filepath.EvalSymlinks(c.dir)
+		if rerr != nil {
+			real = c.dir
+		}
 		var rj *RebuildRejection
-		if !errors.As(err, &rj) || rj.Reason != ReasonRebuildLeak || !strings.Contains(err.Error(), "mylib is installed at "+c.dir) {
+		if !errors.As(err, &rj) || rj.Reason != ReasonRebuildLeak || !strings.Contains(err.Error(), "mylib is installed at "+real) {
 			t.Errorf("mylib in the %s: %v %+v", c.name, err, rep)
 		}
 	}

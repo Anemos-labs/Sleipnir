@@ -380,7 +380,10 @@ func Rebuild(ctx context.Context, repoPath string, opts RebuildOptions) (*rl.Tas
 		apiPath = apiFile(files)
 		edits[apiPath] = []byte(lib.api)
 	}
-	dest := filepath.Join(opts.Seal, id+".git")
+	// The start is written and checked under a staging name and takes its own name only once the task is accepted, so
+	// a run that is rejected or fails never removes the start of an earlier accepted task (the same id, the same path).
+	final := filepath.Join(opts.Seal, id+".git")
+	dest := filepath.Join(opts.Seal, "."+id+".pending.git")
 	startCommit, gold, err := writeStart(ctx, g, gd, commit, dest, edits, sources)
 	if err != nil {
 		return nil, rep, err
@@ -465,13 +468,22 @@ func Rebuild(ctx context.Context, repoPath string, opts RebuildOptions) (*rl.Tas
 	case crep.Gold.Score != 1 || crep.Baseline.Score != 0:
 		return fail(reject(ReasonRebuildSelfCheck, "the start scores %g and the reference %g, want 0 and 1", crep.Baseline.Score, crep.Gold.Score))
 	}
-	if opts.SealPath != "" {
-		t.Repo.Path = path.Join(filepath.ToSlash(opts.SealPath), id+".git")
-	}
 	if err := env.ValidateTask(*t); err != nil {
 		return nil, rep, fmt.Errorf("internal error: generated an invalid task: %w", err)
 	}
+	if err := os.RemoveAll(final); err != nil {
+		return nil, rep, err
+	}
+	if err := os.Rename(dest, final); err != nil {
+		return nil, rep, err
+	}
 	keep = true
+	if t.Repo.Path, err = filepath.Abs(final); err != nil {
+		return nil, rep, err
+	}
+	if opts.SealPath != "" {
+		t.Repo.Path = path.Join(filepath.ToSlash(opts.SealPath), id+".git")
+	}
 	progress("accepted %s: %d units, %d tests", id, len(units), rep.Tests)
 	return t, rep, nil
 }
@@ -568,7 +580,8 @@ func rebuildTask(ctx context.Context, r *repo, lib *rebuildLib, opts RebuildOpti
 	if err != nil {
 		return nil, err
 	}
-	// The task names the start by its absolute path while it is checked here; Rebuild names it by SealPath last.
+	// The task names the start by its staging path while it is checked here; Rebuild names it by its own path (or by
+	// SealPath) once it is accepted.
 	repoPath, err := filepath.Abs(in.dest)
 	if err != nil {
 		return nil, err

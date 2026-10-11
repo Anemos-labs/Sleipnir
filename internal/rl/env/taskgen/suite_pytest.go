@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // PytestINIFromDir returns the pytest configuration of the project in dir (a
@@ -421,6 +422,10 @@ func unescapeTOML(body string) (string, error) {
 			r, err := strconv.ParseUint(body[i+1:i+1+n], 16, 32)
 			if err != nil {
 				return "", fmt.Errorf("a bad \\%c escape: %w", e, err)
+			}
+			// TOML escapes name Unicode scalar values: no surrogate, nothing past U+10FFFF.
+			if r > utf8.MaxRune || !utf8.ValidRune(rune(r)) {
+				return "", fmt.Errorf("a bad \\%c escape: %s is not a Unicode scalar value", e, body[i+1:i+1+n])
 			}
 			b.WriteRune(rune(r))
 			i += n

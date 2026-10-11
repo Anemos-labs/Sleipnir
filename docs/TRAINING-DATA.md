@@ -276,6 +276,7 @@ oldest first, each one's first parent being the one before; optionally an issue 
   requests' commits, `meta.parent` and `meta.commit` are the start and the end, and `meta.source` holds `repo` (the
   origin's URL without credentials, or the directory's name), `range` (`<start>..<end>`) and `license` (the SPDX id at
   the end, when recognised), with the chain's own `source` keys over them.
+
 **Rebuild tasks** (`sleipnir rl taskgen rebuild --scope PKG,... [flags] REPO`, `taskgen.Rebuild`). A rebuild task asks a
 team to write a library again from its specification, as it is at a version of the repository (`--commit`, default
 `HEAD`).
@@ -778,8 +779,7 @@ cache). Size KV memory for one shared prefix plus N private tails; keep the same
 ## 10. Command reference
 
 ```
-sleipnir rl taskgen git|chain|mutate|composite|recall build tasks.jsonl (+ blobs/) from repositories
-sleipnir rl taskgen git|mutate|composite|recall|rebuild  build tasks.jsonl (+ blobs/) from repositories
+sleipnir rl taskgen git|chain|mutate|composite|recall|rebuild  build tasks.jsonl (+ blobs/) from repositories
 sleipnir rl tasks validate|stats|filter|split|check   task file hygiene and soundness proofs
 sleipnir rl rollout --tasks T --model M --out RUN     run G samples per task through the real harness
 sleipnir rl eval --tasks holdout.jsonl --model M      pass@1 / pass^k / cost / protocol metrics, optional --baseline report.json
