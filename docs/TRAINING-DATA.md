@@ -219,14 +219,17 @@ machine also needs `--allow-insecure-http`, on `rl serve` as on `rl rollout` and
 
 ```
 Episode { id, task_id, group, sample, policy{model, endpoint, checkpoint, sampling}, harness{version, renderer,
-          config_hash, roles, agents}, env{repo, commit, image, limits}, agents[], edges[], outcome, reward,
+          config_hash, roles, agents}, env{repo, commit, image, limits, tags}, agents[], edges[], outcome, reward,
           flags[], cost{actual, repriced}, provenance{license, consent, teacher} }
 Agent   { id, role, parent, steps[], reward }
-Step    { id, kind, epoch, segment, prompt(manifest ref), completion, tokens?, usage, cache, latency_ms,
-          observations[], wire_hash, reward?, advantage? }
+Step    { id, kind, role, model, provider?, epoch, segment, prompt(manifest ref), completion, tokens?, usage, cache,
+          latency_ms, observations[], wire_hash, reward?, advantage? }
 Edge    { kind: spawn | mail | compact | promote | lease | board, from, to, ref }
 ```
 
+* `env.tags` are the task's tags as the rollout recorded them; `provider` is the upstream that served the call, as
+  the gateway named it in the response (absent when it did not). Both are optional, so older episodes still load;
+  `rl export` gives an episode without tags those of its task (section 7.2).
 * `outcome.closures` counts each task's final typed closure as `status:kind` (`done:verified`,
   `failed:superseded`) and each handed-over assignment as `handed_off`; a reopened task counts only by how it
   finally closed.
@@ -358,7 +361,8 @@ Common flags: `--roles worker,manager,compactor`, `--min-reward`, `--top-k N`, `
 `--pair reward|best-worst` (dpo; both in section 7.1), `--advantage grpo|rloo|broadcast|anchor|none`
 (default: grpo for steps, tokens and groups), `--group-by task|task+policy|group`, `--keep-flagged` (flagged episodes are
 dropped by default), `--keep-flat`, `--keep-weak`, `--no-redact` (redaction is on by default), `--redact-salt`,
-`--teacher MODEL,...` (provider-terms filter), `--licenses`, `--max-prompt-tokens`, `--max-samples`,
+`--teacher MODEL,...` (provider-terms filter), `--licenses`, `--max-prompt-tokens`, `--max-sample-tokens`,
+`--max-drop-rate`, `--drop`, `--role-teacher`, `--exclude`, `--tasks` (section 7.2), `--max-samples`,
 `--split train:0.9,val:0.1` (by repository), `--seed`, `--pack` (pack a segment into one token sequence when its traces
 chain), `--reasoning drop|field|keep`, `--stats FILE`. Output files are 0600. Start from these defaults: an exporter that
 keeps everything exports infra failures, truncated runs and reward-hacked episodes.
@@ -447,6 +451,75 @@ sleipnir rl export runs/r1 --format dpo --pair best-worst -o dpo.jsonl
 sleipnir rl export runs/r1 --format groups --advantage grpo -o groups.jsonl
 ```
 
+## 7.2 Leaving data out: drop rules, exclusions, role teachers, length
+
+Every filter below is counted in the export statistics (`--stats FILE`, and the summary `rl export` prints), so nothing
+is left out silently.
+
+**Drop rules** (`--drop RULE`, repeatable) remove steps from the training formats (steps, tokens, groups, sft, dpo,
+kto), trainable and teacher steps alike, before the provider-terms filter. A dropped step counts as
+`step:rule:<name>`; it is never a training target: in a conversation format (groups, packed sft) it stays context with
+no weight, and no dpo pair is formed with it on either side (the pair is made from the remaining candidates, or not at
+all). canonical and atif are archives and keep every step. A rule is a preset name or conditions separated by `;`:
+
+```
+--drop ds-frontend
+--drop 'name=no-ds-docs;models=*deepseek*;roles=docs'
+--drop 'name=impcc-ui;providers=ImpCC;edits-ui'
+```
+
+| Condition | Matches |
+|---|---|
+| `models=GLOB,...` | the step's model |
+| `roles=GLOB,...` | the step's role or the role of the agent that made the call (so `frontend` covers a frontend agent's compactor and mailman calls) |
+| `tags=GLOB,...` | any of the episode's task tags (`env.tags`) |
+| `task-ids=GLOB,...` | the episode's task id |
+| `providers=GLOB,...` | the upstream that served the call (`provider`); a call without one matches only `*` |
+| `edits-ui` | the step's tool calls write or edit a user-interface file (below) |
+| `name=NAME` | (required) the name the drops are counted under |
+
+A rule matches a step when every condition it sets holds; a list holds when any of its patterns matches. Patterns
+ignore case; `*` matches any run of characters, `/` included (`*deepseek*` matches `deepseek/deepseek-v4.1-flash`), and
+`?` one character. A rule must set at least one condition.
+
+`edits-ui` reads the calls of the file tools `write` and `edit` (their `path` or `file_path`) and `apply_patch` (every
+`*** Add File:`, `*** Update File:`, `*** Delete File:` and `*** Move to:` path), in the completion and in the recorded
+observations; arguments cut off mid-call are searched for a `path`. Shell commands are not inspected. A path is UI work
+(`rl.IsUIPath`) when its extension is `.html`, `.htm`, `.css`, `.scss`, `.sass`, `.less`, `.jsx`, `.tsx`, `.vue`,
+`.svelte` or `.astro`, or when one of its directories is named `templates`, `static`, `public`, `web`, `ui`,
+`frontend`, `components` or `styles` (case ignored).
+
+The preset `ds-frontend` removes every step a deepseek model wrote doing front-end or visual work: model `*deepseek*`
+and any of role `frontend`, a task tag `frontend`, `ui`, `design`, `frontend_correct` or `frontend_design`, or
+`edits-ui`. It is three rules named `ds-frontend`, one per alternative.
+
+**Task tags of older runs.** Rules on tags need `env.tags`. An episode recorded without them gets its task's tags at
+export: from `--tasks tasks.jsonl` when the file lists the task, else from the `task.json` stored with the rollout.
+
+**Role teachers** (`--role-teacher ROLE=MODEL[,MODEL...]`, repeatable; models are globs as above) say which models a
+role may learn from. A step whose role, or whose agent's role, has an entry is dropped (`step:role_teacher`) unless its
+model matches; this holds for trainable steps too, so `--role-teacher frontend=claude-*` keeps a deepseek policy's own
+frontend steps, and the compactor calls of its frontend agents, out of the data. When both the step's role and its
+agent's role have entries, the model must satisfy both.
+
+**Exclusion lists** (`--exclude FILE`, repeatable) remove whole rollouts from every format, archives included
+(`episode:excluded`): corrupt runs, rollouts whose task leaked. One rollout per line; blank lines and `#` comments are
+ignored. A line names a sample directory: absolute, relative to the current directory, relative to the parent of the
+path given to `rl export` (`deepseek_deepseek-v4.1-flash/job/task/3` when exporting `runs/deepseek_deepseek-v4.1-flash`),
+relative to that path itself, or as the run directory's name and the episode id (`job/task/3`). A bare episode id
+(`task/3`) names a rollout only when the path given is the run directory itself. Entries that match no rollout are
+reported.
+
+**Length.** `--max-prompt-tokens N` drops steps whose prompt is longer than N (`step:prompt_too_long`);
+`--max-sample-tokens N` drops steps whose prompt plus completion is longer (`step:sample_too_long`), where the completion
+counts its reasoning only when `--reasoning` exports it, and the tokens format measures a step with a token trace by its
+ids. Set `--max-sample-tokens` to the trainer's maximum sequence length so the trainer never truncates or skips a
+sample on its own. A conversation (a groups trajectory, a packed sft record) loses the trailing steps that are too
+long, so it fits as well. The statistics count every step drop by role and reason (`dropped_by_role`) and, by role, the
+steps the limits decided on (`candidates_by_role`); the summary prints `dropped for length, by role: worker=3/120
+(2.5%)`. `--max-drop-rate F` fails the export, removing the `-o` file, when the limits dropped more than the share F of
+any role's steps (default 1: never); the statistics file is still written.
+
 ## 8. Governance and data quality
 
 * **Raw logs are private.** The event log and blobs hold everything the agent saw, including any secret a tool
@@ -458,7 +531,8 @@ sleipnir rl export runs/r1 --format groups --advantage grpo -o groups.jsonl
   home-directory paths. Runs at export time over prompts, completions and observations.
 * **Provider terms.** Episodes record which model produced each completion and whether it is a teacher. Exports
   refuse teacher outputs unless the model is listed in `--teacher`. Do not train competing models on outputs whose
-  terms forbid it.
+  terms forbid it. Drop rules and role teachers (section 7.2) narrow this further by role, task, served provider or
+  the kind of work, for trainable steps too.
 * **Licences and consent.** The repo licence and any consent flag travel with every record; `--licenses` filters.
 * **Contamination.** Task splits by repo/date; hidden verifier files never appear in prompts; a scanner flags
   episodes whose transcript contains verifier content or benchmark strings.

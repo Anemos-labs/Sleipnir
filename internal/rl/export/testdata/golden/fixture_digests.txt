@@ -5,5 +5,5 @@ sft       records=9   bytes=397800   sha256=b8f91dd653862cce493df0bc5a347e0970ee
 dpo       records=0   bytes=0        sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 kto       records=27  bytes=980304   sha256=044f79e2ad31b950589eb537bd6ca0aca2475f44e5cf1a888607ce28596e89a9
 atif      records=1   bytes=1152114  sha256=e58cd67c30933a65f4489ce32bf59dbb7760170cdc02421a4d336ccae4c50890
-canonical records=1   bytes=2146032  sha256=f69bf0ec699b4b051a91434c999b52376d0cf1900b219fc5361125b983b0e757
-canonical records=1   bytes=1340745  sha256=88bbbfb283560017393c3d3962f8dda6d33b7f835a34bdf55a820705c76e7cd0 (dedup, table in stream)
+canonical records=1   bytes=2146446  sha256=c312dcf2c3c9714d6f5d1e9467ff4eac511899057a39b5547698dfc502bfc828
+canonical records=1   bytes=1341159  sha256=8ac9993ff14b4f53b56ceb396ed9ea8fd42565a60666a6d7a63f80e1d2c02184 (dedup, table in stream)

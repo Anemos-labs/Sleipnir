@@ -184,6 +184,10 @@ type EnvRef struct {
 	Image    string            `json:"image,omitempty"`
 	Limits   map[string]string `json:"limits,omitempty"`
 	Network  bool              `json:"network,omitempty"`
+	// Tags are the task's tags (Task.Tags) as the run recorded them, so export rules
+	// can select episodes by what the task was about. Episodes recorded before the
+	// field existed have none; `rl export --tasks` joins them from a tasks file.
+	Tags []string `json:"tags,omitempty"`
 }
 
 // Provenance carries what governance filters need.
@@ -231,6 +235,9 @@ type Step struct {
 	Segment int    `json:"segment"`
 	// At is when the request was issued (repricing needs cache lifetimes).
 	At time.Time `json:"at,omitempty"`
+	// Provider names the upstream that served the call, as the gateway reported it in
+	// the model.response event ("" when it did not say).
+	Provider string `json:"provider,omitempty"`
 
 	Prompt PromptRef `json:"prompt"`
 	// Inline holds the fully expanded prompt when the exporter was asked to

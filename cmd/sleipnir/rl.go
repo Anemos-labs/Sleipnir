@@ -122,6 +122,13 @@ func rlExport(_ context.Context, args []string, stdout, stderr io.Writer) error 
 	table := fs.String("table", "", "canonical: write the segment table to this file instead of the head of the output")
 	reasoning := fs.String("reasoning", "drop", "reasoning in completions: drop | field | keep")
 	maxPrompt := fs.Int("max-prompt-tokens", 0, "drop steps whose prompt is longer (0: no limit)")
+	maxSample := fs.Int("max-sample-tokens", 0, "drop steps whose prompt plus completion is longer, e.g. the trainer's maximum sequence length (0: no limit)")
+	maxDropRate := fs.Float64("max-drop-rate", 1, "fail, removing the -o file, when the length limits drop more than this share (0 to 1) of any role's steps; 1 never fails")
+	var drops, excludes, roleTeachers multiFlag
+	fs.Var(&drops, "drop", "drop rule for the training formats, repeatable: a preset (ds-frontend: the steps a deepseek model wrote doing front-end work) or conditions such as 'name=N;models=GLOB,...;roles=R,...;edits-ui', also tags, task-ids and providers (docs/TRAINING-DATA.md)")
+	fs.Var(&excludes, "exclude", "file of rollouts to leave out of every format, one per line (a sample directory, or its path from the run directory's parent or from the run directory, e.g. job/task/3), repeatable")
+	fs.Var(&roleTeachers, "role-teacher", "ROLE=MODEL[,MODEL...]: steps of that role, and the compactor and mailman calls of its agents, may only come from these models (globs), trainable or not; repeatable")
+	tasksFile := fs.String("tasks", "", "tasks file whose tags are given to episodes that recorded none (older runs); without it, each rollout's task.json")
 	maxSamples := fs.Int("max-samples", 0, "stop after this many records (0: no limit)")
 	split := fs.String("split", "", "assign whole repositories to splits, e.g. train:0.9,val:0.1")
 	seed := fs.Int64("seed", 0, "salt of the split assignment")
@@ -143,15 +150,40 @@ func rlExport(_ context.Context, args []string, stdout, stderr io.Writer) error 
 	if err := oneOf("reasoning", *reasoning, "drop", "field", "keep"); err != nil {
 		return fmt.Errorf("rl export: %w", err)
 	}
+	if *maxDropRate < 0 || *maxDropRate > 1 || *maxDropRate != *maxDropRate {
+		return fmt.Errorf("rl export: --max-drop-rate must be a share between 0 and 1, not %v", *maxDropRate)
+	}
+	var rules []export.DropRule
+	for _, d := range drops {
+		r, err := export.ParseDropRule(d)
+		if err != nil {
+			return fmt.Errorf("rl export: --drop: %w", err)
+		}
+		rules = append(rules, r...)
+	}
+	teachers, err := parseRoleTeachers(roleTeachers)
+	if err != nil {
+		return fmt.Errorf("rl export: %w", err)
+	}
+	ex, err := readExclusions(excludes)
+	if err != nil {
+		return fmt.Errorf("rl export: %w", err)
+	}
 
 	samples, err := findSamples(paths)
 	if err != nil {
 		return fmt.Errorf("rl export: %w", err)
 	}
+	if _, err := joinTaskTags(samples, *tasksFile); err != nil {
+		return fmt.Errorf("rl export: --tasks: %w", err)
+	}
 	cache := newRunCache(4)
 	srcs := make([]export.Source, len(samples))
 	for i, s := range samples {
-		srcs[i] = export.Source{Episode: s.Episode, Prompts: prompts{dir: s.Dir, cache: cache}}
+		srcs[i] = export.Source{Episode: s.Episode, Prompts: prompts{dir: s.Dir, cache: cache}, Excluded: ex.match(s)}
+	}
+	if miss := ex.unmatched(); len(miss) > 0 {
+		fmt.Fprintf(stderr, "rl export: warning: %d --exclude entries match no rollout here, e.g. %s\n", len(miss), miss[0])
 	}
 
 	o := export.DefaultOptions(f)
@@ -165,6 +197,8 @@ func rlExport(_ context.Context, args []string, stdout, stderr io.Writer) error 
 	o.Inline = *inline
 	o.Reasoning = *reasoning
 	o.MaxPromptTokens, o.MaxSamples = *maxPrompt, *maxSamples
+	o.MaxSampleTokens = *maxSample
+	o.Drop, o.RoleTeachers = rules, teachers
 	o.Split, o.Seed = *split, *seed
 	o.PackSegments = *pack
 	o.Wire.SystemRole = *systemRole
@@ -207,12 +241,19 @@ func rlExport(_ context.Context, args []string, stdout, stderr io.Writer) error 
 		o.Table = tw
 	}
 	st, err := export.Export(w, srcs, o)
+	// Too many steps dropped for length fails the export: the data would not be
+	// what the trainer is expected to see. Its files are removed like a failed one's.
+	var rateErr error
+	if err == nil {
+		rateErr = st.CheckLengthDropRate(*maxDropRate)
+	}
+	keep := err == nil && rateErr == nil
 	if tableClose != nil {
-		if cerr := tableClose(err == nil); err == nil {
+		if cerr := tableClose(keep); err == nil {
 			err = cerr
 		}
 	}
-	if cerr := closeOut(err == nil); err == nil {
+	if cerr := closeOut(keep); err == nil {
 		err = cerr
 	}
 	if err != nil {
@@ -223,6 +264,13 @@ func rlExport(_ context.Context, args []string, stdout, stderr io.Writer) error 
 		if err := writeJSONFile(*statsPath, st); err != nil {
 			return fmt.Errorf("rl export: writing statistics: %w", err)
 		}
+	}
+	if rateErr != nil {
+		what := "the records already written to stdout are incomplete"
+		if *out != "" && *out != "-" {
+			what = *out + " was not written"
+		}
+		return fmt.Errorf("rl export: %w (--max-drop-rate %g; %s): raise --max-sample-tokens or --max-prompt-tokens to the trainer's limit, or allow more with --max-drop-rate", rateErr, *maxDropRate, what)
 	}
 	return nil
 }
@@ -290,6 +338,9 @@ func printExportStats(w io.Writer, st export.Stats, out string) {
 	if len(st.Drops) > 0 {
 		fmt.Fprintf(w, "  dropped: %s\n", kvLine(st.Drops))
 	}
+	if line := lengthDropLine(st); line != "" {
+		fmt.Fprintf(w, "  dropped for length, by role: %s\n", line)
+	}
 	if st.Packed > 0 || len(st.PackFailed) > 0 {
 		fmt.Fprintf(w, "  packed segments: %d (%d steps); not packed: %s\n", st.Packed, st.PackedSteps, kvLine(st.PackFailed))
 	}
@@ -302,6 +353,30 @@ func printExportStats(w io.Writer, st export.Stats, out string) {
 	for _, x := range st.Warnings {
 		fmt.Fprintf(w, "  warning: %s\n", x)
 	}
+}
+
+// lengthDropLine shows, for every role, how many of its candidate steps the length
+// limits dropped ("worker=3/120 (2.5%)"), or "" when they dropped none.
+func lengthDropLine(st export.Stats) string {
+	rates := st.LengthDropRates()
+	dropped := false
+	for _, r := range rates {
+		dropped = dropped || r > 0
+	}
+	if !dropped {
+		return ""
+	}
+	roles := make([]string, 0, len(rates))
+	for r := range rates {
+		roles = append(roles, r)
+	}
+	sort.Strings(roles)
+	parts := make([]string, len(roles))
+	for i, r := range roles {
+		d := st.DroppedByRole[r]
+		parts[i] = fmt.Sprintf("%s=%d/%d (%.1f%%)", r, d["prompt_too_long"]+d["sample_too_long"], st.CandidatesByRole[r], 100*rates[r])
+	}
+	return strings.Join(parts, " ")
 }
 
 // kvLine formats integer counters in sorted key order and labels empty maps as none.
