@@ -44,6 +44,10 @@ they do not indicate whether a change has been released.
   calls are then competing summaries of one state (`fork.compact_first`);
   with too little to fold, no compactor is called. Prompt and tool-schema
   bytes are unchanged.
+- `rl taskgen fixture` takes `--max-files`, `--max-file-bytes` and
+  `--max-total-bytes` (`FixtureOptions.MaxFiles`, `MaxFileBytes`,
+  `MaxTotalBytes`) for large project fixtures; the defaults (400 files,
+  1 MiB per file, 8 MiB per tree) are unchanged.
 - Link every compaction to the compactor call it came from, and baseline
   compactor advantages by compaction number. `compact.patch` and
   `compact.commit` events gain `req`, the compactor's `model.request` id (on a

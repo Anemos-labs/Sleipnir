@@ -718,6 +718,9 @@ func taskgenFixture(ctx context.Context, args []string, stdout, stderr io.Writer
 	out := fs.String("o", "tasks.jsonl", "output tasks file")
 	repoRoot := fs.String("repo-root", "", "where the fixtures' repositories are written, one per fixture (default: fixture-repos next to -o)")
 	prefix := fs.String("repo-path-prefix", "", "how a task names its repository: <prefix>/<id>, resolved against the directory a rollout runs in, so the tasks file is not tied to this machine (default: the base name of --repo-root)")
+	maxFiles := fs.Int("max-files", 0, "most files in each of a fixture's trees (default 400; raise it for a large project fixture)")
+	maxFileBytes := fs.Int("max-file-bytes", 0, "largest file of a fixture, in bytes (default 1 MiB)")
+	maxTotalBytes := fs.Int("max-total-bytes", 0, "most bytes in each of a fixture's trees (default 8 MiB)")
 	blobs := fs.String("blobs", "", "blob store for the hidden files and reference solutions (default: blobs/ next to -o)")
 	var tags multiFlag
 	fs.Var(&tags, "tag", "tag added to every task, repeatable")
@@ -784,6 +787,7 @@ func taskgenFixture(ctx context.Context, args []string, stdout, stderr io.Writer
 	for _, n := range names {
 		t, err := taskgen.FromFixture(ctx, filepath.Join(*dir, n), taskgen.FixtureOptions{
 			RepoRoot: *repoRoot, RepoPathPrefix: *prefix, HiddenBlobs: store, GoldBlobs: store, Git: g,
+			MaxFiles: *maxFiles, MaxFileBytes: *maxFileBytes, MaxTotalBytes: *maxTotalBytes,
 		})
 		if err != nil {
 			return fmt.Errorf("rl taskgen fixture: %w", err)
