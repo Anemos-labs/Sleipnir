@@ -7,6 +7,10 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `rl taskgen fixture` takes `--max-files`, `--max-file-bytes` and
+  `--max-total-bytes` (`FixtureOptions.MaxFiles`, `MaxFileBytes`,
+  `MaxTotalBytes`) for large project fixtures; the defaults (400 files,
+  1 MiB per file, 8 MiB per tree) are unchanged.
 - A worker started after a team session is resumed (without worktree
   isolation) gets an id past those the earlier process used, as an isolated
   team's already did: before, it could be given the id of a worker from
