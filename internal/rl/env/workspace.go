@@ -70,11 +70,12 @@ type WorkspaceOptions struct {
 	SkipSnapshotCheck bool
 	// Confine is the command confinement mode (ConfineOff, the default, or
 	// ConfineBwrap: every setup, agent and verifier command runs in a
-	// bubblewrap sandbox that hides the work root, the task sources and the
+	// bubblewrap sandbox that hides the work root, RepoBase and the
 	// directories in ConfineProtect; see Confinement). ConfineProtect are
 	// directories that hold data no command may see (the blob store, the run
 	// output); ConfineRO and ConfineRW re-expose toolchain and cache
-	// directories for every command.
+	// directories for every command. RepoBase is never re-exposed whole, but a
+	// toolchain or cache directory inside it is (ConfineOptions.Base).
 	Confine                              string
 	ConfineProtect, ConfineRO, ConfineRW []string
 	// MaxFiles and MaxFileBytes bound what is hashed into a baseline or diff.
@@ -183,15 +184,16 @@ func NewWorkspaces(o WorkspaceOptions) (*Workspaces, error) {
 		m.sandbox = o.Sandbox
 	} else {
 		protect := append([]string{root}, o.ConfineProtect...)
+		var base []string
 		if o.RepoBase != "" {
-			protect = append(protect, o.RepoBase)
+			base = append(base, o.RepoBase)
 		}
 		ls, err := NewLocalSandbox(LocalSandboxOptions{
 			DisableNetIsolation: o.DisableNetIsolation,
 			Defaults:            ExecPolicy{Limits: o.Limits, MaxOutput: o.MaxOutput, Grace: o.KillGrace},
 			LookPath:            o.LookPath, Probe: o.Probe,
 			Confine:        o.Confine,
-			ConfineOptions: ConfineOptions{Protect: protect, RO: o.ConfineRO, RW: o.ConfineRW},
+			ConfineOptions: ConfineOptions{Protect: protect, Base: base, RO: o.ConfineRO, RW: o.ConfineRW},
 		})
 		if err != nil {
 			return nil, err

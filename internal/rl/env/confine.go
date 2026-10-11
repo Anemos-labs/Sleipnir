@@ -55,10 +55,16 @@ type Confinement struct {
 	// writable for every command (operator-configured toolchains and caches).
 	Hide, Mask, RO, RW []string
 	// protected are hidden directories that nothing may re-expose, not even a
-	// PATH entry or a cache variable: the work root, the task sources, the blob
-	// store and the run output. A Mounts entry inside them is allowed (the
-	// command's own tree lives in the work root).
+	// PATH entry or a cache variable: the work root, the blob store and the run
+	// output. A Mounts entry inside them is allowed (the command's own tree
+	// lives in the work root).
 	protected []string
+	// bases are hidden directories that nothing may re-expose whole or through
+	// a parent (ConfineOptions.Base); a directory inside one may be re-exposed.
+	bases []string
+	// resolvConf is the resolver configuration whose directory a network
+	// command sees (default /etc/resolv.conf).
+	resolvConf string
 }
 
 // Mounts are the directories one command may use beyond the read-only view:
@@ -91,9 +97,17 @@ var (
 
 // ConfineOptions configures DetectConfinement.
 type ConfineOptions struct {
-	// Protect are directories that hold data commands must never see (task
-	// sources, blob store, run output); they are hidden and never re-exposed.
+	// Protect are directories that hold data commands must never see (blob
+	// store, run output, a mined repository with its future); they are hidden
+	// and never re-exposed.
 	Protect []string
+	// Base are directories that hold task sources among other things (the
+	// directory relative task repositories resolve against, often a home
+	// directory): they are hidden and never re-exposed whole or through a
+	// parent, but a PATH entry, toolchain or cache variable, or RO or RW entry
+	// inside one is re-exposed like anywhere else, unless it shows a Protect
+	// directory.
+	Base []string
 	// RO and RW re-expose directories for every command.
 	RO, RW []string
 	// LookPath and Probe let tests substitute the host.
@@ -105,9 +119,17 @@ type ConfineOptions struct {
 // a Reason; the caller decides whether that is fatal (ConfineBwrap) or not.
 func DetectConfinement(o ConfineOptions) Confinement {
 	c := Confinement{Hide: append([]string(nil), DefaultHidden...), Mask: append([]string(nil), DefaultMasked...)}
+	// "/" is never hidden: a run started from the root directory (a service's
+	// default) must not hide the whole system from its commands.
 	for _, p := range o.Protect {
-		if p = absOrEmpty(p); p != "" {
+		if p = absOrEmpty(p); p != "" && p != "/" {
 			c.protected = append(c.protected, p)
+			c.Hide = append(c.Hide, p)
+		}
+	}
+	for _, p := range o.Base {
+		if p = absOrEmpty(p); p != "" && p != "/" {
+			c.bases = append(c.bases, p)
 			c.Hide = append(c.Hide, p)
 		}
 	}
@@ -189,15 +211,7 @@ func (c Confinement) argv(m Mounts, network bool, env []string, inner []string) 
 			a = append(a, "--ro-bind", "/dev/null", p)
 		}
 	}
-	if network {
-		// /run is hidden; name resolution on systemd hosts lives there.
-		for _, p := range []string{"/run/systemd/resolve"} {
-			if dirExists(p) {
-				a = append(a, "--ro-bind", p, p)
-			}
-		}
-	}
-	for _, b := range c.binds(m, env) {
+	for _, b := range c.binds(m, network, env) {
 		flag := "--ro-bind"
 		if b.rw {
 			flag = "--bind"
@@ -209,8 +223,9 @@ func (c Confinement) argv(m Mounts, network bool, env []string, inner []string) 
 }
 
 // binds collects the re-exposed directories, deepest last so a writable
-// directory inside a read-only one (or the reverse) gets its own access.
-func (c Confinement) binds(m Mounts, env []string) []bind {
+// directory inside a read-only one (or the reverse) gets its own access. A
+// network command also gets the hidden directories name resolution reads.
+func (c Confinement) binds(m Mounts, network bool, env []string) []bind {
 	seen := map[string]int{}
 	var out []bind
 	add := func(p string, rw, explicit bool) {
@@ -256,6 +271,11 @@ func (c Confinement) binds(m Mounts, env []string) []bind {
 			add(v, true, false)
 		}
 	}
+	if network {
+		for _, p := range c.resolverDirs() {
+			add(p, false, false)
+		}
+	}
 	sort.SliceStable(out, func(i, j int) bool { return depth(out[i].path) < depth(out[j].path) })
 	return out
 }
@@ -271,11 +291,40 @@ func (c Confinement) hidden(p string) bool {
 	return false
 }
 
+// resolverDirs are the hidden directories name resolution reads: the one
+// holding the file /etc/resolv.conf links to (systemd-resolved's,
+// NetworkManager's or resolvconf's copy under /run) and systemd-resolved's
+// socket directory.
+func (c Confinement) resolverDirs() []string {
+	conf := c.resolvConf
+	if conf == "" {
+		conf = "/etc/resolv.conf"
+	}
+	var out []string
+	if real, err := filepath.EvalSymlinks(conf); err == nil {
+		out = append(out, filepath.Dir(real))
+	}
+	out = append(out, "/run/systemd/resolve")
+	var hidden []string
+	for _, p := range out {
+		if c.hidden(p) {
+			hidden = append(hidden, p)
+		}
+	}
+	return hidden
+}
+
 // exposesProtected reports whether re-exposing p would show a protected
-// directory or anything in it: p is one, lies in one or contains one.
+// directory or anything in it (p is one, lies in one or contains one), or a
+// base directory whole (p is one or contains one).
 func (c Confinement) exposesProtected(p string) bool {
 	for _, q := range c.protected {
 		if within(q, p) || within(p, q) {
+			return true
+		}
+	}
+	for _, q := range c.bases {
+		if within(p, q) {
 			return true
 		}
 	}

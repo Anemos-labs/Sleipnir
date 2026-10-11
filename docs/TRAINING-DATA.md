@@ -191,7 +191,10 @@ sleipnir rl rollout --tasks tasks.jsonl --group 8 --concurrency 32 \
   namespace with loopback up. Writable are only the command's own tree, HOME and TMPDIR and the caches named by its
   environment (`GOCACHE`, `GOMODCACHE`, `CARGO_HOME`, `PIP_CACHE_DIR`, ...); toolchains on its `PATH` (and
   `GOROOT`, `RUSTUP_HOME`, `JAVA_HOME`) stay readable. `--confine-ro DIR` and `--confine-rw DIR` re-expose other
-  toolchain or cache directories. `bwrap` mode refuses to start where bubblewrap cannot create a sandbox (it needs
+  toolchain or cache directories. Nothing re-exposes the work dir, the blob store or the run output, or anything in
+  them; the directory relative task repositories resolve against (the current directory) is never re-exposed whole,
+  but a toolchain or cache inside it is (a run started in a home directory keeps `~/.local/go`). A task with the
+  network also sees the directory `/etc/resolv.conf` links into. `bwrap` mode refuses to start where bubblewrap cannot create a sandbox (it needs
   unprivileged user namespaces, or root); use it whenever rollouts are training data. Shared caches remain a shared
   write area between rollouts.
 * Output: `runs/r001/<task>/<sample>/` with `events.jsonl`, `blobs/`, `episode.json` (canonical trajectory with

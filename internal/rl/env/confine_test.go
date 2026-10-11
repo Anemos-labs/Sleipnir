@@ -51,6 +51,65 @@ func TestConfinementArgv(t *testing.T) {
 	}
 }
 
+// A base directory (where task sources resolve, often a home directory) is
+// never re-exposed whole or through a parent, but a toolchain inside it is,
+// unless that shows a protected directory; "/" is never hidden.
+func TestConfinementBaseDirectory(t *testing.T) {
+	root := t.TempDir()
+	mk := func(p string) string {
+		p = filepath.Join(root, p)
+		if err := os.MkdirAll(p, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	home, tool, blobs := mk("home"), mk("home/.local/go/bin"), mk("home/campaign/blobs")
+	c := DetectConfinement(ConfineOptions{Protect: []string{blobs, "/"}, Base: []string{home, "/"}, RO: []string{root},
+		LookPath: func(string) (string, error) { return "", errors.New("no bwrap") }})
+	c.Available, c.Bwrap = true, "/usr/bin/bwrap"
+	env := []string{"PATH=" + tool + ":" + home + ":" + blobs + ":/usr/bin", "GOCACHE=" + mk("home/.cache/go-build")}
+	line := strings.Join(c.argv(Mounts{}, false, env, nil), " ")
+	for _, want := range []string{"--tmpfs " + home, "--ro-bind " + tool + " " + tool, "--bind " + filepath.Join(home, ".cache/go-build")} {
+		if !strings.Contains(line, want) {
+			t.Errorf("argv lacks %q:\n%s", want, line)
+		}
+	}
+	for _, bad := range []string{"--ro-bind " + home + " ", "--ro-bind " + root + " ", "--ro-bind " + blobs + " ", "--tmpfs / "} {
+		if strings.Contains(line, bad) {
+			t.Errorf("argv has %q:\n%s", bad, line)
+		}
+	}
+}
+
+// A network command sees the directory /etc/resolv.conf links into when it is
+// hidden (NetworkManager's or resolvconf's copy under /run), a command without
+// the network does not, and a protected directory stays hidden.
+func TestConfinementResolverDirectory(t *testing.T) {
+	root := t.TempDir()
+	run := filepath.Join(root, "run")
+	nm := filepath.Join(run, "NetworkManager")
+	if err := os.MkdirAll(nm, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(nm, "resolv.conf"), "nameserver 192.0.2.1\n")
+	conf := filepath.Join(root, "resolv.conf")
+	if err := os.Symlink(filepath.Join(nm, "resolv.conf"), conf); err != nil {
+		t.Fatal(err)
+	}
+	c := Confinement{Available: true, Bwrap: "/usr/bin/bwrap", Hide: []string{run}, resolvConf: conf}
+	bind := "--ro-bind " + nm + " " + nm
+	if line := strings.Join(c.argv(Mounts{}, true, nil, nil), " "); !strings.Contains(line, bind) {
+		t.Errorf("a network command does not see the resolver configuration:\n%s", line)
+	}
+	if line := strings.Join(c.argv(Mounts{}, false, nil, nil), " "); strings.Contains(line, bind) {
+		t.Errorf("a command without the network sees the resolver directory:\n%s", line)
+	}
+	c.protected = []string{nm}
+	if line := strings.Join(c.argv(Mounts{}, true, nil, nil), " "); strings.Contains(line, bind) {
+		t.Errorf("a protected resolver directory was re-exposed:\n%s", line)
+	}
+}
+
 // Asking for confinement where bubblewrap is missing or broken fails the
 // sandbox's construction instead of running unconfined.
 func TestConfinementRequiredButUnavailable(t *testing.T) {
