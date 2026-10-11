@@ -1021,7 +1021,7 @@ flags:
   -max-steps int
         step cap of one rollout whose task sets none
   -max-wall duration
-        wall-clock cap of a rollout whose task sets none (default 1h); time the policy endpoint is down does not count (see --max-outage-pause)
+        wall-clock cap of a rollout whose task sets none, not counting the time the policy endpoint is down (see --max-outage-pause) (default 1h)
   -no-net-isolation
         do not isolate the network of tasks that do not need it
   -no-validate
@@ -1113,7 +1113,7 @@ flags:
   -max-steps int
         step cap of one rollout whose task sets none
   -max-wall duration
-        wall-clock cap of a rollout whose task sets none (default 1h); time the policy endpoint is down does not count (see --max-outage-pause)
+        wall-clock cap of a rollout whose task sets none, not counting the time the policy endpoint is down (see --max-outage-pause) (default 1h)
   -no-net-isolation
         do not isolate the network of tasks that do not need it
   -o string
@@ -1340,7 +1340,7 @@ flags:
   -max-steps int
         step cap of one rollout whose task sets none
   -max-wall duration
-        wall-clock cap of a rollout whose task sets none (default 1h); time the policy endpoint is down does not count (see --max-outage-pause)
+        wall-clock cap of a rollout whose task sets none, not counting the time the policy endpoint is down (see --max-outage-pause) (default 1h)
   -mutants
         also leave each file of the reference solution at its start content in turn and report the task weak (a warning) when the verifier still passes: one more verifier run per solution file
   -no-net-isolation
@@ -1450,7 +1450,7 @@ flags:
   -max-tokens int
         completion limit per request (overrides --sampling)
   -max-wall duration
-        wall-clock cap of a rollout whose task sets none (default 1h); time the policy endpoint is down does not count (see --max-outage-pause)
+        wall-clock cap of a rollout whose task sets none, not counting the time the policy endpoint is down (see --max-outage-pause) (default 1h)
   -mode string
         who works: single (every task as one agent, swarm tasks too: the baseline a swarm is compared with) | swarm:N (a manager and N workers, the same as --swarm N) | empty: what each task's team says
   -model string
@@ -1558,7 +1558,7 @@ flags:
   -max-tokens int
         completion limit per request (overrides --sampling)
   -max-wall duration
-        wall-clock cap of a rollout whose task sets none (default 1h); time the policy endpoint is down does not count (see --max-outage-pause)
+        wall-clock cap of a rollout whose task sets none, not counting the time the policy endpoint is down (see --max-outage-pause) (default 1h)
   -mode string
         who works: single (every task as one agent, swarm tasks too: the baseline a swarm is compared with) | swarm:N (a manager and N workers, the same as --swarm N) | empty: what each task's team says
   -model string
@@ -1652,7 +1652,7 @@ flags:
   -max-steps int
         step cap of one rollout whose task sets none
   -max-wall duration
-        wall-clock cap of a rollout whose task sets none (default 1h); time the policy endpoint is down does not count (see --max-outage-pause)
+        wall-clock cap of a rollout whose task sets none, not counting the time the policy endpoint is down (see --max-outage-pause) (default 1h)
   -no-net-isolation
         do not isolate the network of tasks that do not need it
   -outage-patience duration
