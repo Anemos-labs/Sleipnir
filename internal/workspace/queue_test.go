@@ -208,6 +208,61 @@ func TestQueueServesSubmissionsInArrivalOrder(t *testing.T) {
 	e.integrationClean()
 }
 
+// A submission keeps the place it took in the waiting list even when something delays it between queuing and
+// waiting for its turn: here its queued event is slow to deliver, and a later submission is in line before the
+// event returns. Taking the turnstile place after the event let the later one land first (macOS CI saw
+// holder,w-1,w-0,... in TestQueueServesSubmissionsInArrivalOrder).
+func TestQueueKeepsArrivalOrderWhileTheQueuedEventIsDelivered(t *testing.T) {
+	hold := make(chan struct{})
+	var e *queueEnv
+	e = newQueueEnv(t, QueueOptions{OnEvent: func(ev Event) {
+		if ev.Type == EventQueued && ev.Agent == "w-0" {
+			<-hold
+		}
+	}})
+	gate := filepath.Join(t.TempDir(), "gate")
+	holder := e.agent("holder")
+	edit(t, holder, "held.txt", "h\n")
+	trees := []*Tree{e.agent("w-0"), e.agent("w-1")}
+	for i, tr := range trees {
+		edit(t, tr, fmt.Sprintf("work/w-%d.txt", i), "w\n")
+	}
+	var wg sync.WaitGroup
+	submit := func(s Submission) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			mustSubmit(t, e.q, s)
+		}()
+	}
+	submit(Submission{Tree: holder, Task: "holder", VerifyCmd: fmt.Sprintf("while [ ! -f %q ]; do sleep 0.02; done", gate)})
+	waitFor(t, func() bool { st := e.q.Status(); return st.Active != nil && st.Active.Phase == "verifying" })
+	tickets := func() int {
+		e.q.turn.mu.Lock()
+		defer e.q.turn.mu.Unlock()
+		return len(e.q.turn.q)
+	}
+	submit(Submission{Tree: trees[0], Task: "w-0"})
+	waitFor(t, func() bool { return len(e.q.Status().Waiting) == 1 })
+	// w-0 is now held in its event, with or without a ticket depending on where Submit takes it; nothing else can
+	// take one while the holder has the turn, so the next ticket is w-1's.
+	before := tickets()
+	submit(Submission{Tree: trees[1], Task: "w-1"})
+	waitFor(t, func() bool { return tickets() == before+1 })
+	close(hold)
+	if err := os.WriteFile(gate, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wg.Wait()
+	var order []string
+	for _, l := range e.q.Status().Landed {
+		order = append(order, l.Agent)
+	}
+	if got := strings.Join(order, ","); got != "holder,w-0,w-1" {
+		t.Fatalf("landing order %s, want holder,w-0,w-1", got)
+	}
+}
+
 func waitFor(t testing.TB, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(20 * time.Second)

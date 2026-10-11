@@ -415,16 +415,33 @@ type turnstile struct {
 	q    []chan struct{}
 }
 
+// acquire takes a place in line and waits for the turn.
 func (t *turnstile) acquire(ctx context.Context) error {
+	return t.wait(ctx, t.ticket())
+}
+
+// ticket takes a place in line without waiting: nil means the turn is the
+// caller's now, otherwise wait on the returned channel. A caller that must keep
+// its place consistent with another record (Submit's waiting list) takes the
+// ticket while holding that record's lock.
+func (t *turnstile) ticket() chan struct{} {
 	t.mu.Lock()
+	defer t.mu.Unlock()
 	if !t.busy {
 		t.busy = true
-		t.mu.Unlock()
 		return nil
 	}
 	ch := make(chan struct{})
 	t.q = append(t.q, ch)
-	t.mu.Unlock()
+	return ch
+}
+
+// wait blocks until the ticket's turn comes; when ctx ends first the place in
+// line is given up (or, if the turn arrived at that moment, passed on).
+func (t *turnstile) wait(ctx context.Context, ch chan struct{}) error {
+	if ch == nil {
+		return nil
+	}
 	select {
 	case <-ch:
 		return nil // the turn was handed to us; busy stays true
@@ -493,6 +510,10 @@ func (q *Queue) Submit(ctx context.Context, s Submission) (*Result, error) {
 		return nil, ErrClosed
 	}
 	q.waiting = append(q.waiting, entry)
+	// The place in the turnstile is taken together with the place in the waiting
+	// list: taken later, a submission that arrived after this one could get its
+	// turn first while Status still shows them in arrival order.
+	tk := q.turn.ticket()
 	position := len(q.waiting)
 	if q.active != nil {
 		position++
@@ -500,7 +521,7 @@ func (q *Queue) Submit(ctx context.Context, s Submission) (*Result, error) {
 	q.mu.Unlock()
 	q.emit(EventQueued, s.Agent, s.Task, map[string]any{"position": position})
 
-	err := q.turn.acquire(ctx)
+	err := q.turn.wait(ctx, tk)
 	q.mu.Lock()
 	for i, w := range q.waiting {
 		if w == entry {
