@@ -8,10 +8,8 @@ they do not indicate whether a change has been released.
 ## Compatibility changes
 
 - Resume long RL rollouts from savepoints instead of starting them over
-  (`--savepoint-every`, off by default). Tool batches that can write hold a
-  barrier that a savepoint takes for a moment; a savepoint writes every
-  agent's state as an `agent.snapshot` (marked `savepoint`), emits the new
-  `session.savepoint` event and captures the work tree into the sample's
+  (`--savepoint-every`, off by default): a rollout takes a session savepoint
+  at that interval and captures the work tree into the sample's
   `savepoints/`. An attempt that finds one resumes from it: the log is cut
   back (its tail kept as `events.rewound.N.jsonl`), the workspace is rebuilt
   at its stable path, the session continues with a note to the agent, and the
