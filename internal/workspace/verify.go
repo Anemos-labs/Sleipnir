@@ -30,6 +30,12 @@ type VerifyRequest struct {
 	MaxOutput int
 	// Env is extra environment, "KEY=VALUE".
 	Env []string
+	// BaseEnv, when non-nil, is the environment the command starts from instead
+	// of the process's own (secrets are removed from either).
+	BaseEnv []string
+	// Wrap is an argv prefix the shell runs under (Wrap... sh -c Cmd), for
+	// example a network or filesystem sandbox ending in "--". Ignored on Windows.
+	Wrap []string
 }
 
 // VerifyResult is what the verifier did.
@@ -91,10 +97,15 @@ func RunShell(ctx context.Context, req VerifyRequest) VerifyResult {
 	if runtime.GOOS == "windows" {
 		cmd = exec.CommandContext(tctx, "cmd", "/C", req.Cmd)
 	} else {
-		cmd = exec.CommandContext(tctx, "sh", "-c", req.Cmd)
+		argv := append(append([]string(nil), req.Wrap...), "sh", "-c", req.Cmd)
+		cmd = exec.CommandContext(tctx, argv[0], argv[1:]...)
 	}
 	cmd.Dir = req.Dir
-	cmd.Env = verifyEnv(os.Environ(), req)
+	base := req.BaseEnv
+	if base == nil {
+		base = os.Environ()
+	}
+	cmd.Env = verifyEnv(base, req)
 	cmd.Stdin = nil
 	buf := newTailBuffer(maxOut)
 	cmd.Stdout, cmd.Stderr = buf, buf // one writer: interleaving is preserved

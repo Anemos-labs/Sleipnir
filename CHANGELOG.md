@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Confine RL setup, agent and verifier commands with `--confine bwrap` (on
+  `rl rollout`, `rl eval`, `rl tasks check` and the task generators): each
+  runs in a bubblewrap sandbox that sees a read-only system, its own tree,
+  HOME, TMPDIR and caches, with the work dir, the blob store, the run output
+  and the directory task sources resolve against hidden, and its own PID, IPC,
+  UTS and (unless the task needs it) network namespaces. `--confine-ro` and
+  `--confine-rw` re-expose other toolchain and cache directories. The default
+  (`off`) runs commands as before. `VerifyRequest` gains `Wrap` and `BaseEnv`;
+  prompt and tool-schema bytes are unchanged.
 - A worker started after a team session is resumed (without worktree
   isolation) gets an id past those the earlier process used, as an isolated
   team's already did: before, it could be given the id of a worker from
