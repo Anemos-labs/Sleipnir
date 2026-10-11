@@ -471,10 +471,7 @@ func Rebuild(ctx context.Context, repoPath string, opts RebuildOptions) (*rl.Tas
 	if err := env.ValidateTask(*t); err != nil {
 		return nil, rep, fmt.Errorf("internal error: generated an invalid task: %w", err)
 	}
-	if err := os.RemoveAll(final); err != nil {
-		return nil, rep, err
-	}
-	if err := os.Rename(dest, final); err != nil {
+	if err := installDir(dest, final); err != nil {
 		return nil, rep, err
 	}
 	keep = true

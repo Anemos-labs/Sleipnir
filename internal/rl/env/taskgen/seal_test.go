@@ -90,7 +90,8 @@ func TestSealWritesOneCommitOfTheStartTree(t *testing.T) {
 	if got, want := in("rev-parse", commit+"^{tree}"), f.git("rev-parse", start+"^{tree}"); got != want {
 		t.Errorf("tree %s, want the start's %s", got, want)
 	}
-	if got := in("log", "-1", "--format=%P|%an <%ae> %aI|%cn <%ce> %cI|%s", commit); got != "|sleipnir <start@sleipnir.invalid> 2000-01-01T00:00:00+00:00|sleipnir <start@sleipnir.invalid> 2000-01-01T00:00:00+00:00|start" {
+	// Unix times: how git renders a UTC date in strict ISO form (+00:00 or Z) differs between versions.
+	if got := in("log", "-1", "--format=%P|%an <%ae> %at %ad|%cn <%ce> %ct|%s", "--date=format:%z", commit); got != "|sleipnir <start@sleipnir.invalid> 946684800 +0000|sleipnir <start@sleipnir.invalid> 946684800|start" {
 		t.Errorf("commit: %s", got)
 	}
 
@@ -242,4 +243,39 @@ func keysOf(m map[string]bool) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// installDir replaces a directory, and a failed installation keeps the one that was there.
+func TestInstallDirKeepsTheOldOneWhenItFails(t *testing.T) {
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "start.git")
+	mk := func(p, content string) {
+		t.Helper()
+		if err := os.MkdirAll(p, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(p, "HEAD"), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	read := func() string {
+		b, _ := os.ReadFile(filepath.Join(dest, "HEAD"))
+		return string(b)
+	}
+	mk(dest, "old")
+	mk(filepath.Join(dir, "new"), "new")
+	if err := installDir(filepath.Join(dir, "new"), dest); err != nil || read() != "new" {
+		t.Fatalf("install: %v, dest holds %q", err, read())
+	}
+	if err := installDir(filepath.Join(dir, "missing"), dest); err == nil || read() != "new" {
+		t.Fatalf("a failed install: %v, dest holds %q, want the earlier one", err, read())
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+		t.Errorf("left behind: %v", entries)
+	}
+	fresh := filepath.Join(dir, "fresh.git")
+	mk(filepath.Join(dir, "other"), "x")
+	if err := installDir(filepath.Join(dir, "other"), fresh); err != nil {
+		t.Fatalf("install where nothing was: %v", err)
+	}
 }

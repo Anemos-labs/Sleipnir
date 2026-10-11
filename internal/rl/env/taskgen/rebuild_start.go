@@ -42,7 +42,8 @@ const startBranch = "refs/heads/main"
 // itself); with no paths it is empty.
 //
 // dest is replaced when it exists. The repository is built next to it and
-// renamed into place, so a failed call leaves no partial repository at dest.
+// renamed into place (installDir), so a failed call leaves no partial
+// repository at dest and keeps the one that was there.
 func writeStart(ctx context.Context, g *env.Git, gitDir, rev, dest string, edits map[string][]byte, gold []string) (string, []byte, error) {
 	if g == nil || dest == "" {
 		return "", nil, errors.New("writeStart: no git or no destination")
@@ -241,10 +242,7 @@ func writeStart(ctx context.Context, g *env.Git, gitDir, rev, dest string, edits
 	if _, err := dst(nil, nil, 1<<20, "fsck", "--connectivity-only", "--no-dangling", "--no-progress"); err != nil {
 		return "", nil, fmt.Errorf("start: the start repository is incomplete: %w", err)
 	}
-	if err := os.RemoveAll(abs); err != nil {
-		return "", nil, err
-	}
-	if err := os.Rename(tmp, abs); err != nil {
+	if err := installDir(tmp, abs); err != nil {
 		return "", nil, err
 	}
 	return commit, patch, nil

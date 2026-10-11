@@ -192,13 +192,35 @@ func Seal(ctx context.Context, g *env.Git, gitDir, rev, dest string, opts SealOp
 	if _, err := dst(nil, nil, "fsck", "--connectivity-only", "--no-dangling", "--no-progress"); err != nil {
 		return "", fmt.Errorf("seal: the sealed repository is incomplete: %w", err)
 	}
-	if err := os.RemoveAll(abs); err != nil {
-		return "", err
-	}
-	if err := os.Rename(tmp, abs); err != nil {
+	if err := installDir(tmp, abs); err != nil {
 		return "", err
 	}
 	return commit, nil
+}
+
+// installDir puts the directory tmp in place at dest. A dest that exists is moved aside first and put back when the
+// new one cannot be installed, so a failure never leaves dest missing; once tmp is in place the old one is removed.
+func installDir(tmp, dest string) error {
+	if _, err := os.Lstat(dest); err != nil {
+		return os.Rename(tmp, dest)
+	}
+	aside, err := os.MkdirTemp(filepath.Dir(dest), "."+filepath.Base(dest)+".old-")
+	if err != nil {
+		return err
+	}
+	old := filepath.Join(aside, "old")
+	if err := os.Rename(dest, old); err != nil {
+		_ = os.Remove(aside)
+		return err
+	}
+	if err := os.Rename(tmp, dest); err != nil {
+		if rerr := os.Rename(old, dest); rerr != nil {
+			return fmt.Errorf("%w; and the earlier %s could not be put back (it is in %s): %v", err, dest, aside, rerr)
+		}
+		_ = os.Remove(aside)
+		return err
+	}
+	return os.RemoveAll(aside)
 }
 
 // sealTask seals t's start state (t.Repo.Commit of the repository at gitDir) as
