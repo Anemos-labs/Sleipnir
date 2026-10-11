@@ -347,10 +347,41 @@ func (a *Agent) Fork(patch string, model string) string {
 	return req
 }
 
-// Commit applies a compaction: it emits compact.commit and layer.commit, replaces
-// the thread's older turns by a one-line spine in the preamble and keeps the
-// turns from keepFrom on. The next request is a declared rebase (a new segment).
+// ForkFail records a compactor request that never gets a response (a model.error
+// instead), as when the provider fails; the agent then falls back to a mechanical
+// patch. It returns the request id.
+func (a *Agent) ForkFail(model string) string {
+	if model == "" {
+		model = a.Model
+	}
+	a.forkN++
+	req := fmt.Sprintf("%s.c%d", a.ID, a.forkN)
+	p := a.render(model, "")
+	last := len(p.Messages) - 1
+	p.Messages[last].Blocks = append(append([]core.Block(nil), p.Messages[last].Blocks...), core.Text("<compactor-task>fold</compactor-task>"))
+	a.recordRequest(req, p, "compactor", "compactor", false)
+	a.run.Emit(a.ID, events.TypeModelError, map[string]any{"req": req, "error": "boom"})
+	return req
+}
+
+// Commit applies a compaction with the compact.commit payload of logs written
+// before commits named their compactor request (no req): it emits compact.commit
+// and layer.commit, replaces the thread's older turns by a one-line spine in the
+// preamble and keeps the turns from keepFrom on. The next request is a declared
+// rebase (a new segment).
 func (a *Agent) Commit(keepFrom core.TurnID, fallback bool, reason string) {
+	a.commit(keepFrom, fallback, reason, nil)
+}
+
+// CommitFor is Commit with the current payload, which names the compactor request
+// whose patch the commit applied ("" when no compactor was asked: a mask or
+// emergency compaction).
+func (a *Agent) CommitFor(req string, keepFrom core.TurnID, fallback bool, reason string) {
+	a.commit(keepFrom, fallback, reason, &req)
+}
+
+// commit performs Commit, adding req to the compact.commit payload when it is not nil.
+func (a *Agent) commit(keepFrom core.TurnID, fallback bool, reason string, req *string) {
 	r := a.run
 	var kept []core.Turn
 	for _, t := range a.turns {
@@ -360,7 +391,11 @@ func (a *Agent) Commit(keepFrom core.TurnID, fallback bool, reason string) {
 	}
 	a.turns = kept
 	a.preamble = a.preamble + "\n<history>folded</history>"
-	r.Emit(a.ID, events.TypeCompactCommit, map[string]any{"reason": reason, "keep_from": keepFrom, "removed_turns": 3, "fallback": fallback})
+	payload := map[string]any{"reason": reason, "keep_from": keepFrom, "removed_turns": 3, "fallback": fallback}
+	if req != nil {
+		payload["req"] = *req
+	}
+	r.Emit(a.ID, events.TypeCompactCommit, payload)
 	r.Emit(a.ID, events.TypeLayerCommit, map[string]any{"scope": "agent", "spine": "s1", "spine_version": 1})
 	a.stream = Tokenize(a.preamble)
 	for _, t := range a.turns {
