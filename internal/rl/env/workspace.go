@@ -748,6 +748,9 @@ func (m *Workspaces) PruneStale(maxAge time.Duration) (removed int, err error) {
 			if ierr != nil || fi.ModTime().After(cutoff) {
 				continue
 			}
+			if area.dir == "ws" && keepResumable(filepath.Join(m.root, area.dir, e.Name()), time.Now()) {
+				continue // a rollout that can still be resumed (MarkResumable)
+			}
 			if rerr := removeAllNoFollow(filepath.Join(m.root, area.dir, e.Name())); rerr != nil {
 				err = errors.Join(err, rerr)
 				continue
