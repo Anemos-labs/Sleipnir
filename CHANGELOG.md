@@ -13,6 +13,19 @@ they do not indicate whether a change has been released.
   a run's `summary.json` gain the optional fields `units` and `guards`; readers
   that ignore unknown fields are unaffected, and the score and verdict are the
   same as before.
+- RL tasks can give paths to roles: `team.owns` maps a role to globs (the
+  syntax of `verifier.protected`) that only agents of that role may write in a
+  swarm. The write guard refuses another agent's write to an owned path, the
+  manager's included, with a tool error that names the owning role and says to
+  hand the work to it; it counts as a scope error (`error_kind` `scope`, so in
+  the `scope_violations` signal), raises an alert and is logged as a `lease`
+  event of the new action `owner`. In an isolated run the merge queue also
+  refuses a submission that changed such a path. `taskgen composite` gives a
+  composite whose solution changes a user-interface file
+  `"owns": {"frontend": [...]}`. The refusal, its alert and the merge queue's
+  bounce are new prompt content only for a task that sets `team.owns`; without
+  it no prompt byte changes. Task files without the field are read as before,
+  and readers of the log that ignore unknown lease actions are unaffected.
 - Pause RL rollouts during outages of the policy endpoint instead of failing
   them. A rollout's agents wait out a 5xx, a 429, a refused or reset
   connection and a request that gets no response, for up to

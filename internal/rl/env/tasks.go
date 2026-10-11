@@ -170,6 +170,7 @@ func validateTask(t rl.Task) []*TaskError {
 		}
 		seenRole[r] = true
 	}
+	errs = append(errs, validateOwns(t)...)
 
 	// budget
 	b := t.Budget
@@ -207,6 +208,53 @@ func validateTask(t rl.Task) []*TaskError {
 	}
 
 	errs = append(errs, validateVerifier(t)...)
+	return errs
+}
+
+// validateOwns checks team.owns: a swarm team only; each role a worker role
+// (not the manager) of the team (a member of team.roles when the task lists
+// them) that owns at least one path; every path a valid glob. Problems are
+// reported in role order.
+func validateOwns(t rl.Task) []*TaskError {
+	if len(t.Team.Owns) == 0 {
+		return nil
+	}
+	var errs []*TaskError
+	add := func(field, format string, args ...any) {
+		errs = append(errs, &TaskError{ID: t.ID, Field: field, Msg: fmt.Sprintf(format, args...)})
+	}
+	if t.Team.Mode != "swarm" {
+		mode := t.Team.Mode
+		if mode == "" {
+			mode = "single"
+		}
+		add("team.owns", "applies to a swarm team only (team.mode is %q)", mode)
+	}
+	roles := make([]string, 0, len(t.Team.Owns))
+	for r := range t.Team.Owns {
+		roles = append(roles, r)
+	}
+	sort.Strings(roles)
+	for _, r := range roles {
+		field := fmt.Sprintf("team.owns[%q]", r)
+		switch {
+		case strings.TrimSpace(r) == "" || strings.TrimSpace(r) != r:
+			add(field, "the role name is empty or has surrounding white space")
+		case r == "manager":
+			add(field, "the manager does not write files: name the worker role that does")
+		case len(t.Team.Roles) > 0 && !slices.Contains(t.Team.Roles, r):
+			add(field, "role %q is not in team.roles", r)
+		}
+		globs := t.Team.Owns[r]
+		if len(globs) == 0 {
+			add(field, "lists no paths")
+		}
+		for i, g := range globs {
+			if err := ValidateGlob(g); err != nil {
+				add(fmt.Sprintf("team.owns[%q][%d]", r, i), "%v", err)
+			}
+		}
+	}
 	return errs
 }
 

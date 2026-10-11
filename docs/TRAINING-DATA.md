@@ -82,6 +82,7 @@ is needed and no call can bypass it. Endpoints that cannot return ids are captur
  "setup": ["go mod download"],       // run once per task snapshot, result cached
  "prompt": "Requests with an encoded slash in the path 404. Fix it.",
  "team": {"mode": "single"},         // or {"mode":"swarm","agents":6,"roles":["backend","tester"]}: 6 workers and a manager
+                                     // swarm only: "owns": {"frontend": ["*.css", "web/"]} (paths only that role writes)
  "verifier": {
    "cmd": "go test ./... -run 'TestEncodedSlash|TestRoute' -count=1",
    "timeout_s": 300,
@@ -108,6 +109,20 @@ is needed and no call can bypass it. Endpoints that cannot return ids are captur
   `score` alone decides the verdict, and a line without it is still no score line. The last run's breakdown is kept in
   the verifier's result, the outcome event, the episode's `outcome.verifier` and the run summary's results (`units`,
   `guards`), and is printed in the head of `verifier.log`.
+* **Role-owned paths.** `team.owns` maps a role to globs (the syntax of `protected`) that only agents of that role may
+  write, so that a team whose roles run on different models keeps each kind of work with the model chosen for it. The
+  swarm's write guard refuses a file tool's write to an owned path by any other agent, the manager included, with a
+  tool error that names the owning role and says to hand the work to it ("web/app.css belongs to the frontend role:
+  only a frontend worker may change it. ..."); the refusal counts as a scope violation (`error_kind` `scope`), is
+  logged as a `lease` event of action `owner` and raises an alert. A path several roles own may be written by any of
+  them. Validation requires a swarm team, roles other than the manager that are in `team.roles` when the task lists
+  them, at least one path per role and valid globs; a rollout also refuses an owning role the team does not have or
+  that cannot write. A shell command's writes are not checked in a shared tree; with `swarm.isolation` `worktree` the
+  merge queue refuses a submission that changed a path another role owns, whichever tool changed it. A run with a
+  single agent (`--mode single`) ignores `team.owns`. `taskgen composite` gives a composite whose reference solution
+  changes a user-interface file (a path the export's `edits-ui` condition counts as UI work; test files do not count)
+  `"owns": {"frontend": [...]}` with globs covering every such path (`*.css`, `web/` and the like), and adds `frontend`
+  to `team.roles` when the task lists roles without it.
 * **Answer checks.** `verifier.expect` judges the agent's final message, alone (no `cmd`) or together with a command:
   `{"contains": ["..."], "regex": "<RE2>", "fold": true}`. Every `contains` string must occur in the answer; the score
   is the fraction that do. `regex` must match the answer with surrounding white space trimmed (`^` and `$` anchor at the

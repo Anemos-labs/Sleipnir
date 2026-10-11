@@ -2,6 +2,8 @@ package harness
 
 import (
 	"context"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -9,6 +11,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/rl"
 	"github.com/anemos-labs/sleipnir/internal/rl/env"
+	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
 func optionsOf(t *testing.T, sp env.RunSpec) (workers int, budgetUSD float64) {
@@ -150,5 +153,53 @@ func TestTheThreadSoftLimitReachesTheConfig(t *testing.T) {
 	}
 	if def.Cache.ThreadSoftLimitTokens == 80_000 || def.Cache.ThreadSoftLimitTokens < 0 {
 		t.Errorf("without the setting the config keeps its own default, got %d", def.Cache.ThreadSoftLimitTokens)
+	}
+}
+
+// A swarm task's team.owns reaches the session as the swarm's path owners; an owner
+// that is not a writing role of the team stops the rollout before it starts, and a
+// single agent has no owners.
+func TestTeamOwnsReachesTheSwarm(t *testing.T) {
+	h := &Harness{NewProvider: func(env.RunSpec) (provider.Provider, cost.Model, error) { return nil, cost.Model{}, nil }}
+	opts := func(sp env.RunSpec) (session.Options, error) {
+		cfg, err := h.config(sp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return h.options(sp, cfg, nil, cost.Model{})
+	}
+	owns := map[string][]string{"frontend": {"*.css", "/web/"}}
+	task := rl.Task{ID: "t", Prompt: "p", Team: rl.Team{Mode: "swarm", Agents: 2, Owns: owns}}
+
+	o, err := opts(env.RunSpec{Task: task})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.Owners == nil {
+		t.Fatal("no owners reached the session")
+	}
+	if got := o.Owners.OwnersOf("web/index.html"); !reflect.DeepEqual(got, []string{"frontend"}) {
+		t.Errorf("web/index.html is owned by %v", got)
+	}
+	if got := o.Owners.OwnersOf("api/server.go"); got != nil {
+		t.Errorf("api/server.go is owned by %v", got)
+	}
+
+	if o, err := opts(env.RunSpec{Task: task, Single: true}); err != nil || o.Owners != nil {
+		t.Errorf("a single agent: owners %v, error %v", o.Owners, err)
+	}
+	if o, err := opts(env.RunSpec{Task: rl.Task{ID: "t", Prompt: "p", Team: rl.Team{Mode: "swarm"}}}); err != nil || o.Owners != nil {
+		t.Errorf("a team that owns nothing: owners %v, error %v", o.Owners, err)
+	}
+
+	for name, team := range map[string]rl.Team{
+		"a role the team does not have": {Mode: "swarm", Roles: []string{"backend"}, Owns: owns},
+		"an unknown role":               {Mode: "swarm", Owns: map[string][]string{"designer": {"*.css"}}},
+		"a read-only role":              {Mode: "swarm", Owns: map[string][]string{"reviewer": {"*.css"}}},
+		"the manager":                   {Mode: "swarm", Owns: map[string][]string{"manager": {"*.css"}}},
+	} {
+		if _, err := opts(env.RunSpec{Task: rl.Task{ID: "t", Prompt: "p", Team: team}}); err == nil || !strings.Contains(err.Error(), "team.owns") {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }

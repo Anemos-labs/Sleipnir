@@ -58,6 +58,27 @@ func TestValidateTask(t *testing.T) {
 		{"single with agents", func(t *rl.Task) { t.Team.Agents = 3 }, "team.agents"},
 		{"swarm ok", func(t *rl.Task) { t.Team = rl.Team{Mode: "swarm", Agents: 4, Roles: []string{"a", "b"}} }, ""},
 		{"dup roles", func(t *rl.Task) { t.Team = rl.Team{Mode: "swarm", Roles: []string{"a", "a"}} }, "team.roles[1]"},
+		{"owns ok", func(t *rl.Task) {
+			t.Team = rl.Team{Mode: "swarm", Roles: []string{"backend", "frontend"}, Owns: map[string][]string{"frontend": {"*.css", "/web/"}}}
+		}, ""},
+		{"owns without listed roles", func(t *rl.Task) {
+			t.Team = rl.Team{Mode: "swarm", Owns: map[string][]string{"frontend": {"*.css"}}}
+		}, ""},
+		{"owns in a single team", func(t *rl.Task) { t.Team.Owns = map[string][]string{"frontend": {"*.css"}} }, `team.owns: applies to a swarm team only (team.mode is "single")`},
+		{"owns a role not in the team", func(t *rl.Task) {
+			t.Team = rl.Team{Mode: "swarm", Roles: []string{"backend"}, Owns: map[string][]string{"frontend": {"*.css"}}}
+		}, `team.owns["frontend"]: role "frontend" is not in team.roles`},
+		{"owns by the manager", func(t *rl.Task) {
+			t.Team = rl.Team{Mode: "swarm", Owns: map[string][]string{"manager": {"*.css"}}}
+		}, `team.owns["manager"]: the manager does not write files`},
+		{"owns by an empty role", func(t *rl.Task) { t.Team = rl.Team{Mode: "swarm", Owns: map[string][]string{" ": {"*.css"}}} }, `team.owns[" "]: the role name is empty`},
+		{"owns nothing", func(t *rl.Task) { t.Team = rl.Team{Mode: "swarm", Owns: map[string][]string{"frontend": nil}} }, `team.owns["frontend"]: lists no paths`},
+		{"owns a bad glob", func(t *rl.Task) {
+			t.Team = rl.Team{Mode: "swarm", Owns: map[string][]string{"frontend": {"*.css", "web/[a"}}}
+		}, `team.owns["frontend"][1]: invalid glob "web/[a"`},
+		{"owns a negation", func(t *rl.Task) {
+			t.Team = rl.Team{Mode: "swarm", Owns: map[string][]string{"frontend": {"!*.css"}}}
+		}, `team.owns["frontend"][0]`},
 		{"negative steps", func(t *rl.Task) { t.Budget.Steps = -1 }, "budget.steps"},
 		{"negative requests", func(t *rl.Task) { t.Budget.Requests = -1 }, "budget.requests"},
 		{"negative wall", func(t *rl.Task) { t.Budget.WallS = -5 }, "budget.wall_s"},

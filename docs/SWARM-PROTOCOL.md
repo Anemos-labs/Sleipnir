@@ -378,6 +378,12 @@ Layered, cheapest first:
    report (files, hunks) returned to the worker whose work conflicted, verify command after each merge, rollback on
    failure. In that mode leases become advisory and the merge queue settles overlaps; section 14 is the whole design.
 6. **Role gates**: reviewers and scouts cannot write; the engine denies it.
+7. **Role-owned paths** (optional; an RL task's `team.owns`, `swarm.Deps.Owners`): a path owned by roles is written only
+   by agents of those roles. The lease guard refuses another agent's write, the manager's included, before scope and
+   leases are considered, with a message naming the owning role and how to hand the work to it, a fixed-text alert and
+   a `lease` event of action `owner`. The guard sees the file tools only: a shell command's writes to an owned path
+   are not checked in a shared tree. In an isolated run the merge queue also refuses a submission that changed a path
+   another role owns, whichever tool changed it, and the worker is told to revert those files.
 
 ## 8. The hot view and the governor
 
@@ -463,7 +469,7 @@ submission, while submitted work and newer task assignments remain intact.
 
 Every operation is an event: `agent.spawn` and `agent.assign` (a reused worker), `agent.state` (status changes),
 `agent.end`, `agent.panic`, `board.op`, `mail.send`/`mail.deliver`/`mail.drop`, `lease` (acquire, conflict, scope,
-release), `governor` (rate-limit episodes), `swarm.budget`, `swarm.hold`/`swarm.unfinished` (the manager's stop guard),
+owner, overlap, release), `governor` (rate-limit episodes), `swarm.budget`, `swarm.hold`/`swarm.unfinished` (the manager's stop guard),
 `swarm.wake`/`swarm.wake.paused` (waking an idle manager), `swarm.wake_limit` (peer mail stopped waking a worker),
 `swarm.stall` (a named stall raised or cleared, section 10), `swarm.handover` (a handover's `begin`, `done` or `abort`,
 section 6), `mail.route`/`mail.batch`/`mail.digest`/`mail.direct`/`mail.mailman` (mailman
