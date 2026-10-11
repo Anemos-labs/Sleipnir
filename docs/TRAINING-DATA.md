@@ -55,6 +55,7 @@ lease operation. RL adds these fields (all content-addressed blobs; unique text 
 | `outcome` | `kind` (`verifier`, `review`, `human`, `protocol`), `score`, `pass`, `detail` (blob), `verifier_version` | reward inputs |
 | `board.op` | `closure` (`{kind, target}` on done and failed tasks), `blocked_on`; on a handover, `from` and `assignment_closure` | typed task outcomes, counted in `outcome.closures` |
 | `swarm.stall` | `action` (`raise`, `clear`), `kind`, `task`, `agent`, `notify`, `detail` | named coordination stalls |
+| `rl.outage` | `phase` (`start`: `kind`, `status`, `class` (`answered`, `unanswered`), `error`; `end`: `outage_ms`), `active_ms`, `paused_ms` | when the policy endpoint was down and the rollout's wall clock stood still (3.3) |
 
 **Manifest.** A prompt is stored as a manifest of blob hashes: `tools` (one blob, identical for every agent), the
 `system` blocks, and the messages. Because prompts are append-only between rebases, messages are delta-encoded
@@ -116,8 +117,8 @@ is needed and no call can bypass it. Endpoints that cannot return ids are captur
 * **Budgets** stop runaway episodes; a stop is an outcome (`budget_exceeded`) and is penalised, not silently
   dropped. `context_window` may be set low (for example 32k) to force frequent compaction and so generate dense
   compaction data.
-* **Infra errors** (setup failure, verifier crash, provider outage) mark the episode `infra_error`; exporters drop
-  such episodes by default so noise is not learned.
+* **Infra errors** (setup failure, verifier crash, a provider outage longer than the rollout may wait, see 3.3) mark
+  the episode `infra_error`; exporters drop such episodes by default so noise is not learned.
 
 ### 3.2 Task generators (`sleipnir rl taskgen`)
 
@@ -180,6 +181,22 @@ sleipnir rl rollout --tasks tasks.jsonl --group 8 --concurrency 32 \
   the agent edit inside its workspace and run the usual build and test tooling. Steps and requests are hard budgets
   (a stop is an outcome: `budget`), wall-clock is enforced by the runner, and infrastructure failures are retried and
   never become episodes.
+* **Outages pause a rollout instead of failing it.** A failure of the policy endpoint that waiting cures (a status of
+  500 or more, 429, a refused or reset connection, a connection cut mid-stream, no response within the client's
+  timeouts) starts an outage; the next answer from any model of the rollout ends it. Meanwhile the agents repeat the
+  request, at most half a minute apart, and the rollout's wall clock (`budget.wall_s`, `--max-wall`) stops: only the
+  time the endpoint was up counts against it. A request the endpoint refused (400, 401, 403, 404, 422, a prompt over
+  the context window) and a misaddressed endpoint (a host name that does not resolve, a certificate that is not
+  accepted) are not outages. Two limits bound the wait: `--outage-patience` (default 20m) is how long one outage may
+  last before the agent gives up, which ends the attempt as an infra failure that the runner retries
+  (`--infra-retries`); `--max-outage-pause` (default 3h) is how much outage one attempt sits out in all, after which it
+  ends as an infra failure that is not retried (a later run into the same `--out` reruns it). A negative value turns
+  either off: no waiting, or a wall clock that runs through outages. Each outage is recorded in the rollout's
+  `events.jsonl` as `rl.outage` events (`phase` `start`, with the failure's `kind`, `status` and `class`, and `end`,
+  with `outage_ms`), reported on the progress stream as `rollout.outage` (`status` `down` or `up`), and summed per
+  rollout as `active_wall_ms` (what counted against the budget) and `paused_ms` in the episode's `cost`, the summary's
+  results and `ledger.jsonl`; `summary.json` adds up `paused_ms` over the run, and `manifest.json` records both
+  settings (`outage_patience_ms`, `max_outage_pause_ms`, -1 when off). `wall_ms` stays the whole span of the run.
 * Output: `runs/r001/<task>/<sample>/` with `events.jsonl`, `blobs/`, `episode.json` (canonical trajectory with
   rewards), `diff.patch`, `verifier.log`; plus `runs/r001/manifest.json` and `summary.json` (pass rate, cost,
   per-role stats). Rerunning into the same directory resumes: finished rollouts are skipped.

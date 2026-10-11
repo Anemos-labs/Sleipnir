@@ -79,6 +79,16 @@ type RunSpec struct {
 	// manifest's warnings. The harness owns the agent's shell, so applying it is
 	// the harness's job.
 	NetPrefix []string
+	// Clock is the attempt's wall clock, which stops while the policy endpoint is
+	// down. The harness reports outages to it: Down at a failure that is one
+	// (provider.Error.Outage), Up at the next response. nil when the runner keeps
+	// no such clock (Runner.MaxOutagePause negative); its methods are nil-safe.
+	Clock *WallClock
+	// OutagePatience is how long one continuous outage may last before an agent
+	// gives up on the endpoint (agent.Config.OutagePatience, with failures in which
+	// nothing answered counted as outages too: the endpoint is known to exist).
+	// Zero or negative: the agents do not wait outages out.
+	OutagePatience time.Duration
 }
 
 // RunResult is what the harness reports.
@@ -134,6 +144,18 @@ type Runner struct {
 	// StopGrace is how long a harness gets to return after its context ended
 	// before the rollout is written off as an infra error (default 30 s).
 	StopGrace time.Duration
+	// OutagePatience is how long one continuous outage of the policy endpoint (a
+	// status of 500 or more or 429, a refused or reset connection, no response in
+	// time) may last before an agent gives up on it and the attempt ends as an
+	// infra error (default DefaultOutagePatience; negative: no waiting, the six
+	// attempts every failed request gets).
+	OutagePatience time.Duration
+	// MaxOutagePause is how much outage, in all, one attempt sits out: the wall
+	// clock (MaxWall, a task's wall_s) stops while the endpoint is down, and an
+	// attempt whose outages add up to this ends as an infra error, not retried
+	// (default DefaultMaxOutagePause; negative: the clock does not stop for
+	// outages).
+	MaxOutagePause time.Duration
 	// MaxSpendUSD caps what a run may spend, failed attempts and earlier invocations into the same directory
 	// included (see LedgerFile). When it is reached no further rollout starts; those are reported as capped.
 	// Rollouts already running finish, so the cap is overshot by at most what they are still allowed to spend:
@@ -181,7 +203,7 @@ type RolloutOpts struct {
 // Progress is one progress event.
 type Progress struct {
 	Time    time.Time `json:"time"`
-	Type    string    `json:"type"` // run.start, rollout.start, rollout.stage, rollout.retry, rollout.done, run.done
+	Type    string    `json:"type"` // run.start, rollout.start, rollout.stage, rollout.retry, rollout.outage, rollout.done, run.done
 	RunID   string    `json:"run_id"`
 	Task    string    `json:"task,omitempty"`
 	Sample  int       `json:"sample"`
@@ -189,12 +211,16 @@ type Progress struct {
 	Attempt int       `json:"attempt,omitempty"`
 	Done    int       `json:"done"`
 	Total   int       `json:"total"`
-	Status  string    `json:"status,omitempty"` // for rollout.done: ok, infra, cancelled, capped, skipped, resumed
-	Pass    *bool     `json:"pass,omitempty"`
-	Score   *float64  `json:"score,omitempty"` // verifier score, when there is a verdict
+	// Status is, for rollout.done, ok, infra, cancelled, capped, skipped or resumed; for rollout.outage, down (an outage of the
+	// policy endpoint has lasted half a minute; Error says what failed) or up (it ended).
+	Status string   `json:"status,omitempty"`
+	Pass   *bool    `json:"pass,omitempty"`
+	Score  *float64 `json:"score,omitempty"` // verifier score, when there is a verdict
 	// Reward is the episode's scored reward (rollout.done of a completed rollout).
 	Reward *float64 `json:"reward,omitempty"`
 	Error  string   `json:"error,omitempty"`
+	// OutageMs is how long the outage that a rollout.outage "up" event ends lasted.
+	OutageMs int64 `json:"outage_ms,omitempty"`
 }
 
 // MaxWireSeed is the largest sampling seed every endpoint accepts: a signed 32-bit integer's.
@@ -244,7 +270,11 @@ type RolloutResult struct {
 	Requests int      `json:"requests"`
 	Steps    int      `json:"steps"`
 	WallMs   int64    `json:"wall_ms"`
-	VerifyMs int64    `json:"verify_ms"`
+	// ActiveWallMs and PausedMs split the agent's run into the time that counted against the wall budget and the time the policy
+	// endpoint was down (rl.CostRef); absent when the runner kept no pausable clock.
+	ActiveWallMs int64 `json:"active_wall_ms,omitempty"`
+	PausedMs     int64 `json:"paused_ms,omitempty"`
+	VerifyMs     int64 `json:"verify_ms"`
 	// What the rollout used and how it went, from its episode: billed tokens by kind, and the episode's own counts of
 	// failed tool calls, malformed ones, retried and failed requests, and cache breaks (see the rl.Sig* signals).
 	Tokens         Tokens `json:"tokens"`
@@ -346,6 +376,28 @@ func (r *Runner) stopGrace() time.Duration {
 		return r.StopGrace
 	}
 	return 30 * time.Second
+}
+
+// outagePatience resolves Runner.OutagePatience: zero is DefaultOutagePatience, negative none (-1).
+func (r *Runner) outagePatience() time.Duration {
+	switch {
+	case r.OutagePatience < 0:
+		return -1
+	case r.OutagePatience == 0:
+		return DefaultOutagePatience
+	}
+	return r.OutagePatience
+}
+
+// maxOutagePause resolves Runner.MaxOutagePause: zero is DefaultMaxOutagePause, negative means the clock does not pause (-1).
+func (r *Runner) maxOutagePause() time.Duration {
+	switch {
+	case r.MaxOutagePause < 0:
+		return -1
+	case r.MaxOutagePause == 0:
+		return DefaultMaxOutagePause
+	}
+	return r.MaxOutagePause
 }
 
 // wallFor prefers a positive task wall budget, then the runner limit; zero defaults to one hour
@@ -631,7 +683,7 @@ func (rn *run) attempt(ctx context.Context, j job, dir string, attempt int) (out
 	defer func() { rn.recordAttempt(j, dir, attempt, out) }()
 	var (
 		ws      *Workspace
-		wallMs  int64
+		tm      timing
 		keep    bool // the workspace is worth keeping if the caller asked for that
 		abandon bool // a harness may still be running in the workspace: leave it alone
 	)
@@ -644,7 +696,7 @@ func (rn *run) attempt(ctx context.Context, j job, dir string, attempt int) (out
 		keep = true
 		res := RolloutResult{Task: task.ID, Sample: j.sample, Tags: task.Tags, Status: StatusInfra, Error: fmt.Sprintf("%s: %v", st.n, err)}
 		if !retry || attempt >= r.retries()+1 {
-			rn.writeInfraEpisode(j, dir, res.Error, wallMs)
+			rn.writeInfraEpisode(j, dir, res.Error, tm)
 		}
 		return attemptOutcome{result: res, retry: retry}
 	}
@@ -653,6 +705,8 @@ func (rn *run) attempt(ctx context.Context, j job, dir string, attempt int) (out
 			r.logf("env: %s/%d: panic in stage %s: %v\n%s", task.ID, j.sample, st.n, p, debug.Stack())
 			out = fail(fmt.Errorf("panic: %v", p), st.n != "extract" && st.n != "score")
 		}
+		// The split of the agent's time is the runner's to know, whatever the outcome: the ledger records it for every attempt.
+		out.result.ActiveWallMs, out.result.PausedMs = tm.activeMs, tm.pausedMs
 		if ws != nil {
 			switch {
 			case abandon:
@@ -705,13 +759,13 @@ func (rn *run) attempt(ctx context.Context, j job, dir string, attempt int) (out
 		Agents: agents, RoleModels: rn.opts.RoleModels, TargetPrice: rn.opts.TargetPrice,
 		Seed: SampleSeed(rn.opts.Seed, task.ID, j.sample), Budget: mergeBudget(task.Budget, rn.opts.Budget),
 		Sample: j.sample, Group: rn.groupID(task.ID), Attempt: attempt, Env: ws.Env(),
-		NetPrefix: r.Workspaces.IsolationPrefix(task),
+		NetPrefix: r.Workspaces.IsolationPrefix(task), OutagePatience: r.outagePatience(),
 	}
 	agentStart := r.now()
 	walled := task
 	walled.Budget = spec.Budget
 	ho := rn.runHarness(ctx, spec, r.wallFor(walled))
-	wallMs = r.now().Sub(agentStart).Milliseconds()
+	tm = timing{wallMs: r.now().Sub(agentStart).Milliseconds(), activeMs: ho.active.Milliseconds(), pausedMs: ho.paused.Milliseconds()}
 	if ctx.Err() != nil {
 		return attemptOutcome{cancelled: true}
 	}
@@ -725,8 +779,13 @@ func (rn *run) attempt(ctx context.Context, j job, dir string, attempt int) (out
 		keep, abandon = true, true
 		res := RolloutResult{Task: task.ID, Sample: j.sample, Tags: task.Tags, Status: StatusInfra,
 			Error: "agent: the harness did not return after its context ended"}
-		rn.writeInfraEpisodeNoEvents(j, dir, res.Error, wallMs)
+		rn.writeInfraEpisodeNoEvents(j, dir, res.Error, tm)
 		return attemptOutcome{result: res}
+	case ho.outage:
+		// Not retried: the endpoint has been down for hours of this rollout, and another attempt now would sit the same outage
+		// out from the start. A later run into the same directory reruns it (an infra episode is never resumed).
+		return fail(fmt.Errorf("%w: %s in %d outage(s), the limit is %s (--max-outage-pause)",
+			ErrOutageLimit, ho.paused.Round(time.Second), ho.outages, r.maxOutagePause()), false)
 	case ho.err != nil && !ho.budget:
 		return fail(ho.err, true)
 	case ho.res.Err != nil && IsInfra(ho.res.Err):
@@ -773,7 +832,7 @@ func (rn *run) attempt(ctx context.Context, j job, dir string, attempt int) (out
 	if ep == nil {
 		return fail(errors.New("extractor returned no episode"), false)
 	}
-	rn.finalizeEpisode(ep, j, ws, &vr, claimed, ho.budget, wallMs)
+	rn.finalizeEpisode(ep, j, ws, &vr, claimed, ho.budget, tm)
 
 	st.set("score", attempt)
 	if r.Score != nil {
@@ -802,16 +861,89 @@ type harnessOutcome struct {
 	stack    string
 	hung     bool
 	budget   bool // the wall-clock budget ended the run
+	outage   bool // the policy endpoint was down for longer, in all, than the attempt may sit out
+	// active and paused split the time the harness ran into what counted against the wall budget and what the policy endpoint
+	// was down for, in outages (both zero without a pausable clock).
+	active, paused time.Duration
+	outages        int
+}
+
+// timing is how long the agent of an attempt ran: in all (wallMs), against its wall budget (activeMs) and paused while the
+// policy endpoint was down (pausedMs). The last two are zero when the runner kept no pausable clock.
+type timing struct{ wallMs, activeMs, pausedMs int64 }
+
+// outageNotice is how long an outage lasts before the progress stream says so. A gateway under load fails one request in a few
+// with a 503 that the next attempt gets past; each such blip stops the clock for a moment, and a line for every one of them, from
+// every rollout in flight, would bury the lines that matter. The log of the rollout records every outage (events.TypeRLOutage).
+var outageNotice = 30 * time.Second
+
+// outageNotices turns the changes of one attempt's clock into rollout.outage progress events: "down" once an outage has lasted
+// outageNotice, and "up" when an outage that was announced ends.
+type outageNotices struct {
+	rn   *run
+	spec RunSpec
+
+	mu        sync.Mutex
+	gen       int // counts the clock's changes, so that a timer of an outage that has ended does nothing
+	announced bool
+	since     time.Time // when the outage under way began
+}
+
+// changed is the clock's notify function.
+func (n *outageNotices) changed(down bool, cause string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.gen++
+	if down {
+		gen := n.gen
+		n.since = time.Now()
+		time.AfterFunc(outageNotice, func() {
+			n.mu.Lock()
+			defer n.mu.Unlock()
+			if n.gen != gen {
+				return
+			}
+			n.announced = true
+			n.emit("down", cause, 0)
+		})
+		return
+	}
+	if n.announced {
+		n.announced = false
+		n.emit("up", "", time.Since(n.since))
+	}
+}
+
+// close ends the notices with the attempt: a timer still pending does nothing.
+func (n *outageNotices) close() {
+	n.mu.Lock()
+	n.gen++
+	n.mu.Unlock()
+}
+
+// emit sends one rollout.outage event.
+func (n *outageNotices) emit(status, cause string, lasted time.Duration) {
+	n.rn.emit(Progress{Type: "rollout.outage", Task: n.spec.Task.ID, Sample: n.spec.Sample, Attempt: n.spec.Attempt,
+		Status: status, Error: cause, OutageMs: lasted.Milliseconds()})
 }
 
 // runHarness runs the harness with the task's wall-clock budget as a context
-// deadline. A harness that does not return within the grace period after its
-// context ended is abandoned (and reported as hung) rather than allowed to
-// stall the whole run.
+// deadline. The deadline does not run while the policy endpoint is down (a
+// WallClock, unless Runner.MaxOutagePause is negative), and outages that add up
+// to the pause limit end the run as an outage. A harness that does not return
+// within the grace period after its context ended is abandoned (and reported as
+// hung) rather than allowed to stall the whole run.
 func (rn *run) runHarness(ctx context.Context, spec RunSpec, wall time.Duration) harnessOutcome {
 	rctx := ctx
 	cancel := func() {}
-	if wall > 0 {
+	var clock *WallClock
+	if pause := rn.r.maxOutagePause(); pause > 0 {
+		notices := &outageNotices{rn: rn, spec: spec}
+		defer notices.close()
+		clock = NewWallClock(wall, pause, notices.changed)
+		spec.Clock = clock
+		rctx, cancel = clock.Watch(ctx)
+	} else if wall > 0 {
 		rctx, cancel = context.WithTimeout(ctx, wall)
 	}
 	defer cancel()
@@ -834,12 +966,22 @@ func (rn *run) runHarness(ctx context.Context, spec RunSpec, wall time.Duration)
 		select {
 		case o = <-done:
 		case <-t.C:
-			return harnessOutcome{hung: true}
+			o = harnessOutcome{hung: true}
 		}
 	}
-	// The budget ended the run if our deadline passed while the parent is fine.
+	clock.Stop()
+	o.active, o.paused, o.outages = clock.Active(), clock.Paused(), clock.Outages()
+	if o.hung {
+		return o
+	}
+	// The budget ended the run if our deadline passed while the parent is fine; or the outages did, which is no budget of the
+	// policy's.
 	if ctx.Err() == nil && rctx.Err() != nil {
-		o.budget = true
+		if errors.Is(context.Cause(rctx), ErrOutageLimit) {
+			o.outage = true
+		} else {
+			o.budget = true
+		}
 		if o.err != nil && (errors.Is(o.err, context.DeadlineExceeded) || errors.Is(o.err, context.Canceled)) {
 			o.err = nil
 		}
@@ -973,24 +1115,24 @@ func sessionOf(path string) string {
 // writeInfraEpisode records a rollout that ended in an infrastructure failure:
 // an outcome event of kind "infra" and a stub episode carrying the infra_error
 // flag, which exporters drop by default.
-func (rn *run) writeInfraEpisode(j job, dir, msg string, wallMs int64) {
+func (rn *run) writeInfraEpisode(j job, dir, msg string, tm timing) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return
 	}
 	_ = appendOutcome(dir, rn.id, j.task.ID, j.sample, outcomePayload{Kind: "infra", Message: msg})
-	rn.writeInfraEpisodeNoEvents(j, dir, msg, wallMs)
+	rn.writeInfraEpisodeNoEvents(j, dir, msg, tm)
 }
 
 // writeInfraEpisodeNoEvents makes a best-effort standalone infrastructure-failure episode when
 // normal event recording is unavailable.
-func (rn *run) writeInfraEpisodeNoEvents(j job, dir, msg string, wallMs int64) {
+func (rn *run) writeInfraEpisodeNoEvents(j job, dir, msg string, tm timing) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return
 	}
 	ep := rn.stubEpisode(j)
 	ep.AddFlag(rl.FlagInfraError)
 	ep.Reward.Notes = append(ep.Reward.Notes, "infra: "+msg)
-	ep.Cost.WallMs = wallMs
+	ep.Cost.WallMs, ep.Cost.ActiveWallMs, ep.Cost.PausedMs = tm.wallMs, tm.activeMs, tm.pausedMs
 	_ = writeJSONAtomic(filepath.Join(dir, "episode.json"), ep)
 }
 
@@ -1039,7 +1181,7 @@ func endpointHost(base string) string {
 
 // finalizeEpisode fills what the extractor left blank from what Runner knows
 // first hand, and adds the flags only Runner can know.
-func (rn *run) finalizeEpisode(ep *rl.Episode, j job, ws *Workspace, vres *Result, claimed string, budget bool, wallMs int64) {
+func (rn *run) finalizeEpisode(ep *rl.Episode, j job, ws *Workspace, vres *Result, claimed string, budget bool, tm timing) {
 	t := j.task
 	if ep.Schema == "" {
 		ep.Schema = rl.SchemaEpisode
@@ -1080,8 +1222,10 @@ func (rn *run) finalizeEpisode(ep *rl.Episode, j job, ws *Workspace, vres *Resul
 		ep.Outcome.Verifier = &v
 	}
 	if ep.Cost.WallMs == 0 {
-		ep.Cost.WallMs = wallMs
+		ep.Cost.WallMs = tm.wallMs
 	}
+	// Only the runner knows which part of the run the endpoint was down for.
+	ep.Cost.ActiveWallMs, ep.Cost.PausedMs = tm.activeMs, tm.pausedMs
 	if ep.StartedAt.IsZero() {
 		ep.StartedAt = rn.start
 	}
@@ -1130,6 +1274,7 @@ func ResultFromEpisode(ep *rl.Episode, tags []string) RolloutResult {
 		Task: ep.TaskID, Sample: ep.Sample, Status: StatusOK, Tags: tags, Attempts: 1,
 		Claimed: ep.Outcome.Claimed, Flags: append([]string(nil), ep.Flags...),
 		Reward: ep.Reward.Total, CostUSD: ep.Cost.USD, ITE: ep.Cost.ITE, WallMs: ep.Cost.WallMs,
+		ActiveWallMs: ep.Cost.ActiveWallMs, PausedMs: ep.Cost.PausedMs,
 		Tokens:         tokensOf(ep.Cost.Usage),
 		ToolErrors:     int(ep.Signals[rl.SigToolErrors]),
 		InvalidCalls:   int(ep.Signals[rl.SigInvalidToolCalls]),
