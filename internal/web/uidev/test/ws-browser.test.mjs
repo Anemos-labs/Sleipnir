@@ -16,7 +16,9 @@ let chrome = null, skip = false;
 try { chrome = findChrome(); } catch { skip = 'no Chromium'; }
 if (!skip && !fs.existsSync(path.join(REPO, 'internal/web/uidev/mock/js/data.js'))) skip = 'the data pack of the reference page is not in the tree';
 const FONTS = path.join(REPO, 'internal/web/ui/fonts');
-const T = { skip };
+/** each test's time limit is far above what a test takes and above the 120 s a lost DevTools answer is waited for: a test that waits for
+ * anything else that never comes fails under its own name instead of holding the file until CI cancels the job */
+const T = { skip, timeout: 180000 };
 /** the flows of SL.act (reviewed, revert, restore) need the live page's own actions, cut out of 60-actions.js: a test that needs them skips when they are not there */
 const needActs = t => { if (makeHybrid.acts === false) { t.skip('the workspace actions of 60-actions.js could not be cut out: ' + makeHybrid.why); return true; } return false; };
 let browser = null, root = null; const servers = [], pages = [];
