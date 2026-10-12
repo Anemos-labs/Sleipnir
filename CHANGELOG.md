@@ -15,6 +15,13 @@ they do not indicate whether a change has been released.
   `module@version`): a plain `go list github.com/owner/repo/pkg` lists a
   package of the build and was flagged as reaching github.com. A Go command
   refused by `GOPROXY=off` counts as failed.
+- `rl taskgen chain` and `rl taskgen rebuild` give a task 250 requests for
+  each worker and hour of its wall clock (at least 2.5 per step, as before).
+  The request budget counts every agent of the session, and 2.5 per step
+  ran out after 3 to 4 hours of a 9 to 12 hour task, so a team was stopped
+  with most of its wall clock left. Tasks generated before keep the budget
+  they recorded; raise `budget.requests` in their file to give them the new
+  one.
 - `rl export --format dpo` pairs the siblings of a branch point. For a
   branch episode (`fork` set) the episode unit compares its root agent from
   the fork to the first rebase after it: it stops collecting at that rebase,

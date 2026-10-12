@@ -286,7 +286,8 @@ oldest first, each one's first parent being the one before; optionally an issue 
   the whole suite, and the check pull requests + 1 more.
 * **Task.** `kind` `swarm`, `team` `{"mode": "swarm", "agents": n}` with one worker fewer than pull requests (2 to 6),
   `budget.wall_s` 6 hours, 45 minutes more per pull request beyond the third and an hour more per 1000 changed lines,
-  at most 12 hours; tags `long`, `chain`, `harvested`, the languages and the id prefix. `meta.commits` lists the pull
+  at most 12 hours; `budget.requests` 250 for each worker and hour of that wall clock (the session counts every agent's
+  requests against it, so the wall clock ends a team that keeps working); tags `long`, `chain`, `harvested`, the languages and the id prefix. `meta.commits` lists the pull
   requests' commits, `meta.parent` and `meta.commit` are the start and the end, and `meta.source` holds `repo` (the
   origin's URL without credentials, or the directory's name), `range` (`<start>..<end>`) and `license` (the SPDX id at
   the end, when recognised), with the chain's own `source` keys over them.
@@ -361,7 +362,8 @@ team to write a library again from its specification, as it is at a version of t
   the test file names of the scope's directories, where the hidden tests are written; the prompt asks for tests of the
   agent's own in a directory of their own.
 * **Task.** `kind` `swarm`; `team` `{"mode": "swarm", "agents": n}` with 3 workers for 2,000 lines up to 6 for 10,000;
-  `budget.wall_s` from 6 hours for 2,000 lines up to 12 hours for 10,000; tags `long`, `rebuild`, `harvested`, the
+  `budget.wall_s` from 6 hours for 2,000 lines up to 12 hours for 10,000; `budget.requests` 250 for each worker and
+  hour of that wall clock, as for chains; tags `long`, `rebuild`, `harvested`, the
   language, `rebuild-<tier>` and the id prefix. The prompt lists the packages in dependency order with their sizes and
   says how the work is scored. The reference solution, the diff from the start to the reference sources, is stored
   like every generator's (`meta.gold_blob`), and `meta.source` holds `repo` (the origin's URL without credentials, or
