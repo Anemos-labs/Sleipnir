@@ -204,7 +204,7 @@
       else if (t.closest('[data-rep]')) openRecorded(t.closest('[data-rep]').dataset.rep, false);
       else if (t.closest('[data-watch]')) openRecorded(t.closest('[data-watch]').dataset.watch, true);
       else if (t.closest('[data-hint]')) { const r = recorded().find(x => x.id === t.closest('[data-hint]').dataset.hint); if (r && r.integration) U.copy(r.integration.hint || '').then(ok => ui.toast(ok ? 'command copied' : 'copy is not available here', ok ? 'ok' : 'warm')); }
-      else if (t.closest('[data-inb]')) ui.inbox.toggle($('#sInbox'));
+      else if (t.closest('[data-inb]')) ui.inbox.toggle();
       else if (t.closest('#pYes')) {
         const plan = P.plan; if (!plan || plan.error || !plan.list.length) return; const { o, k } = pruneArgs(), list = plan.list, sp = deleteSpec(list, 'prune');
         ui.confirm({ title: sp.title, text: sp.text, detail: sp.detail, ok: sp.ok, danger: true, run: async () => {

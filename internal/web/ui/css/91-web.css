@@ -155,3 +155,52 @@ body.cq .anom .a b{color:var(--warm)}
 .nstrow.zero .nstname{opacity:.55}.nstname{font:700 12px var(--f-num)}
 .nststep{display:inline-flex;align-items:center;gap:4px}.nstn{min-width:1.6em;text-align:center;color:var(--bright)}
 .nstrow select{min-width:0;width:100%}
+
+/* ---------- Needs you: loud on every view (the session strip and the left rail), with how long the oldest question has waited ---------- */
+.sstrip .sact.inbox.has{background:var(--warm);color:var(--on-accent);font-weight:700;gap:6px;padding:0 10px 0 8px;animation:needpulse 2s ease-in-out infinite}
+.sstrip .sact.inbox.has:hover{background:var(--warm);color:var(--on-accent);filter:brightness(1.08)}
+.sstrip .sact.inbox.has b{background:var(--on-accent);color:var(--warm);border-color:transparent;font-size:11px}
+.sact.inbox .nyq{font:800 13px/1 var(--f-num);font-style:normal}
+.sact.inbox .nyage{font:600 11px var(--f-num)}
+.sstrip .sact.inboxall{padding:0 7px;border-left:1px solid var(--warm-b);color:var(--warm);background:var(--warm-a)}
+.stab .nb{background:var(--warm);color:var(--on-accent);border-color:var(--warm);font-weight:800}
+.nvi.nvneed{color:var(--warm);background:var(--warm-a);border-left-color:var(--warm);animation:needpulse 2s ease-in-out infinite}
+.nvi.nvneed:hover{color:var(--bright);background:var(--warm-b)}
+.nvi.nvneed .nyq{font:800 17px/20px var(--f-num);width:20px;height:20px;text-align:center}
+.nvi.nvneed .nyage{font:600 9.5px/1 var(--f-num);color:var(--warm)}
+#app[data-navmode="wide"] .nvi.nvneed .nyage{margin-left:auto;font-size:10.5px}
+@keyframes needpulse{50%{box-shadow:inset 0 0 0 1px var(--warm),0 0 14px var(--warm-b)}}
+@media (prefers-reduced-motion:reduce){.sstrip .sact.inbox.has,.nvi.nvneed{animation:none}}
+
+/* ---------- a question while the view is a replay: answering is paused, said over the card with the way back ---------- */
+.qstrip .qreplay{display:flex;align-items:center;gap:8px;margin:-9px -10px 8px;padding:7px 10px;background:var(--err-a);border-bottom:1px solid var(--err-b);color:var(--bright);font:600 12.5px/1.2 var(--f-ui)}
+.qstrip .qreplay[hidden]{display:none}
+.qstrip .qreplay b{color:var(--err);font:700 11px var(--f-lab);letter-spacing:.14em;text-transform:uppercase}
+.qstrip .qreplay .btn{margin-left:auto}
+.qstrip.replay .qopts{opacity:.55}
+.qstrip:focus{outline:none}.qstrip:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+
+/* ---------- the manager's answers to routine questions: one collapsed line (rail and chat) ---------- */
+.qmgr{margin:6px 8px 4px;border:1px solid var(--line2);background:var(--panel2);font-size:12px;color:var(--fg2);flex:none}
+.qmgr.qdone{display:block;padding:0}
+.msg.mgrdec .qmgr{margin:0}
+.qmgr-t{display:flex;align-items:center;gap:8px;width:100%;padding:6px 10px;text-align:left;color:var(--fg2);font:500 12px/1.25 var(--f-ui)}
+.qmgr-t:hover{color:var(--bright);background:var(--raise)}
+.qmgr-t .lg{color:var(--ok);font:700 12px var(--f-num)}
+.qmgr-t .dx{margin-left:auto;color:var(--dim)}
+.qmgr-l{list-style:none;margin:0;padding:4px 10px 8px 28px;display:flex;flex-direction:column;gap:3px;max-height:min(30vh,220px);overflow-y:auto;font-size:11.5px;line-height:1.3}
+.qmgr-l[hidden]{display:none}
+.qmgr-l li{overflow-wrap:anywhere;display:flex;flex-wrap:wrap;align-items:baseline;gap:0 6px}.qmgr-l .mono{color:var(--fg);font-size:11px}
+
+/* ---------- the Start confirmation: every reason in view, a long list of rules one line with a disclosure ---------- */
+.cf-rules .cf-tog{display:inline;text-align:left;color:var(--fg);font:inherit;padding:0}
+.cf-rules .cf-tog .dx{color:var(--fe);font:600 11px var(--f-num);white-space:nowrap}
+.cf-rules .cf-tog:hover .dx{text-decoration:underline}
+.cf-rl{list-style:none;margin:4px 0 2px;padding:6px 8px;display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:2px 12px;background:var(--well);border:1px solid var(--line);font-size:11px}
+.cf-rl[hidden]{display:none}
+
+/* ---------- Settings › Appearance: the notification's seconds ---------- */
+.nfafter{display:inline-flex;align-items:center;gap:6px;margin-left:10px}.nfafter input{width:72px}
+
+/* ---------- the New session team builder: the model of a role keeps room for its name ---------- */
+.nstrow{grid-template-columns:minmax(70px,auto) auto auto minmax(132px,1fr)}

@@ -24,7 +24,7 @@
 .mgr-card[data-state="done"] .s-st{color:var(--ok)}
 .stall .legn{font-style:normal;color:var(--fg2)}
 .stall.ghost{border:1px dashed var(--line2);border-left:3px dashed var(--line2);background:transparent;opacity:.55;cursor:default}
-.stall.ghost .s-id{color:var(--faint)}
+.stall.ghost .s-id{color:var(--faint);font:700 12.5px/1.15 var(--f-lab);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .solo{grid-column:1/-1;grid-row:1/-1;background:var(--panel);border:1px solid var(--line);padding:14px 16px;overflow:auto}
 .solo b{font:700 13px var(--f-lab);letter-spacing:.14em;text-transform:uppercase;color:var(--c-mgr)}
 .solo p{color:var(--fg2);margin:6px 0 10px;font-size:13px}

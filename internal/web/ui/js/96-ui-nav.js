@@ -80,19 +80,22 @@
     const wide = () => (pref.nav || (window.innerWidth >= 1700 ? 'wide' : 'rail')) === 'wide';
     function paintNav(S) {
       const cur = currentId(S), bd = badges(S), w = wide(), railOpen = app.dataset.rail === 'open';
-      const sig = [cur, w, railOpen, SL.settings.cache, Object.keys(bd).map(k => k + (bd[k] && bd[k][0])).join(','), S && S.id].join('|'); if (N.sig === sig) return; N.sig = sig;
+      const nd = SL.sessions.needs().reduce((n, x) => n + (x.waiting || 1), 0), sig = [cur, w, railOpen, SL.settings.cache, Object.keys(bd).map(k => k + (bd[k] && bd[k][0])).join(','), S && S.id, nd].join('|'); if (N.sig === sig) return; N.sig = sig;
       app.dataset.navmode = w ? 'wide' : 'rail'; let g = null;
       const items = ITEMS.map(it => {
         const b = bd[it.id], isCur = !it.radio && it.id === cur, head = it.grp && it.grp !== g ? (g = it.grp, (g !== 'team' ? '<span class="nvh" aria-hidden="true">' + GRP[g] + '</span>' : '')) : '';
         return head + '<button class="nvi" type="button" data-nav="' + it.id + '"' + (isCur ? ' aria-current="page"' : '') + (it.radio ? ' aria-pressed="' + railOpen + '" aria-controls="rail"' : '') + (b ? ' aria-label="' + esc(it.label + ', ' + b[2]) + '"' : '') + ' title="' + esc(it.label + (it.radio ? ' · opens the Radio rail' : '') + ' (g ' + it.key + ')') + '">' + ICONS[it.id] + '<span class="nl">' + esc(w || !it.short ? it.label : it.short) + '</span><kbd class="nk">g ' + it.key + '</kbd>' + (b ? '<span class="nbd ' + (b[1] || '') + '" aria-hidden="true">' + esc(b[0]) + '</span>' : '') + '</button>';
       }).join('');
-      nav.innerHTML = '<div class="nv-list">' + items + '</div><button class="nvt" type="button" id="nvTog" aria-expanded="' + w + '" title="' + (w ? 'Narrow the rail' : 'Widen the rail: labels and chord keys') + '"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="' + (w ? 'M10 3L5 8l5 5' : 'M6 3l5 5-5 5') + '" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="nl">' + (w ? 'Narrow' : 'Widen') + '</span></button><div class="chordhint" id="chordHint" hidden></div>';
-      N.hint = $('#chordHint', nav);
+      /* Needs you, on top of every view: how many questions wait in every session and how long the oldest has; it opens that one */
+      const need = nd ? '<button class="nvi nvneed" type="button" data-needgo aria-label="' + nd + ' question' + (nd === 1 ? '' : 's') + ' wait for you: open the oldest" title="open the question that has waited longest"><span class="nvg nyq" aria-hidden="true">?</span><span class="nl">Needs you</span><span class="nbd warm" aria-hidden="true">' + nd + '</span><span class="nyage num" data-needage></span></button>' : '';
+      nav.innerHTML = '<div class="nv-list">' + need + items + '</div><button class="nvt" type="button" id="nvTog" aria-expanded="' + w + '" title="' + (w ? 'Narrow the rail' : 'Widen the rail: labels and chord keys') + '"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="' + (w ? 'M10 3L5 8l5 5' : 'M6 3l5 5-5 5') + '" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="nl">' + (w ? 'Narrow' : 'Widen') + '</span></button><div class="chordhint" id="chordHint" hidden></div>';
+      N.hint = $('#chordHint', nav); if (nd && ui.approvals && ui.approvals.paintAges) ui.approvals.paintAges();
       paintPhone(S, cur);
     }
     function render(S) { paintNav(S); }
     sc.on('cache-detail', () => { N.sig = ''; paintNav(SL.sessions.active); });
     sc.listen(nav, 'click', e => {
+      if (e.target.closest('[data-needgo]')) { ui.approvals.goto(); return; }
       const b = e.target.closest('[data-nav]'); if (b) { go(b.dataset.nav); return; }
       if (e.target.closest('#nvTog')) { pref.nav = wide() ? 'rail' : 'wide'; save(); N.sig = ''; paintNav(SL.sessions.active); }
     });

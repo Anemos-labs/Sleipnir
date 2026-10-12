@@ -80,7 +80,9 @@ open the address again; nothing is shown from the session until then.
   for that action only. The server decides what a request raises from the settings that would take effect (a dangerous mode,
   allow rules the session does not have, a verify command, a project's own files, the removal of a deny or ask rule); the page
   lists those reasons, with the request (method and path) and the scope it confirms, and asks before it sends the request
-  again. Outside the New session dialog, a dangerous mode is confirmed by typing its name; in that dialog, choosing the mode is
+  again. Every reason is in view at once: the rules of the tests preset are one line (`allow the tests preset: build and test
+  commands of go, cargo, npm… (N rules) ▸ show`), and any other list of more than six rules is one line with its count; each
+  comes after the other reasons and opens to its rules on a click. Outside the New session dialog, a dangerous mode is confirmed by typing its name; in that dialog, choosing the mode is
   the confirmation. A confirmation covers what was shown: when an approved tool server's entry changed after its card was read,
   nothing is confirmed, and the card shows the entry as it is now for a new approval.
 - Names in a session log (agents, tasks, questions) are shown only when they are plain words (letters, digits, `.`, `_`, `:`
@@ -101,7 +103,12 @@ and `--allow` (actions answered yes in advance, with examples to click and a che
 server answers that the project's own files need trust, for a new session and for a resume alike, the trust dialog lists every
 file it named, with their count and size, and each path that could not be read; its yes stays disabled until that list is on
 screen and repeats the request with the confirmation of exactly that list. A project that could not be read whole is trusted for
-that session only. When the server does not start the session, the dialog opens again as it was, with the reason under its
+that session only. A team's isolation that neither the person nor `sleipnir web --isolation` nor `swarm.isolation` chose follows the folder:
+`worktree` in the root of a git repository with a commit, or in a folder that git init will make one, else `none`. The team options
+include `manager answers routine questions` (`--manager-approves`, on by default; only an off is sent). Once the server has made
+the session, its tab is in front at once, before its first state arrives; a goal, a line or a command sent to it while it starts is
+sent again, after 0.5, 1, 2 and 4 seconds and then every 5, until it has started (for at most two minutes), and the Workspace waits
+for it in the same way without a message. When the server does not start the session, the dialog opens again as it was, with the reason under its
 title; an allow rule typed but not added, and a role and model chosen but not added, are part of what starts. The dialog's
 command line quotes every value for a POSIX shell. `↺ Resume` continues a recorded session; a recorded session can also be
 opened read-only, to replay it, or followed while another process writes it; its first 400,000 events are read, and the banner
@@ -188,6 +195,17 @@ hold, in a paused view or in another tab. A form being typed in stays as it is w
 again. The tab title shows
 `(? N)` while questions wait, unless Settings › Appearance turns the badge off.
 
+While a question waits in any session, every view shows `Needs you` in the session strip and at the top of the left rail, with
+the number of open questions and how long the oldest has waited. A click on it makes that question's session the active one,
+opens the Radio rail and puts the focus on the question; the `▾` beside it lists every open question of every session.
+Settings › Appearance › Question notification (off by default, kept in the browser) sends one browser notification per question
+that has waited the set number of seconds (30 unless changed) while the page is hidden or in the background; turning it on asks
+the browser for permission, a click on the notification opens the question, and an answered question's notification closes.
+
+A replay never stops answering silently: while the view is a replay, the question box carries a `Replay: answers are paused` banner
+with `Go live`. A plain click on the Cockpit's gantt chart opens the agent's details and never starts a replay; its buttons, its
+scrub bar and the replay keys do. A tape of the Replay view shown as a Cockpit card seeks only a replay already running.
+
 ### Approvals
 
 A question names the agent, its task, what it wants to do (run a command, edit or write a file, apply a patch, fetch a page,
@@ -200,7 +218,10 @@ directional formatting character acts on nothing beyond its own mark. Copying th
 again for that kind of request in this session (the exact rules it adds are listed under it; offered only when it would remember
 something, else the option is absent and the key 2 does nothing), and 3 no with an instruction for the agent; a build or test
 command also offers allowing builds and tests for the session, which takes key 3 and moves no to 4. A question that closes without
-an answer (canceled, timed out, the session closed) leaves a row that says so.
+an answer (canceled, timed out, the session closed) leaves a row that says so. A question the manager answers for a team
+(`--manager-approves`) is never a question for the person: its decision joins one collapsed line in the conversation and above it in
+the rail (`the manager approved N actions ▸`, or how many it approved and denied), which opens to the agent, the command and the
+decision of each.
 Esc is no. The buttons and the keys work only after the keyboard has been quiet for 0.8 seconds since the question appeared on
 screen or since the last key; text typed meanwhile goes to the message box and never answers. A question that arrives while
 the rail is collapsed opens it; an answer key pressed while the question is not on screen opens it and answers nothing. The

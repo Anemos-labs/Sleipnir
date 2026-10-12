@@ -139,6 +139,14 @@
       "reason": "the question badge in this browser tab's title; a browser feature, the terminal rings its bell instead (SLEIPNIR_BELL)"
     },
     {
+      "item": "browser:look.seg:notify",
+      "reason": "a browser notification of a question that waits while the page is out of sight; a browser feature kept in localStorage, the terminal rings its bell instead (SLEIPNIR_BELL)"
+    },
+    {
+      "item": "browser:look.id:notifySec",
+      "reason": "after how many seconds the browser notification of a waiting question comes; part of that browser feature, kept in localStorage"
+    },
+    {
       "item": "browser:look.seg:navmode",
       "reason": "icons or wide labels in the left rail; the layout of this browser's page"
     },

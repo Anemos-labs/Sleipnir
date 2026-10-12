@@ -310,7 +310,19 @@
     S.followTimer = setTimeout(tick, FOLLOW_MS);
   }
 
+  /**
+   * A tab the server just created (the 201 of POST /api/sessions, t its summary): it is a tab of the page at once, empty and marked as
+   * starting, so that the page can show it before its snapshot lands; its snapshot is fetched (and fills it) as for any new tab.
+   * Returns the session.
+   */
+  function placeTab(t) {
+    if (!t || !t.id) return null; const have = ss().get(t.id); if (have) return have;
+    L.tabs[t.id] = Object.assign({}, L.tabs[t.id] || {}, t);
+    const S = ss().make({ id: t.id, name: t.name || t.id, sid: t.sid, cwd: t.cwd, headless: t.headless, order: t.order != null ? t.order : 1000, meta: {} });
+    SL.bus.emit('sessions-changed'); loadTab(t.id);
+    return S;
+  }
   /** The defaults of a new session (the server's flags and configuration), when the server sends them. */
   L.defaults = () => (L.hello && L.hello.defaults) || null;
-  Object.assign(L, { start, loadTab, loadWatch, isWatch, applyEv, fromSnapshot, onFrame, setState, refetchAll, H, openRecorded, rosterOf, recordedEvents, MAX_EVENTS });
+  Object.assign(L, { start, loadTab, placeTab, loadWatch, isWatch, applyEv, fromSnapshot, onFrame, setState, refetchAll, H, openRecorded, rosterOf, recordedEvents, MAX_EVENTS });
 })(SL);

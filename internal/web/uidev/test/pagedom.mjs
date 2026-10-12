@@ -292,7 +292,7 @@ const snapshot = (id, order, seq) => ({ tab: { id, sid: 's-' + id, name: id, cwd
   keyframe: [ev(0, 1, 'use', { id: 'be-1', rd: 10, un: 5, out: 1 })], events: [ev(1, 2, 'say', { who: 'you', text: 'hi' }), ev(2, 3, 'state', { id: 'be-1', s: 'edit', doing: 'Edit x', task: 'T1' })], hist: ['earlier line', 'a later line'], questions: [] });
 
 /** A page, booted and idle. `two` gives it a second session tab; `storage` is what localStorage holds at the start (key -> string);
- *  `automation: false` makes it a browser that no test drives (navigator.webdriver is false). */
+ *  `automation: false` makes it a browser that no test drives (navigator.webdriver is false); `globals` adds names to its window. */
 export async function boot(o) {
   o = o || {};
   LOG.errors = [];
@@ -333,6 +333,7 @@ export async function boot(o) {
     getSelection: () => ({ toString: () => '' }), CSS: { escape: s => String(s).replace(/[^\w-]/g, c => '\\' + c) },
     addEventListener: (...a) => win.addEventListener(...a), removeEventListener: (...a) => win.removeEventListener(...a), confirm: () => false,
   };
+  if (o.globals) Object.assign(ctx, o.globals);   // what a test adds to the window (a Notification, say)
   ctx.window = ctx; ctx.globalThis = ctx; vm.createContext(ctx);
   FILES.forEach((f, i) => { const edit = PATCH[path.basename(f)]; (edit ? new vm.Script(edit(SOURCES[i]), { filename: f }) : SCRIPTS[i]).runInContext(ctx); });
   ctx.SL.palette.clock = () => ctx.SL.time.T.wall; // the age of an answer is the page's own clock, not the machine's

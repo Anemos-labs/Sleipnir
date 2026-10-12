@@ -229,6 +229,7 @@ export const SETTING_MAP = [
   [/^flag:commit$/, { scope: 'flag', flag: 'commit' }],
   [/^flag:mailman$/, { scope: 'config', keys: ['swarm.mailman'], flag: 'mailman' }],
   [/^flag:autoDocs$/, { scope: 'config', keys: ['swarm.auto_docs'], flag: 'auto-docs' }],
+  [/^flag:managerApproves$/, { scope: 'config', keys: ['permissions.manager_approves'], flag: 'manager-approves' }],
   [/^flag:noMcp$/, { scope: 'flag', flag: 'no-mcp' }],
   [/^flag:trustProject$/, { scope: 'flag', flag: 'trust-project' }],
   [/^do:copycli$/, { scope: 'view' }],
@@ -243,7 +244,8 @@ export const SETTING_MAP = [
   // Config layers
   [/^id:cq$/, { scope: 'view' }],
   // Appearance and motion
-  [/^seg:(hover|motion|density|cache|title|navmode|radiomode)$/, { scope: 'browser' }],
+  [/^seg:(hover|motion|density|cache|title|notify|navmode|radiomode)$/, { scope: 'browser' }],
+  [/^id:notifySec$/, { scope: 'browser', note: 'after how many seconds a waiting question is notified, kept in this browser' }],
   [/^do:railreset$/, { scope: 'browser' }],
   [/^do:dash-(edit|reset)$/, { scope: 'browser', note: 'the layout of the Cockpit\'s cards, kept in this browser' }],
   [/^do:tour$/, { scope: 'view' }],
@@ -290,7 +292,7 @@ function dialogInventory(SL, chatFlags) {
   if (!ns || !rs) throw new Error('a dialog did not open in the inventory');
   const labels = [...ns.body.matchAll(/<label>([^<]*)<\/label>/g)].map(m => m[1]);
   const checks = [...ns.body.matchAll(/<label class="chk"><input type="checkbox" data-k="([A-Za-z]+)"[^>]*> ([^<]*)<\/label>/g)].map(m => m[1] + ' ' + m[2].trim());
-  const full = { resume: '20260101-000000-abcdef', cwd: '/p', model: 'a/m', mode: 'plan', swarm: 8, autoDocs: false, isolation: 'worktree', verify: 'v', commit: true, mailman: true, mailmanDefault: false,
+  const full = { resume: '20260101-000000-abcdef', cwd: '/p', model: 'a/m', mode: 'plan', swarm: 8, autoDocs: false, managerApproves: false, isolation: 'worktree', verify: 'v', commit: true, mailman: true, mailmanDefault: false,
     budget: '5', roleModels: { backend: 'a/w' }, rules: ['tests'], trustProject: true, noMcp: true, goalText: '' };
   const line = ui.dialogs.cliLine(full), lineOff = ui.dialogs.cliLine(Object.assign({}, full, { mailman: false, mailmanDefault: true }));
   /* the flags a control of the dialog sets: those its labels and checkboxes name, and a segmented control named after a flag (isolation) */

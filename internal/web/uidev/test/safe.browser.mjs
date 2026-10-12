@@ -66,7 +66,7 @@ try {
   await p.eval(`document.querySelector('.stall[data-ag="be-1"]').click()`); await p.sleep(400);
   for (const t of ['info', 'log', 'mail', 'cache']) { await p.eval(`document.querySelector('.drawer [data-tab="${t}"]').click()`); await p.sleep(300); await check('drawer ' + t); }
   await p.key('Escape');
-  await p.eval(`document.getElementById('sInbox').click()`); await p.sleep(400); await check('inbox'); await p.key('Escape');
+  await p.eval(`(document.getElementById('sInboxAll') || document.getElementById('sInbox')).click()`); await p.sleep(400); await check('inbox'); await p.key('Escape');
   await p.eval(`document.getElementById('sRes').click()`); await p.sleep(400); await check('resume dialog'); await p.key('Escape');
   await p.eval(`document.getElementById('goalBtn').click()`); await p.sleep(400); await check('goal sheet'); await p.key('Escape');
   await p.eval(`SL.palette.open('')`); await p.sleep(400); await check('palette'); await p.key('Escape');
