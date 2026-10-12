@@ -142,3 +142,9 @@ body.cq .anom .a b{color:var(--warm)}
 .helptip[hidden]{display:none}.helptip b{color:var(--bright)}.helptip kbd{font:600 10.5px var(--f-num)}
 .fld>.fl{display:flex;align-items:flex-start;gap:0;min-width:0}.fld>.fl>label{font:600 11px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;color:var(--dim);padding-top:7px}.fld>.fl .qh{margin-top:6px}
 [data-help].nschip{cursor:help}
+/* the team rows of New session: a role, its ?, a stepper and the model its workers run on */
+.nsteamrows{display:flex;flex-direction:column;gap:3px;margin-top:6px;flex-basis:100%}.nsteamrows[hidden]{display:none}
+.nstrow{display:grid;grid-template-columns:minmax(78px,auto) auto auto minmax(0,1fr);align-items:center;gap:6px}
+.nstrow.zero .nstname{opacity:.55}.nstname{font:700 12px var(--f-num)}
+.nststep{display:inline-flex;align-items:center;gap:4px}.nstn{min-width:1.6em;text-align:center;color:var(--bright)}
+.nstrow select{min-width:0;width:100%}

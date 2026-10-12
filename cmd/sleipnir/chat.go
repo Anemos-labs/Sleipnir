@@ -74,9 +74,23 @@ func cmdChat(ctx context.Context, args []string) error {
 	fs := newFlagSet("chat", flag.ExitOnError)
 	cf := registerChatFlags(fs) // chatflags.go: the same flags as `sleipnir web` parses for its sessions
 	model, cwd, mode, swarmN, trust, verbose, budget, noMCP, verify := cf.model, cf.cwd, cf.mode, cf.swarmN, cf.trust, cf.verbose, cf.budget, cf.noMCP, cf.verify
-	isolation, commit, mailman, roleModels, resume, allow, plain, noAnim := cf.isolation, cf.commit, cf.mailman, cf.roleModels, cf.resume, cf.allow, cf.plain, cf.noAnim
+	isolation, commit, mailman, autoDocs, resume, allow, plain, noAnim := cf.isolation, cf.commit, cf.mailman, cf.autoDocs, cf.resume, cf.allow, cf.plain, cf.noAnim
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	swarmGiven := false
+	fs.Visit(func(f *flag.Flag) { swarmGiven = swarmGiven || f.Name == "swarm" })
+	roleModels, teamSlots, err := cf.roleModels.split()
+	if err != nil {
+		return usageError(fs, "chat: "+err.Error())
+	}
+	if *swarmN, err = teamWorkers(teamSlots, *swarmN, swarmGiven); err != nil {
+		return usageError(fs, "chat: "+err.Error())
+	}
+	if swarmGiven {
+		if err := checkTeamSize(*swarmN); err != nil {
+			return usageError(fs, "chat: "+err.Error())
+		}
 	}
 	checkForUpdateInBackground()
 	// Nothing says which model to use: ask the provider what it has, once (pick.go).
@@ -89,14 +103,12 @@ func cmdChat(ctx context.Context, args []string) error {
 		return chatOptions(session.Options{
 			Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: team, Workers: workers,
 			TrustProject: *trust, BudgetUSD: *budget, Resume: spec, NoMCP: *noMCP,
-			Verify: *verify, Isolation: *isolation, Commit: *commit, Mailman: mailman(), RoleModels: roleModels,
-			Allow: expandAllow(*allow),
+			Verify: *verify, Isolation: *isolation, Commit: *commit, Mailman: mailman(), AutoDocs: autoDocs(), RoleModels: roleModels,
+			Team: append([]session.TeamSlot(nil), teamSlots...), DefaultTeam: true, Allow: expandAllow(*allow),
 		})
 	}
 	if !*plain && app.CanDrawChat(os.Stdin, os.Stdout, os.Getenv) {
-		given := false
-		fs.Visit(func(f *flag.Flag) { given = given || f.Name == "swarm" })
-		if !given {
+		if !swarmGiven && len(teamSlots) == 0 {
 			*swarmN = defaultTeam()
 			// a session that is continued keeps its shape: one that ran as a single agent is not brought back as a manager and eight workers with its budget
 			if spec, _ := resume(); spec != "" {

@@ -21,12 +21,12 @@ func noBudgetEnv(t *testing.T) {
 // budgetEnv is the environment variable of swarm.budget_usd.
 const budgetEnv = "SLEIPNIR_SWARM_BUDGET_USD"
 
-// startTeam starts a team of two in the project with the budget of the request and returns its tab.
+// startTeam starts a team of eight in the project with the budget of the request and returns its tab.
 func (r *webRig) startTeam(project string, budget *float64) string {
 	r.t.Helper()
-	two := 2
+	eight := 8
 	var created struct{ Tab wire.TabSummary }
-	r.json("POST", "/api/sessions", wire.NewSessionRequest{Cwd: project, Swarm: &two, Budget: budget}, 201, &created)
+	r.json("POST", "/api/sessions", wire.NewSessionRequest{Cwd: project, Swarm: &eight, Budget: budget}, 201, &created)
 	r.ready(created.Tab.ID)
 	return created.Tab.ID
 }

@@ -522,6 +522,9 @@ func rolesFor(t rl.Team) (swarm.Roles, error) {
 		return nil, nil
 	}
 	all := swarm.BuiltinRoles()
+	for name, r := range swarm.LegacyRoles() {
+		all[name] = r // a training task may still name a role of an earlier release
+	}
 	out := swarm.Roles{}
 	if m, ok := all["manager"]; ok {
 		out["manager"] = m

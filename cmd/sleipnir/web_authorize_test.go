@@ -86,7 +86,7 @@ func TestPrivilegeIsConfirmedWhereItTakesEffect(t *testing.T) {
 	r.needsConfirm("POST", path+"/rules/remove", wire.RuleRequest{Effect: "deny", Rule: "Bash(rm:*)"})
 
 	r.needsConfirm("POST", path+"/command", wire.CommandRequest{Line: "/restart --mode yolo"})
-	r.needsConfirm("POST", path+"/command", wire.CommandRequest{Line: "/swarm 2 --verify 'sh x.sh'"})
+	r.needsConfirm("POST", path+"/command", wire.CommandRequest{Line: "/swarm 8 --verify 'sh x.sh'"})
 	r.needsConfirm("POST", path+"/restart", wire.RestartRequest{Kind: "restart", Flags: []string{"--mode", "bypass"}})
 	r.needsConfirm("POST", path+"/command", wire.CommandRequest{Line: "/rewind cp_0001"})
 	if g := r.h.tab(tab.ID).Summary().Gen; g != 1 {

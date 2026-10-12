@@ -23,7 +23,7 @@
   /** Seconds since local midnight and hh:mm:ss of an epoch-milliseconds instant. */
   const todOf = ms => { const d = new Date(ms); return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds() + d.getMilliseconds() / 1000; };
 
-  const DEFAULT_META = { mode: 'default', effort: 'default', budget: 0, swarm: 0, isolation: 'none', verify: '', commit: false, mailman: false, trustProject: true, noMcp: false, roleModels: {}, rules: [], goalText: '', cwd: '', model: '', launch: '', headless: false, running: false, t0: 0, started: '' };
+  const DEFAULT_META = { mode: 'default', effort: 'default', budget: 0, swarm: 0, isolation: 'none', verify: '', commit: false, mailman: false, autoDocs: true, team: [], trustProject: true, noMcp: false, roleModels: {}, rules: [], goalText: '', cwd: '', model: '', launch: '', headless: false, running: false, t0: 0, started: '' };
 
   class Session {
     /** spec: {id, name, sid, gen, cwd, headless, meta, roster, recorded (a read-only recorded session), placeholder (no tab)}. */

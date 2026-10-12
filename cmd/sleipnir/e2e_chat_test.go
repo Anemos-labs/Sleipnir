@@ -499,7 +499,7 @@ func TestE2EChatSwarmCtrlCCancelsTheTurnNotTheSession(t *testing.T) {
 	slow := m.on("@slow", say("slow turn finished").held())
 	m.on("@hello", say("hi there"))
 	w := newWorld(t, m.url())
-	u := startUI(t, w, "--swarm", "1")
+	u := startUI(t, w, "--swarm", "8")
 
 	u.send("@slow")
 	slow.wait(t)

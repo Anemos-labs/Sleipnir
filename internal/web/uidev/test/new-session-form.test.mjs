@@ -33,7 +33,7 @@ test('the budget starts at off and Start sends 0, which is no limit; a number ty
 });
 
 test('the command line lifts the terminal\'s cap of a team when the budget is off, and says nothing of it otherwise', async () => {
-  const L = await open({ swarm: 4 });
+  const L = await open({ swarm: 8 });
   assert.match(cli(L), /^SLEIPNIR_SWARM_BUDGET_USD=0 sleipnir chat /, 'a team with no budget: the terminal would cap it at its built-in amount');
   type(L, '#nsBudget', '20'); await L.settle();
   assert.match(cli(L), /^sleipnir chat .* --budget-usd 20/, 'a budget is the budget');
@@ -114,4 +114,39 @@ test('what the server sent into an explanation is text, never markup', async () 
   L.$('#nsRuleEx [data-ex="tests"]').dispatchEvent(new FakeEvent('mouseover', { bubbles: true }));
   assert.equal(L.doc.querySelectorAll('#helpTip img').length, 0, 'no element came out of it');
   assert.match(L.$('#helpTip').textContent, /<img src=x onerror=window\.__pwn=1>/, 'it is shown as it was written');
+});
+
+test('the team starts full, one worker of each role, and Start sends no team of its own', async () => {
+  const L = await open();
+  assert.equal(L.doc.querySelectorAll('[data-trole]').length, 8, 'a row for each role');
+  assert.match(L.$('#nsSw').textContent, /manager \+ 8 workers · full team/);
+  assert.doesNotMatch(cli(L), /--role-model/);
+  await start(L);
+  const b = spec(L);
+  assert.equal(b.swarm, 8); assert.equal(b.team, undefined, 'the default team is the server\'s own');
+});
+
+test('a team of your own: two backends and no docs is sent slot by slot, and auto-docs has nothing to keep', async () => {
+  const L = await open();
+  const step = (role, d) => L.$('[data-trole="' + role + '"] [data-tstep="' + d + '"]').click();
+  step('docs', -1); await L.settle(); step('backend', 1); await L.settle();
+  assert.match(L.$('#nsSw').textContent, /manager \+ 8 workers · your team/);
+  assert.ok(L.$('[data-k="autoDocs"]').disabled, 'no docs slot: auto-docs is off');
+  assert.equal((cli(L).match(/--role-model/g) || []).length, 8, 'one --role-model per slot');
+  await start(L);
+  const b = spec(L);
+  assert.equal(b.swarm, 8);
+  assert.equal(b.team.filter(t => t.role === 'backend').length, 2);
+  assert.equal(b.team.filter(t => t.role === 'docs').length, 0);
+});
+
+test('a team under eight workers cannot start, and says how many to add; Single agent is the other way', async () => {
+  const L = await open();
+  L.$('[data-trole="docs"] [data-tstep="-1"]').click(); await L.settle();
+  assert.ok(L.$('#nsStart').disabled, 'seven workers: Start is off');
+  assert.match(L.$('#nsTeamErr').textContent, /at least 8 workers: add 1 more/);
+  L.$('[data-tpreset="single"]').click(); await L.settle();
+  assert.ok(!L.$('#nsStart').disabled);
+  await start(L);
+  assert.equal(spec(L).swarm, 0); assert.equal(spec(L).team, undefined);
 });

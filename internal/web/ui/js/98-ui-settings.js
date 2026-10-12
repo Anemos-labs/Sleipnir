@@ -42,8 +42,8 @@
   /** the tab title badge as it is now: the person's choice, else the server's default (off when SLEIPNIR_BELL=0) */
   const titleOn = () => { const v = SL.settings.title; return v === 'on' || (v !== 'off' && !(hello().ui && hello().ui.bell === false)); };
   const defaults = () => { const d = (SL.live && typeof SL.live.defaults === 'function' && SL.live.defaults()) || hello().defaults; return d || {}; };
-  /** the most workers a team may have: the server's ceiling (config swarm.max_workers) when it says one */
-  const maxWorkers = () => Math.max(1, parseInt(defaults().maxWorkers, 10) || 12);
+  /** the most workers a team may have: the server's ceiling (config swarm.max_workers) when it says one, else 0 (none) */
+  const maxWorkers = () => Math.max(0, parseInt(defaults().maxWorkers, 10) || 0);
 
   /* ---------------------------------------------------------------- pure parts (also read by the tests) */
   /** the models a filter keeps, favourites first: words (all must appear), tools, reasoning, favourites, max input and output price, min context */
@@ -84,9 +84,11 @@
   /** `sleipnir chat ...` as the Run settings page shows it: what a restart would start (a flag that is on by default and is off here says --flag=false) */
   function runLine(M, defs) {
     const d = defs || {}, flag = (k, name) => M[k] ? ' --' + name : (d[k] ? ' --' + name + '=false' : '');
-    return 'sleipnir chat --model ' + M.model + ' --mode ' + M.mode + ' --swarm ' + M.swarm + ' --isolation ' + M.isolation + (M.verify ? ' --verify "' + M.verify + '"' : '') + (M.budget ? ' --budget-usd ' + M.budget : '') + flag('commit', 'commit') + flag('mailman', 'mailman') + flag('noMcp', 'no-mcp') + flag('trustProject', 'trust-project');
+    return 'sleipnir chat --model ' + M.model + ' --mode ' + M.mode + ' --swarm ' + M.swarm + ' --isolation ' + M.isolation + (M.verify ? ' --verify "' + M.verify + '"' : '') + (M.budget ? ' --budget-usd ' + M.budget : '') + flag('commit', 'commit') + flag('mailman', 'mailman') + (M.autoDocs === false ? ' --auto-docs=false' : '') + flag('noMcp', 'no-mcp') + flag('trustProject', 'trust-project');
   }
-  const clampWorkers = (v, max) => Math.max(0, Math.min(max || 12, parseInt(v, 10) || 0));
+  /** a team size the server takes: 0 (a single agent) or at least 8 (one worker of each role), at most max when there is one; a value
+   *  in between goes to 8, or to 0 when dir says the person is counting down */
+  const clampWorkers = (v, max, dir) => { let n = Math.max(0, parseInt(v, 10) || 0); if (n > 0 && n < 8) n = dir < 0 ? 0 : 8; return max ? Math.min(max, n) : n; };
   const teamWord = n => n === 0 ? 'single agent' : 'manager + ' + n + ' worker' + (n === 1 ? '' : 's') + (n > 8 ? ' (' + (n - 8) + ' share leg' + (n - 8 === 1 ? '' : 's') + ')' : '');
   /** A project's trust as the server words it (GET /api/projects: trusted, untrusted, changed, partial, unreadable) as the table shows it, or '' when there is nothing to trust. */
   const projectState = t => { const v = String(t == null ? '' : t); return v === 'trusted' || v === 'none' || v === '' ? '' : v === 'untrusted' ? 'not trusted' : v === 'changed' ? 'changed since your yes' : v; };
@@ -176,11 +178,11 @@
     P.run = (S, ST) => {
       const n = ST.run.n == null ? S.meta.swarm : ST.run.n, nW = S.roster.length - 1, M = S.meta, m = S.m || S.wm, defs = defaults(), mx = maxWorkers();
       const line = runLine(M, defs);
-      return card('The team', '<span class="mono">/swarm</span> · <span class="mono">/restart</span>', row('Workers', '<div class="stepper"><button class="btn sm" type="button" data-step="-1" aria-label="fewer workers">−</button><input id="rn" type="number" min="0" max="' + mx + '" value="' + n + '" aria-label="worker count"><button class="btn sm" type="button" data-step="1" aria-label="more workers">+</button></div><span class="dim" id="rnt">' + teamWord(n) + '</span>', '--swarm N: 0 is a single agent, up to ' + mx + '; the eight legs are the first eight workers, a ninth shares leg 1. The default is ' + esc(defs.swarm != null ? defs.swarm : 8), 'rn') +
+      return card('The team', '<span class="mono">/swarm</span> · <span class="mono">/restart</span>', row('Workers', '<div class="stepper"><button class="btn sm" type="button" data-step="-1" aria-label="fewer workers">−</button><input id="rn" type="number" min="0"' + (mx ? ' max="' + mx + '"' : '') + ' value="' + n + '" aria-label="worker count"><button class="btn sm" type="button" data-step="1" aria-label="more workers">+</button></div><span class="dim" id="rnt">' + teamWord(n) + '</span>', '--swarm N: 0 is a single agent; a team has at least 8 workers, one of each role' + (mx ? ', up to ' + mx : '') + '; the eight legs are the first eight workers, a ninth shares leg 1. The default is ' + esc(defs.swarm != null ? defs.swarm : 8), 'rn') +
         row('Now', '<span class="num">' + (nW ? 'manager + ' + nW + ' worker' + (nW === 1 ? '' : 's') : 'a single agent') + '</span><span class="dim">' + (nW ? calc.active(m) + ' active of ' + nW + ' workers' : '') + '</span>') + '<div class="row2" style="margin:12px 0 0"><button class="btn pri" type="button" data-do="apply">Apply: start the team again</button><span class="dim">the run is closed (its checkpoints stay) and the conversation carries over</span></div>') +
         card('How the workers run', '<span class="mono">applies when the team starts again</span>', row('Isolation', seg('isolation', ['none', 'worktree'], M.isolation, 'Isolation'), '--isolation: worktree gives each writer its own checkout; finished work is merged and verified, then applied to the checkout at the end') +
         row('Verify', '<input id="rv" type="text" value="' + esc(M.verify || '') + '" placeholder="go test {dirs}" aria-label="Verify command" style="min-width:220px"> <button class="btn" type="button" data-do="verify">Set</button>', '--verify: run on every submission before it merges; {dirs} is the directories the change touched', 'rv') +
-        row('Flags', ['commit|--commit|commit each merged task', 'mailman|--mailman|digest worker mail instead of delivering it at once', 'noMcp|--no-mcp|start without tool servers', 'trustProject|--trust-project|use the repository’s own instructions, skills and hooks'].map(f => { const [k, fl, d] = f.split('|'); return '<label class="chk" title="' + esc(d) + '"><input type="checkbox" data-flag="' + k + '"' + (M[k] ? ' checked' : '') + '> ' + fl + '</label>'; }).join(''), 'each takes effect when the team starts again')) +
+        row('Flags', ['commit|--commit|commit each merged task', 'mailman|--mailman|digest worker mail instead of delivering it at once', 'autoDocs|--auto-docs|the docs worker keeps README, docs/ and AGENTS.md current by itself', 'noMcp|--no-mcp|start without tool servers', 'trustProject|--trust-project|use the repository’s own instructions, skills and hooks'].map(f => { const [k, fl, d] = f.split('|'); return '<label class="chk" title="' + esc(d) + '"><input type="checkbox" data-flag="' + k + '"' + (M[k] ? ' checked' : '') + '> ' + fl + '</label>'; }).join(''), 'each takes effect when the team starts again')) +
         card('The same command line', '', '<pre class="pre cli">' + esc(line) + '</pre><div class="row2" style="margin:0"><button class="btn" type="button" data-do="copycli">Copy the command</button>' + cli('chat', 'chat') + '</div>');
     };
     P.mcp = (S, ST) => {
@@ -282,7 +284,7 @@
       const rm = t.closest('[data-rm]'); if (rm) { acted(A.removeRule(rm.dataset.rm), () => toast('rule removed: ' + rm.dataset.rm)); return; }
       const dofn = t.closest('[data-do]'); if (dofn) return doIt(dofn.dataset.do, S);
       const tr = t.closest('[data-trust]'); if (tr) { if (tr.dataset.on === '1') trustFlow(tr.dataset.trust); else acted(A.trustDir(tr.dataset.trust, false), () => toast('forgot ' + tr.dataset.trust, 'ok')); return; }
-      const st = t.closest('[data-step]'); if (st) { const i = $('#rn', page); ST.run.n = clampWorkers((parseInt(i.value, 10) || 0) + +st.dataset.step, maxWorkers()); i.value = ST.run.n; $('#rnt', page).textContent = teamWord(ST.run.n); return; }
+      const st = t.closest('[data-step]'); if (st) { const i = $('#rn', page); ST.run.n = clampWorkers((parseInt(i.value, 10) || 0) + +st.dataset.step, maxWorkers(), +st.dataset.step); i.value = ST.run.n; $('#rnt', page).textContent = teamWord(ST.run.n); return; }
       const mc = t.closest('[data-mcp]'); if (mc) return mcpDo(mc.dataset.mcp, mc.dataset.n);
       const cmd = t.closest('[data-cmd]'); if (cmd) { ui.setDraft('/' + cmd.dataset.cmd + ' '); toast('inserted in the Radio composer'); return; }
       const pcm = t.closest('[data-pcmd]'); if (pcm) { ui.setDraft('/' + pcm.dataset.pcmd + ' '); toast('inserted in the Radio composer'); return; }

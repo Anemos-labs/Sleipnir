@@ -83,7 +83,8 @@ func elapsed(sn *state.Snapshot) time.Duration {
 }
 
 // roleColor is the index into the palette's role colours the UX design gives a role: manager violet, the writers blue, the
-// tester green, the reviewer amber, docs orange; the others take the spares.
+// tester green, the reviewer amber, docs orange, scout teal, devops pink, architect cyan; a project's roles share the devops
+// colour, and the legacy fullstack the backend's.
 func roleColor(role string) int {
 	switch role {
 	case "manager":
@@ -100,6 +101,8 @@ func roleColor(role string) int {
 		return 5
 	case "scout":
 		return 6
+	case "architect":
+		return 8
 	}
 	return 7
 }

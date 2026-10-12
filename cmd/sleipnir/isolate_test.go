@@ -111,7 +111,7 @@ func TestRunSwarmWithWorktreeIsolationAppliesAndReportsTheResult(t *testing.T) {
 	var err error
 	out := capture(t, func() {
 		err = cmdRun(context.Background(), []string{"--cwd", repo, "--mode", "bypass", "--no-web", "--trust-project", "--json",
-			"--swarm", "2", "--isolation", "worktree", "add notes.txt"})
+			"--swarm", "8", "--isolation", "worktree", "add notes.txt"})
 	})
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
@@ -149,9 +149,9 @@ func TestIsolationFlagsAreChecked(t *testing.T) {
 		want string
 	}{
 		{[]string{"--isolation", "worktree", "hello"}, "swarm sessions"},
-		{[]string{"--swarm", "2", "--isolation", "bogus", "hello"}, `isolation "bogus"`},
-		{[]string{"--swarm", "2", "--commit", "hello"}, "commit needs worktree isolation"},
-		{[]string{"--swarm", "2", "--isolation", "none", "--commit", "hello"}, "commit needs worktree isolation"},
+		{[]string{"--swarm", "8", "--isolation", "bogus", "hello"}, `isolation "bogus"`},
+		{[]string{"--swarm", "8", "--commit", "hello"}, "commit needs worktree isolation"},
+		{[]string{"--swarm", "8", "--isolation", "none", "--commit", "hello"}, "commit needs worktree isolation"},
 	} {
 		args := append([]string{"--cwd", repo, "--mode", "bypass", "--no-web", "--trust-project", "--quiet"}, tc.args...)
 		err := cmdRun(context.Background(), args)

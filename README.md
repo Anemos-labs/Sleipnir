@@ -37,9 +37,12 @@ servers are supported too. See [Providers](docs/PROVIDERS.md).
 
 ## Work
 
-Type a task in chat. The default team is one manager and up to eight workers;
+Type a task in chat. The default team is one manager and eight workers, one of
+each role (architect, scout, backend, frontend, devops, tester, docs, reviewer);
 workers start when the manager needs them. The manager plans, delegates and
-reviews, and edits no file itself. `--swarm N` sets the number of workers, and
+reviews, and edits no file itself; the docs worker keeps the documentation
+current by itself. `--swarm N` sets the number of workers (at least 8),
+`--role-model` repeated per worker names a team of your own, and
 `sleipnir --swarm 0` is a single agent.
 
 For work that needs several passes, enter:
@@ -65,7 +68,7 @@ Headless commands:
 
 ```sh
 sleipnir run "fix the failing test"
-sleipnir swarm 3 "implement the API and client" --verify "go test {dirs}"
+sleipnir swarm 8 "implement the API and client" --verify "go test {dirs}"
 sleipnir --continue
 ```
 

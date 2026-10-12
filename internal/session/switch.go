@@ -193,6 +193,9 @@ func (s *Session) StartFlags() []string {
 	if o.Mailman != nil {
 		f = append(f, "--mailman="+strconv.FormatBool(*o.Mailman))
 	}
+	if o.AutoDocs != nil {
+		f = append(f, "--auto-docs="+strconv.FormatBool(*o.AutoDocs))
+	}
 	if o.NoMCP {
 		f = append(f, "--no-mcp")
 	}
@@ -209,6 +212,16 @@ func (s *Session) StartFlags() []string {
 	sort.Strings(roles)
 	for _, role := range roles {
 		f = append(f, "--role-model", role+"="+o.RoleModels[role])
+	}
+	if s.Swarm != nil {
+		// a custom team is its slots, in order (a bare role is a slot on its role's model)
+		for _, t := range o.Team {
+			v := t.Role
+			if t.Model != "" {
+				v += "=" + t.Model
+			}
+			f = append(f, "--role-model", v)
+		}
 	}
 	return f
 }

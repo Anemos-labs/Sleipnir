@@ -105,7 +105,7 @@ go test ./... >/dev/null 2>&1 && echo pass > "$WORK/tests3" || echo fail > "$WOR
 
 echo "== 4. swarm dispatch"
 git checkout -q -- . && git clean -fdq
-"$BIN" swarm 4 --model "$MODEL" --mode accept-edits --trust-project --budget-usd "$BUDGET_USD" --verify "go test ./..." --session-dir "$WORK/s4" --json \
+"$BIN" swarm 8 --model "$MODEL" --mode accept-edits --trust-project --budget-usd "$BUDGET_USD" --verify "go test ./..." --session-dir "$WORK/s4" --json \
   "Fix Slugify so the tests pass, add a doc comment with examples, and add a benchmark. Split the work across workers." > "$WORK/run4.jsonl" || true
 "$BIN" inspect --json "$WORK/s4" > "$WORK/inspect4.json" 2>/dev/null || true
 go test ./... >/dev/null 2>&1 && echo pass > "$WORK/tests4" || echo fail > "$WORK/tests4"

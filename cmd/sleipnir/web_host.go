@@ -860,13 +860,15 @@ func (h *webHostImpl) isProject(ctx context.Context, dir string) (wire.Project, 
 
 // ---- defaults of a new session ---------------------------------------------------------------------------------
 
-// swarmWorkerCeiling is the most workers a team may have when swarm.max_workers sets no ceiling (the swarm's own default).
-const swarmWorkerCeiling = 24
+// swarmWorkerCeiling is the most workers the page offers when swarm.max_workers sets no ceiling: 0, none.
+const swarmWorkerCeiling = 0
 
 // newSessionDefaults are the server's defaults as the New session dialog seeds its fields from them.
 type newSessionDefaults struct {
 	wire.NewSessionRequest
 	MaxWorkers int `json:"maxWorkers"`
+	// MinWorkers is the smallest team (session.MinTeamWorkers); 0 workers is a single agent.
+	MinWorkers int `json:"minWorkers"`
 	// TestsPreset says in a line what the allow rule "tests" lets through (config.TestsPresetSummary), for the dialog to show.
 	TestsPreset string `json:"testsPreset"`
 	// UnlimitedEnv is the environment setting that gives a terminal session the budget the dialog calls off: the command line under
@@ -891,6 +893,11 @@ func (h *webHostImpl) defaults() newSessionDefaults {
 	for k, v := range h.d.RoleModels {
 		d.RoleModels[k] = v
 	}
+	for _, t := range h.d.Team {
+		d.Team = append(d.Team, wire.TeamSlot{Role: t.Role, Model: t.Model})
+	}
+	d.AutoDocs = h.d.AutoDocs
+	d.MinWorkers = session.MinTeamWorkers
 	if h.d.BudgetUSD > 0 {
 		b := h.d.BudgetUSD
 		d.Budget = &b

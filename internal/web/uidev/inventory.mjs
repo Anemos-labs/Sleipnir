@@ -226,6 +226,7 @@ export const SETTING_MAP = [
   [/^id:rv$|^do:verify$/, { scope: 'flag', flag: 'verify' }],
   [/^flag:commit$/, { scope: 'flag', flag: 'commit' }],
   [/^flag:mailman$/, { scope: 'config', keys: ['swarm.mailman'], flag: 'mailman' }],
+  [/^flag:autoDocs$/, { scope: 'config', keys: ['swarm.auto_docs'], flag: 'auto-docs' }],
   [/^flag:noMcp$/, { scope: 'flag', flag: 'no-mcp' }],
   [/^flag:trustProject$/, { scope: 'flag', flag: 'trust-project' }],
   [/^do:copycli$/, { scope: 'view' }],
@@ -285,7 +286,7 @@ function dialogInventory(SL, chatFlags) {
   if (!ns || !rs) throw new Error('a dialog did not open in the inventory');
   const labels = [...ns.body.matchAll(/<label>([^<]*)<\/label>/g)].map(m => m[1]);
   const checks = [...ns.body.matchAll(/<label class="chk"><input type="checkbox" data-k="([A-Za-z]+)"[^>]*> ([^<]*)<\/label>/g)].map(m => m[1] + ' ' + m[2].trim());
-  const full = { resume: '20260101-000000-abcdef', cwd: '/p', model: 'a/m', mode: 'plan', swarm: 3, isolation: 'worktree', verify: 'v', commit: true, mailman: true, mailmanDefault: false,
+  const full = { resume: '20260101-000000-abcdef', cwd: '/p', model: 'a/m', mode: 'plan', swarm: 8, autoDocs: false, isolation: 'worktree', verify: 'v', commit: true, mailman: true, mailmanDefault: false,
     budget: '5', roleModels: { backend: 'a/w' }, rules: ['tests'], trustProject: true, noMcp: true, goalText: '' };
   const line = ui.dialogs.cliLine(full), lineOff = ui.dialogs.cliLine(Object.assign({}, full, { mailman: false, mailmanDefault: true }));
   /* the flags a control of the dialog sets: those its labels and checkboxes name, and a segmented control named after a flag (isolation) */
@@ -315,7 +316,7 @@ function dialogInventory(SL, chatFlags) {
 }
 
 function runLineInventory(SL) {
-  const M = { model: 'a/m', mode: 'plan', swarm: 3, isolation: 'worktree', verify: 'v', budget: 5, commit: true, mailman: true, noMcp: true, trustProject: true };
+  const M = { model: 'a/m', mode: 'plan', swarm: 8, isolation: 'worktree', verify: 'v', budget: 5, commit: true, mailman: true, noMcp: true, trustProject: true };
   const line = SL.toolkit.settings.runLine(M, {});
   return { line, flags: flagsIn(line) };
 }
@@ -347,7 +348,7 @@ async function paletteInventory(SL, log) {
 }
 
 async function slashInventory(SL, log) {
-  const H = SL.palette.H, probes = ['', 'x', '2', 'pause', 'a/m', 'high', 'on', 'm=a/m', 'default', 'tests'];
+  const H = SL.palette.H, probes = ['', 'x', '2', '9', 'pause', 'a/m', 'high', 'on', 'm=a/m', 'default', 'tests'];
   const handlers = {};
   for (const name of Object.keys(H).sort()) {
     const effects = [];

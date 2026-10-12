@@ -48,7 +48,7 @@ func (s *Swarm) isClosed() bool {
 // writerCapError reports the active-writer limit and suggests ways to continue without adding a
 // concurrent writer.
 func writerCapError(active, limit int) error {
-	return fmt.Errorf("%d writers are already active (limit %d): concurrent writers collide on shared code. Wait for one to finish, reuse an idle worker, or use a read-only role (reviewer, scout) for this", active, limit)
+	return fmt.Errorf("%d writers are already active (limit %d): concurrent writers collide on shared code. Wait for one to finish, reuse an idle worker, or use a read-only role (architect, scout, reviewer) for this", active, limit)
 }
 
 // Spawn starts (or reuses) a worker for a task and returns its id. Every decision
@@ -173,7 +173,7 @@ func (s *Swarm) spawnReuse(req SpawnReq, files []string) (string, error) {
 
 func (s *Swarm) spawnNew(req SpawnReq, files []string) (string, error) {
 	role, ok := s.roles[req.Role]
-	if !ok || req.Role == "manager" || s.isService(req.Role) {
+	if !ok || req.Role == "manager" || s.isService(req.Role) || s.hidden[req.Role] {
 		return "", fmt.Errorf("unknown role %q (roles: %s)", cleanText(req.Role, 40), strings.Join(s.spawnableRoles(), ", "))
 	}
 	if err := s.precheckScope(req, files, role); err != nil {
@@ -188,9 +188,13 @@ func (s *Swarm) spawnNew(req SpawnReq, files []string) (string, error) {
 	}
 	id := fmt.Sprintf("%s-%d", role.Short, s.seq[role.Name]+1)
 	shared := s.shared
+	slotErr := s.freeSlotErr(role.Name)
 	s.mu.Unlock()
 	if workers >= s.cfg.MaxWorkers {
 		return "", fmt.Errorf("worker limit reached (%d); reuse an idle worker with spawn agent=… or wait", s.cfg.MaxWorkers)
+	}
+	if slotErr != nil {
+		return "", slotErr
 	}
 	if !role.ReadOnly && !s.isolated() {
 		// (An isolated run has no writer cap: every writer edits a tree of its own.)
@@ -244,7 +248,7 @@ func (s *Swarm) spawnNew(req SpawnReq, files []string) (string, error) {
 	m.mu.Lock()
 	m.task = task.ID
 	m.mu.Unlock()
-	s.emit(events.TypeAgentSpawn, map[string]any{"id": id, "role": role.Name, "task": task.ID, "by": req.By, "parent": req.By, "model": s.modelFor(role.Name).ID})
+	s.emit(events.TypeAgentSpawn, map[string]any{"id": id, "role": role.Name, "task": task.ID, "by": req.By, "parent": req.By, "model": m.model.ID})
 	s.launch(m, rs, ctx, runStart{brief: taskCard(task, id, false), kickoff: true}) // the notes hold the card since the spawn
 	return id, nil
 }
@@ -260,7 +264,7 @@ func (s *Swarm) spawnNew(req SpawnReq, files []string) (string, error) {
 func (s *Swarm) scopeCheck(readOnly bool) TaskCheck {
 	return func(sn *Snapshot, t Task) error {
 		if t.Kind == TaskKindPlan && !readOnly {
-			return fmt.Errorf("%s is a read-only planning task: the manager must use spawn with task=%s and role=scout, reviewer, or a custom read-only role; a writer cannot claim it", t.ID, t.ID)
+			return fmt.Errorf("%s is a read-only planning task: the manager must use spawn with task=%s and role=architect (or scout, reviewer, or a custom read-only role); a writer cannot claim it", t.ID, t.ID)
 		}
 		if readOnly || len(t.Files) == 0 || s.isolated() {
 			return nil

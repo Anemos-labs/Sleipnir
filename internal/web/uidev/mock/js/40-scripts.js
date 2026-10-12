@@ -8,7 +8,7 @@
   'use strict';
   const D = SL.D, { rng } = SL.u;
   const L0 = 38;                      // the shop snapshot: seconds since the session started
-  const ROLE_SEQ = ['scout', 'backend', 'frontend', 'tester', 'reviewer', 'docs', 'fullstack', 'backend', 'scout', 'frontend', 'tester', 'reviewer'];
+  const ROLE_SEQ = ['scout', 'backend', 'frontend', 'tester', 'reviewer', 'docs', 'devops', 'backend', 'scout', 'frontend', 'tester', 'reviewer'];
 
   /* ---------------- roster ---------------- */
   function legOf(k) { return (k - 1) % 8; }

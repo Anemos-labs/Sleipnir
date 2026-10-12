@@ -247,6 +247,11 @@ type Swarm struct {
 	// Like isolation, it changes nothing about what a project's files can reach, so a
 	// project's file may set it.
 	Mailman bool `json:"mailman,omitempty"`
+	// AutoDocs keeps a team's docs worker at work without the manager asking: after
+	// every accepted task and agreement the harness gives it a "docs: catch up" task
+	// (docs/SWARM-PROTOCOL.md). Nil is true; it applies only to a team with a docs
+	// slot. --auto-docs=false turns it off for one session.
+	AutoDocs *bool `json:"auto_docs,omitempty"`
 	// BudgetUSD is the most a swarm run may spend, retired agents included; 0 is no
 	// limit. It defaults to DefaultSwarmBudgetUSD, a safety net: a swarm can spend many
 	// times what one agent does, and a budget that is off by default is one nobody

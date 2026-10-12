@@ -7,6 +7,23 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The built-in worker roles are architect (read-only planner), scout,
+  backend, frontend, devops, tester, docs and reviewer. `fullstack` is no
+  longer offered; training tasks and resumed sessions that name it keep it.
+  A chat, run or web session gets the default team, one worker slot of each
+  role, and the manager may start a worker only while its role has a free
+  slot. `--role-model` given more than once for a role, or with a bare role,
+  names the team instead (at least 8 slots). `--swarm` is 0 (a single agent)
+  or at least 8. Prompt bytes: the manager's role pin (its rules and a team
+  card), every worker's role pin under auto-docs, and the `spawn` tool's
+  description changed, so G0 (tools) and the role layers miss the cache once.
+- Auto-docs (`--auto-docs`, `swarm.auto_docs`, on by default): after every
+  accepted task and agreement the harness gives the docs worker a
+  `docs: catch up` task; a batch run's manager is held until it is done.
+- The manager's shell commands are judged by the permission engine's
+  plan-mode profile alone (pipes, `&&`, absolute paths inside the workspace,
+  `git -C`), and it may run `gh`'s reading commands and fetch and search the
+  web. Read-only roles may fetch and search the web too. Writes stay refused.
 - A task the manager sends back between a worker's `done` call and its next
   request is read by the run that is ending. When that worker stopped without
   calling `done` again, the task stayed in doing with an idle owner: the run

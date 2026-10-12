@@ -8,8 +8,7 @@ import (
 )
 
 // The number a person types or reads for a team counts workers, never the manager: the default chat is a manager and eight
-// workers, --swarm 3 is a manager and three workers (four agents: internal/swarm's TestConcurrentSpawnRespectsWriterAndAgentCaps
-// registers exactly that many), --swarm 0 is a single agent, and rl's swarm:3 is the same team as chat's --swarm 3.
+// workers, --swarm 9 is a manager and nine workers, --swarm 0 is a single agent, and rl's swarm:3 is the same team as chat's --swarm 3.
 func TestTeamSizeCountsWorkersNotTheManager(t *testing.T) {
 	projectDir(t)
 	if n := defaultTeam(); n != 8 {
@@ -25,12 +24,12 @@ func TestTeamSizeCountsWorkersNotTheManager(t *testing.T) {
 		t.Fatalf("the default chat is not a manager and 8 workers: %+v", chatInfo(def, "/p"))
 	}
 
-	three := build(3)
-	if three.Swarm == nil || three.Swarm.MaxWorkers() != 3 {
-		t.Fatalf("--swarm 3 is not three workers: %v", three.Swarm)
+	nine := build(9)
+	if nine.Swarm == nil || nine.Swarm.MaxWorkers() != 9 {
+		t.Fatalf("--swarm 9 is not nine workers: %v", nine.Swarm)
 	}
-	if f := three.StartFlags(); f[slices.Index(f, "--swarm")+1] != "3" {
-		t.Errorf("a restart of --swarm 3 asks for another size: %v", f)
+	if f := nine.StartFlags(); f[slices.Index(f, "--swarm")+1] != "9" {
+		t.Errorf("a restart of --swarm 9 asks for another size: %v", f)
 	}
 
 	if solo := build(0); solo.Swarm != nil {

@@ -27,6 +27,7 @@ type RecoveredWorker struct {
 // log. It must run before Start.
 func (s *Swarm) ReserveIDs(ids map[string]string) {
 	for id, role := range ids {
+		s.adoptLegacy(role)
 		if r, ok := s.roles[role]; ok {
 			if suffix, ok := strings.CutPrefix(id, r.Short+"-"); ok {
 				if n, err := strconv.Atoi(suffix); err == nil {
@@ -48,6 +49,7 @@ func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []Recov
 		return fmt.Errorf("this team needs %d worker slots to recover its workers; resume with --swarm %d", len(workers), len(workers))
 	}
 	for _, w := range workers {
+		s.adoptLegacy(w.Role)
 		r, ok := s.roles[w.Role]
 		if !ok || r.Name == "manager" || s.isService(w.Role) {
 			return fmt.Errorf("cannot recover worker %s: role %q is unavailable", w.ID, w.Role)
@@ -122,4 +124,20 @@ func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []Recov
 		m.setState(s, "idle", "restored; waiting for a task to restart")
 	}
 	return nil
+}
+
+// adoptLegacy makes a legacy role (LegacyRoles) that an earlier process's workers
+// had available again, hidden: recovered workers keep it, and nobody can spawn it.
+// It must run before Start.
+func (s *Swarm) adoptLegacy(role string) {
+	if _, ok := s.roles[role]; ok {
+		return
+	}
+	r, ok := LegacyRoles()[role]
+	if !ok {
+		return
+	}
+	s.roles[role] = r
+	s.roleLay[role] = r.Layer()
+	s.hidden[role] = true
 }

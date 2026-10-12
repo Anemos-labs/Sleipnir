@@ -113,7 +113,7 @@ worker:  { inPerM: 1.00, readPerM: 0.10, outPerM: 4.00 },
 };
 S.roleColors = {            // fixed across the product (the eight legs); the harness service role "mailman" has none
 manager: '#bb9af7', backend: '#7aa2f7', frontend: '#7dcfff', scout: '#73daca', tester: '#9ece6a', docs: '#e0af68',
-reviewer: '#ff9e64', fullstack: '#c0a6f7',
+reviewer: '#ff9e64', devops: '#e5a1e0', architect: '#b4f9f8',
 error: '#f7768e', fg: '#c0caf5', comment: '#565f89'
 };
 /* roles: REAL names, short codes and read-only flags (internal/swarm/roles.go); pins are the first sentence of each role pin. */
@@ -121,7 +121,8 @@ S.roleDefs = [
 { name: 'manager',   short: 'mgr', color: S.roleColors.manager,   readOnly: false, maxSteps: 400, editsFiles: false, pin: 'You are the manager. You coordinate a team: you plan, delegate and review, and workers make every change; you do not edit files yourself.' },
 { name: 'backend',   short: 'be',  color: S.roleColors.backend,   readOnly: false, maxSteps: 150, pin: 'You are a backend engineer. You own server-side code: APIs, data access, services, migrations, background jobs.' },
 { name: 'frontend',  short: 'fe',  color: S.roleColors.frontend,  readOnly: false, maxSteps: 150, pin: 'You are a frontend engineer. You own UI code: components, state, styling, client-side data fetching.' },
-{ name: 'fullstack', short: 'fs',  color: S.roleColors.fullstack, readOnly: false, maxSteps: 150, pin: 'You are a full-stack engineer. You handle tasks that cut across backend and frontend and keep the two consistent.' },
+{ name: 'devops', short: 'dv',  color: S.roleColors.devops, readOnly: false, maxSteps: 150, pin: 'You are a devops engineer. You own how the project is built, tested, packaged and run.' },
+{ name: 'architect', short: 'ar',  color: S.roleColors.architect, readOnly: true, maxSteps: 80, pin: 'You are the architect. You are read-only: you design, you do not implement.' },
 { name: 'tester',    short: 'ts',  color: S.roleColors.tester,    readOnly: false, maxSteps: 120, pin: 'You are a test engineer. You write and run tests, find bugs, and report them precisely.' },
 { name: 'reviewer',  short: 'rv',  color: S.roleColors.reviewer,  readOnly: true,  maxSteps: 80,  pin: 'You are a code reviewer. You are read-only: you cannot modify files.' },
 { name: 'scout',     short: 'sc',  color: S.roleColors.scout,     readOnly: true,  maxSteps: 60,  pin: 'You are a scout. You are read-only. You explore part of the codebase and report a compact map.' },
@@ -142,7 +143,7 @@ var ROWS = [
 ['ts-1', 'tester',   'think', 'table tests for the catalogue contract',                    'T7', 'api/**/*_test.go',                 5900,  4897, 1003,  900],
 ['rv-1', 'reviewer', 'idle',  'waits for T4 to merge (read-only)',                         'T8', '- (read-only)',                    2400,  1776,  624,  150],
 ];
-var SHORT = { manager: 'mgr', backend: 'be', frontend: 'fe', fullstack: 'fs', tester: 'ts', reviewer: 'rv', scout: 'sc', docs: 'dc' };
+var SHORT = { manager: 'mgr', backend: 'be', frontend: 'fe', devops: 'dv', architect: 'ar', tester: 'ts', reviewer: 'rv', scout: 'sc', docs: 'dc' };
 var LEG = { 'sc-1': 1, 'sc-2': 2, 'sc-3': 3, 'be-1': 4, 'be-2': 5, 'fe-1': 6, 'ts-1': 7, 'rv-1': 8 };   // legs 1-8 in start order; the manager rides and takes no leg
 var GLYPH = { think: '◇', tool: '⚙', edit: '✎', wait: '◌', ask: '?', idle: '◌', done: '✓', stuck: '⚠' };
 var STARTED = { mgr: '03:04:05', 'sc-1': '03:04:10', 'sc-2': '03:04:10', 'sc-3': '03:04:10', 'be-1': '03:04:21', 'be-2': '03:04:21', 'fe-1': '03:04:21', 'ts-1': '03:04:21', 'rv-1': '03:04:22' };
@@ -801,9 +802,9 @@ var tot = rows.reduce(function (t, a) { t.prompt += a.prompt; t.read += a.read; 
 tot.hit = tot.read / tot.prompt;
 return {
 id: '20260102-030000-b7e0aa', name: 'docs-sweep', cwd: '~/projects/handbook', branch: 'main',
-command: 'sleipnir run --swarm 2 --mode accept-edits --budget-usd 1 --ask-timeout 10m "sweep the docs for stale commands and fix them"',
+command: 'sleipnir run --swarm 8 --mode accept-edits --budget-usd 1 --ask-timeout 10m "sweep the docs for stale commands and fix them"',
 startedBy: 'cron (a crontab line that runs `sleipnir run ...`); the daemon\'s own jobs run `sleipnir run --quiet [--model] [--cwd] [--mode] [--budget-usd] -- GOAL` (REAL: cmd/sleipnir/schedule.go)',
-headless: true, mode: 'accept-edits', swarm: 2, isolation: 'none', verify: null, budgetUsd: 1.00, askTimeout: '10m', model: 'anthropic/claude-sonnet-5-5', workerModel: 'heimdallm/demo-model',
+headless: true, mode: 'accept-edits', swarm: 8, isolation: 'none', verify: null, budgetUsd: 1.00, askTimeout: '10m', model: 'anthropic/claude-sonnet-5-5', workerModel: 'heimdallm/demo-model',
 started: '03:00:00', now: '03:04:43', elapsed: '04:43', state: 'running', cost: tot.cost, costText: F.usd(tot.cost), totals: tot,
 team: rows, activeText: '1 active of 2 workers',
 tasks: [
@@ -1011,14 +1012,14 @@ rows: [
 { role: 'backend',   model: 'heimdallm/demo-model',         from: 'models.roles' },
 { role: 'docs',      model: 'heimdallm/demo-model',         from: 'models.roles' },
 { role: 'frontend',  model: 'heimdallm/demo-model',         from: 'models.roles' },
-{ role: 'fullstack', model: 'heimdallm/demo-model',         from: 'models.roles' },
+{ role: 'devops', model: 'heimdallm/demo-model',         from: 'models.roles' },
 { role: 'reviewer',  model: 'heimdallm/demo-model',         from: 'models.roles' },
 { role: 'scout',     model: 'heimdallm/demo-model',         from: 'models.roles' },
 { role: 'tester',    model: 'heimdallm/demo-model',         from: 'models.roles' },
 { role: 'compactor', model: '(each agent\'s own)',         from: 'no compactor model is set' },
 ],
 defaults: { manager: 'anthropic/claude-sonnet-5-5', worker: 'heimdallm/demo-model', mailman: null, compactor: null },
-roles: ['manager', 'backend', 'frontend', 'fullstack', 'tester', 'reviewer', 'scout', 'docs', 'mailman', 'compactor'],
+roles: ['manager', 'backend', 'frontend', 'devops', 'architect', 'tester', 'reviewer', 'scout', 'docs', 'mailman', 'compactor'],
 note: 'A role without its own entry runs on the worker model; changing a role restarts the team on it, keeping the conversation of the manager and the board.',
 };
 /** roles: role -> model defaults (the /roles table). S.roleDefs has the role definitions (colours, short codes, pins). */

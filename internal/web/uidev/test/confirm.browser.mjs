@@ -1,6 +1,6 @@
 // confirm.browser.mjs: the server's confirmation of privilege raises, end to end on the REAL server (`sleipnir web --fixture all`) in
 // headless Chromium: New session with mode yolo, with an allow rule, with a verify command; `/mode yolo` in the composer; an allow rule
-// added on Settings › Permissions; Run settings Apply after a new verify command; `/swarm 3`; then the hint button of a `sys` row with
+// added on Settings › Permissions; Run settings Apply after a new verify command; `/swarm 9`; then the hint button of a `sys` row with
 // `open` and the session directory in `/status`. Each step records what the page asked (the server's scope and reasons) and checks the
 // effect arrived; screenshots of the questions go to OUT (default a temporary directory).
 //
@@ -81,10 +81,10 @@ try {
     let second = null; try { await waitFor(`document.querySelector('.sheet.confirm')`, 8000); second = await question(); await p.shot(path.join(out, 'apply-raise.png')); await okConfirm(); } catch (e) { /* nothing raised */ }
     await waitFor(`SL.sessions.get(${JSON.stringify(shop)}).gen !== ${JSON.stringify(gen)}`, 30000); return { first: first.title, second: second && second.title, asked: await asks() };
   });
-  await step('/swarm 3 in the composer', async () => {
-    await ev(`SL.views.show('cockpit')`); await p.sleep(300); await composer('/swarm 3'); await waitFor(`document.querySelector('.sheet.confirm')`); const first = await question(); await okConfirm();
+  await step('/swarm 9 in the composer', async () => {
+    await ev(`SL.views.show('cockpit')`); await p.sleep(300); await composer('/swarm 9'); await waitFor(`document.querySelector('.sheet.confirm')`); const first = await question(); await okConfirm();
     let second = null; try { await waitFor(`document.querySelector('.sheet.confirm')`, 6000); second = await question(); await okConfirm(second.typed ? 'yolo' : ''); } catch (e) { /* nothing raised */ }
-    await waitFor(`SL.sessions.get(${JSON.stringify(shop)}).meta.swarm === 3`, 40000); return { first: first.title, second: second && (second.title + (second.typed ? ' (typed)' : '')), asked: await asks() };
+    await waitFor(`SL.sessions.get(${JSON.stringify(shop)}).meta.swarm === 9`, 40000); return { first: first.title, second: second && (second.title + (second.typed ? ' (typed)' : '')), asked: await asks() };
   });
   await step('/restart --mode bypass asks for the typed mode name (the server\'s scope)', async () => {
     const tab = await ev(`return (SL.sessions.list.find(S => S.id === 'orders-api') || SL.sessions.list[1]).id;`);

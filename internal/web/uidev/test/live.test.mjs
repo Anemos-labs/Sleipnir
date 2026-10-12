@@ -141,8 +141,8 @@ test('actions: synchronous refusals keep the reference page\'s whys; requests ca
   assert.deepEqual(state.posts.find(x => x[1] === '/api/questions/q_1/answer')[2], { choice: 2 });
   await SL.act.send('[pasted text #1 +5 lines]', undefined, { text: 'a\nb\nc\nd\ne' }).done;
   const msg = state.posts.find(x => x[1] === '/api/sessions/a/messages')[2]; assert.equal(msg.text, 'a\nb\nc\nd\ne'); assert.equal(msg.display, '[pasted text #1 +5 lines]'); assert.match(msg.clientId, /^c[0-9a-f-]{32,36}$/);
-  await SL.act.restartTeam({ swarm: 4 }).done;
-  assert.deepEqual(state.posts.find(x => x[1] === '/api/sessions/a/restart')[2], { kind: 'swarm', swarm: 4, fresh: false }, '/swarm carries the conversation');
+  await SL.act.restartTeam({ swarm: 8 }).done;
+  assert.deepEqual(state.posts.find(x => x[1] === '/api/sessions/a/restart')[2], { kind: 'swarm', swarm: 8, fresh: false }, '/swarm carries the conversation');
   await SL.act.newChat().done;
   assert.deepEqual(state.posts.filter(x => x[1] === '/api/sessions/a/restart')[1][2], { kind: 'new', fresh: true });
 });

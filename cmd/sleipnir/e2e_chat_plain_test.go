@@ -155,7 +155,7 @@ func TestPlainChatSwarmCtrlCCancelsTheTurnNotTheSession(t *testing.T) {
 	slow := m.on("@slow", say("slow turn finished").held())
 	m.on("@hello", say("hi there"))
 	w := newWorld(t, m.url())
-	c := startPlainChat(t, w, "--swarm", "1")
+	c := startPlainChat(t, w, "--swarm", "8")
 
 	c.send("@slow")
 	slow.wait(t)

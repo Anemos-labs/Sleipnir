@@ -93,7 +93,7 @@ func (r *rvRig) team(n int) []string {
 	r.t.Helper()
 	r.sw.StartManager()
 	ids := []string{"mgr"}
-	roles := []string{"backend", "frontend", "fullstack", "tester"}
+	roles := []string{"backend", "frontend", "devops", "tester"}
 	for i := 0; i < n; i++ {
 		id, err := r.sw.Spawn(SpawnReq{Role: roles[i%len(roles)], Title: fmt.Sprintf("work %d", i), By: "mgr"})
 		if err != nil {

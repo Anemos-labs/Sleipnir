@@ -249,7 +249,7 @@ func (h *handover) run(shared *kv.Layer) (res HandoverResult, err error) {
 	}
 	card += "\n" + handoverRecap(t, pm.id, h.to, h.summary, state)
 	notes := kv.NewLayer("notes:"+h.to, kv.KindNotes, 1, []kv.Segment{{Key: "assignment", Text: card, Vol: kv.VolFrozen}})
-	m, err := s.newMember(h.to, h.role, notes, NewEvidence(), h.tree)
+	m, err := s.newMemberAt(h.to, h.role, notes, NewEvidence(), h.tree, pm.slot)
 	if err != nil {
 		return res, err
 	}
@@ -279,7 +279,7 @@ func (h *handover) run(shared *kv.Layer) (res HandoverResult, err error) {
 	m.mu.Unlock()
 	s.Leases.ReleaseAll(pm.id) // the successor writes the same files
 	c, _ := NewClosure(CloseHandedOff, h.to)
-	s.emit(events.TypeAgentSpawn, map[string]any{"id": h.to, "role": h.role.Name, "task": t.ID, "by": h.by, "parent": h.by, "handover_from": pm.id, "model": s.modelFor(h.role.Name).ID})
+	s.emit(events.TypeAgentSpawn, map[string]any{"id": h.to, "role": h.role.Name, "task": t.ID, "by": h.by, "parent": h.by, "handover_from": pm.id, "model": m.model.ID})
 	s.emitAs(h.by, events.TypeSwarmHandover, map[string]any{"phase": "done", "task": t.ID, "rev": nt.Rev, "from": pm.id, "to": h.to, "by": h.by, "closure": c})
 	if err := h.fault("launch"); err != nil {
 		// The process "stopped" here: the successor owns the task on the board but never
