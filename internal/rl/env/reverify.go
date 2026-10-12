@@ -79,10 +79,11 @@ type reverifyEntry struct {
 }
 
 // Reverify verifies the finished rollout in the sample directory dir again
-// with task (see the comment above) and updates ep, the sample's episode, to
-// what it measured: Outcome.Verifier with Final, Progress with Savepoints.
-// Unless DryRun, it writes ep to episode.json, the new points to progress.jsonl
-// and appends an entry to reverify.jsonl. task must be the task the sample ran
+// with task (see the comment above). Unless DryRun, it writes the sample's
+// episode with what it measured (Outcome.Verifier with Final, Progress with
+// Savepoints) to episode.json, the new points to progress.jsonl and an entry to
+// reverify.jsonl (commitReverify), and then updates ep, the episode the caller
+// read, to match; a dry run or a failure leaves ep as it was. task must be the task the sample ran
 // (the same id) with the same start: a checkout of it must have the tree the
 // sample started from. A sample without a savepoint index (a rollout run
 // without savepoints) keeps its progress, and the result says so
@@ -172,17 +173,19 @@ func Reverify(ctx context.Context, dir string, ep *rl.Episode, task rl.Task, o R
 		after = &v
 	}
 
+	// The new episode is a copy: the caller's changes only once it is on disk.
+	upd := *ep
 	if after != nil {
 		if ep.Outcome.Verifier != nil {
 			was := ep.Outcome.Verifier.Clone()
 			res.Before = &was
 		}
 		res.After = after
-		ep.Outcome.Verifier = after
+		upd.Outcome.Verifier = after
 	}
 	if o.Savepoints {
 		res.ProgressBefore, res.ProgressAfter = ep.Progress, points
-		ep.Progress = points
+		upd.Progress = points
 	}
 	if o.DryRun {
 		return res, nil
@@ -191,9 +194,10 @@ func Reverify(ctx context.Context, dir string, ep *rl.Episode, task rl.Task, o R
 	if o.Now != nil {
 		now = o.Now
 	}
-	if err := commitReverify(dir, ep, o.Savepoints, points, reverifyEntry{At: now().UTC(), ReverifyResult: res}); err != nil {
+	if err := commitReverify(dir, &upd, o.Savepoints, points, reverifyEntry{At: now().UTC(), ReverifyResult: res}); err != nil {
 		return res, fmt.Errorf("reverify: %w", err)
 	}
+	*ep = upd
 	return res, nil
 }
 

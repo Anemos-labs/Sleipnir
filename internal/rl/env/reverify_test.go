@@ -72,9 +72,13 @@ func TestReverifyReplacesTheVerdictAndTheCurve(t *testing.T) {
 	}
 	dry := o
 	dry.DryRun = true
-	res, err := Reverify(ctx, dir, f.episode(f.task.ID, 0), fixed, dry)
+	dryEp := f.episode(f.task.ID, 0)
+	res, err := Reverify(ctx, dir, dryEp, fixed, dry)
 	if err != nil || res.After == nil || res.After.Score != 1 || len(res.ProgressAfter) != len(recs) {
 		t.Fatalf("dry run: %+v %v", res, err)
+	}
+	if v := dryEp.Outcome.Verifier; v == nil || v.Score != 0.5 || dryEp.Progress[0].Score != 0.25 {
+		t.Errorf("a dry run changed the caller's episode: %+v %+v", v, dryEp.Progress)
 	}
 	if now, _ := os.ReadFile(episodeFile); !bytes.Equal(now, was) {
 		t.Error("a dry run rewrote episode.json")
@@ -108,6 +112,26 @@ func TestReverifyReplacesTheVerdictAndTheCurve(t *testing.T) {
 		}
 	}
 	if err := os.WriteFile(index, good, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A commit that fails (reverify.jsonl cannot be written) leaves the sample and the caller's episode as they were.
+	if err := os.Mkdir(filepath.Join(dir, reverifyLog), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	failed := f.episode(f.task.ID, 0)
+	if _, err := Reverify(ctx, dir, failed, fixed, o); err == nil {
+		t.Fatal("a commit that cannot write reverify.jsonl succeeded")
+	}
+	if v := failed.Outcome.Verifier; v == nil || v.Score != 0.5 || failed.Progress[0].Score != 0.25 {
+		t.Errorf("a failed commit changed the caller's episode: %+v %+v", v, failed.Progress)
+	}
+	if now, _ := os.ReadFile(episodeFile); !bytes.Equal(now, was) {
+		t.Error("a failed commit rewrote episode.json")
+	}
+	if err := os.Remove(filepath.Join(dir, reverifyLog)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(dir, reverifyDir)); err != nil {
 		t.Fatal(err)
 	}
 
