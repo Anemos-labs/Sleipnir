@@ -190,7 +190,7 @@
     opt = opt || {}; const body = Object.assign({}, spec); delete body.launch; delete body.resumedFrom;
     if (!body.clientId) body.clientId = api().cid();
     const name = spec.name || slug((spec.cwd || '').split('/').filter(Boolean).pop());
-    const p = trusting(id => api().post('/api/sessions', body, id ? { confirmId: id } : undefined), opt.confirmId, raisesOf(spec)).then(r => {
+    const p = trusting(id => api().post('/api/sessions', body, id ? { confirmId: id } : undefined), opt.confirmId, raisesOf(spec).concat(opt.raises || [])).then(r => {
       if (r.ok) { activateWhenReady(r.data && r.data.tab && r.data.tab.id); return r; }
       if (!r.declined) fail(r); return r;
     });

@@ -109,6 +109,10 @@ type webHostImpl struct {
 	closing  map[*webTab]bool  // tabs removed from the strip whose close has not ended
 	trustIDs map[string]trustIssued
 	wg       sync.WaitGroup
+
+	knownMu sync.Mutex // guards knownAt and known: the listing of the project folders a path being typed is compared with
+	knownAt time.Time
+	known   []string
 }
 
 // idemEntry is a request with a client id: claimed by the first request, which answers it (done is closed then); ok says that it
@@ -173,6 +177,7 @@ func newWebHost(ctx context.Context, d webDefaults, logf func(string, ...any)) (
 			b.TrustProject = false // trust in a session started from the page comes from its own request and gate, never from the fixture
 			h.base = b
 		}
+		h.base.NoBudget = h.unlimitedByDefault()
 		return h, nil
 	}
 	if d.Model == "" && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stderr.Fd())) {
@@ -182,7 +187,37 @@ func newWebHost(ctx context.Context, d webDefaults, logf func(string, ...any)) (
 			return nil, err
 		}
 	}
+	h.base.NoBudget = h.unlimitedByDefault()
 	return h, nil
+}
+
+// unlimitedByDefault says whether the sessions of the page start with no spending cap, as the New session dialog shows them (budget
+// off): they do unless sleipnir web was given --budget-usd or the configuration sets swarm.budget_usd (to the built-in amount too: a
+// setting is the person's choice whatever it says); the cap that stands for a team where nobody chose a budget is the built-in one,
+// which the terminal applies and the page does not.
+func (h *webHostImpl) unlimitedByDefault() bool {
+	if h.d.BudgetUSD > 0 {
+		return false
+	}
+	cfg := h.base.Config // the configuration the sessions run with, when the base brings one
+	var rep *config.Report
+	if cfg == nil {
+		cfg, rep, _ = config.Load(config.LoadOpts{Cwd: h.d.Cwd, UntrustedProject: true})
+	}
+	switch {
+	case cfg == nil || cfg.Swarm.BudgetUSD == 0:
+		return true
+	case cfg.Swarm.BudgetUSD != config.DefaultSwarmBudgetUSD:
+		return false
+	}
+	// the built-in amount: a cap nobody chose, unless a layer of the configuration (the person's file, the environment) set it; the
+	// report names the origin of a setting a layer made, and none of one the built-in defaults supply
+	if rep != nil {
+		if _, set := rep.Origins["swarm.budget_usd"]; set {
+			return false
+		}
+	}
+	return true
 }
 
 // newBridge makes the approvals bridge of the host: floor is the least time before an answer (0: the default 350 ms), grace how long
@@ -716,9 +751,9 @@ func (h *webHostImpl) removeTab(t *webTab, by string) (rep *swarm.IntegrationRep
 
 // ---- projects ------------------------------------------------------------------------------------------------------------------
 
-// Projects lists the directories a new session may start in: --cwd, each --project, the directories of the live tabs, of the
-// recorded sessions, and those of the trust ledger that exist.
-func (h *webHostImpl) Projects(ctx context.Context) []wire.Project {
+// projectDirs are the folders the server knows as projects: --cwd, each --project, the directories of the live tabs, of the recorded
+// sessions, and those of the trust ledger that exist.
+func (h *webHostImpl) projectDirs(ctx context.Context) []string {
 	var dirs []string
 	seen := map[string]bool{}
 	add := func(d string) {
@@ -764,6 +799,28 @@ func (h *webHostImpl) Projects(ctx context.Context) []wire.Project {
 	for _, k := range keys {
 		add(k)
 	}
+	return dirs
+}
+
+// knownDirsFor is how long the project folders a path being typed is compared with are kept before they are listed again (the
+// recorded sessions are read to list them, and a page asks on every key press).
+const knownDirsFor = 5 * time.Second
+
+// knownDir reports whether dir is one of the folders projectDirs lists, as they were listed less than knownDirsFor ago.
+func (h *webHostImpl) knownDir(ctx context.Context, dir string) bool {
+	h.knownMu.Lock()
+	defer h.knownMu.Unlock()
+	if h.known == nil || time.Since(h.knownAt) > knownDirsFor {
+		h.known, h.knownAt = append([]string{}, h.projectDirs(ctx)...), time.Now()
+	}
+	return slices.Contains(h.known, filepath.Clean(dir))
+}
+
+// Projects lists the folders the server knows as projects, each with its trust state: the New session dialog offers them. Any other
+// existing folder may start a session too (web_fs.go), once the request is confirmed.
+func (h *webHostImpl) Projects(ctx context.Context) []wire.Project {
+	dirs := h.projectDirs(ctx)
+	home, _ := os.UserHomeDir()
 	out := make([]wire.Project, 0, len(dirs))
 	for _, d := range dirs {
 		root := rootOf(d)
@@ -810,7 +867,16 @@ const swarmWorkerCeiling = 24
 type newSessionDefaults struct {
 	wire.NewSessionRequest
 	MaxWorkers int `json:"maxWorkers"`
+	// TestsPreset says in a line what the allow rule "tests" lets through (config.TestsPresetSummary), for the dialog to show.
+	TestsPreset string `json:"testsPreset"`
+	// UnlimitedEnv is the environment setting that gives a terminal session the budget the dialog calls off: the command line under
+	// the dialog starts with it for a team with no budget.
+	UnlimitedEnv string `json:"unlimitedEnv"`
 }
+
+// unlimitedEnv is what the terminal needs to run a team with no spending cap, as a new session of the page does when its budget is
+// off: swarm.budget_usd of the configuration is 0 (config reads the setting from the environment).
+const unlimitedEnv = "SLEIPNIR_SWARM_BUDGET_USD=0"
 
 // defaults reads the server's flags over the configuration, as the chat's options would have them.
 func (h *webHostImpl) defaults() newSessionDefaults {
@@ -819,7 +885,7 @@ func (h *webHostImpl) defaults() newSessionDefaults {
 		Cwd: h.d.Cwd, Model: h.d.Model, Mode: h.d.Mode, Isolation: h.d.Isolation, Verify: h.d.Verify, Commit: h.d.Commit,
 		TrustProject: h.d.TrustProject, NoMcp: h.d.NoMCP, Effort: "default", Rules: append([]string{}, h.d.Allow...),
 		RoleModels: map[string]string{},
-	}, MaxWorkers: swarmWorkerCeiling}
+	}, MaxWorkers: swarmWorkerCeiling, TestsPreset: config.TestsPresetSummary, UnlimitedEnv: unlimitedEnv}
 	workers := h.d.Workers
 	d.Swarm = &workers
 	for k, v := range h.d.RoleModels {
@@ -839,7 +905,7 @@ func (h *webHostImpl) defaults() newSessionDefaults {
 		if cfg.Swarm.MaxWorkers > 0 {
 			d.MaxWorkers = cfg.Swarm.MaxWorkers
 		}
-		if d.Budget == nil && cfg.Swarm.BudgetUSD > 0 {
+		if d.Budget == nil && cfg.Swarm.BudgetUSD > 0 && !h.base.NoBudget {
 			b := cfg.Swarm.BudgetUSD
 			d.Budget = &b
 		}

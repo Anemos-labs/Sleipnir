@@ -72,11 +72,13 @@ type VerifyOptions struct {
 	// Env adds NAME=value entries to the verifier command's environment (the
 	// progress mode's SUITE_SAMPLE and SUITE_BUDGET_S).
 	Env []string
-	// Stdout, when set, is called after each run of the verifier command with
-	// the run's index and its standard output (bounded by MaxOutput: the head
-	// and the tail are kept), for a caller that reads more than the verdict
-	// from it, such as taskgen's suite recorder.
+	// Stdout and Stderr, when set, are called after each run of the verifier
+	// command with the run's index and its standard output or standard error
+	// (bounded by MaxOutput: the head and the tail are kept), for a caller
+	// that reads more than the verdict from them, such as taskgen's suite
+	// recorder (its record on stdout, its log on stderr).
 	Stdout func(run int, stdout string)
+	Stderr func(run int, stderr string)
 }
 
 // VerifyRun is one execution of the verifier command.
@@ -536,6 +538,9 @@ func (m *Workspaces) runVerifierOnce(ctx context.Context, in verifyInput, fr fil
 	rr = judgeRun(pm, er)
 	if opts.Stdout != nil {
 		opts.Stdout(idx, er.Stdout)
+	}
+	if opts.Stderr != nil {
+		opts.Stderr(idx, er.Stderr)
 	}
 	return rr, er.Output, "", nil
 }

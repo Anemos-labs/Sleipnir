@@ -31,7 +31,8 @@ The contracts between modules are listed after the table. A module reads another
 | `83-ui-cockpit.js` | The Cockpit view: horse, manager card, stalls, gantt, board, merge queue, mail, governor. | Shared |
 | `84-ui-chat.js` | `SL.chat`: the Radio rail (manager conversation, read-only team feed, plan box, hold chip, composer). | Shared |
 | `85-ui-approvals.js` | The approval question and the cross-session inbox, with the quiet-period rule for answering. | Shared |
-| `86-ui-overlays.js` | Modal sheets, toasts, in-page confirm, icons, the reduced-motion switch (`ui.still`). | Shared |
+| `86-ui-overlays.js` | Modal sheets, toasts, in-page confirm, icons, the reduced-motion switch (`ui.still`), the `?` help dots of a dialog (`ui.help`, `ui.helpMount`: an explanation that shows on hover, focus and tap). | Shared |
+| `87b-ui-folder.js` | The folder field of the New session dialog: a path that completes folder names as it is typed (`GET /api/fs/dirs`) and the words that say what the path is. The words and the text a taken name makes have no DOM. | Shared |
 | `87-ui-sheets.js` | Sheets (goal, mode, context, help, history) and dialogs (new session, resume, rename, the trust step). Reads the catalogues of `SL.D`; changes state only through `SL.act`. | Shared |
 | `88-ui-drawer.js` | The per-agent drawer (details, tool log, mail, cache) and the layer-stack drawing. Reads `SL.D.layers` and `layerToks`. | Shared |
 | `90-views-a.js` | The Cache, Mail, Board and Replay views. | Shared |

@@ -113,7 +113,7 @@ test('a long stream keeps every list bounded: 150,000 events', async () => {
 
 test('the New session dialog\'s command line is shell-safe: sh -c reads back every argument as typed', () => {
   const { ctx, SL } = page();
-  SL.ui = SL.ui || {}; load(ctx, ['87-ui-sheets.js']);
+  SL.ui = SL.ui || {}; load(ctx, ['87b-ui-folder.js', '87-ui-sheets.js']);
   const q = SL.ui.shellQuote;
   for (const a of ['plain', 'go test ./...', 'Bash(go test:*)', 'go test -run "TestA|TestB" ./...', "it's", '/home/me/my project', '$HOME`id`;rm -rf /', 'a\nb', '', '--flag=x', 'tab\there']) {
     const out = execFileSync('sh', ['-c', 'printf "%s\\0" ' + q(a)], { encoding: 'utf8' });

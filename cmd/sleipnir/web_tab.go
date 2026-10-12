@@ -1349,9 +1349,12 @@ func (t *webTab) setBudget(ctx context.Context, usd float64) (bool, error) {
 }
 
 // configuredTeamBudget is the budget a team starts with when --budget-usd sets none: swarm.budget_usd of its configuration (the
-// built-in cap when the configuration cannot be read).
+// built-in cap when the configuration cannot be read), none for a session started with no cap.
 func configuredTeamBudget(s *session.Session) float64 {
 	o := s.Options()
+	if o.NoBudget {
+		return 0
+	}
 	if o.Config != nil {
 		return o.Config.Swarm.BudgetUSD
 	}

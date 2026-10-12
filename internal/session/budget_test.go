@@ -11,8 +11,8 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
-// A swarm has a spending cap unless the user removes it, --budget-usd wins over the
-// configuration, and a budget that could not stop anything (NaN, negative) is refused
+// A swarm has a spending cap unless the user removes it (in the configuration, or for one session with NoBudget),
+// --budget-usd wins over the configuration and over NoBudget, and a budget that could not stop anything (NaN, negative) is refused
 // instead of quietly meaning "none".
 func TestSwarmBudgetDefaultsFlagsAndBadValues(t *testing.T) {
 	repo := newRepo(t)
@@ -34,6 +34,9 @@ func TestSwarmBudgetDefaultsFlagsAndBadValues(t *testing.T) {
 		{"the configured cap", func(_ *session.Options, c *config.Config) { c.Swarm.BudgetUSD = 12.5 }, 12.5},
 		{"removed by the user", func(_ *session.Options, c *config.Config) { c.Swarm.BudgetUSD = 0 }, 0},
 		{"the flag wins", func(o *session.Options, c *config.Config) { o.BudgetUSD, c.Swarm.BudgetUSD = 3, 12.5 }, 3},
+		{"lifted for the session", func(o *session.Options, _ *config.Config) { o.NoBudget = true }, 0},
+		{"lifted over a configured cap", func(o *session.Options, c *config.Config) { o.NoBudget, c.Swarm.BudgetUSD = true, 12.5 }, 0},
+		{"the flag wins over a lifted cap", func(o *session.Options, _ *config.Config) { o.NoBudget, o.BudgetUSD = true, 3 }, 3},
 	} {
 		s, err := build(tc.mutate)
 		if err != nil {

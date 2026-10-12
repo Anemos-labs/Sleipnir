@@ -177,7 +177,7 @@ try {
 
   const newSession = async (name, dir) => {
     await ev(`SL.ui.dialogs.newSession()`); await waitFor(`document.getElementById('nsStart')`);
-    await ev(`const c = document.getElementById('nsCwd'); c.value = ${JSON.stringify(dir)}; c.dispatchEvent(new Event('change', { bubbles: true })); const n = document.getElementById('nsName'); n.value = ${JSON.stringify(name)}; n.dispatchEvent(new Event('input', { bubbles: true }));
+    await ev(`const c = document.getElementById('nsCwd'); c.value = ${JSON.stringify(dir)}; c.dispatchEvent(new Event('input', { bubbles: true })); const n = document.getElementById('nsName'); n.value = ${JSON.stringify(name)}; n.dispatchEvent(new Event('input', { bubbles: true }));
       const k = document.querySelector('[data-k="trustProject"]'); if (!k.checked) { k.checked = true; k.dispatchEvent(new Event('change', { bubbles: true })); }
       const m = document.getElementById('nsModel'), o = document.createElement('option'); o.textContent = 'ollama/confirm-test'; m.appendChild(o); m.value = 'ollama/confirm-test'; m.dispatchEvent(new Event('change', { bubbles: true }));`);
     await record(); await ev(`document.getElementById('nsStart').click()`);
@@ -187,8 +187,8 @@ try {
 
   await step('the trust step of a new session lists every file the server sent; a no sends nothing; a yes starts it with that challenge', async () => {
     await ev(`await SL.data.load('projects', { force: true }); SL.ui.dialogs.newSession();`); await waitFor(`document.getElementById('nsCwd')`);
-    const word = await ev(`const o = Array.from(document.getElementById('nsCwd').options).find(o => o.value === ${JSON.stringify(many)}); return o ? o.textContent : '';`); await ev(`SL.ui.closeModal();`);
-    must(/ · (not trusted|changed since trusted)$/.test(word), 'the directory list does not name the trust: ' + word);
+    const word = await ev(`document.getElementById('nsProjects').click(); const o = Array.from(document.querySelectorAll('#nsDirList li.dir')).find(li => li.querySelector('.dp') && li.querySelector('.dp').textContent === ${JSON.stringify(many)}); return o ? o.textContent : '';`); await ev(`SL.ui.closeModal();`);
+    must(/(not trusted|changed since trusted)$/.test(word), 'the list of projects does not name the trust: ' + word);
     await newSession('trust-many', many); await waitFor(`document.querySelector('.sheet.confirm')`, 20000); await p.sleep(200);
     const t = await trustSheet(); await p.shot(path.join(out, 'trust-new.png'));
     const sent = (await reqs()).filter(r => r.m === 'POST' && r.u === '/api/sessions');

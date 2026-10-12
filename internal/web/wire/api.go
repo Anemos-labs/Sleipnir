@@ -224,12 +224,18 @@ type OpenQuestion struct {
 	T0  float64  `json:"t0"`
 }
 
-// NewSessionRequest is the New session dialog: every chat flag it shows, plus a name and a first goal. Cwd must be one of the projects
-// the server lists. Swarm is the number of workers (0 is a single agent; absent takes the server's default), Rules are --allow rules,
-// Budget is in US dollars, and RoleModels maps a role to the model it runs on.
+// NewSessionRequest is the New session dialog: every chat flag it shows, plus a name and a first goal. Cwd is an absolute path of a
+// folder on the server's machine: one of the projects the server lists, or any other folder that exists (or that CreateDir makes),
+// which raises what the request needs confirmed. CreateDir makes the last part of Cwd when it does not exist yet (its parent must);
+// GitInit makes an empty folder, or the one CreateDir makes, a git repository with an empty first commit. Neither is a chat flag.
+// Swarm is the number of workers (0 is a single agent; absent takes the server's default), Rules are --allow rules, Budget is in US
+// dollars (0 is no limit, not even the cap a team has where nobody chose a budget; absent leaves it to the server's configuration),
+// and RoleModels maps a role to the model it runs on.
 type NewSessionRequest struct {
 	Name         string            `json:"name,omitempty"`
 	Cwd          string            `json:"cwd"`
+	CreateDir    bool              `json:"createDir,omitempty"`
+	GitInit      bool              `json:"gitInit,omitempty"`
 	Model        string            `json:"model,omitempty"`
 	Mode         string            `json:"mode,omitempty"`
 	Swarm        *int              `json:"swarm,omitempty"`
@@ -386,6 +392,55 @@ type Project struct {
 	Trust   string `json:"trust"`
 	Files   int    `json:"files"`
 	Default bool   `json:"default,omitempty"`
+}
+
+// DirListing answers GET /api/fs/dirs: the subfolders that complete a path being typed, and what the path typed is.
+type DirListing struct {
+	// Dir is the folder whose subfolders are listed and Prefix what a name has to start with (the unfinished last part of the path);
+	// both are empty when the path could not be read as a path.
+	Dir    string `json:"dir"`
+	Prefix string `json:"prefix"`
+	// Entries are the subfolders of Dir that start with Prefix, best first; More says there are others than those listed.
+	Entries []DirEntry `json:"entries"`
+	More    bool       `json:"more,omitempty"`
+	// Home is the home folder (what a leading ~ stands for) and Sep the separator of paths on the server's machine.
+	Home  string   `json:"home"`
+	Sep   string   `json:"sep"`
+	State DirState `json:"state"`
+}
+
+// DirEntry is a subfolder offered to complete a path: Repo says it holds a git repository, Link that it is a link to a folder.
+type DirEntry struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+	Repo bool   `json:"repo,omitempty"`
+	Link bool   `json:"link,omitempty"`
+}
+
+// DirState is what a path typed names: Path is its absolute form (a leading ~ and a relative path resolved), Exists and Dir say
+// whether there is a folder, Readable whether its entries can be listed, ParentOK whether its parent is a folder (so that it can be
+// made), Known whether it is one of the server's projects, Empty whether the folder has nothing in it, Inaccessible that the server
+// could not look at the path at all (it is there, as far as anyone can tell, and nothing can start in it). Git is "repo" for the top of
+// a git repository, "inside" for a folder within another one (GitRoot), "none" otherwise. Verify are the checks its files suggest.
+type DirState struct {
+	Path     string `json:"path"`
+	Exists   bool   `json:"exists"`
+	Dir      bool   `json:"dir"`
+	Readable bool   `json:"readable"`
+	ParentOK bool   `json:"parentOk"`
+	Known    bool   `json:"known"`
+	Empty    bool   `json:"empty"`
+	// Inaccessible is a path that could not be looked at (permission, a link that loops): not a path to make or to take for absent.
+	Inaccessible bool         `json:"inaccessible,omitempty"`
+	Git          string       `json:"git"`
+	GitRoot      string       `json:"gitRoot,omitempty"`
+	Verify       []VerifyHint `json:"verify"`
+}
+
+// VerifyHint is a command that checks a project of the kind a folder looks like (Cmd) and the file that says so (Why).
+type VerifyHint struct {
+	Cmd string `json:"cmd"`
+	Why string `json:"why"`
 }
 
 // RecordedSession is a session directory on disk that no tab hosts, as the Sessions view and the Resume dialog read it.
