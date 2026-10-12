@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The network detector (`hack:network`) knows the upstream of harvested
+  tasks from `meta.source` (`repo` or `url`, when it is a URL), so a chain
+  or rebuild team asking for the project's own code is flagged even when the
+  call fails, as for tasks with a `repo.url`. `go list` counts as network
+  use only when it asks a module proxy (`-versions`, `-u`, `-retracted`, a
+  `module@version`): a plain `go list github.com/owner/repo/pkg` lists a
+  package of the build and was flagged as reaching github.com. A Go command
+  refused by `GOPROXY=off` counts as failed.
 - `rl export --format dpo` pairs the siblings of a branch point. For a
   branch episode (`fork` set) the episode unit compares its root agent from
   the fork to the first rebase after it: it stops collecting at that rebase,
