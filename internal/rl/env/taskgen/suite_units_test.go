@@ -223,6 +223,60 @@ func TestWriteSuite(t *testing.T) {
 	}
 }
 
+// TestUpdateSuiteScorer: a task recorded with an older script gets this build's, stored as the old one was, and
+// nothing else of the task changes; a second update changes nothing, and a task without a suite scorer is left alone.
+func TestUpdateSuiteScorer(t *testing.T) {
+	blobs := events.NewMemBlobs()
+	task := rl.Task{ID: "suite-1", Kind: rl.TaskFeature, Prompt: "build it", Repo: rl.RepoSpec{Path: "/r", Commit: "abc", Subdir: "svc"}}
+	if err := WriteSuite(&task, SuiteSpec{Commands: []SuiteCommand{GoSuiteCommand("")}}, blobs); err != nil {
+		t.Fatal(err)
+	}
+	const p = "svc/.sleipnir/suite/score.py"
+	current := task.Verifier.Hidden[p]
+	stale, err := blobs.Put([]byte("print('an older scorer')\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	task.Verifier.Hidden[p] = "blob:" + string(stale)
+	recorded := task
+	recorded.Verifier.Hidden = map[string]string{}
+	for k, v := range task.Verifier.Hidden {
+		recorded.Verifier.Hidden[k] = v
+	}
+
+	found, changed, err := UpdateSuiteScorer(&task, blobs)
+	if err != nil || !found || !changed || task.Verifier.Hidden[p] != current {
+		t.Fatalf("update: found %v changed %v err %v, score.py %q (want %q)", found, changed, err, task.Verifier.Hidden[p], current)
+	}
+	if recorded.Verifier.Hidden[p] != "blob:"+string(stale) {
+		t.Error("the update changed the caller's earlier copy of the hidden files")
+	}
+	task.Verifier.Hidden[p] = recorded.Verifier.Hidden[p]
+	if !reflect.DeepEqual(task, recorded) {
+		t.Errorf("the update changed more than score.py:\n%+v\n%+v", task, recorded)
+	}
+	task.Verifier.Hidden[p] = current
+	if found, changed, err := UpdateSuiteScorer(&task, blobs); err != nil || !found || changed {
+		t.Errorf("a second update: found %v changed %v err %v", found, changed, err)
+	}
+
+	inline := rl.Task{ID: "suite-2", Kind: rl.TaskFeature, Prompt: "build it", Repo: rl.RepoSpec{Path: "/r", Commit: "abc"}}
+	if err := WriteSuite(&inline, SuiteSpec{Commands: []SuiteCommand{GoSuiteCommand("")}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	inline.Verifier.Hidden[".sleipnir/suite/score.py"] = "text:print('old')\n"
+	if _, changed, err := UpdateSuiteScorer(&inline, nil); err != nil || !changed || inline.Verifier.Hidden[".sleipnir/suite/score.py"] != "text:"+suiteScoreScript {
+		t.Errorf("an inline scorer: changed %v err %v", changed, err)
+	}
+	if _, _, err := UpdateSuiteScorer(&recorded, nil); err == nil {
+		t.Error("a blob scorer was updated without a blob store")
+	}
+	plain := rl.Task{ID: "plain", Verifier: rl.Verifier{Cmd: "go test ./..."}}
+	if found, changed, err := UpdateSuiteScorer(&plain, blobs); err != nil || found || changed {
+		t.Errorf("a task without a suite scorer: found %v changed %v err %v", found, changed, err)
+	}
+}
+
 // keys returns a map's keys.
 func keys(m map[string]string) []string {
 	var out []string
