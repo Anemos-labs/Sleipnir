@@ -67,6 +67,9 @@ type ReverifyResult struct {
 	After          *rl.Verdict        `json:"after,omitempty"`
 	ProgressBefore []rl.ProgressPoint `json:"progress_before,omitempty"`
 	ProgressAfter  []rl.ProgressPoint `json:"progress_after,omitempty"`
+	// NoSavepoints: Savepoints was asked for, but the sample has no savepoint
+	// index (it ran without them); its progress was left as it was.
+	NoSavepoints bool `json:"no_savepoints,omitempty"`
 }
 
 // reverifyEntry is one line of reverify.jsonl.
@@ -81,8 +84,12 @@ type reverifyEntry struct {
 // Unless DryRun, it writes ep to episode.json, the new points to progress.jsonl
 // and appends an entry to reverify.jsonl. task must be the task the sample ran
 // (the same id) with the same start: a checkout of it must have the tree the
-// sample started from. A savepoint whose tree is gone from the sample's store,
-// or a verification that cannot run, is an error and nothing is written.
+// sample started from. A sample without a savepoint index (a rollout run
+// without savepoints) keeps its progress, and the result says so
+// (NoSavepoints). A savepoint whose tree is gone from the sample's store, or a
+// verification that cannot run, is an error and nothing is written: the
+// savepoints are scored before the final verification, the one step that
+// writes into the sample before the end.
 func Reverify(ctx context.Context, dir string, ep *rl.Episode, task rl.Task, o ReverifyOptions) (ReverifyResult, error) {
 	var res ReverifyResult
 	switch {
@@ -113,7 +120,10 @@ func Reverify(ctx context.Context, dir string, ep *rl.Episode, task rl.Task, o R
 
 	var recs []savepointRecord
 	if o.Savepoints {
-		if recs, err = readSavepoints(dir); err != nil {
+		// A rollout run without savepoints has no index: there is nothing to score, and its curve stays as it is.
+		if _, err := os.Stat(filepath.Join(dir, savepointDir, savepointIndex)); errors.Is(err, os.ErrNotExist) {
+			o.Savepoints, res.NoSavepoints = false, true
+		} else if recs, err = readSavepoints(dir); err != nil {
 			return res, fmt.Errorf("reverify: %w", err)
 		}
 		for _, rec := range recs {
@@ -121,6 +131,23 @@ func Reverify(ctx context.Context, dir string, ep *rl.Episode, task rl.Task, o R
 				return res, fmt.Errorf("reverify: savepoint %d was taken over tree %s, task %s starts from %s", rec.N, rec.Workspace.BaseTree, task.ID, base)
 			}
 		}
+	}
+
+	// The savepoints first: the final verification writes into the sample, and a savepoint that cannot be scored
+	// must leave nothing behind.
+	var points []rl.ProgressPoint
+	progressEnv, progressTimeout := progressMode(o.ProgressSample, o.ProgressBudget)
+	for _, rec := range recs {
+		patch, err := m.diffTrees(ctx, savepointStoreDir(dir), base, rec.Tree, maxRestoreBytes)
+		if err != nil {
+			return res, fmt.Errorf("reverify: savepoint %d: %w", rec.N, err)
+		}
+		vr, err := VerifyPatch(ctx, task, patch, VerifyOptions{Workspaces: m, HiddenBlobs: o.HiddenBlobs, Env: progressEnv, Timeout: progressTimeout})
+		if err != nil {
+			return res, fmt.Errorf("reverify: savepoint %d: %w", rec.N, err)
+		}
+		points = append(points, rl.ProgressPoint{Savepoint: rec.N, Seq: rec.Seq, ActiveWallMs: rec.ActiveWallMs, At: rec.At, Score: vr.Score,
+			Pass: vr.Pass, TimedOut: vr.TimedOut, Ms: vr.Ms})
 	}
 
 	var after *rl.Verdict
@@ -143,21 +170,6 @@ func Reverify(ctx context.Context, dir string, ep *rl.Episode, task rl.Task, o R
 		}
 		v := vr.Verdict()
 		after = &v
-	}
-
-	var points []rl.ProgressPoint
-	progressEnv, progressTimeout := progressMode(o.ProgressSample, o.ProgressBudget)
-	for _, rec := range recs {
-		patch, err := m.diffTrees(ctx, savepointStoreDir(dir), base, rec.Tree, maxRestoreBytes)
-		if err != nil {
-			return res, fmt.Errorf("reverify: savepoint %d: %w", rec.N, err)
-		}
-		vr, err := VerifyPatch(ctx, task, patch, VerifyOptions{Workspaces: m, HiddenBlobs: o.HiddenBlobs, Env: progressEnv, Timeout: progressTimeout})
-		if err != nil {
-			return res, fmt.Errorf("reverify: savepoint %d: %w", rec.N, err)
-		}
-		points = append(points, rl.ProgressPoint{Savepoint: rec.N, Seq: rec.Seq, ActiveWallMs: rec.ActiveWallMs, At: rec.At, Score: vr.Score,
-			Pass: vr.Pass, TimedOut: vr.TimedOut, Ms: vr.Ms})
 	}
 
 	if after != nil {

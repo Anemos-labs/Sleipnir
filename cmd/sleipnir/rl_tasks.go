@@ -163,7 +163,7 @@ func tasksFilter(args []string, stdout, stderr io.Writer) error {
 func tasksUpdateScorer(args []string, stdout, stderr io.Writer) error {
 	fs := newFlags("rl tasks update-scorer", stderr, "rl tasks update-scorer [flags] FILE")
 	blobsDir := fs.String("blobs", "", "blob store holding the tasks' hidden verifier files, where the new script goes too (default: blobs/ next to FILE)")
-	out := fs.String("o", "", "output file (default: stdout)")
+	out := fs.String("o", "", "output file, which may be FILE itself (default: stdout)")
 	file, err := oneFile(fs, args, "rl tasks update-scorer")
 	if err != nil {
 		return err
@@ -189,13 +189,11 @@ func tasksUpdateScorer(args []string, stdout, stderr io.Writer) error {
 			changed++
 		}
 	}
-	w, closeOut, err := openOutput(*out, stdout)
-	if err != nil {
-		return fmt.Errorf("rl tasks update-scorer: %w", err)
-	}
-	err = env.EncodeTasks(w, tasks)
-	if cerr := closeOut(err == nil); err == nil {
-		err = cerr
+	// A file is written next to its place and renamed there: -o may name FILE itself, which a failed write must leave whole.
+	if *out == "" || *out == "-" {
+		err = env.EncodeTasks(stdout, tasks)
+	} else {
+		err = env.WriteTasks(*out, tasks)
 	}
 	if err != nil {
 		return fmt.Errorf("rl tasks update-scorer: %w", err)

@@ -1653,7 +1653,7 @@ flags:
   -blobs string
         blob store holding the tasks' hidden verifier files, where the new script goes too (default: blobs/ next to FILE)
   -o string
-        output file (default: stdout)
+        output file, which may be FILE itself (default: stdout)
 ```
 <!-- /flags -->
 
@@ -2189,7 +2189,8 @@ verdict and curve are appended to the sample's `reverify.jsonl`, and the new ver
 refused, as is a savepoint whose tree is missing from the sample's store, and nothing of that sample is written.
 `--dry-run` measures and prints without writing. The rewards still hold the old scores: run `rl reward` on the run
 afterwards. Use the work dir, `--confine` settings and `--set-env` caches the run used. A sample that is still running
-has no `episode.json` and is skipped.
+has no `episode.json` and is skipped; one that ran without savepoints keeps its progress, and only its final patch is
+verified again. The savepoints are scored before the final verification, so a sample that fails has nothing written into it.
 
 <!-- flags: rl reverify -->
 ```text

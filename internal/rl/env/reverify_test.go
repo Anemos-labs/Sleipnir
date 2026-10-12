@@ -85,6 +85,32 @@ func TestReverifyReplacesTheVerdictAndTheCurve(t *testing.T) {
 		}
 	}
 
+	// A savepoint that cannot be scored fails the sample before anything is written into it.
+	index := filepath.Join(dir, savepointDir, savepointIndex)
+	good, err := os.ReadFile(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := recs[len(recs)-1]
+	bad.N, bad.Tree = bad.N+1, strings.Repeat("e", len(bad.Tree))
+	if err := appendSavepoint(dir, bad); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Reverify(ctx, dir, f.episode(f.task.ID, 0), fixed, o); err == nil || !strings.Contains(err.Error(), "savepoint") {
+		t.Fatalf("a savepoint whose tree is gone: %v", err)
+	}
+	if now, _ := os.ReadFile(episodeFile); !bytes.Equal(now, was) {
+		t.Error("a failed reverify rewrote episode.json")
+	}
+	for _, p := range []string{reverifyLog, reverifyDir} {
+		if _, err := os.Stat(filepath.Join(dir, p)); err == nil {
+			t.Errorf("a failed reverify wrote %s", p)
+		}
+	}
+	if err := os.WriteFile(index, good, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
 	ep := f.episode(f.task.ID, 0)
 	res, err = Reverify(ctx, dir, ep, fixed, o)
 	if err != nil {
@@ -129,5 +155,34 @@ func TestReverifyReplacesTheVerdictAndTheCurve(t *testing.T) {
 	moved.Env.TreeHash = strings.Repeat("0", len(moved.Env.TreeHash))
 	if _, err := Reverify(ctx, dir, moved, fixed, o); err == nil || !strings.Contains(err.Error(), "not the start it ran") {
 		t.Errorf("a sample from another start: %v", err)
+	}
+}
+
+// A rollout run without savepoints has no savepoint index: verifying it again
+// with the default options measures the final patch and keeps its progress.
+func TestReverifyWithoutSavepoints(t *testing.T) {
+	scorer := func(final string) string {
+		return `if tr -d ' \t\n' < mathx.go | grep -q 'ifa>b{returna}'; then echo '{"score": ` + final + `}'; else echo '{"score": 0}'; fi`
+	}
+	f := newRunnerFixture(t, func(f *runnerFixture) {
+		f.r.Concurrency = 1
+		f.task.Verifier = rl.Verifier{Pass: "json-score", TimeoutS: 60, Cmd: scorer("0.5")}
+	})
+	f.h.Func = func(ctx context.Context, spec RunSpec) (RunResult, error) {
+		mustWrite(t, filepath.Join(spec.Workspace, "mathx.go"), fixedMath)
+		return RunResult{Claimed: "done"}, nil
+	}
+	if r := f.rollout([]rl.Task{f.task}, 1, f.opts()).Results[0]; r.Status != StatusOK || r.Score != 0.5 {
+		t.Fatalf("result %+v", r)
+	}
+	fixed := f.task
+	fixed.Verifier.Cmd = scorer("1")
+	ep := f.episode(f.task.ID, 0)
+	res, err := Reverify(context.Background(), f.sampleDir(f.task.ID, 0), ep, fixed, ReverifyOptions{Workspaces: f.m, Final: true, Savepoints: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.NoSavepoints || res.After == nil || res.After.Score != 1 || res.ProgressAfter != nil || ep.Progress != nil {
+		t.Errorf("result %+v, progress %+v: want the final verdict alone, the curve untouched", res, ep.Progress)
 	}
 }

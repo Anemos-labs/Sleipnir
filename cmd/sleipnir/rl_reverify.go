@@ -104,8 +104,9 @@ func rlReverify(ctx context.Context, args []string, stdout, stderr io.Writer) er
 			}{ep.ID, s.Dir, res})
 			continue
 		}
+		scored := *savepoints && !res.NoSavepoints // a sample without savepoints keeps its curve
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", ep.ID, verdictScore(res.Before), verdictScore(res.After), verdictPass(res.After),
-			pointCount(res, *savepoints), bestScore(res.ProgressBefore, *savepoints), bestScore(res.ProgressAfter, *savepoints))
+			pointCount(res, scored), bestScore(res.ProgressBefore, scored), bestScore(res.ProgressAfter, scored))
 	}
 	if !*asJSON {
 		tw.Flush()
