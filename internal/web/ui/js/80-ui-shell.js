@@ -22,7 +22,7 @@
     for (let i = 0; i < WARM_LIFE; i++) { const a = -Math.PI / 2 + i / WARM_LIFE * 2 * Math.PI, c = Math.cos(a), s = Math.sin(a), ln = U.sv('line', { class: 'ring-tick', x1: 32 + 26 * c, y1: 32 + 26 * s, x2: 32 + 30 * c, y2: 32 + 30 * s }, g); H.ticks.push(ln); }
     $('#warmArc').style.strokeDasharray = RING_C; $('#hitArc').style.strokeDasharray = HIT_C;
     sc.update((S, m) => {
-      if (!S || !m) return; const c = calc.totals(m), meta = S.meta, nW = S.roster.length - 1;
+      if (!S || !m) return; const c = calc.totals(m), meta = S.meta, nW = Math.max(S.roster.length - 1, meta.swarm || 0);   // a team's size is its slots, not the workers started so far
       const goalText = meta.goalText || (m.goal.state !== 'cleared' && m.goal.objective) || '';   /* the server's goal events name it too */
       $('#goalLab').textContent = goalText ? 'Goal' : 'Session'; const gs = $('#goalState'); gs.hidden = !goalText; const gst = m.goal.state; gs.textContent = gst === 'met' ? 'met ✓' : gst === 'paused' ? 'paused' : gst === 'cleared' ? 'cleared' : 'active'; gs.style.color = gst === 'met' ? 'var(--ok)' : gst === 'paused' ? 'var(--warm)' : '';
       txt('goalT', $('#goalT'), goalText || 'no goal: a chat with the manager (type /goal TEXT to set one)');
