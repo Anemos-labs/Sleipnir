@@ -94,6 +94,7 @@ Flags are applied by the commands themselves, after the merge, and always win ov
 | `--swarm N` | the team size: a manager and N workers (the manager is not counted). `0` is a single agent; a team has at least 8 workers, and the default team is one slot of each role. `swarm.max_workers` is the ceiling: a request for more workers than it allows is refused before anything starts | `chat`, `run` |
 | `--role-model role=M` | the model of one role (repeatable). A role the session does not have is an error (`no role named "backnd"`, with the roles it has); without `--swarm` there is only one agent and the flag draws a warning. Given more than once for a worker role, or as a bare role (`--role-model backend`), the values are the team instead: one worker slot each, on its model or the role's, and only the listed roles have slots (`--role-model backend --role-model backend --role-model frontend …`, at least 8). `compactor` and `mailman` only take a model | `chat`, `run`, `swarm`, `web`, `rl rollout`, `rl eval` |
 | `--auto-docs` | `swarm.auto_docs` | `chat`, `run`, `swarm`, `web` |
+| `--manager-approves` | `permissions.manager_approves` | `chat`, `run`, `swarm`, `web` |
 | `--no-web` | removes `web_fetch` and `web_search` | `run`, `swarm` |
 | `--trust-project` | the trust gate of section 4 | `chat`, `run`, `swarm`, `config`, `doctor` |
 
@@ -279,6 +280,7 @@ ChatGPT sign-in token.
 | `ask` | list of rules | `[]` | yes | Actions that always ask, whatever the mode or the allow list says |
 | `deny` | list of rules | `[]` | yes | Actions that are refused, in every mode |
 | `roles` | object | none | yes | Per-role overlay: `roles.<role>` with `mode`, `allow`, `ask`, `deny`. Section 8 |
+| `manager_approves` | boolean | `true` | yes | In a team, a worker's routine permission question (one that stays inside the workspace, reaches no network but this machine, and that no `ask` rule, protection or high-risk marker covers) goes to the manager first, which answers yes, no with an instruction, or passes it to the person; a question it leaves unanswered for a minute comes to the person. `--manager-approves=false` turns it off for one session (`docs/SWARM-PROTOCOL.md`, section 2) |
 
 Rule syntax, precedence, modes and examples are in section 8. Every rule is parsed when the file loads, so a typo is
 an error with a line number, not a rule that silently never matches. A rule that is in both `allow` and `deny` is a
@@ -311,7 +313,7 @@ or replicas may still need cold prefills.
 | `requests_per_minute` | integer | `0` (500) | yes | Request budget of the whole swarm. Lower it if the endpoint answers 429 |
 | `max_concurrent_requests` | integer | `0` (24) | yes | Requests in flight across the swarm |
 | `isolation` | string | `none` | yes | `none` (all agents edit the one working tree, guarded by write leases; `shared` is the older spelling of the same thing) or `worktree`: each writer works in a git worktree of its own and finished work is integrated through a verifying merge queue (`docs/SWARM-PROTOCOL.md`). `--isolation` overrides it. The trees live in your cache directory, whatever the configuration says |
-| `auto_docs` | boolean | `true` | yes | The team's docs worker keeps README, `docs/` and `AGENTS.md` current without being asked: after every accepted task and agreement the harness gives it a `docs: catch up` task with the changes (`docs/SWARM-PROTOCOL.md`). It applies to a team with a docs slot; `--auto-docs=false` makes docs a role the manager assigns |
+| `auto_docs` | boolean | `true` | yes | The team's docs worker keeps README, `docs/` and `AGENTS.md` current without being asked: after accepted tasks and agreements the harness gives it a `docs: catch up` task with the changes, the first once an implementation task is accepted (`docs/SWARM-PROTOCOL.md`). It applies to a team with a docs slot; `--auto-docs=false` makes docs a role the manager assigns |
 | `mailman` | boolean | `false` | yes | Route worker mail through a mailman agent that digests bursts (`docs/SWARM-PROTOCOL.md`); `--mailman` overrides it. It runs on the session's model unless `--role-model mailman=<model>` names one |
 | `budget_usd` | number | `50` | swarm | Total spend cap for a swarm run, retired agents included; when spent, workers stop and no request is admitted. On by default, because a swarm can spend many times what one agent does; `0` (in your own file or `SLEIPNIR_SWARM_BUDGET_USD`) removes it. A project file cannot set it unless trusted (section 4). `--budget-usd` overrides it for one run and is the way to cap a single agent. The run's header line shows the cap, and the message when it is reached says how to raise it. `sleipnir web` does not apply the built-in cap to the sessions started in its page (the New session dialog starts at `off`), only a budget that `--budget-usd` or this key sets |
 

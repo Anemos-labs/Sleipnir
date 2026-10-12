@@ -54,6 +54,8 @@ type webDefaults struct {
 	Team []session.TeamSlot
 	// AutoDocs is --auto-docs: nil when the flag was not given.
 	AutoDocs *bool
+	// ManagerApproves is --manager-approves: nil when the flag was not given.
+	ManagerApproves *bool
 	// Allow is the --allow rules with the named sets (tests) expanded.
 	Allow []string
 	// Resume is --resume or --continue as session.Options.Resume takes it: "", an id, a directory
@@ -144,6 +146,7 @@ func cmdWeb(ctx context.Context, args []string) error {
 	isolation, commit := isolationFlags(fs)
 	mailman := mailmanFlag(fs)
 	autoDocs := autoDocsFlag(fs)
+	managerApproves := managerApprovesFlag(fs)
 	roleFlag := &roleModelFlag{}
 	fs.Var(roleFlag, "role-model", "for new sessions: "+roleModelHelp)
 	resume := resumeFlags(fs)
@@ -229,7 +232,8 @@ flags:
 	d := webDefaults{
 		Cwd: dir, Model: *model, Mode: *mode, Workers: defaultTeam(), TrustProject: *trust, BudgetUSD: *budget,
 		NoMCP: *noMCP, Verify: *verify, Isolation: *isolation, Commit: *commit, Mailman: mailman(),
-		RoleModels: roleModels, Team: teamSlots, AutoDocs: autoDocs(), Allow: expandAllow(*allow), Resume: resumeSpec,
+		RoleModels: roleModels, Team: teamSlots, AutoDocs: autoDocs(), ManagerApproves: managerApproves(), Allow: expandAllow(*allow),
+		Resume:     resumeSpec,
 		AskTimeout: *askTimeout, AskGrace: *askGrace, Projects: projects, Fixture: fixture,
 	}
 	if *askGrace == 0 {

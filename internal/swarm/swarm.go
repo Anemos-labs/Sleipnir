@@ -71,6 +71,11 @@ type Config struct {
 	// accepted tasks and agreements become a "docs: catch up" task the harness gives
 	// to the docs worker when it is idle. It applies only to a team with a docs slot.
 	AutoDocs bool
+	// ManagerApproves puts a worker's routine permission question to the manager before the person (approvals.go); the manager
+	// answers with the approve tool. ManagerApproveTimeout is how long such a question waits for the manager before it goes to the
+	// person (DefaultManagerApproveTimeout when zero).
+	ManagerApproves       bool
+	ManagerApproveTimeout time.Duration
 
 	// Board bounds what agents can put on the board: tasks, pending notes, alerts.
 	Board BoardLimits
@@ -272,6 +277,11 @@ type Swarm struct {
 	roleLay  map[string]*kv.Layer
 	// docs is the auto-docs keeper (docs.go); nil without auto-docs.
 	docs *docsKeeper
+	// review counts code merges and the reviewer's acceptance that covers them (staffing.go).
+	review reviewGate
+	// approvals (under mu) are the workers' questions waiting for the manager's answer, by id; aseq numbers them (approvals.go).
+	approvals map[string]*approvalQ
+	aseq      atomic.Int64
 	// hidden marks roles present only so that recovered workers keep theirs
 	// (LegacyRoles): they are never spawned or listed.
 	hidden   map[string]bool

@@ -227,7 +227,7 @@ func (s *Swarm) spawnNew(req SpawnReq, files []string) (string, error) {
 		if tree, err = s.createTree(id); err != nil {
 			return undo(fmt.Errorf("could not create a git worktree for %s: %w", id, err))
 		}
-		card += isolationCard
+		card += isolationCard(integrationRefOf(tree))
 	}
 	notes := kv.NewLayer("notes:"+id, kv.KindNotes, 1, []kv.Segment{{Key: "assignment", Text: card, Vol: kv.VolFrozen}})
 	m, err := s.newMember(id, role, notes, NewEvidence(), tree)

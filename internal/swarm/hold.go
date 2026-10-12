@@ -246,6 +246,11 @@ func (h *holdHooks) BeforeStop(ctx context.Context, agentID, role, final string,
 		return agent.StopOutcome{Veto: true, Reason: reason}
 	}
 	if u.empty() {
+		if last := h.s.reviewPending(); last != "" {
+			reason := "Not finished: " + reviewLine(last) + ". Then give your final answer."
+			h.s.emitAs(agentID, events.TypeSwarmHold, map[string]any{"reason": reason})
+			return agent.StopOutcome{Veto: true, Reason: reason}
+		}
 		return agent.StopOutcome{}
 	}
 	reason := u.reason()

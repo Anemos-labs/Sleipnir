@@ -154,6 +154,16 @@ make a project's tool servers start without asking: each entry of a `.mcp.json` 
 
 A yes for the rest of the session is an exact rule (`Bash(mytool build ./x)`), except for edits inside the project and for a short table of runner commands (`internal/perm/runner.go`: `go test|build|vet`, `npm test|run`, `pytest`, `cargo test|build|check`, `make`, `git add|commit|status`), where it is the prefix (`Bash(go test:*)`): a person doing test-driven work is not asked again for every package. An edit is never repeated exactly, so a yes to an edit inside the project (`Edit(<root>/**)`) is a yes to edits inside it, as accept-edits mode would give; an edit outside the project stays exact, and what the project keeps asked about (`ask` rules, the protected configuration directories) or denied (`.git`, credentials) stays so, whatever was allowed. The dialog names what it remembers ("don't ask again for "go test" commands", "...for edits in this project"), the engine tells it (`Request.Remembers`). What this adds: any arguments, among them flags such as `go test -exec`, which run a program of the model's choosing. A test run already executes whatever tests the repository has (a model that can write a test file can run anything through `go test`), so the prefix gives up little that the exact rule did not. What it does not cover stays asked about: another subcommand (`go run`), a chain (`go test ./a && rm -rf x`), a command with an environment assignment that steers what runs or wrappers (`sudo`, `timeout`). The rule never names the directory the command ran in, so a yes for `cd <tree> && ./bin/app` covers `./bin/app` in every worker's tree. It is never offered for shells, interpreters, `rm`, `sudo`, `curl` or anything not in the table; a no stays exact, nothing beyond the session is widened, and an unattended session has nobody to give the yes.
 
+### The manager's answers
+
+In a team, a worker's question that the engine marks routine is put to the manager before the person (`permissions.manager_approves`,
+`docs/SWARM-PROTOCOL.md` section 2). The class is the engine's: an action whose files all resolve inside the workspace, that reaches no
+network but this machine, that no `ask` rule, built-in protection or high-risk marker covers, and that is not a package install, a
+download, a signal to another process or a container, service or scheduler command. The manager is a model reading the worker's
+command as data; what it approves runs with the mode's rights, inside those bounds. An unlisted program it approves (`./bin/app`,
+`python3 tools/gen.py`) can do whatever the program does, as it could after a person's yes; the bound is the class, not the
+program. Its answers are never remembered as rules, and `--manager-approves=false` puts every question to the person.
+
 ### Environment assignments, formatters and git
 
 An environment assignment of a plain value (`PORT=8080 ./bin/app`, `NOTES_FILE=data.json go test ./...`) is an input of the command, as an

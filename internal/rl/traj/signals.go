@@ -67,7 +67,7 @@ var checkCmdRE = regexp.MustCompile(`(?i)\b(?:go\s+test|pytest|py\.test|(?:npm|y
 
 // coordinationTools are excluded from duplicate-work detection: several agents
 // listing the board or waiting is coordination, not repeated work.
-var coordinationTools = map[string]bool{"task": true, "mail": true, "note": true, "wait": true, "spawn": true, "recall": true}
+var coordinationTools = map[string]bool{"task": true, "mail": true, "note": true, "wait": true, "spawn": true, "recall": true, "approve": true}
 
 // writeTools change files.
 var writeTools = map[string]bool{"edit": true, "write": true, "apply_patch": true}

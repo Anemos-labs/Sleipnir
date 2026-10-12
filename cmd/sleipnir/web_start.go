@@ -112,7 +112,7 @@ func mergeOptions(base session.Options, f chatFlags, defaultCwd string) session.
 	out.BudgetUSD, out.Resume, out.NoMCP = o.BudgetUSD, o.Resume, o.NoMCP || base.NoMCP
 	out.Verify, out.Isolation, out.Commit, out.Mailman = o.Verify, o.Isolation, o.Commit, o.Mailman
 	out.RoleModels, out.Allow, out.Interactive = o.RoleModels, o.Allow, true
-	out.Team, out.AutoDocs, out.DefaultTeam = o.Team, o.AutoDocs, o.DefaultTeam
+	out.Team, out.AutoDocs, out.DefaultTeam, out.ManagerApproves = o.Team, o.AutoDocs, o.DefaultTeam, o.ManagerApproves
 	out.ID, out.Dir = "", ""
 	out.Sink, out.NewSink, out.Prompter = nil, nil, nil
 	return out
@@ -640,6 +640,9 @@ func chatArgsOf(d webDefaults, resume string) []string {
 	}
 	if d.AutoDocs != nil {
 		a = append(a, "--auto-docs="+strconv.FormatBool(*d.AutoDocs))
+	}
+	if d.ManagerApproves != nil {
+		a = append(a, "--manager-approves="+strconv.FormatBool(*d.ManagerApproves))
 	}
 	roles := make([]string, 0, len(d.RoleModels))
 	for r := range d.RoleModels {

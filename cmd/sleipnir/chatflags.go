@@ -25,6 +25,7 @@ type chatFlagSet struct {
 	isolation                *string
 	commit                   *bool
 	mailman, autoDocs        func() *bool
+	managerApproves          func() *bool
 	roleModels               *roleModelFlag
 	resume                   func() (string, error)
 	allow                    *allowFlag
@@ -46,6 +47,7 @@ func registerChatFlags(fs *flag.FlagSet) *chatFlagSet {
 	f.isolation, f.commit = isolationFlags(fs)
 	f.mailman = mailmanFlag(fs)
 	f.autoDocs = autoDocsFlag(fs)
+	f.managerApproves = managerApprovesFlag(fs)
 	f.roleModels = &roleModelFlag{}
 	fs.Var(f.roleModels, "role-model", roleModelHelp)
 	f.resume = resumeFlags(fs)
@@ -68,12 +70,14 @@ type chatFlags struct {
 	commit     bool
 	mailman    *bool
 	autoDocs   *bool
-	roleModels map[string]string
-	team       []session.TeamSlot
-	resume     string
-	allow      []string // as typed: the name tests is not expanded
-	plain      bool
-	noAnim     bool
+	// managerApproves is --manager-approves: nil when the flag was not given.
+	managerApproves *bool
+	roleModels      map[string]string
+	team            []session.TeamSlot
+	resume          string
+	allow           []string // as typed: the name tests is not expanded
+	plain           bool
+	noAnim          bool
 }
 
 // values reads what was parsed into a chatFlags. fs is the set the flags were registered on.
@@ -85,7 +89,7 @@ func (f *chatFlagSet) values(fs *flag.FlagSet) (chatFlags, error) {
 	out := chatFlags{
 		model: *f.model, cwd: *f.cwd, mode: *f.mode, verify: *f.verify, isolation: *f.isolation,
 		workers: *f.swarmN, trust: *f.trust, verbose: *f.verbose, noMCP: *f.noMCP, budget: *f.budget, commit: *f.commit,
-		mailman: f.mailman(), autoDocs: f.autoDocs(), resume: spec, allow: append([]string(nil), (*f.allow)...), plain: *f.plain, noAnim: *f.noAnim,
+		mailman: f.mailman(), autoDocs: f.autoDocs(), managerApproves: f.managerApproves(), resume: spec, allow: append([]string(nil), (*f.allow)...), plain: *f.plain, noAnim: *f.noAnim,
 	}
 	if out.roleModels, out.team, err = f.roleModels.split(); err != nil {
 		return chatFlags{}, err
@@ -159,8 +163,9 @@ func (f chatFlags) options() session.Options {
 	return chatOptions(session.Options{
 		Cwd: f.cwd, Model: f.model, Mode: perm.Mode(f.mode), Swarm: team, Workers: workers,
 		TrustProject: f.trust, BudgetUSD: f.budget, Resume: f.resume, NoMCP: f.noMCP,
-		Verify: f.verify, Isolation: f.isolation, Commit: f.commit, Mailman: f.mailman, AutoDocs: f.autoDocs, RoleModels: rm,
-		Team: append([]session.TeamSlot(nil), f.team...), DefaultTeam: true, Allow: expandAllow(f.allow),
+		Verify: f.verify, Isolation: f.isolation, Commit: f.commit, Mailman: f.mailman, AutoDocs: f.autoDocs, ManagerApproves: f.managerApproves,
+		RoleModels: rm,
+		Team:       append([]session.TeamSlot(nil), f.team...), DefaultTeam: true, Allow: expandAllow(f.allow),
 	})
 }
 
@@ -173,7 +178,7 @@ type newSessionRequest struct {
 }
 
 // argsFor renders the New session dialog's request as chat arguments, in the order the dialog's command line shows them: --cwd,
-// --model, --mode, --swarm, --isolation, --verify, --commit, --mailman, --auto-docs=false, --budget-usd, --allow, --trust-project,
+// --model, --mode, --swarm, --isolation, --verify, --commit, --mailman, --auto-docs=false, --manager-approves=false, --budget-usd, --allow, --trust-project,
 // --no-mcp, then --role-model: the role models in the order of the roles' names, then the team's slots in team order. The name, the first goal and the effort are not chat flags: the host applies them
 // once the session has started.
 func argsFor(req wire.NewSessionRequest) []string {
@@ -204,6 +209,9 @@ func argsFor(req wire.NewSessionRequest) []string {
 	}
 	if req.AutoDocs != nil && !*req.AutoDocs {
 		a = append(a, "--auto-docs=false")
+	}
+	if req.ManagerApproves != nil && !*req.ManagerApproves {
+		a = append(a, "--manager-approves=false")
 	}
 	if req.Budget != nil && *req.Budget != 0 {
 		a = append(a, "--budget-usd", strconv.FormatFloat(*req.Budget, 'f', -1, 64))

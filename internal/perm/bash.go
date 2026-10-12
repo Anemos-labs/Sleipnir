@@ -66,6 +66,7 @@ type evaluator struct {
 	rs         *resolver
 	r          Request
 	globBudget int
+	unroutine  bool // a part of the request is not routine (routine.go)
 }
 
 // evaluate runs bounded permission analysis and escalates implicitly allowed high-risk actions to
@@ -79,6 +80,7 @@ func (e *Engine) evaluate(v *view, r Request) verdict {
 		}
 		return ask("the tool marked this action high risk", nil).protected(TierGuarded)
 	}
+	res.routine = res.kind == vAsk && !ev.unroutine && !res.askRule && res.tier == "" && r.Risk != RiskHigh
 	return res
 }
 
@@ -164,6 +166,9 @@ func (ev *evaluator) bash(cmd string) verdict {
 	why := opaqueReason(cmd, an)
 	if why == "" && tooMany {
 		why = fmt.Sprintf("it has more than %d commands, too many to check", maxUnits)
+	}
+	if why != "" {
+		ev.unroutine = true
 	}
 	if why == "" || res.kind == vDeny || free(ev.v.mode) {
 		return res

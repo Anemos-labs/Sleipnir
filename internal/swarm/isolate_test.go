@@ -610,3 +610,27 @@ func TestTheManagerOfAnIsolatedRunKnowsWhereTheWorkGoes(t *testing.T) {
 		t.Fatal("a manager in an ordinary run was told about isolation")
 	}
 }
+
+// An isolated writer is told that the harness does the version control, not to fetch, merge or commit, and the exact ref of the
+// session's integration branch to read what teammates merged.
+func TestAnIsolatedWriterIsToldHowToReadMergedWork(t *testing.T) {
+	iso := newIsoRig(t, isoOpts{cfg: Config{MaxWriters: 1}}, func(ctx context.Context, c *rvCall) rvReply {
+		return rvReply{Text: "nothing to do"}
+	})
+	id := iso.mustSpawn("backend", "Add a.txt", "a.txt")
+	rvWait(t, "worker idle", func() bool { return iso.idle(id) })
+	for _, want := range []string{
+		"The harness does the version control", "Do not run git fetch, pull, merge, rebase, cherry-pick or commit",
+		"git show sleipnir/t/_integration:<path>",
+	} {
+		if !iso.prov.sawEver(want) {
+			t.Errorf("the worker was not told %q", want)
+		}
+	}
+	if got := integrationRefOf(&workspace.Tree{Branch: "sleipnir/s1/be-1"}); got != "sleipnir/s1/_integration" {
+		t.Errorf("integrationRefOf = %q", got)
+	}
+	if got := isolationCard(""); got != isolationCardText {
+		t.Errorf("a detached tree's card: %q", got)
+	}
+}

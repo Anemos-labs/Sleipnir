@@ -18,7 +18,7 @@ import (
 // provider's tool-schema cache shared); who may use what is enforced at run
 // time, from the role and agent id the harness put in the call's Env.
 func (s *Swarm) Tools() []tools.Tool {
-	return []tools.Tool{&taskTool{s}, &mailTool{s}, &noteTool{s}, &spawnTool{s}, &waitTool{s}}
+	return []tools.Tool{&taskTool{s}, &mailTool{s}, &noteTool{s}, &spawnTool{s}, &waitTool{s}, &approveTool{s}}
 }
 
 // refuseService is the answer a service agent (the mailman) gets from every swarm
@@ -329,6 +329,10 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 		}
 		if err := s.Board.Accept(me, in.ID, in.Text, taskGateCheck(task)); err != nil {
 			return tools.Errorf("%v", err)
+		}
+		s.noteAccepted(task)
+		if last := s.reviewPending(); last != "" && s.roleOf(task.Owner) != ReviewerRole {
+			return text("%s accepted. The merged result is not reviewed yet: a reviewer task is due before the goal is reported met", in.ID)
 		}
 		return text("%s accepted", in.ID)
 	case "reject", "reopen":
@@ -654,6 +658,11 @@ func (s *Swarm) stalledWaitReason(agentID string) string {
 		return ""
 	}
 	u := s.unfinishedWork()
+	if u.empty() && len(u.running) == 0 {
+		if last := s.reviewPending(); last != "" {
+			return "Cannot wait: nothing is running, and " + reviewLine(last) + "."
+		}
+	}
 	if len(u.running) > 0 || u.empty() {
 		return ""
 	}

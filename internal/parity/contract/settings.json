@@ -174,5 +174,11 @@
       "item": "state:providers.prov*",
       "reason": "sign a stored provider key out, or show the command that signs one in: the key store (auth.json), which `sleipnir login` and `logout` edit; it is not configuration"
     }
+  ],
+  "gaps": [
+    {
+      "item": "permissions.manager_approves",
+      "reason": "whether a team's manager answers its workers' routine permission questions before the person: the terminal has the setting and --manager-approves; the page's Run settings checkbox (flag:managerApproves) is to be built"
+    }
   ]
 }

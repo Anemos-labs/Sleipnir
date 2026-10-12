@@ -263,7 +263,7 @@ func activity(call core.Block) string {
 		return "waiting for the team"
 	case "web_fetch", "web_search":
 		return "browsing"
-	case "task", "mail", "note", "spawn":
+	case "task", "mail", "note", "spawn", "approve":
 		return "coordinating"
 	}
 	return "using " + safeToken(call.ToolName, 24)

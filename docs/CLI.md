@@ -248,7 +248,7 @@ and `/queue` answers the same way.
 ```text
 Usage of chat:
   -allow value
-        a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint and vet, and go mod init and tidy, never install or run); more in docs/CONFIGURATION.md
+        a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, node, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint, format and vet, go mod init and tidy, and curl or wget to this machine only (127.0.0.1, localhost, [::1]), never install or run); more in docs/CONFIGURATION.md
   -auto-docs
         swarm: the team's docs worker keeps README, docs/ and AGENTS.md current after every accepted task without being asked (default: config swarm.auto_docs, true; --auto-docs=false makes docs a role the manager assigns)
   -budget-usd float
@@ -263,6 +263,8 @@ Usage of chat:
         swarm: none | worktree (default: config swarm.isolation). worktree gives every writer a git worktree of its own; finished work is merged and verified through a queue and applied to your checkout at the end
   -mailman
         swarm: route worker mail through a mailman agent that digests bursts (default: config swarm.mailman; --mailman=false turns it off for this run). Its model: --role-model mailman=<model>
+  -manager-approves
+        swarm: a worker's routine permission question (a command inside its own tree that no rule covers, nothing protected, no network but this machine) goes to the manager before you; unanswered in a minute it comes to you (default: config permissions.manager_approves, true; --manager-approves=false asks you directly)
   -mode string
         permissions: default | accept-edits | plan | bypass | yolo
   -model string
@@ -385,7 +387,7 @@ flags:
   -addr string
         listen address; only a loopback address is accepted (127.0.0.1:0 picks a free port) (default "127.0.0.1:6969")
   -allow value
-        a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint and vet, and go mod init and tidy, never install or run); more in docs/CONFIGURATION.md
+        a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, node, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint, format and vet, go mod init and tidy, and curl or wget to this machine only (127.0.0.1, localhost, [::1]), never install or run); more in docs/CONFIGURATION.md
   -ask-grace duration
         refuse the open questions when no page has had the interface open for this long (0 never refuses for that) (default 1m0s)
   -ask-timeout duration
@@ -404,6 +406,8 @@ flags:
         swarm: none | worktree (default: config swarm.isolation). worktree gives every writer a git worktree of its own; finished work is merged and verified through a queue and applied to your checkout at the end
   -mailman
         swarm: route worker mail through a mailman agent that digests bursts (default: config swarm.mailman; --mailman=false turns it off for this run). Its model: --role-model mailman=<model>
+  -manager-approves
+        swarm: a worker's routine permission question (a command inside its own tree that no rule covers, nothing protected, no network but this machine) goes to the manager before you; unanswered in a minute it comes to you (default: config permissions.manager_approves, true; --manager-approves=false asks you directly)
   -mode string
         default permissions of new sessions: default | accept-edits | plan | bypass | yolo
   -model string
@@ -468,7 +472,7 @@ Runs one goal through the harness. The prompt may be '-' to read stdin.
 
 flags:
   -allow value
-        a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint and vet, and go mod init and tidy, never install or run); more in docs/CONFIGURATION.md
+        a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, node, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint, format and vet, go mod init and tidy, and curl or wget to this machine only (127.0.0.1, localhost, [::1]), never install or run); more in docs/CONFIGURATION.md
   -ask-timeout duration
         refuse a question to the person that nobody answers within this time, and tell the worker (default: wait for the person); for a run that is left alone
   -auto-docs
@@ -491,6 +495,8 @@ flags:
         stream events as JSON lines on stdout
   -mailman
         swarm: route worker mail through a mailman agent that digests bursts (default: config swarm.mailman; --mailman=false turns it off for this run). Its model: --role-model mailman=<model>
+  -manager-approves
+        swarm: a worker's routine permission question (a command inside its own tree that no rule covers, nothing protected, no network but this machine) goes to the manager before you; unanswered in a minute it comes to you (default: config permissions.manager_approves, true; --manager-approves=false asks you directly)
   -max-steps int
         step limit for a single agent (default 200)
   -mode string

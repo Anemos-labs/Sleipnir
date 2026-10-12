@@ -3,6 +3,8 @@ package translate
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/base32"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -319,6 +321,42 @@ func (t *Translator) applyLog(e events.Event) {
 	}
 }
 
+// managerDecide sends a worker's question that the manager settled (perm.decide by "manager") as the ask and its answer, by
+// "manager", together: the question was never the person's, so no card stays open on the page. The answer's choice is 1 for a yes
+// and 3 for a no, with the manager's instruction as its note. Every other perm.decide is the shared State's.
+func (t *Translator) managerDecide(e events.Event, ts float64, at int64) {
+	var p struct {
+		Allow   bool   `json:"allow"`
+		By      string `json:"by"`
+		Tool    string `json:"tool"`
+		Command string `json:"command"`
+		Reason  string `json:"reason"`
+	}
+	if json.Unmarshal(e.Data, &p) != nil || p.By != state.PermByManager {
+		return
+	}
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%d\x00%s", e.Agent, e.Seq, p.Command)))
+	id := "q_" + strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(sum[:]))[:26]
+	kind, what := "other", "this request"
+	if p.Command != "" {
+		kind, what = "command", "this command"
+	}
+	q := wire.Question{ID: id, Agent: uiID(e.Agent), Cmd: cutBytes(firstNonEmpty(p.Command, p.Tool), capQuestionCmd), Cwd: ".",
+		Why: "a routine question of a worker, answered by the manager", What: what, Kind: kind, Tool: p.Tool}
+	choice, note := 1, ""
+	if !p.Allow {
+		choice = 3
+		if _, n, ok := strings.Cut(p.Reason, managerSays); ok {
+			note = line(n, capNote)
+		}
+	}
+	t.put(&wire.Ask{Q: q}, ts, at, nil)
+	t.put(&wire.Answer{QID: id, Choice: choice, Note: note, By: state.PermByManager}, ts, at, nil)
+}
+
+// managerSays begins the manager's instruction in the reason of its no (perm.DeclinedByManager).
+const managerSays = " The manager says: "
+
 // rosterEvent reports whether an event can change the roster: an agent started or given work, the session's start, a board operation
 // that moves a task between agents or changes its files, or the first request of an agent whose model the roster does not know. The
 // roster is rebuilt only then, so that the work per event stays constant.
@@ -402,6 +440,8 @@ func (t *Translator) derive(e events.Event, ts float64, at int64) {
 		}
 	case events.TypeLease:
 		t.lease(e, ts, at)
+	case events.TypePermDecide:
+		t.managerDecide(e, ts, at)
 	case events.TypeSwarmStall:
 		t.stall(e, ts, at)
 	case events.TypeSwarmHandover:

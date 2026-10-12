@@ -32,6 +32,8 @@ type verdict struct {
 	// where it came from, tier what kind of decision it is (Classification.Tier;
 	// "" is the mode's).
 	rule, origin, tier string
+	// routine marks a question a delegate may settle before a person is asked (routine.go).
+	routine bool
 }
 
 // by marks a verdict as decided by a rule.
@@ -119,6 +121,7 @@ func (u *unit) allAccesses() []access {
 // judge applies the precedence: built-in protections and user deny rules,
 // then user ask rules, then allow rules and the mode's defaults.
 func (ev *evaluator) judge(u *unit) verdict {
+	ev.noteRoutine(u)
 	all := u.allAccesses()
 	for _, a := range all {
 		if a.invalid != "" {

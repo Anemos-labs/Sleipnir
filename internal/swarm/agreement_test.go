@@ -230,7 +230,7 @@ func TestAgreementIsolatedClaimKeepsWorktreeInstructionsThroughCompaction(t *tes
 	next = agreementTask(t, r.sw.Board, "Additional isolated work", plan.ID)
 	id := r.mustSpawn("backend", "Original isolated work")
 	rvWait(t, "isolated claiming worker idle", func() bool { return r.idle(id) })
-	assertCompactedAssignment(t, r.rvRig, id, contract, "Original isolated work", "Additional isolated work", strings.TrimSpace(isolationCard))
+	assertCompactedAssignment(t, r.rvRig, id, contract, "Original isolated work", "Additional isolated work", strings.TrimSpace(isolationCardText))
 }
 
 func TestAgreementReuseKeepsBlockedContractsAndRejectsExcessContext(t *testing.T) {

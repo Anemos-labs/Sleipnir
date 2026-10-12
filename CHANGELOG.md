@@ -7,6 +7,24 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Teams: a worker's routine permission question goes to the manager first
+  (`permissions.manager_approves`, default true; `--manager-approves`),
+  which answers with the new `approve` tool; unanswered in 60 s or
+  escalated, it goes to the person. `perm.decide` gains `by: "manager"`;
+  the page receives such a decision as an ask and its answer (`by:
+  "manager"`) in the same instant. In a team with a reviewer slot, a merged
+  change is due a review: the manager's hot view says so, its wait is
+  refused when nothing else runs, and a batch run's final answer is held
+  until a reviewer's task is accepted after the last merge. The manager's
+  hot view names free slots while ready tasks have no owner. Auto-docs
+  starts its first pass after the first accepted implementation task. The
+  isolation card says not to fetch, merge, rebase or commit and names the
+  session's integration branch. `sleipnir web` defaults a team in a
+  repository root with a commit (or a folder it makes a repository) to
+  worktree isolation, and a request that arrives while a session starts
+  waits for it. Prompt bytes: the tool list (G0) gains `approve`, the
+  manager's role pin and team card changed, and workers' isolation cards
+  changed, so G0 and the manager's role layer miss the cache once.
 - Permissions: a whole-tree formatter (`gofmt -w .`, `go fmt ./...`,
   `prettier --write .`, `cargo fmt`, `ruff format`, ...) is no longer taken
   to write into `.sleipnir/` or `.claude/`; an `ask` or `deny` rule about a

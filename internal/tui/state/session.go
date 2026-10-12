@@ -376,6 +376,8 @@ type permState struct {
 	byPolicy  int
 	canceled  int
 	abandoned int
+	// byManager and managerApproved count the decisions of the manager, and its yeses.
+	byManager, managerApproved int
 }
 
 // permWire is the payload of perm.ask and perm.decide (internal/session permaudit.go, from perm.Audit): the request the permission
@@ -491,6 +493,11 @@ func (s *State) onPermDecide(e events.Event, t time.Time) {
 		ps.byPolicy++
 	case PermByCanceled:
 		ps.canceled++
+	case PermByManager:
+		ps.byManager++
+		if d.Allow {
+			ps.managerApproved++
+		}
 	}
 	ps.recent.push(d)
 	glyph, word := GlyphOK, "allowed"
@@ -512,6 +519,8 @@ func decisionDetail(d *PermDecision) string {
 		by = "by policy"
 	case PermByCanceled:
 		by = "cancelled while it waited"
+	case PermByManager:
+		by = "by the manager"
 	case "":
 		by = "by unknown"
 	default:

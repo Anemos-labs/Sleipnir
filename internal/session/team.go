@@ -1,10 +1,12 @@
 package session
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
 
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
 )
 
@@ -144,11 +146,48 @@ func (s *Session) teamCard(roles swarm.Roles, team []TeamSlot, autoDocs bool) st
 	if autoDocs {
 		b.WriteString("\n" + managerDocsNote)
 	}
+	if counts[swarm.ReviewerRole] > 0 {
+		b.WriteString("\n" + managerReviewNote)
+	}
+	if s.managerApprovesOn() {
+		b.WriteString("\n" + managerApprovesNote)
+	}
 	return b.String()
 }
 
+// managerReviewNote tells the manager of a team with a reviewer slot about the review gate (swarm staffing.go).
+const managerReviewNote = `Review is required. Once the implementation is merged, give the reviewer a task over the merged result (the agreement, the diff, the tests); the goal is held until a reviewer's task is accepted after the last merge, and your report says what the review found.`
+
+// managerApprovesNote tells the manager that its workers' routine questions come to it first (swarm approvals.go).
+const managerApprovesNote = `Your workers' routine permission questions come to you first, as "Approval A<n>" messages; answer each at once with approve (yes, no with text, or escalate). Unanswered within a minute, a question goes to the person.`
+
+// delegateApproval is the permission engine's delegate (perm.Config.Delegate): in a team whose manager answers routine questions,
+// the swarm puts a worker's question to the manager first; otherwise it settles nothing.
+func (s *Session) delegateApproval(ctx context.Context, r perm.Request) (perm.Decision, string) {
+	if s.Swarm == nil {
+		return perm.Decision{}, ""
+	}
+	return s.Swarm.DelegateApproval(ctx, r)
+}
+
+// ManagerApproves reports whether this session's manager answers its workers' routine permission questions first: a team, with
+// --manager-approves and permissions.manager_approves not turning it off.
+func (s *Session) ManagerApproves() bool { return len(s.team) > 0 && s.managerApprovesOn() }
+
+// managerApprovesOn reports whether the manager answers its workers' routine permission questions: Options.ManagerApproves, else
+// permissions.manager_approves, else true.
+func (s *Session) managerApprovesOn() bool {
+	if s.opts.ManagerApproves != nil {
+		return *s.opts.ManagerApproves
+	}
+	if s.cfg != nil && s.cfg.Permissions.ManagerApproves != nil {
+		return *s.cfg.Permissions.ManagerApproves
+	}
+	return true
+}
+
 // managerDocsNote tells the manager how auto-docs works.
-const managerDocsNote = `Documentation is automatic. After every task and agreement you accept, the harness gives the docs worker a "docs: catch up" task with the changes; it keeps README, docs/ and AGENTS.md current (AGENTS.md is also the team's map of the project: commands, layout, conventions, decisions). Do not assign it routine catch-up and do not count its slot as free capacity; give it a task only for documentation nobody has asked for yet (a new guide). Accept its passes after a look. Before you report the goal met, let its last pass finish, and say in your report what it changed.`
+const managerDocsNote = `Documentation is automatic. After the tasks and agreements you accept, the harness gives the docs worker a "docs: catch up" task with the changes (the first once an implementation task is accepted); it keeps README, docs/ and AGENTS.md current (AGENTS.md is also the team's map of the project: commands, layout, conventions, decisions). Do not assign it routine catch-up and do not count its slot as free capacity; give it a task only for documentation nobody has asked for yet (a new guide). Accept its passes after a look. Before you report the goal met, let its last pass finish, and say in your report what it changed.`
 
 // workerDocsNote tells every other worker how documentation is kept.
 const workerDocsNote = `

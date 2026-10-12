@@ -39,6 +39,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/update"
 	"github.com/anemos-labs/sleipnir/internal/web"
 	"github.com/anemos-labs/sleipnir/internal/web/approvals"
+	"github.com/anemos-labs/sleipnir/internal/web/dirs"
 	"github.com/anemos-labs/sleipnir/internal/web/seam"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
@@ -897,6 +898,7 @@ func (h *webHostImpl) defaults() newSessionDefaults {
 		d.Team = append(d.Team, wire.TeamSlot{Role: t.Role, Model: t.Model})
 	}
 	d.AutoDocs = h.d.AutoDocs
+	d.ManagerApproves = h.d.ManagerApproves
 	d.MinWorkers = session.MinTeamWorkers
 	if h.d.BudgetUSD > 0 {
 		b := h.d.BudgetUSD
@@ -918,6 +920,9 @@ func (h *webHostImpl) defaults() newSessionDefaults {
 		}
 		d.Mailman = cfg.Swarm.Mailman
 	}
+	if d.Isolation == "" && h.d.Workers > 0 {
+		d.Isolation = defaultIsolation(context.Background(), h.d.Cwd, false)
+	}
 	if d.Isolation == "" {
 		d.Isolation = config.IsolationNone
 	}
@@ -928,6 +933,25 @@ func (h *webHostImpl) defaults() newSessionDefaults {
 		d.Mode = "default"
 	}
 	return d
+}
+
+// defaultIsolation is the isolation a team gets in dir when nobody chose one (not the request, the server's --isolation or the
+// configuration): worktree when dir is the root of a git repository with a commit, or a folder that the request makes one (newRepo,
+// which starts it with a commit); "" otherwise, which leaves the session's own default (none). Each writer of a team then works in a
+// tree of its own and its work reaches the checkout through the verifying merge queue, which a team sharing one tree does not have.
+func defaultIsolation(ctx context.Context, dir string, newRepo bool) string {
+	if newRepo {
+		return config.IsolationWorktree
+	}
+	if dirs.Inspect(dir).Git != "repo" {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(ctx, repoProbeTimeout)
+	defer cancel()
+	if p := session.ProbeRepo(ctx, dir); p.Probed && !p.Bare && p.HasCommits {
+		return config.IsolationWorktree
+	}
+	return ""
 }
 
 // ---- trust step of a new session ---------------------------------------------------------------------------------------------

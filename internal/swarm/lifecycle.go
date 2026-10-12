@@ -256,6 +256,10 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 				if t := s.TeamState(); t != "" {
 					extra = append(extra, t)
 				}
+				extra = append(extra, s.staffingLines(snap)...)
+				if last := s.reviewPending(); last != "" {
+					extra = append(extra, reviewLine(last))
+				}
 			}
 			if ds := s.DocsState(); ds != "" {
 				extra = append(extra, ds)
@@ -600,7 +604,7 @@ func (s *Swarm) trackClaim(agentID, taskID string) {
 	m.madeProgress()
 	card := claimedCards(s.Board.Snapshot(), agentID, nil)
 	if m.tree != nil {
-		card += isolationCard
+		card += isolationCard(integrationRefOf(m.tree))
 	}
 	m.a.QueueAssignment(card)
 }

@@ -418,6 +418,10 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, werr(http.StatusBadRequest, "bad_flags", "the first goal is longer than 4,000 characters"))
 		return
 	}
+	team := len(body.Team) > 0 || body.Swarm != nil && *body.Swarm > 0 || body.Swarm == nil && h.d.Workers > 0
+	if body.Isolation == "" && body.Resume == "" && team && h.d.Isolation == "" && !h.configIsolation(dir) {
+		body.Isolation = defaultIsolation(r.Context(), dir, plan.git) // a team in a repository works in trees of its own
+	}
 	args := argsFor(body.NewSessionRequest)
 	if body.Swarm == nil && len(body.Team) == 0 {
 		args = append(args, "--swarm", strconv.Itoa(h.d.Workers))
@@ -495,6 +499,12 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 	res := map[string]any{"tab": t.Summary()}
 	h.idemDone(key, true, http.StatusCreated, res)
 	_ = web.WriteJSON(w, http.StatusCreated, res)
+}
+
+// configIsolation reports whether the configuration that a session in dir reads names an isolation (swarm.isolation).
+func (h *webHostImpl) configIsolation(dir string) bool {
+	cfg, _, _ := config.Load(config.LoadOpts{Cwd: dir, UntrustedProject: true})
+	return cfg != nil && cfg.Swarm.Isolation != ""
 }
 
 // preflightIsolation checks the isolation settings of a new session in dir (session.PreflightIsolation) before it starts: 409

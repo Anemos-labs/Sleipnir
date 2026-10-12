@@ -91,6 +91,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	roleFlag := &roleModelFlag{}
 	fs.Var(roleFlag, "role-model", roleModelHelp)
 	autoDocs := autoDocsFlag(fs)
+	managerApproves := managerApprovesFlag(fs)
 	allow := allowFlags(fs)
 	askTimeout := fs.Duration("ask-timeout", 0, "refuse a question to the person that nobody answers within this time, and tell the worker (default: wait for the person); for a run that is left alone")
 	fs.Usage = func() {
@@ -147,7 +148,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 		MaxSteps: *maxSteps, BudgetUSD: *budget, Verify: *verify, NoRecon: *noRecon, TrustProject: *trust,
 		Dir: *dir, ContextWindow: *ctxWin, CaptureTokens: *capture, NoWeb: *noWeb, RoleModels: roleModels,
 		Resume: spec, NoMCP: *noMCP, Isolation: *isolation, Commit: *commit, Mailman: mailman(), Allow: expandAllow(*allow),
-		AutoDocs: autoDocs(), Team: teamSlots, DefaultTeam: true,
+		AutoDocs: autoDocs(), ManagerApproves: managerApproves(), Team: teamSlots, DefaultTeam: true,
 	}
 	if interactive {
 		o.Prompter = session.TerminalPrompter(os.Stdin, os.Stderr)
@@ -423,6 +424,20 @@ func mailmanFlag(fs *flag.FlagSet) func() *bool {
 func autoDocsFlag(fs *flag.FlagSet) func() *bool {
 	var t triBool
 	fs.Var(&t, "auto-docs", "swarm: the team's docs worker keeps README, docs/ and AGENTS.md current after every accepted task without being asked (default: config swarm.auto_docs, true; --auto-docs=false makes docs a role the manager assigns)")
+	return func() *bool {
+		if !t.set {
+			return nil
+		}
+		v := t.val
+		return &v
+	}
+}
+
+// managerApprovesFlag registers --manager-approves, a three-state flag: unset leaves permissions.manager_approves (default true) in
+// charge.
+func managerApprovesFlag(fs *flag.FlagSet) func() *bool {
+	var t triBool
+	fs.Var(&t, "manager-approves", "swarm: a worker's routine permission question (a command inside its own tree that no rule covers, nothing protected, no network but this machine) goes to the manager before you; unanswered in a minute it comes to you (default: config permissions.manager_approves, true; --manager-approves=false asks you directly)")
 	return func() *bool {
 		if !t.set {
 			return nil

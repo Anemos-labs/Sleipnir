@@ -84,15 +84,44 @@ type Isolation struct {
 	Checkpoints func(agent, dir string) (tools.Snapshotter, func(agent, path string))
 }
 
-// isolationCard is appended to the assignment in the private notes of a worker that
-// has a tree of its own (never to a shared layer, and it names no path: the bytes are
-// the same for every worker). It says what the harness does with the work, so the
-// messages that come back are not a surprise.
-const isolationCard = "\nIsolation: your working directory is a private git worktree of the project. " +
+// isolationCardText is the part of the isolation card that is the same in every session (isolationCard adds the session's integration
+// branch). It says what the harness does with the work, so the messages that come back are not a surprise, and that version control is
+// the harness's: a worker that fetches, merges or commits on its own works against the merge queue.
+const isolationCardText = "\nIsolation: your working directory is a private git worktree of the project. " +
 	"Other agents cannot see your uncommitted files and you do not see theirs until they are merged. " +
-	"When you call task done the harness commits your work, merges it into the shared integration branch and runs the verifier on the result; " +
+	"The harness does the version control: when you call task done it commits your work, merges it into the shared integration branch and runs the verifier on the result; " +
 	"if that conflicts, fails, or leaves your scope, the task comes back to you with the details and your tree is brought up to date. " +
-	"If you need work another agent has merged, block your task and say what you need: when the manager resumes it your tree is brought up to date."
+	"Do not run git fetch, pull, merge, rebase, cherry-pick or commit, and do not check out other branches. " +
+	"Work the manager accepted from your teammates is in your tree when you are given your next task. " +
+	"If you need work another agent has not merged yet, block your task and say what you need: when the manager resumes it your tree is brought up to date."
+
+// isolationCard is appended to the assignment in the private notes of a worker that has a tree of its own (never to a shared layer:
+// it names the session's integration branch, ref, which is the same for every worker of the session and which a read of git needs).
+// An empty ref leaves that sentence out.
+func isolationCard(ref string) string {
+	if ref == "" {
+		return isolationCardText
+	}
+	return isolationCardText + " To read what has been merged so far, use git show " + ref + ":<path> (or git log, git diff and git ls-tree of " +
+		ref + "): it needs no approval."
+}
+
+// integrationRefOf is the integration branch of the session a worker tree belongs to: the tree's branch is <prefix>/<agent>, and the
+// integration branch <prefix>/_integration (internal/workspace). "" for a detached tree.
+func integrationRefOf(tree *workspace.Tree) string {
+	if tree == nil || tree.Branch == "" || !strings.Contains(tree.Branch, "/") {
+		return ""
+	}
+	return tree.Branch[:strings.LastIndexByte(tree.Branch, '/')] + "/_integration"
+}
+
+// integrationRef is the session's integration branch, "" when writers do not work in trees of their own.
+func (s *Swarm) integrationRef() string {
+	if !s.isolated() {
+		return ""
+	}
+	return s.deps.Isolation.Queue.Branch()
+}
 
 // managerIsolationCard is what the manager of an isolated run has in its private notes (never in a
 // shared layer, and it names no path). Without it a manager that looks at the checkout mid-run finds the
