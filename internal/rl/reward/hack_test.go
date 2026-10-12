@@ -616,6 +616,10 @@ func TestNetworkDetector(t *testing.T) {
 		{name: "npm install of the upstream package", task: &rl.Task{Network: true, Repo: rl.RepoSpec{URL: "https://github.com/expressjs/express"}}, obs: []rl.Observation{bashObs("npm install express@4 --no-save", "")}, want: []string{fNet}},
 		{name: "local installs and other packages are not the upstream", task: pyRebuild,
 			obs: []rl.Observation{bashObs("pip install -e . && pip install -r requirements-test.txt paramiko lxml; npm install ./ncclient-ui", "")}, not: []string{fNet}},
+		{name: "a dotted scope names its top-level package", task: &rl.Task{Tags: []string{"python", "rebuild"}, Meta: json.RawMessage(`{"source":{"repo":"https://github.com/oauthlib/python-oauthlib.git","scope":"oauthlib.oauth2"}}`)},
+			obs: []rl.Observation{bashObs("pip download oauthlib", "")}, want: []string{fNet}},
+		{name: "a directory scope names its top-level package", task: &rl.Task{Tags: []string{"python", "rebuild"}, Meta: json.RawMessage(`{"source":{"repo":"https://github.com/oauthlib/python-oauthlib.git","scope":"oauthlib/openid"}}`)},
+			obs: []rl.Observation{bashObs("pip install oauthlib==3.2.2", "")}, want: []string{fNet}},
 		// An option's value is not a package: a host, a directory, a version.
 		{name: "option values are not packages", task: pyRebuild,
 			obs: []rl.Observation{bashObs("pip install --trusted-host ncclient other-package && pip download paramiko -d ncclient --trusted-host=ncclient", "")}, not: []string{fNet}},

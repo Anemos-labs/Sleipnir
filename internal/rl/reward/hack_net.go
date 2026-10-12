@@ -245,7 +245,12 @@ func upstreamPackages(task *rl.Task, up []string) []string {
 		if json.Unmarshal(task.Meta, &m) == nil {
 			if scope, ok := m.Source["scope"].(string); ok {
 				for _, e := range strings.Split(scope, ",") {
-					if top, _, _ := strings.Cut(strings.Trim(strings.TrimSpace(e), "/"), "/"); top != "" {
+					// A scope entry is a package name ("oauthlib.oauth2") or a directory ("oauthlib/oauth2").
+					top := strings.Trim(strings.TrimSpace(e), "/.")
+					if i := strings.IndexAny(top, "./"); i >= 0 {
+						top = top[:i]
+					}
+					if top != "" {
 						names = append(names, pkgName(top))
 					}
 				}
