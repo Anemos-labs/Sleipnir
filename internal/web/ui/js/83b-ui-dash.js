@@ -207,10 +207,10 @@
     /* ---- pointer: drag to move, the edges to resize; the grid follows while the pointer moves ---- */
     sc.listen(grid, 'pointerdown', e => {
       if (D.locked || e.button !== 0 || e.target.closest('.dc-x')) return; const el = e.target.closest('.dcard'); if (!el) return;
-      const id = el.dataset.card, c0 = L.find(k => k.id === id); if (!c0) return; const rs = e.target.closest('[data-rs]'), mode = rs ? rs.dataset.rs : 'move';
+      const id = el.dataset.card, card = cards[id]; if (!card) return; if (card.cancelDrag) card.cancelDrag();
+      const c0 = L.find(k => k.id === id); if (!c0) return; const rs = e.target.closest('[data-rs]'), mode = rs ? rs.dataset.rs : 'move';
       if (dash.dataset.stack === '1' && mode === 'move') return;   // a single column: the keyboard moves
       e.preventDefault(); const r = grid.getBoundingClientRect(), g = gap(), colP = (r.width + g) / COLS, rowP = (parseFloat(grid.style.getPropertyValue('--rowh')) || ROW_MIN) + g;
-      const card = cards[id]; if (card.cancelDrag) card.cancelDrag();
       const L0 = L, x0 = e.clientX, y0 = e.clientY; el.classList.add('dragging'); document.body.classList.add('resizing'); try { el.setPointerCapture(e.pointerId); } catch (er) { /* synthetic event */ }
       let cur = L0;
       const mv = ev => {
@@ -218,10 +218,10 @@
         const next = mode === 'move' ? move(L0, id, c0.x + dx, c0.y + dy) : resize(L0, id, c0.w + (mode !== 's' ? dx : 0), c0.h + (mode !== 'e' ? dy : 0));
         if (!same(next, cur)) { cur = next; L = next; paintAll(); }
       };
-      const clean = () => { el.removeEventListener('pointermove', mv); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); el.classList.remove('dragging'); document.body.classList.remove('resizing'); card.cancelDrag = null; try { el.releasePointerCapture(e.pointerId); } catch (er) { /* already released */ } };
+      const clean = () => { el.removeEventListener('pointermove', mv); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', cancel); el.classList.remove('dragging'); document.body.classList.remove('resizing'); card.cancelDrag = null; try { el.releasePointerCapture(e.pointerId); } catch (er) { /* already released */ } };
       const up = () => { clean(); if (!same(cur, L0)) commit(cur); };
-      card.cancelDrag = () => { clean(); L = L0; paintAll(); };
-      el.addEventListener('pointermove', mv); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+      const cancel = () => { clean(); L = L0; paintAll(); }; card.cancelDrag = cancel;
+      el.addEventListener('pointermove', mv); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', cancel);
     });
     /* a single column (a narrow view): the grid stacks the cards in their order; the edges do not resize there */
     const stackQ = () => { const w = root.clientWidth; dash.dataset.stack = w && w <= 620 ? '1' : '0'; };
