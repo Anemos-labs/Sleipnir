@@ -1,6 +1,7 @@
 package taskgen
 
 import (
+	"context"
 	"go/parser"
 	"go/token"
 	"os"
@@ -223,5 +224,62 @@ func TestEscapeModulePath(t *testing.T) {
 	}
 	if got := goModulePath([]byte("// comment\nmodule \"example.com/x/v2\" // trailing\n\ngo 1.21\n")); got != "example.com/x/v2" {
 		t.Fatal(got)
+	}
+}
+
+// A package of the scope that the tests of other packages import, although their sources do not depend on it (here
+// check, an assertion helper that itself builds on util), is test support: it stays at the reference, out of the
+// units, and is reported with the packages whose tests use it. util, which core's sources import, stays in the scope
+// although core's tests import it too. A scope of test support alone is rejected.
+func TestRebuildGoKeepsTestSupportAtTheReference(t *testing.T) {
+	f := newFixture(t)
+	for p, body := range map[string]string{
+		"go.mod":              "module example.com/m\n\ngo 1.21\n",
+		"util/util.go":        "// Package util helps.\npackage util\n\n// Double doubles n.\nfunc Double(n int) int { return 2 * n }\n",
+		"util/util_test.go":   "package util\n\nimport (\n\t\"testing\"\n\n\t\"example.com/m/check\"\n)\n\nfunc TestDouble(t *testing.T) { check.Eq(t, Double(2), 4) }\n",
+		"core/core.go":        "// Package core scores.\npackage core\n\nimport \"example.com/m/util\"\n\n// Score scores n.\nfunc Score(n int) int { return util.Double(n) + 1 }\n",
+		"core/core_test.go":   "package core\n\nimport (\n\t\"testing\"\n\n\t\"example.com/m/check\"\n\t\"example.com/m/util\"\n)\n\nfunc TestScore(t *testing.T) { check.Eq(t, Score(1), util.Double(1)+1) }\n",
+		"check/check.go":      "// Package check asserts.\npackage check\n\nimport (\n\t\"testing\"\n\n\t\"example.com/m/util\"\n)\n\n// Eq fails t unless got is want.\nfunc Eq(t testing.TB, got, want int) {\n\tt.Helper()\n\tif util.Double(got) != util.Double(want) {\n\t\tt.Fatalf(\"%d != %d\", got, want)\n\t}\n}\n",
+		"check/check_test.go": "package check\n\nimport \"testing\"\n\nfunc TestEq(t *testing.T) { Eq(t, 1, 1) }\n",
+	} {
+		f.write(p, body)
+	}
+	commit := f.commit("the library")
+	r := &repo{g: newGit(t), gitDir: filepath.Join(f.Dir, ".git")}
+	files, err := r.listFiles(context.Background(), commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := func(scope ...string) (*rebuildLib, error) {
+		return rebuildGo(context.Background(), r, commit, files, RebuildOptions{Scope: scope, Tier: RebuildStubs}, func(int) error { return nil })
+	}
+	lib, err := plan("util", "core", "check")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, p := range lib.pkgs {
+		names = append(names, p.Name)
+	}
+	if want := []string{"example.com/m/util", "example.com/m/core"}; !reflect.DeepEqual(names, want) {
+		t.Errorf("packages %v, want %v", names, want)
+	}
+	if want := map[string][]string{"example.com/m/check": {"example.com/m/core", "example.com/m/util"}}; !reflect.DeepEqual(lib.support, want) {
+		t.Errorf("test support %v, want %v", lib.support, want)
+	}
+	if _, ok := lib.sources["check/check.go"]; ok {
+		t.Error("the test support is stubbed")
+	}
+	if _, ok := lib.hidden["check/check_test.go"]; ok {
+		t.Error("the test support's own tests are hidden")
+	}
+	if _, ok := lib.hidden["util/util_test.go"]; !ok {
+		t.Error("util's tests are not hidden")
+	}
+	if _, err := plan("check"); err != nil {
+		t.Errorf("check alone is the scope, not test support of it: %v", err)
+	}
+	if lib, err := plan("util", "check"); err != nil || len(lib.pkgs) != 1 || lib.pkgs[0].Name != "example.com/m/util" {
+		t.Errorf("util and check: %v %+v", err, lib)
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"go/token"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -220,6 +221,9 @@ func rebuildGo(ctx context.Context, r *repo, commit string, files []string, opts
 		return nil, err
 	}
 	lib := &rebuildLib{lang: Go, root: mod, module: modPath, sources: map[string][]byte{}, hidden: map[string][]byte{}}
+	if dirs, lib.support, err = goTestSupport(dirs, byDir, content, importPath); err != nil {
+		return nil, err
+	}
 	srcs := map[string]map[string][]byte{}  // dir -> source files
 	tests := map[string]map[string][]byte{} // dir -> test files
 	total := 0
@@ -320,6 +324,89 @@ func rebuildGo(ctx context.Context, r *repo, commit string, files []string, opts
 	}
 	lib.manifests = []string{"go.mod", "go.sum", "go.work", "go.work.sum"}
 	return lib, nil
+}
+
+// goTestSupport takes out of the scope's directories the packages that are test support: a package the tests of
+// another package of the scope import although that package's sources do not depend on it, not even through other
+// packages of the scope (an assertion library the project's tests use, which itself builds on the packages it is used
+// to test). Stubbed, it would fail every test that uses it, so no unit could score before it was rebuilt, and the
+// agents, who cannot see the tests, would not know to rebuild it first; it stays at the reference instead. It returns
+// the directories left and, for each package taken out, the packages whose tests use it. A scope of test support
+// alone is rejected.
+func goTestSupport(dirs []string, byDir map[string][]string, content map[string][]byte, importPath func(string) string) ([]string, map[string][]string, error) {
+	byPath := map[string]string{}
+	for _, d := range dirs {
+		byPath[importPath(d)] = d
+	}
+	srcImports, testImports := map[string][]string{}, map[string][]string{}
+	for _, d := range dirs {
+		srcs, tests := map[string][]byte{}, map[string][]byte{}
+		for _, f := range byDir[d] {
+			switch {
+			case strings.HasSuffix(f, "_test.go"):
+				tests[f] = content[f]
+			case strings.HasSuffix(f, ".go"):
+				srcs[f] = content[f]
+			}
+		}
+		_, imports, err := goPackageInfo(srcs)
+		if err != nil {
+			return nil, nil, reject(ReasonRebuildScope, "%v", err)
+		}
+		srcImports[d] = imports
+		fset := token.NewFileSet()
+		for _, p := range sortedPaths(tests) {
+			f, err := parser.ParseFile(fset, p, tests[p], parser.ImportsOnly)
+			if err != nil {
+				continue // a test file that does not parse uses nothing; the suite reports it
+			}
+			for _, s := range f.Imports {
+				if ip, err := strconv.Unquote(s.Path.Value); err == nil {
+					testImports[d] = append(testImports[d], ip)
+				}
+			}
+		}
+	}
+	// What each package's sources depend on in the scope, directly or through other packages of it.
+	depends := func(d string) map[string]bool {
+		out := map[string]bool{}
+		var walk func(string)
+		walk = func(d string) {
+			for _, ip := range srcImports[d] {
+				if dep, ok := byPath[ip]; ok && !out[dep] {
+					out[dep] = true
+					walk(dep)
+				}
+			}
+		}
+		walk(d)
+		return out
+	}
+	support := map[string][]string{}
+	for _, d := range dirs {
+		deps := depends(d)
+		for _, ip := range testImports[d] {
+			if dep, ok := byPath[ip]; ok && dep != d && !deps[dep] && !slices.Contains(support[ip], importPath(d)) {
+				support[ip] = append(support[ip], importPath(d))
+			}
+		}
+	}
+	if len(support) == 0 {
+		return dirs, nil, nil
+	}
+	var left []string
+	for _, d := range dirs {
+		if _, ok := support[importPath(d)]; !ok {
+			left = append(left, d)
+		}
+	}
+	if len(left) == 0 {
+		return nil, nil, reject(ReasonRebuildScope, "every package of the scope is used by the tests of another one: nothing is left to rebuild")
+	}
+	for ip := range support {
+		sort.Strings(support[ip])
+	}
+	return left, support, nil
 }
 
 // goPackageInfo reads the package clause and imports of a package's source files: the package's name is the one most

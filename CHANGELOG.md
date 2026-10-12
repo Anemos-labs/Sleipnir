@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `rl taskgen rebuild` keeps a Go package of the scope at the reference when
+  the tests of another package of the scope import it although that
+  package's sources do not depend on it (an assertion library such as
+  gookit/goutil's `x/assert`). Stubbed, it made every test of every unit
+  panic, so a rollout scored 0 throughout whatever it rebuilt. The report
+  lists such packages under `test_support`, and `rl taskgen rebuild` prints
+  them. Tasks generated earlier are unchanged; regenerate a rebuild task whose
+  scope includes such a package.
 - The hardcoded-value detector reads a task's hidden verifier files that are
   stored as blobs from the task blob store. Scoring read blobs from the run's
   own store only, so for tasks whose hidden files are blobs (every generated

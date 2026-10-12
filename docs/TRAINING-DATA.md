@@ -299,7 +299,12 @@ team to write a library again from its specification, as it is at a version of t
   import path names it too), all in one module; or Python package (or module) names, looked up under the repository
   root, `src/`, `lib/` and `python/`, all in one project (the nearest directory with `pyproject.toml`, `setup.py` or
   `setup.cfg`, else the root). A Go package is the non-test `.go` files of its directory, a Python package every module
-  below its directory. The scope's size is its lines that are neither blank nor only a comment.
+  below its directory. The scope's size is its lines that are neither blank nor only a comment. A Go package of the
+  scope that the tests of another package of the scope import, although that package's sources do not depend on it,
+  directly or through other packages of the scope, is test support (an assertion library the project's tests use):
+  it stays at the reference, outside the units, and the report lists it with the packages whose tests use it
+  (`test_support`). Stubbed, it would fail every test that calls it, so no unit could score before it was rebuilt,
+  and the agents cannot see the tests that say so. A scope that is test support alone is rejected.
 * **Start state.** The reference with the scope's sources replaced and its tests removed, written to `--seal DIR`
   (default `starts/` next to the tasks file) as `DIR/<task id>.git`: one commit (no parent; a fixed author, date and
   message), holding that commit and the trees and blobs its tree reaches, and no object outside them. `repo.path` names

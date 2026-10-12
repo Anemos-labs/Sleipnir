@@ -7,9 +7,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -1034,6 +1036,9 @@ func taskgenRebuild(ctx context.Context, args []string, stdout, stderr io.Writer
 		task.ID, rep.Lang, rep.Tier, len(rep.Packages), noun, rep.LOC, rep.Hidden, task.Team.Agents,
 		(time.Duration(task.Budget.WallS) * time.Second).String())
 	fmt.Fprintf(stdout, "  units, in dependency order: %s\n", taskgen.FormatRebuildUnits(rep.Units))
+	for _, name := range slices.Sorted(maps.Keys(rep.TestSupport)) {
+		fmt.Fprintf(stdout, "  kept at the reference: %s, which the tests of %s use\n", name, strings.Join(rep.TestSupport[name], ", "))
+	}
 	fmt.Fprintf(stdout, "  tests: %d scored, %d dropped (passing on the start, flaky, or failing with the reference)\n", rep.Tests, rep.Dropped)
 	if rep.StartScore != nil && rep.ReferenceScore != nil {
 		fmt.Fprintf(stdout, "  self-check: the start scores %g, the reference %g; one run of the suite takes %s\n",
