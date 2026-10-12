@@ -260,13 +260,16 @@ func (e *Engine) rememberPhrase(rem []Rule) string {
 		_, phrase := e.widen(rem[0])
 		return phrase
 	}
+	// Several rules can widen to the same phrase (make -C a test && make -C b build are both "make" commands): it is said once.
 	var parts []string
 	for _, r := range rem {
-		if _, phrase := e.widen(r); phrase != "" {
-			parts = append(parts, phrase)
-			continue
+		phrase := `"` + clipRunes(r.Pattern, 50) + `"`
+		if _, p := e.widen(r); p != "" {
+			phrase = p
 		}
-		parts = append(parts, `"`+clipRunes(r.Pattern, 50)+`"`)
+		if !slices.Contains(parts, phrase) {
+			parts = append(parts, phrase)
+		}
 	}
 	return strings.Join(parts, " and ")
 }
