@@ -10,7 +10,7 @@
 // Which Chromium runs: the `chrome` option; otherwise CHROME_PATH when it is set (any Chromium or headless shell binary); otherwise the
 // newest Playwright headless shell in ~/.cache/ms-playwright (chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell);
 // otherwise `chromium` on the PATH. The browser is started with its own temporary profile, which is removed with it, and is killed when
-// the script exits, throws or is interrupted. A browser has 30 s (`deadline`) to start: to print its DevTools address, list its page at
+// the script exits, throws or is interrupted. A browser has 60 s (`deadline`) to start: to print its DevTools address, list its page at
 // /json/list, accept the WebSocket of that page and answer a first call. One that does not is killed with its profile and another is
 // started in its place, three at most (`attempts`); the error names the step the last one stopped at and quotes the end of its stderr.
 // A DevTools call fails when it has no answer in 120 s (`callTimeout`), and at once when the browser exits or drops the connection.
@@ -114,7 +114,7 @@ async function start(bin, { scale, deadline, callTimeout, onEvent }) {
  * with its profile, and another is started in its place, up to `attempts` browsers; each failed attempt is noted on stderr, and the last
  * one's error is thrown. A failure after the start, such as a call that is never answered, kills the browser too.
  */
-export async function open(file, { w = 1440, h = 900, scale = 1, reduced = false, query = '', chrome = CHROME, attempts = 3, deadline = 30000, callTimeout = 120000 } = {}) {
+export async function open(file, { w = 1440, h = 900, scale = 1, reduced = false, query = '', chrome = CHROME, attempts = 3, deadline = 60000, callTimeout = 120000 } = {}) {
   const errors = [], logs = [], fontMisses = [], handlers = {};
   let loaded = () => {};
   // The Google Fonts link cannot load offline (its host is mapped to a dead address so tests do not wait): recorded in fontMisses, not an app error.
