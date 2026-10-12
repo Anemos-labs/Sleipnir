@@ -122,6 +122,62 @@ func TestRejectDuringFinalAnswerIsNotUndone(t *testing.T) {
 	})
 }
 
+// A reject that arrives after the worker's done call has submitted, while the rest of
+// that turn's calls finish, reaches the worker with their results: the run that is
+// ending reads it, and that run does not own the new assignment. If the worker then
+// stops without calling done, no mail is left to start the next run, and the task
+// used to stay in doing with an idle owner. The harness writes the worker a message
+// instead, and the run that owns the assignment settles it.
+func TestRejectReadByTheEndingRunStartsTheNextRun(t *testing.T) {
+	held := make(chan struct{})
+	release := make(chan struct{})
+	var readByEndingRun atomic.Bool
+	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply {
+		if c.Role != "backend" {
+			return rvReply{Text: "ok"}
+		}
+		switch c.Assistants {
+		case 0: // done, then a call that holds the run until the manager has rejected T1
+			return rvReply{Tools: []rvToolCall{{"task", map[string]any{"action": "done", "id": "T1", "text": "implemented"}}, {"hold", map[string]any{}}}}
+		case 1: // the feedback is in this request; the worker stops without calling done
+			readByEndingRun.Store(c.Sees("fix the failing test"))
+			return rvReply{Text: "summary of my work"}
+		}
+		return rvReply{Text: "fixed it"}
+	})
+	reg := r.sw.deps.Registry
+	reg.Register(rvFakeTool{name: "hold", run: func(ctx context.Context, _ *tools.Call) *tools.Result {
+		close(held)
+		rvBlock(ctx, release)
+		return &tools.Result{Text: "held"}
+	}})
+	specs, err := reg.Specs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.sw.SetToolset(reg, specs)
+	r.sw.StartManager()
+	id, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "work", By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-held // T1 is in review; the run has not made its next request
+	if res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "reject", "id": "T1", "text": "fix the failing test"}); res.IsError {
+		t.Fatalf("reject: %s", res.Text)
+	}
+	close(release)
+	rvWait(t, "T1 to come back to review from the next run", func() bool {
+		tk, _ := r.sw.Board.Snapshot().Task("T1")
+		return tk.Status == StatusReview && tk.Result == "fixed it" && r.idle(id)
+	})
+	if !readByEndingRun.Load() {
+		t.Fatal("setup: the run that submitted T1 did not read the reject")
+	}
+	if !r.prov.sawEver("T1 is still yours and not done") {
+		t.Fatal("the worker was not told that T1 came back to it")
+	}
+}
+
 // A reused worker gets its new task card and the mail that arrived while it was
 // being reassigned: neither replaces the other (a run that started for the mail
 // used to make Spawn's card vanish).

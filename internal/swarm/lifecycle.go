@@ -816,6 +816,7 @@ func (s *Swarm) finishRun(m *member, rs *runState, ctx context.Context, res *age
 	switch kind {
 	case stopClean:
 		line = s.settleClean(ctx, m, tasks, res)
+		s.resumeReturnedWork(ctx, m, rs, tasks)
 	default:
 		line = s.settleStopped(m, tasks, kind, why, count)
 	}
@@ -981,6 +982,42 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 		}
 	}
 	return strings.Join(notes, "; ")
+}
+
+// resumeReturnedWork keeps an assignment that changed under a clean run from being
+// left with an idle owner. A run settles only the assignments it started with
+// (runState), and a worker's run does not reopen for mail (NoMailReopen) so that the
+// run that owns a reject is the one that reads it. But the agent hands waiting mail
+// to the model with each turn's tool results: a task sent back after the worker's
+// done call submitted it, while that turn's calls finish, is read by the run that is
+// ending. If the worker then stops without calling done again, settleClean skips the
+// task and no mail is left to start the next run. The harness then writes the worker
+// one message, so the next run starts, adopts the task at its current revision, and
+// settles it. It is called while rs is still reserved, so afterIdle starts that run.
+func (s *Swarm) resumeReturnedWork(ctx context.Context, m *member, rs *runState, settled map[string]uint64) {
+	if ctx.Err() != nil {
+		return
+	}
+	m.mu.Lock()
+	skip := m.run != rs || m.a.PendingInbox() > 0 || !m.box.empty()
+	m.mu.Unlock()
+	if skip {
+		return // abandoned by the watchdog, or the waiting mail starts the next run
+	}
+	var ids []string
+	for _, t := range s.Board.Snapshot().Tasks {
+		if rev, ok := settled[t.ID]; t.Owner == m.id && t.Status == StatusDoing && (!ok || rev != t.Rev) {
+			ids = append(ids, t.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	what := ids[0] + " is"
+	if len(ids) > 1 {
+		what = strings.Join(ids, ", ") + " are"
+	}
+	s.notify(m.id, "request", fmt.Sprintf("%s still yours and not done: returned to you while your last run was ending (task get shows why). Finish, then call task done again.", what))
 }
 
 // settleStopped returns the tasks of a run that stopped abnormally to the pool.
