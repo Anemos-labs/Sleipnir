@@ -211,3 +211,27 @@ func TestLoopbackRuleOnlyForCurlAndWget(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+// Working in the session's scratch directory after cd "$TMPDIR" asks nothing, and cp or mv into a directory writes only the copied
+// name there: "cp Makefile ." does not reach the project's guarded .sleipnir directory, while a copy into that directory still asks.
+func TestWorkInTheScratchDirectoryAsksNothing(t *testing.T) {
+	r := newTeamRig(t, ModeAcceptEdits, nil)
+	t.Setenv("TMPDIR", r.tmp)
+	mk := filepath.Join(r.wtA, "Makefile")
+	for _, c := range []struct{ cmd, want string }{
+		{`cd "$TMPDIR" && rm -rf mkin && mkdir -p mkin/web && cd mkin && cp ` + mk + ` . && echo hi > web/index.html`, "allow"},
+		{"cp " + mk + " " + r.tmp + "/", "allow"},
+		{"cp Makefile .", "allow"},
+		{"cp -r web ./", "allow"},
+		{"mv bin/x .", "allow"},
+		{"cp Makefile .sleipnir/", "ask"},
+		{"cp Makefile .sleipnir", "ask"},
+		{"cp -t .sleipnir Makefile", "ask"},
+		{"mv .sleipnir/config.json .", "ask"},
+	} {
+		d := r.check("be-1", r.wtA, c.cmd)
+		if got := outcome(d); got != c.want {
+			t.Errorf("%q: %s, want %s (%s)", c.cmd, got, c.want, d.Reason)
+		}
+	}
+}

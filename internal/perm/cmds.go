@@ -367,6 +367,9 @@ func analyseFSWrite(prog string, args []string) ([]pathUse, bool) {
 	}
 	s := sp.scan(args)
 	var uses []pathUse
+	if (prog == "cp" || prog == "mv") && len(s.pos) >= 2 && len(s.values("-t"))+len(s.values("--target-directory")) == 0 {
+		return append(copyMoveUses(prog, s.pos), targetDirUses(s)...), true
+	}
 	for _, p := range s.pos {
 		if p == "-" {
 			continue
@@ -382,6 +385,40 @@ func analyseFSWrite(prog string, args []string) ([]pathUse, bool) {
 		}
 	}
 	return uses, true
+}
+
+// copyMoveUses is what cp or mv with sources and a destination touches: the sources are judged as writes, as strictly as any
+// operand (mv removes them; a recursive cp of a protected place stays refused), and the destination is written. A destination that is plainly a directory (".", "..", or a name ending in "/") receives each source by
+// its base name, so "cp Makefile ." writes ./Makefile and not the whole directory; any other destination is written as a tree,
+// since it may be a directory that receives the sources.
+func copyMoveUses(prog string, pos []string) []pathUse {
+	srcs, dst := pos[:len(pos)-1], pos[len(pos)-1]
+	var uses []pathUse
+	for _, src := range srcs {
+		uses = append(uses, pathUse{raw: src, write: true, tree: true, noFollow: prog == "mv"}) // as strict as before: copying the home folder away stays refused
+	}
+	clean := strings.TrimRight(dst, "/")
+	dirLike := dst == "." || dst == ".." || strings.HasSuffix(dst, "/") || clean == "." || clean == ".."
+	if !dirLike {
+		return append(uses, pathUse{raw: dst, write: true, tree: true})
+	}
+	for _, src := range srcs {
+		base := filepath.Base(strings.TrimRight(src, "/"))
+		if base == "." || base == ".." || base == "/" || base == "" {
+			return append(uses, pathUse{raw: dst, write: true, tree: true}) // a source that names no file: the whole destination
+		}
+		uses = append(uses, pathUse{raw: filepath.Join(dst, base), write: true, tree: true})
+	}
+	return uses
+}
+
+// targetDirUses is the --target-directory (-t) of cp or mv, written as a tree.
+func targetDirUses(s scanned) []pathUse {
+	var uses []pathUse
+	for _, v := range append(s.values("-t"), s.values("--target-directory")...) {
+		uses = append(uses, pathUse{raw: v, write: true, tree: true})
+	}
+	return uses
 }
 
 // unknownUses treats every operand of an unlisted command as a path it may read
