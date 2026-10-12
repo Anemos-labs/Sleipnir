@@ -2979,6 +2979,7 @@
      "RUN_DIR"
     ],
     "flags": [
+     "blobs",
      "dry-run",
      "list-targets",
      "probes",

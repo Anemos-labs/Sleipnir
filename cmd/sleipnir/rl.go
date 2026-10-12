@@ -14,7 +14,9 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/rl"
 	"github.com/anemos-labs/sleipnir/internal/rl/adv"
 	"github.com/anemos-labs/sleipnir/internal/rl/env"
@@ -489,6 +491,7 @@ func rlReward(_ context.Context, args []string, stdout, stderr io.Writer) error 
 	rewards := fs.String("rewards", "", "rewards.json with weights, caps, detectors (default: the documented defaults)")
 	target := fs.String("target-price", "", "price and cache model episodes are repriced under: a preset or a model id (see -list-targets)")
 	tasksFile := fs.String("tasks", "", "tasks file to score against (default: each rollout's task.json, whose hidden files are redacted)")
+	blobsDir := fs.String("blobs", "", "with --tasks: blob store holding the tasks' hidden verifier files, which the hardcoded-value detector compares diffs against (default: blobs/ next to the tasks file, when it exists)")
 	dry := fs.Bool("dry-run", false, "print the new rewards without rewriting episode.json")
 	list := fs.Bool("list-targets", false, "list the target-price presets and exit")
 	probes := fs.Bool("probes", true, "run compaction fidelity probes")
@@ -521,6 +524,7 @@ func rlReward(_ context.Context, args []string, stdout, stderr io.Writer) error 
 	}
 	cfg.Probes = cfg.Probes && *probes
 	var byID map[string]rl.Task
+	var hidden core.BlobGetter
 	if *tasksFile != "" {
 		ts, err := env.LoadTasks(*tasksFile)
 		if err != nil {
@@ -530,6 +534,19 @@ func rlReward(_ context.Context, args []string, stdout, stderr io.Writer) error 
 		for _, t := range ts {
 			byID[t.ID] = t
 		}
+		dir := *blobsDir
+		if d := filepath.Join(filepath.Dir(*tasksFile), "blobs"); dir == "" && dirExists(d) {
+			dir = d
+		}
+		if dir != "" {
+			store, err := events.NewDirBlobs(dir)
+			if err != nil {
+				return fmt.Errorf("rl reward: %w", err)
+			}
+			hidden = store.Get
+		}
+	} else if *blobsDir != "" {
+		return usageError(fs, "rl reward: --blobs needs --tasks (a rollout's task.json has its hidden files redacted)")
 	}
 	samples, err := findSamples(paths)
 	if err != nil {
@@ -576,7 +593,7 @@ func rlReward(_ context.Context, args []string, stdout, stderr io.Writer) error 
 		if *redetect {
 			ep.Flags = slices.DeleteFunc(slices.Clone(ep.Flags), func(f string) bool { return strings.HasPrefix(f, "hack:") })
 		}
-		if err := reward.Score(ep, task, c, reward.DiffsFromBlobs(blobs.Get)); err != nil {
+		if err := reward.Score(ep, task, c, reward.DiffsFromBlobs(blobs.Get, hidden)); err != nil {
 			return fmt.Errorf("rl reward: %s: %w", ep.ID, err)
 		}
 		before, after, n = before+was, after+ep.Reward.Total, n+1

@@ -16,6 +16,15 @@ they do not indicate whether a change has been released.
   scored by a fixed scorer without being generated again. Run walks no longer
   descend into a sample's `savepoints/` directory. Tasks, recorded episodes
   and prompt bytes are unchanged until these commands are run.
+- The hardcoded-value detector reads a task's hidden verifier files that are
+  stored as blobs from the task blob store. Scoring read blobs from the run's
+  own store only, so for tasks whose hidden files are blobs (every generated
+  chain, rebuild and fixture task) the detector skipped them with an
+  "unreadable" note. Rollouts and `rl serve` pass the task blob store to the
+  scorer; `rl reward --tasks FILE` reads `blobs/` next to FILE or `--blobs`.
+  `harness.Pipeline` gains `Hidden`, and `reward.DiffsFromBlobs` takes further
+  getters to fall back to. Episodes scored earlier keep their flags until
+  `rl reward --tasks FILE --redetect-hacks` scores them again.
 - Under `--confine bwrap`, a cache that a command's environment names
   (`GOMODCACHE`, `GOCACHE`, `PIP_CACHE_DIR`, ...) or that `--confine-rw`
   names is created when it does not exist yet. Before, a missing cache was

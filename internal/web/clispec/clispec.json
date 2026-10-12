@@ -320,6 +320,7 @@
   {"name":"workspace-mode","arg":"string","default":"export","repeatable":false,"desc":"export: a fresh single-commit tree without history | clone: a local clone with history","choices":["export","clone"]}
  ]},
 {"path":["rl","reward"],"usage":"sleipnir rl reward [flags] RUN_DIR...","summary":"Re-scores a run directory with different reward weights.","positional":[{"name":"RUN_DIR","required":true,"desc":"run directories to re-score","variadic":true}],"source":"docs/CLI.md § sleipnir rl reward","mode":"net","flags":[
+  {"name":"blobs","arg":"string","default":null,"defaultNote":"blobs/ next to the tasks file, when it exists","repeatable":false,"desc":"with --tasks: blob store holding the tasks' hidden verifier files, which the hardcoded-value detector compares diffs against (default: blobs/ next to the tasks file, when it exists)"},
   {"name":"dry-run","arg":"bool","default":null,"repeatable":false,"desc":"print the new rewards without rewriting episode.json"},
   {"name":"list-targets","arg":"bool","default":null,"repeatable":false,"desc":"list the target-price presets and exit"},
   {"name":"probes","arg":"bool","default":true,"repeatable":false,"desc":"run compaction fidelity probes"},
