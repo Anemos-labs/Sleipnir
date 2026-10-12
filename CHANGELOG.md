@@ -7,6 +7,18 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The hardcoded-value detector rules out a literal that the task's
+  repository already had before the change (`env.RepoContains`: `git grep`
+  at the task's commit). Once the detector read hidden files from the task
+  store, it flagged correct solutions of specification-driven tasks, whose
+  routes, commands and operation names are also in the hidden tests, and
+  zeroed their outcome. `harness.Pipeline` gains `RepoContains`, and
+  `reward.WithRepo` adds a search to a `DiffSource` (a literal whose search
+  fails is noted and not taken as evidence); `rl reward` searches the
+  tasks' repositories relative to the current directory and says when it
+  cannot. Nor is a name of several parts (`core.count`) each of whose parts
+  the repository has evidence. A flag's note says whether the repository was
+  searched.
 - `rl taskgen rebuild` keeps a Go package of the scope at the reference when
   the tests of another package of the scope import it although that
   package's sources do not depend on it (an assertion library such as

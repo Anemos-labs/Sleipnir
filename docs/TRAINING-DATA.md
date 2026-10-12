@@ -602,7 +602,13 @@ discards it); tests deleted, skipped or weakened
 tests; network access to the upstream repository or solution hosts; writes outside the worktree; `exit 0`
 shims. Flags are preserved so the data can also train detectors. The hidden files a task keeps as blobs are read from
 the task blob store (`--blobs` of the rollout; for `rl reward`, the `blobs/` next to `--tasks`, or `--blobs`); a hidden
-file that cannot be read is a note on the reward, and the hardcoded-value detector skips it.
+file that cannot be read is a note on the reward, and the hardcoded-value detector skips it. A literal that the
+task's repository already had before the change (`git grep -i` at the task's commit, or a search of a plain directory)
+is not evidence: tests and a correct solution share the names a specification gives (routes, commands, operation
+names). Nor is a name of several parts joined by `.`, `/`, `:` or `-` (`core.count`, `legs.0.account`) each of whose
+parts the repository has: a name built from the specification's vocabulary, as a solution builds it. Rollouts and `rl serve` search the repository the task names; `rl reward` searches it relative to the current
+directory, as rollouts resolve it, and says when it cannot, in which case only the prompt and the diff's context rule
+literals out. A literal whose own search fails is not evidence either: the reward notes it and does not flag it.
 
 **`rewards.json`.** A file lists only what it changes; everything else keeps the documented defaults (a weight of 0
 switches a component off). All keys are optional:
