@@ -196,7 +196,7 @@ func newerInstalled(running, self string, dirs []string, onPath map[string]bool,
 		if err != nil || r == self {
 			continue
 		}
-		v := read(r)
+		v := read(p) // the path as found: the resolved one may name the same file differently (macOS's /var is /private/var)
 		if v == "" || !update.Newer(running, v) || best.Version != "" && !update.Newer(best.Version, v) {
 			continue
 		}

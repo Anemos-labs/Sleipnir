@@ -198,7 +198,7 @@ func Shop() *Scenario {
 	return &Scenario{
 		Tab: wire.TabSummary{ID: TabID, SID: SID, Name: "shop", Cwd: Cwd, Gen: 1, CreatedAt: StartedAt, Order: 0},
 		Meta: func() wire.MetaPatch {
-			s, m, e, sw, iso, v := Cwd, "default", "default", 4, "worktree", "go test {dirs}"
+			s, m, e, sw, iso, v := Cwd, "default", "default", 8, "worktree", "go test {dirs}"
 			model, launch, ask := Model, "sleipnir chat --swarm 8 --isolation worktree", "off"
 			b, tr, mm, no, run, started := 5.0, true, false, false, true, StartedAt
 			gt := Goal
