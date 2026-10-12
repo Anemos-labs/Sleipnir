@@ -321,7 +321,26 @@ export function findChrome(explicit) {
 
 /** One headless browser, one WebSocket; pages are attached with flattened sessions. */
 export class Browser {
-  static async launch(chromePath) {
+  /**
+   * launch starts a headless Chromium and connects to it. A browser that does not start (see start) has been killed with its profile, and
+   * a new one is started in its place, up to `attempts` browsers; each failed attempt is noted on stderr, and the last one's error is thrown.
+   * A browser that hangs while it starts is a fault of the machine, not of the page: a new browser starts where it would not. The
+   * default deadline leaves room for a fresh CI runner, where the first browser can take half a minute to start.
+   */
+  static async launch(chromePath, { attempts = 3, deadline = 60000 } = {}) {
+    for (let i = 1; ; i++) {
+      try { return await Browser.start(chromePath, deadline); } catch (e) {
+        if (i >= attempts) throw e;
+        process.stderr.write('chrome attempt ' + i + ' of ' + attempts + ' failed, starting another: ' + e.message.split('\n')[0] + '\n');
+      }
+    }
+  }
+  /**
+   * start runs one browser. Within `deadline` ms it must print its DevTools address, accept the WebSocket there and answer a first call;
+   * a browser that misses the deadline, exits or refuses is killed and its profile removed, and the error names the step it stopped at
+   * and ends with the last lines of its stderr. A start that failed leaves no browser running to keep this process alive.
+   */
+  static async start(chromePath, deadline) {
     const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'web-parity-'));
     const args = ['--headless', '--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--remote-debugging-port=0', '--user-data-dir=' + profile,
       '--force-device-scale-factor=1', '--force-color-profile=srgb', '--disable-lcd-text', '--disable-partial-raster', '--disable-checker-imaging', '--disable-threaded-animation', '--disable-threaded-scrolling', '--run-all-compositor-stages-before-draw', '--disable-background-timer-throttling', '--disable-renderer-backgrounding',
@@ -330,19 +349,38 @@ export class Browser {
     const proc = spawn(chromePath, args, { stdio: ['ignore', 'ignore', 'pipe'] });
     const b = new Browser(proc, profile);
     // however this process ends (an exception, a closed pipe, a signal), no browser is left running and no profile behind
-    process.once('exit', () => { try { proc.kill('SIGKILL'); } catch { /* gone */ } try { fs.rmSync(profile, { recursive: true, force: true }); } catch { /* busy */ } });
-    const wsURL = await new Promise((resolve, reject) => {
-      let buf = ''; const t = setTimeout(() => reject(new Error('chrome did not start: ' + buf.slice(-300))), 20000);
-      proc.stderr.on('data', d => { buf += d; const m = buf.match(/DevTools listening on (ws:\/\/\S+)/); if (m) { clearTimeout(t); resolve(m[1]); } });
-      proc.on('exit', c => reject(new Error('chrome exited early (' + c + '): ' + buf.slice(-300))));
+    const leave = () => { try { proc.kill('SIGKILL'); } catch { /* gone */ } try { fs.rmSync(profile, { recursive: true, force: true }); } catch { /* busy */ } };
+    process.once('exit', leave);
+    let step = 'the line "DevTools listening on" on its stderr', err = '', timer;
+    const listening = new Promise(resolve => {
+      proc.stderr.on('data', d => { err = (err + d).slice(-4000); const m = err.match(/DevTools listening on (ws:\/\/\S+)/); if (m) resolve(m[1]); });
     });
-    b.ws = new WebSocket(wsURL);
-    await new Promise((r, j) => { b.ws.onopen = r; b.ws.onerror = () => j(new Error('cannot connect to ' + wsURL)); });
-    b.ws.onmessage = ev => b.dispatch(JSON.parse(ev.data));
-    // a browser that dies or drops the connection ends every call that waits for it, with the reason, instead of leaving them to wait
-    b.ws.onclose = () => b.fail('the DevTools connection closed');
-    proc.on('exit', c => b.fail('chrome exited (' + c + ')'));
-    return b;
+    const failed = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('nothing came in ' + deadline / 1000 + ' s')), deadline);
+      proc.on('error', e => reject(new Error('it could not be run: ' + e.message)));
+      proc.once('exit', (c, sig) => reject(new Error('it exited (' + (sig || c) + ')')));
+    });
+    failed.catch(() => { /* read by the races below; once the browser is up, only its exit rejects this, and nobody waits for it */ });
+    try {
+      const wsURL = await Promise.race([listening, failed]);
+      step = 'the WebSocket handshake of ' + wsURL;
+      b.ws = new WebSocket(wsURL);
+      await Promise.race([new Promise((r, j) => { b.ws.onopen = r; b.ws.onerror = () => j(new Error('the connection failed')); }), failed]);
+      b.ws.onmessage = ev => b.dispatch(JSON.parse(ev.data));
+      // a browser that dies or drops the connection ends every call that waits for it, with the reason, instead of leaving them to wait
+      b.ws.onclose = () => b.fail('the DevTools connection closed');
+      proc.on('exit', c => b.fail('chrome exited (' + c + ')'));
+      step = 'the answer to Browser.getVersion';
+      await Promise.race([b.send('Browser.getVersion'), failed]);
+      return b;
+    } catch (e) {
+      const running = proc.pid !== undefined && proc.exitCode === null && proc.signalCode === null;
+      b.fail('chrome did not start');
+      await b.close();
+      process.removeListener('exit', leave);
+      const tail = err.trim().split('\n').slice(-5).join('\n');
+      throw new Error('chrome did not start: ' + e.message + ' while waiting for ' + step + ' (' + chromePath + (running ? '; it was killed' : '') + ')' + (tail ? '; the end of its stderr:\n' + tail : '; it wrote nothing to stderr'));
+    } finally { clearTimeout(timer); }
   }
   constructor(proc, profile) {
     this.proc = proc; this.profile = profile; this.id = 0; this.pending = new Map(); this.handlers = new Map();
@@ -373,7 +411,8 @@ export class Browser {
     this.dead = this.dead || 'the browser was closed';
     try { this.ws.close(); } catch { /* closed */ }
     try { this.proc.kill('SIGKILL'); } catch { /* gone */ }
-    await new Promise(r => { if (this.proc.exitCode !== null) r(); else { this.proc.once('exit', r); setTimeout(r, 2000); } });
+    // wait for the exit at most 2 s, and no longer than the exit takes: a timer left running would keep this process up for the rest of the 2 s
+    await new Promise(r => { if (this.proc.exitCode !== null || this.proc.signalCode !== null) return r(); const t = setTimeout(r, 2000); this.proc.once('exit', () => { clearTimeout(t); r(); }); });
     for (let i = 0; i < 5; i++) { try { fs.rmSync(this.profile, { recursive: true, force: true }); break; } catch { await sleep(200); } }
   }
 }
@@ -400,7 +439,8 @@ export class Page {
     await s('Fetch.enable', { patterns: [{ urlPattern: 'https://fonts.googleapis.com/*' }, { urlPattern: 'https://fonts.gstatic.com/*' }] });
     const loaded = new Promise(r => { p.loaded = r; });
     await s('Page.navigate', { url });
-    await Promise.race([loaded, sleep(30000)]);
+    // the cap on the wait for the load event is cleared once it came, so that it does not keep the process alive for 30 s after the last page
+    let cap; await Promise.race([loaded, new Promise(r => { cap = setTimeout(r, 30000); })]); clearTimeout(cap);
     await p.waitFor('window.__vt && document.readyState === "complete"', 15000);
     await p.settle(); await sleep(150); await p.settle();   // fonts, first layout and the observers' first callbacks happen in real time, before the simulation starts
     return p;
