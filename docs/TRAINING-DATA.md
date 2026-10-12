@@ -209,8 +209,11 @@ needs Python 3.8 or later and nothing outside its standard library, and a POSIX 
   more than once passes only if every report says so. go test stops a package's tests at the first one that crashes
   the test binary (a panic, a fatal error), so a go command is run again for each package that crashed, without the
   tests it already reported (`-skip` through `SUITE_ARGS`, with the sample's `-run` in progress mode), until a run
-  reports nothing new or the package stops crashing (at most 40 reruns, within the deadline): a crash costs the test
-  that crashed, not every test after it, which keeps the progress of Go chains and rebuilds measurable. The score line
+  reports nothing new or the package stops crashing (at most 40 reruns, within the deadline). When the crash names its
+  test (a panic in the test itself, which go test reports as that test's failure), the crash costs that test and the
+  tests after it are reported, which keeps the progress of Go chains and rebuilds measurable; a crash that names no
+  test (a panic in another goroutine, before the first test) is hit again by the rerun, which then reports nothing new,
+  and the tests not reported count as failed. The score line
   carries the breakdown (section 3.1); stderr has one line per command and per rerun, and at most 200 lines naming the
   tests that failed and the guards that broke.
 * **What the code under test cannot do.** Each command runs in a session of its own with stdin closed and stdout and
@@ -329,8 +332,9 @@ team to write a library again from its specification, as it is at a version of t
   most (an import of it, or a name imported from it or read as its attribute, followed through the re-exports of a
   package's `__init__.py` to the module that defines the name), the later in import order on a tie; a test file that
   refers to no module belongs to the scope's first package (the last module in import order when that package has no
-  `__init__.py`). A test that panics in a Go stub fails alone: the scorer runs the package again without it (see the
-  score above).
+  `__init__.py`). A test that panics in a Go stub, in the test's own goroutine, fails alone: the scorer runs the package
+  again without it (see the score above); a panic elsewhere (a goroutine the test started) still stops the tests after
+  it.
 * **Gates and checks.** The scope has 2,000 to 10,000 lines, at least 150 scored tests, and one run of the reference
   suite takes less than 10 minutes. In the environment rollouts use, the scope must not be importable from outside
   the start tree: for Go, its module (also without a `/vN` suffix) is in neither the module cache, `GOPATH/src` nor

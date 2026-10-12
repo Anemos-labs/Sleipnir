@@ -14,8 +14,9 @@ nothing the code under test prints, now or later, reaches standard output, where
 go test stops a package's tests at the first one that crashes the test binary (a panic, a fatal error), and the tests
 after it would go unreported. A go test command is therefore run again for each package that crashed, through
 SUITE_ARGS (-skip the tests the package already reported, and -run the sample in progress mode, then the package), until
-a run reports nothing new, the package stops crashing, MAX_CRASH_RERUNS runs were made or the deadline passes: a crash
-costs the test that crashed, not every test after it.
+a run reports nothing new, the package stops crashing, MAX_CRASH_RERUNS runs were made or the deadline passes. A crash
+that go test attributes to a test costs that test, not every test after it; one it attributes to no test (a panic in
+another goroutine) is hit again by the rerun, which reports nothing new, and the tests after it stay unreported.
 
 Environment:
     SUITE_MODE=record  print {"suite_record": 1, "commands": [...]} instead of a score: every test each command
