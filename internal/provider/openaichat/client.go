@@ -22,7 +22,7 @@ import (
 
 // Config configures a Client.
 type Config struct {
-	Name    string // profile name, e.g. "heimdall"
+	Name    string // profile name, e.g. "heimdallm"
 	BaseURL string // ends before /chat/completions
 	APIKey  string
 	Headers map[string]string

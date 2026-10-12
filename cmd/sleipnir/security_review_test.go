@@ -110,7 +110,7 @@ func TestResolveKeyDestination(t *testing.T) {
 		{"custom: nothing to reach", providerFlags{provider: "custom"}, env{}, "", "", []string{"needs --base-url"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			for _, k := range []string{"HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL", "CUSTOM_BASE_URL", "MY_KEY", "HOME"} {
+			for _, k := range []string{"HEIMDALLM_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL", "CUSTOM_BASE_URL", "MY_KEY", "HOME"} {
 				t.Setenv(k, "")
 			}
 			for k, v := range tc.env {

@@ -19,7 +19,7 @@ func getenv(name string) string { return os.Getenv(name) }
 func TestLooksSecret(t *testing.T) {
 	secret := []string{
 		"OPENAI_API_KEY=x", "anthropic_api-key=x", "MY_SECRET=x", "GITHUB_TOKEN=x", "DB_PASSWORD=x", "DB_PASSWD=x",
-		"AWS_SESSION_TOKEN=x", "STRIPE_KEY=x", "HEIMDALL_KEY=x", "KEY=x", "PRIVATE_KEY=x", "MYSQL_PWD=x", "GH_PAT=x",
+		"AWS_SESSION_TOKEN=x", "STRIPE_KEY=x", "HEIMDALLM_KEY=x", "KEY=x", "PRIVATE_KEY=x", "MYSQL_PWD=x", "GH_PAT=x",
 		"SENTRY_DSN=x", "AUTHORIZATION=x", "COOKIE=x", "SSH_AUTH_SOCK=/tmp/agent.1",
 		"DATABASE_URL=postgres://app:hunter2@db:5432/prod", "REDIS_URL=redis://:hunter2@cache",
 		"X=" + "sk" + "-ant-api03-" + rep("a", 22),
@@ -48,7 +48,7 @@ func TestLooksSecret(t *testing.T) {
 // The erasure net is wider than the scrub: it costs nothing to blank a variable in /proc.
 func TestShouldErase(t *testing.T) {
 	for _, kv := range []string{
-		"HEIMDALL_API_KEY=x", "OPENROUTER_API_KEY=x", "GITHUB_TOKEN=x", "AWS_ACCESS_KEY_ID=" + "AK" + "IA" + rep("x", 16), "AWS_SECRET_ACCESS_KEY=x",
+		"HEIMDALLM_API_KEY=x", "OPENROUTER_API_KEY=x", "GITHUB_TOKEN=x", "AWS_ACCESS_KEY_ID=" + "AK" + "IA" + rep("x", 16), "AWS_SECRET_ACCESS_KEY=x",
 		"SSH_AUTH_SOCK=/tmp/a", "NPM_CONFIG__AUTH=x", "MY_SERVICE_PASSWORD=x", "SIGNATURE=x", "DATABASE_URL=postgres://u:p@h/d",
 		"UNRELATED=" + "gh" + "p_" + rep("b", 36),
 	} {
@@ -258,7 +258,7 @@ func TestSecretWithoutMoveKeysIsGetenv(t *testing.T) {
 
 func TestMoveKeysTakesProviderKeysOutOfTheEnvironment(t *testing.T) {
 	resetVault(t)
-	t.Setenv("HARDEN_T_HEIMDALL_API_KEY", "k1")
+	t.Setenv("HARDEN_T_HEIMDALLM_API_KEY", "k1")
 	t.Setenv("HARDEN_T_other-api-key", "k2")
 	t.Setenv("HARDEN_T_APIKEY", "k3")
 	t.Setenv("HARDEN_T_PLAIN", "visible")
@@ -267,7 +267,7 @@ func TestMoveKeysTakesProviderKeysOutOfTheEnvironment(t *testing.T) {
 
 	applyForTest(MoveKeys("HARDEN_T_CUSTOM"))
 
-	for _, name := range []string{"HARDEN_T_HEIMDALL_API_KEY", "HARDEN_T_other-api-key", "HARDEN_T_APIKEY", "HARDEN_T_CUSTOM"} {
+	for _, name := range []string{"HARDEN_T_HEIMDALLM_API_KEY", "HARDEN_T_other-api-key", "HARDEN_T_APIKEY", "HARDEN_T_CUSTOM"} {
 		if v := getenv(name); v != "" {
 			t.Errorf("%s is still in the environment", name)
 		}
@@ -277,13 +277,13 @@ func TestMoveKeysTakesProviderKeysOutOfTheEnvironment(t *testing.T) {
 			t.Errorf("%s = %q, want it untouched (%q)", name, v, want)
 		}
 	}
-	for name, want := range map[string]string{"HARDEN_T_HEIMDALL_API_KEY": "k1", "HARDEN_T_other-api-key": "k2", "HARDEN_T_APIKEY": "k3", "HARDEN_T_CUSTOM": "named explicitly"} {
+	for name, want := range map[string]string{"HARDEN_T_HEIMDALLM_API_KEY": "k1", "HARDEN_T_other-api-key": "k2", "HARDEN_T_APIKEY": "k3", "HARDEN_T_CUSTOM": "named explicitly"} {
 		if got := Secret(name); got != want {
 			t.Errorf("Secret(%s) = %q, want %q", name, got, want)
 		}
 	}
 	// Held is sorted and lists names only.
-	want := []string{"HARDEN_T_APIKEY", "HARDEN_T_CUSTOM", "HARDEN_T_HEIMDALL_API_KEY", "HARDEN_T_other-api-key"}
+	want := []string{"HARDEN_T_APIKEY", "HARDEN_T_CUSTOM", "HARDEN_T_HEIMDALLM_API_KEY", "HARDEN_T_other-api-key"}
 	if got := Held(); !reflect.DeepEqual(got, want) {
 		t.Errorf("Held = %v, want %v", got, want)
 	}
@@ -600,5 +600,29 @@ func TestSourceNames(t *testing.T) {
 		if got := src.String(); got != want {
 			t.Errorf("Source(%d).String() = %q, want %q", int(src), got, want)
 		}
+	}
+}
+
+func TestAKeyUnderARenamedProvidersFormerNameStillServes(t *testing.T) {
+	resetVault(t)
+	t.Setenv("HEIMDALLM_API_KEY", "")
+	t.Setenv("HEIMDALL_API_KEY", "")
+	if got := Secret("HEIMDALLM_API_KEY"); got != "" {
+		t.Fatalf("nothing set: %q", got)
+	}
+	Provide("HEIMDALL_API_KEY", "stored-under-the-former-name")
+	if got, src := Secret("HEIMDALLM_API_KEY"), SourceOf("HEIMDALLM_API_KEY"); got != "stored-under-the-former-name" || src != SourceStored {
+		t.Fatalf("a key stored as HEIMDALL_API_KEY: %q from %v", got, src)
+	}
+	t.Setenv("HEIMDALL_API_KEY", "set-under-the-former-name")
+	if got := Secret("HEIMDALLM_API_KEY"); got != "set-under-the-former-name" {
+		t.Fatalf("the environment wins under the former name too: %q", got)
+	}
+	t.Setenv("HEIMDALLM_API_KEY", "current")
+	if got := Secret("HEIMDALLM_API_KEY"); got != "current" {
+		t.Fatalf("the current name wins over the former one: %q", got)
+	}
+	if got := Secret("HEIMDALL_API_KEY"); got != "set-under-the-former-name" {
+		t.Fatalf("the former name is not redirected the other way: %q", got)
 	}
 }

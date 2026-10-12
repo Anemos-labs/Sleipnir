@@ -717,9 +717,9 @@ func TestServerPolicyEndpointAndKeyMustBeAllowedByTheOperator(t *testing.T) {
 		{"credentials in the URL", "http://user:pw@vllm:8000/v1", "", 400, "must not carry credentials"},
 		{"not http", "ftp://vllm:8000/v1", "", 400, "http or https"},
 		{"no host", "http:///v1", "", 400, "http or https"},
-		{"an unlisted key variable", "http://vllm:8000/v1", "HEIMDALL_API_KEY", 403, "policy.api_key_env"},
+		{"an unlisted key variable", "http://vllm:8000/v1", "HEIMDALLM_API_KEY", 403, "policy.api_key_env"},
 		{"a key variable that only looks like the listed one", "http://vllm:8000/v1", "VLLM_KEY2", 403, "policy.api_key_env"},
-		{"an unlisted key at a loopback host", "http://127.0.0.1:8000/v1", "HEIMDALL_API_KEY", 403, "policy.api_key_env"},
+		{"an unlisted key at a loopback host", "http://127.0.0.1:8000/v1", "HEIMDALLM_API_KEY", 403, "policy.api_key_env"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			resp := f.do("POST", "/v1/rollouts", testToken, policy(tc.base, tc.key))

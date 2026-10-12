@@ -64,7 +64,7 @@ func cmdModels(ctx context.Context, args []string) error {
 		printHelp(fs.Output(), `usage: sleipnir models [words...] [flags]
        sleipnir models fav [add|rm] provider/model...
 
-Lists the models of every provider whose key is set (and Heimdall), as references that --model takes. Each word narrows the
+Lists the models of every provider whose key is set (and Heimdallm), as references that --model takes. Each word narrows the
 search (all must appear, any case). Favorites, marked *, come first.
 
 `)
@@ -104,7 +104,7 @@ search (all must appear, any case). Favorites, marked *, come first.
 	case pf.baseURL != "":
 		sources = []modelSource{{name: "", base: pf.baseURL}}
 	case pf.provider != "" && !strings.EqualFold(pf.provider, "all"):
-		name := strings.ToLower(pf.provider)
+		name := config.CanonicalProvider(strings.ToLower(pf.provider))
 		b, _, ok := session.ProviderInfo(cfg, name)
 		if !ok || b == "" {
 			return fmt.Errorf("models: unknown provider %q", name)
@@ -130,7 +130,7 @@ search (all must appear, any case). Favorites, marked *, come first.
 		return fmt.Errorf("models: no catalogue could be fetched")
 	}
 	if len(sources) == 0 {
-		return fmt.Errorf("models: no provider to ask: set HEIMDALL_API_KEY (or another provider's key), or pass --provider")
+		return fmt.Errorf("models: no provider to ask: set HEIMDALLM_API_KEY (or another provider's key), or pass --provider")
 	}
 	if err := printModels(os.Stdout, all, f, favoriteSet(cfg)); err != nil {
 		return err

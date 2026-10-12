@@ -142,7 +142,7 @@ func TestRunTakesFlagsAfterThePrompt(t *testing.T) {
 
 func TestSimAndRoleModelFlags(t *testing.T) {
 	kf := kvFlags{}
-	if err := kf.Set("manager=heimdall/x"); err != nil || kf["manager"] != "heimdall/x" {
+	if err := kf.Set("manager=heimdallm/x"); err != nil || kf["manager"] != "heimdallm/x" {
 		t.Fatalf("role-model parse: %v %v", err, kf)
 	}
 	for _, bad := range []string{"", "manager", "=x", "manager="} {

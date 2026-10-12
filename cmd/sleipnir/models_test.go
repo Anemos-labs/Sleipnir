@@ -33,11 +33,11 @@ func row(ref string, ctx int, out float64, supported ...string) modelRow {
 
 func TestModelSearchFiltersAndFavorites(t *testing.T) {
 	all := []modelRow{
-		row("heimdall/qwen/qwen3.8-27b", 262_000, 0.25, "tools", "reasoning"),
-		row("heimdall/qwen/qwen3.8-flash-next", 1_000_000, 0.035, "tools"),
+		row("heimdallm/qwen/qwen3.8-27b", 262_000, 0.25, "tools", "reasoning"),
+		row("heimdallm/qwen/qwen3.8-flash-next", 1_000_000, 0.035, "tools"),
 		row("openrouter/moonshotai/kimi-k3", 256_000, 2.5, "tools", "reasoning"),
 		row("ollama/llama3:8b", 8_000, 0),
-		{Ref: "heimdall/embedder", Entry: gateway.Entry{Model: cost.Model{ID: "embedder", ContextTokens: 8000}, Modality: "text->embedding"}},
+		{Ref: "heimdallm/embedder", Entry: gateway.Entry{Model: cost.Model{ID: "embedder", ContextTokens: 8000}, Modality: "text->embedding"}},
 	}
 	list := func(f modelFilter, fav ...string) []string {
 		set := map[string]bool{}
@@ -61,13 +61,13 @@ func TestModelSearchFiltersAndFavorites(t *testing.T) {
 		}
 	}
 	eq("all chat models, sorted", list(modelFilter{}),
-		"heimdall/qwen/qwen3.8-27b", "heimdall/qwen/qwen3.8-flash-next", "ollama/llama3:8b", "openrouter/moonshotai/kimi-k3")
-	eq("every word must match, any case", list(modelFilter{Words: []string{"QWEN", "flash"}}), "heimdall/qwen/qwen3.8-flash-next")
-	eq("tools and reasoning", list(modelFilter{Tools: true, Reasoning: true}), "heimdall/qwen/qwen3.8-27b", "openrouter/moonshotai/kimi-k3")
-	eq("price ceiling", list(modelFilter{MaxOut: 0.3}), "heimdall/qwen/qwen3.8-27b", "heimdall/qwen/qwen3.8-flash-next", "ollama/llama3:8b")
-	eq("context floor", list(modelFilter{MinContext: 256_000}), "heimdall/qwen/qwen3.8-27b", "heimdall/qwen/qwen3.8-flash-next", "openrouter/moonshotai/kimi-k3")
+		"heimdallm/qwen/qwen3.8-27b", "heimdallm/qwen/qwen3.8-flash-next", "ollama/llama3:8b", "openrouter/moonshotai/kimi-k3")
+	eq("every word must match, any case", list(modelFilter{Words: []string{"QWEN", "flash"}}), "heimdallm/qwen/qwen3.8-flash-next")
+	eq("tools and reasoning", list(modelFilter{Tools: true, Reasoning: true}), "heimdallm/qwen/qwen3.8-27b", "openrouter/moonshotai/kimi-k3")
+	eq("price ceiling", list(modelFilter{MaxOut: 0.3}), "heimdallm/qwen/qwen3.8-27b", "heimdallm/qwen/qwen3.8-flash-next", "ollama/llama3:8b")
+	eq("context floor", list(modelFilter{MinContext: 256_000}), "heimdallm/qwen/qwen3.8-27b", "heimdallm/qwen/qwen3.8-flash-next", "openrouter/moonshotai/kimi-k3")
 	eq("favorites first and marked", list(modelFilter{}, "openrouter/moonshotai/kimi-k3"),
-		"openrouter/moonshotai/kimi-k3*", "heimdall/qwen/qwen3.8-27b", "heimdall/qwen/qwen3.8-flash-next", "ollama/llama3:8b")
+		"openrouter/moonshotai/kimi-k3*", "heimdallm/qwen/qwen3.8-27b", "heimdallm/qwen/qwen3.8-flash-next", "ollama/llama3:8b")
 	eq("only favorites", list(modelFilter{OnlyFavorite: true}, "ollama/llama3:8b"), "ollama/llama3:8b*")
 	if n := len(list(modelFilter{All: true})); n != 5 {
 		t.Errorf("--all keeps the embedder: %d rows", n)
@@ -110,10 +110,10 @@ func TestBareSleipnirOpensTheChatOnATerminal(t *testing.T) {
 
 func TestPickModelSearchesAndChoosesFromWhatTheProviderLists(t *testing.T) {
 	rows := []modelRow{
-		row("heimdall/zeta/z-1", 8_000, 1),
-		row("heimdall/alpha/a-1", 1_000_000, 0.02, "tools"),
-		row("heimdall/alpha/a-2", 262_000, 0.25, "tools", "reasoning"),
-		{Ref: "heimdall/embedder", Entry: gateway.Entry{Model: cost.Model{ID: "embedder"}, Modality: "text->embedding"}},
+		row("heimdallm/zeta/z-1", 8_000, 1),
+		row("heimdallm/alpha/a-1", 1_000_000, 0.02, "tools"),
+		row("heimdallm/alpha/a-2", 262_000, 0.25, "tools", "reasoning"),
+		{Ref: "heimdallm/embedder", Entry: gateway.Entry{Model: cost.Model{ID: "embedder"}, Modality: "text->embedding"}},
 	}
 	ask := func(input string, fav map[string]bool) (string, string, error) {
 		var out bytes.Buffer
@@ -122,18 +122,18 @@ func TestPickModelSearchesAndChoosesFromWhatTheProviderLists(t *testing.T) {
 	}
 	// Alphabetical, numbered, no embedder; a number chooses.
 	ref, out, err := ask("2\n", nil)
-	if err != nil || ref != "heimdall/alpha/a-2" || strings.Contains(out, "embedder") || !strings.Contains(out, " 1. heimdall/alpha/a-1") {
+	if err != nil || ref != "heimdallm/alpha/a-2" || strings.Contains(out, "embedder") || !strings.Contains(out, " 1. heimdallm/alpha/a-1") {
 		t.Fatalf("%q %v\n%s", ref, err, out)
 	}
 	// Words narrow the list first; the numbers then count the narrowed rows.
-	if ref, _, err := ask("zeta\n1\n", nil); err != nil || ref != "heimdall/zeta/z-1" {
+	if ref, _, err := ask("zeta\n1\n", nil); err != nil || ref != "heimdallm/zeta/z-1" {
 		t.Errorf("search then choose: %q %v", ref, err)
 	}
 	if _, out, _ := ask("nothing-like-this\nq\n", nil); !strings.Contains(out, "nothing matches") {
 		t.Errorf("an empty search says so:\n%s", out)
 	}
 	// Favorites come first.
-	if ref, _, err := ask("1\n", map[string]bool{"heimdall/zeta/z-1": true}); err != nil || ref != "heimdall/zeta/z-1" {
+	if ref, _, err := ask("1\n", map[string]bool{"heimdallm/zeta/z-1": true}); err != nil || ref != "heimdallm/zeta/z-1" {
 		t.Errorf("favorites lead: %q %v", ref, err)
 	}
 	// A number beyond the rows is a search, not a choice; q and end of input give up.
@@ -165,7 +165,7 @@ func TestFirstTimeSetupWritesTheConfigFromTheProvidersOwnList(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("FAKE_API_KEY", "k")
-	for _, k := range []string{"SLEIPNIR_MODEL", "HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"} {
+	for _, k := range []string{"SLEIPNIR_MODEL", "HEIMDALLM_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"} {
 		t.Setenv(k, "")
 	}
 	provider := `{"providers":{"fake":{"base_url":"` + ts.URL + `/v1","api_key_env":"FAKE_API_KEY"}}}`
@@ -198,7 +198,7 @@ func TestFirstTimeSetupWritesTheConfigFromTheProvidersOwnList(t *testing.T) {
 
 func nosecret() (string, error) { return "", errors.New("no key should be asked for here") }
 
-// Nothing at all: no key, no config. The person picks a provider (Heimdall is the first), pastes the key, picks a model; the key is kept in
+// Nothing at all: no key, no config. The person picks a provider (Heimdallm is the first), pastes the key, picks a model; the key is kept in
 // auth.json (mode 0600, never in the config file) and is in use for this very run; the config file is written.
 func TestFirstRunWithNoKeyAsksForTheKeyAndKeepsIt(t *testing.T) {
 	var gotKey string
@@ -209,19 +209,19 @@ func TestFirstRunWithNoKeyAsksForTheKeyAndKeepsIt(t *testing.T) {
 	defer ts.Close()
 	_, home := projectDir(t)
 	unsetProviderKeys(t)
-	t.Setenv("HEIMDALL_BASE_URL", ts.URL+"/v1")
-	t.Cleanup(func() { harden.Provide("HEIMDALL_API_KEY", "") })
+	t.Setenv("HEIMDALLM_BASE_URL", ts.URL+"/v1")
+	t.Cleanup(func() { harden.Provide("HEIMDALLM_API_KEY", "") })
 	var model string
 	var out bytes.Buffer
 	secret := func() (string, error) { return "sk-pasted-key-123", nil }
 	if err := ensureModel(context.Background(), &model, bufio.NewReader(strings.NewReader("1\n1\n")), &out, secret, true); err != nil {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
-	if model != "heimdall/only-model" || !strings.Contains(out.String(), "1. heimdall  (recommended)") {
+	if model != "heimdallm/only-model" || !strings.Contains(out.String(), "1. heimdallm  (recommended)") {
 		t.Fatalf("%q\n%s", model, out.String())
 	}
 	b, err := os.ReadFile(filepath.Join(home, ".sleipnir", "auth.json"))
-	if err != nil || !strings.Contains(string(b), `"HEIMDALL_API_KEY": "sk-pasted-key-123"`) {
+	if err != nil || !strings.Contains(string(b), `"HEIMDALLM_API_KEY": "sk-pasted-key-123"`) {
 		t.Fatalf("auth.json: %v %s", err, b)
 	}
 	if fi, _ := os.Stat(filepath.Join(home, ".sleipnir", "auth.json")); fi.Mode().Perm() != 0o600 {
@@ -230,7 +230,7 @@ func TestFirstRunWithNoKeyAsksForTheKeyAndKeepsIt(t *testing.T) {
 	if c, _ := os.ReadFile(filepath.Join(home, ".sleipnir", "config.json")); strings.Contains(string(c), "sk-pasted") {
 		t.Error("a key must never be in the config file, which people share")
 	}
-	if harden.Secret("HEIMDALL_API_KEY") != "sk-pasted-key-123" {
+	if harden.Secret("HEIMDALLM_API_KEY") != "sk-pasted-key-123" {
 		t.Error("the key is not in use for this run")
 	}
 	_ = gotKey
@@ -318,23 +318,23 @@ func TestARefusedKeyOfTheEnvironmentLeavesTheStoredKeyAlone(t *testing.T) {
 	defer ts.Close()
 	_, home := projectDir(t)
 	unsetProviderKeys(t)
-	t.Setenv("HEIMDALL_BASE_URL", ts.URL+"/v1")
-	t.Setenv("HEIMDALL_API_KEY", "sk-stale-export")
-	t.Cleanup(func() { harden.Provide("HEIMDALL_API_KEY", "") })
-	if err := config.SaveStoredKey(home, "HEIMDALL_API_KEY", "sk-typed"); err != nil {
+	t.Setenv("HEIMDALLM_BASE_URL", ts.URL+"/v1")
+	t.Setenv("HEIMDALLM_API_KEY", "sk-stale-export")
+	t.Cleanup(func() { harden.Provide("HEIMDALLM_API_KEY", "") })
+	if err := config.SaveStoredKey(home, "HEIMDALLM_API_KEY", "sk-typed"); err != nil {
 		t.Fatal(err)
 	}
-	harden.Provide("HEIMDALL_API_KEY", "sk-typed")
+	harden.Provide("HEIMDALLM_API_KEY", "sk-typed")
 	cfg, _, _ := config.Load(config.LoadOpts{UntrustedProject: true})
 	var out bytes.Buffer
-	err := checkKey(context.Background(), cfg, "heimdall/only-model", &out)
-	if err == nil || !strings.Contains(err.Error(), "key in HEIMDALL_API_KEY") || !strings.Contains(err.Error(), "was kept") {
+	err := checkKey(context.Background(), cfg, "heimdallm/only-model", &out)
+	if err == nil || !strings.Contains(err.Error(), "key in HEIMDALLM_API_KEY") || !strings.Contains(err.Error(), "was kept") {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
-	if keys, _ := config.StoredKeys(home); keys["HEIMDALL_API_KEY"] != "sk-typed" {
+	if keys, _ := config.StoredKeys(home); keys["HEIMDALLM_API_KEY"] != "sk-typed" {
 		t.Errorf("the stored key was dropped for a refusal of the environment's: %v", keys)
 	}
-	if harden.Secret("HEIMDALL_API_KEY") != "sk-stale-export" {
+	if harden.Secret("HEIMDALLM_API_KEY") != "sk-stale-export" {
 		t.Error("the variable stopped being the key in use")
 	}
 }
@@ -429,8 +429,8 @@ func TestFirstRunRefusesAKeyTheProviderRejects(t *testing.T) {
 	defer ts.Close()
 	_, home := projectDir(t)
 	unsetProviderKeys(t)
-	t.Setenv("HEIMDALL_BASE_URL", ts.URL+"/v1")
-	t.Cleanup(func() { harden.Provide("HEIMDALL_API_KEY", "") })
+	t.Setenv("HEIMDALLM_BASE_URL", ts.URL+"/v1")
+	t.Cleanup(func() { harden.Provide("HEIMDALLM_API_KEY", "") })
 	var model string
 	var out bytes.Buffer
 	err := ensureModel(context.Background(), &model, bufio.NewReader(strings.NewReader("1\n1\n")), &out, func() (string, error) { return "sk-typo", nil }, true)
@@ -440,7 +440,7 @@ func TestFirstRunRefusesAKeyTheProviderRejects(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(home, ".sleipnir", "auth.json")); strings.Contains(string(b), "sk-typo") {
 		t.Errorf("the rejected key was kept: %s", b)
 	}
-	if harden.Secret("HEIMDALL_API_KEY") != "" {
+	if harden.Secret("HEIMDALLM_API_KEY") != "" {
 		t.Error("the rejected key is still in use")
 	}
 }
@@ -449,7 +449,7 @@ func TestFirstRunRefusesAKeyTheProviderRejects(t *testing.T) {
 // before a local server), asked for its models with the sign-in's token, and its models are marked as the plan's, with no price.
 func TestTheChatGPTPlanIsUsableOnlyWhenSignedInAndItsModelsSayPlan(t *testing.T) {
 	_, home := projectDir(t)
-	for _, k := range []string{"SLEIPNIR_MODEL", "HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TOGETHER_API_KEY", "FIREWORKS_API_KEY", "GROQ_API_KEY"} {
+	for _, k := range []string{"SLEIPNIR_MODEL", "HEIMDALLM_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TOGETHER_API_KEY", "FIREWORKS_API_KEY", "GROQ_API_KEY"} {
 		t.Setenv(k, "")
 	}
 	cfg, _, _ := config.Load(config.LoadOpts{UntrustedProject: true})
@@ -538,7 +538,7 @@ func TestFirstRunWithAProviderThatListsNoModelsAsksForTheModel(t *testing.T) {
 func TestAnEmptyKeyGoesBackToTheListOfProviders(t *testing.T) {
 	_, _ = projectDir(t)
 	unsetProviderKeys(t)
-	t.Cleanup(func() { harden.Provide("HEIMDALL_API_KEY", "") })
+	t.Cleanup(func() { harden.Provide("HEIMDALLM_API_KEY", "") })
 	cfg, _, _ := config.Load(config.LoadOpts{UntrustedProject: true})
 	calls := 0
 	secret := func() (string, error) {
@@ -550,7 +550,7 @@ func TestAnEmptyKeyGoesBackToTheListOfProviders(t *testing.T) {
 	}
 	var out bytes.Buffer
 	name, err := login(context.Background(), bufio.NewReader(strings.NewReader("1\n1\n")), &out, secret, cfg, "", nil)
-	if err != nil || name != "heimdall" || calls != 2 {
+	if err != nil || name != "heimdallm" || calls != 2 {
 		t.Fatalf("%q %v after %d prompts\n%s", name, err, calls, out.String())
 	}
 	if n := strings.Count(out.String(), "Which provider will you use?"); n != 2 {
@@ -560,7 +560,27 @@ func TestAnEmptyKeyGoesBackToTheListOfProviders(t *testing.T) {
 		t.Errorf("the prompt does not say how to go back:\n%s", out.String())
 	}
 	// Named on the command line, an empty key is an error.
-	if _, err := login(context.Background(), bufio.NewReader(strings.NewReader("")), &bytes.Buffer{}, func() (string, error) { return "", nil }, cfg, "heimdall", nil); err == nil || !strings.Contains(err.Error(), "no key entered") {
+	if _, err := login(context.Background(), bufio.NewReader(strings.NewReader("")), &bytes.Buffer{}, func() (string, error) { return "", nil }, cfg, "heimdallm", nil); err == nil || !strings.Contains(err.Error(), "no key entered") {
 		t.Errorf("a named provider: %v", err)
+	}
+}
+
+// Heimdallm was formerly named heimdall: `sleipnir login heimdall` and `--provider heimdall` still name it.
+func TestTheProvidersFormerNameStillNamesIt(t *testing.T) {
+	_, home := projectDir(t)
+	cfg, _, _ := config.Load(config.LoadOpts{UntrustedProject: true})
+	t.Setenv("HEIMDALLM_API_KEY", "")
+	t.Setenv("HEIMDALL_API_KEY", "")
+	t.Cleanup(func() { harden.Provide("HEIMDALLM_API_KEY", "") })
+	in := bufio.NewReader(strings.NewReader(""))
+	if name, err := login(context.Background(), in, &bytes.Buffer{}, func() (string, error) { return "sk-renamed", nil }, cfg, "heimdall", nil); err != nil || name != "heimdallm" {
+		t.Fatalf("login heimdall: %q %v", name, err)
+	}
+	if keys, _ := config.StoredKeys(home); keys["HEIMDALLM_API_KEY"] != "sk-renamed" {
+		t.Errorf("stored under the current variable name: %v", keys)
+	}
+	spec, key, err := providerFlags{provider: "heimdall", home: home}.resolve()
+	if err != nil || spec.name != "heimdallm" || key != "sk-renamed" {
+		t.Fatalf("--provider heimdall: %+v %q %v", spec.name, key, err)
 	}
 }

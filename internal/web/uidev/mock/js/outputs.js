@@ -25,8 +25,8 @@ sessions: S.sessions.all().map(function (x) { return S.clone(x); }),
 trust: S.clone(S.trust.ledger).map(function (e) { return e; }),
 mcpApproved: {},
 schedule: S.clone(S.schedule.jobs), scheduleSeq: 5,
-favourites: ['anthropic/claude-sonnet-5-5', 'anthropic/claude-haiku-5-5', 'heimdall/demo-model'],
-auth: { heimdall: 'stored', openrouter: 'none', openai: 'env', anthropic: 'env', chatgpt: 'signed-in' },
+favourites: ['anthropic/claude-sonnet-5-5', 'anthropic/claude-haiku-5-5', 'heimdallm/demo-model'],
+auth: { heimdallm: 'stored', openrouter: 'none', openai: 'env', anthropic: 'env', chatgpt: 'signed-in' },
 projectInitialised: true, userConfigExists: true,
 rl: { tasksFile: true },
 };
@@ -270,12 +270,12 @@ return res(o, 0, 4200);
 return res([L('err', 'sleipnir daemon: looking for due jobs every ' + flag(fl, 'every', '30s') + ' (ctrl-c stops it); jobs: ~/.sleipnir/schedule.json')], 0, 10, card('daemon', [['looking every', String(flag(fl, 'every', '30s'))], ['jobs', String(s.schedule.length)], ['logs', '~/.sleipnir/schedule-logs/']]));
 };
 /* ---- login, logout, models, update, doctor ----------------------------------------------------------------------------------- */
-var LOGIN_CHOICES = ['heimdall', 'openrouter', 'openai', 'anthropic', 'gemini', 'mistral', 'xai', 'deepseek', 'together', 'fireworks', 'groq', 'huggingface'];
+var LOGIN_CHOICES = ['heimdallm', 'openrouter', 'openai', 'anthropic', 'gemini', 'mistral', 'xai', 'deepseek', 'together', 'fireworks', 'groq', 'huggingface'];
 OUT['login'] = function (fl, ctx) {
 var s = st(ctx), name = (pos(fl)[0] || '').toLowerCase();
 if (!name) {
 var o = [L('out', 'Which provider will you use?')];
-LOGIN_CHOICES.forEach(function (c, i) { o.push(L('out', F.padL(i + 1, 3) + '. ' + c + (c === 'heimdall' ? '  (recommended)' : ''))); });
+LOGIN_CHOICES.forEach(function (c, i) { o.push(L('out', F.padL(i + 1, 3) + '. ' + c + (c === 'heimdallm' ? '  (recommended)' : ''))); });
 o.push(L('out', F.padL(LOGIN_CHOICES.length + 1, 3) + '. chatgpt  (your ChatGPT / OpenAI plan: sign in with the browser, no key)'));
 o.push(L('out', F.padL(LOGIN_CHOICES.length + 2, 3) + '. local servers answering on this machine: vllm  (running on this machine, no key)'));
 o.push(L('err', 'Number (q to quit): '));
@@ -283,7 +283,7 @@ return res(o, 0, 30);
 }
 if (name === 'chatgpt') { s.auth.chatgpt = 'signed-in'; return res([L('out', 'Signed in as ada@example.com. Your ChatGPT plan pays for the requests (its usage limits apply); `sleipnir logout chatgpt` ends the sign-in.')], 0, 2400, card('login', [['provider', 'chatgpt'], ['who', 'ada@example.com'], ['tokens', '~/.sleipnir/chatgpt.json (0600)']])); }
 var env = (S.providerKeyVars[name]);
-if (!env) return bad('login: "' + name + '" is not a provider that takes a key (heimdall, openrouter, openai, anthropic, ...; chatgpt signs in with the browser)');
+if (!env) return bad('login: "' + name + '" is not a provider that takes a key (heimdallm, openrouter, openai, anthropic, ...; chatgpt signs in with the browser)');
 s.auth[name] = 'stored';
 return res([L('err', 'Paste your ' + name + ' key (hidden; kept in ~/.sleipnir/auth.json, readable by you only): Saved. (' + env + ' in the environment still takes precedence over it.)'), L('out', 'Checking the key... ok.')], 0, 1300, card('login', [['provider', name], ['key', 'stored in ~/.sleipnir/auth.json (0600)'], ['variable', env + ' wins if set']]));
 };

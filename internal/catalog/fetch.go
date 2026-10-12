@@ -31,7 +31,7 @@ type Source struct {
 }
 
 // UsableProviders are the providers a listing asks when none is named: those whose key is set, a signed-in ChatGPT plan, and (with
-// withPublic) Heimdall, whose catalogue is public (the chat asks only those with a key: it must not reach the network for a session
+// withPublic) Heimdallm, whose catalogue is public (the chat asks only those with a key: it must not reach the network for a session
 // that has none). Local servers and providers without a catalogue route are asked only by name.
 func UsableProviders(cfg *config.Config, withPublic bool) []string {
 	var out []string
@@ -46,7 +46,7 @@ func UsableProviders(cfg *config.Config, withPublic bool) []string {
 		if !ok || p.EffectiveDialect() != config.DialectOpenAIChat {
 			continue
 		}
-		if withPublic && n == "heimdall" || p.APIKeyEnv != "" && harden.Secret(p.APIKeyEnv) != "" {
+		if withPublic && n == "heimdallm" || p.APIKeyEnv != "" && harden.Secret(p.APIKeyEnv) != "" {
 			out = append(out, n)
 		}
 	}
@@ -101,7 +101,7 @@ func LocalSources(ctx context.Context, cfg *config.Config) []Source {
 	return out
 }
 
-// localSources finds the local servers that answer, and usableSources the providers Fetch asks (with Heimdall's public catalogue);
+// localSources finds the local servers that answer, and usableSources the providers Fetch asks (with Heimdallm's public catalogue);
 // tests replace them so that neither the network nor a server running on the test machine is reached.
 var (
 	localSources  = LocalSources
@@ -206,7 +206,7 @@ type Result struct {
 	AsOf    time.Time
 }
 
-// Fetch reads the catalogues of the usable providers (UsableSources with the public Heimdall), the local servers that answer, and a
+// Fetch reads the catalogues of the usable providers (UsableSources with the public Heimdallm), the local servers that answer, and a
 // signed-in ChatGPT plan; a copy younger than CacheTTL is used unless Refresh. Rows are every model listed, chat or not (Row.Chat).
 func Fetch(ctx context.Context, o Options) ([]Row, []error) {
 	r := FetchResult(ctx, o)

@@ -50,11 +50,11 @@ func TestFilterGolden(t *testing.T) {
 	plan := entry("chatgpt/gpt-x", 400_000, 0, 0, "text->text", "tools", "reasoning_effort")
 	plan.Model.Provider = PlanProvider
 	all := []Entry{
-		entry("heimdall/qwen/qwen3.8-27b", 262_144, 0.1, 0.2, "text->text", "tools", "reasoning"),
-		entry("heimdall/qwen/qwen3.8-flash-next", 262_144, 0.05, 0.1, "text->text"),
+		entry("heimdallm/qwen/qwen3.8-27b", 262_144, 0.1, 0.2, "text->text", "tools", "reasoning"),
+		entry("heimdallm/qwen/qwen3.8-flash-next", 262_144, 0.05, 0.1, "text->text"),
 		entry("openrouter/moonshotai/kimi-k3", 300_000, 1, 3, "text->text", "tools", "reasoning_effort"),
 		entry("ollama/llama3:8b", 0, 0, 0, ""),
-		entry("heimdall/embedder", 8000, 0.01, 0, "text->embedding"),
+		entry("heimdallm/embedder", 8000, 0.01, 0, "text->embedding"),
 		plan,
 	}
 	fav := map[string]bool{"ollama/llama3:8b": true}
@@ -63,11 +63,11 @@ func TestFilterGolden(t *testing.T) {
 		f    Filter
 		want []string
 	}{
-		{"chat models only", Filter{}, []string{"chatgpt/gpt-x", "heimdall/qwen/qwen3.8-27b", "heimdall/qwen/qwen3.8-flash-next", "ollama/llama3:8b", "openrouter/moonshotai/kimi-k3"}},
-		{"all", Filter{All: true}, []string{"chatgpt/gpt-x", "heimdall/embedder", "heimdall/qwen/qwen3.8-27b", "heimdall/qwen/qwen3.8-flash-next", "ollama/llama3:8b", "openrouter/moonshotai/kimi-k3"}},
-		{"words, any case", Filter{Words: []string{"QWEN", "flash"}}, []string{"heimdall/qwen/qwen3.8-flash-next"}},
-		{"tools and reasoning", Filter{Tools: true, Reasoning: true}, []string{"chatgpt/gpt-x", "heimdall/qwen/qwen3.8-27b", "openrouter/moonshotai/kimi-k3"}},
-		{"output price ceiling leaves the plan out", Filter{MaxOut: 0.5}, []string{"heimdall/qwen/qwen3.8-27b", "heimdall/qwen/qwen3.8-flash-next", "ollama/llama3:8b"}},
+		{"chat models only", Filter{}, []string{"chatgpt/gpt-x", "heimdallm/qwen/qwen3.8-27b", "heimdallm/qwen/qwen3.8-flash-next", "ollama/llama3:8b", "openrouter/moonshotai/kimi-k3"}},
+		{"all", Filter{All: true}, []string{"chatgpt/gpt-x", "heimdallm/embedder", "heimdallm/qwen/qwen3.8-27b", "heimdallm/qwen/qwen3.8-flash-next", "ollama/llama3:8b", "openrouter/moonshotai/kimi-k3"}},
+		{"words, any case", Filter{Words: []string{"QWEN", "flash"}}, []string{"heimdallm/qwen/qwen3.8-flash-next"}},
+		{"tools and reasoning", Filter{Tools: true, Reasoning: true}, []string{"chatgpt/gpt-x", "heimdallm/qwen/qwen3.8-27b", "openrouter/moonshotai/kimi-k3"}},
+		{"output price ceiling leaves the plan out", Filter{MaxOut: 0.5}, []string{"heimdallm/qwen/qwen3.8-27b", "heimdallm/qwen/qwen3.8-flash-next", "ollama/llama3:8b"}},
 		{"context floor", Filter{MinContext: 280_000}, []string{"chatgpt/gpt-x", "openrouter/moonshotai/kimi-k3"}},
 		{"favourites", Filter{OnlyFavorite: true}, []string{"ollama/llama3:8b"}},
 	} {
@@ -300,8 +300,8 @@ func TestProvidersKeySource(t *testing.T) {
 		}
 	}
 	ks := KeyProviders(cfg)
-	if ks[0].Name != "heimdall" {
-		t.Errorf("Heimdall comes first: %v", ks[:2])
+	if ks[0].Name != "heimdallm" {
+		t.Errorf("Heimdallm comes first: %v", ks[:2])
 	}
 }
 

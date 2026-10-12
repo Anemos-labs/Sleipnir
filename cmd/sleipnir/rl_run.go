@@ -66,7 +66,7 @@ func (p *policyFlags) register(fs *flag.FlagSet) {
 	fs.BoolVar(&p.capture, "capture", false, "ask the endpoint for token ids and logprobs (needed for the tokens export; self-hosted vLLM/SGLang-style servers)")
 	fs.BoolVar(&p.allowInsecureHTTP, "allow-insecure-http", false, "let the policy's API key travel over plain http to a host that is not this machine (a self-hosted server on a trusted network); off by default")
 	fs.IntVar(&p.swarm, "swarm", 0, "run a manager and N workers instead of a single agent (default: what the task's team says)")
-	fs.Var(p.roleModels, "role-model", "role=model override for a swarm role, repeatable (e.g. worker=heimdall/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model")
+	fs.Var(p.roleModels, "role-model", "role=model override for a swarm role, repeatable (e.g. worker=heimdallm/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model")
 	fs.Int64Var(&p.seed, "seed", 0, "run seed; each rollout's sampling seed derives from it")
 	fs.IntVar(&p.ctxTokens, "context-tokens", 0, "the policy's context window when a task does not set one")
 	fs.IntVar(&p.softLimit, "thread-soft-limit", 0, "the size of an agent's thread, in tokens, at which compaction is considered (0: the default, 20000); a larger one compacts later or never within a rollout")

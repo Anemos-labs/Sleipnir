@@ -79,7 +79,7 @@ type settings struct {
 }
 
 // MoveKeys makes Process take the provider API keys (every variable whose name ends
-// in API_KEY, e.g. HEIMDALL_API_KEY, OPENAI_API_KEY, BRAVE_API_KEY) and any extra
+// in API_KEY, e.g. HEIMDALLM_API_KEY, OPENAI_API_KEY, BRAVE_API_KEY) and any extra
 // variables named here out of the process environment: they are held in memory and
 // read with Secret. Once moved, os.Getenv no longer sees them and neither does any
 // process started with the inherited environment. Use it only when every reader
@@ -276,6 +276,21 @@ func SourceOf(name string) Source {
 // memory, replacing whatever was held, so a variable set again takes the place of a moved
 // or stored copy.
 func lookupLocked(name string) (value string, src Source, ok bool) {
+	value, src, ok = lookupOneLocked(name)
+	if was := formerNames[name]; was != "" && value == "" {
+		if v, s, set := lookupOneLocked(was); v != "" {
+			return v, s, set
+		}
+	}
+	return value, src, ok
+}
+
+// formerNames maps a credential variable to the name it had before its provider was renamed. A key set or stored
+// under the former name (HEIMDALL_API_KEY) is used when the current one (HEIMDALLM_API_KEY) has no value.
+var formerNames = map[string]string{"HEIMDALLM_API_KEY": "HEIMDALL_API_KEY"}
+
+// lookupOneLocked resolves the credential of exactly this name for lookupLocked; the caller must hold the hardening lock.
+func lookupOneLocked(name string) (value string, src Source, ok bool) {
 	if v, set := os.LookupEnv(name); set && (v != "" || held[name] == "") {
 		if moving && movableLocked(name, v) {
 			holdLocked(name, v, true)

@@ -375,7 +375,7 @@
       "models": [
         "deepseek/deepseek-v4.1-flash"
       ],
-      "provider": "heimdall",
+      "provider": "heimdallm",
       "dialect": "openai-chat",
       "renderer": "sleipnir-kv/2",
       "version": "dev",
@@ -652,7 +652,7 @@
       "models": [
         "deepseek/deepseek-v4.1-flash"
       ],
-      "provider": "heimdall",
+      "provider": "heimdallm",
       "dialect": "openai-chat",
       "renderer": "sleipnir-kv/2",
       "version": "dev",
@@ -1394,7 +1394,7 @@
       "models": [
         "deepseek/deepseek-v4.1-flash"
       ],
-      "provider": "heimdall",
+      "provider": "heimdallm",
       "dialect": "openai-chat",
       "renderer": "sleipnir-kv/2",
       "version": "dev",

@@ -52,7 +52,7 @@ Never overwrites: if the file exists it stops and points you to `sleipnir config
 * `--user`: `~/.sleipnir/config.json` (mode 0600) with `permissions.mode` `default` and `models.default` from `--model`. Without `--model`, on a
   terminal, it is the first-time setup that the chat also runs by itself when no model is configured: it asks your provider (the providers whose key is set)
   which models it serves right now, lets you search and choose, and writes the file. Sleipnir knows no model names: they change too often. It defines no
-  provider: the built-in ones (Heimdall, OpenRouter, OpenAI, Anthropic, ...) need only their key variable.
+  provider: the built-in ones (Heimdallm, OpenRouter, OpenAI, Anthropic, ...) need only their key variable.
   `--local-url URL` adds one named `local` for a self-hosted server (vLLM, SGLang) with `capture_tokens`; that entry is
   then the only configured provider, which changes where bare model ids go (`docs/CONFIGURATION.md` section 6).
 
@@ -269,7 +269,7 @@ Usage of chat:
   -resume string
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
-        role=model override, repeatable (e.g. manager=heimdall/x, mailman=heimdall/small)
+        role=model override, repeatable (e.g. manager=heimdallm/x, mailman=heimdallm/small)
   -swarm int
         chat as a team of a manager and N workers (config swarm.max_workers is the ceiling); on a terminal the default is 8 workers, --swarm 0 is a single agent
   -trust-project
@@ -406,7 +406,7 @@ flags:
   -resume string
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
-        role=model override for new sessions, repeatable (e.g. manager=heimdall/x, mailman=heimdall/small)
+        role=model override for new sessions, repeatable (e.g. manager=heimdallm/x, mailman=heimdallm/small)
   -swarm int
         new sessions are a team of a manager and N workers (config swarm.max_workers is the ceiling); the default is 8 workers, --swarm 0 is a single agent
   -trust-project
@@ -495,7 +495,7 @@ flags:
   -resume string
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
-        role=model override, repeatable (e.g. manager=heimdall/x)
+        role=model override, repeatable (e.g. manager=heimdallm/x)
   -session-dir string
         directory for this run's recording (events.jsonl, blobs/, checkpoints/); default <state>/sessions/<id>, <state> being $SLEIPNIR_HOME or ~/.sleipnir
   -swarm int
@@ -681,7 +681,7 @@ Usage of doctor:
   -no-affinity
         do not send a conversation/cache key
   -provider string
-        heimdall | openrouter | openai | custom (default: auto-detect)
+        heimdallm | openrouter | openai | custom (default: auto-detect)
   -trust-project
         apply provider settings from the project's config (they are ignored by default)
 ```
@@ -689,9 +689,9 @@ Usage of doctor:
 
 ### `sleipnir models`
 
-Prints the catalogue of an OpenAI-style marketplace (`<base_url>/models`; Heimdall's needs no key) with context size and
+Prints the catalogue of an OpenAI-style marketplace (`<base_url>/models`; Heimdallm's needs no key) with context size and
 prices per million tokens. Only chat models are listed (`--all` lists the others); a catalogue that does not say what its
-models take and give (OpenAI's own, Ollama's, vLLM's) is taken to list chat models. With no `--provider` it asks every provider whose key is set, and Heimdall (its
+models take and give (OpenAI's own, Ollama's, vLLM's) is taken to list chat models. With no `--provider` it asks every provider whose key is set, and Heimdallm (its
 catalogue is public), at once, and prints `provider/model` references that `--model` takes; a provider that does not answer is named on stderr. Words, `--tools`,
 `--reasoning`, `--max-price` and `--min-context` narrow the list; favorites (`models fav add|rm|list`, kept in your user config as `models.favorites`) come first,
 marked `*`. In the chat, `/model ` completes from the same list. Project config is never trusted here.
@@ -701,7 +701,7 @@ marked `*`. In the chat, `/model ` completes from the same list. Project config 
 usage: sleipnir models [words...] [flags]
        sleipnir models fav [add|rm] provider/model...
 
-Lists the models of every provider whose key is set (and Heimdall), as references that --model takes. Each word narrows the
+Lists the models of every provider whose key is set (and Heimdallm), as references that --model takes. Each word narrows the
 search (all must appear, any case). Favorites, marked *, come first.
 
   -all
@@ -719,7 +719,7 @@ search (all must appear, any case). Favorites, marked *, come first.
   -min-context string
         only models with at least this context window (128k, 1m)
   -provider string
-        heimdall | openrouter | openai | custom (default: auto-detect)
+        heimdallm | openrouter | openai | custom (default: auto-detect)
   -reasoning
         only models with configurable reasoning
   -tools
@@ -758,10 +758,10 @@ update itself instead.
 
 ### `sleipnir login`
 
-Asks which provider you have a key for (Heimdall, the recommended one, is first) and for the key, which it does not echo, and keeps it in
-`~/.sleipnir/auth.json` (mode 0600; never in `config.json`). `sleipnir login heimdall` names the provider; from a pipe the key is the first line of stdin
-(`echo "$KEY" | sleipnir login heimdall`). The first run of `sleipnir` does this by itself when no provider has a key. An environment variable of the key's usual name
-(`HEIMDALL_API_KEY`) takes precedence over the stored one. `sleipnir logout <provider>` removes it.
+Asks which provider you have a key for (Heimdallm, the recommended one, is first) and for the key, which it does not echo, and keeps it in
+`~/.sleipnir/auth.json` (mode 0600; never in `config.json`). `sleipnir login heimdallm` names the provider; from a pipe the key is the first line of stdin
+(`echo "$KEY" | sleipnir login heimdallm`). The first run of `sleipnir` does this by itself when no provider has a key. An environment variable of the key's usual name
+(`HEIMDALLM_API_KEY`) takes precedence over the stored one. `sleipnir logout <provider>` removes it.
 
 `sleipnir login chatgpt` signs in with your **ChatGPT plan** instead of a key (OpenAI's "Sign in with ChatGPT": the browser opens on OpenAI's page and comes back to a port of
 this machine; where no browser can be opened, the address it would end on is pasted). The tokens are kept in `~/.sleipnir/chatgpt.json` (mode 0600), renewed when they are due, and
@@ -772,10 +772,10 @@ usage limits apply (`docs/PROVIDERS.md`, "Subscription logins": what it is, what
 ```text
 usage: sleipnir login [provider]
 
-Asks which provider (Heimdall is the recommended one) and for its API key, and keeps the key in
+Asks which provider (Heimdallm is the recommended one) and for its API key, and keeps the key in
 ~/.sleipnir/auth.json, readable by you only. `sleipnir login chatgpt` signs in with your ChatGPT plan instead (a browser, no key). From a pipe the key is the first line of stdin:
-  echo "$KEY" | sleipnir login heimdall
-An environment variable of the key's usual name (HEIMDALL_API_KEY) still takes precedence.
+  echo "$KEY" | sleipnir login heimdallm
+An environment variable of the key's usual name (HEIMDALLM_API_KEY) still takes precedence.
 ```
 <!-- /flags -->
 
@@ -1748,7 +1748,7 @@ flags:
   -rewards string
         rewards.json with weights, caps and detectors (default: the documented defaults)
   -role-model value
-        role=model override for a swarm role, repeatable (e.g. worker=heimdall/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model
+        role=model override for a swarm role, repeatable (e.g. worker=heimdallm/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model
   -rpm int
         pace the policy requests of ALL rollouts to this many per minute (0: no pacing); swarm governors are per rollout, so --concurrency multiplies their limits
   -sampling string
@@ -1884,7 +1884,7 @@ flags:
   -rewards string
         rewards.json with weights, caps and detectors (default: the documented defaults)
   -role-model value
-        role=model override for a swarm role, repeatable (e.g. worker=heimdall/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model
+        role=model override for a swarm role, repeatable (e.g. worker=heimdallm/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model
   -rpm int
         pace the policy requests of ALL rollouts to this many per minute (0: no pacing); swarm governors are per rollout, so --concurrency multiplies their limits
   -sampling string
@@ -2002,7 +2002,7 @@ flags:
   -rewards string
         rewards.json with weights, caps and detectors (default: the documented defaults)
   -role-model value
-        role=model override for a swarm role, repeatable (e.g. worker=heimdall/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model
+        role=model override for a swarm role, repeatable (e.g. worker=heimdallm/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model
   -rpm int
         pace the policy requests of ALL rollouts to this many per minute (0: no pacing); swarm governors are per rollout, so --concurrency multiplies their limits
   -samples int

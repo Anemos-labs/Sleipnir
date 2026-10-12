@@ -211,13 +211,13 @@ func TestSettingsAreAcknowledgedAndRefusedWithTheErrorCodes(t *testing.T) {
 	if err := tab.SetMode(ctx, wire.ModeRequest{Mode: "chaos"}); code(err) != "bad_mode" || status(err) != 400 {
 		t.Errorf("mode chaos: %v", err)
 	}
-	if err := tab.SetModel(ctx, wire.ModelRequest{Ref: "heimdall/x"}); err != nil || *meta().Model != "heimdall/x" || !strings.Contains(lastSys(), "the prompt cache starts over") {
+	if err := tab.SetModel(ctx, wire.ModelRequest{Ref: "heimdallm/x"}); err != nil || *meta().Model != "heimdallm/x" || !strings.Contains(lastSys(), "the prompt cache starts over") {
 		t.Errorf("model: %v %q", err, lastSys())
 	}
 	if err := tab.SetModel(ctx, wire.ModelRequest{Ref: "backend", Role: "scout"}); code(err) != "model" || status(err) != 422 {
 		t.Errorf("bad model: %v", err)
 	}
-	if err := tab.SetModel(ctx, wire.ModelRequest{Ref: "heimdall/small", Role: "scout"}); err != nil || (*meta().RoleModels)["scout"] != "heimdall/small" {
+	if err := tab.SetModel(ctx, wire.ModelRequest{Ref: "heimdallm/small", Role: "scout"}); err != nil || (*meta().RoleModels)["scout"] != "heimdallm/small" {
 		t.Errorf("role model: %v %+v", err, meta().RoleModels)
 	}
 	if res, err := tab.SetEffort(ctx, wire.EffortRequest{Level: "high"}); err != nil || res.Applied != "high" || *meta().Effort != "high" {
@@ -414,7 +414,7 @@ func TestRestartsStartAGenerationAndPublishIt(t *testing.T) {
 		t.Errorf("frames: %s", got)
 	}
 	// A restart that carries the conversation keeps the journal.
-	if err := tab.Restart(ctx, wire.RestartRequest{Kind: "model", Model: "heimdall/x"}); err != nil {
+	if err := tab.Restart(ctx, wire.RestartRequest{Kind: "model", Model: "heimdallm/x"}); err != nil {
 		t.Fatal(err)
 	}
 	if snap2, _ := tab.Snapshot(ctx); snap2.Seq < snap.Seq || snap2.Gen != 3 {

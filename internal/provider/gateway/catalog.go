@@ -1,4 +1,4 @@
-// Package gateway understands OpenAI-compatible marketplaces such as Heimdall
+// Package gateway understands OpenAI-compatible marketplaces such as Heimdallm
 // and OpenRouter: their public model catalogue, prices, and capabilities.
 //
 // Prices arrive as exact decimal strings per token. They are converted to the

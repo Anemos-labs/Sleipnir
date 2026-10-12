@@ -577,8 +577,8 @@ func TestCtrlCWithMenuOpen(t *testing.T) {
 
 func TestChoicesCompleteTheArgumentOfOneCommand(t *testing.T) {
 	list := []Choice{
-		{Text: "heimdall/qwen/qwen3.8-27b", Detail: "262k"},
-		{Text: "heimdall/qwen/qwen3.8-flash-next", Detail: "1.0M"},
+		{Text: "heimdallm/qwen/qwen3.8-27b", Detail: "262k"},
+		{Text: "heimdallm/qwen/qwen3.8-flash-next", Detail: "1.0M"},
 		{Text: "openrouter/moonshotai/kimi-k3"},
 		{Text: "bad id"},
 	}
@@ -591,10 +591,10 @@ func TestChoicesCompleteTheArgumentOfOneCommand(t *testing.T) {
 		}
 		return from, out
 	}
-	if from, got := texts("/model "); from != 7 || len(got) != 3 || got[0] != "heimdall/qwen/qwen3.8-27b" {
+	if from, got := texts("/model "); from != 7 || len(got) != 3 || got[0] != "heimdallm/qwen/qwen3.8-27b" {
 		t.Errorf("nothing typed: the list in the order given, without the bad id: %d %v", from, got)
 	}
-	if _, got := texts("/model qwen flash"); len(got) != 1 || got[0] != "heimdall/qwen/qwen3.8-flash-next" {
+	if _, got := texts("/model qwen flash"); len(got) != 1 || got[0] != "heimdallm/qwen/qwen3.8-flash-next" {
 		t.Errorf("every word must match: %v", got)
 	}
 	if _, got := texts("/model kimi"); len(got) != 1 {
@@ -611,7 +611,7 @@ func TestChoicesCompleteTheArgumentOfOneCommand(t *testing.T) {
 // A slash command's first argument opens a menu of its own as soon as the space after the command is typed, filters as the
 // argument is typed, and accepting a choice replaces the argument only.
 func TestCompletionOpensOnTheArgumentOfASlashCommand(t *testing.T) {
-	list := []Choice{{Text: "heimdall/qwen/qwen3.8-27b"}, {Text: "heimdall/deepseek/deepseek-v4-flash"}, {Text: "openrouter/moonshotai/kimi-k3"}}
+	list := []Choice{{Text: "heimdallm/qwen/qwen3.8-27b"}, {Text: "heimdallm/deepseek/deepseek-v4-flash"}, {Text: "openrouter/moonshotai/kimi-k3"}}
 	choices := Choices("compact", func() []Choice { return list })
 	// The slash menu is open while "/compact" is typed; the space must hand over to the argument's menu.
 	r := newRig(t, Options{Completer: CompleterFunc(func(line string, cur int) (int, []Candidate) {
@@ -626,11 +626,11 @@ func TestCompletionOpensOnTheArgumentOfASlashCommand(t *testing.T) {
 		t.Fatalf("the space after the command opens the choices: %+v", m)
 	}
 	r.send("dsk")
-	if got := candTexts(r.ed.Completion().Candidates); !reflect.DeepEqual(got, []string{"heimdall/deepseek/deepseek-v4-flash "}) {
+	if got := candTexts(r.ed.Completion().Candidates); !reflect.DeepEqual(got, []string{"heimdallm/deepseek/deepseek-v4-flash "}) {
 		t.Fatalf("filtered: %q", got)
 	}
 	r.send(kTab)
-	if r.state() != "/compact heimdall/deepseek/deepseek-v4-flash |" {
+	if r.state() != "/compact heimdallm/deepseek/deepseek-v4-flash |" {
 		t.Errorf("accepting replaces the argument: %q", r.state())
 	}
 	r2 := newRig(t, Options{Completer: Choices("compact", func() []Choice { return list })})

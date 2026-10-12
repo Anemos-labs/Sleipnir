@@ -11,7 +11,7 @@ import (
 )
 
 // Stored keys. `sleipnir login` keeps a provider's API key in ~/.sleipnir/auth.json (mode 0600), the way opencode and pi keep theirs, so that
-// a person pastes it once. The file maps the key's environment variable (HEIMDALL_API_KEY) to its value, so that a provider defined in
+// a person pastes it once. The file maps the key's environment variable (HEIMDALLM_API_KEY) to its value, so that a provider defined in
 // the configuration with its own api_key_env is found the same way. At start the keys are handed to harden.Provide: they are held in the
 // harness's memory, an environment variable of the same name wins (also one that harden.MoveKeys has already taken out of the environment),
 // and no command a tool runs can see them.

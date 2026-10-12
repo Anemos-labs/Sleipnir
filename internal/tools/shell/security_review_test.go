@@ -105,7 +105,7 @@ func TestSec_S39_EnvScrubCoversCredentialNamesAndValues(t *testing.T) {
 	base := []string{
 		"DATABASE_URL=postgres://app:hunter2@db/prod", "REDIS_URL=redis://:hunter2@cache", "MYSQL_PWD=hunter2",
 		"SENTRY_DSN=https://abc@o1.ingest.sentry.io/1", "SSH_AUTH_SOCK=/tmp/ssh-XXXX/agent.1", "STRIPE_KEY=sk_live_abc",
-		"HEIMDALL_KEY=abc", "PRIVATE_KEY=-----BEGIN", "AUTHORIZATION=Bearer abc", "COOKIE=session=abc", "GH_PAT=ghp_abc",
+		"HEIMDALLM_KEY=abc", "PRIVATE_KEY=-----BEGIN", "AUTHORIZATION=Bearer abc", "COOKIE=session=abc", "GH_PAT=ghp_abc",
 		// controls that ARE scrubbed by name
 		"OPENAI_API_KEY=sk-x", "GITHUB_TOKEN=ghp_x", "AWS_SECRET_ACCESS_KEY=x",
 		// and variables that must keep reaching commands
@@ -117,7 +117,7 @@ func TestSec_S39_EnvScrubCoversCredentialNamesAndValues(t *testing.T) {
 		name, _, _ := strings.Cut(kv, "=")
 		have[name] = true
 	}
-	for _, name := range []string{"DATABASE_URL", "REDIS_URL", "MYSQL_PWD", "SENTRY_DSN", "SSH_AUTH_SOCK", "STRIPE_KEY", "HEIMDALL_KEY", "PRIVATE_KEY", "AUTHORIZATION", "COOKIE", "GH_PAT"} {
+	for _, name := range []string{"DATABASE_URL", "REDIS_URL", "MYSQL_PWD", "SENTRY_DSN", "SSH_AUTH_SOCK", "STRIPE_KEY", "HEIMDALLM_KEY", "PRIVATE_KEY", "AUTHORIZATION", "COOKIE", "GH_PAT"} {
 		if have[name] {
 			t.Errorf("S39: %s reaches every model-run command", name)
 		}
@@ -169,7 +169,7 @@ func TestSec_S40_ProviderKeyIsNotReadableFromProcEnviron(t *testing.T) {
 		t.Skipf("the control run (no harden.Process) could not read its parent's environment either (%q): nothing to show here", control.Leak)
 	}
 	h := runS40Harness(t, "hardened")
-	t.Logf("env | grep -c HEIMDALL_API_KEY -> %q (scrubbed as designed)", strings.TrimSpace(strings.Split(h.Direct, "\n")[0]))
+	t.Logf("env | grep -c HEIMDALLM_API_KEY -> %q (scrubbed as designed)", strings.TrimSpace(strings.Split(h.Direct, "\n")[0]))
 	t.Logf("tr < /proc/$PPID/environ printed the canary: %v", strings.Contains(h.Leak, key))
 	if strings.Contains(h.Leak, key) {
 		t.Errorf("S40: the harness's provider key is readable by a model-run command through /proc/$PPID/environ")
@@ -212,12 +212,12 @@ func TestSecS40Harness(t *testing.T) {
 	}
 	h := secRevNew(t)
 	all := secRevPerm{allow: map[string]bool{"be-1": true}}
-	direct := h.run("be-1", all, "bash", map[string]any{"command": "env | grep -c HEIMDALL_API_KEY || true"})
-	leak := h.run("be-1", all, "bash", map[string]any{"command": `tr '\0' '\n' < /proc/$PPID/environ | grep HEIMDALL_API_KEY`})
-	inherited, _ := exec.Command("printenv", "HEIMDALL_API_KEY").Output() // nil Env: inherits ours, like git or a hook
+	direct := h.run("be-1", all, "bash", map[string]any{"command": "env | grep -c HEIMDALLM_API_KEY || true"})
+	leak := h.run("be-1", all, "bash", map[string]any{"command": `tr '\0' '\n' < /proc/$PPID/environ | grep HEIMDALLM_API_KEY`})
+	inherited, _ := exec.Command("printenv", "HEIMDALLM_API_KEY").Output() // nil Env: inherits ours, like git or a hook
 	b, err := json.Marshal(s40Report{
-		Direct: direct.Text, Leak: leak.Text, OwnEnv: os.Getenv("HEIMDALL_API_KEY") == s40Key,
-		Secret: harden.Secret("HEIMDALL_API_KEY") == s40Key, Inherited: strings.TrimSpace(string(inherited)),
+		Direct: direct.Text, Leak: leak.Text, OwnEnv: os.Getenv("HEIMDALLM_API_KEY") == s40Key,
+		Secret: harden.Secret("HEIMDALLM_API_KEY") == s40Key, Inherited: strings.TrimSpace(string(inherited)),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -253,7 +253,7 @@ func TestSec_S40_AHeldKeyIsInNoEnvironmentAndStillReadable(t *testing.T) {
 func runS40Harness(t *testing.T, mode string) s40Report {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], "-test.run=^TestSecS40Harness$", "-test.v")
-	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), s40Helper + "=" + mode, "HEIMDALL_API_KEY=" + s40Key}
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), s40Helper + "=" + mode, "HEIMDALLM_API_KEY=" + s40Key}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("harness (%s) failed: %v\n%s", mode, err, out)

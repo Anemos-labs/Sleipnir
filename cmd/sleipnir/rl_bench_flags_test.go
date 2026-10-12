@@ -125,7 +125,7 @@ func TestRLRolloutAgainstADeadEndpointExitsWithTempFail(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("SLEIPNIR_HOME", filepath.Join(home, ".sleipnir"))
-	for _, k := range []string{"HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"} {
+	for _, k := range []string{"HEIMDALLM_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"} {
 		t.Setenv(k, "")
 	}
 	agent.RetryBase = time.Millisecond

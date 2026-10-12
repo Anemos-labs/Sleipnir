@@ -20,7 +20,7 @@ func projectDir(t *testing.T) (proj, home string) {
 	}
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	for _, k := range []string{"HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"} {
+	for _, k := range []string{"HEIMDALLM_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"} {
 		t.Setenv(k, "")
 	}
 	t.Chdir(proj)
@@ -54,7 +54,7 @@ func sub(m map[string]any, keys ...string) any {
 
 func TestInitUserWritesTheModeAndNoGuessedModel(t *testing.T) {
 	_, home := projectDir(t)
-	t.Setenv("HEIMDALL_API_KEY", "test-key-value")
+	t.Setenv("HEIMDALLM_API_KEY", "test-key-value")
 	if err := cmdInit(context.Background(), []string{"--user"}); err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestInitUserWithExplicitModelWinsOverDetection(t *testing.T) {
 
 func TestInitProjectWritesOnlyShareableSettings(t *testing.T) {
 	proj, home := projectDir(t)
-	t.Setenv("HEIMDALL_API_KEY", "test-key-value")
+	t.Setenv("HEIMDALLM_API_KEY", "test-key-value")
 	if err := cmdInit(context.Background(), nil); err != nil {
 		t.Fatal(err)
 	}

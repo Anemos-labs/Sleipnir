@@ -46,7 +46,7 @@ func registerChatFlags(fs *flag.FlagSet) *chatFlagSet {
 	f.isolation, f.commit = isolationFlags(fs)
 	f.mailman = mailmanFlag(fs)
 	f.roleModels = kvFlags{}
-	fs.Var(f.roleModels, "role-model", "role=model override, repeatable (e.g. manager=heimdall/x, mailman=heimdall/small)")
+	fs.Var(f.roleModels, "role-model", "role=model override, repeatable (e.g. manager=heimdallm/x, mailman=heimdallm/small)")
 	f.resume = resumeFlags(fs)
 	f.allow = allowFlags(fs)
 	f.plain = fs.Bool("plain", false, "plain lines, as when the input or the output is not a terminal: no colour, no status line, no redrawing, approvals typed as y, a or n")
