@@ -165,7 +165,7 @@ test('worktree is disabled, with which reason, for a folder that cannot have it;
     assert.equal(isoBtn(L, 'none').getAttribute('aria-pressed'), 'true');
     assert.match(shown(L, 'nsIsoWhy'), why);
     assert.equal(L.$('[data-k="commit"]').disabled, true, '--commit follows worktree');
-    assert.match(shown(L, 'nsCommitWhy'), /--commit needs isolation worktree/);
+    assert.match(shown(L, 'nsCommitWhy'), /Commit needs isolation worktree/);
     assert.match(cli(L), /--isolation none/);
     await start(L);
     assert.deepEqual([spec(L).isolation, spec(L).commit], ['none', false], JSON.stringify(state));
@@ -185,7 +185,7 @@ test('--commit is disabled, with the reason, for isolation none, a checkout with
   const N = await openAt({}, { commit: true });
   isoBtn(N, 'none').click(); await N.settle();
   assert.equal(N.$('[data-k="commit"]').disabled, true);
-  assert.match(shown(N, 'nsCommitWhy'), /--commit needs isolation worktree\./);
+  assert.match(shown(N, 'nsCommitWhy'), /Commit needs isolation worktree\./);
   const D = await openAt({ repo: { hasCommits: true, branch: 'main', clean: false } }, { commit: true });
   assert.equal(isoBtn(D, 'worktree').disabled, false, 'uncommitted changes do not stop worktree isolation');
   assert.equal(D.$('[data-k="commit"]').disabled, true);

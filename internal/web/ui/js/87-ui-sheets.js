@@ -163,9 +163,9 @@
         : d.git === 'files' ? 'Not a git repository: run git init and commit there, or pick a repository’s root folder.' : '';
     }
     if (g.worktree) g.isolation = 'none';
-    if (g.isolation !== 'worktree') g.commit = '--commit needs isolation worktree' + (g.worktree ? ', which this folder cannot have.' : '.');
-    else if (!made && r && r.detached) g.commit = '--commit moves the checked-out branch, and HEAD is detached: check out a branch first.';
-    else if (!made && r && !r.clean) g.commit = '--commit needs a clean checkout: this one has uncommitted changes. Commit or stash them first.';
+    if (g.isolation !== 'worktree') g.commit = 'Commit needs isolation worktree' + (g.worktree ? ', which this folder cannot have.' : '.');
+    else if (!made && r && r.detached) g.commit = 'Commit moves the checked-out branch, and HEAD is detached: check out a branch first.';
+    else if (!made && r && !r.clean) g.commit = 'Commit needs a clean checkout: this one has uncommitted changes. Commit or stash them first.';
     if (g.commit) g.commitOn = false;
     return g;
   };

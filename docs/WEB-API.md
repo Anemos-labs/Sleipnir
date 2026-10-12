@@ -210,7 +210,11 @@ the compaction was decided, and has none for a compaction that no plan preceded 
 for): nobody chose its moment and the log does not tell its price, so a page states none for it. `mode` says how the thread was
 folded, in the terminal's words: `fork` (the compactor model's patch), `mask` (bulky results folded without a model) or `emergency`
 (the harness's own safety net); a page shows a compaction with no `moment` as, say, "emergency compaction", as the terminal's feed
-does. A `req` event carries `mark` when the agent took a new shared prefix (`epoch`) or dropped its thinking blocks (`rebase`) before the request it reports, the places the terminal marks
+does. A `break` event carries `layer`, the layer of the prompt that changed (none for the endpoint's own miss), `missUsd`, what
+the miss cost at list price when the price is known, and `quiet` when the terminal's chat would not say it without `/verbose`: the
+endpoint's own miss that cost less than a cent, or one after the first three that did (`state.BreakNotices`; one `sys` row says that
+further ones are not said). A page keeps a quiet break for its cache view and leaves it out of its feed (unless `/verbose` is on), its
+cards and its counts. A `req` event carries `mark` when the agent took a new shared prefix (`epoch`) or dropped its thinking blocks (`rebase`) before the request it reports, the places the terminal marks
 on an agent's hit-ratio line. An `svc` event carries, as absolute values, the
 tokens, cost and estimated saving of the harness's own service agents (the mailman) together; they are in no roster and have no
 `use` event, and a page adds them to the totals of its agents so that the totals are those of the run.

@@ -200,10 +200,11 @@
       inp.value = ''; S.ui.draft = ''; autosize(); closeSlash(); RS.pasted = []; RS.hi = -1; if (S.hist[S.hist.length - 1] !== v) S.hist.push(v);
       r.done.then(res => { if (res && res.ok === false) restore(S, v, pasted); });
     }
-    const HINT_IDLE = 'ctrl+t stats · / commands', HINT_BUSY = 'Enter queues for after this turn · Ctrl+Enter sends now (steer)';
+    /* while a turn runs the hint says what Enter and Ctrl+Enter do: short in the bar, the whole sentence in its title */
+    const HINT_IDLE = 'ctrl+t stats · / commands', HINT_BUSY = 'Enter queues · Ctrl+Enter steers', HINT_BUSY_T = 'Enter queues for after this turn · Ctrl+Enter sends now (steer)';
     function composerUpdate(S) {
       feed.classList.toggle('quiet', S.ui.verbose === false); feed.classList.toggle('verbose', S.ui.verbose === true); const qh = S.ui.queued.map(queuedHtml).join(''), ql = $('#queuedLines'); if (ql._h !== qh) { ql._h = qh; ql.innerHTML = qh; }
-      const hint = $('#cHint'), ht = !S.readOnly && turnBusy(S) ? HINT_BUSY : HINT_IDLE; if (hint && hint.textContent !== ht) hint.textContent = ht;
+      const hint = $('#cHint'), ht = !S.readOnly && turnBusy(S) ? HINT_BUSY : HINT_IDLE; if (hint && hint.textContent !== ht) { hint.textContent = ht; hint.title = ht === HINT_BUSY ? HINT_BUSY_T : ''; }
       const ro = !!S.readOnly, t = S.placeholder ? 'start a session first: + New' : S.follow ? 'watching ' + S.sid + ' · read-only · the run belongs to another process' : S.recorded ? 'a recorded session is read-only: ↺ Resume continues it' : '';
       if (inp.disabled !== ro) { inp.disabled = ro; $('.send', form).disabled = ro; } if (inp.title !== t) inp.title = t;
     }
