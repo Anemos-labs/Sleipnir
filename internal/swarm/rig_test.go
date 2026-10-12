@@ -221,10 +221,11 @@ func newRVRigWith(t *testing.T, cfg Config, fn func(ctx context.Context, c *rvCa
 	return &rvRig{t: t, sw: sw, prov: prov, log: log}
 }
 
-// rvWait polls cond for up to 10s.
+// rvWait polls cond for up to a minute: a budget that only a stuck run exhausts (an isolated merge under -race on a busy runner has
+// taken longer than ten seconds); a condition that is met returns at once.
 func rvWait(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(time.Minute)
 	for time.Now().Before(deadline) {
 		if cond() {
 			return

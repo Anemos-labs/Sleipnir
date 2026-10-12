@@ -198,9 +198,10 @@ func teamResponder() mock.Responder {
 	}
 }
 
+// waitFor polls cond for up to a minute (see rvWait).
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(time.Minute)
 	for time.Now().Before(deadline) {
 		if cond() {
 			return

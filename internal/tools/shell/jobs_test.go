@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -34,6 +35,10 @@ func jobEvents(h *harness) []JobEvent {
 	}
 	return out
 }
+
+// killedJobOutput is what the output of "echo hi; sleep 30" reads after the job is killed: hi, perhaps a shell notice that the sleep was
+// terminated, and the status line.
+var killedJobOutput = regexp.MustCompile(`^hi\n(?:[^\n]*: line \d+: \d+ Terminated(?:: \d+)? +[^\n]+\n)?\[job_1 killed; next offset \d+\]$`)
 
 func TestBackgroundJobLifecycle(t *testing.T) {
 	h := newHarness(t, Options{KillGrace: 500 * time.Millisecond})
@@ -76,7 +81,9 @@ func TestBackgroundJobLifecycle(t *testing.T) {
 		t.Fatalf("kill result = %+v", kres)
 	}
 	waitDead(t, pid, 5*time.Second)
-	if got := h.output(env, "job_1", map[string]any{"since": 0}).Text; got != "hi\n[job_1 killed; next offset 3]" {
+	// The job's output and its status. The shell that ran it may add a notice of its own that the command it was waiting for was
+	// terminated (macOS's bash does, when the kill reaches it first), and the offset counts those bytes.
+	if got := h.output(env, "job_1", map[string]any{"since": 0}).Text; !killedJobOutput.MatchString(got) {
 		t.Errorf("read after kill = %q", got)
 	}
 	// Killing again is idempotent.
@@ -582,4 +589,21 @@ func TestCrossAgentJobAccessIsPermissionGated(t *testing.T) {
 			t.Errorf("kill = %+v", r)
 		}
 	})
+}
+
+// The pattern of a killed job's output takes the notice of a shell and nothing else.
+func TestKilledJobOutputPattern(t *testing.T) {
+	for in, want := range map[string]bool{
+		"hi\n[job_1 killed; next offset 3]": true,
+		"hi\n/bin/bash: line 1: 64836 Terminated: 15          sleep 30\n[job_1 killed; next offset 61]": true,
+		"hi\nbash: line 1: 4242 Terminated   sleep 30\n[job_1 killed; next offset 40]":                  true,
+		"hi\nunexpected Terminated output\n[job_1 killed; next offset 3]":                               false,
+		"hi\nsomething else\n[job_1 killed; next offset 3]":                                             false,
+		"[job_1 killed; next offset 0]":                                                                 false,
+		"hi\n[job_1 running; next offset 3]":                                                            false,
+	} {
+		if got := killedJobOutput.MatchString(in); got != want {
+			t.Errorf("%q: %v, want %v", in, got, want)
+		}
+	}
 }
