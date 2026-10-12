@@ -1,7 +1,8 @@
 // safe.browser.mjs: hostile text renders as text. Runs the real page in headless Chromium against the fake server
 // (internal/web/webtest), puts markup into every place untrusted text reaches (model text, tool output, file names, mail, session
 // names, question commands and changes, the recorded list, MCP and provider names) and checks that no element was created from it
-// and that the text shows as typed.
+// and that the text shows as typed. The page's script elements are taken once it has loaded, before any hostile text, and must be
+// the scripts index.html names; a check fails on any script element that is not one of them.
 //
 //   go build -o /tmp/fakeserver ./internal/web/webtest/cmd/fakeserver
 //   FAKESERVER=/tmp/fakeserver node internal/web/uidev/test/safe.browser.mjs
@@ -11,6 +12,7 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
+import { pageScripts } from '../inventory.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url)), repo = path.resolve(here, '../../../..');
 const { open } = await import(path.join(here, 'cdp.mjs'));
@@ -21,13 +23,22 @@ const url = await new Promise((res, rej) => { let b = ''; srv.stdout.on('data', 
 const p = await open(url, { w: 1440, h: 900 });
 const X = '<img src=x data-pwn=1 onerror="window.__pwn=1">';
 let failed = 0;
+/** A script element as a check names it: its src, or the start of its text. */
+const NAME = `s => s.getAttribute('src') || 'inline: ' + s.textContent.slice(0, 80)`;
+/** Keeps the script elements of the loaded page (HTML and SVG) and returns their names. */
+const BASELINE = `(() => { window.__scripts0 = new Set(document.querySelectorAll('script')); return [...window.__scripts0].map(${NAME}); })()`;
+/** The names of the script elements that are not in the baseline. */
+const ADDED = `(window.__scripts0 ? [...document.querySelectorAll('script')].filter(s => !window.__scripts0.has(s)).map(${NAME}) : ['the page was loaded again: no baseline'])`;
 const check = async (what) => {
-  const r = await p.eval(`(() => ({ imgs: document.querySelectorAll('img,[data-pwn],iframe,object').length, scripts: document.scripts.length, pwn: window.__pwn || 0, text: document.body.innerText.includes(${JSON.stringify(X)}) }))()`);
-  try { assert.equal(r.imgs, 0, what + ': an element was made from text'); assert.equal(r.pwn, 0, what + ': a handler ran'); assert.equal(r.scripts, 30, what + ': a script element appeared'); console.log('ok', what, r.text ? '(shown as text)' : ''); }
+  const r = await p.eval(`(() => ({ imgs: document.querySelectorAll('img,[data-pwn],iframe,object').length, added: ${ADDED}, pwn: window.__pwn || 0, text: document.body.innerText.includes(${JSON.stringify(X)}) }))()`);
+  try { assert.equal(r.imgs, 0, what + ': an element was made from text'); assert.equal(r.pwn, 0, what + ': a handler ran'); assert.deepEqual(r.added, [], what + ': a script element appeared: ' + JSON.stringify(r.added)); console.log('ok', what, r.text ? '(shown as text)' : ''); }
   catch (e) { failed++; console.log('FAIL', e.message); }
 };
 try {
   await p.sleep(2500);
+  const loaded = await p.eval(BASELINE);
+  try { assert.deepEqual(loaded, pageScripts()); console.log('ok the page runs the', loaded.length, 'scripts of index.html'); }
+  catch (e) { failed++; console.log('FAIL the loaded page does not run the scripts of index.html, and only those:', e.message); }
   await p.eval(`(() => { const S = SL.sessions.active, X = ${JSON.stringify(X)}; let seq = S.lastSeq;
     const ev = e => SL.live.applyEv(S, Object.assign({ seq: ++seq, t: S.wt }, e));
     ev({ k: 'say', who: 'mgr', text: X, stream: false });
