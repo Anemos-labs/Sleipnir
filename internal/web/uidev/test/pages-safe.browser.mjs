@@ -2,7 +2,8 @@
 // Runs the real page in headless Chromium against the fake server (internal/web/webtest), fills every cache those pages read with
 // markup (provider and model names, MCP text, hook output, rules and their origins, configuration warnings, schedule goals, recorded
 // prompts, a probe's steps, a run's output, the CLI spec itself), shows each page and checks that no element was made from the text,
-// that no handler ran and that the text shows as typed.
+// that no handler ran and that the text shows as typed. The page's script elements are taken once it has loaded, before any hostile
+// text, and must be the scripts index.html names; a check fails on any script element that is not one of them.
 //
 //   go build -o /tmp/fakeserver ./internal/web/webtest/cmd/fakeserver
 //   FAKESERVER=/tmp/fakeserver node internal/web/uidev/test/pages-safe.browser.mjs
@@ -12,6 +13,7 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
+import { pageScripts } from '../inventory.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url)), repo = path.resolve(here, '../../../..');
 const { open } = await import(path.join(here, 'cdp.mjs'));
@@ -21,10 +23,16 @@ process.once('exit', () => { try { srv.kill('SIGKILL'); } catch { /* gone */ } }
 const url = await new Promise((res, rej) => { let b = ''; srv.stdout.on('data', d => { b += d; const i = b.indexOf('\n'); if (i >= 0) res(b.slice(0, i).trim()); }); setTimeout(() => rej(new Error('the fake server printed no address')), 15000); });
 const p = await open(url, { w: 1440, h: 900 });
 const X = '<img src=x data-pwn=1 onerror="window.__pwn=1">';
-let failed = 0, scripts = 0;
+let failed = 0;
+/** A script element as a check names it: its src, or the start of its text. */
+const NAME = `s => s.getAttribute('src') || 'inline: ' + s.textContent.slice(0, 80)`;
+/** Keeps the script elements of the loaded page (HTML and SVG) and returns their names. */
+const BASELINE = `(() => { window.__scripts0 = new Set(document.querySelectorAll('script')); return [...window.__scripts0].map(${NAME}); })()`;
+/** The names of the script elements that are not in the baseline. */
+const ADDED = `(window.__scripts0 ? [...document.querySelectorAll('script')].filter(s => !window.__scripts0.has(s)).map(${NAME}) : ['the page was loaded again: no baseline'])`;
 const check = async what => {
-  const r = await p.eval(`(() => ({ imgs: document.querySelectorAll('img,[data-pwn],iframe,object').length, scripts: document.scripts.length, pwn: window.__pwn || 0, text: document.body.innerText.includes(${JSON.stringify(X)}) }))()`);
-  try { assert.equal(r.imgs, 0, what + ': an element was made from text'); assert.equal(r.pwn, 0, what + ': a handler ran'); assert.equal(r.scripts, scripts, what + ': a script element appeared'); console.log('ok', what, r.text ? '(shown as text)' : ''); }
+  const r = await p.eval(`(() => ({ imgs: document.querySelectorAll('img,[data-pwn],iframe,object').length, added: ${ADDED}, pwn: window.__pwn || 0, text: document.body.innerText.includes(${JSON.stringify(X)}) }))()`);
+  try { assert.equal(r.imgs, 0, what + ': an element was made from text'); assert.equal(r.pwn, 0, what + ': a handler ran'); assert.deepEqual(r.added, [], what + ': a script element appeared: ' + JSON.stringify(r.added)); console.log('ok', what, r.text ? '(shown as text)' : ''); }
   catch (e) { failed++; console.log('FAIL', e.message); }
 };
 /** every cache the pages read, filled with the hostile text through the data layer's own mappers */
@@ -42,7 +50,10 @@ const FILL = `(() => { const X = ${JSON.stringify(X)}, M = SL.data.map, f = [X, 
   SL.sessions.reg.recorded = [{ id: '20261001-000000-aaaaaa', name: X, first: X, model: X, cost: 0, mb: 0, ageS: 9e5, agents: 1, resumable: true, cwd: X, integration: { applied: false, message: X, hint: X } }];
   SL.bus.emit('recorded-changed'); SL.G.mcpOut = { [X]: { t: X, cls: X } }; SL.loop.dirty = true; return true; })()`;
 try {
-  await p.sleep(2500); scripts = await p.eval('document.scripts.length');
+  await p.sleep(2500);
+  const loaded = await p.eval(BASELINE);
+  try { assert.deepEqual(loaded, pageScripts()); console.log('ok the page runs the', loaded.length, 'scripts of index.html'); }
+  catch (e) { failed++; console.log('FAIL the loaded page does not run the scripts of index.html, and only those:', e.message); }
   for (const pg of ['models', 'roles', 'budget', 'permissions', 'trust', 'run', 'mcp', 'skills', 'providers', 'config', 'look']) {
     await p.eval(`SL.views.show('settings', { page: ${JSON.stringify(pg)} })`); await p.sleep(700); await p.eval(FILL); await p.sleep(500); await check('settings ' + pg);
   }
