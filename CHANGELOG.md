@@ -7,12 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
-- `rl export --format dpo` pairs the siblings of a branch point. The episode
-  unit compares a branch's root agent from its fork to its first rebase
-  instead of refusing every episode with more than one segment (all long
-  rollouts), and `--pair-unverified` (`export.Options.PairUnverified`) lets
-  `--pair best-worst` pair a group none of whose episodes passed, by verifier
-  score. Exports without the flag pair as before.
+- `rl export --format dpo` pairs the siblings of a branch point. For a
+  branch episode (`fork` set) the episode unit compares its root agent from
+  the fork to the first rebase after it, where it refused the episode for
+  having more than one segment; a branch run's DPO export therefore gains
+  episode pairs, with or without the new flag. Other episodes whose root
+  agent has more than one segment are still refused (`pair:multi_segment`).
+  `--pair-unverified` (`export.Options.PairUnverified`) lets `--pair
+  best-worst` pair a group none of whose episodes passed, by verifier score;
+  without it such a group still gives no pair.
 - New `rl reverify` verifies finished rollouts again with the tasks as a
   tasks file defines them now: the final patch (the episode's verdict) and
   every consistent savepoint's tree in progress mode (`progress.jsonl` and

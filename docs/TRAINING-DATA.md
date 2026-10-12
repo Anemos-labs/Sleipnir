@@ -724,7 +724,8 @@ groups format also lists every signal under `metrics` as `signal/<name>`.
   the rejected one's. Both pair units follow it: the episode unit compares what the root agent
   did after the shared first prompt (for a branch, from its fork to the root agent's first rebase), the step unit
   compares completions of an identical prompt within the group. `--pair-unverified` also pairs a group none of whose
-  episodes passed, rank 1 being the best by verifier score (flagged episodes are dropped before pairing). The default,
+  episodes passed, rank 1 being the best by verifier score (flagged episodes are dropped before pairing unless
+  `--keep-flagged` keeps them). The default,
   `--pair reward`, pairs by reward as before.
 * `--format groups` (or steps, tokens) with `--advantage grpo` gives the group-relative signal; add the efficiency
   components below to the reward to make it prefer cheap, clean passes.
