@@ -950,12 +950,12 @@ func TestWebHostTrustStep(t *testing.T) {
 // The chat's flags are parsed by one parser for the chat, the restarts and the New session dialog: the dialog's request becomes the
 // arguments the dialog's command line shows, and they give the options the request asked for.
 func TestChatFlagsAreSharedWithTheNewSessionDialog(t *testing.T) {
-	three, five := 3, 5.0
-	req := wire.NewSessionRequest{Cwd: "/p", Model: "mock/mock-1", Mode: "bypass", Swarm: &three, Isolation: "worktree", Verify: "go test {dirs}",
+	eight, five := 8, 5.0
+	req := wire.NewSessionRequest{Cwd: "/p", Model: "mock/mock-1", Mode: "bypass", Swarm: &eight, Isolation: "worktree", Verify: "go test {dirs}",
 		Commit: true, Mailman: true, Budget: &five, Rules: []string{"tests", "Bash(make:*)"}, TrustProject: true, NoMcp: true,
 		RoleModels: map[string]string{"scout": "a/b", "backend": "c/d"}}
 	args := argsFor(req)
-	want := "--cwd /p --model mock/mock-1 --mode bypass --swarm 3 --isolation worktree --verify go test {dirs} --commit --mailman --budget-usd 5 --allow tests --allow Bash(make:*) --trust-project --no-mcp --role-model backend=c/d --role-model scout=a/b"
+	want := "--cwd /p --model mock/mock-1 --mode bypass --swarm 8 --isolation worktree --verify go test {dirs} --commit --mailman --budget-usd 5 --allow tests --allow Bash(make:*) --trust-project --no-mcp --role-model backend=c/d --role-model scout=a/b"
 	if got := strings.Join(args, " "); got != want {
 		t.Errorf("argsFor:\n got %s\nwant %s", got, want)
 	}
@@ -964,7 +964,7 @@ func TestChatFlagsAreSharedWithTheNewSessionDialog(t *testing.T) {
 		t.Fatal(err)
 	}
 	o := f.options()
-	if !o.Interactive || o.Cwd != "/p" || o.Model != "mock/mock-1" || string(o.Mode) != "bypass" || !o.Swarm || o.Workers != 3 || o.Isolation != "worktree" ||
+	if !o.Interactive || o.Cwd != "/p" || o.Model != "mock/mock-1" || string(o.Mode) != "bypass" || !o.Swarm || o.Workers != 8 || o.Isolation != "worktree" ||
 		o.Verify != "go test {dirs}" || !o.Commit || o.Mailman == nil || !*o.Mailman || o.BudgetUSD != 5 || !o.TrustProject || !o.NoMCP ||
 		o.RoleModels["scout"] != "a/b" || len(o.Allow) < 10 {
 		t.Errorf("options %+v", o)

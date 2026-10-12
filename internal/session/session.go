@@ -18,6 +18,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -114,6 +115,20 @@ type Options struct {
 	Owners     swarm.PathOwners
 	Verify     string // command the harness runs before a worker's task may leave "doing"
 	RoleModels map[string]string
+	// Team, when set, is the team's composition: one slot per entry, a role named as
+	// often as it has slots, each slot on its own model or ("") its role's
+	// (--role-model given more than once for a role, or with a bare role). Without it
+	// see DefaultTeam. Workers is then len(Team).
+	Team []TeamSlot
+	// DefaultTeam gives a team session without a Team the default team (one slot per
+	// role, swarm.DefaultTeam), as the chat, run and web commands ask; without it the
+	// roles are limited by Workers alone (tests, training rollouts, embedders).
+	DefaultTeam bool
+	// AutoDocs, when set, overrides swarm.auto_docs (default true): the team's docs
+	// worker keeps the documentation current after every accepted task and agreement
+	// without being asked (swarm.Config.AutoDocs). It applies to a team with a docs
+	// slot.
+	AutoDocs *bool
 	// Interactive says a person is at the keyboard across turns (sleipnir chat).
 	// Batch runs (run, swarm, RL rollouts) leave it false and the swarm holds the
 	// manager: it may not give a final answer while workers are running or tasks are
@@ -185,6 +200,12 @@ type Session struct {
 	plans   *plan.Store // each agent's plan, which a standing goal reads as its requirements (goal.go)
 	// judgeUSD is what a standing goal's judge has cost (goal.go), under mu.
 	judgeUSD float64
+
+	// managerProfileBuiltin says the manager runs under the harness's own plan-mode profile
+	// (buildPerm), not one a configuration wrote: the engine alone then judges its shell.
+	managerProfileBuiltin bool
+	// team is the team the swarm was built with (Team).
+	team []TeamSlot
 
 	lastPerm      string // the permission state last written to the log (keepPermissions)
 	restoredMode  string // what a resumed session got back (restorePermissions)
@@ -321,6 +342,11 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		o.Dir = dir
 		if o.ID == "" {
 			o.ID = filepath.Base(dir)
+		}
+		if prior := inspectLog(dir); len(o.Team) == 0 && len(prior.team) > 0 && o.Swarm {
+			// a continued team keeps the composition it was started with, unless one is given now
+			o.Team = append([]TeamSlot(nil), prior.team...)
+			o.Workers = max(o.Workers, len(o.Team))
 		}
 		if prior := inspectLog(dir); prior.isolated && prior.recovery {
 			if prior.id == "" || prior.id == "." || prior.id == ".." || strings.ContainsAny(prior.id, "/\\\x00\r\n") {
@@ -570,9 +596,12 @@ func (s *Session) buildPerm() error {
 	}
 	// The manager does not edit files (it plans, delegates and reviews; in an isolated run
 	// anything it wrote into the shared checkout would also bypass the merge queue), so the
-	// engine holds it to plan mode as well as the swarm's own check.
+	// engine holds it to plan mode as well as the swarm's own check. Within plan mode it may
+	// inspect everything a reviewer may, and read GitHub with gh.
+	s.managerProfileBuiltin = false
 	if _, ok := roles["manager"]; !ok {
-		roles["manager"] = perm.RoleProfile{Mode: perm.ModePlan, Allow: readOnlyRoleAllow, Deny: readOnlyRoleDeny}
+		roles["manager"] = perm.RoleProfile{Mode: perm.ModePlan, Allow: managerRoleAllow, Deny: readOnlyRoleDeny}
+		s.managerProfileBuiltin = true
 	}
 	var extra []string
 	if s.iso != nil {
@@ -609,7 +638,19 @@ func (s *Session) buildPerm() error {
 var readOnlyRoleAllow = []string{
 	"Bash(go test:*)", "Bash(go vet:*)", "Bash(pytest:*)", "Bash(npm test)", "Bash(npm run test:*)",
 	"Bash(cargo test:*)", "Bash(cargo check:*)", "Bash(make test)",
+	// Research reads the web: a scout maps an outside repository, an architect reads an
+	// API's documentation. The session's own mode and rules still decide (the profile
+	// never grants more than the session does).
+	"WebFetch", "WebSearch",
 }
+
+// managerRoleAllow is the manager's plan-mode allow list: what read-only roles may
+// run, and gh's reading commands (the state of a pull request, a CI run, an issue).
+var managerRoleAllow = append(append([]string(nil), readOnlyRoleAllow...),
+	"Bash(gh --version)", "Bash(gh auth status:*)", "Bash(gh repo view:*)",
+	"Bash(gh pr view:*)", "Bash(gh pr list:*)", "Bash(gh pr diff:*)", "Bash(gh pr checks:*)",
+	"Bash(gh run view:*)", "Bash(gh run list:*)", "Bash(gh issue view:*)", "Bash(gh issue list:*)",
+)
 
 // readOnlyRoleDeny are the tools a read-only role is denied by name. Background jobs
 // are session-wide, and the engine alone would answer "touches no files and no
@@ -928,12 +969,42 @@ func (s *Session) build(ctx context.Context) error {
 			deps.RoleModels[role] = swarm.RoleModel{Provider: p, Model: s.describe(ctx, p, m)}
 		}
 	}
+	team, err := s.teamFor(s.ext.roles, sc.MaxWorkers)
+	if err != nil {
+		return err
+	}
+	if len(o.Team) > 0 {
+		sc.MaxWorkers = max(sc.MaxWorkers, len(team))
+		sc.MaxWriters = max(sc.MaxWriters, sc.MaxWorkers)
+	}
+	sc.Team = teamNames(team)
+	s.team = team
+	autoDocs := s.autoDocsOn() && slices.Contains(sc.Team, swarm.DocsRole)
+	sc.AutoDocs = autoDocs
+	sc.JudgeManagerShell = s.managerProfileBuiltin
+	for i, t := range team {
+		if t.Model == "" {
+			continue
+		}
+		mr, err := ResolveModel(s.cfg, t.Model)
+		if err != nil {
+			return fmt.Errorf("team slot %s=%s: %w", t.Role, t.Model, err)
+		}
+		p, m, err := s.clientFor(mr)
+		if err != nil {
+			return fmt.Errorf("team slot %s=%s: %w", t.Role, t.Model, err)
+		}
+		if deps.SlotModels == nil {
+			deps.SlotModels = make([]swarm.RoleModel, len(team))
+		}
+		deps.SlotModels[i] = swarm.RoleModel{Provider: p, Model: s.describe(ctx, p, m)}
+	}
 	iso, err := s.buildIsolation(ctx)
 	if err != nil {
 		return err
 	}
 	deps.Isolation = iso
-	sw := swarm.New(sc, deps, s.ext.roles)
+	sw := swarm.New(sc, deps, s.teamRoles(s.ext.roles, team, autoDocs))
 	for _, t := range sw.Tools() {
 		reg.Register(t)
 	}
@@ -944,6 +1015,13 @@ func (s *Session) build(ctx context.Context) error {
 	sw.SetToolset(reg, specs)
 	s.Registry, s.Specs, s.Swarm = reg, specs, sw
 	return nil
+}
+
+// TeamSlot is one slot of a team (Options.Team): its role, and the model its worker
+// runs on ("" is the role's model).
+type TeamSlot struct {
+	Role  string `json:"role"`
+	Model string `json:"model,omitempty"`
 }
 
 // checkSwarmSize refuses a swarm larger than swarm.max_workers allows. The setting is
@@ -1096,6 +1174,9 @@ func (s *Session) Run(ctx context.Context, goal string) (*Result, error) {
 		if s.mailmanOn() {
 			start["mailman"] = true
 		}
+		if len(s.opts.Team) > 0 && s.opts.Swarm {
+			start["team"] = s.opts.Team // a custom composition: a resume keeps it
+		}
 		if s.opts.Resume != "" {
 			start["resumed"] = true
 		}
@@ -1229,6 +1310,11 @@ func (s *Session) Options() Options {
 		v := *o.Mailman
 		o.Mailman = &v
 	}
+	if o.AutoDocs != nil {
+		v := *o.AutoDocs
+		o.AutoDocs = &v
+	}
+	o.Team = append([]TeamSlot(nil), o.Team...)
 	return o
 }
 

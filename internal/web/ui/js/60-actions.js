@@ -65,7 +65,7 @@
   const launch = (S, patch) => why(S) ? refuse(S) : send(api().patch(tab(S) + '/launch', patch));
   act('setIsolation', (v, sid) => { const S = ses(sid); if (S && OK(v, ['none', 'worktree'])) return launch(S, { isolation: v }); });
   act('setVerify', (v, sid) => { const S = ses(sid); if (S) return launch(S, { verify: String(v == null ? '' : v) }); });
-  act('setFlag', (flag, on, sid) => { const S = ses(sid); if (S && OK(flag, ['commit', 'mailman', 'noMcp', 'trustProject'])) return launch(S, { [flag]: !!on }); });
+  act('setFlag', (flag, on, sid) => { const S = ses(sid); if (S && OK(flag, ['commit', 'mailman', 'autoDocs', 'noMcp', 'trustProject'])) return launch(S, { [flag]: !!on }); });
   /* rules: effect allow | deny | ask; the origin is shown on the Permissions page */
   act('allowRule', (rule, origin, sid) => addRule(ses(sid), 'allow', rule, origin || 'this session'));
   act('denyRule', (rule, origin, sid) => addRule(ses(sid), 'deny', rule, origin || 'this session'));

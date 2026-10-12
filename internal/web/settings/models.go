@@ -16,15 +16,11 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
-// builtinRoleText is the one line the Roles page shows of each built-in role (the swarm's pins say more than a table cell holds).
-var builtinRoleText = map[string]string{
-	"manager": "plans, spawns, merges; edits no file", "backend": "server code", "frontend": "pages and client code",
-	"fullstack": "both sides of one feature", "tester": "tests", "reviewer": "read-only review", "scout": "read-only survey",
-	"docs": "documentation",
-}
+// builtinRoleText is the one line the Roles page shows of each built-in role (swarm.RoleSummaries: the team card says the same).
+var builtinRoleText = swarm.RoleSummaries
 
-// roleOrder is the order the built-in worker roles are shown in; roles from agent definitions follow, by name.
-var roleOrder = []string{"scout", "backend", "frontend", "tester", "reviewer", "docs", "fullstack"}
+// roleOrder is the order the built-in worker roles are shown in (swarm.WorkerRoleOrder); roles from agent definitions follow, by name.
+var roleOrder = swarm.WorkerRoleOrder
 
 // effortLevels are the reasoning efforts a session accepts, "default" first (provider.NormalizeEffort's levels).
 var effortLevels = []string{"default", "none", "minimal", "low", "medium", "high", "xhigh", "max"}

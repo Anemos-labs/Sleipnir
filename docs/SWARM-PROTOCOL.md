@@ -24,9 +24,28 @@ cache side of the design (why a worker costs a cache read, not a briefing) is in
 
 ## 2. Roles and tools
 
-Roles are pins (G2) plus runtime restrictions. Built-ins: `manager` (plans, delegates and reviews; edits no file), `backend`,
-`frontend`, `fullstack`, `tester`, `docs` (writers), `reviewer`, `scout` (read-only). Users add roles with markdown
-files (`.sleipnir/agents/*.md`). With mailman mode on (section 5) the harness adds one more, `mailman`, which is not
+Roles are pins (G2) plus runtime restrictions. Built-ins: `manager` (plans, delegates and reviews; edits no file),
+`backend`, `frontend`, `devops`, `tester`, `docs` (writers), `architect`, `reviewer`, `scout` (read-only). The legacy
+`fullstack` stays resolvable for training tasks and resumed sessions that name it and is never offered. Users add roles
+with markdown files (`.sleipnir/agents/*.md`).
+
+**The team.** A session's team is a list of worker slots, one role each (`swarm.Config.Team`). The chat, run and web
+commands give a session the default team, one slot of each worker role, unless `--role-model` names one (a role given
+more than once, or bare, is one slot per value; a slot may name its own model). The manager starts a worker of a role
+only while that role has a free slot; reusing an idle worker (`spawn agent=…`) keeps its slot, and a retired worker frees
+it. The manager's pin carries a team card, written once per session: each role with its slots, what it may do (edits
+files or not, its shell, the web) and what it is for. Its hot view carries the live occupancy (`team: backend 1/2 ·
+tester 0/1`). A team has at least 8 workers on the command line and in the page; library callers, tests and training
+rollouts may build any team, or none (roles then limited by `MaxWorkers` alone).
+
+**Auto-docs.** With `swarm.auto_docs` (default true) and a docs slot, the harness keeps the docs worker at work: every
+task the board closes as done that the docs worker did not do becomes a pending change, and when a docs worker is idle
+(or the docs slot is free) the harness gives it one `docs: catch up` task listing every pending change, scoped to
+`**/*.md` and `docs/**`. It never interrupts a running docs worker, and the docs worker's own tasks are not changes. The
+docs worker keeps README, `docs/` and `AGENTS.md` current; `AGENTS.md` is also the team's map of the project. The
+manager's pin says that documentation is automatic, every other worker's pin says to read `AGENTS.md` and to mail facts
+to the docs worker, and every hot view carries the keeper's state (`docs (auto): 2 change(s) pending`). A batch run's
+manager is held while a pass is pending. `--auto-docs=false` makes docs an ordinary role. With mailman mode on (section 5) the harness adds one more, `mailman`, which is not
 spawnable, is on no roster, board or hot view, and may call `mail` and nothing else.
 
 **Every agent sends the same tool list**, byte for byte (fs, bash, web, recall, skill, any MCP tools, frozen for the session, and the five
@@ -351,7 +370,7 @@ Limits, all enforced in code:
 
 | Limit | Default | Why |
 |---|---|---|
-| workers (running or idle) | 24 (config `swarm.max_workers`; `--swarm N`) | registration budget; the manager and the mailman are not workers and are not counted |
+| workers (running or idle) | `--swarm N` (8 on the command line; config `swarm.max_workers` is the ceiling; 24 for a library caller that sets none) | registration budget; the manager and the mailman are not workers and are not counted |
 | writer admission in the shared tree | the team's workers, at least 4 | Checked when spawning or reassigning writers; counts running non-manager workers whose roles may write. Read-only roles are exempt from this check but remain subject to the worker limit. Mail wakeups bypass admission; a running writer woken by mail is counted by later spawn checks. Isolated worktrees bypass the writer admission limit. Scopes and write leases separately constrain file access. |
 | swarm budget (USD) | 50 (`swarm.budget_usd`; `--budget-usd`; 0 in your own file or `SLEIPNIR_SWARM_BUDGET_USD=0` removes it) | a stop is an outcome, not a crash. The swarm budget is a ledger over running *and* retired agents; once spent, no request is admitted and running workers are stopped (their tasks return to todo, without counting as an attempt). It is on by default because a swarm can spend many times what one agent does, and a cap that is off is one nobody remembers to set; only you can raise it (a repository's file cannot). The run's header line shows it, and the stop message says how to raise it. A cost that is not a number counts as spent, so a hostile or broken endpoint cannot slip under the limit |
 | per-agent budget (USD) | unlimited | `Config.AgentBudgetUSD`, for library users; no configuration key sets it |
@@ -502,8 +521,7 @@ corpus (`docs/TRAINING-DATA.md`), where the swarm's DAG (spawn, mail, compaction
   check; it is not one agent per batch.
 * The timings and bounds (quiet period, batch size, ledger size, digest length, the bound) are `swarm.Config` fields with
   defaults; only the switch is a configuration key.
-* `models.roles.mailman` in the configuration is not read (no role is: only `--role-model` and agent definitions choose a role's
-  model today).
+* Its model is `--role-model mailman=<model>`, else `models.roles.mailman` in the configuration, else the session's.
 
 **Resuming a board.** `ReplayBoard` rebuilds tasks (closures included), the roster and pending notes exactly from the
 `board.op` events (a test holds it to that). Resuming a team session (`internal/session`) replays the log with it at

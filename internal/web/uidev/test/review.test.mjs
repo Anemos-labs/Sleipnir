@@ -119,9 +119,9 @@ test('the New session dialog\'s command line is shell-safe: sh -c reads back eve
     const out = execFileSync('sh', ['-c', 'printf "%s\\0" ' + q(a)], { encoding: 'utf8' });
     assert.equal(out, a + '\0', 'round trip of ' + JSON.stringify(a));
   }
-  const line = SL.ui.dialogs.cliLine({ cwd: '/home/me/my project', model: 'ollama/m', mode: 'default', swarm: 2, isolation: 'worktree', verify: 'go test -run "TestA|TestB" ./...', rules: ['Bash(go test:*)'], roleModels: { tester: 'm x' }, budget: '5', trustProject: true, commit: false, mailman: false, mailmanDefault: false, noMcp: false, resume: '' });
+  const line = SL.ui.dialogs.cliLine({ cwd: '/home/me/my project', model: 'ollama/m', mode: 'default', swarm: 8, isolation: 'worktree', verify: 'go test -run "TestA|TestB" ./...', rules: ['Bash(go test:*)'], roleModels: { tester: 'm x' }, budget: '5', trustProject: true, commit: false, mailman: false, mailmanDefault: false, noMcp: false, resume: '' });
   const argv = execFileSync('sh', ['-c', 'set -- ' + line.replace(/^sleipnir chat/, '') + '; for a; do printf "%s\\0" "$a"; done'], { encoding: 'utf8' }).split('\0').slice(0, -1);
-  assert.deepEqual(argv, ['--cwd', '/home/me/my project', '--model', 'ollama/m', '--mode', 'default', '--swarm', '2', '--isolation', 'worktree', '--verify', 'go test -run "TestA|TestB" ./...', '--budget-usd', '5', '--role-model', 'tester=m x', '--allow', 'Bash(go test:*)', '--trust-project']);
+  assert.deepEqual(argv, ['--cwd', '/home/me/my project', '--model', 'ollama/m', '--mode', 'default', '--swarm', '8', '--isolation', 'worktree', '--verify', 'go test -run "TestA|TestB" ./...', '--budget-usd', '5', '--role-model', 'tester=m x', '--allow', 'Bash(go test:*)', '--trust-project']);
 });
 
 test('the `@` completion asks again after 5 s and after the workspace changed', async () => {

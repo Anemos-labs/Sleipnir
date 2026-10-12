@@ -183,6 +183,8 @@ type MetaPatch struct {
 	Verify       *string            `json:"verify,omitempty"`
 	Commit       *bool              `json:"commit,omitempty"`
 	Mailman      *bool              `json:"mailman,omitempty"`
+	AutoDocs     *bool              `json:"autoDocs,omitempty"`
+	Team         *[]TeamSlot        `json:"team,omitempty"`
 	TrustProject *bool              `json:"trustProject,omitempty"`
 	NoMcp        *bool              `json:"noMcp,omitempty"`
 	RoleModels   *map[string]string `json:"roleModels,omitempty"`
@@ -250,6 +252,17 @@ type NewSessionRequest struct {
 	GoalText     string            `json:"goalText,omitempty"`
 	Effort       string            `json:"effort,omitempty"`
 	RoleModels   map[string]string `json:"roleModels,omitempty"`
+	// Team is the team's composition, one entry per worker slot (--role-model given per slot); empty is the default team of
+	// one worker per role. Swarm then equals its length.
+	Team []TeamSlot `json:"team,omitempty"`
+	// AutoDocs false makes docs a role the manager assigns (--auto-docs=false); nil or true keeps the docs worker at work by itself.
+	AutoDocs *bool `json:"autoDocs,omitempty"`
+}
+
+// TeamSlot is one worker slot of a team: its role, and its model ("" is the role's).
+type TeamSlot struct {
+	Role  string `json:"role"`
+	Model string `json:"model,omitempty"`
 }
 
 // ResumeRequest resumes a recorded session ("latest" or a session id) in a new tab.
@@ -354,6 +367,7 @@ type LaunchPatch struct {
 	Verify       *string `json:"verify,omitempty"`
 	Commit       *bool   `json:"commit,omitempty"`
 	Mailman      *bool   `json:"mailman,omitempty"`
+	AutoDocs     *bool   `json:"autoDocs,omitempty"`
 	NoMcp        *bool   `json:"noMcp,omitempty"`
 	TrustProject *bool   `json:"trustProject,omitempty"`
 }

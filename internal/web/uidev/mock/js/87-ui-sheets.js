@@ -121,7 +121,7 @@
     let rows = diffRows(d), caret = -1; const m = S.m || S.wm;
     if (d.stream) { const s = m.streams[d.stream]; if (!s) return '<div class="diff"><div class="ln hunk"><i></i><s></s><span>not written yet: ' + esc(d.ag) + ' is planning it</span></div></div>'; const [txt, done] = ui.typed(s.text, s.t0, s.rate, S.vt); rows = txt.split('\n').map((l, i) => ({ c: 'add', n: i + 1, s: '+', t: l })); if (!done) caret = rows.length - 1; }
     else if (d.live && !(m.diff[f] && m.diff[f].done)) { for (let i = rows.length - 1; i >= 0; i--) if (rows[i].c === 'add') { caret = i; break; } }
-    const col = agCol(d.ag), tint = 'var(--' + ({ manager: 'mgr', backend: 'be', frontend: 'fe', scout: 'sc', tester: 'ts', reviewer: 'rv', docs: 'dc', fullstack: 'fs' }[(S.roster.find(r => r.id === d.ag) || {}).role] || 'ok') + '-a, var(--ok-a))';
+    const col = agCol(d.ag), tint = 'var(--' + ({ manager: 'mgr', backend: 'be', frontend: 'fe', scout: 'sc', tester: 'ts', reviewer: 'rv', docs: 'dc', devops: 'dv', architect: 'ar', fullstack: 'fs' }[(S.roster.find(r => r.id === d.ag) || {}).role] || 'ok') + '-a, var(--ok-a))';
     return '<div class="diff" style="--ag:' + col + ';--ag-a:' + tint + '">' + rows.map((r, i) => '<div class="ln ' + r.c + (i === caret ? ' caretline' : '') + '"' + (r.c === 'add' || r.c === 'del' ? ' data-ag="' + esc(d.ag) + '"' : '') + '><b class="who" title="' + (r.c === 'add' ? 'written by ' + esc(d.ag) + ' · ' + (d.task || '') : '') + '">' + (r.c === 'add' ? esc(d.ag) : '') + '</b><i>' + r.n + '</i><s>' + r.s + '</s><span>' + esc(r.t) + '</span></div>').join('') + '</div>';
   };
   sheets.rewind = function (id) {

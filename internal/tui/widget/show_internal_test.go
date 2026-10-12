@@ -305,7 +305,7 @@ func TestShowPaletteFading(t *testing.T) {
 	if !m.noColour() || !(Palette{}).noColour() || p.noColour() || !(Palette{Mono: true}).noColour() {
 		t.Error("noColour")
 	}
-	if p.roleCol(-1) != p.RoleColors[7] || p.roleCol(8) != p.RoleColors[0] || p.layerCol(99) != p.LayerColors[6] || p.layerCol(-4) != p.LayerColors[0] {
+	if p.roleCol(-1) != p.RoleColors[8] || p.roleCol(9) != p.RoleColors[0] || p.layerCol(99) != p.LayerColors[6] || p.layerCol(-4) != p.LayerColors[0] {
 		t.Error("role colours wrap around, layer colours are clamped")
 	}
 	if m.dimSt() != (cell.Style{Attr: cell.Dim}) || p.dimSt() != (cell.Style{FG: p.Dim}) || m.faintSt().Attr != cell.Dim {

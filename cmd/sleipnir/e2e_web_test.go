@@ -589,12 +589,12 @@ func TestWebFixtureOrdersTurnRestartAndClose(t *testing.T) {
 		t.Fatalf("message = %d %s", code, body)
 	}
 	frames.waitEv(tab, "say", map[string]any{"who": "you", "text": "and the pagination docs"})
-	two := 2
-	if code, body := r.api(cookie, "POST", "/api/sessions/"+tab+"/restart", wire.RestartRequest{Kind: "swarm", Swarm: &two, Fresh: true}); code != 202 {
+	eight := 8
+	if code, body := r.api(cookie, "POST", "/api/sessions/"+tab+"/restart", wire.RestartRequest{Kind: "swarm", Swarm: &eight, Fresh: true}); code != 202 {
 		t.Fatalf("restart = %d %s", code, body)
 	}
 	frames.waitFor("reset to gen 2", func(f frame) bool { return f.event == "reset" && strings.Contains(string(f.data), `"gen":2`) })
-	frames.waitFor("meta of a team of 2", func(f frame) bool { return f.event == "meta" && strings.Contains(string(f.data), `"swarm":2`) })
+	frames.waitFor("meta of a team of 8", func(f frame) bool { return f.event == "meta" && strings.Contains(string(f.data), `"swarm":8`) })
 	zero := 0
 	code, body := r.api(cookie, "POST", "/api/sessions", wire.NewSessionRequest{Cwd: physicalDir(w.project), Swarm: &zero})
 	if code != 201 {

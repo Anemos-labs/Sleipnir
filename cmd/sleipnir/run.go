@@ -39,7 +39,7 @@ func cmdSwarm(ctx context.Context, args []string) error {
 	}
 	n, err := strconv.Atoi(args[0])
 	if err != nil || n < 1 {
-		return fmt.Errorf("swarm: the first argument is the number of workers, the manager not counted (1 or more), got %q; for example: sleipnir swarm 8 \"add a login page\" --verify \"go test ./...\"", args[0])
+		return fmt.Errorf("swarm: the first argument is the number of workers, the manager not counted (8 or more: one of each role), got %q; for example: sleipnir swarm 8 \"add a login page\" --verify \"go test ./...\"", args[0])
 	}
 	return runCommand(ctx, "swarm", append([]string{"--swarm", args[0]}, args[1:]...))
 }
@@ -88,8 +88,9 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	noWeb := fs.Bool("no-web", false, "disable the web tools")
 	noMCP := fs.Bool("no-mcp", false, "start no MCP tool servers")
 	resume := resumeFlags(fs)
-	roleModels := kvFlags{}
-	fs.Var(roleModels, "role-model", "role=model override, repeatable (e.g. manager=heimdallm/x)")
+	roleFlag := &roleModelFlag{}
+	fs.Var(roleFlag, "role-model", roleModelHelp)
+	autoDocs := autoDocsFlag(fs)
 	allow := allowFlags(fs)
 	askTimeout := fs.Duration("ask-timeout", 0, "refuse a question to the person that nobody answers within this time, and tell the worker (default: wait for the person); for a run that is left alone")
 	fs.Usage = func() {
@@ -126,6 +127,18 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	if *askTimeout < 0 {
 		return fmt.Errorf("%s: --ask-timeout must not be negative", name)
 	}
+	roleModels, teamSlots, err := roleFlag.split()
+	if err != nil {
+		return usageError(fs, name+": "+err.Error())
+	}
+	swarmGiven := name == "swarm"
+	fs.Visit(func(f *flag.Flag) { swarmGiven = swarmGiven || f.Name == "swarm" })
+	if *swarmN, err = teamWorkers(teamSlots, *swarmN, swarmGiven); err != nil {
+		return usageError(fs, name+": "+err.Error())
+	}
+	if err := checkTeamSize(*swarmN); err != nil {
+		return usageError(fs, name+": "+err.Error())
+	}
 	interactive := term.IsTerminal(int(os.Stdin.Fd()))
 	team, workers := teamOf(*swarmN)
 	o := session.Options{
@@ -134,6 +147,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 		MaxSteps: *maxSteps, BudgetUSD: *budget, Verify: *verify, NoRecon: *noRecon, TrustProject: *trust,
 		Dir: *dir, ContextWindow: *ctxWin, CaptureTokens: *capture, NoWeb: *noWeb, RoleModels: roleModels,
 		Resume: spec, NoMCP: *noMCP, Isolation: *isolation, Commit: *commit, Mailman: mailman(), Allow: expandAllow(*allow),
+		AutoDocs: autoDocs(), Team: teamSlots, DefaultTeam: true,
 	}
 	if interactive {
 		o.Prompter = session.TerminalPrompter(os.Stdin, os.Stderr)
@@ -404,6 +418,22 @@ func mailmanFlag(fs *flag.FlagSet) func() *bool {
 		return &v
 	}
 }
+
+// autoDocsFlag registers --auto-docs, a three-state flag: unset leaves swarm.auto_docs (default true) in charge.
+func autoDocsFlag(fs *flag.FlagSet) func() *bool {
+	var t triBool
+	fs.Var(&t, "auto-docs", "swarm: the team's docs worker keeps README, docs/ and AGENTS.md current after every accepted task without being asked (default: config swarm.auto_docs, true; --auto-docs=false makes docs a role the manager assigns)")
+	return func() *bool {
+		if !t.set {
+			return nil
+		}
+		v := t.val
+		return &v
+	}
+}
+
+// roleModelHelp is the help of --role-model.
+const roleModelHelp = "role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)"
 
 // finishRun ends an isolated run (see session.Session.Finish) even when the run was
 // cancelled: what passed verification is applied, not thrown away. It returns nil for

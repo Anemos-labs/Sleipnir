@@ -24,8 +24,8 @@ type chatFlagSet struct {
 	budget                   *float64
 	isolation                *string
 	commit                   *bool
-	mailman                  func() *bool
-	roleModels               kvFlags
+	mailman, autoDocs        func() *bool
+	roleModels               *roleModelFlag
 	resume                   func() (string, error)
 	allow                    *allowFlag
 	plain, noAnim            *bool
@@ -45,8 +45,9 @@ func registerChatFlags(fs *flag.FlagSet) *chatFlagSet {
 	f.verify = fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge). {dirs} in it stands for the directories the task may touch (./... without a scope), so that each task is verified on its own work: 'go test {dirs}'")
 	f.isolation, f.commit = isolationFlags(fs)
 	f.mailman = mailmanFlag(fs)
-	f.roleModels = kvFlags{}
-	fs.Var(f.roleModels, "role-model", "role=model override, repeatable (e.g. manager=heimdallm/x, mailman=heimdallm/small)")
+	f.autoDocs = autoDocsFlag(fs)
+	f.roleModels = &roleModelFlag{}
+	fs.Var(f.roleModels, "role-model", roleModelHelp)
 	f.resume = resumeFlags(fs)
 	f.allow = allowFlags(fs)
 	f.plain = fs.Bool("plain", false, "plain lines, as when the input or the output is not a terminal: no colour, no status line, no redrawing, approvals typed as y, a or n")
@@ -66,7 +67,9 @@ type chatFlags struct {
 	budget     float64
 	commit     bool
 	mailman    *bool
+	autoDocs   *bool
 	roleModels map[string]string
+	team       []session.TeamSlot
 	resume     string
 	allow      []string // as typed: the name tests is not expanded
 	plain      bool
@@ -82,15 +85,23 @@ func (f *chatFlagSet) values(fs *flag.FlagSet) (chatFlags, error) {
 	out := chatFlags{
 		model: *f.model, cwd: *f.cwd, mode: *f.mode, verify: *f.verify, isolation: *f.isolation,
 		workers: *f.swarmN, trust: *f.trust, verbose: *f.verbose, noMCP: *f.noMCP, budget: *f.budget, commit: *f.commit,
-		mailman: f.mailman(), resume: spec, allow: append([]string(nil), (*f.allow)...), plain: *f.plain, noAnim: *f.noAnim,
+		mailman: f.mailman(), autoDocs: f.autoDocs(), resume: spec, allow: append([]string(nil), (*f.allow)...), plain: *f.plain, noAnim: *f.noAnim,
 	}
-	if len(f.roleModels) > 0 {
-		out.roleModels = make(map[string]string, len(f.roleModels))
-		for k, v := range f.roleModels {
-			out.roleModels[k] = v
-		}
+	if out.roleModels, out.team, err = f.roleModels.split(); err != nil {
+		return chatFlags{}, err
 	}
 	fs.Visit(func(fl *flag.Flag) { out.swarmGiven = out.swarmGiven || fl.Name == "swarm" })
+	if out.workers, err = teamWorkers(out.team, out.workers, out.swarmGiven); err != nil {
+		return chatFlags{}, err
+	}
+	if len(out.team) > 0 {
+		out.swarmGiven = true
+	}
+	if out.swarmGiven {
+		if err := checkTeamSize(out.workers); err != nil {
+			return chatFlags{}, err
+		}
+	}
 	return out, nil
 }
 
@@ -148,8 +159,8 @@ func (f chatFlags) options() session.Options {
 	return chatOptions(session.Options{
 		Cwd: f.cwd, Model: f.model, Mode: perm.Mode(f.mode), Swarm: team, Workers: workers,
 		TrustProject: f.trust, BudgetUSD: f.budget, Resume: f.resume, NoMCP: f.noMCP,
-		Verify: f.verify, Isolation: f.isolation, Commit: f.commit, Mailman: f.mailman, RoleModels: rm,
-		Allow: expandAllow(f.allow),
+		Verify: f.verify, Isolation: f.isolation, Commit: f.commit, Mailman: f.mailman, AutoDocs: f.autoDocs, RoleModels: rm,
+		Team: append([]session.TeamSlot(nil), f.team...), DefaultTeam: true, Allow: expandAllow(f.allow),
 	})
 }
 
@@ -162,8 +173,8 @@ type newSessionRequest struct {
 }
 
 // argsFor renders the New session dialog's request as chat arguments, in the order the dialog's command line shows them: --cwd,
-// --model, --mode, --swarm, --isolation, --verify, --commit, --mailman, --budget-usd, --allow, --trust-project, --no-mcp, then
-// --role-model in the order of the roles' names. The name, the first goal and the effort are not chat flags: the host applies them
+// --model, --mode, --swarm, --isolation, --verify, --commit, --mailman, --auto-docs=false, --budget-usd, --allow, --trust-project,
+// --no-mcp, then --role-model: the role models in the order of the roles' names, then the team's slots in team order. The name, the first goal and the effort are not chat flags: the host applies them
 // once the session has started.
 func argsFor(req wire.NewSessionRequest) []string {
 	var a []string
@@ -191,6 +202,9 @@ func argsFor(req wire.NewSessionRequest) []string {
 	if req.Mailman {
 		a = append(a, "--mailman")
 	}
+	if req.AutoDocs != nil && !*req.AutoDocs {
+		a = append(a, "--auto-docs=false")
+	}
 	if req.Budget != nil && *req.Budget != 0 {
 		a = append(a, "--budget-usd", strconv.FormatFloat(*req.Budget, 'f', -1, 64))
 	}
@@ -207,11 +221,21 @@ func argsFor(req wire.NewSessionRequest) []string {
 	}
 	roles := make([]string, 0, len(req.RoleModels))
 	for role := range req.RoleModels {
-		roles = append(roles, role)
+		// with a team, a worker role's model is its slots' (below); only the harness's own roles keep one here
+		if len(req.Team) == 0 || serviceRole(role) {
+			roles = append(roles, role)
+		}
 	}
 	sort.Strings(roles)
 	for _, role := range roles {
 		a = append(a, "--role-model", role+"="+req.RoleModels[role])
+	}
+	for _, t := range req.Team {
+		v := t.Role
+		if t.Model != "" {
+			v += "=" + t.Model
+		}
+		a = append(a, "--role-model", v)
 	}
 	return a
 }

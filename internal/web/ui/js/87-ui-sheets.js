@@ -87,11 +87,26 @@
   /** The seed of the New session dialog: the server's defaults (its flags over the configuration), else the page's own values. */
   function seedOf() {
     const has = !!(SL.live && SL.live.defaults()), d = has ? SL.live.defaults() : {}, projects = (D.extra.projects || []), def = projects.find(p => p.default) || projects[0];
-    const swarm = d.swarm != null ? d.swarm : 8, cwd = (def && def.dir) || d.cwd || '';
+    const swarm = d.swarm != null ? d.swarm : 8, cwd = (def && def.dir) || d.cwd || '', tm = teamSeed(d.team);
     /* with the server's defaults an absent field is the CLI's own default (no verify command); the budget starts at off, which the server honours: a team has no cap unless one is set */
     const act = SL.sessions && SL.sessions.active, actModel = act && !act.placeholder && !act.recorded ? act.meta.model : '';
-    return { name: '', cwd, gitInit: true, testsSummary: d.testsPreset || '', unlimitedEnv: d.unlimitedEnv || '', model: d.model || actModel || (D.models[0] ? D.models[0].ref : ''), mode: d.mode || 'default', swarm, isolation: d.isolation || (swarm ? 'worktree' : 'none'), verify: d.verify != null ? d.verify : has ? '' : 'go test {dirs}', commit: !!d.commit, mailman: !!d.mailman, mailmanDefault: !!d.mailman, budget: d.budget ? String(d.budget) : 'off', rules: (d.rules || []).slice(), trustProject: d.trustProject !== false, noMcp: !!d.noMcp, goalText: '', effort: d.effort || 'default', roleModels: Object.assign({}, d.roleModels || {}), maxWorkers: d.maxWorkers || 12, resume: '' };
+    return { name: '', cwd, gitInit: true, testsSummary: d.testsPreset || '', unlimitedEnv: d.unlimitedEnv || '', model: d.model || actModel || (D.models[0] ? D.models[0].ref : ''), mode: d.mode || 'default', swarm, isolation: d.isolation || (swarm ? 'worktree' : 'none'), verify: d.verify != null ? d.verify : has ? '' : 'go test {dirs}', commit: !!d.commit, mailman: !!d.mailman, mailmanDefault: !!d.mailman, budget: d.budget ? String(d.budget) : 'off', rules: (d.rules || []).slice(), trustProject: d.trustProject !== false, noMcp: !!d.noMcp, goalText: '', effort: d.effort || 'default', roleModels: Object.assign({}, d.roleModels || {}), maxWorkers: d.maxWorkers || 0, minWorkers: d.minWorkers || 8, counts: tm.counts, slotModels: tm.models, single: swarm === 0, autoDocs: d.autoDocs !== false, resume: '' };
   }
+  /** The counts and per-role models of a team the server names (one entry per slot), or the default team: one worker of each role. */
+  function teamSeed(team) {
+    const counts = {}, models = {};
+    D.roleOrder.forEach(r => { counts[r] = team && team.length ? 0 : 1; });
+    (team || []).forEach(t => { counts[t.role] = (counts[t.role] || 0) + 1; if (t.model) models[t.role] = t.model; });
+    return { counts, models };
+  }
+  /** The team of a New session state: its size, whether it is the default team (one of each role, no model of a slot's own), and its slots. */
+  const teamOf = st => {
+    const roles = Object.keys(st.counts), n = st.single ? 0 : roles.reduce((a, r) => a + (st.counts[r] || 0), 0);
+    const dflt = !st.single && D.roleOrder.every(r => st.counts[r] === 1) && roles.every(r => D.roleOrder.indexOf(r) >= 0 || !st.counts[r]) && !Object.keys(st.slotModels || {}).some(r => st.slotModels[r]);
+    const slots = []; if (!st.single && !dflt) roles.forEach(r => { for (let i = 0; i < (st.counts[r] || 0); i++) slots.push({ role: r, model: (st.slotModels || {})[r] || '' }); });
+    return { n, dflt, slots, short: !st.single && n < (st.minWorkers || 8) };
+  };
+  dialogs.teamOf = teamOf;
   /** One argument for a POSIX shell: as it is when it holds only characters a shell leaves alone, else in single quotes (a single quote
    *  inside becomes '\''). */
   const shellQuote = a => { a = String(a == null ? '' : a); return /^[A-Za-z0-9_@%+=:,./-]+$/.test(a) ? a : "'" + a.replace(/'/g, "'\\''") + "'"; };
@@ -101,9 +116,9 @@
    *  for that), and the first goal follows as a comment, on one line. */
   dialogs.cliLine = function (st) {
     const q = shellQuote, off = (!st.budget || st.budget === 'off') && Number(st.swarm) > 0, f = [(off && st.unlimitedEnv ? st.unlimitedEnv + ' ' : '') + 'sleipnir chat'];   // a team of the terminal has a cap of its own unless the environment lifts it
-    if (st.resume) f.push('--resume ' + q(st.resume)); if (st.cwd && st.cwd !== '.') f.push('--cwd ' + q(st.cwd)); f.push('--model ' + q(st.model)); f.push('--mode ' + q(st.mode)); f.push('--swarm ' + q(st.swarm)); f.push('--isolation ' + q(st.isolation));
-    if (st.verify) f.push('--verify ' + q(st.verify)); if (st.commit) f.push('--commit'); if (st.mailman) f.push('--mailman'); else if (st.mailmanDefault) f.push('--mailman=false');
-    if (st.budget && st.budget !== 'off') f.push('--budget-usd ' + q(st.budget)); Object.keys(st.roleModels || {}).forEach(r => f.push('--role-model ' + q(r + '=' + st.roleModels[r]))); (st.rules || []).forEach(r => f.push('--allow ' + q(r)));
+    if (st.resume) f.push('--resume ' + q(st.resume)); if (st.cwd && st.cwd !== '.') f.push('--cwd ' + q(st.cwd)); f.push('--model ' + q(st.model)); f.push('--mode ' + q(st.mode)); const tm = st.counts ? teamOf(st) : { n: st.swarm, slots: [] }; f.push('--swarm ' + q(tm.n)); f.push('--isolation ' + q(st.isolation));
+    if (st.verify) f.push('--verify ' + q(st.verify)); if (st.commit) f.push('--commit'); if (st.mailman) f.push('--mailman'); else if (st.mailmanDefault) f.push('--mailman=false'); if (tm.n > 0 && st.autoDocs === false) f.push('--auto-docs=false');
+    if (st.budget && st.budget !== 'off') f.push('--budget-usd ' + q(st.budget)); if (tm.slots.length) tm.slots.forEach(t => f.push('--role-model ' + q(t.model ? t.role + '=' + t.model : t.role))); else Object.keys(st.roleModels || {}).forEach(r => f.push('--role-model ' + q(r + '=' + st.roleModels[r]))); (st.rules || []).forEach(r => f.push('--allow ' + q(r)));
     if (st.trustProject) f.push('--trust-project'); if (st.noMcp) f.push('--no-mcp');
     const first = st.makeDir || st.makeGit ? '# first, as the page does: ' + [st.makeDir ? 'make the folder' : '', st.makeGit ? 'run git init in it, with an empty first commit' : ''].filter(Boolean).join(', then ') + '\n' : '';
     return first + f.join(' ') + (st.goalText ? '\n  # then: /goal ' + String(st.goalText).replace(/[\r\n]+/g, ' ') : '');
@@ -115,7 +130,8 @@
     folder: ui.folder.helpText + ' A folder that does not exist is made.',
     git: 'Start a git repository here (<span class="mono">git init</span>, with an empty first commit): the work gets real history, and a team can give each worker its own worktree.',
     model: 'The model the manager and the workers run on. A role below can run on another.',
-    workers: 'How many workers the manager can give tasks to, side by side. <b>0</b>: a single agent does everything itself.',
+    workers: 'Who the manager leads. <b>Full team</b>: one worker of each role (8). Change a count to make your own team (at least 8 workers: drop docs and take two backends, say). <b>Single agent</b>: no manager and no team; one agent does everything itself.',
+    autoDocs: 'The docs worker keeps README, docs/ and AGENTS.md current by itself after every accepted task, without the manager asking. Off: docs is a role the manager assigns like any other. Needs a docs slot.',
     isolation: '<b>none</b>: workers edit your folder directly.<br><b>worktree</b>: each worker edits a private copy of the project; finished work is checked, merged, and only then applied to your folder. Teams only.',
     verify: 'A command that checks a worker’s task before it counts as done: it runs when a worker hands a task in, and a failure sends the task back to the worker. With isolation <b>worktree</b> it also runs before each merge. <span class="mono">{dirs}</span> stands for the folders the task changed. Empty: no automatic check. Teams only. It runs on your machine, so you confirm it when you start.',
     commit: 'When the team’s verified work is applied, commit it to your current branch instead of leaving uncommitted edits. Needs isolation <b>worktree</b> and a clean checkout on a branch. Teams only.',
@@ -125,7 +141,7 @@
     allow: 'By default the session asks before it runs a command or edits a file. A rule here answers yes in advance, for this session only. A rule is a tool name, or a tool name with a pattern: <span class="mono">Tool(pattern)</span>. Click an example to add it. Not used in bypass and yolo, which never ask.',
     quiet: 'bypass and yolo never ask: the rules are not used here (they are kept for other modes).',
     budget: 'The session stops when it has spent this many US dollars. <span class="mono">off</span>: no limit, which is how it starts here (the terminal caps a team at $50 unless the configuration says otherwise).',
-    roles: 'A role without an entry runs on the worker model.',
+    roles: 'A role left on <i>worker model</i> runs on the model above.',
     goal: 'The first thing to work on. Empty: a plain chat. With a goal, the manager works until a judge finds the evidence that it is met.',
     mode: 'What the session may do without asking. Each mode says what it allows; bypass and yolo are for work where a mistake is cheap.',
   };
@@ -143,7 +159,8 @@
   const FOLDER_START = /^([\\/]|[A-Za-z]:[\\/])/;
   dialogs.newSession = function (seed) {
     if (SL.data) { SL.data.load('projects'); SL.data.load('models'); }
-    const st = Object.assign(seedOf(), seed || {}), MAXW = st.maxWorkers, folder = ui.folder;
+    const st = Object.assign(seedOf(), seed || {}), folder = ui.folder;
+    if (seed && seed.swarm != null && seed.single == null) st.single = +seed.swarm === 0;   // a seed that names a size: 0 is a single agent
     const models = () => { const l = D.models.map(m => m.ref); if (st.model && l.indexOf(st.model) < 0) l.unshift(st.model); return l; };
     let fm = null;
     const fstate = () => (fm ? fm.state() : null);
@@ -161,10 +178,9 @@
       '<div class="g2 ns"><div><h3 class="lab nsh">Project</h3>' + field('name', inp('nsName', st.name, 'placeholder="shop-2" aria-label="Session name"'), '', help('name', 'the name')) +
       field('folder (--cwd)', folder.html(st.cwd), '', help('folder', 'the folder')) + '<div class="nsgit" id="nsGitRow" hidden><label class="chk"><input type="checkbox" id="nsGit" data-k="gitInit"' + (st.gitInit ? ' checked' : '') + '> git init</label>' + help('git', 'git init') + '</div>' +
       '<h3 class="lab nsh">Team</h3>' + field('model (--model)', '<select id="nsModel" aria-label="Model">' + models().map(r => '<option' + (r === st.model ? ' selected' : '') + '>' + esc(r) + '</option>').join('') + '</select>', '', help('model', 'the model')) +
-      field('workers (--swarm)', '<input id="nsSwarm" type="number" min="0" max="' + MAXW + '" value="' + st.swarm + '" aria-label="worker count"><span class="dim" id="nsSw"></span>', '', help('workers', 'a worker')) +
+      field('team (--swarm, --role-model)', '<div class="seg" role="group" aria-label="Team preset"><button type="button" data-tpreset="full">Full team</button><button type="button" data-tpreset="single">Single agent</button></div> <span class="dim" id="nsSw"></span><div id="nsTeamRows" class="nsteamrows"></div><div class="nserr err" id="nsTeamErr" role="alert" hidden></div>', '', help('workers', 'the team')) +
       team(field('isolation', seg('isolation', ['none', 'worktree'], st.isolation), '', help('isolation', 'isolation')) + field('verify tasks with (--verify)', inp('nsVerify', st.verify, 'aria-label="verify command" placeholder="e.g. go test {dirs}" spellcheck="false" autocomplete="off"') + '<div class="chips" id="nsVerifyHints"></div>', '', help('verify', '--verify')) +
-        field('team options', opt('commit', '--commit', '--commit') + opt('mailman', '--mailman', '--mailman'))) +
-      field('role models (--role-model)', '<div class="field-row" style="margin:0"><select id="nsRole" aria-label="Role">' + D.roleOrder.map(r => '<option>' + esc(r) + '</option>').join('') + '</select><select id="nsRoleM" aria-label="Model for the role">' + models().map(r => '<option>' + esc(r) + '</option>').join('') + '</select><button class="btn sm" type="button" id="nsAddRole">Add</button></div><div id="nsRoleTags" class="tags"></div>', '', help('roles', 'a role model')) +
+        field('team options', opt('commit', '--commit', '--commit') + opt('mailman', '--mailman', '--mailman') + opt('autoDocs', 'auto-docs (--auto-docs)', '--auto-docs'))) +
       '</div><div><h3 class="lab nsh">Permissions and limits</h3>' +
       field('pre-approve actions (--allow)', '<div class="nsd nsquiet" id="nsRuleOff" role="status" hidden>' + NS_HELP.quiet + '</div><fieldset class="nsfs" id="nsRuleSet"><div class="field-row" style="margin:0"><input id="nsRule" type="text" placeholder="tests, Bash(go test:*)" aria-label="Allow rule" spellcheck="false" autocomplete="off"><button class="btn sm" type="button" id="nsAddRule">Add</button></div><div class="nserr err" id="nsRuleErr" role="alert" hidden></div><div id="nsRules" class="tags"></div><div class="chips" id="nsRuleEx">' + ruleEx + '</div></fieldset>', '', help('allow', 'a pre-approved action')) +
       field('trust and tools', opt('trustProject', '--trust-project', '--trust-project') + opt('noMcp', '--no-mcp', '--no-mcp')) +
@@ -177,11 +193,25 @@
           el.innerHTML = !s ? '' : hs.length ? '<span class="dim">suggested for this folder:</span>' + hs.map(h => chip('data-vh', h.cmd, 'Suggested by ' + esc(h.why) + ' in this folder. Click to use it.')).join('') : s.exists && s.dir ? '<span class="dim">no build files recognised here: write the command yourself, like <span class="mono">npm test</span>.</span>' : '';
           $$('[data-vh]', el).forEach(c => c.setAttribute('aria-pressed', String(c.dataset.vh === st.verify)));
         };
+        /* the team rows: each role with its ?, a stepper and the model its workers run on */
+        const paintTeam = tm => {
+          const rows = $('#nsTeamRows', b), err = $('#nsTeamErr', b);
+          rows.hidden = st.single;
+          err.hidden = !tm.short; err.textContent = tm.short ? 'A team has at least ' + (st.minWorkers || 8) + ' workers: add ' + ((st.minWorkers || 8) - tm.n) + ' more, or choose Single agent.' : '';
+          const modelOpts = cur => '<option value=""' + (cur ? '' : ' selected') + '>worker model</option>' + models().map(r => '<option' + (r === cur ? ' selected' : '') + '>' + esc(r) + '</option>').join('');
+          const roles = D.roleOrder.concat(Object.keys(st.counts).filter(r => D.roleOrder.indexOf(r) < 0));
+          const key = JSON.stringify([st.single, st.counts, st.slotModels, st.roleModels, tm.n]); if (rows._k === key) return; rows._k = key;
+          if (!st.single) rows.innerHTML = roles.map(r => { const R = D.roles[r] || SL.data.ROLES[r] || { code: 'sc', desc: '' }, n = st.counts[r] || 0; return '<div class="nstrow' + (n ? '' : ' zero') + '" data-trole="' + esc(r) + '"><span class="nstname" style="color:var(--c-' + esc(R.code) + ')">' + esc(r) + '</span>' + ui.help(esc(R.desc || '') + (R.ro ? ' <b>Read-only.</b>' : ''), r) + '<span class="nststep"><button type="button" class="btn sm" data-tstep="-1" aria-label="one ' + esc(r) + ' less"' + (n ? '' : ' disabled') + '>−</button><span class="nstn mono" aria-label="' + esc(r) + ' workers">' + n + '</span><button type="button" class="btn sm" data-tstep="1" aria-label="one more ' + esc(r) + '"' + (st.maxWorkers && tm.n >= st.maxWorkers ? ' disabled' : '') + '>+</button></span><select data-tmodel="' + esc(r) + '" aria-label="model for ' + esc(r) + '"' + (n ? '' : ' disabled') + '>' + modelOpts((st.slotModels || {})[r] || st.roleModels[r] || '') + '</select></div>'; }).join('');
+        };
         const paint = () => {
           $('#nsCli', b).innerHTML = esc(cli()).replace(/--mode (bypass|yolo)/, '<span class="cli-danger">--mode $1</span>'); paintMode(b, st.mode);
-          $('#nsSw', b).textContent = st.swarm === 0 ? ' single agent' : ' manager + ' + st.swarm + ' worker' + (st.swarm === 1 ? '' : 's') + (st.swarm > 8 ? ' (' + (st.swarm - 8) + ' share legs)' : '');
-          $$('[data-team]', b).forEach(e => e.classList.toggle('nsoff', st.swarm === 0));
-          $('#nsRoleTags', b).innerHTML = Object.keys(st.roleModels).map(r => '<span class="tag">' + esc(r) + ' = ' + esc(st.roleModels[r]) + ' <button type="button" data-rmr="' + esc(r) + '" aria-label="remove ' + esc(r) + '">×</button></span>').join('');
+          const tm = teamOf(st); st.swarm = tm.n;
+          $('#nsSw', b).textContent = st.single ? 'single agent' : 'manager + ' + tm.n + ' worker' + (tm.n === 1 ? '' : 's') + (tm.dflt ? ' · full team' : ' · your team') + (tm.n > 8 ? ' (' + (tm.n - 8) + ' share legs)' : '');
+          $$('[data-tpreset]', b).forEach(x => x.setAttribute('aria-pressed', String(x.dataset.tpreset === 'single' ? st.single : tm.dflt)));
+          paintTeam(tm);
+          $$('[data-team]', b).forEach(e => e.classList.toggle('nsoff', st.single));
+          const docsOpt = $('[data-k="autoDocs"]', b); if (docsOpt) { const noDocs = !st.single && !(st.counts.docs > 0); docsOpt.disabled = st.single || noDocs; docsOpt.closest('.nsopt').title = noDocs ? 'the team has no docs worker' : ''; }
+          $('#nsStart', b).disabled = tm.short;
           $('#nsRules', b).innerHTML = st.rules.map((r, i) => '<span class="tag">' + esc(r) + ' <button type="button" data-rr="' + i + '" aria-label="remove ' + esc(r) + '">×</button></span>').join('');
           $('#nsGitRow', b).hidden = folder.describe(fstate()).git !== 'offer'; paintVerify();
           $('#nsRuleSet', b).disabled = quiet(); $('#nsRuleOff', b).hidden = !quiet();
@@ -191,16 +221,16 @@
         const ruleErr = msg => { const e = $('#nsRuleErr', b); e.hidden = !msg; e.textContent = msg || ''; };
         /* a rule typed or clicked is added once; a typed one that cannot be a rule is said so and kept in its field */
         const addRule = v => { v = String(v).trim(); if (!v || quiet()) return true; const bad = ruleProblem(v); ruleErr(bad); if (bad) return false; if (!st.rules.includes(v)) st.rules.push(v); return true; };
-        sc.listen(b, 'input', e => { const t = e.target; if (t.id === 'nsName') st.name = t.value; else if (t.id === 'nsVerify') st.verify = t.value; else if (t.id === 'nsBudget') st.budget = t.value.trim(); else if (t.id === 'nsSwarm') st.swarm = Math.max(0, Math.min(MAXW, parseInt(t.value, 10) || 0)); else if (t.id === 'nsGoal') st.goalText = t.value; else if (t.id === 'nsRule') ruleErr(''); paint(); });
-        sc.listen(b, 'change', e => { const t = e.target; if (t.id === 'nsModel') st.model = t.value; else if (t.id === 'nsRole' || t.id === 'nsRoleM') st.roleDirty = true; else if (t.dataset.k) st[t.dataset.k] = t.checked; paint(); });
+        sc.listen(b, 'input', e => { const t = e.target; if (t.id === 'nsName') st.name = t.value; else if (t.id === 'nsVerify') st.verify = t.value; else if (t.id === 'nsBudget') st.budget = t.value.trim();  else if (t.id === 'nsGoal') st.goalText = t.value; else if (t.id === 'nsRule') ruleErr(''); paint(); });
+        sc.listen(b, 'change', e => { const t = e.target; if (t.id === 'nsModel') st.model = t.value; else if (t.dataset.tmodel) { const r = t.dataset.tmodel; st.slotModels = st.slotModels || {}; if (t.value) st.slotModels[r] = t.value; else { delete st.slotModels[r]; delete st.roleModels[r]; } } else if (t.dataset.k) st[t.dataset.k] = t.checked; paint(); });
         sc.listen(b, 'click', e => {
           const mr = e.target.closest('[data-nsmode]'); if (mr) { st.mode = mr.dataset.nsmode; paint(); return; }
           const x = e.target.closest('[data-seg]'); if (x) { st[x.dataset.seg] = x.dataset.v; $$('[data-seg="' + x.dataset.seg + '"]', b).forEach(y => y.setAttribute('aria-pressed', y === x)); paint(); return; }
           const vh = e.target.closest('[data-vh]'); if (vh) { st.verify = vh.dataset.vh; $('#nsVerify', b).value = st.verify; paint(); return; }
           const ex = e.target.closest('[data-ex]'); if (ex) { if (!quiet()) addRule(ex.dataset.ex); paint(); return; }
           const rr = e.target.closest('[data-rr]'); if (rr && !quiet()) { st.rules.splice(+rr.dataset.rr, 1); paint(); }
-          const rm = e.target.closest('[data-rmr]'); if (rm) { delete st.roleModels[rm.dataset.rmr]; paint(); }
-          if (e.target.closest('#nsAddRole')) { st.roleModels[$('#nsRole', b).value] = $('#nsRoleM', b).value; paint(); }
+          const tp = e.target.closest('[data-tpreset]'); if (tp) { if (tp.dataset.tpreset === 'single') st.single = true; else { st.single = false; D.roleOrder.forEach(r => { st.counts[r] = 1; }); Object.keys(st.counts).forEach(r => { if (D.roleOrder.indexOf(r) < 0) st.counts[r] = 0; }); } paint(); return; }
+          const ts = e.target.closest('[data-tstep]'); if (ts) { const r = ts.closest('[data-trole]').dataset.trole; st.counts[r] = Math.max(0, (st.counts[r] || 0) + +ts.dataset.tstep); paint(); const again = $('[data-trole="' + r + '"] [data-tstep="' + ts.dataset.tstep + '"]', b); if (again && !again.disabled) again.focus(); return; }
         });
         sc.listen($('#nsModes', b), 'keydown', e => { const k = e.key; if (!/^(Arrow(Up|Down|Left|Right)|Home|End)$/.test(k)) return; e.preventDefault(); const rs = $$('[data-nsmode]', b), f = rs.indexOf(document.activeElement), i = f >= 0 ? f : rs.findIndex(r => r.dataset.nsmode === st.mode), j = k === 'Home' ? 0 : k === 'End' ? rs.length - 1 : (i + (/Down|Right/.test(k) ? 1 : rs.length - 1)) % rs.length; st.mode = rs[j].dataset.nsmode; paint(); rs[j].focus(); });
         const addTyped = () => { const f = $('#nsRule', b); if (addRule(f.value)) f.value = ''; paint(); };
@@ -212,14 +242,17 @@
           const bud = st.budget === 'off' || st.budget === '' ? 0 : parseFloat(st.budget); if (st.budget !== 'off' && st.budget !== '' && !(bud > 0)) { ui.toast('the budget is a number of dollars, or off', 'err'); return; }
           /* what was typed or chosen but not added yet is part of what starts (an allow rule in its field, a role and model picked) */
           const pending = $('#nsRule', b); if (!quiet() && !addRule(pending.value)) return; if (!quiet()) pending.value = '';
-          if (st.roleDirty && !Object.prototype.hasOwnProperty.call(st.roleModels, $('#nsRole', b).value)) st.roleModels[$('#nsRole', b).value] = $('#nsRoleM', b).value;
+          const tm = teamOf(st); if (tm.short) { $('#nsTeamErr', b).hidden = false; return; }
           starting = true;
           /* the folder is what the server says it is for the text in the box (asked now when it was not yet): a path that cannot start a session stops here */
           fm.ensure().then(state => {
             const d = folder.describe(state), typed = st.cwd.trim();
             if (d.level === 'bad') { starting = false; ui.toast(d.lead, 'err'); return; }
             if (!state && !FOLDER_START.test(typed)) { starting = false; ui.toast('The server could not check that folder: write its full path.', 'err'); return; }
-            const spec = { name: st.name.trim() || undefined, cwd: state ? state.path : typed, model: st.model, mode: st.mode, swarm: st.swarm, isolation: st.isolation, verify: st.verify, commit: st.commit, mailman: st.mailman, rules: rulesNow(), trustProject: st.trustProject, noMcp: st.noMcp, goalText: st.goalText.trim() || undefined, effort: st.effort, roleModels: st.roleModels };
+            const roleModels = Object.assign({}, st.roleModels); if (tm.dflt) Object.keys(st.slotModels || {}).forEach(r => { if (st.slotModels[r]) roleModels[r] = st.slotModels[r]; });
+            const spec = { name: st.name.trim() || undefined, cwd: state ? state.path : typed, model: st.model, mode: st.mode, swarm: tm.n, isolation: st.isolation, verify: st.verify, commit: st.commit, mailman: st.mailman, rules: rulesNow(), trustProject: st.trustProject, noMcp: st.noMcp, goalText: st.goalText.trim() || undefined, effort: st.effort, roleModels: tm.slots.length ? {} : roleModels };
+            if (tm.slots.length) spec.team = tm.slots;
+            if (tm.n > 0 && st.autoDocs === false) spec.autoDocs = false;
             spec.budget = bud > 0 ? bud : 0;   // 0 is off: the server does not put its own cap on the session
             if (st.resume) spec.resume = st.resume;
             const raises = [];
@@ -227,7 +260,7 @@
             if (d.git === 'offer' && st.gitInit) { spec.gitInit = true; raises.push('make ' + spec.cwd + ' a git repository'); }
             /* the dialog gives way to the trust step and the confirmation; when the server does not start the session it opens again as it
                was, with why under its title */
-            const again = Object.assign({}, st, { rules: st.rules.slice(), roleModels: Object.assign({}, st.roleModels), roleDirty: false });
+            const again = Object.assign({}, st, { rules: st.rules.slice(), roleModels: Object.assign({}, st.roleModels), counts: Object.assign({}, st.counts), slotModels: Object.assign({}, st.slotModels) });
             close(); start(spec, { raises }).then(res => { if (res && !res.ok) dialogs.newSession(Object.assign(again, { error: res.declined ? 'not started: the trust step or the confirmation was declined' : 'not started: ' + (res.message || res.why || 'the server refused it') })); });
           });
         });

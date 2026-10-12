@@ -480,7 +480,7 @@ func (t *spawnTool) Spec() core.ToolSpec {
 	return core.ToolSpec{
 		Name:         "spawn",
 		NoTreeWrites: true, // the board, mail and team are not the work tree
-		Description: "Manager only. Start a worker on a task: role (backend, frontend, fullstack, tester, reviewer, scout, docs), " +
+		Description: "Manager only. Start a worker on a task: role (a role of your team: the team card lists them, their free slots and what each can do), " +
 			"task (an id like T3, or a title to create one), brief (acceptance criteria), files (scope globs). " +
 			"Pass agent=<id> to give an idle worker new work: its context is already warm. Writers are limited; readers are not.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"role":{"type":"string"},"task":{"type":"string"},` +
@@ -658,7 +658,7 @@ func (s *Swarm) stalledWaitReason(agentID string) string {
 		return ""
 	}
 	return "Cannot wait: no workers are running and work needs manager action (" + u.summary(holdListCap) + "). " +
-		"Use spawn to start or reuse a worker on an unstarted task; planning tasks need a scout, reviewer, or custom read-only role. " +
+		"Use spawn to start or reuse a worker on an unstarted task; planning tasks need the architect, a scout, a reviewer, or a custom read-only role. " +
 		"Review submissions with task get and accept or reject them; resolve blocked tasks or fail abandoned work."
 }
 

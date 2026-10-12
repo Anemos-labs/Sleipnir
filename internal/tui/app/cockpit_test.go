@@ -18,12 +18,12 @@ var update = flag.Bool("update", false, "rewrite the golden files")
 
 func TestCockpitLabelsAssignedScopeWithoutInventingLeaseOwnership(t *testing.T) {
 	sn := &state.Snapshot{Agents: []state.Agent{
-		{ID: "fs-1", Role: "fullstack", Scope: []string{"src/*"}},
+		{ID: "dv-1", Role: "devops", Scope: []string{"src/*"}},
 		{ID: "mgr", Role: "manager", Leases: []string{"README.md"}},
 	}}
 	data := CockpitData(sn, CockpitOptions{})
 	for _, row := range data.Agents {
-		if row.ID == "fs-1" && row.Scope != "src/*" {
+		if row.ID == "dv-1" && row.Scope != "src/*" {
 			t.Fatalf("assigned scope missing: %+v", row)
 		}
 		if row.ID == "mgr" && row.Scope != "" {

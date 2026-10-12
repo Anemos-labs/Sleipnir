@@ -222,7 +222,7 @@ const (
 var positionals = map[string][]wire.CLIPositional{
 	"init": {}, "config": {}, "sessions": {}, "sessions prune": {}, "chat": {}, "web": {},
 	"run":      {many("PROMPT", false, goalArg)},
-	"swarm":    {pos("N", true, "number of workers (1 or more; the manager comes on top)"), many("GOAL", false, goalArg)},
+	"swarm":    {pos("N", true, "number of workers (8 or more, one of each role; the manager comes on top)"), many("GOAL", false, goalArg)},
 	"recon":    {pos("DIR", false, "project directory (default: the current one)")},
 	"inspect":  {pos("SESSION|DIR", false, "a session id (or the start of one), or a session directory; default: the newest session")},
 	"watch":    {pos("SESSION", false, sessionArg)},
@@ -626,7 +626,7 @@ func Generate(in Inputs) (*wire.CLISpec, error) {
 					swarmFl = append(swarmFl, f)
 				}
 			}
-			err = s.finish([]string{"swarm"}, `sleipnir swarm N "goal" [flags]`, "Shorthand for run --swarm: a manager and up to N workers. N counts workers and must be 1 or more.", swarmFl, sec, wire.CLICommand{AliasOf: "run --swarm N"})
+			err = s.finish([]string{"swarm"}, `sleipnir swarm N "goal" [flags]`, "Shorthand for run --swarm: a manager and up to N workers. N counts workers and is at least 8, one of each role.", swarmFl, sec, wire.CLICommand{AliasOf: "run --swarm N"})
 		case "models":
 			fl := parseFlagLines(b.text)
 			for _, c := range []struct {

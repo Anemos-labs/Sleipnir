@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/web"
 )
 
@@ -49,6 +50,10 @@ type webDefaults struct {
 	Mailman *bool
 	// RoleModels is the --role-model overrides.
 	RoleModels map[string]string
+	// Team is the team --role-model names (nil: the default team).
+	Team []session.TeamSlot
+	// AutoDocs is --auto-docs: nil when the flag was not given.
+	AutoDocs *bool
 	// Allow is the --allow rules with the named sets (tests) expanded.
 	Allow []string
 	// Resume is --resume or --continue as session.Options.Resume takes it: "", an id, a directory
@@ -138,8 +143,9 @@ func cmdWeb(ctx context.Context, args []string) error {
 	verify := fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (see sleipnir chat -h); {dirs} stands for the directories the task may touch")
 	isolation, commit := isolationFlags(fs)
 	mailman := mailmanFlag(fs)
-	roleModels := kvFlags{}
-	fs.Var(roleModels, "role-model", "role=model override for new sessions, repeatable (e.g. manager=heimdallm/x, mailman=heimdallm/small)")
+	autoDocs := autoDocsFlag(fs)
+	roleFlag := &roleModelFlag{}
+	fs.Var(roleFlag, "role-model", "for new sessions: "+roleModelHelp)
 	resume := resumeFlags(fs)
 	allow := allowFlags(fs)
 	askTimeout := fs.Duration("ask-timeout", 0, "refuse a question that nobody answered in this long, as a run with nobody to ask would (0 waits for an answer)")
@@ -192,6 +198,18 @@ flags:
 	if *swarmN < 0 {
 		return usageError(fs, "web: --swarm must not be negative")
 	}
+	roleModels, teamSlots, err := roleFlag.split()
+	if err != nil {
+		return usageError(fs, "web: "+err.Error())
+	}
+	swarmGiven := false
+	fs.Visit(func(f *flag.Flag) { swarmGiven = swarmGiven || f.Name == "swarm" })
+	if *swarmN, err = teamWorkers(teamSlots, *swarmN, swarmGiven); err != nil {
+		return usageError(fs, "web: "+err.Error())
+	}
+	if err := checkTeamSize(*swarmN); err != nil {
+		return usageError(fs, "web: "+err.Error())
+	}
 	if *askTimeout < 0 || *askGrace < 0 {
 		return usageError(fs, "web: --ask-timeout and --ask-grace must not be negative")
 	}
@@ -211,17 +229,15 @@ flags:
 	d := webDefaults{
 		Cwd: dir, Model: *model, Mode: *mode, Workers: defaultTeam(), TrustProject: *trust, BudgetUSD: *budget,
 		NoMCP: *noMCP, Verify: *verify, Isolation: *isolation, Commit: *commit, Mailman: mailman(),
-		RoleModels: roleModels, Allow: expandAllow(*allow), Resume: resumeSpec,
+		RoleModels: roleModels, Team: teamSlots, AutoDocs: autoDocs(), Allow: expandAllow(*allow), Resume: resumeSpec,
 		AskTimeout: *askTimeout, AskGrace: *askGrace, Projects: projects, Fixture: fixture,
 	}
 	if *askGrace == 0 {
 		d.AskGrace = -1 // 0 on the command line: never refuse for want of a page
 	}
-	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "swarm" {
-			d.Workers, d.WorkersGiven = *swarmN, true
-		}
-	})
+	if swarmGiven || len(teamSlots) > 0 {
+		d.Workers, d.WorkersGiven = *swarmN, true
+	}
 
 	// The address is bound first: a run that cannot listen (the port is taken) starts no session, runs no first-run setup and leaves
 	// nothing in the state directory.

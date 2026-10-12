@@ -132,6 +132,7 @@ type logInfo struct {
 	isolated bool            // the team worked in git worktrees
 	recovery bool            // the log fixes the original isolation base and mode
 	snaps    map[string]bool // the agents that saved a snapshot
+	team     []TeamSlot      // the custom team composition the session was started with (nil: the default)
 }
 
 // resumable requires a primary snapshot and any necessary isolation metadata.
@@ -153,12 +154,13 @@ func inspectLog(dir string) logInfo {
 			if !started {
 				started = true
 				var d struct {
-					Root      string `json:"root"`
-					Swarm     bool   `json:"swarm"`
-					Isolation string `json:"isolation"`
+					Root      string     `json:"root"`
+					Swarm     bool       `json:"swarm"`
+					Isolation string     `json:"isolation"`
+					Team      []TeamSlot `json:"team"`
 				}
 				_ = json.Unmarshal(e.Data, &d)
-				li.root, li.swarm, li.isolated = d.Root, d.Swarm, d.Isolation != ""
+				li.root, li.swarm, li.isolated, li.team = d.Root, d.Swarm, d.Isolation != "", d.Team
 			}
 		case events.TypeAgentSnapshot:
 			li.snaps[e.Agent] = true

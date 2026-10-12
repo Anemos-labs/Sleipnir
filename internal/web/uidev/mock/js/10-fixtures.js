@@ -10,13 +10,14 @@
     manager: { code: 'mgr', ro: false, desc: 'plans, spawns, merges; edits no file' },
     backend: { code: 'be', ro: false, desc: 'server code' },
     frontend: { code: 'fe', ro: false, desc: 'pages and client code' },
-    fullstack: { code: 'fs', ro: false, desc: 'both sides of one feature' },
+    devops: { code: 'dv', ro: false, desc: 'build, CI, dependencies, configuration, scripts' },
+    architect: { code: 'ar', ro: true, desc: 'plans interfaces and ownership; writes no code' },
     tester: { code: 'ts', ro: false, desc: 'tests' },
     reviewer: { code: 'rv', ro: true, desc: 'read-only review' },
     scout: { code: 'sc', ro: true, desc: 'read-only survey' },
     docs: { code: 'dc', ro: false, desc: 'documentation' },
   };
-  const ROLE_ORDER = ['scout', 'backend', 'frontend', 'tester', 'reviewer', 'docs', 'fullstack'];
+  const ROLE_ORDER = ['architect', 'scout', 'backend', 'frontend', 'devops', 'tester', 'docs', 'reviewer'];
   const PRICES = { mgr: { in: 3.0, cached: 0.3, out: 15.0 }, worker: { in: 1.0, cached: 0.1, out: 4.0 }, sample: true };
 
   /* ---- the roster at the snapshot t = 00:38 (start order = leg order; the manager has no leg) ---- */
@@ -320,7 +321,7 @@ func TestList(t *testing.T) {
     { id: 'chatgpt', name: 'ChatGPT plan', base: 'https://chatgpt.sample/backend', key: 'none', env: '', state: 'not signed in', note: 'sign in from the terminal' },
     { id: 'local', name: 'local server', base: 'http://127.0.0.1:8000/v1', key: 'none', env: '', state: 'a self-hosted vLLM / SGLang server (token ids captured)', note: 'price unknown; no key' },
   ];
-  const ROLE_MODELS = { manager: 'anthropic/claude-sonnet-5-5', backend: 'heimdallm/demo-model', frontend: 'heimdallm/demo-model', fullstack: 'heimdallm/demo-model', tester: 'heimdallm/demo-model', reviewer: 'heimdallm/demo-model', scout: 'heimdallm/demo-model', docs: 'heimdallm/demo-model', mailman: '' };
+  const ROLE_MODELS = { manager: 'anthropic/claude-sonnet-5-5', backend: 'heimdallm/demo-model', frontend: 'heimdallm/demo-model', devops: 'heimdallm/demo-model', tester: 'heimdallm/demo-model', reviewer: 'heimdallm/demo-model', scout: 'heimdallm/demo-model', docs: 'heimdallm/demo-model', mailman: '' };
 
   /* ---- permissions: modes (REAL names) and the rules in force with their origin ---- */
   const MODES = [

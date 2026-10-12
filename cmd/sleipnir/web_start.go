@@ -112,6 +112,7 @@ func mergeOptions(base session.Options, f chatFlags, defaultCwd string) session.
 	out.BudgetUSD, out.Resume, out.NoMCP = o.BudgetUSD, o.Resume, o.NoMCP || base.NoMCP
 	out.Verify, out.Isolation, out.Commit, out.Mailman = o.Verify, o.Isolation, o.Commit, o.Mailman
 	out.RoleModels, out.Allow, out.Interactive = o.RoleModels, o.Allow, true
+	out.Team, out.AutoDocs, out.DefaultTeam = o.Team, o.AutoDocs, o.DefaultTeam
 	out.ID, out.Dir = "", ""
 	out.Sink, out.NewSink, out.Prompter = nil, nil, nil
 	return out
@@ -637,6 +638,9 @@ func chatArgsOf(d webDefaults, resume string) []string {
 	if d.Mailman != nil {
 		a = append(a, "--mailman="+strconv.FormatBool(*d.Mailman))
 	}
+	if d.AutoDocs != nil {
+		a = append(a, "--auto-docs="+strconv.FormatBool(*d.AutoDocs))
+	}
 	roles := make([]string, 0, len(d.RoleModels))
 	for r := range d.RoleModels {
 		roles = append(roles, r)
@@ -644,6 +648,15 @@ func chatArgsOf(d webDefaults, resume string) []string {
 	slices.Sort(roles)
 	for _, r := range roles {
 		a = append(a, "--role-model", r+"="+d.RoleModels[r])
+	}
+	if workers > 0 {
+		for _, t := range d.Team {
+			v := t.Role
+			if t.Model != "" {
+				v += "=" + t.Model
+			}
+			a = append(a, "--role-model", v)
+		}
 	}
 	for _, r := range d.Allow {
 		a = append(a, "--allow", r)

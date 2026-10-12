@@ -359,7 +359,7 @@
   },
   {
     "name": "spawn",
-    "description": "Manager only. Start a worker on a task: role (backend, frontend, fullstack, tester, reviewer, scout, docs), task (an id like T3, or a title to create one), brief (acceptance criteria), files (scope globs). Pass agent=<id> to give an idle worker new work: its context is already warm. Writers are limited; readers are not.",
+    "description": "Manager only. Start a worker on a task: role (a role of your team: the team card lists them, their free slots and what each can do), task (an id like T3, or a title to create one), brief (acceptance criteria), files (scope globs). Pass agent=<id> to give an idle worker new work: its context is already warm. Writers are limited; readers are not.",
     "input_schema": {
       "properties": {
         "agent": {

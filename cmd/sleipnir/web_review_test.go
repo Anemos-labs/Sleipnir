@@ -27,7 +27,7 @@ import (
 
 // teamDefaults are the server's defaults for a manager and two workers in project.
 func teamDefaults(project string) webDefaults {
-	return webDefaults{Cwd: project, Workers: 2, WorkersGiven: true, Mode: "accept-edits"}
+	return webDefaults{Cwd: project, Workers: 8, WorkersGiven: true, Mode: "accept-edits"}
 }
 
 // endReason is the reason the session.end event of a session directory records ("" when there is none).

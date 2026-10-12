@@ -81,10 +81,13 @@ cd your-project
 sleipnir
 ```
 
-Describe the result and how it should be verified. The default team can start
-up to eight workers alongside the manager. Capacity is not the number currently
-working. `--swarm N` sets the number of workers; use `sleipnir --swarm 0` when
-you want one agent.
+Describe the result and how it should be verified. The default team is one
+worker of each role alongside the manager: architect, scout, backend, frontend,
+devops, tester, docs and reviewer. Capacity is not the number currently
+working. `--swarm N` sets the number of workers (at least 8); use
+`sleipnir --swarm 0` when you want one agent. To leave a role out or double
+one, name the team with `--role-model`, one value per worker:
+`--role-model backend --role-model backend --role-model frontend ...`.
 
 A normal message runs one turn. A standing goal checks completion and continues
 when more work is needed:
@@ -116,8 +119,8 @@ before saving that decision.
 
 ```sh
 sleipnir run "fix the failing test"
-sleipnir swarm 4 "implement the API and client" --verify "go test {dirs}"
-sleipnir swarm 4 "implement independent modules" --isolation worktree --verify "go test {dirs}"
+sleipnir swarm 8 "implement the API and client" --verify "go test {dirs}"
+sleipnir swarm 8 "implement independent modules" --isolation worktree --verify "go test {dirs}"
 ```
 
 Put flags before the task if your shell or command wrapper requires it.

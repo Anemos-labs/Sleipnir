@@ -19,16 +19,17 @@
   ];
   /** The roles the harness builds in (internal/swarm/roles.go); the server's list replaces it. */
   const ROLES = {
-    manager: { code: 'mgr', ro: false, desc: 'plans, spawns, merges; edits no file' },
-    backend: { code: 'be', ro: false, desc: 'server code' },
-    frontend: { code: 'fe', ro: false, desc: 'pages and client code' },
-    fullstack: { code: 'fs', ro: false, desc: 'both sides of one feature' },
-    tester: { code: 'ts', ro: false, desc: 'tests' },
-    reviewer: { code: 'rv', ro: true, desc: 'read-only review' },
-    scout: { code: 'sc', ro: true, desc: 'read-only survey' },
-    docs: { code: 'dc', ro: false, desc: 'documentation' },
+    manager: { code: 'mgr', ro: false, desc: 'plans, splits the work, delegates, reviews; edits no file' },
+    architect: { code: 'ar', ro: true, desc: 'owns planning tasks: interfaces, data shapes, ownership, acceptance criteria; writes no code' },
+    scout: { code: 'sc', ro: true, desc: 'maps the code and outside sources (repositories, docs on the web)' },
+    backend: { code: 'be', ro: false, desc: 'APIs, data access, services, migrations, background jobs, and their tests' },
+    frontend: { code: 'fe', ro: false, desc: 'components, state, styling, client data fetching, accessibility, and their tests' },
+    devops: { code: 'dv', ro: false, desc: 'build, CI, dependencies, configuration, scripts, containers' },
+    tester: { code: 'ts', ro: false, desc: 'tests against the agreement, integration and end-to-end runs, exact bug reports' },
+    docs: { code: 'dc', ro: false, desc: 'README, docs/, AGENTS.md and examples that match the code' },
+    reviewer: { code: 'rv', ro: true, desc: 'reviews each handed-in task: correctness, security, missing tests' },
   };
-  const ROLE_ORDER = ['scout', 'backend', 'frontend', 'tester', 'reviewer', 'docs', 'fullstack'];
+  const ROLE_ORDER = ['architect', 'scout', 'backend', 'frontend', 'devops', 'tester', 'docs', 'reviewer'];
   /** The six prompt layers G0..G5 as the page draws them (the hot tail is folded into G5). Token sizes come from the model. */
   const LAYERS = [
     { id: 'G0', name: 'constitution', note: 'the constitution and the universal tool list (every agent sends the same tools array, byte for byte)', col: 'var(--mgr)' },

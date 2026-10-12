@@ -318,13 +318,14 @@ func TestParityChatFlagsAreTheCodes(t *testing.T) {
 
 	// the arguments the host makes of a request that sets every field are the flags of the dialog's command line, less --resume (a
 	// field of its own in the request) and --mailman=false (the route adds it against a default of on)
-	zero, usd := 3, 5.0
+	zero, usd, off := 8, 5.0, false
 	args := argsFor(wire.NewSessionRequest{Cwd: "/p", Model: "a/m", Mode: "plan", Swarm: &zero, Isolation: "worktree", Verify: "go test {dirs}", Commit: true,
-		Mailman: true, Budget: &usd, Rules: []string{"tests"}, TrustProject: true, NoMcp: true, RoleModels: map[string]string{"backend": "a/w"}})
+		Mailman: true, AutoDocs: &off, Budget: &usd, Rules: []string{"tests"}, TrustProject: true, NoMcp: true, RoleModels: map[string]string{"backend": "a/w"}})
 	var made []string
 	for _, a := range args {
 		if strings.HasPrefix(a, "--") {
-			made = append(made, strings.TrimPrefix(a, "--"))
+			name, _, _ := strings.Cut(strings.TrimPrefix(a, "--"), "=")
+			made = append(made, name)
 		}
 	}
 	sort.Strings(made)
@@ -343,9 +344,9 @@ func TestParityChatFlagsAreTheCodes(t *testing.T) {
 	}
 
 	// Run settings: a control that sets a flag is a field the host stages for the next start (wire.LaunchPatch), or the team size
-	staged := map[string]bool{"isolation": true, "verify": true, "commit": true, "mailman": true, "no-mcp": true, "trust-project": true}
+	staged := map[string]bool{"isolation": true, "verify": true, "commit": true, "mailman": true, "auto-docs": true, "no-mcp": true, "trust-project": true}
 	var patch map[string]json.RawMessage
-	b, _ := json.Marshal(wire.LaunchPatch{Isolation: new(string), Verify: new(string), Commit: new(bool), Mailman: new(bool), NoMcp: new(bool), TrustProject: new(bool)})
+	b, _ := json.Marshal(wire.LaunchPatch{Isolation: new(string), Verify: new(string), Commit: new(bool), Mailman: new(bool), AutoDocs: new(bool), NoMcp: new(bool), TrustProject: new(bool)})
 	_ = json.Unmarshal(b, &patch)
 	camel := func(flag string) string {
 		parts := strings.Split(flag, "-")

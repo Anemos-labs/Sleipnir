@@ -14,6 +14,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/kv"
 	"github.com/anemos-labs/sleipnir/internal/perm"
@@ -61,6 +62,10 @@ type runState struct {
 // member is one registered agent.
 type member struct {
 	id, role string
+	// slot is the team slot the member holds (Config.Team index; -1: none), model the
+	// model it runs on.
+	slot     int
+	model    cost.Model
 	a        *agent.Agent
 	ev       *Evidence
 	manager  bool
@@ -159,6 +164,12 @@ func (s *Swarm) nextHarnessID() string { return fmt.Sprintf("h%d", s.hseq.Add(1)
 // the git worktree of an isolated writer (nil: the shared checkout): the agent's
 // tools then work there, with checkpoints of its own.
 func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence, tree *workspace.Tree) (*member, error) {
+	return s.newMemberAt(id, r, notes, ev, tree, -2)
+}
+
+// newMemberAt is newMember for a worker that takes team slot slot (a successor takes
+// its predecessor's); -2 picks the first free slot of the role.
+func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tree *workspace.Tree, slot int) (*member, error) {
 	d := s.deps
 	isMgr := r.Name == "manager"
 	requester := perm.Requester(d.Perm)
@@ -178,7 +189,7 @@ func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence, tree
 	case isMgr:
 		// The manager plans, delegates and reviews; workers make every change. In an
 		// isolated run a write of its own would also bypass the merge queue.
-		rr.denyWrites, rr.strictShell = managerWritesMsg, true
+		rr.denyWrites, rr.strictShell = managerWritesMsg, !s.cfg.JudgeManagerShell
 		if e, ok := requester.(*perm.Engine); ok {
 			rr.planOnly = e.PlanOnly()
 		}
@@ -205,12 +216,18 @@ func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence, tree
 		}
 	}
 	m := &member{id: id, role: r.Name, ev: ev, state: "idle", manager: isMgr, readOnly: r.ReadOnly, service: isSvc, sink: sink, notify: make(chan struct{}, 1),
-		tree: tree, dir: workdir}
+		tree: tree, dir: workdir, slot: -1}
 	m.box.init()
-	model, prov := d.Model, d.Provider
-	if rm, ok := d.RoleModels[r.Name]; ok && rm.Provider != nil {
-		model, prov = rm.Model, rm.Provider
+	if slot >= -1 {
+		m.slot = slot
+	} else if !isMgr && !isSvc {
+		s.mu.Lock()
+		m.slot = s.slotFor(r.Name)
+		s.mu.Unlock()
 	}
+	rm := s.modelFor(r.Name, m.slot)
+	model, prov := rm.Model, rm.Provider
+	m.model = model
 	hooks := d.Hooks
 	if isMgr && s.cfg.HoldManager {
 		hooks = &holdHooks{inner: d.Hooks, s: s, m: m}
@@ -233,6 +250,21 @@ func (s *Swarm) newMember(id string, r Role, notes *kv.Layer, ev *Evidence, tree
 				s.noteManagerSeen(snap) // what the manager has looked at (see wake.go)
 			}
 			txt := RenderHot(snap, agentID, r.Name, isMgr, s.cfg.Hot, d.Est)
+			// the team's occupancy (the manager's) and the auto-docs state (everyone's) go inside the frame too
+			var extra []string
+			if isMgr {
+				if t := s.TeamState(); t != "" {
+					extra = append(extra, t)
+				}
+			}
+			if ds := s.DocsState(); ds != "" {
+				extra = append(extra, ds)
+			}
+			if len(extra) > 0 {
+				if head, ok := strings.CutSuffix(strings.TrimSpace(txt), "</live>"); ok {
+					txt = head + strings.Join(extra, "\n") + "\n</live>"
+				}
+			}
 			if d.Plans != nil {
 				// the plan goes inside the board's own frame, before its closing tag, so the view stays one frame
 				if lines := plan.Lines(d.Plans.Get(agentID)); lines != "" {

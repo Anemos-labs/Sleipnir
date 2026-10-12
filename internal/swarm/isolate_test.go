@@ -466,21 +466,21 @@ func TestIsolatedWorkersEditDisjointFilesAndTheirWorkIsMerged(t *testing.T) {
 	sc := script{
 		"be-1": worker("T1", "a.txt", "alpha edited by be-1\n", "b.txt.new", "c.txt.new"),
 		"fe-1": worker("T2", "b.txt.new", "bravo by fe-1\n", "a.txt", "c.txt.new"),
-		"fs-1": worker("T3", "c.txt.new", "charlie by fs-1\n", "a.txt", "b.txt.new"),
+		"dv-1": worker("T3", "c.txt.new", "charlie by dv-1\n", "a.txt", "b.txt.new"),
 	}
 	// MaxWriters 1: an isolated run has no writer cap, three writers run at once.
 	r := newIsoRig(t, isoOpts{cfg: Config{MaxWriters: 1}, verify: true}, sc.fn())
 	r.sw.StartManager()
 	r.mustSpawn("backend", "edit a", "a.txt")
 	r.mustSpawn("frontend", "add b", "b.txt.new")
-	r.mustSpawn("fullstack", "add c", "c.txt.new")
+	r.mustSpawn("devops", "add c", "c.txt.new")
 	for _, id := range []string{"T1", "T2", "T3"} {
 		r.waitStatus(id, StatusReview)
 	}
 
 	// Each worker's tools ran in a tree of its own under the trees directory.
 	seen := map[string]bool{}
-	for _, id := range []string{"be-1", "fe-1", "fs-1"} {
+	for _, id := range []string{"be-1", "fe-1", "dv-1"} {
 		cwd := r.cwd(id)
 		if cwd == "" || cwd == r.repo || !strings.HasPrefix(cwd, r.trees+string(filepath.Separator)) || filepath.Base(cwd) != id {
 			t.Fatalf("%s worked in %q, want a tree under %s named %s", id, cwd, r.trees, id)
@@ -495,7 +495,7 @@ func TestIsolatedWorkersEditDisjointFilesAndTheirWorkIsMerged(t *testing.T) {
 	for _, c := range []struct{ who, file, want string }{
 		{"be-1", "b.txt.new", "(missing)"}, {"be-1", "c.txt.new", "(missing)"},
 		{"fe-1", "a.txt", "alpha\n"}, {"fe-1", "c.txt.new", "(missing)"},
-		{"fs-1", "a.txt", "alpha\n"}, {"fs-1", "b.txt.new", "(missing)"},
+		{"dv-1", "a.txt", "alpha\n"}, {"dv-1", "b.txt.new", "(missing)"},
 	} {
 		if got := r.sawText(c.who, c.file); got != c.want {
 			t.Fatalf("%s saw %q in %s, want %q: another worker's uncommitted work leaked", c.who, got, c.file, c.want)
@@ -523,7 +523,7 @@ func TestIsolatedWorkersEditDisjointFilesAndTheirWorkIsMerged(t *testing.T) {
 	if !rep.Applied || rep.Committed {
 		t.Fatalf("report: %+v", rep)
 	}
-	for file, want := range map[string]string{"a.txt": "alpha edited by be-1\n", "b.txt.new": "bravo by fe-1\n", "c.txt.new": "charlie by fs-1\n"} {
+	for file, want := range map[string]string{"a.txt": "alpha edited by be-1\n", "b.txt.new": "bravo by fe-1\n", "c.txt.new": "charlie by dv-1\n"} {
 		if got := readText(t, filepath.Join(r.repo, file)); got != want {
 			t.Fatalf("%s in the user's checkout = %q, want %q", file, got, want)
 		}

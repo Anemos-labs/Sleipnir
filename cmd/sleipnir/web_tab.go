@@ -1434,7 +1434,7 @@ func (t *webTab) StageLaunch(ctx context.Context, p wire.LaunchPatch) error {
 		v := *p.Verify
 		t.staged.Verify = &v
 	}
-	for _, pair := range []struct{ from, to **bool }{{&p.Commit, &t.staged.Commit}, {&p.Mailman, &t.staged.Mailman}, {&p.NoMcp, &t.staged.NoMcp}, {&p.TrustProject, &t.staged.TrustProject}} {
+	for _, pair := range []struct{ from, to **bool }{{&p.Commit, &t.staged.Commit}, {&p.Mailman, &t.staged.Mailman}, {&p.AutoDocs, &t.staged.AutoDocs}, {&p.NoMcp, &t.staged.NoMcp}, {&p.TrustProject, &t.staged.TrustProject}} {
 		if *pair.from != nil {
 			v := **pair.from
 			*pair.to = &v
@@ -1457,6 +1457,8 @@ func (t *webTab) StageLaunch(ctx context.Context, p wire.LaunchPatch) error {
 		t.sys("◇", "--commit "+onOff(*p.Commit)+" (applies when the team starts again)")
 	case p.Mailman != nil:
 		t.sys("◇", "--mailman "+onOff(*p.Mailman)+" (applies when the team starts again)")
+	case p.AutoDocs != nil:
+		t.sys("◇", "--auto-docs "+onOff(*p.AutoDocs)+" (applies when the team starts again)")
 	case p.NoMcp != nil:
 		t.sys("◇", "--no-mcp "+onOff(*p.NoMcp)+" (applies when the team starts again)")
 	case p.TrustProject != nil:
@@ -1484,6 +1486,9 @@ func (t *webTab) stagedFlags() []string {
 	}
 	if st.Mailman != nil {
 		f = append(f, "--mailman="+strconv.FormatBool(*st.Mailman))
+	}
+	if st.AutoDocs != nil {
+		f = append(f, "--auto-docs="+strconv.FormatBool(*st.AutoDocs))
 	}
 	if st.NoMcp != nil {
 		f = append(f, "--no-mcp="+strconv.FormatBool(*st.NoMcp))
@@ -1829,6 +1834,14 @@ func (t *webTab) meta() wire.MetaPatch {
 	m.Verify = ptr(o.Verify)
 	m.Commit = ptr(o.Commit)
 	m.Mailman = ptr(o.Mailman != nil && *o.Mailman)
+	m.AutoDocs = ptr(o.AutoDocs == nil || *o.AutoDocs)
+	team := []wire.TeamSlot{}
+	if s != nil && s.Swarm != nil {
+		for _, ts := range s.Team() {
+			team = append(team, wire.TeamSlot{Role: ts.Role, Model: ts.Model})
+		}
+	}
+	m.Team = &team
 	m.TrustProject = ptr(o.TrustProject)
 	m.NoMcp = ptr(o.NoMCP)
 	rm := map[string]string{}
@@ -1847,6 +1860,9 @@ func (t *webTab) meta() wire.MetaPatch {
 	}
 	if staged.Mailman != nil {
 		m.Mailman = ptr(*staged.Mailman)
+	}
+	if staged.AutoDocs != nil {
+		m.AutoDocs = ptr(*staged.AutoDocs)
 	}
 	if staged.NoMcp != nil {
 		m.NoMcp = ptr(*staged.NoMcp)

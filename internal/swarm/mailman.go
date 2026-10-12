@@ -442,7 +442,7 @@ func (mr *mailroom) ensureMember() (*member, error) {
 		return nil, err
 	}
 	s.register(nm, shared)
-	s.emit(events.TypeAgentSpawn, map[string]any{"id": id, "role": role.Name, "service": true, "model": s.modelFor(role.Name).ID})
+	s.emit(events.TypeAgentSpawn, map[string]any{"id": id, "role": role.Name, "service": true, "model": nm.model.ID})
 	mr.mu.Lock()
 	mr.member = nm
 	mr.mu.Unlock()

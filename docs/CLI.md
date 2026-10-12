@@ -191,7 +191,7 @@ not covered, and running it (go test, make, a hook's script) is what every appro
 
 ### `sleipnir chat`
 
-Interactive session. On a terminal chat without `--swarm` is a team of a manager and eight workers (kept under `swarm.max_workers`); the manager plans, delegates and reviews, and edits no file itself. `--swarm N` sets the number of workers, `--swarm 0` is a single agent, and the line chat (a pipe, `--plain`) is a single agent too. On a terminal that can be drawn on (stdin and stdout are terminals and `TERM` is not `dumb`) the chat is a
+Interactive session. On a terminal chat without `--swarm` is a team of a manager and eight workers, one of each role (kept under `swarm.max_workers`); the manager plans, delegates and reviews, and edits no file itself. `--swarm N` sets the number of workers (at least 8), `--role-model` given once per worker names a team of your own (`--role-model backend --role-model backend ...`), `--swarm 0` is a single agent, and the line chat (a pipe, `--plain`) is a single agent too. On a terminal that can be drawn on (stdin and stdout are terminals and `TERM` is not `dumb`) the chat is a
 program: what is said goes into the terminal's own scrollback (so copy, search, tmux and SSH work on it), and the last few rows,
 the live region, are redrawn in place: a status line (what the agent is doing, for how long, tokens, cost, `esc to interrupt`), the
 input box, and a footer with the permission mode, the keys of the pages (`ctrl+t` stats, `ctrl+g` cockpit for a team) and the model and
@@ -244,6 +244,8 @@ over, as it would have at the prompt.
 Usage of chat:
   -allow value
         a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint and vet, and go mod init and tidy, never install or run); more in docs/CONFIGURATION.md
+  -auto-docs
+        swarm: the team's docs worker keeps README, docs/ and AGENTS.md current after every accepted task without being asked (default: config swarm.auto_docs, true; --auto-docs=false makes docs a role the manager assigns)
   -budget-usd float
         stop when spend reaches this many US dollars
   -commit
@@ -269,7 +271,7 @@ Usage of chat:
   -resume string
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
-        role=model override, repeatable (e.g. manager=heimdallm/x, mailman=heimdallm/small)
+        role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
   -swarm int
         chat as a team of a manager and N workers (config swarm.max_workers is the ceiling); on a terminal the default is 8 workers, --swarm 0 is a single agent
   -trust-project
@@ -381,6 +383,8 @@ flags:
         refuse the open questions when no page has had the interface open for this long (0 never refuses for that) (default 1m0s)
   -ask-timeout duration
         refuse a question that nobody answered in this long, as a run with nobody to ask would (0 waits for an answer)
+  -auto-docs
+        swarm: the team's docs worker keeps README, docs/ and AGENTS.md current after every accepted task without being asked (default: config swarm.auto_docs, true; --auto-docs=false makes docs a role the manager assigns)
   -budget-usd float
         default spending limit of new sessions, in US dollars
   -commit
@@ -406,7 +410,7 @@ flags:
   -resume string
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
-        role=model override for new sessions, repeatable (e.g. manager=heimdallm/x, mailman=heimdallm/small)
+        for new sessions: role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
   -swarm int
         new sessions are a team of a manager and N workers (config swarm.max_workers is the ceiling); the default is 8 workers, --swarm 0 is a single agent
   -trust-project
@@ -445,7 +449,7 @@ refuses a question that nobody has answered in that time, and tells the worker s
 action that is allowed, or finish and say which permission was needed), which is what a run that is left alone wants.
 
 `sleipnir swarm N "goal" [flags]` is `sleipnir run --swarm N "goal" [flags]`: a manager and up to N workers. N counts
-workers, comes first and must be 1 or more (anything else is an error that shows an example); the flags are `run`'s, and
+workers, comes first and must be 8 or more, one of each role (anything else is an error that shows an example); the flags are `run`'s, and
 `sleipnir swarm -h` prints them under swarm's own usage line. `swarm.max_workers` in the configuration is the ceiling: a
 request for more workers than it allows is refused before anything starts.
 
@@ -460,6 +464,8 @@ flags:
         a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint and vet, and go mod init and tidy, never install or run); more in docs/CONFIGURATION.md
   -ask-timeout duration
         refuse a question to the person that nobody answers within this time, and tell the worker (default: wait for the person); for a run that is left alone
+  -auto-docs
+        swarm: the team's docs worker keeps README, docs/ and AGENTS.md current after every accepted task without being asked (default: config swarm.auto_docs, true; --auto-docs=false makes docs a role the manager assigns)
   -budget-usd float
         stop when spend reaches this many US dollars
   -capture
@@ -495,7 +501,7 @@ flags:
   -resume string
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
-        role=model override, repeatable (e.g. manager=heimdallm/x)
+        role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
   -session-dir string
         directory for this run's recording (events.jsonl, blobs/, checkpoints/); default <state>/sessions/<id>, <state> being $SLEIPNIR_HOME or ~/.sleipnir
   -swarm int

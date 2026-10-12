@@ -58,6 +58,19 @@ type Config struct {
 	Verify func(ctx context.Context, dir, cmd string) (string, int, error)
 	// IdleRetire retires idle workers after this long (0 = never).
 	IdleRetire time.Duration
+	// Team names the role of each worker slot (team.go): a worker of a role can be
+	// started only while the role has a free slot. Empty: roles are limited by
+	// MaxWorkers alone.
+	Team []string
+	// JudgeManagerShell leaves the manager's shell commands to the permission engine
+	// alone (its plan-mode profile parses shell syntax) instead of also holding them to
+	// the conservative allowlist of readOnlyCommand. The session sets it when it
+	// installed the harness's own manager profile.
+	JudgeManagerShell bool
+	// AutoDocs keeps the team's docs worker at work without being asked (docs.go):
+	// accepted tasks and agreements become a "docs: catch up" task the harness gives
+	// to the docs worker when it is idle. It applies only to a team with a docs slot.
+	AutoDocs bool
 
 	// Board bounds what agents can put on the board: tasks, pending notes, alerts.
 	Board BoardLimits
@@ -194,6 +207,9 @@ type Deps struct {
 	// train one role against fixed others, for example the manager on the policy
 	// under training and the workers on a stronger reference model.
 	RoleModels map[string]RoleModel
+	// SlotModels overrides the model of one team slot (Config.Team, by index); a slot
+	// without one runs on its role's model. A worker keeps its slot's model for life.
+	SlotModels []RoleModel
 	// CaptureTokens asks endpoints for token ids and logprobs on every call.
 	CaptureTokens bool
 	// OnWrite is told after every successful write (the checkpoint store uses it
@@ -254,6 +270,11 @@ type Swarm struct {
 	manager  string
 	shared   *kv.Layer
 	roleLay  map[string]*kv.Layer
+	// docs is the auto-docs keeper (docs.go); nil without auto-docs.
+	docs *docsKeeper
+	// hidden marks roles present only so that recovered workers keep theirs
+	// (LegacyRoles): they are never spawned or listed.
+	hidden   map[string]bool
 	rootCtx  context.Context
 	cancel   context.CancelFunc
 	closed   bool
@@ -384,7 +405,7 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 		roles = with
 	}
 	s := &Swarm{cfg: cfg, deps: deps, roles: roles, members: map[string]*member{}, seq: map[string]int{},
-		roleLay: map[string]*kv.Layer{}, lastSeen: map[string]*Snapshot{}, shared: deps.Shared,
+		roleLay: map[string]*kv.Layer{}, hidden: map[string]bool{}, lastSeen: map[string]*Snapshot{}, shared: deps.Shared,
 		verifySem: make(chan struct{}, cfg.MaxVerifies), merged: map[string]mergeRec{}, bounces: map[string]int{}, treeAgents: map[string]bool{}}
 	s.stalls.init()
 	s.handoffs = map[string]handoffRec{}
@@ -415,6 +436,7 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 	for name, r := range roles {
 		s.roleLay[name] = r.Layer()
 	}
+	s.docs = newDocsKeeper(cfg)
 	return s
 }
 
@@ -543,7 +565,7 @@ func (s *Swarm) StartManager() (*agent.Agent, error) {
 	s.manager = id
 	s.mu.Unlock()
 	m.setState(s, "running", "")
-	s.emit(events.TypeAgentSpawn, map[string]any{"id": id, "role": "manager", "model": s.modelFor("manager").ID})
+	s.emit(events.TypeAgentSpawn, map[string]any{"id": id, "role": "manager", "model": m.model.ID})
 	return m.a, nil
 }
 
@@ -718,19 +740,27 @@ func (g guardWithAfter) AfterWrite(agent, path string) {
 	}
 }
 
-// modelFor is the model a role runs on.
-func (s *Swarm) modelFor(role string) cost.Model {
-	if rm, ok := s.deps.RoleModels[role]; ok && rm.Provider != nil {
-		return rm.Model
+// modelFor is the model and endpoint an agent of role in team slot slot (-1: none)
+// runs on: the slot's, else the role's, else the session's.
+func (s *Swarm) modelFor(role string, slot int) RoleModel {
+	if slot >= 0 && slot < len(s.deps.SlotModels) && s.deps.SlotModels[slot].Provider != nil {
+		return s.deps.SlotModels[slot]
 	}
-	return s.deps.Model
+	if rm, ok := s.deps.RoleModels[role]; ok && rm.Provider != nil {
+		return rm
+	}
+	return RoleModel{Provider: s.deps.Provider, Model: s.deps.Model}
 }
 
-// spawnableRoles returns configured roles excluding the manager and service roles.
+// spawnableRoles returns configured roles excluding the manager, service roles and
+// legacy roles kept only for recovery; with a team, only the team's roles.
 func (s *Swarm) spawnableRoles() []string {
+	if s.teamLimited() {
+		return s.teamRoles()
+	}
 	var out []string
 	for _, n := range s.roles.Names() {
-		if n != "manager" && !s.isService(n) {
+		if n != "manager" && !s.isService(n) && !s.hidden[n] {
 			out = append(out, n)
 		}
 	}

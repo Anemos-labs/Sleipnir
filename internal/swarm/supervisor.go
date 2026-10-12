@@ -53,6 +53,7 @@ func (s *Swarm) superviseOnce(now time.Time) {
 		s.guard("member "+m.id, func() { s.superviseMember(m, now) })
 	}
 	s.guard("stalls", s.sweepStalls)
+	s.guard("docs", func() { s.docsTick(now) })
 }
 
 func (s *Swarm) superviseMember(m *member, now time.Time) {

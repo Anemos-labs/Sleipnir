@@ -32,7 +32,7 @@ func wakeRig(t *testing.T, cfg Config, gate chan struct{}) (*rvRig, *noticeSink)
 		cfg.WakeMax = 5 * time.Second
 	}
 	cfg.MaxWriters = 8
-	taskOf := map[string]string{"be-1": "T1", "fe-1": "T2", "fs-1": "T3"}
+	taskOf := map[string]string{"be-1": "T1", "fe-1": "T2", "dv-1": "T3"}
 	r := newRVRigWith(t, cfg, func(ctx context.Context, c *rvCall) rvReply {
 		if c.Role == "manager" {
 			switch {
@@ -40,7 +40,7 @@ func wakeRig(t *testing.T, cfg Config, gate chan struct{}) (*rvRig, *noticeSink)
 				return rvReply{Tools: []rvToolCall{
 					{"spawn", map[string]any{"role": "backend", "task": "one"}},
 					{"spawn", map[string]any{"role": "frontend", "task": "two"}},
-					{"spawn", map[string]any{"role": "fullstack", "task": "three"}},
+					{"spawn", map[string]any{"role": "devops", "task": "three"}},
 				}}
 			case c.Sees(wakeMarker):
 				return rvReply{Text: "noted the update"}
@@ -105,7 +105,7 @@ func TestWakeHappensOnceForABurstOfThreeCompletions(t *testing.T) {
 	if !r.prov.sawEver("[mail h") || !r.prov.sawEver(wakeMarker) {
 		t.Fatal("the manager never saw the note")
 	}
-	if !sink.has("mgr wake: " + wakeMarker + ": T1 is in review (be-1); T2 is in review (fe-1); T3 is in review (fs-1)") {
+	if !sink.has("mgr wake: " + wakeMarker + ": T1 is in review (be-1); T2 is in review (fe-1); T3 is in review (dv-1)") {
 		t.Fatalf("the person was not shown the wake: %v", sink.all())
 	}
 	// The notice is the event's note, word for word: the web page drops the notice or the feed's row of the same event by comparing them.

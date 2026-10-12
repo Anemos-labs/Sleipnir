@@ -303,7 +303,9 @@ as data and never scanned for placeholders. The expanded prompt is limited to 25
 Definitions add roles to a swarm: `<agents>/<name>.md`, with frontmatter and a body that becomes the role's
 instructions (its "role pin"). They are read **only in swarm sessions** (`sleipnir swarm N ...`, `run --swarm N`,
 `chat --swarm N`). The manager is told which project roles exist and can `spawn` them like the built-in ones
-(`backend`, `frontend`, `fullstack`, `tester`, `reviewer`, `scout`, `docs`).
+(`architect`, `scout`, `backend`, `frontend`, `devops`, `tester`, `docs`, `reviewer`). The default team has one slot of
+each built-in role and of each project role; `--role-model` given per slot names another team (see
+[Configuration](CONFIGURATION.md)).
 
 ```markdown
 ---
@@ -365,7 +367,8 @@ built-in roles too), or `models.roles` in a config file (lowest priority of the 
 **Limits and reserved names.** The instructions cost their size on every request of every agent of the role: over 800
 tokens loads with a warning that says so, over 4,000 tokens is refused. At most 128 definitions, 64 KB each. A
 definition may not take the name or short id of a built-in role (`manager`/`mgr`, `backend`/`be`, `frontend`/`fe`,
-`fullstack`/`fs`, `tester`/`ts`, `reviewer`/`rv`, `scout`/`sc`, `docs`/`dc`), so a repository cannot replace the
+`devops`/`dv`, `architect`/`ar`, `tester`/`ts`, `reviewer`/`rv`, `scout`/`sc`, `docs`/`dc`, and the legacy
+`fullstack`/`fs`), so a repository cannot replace the
 reviewer.
 
 ## 5. Hooks

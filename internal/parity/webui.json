@@ -1834,6 +1834,14 @@
      "flag": "verify"
     },
     {
+     "id": "flag:autoDocs",
+     "scope": "config",
+     "keys": [
+      "swarm.auto_docs"
+     ],
+     "flag": "auto-docs"
+    },
+    {
      "id": "flag:commit",
      "scope": "flag",
      "flag": "commit"
@@ -2014,11 +2022,10 @@
    "name",
    "folder (--cwd)",
    "model (--model)",
-   "workers (--swarm)",
+   "team (--swarm, --role-model)",
    "isolation",
    "verify tasks with (--verify)",
    "team options",
-   "role models (--role-model)",
    "pre-approve actions (--allow)",
    "trust and tools",
    "budget (--budget-usd)",
@@ -2028,11 +2035,13 @@
   "checkboxes": [
    "commit --commit",
    "mailman --mailman",
+   "autoDocs auto-docs (--auto-docs)",
    "trustProject --trust-project",
    "noMcp --no-mcp"
   ],
   "controlFlags": [
    "allow",
+   "auto-docs",
    "budget-usd",
    "commit",
    "cwd",
@@ -2047,7 +2056,6 @@
    "verify"
   ],
   "controlIds": [
-   "nsAddRole",
    "nsAddRule",
    "nsBudget",
    "nsCli",
@@ -2062,9 +2070,6 @@
    "nsModes",
    "nsName",
    "nsProjects",
-   "nsRole",
-   "nsRoleM",
-   "nsRoleTags",
    "nsRule",
    "nsRuleErr",
    "nsRuleEx",
@@ -2073,14 +2078,16 @@
    "nsRules",
    "nsStart",
    "nsSw",
-   "nsSwarm",
+   "nsTeamErr",
+   "nsTeamRows",
    "nsVerify",
    "nsVerifyHints",
    "nsWarn"
   ],
-  "commandLine": "sleipnir chat --resume 20260101-000000-abcdef --cwd /p --model a/m --mode plan --swarm 3 --isolation worktree --verify v --commit --mailman --budget-usd 5 --role-model backend=a/w --allow tests --trust-project --no-mcp",
+  "commandLine": "sleipnir chat --resume 20260101-000000-abcdef --cwd /p --model a/m --mode plan --swarm 8 --isolation worktree --verify v --commit --mailman --auto-docs=false --budget-usd 5 --role-model backend=a/w --allow tests --trust-project --no-mcp",
   "flags": [
    "allow",
+   "auto-docs",
    "budget-usd",
    "commit",
    "cwd",
@@ -2097,6 +2104,7 @@
   ],
   "flagsMailmanOff": [
    "allow",
+   "auto-docs",
    "budget-usd",
    "commit",
    "cwd",
@@ -2113,6 +2121,7 @@
   ],
   "labelFlags": [
    "allow",
+   "auto-docs",
    "budget-usd",
    "commit",
    "cwd",
@@ -2144,7 +2153,7 @@
   "settingsButton": true
  },
  "runLine": {
-  "line": "sleipnir chat --model a/m --mode plan --swarm 3 --isolation worktree --verify \"v\" --budget-usd 5 --commit --mailman --no-mcp --trust-project",
+  "line": "sleipnir chat --model a/m --mode plan --swarm 8 --isolation worktree --verify \"v\" --budget-usd 5 --commit --mailman --no-mcp --trust-project",
   "flags": [
    "budget-usd",
    "commit",
@@ -2234,6 +2243,7 @@
     "positionals": [],
     "flags": [
      "allow",
+     "auto-docs",
      "budget-usd",
      "commit",
      "continue",
@@ -2287,6 +2297,7 @@
     "flags": [
      "allow",
      "ask-timeout",
+     "auto-docs",
      "budget-usd",
      "capture",
      "commit",
@@ -2327,6 +2338,7 @@
     "flags": [
      "allow",
      "ask-timeout",
+     "auto-docs",
      "budget-usd",
      "capture",
      "commit",

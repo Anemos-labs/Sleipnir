@@ -238,6 +238,13 @@ func (h *holdHooks) BeforeStop(ctx context.Context, agentID, role, final string,
 		}
 		u = h.s.unfinishedWork()
 	}
+	if u.empty() && h.s.docsPending() {
+		// The docs worker has not caught up with the last accepted work: the
+		// harness starts or finishes that pass by itself, so the manager waits.
+		reason := "Not finished: the docs worker has not caught up with the accepted work (the harness runs that pass). Use wait, accept its submission, then give your final answer."
+		h.s.emitAs(agentID, events.TypeSwarmHold, map[string]any{"reason": reason})
+		return agent.StopOutcome{Veto: true, Reason: reason}
+	}
 	if u.empty() {
 		return agent.StopOutcome{}
 	}

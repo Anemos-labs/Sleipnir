@@ -392,7 +392,7 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	args := argsFor(body.NewSessionRequest)
-	if body.Swarm == nil {
+	if body.Swarm == nil && len(body.Team) == 0 {
 		args = append(args, "--swarm", strconv.Itoa(h.d.Workers))
 	}
 	if !body.Mailman && h.defaults().Mailman {

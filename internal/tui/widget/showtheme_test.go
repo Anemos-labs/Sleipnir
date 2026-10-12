@@ -29,7 +29,7 @@ func TestShowDefaultPaletteIsTheSketches(t *testing.T) {
 			t.Errorf("%s is %+v, want %+v", name, c[0], c[1])
 		}
 	}
-	// the roles: manager, backend, frontend, tester, reviewer, docs are the sketch's colours, and the two spares differ from all
+	// the roles: manager, backend, frontend, tester, reviewer, docs are the sketch's colours, and scout, devops and architect differ from all
 	for i, hex := range []string{"#bb9af7", "#7aa2f7", "#7dcfff", "#9ece6a", "#e0af68", "#ff9e64"} {
 		if p.RoleColors[i] != h(hex) {
 			t.Errorf("role %d is %+v, the sketches have %s", i, p.RoleColors[i], hex)

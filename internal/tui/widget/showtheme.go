@@ -20,8 +20,8 @@ type Palette struct {
 	Good, Bad, Warn, Info, Accent cell.Color
 	// Dim is secondary text, Faint borders and empty tracks.
 	Dim, Faint cell.Color
-	// RoleColors colour agents by role: manager, backend, frontend, tester, reviewer, docs, and two spares.
-	RoleColors [8]cell.Color
+	// RoleColors colour agents by role: manager, backend, frontend, tester, reviewer, docs, scout, devops and architect.
+	RoleColors [9]cell.Color
 	// HorseBody, HorseHair (mane and tail), HorseEye (the dark of the eye) and HorseHoof colour the horse around its legs.
 	HorseBody, HorseHair, HorseEye, HorseHoof cell.Color
 	// Mono says that the terminal shows no colours: the horse then draws shades instead. It is also implied when every colour
@@ -41,8 +41,8 @@ func DefaultPalette() Palette {
 		Accent:      h("#bb9af7"),
 		Dim:         h("#565f89"),
 		Faint:       h("#3b4261"),
-		RoleColors: [8]cell.Color{
-			h("#bb9af7"), h("#7aa2f7"), h("#7dcfff"), h("#9ece6a"), h("#e0af68"), h("#ff9e64"), h("#73daca"), h("#e5a1e0"),
+		RoleColors: [9]cell.Color{
+			h("#bb9af7"), h("#7aa2f7"), h("#7dcfff"), h("#9ece6a"), h("#e0af68"), h("#ff9e64"), h("#73daca"), h("#e5a1e0"), h("#b4f9f8"),
 		},
 		HorseBody: h("#e9e7f5"),
 		HorseHair: h("#8f6bf0"),

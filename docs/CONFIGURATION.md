@@ -91,8 +91,9 @@ Flags are applied by the commands themselves, after the merge, and always win ov
 | `--model M` | `models.default` (and `SLEIPNIR_MODEL`) | `chat`, `run`, `swarm`, `doctor`, `rl rollout`, `rl eval` |
 | `--mode M` | `permissions.mode` (role profiles under `permissions.roles` still apply) | `chat`, `run`, `swarm` |
 | `--budget-usd N` | `swarm.budget_usd` (and, with `--swarm`, the built-in cap), and it also caps a single agent. Zero, negative and NaN are not budgets: `0` is the same as leaving the flag out, and the others are refused. To run a swarm without a cap set `swarm.budget_usd` to 0 in your own file or `SLEIPNIR_SWARM_BUDGET_USD=0` | `chat`, `run`, `swarm` |
-| `--swarm N` | the team size: a manager and N workers (the manager is not counted). `0` is a single agent. `swarm.max_workers` is the ceiling: a request for more workers than it allows is refused before anything starts | `chat`, `run` |
-| `--role-model role=M` | the model of one role (repeatable). A role the session does not have is an error (`no role named "backnd"`, with the roles it has); without `--swarm` there is only one agent and the flag draws a warning | `run`, `swarm`, `rl rollout`, `rl eval` |
+| `--swarm N` | the team size: a manager and N workers (the manager is not counted). `0` is a single agent; a team has at least 8 workers, and the default team is one slot of each role. `swarm.max_workers` is the ceiling: a request for more workers than it allows is refused before anything starts | `chat`, `run` |
+| `--role-model role=M` | the model of one role (repeatable). A role the session does not have is an error (`no role named "backnd"`, with the roles it has); without `--swarm` there is only one agent and the flag draws a warning. Given more than once for a worker role, or as a bare role (`--role-model backend`), the values are the team instead: one worker slot each, on its model or the role's, and only the listed roles have slots (`--role-model backend --role-model backend --role-model frontend …`, at least 8). `compactor` and `mailman` only take a model | `chat`, `run`, `swarm`, `web`, `rl rollout`, `rl eval` |
+| `--auto-docs` | `swarm.auto_docs` | `chat`, `run`, `swarm`, `web` |
 | `--no-web` | removes `web_fetch` and `web_search` | `run`, `swarm` |
 | `--trust-project` | the trust gate of section 4 | `chat`, `run`, `swarm`, `config`, `doctor` |
 
@@ -310,6 +311,7 @@ or replicas may still need cold prefills.
 | `requests_per_minute` | integer | `0` (500) | yes | Request budget of the whole swarm. Lower it if the endpoint answers 429 |
 | `max_concurrent_requests` | integer | `0` (24) | yes | Requests in flight across the swarm |
 | `isolation` | string | `none` | yes | `none` (all agents edit the one working tree, guarded by write leases; `shared` is the older spelling of the same thing) or `worktree`: each writer works in a git worktree of its own and finished work is integrated through a verifying merge queue (`docs/SWARM-PROTOCOL.md`). `--isolation` overrides it. The trees live in your cache directory, whatever the configuration says |
+| `auto_docs` | boolean | `true` | yes | The team's docs worker keeps README, `docs/` and `AGENTS.md` current without being asked: after every accepted task and agreement the harness gives it a `docs: catch up` task with the changes (`docs/SWARM-PROTOCOL.md`). It applies to a team with a docs slot; `--auto-docs=false` makes docs a role the manager assigns |
 | `mailman` | boolean | `false` | yes | Route worker mail through a mailman agent that digests bursts (`docs/SWARM-PROTOCOL.md`); `--mailman` overrides it. It runs on the session's model unless `--role-model mailman=<model>` names one |
 | `budget_usd` | number | `50` | swarm | Total spend cap for a swarm run, retired agents included; when spent, workers stop and no request is admitted. On by default, because a swarm can spend many times what one agent does; `0` (in your own file or `SLEIPNIR_SWARM_BUDGET_USD`) removes it. A project file cannot set it unless trusted (section 4). `--budget-usd` overrides it for one run and is the way to cap a single agent. The run's header line shows the cap, and the message when it is reached says how to raise it. `sleipnir web` does not apply the built-in cap to the sessions started in its page (the New session dialog starts at `off`), only a budget that `--budget-usd` or this key sets |
 
@@ -529,12 +531,16 @@ stricter mode, never grant what the session would not. A role that takes a stric
 from scratch under it: the session's `allow` rules do not carve exceptions out of the role's mode, only the role's own
 `allow` rules do.
 
-Role names: `worker` is the role of a single agent (`chat`/`run` without `--swarm`); a swarm adds `manager`, `backend`,
-`frontend`, `fullstack`, `tester`, `reviewer`, `scout`, `docs`, plus roles defined in `.sleipnir/agents/`.
-`reviewer` and `scout` are read-only in the engine (plan mode, with `go test`, `go vet`, `pytest`, `npm test`,
+Role names: `worker` is the role of a single agent (`chat`/`run` without `--swarm`); a swarm adds `manager`, `architect`,
+`scout`, `backend`, `frontend`, `devops`, `tester`, `docs`, `reviewer`, plus roles defined in `.sleipnir/agents/`
+(`fullstack` remains for training tasks and resumed sessions that name it). `architect`, `reviewer` and `scout` are
+read-only in the engine (plan mode, with `go test`, `go vet`, `pytest`, `npm test`,
 `npm run test:*`, `cargo test`, `cargo check` and `make test` allowed so they can verify what they review). Their
 profile also denies the job tools `bash_output` and `bash_kill` by name: background jobs are session-wide, and a
-reviewer could otherwise read another agent's job output. (In an isolated run the manager has the same profile.)
+reviewer could otherwise read another agent's job output. Read-only roles may also fetch and search the web, as far as
+the session's mode and rules allow. The manager has the same profile, plus the reading commands of `gh` (`gh pr view`,
+`gh run list`, `gh auth status`, ...); it never writes files, and its shell commands are judged by this profile, so a
+pipe or `&&` of read-only commands, an absolute path inside the workspace or `git -C` is allowed.
 
 ```jsonc
 "permissions": {

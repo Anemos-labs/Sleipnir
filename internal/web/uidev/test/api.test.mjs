@@ -76,7 +76,7 @@ function confirmServer(o) {
 test('428 on any request: the shell is asked with the server\'s scope and reasons; yes confirms that scope and repeats the same request once', async () => {
   const { SL, fetch, toasts } = setup(confirmServer());
   const asks = []; SL.api.cfg.askConfirm = async a => { asks.push(a); return true; };
-  const r = await SL.api.post('/api/sessions/a/restart', { kind: 'swarm', swarm: 3, fresh: false });
+  const r = await SL.api.post('/api/sessions/a/restart', { kind: 'swarm', swarm: 9, fresh: false });
   assert.equal(r.ok, true); assert.equal(r.status, 202);
   assert.deepEqual(plain(asks), [{ scope: 'restart:a:0123456789abcdef', reasons: ['permission mode yolo', 'allow Bash(go test:*)'], message: 'this action needs a confirmation: obtain an id for the scope and send it as X-Confirm', method: 'POST', path: '/api/sessions/a/restart' }]);
   const tries = fetch.calls.filter(c => c.path === '/api/sessions/a/restart');
@@ -104,7 +104,7 @@ test('428: no from the person sends nothing more and toasts nothing; without the
 test('428: an id that is refused on the repeat is renewed once for the same scope; the person is asked only once', async () => {
   const { SL, fetch } = setup(confirmServer({ expireFirst: true }));
   let n = 0; SL.api.cfg.askConfirm = async () => { n++; return true; };
-  const r = await SL.api.post('/api/sessions/a/restart', { kind: 'swarm', swarm: 2 });
+  const r = await SL.api.post('/api/sessions/a/restart', { kind: 'swarm', swarm: 8 });
   assert.equal(r.ok, true); assert.equal(n, 1);
   assert.deepEqual(fetch.calls.filter(c => c.path === '/api/sessions/a/restart').map(c => c.headers['X-Confirm'] || ''), ['', 'id1', 'id2']);
 });
