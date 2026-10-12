@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/anemos-labs/sleipnir/internal/rl"
 )
@@ -61,8 +62,11 @@ func RepoContains(ctx context.Context, g *Git, task rl.Task, base, text string) 
 		}
 	}
 	// A checkout git cannot read is not a plain directory: its files may hold what came after the task's commit.
-	if _, err := os.Lstat(filepath.Join(p, ".git")); err == nil {
+	switch _, err := os.Lstat(filepath.Join(p, ".git")); {
+	case err == nil:
 		return false, fmt.Errorf("%s has git metadata that git cannot read", p)
+	case !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, syscall.ENOTDIR):
+		return false, fmt.Errorf("%s: looking for git metadata: %w", p, err) // unknown is not absent
 	}
 	want := bytes.ToLower([]byte(text))
 	found := false

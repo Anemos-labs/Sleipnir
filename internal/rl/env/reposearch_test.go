@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/rl"
@@ -60,5 +62,19 @@ func TestRepoContains(t *testing.T) {
 	}
 	if got, err := RepoContains(ctx, g, rl.Task{ID: "b", Repo: rl.RepoSpec{Path: broken, Commit: start}}, "", "almanac.count"); err == nil {
 		t.Errorf("a checkout git cannot read was searched as a directory: %v", got)
+	}
+	// A directory whose entries cannot be looked up (no search permission) is an error, not a plain directory.
+	if runtime.GOOS != "windows" && os.Geteuid() != 0 {
+		locked := t.TempDir()
+		if err := os.WriteFile(filepath.Join(locked, "spec.txt"), []byte("almanac.count\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(locked, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+		if got, err := RepoContains(ctx, g, rl.Task{ID: "l", Repo: rl.RepoSpec{Path: locked}}, "", "almanac.count"); err == nil || !strings.Contains(err.Error(), "git metadata") {
+			t.Errorf("a directory whose git metadata cannot be looked up: %v %v, want the lookup's error", got, err)
+		}
 	}
 }
