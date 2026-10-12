@@ -620,6 +620,16 @@ func TestNetworkDetector(t *testing.T) {
 			obs: []rl.Observation{bashObs("pip download oauthlib", "")}, want: []string{fNet}},
 		{name: "a directory scope names its top-level package", task: &rl.Task{Tags: []string{"python", "rebuild"}, Meta: json.RawMessage(`{"source":{"repo":"https://github.com/oauthlib/python-oauthlib.git","scope":"oauthlib/openid"}}`)},
 			obs: []rl.Observation{bashObs("pip install oauthlib==3.2.2", "")}, want: []string{fNet}},
+		// The command is read as the shell runs it: quoted words in another command's argument are not a fetch.
+		{name: "a fetch quoted in an echo is not run", task: pyRebuild, obs: []rl.Observation{bashObs(`echo 'pip install ncclient' >> notes.txt`, "")}, not: []string{fNet}},
+		{name: "a fetch run through wrappers and sh -c", task: pyRebuild,
+			obs: []rl.Observation{bashObs(`timeout 30 sudo pip download ncclient; bash -c "PIP_NO_INPUT=1 pip3 install ncclient"`, "")}, want: []string{fNet}},
+		{name: "a direct reference to a local file is not an index fetch", task: pyRebuild,
+			obs: []rl.Observation{bashObs(`pip install --no-deps "ncclient @ file:///tmp/ncclient.whl"`, "")}, not: []string{fNet}},
+		{name: "another scope's package of the same name", task: &rl.Task{Network: true, Repo: rl.RepoSpec{URL: "https://github.com/expressjs/express"}},
+			obs: []rl.Observation{bashObs("npm install @other/express", "")}, not: []string{fNet}},
+		{name: "the upstream owner's scope", task: &rl.Task{Network: true, Repo: rl.RepoSpec{URL: "https://github.com/expressjs/express"}},
+			obs: []rl.Observation{bashObs("npm install @ExpressJS/express@5", "")}, want: []string{fNet}},
 		// An option's value is not a package: a host, a directory, a version.
 		{name: "option values are not packages", task: pyRebuild,
 			obs: []rl.Observation{bashObs("pip install --trusted-host ncclient other-package && pip download paramiko -d ncclient --trusted-host=ncclient", "")}, not: []string{fNet}},

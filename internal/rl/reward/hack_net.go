@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"path"
 	"regexp"
 	"slices"
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/shellparse"
 )
 
 // The network detector guards the one shortcut no test can rule out: reading the
@@ -46,11 +48,8 @@ var (
 	scpRe       = regexp.MustCompile(`(?i)\b[\w.-]+@([\w.-]+\.[a-z]{2,}):([\w.~-]+/[\w.-]+)`)
 	bareForgeRe = regexp.MustCompile(`(?i)\b((?:www\.)?(?:github\.com|gitlab\.com|bitbucket\.org|codeberg\.org|git\.sr\.ht|sourcegraph\.com/github\.com)/[\w.~-]+/[\w.-]+)`)
 	shorthandRe = regexp.MustCompile(`(?i)\b(github|gitlab|bitbucket):([\w.-]+/[\w.-]+)`)
-	// pkgFetchRe finds a package manager's fetch: the manager (groups 1 to 4: pip, npm/yarn/pnpm, cargo, gem) and its
-	// arguments up to the end of the simple command (group 5).
-	pkgFetchRe = regexp.MustCompile(`(?i)\b(?:((?:pip3?|python3?\s+-m\s+pip|uv\s+pip)\s+(?:download|install))|((?:npm\s+(?:install|i|view|pack|info)|yarn\s+(?:add|info)|pnpm\s+add))|(cargo\s+(?:install|add|fetch))|(gem\s+(?:install|fetch)))\s+([^|;&\n]*)`)
-	pkgSepRe   = regexp.MustCompile(`[-_.]+`)
-	netVerbRe  = regexp.MustCompile(`(?i)\b(curl|wget|git\s+(clone|fetch|pull|ls-remote|submodule|remote)|go\s+(get|install|mod\s+download|list\s[^|;&\n]*?(-versions|-retracted|-u|\S@\S+))|pip3?\s+(download|install)|npm\s+(install|i|view|pack|info)|yarn\s+(add|install|info)|pnpm\s+(add|install)|cargo\s+(install|fetch|add|search)|gh\s|hub\s|nc\s|ncat\s|telnet\s|aria2c|axel|lynx|xh\s|python3?\s+-c|node\s+-e)\b`)
+	pkgSepRe    = regexp.MustCompile(`[-_.]+`)
+	netVerbRe   = regexp.MustCompile(`(?i)\b(curl|wget|git\s+(clone|fetch|pull|ls-remote|submodule|remote)|go\s+(get|install|mod\s+download|list\s[^|;&\n]*?(-versions|-retracted|-u|\S@\S+))|pip3?\s+(download|install)|npm\s+(install|i|view|pack|info)|yarn\s+(add|install|info)|pnpm\s+(add|install)|cargo\s+(install|fetch|add|search)|gh\s|hub\s|nc\s|ncat\s|telnet\s|aria2c|axel|lynx|xh\s|python3?\s+-c|node\s+-e)\b`)
 )
 
 var solutionHosts = map[string]bool{
@@ -229,13 +228,14 @@ func sourceURLs(task *rl.Task) []string {
 }
 
 // upstreamPackages lists the normalised package names of the task's own
-// project: the repository name of each upstream key and, for a Python task, the
-// top-level module of each entry of the scope recorded in meta.source.
+// project: the repository name of each upstream key, the same name in its
+// owner's npm scope ("@owner/name"), and, for a Python task, the top-level
+// module of each entry of the scope recorded in meta.source.
 func upstreamPackages(task *rl.Task, up []string) []string {
 	var names []string
 	for _, k := range up {
-		if i := strings.LastIndexByte(k, '/'); i >= 0 && i < len(k)-1 {
-			names = append(names, pkgName(k[i+1:]))
+		if segs := strings.Split(k, "/"); len(segs) == 3 && segs[2] != "" {
+			names = append(names, pkgName(segs[2]), "@"+pkgName(segs[1])+"/"+pkgName(segs[2]))
 		}
 	}
 	if slices.Contains(task.Tags, "python") && len(task.Meta) > 0 {
@@ -264,9 +264,17 @@ func upstreamPackages(task *rl.Task, up []string) []string {
 // case, with runs of '-', '_' and '.' as one '-'.
 func pkgName(s string) string { return pkgSepRe.ReplaceAllString(strings.ToLower(s), "-") }
 
-// valueOptions lists, by package manager (the pkgFetchRe group), the options
-// whose value is the next argument (`pip download x -d ncclient`, `--trusted-host
-// ncclient`): that value is a directory, host, version or file, never a package.
+// Package managers, as indexes of valueOptions.
+const (
+	mgrPip = iota
+	mgrNpm // npm, yarn, pnpm
+	mgrCargo
+	mgrGem
+)
+
+// valueOptions lists, by package manager, the options whose value is the next
+// argument (`pip download x -d ncclient`, `--trusted-host ncclient`): that value
+// is a directory, host, version or file, never a package.
 var valueOptions = [4]map[string]bool{
 	setOf("-d", "--dest", "-i", "--index-url", "--extra-index-url", "--trusted-host", "-t", "--target", "-c",
 		"--constraint", "-r", "--requirement", "-e", "--editable", "-f", "--find-links", "--platform", "--python-version",
@@ -281,43 +289,86 @@ var valueOptions = [4]map[string]bool{
 	setOf("-v", "--version", "-i", "--install-dir", "-n", "--bindir", "-s", "--source", "--platform", "-g", "--file"),
 }
 
+// pkgFetch reports whether a simple command is a package manager's fetch: the
+// manager (mgrPip...) and the arguments after its subcommand, or -1. Options
+// before the subcommand (`pip -q install`, `python3 -I -m pip`) are passed over.
+func pkgFetch(prog string, args []string) (int, []string) {
+	sub := func(mgr int, args []string, subs ...string) (int, []string) {
+		for i, a := range args {
+			if strings.HasPrefix(a, "-") {
+				continue
+			}
+			if slices.Contains(subs, a) {
+				return mgr, args[i+1:]
+			}
+			break
+		}
+		return -1, nil
+	}
+	base := strings.ToLower(path.Base(prog))
+	switch {
+	case base == "pip" || base == "pip3" || strings.HasPrefix(base, "pip3."):
+		return sub(mgrPip, args, "install", "download")
+	case strings.HasPrefix(base, "python"):
+		if i := slices.Index(args, "-m"); i >= 0 && i+1 < len(args) && args[i+1] == "pip" {
+			return sub(mgrPip, args[i+2:], "install", "download")
+		}
+	case base == "uv":
+		if len(args) > 0 && args[0] == "pip" {
+			return sub(mgrPip, args[1:], "install")
+		}
+	case base == "npm":
+		return sub(mgrNpm, args, "install", "i", "add", "view", "pack", "info")
+	case base == "yarn":
+		return sub(mgrNpm, args, "add", "info")
+	case base == "pnpm":
+		return sub(mgrNpm, args, "add")
+	case base == "cargo":
+		return sub(mgrCargo, args, "install", "add", "fetch")
+	case base == "gem":
+		return sub(mgrGem, args, "install", "fetch")
+	}
+	return -1, nil
+}
+
 // fetchedPackages returns the names among pkgs that a package manager's fetch
-// in command asks for: an argument that is not an option, an option's value or
-// a path, without its extras and version ("ncclient==0.6.13",
-// "oauthlib[signedtoken]", "express@4", "@scope/name@1").
+// in command asks for. The command is parsed as the shell would run it, so the
+// same words quoted in another command's argument (`echo 'pip install x'`) are
+// not a fetch. A package is an argument that is not an option, an option's
+// value, a path or a URL (a direct reference such as "ncclient @
+// file:///tmp/x.whl" names a file, and a URL is the address rules' business),
+// taken without its extras and version ("ncclient==0.6.13",
+// "oauthlib[signedtoken]", "express@4"); an npm scope stays part of its
+// identity ("@scope/name@1").
 func fetchedPackages(command string, pkgs []string) []string {
 	if len(pkgs) == 0 {
 		return nil
 	}
 	var out []string
-	for _, m := range pkgFetchRe.FindAllStringSubmatch(command, -1) {
-		var takesValue map[string]bool
-		for g := 1; g <= 4; g++ {
-			if m[g] != "" {
-				takesValue = valueOptions[g-1]
-			}
+	for _, c := range shellparse.Parse(command).Commands {
+		mgr, args := pkgFetch(c.EffectiveCommand())
+		if mgr < 0 {
+			continue
 		}
-		args := strings.Fields(m[5])
 		for i := 0; i < len(args); i++ {
-			arg := strings.Trim(args[i], `'"`)
+			arg := args[i]
 			if strings.HasPrefix(arg, "-") {
-				if takesValue[arg] { // --opt=value carries its value along
+				if valueOptions[mgr][arg] { // --opt=value carries its value along
 					i++
 				}
 				continue
 			}
-			scoped := strings.HasPrefix(arg, "@")
-			if arg == "" || !scoped && strings.ContainsAny(arg, `/\`) {
-				continue
+			var n string
+			if scope, rest, ok := strings.Cut(strings.TrimPrefix(arg, "@"), "/"); ok && mgr == mgrNpm && strings.HasPrefix(arg, "@") {
+				name, _, _ := strings.Cut(rest, "@")
+				n = "@" + pkgName(scope) + "/" + pkgName(name)
+			} else if arg != "" && !strings.ContainsAny(arg, `/\ `) {
+				if i := strings.IndexAny(arg, "=<>!~[@;:"); i >= 0 {
+					arg = arg[:i]
+				}
+				n = pkgName(arg)
 			}
-			name := arg
-			if scoped { // an npm scope: @scope/name@version
-				_, name, _ = strings.Cut(name, "/")
-			}
-			if i := strings.IndexAny(name, "=<>!~[@;:"); i >= 0 {
-				name = name[:i]
-			}
-			if n := pkgName(name); n != "" && slices.Contains(pkgs, n) && !slices.Contains(out, n) {
+			if n != "" && slices.Contains(pkgs, n) && !slices.Contains(out, n) {
 				out = append(out, n)
 			}
 		}
