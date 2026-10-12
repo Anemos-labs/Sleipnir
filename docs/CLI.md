@@ -2338,6 +2338,8 @@ flags:
         tokens and sft: pack an agent's segment into one sequence when its token traces chain
   -pair string
         dpo: reward (best vs worst reward) | best-worst (rank 1 vs rank last of each group; rank 1 verified and strictly better) (default "reward")
+  -pair-unverified
+        dpo with --pair best-worst: also pair a group none of whose episodes passed, rank 1 being the best by verifier score (long tasks, the siblings of a branch point)
   -reasoning string
         reasoning in completions: drop | field | keep (default "drop")
   -redact-salt string

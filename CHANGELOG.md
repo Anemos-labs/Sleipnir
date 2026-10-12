@@ -7,6 +7,16 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `rl export --format dpo` pairs the siblings of a branch point. For a
+  branch episode (`fork` set) the episode unit compares its root agent from
+  the fork to the first rebase after it: it stops collecting at that rebase,
+  where before it refused any episode whose root agent had more than one
+  segment. A branch run's DPO export therefore gains episode pairs, with or
+  without the new flag. Other episodes whose root
+  agent has more than one segment are still refused (`pair:multi_segment`).
+  `--pair-unverified` (`export.Options.PairUnverified`) lets `--pair
+  best-worst` pair a group none of whose episodes passed, by verifier score;
+  without it such a group still gives no pair.
 - The hardcoded-value detector rules out a literal that the task's
   repository already had before the change (`env.RepoContains`: `git grep`
   at the task's commit). Once the detector read hidden files from the task
