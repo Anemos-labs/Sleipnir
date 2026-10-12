@@ -18,6 +18,21 @@ they do not indicate whether a change has been released.
   cannot. Nor is a name of several parts (`core.count`) each of whose parts
   the repository has evidence. A flag's note says whether the repository was
   searched.
+- `rl taskgen rebuild` keeps a Go package of the scope at the reference when
+  the tests of another package of the scope import it although that
+  package's sources do not depend on it (an assertion library such as
+  gookit/goutil's `x/assert`). Stubbed, it made every test of every unit
+  panic, so a rollout scored 0 throughout whatever it rebuilt. The report
+  lists such packages under `test_support`, and `rl taskgen rebuild` prints
+  them. Go stubs also keep the bodies of what runs before the first test:
+  the functions and methods of the scope that package-level variables, the
+  init functions of packages outside the scope and the hidden tests'
+  `TestMain` reach while the packages load (goutil's `strutil` initialised a
+  variable with a stubbed constructor, so every package that loads it
+  panicked). Python stubs keep what runs when the modules and the hidden
+  tests are imported, the same way (oauthlib's `filter_params` decorator,
+  stubbed, failed the import of 47 modules). Tasks generated earlier are
+  unchanged; regenerate a rebuild task whose scope includes such code.
 - New `rl reverify` verifies finished rollouts again with the tasks as a
   tasks file defines them now: the final patch (the episode's verdict) and
   every consistent savepoint's tree in progress mode (`progress.jsonl` and
