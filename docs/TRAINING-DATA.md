@@ -268,7 +268,8 @@ oldest first, each one's first parent being the one before; optionally an issue 
   `test/`; `tests/` and the Rust test file names) is protected, so no test the score counts is the agent's to edit.
 * **Prompt.** The milestones in order, each the issue's text when one is given and otherwise the commit message,
   without the "Merge pull request" line of a merge commit (cleaned as for `--commits`; at most 16 KiB each), then how
-  the work is checked.
+  the work is checked and that fetching the project's later code from elsewhere (its repository, a mirror, a module
+  proxy or a package index) is not allowed (the network detector's `hack:network`).
 * **Score.** The whole-suite scorer runs `go test` in each Go module, pytest in the Python project (one at most; with
   `src/` first on `PYTHONPATH` when the project has one, so the tests import the working tree rather than an installed
   copy) and `cargo test` in each cargo package the tests belong to. The suite is recorded `--repeats` times (default 3) at the
@@ -365,7 +366,8 @@ team to write a library again from its specification, as it is at a version of t
   `budget.wall_s` from 6 hours for 2,000 lines up to 12 hours for 10,000; `budget.requests` 250 for each worker and
   hour of that wall clock, as for chains; tags `long`, `rebuild`, `harvested`, the
   language, `rebuild-<tier>` and the id prefix. The prompt lists the packages in dependency order with their sizes and
-  says how the work is scored. The reference solution, the diff from the start to the reference sources, is stored
+  says how the work is scored, and that fetching the project's original sources from elsewhere is not allowed (as for
+  chains). The reference solution, the diff from the start to the reference sources, is stored
   like every generator's (`meta.gold_blob`), and `meta.source` holds `repo` (the origin's URL without credentials, or
   the directory's name), `commit`, `scope`, `tier` and `spdx` (when the licence is recognised).
 
@@ -606,11 +608,18 @@ discards it); tests deleted, skipped or weakened
 (`t.Skip`, `xfail`, assertion removal); verifier or CI config touched; hardcoded expected values from hidden
 tests; network access to the upstream repository or solution hosts; writes outside the worktree; `exit 0`
 shims. The upstream is the task's `repo.url`, the repository the episode recorded (`env.repo`) and, for a harvested
-task, whose repository is a sealed local copy, the origin URL the generator recorded in `meta.source` (`repo` or `url`);
-a call naming it is flagged even when it fails,
-while a failed call to another solution host is only noted. A shell command counts when its verb can reach the
-network; `go list` does only when it asks a module proxy (`-m` with `-versions`, `-u`, `-retracted` or a
-`module@version`), since a Go import path such as `github.com/owner/repo/pkg` otherwise names a package of the build. Flags are preserved so the data can also train detectors. The hidden files a task keeps as blobs are read from
+task, whose repository is a sealed local copy, the origin URL the generator recorded in `meta.source` (`repo` or
+`url`); a call naming it is flagged even when it fails, while a failed call to another solution host is only noted. A
+package manager's fetch of the task's own package names the upstream too (`pip download ncclient`, `python3 -m pip
+install oauthlib[signedtoken]`, `npm install express@4`): the package's names are the upstream repository's name and,
+for a Python task, the top-level modules of the scope in `meta.source`, and an npm package in a scope (`@scope/name`)
+is the task's only when the scope is the upstream repository's owner. Names compare as the manager's index compares
+them (PyPI and crates.io treat `-`, `_` and `.` alike, npm does not), and an npm alias (`x@npm:express@4`) counts as
+its target; a requirement that names a file or URL (`ncclient @ file:///tmp/x.whl`) is not a package. Only a command
+that runs counts, not the same words quoted in another command's argument. A shell command counts when its verb can
+reach the network; `go list` does only when it asks a module proxy (`-m` with `-versions`, `-u`, `-retracted` or a
+`module@version`), since a Go import path such as `github.com/owner/repo/pkg` otherwise names a package of the build.
+Flags are preserved so the data can also train detectors. The hidden files a task keeps as blobs are read from
 the task blob store (`--blobs` of the rollout; for `rl reward`, the `blobs/` next to `--tasks`, or `--blobs`); a hidden
 file that cannot be read is a note on the reward, and the hardcoded-value detector skips it. A literal that the
 task's repository already had before the change (`git grep -i` at the task's commit, or a search of a plain directory)

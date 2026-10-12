@@ -66,11 +66,13 @@ async function stderrOf(fn) {
   try { return { value: await fn(), notes: notes.join('') }; } finally { process.stderr.write = write; }
 }
 const unix = { skip: process.platform === 'win32' && 'the stand-in browser is started by a /bin/sh script' };
+/** the error a start that should fail fails with, or null; a browser (or a page of cdp.mjs) that starts all the same is closed when the test ends, whatever it asserts */
+const failure = (t, start) => start.then(b => { t.after(() => b.close()); return null; }, e => e);
 
 for (const [mode, step] of [['silent', /the line "DevTools listening on" on its stderr/], ['nohandshake', /the WebSocket handshake of ws:\/\/127\.0\.0\.1:\d+\/devtools\/browser\/fake/], ['noanswer', /the answer to Browser\.getVersion/]]) {
   test(`a browser that hangs while it starts (${mode}): the start fails at its deadline, names the step it hung at, and the browser is killed`, unix, async t => {
     const f = fake(t, mode), exits = process.listenerCount('exit'), t0 = Date.now();
-    const err = await Browser.launch(f.bin, { attempts: 1, deadline: 3000 }).then(() => null, e => e);
+    const err = await failure(t, Browser.launch(f.bin, { attempts: 1, deadline: 3000 }));
     assert.ok(err, 'the start fails'); const took = Date.now() - t0;
     assert.match(err.message, /^chrome did not start: nothing came in 3 s while waiting for /); assert.match(err.message, step); assert.match(err.message, /; it was killed\)/);
     if (mode !== 'silent') assert.match(err.message, /the end of its stderr:\nDevTools listening on ws:/);
@@ -82,7 +84,7 @@ for (const [mode, step] of [['silent', /the line "DevTools listening on" on its 
 
 test('a browser that exits while it starts: every attempt is noted, the last error says it exited and quotes its stderr, nothing is left running', unix, async t => {
   const f = fake(t, 'exit');
-  const { value: err, notes } = await stderrOf(() => Browser.launch(f.bin, { attempts: 3, deadline: 3000 }).then(() => null, e => e));
+  const { value: err, notes } = await stderrOf(() => failure(t, Browser.launch(f.bin, { attempts: 3, deadline: 3000 })));
   assert.ok(err, 'the start fails');
   assert.match(err.message, /^chrome did not start: it exited \(1\) while waiting for the line "DevTools listening on"/); assert.doesNotMatch(err.message, /killed/);
   assert.match(err.message, /the end of its stderr:\n\[fake\] no display to open$/);
@@ -110,7 +112,7 @@ for (const [mode, step] of [['silent', /the line "DevTools listening on" on its 
   ['nohandshake', /the WebSocket handshake of ws:\/\/127\.0\.0\.1:\d+\/devtools\/page\/fake/], ['noanswer', /the answer to Page\.enable/]]) {
   test(`cdp.mjs: a browser that hangs while it starts (${mode}): open fails at its deadline, names the step it hung at, and the browser is killed and its profile removed`, unix, async t => {
     const f = fake(t, mode), before = listeners(), t0 = Date.now();
-    const err = await open('about:blank', { chrome: f.bin, attempts: 1, deadline: 3000 }).then(() => null, e => e);
+    const err = await failure(t, open('about:blank', { chrome: f.bin, attempts: 1, deadline: 3000 }));
     assert.ok(err, 'the start fails'); const took = Date.now() - t0;
     assert.match(err.message, /^chrome did not start: nothing came in 3 s while waiting for /); assert.match(err.message, step); assert.match(err.message, /; it was killed\)/);
     if (mode !== 'silent') assert.match(err.message, /the end of its stderr:\nDevTools listening on ws:/);
@@ -123,7 +125,7 @@ for (const [mode, step] of [['silent', /the line "DevTools listening on" on its 
 
 test('cdp.mjs: a browser that exits while it starts: every attempt is noted, the last error says it exited and quotes its stderr, nothing is left', unix, async t => {
   const f = fake(t, 'exit'), before = listeners();
-  const { value: err, notes } = await stderrOf(() => open('about:blank', { chrome: f.bin, attempts: 3, deadline: 3000 }).then(() => null, e => e));
+  const { value: err, notes } = await stderrOf(() => failure(t, open('about:blank', { chrome: f.bin, attempts: 3, deadline: 3000 })));
   assert.ok(err, 'the start fails');
   assert.match(err.message, /^chrome did not start: it exited \(1\) while waiting for the line "DevTools listening on"/); assert.doesNotMatch(err.message, /killed/);
   assert.match(err.message, /the end of its stderr:\n\[fake\] no display to open$/);
@@ -147,7 +149,7 @@ test('cdp.mjs: a browser that hangs while it starts is replaced: the page opens 
 
 test('cdp.mjs: a browser that stops answering after it started: the call fails after callTimeout and names it, and the browser is killed', unix, async t => {
   const f = fake(t, 'answer-once'), before = listeners(), t0 = Date.now();
-  const err = await open('about:blank', { chrome: f.bin, attempts: 1, deadline: 20000, callTimeout: 1000 }).then(() => null, e => e);
+  const err = await failure(t, open('about:blank', { chrome: f.bin, attempts: 1, deadline: 20000, callTimeout: 1000 }));
   assert.ok(err, 'open fails'); assert.equal(err.message, 'no answer to Runtime.enable in 1 s: the browser is stuck');
   assert.ok(Date.now() - t0 < 15000, 'it failed at the timeout of the call');
   assert.deepEqual(f.pids().filter(alive), [], 'the browser was killed'); assert.deepEqual(kept(f), []); assert.equal(listeners(), before);
