@@ -56,7 +56,7 @@
     const S = S_(), mx = maxWorkers(), N = Math.max(0, mx ? Math.min(mx, n) : n);
     if (N > 0 && N < 8) return ui.toast('a team has at least 8 workers, one of each role; /swarm 0 is a single agent', 'warm');
     if (N === S.meta.swarm) return ui.toast('already ' + (N ? 'manager + ' + N + ' workers' : 'a single agent'), 'warm');
-    ui.confirm({ title: 'Start the team again', text: 'Restart <b>' + esc(S.name) + '</b> as ' + (N ? 'a manager and <b>' + N + '</b> worker' + (N === 1 ? '' : 's') + (N > 8 ? ' (' + (N - 8) + ' share legs)' : '') : 'a single agent') + '? The current run is closed (its checkpoints stay) and the conversation carries over.', ok: 'Restart', danger: true, run: () => onOk(SL.act.restartTeam({ swarm: N }), () => ui.toast('the team starts again: ' + (N ? 'manager + ' + N + ' workers' : 'a single agent'), 'ok')) });
+    ui.confirm({ title: 'Start the team again', text: 'Restart <b>' + esc(S.name) + '</b> as ' + (N ? 'a manager and <b>' + N + '</b> worker' + (N === 1 ? '' : 's') : 'a single agent') + '? The current run is closed (its checkpoints stay) and the conversation carries over.', ok: 'Restart', danger: true, run: () => onOk(SL.act.restartTeam({ swarm: N }), () => ui.toast('the team starts again: ' + (N ? 'manager + ' + N + ' workers' : 'a single agent'), 'ok')) });
   }
   /** A line the server runs (custom commands, skills, MCP prompts, /mcp reconnect, /recon): its output becomes a local card;
    *  an unknown command is the server's sentence (with its "did you mean"). */

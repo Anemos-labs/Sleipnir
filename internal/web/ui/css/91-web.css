@@ -148,7 +148,10 @@ body.cq .anom .a b{color:var(--warm)}
 [data-help].nschip{cursor:help}
 /* the team rows of New session: a role, its ?, a stepper and the model its workers run on */
 .nsteamrows{display:flex;flex-direction:column;gap:3px;margin-top:6px;flex-basis:100%}.nsteamrows[hidden]{display:none}
-.nstrow{display:grid;grid-template-columns:minmax(78px,auto) auto auto minmax(0,1fr);align-items:center;gap:6px}
+.nstrow{display:grid;grid-template-columns:minmax(70px,auto) auto auto minmax(0,1fr);align-items:center;gap:6px}
+.nststep .nstdisc{display:inline-block;width:18px;height:22px;margin-left:-2px;color:var(--fe);font:600 12px/1 var(--f-num);border-radius:2px}.nststep .nstdisc:hover{background:var(--panel2)}
+.nstslots{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px 8px;margin:2px 0 6px 12px;padding:6px 8px;border-left:2px solid var(--line2);background:var(--panel2-a)}
+.nstslot{display:flex;align-items:center;gap:6px;min-width:0}.nstslot select{min-width:0;flex:1}.nstslot .mono{font-size:11px;flex:none}
 .nstrow.zero .nstname{opacity:.55}.nstname{font:700 12px var(--f-num)}
 .nststep{display:inline-flex;align-items:center;gap:4px}.nstn{min-width:1.6em;text-align:center;color:var(--bright)}
 .nstrow select{min-width:0;width:100%}

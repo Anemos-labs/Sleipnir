@@ -102,7 +102,7 @@ func takeFixture(args []string) (rest []string, name string, err error) {
 		switch {
 		case a == "--fixture" || a == "-fixture":
 			if i+1 >= len(args) {
-				return nil, "", errors.New("--fixture needs a name: shop, orders, docs or all")
+				return nil, "", errors.New("--fixture needs a name: shop, orders, docs, crew or all")
 			}
 			name = args[i+1]
 			i++

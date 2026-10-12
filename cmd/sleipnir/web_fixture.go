@@ -10,7 +10,8 @@ package main
 //	        mail each other.
 //	orders  a single agent in accept-edits mode: one turn that edits two files and runs the tests.
 //	docs    two documentation workers whose questions nobody answers in time (an ask timeout): a refused command.
-//	all     the three as tabs.
+//	crew    a team of 32 workers, four of each role, two of each role on another model (web_fixture_crew.go).
+//	all     shop, orders and docs as tabs.
 //
 // Nothing reaches the network: the provider is a loopback server of this process, and the `npm` the frontend runs is a script of
 // the fixture. The flag requires a state directory of its own (SLEIPNIR_HOME), never the person's; the projects are made in the
@@ -39,7 +40,7 @@ import (
 )
 
 // fixtureNames are the fixtures --fixture takes.
-var fixtureNames = []string{"shop", "orders", "docs", "all"}
+var fixtureNames = []string{"shop", "orders", "docs", "crew", "all"}
 
 // fixtureAllowed refuses a fixture outside a scratch state directory, an unknown name, or an address that is not loopback.
 func fixtureAllowed(name, addr string) error {
@@ -118,6 +119,8 @@ func newWebFixture(ctx context.Context, name string) (*webFixture, error) {
 			sc, err = fx.orders()
 		case "docs":
 			sc, err = fx.docs()
+		case "crew":
+			sc, err = fx.crew()
 		}
 		if err != nil {
 			fx.close()

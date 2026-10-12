@@ -67,3 +67,18 @@
 .dash[data-stack="1"] .dash-grid{grid-template-columns:minmax(0,1fr);grid-auto-rows:auto}
 .dash[data-stack="1"] .dcard{grid-column:1/-1!important;grid-row:auto!important;height:calc(var(--h,8) * 34px);min-height:150px}
 .dash[data-stack="1"] .dc-rs,.dash[data-stack="1"] .dash-hint{display:none}
+/* a large team: the stalls in role bands (83-ui-cockpit.js, DENSE), one line per worker, the band's head naming its count and models */
+.stalls.dense{display:flex;flex-direction:column;gap:4px;overflow-y:auto}
+.sgroup{display:grid;grid-template-columns:minmax(96px,128px) minmax(0,1fr);gap:6px;align-items:start;border-left:2px solid var(--c);padding-left:6px}
+.sg-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;padding-top:3px;font:700 11px/1.2 var(--f-lab);letter-spacing:.1em;text-transform:uppercase;color:var(--fg2);min-width:0}
+.sg-h b{color:var(--c)}.sg-h i{font-style:normal;color:var(--dim);letter-spacing:0}
+.sg-m{flex-basis:100%;font:500 10px/1.2 var(--f-num);letter-spacing:0;text-transform:none;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sg-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:3px;min-width:0}
+.stalls.dense .stall{flex-direction:row;align-items:center;gap:6px;padding:3px 6px 3px 5px;min-height:0;border-left-width:2px}
+.stalls.dense .stall .s-top{flex:none;gap:4px}.stalls.dense .stall .s-id{font-size:12.5px}.stalls.dense .stall .s-role{display:none}
+.stalls.dense .stall .s-st .sw{display:none}
+.stalls.dense .stall .s-doing{-webkit-line-clamp:1;min-height:0;font-size:12px;line-height:1.3;flex:1;min-width:0}
+.stalls.dense .stall .s-meta,.stalls.dense .stall .s-nums,.stalls.dense .stall .s-spark,.stalls.dense .stall .s-tl{display:none}
+.stalls.dense .stall[data-state="ask"]{box-shadow:0 0 0 1px var(--warm-b)}
+@container card (min-height:620px){.stalls.dense .stall{flex-direction:column;align-items:stretch;padding:5px 7px}.stalls.dense .stall .s-nums{display:flex}.stalls.dense .stall .s-st .sw{display:inline}}
+@container card (max-width:420px){.sgroup{grid-template-columns:minmax(0,1fr)}.sg-m{flex-basis:auto}}

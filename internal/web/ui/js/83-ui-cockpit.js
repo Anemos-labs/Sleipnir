@@ -1,4 +1,4 @@
-/* 83-ui-cockpit.js: the Cockpit view: the drawn horse (eight worker legs), the manager's own card and one stall per worker, the gantt,
+/* 83-ui-cockpit.js: the Cockpit view: the drawn horse (a leg per worker role), the manager's own card and one stall per worker, the gantt,
  * the task board, the merge queue, mail and the governor, each a card of the Cockpit's dashboard (83b-ui-dash.js), which can also hold
  * any view of the rail. Mounted through the View API: everything it starts dies with it (the mail arcs live in a layer inside this
  * view's root; a card's hooks die with the card). The governor's 429s and retries, the merge queue's counters and the
@@ -7,6 +7,10 @@
   'use strict';
   const U = SL.u, { $, $$, esc, mk, sv, fmtK, fmtUsd, fmtMs, mmss, tod, hitCls, agCol } = U, calc = SL.calc, D = SL.D, ui = SL.ui = SL.ui || {};
   const SPARK_N = 60;
+  /** Above this many workers the stalls are drawn in role bands, one line per worker, and the gantt in role lanes. */
+  const DENSE = 12;
+  /** A model reference without its provider: "a/b/c" is "c". */
+  const modelName = ref => String(ref || '').split('/').pop();
   /** How long a card says "cache break" after one (quiet breaks never reach it: wire.Break.Quiet). */
   const BRK_HOLD = 8;
   /** What the cache-break mark of a card says on hover, for the break it shows ({kind, layer} of m.flash). */
@@ -94,12 +98,25 @@
       if (!nW && S.meta.swarm > 0) stallsEl.innerHTML = '<div class="solo"><b>The team is ready</b><p>A manager and ' + S.meta.swarm + ' worker slots. Workers start when the manager splits the work; each takes a leg.</p><ol class="sololog"></ol></div>';
       else if (!nW) stallsEl.innerHTML = '<div class="solo"><b>The manager works alone</b><p>--swarm 0: one agent, no workers and no leases. The eight legs stand; the manager edits, runs and answers itself.</p><ol class="sololog"></ol></div>';
       else {
+        /* a large team (more than DENSE workers): one band per role, its count and its models in the band's head, one line per worker */
+        const dense = nW > DENSE, groups = {};
+        stallsEl.classList.toggle('dense', dense);
+        if (dense) {
+          const roles = workers.map(w => w.role).filter((r, i, a) => a.indexOf(r) === i);
+          roles.forEach(r => {
+            const ws = workers.filter(w => w.role === r), models = ws.map(w => modelName(w.model)).filter(Boolean), mc = {}; models.forEach(x => { mc[x] = (mc[x] || 0) + 1; });
+            const g = mk('div', { class: 'sgroup', 'data-role': r, role: 'group', 'aria-label': r + ', ' + ws.length + ' workers', style: '--c:' + agCol(ws[0].id) },
+              '<span class="sg-h"><b>' + esc(r) + '</b><i class="num">×' + ws.length + '</i>' + Object.keys(mc).map(x => '<span class="sg-m" title="' + esc(x) + '">' + esc(x) + (Object.keys(mc).length > 1 ? ' ×' + mc[x] : '') + '</span>').join('') + '</span><div class="sg-list"></div>');
+            stallsEl.appendChild(g); groups[r] = g.querySelector('.sg-list');
+          });
+        }
         workers.forEach(w => {
           const b = mk('button', { class: 'stall', type: 'button', 'data-ag': w.id, 'data-state': 'idle', 'data-role': w.role, style: '--c:' + agCol(w.id) },
             '<span class="s-top"><b class="s-id">' + esc(w.id) + '</b><span class="s-role">' + esc(w.role) + '</span><span class="s-st"><i class="g">◌</i><span class="sw">idle</span></span></span><span class="s-doing"></span>' +
             '<span class="s-meta"><span class="chip task"></span><span class="s-scope"><i class="legn">leg ' + (w.leg + 1) + '</i>' + (w.scope === '-' || /^- /.test(w.scope) ? ' · read-only' : ' · ' + esc(w.scope)) + '</span><span class="brk" title="cache break: the prompt prefix did not change, the endpoint did not serve it"><span aria-hidden="true">⚠</span><span class="bx"> cache break</span></span></span>' +
             '<span class="s-nums"><span class="n-tok"></span><span class="n-cost"></span><span class="hit n-hit"></span></span><svg class="s-spark" viewBox="0 0 150 40" preserveAspectRatio="xMinYMax meet" aria-hidden="true"></svg><svg class="s-tl" viewBox="0 0 60 8" preserveAspectRatio="none" aria-hidden="true"></svg>');
-          sc.listen(b, 'click', e => ui.focusAgent(w.id, e)); stallsEl.appendChild(b);
+          if (w.model) b.title = w.id + ' · ' + w.role + ' · ' + w.model;
+          sc.listen(b, 'click', e => ui.focusAgent(w.id, e)); (dense ? groups[w.role] : stallsEl).appendChild(b);
           ST[w.id] = { el: b, doing: $('.s-doing', b), sw: $('.sw', b), g: $('.s-st .g', b), chip: $('.chip', b), tok: $('.n-tok', b), cost: $('.n-cost', b), hit: $('.n-hit', b), spark: $('.s-spark', b), tl: $('.s-tl', b), n: -1, streaming: false };
         });
         /* the slots of the team nobody holds yet, by role: a free leg says which worker the manager can still start */
@@ -140,33 +157,45 @@
         '<div class="g-ctl"><button class="btn gplay" type="button" aria-label="Pause"></button><button class="btn" type="button" data-sp="1" aria-pressed="true">1x</button><button class="btn" type="button" data-sp="2" aria-pressed="false">2x</button><button class="btn" type="button" data-sp="4" aria-pressed="false">4x</button><input class="scrub" type="range" min="0" max="38" step="0.1" value="38" aria-label="Scrub the session: replay"><span class="num dim scrubT">00:38</span><button class="btn live glive" type="button" aria-pressed="true">● live</button></div></section>';
       const q = s => $(s, body);
       /* ---- gantt (rows: manager + workers) ---- */
-      const GT = { W: 0, H: 0, rowH: 16, left: 34, axisH: 15, pps: 6, built: false, builtAt: -99, open: [], axis: [] }, gsvg = q('.gsvg'), gwrap = q('.gwrap'), ids = S.roster.map(r => r.id);
+      const GT = { W: 0, H: 0, left: 34, lane: [], group: [], labels: [], dense: false, axisH: 15, pps: 6, built: false, builtAt: -99, open: [], axis: [] }, gsvg = q('.gsvg'), gwrap = q('.gwrap'), ids = S.roster.map(r => r.id);
+      /* the lanes: one row per agent while a row can be 11 px or more; below that (a large team) one band per role, labelled with
+         its short name and count, and inside it one thin lane per agent */
+      function lanes() {
+        const avail = GT.H - GT.axisH - 6, n = ids.length; GT.lane = []; GT.group = []; GT.labels = [];
+        GT.dense = n > DENSE && avail / n < 11;
+        if (!GT.dense) { const rowH = Math.max(9, Math.min(23, Math.floor(avail / n))); ids.forEach((id, i) => { GT.lane.push({ y: 2 + i * rowH, h: rowH }); GT.group.push(id); }); return; }
+        const roles = S.roster.map(r => r.role).filter((r, i, a) => a.indexOf(r) === i), gap = 3, lh = Math.max(2, (avail - gap * (roles.length - 1)) / n);
+        let y = 2; const byId = {};
+        roles.forEach(r => { const rs = S.roster.filter(x => x.role === r), y0 = y; rs.forEach(x => { byId[x.id] = { y, h: lh, g: r }; y += lh; }); const code = (D.roles[r] || SL.data.ROLES[r] || {}).code || rs[0].id.replace(/-\d+$/, ''); GT.labels.push({ text: rs.length > 1 ? code + ' ×' + rs.length : rs[0].id, y: y0, h: y - y0, ids: rs.map(x => x.id) }); y += gap; });
+        ids.forEach(id => { GT.lane.push({ y: byId[id].y, h: byId[id].h }); GT.group.push(byId[id].g); });
+      }
       function buildGantt() {
-        if (gwrap.clientWidth < GT.left + 60 || gwrap.clientHeight < 20) return; GT.W = gwrap.clientWidth - 20; GT.H = gwrap.clientHeight; GT.rowH = Math.max(9, Math.min(23, Math.floor((GT.H - GT.axisH - 6) / ids.length))); GT.pps = (GT.W - GT.left - 4) / 60;
+        if (gwrap.clientWidth < GT.left + 60 || gwrap.clientHeight < 20) return; GT.W = gwrap.clientWidth - 20; GT.H = gwrap.clientHeight; GT.pps = (GT.W - GT.left - 4) / 60; lanes();
         gsvg.setAttribute('viewBox', '0 0 ' + GT.W + ' ' + GT.H); gsvg.setAttribute('preserveAspectRatio', 'xMinYMin meet'); gsvg.style.height = GT.H + 'px';
         let h = '<defs>'; ['manager'].concat(D.roleOrder || []).concat(S.roster.map(x => x.role)).filter((r, i, a) => a.indexOf(r) === i).forEach(r => { const c = 'var(--c-' + ((D.roles[r] || SL.data.ROLES[r] || { code: r }).code) + ')'; h += '<pattern id="hx-' + r + '" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="2" height="5" fill="' + c + '" opacity=".7"/></pattern>'; });
         h += '<pattern id="hx-ask" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="2.6" height="5" fill="var(--warm)"/></pattern><clipPath id="gclip"><rect x="' + GT.left + '" y="0" width="' + (GT.W - GT.left) + '" height="' + GT.H + '"/></clipPath></defs>';
-        ids.forEach((id, i) => { const y = 2 + i * GT.rowH; h += '<g class="g-row" data-ag="' + esc(id) + '"><rect x="0" y="' + y + '" width="' + GT.W + '" height="' + GT.rowH + '" fill="transparent" class="g-hit"/><line x1="' + GT.left + '" x2="' + GT.W + '" y1="' + (y + GT.rowH - .5) + '" y2="' + (y + GT.rowH - .5) + '" class="g-grid"/><text x="0" y="' + (y + GT.rowH * .72) + '" class="g-lab" fill="' + agCol(id) + '" font-size="' + (GT.rowH > 13 ? 11 : 9.5) + '">' + esc(id) + '</text><g clip-path="url(#gclip)"><g class="gbars" data-i="' + i + '"></g></g></g>'; });
+        ids.forEach((id, i) => { const L = GT.lane[i], last = !GT.dense || i === ids.length - 1 || GT.group[i] !== GT.group[i + 1]; h += '<g class="g-row" data-ag="' + esc(id) + '"><rect x="0" y="' + L.y + '" width="' + GT.W + '" height="' + L.h + '" fill="transparent" class="g-hit"><title>' + esc(id) + '</title></rect>' + (last ? '<line x1="' + GT.left + '" x2="' + GT.W + '" y1="' + (L.y + L.h - .5) + '" y2="' + (L.y + L.h - .5) + '" class="g-grid"/>' : '') + (GT.dense ? '' : '<text x="0" y="' + (L.y + L.h * .72) + '" class="g-lab" fill="' + agCol(id) + '" font-size="' + (L.h > 13 ? 11 : 9.5) + '">' + esc(id) + '</text>') + '<g clip-path="url(#gclip)"><g class="gbars" data-i="' + i + '"></g></g></g>'; });
+        if (GT.dense) GT.labels.forEach(g => { h += '<text x="0" y="' + (g.y + g.h / 2 + 3.5) + '" class="g-lab" fill="' + agCol(g.ids[0]) + '" font-size="10" data-ag="' + esc(g.ids.join(' ')) + '"><title>' + esc(g.ids.join(', ')) + '</title>' + esc(g.text) + '</text>'; });
         h += '<g class="g-axis-g"></g><line class="g-now" x1="' + (GT.W - 4) + '" x2="' + (GT.W - 4) + '" y1="0" y2="' + (GT.H - GT.axisH) + '"/>';
         gsvg.innerHTML = h; GT.axisG = $('.g-axis-g', gsvg); GT.bars = $$('.gbars', gsvg); GT.axis = []; GT.built = true; GT.builtAt = -99; ganttBars(SL.sessions.active.m, SL.sessions.active.vt);
       }
       function ganttBars(m, vt) {
-        if (!GT.built || !m) return; const rowH = GT.rowH, pps = GT.pps, w0 = vt - 62; GT.open = [];
+        if (!GT.built || !m) return; const pps = GT.pps, w0 = vt - 62; GT.open = [];
         ids.forEach((id, i) => {
-          const A = m.ag[id], y = 2 + i * rowH, role = A.role; let out = '';
+          const A = m.ag[id], y = GT.lane[i].y, rowH = GT.lane[i].h, thin = rowH < 10, role = A.role; let out = '';
           A.segs.forEach(sg => {
-            const t1 = sg.t1 == null ? vt : sg.t1; if (t1 < w0 || sg.t0 > vt + 1) return; const x = sg.t0 * pps, w = Math.max(1.2, (t1 - sg.t0) * pps), open = sg.t1 == null, cls = open ? ' class="open"' : '', col = 'var(--c-' + A.code + ')', by = y + 2, bh = rowH - 4; let r = '';
+            const t1 = sg.t1 == null ? vt : sg.t1; if (t1 < w0 || sg.t0 > vt + 1) return; const x = sg.t0 * pps, w = Math.max(1.2, (t1 - sg.t0) * pps), open = sg.t1 == null, cls = open ? ' class="open"' : '', col = 'var(--c-' + A.code + ')', by = y + (thin ? .5 : 2), bh = Math.max(1, rowH - (thin ? 1 : 4)); let r = '';
             if (sg.s === 'think') r = '<rect' + cls + ' x="' + x + '" y="' + by + '" width="' + w + '" height="' + bh + '" fill="url(#hx-' + role + ')" stroke="' + col + '" stroke-opacity=".5" stroke-width="1"/>';
             else if (sg.s === 'tool') r = '<rect' + cls + ' x="' + x + '" y="' + (by + bh * .22) + '" width="' + w + '" height="' + (bh * .56) + '" fill="' + col + '" opacity=".9"/>';
             else if (sg.s === 'edit') r = '<rect' + cls + ' x="' + x + '" y="' + by + '" width="' + w + '" height="' + bh + '" fill="' + col + '"/>';
             else if (sg.s === 'wait') r = '<rect' + cls + ' x="' + (x + .5) + '" y="' + (by + 1) + '" width="' + Math.max(1, w - 1) + '" height="' + (bh - 2) + '" fill="none" stroke="' + col + '" stroke-opacity=".75" stroke-width="1.2"/>';
             else if (sg.s === 'ask') r = '<rect' + cls + ' x="' + x + '" y="' + by + '" width="' + w + '" height="' + bh + '" fill="url(#hx-ask)" stroke="var(--warm)" stroke-width="1"/>';
-            else if (sg.s === 'done') r = '<rect' + cls + ' x="' + x + '" y="' + (y + rowH / 2 - 1) + '" width="' + w + '" height="2" fill="var(--ok)" opacity=".8"/><text x="' + (x + 1) + '" y="' + (y + rowH * .72) + '" font-size="10" fill="var(--ok)" font-family="var(--f-num)" font-weight="700">✓</text>';
+            else if (sg.s === 'done') r = '<rect' + cls + ' x="' + x + '" y="' + (y + rowH / 2 - 1) + '" width="' + w + '" height="2" fill="var(--ok)" opacity=".8"/>' + (thin ? '' : '<text x="' + (x + 1) + '" y="' + (y + rowH * .72) + '" font-size="10" fill="var(--ok)" font-family="var(--f-num)" font-weight="700">✓</text>');
             else if (sg.s === 'idle') r = '<rect' + cls + ' x="' + x + '" y="' + (y + rowH / 2) + '" width="' + w + '" height="1" fill="var(--faint)" opacity=".6"/>';
             else if (sg.s === 'stuck') r = '<rect' + cls + ' x="' + x + '" y="' + by + '" width="' + w + '" height="' + bh + '" fill="var(--err)" opacity=".8"/>';
             out += r;
           });
-          m.marks.forEach(mk2 => { if (mk2.id !== id || mk2.t < w0 || mk2.t > vt) return; const x = mk2.t * pps; if (mk2.g === 'req') out += '<rect x="' + (x - .6) + '" y="' + (y + 1) + '" width="1.2" height="3" fill="var(--fg2)" opacity=".7"/>'; else { const gl = { mail: ['✉', 'var(--warm)'], compact: ['◆', 'var(--mgr)'], break: ['⚠', 'var(--err)'], merge: ['✓', 'var(--ok)'], ask: ['?', 'var(--warm)'], refuse: ['⊘', 'var(--err)'] }[mk2.g]; if (gl) out += '<text class="g-glyph" x="' + (x - 4) + '" y="' + (y + rowH * .78) + '" fill="' + gl[1] + '" stroke="var(--panel)" stroke-width="2.5" paint-order="stroke">' + gl[0] + '</text>'; } });
+          m.marks.forEach(mk2 => { if (mk2.id !== id || mk2.t < w0 || mk2.t > vt) return; const x = mk2.t * pps; if (mk2.g === 'req') { if (!thin) out += '<rect x="' + (x - .6) + '" y="' + (y + 1) + '" width="1.2" height="3" fill="var(--fg2)" opacity=".7"/>'; } else if (thin) { const c = { mail: 'var(--warm)', break: 'var(--err)', merge: 'var(--ok)', ask: 'var(--warm)', refuse: 'var(--err)' }[mk2.g]; if (c) out += '<rect x="' + (x - 1) + '" y="' + y + '" width="2" height="' + rowH + '" fill="' + c + '"/>'; } else { const gl = { mail: ['✉', 'var(--warm)'], compact: ['◆', 'var(--mgr)'], break: ['⚠', 'var(--err)'], merge: ['✓', 'var(--ok)'], ask: ['?', 'var(--warm)'], refuse: ['⊘', 'var(--err)'] }[mk2.g]; if (gl) out += '<text class="g-glyph" x="' + (x - 4) + '" y="' + (y + rowH * .78) + '" fill="' + gl[1] + '" stroke="var(--panel)" stroke-width="2.5" paint-order="stroke">' + gl[0] + '</text>'; } });
           GT.bars[i].innerHTML = out;
         });
         GT.open = $$('.open', gsvg).map(e => ({ e, t0: +e.getAttribute('x') / pps })); GT.builtAt = vt;

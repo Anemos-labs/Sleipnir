@@ -89,7 +89,7 @@
   /** a team size the server takes: 0 (a single agent) or at least 8 (one worker of each role), at most max when there is one; a value
    *  in between goes to 8, or to 0 when dir says the person is counting down */
   const clampWorkers = (v, max, dir) => { let n = Math.max(0, parseInt(v, 10) || 0); if (n > 0 && n < 8) n = dir < 0 ? 0 : 8; return max ? Math.min(max, n) : n; };
-  const teamWord = n => n === 0 ? 'single agent' : 'manager + ' + n + ' worker' + (n === 1 ? '' : 's') + (n > 8 ? ' (' + (n - 8) + ' share leg' + (n - 8 === 1 ? '' : 's') + ')' : '');
+  const teamWord = n => n === 0 ? 'single agent' : 'manager + ' + n + ' worker' + (n === 1 ? '' : 's');
   /** A project's trust as the server words it (GET /api/projects: trusted, untrusted, changed, partial, unreadable) as the table shows it, or '' when there is nothing to trust. */
   const projectState = t => { const v = String(t == null ? '' : t); return v === 'trusted' || v === 'none' || v === '' ? '' : v === 'untrusted' ? 'not trusted' : v === 'changed' ? 'changed since your yes' : v; };
   /** What the two words that mean "not every file could be read" say; a yes for such a project holds for the session only. */
@@ -334,7 +334,7 @@
       else if (k === 'try') await checkPerm(S);
       else if (k === 'mgr-refused') ui.openDrawer('mgr');
       else if (k === 'verify') { const v = $('#rv', page).value.trim(); ST.run.dirty[S.id] = true; acted(A.setVerify(v), () => toast('verify: ' + (v || '(none)'), 'ok')); paint(true); }
-      else if (k === 'apply') { const nn = ST.run.n == null ? S.meta.swarm : ST.run.n; if (nn === S.meta.swarm && !ST.run.dirty[S.id]) { toast('already ' + teamWord(nn), 'warm'); return; } ui.confirm({ title: 'Start the team again', text: 'Restart <b>' + esc(S.name) + '</b> as ' + (nn ? 'a manager and <b>' + nn + '</b> worker' + (nn === 1 ? '' : 's') + (nn > 8 ? ' (' + (nn - 8) + ' share legs)' : '') : 'a single agent') + '? The current run is closed (its checkpoints stay) and the conversation carries over.', ok: 'Restart', danger: true, run: () => { const r = A.restartTeam({ swarm: nn, force: true }); acted(r, () => { ST.run.n = null; delete ST.run.dirty[S.id]; toast('the team starts again: ' + teamWord(nn), 'ok'); }); } }); }
+      else if (k === 'apply') { const nn = ST.run.n == null ? S.meta.swarm : ST.run.n; if (nn === S.meta.swarm && !ST.run.dirty[S.id]) { toast('already ' + teamWord(nn), 'warm'); return; } ui.confirm({ title: 'Start the team again', text: 'Restart <b>' + esc(S.name) + '</b> as ' + (nn ? 'a manager and <b>' + nn + '</b> worker' + (nn === 1 ? '' : 's') : 'a single agent') + '? The current run is closed (its checkpoints stay) and the conversation carries over.', ok: 'Restart', danger: true, run: () => { const r = A.restartTeam({ swarm: nn, force: true }); acted(r, () => { ST.run.n = null; delete ST.run.dirty[S.id]; toast('the team starts again: ' + teamWord(nn), 'ok'); }); } }); }
       else if (k === 'copycli') U.copy($('.pre.cli', page).textContent).then(ok => toast(ok ? 'command copied' : 'copy is not available here', ok ? 'ok' : 'warm'));
       else if (k === 'railreset') { ui.rail.setWidth(344); }
       else if (k === 'dash-edit') { SL.views.show('cockpit'); ui.dash.setLocked(false); }
