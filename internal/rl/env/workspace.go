@@ -258,9 +258,15 @@ func (m *Workspaces) IsolationPrefix(task rl.Task) []string {
 // are confined (the workspace's tree, HOME and TMPDIR writable, its snapshot's
 // objects readable, network only for tasks that need it), otherwise the
 // network-only prefix of IsolationPrefix. The prefix ends in "--" or is empty.
+// The caches the workspace's environment names are created first when missing;
+// one that cannot be created is a workspace warning (Warnings, and the Logf of
+// the options), once per message.
 func (m *Workspaces) CommandPrefix(task rl.Task, ws *Workspace) []string {
 	if m.local == nil || !m.local.confine.Available || ws == nil {
 		return m.IsolationPrefix(task)
+	}
+	for _, w := range m.local.confine.prepareCaches(ws.Env()) {
+		m.warn("%s", w)
 	}
 	return m.local.confine.argv(ws.mounts(), task.Network, ws.Env(), nil)
 }

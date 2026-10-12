@@ -235,6 +235,108 @@ func TestConfinedCommand(t *testing.T) {
 	}
 }
 
+// A cache the environment names that does not exist yet is created before the
+// command runs, so what one confined command writes there (a setup command's
+// module download) is on the host for the next, network-less one instead of in
+// a tmpfs that vanishes. A cache inside a protected directory is never created,
+// and one that cannot be created is reported.
+func TestConfinedCommandCreatesMissingCaches(t *testing.T) {
+	root := t.TempDir()
+	tree, blobs := filepath.Join(root, "tree"), filepath.Join(root, "blobs")
+	for _, d := range []string{tree, blobs} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "file"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := confinedSandbox(t, blobs)
+	run := func(network bool, env []string, cmd string) ExecResult {
+		t.Helper()
+		pol := ExecPolicy{Network: network, Mounts: &Mounts{RW: []string{tree}}}
+		res, err := s.Exec(WithExecPolicy(context.Background(), pol), tree, append([]string{"PATH=/usr/bin:/bin"}, env...), cmd, time.Minute)
+		if err != nil {
+			t.Fatalf("%s: %v", cmd, err)
+		}
+		return res
+	}
+	mods, build := filepath.Join(root, "cache", "gomod"), filepath.Join(blobs, "go-build")
+	env := []string{"GOMODCACHE=" + mods, "GOCACHE=" + build}
+	if res := run(true, env, `echo mod > "$GOMODCACHE/m"`); res.ExitCode != 0 || len(res.Warnings) > 0 {
+		t.Fatalf("writing the cache: %+v", res)
+	}
+	if b, err := os.ReadFile(filepath.Join(mods, "m")); err != nil || string(b) != "mod\n" {
+		t.Errorf("the cache write did not reach the host: %q %v", b, err)
+	}
+	if res := run(false, env, `cat "$GOMODCACHE/m"`); res.Stdout != "mod\n" {
+		t.Errorf("a later command does not see the cache: %+v", res)
+	}
+	if _, err := os.Stat(build); err == nil {
+		t.Error("a cache inside a protected directory was created")
+	}
+	res := run(false, []string{"GOMODCACHE=" + filepath.Join(root, "file", "gomod")}, "true")
+	if !slices.ContainsFunc(res.Warnings, func(w string) bool { return strings.Contains(w, "cannot be created") }) {
+		t.Errorf("a cache that cannot be created is not reported: %q", res.Warnings)
+	}
+	// Through a symbolic link into a protected directory, a missing cache is not made there.
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(blobs, link); err != nil {
+		t.Fatal(err)
+	}
+	res = run(false, []string{"GOMODCACHE=" + filepath.Join(link, "gomod")}, "true")
+	if _, err := os.Stat(filepath.Join(blobs, "gomod")); err == nil {
+		t.Error("a cache was created inside a protected directory through a symbolic link")
+	}
+	if !slices.ContainsFunc(res.Warnings, func(w string) bool { return strings.Contains(w, "symbolic link") }) {
+		t.Errorf("the refused cache is not reported: %q", res.Warnings)
+	}
+	// A command that never starts (its context ended, or it cannot be run) creates nothing.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	never := filepath.Join(root, "never")
+	pol := ExecPolicy{Mounts: &Mounts{RW: []string{tree}}}
+	if _, err := s.Exec(WithExecPolicy(ctx, pol), tree, []string{"PATH=/usr/bin:/bin", "GOMODCACHE=" + never}, "true", time.Minute); err == nil {
+		t.Error("a canceled command ran")
+	}
+	if _, err := s.Exec(WithExecPolicy(context.Background(), pol), tree, []string{"PATH=/usr/bin:/bin", "GOMODCACHE=" + never}, "true\x00", time.Minute); err == nil {
+		t.Error("a command with a NUL byte ran")
+	}
+	if _, err := os.Stat(never); err == nil {
+		t.Error("a command that never started created its cache")
+	}
+}
+
+// A protected directory named through a symbolic link is hidden and protected at
+// the directory the link names too, and a cache that reaches it through another
+// link is never bound.
+func TestConfinementProtectsTheDirectoryALinkNames(t *testing.T) {
+	root := t.TempDir()
+	store := filepath.Join(root, "real-blobs")
+	if err := os.MkdirAll(store, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	real, err := filepath.EvalSymlinks(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	link, cache := filepath.Join(root, "blobs"), filepath.Join(root, "cache")
+	for _, l := range []string{link, cache} {
+		if err := os.Symlink(store, l); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := DetectConfinement(ConfineOptions{Protect: []string{link}, LookPath: func(string) (string, error) { return "", errors.New("no bwrap") }})
+	if !slices.Contains(c.Hide, real) || !slices.Contains(c.protected, real) {
+		t.Fatalf("hide %v, protected %v: want %s too", c.Hide, c.protected, real)
+	}
+	c.Available, c.Bwrap = true, "/usr/bin/bwrap"
+	line := strings.Join(c.argv(Mounts{}, false, []string{"GOCACHE=" + cache}, nil), " ")
+	if strings.Contains(line, "--bind "+cache) || strings.Contains(line, "--bind "+real) {
+		t.Errorf("a cache linked into the protected store is bound:\n%s", line)
+	}
+}
+
 // End to end through Workspaces: the agent's shell (CommandPrefix) and the
 // verifier both work in their own trees and cannot read a protected store.
 func TestConfinedWorkspaceAndVerifier(t *testing.T) {
@@ -286,5 +388,40 @@ func TestConfinedWorkspaceAndVerifier(t *testing.T) {
 	res, err := Verify(ctxT(t), task, ws, VerifyOptions{})
 	if err != nil || !res.Pass {
 		t.Fatalf("verify: %v %+v\n%s", err, res, res.Log)
+	}
+}
+
+// The agent's shell runs under CommandPrefix, not Exec: a cache its environment
+// names that cannot be created is a workspace warning there.
+func TestCommandPrefixReportsACacheItCannotCreate(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "file")
+	if err := os.WriteFile(file, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := newFixtureRepo(t)
+	r.write("app.txt", "broken\n")
+	base := r.commit("start")
+	m, err := NewWorkspaces(WorkspaceOptions{Root: filepath.Join(root, "work"), DisableNetIsolation: true, FailureTTL: -1,
+		Confine: ConfineBwrap, SetEnv: map[string]string{"GOMODCACHE": filepath.Join(file, "gomod")}})
+	if errors.Is(err, ErrConfinementUnavailable) {
+		t.Skipf("bubblewrap unavailable: %v", err)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(m.Close)
+	task := rl.Task{ID: "prefix", Kind: rl.TaskFix, Repo: rl.RepoSpec{Path: r.Dir, Commit: base}, Prompt: "fix app.txt",
+		Verifier: rl.Verifier{Cmd: "true", TimeoutS: 60}, Budget: rl.Budget{WallS: 300}}
+	ws, err := m.Prepare(ctxT(t), task, "s0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ws.Cleanup() })
+	if prefix := m.CommandPrefix(task, ws); len(prefix) == 0 {
+		t.Fatal("no prefix")
+	}
+	if !slices.ContainsFunc(m.Warnings(), func(w string) bool { return strings.Contains(w, "cannot be created") }) {
+		t.Errorf("warnings %q: want the cache that cannot be created", m.Warnings())
 	}
 }
