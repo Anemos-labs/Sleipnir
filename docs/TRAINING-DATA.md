@@ -482,7 +482,10 @@ sleipnir rl rollout --tasks tasks.jsonl --group 8 --concurrency 32 \
   `savepoint`, `seq`, `sibling`, `siblings`, `horizon_ms`); its group is `<task>@<parent>:sp<NNNN>`, so the siblings of
   one point are one GRPO group; its steps before the fork are the trunk's and are marked `inherited` (not trainable,
   dropped from every training format as `step:inherited`; the canonical export keeps them). The siblings' first request
-  after the fork is the same prompt, so `rl export --format dpo --pair best-worst` pairs their decisions at that step.
+  after the fork is the same prompt, so `rl export --format dpo --pair best-worst` pairs their decisions at that step,
+  and the episode unit compares what each sibling's root agent did from the fork to its first rebase (a compaction).
+  Add `--pair-unverified` when none of the siblings passes outright, as on long tasks: rank 1 is then the best by
+  verifier score.
   The ledger of the branch run counts only what the branches spent. With `--compact-first` every branch compacts its
   agent's (a team's manager's) context before anything else (when there is enough to fold): the siblings' first calls
   are competing summaries of one state, each sampled with its branch's seed, and what each branch then achieves until
@@ -719,8 +722,10 @@ groups format also lists every signal under `metrics` as `signal/<name>`.
 * `--format dpo --pair best-worst` pairs rank 1 with rank last of each group, only when rank 1 is verified, takes part in
   the comparison (a prompt or a root chain that rank 1 does not have gives no pair) and its key is strictly better than
   the rejected one's. Both pair units follow it: the episode unit compares what the root agent
-  did after the shared first prompt, the step unit compares completions of an identical prompt within the group. The
-  default, `--pair reward`, pairs by reward as before.
+  did after the shared first prompt (for a branch, from its fork to the root agent's first rebase), the step unit
+  compares completions of an identical prompt within the group. `--pair-unverified` also pairs a group none of whose
+  episodes passed, rank 1 being the best by verifier score (flagged episodes are dropped before pairing). The default,
+  `--pair reward`, pairs by reward as before.
 * `--format groups` (or steps, tokens) with `--advantage grpo` gives the group-relative signal; add the efficiency
   components below to the reward to make it prefer cheap, clean passes.
 

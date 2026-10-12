@@ -277,6 +277,7 @@
   {"name":"o","arg":"string","default":null,"defaultNote":"stdout","repeatable":false,"desc":"output file (default: stdout)"},
   {"name":"pack","arg":"bool","default":null,"repeatable":false,"desc":"tokens and sft: pack an agent's segment into one sequence when its token traces chain"},
   {"name":"pair","arg":"string","default":"reward","repeatable":false,"desc":"dpo: reward (best vs worst reward) | best-worst (rank 1 vs rank last of each group; rank 1 verified and strictly better)"},
+  {"name":"pair-unverified","arg":"bool","default":null,"repeatable":false,"desc":"dpo with --pair best-worst: also pair a group none of whose episodes passed, rank 1 being the best by verifier score (long tasks, the siblings of a branch point)"},
   {"name":"reasoning","arg":"string","default":"drop","repeatable":false,"desc":"reasoning in completions: drop | field | keep","choices":["drop","field","keep"]},
   {"name":"redact-salt","arg":"string","default":null,"repeatable":false,"desc":"salt of the redaction tokens; equal secrets get equal tokens per salt"},
   {"name":"role-teacher","arg":"string","default":null,"repeatable":true,"desc":"ROLE=MODEL[,MODEL...]: steps of that role, and the compactor and mailman calls of its agents, may only come from these models (globs), trainable or not; repeatable"},

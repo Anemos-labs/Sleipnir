@@ -160,7 +160,7 @@ func (x *exporter) pickPair(cands []dpoCand) (best, worst *dpoCand, why string) 
 	if ranked && best.c.we.rank.Position != 1 {
 		return nil, nil, "pair:best_not_rank_1" // rank 1 of the group has no candidate for this prompt
 	}
-	if ranked && !best.c.we.key.Verified {
+	if ranked && !best.c.we.key.Verified && !x.o.PairUnverified {
 		return nil, nil, "pair:best_not_verified"
 	}
 	for i := len(cands) - 1; i > 0; i-- {
@@ -195,7 +195,11 @@ func shortHash(h core.Hash) string { return h.Short() }
 // dpoEpisodes pairs, per task, the best and the worst episode by reward, comparing
 // what the root agent did after the shared first prompt. It needs a root agent that
 // never rebased (one segment), so that its last prompt still contains the whole
-// conversation, and a first prompt common to both episodes.
+// conversation, and a first prompt common to both episodes. An episode of a branch
+// (Episode.Fork) is compared from its fork: its root agent's steps after the steps
+// it inherited from the trunk, up to its first rebase (a compaction), which is one
+// segment however many the trunk and the rest of the branch have; the first of them
+// is the same prompt for every sibling of the point.
 func (x *exporter) dpoEpisodes(work []*workEpisode) error {
 	type epView struct {
 		we     *workEpisode
@@ -213,12 +217,17 @@ func (x *exporter) dpoEpisodes(work []*workEpisode) error {
 		ag := &we.ep.Agents[root]
 		var chain []stepCtx
 		segments := map[int]bool{}
+		fork := we.ep.Fork != nil
 		for si := range ag.Steps {
-			if ag.Steps[si].Kind != rl.KindMain {
+			st := &ag.Steps[si]
+			if st.Kind != rl.KindMain || (fork && st.Inherited) {
 				continue
 			}
-			segments[ag.Steps[si].Segment] = true
-			chain = append(chain, stepCtx{we: we, ag: ag, ai: root, st: &ag.Steps[si], si: si})
+			if fork && len(chain) > 0 && st.Segment != chain[0].st.Segment {
+				break // a branch's continuation ends at its first rebase
+			}
+			segments[st.Segment] = true
+			chain = append(chain, stepCtx{we: we, ag: ag, ai: root, st: st, si: si})
 		}
 		if len(chain) == 0 {
 			continue
@@ -285,7 +294,7 @@ func (x *exporter) dpoEpisodes(work []*workEpisode) error {
 		case ranked && best.we.rank.Position != 1:
 			x.stats.drop("pair:best_not_rank_1") // rank 1 of the group has no usable root chain
 			continue
-		case ranked && !best.we.key.Verified:
+		case ranked && !best.we.key.Verified && !x.o.PairUnverified:
 			x.stats.drop("pair:best_not_verified")
 			continue
 		case ranked && rl.CompareRank(best.we.key, worst.we.key) >= 0:

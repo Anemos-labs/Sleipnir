@@ -206,3 +206,63 @@ func TestPairBestWorstNeedsRankOneAmongTheCandidates(t *testing.T) {
 		}
 	}
 }
+
+// With PairUnverified a group none of whose episodes passed is paired by verifier score: the long tasks of branch
+// points rarely pass outright, yet their siblings' scores still order them. The option belongs to best-worst.
+func TestPairUnverifiedRanksAFailedGroupByScore(t *testing.T) {
+	var failed []export.Source
+	for i, score := range []float64{0.2, 0.9, 0.5} {
+		s := rollout(t, variant{sample: i, plan: "plan " + string(rune('A'+i)), reward: score, ite: 1000})
+		s.Episode.Outcome.Verifier.Score = score
+		failed = append(failed, s)
+	}
+	o := export.DefaultOptions(export.FormatDPO)
+	o.Pair, o.PairUnverified = export.PairBestWorst, true
+	out, st := run(t, failed, o)
+	recs := decode(t, out)
+	if len(recs) == 0 {
+		t.Fatalf("no pairs; drops %v", st.Drops)
+	}
+	for _, r := range recs {
+		if r["chosen_episode"] != "T/1" || r["rejected_episode"] != "T/0" {
+			t.Errorf("%s pair %v vs %v, want T/1 (score 0.9) vs T/0 (0.2)", r["unit"], r["chosen_episode"], r["rejected_episode"])
+		}
+	}
+	o.Pair = export.PairReward
+	if _, err := export.Export(nil, nil, o); err == nil {
+		t.Error("unverified pairs were accepted without best-worst")
+	}
+}
+
+// The siblings of a branch point share the trunk's steps up to the fork (inherited) and rebase later (a compaction
+// starts a new segment): their episode pair compares what each root agent did from the fork to its first rebase.
+func TestBranchSiblingsPairFromTheFork(t *testing.T) {
+	sibling := func(sample int, pass bool, step string) export.Source {
+		s := rollout(t, variant{sample: sample, plan: "plan shared", reward: map[bool]float64{true: 1, false: 0}[pass], pass: pass, ite: 1000,
+			extra: func(a *trajtest.Agent) {
+				a.Step(trajtest.Call{Text: step, Tool: "read", Input: `{"path":"api/b.go"}`, Result: "package api"})
+			}})
+		ep := s.Episode
+		ep.Fork = &rl.Fork{Parent: "trunk/T/0", Savepoint: 1, Sibling: sample + 1}
+		steps := ep.Agents[0].Steps
+		steps[0].Inherited = true                          // the trunk's step before the fork
+		steps[len(steps)-1].Segment = steps[1].Segment + 1 // after a compaction
+		return s
+	}
+	srcs := []export.Source{sibling(0, true, "read b first"), sibling(1, false, "guess instead")}
+	o := export.DefaultOptions(export.FormatDPO)
+	o.Pair = export.PairBestWorst
+	out, st := run(t, srcs, o)
+	var episodes int
+	for _, r := range decode(t, out) {
+		if r["unit"] == "episode" {
+			episodes++
+			if r["chosen_episode"] != "T/0" || r["rejected_episode"] != "T/1" {
+				t.Errorf("pair %v vs %v", r["chosen_episode"], r["rejected_episode"])
+			}
+		}
+	}
+	if episodes != 1 || st.Drops["pair:multi_segment"] != 0 {
+		t.Fatalf("episode pairs %d, drops %v", episodes, st.Drops)
+	}
+}

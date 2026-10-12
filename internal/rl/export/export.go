@@ -97,6 +97,12 @@ type Options struct {
 	// group by rl.CompareRank, only when rank 1 is verified and its rank key is
 	// strictly better.
 	Pair string
+	// PairUnverified lets "best-worst" pair a group none of whose episodes passed:
+	// rank 1 is then the best by verifier score and the rest of the ranking, for
+	// long tasks whose episodes rarely pass outright (the siblings of a branch
+	// point). A group with a passing episode is paired as before; flagged
+	// episodes are dropped before pairing either way (DropFlagged).
+	PairUnverified bool
 	// DropFlagged drops episodes carrying a hard flag (rl.HardFlag: infra_error,
 	// truncated, replay_mismatch, contaminated, hack:*) and, for the training
 	// formats, weak-label episodes unless KeepWeak. token_mismatch counts only for
@@ -339,6 +345,9 @@ func newExporter(w io.Writer, o Options) (*exporter, error) {
 	case "", PairReward, PairBestWorst:
 	default:
 		return nil, fmt.Errorf("%w: pair must be %s or %s, not %q", ErrBadOptions, PairReward, PairBestWorst, o.Pair)
+	}
+	if o.PairUnverified && o.Pair != PairBestWorst {
+		return nil, fmt.Errorf("%w: unverified pairs are a %s option (the reward pairing never asks for a passing episode)", ErrBadOptions, PairBestWorst)
 	}
 	splits, err := parseSplit(o.Split)
 	if err != nil {
