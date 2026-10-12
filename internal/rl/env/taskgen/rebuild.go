@@ -659,7 +659,7 @@ func rebuildPrompt(lib *rebuildLib, tier, apiPath string) string {
 		}
 		removed := ""
 		if lib.lang == Go {
-			removed = " (unexported functions nothing else refers to were removed)"
+			removed = " (unexported functions nothing else refers to were removed; the few that run when the packages load, or before the tests start, keep their bodies)"
 		}
 		fmt.Fprintf(&b, "%d %s %s of this repository were reduced to stubs: their declarations are in place with their documentation, but the bodies of their functions and methods only %s%s. Implement them again so that they behave as their documentation, the README and the examples describe.",
 			len(lib.pkgs), langName(lib.lang), noun, body, removed)

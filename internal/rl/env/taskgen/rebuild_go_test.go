@@ -79,23 +79,43 @@ var defaultScale = scaleFactor()
 func Upper(s string) string { return strings.ToUpper(s) }
 `
 
+// stubCalcC sets a variable when the package loads through a constructor, a method and an unexported helper.
+const stubCalcC = `package calc
+
+var defaultOpt = newOpt().withScale(3)
+
+type opt struct{ scale int }
+
+func newOpt() *opt { return &opt{scale: 1} }
+
+func (o *opt) withScale(k int) *opt {
+	o.scale = clampScale(k)
+	return o
+}
+
+func clampScale(k int) int { return min(k, 10) }
+
+// Scaled scales n by the default option.
+func Scaled(n int) int { return n * defaultOpt.scale }
+`
+
 func TestGoStubPackage(t *testing.T) {
-	files := map[string][]byte{"calc/a.go": []byte(stubCalcA), "calc/b.go": []byte(stubCalcB)}
-	stubs, err := goStubPackage(files, map[string]bool{"usedByTests": true})
+	files := map[string][]byte{"calc/a.go": []byte(stubCalcA), "calc/b.go": []byte(stubCalcB), "calc/c.go": []byte(stubCalcC)}
+	stubs, err := goStubPackage(files, map[string]bool{"usedByTests": true}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	a, b := string(stubs["calc/a.go"]), string(stubs["calc/b.go"])
+	a, b, c := string(stubs["calc/a.go"]), string(stubs["calc/b.go"]), string(stubs["calc/c.go"])
 	for _, want := range []string{
 		"// Package calc does arithmetic.\npackage calc",
 		"\t\"errors\"\n)",
 		"// ErrNeg is returned for negative input.\nvar ErrNeg = errors.New(\"negative\")",
-		"var table = func() []int { panic(\"not implemented\") }()",
+		"var table = func() []int { return []int{1, 2, 3} }()", // it runs when the package loads
 		"const Pi = 3.14",
 		"X, Y  int // the coordinates",
 		"// Add adds.\nfunc Add(a, b int) int {\n\tpanic(\"not implemented\")\n}",
 		"func usedByTests(x int) string {\n\tpanic(\"not implemented\")\n}",                  // the tests use it
-		"func scaleFactor() int {\n\tpanic(\"not implemented\")\n}",                          // b.go's variable uses it
+		"func scaleFactor() int { return 2 }",                                                // b.go's variable calls it when the package loads
 		"func (p *Point) scale(k int) {\n\tpanic(\"not implemented\")\n}",                    // a method stays
 		"// Sum adds numbers of any kind.\nfunc Sum[T int | float64](xs ...T) T {\n\tpanic(", // generics
 	} {
@@ -103,7 +123,7 @@ func TestGoStubPackage(t *testing.T) {
 			t.Errorf("a.go's stub lacks %q:\n%s", want, a)
 		}
 	}
-	for _, gone := range []string{"func helper", "func init", "a comment inside", "\"fmt\"", "\"strings\"", "strconv", "\treturn", "{ return"} {
+	for _, gone := range []string{"func helper", "func init", "a comment inside", "\"fmt\"", "\"strings\"", "strconv", "\treturn", "{ return x }", "{ return 2 * n"} {
 		if strings.Contains(a, gone) {
 			t.Errorf("a.go's stub still has %q:\n%s", gone, a)
 		}
@@ -112,10 +132,20 @@ func TestGoStubPackage(t *testing.T) {
 		t.Errorf("b.go's stub:\n%s", b)
 	}
 
-	// The stubs build and vet clean.
+	// What runs when the package loads keeps its body: the constructor, the method and the helper they call; the rest
+	// is stubbed.
+	for _, want := range []string{"func newOpt() *opt { return &opt{scale: 1} }", "\to.scale = clampScale(k)\n\treturn o\n",
+		"func clampScale(k int) int { return min(k, 10) }", "func Scaled(n int) int {\n\tpanic("} {
+		if !strings.Contains(c, want) {
+			t.Errorf("c.go's stub lacks %q:\n%s", want, c)
+		}
+	}
+
+	// The stubs build and vet clean, and the package loads: a test that imports it runs.
 	have(t, "go")
 	dir := t.TempDir()
-	for p, body := range map[string]string{"go.mod": "module example.com/stubs\n\ngo 1.21\n", "calc/a.go": a, "calc/b.go": b} {
+	load := "package calc_test\n\nimport (\n\t\"testing\"\n\n\t\"example.com/stubs/calc\"\n)\n\nfunc TestLoads(t *testing.T) { _ = calc.Pi }\n"
+	for p, body := range map[string]string{"go.mod": "module example.com/stubs\n\ngo 1.21\n", "calc/a.go": a, "calc/b.go": b, "calc/c.go": c, "calc/load_test.go": load} {
 		if err := writeFile(filepath.Join(dir, p), body); err != nil {
 			t.Fatal(err)
 		}
@@ -125,6 +155,11 @@ func TestGoStubPackage(t *testing.T) {
 	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=mod", "GOCACHE="+sharedGoCache, "GOTOOLCHAIN=local")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go vet of the stubs: %v\n%s", err, out)
+	}
+	test := exec.Command("go", "test", "-count=1", "./...")
+	test.Dir, test.Env = dir, cmd.Env
+	if out, err := test.CombinedOutput(); err != nil {
+		t.Fatalf("a test of the stubbed package does not run (it panics when the package loads?): %v\n%s", err, out)
 	}
 }
 
@@ -281,5 +316,44 @@ func TestRebuildGoKeepsTestSupportAtTheReference(t *testing.T) {
 	}
 	if lib, err := plan("util", "check"); err != nil || len(lib.pkgs) != 1 || lib.pkgs[0].Name != "example.com/m/util" {
 		t.Errorf("util and check: %v %+v", err, lib)
+	}
+}
+
+// Code outside the scope that runs when its package loads (here tmpl's variable and init function) and calls into the
+// scope keeps the bodies it reaches: util.Name, the method Add and the unexported helper it uses; so does what util's
+// tests run before the first test (TestMain, through a helper of theirs: util.Clean). The rest of util is stubbed. A
+// stub that panicked there would fail every program that loads tmpl, or every test of util, whatever it tests.
+func TestRebuildGoKeepsWhatRunsWhenPackagesLoad(t *testing.T) {
+	f := newFixture(t)
+	for p, body := range map[string]string{
+		"go.mod":            "module example.com/m\n\ngo 1.21\n",
+		"util/util.go":      "// Package util helps.\npackage util\n\n// Reg registers names.\ntype Reg struct{ names []string }\n\n// Add adds a name.\nfunc (r *Reg) Add(s string) { r.names = append(r.names, norm(s)) }\n\n// Name is the default name.\nfunc Name() string { return \"u\" }\n\n// Double doubles n.\nfunc Double(n int) int { return 2 * n }\n\n// Clean cleans up.\nfunc Clean() error { return nil }\n\nfunc norm(s string) string { return s + \"!\" }\n",
+		"util/util_test.go": "package util\n\nimport \"testing\"\n\nfunc TestDouble(t *testing.T) {\n\tif Double(2) != 4 {\n\t\tt.Fatal()\n\t}\n}\n",
+		"util/main_test.go": "package util_test\n\nimport (\n\t\"os\"\n\t\"testing\"\n\n\t\"example.com/m/util\"\n)\n\nfunc TestMain(m *testing.M) {\n\tprepare()\n\tos.Exit(m.Run())\n}\n\nfunc prepare() { _ = util.Clean() }\n",
+		"tmpl/tmpl.go":      "// Package tmpl is out of the scope.\npackage tmpl\n\nimport \"example.com/m/util\"\n\nvar defaultReg = newReg()\n\nfunc newReg() *util.Reg {\n\tr := &util.Reg{}\n\tr.Add(\"x\")\n\treturn r\n}\n\nvar name string\n\nfunc init() { name = util.Name() }\n\n// Reg is the default registry.\nfunc Reg() *util.Reg { return defaultReg }\n",
+	} {
+		f.write(p, body)
+	}
+	commit := f.commit("the library")
+	r := &repo{g: newGit(t), gitDir: filepath.Join(f.Dir, ".git")}
+	files, err := r.listFiles(context.Background(), commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lib, err := rebuildGo(context.Background(), r, commit, files, RebuildOptions{Scope: []string{"util"}, Tier: RebuildStubs}, func(int) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	stub := string(lib.stubs["util/util.go"])
+	for _, want := range []string{
+		"func (r *Reg) Add(s string) { r.names = append(r.names, norm(s)) }",
+		"func Name() string { return \"u\" }",
+		"func norm(s string) string { return s + \"!\" }",
+		"func Clean() error { return nil }",
+		"func Double(n int) int {\n\tpanic(",
+	} {
+		if !strings.Contains(stub, want) {
+			t.Errorf("util/util.go's stub lacks %q:\n%s", want, stub)
+		}
 	}
 }

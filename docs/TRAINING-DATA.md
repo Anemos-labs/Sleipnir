@@ -312,7 +312,10 @@ team to write a library again from its specification, as it is at a version of t
   Tier `stubs` keeps the API. A Go stub keeps the package clause, every constant, variable, type and method, the
   exported functions and the unexported ones that kept code or the package's own tests use, with their doc comments;
   every body becomes `panic("not implemented")` (function literals in variables' values too), `init` and the other
-  unexported functions are removed, and so are the imports nothing kept uses. A Python stub keeps everything outside
+  unexported functions are removed, and so are the imports nothing kept uses. What runs before the first test keeps its
+  body: the functions and methods of the scope that package-level variables, the `init` functions of packages outside
+  the scope and the hidden tests' `TestMain` call, directly or through the module's other code, while the packages
+  load (a method by its name). A panic there would fail every test of every package that loads the one it is in. A Python stub keeps everything outside
   function bodies (imports, assignments, class attributes, decorators, docstrings, comments) and replaces the body of
   every function and method, and of an `if __name__ == "__main__":` block, with `raise NotImplementedError`; a body
   that is only `pass`, `...` or such a raise stays. Python is analysed by an embedded script run with `python3`, which

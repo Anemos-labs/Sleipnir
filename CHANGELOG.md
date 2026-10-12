@@ -13,8 +13,13 @@ they do not indicate whether a change has been released.
   gookit/goutil's `x/assert`). Stubbed, it made every test of every unit
   panic, so a rollout scored 0 throughout whatever it rebuilt. The report
   lists such packages under `test_support`, and `rl taskgen rebuild` prints
-  them. Tasks generated earlier are unchanged; regenerate a rebuild task whose
-  scope includes such a package.
+  them. Go stubs also keep the bodies of what runs before the first test:
+  the functions and methods of the scope that package-level variables, the
+  init functions of packages outside the scope and the hidden tests'
+  `TestMain` reach while the packages load (goutil's `strutil` initialised a
+  variable with a stubbed constructor, so every package that loads it
+  panicked). Tasks generated earlier are unchanged; regenerate a rebuild task
+  whose scope includes such a package.
 - The hardcoded-value detector reads a task's hidden verifier files that are
   stored as blobs from the task blob store. Scoring read blobs from the run's
   own store only, so for tasks whose hidden files are blobs (every generated
