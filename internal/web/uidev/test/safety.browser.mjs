@@ -165,6 +165,10 @@ try {
     await waitFor(`document.querySelector('#qSlot .qdone')`); await p.sleep(300); await shotQ('canceled');
     const done = await ev(`return { text: document.querySelector('#qSlot .qdone').textContent, errs: window.__errToasts, row: (SL.sessions.active.m.chan.mgr.slice(-1)[0] || {}).text };`);
     must(/refused: canceled/.test(done.text) && done.errs === 0 && /refused without an answer \(canceled\)/.test(done.row), 'canceled: ' + JSON.stringify(done));
+    /* the card of the answered question goes after 8 s, with nothing else happening that would draw the slot again */
+    await p.sleep(8600);
+    const gone = await ev(`return { card: !!document.querySelector('#qSlot .qdone'), html: document.getElementById('qSlot').innerHTML.length };`);
+    must(!gone.card && gone.html === 0, 'the answered card stays after 8 s: ' + JSON.stringify(gone));
     return { mcp: big.len, keys: none.keys.join(' '), canceled: done.text.slice(0, 60) };
   });
 

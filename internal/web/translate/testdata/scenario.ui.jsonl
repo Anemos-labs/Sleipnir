@@ -38,7 +38,7 @@
 {"t":0.575,"k":"alert","seq":38,"s":"raise","kind":"stalled","key":"be-1","text":"be-1 has been quiet for 9 minutes"}
 {"t":0.585,"k":"stall","seq":39,"id":"be-1","task":"T1","kind":"claimed_no_progress","s":"raise","text":"be-1 claimed T1 9 minutes ago and has not reported progress"}
 {"t":0.585,"k":"sys","seq":40,"ch":"mgr","glyph":"⚠","text":"be-1 claimed T1 9 minutes ago and has not reported progress","ag":"be-1","task":"T1"}
-{"t":0.595,"k":"break","seq":41,"id":"be-1","kind":"low_hit","read":0,"expected":4500,"why":"the prompt prefix did not change: the endpoint did not serve it"}
+{"t":0.595,"k":"break","seq":41,"id":"be-1","kind":"low_hit","read":0,"expected":4500,"why":"the prompt prefix did not change: the endpoint did not serve it","missUsd":0.00405,"quiet":true}
 {"t":0.605,"k":"compact","seq":42,"id":"be-1","from":1400,"to":625,"pct":-55,"mode":"fork"}
 {"t":0.615,"k":"ckpt","seq":43,"at":1791584130605,"cid":"c07","ts":"22:15:30","files":0,"note":"turn 1: build the shop","skipped":true}
 {"t":2.615,"k":"ckpt","seq":44,"at":1791584130615,"cid":"c07","ts":"22:15:30","files":1,"note":"turn 1: build the shop","agents":["be-1"],"add":3,"del":1}

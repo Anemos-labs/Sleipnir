@@ -468,8 +468,23 @@ func (t *Translator) derive(e events.Event, ts float64, at int64) {
 		}
 		if json.Unmarshal(e.Data, &p) == nil && !nonAgent(hid) {
 			kind := firstNonEmpty(p.Kind, "unknown")
-			t.put(&wire.Break{ID: uiID(hid), Kind: line(kind, capID), Read: max(p.ActualRead, 0), Expected: max(p.ExpectedRead, 0),
-				Why: line(anomalyWhy(kind), capWhy)}, ts, at, nil)
+			b := &wire.Break{ID: uiID(hid), Kind: line(kind, capID), Read: max(p.ActualRead, 0), Expected: max(p.ExpectedRead, 0),
+				Why: line(anomalyWhy(kind), capWhy)}
+			// the State has the anomaly with the cost of its miss; the rule of the terminal's chat decides whether a person is told
+			an, ok := t.st.AnomalyAt(e.Seq)
+			if !ok {
+				an = state.Anomaly{Kind: kind}
+			}
+			b.Layer = line(an.Layer, capID)
+			if an.MissKnown {
+				b.MissUSD = an.MissUSD
+			}
+			show, capped := t.d.breaks.Say(an, false)
+			b.Quiet = !show
+			if capped {
+				t.sysRow("mgr", "⚠", "⚠ "+state.EndpointBreaksCapped+" (the Cache view has each one)", "", "", ts, at)
+			}
+			t.put(b, ts, at, nil)
 		}
 	case events.TypeCompactCommit:
 		t.compact(e, ts, at)

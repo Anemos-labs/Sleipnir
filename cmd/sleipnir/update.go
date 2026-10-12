@@ -20,10 +20,10 @@ func updateOptions() update.Options {
 	return update.Options{CachePath: filepath.Join(userHome(), ".sleipnir", "update.json"), Agent: "sleipnir/" + version}
 }
 
-// updateChecks reports whether this build looks for newer releases by itself: not one built from source, and not when
+// updateChecks reports whether this build looks for newer releases by itself: a release (releaseBuild), not one built from source, and not when
 // SLEIPNIR_NO_UPDATE_CHECK is set (the only thing it sends is the request for the latest release of the repository to api.github.com).
 func updateChecks() bool {
-	return version != "dev" && os.Getenv("SLEIPNIR_NO_UPDATE_CHECK") == ""
+	return releaseBuild(version) && os.Getenv("SLEIPNIR_NO_UPDATE_CHECK") == ""
 }
 
 // updateNotice is the line the chat says at its start when a newer release is out, from the last check and nothing else: it never waits.
@@ -78,7 +78,7 @@ func cmdUpdate(ctx context.Context, args []string) error {
 	if r, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = r
 	}
-	return runUpdate(ctx, os.Stdout, updateOptions(), version, commit, exe, *check)
+	return runUpdate(ctx, os.Stdout, updateOptions(), releaseVersion(), commit, exe, *check)
 }
 
 // runUpdate is `sleipnir update` (update.Run).

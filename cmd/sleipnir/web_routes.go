@@ -5,6 +5,7 @@ package main
 // JSON bodies within a cap); a route that raises privilege also asks for its confirmation here.
 
 import (
+	"context"
 	"errors"
 	"maps"
 	"net/http"
@@ -168,6 +169,32 @@ func (h *webHostImpl) routes(srv *web.Server) {
 			return
 		}
 		ok(w, okBody)
+	})
+	h.tabRoute(srv, "DELETE /api/sessions/{id}/queue/{qid}", web.RouteOpts{NoBody: true}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
+		qid := r.PathValue("qid")
+		if !queuedIDRE.MatchString(qid) {
+			web.Error(w, http.StatusBadRequest, "bad_request", "bad queued line id")
+			return
+		}
+		res, err := t.DropQueued(qid)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		ok(w, res)
+	})
+	h.tabRoute(srv, "POST /api/sessions/{id}/queue/{qid}/now", web.RouteOpts{NoBody: true}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
+		qid := r.PathValue("qid")
+		if !queuedIDRE.MatchString(qid) {
+			web.Error(w, http.StatusBadRequest, "bad_request", "bad queued line id")
+			return
+		}
+		res, err := t.SendQueuedNow(r.Context(), qid)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		ok(w, res)
 	})
 	h.tabRoute(srv, "POST /api/sessions/{id}/interrupt", web.RouteOpts{}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
 		var body struct {
@@ -430,6 +457,14 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if body.Resume == "" {
+		// a combination the session would refuse as it starts (commit without worktree isolation, isolation for a single agent, a
+		// folder that is not a repository's root with a commit, a checkout that commit cannot move) is refused now, before a tab opens
+		if err := h.preflightIsolation(r.Context(), f, dir, plan); err != nil {
+			writeErr(w, err)
+			return
+		}
+	}
 	// What the session raises above the server's own command line needs the person's confirmation (web_authorize.go); trusting the
 	// project's files shows them first (409 trust_required with the challenge).
 	p := raised(f, h.serverBaseline(), dir)
@@ -460,6 +495,23 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 	res := map[string]any{"tab": t.Summary()}
 	h.idemDone(key, true, http.StatusCreated, res)
 	_ = web.WriteJSON(w, http.StatusCreated, res)
+}
+
+// preflightIsolation checks the isolation settings of a new session in dir (session.PreflightIsolation) before it starts: 409
+// isolation with the session's own reason when they cannot work there. A folder the request makes a repository (plan.git) gets one
+// with a first commit on a branch, so only the combination of the settings is checked for it.
+func (h *webHostImpl) preflightIsolation(ctx context.Context, f chatFlags, dir string, plan dirPlan) error {
+	o := f.options()
+	home := h.base.Home
+	if home == "" {
+		home, _ = os.UserHomeDir()
+	}
+	err := session.PreflightIsolation(ctx, session.IsolationPreflight{Cwd: dir, Home: home, Swarm: o.Swarm, Isolation: o.Isolation,
+		Commit: o.Commit, NewRepo: plan.git})
+	if err != nil {
+		return werr(http.StatusConflict, "isolation", clip(err.Error(), 400))
+	}
+	return nil
 }
 
 // resumeRequest is the body of POST /api/sessions/resume: wire.ResumeRequest and the page's idempotency key.

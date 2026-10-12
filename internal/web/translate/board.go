@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/inspect"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
@@ -383,6 +384,9 @@ func (t *Translator) notice(uid, level, msg string, ts float64, fromSink bool) {
 func (t *Translator) noticeAt(uid, level, msg string, ts float64, at int64, fromSink bool) {
 	if msg == "" {
 		return
+	}
+	if level == "info" && strings.HasPrefix(msg, agent.CacheMissNoticePrefix) {
+		return // the endpoint's own miss: the log's cache.anomaly is its break, with the same numbers and whether it is said (wire.Break.Quiet)
 	}
 	if t.twin(uid, msg, fromSink, ts) {
 		if fromSink {

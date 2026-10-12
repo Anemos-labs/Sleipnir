@@ -268,6 +268,10 @@ flags:
 	}
 	start() // the first session, now that the address is the server's
 	u := srv.URL(ln.Addr())
+	fmt.Fprintf(os.Stderr, "sleipnir web: sleipnir %s\n", buildDescription())
+	if n := staleNotice(); n != "" {
+		fmt.Fprintln(os.Stderr, wrapFor(os.Stderr, "sleipnir web: "+n))
+	}
 	fmt.Println(u) // the first line of standard output, and the only place the token is printed
 	fmt.Fprintf(os.Stderr, "sleipnir web: sessions started in the page work in %s\n", dir)
 	fmt.Fprintln(os.Stderr, wrapFor(os.Stderr, "sleipnir web: the address above carries a token for this run only; the page keeps a session cookie and removes the token from the address bar"))

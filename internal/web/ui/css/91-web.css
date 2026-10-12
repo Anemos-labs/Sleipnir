@@ -19,6 +19,8 @@
 .feed .msg.empty{padding:2px 0;text-align:left}
 .feed.quiet .msg.live[data-g="tool"],.feed.quiet .msg.live[data-g="edit"]{display:none}
 /* a cache break in Quiet: one calm line, no flash and no pink card */
+/* the endpoint's own cache miss that the terminal would not say without /verbose: shown only in a feed with /verbose on */
+.msg.qbrk:not(.feed.verbose .msg.qbrk){display:none}
 .msg.break.calm{display:flex;gap:6px;align-items:baseline;border:0;background:none;padding:0;font:500 11.5px/1.3 var(--f-num);color:var(--fg2)}
 .msg.break.calm .lg{flex:none;width:12px;text-align:center}
 .msg.break.calm .bt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
@@ -127,7 +129,9 @@ body.cq .anom .a b{color:var(--warm)}
 .nsgit,.nsopt{display:flex;align-items:center;flex-basis:100%;margin:3px 0}
 .nsgit[hidden]{display:none}.nsgit .chk,.nsopt .chk{margin:0;white-space:nowrap}
 .nsd{font:400 11.5px/1.35 var(--f-ui);color:var(--dim)}
-.nsteam{flex-basis:100%;display:flex;flex-direction:column;gap:8px}.nsteam.nsoff{opacity:.5}
+.nsteam{flex-basis:100%;display:flex;flex-direction:column;gap:8px}.nsteam.nsoff>:not(.nswhy){opacity:.5}
+.nswhy{flex-basis:100%;margin:3px 0 0;font:500 11.5px/1.35 var(--f-ui);color:var(--warm)}.nswhy[hidden]{display:none}
+.nsteam .seg button:disabled,.nsteam input:disabled{cursor:not-allowed}.nsteam .seg button:disabled{opacity:.45}
 .nserr{flex-basis:100%;margin:4px 0 0;font:600 12px/1.35 var(--f-ui)}.nserr[hidden]{display:none}
 .chips{display:flex;flex-wrap:wrap;gap:5px;flex-basis:100%;margin-top:5px;align-items:center}
 .nschip{display:inline-flex;align-items:center;padding:3px 8px;border:1px solid var(--line2);border-radius:2px;background:var(--panel2);color:var(--fg2);font:500 12px var(--f-num);text-align:left}

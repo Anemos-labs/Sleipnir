@@ -37,8 +37,9 @@
       case 'note': return '<div class="msg note"' + at + '><span class="lg ' + (e.g === 'done' ? 'ok' : '') + '">' + (own(FEED_G, e.g) || '·') + '</span><span>' + esc(e.text) + '</span></div>';
       case 'st': return '<div class="msg st"' + at + '><span class="lg">' + (own(ui.SG, e.s) ? ui.SG[e.s][0] : '·') + '</span><span><b>' + esc(e.s) + '</b> ' + esc(e.text || '') + '</span></div>';
       case 'scouts': return '<div class="msg scouts">' + (Array.isArray(e.lines) ? e.lines : []).map(([id, t]) => '<div data-ag="' + esc(id) + '"><b style="color:' + agCol(id) + '">' + esc(id) + '</b><span class="ok">✓</span><span>' + esc(t) + '</span></div>').join('') + '</div>';
-      case 'break': if (SL.settings.cache === 'quiet') return '<div class="msg break calm"' + at + ' title="' + esc('cache break (' + e.kind + '): ' + e.why) + '"><span class="lg warm">⚠</span><span class="bt"><b style="color:' + agCol(e.ag) + '">' + esc(e.ag) + '</b> cache break · ' + esc(e.why) + '</span></div>';
-        return '<div class="msg break"' + at + '><b>⚠ cache break</b> (' + esc(e.kind) + ') · <b style="color:' + agCol(e.ag) + '">' + esc(e.ag) + '</b> · read ' + nm(e.read) + ' of ' + fmtK(nm(e.expected)) + ' expected · extra cost <span class="warm">≈ ' + fmtUsd(nm(e.expected) * 0.9 / 1e6, 4) + ' (est.)</span><em>' + esc(e.why) + '</em></div>';
+      /* a quiet break (wire.Break.Quiet) is drawn with qbrk: the feed shows it only with /verbose on */
+      case 'break': { const qb = e.quiet ? ' qbrk' : '', lay = e.layer ? ' · layer ' + esc(e.layer) : ''; if (SL.settings.cache === 'quiet') return '<div class="msg break calm' + qb + '"' + at + ' title="' + esc('cache break (' + e.kind + (e.layer ? ', layer ' + e.layer : '') + '): ' + e.why) + '"><span class="lg warm">⚠</span><span class="bt"><b style="color:' + agCol(e.ag) + '">' + esc(e.ag) + '</b> cache break · ' + esc(e.why) + '</span></div>';
+        return '<div class="msg break' + qb + '"' + at + '><b>⚠ cache break</b> (' + esc(e.kind) + lay + ') · <b style="color:' + agCol(e.ag) + '">' + esc(e.ag) + '</b> · read ' + nm(e.read) + ' of ' + fmtK(nm(e.expected)) + ' expected · extra cost <span class="warm">≈ ' + fmtUsd(e.missUsd > 0 ? e.missUsd : nm(e.expected) * 0.9 / 1e6, 4) + (e.missUsd > 0 ? '' : ' (est.)') + '</span><em>' + esc(e.why) + '</em></div>'; }
       case 'compact': { const note = calc.compactNote(e, false); return '<div class="msg compact"' + at + '><b>◆ compacted</b><span class="num">' + fmtK(nm(e.from)) + ' → ' + fmtK(nm(e.to)) + '</span><span class="dim">' + (nm(e.pct) > 0 ? '+' : '−') + Math.abs(nm(e.pct)) + '%</span><span class="dim">· <span style="color:' + agCol(e.ag) + '">' + esc(e.ag) + '</span>' + (note ? ' · ' + note : '') + '</span></div>'; }
       case 'stream': return e.code ? '<div class="msg stream code"' + at + ' style="--c:' + agCol(e.ag) + '"><div class="who">' + esc(e.ag) + ' <time>writing</time></div><pre class="st" data-full="' + esc(e.text) + '" data-t0="' + nm(e.t) + '" data-rate="' + nm(e.rate, 70) + '"></pre></div>' : '<div class="msg stream"' + at + ' style="--c:' + agCol(e.ag) + '"><span class="lid">' + esc(e.ag) + '</span> <span class="st" data-full="' + esc(e.text) + '" data-t0="' + nm(e.t) + '" data-rate="' + nm(e.rate, 70) + '"></span></div>';
       case 'final': { const c = calc.totals(m); return '<div class="msg final">-- ' + Math.round(e.t) + 's · ' + (m.final ? m.final.steps : m.steps) + ' steps · ' + fmtUsd(c.cost, 2) + (SL.settings.cache === 'full' && c.prompt ? ' · cache hit ' + c.pct + '%' : '') + '</div>'; }
@@ -168,8 +169,42 @@
     /* ---------- composer ---------- */
     const inp = $('#input'), form = $('#composer'), SLASH = { open: false, items: [], idx: 0, mode: 'cmd' }, slashEl = $('#slash'), RS = { pasted: [], hi: -1, cc: 0 };
     const autosize = () => { inp.style.height = 'auto'; inp.style.height = Math.min(120, inp.scrollHeight) + 'px'; };
+    /** A queued line: its text and, once the server has it, Send now (a message only: it steers the running turn), Edit (takes it out and
+     *  puts it back in the composer) and × (takes it out). An action of the session (a goal change) has no buttons: it stays. */
+    function queuedHtml(q) {
+      const k = q.kind || 'message', can = q.id && !q.local && k !== 'action', t = clip1(q.text, 80);
+      return '<div class="ql" data-qid="' + esc(q.id || '') + '"><span class="qt" title="' + esc(q.text) + '">' + esc(q.text) + '</span>' + (can ? '<span class="qb">' +
+        (k === 'message' ? '<button type="button" data-qa="now" title="send it to the running turn now, as a steer: the agent reads it with its next step" aria-label="Send now: ' + esc(t) + '">Send now</button>' : '') +
+        '<button type="button" data-qa="edit" title="take it out of the queue and back into the message box" aria-label="Edit: ' + esc(t) + '">Edit</button>' +
+        '<button type="button" data-qa="drop" class="qx" title="remove it from the queue" aria-label="Remove from the queue: ' + esc(t) + '">×</button></span>' : '') + '</div>';
+    }
+    const turnBusy = S => SL.calc.turnRunning(S.wm) || S.meta.running === true;
+    /** Edit a queued line: it leaves the queue, and its whole text comes into the composer (ahead of what is typed there). */
+    function editQueued(S, q) {
+      const r = SL.act.dropQueued(q.id); if (!r || r.ok === false) { if (r && r.why) ui.toast(r.why, 'warm'); return; }
+      r.done.then(res => { if (!res || !res.ok || !res.data || S !== SL.sessions.active) return; const cur = inp.value.trim(); inp.value = res.data.text + (cur ? '\n' + inp.value : ''); S.ui.draft = inp.value; autosize(); inp.focus(); });
+    }
+    sc.listen($('#queuedLines'), 'click', e => {
+      const b = e.target.closest('[data-qa]'), row = b && b.closest('.ql'), S = SL.sessions.active; if (!b || !row || !S) return;
+      const q = S.ui.queued.find(x => x.id && x.id === row.dataset.qid); if (!q) return;
+      if (b.dataset.qa === 'edit') { editQueued(S, q); return; }
+      const r = b.dataset.qa === 'now' ? SL.act.sendQueuedNow(q.id) : SL.act.dropQueued(q.id); if (r && r.ok === false && r.why) ui.toast(r.why, 'warm');
+    });
+    /** Ctrl+Enter while a turn runs: what the composer holds goes to the running turn as a steer (/steer), not into the queue. */
+    function steerNow() {
+      const S = SL.sessions.active, v = inp.value.trim(); if (!S || !v) return;
+      if (!turnBusy(S) || S.readOnly) { submit(); return; }
+      if (v.charAt(0) === '/') { ui.toast('a command cannot steer: Enter queues it', 'warm'); return; }
+      const pasted = RS.pasted.slice(), full = v.replace(/\[pasted text #(\d+) \+\d+ lines\]/g, (m0, n) => pasted[+n - 1] != null ? pasted[+n - 1] : m0);
+      const r = SL.act.steer('mgr', full); if (!r || r.ok === false) { if (r && r.why) ui.toast(r.why, 'warm'); return; }
+      inp.value = ''; S.ui.draft = ''; autosize(); closeSlash(); RS.pasted = []; RS.hi = -1; if (S.hist[S.hist.length - 1] !== v) S.hist.push(v);
+      r.done.then(res => { if (res && res.ok === false) restore(S, v, pasted); });
+    }
+    /* while a turn runs the hint says what Enter and Ctrl+Enter do: short in the bar, the whole sentence in its title */
+    const HINT_IDLE = 'ctrl+t stats · / commands', HINT_BUSY = 'Enter queues · Ctrl+Enter steers', HINT_BUSY_T = 'Enter queues for after this turn · Ctrl+Enter sends now (steer)';
     function composerUpdate(S) {
-      feed.classList.toggle('quiet', S.ui.verbose === false); const qh = S.ui.queued.map(q => '<div>' + esc(q.text) + '</div>').join(''), ql = $('#queuedLines'); if (ql._h !== qh) { ql._h = qh; ql.innerHTML = qh; }
+      feed.classList.toggle('quiet', S.ui.verbose === false); feed.classList.toggle('verbose', S.ui.verbose === true); const qh = S.ui.queued.map(queuedHtml).join(''), ql = $('#queuedLines'); if (ql._h !== qh) { ql._h = qh; ql.innerHTML = qh; }
+      const hint = $('#cHint'), ht = !S.readOnly && turnBusy(S) ? HINT_BUSY : HINT_IDLE; if (hint && hint.textContent !== ht) { hint.textContent = ht; hint.title = ht === HINT_BUSY ? HINT_BUSY_T : ''; }
       const ro = !!S.readOnly, t = S.placeholder ? 'start a session first: + New' : S.follow ? 'watching ' + S.sid + ' · read-only · the run belongs to another process' : S.recorded ? 'a recorded session is read-only: ↺ Resume continues it' : '';
       if (inp.disabled !== ro) { inp.disabled = ro; $('.send', form).disabled = ro; } if (inp.title !== t) inp.title = t;
     }
@@ -217,6 +252,7 @@
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeSlash(); return; }
       }
       if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); SL.act.cycleMode(); return; }
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) { e.preventDefault(); steerNow(); return; }
       if (e.key === 'Enter' && !e.shiftKey && !e.altKey) { const v = inp.value; if (v.endsWith('\\')) { e.preventDefault(); inp.value = v.slice(0, -1) + '\n'; autosize(); return; } e.preventDefault(); submit(); return; }
       if (e.key === 'Enter' && e.altKey) { e.preventDefault(); inp.setRangeText('\n', inp.selectionStart, inp.selectionEnd, 'end'); autosize(); return; }
       if (e.key === 'j' && e.ctrlKey) { e.preventDefault(); inp.setRangeText('\n', inp.selectionStart, inp.selectionEnd, 'end'); autosize(); return; }
@@ -226,6 +262,11 @@
         else if (RS.cc && SL.time.wall - RS.cc < 1500) { RS.cc = 0; if (S) ui.closeSessionAsk(S); }   /* ctrl+c twice at an empty prompt closes the session (quitting a page's session is closing it) */
         else { RS.cc = SL.time.wall; ui.toast('ctrl+c again to quit'); } return; }
       if (e.key === 'r' && e.ctrlKey) { e.preventDefault(); ui.sheets.history(); return; }
+      if (e.key === 'ArrowUp' && !e.shiftKey && !inp.value && SL.sessions.active) {
+        /* as in the terminal: Up on an empty composer takes the last queued line back to edit it, before the history */
+        const S = SL.sessions.active, q = S.ui.queued.slice().reverse().find(x => x.id && !x.local && (x.kind || 'message') !== 'action');
+        if (q && !S.readOnly) { e.preventDefault(); editQueued(S, q); return; }
+      }
       if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.shiftKey) {
         const S = SL.sessions.active, h = S.hist, atTop = inp.selectionStart === 0 || inp.value.indexOf('\n') < 0, atEnd = inp.value.indexOf('\n') < 0 || inp.selectionStart === inp.value.length;
         if (e.key === 'ArrowUp' && atTop && h.length) { e.preventDefault(); RS.hi = Math.min(h.length - 1, RS.hi + 1); inp.value = h[h.length - 1 - RS.hi]; autosize(); } else if (e.key === 'ArrowDown' && atEnd && RS.hi >= 0) { e.preventDefault(); RS.hi--; inp.value = RS.hi < 0 ? '' : h[h.length - 1 - RS.hi]; autosize(); }

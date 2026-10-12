@@ -422,6 +422,15 @@
   },
   {
    "group": "a team, and the program",
+   "name": "/queue",
+   "kind": "slash",
+   "live": true,
+   "effects": [
+    "act:command"
+   ]
+  },
+  {
+   "group": "a team, and the program",
    "name": "/verbose",
    "kind": "slash",
    "live": true,
@@ -1475,6 +1484,9 @@
     "act:send",
     "act:setMode"
    ],
+   "/queue": [
+    "act:command"
+   ],
    "/recon": [
     "act:command",
     "card:local",
@@ -1546,6 +1558,7 @@
    "/new",
    "/permissions",
    "/plan",
+   "/queue",
    "/recon",
    "/restart",
    "/resume",

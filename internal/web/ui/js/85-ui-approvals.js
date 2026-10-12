@@ -17,6 +17,7 @@
 (function (SL) {
   'use strict';
   const U = SL.u, { $, $$, esc, clip1 } = U, calc = SL.calc, ui = SL.ui = SL.ui || {};
+  const DONE_MS = 8000;                                      // how long the card of an answered question stays in the slot
   const QUIET = 0.8, shown = Object.create(null);          // wall ms at which a question's answer UI was last seen to appear
 
   /* ---------- long text: bounded, wrapped, counted, its end one press away ---------- */
@@ -206,7 +207,21 @@
    */
   function render(S, m) {
     const slot = $('#qSlot'), q = m ? calc.openQuestion(m) : null, done = m ? m.qs.filter(x => x.answered).slice(-1)[0] : null;
-    if (!q) { const key = done ? 'd' + done.id + done.answered : ''; if (slot._k !== key) { slot._k = key; slot.innerHTML = done && SL.time.T.wall - (shown['_d' + done.id] || (shown['_d' + done.id] = SL.time.T.wall)) < 8000 ? '<div class="qdone"><b>' + (done.by && done.by !== 'you' ? '⊘' : '✓') + '</b><span><b style="color:var(--fg)">' + (done.by && done.by !== 'you' ? esc(BY[done.by] || 'refused') : keyOf(done, done.answered) + ' ' + esc(choiceText(done, done.answered))) + '</b><br><span class="dim">' + esc(done.agent) + (done.task ? ' · ' + esc(done.task) : '') + ' · <span class="mono">' + esc(clip1(done.cmd, 160)) + '</span></span></span></div>' : ''; } return; }
+    if (!q) {
+      /* the answered card shows for DONE_MS from when it was first drawn, then the slot empties: the expiry is part of the key, and a
+         timer draws the slot again when it is due (nothing else may come to draw it) */
+      let key = '', html = '';
+      if (done) {
+        const wall = SL.time.T.wall, t0 = shown['_d' + done.id] == null ? (shown['_d' + done.id] = wall) : shown['_d' + done.id], left = DONE_MS - (wall - t0);
+        if (left > 0) {
+          key = 'd' + done.id + done.answered;
+          html = '<div class="qdone"><b>' + (done.by && done.by !== 'you' ? '⊘' : '✓') + '</b><span><b style="color:var(--fg)">' + (done.by && done.by !== 'you' ? esc(BY[done.by] || 'refused') : keyOf(done, done.answered) + ' ' + esc(choiceText(done, done.answered))) + '</b><br><span class="dim">' + esc(done.agent) + (done.task ? ' · ' + esc(done.task) : '') + ' · <span class="mono">' + esc(clip1(done.cmd, 160)) + '</span></span></span></div>';
+          if (slot._k !== key) { clearTimeout(slot._t); const id = done.id; slot._t = setTimeout(() => { slot._t = 0; shown['_d' + id] = -Infinity; const A = SL.sessions.active; if (A) render(A, A.wm); }, left + 50); }
+        }
+      }
+      if (slot._k !== key) { slot._k = key; slot.innerHTML = html; }
+      return;
+    }
     const key = 'q' + q.id + '|' + S.id, waiting = calc.waiting(m) - 1, cur = $('.qstrip', slot);
     if (slot._k === key && cur) { if (slot._w !== waiting) { slot._w = waiting; let mo = $('.qmore', cur); if (!mo && waiting > 0) { mo = document.createElement('div'); mo.className = 'qmore'; $('.qh', cur).after(mo); } if (mo) { mo.textContent = moreText(waiting); mo.hidden = !(waiting > 0); } } return; }
     slot._k = key; slot._w = waiting;

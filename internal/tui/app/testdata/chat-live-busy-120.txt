@@ -6,5 +6,5 @@
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ ❯ Message Sleipnir, / for commands, @ for files                                                                      │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-⏎ queued: “and run the race detector”
+⏎ queued: “and run the race detector”  · ↑ edits · alt+s steers · /queue
 accept-edits · ctrl+t stats · / commands                                            mock/mock-1 · 20260102-030405-abcdef

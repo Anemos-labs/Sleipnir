@@ -115,67 +115,13 @@ func (s *Session) planIsolation(ctx context.Context) error {
 			s.opts.Isolation, s.opts.Commit = mode, prior.Commit
 		}
 	}
-	if o.Commit && mode != config.IsolationWorktree {
-		return errors.New("commit needs worktree isolation (--isolation worktree, or swarm.isolation in the configuration)")
-	}
-	if !o.Swarm {
-		// The configuration applies to swarms; a single agent has nobody to be isolated
-		// from. Asking for it in so many words, though, is a mistake worth saying so.
-		if o.Commit || (explicit && mode == config.IsolationWorktree) {
-			return errors.New("isolation applies to swarm sessions (--swarm N): a single agent edits your checkout directly")
-		}
-		return nil
-	}
-	if mode != config.IsolationWorktree {
-		return nil
-	}
-
-	repo, err := gitx.Open(o.Root)
-	switch {
-	case err == nil:
-	case gitx.KindOf(err) == gitx.KindNotARepo:
-		return fmt.Errorf("worktree isolation needs a git repository, and %s is not inside one (git init and commit, or use --isolation none)", o.Root)
-	case gitx.KindOf(err) == gitx.KindNoGit:
-		return fmt.Errorf("worktree isolation needs git: %w", err)
-	default:
-		return fmt.Errorf("worktree isolation: cannot open the repository at %s: %w", o.Root, err)
-	}
-	if repo.IsBare() {
-		return errors.New("worktree isolation needs a repository with a work tree, and this one is bare")
-	}
-	realRoot := evalLoose(o.Root)
-	if !samePathLoose(repo.Root(), realRoot) {
-		return fmt.Errorf("worktree isolation needs the project root to be the repository's root: the project root is %s and the repository's is %s (run from the repository's root, or use --isolation none)", o.Root, repo.Root())
-	}
-	if _, err := repo.Head(ctx); err != nil {
-		if gitx.KindOf(err) == gitx.KindNotFound {
-			return errors.New("worktree isolation starts every tree from a commit, and the repository has none yet: commit the project first")
-		}
-		return fmt.Errorf("worktree isolation: %w", err)
-	}
-	if o.Commit {
-		if br, err := repo.Branch(ctx); err != nil {
-			return fmt.Errorf("commit: %w", err)
-		} else if br == "" {
-			return errors.New("commit needs a checked-out branch to move, and HEAD is detached")
-		}
-		dirty, err := sourceDirty(ctx, repo)
-		if err != nil {
-			return fmt.Errorf("commit: %w", err)
-		}
-		if dirty {
-			return errors.New("commit needs a clean checkout: your working tree has uncommitted changes (commit or stash them, or leave --commit out: the result is then applied as uncommitted edits)")
-		}
+	repo, realRoot, err := checkIsolation(ctx, isolationCheck{mode: mode, explicit: explicit, swarm: o.Swarm, commit: o.Commit, root: o.Root, home: o.Home, id: s.ID}, sourceDirty)
+	if err != nil || repo == nil {
+		return err
 	}
 
 	top := worktreesRoot(o.Home)
 	dir := filepath.Join(top, s.ID)
-	switch {
-	case inside(repo.Root(), evalLoose(dir)):
-		return fmt.Errorf("worktree isolation keeps its trees under %s, which is inside the repository %s: set XDG_CACHE_HOME to a directory outside it", top, repo.Root())
-	case inside(evalLoose(filepath.Join(o.Home, ".sleipnir")), evalLoose(dir)), inside(evalLoose(filepath.Join(o.Home, ".claude")), evalLoose(dir)):
-		return fmt.Errorf("worktree isolation keeps its trees under %s, which is inside a protected configuration directory (every write there asks for approval): set XDG_CACHE_HOME to a directory outside it", top)
-	}
 	plan := &isoPlan{commit: o.Commit, repo: repo, top: top, dir: dir, prefix: "sleipnir/" + s.ID}
 	if prior != nil {
 		if prior.Prefix != plan.prefix || !samePathLoose(prior.Dir, dir) {
@@ -228,6 +174,95 @@ func cacheRoot(home string) string {
 		}
 	}
 	return filepath.Join(home, ".cache")
+}
+
+// isolationCheck is what decides whether a session isolates its writers, and whether it can: the effective mode and whether it was asked
+// for in so many words, whether the session is a team, Options.Commit, the project root, the user's home and the session's id (the name of
+// its folder of trees).
+type isolationCheck struct {
+	mode     string
+	explicit bool
+	swarm    bool
+	commit   bool
+	root     string
+	home     string
+	id       string
+}
+
+// modeCheck is the part of checkIsolation that needs no repository: commit needs worktree isolation, and isolation (or commit) asked
+// for a single agent is a mistake. isolated says whether the session isolates its writers (a team with worktree isolation).
+func (c isolationCheck) modeCheck() (isolated bool, err error) {
+	if c.commit && c.mode != config.IsolationWorktree {
+		return false, errors.New("commit needs worktree isolation (--isolation worktree, or swarm.isolation in the configuration)")
+	}
+	if !c.swarm {
+		// The configuration applies to swarms; a single agent has nobody to be isolated
+		// from. Asking for it in so many words, though, is a mistake worth saying so.
+		if c.commit || (c.explicit && c.mode == config.IsolationWorktree) {
+			return false, errors.New("isolation applies to swarm sessions (--swarm N): a single agent edits your checkout directly")
+		}
+		return false, nil
+	}
+	return c.mode == config.IsolationWorktree, nil
+}
+
+// checkIsolation runs the checks of planIsolation that need no recorded session: the mode against the kind of session, then, for worktree
+// isolation, a git repository with a work tree whose root is the project root, a commit to start from, for commit a checked-out branch and
+// a clean checkout (dirty says whether it is clean), and a folder for the trees outside the repository and the protected configuration.
+// It returns the repository (nil when the session is not isolated) and the project root with its links resolved. It changes nothing but
+// what dirty does.
+func checkIsolation(ctx context.Context, c isolationCheck, dirty func(context.Context, *gitx.Repo) (bool, error)) (*gitx.Repo, string, error) {
+	if isolated, err := c.modeCheck(); err != nil || !isolated {
+		return nil, "", err
+	}
+
+	repo, err := gitx.Open(c.root)
+	switch {
+	case err == nil:
+	case gitx.KindOf(err) == gitx.KindNotARepo:
+		return nil, "", fmt.Errorf("worktree isolation needs a git repository, and %s is not inside one (git init and commit, or use --isolation none)", c.root)
+	case gitx.KindOf(err) == gitx.KindNoGit:
+		return nil, "", fmt.Errorf("worktree isolation needs git: %w", err)
+	default:
+		return nil, "", fmt.Errorf("worktree isolation: cannot open the repository at %s: %w", c.root, err)
+	}
+	if repo.IsBare() {
+		return nil, "", errors.New("worktree isolation needs a repository with a work tree, and this one is bare")
+	}
+	realRoot := evalLoose(c.root)
+	if !samePathLoose(repo.Root(), realRoot) {
+		return nil, "", fmt.Errorf("worktree isolation needs the project root to be the repository's root: the project root is %s and the repository's is %s (run from the repository's root, or use --isolation none)", c.root, repo.Root())
+	}
+	if _, err := repo.Head(ctx); err != nil {
+		if gitx.KindOf(err) == gitx.KindNotFound {
+			return nil, "", errors.New("worktree isolation starts every tree from a commit, and the repository has none yet: commit the project first")
+		}
+		return nil, "", fmt.Errorf("worktree isolation: %w", err)
+	}
+	if c.commit {
+		if br, err := repo.Branch(ctx); err != nil {
+			return nil, "", fmt.Errorf("commit: %w", err)
+		} else if br == "" {
+			return nil, "", errors.New("commit needs a checked-out branch to move, and HEAD is detached")
+		}
+		d, err := dirty(ctx, repo)
+		if err != nil {
+			return nil, "", fmt.Errorf("commit: %w", err)
+		}
+		if d {
+			return nil, "", errors.New("commit needs a clean checkout: your working tree has uncommitted changes (commit or stash them, or leave --commit out: the result is then applied as uncommitted edits)")
+		}
+	}
+
+	top := worktreesRoot(c.home)
+	dir := filepath.Join(top, c.id)
+	switch {
+	case inside(repo.Root(), evalLoose(dir)):
+		return nil, "", fmt.Errorf("worktree isolation keeps its trees under %s, which is inside the repository %s: set XDG_CACHE_HOME to a directory outside it", top, repo.Root())
+	case inside(evalLoose(filepath.Join(c.home, ".sleipnir")), evalLoose(dir)), inside(evalLoose(filepath.Join(c.home, ".claude")), evalLoose(dir)):
+		return nil, "", fmt.Errorf("worktree isolation keeps its trees under %s, which is inside a protected configuration directory (every write there asks for approval): set XDG_CACHE_HOME to a directory outside it", top)
+	}
+	return repo, realRoot, nil
 }
 
 // sourceDirty reports whether the working tree differs from HEAD (tracked edits and

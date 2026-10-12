@@ -82,11 +82,14 @@ type Hello struct {
 }
 
 // ServerInfo describes the server: its listening address as the page shows it (the Host of the request), whether it is bound to
-// loopback (true for the server the command starts), and the program version.
+// loopback (true for the server the command starts), and the program version: Version as the build names it, Label as a top bar
+// shows it ("v0.2.28") and Build the full description (version, commit, toolchain and platform) a tooltip shows.
 type ServerInfo struct {
 	Addr     string `json:"addr"`
 	Loopback bool   `json:"loopback"`
 	Version  string `json:"version"`
+	Label    string `json:"label,omitempty"`
+	Build    string `json:"build,omitempty"`
 }
 
 // Limits are the limits the page respects: the largest request body in bytes, the largest message in bytes, and how many questions
@@ -160,10 +163,22 @@ type Rule struct {
 	Fixed  bool   `json:"fixed,omitempty"`
 }
 
-// QueuedLine is a message typed while a turn runs, waiting for the next turn.
+// QueuedLine is a message typed while a turn runs, waiting for the next turn. Kind says what it is: "message" (a line for the agent,
+// which can be sent now as a steer, edited or dropped), "command" (a slash line, which can be edited or dropped) or "action" (something
+// the session does for the page, such as a goal change, which stays).
 type QueuedLine struct {
 	ID   string `json:"id"`
 	Text string `json:"text"`
+	Kind string `json:"kind,omitempty"`
+}
+
+// QueuedDrop is the answer to dropping a queued line or sending it now: the line as it was queued, so the page can put its text back
+// in the message box, and Steered when it went to the running turn as a steer (false: it runs next, as nothing was running).
+type QueuedDrop struct {
+	ID      string `json:"id"`
+	Text    string `json:"text"`
+	Kind    string `json:"kind"`
+	Steered bool   `json:"steered,omitempty"`
 }
 
 // MetaPatch is a change to a tab's meta, the settings and state of the session that the page shows (its directory, model, mode,
@@ -435,7 +450,8 @@ type DirEntry struct {
 // whether there is a folder, Readable whether its entries can be listed, ParentOK whether its parent is a folder (so that it can be
 // made), Known whether it is one of the server's projects, Empty whether the folder has nothing in it, Inaccessible that the server
 // could not look at the path at all (it is there, as far as anyone can tell, and nothing can start in it). Git is "repo" for the top of
-// a git repository, "inside" for a folder within another one (GitRoot), "none" otherwise. Verify are the checks its files suggest.
+// a git repository, "inside" for a folder within another one (GitRoot), "bare" for a bare repository (a git directory with no work
+// tree), "none" otherwise. Verify are the checks its files suggest.
 type DirState struct {
 	Path     string `json:"path"`
 	Exists   bool   `json:"exists"`
@@ -449,6 +465,20 @@ type DirState struct {
 	Git          string       `json:"git"`
 	GitRoot      string       `json:"gitRoot,omitempty"`
 	Verify       []VerifyHint `json:"verify"`
+	// Repo is what git says of the repository when the path is its root (Git "repo") or a bare repository (Git "bare"); absent when
+	// git could not be asked in time.
+	Repo *RepoState `json:"repo,omitempty"`
+}
+
+// RepoState is what a repository says about starting an isolated team in it: Bare (no work tree), HasCommits (a commit to start the
+// workers' trees from), Branch (the checked-out branch; Detached when HEAD is on none), and Clean (nothing staged, modified or
+// untracked), which --commit needs.
+type RepoState struct {
+	Bare       bool   `json:"bare,omitempty"`
+	HasCommits bool   `json:"hasCommits"`
+	Branch     string `json:"branch,omitempty"`
+	Detached   bool   `json:"detached,omitempty"`
+	Clean      bool   `json:"clean"`
 }
 
 // VerifyHint is a command that checks a project of the kind a folder looks like (Cmd) and the file that says so (Why).

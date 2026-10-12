@@ -156,7 +156,7 @@ server also refuses an answer given within 350 ms. The `Needs you` inbox answers
 
 | Keys | Action |
 |---|---|
-| `Enter` | send |
+| `Enter` | send; while a turn runs, queue the line for after it (Ctrl+Enter, or Cmd+Enter, sends it to the running turn as a steer instead; each queued line has Send now, Edit and ×, and Up in an empty message box takes the last one back to edit) |
 | `alt+Enter`, `ctrl+J`, or a backslash at the end of the line before `Enter` | a new line |
 | `↑` `↓` | the lines sent before; outside the message box, the agent the views are about |
 | `ctrl+R` | search the lines sent before |

@@ -6,6 +6,13 @@
   'use strict';
   const U = SL.u, { $, $$, esc, mk, sv, fmtK, fmtUsd, fmtMs, mmss, tod, hitCls, agCol } = U, calc = SL.calc, D = SL.D, ui = SL.ui = SL.ui || {};
   const SPARK_N = 60;
+  /** How long a card says "cache break" after one (quiet breaks never reach it: wire.Break.Quiet). */
+  const BRK_HOLD = 8;
+  /** What the cache-break mark of a card says on hover, for the break it shows ({kind, layer} of m.flash). */
+  const breakTitle = f => f && f.kind === 'drift' ? 'cache break: the prompt prefix changed' + (f.layer ? ' (layer ' + f.layer + ')' : '') + ' without a declared rebase, so the cache was read only up to it'
+    : f && f.layer ? 'cache break: layer ' + f.layer + ' of the prompt changed, so the cache was read only up to it'
+    : 'cache break: the prompt prefix did not change, the endpoint did not serve it';
+  ui.breakTitle = breakTitle;
   const SG = { think: ['◇', 'think'], tool: ['⚙', 'tool'], edit: ['✎', 'edit'], wait: ['✉', 'wait'], ask: ['?', 'ask'], idle: ['◌', 'idle'], done: ['✓', 'done'], stuck: ['⚠', 'stuck'] };
   ui.SG = SG;
 
@@ -84,10 +91,11 @@
     const hero = ui.hero.mount(sc, q('.heroSvg'), S);
     /* ---- the manager's card + worker stalls ---- */
     const rc = q('.mgr-card'), stallsEl = q('.stalls'), ST = {};
-    rc.innerHTML = '<span class="rc-top"><b class="s-id">mgr</b><span class="s-role">manager</span><span class="s-st"><i class="g">◌</i><span class="sw">idle</span></span></span><span class="s-doing"></span><span class="rc-meta"><span class="chip task">' + (nW ? 'goal' : 'single agent') + '</span><span class="rc-note">' + (nW ? 'edits no file: spawns, merges, asks' : 'works alone: edits, runs, answers') + '</span></span><span class="s-nums"><span class="n-tok"></span><span class="n-cost"></span><span class="hit n-hit"></span></span><svg class="s-spark" viewBox="0 0 150 40" preserveAspectRatio="xMinYMax meet" aria-hidden="true"></svg>';
+    rc.innerHTML = '<span class="rc-top"><b class="s-id">mgr</b><span class="s-role">manager</span><span class="s-st"><i class="g">◌</i><span class="sw">idle</span></span></span><span class="s-doing"></span><span class="rc-meta"><span class="chip task">' + (nW || S.meta.swarm > 0 ? 'goal' : 'single agent') + '</span><span class="rc-note">' + (nW || S.meta.swarm > 0 ? 'edits no file: spawns, merges, asks' : 'works alone: edits, runs, answers') + '</span></span><span class="s-nums"><span class="n-tok"></span><span class="n-cost"></span><span class="hit n-hit"></span></span><svg class="s-spark" viewBox="0 0 150 40" preserveAspectRatio="xMinYMax meet" aria-hidden="true"></svg>';
     rc.style.setProperty('--c', agCol('mgr')); const RC = { el: rc, doing: $('.s-doing', rc), sw: $('.sw', rc), g: $('.s-st .g', rc), tok: $('.n-tok', rc), cost: $('.n-cost', rc), hit: $('.n-hit', rc), spark: $('.s-spark', rc), n: -1 };
     sc.listen(rc, 'click', e => ui.focusAgent('mgr', e));
-    if (!nW) stallsEl.innerHTML = '<div class="solo"><b>The manager works alone</b><p>--swarm 0: one agent, no workers and no leases. The eight legs stand; the manager edits, runs and answers itself.</p><ol class="sololog"></ol></div>';
+    if (!nW && S.meta.swarm > 0) stallsEl.innerHTML = '<div class="solo"><b>The team is ready</b><p>A manager and ' + S.meta.swarm + ' worker slots. Workers start when the manager splits the work; each takes a leg.</p><ol class="sololog"></ol></div>';
+    else if (!nW) stallsEl.innerHTML = '<div class="solo"><b>The manager works alone</b><p>--swarm 0: one agent, no workers and no leases. The eight legs stand; the manager edits, runs and answers itself.</p><ol class="sololog"></ol></div>';
     else {
       workers.forEach(w => {
         const b = mk('button', { class: 'stall', type: 'button', 'data-ag': w.id, 'data-state': 'idle', 'data-role': w.role, style: '--c:' + agCol(w.id) },
@@ -97,7 +105,9 @@
         sc.listen(b, 'click', e => ui.focusAgent(w.id, e)); stallsEl.appendChild(b);
         ST[w.id] = { el: b, doing: $('.s-doing', b), sw: $('.sw', b), g: $('.s-st .g', b), chip: $('.chip', b), tok: $('.n-tok', b), cost: $('.n-cost', b), hit: $('.n-hit', b), spark: $('.s-spark', b), tl: $('.s-tl', b), n: -1, streaming: false };
       });
-      for (let i = nW; i < 8; i++) stallsEl.appendChild(mk('div', { class: 'stall ghost', 'aria-label': 'leg ' + (i + 1) + ' is free' }, '<span class="s-top"><b class="s-id">leg ' + (i + 1) + '</b><span class="s-role">free</span></span><span class="s-doing">no worker on this leg: <kbd>/swarm N</kbd> starts the team again with more</span>'));
+      /* the slots of the team nobody holds yet, by role: a free leg says which worker the manager can still start */
+      const free = (S.meta.team || []).map(t => t.role); workers.forEach(w => { const k = free.indexOf(w.role); if (k >= 0) free.splice(k, 1); });
+      for (let i = nW; i < 8; i++) { const role = free[i - nW]; stallsEl.appendChild(mk('div', { class: 'stall ghost', 'aria-label': 'leg ' + (i + 1) + ' is free' }, '<span class="s-top"><b class="s-id">leg ' + (i + 1) + '</b><span class="s-role">' + (role ? esc(role) + ' · free' : 'free') + '</span></span><span class="s-doing">' + (role ? 'a free ' + esc(role) + ' slot: the manager starts it when the work needs one' : S.meta.swarm > 0 ? 'no slot on this leg' : 'no worker on this leg: <kbd>/swarm N</kbd> starts a team') + '</span>')); }
     }
     sc.listen(stallsEl, 'keydown', e => { if (!/^Arrow/.test(e.key)) return; const cards = $$('.stall:not(.ghost)', stallsEl), i = cards.indexOf(document.activeElement); if (i < 0) return; const d = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 4, ArrowUp: -4 }[e.key], n = cards[i + d]; if (n) { e.preventDefault(); e.stopPropagation(); n.focus(); } }, true);
 
@@ -208,7 +218,7 @@
       const els = $$('.qel', root); if (els[0] && m.qHead) { const t = (m.qHead.step === 'verified' ? (m.qHead.ms || 900) / 1000 : Math.max(0, vt - m.qHead.t0)).toFixed(1) + 's elapsed'; if (els[0].textContent !== t) els[0].textContent = t; }
       /* streaming text on the cards */
       const rows = [[RC, 'mgr']].concat(workers.map(w => [ST[w.id], w.id]));
-      rows.forEach(([R, id]) => { const s = m.streams[id], A = m.ag[id]; const brk = m.lastBreakT > -900 && m.flash.id === id && vt - m.lastBreakT < (SL.settings.cache === 'quiet' ? 90 : 8) && vt >= m.lastBreakT; if (R.el.dataset.brk !== (brk ? '1' : '0')) R.el.dataset.brk = brk ? '1' : '0';
+      rows.forEach(([R, id]) => { const s = m.streams[id], A = m.ag[id]; const brk = m.lastBreakT > -900 && m.flash.id === id && vt - m.lastBreakT < BRK_HOLD && vt >= m.lastBreakT; if (R.el.dataset.brk !== (brk ? '1' : '0')) { R.el.dataset.brk = brk ? '1' : '0'; const bk = R.el.querySelector('.brk'); if (bk && brk) bk.title = breakTitle(m.flash); }
         if (s && !s.code && vt - s.t0 < s.text.length / s.rate + 5 && A.state !== 'idle') { const [t, done] = typed(s.text, s.t0, s.rate, vt); R.streaming = true; const h = esc(t) + (done ? '' : '<span class="caret"></span>'); if (R.doing._h !== h) { R.doing._h = h; R.doing.innerHTML = h; } } else if (R.streaming) { R.streaming = false; R.doing._h = null; R.doing.textContent = A.spawned ? A.doing : 'not started'; } });
       if ((SL.loop.frameNo % 30) === 0) workers.forEach(w => { const R = ST[w.id]; R.tl.style.setProperty('--c', agCol(w.id)); R.tl.innerHTML = miniTl(m.ag[w.id], vt, agCol(w.id)); });
       if ((SL.loop.frameNo & 15) === 0 && !S2.replay) { const st = mmss(vt); if (scrubT.textContent !== st) scrubT.textContent = st; if (document.activeElement !== scrub) scrub.value = vt.toFixed(1); }

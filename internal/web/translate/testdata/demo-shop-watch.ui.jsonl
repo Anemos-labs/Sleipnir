@@ -292,21 +292,21 @@
 {"t":2.19,"k":"state","seq":292,"id":"fe-1","s":"think","doing":"running a command","task":"T6"}
 {"t":2.19,"k":"state","seq":293,"id":"rv-1","s":"tool","doing":"Bash sleep 0.5","task":"T8"}
 {"t":2.19,"k":"tool","seq":294,"id":"fe-1","name":"Bash","arg":"sleep 0.5","out":"[exit code 0]","ok":true,"task":"T6","tid":"b598","ms":504}
-{"t":2.386,"k":"break","seq":295,"id":"fe-1","kind":"low_hit","read":0,"expected":6976,"why":"the prompt prefix did not change: the endpoint did not serve it"}
+{"t":2.386,"k":"break","seq":295,"id":"fe-1","kind":"low_hit","read":0,"expected":6976,"why":"the prompt prefix did not change: the endpoint did not serve it","missUsd":0.002616,"quiet":true}
 {"t":2.386,"k":"state","seq":296,"id":"fe-1","s":"think","doing":"running a command","task":"T6","reqSince":2.194}
 {"t":2.386,"k":"state","seq":297,"id":"be-2","s":"stuck","doing":"[harness] bash has now failed the same way 4 times with the same arguments. Repeating it will not change the result: tr…","task":"T5"}
 {"t":2.387,"k":"req","seq":298,"id":"fe-1","ratio":0,"p":7175,"o":27}
 {"t":2.387,"k":"use","seq":299,"id":"fe-1","rd":17344,"un":9394,"out":195,"wr":0,"cost":0.007254999999999999,"saved":0.006503999999999999}
 {"t":2.387,"k":"layers","seq":300,"id":"fe-1","toks":[4794,273,133,254,0,1721]}
 {"t":2.387,"k":"warm","seq":301,"ttl":21}
-{"t":2.444,"k":"break","seq":302,"id":"be-2","kind":"low_hit","read":0,"expected":5945,"why":"the prompt prefix did not change: the endpoint did not serve it"}
+{"t":2.444,"k":"break","seq":302,"id":"be-2","kind":"low_hit","read":0,"expected":5945,"why":"the prompt prefix did not change: the endpoint did not serve it","missUsd":0.002229375,"quiet":true}
 {"t":2.444,"k":"state","seq":303,"id":"fe-1","s":"tool","doing":"Bash sleep 0.5","task":"T6"}
 {"t":2.444,"k":"req","seq":304,"id":"be-2","ratio":0,"p":6143,"o":164}
 {"t":2.444,"k":"use","seq":305,"id":"be-2","rd":48080,"un":11059,"out":497,"wr":0,"cost":0.0125335,"saved":0.01803}
 {"t":2.444,"k":"layers","seq":306,"id":"be-2","toks":[4794,273,156,289,59,572]}
 {"t":2.449,"k":"state","seq":307,"id":"be-2","s":"think","doing":"running a command","task":"T5"}
 {"t":2.449,"k":"tool","seq":308,"id":"be-2","name":"Write","arg":"shop/cart/cart.go","out":"Overwrote shop/cart/cart.go (17 lines, 436 bytes, was 376)","ok":true,"file":"shop/cart/cart.go","add":17,"task":"T5","tid":"w2","ms":4}
-{"t":2.631,"k":"break","seq":309,"id":"be-2","kind":"low_hit","read":0,"expected":6033,"why":"the prompt prefix did not change: the endpoint did not serve it"}
+{"t":2.631,"k":"break","seq":309,"id":"be-2","kind":"low_hit","read":0,"expected":6033,"why":"the prompt prefix did not change: the endpoint did not serve it","missUsd":0.002262375,"quiet":true}
 {"t":2.631,"k":"state","seq":310,"id":"be-2","s":"think","doing":"running a command","task":"T5","reqSince":2.452}
 {"t":2.631,"k":"req","seq":311,"id":"be-2","ratio":0,"p":6340,"o":12}
 {"t":2.631,"k":"use","seq":312,"id":"be-2","rd":48080,"un":17399,"out":509,"wr":0,"cost":0.0157275,"saved":0.01803}
@@ -316,13 +316,13 @@
 {"t":2.659,"k":"state","seq":316,"id":"rv-1","s":"think","doing":"running a command","task":"T8"}
 {"t":2.659,"k":"tool","seq":317,"id":"rv-1","name":"Bash","arg":"sleep 0.5","out":"[exit code 0]","ok":true,"task":"T8","tid":"b535","ms":519}
 {"t":2.689,"k":"state","seq":318,"id":"be-2","s":"think","doing":"running a command","task":"T5","reqSince":2.673}
-{"t":2.85,"k":"break","seq":319,"id":"rv-1","kind":"low_hit","read":0,"expected":5599,"why":"the prompt prefix did not change: the endpoint did not serve it"}
+{"t":2.85,"k":"break","seq":319,"id":"rv-1","kind":"low_hit","read":0,"expected":5599,"why":"the prompt prefix did not change: the endpoint did not serve it","missUsd":0.002099625,"quiet":true}
 {"t":2.85,"k":"state","seq":320,"id":"rv-1","s":"think","doing":"running a command","task":"T8","reqSince":2.675}
 {"t":2.85,"k":"req","seq":321,"id":"rv-1","ratio":0,"p":5709,"o":19}
 {"t":2.85,"k":"use","seq":322,"id":"rv-1","rd":15888,"un":6561,"out":81,"wr":0,"cost":0.0054285,"saved":0.005958}
 {"t":2.85,"k":"layers","seq":323,"id":"rv-1","toks":[4794,275,135,68,0,437]}
 {"t":2.85,"k":"warm","seq":324,"ttl":21}
-{"t":2.864,"k":"break","seq":325,"id":"be-2","kind":"low_hit","read":0,"expected":6232,"why":"the prompt prefix did not change: the endpoint did not serve it"}
+{"t":2.864,"k":"break","seq":325,"id":"be-2","kind":"low_hit","read":0,"expected":6232,"why":"the prompt prefix did not change: the endpoint did not serve it","missUsd":0.002337,"quiet":true}
 {"t":2.865,"k":"req","seq":326,"id":"be-2","ratio":0,"p":6377,"o":29}
 {"t":2.865,"k":"use","seq":327,"id":"be-2","rd":48080,"un":23776,"out":538,"wr":0,"cost":0.018973999999999998,"saved":0.01803}
 {"t":2.865,"k":"layers","seq":328,"id":"be-2","toks":[4794,275,157,290,60,801]}
@@ -340,7 +340,7 @@
 {"t":3.008,"k":"queue","seq":340,"head":null,"conflicts":0,"bounced":0}
 {"t":3.008,"k":"state","seq":341,"id":"be-2","s":"think","doing":"running a command","task":"T5"}
 {"t":3.008,"k":"tool","seq":342,"id":"be-2","name":"TaskBoard","arg":"done T5","out":"T5 is now in review (merged into integration cf2728fa (verified); edited 1 (cart.go); no tests run). Give your final one-paragraph summary and stop.","ok":true,"task":"T5","tid":"d1","ms":143}
-{"t":3.102,"k":"break","seq":343,"id":"fe-1","kind":"low_hit","read":5088,"expected":7108,"why":"the prompt prefix did not change: the endpoint did not serve it"}
+{"t":3.102,"k":"break","seq":343,"id":"fe-1","kind":"low_hit","read":5088,"expected":7108,"why":"the prompt prefix did not change: the endpoint did not serve it","missUsd":0.0007575,"quiet":true}
 {"t":3.102,"k":"state","seq":344,"id":"be-2","s":"think","doing":"running a command","task":"T5","reqSince":3.02}
 {"t":3.102,"k":"req","seq":345,"id":"fe-1","ratio":0.7042214532871972,"p":7225,"o":27}
 {"t":3.102,"k":"use","seq":346,"id":"fe-1","rd":22432,"un":11531,"out":222,"wr":0,"cost":0.009013499999999999,"saved":0.008412}

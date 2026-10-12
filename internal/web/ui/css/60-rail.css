@@ -105,7 +105,12 @@ mark.nca{unicode-bidi:isolate-override;direction:ltr;background:var(--warm-a);co
 .composer{margin:4px 8px 8px;border:1px solid var(--line2);background:var(--bg);flex:none;position:relative;transition:border-color .15s}
 .composer:focus-within{border-color:var(--mgr)}
 .composer .qd{font:500 11.5px var(--f-num);color:var(--dim);padding:5px 9px 0}
-.composer .qd div::before{content:"⏎ queued: ";color:var(--warm)}
+.composer .qd .ql{display:flex;align-items:center;gap:6px;min-height:20px}
+.composer .qd .ql::before{content:"⏎ queued:";color:var(--warm);flex:none}
+.composer .qd .qb{display:flex;gap:3px;flex:none}
+.composer .qd .qb button{font:600 10.5px/1 var(--f-ui);color:var(--fg2);background:var(--panel2);border:1px solid var(--line2);border-radius:2px;padding:3px 6px;cursor:pointer}
+.composer .qd .qb button:hover,.composer .qd .qb button:focus-visible{color:var(--bright);border-color:var(--mgr)}
+.composer .qd .qb .qx{padding:3px 5px;font-size:12px}
 .crow{display:flex;gap:7px;padding:7px 9px 5px;align-items:flex-start}
 .crow .pr{color:var(--mgr);font:700 14px/1.3 var(--f-num);flex:none}
 .crow textarea{flex:1;min-width:0;background:none;border:0;resize:none;max-height:120px;line-height:1.38;font-size:13.5px;color:var(--bright);outline:none;font-family:var(--f-ui);padding:0}

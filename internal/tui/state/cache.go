@@ -14,6 +14,43 @@ func (a *agentState) mark(kind MarkKind, seq uint64, text string) int {
 	return at
 }
 
+// MaterialMissUSD is what a cache break that is the endpoint's own must have cost, at list price, to be said to a person who did not ask
+// for every notice: on a cheap endpoint it is a fraction of a cent, nothing they can act on.
+const MaterialMissUSD = 0.01
+
+// EndpointBreaksShown is how many of the endpoint's own cache breaks are said before one line says that the rest are not.
+const EndpointBreaksShown = 3
+
+// EndpointBreaksCapped is the line said once, after EndpointBreaksShown of the endpoint's own breaks, in place of the rest.
+const EndpointBreaksCapped = "this endpoint's cache keeps missing the prompt prefix; further misses are not said here"
+
+// EndpointOnly reports whether the anomaly is the endpoint's own cache missing: a low hit while no layer of the prompt changed. The
+// person cannot mend it; a drift or a layer that changed is the prompt's, and always said.
+func (a Anomaly) EndpointOnly() bool { return a.Layer == "" && a.Kind == "low_hit" }
+
+// Material reports whether the miss is known to have cost at least MaterialMissUSD.
+func (a Anomaly) Material() bool { return a.MissKnown && a.MissUSD >= MaterialMissUSD }
+
+// BreakNotices is the rule by which a feed says cache breaks, the terminal's chat and the web page alike: a break of the prompt (a
+// drift, a layer that changed) is always said; the endpoint's own is said when it was material or every notice was asked for (verbose),
+// and of those at most EndpointBreaksShown, then the line EndpointBreaksCapped once. The zero value is ready; it counts as it goes.
+type BreakNotices struct{ endpoint int }
+
+// Say decides one break: show says whether it is said, capped that the line EndpointBreaksCapped is said now, in its place.
+func (b *BreakNotices) Say(a Anomaly, verbose bool) (show, capped bool) {
+	if !a.EndpointOnly() {
+		return true, false
+	}
+	if !verbose && !a.Material() {
+		return false, false
+	}
+	b.endpoint++
+	if b.endpoint > EndpointBreaksShown {
+		return false, b.endpoint == EndpointBreaksShown+1
+	}
+	return true, false
+}
+
 func (s *State) onAnomaly(e events.Event, t time.Time) {
 	var p struct {
 		Kind         string `json:"kind"`
