@@ -26,7 +26,7 @@ The contracts between modules are listed after the table. A module reads another
 | `live.js` | `SL.live`: the boot sequence (hello, stream, snapshots), the frames that become sessions, events, meta and rosters, the connection state, recorded sessions opened read-only or followed, the server's defaults for a new session. | Shipped only |
 | `70-view.js` | Scopes and views (everything a view starts dies with it), hover cross-highlighting (`SL.link`), the one frame loop (`SL.loop`). | Shared |
 | `80-ui-shell.js` | The persistent chrome: HUD, session strip, connection chip, replay banner, footer. | Shared |
-| `81-ui-hero.js` | The drawn horse whose eight legs are the eight workers, and the shared-prefix bar. Reads `SL.D.layers`. | Shared |
+| `81-ui-hero.js` | The drawn horse whose eight legs are the eight roles of the team (`roleLegs`: a leg per role, its label the worker or the role and count, its motion the busiest of its workers), and the shared-prefix bar. Reads `SL.D.layers`. | Shared |
 | `82-ui-board.js` | The task board (todo, running, verify, merged) used by the cockpit and the Board view. | Shared |
 | `83-ui-cockpit.js` | The Cockpit view: horse, manager card, stalls, gantt, board, merge queue, mail, governor, each drawn into a card of the dashboard; the mail arcs. | Shared |
 | `83b-ui-dash.js` | The Cockpit's dashboard: `SL.dash` (the layout of cards: the catalogue, the default layout, normalize, load and save in localStorage, move, resize, add, remove, the keys of a focused card) and `ui.dash` (the grid, the lock, dragging and resizing, the Add card picker, cards that hold a view). | Shipped only |

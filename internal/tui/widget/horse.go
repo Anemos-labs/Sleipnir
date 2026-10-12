@@ -1,5 +1,5 @@
-// The eight-legged horse: the mark of Sleipnir, galloping in proportion to the work. Eight legs are eight workers: a leg lifts
-// while its worker runs a tool, the gait follows the load, and an idle horse stands (docs/UX.md, "Watch"; swarm.png).
+// The eight-legged horse: the mark of Sleipnir, galloping in proportion to the work. Eight legs are the eight roles of the team: a
+// leg lifts while a worker of its role runs a tool, the gait follows the load, and an idle horse stands (docs/UX.md, "Watch"; swarm.png).
 //
 // The horse is not drawn here: it is the official mark rasterised into small pixel grids by docs/design/ux/sprite.py, in three
 // sizes, and the result is the generated file horsesprite_gen.go. Regenerate it after changing the mark; never edit it by hand.
@@ -14,7 +14,8 @@ import (
 
 // Leg is one of the horse's eight legs, left to right along its belly: four behind and four in front.
 type Leg struct {
-	// Busy is a worker running a tool: the leg is in the stride, in the gait frame, and bright. An idle leg stands, dim.
+	// Busy is a worker of the leg's role running a tool: the leg is in the stride, in the gait frame, and bright. An idle leg
+	// stands, dim.
 	Busy bool
 	// Color is the leg's role, an index into Palette.RoleColors (it wraps around, so any number is a colour).
 	Color int

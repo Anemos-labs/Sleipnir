@@ -243,7 +243,7 @@ func TestGoalFromHostAndLogIsSentOnce(t *testing.T) {
 	}
 }
 
-// The roster has the manager first and the workers in the order they started, legs by start order, read-only roles and the scope
+// The roster has the manager first and the workers in the order they started, a leg per role, read-only roles and the scope
 // of the task they hold; the harness's mailman is not in it; a roster frame precedes the first event of a new agent.
 func TestRoster(t *testing.T) {
 	h := newHarness(t, Config{Root: "/work", StartedAt: t0})
@@ -263,14 +263,14 @@ func TestRoster(t *testing.T) {
 	if len(r) != 12 || r[0].ID != "mgr" || r[0].Scope != "- (edits no file)" || r[0].Model != "m1" || r[0].Leg != -1 {
 		t.Fatalf("roster: %+v", r)
 	}
-	if sc := r[1]; sc.ID != "sc-1" || !sc.RO || sc.Scope != "- (read-only)" || sc.K != 1 || sc.Leg != 0 || sc.Code != "sc" || sc.Nth != 1 || sc.Model != "m2" || sc.Spawn != 2 {
+	if sc := r[1]; sc.ID != "sc-1" || !sc.RO || sc.Scope != "- (read-only)" || sc.K != 1 || sc.Leg != 1 || sc.Code != "sc" || sc.Nth != 1 || sc.Model != "m2" || sc.Spawn != 2 {
 		t.Fatalf("scout: %+v", sc)
 	}
-	if be := r[2]; be.ID != "be-1" || be.Scope != "api/catalog/**, api/server.go" || be.K != 2 || be.Leg != 1 {
+	if be := r[2]; be.ID != "be-1" || be.Scope != "api/catalog/**, api/server.go" || be.K != 2 || be.Leg != 2 {
 		t.Fatalf("worker: %+v", be)
 	}
-	if ninth := r[11]; ninth.K != 11 || ninth.Leg != 2 {
-		t.Fatalf("the eleventh worker: %+v", ninth)
+	if ninth := r[11]; ninth.K != 11 || ninth.Leg != 5 || r[3].Leg != 5 {
+		t.Fatalf("the testers share the tester leg: %+v %+v", r[3], ninth)
 	}
 	// the roster frame that names be-1 comes before be-1's first event
 	sawRoster := false

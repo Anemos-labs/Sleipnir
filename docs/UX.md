@@ -107,7 +107,7 @@ command line quotes every value for a POSIX shell. `↺ Resume` continues a reco
 opened read-only, to replay it, or followed while another process writes it; its first 400,000 events are read, and the banner
 says when the log has more. With no session hosted, the page opens the New session dialog.
 
-The left rail switches views: the Cockpit (the team as a horse whose eight legs are the first eight workers, the stalls, the
+The left rail switches views: the Cockpit (the team as a horse whose eight legs are the eight roles of the team, the stalls, the
 gantt, the task board, the merge queue, mail and the governor), the Workspace (Files, Changes, Checkpoints), Cache, Mail,
 Board, Replay, Sessions, Tools and Settings. The Radio rail on the right is the conversation with the manager, which is the
 only agent the person talks to, and a read-only feed of what the team does. Agent drawers, opened from a stall or a gantt row,
@@ -122,6 +122,22 @@ they are clicked away or for 12 seconds (the pointer over one pauses that); the 
 Keys: an arrow, Home or End on the session tabs, the views rail, a menu or a list moves there and nowhere else; a key that an
 input method is composing with (Enter choosing a candidate) never sends, submits or runs a shortcut. A screen reader hears a
 question once when it arrives, never its ticking wait time, and a toast once.
+
+### Large teams
+
+A team has at least eight workers and no upper size but the one `swarm.max_workers` sets: 32 workers, four of each role, start
+from the New session dialog as any other team (`manager + 32 workers · your team`). In the dialog a role's row has a stepper for its
+number of workers and one model for all of them; with more than one worker, its `▸` opens one model per slot, so that two backends
+can run on one model and two on another, and the row's own model then sets all the slots again. The request carries the team slot
+by slot, and the command line under the dialog has one `--role-model role=model` per slot.
+
+The horse has eight legs whatever the size of the team, and a leg is a role: architect, scout, backend, frontend, devops, tester,
+docs and reviewer in that order, and a project's own roles after them, eight to a round (a ninth role shares the first leg and its
+label says `+1`). A leg is labelled with its worker when its role has one, else with the role's short name and count (`be ×4`); it
+moves with the busiest of its workers, a role with no worker started stands as a free leg, a role the team has no slot of stands
+empty (`no slot`), and pointing at a leg or focusing it lists its workers and their states. The terminal's horse has the same legs.
+Above twelve workers the stalls are drawn in role bands, one line per worker, each band naming its count and its models; the gantt
+draws one lane per worker inside a band per role when a row would be thinner than 11 pixels.
 
 ### The Cockpit's cards
 

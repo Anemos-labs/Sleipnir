@@ -1,7 +1,11 @@
-/* 81-ui-hero.js: SL.ui.hero, the drawn Sleipnir: a horse whose EIGHT legs are the eight workers,
+/* 81-ui-hero.js: SL.ui.hero, the drawn Sleipnir: a horse whose EIGHT legs are the eight worker roles of the team,
  * the shared prefix bar G0..G5 above it (Cache details: Full only; nothing joins the bar to the legs) and the leg labels.
  *
- * Legs are numbered 1-8 in worker start order; a ninth worker shares leg 1 (both show a `+1` badge). The manager takes no leg and is not drawn on the horse: it has its own card.
+ * Leg k is the k-th role of the team, in the team's role order (architect, scout, backend, frontend, devops, tester, docs, reviewer
+ * for the built-in roles; a custom team's roles in its own order); a ninth role shares leg 1 with the first, and the label says so.
+ * A leg moves with the busiest of its role's workers (the order of PRIO); its label is the worker's id when the role has one slot,
+ * else the role's short name and its count ("be ×4"); hovering or focusing it lists the role's workers and their states. A role
+ * with no worker yet stands as a free leg. The manager takes no leg and is not drawn on the horse: it has its own card.
  * Motion is driven by dtView (the governor), so a hold freezes the stride and a catch-up speeds it. Glow only on state: a working leg is
  * faintly haloed, `ask` pulses amber, `stuck` red, `done` stands planted and bright, `idle` is dim, a free leg is a ghost.
  * The prefix bar's sizes are the manager's latest prompt by layer (SL.D.layers); it is redrawn when they change, and drawn in equal
@@ -20,10 +24,27 @@
   const GLYPH = { think: '◇', tool: '⚙', edit: '✎', wait: '✉', ask: '?', idle: '◌', done: '✓', stuck: '⚠', free: '·' };
   const WORD = { think: 'think', tool: 'tool', edit: 'edit', wait: 'wait', ask: 'ask', idle: 'idle', done: 'done', stuck: 'stuck', free: 'free' };
   const pick = states => { for (const p of PRIO) if (states.includes(p)) return p; return 'idle'; };
+  /** The legs of a session's team: eight entries of {i, roles, ids, slots}. A leg is a role: the built-in roles in their order
+   *  (D.roleOrder: architect on leg 1 ... reviewer on leg 8), then any other role of the team or the roster in the order it comes,
+   *  role k on leg k % 8 (the server's RosterEntry.Leg is the same). ids are the role's workers on the roster; slots the number of its
+   *  slots in the team (a default team has one of each built-in role), at least its workers. A single agent's horse has no roles. */
+  function roleLegs(S) {
+    const workers = S.roster.filter(r => r.id !== 'mgr'), team = (S.meta && S.meta.team) || [], order = [], isTeam = workers.length || team.length || (S.meta && S.meta.swarm > 0);
+    const add = r => { if (r && r !== 'manager' && order.indexOf(r) < 0) order.push(r); };
+    if (isTeam) { (D.roleOrder && D.roleOrder.length ? D.roleOrder : ['architect', 'scout', 'backend', 'frontend', 'devops', 'tester', 'docs', 'reviewer']).forEach(add); team.forEach(t => add(t.role)); }
+    workers.forEach(w => add(w.role));
+    const legs = []; for (let i = 0; i < 8; i++) legs.push({ i, roles: [], ids: [], slots: 0 });
+    order.forEach((r, k) => { const L = legs[k % 8], ids = workers.filter(w => w.role === r).map(w => w.id), n = team.length ? team.filter(t => t.role === r).length : (D.roleOrder || []).indexOf(r) >= 0 ? 1 : 0; L.roles.push(r); L.ids = L.ids.concat(ids); L.slots += Math.max(ids.length, n); });
+    return legs;
+  }
+  /** The leg (0-7) of a role in a session's team, or -1. */
+  const legOfRole = (S, role) => { const L = roleLegs(S).find(x => x.roles.indexOf(role) >= 0); return L ? L.i : -1; };
+  /** The short name of a role ("be"). */
+  const codeOf = r => ((D.roles && D.roles[r]) || (SL.data && SL.data.ROLES && SL.data.ROLES[r]) || {}).code || String(r).slice(0, 2);
 
   function mount(sc, svg, S) {
     svg.innerHTML = ''; const roster = S.roster, workers = roster.filter(r => r.id !== 'mgr');
-    const legs = []; for (let i = 0; i < 8; i++) legs.push({ i, ids: workers.filter(w => w.leg === i).map(w => w.id), phase: (i * .37) % 1, speed: 0, amp: 0, lift: 0, op: .16, raise: 0, st: 'free' });
+    const legs = roleLegs(S).map(L => Object.assign(L, { phase: (L.i * .37) % 1, speed: 0, amp: 0, lift: 0, op: .16, raise: 0, st: 'free' }));
     const HS = .6, HTX = -82, HTY = 58, BAR_Y = 26, BAR_H = 17, X0 = 10, W = 352;
     const el = (n, a, p, t) => sv(n, a, p || svg, t);
     const title = el('text', { x: 2, y: 11, class: 'hh' }, null, Math.max(workers.length, S.meta.swarm || 0) ? 'Manager + ' + Math.max(workers.length, S.meta.swarm || 0) + ' workers' : 'One agent, no workers');
@@ -58,8 +79,8 @@
     const shadow = el('ellipse', { cx: 440, cy: GROUND + 6, rx: 190, ry: 7, class: 'h-shadow' }, g);
     const lg = el('g', { class: 'h-legs' }, g);
     legs.forEach(L => {
-      const col = L.ids.length ? SL.u.agCol(L.ids[0]) : 'var(--faint)';
-      L.g = el('g', { class: 'leg', 'data-ag': L.ids.join(' '), tabindex: -1, role: 'button', 'aria-label': 'Leg ' + (L.i + 1) + (L.ids.length ? ': ' + L.ids.join(', ') : ': free') }, lg);
+      const col = L.ids.length ? SL.u.agCol(L.ids[0]) : L.roles.length && L.slots ? 'var(--c-' + codeOf(L.roles[0]) + ')' : 'var(--faint)';
+      L.g = el('g', { class: 'leg', 'data-ag': L.ids.join(' '), tabindex: -1, role: 'button', 'aria-label': 'Leg ' + (L.i + 1) + (L.roles.length ? ', ' + L.roles.join(' and ') : '') + (L.ids.length ? ': ' + L.ids.join(', ') : ': free') }, lg);
       L.halo = el('path', { class: 'h-halo', fill: 'none', stroke: col, 'stroke-width': 30, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: 0 }, L.g);
       L.o1 = el('path', { fill: 'none', stroke: 'var(--ink)', 'stroke-width': 24, 'stroke-linecap': 'round' }, L.g); L.o2 = el('path', { fill: 'none', stroke: 'var(--ink)', 'stroke-width': 14, 'stroke-linecap': 'round' }, L.g);
       L.c1 = el('path', { fill: 'none', stroke: col, 'stroke-width': 14.5, 'stroke-linecap': 'round' }, L.g); L.c2 = el('path', { fill: 'none', stroke: col, 'stroke-width': 7.5, 'stroke-linecap': 'round' }, L.g);
@@ -83,10 +104,12 @@
     legs.forEach(L => {
       const hx = HIPX[L.i] * HS + HTX, lx = 24 + L.i * 46.3, gy = (GROUND + 8) * HS + HTY;
       el('path', { d: 'M' + hx.toFixed(1) + ' ' + gy.toFixed(1) + ' L' + lx.toFixed(1) + ' ' + (gy + 14).toFixed(1), stroke: L.col, 'stroke-width': 1, opacity: .45, fill: 'none' }, lgG);
-      const lab = el('g', { class: 'hlab', 'data-ag': L.ids.join(' ') || null, tabindex: -1, role: 'button', 'aria-label': 'leg ' + (L.i + 1) + (L.ids.length ? ', ' + L.ids.join(' and ') : ', free') }, lgG); if (!L.ids.length) lab.removeAttribute('data-ag');
+      const lab = el('g', { class: 'hlab', 'data-ag': L.ids.join(' ') || null, tabindex: L.ids.length ? 0 : -1, role: 'button', 'aria-label': 'leg ' + (L.i + 1) + (L.roles.length ? ', ' + L.roles.join(' and ') : '') + (L.ids.length ? ', ' + L.ids.join(' and ') : ', free') }, lgG); if (!L.ids.length) lab.removeAttribute('data-ag');
       el('rect', { x: (lx - 22).toFixed(1), y: gy + 14, width: 44, height: 32, fill: 'transparent' }, lab);
-      el('text', { x: lx.toFixed(1), y: (gy + 27).toFixed(1), 'text-anchor': 'middle', fill: L.col, class: 'id' }, lab, L.ids.length ? L.ids[0] : '·' + (L.i + 1));
-      const badge = L.ids.length > 1 ? el('text', { x: (lx + 16).toFixed(1), y: (gy + 20).toFixed(1), class: 'plus', 'text-anchor': 'start' }, lab, '+' + (L.ids.length - 1)) : null;
+      const one = L.roles.length === 1 && L.slots <= 1 && L.ids.length === 1, name = one ? L.ids[0] : L.roles.length ? codeOf(L.roles[0]) + (L.slots > 1 || L.ids.length > 1 ? ' ×' + Math.max(L.slots, L.ids.length) : '') : '·' + (L.i + 1);
+      el('text', { x: lx.toFixed(1), y: (gy + 27).toFixed(1), 'text-anchor': 'middle', fill: L.col, class: 'id' }, lab, name);
+      const badge = L.roles.length > 1 ? el('text', { x: (lx + 16).toFixed(1), y: (gy + 20).toFixed(1), class: 'plus', 'text-anchor': 'start' }, lab, '+' + (L.roles.length - 1)) : null;   // more than eight roles share the legs
+      L.tip = el('title', {}, lab, '');
       const sg = el('text', { x: lx.toFixed(1), y: (gy + 40).toFixed(1), 'text-anchor': 'middle', class: 'sg' }, lab, '· free');
       labels.push({ L, sg, badge });
     });
@@ -128,10 +151,12 @@
           }
     function update(S2, m) {
       if (!m) return; drawBar(); const quiet = SL.settings.cache === 'quiet'; if (pre.style.display !== (quiet ? 'none' : '')) { pre.style.display = quiet ? 'none' : ''; svg.setAttribute('viewBox', quiet ? '0 30 372 358' : '0 0 372 388'); title.setAttribute('y', quiet ? 46 : 11); svg.parentNode.classList.toggle('qhorse', quiet); }
-      labels.forEach(({ L, sg, badge }) => { const s = sharedState(m, L.ids), t = GLYPH[s] + ' ' + WORD[s]; if (sg.textContent !== t) sg.textContent = t; sg.setAttribute('fill', s === 'ask' ? 'var(--warm)' : s === 'stuck' ? 'var(--err)' : s === 'done' ? 'var(--ok)' : 'var(--dim)'); });
+      labels.forEach(({ L, sg, badge }) => { const s = sharedState(m, L.ids), t = L.roles.length && !L.slots ? '· no slot' : GLYPH[s] + ' ' + WORD[s]; if (sg.textContent !== t) sg.textContent = t;
+        const tip = 'leg ' + (L.i + 1) + (L.roles.length ? ': ' + L.roles.join(', ') : ': no role') + (L.ids.length ? '\n' + L.ids.map(id => { const A = m.ag[id], st = A && A.spawned ? A.state : 'not started'; return id + '  ' + (GLYPH[st] || '◌') + ' ' + (WORD[st] || st); }).join('\n') : L.roles.length ? '\nno worker started yet: a free slot' : '');
+        if (L.tip.textContent !== tip) { L.tip.textContent = tip; L.g.setAttribute('aria-description', tip.replace(/\n/g, '; ')); } sg.setAttribute('fill', s === 'ask' ? 'var(--warm)' : s === 'stuck' ? 'var(--err)' : s === 'done' ? 'var(--ok)' : 'var(--dim)'); });
     }
     sc.frame(frame); sc.update(update); update(S, S.m);
     return { legs, frame, update };
   }
-  ui.hero = { mount, GLYPH, WORD, GAIT };
+  ui.hero = { mount, GLYPH, WORD, GAIT, roleLegs, legOfRole, pick };
 })(SL);

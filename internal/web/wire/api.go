@@ -135,7 +135,8 @@ type TabSummary struct {
 
 // RosterEntry is one agent of a tab. ID is the agent's id (mgr for the manager and for a single agent; a role's short code, "-" and a
 // number for a worker, such as be-2), Role its role, Code the role's short code and Nth the number in the id. K is the worker's
-// 1-based start order and Leg its leg of the horse, (K-1) mod 8; the manager has K 0 and Leg -1. Scope is the globs of its current
+// 1-based start order and Leg its leg of the horse: a leg is a role, the built-in roles in their order (architect 0 ... reviewer 7)
+// and other roles after them, eight to a round (-1 while the role is unknown); the manager has K 0 and Leg -1. Scope is the globs of its current
 // task ("- (read-only)" for a read-only role, "- (edits no file)" for the manager of a team, "**" for a single agent), RO whether
 // its role writes no file, Model the model it runs on and Spawn the session time at which it started.
 type RosterEntry struct {

@@ -4,6 +4,7 @@ package widget
 // the internal tests of the text widgets that share this package.
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 	"strings"
@@ -445,16 +446,34 @@ func TestShowHorseGait(t *testing.T) {
 	if got = dashLegs(nine); !got[0].Busy || got[1].Busy {
 		t.Errorf("the ninth agent runs a tool on leg 0 and the tenth is done on leg 1: %+v", got)
 	}
-	// the legs are the workers: the manager and the mailman are no leg, so eight workers fill the eight legs and a ninth wraps
+	// a leg is a role: the manager and the mailman are no leg, nine backends are the backend leg (2), and the other legs keep their places
 	team := []AgentRow{{Role: "manager", RoleColor: 0, State: StateTool}, {Role: "mailman", RoleColor: 6, State: StateEdit}}
 	for k := 0; k < 9; k++ {
 		team = append(team, AgentRow{Role: "backend", RoleColor: 1})
 	}
-	if got = dashLegs(team); got[0].Busy || got[0].Color != 1 || got[7].Color != 1 {
-		t.Errorf("the manager or the mailman took a leg: %+v", got)
+	if got = dashLegs(team); got[2].Busy || got[2].Color != 1 || got[0].Color != 0 || got[1].Color != 1 || got[7].Color != 7 {
+		t.Errorf("the manager or the mailman took a leg, or the backends took more than one: %+v", got)
 	}
 	team[10].State = StateTool
-	if got = dashLegs(team); !got[0].Busy || got[1].Busy {
-		t.Errorf("the ninth worker runs a tool on leg 0: %+v", got)
+	if got = dashLegs(team); !got[2].Busy || got[0].Busy || got[1].Busy {
+		t.Errorf("the ninth backend runs a tool on the backend leg: %+v", got)
+	}
+	// a team of 32, four of each of eight roles: one leg per role, in the team's order, busy while any of its four works
+	var crew []AgentRow
+	for r := 0; r < 8; r++ {
+		for k := 0; k < 4; k++ {
+			crew = append(crew, AgentRow{Role: fmt.Sprintf("role%d", r), RoleColor: 10 + r})
+		}
+	}
+	crew[4*5+3].State = StateEdit // the fourth worker of the sixth role
+	got = dashLegs(crew)
+	for r, l := range got {
+		if l.Color != 10+r || l.Busy != (r == 5) {
+			t.Errorf("crew leg %d = %+v, want the colour of role %d, busy only for role 5", r, l, r)
+		}
+	}
+	// the built-in roles are on their own legs whatever the order of the workers: a reviewer listed first is still on leg 7
+	if got = dashLegs([]AgentRow{{Role: "reviewer", RoleColor: 4, State: StateTool}, {Role: "architect", RoleColor: 9}}); !got[7].Busy || got[7].Color != 4 || got[0].Color != 9 || got[0].Busy {
+		t.Errorf("built-in roles on their legs: %+v", got)
 	}
 }

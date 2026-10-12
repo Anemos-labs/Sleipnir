@@ -261,7 +261,13 @@ func TestDashboardHeadlineAndFan(t *testing.T) {
 
 func TestDashboardAnimation(t *testing.T) {
 	p := widget.DefaultPalette()
-	data := showSketchDashboard(8) // w1 runs a tool and w2 edits: two legs are busy
+	data := showSketchDashboard(8) // w1 runs a tool and w2 edits: two legs are busy once each worker is a role of its own (a leg is a role)
+	data.Agents = append([]widget.AgentRow(nil), data.Agents...)
+	for i := range data.Agents {
+		if data.Agents[i].Role != "manager" {
+			data.Agents[i].Role = fmt.Sprintf("role-%d", i)
+		}
+	}
 	at := func(d widget.DashboardData, f int) []cell.Line { return widget.Dashboard(d, 80, 30, f, p) }
 	horse := func(d widget.DashboardData, f int) string { return strings.Join(showHorse(at(d, f)), "\n") }
 	withStates := func(s widget.AgentState) widget.DashboardData {
