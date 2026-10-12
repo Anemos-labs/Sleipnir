@@ -1523,7 +1523,10 @@ task that `rl taskgen chain`, `rebuild` or `fixture` made carries the script as 
 `.sleipnir/suite/score.py`, and a scorer fixed later scores the task without generating it again. Only that file
 changes; the spec, units, guards and every other field stay, and the new script is stored where the old one was (the
 `--blobs` store, or inline). Tasks without a suite scorer are written unchanged. `rl reverify` measures finished
-rollouts again with the result.
+rollouts again with the result. A fixed scorer can score the start differently (a Go package that used to crash now
+reports the tests that pass on the start): check the result with `rl tasks check --calibrate OUT`, which records the
+start's score as the task's `baseline_score`, before its rewards are recomputed or the task is run again; tests that
+pass on the start then still count in their units, so a task meant for new rollouts is better generated again.
 
 <!-- flags: rl tasks validate -->
 ```text
