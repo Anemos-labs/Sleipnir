@@ -27,9 +27,9 @@ type providerSpec struct {
 }
 
 var builtinProviders = map[string]providerSpec{
-	"heimdall": {
-		name: "heimdall", baseURL: "https://api-staging.impossiblecarrot.cc/api/v1", keyEnv: "HEIMDALL_API_KEY",
-		// Heimdall pins a conversation to the engine that served it when it is
+	"heimdallm": {
+		name: "heimdallm", baseURL: "https://api-staging.heimdallm.com/api/v1", keyEnv: "HEIMDALLM_API_KEY",
+		// Heimdallm pins a conversation to the engine that served it when it is
 		// told the conversation id; prompt_cache_key carries the same id.
 		opts:    openaichat.Options{SessionHeader: true, CacheKeyBody: true},
 		headers: map[string]string{"X-Title": "Sleipnir"},
@@ -66,19 +66,19 @@ type providerFlags struct {
 // another machine unless providers.<name>.allow_insecure_http says so. A refusal is
 // an error that says how to allow it deliberately.
 func (pf providerFlags) resolve() (providerSpec, string, error) {
-	name := strings.ToLower(pf.provider)
+	name := config.CanonicalProvider(strings.ToLower(pf.provider))
 	if name == "" {
 		switch {
 		case pf.baseURL != "":
 			name = "custom"
-		case harden.Secret("HEIMDALL_API_KEY") != "":
-			name = "heimdall"
+		case harden.Secret("HEIMDALLM_API_KEY") != "":
+			name = "heimdallm"
 		case harden.Secret("OPENROUTER_API_KEY") != "":
 			name = "openrouter"
 		case harden.Secret("OPENAI_API_KEY") != "":
 			name = "openai"
 		default:
-			return providerSpec{}, "", fmt.Errorf("no provider has a key: run `sleipnir login` (Heimdall is recommended), or set HEIMDALL_API_KEY (or OPENROUTER_API_KEY / OPENAI_API_KEY), or pass --provider and --base-url")
+			return providerSpec{}, "", fmt.Errorf("no provider has a key: run `sleipnir login` (Heimdallm is recommended), or set HEIMDALLM_API_KEY (or OPENROUTER_API_KEY / OPENAI_API_KEY), or pass --provider and --base-url")
 		}
 	}
 	spec, ok := builtinProviders[name]
@@ -129,7 +129,7 @@ func (pf providerFlags) userAllowances(name string) (hosts []string, insecure bo
 	if err != nil || cfg == nil {
 		return nil, false
 	}
-	p := cfg.Providers[name]
+	p, _ := cfg.ProviderEntry(name)
 	return p.AllowHosts, p.AllowInsecureHTTP
 }
 

@@ -89,7 +89,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	noMCP := fs.Bool("no-mcp", false, "start no MCP tool servers")
 	resume := resumeFlags(fs)
 	roleModels := kvFlags{}
-	fs.Var(roleModels, "role-model", "role=model override, repeatable (e.g. manager=heimdall/x)")
+	fs.Var(roleModels, "role-model", "role=model override, repeatable (e.g. manager=heimdallm/x)")
 	allow := allowFlags(fs)
 	askTimeout := fs.Duration("ask-timeout", 0, "refuse a question to the person that nobody answers within this time, and tell the worker (default: wait for the person); for a run that is left alone")
 	fs.Usage = func() {

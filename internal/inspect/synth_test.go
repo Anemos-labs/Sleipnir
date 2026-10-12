@@ -227,7 +227,7 @@ func (s *sim) run() {
 	sys, _ := core.MarshalStable(core.Text("You are Sleipnir. " + words(3, 900)))
 	s.sysTxt = s.put(string(sys))
 	s.emit("", events.TypeSessionStart, map[string]any{
-		"version": "test", "model": cfg.Model, "provider": "heimdall", "dialect": "openai-chat", "swarm": cfg.Workers > 0,
+		"version": "test", "model": cfg.Model, "provider": "heimdallm", "dialect": "openai-chat", "swarm": cfg.Workers > 0,
 		"root": "/work/project", "cwd": "/work/project", "renderer": "sleipnir-kv/1", "recon_tokens": 5400, "shared_hash": "aaaaaaaaaaaa",
 	})
 	s.advance(50 * time.Millisecond)
@@ -437,7 +437,7 @@ func (s *sim) step(a *simAgent) {
 	}
 	man := map[string]any{"model": cfg.Model, "tools": toolsHash, "system": []string{s.sysTxt}, "wire": string(core.HashString(reqID))}
 	s.emit(a.id, events.TypeModelRequest, map[string]any{
-		"req": reqID, "agent": a.id, "role": a.role, "kind": "main", "model": cfg.Model, "provider": "heimdall", "dialect": "openai-chat",
+		"req": reqID, "agent": a.id, "role": a.role, "kind": "main", "model": cfg.Model, "provider": "heimdallm", "dialect": "openai-chat",
 		"sections": sections, "thread_from": a.from + 1, "thread_to": a.turn * 2, "hot": hotHash,
 		"cache_key": "sl:synth:e98d13b1d2fd:0", "prefix_key": "b89a9c17bb940e87", "params": map[string]any{"max_tokens": 8192},
 		"breakpoints": []any{map[string]any{"label": "thread"}}, "shared_blocks": len(sections), "shared_tokens": expected,
@@ -457,7 +457,7 @@ func (s *sim) step(a *simAgent) {
 	hit := u.HitRatio()
 	comp, _ := core.MarshalStable(core.Turn{ID: core.TurnID(a.turn*2 + 1), Role: core.RoleAssistant, Blocks: []core.Block{core.Text("ok")}})
 	s.emit(a.id, events.TypeModelResponse, map[string]any{
-		"req": reqID, "id": "gen-" + reqID, "model": cfg.Model, "provider": "heimdall", "usage": u, "cost_usd": usd, "gateway_cost": true,
+		"req": reqID, "id": "gen-" + reqID, "model": cfg.Model, "provider": "heimdallm", "usage": u, "cost_usd": usd, "gateway_cost": true,
 		"hit_ratio": hit, "expected_read": expected, "anomaly": anomaly, "stop": "tool_use", "ttfb_ms": ttfb, "total_ms": lat,
 		"completion": s.put(string(comp)),
 	})
@@ -572,7 +572,7 @@ func (s *sim) compact(a *simAgent) {
 	s.advance(20 * time.Millisecond)
 	cid := fmt.Sprintf("%s.c%d", a.id, a.commits+1)
 	prompt := 2400 + 1800 + 21000/4 + a.spine + a.notesTok + total
-	s.emit(a.id, events.TypeModelRequest, map[string]any{"req": cid, "agent": a.id, "role": "compactor", "kind": "compactor", "model": s.cfg.Model, "provider": "heimdall", "sections": nil, "thread_from": a.from + 1, "thread_to": a.turn * 2, "tools": 12, "renderer": "sleipnir-kv/1"})
+	s.emit(a.id, events.TypeModelRequest, map[string]any{"req": cid, "agent": a.id, "role": "compactor", "kind": "compactor", "model": s.cfg.Model, "provider": "heimdallm", "sections": nil, "thread_from": a.from + 1, "thread_to": a.turn * 2, "tools": 12, "renderer": "sleipnir-kv/1"})
 	s.emit(a.id, events.TypeCompactPatch, map[string]any{"stage": "request", "reason": "thread pressure", "thread_from": a.from + 1, "thread_to": a.turn * 2})
 	s.advance(3500 * time.Millisecond)
 	u := core.Usage{InputTokens: 420, CacheReadTokens: prompt - 420, OutputTokens: 130}

@@ -13,7 +13,7 @@ type Choice struct {
 
 // Choices completes the argument of one slash command ("/model qw") from a list the caller supplies, called on each use and
 // expected to answer from memory (it may be empty while the list is still being fetched). Every space-separated word of the
-// argument must match the text (Fuzzy), so "qwen flash" finds "heimdall/qwen/qwen3.8-flash-next" and ordering is by the summed
+// argument must match the text (Fuzzy), so "qwen flash" finds "heimdallm/qwen/qwen3.8-flash-next" and ordering is by the summed
 // scores; choices that tie keep the order given, so the caller puts favorites first. With nothing typed, the list comes in the
 // order given. Text with whitespace or control characters is never offered.
 func Choices(command string, list func() []Choice) Completer {

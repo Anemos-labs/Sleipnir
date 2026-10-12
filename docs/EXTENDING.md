@@ -311,7 +311,7 @@ name: security-reviewer
 description: Reviews diffs for injection, authz and secret-handling problems.
 tools: Read, Grep, Glob, Bash(go vet:*)
 disallowedTools: WebFetch
-model: heimdall/deepseek/deepseek-v4.1-flash
+model: heimdallm/deepseek/deepseek-v4.1-flash
 permissionMode: plan
 maxTurns: 40
 priority: 1

@@ -56,7 +56,7 @@ to check the selected route. See [cache design](CACHE-DESIGN.md) and
 | `chatgpt` | Browser sign-in with `sleipnir login chatgpt` |
 | `openai` | `OPENAI_API_KEY` |
 | `anthropic` | `ANTHROPIC_API_KEY` |
-| `heimdall` | `HEIMDALL_API_KEY` |
+| `heimdallm` | `HEIMDALLM_API_KEY` |
 | `openrouter` | `OPENROUTER_API_KEY` |
 | `gemini`, `mistral`, `xai`, `deepseek` | `GEMINI_API_KEY`, `MISTRAL_API_KEY`, `XAI_API_KEY`, `DEEPSEEK_API_KEY` |
 | `huggingface` | `HF_TOKEN` |

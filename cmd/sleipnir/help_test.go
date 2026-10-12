@@ -122,7 +122,7 @@ func TestTheUsageNamesEveryBuiltInProvider(t *testing.T) {
 			t.Errorf("the usage text does not name %s", name)
 		}
 	}
-	for _, want := range []string{"heimdall (recommended)", "chatgpt: sleipnir login chatgpt, no key", "local servers"} {
+	for _, want := range []string{"heimdallm (recommended)", "chatgpt: sleipnir login chatgpt, no key", "local servers"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the usage text lacks %q:\n%s", want, buf.String())
 		}

@@ -193,8 +193,8 @@ does not apply to it.)
 
 | Variable | Used for |
 |---|---|
-| the variable named by a provider's `api_key_env` | the API key. Built-in providers: `HEIMDALL_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`. At start-up the harness moves every `*_API_KEY` variable (and any other variable a provider names) out of its own environment into memory, so nothing it starts (git, hooks, verifiers, MCP servers, the agent's shell) inherits it; name yours `..._API_KEY` |
-| `<NAME>_BASE_URL` | overrides the `base_url` of provider `<NAME>` (upper-cased, `-` becomes `_`): `HEIMDALL_BASE_URL`, `OPENROUTER_BASE_URL`, `OPENAI_BASE_URL`, `LOCAL_BASE_URL`. Applies to configured providers too. The environment is not your word (a `.envrc` or a CI job can set it), so the key follows an override only to the provider's own host, to loopback, or to a host in `allow_hosts`; anything else is refused with the line of configuration that would allow it |
+| the variable named by a provider's `api_key_env` | the API key. Built-in providers: `HEIMDALLM_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`. At start-up the harness moves every `*_API_KEY` variable (and any other variable a provider names) out of its own environment into memory, so nothing it starts (git, hooks, verifiers, MCP servers, the agent's shell) inherits it; name yours `..._API_KEY` |
+| `<NAME>_BASE_URL` | overrides the `base_url` of provider `<NAME>` (upper-cased, `-` becomes `_`): `HEIMDALLM_BASE_URL`, `OPENROUTER_BASE_URL`, `OPENAI_BASE_URL`, `LOCAL_BASE_URL`. Applies to configured providers too. The environment is not your word (a `.envrc` or a CI job can set it), so the key follows an override only to the provider's own host, to loopback, or to a host in `allow_hosts`; anything else is refused with the line of configuration that would allow it |
 | `SLEIPNIR_HOME` | the state directory (default `~/.sleipnir`): `sessions/`, `cache/`, `rl-work/` |
 | `SLEIPNIR_INSPECT_TOKEN` | access token for `sleipnir inspect` on a non-loopback address |
 | `BRAVE_API_KEY`, `TAVILY_API_KEY`, `SEARXNG_URL` | enable the `web_search` tool (the first one set wins, in this order); without one only `web_fetch` exists |
@@ -215,7 +215,7 @@ An object of named endpoints. A name may not be empty, contain whitespace or con
 
 | Name | `base_url` | `api_key_env` | Options and headers |
 |---|---|---|---|
-| `heimdall` | `https://api-staging.impossiblecarrot.cc/api/v1` | `HEIMDALL_API_KEY` | `session_header`, `cache_key_body`; header `X-Title: Sleipnir` |
+| `heimdallm` | `https://api-staging.heimdallm.com/api/v1` | `HEIMDALLM_API_KEY` | `session_header`, `cache_key_body`; header `X-Title: Sleipnir` |
 | `openrouter` | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` | `session_header`; header `X-Title: Sleipnir` |
 | `openai` | `https://api.openai.com/v1` | `OPENAI_API_KEY` | `cache_key_body` |
 
@@ -235,13 +235,13 @@ the built-in provider: its URL, dialect, key variable, options and headers stay.
 | `options` | object | none | yes | Dialect-specific request options, section 7. An option the dialect does not read is a warning (with a "did you mean" hint, or the dialect it belongs to), a value of the wrong kind or outside what the adapter takes is an error |
 
 **Model references.** A model is written `provider/model`, and the model part may contain slashes
-(`heimdall/deepseek/deepseek-v4.1-flash` is provider `heimdall`, model `deepseek/deepseek-v4.1-flash`). A **bare id**
+(`heimdallm/deepseek/deepseek-v4.1-flash` is provider `heimdallm`, model `deepseek/deepseek-v4.1-flash`). A **bare id**
 (no known provider before the first slash) goes to the default provider, which is: the only provider under
-`providers`, otherwise the first of `heimdall`, `openrouter`, `openai` whose key variable is set. With two or more
+`providers`, otherwise the first of `heimdallm`, `openrouter`, `openai` whose key variable is set. With two or more
 configured providers and none of the built-in keys set there is no default and a bare id fails with `no provider
 configured`. A provider of your own (`sleipnir init --user --local-url URL` writes one named `local`) makes it the only
 configured provider: from then on a bare marketplace id such as `deepseek/deepseek-v4.1-flash` is sent to it. Write
-`heimdall/deepseek/...` or add the provider you use next to it.
+`heimdallm/deepseek/...` or add the provider you use next to it.
 
 ### `models`
 
@@ -254,7 +254,7 @@ configured provider: from then on a bare marketplace id such as `deepseek/deepse
 **Catalogue and price overrides: there are none.** No key sets a price or a context window. Costs and windows come from,
 in order: a built-in table of well-known models; the endpoint's own catalogue, fetched from `<base_url>/models` when the
 model is not in the table and cached for six hours under `<state>/cache/`; a conservative fallback (200k context, $3 per
-million input tokens, $15 output). When an endpoint reports the cost of a call (Heimdall does, as `usage.cost`) the bill
+million input tokens, $15 output). When an endpoint reports the cost of a call (Heimdallm does, as `usage.cost`) the bill
 uses that figure and the table is only an estimate. This holds for every model of a session: the main one and the
 models of roles (`--role-model`, `models.roles`, an agent definition's `model:`, the mailman's). `session.start` in the
 event log records what each was described with (the numbers and where they came from: `catalogue`, `table`, `given`,
@@ -380,7 +380,7 @@ suspecting the endpoint.
 | Option | Type | Default | Effect |
 |---|---|---|---|
 | `session_header` | bool | `false` | Send the session's routing key as an `X-Session-Id` header, so a gateway keeps a conversation on the engine that holds its cache |
-| `cache_key_body` | bool | `false` | Send the same key as `prompt_cache_key` in the body (OpenAI, Heimdall) |
+| `cache_key_body` | bool | `false` | Send the same key as `prompt_cache_key` in the body (OpenAI, Heimdallm) |
 | `system_role` | string | `system` | Role name of the system message; `developer` for OpenAI reasoning models |
 | `max_tokens_field` | string | `max_tokens` | `max_tokens` or `max_completion_tokens`, the request member that carries the output limit (16000, or the model's maximum if smaller) |
 | `reasoning_effort_field` | string | `reasoning_effort` | Any non-empty value lets the selected effort through as `reasoning_effort`; an explicit empty string disables it. No effort is sent until one is selected with `/effort`. The harness maps it to the closest level the model supports |
@@ -553,22 +553,27 @@ sends the same tool list; a role is restricted at run time, never by hiding tool
 
 All four validate with `sleipnir config`. None contains a key: the key stays in the environment.
 
-### (a) An OpenAI-style marketplace (Heimdall)
+### (a) An OpenAI-style marketplace (Heimdallm)
 
-Heimdall's web site and documentation are at `https://staging.impossiblecarrot.cc`; its API is served from
-`https://api-staging.impossiblecarrot.cc/api/v1` (the site host answers 404 for `/api/v1`, so use the `api-` host as the
+Heimdallm's web site and documentation are at `https://staging.heimdallm.com`; its API is served from
+`https://api-staging.heimdallm.com/api/v1` (the site host answers 404 for `/api/v1`, so use the `api-` host as the
 base URL). Chat completions are at `<base>/chat/completions`, and the catalogue at `<base>/models` is public
-(`sleipnir models` works without a key). This block reproduces the built-in `heimdall` provider: with
-`HEIMDALL_API_KEY` exported you can leave `providers` out entirely and keep only what you want to change.
+(`sleipnir models` works without a key). This block reproduces the built-in `heimdallm` provider: with
+`HEIMDALLM_API_KEY` exported you can leave `providers` out entirely and keep only what you want to change.
+
+The provider was formerly named `heimdall`. The former names are still accepted: a `heimdall/<model>` reference,
+`--provider heimdall` and a `providers.heimdall` entry all mean `heimdallm` (an entry under `heimdallm` wins over one
+under `heimdall`), and a key set or stored as `HEIMDALL_API_KEY` is used when `HEIMDALLM_API_KEY` has no value. The base
+URL override is read from `HEIMDALLM_BASE_URL` only.
 
 ```jsonc
 // ~/.sleipnir/config.json
 {
   "providers": {
-    "heimdall": {
+    "heimdallm": {
       "dialect": "openai-chat",
-      "base_url": "https://api-staging.impossiblecarrot.cc/api/v1",
-      "api_key_env": "HEIMDALL_API_KEY",
+      "base_url": "https://api-staging.heimdallm.com/api/v1",
+      "api_key_env": "HEIMDALLM_API_KEY",
       "headers": { "X-Title": "Sleipnir" },
       "options": {
         "session_header": true,  // send the routing key as X-Session-Id
@@ -576,7 +581,7 @@ base URL). Chat completions are at `<base>/chat/completions`, and the catalogue 
       }
     }
   },
-  "models": { "default": "heimdall/deepseek/deepseek-v4.1-flash" },
+  "models": { "default": "heimdallm/deepseek/deepseek-v4.1-flash" },
   "permissions": {
     "mode": "default",
     "allow": ["Bash(go test:*)", "Bash(make lint)"],
@@ -587,9 +592,9 @@ base URL). Chat completions are at `<base>/chat/completions`, and the catalogue 
 ```
 
 ```sh
-export HEIMDALL_API_KEY=...           # create a key in the web UI; never paste it into a file
+export HEIMDALLM_API_KEY=...           # create a key in the web UI; never paste it into a file
 sleipnir models | head                # catalogue and prices, no key needed
-sleipnir doctor --model heimdall/deepseek/deepseek-v4.1-flash --deep
+sleipnir doctor --model heimdallm/deepseek/deepseek-v4.1-flash --deep
 sleipnir chat
 ```
 
@@ -615,9 +620,9 @@ its own. `base_url` is required.
 ```
 
 A marketplace route is a different animal: it translates the Messages wire format to whatever engine serves the model,
-and what it forwards decides which options you need. Heimdall's route is `POST <base>/messages`, so the same `.../api/v1`
+and what it forwards decides which options you need. Heimdallm's route is `POST <base>/messages`, so the same `.../api/v1`
 base URL works (the adapter appends `/messages` because the URL ends in `/v1`). Its published Messages documentation
-(`https://staging.impossiblecarrot.cc/docs/api/messages`) says that `cache_control` and other Anthropic-specific block
+(`https://staging.heimdallm.com/docs/api/messages`) says that `cache_control` and other Anthropic-specific block
 hints are accepted but not forwarded, that no cache usage is reported, that `thinking` is accepted without effect, that
 a system turn in the middle of a conversation is folded into the leading system text, that `max_tokens` must be a
 positive integer, and that `X-Session-Id` is the way to keep a conversation on one engine. The options below follow
@@ -627,10 +632,10 @@ from that:
 // ~/.sleipnir/config.json: a marketplace's Anthropic-style /messages route
 {
   "providers": {
-    "heimdall-messages": {
+    "heimdallm-messages": {
       "dialect": "anthropic",
-      "base_url": "https://api-staging.impossiblecarrot.cc/api/v1",  // requests go to <base_url>/messages
-      "api_key_env": "HEIMDALL_API_KEY",
+      "base_url": "https://api-staging.heimdallm.com/api/v1",  // requests go to <base_url>/messages
+      "api_key_env": "HEIMDALLM_API_KEY",
       "options": {
         "cache_control": false,           // the route does not forward cache markers: plan none
         "no_turn_scoped_system": true,    // fold mid-conversation system text into user text
@@ -639,7 +644,7 @@ from that:
       }
     }
   },
-  "models": { "default": "heimdall-messages/deepseek/deepseek-v4.1-flash" }
+  "models": { "default": "heimdallm-messages/deepseek/deepseek-v4.1-flash" }
 }
 ```
 
@@ -647,7 +652,7 @@ Gateway support for cache markers, reasoning, and optional headers varies by rou
 Measure the configured endpoint before relying on those features:
 
 ```sh
-sleipnir doctor --model heimdall-messages/deepseek/deepseek-v4.1-flash --deep
+sleipnir doctor --model heimdallm-messages/deepseek/deepseek-v4.1-flash --deep
 ```
 
 `doctor` works with any configured provider dialect. It runs a series of real requests and reports whether
@@ -708,7 +713,7 @@ mock`, which imitates vLLM's token ids); your server's answer is the one that co
 | Message | Cause |
 |---|---|
 | `no model configured: pass --model provider/model, set SLEIPNIR_MODEL, or write one into your config with ...` | no model given and `models.default` unset |
-| `no provider configured: set HEIMDALL_API_KEY (or OPENROUTER_API_KEY / OPENAI_API_KEY) or define one under "providers" ...` | a bare model id and no default provider (section 6), or no built-in key set |
+| `no provider configured: set HEIMDALLM_API_KEY (or OPENROUTER_API_KEY / OPENAI_API_KEY) or define one under "providers" ...` | a bare model id and no default provider (section 6), or no built-in key set |
 | `provider "x" needs NAME to be set` | the provider's `api_key_env` variable is empty in this shell |
 | `provider "x" has no base_url` | a configured provider without `base_url` |
 | `not signed in with ChatGPT: run sleipnir login chatgpt` | a model of the `chatgpt` provider was asked for with no sign-in (or after `sleipnir logout chatgpt`) |

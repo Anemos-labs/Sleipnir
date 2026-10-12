@@ -1,5 +1,5 @@
 // Package openaichat adapts core prompts to OpenAI-style /chat/completions,
-// the dialect spoken by OpenAI itself and by gateways such as Heimdall and
+// the dialect spoken by OpenAI itself and by gateways such as Heimdallm and
 // OpenRouter.
 //
 // These endpoints cache automatically: there are no breakpoints to place, so
@@ -27,7 +27,7 @@ type Options struct {
 	SystemRole string
 	// MaxTokensField is "max_tokens" (default) or "max_completion_tokens".
 	MaxTokensField string
-	// CacheKeyBody sends prompt_cache_key in the body (OpenAI, Heimdall).
+	// CacheKeyBody sends prompt_cache_key in the body (OpenAI, Heimdallm).
 	CacheKeyBody bool
 	// SessionHeader sends the cache key as X-Session-Id (gateway affinity).
 	SessionHeader bool

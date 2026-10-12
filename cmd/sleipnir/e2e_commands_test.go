@@ -112,7 +112,7 @@ func TestInit(t *testing.T) {
 		if err := os.RemoveAll(filepath.Join(w.project, ".sleipnir")); err != nil {
 			t.Fatal(err)
 		}
-		r := w.run("", "init", "--model", "heimdall/vendor/model")
+		r := w.run("", "init", "--model", "heimdallm/vendor/model")
 		assertRun(t, r, 0, nil, []string{"wrote ", "config.json", "AGENTS.md", "sleipnir init --user", "next: sleipnir doctor"})
 		if r.stdout != "" {
 			t.Errorf("init printed on stdout: %q", r.stdout)
@@ -129,7 +129,7 @@ func TestInit(t *testing.T) {
 			t.Fatal(err)
 		}
 		decode(t, "config.json", string(b), &cfg)
-		if cfg.Models.Default != "heimdall/vendor/model" || len(cfg.Permissions.Deny) != 2 || cfg.Swarm.MaxWorkers != 12 {
+		if cfg.Models.Default != "heimdallm/vendor/model" || len(cfg.Permissions.Deny) != 2 || cfg.Swarm.MaxWorkers != 12 {
 			t.Errorf("config.json: %s", b)
 		}
 		if _, err := os.Stat(filepath.Join(w.project, "AGENTS.md")); err != nil {
@@ -145,7 +145,7 @@ func TestInit(t *testing.T) {
 	})
 	t.Run("the user's own", func(t *testing.T) {
 		w := newWorld(t, "")
-		r := w.run("", "init", "--user", "--model", "heimdall/vendor/model", "--local-url", "http://127.0.0.1:8000/v1")
+		r := w.run("", "init", "--user", "--model", "heimdallm/vendor/model", "--local-url", "http://127.0.0.1:8000/v1")
 		assertRun(t, r, 0, nil, []string{"wrote ", filepath.Join(w.home, ".sleipnir", "config.json")})
 		path := filepath.Join(w.home, ".sleipnir", "config.json")
 		b, err := os.ReadFile(path)
@@ -161,7 +161,7 @@ func TestInit(t *testing.T) {
 			}
 		}
 		decode(t, "the user's config.json", string(b), &cfg)
-		if cfg.Models.Default != "heimdall/vendor/model" || cfg.Permissions.Mode != "default" ||
+		if cfg.Models.Default != "heimdallm/vendor/model" || cfg.Permissions.Mode != "default" ||
 			cfg.Providers["local"].BaseURL != "http://127.0.0.1:8000/v1" || cfg.Providers["local"].Options["capture_tokens"] != true {
 			t.Errorf("the user's config.json: %s", b)
 		}
@@ -472,7 +472,7 @@ func TestDemoAndInspect(t *testing.T) {
 	})
 }
 
-// A marketplace-shaped catalogue (Heimdall's and OpenRouter's): prices are per token, as decimal
+// A marketplace-shaped catalogue (Heimdallm's and OpenRouter's): prices are per token, as decimal
 // strings, and architecture.modality says what a model takes and gives. The mock provider's own
 // catalogue has no modality, so `models` would print it only with --all; this one has the fields
 // `models` filters on.

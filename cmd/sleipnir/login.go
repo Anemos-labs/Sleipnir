@@ -28,7 +28,7 @@ func init() {
 // loginChoice is a provider that needs a key.
 type loginChoice struct{ name, env string }
 
-// loginChoices are the providers that take a key, Heimdall first (it is the recommended one), then the others in alphabetical order
+// loginChoices are the providers that take a key, Heimdallm first (it is the recommended one), then the others in alphabetical order
 // (catalog.KeyProviders).
 func loginChoices(cfg *config.Config) []loginChoice {
 	var out []loginChoice
@@ -75,6 +75,7 @@ const chatgptName = "chatgpt"
 
 // loginName checks a provider named for login: one that takes a key, or the ChatGPT plan. No name is fine: the menu asks.
 func loginName(cfg *config.Config, name string) error {
+	name = config.CanonicalProvider(strings.ToLower(name))
 	if name == "" || strings.EqualFold(name, chatgptName) {
 		return nil
 	}
@@ -91,6 +92,7 @@ func loginName(cfg *config.Config, name string) error {
 // provider's name. A server on this machine needs no key, and a ChatGPT plan is signed in with the browser: both are offered after the
 // providers that take a key.
 func login(ctx context.Context, in *bufio.Reader, out io.Writer, secret func() (string, error), cfg *config.Config, name string, local []modelSource) (string, error) {
+	name = config.CanonicalProvider(strings.ToLower(name))
 	choices := loginChoices(cfg)
 	var pick *loginChoice
 	for i := range choices {
@@ -118,13 +120,13 @@ func login(ctx context.Context, in *bufio.Reader, out io.Writer, secret func() (
 		}
 		return extras[i].name, nil
 	}
-	named := pick != nil // `sleipnir login heimdall` names it: an empty key is then an error, and not a return to a list
+	named := pick != nil // `sleipnir login heimdallm` names it: an empty key is then an error, and not a return to a list
 	for {
 		if pick == nil && arrowOK() {
 			var labels []string
 			for _, c := range choices {
 				switch c.name {
-				case "heimdall":
+				case "heimdallm":
 					c.name += "  (recommended)"
 				case "openai":
 					c.name += "  (an API key, billed per use; a ChatGPT plan is the chatgpt row)"
@@ -147,7 +149,7 @@ func login(ctx context.Context, in *bufio.Reader, out io.Writer, secret func() (
 			fmt.Fprintln(out, "Which provider will you use?")
 			for i, c := range choices {
 				note := ""
-				if c.name == "heimdall" {
+				if c.name == "heimdallm" {
 					note = "  (recommended)"
 				}
 				fmt.Fprintf(out, "  %2d. %s%s\n", i+1, c.name, note)
@@ -234,7 +236,7 @@ func userHome() string {
 func cmdLogin(ctx context.Context, args []string) error {
 	fs := newFlagSet("login", flag.ExitOnError)
 	fs.Usage = func() {
-		printHelp(os.Stderr, "usage: sleipnir login [provider]\n\nAsks which provider (Heimdall is the recommended one) and for its API key, and keeps the key in\n~/.sleipnir/auth.json, readable by you only. `sleipnir login chatgpt` signs in with your ChatGPT plan instead (a browser, no key). From a pipe the key is the first line of stdin:\n  echo \"$KEY\" | sleipnir login heimdall\nAn environment variable of the key's usual name (HEIMDALL_API_KEY) still takes precedence.\n")
+		printHelp(os.Stderr, "usage: sleipnir login [provider]\n\nAsks which provider (Heimdallm is the recommended one) and for its API key, and keeps the key in\n~/.sleipnir/auth.json, readable by you only. `sleipnir login chatgpt` signs in with your ChatGPT plan instead (a browser, no key). From a pipe the key is the first line of stdin:\n  echo \"$KEY\" | sleipnir login heimdallm\nAn environment variable of the key's usual name (HEIMDALLM_API_KEY) still takes precedence.\n")
 	}
 	if err := fs.Parse(args); err != nil {
 		return err

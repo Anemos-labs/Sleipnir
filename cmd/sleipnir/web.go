@@ -139,7 +139,7 @@ func cmdWeb(ctx context.Context, args []string) error {
 	isolation, commit := isolationFlags(fs)
 	mailman := mailmanFlag(fs)
 	roleModels := kvFlags{}
-	fs.Var(roleModels, "role-model", "role=model override for new sessions, repeatable (e.g. manager=heimdall/x, mailman=heimdall/small)")
+	fs.Var(roleModels, "role-model", "role=model override for new sessions, repeatable (e.g. manager=heimdallm/x, mailman=heimdallm/small)")
 	resume := resumeFlags(fs)
 	allow := allowFlags(fs)
 	askTimeout := fs.Duration("ask-timeout", 0, "refuse a question that nobody answered in this long, as a run with nobody to ask would (0 waits for an answer)")

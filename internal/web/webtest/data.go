@@ -91,7 +91,7 @@ func Recorded() []wire.RecordedSession {
 	return []wire.RecordedSession{
 		{ID: "20261008-101500-4be2f1", First: "Migrate the web page to fetch()", Model: "anthropic/claude-haiku-5-5", Cost: 0.84, MB: 1.2, AgeS: 86400, Agents: 5, Resumable: true, Dur: 1260, Cwd: Cwd, LastWritten: 1759922100000},
 		{ID: "20261007-153000-91ac03", First: "Fix the failing test in the slugify package", Model: "anthropic/claude-sonnet-5-5", Cost: 0.21, MB: 0.4, AgeS: 172800, Agents: 1, Resumable: true, Dur: 240, Interrupted: true, Cwd: "/home/me/projects/orders", LastWritten: 1759851000000},
-		{ID: "20261001-090000-0a7d55", Name: "docs sweep", First: "Check the links in docs/", Model: "heimdall/demo-model", Cost: 0.05, MB: 0.1, AgeS: 777600, Agents: 3, Resumable: false, Dur: 95, Cwd: "/home/me/projects/docs", LastWritten: 1759309200000},
+		{ID: "20261001-090000-0a7d55", Name: "docs sweep", First: "Check the links in docs/", Model: "heimdallm/demo-model", Cost: 0.05, MB: 0.1, AgeS: 777600, Agents: 3, Resumable: false, Dur: 95, Cwd: "/home/me/projects/docs", LastWritten: 1759309200000},
 	}
 }
 
@@ -104,7 +104,7 @@ func Models() wire.ModelsView {
 		Models: []wire.ModelRow{
 			{Ref: "anthropic/claude-sonnet-5-5", Provider: "anthropic", Ctx: 200000, In: f64(3), Out: f64(15), Cached: f64(0.3), Tools: true, Reasoning: true, Fav: true, PriceKnown: true},
 			{Ref: "anthropic/claude-haiku-5-5", Provider: "anthropic", Ctx: 200000, In: f64(0.8), Out: f64(4), Cached: f64(0.08), Tools: true, Reasoning: false, Fav: true, PriceKnown: true},
-			{Ref: "heimdall/demo-model", Provider: "heimdall", Ctx: 128000, In: f64(0.5), Out: f64(2), Cached: f64(0.1), Tools: true, Reasoning: true, PriceKnown: true},
+			{Ref: "heimdallm/demo-model", Provider: "heimdallm", Ctx: 128000, In: f64(0.5), Out: f64(2), Cached: f64(0.1), Tools: true, Reasoning: true, PriceKnown: true},
 			{Ref: "openai/gpt-5", Provider: "openai", Ctx: 400000, In: f64(1.25), Out: f64(10), Cached: f64(0.125), Tools: true, Reasoning: true, PriceKnown: true},
 			{Ref: "chatgpt/gpt-5-plan", Provider: "chatgpt", Ctx: 272000, Tools: true, Reasoning: true, Plan: true},
 			{Ref: "local/qwen3-coder", Provider: "local", Ctx: 32000, Tools: true},
@@ -128,7 +128,7 @@ func Models() wire.ModelsView {
 func Providers() wire.ProvidersView {
 	return wire.ProvidersView{
 		Providers: []wire.ProviderRow{
-			{ID: "heimdall", Name: "Heimdall", Base: "https://api.heimdall.example/v1", Key: "stored", State: "ready", Recommended: true, KeyWhere: "auth.json", Dialect: "chat", UsedBy: "the default"},
+			{ID: "heimdallm", Name: "Heimdallm", Base: "https://api.heimdallm.example/v1", Key: "stored", State: "ready", Recommended: true, KeyWhere: "auth.json", Dialect: "chat", UsedBy: "the default"},
 			{ID: "anthropic", Name: "Anthropic", Base: "https://api.anthropic.com", Key: "env", Env: "ANTHROPIC_API_KEY", State: "ready", KeyWhere: "the environment", Dialect: "messages", UsedBy: "manager"},
 			{ID: "openai", Name: "OpenAI", Base: "https://api.openai.com/v1", Key: "none", State: "no key", Dialect: "chat"},
 			{ID: "chatgpt", Name: "ChatGPT plan", Base: "https://chatgpt.com", Key: "signed in", State: "ready", SignedIn: true, Who: "me@example.com", Dialect: "responses"},
@@ -244,7 +244,7 @@ func Schedule() wire.ScheduleView {
 func DoctorEndpoints() []wire.DoctorEndpoint {
 	return []wire.DoctorEndpoint{
 		{Ref: "anthropic/claude-sonnet-5-5", Where: "Anthropic"},
-		{Ref: "heimdall/demo-model", Where: "Heimdall"},
+		{Ref: "heimdallm/demo-model", Where: "Heimdallm"},
 		{Ref: "local/qwen3-coder", Where: "http://127.0.0.1:8000/v1"},
 	}
 }

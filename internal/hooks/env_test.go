@@ -15,7 +15,7 @@ func TestScrubEnv(t *testing.T) {
 		"GOPATH=/go", "PYTHONPATH=/py", "MANPATH=/man", "GIT_AUTHOR_NAME=Ada", "GIT_AUTHOR_EMAIL=a@example.com", "SLEIPNIR_MODEL=x/y",
 		"EDITOR=vi", "LC_ALL=C", "KEYBOARD_LAYOUT=us", "AUTHOR=ada", "SESSION_MANAGER=x",
 
-		"HEIMDALL_API_KEY=canary-not-a-secret", "OPENAI_API_KEY=canary", "ANTHROPIC_AUTH_TOKEN=canary", "api-key=canary",
+		"HEIMDALLM_API_KEY=canary-not-a-secret", "HEIMDALL_API_KEY=canary", "OPENAI_API_KEY=canary", "ANTHROPIC_AUTH_TOKEN=canary", "api-key=canary",
 		"AWS_ACCESS_KEY_ID=canary", "AWS_SECRET_ACCESS_KEY=canary", "AWS_SESSION_TOKEN=canary", "GITHUB_TOKEN=canary", "GH_PAT=canary",
 		"NPM_TOKEN=canary", "MY_PASSWORD=canary", "DB_PASSWD=canary", "MYSQL_PWD=canary", "PGPASSWORD=canary", "CLIENT_SECRET=canary",
 		"GOOGLE_APPLICATION_CREDENTIALS=/creds.json", "SIGNING_KEY=canary", "STRIPE_KEY=canary", "KEY=canary", "SENTRY_DSN=canary",
@@ -37,7 +37,7 @@ func TestScrubEnv(t *testing.T) {
 			t.Errorf("%s was scrubbed but is harmless", name)
 		}
 	}
-	for _, name := range []string{"HEIMDALL_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_AUTH_TOKEN", "api-key", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
+	for _, name := range []string{"HEIMDALLM_API_KEY", "HEIMDALL_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_AUTH_TOKEN", "api-key", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
 		"AWS_SESSION_TOKEN", "GITHUB_TOKEN", "GH_PAT", "NPM_TOKEN", "MY_PASSWORD", "DB_PASSWD", "MYSQL_PWD", "PGPASSWORD", "CLIENT_SECRET",
 		"GOOGLE_APPLICATION_CREDENTIALS", "SIGNING_KEY", "STRIPE_KEY", "KEY", "SENTRY_DSN", "SSH_AUTH_SOCK", "HTTP_COOKIE", "AUTHORIZATION",
 		"BEARER_VALUE", "DATABASE_URL", "REDIS_URL", "MONGODB_URI", "AMQP_URL", "AZURE_STORAGE_CONNECTION_STRING", "PRIVATE_KEY", "MYAPP_URL"} {

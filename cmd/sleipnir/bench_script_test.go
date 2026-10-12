@@ -19,7 +19,7 @@ const benchKey = "sk-bench-test-0123456789abcdef0123456789abcdef"
 const stubSleipnir = `#!/bin/sh
 state=$STUB_STATE
 n=$(cat "$state/n" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "$state/n"
-{ echo "--- $STUB_NAME call $n cwd=$(pwd -P)"; printf '%s\n' "$@"; [ -n "${HEIMDALL_API_KEY:-}" ] && echo "key-in-env"; } >> "$state/calls"
+{ echo "--- $STUB_NAME call $n cwd=$(pwd -P)"; printf '%s\n' "$@"; [ -n "${HEIMDALLM_API_KEY:-}" ] && echo "key-in-env"; } >> "$state/calls"
 out=; prev=; for a in "$@"; do [ "$prev" = --out ] && out=$a; prev=$a; done
 seed=; prev=; for a in "$@"; do [ "$prev" = --seed ] && seed=$a; prev=$a; done
 echo "$STUB_NAME seed=$seed" >> "$state/order"
@@ -86,7 +86,7 @@ func (e *benchEnv) run(plan string, args ...string) (out string, status int, cal
 	e.t.Helper()
 	full := append([]string{e.script}, args...)
 	cmd := exec.Command("sh", full...)
-	cmd.Env = append(os.Environ(), "BENCH_HOME="+e.home, "BENCH_PAUSE=0", "STUB_STATE="+e.state, "STUB_PLAN="+plan, "HEIMDALL_API_KEY="+benchKey)
+	cmd.Env = append(os.Environ(), "BENCH_HOME="+e.home, "BENCH_PAUSE=0", "STUB_STATE="+e.state, "STUB_PLAN="+plan, "HEIMDALLM_API_KEY="+benchKey)
 	var buf bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &buf, &buf
 	err := cmd.Run()
@@ -101,7 +101,7 @@ func (e *benchEnv) run(plan string, args ...string) (out string, status int, cal
 }
 
 func (e *benchEnv) base(extra ...string) []string {
-	return append([]string{"run", "--model", "heimdall/test/model", "--suite", e.suite, "--bin", e.stub, "--min-free-gb", "0"}, extra...)
+	return append([]string{"run", "--model", "heimdallm/test/model", "--suite", e.suite, "--bin", e.stub, "--min-free-gb", "0"}, extra...)
 }
 
 func noKey(t *testing.T, where, text string) {
@@ -121,7 +121,7 @@ func TestBenchScriptResumesUntilEverythingHasAVerdict(t *testing.T) {
 	if got := strings.Count(calls, "call "); got != 3 {
 		t.Fatalf("%d invocations, want 3 (exit 75, one infrastructure failure, done)\n%s", got, calls)
 	}
-	for _, want := range []string{"rl\nrollout\n", "--tasks\ntasks.jsonl\n", "--blobs\nblobs\n", "--model\nheimdall/test/model\n", "--group\n1\n",
+	for _, want := range []string{"rl\nrollout\n", "--tasks\ntasks.jsonl\n", "--blobs\nblobs\n", "--model\nheimdallm/test/model\n", "--group\n1\n",
 		"--tag\nsmoke,!long\n", "--concurrency\n3\n", "--rpm\n120\n", "--budget-usd\n0.25\n", "--max-spend-usd\n2\n", "--set-env\nGOFLAGS=-mod=mod\n", "key-in-env"} {
 		if !strings.Contains(calls, want) {
 			t.Errorf("the stub was not called with %q:\n%s", strings.ReplaceAll(want, "\n", " "), calls)
@@ -175,7 +175,7 @@ func TestBenchScriptDoesNotRetryARunThatCannotStart(t *testing.T) {
 func TestBenchScriptRefusesAKeyFileOthersCanRead(t *testing.T) {
 	e := newBenchEnv(t)
 	keyFile := filepath.Join(t.TempDir(), "key.env")
-	if err := os.WriteFile(keyFile, []byte("export HEIMDALL_API_KEY="+benchKey+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(keyFile, []byte("export HEIMDALLM_API_KEY="+benchKey+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out, status, calls := e.run("ok", e.base("--key-file", keyFile)...)
@@ -215,10 +215,39 @@ func TestBenchScriptNeedsAKey(t *testing.T) {
 	}
 }
 
+// The provider was formerly heimdall: a key only in HEIMDALL_API_KEY passes the key check, unless --api-key-env or --key-file
+// names the key's source.
+func TestBenchScriptTakesTheKeyUnderItsFormerName(t *testing.T) {
+	e := newBenchEnv(t)
+	for _, c := range []struct {
+		args []string
+		want int
+	}{{nil, 0}, {[]string{"--api-key-env", "HEIMDALLM_API_KEY"}, 2}, {[]string{"--key-file", emptyKeyFile(t)}, 2}} {
+		args := append([]string{e.script}, e.base(append([]string{"--out", filepath.Join(t.TempDir(), "run")}, c.args...)...)...)
+		cmd := exec.Command("sh", args...)
+		cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), "BENCH_HOME=" + e.home, "BENCH_PAUSE=0", "STUB_STATE=" + e.state,
+			"STUB_PLAN=ok", "HEIMDALL_API_KEY=" + benchKey}
+		var buf bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &buf, &buf
+		status := 0
+		if err := cmd.Run(); err != nil {
+			ee, ok := err.(*exec.ExitError)
+			if !ok {
+				t.Fatal(err)
+			}
+			status = ee.ExitCode()
+		}
+		if status != c.want {
+			t.Errorf("%v: exit %d, want %d\n%s", c.args, status, c.want, buf.String())
+		}
+		noKey(t, "the output", buf.String())
+	}
+}
+
 func TestBenchScriptABAlternatesTheBinariesAndPairsTheSeeds(t *testing.T) {
 	e := newBenchEnv(t)
 	a, b := e.makeStub("A"), e.makeStub("B")
-	out, status, _ := e.run("ok", "ab", "--model", "heimdall/test/model", "--suite", e.suite, "--bin-a", a, "--bin-b", b, "--min-free-gb", "0",
+	out, status, _ := e.run("ok", "ab", "--model", "heimdallm/test/model", "--suite", e.suite, "--bin-a", a, "--bin-b", b, "--min-free-gb", "0",
 		"--group", "3", "--out", filepath.Join(t.TempDir(), "ab"))
 	if status != 0 {
 		t.Fatalf("exit %d\n%s", status, out)
@@ -241,4 +270,14 @@ func TestBenchScriptStatus(t *testing.T) {
 	if status != 0 || !strings.Contains(out, "6/8 done, 2 infra, 0 capped, pass 50%, spent $0.0123") || !strings.Contains(out, "no summary yet") {
 		t.Fatalf("exit %d\n%s", status, out)
 	}
+}
+
+// emptyKeyFile is a key file, readable by its owner only, that holds no key.
+func emptyKeyFile(t *testing.T) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "key")
+	if err := os.WriteFile(p, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
 }

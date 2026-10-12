@@ -109,7 +109,7 @@ func main() {
 }
 
 // defaultToChat is the command and arguments for a command line: what was typed, except that on a terminal `sleipnir` alone, or
-// followed by flags (`sleipnir --model heimdall/x`), opens the chat in the current directory. Where there is no terminal (a script, a
+// followed by flags (`sleipnir --model heimdallm/x`), opens the chat in the current directory. Where there is no terminal (a script, a
 // pipe) the bare command stays a usage error, and "" says so.
 func defaultToChat(argv []string, tty bool) (cmd string, args []string) {
 	if len(argv) == 0 {
@@ -235,7 +235,7 @@ func usage(w io.Writer) {
 
 Start:
   cd your-project && sleipnir
-      The first run asks which provider to use (Heimdall is the recommended
+      The first run asks which provider to use (Heimdallm is the recommended
       one), takes its key and opens the chat: a manager and eight workers.
       In the chat, ctrl+g shows the team's cockpit, ctrl+t the stats, /help
       the rest.
@@ -279,7 +279,7 @@ Look at a session, or measure:
 `)
 	fmt.Fprint(w, providerParagraph())
 	fmt.Fprintln(w, wrapWords("A bare model id goes to the default provider: the only one configured, else the first hosted one whose key variable "+
-		"(HEIMDALL_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, ...) is set. A key comes from its environment variable, else from "+
+		"(HEIMDALLM_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, ...) is set. A key comes from its environment variable, else from "+
 		"~/.sleipnir/auth.json (sleipnir login stores it there, mode 0600). Every command takes -h.", usageWidth))
 }
 
@@ -296,8 +296,8 @@ func providerParagraph() string {
 			plan = append(plan, n)
 		case p.APIKeyEnv == "":
 			local = append(local, n)
-		case n == "heimdall":
-			hosted = append([]string{"heimdall (recommended)"}, hosted...)
+		case n == "heimdallm":
+			hosted = append([]string{"heimdallm (recommended)"}, hosted...)
 		default:
 			hosted = append(hosted, n)
 		}
@@ -421,7 +421,7 @@ func printHelp(w io.Writer, text string) { fmt.Fprint(w, wrapBlockFor(w, text)) 
 // their bound values.
 func addProviderFlags(fs *flag.FlagSet) *providerFlags {
 	pf := &providerFlags{}
-	fs.StringVar(&pf.provider, "provider", "", "heimdall | openrouter | openai | custom (default: auto-detect)")
+	fs.StringVar(&pf.provider, "provider", "", "heimdallm | openrouter | openai | custom (default: auto-detect)")
 	fs.StringVar(&pf.baseURL, "base-url", "", "API base URL (overrides the provider default)")
 	fs.StringVar(&pf.keyEnv, "api-key-env", "", "environment variable holding the API key")
 	return pf

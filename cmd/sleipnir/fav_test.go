@@ -24,8 +24,8 @@ func TestFavTogglesAModelInTheMenuAndTheConfiguration(t *testing.T) {
 	home := t.TempDir()
 	m := &modelMenu{home: home, fav: map[string]bool{}}
 	m.rows = []modelRow{
-		row("heimdall/qwen/qwen3.8-27b", 262_000, 0.25, "tools"),
-		row("heimdall/qwen/qwen3.8-flash-next", 1_000_000, 0.035, "tools"),
+		row("heimdallm/qwen/qwen3.8-27b", 262_000, 0.25, "tools"),
+		row("heimdallm/qwen/qwen3.8-flash-next", 1_000_000, 0.035, "tools"),
 		row("ollama/llama3:8b", 8_000, 0),
 	}
 	m.mu.Lock()
@@ -38,7 +38,7 @@ func TestFavTogglesAModelInTheMenuAndTheConfiguration(t *testing.T) {
 		}
 		return out
 	}
-	if got := refs(); !slices.Equal(got, []string{"heimdall/qwen/qwen3.8-27b", "heimdall/qwen/qwen3.8-flash-next", "ollama/llama3:8b"}) {
+	if got := refs(); !slices.Equal(got, []string{"heimdallm/qwen/qwen3.8-27b", "heimdallm/qwen/qwen3.8-flash-next", "ollama/llama3:8b"}) {
 		t.Fatalf("by reference to begin with: %v", got)
 	}
 
@@ -58,7 +58,7 @@ func TestFavTogglesAModelInTheMenuAndTheConfiguration(t *testing.T) {
 	if err != nil || starred {
 		t.Fatalf("a second /fav unstars: starred=%v err=%v", starred, err)
 	}
-	if got := refs(); got[0] != "heimdall/qwen/qwen3.8-27b" {
+	if got := refs(); got[0] != "heimdallm/qwen/qwen3.8-27b" {
 		t.Errorf("back in its place: %v", got)
 	}
 	if favs := favoritesOnDisk(t, home); len(favs) != 0 {
@@ -83,14 +83,14 @@ func TestFavCommandSaysWhatItDid(t *testing.T) {
 		t.Errorf("no model named and none known: %q", out.String())
 	}
 	out.Reset()
-	if _, ok := h.programCommand("/fav heimdall/qwen/qwen3.8-27b", &out); !ok || !strings.HasPrefix(out.String(), "starred heimdall/qwen/qwen3.8-27b") {
+	if _, ok := h.programCommand("/fav heimdallm/qwen/qwen3.8-27b", &out); !ok || !strings.HasPrefix(out.String(), "starred heimdallm/qwen/qwen3.8-27b") {
 		t.Errorf("starred: %q", out.String())
 	}
-	if favs := favoritesOnDisk(t, home); !slices.Equal(favs, []string{"heimdall/qwen/qwen3.8-27b"}) {
+	if favs := favoritesOnDisk(t, home); !slices.Equal(favs, []string{"heimdallm/qwen/qwen3.8-27b"}) {
 		t.Errorf("the session's own home holds it, and not the machine's: %v", favs)
 	}
 	out.Reset()
-	if slashTo(t.Context(), s, "/fav heimdall/qwen/qwen3.8-27b", &out, &out); !strings.HasPrefix(out.String(), "unstarred ") {
+	if slashTo(t.Context(), s, "/fav heimdallm/qwen/qwen3.8-27b", &out, &out); !strings.HasPrefix(out.String(), "unstarred ") {
 		t.Errorf("the line chat unstars with the same words: %q", out.String())
 	}
 	out.Reset()

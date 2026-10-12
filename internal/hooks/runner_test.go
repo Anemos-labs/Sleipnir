@@ -361,7 +361,7 @@ func TestHookEnvironmentInPractice(t *testing.T) {
 	urlWithPassword := "https://" + "u" + ":" + "pw" + "@example.com/x"
 	r := one(t, PreToolUse, "", "env > env.txt")
 	r.Env = append(testEnv(),
-		"HEIMDALL_API_KEY=canary-not-a-secret", "GITHUB_TOKEN=canary", "AWS_SECRET_ACCESS_KEY=canary", "DATABASE_URL=canary",
+		"HEIMDALLM_API_KEY=canary-not-a-secret", "GITHUB_TOKEN=canary", "AWS_SECRET_ACCESS_KEY=canary", "DATABASE_URL=canary",
 		"MY_SERVICE_URL="+urlWithPassword, "SSH_AUTH_SOCK=/tmp/agent.sock", "CUSTOM_PROVIDER_CREDENTIALS_X=canary", "HARMLESS=fine",
 		"SLEIPNIR_AGENT=stale-agent",
 	)
@@ -375,7 +375,7 @@ func TestHookEnvironmentInPractice(t *testing.T) {
 		t.Fatal(err)
 	}
 	env := string(b)
-	for _, leaked := range []string{"canary", "HEIMDALL", "GITHUB_TOKEN", "AWS_SECRET", "DATABASE_URL", "MY_SERVICE_URL", "SSH_AUTH_SOCK", "stale-agent"} {
+	for _, leaked := range []string{"canary", "HEIMDALLM", "GITHUB_TOKEN", "AWS_SECRET", "DATABASE_URL", "MY_SERVICE_URL", "SSH_AUTH_SOCK", "stale-agent"} {
 		if strings.Contains(env, leaked) {
 			t.Errorf("the hook's environment contains %q:\n%s", leaked, env)
 		}
@@ -394,7 +394,7 @@ func TestHookEnvironmentInPractice(t *testing.T) {
 	r.DenyEnv = []string{"HARMLESS"}
 	run(t, r, Event{Name: PreToolUse, Tool: "bash"})
 	b, _ = os.ReadFile(filepath.Join(r.Dir, "env.txt"))
-	if !strings.Contains(string(b), "GITHUB_TOKEN=canary") || strings.Contains(string(b), "HARMLESS") || strings.Contains(string(b), "HEIMDALL") {
+	if !strings.Contains(string(b), "GITHUB_TOKEN=canary") || strings.Contains(string(b), "HARMLESS") || strings.Contains(string(b), "HEIMDALLM") {
 		t.Errorf("PassEnv/DenyEnv not applied:\n%s", b)
 	}
 }
