@@ -377,6 +377,45 @@ func WriteSuite(task *rl.Task, spec SuiteSpec, hidden events.Blobs) error {
 	return nil
 }
 
+// UpdateSuiteScorer gives a task that WriteSuite made the scorer script of this
+// build: its hidden .sleipnir/suite/score.py becomes the script embedded here,
+// stored as the old one was (a blob in hidden, or inline). The spec, units,
+// guards, command and everything else of the task stay as they are, so a task
+// recorded by an earlier build is scored by a fixed scorer without being
+// generated again. It reports whether the task has a suite scorer and whether
+// its script changed; a task without one is left alone.
+func UpdateSuiteScorer(task *rl.Task, hidden events.Blobs) (found, changed bool, err error) {
+	if task == nil {
+		return false, false, errors.New("UpdateSuiteScorer: no task")
+	}
+	p := suiteBase(task) + "/score.py"
+	old, ok := task.Verifier.Hidden[p]
+	if !ok {
+		return false, false, nil
+	}
+	ref := "text:" + suiteScoreScript
+	if strings.HasPrefix(old, "blob:") {
+		if hidden == nil {
+			return true, false, fmt.Errorf("task %s keeps its scorer in a blob store and none was given", task.ID)
+		}
+		h, err := hidden.Put([]byte(suiteScoreScript))
+		if err != nil {
+			return true, false, fmt.Errorf("storing the suite's score.py: %w", err)
+		}
+		ref = "blob:" + string(h)
+	}
+	if ref == old {
+		return true, false, nil
+	}
+	h := make(map[string]string, len(task.Verifier.Hidden))
+	for k, v := range task.Verifier.Hidden {
+		h[k] = v
+	}
+	h[p] = ref
+	task.Verifier.Hidden = h
+	return true, true, nil
+}
+
 // Outcomes of a test in a SuiteOutcomes.
 const (
 	SuitePass = "pass"
