@@ -737,8 +737,8 @@ groups format also lists every signal under `metrics` as `signal/<name>`.
   did after the shared first prompt (for a branch, from its fork to the root agent's first rebase), the step unit
   compares completions of an identical prompt within the group. An episode pair needs that first prompt to be the same
   on both sides: the siblings of a `--compact-first` point each continue from their own summary, so their root chains
-  start from different prompts and give no episode pair (`pair:prompt_differs`); their competing compactor calls, which
-  share a prompt, are paired by the step unit. `--pair-unverified` also pairs a group none of whose
+  usually start from different prompts and then give no episode pair (`pair:prompt_differs`); their competing compactor
+  calls share a prompt and can be paired by the step unit, when their ranks differ and their summaries are not the same. `--pair-unverified` also pairs a group none of whose
   episodes passed, rank 1 being the best by verifier score (flagged episodes are dropped before pairing unless
   `--keep-flagged` keeps them). The default,
   `--pair reward`, pairs by reward as before.
