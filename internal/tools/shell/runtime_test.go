@@ -47,7 +47,8 @@ func TestRuntimeShellContextMatchesExecution(t *testing.T) {
 			tool, _ := reg.Get("bash")
 			input, _ := json.Marshal(map[string]string{"command": tc.command})
 			root := t.TempDir()
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			// A budget that only a hung shell exhausts: Windows PowerShell has taken more than 20 s to start on a busy runner.
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer cancel()
 			res, err := tool.Run(ctx, &tools.Call{Input: input, Env: &tools.Env{Agent: "probe", Cwd: root, Root: root, Perm: perm.AllowAll{}}})
 			if err != nil || res == nil || res.IsError || !strings.Contains(res.Text, "runtime-shell-probe") || !strings.Contains(res.Text, "[exit code 0]") {
