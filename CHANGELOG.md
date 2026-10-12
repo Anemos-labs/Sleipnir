@@ -13,7 +13,8 @@ they do not indicate whether a change has been released.
   store, it flagged correct solutions of specification-driven tasks, whose
   routes, commands and operation names are also in the hidden tests, and
   zeroed their outcome. `harness.Pipeline` gains `RepoContains`, and
-  `reward.WithRepo` adds a search to a `DiffSource`; `rl reward` searches the
+  `reward.WithRepo` adds a search to a `DiffSource` (a literal whose search
+  fails is noted and not taken as evidence); `rl reward` searches the
   tasks' repositories relative to the current directory and says when it
   cannot. Nor is a name of several parts (`core.count`) each of whose parts
   the repository has evidence. A flag's note says whether the repository was

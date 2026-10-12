@@ -77,10 +77,10 @@ func (b blobDiffs) Blob(h core.Hash) ([]byte, error) {
 	return nil, first
 }
 
-// searchedDiffs is a DiffSource that also searches the task's repository (RepoSearcher).
+// searchedDiffs is a DiffSource that also searches the task's repository (RepoSearcher, repoSearchErrs).
 type searchedDiffs struct {
 	DiffSource
-	contains func(string) bool
+	search func(string) (bool, error)
 }
 
 // Blob implements BlobSource when the underlying source does.
@@ -92,16 +92,28 @@ func (r searchedDiffs) Blob(h core.Hash) ([]byte, error) {
 	return []byte(s), err
 }
 
-// RepoContains implements RepoSearcher.
-func (r searchedDiffs) RepoContains(literal string) bool { return r.contains(literal) }
+// RepoContains implements RepoSearcher: a search that failed answers false.
+func (r searchedDiffs) RepoContains(literal string) bool {
+	ok, err := r.search(literal)
+	return err == nil && ok
+}
+
+// repoContainsErr implements repoSearchErrs.
+func (r searchedDiffs) repoContainsErr(literal string) (bool, error) { return r.search(literal) }
+
+// repoSearchErrs is a RepoSearcher that tells a search that failed from a miss.
+type repoSearchErrs interface {
+	repoContainsErr(literal string) (bool, error)
+}
 
 // WithRepo returns d with a search of the task's repository before the change: the hardcoded-value detector then
-// rules out the literals the repository already had (see RepoSearcher). contains nil returns d.
-func WithRepo(d DiffSource, contains func(literal string) bool) DiffSource {
-	if contains == nil {
+// rules out the literals the repository already had (see RepoSearcher). A search that fails is not a miss: the
+// detector takes no evidence from that literal and says the search failed. search nil returns d.
+func WithRepo(d DiffSource, search func(literal string) (bool, error)) DiffSource {
+	if search == nil {
 		return d
 	}
-	return searchedDiffs{d, contains}
+	return searchedDiffs{d, search}
 }
 
 // DiffsFromBlobs adapts a blob getter (events.Blobs.Get, for example) to a

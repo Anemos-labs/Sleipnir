@@ -95,10 +95,7 @@ func (p *Pipeline) Score(ep *rl.Episode, task *rl.Task, runDir string) error {
 	src := reward.DiffsFromBlobs(blobs.Get, p.Hidden)
 	if p.RepoContains != nil && task != nil {
 		if _, err := p.RepoContains(task, "x"); err == nil { // a repository that cannot be searched is not searched
-			src = reward.WithRepo(src, func(lit string) bool {
-				ok, err := p.RepoContains(task, lit)
-				return err == nil && ok
-			})
+			src = reward.WithRepo(src, func(lit string) (bool, error) { return p.RepoContains(task, lit) })
 		}
 	}
 	return reward.Score(ep, task, cfg, src)

@@ -113,7 +113,17 @@ func TestScoringSearchesTheRepositoryOrSaysItCouldNot(t *testing.T) {
 	if ep := score(t, func(_ *rl.Task, lit string) (bool, error) { return lit == "987654321" || lit == "x", nil }); slices.Contains(ep.Flags, rl.FlagHackHardcode) {
 		t.Errorf("a value the repository has was flagged: %v", ep.Reward.Notes)
 	}
-	ep := score(t, func(*rl.Task, string) (bool, error) { return false, errors.New("no repository here") })
+	// The probe succeeds and the literal's own search fails: not a miss, so no flag and no claim that it was searched.
+	ep := score(t, func(_ *rl.Task, lit string) (bool, error) {
+		if lit == "x" {
+			return false, nil
+		}
+		return false, errors.New("git died")
+	})
+	if slices.Contains(ep.Flags, rl.FlagHackHardcode) || !strings.Contains(strings.Join(ep.Reward.Notes, "\n"), "could not be searched") {
+		t.Errorf("a failed literal search: flags %v, notes %q", ep.Flags, ep.Reward.Notes)
+	}
+	ep = score(t, func(*rl.Task, string) (bool, error) { return false, errors.New("no repository here") })
 	if !slices.Contains(ep.Flags, rl.FlagHackHardcode) || !strings.Contains(strings.Join(ep.Reward.Notes, "\n"), "the repository was not searched") {
 		t.Errorf("a failed search: flags %v, notes %q", ep.Flags, ep.Reward.Notes)
 	}

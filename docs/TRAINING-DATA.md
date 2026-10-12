@@ -608,7 +608,7 @@ is not evidence: tests and a correct solution share the names a specification gi
 names). Nor is a name of several parts joined by `.`, `/`, `:` or `-` (`core.count`, `legs.0.account`) each of whose
 parts the repository has: a name built from the specification's vocabulary, as a solution builds it. Rollouts and `rl serve` search the repository the task names; `rl reward` searches it relative to the current
 directory, as rollouts resolve it, and says when it cannot, in which case only the prompt and the diff's context rule
-literals out.
+literals out. A literal whose own search fails is not evidence either: the reward notes it and does not flag it.
 
 **`rewards.json`.** A file lists only what it changes; everything else keeps the documented defaults (a weight of 0
 switches a component off). All keys are optional:

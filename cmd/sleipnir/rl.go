@@ -607,9 +607,8 @@ func rlReward(_ context.Context, args []string, stdout, stderr io.Writer) error 
 			// no search: reported once above
 		} else if _, err := env.RepoContains(context.Background(), git, *task, "", "x"); err == nil {
 			t := *task
-			src = reward.WithRepo(src, func(lit string) bool {
-				ok, err := env.RepoContains(context.Background(), git, t, "", lit)
-				return err == nil && ok
+			src = reward.WithRepo(src, func(lit string) (bool, error) {
+				return env.RepoContains(context.Background(), git, t, "", lit)
 			})
 		} else if key := task.Repo.Path + "@" + task.Repo.Commit; !unsearchable[key] {
 			unsearchable[key] = true

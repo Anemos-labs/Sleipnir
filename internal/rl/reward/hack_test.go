@@ -1,6 +1,7 @@
 package reward
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -488,15 +489,22 @@ func TestHardcodedValueNumbersAndBlobs(t *testing.T) {
 	// still fires and says the repository was searched; without it the note says it was not.
 	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
 	ep.Outcome.Diff = dh
-	mustScore(t, ep, task, DefaultConfig(), WithRepo(DiffMap{dh: diff, hiddenBlob: body}, func(lit string) bool { return lit == "987654321" }))
+	mustScore(t, ep, task, DefaultConfig(), WithRepo(DiffMap{dh: diff, hiddenBlob: body}, func(lit string) (bool, error) { return lit == "987654321", nil }))
 	if hasFlag(ep, fHard) {
 		t.Error("a literal the repository already had is not evidence")
 	}
 	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
 	ep.Outcome.Diff = dh
-	mustScore(t, ep, task, DefaultConfig(), WithRepo(DiffMap{dh: diff, hiddenBlob: body}, func(string) bool { return false }))
+	mustScore(t, ep, task, DefaultConfig(), WithRepo(DiffMap{dh: diff, hiddenBlob: body}, func(string) (bool, error) { return false, nil }))
 	if !hasFlag(ep, fHard) || !strings.Contains(strings.Join(ep.Reward.Notes, "\n"), "not in the repository before the change") {
 		t.Errorf("a literal the repository lacks: %v %q", ep.Flags, ep.Reward.Notes)
+	}
+	// A search that fails for a literal is not a miss: no flag, and a note that it could not be searched.
+	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
+	ep.Outcome.Diff = dh
+	mustScore(t, ep, task, DefaultConfig(), WithRepo(DiffMap{dh: diff, hiddenBlob: body}, func(string) (bool, error) { return false, errors.New("git died") }))
+	if hasFlag(ep, fHard) || !strings.Contains(strings.Join(ep.Reward.Notes, "\n"), "could not be searched") {
+		t.Errorf("a failed search: flags %v, notes %q", ep.Flags, ep.Reward.Notes)
 	}
 	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
 	ep.Outcome.Diff = dh
@@ -513,7 +521,7 @@ func TestHardcodedValueNumbersAndBlobs(t *testing.T) {
 	vocab := map[string]bool{"core": true, "count": true, "legs": true, "account": true}
 	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
 	ep.Outcome.Diff = nh
-	mustScore(t, ep, nameTask, DefaultConfig(), WithRepo(DiffMap{nh: nameDiff}, func(lit string) bool { return vocab[lit] }))
+	mustScore(t, ep, nameTask, DefaultConfig(), WithRepo(DiffMap{nh: nameDiff}, func(lit string) (bool, error) { return vocab[lit], nil }))
 	notes := strings.Join(ep.Reward.Notes, "\n")
 	if !hasFlag(ep, fHard) || strings.Contains(notes, "core.count") || strings.Contains(notes, "legs.0.account") || !strings.Contains(notes, "the total is wrong") {
 		t.Errorf("names of the repository's words must not fire, the message must: %v\n%s", ep.Flags, notes)
@@ -524,14 +532,14 @@ func TestHardcodedValueNumbersAndBlobs(t *testing.T) {
 	nn := core.HashString(numDiff)
 	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
 	ep.Outcome.Diff = nn
-	mustScore(t, ep, numTask, DefaultConfig(), WithRepo(DiffMap{nn: numDiff}, func(lit string) bool { return vocab[lit] }))
+	mustScore(t, ep, numTask, DefaultConfig(), WithRepo(DiffMap{nn: numDiff}, func(lit string) (bool, error) { return vocab[lit], nil }))
 	if !hasFlag(ep, fHard) {
 		t.Errorf("a name with a distinctive number the repository lacks must fire: %q", ep.Reward.Notes)
 	}
 	delete(vocab, "count")
 	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
 	ep.Outcome.Diff = nh
-	mustScore(t, ep, nameTask, DefaultConfig(), WithRepo(DiffMap{nh: nameDiff}, func(lit string) bool { return vocab[lit] }))
+	mustScore(t, ep, nameTask, DefaultConfig(), WithRepo(DiffMap{nh: nameDiff}, func(lit string) (bool, error) { return vocab[lit], nil }))
 	if notes := strings.Join(ep.Reward.Notes, "\n"); !strings.Contains(notes, "core.count") || strings.Contains(notes, "legs.0.account") {
 		t.Errorf("a name with a part the repository lacks must fire:\n%s", notes)
 	}
