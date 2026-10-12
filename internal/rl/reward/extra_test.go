@@ -1,6 +1,7 @@
 package reward
 
 import (
+	"encoding/json"
 	"errors"
 	"reflect"
 	"sort"
@@ -367,6 +368,13 @@ func TestNetworkReferenceParsing(t *testing.T) {
 	}
 	if got := upstreamKeys(&rl.Task{}, &rl.Episode{Env: rl.EnvRef{Repo: "https://github.com/x/y"}}); !reflect.DeepEqual(got, []string{"github.com/x/y"}) {
 		t.Errorf("episode env repo: %v", got)
+	}
+	// Each address gets its own fallback: a self-hosted origin in meta.source counts next to a forge repo.url.
+	task = &rl.Task{Repo: rl.RepoSpec{URL: "https://github.com/x/y"}, Meta: json.RawMessage(`{"source":{"repo":"https://git.corp.example/team/svc.git"}}`)}
+	got := upstreamKeys(task, &rl.Episode{})
+	sort.Strings(got)
+	if !reflect.DeepEqual(got, []string{"git.corp.example/team/svc", "github.com/x/y"}) {
+		t.Errorf("forge and self-hosted upstreams: %v", got)
 	}
 	if got := upstreamKeys(&rl.Task{}, &rl.Episode{}); got != nil {
 		t.Errorf("no upstream: %v", got)

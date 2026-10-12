@@ -177,12 +177,14 @@ func upstreamKeys(task *rl.Task, ep *rl.Episode) []string {
 		if raw == "" {
 			continue
 		}
+		found := false
 		for _, r := range refsIn(raw) {
 			if r.key != "" {
 				keys = append(keys, r.key)
+				found = true
 			}
 		}
-		if len(keys) == 0 {
+		if !found {
 			// scp-style or self-hosted forges: fall back to host/owner/repo of the URL.
 			if r, ok := parseRef(raw); ok {
 				if segs := splitSegs(strings.ToLower(mustPath(raw))); len(segs) >= 2 {
