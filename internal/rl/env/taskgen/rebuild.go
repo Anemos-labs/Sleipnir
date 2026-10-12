@@ -673,7 +673,7 @@ func rebuildPrompt(lib *rebuildLib, tier, apiPath string) string {
 			fmt.Fprintf(&b, "- `%s` (%s, %d lines)\n", p.Name, p.Files[0], p.LOC)
 		}
 	}
-	fmt.Fprintf(&b, "\nYour work is checked by the project's own tests, which you cannot see: each %s earns a share of the score, weighted by its size, as its tests pass. Keep the API as it is declared: the tests use these names, signatures and types. Do not edit the README, the documentation, the examples or the build files, and do not add or change test files next to the %s: the hidden tests are written there when the work is checked. Tests of your own belong in a directory of their own.",
+	fmt.Fprintf(&b, "\nYour work is checked by the project's own tests, which you cannot see: each %s earns a share of the score, weighted by its size, as its tests pass. Keep the API as it is declared: the tests use these names, signatures and types. Do not edit the README, the documentation, the examples or the build files, and do not add or change test files next to the %s: the hidden tests are written there when the work is checked. Tests of your own belong in a directory of their own. Write the code yourself: fetching the project's original sources from elsewhere (its repository, a mirror, a module proxy or a package index) is not allowed.",
 		strings.TrimSuffix(noun, "s"), noun)
 	return b.String()
 }
