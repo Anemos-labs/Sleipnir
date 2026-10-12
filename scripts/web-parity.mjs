@@ -324,9 +324,10 @@ export class Browser {
   /**
    * launch starts a headless Chromium and connects to it. A browser that does not start (see start) has been killed with its profile, and
    * a new one is started in its place, up to `attempts` browsers; each failed attempt is noted on stderr, and the last one's error is thrown.
-   * A browser that hangs while it starts is a fault of the machine, not of the page: a new browser starts where it would not.
+   * A browser that hangs while it starts is a fault of the machine, not of the page: a new browser starts where it would not. The
+   * default deadline leaves room for a fresh CI runner, where the first browser can take half a minute to start.
    */
-  static async launch(chromePath, { attempts = 3, deadline = 30000 } = {}) {
+  static async launch(chromePath, { attempts = 3, deadline = 60000 } = {}) {
     for (let i = 1; ; i++) {
       try { return await Browser.start(chromePath, deadline); } catch (e) {
         if (i >= attempts) throw e;
