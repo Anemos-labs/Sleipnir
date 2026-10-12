@@ -6,6 +6,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { boot } from './pagedom.mjs';
 
+test('held quiet breaks stay in channels but not digest rows or counts', async () => {
+  const L = await boot(), S = L.SL.sessions.active, m = L.SL.model.newModel(S);
+  const digest = { rows: [], breaks: 0 };
+  L.SL.model.reduce(m, { k: 'break', t: 1, id: 'be-1', kind: 'low_hit', quiet: true }, { digest });
+  assert.equal(digest.rows.length, 0);
+  assert.equal(digest.breaks, 0);
+  assert.ok(m.chan.mgr.some(r => r.k === 'break' && r.quiet));
+  L.SL.model.reduce(m, { k: 'break', t: 2, id: 'be-1', kind: 'drift' }, { digest });
+  assert.ok(digest.rows.length > 0);
+  assert.equal(digest.breaks, 1);
+});
+
 test('a quiet break is kept for the Cache view and /verbose, and leaves the cards and the count alone', async () => {
   const L = await boot();
   const S = L.SL.sessions.active, m = () => S.wm;

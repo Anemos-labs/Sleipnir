@@ -4,7 +4,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { page } from './pages-harness.mjs';
-import { boot } from './pagedom.mjs';
+import { boot, FakeEvent } from './pagedom.mjs';
+
+test('disposing a dragged card cancels its listeners and does not persist its transient layout', async () => {
+  for (const remove of [false, true]) {
+    const L = await boot(), D = L.SL.ui.dash;
+    D.setLocked(false);
+    L.$('.dash').dataset.stack = '0';
+    const el = L.$('.dcard[data-card="gov"]');
+    el.dispatchEvent(new FakeEvent('pointerdown', { bubbles: true, button: 0, pointerId: 1, clientX: 0, clientY: 0 }));
+    assert.equal(L.doc.body.classList.contains('resizing'), true);
+    el.dispatchEvent(new FakeEvent('pointermove', { clientX: 0, clientY: 100 }));
+    if (remove) D.remove('gov'); else L.SL.views.show('cache');
+    await L.settle();
+    assert.equal(L.doc.body.classList.contains('resizing'), false);
+    assert.equal(el.classList.contains('dragging'), false);
+    const stored = L.store.get(L.SL.dash.KEY);
+    el.dispatchEvent(new FakeEvent('pointerup'));
+    assert.equal(L.store.get(L.SL.dash.KEY), stored, 'detached pointerup cannot commit');
+    if (!remove) assert.equal(stored, undefined);
+  }
+});
 
 const plain = x => JSON.parse(JSON.stringify(x));
 const dash = () => page({ modules: ['83b-ui-dash.js'] }).SL.dash;

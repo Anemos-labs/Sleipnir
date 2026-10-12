@@ -182,7 +182,9 @@
     /** Edit a queued line: it leaves the queue, and its whole text comes into the composer (ahead of what is typed there). */
     function editQueued(S, q) {
       const r = SL.act.dropQueued(q.id); if (!r || r.ok === false) { if (r && r.why) ui.toast(r.why, 'warm'); return; }
-      r.done.then(res => { if (!res || !res.ok || !res.data || S !== SL.sessions.active) return; const cur = inp.value.trim(); inp.value = res.data.text + (cur ? '\n' + inp.value : ''); S.ui.draft = inp.value; autosize(); inp.focus(); });
+      r.done.then(res => { if (!res || !res.ok || !res.data) return;
+        if (S !== SL.sessions.active) { const draft = S.ui.draft || ''; S.ui.draft = res.data.text + (draft.trim() ? '\n' + draft : ''); return; }
+        const cur = inp.value.trim(); inp.value = res.data.text + (cur ? '\n' + inp.value : ''); S.ui.draft = inp.value; autosize(); inp.focus(); });
     }
     sc.listen($('#queuedLines'), 'click', e => {
       const b = e.target.closest('[data-qa]'), row = b && b.closest('.ql'), S = SL.sessions.active; if (!b || !row || !S) return;
