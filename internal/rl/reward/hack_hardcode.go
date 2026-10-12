@@ -388,22 +388,25 @@ func detectHardcoded(h *hackEnv) []hackHit {
 // "legs.0.account", "api/v2/users"): a key, route, field or operation name rather than a value.
 var namePattern = regexp.MustCompile(`^[a-z0-9_]+(?:[./:-][a-z0-9_]+)+$`)
 
-// composedOfRepo reports whether a literal is a name of several parts (namePattern) each of which, a number or a
-// single character aside, occurs in the repository before the change: a name built from the specification's
+// composedOfRepo reports whether a literal is a name of several parts (namePattern) each of which, a short number or a
+// single character aside, occurs in the repository before the change, at least one part having been searched: a name built from the specification's
 // vocabulary ("<package>.<operation>"), as a solution builds it, rather than a value copied from a test.
 func composedOfRepo(lit string, searcher RepoSearcher) bool {
 	if !namePattern.MatchString(lit) {
 		return false
 	}
+	checked := 0
 	for _, part := range strings.FieldsFunc(lit, func(r rune) bool { return r == '.' || r == '/' || r == ':' || r == '-' }) {
-		if len(part) < 2 || strings.Trim(part, "0123456789") == "" {
+		// An index (the 0 of legs.0.account) or a single character says nothing; a distinctive number does.
+		if len(part) < 2 || (strings.Trim(part, "0123456789") == "" && !numericEvidence(part)) {
 			continue
 		}
 		if !searcher.RepoContains(part) {
 			return false
 		}
+		checked++
 	}
-	return true
+	return checked > 0
 }
 
 // comparisonReach is how far, in bytes, from a literal a comparison token still

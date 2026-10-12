@@ -21,7 +21,8 @@ const maxSearchedFile = 8 << 20
 // when base is empty), or a search of the files of a plain directory. It is what the rewards' hardcoded-value
 // detector asks of a literal taken from a hidden verifier file: one the repository already had before the change is
 // not evidence that the agent copied it. A task whose repository is not on this machine (repo.url) cannot be
-// searched, and is an error.
+// searched, and is an error; so is a checkout whose git metadata git cannot read, and a file of a plain directory
+// that cannot be read (an incomplete search is not a miss).
 func RepoContains(ctx context.Context, g *Git, task rl.Task, base, text string) (bool, error) {
 	if text == "" {
 		return true, nil
@@ -59,6 +60,10 @@ func RepoContains(ctx context.Context, g *Git, task rl.Task, base, text string) 
 			return false, err
 		}
 	}
+	// A checkout git cannot read is not a plain directory: its files may hold what came after the task's commit.
+	if _, err := os.Lstat(filepath.Join(p, ".git")); err == nil {
+		return false, fmt.Errorf("%s has git metadata that git cannot read", p)
+	}
 	want := bytes.ToLower([]byte(text))
 	found := false
 	err = filepath.WalkDir(p, func(path string, d fs.DirEntry, err error) error {
@@ -66,17 +71,20 @@ func RepoContains(ctx context.Context, g *Git, task rl.Task, base, text string) 
 			return err
 		}
 		if d.IsDir() {
-			if d.Name() == ".git" {
-				return filepath.SkipDir
-			}
 			return nil
 		}
 		info, err := d.Info()
-		if err != nil || !info.Mode().IsRegular() || info.Size() > maxSearchedFile {
+		if err != nil {
+			return err // an incomplete search is not a miss
+		}
+		if !info.Mode().IsRegular() || info.Size() > maxSearchedFile {
 			return nil
 		}
 		b, err := os.ReadFile(path)
-		if err == nil && bytes.Contains(bytes.ToLower(b), want) {
+		if err != nil {
+			return err
+		}
+		if bytes.Contains(bytes.ToLower(b), want) {
 			found = true
 			return filepath.SkipAll
 		}

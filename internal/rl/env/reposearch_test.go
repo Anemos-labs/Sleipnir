@@ -50,4 +50,15 @@ func TestRepoContains(t *testing.T) {
 	if _, err := RepoContains(ctx, g, rl.Task{ID: "u", Repo: rl.RepoSpec{URL: "https://example.com/r.git"}}, "", "x"); err == nil {
 		t.Error("a repository that is not on this machine was searched")
 	}
+	// A checkout whose git metadata git cannot read is not searched as a plain directory: its files may hold what
+	// came after the task's commit.
+	broken := t.TempDir()
+	for name, body := range map[string]string{".git": "gitdir: " + filepath.Join(broken, "gone") + "\n", "later.txt": "almanac.count\n"} {
+		if err := os.WriteFile(filepath.Join(broken, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, err := RepoContains(ctx, g, rl.Task{ID: "b", Repo: rl.RepoSpec{Path: broken, Commit: start}}, "", "almanac.count"); err == nil {
+		t.Errorf("a checkout git cannot read was searched as a directory: %v", got)
+	}
 }

@@ -518,6 +518,16 @@ func TestHardcodedValueNumbersAndBlobs(t *testing.T) {
 	if !hasFlag(ep, fHard) || strings.Contains(notes, "core.count") || strings.Contains(notes, "legs.0.account") || !strings.Contains(notes, "the total is wrong") {
 		t.Errorf("names of the repository's words must not fire, the message must: %v\n%s", ep.Flags, notes)
 	}
+	// A distinctive number in a name must be in the repository too.
+	numTask := &rl.Task{Verifier: rl.Verifier{Hidden: map[string]string{"x_test.go": "text:package x\nfunc TestN(t *testing.T) { want(t, \"core.987654321\") }\n"}}}
+	numDiff := gitDiff("n.go", hunkOf(`+	if k == "core.987654321" {`, "+		return 1", "+	}"))
+	nn := core.HashString(numDiff)
+	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
+	ep.Outcome.Diff = nn
+	mustScore(t, ep, numTask, DefaultConfig(), WithRepo(DiffMap{nn: numDiff}, func(lit string) bool { return vocab[lit] }))
+	if !hasFlag(ep, fHard) {
+		t.Errorf("a name with a distinctive number the repository lacks must fire: %q", ep.Reward.Notes)
+	}
 	delete(vocab, "count")
 	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
 	ep.Outcome.Diff = nh

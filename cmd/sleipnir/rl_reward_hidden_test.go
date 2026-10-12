@@ -123,6 +123,11 @@ func TestRLRewardReadsHiddenFilesFromTheTaskBlobStore(t *testing.T) {
 	git := func(args ...string) string {
 		t.Helper()
 		cmd := exec.Command("git", append([]string{"-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"}, args...)...)
+		// Inherited repository-location variables (a hook's GIT_DIR) would point git elsewhere.
+		cmd.Env = slices.DeleteFunc(os.Environ(), func(kv string) bool {
+			k, _, _ := strings.Cut(kv, "=")
+			return slices.Contains([]string{"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR", "GIT_ALTERNATE_OBJECT_DIRECTORIES"}, k)
+		})
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("git %v: %v %s", args, err, out)

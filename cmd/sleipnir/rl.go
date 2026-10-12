@@ -566,11 +566,12 @@ func rlReward(_ context.Context, args []string, stdout, stderr io.Writer) error 
 	cache := newRunCache(4)
 	// The tasks' repositories, searched for the literals the hardcoded-value detector finds (relative paths resolve
 	// against the current directory, as for rollouts); one that cannot be searched is said once.
-	git, err := env.NewGit(env.GitOptions{})
-	if err != nil {
-		return fmt.Errorf("rl reward: %w", err)
+	git, gerr := env.NewGit(env.GitOptions{})
+	if gerr != nil {
+		fmt.Fprintf(stderr, "rl reward: git is unavailable (%v): the hardcoded-value detector rules out only literals of the prompt and the diff's context\n", gerr)
+	} else {
+		defer git.Close()
 	}
-	defer git.Close()
 	unsearchable := map[string]bool{}
 	var before, after float64
 	var n, hacks int
@@ -602,7 +603,9 @@ func rlReward(_ context.Context, args []string, stdout, stderr io.Writer) error 
 			ep.Flags = slices.DeleteFunc(slices.Clone(ep.Flags), func(f string) bool { return strings.HasPrefix(f, "hack:") })
 		}
 		src := reward.DiffsFromBlobs(blobs.Get, hidden)
-		if _, err := env.RepoContains(context.Background(), git, *task, "", "x"); err == nil {
+		if git == nil {
+			// no search: reported once above
+		} else if _, err := env.RepoContains(context.Background(), git, *task, "", "x"); err == nil {
 			t := *task
 			src = reward.WithRepo(src, func(lit string) bool {
 				ok, err := env.RepoContains(context.Background(), git, t, "", lit)
