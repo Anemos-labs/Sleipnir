@@ -291,11 +291,12 @@ const ROSTER = [
 const snapshot = (id, order, seq) => ({ tab: { id, sid: 's-' + id, name: id, cwd: '/p/' + id, gen: 1, order }, gen: 1, seq, now: 10, meta: { model: 'm', mode: 'default', startedAt: 1760000000000, swarm: 2 }, roster: ROSTER,
   keyframe: [ev(0, 1, 'use', { id: 'be-1', rd: 10, un: 5, out: 1 })], events: [ev(1, 2, 'say', { who: 'you', text: 'hi' }), ev(2, 3, 'state', { id: 'be-1', s: 'edit', doing: 'Edit x', task: 'T1' })], hist: ['earlier line', 'a later line'], questions: [] });
 
-/** A page, booted and idle. `two` gives it a second session tab. */
+/** A page, booted and idle. `two` gives it a second session tab; `storage` is what localStorage holds at the start (key -> string);
+ *  `automation: false` makes it a browser that no test drives (navigator.webdriver is false). */
 export async function boot(o) {
   o = o || {};
   LOG.errors = [];
-  const win = new Target(), doc = new Doc(win), calls = [], posts = [], errors = [], store = new Map(), timers = { now: 0, n: 0, list: [] }, streams = [];
+  const win = new Target(), doc = new Doc(win), calls = [], posts = [], errors = [], store = new Map(Object.entries(o.storage || {})), timers = { now: 0, n: 0, list: [] }, streams = [];
   const body = /<body[^>]*>([\s\S]*)<\/body>/i.exec(MARKUP)[1].replace(/<script[\s\S]*?<\/script>/gi, '');
   parseInto(doc, doc.body, body); LOG.rows = [];
   const setT = (fn, ms, rep) => { const t = { id: ++timers.n, at: timers.now + Math.max(0, +ms || 0), fn, rep: rep ? Math.max(1, +ms || 1) : 0 }; timers.list.push(t); return t.id; };
@@ -327,7 +328,7 @@ export async function boot(o) {
     Promise, TextEncoder, AbortController, DOMException, URLSearchParams, URL, crypto: webcrypto, performance, document: doc, fetch, EventSource: ES, Event: FakeEvent, CustomEvent: FakeEvent,
     location: { reload() {}, search: '', href: 'http://127.0.0.1:7777/', host: '127.0.0.1:7777', hash: '' },
     localStorage: { getItem: k => store.has(k) ? store.get(k) : null, setItem: (k, v) => store.set(k, String(v)), removeItem: k => store.delete(k) },
-    navigator: { clipboard: { writeText: () => Promise.resolve() } }, requestAnimationFrame: () => 1, cancelAnimationFrame() {}, innerWidth: 1280, innerHeight: 800,
+    navigator: { clipboard: { writeText: () => Promise.resolve() }, webdriver: o.automation !== false }, /* a page driven by a test: the guided tour does not start by itself, unless automation is false */ requestAnimationFrame: () => 1, cancelAnimationFrame() {}, innerWidth: 1280, innerHeight: 800,
     matchMedia: () => ({ matches: false, addEventListener() {}, addListener() {} }), getComputedStyle: el => ({ display: el._hid ? 'none' : 'block', visibility: 'visible' }),
     getSelection: () => ({ toString: () => '' }), CSS: { escape: s => String(s).replace(/[^\w-]/g, c => '\\' + c) },
     addEventListener: (...a) => win.addEventListener(...a), removeEventListener: (...a) => win.removeEventListener(...a), confirm: () => false,
@@ -341,7 +342,7 @@ export async function boot(o) {
   let seq = 10, id = 100;
   if (errors.length || LOG.errors.length) throw new Error('the page failed to boot: ' + errors.concat(LOG.errors)[0]);
   const L = {
-    SL, doc, $, calls, posts, errors, snaps, settle, advance,
+    SL, doc, $, calls, posts, errors, snaps, settle, advance, store,
     /** The page's own clock, moved by `s` seconds (the quiet period of a question, the window of a chord). */
     async step(s) { SL.loop.step(s); advance(s * 1000); await settle(); },
     /** A frame of the event stream, as the server sends it. */

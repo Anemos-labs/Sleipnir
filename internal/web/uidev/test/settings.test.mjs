@@ -62,7 +62,7 @@ test('the Run settings: the command line says what a restart would start, the st
   assert.ok(S.runLine(Object.assign({}, M, { commit: false, mailman: false }), { mailman: true, commit: false }).endsWith('--mailman=false'), 'off against a default of on');
   assert.deepEqual([S.clampWorkers('99', 10), S.clampWorkers('-3', 10), S.clampWorkers('x', 10), S.clampWorkers('9', 10), S.clampWorkers('99', 0)], [10, 0, 0, 9, 99]);
   assert.deepEqual([S.clampWorkers('1', 0, 1), S.clampWorkers('7', 0, -1), S.clampWorkers('5', 0)], [8, 0, 8], 'a team has at least 8 workers: counting up from 0 gives 8, down from 8 gives 0');
-  assert.equal(S.teamWord(0), 'single agent'); assert.equal(S.teamWord(1), 'manager + 1 worker'); assert.equal(S.teamWord(10), 'manager + 10 workers (2 share legs)');
+  assert.equal(S.teamWord(0), 'single agent'); assert.equal(S.teamWord(1), 'manager + 1 worker'); assert.equal(S.teamWord(10), 'manager + 10 workers'); assert.equal(S.teamWord(32), 'manager + 32 workers');
 });
 
 test('the trust ledger gets the project of the tab when nobody said yes to it; a warning splits at its position', () => {

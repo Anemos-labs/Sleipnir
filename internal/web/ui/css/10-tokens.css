@@ -11,7 +11,7 @@
   --mgr-a:rgba(187,154,247,.16);--be-a:rgba(122,162,247,.16);--fe-a:rgba(125,207,255,.14);--sc-a:rgba(115,218,202,.14);--ts-a:rgba(158,206,106,.15);--rv-a:rgba(255,158,100,.15);--dc-a:rgba(224,175,104,.15);--fs-a:rgba(192,166,247,.16);--dv-a:rgba(229,161,224,.14);--ar-a:rgba(180,249,248,.13);
   --warm-a:rgba(224,175,104,.16);--warm-b:rgba(224,175,104,.34);--warm-c:rgba(224,175,104,.12);--warm-d:rgba(224,175,104,.05);
   --err-a:rgba(247,118,142,.16);--err-b:rgba(247,118,142,.4);--err-c:rgba(247,118,142,.12);--ok-a:rgba(158,206,106,.15);--ok-b:rgba(158,206,106,.45);--info-a:rgba(125,207,255,.14);--info-b:rgba(125,207,255,.4);
-  --bg-a:rgba(7,9,15,.8);--panel2-a:rgba(15,20,36,.6);--panel2-b:rgba(15,20,36,.8);--scrim:rgba(4,6,12,.72);--shade:rgba(0,0,0,.45);--focus:#7dcfff;
+  --bg-a:rgba(7,9,15,.8);--tour-dim:rgba(3,4,9,.62);--panel2-a:rgba(15,20,36,.6);--panel2-b:rgba(15,20,36,.8);--scrim:rgba(4,6,12,.72);--shade:rgba(0,0,0,.45);--focus:#7dcfff;
   /* the drawn horse */
   --ink:#24232e;--horse:#e9e7f5;--horse-hi:#f7f5ff;--horse-lo:#bfbce0;--mane:#7048e8;
   /* type: a condensed technical sans for labels, a semi-condensed for text, a tabular mono for numbers */

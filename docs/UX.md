@@ -107,7 +107,7 @@ command line quotes every value for a POSIX shell. `↺ Resume` continues a reco
 opened read-only, to replay it, or followed while another process writes it; its first 400,000 events are read, and the banner
 says when the log has more. With no session hosted, the page opens the New session dialog.
 
-The left rail switches views: the Cockpit (the team as a horse whose eight legs are the first eight workers, the stalls, the
+The left rail switches views: the Cockpit (the team as a horse whose eight legs are the eight roles of the team, the stalls, the
 gantt, the task board, the merge queue, mail and the governor), the Workspace (Files, Changes, Checkpoints), Cache, Mail,
 Board, Replay, Sessions, Tools and Settings. The Radio rail on the right is the conversation with the manager, which is the
 only agent the person talks to, and a read-only feed of what the team does. Agent drawers, opened from a stall or a gantt row,
@@ -122,6 +122,60 @@ they are clicked away or for 12 seconds (the pointer over one pauses that); the 
 Keys: an arrow, Home or End on the session tabs, the views rail, a menu or a list moves there and nowhere else; a key that an
 input method is composing with (Enter choosing a candidate) never sends, submits or runs a shortcut. A screen reader hears a
 question once when it arrives, never its ticking wait time, and a toast once.
+
+### Large teams
+
+A team has at least eight workers and no upper size but the one `swarm.max_workers` sets: 32 workers, four of each role, start
+from the New session dialog as any other team (`manager + 32 workers · your team`). In the dialog a role's row has a stepper for its
+number of workers and one model for all of them; with more than one worker, its `▸` opens one model per slot, so that two backends
+can run on one model and two on another, and the row's own model then sets all the slots again. The request carries the team slot
+by slot, and the command line under the dialog has one `--role-model role=model` per slot.
+
+The horse has eight legs whatever the size of the team, and a leg is a role: architect, scout, backend, frontend, devops, tester,
+docs and reviewer in that order, and a project's own roles after them, eight to a round (a ninth role shares the first leg and its
+label says `+1`). A leg is labelled with its worker when its role has one, else with the role's short name and count (`be ×4`); it
+moves with the busiest of its workers, a role with no worker started stands as a free leg, a role the team has no slot of stands
+empty (`no slot`), and pointing at a leg or focusing it lists its workers and their states. The terminal's horse has the same legs.
+Above twelve workers the stalls are drawn in role bands, one line per worker, each band naming its count and its models; the gantt
+draws one lane per worker inside a band per role when a row would be thinner than 11 pixels.
+
+### The Cockpit's cards
+
+The Cockpit is a grid of cards, twelve columns wide, whose rows fill the height of the view. Its default layout is the horse, the
+manager's card and the stalls on top, the gantt and the task board under them, and the merge queue, the latest mail and the
+governor in a short band. Every panel is a card, and so is every view of the left rail (the Workspace with its four tabs, Cache, Mail,
+Board, Replay, Sessions, Tools, Doctor, Schedule and Settings): a view in a card is drawn by the view's own code, has an `open ↗` to
+show it full size, and lays out for the card's width as it does for a narrow window.
+
+`Customise`, at the top right of the Cockpit, unlocks it; `Done` locks it again, and every page load starts locked. Unlocked, a
+card is moved by dragging it, resized from its right edge, its bottom edge or its corner, and removed with its `×`; `Add card` lists
+the cards that are not on the grid, and `Reset layout` puts back the default one. A card that lands on others pushes them down;
+nothing else moves. Each card keeps a minimum size, and lays out for any width and height: the stalls take two, four or eight
+columns by the card's shape, the gantt fits its rows to the card's height, the board's columns wrap, and lists scroll. While the
+Cockpit is unlocked the cards' contents do not take clicks, so that a press arranges and never acts. With the keyboard, a card is a
+focus stop while unlocked: the arrows move it one cell, the arrows with shift held resize it, and `Delete` removes it; a
+screen reader hears its new place and size. Below a width of 620 pixels the cards stack in one column, in their order on the grid,
+each as tall as its rows, and are rearranged with the keyboard.
+
+The layout is kept in the browser (localStorage), not on the server, so another browser has its own; a stored layout that does not
+read, or that a later version of the page cannot use, gives the default layout. Settings › Appearance has `Customise the Cockpit`
+and `Reset the layout`, and the command palette has `Customise the Cockpit`.
+
+### The guided tour
+
+The first time the page opens in a browser, once a session is on screen and no dialog is open, a tour explains the important parts
+one at a time: the session tabs and `+ New`, the top bar (goal, budget, cache), the views rail, the horse and the stalls with their
+free slots, the gantt and its replay controls, the task board and the merge queue, the conversation with the manager and the message
+box (queued lines, steering, interrupting), questions and their keys, the Cache view and cache breaks, the Cockpit's cards and
+Settings. Each step dims and blurs the page around the region it explains, scrolls it into view, and follows it when the window is
+resized; a step about a card taken off the Cockpit is passed over. The page behind the tour takes no click and no key while it is
+open.
+
+`Next` or `→` steps, `Back` or `←` goes back, and `Skip tour` or `Esc` closes it. Finishing the tour, or skipping it with `Don't
+show this again` ticked, keeps it from starting by itself again in that browser; a skip without the tick leaves it to start the next
+time the page opens. It starts again on demand from the `Take the tour` button of the Help sheet (`?`), `Take the tour` in the
+command palette (`ctrl+K`), and Settings › Appearance. It never starts by itself in a browser driven by automation
+(`navigator.webdriver`). The terminal has no tour: its chat program shows `/help`.
 
 ### Hold and catch-up
 
@@ -177,6 +231,8 @@ server also refuses an answer given within 350 ms. The `Needs you` inbox answers
 | `f` | in the Cache view, follow the agent that was answered last |
 | `F2`, `Delete` | on a focused session tab: rename, close |
 | `?` | the keys and the commands |
+| `←` `→` `↑` `↓`, `Delete` | on a card of the unlocked Cockpit: move it one cell (with shift held, resize it), remove it |
+| `→` `←`, `Esc` | in the guided tour: the next or the previous step; skip the tour |
 
 Changes to the page are checked in a real browser at narrow and wide sizes, with the screenshots opened and read, as terminal
 changes are. See [Building](BUILDING.md).

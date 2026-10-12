@@ -38,6 +38,9 @@ func TestPreflightIsolation(t *testing.T) {
 		want string // "" passes
 	}{
 		{"a single agent", session.IsolationPreflight{Cwd: plain}, ""},
+		{"configured team outside repo", session.IsolationPreflight{Cwd: plain, Swarm: true, ConfigIsolation: "worktree"}, "needs a git repository"},
+		{"configured solo falls back", session.IsolationPreflight{Cwd: plain, ConfigIsolation: "worktree"}, ""},
+		{"explicit none overrides config", session.IsolationPreflight{Cwd: plain, Swarm: true, Isolation: "none", ConfigIsolation: "worktree"}, ""},
 		{"a team without isolation", session.IsolationPreflight{Cwd: plain, Swarm: true, Isolation: "none"}, ""},
 		{"worktree for a single agent", session.IsolationPreflight{Cwd: repo, Isolation: "worktree"}, "isolation applies to swarm sessions"},
 		{"commit without worktree", session.IsolationPreflight{Cwd: repo, Swarm: true, Isolation: "none", Commit: true}, "commit needs worktree isolation"},

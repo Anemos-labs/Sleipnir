@@ -4,6 +4,7 @@
 package widget
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -82,27 +83,45 @@ func dashPick(agents []AgentRow, k int) []int {
 	return idx
 }
 
-// dashLegs are the eight legs of the horse, and the legs are the workers: leg k is the worker k, and with more than eight
-// workers they share the legs round robin, a leg being busy while any of its workers runs a tool or edits. The manager rides
-// (it is in the fan of riders) and the mailman carries mail: neither is a leg.
+// LegRoles is the order of the built-in worker roles on the horse's legs: leg k is role k. It is swarm.WorkerRoleOrder (a test
+// holds them equal), and the web page's legs follow the same order.
+var LegRoles = []string{"architect", "scout", "backend", "frontend", "devops", "tester", "docs", "reviewer"}
+
+// dashLegs are the eight legs of the horse, and a leg is a role of the team: the built-in roles in LegRoles order on legs 0 to 7,
+// any other role after them in the order its first worker is listed, eight to a round (a ninth role shares leg 0). A leg has its
+// role's colour and is busy while any worker of the role runs a tool or edits, so a team of 32, four of each role, moves the same
+// eight legs as a team of eight; a role with no worker stands, in the colour of its place. A worker with no role is a role of its
+// own. The manager rides (it is in the fan of riders) and the mailman carries mail: neither is a leg.
 func dashLegs(agents []AgentRow) []Leg {
 	legs := make([]Leg, 8)
 	for k := range legs {
 		legs[k].Color = k
 	}
-	i := 0
-	for _, a := range agents {
+	roles := map[string]int{}
+	for k, r := range LegRoles {
+		roles[r] = k
+	}
+	next, coloured := len(LegRoles), map[int]bool{}
+	for i, a := range agents {
 		if a.Role == "manager" || a.Role == "mailman" {
 			continue
 		}
-		l := &legs[i%8]
-		if i < 8 {
-			l.Color = a.RoleColor
+		key := a.Role
+		if key == "" {
+			key = fmt.Sprintf("#%d", i)
+		}
+		k, ok := roles[key]
+		if !ok {
+			k, next = next, next+1
+			roles[key] = k
+		}
+		if !coloured[k%8] {
+			coloured[k%8] = true
+			legs[k%8].Color = a.RoleColor
 		}
 		if s := a.State.valid(); s == StateTool || s == StateEdit {
-			l.Busy = true
+			legs[k%8].Busy = true
 		}
-		i++
 	}
 	return legs
 }

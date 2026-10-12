@@ -26,9 +26,10 @@ The contracts between modules are listed after the table. A module reads another
 | `live.js` | `SL.live`: the boot sequence (hello, stream, snapshots), the frames that become sessions, events, meta and rosters, the connection state, recorded sessions opened read-only or followed, the server's defaults for a new session. | Shipped only |
 | `70-view.js` | Scopes and views (everything a view starts dies with it), hover cross-highlighting (`SL.link`), the one frame loop (`SL.loop`). | Shared |
 | `80-ui-shell.js` | The persistent chrome: HUD, session strip, connection chip, replay banner, footer. | Shared |
-| `81-ui-hero.js` | The drawn horse whose eight legs are the eight workers, and the shared-prefix bar. Reads `SL.D.layers`. | Shared |
+| `81-ui-hero.js` | The drawn horse whose eight legs are the eight roles of the team (`roleLegs`: a leg per role, its label the worker or the role and count, its motion the busiest of its workers), and the shared-prefix bar. Reads `SL.D.layers`. | Shared |
 | `82-ui-board.js` | The task board (todo, running, verify, merged) used by the cockpit and the Board view. | Shared |
-| `83-ui-cockpit.js` | The Cockpit view: horse, manager card, stalls, gantt, board, merge queue, mail, governor. | Shared |
+| `83-ui-cockpit.js` | The Cockpit view: horse, manager card, stalls, gantt, board, merge queue, mail, governor, each drawn into a card of the dashboard; the mail arcs. | Shared |
+| `83b-ui-dash.js` | The Cockpit's dashboard: `SL.dash` (the layout of cards: the catalogue, the default layout, normalize, load and save in localStorage, move, resize, add, remove, the keys of a focused card) and `ui.dash` (the grid, the lock, dragging and resizing, the Add card picker, cards that hold a view). | Shipped only |
 | `84-ui-chat.js` | `SL.chat`: the Radio rail (manager conversation, read-only team feed, plan box, hold chip, composer). | Shared |
 | `85-ui-approvals.js` | The approval question and the cross-session inbox, with the quiet-period rule for answering. | Shared |
 | `86-ui-overlays.js` | Modal sheets, toasts, in-page confirm, icons, the reduced-motion switch (`ui.still`), the `?` help dots of a dialog (`ui.help`, `ui.helpMount`: an explanation that shows on hover, focus and tap). | Shared |
@@ -40,6 +41,7 @@ The contracts between modules are listed after the table. A module reads another
 | `92-runner.js` | `SL.runner`: a form from the command's flags, the command line, a streaming output pane and a result card. A run is a child process of the server; the page starts it, follows its frames and stops it when the view goes away. | Live (counterpart: `92-runner.js`) |
 | `93-palette.js` | `SL.palette`: command registry (slash commands, views, sessions, `sleipnir` commands), the palette dialog, the `/` menu source, `@` file completion from the server's walk of the project. | Shared |
 | `94-keys.js` | Global keyboard handling and the Escape precedence. | Shared |
+| `95-ui-tour.js` | The guided tour: `SL.tour` (the steps, their order, what is stored, when it starts by itself) and `ui.tour` (the overlay that dims and blurs around a region, the card with Back, Next and Skip, its keys). | Shipped only |
 | `96-ui-nav.js` | The navigation rail, the Radio rail's collapse and resize, the `g` chords, the phone bottom bar. | Shared |
 | `96b-ws-data.js` | `SL.ws`: file text, status, ownership, blame, tree rows, hunks, restore and revert at any checkpoint, filled from the workspace routes of the API. The `SL.ws` methods are the contract of the workspace screens. | Live (counterpart: `96b-ws-data.js`) |
 | `97-ui-workspace.js` | The Workspace view: Files, Changes, Checkpoints and Merge as four tabs, the time-travel scrubber, the diff with a per-line gutter, hunk revert, restore. Reads `SL.ws`; changes state through `SL.act`. | Shared |

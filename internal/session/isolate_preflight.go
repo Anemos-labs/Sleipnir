@@ -11,18 +11,18 @@ import (
 )
 
 // IsolationPreflight is what PreflightIsolation checks: the folder a session would work in, its project root ("" finds it from Cwd as
-// New does), the user's home, whether it is a team, the isolation asked for ("none", "worktree", or "" for the configuration's, which
-// the preflight takes as none: a configuration that asks for worktree isolation is checked when the session starts) and Options.Commit.
+// New does), the user's home, whether it is a team, the isolation asked for ("none", "worktree", or "" for ConfigIsolation) and Options.Commit.
 // NewRepo says that the folder is made a git repository, with a first commit on a branch and nothing else in it, before the session
 // starts: what a repository is asked for then holds, and only the combination of the settings is checked.
 type IsolationPreflight struct {
-	Cwd       string
-	Root      string
-	Home      string
-	Swarm     bool
-	Isolation string
-	Commit    bool
-	NewRepo   bool
+	Cwd             string
+	Root            string
+	Home            string
+	Swarm           bool
+	Isolation       string
+	ConfigIsolation string // effective configuration's isolation mode, used only without an override
+	Commit          bool
+	NewRepo         bool
 }
 
 // PreflightIsolation runs the checks a new session makes of its isolation before anything is started (the ones planIsolation makes
@@ -32,6 +32,9 @@ func PreflightIsolation(ctx context.Context, p IsolationPreflight) error {
 	mode, explicit := config.IsolationNone, false
 	switch v := strings.ToLower(strings.TrimSpace(p.Isolation)); v {
 	case "":
+		if p.ConfigIsolation != "" {
+			mode = p.ConfigIsolation
+		}
 	case config.IsolationNone, "shared":
 		explicit = true
 	case config.IsolationWorktree:

@@ -56,7 +56,7 @@
     const S = S_(), mx = maxWorkers(), N = Math.max(0, mx ? Math.min(mx, n) : n);
     if (N > 0 && N < 8) return ui.toast('a team has at least 8 workers, one of each role; /swarm 0 is a single agent', 'warm');
     if (N === S.meta.swarm) return ui.toast('already ' + (N ? 'manager + ' + N + ' workers' : 'a single agent'), 'warm');
-    ui.confirm({ title: 'Start the team again', text: 'Restart <b>' + esc(S.name) + '</b> as ' + (N ? 'a manager and <b>' + N + '</b> worker' + (N === 1 ? '' : 's') + (N > 8 ? ' (' + (N - 8) + ' share legs)' : '') : 'a single agent') + '? The current run is closed (its checkpoints stay) and the conversation carries over.', ok: 'Restart', danger: true, run: () => onOk(SL.act.restartTeam({ swarm: N }), () => ui.toast('the team starts again: ' + (N ? 'manager + ' + N + ' workers' : 'a single agent'), 'ok')) });
+    ui.confirm({ title: 'Start the team again', text: 'Restart <b>' + esc(S.name) + '</b> as ' + (N ? 'a manager and <b>' + N + '</b> worker' + (N === 1 ? '' : 's') : 'a single agent') + '? The current run is closed (its checkpoints stay) and the conversation carries over.', ok: 'Restart', danger: true, run: () => onOk(SL.act.restartTeam({ swarm: N }), () => ui.toast('the team starts again: ' + (N ? 'manager + ' + N + ' workers' : 'a single agent'), 'ok')) });
   }
   /** A line the server runs (custom commands, skills, MCP prompts, /mcp reconnect, /recon): its output becomes a local card;
    *  an unknown command is the server's sentence (with its "did you mean"). */
@@ -79,6 +79,7 @@
     items.push({ g: 'sessions', name: 'New session…', d: 'start another sleipnir session (all the chat flags)', fn: () => ui.dialogs.newSession(), live: true }, { g: 'sessions', name: 'Resume a session…', d: 'a recorded session, with ↺', fn: () => ui.dialogs.resume(), live: true }, { g: 'sessions', name: 'Needs you (inbox)', d: 'open questions in every session', fn: () => ui.inbox.toggle(), live: true }, { g: 'sessions', name: 'Rename this session…', d: 'a name for the tab', fn: () => ui.dialogs.rename(S_()), live: true }, { g: 'sessions', name: 'Close this session…', d: 'stops its team; the log stays on disk', fn: () => ui.closeSessionAsk(S_()), live: true }, { g: 'sessions', name: 'Team…', d: 'workers, role models, isolation, verify', fn: () => ui.settingsPage('run'), live: true });
     SL.sessions.list.forEach(S => items.push({ g: 'sessions', name: 'Switch to ' + S.name, d: S.meta.cwd + ' · ' + S.state(), fn: () => SL.act.switchSession(S.id), live: true, dyn: true }));
     if (!SL.sessions.list.length) items.push({ g: 'sessions', name: 'Switch to', d: '', fn: () => {}, live: false, dyn: true, hidden: true });
+    items.push({ g: 'help', name: 'Take the tour', d: 'the guided tour: each part of the page and how it works', fn: () => ui.tour.start(), live: true }, { g: 'help', name: 'Customise the Cockpit', d: 'move, resize, add and remove its cards; any view can be a card', fn: () => { SL.views.show('cockpit'); ui.dash.setLocked(false); }, live: true });
     items.push({ g: 'time', name: 'Pin the hold', d: 'freeze the view while you read (Space over the chat; Esc releases)', fn: () => ui.togglePin(), live: true });
     D.spec.commands.forEach(c => items.push({ g: 'the program (sleipnir ...)', name: 'sleipnir ' + c.path.join(' '), d: c.summary || '', cli: c.path, live: true }));
   }

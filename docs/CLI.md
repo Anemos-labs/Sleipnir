@@ -312,7 +312,9 @@ may change between releases.
 The chat flags (`--model`, `--mode`, `--swarm`, `--budget-usd`, `--isolation`, `--verify`, `--commit`, `--mailman`, `--role-model`,
 `--allow`, `--trust-project`, `--no-mcp`, `--resume`, `--continue`) and `--cwd` are the defaults of the sessions started in the
 page, and mean what they mean in `chat`; without `--swarm` a new session is a manager and eight workers, as in the chat on a
-terminal. The page loads nothing from the network: its scripts, styles and fonts are in the binary. Sessions run in this
+terminal. A team has no upper size but `swarm.max_workers` when the configuration sets one: a team of 32, four of each role, is
+`--role-model` given once per slot, and each slot can name its own model (`--role-model backend=a/x --role-model backend=b/y ...`),
+as the New session dialog sends it. The page loads nothing from the network: its scripts, styles and fonts are in the binary. Sessions run in this
 process with the same permissions as in the terminal, and with your rights; read `docs/SECURITY.md` section 5 before pointing
 anything but a browser on this machine at it. To use it from another machine, forward the port with SSH
 (`ssh -L 6969:127.0.0.1:6969 host`) and open the address there.

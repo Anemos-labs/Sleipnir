@@ -3,6 +3,7 @@ package translate
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -485,6 +486,7 @@ type rosterOut struct {
 	order []string
 	ents  map[string]*wire.RosterEntry
 	nextK int
+	extra []string // the roles beyond the built-in ones, in the order they were first seen (their legs follow the built-in ones)
 	last  []byte
 	dirty bool // an entry may have changed since the roster was last published
 }
@@ -506,11 +508,39 @@ func (t *Translator) ensureRoster(uid string) {
 		r.order = append([]string{uid}, r.order...)
 	} else {
 		r.nextK++
-		e.K, e.Leg = r.nextK, (r.nextK-1)%8
+		e.K, e.Role = r.nextK, roleOfCode[code]
+		e.Leg = r.legOf(e.Role)
 		r.order = append(r.order, uid)
 	}
 	r.ents[uid] = e
 	r.dirty = true
+}
+
+// roleOfCode is the built-in worker role of each short code ("be" is backend).
+var roleOfCode = func() map[string]string {
+	m := map[string]string{}
+	for name, r := range swarm.BuiltinRoles() {
+		m[r.Short] = name
+	}
+	return m
+}()
+
+// legOf is the leg of the horse of a worker role: a leg is a role, the built-in roles in swarm.WorkerRoleOrder on legs 0 to 7 and
+// any other role after them in the order it was first seen, eight to a round, so a ninth role shares leg 0. An unknown role ("")
+// has leg -1 until its role is known.
+func (r *rosterOut) legOf(role string) int {
+	if role == "" {
+		return -1
+	}
+	if k := slices.Index(swarm.WorkerRoleOrder, role); k >= 0 {
+		return k % 8
+	}
+	k := slices.Index(r.extra, role)
+	if k < 0 {
+		r.extra = append(r.extra, role)
+		k = len(r.extra) - 1
+	}
+	return (len(swarm.WorkerRoleOrder) + k) % 8
 }
 
 // dropRoster removes an agent that turned out to be a service of the harness.
@@ -572,6 +602,7 @@ func (t *Translator) syncRoster() {
 			continue
 		}
 		e.Role = firstNonEmpty(a.Role, e.Role)
+		e.Leg = t.d.ros.legOf(e.Role)
 		e.RO = readOnlyRoles[e.Role]
 		switch {
 		case len(a.Scope) > 0:

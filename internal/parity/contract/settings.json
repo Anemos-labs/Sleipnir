@@ -151,6 +151,14 @@
       "reason": "resets the Radio rail's width; the layout of this browser's page"
     },
     {
+      "item": "browser:look.do:dash-edit",
+      "reason": "unlocks the Cockpit's cards to move, resize, add and remove them; the Cockpit is a dashboard of this browser's page, kept in localStorage, and the terminal's chat program lays out its panels itself"
+    },
+    {
+      "item": "browser:look.do:dash-reset",
+      "reason": "puts back the Cockpit's default layout of cards; the layout of this browser's page, kept in localStorage"
+    },
+    {
       "item": "state:roles.seg:effort",
       "reason": "the reasoning effort of the session; the terminal has /effort, and no configuration key holds it"
     },

@@ -7,6 +7,23 @@ import assert from 'node:assert/strict';
 import { boot, FakeEvent } from './pagedom.mjs';
 
 const QUEUED = [{ id: 'q2', text: 'second', kind: 'message' }, { id: 'q3', text: '/budget 3', kind: 'command' }, { id: 'q4', text: '/goal resume', kind: 'action' }];
+
+test('editing a queued line while switching sessions saves it in its original draft', async () => {
+  let resolve;
+  const reply = new Promise(r => { resolve = r; });
+  const L = await boot({ route: (m, p) => m === 'DELETE' && p === '/api/sessions/a/queue/q2' ? reply : undefined });
+  await L.frame('meta', { tab: 'a', patch: { running: true, queued: QUEUED } });
+  await L.step(0.1);
+  const original = L.SL.sessions.active;
+  await click(L, 'q2', 'edit');
+  L.SL.sessions.activate(null);
+  L.$('#input').value = 'other draft';
+  original.ui.draft = 'saved draft';
+  resolve(QUEUED[0]);
+  await L.settle();
+  assert.equal(original.ui.draft, 'second\nsaved draft');
+  assert.equal(L.$('#input').value, 'other draft');
+});
 /** The page, with a turn running and three queued lines; the server answers a drop with the line it dropped. */
 async function running() {
   const L = await boot({ route: (method, p) => {

@@ -58,7 +58,7 @@
 
   /* ---------- help, history ---------- */
   sheets.help = function () {
-    ui.modal({ title: 'Help', kicker: '/help', desc: 'this text, and your custom commands and skills', wide: true, color: 'var(--fe)', body: '<div class="g2"><div><h3 class="lab">keys</h3><dl class="kv keys2">' + [['g then c r f h k q a m b p s t e', 'Cockpit, Radio, Files, Changes, Checkpoints, Merge, Cache, Mail, Board, Replay, Sessions, Tools, Settings'], ['alt+t · alt+g', 'Cache · Cockpit (browsers reserve ctrl+t and ctrl+g)'], ['alt+1 … alt+9', 'the nth session tab']].concat(D.shortcuts).map(([k, d]) => '<dt>' + esc(k) + '</dt><dd>' + esc(d) + '</dd>').join('') + '</dl><p class="stubnote" style="margin-top:10px">Browsers reserve ctrl+t and ctrl+g; alt+t and alt+g do the same here.</p></div><div><h3 class="lab">commands</h3>' + SL.palette.listHtml(SL.palette.filter('', true), -1).replace(/<button class="cmd"/g, '<div class="cmd"').replace(/<\/button>/g, '</div>') + '</div></div>' });
+    ui.modal({ title: 'Help', kicker: '/help', desc: 'this text, and your custom commands and skills', wide: true, color: 'var(--fe)', onMount(b, sc) { sc.listen(b, 'click', e => { if (e.target.closest('[data-tour]')) ui.tour.start(); }); }, body: '<div class="row2 helptour"><button class="btn sm pri" type="button" data-tour>Take the tour</button><span class="dim">each part of the page and how it works, one at a time</span></div><div class="g2"><div><h3 class="lab">keys</h3><dl class="kv keys2">' + [['g then c r f h k q a m b p s t e', 'Cockpit, Radio, Files, Changes, Checkpoints, Merge, Cache, Mail, Board, Replay, Sessions, Tools, Settings'], ['alt+t · alt+g', 'Cache · Cockpit (browsers reserve ctrl+t and ctrl+g)'], ['alt+1 … alt+9', 'the nth session tab']].concat(D.shortcuts).map(([k, d]) => '<dt>' + esc(k) + '</dt><dd>' + esc(d) + '</dd>').join('') + '</dl><p class="stubnote" style="margin-top:10px">Browsers reserve ctrl+t and ctrl+g; alt+t and alt+g do the same here.</p></div><div><h3 class="lab">commands</h3>' + SL.palette.listHtml(SL.palette.filter('', true), -1).replace(/<button class="cmd"/g, '<div class="cmd"').replace(/<\/button>/g, '</div>') + '</div></div>' });
   };
   sheets.history = function () {
     const S = S_(), h = S.hist.slice().reverse();
@@ -90,20 +90,32 @@
     const swarm = d.swarm != null ? d.swarm : 8, cwd = (def && def.dir) || d.cwd || '', tm = teamSeed(d.team);
     /* with the server's defaults an absent field is the CLI's own default (no verify command); the budget starts at off, which the server honours: a team has no cap unless one is set */
     const act = SL.sessions && SL.sessions.active, actModel = act && !act.placeholder && !act.recorded ? act.meta.model : '';
-    return { name: '', cwd, gitInit: true, testsSummary: d.testsPreset || '', unlimitedEnv: d.unlimitedEnv || '', model: d.model || actModel || (D.models[0] ? D.models[0].ref : ''), mode: d.mode || 'default', swarm, isolation: d.isolation || (swarm ? 'worktree' : 'none'), verify: d.verify != null ? d.verify : has ? '' : 'go test {dirs}', commit: !!d.commit, mailman: !!d.mailman, mailmanDefault: !!d.mailman, budget: d.budget ? String(d.budget) : 'off', rules: (d.rules || []).slice(), trustProject: d.trustProject !== false, noMcp: !!d.noMcp, goalText: '', effort: d.effort || 'default', roleModels: Object.assign({}, d.roleModels || {}), maxWorkers: d.maxWorkers || 0, minWorkers: d.minWorkers || 8, counts: tm.counts, slotModels: tm.models, single: swarm === 0, autoDocs: d.autoDocs !== false, resume: '' };
+    return { name: '', cwd, gitInit: true, testsSummary: d.testsPreset || '', unlimitedEnv: d.unlimitedEnv || '', model: d.model || actModel || (D.models[0] ? D.models[0].ref : ''), mode: d.mode || 'default', swarm, isolation: d.isolation || (swarm ? 'worktree' : 'none'), verify: d.verify != null ? d.verify : has ? '' : 'go test {dirs}', commit: !!d.commit, mailman: !!d.mailman, mailmanDefault: !!d.mailman, budget: d.budget ? String(d.budget) : 'off', rules: (d.rules || []).slice(), trustProject: d.trustProject !== false, noMcp: !!d.noMcp, goalText: '', effort: d.effort || 'default', roleModels: Object.assign({}, d.roleModels || {}), maxWorkers: d.maxWorkers || 0, minWorkers: d.minWorkers || 8, counts: tm.counts, slotModels: tm.models, perSlot: tm.per, openRoles: Object.keys(tm.per).reduce((o, r) => { o[r] = true; return o; }, {}), single: swarm === 0, autoDocs: d.autoDocs !== false, resume: '' };
   }
-  /** The counts and per-role models of a team the server names (one entry per slot), or the default team: one worker of each role. */
+  /** The counts and models of a team the server names (one entry per slot), or the default team: one worker of each role. A role whose
+   *  slots all run one model has it in models; a role whose slots run different models has them, slot by slot, in per. */
   function teamSeed(team) {
-    const counts = {}, models = {};
+    const counts = {}, models = {}, per = {};
     D.roleOrder.forEach(r => { counts[r] = team && team.length ? 0 : 1; });
-    (team || []).forEach(t => { counts[t.role] = (counts[t.role] || 0) + 1; if (t.model) models[t.role] = t.model; });
-    return { counts, models };
+    (team || []).forEach(t => { counts[t.role] = (counts[t.role] || 0) + 1; (per[t.role] = per[t.role] || []).push(t.model || ''); });
+    Object.keys(per).forEach(r => { if (per[r].every(m => m === per[r][0])) { if (per[r][0]) models[r] = per[r][0]; delete per[r]; } });
+    return { counts, models, per };
   }
+  /** The model of slot i: an explicit slot or role selection (including '' for the worker model), then the configured role default. */
+  const slotModel = (st, r, i) => (st.perSlot && st.perSlot[r] && st.perSlot[r][i]) ?? (st.slotModels || {})[r] ?? (st.roleModels || {})[r] ?? '';
+  dialogs.slotModel = slotModel;
+  /** Set the model of slot i of role r; when every slot of the role then runs one model, it becomes the role's model again. */
+  function setSlotModel(st, r, i, model) {
+    const n = st.counts[r] || 0, per = []; for (let k = 0; k < n; k++) per.push(slotModel(st, r, k)); per[i] = model || '';
+    st.perSlot = st.perSlot || {}; st.slotModels = st.slotModels || {};
+    if (per.every(m => m === per[0])) { delete st.perSlot[r]; st.slotModels[r] = per[0]; } else st.perSlot[r] = per;
+  }
+  dialogs.setSlotModel = setSlotModel;
   /** The team of a New session state: its size, whether it is the default team (one of each role, no model of a slot's own), and its slots. */
   const teamOf = st => {
     const roles = Object.keys(st.counts), n = st.single ? 0 : roles.reduce((a, r) => a + (st.counts[r] || 0), 0);
-    const dflt = !st.single && D.roleOrder.every(r => st.counts[r] === 1) && roles.every(r => D.roleOrder.indexOf(r) >= 0 || !st.counts[r]) && !Object.keys(st.slotModels || {}).some(r => st.slotModels[r]);
-    const slots = []; if (!st.single && !dflt) roles.forEach(r => { for (let i = 0; i < (st.counts[r] || 0); i++) slots.push({ role: r, model: (st.slotModels || {})[r] || '' }); });
+    const dflt = !st.single && D.roleOrder.every(r => st.counts[r] === 1) && roles.every(r => D.roleOrder.indexOf(r) >= 0 || !st.counts[r]) && !Object.keys(st.slotModels || {}).length && !Object.keys(st.perSlot || {}).length;
+    const slots = []; if (!st.single && !dflt) roles.forEach(r => { for (let i = 0; i < (st.counts[r] || 0); i++) slots.push({ role: r, model: slotModel(st, r, i) }); });
     return { n, dflt, slots, short: !st.single && n < (st.minWorkers || 8) };
   };
   dialogs.teamOf = teamOf;
@@ -242,15 +254,23 @@
           const rows = $('#nsTeamRows', b), err = $('#nsTeamErr', b);
           rows.hidden = st.single;
           err.hidden = !tm.short; err.textContent = tm.short ? 'A team has at least ' + (st.minWorkers || 8) + ' workers: add ' + ((st.minWorkers || 8) - tm.n) + ' more, or choose Single agent.' : '';
-          const modelOpts = cur => '<option value=""' + (cur ? '' : ' selected') + '>worker model</option>' + models().map(r => '<option' + (r === cur ? ' selected' : '') + '>' + esc(r) + '</option>').join('');
+          const modelOpts = cur => '<option value=""' + (cur || cur === null ? '' : ' selected') + '>worker model</option>' + models().map(r => '<option' + (r === cur ? ' selected' : '') + '>' + esc(r) + '</option>').join('');
           const roles = D.roleOrder.concat(Object.keys(st.counts).filter(r => D.roleOrder.indexOf(r) < 0));
-          const key = JSON.stringify([st.single, st.counts, st.slotModels, st.roleModels, tm.n]); if (rows._k === key) return; rows._k = key;
-          if (!st.single) rows.innerHTML = roles.map(r => { const R = D.roles[r] || SL.data.ROLES[r] || { code: 'sc', desc: '' }, n = st.counts[r] || 0; return '<div class="nstrow' + (n ? '' : ' zero') + '" data-trole="' + esc(r) + '"><span class="nstname" style="color:var(--c-' + esc(R.code) + ')">' + esc(r) + '</span>' + ui.help(esc(R.desc || '') + '.' + (R.ro ? ' <b>Read-only.</b>' : ''), r) + '<span class="nststep"><button type="button" class="btn sm" data-tstep="-1" aria-label="one ' + esc(r) + ' less"' + (n ? '' : ' disabled') + '>−</button><span class="nstn mono" aria-label="' + esc(r) + ' workers">' + n + '</span><button type="button" class="btn sm" data-tstep="1" aria-label="one more ' + esc(r) + '"' + (st.maxWorkers && tm.n >= st.maxWorkers ? ' disabled' : '') + '>+</button></span><select data-tmodel="' + esc(r) + '" aria-label="model for ' + esc(r) + '"' + (n ? '' : ' disabled') + '>' + modelOpts((st.slotModels || {})[r] || st.roleModels[r] || '') + '</select></div>'; }).join('');
+          const key = JSON.stringify([st.single, st.counts, st.slotModels, st.perSlot, st.openRoles, st.roleModels, tm.n]); if (rows._k === key) return; rows._k = key;
+          const full = st.maxWorkers && tm.n >= st.maxWorkers;
+          if (!st.single) rows.innerHTML = roles.map(r => {
+            const R = D.roles[r] || SL.data.ROLES[r] || { code: 'sc', desc: '' }, n = st.counts[r] || 0, per = (st.perSlot || {})[r], open = n > 1 && !!(st.openRoles || {})[r];
+            const mixed = per ? per.filter((m, i, a2) => a2.indexOf(m) === i).length : 0;
+            const sel = (mixed ? '<option value="" disabled selected>' + mixed + ' models: set all slots</option>' : '') + modelOpts(mixed ? null : slotModel(st, r, 0));
+            const disc = n > 1 ? '<button type="button" class="nstdisc" data-topen="' + esc(r) + '" aria-expanded="' + open + '" aria-controls="nsts-' + esc(r) + '" title="' + (open ? 'one model for all ' : 'a model for each of the ') + n + ' ' + esc(r) + ' slots">' + (open ? '▾' : '▸') + '</button>' : '<span class="nstdisc" aria-hidden="true"></span>';
+            const slotRows = open ? '<div class="nstslots" id="nsts-' + esc(r) + '" role="group" aria-label="' + esc(r) + ' slots, one model each">' + Array.from({ length: n }, (x, i) => '<label class="nstslot"><span class="mono" style="color:var(--c-' + esc(R.code) + ')">' + esc(R.code) + '-' + (i + 1) + '</span><select data-tslot="' + esc(r) + '" data-ti="' + i + '" aria-label="model for ' + esc(r) + ' slot ' + (i + 1) + '">' + modelOpts(slotModel(st, r, i)) + '</select></label>').join('') + '</div>' : '';
+            return '<div class="nstrow' + (n ? '' : ' zero') + '" data-trole="' + esc(r) + '"><span class="nstname" style="color:var(--c-' + esc(R.code) + ')">' + esc(r) + '</span>' + ui.help(esc(R.desc || '') + '.' + (R.ro ? ' <b>Read-only.</b>' : ''), r) + '<span class="nststep"><button type="button" class="btn sm" data-tstep="-1" aria-label="one ' + esc(r) + ' less"' + (n ? '' : ' disabled') + '>−</button><span class="nstn mono" aria-label="' + esc(r) + ' workers">' + n + '</span><button type="button" class="btn sm" data-tstep="1" aria-label="one more ' + esc(r) + '"' + (full ? ' disabled' : '') + '>+</button>' + disc + '</span><select data-tmodel="' + esc(r) + '" aria-label="model for ' + (n > 1 ? 'all ' + n + ' ' : '') + esc(r) + (n > 1 ? ' slots' : '') + '"' + (n ? '' : ' disabled') + '>' + sel + '</select></div>' + slotRows;
+          }).join('');
         };
         const paint = () => {
           const tm = teamOf(st); st.swarm = tm.n;   // the team decides the size before the gate and the command line read it
           $('#nsCli', b).innerHTML = esc(cli()).replace(/--mode (bypass|yolo)/, '<span class="cli-danger">--mode $1</span>'); paintMode(b, st.mode);
-          $('#nsSw', b).textContent = st.single ? 'single agent' : 'manager + ' + tm.n + ' worker' + (tm.n === 1 ? '' : 's') + (tm.dflt ? ' · full team' : ' · your team') + (tm.n > 8 ? ' (' + (tm.n - 8) + ' share legs)' : '');
+          $('#nsSw', b).textContent = st.single ? 'single agent' : 'manager + ' + tm.n + ' worker' + (tm.n === 1 ? '' : 's') + (tm.dflt ? ' · full team' : ' · your team');
           $$('[data-tpreset]', b).forEach(x => x.setAttribute('aria-pressed', String(x.dataset.tpreset === 'single' ? st.single : tm.dflt)));
           paintTeam(tm);
           $$('[data-team]', b).forEach(e => e.classList.toggle('nsoff', st.single));
@@ -267,7 +287,7 @@
         /* a rule typed or clicked is added once; a typed one that cannot be a rule is said so and kept in its field */
         const addRule = v => { v = String(v).trim(); if (!v || quiet()) return true; const bad = ruleProblem(v); ruleErr(bad); if (bad) return false; if (!st.rules.includes(v)) st.rules.push(v); return true; };
         sc.listen(b, 'input', e => { const t = e.target; if (t.id === 'nsName') st.name = t.value; else if (t.id === 'nsVerify') st.verify = t.value; else if (t.id === 'nsBudget') st.budget = t.value.trim();  else if (t.id === 'nsGoal') st.goalText = t.value; else if (t.id === 'nsRule') ruleErr(''); paint(); });
-        sc.listen(b, 'change', e => { const t = e.target; if (t.id === 'nsModel') st.model = t.value; else if (t.dataset.tmodel) { const r = t.dataset.tmodel; st.slotModels = st.slotModels || {}; if (t.value) st.slotModels[r] = t.value; else { delete st.slotModels[r]; delete st.roleModels[r]; } } else if (t.dataset.k) st[t.dataset.k] = t.checked; paint(); });
+        sc.listen(b, 'change', e => { const t = e.target; if (t.id === 'nsModel') st.model = t.value; else if (t.dataset.tmodel) { const r = t.dataset.tmodel; st.slotModels = st.slotModels || {}; if (st.perSlot) delete st.perSlot[r]; st.slotModels[r] = t.value; } else if (t.dataset.tslot) setSlotModel(st, t.dataset.tslot, +t.dataset.ti, t.value); else if (t.dataset.k) st[t.dataset.k] = t.checked; paint(); });
         sc.listen(b, 'click', e => {
           const mr = e.target.closest('[data-nsmode]'); if (mr) { st.mode = mr.dataset.nsmode; paint(); return; }
           const x = e.target.closest('[data-seg]'); if (x) { if (x.disabled) return; st[x.dataset.seg] = x.dataset.v; $$('[data-seg="' + x.dataset.seg + '"]', b).forEach(y => y.setAttribute('aria-pressed', y === x)); paint(); return; }
@@ -275,7 +295,8 @@
           const ex = e.target.closest('[data-ex]'); if (ex) { if (!quiet()) addRule(ex.dataset.ex); paint(); return; }
           const rr = e.target.closest('[data-rr]'); if (rr && !quiet()) { st.rules.splice(+rr.dataset.rr, 1); paint(); }
           const tp = e.target.closest('[data-tpreset]'); if (tp) { if (tp.dataset.tpreset === 'single') st.single = true; else { st.single = false; D.roleOrder.forEach(r => { st.counts[r] = 1; }); Object.keys(st.counts).forEach(r => { if (D.roleOrder.indexOf(r) < 0) st.counts[r] = 0; }); } paint(); return; }
-          const ts = e.target.closest('[data-tstep]'); if (ts) { const r = ts.closest('[data-trole]').dataset.trole; st.counts[r] = Math.max(0, (st.counts[r] || 0) + +ts.dataset.tstep); paint(); const again = $('[data-trole="' + r + '"] [data-tstep="' + ts.dataset.tstep + '"]', b); if (again && !again.disabled) again.focus(); return; }
+          const to = e.target.closest('[data-topen]'); if (to) { const r = to.dataset.topen; st.openRoles = st.openRoles || {}; st.openRoles[r] = !st.openRoles[r]; paint(); const again = $('[data-topen="' + r + '"]', b); if (again) again.focus(); return; }
+          const ts = e.target.closest('[data-tstep]'); if (ts) { const r = ts.closest('[data-trole]').dataset.trole; st.counts[r] = Math.max(0, (st.counts[r] || 0) + +ts.dataset.tstep); if (st.perSlot && st.perSlot[r]) { st.perSlot[r] = st.perSlot[r].slice(0, st.counts[r]); if (st.perSlot[r].length && st.perSlot[r].every(m => m === st.perSlot[r][0])) { st.slotModels[r] = st.perSlot[r][0]; delete st.perSlot[r]; } } paint(); const again = $('[data-trole="' + r + '"] [data-tstep="' + ts.dataset.tstep + '"]', b); if (again && !again.disabled) again.focus(); return; }
         });
         sc.listen($('#nsModes', b), 'keydown', e => { const k = e.key; if (!/^(Arrow(Up|Down|Left|Right)|Home|End)$/.test(k)) return; e.preventDefault(); const rs = $$('[data-nsmode]', b), f = rs.indexOf(document.activeElement), i = f >= 0 ? f : rs.findIndex(r => r.dataset.nsmode === st.mode), j = k === 'Home' ? 0 : k === 'End' ? rs.length - 1 : (i + (/Down|Right/.test(k) ? 1 : rs.length - 1)) % rs.length; st.mode = rs[j].dataset.nsmode; paint(); rs[j].focus(); });
         const addTyped = () => { const f = $('#nsRule', b); if (addRule(f.value)) f.value = ''; paint(); };
@@ -306,7 +327,7 @@
             if (d.git === 'offer' && st.gitInit) { spec.gitInit = true; raises.push('make ' + spec.cwd + ' a git repository'); }
             /* the dialog gives way to the trust step and the confirmation; when the server does not start the session it opens again as it
                was, with why under its title */
-            const again = Object.assign({}, st, { rules: st.rules.slice(), roleModels: Object.assign({}, st.roleModels), counts: Object.assign({}, st.counts), slotModels: Object.assign({}, st.slotModels) });
+            const again = Object.assign({}, st, { rules: st.rules.slice(), roleModels: Object.assign({}, st.roleModels), counts: Object.assign({}, st.counts), slotModels: Object.assign({}, st.slotModels), perSlot: JSON.parse(JSON.stringify(st.perSlot || {})), openRoles: Object.assign({}, st.openRoles) });
             close(); start(spec, { raises }).then(res => { if (res && !res.ok) dialogs.newSession(Object.assign(again, { error: res.declined ? 'not started: the trust step or the confirmation was declined' : 'not started: ' + (res.message || res.why || 'the server refused it') })); });
           });
         });
