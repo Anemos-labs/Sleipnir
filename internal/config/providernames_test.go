@@ -22,3 +22,19 @@ func TestARenamedProviderIsFoundByItsFormerName(t *testing.T) {
 		t.Error("a nil configuration has no entries")
 	}
 }
+
+func TestRemovingAKeyRemovesItUnderItsFormerNameToo(t *testing.T) {
+	home := t.TempDir()
+	if err := SaveStoredKey(home, "HEIMDALL_API_KEY", "stored-under-the-former-name"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveStoredKey(home, "OTHER_API_KEY", "kept"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveStoredKey(home, "HEIMDALLM_API_KEY", ""); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := StoredKeys(home); len(m) != 1 || m["OTHER_API_KEY"] != "kept" {
+		t.Errorf("after removing HEIMDALLM_API_KEY: %v", m)
+	}
+}

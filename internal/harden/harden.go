@@ -289,6 +289,10 @@ func lookupLocked(name string) (value string, src Source, ok bool) {
 // under the former name (HEIMDALL_API_KEY) is used when the current one (HEIMDALLM_API_KEY) has no value.
 var formerNames = map[string]string{"HEIMDALLM_API_KEY": "HEIMDALL_API_KEY"}
 
+// FormerName returns the name a credential variable had before its provider was renamed ("HEIMDALL_API_KEY" for
+// "HEIMDALLM_API_KEY"), or "" when it was not renamed. Forgetting a key forgets it under both names.
+func FormerName(name string) string { return formerNames[name] }
+
 // lookupOneLocked resolves the credential of exactly this name for lookupLocked; the caller must hold the hardening lock.
 func lookupOneLocked(name string) (value string, src Source, ok bool) {
 	if v, set := os.LookupEnv(name); set && (v != "" || held[name] == "") {
@@ -325,7 +329,7 @@ func Held() []string {
 // The environment wins: a variable set to a value is the person's word for this process,
 // whatever was stored, and so is a value MoveKeys took out of the environment (the variable
 // is gone from os.Getenv, but its value is still the person's word). Provide keeps that
-// value. A key that was itself provided is replaced, so storing a key again takes effect. An empty value forgets a provided key; a credential from the environment is
+// value. A key that was itself provided is replaced, so storing a key again takes effect. An empty value forgets a provided key, under its FormerName too; a credential from the environment is
 // not Provide's to forget and stays.
 func Provide(name, value string) {
 	mu.Lock()
@@ -333,9 +337,11 @@ func Provide(name, value string) {
 	if name == "" {
 		return
 	}
-	if value == "" { // forget the stored key, not the environment's
-		if !fromEnv[name] {
-			delete(held, name)
+	if value == "" { // forget the stored key, not the environment's, under its former name too
+		for _, n := range []string{name, formerNames[name]} {
+			if n != "" && !fromEnv[n] {
+				delete(held, n)
+			}
 		}
 		return
 	}

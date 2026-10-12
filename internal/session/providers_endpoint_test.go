@@ -27,7 +27,7 @@ import (
 
 func clearProviderEnv(t *testing.T) {
 	t.Helper()
-	for _, k := range []string{"HEIMDALLM_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL", "HEIMDALLM_BASE_URL", "OPENROUTER_BASE_URL",
+	for _, k := range []string{"HEIMDALLM_API_KEY", "HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL", "HEIMDALLM_BASE_URL", "OPENROUTER_BASE_URL",
 		"CORP_BASE_URL", "CORP_KEY", "LOCAL_BASE_URL", "SLEIPNIR_TEST_KEY"} {
 		t.Setenv(k, "")
 	}

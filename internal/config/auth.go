@@ -44,7 +44,8 @@ func LoadStoredKeys(home string) error {
 	return err
 }
 
-// SaveStoredKey adds or replaces one key, atomically, readable by the user only; an empty value removes it.
+// SaveStoredKey adds or replaces one key, atomically, readable by the user only; an empty value removes it, and the
+// key stored under the variable's former name (harden.FormerName) with it.
 func SaveStoredKey(home, name, value string) error {
 	m, err := StoredKeys(home)
 	if err != nil {
@@ -53,8 +54,11 @@ func SaveStoredKey(home, name, value string) error {
 	if m == nil {
 		m = map[string]string{}
 	}
-	if value == "" {
+	if value == "" { // removing a key removes it under its former name too (harden.FormerName)
 		delete(m, name)
+		if was := harden.FormerName(name); was != "" {
+			delete(m, was)
+		}
 	} else {
 		m[name] = strings.TrimSpace(value)
 	}

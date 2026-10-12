@@ -6,7 +6,7 @@ import (
 )
 
 func TestDemoCommandRunsWithoutAKey(t *testing.T) {
-	for _, k := range []string{"HEIMDALLM_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"} {
+	for _, k := range []string{"HEIMDALLM_API_KEY", "HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"} {
 		t.Setenv(k, "")
 	}
 	// --plain: the test runs in whatever terminal the developer has (`go test` in a package directory hands it over), and what it is about

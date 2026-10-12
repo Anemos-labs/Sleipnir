@@ -165,7 +165,7 @@ func TestFirstTimeSetupWritesTheConfigFromTheProvidersOwnList(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("FAKE_API_KEY", "k")
-	for _, k := range []string{"SLEIPNIR_MODEL", "HEIMDALLM_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"} {
+	for _, k := range []string{"SLEIPNIR_MODEL", "HEIMDALLM_API_KEY", "HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"} {
 		t.Setenv(k, "")
 	}
 	provider := `{"providers":{"fake":{"base_url":"` + ts.URL + `/v1","api_key_env":"FAKE_API_KEY"}}}`
@@ -449,7 +449,7 @@ func TestFirstRunRefusesAKeyTheProviderRejects(t *testing.T) {
 // before a local server), asked for its models with the sign-in's token, and its models are marked as the plan's, with no price.
 func TestTheChatGPTPlanIsUsableOnlyWhenSignedInAndItsModelsSayPlan(t *testing.T) {
 	_, home := projectDir(t)
-	for _, k := range []string{"SLEIPNIR_MODEL", "HEIMDALLM_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TOGETHER_API_KEY", "FIREWORKS_API_KEY", "GROQ_API_KEY"} {
+	for _, k := range []string{"SLEIPNIR_MODEL", "HEIMDALLM_API_KEY", "HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TOGETHER_API_KEY", "FIREWORKS_API_KEY", "GROQ_API_KEY"} {
 		t.Setenv(k, "")
 	}
 	cfg, _, _ := config.Load(config.LoadOpts{UntrustedProject: true})

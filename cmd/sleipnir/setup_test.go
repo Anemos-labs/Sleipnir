@@ -20,7 +20,7 @@ func projectDir(t *testing.T) (proj, home string) {
 	}
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	for _, k := range []string{"HEIMDALLM_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"} {
+	for _, k := range []string{"HEIMDALLM_API_KEY", "HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"} {
 		t.Setenv(k, "")
 	}
 	t.Chdir(proj)

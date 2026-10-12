@@ -270,9 +270,11 @@ return res(o, 0, 4200);
 return res([L('err', 'sleipnir daemon: looking for due jobs every ' + flag(fl, 'every', '30s') + ' (ctrl-c stops it); jobs: ~/.sleipnir/schedule.json')], 0, 10, card('daemon', [['looking every', String(flag(fl, 'every', '30s'))], ['jobs', String(s.schedule.length)], ['logs', '~/.sleipnir/schedule-logs/']]));
 };
 /* ---- login, logout, models, update, doctor ----------------------------------------------------------------------------------- */
+/* A renamed provider's former name names it still (config.CanonicalProvider): heimdall is heimdallm. */
+function canonProvider(n) { return n === 'heimdall' ? 'heimdallm' : n; }
 var LOGIN_CHOICES = ['heimdallm', 'openrouter', 'openai', 'anthropic', 'gemini', 'mistral', 'xai', 'deepseek', 'together', 'fireworks', 'groq', 'huggingface'];
 OUT['login'] = function (fl, ctx) {
-var s = st(ctx), name = (pos(fl)[0] || '').toLowerCase();
+var s = st(ctx), name = canonProvider((pos(fl)[0] || '').toLowerCase());
 if (!name) {
 var o = [L('out', 'Which provider will you use?')];
 LOGIN_CHOICES.forEach(function (c, i) { o.push(L('out', F.padL(i + 1, 3) + '. ' + c + (c === 'heimdallm' ? '  (recommended)' : ''))); });
@@ -288,7 +290,7 @@ s.auth[name] = 'stored';
 return res([L('err', 'Paste your ' + name + ' key (hidden; kept in ~/.sleipnir/auth.json, readable by you only): Saved. (' + env + ' in the environment still takes precedence over it.)'), L('out', 'Checking the key... ok.')], 0, 1300, card('login', [['provider', name], ['key', 'stored in ~/.sleipnir/auth.json (0600)'], ['variable', env + ' wins if set']]));
 };
 OUT['logout'] = function (fl, ctx) {
-var s = st(ctx), name = (pos(fl)[0] || '').toLowerCase();
+var s = st(ctx), name = canonProvider((pos(fl)[0] || '').toLowerCase());
 if (!name) return bad('usage: sleipnir logout <provider>');
 if (name === 'chatgpt') { s.auth.chatgpt = 'none'; return res([L('err', 'signed out of ChatGPT, and the issuer was told to revoke the token')], 0, 420); }
 if (!S.providerKeyVars[name]) return bad('logout: "' + name + '" is not a provider that takes a key');

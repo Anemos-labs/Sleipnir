@@ -215,6 +215,34 @@ func TestBenchScriptNeedsAKey(t *testing.T) {
 	}
 }
 
+// The provider was formerly heimdall: a key only in HEIMDALL_API_KEY passes the key check, unless --api-key-env names the variable.
+func TestBenchScriptTakesTheKeyUnderItsFormerName(t *testing.T) {
+	e := newBenchEnv(t)
+	for _, c := range []struct {
+		args []string
+		want int
+	}{{nil, 0}, {[]string{"--api-key-env", "HEIMDALLM_API_KEY"}, 2}} {
+		args := append([]string{e.script}, e.base(append([]string{"--out", filepath.Join(t.TempDir(), "run")}, c.args...)...)...)
+		cmd := exec.Command("sh", args...)
+		cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), "BENCH_HOME=" + e.home, "BENCH_PAUSE=0", "STUB_STATE=" + e.state,
+			"STUB_PLAN=ok", "HEIMDALL_API_KEY=" + benchKey}
+		var buf bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &buf, &buf
+		status := 0
+		if err := cmd.Run(); err != nil {
+			ee, ok := err.(*exec.ExitError)
+			if !ok {
+				t.Fatal(err)
+			}
+			status = ee.ExitCode()
+		}
+		if status != c.want {
+			t.Errorf("%v: exit %d, want %d\n%s", c.args, status, c.want, buf.String())
+		}
+		noKey(t, "the output", buf.String())
+	}
+}
+
 func TestBenchScriptABAlternatesTheBinariesAndPairsTheSeeds(t *testing.T) {
 	e := newBenchEnv(t)
 	a, b := e.makeStub("A"), e.makeStub("B")

@@ -625,4 +625,12 @@ func TestAKeyUnderARenamedProvidersFormerNameStillServes(t *testing.T) {
 	if got := Secret("HEIMDALL_API_KEY"); got != "set-under-the-former-name" {
 		t.Fatalf("the former name is not redirected the other way: %q", got)
 	}
+	t.Setenv("HEIMDALLM_API_KEY", "")
+	t.Setenv("HEIMDALL_API_KEY", "")
+	resetVault(t)
+	Provide("HEIMDALL_API_KEY", "stored-under-the-former-name")
+	Provide("HEIMDALLM_API_KEY", "") // a sign-out
+	if got := Secret("HEIMDALLM_API_KEY"); got != "" {
+		t.Fatalf("forgetting the key forgets it under the former name too: %q", got)
+	}
 }

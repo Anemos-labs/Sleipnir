@@ -387,6 +387,7 @@ func TestSwarmSessionDispatchesWorkersWithRealTools(t *testing.T) {
 
 func TestResolveModelAndProviders(t *testing.T) {
 	t.Setenv("HEIMDALLM_API_KEY", "")
+	t.Setenv("HEIMDALL_API_KEY", "")
 	t.Setenv("OPENROUTER_API_KEY", "")
 	t.Setenv("OPENAI_API_KEY", "")
 	if _, err := session.ResolveModel(nil, "some/model"); err == nil {
@@ -422,7 +423,7 @@ func TestResolveModelAndProviders(t *testing.T) {
 }
 
 func TestBuiltInHostsAndLocalServers(t *testing.T) {
-	for _, k := range []string{"HEIMDALLM_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TOGETHER_API_KEY"} {
+	for _, k := range []string{"HEIMDALLM_API_KEY", "HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TOGETHER_API_KEY"} {
 		t.Setenv(k, "")
 	}
 	// Nothing set: the error says what to start with, and it is Heimdallm.
