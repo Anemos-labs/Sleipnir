@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Under `--confine bwrap`, a cache that a command's environment names
+  (`GOMODCACHE`, `GOCACHE`, `PIP_CACHE_DIR`, ...) or that `--confine-rw`
+  names is created when it does not exist yet. Before, a missing cache was
+  not bound into the sandbox: a setup command's module download landed in a
+  tmpfs that vanished with the command, and the network-less verifier then
+  failed to build every package with an outside dependency. A cache that
+  cannot be created is a warning on the command's result. Tasks, scores of
+  runs whose caches existed and prompt bytes are unchanged.
 - When no run with the reference solution reports a single test, the
   "nothing to score" rejection of `rl taskgen rebuild` and `rl taskgen chain`
   says so, with how that step's first run ended (`pytest: exit 4`) and the

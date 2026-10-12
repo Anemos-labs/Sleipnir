@@ -235,6 +235,52 @@ func TestConfinedCommand(t *testing.T) {
 	}
 }
 
+// A cache the environment names that does not exist yet is created before the
+// command runs, so what one confined command writes there (a setup command's
+// module download) is on the host for the next, network-less one instead of in
+// a tmpfs that vanishes. A cache inside a protected directory is never created,
+// and one that cannot be created is reported.
+func TestConfinedCommandCreatesMissingCaches(t *testing.T) {
+	root := t.TempDir()
+	tree, blobs := filepath.Join(root, "tree"), filepath.Join(root, "blobs")
+	for _, d := range []string{tree, blobs} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "file"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := confinedSandbox(t, blobs)
+	run := func(network bool, env []string, cmd string) ExecResult {
+		t.Helper()
+		pol := ExecPolicy{Network: network, Mounts: &Mounts{RW: []string{tree}}}
+		res, err := s.Exec(WithExecPolicy(context.Background(), pol), tree, append([]string{"PATH=/usr/bin:/bin"}, env...), cmd, time.Minute)
+		if err != nil {
+			t.Fatalf("%s: %v", cmd, err)
+		}
+		return res
+	}
+	mods, build := filepath.Join(root, "cache", "gomod"), filepath.Join(blobs, "go-build")
+	env := []string{"GOMODCACHE=" + mods, "GOCACHE=" + build}
+	if res := run(true, env, `echo mod > "$GOMODCACHE/m"`); res.ExitCode != 0 || len(res.Warnings) > 0 {
+		t.Fatalf("writing the cache: %+v", res)
+	}
+	if b, err := os.ReadFile(filepath.Join(mods, "m")); err != nil || string(b) != "mod\n" {
+		t.Errorf("the cache write did not reach the host: %q %v", b, err)
+	}
+	if res := run(false, env, `cat "$GOMODCACHE/m"`); res.Stdout != "mod\n" {
+		t.Errorf("a later command does not see the cache: %+v", res)
+	}
+	if _, err := os.Stat(build); err == nil {
+		t.Error("a cache inside a protected directory was created")
+	}
+	res := run(false, []string{"GOMODCACHE=" + filepath.Join(root, "file", "gomod")}, "true")
+	if !slices.ContainsFunc(res.Warnings, func(w string) bool { return strings.Contains(w, "cannot be created") }) {
+		t.Errorf("a cache that cannot be created is not reported: %q", res.Warnings)
+	}
+}
+
 // End to end through Workspaces: the agent's shell (CommandPrefix) and the
 // verifier both work in their own trees and cannot read a protected store.
 func TestConfinedWorkspaceAndVerifier(t *testing.T) {

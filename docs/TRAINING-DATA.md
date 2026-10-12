@@ -386,7 +386,9 @@ sleipnir rl rollout --tasks tasks.jsonl --group 8 --concurrency 32 \
   namespace with loopback up. Writable are only the command's own tree, HOME and TMPDIR and the caches named by its
   environment (`GOCACHE`, `GOMODCACHE`, `CARGO_HOME`, `PIP_CACHE_DIR`, ...); toolchains on its `PATH` (and
   `GOROOT`, `RUSTUP_HOME`, `JAVA_HOME`) stay readable. `--confine-ro DIR` and `--confine-rw DIR` re-expose other
-  toolchain or cache directories. Nothing re-exposes the work dir, the blob store or the run output, or anything in
+  toolchain or cache directories. A cache that does not exist yet is created before the command runs, so what a setup
+  command downloads into it is there for the network-less verifier; one that cannot be created is a warning on the
+  command's result. Nothing re-exposes the work dir, the blob store or the run output, or anything in
   them; the directory relative task repositories resolve against (the current directory) is never re-exposed whole,
   but a toolchain or cache inside it is (a run started in a home directory keeps `~/.local/go`). A task with the
   network also sees the directory `/etc/resolv.conf` links into. `bwrap` mode refuses to start where bubblewrap cannot create a sandbox (it needs

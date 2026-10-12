@@ -267,8 +267,10 @@ func (s *LocalSandbox) argv(cmd string, pol ExecPolicy) (argv []string, warnings
 		}
 	}
 	if pol.Mounts != nil && s.confine.Available {
-		// Confinement brings its own network namespace (loopback up).
-		return s.confine.argv(*pol.Mounts, pol.Network, pol.env, inner), nil
+		// Confinement brings its own network namespace (loopback up). The caches
+		// are created first: argv binds only those that exist.
+		warnings = s.confine.prepareCaches(pol.env)
+		return s.confine.argv(*pol.Mounts, pol.Network, pol.env, inner), warnings
 	}
 	if pol.Network {
 		return inner, nil

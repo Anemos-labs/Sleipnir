@@ -35,7 +35,8 @@ var ErrConfinementUnavailable = errors.New("command confinement unavailable")
 // or signal the harness, whose environment holds provider keys), and, unless
 // the task needs the network, its own network namespace with loopback up.
 // Writable are only the directories a Mounts names (the command's tree, HOME
-// and TMPDIR) and the caches its environment points at; toolchain directories
+// and TMPDIR) and the caches its environment points at (created when missing,
+// see prepareCaches); toolchain directories
 // on its PATH and named by its environment are visible read-only even under a
 // hidden directory.
 //
@@ -278,6 +279,41 @@ func (c Confinement) binds(m Mounts, network bool, env []string) []bind {
 	}
 	sort.SliceStable(out, func(i, j int) bool { return depth(out[i].path) < depth(out[j].path) })
 	return out
+}
+
+// prepareCaches creates the writable caches a command is promised that do not
+// exist yet: the operator's RW directories and the directories env's cache
+// variables name, where they lie in a hidden directory. binds re-exposes only a
+// directory that exists, so a missing cache's path would fall in the hidden
+// directory's empty tmpfs: what the command wrote there (modules a setup command
+// downloaded) would vanish when it ends, and a later command without the network
+// would find nothing. The tool naming the cache would have created it outside the
+// sandbox too. A cache that would show a protected directory is left alone, as
+// binds never exposes it, and so is a variable holding a list of paths. It
+// returns a warning for each cache it could not create.
+func (c Confinement) prepareCaches(env []string) []string {
+	type cache struct{ name, path string }
+	var caches []cache
+	for _, p := range c.RW {
+		caches = append(caches, cache{"--confine-rw", p})
+	}
+	vars := envMap(env)
+	for _, k := range cacheRWEnv {
+		if v := vars[k]; v != "" && !strings.ContainsRune(v, os.PathListSeparator) {
+			caches = append(caches, cache{k, v})
+		}
+	}
+	var warnings []string
+	for _, ca := range caches {
+		p := absOrEmpty(ca.path)
+		if p == "" || p == "/" || !c.hidden(p) || c.exposesProtected(p) || dirExists(p) {
+			continue
+		}
+		if err := os.MkdirAll(p, 0o755); err != nil {
+			warnings = append(warnings, fmt.Sprintf("cache %s %s does not exist and cannot be created (%v): confined commands see it empty and lose what they write to it", ca.name, p, err))
+		}
+	}
+	return warnings
 }
 
 // hidden reports whether p lies in (or is) a hidden directory.
