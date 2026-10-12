@@ -5,11 +5,11 @@
 (function (SL) {
   'use strict';
   const U = SL.u, { $, $$ } = U, ui = SL.ui;
-  /** The tab title: `(? N) Sleipnir` while questions wait in any tab, `✓ <tab> · Sleipnir` after a long turn ended unseen. */
+  /** The tab title: `(? N) Sleipnir` while N questions wait in any tab, `✓ <tab> · Sleipnir` after a long turn ended unseen. */
   const TITLE = { base: document.title || 'Sleipnir Web', done: null };
   function badgeOn() { const s = SL.settings.title; if (s === 'on') return true; if (s === 'off') return false; const h = SL.live.hello; return !(h && h.ui && h.ui.bell === false); }
   function paintTitle() {
-    const n = SL.sessions.needs().length, on = badgeOn();
+    const n = SL.sessions.needs().reduce((k, x) => k + (x.waiting || 1), 0), on = badgeOn();
     const t = !on ? TITLE.base : n ? '(? ' + n + ') ' + TITLE.base : TITLE.done ? '✓ ' + TITLE.done + ' · ' + TITLE.base : TITLE.base;
     if (document.title !== t) document.title = t;
   }
@@ -50,7 +50,12 @@
     sh.listen(document, 'keydown', e => { if (U.composing(e)) e.stopImmediatePropagation(); }, true);
     ui.shell.mount(sh); ui.navMount(sh); SL.chat.mount(sh); ui.approvals.mount(sh); SL.link.bind(sh); SL.keys.mount(sh);
     sh.on('activated', S => { SL.views.show(S.ui.view || 'cockpit'); });
-    sh.on('ask-arrived', ({ S, q }) => { const act = SL.sessions.active; if (S !== act || SL.time.holdWanted() || S.replay) { ui.toast((S === act ? (S.replay ? 'a question is waiting (the view is paused): ' : 'a question is waiting behind the hold: ') : S.name + ': ') + q.agent + ' wants to run ' + SL.u.clip1(q.cmd, 80), 'warm'); } paintTitle(); });
+    /* a question the person cannot see is said in a toast, a moment later and only while it is still open (the manager answers the
+       workers' routine questions itself, at once) */
+    sh.on('ask-arrived', ({ S, q }) => {
+      paintTitle();
+      sh.timeout(() => { const live = S.wm && S.wm.qs.find(x => x.id === q.id); if (!live || live.answered || S.closed) return; const act = SL.sessions.active; if (S !== act || SL.time.holdWanted() || S.replay) ui.toast((S === act ? (S.replay ? 'a question is waiting (replay: go live to answer): ' : 'a question is waiting behind the hold: ') : S.name + ': ') + q.agent + ' wants to run ' + SL.u.clip1(q.cmd, 80), 'warm'); }, 900);
+    });
     sh.on('goal-met', S => { if (S !== SL.sessions.active) ui.toast(S.name + ': goal met', 'ok'); });
     sh.on('session-done', S => {
       const m = S.wm, f = m.final, start = (m.turnStart || 0); if (document.hidden && f && f.t - start >= 30) { TITLE.done = S.name; paintTitle(); }

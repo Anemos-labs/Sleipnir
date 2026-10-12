@@ -119,9 +119,10 @@
           sc.listen(b, 'click', e => ui.focusAgent(w.id, e)); (dense ? groups[w.role] : stallsEl).appendChild(b);
           ST[w.id] = { el: b, doing: $('.s-doing', b), sw: $('.sw', b), g: $('.s-st .g', b), chip: $('.chip', b), tok: $('.n-tok', b), cost: $('.n-cost', b), hit: $('.n-hit', b), spark: $('.s-spark', b), tl: $('.s-tl', b), n: -1, streaming: false };
         });
-        /* the slots of the team nobody holds yet, by role: a free leg says which worker the manager can still start */
+        /* the slots of the team nobody holds yet, by role (a leg is a role, so a free stall names its role, never a leg's number): the
+           worker the manager can still start */
         const free = (S.meta.team || []).map(t => t.role); workers.forEach(w => { const k = free.indexOf(w.role); if (k >= 0) free.splice(k, 1); });
-        for (let i = nW; i < 8; i++) { const role = free[i - nW]; stallsEl.appendChild(mk('div', { class: 'stall ghost', 'aria-label': 'leg ' + (i + 1) + ' is free' }, '<span class="s-top"><b class="s-id">leg ' + (i + 1) + '</b><span class="s-role">' + (role ? esc(role) + ' · free' : 'free') + '</span></span><span class="s-doing">' + (role ? 'a free ' + esc(role) + ' slot: the manager starts it when the work needs one' : S.meta.swarm > 0 ? 'no slot on this leg' : 'no worker on this leg: <kbd>/swarm N</kbd> starts a team') + '</span>')); }
+        for (let i = nW; i < 8; i++) { const role = free[i - nW], what = role ? 'free ' + role + ' slot' : 'free slot'; stallsEl.appendChild(mk('div', { class: 'stall ghost', 'aria-label': role ? 'a ' + what + ': not started yet' : S.meta.swarm > 0 ? 'no worker here' : 'no team' }, '<span class="s-top"><b class="s-id">' + esc(role ? what : S.meta.swarm > 0 ? 'free slot' : 'no team') + '</b></span><span class="s-doing">' + (role ? 'the manager starts this ' + esc(role) + ' when the work needs one' : S.meta.swarm > 0 ? 'nothing runs here' : 'a single agent: <kbd>/swarm N</kbd> starts a team') + '</span>')); }
       }
       sc.listen(stallsEl, 'keydown', e => { if (!/^Arrow/.test(e.key)) return; const cards = $$('.stall:not(.ghost)', stallsEl), i = cards.indexOf(document.activeElement); if (i < 0) return; const d = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 4, ArrowUp: -4 }[e.key], n = cards[i + d]; if (n) { e.preventDefault(); e.stopPropagation(); n.focus(); } }, true);
       cx.RC = RC; cx.ST = ST; sc.onUnmount(() => { if (cx.RC === RC) { cx.RC = null; cx.ST = {}; } });

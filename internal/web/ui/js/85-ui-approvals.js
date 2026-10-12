@@ -13,7 +13,11 @@
  * below the fold unannounced). Answer 2 names the exact rules it remembers. A key answers only a question that is on screen: with the
  * rail folded away, a question opens it, and a key press opens it instead of answering. The command, the rule, the path, the scope
  * and the reason are drawn left to right in the order they are written (CSS bidi override: a right-to-left word cannot trade places
- * with its neighbour), and every character that is not ASCII is marked with its code point (a look-alike letter is noticed). */
+ * with its neighbour), and every character that is not ASCII is marked with its code point (a look-alike letter is noticed).
+ * A replay pauses answering and says so over the question, with Go live. A question the manager answered (`by: manager`) is never a
+ * card: its decision joins one collapsed line of the manager's decisions. Needs you (the session strip, the left rail) says on every
+ * view how many questions wait and how long the oldest has, and goto() brings that question forward; a browser notification (off by
+ * default) comes once per question that waits too long while the page is out of sight. */
 (function (SL) {
   'use strict';
   const U = SL.u, { $, $$, esc, clip1 } = U, calc = SL.calc, ui = SL.ui = SL.ui || {};
@@ -173,6 +177,8 @@
       const ok = a.armed && !rep; mt.classList.toggle('ready', ok); $('.bar i', mt).style.width = (a.frac * 100) + '%';
       const t = rep ? 'replay: go live to answer' : ok ? (mt.dataset.ready || 'ready: press 1, 2 or 3 (esc is 3)') : 'your typing goes to the prompt until you pause'; const el = $('.qmt', mt); if (el.textContent !== t) el.textContent = t;
       const box = mt.previousElementSibling; if (box && box.classList.contains('qopts')) $$('.qopt', box).forEach(b => b.setAttribute('aria-disabled', ok ? 'false' : 'true'));
+      /* the strip of the active session says over the question that a replay pauses answering, with the way back */
+      const st = mt.closest('.qstrip'), rb = st && $('.qreplay', st); if (rb && rb.hidden !== !rep) { rb.hidden = !rep; st.classList.toggle('replay', !!rep); }
     });
   }
   /** Answer if armed; otherwise explain. choice 3 asks for the instruction first (in the strip or the inbox row). */
@@ -213,7 +219,13 @@
       let key = '', html = '';
       if (done) {
         const wall = SL.time.T.wall, t0 = shown['_d' + done.id] == null ? (shown['_d' + done.id] = wall) : shown['_d' + done.id], left = DONE_MS - (wall - t0);
-        if (left > 0) {
+        if (left > 0 && done.by === 'manager') {
+          /* the manager answered: one collapsed line of its recent decisions, never a card the person has to read */
+          const recent = mgrRecent(m);
+          key = 'm' + done.id + '|' + recent.length + '|' + (slot._mgrOpen ? 1 : 0);
+          html = recent.length ? mgrHtml(recent, !!slot._mgrOpen, 'qmgr qdone') : '';
+          if (slot._k !== key) { clearTimeout(slot._t); const id = done.id; slot._t = setTimeout(() => { slot._t = 0; if (slot._mgrOpen) shown['_d' + id] = SL.time.T.wall; else shown['_d' + id] = -Infinity; const A = SL.sessions.active; if (A) render(A, A.wm); }, left + 50); }
+        } else if (left > 0) {
           key = 'd' + done.id + done.answered;
           html = '<div class="qdone"><b>' + (done.by && done.by !== 'you' ? '⊘' : '✓') + '</b><span><b style="color:var(--fg)">' + (done.by && done.by !== 'you' ? esc(BY[done.by] || 'refused') : keyOf(done, done.answered) + ' ' + esc(choiceText(done, done.answered))) + '</b><br><span class="dim">' + esc(done.agent) + (done.task ? ' · ' + esc(done.task) : '') + ' · <span class="mono">' + esc(clip1(done.cmd, 160)) + '</span></span></span></div>';
           if (slot._k !== key) { clearTimeout(slot._t); const id = done.id; slot._t = setTimeout(() => { slot._t = 0; shown['_d' + id] = -Infinity; const A = SL.sessions.active; if (A) render(A, A.wm); }, left + 50); }
@@ -223,26 +235,46 @@
       return;
     }
     const key = 'q' + q.id + '|' + S.id, waiting = calc.waiting(m) - 1, cur = $('.qstrip', slot);
-    if (slot._k === key && cur) { if (slot._w !== waiting) { slot._w = waiting; let mo = $('.qmore', cur); if (!mo && waiting > 0) { mo = document.createElement('div'); mo.className = 'qmore'; $('.qh', cur).after(mo); } if (mo) { mo.textContent = moreText(waiting); mo.hidden = !(waiting > 0); } } return; }
+    if (slot._k === key && cur) { if (slot._w !== waiting) { slot._w = waiting; let mo = $('.qmore', cur); if (!mo && waiting > 0) { mo = document.createElement('div'); mo.className = 'qmore'; $('.qhd', cur).after(mo); } if (mo) { mo.textContent = moreText(waiting); mo.hidden = !(waiting > 0); } } return; }
     slot._k = key; slot._w = waiting;
     /* a question that arrives while the rail is folded away opens it: the full question is what the person answers */
-    const app = $('#app'); if (app && app.dataset.rail === 'min' && !S.replay) openRail(false);
+    const app = $('#app'); if (app && app.dataset.rail === 'min') openRail(false);   /* in a replay too: the banner over it says how to answer */
     announce(q.agent + ' asks: ' + clip1(q.cmd, 200) + (waiting > 0 ? ' (' + waiting + ' more waiting)' : ''));
     const A = m.ag[q.agent];
-    slot.innerHTML = '<section class="qstrip" role="group" aria-label="Approval question from ' + esc(q.agent) + '" aria-describedby="qWhy"><div class="qh"><div><span class="qk">' + esc(q.agent) + ' · ' + esc(A ? A.role : '') + (q.task ? ' · ' + esc(q.task) : '') + '</span><b>' + wants(q) + '</b></div><span class="qw">waiting for you: 0s</span></div>' + (waiting > 0 ? '<div class="qmore">' + moreText(waiting) + '</div>' : '') +
+    slot.innerHTML = '<section class="qstrip" tabindex="-1" role="group" aria-label="Approval question from ' + esc(q.agent) + '" aria-describedby="qWhy">' + REPLAY_HTML + '<div class="qhd"><div><span class="qk">' + esc(q.agent) + ' · ' + esc(A ? A.role : '') + (q.task ? ' · ' + esc(q.task) : '') + '</span><b>' + wants(q) + '</b></div><span class="qw">waiting for you: 0s</span></div>' + (waiting > 0 ? '<div class="qmore">' + moreText(waiting) + '</div>' : '') +
       cmdHtml(q) + changeHtml(q) + (q.scope ? '<div class="qscope"><b>scope</b><span class="qsv">' + mark(q.scope) + '</span></div>' : '') + whyHtml(q, 'qWhy') + '<div class="qbox">' + opts(q, null, S) + '</div></section>';
     const strip = $('.qstrip', slot), box = $('.qbox', strip), render2 = () => { box.innerHTML = opts(q, null, S); wire(); }; box._back = render2;
     const wb = $('[data-whole]', strip); if (wb) wb.addEventListener('click', () => openWhole(q));
     function wire() { $$('.qopt', box).forEach(b => b.addEventListener('click', () => answer(S, q, +b.dataset.choice, box))); }
     wire(); shown[q.id] = shown[q.id] == null ? SL.time.T.wall : shown[q.id];
   }
+  /** The banner over a question while the view is a replay: answering is paused until the view goes live (paintMeters shows it). */
+  const REPLAY_HTML = '<div class="qreplay" role="alert" hidden><b>Replay:</b> <span>answers are paused</span> <button class="btn sm pri" type="button" data-golive>Go live</button></div>';
+  /** The manager's decisions since the person last answered a question themselves (the tail of m.mgrDec). */
+  function mgrRecent(m) {
+    const mine = (m.qs || []).filter(x => x.answered && x.by !== 'manager').reduce((t, x) => Math.max(t, x.tAns == null ? -Infinity : x.tAns), -Infinity);
+    return (m.mgrDec || []).filter(d => d.t >= mine);
+  }
+  /** The words of a list of the manager's decisions: "the manager approved N actions", or with a denial "the manager answered N questions: A approved, D denied". */
+  function mgrLabel(list) {
+    const n = list.length, d = list.filter(x => !x.ok).length, a = n - d, pl = (k, w) => k + ' ' + w + (k === 1 ? '' : 's');
+    return d ? 'the manager answered ' + pl(n, 'question') + ': ' + a + ' approved, ' + d + ' denied' : 'the manager approved ' + pl(n, 'action');
+  }
+  /**
+   * The manager's decisions as one collapsed line ("the manager approved N actions ▸") that opens to the list: the agent, the command and
+   * approved or denied. cls is the class of the box (in the chat a row, in the rail a quiet line). Every text is escaped.
+   */
+  function mgrHtml(list, open, cls) {
+    const rows = list.slice(-60).map(d => '<li><b style="color:' + U.agCol(d.agent) + '">' + esc(d.agent || '?') + '</b>' + (d.task ? ' <span class="dim">' + esc(d.task) + '</span>' : '') + ' <span class="mono">' + esc(clip1(d.cmd, 160)) + '</span> ' + (d.ok ? '<span class="ok">approved</span>' : '<span class="err">denied</span>') + '</li>').join('');
+    return '<div class="' + cls + '"><button class="qmgr-t" type="button" data-mgrtog aria-expanded="' + open + '"><span class="lg" aria-hidden="true">' + (list.some(d => !d.ok) ? '⊘' : '✓') + '</span><span>' + esc(mgrLabel(list)) + '</span><span class="dx" aria-hidden="true">' + (open ? '▾' : '▸') + '</span></button><ol class="qmgr-l"' + (open ? '' : ' hidden') + '>' + (list.length > 60 ? '<li class="dim">' + (list.length - 60) + ' earlier ones are in the log</li>' : '') + rows + '</ol></div>';
+  }
   /** Who closed a question when it was not the person (the `by` of an answer event). */
-  const BY = { timeout: 'refused: nobody answered in time', canceled: 'refused: canceled (the turn stopped, or the question could not be shown)', closed: 'refused: the session closed', nobody: 'refused: no page was open to answer' };
+  const BY = { manager: 'answered by the manager', timeout: 'refused: nobody answered in time', canceled: 'refused: canceled (the turn stopped, or the question could not be shown)', closed: 'refused: the session closed', nobody: 'refused: no page was open to answer' };
   /** The command: every line and every character of it, in a block of its own scroll; a long one has its length and its end above it. */
   const cmdHtml = q => { const m = markNonAscii(q.cmd); return lenLine(q.cmd, 'the command') + '<div class="qcmd qblk"><i>' + mark(q.cwd || '.') + ' $</i> ' + m.html + '</div>' + markNote(m); };
   /** Why it asks, in a block of its own scroll (a reason can be as long as the command it explains). */
   const whyHtml = (q, id) => lenLine(q.why, 'the reason') + '<div class="qwhy qblk"' + (id ? ' id="' + id + '"' : '') + '><b>why it asks</b>' + mark(q.why) + '</div>';
-  ui.approvals = { render, arm, answer, paintMeters, shown, wants, choiceText, keyOf, choiceOfKey, offersTwo, diffLines, parseDiff, counts, ruleList, html: { cmd: cmdHtml, why: whyHtml, change: changeHtml, opts } };
+  ui.approvals = { render, arm, answer, paintMeters, shown, wants, choiceText, keyOf, choiceOfKey, offersTwo, diffLines, parseDiff, counts, ruleList, mgrHtml, mgrLabel, mgrRecent, html: { cmd: cmdHtml, why: whyHtml, change: changeHtml, opts } };
   /**
    * Keys 1/2/3 (4 with the fourth answer) and Esc answer the front question of the active session: only when it is on screen and armed.
    * Returns true when the key answered, 'opened' when the question was not on screen (the rail was folded away or another pane was in
@@ -261,7 +293,7 @@
   /* ---------- the inbox: open questions of every session ---------- */
   function mount(sc) {
     const app = $('#app'); let pop = null;
-    function close() { if (pop) { pop.remove(); pop = null; } const b = $('#sInbox'); if (b) b.setAttribute('aria-expanded', 'false'); }
+    function close() { if (pop) { pop.remove(); pop = null; } $$('.inboxbtn[aria-expanded]').forEach(b => b.setAttribute('aria-expanded', 'false')); }
     function html() {
       const nd = SL.sessions.needs();
       return '<div class="ibx-h"><b>Needs you</b><span class="dim">' + nd.length + ' open question' + (nd.length === 1 ? '' : 's') + ' · answering follows the same quiet-period rule</span><button class="btn sm" type="button" data-close>esc</button></div>' +
@@ -280,18 +312,85 @@
     /** Open or close the inbox popover under `btn` (default: the `Needs you` button of the session strip). */
     function toggle(btn) {
       if (pop) { close(); return; }
-      btn = btn || $('#sInbox'); if (!btn) return;
+      btn = btn || $('#sInboxAll') || $('#sInbox'); if (!btn) return;
       pop = mk_('div', 'popover ibxpop'); pop.addEventListener('click', endClick); pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', 'Needs you: open questions'); app.appendChild(pop); btn.setAttribute('aria-expanded', 'true'); draw();
       const r = btn.getBoundingClientRect(), ar = app.getBoundingClientRect(); pop.style.top = (r.bottom - ar.top + 4) + 'px'; pop.style.right = Math.max(8, ar.right - r.right) + 'px';
     }
     const mk_ = (t, c) => { const e = document.createElement(t); e.className = c; return e; };
     const slot = $('#qSlot'); if (slot) sc.listen(slot, 'click', endClick);
     sc.on('needs-changed', () => { if (pop) { const nd = SL.sessions.needs().length; draw(); if (!nd) { /* keep open: shows the empty state */ } } });
-    sc.listen(document, 'pointerdown', e => { if (pop && !pop.contains(e.target) && !e.target.closest('#sInbox')) close(); });
+    sc.listen(document, 'pointerdown', e => { if (pop && !pop.contains(e.target) && !e.target.closest('.inboxbtn')) close(); });
     /* key 4: the fourth answer's No (94-keys.js routes 1, 2 and 3); the same rule as the other keys */
     sc.listen(document, 'keydown', e => { if (e.key !== '4' || e.ctrlKey || e.metaKey || e.altKey || ui.hasModal()) return; const t = e.target, inField = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable); if (inField && !(t.id === 'input' && t.value === '')) return; const q = ui.approvals.pending(); if (q && q.offersTests && ui.approvals.tryKey('4')) { e.preventDefault(); e.stopPropagation(); } }, true);
     sc.frame(() => { const SA = SL.sessions.active; if (SA && SA.wm) render(SA, SA.wm); if (pop) paintMeters(pop); paintMeters($('#qSlot')); const q = ui.approvals.pending(); const w = $('#qSlot .qw'); if (q && w) { const S = SL.sessions.active, s = Math.max(0, Math.floor(S.wt - q.t0)) + 1, t = 'waiting for you: ' + (s < 60 ? s + 's' : Math.floor(s / 60) + 'm ' + (s % 60) + 's'); if (w.textContent !== t) w.textContent = t; } });
     ui.inbox = { toggle, close, isOpen: () => !!pop };
+    /* the replay banner's Go live, and the manager's collapsed decisions (in the rail and in the chat) open and close in place */
+    sc.listen(document, 'click', e => {
+      const t = e.target && e.target.closest ? e.target : null; if (!t) return;
+      if (t.closest('[data-golive]')) { const S = SL.sessions.active; if (S && S.replay) { S.goLive(); S.touch(); paintMeters($('#qSlot')); const st = stripEl(); if (st) st.focus({ preventScroll: true }); } return; }
+      const mt = t.closest('[data-mgrtog]'); if (!mt) return; const open = mt.getAttribute('aria-expanded') !== 'true', l = mt.nextElementSibling;
+      mt.setAttribute('aria-expanded', String(open)); if (l) l.hidden = !open; const dx = $('.dx', mt); if (dx) dx.textContent = open ? '▾' : '▸';
+      const slot = $('#qSlot'); if (slot && slot.contains(mt)) slot._mgrOpen = open;
+    });
+    /* how long the oldest question has waited, on every Needs-you badge, and the browser notification of one that waits too long */
+    sc.interval(() => { paintAges(); notifyDue(); }, 1000);
+    sc.on('needs-changed', () => { paintAges(); closeAnswered(); });
   }
+  /** Seconds as the badges say them: 42s, 3m 05s, 1h 02m. */
+  const waitTxt = s => { s = Math.max(0, Math.floor(s)); return s < 60 ? s + 's' : s < 3600 ? Math.floor(s / 60) + 'm ' + String(s % 60).padStart(2, '0') + 's' : Math.floor(s / 3600) + 'h ' + String(Math.floor(s % 3600 / 60)).padStart(2, '0') + 'm'; };
+  /** How long question q of session S has waited, in seconds (the session's world clock). */
+  const waitOf = (S, q) => Math.max(0, (S.wt || 0) - (q.t0 || 0));
+  /** The oldest open question of any session as {S, q, waited} (seconds), or null. */
+  function oldest() { const nd = SL.sessions.needs(); if (!nd.length) return null; let best = null; nd.forEach(x => { const w = waitOf(x.S, x.q); if (!best || w > best.waited) best = { S: x.S, q: x.q, waited: w }; }); return best; }
+  /** Write the wait of the oldest question into every [data-needage] (the session strip's and the left rail's Needs-you badges). */
+  function paintAges() { const o = oldest(), t = o ? waitTxt(o.waited) : ''; $$('[data-needage]').forEach(el => { if (el.textContent !== t) el.textContent = t; }); }
+  /**
+   * Bring a question to the person: its session becomes the active one, the Radio rail opens (on a phone, its pane) and the question's
+   * card takes the focus. Without arguments it is the question that has waited longest. Returns false when nothing waits.
+   */
+  function goto(sid, qid) {
+    let S = sid ? SL.sessions.get(sid) : null, q = S && S.wm ? S.wm.qs.find(x => x.id === qid && !x.answered) || calc.openQuestion(S.wm) : null;
+    if (!q) { const o = oldest(); if (!o) return false; S = o.S; q = o.q; }
+    if (ui.inbox && ui.inbox.isOpen()) ui.inbox.close();
+    if (SL.sessions.active !== S) SL.act.switchSession(S.id);
+    openRail(true); shown[q.id] = SL.time.T.wall;
+    const focus = () => { const A = SL.sessions.active; if (A && A.wm) render(A, A.wm); const st = stripEl(); if (st) { st.focus({ preventScroll: true }); if (st.scrollIntoView) st.scrollIntoView({ block: 'nearest' }); } };
+    focus(); setTimeout(focus, 60);
+    return true;
+  }
+  ui.approvals.goto = goto; ui.approvals.oldest = oldest; ui.approvals.waitTxt = waitTxt; ui.approvals.paintAges = paintAges;
+
+  /* ---------- the browser notification of a question that waits (Settings › Appearance: off by default) ---------- */
+  const NOTE = { sent: Object.create(null), open: Object.create(null) };
+  /** The Notification constructor of this browser, or null. */
+  const notifier = () => (typeof window !== 'undefined' && typeof window.Notification === 'function' ? window.Notification : null);
+  /** Is the page out of sight: its tab hidden, or its window without the focus? */
+  const away = () => document.hidden || (typeof document.hasFocus === 'function' && !document.hasFocus());
+  /** One notification per question that has waited the set number of seconds while the page is out of sight; a click on it brings the
+   *  page and the question forward. Nothing when the setting is off or the browser does not allow notifications. */
+  function notifyDue() {
+    const N = notifier(), st = SL.settings; if (!N || st.notify !== 'on' || N.permission !== 'granted' || !away()) return;
+    const after = Math.max(5, parseInt(st.notifyAfter, 10) || 30);
+    SL.sessions.needs().forEach(({ S, q }) => {
+      if (NOTE.sent[q.id] || S.meta.headless || waitOf(S, q) < after) return; NOTE.sent[q.id] = true;
+      let n; try { n = new N('Sleipnir · ' + S.name + ' needs you', { body: q.agent + ' ' + wants(q) + ': ' + clip1(q.cmd, 140) + ' (waiting ' + waitTxt(waitOf(S, q)) + ')', tag: 'sleipnir-' + q.id }); } catch (e) { return; }
+      NOTE.open[q.id] = n; const sid = S.id, qid = q.id;
+      n.onclick = () => { try { window.focus(); } catch (e) { /* the browser decides */ } goto(sid, qid); try { n.close(); } catch (e) { /* gone */ } delete NOTE.open[qid]; };
+    });
+  }
+  /** Close the notifications of questions that are no longer open. */
+  function closeAnswered() { const open = new Set(SL.sessions.needs().map(x => x.q.id)); Object.keys(NOTE.open).forEach(id => { if (open.has(id)) return; try { NOTE.open[id].close(); } catch (e) { /* gone */ } delete NOTE.open[id]; }); }
+  /** Turn the notification on or off from a click (the browser asks for its permission only from one). Resolves the setting's value. */
+  ui.approvals.setNotify = function (on, after) {
+    const N = notifier();
+    if (after != null) SL.act.setNotify(SL.settings.notify, after);
+    if (!on) { SL.act.setNotify('off'); return Promise.resolve('off'); }
+    if (!N) { ui.toast('this browser cannot show notifications', 'warm'); SL.act.setNotify('off'); return Promise.resolve('off'); }
+    const ok = p => { if (p === 'granted') { SL.act.setNotify('on'); return 'on'; } ui.toast(p === 'denied' ? 'the browser blocks notifications for this page: allow them in its site settings' : 'notifications were not allowed', 'warm'); SL.act.setNotify('off'); return 'off'; };
+    if (N.permission === 'granted' || N.permission === 'denied') return Promise.resolve(ok(N.permission));
+    let got = false; const once = p => { if (got) return SL.settings.notify; got = true; return ok(p); };   /* an old browser answers through the callback, a new one through the promise */
+    try { const r = N.requestPermission(once); return r && typeof r.then === 'function' ? r.then(once) : Promise.resolve(SL.settings.notify); } catch (e) { return Promise.resolve(once('default')); }
+  };
+  ui.approvals.notifyDue = notifyDue; ui.approvals.notes = NOTE;
   ui.approvals.mount = mount;
 })(SL);

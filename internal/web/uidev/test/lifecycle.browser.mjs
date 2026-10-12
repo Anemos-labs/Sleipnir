@@ -35,7 +35,7 @@ try {
     for (let i = 0; i < 50; i++) { SL.act.switchSession(ids[i % ids.length]); await sleep(40);
       if (i === 10 || i === 25) { const S = SL.sessions.get(ids[i === 10 ? 1 : 2] || ids[0]); SL.live.applyEv(S, { seq: S.lastSeq + 1, t: S.wt, k: 'ask', q: { id: 'q_life' + i, agent: 'mgr', cmd: 'git push origin main', cwd: '.', why: 'sends commits to a remote', what: 'this command' } }); }
       await sleep(20); const need = SL.sessions.needs(), badges = document.querySelectorAll('#sstrip .stab .nb').length, inbox = +document.querySelector('#sInbox b').textContent;
-      if (badges !== SL.sessions.list.filter(S => SL.calc.openQuestion(S.wm)).length || inbox !== need.length) bad++; }
+      if (badges !== SL.sessions.list.filter(S => SL.calc.openQuestion(S.wm)).length || inbox !== need.reduce((n, x) => n + x.waiting, 0)) bad++; }
     SL.act.switchSession(ids[0]); await sleep(400); await T.settle(); await sleep(3800); await T.gc(); await T.idle(); const c1 = T.counts(), d = {}; Object.keys(base).forEach(k => { d[k] = c1[k] - base[k]; }); return { bad, d, title: document.title };`);
   ok('50 session switches while questions arrive: badges, the inbox and the title agree; nothing leaks', () => { assert.equal(sessions.bad, 0); zero(sessions.d, ['ints', 'rafs', 'listeners', 'observers', 'frames', 'updaters', 'scopes', 'bus']); assert.match(sessions.title, /^\(\? \d+\) /); });
 

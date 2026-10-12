@@ -786,3 +786,15 @@ func TestTheQuestionOfACompoundLineNamesEveryCommandItRemembers(t *testing.T) {
 		t.Errorf("the question says it remembers %q", shown)
 	}
 }
+
+// Two commands of a line that widen to the same phrase are named once: not `"make" commands and "make" commands`.
+func TestTheQuestionNamesARememberedPhraseOnce(t *testing.T) {
+	f := newFixture(t)
+	var shown string
+	rec := &promptRecorder{answer: func(_ int, r Request) Decision { shown = r.Remembers; return Decision{Allow: true} }}
+	e := askEngine(t, f, Config{}, rec.prompt)
+	e.Check(bg, f.request(bash("make -C web build && make -C api build")))
+	if shown == "" || strings.Count(shown, `"make`) != 1 {
+		t.Errorf("the question says it remembers %q", shown)
+	}
+}

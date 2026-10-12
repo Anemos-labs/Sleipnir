@@ -185,6 +185,9 @@
       D.inflight = false; if (D.epoch !== epoch) return;
       if (r.ok && r.data) { D.error = null; D.toasted = false; D.state = 'ready'; D.stamp = stamp; apply(S, D, r.data); }
       else {
+        /* a tab that is still starting has no workspace yet: the index is asked again (0.5, 1, 2, 4 s, then every 5 s), nothing is said */
+        if (r.status === 409 && r.code === 'busy' && /is starting/.test(String(r.message || ''))) { D.state = D.I ? 'ready' : 'loading'; D.startTries = (D.startTries || 0) + 1; bump(); const w = [500, 1000, 2000, 4000][D.startTries - 1] || 5000; setTimeout(() => { if (D.epoch === epoch && !S.closed) refresh(S); }, w); return; }
+        D.startTries = 0;
         D.error = { message: r.message || 'the workspace could not be read', code: r.code, status: r.status }; D.state = D.I ? 'ready' : 'error'; D.stamp = stamp;
         if (r.code !== 'network' && !D.toasted) { D.toasted = true; toast(D.error.message, 'err'); }
       }

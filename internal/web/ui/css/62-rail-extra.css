@@ -72,5 +72,5 @@
 }
 @media (max-height:700px) and (min-width:901px){
   .chhead>.dim{display:none}   /* lease, cost and hit stay on the stall and in the drawer */
-  .qstrip{padding:5px 8px}.qstrip .qh b{margin-top:1px}.qstrip .qcmd{margin:3px 0;padding:3px 7px}.qstrip .qwhy{margin-bottom:4px;line-height:1.25}.qopt{padding:2px 7px;line-height:1.2}.qmeter{margin-top:3px}
+  .qstrip{padding:5px 8px}.qstrip .qhd b{margin-top:1px}.qstrip .qcmd{margin:3px 0;padding:3px 7px}.qstrip .qwhy{margin-bottom:4px;line-height:1.25}.qopt{padding:2px 7px;line-height:1.2}.qmeter{margin-top:3px}
 }

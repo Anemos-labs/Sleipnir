@@ -875,6 +875,9 @@ type newSessionDefaults struct {
 	// UnlimitedEnv is the environment setting that gives a terminal session the budget the dialog calls off: the command line under
 	// the dialog starts with it for a team with no budget.
 	UnlimitedEnv string `json:"unlimitedEnv"`
+	// IsolationSet says that --isolation or swarm.isolation named the isolation; without it the isolation is the built-in default,
+	// and the dialog picks worktree for a team in a folder that can have it.
+	IsolationSet bool `json:"isolationSet,omitempty"`
 }
 
 // unlimitedEnv is what the terminal needs to run a team with no spending cap, as a new session of the page does when its budget is
@@ -883,7 +886,7 @@ const unlimitedEnv = "SLEIPNIR_SWARM_BUDGET_USD=0"
 
 // defaults reads the server's flags over the configuration, as the chat's options would have them.
 func (h *webHostImpl) defaults() newSessionDefaults {
-	cfg, _, _ := config.Load(config.LoadOpts{Cwd: h.d.Cwd, UntrustedProject: true})
+	cfg, rep, _ := config.Load(config.LoadOpts{Cwd: h.d.Cwd, UntrustedProject: true})
 	d := newSessionDefaults{NewSessionRequest: wire.NewSessionRequest{
 		Cwd: h.d.Cwd, Model: h.d.Model, Mode: h.d.Mode, Isolation: h.d.Isolation, Verify: h.d.Verify, Commit: h.d.Commit,
 		TrustProject: h.d.TrustProject, NoMcp: h.d.NoMCP, Effort: "default", Rules: append([]string{}, h.d.Allow...),
@@ -899,6 +902,7 @@ func (h *webHostImpl) defaults() newSessionDefaults {
 	}
 	d.AutoDocs = h.d.AutoDocs
 	d.ManagerApproves = h.d.ManagerApproves
+	d.IsolationSet = d.Isolation != ""
 	d.MinWorkers = session.MinTeamWorkers
 	if h.d.BudgetUSD > 0 {
 		b := h.d.BudgetUSD
@@ -910,6 +914,10 @@ func (h *webHostImpl) defaults() newSessionDefaults {
 		}
 		if d.Isolation == "" {
 			d.Isolation = cfg.Swarm.Isolation
+			// the built-in "none" is no one's choice: only a layer of the configuration that names it is (the report says which did)
+			if rep != nil {
+				_, d.IsolationSet = rep.Origins["swarm.isolation"]
+			}
 		}
 		if cfg.Swarm.MaxWorkers > 0 {
 			d.MaxWorkers = cfg.Swarm.MaxWorkers

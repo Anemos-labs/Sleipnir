@@ -107,6 +107,6 @@ body.resizing{cursor:col-resize;user-select:none}
 @media (max-height:700px) and (min-width:901px){
   .chhead .rr{display:none}
   .qstrip .qscope{margin-bottom:2px;font-size:11px;line-height:1.2}
-  .qstrip .qh .qk{font-size:10px}
+  .qstrip .qhd .qk{font-size:10px}
 }
 @media (max-height:700px) and (min-width:901px){.sstrip{min-height:28px}#foot{height:24px}.rail-h{min-height:32px;padding-top:6px;padding-bottom:5px}}

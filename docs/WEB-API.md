@@ -260,7 +260,7 @@ request raises something says so. Bodies and answers are the `wire` types named;
 | Method | Path | Does | Confirmation |
 |---|---|---|---|
 | `GET` | `/api/stream` | The event stream (above). `after=` or `Last-Event-ID` resumes | - |
-| `GET` | `/api/hello` | `wire.Hello` and more: `boot`, `now` (epoch ms), `tabs`, `active`, `server` (`addr`, `loopback`, `version`, `label`: the version as the top bar shows it, `build`: version, commit, toolchain and platform), `limits` (`maxBody`, `maxMessage`, `maxQuestions`), `ui` (build, `reduceMotion`, `bell`), `streamAfter`, `defaults` (the New session dialog's values, `maxWorkers`, and `testsPreset`, what the allow rule `tests` lets through) and `update` (a newer release, when one is known) | - |
+| `GET` | `/api/hello` | `wire.Hello` and more: `boot`, `now` (epoch ms), `tabs`, `active`, `server` (`addr`, `loopback`, `version`, `label`: the version as the top bar shows it, `build`: version, commit, toolchain and platform), `limits` (`maxBody`, `maxMessage`, `maxQuestions`), `ui` (build, `reduceMotion`, `bell`), `streamAfter`, `defaults` (the New session dialog's values, `maxWorkers`, `testsPreset`, what the allow rule `tests` lets through, and `isolationSet`, whether `--isolation` or `swarm.isolation` named the isolation) and `update` (a newer release, when one is known) | - |
 | `GET` | `/api/snapshot` | `{streamAfter, active, tabs: [wire.TabSnapshot]}`: every tab's snapshot | - |
 
 ### Sessions (tabs)
