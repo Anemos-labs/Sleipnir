@@ -115,3 +115,90 @@ test('what the server sent into an explanation is text, never markup', async () 
   assert.equal(L.doc.querySelectorAll('#helpTip img').length, 0, 'no element came out of it');
   assert.match(L.$('#helpTip').textContent, /<img src=x onerror=window\.__pwn=1>/, 'it is shown as it was written');
 });
+
+/* ---- no combination that cannot start: the team controls follow the folder and the number of workers (dialogs.nsGate) ---- */
+
+/** The folder route's answer for /p/a, with the state given over a clean repository root on a branch. */
+const listing = state => ({ dir: '/p', prefix: 'a', entries: [], home: '/home/u', sep: '/', state: Object.assign({ path: '/p/a', exists: true, dir: true, readable: true, parentOk: true, known: true, empty: false, git: 'repo', verify: [], repo: { hasCommits: true, branch: 'main', clean: true } }, state) });
+async function openAt(state, seed) {
+  const L = await boot({ route: (m, p) => p === '/api/hello' ? { boot: 'b1', streamAfter: 7, server: { addr: '127.0.0.1:7777' }, tabs: [], active: '', ui: {}, defaults: DEFAULTS } : p.startsWith('/api/fs/dirs') ? listing(state) : undefined });
+  L.SL.ui.dialogs.newSession(Object.assign({ cwd: '/p/a', swarm: 4, isolation: 'worktree' }, seed)); await L.settle(); L.advance(200); await L.settle();
+  return L;
+}
+const isoBtn = (L, v) => L.$('[data-seg="isolation"][data-v="' + v + '"]');
+const shown = (L, id) => { const e = L.$('#' + id); return e && !e.hidden ? e.textContent : ''; };
+
+test('a clean repository root with a team: worktree and --commit are free, and what was chosen is sent', async () => {
+  const L = await openAt({}, { commit: true });
+  assert.equal(isoBtn(L, 'worktree').disabled, false);
+  assert.equal(isoBtn(L, 'worktree').getAttribute('aria-pressed'), 'true');
+  assert.equal(L.$('[data-k="commit"]').disabled, false);
+  assert.equal(shown(L, 'nsIsoWhy') + shown(L, 'nsCommitWhy') + shown(L, 'nsTeamWhy'), '');
+  await start(L);
+  assert.deepEqual([spec(L).isolation, spec(L).commit], ['worktree', true]);
+});
+
+test('0 workers: isolation is none and cannot change, verify, --commit and --mailman are off and disabled, with the reason, and none is sent', async () => {
+  const L = await openAt({}, { swarm: 0, commit: true, mailman: true, verify: 'go test {dirs}' });
+  assert.equal(isoBtn(L, 'worktree').disabled, true);
+  assert.equal(isoBtn(L, 'none').disabled, true);
+  assert.equal(isoBtn(L, 'none').getAttribute('aria-pressed'), 'true');
+  for (const k of ['commit', 'mailman']) { assert.equal(L.$('[data-k="' + k + '"]').disabled, true, k); assert.equal(L.$('[data-k="' + k + '"]').checked, false, k); }
+  assert.equal(L.$('#nsVerify').disabled, true);
+  assert.match(shown(L, 'nsTeamWhy'), /0 workers: a single agent/);
+  assert.doesNotMatch(cli(L), /--isolation worktree|--commit|--verify|--mailman /);
+  isoBtn(L, 'worktree').click(); await L.settle();   // a click that gets through anyway changes nothing
+  await start(L);
+  assert.deepEqual([spec(L).isolation, spec(L).commit, spec(L).mailman, spec(L).verify], ['none', false, false, '']);
+});
+
+test('worktree is disabled, with which reason, for a folder that cannot have it; the seed then sends isolation none', async () => {
+  for (const [state, why] of [
+    [{ git: 'none', repo: undefined }, /Not a git repository: run git init and commit there/],
+    [{ git: 'inside', gitRoot: '/p', repo: undefined }, /inside \/p\. Pick that folder/],
+    [{ repo: { hasCommits: false, branch: 'main', clean: true } }, /has none yet: commit the project first/],
+    [{ git: 'bare', repo: { bare: true } }, /this repository is bare/],
+    [{ git: 'none', empty: true, repo: undefined }, /check git init above/],
+  ]) {
+    const L = await openAt(state, { gitInit: false, commit: true });
+    assert.equal(isoBtn(L, 'worktree').disabled, true, JSON.stringify(state));
+    assert.equal(isoBtn(L, 'none').getAttribute('aria-pressed'), 'true');
+    assert.match(shown(L, 'nsIsoWhy'), why);
+    assert.equal(L.$('[data-k="commit"]').disabled, true, '--commit follows worktree');
+    assert.match(shown(L, 'nsCommitWhy'), /--commit needs isolation worktree/);
+    assert.match(cli(L), /--isolation none/);
+    await start(L);
+    assert.deepEqual([spec(L).isolation, spec(L).commit], ['none', false], JSON.stringify(state));
+  }
+});
+
+test('an empty folder with git init checked can have worktree and --commit: git init makes a first commit on a branch', async () => {
+  const L = await openAt({ git: 'none', empty: true, repo: undefined }, { gitInit: true, commit: true });
+  assert.equal(isoBtn(L, 'worktree').disabled, false);
+  assert.equal(L.$('[data-k="commit"]').disabled, false);
+  const g = L.$('#nsGit'); g.checked = false; g.dispatchEvent(new FakeEvent('change', { bubbles: true })); await L.settle();   // unchecked: the folder stays plain
+  assert.equal(isoBtn(L, 'worktree').disabled, true);
+  assert.match(shown(L, 'nsIsoWhy'), /check git init above/);
+});
+
+test('--commit is disabled, with the reason, for isolation none, a checkout with changes and a detached HEAD', async () => {
+  const N = await openAt({}, { commit: true });
+  isoBtn(N, 'none').click(); await N.settle();
+  assert.equal(N.$('[data-k="commit"]').disabled, true);
+  assert.match(shown(N, 'nsCommitWhy'), /--commit needs isolation worktree\./);
+  const D = await openAt({ repo: { hasCommits: true, branch: 'main', clean: false } }, { commit: true });
+  assert.equal(isoBtn(D, 'worktree').disabled, false, 'uncommitted changes do not stop worktree isolation');
+  assert.equal(D.$('[data-k="commit"]').disabled, true);
+  assert.match(shown(D, 'nsCommitWhy'), /uncommitted changes/);
+  await start(D);
+  assert.deepEqual([spec(D).isolation, spec(D).commit], ['worktree', false]);
+  const H = await openAt({ repo: { hasCommits: true, detached: true, clean: true } }, { commit: true });
+  assert.match(shown(H, 'nsCommitWhy'), /HEAD is detached/);
+  assert.doesNotMatch(cli(H), /--commit/);
+});
+
+test('when the folder could not be asked about, nothing is blocked: the server checks before it opens a tab', async () => {
+  const L = await open({ swarm: 4, isolation: 'worktree', commit: true });
+  assert.equal(isoBtn(L, 'worktree').disabled, false);
+  assert.equal(L.$('[data-k="commit"]').disabled, false);
+});

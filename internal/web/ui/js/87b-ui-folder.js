@@ -39,8 +39,9 @@
 
   /**
    * What a path is, in words (state: the server's DirState, or null when it could not be asked). level: ok (a folder that exists), new (a
-   * folder to make), bad (nothing can start there), '' (nothing known). git: repo, inside (root names the repository above), offer (a
-   * new or empty folder: a repository can be made), files (a folder with files and no repository), '' (no folder).
+   * folder to make), bad (nothing can start there), '' (nothing known). git: repo, inside (root names the repository above), bare (a
+   * bare repository), offer (a new or empty folder: a repository can be made), files (a folder with files and no repository), '' (no
+   * folder).
    */
   folder.describe = (state, opts) => {
     const s = state, make = !(opts && opts.make === false);   // make: a folder that does not exist may be made (a session), else it is refused (a job)
@@ -56,13 +57,14 @@
     return {
       level: 'ok', root: s.gitRoot || '',
       lead: s.known ? 'A project of this server.' : 'New to this server: you confirm it when you start.',
-      git: s.git === 'repo' ? 'repo' : s.git === 'inside' ? 'inside' : s.empty ? 'offer' : 'files',
+      git: s.git === 'repo' ? 'repo' : s.git === 'inside' ? 'inside' : s.git === 'bare' ? 'bare' : s.empty ? 'offer' : 'files',
     };
   };
 
   /** The line about git under the path (empty when a repository is only offered: that is a checkbox). */
   folder.gitNote = d => ({
     repo: 'A git repository.',
+    bare: 'A bare git repository: it has no work tree to work in.',
     inside: 'Inside the git repository at ' + d.root + '.',
     files: 'Not a git repository.',
   })[d.git] || '';

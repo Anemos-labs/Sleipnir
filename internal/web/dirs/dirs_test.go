@@ -122,7 +122,7 @@ func TestExpandPaths(t *testing.T) {
 // What a path names: a folder that exists (empty or not, a repository, a folder inside one), one that does not (whose parent does, or
 // does not), a file, and the checks its files suggest.
 func TestInspectSaysWhatThePathIs(t *testing.T) {
-	root := tree(t, "empty/", "full/a.txt", "repo/.git/", "repo/sub/", "mod/go.mod", "mod/package.json", "mod/Makefile", "file.txt", "node/package.json", "py/setup.py", "py/pyproject.toml")
+	root := tree(t, "empty/", "full/a.txt", "repo/.git/", "repo/sub/", "bare/HEAD", "bare/objects/", "bare/refs/", "mod/go.mod", "mod/package.json", "mod/Makefile", "file.txt", "node/package.json", "py/setup.py", "py/pyproject.toml")
 	st := func(rel string) (s struct {
 		Exists, Dir, ParentOK, Empty bool
 		Git, GitRoot                 string
@@ -143,6 +143,9 @@ func TestInspectSaysWhatThePathIs(t *testing.T) {
 	}
 	if s := st("repo"); s.Git != "repo" || s.GitRoot != "" {
 		t.Errorf("repo: %+v", s)
+	}
+	if s := st("bare"); s.Git != "bare" {
+		t.Errorf("a bare repository: %+v", s)
 	}
 	if s := st("repo/sub"); s.Git != "inside" || s.GitRoot != filepath.Join(root, "repo") {
 		t.Errorf("repo/sub: %+v", s)

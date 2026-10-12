@@ -436,7 +436,8 @@ type DirEntry struct {
 // whether there is a folder, Readable whether its entries can be listed, ParentOK whether its parent is a folder (so that it can be
 // made), Known whether it is one of the server's projects, Empty whether the folder has nothing in it, Inaccessible that the server
 // could not look at the path at all (it is there, as far as anyone can tell, and nothing can start in it). Git is "repo" for the top of
-// a git repository, "inside" for a folder within another one (GitRoot), "none" otherwise. Verify are the checks its files suggest.
+// a git repository, "inside" for a folder within another one (GitRoot), "bare" for a bare repository (a git directory with no work
+// tree), "none" otherwise. Verify are the checks its files suggest.
 type DirState struct {
 	Path     string `json:"path"`
 	Exists   bool   `json:"exists"`
@@ -450,6 +451,20 @@ type DirState struct {
 	Git          string       `json:"git"`
 	GitRoot      string       `json:"gitRoot,omitempty"`
 	Verify       []VerifyHint `json:"verify"`
+	// Repo is what git says of the repository when the path is its root (Git "repo") or a bare repository (Git "bare"); absent when
+	// git could not be asked in time.
+	Repo *RepoState `json:"repo,omitempty"`
+}
+
+// RepoState is what a repository says about starting an isolated team in it: Bare (no work tree), HasCommits (a commit to start the
+// workers' trees from), Branch (the checked-out branch; Detached when HEAD is on none), and Clean (nothing staged, modified or
+// untracked), which --commit needs.
+type RepoState struct {
+	Bare       bool   `json:"bare,omitempty"`
+	HasCommits bool   `json:"hasCommits"`
+	Branch     string `json:"branch,omitempty"`
+	Detached   bool   `json:"detached,omitempty"`
+	Clean      bool   `json:"clean"`
 }
 
 // VerifyHint is a command that checks a project of the kind a folder looks like (Cmd) and the file that says so (Why).

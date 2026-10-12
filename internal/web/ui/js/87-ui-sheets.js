@@ -141,6 +141,34 @@
   const ruleProblem = v => /^[A-Za-z_][\w.:-]*(\([\s\S]*\))?$/.test(v) ? '' : '“' + v + '” is not a rule. Write a tool name, or a tool name with a pattern in parentheses, like Bash(go test:*).';
   dialogs.ruleProblem = ruleProblem;
   const FOLDER_START = /^([\\/]|[A-Za-z]:[\\/])/;
+  /**
+   * What the team controls of the New session dialog can be, for its state st and the folder's state (the server's DirState, null when
+   * it is not known): a reason for each control that is blocked ('' when it is free), and the values that are sent and shown. No
+   * combination that cannot start is sent: 0 workers is a single agent (isolation none, no verify, commit or mailman); worktree
+   * isolation needs the root of a git repository with a commit, or a folder that git init makes one; --commit needs worktree isolation
+   * and a clean checkout on a branch. What is not known is not blocked: the server checks again before it opens a tab.
+   */
+  dialogs.nsGate = function (st, state) {
+    const g = { team: '', worktree: '', commit: '', isolation: st.isolation === 'worktree' ? 'worktree' : 'none', commitOn: !!st.commit, mailman: !!st.mailman, verify: st.verify || '' };
+    if (!(Number(st.swarm) > 0)) {
+      g.team = g.worktree = g.commit = '0 workers: a single agent works in the folder itself, so there is no isolation, verify, commit or mailman.';
+      return Object.assign(g, { isolation: 'none', commitOn: false, mailman: false, verify: '' });
+    }
+    const d = ui.folder.describe(state), r = state && state.repo, made = d.git === 'offer' && !!st.gitInit;
+    if (state && d.level !== 'bad' && !made) {
+      g.worktree = d.git === 'repo' ? (r && r.bare ? 'Worktree isolation needs a work tree, and this repository is bare.' : r && !r.hasCommits ? 'Worktree isolation starts every copy from a commit, and this repository has none yet: commit the project first.' : '')
+        : d.git === 'bare' ? 'Worktree isolation needs a work tree, and this repository is bare.'
+        : d.git === 'inside' ? 'Worktree isolation needs the root of the repository: this folder is inside ' + d.root + '. Pick that folder, or isolation none.'
+        : d.git === 'offer' ? 'Not a git repository yet: check git init above to make one (with a first commit), or use isolation none.'
+        : d.git === 'files' ? 'Not a git repository: run git init and commit there, or pick a repository’s root folder.' : '';
+    }
+    if (g.worktree) g.isolation = 'none';
+    if (g.isolation !== 'worktree') g.commit = '--commit needs isolation worktree' + (g.worktree ? ', which this folder cannot have.' : '.');
+    else if (!made && r && r.detached) g.commit = '--commit moves the checked-out branch, and HEAD is detached: check out a branch first.';
+    else if (!made && r && !r.clean) g.commit = '--commit needs a clean checkout: this one has uncommitted changes. Commit or stash them first.';
+    if (g.commit) g.commitOn = false;
+    return g;
+  };
   dialogs.newSession = function (seed) {
     if (SL.data) { SL.data.load('projects'); SL.data.load('models'); }
     const st = Object.assign(seedOf(), seed || {}), MAXW = st.maxWorkers, folder = ui.folder;
@@ -149,7 +177,8 @@
     const fstate = () => (fm ? fm.state() : null);
     const quiet = () => st.mode === 'bypass' || st.mode === 'yolo';   // these modes never ask: an allow rule has nothing to answer
     const rulesNow = () => (quiet() ? [] : st.rules);
-    const cli = () => { const s = fstate(), d = folder.describe(s); return dialogs.cliLine(Object.assign({}, st, { rules: rulesNow(), cwd: s ? s.path : st.cwd, makeDir: !!s && !s.exists && d.level === 'new', makeGit: d.git === 'offer' && !!st.gitInit })); };
+    const gate = () => dialogs.nsGate(st, fstate());
+    const cli = () => { const s = fstate(), d = folder.describe(s), g = gate(); return dialogs.cliLine(Object.assign({}, st, { isolation: g.isolation, commit: g.commitOn, mailman: g.mailman, verify: g.verify }, { rules: rulesNow(), cwd: s ? s.path : st.cwd, makeDir: !!s && !s.exists && d.level === 'new', makeGit: d.git === 'offer' && !!st.gitInit })); };
     const help = (key, about) => ui.help(NS_HELP[key], about);
     const opt = (k, flag, about) => '<div class="nsopt"><label class="chk"><input type="checkbox" data-k="' + k + '"' + (st[k] ? ' checked' : '') + '> ' + flag + '</label>' + help(k, about) + '</div>';
     const team = inner => '<div class="nsteam" data-team>' + inner + '</div>';
@@ -172,6 +201,21 @@
       field('first goal (optional)', '<textarea id="nsGoal" rows="3" placeholder="e.g. add pagination to the orders endpoint, with tests" aria-label="Goal">' + esc(st.goalText) + '</textarea>', '', help('goal', 'the first goal')) + '</div></div><div class="nsmodefld">' + field('mode (--mode)', modePick(st.mode), '', help('mode', 'a mode')) + '</div>' +
       '<h3 class="lab" style="margin:12px 0 4px">the same command line</h3><pre class="pre cli" id="nsCli"></pre><div class="row2"><button class="btn pri" type="button" id="nsStart">Start the session</button><button class="btn" type="button" id="nsCopy">Copy the command</button><button class="btn" type="button" data-close>Cancel</button></div>',
       onMount(b, sc, close) {
+        /* the reasons of the team controls that cannot be used (dialogs.nsGate), each under its control */
+        const why = (id, at) => { const e = document.createElement('div'); e.className = 'nswhy'; e.id = id; e.setAttribute('role', 'status'); e.hidden = true; if (at) at.after(e); return e; };
+        const teamEl = $('[data-team]', b), segIso = $('[data-seg="isolation"]', b), commitBox = $('[data-k="commit"]', b), mailBox = $('[data-k="mailman"]', b);
+        const whyTeam = why('nsTeamWhy', null); if (teamEl) teamEl.insertBefore(whyTeam, teamEl.firstChild);
+        const whyIso = why('nsIsoWhy', segIso && segIso.parentElement), whyCommit = why('nsCommitWhy', commitBox && commitBox.closest('.nsopt'));
+        const say = (e, t) => { e.hidden = !t; if (e.textContent !== t) e.textContent = t; };
+        function paintGate() {
+          const g = gate(), team = !!g.team;
+          say(whyTeam, g.team); say(whyIso, team ? '' : g.worktree); say(whyCommit, team ? '' : g.commit);
+          $$('[data-seg="isolation"]', b).forEach(x => { x.disabled = team || (x.dataset.v === 'worktree' && !!g.worktree); x.setAttribute('aria-pressed', String(x.dataset.v === g.isolation)); });
+          if (commitBox) { commitBox.disabled = !!g.commit; commitBox.checked = g.commitOn; }
+          if (mailBox) { mailBox.disabled = team; mailBox.checked = g.mailman; }
+          const v = $('#nsVerify', b); if (v) { v.disabled = team; if (team) v.value = ''; else if (document.activeElement !== v && v.value !== st.verify) v.value = st.verify; }
+          $$('[data-vh]', b).forEach(c => { c.disabled = team; });
+        }
         const paintVerify = () => {
           const s = fstate(), hs = folder.verifyHints(s), el = $('#nsVerifyHints', b);
           el.innerHTML = !s ? '' : hs.length ? '<span class="dim">suggested for this folder:</span>' + hs.map(h => chip('data-vh', h.cmd, 'Suggested by ' + esc(h.why) + ' in this folder. Click to use it.')).join('') : s.exists && s.dir ? '<span class="dim">no build files recognised here: write the command yourself, like <span class="mono">npm test</span>.</span>' : '';
@@ -185,6 +229,7 @@
           $('#nsRules', b).innerHTML = st.rules.map((r, i) => '<span class="tag">' + esc(r) + ' <button type="button" data-rr="' + i + '" aria-label="remove ' + esc(r) + '">×</button></span>').join('');
           $('#nsGitRow', b).hidden = folder.describe(fstate()).git !== 'offer'; paintVerify();
           $('#nsRuleSet', b).disabled = quiet(); $('#nsRuleOff', b).hidden = !quiet();
+          paintGate();
         };
         ui.helpMount(b, sc);
         fm = folder.mount(b, sc, st, { projects: () => D.extra.projects || [], onState: () => paint() }); paint();
@@ -195,8 +240,8 @@
         sc.listen(b, 'change', e => { const t = e.target; if (t.id === 'nsModel') st.model = t.value; else if (t.id === 'nsRole' || t.id === 'nsRoleM') st.roleDirty = true; else if (t.dataset.k) st[t.dataset.k] = t.checked; paint(); });
         sc.listen(b, 'click', e => {
           const mr = e.target.closest('[data-nsmode]'); if (mr) { st.mode = mr.dataset.nsmode; paint(); return; }
-          const x = e.target.closest('[data-seg]'); if (x) { st[x.dataset.seg] = x.dataset.v; $$('[data-seg="' + x.dataset.seg + '"]', b).forEach(y => y.setAttribute('aria-pressed', y === x)); paint(); return; }
-          const vh = e.target.closest('[data-vh]'); if (vh) { st.verify = vh.dataset.vh; $('#nsVerify', b).value = st.verify; paint(); return; }
+          const x = e.target.closest('[data-seg]'); if (x) { if (x.disabled) return; st[x.dataset.seg] = x.dataset.v; $$('[data-seg="' + x.dataset.seg + '"]', b).forEach(y => y.setAttribute('aria-pressed', y === x)); paint(); return; }
+          const vh = e.target.closest('[data-vh]'); if (vh) { if (vh.disabled) return; st.verify = vh.dataset.vh; $('#nsVerify', b).value = st.verify; paint(); return; }
           const ex = e.target.closest('[data-ex]'); if (ex) { if (!quiet()) addRule(ex.dataset.ex); paint(); return; }
           const rr = e.target.closest('[data-rr]'); if (rr && !quiet()) { st.rules.splice(+rr.dataset.rr, 1); paint(); }
           const rm = e.target.closest('[data-rmr]'); if (rm) { delete st.roleModels[rm.dataset.rmr]; paint(); }
@@ -220,6 +265,7 @@
             if (d.level === 'bad') { starting = false; ui.toast(d.lead, 'err'); return; }
             if (!state && !FOLDER_START.test(typed)) { starting = false; ui.toast('The server could not check that folder: write its full path.', 'err'); return; }
             const spec = { name: st.name.trim() || undefined, cwd: state ? state.path : typed, model: st.model, mode: st.mode, swarm: st.swarm, isolation: st.isolation, verify: st.verify, commit: st.commit, mailman: st.mailman, rules: rulesNow(), trustProject: st.trustProject, noMcp: st.noMcp, goalText: st.goalText.trim() || undefined, effort: st.effort, roleModels: st.roleModels };
+            const g = gate(); Object.assign(spec, { isolation: g.isolation, verify: g.verify, commit: g.commitOn, mailman: g.mailman });   /* nothing that cannot start: dialogs.nsGate */
             spec.budget = bud > 0 ? bud : 0;   // 0 is off: the server does not put its own cap on the session
             if (st.resume) spec.resume = st.resume;
             const raises = [];
