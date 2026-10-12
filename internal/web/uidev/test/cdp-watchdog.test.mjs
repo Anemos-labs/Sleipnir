@@ -84,7 +84,7 @@ test('a browser that exits while it starts: every attempt is noted, the last err
   const { value: err, notes } = await stderrOf(() => failure(t, Browser.launch(f.bin, { attempts: 3, deadline: 3000 })));
   assert.ok(err, 'the start fails');
   assert.match(err.message, /^chrome did not start: it exited \(1\) while waiting for the line "DevTools listening on"/); assert.doesNotMatch(err.message, /killed/);
-  assert.match(err.message, /the end of its stderr:\n\[fake\] no display to open$/);
+  assert.match(err.message, /the end of its stderr:\n\[fake\] no display to open \u2014 giving up$/, 'its stderr is quoted whole, though a character of it came in two pieces');
   assert.equal(notes.match(/^chrome attempt \d of 3 failed, starting another: chrome did not start: it exited \(1\)/gm).length, 2, notes);
   assert.equal(f.pids().length, 3, 'three browsers were tried'); assert.deepEqual(f.pids().filter(alive), []);
 });

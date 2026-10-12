@@ -4,7 +4,7 @@
 //   nohandshake  prints "DevTools listening on ws://..." and accepts connections there, but never answers the WebSocket upgrade
 //                (a browser whose DevTools port is bound while the thread that would answer it is stuck)
 //   noanswer     completes the WebSocket handshake and never answers a call
-//   exit         writes a line to stderr and exits 1
+//   exit         writes a line to stderr in two writes, split inside a multibyte character, and exits 1
 //   answer       answers every DevTools call (a browser that works, as far as Browser.launch looks)
 //   stall-once   the first run (PIDFILE was empty) is silent; every later run is answer
 // It ignores SIGTERM, as a stuck browser may: only SIGKILL ends it.
@@ -38,8 +38,10 @@ function frames(buf) {
   return [out, buf];
 }
 
-if (mode === 'exit') { process.stderr.write('[fake] no display to open\n'); process.exit(1); }
-if (mode === 'silent') setInterval(() => {}, 1 << 30);
+if (mode === 'exit') {
+  const line = Buffer.from('[fake] no display to open \u2014 giving up\n'), cut = line.indexOf(0xe2) + 1;   // after the first byte of the dash
+  process.stderr.write(line.subarray(0, cut)); setTimeout(() => { process.stderr.write(line.subarray(cut)); process.exit(1); }, 100);
+} else if (mode === 'silent') setInterval(() => {}, 1 << 30);
 else {
   const held = [];
   const srv = net.createServer(c => {
