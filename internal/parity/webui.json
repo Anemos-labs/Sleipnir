@@ -1064,6 +1064,15 @@
   },
   {
    "group": "the program (sleipnir ...)",
+   "name": "sleipnir rl reverify",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:rl reverify"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
    "name": "sleipnir rl reward",
    "kind": "program",
    "live": true,
@@ -1213,6 +1222,15 @@
    "live": true,
    "effects": [
     "runner:rl tasks stats"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir rl tasks update-scorer",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:rl tasks update-scorer"
    ]
   },
   {
@@ -2185,6 +2203,7 @@
    "rl expand",
    "rl export",
    "rl report",
+   "rl reverify",
    "rl reward",
    "rl rollout",
    "rl serve",
@@ -2202,6 +2221,7 @@
    "rl tasks filter",
    "rl tasks split",
    "rl tasks stats",
+   "rl tasks update-scorer",
    "rl tasks validate",
    "rl verify",
    "help",
@@ -2921,6 +2941,52 @@
     ],
     "modeWith": {}
    },
+   "rl reverify": {
+    "mode": "net",
+    "positionals": [
+     "RUN_DIR|SAMPLE_DIR"
+    ],
+    "flags": [
+     "blobs",
+     "budget-usd",
+     "concurrency",
+     "confine",
+     "confine-ro",
+     "confine-rw",
+     "dry-run",
+     "final",
+     "infra-retries",
+     "json",
+     "keep-failed",
+     "max-outage-pause",
+     "max-requests",
+     "max-spend-usd",
+     "max-steps",
+     "max-wall",
+     "no-net-isolation",
+     "outage-patience",
+     "pass-env",
+     "progress-budget",
+     "progress-sample",
+     "require-net-isolation",
+     "rewards",
+     "savepoint-every",
+     "savepoints",
+     "score-savepoints",
+     "set-env",
+     "target-price",
+     "tasks",
+     "verify-policy",
+     "verify-repeats",
+     "work-dir",
+     "workspace-mode"
+    ],
+    "modeWith": {
+     "no-net-isolation": "priv",
+     "pass-env": "priv",
+     "set-env": "priv"
+    }
+   },
    "rl reward": {
     "mode": "net",
     "positionals": [
@@ -3436,6 +3502,17 @@
      "FILE"
     ],
     "flags": [],
+    "modeWith": {}
+   },
+   "rl tasks update-scorer": {
+    "mode": "run",
+    "positionals": [
+     "FILE"
+    ],
+    "flags": [
+     "blobs",
+     "o"
+    ],
     "modeWith": {}
    },
    "rl tasks validate": {

@@ -950,9 +950,11 @@ and `--api-key-env`. `sleipnir rl <command> -h` prints a command's flags and exi
 sleipnir rl taskgen <generator>    make tasks from history, chains of merged pull requests, authored fixtures, mutations, recall questions or libraries rebuilt from their specification, or compose swarm tasks
 sleipnir rl tasks <command> FILE   validate, filter, split and check task files
 sleipnir rl rollout                run G samples per task with a policy and write a run directory
+sleipnir rl branch                 continue a finished long rollout from its savepoints, K times each
 sleipnir rl eval                   run held-out tasks and report pass@k, cost and protocol quality
 sleipnir rl serve                  HTTP rollout server for a trainer
 sleipnir rl reward                 re-score a run directory with different reward weights
+sleipnir rl reverify               verify finished rollouts again (final patch, savepoints) with the tasks as they are now
 sleipnir rl report                 what runs measured: pass rate with its interval, cost, cache hits, friction
 sleipnir rl compare                two runs or saved reports over the tasks both ran, with paired intervals and gates
 sleipnir rl export                 write trainer-ready data
@@ -1516,6 +1518,13 @@ verifier still passes is reported `ok (WEAK: the verifier still passes with FILE
 That is a warning, not a failure: the verifier pays for an unfinished solution, or the solution changes a file the task
 does not need. It is deterministic and costs one verifier run per solution file (and repeat).
 
+`update-scorer` writes the tasks (to `-o`, default stdout) with the whole-suite scorer script of the running build: a
+task that `rl taskgen chain`, `rebuild` or `fixture` made carries the script as the hidden file
+`.sleipnir/suite/score.py`, and a scorer fixed later scores the task without generating it again. Only that file
+changes; the spec, units, guards and every other field stay, and the new script is stored where the old one was (the
+`--blobs` store, or inline). Tasks without a suite scorer are written unchanged. `rl reverify` measures finished
+rollouts again with the result.
+
 <!-- flags: rl tasks validate -->
 ```text
 usage: sleipnir rl tasks validate FILE
@@ -1633,6 +1642,18 @@ flags:
         where snapshots, workspaces and verification checkouts live (default: <state>/rl-work)
   -workspace-mode string
         export: a fresh single-commit tree without history | clone: a local clone with history (default "export")
+```
+<!-- /flags -->
+
+<!-- flags: rl tasks update-scorer -->
+```text
+usage: sleipnir rl tasks update-scorer [flags] FILE
+
+flags:
+  -blobs string
+        blob store holding the tasks' hidden verifier files, where the new script goes too (default: blobs/ next to FILE)
+  -o string
+        output file (default: stdout)
 ```
 <!-- /flags -->
 
@@ -2153,6 +2174,94 @@ flags:
         price and cache model episodes are repriced under: a preset or a model id (see -list-targets)
   -tasks string
         tasks file to score against (default: each rollout's task.json, whose hidden files are redacted)
+```
+<!-- /flags -->
+
+### `sleipnir rl reverify`
+
+Verifies finished rollouts again with the tasks as `--tasks` defines them now, for a verifier fixed after the run (see
+`rl tasks update-scorer`). For each sample under the given run or sample directories, the final patch the runner verified
+is verified again with the full verifier (`--final`, the episode's verdict), and the work tree of every consistent
+savepoint is scored again in progress mode (`--savepoints`, with `--progress-sample` and `--progress-budget`:
+`progress.jsonl` and the episode's progress, one point per savepoint). Nothing the agents did changes. The replaced
+verdict and curve are appended to the sample's `reverify.jsonl`, and the new verifier log and the patch it checked go to
+`<sample>/reverify/`. The task must be the one the sample ran, from the same start tree; otherwise the sample is
+refused, as is a savepoint whose tree is missing from the sample's store, and nothing of that sample is written.
+`--dry-run` measures and prints without writing. The rewards still hold the old scores: run `rl reward` on the run
+afterwards. Use the work dir, `--confine` settings and `--set-env` caches the run used. A sample that is still running
+has no `episode.json` and is skipped.
+
+<!-- flags: rl reverify -->
+```text
+usage: sleipnir rl reverify --tasks FILE [flags] RUN_DIR|SAMPLE_DIR...
+
+flags:
+  -blobs string
+        blob store holding the tasks' hidden verifier files (default: blobs/ next to the tasks file)
+  -budget-usd float
+        spend cap of one rollout whose task sets none, in US dollars: the agent stops as a budget outcome (without it a single agent has no cap and a swarm the session's default of $50)
+  -concurrency int
+        rollouts in flight (default 1)
+  -confine string
+        off | bwrap: run every setup, agent and verifier command in a bubblewrap sandbox that sees only its own workspace (the work dir, task sources, blob store and run output are hidden; network only for tasks that need it). bwrap refuses to start where it is unavailable; use it whenever rollouts are training data (default "off")
+  -confine-ro value
+        with --confine bwrap: a directory every command may read although it lies in a hidden one (a toolchain), repeatable; PATH entries and GOROOT, RUSTUP_HOME, JAVA_HOME are added automatically
+  -confine-rw value
+        with --confine bwrap: a directory every command may write (a shared cache), repeatable; GOCACHE, GOMODCACHE, CARGO_HOME, PIP_CACHE_DIR and similar cache variables are added automatically
+  -dry-run
+        print what would change without writing anything into the run
+  -final
+        verify the final patch again (the episode's verdict) (default true)
+  -infra-retries int
+        retries of a rollout that failed for infrastructure reasons (default 2; -1 disables)
+  -json
+        print each sample's result as a JSON line
+  -keep-failed
+        keep the workspaces of failed rollouts for debugging
+  -max-outage-pause duration
+        how much outage, in all, one rollout attempt sits out with its wall clock stopped before it ends as an infra failure, not retried (default 3h; negative: the wall clock runs through outages)
+  -max-requests int
+        cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)
+  -max-spend-usd float
+        spend cap of the whole run, failed attempts and earlier invocations into the same --out included (see ledger.jsonl): no further rollout starts once it is reached; rollouts in flight finish, so give --budget-usd too
+  -max-steps int
+        step cap of one rollout whose task sets none
+  -max-wall duration
+        wall-clock cap of a rollout whose task sets none, not counting the time the policy endpoint is down (see --max-outage-pause) (default 1h)
+  -no-net-isolation
+        do not isolate the network of tasks that do not need it
+  -outage-patience duration
+        how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)
+  -pass-env string
+        comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
+  -progress-budget duration
+        progress mode: the deadline of a savepoint's score, passed to the verifier as SUITE_BUDGET_S (default 5m)
+  -progress-sample int
+        progress mode: tests of each unit a savepoint's score runs, passed to the verifier as SUITE_SAMPLE (default 20)
+  -require-net-isolation
+        refuse to run where network isolation is unavailable
+  -rewards string
+        rewards.json with weights, caps and detectors (default: the documented defaults)
+  -savepoint-every duration
+        take a savepoint of every rollout this often (agent state in the log, work tree captured), and resume an interrupted rollout from its newest savepoint instead of starting over: on an infra retry or a rerun into the same --out (default off; 15m suits runs of hours)
+  -savepoints
+        score the work tree of every consistent savepoint again, in progress mode (progress.jsonl, the episode's progress) (default true)
+  -score-savepoints
+        with --savepoint-every: score the work tree of every savepoint with the task's verifier in progress mode, in the background (progress.jsonl, the episode's progress)
+  -set-env value
+        NAME=value forced into the agent's and verifier's environment, repeatable (e.g. GOCACHE=/shared/cache: faster, less isolated)
+  -target-price string
+        price and cache model rollouts are repriced under (see: sleipnir rl reward -list-targets)
+  -tasks string
+        tasks file (JSON lines) with the rollouts' tasks as they are to be verified now (see rl tasks update-scorer)
+  -verify-policy string
+        with repeats: all | any | majority
+  -verify-repeats int
+        run the verifier this many times to catch flaky tests
+  -work-dir string
+        where snapshots, workspaces and verification checkouts live (default: <state>/rl-work)
+  -workspace-mode string
+        export: a fresh single-commit tree without history | clone: a local clone with history (default "export")
 ```
 <!-- /flags -->
 

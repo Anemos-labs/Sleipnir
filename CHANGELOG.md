@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- New `rl reverify` verifies finished rollouts again with the tasks as a
+  tasks file defines them now: the final patch (the episode's verdict) and
+  every consistent savepoint's tree in progress mode (`progress.jsonl` and
+  the episode's progress). The replaced values are kept in the sample's
+  `reverify.jsonl`. New `rl tasks update-scorer` writes tasks with the
+  running build's whole-suite scorer script, so tasks generated earlier are
+  scored by a fixed scorer without being generated again. Run walks no longer
+  descend into a sample's `savepoints/` directory. Tasks, recorded episodes
+  and prompt bytes are unchanged until these commands are run.
 - When no run with the reference solution reports a single test, the
   "nothing to score" rejection of `rl taskgen rebuild` and `rl taskgen chain`
   says so, with how that step's first run ended (`pytest: exit 4`) and the

@@ -66,7 +66,7 @@ func findSamples(paths []string) ([]sample, error) {
 			if !d.IsDir() {
 				return nil
 			}
-			if d.Name() == "blobs" || d.Name() == "checkpoints" {
+			if d.Name() == "blobs" || d.Name() == "checkpoints" || d.Name() == "savepoints" {
 				return filepath.SkipDir
 			}
 			if fileExists(filepath.Join(path, "episode.json")) {

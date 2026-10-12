@@ -140,19 +140,28 @@ func (q *progressQueue) loop(ctx context.Context) {
 
 // progressEnv is the verifier environment of the progress mode.
 func (r *Runner) progressEnv() []string {
-	n := r.ProgressSample
-	if n <= 0 {
-		n = DefaultProgressSample
-	}
-	return []string{"SUITE_SAMPLE=" + strconv.Itoa(n), "SUITE_BUDGET_S=" + strconv.Itoa(int(r.progressBudget().Seconds()))}
+	env, _ := progressMode(r.ProgressSample, r.ProgressBudget)
+	return env
 }
 
-// progressBudget resolves Runner.ProgressBudget.
-func (r *Runner) progressBudget() time.Duration {
-	if r.ProgressBudget > 0 {
-		return r.ProgressBudget
+// progressTimeout is the verifier timeout of the progress mode.
+func (r *Runner) progressTimeout() time.Duration {
+	_, timeout := progressMode(r.ProgressSample, r.ProgressBudget)
+	return timeout
+}
+
+// progressMode is the verifier environment and timeout of the progress mode:
+// sample tests of each unit (DefaultProgressSample when not positive) under a
+// deadline of budget (DefaultProgressBudget when not positive), and a minute
+// more than the deadline for the checkout and the scorer's own start.
+func progressMode(sample int, budget time.Duration) ([]string, time.Duration) {
+	if sample <= 0 {
+		sample = DefaultProgressSample
 	}
-	return DefaultProgressBudget
+	if budget <= 0 {
+		budget = DefaultProgressBudget
+	}
+	return []string{"SUITE_SAMPLE=" + strconv.Itoa(sample), "SUITE_BUDGET_S=" + strconv.Itoa(int(budget.Seconds()))}, budget + time.Minute
 }
 
 // scoreSavepoint verifies the tree of one savepoint and appends the score to
@@ -164,9 +173,7 @@ func (rn *run) scoreSavepoint(ctx context.Context, job *progressJob) error {
 		return err
 	}
 	res, err := VerifyPatch(ctx, job.task, patch, VerifyOptions{
-		Workspaces: m, HiddenBlobs: rn.r.HiddenBlobs, Env: rn.r.progressEnv(),
-		// The deadline the progress mode is given, and a minute for the checkout and the scorer's own start.
-		Timeout: rn.r.progressBudget() + time.Minute,
+		Workspaces: m, HiddenBlobs: rn.r.HiddenBlobs, Env: rn.r.progressEnv(), Timeout: rn.r.progressTimeout(),
 	})
 	if err != nil {
 		return err
