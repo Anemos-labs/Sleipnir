@@ -30,7 +30,7 @@ func TestWebNewSessionRefusesIsolationThatCannotStart(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repo, "wip.txt"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	two, zero := 2, 0
+	team, zero := 8, 0
 	tabs := func() int { return len(r.h.Tabs()) }
 	before := tabs()
 	for _, tc := range []struct {
@@ -38,10 +38,10 @@ func TestWebNewSessionRefusesIsolationThatCannotStart(t *testing.T) {
 		req  wire.NewSessionRequest
 		want string
 	}{
-		{"worktree outside a repository", wire.NewSessionRequest{Cwd: plain, Swarm: &two, Isolation: "worktree"}, "needs a git repository"},
+		{"worktree outside a repository", wire.NewSessionRequest{Cwd: plain, Swarm: &team, Isolation: "worktree"}, "needs a git repository"},
 		{"worktree for a single agent", wire.NewSessionRequest{Cwd: repo, Swarm: &zero, Isolation: "worktree"}, "isolation applies to swarm sessions"},
-		{"commit without worktree", wire.NewSessionRequest{Cwd: repo, Swarm: &two, Isolation: "none", Commit: true}, "commit needs worktree isolation"},
-		{"commit on a checkout with changes", wire.NewSessionRequest{Cwd: repo, Swarm: &two, Isolation: "worktree", Commit: true}, "clean checkout"},
+		{"commit without worktree", wire.NewSessionRequest{Cwd: repo, Swarm: &team, Isolation: "none", Commit: true}, "commit needs worktree isolation"},
+		{"commit on a checkout with changes", wire.NewSessionRequest{Cwd: repo, Swarm: &team, Isolation: "worktree", Commit: true}, "clean checkout"},
 	} {
 		code, body := r.do("POST", "/api/sessions", tc.req)
 		var e struct{ Code, Error string }
@@ -61,11 +61,11 @@ func TestWebNewSessionRefusesIsolationThatCannotStart(t *testing.T) {
 		t.Errorf("a refused session opened a tab: %d tabs, %d before", n, before)
 	}
 	// what can start goes on to the confirmation of a folder this server does not know
-	if code, body := r.do("POST", "/api/sessions", wire.NewSessionRequest{Cwd: repo, Swarm: &two, Isolation: "worktree"}); code != 428 {
+	if code, body := r.do("POST", "/api/sessions", wire.NewSessionRequest{Cwd: repo, Swarm: &team, Isolation: "worktree"}); code != 428 {
 		t.Errorf("worktree in a repository's root: %d %s", code, body)
 	}
 	empty := t.TempDir()
-	if code, body := r.do("POST", "/api/sessions", wire.NewSessionRequest{Cwd: empty, Swarm: &two, Isolation: "worktree", Commit: true, GitInit: true}); code != 428 {
+	if code, body := r.do("POST", "/api/sessions", wire.NewSessionRequest{Cwd: empty, Swarm: &team, Isolation: "worktree", Commit: true, GitInit: true}); code != 428 {
 		t.Errorf("a folder that git init makes a repository: %d %s", code, body)
 	}
 }
