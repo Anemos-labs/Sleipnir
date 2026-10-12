@@ -11,6 +11,13 @@ test that no report mentions has failed. Each command runs in a session of its o
 output in private files, and every process still in its process group is killed before the next command runs, so
 nothing the code under test prints, now or later, reaches standard output, where this script writes one line, last.
 
+go test stops a package's tests at the first one that crashes the test binary (a panic, a fatal error), and the tests
+after it would go unreported. A go test command is therefore run again for each package that crashed, through
+SUITE_ARGS (-skip the tests the package already reported, and -run the sample in progress mode, then the package), until
+a run reports nothing new, the package stops crashing, MAX_CRASH_RERUNS runs were made or the deadline passes. A crash
+that go test attributes to a test costs that test, not every test after it; one it attributes to no test (a panic in
+another goroutine) is hit again by the rerun, which reports nothing new, and the tests after it stay unreported.
+
 Environment:
     SUITE_MODE=record  print {"suite_record": 1, "commands": [...]} instead of a score: every test each command
                        reported, with pass, fail or skip (units and guards are not needed)
@@ -39,6 +46,7 @@ PASS, FAIL, SKIP = "pass", "fail", "skip"
 PARSERS = ("gotest-json", "junit", "cargo")
 DEFAULT_DEADLINE_S = 1800
 MAX_FAILURE_LINES = 200
+MAX_CRASH_RERUNS = 40
 TAIL_BYTES = 3000
 RANK = {PASS: 0, SKIP: 1, FAIL: 2}
 
@@ -59,9 +67,10 @@ def merge(results, test_id, outcome):
 
 # ---- parsers ----
 
-def parse_gotest(path, results):
+def parse_gotest(path, results, crashed=None):
     """go test -json: the pass, fail and skip events of top-level tests, as <import path>.<TestName>. Output events
-    (everything a test prints, including lines that look like test2json's own) are ignored."""
+    (everything a test prints, including lines that look like test2json's own) are not results; a line of a package's
+    output that starts with "panic: " or "fatal error: " adds the package to crashed, when given."""
     with open(path, "rb") as f:
         for raw in f:
             if not raw.startswith(b"{"):
@@ -73,6 +82,11 @@ def parse_gotest(path, results):
             if not isinstance(ev, dict):
                 continue
             action, test, pkg = ev.get("Action"), ev.get("Test"), ev.get("Package")
+            if action == "output" and crashed is not None and isinstance(pkg, str) and pkg:
+                out = ev.get("Output")
+                if isinstance(out, str) and (out.startswith("panic: ") or out.startswith("fatal error: ")):
+                    crashed.add(pkg)
+                continue
             if action not in (PASS, FAIL, SKIP) or not isinstance(test, str) or not isinstance(pkg, str):
                 continue
             if not test or not pkg or "/" in test:
@@ -212,12 +226,12 @@ def tail(paths):
     return out[-TAIL_BYTES:].decode("utf-8", "replace")
 
 
-def run_command(i, cmd, tmp, project, deadline, base_env, args):
-    """Runs one command and returns what it reported: {"name", "parser", "exit", "timed_out", "seconds", "tests"}."""
-    info = {"name": cmd["name"], "parser": cmd["parser"], "exit": None, "timed_out": False, "seconds": 0.0, "tests": {}}
-    report = os.path.join(tmp, "junit-%d.xml" % i)
-    out_path = os.path.join(tmp, "out-%d.log" % i)
-    err_path = os.path.join(tmp, "err-%d.log" % i)
+def exec_command(cmd, tag, tmp, project, deadline, base_env, args):
+    """Runs cmd once, its output in the files of tag, with SUITE_ARGS set to args when it is not None. Returns
+    (exit status, timed out, seconds, report path, output path, error path), or a note when it could not run."""
+    report = os.path.join(tmp, "junit-%s.xml" % tag)
+    out_path = os.path.join(tmp, "out-%s.log" % tag)
+    err_path = os.path.join(tmp, "err-%s.log" % tag)
     for p in (report, out_path, err_path):
         try:
             os.unlink(p)
@@ -227,9 +241,7 @@ def run_command(i, cmd, tmp, project, deadline, base_env, args):
     limit = cmd.get("timeout_s") or remaining
     limit = min(limit, remaining)
     if limit <= 0:
-        info["note"] = "not run: the deadline passed"
-        log("suite: %s: not run, the deadline passed" % cmd["name"])
-        return info
+        return None, "not run: the deadline passed"
     env = dict(base_env)
     env["SUITE_REPORT"] = report
     if args is not None:
@@ -242,33 +254,87 @@ def run_command(i, cmd, tmp, project, deadline, base_env, args):
             p = subprocess.Popen(cmd["run"], shell=True, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
                                  stdout=out, stderr=out if merged else err, start_new_session=True)
         except OSError as e:
-            info["note"] = "could not start: %s" % e
-            log("suite: %s: could not start: %s" % (cmd["name"], e))
-            return info
+            return None, "could not start: %s" % e
         CURRENT[0] = p.pid
         timed_out = wait_exit(p, started + limit)
         kill_group(p.pid)
         p.wait()
         CURRENT[0] = None
-    info["exit"], info["timed_out"] = p.returncode, timed_out
-    info["seconds"] = round(time.monotonic() - started, 3)
+    return (p.returncode, timed_out, round(time.monotonic() - started, 3), report, out_path, err_path), None
+
+
+def go_rerun_args(pkg, skip, chosen):
+    """SUITE_ARGS that run package pkg again without the tests skip (names), and only the sampled tests of chosen."""
+    words = []
+    if chosen is not None:
+        names = sorted({t.rsplit(".", 1)[1] for t in chosen if "." in t and t.rsplit(".", 1)[0] == pkg})
+        words += ["-run", shlex.quote("^(" + "|".join(names) + ")$")]
+    words += ["-skip", shlex.quote("^(" + "|".join(sorted(skip)) + ")$"), shlex.quote(pkg)]
+    return " ".join(words)
+
+
+def rerun_crashed(i, cmd, tmp, project, deadline, base_env, results, crashed, chosen):
+    """Runs each package of crashed again without the tests it already reported (see the module's doc), merging what
+    the reruns report into results. Returns how many reruns were made."""
+    runs, pending = 0, sorted(crashed)
+    while pending and runs < MAX_CRASH_RERUNS:
+        pkg = pending.pop(0)
+        reported = {t.rsplit(".", 1)[1] for t in results if t.rsplit(".", 1)[0] == pkg}
+        if not reported:
+            continue  # it crashed before any test reported: a rerun would crash at the same place
+        runs += 1
+        ran, note = exec_command(cmd, "%dr%d" % (i, runs), tmp, project, deadline, base_env, go_rerun_args(pkg, reported, chosen))
+        if ran is None:
+            log("suite: %s: rerun of %s %s" % (cmd["name"], pkg, note))
+            break
+        sub, again = {}, set()
+        try:
+            parse_gotest(ran[4], sub, again)
+        except (OSError, ValueError) as e:
+            log("suite: %s: the report of the rerun of %s is unreadable: %s" % (cmd["name"], pkg, e))
+            continue
+        new = [t for t in sub if t not in results and t.rsplit(".", 1)[0] == pkg]
+        for t in new:
+            merge(results, t, sub[t])
+        log("suite: %s: %s crashed; run again without its %d reported tests: %d more reported%s" % (
+            cmd["name"], pkg, len(reported), len(new), ", and it crashed again" if pkg in again else ""))
+        if new and pkg in again:
+            pending.append(pkg)
+    return runs
+
+
+def run_command(i, cmd, tmp, project, deadline, base_env, args, chosen=None):
+    """Runs one command and returns what it reported: {"name", "parser", "exit", "timed_out", "seconds", "tests"}.
+    A go test command is run again for the packages that crashed (rerun_crashed); chosen are its sampled tests in
+    progress mode."""
+    info = {"name": cmd["name"], "parser": cmd["parser"], "exit": None, "timed_out": False, "seconds": 0.0, "tests": {}}
+    ran, note = exec_command(cmd, str(i), tmp, project, deadline, base_env, args)
+    if ran is None:
+        info["note"] = note
+        log("suite: %s: %s" % (cmd["name"], note.replace("not run: the deadline passed", "not run, the deadline passed")))
+        return info
+    code, timed_out, seconds, report, out_path, err_path = ran
+    info["exit"], info["timed_out"], info["seconds"] = code, timed_out, seconds
     results = info["tests"]
+    crashed = set()
     try:
         if cmd["parser"] == "junit":
             parse_junit(report, results)
         elif cmd["parser"] == "cargo":
             parse_cargo(out_path, results)
         else:
-            parse_gotest(out_path, results)
+            parse_gotest(out_path, results, crashed)
     except (OSError, ValueError) as e:
         log("suite: %s: the report is unreadable: %s" % (cmd["name"], e))
+    if crashed and not timed_out:
+        info["reruns"] = rerun_crashed(i, cmd, tmp, project, deadline, base_env, results, crashed, chosen)
     counts = {PASS: 0, FAIL: 0, SKIP: 0}
     for v in results.values():
         counts[v] += 1
     log("suite: %s: exit %s%s after %.1fs, %d tests reported (%d passed, %d failed, %d skipped)" % (
-        cmd["name"], p.returncode, " (timed out)" if timed_out else "", info["seconds"], len(results),
+        cmd["name"], code, " (timed out)" if timed_out else "", info["seconds"], len(results),
         counts[PASS], counts[FAIL], counts[SKIP]))
-    if timed_out or (p.returncode != 0 and not results):
+    if timed_out or (code != 0 and not results):
         for line in tail([err_path, out_path]).splitlines()[-40:]:
             log("    | " + line)
     return info
@@ -412,14 +478,14 @@ def main():
     reports = []
     try:
         for i, cmd in enumerate(spec["commands"]):
-            args = None
+            args, chosen = None, None
             if selections is not None and spec.get("origin"):
                 chosen = selections.get(cmd["name"])
                 if not chosen:
                     log("suite: %s: not run, none of its tests is in the sample" % cmd["name"])
                     continue
                 args = selection_args(cmd["parser"], chosen)
-            reports.append(run_command(i, cmd, tmp, project, deadline, base_env, args))
+            reports.append(run_command(i, cmd, tmp, project, deadline, base_env, args, chosen))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
