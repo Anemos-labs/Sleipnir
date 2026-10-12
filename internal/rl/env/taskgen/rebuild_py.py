@@ -17,8 +17,9 @@ Answer:
 
   stub     the module with the body of every function and method (and of an `if __name__ == "__main__":` block)
            replaced by `raise NotImplementedError`, keeping each docstring; a body that is already only `pass`, `...`
-           or a raise of NotImplementedError is kept. Everything else (imports, assignments, class attributes,
-           decorators, comments outside the bodies) is kept as it is.
+           or a raise of NotImplementedError is kept, and so is what runs when the modules and the tests are imported
+           (ImportTime). Everything else (imports, assignments, class attributes, decorators, comments outside the
+           bodies) is kept as it is.
   api      the public API: functions, classes (with their public and special methods and attributes), assignments
            and, in a package's __init__.py, the imports of in-scope modules; "tests" marks a name documented only
            because the tests use it. Public is __all__ when the module defines it, else every name without a
@@ -126,9 +127,10 @@ def indent_of(line):
 
 
 class Stubber:
-    def __init__(self, src):
+    def __init__(self, src, keep=frozenset()):
         self.src = src
         self.edits = []
+        self.keep = keep  # qualified names of the functions and methods that run when the modules are imported
 
     def line(self, n):
         """Line n (1-based) without its line break."""
@@ -171,28 +173,29 @@ class Stubber:
         if rest and not is_trivial(rest):
             self.replace(rest, after)
 
-    def block(self, stmts, module_level):
+    def block(self, stmts, module_level, prefix=""):
         for s in stmts:
             if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                self.function(s)
+                if prefix + s.name not in self.keep:
+                    self.function(s)
             elif isinstance(s, ast.ClassDef):
-                self.block(s.body, False)
+                self.block(s.body, False, prefix + s.name + ".")
             elif isinstance(s, ast.If):
                 if module_level and is_main_guard(s):
                     if not is_trivial(s.body):
                         self.replace(s.body, s.lineno)
-                    self.block(s.orelse, module_level)
+                    self.block(s.orelse, module_level, prefix)
                 else:
-                    self.block(s.body, module_level)
-                    self.block(s.orelse, module_level)
+                    self.block(s.body, module_level, prefix)
+                    self.block(s.orelse, module_level, prefix)
             elif isinstance(s, TRY):
-                self.block(s.body, module_level)
+                self.block(s.body, module_level, prefix)
                 for h in s.handlers:
-                    self.block(h.body, module_level)
-                self.block(s.orelse, module_level)
-                self.block(s.finalbody, module_level)
+                    self.block(h.body, module_level, prefix)
+                self.block(s.orelse, module_level, prefix)
+                self.block(s.finalbody, module_level, prefix)
             elif isinstance(s, (ast.With, ast.AsyncWith)):
-                self.block(s.body, module_level)
+                self.block(s.body, module_level, prefix)
 
     def result(self):
         out = bytearray(self.src.data)
@@ -201,8 +204,8 @@ class Stubber:
         return bytes(out).decode("utf-8")
 
 
-def stub_module(tree, src, path):
-    st = Stubber(src)
+def stub_module(tree, src, path, keep=frozenset()):
+    st = Stubber(src, keep)
     st.block(tree.body, True)
     out = st.result()
     ast.parse(out, filename=path)  # the stub must still be valid Python
@@ -534,6 +537,214 @@ def test_refs(tree, pkg, modules, exports):
     return {"refs": refs, "names": {m: sorted(v) for m, v in names.items()}}
 
 
+# ---- what runs when the modules are imported ----
+
+INSTANCE = ("__new__", "__init__", "__post_init__")  # what calling a class runs
+CLASS = ("__init_subclass__", "__set_name__", "__class_getitem__")  # what defining a subclass, or using it, runs
+
+
+class ImportTime:
+    """What runs when the scope's modules and the tests are imported, so that the stubs keep it.
+
+    Starting from the code each module and each test file runs when it is imported (its module-level statements, the
+    decorators, default values and base classes of its definitions, and class bodies; not function bodies, nor an
+    `if __name__ == "__main__":` block), it follows the calls into the scope: a function of the module or imported from
+    a module of the scope (through the re-exports of packages), a class called (its __new__, __init__ and
+    __post_init__, here or in a base class of the scope), a class defined on a base class of the scope (its
+    __init_subclass__), a decorator applied, and a method of any class of the scope by its name (a call x.m() follows
+    every method m, which keeps a body too many rather than one too few). The functions and methods it reaches keep
+    their bodies: a raise there would fail the import of the module and of every module and test that imports it."""
+
+    def __init__(self, trees, mods, modules, exports):
+        self.trees, self.mods, self.modules, self.exports = trees, mods, modules, exports
+        self.funcs, self.classes, self.methods = {}, {}, {}
+        for name, tree in trees.items():
+            funcs, classes = {}, {}
+            self._index(tree.body, funcs, classes, "")
+            self.funcs[name], self.classes[name] = funcs, classes
+            for cname, (cnode, members) in classes.items():
+                for mname, fnode in members.items():
+                    self.methods.setdefault(mname, []).append((name, cname, fnode))
+        self.keep = {}  # module -> qualified names
+        self.queue = []
+
+    def _index(self, stmts, funcs, classes, prefix):
+        for s in stmts:
+            if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)) and not prefix:
+                funcs[s.name] = s
+            elif isinstance(s, ast.ClassDef) and not prefix:
+                members = {}
+                for c in s.body:
+                    if isinstance(c, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        members[c.name] = c
+                classes[s.name] = (s, members)
+            elif isinstance(s, ast.If):
+                self._index(s.body, funcs, classes, prefix)
+                self._index(s.orelse, funcs, classes, prefix)
+            elif isinstance(s, TRY):
+                self._index(s.body, funcs, classes, prefix)
+                for h in s.handlers:
+                    self._index(h.body, funcs, classes, prefix)
+                self._index(s.orelse, funcs, classes, prefix)
+                self._index(s.finalbody, funcs, classes, prefix)
+
+    def bindings(self, tree, pkg):
+        """The names a module or test file binds by importing: name -> (module, name or None for the module)."""
+        out = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for a in node.names:
+                    if a.asname:
+                        out[a.asname] = (a.name, None)
+                    else:
+                        out[a.name.split(".")[0]] = (a.name.split(".")[0], None)
+            elif isinstance(node, ast.ImportFrom):
+                base = resolve_relative(node.module, node.level, pkg)
+                if base is None:
+                    continue
+                for a in node.names:
+                    if a.name == "*":
+                        continue
+                    full = base + "." + a.name
+                    if full in self.modules:
+                        out[a.asname or a.name] = (full, None)
+                    elif base in self.modules:
+                        out[a.asname or a.name] = self.exports.resolve(base, a.name)
+        return out
+
+    def _mark(self, mod, qual, node):
+        k = self.keep.setdefault(mod, set())
+        if qual not in k:
+            k.add(qual)
+            self.queue.append((mod, node))
+
+    def _function(self, mod, name):
+        """A call of name in mod: its function, or its class (what calling it runs)."""
+        f = self.funcs.get(mod, {}).get(name)
+        if f is not None:
+            self._mark(mod, name, f)
+            return
+        self._class(mod, name, INSTANCE)
+
+    def _class(self, mod, name, members, depth=0):
+        c = self.classes.get(mod, {}).get(name)
+        if c is None or depth > 16:
+            return
+        node, own = c
+        for m in members:
+            if m in own:
+                self._mark(mod, name + "." + m, own[m])
+        for b in node.bases:  # what a base class of the scope defines
+            t = self._target(mod, b)
+            if t is not None and t[1] is not None:
+                self._class(t[0], t[1], members, depth + 1)
+
+    def _target(self, mod, expr):
+        """(module, name) of the scope that expr, in mod, names; name None for a module."""
+        attrs = []
+        while isinstance(expr, ast.Attribute):
+            attrs.append(expr.attr)
+            expr = expr.value
+        if not isinstance(expr, ast.Name):
+            return None
+        attrs.reverse()
+        b = self.bound.get(mod, {}).get(expr.id)
+        if b is None:
+            if mod in self.trees and not attrs and (expr.id in self.funcs[mod] or expr.id in self.classes[mod]):
+                return mod, expr.id
+            return None
+        target, name = b
+        if name is not None:
+            return (target, name) if not attrs else None
+        dotted = ".".join([target] + attrs)
+        m, rest = longest_module(dotted, self.modules)
+        if m is None:
+            return None
+        if not rest:
+            return m, None
+        if len(rest) == 1:
+            return self.exports.resolve(m, rest[0])
+        return None
+
+    def _call(self, mod, func):
+        t = self._target(mod, func)
+        if t is not None and t[1] is not None:
+            self._function(t[0], t[1])
+            return
+        if isinstance(func, ast.Attribute) and t is None:
+            root = func
+            while isinstance(root, ast.Attribute):
+                root = root.value
+            if isinstance(root, ast.Name):
+                b = self.bound.get(mod, {}).get(root.id)
+                if b is not None and b[1] is None:
+                    return  # a function of a module outside the scope (os.path.join), not a method
+            for m, cname, fnode in self.methods.get(func.attr, ()):
+                self._mark(m, cname + "." + func.attr, fnode)
+
+    def scan(self, mod, node, bodies):
+        """Follow the calls in node, code of mod; bodies says whether the bodies of functions and lambdas in it run too
+        (a kept function's body: they may) or not (code that runs on import: they do not)."""
+        stack = [node]
+        while stack:
+            n = stack.pop()
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for d in n.decorator_list:
+                    self._call(mod, d.func if isinstance(d, ast.Call) else d)
+                    stack.append(d)
+                stack.extend(n.args.defaults)
+                stack.extend(d for d in n.args.kw_defaults if d is not None)
+                if bodies:
+                    stack.extend(n.body)
+                continue
+            if isinstance(n, ast.Lambda):
+                stack.extend(n.args.defaults)
+                if bodies:
+                    stack.append(n.body)
+                continue
+            if isinstance(n, ast.ClassDef):
+                for d in n.decorator_list:
+                    self._call(mod, d.func if isinstance(d, ast.Call) else d)
+                for b in n.bases:
+                    t = self._target(mod, b)
+                    if t is not None and t[1] is not None:
+                        self._class(t[0], t[1], CLASS)
+                for k in n.keywords:
+                    if k.arg == "metaclass":
+                        t = self._target(mod, k.value)
+                        if t is not None and t[1] is not None:
+                            self._class(t[0], t[1], ("__new__", "__init__", "__prepare__"))
+                stack.extend(n.decorator_list)
+                stack.extend(n.bases)
+                stack.extend(k.value for k in n.keywords)
+                stack.extend(n.body)
+                continue
+            if isinstance(n, ast.If) and not bodies and is_main_guard(n):
+                stack.extend(n.orelse)
+                continue
+            if isinstance(n, ast.Call):
+                self._call(mod, n.func)
+            stack.extend(ast.iter_child_nodes(n))
+
+    def run(self, tests):
+        """tests: [(tree, package)] of the test files."""
+        self.bound = {}
+        for name, tree in self.trees.items():
+            self.bound[name] = self.bindings(tree, package_of(self.mods[name]))
+        for name, tree in self.trees.items():
+            for st in tree.body:
+                self.scan(name, st, False)
+        for i, (tree, pkg) in enumerate(tests):
+            key = "\x00test%d" % i
+            self.bound[key] = self.bindings(tree, pkg)
+            for st in tree.body:
+                self.scan(key, st, False)
+        while self.queue:
+            mod, node = self.queue.pop()
+            self.scan(mod, node, True)
+        return {m: frozenset(q) for m, q in self.keep.items() if m in self.trees}
+
+
 def main():
     req = json.load(sys.stdin)
     errors = []
@@ -548,21 +759,23 @@ def main():
         except (SyntaxError, ValueError) as e:
             errors.append("%s: %s" % (m["path"], e))
     exports = Exports(trees, mods, modules)
-    tests, used = {}, {}
+    tests, used, test_trees = {}, {}, []
     for t in req.get("tests", []):
         try:
             tree = ast.parse(t["source"].encode("utf-8"), filename=t["path"])
         except (SyntaxError, ValueError):
             continue  # a test file this Python cannot read refers to nothing
+        test_trees.append((tree, t.get("package") or ""))
         r = test_refs(tree, t.get("package") or "", modules, exports)
         tests[t["path"]] = r
         for m, ns in r["names"].items():
             used.setdefault(m, set()).update(ns)
+    keep = ImportTime(trees, mods, modules, exports).run(test_trees)
     out = {}
     for name, tree in trees.items():
         src, mod = srcs[name], mods[name]
         try:
-            stub = stub_module(tree, src, mod["path"])
+            stub = stub_module(tree, src, mod["path"], keep.get(name, frozenset()))
         except (SyntaxError, ValueError) as e:
             errors.append("%s: the stub is not valid Python: %s" % (mod["path"], e))
             continue

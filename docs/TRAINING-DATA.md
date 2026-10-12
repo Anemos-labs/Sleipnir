@@ -315,7 +315,11 @@ team to write a library again from its specification, as it is at a version of t
   unexported functions are removed, and so are the imports nothing kept uses. What runs before the first test keeps its
   body: the functions and methods of the scope that package-level variables, the `init` functions of packages outside
   the scope and the hidden tests' `TestMain` call, directly or through the module's other code, while the packages
-  load (a method by its name). A panic there would fail every test of every package that loads the one it is in. A Python stub keeps everything outside
+  load (a method by its name). A panic there would fail every test of every package that loads the one it is in. A
+  Python stub likewise keeps what runs when the modules and the hidden tests are imported: the functions a
+  module-level statement, a decorator, a default value or a class body calls, a class instantiated at import (its
+  `__new__`, `__init__` and `__post_init__`, through its base classes of the scope), the `__init_subclass__` of a base
+  class of the scope, and what those call in turn (a method by its name). A Python stub keeps everything outside
   function bodies (imports, assignments, class attributes, decorators, docstrings, comments) and replaces the body of
   every function and method, and of an `if __name__ == "__main__":` block, with `raise NotImplementedError`; a body
   that is only `pass`, `...` or such a raise stays. Python is analysed by an embedded script run with `python3`, which

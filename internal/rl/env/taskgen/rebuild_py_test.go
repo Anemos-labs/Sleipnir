@@ -2,6 +2,8 @@ package taskgen
 
 import (
 	"context"
+	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -196,5 +198,55 @@ func TestPythonRebuildScript(t *testing.T) {
 	}
 	if sec := pyAPISection(&rebuildPkg{Name: "pkg", Files: []string{"pkg/__init__.py"}}, a.Modules["pkg"]); !strings.Contains(sec, "from .core import Stack, add") {
 		t.Errorf("the API of pkg lacks its re-exports:\n%s", sec)
+	}
+}
+
+// What runs when the modules and the tests are imported keeps its body in the stubs: a decorator applied at import
+// and the helper it calls, a class instantiated at import (its __init__), the __init_subclass__ of a base class another
+// module subclasses, and a function a test file calls at module level. The rest is stubbed, and the stubbed package
+// imports without raising.
+func TestPythonRebuildKeepsWhatRunsOnImport(t *testing.T) {
+	have(t, "python3")
+	deco := "REG = []\n\n\ndef register(fn):\n    REG.append(_name(fn))\n    return fn\n\n\ndef _name(fn):\n    return fn.__name__\n\n\ndef cases():\n    return [1, 2]\n\n\ndef unrelated():\n    return 3\n"
+	conf := "from .deco import register\n\n\nclass Config:\n    def __init__(self, v):\n        self.v = v\n\n    def other(self):\n        return 1\n\n\nclass Base:\n    def __init_subclass__(cls, **kw):\n        cls.tag = \"t\"\n\n\nDEFAULT = Config(1)\n\n\n@register\ndef handler():\n    return DEFAULT.v\n"
+	plug := "from pkg.conf import Base\n\n\nclass Plugin(Base):\n    pass\n"
+	test := "import pkg.deco as d\nfrom pkg import plug\n\nCASES = d.cases()\n\n\ndef test_cases():\n    assert CASES == [1, 2]\n"
+	mods := []pyModuleIn{
+		{Name: "pkg", Path: "pkg/__init__.py", Package: true, Source: ""},
+		{Name: "pkg.deco", Path: "pkg/deco.py", Source: deco},
+		{Name: "pkg.conf", Path: "pkg/conf.py", Source: conf},
+		{Name: "pkg.plug", Path: "pkg/plug.py", Source: plug},
+	}
+	a, err := runPyRebuild(context.Background(), "python3", mods, []pyTestIn{{Path: "tests/test_plug.py", Source: test}})
+	if err != nil || len(a.Errors) > 0 {
+		t.Fatalf("%v %v", err, a.Errors)
+	}
+	d, c := a.Modules["pkg.deco"].Stub, a.Modules["pkg.conf"].Stub
+	for _, want := range []string{
+		"def register(fn):\n    REG.append(_name(fn))\n    return fn\n", "def _name(fn):\n    return fn.__name__\n",
+		"def cases():\n    return [1, 2]\n", "def unrelated():\n    raise NotImplementedError\n",
+	} {
+		if !strings.Contains(d, want) {
+			t.Errorf("the stub of pkg.deco lacks %q:\n%s", want, d)
+		}
+	}
+	for _, want := range []string{
+		"    def __init__(self, v):\n        self.v = v\n", "    def other(self):\n        raise NotImplementedError\n",
+		"    def __init_subclass__(cls, **kw):\n        cls.tag = \"t\"\n", "def handler():\n    raise NotImplementedError\n",
+	} {
+		if !strings.Contains(c, want) {
+			t.Errorf("the stub of pkg.conf lacks %q:\n%s", want, c)
+		}
+	}
+	dir := t.TempDir()
+	for p, body := range map[string]string{"pkg/__init__.py": "", "pkg/deco.py": d, "pkg/conf.py": c, "pkg/plug.py": a.Modules["pkg.plug"].Stub, "tests/test_plug.py": test} {
+		if err := writeFile(filepath.Join(dir, p), body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cmd := exec.Command("python3", "-c", "import sys; sys.path.insert(0, 'tests'); import pkg.conf, pkg.plug, test_plug")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("the stubbed package does not import: %v\n%s", err, out)
 	}
 }
