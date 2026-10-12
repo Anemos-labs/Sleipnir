@@ -82,7 +82,7 @@ func TestTheShopHostIsASeamHost(t *testing.T) {
 	if qs := h.Questions(); len(qs) != 1 || qs[0].Tab != TabID || qs[0].Q.ID != ShopQuestion().ID || qs[0].T0 != 33 {
 		t.Errorf("host questions = %+v", qs)
 	}
-	if m := snap.Meta; m.Mode == nil || *m.Mode != "default" || m.Swarm == nil || *m.Swarm != 4 || m.Queued == nil || m.Rules == nil || len(*m.Rules) != 2 || m.Running == nil || !*m.Running {
+	if m := snap.Meta; m.Mode == nil || *m.Mode != "default" || m.Swarm == nil || *m.Swarm != 8 || m.Queued == nil || m.Rules == nil || len(*m.Rules) != 2 || m.Running == nil || !*m.Running {
 		t.Errorf("meta = %+v", m)
 	}
 	if ps := h.Projects(ctx); len(ps) != 3 || !ps[0].Default || ps[0].Dir != Cwd {
