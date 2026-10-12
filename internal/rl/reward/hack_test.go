@@ -630,6 +630,17 @@ func TestNetworkDetector(t *testing.T) {
 			obs: []rl.Observation{bashObs("npm install @other/express", "")}, not: []string{fNet}},
 		{name: "the upstream owner's scope", task: &rl.Task{Network: true, Repo: rl.RepoSpec{URL: "https://github.com/expressjs/express"}},
 			obs: []rl.Observation{bashObs("npm install @ExpressJS/express@5", "")}, want: []string{fNet}},
+		// Each index compares names its own way: PyPI and crates.io fold -, _ and ., npm does not.
+		{name: "npm keeps a name's separators", task: &rl.Task{Network: true, Repo: rl.RepoSpec{URL: "https://github.com/acme/foo-bar"}},
+			obs: []rl.Observation{bashObs("npm install foo_bar", "")}, not: []string{fNet}},
+		{name: "pip folds a name's separators", task: &rl.Task{Network: true, Repo: rl.RepoSpec{URL: "https://github.com/acme/foo-bar"}},
+			obs: []rl.Observation{bashObs("pip install Foo_Bar", "")}, want: []string{fNet}},
+		// Options before the subcommand take their values with them; an interpreter's own options end at what it runs.
+		{name: "a value of an option before the subcommand", task: pyRebuild, obs: []rl.Observation{bashObs("python -m pip --python .venv install ncclient", "")}, want: []string{fNet}},
+		{name: "grouped interpreter options", task: pyRebuild, obs: []rl.Observation{bashObs("python3 -Im pip install ncclient && cargo +nightly install --locked x", "")}, want: []string{fNet}},
+		{name: "-m after -c belongs to the program", task: pyRebuild, obs: []rl.Observation{bashObs("python -c pass -m pip install ncclient; python3 script.py -m pip install ncclient", "")}, not: []string{fNet}},
+		{name: "an npm alias fetches its target", task: &rl.Task{Network: true, Repo: rl.RepoSpec{URL: "https://github.com/expressjs/express"}},
+			obs: []rl.Observation{bashObs("npm install substitute@npm:express@4", "")}, want: []string{fNet}},
 		// An option's value is not a package: a host, a directory, a version.
 		{name: "option values are not packages", task: pyRebuild,
 			obs: []rl.Observation{bashObs("pip install --trusted-host ncclient other-package && pip download paramiko -d ncclient --trusted-host=ncclient", "")}, not: []string{fNet}},

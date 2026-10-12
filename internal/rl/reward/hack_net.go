@@ -227,15 +227,16 @@ func sourceURLs(task *rl.Task) []string {
 	return out
 }
 
-// upstreamPackages lists the normalised package names of the task's own
-// project: the repository name of each upstream key, the same name in its
-// owner's npm scope ("@owner/name"), and, for a Python task, the top-level
-// module of each entry of the scope recorded in meta.source.
+// upstreamPackages lists the package names of the task's own project, in lower
+// case and otherwise as written: the repository name of each upstream key, the
+// same name in its owner's npm scope ("@owner/name"), and, for a Python task,
+// the top-level module of each entry of the scope recorded in meta.source.
+// Each package manager compares them in its own way (pkgName).
 func upstreamPackages(task *rl.Task, up []string) []string {
 	var names []string
 	for _, k := range up {
-		if segs := strings.Split(k, "/"); len(segs) == 3 && segs[2] != "" {
-			names = append(names, pkgName(segs[2]), "@"+pkgName(segs[1])+"/"+pkgName(segs[2]))
+		if segs := strings.Split(strings.ToLower(k), "/"); len(segs) == 3 && segs[2] != "" {
+			names = append(names, segs[2], "@"+segs[1]+"/"+segs[2])
 		}
 	}
 	if slices.Contains(task.Tags, "python") && len(task.Meta) > 0 {
@@ -251,7 +252,7 @@ func upstreamPackages(task *rl.Task, up []string) []string {
 						top = top[:i]
 					}
 					if top != "" {
-						names = append(names, pkgName(top))
+						names = append(names, strings.ToLower(top))
 					}
 				}
 			}
@@ -260,9 +261,17 @@ func upstreamPackages(task *rl.Task, up []string) []string {
 	return uniqueStrings(names)
 }
 
-// pkgName normalises a package name as package indexes compare them: lower
-// case, with runs of '-', '_' and '.' as one '-'.
-func pkgName(s string) string { return pkgSepRe.ReplaceAllString(strings.ToLower(s), "-") }
+// pkgName is a package name as the manager's index compares it: lower case,
+// and for pip (PyPI) and cargo (crates.io) with runs of '-', '_' and '.' as one
+// '-'. npm and RubyGems keep the separators: foo_bar and foo-bar are two npm
+// packages.
+func pkgName(mgr int, s string) string {
+	s = strings.ToLower(s)
+	if mgr == mgrPip || mgr == mgrCargo {
+		return pkgSepRe.ReplaceAllString(s, "-")
+	}
+	return s
+}
 
 // Package managers, as indexes of valueOptions.
 const (
@@ -291,11 +300,19 @@ var valueOptions = [4]map[string]bool{
 
 // pkgFetch reports whether a simple command is a package manager's fetch: the
 // manager (mgrPip...) and the arguments after its subcommand, or -1. Options
-// before the subcommand (`pip -q install`, `python3 -I -m pip`) are passed over.
+// before the subcommand (`pip -q install`, `pip --python .venv install`, `cargo
+// +nightly install`) are passed over with their values.
 func pkgFetch(prog string, args []string) (int, []string) {
 	sub := func(mgr int, args []string, subs ...string) (int, []string) {
-		for i, a := range args {
+		for i := 0; i < len(args); i++ {
+			a := args[i]
 			if strings.HasPrefix(a, "-") {
+				if valueOptions[mgr][a] {
+					i++
+				}
+				continue
+			}
+			if mgr == mgrCargo && strings.HasPrefix(a, "+") { // a toolchain: cargo +nightly install
 				continue
 			}
 			if slices.Contains(subs, a) {
@@ -310,8 +327,8 @@ func pkgFetch(prog string, args []string) (int, []string) {
 	case base == "pip" || base == "pip3" || strings.HasPrefix(base, "pip3."):
 		return sub(mgrPip, args, "install", "download")
 	case strings.HasPrefix(base, "python"):
-		if i := slices.Index(args, "-m"); i >= 0 && i+1 < len(args) && args[i+1] == "pip" {
-			return sub(mgrPip, args[i+2:], "install", "download")
+		if mod, rest := interpreterModule(args); mod == "pip" {
+			return sub(mgrPip, rest, "install", "download")
 		}
 	case base == "uv":
 		if len(args) > 0 && args[0] == "pip" {
@@ -331,6 +348,46 @@ func pkgFetch(prog string, args []string) (int, []string) {
 	return -1, nil
 }
 
+// interpreterModule reads a Python interpreter's options as the interpreter does and
+// returns the module that -m runs with the arguments it gets, or "" when the
+// interpreter runs something else: -c's string, a script, or stdin. Option
+// letters may be grouped (-Im pip), and -m, -c, -W and -X take the rest of the
+// word or the next argument.
+func interpreterModule(args []string) (string, []string) {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" || !strings.HasPrefix(a, "-") || a == "-" {
+			return "", nil // a script or stdin
+		}
+		if strings.HasPrefix(a, "--") { // --help, --version, --check-hash-based-pycs MODE
+			if a == "--check-hash-based-pycs" {
+				i++
+			}
+			continue
+		}
+		for j := 1; j < len(a); j++ {
+			switch a[j] {
+			case 'c':
+				return "", nil
+			case 'm':
+				if j+1 < len(a) {
+					return a[j+1:], args[i+1:]
+				}
+				if i+1 < len(args) {
+					return args[i+1], args[i+2:]
+				}
+				return "", nil
+			case 'W', 'X':
+				if j+1 == len(a) {
+					i++ // the value is the next argument
+				}
+				j = len(a)
+			}
+		}
+	}
+	return "", nil
+}
+
 // fetchedPackages returns the names among pkgs that a package manager's fetch
 // in command asks for. The command is parsed as the shell would run it, so the
 // same words quoted in another command's argument (`echo 'pip install x'`) are
@@ -339,7 +396,9 @@ func pkgFetch(prog string, args []string) (int, []string) {
 // file:///tmp/x.whl" names a file, and a URL is the address rules' business),
 // taken without its extras and version ("ncclient==0.6.13",
 // "oauthlib[signedtoken]", "express@4"); an npm scope stays part of its
-// identity ("@scope/name@1").
+// identity ("@scope/name@1"), and an npm alias is its target
+// ("substitute@npm:express@4"). Names compare as the manager's index compares
+// them (pkgName).
 func fetchedPackages(command string, pkgs []string) []string {
 	if len(pkgs) == 0 {
 		return nil
@@ -358,22 +417,43 @@ func fetchedPackages(command string, pkgs []string) []string {
 				}
 				continue
 			}
-			var n string
-			if scope, rest, ok := strings.Cut(strings.TrimPrefix(arg, "@"), "/"); ok && mgr == mgrNpm && strings.HasPrefix(arg, "@") {
-				name, _, _ := strings.Cut(rest, "@")
-				n = "@" + pkgName(scope) + "/" + pkgName(name)
-			} else if arg != "" && !strings.ContainsAny(arg, `/\ `) {
-				if i := strings.IndexAny(arg, "=<>!~[@;:"); i >= 0 {
-					arg = arg[:i]
-				}
-				n = pkgName(arg)
+			n := pkgOperand(mgr, arg)
+			if n == "" || slices.Contains(out, n) {
+				continue
 			}
-			if n != "" && slices.Contains(pkgs, n) && !slices.Contains(out, n) {
-				out = append(out, n)
+			for _, p := range pkgs {
+				if pkgName(mgr, p) == n {
+					out = append(out, n)
+					break
+				}
 			}
 		}
 	}
 	return out
+}
+
+// pkgOperand is the package an operand of manager mgr names, as pkgName has it,
+// or "" for a path, a URL or a direct reference.
+func pkgOperand(mgr int, arg string) string {
+	if mgr == mgrNpm {
+		if _, target, ok := strings.Cut(arg, "npm:"); ok && (strings.HasPrefix(arg, "npm:") || strings.Contains(arg, "@npm:")) {
+			arg = target // an alias: name@npm:target@version
+		}
+		if scope, rest, ok := strings.Cut(strings.TrimPrefix(arg, "@"), "/"); ok && strings.HasPrefix(arg, "@") {
+			name, _, _ := strings.Cut(rest, "@")
+			if scope == "" || name == "" || strings.ContainsAny(name, `/\ `) {
+				return ""
+			}
+			return "@" + pkgName(mgr, scope) + "/" + pkgName(mgr, name)
+		}
+	}
+	if arg == "" || strings.ContainsAny(arg, `/\ `) {
+		return ""
+	}
+	if i := strings.IndexAny(arg, "=<>!~[@;:"); i >= 0 {
+		arg = arg[:i]
+	}
+	return pkgName(mgr, arg)
 }
 
 // mustPath extracts a URL path after an optional git+ prefix and returns empty on parse failure.
