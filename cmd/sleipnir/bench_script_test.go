@@ -215,13 +215,14 @@ func TestBenchScriptNeedsAKey(t *testing.T) {
 	}
 }
 
-// The provider was formerly heimdall: a key only in HEIMDALL_API_KEY passes the key check, unless --api-key-env names the variable.
+// The provider was formerly heimdall: a key only in HEIMDALL_API_KEY passes the key check, unless --api-key-env or --key-file
+// names the key's source.
 func TestBenchScriptTakesTheKeyUnderItsFormerName(t *testing.T) {
 	e := newBenchEnv(t)
 	for _, c := range []struct {
 		args []string
 		want int
-	}{{nil, 0}, {[]string{"--api-key-env", "HEIMDALLM_API_KEY"}, 2}} {
+	}{{nil, 0}, {[]string{"--api-key-env", "HEIMDALLM_API_KEY"}, 2}, {[]string{"--key-file", emptyKeyFile(t)}, 2}} {
 		args := append([]string{e.script}, e.base(append([]string{"--out", filepath.Join(t.TempDir(), "run")}, c.args...)...)...)
 		cmd := exec.Command("sh", args...)
 		cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), "BENCH_HOME=" + e.home, "BENCH_PAUSE=0", "STUB_STATE=" + e.state,
@@ -269,4 +270,14 @@ func TestBenchScriptStatus(t *testing.T) {
 	if status != 0 || !strings.Contains(out, "6/8 done, 2 infra, 0 capped, pass 50%, spent $0.0123") || !strings.Contains(out, "no summary yet") {
 		t.Fatalf("exit %d\n%s", status, out)
 	}
+}
+
+// emptyKeyFile is a key file, readable by its owner only, that holds no key.
+func emptyKeyFile(t *testing.T) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "key")
+	if err := os.WriteFile(p, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
 }

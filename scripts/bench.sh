@@ -126,8 +126,9 @@ if [ -n "$KEYFILE" ]; then
   fi
 fi
 eval "keyval=\${$KEYENV:-}"
-# The provider was formerly heimdall: sleipnir reads HEIMDALL_API_KEY when HEIMDALLM_API_KEY has no value, and so does this check.
-[ -n "$keyval" ] || [ -n "$KEYENV_SET" ] || keyval=${HEIMDALL_API_KEY:-}
+# The provider was formerly heimdall: sleipnir reads HEIMDALL_API_KEY when HEIMDALLM_API_KEY has no value, and so does this
+# check, unless --api-key-env or --key-file named the key's source.
+[ -n "$keyval" ] || [ -n "$KEYENV_SET" ] || [ -n "$KEYFILE" ] || keyval=${HEIMDALL_API_KEY:-}
 [ -n "$keyval" ] || die "no API key: export $KEYENV or pass --key-file"
 unset keyval
 gb=$(free_gb)

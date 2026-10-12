@@ -105,7 +105,7 @@ if [ "$SCENARIO" = swarm ]; then
   git -C "$proj" add -A && git -C "$proj" -c user.name=rec -c user.email=rec@example.com commit -qm "three stubs"
   SG="Each of the packages a, b and c has one function that panics with todo, and a test. Implement all three in parallel, one worker for each package, and make go test ./... pass."
   [ "$GOAL" != "$DEFAULTGOAL" ] || GOAL=$SG
-  (cd "$proj" && env -u $KEYENV -u HEIMDALL_API_KEY HOME=$home LC_ALL=C.UTF-8 "$BIN" swarm 3 --model "$MODEL" --mode accept-edits --verify "go test {dirs}" --isolation worktree --allow tests "$GOAL") > "$tmp/swarm.out" 2>&1 || true
+  (cd "$proj" && env -u "$KEYENV" -u HEIMDALL_API_KEY -u HEIMDALLM_API_KEY HOME=$home LC_ALL=C.UTF-8 "$BIN" swarm 3 --model "$MODEL" --mode accept-edits --verify "go test {dirs}" --isolation worktree --allow tests "$GOAL") > "$tmp/swarm.out" 2>&1 || true
   tail -3 "$tmp/swarm.out" >&2
   id=$(ls -t "$home/.sleipnir/sessions" | head -1)
   HOME=$home "$BIN" replay "$id" --final --cols "$COLS" --rows 36 >&2 || true
@@ -115,7 +115,7 @@ fi
 
 s=sleipnir-rec
 tmux kill-session -t $s 2>/dev/null || true
-tmux new-session -d -s $s -x "$COLS" -y "$ROWS" "cd $proj && env -u $KEYENV -u HEIMDALL_API_KEY HOME=$home LC_ALL=C.UTF-8 TERM=xterm-256color COLORTERM=truecolor script -q --log-out $tmp/o --log-timing $tmp/t --logging-format advanced -c '$BIN'; touch $tmp/done"
+tmux new-session -d -s $s -x "$COLS" -y "$ROWS" "cd $proj && env -u $KEYENV -u HEIMDALL_API_KEY -u HEIMDALLM_API_KEY HOME=$home LC_ALL=C.UTF-8 TERM=xterm-256color COLORTERM=truecolor script -q --log-out $tmp/o --log-timing $tmp/t --logging-format advanced -c '$BIN'; touch $tmp/done"
 pane() { tmux capture-pane -t $s -p 2>/dev/null || true; }
 waitfor() { # waitfor PATTERN SECONDS
   i=0
