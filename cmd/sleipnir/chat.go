@@ -171,6 +171,9 @@ func cmdChat(ctx context.Context, args []string) error {
 	if n := updateNotice(); n != "" {
 		fmt.Fprintln(os.Stderr, wrapFor(os.Stderr, n))
 	}
+	if n := staleNotice(); n != "" {
+		fmt.Fprintln(os.Stderr, wrapFor(os.Stderr, "sleipnir: "+n))
+	}
 	for {
 		if ctx.Err() != nil { // SIGTERM, in the middle of a turn or not
 			s.SetEndReason(session.EndInterrupted)
@@ -300,6 +303,7 @@ a team, and the program
 /restart [flags]   start again with other flags: --no-mcp, --cwd DIR, ...
 /agents            the team's agents and tasks (ctrl+g: cockpit)
 /steer TEXT        tell the running turn something, without stopping it
+/queue [drop N]    what waits for the turn: list, drop one, or clear all
 /verbose [on|off]  notices and tool errors
 /anim [on|off]     motion
 /cwd               the directory this session works in
@@ -370,6 +374,10 @@ func slashTo(ctx context.Context, s *session.Session, line string, stdout, stder
 			a.Steer(text)
 			fmt.Fprintln(stderr, "steering sent: the agent reads it with its next step")
 		}
+	case "/queue":
+		// the line chat reads a line when the turn before it is over, so nothing ever waits in a queue of its own
+		out, _ := app.QueueCommand(line, nil)
+		fmt.Fprintln(stderr, out)
 	case "/plan":
 		s.Perm.SetMode(perm.ModePlan)
 		fmt.Fprintln(stderr, "plan mode: read-only")
@@ -573,7 +581,7 @@ func printStatus(w io.Writer, s *session.Session) {
 	if s.Swarm != nil {
 		kind = "swarm"
 	}
-	fmt.Fprintf(w, "model    %s (%s)\nmode     %s\nsession  %s (%s)\n", s.Model.ID, kind, s.Perm.Mode(), s.ID, tildePath(s.Dir))
+	fmt.Fprintf(w, "model    %s (%s)\nmode     %s\nsession  %s (%s)\nversion  sleipnir %s\n", s.Model.ID, kind, s.Perm.Mode(), s.ID, tildePath(s.Dir), buildDescription())
 	if b := s.Budget(); b > 0 {
 		fmt.Fprintf(w, "budget   $%.2f\n", b)
 	}

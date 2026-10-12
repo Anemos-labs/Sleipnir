@@ -248,7 +248,7 @@ func ago(d time.Duration) string {
 // chatInfo is what the banner says about a session.
 func chatInfo(s *session.Session, cwd string) app.ChatInfo {
 	info := app.ChatInfo{Version: version, Model: s.Model.ID, Cwd: tildePath(cwd), SessionID: s.ID, Swarm: s.Swarm != nil,
-		Budget: strings.TrimPrefix(budgetLabel(s), " · "), Update: updateNotice()}
+		Budget: strings.TrimPrefix(budgetLabel(s), " · "), Update: updateNotice(), Stale: staleNotice()}
 	if s.Swarm != nil {
 		info.Workers = s.Swarm.MaxWorkers()
 	}
@@ -568,6 +568,7 @@ var chatCommands = []chatCommand{
 	{"compact", "[focus]", "fold the older thread now"},
 	{"agents", "", "the team's agents and tasks (ctrl+g: the cockpit)"},
 	{"steer", "TEXT", "tell the running turn something without stopping it: the agent reads it with its next step"},
+	{"queue", "[drop N|clear]", "the lines typed while a turn runs, sent when it is over: list them, drop one, or clear them"},
 	{"model", "[provider/model]", "show the model, or change it: a single agent moves its conversation (the prompt cache starts over), a team starts again on it"},
 	{"effort", "[level]", "show or change reasoning effort; each model uses its closest supported level"},
 	{"fav", "[provider/model]", "star a model, or unstar it (this one when none is named): starred models come first in /model and `sleipnir models`"},

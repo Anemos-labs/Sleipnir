@@ -237,7 +237,12 @@ program a question takes only keys pressed after it has been quiet for a moment,
 line typed after it was shown, so a `y` that was typed for something else cannot approve an action, and a line typed ahead is not
 lost to a question either. A question that Ctrl-C cancels takes nothing; what is typed next goes to the prompt. A line that is
 already typed survives the Ctrl-C that cancels the turn and runs next, and a Ctrl-D typed during a turn quits when the turn is
-over, as it would have at the prompt.
+over, as it would have at the prompt. Up on an empty prompt takes the last line typed ahead out of the queue and back into the prompt
+to be edited (Enter queues it again). `alt+s` sends what the prompt holds to the running turn as a steer (the same as `/steer TEXT`),
+which the agent reads with its next step, instead of queueing it; a terminal sends Ctrl+Enter as the byte of `ctrl+j` (a new line),
+so the chat program cannot use it for this. `/queue` lists the lines typed ahead, `/queue drop N` removes one and `/queue clear`
+removes them all. The web interface has the same: each queued line has Send now, Edit and ×, Ctrl+Enter steers while a turn runs,
+and `/queue` answers the same way.
 
 <!-- flags: chat -->
 ```text

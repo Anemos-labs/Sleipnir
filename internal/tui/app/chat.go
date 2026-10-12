@@ -536,6 +536,9 @@ func (m *chatModel) editorKey(k input.Key) {
 		m.pageKey("/agents")
 		return
 	}
+	if m.queueKey(k) {
+		return
+	}
 	if k.Is(input.Enter, 0) && m.menuIsExact() {
 		// A command typed out in full is not completed, it is sent: enter would accept the one candidate (which is what was typed,
 		// and a space), and the person would have to press it again.
@@ -707,6 +710,10 @@ func (m *chatModel) submit(text string) {
 		// returned. Calling the host concurrently would race with the judge.
 		m.queue = append([]queued{{text: text}}, m.queue...)
 		m.cancelRun()
+		return
+	}
+	if IsQueueCommand(text) {
+		m.queueCommand(text) // the queue is the program's own: it answers at once, beside the turn
 		return
 	}
 	if m.attached && m.page(text) {

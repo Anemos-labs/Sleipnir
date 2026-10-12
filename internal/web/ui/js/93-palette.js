@@ -10,6 +10,8 @@
   const rowsT = rows => '<table>' + rows.map(r => '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td></tr>').join('') + '</table>';
   /** Run fn when an action's request succeeded. */
   const onOk = (r, fn) => { if (r && r.ok === false) { if (r.why) ui.toast(r.why, 'warm'); return; } if (r && r.done) r.done.then(x => { if (x && x.ok) fn(x.data || {}); }); else fn({}); };
+  /** The build of the server, as /status says it (hello.server). */
+  const srvBuild = () => { const v = SL.live && SL.live.hello && SL.live.hello.server; return v ? 'sleipnir ' + (v.build || v.version || '') : ''; };
   const maxWorkers = () => { const d = SL.live && SL.live.defaults(); return (d && d.maxWorkers) || 12; };
 
   /* ---------- slash commands: name -> handler(arg) ---------- */
@@ -29,7 +31,7 @@
     '/budget': a => { if (a) { const r = SL.act.setBudget(a); if (r && r.ok === false) ui.toast(r.why, 'err'); else onOk(r, () => ui.toast(a === 'off' ? 'budget: off' : 'budget: $' + parseFloat(a).toFixed(2), 'ok')); } else ui.settingsPage('budget'); },
     '/cost': () => { const S = S_(), c = calc.totals(S.wm); local('/cost', rowsT([['input, uncached', fmtK(c.un)], ['input, read from the cache', fmtK(c.read)], ['cache write', fmtK(c.wr)], ['output', fmtK(c.out)], ['cache hit ratio', c.pct + '%'], ['cost', fmtUsd(c.cost, 4) + ' of ' + (S.meta.budget ? fmtUsd(S.meta.budget, 2) : 'no budget')]].concat(SL.settings.cache === 'full' ? [['saved, est. at list price', fmtUsd(c.saved, 3)]] : []))); },
     '/stats': () => SL.views.show('cache'), '/context': () => ui.sheets.context(),
-    '/status': () => { const S = S_(), c = calc.totals(S.wm); local('/status', rowsT([['model', esc(S.meta.model)], ['mode', esc(S.meta.mode)], ['session', esc(S.sid)]].concat(S.meta.sessionDir ? [['session directory', esc(S.meta.sessionDir)]] : []).concat([['budget', S.meta.budget ? fmtUsd(S.meta.budget, 2) : 'off'], ['cost', fmtUsd(c.cost, 4)], ['team', S.roster.length > 1 ? 'manager + ' + (S.roster.length - 1) + ' workers · ' + calc.active(S.wm) + ' active' : 'single agent']]))); },
+    '/status': () => { const S = S_(), c = calc.totals(S.wm); local('/status', rowsT([['model', esc(S.meta.model)], ['mode', esc(S.meta.mode)], ['session', esc(S.sid)]].concat(S.meta.sessionDir ? [['session directory', esc(S.meta.sessionDir)]] : []).concat([['budget', S.meta.budget ? fmtUsd(S.meta.budget, 2) : 'off'], ['cost', fmtUsd(c.cost, 4)], ['team', S.roster.length > 1 ? 'manager + ' + (S.roster.length - 1) + ' workers · ' + calc.active(S.wm) + ' active' : 'single agent'], ['version', esc(srvBuild())]]))); },
     '/mode': a => { if (a) { if (a === 'bypass' || a === 'yolo') ui.sheets.mode(a); else { const r = SL.act.setMode(a); if (r && r.ok === false) ui.toast(r.why, 'err'); else ui.toast('mode: ' + a); } } else ui.settingsPage('permissions'); },
     '/plan': a => { const r = SL.act.setMode('plan'); if (r && r.ok === false) return ui.toast(r.why, 'warm'); ui.toast('plan mode: read-only'); if (a) r.done.then(x => { if (x.ok) SL.act.send(a); }); },
     '/allow': a => { if (!a) return ui.toast('/allow needs a rule, e.g. tests or Bash(go test:*)', 'warm'); onOk(SL.act.allowRule(a, '/allow'), () => ui.toast('allowed this session: ' + a, 'ok')); },
@@ -38,6 +40,8 @@
     '/swarm': a => { const n = parseInt(a, 10); if (isNaN(n)) return ui.settingsPage('run'); restart(n); },
     '/restart': a => { const flags = (a || '').split(/\s+/).filter(Boolean); if (!flags.length) return ui.settingsPage('run'); const S = S_(); ui.confirm({ title: 'Start again', text: 'Restart <b>' + esc(S.name) + '</b> with <span class="mono">' + esc(flags.join(' ')) + '</span>? The current run is closed (its checkpoints stay) and the conversation carries over.', ok: 'Restart', danger: true, run: () => onOk(SL.act.restart(flags), () => ui.toast('started again: ' + flags.join(' '), 'ok')) }); },
     '/agents': () => SL.views.show('cockpit'),
+    /* the lines that wait for the turn are the server's (meta.queued): it lists, drops and clears them as the terminal does */
+    '/queue': a => serverLine('/queue' + (a ? ' ' + a : ''), '/queue'),
     '/steer': a => { if (!a) return ui.toast('/steer needs text: tell the running turn something', 'warm'); onOk(SL.act.steer('mgr', a), () => ui.toast('steer sent to the manager')); },
     '/verbose': a => { const S = S_(), on = a ? a !== 'off' : S.ui.verbose === false; S.ui.verbose = on; S.touch(); ui.toast(on ? 'notices on: Team activity shows every tool call' : 'notices off: Team activity keeps questions, mail, merges and cache breaks, and hides tool calls', on ? 'ok' : 'quiet'); },
     '/anim': a => { const on = a ? a === 'on' : ui.still(); SL.act.setMotion(on ? 'full' : 'reduce'); ui.applyMotion(); ui.toast('motion ' + (on ? 'on' : 'off') + (on ? '' : ': the horse stands')); },

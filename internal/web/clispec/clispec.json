@@ -835,6 +835,7 @@
 {"cmd":"/restart","args":"[flags]","desc":"start again with other flags: --no-mcp, --cwd DIR, ...","group":"a team, and the program","paletteArgs":"[flags]","paletteDesc":"start the chat again with other flags: --no-mcp, --trust-project, --cwd DIR, ... (the conversation comes along when it can)"},
 {"cmd":"/agents","args":"","desc":"the team's agents and tasks (ctrl+g: cockpit)","group":"a team, and the program","paletteDesc":"the team's agents and tasks (ctrl+g: the cockpit)"},
 {"cmd":"/steer","args":"TEXT","desc":"tell the running turn something, without stopping it","group":"a team, and the program","paletteArgs":"TEXT","paletteDesc":"tell the running turn something without stopping it: the agent reads it with its next step"},
+{"cmd":"/queue","args":"[drop N]","desc":"what waits for the turn: list, drop one, or clear all","group":"a team, and the program","paletteArgs":"[drop N|clear]","paletteDesc":"the lines typed while a turn runs, sent when it is over: list them, drop one, or clear them"},
 {"cmd":"/verbose","args":"[on|off]","desc":"notices and tool errors","group":"a team, and the program","paletteArgs":"[on|off]","paletteDesc":"show or hide notices and tool errors"},
 {"cmd":"/anim","args":"[on|off]","desc":"motion","group":"a team, and the program","paletteArgs":"[on|off]","paletteDesc":"turn the motion on or off"},
 {"cmd":"/cwd","args":"","desc":"the directory this session works in","group":"a team, and the program","paletteDesc":"the directory this session works in"},

@@ -117,6 +117,17 @@
     if (why(S)) return refuse(S);
     return send(api().post(tab(S) + '/steer', { text }));
   });
+  /** A line that waits for the turn (meta.queued) is taken out of the queue; the answer carries its whole text, which an edit puts back
+   *  in the composer. A line still on its way to the server has no id yet. */
+  act('dropQueued', (id, sid) => {
+    const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); if (!id) return { ok: false, why: 'that line is still on its way to the server' };
+    return send(api().del(tab(S) + '/queue/' + api().seg(id)));
+  });
+  /** A queued message is sent now: to the running turn as a steer (read with the agent's next step), or, with no turn running, next. */
+  act('sendQueuedNow', (id, sid) => {
+    const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); if (!id) return { ok: false, why: 'that line is still on its way to the server' };
+    return send(api().post(tab(S) + '/queue/' + api().seg(id) + '/now'), d => toast(d && d.steered ? 'sent to the running turn: the agent reads it with its next step' : 'nothing was running: it runs next', 'quiet'));
+  });
   act('compact', (focus, sid) => { const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); return send(api().post(tab(S) + '/compact', focus ? { focus } : {})); });
 
   /* the workspace: reviewed marks, hunk reverts and restores are kept by the server (WsIndex); the Workspace cache refreshes after each.

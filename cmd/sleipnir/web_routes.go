@@ -169,6 +169,32 @@ func (h *webHostImpl) routes(srv *web.Server) {
 		}
 		ok(w, okBody)
 	})
+	h.tabRoute(srv, "DELETE /api/sessions/{id}/queue/{qid}", web.RouteOpts{NoBody: true}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
+		qid := r.PathValue("qid")
+		if !queuedIDRE.MatchString(qid) {
+			web.Error(w, http.StatusBadRequest, "bad_request", "bad queued line id")
+			return
+		}
+		res, err := t.DropQueued(qid)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		ok(w, res)
+	})
+	h.tabRoute(srv, "POST /api/sessions/{id}/queue/{qid}/now", web.RouteOpts{NoBody: true}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
+		qid := r.PathValue("qid")
+		if !queuedIDRE.MatchString(qid) {
+			web.Error(w, http.StatusBadRequest, "bad_request", "bad queued line id")
+			return
+		}
+		res, err := t.SendQueuedNow(r.Context(), qid)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		ok(w, res)
+	})
 	h.tabRoute(srv, "POST /api/sessions/{id}/interrupt", web.RouteOpts{}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
 		var body struct {
 			Target string `json:"target"`

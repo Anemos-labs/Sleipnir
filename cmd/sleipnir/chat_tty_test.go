@@ -224,7 +224,7 @@ func TestStatusAndPermissionsCommands(t *testing.T) {
 	s.Perm.AddRule(perm.ScopeSession, perm.Rule{Action: perm.Allow, Tool: "Bash", Pattern: "go test:*"})
 	var out strings.Builder
 	slashTo(context.Background(), s, "/status", &out, &out)
-	for _, want := range []string{"model    ", "mode     " + string(s.Perm.Mode()), "session  " + s.ID, "input "} {
+	for _, want := range []string{"model    ", "mode     " + string(s.Perm.Mode()), "session  " + s.ID, "version  sleipnir ", "input "} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("/status lacks %q:\n%s", want, out.String())
 		}

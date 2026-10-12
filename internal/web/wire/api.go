@@ -82,11 +82,14 @@ type Hello struct {
 }
 
 // ServerInfo describes the server: its listening address as the page shows it (the Host of the request), whether it is bound to
-// loopback (true for the server the command starts), and the program version.
+// loopback (true for the server the command starts), and the program version: Version as the build names it, Label as a top bar
+// shows it ("v0.2.28") and Build the full description (version, commit, toolchain and platform) a tooltip shows.
 type ServerInfo struct {
 	Addr     string `json:"addr"`
 	Loopback bool   `json:"loopback"`
 	Version  string `json:"version"`
+	Label    string `json:"label,omitempty"`
+	Build    string `json:"build,omitempty"`
 }
 
 // Limits are the limits the page respects: the largest request body in bytes, the largest message in bytes, and how many questions
@@ -160,10 +163,22 @@ type Rule struct {
 	Fixed  bool   `json:"fixed,omitempty"`
 }
 
-// QueuedLine is a message typed while a turn runs, waiting for the next turn.
+// QueuedLine is a message typed while a turn runs, waiting for the next turn. Kind says what it is: "message" (a line for the agent,
+// which can be sent now as a steer, edited or dropped), "command" (a slash line, which can be edited or dropped) or "action" (something
+// the session does for the page, such as a goal change, which stays).
 type QueuedLine struct {
 	ID   string `json:"id"`
 	Text string `json:"text"`
+	Kind string `json:"kind,omitempty"`
+}
+
+// QueuedDrop is the answer to dropping a queued line or sending it now: the line as it was queued, so the page can put its text back
+// in the message box, and Steered when it went to the running turn as a steer (false: it runs next, as nothing was running).
+type QueuedDrop struct {
+	ID      string `json:"id"`
+	Text    string `json:"text"`
+	Kind    string `json:"kind"`
+	Steered bool   `json:"steered,omitempty"`
 }
 
 // MetaPatch is a change to a tab's meta, the settings and state of the session that the page shows (its directory, model, mode,

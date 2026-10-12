@@ -256,7 +256,7 @@ request raises something says so. Bodies and answers are the `wire` types named;
 | Method | Path | Does | Confirmation |
 |---|---|---|---|
 | `GET` | `/api/stream` | The event stream (above). `after=` or `Last-Event-ID` resumes | - |
-| `GET` | `/api/hello` | `wire.Hello` and more: `boot`, `now` (epoch ms), `tabs`, `active`, `server` (`addr`, `loopback`, `version`), `limits` (`maxBody`, `maxMessage`, `maxQuestions`), `ui` (build, `reduceMotion`, `bell`), `streamAfter`, `defaults` (the New session dialog's values, `maxWorkers`, and `testsPreset`, what the allow rule `tests` lets through) and `update` (a newer release, when one is known) | - |
+| `GET` | `/api/hello` | `wire.Hello` and more: `boot`, `now` (epoch ms), `tabs`, `active`, `server` (`addr`, `loopback`, `version`, `label`: the version as the top bar shows it, `build`: version, commit, toolchain and platform), `limits` (`maxBody`, `maxMessage`, `maxQuestions`), `ui` (build, `reduceMotion`, `bell`), `streamAfter`, `defaults` (the New session dialog's values, `maxWorkers`, and `testsPreset`, what the allow rule `tests` lets through) and `update` (a newer release, when one is known) | - |
 | `GET` | `/api/snapshot` | `{streamAfter, active, tabs: [wire.TabSnapshot]}`: every tab's snapshot | - |
 
 ### Sessions (tabs)
@@ -281,6 +281,8 @@ request raises something says so. Bodies and answers are the `wire` types named;
 | `POST` | `/api/sessions/{id}/messages` | Sends a line (`wire.MessageRequest`: `text` reaches the agent, `display` is what the transcript shows) up to 256 KiB; `wire.SendResult` says whether it was queued behind the running turn | - |
 | `POST` | `/api/sessions/{id}/command` | Runs a slash line the page has no handler for (`wire.CommandRequest`); `wire.CommandResult` has the text to show and whether a prompt was sent. `/mode`, `/allow`, `/model`, `/roles`, `/restart`, `/swarm`, `/resume` and `/rewind` act as the routes they stand for | As that route |
 | `POST` | `/api/sessions/{id}/steer` | `{text}`: guidance for the manager | - |
+| `DELETE` | `/api/sessions/{id}/queue/{qid}` | Removes a line that waits for the turn (`meta.queued`, whose `kind` is `message`, `command` or `action`) and answers `wire.QueuedDrop` (`id`, `text`: the whole line, `kind`), so the page can put the text back in the message box. An action (a goal change) stays: `409 not_droppable`; a line that ran or was removed is `404 not_queued` | - |
+| `POST` | `/api/sessions/{id}/queue/{qid}/now` | Takes a queued message out of the queue and delivers it now: to the running turn as a steer, read with the agent's next step (`steered: true`), or, when no turn runs, as the next thing that runs. Answers `wire.QueuedDrop`. A slash line is `409 not_message`; a steer the turn refuses puts the line back where it was | - |
 | `POST` | `/api/sessions/{id}/interrupt` | `{target}`: interrupts the turn; the goal pauses and the manager's open questions are refused | - |
 | `GET` | `/api/sessions/{id}/slash` | `{slash: [wire.SlashEntry]}`: the commands of the `/` menu, custom commands included | - |
 | `GET` | `/api/sessions/{id}/complete` | `?prefix=&limit=`: project paths that contain `prefix` (50 at most), for `@` completion; paths agents may not read are left out | - |

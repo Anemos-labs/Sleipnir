@@ -70,7 +70,7 @@ test('ev: duplicates by seq are dropped; meta merges and carries the queue; rost
   es().emit('ev', { tab: 'a', ev: ev(5, 11, 'answer', { qid: 'q_1', choice: 1, by: 'you' }) }, 11);
   assert.equal(S.log.filter(e => e.k === 'answer').length, 1); assert.equal(SL.calc.openQuestion(S.wm), null);
   es().emit('meta', { tab: 'a', patch: { mode: 'plan', queued: [{ id: 'l1', text: 'later' }], running: true } }, 12);
-  assert.equal(S.meta.mode, 'plan'); assert.deepEqual(plain(S.ui.queued), [{ id: 'l1', text: 'later' }]); assert.equal(S.state(), 'run');
+  assert.equal(S.meta.mode, 'plan'); assert.deepEqual(plain(S.ui.queued), [{ id: 'l1', text: 'later', kind: 'message' }]); assert.equal(S.state(), 'run');
   es().emit('roster', { tab: 'a', roster: S.roster.concat([{ id: 'be-2', role: 'backend', code: 'be', nth: 2, k: 2, leg: 1, scope: 'web/**', ro: false, model: 'm', spawn: 11 }]) }, 13);
   assert.ok(S.wm.ag['be-2']); assert.ok(S.m.ag['be-2']); assert.equal(roster, 1);
   es().emit('ping', { now: { a: 40 } }, 14); assert.equal(S.wt, 40);

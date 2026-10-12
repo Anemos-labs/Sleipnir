@@ -5,5 +5,5 @@
 {fg=faint}╭──────────────────────────────────────────────────────────────────────────────────────────────────╮{/}
 {fg=faint}│{/} {b,fg=#a78bfa}❯ {/}{i,fg=x244}Message Sleipnir, / for commands, @ for files{/}                                                  {fg=faint}│{/}
 {fg=faint}╰──────────────────────────────────────────────────────────────────────────────────────────────────╯{/}
-{fg=dim}⏎ queued: {/}{i}“and run the race detector”{/}
+{fg=dim}⏎ queued: {/}{i}“and run the race detector”{/}{fg=dim}  · ↑ edits · alt+s steers · /queue{/}
 {fg=G3}accept-edits{/}{fg=dim} · ctrl+t stats · / commands{/}                        {fg=dim}mock/mock-1 · 20260102-030405-abcdef{/}

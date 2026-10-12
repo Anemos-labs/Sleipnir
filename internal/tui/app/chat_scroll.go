@@ -71,6 +71,9 @@ func (k *chatLook) bannerLines(info ChatInfo, width int) []cell.Line {
 	if info.Update != "" {
 		out = append(out, paragraph(k.st.info, clean(info.Update), width)...)
 	}
+	if info.Stale != "" {
+		out = append(out, paragraph(k.st.warn, clean(info.Stale), width)...)
+	}
 	return out
 }
 
