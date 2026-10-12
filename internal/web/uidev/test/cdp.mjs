@@ -72,6 +72,7 @@ async function start(bin, { scale, deadline, callTimeout, onEvent }) {
     for (let i = 0; i < 5; i++) { try { fs.rmSync(profile, { recursive: true, force: true }); break; } catch (e) { await sleep(200); } }
   };
   let step = 'the line "DevTools listening on" on its stderr', err = '', timer;
+  chrome.stderr.setEncoding('utf8');   // a character split between two chunks is decoded whole, in the error's quote too
   const listening = new Promise(resolve => {
     chrome.stderr.on('data', d => { err = (err + d).slice(-4000); const m = err.match(/DevTools listening on (ws:\/\/\S+)/); if (m) resolve(m[1]); });
   });

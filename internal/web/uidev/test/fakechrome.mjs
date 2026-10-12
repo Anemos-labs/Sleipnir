@@ -8,7 +8,7 @@
 //   nohandshake  lists its one page at /json/list, but never answers a WebSocket upgrade
 //   noanswer     completes the WebSocket handshake and never answers a call
 //   answer-once  answers the first call and no later one (a browser that hangs after it started)
-//   exit         writes a line to stderr and exits 1
+//   exit         writes a line to stderr in two writes, split inside a multibyte character, and exits 1
 //   answer       answers every DevTools call, and fires Page.loadEventFired after Page.navigate (a browser that works, as far as
 //                Browser.launch and open look)
 //   stall-once   the first run (PIDFILE was empty) is silent; every later run is answer
@@ -48,8 +48,10 @@ function frames(buf) {
 /** an HTTP/1.1 response that closes its connection */
 const http = (status, json) => 'HTTP/1.1 ' + status + '\r\nContent-Type: application/json\r\nContent-Length: ' + Buffer.byteLength(json) + '\r\nConnection: close\r\n\r\n' + json;
 
-if (mode === 'exit') { process.stderr.write('[fake] no display to open\n'); process.exit(1); }
-if (mode === 'silent') setInterval(() => {}, 1 << 30);
+if (mode === 'exit') {
+  const line = Buffer.from('[fake] no display to open \u2014 giving up\n'), cut = line.indexOf(0xe2) + 1;   // after the first byte of the dash
+  process.stderr.write(line.subarray(0, cut)); setTimeout(() => { process.stderr.write(line.subarray(cut)); process.exit(1); }, 100);
+} else if (mode === 'silent') setInterval(() => {}, 1 << 30);
 else {
   const held = [];
   let answered = 0;

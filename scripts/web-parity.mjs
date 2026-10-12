@@ -352,6 +352,7 @@ export class Browser {
     const leave = () => { try { proc.kill('SIGKILL'); } catch { /* gone */ } try { fs.rmSync(profile, { recursive: true, force: true }); } catch { /* busy */ } };
     process.once('exit', leave);
     let step = 'the line "DevTools listening on" on its stderr', err = '', timer;
+    proc.stderr.setEncoding('utf8');   // a character split between two chunks is decoded whole, in the error's quote too
     const listening = new Promise(resolve => {
       proc.stderr.on('data', d => { err = (err + d).slice(-4000); const m = err.match(/DevTools listening on (ws:\/\/\S+)/); if (m) resolve(m[1]); });
     });
