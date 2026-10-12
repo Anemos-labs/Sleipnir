@@ -383,7 +383,7 @@ func TestMCPPage(t *testing.T) {
 
 func TestProvidersPage(t *testing.T) {
 	e := newEnv(t, nil)
-	t.Setenv("HEIMDALL_API_KEY", "env-key-0123456789")
+	t.Setenv("HEIMDALLM_API_KEY", "env-key-0123456789")
 	signedOut := false
 	e.svc.chatgptSignOut = func(*http.Request, string) error { signedOut = true; return nil }
 	t.Cleanup(func() {
@@ -404,8 +404,8 @@ func TestProvidersPage(t *testing.T) {
 		return m
 	}
 	r := rows()
-	if h := r["heimdall"]; h.Key != keyEnv || h.Env != "HEIMDALL_API_KEY" || !h.Recommended || !strings.Contains(h.KeyWhere, "HEIMDALL_API_KEY") {
-		t.Errorf("heimdall: %+v", h)
+	if h := r["heimdallm"]; h.Key != keyEnv || h.Env != "HEIMDALLM_API_KEY" || !h.Recommended || !strings.Contains(h.KeyWhere, "HEIMDALLM_API_KEY") {
+		t.Errorf("heimdallm: %+v", h)
 	}
 	if o := r["ollama"]; o.Key != keyNotNeeded {
 		t.Errorf("a local server: %+v", o)
@@ -413,7 +413,7 @@ func TestProvidersPage(t *testing.T) {
 	if c := r["chatgpt"]; c.Key != keyNone || c.SignedIn {
 		t.Errorf("chatgpt without a sign-in: %+v", c)
 	}
-	if rec := e.do("POST", "/api/providers/heimdall/signout", nil, nil); rec.Code != http.StatusConflict || errCode(rec) != "env" {
+	if rec := e.do("POST", "/api/providers/heimdallm/signout", nil, nil); rec.Code != http.StatusConflict || errCode(rec) != "env" {
 		t.Errorf("signing out of a key from the environment: %d %s", rec.Code, errCode(rec))
 	}
 

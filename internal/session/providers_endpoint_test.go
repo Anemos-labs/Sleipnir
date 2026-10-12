@@ -27,7 +27,7 @@ import (
 
 func clearProviderEnv(t *testing.T) {
 	t.Helper()
-	for _, k := range []string{"HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL", "HEIMDALL_BASE_URL", "OPENROUTER_BASE_URL",
+	for _, k := range []string{"HEIMDALLM_API_KEY", "HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL", "HEIMDALLM_BASE_URL", "OPENROUTER_BASE_URL",
 		"CORP_BASE_URL", "CORP_KEY", "LOCAL_BASE_URL", "SLEIPNIR_TEST_KEY"} {
 		t.Setenv(k, "")
 	}
@@ -421,12 +421,12 @@ func TestMissingBaseURLAndMissingKeyKeepTheirMessages(t *testing.T) {
 // error says how to reach the model through the provider that is set.
 func TestAModelIdThatStartsWithAProviderNameSaysHowToReachItThroughTheDefaultProvider(t *testing.T) {
 	clearProviderEnv(t)
-	t.Setenv("HEIMDALL_API_KEY", "hd-key-for-test")
+	t.Setenv("HEIMDALLM_API_KEY", "hd-key-for-test")
 	_, _, err := session.BuildProvider(nil, session.ModelRef{Provider: "openai", Model: "gpt-oss-20b"}, session.ProviderOptions{})
 	if err == nil {
 		t.Fatal("a provider without its key was built")
 	}
-	for _, want := range []string{"needs OPENAI_API_KEY to be set", `"openai/gpt-oss-20b"`, "default provider heimdall", "heimdall/openai/gpt-oss-20b"} {
+	for _, want := range []string{"needs OPENAI_API_KEY to be set", `"openai/gpt-oss-20b"`, "default provider heimdallm", "heimdallm/openai/gpt-oss-20b"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q lacks %q", err, want)
 		}

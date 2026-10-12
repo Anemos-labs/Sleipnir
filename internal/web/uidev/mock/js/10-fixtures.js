@@ -263,28 +263,28 @@ func TestList(t *testing.T) {
   const RECORDED = [
     { id: '20260101-221530-a91c3e', first: 'Survey the repo and write AGENTS.md', model: 'anthropic/claude-sonnet-5-5', cost: 0.04, mb: 3.1, ageS: 0.2 * D, agents: 3, resumable: true, dur: 252 },
     { id: '20260101-181102-77bd20', first: 'Add GET /orders with cursor paging', model: 'anthropic/claude-sonnet-5-5', cost: 0.19, mb: 6.4, ageS: 0.38 * D, agents: 5, resumable: true, dur: 468 },
-    { id: '20260101-094409-0c2e9b', first: 'Fix the cart rounding on 0.1 + 0.2', model: 'heimdall/demo-model', cost: 0.02, mb: 1.2, ageS: 0.75 * D, agents: 1, resumable: true, dur: 125, interrupted: true },
-    { id: '20251231-151200-d44a10', first: 'Seed 48 items from the catalogue CSV', model: 'heimdall/demo-model', cost: 0.06, mb: 2.4, ageS: 1.5 * D, agents: 2, resumable: true, dur: 331 },
+    { id: '20260101-094409-0c2e9b', first: 'Fix the cart rounding on 0.1 + 0.2', model: 'heimdallm/demo-model', cost: 0.02, mb: 1.2, ageS: 0.75 * D, agents: 1, resumable: true, dur: 125, interrupted: true },
+    { id: '20251231-151200-d44a10', first: 'Seed 48 items from the catalogue CSV', model: 'heimdallm/demo-model', cost: 0.06, mb: 2.4, ageS: 1.5 * D, agents: 2, resumable: true, dur: 331 },
     { id: '20251229-113015-f3d210', first: 'Rename Page.Count to Page.Total', model: 'anthropic/claude-haiku-5-5', cost: 0.03, mb: 1.6, ageS: 3.5 * D, agents: 1, resumable: true, dur: 94 },
     { id: '20251224-090044-1be5a8', first: 'Write the order status SSE endpoint', model: 'anthropic/claude-sonnet-5-5', cost: 0.27, mb: 9.8, ageS: 8.9 * D, agents: 6, resumable: true, dur: 720 },
     { id: '20251218-163340-6c0f77', first: 'Profile the catalogue handler', model: 'anthropic/claude-sonnet-5-5', cost: 0.11, mb: 4.0, ageS: 14 * D, agents: 2, resumable: true, dur: 302 },
     { id: '20251212-110033-be7712', first: 'Spike: server-sent events for order status', model: 'anthropic/claude-sonnet-5-5', cost: 0.31, mb: 12.6, ageS: 21 * D, agents: 4, resumable: true, dur: 1082 },
-    { id: '20251130-084418-90ac52', first: 'Port the cart to int64 cents', model: 'heimdall/demo-model', cost: 0.12, mb: 5.2, ageS: 33 * D, agents: 3, resumable: false, dur: 580 },
-    { id: '20251121-195502-3a77d9', first: 'Add a Makefile target for the seed loader', model: 'heimdall/demo-model', cost: 0.02, mb: 0.9, ageS: 42 * D, agents: 1, resumable: false, dur: 77 },
+    { id: '20251130-084418-90ac52', first: 'Port the cart to int64 cents', model: 'heimdallm/demo-model', cost: 0.12, mb: 5.2, ageS: 33 * D, agents: 3, resumable: false, dur: 580 },
+    { id: '20251121-195502-3a77d9', first: 'Add a Makefile target for the seed loader', model: 'heimdallm/demo-model', cost: 0.02, mb: 0.9, ageS: 42 * D, agents: 1, resumable: false, dur: 77 },
     { id: '20251107-142210-e81c05', first: 'Migrate the web page to fetch()', model: 'anthropic/claude-haiku-5-5', cost: 0.08, mb: 3.3, ageS: 56 * D, agents: 2, resumable: false, dur: 244 },
     { id: '20251019-101900-52d6b4', first: 'First run: survey and AGENTS.md', model: 'anthropic/claude-sonnet-5-5', cost: 0.05, mb: 2.0, ageS: 81 * D, agents: 3, resumable: false, dur: 190 },
     /* older sessions: the 26 recorded sessions (+3 live) make `sessions prune --older-than 30d --keep 20` list nine of them */
-    { id: '20251127-101544-b21f90', first: 'Add request logging middleware', model: 'heimdall/demo-model', cost: 0.04, mb: 1.8, ageS: 36 * D, agents: 1, resumable: false, dur: 110 },
+    { id: '20251127-101544-b21f90', first: 'Add request logging middleware', model: 'heimdallm/demo-model', cost: 0.04, mb: 1.8, ageS: 36 * D, agents: 1, resumable: false, dur: 110 },
     { id: '20251123-163920-4ac8e1', first: 'Why does the seed loader skip row 41?', model: 'anthropic/claude-haiku-5-5', cost: 0.02, mb: 0.7, ageS: 40 * D, agents: 1, resumable: false, dur: 64 },
     { id: '20251116-092251-d07b36', first: 'Split server.go into handlers and routes', model: 'anthropic/claude-sonnet-5-5', cost: 0.21, mb: 7.5, ageS: 47 * D, agents: 4, resumable: false, dur: 640 },
-    { id: '20251111-141008-91e2af', first: 'Add a /healthz endpoint', model: 'heimdall/demo-model', cost: 0.01, mb: 0.6, ageS: 52 * D, agents: 1, resumable: false, dur: 48 },
+    { id: '20251111-141008-91e2af', first: 'Add a /healthz endpoint', model: 'heimdallm/demo-model', cost: 0.01, mb: 0.6, ageS: 52 * D, agents: 1, resumable: false, dur: 48 },
     { id: '20251104-110642-7c35d2', first: 'Rewrite the catalogue filter in plain JS', model: 'anthropic/claude-sonnet-5-5', cost: 0.14, mb: 4.6, ageS: 59 * D, agents: 3, resumable: false, dur: 410 },
     { id: '20251029-195317-e8a014', first: 'Document the Makefile targets', model: 'anthropic/claude-haiku-5-5', cost: 0.03, mb: 1.1, ageS: 65 * D, agents: 1, resumable: false, dur: 85 },
-    { id: '20251025-084730-2f6b9c', first: 'Cart totals: use integer cents', model: 'heimdall/demo-model', cost: 0.07, mb: 2.9, ageS: 69 * D, agents: 2, resumable: false, dur: 230 },
+    { id: '20251025-084730-2f6b9c', first: 'Cart totals: use integer cents', model: 'heimdallm/demo-model', cost: 0.07, mb: 2.9, ageS: 69 * D, agents: 2, resumable: false, dur: 230 },
     { id: '20251016-153205-a03d77', first: 'List the dependencies we can drop', model: 'anthropic/claude-haiku-5-5', cost: 0.02, mb: 0.5, ageS: 78 * D, agents: 1, resumable: false, dur: 59 },
     { id: '20251009-120411-5be1c8', first: 'Add the orders table migration', model: 'anthropic/claude-sonnet-5-5', cost: 0.09, mb: 3.4, ageS: 85 * D, agents: 2, resumable: false, dur: 275 },
     { id: '20250930-101830-c64f02', first: 'Explain the checkpoint format', model: 'anthropic/claude-haiku-5-5', cost: 0.01, mb: 0.3, ageS: 94 * D, agents: 1, resumable: false, dur: 41 },
-    { id: '20250921-175544-18d9ea', first: 'Prototype the cart page', model: 'heimdall/demo-model', cost: 0.1, mb: 5.8, ageS: 103 * D, agents: 3, resumable: false, dur: 330 },
+    { id: '20250921-175544-18d9ea', first: 'Prototype the cart page', model: 'heimdallm/demo-model', cost: 0.1, mb: 5.8, ageS: 103 * D, agents: 3, resumable: false, dur: 330 },
     { id: '20250912-093316-b7a65d', first: 'Fix the flaky TestListItems', model: 'anthropic/claude-sonnet-5-5', cost: 0.05, mb: 1.5, ageS: 112 * D, agents: 1, resumable: false, dur: 120 },
     { id: '20250904-141902-0e3c91', first: 'Choose a router: net/http or chi?', model: 'anthropic/claude-opus-5-5', cost: 0.22, mb: 2.2, ageS: 120 * D, agents: 1, resumable: false, dur: 150 },
     { id: '20250830-160227-2d9e6f', first: 'Bootstrap the repo: go.mod, Makefile, AGENTS.md', model: 'anthropic/claude-sonnet-5-5', cost: 0.07, mb: 1.0, ageS: 125 * D, agents: 1, resumable: false, dur: 98 },
@@ -297,9 +297,9 @@ func TestList(t *testing.T) {
     M('anthropic/claude-opus-5-5', 500000, 5.0, 25.0, 0.5, true, true),
     M('anthropic/claude-sonnet-5-5', 400000, 3.0, 15.0, 0.3, true, true, { fav: true }),
     M('anthropic/claude-haiku-5-5', 300000, 1.0, 5.0, 0.1, true, true, { fav: true }),
-    M('heimdall/demo-model', 64000, 1.0, 4.0, 0.1, true, false),
-    M('heimdall/demo-large', 128000, 2.0, 8.0, 0.2, true, true),
-    M('heimdall/demo-small', 32000, 0.2, 0.8, 0.02, true, false),
+    M('heimdallm/demo-model', 64000, 1.0, 4.0, 0.1, true, false),
+    M('heimdallm/demo-large', 128000, 2.0, 8.0, 0.2, true, true),
+    M('heimdallm/demo-small', 32000, 0.2, 0.8, 0.02, true, false),
     M('openrouter/sample-coder-70b', 128000, 0.6, 2.4, null, true, false),
     M('openrouter/sample-reasoner', 200000, 1.8, 7.2, null, true, true),
     M('openrouter/sample-mini', 64000, 0.1, 0.4, null, false, false),
@@ -313,14 +313,14 @@ func TestList(t *testing.T) {
     M('local/sample-llama-70b', 16384, null, null, null, false, false),
   ];
   const PROVIDERS = [
-    { id: 'heimdall', name: 'Heimdall', base: 'https://heimdall.sample/v1', key: 'env', env: 'HEIMDALL_API_KEY', state: 'key set in the environment', note: 'the default provider' },
+    { id: 'heimdallm', name: 'Heimdallm', base: 'https://heimdallm.sample/v1', key: 'env', env: 'HEIMDALLM_API_KEY', state: 'key set in the environment', note: 'the default provider' },
     { id: 'anthropic', name: 'Anthropic', base: 'https://api.anthropic.com', key: 'env', env: 'ANTHROPIC_API_KEY', state: 'key set in the environment', note: 'prefix caching with cache_control breakpoints' },
     { id: 'openrouter', name: 'OpenRouter', base: 'https://openrouter.ai/api/v1', key: 'none', env: 'OPENROUTER_API_KEY', state: 'no key', note: 'prices and cache support vary per upstream' },
     { id: 'openai', name: 'OpenAI', base: 'https://api.openai.com/v1', key: 'none', env: 'OPENAI_API_KEY', state: 'no key', note: 'automatic prefix caching' },
     { id: 'chatgpt', name: 'ChatGPT plan', base: 'https://chatgpt.sample/backend', key: 'none', env: '', state: 'not signed in', note: 'sign in from the terminal' },
     { id: 'local', name: 'local server', base: 'http://127.0.0.1:8000/v1', key: 'none', env: '', state: 'a self-hosted vLLM / SGLang server (token ids captured)', note: 'price unknown; no key' },
   ];
-  const ROLE_MODELS = { manager: 'anthropic/claude-sonnet-5-5', backend: 'heimdall/demo-model', frontend: 'heimdall/demo-model', fullstack: 'heimdall/demo-model', tester: 'heimdall/demo-model', reviewer: 'heimdall/demo-model', scout: 'heimdall/demo-model', docs: 'heimdall/demo-model', mailman: '' };
+  const ROLE_MODELS = { manager: 'anthropic/claude-sonnet-5-5', backend: 'heimdallm/demo-model', frontend: 'heimdallm/demo-model', fullstack: 'heimdallm/demo-model', tester: 'heimdallm/demo-model', reviewer: 'heimdallm/demo-model', scout: 'heimdallm/demo-model', docs: 'heimdallm/demo-model', mailman: '' };
 
   /* ---- permissions: modes (REAL names) and the rules in force with their origin ---- */
   const MODES = [
@@ -366,9 +366,9 @@ func TestList(t *testing.T) {
   ];
   const SCHEDULE = [
     { name: 'nightly docs sweep', cron: '0 3 * * *', goal: 'Sweep docs/: fix stale command names and broken relative links', cwd: '~/projects/shop', model: 'anthropic/claude-sonnet-5-5', mode: 'accept-edits', budget: 1, next: 'tomorrow 03:00', last: 'today 03:00 · running', status: 'running' },
-    { name: 'weekly dependency audit', cron: '0 6 * * 1', goal: 'List outdated Go modules and open a plan', cwd: '~/projects/shop', model: 'heimdall/demo-model', mode: 'plan', budget: 0.5, next: 'Mon 06:00', last: 'Mon 06:00 · ok', status: 'ok' },
-    { name: 'orders smoke', cron: '*/30 * * * *', goal: 'Run go test ./orders/... and report', cwd: '~/projects/orders-api', model: 'heimdall/demo-model', mode: 'default', budget: 0.2, next: '03:30', last: '03:00 · ok', status: 'ok' },
-    { name: 'seed refresh', cron: '0 1 1 * *', goal: 'Regenerate seed/items.json from the CSV', cwd: '~/projects/shop', model: 'heimdall/demo-model', mode: 'accept-edits', budget: 0.3, next: 'Nov 1 01:00', last: 'Oct 1 01:00 · failed (verify)', status: 'failed' },
+    { name: 'weekly dependency audit', cron: '0 6 * * 1', goal: 'List outdated Go modules and open a plan', cwd: '~/projects/shop', model: 'heimdallm/demo-model', mode: 'plan', budget: 0.5, next: 'Mon 06:00', last: 'Mon 06:00 · ok', status: 'ok' },
+    { name: 'orders smoke', cron: '*/30 * * * *', goal: 'Run go test ./orders/... and report', cwd: '~/projects/orders-api', model: 'heimdallm/demo-model', mode: 'default', budget: 0.2, next: '03:30', last: '03:00 · ok', status: 'ok' },
+    { name: 'seed refresh', cron: '0 1 1 * *', goal: 'Regenerate seed/items.json from the CSV', cwd: '~/projects/shop', model: 'heimdallm/demo-model', mode: 'accept-edits', budget: 0.3, next: 'Nov 1 01:00', last: 'Oct 1 01:00 · failed (verify)', status: 'failed' },
   ];
 
   /* ---- a minimal CLI spec and outputs, used only when the data pack is not loaded ---- */
@@ -378,7 +378,7 @@ func TestList(t *testing.T) {
     { path: ['sessions', 'prune'], usage: 'sleipnir sessions prune [flags]', summary: 'Deletes recorded sessions that are old: the event log, the blobs it points at and the checkpoints of each.', positional: [], flags: [F('older-than', 'string', '30d', 'delete sessions whose newest file is older than this (30d, 36h, 2w; 0 is any age)'), F('keep', 'int', '20', 'never delete the newest N sessions, whatever their age'), F('yes', 'bool', null, 'delete them (without it, the sessions that would go are listed and nothing is deleted)')] },
     { path: ['trust'], usage: 'sleipnir trust [add|forget|list] [DIR]', summary: 'say yes (or forget it) to the files a repository brings', positional: [{ name: 'ACTION', required: false }, { name: 'DIR', required: false }], flags: [F('user', 'bool', null, 'act on ~/.sleipnir instead of the project')] },
     { path: ['mcp'], usage: 'sleipnir mcp [list|approve|revoke|test] [NAME]', summary: 'tool servers: list, approve, revoke and test', positional: [{ name: 'ACTION', required: false }, { name: 'NAME', required: false }], flags: [F('json', 'bool', null, 'print as JSON')] },
-    { path: ['doctor'], usage: 'sleipnir doctor [flags]', summary: 'probe an endpoint: streaming, tools, prefix-cache behaviour, warm-up needs', positional: [], flags: [F('model', 'string', null, 'model to probe: provider/model'), F('provider', 'string', null, 'heimdall | openrouter | openai | custom'), F('deep', 'bool', null, 'also measure cache granularity, minimum prefix and warm-up needs (more requests)'), F('json', 'bool', null, 'print the report as JSON'), F('base-url', 'string', null, 'API base URL (overrides the provider default)')] },
+    { path: ['doctor'], usage: 'sleipnir doctor [flags]', summary: 'probe an endpoint: streaming, tools, prefix-cache behaviour, warm-up needs', positional: [], flags: [F('model', 'string', null, 'model to probe: provider/model'), F('provider', 'string', null, 'heimdallm | openrouter | openai | custom'), F('deep', 'bool', null, 'also measure cache granularity, minimum prefix and warm-up needs (more requests)'), F('json', 'bool', null, 'print the report as JSON'), F('base-url', 'string', null, 'API base URL (overrides the provider default)')] },
     { path: ['sim'], usage: 'sleipnir sim [flags]', summary: 'simulate cache policies: a model, not a benchmark', positional: [], flags: [F('mode', 'string', 'compare', 'compare | scenarios | pins | agents'), F('json', 'bool', null, 'print as JSON'), F('agents', 'int', '8', 'workers in the simulated team'), F('turns', 'int', '12', 'turns per agent')] },
     { path: ['models'], usage: 'sleipnir models [words...] [flags]', summary: 'list models and prices from a marketplace catalogue', positional: [{ name: 'WORDS', required: false }], flags: [F('tools', 'bool', null, 'only models that call tools'), F('reasoning', 'bool', null, 'only reasoning models'), F('max-price', 'string', null, 'maximum input $/M'), F('min-context', 'int', null, 'minimum context tokens'), F('all', 'bool', null, 'include non-chat models')] },
     { path: ['config'], usage: 'sleipnir config [flags]', summary: 'show the effective configuration and where each value came from', positional: [], flags: [F('json', 'bool', null, 'print as JSON'), F('trust-project', 'bool', null, 'apply the sensitive keys of the project config')] },

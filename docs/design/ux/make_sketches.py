@@ -54,7 +54,7 @@ def sparkline(s, x, y, values, marks=None):
 
 def chat():
     s = Screen(104, 37)
-    s.runs(1, 0, [("◆ sleipnir", P["magenta"], None, "b"), (" 0.1.0  ", P["dim"]), ("heimdall/deepseek-v4-flash", P["cyan"]),
+    s.runs(1, 0, [("◆ sleipnir", P["magenta"], None, "b"), (" 0.1.0  ", P["dim"]), ("heimdallm/deepseek-v4-flash", P["cyan"]),
                   ("  ~/code/orders-api  ", P["dim"]), ("⎇ main ✓", P["green"]), ("  accept-edits", P["yellow"])])
     s.runs(1, 2, [("❯ ", P["magenta"], None, "b"), ("the pagination test in ./orders is failing, fix it", P["fg"], None, "b")])
     s.runs(1, 4, [("● ", P["fg"]), ("I'll read the test and the handler it exercises.", P["fg"])])

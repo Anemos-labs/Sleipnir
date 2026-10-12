@@ -7,7 +7,7 @@ import (
 
 // Value is one effective setting as a page that shows the configuration lists it.
 type Value struct {
-	// Key is the setting's path as Report.Origins spells it ("swarm.isolation", "providers.heimdall.base_url", "mcp.github").
+	// Key is the setting's path as Report.Origins spells it ("swarm.isolation", "providers.heimdallm.base_url", "mcp.github").
 	Key string
 	// Value is the effective value, redacted by Redact's rules.
 	Value any

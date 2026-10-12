@@ -5,7 +5,7 @@ import "regexp"
 // A tool call written as text.
 //
 // A model behind a gateway that does not parse its chat format writes its call as plain text where the call should be: gpt-oss-20b, through
-// Heimdall, ended a run with "to=functions.read <|constrain|>json<|message|>{...}<|call|>" as its answer. No tool ran, the work was not done,
+// Heimdallm, ended a run with "to=functions.read <|constrain|>json<|message|>{...}<|call|>" as its answer. No tool ran, the work was not done,
 // and the run took the text for the end of it (exit 0). A message that holds the markup of a chat format is not an answer. The model is
 // told so, with the markup it wrote, and asked to make the call again or to answer in words; twice at most in a run, then its text is the
 // answer, as it always was (a model that cannot stop is not asked for ever, and the answer may be about the markup).
