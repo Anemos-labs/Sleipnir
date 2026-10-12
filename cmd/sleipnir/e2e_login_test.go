@@ -11,8 +11,8 @@ import (
 // the context ends, so the first Ctrl-C did nothing and the second killed the process with the terminal's echo off.
 func TestCtrlCAtTheKeyPromptEndsTheLogin(t *testing.T) {
 	w := newWorld(t, "")
-	s := ptytest.Start(t, w.cmd("login", "heimdall"), ptytest.Size(24, 100))
-	if err := s.ExpectString("Paste your heimdall key", e2eGuard); err != nil {
+	s := ptytest.Start(t, w.cmd("login", "heimdallm"), ptytest.Size(24, 100))
+	if err := s.ExpectString("Paste your heimdallm key", e2eGuard); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.SendCtrlC(); err != nil {

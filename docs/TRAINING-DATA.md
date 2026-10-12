@@ -206,8 +206,16 @@ needs Python 3.8 or later and nothing outside its standard library, and a POSIX 
 * **Score.** (Σ<sub>u</sub> w<sub>u</sub> · passed<sub>u</sub>/|u| ÷ Σ<sub>u</sub> w<sub>u</sub>) × (kept guards ÷
   guards, 1 without guards), computed exactly, so a reference that passes everything scores exactly 1 and a start on
   which every unit's test fails exactly 0. A test that no report mentions has failed; a skipped one too; one reported
-  more than once passes only if every report says so. The score line carries the breakdown (section 3.1); stderr has
-  one line per command and at most 200 lines naming the tests that failed and the guards that broke.
+  more than once passes only if every report says so. go test stops a package's tests at the first one that crashes
+  the test binary (a panic, a fatal error), so a go command is run again for each package that crashed, without the
+  tests it already reported (`-skip` through `SUITE_ARGS`, with the sample's `-run` in progress mode), until a run
+  reports nothing new or the package stops crashing (at most 40 reruns, within the deadline). When the crash names its
+  test (a panic in the test itself, which go test reports as that test's failure), the crash costs that test and the
+  tests after it are reported, which keeps the progress of Go chains and rebuilds measurable; a crash that names no
+  test (a panic in another goroutine, before the first test) is hit again by the rerun, which then reports nothing new,
+  and the tests not reported count as failed. The score line
+  carries the breakdown (section 3.1); stderr has one line per command and per rerun, and at most 200 lines naming the
+  tests that failed and the guards that broke.
 * **What the code under test cannot do.** Each command runs in a session of its own with stdin closed and stdout and
   stderr in private files, so nothing it prints reaches the scorer's stdout, where the score is the one line, written
   last; results are read from the report, so a printed `{"score": 1}`, `--- PASS` or `ok` line (or a test2json event,
@@ -223,11 +231,16 @@ needs Python 3.8 or later and nothing outside its standard library, and a POSIX 
   solution, each several times in fresh clean checkouts as verification does, and `taskgen.BuildUnits` keeps as units
   the tests that fail in every start run and pass in every reference run, grouped by Go package, Python file or Rust
   module (or a grouping the caller gives), and as guards the tests that pass in every run; flaky tests and tests that
-  fail with the reference are dropped. `SUITE_SAMPLE=N` is the progress mode for cheap, repeated scoring during a run:
-  at most N tests of each unit and N guards, the same ones every time (those with the smallest SHA-256 of their id),
-  are scored, each command gets its share of the sample in `SUITE_ARGS` (which the default commands turn into
-  `-run`, node ids or `--exact` names) and a command with none in the sample is not run; `SUITE_BUDGET_S` shortens
-  the deadline. The final verdict always runs the whole suite.
+  fail with the reference are dropped. When not one run with the reference reports a test (pytest stopping at startup
+  because its `addopts` name a plugin the environment lacks, such as `--cov` without pytest-cov, or a `conftest.py`
+  that does not import), the "nothing to score" rejection says so and quotes how the first such run's commands ended
+  (`pytest: exit 4`) and the last 1,500 bytes, from a line start, of what the scorer relayed of the failing command's
+  output; `taskgen.BuildStepUnits` does the same for the last step, or the earliest silent one after the start. The
+  quote is diagnostic text for the error and the generation report, never part of a task. `SUITE_SAMPLE=N` is the
+  progress mode for cheap, repeated scoring during a run: at most N tests of each unit and N guards, the same ones
+  every time (those with the smallest SHA-256 of their id), are scored, each command gets its share of the sample in
+  `SUITE_ARGS` (which the default commands turn into `-run`, node ids or `--exact` names) and a command with none in
+  the sample is not run; `SUITE_BUDGET_S` shortens the deadline. The final verdict always runs the whole suite.
 
 **Sealed start states** (`--seal DIR` of `rl taskgen git` and `rl taskgen chain`, `taskgen.Seal`). A workspace holds
 only the start tree, but the repository a task names stays on disk with every later commit in it, the fix included,
@@ -286,7 +299,12 @@ team to write a library again from its specification, as it is at a version of t
   import path names it too), all in one module; or Python package (or module) names, looked up under the repository
   root, `src/`, `lib/` and `python/`, all in one project (the nearest directory with `pyproject.toml`, `setup.py` or
   `setup.cfg`, else the root). A Go package is the non-test `.go` files of its directory, a Python package every module
-  below its directory. The scope's size is its lines that are neither blank nor only a comment.
+  below its directory. The scope's size is its lines that are neither blank nor only a comment. A Go package of the
+  scope that the tests of another package of the scope import, although that package's sources do not depend on it,
+  directly or through other packages of the scope, is test support (an assertion library the project's tests use):
+  it stays at the reference, outside the units, and the report lists it with the packages whose tests use it
+  (`test_support`). Stubbed, it would fail every test that calls it, so no unit could score before it was rebuilt,
+  and the agents cannot see the tests that say so. A scope that is test support alone is rejected.
 * **Start state.** The reference with the scope's sources replaced and its tests removed, written to `--seal DIR`
   (default `starts/` next to the tasks file) as `DIR/<task id>.git`: one commit (no parent; a fixed author, date and
   message), holding that commit and the trees and blobs its tree reaches, and no object outside them. `repo.path` names
@@ -294,7 +312,14 @@ team to write a library again from its specification, as it is at a version of t
   Tier `stubs` keeps the API. A Go stub keeps the package clause, every constant, variable, type and method, the
   exported functions and the unexported ones that kept code or the package's own tests use, with their doc comments;
   every body becomes `panic("not implemented")` (function literals in variables' values too), `init` and the other
-  unexported functions are removed, and so are the imports nothing kept uses. A Python stub keeps everything outside
+  unexported functions are removed, and so are the imports nothing kept uses. What runs before the first test keeps its
+  body: the functions and methods of the scope that package-level variables, the `init` functions of packages outside
+  the scope and the hidden tests' `TestMain` call, directly or through the module's other code, while the packages
+  load (a method by its name). A panic there would fail every test of every package that loads the one it is in. A
+  Python stub likewise keeps what runs when the modules and the hidden tests are imported: the functions a
+  module-level statement, a decorator, a default value or a class body calls, a class instantiated at import (its
+  `__new__`, `__init__` and `__post_init__`, through its base classes of the scope), the `__init_subclass__` of a base
+  class of the scope, and what those call in turn (a method by its name). A Python stub keeps everything outside
   function bodies (imports, assignments, class attributes, decorators, docstrings, comments) and replaces the body of
   every function and method, and of an `if __name__ == "__main__":` block, with `raise NotImplementedError`; a body
   that is only `pass`, `...` or such a raise stays. Python is analysed by an embedded script run with `python3`, which
@@ -319,7 +344,9 @@ team to write a library again from its specification, as it is at a version of t
   most (an import of it, or a name imported from it or read as its attribute, followed through the re-exports of a
   package's `__init__.py` to the module that defines the name), the later in import order on a tie; a test file that
   refers to no module belongs to the scope's first package (the last module in import order when that package has no
-  `__init__.py`). A test that panics in a Go stub stops its package's tests, and those not run count as failed.
+  `__init__.py`). A test that panics in a Go stub, in the test's own goroutine, fails alone: the scorer runs the package
+  again without it (see the score above); a panic elsewhere (a goroutine the test started) still stops the tests after
+  it.
 * **Gates and checks.** The scope has 2,000 to 10,000 lines, at least 150 scored tests, and one run of the reference
   suite takes less than 10 minutes. In the environment rollouts use, the scope must not be importable from outside
   the start tree: for Go, its module (also without a `/vN` suffix) is in neither the module cache, `GOPATH/src` nor
@@ -381,7 +408,9 @@ sleipnir rl rollout --tasks tasks.jsonl --group 8 --concurrency 32 \
   namespace with loopback up. Writable are only the command's own tree, HOME and TMPDIR and the caches named by its
   environment (`GOCACHE`, `GOMODCACHE`, `CARGO_HOME`, `PIP_CACHE_DIR`, ...); toolchains on its `PATH` (and
   `GOROOT`, `RUSTUP_HOME`, `JAVA_HOME`) stay readable. `--confine-ro DIR` and `--confine-rw DIR` re-expose other
-  toolchain or cache directories. Nothing re-exposes the work dir, the blob store or the run output, or anything in
+  toolchain or cache directories. A cache that does not exist yet is created before the command runs, so what a setup
+  command downloads into it is there for the network-less verifier; one that cannot be created is a warning on the
+  command's result. Nothing re-exposes the work dir, the blob store or the run output, or anything in
   them; the directory relative task repositories resolve against (the current directory) is never re-exposed whole,
   but a toolchain or cache inside it is (a run started in a home directory keeps `~/.local/go`). A task with the
   network also sees the directory `/etc/resolv.conf` links into. `bwrap` mode refuses to start where bubblewrap cannot create a sandbox (it needs
@@ -441,6 +470,15 @@ sleipnir rl rollout --tasks tasks.jsonl --group 8 --concurrency 32 \
   above 0 at a savepoint, up to its best-scoring one: the steps that completed before that savepoint was taken (the
   others are counted as `step:after_best_savepoint`, the episodes in `best_prefixes`). A twelve-hour run that went
   wrong in its last hours still teaches what it did well before.
+* **Verifying a finished run again** (`sleipnir rl reverify --tasks FILE RUN_DIR`): the verdicts and progress curves of a
+  run are what its tasks' verifier measured while it ran, so a scorer fixed later leaves them wrong, and with them the
+  rewards and the best-savepoint cuts. `sleipnir rl tasks update-scorer FILE -o NEW` writes tasks generated by an
+  earlier build with this build's whole-suite scorer script (only `.sleipnir/suite/score.py` changes), and
+  `rl reverify --tasks NEW` measures each finished sample again: the final patch with the full verifier (the episode's
+  verdict), and the tree of every consistent savepoint in progress mode (`progress.jsonl` and the episode's progress, a
+  point for each savepoint). The task must start from the tree the sample started from. What was replaced is kept in
+  the sample's `reverify.jsonl` and the new verifier log in `reverify/`; `rl reward` on the run then recomputes the
+  rewards from the new scores. The agents' steps are not run again and do not change.
 * **Branches** (`sleipnir rl branch --tasks FILE --from RUN/TASK/SAMPLE --at POINTS --k 4 --horizon 45m --out DIR`, where
   `POINTS` is `sp:N[,M]`, `every:K`, `last`, `compaction` (the last savepoint before each compaction), `milestone` (each
   savepoint whose progress score rose) or `plateau` (each savepoint whose score had not moved over the two before it)): a finished rollout that took savepoints (the trunk) is continued from some of them, K times each, with
@@ -562,7 +600,15 @@ protected glob, such as a scratch `debug_test.go`, is not an edit of anything an
 discards it); tests deleted, skipped or weakened
 (`t.Skip`, `xfail`, assertion removal); verifier or CI config touched; hardcoded expected values from hidden
 tests; network access to the upstream repository or solution hosts; writes outside the worktree; `exit 0`
-shims. Flags are preserved so the data can also train detectors.
+shims. Flags are preserved so the data can also train detectors. The hidden files a task keeps as blobs are read from
+the task blob store (`--blobs` of the rollout; for `rl reward`, the `blobs/` next to `--tasks`, or `--blobs`); a hidden
+file that cannot be read is a note on the reward, and the hardcoded-value detector skips it. A literal that the
+task's repository already had before the change (`git grep -i` at the task's commit, or a search of a plain directory)
+is not evidence: tests and a correct solution share the names a specification gives (routes, commands, operation
+names). Nor is a name of several parts joined by `.`, `/`, `:` or `-` (`core.count`, `legs.0.account`) each of whose
+parts the repository has: a name built from the specification's vocabulary, as a solution builds it. Rollouts and `rl serve` search the repository the task names; `rl reward` searches it relative to the current
+directory, as rollouts resolve it, and says when it cannot, in which case only the prompt and the diff's context rule
+literals out. A literal whose own search fails is not evidence either: the reward notes it and does not flag it.
 
 **`rewards.json`.** A file lists only what it changes; everything else keeps the documented defaults (a weight of 0
 switches a component off). All keys are optional:

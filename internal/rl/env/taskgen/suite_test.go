@@ -482,3 +482,62 @@ func TestSuiteScriptIsPython38(t *testing.T) {
 		t.Fatalf("not Python 3.8: %v\n%s", err, out)
 	}
 }
+
+// TestSuiteRerunsAGoPackageThatCrashed: go test stops a package at the test that crashes its binary, so the scorer runs
+// the package again without the tests it reported, as often as it keeps crashing and reporting more; the test that
+// crashed stays failed, and only the crashed package is run again.
+func TestSuiteRerunsAGoPackageThatCrashed(t *testing.T) {
+	havePython(t)
+	crash := func(p, name string) string {
+		return fmt.Sprintf(`{"Action":"run","Package":%q,"Test":%q}`+"\n"+`{"Action":"output","Package":%q,"Test":%q,"Output":"panic: runtime error: invalid memory address or nil pointer dereference\n"}`+"\n"+
+			`{"Action":"fail","Package":%q,"Test":%q,"Elapsed":0}`+"\n"+`{"Action":"fail","Package":%q,"Elapsed":0}`+"\n", p, name, p, name, p, name, p)
+	}
+	files := map[string]string{
+		// The first run: TestA passes, TestB crashes the binary; p/other is unaffected.
+		"run1.json": goEvents("p/one", map[string]string{"TestA": "pass"}) + crash("p/one", "TestB") + goEvents("p/other", map[string]string{"TestZ": "pass"}),
+		// Run again without TestA and TestB: TestC passes, TestD crashes too.
+		"run2.json": goEvents("p/one", map[string]string{"TestC": "pass"}) + crash("p/one", "TestD"),
+		// And again without those: TestE fails normally, TestF passes.
+		"run3.json": goEvents("p/one", map[string]string{"TestE": "fail", "TestF": "pass"}),
+	}
+	spec := SuiteSpec{Commands: []SuiteCommand{{Name: "go", Parser: SuiteParserGoTest,
+		Run: `n=$(cat n 2>/dev/null || echo 0); n=$((n+1)); echo $n > n; printf '%s\n' "${SUITE_ARGS-}" >> args.txt; cat run$n.json`}}}
+	dir := layoutSuite(t, spec, files)
+	got := recordOf(t, runScorer(t, dir, "SUITE_MODE=record"))["go"].Tests
+	want := map[string]string{"p/one.TestA": "pass", "p/one.TestB": "fail", "p/one.TestC": "pass", "p/one.TestD": "fail",
+		"p/one.TestE": "fail", "p/one.TestF": "pass", "p/other.TestZ": "pass"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("tests %v\nwant %v", got, want)
+	}
+	args := strings.Split(strings.TrimRight(mustRead(t, filepath.Join(dir, "args.txt")), "\n"), "\n")
+	if wantArgs := []string{"", "-skip '^(TestA|TestB)$' p/one", "-skip '^(TestA|TestB|TestC|TestD)$' p/one"}; !reflect.DeepEqual(args, wantArgs) {
+		t.Errorf("SUITE_ARGS of the runs: %q, want %q", args, wantArgs)
+	}
+}
+
+// TestSuiteGoCrashCostsOnlyItsTest: with real go test, a test that panics fails alone, and the tests after it in the same
+// package are still reported.
+func TestSuiteGoCrashCostsOnlyItsTest(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs go test")
+	}
+	havePython(t)
+	have(t, "go")
+	files := map[string]string{
+		"go.mod": "module example.com/crash\n\ngo 1.21\n",
+		"p/p.go": "package p\n\nfunc Double(x int) int { return 2 * x }\n",
+		"p/p_test.go": "package p\n\nimport \"testing\"\n\n" +
+			"func TestA(t *testing.T) {\n\tif Double(2) != 4 {\n\t\tt.Fatal(\"A\")\n\t}\n}\n\n" +
+			"func TestB(t *testing.T) {\n\tvar m map[string]int\n\tm[\"x\"] = 1\n}\n\n" +
+			"func TestC(t *testing.T) {\n\tif Double(3) != 6 {\n\t\tt.Fatal(\"C\")\n\t}\n}\n\n" +
+			"func TestD(t *testing.T) {\n\tif Double(1) != 3 {\n\t\tt.Fatal(\"D\")\n\t}\n}\n",
+	}
+	dir := layoutSuite(t, SuiteSpec{Commands: []SuiteCommand{GoSuiteCommand("")}}, files)
+	r := runScorer(t, dir, "SUITE_MODE=record", "GOFLAGS=-mod=mod", "GOCACHE="+sharedGoCache)
+	got := recordOf(t, r)["go"].Tests
+	want := map[string]string{"example.com/crash/p.TestA": "pass", "example.com/crash/p.TestB": "fail",
+		"example.com/crash/p.TestC": "pass", "example.com/crash/p.TestD": "fail"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("tests %v\nwant %v\n%s", got, want, r.stderr)
+	}
+}

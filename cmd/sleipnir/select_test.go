@@ -57,7 +57,7 @@ func TestSelectRowsFitTheTerminalTheyAreOn(t *testing.T) {
 	old := termWidth
 	termWidth = func(io.Writer) int { return 40 }
 	t.Cleanup(func() { termWidth = old })
-	labels := []string{"heimdall/audnai/penclaw-glm-5.3-abliterated    131k ctx  $0.16/M out  tools", "short"}
+	labels := []string{"heimdallm/audnai/penclaw-glm-5.3-abliterated    131k ctx  $0.16/M out  tools", "short"}
 	var out bytes.Buffer
 	i, err := selectRows(bufio.NewReader(strings.NewReader("abliterated\r")), &out, "Which model?", labels, labels, true, 3)
 	if err != nil || i != 0 {
@@ -71,7 +71,7 @@ func TestSelectRowsFitTheTerminalTheyAreOn(t *testing.T) {
 		}
 	}
 	last := strings.TrimLeft(ansiCodes.ReplaceAllString(lines[len(lines)-2], ""), "\r")
-	if !strings.HasPrefix(last, "Which model? heimdall/audnai/pen") || !strings.HasSuffix(last, "…") {
+	if !strings.HasPrefix(last, "Which model? heimdallm/audnai/pen") || !strings.HasSuffix(last, "…") {
 		t.Errorf("what was chosen is said on one line, cut where it must be: %q", last)
 	}
 }

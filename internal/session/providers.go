@@ -40,9 +40,9 @@ func (m ModelRef) String() string { return m.Provider + "/" + m.Model }
 var builtinProviders = map[string]config.Provider{
 	// A ChatGPT plan, signed in with `sleipnir login chatgpt` (OpenAI's "Sign in with ChatGPT"): no key, the Responses API, billed to the plan.
 	"chatgpt": {Dialect: config.DialectOpenAIResponses, Auth: config.AuthChatGPTPlan, BaseURL: chatgptauth.Resource},
-	"heimdall": {
-		Dialect: config.DialectOpenAIChat, BaseURL: "https://api-staging.impossiblecarrot.cc/api/v1", APIKeyEnv: "HEIMDALL_API_KEY",
-		// Heimdall pins a conversation to the engine that served it when it is told
+	"heimdallm": {
+		Dialect: config.DialectOpenAIChat, BaseURL: "https://api-staging.heimdallm.com/api/v1", APIKeyEnv: "HEIMDALLM_API_KEY",
+		// Heimdallm pins a conversation to the engine that served it when it is told
 		// the conversation id; prompt_cache_key carries the same id.
 		Options: map[string]any{"session_header": true, "cache_key_body": true},
 		Headers: map[string]string{"X-Title": "Sleipnir"},
@@ -124,7 +124,7 @@ func providerNames(cfg *config.Config) []string {
 	}
 	if cfg != nil {
 		for n := range cfg.Providers {
-			set[n] = true
+			set[config.CanonicalProvider(n)] = true
 		}
 	}
 	var out []string
@@ -139,11 +139,13 @@ func providerNames(cfg *config.Config) []string {
 func ProviderNames(cfg *config.Config) []string { return providerNames(cfg) }
 
 // lookupProvider resolves configured and built-in providers; a configured endpoint replaces the
-// built-in definition, while an entry without its own endpoint extends it.
+// built-in definition, while an entry without its own endpoint extends it. A renamed provider is found by its former
+// name too (config.CanonicalProvider).
 func lookupProvider(cfg *config.Config, name string) (config.Provider, bool) {
+	name = config.CanonicalProvider(name)
 	b, isBuiltin := builtinProviders[name]
 	if cfg != nil {
-		if p, ok := cfg.Providers[name]; ok {
+		if p, ok := cfg.ProviderEntry(name); ok {
 			if isBuiltin && p.BaseURL == "" {
 				// An entry that names no endpoint of its own only tunes the built-in
 				// provider (options, a header, an allowance such as allow_hosts): it
@@ -202,10 +204,13 @@ func ResolveModel(cfg *config.Config, ref string) (ModelRef, error) {
 		ref = cfg.Models.Default
 	}
 	if ref == "" {
-		return ModelRef{}, fmt.Errorf("%w. Recommended start: run `sleipnir login` (Heimdall is the recommended provider), then `sleipnir`, which asks the provider which models it has.\nOr pass --model provider/model, set SLEIPNIR_MODEL, or write a model into your config with `sleipnir init --user --model provider/model`", ErrNoModel)
+		return ModelRef{}, fmt.Errorf("%w. Recommended start: run `sleipnir login` (Heimdallm is the recommended provider), then `sleipnir`, which asks the provider which models it has.\nOr pass --model provider/model, set SLEIPNIR_MODEL, or write a model into your config with `sleipnir init --user --model provider/model`", ErrNoModel)
 	}
 	if i := strings.IndexByte(ref, '/'); i > 0 {
 		if p, ok := lookupProvider(cfg, ref[:i]); ok {
+			if n := config.CanonicalProvider(ref[:i]); n != ref[:i] { // a renamed provider's former name
+				ref, i = n+ref[i:], len(n)
+			}
 			// "anthropic/claude-x" is also a marketplace id: with no key for that provider and a
 			// default provider that has one, the whole string is the marketplace's model id.
 			if d, derr := defaultProvider(cfg); derr == nil && d != ref[:i] && (ref[:i] == "anthropic" || ref[:i] == "openai" || ref[:i] == "deepseek") && p.APIKey() == "" {
@@ -295,7 +300,7 @@ func endpointOf(name string, p config.Provider, key string) (string, error) {
 // from a project file is not among them.
 func trustedBaseURLs(name string, p config.Provider) []string {
 	var out []string
-	if b, ok := builtinProviders[name]; ok && b.BaseURL != "" {
+	if b, ok := builtinProviders[config.CanonicalProvider(name)]; ok && b.BaseURL != "" {
 		out = append(out, b.BaseURL)
 	}
 	if p.BaseURL != "" && !p.BaseURLFromProject {
@@ -313,10 +318,10 @@ func DefaultProvider(cfg *config.Config) (string, error) { return defaultProvide
 func defaultProvider(cfg *config.Config) (string, error) {
 	if cfg != nil && len(cfg.Providers) == 1 {
 		for n := range cfg.Providers {
-			return n, nil
+			return config.CanonicalProvider(n), nil
 		}
 	}
-	for _, n := range []string{"heimdall", "openrouter", "openai", "anthropic", "together", "fireworks", "groq", "cerebras", "deepinfra", "mistral", "gemini", "xai", "deepseek", "huggingface"} {
+	for _, n := range []string{"heimdallm", "openrouter", "openai", "anthropic", "together", "fireworks", "groq", "cerebras", "deepinfra", "mistral", "gemini", "xai", "deepseek", "huggingface"} {
 		if p, ok := lookupProvider(cfg, n); ok && ProviderReady(p) {
 			return n, nil
 		}
@@ -329,7 +334,7 @@ func defaultProvider(cfg *config.Config) (string, error) {
 	if p, ok := lookupProvider(cfg, "chatgpt"); ok && ProviderReady(p) { // a plan is the last resort: a key someone set says more
 		return "chatgpt", nil
 	}
-	return "", fmt.Errorf("no provider has a key: run `sleipnir login` (Heimdall is the recommended provider), or set HEIMDALL_API_KEY or the key of another provider (OPENROUTER_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, ...), name a local server (ollama/<model>), or define a provider under \"providers\" in your config")
+	return "", fmt.Errorf("no provider has a key: run `sleipnir login` (Heimdallm is the recommended provider), or set HEIMDALLM_API_KEY or the key of another provider (OPENROUTER_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, ...), name a local server (ollama/<model>), or define a provider under \"providers\" in your config")
 }
 
 // ProviderReady says whether a provider can be used now: its key is set, or (a ChatGPT plan) there is a sign-in on this machine.

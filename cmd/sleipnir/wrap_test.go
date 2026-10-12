@@ -140,11 +140,11 @@ func TestReportErrorFitsTheTerminal(t *testing.T) {
 
 func TestModelsTableFitsTheTerminal(t *testing.T) {
 	rows := []modelRow{
-		row("heimdall/audnai/penclaw-glm-5.3-abliterated", 131_000, 0.16, "tools", "reasoning"),
-		row("heimdall/qwen/qwen3.8-flash-next", 1_000_000, 0.035, "tools"),
+		row("heimdallm/audnai/penclaw-glm-5.3-abliterated", 131_000, 0.16, "tools", "reasoning"),
+		row("heimdallm/qwen/qwen3.8-flash-next", 1_000_000, 0.035, "tools"),
 		row("openrouter/some-lab/a-model-with-a-really-quite-long-name-indeed", 256_000, 2.5),
 	}
-	fav := map[string]bool{"heimdall/qwen/qwen3.8-flash-next": true}
+	fav := map[string]bool{"heimdallm/qwen/qwen3.8-flash-next": true}
 	table := func(rows []modelRow, width int) string {
 		var b bytes.Buffer
 		if err := printModelsWidth(&b, rows, modelFilter{}, fav, width); err != nil {
@@ -153,7 +153,7 @@ func TestModelsTableFitsTheTerminal(t *testing.T) {
 		return b.String()
 	}
 	header := func(s string) string { return strings.Join(strings.Fields(strings.SplitN(s, "\n", 2)[0]), " ") }
-	normal := rows[:2] // the longest reference is 43 characters: the whole table is 99 wide
+	normal := rows[:2] // the longest reference is 44 characters: the whole table is 100 wide
 	for _, c := range []struct {
 		width int
 		want  string
@@ -175,7 +175,7 @@ func TestModelsTableFitsTheTerminal(t *testing.T) {
 		}
 	}
 	got := table(rows, 50) // a reference gives way only when the columns that tell less are gone
-	if lines := tooWide(got, 49); len(lines) != 0 || !strings.Contains(got, "…") || !strings.Contains(got, "* heimdall/qwen/qwen3.8…") {
+	if lines := tooWide(got, 49); len(lines) != 0 || !strings.Contains(got, "…") || !strings.Contains(got, "* heimdallm/qwen/qwen3.…") {
 		t.Errorf("at 50 columns:\n%s", got)
 	}
 	if first := strings.Fields(strings.Split(got, "\n")[1])[0]; first != "*" {
@@ -189,7 +189,7 @@ func TestSessionsListFitsTheTerminal(t *testing.T) {
 	if err := os.MkdirAll(d, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	log := `{"seq":1,"type":"session.start","data":{"model":"heimdall/deepseek/deepseek-v4.1-flash"}}` + "\n" +
+	log := `{"seq":1,"type":"session.start","data":{"model":"heimdallm/deepseek/deepseek-v4.1-flash"}}` + "\n" +
 		`{"seq":2,"type":"user.input","data":{"text":"Fix the failing test in the slugify package, and add one for the case of a title with accents in it, then run everything"}}` + "\n"
 	if err := os.WriteFile(filepath.Join(d, "events.jsonl"), []byte(log), 0o644); err != nil {
 		t.Fatal(err)
@@ -202,12 +202,12 @@ func TestSessionsListFitsTheTerminal(t *testing.T) {
 		return o.String(), n.String()
 	}
 	pipe, _ := list()
-	if !strings.Contains(pipe, "heimdall/deepseek/deepseek-v4.1-flash") || !strings.Contains(pipe, "Fix the failing test") {
+	if !strings.Contains(pipe, "heimdallm/deepseek/deepseek-v4.1-flash") || !strings.Contains(pipe, "Fix the failing test") {
 		t.Errorf("a listing that goes to a pipe has the model and the prompt: %q", pipe)
 	}
 	atWidth(t, 80)
 	out, note := list()
-	if lines := tooWide(out, 79); len(lines) != 0 || !strings.Contains(out, "Fix the failing test") || !strings.Contains(out, "…") || strings.Contains(out, "heimdall/") {
+	if lines := tooWide(out, 79); len(lines) != 0 || !strings.Contains(out, "Fix the failing test") || !strings.Contains(out, "…") || strings.Contains(out, "heimdallm/") {
 		t.Errorf("a listing on a terminal of 80 columns:\n%s", out)
 	}
 	if note != "" && len(tooWide(note, 79)) != 0 {

@@ -386,17 +386,29 @@ func TestSwarmSessionDispatchesWorkersWithRealTools(t *testing.T) {
 }
 
 func TestResolveModelAndProviders(t *testing.T) {
+	t.Setenv("HEIMDALLM_API_KEY", "")
 	t.Setenv("HEIMDALL_API_KEY", "")
 	t.Setenv("OPENROUTER_API_KEY", "")
 	t.Setenv("OPENAI_API_KEY", "")
 	if _, err := session.ResolveModel(nil, "some/model"); err == nil {
 		t.Fatal("no provider configured must be an error, not a guess")
 	}
-	t.Setenv("HEIMDALL_API_KEY", "k")
+	t.Setenv("HEIMDALLM_API_KEY", "k")
 	got, err := session.ResolveModel(nil, "deepseek/deepseek-v4.1-flash")
-	if err != nil || got.Provider != "heimdall" || got.Model != "deepseek/deepseek-v4.1-flash" {
+	if err != nil || got.Provider != "heimdallm" || got.Model != "deepseek/deepseek-v4.1-flash" {
 		t.Fatalf("bare marketplace id goes to the default provider: %+v %v", got, err)
 	}
+	got, err = session.ResolveModel(nil, "heimdall/deepseek/deepseek-v4.1-flash")
+	if err != nil || got.Provider != "heimdallm" || got.Model != "deepseek/deepseek-v4.1-flash" {
+		t.Fatalf("the provider's former name resolves to its current one: %+v %v", got, err)
+	}
+	t.Setenv("HEIMDALLM_API_KEY", "")
+	t.Setenv("HEIMDALL_API_KEY", "k")
+	if d, err := session.DefaultProvider(nil); err != nil || d != "heimdallm" {
+		t.Fatalf("a key under the former variable name still selects the provider: %q %v", d, err)
+	}
+	t.Setenv("HEIMDALL_API_KEY", "")
+	t.Setenv("HEIMDALLM_API_KEY", "k")
 	got, err = session.ResolveModel(nil, "openrouter/x/y")
 	if err != nil || got.Provider != "openrouter" || got.Model != "x/y" {
 		t.Fatalf("explicit provider prefix: %+v %v", got, err)
@@ -404,22 +416,22 @@ func TestResolveModelAndProviders(t *testing.T) {
 	if _, _, err := session.BuildProvider(nil, session.ModelRef{Provider: "openai", Model: "gpt"}, session.ProviderOptions{}); err == nil {
 		t.Fatal("a provider whose key is unset must fail with a message naming the variable")
 	}
-	p, m, err := session.BuildProvider(nil, session.ModelRef{Provider: "heimdall", Model: "deepseek/deepseek-v4.1-flash"}, session.ProviderOptions{CaptureTokens: true})
+	p, m, err := session.BuildProvider(nil, session.ModelRef{Provider: "heimdallm", Model: "deepseek/deepseek-v4.1-flash"}, session.ProviderOptions{CaptureTokens: true})
 	if err != nil || !p.Profile().CaptureTokens || m.ContextTokens == 0 {
-		t.Fatalf("heimdall provider: %v %+v %+v", err, p.Profile(), m)
+		t.Fatalf("heimdallm provider: %v %+v %+v", err, p.Profile(), m)
 	}
 }
 
 func TestBuiltInHostsAndLocalServers(t *testing.T) {
-	for _, k := range []string{"HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TOGETHER_API_KEY"} {
+	for _, k := range []string{"HEIMDALLM_API_KEY", "HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TOGETHER_API_KEY"} {
 		t.Setenv(k, "")
 	}
-	// Nothing set: the error says what to start with, and it is Heimdall.
-	if _, err := session.ResolveModel(nil, "some/model"); err == nil || !strings.Contains(err.Error(), "sleipnir login` (Heimdall is the recommended provider)") {
-		t.Errorf("the no-provider error recommends Heimdall first: %v", err)
+	// Nothing set: the error says what to start with, and it is Heimdallm.
+	if _, err := session.ResolveModel(nil, "some/model"); err == nil || !strings.Contains(err.Error(), "sleipnir login` (Heimdallm is the recommended provider)") {
+		t.Errorf("the no-provider error recommends Heimdallm first: %v", err)
 	}
 	if _, err := session.ResolveModel(nil, ""); err == nil || !strings.Contains(err.Error(), "Recommended start: run `sleipnir login`") {
-		t.Errorf("the no-model error recommends Heimdall first: %v", err)
+		t.Errorf("the no-model error recommends Heimdallm first: %v", err)
 	}
 	// A local server needs no key and is never the default for a bare id.
 	got, err := session.ResolveModel(nil, "ollama/qwen3:8b")

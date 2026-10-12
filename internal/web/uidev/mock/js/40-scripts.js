@@ -14,7 +14,7 @@
   function legOf(k) { return (k - 1) % 8; }
   function mkAgent(role, nth, k, meta, spawn, scope) {
     const code = D.roles[role].code, id = code + '-' + nth;
-    return { id, role, code, nth, k, leg: legOf(k), scope: scope || (D.roles[role].ro ? '- (read-only)' : '**'), ro: D.roles[role].ro, model: (meta.roleModels && meta.roleModels[role]) || D.roleModels[role] || 'heimdall/demo-model', spawn: spawn || 0 };
+    return { id, role, code, nth, k, leg: legOf(k), scope: scope || (D.roles[role].ro ? '- (read-only)' : '**'), ro: D.roles[role].ro, model: (meta.roleModels && meta.roleModels[role]) || D.roleModels[role] || 'heimdallm/demo-model', spawn: spawn || 0 };
   }
   function buildRoster(S) {
     const meta = S.meta, out = [{ id: 'mgr', role: 'manager', code: 'mgr', nth: 0, k: 0, leg: -1, scope: meta.swarm ? '- (edits no file)' : '**', ro: false, model: meta.model, spawn: 0 }];
@@ -78,7 +78,7 @@
     b.say(4, 'mgr', 'I’ll have three scouts map the API, the seed data and the paging conventions, then split the build by directory so no two workers touch the same file.');
     b.tool(4.2, 'mgr', 'TaskBoard', 'create T1 T2 T3', 'created T1 survey endpoints, T2 survey seed data, T3 survey paging patterns');
     ['T1', 'T2', 'T3'].forEach(t => b.task(4.4, t, 'running', { title: T[t].title, owner: T[t].owner, deps: T[t].deps, scope: T[t].scope }));
-    b.tool(4.6, 'mgr', 'Spawn', 'sc-1 sc-2 sc-3', '3 scouts started (read-only, heimdall/demo-model), legs 1 to 3');
+    b.tool(4.6, 'mgr', 'Spawn', 'sc-1 sc-2 sc-3', '3 scouts started (read-only, heimdallm/demo-model), legs 1 to 3');
     // ---- scouts
     b.step(5, 'sc-1', 'tool', 'Glob', 'api/**', '11 files', 'T1'); b.state(9, 'sc-1', 'think', 'listing endpoints', 'T1');
     b.step(11, 'sc-1', 'tool', 'Read', 'api/server.go', '212 lines', 'T1'); b.state(15, 'sc-1', 'done', 'eleven endpoints; list shapes', 'T1');

@@ -10,8 +10,10 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
+	"maps"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -220,6 +222,9 @@ func rebuildGo(ctx context.Context, r *repo, commit string, files []string, opts
 		return nil, err
 	}
 	lib := &rebuildLib{lang: Go, root: mod, module: modPath, sources: map[string][]byte{}, hidden: map[string][]byte{}}
+	if dirs, lib.support, err = goTestSupport(dirs, byDir, content, importPath); err != nil {
+		return nil, err
+	}
 	srcs := map[string]map[string][]byte{}  // dir -> source files
 	tests := map[string]map[string][]byte{} // dir -> test files
 	total := 0
@@ -277,9 +282,39 @@ func rebuildGo(ctx context.Context, r *repo, commit string, files []string, opts
 
 	switch opts.Tier {
 	case RebuildStubs:
+		// What runs when the module's packages load, the packages outside the scope included: their sources are read too.
+		pkgs, scope := map[string]map[string][]byte{}, map[string]bool{}
+		var more []string
+		for d := range isDir {
+			if m, _ := moduleOf(d); m != mod || goIgnoredDir(relDir(mod, d)) || !hasSources(d) {
+				continue
+			}
+			if s, ok := srcs[d]; ok {
+				pkgs[d], scope[d] = s, true
+				continue
+			}
+			for _, f := range byDir[d] {
+				if strings.HasSuffix(f, ".go") && !strings.HasSuffix(f, "_test.go") {
+					more = append(more, f)
+				}
+			}
+		}
+		others, err := r.readFiles(ctx, commit, more)
+		if err != nil {
+			return nil, err
+		}
+		for f, b := range others {
+			d := path.Dir(f)
+			if pkgs[d] == nil {
+				pkgs[d] = map[string][]byte{}
+			}
+			pkgs[d][f] = b
+		}
+		load := goLoadTime(pkgs, tests, importPath, scope)
 		lib.stubs = map[string][]byte{}
 		for _, p := range lib.pkgs {
-			stubs, err := goStubPackage(srcs[p.Dir], testIdents[p.Dir])
+			keep := load[p.Dir]
+			stubs, err := goStubPackage(srcs[p.Dir], testIdents[p.Dir], &keep)
 			if err != nil {
 				return nil, reject(ReasonRebuildScope, "stubbing %s: %v", p.Name, err)
 			}
@@ -320,6 +355,95 @@ func rebuildGo(ctx context.Context, r *repo, commit string, files []string, opts
 	}
 	lib.manifests = []string{"go.mod", "go.sum", "go.work", "go.work.sum"}
 	return lib, nil
+}
+
+// goTestSupport takes out of the scope's directories the packages that are test support: a package the tests of
+// another package of the scope import although no package's sources of the scope depend on it, directly or through
+// other packages of the scope (an assertion library the project's tests use, which itself builds on the packages it is used
+// to test). Stubbed, it would fail every test that uses it, so no unit could score before it was rebuilt, and the
+// agents, who cannot see the tests, would not know to rebuild it first; it stays at the reference instead. It returns
+// the directories left and, for each package taken out, the packages whose tests use it. A scope of test support
+// alone is rejected.
+func goTestSupport(dirs []string, byDir map[string][]string, content map[string][]byte, importPath func(string) string) ([]string, map[string][]string, error) {
+	byPath := map[string]string{}
+	for _, d := range dirs {
+		byPath[importPath(d)] = d
+	}
+	srcImports, testImports := map[string][]string{}, map[string][]string{}
+	for _, d := range dirs {
+		srcs, tests := map[string][]byte{}, map[string][]byte{}
+		for _, f := range byDir[d] {
+			switch {
+			case strings.HasSuffix(f, "_test.go"):
+				tests[f] = content[f]
+			case strings.HasSuffix(f, ".go"):
+				srcs[f] = content[f]
+			}
+		}
+		_, imports, err := goPackageInfo(srcs)
+		if err != nil {
+			return nil, nil, reject(ReasonRebuildScope, "%v", err)
+		}
+		srcImports[d] = imports
+		fset := token.NewFileSet()
+		for _, p := range sortedPaths(tests) {
+			f, err := parser.ParseFile(fset, p, tests[p], parser.ImportsOnly)
+			if err != nil {
+				continue // a test file that does not parse uses nothing; the suite reports it
+			}
+			for _, s := range f.Imports {
+				if ip, err := strconv.Unquote(s.Path.Value); err == nil {
+					testImports[d] = append(testImports[d], ip)
+				}
+			}
+		}
+	}
+	// What each package's sources depend on in the scope, directly or through other packages of it.
+	depends := func(d string) map[string]bool {
+		out := map[string]bool{}
+		var walk func(string)
+		walk = func(d string) {
+			for _, ip := range srcImports[d] {
+				if dep, ok := byPath[ip]; ok && !out[dep] {
+					out[dep] = true
+					walk(dep)
+				}
+			}
+		}
+		walk(d)
+		return out
+	}
+	// A package that the sources of any package of the scope depend on is product code, whoever's tests import it.
+	product := map[string]bool{}
+	for _, d := range dirs {
+		for dep := range depends(d) {
+			product[dep] = true
+		}
+	}
+	support := map[string][]string{}
+	for _, d := range dirs {
+		for _, ip := range testImports[d] {
+			if dep, ok := byPath[ip]; ok && dep != d && !product[dep] && !slices.Contains(support[ip], importPath(d)) {
+				support[ip] = append(support[ip], importPath(d))
+			}
+		}
+	}
+	if len(support) == 0 {
+		return dirs, nil, nil
+	}
+	var left []string
+	for _, d := range dirs {
+		if _, ok := support[importPath(d)]; !ok {
+			left = append(left, d)
+		}
+	}
+	if len(left) == 0 {
+		return nil, nil, reject(ReasonRebuildScope, "every package of the scope is used by the tests of another one: nothing is left to rebuild")
+	}
+	for ip := range support {
+		sort.Strings(support[ip])
+	}
+	return left, support, nil
 }
 
 // goPackageInfo reads the package clause and imports of a package's source files: the package's name is the one most
@@ -385,9 +509,15 @@ func goTestIdents(tests map[string][]byte, name string) map[string]bool {
 // goStubPackage returns the stub of each source file of a Go package. A stub keeps the file's package clause, its
 // build constraints and comments outside function bodies, every constant, variable and type declaration, every
 // method, and every function that is exported, that kept code refers to or that the package's tests use (keep); the
-// body of each kept function, method and function literal becomes a panic, init functions and the other unexported
-// functions are removed, and so are the imports nothing kept uses. The stubs are gofmt-formatted.
-func goStubPackage(files map[string][]byte, keep map[string]bool) (map[string][]byte, error) {
+// body of each kept function, method and function literal becomes a panic, except what runs when the package loads
+// (goLoadTime), init functions and the other unexported functions are removed, and so are the imports nothing kept
+// uses. The stubs are gofmt-formatted.
+func goStubPackage(files map[string][]byte, keep map[string]bool, load *goLoadKeep) (map[string][]byte, error) {
+	if load == nil {
+		// The package alone: what its own variables' values call when it loads.
+		l := goLoadTime(map[string]map[string][]byte{".": files}, nil, func(string) string { return "" }, map[string]bool{".": true})["."]
+		load = &l
+	}
 	fset := token.NewFileSet()
 	parsed := map[string]*ast.File{}
 	groups := map[string][]string{}
@@ -412,8 +542,33 @@ func goStubPackage(files map[string][]byte, keep map[string]bool) (map[string][]
 				goDeclNames(d, decls)
 			}
 		}
+		// The bodies kept for loading may use unexported functions: those stay too.
 		for _, p := range paths {
-			stub, err := goStubFile(fset, parsed[p], files[p], refs, decls)
+			ast.Inspect(parsed[p], func(n ast.Node) bool {
+				var body ast.Node
+				switch x := n.(type) {
+				case *ast.FuncDecl:
+					if x.Body != nil && load.keeps(x) {
+						body = x.Body
+					}
+				case *ast.FuncLit:
+					if load.lits[p][fset.File(x.Pos()).Offset(x.Body.Lbrace)] {
+						body = x.Body
+					}
+				}
+				if body != nil {
+					ast.Inspect(body, func(n ast.Node) bool {
+						if id, ok := n.(*ast.Ident); ok {
+							refs[id.Name] = true
+						}
+						return true
+					})
+				}
+				return true
+			})
+		}
+		for _, p := range paths {
+			stub, err := goStubFile(fset, parsed[p], files[p], refs, decls, *load, p)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", p, err)
 			}
@@ -421,6 +576,298 @@ func goStubPackage(files map[string][]byte, keep map[string]bool) (map[string][]
 		}
 	}
 	return out, nil
+}
+
+// goLoadKeep is what a package's stub keeps of the code that runs when the module's packages load (goLoadTime): the
+// names of its functions and methods whose bodies stay, and the function literals of its variables' values that are
+// called in place, by file and the offset of their body.
+type goLoadKeep struct {
+	funcs, methods map[string]bool
+	lits           map[string]map[int]bool
+}
+
+// keeps reports whether the stub keeps fd's body.
+func (k goLoadKeep) keeps(fd *ast.FuncDecl) bool {
+	if fd.Recv == nil {
+		return k.funcs[fd.Name.Name]
+	}
+	return k.methods[fd.Name.Name]
+}
+
+// goLoadTime finds what runs when the module's packages load, for the packages of the scope (scope, by directory):
+// starting from the value of every package-level variable of every package (pkgs: each package's non-test sources, by
+// directory), from the init functions of the packages outside the scope (a stub removes those of the scope), and from
+// what a test binary of the scope runs before its first test (the TestMain functions and variables of tests, its test
+// files by directory), it follows the calls through the module: a function of the same package, a function of a package of the module the
+// file imports, a method of any package of the module by its name (a call x.M() follows every method M, which keeps a
+// body too many rather than one too few), a function literal called in place, and the function literal a package
+// variable holds when that variable is called or handed on (var fn = func() T {...}; var x = fn()). A function or method of the scope
+// it reaches keeps its body in the stub, and so does a literal of a variable's value called in place: a panic there
+// would fail every program that loads the package, every test of every package built on it, and not only the callers
+// of the function.
+func goLoadTime(pkgs, tests map[string]map[string][]byte, importPath func(string) string, scope map[string]bool) map[string]goLoadKeep {
+	// fn is a function or method of the module, or a package variable whose value is a function literal (lit): a
+	// call of the variable runs the literal.
+	type fn struct {
+		dir  string
+		file *ast.File
+		decl *ast.FuncDecl
+		lit  *ast.FuncLit
+	}
+	fset := token.NewFileSet()
+	byPath := map[string]string{} // import path -> directory
+	names := map[string]string{}  // directory -> package name
+	files := map[string][]*ast.File{}
+	pathOf := map[*ast.File]string{}
+	for _, d := range slices.Sorted(maps.Keys(pkgs)) {
+		byPath[importPath(d)] = d
+		count := map[string]int{}
+		var parsed []*ast.File
+		for _, p := range sortedPaths(pkgs[d]) {
+			f, err := parser.ParseFile(fset, p, pkgs[d][p], parser.SkipObjectResolution)
+			if err != nil {
+				continue // a file that does not parse runs nothing; building the stubs reports it
+			}
+			parsed = append(parsed, f)
+			pathOf[f] = p
+			count[f.Name.Name]++
+		}
+		for n, c := range count {
+			if names[d] == "" || c > count[names[d]] || (c == count[names[d]] && n < names[d]) {
+				names[d] = n
+			}
+		}
+		for _, f := range parsed {
+			if f.Name.Name == names[d] {
+				files[d] = append(files[d], f)
+			}
+		}
+	}
+	// The tests of a directory: their own functions are looked up under "<dir>#test", then (a test of the package
+	// itself) the package's.
+	testFiles := map[string][]*ast.File{}
+	lookup := map[*ast.File][]string{}
+	for _, d := range slices.Sorted(maps.Keys(tests)) {
+		for _, p := range sortedPaths(tests[d]) {
+			f, err := parser.ParseFile(fset, p, tests[d][p], parser.SkipObjectResolution)
+			if err != nil || (f.Name.Name != names[d] && f.Name.Name != names[d]+"_test") {
+				continue
+			}
+			testFiles[d] = append(testFiles[d], f)
+			pathOf[f] = p
+			lookup[f] = []string{d + "#test"}
+			if f.Name.Name == names[d] {
+				lookup[f] = append(lookup[f], d)
+			}
+		}
+	}
+	funcs := map[string]map[string][]fn{} // directory -> name -> declarations (one per build variant)
+	methods := map[string][]fn{}          // name -> methods of every package
+	imports := map[*ast.File]map[string]string{}
+	all := map[string][]*ast.File{}
+	for d, fs := range files {
+		all[d] = fs
+		for _, f := range fs {
+			lookup[f] = []string{d}
+		}
+	}
+	for d, fs := range testFiles {
+		all[d+"#test"] = fs
+	}
+	for d, fs := range all {
+		funcs[d] = map[string][]fn{}
+		for _, f := range fs {
+			imports[f] = map[string]string{}
+			for _, is := range f.Imports {
+				ip, err := strconv.Unquote(is.Path.Value)
+				dep, ok := byPath[ip]
+				if err != nil || !ok {
+					continue
+				}
+				name := names[dep]
+				if is.Name != nil {
+					name = is.Name.Name
+				}
+				imports[f][name] = dep
+			}
+			for _, decl := range f.Decls {
+				switch x := decl.(type) {
+				case *ast.FuncDecl:
+					if x.Body == nil {
+						continue
+					}
+					if x.Recv == nil {
+						funcs[d][x.Name.Name] = append(funcs[d][x.Name.Name], fn{dir: d, file: f, decl: x})
+					} else {
+						methods[x.Name.Name] = append(methods[x.Name.Name], fn{dir: d, file: f, decl: x})
+					}
+				case *ast.GenDecl:
+					if x.Tok != token.VAR {
+						continue
+					}
+					for _, sp := range x.Specs {
+						vs := sp.(*ast.ValueSpec)
+						for i, name := range vs.Names {
+							if i < len(vs.Values) {
+								if lit, ok := ast.Unparen(vs.Values[i]).(*ast.FuncLit); ok {
+									funcs[d][name.Name] = append(funcs[d][name.Name], fn{dir: d, file: f, lit: lit})
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	out := map[string]goLoadKeep{}
+	keep := func(d string) goLoadKeep {
+		k, ok := out[d]
+		if !ok {
+			k = goLoadKeep{funcs: map[string]bool{}, methods: map[string]bool{}, lits: map[string]map[int]bool{}}
+			out[d] = k
+		}
+		return k
+	}
+	seenFn, seenMethod, called := map[string]bool{}, map[string]bool{}, map[*ast.FuncLit]bool{}
+	var queue []fn
+	// scan follows the calls in n, a node of file f in directory d; inLit says whether to look into the function
+	// literals it does not call in place (a function's body: they may run when it does) or not (a variable's value:
+	// they do not run when the package loads).
+	// follow queues the function name of directory k, once; it reports whether k has one.
+	follow := func(k, name string) bool {
+		if len(funcs[k][name]) == 0 {
+			return false
+		}
+		if key := k + "\x00" + name; !seenFn[key] {
+			seenFn[key] = true
+			queue = append(queue, funcs[k][name]...)
+		}
+		return true
+	}
+	// scan follows what the code n of file f in directory d runs: the functions it calls and those it hands on as values
+	// (strings.Map(normRune, s), apply(transform): the callee runs them), the package's own or an imported package's of
+	// the module, and the methods it calls; inLit says whether to look into the function literals it does not call in
+	// place (a function's body: they may run when it does) or not (a variable's value: they do not run when the package
+	// loads). A method used as a value without a call (x.M) is not followed: by its name alone it would be every field
+	// and method of that name.
+	var scan func(d string, f *ast.File, n ast.Node, inLit bool)
+	scan = func(d string, f *ast.File, n ast.Node, inLit bool) {
+		ast.Inspect(n, func(n ast.Node) bool {
+			switch x := n.(type) {
+			case *ast.FuncLit:
+				return inLit || called[x]
+			case *ast.Ident:
+				for _, k := range lookup[f] {
+					if follow(k, x.Name) {
+						break
+					}
+				}
+			case *ast.SelectorExpr:
+				if id, ok := x.X.(*ast.Ident); ok {
+					if dep, ok := imports[f][id.Name]; ok {
+						follow(dep, x.Sel.Name)
+					}
+				}
+			case *ast.CallExpr:
+				fun := ast.Unparen(x.Fun)
+				switch ix := fun.(type) {
+				case *ast.IndexExpr:
+					fun = ix.X
+				case *ast.IndexListExpr:
+					fun = ix.X
+				}
+				switch c := fun.(type) {
+				case *ast.FuncLit:
+					if !called[c] {
+						called[c] = true
+						if scope[d] && !inLit {
+							k := keep(d)
+							if k.lits[pathOf[f]] == nil {
+								k.lits[pathOf[f]] = map[int]bool{}
+							}
+							k.lits[pathOf[f]][fset.File(c.Pos()).Offset(c.Body.Lbrace)] = true
+						}
+					}
+				case *ast.SelectorExpr:
+					if id, ok := c.X.(*ast.Ident); ok {
+						if _, ok := imports[f][id.Name]; ok {
+							return true // a function of an imported package: the selector itself is followed
+						}
+					}
+					if !seenMethod[c.Sel.Name] && len(methods[c.Sel.Name]) > 0 {
+						seenMethod[c.Sel.Name] = true
+						queue = append(queue, methods[c.Sel.Name]...)
+					}
+				}
+			}
+			return true
+		})
+	}
+	for _, d := range slices.Sorted(maps.Keys(files)) {
+		for _, f := range files[d] {
+			for _, decl := range f.Decls {
+				switch x := decl.(type) {
+				case *ast.GenDecl:
+					if x.Tok == token.VAR {
+						for _, sp := range x.Specs {
+							for _, v := range sp.(*ast.ValueSpec).Values {
+								scan(d, f, v, false)
+							}
+						}
+					}
+				case *ast.FuncDecl:
+					if x.Recv == nil && x.Name.Name == "init" && x.Body != nil && !scope[d] {
+						scan(d, f, x.Body, true)
+					}
+				}
+			}
+		}
+	}
+	for _, d := range slices.Sorted(maps.Keys(testFiles)) {
+		for _, f := range testFiles[d] {
+			for _, decl := range f.Decls {
+				switch x := decl.(type) {
+				case *ast.GenDecl:
+					if x.Tok == token.VAR {
+						for _, sp := range x.Specs {
+							for _, v := range sp.(*ast.ValueSpec).Values {
+								scan(d+"#test", f, v, false)
+							}
+						}
+					}
+				case *ast.FuncDecl:
+					if x.Recv == nil && (x.Name.Name == "TestMain" || x.Name.Name == "init") && x.Body != nil {
+						scan(d+"#test", f, x.Body, true)
+					}
+				}
+			}
+		}
+	}
+	for len(queue) > 0 {
+		c := queue[0]
+		queue = queue[1:]
+		if c.lit != nil { // a package variable's function literal: kept where it is
+			if scope[c.dir] {
+				k := keep(c.dir)
+				if k.lits[pathOf[c.file]] == nil {
+					k.lits[pathOf[c.file]] = map[int]bool{}
+				}
+				k.lits[pathOf[c.file]][fset.File(c.lit.Pos()).Offset(c.lit.Body.Lbrace)] = true
+			}
+			scan(c.dir, c.file, c.lit.Body, true)
+			continue
+		}
+		if scope[c.dir] {
+			k := keep(c.dir)
+			if c.decl.Recv == nil {
+				k.funcs[c.decl.Name.Name] = true
+			} else {
+				k.methods[c.decl.Name.Name] = true
+			}
+		}
+		scan(c.dir, c.file, c.decl.Body, true)
+	}
+	return out
 }
 
 // goKeptRefs adds to refs every identifier the code a stub keeps mentions: declarations other than functions, and the
@@ -515,7 +962,7 @@ func applyEdits(src []byte, edits []textEdit) []byte {
 }
 
 // goStubFile stubs one file of a package (see goStubPackage); decls are the names the package declares.
-func goStubFile(fset *token.FileSet, f *ast.File, src []byte, refs, decls map[string]bool) ([]byte, error) {
+func goStubFile(fset *token.FileSet, f *ast.File, src []byte, refs, decls map[string]bool, load goLoadKeep, path string) ([]byte, error) {
 	tf := fset.File(f.Pos())
 	off := func(p token.Pos) int { return tf.Offset(p) }
 	var edits []textEdit
@@ -530,13 +977,15 @@ func goStubFile(fset *token.FileSet, f *ast.File, src []byte, refs, decls map[st
 				edits = append(edits, textEdit{off(start), off(x.End()), ""})
 				continue
 			}
-			if x.Body != nil {
+			if x.Body != nil && !load.keeps(x) {
 				edits = append(edits, textEdit{off(x.Body.Lbrace), off(x.Body.Rbrace) + 1, goStubBody})
 			}
 		case *ast.GenDecl:
 			ast.Inspect(x, func(n ast.Node) bool {
 				if fl, ok := n.(*ast.FuncLit); ok {
-					edits = append(edits, textEdit{off(fl.Body.Lbrace), off(fl.Body.Rbrace) + 1, goStubLit})
+					if !load.lits[path][off(fl.Body.Lbrace)] {
+						edits = append(edits, textEdit{off(fl.Body.Lbrace), off(fl.Body.Rbrace) + 1, goStubLit})
+					}
 					return false
 				}
 				return true

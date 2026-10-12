@@ -145,7 +145,7 @@ type Response struct {
 	Total           time.Duration
 	// RawUsage is the provider's usage object verbatim, for audit.
 	RawUsage json.RawMessage
-	// CostUSD is the exact charge when the gateway reports one (Heimdall's
+	// CostUSD is the exact charge when the gateway reports one (Heimdallm's
 	// usage.cost); nil otherwise.
 	CostUSD *float64
 	// Provider names the upstream that served the request, when known.

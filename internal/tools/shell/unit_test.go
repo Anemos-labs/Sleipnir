@@ -620,7 +620,7 @@ func TestLooksSecret(t *testing.T) {
 		"OPENAI_API_KEY=x", "anthropic_api-key=x", "MY_SECRET=x", "GITHUB_TOKEN=x", "DB_PASSWORD=x", "DB_PASSWD=x",
 		"AWS_CREDENTIALS=x", "GOOGLE_APPLICATION_CREDENTIALS=/k.json", "AWS_SESSION_TOKEN=x",
 		// last-word names
-		"STRIPE_KEY=x", "HEIMDALL_KEY=x", "KEY=x", "GPG_KEY=x", "PRIVATE_KEY=x", "MYSQL_PWD=x", "GH_PAT=x", "DB_PASS=x",
+		"STRIPE_KEY=x", "HEIMDALLM_KEY=x", "KEY=x", "GPG_KEY=x", "PRIVATE_KEY=x", "MYSQL_PWD=x", "GH_PAT=x", "DB_PASS=x",
 		"SSH_PASSPHRASE=x", "SENTRY_DSN=x", "HTTP_AUTH=x", "AUTHORIZATION=x", "COOKIE=x", "Set-Cookie=x", "PRIVATEKEY=x",
 		"SSH_AUTH_SOCK=/tmp/agent.1",
 		// values that give the secret away whatever the name is

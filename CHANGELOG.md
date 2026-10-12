@@ -7,6 +7,77 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The hardcoded-value detector rules out a literal that the task's
+  repository already had before the change (`env.RepoContains`: `git grep`
+  at the task's commit). Once the detector read hidden files from the task
+  store, it flagged correct solutions of specification-driven tasks, whose
+  routes, commands and operation names are also in the hidden tests, and
+  zeroed their outcome. `harness.Pipeline` gains `RepoContains`, and
+  `reward.WithRepo` adds a search to a `DiffSource` (a literal whose search
+  fails is noted and not taken as evidence); `rl reward` searches the
+  tasks' repositories relative to the current directory and says when it
+  cannot. Nor is a name of several parts (`core.count`) each of whose parts
+  the repository has evidence. A flag's note says whether the repository was
+  searched.
+- `rl taskgen rebuild` keeps a Go package of the scope at the reference when
+  the tests of another package of the scope import it although that
+  package's sources do not depend on it (an assertion library such as
+  gookit/goutil's `x/assert`). Stubbed, it made every test of every unit
+  panic, so a rollout scored 0 throughout whatever it rebuilt. The report
+  lists such packages under `test_support`, and `rl taskgen rebuild` prints
+  them. Go stubs also keep the bodies of what runs before the first test:
+  the functions and methods of the scope that package-level variables, the
+  init functions of packages outside the scope and the hidden tests'
+  `TestMain` reach while the packages load (goutil's `strutil` initialised a
+  variable with a stubbed constructor, so every package that loads it
+  panicked). Python stubs keep what runs when the modules and the hidden
+  tests are imported, the same way (oauthlib's `filter_params` decorator,
+  stubbed, failed the import of 47 modules). Tasks generated earlier are
+  unchanged; regenerate a rebuild task whose scope includes such code.
+- New `rl reverify` verifies finished rollouts again with the tasks as a
+  tasks file defines them now: the final patch (the episode's verdict) and
+  every consistent savepoint's tree in progress mode (`progress.jsonl` and
+  the episode's progress). The replaced values are kept in the sample's
+  `reverify.jsonl`. New `rl tasks update-scorer` writes tasks with the
+  running build's whole-suite scorer script, so tasks generated earlier are
+  scored by a fixed scorer without being generated again. Run walks no longer
+  descend into a sample's `savepoints/` directory. Tasks, recorded episodes
+  and prompt bytes are unchanged until these commands are run.
+- The hardcoded-value detector reads a task's hidden verifier files that are
+  stored as blobs from the task blob store. Scoring read blobs from the run's
+  own store only, so for tasks whose hidden files are blobs (every generated
+  chain, rebuild and fixture task) the detector skipped them with an
+  "unreadable" note. Rollouts and `rl serve` pass the task blob store to the
+  scorer; `rl reward --tasks FILE` reads `blobs/` next to FILE or `--blobs`.
+  `harness.Pipeline` gains `Hidden`, and `reward.DiffsFromBlobs` takes further
+  getters to fall back to. Episodes scored earlier keep their flags until
+  `rl reward --tasks FILE --redetect-hacks` scores them again.
+- Under `--confine bwrap`, a cache that a command's environment names
+  (`GOMODCACHE`, `GOCACHE`, `PIP_CACHE_DIR`, ...) or that `--confine-rw`
+  names is created when it does not exist yet. Before, a missing cache was
+  not bound into the sandbox: a setup command's module download landed in a
+  tmpfs that vanished with the command, and the network-less verifier then
+  failed to build every package with an outside dependency. A cache that
+  cannot be created is a warning on the command's result. Tasks, scores of
+  runs whose caches existed and prompt bytes are unchanged.
+- The whole-suite scorer runs a Go package again when a test crashed its test
+  binary (a panic, a fatal error), without the tests it already reported
+  (`-skip` through `SUITE_ARGS`), until a run reports nothing new, the
+  package stops crashing or 40 reruns were made: when go test names the
+  test that crashed, the tests after it are reported instead of counting as
+  failed; a crash that names no test (a panic in another goroutine) still
+  leaves them unreported. Scores of Go suites whose code
+  crashes rise accordingly; recordings made by generators include those
+  tests. Prompt and tool-schema bytes are unchanged.
+- When no run with the reference solution reports a single test, the
+  "nothing to score" rejection of `rl taskgen rebuild` and `rl taskgen chain`
+  says so, with how that step's first run ended (`pytest: exit 4`) and the
+  last 1,500 bytes of the output the scorer relayed: for example pytest
+  stopping at startup because its `addopts` name a plugin the environment
+  lacks. `taskgen.SuiteRecord` gains `start_no_tests` and
+  `reference_no_tests`, `taskgen.SuiteSteps` gains `no_tests`, and
+  `env.VerifyOptions` gains a `Stderr` callback. Tasks, the scorer script and
+  prompt bytes are unchanged.
 - Resume long RL rollouts from savepoints instead of starting them over
   (`--savepoint-every`, off by default): a rollout takes a session savepoint
   at that interval and captures the work tree into the sample's

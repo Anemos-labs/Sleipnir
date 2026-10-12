@@ -37,7 +37,7 @@ type KeyProvider struct {
 	Name, Env string
 }
 
-// KeyProviders are the providers that take a key, Heimdall first (it is the recommended one), then the others in alphabetical order.
+// KeyProviders are the providers that take a key, Heimdallm first (it is the recommended one), then the others in alphabetical order.
 func KeyProviders(cfg *config.Config) []KeyProvider {
 	var out []KeyProvider
 	for _, n := range session.ProviderNames(cfg) {
@@ -46,8 +46,8 @@ func KeyProviders(cfg *config.Config) []KeyProvider {
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {
-		if (out[i].Name == "heimdall") != (out[j].Name == "heimdall") {
-			return out[i].Name == "heimdall"
+		if (out[i].Name == "heimdallm") != (out[j].Name == "heimdallm") {
+			return out[i].Name == "heimdallm"
 		}
 		return out[i].Name < out[j].Name
 	})

@@ -288,9 +288,9 @@ func TestTheCommandThatRunsFirstIsFollowedByTheChat(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("STUB_LOG", logFile)
-	code, err := runChildren(stub, []string{"--model", "x/y", "--mode", "default"}, []string{"login", "heimdall"})
+	code, err := runChildren(stub, []string{"--model", "x/y", "--mode", "default"}, []string{"login", "heimdallm"})
 	got, _ := os.ReadFile(logFile)
-	if err != nil || code != 5 || string(got) != "login heimdall\nchat --model x/y --mode default\n" {
+	if err != nil || code != 5 || string(got) != "login heimdallm\nchat --model x/y --mode default\n" {
 		t.Errorf("status %d, error %v, ran:\n%s", code, err, got)
 	}
 	os.Remove(logFile)

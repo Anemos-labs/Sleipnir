@@ -101,7 +101,7 @@ func TestReportsFitAnEightyColumnTerminal(t *testing.T) {
 	if err := os.MkdirAll(d, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	log := `{"seq":1,"type":"session.start","data":{"model":"heimdall/deepseek/deepseek-v4.1-flash"}}` + "\n" +
+	log := `{"seq":1,"type":"session.start","data":{"model":"heimdallm/deepseek/deepseek-v4.1-flash"}}` + "\n" +
 		`{"seq":2,"type":"user.input","data":{"text":"Fix the failing test in the slugify package, and add one for the case of a title with accents"}}` + "\n"
 	if err := os.WriteFile(filepath.Join(d, "events.jsonl"), []byte(log), 0o644); err != nil {
 		t.Fatal(err)

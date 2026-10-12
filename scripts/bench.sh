@@ -21,7 +21,7 @@
 #   --seed N           run seed (default 1)
 #   --attempts N       invocations before giving up (default 24); each one resumes what is unfinished
 #   --key-file FILE    the endpoint key: the key alone, or a shell file exporting it (mode 0600); never printed or logged
-#   --api-key-env NAME variable holding the key (default: HEIMDALL_API_KEY)
+#   --api-key-env NAME variable holding the key (default: HEIMDALLM_API_KEY)
 #   --pin-cpus LIST    run the benchmark on these cpus (taskset -c), e.g. 0,1
 #   --min-free-gb N    refuse to start, and pause between attempts, below this much free disk (default 3)
 #   --extra "FLAGS"    more flags for sleipnir rl rollout, verbatim (e.g. "--allow none --ignore-repo-instructions")
@@ -47,7 +47,7 @@ shift || true
 
 SUITE=$BENCH_HOME/suite OUT= LABEL= BIN=${SLEIPNIR:-} BIN_A= BIN_B=
 MODEL= TAG=smoke GROUP=1 MODE= CONC=4 RPM=120 BUDGET=0.25 CAP=2 SEED=1 ATTEMPTS=24
-KEYFILE= KEYENV=HEIMDALL_API_KEY PIN= MINFREE=3 EXTRA=
+KEYFILE= KEYENV=HEIMDALLM_API_KEY KEYENV_SET= PIN= MINFREE=3 EXTRA=
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --suite) shift; SUITE=${1:?} ;;
@@ -67,7 +67,7 @@ while [ "$#" -gt 0 ]; do
     --seed) shift; SEED=${1:?} ;;
     --attempts) shift; ATTEMPTS=${1:?} ;;
     --key-file) shift; KEYFILE=${1:?} ;;
-    --api-key-env) shift; KEYENV=${1:?} ;;
+    --api-key-env) shift; KEYENV=${1:?}; KEYENV_SET=1 ;;
     --pin-cpus) shift; PIN=${1:?} ;;
     --min-free-gb) shift; MINFREE=${1:?} ;;
     --extra) shift; EXTRA=${1:?} ;;
@@ -126,6 +126,9 @@ if [ -n "$KEYFILE" ]; then
   fi
 fi
 eval "keyval=\${$KEYENV:-}"
+# The provider was formerly heimdall: sleipnir reads HEIMDALL_API_KEY when HEIMDALLM_API_KEY has no value, and so does this
+# check, unless --api-key-env or --key-file named the key's source.
+[ -n "$keyval" ] || [ -n "$KEYENV_SET" ] || [ -n "$KEYFILE" ] || keyval=${HEIMDALL_API_KEY:-}
 [ -n "$keyval" ] || die "no API key: export $KEYENV or pass --key-file"
 unset keyval
 gb=$(free_gb)

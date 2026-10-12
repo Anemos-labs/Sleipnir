@@ -7,9 +7,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -34,11 +36,12 @@ func init() {
 func rlTasks(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	usage := `usage: sleipnir rl tasks <command> [flags] FILE
 
-  validate  check every task in FILE and report all problems
-  stats     count tasks by kind, tag, language and repository
-  filter    write the tasks that match tags, ids or a deterministic sample
-  split     assign whole repositories to named splits (train/val/test)
-  check     prove each task is sound: the verifier fails on the start and passes with the reference solution
+  validate       check every task in FILE and report all problems
+  stats          count tasks by kind, tag, language and repository
+  filter         write the tasks that match tags, ids or a deterministic sample
+  split          assign whole repositories to named splits (train/val/test)
+  check          prove each task is sound: the verifier fails on the start and passes with the reference solution
+  update-scorer  write the tasks with this build's suite scorer script (spec, units and guards unchanged)
 `
 	if len(args) == 0 {
 		printHelp(stderr, usage)
@@ -55,6 +58,8 @@ func rlTasks(ctx context.Context, args []string, stdout, stderr io.Writer) error
 		return tasksSplit(args[1:], stdout, stderr)
 	case "check":
 		return tasksCheck(ctx, args[1:], stdout, stderr)
+	case "update-scorer":
+		return tasksUpdateScorer(args[1:], stdout, stderr)
 	case "help", "-h", "--help":
 		printHelp(stdout, usage)
 		return nil
@@ -151,6 +156,58 @@ func tasksFilter(args []string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("rl tasks filter: %w", err)
 	}
 	fmt.Fprintf(stderr, "kept %d of %d tasks\n", len(kept), len(tasks))
+	return nil
+}
+
+// tasksUpdateScorer writes the tasks of FILE with the suite scorer script of this build (taskgen.UpdateSuiteScorer): a
+// scorer fixed after the tasks were generated scores them without generating them again. The new script goes to the
+// blob store the old one is in; tasks without a suite scorer are written unchanged.
+func tasksUpdateScorer(args []string, stdout, stderr io.Writer) error {
+	fs := newFlags("rl tasks update-scorer", stderr, "rl tasks update-scorer [flags] FILE")
+	blobsDir := fs.String("blobs", "", "blob store holding the tasks' hidden verifier files, where the new script goes too (default: blobs/ next to FILE)")
+	out := fs.String("o", "", "output file, which may be FILE itself (default: stdout)")
+	file, err := oneFile(fs, args, "rl tasks update-scorer")
+	if err != nil {
+		return err
+	}
+	tasks, err := env.LoadTasks(file)
+	if err != nil {
+		return fmt.Errorf("rl tasks update-scorer: %w", err)
+	}
+	// The store is opened only for tasks that keep their scorer in it: inline scorers need none.
+	var hidden events.Blobs
+	for _, t := range tasks {
+		for p, ref := range t.Verifier.Hidden {
+			if hidden == nil && path.Base(p) == "score.py" && strings.HasPrefix(ref, "blob:") {
+				if hidden, err = events.NewDirBlobs(orStr(*blobsDir, filepath.Join(filepath.Dir(file), "blobs"))); err != nil {
+					return fmt.Errorf("rl tasks update-scorer: %w", err)
+				}
+			}
+		}
+	}
+	var found, changed int
+	for i := range tasks {
+		f, c, err := taskgen.UpdateSuiteScorer(&tasks[i], hidden)
+		if err != nil {
+			return fmt.Errorf("rl tasks update-scorer: %s: %w", tasks[i].ID, err)
+		}
+		if f {
+			found++
+		}
+		if c {
+			changed++
+		}
+	}
+	// A file is written next to its place and renamed there: -o may name FILE itself, which a failed write must leave whole.
+	if *out == "" || *out == "-" {
+		err = env.EncodeTasks(stdout, tasks)
+	} else {
+		err = env.WriteTasks(*out, tasks)
+	}
+	if err != nil {
+		return fmt.Errorf("rl tasks update-scorer: %w", err)
+	}
+	fmt.Fprintf(stderr, "%d tasks: %d with a suite scorer, %d updated\n", len(tasks), found, changed)
 	return nil
 }
 
@@ -1034,6 +1091,9 @@ func taskgenRebuild(ctx context.Context, args []string, stdout, stderr io.Writer
 		task.ID, rep.Lang, rep.Tier, len(rep.Packages), noun, rep.LOC, rep.Hidden, task.Team.Agents,
 		(time.Duration(task.Budget.WallS) * time.Second).String())
 	fmt.Fprintf(stdout, "  units, in dependency order: %s\n", taskgen.FormatRebuildUnits(rep.Units))
+	for _, name := range slices.Sorted(maps.Keys(rep.TestSupport)) {
+		fmt.Fprintf(stdout, "  kept at the reference: %s, which the tests of %s use\n", name, strings.Join(rep.TestSupport[name], ", "))
+	}
 	fmt.Fprintf(stdout, "  tests: %d scored, %d dropped (passing on the start, flaky, or failing with the reference)\n", rep.Tests, rep.Dropped)
 	if rep.StartScore != nil && rep.ReferenceScore != nil {
 		fmt.Fprintf(stdout, "  self-check: the start scores %g, the reference %g; one run of the suite takes %s\n",

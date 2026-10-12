@@ -1,7 +1,7 @@
 #!/bin/sh
 # Record a REAL session of the chat for docs/media: a real model, real tools, real timing, nothing scripted but the person's keys.
 #
-#   scripts/record-real.sh --scenario chat|first-run|swarm --model provider/model --out docs/media/real-chat.svg [--key-env HEIMDALL_API_KEY] [--goal TEXT] [--max-gap 1.5s]
+#   scripts/record-real.sh --scenario chat|first-run|swarm --model provider/model --out docs/media/real-chat.svg [--key-env HEIMDALLM_API_KEY] [--goal TEXT] [--max-gap 1.5s]
 #   STILL=file.svg [STILLAT=40s] in the environment also writes one moment as a static SVG
 #
 # --scenario swarm runs a real team (a manager and three workers in git worktrees, a verifier) on three small independent tasks and draws the session's
@@ -17,7 +17,7 @@ cd "$(dirname "$0")/.."
 
 STILL=${STILL:-} STILLAT=${STILLAT:-}
 SCENARIO=chat SEARCH= SPEED=${SPEED:-6}
-MODEL= OUT= KEYENV=HEIMDALL_API_KEY MAXGAP=1500ms COLS=110 ROWS=30
+MODEL= OUT= KEYENV=HEIMDALLM_API_KEY KEYENV_SET= MAXGAP=1500ms COLS=110 ROWS=30
 DEFAULTGOAL="Slugify turns \"Hello, World!\" into \"hello,-world!\" and the test in slug_test.go fails. Fix it so the tests pass, and run them."
 GOAL=$DEFAULTGOAL
 while [ "$#" -gt 0 ]; do
@@ -25,7 +25,7 @@ while [ "$#" -gt 0 ]; do
     -h|--help) awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit 0 ;;
     --model) shift; MODEL=${1:?} ;;
     --out) shift; OUT=${1:?} ;;
-    --key-env) shift; KEYENV=${1:?} ;;
+    --key-env) shift; KEYENV=${1:?}; KEYENV_SET=1 ;;
     --goal) shift; GOAL=${1:?} ;;
     --scenario) shift; SCENARIO=${1:?} ;;
     --search) shift; SEARCH=${1:?} ;;
@@ -36,6 +36,8 @@ while [ "$#" -gt 0 ]; do
 done
 [ -n "$MODEL" ] && [ -n "$OUT" ] || { echo "record-real: --model and --out are required" >&2; exit 2; }
 eval "key=\${$KEYENV:-}"
+# The provider was formerly heimdall: a key only in HEIMDALL_API_KEY is used, and stored under the current name.
+[ -n "$key" ] || [ -n "$KEYENV_SET" ] || key=${HEIMDALL_API_KEY:-}
 [ -n "$key" ] || { echo "record-real: $KEYENV is not set" >&2; exit 2; }
 for t in tmux script go git; do command -v "$t" >/dev/null || { echo "record-real: $t is needed" >&2; exit 2; }; done
 
@@ -103,7 +105,7 @@ if [ "$SCENARIO" = swarm ]; then
   git -C "$proj" add -A && git -C "$proj" -c user.name=rec -c user.email=rec@example.com commit -qm "three stubs"
   SG="Each of the packages a, b and c has one function that panics with todo, and a test. Implement all three in parallel, one worker for each package, and make go test ./... pass."
   [ "$GOAL" != "$DEFAULTGOAL" ] || GOAL=$SG
-  (cd "$proj" && env -u $KEYENV HOME=$home LC_ALL=C.UTF-8 "$BIN" swarm 3 --model "$MODEL" --mode accept-edits --verify "go test {dirs}" --isolation worktree --allow tests "$GOAL") > "$tmp/swarm.out" 2>&1 || true
+  (cd "$proj" && env -u "$KEYENV" -u HEIMDALL_API_KEY -u HEIMDALLM_API_KEY HOME=$home LC_ALL=C.UTF-8 "$BIN" swarm 3 --model "$MODEL" --mode accept-edits --verify "go test {dirs}" --isolation worktree --allow tests "$GOAL") > "$tmp/swarm.out" 2>&1 || true
   tail -3 "$tmp/swarm.out" >&2
   id=$(ls -t "$home/.sleipnir/sessions" | head -1)
   HOME=$home "$BIN" replay "$id" --final --cols "$COLS" --rows 36 >&2 || true
@@ -113,7 +115,7 @@ fi
 
 s=sleipnir-rec
 tmux kill-session -t $s 2>/dev/null || true
-tmux new-session -d -s $s -x "$COLS" -y "$ROWS" "cd $proj && env -u $KEYENV HOME=$home LC_ALL=C.UTF-8 TERM=xterm-256color COLORTERM=truecolor script -q --log-out $tmp/o --log-timing $tmp/t --logging-format advanced -c '$BIN'; touch $tmp/done"
+tmux new-session -d -s $s -x "$COLS" -y "$ROWS" "cd $proj && env -u $KEYENV -u HEIMDALL_API_KEY -u HEIMDALLM_API_KEY HOME=$home LC_ALL=C.UTF-8 TERM=xterm-256color COLORTERM=truecolor script -q --log-out $tmp/o --log-timing $tmp/t --logging-format advanced -c '$BIN'; touch $tmp/done"
 pane() { tmux capture-pane -t $s -p 2>/dev/null || true; }
 waitfor() { # waitfor PATTERN SECONDS
   i=0
@@ -128,7 +130,7 @@ typist() { # one key at a time, as a hand would
 }
 if [ "$SCENARIO" = first-run ]; then
   waitfor 'up/down move' 60; sleep 2
-  tmux send-keys -t $s Down; sleep 0.8; tmux send-keys -t $s Up; sleep 1; tmux send-keys -t $s Enter # the arrows move the highlight; Heimdall, the first row, is chosen
+  tmux send-keys -t $s Down; sleep 0.8; tmux send-keys -t $s Up; sleep 1; tmux send-keys -t $s Enter # the arrows move the highlight; Heimdallm, the first row, is chosen
   waitfor 'Paste your' 20; sleep 2
   typist "$key"; sleep 0.8; tmux send-keys -t $s Enter
   waitfor 'type to search' 60; sleep 2.5

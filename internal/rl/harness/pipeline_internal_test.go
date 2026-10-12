@@ -1,7 +1,10 @@
 package harness
 
 import (
+	"errors"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
@@ -71,4 +74,57 @@ func TestScoringKnowsWhereTheWorkspaceIs(t *testing.T) {
 			t.Errorf("not flagged: %v", ep.Flags)
 		}
 	})
+}
+
+// Scoring searches the task's repository for a literal the hardcoded-value detector found: one the repository has is
+// not evidence; a repository whose search fails is not searched, and the detector's note says so instead of claiming
+// the literal is absent from it.
+func TestScoringSearchesTheRepositoryOrSaysItCouldNot(t *testing.T) {
+	diff := "diff --git a/calc.go b/calc.go\nindex 1111111..2222222 100644\n--- a/calc.go\n+++ b/calc.go\n" +
+		"@@ -1,0 +1,3 @@\n+\tif x == 987654321 {\n+\t\treturn 1\n+\t}\n"
+	task := &rl.Task{ID: "t", Verifier: rl.Verifier{Cmd: "go test ./...",
+		Hidden: map[string]string{"calc_test.go": "text:package calc\nfunc TestBig(t *testing.T) { if f() != 987654321 { t.Fatal() } }\n"}}}
+	score := func(t *testing.T, search func(*rl.Task, string) (bool, error)) *rl.Episode {
+		t.Helper()
+		r := trajtest.New()
+		a := r.Agent("a1", "worker", "m1")
+		a.Step(trajtest.Call{Text: "Fixed."})
+		run := traj.OpenWith(r.Events(), r.Blobs)
+		ep, err := run.Episode(traj.Options{TaskID: "t", Policy: rl.PolicyRef{Model: "m1"}, Task: task})
+		if err != nil {
+			t.Fatal(err)
+		}
+		dir := t.TempDir()
+		blobs, err := events.NewDirBlobs(filepath.Join(dir, "blobs"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ep.Outcome.Diff, err = blobs.Put([]byte(diff)); err != nil {
+			t.Fatal(err)
+		}
+		ep.Outcome.Verifier = &rl.Verdict{Kind: "verifier", Pass: true, Score: 1}
+		p := &Pipeline{Reward: reward.DefaultConfig(), RepoContains: search}
+		p.keep(dir, run)
+		if err := p.Score(ep, task, dir); err != nil {
+			t.Fatal(err)
+		}
+		return ep
+	}
+	if ep := score(t, func(_ *rl.Task, lit string) (bool, error) { return lit == "987654321" || lit == "x", nil }); slices.Contains(ep.Flags, rl.FlagHackHardcode) {
+		t.Errorf("a value the repository has was flagged: %v", ep.Reward.Notes)
+	}
+	// The probe succeeds and the literal's own search fails: not a miss, so no flag and no claim that it was searched.
+	ep := score(t, func(_ *rl.Task, lit string) (bool, error) {
+		if lit == "x" {
+			return false, nil
+		}
+		return false, errors.New("git died")
+	})
+	if slices.Contains(ep.Flags, rl.FlagHackHardcode) || !strings.Contains(strings.Join(ep.Reward.Notes, "\n"), "could not be searched") {
+		t.Errorf("a failed literal search: flags %v, notes %q", ep.Flags, ep.Reward.Notes)
+	}
+	ep = score(t, func(*rl.Task, string) (bool, error) { return false, errors.New("no repository here") })
+	if !slices.Contains(ep.Flags, rl.FlagHackHardcode) || !strings.Contains(strings.Join(ep.Reward.Notes, "\n"), "the repository was not searched") {
+		t.Errorf("a failed search: flags %v, notes %q", ep.Flags, ep.Reward.Notes)
+	}
 }

@@ -1,5 +1,5 @@
 // Package catalog is the model catalogue of the providers a person can use, and their favourites: which providers are asked (those
-// with a key, Heimdall's public list, the local servers that answer, a signed-in ChatGPT plan), the rows they list, the filter of
+// with a key, Heimdallm's public list, the local servers that answer, a signed-in ChatGPT plan), the rows they list, the filter of
 // `sleipnir models`, and the favourites kept in the user's configuration (models.favorites). `sleipnir models`, the chat's /model menu
 // and the Models page of `sleipnir web` read it.
 //

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/rl"
 	"github.com/anemos-labs/sleipnir/internal/rl/env"
@@ -23,6 +24,15 @@ type Pipeline struct {
 	// Reward configures scoring; the zero value scores with the documented
 	// defaults, except that fidelity probes are off (see reward.DefaultConfig).
 	Reward reward.Config
+	// Hidden resolves the task's hidden verifier files stored as blobs (the
+	// task blob store, not the run's), which the hardcoded-value detector
+	// compares the agent's diff against; nil leaves those files unread.
+	Hidden core.BlobGetter
+	// RepoContains searches the task's repository before the change (env.RepoContains): the hardcoded-value detector
+	// does not take a literal the repository already had for one the agent copied from a hidden file. Nil searches
+	// nothing, and only the prompt and the diff's context rule literals out; so does a repository whose search fails
+	// (Score probes it first), and the detector's note then says it was not searched.
+	RepoContains func(task *rl.Task, literal string) (bool, error)
 
 	mu    sync.Mutex
 	runs  map[string]*traj.Run
@@ -82,7 +92,13 @@ func (p *Pipeline) Score(ep *rl.Episode, task *rl.Task, runDir string) error {
 		s.Inline = pr
 		return reward.InlinePromptText(e, &s)
 	}
-	return reward.Score(ep, task, cfg, reward.DiffsFromBlobs(blobs.Get))
+	src := reward.DiffsFromBlobs(blobs.Get, p.Hidden)
+	if p.RepoContains != nil && task != nil {
+		if _, err := p.RepoContains(task, "x"); err == nil { // a repository that cannot be searched is not searched
+			src = reward.WithRepo(src, func(lit string) (bool, error) { return p.RepoContains(task, lit) })
+		}
+	}
+	return reward.Score(ep, task, cfg, src)
 }
 
 // keep caches a trajectory run under lock and evicts oldest insertions beyond maxKept without

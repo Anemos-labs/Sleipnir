@@ -267,8 +267,10 @@ func (s *LocalSandbox) argv(cmd string, pol ExecPolicy) (argv []string, warnings
 		}
 	}
 	if pol.Mounts != nil && s.confine.Available {
-		// Confinement brings its own network namespace (loopback up).
-		return s.confine.argv(*pol.Mounts, pol.Network, pol.env, inner), nil
+		// Confinement brings its own network namespace (loopback up). The caches
+		// are created first: argv binds only those that exist.
+		warnings = s.confine.prepareCaches(pol.env)
+		return s.confine.argv(*pol.Mounts, pol.Network, pol.env, inner), warnings
 	}
 	if pol.Network {
 		return inner, nil
@@ -317,14 +319,15 @@ func (s *LocalSandbox) Exec(ctx context.Context, dir string, env []string, cmd s
 	}
 	pol = pol.withDefaults()
 	pol.env = env
-	argv, warns := s.argv(cmd, pol)
-	res := ExecResult{ExitCode: -1, Warnings: warns}
+	// Checked before argv, which creates the command's missing caches: a command that never starts makes nothing.
 	if err := ctx.Err(); err != nil {
-		return res, err
+		return ExecResult{ExitCode: -1}, err
 	}
 	if strings.ContainsRune(cmd, 0) {
-		return res, errors.New("command contains a NUL byte")
+		return ExecResult{ExitCode: -1}, errors.New("command contains a NUL byte")
 	}
+	argv, warns := s.argv(cmd, pol)
+	res := ExecResult{ExitCode: -1, Warnings: warns}
 
 	c := exec.Command(argv[0], argv[1:]...)
 	c.Dir = dir

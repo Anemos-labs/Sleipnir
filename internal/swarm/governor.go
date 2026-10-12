@@ -13,7 +13,7 @@ import (
 // GovernorConfig bounds outbound model traffic.
 type GovernorConfig struct {
 	// RPM is the request budget per minute (marketplaces limit requests, not
-	// tokens: 600/min per key on Heimdall). 0 disables rate pacing.
+	// tokens: 600/min per key on Heimdallm). 0 disables rate pacing.
 	RPM int
 	// Burst is the bucket size; defaults to RPM/6 (ten seconds of budget).
 	Burst int

@@ -28,9 +28,9 @@ func TestMoveKeysHelper(t *testing.T) {
 	harden.Process(harden.MoveKeys())
 
 	out := map[string]any{}
-	out["environ_has_key"] = os.Getenv("HEIMDALL_API_KEY") != ""
+	out["environ_has_key"] = os.Getenv("HEIMDALLM_API_KEY") != ""
 	// A command started the way the harness starts git and hooks: nil Env, so it inherits.
-	printed, _ := exec.Command("printenv", "HEIMDALL_API_KEY").Output()
+	printed, _ := exec.Command("printenv", "HEIMDALLM_API_KEY").Output()
 	out["child_sees_key"] = strings.TrimSpace(string(printed)) != ""
 
 	spec, key, err := providerFlags{home: t.TempDir()}.resolve()
@@ -39,7 +39,7 @@ func TestMoveKeysHelper(t *testing.T) {
 	if err != nil {
 		out["resolve_error"] = err.Error()
 	}
-	out["config_key"] = config.Provider{APIKeyEnv: "HEIMDALL_API_KEY"}.APIKey()
+	out["config_key"] = config.Provider{APIKeyEnv: "HEIMDALLM_API_KEY"}.APIKey()
 	out["custom_config_key"] = config.Provider{APIKeyEnv: "MYCO_SERVICE_TOKEN"}.APIKey()
 	out["custom_environ_has_key"] = os.Getenv("MYCO_SERVICE_TOKEN") != ""
 
@@ -59,8 +59,8 @@ func TestKeysLeaveTheEnvironmentButStillReachTheirReaders(t *testing.T) {
 	cmd.Env = []string{
 		"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(),
 		moveKeysHelperEnv + "=1",
-		"HEIMDALL_API_KEY=" + key,
-		"HEIMDALL_BASE_URL=http://127.0.0.1:9/v1", // loopback: a key may go there over plain http
+		"HEIMDALLM_API_KEY=" + key,
+		"HEIMDALLM_BASE_URL=http://127.0.0.1:9/v1", // loopback: a key may go there over plain http
 		"MYCO_SERVICE_TOKEN=" + custom,
 	}
 	var stdout, stderr bytes.Buffer
@@ -79,7 +79,7 @@ func TestKeysLeaveTheEnvironmentButStillReachTheirReaders(t *testing.T) {
 	if got["environ_has_key"] != false || got["child_sees_key"] != false {
 		t.Errorf("the key is still in the environment (os.Getenv: %v, inherited by a child: %v)", got["environ_has_key"], got["child_sees_key"])
 	}
-	if got["resolve_error"] != nil || got["resolved_provider"] != "heimdall" || got["resolved_key"] != key {
+	if got["resolve_error"] != nil || got["resolved_provider"] != "heimdallm" || got["resolved_key"] != key {
 		t.Errorf("provider resolution lost the key: provider=%v key-found=%v error=%v", got["resolved_provider"], got["resolved_key"] == key, got["resolve_error"])
 	}
 	if got["config_key"] != key {
@@ -103,7 +103,7 @@ func TestStoredKeysHelper(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := map[string]string{}
-	for _, name := range []string{"HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "HF_TOKEN"} {
+	for _, name := range []string{"HEIMDALLM_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "HF_TOKEN"} {
 		out[name] = harden.Secret(name)
 		out[name+"/source"] = harden.SourceOf(name).String()
 		out[name+"/environ"] = os.Getenv(name)
@@ -119,7 +119,7 @@ func TestAStoredKeyDoesNotReplaceTheKeyOfTheEnvironment(t *testing.T) {
 	home := t.TempDir()
 	// Assembled, not written out: nothing here is a credential.
 	fromEnv, fromFile := "canary-"+"environment-"+"value", "canary-"+"stored-"+"value"
-	for name, v := range map[string]string{"HEIMDALL_API_KEY": fromFile, "OPENROUTER_API_KEY": fromFile, "HF_TOKEN": fromFile} {
+	for name, v := range map[string]string{"HEIMDALLM_API_KEY": fromFile, "OPENROUTER_API_KEY": fromFile, "HF_TOKEN": fromFile} {
 		if err := config.SaveStoredKey(home, name, v); err != nil {
 			t.Fatal(err)
 		}
@@ -128,8 +128,8 @@ func TestAStoredKeyDoesNotReplaceTheKeyOfTheEnvironment(t *testing.T) {
 	cmd.Env = []string{
 		"PATH=" + os.Getenv("PATH"), "HOME=" + home, "USERPROFILE=" + home,
 		storedKeysHelperEnv + "=1",
-		"HEIMDALL_API_KEY=" + fromEnv, // a key in both places
-		"HF_TOKEN=" + fromEnv,         // named to MoveKeys, not ending in API_KEY
+		"HEIMDALLM_API_KEY=" + fromEnv, // a key in both places
+		"HF_TOKEN=" + fromEnv,          // named to MoveKeys, not ending in API_KEY
 		// OPENROUTER_API_KEY is stored only; OPENAI_API_KEY is nowhere
 	}
 	var stdout, stderr bytes.Buffer
@@ -146,7 +146,7 @@ func TestAStoredKeyDoesNotReplaceTheKeyOfTheEnvironment(t *testing.T) {
 		t.Fatalf("result: %v\n%s", err, res)
 	}
 	for _, c := range []struct{ name, value, source string }{
-		{"HEIMDALL_API_KEY", fromEnv, "environment"},
+		{"HEIMDALLM_API_KEY", fromEnv, "environment"},
 		{"HF_TOKEN", fromEnv, "environment"},
 		{"OPENROUTER_API_KEY", fromFile, "stored"},
 		{"OPENAI_API_KEY", "", "none"},

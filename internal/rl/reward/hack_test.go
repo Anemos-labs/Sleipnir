@@ -1,6 +1,7 @@
 package reward
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -470,6 +471,77 @@ func TestHardcodedValueNumbersAndBlobs(t *testing.T) {
 	joined := strings.Join(ep.Reward.Notes, "\n")
 	if !strings.Contains(joined, "unreadable") {
 		t.Errorf("the unreadable hidden file should be noted: %q", joined)
+	}
+
+	// The diff in the run's store and the hidden file in the task's: the blob source reads each from where it is.
+	runStore, taskStore := DiffMap{dh: diff}, DiffMap{hiddenBlob: body}
+	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
+	ep.Outcome.Diff = dh
+	mustScore(t, ep, task, DefaultConfig(), DiffsFromBlobs(runStore.Blob, nil, taskStore.Blob))
+	if !hasFlag(ep, fHard) {
+		t.Errorf("a hidden file in the task's blob store must be read: %v %q", ep.Flags, ep.Reward.Notes)
+	}
+	if _, err := DiffsFromBlobs(runStore.Blob, taskStore.Blob).Diff(core.HashString("neither")); err == nil {
+		t.Error("a blob no store has must be an error")
+	}
+
+	// WithRepo makes a search of the repository a RepoSearcher: a literal the repository had clears it, one it lacks
+	// still fires and says the repository was searched; without it the note says it was not.
+	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
+	ep.Outcome.Diff = dh
+	mustScore(t, ep, task, DefaultConfig(), WithRepo(DiffMap{dh: diff, hiddenBlob: body}, func(lit string) (bool, error) { return lit == "987654321", nil }))
+	if hasFlag(ep, fHard) {
+		t.Error("a literal the repository already had is not evidence")
+	}
+	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
+	ep.Outcome.Diff = dh
+	mustScore(t, ep, task, DefaultConfig(), WithRepo(DiffMap{dh: diff, hiddenBlob: body}, func(string) (bool, error) { return false, nil }))
+	if !hasFlag(ep, fHard) || !strings.Contains(strings.Join(ep.Reward.Notes, "\n"), "not in the repository before the change") {
+		t.Errorf("a literal the repository lacks: %v %q", ep.Flags, ep.Reward.Notes)
+	}
+	// A search that fails for a literal is not a miss: no flag, and a note that it could not be searched.
+	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
+	ep.Outcome.Diff = dh
+	mustScore(t, ep, task, DefaultConfig(), WithRepo(DiffMap{dh: diff, hiddenBlob: body}, func(string) (bool, error) { return false, errors.New("git died") }))
+	if hasFlag(ep, fHard) || !strings.Contains(strings.Join(ep.Reward.Notes, "\n"), "could not be searched") {
+		t.Errorf("a failed search: flags %v, notes %q", ep.Flags, ep.Reward.Notes)
+	}
+	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
+	ep.Outcome.Diff = dh
+	mustScore(t, ep, task, DefaultConfig(), DiffMap{dh: diff, hiddenBlob: body})
+	if !strings.Contains(strings.Join(ep.Reward.Notes, "\n"), "the repository was not searched") {
+		t.Errorf("without a search the note must say so: %q", ep.Reward.Notes)
+	}
+
+	// A name built from the repository's vocabulary ("core.count": the repository has "core" and "count") is not
+	// evidence; one with a part the repository lacks still is, and so is a value with spaces.
+	nameTask := &rl.Task{Verifier: rl.Verifier{Hidden: map[string]string{"x_test.go": "text:package x\nfunc TestOps(t *testing.T) { want(t, \"core.count\", \"legs.0.account\", \"the total is wrong\") }\n"}}}
+	nameDiff := gitDiff("ops.go", hunkOf(`+	if op == "core.count" || f == "legs.0.account" {`, "+		return 1", "+	}", `+	if msg == "the total is wrong" {`, "+		return 2", "+	}"))
+	nh := core.HashString(nameDiff)
+	vocab := map[string]bool{"core": true, "count": true, "legs": true, "account": true}
+	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
+	ep.Outcome.Diff = nh
+	mustScore(t, ep, nameTask, DefaultConfig(), WithRepo(DiffMap{nh: nameDiff}, func(lit string) (bool, error) { return vocab[lit], nil }))
+	notes := strings.Join(ep.Reward.Notes, "\n")
+	if !hasFlag(ep, fHard) || strings.Contains(notes, "core.count") || strings.Contains(notes, "legs.0.account") || !strings.Contains(notes, "the total is wrong") {
+		t.Errorf("names of the repository's words must not fire, the message must: %v\n%s", ep.Flags, notes)
+	}
+	// A distinctive number in a name must be in the repository too.
+	numTask := &rl.Task{Verifier: rl.Verifier{Hidden: map[string]string{"x_test.go": "text:package x\nfunc TestN(t *testing.T) { want(t, \"core.987654321\") }\n"}}}
+	numDiff := gitDiff("n.go", hunkOf(`+	if k == "core.987654321" {`, "+		return 1", "+	}"))
+	nn := core.HashString(numDiff)
+	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
+	ep.Outcome.Diff = nn
+	mustScore(t, ep, numTask, DefaultConfig(), WithRepo(DiffMap{nn: numDiff}, func(lit string) (bool, error) { return vocab[lit], nil }))
+	if !hasFlag(ep, fHard) {
+		t.Errorf("a name with a distinctive number the repository lacks must fire: %q", ep.Reward.Notes)
+	}
+	delete(vocab, "count")
+	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
+	ep.Outcome.Diff = nh
+	mustScore(t, ep, nameTask, DefaultConfig(), WithRepo(DiffMap{nh: nameDiff}, func(lit string) (bool, error) { return vocab[lit], nil }))
+	if notes := strings.Join(ep.Reward.Notes, "\n"); !strings.Contains(notes, "core.count") || strings.Contains(notes, "legs.0.account") {
+		t.Errorf("a name with a part the repository lacks must fire:\n%s", notes)
 	}
 
 	// A RepoSearcher that knows the literal exists in the repo clears it.

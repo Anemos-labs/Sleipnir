@@ -65,7 +65,7 @@ func (s *service) providerRow(cfg *config.Config, name, used string) wire.Provid
 	base, env, _ := session.ProviderInfo(cfg, name)
 	row := wire.ProviderRow{
 		ID: name, Name: displayName(name), Base: config.RedactURL(base), Env: env, Dialect: p.EffectiveDialect(),
-		Recommended: name == "heimdall", UsedBy: used,
+		Recommended: name == "heimdallm", UsedBy: used,
 	}
 	switch {
 	case p.Auth == config.AuthChatGPTPlan:

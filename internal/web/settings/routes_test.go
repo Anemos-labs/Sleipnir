@@ -34,7 +34,7 @@ func settingsRoutes(repo string) []route {
 		{method: "GET", path: "/api/sessions/t1/skills"},
 		{method: "GET", path: "/api/providers"},
 		{method: "POST", path: "/api/providers/recheck", noBody: true},
-		{method: "POST", path: "/api/providers/heimdall/signout", noBody: true},
+		{method: "POST", path: "/api/providers/heimdallm/signout", noBody: true},
 		{method: "GET", path: "/api/sessions/t1/config"},
 	}
 }

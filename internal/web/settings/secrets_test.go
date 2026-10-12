@@ -51,7 +51,7 @@ func TestNoSecretInSettingsDTOs(t *testing.T) {
 			`","id_token":"` + c[6] + `","email":"ada@example.com","expires_at_ms":` + strconv.FormatInt(time.Now().Add(time.Hour).UnixMilli(), 10) + `}`
 		write(t, filepath.Join(home, ".sleipnir", "chatgpt.json"), conn)
 	})
-	t.Setenv("HEIMDALL_API_KEY", envKey)
+	t.Setenv("HEIMDALLM_API_KEY", envKey)
 	t.Setenv("ACME_API_KEY", c[1])
 	if err := config.LoadStoredKeys(e.home); err != nil { // what main does at start
 		t.Fatal(err)
@@ -83,7 +83,7 @@ func TestNoSecretInSettingsDTOs(t *testing.T) {
 		{"POST", "/api/sessions/t1/mcp/tracker/test"},
 		{"POST", "/api/sessions/t1/mcp/proj/approve"},
 		{"POST", "/api/providers/openrouter/signout"},
-		{"POST", "/api/providers/heimdall/signout"},
+		{"POST", "/api/providers/heimdallm/signout"},
 		{"GET", "/api/trust/challenge?dir=" + e.repo},
 	} {
 		rec := e.do(rt.method, rt.path, nil, nil)

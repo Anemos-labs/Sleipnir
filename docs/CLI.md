@@ -52,7 +52,7 @@ Never overwrites: if the file exists it stops and points you to `sleipnir config
 * `--user`: `~/.sleipnir/config.json` (mode 0600) with `permissions.mode` `default` and `models.default` from `--model`. Without `--model`, on a
   terminal, it is the first-time setup that the chat also runs by itself when no model is configured: it asks your provider (the providers whose key is set)
   which models it serves right now, lets you search and choose, and writes the file. Sleipnir knows no model names: they change too often. It defines no
-  provider: the built-in ones (Heimdall, OpenRouter, OpenAI, Anthropic, ...) need only their key variable.
+  provider: the built-in ones (Heimdallm, OpenRouter, OpenAI, Anthropic, ...) need only their key variable.
   `--local-url URL` adds one named `local` for a self-hosted server (vLLM, SGLang) with `capture_tokens`; that entry is
   then the only configured provider, which changes where bare model ids go (`docs/CONFIGURATION.md` section 6).
 
@@ -269,7 +269,7 @@ Usage of chat:
   -resume string
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
-        role=model override, repeatable (e.g. manager=heimdall/x, mailman=heimdall/small)
+        role=model override, repeatable (e.g. manager=heimdallm/x, mailman=heimdallm/small)
   -swarm int
         chat as a team of a manager and N workers (config swarm.max_workers is the ceiling); on a terminal the default is 8 workers, --swarm 0 is a single agent
   -trust-project
@@ -406,7 +406,7 @@ flags:
   -resume string
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
-        role=model override for new sessions, repeatable (e.g. manager=heimdall/x, mailman=heimdall/small)
+        role=model override for new sessions, repeatable (e.g. manager=heimdallm/x, mailman=heimdallm/small)
   -swarm int
         new sessions are a team of a manager and N workers (config swarm.max_workers is the ceiling); the default is 8 workers, --swarm 0 is a single agent
   -trust-project
@@ -495,7 +495,7 @@ flags:
   -resume string
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
-        role=model override, repeatable (e.g. manager=heimdall/x)
+        role=model override, repeatable (e.g. manager=heimdallm/x)
   -session-dir string
         directory for this run's recording (events.jsonl, blobs/, checkpoints/); default <state>/sessions/<id>, <state> being $SLEIPNIR_HOME or ~/.sleipnir
   -swarm int
@@ -681,7 +681,7 @@ Usage of doctor:
   -no-affinity
         do not send a conversation/cache key
   -provider string
-        heimdall | openrouter | openai | custom (default: auto-detect)
+        heimdallm | openrouter | openai | custom (default: auto-detect)
   -trust-project
         apply provider settings from the project's config (they are ignored by default)
 ```
@@ -689,9 +689,9 @@ Usage of doctor:
 
 ### `sleipnir models`
 
-Prints the catalogue of an OpenAI-style marketplace (`<base_url>/models`; Heimdall's needs no key) with context size and
+Prints the catalogue of an OpenAI-style marketplace (`<base_url>/models`; Heimdallm's needs no key) with context size and
 prices per million tokens. Only chat models are listed (`--all` lists the others); a catalogue that does not say what its
-models take and give (OpenAI's own, Ollama's, vLLM's) is taken to list chat models. With no `--provider` it asks every provider whose key is set, and Heimdall (its
+models take and give (OpenAI's own, Ollama's, vLLM's) is taken to list chat models. With no `--provider` it asks every provider whose key is set, and Heimdallm (its
 catalogue is public), at once, and prints `provider/model` references that `--model` takes; a provider that does not answer is named on stderr. Words, `--tools`,
 `--reasoning`, `--max-price` and `--min-context` narrow the list; favorites (`models fav add|rm|list`, kept in your user config as `models.favorites`) come first,
 marked `*`. In the chat, `/model ` completes from the same list. Project config is never trusted here.
@@ -701,7 +701,7 @@ marked `*`. In the chat, `/model ` completes from the same list. Project config 
 usage: sleipnir models [words...] [flags]
        sleipnir models fav [add|rm] provider/model...
 
-Lists the models of every provider whose key is set (and Heimdall), as references that --model takes. Each word narrows the
+Lists the models of every provider whose key is set (and Heimdallm), as references that --model takes. Each word narrows the
 search (all must appear, any case). Favorites, marked *, come first.
 
   -all
@@ -719,7 +719,7 @@ search (all must appear, any case). Favorites, marked *, come first.
   -min-context string
         only models with at least this context window (128k, 1m)
   -provider string
-        heimdall | openrouter | openai | custom (default: auto-detect)
+        heimdallm | openrouter | openai | custom (default: auto-detect)
   -reasoning
         only models with configurable reasoning
   -tools
@@ -758,10 +758,10 @@ update itself instead.
 
 ### `sleipnir login`
 
-Asks which provider you have a key for (Heimdall, the recommended one, is first) and for the key, which it does not echo, and keeps it in
-`~/.sleipnir/auth.json` (mode 0600; never in `config.json`). `sleipnir login heimdall` names the provider; from a pipe the key is the first line of stdin
-(`echo "$KEY" | sleipnir login heimdall`). The first run of `sleipnir` does this by itself when no provider has a key. An environment variable of the key's usual name
-(`HEIMDALL_API_KEY`) takes precedence over the stored one. `sleipnir logout <provider>` removes it.
+Asks which provider you have a key for (Heimdallm, the recommended one, is first) and for the key, which it does not echo, and keeps it in
+`~/.sleipnir/auth.json` (mode 0600; never in `config.json`). `sleipnir login heimdallm` names the provider; from a pipe the key is the first line of stdin
+(`echo "$KEY" | sleipnir login heimdallm`). The first run of `sleipnir` does this by itself when no provider has a key. An environment variable of the key's usual name
+(`HEIMDALLM_API_KEY`) takes precedence over the stored one. `sleipnir logout <provider>` removes it.
 
 `sleipnir login chatgpt` signs in with your **ChatGPT plan** instead of a key (OpenAI's "Sign in with ChatGPT": the browser opens on OpenAI's page and comes back to a port of
 this machine; where no browser can be opened, the address it would end on is pasted). The tokens are kept in `~/.sleipnir/chatgpt.json` (mode 0600), renewed when they are due, and
@@ -772,10 +772,10 @@ usage limits apply (`docs/PROVIDERS.md`, "Subscription logins": what it is, what
 ```text
 usage: sleipnir login [provider]
 
-Asks which provider (Heimdall is the recommended one) and for its API key, and keeps the key in
+Asks which provider (Heimdallm is the recommended one) and for its API key, and keeps the key in
 ~/.sleipnir/auth.json, readable by you only. `sleipnir login chatgpt` signs in with your ChatGPT plan instead (a browser, no key). From a pipe the key is the first line of stdin:
-  echo "$KEY" | sleipnir login heimdall
-An environment variable of the key's usual name (HEIMDALL_API_KEY) still takes precedence.
+  echo "$KEY" | sleipnir login heimdallm
+An environment variable of the key's usual name (HEIMDALLM_API_KEY) still takes precedence.
 ```
 <!-- /flags -->
 
@@ -950,9 +950,11 @@ and `--api-key-env`. `sleipnir rl <command> -h` prints a command's flags and exi
 sleipnir rl taskgen <generator>    make tasks from history, chains of merged pull requests, authored fixtures, mutations, recall questions or libraries rebuilt from their specification, or compose swarm tasks
 sleipnir rl tasks <command> FILE   validate, filter, split and check task files
 sleipnir rl rollout                run G samples per task with a policy and write a run directory
+sleipnir rl branch                 continue a finished long rollout from its savepoints, K times each
 sleipnir rl eval                   run held-out tasks and report pass@k, cost and protocol quality
 sleipnir rl serve                  HTTP rollout server for a trainer
 sleipnir rl reward                 re-score a run directory with different reward weights
+sleipnir rl reverify               verify finished rollouts again (final patch, savepoints) with the tasks as they are now
 sleipnir rl report                 what runs measured: pass rate with its interval, cost, cache hits, friction
 sleipnir rl compare                two runs or saved reports over the tasks both ran, with paired intervals and gates
 sleipnir rl export                 write trainer-ready data
@@ -1516,6 +1518,13 @@ verifier still passes is reported `ok (WEAK: the verifier still passes with FILE
 That is a warning, not a failure: the verifier pays for an unfinished solution, or the solution changes a file the task
 does not need. It is deterministic and costs one verifier run per solution file (and repeat).
 
+`update-scorer` writes the tasks (to `-o`, default stdout) with the whole-suite scorer script of the running build: a
+task that `rl taskgen chain`, `rebuild` or `fixture` made carries the script as the hidden file
+`.sleipnir/suite/score.py`, and a scorer fixed later scores the task without generating it again. Only that file
+changes; the spec, units, guards and every other field stay, and the new script is stored where the old one was (the
+`--blobs` store, or inline). Tasks without a suite scorer are written unchanged. `rl reverify` measures finished
+rollouts again with the result.
+
 <!-- flags: rl tasks validate -->
 ```text
 usage: sleipnir rl tasks validate FILE
@@ -1636,6 +1645,18 @@ flags:
 ```
 <!-- /flags -->
 
+<!-- flags: rl tasks update-scorer -->
+```text
+usage: sleipnir rl tasks update-scorer [flags] FILE
+
+flags:
+  -blobs string
+        blob store holding the tasks' hidden verifier files, where the new script goes too (default: blobs/ next to FILE)
+  -o string
+        output file, which may be FILE itself (default: stdout)
+```
+<!-- /flags -->
+
 ### `sleipnir rl rollout`
 
 A task whose `requires` names a tool that is not on the commands' PATH is not run: its rollouts are reported `skipped`
@@ -1748,7 +1769,7 @@ flags:
   -rewards string
         rewards.json with weights, caps and detectors (default: the documented defaults)
   -role-model value
-        role=model override for a swarm role, repeatable (e.g. worker=heimdall/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model
+        role=model override for a swarm role, repeatable (e.g. worker=heimdallm/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model
   -rpm int
         pace the policy requests of ALL rollouts to this many per minute (0: no pacing); swarm governors are per rollout, so --concurrency multiplies their limits
   -sampling string
@@ -1884,7 +1905,7 @@ flags:
   -rewards string
         rewards.json with weights, caps and detectors (default: the documented defaults)
   -role-model value
-        role=model override for a swarm role, repeatable (e.g. worker=heimdall/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model
+        role=model override for a swarm role, repeatable (e.g. worker=heimdallm/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model
   -rpm int
         pace the policy requests of ALL rollouts to this many per minute (0: no pacing); swarm governors are per rollout, so --concurrency multiplies their limits
   -sampling string
@@ -2002,7 +2023,7 @@ flags:
   -rewards string
         rewards.json with weights, caps and detectors (default: the documented defaults)
   -role-model value
-        role=model override for a swarm role, repeatable (e.g. worker=heimdall/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model
+        role=model override for a swarm role, repeatable (e.g. worker=heimdallm/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model
   -rpm int
         pace the policy requests of ALL rollouts to this many per minute (0: no pacing); swarm governors are per rollout, so --concurrency multiplies their limits
   -samples int
@@ -2139,6 +2160,8 @@ flags:
 usage: sleipnir rl reward [flags] RUN_DIR...
 
 flags:
+  -blobs string
+        with --tasks: blob store holding the tasks' hidden verifier files, which the hardcoded-value detector compares diffs against (default: blobs/ next to the tasks file, when it exists)
   -dry-run
         print the new rewards without rewriting episode.json
   -list-targets
@@ -2153,6 +2176,69 @@ flags:
         price and cache model episodes are repriced under: a preset or a model id (see -list-targets)
   -tasks string
         tasks file to score against (default: each rollout's task.json, whose hidden files are redacted)
+```
+<!-- /flags -->
+
+### `sleipnir rl reverify`
+
+Verifies finished rollouts again with the tasks as `--tasks` defines them now, for a verifier fixed after the run (see
+`rl tasks update-scorer`). For each sample under the given run or sample directories, the final patch the runner verified
+is verified again with the full verifier (`--final`, the episode's verdict), and the work tree of every consistent
+savepoint is scored again in progress mode (`--savepoints`, with `--progress-sample` and `--progress-budget`:
+`progress.jsonl` and the episode's progress, one point per savepoint). Nothing the agents did changes. The replaced
+verdict and curve are appended to the sample's `reverify.jsonl`, and the new verifier log and the patch it checked go to
+`<sample>/reverify/`. The task must be the one the sample ran, from the same start tree; otherwise the sample is
+refused, as is a savepoint whose tree is missing from the sample's store, and nothing of that sample is written.
+`--dry-run` measures and prints without writing. The rewards still hold the old scores: run `rl reward` on the run
+afterwards. Use the work dir, `--confine` settings and `--set-env` caches the run used. A sample that is still running
+has no `episode.json` and is skipped; one that ran without savepoints keeps its progress, and only its final patch is
+verified again. The savepoints are scored before the final verification, and the three files are written together or not at all, so a
+sample whose savepoint scoring or final verification ends in an error keeps its verdict, curve and `reverify.jsonl` as
+they were (a verdict that does not pass is a result, and is written).
+
+<!-- flags: rl reverify -->
+```text
+usage: sleipnir rl reverify --tasks FILE [flags] RUN_DIR|SAMPLE_DIR...
+
+flags:
+  -blobs string
+        blob store holding the tasks' hidden verifier files (default: blobs/ next to the tasks file)
+  -confine string
+        off | bwrap: run every setup, agent and verifier command in a bubblewrap sandbox that sees only its own workspace (the work dir, task sources, blob store and run output are hidden; network only for tasks that need it). bwrap refuses to start where it is unavailable; use it whenever rollouts are training data (default "off")
+  -confine-ro value
+        with --confine bwrap: a directory every command may read although it lies in a hidden one (a toolchain), repeatable; PATH entries and GOROOT, RUSTUP_HOME, JAVA_HOME are added automatically
+  -confine-rw value
+        with --confine bwrap: a directory every command may write (a shared cache), repeatable; GOCACHE, GOMODCACHE, CARGO_HOME, PIP_CACHE_DIR and similar cache variables are added automatically
+  -dry-run
+        print what would change without writing anything into the run
+  -final
+        verify the final patch again (the episode's verdict) (default true)
+  -json
+        print each sample's result as a JSON line
+  -no-net-isolation
+        do not isolate the network of tasks that do not need it
+  -pass-env string
+        comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist
+  -progress-budget duration
+        progress mode: the deadline of a savepoint's score, passed to the verifier as SUITE_BUDGET_S (default 5m)
+  -progress-sample int
+        progress mode: tests of each unit a savepoint's score runs, passed to the verifier as SUITE_SAMPLE (default 20)
+  -require-net-isolation
+        refuse to run where network isolation is unavailable
+  -savepoints
+        score the work tree of every consistent savepoint again, in progress mode (progress.jsonl, the episode's progress) (default true)
+  -set-env value
+        NAME=value forced into the agent's and verifier's environment, repeatable (e.g. GOCACHE=/shared/cache: faster, less isolated)
+  -tasks string
+        tasks file (JSON lines) with the rollouts' tasks as they are to be verified now (see rl tasks update-scorer)
+  -verify-policy string
+        with repeats: all | any | majority
+  -verify-repeats int
+        run the verifier this many times to catch flaky tests
+  -work-dir string
+        where snapshots, workspaces and verification checkouts live (default: <state>/rl-work)
+  -workspace-mode string
+        export: a fresh single-commit tree without history | clone: a local clone with history (default "export")
 ```
 <!-- /flags -->
 

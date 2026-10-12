@@ -14,7 +14,9 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/rl"
 	"github.com/anemos-labs/sleipnir/internal/rl/adv"
 	"github.com/anemos-labs/sleipnir/internal/rl/env"
@@ -39,6 +41,7 @@ in a clean checkout, scores it, and writes trainer-ready data (docs/TRAINING-DAT
   eval       run held-out tasks and report pass@k, cost and protocol quality
   serve      HTTP rollout server for a trainer
   reward     re-score a run directory with different reward weights
+  reverify   verify finished rollouts again (final patch, savepoints) with the tasks as they are now
   report     what runs measured: pass rate with its interval, cost, cache hits, friction (table, markdown, json)
   compare    two runs or saved reports over the tasks both ran, with paired intervals and pass/fail gates
   export     write trainer-ready data: steps, tokens, groups, sft, dpo, kto, atif, canonical
@@ -488,6 +491,7 @@ func rlReward(_ context.Context, args []string, stdout, stderr io.Writer) error 
 	rewards := fs.String("rewards", "", "rewards.json with weights, caps, detectors (default: the documented defaults)")
 	target := fs.String("target-price", "", "price and cache model episodes are repriced under: a preset or a model id (see -list-targets)")
 	tasksFile := fs.String("tasks", "", "tasks file to score against (default: each rollout's task.json, whose hidden files are redacted)")
+	blobsDir := fs.String("blobs", "", "with --tasks: blob store holding the tasks' hidden verifier files, which the hardcoded-value detector compares diffs against (default: blobs/ next to the tasks file, when it exists)")
 	dry := fs.Bool("dry-run", false, "print the new rewards without rewriting episode.json")
 	list := fs.Bool("list-targets", false, "list the target-price presets and exit")
 	probes := fs.Bool("probes", true, "run compaction fidelity probes")
@@ -520,6 +524,7 @@ func rlReward(_ context.Context, args []string, stdout, stderr io.Writer) error 
 	}
 	cfg.Probes = cfg.Probes && *probes
 	var byID map[string]rl.Task
+	var hidden core.BlobGetter
 	if *tasksFile != "" {
 		ts, err := env.LoadTasks(*tasksFile)
 		if err != nil {
@@ -529,6 +534,19 @@ func rlReward(_ context.Context, args []string, stdout, stderr io.Writer) error 
 		for _, t := range ts {
 			byID[t.ID] = t
 		}
+		dir := *blobsDir
+		if d := filepath.Join(filepath.Dir(*tasksFile), "blobs"); dir == "" && dirExists(d) {
+			dir = d
+		}
+		if dir != "" {
+			store, err := events.NewDirBlobs(dir)
+			if err != nil {
+				return fmt.Errorf("rl reward: %w", err)
+			}
+			hidden = store.Get
+		}
+	} else if *blobsDir != "" {
+		return usageError(fs, "rl reward: --blobs needs --tasks (a rollout's task.json has its hidden files redacted)")
 	}
 	samples, err := findSamples(paths)
 	if err != nil {
@@ -546,6 +564,15 @@ func rlReward(_ context.Context, args []string, stdout, stderr io.Writer) error 
 		}
 	}
 	cache := newRunCache(4)
+	// The tasks' repositories, searched for the literals the hardcoded-value detector finds (relative paths resolve
+	// against the current directory, as for rollouts); one that cannot be searched is said once.
+	git, gerr := env.NewGit(env.GitOptions{})
+	if gerr != nil {
+		fmt.Fprintf(stderr, "rl reward: git is unavailable (%v): the hardcoded-value detector rules out only literals of the prompt and the diff's context\n", gerr)
+	} else {
+		defer git.Close()
+	}
+	unsearchable := map[string]bool{}
 	var before, after float64
 	var n, hacks int
 	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
@@ -575,7 +602,19 @@ func rlReward(_ context.Context, args []string, stdout, stderr io.Writer) error 
 		if *redetect {
 			ep.Flags = slices.DeleteFunc(slices.Clone(ep.Flags), func(f string) bool { return strings.HasPrefix(f, "hack:") })
 		}
-		if err := reward.Score(ep, task, c, reward.DiffsFromBlobs(blobs.Get)); err != nil {
+		src := reward.DiffsFromBlobs(blobs.Get, hidden)
+		if git == nil {
+			// no search: reported once above
+		} else if _, err := env.RepoContains(context.Background(), git, *task, "", "x"); err == nil {
+			t := *task
+			src = reward.WithRepo(src, func(lit string) (bool, error) {
+				return env.RepoContains(context.Background(), git, t, "", lit)
+			})
+		} else if key := task.Repo.Path + "@" + task.Repo.Commit; !unsearchable[key] {
+			unsearchable[key] = true
+			fmt.Fprintf(stderr, "rl reward: the repository of %s cannot be searched (%v): the hardcoded-value detector rules out only literals of the prompt and the diff's context\n", task.ID, err)
+		}
+		if err := reward.Score(ep, task, c, src); err != nil {
 			return fmt.Errorf("rl reward: %s: %w", ep.ID, err)
 		}
 		before, after, n = before+was, after+ep.Reward.Total, n+1

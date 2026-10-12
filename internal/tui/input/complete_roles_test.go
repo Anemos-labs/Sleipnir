@@ -7,11 +7,11 @@ import (
 
 var (
 	testRoles = []Choice{
-		{Text: "manager", Detail: "heimdall/qwen/qwen3.8-27b · the session's model"},
-		{Text: "worker", Detail: "heimdall/qwen/qwen3.8-27b · the session's model"},
+		{Text: "manager", Detail: "heimdallm/qwen/qwen3.8-27b · the session's model"},
+		{Text: "worker", Detail: "heimdallm/qwen/qwen3.8-27b · the session's model"},
 		{Text: "compactor", Detail: "(each agent's own) · no compactor model is set"},
 	}
-	testModels = []Choice{{Text: "heimdall/qwen/qwen3.8-27b"}, {Text: "heimdall/deepseek/deepseek-v4.1-flash"}, {Text: "ollama/qwen3:8b"}}
+	testModels = []Choice{{Text: "heimdallm/qwen/qwen3.8-27b"}, {Text: "heimdallm/deepseek/deepseek-v4.1-flash"}, {Text: "ollama/qwen3:8b"}}
 )
 
 func roleModels() Completer {
@@ -35,10 +35,10 @@ func TestRoleModelsCompleteTheRoleThenItsModel(t *testing.T) {
 	if from, got := complete("/roles comp"); from != 7 || !reflect.DeepEqual(got, []string{"compactor="}) {
 		t.Errorf("a role is matched like a model: %d %q", from, got)
 	}
-	if from, got := complete("/roles manager="); from != 15 || len(got) != 3 || got[0] != "heimdall/qwen/qwen3.8-27b " {
+	if from, got := complete("/roles manager="); from != 15 || len(got) != 3 || got[0] != "heimdallm/qwen/qwen3.8-27b " {
 		t.Errorf("after the =, every model, replacing what follows it: %d %q", from, got)
 	}
-	if from, got := complete("/roles manager=dsk"); from != 15 || !reflect.DeepEqual(got, []string{"heimdall/deepseek/deepseek-v4.1-flash "}) {
+	if from, got := complete("/roles manager=dsk"); from != 15 || !reflect.DeepEqual(got, []string{"heimdallm/deepseek/deepseek-v4.1-flash "}) {
 		t.Errorf("a model is matched by the letters typed: %d %q", from, got)
 	}
 	line := "/roles manager=dsk compactor=oll"
@@ -70,7 +70,7 @@ func TestRoleMenuContinuesWithTheModelsOfTheRoleChosen(t *testing.T) {
 	}
 	r.send("dsk")
 	r.send(kTab)
-	if r.state() != "/roles manager=heimdall/deepseek/deepseek-v4.1-flash |" || r.ed.Completion().Open {
+	if r.state() != "/roles manager=heimdallm/deepseek/deepseek-v4.1-flash |" || r.ed.Completion().Open {
 		t.Errorf("a model ends the pair: %q", r.state())
 	}
 }

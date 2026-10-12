@@ -66,7 +66,7 @@ func (p *policyFlags) register(fs *flag.FlagSet) {
 	fs.BoolVar(&p.capture, "capture", false, "ask the endpoint for token ids and logprobs (needed for the tokens export; self-hosted vLLM/SGLang-style servers)")
 	fs.BoolVar(&p.allowInsecureHTTP, "allow-insecure-http", false, "let the policy's API key travel over plain http to a host that is not this machine (a self-hosted server on a trusted network); off by default")
 	fs.IntVar(&p.swarm, "swarm", 0, "run a manager and N workers instead of a single agent (default: what the task's team says)")
-	fs.Var(p.roleModels, "role-model", "role=model override for a swarm role, repeatable (e.g. worker=heimdall/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model")
+	fs.Var(p.roleModels, "role-model", "role=model override for a swarm role, repeatable (e.g. worker=heimdallm/deepseek/deepseek-v4-flash); compaction always runs on the agent's own model")
 	fs.Int64Var(&p.seed, "seed", 0, "run seed; each rollout's sampling seed derives from it")
 	fs.IntVar(&p.ctxTokens, "context-tokens", 0, "the policy's context window when a task does not set one")
 	fs.IntVar(&p.softLimit, "thread-soft-limit", 0, "the size of an agent's thread, in tokens, at which compaction is considered (0: the default, 20000); a larger one compacts later or never within a rollout")
@@ -239,36 +239,43 @@ type rigFlags struct {
 	confineRO, confineRW                  multiFlag
 }
 
+// register binds every rig flag: the environment's (registerEnv) and the rollout's own.
 func (r *rigFlags) register(fs *flag.FlagSet) {
-	fs.StringVar(&r.workDir, "work-dir", "", "where snapshots, workspaces and verification checkouts live (default: <state>/rl-work)")
-	fs.StringVar(&r.mode, "workspace-mode", env.ModeExport, "export: a fresh single-commit tree without history | clone: a local clone with history")
-	fs.StringVar(&r.blobs, "blobs", "", "blob store holding the tasks' hidden verifier files (default: blobs/ next to the tasks file)")
+	r.registerEnv(fs)
 	fs.StringVar(&r.rewards, "rewards", "", "rewards.json with weights, caps and detectors (default: the documented defaults)")
 	fs.StringVar(&r.target, "target-price", "", "price and cache model rollouts are repriced under (see: sleipnir rl reward -list-targets)")
 	fs.IntVar(&r.concurrency, "concurrency", 1, "rollouts in flight")
-	fs.IntVar(&r.verifyRepeats, "verify-repeats", 0, "run the verifier this many times to catch flaky tests")
-	fs.StringVar(&r.verifyPolicy, "verify-policy", "", "with repeats: all | any | majority")
 	fs.IntVar(&r.infraRetries, "infra-retries", 0, "retries of a rollout that failed for infrastructure reasons (default 2; -1 disables)")
 	fs.DurationVar(&r.maxWall, "max-wall", 0, "wall-clock cap of a rollout whose task sets none, not counting the time the policy endpoint is down (see --max-outage-pause) (default 1h)")
 	fs.DurationVar(&r.outagePatience, "outage-patience", 0, "how long one outage of the policy endpoint (5xx, 429, refused or reset connections, no response) may last before the agent gives up on it and the attempt ends as an infra failure (default 3h; negative: no waiting, six attempts per request)")
 	fs.DurationVar(&r.maxOutagePause, "max-outage-pause", 0, "how much outage, in all, one rollout attempt sits out with its wall clock stopped before it ends as an infra failure, not retried (default 3h; negative: the wall clock runs through outages)")
 	fs.DurationVar(&r.savepointEvery, "savepoint-every", 0, "take a savepoint of every rollout this often (agent state in the log, work tree captured), and resume an interrupted rollout from its newest savepoint instead of starting over: on an infra retry or a rerun into the same --out (default off; 15m suits runs of hours)")
 	fs.BoolVar(&r.scoreSavepoints, "score-savepoints", false, "with --savepoint-every: score the work tree of every savepoint with the task's verifier in progress mode, in the background (progress.jsonl, the episode's progress)")
+	fs.BoolVar(&r.keepFailed, "keep-failed", false, "keep the workspaces of failed rollouts for debugging")
+	fs.Float64Var(&r.budgetUSD, "budget-usd", 0, "spend cap of one rollout whose task sets none, in US dollars: the agent stops as a budget outcome (without it a single agent has no cap and a swarm the session's default of $50)")
+	fs.IntVar(&r.maxSteps, "max-steps", 0, "step cap of one rollout whose task sets none")
+	fs.IntVar(&r.maxRequests, "max-requests", 0, "cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)")
+	fs.Float64Var(&r.maxSpend, "max-spend-usd", 0, "spend cap of the whole run, failed attempts and earlier invocations into the same --out included (see ledger.jsonl): no further rollout starts once it is reached; rollouts in flight finish, so give --budget-usd too")
+}
+
+// registerEnv binds the flags of the environment tasks are set up and verified in (work dir, blob store, confinement,
+// network, environment, verification repeats, progress mode), for a command that verifies without running a rollout.
+func (r *rigFlags) registerEnv(fs *flag.FlagSet) {
+	fs.StringVar(&r.workDir, "work-dir", "", "where snapshots, workspaces and verification checkouts live (default: <state>/rl-work)")
+	fs.StringVar(&r.mode, "workspace-mode", env.ModeExport, "export: a fresh single-commit tree without history | clone: a local clone with history")
+	fs.StringVar(&r.blobs, "blobs", "", "blob store holding the tasks' hidden verifier files (default: blobs/ next to the tasks file)")
+	fs.IntVar(&r.verifyRepeats, "verify-repeats", 0, "run the verifier this many times to catch flaky tests")
+	fs.StringVar(&r.verifyPolicy, "verify-policy", "", "with repeats: all | any | majority")
 	fs.IntVar(&r.progressSample, "progress-sample", 0, "progress mode: tests of each unit a savepoint's score runs, passed to the verifier as SUITE_SAMPLE (default 20)")
 	fs.DurationVar(&r.progressBudget, "progress-budget", 0, "progress mode: the deadline of a savepoint's score, passed to the verifier as SUITE_BUDGET_S (default 5m)")
 	fs.BoolVar(&r.noNetIsolation, "no-net-isolation", false, "do not isolate the network of tasks that do not need it")
 	fs.BoolVar(&r.requireNetIsolation, "require-net-isolation", false, "refuse to run where network isolation is unavailable")
-	fs.BoolVar(&r.keepFailed, "keep-failed", false, "keep the workspaces of failed rollouts for debugging")
 	fs.StringVar(&r.passEnv, "pass-env", "", "comma-separated environment variables (or globs) handed to the agent's and verifier's commands although they are not on the toolchain allowlist")
 	r.setEnv = kvFlags{}
 	fs.Var(r.setEnv, "set-env", "NAME=value forced into the agent's and verifier's environment, repeatable (e.g. GOCACHE=/shared/cache: faster, less isolated)")
-	fs.Float64Var(&r.budgetUSD, "budget-usd", 0, "spend cap of one rollout whose task sets none, in US dollars: the agent stops as a budget outcome (without it a single agent has no cap and a swarm the session's default of $50)")
-	fs.IntVar(&r.maxSteps, "max-steps", 0, "step cap of one rollout whose task sets none")
-	fs.IntVar(&r.maxRequests, "max-requests", 0, "cap on the model requests the endpoint answers in one rollout whose task sets none (refused and repeated requests do not count)")
 	fs.StringVar(&r.confine, "confine", env.ConfineOff, "off | bwrap: run every setup, agent and verifier command in a bubblewrap sandbox that sees only its own workspace (the work dir, task sources, blob store and run output are hidden; network only for tasks that need it). bwrap refuses to start where it is unavailable; use it whenever rollouts are training data")
 	fs.Var(&r.confineRO, "confine-ro", "with --confine bwrap: a directory every command may read although it lies in a hidden one (a toolchain), repeatable; PATH entries and GOROOT, RUSTUP_HOME, JAVA_HOME are added automatically")
 	fs.Var(&r.confineRW, "confine-rw", "with --confine bwrap: a directory every command may write (a shared cache), repeatable; GOCACHE, GOMODCACHE, CARGO_HOME, PIP_CACHE_DIR and similar cache variables are added automatically")
-	fs.Float64Var(&r.maxSpend, "max-spend-usd", 0, "spend cap of the whole run, failed attempts and earlier invocations into the same --out included (see ledger.jsonl): no further rollout starts once it is reached; rollouts in flight finish, so give --budget-usd too")
 }
 
 // validate rejects budgets that are not positive numbers (0 means unset).
@@ -379,6 +386,12 @@ func (rf *rigFlags) build(h env.Harness, out, tasksFile string, stderr io.Writer
 		}
 	}
 	pipe := &harness.Pipeline{Harness: rl.HarnessRef{Version: version, Commit: commit}, Reward: cfg}
+	if hidden != nil {
+		pipe.Hidden = hidden.Get
+	}
+	pipe.RepoContains = func(t *rl.Task, lit string) (bool, error) {
+		return ws.RepoContains(context.Background(), *t, lit)
+	}
 	rn := &env.Runner{
 		Harness: h, Extract: pipe.Extract, Score: pipe.Score, Workspaces: ws, Out: out,
 		Concurrency: rf.concurrency, HiddenBlobs: hidden,
@@ -773,7 +786,7 @@ func rlServe(ctx context.Context, args []string, stdout, stderr io.Writer) error
 			if err != nil {
 				return nil, err
 			}
-			return (&harness.Pipeline{Harness: rg.Pipe.Harness, Reward: cfg}).Score, nil
+			return (&harness.Pipeline{Harness: rg.Pipe.Harness, Reward: cfg, Hidden: rg.Pipe.Hidden, RepoContains: rg.Pipe.RepoContains}).Score, nil
 		},
 		Logf: func(f string, a ...any) { fmt.Fprintf(stderr, f+"\n", a...) },
 	})

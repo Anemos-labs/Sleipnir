@@ -12,6 +12,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/rl"
@@ -376,6 +377,45 @@ func WriteSuite(task *rl.Task, spec SuiteSpec, hidden events.Blobs) error {
 	return nil
 }
 
+// UpdateSuiteScorer gives a task that WriteSuite made the scorer script of this
+// build: its hidden .sleipnir/suite/score.py becomes the script embedded here,
+// stored as the old one was (a blob in hidden, or inline). The spec, units,
+// guards, command and everything else of the task stay as they are, so a task
+// recorded by an earlier build is scored by a fixed scorer without being
+// generated again. It reports whether the task has a suite scorer and whether
+// its script changed; a task without one is left alone.
+func UpdateSuiteScorer(task *rl.Task, hidden events.Blobs) (found, changed bool, err error) {
+	if task == nil {
+		return false, false, errors.New("UpdateSuiteScorer: no task")
+	}
+	p := suiteBase(task) + "/score.py"
+	old, ok := task.Verifier.Hidden[p]
+	if !ok {
+		return false, false, nil
+	}
+	ref := "text:" + suiteScoreScript
+	if strings.HasPrefix(old, "blob:") {
+		if hidden == nil {
+			return true, false, fmt.Errorf("task %s keeps its scorer in a blob store and none was given", task.ID)
+		}
+		h, err := hidden.Put([]byte(suiteScoreScript))
+		if err != nil {
+			return true, false, fmt.Errorf("storing the suite's score.py: %w", err)
+		}
+		ref = "blob:" + string(h)
+	}
+	if ref == old {
+		return true, false, nil
+	}
+	h := make(map[string]string, len(task.Verifier.Hidden))
+	for k, v := range task.Verifier.Hidden {
+		h[k] = v
+	}
+	h[p] = ref
+	task.Verifier.Hidden = h
+	return true, true, nil
+}
+
 // Outcomes of a test in a SuiteOutcomes.
 const (
 	SuitePass = "pass"
@@ -397,6 +437,10 @@ type SuiteRecord struct {
 	// and that command's parser.
 	Origin map[string]string `json:"origin"`
 	Parser map[string]string `json:"parser"`
+	// StartNoTests and ReferenceNoTests are set when not one run of that side
+	// reported a test: they say how its first run ended (see SuiteSteps.NoTests).
+	StartNoTests     string `json:"start_no_tests,omitempty"`
+	ReferenceNoTests string `json:"reference_no_tests,omitempty"`
 }
 
 // RecordSuite runs the task's suite scorer (WriteSuite) in record mode repeats
@@ -409,10 +453,10 @@ func RecordSuite(ctx context.Context, ws *env.Workspaces, task rl.Task, gold []b
 	steps, err := recordSuite(ctx, ws, task, []suiteStep{{"start", nil}, {"reference solution", gold}}, repeats, hidden)
 	rec := SuiteRecord{Origin: steps.Origin, Parser: steps.Parser}
 	if len(steps.Runs) > 0 {
-		rec.Start = steps.Runs[0]
+		rec.Start, rec.StartNoTests = steps.Runs[0], steps.NoTests[0]
 	}
 	if len(steps.Runs) > 1 {
-		rec.Reference = steps.Runs[1]
+		rec.Reference, rec.ReferenceNoTests = steps.Runs[1], steps.NoTests[1]
 	}
 	return rec, err
 }
@@ -427,6 +471,13 @@ type SuiteSteps struct {
 	// and that command's parser.
 	Origin map[string]string `json:"origin"`
 	Parser map[string]string `json:"parser"`
+	// NoTests has an entry per step of Runs, set when not one run at that step
+	// reported a test (pytest stopped at startup by an addopts plugin the
+	// environment lacks or a conftest that does not import, a Go module that
+	// does not load): how the step's first run ended (describeNoTests). It is
+	// for the person reading a rejection, in errors and reports only, never in
+	// a task.
+	NoTests []string `json:"no_tests,omitempty"`
 }
 
 // RecordSuiteSteps is RecordSuite over a sequence of states: it runs the task's
@@ -465,8 +516,10 @@ func recordSuite(ctx context.Context, ws *env.Workspaces, task rl.Task, steps []
 	rt.Verifier.Pass = "exit0"
 	rt.Verifier.BaselineScore = 0
 	rec := SuiteSteps{Origin: map[string]string{}, Parser: map[string]string{}}
-	run := func(label string, patch []byte) ([]SuiteOutcomes, error) {
+	// run records one step: its runs, and how the first ended when none reported a test.
+	run := func(label string, patch []byte) ([]SuiteOutcomes, string, error) {
 		outs := make([]string, repeats)
+		firstLog := ""
 		opts := env.VerifyOptions{
 			Workspaces: ws, HiddenBlobs: hidden, Repeats: repeats, PassPolicy: env.PassAll, MaxOutput: suiteRecordOutput,
 			Stdout: func(i int, s string) {
@@ -474,19 +527,29 @@ func recordSuite(ctx context.Context, ws *env.Workspaces, task rl.Task, steps []
 					outs[i] = s
 				}
 			},
+			Stderr: func(i int, s string) {
+				if i == 0 {
+					firstLog = s
+				}
+			},
 		}
 		res, err := env.VerifyPatch(ctx, rt, patch, opts)
 		if err != nil {
-			return nil, fmt.Errorf("recording the suite on the %s: %w", label, err)
+			return nil, "", fmt.Errorf("recording the suite on the %s: %w", label, err)
 		}
 		if res.Rejected != "" {
-			return nil, fmt.Errorf("recording the suite on the %s: %s", label, res.Rejected)
+			return nil, "", fmt.Errorf("recording the suite on the %s: %s", label, res.Rejected)
 		}
 		runs := make([]SuiteOutcomes, 0, repeats)
+		var first []suiteRecordCommand
+		reported := false
 		for i, out := range outs {
 			cmds, err := parseSuiteRecord(out)
 			if err != nil {
-				return nil, fmt.Errorf("recording the suite on the %s, run %d: %v\n%s", label, i+1, err, tail(res.Log, 2000))
+				return nil, "", fmt.Errorf("recording the suite on the %s, run %d: %v\n%s", label, i+1, err, tail(res.Log, 2000))
+			}
+			if i == 0 {
+				first = cmds
 			}
 			o := SuiteOutcomes{}
 			for _, c := range cmds {
@@ -497,18 +560,134 @@ func recordSuite(ctx context.Context, ws *env.Workspaces, task rl.Task, steps []
 					}
 				}
 			}
+			reported = reported || len(o) > 0
 			runs = append(runs, o)
 		}
-		return runs, nil
+		if reported {
+			return runs, "", nil
+		}
+		return runs, describeNoTests(first, firstLog), nil
 	}
 	for _, s := range steps {
-		runs, err := run(s.label, s.patch)
+		runs, none, err := run(s.label, s.patch)
 		if err != nil {
 			return rec, err
 		}
 		rec.Runs = append(rec.Runs, runs)
+		rec.NoTests = append(rec.NoTests, none)
 	}
 	return rec, nil
+}
+
+// suiteNoTestsTail bounds the output quoted of a command when a run reports no
+// test: its last 1,500 bytes.
+const suiteNoTestsTail = 1500
+
+// suiteRelayPrefix starts each line of a command's output that the scorer
+// relays to its standard error.
+const suiteRelayPrefix = "    | "
+
+// describeNoTests says how a record-mode run that reported no test ended, from
+// its record and the scorer's standard error: on the first line how each
+// command ended ("pytest: exit 4"), then the last suiteNoTestsTail bytes, from
+// a line start, of the output of the first command whose output the scorer
+// relayed (it relays the end of what a command printed when the command timed
+// out, or failed without reporting a test), each line as suiteRelayPrefix and
+// the line. The scorer's timings are left out, so the same verifier output
+// always gives the same text.
+func describeNoTests(cmds []suiteRecordCommand, stderr string) string {
+	if len(cmds) == 0 {
+		return "no command ran"
+	}
+	ended := make([]string, len(cmds))
+	for i, c := range cmds {
+		ended[i] = c.Name + ": " + c.ended()
+	}
+	text := strings.Join(ended, ", ")
+	for _, c := range cmds {
+		out := suiteRelayed(stderr, c.Name)
+		if len(out) == 0 {
+			continue
+		}
+		if len(cmds) > 1 {
+			text += "\n  " + c.Name + " printed:"
+		}
+		for _, l := range strings.Split(textTail(strings.Join(out, "\n"), suiteNoTestsTail), "\n") {
+			text += "\n" + suiteRelayPrefix + l
+		}
+		break
+	}
+	return text
+}
+
+// ended says how a command of a record ended: why it did not run, that it
+// timed out, or its exit status.
+func (c suiteRecordCommand) ended() string {
+	switch {
+	case c.Note != "":
+		return textHead(c.Note, 200)
+	case c.TimedOut:
+		return "timed out"
+	case c.Exit == nil:
+		return "no exit status"
+	}
+	return fmt.Sprintf("exit %d", *c.Exit)
+}
+
+// suiteRelayed returns what the scorer relayed of the output of the command
+// named name: the lines after its "suite: <name>: " line that start with
+// suiteRelayPrefix, without it, and without blank lines at the end.
+func suiteRelayed(stderr, name string) []string {
+	var out []string
+	in := false
+	for _, l := range strings.Split(stderr, "\n") {
+		switch rest, relayed := strings.CutPrefix(l, suiteRelayPrefix); {
+		case strings.HasPrefix(l, "suite: "+name+": "):
+			in, out = true, nil
+		case in && relayed:
+			out = append(out, rest)
+		default:
+			in = false
+		}
+	}
+	for len(out) > 0 && strings.TrimSpace(out[len(out)-1]) == "" {
+		out = out[:len(out)-1]
+	}
+	return out
+}
+
+// textTail returns the end of s, at most n bytes of it, from its first line
+// start there, with a line "..." in front when anything was cut; when that end
+// holds no whole line, it is the end of the last line from a rune boundary,
+// marked "...".
+func textTail(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	cut := len(s) - n
+	if s[cut-1] != '\n' {
+		if i := strings.IndexByte(s[cut:], '\n'); i >= 0 && cut+i+1 < len(s) {
+			cut += i + 1
+		} else {
+			for cut < len(s) && !utf8.RuneStart(s[cut]) {
+				cut++
+			}
+			return "..." + s[cut:]
+		}
+	}
+	return "...\n" + s[cut:]
+}
+
+// textHead returns s, cut at a rune boundary to at most n bytes and marked with
+// "..." when it is longer.
+func textHead(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n] + "..."
 }
 
 // suiteRecordCommand is one command of the record-mode line.
@@ -516,6 +695,12 @@ type suiteRecordCommand struct {
 	Name   string            `json:"name"`
 	Parser string            `json:"parser"`
 	Tests  map[string]string `json:"tests"`
+	// Exit is the command's exit status (nil when it did not run), TimedOut
+	// whether it was killed at its timeout or the deadline, and Note why it did
+	// not run or could not start.
+	Exit     *int   `json:"exit"`
+	TimedOut bool   `json:"timed_out"`
+	Note     string `json:"note"`
 }
 
 // parseSuiteRecord reads the record-mode line, the last line of stdout.
@@ -652,7 +837,7 @@ func BuildUnits(rec SuiteRecord, group SuiteGroup) (SuiteSelection, error) {
 		}
 	}
 	if len(byUnit) == 0 {
-		return sel, errors.New("no test fails on the start and passes with the reference solution every time: nothing to score")
+		return sel, errors.New("no test fails on the start and passes with the reference solution every time: nothing to score" + rec.noTestsReason())
 	}
 	if len(byUnit) > env.MaxScoreUnits {
 		return sel, fmt.Errorf("%d units, more than the %d a score line may carry: group the tests more coarsely", len(byUnit), env.MaxScoreUnits)
@@ -775,9 +960,52 @@ func BuildStepUnits(steps SuiteSteps, milestones []SuiteMilestone) (SuiteSelecti
 		sel.Units = append(sel.Units, SuiteUnit{Name: name, Weight: m.Weight, Tests: byStep[k]})
 	}
 	if len(sel.Units) == 0 {
-		return sel, errors.New("no test fails at the start and passes from some step on, every time: nothing to score")
+		return sel, errors.New("no test fails at the start and passes from some step on, every time: nothing to score" + steps.noTestsReason())
 	}
 	return sel, nil
+}
+
+// noTestsReason adds to BuildUnits' "nothing to score" that not one run with
+// the reference solution reported a test, when that is so, and how the first
+// of them ended; "" otherwise.
+func (rec SuiteRecord) noTestsReason() string {
+	if rec.ReferenceNoTests == "" {
+		return ""
+	}
+	nor := ""
+	if rec.StartNoTests != "" {
+		nor = " (nor on the start)"
+	}
+	return "; no run with the reference solution reported a test" + nor + "; the first ended with " + rec.ReferenceNoTests
+}
+
+// noTestsReason adds to BuildStepUnits' "nothing to score" which step's runs
+// reported no test, when one after the start did, and how its first run ended:
+// the last step when it is one, as no test can pass for good without it, and
+// otherwise the earliest; "" when there is none.
+func (s SuiteSteps) noTestsReason() string {
+	n := len(s.NoTests)
+	if n < 2 {
+		return ""
+	}
+	k := n - 1
+	if s.NoTests[k] == "" {
+		k = 0
+		for j := 1; j < n-1 && k == 0; j++ {
+			if s.NoTests[j] != "" {
+				k = j
+			}
+		}
+		if k == 0 {
+			return ""
+		}
+	}
+	for _, d := range s.NoTests {
+		if d == "" {
+			return fmt.Sprintf("; no run at step %d reported a test; the first ended with %s", k, s.NoTests[k])
+		}
+	}
+	return fmt.Sprintf("; no run at any step reported a test; the first at step %d ended with %s", k, s.NoTests[k])
 }
 
 // unitName keeps a unit name within env.MaxScoreUnitName bytes: a longer one is
