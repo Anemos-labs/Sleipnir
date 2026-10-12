@@ -30,8 +30,9 @@ type Pipeline struct {
 	Hidden core.BlobGetter
 	// RepoContains searches the task's repository before the change (env.RepoContains): the hardcoded-value detector
 	// does not take a literal the repository already had for one the agent copied from a hidden file. Nil searches
-	// nothing, and only the prompt and the diff's context rule literals out.
-	RepoContains func(task *rl.Task, literal string) bool
+	// nothing, and only the prompt and the diff's context rule literals out; so does a repository whose search fails
+	// (Score probes it first), and the detector's note then says it was not searched.
+	RepoContains func(task *rl.Task, literal string) (bool, error)
 
 	mu    sync.Mutex
 	runs  map[string]*traj.Run
@@ -93,7 +94,12 @@ func (p *Pipeline) Score(ep *rl.Episode, task *rl.Task, runDir string) error {
 	}
 	src := reward.DiffsFromBlobs(blobs.Get, p.Hidden)
 	if p.RepoContains != nil && task != nil {
-		src = reward.WithRepo(src, func(lit string) bool { return p.RepoContains(task, lit) })
+		if _, err := p.RepoContains(task, "x"); err == nil { // a repository that cannot be searched is not searched
+			src = reward.WithRepo(src, func(lit string) bool {
+				ok, err := p.RepoContains(task, lit)
+				return err == nil && ok
+			})
+		}
 	}
 	return reward.Score(ep, task, cfg, src)
 }

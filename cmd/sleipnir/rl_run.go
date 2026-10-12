@@ -389,9 +389,8 @@ func (rf *rigFlags) build(h env.Harness, out, tasksFile string, stderr io.Writer
 	if hidden != nil {
 		pipe.Hidden = hidden.Get
 	}
-	pipe.RepoContains = func(t *rl.Task, lit string) bool {
-		ok, err := ws.RepoContains(context.Background(), *t, lit)
-		return err == nil && ok
+	pipe.RepoContains = func(t *rl.Task, lit string) (bool, error) {
+		return ws.RepoContains(context.Background(), *t, lit)
 	}
 	rn := &env.Runner{
 		Harness: h, Extract: pipe.Extract, Score: pipe.Score, Workspaces: ws, Out: out,
