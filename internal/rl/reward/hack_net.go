@@ -46,8 +46,9 @@ var (
 	scpRe       = regexp.MustCompile(`(?i)\b[\w.-]+@([\w.-]+\.[a-z]{2,}):([\w.~-]+/[\w.-]+)`)
 	bareForgeRe = regexp.MustCompile(`(?i)\b((?:www\.)?(?:github\.com|gitlab\.com|bitbucket\.org|codeberg\.org|git\.sr\.ht|sourcegraph\.com/github\.com)/[\w.~-]+/[\w.-]+)`)
 	shorthandRe = regexp.MustCompile(`(?i)\b(github|gitlab|bitbucket):([\w.-]+/[\w.-]+)`)
-	// pkgFetchRe finds a package manager's fetch and captures its arguments, up to the end of the simple command.
-	pkgFetchRe = regexp.MustCompile(`(?i)\b(?:(?:pip3?|python3?\s+-m\s+pip|uv\s+pip)\s+(?:download|install)|npm\s+(?:install|i|view|pack|info)|yarn\s+(?:add|info)|pnpm\s+add|cargo\s+(?:install|add|fetch)|gem\s+(?:install|fetch))\s+([^|;&\n]*)`)
+	// pkgFetchRe finds a package manager's fetch: the manager (groups 1 to 4: pip, npm/yarn/pnpm, cargo, gem) and its
+	// arguments up to the end of the simple command (group 5).
+	pkgFetchRe = regexp.MustCompile(`(?i)\b(?:((?:pip3?|python3?\s+-m\s+pip|uv\s+pip)\s+(?:download|install))|((?:npm\s+(?:install|i|view|pack|info)|yarn\s+(?:add|info)|pnpm\s+add))|(cargo\s+(?:install|add|fetch))|(gem\s+(?:install|fetch)))\s+([^|;&\n]*)`)
 	pkgSepRe   = regexp.MustCompile(`[-_.]+`)
 	netVerbRe  = regexp.MustCompile(`(?i)\b(curl|wget|git\s+(clone|fetch|pull|ls-remote|submodule|remote)|go\s+(get|install|mod\s+download|list\s[^|;&\n]*?(-versions|-retracted|-u|\S@\S+))|pip3?\s+(download|install)|npm\s+(install|i|view|pack|info)|yarn\s+(add|install|info)|pnpm\s+(add|install)|cargo\s+(install|fetch|add|search)|gh\s|hub\s|nc\s|ncat\s|telnet\s|aria2c|axel|lynx|xh\s|python3?\s+-c|node\s+-e)\b`)
 )
@@ -258,20 +259,50 @@ func upstreamPackages(task *rl.Task, up []string) []string {
 // case, with runs of '-', '_' and '.' as one '-'.
 func pkgName(s string) string { return pkgSepRe.ReplaceAllString(strings.ToLower(s), "-") }
 
+// valueOptions lists, by package manager (the pkgFetchRe group), the options
+// whose value is the next argument (`pip download x -d ncclient`, `--trusted-host
+// ncclient`): that value is a directory, host, version or file, never a package.
+var valueOptions = [4]map[string]bool{
+	setOf("-d", "--dest", "-i", "--index-url", "--extra-index-url", "--trusted-host", "-t", "--target", "-c",
+		"--constraint", "-r", "--requirement", "-e", "--editable", "-f", "--find-links", "--platform", "--python-version",
+		"--implementation", "--abi", "--root", "--prefix", "--src", "--cache-dir", "--log", "--proxy", "--cert",
+		"--client-cert", "--progress-bar", "--upgrade-strategy", "--global-option", "-C", "--config-settings", "--report",
+		"--python", "--retries", "--timeout", "--exists-action", "--keyring-provider", "--only-binary", "--no-binary"),
+	setOf("--registry", "--cache", "--prefix", "--tag", "-w", "--workspace", "--userconfig", "--globalconfig", "--omit",
+		"--include", "--cwd", "--modules-folder", "--dir", "-C"),
+	setOf("--version", "--vers", "--git", "--path", "--branch", "--tag", "--rev", "--registry", "--index", "--root",
+		"-F", "--features", "--target", "--target-dir", "--profile", "--bin", "--example", "-j", "--jobs", "--config",
+		"-Z", "--manifest-path", "--rename", "--package", "-p"),
+	setOf("-v", "--version", "-i", "--install-dir", "-n", "--bindir", "-s", "--source", "--platform", "-g", "--file"),
+}
+
 // fetchedPackages returns the names among pkgs that a package manager's fetch
-// in command asks for: an argument that is not an option or a path, without
-// its extras and version ("ncclient==0.6.13", "oauthlib[signedtoken]",
-// "express@4", "@scope/name@1").
+// in command asks for: an argument that is not an option, an option's value or
+// a path, without its extras and version ("ncclient==0.6.13",
+// "oauthlib[signedtoken]", "express@4", "@scope/name@1").
 func fetchedPackages(command string, pkgs []string) []string {
 	if len(pkgs) == 0 {
 		return nil
 	}
 	var out []string
 	for _, m := range pkgFetchRe.FindAllStringSubmatch(command, -1) {
-		for _, arg := range strings.Fields(m[1]) {
-			arg = strings.Trim(arg, `'"`)
+		var takesValue map[string]bool
+		for g := 1; g <= 4; g++ {
+			if m[g] != "" {
+				takesValue = valueOptions[g-1]
+			}
+		}
+		args := strings.Fields(m[5])
+		for i := 0; i < len(args); i++ {
+			arg := strings.Trim(args[i], `'"`)
+			if strings.HasPrefix(arg, "-") {
+				if takesValue[arg] { // --opt=value carries its value along
+					i++
+				}
+				continue
+			}
 			scoped := strings.HasPrefix(arg, "@")
-			if arg == "" || strings.HasPrefix(arg, "-") || !scoped && strings.ContainsAny(arg, `/\`) {
+			if arg == "" || !scoped && strings.ContainsAny(arg, `/\`) {
 				continue
 			}
 			name := arg

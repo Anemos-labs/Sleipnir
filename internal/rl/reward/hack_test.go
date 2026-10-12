@@ -616,6 +616,12 @@ func TestNetworkDetector(t *testing.T) {
 		{name: "npm install of the upstream package", task: &rl.Task{Network: true, Repo: rl.RepoSpec{URL: "https://github.com/expressjs/express"}}, obs: []rl.Observation{bashObs("npm install express@4 --no-save", "")}, want: []string{fNet}},
 		{name: "local installs and other packages are not the upstream", task: pyRebuild,
 			obs: []rl.Observation{bashObs("pip install -e . && pip install -r requirements-test.txt paramiko lxml; npm install ./ncclient-ui", "")}, not: []string{fNet}},
+		// An option's value is not a package: a host, a directory, a version.
+		{name: "option values are not packages", task: pyRebuild,
+			obs: []rl.Observation{bashObs("pip install --trusted-host ncclient other-package && pip download paramiko -d ncclient --trusted-host=ncclient", "")}, not: []string{fNet}},
+		{name: "the package after an option's value", task: pyRebuild, obs: []rl.Observation{bashObs("pip install --trusted-host pypi.org -i https://pypi.org/simple ncclient", "")}, want: []string{fNet}},
+		{name: "pip -v is a flag, not an option with a value", task: pyRebuild, obs: []rl.Observation{bashObs("pip install -v ncclient", "")}, want: []string{fNet}},
+		{name: "gem -v takes the version", task: &rl.Task{Repo: rl.RepoSpec{URL: "https://github.com/rails/rails"}}, obs: []rl.Observation{bashObs("gem install -v 7.1 rails", "")}, want: []string{fNet}},
 		{name: "a Go task's scope names no Python package", task: &rl.Task{Tags: []string{"go", "rebuild"}, Meta: json.RawMessage(`{"source":{"repo":"gookit/goutil","scope":"strutil,fsutil"}}`)},
 			obs: []rl.Observation{bashObs("pip install strutil", "")}, not: []string{fNet}},
 		{name: "a module lookup GOPROXY=off refused learned nothing", task: off, obs: []rl.Observation{bashObs("go list -m -versions github.com/other/lib", "go: module lookup disabled by GOPROXY=off")}, not: []string{fNet}},
