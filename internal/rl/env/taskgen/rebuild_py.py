@@ -731,11 +731,33 @@ class ImportTime:
                 self._call(mod, n.func)
             stack.extend(ast.iter_child_nodes(n))
 
+    def _aliases(self, mod, stmts):
+        """Record the module-level aliases of mod (alias = helper, alias = pkg.helper) as bindings, in order, so that a
+        call of the alias follows the function it names."""
+        for st in stmts:
+            if isinstance(st, ast.Assign) and isinstance(st.value, (ast.Name, ast.Attribute)):
+                t = self._target(mod, st.value)
+                if t is not None and t[1] is not None:
+                    for tg in st.targets:
+                        if isinstance(tg, ast.Name):
+                            self.bound[mod][tg.id] = t
+            elif isinstance(st, ast.If):
+                self._aliases(mod, st.body)
+                self._aliases(mod, st.orelse)
+            elif isinstance(st, TRY):
+                self._aliases(mod, st.body)
+                for h in st.handlers:
+                    self._aliases(mod, h.body)
+                self._aliases(mod, st.orelse)
+                self._aliases(mod, st.finalbody)
+
     def run(self, tests):
         """tests: [(tree, package)] of the test files."""
         self.bound = {}
         for name, tree in self.trees.items():
             self.bound[name] = self.bindings(tree, package_of(self.mods[name]))
+        for name, tree in self.trees.items():
+            self._aliases(name, tree.body)
         for name, tree in self.trees.items():
             for st in tree.body:
                 self.scan(name, st, False)
@@ -746,6 +768,7 @@ class ImportTime:
             funcs, classes = {}, {}
             self._index(tree.body, funcs, classes, "")
             self.funcs[key], self.classes[key] = funcs, classes
+            self._aliases(key, tree.body)
             for st in tree.body:
                 self.scan(key, st, False)
         while self.queue:

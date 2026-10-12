@@ -600,15 +600,19 @@ func (k goLoadKeep) keeps(fd *ast.FuncDecl) bool {
 // what a test binary of the scope runs before its first test (the TestMain functions and variables of tests, its test
 // files by directory), it follows the calls through the module: a function of the same package, a function of a package of the module the
 // file imports, a method of any package of the module by its name (a call x.M() follows every method M, which keeps a
-// body too many rather than one too few), and a function literal called in place. A function or method of the scope
+// body too many rather than one too few), a function literal called in place, and the function literal a package
+// variable holds when that variable is called or handed on (var fn = func() T {...}; var x = fn()). A function or method of the scope
 // it reaches keeps its body in the stub, and so does a literal of a variable's value called in place: a panic there
 // would fail every program that loads the package, every test of every package built on it, and not only the callers
 // of the function.
 func goLoadTime(pkgs, tests map[string]map[string][]byte, importPath func(string) string, scope map[string]bool) map[string]goLoadKeep {
+	// fn is a function or method of the module, or a package variable whose value is a function literal (lit): a
+	// call of the variable runs the literal.
 	type fn struct {
 		dir  string
 		file *ast.File
 		decl *ast.FuncDecl
+		lit  *ast.FuncLit
 	}
 	fset := token.NewFileSet()
 	byPath := map[string]string{} // import path -> directory
@@ -687,11 +691,29 @@ func goLoadTime(pkgs, tests map[string]map[string][]byte, importPath func(string
 				imports[f][name] = dep
 			}
 			for _, decl := range f.Decls {
-				if fd, ok := decl.(*ast.FuncDecl); ok && fd.Body != nil {
-					if fd.Recv == nil {
-						funcs[d][fd.Name.Name] = append(funcs[d][fd.Name.Name], fn{d, f, fd})
+				switch x := decl.(type) {
+				case *ast.FuncDecl:
+					if x.Body == nil {
+						continue
+					}
+					if x.Recv == nil {
+						funcs[d][x.Name.Name] = append(funcs[d][x.Name.Name], fn{dir: d, file: f, decl: x})
 					} else {
-						methods[fd.Name.Name] = append(methods[fd.Name.Name], fn{d, f, fd})
+						methods[x.Name.Name] = append(methods[x.Name.Name], fn{dir: d, file: f, decl: x})
+					}
+				case *ast.GenDecl:
+					if x.Tok != token.VAR {
+						continue
+					}
+					for _, sp := range x.Specs {
+						vs := sp.(*ast.ValueSpec)
+						for i, name := range vs.Names {
+							if i < len(vs.Values) {
+								if lit, ok := ast.Unparen(vs.Values[i]).(*ast.FuncLit); ok {
+									funcs[d][name.Name] = append(funcs[d][name.Name], fn{dir: d, file: f, lit: lit})
+								}
+							}
+						}
 					}
 				}
 			}
@@ -824,6 +846,17 @@ func goLoadTime(pkgs, tests map[string]map[string][]byte, importPath func(string
 	for len(queue) > 0 {
 		c := queue[0]
 		queue = queue[1:]
+		if c.lit != nil { // a package variable's function literal: kept where it is
+			if scope[c.dir] {
+				k := keep(c.dir)
+				if k.lits[pathOf[c.file]] == nil {
+					k.lits[pathOf[c.file]] = map[int]bool{}
+				}
+				k.lits[pathOf[c.file]][fset.File(c.lit.Pos()).Offset(c.lit.Body.Lbrace)] = true
+			}
+			scan(c.dir, c.file, c.lit.Body, true)
+			continue
+		}
 		if scope[c.dir] {
 			k := keep(c.dir)
 			if c.decl.Recv == nil {

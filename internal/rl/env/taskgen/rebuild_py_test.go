@@ -207,7 +207,7 @@ func TestPythonRebuildScript(t *testing.T) {
 // imports without raising.
 func TestPythonRebuildKeepsWhatRunsOnImport(t *testing.T) {
 	have(t, "python3")
-	deco := "REG = []\n\n\ndef register(fn):\n    REG.append(_name(fn))\n    return fn\n\n\ndef _name(fn):\n    return fn.__name__\n\n\ndef cases():\n    return [1, 2]\n\n\ndef unrelated():\n    return 3\n"
+	deco := "REG = []\n\n\ndef register(fn):\n    REG.append(_name(fn))\n    return fn\n\n\ndef _name(fn):\n    return fn.__name__\n\n\ndef cases():\n    return [1, 2]\n\n\ndef unrelated():\n    return 3\n\n\ndef _seed():\n    return 7\n\n\nseed = _seed\nSEED = seed()\n"
 	conf := "from .deco import register\n\n\nclass Config:\n    def __init__(self, v):\n        self.v = v\n\n    def other(self):\n        return 1\n\n\nclass Base:\n    def __init_subclass__(cls, **kw):\n        cls.tag = \"t\"\n\n    def __class_getitem__(cls, item):\n        return cls\n\n\nclass Field:\n    def __set_name__(self, owner, name):\n        self.name = name\n\n\nclass Model:\n    id = Field()\n\n\nDEFAULT = Config(1)\n\n\n@register\ndef handler():\n    return DEFAULT.v\n"
 	plug := "from pkg.conf import Base\n\n\nclass Plugin(Base[int]):\n    pass\n"
 	test := "import pkg.deco as d\nfrom pkg import plug\n\n\ndef _load():\n    return d.cases()\n\n\nCASES = _load()\n\n\ndef test_cases():\n    assert CASES == [1, 2]\n"
@@ -225,6 +225,7 @@ func TestPythonRebuildKeepsWhatRunsOnImport(t *testing.T) {
 	for _, want := range []string{
 		"def register(fn):\n    REG.append(_name(fn))\n    return fn\n", "def _name(fn):\n    return fn.__name__\n",
 		"def cases():\n    return [1, 2]\n", "def unrelated():\n    raise NotImplementedError\n",
+		"def _seed():\n    return 7\n", // called through an alias when the module is imported
 	} {
 		if !strings.Contains(d, want) {
 			t.Errorf("the stub of pkg.deco lacks %q:\n%s", want, d)

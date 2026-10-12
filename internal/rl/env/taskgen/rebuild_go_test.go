@@ -342,7 +342,7 @@ func TestRebuildGoKeepsWhatRunsWhenPackagesLoad(t *testing.T) {
 	f := newFixture(t)
 	for p, body := range map[string]string{
 		"go.mod":            "module example.com/m\n\ngo 1.21\n",
-		"util/util.go":      "// Package util helps.\npackage util\n\nimport \"strings\"\n\n// Reg registers names.\ntype Reg struct{ names []string }\n\n// Add adds a name.\nfunc (r *Reg) Add(s string) { r.names = append(r.names, norm(s)) }\n\n// Name is the default name.\nfunc Name() string { return \"u\" }\n\n// Double doubles n.\nfunc Double(n int) int { return 2 * n }\n\n// Clean cleans up.\nfunc Clean() error { return nil }\n\nvar upper = strings.Map(shout, \"x\")\n\nfunc shout(r rune) rune { return r - 32 }\n\nfunc norm(s string) string { return s + \"!\" }\n",
+		"util/util.go":      "// Package util helps.\npackage util\n\nimport \"strings\"\n\n// Reg registers names.\ntype Reg struct{ names []string }\n\n// Add adds a name.\nfunc (r *Reg) Add(s string) { r.names = append(r.names, norm(s)) }\n\n// Name is the default name.\nfunc Name() string { return \"u\" }\n\n// Double doubles n.\nfunc Double(n int) int { return 2 * n }\n\n// Clean cleans up.\nfunc Clean() error { return nil }\n\nvar upper = strings.Map(shout, \"x\")\n\nfunc shout(r rune) rune { return r - 32 }\n\nvar mk = func() int { return twice(3) }\n\nvar made = mk()\n\nfunc twice(n int) int { return 2 * n }\n\nfunc norm(s string) string { return s + \"!\" }\n",
 		"util/util_test.go": "package util\n\nimport \"testing\"\n\nfunc TestDouble(t *testing.T) {\n\tif Double(2) != 4 {\n\t\tt.Fatal()\n\t}\n}\n",
 		"util/main_test.go": "package util_test\n\nimport (\n\t\"os\"\n\t\"testing\"\n\n\t\"example.com/m/util\"\n)\n\nfunc TestMain(m *testing.M) {\n\tprepare()\n\tos.Exit(m.Run())\n}\n\nfunc prepare() { _ = util.Clean() }\n",
 		"tmpl/tmpl.go":      "// Package tmpl is out of the scope.\npackage tmpl\n\nimport \"example.com/m/util\"\n\nvar defaultReg = newReg()\n\nfunc newReg() *util.Reg {\n\tr := &util.Reg{}\n\tr.Add(\"x\")\n\treturn r\n}\n\nvar name string\n\nfunc init() { name = util.Name() }\n\n// Reg is the default registry.\nfunc Reg() *util.Reg { return defaultReg }\n",
@@ -366,6 +366,8 @@ func TestRebuildGoKeepsWhatRunsWhenPackagesLoad(t *testing.T) {
 		"func norm(s string) string { return s + \"!\" }",
 		"func Clean() error { return nil }",
 		"func shout(r rune) rune { return r - 32 }", // handed to strings.Map when the package loads
+		"var mk = func() int { return twice(3) }",   // a variable's literal, called when the package loads
+		"func twice(n int) int { return 2 * n }",
 		"func Double(n int) int {\n\tpanic(",
 	} {
 		if !strings.Contains(stub, want) {
