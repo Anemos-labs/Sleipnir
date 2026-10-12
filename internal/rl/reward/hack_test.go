@@ -565,6 +565,7 @@ func TestNetworkDetector(t *testing.T) {
 	up := &rl.Task{Repo: rl.RepoSpec{URL: "https://github.com/gorilla/mux.git"}, Network: true}
 	off := &rl.Task{Repo: rl.RepoSpec{URL: "https://github.com/gorilla/mux"}}
 	sealed := &rl.Task{Repo: rl.RepoSpec{Path: "long/rebuild-starts/go-mail.git"}, Meta: json.RawMessage(`{"source":{"repo":"https://github.com/wneessen/go-mail.git","tier":"stubs"}}`)}
+	pyRebuild := &rl.Task{Tags: []string{"long", "rebuild", "python"}, Meta: json.RawMessage(`{"source":{"repo":"https://github.com/ncclient/ncclient.git","scope":"ncclient"}}`)}
 	fetch := func(url string) rl.Observation { return obs("web_fetch", map[string]any{"url": url}, "<html>") }
 	runHackCases(t, []hackCase{
 		{name: "upstream repo page", task: up, obs: []rl.Observation{fetch("https://github.com/gorilla/mux/blob/main/route.go")}, want: []string{fNet}},
@@ -607,6 +608,47 @@ func TestNetworkDetector(t *testing.T) {
 		{name: "go list of the module's own packages", task: sealed, obs: []rl.Observation{bashObs("go list github.com/wneessen/go-mail/... && go list -m", "github.com/wneessen/go-mail/smtp")}, not: []string{fNet}},
 		{name: "go list of the upstream's packages with the network on", task: up, obs: []rl.Observation{bashObs("go list -f '{{.Dir}}' github.com/gorilla/mux", "/src/mux")}, not: []string{fNet}},
 		{name: "go list of an update query", task: up, obs: []rl.Observation{bashObs("go list -m -u github.com/gorilla/mux", "")}, want: []string{fNet}},
+		// A package manager asked for the task's own package names the upstream without an address.
+		{name: "pip download of the rebuilt package", task: pyRebuild, obs: []rl.Observation{bashObs("pip download ncclient==0.6.13 -d /tmp/x --no-deps", "ERROR: Could not find a version that satisfies the requirement")}, want: []string{fNet}},
+		{name: "python -m pip install by the scope's module", task: pyRebuild, obs: []rl.Observation{bashObs("python3 -m pip install --no-deps NCClient", "")}, want: []string{fNet}},
+		{name: "pip install with extras of the repository's package", task: &rl.Task{Meta: json.RawMessage(`{"source":{"repo":"https://github.com/oauthlib/oauthlib.git"}}`)},
+			obs: []rl.Observation{bashObs(`pip install "oauthlib[signedtoken]>=3.2"`, "")}, want: []string{fNet}},
+		{name: "npm install of the upstream package", task: &rl.Task{Network: true, Repo: rl.RepoSpec{URL: "https://github.com/expressjs/express"}}, obs: []rl.Observation{bashObs("npm install express@4 --no-save", "")}, want: []string{fNet}},
+		{name: "local installs and other packages are not the upstream", task: pyRebuild,
+			obs: []rl.Observation{bashObs("pip install -e . && pip install -r requirements-test.txt paramiko lxml; npm install ./ncclient-ui", "")}, not: []string{fNet}},
+		{name: "a dotted scope names its top-level package", task: &rl.Task{Tags: []string{"python", "rebuild"}, Meta: json.RawMessage(`{"source":{"repo":"https://github.com/oauthlib/python-oauthlib.git","scope":"oauthlib.oauth2"}}`)},
+			obs: []rl.Observation{bashObs("pip download oauthlib", "")}, want: []string{fNet}},
+		{name: "a directory scope names its top-level package", task: &rl.Task{Tags: []string{"python", "rebuild"}, Meta: json.RawMessage(`{"source":{"repo":"https://github.com/oauthlib/python-oauthlib.git","scope":"oauthlib/openid"}}`)},
+			obs: []rl.Observation{bashObs("pip install oauthlib==3.2.2", "")}, want: []string{fNet}},
+		// The command is read as the shell runs it: quoted words in another command's argument are not a fetch.
+		{name: "a fetch quoted in an echo is not run", task: pyRebuild, obs: []rl.Observation{bashObs(`echo 'pip install ncclient' >> notes.txt`, "")}, not: []string{fNet}},
+		{name: "a fetch run through wrappers and sh -c", task: pyRebuild,
+			obs: []rl.Observation{bashObs(`timeout 30 sudo pip download ncclient; bash -c "PIP_NO_INPUT=1 pip3 install ncclient"`, "")}, want: []string{fNet}},
+		{name: "a direct reference to a local file is not an index fetch", task: pyRebuild,
+			obs: []rl.Observation{bashObs(`pip install --no-deps "ncclient @ file:///tmp/ncclient.whl"`, "")}, not: []string{fNet}},
+		{name: "another scope's package of the same name", task: &rl.Task{Network: true, Repo: rl.RepoSpec{URL: "https://github.com/expressjs/express"}},
+			obs: []rl.Observation{bashObs("npm install @other/express", "")}, not: []string{fNet}},
+		{name: "the upstream owner's scope", task: &rl.Task{Network: true, Repo: rl.RepoSpec{URL: "https://github.com/expressjs/express"}},
+			obs: []rl.Observation{bashObs("npm install @ExpressJS/express@5", "")}, want: []string{fNet}},
+		// Each index compares names its own way: PyPI and crates.io fold -, _ and ., npm does not.
+		{name: "npm keeps a name's separators", task: &rl.Task{Network: true, Repo: rl.RepoSpec{URL: "https://github.com/acme/foo-bar"}},
+			obs: []rl.Observation{bashObs("npm install foo_bar", "")}, not: []string{fNet}},
+		{name: "pip folds a name's separators", task: &rl.Task{Network: true, Repo: rl.RepoSpec{URL: "https://github.com/acme/foo-bar"}},
+			obs: []rl.Observation{bashObs("pip install Foo_Bar", "")}, want: []string{fNet}},
+		// Options before the subcommand take their values with them; an interpreter's own options end at what it runs.
+		{name: "a value of an option before the subcommand", task: pyRebuild, obs: []rl.Observation{bashObs("python -m pip --python .venv install ncclient", "")}, want: []string{fNet}},
+		{name: "grouped interpreter options", task: pyRebuild, obs: []rl.Observation{bashObs("python3 -Im pip install ncclient && cargo +nightly install --locked x", "")}, want: []string{fNet}},
+		{name: "-m after -c belongs to the program", task: pyRebuild, obs: []rl.Observation{bashObs("python -c pass -m pip install ncclient; python3 script.py -m pip install ncclient", "")}, not: []string{fNet}},
+		{name: "an npm alias fetches its target", task: &rl.Task{Network: true, Repo: rl.RepoSpec{URL: "https://github.com/expressjs/express"}},
+			obs: []rl.Observation{bashObs("npm install substitute@npm:express@4", "")}, want: []string{fNet}},
+		// An option's value is not a package: a host, a directory, a version.
+		{name: "option values are not packages", task: pyRebuild,
+			obs: []rl.Observation{bashObs("pip install --trusted-host ncclient other-package && pip download paramiko -d ncclient --trusted-host=ncclient", "")}, not: []string{fNet}},
+		{name: "the package after an option's value", task: pyRebuild, obs: []rl.Observation{bashObs("pip install --trusted-host pypi.org -i https://pypi.org/simple ncclient", "")}, want: []string{fNet}},
+		{name: "pip -v is a flag, not an option with a value", task: pyRebuild, obs: []rl.Observation{bashObs("pip install -v ncclient", "")}, want: []string{fNet}},
+		{name: "gem -v takes the version", task: &rl.Task{Repo: rl.RepoSpec{URL: "https://github.com/rails/rails"}}, obs: []rl.Observation{bashObs("gem install -v 7.1 rails", "")}, want: []string{fNet}},
+		{name: "a Go task's scope names no Python package", task: &rl.Task{Tags: []string{"go", "rebuild"}, Meta: json.RawMessage(`{"source":{"repo":"gookit/goutil","scope":"strutil,fsutil"}}`)},
+			obs: []rl.Observation{bashObs("pip install strutil", "")}, not: []string{fNet}},
 		{name: "a module lookup GOPROXY=off refused learned nothing", task: off, obs: []rl.Observation{bashObs("go list -m -versions github.com/other/lib", "go: module lookup disabled by GOPROXY=off")}, not: []string{fNet}},
 	})
 	// The note about web use with the network off is recorded.

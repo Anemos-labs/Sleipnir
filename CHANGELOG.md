@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The network detector (`hack:network`) flags a package manager's fetch of
+  the task's own package (`pip download`/`pip install`, `npm install`,
+  `yarn add`, `pnpm add`, `cargo add`/`install`, `gem install`), which names
+  no address: a rebuild team ran `pip download ncclient==0.6.13` to get the
+  sources it was asked to write. The names are the upstream repository's
+  and, for a Python task, the scope's top-level modules.
 - The prompts of `rl taskgen chain` and `rl taskgen rebuild` tasks say that
   fetching the project's code from elsewhere (its repository, a mirror, a
   module proxy or a package index) is not allowed. Teams on rebuild tasks
