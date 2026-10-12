@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A task the manager sends back between a worker's `done` call and its next
+  request is read by the run that is ending. When that worker stopped without
+  calling `done` again, the task stayed in doing with an idle owner: the run
+  does not settle a newer assignment, and no unread mail was left to start
+  the next run. The harness now writes the worker one message, so the next
+  run takes the task at its current revision and settles it. The message is
+  mail in the conversation; stable prompt layers and tool schemas are
+  unchanged.
 - The network detector (`hack:network`) flags a package manager's fetch of
   the task's own package (`pip download`/`pip install`, `npm install`,
   `yarn add`, `pnpm add`, `cargo add`/`install`, `gem install`), which names

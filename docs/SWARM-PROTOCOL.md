@@ -79,7 +79,10 @@ Statuses: `todo -> doing -> review -> done`, with `blocked` and `failed` as side
   | requeue (the harness) | doing, blocked | todo, or failed (`exhausted`, or `verifier` after the gate's retries) after `MaxAttempts` |
 
   Every assignment gets a new `rev`; the harness settles a finished run only against the `rev` it started with, so a run
-  that ends late can never undo a newer assignment (a reject, a reuse).
+  that ends late can never undo a newer assignment (a reject, a reuse). Nor is that newer assignment left with an idle
+  owner: when a run ends cleanly while its worker holds a task in doing at a `rev` the run did not start with, and no
+  mail is waiting to start the next run (the ending run read the reject itself and stopped without `done`), the harness
+  writes the worker one message, so the next run starts, takes the task at its current `rev`, and settles it.
 * Ownership is one compare-and-set on the board: a worker's own `claim` and the manager's `spawn` for the same task
   cannot both succeed, and scope overlap is checked in the same critical section.
 * Agent status is **derived by the harness** from observed events (running, waiting, idle, done, failed; current task;

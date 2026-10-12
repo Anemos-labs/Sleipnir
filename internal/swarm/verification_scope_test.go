@@ -196,14 +196,24 @@ func TestImplicitCompletionRetriesAfterScopeChanges(t *testing.T) {
 	}
 }
 
+// An isolated task is accepted only with merge evidence for its current scope. The
+// manager acts once the worker's first run is over, so the reject wakes a new run
+// (TestRejectReadByTheEndingRunStartsTheNextRun covers a reject read by the run that
+// submitted), and the worker answers it by calling done for the expanded scope.
 func TestIsolatedAcceptRequiresMergeEvidenceForTheCurrentScope(t *testing.T) {
-	sc := script{"be-1": {act(writeCall("a.txt", "alpha edited\n")), act(doneCall("T1", "edited a"))}}
+	sc := script{"be-1": {
+		act(writeCall("a.txt", "alpha edited\n")),
+		act(doneCall("T1", "edited a")),
+		fixed("edited a"),                                  // the summary that ends the first run
+		act(doneCall("T1", "verified the expanded scope")), // the answer to the reject
+	}}
 	r := newIsoRig(t, isoOpts{verify: true}, sc.fn())
 	r.sw.StartManager()
-	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "edit a", Files: []string{"a.txt"}, By: "mgr"}); err != nil {
+	id, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "edit a", Files: []string{"a.txt"}, By: "mgr"})
+	if err != nil {
 		t.Fatal(err)
 	}
-	r.waitStatus("T1", StatusReview)
+	rvWait(t, "T1 in review after the worker's first run", func() bool { return r.task("T1").Status == StatusReview && r.idle(id) })
 	if err := r.sw.Board.SetScope("mgr", "T1", []string{"a.txt", "b.txt"}, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +226,10 @@ func TestIsolatedAcceptRequiresMergeEvidenceForTheCurrentScope(t *testing.T) {
 	if res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "reject", "id": "T1", "text": "verify the expanded scope"}); res.IsError {
 		t.Fatalf("could not request fresh verification: %s", res.Text)
 	}
-	r.waitStatus("T1", StatusReview)
+	rvWait(t, "the worker to resubmit T1 for the expanded scope", func() bool {
+		tk := r.task("T1")
+		return tk.Status == StatusReview && tk.Result == "verified the expanded scope"
+	})
 	if res := r.accept("T1"); res.IsError {
 		t.Fatalf("fresh merge evidence was not accepted: %s", res.Text)
 	}
