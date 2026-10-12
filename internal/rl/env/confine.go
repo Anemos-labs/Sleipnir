@@ -126,6 +126,11 @@ func DetectConfinement(o ConfineOptions) Confinement {
 		if p = absOrEmpty(p); p != "" && p != "/" {
 			c.protected = append(c.protected, p)
 			c.Hide = append(c.Hide, p)
+			// A directory named through a symbolic link is also reachable at the one the link names.
+			if real := resolveExisting(p); real != p && real != "/" {
+				c.protected = append(c.protected, real)
+				c.Hide = append(c.Hide, real)
+			}
 		}
 	}
 	for _, p := range o.Base {
@@ -234,7 +239,7 @@ func (c Confinement) binds(m Mounts, network bool, env []string) []bind {
 		if p == "" || p == "/" || !dirExists(p) {
 			return
 		}
-		if !explicit && c.exposesProtected(p) {
+		if !explicit && (c.exposesProtected(p) || c.exposesProtected(resolveExisting(p))) {
 			return
 		}
 		if i, ok := seen[p]; ok {
@@ -309,11 +314,34 @@ func (c Confinement) prepareCaches(env []string) []string {
 		if p == "" || p == "/" || !c.hidden(p) || c.exposesProtected(p) || dirExists(p) {
 			continue
 		}
+		// Through a symbolic link on the way, the directory would be made where the link points.
+		if real := resolveExisting(p); real != p && c.exposesProtected(real) {
+			warnings = append(warnings, fmt.Sprintf("cache %s %s lies, through a symbolic link, in %s, which commands may not see: not created", ca.name, p, real))
+			continue
+		}
 		if err := os.MkdirAll(p, 0o755); err != nil {
 			warnings = append(warnings, fmt.Sprintf("cache %s %s does not exist and cannot be created (%v): confined commands see it empty and lose what they write to it", ca.name, p, err))
 		}
 	}
 	return warnings
+}
+
+// resolveExisting returns where p really is: the symbolic links of the longest
+// part of p that exists resolved, and the rest appended. A directory created
+// at p, or a bind of it, lands there.
+func resolveExisting(p string) string {
+	rest := ""
+	for q := p; ; {
+		if real, err := filepath.EvalSymlinks(q); err == nil {
+			return filepath.Join(real, rest)
+		}
+		parent := filepath.Dir(q)
+		if parent == q {
+			return p
+		}
+		rest = filepath.Join(filepath.Base(q), rest)
+		q = parent
+	}
 }
 
 // hidden reports whether p lies in (or is) a hidden directory.
