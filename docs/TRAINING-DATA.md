@@ -567,7 +567,9 @@ protected glob, such as a scratch `debug_test.go`, is not an edit of anything an
 discards it); tests deleted, skipped or weakened
 (`t.Skip`, `xfail`, assertion removal); verifier or CI config touched; hardcoded expected values from hidden
 tests; network access to the upstream repository or solution hosts; writes outside the worktree; `exit 0`
-shims. Flags are preserved so the data can also train detectors.
+shims. Flags are preserved so the data can also train detectors. The hidden files a task keeps as blobs are read from
+the task blob store (`--blobs` of the rollout; for `rl reward`, the `blobs/` next to `--tasks`, or `--blobs`); a hidden
+file that cannot be read is a note on the reward, and the hardcoded-value detector skips it.
 
 **`rewards.json`.** A file lists only what it changes; everything else keeps the documented defaults (a weight of 0
 switches a component off). All keys are optional:

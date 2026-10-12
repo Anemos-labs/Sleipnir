@@ -472,6 +472,18 @@ func TestHardcodedValueNumbersAndBlobs(t *testing.T) {
 		t.Errorf("the unreadable hidden file should be noted: %q", joined)
 	}
 
+	// The diff in the run's store and the hidden file in the task's: the blob source reads each from where it is.
+	runStore, taskStore := DiffMap{dh: diff}, DiffMap{hiddenBlob: body}
+	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
+	ep.Outcome.Diff = dh
+	mustScore(t, ep, task, DefaultConfig(), DiffsFromBlobs(runStore.Blob, nil, taskStore.Blob))
+	if !hasFlag(ep, fHard) {
+		t.Errorf("a hidden file in the task's blob store must be read: %v %q", ep.Flags, ep.Reward.Notes)
+	}
+	if _, err := DiffsFromBlobs(runStore.Blob, taskStore.Blob).Diff(core.HashString("neither")); err == nil {
+		t.Error("a blob no store has must be an error")
+	}
+
 	// A RepoSearcher that knows the literal exists in the repo clears it.
 	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
 	ep.Outcome.Diff = dh

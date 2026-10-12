@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/rl"
 	"github.com/anemos-labs/sleipnir/internal/rl/env"
@@ -23,6 +24,10 @@ type Pipeline struct {
 	// Reward configures scoring; the zero value scores with the documented
 	// defaults, except that fidelity probes are off (see reward.DefaultConfig).
 	Reward reward.Config
+	// Hidden resolves the task's hidden verifier files stored as blobs (the
+	// task blob store, not the run's), which the hardcoded-value detector
+	// compares the agent's diff against; nil leaves those files unread.
+	Hidden core.BlobGetter
 
 	mu    sync.Mutex
 	runs  map[string]*traj.Run
@@ -82,7 +87,7 @@ func (p *Pipeline) Score(ep *rl.Episode, task *rl.Task, runDir string) error {
 		s.Inline = pr
 		return reward.InlinePromptText(e, &s)
 	}
-	return reward.Score(ep, task, cfg, reward.DiffsFromBlobs(blobs.Get))
+	return reward.Score(ep, task, cfg, reward.DiffsFromBlobs(blobs.Get, p.Hidden))
 }
 
 // keep caches a trajectory run under lock and evicts oldest insertions beyond maxKept without

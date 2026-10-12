@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The hardcoded-value detector reads a task's hidden verifier files that are
+  stored as blobs from the task blob store. Scoring read blobs from the run's
+  own store only, so for tasks whose hidden files are blobs (every generated
+  chain, rebuild and fixture task) the detector skipped them with an
+  "unreadable" note. Rollouts and `rl serve` pass the task blob store to the
+  scorer; `rl reward --tasks FILE` reads `blobs/` next to FILE or `--blobs`.
+  `harness.Pipeline` gains `Hidden`, and `reward.DiffsFromBlobs` takes further
+  getters to fall back to. Episodes scored earlier keep their flags until
+  `rl reward --tasks FILE --redetect-hacks` scores them again.
 - When no run with the reference solution reports a single test, the
   "nothing to score" rejection of `rl taskgen rebuild` and `rl taskgen chain`
   says so, with how that step's first run ended (`pytest: exit 4`) and the

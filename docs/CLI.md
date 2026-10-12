@@ -2139,6 +2139,8 @@ flags:
 usage: sleipnir rl reward [flags] RUN_DIR...
 
 flags:
+  -blobs string
+        with --tasks: blob store holding the tasks' hidden verifier files, which the hardcoded-value detector compares diffs against (default: blobs/ next to the tasks file, when it exists)
   -dry-run
         print the new rewards without rewriting episode.json
   -list-targets
