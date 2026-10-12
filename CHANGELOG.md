@@ -16,6 +16,15 @@ they do not indicate whether a change has been released.
   `harness.Pipeline` gains `Hidden`, and `reward.DiffsFromBlobs` takes further
   getters to fall back to. Episodes scored earlier keep their flags until
   `rl reward --tasks FILE --redetect-hacks` scores them again.
+- The whole-suite scorer runs a Go package again when a test crashed its test
+  binary (a panic, a fatal error), without the tests it already reported
+  (`-skip` through `SUITE_ARGS`), until a run reports nothing new, the
+  package stops crashing or 40 reruns were made: when go test names the
+  test that crashed, the tests after it are reported instead of counting as
+  failed; a crash that names no test (a panic in another goroutine) still
+  leaves them unreported. Scores of Go suites whose code
+  crashes rise accordingly; recordings made by generators include those
+  tests. Prompt and tool-schema bytes are unchanged.
 - When no run with the reference solution reports a single test, the
   "nothing to score" rejection of `rl taskgen rebuild` and `rl taskgen chain`
   says so, with how that step's first run ended (`pytest: exit 4`) and the
