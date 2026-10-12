@@ -99,6 +99,20 @@ func (s *Swarm) docsTick(now time.Time) {
 	}
 	if k.open != "" {
 		t, ok := snap.Task(k.open)
+		if ok && t.Status == StatusTodo && t.Owner == "" {
+			// The pass went back to the board (its run was refused, interrupted or handed
+			// back): it is the docs worker's again as soon as one is idle.
+			open, due := k.open, !now.Before(k.retryAt)
+			k.mu.Unlock()
+			if agentID, busy := s.docsWorker(); due && !busy {
+				if _, err := s.Spawn(SpawnReq{Role: DocsRole, Agent: agentID, TaskID: open, By: "harness"}); err != nil {
+					k.mu.Lock()
+					k.retryAt = now.Add(docsRetry)
+					k.mu.Unlock()
+				}
+			}
+			return
+		}
 		if ok && t.Status != StatusDone && t.Status != StatusFailed {
 			k.mu.Unlock()
 			return
