@@ -118,6 +118,7 @@ func rlExport(_ context.Context, args []string, stdout, stderr io.Writer) error 
 	selectEp := fs.String("select", export.SelectAll, "sft: all (every verified episode, --top-k by reward) | best (the best verified episode of each group by the best-of-n ranking)")
 	sftPrefix := fs.String("sft-prefix", "", "sft: best also exports each failed episode up to its best-scoring savepoint (--score-savepoints runs); empty: verified episodes only")
 	pair := fs.String("pair", export.PairReward, "dpo: reward (best vs worst reward) | best-worst (rank 1 vs rank last of each group; rank 1 verified and strictly better)")
+	pairUnverified := fs.Bool("pair-unverified", false, "dpo with --pair best-worst: also pair a group none of whose episodes passed, rank 1 being the best by verifier score (long tasks, the siblings of a branch point)")
 	keepFlagged := fs.Bool("keep-flagged", false, "export episodes with hard flags too (infra errors, truncation, reward hacking, ...)")
 	keepFlat := fs.Bool("keep-flat", false, "keep groups whose rewards are all equal (they carry no learning signal)")
 	keepWeak := fs.Bool("keep-weak", false, "keep episodes with no verifier verdict in the training formats")
@@ -194,7 +195,7 @@ func rlExport(_ context.Context, args []string, stdout, stderr io.Writer) error 
 	o := export.DefaultOptions(f)
 	o.Roles = splitList(*roles)
 	o.MinReward, o.TopK = *minReward, *topK
-	o.Select, o.Pair, o.SFTPrefix = *selectEp, *pair, *sftPrefix
+	o.Select, o.Pair, o.SFTPrefix, o.PairUnverified = *selectEp, *pair, *sftPrefix, *pairUnverified
 	o.DropFlagged = !*keepFlagged
 	o.KeepFlat, o.KeepWeak = *keepFlat, *keepWeak
 	o.TeacherOK = splitList(*teacher)
