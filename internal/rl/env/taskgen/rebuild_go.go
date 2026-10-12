@@ -358,8 +358,8 @@ func rebuildGo(ctx context.Context, r *repo, commit string, files []string, opts
 }
 
 // goTestSupport takes out of the scope's directories the packages that are test support: a package the tests of
-// another package of the scope import although that package's sources do not depend on it, not even through other
-// packages of the scope (an assertion library the project's tests use, which itself builds on the packages it is used
+// another package of the scope import although no package's sources of the scope depend on it, directly or through
+// other packages of the scope (an assertion library the project's tests use, which itself builds on the packages it is used
 // to test). Stubbed, it would fail every test that uses it, so no unit could score before it was rebuilt, and the
 // agents, who cannot see the tests, would not know to rebuild it first; it stays at the reference instead. It returns
 // the directories left and, for each package taken out, the packages whose tests use it. A scope of test support
@@ -413,11 +413,17 @@ func goTestSupport(dirs []string, byDir map[string][]string, content map[string]
 		walk(d)
 		return out
 	}
+	// A package that the sources of any package of the scope depend on is product code, whoever's tests import it.
+	product := map[string]bool{}
+	for _, d := range dirs {
+		for dep := range depends(d) {
+			product[dep] = true
+		}
+	}
 	support := map[string][]string{}
 	for _, d := range dirs {
-		deps := depends(d)
 		for _, ip := range testImports[d] {
-			if dep, ok := byPath[ip]; ok && dep != d && !deps[dep] && !slices.Contains(support[ip], importPath(d)) {
+			if dep, ok := byPath[ip]; ok && dep != d && !product[dep] && !slices.Contains(support[ip], importPath(d)) {
 				support[ip] = append(support[ip], importPath(d))
 			}
 		}
@@ -705,12 +711,41 @@ func goLoadTime(pkgs, tests map[string]map[string][]byte, importPath func(string
 	// scan follows the calls in n, a node of file f in directory d; inLit says whether to look into the function
 	// literals it does not call in place (a function's body: they may run when it does) or not (a variable's value:
 	// they do not run when the package loads).
+	// follow queues the function name of directory k, once; it reports whether k has one.
+	follow := func(k, name string) bool {
+		if len(funcs[k][name]) == 0 {
+			return false
+		}
+		if key := k + "\x00" + name; !seenFn[key] {
+			seenFn[key] = true
+			queue = append(queue, funcs[k][name]...)
+		}
+		return true
+	}
+	// scan follows what the code n of file f in directory d runs: the functions it calls and those it hands on as values
+	// (strings.Map(normRune, s), apply(transform): the callee runs them), the package's own or an imported package's of
+	// the module, and the methods it calls; inLit says whether to look into the function literals it does not call in
+	// place (a function's body: they may run when it does) or not (a variable's value: they do not run when the package
+	// loads). A method used as a value without a call (x.M) is not followed: by its name alone it would be every field
+	// and method of that name.
 	var scan func(d string, f *ast.File, n ast.Node, inLit bool)
 	scan = func(d string, f *ast.File, n ast.Node, inLit bool) {
 		ast.Inspect(n, func(n ast.Node) bool {
 			switch x := n.(type) {
 			case *ast.FuncLit:
 				return inLit || called[x]
+			case *ast.Ident:
+				for _, k := range lookup[f] {
+					if follow(k, x.Name) {
+						break
+					}
+				}
+			case *ast.SelectorExpr:
+				if id, ok := x.X.(*ast.Ident); ok {
+					if dep, ok := imports[f][id.Name]; ok {
+						follow(dep, x.Sel.Name)
+					}
+				}
 			case *ast.CallExpr:
 				fun := ast.Unparen(x.Fun)
 				switch ix := fun.(type) {
@@ -731,22 +766,10 @@ func goLoadTime(pkgs, tests map[string]map[string][]byte, importPath func(string
 							k.lits[pathOf[f]][fset.File(c.Pos()).Offset(c.Body.Lbrace)] = true
 						}
 					}
-				case *ast.Ident:
-					for _, k := range lookup[f] {
-						if key := k + "\x00" + c.Name; !seenFn[key] && len(funcs[k][c.Name]) > 0 {
-							seenFn[key] = true
-							queue = append(queue, funcs[k][c.Name]...)
-							break
-						}
-					}
 				case *ast.SelectorExpr:
 					if id, ok := c.X.(*ast.Ident); ok {
-						if dep, ok := imports[f][id.Name]; ok {
-							if key := dep + "\x00" + c.Sel.Name; !seenFn[key] && len(funcs[dep][c.Sel.Name]) > 0 {
-								seenFn[key] = true
-								queue = append(queue, funcs[dep][c.Sel.Name]...)
-							}
-							return true
+						if _, ok := imports[f][id.Name]; ok {
+							return true // a function of an imported package: the selector itself is followed
 						}
 					}
 					if !seenMethod[c.Sel.Name] && len(methods[c.Sel.Name]) > 0 {

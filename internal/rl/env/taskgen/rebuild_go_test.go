@@ -317,6 +317,21 @@ func TestRebuildGoKeepsTestSupportAtTheReference(t *testing.T) {
 	if lib, err := plan("util", "check"); err != nil || len(lib.pkgs) != 1 || lib.pkgs[0].Name != "example.com/m/util" {
 		t.Errorf("util and check: %v %+v", err, lib)
 	}
+
+	// Once the sources of a package of the scope use check, it is product code: it stays in the scope although the
+	// tests of others import it.
+	f.write("report/report.go", "// Package report reports.\npackage report\n\nimport (\n\t\"testing\"\n\n\t\"example.com/m/check\"\n)\n\n// Same reports whether a and b match.\nfunc Same(t testing.TB, a, b int) { check.Eq(t, a, b) }\n")
+	commit = f.commit("report uses check")
+	if files, err = r.listFiles(context.Background(), commit); err != nil {
+		t.Fatal(err)
+	}
+	lib, err = plan("util", "core", "check", "report")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lib.pkgs) != 4 || lib.support != nil {
+		t.Errorf("packages %d, test support %v: check is product code of report", len(lib.pkgs), lib.support)
+	}
 }
 
 // Code outside the scope that runs when its package loads (here tmpl's variable and init function) and calls into the
@@ -327,7 +342,7 @@ func TestRebuildGoKeepsWhatRunsWhenPackagesLoad(t *testing.T) {
 	f := newFixture(t)
 	for p, body := range map[string]string{
 		"go.mod":            "module example.com/m\n\ngo 1.21\n",
-		"util/util.go":      "// Package util helps.\npackage util\n\n// Reg registers names.\ntype Reg struct{ names []string }\n\n// Add adds a name.\nfunc (r *Reg) Add(s string) { r.names = append(r.names, norm(s)) }\n\n// Name is the default name.\nfunc Name() string { return \"u\" }\n\n// Double doubles n.\nfunc Double(n int) int { return 2 * n }\n\n// Clean cleans up.\nfunc Clean() error { return nil }\n\nfunc norm(s string) string { return s + \"!\" }\n",
+		"util/util.go":      "// Package util helps.\npackage util\n\nimport \"strings\"\n\n// Reg registers names.\ntype Reg struct{ names []string }\n\n// Add adds a name.\nfunc (r *Reg) Add(s string) { r.names = append(r.names, norm(s)) }\n\n// Name is the default name.\nfunc Name() string { return \"u\" }\n\n// Double doubles n.\nfunc Double(n int) int { return 2 * n }\n\n// Clean cleans up.\nfunc Clean() error { return nil }\n\nvar upper = strings.Map(shout, \"x\")\n\nfunc shout(r rune) rune { return r - 32 }\n\nfunc norm(s string) string { return s + \"!\" }\n",
 		"util/util_test.go": "package util\n\nimport \"testing\"\n\nfunc TestDouble(t *testing.T) {\n\tif Double(2) != 4 {\n\t\tt.Fatal()\n\t}\n}\n",
 		"util/main_test.go": "package util_test\n\nimport (\n\t\"os\"\n\t\"testing\"\n\n\t\"example.com/m/util\"\n)\n\nfunc TestMain(m *testing.M) {\n\tprepare()\n\tos.Exit(m.Run())\n}\n\nfunc prepare() { _ = util.Clean() }\n",
 		"tmpl/tmpl.go":      "// Package tmpl is out of the scope.\npackage tmpl\n\nimport \"example.com/m/util\"\n\nvar defaultReg = newReg()\n\nfunc newReg() *util.Reg {\n\tr := &util.Reg{}\n\tr.Add(\"x\")\n\treturn r\n}\n\nvar name string\n\nfunc init() { name = util.Name() }\n\n// Reg is the default registry.\nfunc Reg() *util.Reg { return defaultReg }\n",
@@ -350,6 +365,7 @@ func TestRebuildGoKeepsWhatRunsWhenPackagesLoad(t *testing.T) {
 		"func Name() string { return \"u\" }",
 		"func norm(s string) string { return s + \"!\" }",
 		"func Clean() error { return nil }",
+		"func shout(r rune) rune { return r - 32 }", // handed to strings.Map when the package loads
 		"func Double(n int) int {\n\tpanic(",
 	} {
 		if !strings.Contains(stub, want) {

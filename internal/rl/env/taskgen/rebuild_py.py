@@ -539,8 +539,9 @@ def test_refs(tree, pkg, modules, exports):
 
 # ---- what runs when the modules are imported ----
 
-INSTANCE = ("__new__", "__init__", "__post_init__")  # what calling a class runs
-CLASS = ("__init_subclass__", "__set_name__", "__class_getitem__")  # what defining a subclass, or using it, runs
+# What calling a class runs (and, for a descriptor made in a class body, what defining that class then calls on it).
+INSTANCE = ("__new__", "__init__", "__post_init__", "__set_name__")
+CLASS = ("__init_subclass__", "__class_getitem__")  # what defining a subclass of a class, or subscripting it, runs
 
 
 class ImportTime:
@@ -635,6 +636,8 @@ class ImportTime:
             if m in own:
                 self._mark(mod, name + "." + m, own[m])
         for b in node.bases:  # what a base class of the scope defines
+            if isinstance(b, ast.Subscript):
+                b = b.value  # Base[int]
             t = self._target(mod, b)
             if t is not None and t[1] is not None:
                 self._class(t[0], t[1], members, depth + 1)
@@ -650,7 +653,7 @@ class ImportTime:
         attrs.reverse()
         b = self.bound.get(mod, {}).get(expr.id)
         if b is None:
-            if mod in self.trees and not attrs and (expr.id in self.funcs[mod] or expr.id in self.classes[mod]):
+            if mod in self.funcs and not attrs and (expr.id in self.funcs[mod] or expr.id in self.classes[mod]):
                 return mod, expr.id
             return None
         target, name = b
@@ -706,6 +709,8 @@ class ImportTime:
                 for d in n.decorator_list:
                     self._call(mod, d.func if isinstance(d, ast.Call) else d)
                 for b in n.bases:
+                    if isinstance(b, ast.Subscript):
+                        b = b.value  # Base[int]
                     t = self._target(mod, b)
                     if t is not None and t[1] is not None:
                         self._class(t[0], t[1], CLASS)
@@ -737,6 +742,10 @@ class ImportTime:
         for i, (tree, pkg) in enumerate(tests):
             key = "\x00test%d" % i
             self.bound[key] = self.bindings(tree, pkg)
+            # The test file's own helpers, so that a module-level call of one follows it into the scope.
+            funcs, classes = {}, {}
+            self._index(tree.body, funcs, classes, "")
+            self.funcs[key], self.classes[key] = funcs, classes
             for st in tree.body:
                 self.scan(key, st, False)
         while self.queue:
