@@ -299,7 +299,12 @@ team to write a library again from its specification, as it is at a version of t
   import path names it too), all in one module; or Python package (or module) names, looked up under the repository
   root, `src/`, `lib/` and `python/`, all in one project (the nearest directory with `pyproject.toml`, `setup.py` or
   `setup.cfg`, else the root). A Go package is the non-test `.go` files of its directory, a Python package every module
-  below its directory. The scope's size is its lines that are neither blank nor only a comment.
+  below its directory. The scope's size is its lines that are neither blank nor only a comment. A Go package of the
+  scope that the tests of another package of the scope import, although that package's sources do not depend on it,
+  directly or through other packages of the scope, is test support (an assertion library the project's tests use):
+  it stays at the reference, outside the units, and the report lists it with the packages whose tests use it
+  (`test_support`). Stubbed, it would fail every test that calls it, so no unit could score before it was rebuilt,
+  and the agents cannot see the tests that say so. A scope that is test support alone is rejected.
 * **Start state.** The reference with the scope's sources replaced and its tests removed, written to `--seal DIR`
   (default `starts/` next to the tasks file) as `DIR/<task id>.git`: one commit (no parent; a fixed author, date and
   message), holding that commit and the trees and blobs its tree reaches, and no object outside them. `repo.path` names
@@ -307,7 +312,14 @@ team to write a library again from its specification, as it is at a version of t
   Tier `stubs` keeps the API. A Go stub keeps the package clause, every constant, variable, type and method, the
   exported functions and the unexported ones that kept code or the package's own tests use, with their doc comments;
   every body becomes `panic("not implemented")` (function literals in variables' values too), `init` and the other
-  unexported functions are removed, and so are the imports nothing kept uses. A Python stub keeps everything outside
+  unexported functions are removed, and so are the imports nothing kept uses. What runs before the first test keeps its
+  body: the functions and methods of the scope that package-level variables, the `init` functions of packages outside
+  the scope and the hidden tests' `TestMain` call, directly or through the module's other code, while the packages
+  load (a method by its name). A panic there would fail every test of every package that loads the one it is in. A
+  Python stub likewise keeps what runs when the modules and the hidden tests are imported: the functions a
+  module-level statement, a decorator, a default value or a class body calls, a class instantiated at import (its
+  `__new__`, `__init__` and `__post_init__`, through its base classes of the scope), the `__init_subclass__` of a base
+  class of the scope, and what those call in turn (a method by its name). A Python stub keeps everything outside
   function bodies (imports, assignments, class attributes, decorators, docstrings, comments) and replaces the body of
   every function and method, and of an `if __name__ == "__main__":` block, with `raise NotImplementedError`; a body
   that is only `pass`, `...` or such a raise stays. Python is analysed by an embedded script run with `python3`, which

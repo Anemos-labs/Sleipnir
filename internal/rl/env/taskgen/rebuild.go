@@ -170,6 +170,9 @@ type RebuildReport struct {
 	Packages []RebuildPackage `json:"packages,omitempty"`
 	// Hidden is the number of test files taken out of the start.
 	Hidden int `json:"hidden,omitempty"`
+	// TestSupport are the packages named by the scope that stay at the reference: each is used by the tests of
+	// packages of the scope that do not depend on it otherwise (an assertion library), listed here with them.
+	TestSupport map[string][]string `json:"test_support,omitempty"`
 	// Units are the milestones in dependency order; Tests the tests they hold, Dropped the tests left out (passing on
 	// the start, flaky, or failing with the reference).
 	Units   []RebuildUnit `json:"units,omitempty"`
@@ -227,6 +230,9 @@ type rebuildLib struct {
 	pytestINI string
 	testUnit  map[string]string // Python: a test file and the module it exercises
 	fallback  string            // Python: the unit of a test file that refers to no module of the scope
+	// support are the packages named by the scope that stay at the reference (Go: test support, see rebuildGo), each
+	// with the packages whose tests use it.
+	support map[string][]string
 }
 
 // group names the unit of a test of the recorded suite (BuildUnits): its Go package, or the module its Python test
@@ -348,7 +354,7 @@ func Rebuild(ctx context.Context, repoPath string, opts RebuildOptions) (*rl.Tas
 	if err != nil {
 		return fail(err)
 	}
-	rep.Lang, rep.Hidden = lib.lang, len(lib.hidden)
+	rep.Lang, rep.Hidden, rep.TestSupport = lib.lang, len(lib.hidden), lib.support
 	for _, p := range lib.pkgs {
 		rep.Packages = append(rep.Packages, RebuildPackage{Name: p.Name, Dir: p.Dir, Files: len(p.Files), LOC: p.LOC, Imports: p.Imports})
 	}
@@ -653,7 +659,7 @@ func rebuildPrompt(lib *rebuildLib, tier, apiPath string) string {
 		}
 		removed := ""
 		if lib.lang == Go {
-			removed = " (unexported functions nothing else refers to were removed)"
+			removed = " (unexported functions nothing else refers to were removed; the few that run when the packages load, or before the tests start, keep their bodies)"
 		}
 		fmt.Fprintf(&b, "%d %s %s of this repository were reduced to stubs: their declarations are in place with their documentation, but the bodies of their functions and methods only %s%s. Implement them again so that they behave as their documentation, the README and the examples describe.",
 			len(lib.pkgs), langName(lib.lang), noun, body, removed)
