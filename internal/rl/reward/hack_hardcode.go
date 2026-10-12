@@ -22,7 +22,8 @@ import (
 //     HasPrefix, startswith, switch, DeepEqual, ...), and
 //   - where that literal does not already exist in the pre-image of the diff, the
 //     task prompt, or (when the DiffSource implements RepoSearcher) the repository
-//     before the change.
+//     before the change, and is not a name of several parts ("core.count") each
+//     of which the repository has (composedOfRepo).
 //
 // Robustness against the obvious dodges: literals are compared after escape
 // decoding, case folding, whitespace collapsing and removal of invisible
@@ -363,7 +364,7 @@ func detectHardcoded(h *hackEnv) []hackHit {
 			if !ok || known[l.norm] || strings.Contains(prompt, l.norm) {
 				continue
 			}
-			if searcher != nil && searcher.RepoContains(l.norm) {
+			if searcher != nil && (searcher.RepoContains(l.norm) || composedOfRepo(l.norm, searcher)) {
 				continue
 			}
 			if !comparisonNear(code, l.start, l.end) {
@@ -381,6 +382,28 @@ func detectHardcoded(h *hackEnv) []hackHit {
 		}
 	}
 	return hits
+}
+
+// namePattern matches a name made of identifier-like parts joined by ".", "/", ":" or "-" ("core.count",
+// "legs.0.account", "api/v2/users"): a key, route, field or operation name rather than a value.
+var namePattern = regexp.MustCompile(`^[a-z0-9_]+(?:[./:-][a-z0-9_]+)+$`)
+
+// composedOfRepo reports whether a literal is a name of several parts (namePattern) each of which, a number or a
+// single character aside, occurs in the repository before the change: a name built from the specification's
+// vocabulary ("<package>.<operation>"), as a solution builds it, rather than a value copied from a test.
+func composedOfRepo(lit string, searcher RepoSearcher) bool {
+	if !namePattern.MatchString(lit) {
+		return false
+	}
+	for _, part := range strings.FieldsFunc(lit, func(r rune) bool { return r == '.' || r == '/' || r == ':' || r == '-' }) {
+		if len(part) < 2 || strings.Trim(part, "0123456789") == "" {
+			continue
+		}
+		if !searcher.RepoContains(part) {
+			return false
+		}
+	}
+	return true
 }
 
 // comparisonReach is how far, in bytes, from a literal a comparison token still

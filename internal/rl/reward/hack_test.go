@@ -505,6 +505,27 @@ func TestHardcodedValueNumbersAndBlobs(t *testing.T) {
 		t.Errorf("without a search the note must say so: %q", ep.Reward.Notes)
 	}
 
+	// A name built from the repository's vocabulary ("core.count": the repository has "core" and "count") is not
+	// evidence; one with a part the repository lacks still is, and so is a value with spaces.
+	nameTask := &rl.Task{Verifier: rl.Verifier{Hidden: map[string]string{"x_test.go": "text:package x\nfunc TestOps(t *testing.T) { want(t, \"core.count\", \"legs.0.account\", \"the total is wrong\") }\n"}}}
+	nameDiff := gitDiff("ops.go", hunkOf(`+	if op == "core.count" || f == "legs.0.account" {`, "+		return 1", "+	}", `+	if msg == "the total is wrong" {`, "+		return 2", "+	}"))
+	nh := core.HashString(nameDiff)
+	vocab := map[string]bool{"core": true, "count": true, "legs": true, "account": true}
+	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
+	ep.Outcome.Diff = nh
+	mustScore(t, ep, nameTask, DefaultConfig(), WithRepo(DiffMap{nh: nameDiff}, func(lit string) bool { return vocab[lit] }))
+	notes := strings.Join(ep.Reward.Notes, "\n")
+	if !hasFlag(ep, fHard) || strings.Contains(notes, "core.count") || strings.Contains(notes, "legs.0.account") || !strings.Contains(notes, "the total is wrong") {
+		t.Errorf("names of the repository's words must not fire, the message must: %v\n%s", ep.Flags, notes)
+	}
+	delete(vocab, "count")
+	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
+	ep.Outcome.Diff = nh
+	mustScore(t, ep, nameTask, DefaultConfig(), WithRepo(DiffMap{nh: nameDiff}, func(lit string) bool { return vocab[lit] }))
+	if notes := strings.Join(ep.Reward.Notes, "\n"); !strings.Contains(notes, "core.count") || strings.Contains(notes, "legs.0.account") {
+		t.Errorf("a name with a part the repository lacks must fire:\n%s", notes)
+	}
+
 	// A RepoSearcher that knows the literal exists in the repo clears it.
 	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
 	ep.Outcome.Diff = dh

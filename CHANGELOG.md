@@ -15,7 +15,9 @@ they do not indicate whether a change has been released.
   zeroed their outcome. `harness.Pipeline` gains `RepoContains`, and
   `reward.WithRepo` adds a search to a `DiffSource`; `rl reward` searches the
   tasks' repositories relative to the current directory and says when it
-  cannot. A flag's note says whether the repository was searched.
+  cannot. Nor is a name of several parts (`core.count`) each of whose parts
+  the repository has evidence. A flag's note says whether the repository was
+  searched.
 - New `rl reverify` verifies finished rollouts again with the tasks as a
   tasks file defines them now: the final patch (the episode's verdict) and
   every consistent savepoint's tree in progress mode (`progress.jsonl` and
