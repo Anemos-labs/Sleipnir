@@ -150,6 +150,9 @@ func Inspect(abs string) wire.DirState {
 	if st.Git == "inside" && st.GitRoot == abs {
 		st.Git, st.GitRoot = "repo", ""
 	}
+	if st.Git == "none" && bareRepo(abs) {
+		st.Git = "bare"
+	}
 	seen := map[string]bool{}
 	for _, m := range markers {
 		if seen[m.cmd] {
@@ -180,6 +183,19 @@ func gitAround(dir string) (kind, root string) {
 		dir = up
 	}
 	return "none", ""
+}
+
+// bareRepo reports whether dir looks like a bare git repository: a HEAD file and the objects and refs folders, with no .git.
+func bareRepo(dir string) bool {
+	if fi, err := os.Stat(filepath.Join(dir, "HEAD")); err != nil || fi.IsDir() {
+		return false
+	}
+	for _, d := range []string{"objects", "refs"} {
+		if fi, err := os.Stat(filepath.Join(dir, d)); err != nil || !fi.IsDir() {
+			return false
+		}
+	}
+	return true
 }
 
 // shown reports whether a name can be offered: valid UTF-8 with no control or format character (the ones that reorder or hide text).

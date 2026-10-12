@@ -28,6 +28,19 @@ func (s *State) AgentLite(id string) (Agent, bool) {
 	return v, true
 }
 
+// AnomalyAt returns the cache anomaly the log event with sequence number seq recorded (with the cost of its miss, which the State
+// prices), if the State still holds it.
+func (s *State) AnomalyAt(seq uint64) (Anomaly, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for i := s.anoms.len() - 1; i >= 0; i-- {
+		if a := s.anoms.at(i); a.Seq == seq {
+			return *a, true
+		}
+	}
+	return Anomaly{}, false
+}
+
 // AgentIDs lists the ids of the agents in display order (see Snapshot.Agents).
 func (s *State) AgentIDs() []string {
 	s.mu.RLock()

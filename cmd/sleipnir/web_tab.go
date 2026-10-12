@@ -32,6 +32,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
 	"github.com/anemos-labs/sleipnir/internal/trust"
+	"github.com/anemos-labs/sleipnir/internal/tui/app"
 	"github.com/anemos-labs/sleipnir/internal/web/approvals"
 	"github.com/anemos-labs/sleipnir/internal/web/seam"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
@@ -568,6 +569,126 @@ func (t *webTab) Send(ctx context.Context, req wire.MessageRequest) (wire.SendRe
 	return wire.SendResult{Queued: true, Position: pos, ID: id}, nil
 }
 
+// kind is what a queued item is, as wire.QueuedLine says it: a message, a slash command, or an action of the host.
+func (q queued) kind() string {
+	switch {
+	case q.op != nil:
+		return "action"
+	case q.line != "":
+		return "command"
+	}
+	return "message"
+}
+
+// full is the whole text of a queued message or command, as it would be sent: what an edit puts back in the message box.
+func (q queued) full() string {
+	if q.line != "" {
+		return q.line
+	}
+	return q.prompt
+}
+
+// takeQueued removes the queued item id and reports it with the place it had (0 is next). An action stays (409 not_droppable): it is
+// the page's own request, a goal change or a restart, and has its own control; an id that is not queued (it ran, or was dropped) is
+// 404 not_queued.
+func (t *webTab) takeQueued(id string) (queued, int, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for i, q := range t.queue {
+		if q.id != id {
+			continue
+		}
+		if q.kind() == "action" {
+			return queued{}, 0, werr(http.StatusConflict, "not_droppable", "this is an action of the session, not a line: it runs when the turn is over")
+		}
+		t.queue = append(t.queue[:i:i], t.queue[i+1:]...)
+		return q, i, nil
+	}
+	return queued{}, 0, werr(http.StatusNotFound, "not_queued", "that line is no longer queued: it ran or was removed")
+}
+
+// putQueued puts an item back in the queue at place i (or at its end, when the queue is shorter now).
+func (t *webTab) putQueued(it queued, i int) {
+	t.mu.Lock()
+	i = min(max(i, 0), len(t.queue))
+	t.queue = append(t.queue[:i:i], append([]queued{it}, t.queue[i:]...)...)
+	t.mu.Unlock()
+	t.kick()
+}
+
+// DropQueued removes a queued message or slash line (DELETE /api/sessions/{id}/queue/{qid}) and returns it, so that the page can put
+// its text back in the message box.
+func (t *webTab) DropQueued(id string) (wire.QueuedDrop, error) {
+	it, _, err := t.takeQueued(id)
+	if err != nil {
+		return wire.QueuedDrop{}, err
+	}
+	t.publishMeta()
+	return wire.QueuedDrop{ID: it.id, Text: it.full(), Kind: it.kind()}, nil
+}
+
+// SendQueuedNow takes a queued message out of the queue and delivers it at once (POST /api/sessions/{id}/queue/{qid}/now): to the
+// running turn as a steer, which the agent reads with its next step, or, when no turn runs (the line waited for a restart or a
+// command), as the next thing that runs. A slash line cannot steer (409 not_message). A steer the turn refuses (too long) puts the
+// line back where it was.
+func (t *webTab) SendQueuedNow(ctx context.Context, id string) (wire.QueuedDrop, error) {
+	t.mu.Lock()
+	for _, q := range t.queue {
+		if q.id == id && q.kind() != "message" {
+			t.mu.Unlock()
+			return wire.QueuedDrop{}, werr(http.StatusConflict, "not_message", "only a message can be sent now; a command waits for the turn, or can be removed")
+		}
+	}
+	t.mu.Unlock()
+	it, at, err := t.takeQueued(id)
+	if err != nil {
+		return wire.QueuedDrop{}, err
+	}
+	res := wire.QueuedDrop{ID: it.id, Text: it.full(), Kind: it.kind()}
+	t.mu.Lock()
+	running := t.active && t.cancel != nil
+	t.mu.Unlock()
+	if running {
+		serr := t.Steer(ctx, it.prompt)
+		if serr == nil {
+			res.Steered = true
+			t.publishMeta()
+			return res, nil
+		}
+		var we *wire.Error
+		if !errors.As(serr, &we) || we.Code != "idle" {
+			t.putQueued(it, at)
+			t.publishMeta()
+			return wire.QueuedDrop{}, serr
+		}
+		// the turn ended meanwhile: the line runs next
+	}
+	t.putQueued(it, 0)
+	t.publishMeta()
+	return res, nil
+}
+
+// queueLine answers /queue on the page as the terminal's chat does (app.QueueCommand), over the messages and slash lines that wait;
+// the actions of the session are not lines and stay.
+func (t *webTab) queueLine(line string) string {
+	t.mu.Lock()
+	var texts, ids []string
+	for _, q := range t.queue {
+		if q.kind() != "action" {
+			texts, ids = append(texts, q.full()), append(ids, q.id)
+		}
+	}
+	t.mu.Unlock()
+	out, drop := app.QueueCommand(line, texts)
+	for _, d := range drop {
+		_, _, _ = t.takeQueued(ids[d]) // one that ran meanwhile is gone already
+	}
+	if len(drop) > 0 {
+		t.publishMeta()
+	}
+	return out
+}
+
 // isLookLine reports whether a slash line answers at once, beside a running turn (internal/tui/app/chat.go isLookCommand); everything
 // else waits for the turn.
 func isLookLine(line string) bool {
@@ -576,7 +697,7 @@ func isLookLine(line string) bool {
 		return false
 	}
 	switch f[0] {
-	case "/cost", "/stats", "/context", "/agents", "/help", "/?", "/skills", "/recon", "/status", "/permissions", "/trust", "/allow", "/steer", "/effort":
+	case "/cost", "/stats", "/context", "/agents", "/help", "/?", "/skills", "/recon", "/status", "/permissions", "/trust", "/allow", "/steer", "/effort", "/queue":
 		return true
 	case "/mode", "/mcp":
 		return len(f) == 1
@@ -860,6 +981,9 @@ func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string
 		if err := t.Steer(ctx, arg); err != nil {
 			return failed(err, "")
 		}
+		return res, nil
+	case "/queue":
+		res.Output = t.queueLine(line)
 		return res, nil
 	case "/rewind":
 		if len(f) > 1 {
@@ -1789,7 +1913,7 @@ func (t *webTab) meta() wire.MetaPatch {
 	staged, teamBudget, view := t.staged, t.teamBudget, t.view
 	queue := make([]wire.QueuedLine, 0, len(t.queue))
 	for _, q := range t.queue {
-		queue = append(queue, wire.QueuedLine{ID: q.id, Text: clip(q.text, 300)})
+		queue = append(queue, wire.QueuedLine{ID: q.id, Text: clip(q.text, 300), Kind: q.kind()})
 	}
 	resumed := t.resumed
 	t.mu.Unlock()

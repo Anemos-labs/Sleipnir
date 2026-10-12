@@ -44,7 +44,7 @@
     if (!S) S = ss().make({ id, name: t.name || id, sid: t.sid, gen: snap.gen || t.gen, cwd: t.cwd, headless: t.headless, order: t.order, meta, roster: roster(snap.roster), recorded: t.kind === 'recorded', follow: !!t.follow });
     else { S.name = t.name || S.name; S.sid = t.sid || S.sid; S.gen = snap.gen || t.gen || S.gen; S.order = t.order || S.order; Object.assign(S.meta, meta); S.roster = snap.roster && newRoster ? roster(snap.roster) : S.roster; if (t.headless) S.meta.headless = true; }
     ss().setStart(S);
-    if (meta.queued) S.ui.queued = meta.queued.map(q => ({ id: q.id, text: q.text }));
+    if (meta.queued) S.ui.queued = meta.queued.map(q => ({ id: q.id, text: q.text, kind: q.kind || 'message' }));
     const log = keyframeOf(snap.keyframe).concat((Array.isArray(snap.events) ? snap.events : []).filter(e => e && typeof e === 'object').map(inbound));
     log.sort((a, b) => a.t - b.t || (a.seq || 0) - (b.seq || 0));
     S.reset(log, snap.seq || 0, snap.now || 0);
@@ -145,7 +145,7 @@
       if (L.pending[d.tab] && !ss().get(d.tab)) { (L.pending[d.tab].metas = L.pending[d.tab].metas || []).push(d); return; }   /* applied after its snapshot, by version */
       const S = ss().get(d.tab); if (!S) return; const p = d.patch || {}, V = verOf(d.tab);
       if (d.v) { if (+d.v <= V.meta) return; V.meta = +d.v; }   /* already in what this tab holds */
-      if (Array.isArray(p.queued)) S.ui.queued = p.queued.map(q => ({ id: q.id, text: q.text }));
+      if (Array.isArray(p.queued)) S.ui.queued = p.queued.map(q => ({ id: q.id, text: q.text, kind: q.kind || 'message' }));
       S.setMeta(p);
       if (p.rules && SL.data && SL.data.loaded && Object.keys(SL.data.loaded).some(k => k.indexOf('permissions|') === 0)) SL.data.load('permissions', { tab: S.id });
     },

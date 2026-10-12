@@ -1145,7 +1145,7 @@ func (h *webHostImpl) hello(r *http.Request) helloBody {
 		ReduceMotion: os.Getenv("SLEIPNIR_ANIM") == "0" || os.Getenv("REDUCE_MOTION") == "1"}
 	body := helloBody{Hello: wire.Hello{
 		Boot: h.boot, Now: time.Now().UnixMilli(), Tabs: h.Tabs(), Active: h.Active(), Version: version, StreamAfter: after,
-		Server: wire.ServerInfo{Addr: r.Host, Loopback: true, Version: version},
+		Server: wire.ServerInfo{Addr: r.Host, Loopback: true, Version: version, Label: shortVersion(version), Build: buildDescription()},
 		Limits: wire.Limits{MaxBody: int(web.DefaultMaxBody), MaxMessage: maxMessage, MaxQuestions: approvals.DefaultMaxPerTab},
 		UI:     wire.UIInfo{Version: uiv},
 	}, UI: ui}
@@ -1162,6 +1162,9 @@ func (h *webHostImpl) hello(r *http.Request) helloBody {
 
 // tabIDRE is the shape of a tab id in a path.
 var tabIDRE = regexp.MustCompile(`^[a-z0-9-]{1,40}$`)
+
+// queuedIDRE is the shape of a queued line's id in a path (webTab.enqueue).
+var queuedIDRE = regexp.MustCompile(`^q[0-9]{1,12}$`)
 
 // qidRE is the shape of a question id in a path.
 var qidRE = regexp.MustCompile(`^q_[a-z2-7]{26}$`)

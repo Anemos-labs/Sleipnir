@@ -283,12 +283,20 @@ func dimLines(ls []cell.Line) []cell.Line {
 	return out
 }
 
-// queueLine shows the first line typed ahead, which is sent when the turn ends.
+// queueLine shows the first line typed ahead, which is sent when the turn ends, and (where there is room) the keys of the queue: Up
+// takes the last line back to edit it, Alt+S sends the prompt to the running turn as a steer, /queue lists and drops.
 func (k *chatLook) queueLine(v *liveView, w int) cell.Line {
 	if len(v.queue) == 0 {
 		return nil
 	}
-	first := firstLine(v.queue[0], max(w-16, 8), k.g.ellipsis)
+	room := max(w-16, 8)
+	hint := "  " + k.g.dot + " " + k.g.up + " edits " + k.g.dot + " alt+s steers " + k.g.dot + " /queue"
+	if hw := cell.StringWidth(hint); room-hw >= 24 {
+		room -= hw
+	} else {
+		hint = ""
+	}
+	first := firstLine(v.queue[0], room, k.g.ellipsis)
 	open, shut := "“", "”"
 	if !k.Unicode {
 		open, shut = `"`, `"`
@@ -298,6 +306,7 @@ func (k *chatLook) queueLine(v *liveView, w int) cell.Line {
 	if n := len(v.queue) - 1; n > 0 {
 		r.add(k.st.dim, fmt.Sprintf(" (+%d more)", n))
 	}
+	r.add(k.st.dim, hint)
 	return k.fit(r.line(), w)
 }
 

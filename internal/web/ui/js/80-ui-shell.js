@@ -88,7 +88,13 @@
       return '<span class="conn" id="conn" role="status" tabindex="0" style="color:var(--warm)" title="' + esc(st === 'down' ? 'the server is gone: ' + (L.why || 'it stopped') + '; the page tries again every 2 s' : 'the stream is down; the page reconnects by itself') + '"><span class="on" style="color:var(--warm)">○</span> ' + addr + ' <span class="cx" style="color:var(--warm)">· ' + (st === 'down' ? (L.stopped ? 'the server stopped' : 'disconnected') : 'reconnecting') + '</span></span>';
     }
     sc.on('conn', () => { strip._sig = ''; renderStrip(); });
+    /** The version beside the logo: the short label (v0.2.28), the full build in its tooltip (hello.server). */
+    function paintVer() {
+      const v = $('#brandVer'), sv = SL.live.hello && SL.live.hello.server; if (!v || !sv) return;
+      const t = sv.label || sv.version || ''; if (v.textContent !== t) { v.textContent = t; v.title = 'sleipnir ' + (sv.build || sv.version || ''); }
+    }
     function renderStrip() {
+      paintVer();
       const sig = SL.sessions.list.map(S => S.id + S.name + S.state() + (S.meta.headless ? 'h' : '') + S.meta.mode).join('|') + '|' + (SL.sessions.active && SL.sessions.active.id) + '|' + SL.sessions.needs().map(x => x.S.id + x.q.id).join(',') + '|' + SL.live.state;
       if (strip._sig !== sig) { strip._sig = sig; const fx = document.activeElement && document.activeElement.dataset ? (document.activeElement.dataset.sid || document.activeElement.id) : null; const tb = strip.querySelector('.stabs'), keep = tb ? tb.scrollLeft : 0; strip.innerHTML = stripHtml(); const tb2 = strip.querySelector('.stabs'); if (tb2) tb2.scrollLeft = keep; if (fx && !strip.contains(document.activeElement)) { const b = strip.querySelector('[data-sid="' + fx + '"]') || (fx && strip.querySelector('#' + CSS.escape(fx))); if (b) b.focus({ preventScroll: true }); } const sel = strip.querySelector('.stab.sel'); if (sel && tb2 && tb2.scrollWidth > tb2.clientWidth) { const r = sel.closest('.stabw'); if (r.offsetLeft < tb2.scrollLeft || r.offsetLeft + r.offsetWidth > tb2.scrollLeft + tb2.clientWidth) tb2.scrollLeft = r.offsetLeft - 8; } }
       stripCosts();

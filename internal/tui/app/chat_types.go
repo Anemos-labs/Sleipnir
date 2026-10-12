@@ -82,6 +82,9 @@ type ChatInfo struct {
 	Swarm bool
 	// Update is one line that says a newer release is out (and how to get it), or "": the banner shows it, dim, and nothing waits for it.
 	Update string
+	// Stale is one line that says another installed copy of the program is newer than the running one (where each is), or "": the
+	// banner shows it as a warning.
+	Stale string
 	// Workers is the number of workers of the team, the manager not counted, when the session is one (0 for a single agent): the
 	// banner says it.
 	Workers int

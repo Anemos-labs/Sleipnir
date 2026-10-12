@@ -15,6 +15,7 @@ import (
 	"unicode"
 
 	"github.com/anemos-labs/sleipnir/internal/gitx"
+	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/web/dirs"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
@@ -24,6 +25,10 @@ var fsSlots = make(chan struct{}, 4)
 
 // fsTimeout is how long a listing may take (a network mount that does not answer must not hold the request).
 const fsTimeout = 4 * time.Second
+
+// repoProbeTimeout is how long git may take to say what a repository is (git status of a large checkout can be slow): past it the
+// listing goes without, and the server's check when the session starts says what is wrong.
+const repoProbeTimeout = 2 * time.Second
 
 // firstCommit is the message of the empty commit that starts a repository the server makes.
 const firstCommit = "Start of the project"
@@ -47,6 +52,14 @@ func (h *webHostImpl) fsDirs(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer func() { <-fsSlots }()
 		l, err := dirs.Complete(text, opts)
+		if err == nil && (l.State.Git == "repo" || l.State.Git == "bare") {
+			// what the New session dialog needs to know of a repository before it offers worktree isolation and --commit
+			ctx, cancel := context.WithTimeout(r.Context(), repoProbeTimeout)
+			if p := session.ProbeRepo(ctx, l.State.Path); p.Probed {
+				l.State.Repo = &wire.RepoState{Bare: p.Bare, HasCommits: p.HasCommits, Branch: p.Branch, Detached: p.Detached, Clean: p.Clean}
+			}
+			cancel()
+		}
 		done <- result{l, err}
 	}()
 	select {

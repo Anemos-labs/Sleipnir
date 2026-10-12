@@ -52,7 +52,7 @@
 .qbox input.tellIn{flex:1;background:var(--well);border:1px solid var(--line2);padding:6px 9px;font:500 12.5px var(--f-ui);color:var(--bright);border-radius:2px;width:100%}
 .planbox>div>.verdict{border-top:1px solid var(--line)}
 .rail-h .holdchip[hidden]{display:none}
-.composer .qd div{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.composer .qd .qt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .composer textarea:disabled{opacity:.5;cursor:not-allowed}
 
 /* the rail never grows past its cell: when the question, the plan and the composer do not all fit, the question box scrolls and the transcript keeps a floor */
