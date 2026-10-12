@@ -25,6 +25,7 @@ type deriveState struct {
 	tasks    map[string]*taskOut
 	queue    queueOut
 	goalKey  string
+	breaks   state.BreakNotices // which cache breaks the page is told of without /verbose (wire.Break.Quiet)
 	verdKey  string
 	warm     time.Time
 	gov      govOut

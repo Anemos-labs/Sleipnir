@@ -67,7 +67,8 @@
     const m = S && S.m, b = {}; if (!m) return b;
     const q = calc.waiting(S.wm); if (q) b.radio = ['? ' + q, 'warm', q + ' question' + (q > 1 ? 's' : '') + ' waiting'];
     if (ui.ws && ui.ws.counts) { const c = ui.ws.counts(S); if (c && c.changed) b.changes = [String(c.changed), '', c.changed + ' changed file' + (c.changed > 1 ? 's' : '')]; if (c && c.ckpts) b.checkpoints = [String(c.ckpts), '', c.ckpts + ' checkpoint' + (c.ckpts > 1 ? 's' : '')]; }   // the Workspace index may not be here yet: no badge until it is
-    if (m.anomalies.length) b.cache = SL.settings.cache === 'full' ? ['⚠ ' + m.anomalies.length, 'err', m.anomalies.length + ' cache anomaly'] : ['⚠', '', m.anomalies.length + ' cache anomaly'];
+    const nAn = m.anomalies.filter(a => !a.quiet).length;   /* the endpoint's own small misses are the Cache view's, not a badge's (wire.Break.Quiet) */
+    if (nAn) b.cache = SL.settings.cache === 'full' ? ['⚠ ' + nAn, 'err', nAn + ' cache anomal' + (nAn > 1 ? 'ies' : 'y')] : ['⚠', '', nAn + ' cache anomal' + (nAn > 1 ? 'ies' : 'y')];
     if (m.mail.length) b.mail = [String(m.mail.length), '', m.mail.length + ' mails routed'];
     const live = SL.sessions.list.filter(x => !x.recorded && !x.placeholder).length;   // read-only tabs and the empty placeholder are not running sessions
     b.sessions = [String(live), '', live + ' sessions live'];
@@ -132,7 +133,7 @@
         onMount(b, scm, close) { scm.listen(b, 'click', e => { const x = e.target.closest('[data-nav]'); if (x) { close(); app.dataset.pv = 'main'; go(x.dataset.nav); } else if (e.target.closest('[data-pal]')) { close(); SL.palette.open(''); } }); } });
     }
 
-    ui.nav = { render, go, chord, items: ITEMS, currentId, moreSheet, get wide() { return wide(); }, setWide(on) { pref.nav = on ? 'wide' : 'rail'; save(); N.sig = ''; paintNav(SL.sessions.active); } };
+    ui.nav = { render, go, chord, items: ITEMS, currentId, badges, moreSheet, get wide() { return wide(); }, setWide(on) { pref.nav = on ? 'wide' : 'rail'; save(); N.sig = ''; paintNav(SL.sessions.active); } };
     Object.defineProperty(ui.nav, 'sig', { get() { return N.sig; }, set(v) { N.sig = v; } });
 
     /* ---------- the Radio rail: collapse and resize ---------- */

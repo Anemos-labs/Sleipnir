@@ -6,6 +6,13 @@
   'use strict';
   const U = SL.u, { $, $$, esc, mk, sv, fmtK, fmtUsd, fmtMs, mmss, tod, hitCls, agCol } = U, calc = SL.calc, D = SL.D, ui = SL.ui = SL.ui || {};
   const SPARK_N = 60;
+  /** How long a card says "cache break" after one (quiet breaks never reach it: wire.Break.Quiet). */
+  const BRK_HOLD = 8;
+  /** What the cache-break mark of a card says on hover, for the break it shows ({kind, layer} of m.flash). */
+  const breakTitle = f => f && f.kind === 'drift' ? 'cache break: the prompt prefix changed' + (f.layer ? ' (layer ' + f.layer + ')' : '') + ' without a declared rebase, so the cache was read only up to it'
+    : f && f.layer ? 'cache break: layer ' + f.layer + ' of the prompt changed, so the cache was read only up to it'
+    : 'cache break: the prompt prefix did not change, the endpoint did not serve it';
+  ui.breakTitle = breakTitle;
   const SG = { think: ['◇', 'think'], tool: ['⚙', 'tool'], edit: ['✎', 'edit'], wait: ['✉', 'wait'], ask: ['?', 'ask'], idle: ['◌', 'idle'], done: ['✓', 'done'], stuck: ['⚠', 'stuck'] };
   ui.SG = SG;
 
@@ -208,7 +215,7 @@
       const els = $$('.qel', root); if (els[0] && m.qHead) { const t = (m.qHead.step === 'verified' ? (m.qHead.ms || 900) / 1000 : Math.max(0, vt - m.qHead.t0)).toFixed(1) + 's elapsed'; if (els[0].textContent !== t) els[0].textContent = t; }
       /* streaming text on the cards */
       const rows = [[RC, 'mgr']].concat(workers.map(w => [ST[w.id], w.id]));
-      rows.forEach(([R, id]) => { const s = m.streams[id], A = m.ag[id]; const brk = m.lastBreakT > -900 && m.flash.id === id && vt - m.lastBreakT < (SL.settings.cache === 'quiet' ? 90 : 8) && vt >= m.lastBreakT; if (R.el.dataset.brk !== (brk ? '1' : '0')) R.el.dataset.brk = brk ? '1' : '0';
+      rows.forEach(([R, id]) => { const s = m.streams[id], A = m.ag[id]; const brk = m.lastBreakT > -900 && m.flash.id === id && vt - m.lastBreakT < BRK_HOLD && vt >= m.lastBreakT; if (R.el.dataset.brk !== (brk ? '1' : '0')) { R.el.dataset.brk = brk ? '1' : '0'; const bk = R.el.querySelector('.brk'); if (bk && brk) bk.title = breakTitle(m.flash); }
         if (s && !s.code && vt - s.t0 < s.text.length / s.rate + 5 && A.state !== 'idle') { const [t, done] = typed(s.text, s.t0, s.rate, vt); R.streaming = true; const h = esc(t) + (done ? '' : '<span class="caret"></span>'); if (R.doing._h !== h) { R.doing._h = h; R.doing.innerHTML = h; } } else if (R.streaming) { R.streaming = false; R.doing._h = null; R.doing.textContent = A.spawned ? A.doing : 'not started'; } });
       if ((SL.loop.frameNo % 30) === 0) workers.forEach(w => { const R = ST[w.id]; R.tl.style.setProperty('--c', agCol(w.id)); R.tl.innerHTML = miniTl(m.ag[w.id], vt, agCol(w.id)); });
       if ((SL.loop.frameNo & 15) === 0 && !S2.replay) { const st = mmss(vt); if (scrubT.textContent !== st) scrubT.textContent = st; if (document.activeElement !== scrub) scrub.value = vt.toFixed(1); }

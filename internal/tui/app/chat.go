@@ -225,10 +225,10 @@ type chatModel struct {
 	folds   []*foldAnim
 	expand  []*expandable
 
-	endpointBreaks int // cache breaks of the endpoint's own seen so far
-	compactSeen    uint64
-	anomalySeen    uint64
-	flashUntil     int
+	breaks      state.BreakNotices // which cache breaks the scrollback says (the endpoint's own are counted)
+	compactSeen uint64
+	anomalySeen uint64
+	flashUntil  int
 
 	quitArmed bool
 	quitAt    time.Time

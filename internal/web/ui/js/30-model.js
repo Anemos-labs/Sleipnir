@@ -210,11 +210,15 @@
         break;
       }
       case 'break': {
-        m.anomalies.push({ t: ev.t, id: ev.id, kind: ev.kind, read: ev.read, expected: ev.expected, why: ev.why }); capList(m.anomalies, ANOM_CAP);
-        m.flash = { t: ev.t, id: ev.id }; m.lastBreakT = ev.t; addMark(m, { t: ev.t, id: ev.id, g: 'break' });
-        push(m, ctx, 'mgr', { k: 'break', ag: ev.id, kind: ev.kind, read: ev.read, expected: ev.expected, why: ev.why, t: ev.t }, ev);
-        push(m, ctx, chOf(ev.id), { k: 'break', ag: ev.id, kind: ev.kind, read: ev.read, expected: ev.expected, why: ev.why, t: ev.t }, ev);
-        if (d) d.breaks++;
+        /* a quiet break (the endpoint's own miss that the terminal would not say without /verbose: wire.Break.Quiet) is kept for the Cache
+           view and the rows /verbose shows, and leaves the cards, the flash, the count and the digest alone */
+        const quiet = !!ev.quiet, row = { k: 'break', ag: ev.id, kind: ev.kind, read: ev.read, expected: ev.expected, why: ev.why, layer: ev.layer || '', missUsd: ev.missUsd, quiet, t: ev.t };
+        m.anomalies.push({ t: ev.t, id: ev.id, kind: ev.kind, read: ev.read, expected: ev.expected, why: ev.why, layer: ev.layer || '', missUsd: ev.missUsd, quiet }); capList(m.anomalies, ANOM_CAP);
+        if (!quiet) { m.flash = { t: ev.t, id: ev.id, kind: ev.kind, layer: ev.layer || '' }; m.lastBreakT = ev.t; }
+        addMark(m, { t: ev.t, id: ev.id, g: 'break' });
+        push(m, ctx, 'mgr', row, ev);
+        push(m, ctx, chOf(ev.id), Object.assign({}, row), ev);
+        if (d && !quiet) d.breaks++;
         break;
       }
       case 'compact': {

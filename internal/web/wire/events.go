@@ -354,14 +354,20 @@ type Merge struct {
 }
 
 // Break is a cache anomaly of an agent (ID): Kind names it, Read is the tokens read from the cache, Expected the tokens that should
-// have been, and Why the explanation of the kind (at most 200 characters).
+// have been, and Why the explanation of the kind (at most 200 characters). Layer is the layer of the prompt that changed ("" when none
+// did: the endpoint's own miss), MissUSD what the miss cost at list price when the price is known. Quiet says that the terminal's chat
+// would not say it without /verbose (state.BreakNotices: the endpoint's own miss that cost less than a cent, or one past the first
+// three): the page leaves it out of the feed, the cards and the count, and keeps it in the Cache view.
 type Break struct {
 	Base
-	ID       string `json:"id"`
-	Kind     string `json:"kind"`
-	Read     int    `json:"read"`
-	Expected int    `json:"expected"`
-	Why      string `json:"why"`
+	ID       string  `json:"id"`
+	Kind     string  `json:"kind"`
+	Read     int     `json:"read"`
+	Expected int     `json:"expected"`
+	Why      string  `json:"why"`
+	Layer    string  `json:"layer,omitempty"`
+	MissUSD  float64 `json:"missUsd,omitempty"`
+	Quiet    bool    `json:"quiet,omitempty"`
 }
 
 // Compact is a compaction of an agent's thread: the tokens before (From) and after (To), and the signed change in percent.
