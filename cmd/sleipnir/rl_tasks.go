@@ -172,9 +172,16 @@ func tasksUpdateScorer(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("rl tasks update-scorer: %w", err)
 	}
-	hidden, err := events.NewDirBlobs(orStr(*blobsDir, filepath.Join(filepath.Dir(file), "blobs")))
-	if err != nil {
-		return fmt.Errorf("rl tasks update-scorer: %w", err)
+	// The store is opened only for tasks that keep their scorer in it: inline scorers need none.
+	var hidden events.Blobs
+	for _, t := range tasks {
+		for p, ref := range t.Verifier.Hidden {
+			if hidden == nil && path.Base(p) == "score.py" && strings.HasPrefix(ref, "blob:") {
+				if hidden, err = events.NewDirBlobs(orStr(*blobsDir, filepath.Join(filepath.Dir(file), "blobs"))); err != nil {
+					return fmt.Errorf("rl tasks update-scorer: %w", err)
+				}
+			}
+		}
 	}
 	var found, changed int
 	for i := range tasks {

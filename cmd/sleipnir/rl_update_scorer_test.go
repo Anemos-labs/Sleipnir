@@ -64,3 +64,24 @@ func TestRLTasksUpdateScorerInPlace(t *testing.T) {
 		t.Fatalf("the tasks file after the update: %+v %v", tasks, err)
 	}
 }
+
+// A task whose scorer is inline needs no blob store: update-scorer does not create one.
+func TestRLTasksUpdateScorerInlineNeedsNoStore(t *testing.T) {
+	dir := t.TempDir()
+	task := rl.Task{ID: "suite-2", Kind: rl.TaskFeature, Prompt: "build it", Repo: rl.RepoSpec{Path: "/r", Commit: "abc"}}
+	if err := taskgen.WriteSuite(&task, taskgen.SuiteSpec{Commands: []taskgen.SuiteCommand{taskgen.GoSuiteCommand("")}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	task.Verifier.Hidden[".sleipnir/suite/score.py"] = "text:print('old')\n"
+	file := filepath.Join(dir, "tasks.jsonl")
+	if err := env.WriteTasks(file, []rl.Task{task}); err != nil {
+		t.Fatal(err)
+	}
+	// --blobs names a place that cannot be created (under a file): an inline scorer never needs it.
+	if _, errb, err := (rlRun{t}).do(rlTasks, "update-scorer", file, "-o", file, "--blobs", filepath.Join(file, "blobs")); err != nil || !strings.Contains(errb, "1 updated") {
+		t.Fatalf("update-scorer: %v %s", err, errb)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "blobs")); err == nil {
+		t.Error("a blob store was created for an inline scorer")
+	}
+}

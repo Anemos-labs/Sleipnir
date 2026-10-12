@@ -187,30 +187,87 @@ func Reverify(ctx context.Context, dir string, ep *rl.Episode, task rl.Task, o R
 	if o.DryRun {
 		return res, nil
 	}
-	if o.Savepoints {
-		var b []byte
-		for _, p := range points {
-			line, err := json.Marshal(p)
-			if err != nil {
-				return res, fmt.Errorf("reverify: progress point: %w", err)
-			}
-			b = append(append(b, line...), '\n')
-		}
-		if err := atomicWriteFile(filepath.Join(dir, progressFile), b, 0o600); err != nil {
-			return res, fmt.Errorf("reverify: %w", err)
-		}
-	}
-	if err := writeJSONAtomic(filepath.Join(dir, "episode.json"), ep); err != nil {
-		return res, fmt.Errorf("reverify: %w", err)
-	}
 	now := time.Now
 	if o.Now != nil {
 		now = o.Now
 	}
-	if err := appendJSONLine(filepath.Join(dir, reverifyLog), reverifyEntry{At: now().UTC(), ReverifyResult: res}); err != nil {
+	if err := commitReverify(dir, ep, o.Savepoints, points, reverifyEntry{At: now().UTC(), ReverifyResult: res}); err != nil {
 		return res, fmt.Errorf("reverify: %w", err)
 	}
 	return res, nil
+}
+
+// commitReverify writes what Reverify measured into the sample: progress.jsonl
+// (when the savepoints were scored), episode.json and the reverify.jsonl
+// entry, in that order. Each file is replaced whole, and when a later write
+// fails the files written before it are put back as they were, so the sample
+// keeps either all three or none of them.
+func commitReverify(dir string, ep *rl.Episode, savepoints bool, points []rl.ProgressPoint, entry reverifyEntry) error {
+	type saved struct {
+		path string
+		data []byte
+		had  bool
+		perm os.FileMode
+	}
+	var done []saved
+	rollback := func(cause error) error {
+		errs := []error{cause}
+		for i := len(done) - 1; i >= 0; i-- {
+			f := done[i]
+			var err error
+			if f.had {
+				err = atomicWriteFile(f.path, f.data, f.perm)
+			} else if err = os.Remove(f.path); errors.Is(err, os.ErrNotExist) {
+				err = nil
+			}
+			if err != nil {
+				errs = append(errs, fmt.Errorf("putting back %s: %w", f.path, err))
+			}
+		}
+		return errors.Join(errs...)
+	}
+	write := func(path string, data []byte, appendTo bool, perm os.FileMode) error {
+		old, rerr := os.ReadFile(path)
+		if rerr != nil && !errors.Is(rerr, os.ErrNotExist) {
+			return rerr
+		}
+		if appendTo {
+			data = append(append([]byte(nil), old...), data...)
+		}
+		if err := atomicWriteFile(path, data, perm); err != nil {
+			return err
+		}
+		done = append(done, saved{path: path, data: old, had: rerr == nil, perm: perm})
+		return nil
+	}
+	if savepoints {
+		var b []byte
+		for _, p := range points {
+			line, err := json.Marshal(p)
+			if err != nil {
+				return fmt.Errorf("progress point: %w", err)
+			}
+			b = append(append(b, line...), '\n')
+		}
+		if err := write(filepath.Join(dir, progressFile), b, false, 0o600); err != nil {
+			return err
+		}
+	}
+	epb, err := json.MarshalIndent(ep, "", "  ") // as writeJSONAtomic
+	if err != nil {
+		return rollback(err)
+	}
+	if err := write(filepath.Join(dir, "episode.json"), append(epb, '\n'), false, 0o644); err != nil {
+		return rollback(err)
+	}
+	line, err := json.Marshal(entry)
+	if err != nil {
+		return rollback(err)
+	}
+	if err := write(filepath.Join(dir, reverifyLog), append(line, '\n'), true, 0o600); err != nil {
+		return rollback(err)
+	}
+	return nil
 }
 
 // finalPatch is the patch the sample's verification checked: the episode's

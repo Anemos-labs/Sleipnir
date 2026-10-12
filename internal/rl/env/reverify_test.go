@@ -186,3 +186,44 @@ func TestReverifyWithoutSavepoints(t *testing.T) {
 		t.Errorf("result %+v, progress %+v: want the final verdict alone, the curve untouched", res, ep.Progress)
 	}
 }
+
+// The three files of a reverification are written together or not at all: when
+// a later one cannot be written, the ones written before it are put back.
+func TestCommitReverifyPutsBackWhatItWroteOnFailure(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{progressFile: "{\"savepoint\":1,\"score\":0.25}\n", "episode.json": "{\"id\":\"old\"}\n"}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// reverify.jsonl is a directory: its entry cannot be written.
+	if err := os.Mkdir(filepath.Join(dir, reverifyLog), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ep := &rl.Episode{ID: "new"}
+	points := []rl.ProgressPoint{{Savepoint: 1, Score: 0.75}}
+	if err := commitReverify(dir, ep, true, points, reverifyEntry{}); err == nil {
+		t.Fatal("a reverify.jsonl that cannot be written was accepted")
+	}
+	for name, body := range files {
+		if b, err := os.ReadFile(filepath.Join(dir, name)); err != nil || string(b) != body {
+			t.Errorf("%s after the failed commit: %q %v, want it as it was", name, b, err)
+		}
+	}
+	if err := os.Remove(filepath.Join(dir, reverifyLog)); err != nil {
+		t.Fatal(err)
+	}
+	if err := commitReverify(dir, ep, true, points, reverifyEntry{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := readProgress(dir); len(got) != 1 || got[0].Score != 0.75 {
+		t.Errorf("progress after the commit: %+v", got)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "episode.json")); !strings.Contains(string(b), `"new"`) {
+		t.Errorf("episode.json after the commit: %s", b)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, reverifyLog)); strings.Count(string(b), "\n") != 1 {
+		t.Errorf("reverify.jsonl after the commit: %q", b)
+	}
+}

@@ -22,7 +22,7 @@ func init() { rlCommands["reverify"] = rlReverify }
 func rlReverify(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	fs := newFlags("rl reverify", stderr, "rl reverify --tasks FILE [flags] RUN_DIR|SAMPLE_DIR...")
 	var rf rigFlags
-	rf.register(fs)
+	rf.registerEnv(fs)
 	tasksFile := fs.String("tasks", "", "tasks file (JSON lines) with the rollouts' tasks as they are to be verified now (see rl tasks update-scorer)")
 	final := fs.Bool("final", true, "verify the final patch again (the episode's verdict)")
 	savepoints := fs.Bool("savepoints", true, "score the work tree of every consistent savepoint again, in progress mode (progress.jsonl, the episode's progress)")
