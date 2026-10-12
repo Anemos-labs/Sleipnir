@@ -616,17 +616,18 @@ func rebuildAgents(loc int) int {
 }
 
 // rebuildBudget scales the budget with the scope's lines: 6 hours of wall clock at 2,000 lines and below, 12 at
-// 10,000 and above, linear in between; steps and requests in proportion. Fields set in override win.
+// 10,000 and above, linear in between; steps in proportion, and requests for the team of rebuildAgents as
+// teamRequests has them. Fields set in override win.
 func rebuildBudget(loc int, override rl.Budget) rl.Budget {
 	b := override
 	if b.Steps == 0 {
 		b.Steps = clamp(300+loc/8, 500, 1500)
 	}
-	if b.Requests == 0 {
-		b.Requests = b.Steps * 5 / 2
-	}
 	if b.WallS == 0 {
 		b.WallS = clamp(6*3600+int(6*3600*float64(loc-2000)/8000), 6*3600, 12*3600)
+	}
+	if b.Requests == 0 {
+		b.Requests = teamRequests(b.Steps, rebuildAgents(loc), b.WallS)
 	}
 	return b
 }

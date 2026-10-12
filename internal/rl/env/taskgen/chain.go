@@ -591,11 +591,11 @@ func buildChain(ctx context.Context, r *repo, repoDir, repoName string, ch Chain
 		Repo:   rl.RepoSpec{Path: repoDir, Commit: start, License: license},
 		Setup:  setup,
 		Prompt: BuildChainPrompt(milestones),
-		Team:   rl.Team{Mode: "swarm", Agents: clamp(n-1, 2, 6)},
+		Team:   rl.Team{Mode: "swarm", Agents: chainAgents(n)},
 		Verifier: rl.Verifier{
 			Hidden: hiddenRefs, Protected: protected,
 		},
-		Budget: chainBudget(n, sourceLines, opts.Budget),
+		Budget: chainBudget(n, sourceLines, chainAgents(n), opts.Budget),
 		Tags:   dedupe(append(append([]string{"long", "chain", "harvested"}, langs...), append([]string{opts.IDPrefix}, opts.Tags...)...)),
 		Meta:   metaRaw,
 	}
@@ -914,22 +914,41 @@ func BuildChainPrompt(milestones []string) string {
 	return b.String()
 }
 
-// chainBudget scales a chain's budget with its pull requests and the lines it
-// changes outside the tests: 6 hours of wall clock, 45 minutes more per pull
-// request beyond the third and an hour more per 1000 lines, at most 12 hours.
-// Fields set in override win.
-func chainBudget(prs, lines int, override rl.Budget) rl.Budget {
+// chainAgents is the team's size for a chain of prs pull requests: one worker
+// fewer than pull requests, 2 to 6.
+func chainAgents(prs int) int { return clamp(prs-1, 2, 6) }
+
+// chainBudget scales the budget of a chain worked by a team of agents with its
+// pull requests and the lines it changes outside the tests: 6 hours of wall
+// clock, 45 minutes more per pull request beyond the third and an hour more per
+// 1000 lines, at most 12 hours; requests as teamRequests has them. Fields set
+// in override win.
+func chainBudget(prs, lines, agents int, override rl.Budget) rl.Budget {
 	b := override
 	if b.Steps == 0 {
 		b.Steps = clamp(80*prs+lines/4, 300, 1500)
 	}
-	if b.Requests == 0 {
-		b.Requests = b.Steps * 5 / 2
-	}
 	if b.WallS == 0 {
 		b.WallS = clamp(6*3600+2700*(prs-MinChainPRs)+lines*36/10, 6*3600, 12*3600)
 	}
+	if b.Requests == 0 {
+		b.Requests = teamRequests(b.Steps, agents, b.WallS)
+	}
 	return b
+}
+
+// teamRequestsPerAgentHour is the request budget a long team task gets per
+// agent and hour of wall clock. It is above the fastest pace measured on
+// rollouts of chain and rebuild tasks (about 190 requests an agent and hour,
+// compactor calls included), so the wall clock ends a team that keeps working,
+// not its request count.
+const teamRequestsPerAgentHour = 250
+
+// teamRequests is the request budget of a long team task: the session counts
+// the requests of every agent against it, so it is the larger of 2.5 per step
+// and teamRequestsPerAgentHour for each agent over wallS seconds.
+func teamRequests(steps, agents, wallS int) int {
+	return max(steps*5/2, agents*wallS*teamRequestsPerAgentHour/3600)
 }
 
 // sortedKeysBool returns a set's members in lexical order.

@@ -89,7 +89,7 @@ func TestFromChainsEndToEnd(t *testing.T) {
 	if task.ID != "calc-arith" || task.Kind != rl.TaskSwarm || !reflect.DeepEqual(task.Team, rl.Team{Mode: "swarm", Agents: 2}) {
 		t.Errorf("identity: %s %s %+v", task.ID, task.Kind, task.Team)
 	}
-	if task.Budget.WallS != 6*3600+18*36/10 || task.Budget.Steps != 300 || task.Budget.Requests != 750 {
+	if task.Budget.WallS != 6*3600+18*36/10 || task.Budget.Steps != 300 || task.Budget.Requests != 2*task.Budget.WallS*teamRequestsPerAgentHour/3600 {
 		t.Errorf("budget: %+v", task.Budget)
 	}
 	for _, tag := range []string{"long", "chain", "harvested", "go", "calc"} {
@@ -326,13 +326,20 @@ func TestChainPromptAndHelpers(t *testing.T) {
 	for _, tc := range []struct {
 		prs, lines, wall, agents int
 	}{{3, 0, 6 * 3600, 2}, {5, 1000, 6*3600 + 2*2700 + 3600, 4}, {8, 100000, 12 * 3600, 6}} {
-		b := chainBudget(tc.prs, tc.lines, rl.Budget{})
-		if b.WallS != tc.wall || b.Steps < 300 || b.Steps > 1500 || b.Requests != b.Steps*5/2 || clamp(tc.prs-1, 2, 6) != tc.agents {
+		b := chainBudget(tc.prs, tc.lines, chainAgents(tc.prs), rl.Budget{})
+		if b.WallS != tc.wall || b.Steps < 300 || b.Steps > 1500 || chainAgents(tc.prs) != tc.agents {
 			t.Errorf("chainBudget(%d, %d) = %+v", tc.prs, tc.lines, b)
 		}
+		// The team's requests last the wall clock: every agent busy at the agreed pace for all of it.
+		if hours := float64(b.WallS) / 3600; float64(b.Requests) < float64(tc.agents)*hours*teamRequestsPerAgentHour-1 || b.Requests < b.Steps*5/2 {
+			t.Errorf("chainBudget(%d, %d): %d requests for %d agents over %.1f h", tc.prs, tc.lines, b.Requests, tc.agents, hours)
+		}
 	}
-	if b := chainBudget(3, 0, rl.Budget{WallS: 60, Steps: 7}); b.WallS != 60 || b.Steps != 7 || b.Requests != 17 {
+	if b := chainBudget(3, 0, 2, rl.Budget{WallS: 60, Steps: 7}); b.WallS != 60 || b.Steps != 7 || b.Requests != 17 {
 		t.Errorf("override: %+v", b)
+	}
+	if b := chainBudget(5, 1000, 4, rl.Budget{Requests: 9}); b.Requests != 9 {
+		t.Errorf("an explicit request budget was overridden: %+v", b)
 	}
 }
 
