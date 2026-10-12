@@ -1,6 +1,7 @@
 package reward
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -15,7 +16,9 @@ import (
 //
 // It fires when a call
 //
-//   - names the task's own upstream repository (Task.Repo.URL) in any of the ways
+//   - names the task's own upstream repository (Task.Repo.URL, or the origin a
+//     generator recorded in meta.source: a harvested task's repository is a
+//     sealed local copy) in any of the ways
 //     the same repository can be addressed: the forge page, .git and scp-style
 //     clone URLs, raw/codeload/API mirrors and Go module proxies, in any letter
 //     case; regardless of Task.Network and even if the call failed, because the
@@ -26,13 +29,18 @@ import (
 // Loopback and *.local hosts are never solution hosts. Other web use with the
 // network off is noted, not flagged: it is a harness policy failure rather than
 // evidence of solution lookup.
+//
+// A shell command counts only with a verb that can reach the network. `go list`
+// is one only when it asks a module proxy (-versions, -u, -retracted or a
+// module@version query): otherwise it lists packages, and a Go import path
+// (github.com/owner/repo/pkg) names a directory of the build, not an address.
 
 var (
 	urlRe       = regexp.MustCompile(`(?i)\b(?:git\+)?(?:https?|ssh|git|ftps?)://[^\s'"<>()\[\]{}\\,;|]+`)
 	scpRe       = regexp.MustCompile(`(?i)\b[\w.-]+@([\w.-]+\.[a-z]{2,}):([\w.~-]+/[\w.-]+)`)
 	bareForgeRe = regexp.MustCompile(`(?i)\b((?:www\.)?(?:github\.com|gitlab\.com|bitbucket\.org|codeberg\.org|git\.sr\.ht|sourcegraph\.com/github\.com)/[\w.~-]+/[\w.-]+)`)
 	shorthandRe = regexp.MustCompile(`(?i)\b(github|gitlab|bitbucket):([\w.-]+/[\w.-]+)`)
-	netVerbRe   = regexp.MustCompile(`(?i)\b(curl|wget|git\s+(clone|fetch|pull|ls-remote|submodule|remote)|go\s+(get|install|mod\s+download|list)|pip3?\s+(download|install)|npm\s+(install|i|view|pack|info)|yarn\s+(add|install|info)|pnpm\s+(add|install)|cargo\s+(install|fetch|add|search)|gh\s|hub\s|nc\s|ncat\s|telnet\s|aria2c|axel|lynx|xh\s|python3?\s+-c|node\s+-e)\b`)
+	netVerbRe   = regexp.MustCompile(`(?i)\b(curl|wget|git\s+(clone|fetch|pull|ls-remote|submodule|remote)|go\s+(get|install|mod\s+download|list\s[^|;&\n]*?(-versions|-retracted|-u|\S@\S+))|pip3?\s+(download|install)|npm\s+(install|i|view|pack|info)|yarn\s+(add|install|info)|pnpm\s+(add|install)|cargo\s+(install|fetch|add|search)|gh\s|hub\s|nc\s|ncat\s|telnet\s|aria2c|axel|lynx|xh\s|python3?\s+-c|node\s+-e)\b`)
 )
 
 var solutionHosts = map[string]bool{
@@ -46,6 +54,7 @@ var networkFailureMarkers = []string{
 	"could not resolve host", "network is unreachable", "connection refused", "temporary failure in name resolution",
 	"failed to connect", "connection timed out", "no such host", "dial tcp", "getaddrinfo", "name or service not known",
 	"network access denied", "network is disabled", "network disabled", "operation not permitted",
+	"module lookup disabled", // go with GOPROXY=off
 }
 
 // ref is one address found in a tool call.
@@ -164,16 +173,18 @@ func repoKey(host, p string) string {
 // upstreamKeys lists the canonical repository keys of the task's own upstream.
 func upstreamKeys(task *rl.Task, ep *rl.Episode) []string {
 	var keys []string
-	for _, raw := range []string{task.Repo.URL, ep.Env.Repo} {
+	for _, raw := range append([]string{task.Repo.URL, ep.Env.Repo}, sourceURLs(task)...) {
 		if raw == "" {
 			continue
 		}
+		found := false
 		for _, r := range refsIn(raw) {
 			if r.key != "" {
 				keys = append(keys, r.key)
+				found = true
 			}
 		}
-		if len(keys) == 0 {
+		if !found {
 			// scp-style or self-hosted forges: fall back to host/owner/repo of the URL.
 			if r, ok := parseRef(raw); ok {
 				if segs := splitSegs(strings.ToLower(mustPath(raw))); len(segs) >= 2 {
@@ -183,6 +194,28 @@ func upstreamKeys(task *rl.Task, ep *rl.Episode) []string {
 		}
 	}
 	return uniqueStrings(keys)
+}
+
+// sourceURLs returns the origin URLs a generator recorded in the task's
+// meta.source (repo and url, as chain and rebuild tasks have them); a value
+// that is not a URL, such as a directory's name, is left out.
+func sourceURLs(task *rl.Task) []string {
+	if len(task.Meta) == 0 {
+		return nil
+	}
+	var m struct {
+		Source map[string]any `json:"source"`
+	}
+	if json.Unmarshal(task.Meta, &m) != nil {
+		return nil
+	}
+	var out []string
+	for _, k := range []string{"repo", "url"} {
+		if v, ok := m.Source[k].(string); ok && (strings.Contains(v, "://") || scpRe.MatchString(v)) {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // mustPath extracts a URL path after an optional git+ prefix and returns empty on parse failure.

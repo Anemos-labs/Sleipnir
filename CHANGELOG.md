@@ -13,6 +13,14 @@ they do not indicate whether a change has been released.
   tried `go mod download` and `curl` of the upstream sources, which the
   network detector flags, losing whole rollouts. Tasks generated before keep
   their prompt.
+- The network detector (`hack:network`) knows the upstream of harvested
+  tasks from `meta.source` (`repo` or `url`, when it is a URL), so a chain
+  or rebuild team asking for the project's own code is flagged even when the
+  call fails, as for tasks with a `repo.url`. `go list` counts as network
+  use only when it asks a module proxy (`-versions`, `-u`, `-retracted`, a
+  `module@version`): a plain `go list github.com/owner/repo/pkg` lists a
+  package of the build and was flagged as reaching github.com. A Go command
+  refused by `GOPROXY=off` counts as failed.
 - `rl taskgen chain` and `rl taskgen rebuild` give a task 250 requests for
   each worker and hour of its wall clock (at least 2.5 per step, as before).
   The request budget counts every agent of the session, and 2.5 per step
