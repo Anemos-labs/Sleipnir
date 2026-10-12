@@ -389,6 +389,10 @@ func (rf *rigFlags) build(h env.Harness, out, tasksFile string, stderr io.Writer
 	if hidden != nil {
 		pipe.Hidden = hidden.Get
 	}
+	pipe.RepoContains = func(t *rl.Task, lit string) bool {
+		ok, err := ws.RepoContains(context.Background(), *t, lit)
+		return err == nil && ok
+	}
 	rn := &env.Runner{
 		Harness: h, Extract: pipe.Extract, Score: pipe.Score, Workspaces: ws, Out: out,
 		Concurrency: rf.concurrency, HiddenBlobs: hidden,
@@ -783,7 +787,7 @@ func rlServe(ctx context.Context, args []string, stdout, stderr io.Writer) error
 			if err != nil {
 				return nil, err
 			}
-			return (&harness.Pipeline{Harness: rg.Pipe.Harness, Reward: cfg, Hidden: rg.Pipe.Hidden}).Score, nil
+			return (&harness.Pipeline{Harness: rg.Pipe.Harness, Reward: cfg, Hidden: rg.Pipe.Hidden, RepoContains: rg.Pipe.RepoContains}).Score, nil
 		},
 		Logf: func(f string, a ...any) { fmt.Fprintf(stderr, f+"\n", a...) },
 	})

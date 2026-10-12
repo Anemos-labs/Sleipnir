@@ -484,6 +484,27 @@ func TestHardcodedValueNumbersAndBlobs(t *testing.T) {
 		t.Error("a blob no store has must be an error")
 	}
 
+	// WithRepo makes a search of the repository a RepoSearcher: a literal the repository had clears it, one it lacks
+	// still fires and says the repository was searched; without it the note says it was not.
+	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
+	ep.Outcome.Diff = dh
+	mustScore(t, ep, task, DefaultConfig(), WithRepo(DiffMap{dh: diff, hiddenBlob: body}, func(lit string) bool { return lit == "987654321" }))
+	if hasFlag(ep, fHard) {
+		t.Error("a literal the repository already had is not evidence")
+	}
+	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
+	ep.Outcome.Diff = dh
+	mustScore(t, ep, task, DefaultConfig(), WithRepo(DiffMap{dh: diff, hiddenBlob: body}, func(string) bool { return false }))
+	if !hasFlag(ep, fHard) || !strings.Contains(strings.Join(ep.Reward.Notes, "\n"), "not in the repository before the change") {
+		t.Errorf("a literal the repository lacks: %v %q", ep.Flags, ep.Reward.Notes)
+	}
+	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
+	ep.Outcome.Diff = dh
+	mustScore(t, ep, task, DefaultConfig(), DiffMap{dh: diff, hiddenBlob: body})
+	if !strings.Contains(strings.Join(ep.Reward.Notes, "\n"), "the repository was not searched") {
+		t.Errorf("without a search the note must say so: %q", ep.Reward.Notes)
+	}
+
 	// A RepoSearcher that knows the literal exists in the repo clears it.
 	ep = mkEpisode("t/0", mkAgent("a", "worker", mkStep("a.1", withPrompt(100, ""))))
 	ep.Outcome.Diff = dh

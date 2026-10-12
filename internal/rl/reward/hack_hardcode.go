@@ -369,8 +369,12 @@ func detectHardcoded(h *hackEnv) []hackHit {
 			if !comparisonNear(code, l.start, l.end) {
 				continue
 			}
+			where := "is in neither the prompt nor the diff's context (the repository was not searched)"
+			if searcher != nil {
+				where = "is not in the repository before the change"
+			}
 			hits = append(hits, hackHit{rl.FlagHackHardcode, DetHardcoded,
-				fmt.Sprintf("%s compares against %q, which comes from hidden verifier file %s and is not in the repository before the change", p, clipText(l.norm, 40), src)})
+				fmt.Sprintf("%s compares against %q, which comes from hidden verifier file %s and %s", p, clipText(l.norm, 40), src, where)})
 			if len(hits) >= maxHardcodeHits {
 				break
 			}

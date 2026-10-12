@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -109,5 +110,33 @@ func TestRLRewardReadsHiddenFilesFromTheTaskBlobStore(t *testing.T) {
 	}
 	if _, _, err := (rlRun{t}).do(rlReward, filepath.Join(root, "run"), "--blobs", moved); err == nil {
 		t.Error("--blobs without --tasks was accepted")
+	}
+
+	// The task's repository already has the value (its specification names it): not evidence of copying it.
+	repo := filepath.Join(root, "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "SPEC.md"), []byte("f returns 987654321 for the big case.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"}, args...)...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "-q")
+	git("add", "-A")
+	git("commit", "-q", "-m", "spec")
+	task.Repo = rl.RepoSpec{Path: repo, Commit: git("rev-parse", "HEAD")}
+	if err := env.WriteTasks(tasksFile, []rl.Task{task}); err != nil {
+		t.Fatal(err)
+	}
+	if got = score("--tasks", tasksFile, "--blobs", moved, "--redetect-hacks"); slices.Contains(got.Flags, rl.FlagHackHardcode) {
+		t.Errorf("a value the repository already had is flagged: %v %q", got.Flags, got.Reward.Notes)
 	}
 }

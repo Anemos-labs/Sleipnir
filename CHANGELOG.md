@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The hardcoded-value detector rules out a literal that the task's
+  repository already had before the change (`env.RepoContains`: `git grep`
+  at the task's commit). Once the detector read hidden files from the task
+  store, it flagged correct solutions of specification-driven tasks, whose
+  routes, commands and operation names are also in the hidden tests, and
+  zeroed their outcome. `harness.Pipeline` gains `RepoContains`, and
+  `reward.WithRepo` adds a search to a `DiffSource`; `rl reward` searches the
+  tasks' repositories relative to the current directory and says when it
+  cannot. A flag's note says whether the repository was searched.
 - New `rl reverify` verifies finished rollouts again with the tasks as a
   tasks file defines them now: the final patch (the episode's verdict) and
   every consistent savepoint's tree in progress mode (`progress.jsonl` and

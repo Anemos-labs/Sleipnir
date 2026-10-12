@@ -77,6 +77,33 @@ func (b blobDiffs) Blob(h core.Hash) ([]byte, error) {
 	return nil, first
 }
 
+// searchedDiffs is a DiffSource that also searches the task's repository (RepoSearcher).
+type searchedDiffs struct {
+	DiffSource
+	contains func(string) bool
+}
+
+// Blob implements BlobSource when the underlying source does.
+func (r searchedDiffs) Blob(h core.Hash) ([]byte, error) {
+	if bs, ok := r.DiffSource.(BlobSource); ok {
+		return bs.Blob(h)
+	}
+	s, err := r.Diff(h)
+	return []byte(s), err
+}
+
+// RepoContains implements RepoSearcher.
+func (r searchedDiffs) RepoContains(literal string) bool { return r.contains(literal) }
+
+// WithRepo returns d with a search of the task's repository before the change: the hardcoded-value detector then
+// rules out the literals the repository already had (see RepoSearcher). contains nil returns d.
+func WithRepo(d DiffSource, contains func(literal string) bool) DiffSource {
+	if contains == nil {
+		return d
+	}
+	return searchedDiffs{d, contains}
+}
+
 // DiffsFromBlobs adapts a blob getter (events.Blobs.Get, for example) to a
 // DiffSource and BlobSource. A blob that get lacks is looked up in each of more
 // in turn (nil getters are skipped): the episode's diff is in the run's store,
