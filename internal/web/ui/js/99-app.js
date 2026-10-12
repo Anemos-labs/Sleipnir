@@ -79,6 +79,7 @@
     SL.loop.start();
     paintTitle();
     if (!SL.sessions.list.length) ui.dialogs.newSession();
+    ui.tour.auto(sh);   /* the first time the page opens in this browser: the guided tour, once a session is on screen */
   }
   SL.boot = boot;
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();

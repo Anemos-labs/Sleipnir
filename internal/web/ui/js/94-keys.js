@@ -8,8 +8,8 @@
   const U = SL.u, { $ } = U, ui = SL.ui = SL.ui || {}, calc = SL.calc;
   const VIEW_KEYS = { o: 'cockpit', c: 'cache', m: 'mail', b: 'board', r: 'replay', s: 'sessions', ',': 'settings', '.': 'tools' };
   const typing = t => t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-  /** Widgets that move with the arrows and Home/End themselves. */
-  const OWNS_KEYS = '[role=tablist],[role=tab],[role=menu],[role=menubar],[role=listbox],[role=radiogroup],[role=tree],[role=grid],[role=slider],nav,select,input,textarea,[contenteditable]';
+  /** Widgets that move with the arrows and Home/End themselves (data-owns-keys: the Cockpit's cards while it is unlocked). */
+  const OWNS_KEYS = '[data-owns-keys],[role=tablist],[role=tab],[role=menu],[role=menubar],[role=listbox],[role=radiogroup],[role=tree],[role=grid],[role=slider],nav,select,input,textarea,[contenteditable]';
 
   function mount(sc) {
     sc.listen(document, 'keydown', e => {

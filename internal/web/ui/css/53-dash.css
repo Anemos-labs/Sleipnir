@@ -1,0 +1,69 @@
+/* the Cockpit's dashboard (83b-ui-dash.js): a grid of 12 columns and rows of --rowh; each card is a size container (`card`) so that
+ * what it holds lays out for its own width and height. A card of a view also makes its body the view's `main` container, so the view's
+ * own narrow layouts follow the card. Locked, a card is the panel it holds; unlocked, it has a bar to drag, edges to resize and an ×. */
+.dash{display:flex;flex-direction:column;gap:6px;min-height:100%}
+.dash-bar{display:flex;align-items:center;gap:8px;flex:none;min-height:24px}
+.dash-bar .sp{flex:1}
+.dash-hint{font:500 11.5px/1.3 var(--f-ui);color:var(--dim);min-width:0}
+.dash-hint[hidden],.dash-add[hidden],.dash-reset[hidden]{display:none}
+.dash-lock{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border:1px solid var(--line2);border-radius:2px;background:var(--panel2);color:var(--fg2);font:700 11px/1 var(--f-lab);letter-spacing:.14em;text-transform:uppercase;white-space:nowrap}
+.dash-lock:hover{border-color:var(--dim);color:var(--bright)}
+.dash-lock[aria-pressed="true"]{border-color:var(--fe);color:var(--fe);background:var(--info-a)}
+.dash-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));grid-auto-rows:var(--rowh,36px);gap:var(--gap);position:relative;flex:none}
+.dcard{position:relative;min-width:0;min-height:0;display:flex;flex-direction:column;container:card/size}
+.dc-body{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;position:relative}
+.dc-body>.panel,.dc-body>.stalls-wrap{flex:1 1 auto;min-height:0!important;height:auto!important}
+/* a view in a card: a title bar with a way to the full view, and the view's own markup in a scrolled box */
+.dc-h{display:flex;align-items:center;gap:8px;flex:none;min-height:28px;padding:5px 8px 5px 10px;background:var(--panel);border:1px solid var(--line);border-bottom:0}
+.dc-h h2{margin:0;font:700 12.5px/1 var(--f-lab);letter-spacing:.16em;text-transform:uppercase;color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dc-open{margin-left:auto;font:600 11px/1 var(--f-num);color:var(--dim);padding:3px 5px;border-radius:2px;white-space:nowrap}
+.dc-open:hover{color:var(--fe);background:var(--panel2)}
+.dc-view .dc-body{border:1px solid var(--line);background:var(--bg)}
+.cview{position:absolute;inset:0;overflow:auto;padding:var(--gap);container:main/inline-size;scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
+/* the Cockpit's panels in their cards: the horse fits its card, lists scroll, the stalls take as many columns as the card's shape allows */
+.dcard .hero{flex:1;min-height:0}
+.dcard .heroSvg{width:100%;height:100%;flex:1}
+.dcard .stalls{grid-template-columns:repeat(var(--scols,4),minmax(0,1fr));grid-template-rows:none;grid-auto-rows:minmax(104px,1fr);overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
+.dcard .stalls .solo{grid-row:auto}
+.dcard .mlist,.dcard .qbody{overflow-y:auto;flex:1;min-height:0;scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
+.dcard .bcols{grid-auto-rows:minmax(120px,1fr);overflow-y:auto}
+@container card (max-width:520px){.stalls{--scols:2}.mgr-card{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"top nums" "doing doing" "meta meta"}.mgr-card .s-spark{display:none}}
+@container card (max-width:440px){.p-gantt .legend{display:none}}
+@container card (max-width:400px){.bcols{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container card (max-width:260px){.stalls{--scols:1}.bcols{grid-template-columns:minmax(0,1fr)}.g-ctl [data-sp]{display:none}}
+@container card (max-width:170px){.gov{grid-template-columns:minmax(0,1fr)}}
+@container card (min-width:900px) and (max-height:360px){.stalls{--scols:8}}
+@container card (min-width:1100px){.stalls{--scols:8}}
+@container card (max-height:240px){.p-gantt .g-ctl{padding-bottom:4px}.mgr-card .s-spark{display:none}}
+/* unlocked: a bar to drag by, the edges to resize, the content inert so that a press arranges and never acts */
+.dc-edit{display:none}
+.dash[data-edit="1"] .dc-edit{display:flex;align-items:center;gap:8px;position:absolute;left:0;right:0;top:0;z-index:8;height:28px;padding:0 4px 0 8px;background:var(--raise);border:1px solid var(--fe);color:var(--bright);font:700 12px/1 var(--f-lab);letter-spacing:.12em;text-transform:uppercase;cursor:grab;user-select:none}
+.dc-edit b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.dc-grip{color:var(--fe);font-size:14px;letter-spacing:0}
+.dc-size{font:500 11px/1 var(--f-num);color:var(--dim);letter-spacing:0;white-space:nowrap}
+.dc-x{margin-left:auto;flex:none;width:24px;height:22px;border-radius:2px;font:600 16px/1 var(--f-num);color:var(--fg2);cursor:pointer}
+.dc-x:hover{background:var(--err-a);color:var(--err)}
+.dash[data-edit="1"] .dcard{cursor:grab;outline:1px dashed var(--line2);outline-offset:3px;touch-action:none}
+.dash[data-edit="1"] .dcard:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
+.dash[data-edit="1"] .dc-body,.dash[data-edit="1"] .dc-h{pointer-events:none;opacity:.72}
+.dcard.dragging{z-index:9;cursor:grabbing;box-shadow:0 10px 30px var(--shade)}
+.dcard.dragging .dc-edit{cursor:grabbing;background:var(--info-a)}
+.dc-rs{display:none;position:absolute;z-index:9}
+.dash[data-edit="1"] .dc-rs{display:block}
+.dc-rs[data-rs="e"]{top:28px;bottom:12px;right:-6px;width:12px;cursor:ew-resize}
+.dc-rs[data-rs="s"]{left:12px;right:12px;bottom:-6px;height:12px;cursor:ns-resize}
+.dc-rs[data-rs="e"]::after,.dc-rs[data-rs="s"]::after{content:"";position:absolute;background:var(--fe);opacity:.35;border-radius:2px}
+.dc-rs[data-rs="e"]::after{left:5px;top:50%;width:3px;height:36px;margin-top:-18px}
+.dc-rs[data-rs="s"]::after{top:5px;left:50%;height:3px;width:36px;margin-left:-18px}
+.dc-rs:hover::after{opacity:1}
+.dc-rs[data-rs="se"]{right:-5px;bottom:-5px;width:16px;height:16px;cursor:nwse-resize;background:var(--fe);clip-path:polygon(100% 0,100% 100%,0 100%)}
+/* the picker of cards */
+.dashpick .dpicks{list-style:none;margin:0 0 12px;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px}
+.dashpick .dpick{display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:100%;height:100%;text-align:left}
+.dashpick .dpick b{font:700 12.5px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;color:var(--bright)}
+.dashpick .dpick span{font:400 12px/1.3 var(--f-ui);color:var(--dim)}
+.dashpick h3{margin:2px 0 6px}
+/* a narrow view: one column, the cards in their order, each as tall as its rows */
+.dash[data-stack="1"] .dash-grid{grid-template-columns:minmax(0,1fr);grid-auto-rows:auto}
+.dash[data-stack="1"] .dcard{grid-column:1/-1!important;grid-row:auto!important;height:calc(var(--h,8) * 34px);min-height:150px}
+.dash[data-stack="1"] .dc-rs,.dash[data-stack="1"] .dash-hint{display:none}

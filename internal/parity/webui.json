@@ -793,6 +793,25 @@
    ]
   },
   {
+   "group": "help",
+   "name": "Take the tour",
+   "kind": "action",
+   "live": true,
+   "effects": [
+    "tour"
+   ]
+  },
+  {
+   "group": "help",
+   "name": "Customise the Cockpit",
+   "kind": "action",
+   "live": true,
+   "effects": [
+    "dash:unlock",
+    "view:cockpit"
+   ]
+  },
+  {
    "group": "time",
    "name": "Pin the hold",
    "kind": "action",
@@ -1994,8 +2013,22 @@
    "summary": "hover, motion, density and the keys",
    "controls": [
     {
+     "id": "do:dash-edit",
+     "scope": "browser",
+     "note": "the layout of the Cockpit's cards, kept in this browser"
+    },
+    {
+     "id": "do:dash-reset",
+     "scope": "browser",
+     "note": "the layout of the Cockpit's cards, kept in this browser"
+    },
+    {
      "id": "do:railreset",
      "scope": "browser"
+    },
+    {
+     "id": "do:tour",
+     "scope": "view"
     },
     {
      "id": "seg:cache",

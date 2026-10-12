@@ -87,6 +87,8 @@ const STATES = [
   { name: 'views-rail', about: 'an item of the views rail has the focus', keys: WIDGET, setup: async L => { L.focus('.nvi'); } },
   { name: 'mode-menu', about: 'the permission mode menu is open', keys: WIDGET, setup: async L => { L.$('#modeBtn').click(); await L.settle(); } },
   { name: 'rail-handle', about: 'the handle that resizes the Radio rail has the focus', keys: WIDGET, setup: async L => { L.focus('#railSplit'); } },
+  { name: 'cockpit-card', about: 'the Cockpit is unlocked and one of its cards has the focus', keys: WIDGET.concat(['backspace', 'shift+left', 'shift+right']), setup: async L => { L.SL.ui.dash.setLocked(false); await L.settle(); L.focus('.dcard[data-card="queue"]'); } },
+  { name: 'tour', about: 'the guided tour is open at its second step', keys: WIDGET.concat(['shift+left', 'shift+right', 'g', '?', '/', '1', 'ctrl+k']), setup: async L => { L.SL.ui.tour.start('sessions'); await L.settle(); } },
   { name: 'chord', about: '"g" was pressed and the next key chooses a view', keys: LOWER.split(''), chord: true, setup: async L => {
     const nav = L.SL.ui.nav, chord = nav.chord; L.chords = []; nav.chord = k => { const r = chord(k); L.chords.push([k, r]); return r; }; // the page's own decision whether a key after g was a chord
     L.doc.body.focus(); L.press('g'); await L.settle(); L.chords = [];

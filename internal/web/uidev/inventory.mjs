@@ -167,6 +167,8 @@ function instrument(SL) {
   ui.setDraft = () => rec('draft');
   ui.applyMotion = () => {};
   ui.inbox = { toggle: () => rec('inbox:toggle') };
+  ui.tour.start = () => rec('tour');
+  ui.dash.setLocked = v => rec(v ? 'dash:lock' : 'dash:unlock');
   /* a command that answers on the page itself (a card in the chat, a switch of the page's own state) */
   const S = SL.sessions.active;
   S.add = ev => { rec('card:' + (ev && ev.k)); };
@@ -243,6 +245,8 @@ export const SETTING_MAP = [
   // Appearance and motion
   [/^seg:(hover|motion|density|cache|title|navmode|radiomode)$/, { scope: 'browser' }],
   [/^do:railreset$/, { scope: 'browser' }],
+  [/^do:dash-(edit|reset)$/, { scope: 'browser', note: 'the layout of the Cockpit\'s cards, kept in this browser' }],
+  [/^do:tour$/, { scope: 'view' }],
 ];
 
 export function classify(id) {
