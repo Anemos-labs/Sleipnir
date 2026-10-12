@@ -133,21 +133,27 @@ func (s *Swarm) docsTick(now time.Time) {
 	if busy {
 		return // the docs worker is at work: the changes wait for it
 	}
-	id, err := s.Spawn(SpawnReq{Role: DocsRole, Agent: agentID, Title: DocsTaskTitle + " (" + docsSummary(batch) + ")", Brief: docsBrief(batch), Files: docsScope, By: "harness"})
+	// The pass is put on the board first and then assigned by id: a start that fails
+	// leaves this one task in todo, which the next tick hands out again (above),
+	// never a second task for the same changes.
+	task, err := s.Board.CreateTask("harness", TaskSpec{Title: DocsTaskTitle + " (" + docsSummary(batch) + ")", Desc: docsBrief(batch), Role: DocsRole, Files: docsScope})
 	k.mu.Lock()
-	defer k.mu.Unlock()
 	if err != nil {
 		k.retryAt = now.Add(docsRetry)
+		k.mu.Unlock()
 		return
 	}
 	k.pending = k.pending[len(batch):]
-	if m := s.get(id); m != nil {
-		m.mu.Lock()
-		k.open = m.task
-		m.mu.Unlock()
+	k.open, k.last = task.ID, batch[len(batch)-1].task
+	k.mu.Unlock()
+	id, err := s.Spawn(SpawnReq{Role: DocsRole, Agent: agentID, TaskID: task.ID, By: "harness"})
+	if err != nil {
+		k.mu.Lock()
+		k.retryAt = now.Add(docsRetry)
+		k.mu.Unlock()
+		return
 	}
-	k.last = batch[len(batch)-1].task
-	s.emit("docs.pass", map[string]any{"agent": id, "task": k.open, "changes": len(batch)})
+	s.emit("docs.pass", map[string]any{"agent": id, "task": task.ID, "changes": len(batch)})
 }
 
 // isDocsTask reports whether t is the docs worker's own work: a catch-up task, or a

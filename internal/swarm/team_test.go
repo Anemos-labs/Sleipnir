@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/perm"
@@ -159,5 +160,33 @@ func TestTheEngineJudgesTheManagersShell(t *testing.T) {
 		if d := rr.Check(ctx, perm.Request{Agent: "mgr", Tool: "bash", Command: "touch x", Cwd: root, Writes: true}); d.Allow {
 			t.Errorf("a write is allowed: %+v", d)
 		}
+	}
+}
+
+// A docs pass that cannot start (here: the budget is spent) stays one task on the board: retries hand out that task again and never
+// create a second one for the same changes.
+func TestAutoDocsRetriesTheSamePassWhenItCannotStart(t *testing.T) {
+	cfg := Config{MaxWorkers: 8, AutoDocs: true, Team: []string{"backend", "docs"}, BudgetUSD: 1}
+	r := newRVRigWith(t, cfg, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	now := r.sw.deps.Now()
+	r.sw.docsTick(now)
+	r.sw.Board.Restore(&Snapshot{Tasks: []Task{{ID: "T1", Title: "add the cart endpoint", Status: StatusDone, Role: "backend"}}})
+	r.sw.mu.Lock()
+	r.sw.spent = 2 // over the budget: no worker can start
+	r.sw.mu.Unlock()
+	for i := 0; i < 3; i++ {
+		r.sw.docsTick(now.Add(time.Duration(i) * 2 * docsRetry))
+	}
+	var passes []Task
+	for _, tk := range r.sw.Board.Snapshot().Tasks {
+		if strings.HasPrefix(tk.Title, DocsTaskTitle) {
+			passes = append(passes, tk)
+		}
+	}
+	if len(passes) != 1 || passes[0].Status != StatusTodo || passes[0].Owner != "" {
+		t.Fatalf("want one unassigned catch-up task, got %+v", passes)
+	}
+	if !r.sw.docsPending() {
+		t.Error("the pass still counts as pending work")
 	}
 }
