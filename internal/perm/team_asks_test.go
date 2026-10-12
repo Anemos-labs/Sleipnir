@@ -235,3 +235,31 @@ func TestWorkInTheScratchDirectoryAsksNothing(t *testing.T) {
 		}
 	}
 }
+
+// A variable the command line itself set to a known path (SCR="$TMPDIR/x") names that path afterwards: a recursive delete of the
+// scratch copy asks nothing. A variable set twice to different values, from a substitution, or never set stays unknown and asks.
+func TestAVariableSetOnTheSameLineNamesItsPath(t *testing.T) {
+	r := newTeamRig(t, ModeAcceptEdits, nil)
+	t.Setenv("TMPDIR", r.tmp)
+	for _, c := range []struct{ cmd, want string }{
+		{`SCR="$TMPDIR/t2check"; rm -rf "$SCR"; mkdir -p "$SCR/web"; printf 'x' > "$SCR/web/index.html"`, "allow"},
+		{`SCR=$TMPDIR/a; SCR2="${SCR}/b"; rm -rf "$SCR2"`, "allow"},
+		{`SCR="$TMPDIR/a"; [ -d x ] && SCR=/etc; rm -rf "$SCR"`, "ask"},
+		{`SCR="$(mktemp -d)"; rm -rf "$SCR"`, "ask"},
+		{`rm -rf "$NEVER_SET"`, "ask"},
+		{`SCR=` + r.wtA + `/.sleipnir; rm -rf "$SCR"`, "ask"},
+		{`[ -d x ] && SCR="$TMPDIR/a"; rm -rf "$SCR"`, "ask"},
+		{`true || SCR="$TMPDIR/a"; rm -rf "$SCR"`, "ask"},
+		{`if [ -d x ]; then SCR="$TMPDIR/a"; fi; rm -rf "$SCR"`, "ask"},
+		{`SCR="$TMPDIR/a"; read SCR; rm -rf "$SCR"`, "ask"},
+		{`SCR="$TMPDIR/a"; unset SCR; rm -rf "$SCR"`, "ask"},
+		{`SCR="$TMPDIR/a"; for SCR in /etc; do :; done; rm -rf "$SCR"`, "ask"},
+		{`f() { SCR=/etc; }; SCR="$TMPDIR/a"; f; rm -rf "$SCR"`, "ask"},
+		{`echo x | SCR="$TMPDIR/a"; rm -rf "$SCR"`, "ask"},
+	} {
+		d := r.check("be-1", r.wtA, c.cmd)
+		if got := outcome(d); got != c.want {
+			t.Errorf("%q: %s, want %s (%s)", c.cmd, got, c.want, d.Reason)
+		}
+	}
+}
