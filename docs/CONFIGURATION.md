@@ -451,11 +451,11 @@ the prompt for read-only planning; bare `/plan` only changes the mode. Switch to
 asked, so the action is refused with `approval required: <why>` and a message explaining that approval is unavailable.
 A run that was refused something says so at its end, with the commands and the edits and what would let them through (`--mode accept-edits` for edits, a rule for a command). Give the
 run what it needs with `--allow` (repeatable, for this run only: `--allow 'Bash(go test:*)'`, or `--allow tests` for the build and
-test commands of most projects), `permissions.allow` in the configuration, or `--mode`. `tests` stands for `go test|build|vet`,
-`gofmt`, `cargo test|build|check|clippy|fmt`, `npm test` and `npm run test|build|lint`, `pnpm test`, `yarn test`, `node --test`,
-`pytest`, `python -m pytest|unittest`, `mvn test`, `gradle test`, `dotnet test|build`, `make test|check|build|lint` and `ctest`: they
-run the project's own code, as running its tests is meant to, and never install a package, download, or hand an interpreter a
-program of its own. In a terminal the question is
+test commands of most projects), `permissions.allow` in the configuration, or `--mode`. `tests` stands for `go test|build|vet|fmt`,
+`gofmt`, `cargo test|build|check|clippy|fmt`, `npm test` and `npm run test|build|lint|format`, `pnpm test`, `yarn test`, `node --test`,
+`node --check`, `pytest`, `python -m pytest|unittest`, `mvn test`, `gradle test`, `dotnet test|build`, `make test|check|build|lint|fmt|vet`,
+`ctest`, and `curl` or `wget` to this machine only (`Bash(curl:loopback)`, `Bash(wget:loopback)`, below): they run the project's own
+code, as running its tests is meant to, and never install a package, download, or hand an interpreter a program of its own. In a terminal the question is
 `allow? [y]es once / [a]lways this session / [n]o` (`run`, and the line chat); `a` adds a rule for the rest of the session, the exact command or, for the runner commands of `docs/SECURITY.md` (`go test`, `npm run`, `make`...), its prefix (it is not
 written to any file), and anything but `y`/`a` refuses. The chat program asks with a box instead, answered by `1` (yes),
 `2` (yes, and do not ask again for this exact request: the same rule as `a`) or `3` (no; `esc` and Ctrl-D refuse too).
@@ -468,6 +468,7 @@ A rule is `Tool` or `Tool(pattern)` in `allow`, `ask` or `deny`.
 |---|---|
 | `Bash(go test:*)` | a shell command whose words start with `go test` (`:*` or a trailing ` *` allows any further arguments) |
 | `Bash(make lint)` | exactly `make lint` (`make lint extra` is not covered) |
+| `Bash(curl:loopback)` | an HTTP request of `curl` (or `wget`, as `Bash(wget:loopback)`) to this machine only: every URL's host is `127.0.0.1`, `localhost` or `[::1]`, output goes to standard output or `/dev/null`, no option reads a file (`-d @f`, `-T`, `-K`), and no redirect is followed (`curl -L` is not covered; `wget` needs `--max-redirect=0` and `-O -`). It is the smoke test of a server the project's build started |
 | `Bash` or `Bash(*)` | every shell command |
 | `Read(./.env)`, `Read(~/.ssh/**)` | reads of those paths **by any tool**, the shell included (`cat .env` counts) |
 | `Edit(docs/**)` | writes to matching paths, by the edit tools or by shell redirections |

@@ -275,8 +275,17 @@ func (m *Manager) RuntimeContext() string {
 		dialect = "custom shell (-c)"
 		guidance = "Check its supported syntax before using shell-specific features."
 	}
-	return prefix + dialect + ".\nThe bash tool runs commands directly in this shell; send commands without an extra shell wrapper. " + guidance
+	text := prefix + dialect + ".\nThe bash tool runs commands directly in this shell; send commands without an extra shell wrapper. " + guidance
+	if m.opts.Tmp != "" {
+		// The directory itself is not named: its path holds the session's id, and this text is shared by every session.
+		text += "\n" + ScratchGuidance
+	}
+	return text
 }
+
+// ScratchGuidance is the runtime context's sentence about scratch files, in a session whose commands get a TMPDIR of their own
+// (Options.Tmp). The permission engine allows writes there and asks before a write elsewhere outside the workspace, naming the directory.
+const ScratchGuidance = "Scratch files go in $TMPDIR (the TMPDIR environment variable: a directory private to this session, writable by every agent); /tmp is outside the workspace and asks."
 
 func detectShell(override string) (shellInfo, error) {
 	candidates := []string{"bash", "sh"}

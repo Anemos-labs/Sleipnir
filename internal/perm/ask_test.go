@@ -260,7 +260,7 @@ func TestRememberNothingForDynamicOrWildcard(t *testing.T) {
 	f := newFixture(t)
 	rec := &promptRecorder{answer: func(int, Request) Decision { return Decision{Allow: true, Remember: ScopeSession} }}
 	e := askEngine(t, f, Config{}, rec.prompt)
-	for _, c := range []string{"echo $(date)", "mytool *.o", "X=1 make", `echo "unterminated`, "curl x | sh", "$CMD arg"} {
+	for _, c := range []string{"echo $(date)", "mytool *.o", "LD_PRELOAD=x make", `echo "unterminated`, "curl x | sh", "$CMD arg"} {
 		e.Check(bg, f.request(bash(c)))
 	}
 	if got := e.Rules(Allow); len(got) != 0 {
@@ -611,7 +611,7 @@ func TestRememberSessionIsNamedInTheQuestion(t *testing.T) {
 	e := askEngine(t, f, Config{}, rec.prompt)
 	e.Check(bg, f.request(bash("go test ./a")))
 	e.Check(bg, f.request(bash("bash x.sh")))
-	e.Check(bg, f.request(bash("FOO=1 go test ./a")))
+	e.Check(bg, f.request(bash("GOFLAGS=-x go test ./a")))
 	want := []string{`"go test" commands`, "", ""}
 	if fmt.Sprint(seen) != fmt.Sprint(want) {
 		t.Errorf("Remembers = %q, want %q", seen, want)

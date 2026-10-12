@@ -24,7 +24,7 @@ func Isolations() []string { return slices.Clone(isolations) }
 const TestsPreset = "tests"
 
 // TestsPresetSummary says in one line what the tests preset allows.
-const TestsPresetSummary = "go, cargo, npm, pnpm, yarn, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint and vet, and go mod init and tidy, never install or run"
+const TestsPresetSummary = "go, cargo, npm, pnpm, yarn, node, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint, format and vet, go mod init and tidy, and curl or wget to this machine only (127.0.0.1, localhost, [::1]), never install or run"
 
 // ExpandAllow turns the names of sets of rules into the rules (TestsPreset into perm.TestsAllow, surrounding spaces ignored);
 // anything else is a rule as it is written. The result is a new slice.

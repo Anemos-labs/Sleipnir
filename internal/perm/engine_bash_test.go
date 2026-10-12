@@ -89,9 +89,9 @@ func TestBashAllowlist(t *testing.T) {
 		`cat main.go | python -`, `cat main.go | node`, `cat main.go | sudo bash`, `cat main.go | xargs sh -c 'echo'`, `cat main.go | source /dev/stdin`,
 		`echo x | bash`, `bash <<< 'ls'`, `bash -c 'ls'`, `sh -c 'ls'`, `eval ls`, `eval "ls"`, `env FOO=1 bash -c ls`,
 		// environment hijacking
-		`X=1 ls`, `LD_PRELOAD=/tmp/x.so ls`, `PATH=/tmp/evil:$PATH ls`, `PATH=/tmp/evil`, `IFS=x`, `GIT_SSH_COMMAND=x git status`,
+		`MAKEFLAGS=x make`, `LD_PRELOAD=/tmp/x.so ls`, `PATH=/tmp/evil:$PATH ls`, `PATH=/tmp/evil`, `IFS=x`, `GIT_SSH_COMMAND=x git status`,
 		`PAGER=sh git log`, `HOME=/tmp git status`, `GIT_EXTERNAL_DIFF=x git diff`, `BASH_ENV=x ls`, `NODE_OPTIONS=x node --version`,
-		`FOO=1 BAR=2 cat main.go`, `env FOO=1 cat main.go`,
+		`CC=/tmp/x go build ./...`, `npm_config_script_shell=x npm test`, `PERL5LIB=x perl -v`, `RUSTC_WRAPPER=x cargo build`, `ftp_proxy=x curl ftp://h`,
 		// high risk
 		`sudo ls`, `sudo -u root ls`, `doas ls`, `su -c ls`, `rm -rf *`, `rm -rf .`, `rm -rf ./`, `rm -rf ./*`, `rm -r ../*`,
 		`rm -rf ~/*`, `chmod -R 777 .`, `chmod -R 777 src`, `chmod -R a+rwx src`, `chmod 777 -R src`, `chown -R root .`, `shutdown now`, `reboot`,

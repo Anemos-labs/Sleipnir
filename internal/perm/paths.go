@@ -127,7 +127,7 @@ func (ev *evaluator) resolve(u pathUse, cw *cwdSet) []access {
 	}
 	base := access{
 		raw: raw, read: !u.write || u.both, write: u.write || u.both,
-		tree: u.tree, content: u.content, nameOnly: u.nameOnly,
+		tree: u.tree, content: u.content, nameOnly: u.nameOnly, format: u.format,
 	}
 	// mk builds an access. unclean is the path as the kernel will walk it, ".."
 	// components included: "link/../x" is the parent of link's target, so it must

@@ -243,7 +243,8 @@ func NewEngine(cfg Config) (*Engine, error) {
 	rs := newResolver(home, cfg.Root, append(append([]string(nil), cfg.ExtraRoots...), cfg.TreeParents...))
 	if cfg.Tmp != "" {
 		rs.tmp = cleanAbs(cfg.Tmp)
-		rs.roots = append(rs.roots, rootPair{lex: rs.tmp, real: realPath(rs.tmp)})
+		rs.tmpReal = realPath(rs.tmp)
+		rs.roots = append(rs.roots, rootPair{lex: rs.tmp, real: rs.tmpReal})
 	}
 	rs.addTreeParents(cfg.TreeParents)
 	e := &Engine{cfg: cfg, rs: rs, mode: mode, roles: map[string]*profile{}, persisted: map[Rule]bool{}}

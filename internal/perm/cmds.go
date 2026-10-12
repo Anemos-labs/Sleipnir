@@ -436,7 +436,8 @@ func pathCandidates(a string) []string {
 	return out
 }
 
-// benign environment assignments that cannot change what a command executes.
+// benignEnv are environment assignments that cannot change what a command executes, named although a prefix of dangerousEnvPrefixes
+// covers some of them.
 var benignEnv = map[string]bool{
 	"LANG": true, "LANGUAGE": true, "TZ": true, "NO_COLOR": true, "FORCE_COLOR": true, "CLICOLOR": true,
 	"CLICOLOR_FORCE": true, "TERM": true, "COLUMNS": true, "LINES": true, "CI": true,
@@ -445,17 +446,33 @@ var benignEnv = map[string]bool{
 	"PYTHONDONTWRITEBYTECODE": true, "PYTHONUNBUFFERED": true, "PYTHONIOENCODING": true,
 }
 
+// dangerousEnv are the variables that change which program runs, what it loads, where it sends requests or which configuration it
+// reads, whatever their value. Names are compared in upper case.
 var dangerousEnv = map[string]bool{
 	"PATH": true, "HOME": true, "IFS": true, "ENV": true, "CDPATH": true, "PROMPT_COMMAND": true,
 	"PS1": true, "PS2": true, "PS3": true, "PS4": true, "EDITOR": true, "VISUAL": true, "PAGER": true,
 	"BROWSER": true, "TMPDIR": true, "TERMINFO": true, "OPENSSL_CONF": true, "SSL_CERT_FILE": true,
-	"CURL_CA_BUNDLE": true, "REQUESTS_CA_BUNDLE": true, "http_proxy": true, "https_proxy": true,
-	"HTTP_PROXY": true, "HTTPS_PROXY": true, "ALL_PROXY": true, "NO_PROXY": true,
+	"CURL_CA_BUNDLE": true, "REQUESTS_CA_BUNDLE": true, "CLASSPATH": true, "ZDOTDIR": true, "HOSTALIASES": true,
+	"LOCALDOMAIN": true, "NETRC": true, "WGETRC": true, "KUBECONFIG": true, "VIRTUAL_ENV": true,
+	// the compilers and tools a build runs (go build with cgo runs $CC)
+	"CC": true, "CXX": true, "CPP": true, "LD": true, "AR": true, "AS": true, "FC": true, "NM": true, "RANLIB": true,
+	"STRIP": true, "OBJCOPY": true, "OBJDUMP": true, "MAKE": true, "MAKEFILES": true, "MFLAGS": true,
 }
 
+// dangerousEnvPrefixes are the families of variables that steer a toolchain, a package manager, a cloud client or the shell.
 var dangerousEnvPrefixes = []string{
 	"LD_", "DYLD_", "BASH_", "SHELL", "PYTHON", "NODE_", "NPM_", "PERL", "RUBY", "JAVA", "_JAVA",
 	"GIT_", "GO", "CARGO_", "RUST", "XDG_", "SSH_", "SUDO_", "GCONV", "MALLOC_", "LESS", "MAN",
+	"MAKE", "YARN_", "PNPM_", "BUN_", "DENO_", "PIP_", "UV_", "CONDA", "GEM_", "BUNDLE", "MAVEN", "GRADLE",
+	"DOTNET_", "MSBUILD", "CMAKE", "PKG_CONFIG", "AWS_", "GOOGLE_", "GCLOUD", "AZURE_", "DOCKER_", "KUBE", "TF_",
+	"CURL", "WGET", "HIST", "LOCPATH", "NLSPATH", "RESOLV", "PHP", "LUA", "SSL", "OPENSSL", "JULIA", "COMPOSER", "CGO_",
+}
+
+// dangerousEnvSuffixes are the endings of variable names that hold search paths, options, wrappers, commands or proxies of some
+// program (PERL5LIB, MAVEN_OPTS, RUSTC_WRAPPER, FOO_COMMAND, ftp_proxy).
+var dangerousEnvSuffixes = []string{
+	"PATH", "_OPTS", "OPTIONS", "FLAGS", "LIB", "_HOME", "_CONFIG", "RC", "_COMMAND", "_CMD", "_EXEC", "_WRAPPER",
+	"_SHELL", "_PROXY", "_PRELOAD", "_PLUGINS", "_HOOK", "_HOOKS",
 }
 
 // envName extracts an assignment's variable name, removing the append-assignment plus suffix.
@@ -464,24 +481,26 @@ func envName(assign string) string {
 	return strings.TrimSuffix(n, "+")
 }
 
-// envBenign recognizes allowlisted environment assignments and locale variables prefixed LC_.
-func envBenign(assign string) bool {
-	n := envName(assign)
-	return benignEnv[n] || strings.HasPrefix(n, "LC_")
-}
-
-// envDangerous reports assignments that change how later commands resolve or
-// behave; benign names win over the prefix list (GOOS is fine, GOFLAGS is not).
+// envDangerous reports assignments that change which program runs, what it loads, where it connects or which configuration it reads
+// (dangerousEnv, its prefixes and suffixes); benign names win over those lists (GOOS is fine, GOFLAGS is not). Any other assignment
+// (PORT=8080, NOTES_FILE=x, DATABASE_URL=...) gives a program a value it reads, as an argument would: the command is judged as it is
+// without it, and a value that names a file is judged as a read of that file.
 func envDangerous(assign string) bool {
 	n := envName(assign)
 	if benignEnv[n] || strings.HasPrefix(n, "LC_") {
 		return false
 	}
+	n = strings.ToUpper(n)
 	if dangerousEnv[n] {
 		return true
 	}
 	for _, p := range dangerousEnvPrefixes {
 		if strings.HasPrefix(n, p) {
+			return true
+		}
+	}
+	for _, x := range dangerousEnvSuffixes {
+		if strings.HasSuffix(n, x) {
 			return true
 		}
 	}
@@ -572,4 +591,56 @@ var sharedBranches = map[string]bool{
 // sharedBranch recognizes configured shared branches and names prefixed with release or hotfix.
 func sharedBranch(name string) bool {
 	return sharedBranches[name] || strings.HasPrefix(name, "release") || strings.HasPrefix(name, "hotfix")
+}
+
+// formatters are the source formatters whose operands are rewritten in place: program, and the subcommand where the program does more
+// than format ("go fmt", "cargo fmt", "ruff format"). A formatter writes only files of its language below its operands, and writes them
+// back with the same meaning, so its walk of a tree is not a write into every directory of that tree (access.format).
+var formatters = map[string]string{
+	"gofmt": "", "goimports": "", "gofumpt": "", "go": "fmt", "cargo": "fmt", "rustfmt": "", "prettier": "", "black": "",
+	"isort": "", "ruff": "format", "clang-format": "", "shfmt": "", "terraform": "fmt", "dotnet": "format",
+}
+
+// formatter reports whether prog with args is a source formatter (formatters): a program with no subcommand listed is one whatever its
+// arguments, and a program with one only when its first argument is that subcommand.
+func formatter(prog string, args []string) bool {
+	sub, ok := formatters[prog]
+	if !ok {
+		return false
+	}
+	return sub == "" || len(args) > 0 && args[0] == sub
+}
+
+// gitRepoOnly are the git subcommands, off the read-only list, that change only the repository (objects, refs, the index) and never a
+// file of the work tree: their operands are pathspecs, revisions or repositories that they read. The others (checkout, reset, merge,
+// stash, clean, ...) can rewrite the work tree and keep the analysis of an unlisted command. The subcommands of the read-only list are
+// not here: one that left that list did so for an option that writes a file (--output).
+var gitRepoOnly = map[string]bool{
+	"fetch": true, "add": true, "commit": true, "tag": true, "notes": true, "merge-tree": true, "fsck": true, "gc": true,
+	"prune": true, "repack": true, "hash-object": true, "update-index": true, "push": true, "ls-remote": true, "branch": true,
+}
+
+// gitRepoUses returns the operands of a git command whose subcommand writes only into the repository (gitRepoOnly) as reads, and ok
+// false for any other git command. Global options other than --no-pager and -P (git -c, -C, --git-dir, --work-tree) keep the
+// conservative analysis: they can point the command at another repository or run a program. The command itself is still unlisted:
+// it asks, and only the reason and the paths it is judged by change.
+func gitRepoUses(args []string) ([]pathUse, bool) {
+	i := 0
+	for i < len(args) && (args[i] == "--no-pager" || args[i] == "-P") {
+		i++
+	}
+	if i >= len(args) || !gitRepoOnly[args[i]] {
+		return nil, false
+	}
+	var uses []pathUse
+	for _, a := range args[i+1:] {
+		if strings.HasPrefix(a, "-") {
+			if _, v, ok := strings.Cut(a, "="); ok && pathLike(v) {
+				uses = append(uses, pathUse{raw: v}) // --pathspec-from-file=f, --template=f
+			}
+			continue
+		}
+		uses = append(uses, pathUse{raw: a, tree: true, content: true})
+	}
+	return uses, true
 }

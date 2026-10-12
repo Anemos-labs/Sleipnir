@@ -7,6 +7,21 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Permissions: a whole-tree formatter (`gofmt -w .`, `go fmt ./...`,
+  `prettier --write .`, `cargo fmt`, `ruff format`, ...) is no longer taken
+  to write into `.sleipnir/` or `.claude/`; an `ask` or `deny` rule about a
+  directory below its operand does not cover it. git subcommands that write
+  only into the repository (`fetch`, `add`, `commit`, `tag`, ...) read their
+  operands, so their question names the command and can be remembered. An
+  environment assignment of a plain value (`PORT=8080 ./bin/app`) no longer
+  asks by itself; a denylist of variables that steer what runs (`PATH`,
+  `LD_*`, `GIT_*`, `CC`, `MAKEFLAGS`, `*_PROXY`, `*_OPTS`, ...) still does.
+  The tests preset adds `go fmt`, `node --check`, `npm run format`,
+  `make fmt|vet`, and `curl`/`wget` to this machine only
+  (`Bash(curl:loopback)`, a new rule form). A writer in worktree isolation
+  may write the session's `$TMPDIR`. Prompt bytes: the runtime layer of a
+  session with a private `TMPDIR` gains one sentence about it, so that layer
+  misses the cache once.
 - The built-in worker roles are architect (read-only planner), scout,
   backend, frontend, devops, tester, docs and reviewer. `fullstack` is no
   longer offered; training tasks and resumed sessions that name it keep it.

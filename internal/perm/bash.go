@@ -47,8 +47,9 @@ type unit struct {
 	accesses []access
 	redirs   []access
 	high     *riskInfo
-	dyn      string // reason the command word itself cannot be judged
-	envBad   string // env assignment that changes what the command runs
+	dyn      string   // reason the command word itself cannot be judged
+	envBad   string   // env assignment that changes what the command runs
+	envAcc   []access // the files the values of its environment assignments name (read)
 	network  bool
 
 	tool bool // a non-shell tool request
@@ -266,18 +267,15 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 	u := &unit{simple: &sp, label: label(s), name: shellparse.ProgramName(s.Program)}
 
 	for _, env := range s.Env {
-		bad := false
-		if s.Program == "" {
-			bad = envDangerous(env)
-		} else {
-			bad = !envBenign(env)
-		}
-		if bad && u.envBad == "" {
+		// An assignment of a plain value (PORT=8080 ./bin/app) changes what a program reads, not which program runs or what it loads:
+		// only the names that do (PATH, LD_PRELOAD, GIT_*, a proxy, see envDangerous) keep the command from any allow rule. A value
+		// that names a file is judged as a read of that file, whether or not a rule allows the command (envAcc).
+		if envDangerous(env) && u.envBad == "" {
 			u.envBad = envName(env)
 		}
 		if _, val, ok := strings.Cut(env, "="); ok {
 			for _, c := range pathCandidates(val) {
-				u.accesses = append(u.accesses, ev.resolve(pathUse{raw: c}, cw)...)
+				u.envAcc = append(u.envAcc, ev.resolve(pathUse{raw: c}, cw)...)
 			}
 		}
 	}
@@ -308,6 +306,16 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 			u.why = "not on the read-only allowlist"
 		}
 		uses = unknownUses(s.Args)
+		if u.name == "git" {
+			if g, ok := gitRepoUses(s.Args); ok {
+				uses = g // writes only into the repository: its operands are read
+			}
+		}
+		if formatter(u.name, s.Args) {
+			for i := range uses {
+				uses[i].format = true
+			}
+		}
 		if u.name == "" {
 			// ./tool or /opt/x/tool: running a file reads it; it is not a write.
 			uses = append([]pathUse{{raw: s.Program}}, uses...)

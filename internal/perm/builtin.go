@@ -23,6 +23,10 @@ type access struct {
 	// loop's word list), so files whose secrecy is in their contents are not at risk.
 	nameOnly bool
 	redir    bool // comes from a redirection rather than an argument
+	// format: a source formatter's operand. Its walk rewrites the files of one language into an equivalent layout, so an ask or
+	// deny rule about a directory below the operand (Edit(./.sleipnir/**) under "gofmt -w .") does not cover it; a rule about the
+	// operand itself, or a directory above it, still does.
+	format bool
 }
 
 // tier says how firmly a built-in protection applies.

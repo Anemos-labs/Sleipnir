@@ -137,6 +137,9 @@ type pathUse struct {
 	// nameOnly: only names and metadata are looked at, not contents.
 	nameOnly   bool
 	unresolved bool // package/module selector with no statically known filesystem location
+	// format: the operand of a source formatter (gofmt -w, prettier --write), which rewrites the files of its language below the
+	// operand into an equivalent layout (see formatter).
+	format bool
 }
 
 // analyse applies the spec to args: it returns the files the command reads, or
