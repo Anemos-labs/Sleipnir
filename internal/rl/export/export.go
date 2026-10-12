@@ -101,7 +101,7 @@ type Options struct {
 	// rank 1 is then the best by verifier score and the rest of the ranking, for
 	// long tasks whose episodes rarely pass outright (the siblings of a branch
 	// point). A group with a passing episode is paired as before; flagged
-	// episodes are dropped before pairing either way (DropFlagged).
+	// episodes are dropped before pairing when DropFlagged is true.
 	PairUnverified bool
 	// DropFlagged drops episodes carrying a hard flag (rl.HardFlag: infra_error,
 	// truncated, replay_mismatch, contaminated, hack:*) and, for the training
