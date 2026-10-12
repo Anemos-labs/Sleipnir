@@ -241,12 +241,20 @@ func TestRebuildSizing(t *testing.T) {
 		if a := rebuildAgents(c.loc); a != c.agents {
 			t.Errorf("%d lines: %d agents, want %d", c.loc, a, c.agents)
 		}
-		if w := rebuildBudget(c.loc, rl.Budget{}).WallS; w != c.wall {
-			t.Errorf("%d lines: wall %d s, want %d", c.loc, w, c.wall)
+		b := rebuildBudget(c.loc, rl.Budget{})
+		if b.WallS != c.wall {
+			t.Errorf("%d lines: wall %d s, want %d", c.loc, b.WallS, c.wall)
+		}
+		// The request budget counts the whole team's requests, so it grows with the team and the wall clock.
+		if want := c.agents * c.wall * teamRequestsPerAgentHour / 3600; b.Requests != max(want, b.Steps*5/2) {
+			t.Errorf("%d lines: %d requests, want %d", c.loc, b.Requests, max(want, b.Steps*5/2))
 		}
 	}
 	if w := rebuildBudget(4000, rl.Budget{WallS: 60}).WallS; w != 60 {
 		t.Errorf("an explicit wall clock was overridden: %d", w)
+	}
+	if r := rebuildBudget(4000, rl.Budget{Requests: 9}).Requests; r != 9 {
+		t.Errorf("an explicit request budget was overridden: %d", r)
 	}
 }
 
