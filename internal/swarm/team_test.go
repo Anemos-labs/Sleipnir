@@ -123,6 +123,20 @@ func TestAutoDocsGivesTheDocsWorkerTheAcceptedWork(t *testing.T) {
 	if !r.sw.docsPending() || !strings.Contains(r.sw.DocsState(), "pass "+catchUp.ID+" in progress") {
 		t.Errorf("state %q", r.sw.DocsState())
 	}
+
+	// A pass that goes back to the board (its worker's run was refused or handed back) is given to the idle docs worker again.
+	owner := catchUp.Owner
+	rvWait(t, owner+" idle", func() bool { return r.idle(owner) })
+	cur, _ := r.sw.Board.Snapshot().Task(catchUp.ID)
+	if cur.Status != StatusTodo {
+		if err := r.sw.Board.Unassign("mgr", cur.ID, "test: handed back"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r.sw.docsTick(r.sw.deps.Now())
+	if again, _ := r.sw.Board.Snapshot().Task(catchUp.ID); again.Owner != owner || again.Status == StatusTodo {
+		t.Errorf("the requeued pass is not the docs worker's again: %+v", again)
+	}
 }
 
 // A manager whose shell the engine judges (Config.JudgeManagerShell: the harness's own plan-mode profile) may chain reads and name
