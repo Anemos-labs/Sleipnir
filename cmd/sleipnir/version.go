@@ -185,6 +185,9 @@ func newerInstalled(running, self string, dirs []string, onPath map[string]bool,
 	if !releaseBuild(running) && pseudoRE.FindStringSubmatch(running) == nil {
 		return staleBinary{}, false // a build that names no release cannot say what is newer than it
 	}
+	if r, err := filepath.EvalSymlinks(self); err == nil {
+		self = r // compared with each copy's resolved path: macOS's /var is /private/var
+	}
 	var best staleBinary
 	name := "sleipnir"
 	if runtime.GOOS == "windows" {
