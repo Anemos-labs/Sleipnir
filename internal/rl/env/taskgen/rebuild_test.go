@@ -321,6 +321,7 @@ func TestRebuildGoStubs(t *testing.T) {
 		t.Errorf("the seal directory holds %v, want only the accepted start", entries)
 	}
 	if !strings.Contains(task.Prompt, "reduced to stubs") || !strings.Contains(task.Prompt, "- `example.com/rebuild/util` (util/") ||
+		!strings.Contains(task.Prompt, "fetching the project's original sources from elsewhere") ||
 		strings.Index(task.Prompt, "rebuild/util`") > strings.Index(task.Prompt, "rebuild/core`") {
 		t.Errorf("prompt:\n%s", task.Prompt)
 	}

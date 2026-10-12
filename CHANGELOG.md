@@ -13,6 +13,12 @@ they do not indicate whether a change has been released.
   no address: a rebuild team ran `pip download ncclient==0.6.13` to get the
   sources it was asked to write. The names are the upstream repository's
   and, for a Python task, the scope's top-level modules.
+- The prompts of `rl taskgen chain` and `rl taskgen rebuild` tasks say that
+  fetching the project's code from elsewhere (its repository, a mirror, a
+  module proxy or a package index) is not allowed. Teams on rebuild tasks
+  tried `go mod download` and `curl` of the upstream sources, which the
+  network detector flags, losing whole rollouts. Tasks generated before keep
+  their prompt.
 - The network detector (`hack:network`) knows the upstream of harvested
   tasks from `meta.source` (`repo` or `url`, when it is a URL), so a chain
   or rebuild team asking for the project's own code is flagged even when the
