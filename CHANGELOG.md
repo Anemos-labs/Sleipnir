@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The prompts of `rl taskgen chain` and `rl taskgen rebuild` tasks say that
+  fetching the project's code from elsewhere (its repository, a mirror, a
+  module proxy or a package index) is not allowed. Teams on rebuild tasks
+  tried `go mod download` and `curl` of the upstream sources, which the
+  network detector flags, losing whole rollouts. Tasks generated before keep
+  their prompt.
 - `rl export --format dpo` pairs the siblings of a branch point. For a
   branch episode (`fork` set) the episode unit compares its root agent from
   the fork to the first rebase after it: it stops collecting at that rebase,

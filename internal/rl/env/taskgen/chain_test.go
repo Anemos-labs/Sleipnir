@@ -101,6 +101,7 @@ func TestFromChainsEndToEnd(t *testing.T) {
 		"This task is a series of 3 milestones",
 		"Milestone 1:\nAdd Sub, the difference of two numbers\n\nMilestone 2:\nMultiplication is missing\n\nWe need Mul(a, b).\n\nMilestone 3:\nAdd Div\n\n",
 		"Do not edit existing test files.",
+		"fetching the project's later code from elsewhere (its repository, a mirror, a module proxy or a package index) is not allowed.",
 	}
 	for _, w := range wantPrompt {
 		if !strings.Contains(task.Prompt, w) {

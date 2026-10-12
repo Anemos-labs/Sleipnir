@@ -910,7 +910,7 @@ func BuildChainPrompt(milestones []string) string {
 	for i, m := range milestones {
 		fmt.Fprintf(&b, "\n\nMilestone %d:\n%s", i+1, strings.TrimSpace(m))
 	}
-	b.WriteString("\n\nYour work will be checked by the project's test suite, which you cannot see in full: each milestone earns its share of the score as its tests pass, and tests that pass now must keep passing. Do not edit existing test files.")
+	b.WriteString("\n\nYour work will be checked by the project's test suite, which you cannot see in full: each milestone earns its share of the score as its tests pass, and tests that pass now must keep passing. Do not edit existing test files. Write the changes yourself: fetching the project's later code from elsewhere (its repository, a mirror, a module proxy or a package index) is not allowed.")
 	return b.String()
 }
 

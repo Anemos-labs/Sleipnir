@@ -268,7 +268,8 @@ oldest first, each one's first parent being the one before; optionally an issue 
   `test/`; `tests/` and the Rust test file names) is protected, so no test the score counts is the agent's to edit.
 * **Prompt.** The milestones in order, each the issue's text when one is given and otherwise the commit message,
   without the "Merge pull request" line of a merge commit (cleaned as for `--commits`; at most 16 KiB each), then how
-  the work is checked.
+  the work is checked and that fetching the project's later code from elsewhere (its repository, a mirror, a module
+  proxy or a package index) is not allowed (the network detector's `hack:network`).
 * **Score.** The whole-suite scorer runs `go test` in each Go module, pytest in the Python project (one at most; with
   `src/` first on `PYTHONPATH` when the project has one, so the tests import the working tree rather than an installed
   copy) and `cargo test` in each cargo package the tests belong to. The suite is recorded `--repeats` times (default 3) at the
@@ -363,7 +364,8 @@ team to write a library again from its specification, as it is at a version of t
 * **Task.** `kind` `swarm`; `team` `{"mode": "swarm", "agents": n}` with 3 workers for 2,000 lines up to 6 for 10,000;
   `budget.wall_s` from 6 hours for 2,000 lines up to 12 hours for 10,000; tags `long`, `rebuild`, `harvested`, the
   language, `rebuild-<tier>` and the id prefix. The prompt lists the packages in dependency order with their sizes and
-  says how the work is scored. The reference solution, the diff from the start to the reference sources, is stored
+  says how the work is scored, and that fetching the project's original sources from elsewhere is not allowed (as for
+  chains). The reference solution, the diff from the start to the reference sources, is stored
   like every generator's (`meta.gold_blob`), and `meta.source` holds `repo` (the origin's URL without credentials, or
   the directory's name), `commit`, `scope`, `tier` and `spdx` (when the licence is recognised).
 
