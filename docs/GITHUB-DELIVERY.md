@@ -5,6 +5,12 @@ in the chat composer. The terminal equivalents are `--auto-fix`, `--auto-merge`
 and `/delivery fix|merge|both|off`. These choices reset for the next objective.
 `gh` must be installed and authenticated for the repository.
 
+Windows delivery is currently unsupported: the existing Windows hard path
+protection classifies PR URL arguments as unsupported streams/device paths and
+refuses them even in bypass mode. Delivery on Windows requires addressing that
+URL/path classification first; do not disable permission protections to work
+around it.
+
 PR discovery requires a working branch with an intended Git push remote and exactly
 one push URL. Configure the branch's upstream/push remote (for example with
 `git push --set-upstream origin HEAD`); the controller resolves that push URL with

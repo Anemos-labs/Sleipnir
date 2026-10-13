@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -426,7 +427,13 @@ func TestGeneratedStepCommandsRespectGuardedAsks(t *testing.T) {
 		}
 		command := strings.Join(words, " ")
 		v := e.Classify(perm.Request{Tool: "Bash", Cwd: root, Command: command})
-		if v.Verdict != perm.Allow || strings.Contains(v.Rule, "Edit(") {
+		// Windows currently rejects URL colons as unsupported path streams.
+		// Assert that exact hard denial, not a protected-file ask or any other denial.
+		if runtime.GOOS == "windows" && slices.Contains(args, "https://github.com/owner/repo/pull/4") {
+			if v.Verdict != perm.Deny || v.Tier != "hard" || v.NoOneToAsk || strings.Contains(v.Rule, "Edit(") || v.Why != "Windows streams, device names, and names ending in dots or spaces are not supported" {
+				t.Fatalf("unexpected Windows URL classification: %+v\n%s", v, command)
+			}
+		} else if v.Verdict != perm.Allow || strings.Contains(v.Rule, "Edit(") {
 			t.Fatalf("generated command blocked: %+v\n%s", v, command)
 		}
 		if slices.Contains(args, "graphql") {
