@@ -505,7 +505,11 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 func (h *webHostImpl) configIsolation(dir string) bool {
 	cfg, report, _ := config.Load(config.LoadOpts{Cwd: dir, Home: h.base.Home, UntrustedProject: true})
 	kind := report.KindOf("swarm.isolation")
-	return cfg != nil && cfg.Swarm.Isolation != "" && kind != "" && kind != "defaults"
+	if cfg == nil || cfg.Swarm.Isolation == "" || kind == "" || kind == "defaults" {
+		return false
+	}
+	// Untrusted repository files cannot turn off the team's worktree fallback.
+	return !((kind == "project" || kind == "local") && cfg.Swarm.IsolationMode() == config.IsolationNone)
 }
 
 // preflightIsolation checks the isolation settings of a new session in dir (session.PreflightIsolation) before it starts: 409

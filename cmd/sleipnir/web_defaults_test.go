@@ -67,6 +67,27 @@ func TestConfigIsolationDistinguishesDefaultFromExplicitNone(t *testing.T) {
 	}
 }
 
+func TestConfigIsolationIgnoresUntrustedSharedIsolation(t *testing.T) {
+	for _, filename := range []string{"config.json", "config.local.json"} {
+		for _, mode := range []string{"none", "shared", "worktree"} {
+			t.Run(filename+"/"+mode, func(t *testing.T) {
+				project := webWorld(t)
+				h := &webHostImpl{base: session.Options{Home: t.TempDir()}}
+				dir := filepath.Join(project, ".sleipnir")
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, filename), []byte(`{"swarm":{"isolation":"`+mode+`"}}`), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if got := h.configIsolation(project); got != (mode == "worktree") {
+					t.Fatalf("explicit isolation = %v for untrusted %s", got, mode)
+				}
+			})
+		}
+	}
+}
+
 // A request that arrives while the session starts waits for the start instead of being refused, and is answered when the start
 // ends (here: it failed, so there is no session); a closed tab answers at once.
 func TestARequestWaitsForTheSessionToStart(t *testing.T) {
