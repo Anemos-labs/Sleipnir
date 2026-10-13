@@ -100,9 +100,6 @@ type member struct {
 	stuckWarn bool
 	autoRuns  int
 	mailSeq   uint64 // advances for each received message, including coalesced mail
-	// needsTreeSync defers a manager's resume refresh to the worker's next claim,
-	// so another goroutine never changes its checkout during an active tool call.
-	needsTreeSync bool
 	// mailWakes counts the runs peer mail started for the current task, and wakeLimited
 	// that the bound on them (Config.MaxMailWakes) was reached and reported. wakeMu makes
 	// "is the bound reached, wake, count" one step among the senders that do it at once.

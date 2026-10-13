@@ -581,6 +581,15 @@ func TestResumeBringsTheBlockedWorkersTreeUpToDate(t *testing.T) {
 }
 
 func TestBusyWorkerResumeRefreshesOnItsNextClaim(t *testing.T) {
+	testActiveClaimRefresh(t, true)
+}
+
+func TestDoingWorkerSelfClaimRefreshesWithoutResume(t *testing.T) {
+	testActiveClaimRefresh(t, false)
+}
+
+func testActiveClaimRefresh(t *testing.T, resume bool) {
+	t.Helper()
 	waiting, proceed := make(chan struct{}), make(chan struct{})
 	released := false
 	defer func() {
@@ -588,9 +597,13 @@ func TestBusyWorkerResumeRefreshesOnItsNextClaim(t *testing.T) {
 			close(proceed)
 		}
 	}()
+	first := []rvToolCall{writeCall("a.txt", "preserved draft\n")}
+	if resume {
+		first = append(first, rvToolCall{"task", map[string]any{"action": "block", "id": "T1", "text": "need frontend integration"}})
+	}
 	sc := script{
 		"be-1": {
-			act(writeCall("a.txt", "preserved draft\n"), rvToolCall{"task", map[string]any{"action": "block", "id": "T1", "text": "need frontend integration"}}),
+			act(first...),
 			func(c *rvCall) rvReply {
 				close(waiting)
 				<-proceed
@@ -611,9 +624,11 @@ func TestBusyWorkerResumeRefreshesOnItsNextClaim(t *testing.T) {
 	}
 	r.mustSpawn("frontend", "edit b", "b.txt")
 	r.waitStatus("T2", StatusReview)
-	res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "resume", "id": "T1"})
-	if res.IsError {
-		t.Fatal(res.Text)
+	if resume {
+		res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "resume", "id": "T1"})
+		if res.IsError {
+			t.Fatal(res.Text)
+		}
 	}
 	if got := readText(t, filepath.Join(r.cwd("be-1"), "b.txt")); got != "bravo\n" {
 		t.Fatalf("manager changed a busy worker's checkout: %q", got)

@@ -135,29 +135,20 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		return c.Env.Finish(string(data), false), nil
 	case "claim":
 		ro := s.roles[c.Env.Role].ReadOnly
-		before, _ := s.Board.Snapshot().Task(in.ID)
 		if err := s.Board.claim(me, in.ID, s.claimCheck(me, ro)); err != nil {
 			return tools.Errorf("%v", err), nil
 		}
 		s.trackClaim(me, in.ID)
 		// A self-claim is the same handoff as spawn reuse: dependencies may have
 		// landed while this persistent worker was planning in an older checkout.
+		// Repeated claims also refresh: peers can merge while this task stays doing.
 		if m := s.get(me); m != nil && m.tree != nil {
-			m.mu.Lock()
-			refresh := m.needsTreeSync
-			m.needsTreeSync = false
-			m.mu.Unlock()
-			if refresh || before.Owner != me || before.Status != StatusDoing {
-				if note, err := s.syncTree(ctx, m); err != nil {
-					m.mu.Lock()
-					m.needsTreeSync = true
-					m.mu.Unlock()
-					return text("%s is yours, but the checkout could not receive integrated work: %s. Repair the checkout or ask the manager before implementing.", in.ID, cleanText(err.Error(), 200)), nil
-				} else if note != "" {
-					return text("%s is yours. %s Resolve these conflicts before implementing.", in.ID, note), nil
-				}
-				return text("%s is yours; your checkout now includes integrated work. Re-read the relevant files before implementing.", in.ID), nil
+			if note, err := s.syncTree(ctx, m); err != nil {
+				return text("%s is yours, but the checkout could not receive integrated work: %s. Repair the checkout or ask the manager before implementing.", in.ID, cleanText(err.Error(), 200)), nil
+			} else if note != "" {
+				return text("%s is yours. %s Resolve these conflicts before implementing.", in.ID, note), nil
 			}
+			return text("%s is yours; your checkout now includes integrated work. Re-read the relevant files before implementing.", in.ID), nil
 		}
 		return text("%s is yours", in.ID), nil
 	case "revise", "resolve":
