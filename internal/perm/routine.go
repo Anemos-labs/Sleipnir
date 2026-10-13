@@ -35,12 +35,17 @@ func installs(prog string, args []string) bool {
 	if !ok || len(args) == 0 {
 		return false
 	}
-	if prog == "python" || prog == "python3" {
-		return len(args) > 1 && args[0] == "-m" && (args[1] == "pip" || args[1] == "ensurepip")
-	}
-	for _, s := range subs {
-		if args[0] == s {
-			return true
+	for i, arg := range args {
+		if prog == "python" || prog == "python3" {
+			if arg == "-m" && i+1 < len(args) && (args[i+1] == "pip" || args[i+1] == "ensurepip") {
+				return true
+			}
+			continue
+		}
+		for _, s := range subs {
+			if arg == s {
+				return true
+			}
 		}
 	}
 	return false

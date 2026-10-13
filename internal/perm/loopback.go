@@ -100,6 +100,11 @@ func loopbackHTTP(prog string, args []string) bool {
 // /dev/null, and no "@file" that curl would read.
 func curlValue(name, val string) bool {
 	switch name {
+	case "--data-urlencode":
+		at, eq := strings.IndexByte(val, '@'), strings.IndexByte(val, '=')
+		return at < 0 || eq >= 0 && eq < at
+	case "-w", "--write-out":
+		return !strings.HasPrefix(val, "@") && !strings.Contains(val, "%output{")
 	case "-o", "--output":
 		return val == "-" || val == "/dev/null"
 	case "-X", "--request", "-m", "--max-time", "--connect-timeout", "--retry", "--retry-delay", "--retry-max-time", "-A", "--user-agent":

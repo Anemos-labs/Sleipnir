@@ -25,14 +25,14 @@
   const WORD = { think: 'think', tool: 'tool', edit: 'edit', wait: 'wait', ask: 'ask', idle: 'idle', done: 'done', stuck: 'stuck', free: 'free' };
   const pick = states => { for (const p of PRIO) if (states.includes(p)) return p; return 'idle'; };
   /** The legs of a session's team: eight entries of {i, roles, ids, slots}. A leg is a role: the built-in roles in their order
-   *  (D.roleOrder: architect on leg 1 ... reviewer on leg 8), then any other role of the team or the roster in the order it comes,
+   *  (D.roleOrder: architect on leg 1 ... reviewer on leg 8), then custom roles in first-seen roster order, followed by unspawned team roles,
    *  role k on leg k % 8 (the server's RosterEntry.Leg is the same). ids are the role's workers on the roster; slots the number of its
    *  slots in the team (a default team has one of each built-in role), at least its workers. A single agent's horse has no roles. */
   function roleLegs(S) {
     const workers = S.roster.filter(r => r.id !== 'mgr'), team = (S.meta && S.meta.team) || [], order = [], isTeam = workers.length || team.length || (S.meta && S.meta.swarm > 0);
     const add = r => { if (r && r !== 'manager' && order.indexOf(r) < 0) order.push(r); };
-    if (isTeam) { (D.roleOrder && D.roleOrder.length ? D.roleOrder : ['architect', 'scout', 'backend', 'frontend', 'devops', 'tester', 'docs', 'reviewer']).forEach(add); team.forEach(t => add(t.role)); }
-    workers.forEach(w => add(w.role));
+    if (isTeam) { (D.roleOrder && D.roleOrder.length ? D.roleOrder : ['architect', 'scout', 'backend', 'frontend', 'devops', 'tester', 'docs', 'reviewer']).forEach(add); }
+    workers.forEach(w => add(w.role)); team.forEach(t => add(t.role));
     const legs = []; for (let i = 0; i < 8; i++) legs.push({ i, roles: [], ids: [], slots: 0 });
     order.forEach((r, k) => { const L = legs[k % 8], ids = workers.filter(w => w.role === r).map(w => w.id), n = team.length ? team.filter(t => t.role === r).length : (D.roleOrder || []).indexOf(r) >= 0 ? 1 : 0; L.roles.push(r); L.ids = L.ids.concat(ids); L.slots += Math.max(ids.length, n); });
     return legs;

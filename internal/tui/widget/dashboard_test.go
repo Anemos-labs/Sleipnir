@@ -84,13 +84,13 @@ func showTopBand(data widget.DashboardData, frame int, p widget.Palette) []cell.
 func TestDashboardAnimationGolden(t *testing.T) {
 	p := widget.DefaultPalette()
 	var d showtest.Doc
-	d.Note("the top of the cockpit at 80x30 over frames 0, 2, 4 and 6: two of the eight agents are busy (w1 runs a tool, w2 edits), so two legs")
-	d.Note("(the second and the third from the tail) are in the stride and the other six stand; the gait advances (2+busy)/8 of a step per frame: one step in two")
+	d.Note("the top of the cockpit at 80x30 over frames 0, 2, 4 and 6: two agents are busy (w1 runs a tool, w2 edits), sharing the backend leg")
+	d.Note("the backend leg is in the stride; the other seven stand")
 	data := showSketchDashboard(8)
 	for f := 0; f < 8; f += 2 {
 		d.Add(fmt.Sprintf("frame %d", f), showTopBand(data, f, p), 80)
 	}
-	d.Note("every agent busy: all eight legs are in the stride, one step every 0.8 frames")
+	d.Note("every agent busy: the occupied role legs are in the stride")
 	busy := data
 	busy.Agents = append([]widget.AgentRow(nil), data.Agents...)
 	for i := range busy.Agents {

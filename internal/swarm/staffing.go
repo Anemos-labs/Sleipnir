@@ -27,18 +27,16 @@ const maxStaffingLines = 3
 
 // reviewGate counts code merges and the review that covers them.
 type reviewGate struct {
-	mu       sync.Mutex
-	merges   int    // accepted implementation tasks of writers
-	reviewed int    // merges counted when a reviewer's task was last accepted
-	last     string // the last of them
+	mu        sync.Mutex
+	merges    int            // accepted implementation tasks of writers
+	reviewed  int            // merges counted when a reviewer's task was last accepted
+	last      string         // the last of them
+	submitted map[string]int // merge generation covered by each submitted review
 }
 
 // noteAccepted records an accepted task for the review gate: a reviewer's task covers every merge before it, any other implementation
 // task that is not documentation is a merge. An agreement is neither.
 func (s *Swarm) noteAccepted(t Task) {
-	if t.Kind == TaskKindPlan {
-		return
-	}
 	role := t.Role
 	if t.Owner != "" {
 		if r := s.roleOf(t.Owner); r != "" {
@@ -50,12 +48,46 @@ func (s *Swarm) noteAccepted(t Task) {
 	defer g.mu.Unlock()
 	switch {
 	case role == ReviewerRole:
-		g.reviewed = g.merges
-	case s.isDocsTask(t) || s.roles[role].ReadOnly:
+		if generation := g.submitted[t.ID]; generation > g.reviewed {
+			g.reviewed = generation
+		}
+	case t.Kind == TaskKindPlan || s.isDocsTask(t) || s.roles[role].ReadOnly:
 	default:
 		g.merges++
 		g.last = t.ID
 	}
+}
+
+// reviewSubmission records the merge generation before a review enters review status.
+// A later acceptance cannot turn an older report into a review of newer work.
+func (s *Swarm) reviewSubmission(t Task) TaskCheck {
+	role := t.Role
+	if r := s.roleOf(t.Owner); r != "" {
+		role = r
+	}
+	return func(_ *Snapshot, _ Task) error {
+		if role == ReviewerRole {
+			g := &s.review
+			g.mu.Lock()
+			defer g.mu.Unlock()
+			if g.submitted == nil {
+				g.submitted = map[string]int{}
+			}
+			g.submitted[t.ID] = g.merges
+		}
+		return nil
+	}
+}
+
+// implementationTask reports whether a task represents code, rather than an agreement or a read-only report.
+func (s *Swarm) implementationTask(t Task) bool {
+	role := t.Role
+	if t.Owner != "" {
+		if r := s.roleOf(t.Owner); r != "" {
+			role = r
+		}
+	}
+	return t.Kind != TaskKindPlan && !s.isDocsTask(t) && !s.roles[role].ReadOnly
 }
 
 // hasReviewer reports whether the team has a reviewer slot.

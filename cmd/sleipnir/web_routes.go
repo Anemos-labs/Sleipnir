@@ -503,8 +503,9 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 
 // configIsolation reports whether the configuration that a session in dir reads names an isolation (swarm.isolation).
 func (h *webHostImpl) configIsolation(dir string) bool {
-	cfg, _, _ := config.Load(config.LoadOpts{Cwd: dir, UntrustedProject: true})
-	return cfg != nil && cfg.Swarm.Isolation != ""
+	cfg, report, _ := config.Load(config.LoadOpts{Cwd: dir, Home: h.base.Home, UntrustedProject: true})
+	kind := report.KindOf("swarm.isolation")
+	return cfg != nil && cfg.Swarm.Isolation != "" && kind != "" && kind != "defaults"
 }
 
 // preflightIsolation checks the isolation settings of a new session in dir (session.PreflightIsolation) before it starts: 409
@@ -516,7 +517,16 @@ func (h *webHostImpl) preflightIsolation(ctx context.Context, f chatFlags, dir s
 	if home == "" {
 		home, _ = os.UserHomeDir()
 	}
-	err := session.PreflightIsolation(ctx, session.IsolationPreflight{Cwd: dir, Home: home, Swarm: o.Swarm, Isolation: o.Isolation,
+	cfg := h.base.Config
+	if cfg == nil {
+		// Isolation is not trust-sensitive; drop dangerous project settings before the trust gate.
+		loaded, _, err := config.Load(config.LoadOpts{Cwd: dir, Home: home, UntrustedProject: true})
+		if err != nil {
+			return werr(http.StatusConflict, "isolation", clip(err.Error(), 400))
+		}
+		cfg = loaded
+	}
+	err := session.PreflightIsolation(ctx, session.IsolationPreflight{Cwd: dir, Home: home, Swarm: o.Swarm, Isolation: o.Isolation, ConfigIsolation: cfg.Swarm.IsolationMode(),
 		Commit: o.Commit, NewRepo: plan.git})
 	if err != nil {
 		return werr(http.StatusConflict, "isolation", clip(err.Error(), 400))

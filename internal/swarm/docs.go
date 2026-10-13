@@ -82,7 +82,7 @@ func (s *Swarm) docsTick(now time.Time) {
 		for _, t := range snap.Tasks {
 			if t.Status == StatusDone || t.Status == StatusFailed {
 				k.seen[t.ID] = true
-				k.coded = k.coded || t.Status == StatusDone && t.Kind != TaskKindPlan && !s.isDocsTask(t)
+				k.coded = k.coded || t.Status == StatusDone && s.implementationTask(t)
 			}
 		}
 		k.primed = true
@@ -92,7 +92,7 @@ func (s *Swarm) docsTick(now time.Time) {
 			continue
 		}
 		k.seen[t.ID] = true
-		if t.Status != StatusDone || s.isDocsTask(t) {
+		if t.Status != StatusDone || s.isDocsTask(t) || t.Kind != TaskKindPlan && !s.implementationTask(t) {
 			continue
 		}
 		kind := "change"

@@ -113,6 +113,8 @@
     if (!T.el) return; const never = !!(T.el.querySelector('#tourNever') || {}).checked, st = ending(how, never);
     if (st) record(store(), st);
     clearInterval(T.timer); if (T.off) T.off(); T.el.remove(); T.el = null; document.body.classList.remove('touring');
+    if (T.view && (!SL.views.current || SL.views.current.name !== T.view)) SL.views.show(T.view);
+    const app = $('#app'); if (app) { if (T.pane == null) delete app.dataset.pv; else app.dataset.pv = T.pane; }
     if (T.prev && T.prev.focus && document.contains(T.prev)) T.prev.focus();
     if (!quiet) ui.toast(how === 'finish' ? 'tour finished: ? (Help) has it again' : st === 'never' ? 'the tour will not start by itself again: ? (Help) has it' : 'tour skipped: it comes back the next time the page opens, or from ? (Help)', 'quiet');
     SL.bus.emit('tour', false);
@@ -122,6 +124,7 @@
     if (T.el) end('skip', true);
     if (ui.closeModal) ui.closeModal(true);
     if (ui.drawerOpen && ui.drawerOpen() && ui.closeDrawer) ui.closeDrawer();
+    T.view = SL.views.current && SL.views.current.name; T.pane = $('#app') && $('#app').dataset.pv;
     T.prev = document.activeElement; T.i = Math.max(0, STEPS.findIndex(s => s.id === from)); T.steps = STEPS;
     const el = T.el = mk('div', { class: 'tour', id: 'tour' });
     el.innerHTML = '<div class="tour-sh"></div><div class="tour-sh"></div><div class="tour-sh"></div><div class="tour-sh"></div><div class="tour-ring" aria-hidden="true"></div>' +

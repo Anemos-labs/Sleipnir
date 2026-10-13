@@ -56,6 +56,15 @@ test('the row\'s own model sets every slot of the role again; a team whose slots
   assert.equal(D.slotModel(st, 'backend', 1), 'b/y');
   D.setSlotModel(st, 'backend', 1, 'a/x');
   assert.equal(st.perSlot.backend, undefined, 'one model again: the role\'s'); assert.equal(st.slotModels.backend, 'a/x');
+  const inherited = { counts: { backend: 2 }, perSlot: {}, slotModels: {}, roleModels: { backend: 'b/y' } };
+  assert.equal(D.slotModel(inherited, 'backend', 0), 'b/y');
+  D.setSlotModel(inherited, 'backend', 0, '');
+  assert.equal(D.slotModel(inherited, 'backend', 0), '', 'explicit worker model overrides the configured role');
+  assert.equal(D.slotModel(inherited, 'backend', 1), 'b/y');
+  D.setSlotModel(inherited, 'backend', 1, '');
+  assert.equal(inherited.perSlot.backend, undefined);
+  assert.equal(inherited.slotModels.backend, '', 'collapsed empty override is retained');
+  assert.equal(D.slotModel(inherited, 'backend', 0), '');
 });
 
 test('the horse: a leg is a role, labelled with its worker or its count, and a large team is drawn in role bands', async () => {
@@ -76,4 +85,14 @@ test('the horse: a leg is a role, labelled with its worker or its count, and a l
   const E = await boot({ route: (m, p) => p === '/api/sessions/a/snapshot' ? eight : undefined });
   assert.deepEqual(E.doc.querySelectorAll('.hlab .id').map(t => t.textContent), ['ar-1', 'sc-1', 'be-1', 'fe-1', 'dv-1', 'ts-1', 'dc-1', 'rv-1']);
   assert.equal(E.doc.querySelectorAll('.stalls.dense').length, 0, 'eight stalls, not banded');
+  const partial = Object.assign({}, snap, { roster: roster.slice(0, 11).map(r => Object.assign({}, r, { leg: -1 })) });
+  const P = await boot({ route: (m, p) => p === '/api/sessions/a/snapshot' ? partial : undefined });
+  assert.equal(P.doc.querySelectorAll('.stall.ghost').length, 22, 'all unoccupied slots appear beyond eight workers');
+  assert.equal(P.$('.stall[data-role="backend"] .legn').textContent, 'leg 3', 'chips derive their leg from role, not stale roster indices');
+  assert.match(P.$('.stall.ghost').getAttribute('aria-label'), /backend slot is free on leg 3/);
+  const custom = Object.assign({}, snap, { meta: Object.assign({}, snap.meta, { team: [{ role: 'unspawned' }, { role: 'second' }, { role: 'first' }] }), roster: [roster[0], { ...roster[1], id: 'one', role: 'first' }, { ...roster[2], id: 'two', role: 'second' }] });
+  const C = await boot({ route: (m, p) => p === '/api/sessions/a/snapshot' ? custom : undefined });
+  assert.equal(C.SL.ui.hero.legOfRole(C.SL.sessions.active, 'first'), 0, 'custom roles follow roster spawn order, matching translator');
+  assert.equal(C.SL.ui.hero.legOfRole(C.SL.sessions.active, 'second'), 1);
+  assert.equal(C.SL.ui.hero.legOfRole(C.SL.sessions.active, 'unspawned'), 2);
 });

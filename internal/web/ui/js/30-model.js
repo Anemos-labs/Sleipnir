@@ -82,12 +82,12 @@
   }
 
   /** Push a transcript entry. `animate`/`digest` come from ctx: collapsed rows are kept (state equality) but flagged and, for a digest, summarised. */
-  function push(m, ctx, ch, entry, ev) {
+  function push(m, ctx, ch, entry, ev, summarize = true) {
     if (!m.chat) return;
     const list = m.chan[ch] || (m.chan[ch] = []);
     entry.id = ++m.nid; if (entry.t == null) entry.t = ev.t; if (ev && ev.at && entry.at == null) entry.at = ev.at;
     if (ev && ev.mid && (entry.k === 'say' || entry.k === 'stream')) { entry.mid = ev.mid; if (!m.mids[ev.mid]) { m.mids[ev.mid] = []; m.midOrder.push(ev.mid); if (m.midOrder.length > MID_CAP) delete m.mids[m.midOrder.shift()]; } m.mids[ev.mid].push(entry); }
-    if (ctx && ctx.digest) { entry.collapsed = true; if (ctx.digest.rows.length < 160) ctx.digest.rows.push({ ch, k: entry.k, t: entry.t, text: entry.text || entry.arg || (entry.name ? entry.name : '') || (entry.id2 || '') , who: entry.who || entry.ag || '' }); }
+    if (ctx && ctx.digest) { entry.collapsed = true; if (summarize && ctx.digest.rows.length < 160) ctx.digest.rows.push({ ch, k: entry.k, t: entry.t, text: entry.text || entry.arg || (entry.name ? entry.name : '') || (entry.id2 || '') , who: entry.who || entry.ag || '' }); }
     list.push(entry);
     if (list.length > CHAN_CAP) { list.splice(0, 500); m.folded[ch] = (m.folded[ch] || 0) + 500; }
   }
@@ -229,8 +229,8 @@
         m.anomalies.push({ t: ev.t, id: ev.id, kind: ev.kind, read: ev.read, expected: ev.expected, why: ev.why, layer: ev.layer || '', missUsd: ev.missUsd, quiet }); capList(m.anomalies, ANOM_CAP);
         if (!quiet) { m.flash = { t: ev.t, id: ev.id, kind: ev.kind, layer: ev.layer || '' }; m.lastBreakT = ev.t; }
         addMark(m, { t: ev.t, id: ev.id, g: 'break' });
-        push(m, ctx, 'mgr', row, ev);
-        push(m, ctx, chOf(ev.id), Object.assign({}, row), ev);
+        push(m, ctx, 'mgr', row, ev, !quiet);
+        push(m, ctx, chOf(ev.id), Object.assign({}, row), ev, !quiet);
         if (d && !quiet) d.breaks++;
         break;
       }

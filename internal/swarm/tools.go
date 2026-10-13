@@ -224,7 +224,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		if !s.roles[c.Env.Role].ReadOnly {
 			return tools.Errorf("a planning task can only be submitted by a read-only role")
 		}
-		if err := s.Board.submitAgreementAt(me, task.ID, task.Rev, in.Text, "read-only planning; manager reviews the agreement", in.Agreement, taskGateCheck(task)); err != nil {
+		if err := s.Board.submitAgreementAt(me, task.ID, task.Rev, in.Text, "read-only planning; manager reviews the agreement", in.Agreement, taskGateCheck(task), s.reviewSubmission(task)); err != nil {
 			return tools.Errorf("%v", err)
 		}
 		return text("%s is in review. Its agreement requires the manager's acceptance; stop now.", task.ID)
@@ -282,7 +282,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		}
 		summary = out.evidence + "; " + summary
 	}
-	if err := s.Board.submitAgreementAt(me, in.ID, task.Rev, result, summary, in.Agreement, taskGateCheck(task)); err != nil {
+	if err := s.Board.submitAgreementAt(me, in.ID, task.Rev, result, summary, in.Agreement, taskGateCheck(task), s.reviewSubmission(task)); err != nil {
 		return tools.Errorf("%v", err)
 	}
 	s.Leases.ReleaseAll(me)
@@ -310,6 +310,7 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 			if err := s.Board.Accept(me, task.ID, in.Text, taskGateCheck(task)); err != nil {
 				return tools.Errorf("%v", err)
 			}
+			s.noteAccepted(task)
 			return text("%s agreement accepted; dependent work may start", task.ID)
 		}
 		if s.hadTree(task.Owner) {

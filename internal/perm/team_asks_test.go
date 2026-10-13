@@ -244,6 +244,9 @@ func TestAVariableSetOnTheSameLineNamesItsPath(t *testing.T) {
 	for _, c := range []struct{ cmd, want string }{
 		{`SCR="$TMPDIR/t2check"; rm -rf "$SCR"; mkdir -p "$SCR/web"; printf 'x' > "$SCR/web/index.html"`, "allow"},
 		{`SCR=$TMPDIR/a; SCR2="${SCR}/b"; rm -rf "$SCR2"`, "allow"},
+		{`SCR="$TMPDIR/a" & rm -rf "$SCR"`, "ask"},
+		{`SCR='$TMPDIR/a'; rm -rf "$SCR"`, "ask"},
+		{`SCR="$TMPDIR/a"; true || SCR="$TMPDIR/a"; rm -rf "$SCR"`, "ask"},
 		{`SCR="$TMPDIR/a"; [ -d x ] && SCR=/etc; rm -rf "$SCR"`, "ask"},
 		{`SCR="$(mktemp -d)"; rm -rf "$SCR"`, "ask"},
 		{`rm -rf "$NEVER_SET"`, "ask"},

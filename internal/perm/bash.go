@@ -215,9 +215,11 @@ func (ev *evaluator) noteAssignments(s shellparse.Simple, cw *cwdSet, conflicted
 		if !ok || name == "" || envDangerous(env) {
 			continue
 		}
+		// Do not expand shell-literal or mixed-quoted values as variables.
+		literal := strings.ContainsAny(s.Raw, "'\\")
 		val = unquoteAssigned(val)
 		var w string
-		dyn := len(cw.dirs) != 1 || cw.unknown
+		dyn := literal || len(cw.dirs) != 1 || cw.unknown
 		if !dyn {
 			w, _, dyn = ev.rs.expandWordVars(val, cw.dirs[0], ev.vars)
 		}
@@ -238,7 +240,7 @@ func (ev *evaluator) noteAssignments(s shellparse.Simple, cw *cwdSet, conflicted
 // varsTrackable reports whether a command line is simple enough for noteAssignments: no function definitions, whose bodies may
 // set variables when they are called.
 func varsTrackable(cmd string) bool {
-	return !strings.Contains(cmd, "()") && !strings.Contains(cmd, "function ")
+	return !strings.Contains(cmd, "()") && !strings.Contains(cmd, "function ") && !strings.Contains(cmd, "&")
 }
 
 // reassignBuiltins are the commands that may set or unset a shell variable without an assignment statement.
@@ -256,7 +258,7 @@ func reassigns(s shellparse.Simple) bool {
 // unconditional reports whether the statement s certainly runs when the line runs: its text comes before any && || | ( { or a
 // compound command's keyword, so it is not on the right of a condition, in a pipeline, a subshell, a group, a loop or a branch.
 func unconditional(cmd string, s shellparse.Simple) bool {
-	if s.Nested || s.Piped || s.Raw == "" {
+	if s.Nested || s.Piped || s.Raw == "" || strings.Count(cmd, s.Raw) != 1 {
 		return false
 	}
 	at := strings.Index(cmd, s.Raw)

@@ -4,7 +4,48 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { page } from './pages-harness.mjs';
-import { boot } from './pagedom.mjs';
+import { boot, FakeEvent } from './pagedom.mjs';
+
+test('disposing a dragged card cancels its listeners and does not persist its transient layout', async () => {
+  for (const remove of [false, true]) {
+    const L = await boot(), D = L.SL.ui.dash;
+    D.setLocked(false);
+    L.$('.dash').dataset.stack = '0';
+    const el = L.$('.dcard[data-card="gov"]');
+    el.dispatchEvent(new FakeEvent('pointerdown', { bubbles: true, button: 0, pointerId: 1, clientX: 0, clientY: 0 }));
+    assert.equal(L.doc.body.classList.contains('resizing'), true);
+    el.dispatchEvent(new FakeEvent('pointermove', { clientX: 0, clientY: 100 }));
+    if (remove) D.remove('gov'); else L.SL.views.show('cache');
+    await L.settle();
+    assert.equal(L.doc.body.classList.contains('resizing'), false);
+    assert.equal(el.classList.contains('dragging'), false);
+    const stored = L.store.get(L.SL.dash.KEY);
+    el.dispatchEvent(new FakeEvent('pointerup'));
+    assert.equal(L.store.get(L.SL.dash.KEY), stored, 'detached pointerup cannot commit');
+    if (!remove) assert.equal(stored, undefined);
+  }
+});
+
+test('pointer cancellation restores the original layout, and a restarted drag reads that restored position', async () => {
+  const L = await boot(), D = L.SL.ui.dash;
+  D.setLocked(false); L.$('.dash').dataset.stack = '0';
+  const el = L.$('.dcard[data-card="gov"]'), original = plain(D.layout()), stored = L.store.get(L.SL.dash.KEY);
+  const down = () => el.dispatchEvent(new FakeEvent('pointerdown', { bubbles: true, button: 0, pointerId: 1, clientX: 0, clientY: 0 }));
+  const move = () => el.dispatchEvent(new FakeEvent('pointermove', { clientX: 0, clientY: 100 }));
+  down(); move(); const preview = plain(D.layout());
+  assert.notDeepEqual(preview, original, 'the drag actually moved');
+  el.dispatchEvent(new FakeEvent('pointercancel'));
+  assert.deepEqual(plain(D.layout()), original);
+  assert.equal(L.store.get(L.SL.dash.KEY), stored, 'cancel does not save');
+  assert.equal(el.classList.contains('dragging'), false);
+  assert.equal(L.doc.body.classList.contains('resizing'), false);
+  down(); move(); down();
+  assert.deepEqual(plain(D.layout()), original, 'a new pointerdown cancels the preview');
+  move();
+  assert.deepEqual(plain(D.layout()), preview, 'the restarted drag uses the original position');
+  el.dispatchEvent(new FakeEvent('pointerup'));
+  assert.notEqual(L.store.get(L.SL.dash.KEY), stored, 'pointerup still saves');
+});
 
 const plain = x => JSON.parse(JSON.stringify(x));
 const dash = () => page({ modules: ['83b-ui-dash.js'] }).SL.dash;
@@ -161,4 +202,16 @@ test('the page: the tour starts by itself once in a browser no test drives, and 
   L.SL.ui.tour.end('finish'); await L.settle();
   const again = await boot({ automation: false, storage: { [L.SL.tour.KEY]: L.store.get(L.SL.tour.KEY) } });
   await again.step(3); assert.equal(again.SL.ui.tour.open, false);
+});
+
+test('ending the tour restores the original view and phone pane', async () => {
+  for (const ending of ['skip', 'finish']) {
+    const L = await boot(), { SL, $ } = L;
+    SL.views.show('cache'); $('#app').dataset.pv = 'radio';
+    SL.ui.tour.start(); await L.settle();
+    SL.views.show('cockpit'); $('#app').dataset.pv = 'cockpit';
+    SL.ui.tour.end(ending); await L.settle();
+    assert.equal(SL.views.current.name, 'cache');
+    assert.equal($('#app').dataset.pv, 'radio');
+  }
 });

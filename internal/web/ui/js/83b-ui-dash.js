@@ -25,7 +25,7 @@
     { id: 'gantt', title: 'Swarm gantt', desc: 'what each agent did in the last 60 seconds, with the replay controls', minW: 3, minH: 4, w: 6, h: 7 },
     { id: 'tasks', title: 'Task board', desc: 'the tasks by status: todo, running, verify, merged', minW: 3, minH: 4, w: 6, h: 7 },
     { id: 'queue', title: 'Merge queue', desc: 'what is being verified and merged, conflicts and bounces', minW: 2, minH: 2, w: 4, h: 3 },
-    { id: 'mail', title: 'Mail, latest', desc: 'the last four mails between agents', minW: 2, minH: 2, w: 5, h: 3 },
+    { id: 'mail', title: 'Mail, latest', desc: 'the last 30 mails between agents', minW: 2, minH: 2, w: 5, h: 3 },
     { id: 'gov', title: 'Governor', desc: 'requests per minute, 429s and retries', minW: 2, minH: 2, w: 3, h: 3 },
   ];
   /** The views of the rail a card can hold: [view, title, description]. The Workspace card has its four tabs (Files, Changes,
@@ -151,7 +151,8 @@
     }
     function mountCard(c) {
       const d = BY_ID[c.id], el = U.mk('section', { class: 'dcard dc-' + (d.kind === 'view' ? 'view' : c.id), 'data-card': c.id, 'aria-label': d.title }, cardHtml(d));
-      grid.appendChild(el); const body = el.querySelector('.dc-body'), cs = SL.makeScope(el, 'card:' + c.id); cards[c.id] = { el, body, scope: cs };
+      grid.appendChild(el); const body = el.querySelector('.dc-body'), cs = SL.makeScope(el, 'card:' + c.id), card = { el, body, scope: cs, cancelDrag: null }; cards[c.id] = card;
+      cs.onUnmount(() => { if (card.cancelDrag) card.cancelDrag(); });
       try {
         if (d.kind === 'part') { if (parts[c.id]) parts[c.id](cs, body, S); }
         else {
@@ -206,7 +207,8 @@
     /* ---- pointer: drag to move, the edges to resize; the grid follows while the pointer moves ---- */
     sc.listen(grid, 'pointerdown', e => {
       if (D.locked || e.button !== 0 || e.target.closest('.dc-x')) return; const el = e.target.closest('.dcard'); if (!el) return;
-      const id = el.dataset.card, c0 = L.find(k => k.id === id); if (!c0) return; const rs = e.target.closest('[data-rs]'), mode = rs ? rs.dataset.rs : 'move';
+      const id = el.dataset.card, card = cards[id]; if (!card) return; if (card.cancelDrag) card.cancelDrag();
+      const c0 = L.find(k => k.id === id); if (!c0) return; const rs = e.target.closest('[data-rs]'), mode = rs ? rs.dataset.rs : 'move';
       if (dash.dataset.stack === '1' && mode === 'move') return;   // a single column: the keyboard moves
       e.preventDefault(); const r = grid.getBoundingClientRect(), g = gap(), colP = (r.width + g) / COLS, rowP = (parseFloat(grid.style.getPropertyValue('--rowh')) || ROW_MIN) + g;
       const L0 = L, x0 = e.clientX, y0 = e.clientY; el.classList.add('dragging'); document.body.classList.add('resizing'); try { el.setPointerCapture(e.pointerId); } catch (er) { /* synthetic event */ }
@@ -216,8 +218,10 @@
         const next = mode === 'move' ? move(L0, id, c0.x + dx, c0.y + dy) : resize(L0, id, c0.w + (mode !== 's' ? dx : 0), c0.h + (mode !== 'e' ? dy : 0));
         if (!same(next, cur)) { cur = next; L = next; paintAll(); }
       };
-      const up = () => { el.removeEventListener('pointermove', mv); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); el.classList.remove('dragging'); document.body.classList.remove('resizing'); if (!same(cur, L0)) commit(cur); };
-      el.addEventListener('pointermove', mv); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+      const clean = () => { el.removeEventListener('pointermove', mv); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', cancel); el.classList.remove('dragging'); document.body.classList.remove('resizing'); card.cancelDrag = null; try { el.releasePointerCapture(e.pointerId); } catch (er) { /* already released */ } };
+      const up = () => { clean(); if (!same(cur, L0)) commit(cur); };
+      const cancel = () => { clean(); L = L0; paintAll(); }; card.cancelDrag = cancel;
+      el.addEventListener('pointermove', mv); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', cancel);
     });
     /* a single column (a narrow view): the grid stacks the cards in their order; the edges do not resize there */
     const stackQ = () => { const w = root.clientWidth; dash.dataset.stack = w && w <= 620 ? '1' : '0'; };

@@ -10,6 +10,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/gitx"
+	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
 // A team whose isolation nobody chose works in trees of its own in the root of a repository with a commit, and in a folder that the
@@ -45,6 +46,24 @@ func TestATeamInARepositoryDefaultsToWorktrees(t *testing.T) {
 		if got := defaultIsolation(ctx, c.dir, c.newRepo); got != c.want {
 			t.Errorf("%s (new repository %v): %q, want %q", c.dir, c.newRepo, got, c.want)
 		}
+	}
+}
+
+func TestConfigIsolationDistinguishesDefaultFromExplicitNone(t *testing.T) {
+	project := webWorld(t)
+	home := t.TempDir()
+	h := &webHostImpl{base: session.Options{Home: home}}
+	if h.configIsolation(project) {
+		t.Fatal("built-in none was treated as an explicit choice")
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".sleipnir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".sleipnir", "config.json"), []byte(`{"swarm":{"isolation":"none"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !h.configIsolation(project) {
+		t.Fatal("explicit none in the host's configured home was ignored")
 	}
 }
 

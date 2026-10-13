@@ -6,6 +6,48 @@ import (
 	"testing"
 )
 
+func TestStaleReviewDoesNotCoverLaterMerge(t *testing.T) {
+	for _, kind := range []string{"", TaskKindPlan} {
+		r := newRVRigWith(t, Config{MaxWorkers: 8, Team: []string{"backend", "reviewer"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+		r.sw.noteAccepted(Task{ID: "T1", Role: "backend"})
+		review := Task{ID: "T2", Role: ReviewerRole, Kind: kind}
+		if err := r.sw.reviewSubmission(review)(nil, review); err != nil {
+			t.Fatal(err)
+		}
+		r.sw.noteAccepted(Task{ID: "T3", Role: "backend"})
+		r.sw.noteAccepted(review)
+		if got := r.sw.reviewPending(); got != "T3" {
+			t.Fatalf("kind %q: stale review cleared later merge: %q", kind, got)
+		}
+		if err := r.sw.reviewSubmission(review)(nil, review); err != nil {
+			t.Fatal(err)
+		}
+		r.sw.noteAccepted(review)
+		if got := r.sw.reviewPending(); got != "" {
+			t.Fatalf("kind %q: fresh review did not clear gate: %q", kind, got)
+		}
+	}
+}
+
+func TestReadOnlyTasksDoNotStartDocs(t *testing.T) {
+	for _, resume := range []bool{false, true} {
+		r := newRVRigWith(t, Config{MaxWorkers: 8, AutoDocs: true, Team: []string{"backend", "reviewer", "docs"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+		if !resume {
+			r.sw.docsTick(r.sw.deps.Now())
+		}
+		r.sw.Board.Restore(&Snapshot{Tasks: []Task{{ID: "T1", Title: "review", Role: ReviewerRole, Status: StatusDone}}})
+		r.sw.docsTick(r.sw.deps.Now())
+		if r.sw.docs.coded {
+			t.Fatalf("resume %v: read-only result counted as code", resume)
+		}
+		for _, task := range r.sw.Board.Snapshot().Tasks {
+			if strings.HasPrefix(task.Title, DocsTaskTitle) {
+				t.Fatalf("resume %v: read-only result started docs", resume)
+			}
+		}
+	}
+}
+
 // An agreement accepted before any code exists starts no docs pass and holds nobody: it waits, and the first accepted implementation
 // task starts one pass that covers both.
 func TestAutoDocsWaitsForTheFirstImplementation(t *testing.T) {
@@ -13,7 +55,7 @@ func TestAutoDocsWaitsForTheFirstImplementation(t *testing.T) {
 	r := newRVRigWith(t, cfg, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
 	r.sw.docsTick(r.sw.deps.Now())
 	plan := Task{ID: "T1", Title: "agree on the notes API", Status: StatusDone, Kind: TaskKindPlan}
-	r.sw.Board.Restore(&Snapshot{Tasks: []Task{plan, {ID: "T2", Title: "add the notes store", Status: StatusReview, Role: "backend"}}})
+	r.sw.Board.Restore(&Snapshot{Tasks: []Task{plan, {ID: "T2", Title: "add the notes store", Status: StatusTodo, Role: "backend"}}})
 	r.sw.docsTick(r.sw.deps.Now())
 	for _, tk := range r.sw.Board.Snapshot().Tasks {
 		if strings.HasPrefix(tk.Title, DocsTaskTitle) {
@@ -94,7 +136,11 @@ func TestAMergedChangeIsDueAReview(t *testing.T) {
 	if !strings.Contains(why, "Cannot wait") || !strings.Contains(why, "T2 and the work merged before it have not been reviewed") {
 		t.Errorf("wait refusal %q", why)
 	}
-	r.sw.noteAccepted(Task{ID: "T3", Role: ReviewerRole})
+	review := Task{ID: "T3", Role: ReviewerRole}
+	if err := r.sw.reviewSubmission(review)(nil, review); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.noteAccepted(review)
 	if got := r.sw.reviewPending(); got != "" {
 		t.Errorf("a reviewer's accepted task did not clear the gate: %q", got)
 	}
@@ -126,7 +172,11 @@ func TestABatchRunIsHeldUntilTheMergedResultIsReviewed(t *testing.T) {
 	if !o.Veto || !strings.Contains(o.Reason, "T1 and the work merged before it have not been reviewed") {
 		t.Fatalf("not held for the review: %+v", o)
 	}
-	r.sw.noteAccepted(Task{ID: "T2", Role: ReviewerRole})
+	review := Task{ID: "T2", Role: ReviewerRole}
+	if err := r.sw.reviewSubmission(review)(nil, review); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.noteAccepted(review)
 	if o := h.BeforeStop(context.Background(), "mgr", "manager", "done", false); o.Veto {
 		t.Fatalf("held after the review: %+v", o)
 	}
