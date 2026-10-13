@@ -296,7 +296,9 @@ func (t *webTab) afterStart(s *session.Session, spec startSpec) {
 	t.publishMeta()
 	t.publishRoster()
 	if g := strings.TrimSpace(spec.goalText); g != "" {
-		_, _ = t.goalAction(t.ctx, s, wire.GoalRequest{Action: "set", Text: g}, true)
+		if _, err := t.goalAction(t.ctx, s, wire.GoalRequest{Action: "set", Text: g}, true); err != nil {
+			t.sys("⚠", "could not start goal: "+err.Error())
+		}
 	}
 }
 

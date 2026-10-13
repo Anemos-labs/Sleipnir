@@ -203,7 +203,7 @@ type poolTool struct{ s *Swarm }
 
 // Spec describes the persistent pool protocol shared by every agent.
 func (t *poolTool) Spec() core.ToolSpec {
-	return core.ToolSpec{Name: "pool", NoTreeWrites: true, Description: "Cooperate on a role pool's parent task. Leader: propose an agreement (theme/style, interfaces, work division, acceptance); execute after everyone agrees; reconcile after all children are accepted. Every member: call inspect during reconciliation to update your checkout, examine the combined result, then confirm. Agree to the proposal or confirm the reconciled result, with the exact revision from task get. Use mail to discuss objections; the manager resolves disagreements. During execution the leader may create scoped child tasks and assign existing members. Return one parent result with task done after every member confirms.", InputSchema: json.RawMessage(`{"type":"object","properties":{"action":{"type":"string","enum":["propose","agree","execute","reconcile","inspect","confirm"]},"id":{"type":"string"},"revision":{"type":"integer"},"text":{"type":"string"}},"required":["action","id"]}`)}
+	return core.ToolSpec{Name: "pool", NoTreeWrites: true, Description: "Cooperate on a role pool's parent task. Leader: propose an agreement (theme/style, interfaces, work division, acceptance); execute after everyone agrees; reconcile after all children are accepted (text = the combined contract to confirm). Every member: call inspect during reconciliation to update your checkout, examine the combined result, then confirm. Agree to the proposal or confirm the reconciled result, with the exact revision from task get. Use mail to discuss objections; the manager resolves disagreements. During execution the leader may create scoped child tasks and assign existing members. Return one parent result with task done after every member confirms.", InputSchema: json.RawMessage(`{"type":"object","properties":{"action":{"type":"string","enum":["propose","agree","execute","reconcile","inspect","confirm"]},"id":{"type":"string"},"revision":{"type":"integer"},"text":{"type":"string"}},"required":["action","id"]}`)}
 }
 
 // Run applies one phase transition after checking leadership and membership.
@@ -283,6 +283,9 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 				if child.Parent == task.ID && child.Status != StatusDone {
 					return fmt.Errorf("child %s is not complete", child.ID)
 				}
+			}
+			if agreement != "" {
+				p.Agreement = agreement
 			}
 			p.Phase = "reconciling"
 			task.Status = StatusDoing

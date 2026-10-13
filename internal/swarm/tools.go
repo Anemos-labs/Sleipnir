@@ -56,7 +56,7 @@ func (t *taskTool) Spec() core.ToolSpec {
 	return core.ToolSpec{
 		Name:         "task",
 		NoTreeWrites: true, // the board, mail and team are not the work tree
-		Description: "Shared task board. Manager: revise (id, text=reason, optional title, description, files, deps) repairs a task in place; resolve (id, text=explanation) completes work no longer needed. Pool leaders: create with parent=id and accept their child tasks. Actions: list, get (id: full task and agreement), claim (id), update (id, text = one-line status), " +
+		Description: "Shared task board. Manager: revise (id, text=reason, optional title, description, kind, files, deps) repairs a task in place; resolve (id, text=explanation) completes work no longer needed. Pool leaders: create with parent=id (inherits the parent's kind unless specified) and accept their child tasks. Actions: list, get (id: full task and agreement), claim (id), update (id, text = one-line status), " +
 			"done (id, text = one-line result, optional agreement = full shared contract, at most 6000 bytes/40 lines: the harness verifies the work before review). Accepted agreements are inherited by dependent tasks and preserved through compaction. " +
 			"block (id, text = reason, optional target = the id of the task it waits for), resume (id), " +
 			"handover (id, text = a short summary for your successor: what is done, what is left, what you learned; the harness gives your task, your work and the summary to a fresh worker of your role; the manager may hand over a worker's task). Manager only: create (title, description, role, deps, files = scope, kind = work or plan; plans require a read-only role and an agreement, not code verification), " +
@@ -235,10 +235,16 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		return tools.Errorf("%v", err)
 	}
 	if task.Pool != nil {
-		if vr := s.verifyFor(ctx, task, s.deps.Workdir, task.Files); !vr.ok {
+		evidence := "pool reconciled and verified"
+		if task.Kind == TaskKindPlan {
+			if !s.roles[c.Env.Role].ReadOnly {
+				return tools.Errorf("a planning task can only be submitted by a read-only role")
+			}
+			evidence = "pool reconciled; read-only planning; manager reviews the agreement"
+		} else if vr := s.verifyFor(ctx, task, s.deps.Workdir, task.Files); !vr.ok {
 			return tools.Errorf("pool result failed verification: %s", vr.out)
 		}
-		if err := s.Board.submitAgreementAt(me, task.ID, task.Rev, in.Text, "pool reconciled and verified", task.Pool.Agreement, taskGateCheck(task), poolComplete, s.poolCurrent, s.reviewSubmission(task)); err != nil {
+		if err := s.Board.submitAgreementAt(me, task.ID, task.Rev, in.Text, evidence, task.Pool.Agreement, taskGateCheck(task), poolComplete, s.poolCurrent, s.reviewSubmission(task)); err != nil {
 			return tools.Errorf("%v", err)
 		}
 		return text("%s consolidated pool result is in review", task.ID)

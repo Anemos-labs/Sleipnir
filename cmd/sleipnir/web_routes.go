@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/perm"
@@ -369,6 +370,10 @@ func (h *webHostImpl) routes(srv *web.Server) {
 func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 	var body newSessionRequest
 	if !web.DecodeJSON(w, r, &body) {
+		return
+	}
+	if utf8.RuneCountInString(strings.TrimSpace(body.GoalText)) > maxGoalLen {
+		writeErr(w, werr(http.StatusBadRequest, "bad_goal", "the goal is longer than 4,000 characters"))
 		return
 	}
 	key := idemKey("sessions", body.ClientID)

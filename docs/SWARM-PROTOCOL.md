@@ -45,7 +45,15 @@ unlock writes. The leader creates children with `task create parent=…`, assign
 existing peers with `spawn`, and claims its own child with `task claim`. Children
 must stay within the parent's role, membership and scope.
 
-Once all children are accepted, `pool reconcile` assembles the result. In isolated
+Planning-pool children inherit their parent’s task kind when `kind` is omitted.
+Planning children and their reconciled parent submit agreements for acceptance
+without running the implementation verifier. An explicit `kind: work` retains
+code verification. The manager can repair an incorrect kind with `task revise`
+using `kind: plan` or `kind: work`; the task ID and previous worker are retained,
+and prior submissions are invalidated. Planning tasks require a read-only role.
+
+Once all children are accepted, `pool reconcile` assembles the result. Its optional
+`text` replaces the initial plan with the combined contract that all members confirm. In isolated
 runs each member calls `pool inspect` to update its tree, examines the combined
 result, then calls `pool confirm`. Every member must confirm before the parent can
 be submitted and accepted. A newer accepted change invalidates reconciliation.

@@ -50,6 +50,15 @@ func (b *Board) revise(by, id string, spec TaskSpec, reason string) error {
 			return fmt.Errorf("no task %s", id)
 		}
 		t := d.Tasks[i]
+		if spec.Kind != "" {
+			if spec.Kind != "work" && spec.Kind != TaskKindPlan {
+				return fmt.Errorf("task kind must be work or plan")
+			}
+			t.Kind = spec.Kind
+			if t.Kind == "work" {
+				t.Kind = ""
+			}
+		}
 		if spec.Title != "" {
 			t.Title = cleanText(spec.Title, maxTitleRunes)
 		}
@@ -111,6 +120,12 @@ func (t *taskTool) reviseTask(ctx context.Context, c *tools.Call, in taskIn) *to
 	if strings.TrimSpace(in.Text) == "" {
 		return tools.Errorf("revision needs text explaining the failure or changed requirements")
 	}
+	if in.Kind != "" && in.Kind != "work" && in.Kind != TaskKindPlan {
+		return tools.Errorf("task kind must be work or plan")
+	}
+	if in.Kind == TaskKindPlan && !s.roles[task.Role].ReadOnly {
+		return tools.Errorf("a planning task requires a read-only role")
+	}
 	owners := []string{task.Owner}
 	if task.Pool != nil {
 		owners = task.Pool.Members
@@ -156,7 +171,7 @@ func (t *taskTool) reviseTask(ctx context.Context, c *tools.Call, in taskIn) *to
 		}
 		in.Files = files
 	}
-	if err := s.Board.revise(c.Env.Agent, in.ID, TaskSpec{Title: in.Title, Desc: in.Description, Files: in.Files, Deps: in.Deps}, in.Text); err != nil {
+	if err := s.Board.revise(c.Env.Agent, in.ID, TaskSpec{Title: in.Title, Desc: in.Description, Kind: in.Kind, Files: in.Files, Deps: in.Deps}, in.Text); err != nil {
 		return tools.Errorf("%v", err)
 	}
 	// Accepted dependents must be checked again against the revised prerequisite.

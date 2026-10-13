@@ -163,6 +163,46 @@ async function openAt(state, seed) {
 const isoBtn = (L, v) => L.$('[data-seg="isolation"][data-v="' + v + '"]');
 const shown = (L, id) => { const e = L.$('#' + id); return e && !e.hidden ? e.textContent : ''; };
 
+test('checkbox input followed by change retains the chosen team options', async () => {
+  const L = await openAt({}, { commit: false, mailman: false, managerApproves: true });
+  for (const [key, checked] of [['commit', true], ['mailman', true], ['managerApproves', false]]) {
+    const box = L.$('[data-k="' + key + '"]');
+    box.checked = checked;
+    box.dispatchEvent(new FakeEvent('input', { bubbles: true }));
+    box.dispatchEvent(new FakeEvent('change', { bubbles: true }));
+    assert.equal(box.checked, checked, key + ' survives the browser input/change sequence');
+  }
+  await start(L);
+  assert.deepEqual([spec(L).commit, spec(L).mailman, spec(L).managerApproves], [true, true, false]);
+});
+
+test('a catalogue arriving while the dialog is open refreshes all model pickers without losing choices', async () => {
+  const L = await openAt({}, { model: 'saved/manager', slotModels: { backend: 'saved/worker' } });
+  type(L, '#nsName', 'keep this name');
+  L.$('[data-trole="backend"] [data-tstep="1"]').click();
+  L.SL.data.map.models({ models: [{ ref: 'new/model', provider: 'new' }] });
+  await L.settle();
+  for (const selector of ['#nsModel', '[data-tmodel="backend"]', '[data-tslot="backend"][data-ti="1"]']) {
+    assert.ok(L.$(selector).querySelectorAll('option').some(o => o.textContent === 'new/model'), selector);
+  }
+  assert.equal(L.$('#nsModel option[selected]').textContent, 'saved/manager');
+  assert.equal(L.$('[data-tmodel="backend"] option[selected]').textContent, 'saved/worker');
+  assert.equal(L.$('#nsName').value, 'keep this name');
+  await start(L);
+  assert.equal(spec(L).model, 'saved/manager');
+  assert.deepEqual(spec(L).team.filter(s => s.role === 'backend').map(s => s.model), ['saved/worker', 'saved/worker']);
+});
+
+test('an overlong first goal remains editable and sends no new-session request', async () => {
+  const L = await open();
+  const goal = 'x'.repeat(4001);
+  type(L, '#nsGoal', goal);
+  await start(L);
+  assert.equal(spec(L), null);
+  assert.equal(L.$('#nsGoal').value, goal);
+  assert.match(L.$('#toasts').textContent, /4,000/);
+});
+
 test('a clean repository root with a team: worktree and --commit are free, and what was chosen is sent', async () => {
   const L = await openAt({}, { commit: true });
   assert.equal(isoBtn(L, 'worktree').disabled, false);

@@ -63,3 +63,27 @@ test('an expired cache page advances to a full retained page', async () => {
  const labels=L.doc.querySelectorAll('.hbar .nn').map(n=>Number(n.textContent));
  assert.ok(labels.length>=6);assert.ok(labels[0]>=701);assert.ok(labels.at(-1)>labels[0]);
 });
+
+test('browsing cache history keeps the selected agent when another worker answers', async () => {
+  const L = await boot(), S = L.SL.sessions.active;
+  for (let i = 1; i <= 100; i++) L.SL.model.reduce(S.m, { k: 'req', id: 'mgr', t: i, ratio: .95 }, S);
+  L.SL.ui.cacheFollow = true; L.SL.views.show('cache'); await L.settle();
+  L.$('[data-cache-page="prev"]').click(); await L.settle();
+  const before = L.$('.c-hit .c-note').textContent;
+  L.SL.model.reduce(S.m, { k: 'req', id: 'be-1', role: 'backend', t: 101, ratio: .8 }, S);
+  await L.event('req', { id: 'be-1', role: 'backend', t: 102, ratio: .9 });
+  await L.step(5); await L.settle();
+  assert.equal(L.SL.ui.cacheAgent, 'mgr');
+  assert.equal(L.$('.c-hit .c-note').textContent, before);
+});
+
+
+test('following again returns to the latest cache page even for the same agent', async () => {
+  const L = await boot(), S = L.SL.sessions.active;
+  for (let i = 1; i <= 100; i++) L.SL.model.reduce(S.m, { k: 'req', id: 'mgr', t: i, ratio: .95 }, S);
+  L.SL.views.show('cache'); await L.settle();
+  L.$('[data-cache-page="prev"]').click(); await L.settle();
+  L.doc.body.dispatchEvent(new FakeEvent('keydown', { key: 'f', bubbles: true })); await L.settle();
+  assert.equal(L.SL.ui.cacheFollow, true);
+  assert.equal(L.doc.querySelectorAll('.hbar .nn').at(-1).textContent, '100');
+});
