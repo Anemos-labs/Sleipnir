@@ -26,8 +26,8 @@ import (
 // The prompt bytes do not depend on it: nothing the model is shown before its own
 // tool results names a directory, and the tools print paths relative to the working
 // directory, which are the project's paths because a tree is a checkout of the
-// repository. Read-only roles and the manager keep using the shared checkout; the
-// manager does not edit files in an isolated run (see Leases).
+// repository. Read-only roles use the shared checkout. The manager has a private
+// tree whose direct changes are verified and integrated before publication.
 //
 // "Done" then has one more step. After the gate (evidence, verifier in the worker's
 // tree) the harness commits the tree and submits it to the merge queue
@@ -130,7 +130,7 @@ func (s *Swarm) integrationRef() string {
 const managerIsolationCard = "Isolation: every writer works in a private git worktree. Their work is merged, one task at a time, into a shared " +
 	"integration branch and verified there; the user's checkout does not show it while the run is going. When the run ends the harness applies the " +
 	"integrated result to the checkout (as uncommitted changes, or as commits when the user asked for that): never tell the user to merge anything. " +
-	"The evidence of a task in review names its merge."
+	"You also have a writable worktree. Direct edits are verified and integrated by the harness before completion or PR publication; sync the assembled result before inspecting it. The evidence of a task in review names its merge."
 
 // mergeRec is the harness's record that a task's work is in the integration branch.
 type mergeRec struct {

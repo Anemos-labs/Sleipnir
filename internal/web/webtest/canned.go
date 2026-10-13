@@ -65,7 +65,7 @@ func str(s string) *string { return &s }
 // Roster returns the canned agents: the manager, a scout, a backend, a frontend and a tester worker.
 func Roster() []wire.RosterEntry {
 	return []wire.RosterEntry{
-		{ID: "mgr", Role: "manager", Code: "mgr", Nth: 0, K: 0, Leg: -1, Scope: "- (edits no file)", Model: Model, Spawn: 0},
+		{ID: "mgr", Role: "manager", Code: "mgr", Nth: 0, K: 0, Leg: -1, Scope: "**", Model: Model, Spawn: 0},
 		{ID: "sc-1", Role: "scout", Code: "sc", Nth: 1, K: 1, Leg: 0, Scope: "- (read-only)", RO: true, Model: "anthropic/claude-haiku-5-5", Spawn: 2.6},
 		{ID: "be-1", Role: "backend", Code: "be", Nth: 1, K: 2, Leg: 1, Scope: "api/**", Model: Model, Spawn: 8.6},
 		{ID: "fe-1", Role: "frontend", Code: "fe", Nth: 1, K: 3, Leg: 2, Scope: "web/**", Model: Model, Spawn: 8.6},

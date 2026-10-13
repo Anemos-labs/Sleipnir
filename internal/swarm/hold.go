@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"context"
+	"encoding/json"
 	"sort"
 	"strconv"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/shellparse"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
@@ -18,20 +20,14 @@ import (
 // A batch run (sleipnir run --swarm, sleipnir swarm) ends when the manager's run
 // returns, and the session closes with it: a manager that gives its final answer
 // while workers are still running or submissions wait for a verdict cuts them off.
-// With Config.HoldManager the swarm wraps the hooks it gives the manager so that a
-// final answer is vetoed, with one short harness-written reason, while the board
-// holds unfinished work. The agent loop bounds vetoes per run (maxStopVetoes), so a
-// manager that will not settle its board cannot be held forever: when the bound is
-// reached the run ends and RunManager reports what was left (see afterManagerRun).
-// A worker that is only finishing its last turn, its task already accepted, is not
-// unfinished work: the guard waits a short while for it to end instead of spending a veto.
-//
-// An interactive session (a person talks to the manager between turns) is not
-// held: workers legitimately outlive a turn there, and finished work wakes the
-// manager instead (wake.go).
+// With Config.HoldManager the swarm vetoes completion while board work, docs or
+// review remain. Individual agent runs bound stop vetoes. Persistent teams resume
+// the same manager context after that bound until completion, cancellation or a
+// budget limit; unconfigured embedded callers retain bounded per-run behavior.
+// The guard briefly waits for workers whose accepted tasks are already complete.
 
 // holdReasonTail is what the veto tells the manager to do about it.
-const holdReasonTail = "Use wait, accept or reject submissions, and fail tasks you abandon, then give your final answer."
+const holdReasonTail = "Use wait, accept or reject submissions, and repair existing tasks (or resolve unneeded work with an explanation), then give your final answer."
 
 // holdReasonMax caps the veto text: it lands in the manager's thread once per veto.
 const holdReasonMax = 400
@@ -145,6 +141,10 @@ func (s *Swarm) unfinishedWork() unfinishedWork {
 			u.review = append(u.review, id)
 		case StatusBlocked:
 			u.blocked = append(u.blocked, id)
+		case StatusFailed:
+			if s.cfg.PersistentPools {
+				u.todo = append(u.todo, id)
+			}
 		case StatusTodo:
 			u.todo = append(u.todo, id)
 		}
@@ -201,10 +201,28 @@ func (h *holdHooks) AfterCompact(ctx context.Context, agentID, role, reason stri
 
 // BeforeTool delegates to wrapped hooks when present and otherwise returns an empty outcome.
 func (h *holdHooks) BeforeTool(ctx context.Context, c agent.ToolHookCall) agent.ToolHookOutcome {
-	if h.inner == nil {
-		return agent.ToolHookOutcome{}
+	o := agent.ToolHookOutcome{}
+	if h.inner != nil {
+		o = h.inner.BeforeTool(ctx, c)
 	}
-	return h.inner.BeforeTool(ctx, c)
+	if o.Veto {
+		return o
+	}
+	if c.Tool == "bash" {
+		var in struct {
+			Command string `json:"command"`
+		}
+		input := c.Input
+		if len(o.UpdatedInput) > 0 {
+			input = o.UpdatedInput
+		}
+		if json.Unmarshal(input, &in) == nil && publishesManagerWork(in.Command) {
+			if err := h.s.flushManager(ctx, h.m); err != nil {
+				return agent.ToolHookOutcome{Veto: true, Reason: err.Error()}
+			}
+		}
+	}
+	return o
 }
 
 // AfterTool delegates to wrapped hooks when present and otherwise returns an empty outcome.
@@ -228,6 +246,12 @@ func (h *holdHooks) BeforeStop(ctx context.Context, agentID, role, final string,
 		return ctx.Err() != nil || h.s.isClosed() || h.s.budgetErr() != nil || h.s.agentBudgetSpent(h.m)
 	}
 	if ending() {
+		return agent.StopOutcome{}
+	}
+	if err := h.s.flushManager(ctx, h.m); err != nil {
+		return agent.StopOutcome{Veto: true, Reason: err.Error()}
+	}
+	if !h.s.cfg.HoldManager {
 		return agent.StopOutcome{}
 	}
 	u := h.s.unfinishedWork()
@@ -312,4 +336,36 @@ func (s *Swarm) agentBudgetSpent(m *member) bool {
 	}
 	_, c := m.a.Usage()
 	return !(c < s.cfg.AgentBudgetUSD) // a cost that is not a number counts as spent
+}
+
+// publishesManagerWork recognizes publication commands, including shell wrappers
+// and Git's global directory/configuration flags. Opaque scripts remain subject
+// to ordinary session permissions; this hook does not interpret their contents.
+func publishesManagerWork(command string) bool {
+	for _, c := range shellparse.Parse(command).Commands {
+		program := shellparse.ProgramName(c.Program)
+		if program != "git" && program != "gh" {
+			continue
+		}
+		args := c.Args
+		for len(args) > 0 {
+			word := args[0]
+			args = args[1:]
+			switch word {
+			case "-C", "-c", "--git-dir", "--work-tree", "--namespace", "--repo", "-R", "--hostname":
+				if len(args) > 0 {
+					args = args[1:]
+				}
+				continue
+			}
+			if strings.HasPrefix(word, "-") {
+				continue
+			}
+			if program == "git" && word == "push" || program == "gh" && word == "pr" {
+				return true
+			}
+			break
+		}
+	}
+	return false
 }

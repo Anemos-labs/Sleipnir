@@ -7,6 +7,19 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Configured teams retain role pools and worker conversations. Each multi-member
+  pool agrees on one plan, delegates scoped children and reconciles one parent
+  result. Task revisions and retries preserve IDs; unneeded work closes with an
+  explicit disposition. Managers can edit and publish under session permissions.
+  The legacy executable `fullstack` role is removed. Default teams allocate the
+  exact requested worker count. Prompt bytes: G0 gains the `pool` tool and task
+  revision/parent fields; manager and architect role pins and the manager's
+  isolation card change. These stable layers incur a one-time cache miss.
+- GitHub delivery is opt-in per objective through `--auto-fix`, `--auto-merge`,
+  `/delivery` and chat checkboxes. It persists progress for explicit resume and
+  checks the current PR head before merging. Cache charts show a readable window
+  with absolute request numbers and cumulative totals.
+
 - Teams: a worker's routine permission question goes to the manager first
   (`permissions.manager_approves`, default true; `--manager-approves`),
   which answers with the new `approve` tool; unanswered in 60 s or

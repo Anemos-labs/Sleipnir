@@ -98,7 +98,7 @@ func TestIsolatedTeamQueueTreesVerifyBlameAndAccept(t *testing.T) {
 
 	var trees struct{ Worktrees []wire.Worktree }
 	expect(t, e.get("/ws/worktrees", &trees), http.StatusOK, "")
-	if len(trees.Worktrees) != 1 || trees.Worktrees[0].Agent != "be-1" || trees.Worktrees[0].Branch != "sleipnir/s-wsvc-iso/be-1" || trees.Worktrees[0].Head == "" {
+	if len(trees.Worktrees) != 2 || trees.Worktrees[1].Agent != "mgr" || trees.Worktrees[0].Agent != "be-1" || trees.Worktrees[0].Branch != "sleipnir/s-wsvc-iso/be-1" || trees.Worktrees[0].Head == "" {
 		t.Fatalf("worktrees = %+v", trees.Worktrees)
 	}
 

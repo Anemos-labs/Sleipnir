@@ -88,6 +88,23 @@ func taskTable(s Scene, w, limit int) []cell.Line {
 	tasks := append([]state.Task(nil), s.Snap.Board.Tasks...)
 	order := map[state.TaskState]int{state.TaskFailed: 0, state.TaskRunning: 1, state.TaskVerifying: 2, state.TaskTodo: 3, state.TaskMerged: 4}
 	sort.SliceStable(tasks, func(i, j int) bool { return order[tasks[i].State] < order[tasks[j].State] })
+	// Keep every child's row with its parent, even when their statuses differ.
+	children := map[string][]state.Task{}
+	for _, t := range tasks {
+		if t.Parent != "" {
+			children[t.Parent] = append(children[t.Parent], t)
+		}
+	}
+	grouped := make([]state.Task, 0, len(tasks))
+	for _, t := range tasks {
+		if t.Parent == "" {
+			grouped = append(grouped, t)
+			grouped = append(grouped, children[t.ID]...)
+		}
+	}
+	if len(grouped) == len(tasks) {
+		tasks = grouped
+	}
 	if len(tasks) == 0 {
 		return []cell.Line{cell.Styled(st.dim, "none")}
 	}
@@ -117,6 +134,13 @@ func taskTable(s Scene, w, limit int) []cell.Line {
 			tail = ""
 		}
 		title := clean(t.Title)
+		if t.Parent != "" {
+			title = "↳ " + clean(t.Parent) + " · " + title
+		}
+		if t.PoolPhase != "" {
+			title = "[" + clean(t.PoolPhase) + "] " + title
+			tail = strings.Join(t.PoolMembers, ",")
+		}
 		if t.State == state.TaskMerged && t.Result != "" && title == "" {
 			title = clean(t.Result)
 		}

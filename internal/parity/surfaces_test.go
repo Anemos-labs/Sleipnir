@@ -43,6 +43,7 @@ type settingControl struct {
 
 // uiInventory is webui.json: what the page offers, as internal/web/uidev/inventory.mjs lists it.
 type uiInventory struct {
+	DeliveryControls  []string    `json:"deliveryControls"`
 	Generated         string      `json:"generated"`
 	SpecGeneratedFrom string      `json:"specGeneratedFrom"`
 	Views             []viewEntry `json:"views"`
@@ -231,6 +232,8 @@ func allOf(fs ...func(ui *uiInventory) bool) func(ui *uiInventory) bool {
 // flagMirrors are the flags of the commands that the page cannot run (chat, watch) whose function the page has in another place.
 // A flag is the page's only when the evidence is in the inventory: a removed control makes it a difference again.
 var flagMirrors = []flagMirror{
+	{"chat --auto-fix", "the objective's Auto-fix CI & reviews checkbox", func(ui *uiInventory) bool { return inList(ui.DeliveryControls, "autoFixCI") }},
+	{"chat --auto-merge", "the objective's Auto-merge checkbox", func(ui *uiInventory) bool { return inList(ui.DeliveryControls, "autoMergePR") }},
 	{"chat --resume", "the Resume buttons of the Resume dialog and its \"with settings\" button, which opens New session for the recorded session", func(ui *uiInventory) bool {
 		return ui.Resume.RowButton && ui.Resume.SettingsButton && inList(ui.NewSession.Flags, "resume")
 	}},

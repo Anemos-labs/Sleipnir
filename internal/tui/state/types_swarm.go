@@ -24,10 +24,13 @@ const (
 
 // Task is one task of the board, as the board.op events rebuild it.
 type Task struct {
-	ID    string `json:"id"`
-	Title string `json:"title,omitempty"`
-	Owner string `json:"owner,omitempty"`
-	Role  string `json:"role,omitempty"` // the suggested role
+	Parent      string   `json:"parent,omitempty"`
+	PoolPhase   string   `json:"pool_phase,omitempty"`
+	PoolMembers []string `json:"pool_members,omitempty"`
+	ID          string   `json:"id"`
+	Title       string   `json:"title,omitempty"`
+	Owner       string   `json:"owner,omitempty"`
+	Role        string   `json:"role,omitempty"` // the suggested role
 	// Status is the board's own word: todo, doing, blocked, review, done or failed. State is the derived column.
 	Status string    `json:"status"`
 	State  TaskState `json:"state"`

@@ -16,8 +16,8 @@ import (
 // The review gate: in a team with a reviewer slot, the goal is not reported met until a reviewer has looked at the merged result.
 // Every accepted implementation task of a writer (not an agreement, not the docs worker's catch-up) is a code merge; a task owned by
 // a reviewer and accepted after the last code merge is the review of it. Until there is one, the manager's live view says so, its
-// wait is refused once there is nothing else to wait for, and a batch run's final answer is vetoed (hold.go), as many times as the
-// agent loop bounds vetoes of one run (maxStopVetoes), so a manager that will not review cannot be held for ever.
+// wait is refused once there is nothing else to wait for, and completion is vetoed (hold.go). Configured pools continue the same
+// manager context beyond the per-run veto limit until the review settles, cancellation or budget exhaustion.
 
 // ReviewerRole is the role whose accepted task reviews the merged result.
 const ReviewerRole = "reviewer"
@@ -49,13 +49,13 @@ func (s *Swarm) noteAcceptedCheck(t Task) TaskCheck {
 			role = r
 		}
 	}
-	implementation := t.Kind != TaskKindPlan && !s.isDocsTask(t) && !s.roles[role].ReadOnly
+	implementation := t.Pool == nil && t.Kind != TaskKindPlan && !s.isDocsTask(t) && !s.roles[role].ReadOnly
 	return func(_ *Snapshot, t Task) error {
 		g := &s.review
 		g.mu.Lock()
 		defer g.mu.Unlock()
 		switch {
-		case role == ReviewerRole:
+		case role == ReviewerRole && t.Parent == "":
 			if generation := g.submitted[t.ID]; generation > g.reviewed {
 				g.reviewed = generation
 			}

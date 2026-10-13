@@ -67,7 +67,7 @@ func (t *Translator) syncTask(id string, ts float64, force bool) {
 	if len(tk.Files) > 0 {
 		scope = strings.Join(tk.Files, ", ")
 	}
-	ev := &TaskX{Task: wire.Task{ID: id, Title: line(tk.Title, capArg), Owner: uiID(tk.Owner), Deps: tk.Deps, Scope: line(scope, capPath), S: col,
+	ev := &TaskX{Task: wire.Task{ID: id, Parent: tk.Parent, PoolPhase: tk.PoolPhase, PoolMembers: tk.PoolMembers, Title: line(tk.Title, capArg), Owner: uiID(tk.Owner), Deps: tk.Deps, Scope: line(scope, capPath), S: col,
 		Closure: line(closure, capID)}, Failed: tk.State == state.TaskFailed, Attempts: tk.Attempts, Blocked: tk.Status == "blocked"}
 	if len(ev.Deps) == 0 {
 		ev.Deps = nil
@@ -89,6 +89,7 @@ func (t *Translator) syncTask(id string, ts float64, force bool) {
 	}
 	c := *ev
 	c.Deps = append([]string(nil), ev.Deps...)
+	c.PoolMembers = append([]string(nil), ev.PoolMembers...)
 	o.ev = &c
 	t.put(ev, ts, 0, nil)
 }
@@ -96,7 +97,7 @@ func (t *Translator) syncTask(id string, ts float64, force bool) {
 // sameTask reports whether two task events say the same thing.
 func sameTask(a, b *TaskX) bool {
 	return a.ID == b.ID && a.Title == b.Title && a.Owner == b.Owner && a.Scope == b.Scope && a.S == b.S && a.Closure == b.Closure &&
-		a.Failed == b.Failed && a.Attempts == b.Attempts && a.Blocked == b.Blocked && reflect.DeepEqual(a.Deps, b.Deps)
+		a.Failed == b.Failed && a.Attempts == b.Attempts && a.Blocked == b.Blocked && reflect.DeepEqual(a.Deps, b.Deps) && a.Parent == b.Parent && a.PoolPhase == b.PoolPhase && reflect.DeepEqual(a.PoolMembers, b.PoolMembers)
 }
 
 // closureKind is the kind of a closure written as kind or kind(target).

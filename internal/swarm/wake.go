@@ -173,7 +173,7 @@ func (s *Swarm) tryWake() {
 		w.mu.Unlock()
 		return
 	}
-	if w.wakes >= s.cfg.MaxWakes {
+	if !s.cfg.PersistentPools && w.wakes >= s.cfg.MaxWakes {
 		tell := !w.told
 		w.told = true
 		n := w.wakes

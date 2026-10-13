@@ -260,7 +260,7 @@ func TestRoster(t *testing.T) {
 		h.feed(b.add(time.Second, "mgr", "agent.spawn", map[string]any{"id": "ts-" + jsNum(float64(i+1)), "role": "tester"}))
 	}
 	r := h.tr.Roster()
-	if len(r) != 12 || r[0].ID != "mgr" || r[0].Scope != "- (edits no file)" || r[0].Model != "m1" || r[0].Leg != -1 {
+	if len(r) != 12 || r[0].ID != "mgr" || r[0].Scope != "**" || r[0].Model != "m1" || r[0].Leg != -1 {
 		t.Fatalf("roster: %+v", r)
 	}
 	if sc := r[1]; sc.ID != "sc-1" || !sc.RO || sc.Scope != "- (read-only)" || sc.K != 1 || sc.Leg != 1 || sc.Code != "sc" || sc.Nth != 1 || sc.Model != "m2" || sc.Spawn != 2 {
@@ -347,4 +347,28 @@ func TestFrameClasses(t *testing.T) {
 	if len(ckpts) != 2 || !ckpts[0].Critical || !ckpts[1].Coalescable || ckpts[1].Key != "ckpt/t1/c07" {
 		t.Fatalf("ckpt frames: %+v", ckpts)
 	}
+}
+
+func TestPoolTaskMapping(t *testing.T) {
+	h := newHarness(t, Config{Root: "/work", StartedAt: t0})
+	b := newLog(t0)
+	h.feed(b.add(time.Second, "mgr", "board.op", boardOp("create", "T1", "doing", "rv-1", 1, map[string]any{"title": "review", "pool": map[string]any{"phase": "planning", "members": []string{"rv-1", "rv-2"}}})), b.add(2*time.Second, "rv-1", "board.op", boardOp("create", "T2", "todo", "", 2, map[string]any{"title": "review part", "parent": "T1"})))
+	tasks := ofKind(h.decoded(), "task")
+	if len(tasks) != 2 || tasks[0]["poolPhase"] != "planning" || tasks[1]["parent"] != "T1" {
+		t.Fatalf("pool metadata lost: %+v", tasks)
+	}
+	if len(tasks[0]["poolMembers"].([]any)) != 2 {
+		t.Fatal("pool members lost")
+	}
+	h.feed(b.add(3*time.Second, "rv-1", "board.op", boardOp("update", "T1", "doing", "rv-1", 3, map[string]any{"pool": map[string]any{"phase": "executing", "members": []string{"rv-1", "rv-2"}}})))
+	tasks = ofKind(h.decoded(), "task")
+	if tasks[len(tasks)-1]["poolPhase"] != "executing" {
+		t.Fatalf("phase-only change was deduplicated: %+v", tasks)
+	}
+	h.feed(b.add(4*time.Second, "mgr", "board.op", boardOp("update", "T1", "doing", "rv-1", 4, nil)))
+	tasks = ofKind(h.decoded(), "task")
+	if phase, ok := tasks[len(tasks)-1]["poolPhase"]; ok && phase != "" {
+		t.Fatalf("full op retained old pool: %+v", tasks)
+	}
+
 }

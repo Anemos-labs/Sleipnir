@@ -172,6 +172,15 @@
  "palette": [
   {
    "group": "conversation",
+   "name": "/delivery",
+   "kind": "slash",
+   "live": false,
+   "effects": [
+    "act:command"
+   ]
+  },
+  {
+   "group": "conversation",
    "name": "/goal",
    "kind": "slash",
    "live": true,
@@ -1564,6 +1573,7 @@
    "/context",
    "/cost",
    "/cwd",
+   "/delivery",
    "/diff",
    "/effort",
    "/exit",
@@ -1734,10 +1744,6 @@
      "keys": [
       "permissions.mode"
      ]
-    },
-    {
-     "id": "do:mgr-refused",
-     "scope": "view"
     },
     {
      "id": "do:rule-add",
@@ -2312,6 +2318,8 @@
     "flags": [
      "allow",
      "auto-docs",
+     "auto-fix",
+     "auto-merge",
      "budget-usd",
      "commit",
      "continue",
@@ -2367,6 +2375,8 @@
      "allow",
      "ask-timeout",
      "auto-docs",
+     "auto-fix",
+     "auto-merge",
      "budget-usd",
      "capture",
      "commit",
@@ -2409,6 +2419,8 @@
      "allow",
      "ask-timeout",
      "auto-docs",
+     "auto-fix",
+     "auto-merge",
      "budget-usd",
      "capture",
      "commit",
@@ -3621,5 +3633,9 @@
     "modeWith": {}
    }
   }
- }
+ },
+ "deliveryControls": [
+  "autoFixCI",
+  "autoMergePR"
+ ]
 }

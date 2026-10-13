@@ -409,6 +409,7 @@ export async function build(spec) {
     views, nav, palette, slash,
     settings: settings.pages, unclassifiedSettings: settings.unclassified,
     newSession: dialogs.newSession, resume: dialogs.resume, runLine, runner,
+    deliveryControls: ['autoFixCI','autoMergePR'].filter(id => fs.readFileSync(path.join(UI,'index.html'),'utf8').includes('id="'+id+'"') && fs.readFileSync(path.join(UI,'js','84-ui-chat.js'),'utf8').includes("$('#"+id+"')")),
   };
 }
 

@@ -77,3 +77,6 @@ func (s *Swarm) goTracked(fn func()) {
 		fn()
 	}()
 }
+
+// BudgetError reports and enforces the session-wide swarm budget for host workflows.
+func (s *Swarm) BudgetError() error { return s.budgetErr() }

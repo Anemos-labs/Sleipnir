@@ -12,6 +12,8 @@ import (
 type ClosureKind string
 
 const (
+	// CloseUnneeded records completed disposition of unnecessary work, not verification.
+	CloseUnneeded ClosureKind = "unneeded"
 	// CloseVerified: done after the harness's check (the verifier, or the merge
 	// queue in an isolated run).
 	CloseVerified ClosureKind = "verified"
@@ -55,6 +57,7 @@ type closureSpec struct {
 
 var closureSpecs = map[ClosureKind]closureSpec{
 	CloseVerified:   {status: StatusDone},
+	CloseUnneeded:   {status: StatusDone},
 	CloseAgreed:     {status: StatusDone},
 	CloseBlockedOn:  {status: StatusFailed, target: targetTask, manager: true},
 	CloseSuperseded: {status: StatusFailed, target: targetTask, manager: true},

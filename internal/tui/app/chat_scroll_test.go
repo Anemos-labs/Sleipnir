@@ -339,7 +339,7 @@ func TestBannerSaysHowBigTheTeamIs(t *testing.T) {
 		t.Errorf("solo:\n%s\nteam:\n%s", solo, team)
 	}
 	// and what the team is for, once: a person who has never seen it should not have to guess why there are eight
-	if strings.Contains(solo, "manager") || !strings.Contains(team, "manager plans") {
+	if strings.Contains(solo, "manager") || !strings.Contains(team, "manager can edit files") {
 		t.Errorf("the team's one line of explanation is missing, or shown to a single agent:\n%s", team)
 	}
 }

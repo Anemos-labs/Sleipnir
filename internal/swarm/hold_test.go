@@ -115,7 +115,7 @@ func releaseWhen(t *testing.T, gate chan struct{}, what string, cond func() bool
 	}()
 }
 
-const fullHoldReason = "Not finished: running: be-1 (T1). Use wait, accept or reject submissions, and fail tasks you abandon, then give your final answer."
+const fullHoldReason = "Not finished: running: be-1 (T1). " + holdReasonTail
 
 // A manager that answers while its worker is still running is sent back, told what is
 // unfinished, and completes after it waits, accepts and answers again.

@@ -24,8 +24,10 @@ hooks, and trajectory export. `sleipnir web` serves the same sessions in a brows
   machine needs an SSH forward. A model provider is signed in on a terminal, not in the page. A team's budget changed in the
   page takes effect when the team starts again. A page that is closed does not stop the sessions: they run until the server
   stops, and a question nobody answers is refused after the grace period.
-- Automatic shared-context refresh is not implemented. Tasks move between workers only
-  when a worker or the manager hands one over; the stall sweep names stalled work but
-  does not move or requeue it on its own.
+- Automatic shared-context refresh is not implemented. Configured teams preserve
+  worker identities and retry interrupted assignments in place. A tool that ignores
+  cancellation needs to exit, or the process must be restarted and explicitly resumed.
+- GitHub delivery requires an authenticated `gh` executable. Closing the browser
+  leaves the local controller running; stopping the process requires explicit resume.
 
 [Roadmap](ROADMAP.md) · [Validation](VALIDATION.md)

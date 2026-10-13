@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -27,7 +28,6 @@ type RecoveredWorker struct {
 // log. It must run before Start.
 func (s *Swarm) ReserveIDs(ids map[string]string) {
 	for id, role := range ids {
-		s.adoptLegacy(role)
 		if r, ok := s.roles[role]; ok {
 			if suffix, ok := strings.CutPrefix(id, r.Short+"-"); ok {
 				if n, err := strconv.Atoi(suffix); err == nil {
@@ -42,14 +42,16 @@ func (s *Swarm) ReserveIDs(ids map[string]string) {
 // unfinished tasks. It must run before Start, against an empty task board. IDs
 // includes retired workers so a new spawn cannot collide with their branches.
 func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []RecoveredWorker, ids map[string]string, retiredCost float64) error {
-	if !s.isolated() {
-		return fmt.Errorf("worker recovery requires worktree isolation")
-	}
+	// Configuration order is preserved across assignments and process restarts.
+	workers = append([]RecoveredWorker(nil), workers...)
+	sort.SliceStable(workers, func(i, j int) bool {
+		a, b := workers[i].ID, workers[j].ID
+		return len(a) < len(b) || len(a) == len(b) && a < b
+	})
 	if len(workers) > s.cfg.MaxWorkers {
 		return fmt.Errorf("this team needs %d worker slots to recover its workers; resume with --swarm %d", len(workers), len(workers))
 	}
 	for _, w := range workers {
-		s.adoptLegacy(w.Role)
 		r, ok := s.roles[w.Role]
 		if !ok || r.Name == "manager" || s.isService(w.Role) {
 			return fmt.Errorf("cannot recover worker %s: role %q is unavailable", w.ID, w.Role)
@@ -63,7 +65,7 @@ func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []Recov
 		if w.Snapshot != nil && w.Snapshot.Role != w.Role {
 			return fmt.Errorf("worker %s's recorded role changed", w.ID)
 		}
-		if r.ReadOnly {
+		if s.isolated() && r.ReadOnly {
 			path := filepath.Join(s.deps.Isolation.Manager.Dir, w.ID)
 			if _, err := os.Lstat(path); !os.IsNotExist(err) {
 				return fmt.Errorf("cannot recover %s as read-only while its private worktree exists at %s", w.ID, path)
@@ -79,7 +81,7 @@ func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []Recov
 		var err error
 		task, hasTask := prev.Task(w.Task)
 		unfinished := hasTask && task.Status != StatusDone && task.Status != StatusFailed
-		if !role.ReadOnly {
+		if s.isolated() && !role.ReadOnly {
 			path := filepath.Join(s.deps.Isolation.Manager.Dir, w.ID)
 			if _, err := os.Lstat(path); os.IsNotExist(err) && unfinished && w.Snapshot != nil {
 				return fmt.Errorf("worker %s's unfinished worktree is missing at %s; restore it before resuming", w.ID, path)
@@ -124,20 +126,4 @@ func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []Recov
 		m.setState(s, "idle", "restored; waiting for a task to restart")
 	}
 	return nil
-}
-
-// adoptLegacy makes a legacy role (LegacyRoles) that an earlier process's workers
-// had available again, hidden: recovered workers keep it, and nobody can spawn it.
-// It must run before Start.
-func (s *Swarm) adoptLegacy(role string) {
-	if _, ok := s.roles[role]; ok {
-		return
-	}
-	r, ok := LegacyRoles()[role]
-	if !ok {
-		return
-	}
-	s.roles[role] = r
-	s.roleLay[role] = r.Layer()
-	s.hidden[role] = true
 }

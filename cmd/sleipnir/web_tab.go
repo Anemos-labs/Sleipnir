@@ -57,13 +57,14 @@ func werr(status int, code, msg string) *wire.Error {
 // queued is a line typed while something runs, or an action that waits for its turn: a message (prompt, display), a slash
 // command (line), or a host action (op).
 type queued struct {
-	id      string
-	text    string // what meta.queued shows
-	prompt  string // a message: what reaches the agent
-	display string // a message: what the transcript shows
-	echo    bool   // a message: echo display as the person's row
-	line    string // a slash command
-	op      func(ctx context.Context, s *session.Session)
+	autoFix, autoMerge bool
+	id                 string
+	text               string // what meta.queued shows
+	prompt             string // a message: what reaches the agent
+	display            string // a message: what the transcript shows
+	echo               bool   // a message: echo display as the person's row
+	line               string // a slash command
+	op                 func(ctx context.Context, s *session.Session)
 }
 
 // webTab is a tab: see the top of this file. Its methods are safe for concurrent use.
@@ -426,6 +427,9 @@ func (t *webTab) run(ctx context.Context, it queued) {
 			t.note("◇", strings.TrimRight(res.Output, "\n"))
 		}
 	default:
+		if it.autoFix || it.autoMerge {
+			s.SetDelivery(it.autoFix, it.autoMerge)
+		}
 		t.turn(ctx, s, it.prompt, it.display, it.echo)
 	}
 }
@@ -587,7 +591,7 @@ func (t *webTab) Send(ctx context.Context, req wire.MessageRequest) (wire.SendRe
 	if strings.TrimSpace(display) == "" {
 		display = req.Text
 	}
-	it := queued{text: oneLineCLI(display, 200), prompt: req.Text, display: display, echo: true}
+	it := queued{autoFix: req.AutoFix, autoMerge: req.AutoMerge, text: oneLineCLI(display, 200), prompt: req.Text, display: display, echo: true}
 	id, pos, now, err := t.enqueue(it)
 	if err != nil {
 		return wire.SendResult{}, err
@@ -867,6 +871,8 @@ func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string
 		return res, nil
 	}
 	switch f[0] {
+	case "/delivery":
+		res.Output = s.DeliveryCommand(strings.TrimSpace(strings.TrimPrefix(line, "/delivery")))
 	case "/goal":
 		act := strings.ToLower(arg)
 		req := wire.GoalRequest{Action: act}

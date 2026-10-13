@@ -28,7 +28,8 @@ test('a team of 32, four of each role: the steppers pass eight, a role row opens
   assert.equal((cli(L).match(/--role-model/g) || []).length, 32, 'one --role-model per slot');
   assert.equal(L.$('[data-trole="backend"] [data-tstep="1"]').disabled, false, 'no ceiling: a 33rd worker can be added');
   const slots = () => L.doc.querySelectorAll('[data-tslot="backend"]');
-  assert.equal(slots().length, 0, 'a row starts closed');
+  assert.equal(slots().length, 4, 'individual model selectors are visible without discovery');
+  L.$('[data-topen="backend"]').click(); await L.settle(); assert.equal(slots().length, 0);
   L.$('[data-topen="backend"]').click(); await L.settle();
   assert.equal(slots().length, 4); assert.equal(L.$('[data-topen="backend"]').getAttribute('aria-expanded'), 'true');
   for (const [i, v] of [[0, 'a/x'], [1, 'a/x'], [2, 'b/y'], [3, 'b/y']]) await change(L, slots()[i], v);
@@ -46,7 +47,6 @@ test('a team of 32, four of each role: the steppers pass eight, a role row opens
 test('the row\'s own model sets every slot of the role again; a team whose slots differ keeps them slot by slot', async () => {
   const L = await open({ maxWorkers: 24 });
   L.$('[data-trole="tester"] [data-tstep="1"]').click(); await L.settle();
-  L.$('[data-topen="tester"]').click(); await L.settle();
   await change(L, L.doc.querySelectorAll('[data-tslot="tester"]')[1], 'b/y');
   assert.match(cli(L), /--role-model tester --role-model tester=b\/y/, 'the first slot is the worker model, the second b/y');
   await change(L, L.$('[data-tmodel="tester"]'), 'a/x');

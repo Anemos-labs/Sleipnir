@@ -37,6 +37,11 @@ func cleanAgreement(text string) (string, error) {
 // task-ID order. It rejects excessive combined context instead of dropping a contract.
 func inheritedAgreements(s *Snapshot, t Task) ([]TaskAgreement, error) {
 	byID := map[string]string{}
+	if t.Parent != "" {
+		if p, ok := s.Task(t.Parent); ok && p.Pool != nil {
+			byID[p.ID] = p.Pool.Agreement
+		}
+	}
 	for _, id := range t.Deps {
 		dep, ok := s.Task(id)
 		if !ok || dep.Status != StatusDone {
@@ -104,6 +109,12 @@ func claimedCards(s *Snapshot, agent string, candidate *Task) string {
 func (s *Swarm) claimCheck(agent string, readOnly bool) TaskCheck {
 	check := s.scopeCheck(readOnly)
 	return func(snap *Snapshot, t Task) error {
+		if s.cfg.PersistentPools && t.Parent == "" && t.Pool == nil {
+			counts, _ := TeamCounts(s.cfg.Team)
+			if counts[t.Role] > 1 {
+				return fmt.Errorf("assign this parent with spawn so every pool member plans together")
+			}
+		}
 		if check != nil {
 			if err := check(snap, t); err != nil {
 				return err

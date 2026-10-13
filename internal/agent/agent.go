@@ -115,6 +115,9 @@ func (NopSink) Response(string, *provider.Response, float64) {}
 // Notice discards diagnostics when no output sink is needed.
 func (NopSink) Notice(string, string, string) {}
 
+// ErrStepLimit means the current run exhausted its configured model-step allowance.
+var ErrStepLimit = errors.New("step limit")
+
 // Config assembles an agent. Fields marked shared point at session-wide
 // services; the rest are per agent.
 type Config struct {
@@ -860,7 +863,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 			return res, stuck
 		}
 	}
-	return res, fmt.Errorf("agent %s: step limit %d reached", a.cfg.ID, a.cfg.MaxSteps)
+	return res, fmt.Errorf("agent %s: %w %d reached", a.cfg.ID, ErrStepLimit, a.cfg.MaxSteps)
 }
 
 // toolBatch runs one batch of calls and appends their results (and any mail and

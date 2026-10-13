@@ -243,12 +243,15 @@
       if (SL.time.holdWanted()) { SL.time.release(); SL.time.pin(false); S.hold.pinned = false; }
       /* the agent gets the pasted text; the transcript keeps the chips */
       const full = v.replace(/\[pasted text #(\d+) \+\d+ lines\]/g, (m0, n) => pasted[+n - 1] != null ? pasted[+n - 1] : m0);
-      const r = SL.act.send(v, undefined, full !== v ? { text: full } : undefined);
+      const delivery = { autoFix: !!$('#autoFixCI').checked, autoMerge: !!$('#autoMergePR').checked };
+      const r = SL.act.send(v, undefined, Object.assign({ text: full }, delivery));
+      if (r && r.ok !== false) { S.ui.delivery = {}; $('#autoFixCI').checked = false; $('#autoMergePR').checked = false; }
       /* until the server took it, the line is not gone: refused, it comes back into the composer */
       if (r && r.ok === false) { restore(S, v, pasted); if (r.why) ui.toast(r.why, 'warm'); }
-      else if (r && r.done) r.done.then(res => { if (res && res.ok === false && res.code !== 'aborted') { const back = restore(S, v, pasted); if (!back) ui.toast('not sent: ' + clip1(v, 60) + ' (↑ brings it back)', 'warm'); } });
+      else if (r && r.done) r.done.then(res => { if (res && res.ok === false && res.code !== 'aborted') { const back = restore(S, v, pasted); if (back) { S.ui.delivery = delivery; $('#autoFixCI').checked = delivery.autoFix; $('#autoMergePR').checked = delivery.autoMerge; } if (!back) ui.toast('not sent: ' + clip1(v, 60) + ' (↑ brings it back)', 'warm'); } });
       composerUpdate(S);
     }
+    ['autoFixCI','autoMergePR'].forEach(id => sc.listen($('#'+id), 'change', () => { const S = SL.sessions.active; if (S) S.ui.delivery = { autoFix: !!$('#autoFixCI').checked, autoMerge: !!$('#autoMergePR').checked }; }));
     sc.listen(inp, 'input', () => { autosize(); SL.time.noteKey(); updateSlash(); const S = SL.sessions.active; if (S) S.ui.draft = inp.value; });
     sc.listen(inp, 'keydown', e => {
       SL.time.noteKey();
@@ -287,7 +290,7 @@
     /* ---------- wiring ---------- */
     sc.update((S, m) => { if (!S || !m) return; sync(false); renderPlan(S, m); composerUpdate(S); if (inp.value !== S.ui.draft && document.activeElement !== inp) inp.value = S.ui.draft || ''; ui.approvals.render(S, S.wm); });
     sc.frame(frameFn);
-    sc.on('activated', () => { TR.m = null; FD.m = null; sync(true); });
+    sc.on('activated', () => { const S = SL.sessions.active, d = S && S.ui.delivery || {}; $('#autoFixCI').checked = !!d.autoFix; $('#autoMergePR').checked = !!d.autoMerge; TR.m = null; FD.m = null; sync(true); });
     sc.on('rebuilt', () => { TR.m = null; FD.m = null; });
     sc.on('cache-detail', () => { TR.m = null; FD.m = null; sync(true); });
     sc.on('files-ready', () => { if (SLASH.mode === 'file' && document.activeElement === inp) updateSlash(); });

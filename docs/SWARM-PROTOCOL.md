@@ -17,26 +17,52 @@ cache side of the design (why a worker costs a cache read, not a briefing) is in
    sleeps (`wait`) instead of polling costs nothing; parallel read-only tool calls and batched edits save requests.
 5. **Failure is expected.** The harness settles stopped workers, releases their leases, reports failures to
    the manager, and names stalls it can see (section 10). Provider retries are bounded; reassigning unfinished
-   tasks, or handing a worker's task to a fresh worker, remains the manager's decision.
+   tasks uses the same worker and task ID in configured teams. The manager revises an assignment when the original scope or acceptance criteria were wrong.
 6. **Text one agent can influence is data to every other agent.** Task titles, notes, mail, status lines, alerts,
    file names and command lines are made single-line, bounded and inert before another agent sees them; nothing in
    them can forge a harness header, close a tag, grant permission or change a task's status.
 
 ## 2. Roles and tools
 
-Roles are pins (G2) plus runtime restrictions. Built-ins: `manager` (plans, delegates and reviews; edits no file),
-`backend`, `frontend`, `devops`, `tester`, `docs` (writers), `architect`, `reviewer`, `scout` (read-only). The legacy
-`fullstack` stays resolvable for training tasks and resumed sessions that name it and is never offered. Users add roles
+Roles are pins (G2) plus runtime restrictions. Built-ins: `manager` (plans, delegates substantial work, reviews and handles direct requests),
+`backend`, `frontend`, `devops`, `tester`, `docs` (writers), `architect`, `reviewer`, `scout` (read-only). The legacy executable `fullstack` role is unavailable. Users add roles
 with markdown files (`.sleipnir/agents/*.md`).
 
 **The team.** A session's team is a list of worker slots, one role each (`swarm.Config.Team`). The chat, run and web
 commands give a session the default team, one slot of each worker role, unless `--role-model` names one (a role given
-more than once, or bare, is one slot per value; a slot may name its own model). The manager starts a worker of a role
-only while that role has a free slot; reusing an idle worker (`spawn agent=…`) keeps its slot, and a retired worker frees
-it. The manager's pin carries a team card, written once per session: each role with its slots, what it may do (edits
+more than once, or bare, is one slot per value; a slot may name its own model). Configured teams keep persistent role pools. `spawn` reuses the existing worker automatically;
+`agent=…` selects a particular member without bypassing the pool protocol. Idle members
+retain their slot and context. Only relevant pools are activated. The manager's pin carries a team card, written once per session: each role with its slots, what it may do (edits
 files or not, its shell, the web) and what it is for. Its hot view carries the live occupancy (`team: backend 1/2 ·
 tester 0/1`). A team has at least 8 workers on the command line and in the page; library callers, tests and training
 rollouts may build any team, or none (roles then limited by `MaxWorkers` alone).
+
+**Cooperating pools.** Multiple slots of a role activate together for one parent task.
+The first configured member leads, including after resume. `pool propose` records a
+shared agreement covering conventions, interfaces, work division and acceptance.
+Every member calls `pool agree` with its current revision before `pool execute` can
+unlock writes. The leader creates children with `task create parent=…`, assigns
+existing peers with `spawn`, and claims its own child with `task claim`. Children
+must stay within the parent's role, membership and scope.
+
+Once all children are accepted, `pool reconcile` assembles the result. In isolated
+runs each member calls `pool inspect` to update its tree, examines the combined
+result, then calls `pool confirm`. Every member must confirm before the parent can
+be submitted and accepted. A newer accepted change invalidates reconciliation.
+Objections go through typed mail; the manager settles disagreements and can revise
+the existing task. Parent phase and member identities appear on the board; children
+are grouped under their parent (expandable cards in the browser, indented terminal rows).
+
+**Repair.** Configured teams do not expire idle contexts or exhaust a task's total
+repair attempts. Failed assignments return to the same worker with bounded backoff.
+`task revise` changes the existing title, description, scope or dependencies and
+invalidates its old submission; dependency cycles are refused and accepted dependents
+are reopened. `task resolve` records “no longer needed” with an explanation once any
+children are closed. The manager cannot finish while tasks, reconciliation or review
+remain unresolved. Cancellation, budget exhaustion and unanswered permission requests
+stop or suspend progress without pretending that the objective succeeded. A tool
+that ignores cancellation keeps its worker slot quarantined until it exits; a second
+worker is never run concurrently on that identity.
 
 **Auto-docs.** With `swarm.auto_docs` (default true) and a docs slot, the harness keeps the docs worker at work: every
 task the board closes as done that the docs worker did not do becomes a pending change, and when a docs worker is idle
@@ -53,8 +79,8 @@ manager is held while a pass is pending. `--auto-docs=false` makes docs an ordin
 workers`), and which idle worker could take a ready task of its role now. In a team with a reviewer slot a merged change
 is due a review: every accepted implementation task of a writer (not an agreement, not the docs worker's) counts as a
 merge, and a task owned by a reviewer accepted after the last merge covers it. Until then the manager's hot view says so,
-its `wait` is refused once nothing else runs, and a batch run's final answer is vetoed (bounded per run as every stop veto
-is). The manager's pin asks for a scout when the code or an outside source is unknown, devops and the tester to start from
+its `wait` is refused once nothing else runs, and the manager's final answer is held. The agent bounds stop vetoes per run; configured
+persistent teams continue the same manager context until the board and review gate settle. The manager's pin asks for a scout when the code or an outside source is unknown, devops and the tester to start from
 the accepted agreement in parallel with the implementation, and the reviewer pass before the goal is reported met.
 
 **The manager answers routine questions first.** With `permissions.manager_approves` (default true; `--manager-approves`),
@@ -71,22 +97,25 @@ the person as before. The engine records the outcome as `perm.decide` with `by: 
 remembered as a rule. The page shows each such decision as its question and answer (`by: "manager"`) sent together. With mailman mode on (section 5) the harness adds one more, `mailman`, which is not
 spawnable, is on no roster, board or hot view, and may call `mail` and nothing else.
 
-**Every agent sends the same tool list**, byte for byte (fs, bash, web, recall, skill, any MCP tools, frozen for the session, and the five
+**Every agent sends the same tool list**, byte for byte (fs, bash, web, recall, skill, any MCP tools, frozen for the session, and the
 swarm tools), so the provider caches the schemas once for the whole swarm. Roles are restricted at run time: the permission engine judges
 each call under the session posture *and* the role's profile (read-only roles run under the plan profile: writes and
-mutating commands are denied by the engine that understands shell syntax, not by a command allowlist; the manager runs
-under the plan profile too, and its shell is also held to the strict allowlist below, in every isolation mode), and swarm
-tools check the caller's role, which the harness puts in the call (`spawn`, `create`, `accept`, `reject`, `reopen`,
-`fail` and scope changes are manager-only). Without a permission engine (tests, embedding) read-only roles fall back
+mutating commands are denied by the engine that understands shell syntax, not by a command allowlist; the manager
+uses the session's permissions and any explicit manager profile), and swarm
+tools check the caller's role, which the harness puts in the call. The manager owns
+assignments, revisions and scope changes. A pool leader can create and accept its
+scoped children and assign existing pool members. Without a permission engine (tests, embedding) read-only roles fall back
 to a strict allowlist of one plain inspection command (no operators, redirections, substitutions, exec flags, or
 paths outside the project).
 
 | Tool | Actions | Notes |
 |---|---|---|
-| `task` | create\*, list, get, claim, update, block, resume, done, handover, accept\*, reject\*, reopen\*, fail\* | \* manager only; `fail` needs a typed `reason`; see sections 4 and 6 |
+| `task` | create, list, get, claim, update, block, resume, done, accept, reject, reopen, revise, resolve, fail, handover | Manager: create, accept, reject, reopen, revise, resolve and scope changes; pool leaders may create and accept their children. Persistent pools refuse `fail` and fresh-worker `handover`; embedded callers retain them (`fail` needs a typed `reason`). See sections 4 and 6. |
 | `mail` | send | one recipient; typed; section 5 |
 | `note` | propose | a bounded fact in the live view; older proposals can be evicted |
-| `spawn` | role, task, optional `agent=` to reuse an idle worker | manager only; section 6 |
+| `spawn` | role, task, optional `agent=` to reuse an idle worker | Manager or pool leader assigning an existing member to its child; section 6 |
+| `pool` | propose, agree, execute, reconcile, inspect, confirm | Leader or manager coordinates phases; every member acknowledges the current agreement and reconciled result |
+| `approve` | answer a delegated worker permission question | Manager only; explicit policy denials and escalations still apply |
 | `wait` | until tasks change, mail arrives, or a timeout | sleeps at no request cost; reports what changed since the caller last looked |
 
 A manager waiting on unfinished work with no running workers receives an error
@@ -106,7 +135,7 @@ Statuses: `todo -> doing -> review -> done`, with `blocked` and `failed` as side
 * The board is an **immutable snapshot with a version**; every operation produces a new snapshot under a single
   writer, and an operation that changes nothing produces nothing (no version, no wake-up). Readers (the hot-view
   renderer, the inspector, `wait`) never block and never see torn state.
-* **Transitions are a table, and `done` is terminal.**
+* **Transitions are a table; the manager can reopen accepted work for repair.**
 
   | Verb | From | To |
   |---|---|---|
@@ -267,8 +296,8 @@ instructions, must fit 24,000 bytes of assignment text. Compaction preserves
 harness assignments up to a fixed 32,000-byte bound, independently of token
 estimator calibration. Human instruction token limits remain separate.
 
-Acceptance is immutable. A changed design needs a new planning task and explicit
-reassignment of affected work. The manager arranges review and resolves design
+Accepted contracts are immutable within an assignment revision. A changed design uses
+`task revise` on the existing planning task and reopens affected work. The manager arranges review and resolves design
 conflicts; the harness enforces dependency order and context delivery, not the
 semantic quality of an agreement. Small independent tasks can proceed directly.
 Final review checks the assembled result against the agreement, including
@@ -363,6 +392,10 @@ agents one task. A refused spawn leaves nothing behind (no task, no agent, no co
 
 ### Handing a task over
 
+Configured persistent teams refuse fresh-worker handovers: revise the existing task
+and reuse its pool. The following compatibility path is available only to library
+and training callers that do not enable `Config.PersistentPools`.
+
 `task(action="handover", id="T3", text="...")` moves a doing task to a fresh worker of the same role. Its owner may
 call it (a worker whose context has degraded; it must write the summary: what is done, what is left, what it learned),
 and so may the manager, for any worker (one that stalled, section 10; the summary is then optional). The harness:
@@ -398,8 +431,8 @@ Limits, all enforced in code:
 | swarm budget (USD) | 50 (`swarm.budget_usd`; `--budget-usd`; 0 in your own file or `SLEIPNIR_SWARM_BUDGET_USD=0` removes it) | a stop is an outcome, not a crash. The swarm budget is a ledger over running *and* retired agents; once spent, no request is admitted and running workers are stopped (their tasks return to todo, without counting as an attempt). It is on by default because a swarm can spend many times what one agent does, and a cap that is off is one nobody remembers to set; only you can raise it (a repository's file cannot). The run's header line shows it, and the stop message says how to raise it. A cost that is not a number counts as spent, so a hostile or broken endpoint cannot slip under the limit |
 | per-agent budget (USD) | unlimited | `Config.AgentBudgetUSD`, for library users; no configuration key sets it |
 | steps per assignment | 60-150 by role | runaway guard |
-| attempts per task | 3 | a task whose workers keep stopping is failed, not requeued forever |
-| idle retire | 15 min | frees registration; a retired worker's notes are archived, its spend stays in the ledger, its unfinished tasks return to todo |
+| attempts per task | unlimited for configured pools; 3 for embedded callers | configured pools repair the existing task until accepted, cancelled or budget-limited |
+| idle retire | disabled for configured pools; 15 min for embedded callers | persistent members retain their conversations; embedded callers may reclaim idle slots |
 
 ## 7. Workspace safety
 
@@ -548,8 +581,9 @@ corpus (`docs/TRAINING-DATA.md`), where the swarm's DAG (spawn, mail, compaction
 
 **Resuming a board.** `ReplayBoard` rebuilds tasks (closures included), the roster and pending notes exactly from the
 `board.op` events (a test holds it to that). Resuming a team session (`internal/session`) replays the log with it at
-startup and gives the result to `Board.Restore` (shared tree: interrupted tasks return to todo) or `Swarm.RestoreTeam`
-(isolated: workers come back idle with their trees and reserved tasks; section 14). Alerts and stall findings are
+startup and restores configured teams through `Swarm.RestoreTeam`: workers return
+idle with their conversations and reserved tasks, and isolated workers reconnect
+their private trees (section 14). Unconfigured embedded sessions use `Board.Restore`. Alerts and stall findings are
 transient and are not rebuilt; the sweep finds a stall again if it still holds.
 
 **Not implemented.**
@@ -558,7 +592,8 @@ transient and are not rebuilt; the sweep finds a stall again if it still holds.
   requeue or fail anything itself.
 * On a cold prefix a higher-priority follower (the manager) can wait behind a worker-priority primer, because the warm
   gate is entered before the governor; the fix belongs in the agent's request path or the gate.
-* A batch run's manager that ignores three vetoes still ends with work unfinished; the run says so, it does not keep going.
+* Embedded callers without persistent pools retain the bounded stop-veto behavior.
+  Configured teams continue the same manager context while work remains.
 * Worktree isolation (section 14) has residual gaps of its own, listed there.
 
 ## 13. The manager between turns (interactive sessions)
@@ -606,10 +641,11 @@ created at the integration tip when the worker is spawned (`internal/workspace`)
 before removing them. The state directory is excluded because `~/.sleipnir` is a protected configuration directory.
 The trees start from what the person sees now, *uncommitted edits included* (a
 snapshot commit that no branch of theirs points at), and the result is applied on top of exactly that. A session started in
-a subdirectory keeps its writers in the same subdirectory of their trees. The manager and the read-only roles keep the
-checkout: the manager does not edit files in any run (in an isolated one anything it wrote there would also bypass the merge
-queue; it spawns a worker), and reviewers and scouts read the checkout, which holds a task's work only after it is applied, so they read merged
-work with `git show <commit>` (the commit is in the task's evidence).
+a subdirectory keeps its writers in the same subdirectory of their trees. The manager
+also has a writable private tree; direct edits pass verification and the merge queue
+before publication or completion. Reviewers and scouts read the shared checkout,
+which holds a task's work after it is applied, or inspect merged work with
+`git show <commit>` (the commit is in the task's evidence).
 
 **Nothing in the prompt names a tree.** The tools print paths relative to the working directory, which are the project's
 paths, and the isolation card (`Isolation: your working directory is a private git worktree ...`, which says what the

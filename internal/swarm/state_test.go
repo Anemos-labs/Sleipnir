@@ -365,7 +365,6 @@ func TestBoardDoneIsTerminal(t *testing.T) {
 	try("claim", b.Claim("be-2", "T1"))
 	try("assign", b.Assign("mgr", "be-2", "T1"))
 	try("fail", b.Fail("mgr", "T1", closeAs(CloseCanceled), "no"))
-	try("reopen", b.Reopen("mgr", "T1"))
 	try("accept", b.Accept("mgr", "T1", "again"))
 	try("unassign", b.Unassign("mgr", "T1", "x"))
 	if _, err := b.SendBack("mgr", "T1", "redo"); err == nil {
@@ -377,6 +376,12 @@ func TestBoardDoneIsTerminal(t *testing.T) {
 	if len(bad) > 0 {
 		tk, _ := b.Snapshot().Task("T1")
 		t.Fatalf("done is not terminal: %s (T1 ends %s)", strings.Join(bad, ", "), tk.Status)
+	}
+	if err := b.Reopen("mgr", "T1"); err != nil {
+		t.Fatal(err)
+	}
+	if task, _ := b.Snapshot().Task("T1"); task.Status != StatusTodo || task.LastOwner != "be-1" {
+		t.Fatalf("repair lost task identity or owner: %+v", task)
 	}
 }
 
@@ -1227,8 +1232,7 @@ func TestTheAnswerToAnAgentThatDoesNotOwnATaskSaysWhatToDo(t *testing.T) {
 	}
 }
 
-// A manager that claimed a task it meant to hand to a worker is told how to get out of it: the only way is to drop the task and make it
-// again, and the first answer said only whose it was (the second real swarm run went on for turns).
+// A manager that claimed a task is told to revise and reassign the existing ID.
 func TestAManagerThatClaimedATaskIsToldHowToHandItToAWorker(t *testing.T) {
 	b := NewBoard(nil)
 	b.CreateTask("mgr", TaskSpec{Title: "implement"})
@@ -1239,7 +1243,7 @@ func TestAManagerThatClaimedATaskIsToldHowToHandItToAWorker(t *testing.T) {
 	if err == nil {
 		t.Fatal("a task the manager holds was given to a worker")
 	}
-	for _, want := range []string{"T1 is claimed by you", "fail", "create the task again"} {
+	for _, want := range []string{"T1 is claimed by you", "task revise", "existing task"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("%q does not say %q", err, want)
 		}

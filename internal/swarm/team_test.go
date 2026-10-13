@@ -16,8 +16,8 @@ func TestDefaultTeamIsOneOfEachRole(t *testing.T) {
 	if got := DefaultTeam(WorkerRoleOrder, 8); !slices.Equal(got, WorkerRoleOrder) {
 		t.Errorf("--swarm 8: %v, want one of each: %v", got, WorkerRoleOrder)
 	}
-	if n, _ := TeamCounts(DefaultTeam(WorkerRoleOrder, 9)); n["backend"] != 2 || n["docs"] != 2 {
-		t.Errorf("--swarm 9 shares the extra slot among the roles: %v", n)
+	if n, _ := TeamCounts(DefaultTeam(WorkerRoleOrder, 9)); n["architect"] != 2 || n["backend"] != 1 || n["docs"] != 1 {
+		t.Errorf("--swarm 9 allocates exactly nine slots: %v", n)
 	}
 	if DefaultTeam(WorkerRoleOrder, 0) != nil || DefaultTeam(nil, 8) != nil {
 		t.Error("a single agent or no roles is no team")
@@ -188,5 +188,46 @@ func TestAutoDocsRetriesTheSamePassWhenItCannotStart(t *testing.T) {
 	}
 	if !r.sw.docsPending() {
 		t.Error("the pass still counts as pending work")
+	}
+}
+
+// Same-ID repairs must become fresh documentation work after acceptance, including
+// legacy tasks whose first accepted revision is zero.
+func TestAutoDocsTracksAcceptedRevisions(t *testing.T) {
+	r := newRVRigWith(t, Config{MaxWorkers: 8, AutoDocs: true, Team: []string{"backend", "docs"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	now := r.sw.deps.Now()
+	r.sw.docsTick(now)
+	// Hold dispatch so this test observes the changes collected by the keeper.
+	r.sw.docs.retryAt = now.Add(docsRetry)
+	task := Task{ID: "T1", Title: "add endpoint", Status: StatusDone, Role: "backend"}
+	r.sw.Board.Restore(&Snapshot{Tasks: []Task{task}})
+	r.sw.docsTick(now)
+	r.sw.docsTick(now)
+	if got := len(r.sw.docs.pending); got != 1 {
+		t.Fatalf("first acceptance collected %d changes, want 1", got)
+	}
+	r.sw.docs.pending = nil // the first pass consumed the original acceptance
+	task.Files = []string{"api/repaired.go"}
+	if err := r.sw.Board.revise("mgr", task.ID, TaskSpec{Files: task.Files}, "repair endpoint"); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.docsTick(now)
+	if len(r.sw.docs.pending) != 0 {
+		t.Fatal("unfinished repair became documentation work")
+	}
+	if err := r.sw.Board.claim("be-1", task.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	repaired, _ := r.sw.Board.Snapshot().Task(task.ID)
+	if err := r.sw.Board.submitAgreementAt("be-1", task.ID, repaired.Rev, "repaired", "", "", func(*Snapshot, Task) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.Accept("mgr", task.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.docsTick(now)
+	r.sw.docsTick(now)
+	if got := r.sw.docs.pending; len(got) != 1 || got[0].task != task.ID || len(got[0].files) != 1 || got[0].files[0] != task.Files[0] {
+		t.Fatalf("repaired acceptance was not collected exactly once: %+v", got)
 	}
 }

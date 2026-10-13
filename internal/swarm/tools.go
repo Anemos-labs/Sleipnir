@@ -18,7 +18,7 @@ import (
 // provider's tool-schema cache shared); who may use what is enforced at run
 // time, from the role and agent id the harness put in the call's Env.
 func (s *Swarm) Tools() []tools.Tool {
-	return []tools.Tool{&taskTool{s}, &mailTool{s}, &noteTool{s}, &spawnTool{s}, &waitTool{s}, &approveTool{s}}
+	return []tools.Tool{&taskTool{s}, &mailTool{s}, &noteTool{s}, &spawnTool{s}, &waitTool{s}, &approveTool{s}, &poolTool{s}}
 }
 
 // refuseService is the answer a service agent (the mailman) gets from every swarm
@@ -56,15 +56,16 @@ func (t *taskTool) Spec() core.ToolSpec {
 	return core.ToolSpec{
 		Name:         "task",
 		NoTreeWrites: true, // the board, mail and team are not the work tree
-		Description: "Shared task board. Actions: list, get (id: full task and agreement), claim (id), update (id, text = one-line status), " +
+		Description: "Shared task board. Manager: revise (id, text=reason, optional title, description, files, deps) repairs a task in place; resolve (id, text=explanation) completes work no longer needed. Pool leaders: create with parent=id and accept their child tasks. Actions: list, get (id: full task and agreement), claim (id), update (id, text = one-line status), " +
 			"done (id, text = one-line result, optional agreement = full shared contract, at most 6000 bytes/40 lines: the harness verifies the work before review). Accepted agreements are inherited by dependent tasks and preserved through compaction. " +
 			"block (id, text = reason, optional target = the id of the task it waits for), resume (id), " +
 			"handover (id, text = a short summary for your successor: what is done, what is left, what you learned; the harness gives your task, your work and the summary to a fresh worker of your role; the manager may hand over a worker's task). Manager only: create (title, description, role, deps, files = scope, kind = work or plan; plans require a read-only role and an agreement, not code verification), " +
 			"update files (amend the scope), accept (id: the task is done only after the harness's check), reject (id, text = feedback) or reopen, " +
 			"fail (id, reason = blocked_on, superseded, canceled, denied or verifier; target = the task id for blocked_on and superseded; text = one-line note).",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{
-"action":{"type":"string","enum":["create","list","get","claim","update","done","block","resume","handover","accept","reject","reopen","fail"]},
+"action":{"type":"string","enum":["create","list","get","claim","update","done","block","resume","handover","accept","reject","reopen","fail","revise","resolve"]},
 "id":{"type":"string"},"title":{"type":"string"},"description":{"type":"string"},"role":{"type":"string"},
+"parent":{"type":"string"},
 "kind":{"type":"string","enum":["work","plan"]},
 "deps":{"type":"array","items":{"type":"string"}},"files":{"type":"array","items":{"type":"string"}},
 "text":{"type":"string"},"agreement":{"type":"string"},
@@ -73,8 +74,8 @@ func (t *taskTool) Spec() core.ToolSpec {
 }
 
 type taskIn struct {
-	Action, ID, Title, Description, Role, Kind, Text, Agreement, Reason, Target string
-	Deps, Files                                                                 []string
+	Action, ID, Title, Description, Role, Kind, Text, Agreement, Reason, Target, Parent string
+	Deps, Files                                                                         []string
 }
 
 func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
@@ -91,9 +92,10 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 	s.noteCoordination(me, "task", in.ID)
 	// Validate required IDs before board operations; keep role refusals first.
 	switch in.Action {
-	case "accept", "reject", "reopen", "fail":
-		if !isMgr {
-			return tools.Errorf("only the manager can %s tasks", in.Action), nil
+	case "accept", "reject", "reopen", "fail", "revise", "resolve":
+		child, _ := s.Board.Snapshot().Task(in.ID)
+		if !isMgr && !(in.Action == "accept" && s.poolChildAuthor(me, child.Parent, child.Role)) {
+			return tools.Errorf("only the manager or the child task leader can %s tasks", in.Action), nil
 		}
 		fallthrough
 	case "get", "claim", "update", "done", "block", "resume", "handover":
@@ -103,14 +105,14 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 	}
 	switch in.Action {
 	case "create":
-		if !isMgr {
-			return tools.Errorf("only the manager creates tasks: mail the manager what needs doing, or note a fact for the team"), nil
+		if !isMgr && !s.poolChildAuthor(me, in.Parent, in.Role) {
+			return tools.Errorf("only the manager or the parent pool leader creates tasks: mail the manager what needs doing, or note a fact for the team"), nil
 		}
 		files, err := s.normScopes(in.Files)
 		if err != nil {
 			return tools.Errorf("%v", err), nil
 		}
-		task, err := s.Board.CreateTask(me, TaskSpec{Title: in.Title, Desc: in.Description, Role: in.Role, Kind: in.Kind, Deps: in.Deps, Files: files})
+		task, err := s.Board.CreateTask(me, TaskSpec{Title: in.Title, Desc: in.Description, Role: in.Role, Kind: in.Kind, Deps: in.Deps, Files: files, Parent: in.Parent})
 		if err != nil {
 			return tools.Errorf("%v", err), nil
 		}
@@ -138,6 +140,8 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		}
 		s.trackClaim(me, in.ID)
 		return text("%s is yours", in.ID), nil
+	case "revise", "resolve":
+		return t.reviseTask(ctx, c, in), nil
 	case "update":
 		return t.update(c, in), nil
 	case "done":
@@ -174,6 +178,13 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		}
 		return text("%s handed over from %s to %s with a recap; %s is retired once it holds nothing else", in.ID, task.Owner, res.Successor, task.Owner), nil
 	case "accept", "reject", "reopen", "fail":
+		if in.Action == "reopen" && s.cfg.PersistentPools {
+			in.Action = "revise"
+			if in.Text == "" {
+				in.Text = "reopened for repair"
+			}
+			return t.reviseTask(ctx, c, in), nil
+		}
 		return t.review(ctx, c, in), nil
 	}
 	return tools.Errorf("unknown action %q", cleanText(in.Action, 30)), nil
@@ -211,6 +222,9 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 	if !ok {
 		return tools.Errorf("no task %s", in.ID)
 	}
+	if err := poolComplete(s.Board.Snapshot(), task); err != nil {
+		return tools.Errorf("%v", err)
+	}
 	if task.Owner != me {
 		return tools.Errorf("%v", errNotOwner(in.ID, task.Owner))
 	}
@@ -219,6 +233,15 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 	}
 	if _, err := cleanAgreement(in.Agreement); err != nil {
 		return tools.Errorf("%v", err)
+	}
+	if task.Pool != nil {
+		if vr := s.verifyFor(ctx, task, s.deps.Workdir, task.Files); !vr.ok {
+			return tools.Errorf("pool result failed verification: %s", vr.out)
+		}
+		if err := s.Board.submitAgreementAt(me, task.ID, task.Rev, in.Text, "pool reconciled and verified", task.Pool.Agreement, taskGateCheck(task), poolComplete, s.poolCurrent, s.reviewSubmission(task)); err != nil {
+			return tools.Errorf("%v", err)
+		}
+		return text("%s consolidated pool result is in review", task.ID)
 	}
 	if task.Kind == TaskKindPlan {
 		if !s.roles[c.Env.Role].ReadOnly {
@@ -275,7 +298,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		case out.infra != nil:
 			return tools.Errorf("Not done yet: the merge could not run (%v). Try again in a moment; if it keeps failing, block the task and tell the manager.", cleanText(out.infra.Error(), 200))
 		case out.bounce != "":
-			if s.countBounce(task) >= s.cfg.MaxAttempts {
+			if s.cfg.MaxAttempts > 0 && s.countBounce(task) >= s.cfg.MaxAttempts {
 				return tools.Errorf("%s", s.giveUpMerge(m, task, firstLineOf(out.bounce, 100)))
 			}
 			return &tools.Result{IsError: true, Text: out.bounce}
@@ -302,6 +325,12 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 	case "accept":
 		if task.Status != StatusReview {
 			return tools.Errorf("%s is %s: a task is accepted from review, after its worker calls done", in.ID, task.Status)
+		}
+		if task.Pool != nil {
+			if err := s.Board.Accept(me, task.ID, in.Text, taskGateCheck(task), poolComplete, s.poolCurrent, s.noteAcceptedCheck(task)); err != nil {
+				return tools.Errorf("%v", err)
+			}
+			return text("%s pool result accepted", task.ID)
 		}
 		if task.Kind == TaskKindPlan {
 			if task.Agreement == "" {
@@ -335,7 +364,7 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 		}
 		return text("%s accepted", in.ID)
 	case "reject", "reopen":
-		if task.Status == StatusFailed {
+		if task.Status == StatusFailed || (in.Action == "reopen" && task.Status == StatusDone) {
 			if err := s.Board.Reopen(me, in.ID); err != nil {
 				return tools.Errorf("%v", err)
 			}
@@ -355,9 +384,22 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 		if _, err := s.Board.SendBack(me, in.ID, in.Text); err != nil {
 			return tools.Errorf("%v", err)
 		}
+		if task.Pool != nil {
+			_ = s.Board.poolUpdate(me, task.ID, func(_ *Snapshot, _ *Task, p *PoolState) error {
+				p.Phase = "executing"
+				p.Revision++
+				p.Votes = nil
+				p.Inspected = nil
+				return nil
+			})
+			s.wakePool(task.ID, "The manager rejected the combined result: "+cleanText(in.Text, 400)+". Repair existing children and reconcile again.")
+		}
 		s.notify(owner.id, "request", fmt.Sprintf("%s was sent back by the manager: %s. Fix it, then call task done again.", in.ID, cleanText(in.Text, 400)))
 		return text("%s sent back to %s with feedback", in.ID, task.Owner)
 	default: // fail
+		if s.cfg.PersistentPools {
+			return tools.Errorf("repair this task with revise; use resolve with an explanation only if it is no longer needed")
+		}
 		c, err := managerFailClosure(in.Reason, in.Target)
 		if err != nil {
 			return tools.Errorf("%s was not failed: %v", in.ID, err)
@@ -492,8 +534,8 @@ func (t *spawnTool) Spec() core.ToolSpec {
 }
 
 func (t *spawnTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error) {
-	if c.Env.Role != "manager" {
-		return tools.Errorf("only the manager can spawn agents; ask the manager (mail) or claim a task instead"), nil
+	if r := t.s.refuseService(c.Env.Role); r != nil {
+		return r, nil
 	}
 	t.s.noteCoordination(c.Env.Agent, "spawn", "")
 	var in struct {
@@ -512,6 +554,12 @@ func (t *spawnTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error)
 	if in.Agent != "" && in.Role == "" {
 		if m := t.s.get(in.Agent); m != nil {
 			req.Role = m.role
+		}
+	}
+	if c.Env.Role != "manager" {
+		child, ok := t.s.Board.Snapshot().Task(req.TaskID)
+		if !ok || !t.s.poolChildAuthor(c.Env.Agent, child.Parent, child.Role) || req.Agent == "" {
+			return tools.Errorf("only a pool leader may assign an existing member to its child task"), nil
 		}
 	}
 	id, err := t.s.Spawn(req)

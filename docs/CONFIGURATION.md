@@ -536,14 +536,21 @@ from scratch under it: the session's `allow` rules do not carve exceptions out o
 
 Role names: `worker` is the role of a single agent (`chat`/`run` without `--swarm`); a swarm adds `manager`, `architect`,
 `scout`, `backend`, `frontend`, `devops`, `tester`, `docs`, `reviewer`, plus roles defined in `.sleipnir/agents/`
-(`fullstack` remains for training tasks and resumed sessions that name it). `architect`, `reviewer` and `scout` are
+The legacy `fullstack` role is unavailable. `architect`, `reviewer` and `scout` are
 read-only in the engine (plan mode, with `go test`, `go vet`, `pytest`, `npm test`,
 `npm run test:*`, `cargo test`, `cargo check` and `make test` allowed so they can verify what they review). Their
 profile also denies the job tools `bash_output` and `bash_kill` by name: background jobs are session-wide, and a
 reviewer could otherwise read another agent's job output. Read-only roles may also fetch and search the web, as far as
-the session's mode and rules allow. The manager has the same profile, plus the reading commands of `gh` (`gh pr view`,
-`gh run list`, `gh auth status`, ...); it never writes files, and its shell commands are judged by this profile, so a
-pipe or `&&` of read-only commands, an absolute path inside the workspace or `git -C` is allowed.
+the session's mode and rules allow. The manager uses the session's mode and rules, like a solo agent; it has no implicit
+read-only profile. Explicit role restrictions still apply. It can handle small edits,
+commits, pushes and PR operations directly. Isolated managers receive their own writable
+tree, and the harness verifies and integrates their edits.
+
+GitHub automation is selected independently for each objective: `--auto-fix` repairs
+CI and review findings, and `--auto-merge` requests a protected merge after checks and
+reviews settle. The browser composer has the same two checkboxes. `/delivery fix`,
+`merge`, `both` or `off` selects the next objective; `/delivery resume` restores a
+paused checkpoint for the next message. See [GitHub delivery](GITHUB-DELIVERY.md).
 
 ```jsonc
 "permissions": {

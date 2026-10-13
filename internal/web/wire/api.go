@@ -137,7 +137,7 @@ type TabSummary struct {
 // number for a worker, such as be-2), Role its role, Code the role's short code and Nth the number in the id. K is the worker's
 // 1-based start order and Leg its leg of the horse: a leg is a role, the built-in roles in their order (architect 0 ... reviewer 7)
 // and other roles after them, eight to a round (-1 while the role is unknown); the manager has K 0 and Leg -1. Scope is the globs of its current
-// task ("- (read-only)" for a read-only role, "- (edits no file)" for the manager of a team, "**" for a single agent), RO whether
+// task ("- (read-only)" for a read-only role, "**" for the manager or a single agent), RO whether
 // its role writes no file, Model the model it runs on and Spawn the session time at which it started.
 type RosterEntry struct {
 	ID    string  `json:"id"`
@@ -306,9 +306,11 @@ type RestartRequest struct {
 // MessageRequest is a line sent from the composer: Text is what reaches the agent, Display what the transcript shows (the line as
 // typed, when it differs), ClientID makes a repeated request return the first answer.
 type MessageRequest struct {
-	Text     string `json:"text"`
-	Display  string `json:"display,omitempty"`
-	ClientID string `json:"clientId,omitempty"`
+	AutoFix   bool   `json:"autoFix,omitempty"`
+	AutoMerge bool   `json:"autoMerge,omitempty"`
+	Text      string `json:"text"`
+	Display   string `json:"display,omitempty"`
+	ClientID  string `json:"clientId,omitempty"`
 }
 
 // SendResult says whether a message was delivered now or queued behind the running turn.

@@ -574,7 +574,7 @@ func (t *Translator) syncRoster() {
 		m.Model = firstNonEmpty(m.Model, sess.Model)
 		m.Scope = "**"
 		if sess.Swarm {
-			m.Scope = "- (edits no file)"
+			m.Scope = "**"
 		}
 	}
 	for _, a := range t.st.Roster() {
@@ -597,7 +597,7 @@ func (t *Translator) syncRoster() {
 			e.Model = firstNonEmpty(e.Model, sess.Model)
 			e.Scope = "**"
 			if sess.Swarm {
-				e.Scope = "- (edits no file)"
+				e.Scope = "**"
 			}
 			continue
 		}

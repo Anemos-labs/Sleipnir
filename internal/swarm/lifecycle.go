@@ -49,14 +49,15 @@ const maxGateTries = 2
 // board still shows the same rev, so a run that ends late cannot undo a newer
 // assignment (a reject, a reuse).
 type runState struct {
-	id      uint64
-	tasks   map[string]uint64
-	cancel  context.CancelFunc
-	started time.Time
-	mailSeq uint64 // mail received before this run reserved the worker
-	reason  string // why the harness stopped the run ("" = it was not asked to stop)
-	count   bool   // whether that stop counts as a failed attempt at the task
-	abortAt time.Time
+	id          uint64
+	tasks       map[string]uint64
+	cancel      context.CancelFunc
+	started     time.Time
+	mailSeq     uint64 // mail received before this run reserved the worker
+	reason      string // why the harness stopped the run ("" = it was not asked to stop)
+	count       bool   // whether that stop counts as a failed attempt at the task
+	abortAt     time.Time
+	quarantined bool
 }
 
 // member is one registered agent.
@@ -176,7 +177,7 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 	if requester == nil {
 		requester = perm.DenyAll{} // fail closed: see perm.DenyAll
 	}
-	rr := roleRequester{inner: requester, role: r}
+	rr := roleRequester{inner: requester, role: r, swarm: s, agent: id}
 	isSvc := s.isService(r.Name)
 	switch {
 	case isSvc:
@@ -186,13 +187,7 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 		rr.only = map[string]bool{"mail": true}
 	case r.ReadOnly:
 		rr.denyWrites = fmt.Sprintf("the %s role is read-only: report findings instead of changing files", r.Name)
-	case isMgr:
-		// The manager plans, delegates and reviews; workers make every change. In an
-		// isolated run a write of its own would also bypass the merge queue.
-		rr.denyWrites, rr.strictShell = managerWritesMsg, !s.cfg.JudgeManagerShell
-		if e, ok := requester.(*perm.Engine); ok {
-			rr.planOnly = e.PlanOnly()
-		}
+
 	}
 	requester = rr
 	sink := agent.Sink(agent.NopSink{})
@@ -225,15 +220,27 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 		m.slot = s.slotFor(r.Name)
 		s.mu.Unlock()
 	}
+	if isMgr && tree == nil {
+		previous := after
+		after = func(id, path string) {
+			if previous != nil {
+				previous(id, path)
+			}
+			s.review.mu.Lock()
+			s.review.merges++
+			s.review.last = "manager changes"
+			s.review.mu.Unlock()
+		}
+	}
 	rm := s.modelFor(r.Name, m.slot)
 	model, prov := rm.Model, rm.Provider
 	m.model = model
 	hooks := d.Hooks
-	if isMgr && s.cfg.HoldManager {
+	if isMgr {
 		hooks = &holdHooks{inner: d.Hooks, s: s, m: m}
 	}
 	cfg := agent.Config{
-		SnapshotEachStep: s.isolated() && s.deps.Isolation.Resumable,
+		SnapshotEachStep: s.cfg.PersistentPools || s.isolated() && s.deps.Isolation.Resumable,
 		ID:               id, Role: r.Name, Model: model, Provider: prov, Compactor: d.Compactor, CompactorModel: d.CompactorModel, Tools: d.Registry, ToolSpecs: d.ToolSpecs,
 		CaptureTokens: d.CaptureTokens,
 		Const:         d.Const, Shared: s.currentShared(), RoleL: s.roleLay[r.Name], Notes: notes,
@@ -936,6 +943,9 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 		if !ok || t.Owner != m.id || t.Status != StatusDoing || t.Rev != rev {
 			continue
 		}
+		if t.Pool != nil {
+			continue
+		}
 		if t.Kind == TaskKindPlan {
 			if ctx.Err() != nil {
 				s.Board.Requeue(m.id, id, rev, "interrupted", false, s.cfg.MaxAttempts)
@@ -1060,6 +1070,10 @@ func (s *Swarm) resumeReturnedWork(ctx context.Context, m *member, rs *runState,
 func (s *Swarm) settleStopped(m *member, tasks map[string]uint64, kind stopKind, why string, count bool) string {
 	var notes []string
 	for _, id := range sortedKeys(tasks) {
+		if task, ok := s.Board.Snapshot().Task(id); ok && task.Pool != nil {
+			s.notify(s.ManagerID(), "request", "Pool leader stopped on "+id+": "+why+". Resume this pool with its existing members.")
+			continue
+		}
 		nt, applied := s.Board.Requeue(m.id, id, tasks[id], why, count, s.cfg.MaxAttempts)
 		if applied {
 			notes = append(notes, s.requeueLine(m.id, nt, why))
@@ -1077,6 +1091,9 @@ func (s *Swarm) settleStopped(m *member, tasks map[string]uint64, kind stopKind,
 func (s *Swarm) requeueLine(agentID string, t Task, why string) string {
 	if t.Status == StatusFailed {
 		return fmt.Sprintf("%s failed after %d attempts: %s stopped (%s)", t.ID, t.Attempts, agentID, why)
+	}
+	if s.cfg.PersistentPools {
+		return fmt.Sprintf("%s is retrying with its existing worker after attempt %d: %s", t.ID, t.Attempts, why)
 	}
 	return fmt.Sprintf("%s returned to todo: %s stopped (%s), attempt %d of %d", t.ID, agentID, why, t.Attempts, s.cfg.MaxAttempts)
 }

@@ -30,6 +30,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/delivery"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/hooks"
 	"github.com/anemos-labs/sleipnir/internal/kv"
@@ -54,6 +55,8 @@ var Version = "dev"
 
 // Options describes one session. Zero values mean "sensible default".
 type Options struct {
+	// AutoFix and AutoMerge authorize the GitHub lifecycle of the next objective only.
+	AutoFix, AutoMerge bool
 	// Cwd is where the agent works; Root is the project root (default: found by
 	// walking up from Cwd to a .git or .sleipnir directory).
 	Cwd, Root string
@@ -197,16 +200,15 @@ type Options struct {
 // Session is a running assembly. Run may be called repeatedly; the agent (or
 // manager) keeps its thread between calls.
 type Session struct {
-	opts Options
+	delivery        *delivery.Controller
+	deliveryOptions delivery.Options
+	opts            Options
 	// newSolo builds the single agent again on the session's current Provider and Model (SwitchModel).
 	newSolo func() (*agent.Agent, error)
 	plans   *plan.Store // each agent's plan, which a standing goal reads as its requirements (goal.go)
 	// judgeUSD is what a standing goal's judge has cost (goal.go), under mu.
 	judgeUSD float64
 
-	// managerProfileBuiltin says the manager runs under the harness's own plan-mode profile
-	// (buildPerm), not one a configuration wrote: the engine alone then judges its shell.
-	managerProfileBuiltin bool
 	// team is the team the swarm was built with (Team).
 	team []TeamSlot
 
@@ -385,7 +387,7 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		// Anything but a positive number reads as "no budget" below; a typo must not do that.
 		return nil, fmt.Errorf("budget: --budget-usd must be zero (no limit) or a positive amount, got %v", b)
 	}
-	s := &Session{opts: o, cfg: cfg, cfgRep: rep, trust: tinfo}
+	s := &Session{opts: o, cfg: cfg, cfgRep: rep, trust: tinfo, deliveryOptions: delivery.Options{AutoFix: o.AutoFix, AutoMerge: o.AutoMerge}}
 	if o.Savepoints {
 		s.barrier = agent.NewSavepointBarrier()
 	}
@@ -597,15 +599,7 @@ func (s *Session) buildPerm() error {
 			}
 		}
 	}
-	// The manager does not edit files (it plans, delegates and reviews; in an isolated run
-	// anything it wrote into the shared checkout would also bypass the merge queue), so the
-	// engine holds it to plan mode as well as the swarm's own check. Within plan mode it may
-	// inspect everything a reviewer may, and read GitHub with gh.
-	s.managerProfileBuiltin = false
-	if _, ok := roles["manager"]; !ok {
-		roles["manager"] = perm.RoleProfile{Mode: perm.ModePlan, Allow: managerRoleAllow, Deny: readOnlyRoleDeny}
-		s.managerProfileBuiltin = true
-	}
+	// The manager uses the session policy, just like a solo agent.
 	var extra []string
 	if s.iso != nil {
 		// The session's worktrees are part of the workspace, and the project's relative
@@ -647,14 +641,6 @@ var readOnlyRoleAllow = []string{
 	// never grants more than the session does).
 	"WebFetch", "WebSearch",
 }
-
-// managerRoleAllow is the manager's plan-mode allow list: what read-only roles may
-// run, and gh's reading commands (the state of a pull request, a CI run, an issue).
-var managerRoleAllow = append(append([]string(nil), readOnlyRoleAllow...),
-	"Bash(gh --version)", "Bash(gh auth status:*)", "Bash(gh repo view:*)",
-	"Bash(gh pr view:*)", "Bash(gh pr list:*)", "Bash(gh pr diff:*)", "Bash(gh pr checks:*)",
-	"Bash(gh run view:*)", "Bash(gh run list:*)", "Bash(gh issue view:*)", "Bash(gh issue list:*)",
-)
 
 // readOnlyRoleDeny are the tools a read-only role is denied by name. Background jobs
 // are session-wide, and the engine alone would answer "touches no files and no
@@ -854,6 +840,7 @@ func (s *Session) build(ctx context.Context) error {
 	// tool list, then hand the frozen list back. Every agent then sends the same
 	// tools array, byte for byte.
 	sc := swarm.DefaultConfig()
+	sc.PersistentPools = o.DefaultTeam || len(o.Team) > 0
 	sc.SessionID = s.ID
 	// swarm.max_workers is the ceiling (checkSwarmSize refused a larger request); a
 	// size asked for on the command line may only be smaller.
@@ -887,7 +874,7 @@ func (s *Session) build(ctx context.Context) error {
 	}
 	sc.VerifyCmd = o.Verify
 	sc.Verify = s.verifier()
-	sc.HoldManager, sc.WakeManager = !o.Interactive, o.Interactive
+	sc.HoldManager, sc.WakeManager = sc.PersistentPools || !o.Interactive, o.Interactive
 	sc.Mailman = s.mailmanOn()
 
 	comp, compModel, err := s.buildCompactor(ctx, o)
@@ -985,7 +972,7 @@ func (s *Session) build(ctx context.Context) error {
 	s.team = team
 	autoDocs := s.autoDocsOn() && slices.Contains(sc.Team, swarm.DocsRole)
 	sc.AutoDocs = autoDocs
-	sc.JudgeManagerShell = s.managerProfileBuiltin
+	sc.JudgeManagerShell = true
 	sc.ManagerApproves = s.managerApprovesOn()
 	for i, t := range team {
 		if t.Model == "" {
@@ -1137,8 +1124,8 @@ func (writeGuard) BeforeWrite(string, string) error { return nil }
 // AfterWrite records the agent and path in the checkpoint store after a write completes.
 func (g writeGuard) AfterWrite(agent, path string) { g.store.After(agent, path) }
 
-// Run gives the session a goal and returns when the agent (or manager) finishes.
-func (s *Session) Run(ctx context.Context, goal string) (*Result, error) {
+// runTurn gives the session one model turn without starting a GitHub controller.
+func (s *Session) runTurn(ctx context.Context, goal string) (*Result, error) {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -1287,6 +1274,9 @@ func (s *Session) Resumed() bool { return s.opts.Resume != "" }
 // and Resume are those the session was opened with: a resumed session has its directory in Dir.
 func (s *Session) Options() Options {
 	o := s.opts
+	s.mu.Lock()
+	o.AutoFix, o.AutoMerge = s.deliveryOptions.AutoFix, s.deliveryOptions.AutoMerge
+	s.mu.Unlock()
 	o.Sink, o.NewSink, o.Prompter = nil, nil, nil
 	o.Allow = append([]string(nil), o.Allow...)
 	o.ShellEnv = append([]string(nil), o.ShellEnv...)

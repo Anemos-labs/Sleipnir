@@ -71,6 +71,8 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	model := fs.String("model", "", "model: provider/model or a bare id for the default provider (default: config models.default)")
 	cwd := fs.String("cwd", "", "working directory (default: current)")
 	mode := fs.String("mode", "", "permissions: default | accept-edits | plan | bypass | yolo (default: config, then default)")
+	autoFix := fs.Bool("auto-fix", false, "repair CI and PR review findings for this objective")
+	autoMerge := fs.Bool("auto-merge", false, "merge this objective PR after checks and repository requirements pass")
 	swarmN := fs.Int("swarm", 0, "run a manager and N workers instead of a single agent (config swarm.max_workers is the ceiling)")
 	maxSteps := fs.Int("max-steps", 0, "step limit for a single agent (default 200)")
 	budget := fs.Float64("budget-usd", 0, "stop when spend reaches this many US dollars")
@@ -142,7 +144,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	}
 	interactive := term.IsTerminal(int(os.Stdin.Fd()))
 	team, workers := teamOf(*swarmN)
-	o := session.Options{
+	o := session.Options{AutoFix: *autoFix, AutoMerge: *autoMerge,
 		AskTimeout: *askTimeout,
 		Cwd:        *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: team, Workers: workers,
 		MaxSteps: *maxSteps, BudgetUSD: *budget, Verify: *verify, NoRecon: *noRecon, TrustProject: *trust,

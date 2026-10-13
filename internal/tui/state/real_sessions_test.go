@@ -365,8 +365,8 @@ func TestTheStateOfARealIsolatedSessionAgreesWithAnIndependentCount(t *testing.T
 	if !m.Seen || m.Counts.Queued != 9 || m.Counts.Merged != 7 || m.Counts.Conflicts != 1 || m.Counts.VerifyFail != 1 || m.Counts.RolledBack != 1 || m.Counts.Bounced != 2 || len(m.Waiting) != 0 {
 		t.Errorf("merge %+v", m)
 	}
-	if m.Trees != 7 {
-		t.Errorf("%d trees at the end: the seven worker trees must remain available for resume", m.Trees)
+	if m.Trees != 8 {
+		t.Errorf("%d trees at the end: the seven workers and writable manager must remain available for resume", m.Trees)
 	}
 	if in := m.Integration; in == nil || !in.Applied || in.Committed || in.Files != 6 || in.Branch == "" || in.Tip == "" {
 		t.Errorf("integration %+v", in)

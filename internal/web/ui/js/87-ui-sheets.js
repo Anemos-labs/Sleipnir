@@ -266,7 +266,7 @@
           const key = JSON.stringify([st.single, st.counts, st.slotModels, st.perSlot, st.openRoles, st.roleModels, tm.n]); if (rows._k === key) return; rows._k = key;
           const full = st.maxWorkers && tm.n >= st.maxWorkers;
           if (!st.single) rows.innerHTML = roles.map(r => {
-            const R = D.roles[r] || SL.data.ROLES[r] || { code: 'sc', desc: '' }, n = st.counts[r] || 0, per = (st.perSlot || {})[r], open = n > 1 && !!(st.openRoles || {})[r];
+            const R = D.roles[r] || SL.data.ROLES[r] || { code: 'sc', desc: '' }, n = st.counts[r] || 0, per = (st.perSlot || {})[r], open = n > 1 && (st.openRoles || {})[r] !== false;
             const mixed = per ? per.filter((m, i, a2) => a2.indexOf(m) === i).length : 0;
             const sel = (mixed ? '<option value="" disabled selected>' + mixed + ' models: set all slots</option>' : '') + modelOpts(mixed ? null : slotModel(st, r, 0));
             const disc = n > 1 ? '<button type="button" class="nstdisc" data-topen="' + esc(r) + '" aria-expanded="' + open + '" aria-controls="nsts-' + esc(r) + '" title="' + (open ? 'one model for all ' : 'a model for each of the ') + n + ' ' + esc(r) + ' slots">' + (open ? '▾' : '▸') + '</button>' : '<span class="nstdisc" aria-hidden="true"></span>';
@@ -302,7 +302,7 @@
           const ex = e.target.closest('[data-ex]'); if (ex) { if (!quiet()) addRule(ex.dataset.ex); paint(); return; }
           const rr = e.target.closest('[data-rr]'); if (rr && !quiet()) { st.rules.splice(+rr.dataset.rr, 1); paint(); }
           const tp = e.target.closest('[data-tpreset]'); if (tp) { if (tp.dataset.tpreset === 'single') st.single = true; else { st.single = false; D.roleOrder.forEach(r => { st.counts[r] = 1; }); Object.keys(st.counts).forEach(r => { if (D.roleOrder.indexOf(r) < 0) st.counts[r] = 0; }); } paint(); return; }
-          const to = e.target.closest('[data-topen]'); if (to) { const r = to.dataset.topen; st.openRoles = st.openRoles || {}; st.openRoles[r] = !st.openRoles[r]; paint(); const again = $('[data-topen="' + r + '"]', b); if (again) again.focus(); return; }
+          const to = e.target.closest('[data-topen]'); if (to) { const r = to.dataset.topen; st.openRoles = st.openRoles || {}; st.openRoles[r] = st.openRoles[r] === false; paint(); const again = $('[data-topen="' + r + '"]', b); if (again) again.focus(); return; }
           const ts = e.target.closest('[data-tstep]'); if (ts) { const r = ts.closest('[data-trole]').dataset.trole; st.counts[r] = Math.max(0, (st.counts[r] || 0) + +ts.dataset.tstep); if (st.perSlot && st.perSlot[r]) { st.perSlot[r] = st.perSlot[r].slice(0, st.counts[r]); if (st.perSlot[r].length && st.perSlot[r].every(m => m === st.perSlot[r][0])) { st.slotModels[r] = st.perSlot[r][0]; delete st.perSlot[r]; } } paint(); const again = $('[data-trole="' + r + '"] [data-tstep="' + ts.dataset.tstep + '"]', b); if (again && !again.disabled) again.focus(); return; }
         });
         sc.listen($('#nsModes', b), 'keydown', e => { const k = e.key; if (!/^(Arrow(Up|Down|Left|Right)|Home|End)$/.test(k)) return; e.preventDefault(); const rs = $$('[data-nsmode]', b), f = rs.indexOf(document.activeElement), i = f >= 0 ? f : rs.findIndex(r => r.dataset.nsmode === st.mode), j = k === 'Home' ? 0 : k === 'End' ? rs.length - 1 : (i + (/Down|Right/.test(k) ? 1 : rs.length - 1)) % rs.length; st.mode = rs[j].dataset.nsmode; paint(); rs[j].focus(); });

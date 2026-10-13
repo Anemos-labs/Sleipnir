@@ -57,17 +57,20 @@ const (
 
 // Task is one unit of work.
 type Task struct {
-	ID     string     `json:"id"`
-	Kind   string     `json:"kind,omitempty"` // empty: implementation; plan: read-only agreement
-	Title  string     `json:"title"`
-	Desc   string     `json:"desc,omitempty"`
-	Status TaskStatus `json:"status"`
-	Owner  string     `json:"owner,omitempty"`
-	Role   string     `json:"role,omitempty"` // suggested role
-	Deps   []string   `json:"deps,omitempty"`
-	Line   string     `json:"line,omitempty"`   // latest one-line progress
-	Result string     `json:"result,omitempty"` // what the worker said when it finished
-	Files  []string   `json:"files,omitempty"`  // the scope: paths the task may touch
+	LastOwner string     `json:"last_owner,omitempty"`
+	Parent    string     `json:"parent,omitempty"`
+	Pool      *PoolState `json:"pool,omitempty"`
+	ID        string     `json:"id"`
+	Kind      string     `json:"kind,omitempty"` // empty: implementation; plan: read-only agreement
+	Title     string     `json:"title"`
+	Desc      string     `json:"desc,omitempty"`
+	Status    TaskStatus `json:"status"`
+	Owner     string     `json:"owner,omitempty"`
+	Role      string     `json:"role,omitempty"` // suggested role
+	Deps      []string   `json:"deps,omitempty"`
+	Line      string     `json:"line,omitempty"`   // latest one-line progress
+	Result    string     `json:"result,omitempty"` // what the worker said when it finished
+	Files     []string   `json:"files,omitempty"`  // the scope: paths the task may touch
 	// Evidence is what the harness observed (edited files, the last test command
 	// and its exit status). Only the harness writes it.
 	Evidence string `json:"evidence,omitempty"`
@@ -319,6 +322,15 @@ func (d *draft) set(k string, v any) {
 // the operands of its creation, to rebuild the task from the log (ReplayBoard).
 func (d *draft) setTask(t Task) {
 	d.set("task", t.ID)
+	if t.LastOwner != "" {
+		d.set("last_owner", t.LastOwner)
+	}
+	if t.Parent != "" {
+		d.set("parent", t.Parent)
+	}
+	if t.Pool != nil {
+		d.set("pool", t.Pool)
+	}
 	d.set("status", string(t.Status))
 	d.set("owner", t.Owner)
 	d.set("line", t.Line)
@@ -457,8 +469,8 @@ func taskIdx(s *Snapshot, id string) int {
 
 // TaskSpec describes a task to create.
 type TaskSpec struct {
-	Title, Desc, Role, Kind string
-	Deps, Files             []string
+	Title, Desc, Role, Kind, Parent string
+	Deps, Files                     []string
 }
 
 // TaskCheck is evaluated inside the board's critical section on the task an
@@ -503,7 +515,11 @@ func (b *Board) createLocked(d *draft, spec TaskSpec) (Task, error) {
 	}
 	b.next++
 	t := Task{ID: "T" + strconv.Itoa(b.next), Title: title, Desc: cleanBlock(spec.Desc, maxDescRunes), Status: StatusTodo,
-		Role: cleanText(spec.Role, maxRoleRunes), Kind: spec.Kind, Deps: deps, Files: files}
+		Role: cleanText(spec.Role, maxRoleRunes), Kind: spec.Kind, Deps: deps, Files: files, Parent: spec.Parent}
+	if err := poolAssignment(d.Snapshot, t); err != nil {
+		b.next--
+		return Task{}, err
+	}
 	d.Tasks = append(d.tasks(), t)
 	return t, nil
 }
@@ -626,7 +642,7 @@ func (b *Board) assignTask(r assignReq) (Task, error) {
 			case t.Owner != "" && t.Owner == r.by && t.Owner != r.agent:
 				// The assigner is the owner: a manager that claimed a task it meant to hand over. The second real swarm run did,
 				// and went on for turns, because the only thing the board said was whose the task was.
-				return fmt.Errorf("%s is claimed by you, so no worker can be put on it: drop it with fail and create the task again for the worker "+
+				return fmt.Errorf("%s is claimed by you, so no worker can be put on it: release it with task revise and assign the existing task to the worker "+
 					"(a manager hands tasks over, it does not claim them)", r.id)
 			case t.Owner != "" && t.Owner != r.agent:
 				return fmt.Errorf("%s is already owned by %s", r.id, t.Owner)
@@ -700,6 +716,9 @@ func (b *Board) SetScope(by, id string, files []string, check TaskCheck) error {
 			return err
 		}
 		t.Files = nf
+		if err := poolScopes(d.Snapshot, t); err != nil {
+			return err
+		}
 		if check != nil && t.Status == StatusDoing {
 			if err := check(d.Snapshot, t); err != nil {
 				return err
@@ -963,9 +982,10 @@ func (b *Board) Reopen(by, id string) error {
 			return fmt.Errorf("no task %s", id)
 		}
 		t := d.Tasks[i]
-		if t.Status != StatusFailed {
-			return fmt.Errorf("%s is %s: only a failed task can be reopened (a task in review is sent back with reject)", id, t.Status)
+		if t.Status != StatusFailed && t.Status != StatusDone {
+			return fmt.Errorf("%s is %s: only a closed task can be reopened (a task in review is sent back with reject)", id, t.Status)
 		}
+		t.LastOwner = t.Owner
 		t.Status, t.Owner, t.Line, t.Result, t.Evidence, t.Attempts, t.Rev = StatusTodo, "", "", "", "", 0, d.Version
 		t.VerificationFailures = 0
 		return d.put(i, t)
@@ -1017,6 +1037,7 @@ func requeuedTask(t Task, rev uint64, reason string, countAttempt bool, maxAttem
 		t.Status, t.Closure = StatusFailed, closeAs(kind)
 		t.Result = cleanText(reason, maxResultRunes)
 	} else {
+		t.LastOwner = t.Owner
 		t.Status, t.Owner = StatusTodo, ""
 		t.Line = cleanText(reason, maxLineRunes)
 	}

@@ -35,8 +35,7 @@ import (
 // edits a git worktree of its own, so exclusion between writers is unnecessary and a
 // lease never blocks a write. The guard then does three other things: it confines
 // each writer's writes to its own tree (and refuses writes by agents that have none:
-// the manager and read-only roles do not edit files in an isolated run, because
-// anything written into the shared checkout would bypass the merge queue), it keeps
+// read-only roles have no tree; the manager has its own writable tree), it keeps
 // enforcing ownership and the task's scope, and it turns the lease table into an
 // advisory one: two writers touching the same repository-relative path raise an alert
 // that names the agents (never the file) and warns of a merge conflict.
@@ -189,9 +188,9 @@ func (l *Leases) checkOwner(agent, rel string, relOK bool) error {
 
 // foreignOwners returns the roles that own the repository-relative path rel, made
 // safe to show, when role is not among them. It returns nil when owners is nil, when
-// nobody owns rel, and when role owns it; an empty role owns nothing.
+// nobody owns rel, when role owns it, or for the manager; an empty role owns nothing.
 func foreignOwners(owners PathOwners, role, rel string) []string {
-	if owners == nil {
+	if owners == nil || role == "manager" {
 		return nil
 	}
 	own := owners.OwnersOf(rel)
@@ -274,7 +273,7 @@ func (l *Leases) scopeOf(agent string) (scopes, ids []string, scoped bool) {
 		return nil, nil, false
 	}
 	for _, t := range l.board.Snapshot().Tasks {
-		if t.Owner != agent || t.Status != StatusDoing {
+		if t.Pool != nil || t.Owner != agent || t.Status != StatusDoing {
 			continue
 		}
 		if len(t.Files) == 0 {

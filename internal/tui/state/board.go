@@ -29,6 +29,11 @@ func newBoardState() boardState { return boardState{notes: map[int]struct{}{}} }
 // boardWire is what a board.op carries. Every operation names the task it changed and its whole state (internal/swarm/board.go
 // setTask), so that the log can rebuild the board; the operands of the other ops are the agent's status, a note or an alert.
 type boardWire struct {
+	Parent string `json:"parent"`
+	Pool   *struct {
+		Phase   string
+		Members []string
+	} `json:"pool"`
 	Op        string            `json:"op"`
 	Version   uint64            `json:"version"`
 	Task      string            `json:"task"`
@@ -237,6 +242,12 @@ func (s *State) taskOp(e events.Event, t time.Time, p *boardWire) {
 		}
 	}
 	if full {
+		ts.Parent = clip(p.Parent, textID)
+		ts.PoolPhase, ts.PoolMembers = "", nil
+		if p.Pool != nil {
+			ts.PoolPhase = clip(p.Pool.Phase, textID)
+			ts.PoolMembers = clipList(p.Pool.Members, 64, textID)
+		}
 		s.setStatus(ts, p.Status, t, e.Seq)
 		ts.Owner, ts.Line = clip(p.Owner, textID), clean(p.Line, textShort)
 		ts.Result, ts.Evidence = clean(p.Result, textLong), clean(p.Evidence, textLong)

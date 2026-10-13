@@ -29,6 +29,9 @@ func ReplayBoard(evs []events.Event) (*Snapshot, error) {
 			continue
 		}
 		var m struct {
+			LastOwner  string            `json:"last_owner"`
+			Parent     string            `json:"parent"`
+			Pool       *PoolState        `json:"pool"`
 			Op         string            `json:"op"`
 			Version    uint64            `json:"version"`
 			Task       string            `json:"task"`
@@ -93,7 +96,8 @@ func ReplayBoard(evs []events.Event) (*Snapshot, error) {
 			t.VerificationFailures = m.Verify
 			t.Agreement, t.Agreements = m.Agreement, m.Agreements
 			t.Closure, t.BlockedOn = m.Closure, m.BlockedOn
-			if m.Op == "create" || (m.Op == "assign" && m.Title != "") {
+			t.Parent, t.Pool, t.LastOwner = m.Parent, m.Pool, m.LastOwner
+			if m.Title != "" {
 				t.Title, t.Desc, t.Role, t.Deps = m.Title, m.Desc, m.Role, m.Deps
 				t.Kind = m.Kind
 			}

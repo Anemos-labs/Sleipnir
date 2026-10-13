@@ -15,19 +15,15 @@ import (
 // tasks whose team names roles without counts).
 
 // DefaultTeam is the team of a session that names none: one slot per role in order
-// when workers equals the number of roles, and otherwise each role gets
-// ceil(workers/len(order)) slots (MaxWorkers still caps the total). order lists the
+// when workers equals the number of roles, and otherwise slots cycle through the role order until the exact count is reached. order lists the
 // spawnable roles; zero workers or no roles is no team.
 func DefaultTeam(order []string, workers int) []string {
 	if workers <= 0 || len(order) == 0 {
 		return nil
 	}
-	per := (workers + len(order) - 1) / len(order)
-	var out []string
-	for _, r := range order {
-		for i := 0; i < per; i++ {
-			out = append(out, r)
-		}
+	out := make([]string, workers)
+	for i := range out {
+		out[i] = order[i%len(order)]
 	}
 	return out
 }

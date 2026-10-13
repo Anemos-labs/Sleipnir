@@ -537,10 +537,10 @@ func TestIsolatedSwarmMergesAConflictAndAVerifierFailureAndAppliesTheResult(t *t
 
 	// The transient integration tree is removed. Worker trees and recovery refs
 	// remain, so this team can continue with its original base and conversations.
-	if ents, _ := os.ReadDir(trees); len(ents) != 7 {
+	if ents, _ := os.ReadDir(trees); len(ents) != 8 {
 		t.Errorf("worker recovery trees missing: %v", ents)
 	}
-	if out := git(t, repo, "worktree", "list", "--porcelain"); strings.Count(out, "worktree ") != 8 {
+	if out := git(t, repo, "worktree", "list", "--porcelain"); strings.Count(out, "worktree ") != 9 {
 		t.Errorf("unexpected recovery worktrees:\n%s", out)
 	}
 	if out := git(t, repo, "branch", "--list", "sleipnir/*"); !strings.Contains(out, "_resume") || !strings.Contains(out, "_integration") {
