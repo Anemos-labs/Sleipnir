@@ -43,7 +43,7 @@ type docsChange struct {
 type docsKeeper struct {
 	mu      sync.Mutex
 	primed  bool
-	seen    map[string]bool
+	seen    map[string]uint64 // last observed terminal revision; same-ID repairs are new changes
 	pending []docsChange
 	open    string    // the catch-up task in progress ("" none)
 	last    string    // the last task a finished pass covered
@@ -61,7 +61,7 @@ func newDocsKeeper(cfg Config) *docsKeeper {
 	if n, _ := TeamCounts(cfg.Team); n[DocsRole] == 0 {
 		return nil
 	}
-	return &docsKeeper{seen: map[string]bool{}}
+	return &docsKeeper{seen: map[string]uint64{}}
 }
 
 // AutoDocs reports whether the harness keeps the docs worker at work by itself.
@@ -81,17 +81,17 @@ func (s *Swarm) docsTick(now time.Time) {
 		// What was done before the keeper first looked (a resumed session) is not news.
 		for _, t := range snap.Tasks {
 			if t.Status == StatusDone || t.Status == StatusFailed {
-				k.seen[t.ID] = true
+				k.seen[t.ID] = t.Rev
 				k.coded = k.coded || t.Status == StatusDone && s.implementationTask(t)
 			}
 		}
 		k.primed = true
 	}
 	for _, t := range snap.Tasks {
-		if k.seen[t.ID] || (t.Status != StatusDone && t.Status != StatusFailed) {
+		if rev, seen := k.seen[t.ID]; (seen && rev == t.Rev) || (t.Status != StatusDone && t.Status != StatusFailed) {
 			continue
 		}
-		k.seen[t.ID] = true
+		k.seen[t.ID] = t.Rev
 		if t.Status != StatusDone || s.isDocsTask(t) || t.Kind != TaskKindPlan && !s.implementationTask(t) {
 			continue
 		}
