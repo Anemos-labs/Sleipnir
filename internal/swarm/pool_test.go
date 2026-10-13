@@ -2,7 +2,10 @@ package swarm
 
 import (
 	"context"
+	"errors"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestPoolRequiresEveryModelAndReconciliation(t *testing.T) {
@@ -75,6 +78,19 @@ func TestPoolRequiresEveryModelAndReconciliation(t *testing.T) {
 	p, _ = r.sw.Board.Snapshot().Task(parent.ID)
 	if err := poolComplete(r.sw.Board.Snapshot(), p); err != nil {
 		t.Fatal(err)
+	}
+
+	if err := r.sw.Board.Submit(ids[0], parent.ID, "aggregate result", "checked"); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := r.sw.Board.Snapshot().Task(parent.ID)
+	res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "revise", "id": child.ID, "text": "repair the existing child"})
+	if res.IsError {
+		t.Fatal(res.Text)
+	}
+	after, _ := r.sw.Board.Snapshot().Task(parent.ID)
+	if after.Status != StatusDoing || after.Rev <= before.Rev || after.Pool.Phase != "executing" || len(after.Pool.Votes) > 0 {
+		t.Fatalf("parent kept stale submission: %+v", after)
 	}
 }
 
@@ -186,5 +202,48 @@ func TestPoolReconciliationRejectsNewerChanges(t *testing.T) {
 	res := r.callTool(context.Background(), "task", parent.Owner, "reviewer", map[string]any{"action": "done", "id": parent.ID, "text": "looks good"})
 	if !res.IsError {
 		t.Fatal("stale pool submitted")
+	}
+}
+
+func TestResolveInvalidatesTheOldAssignment(t *testing.T) {
+	b := NewBoard(nil)
+	task, err := b.CreateTask("mgr", TaskSpec{Title: "obsolete work", Role: "backend"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Assign("mgr", "be-1", task.ID); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := b.Snapshot().Task(task.ID)
+	if err := b.resolve("mgr", task.ID, "requirement removed"); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := b.Snapshot().Task(task.ID)
+	if after.Owner != "" || after.LastOwner != "be-1" || after.Rev <= before.Rev || after.Status != StatusDone {
+		t.Fatalf("stale assignment retained: %+v", after)
+	}
+	if err := b.resolve("mgr", task.ID, "different disposition"); err == nil {
+		t.Fatal("overwrote completed disposition")
+	}
+}
+
+func TestPersistentManagerBacksOffWithoutDiscardingWork(t *testing.T) {
+	var calls atomic.Int32
+	r := newRVRig(t, Config{PersistentPools: true, HoldManager: true, MaxWorkers: 1, Team: []string{"backend"}, RPM: 100000}, func(context.Context, *rvCall) rvReply { calls.Add(1); return rvReply{Text: "done"} })
+	task, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "unfinished", Role: "backend"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	if _, err := r.sw.RunManager(ctx, "finish existing work"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("cancellation lost: %v", err)
+	}
+	if n := calls.Load(); n > 16 {
+		t.Fatalf("no-progress loop spent %d requests", n)
+	}
+	kept, _ := r.sw.Board.Snapshot().Task(task.ID)
+	if kept.Status != StatusTodo {
+		t.Fatalf("discarded unfinished work: %+v", kept)
 	}
 }

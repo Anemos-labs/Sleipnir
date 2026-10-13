@@ -170,9 +170,12 @@ func (t *taskTool) reviseTask(ctx context.Context, c *tools.Call, in taskIn) *to
 	if task.Parent != "" {
 		parent, _ := s.Board.Snapshot().Task(task.Parent)
 		if parent.Status == StatusDone {
-			_ = s.Board.Reopen(c.Env.Agent, parent.ID)
+			if err := s.Board.Reopen(c.Env.Agent, parent.ID); err != nil {
+				return tools.Errorf("parent repair: %v", err)
+			}
 		}
-		_ = s.Board.poolUpdate(c.Env.Agent, parent.ID, func(_ *Snapshot, p *Task, state *PoolState) error {
+		if err := s.Board.poolUpdate(c.Env.Agent, parent.ID, func(sn *Snapshot, p *Task, state *PoolState) error {
+			p.Rev = sn.Version
 			p.Status = StatusDoing
 			p.Owner = parent.Owner
 			if p.Owner == "" {
@@ -181,8 +184,12 @@ func (t *taskTool) reviseTask(ctx context.Context, c *tools.Call, in taskIn) *to
 			state.Phase = "executing"
 			state.Revision++
 			state.Votes = nil
+			state.Inspected = nil
 			return nil
-		})
+		}); err != nil {
+			return tools.Errorf("parent repair: %v", err)
+		}
+		s.wakePool(parent.ID, "Child "+task.ID+" was revised. Repair the existing children and reconcile the combined result again.")
 	}
 	s.review.mu.Lock()
 	s.review.merges++
@@ -204,6 +211,14 @@ func (b *Board) resolve(by, id, reason string) error {
 			}
 		}
 		t := d.Tasks[i]
+		if t.Status == StatusDone {
+			return fmt.Errorf("%s is already done", id)
+		}
+		if t.Owner != "" {
+			t.LastOwner = t.Owner
+		}
+		t.Owner = ""
+		t.Rev = d.Version
 		t.Status = StatusDone
 		t.Closure = closeAs(CloseUnneeded)
 		t.Result = cleanText(reason, maxResultRunes)

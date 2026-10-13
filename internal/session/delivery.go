@@ -105,6 +105,9 @@ func (s *Session) Run(ctx context.Context, objective string) (*Result, error) {
 	completed := false
 	defer func() {
 		if !completed {
+			if s.opts.Sink != nil {
+				s.opts.Sink.Notice("", "delivery", "GitHub delivery paused; use /delivery resume, then send a message to continue the saved objective.")
+			}
 			pause, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 			if err := c.Pause(pause); err != nil && s.opts.Sink != nil {

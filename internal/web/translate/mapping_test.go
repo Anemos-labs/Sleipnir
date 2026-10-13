@@ -360,4 +360,15 @@ func TestPoolTaskMapping(t *testing.T) {
 	if len(tasks[0]["poolMembers"].([]any)) != 2 {
 		t.Fatal("pool members lost")
 	}
+	h.feed(b.add(3*time.Second, "rv-1", "board.op", boardOp("update", "T1", "doing", "rv-1", 3, map[string]any{"pool": map[string]any{"phase": "executing", "members": []string{"rv-1", "rv-2"}}})))
+	tasks = ofKind(h.decoded(), "task")
+	if tasks[len(tasks)-1]["poolPhase"] != "executing" {
+		t.Fatalf("phase-only change was deduplicated: %+v", tasks)
+	}
+	h.feed(b.add(4*time.Second, "mgr", "board.op", boardOp("update", "T1", "doing", "rv-1", 4, nil)))
+	tasks = ofKind(h.decoded(), "task")
+	if phase, ok := tasks[len(tasks)-1]["poolPhase"]; ok && phase != "" {
+		t.Fatalf("full op retained old pool: %+v", tasks)
+	}
+
 }

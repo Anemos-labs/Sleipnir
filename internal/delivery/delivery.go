@@ -278,9 +278,10 @@ func (c *Controller) Step(ctx context.Context) (Directive, error) {
 		}
 		_, err = c.Exec(ctx, "gh", "pr", "merge", pr.URL, "--auto", method, "--match-head-commit", pr.HeadRefOid)
 		if err != nil {
-			return d, err
+			cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+			defer cancel()
+			return d, errors.Join(err, c.disableMerge(cleanup))
 		}
-		c.State.MergeEnabled = true
 	}
 	d.Phase = "merging"
 	return c.finish(d)
@@ -290,6 +291,9 @@ func (c *Controller) Step(ctx context.Context) (Directive, error) {
 // Missing or malformed verdicts remain pending; merely displaying evidence never clears it.
 func (c *Controller) RecordReview(response string) error {
 	lines := strings.Split(strings.TrimSpace(response), "\n")
+	if len(lines) >= 3 && strings.TrimSpace(lines[len(lines)-1]) == "```" && strings.HasPrefix(strings.TrimSpace(lines[len(lines)-3]), "```") {
+		lines = lines[:len(lines)-1]
+	}
 	var verdict struct {
 		Review string `json:"delivery_review"`
 	}

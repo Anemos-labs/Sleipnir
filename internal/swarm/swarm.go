@@ -686,8 +686,9 @@ func (s *Swarm) runManager(ctx context.Context, m *member, goal, mail string) (r
 			}
 		}()
 		res, err = m.a.Run(runCtx, goal)
+		lastVersion, unchanged := uint64(0), 0
 		for s.cfg.PersistentPools && runCtx.Err() == nil && s.budgetErr() == nil {
-			if err != nil && !strings.Contains(err.Error(), "step limit") {
+			if err != nil && !errors.Is(err, agent.ErrStepLimit) {
 				break
 			}
 			flushErr := s.flushManager(runCtx, m)
@@ -697,6 +698,26 @@ func (s *Swarm) runManager(ctx context.Context, m *member, goal, mail string) (r
 			u := s.unfinishedWork()
 			if flushErr == nil && u.empty() && !s.docsPending() && s.reviewPending() == "" {
 				break
+			}
+			version := s.Board.Snapshot().Version
+			if version == lastVersion {
+				unchanged++
+			} else {
+				unchanged = 0
+				lastVersion = version
+			}
+			if unchanged >= 3 {
+				if unchanged == 3 {
+					s.managerNotice(m, "warn", "The manager has made no board progress. Retrying the existing work with a 30-second delay; interrupt to revise the objective.")
+				}
+				timer := time.NewTimer(30 * time.Second)
+				select {
+				case <-runCtx.Done():
+					timer.Stop()
+					err = runCtx.Err()
+					return
+				case <-timer.C:
+				}
 			}
 			m.a.Send("The objective is not complete. Repair and finish the existing tasks, accept reconciled results, and complete the current review. Do not replace unfinished tasks. Use wait for workers.")
 			res, err = m.a.Run(runCtx, "")

@@ -3,6 +3,7 @@ package swarm
 import (
 	"context"
 	"fmt"
+	"github.com/anemos-labs/sleipnir/internal/gitx"
 )
 
 // flushManager verifies and integrates direct manager changes without inventing a
@@ -11,17 +12,21 @@ func (s *Swarm) flushManager(ctx context.Context, m *member) error {
 	if m.tree == nil {
 		return nil
 	}
-	patch, err := m.tree.Diff(ctx)
+	diff, err := m.tree.DiffWith(ctx, gitx.DiffOptions{NoPatch: true})
 	if err != nil {
 		return err
 	}
-	if patch == "" {
+	if len(diff.Files) == 0 {
 		return s.syncManager(ctx, m)
 	}
-	if vr := s.verify(ctx, m.dir, nil); !vr.ok {
+	files := make([]string, 0, len(diff.Files))
+	for _, f := range diff.Files {
+		files = append(files, f.Path)
+	}
+	if vr := s.verify(ctx, m.dir, files); !vr.ok {
 		return fmt.Errorf("manager changes need repair: %s", vr.out)
 	}
-	result := s.integrate(ctx, m, Task{ID: "manager", Title: "direct manager changes", Owner: m.id, Role: "manager"})
+	result := s.integrate(ctx, m, Task{ID: "manager", Title: "direct manager changes", Owner: m.id, Role: "manager", Files: files})
 	if !result.ok {
 		return fmt.Errorf("manager changes were not integrated: %s %v", result.bounce, result.infra)
 	}

@@ -244,3 +244,48 @@ func TestReportedReviewBlockerPreventsMerge(t *testing.T) {
 		t.Fatalf("new head not assessed: %+v %v", d, err)
 	}
 }
+
+func TestMergeCommandFailureRevokesIntentOrPreservesUnknownState(t *testing.T) {
+	for _, revokeFails := range []bool{false, true} {
+		c, f := setup(t, Options{AutoMerge: true})
+		if _, err := c.Step(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		c.State.SettledAt = time.Now().Add(-2 * time.Minute)
+		c.Exec = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			command := strings.Join(args, " ")
+			if strings.Contains(command, "--auto") {
+				return nil, errors.New("merge request failed")
+			}
+			if revokeFails && strings.Contains(command, "--disable-auto") {
+				return nil, errors.New("revocation failed")
+			}
+			return f.exec(ctx, name, args...)
+		}
+		if _, err := c.Step(context.Background()); err == nil {
+			t.Fatal("merge error lost")
+		}
+		saved, err := Load(c.Path, f.exec)
+		if err != nil || saved.State.MergeEnabled != revokeFails {
+			t.Fatalf("intent: %+v %v", saved, err)
+		}
+	}
+}
+
+func TestReviewVerdictAcceptsOnlyTheFinalStructuredBlock(t *testing.T) {
+	c, _ := setup(t, Options{AutoMerge: true})
+	c.State.ReviewVerdict = "pending"
+	if err := c.RecordReview("```json\n{\"delivery_review\":\"clear\"}\n```"); err != nil {
+		t.Fatal(err)
+	}
+	if c.State.ReviewVerdict != "clear" {
+		t.Fatal("rejected final fenced verdict")
+	}
+	c.State.ReviewVerdict = "pending"
+	if err := c.RecordReview("{\"delivery_review\":\"clear\"}\nActually, a blocker remains."); err != nil {
+		t.Fatal(err)
+	}
+	if c.State.ReviewVerdict != "pending" {
+		t.Fatal("accepted a verdict preceding contradictory prose")
+	}
+}

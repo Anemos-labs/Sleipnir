@@ -243,6 +243,7 @@ func (s *State) taskOp(e events.Event, t time.Time, p *boardWire) {
 	}
 	if full {
 		ts.Parent = clip(p.Parent, textID)
+		ts.PoolPhase, ts.PoolMembers = "", nil
 		if p.Pool != nil {
 			ts.PoolPhase = clip(p.Pool.Phase, textID)
 			ts.PoolMembers = clipList(p.Pool.Members, 64, textID)

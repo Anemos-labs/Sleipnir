@@ -33,6 +33,9 @@
       const html = pool + nested + (t.parent ? '<span class="dim">↳ ' + esc(t.parent) + '</span>' : '') + '<div class="tcr"><span class="tid">' + id + '</span>' + (!B.big && t.st !== 'merged' && unmet.length ? '<span class="dep" title="waits on ' + unmet.join(' ') + '">← ' + unmet.join(' ') + '</span>' : '') + '<span class="tow"><span style="color:' + agCol(t.owner || 'mgr') + '">' + esc(t.owner || '') + '</span>' + (blocked ? '<span class="ask" title="waiting for your answer">?</span>' : '') + (t.st === 'merged' ? '<span class="ok">✓' + (t.ms ? ' ' + fmtMs(t.ms) : '') + '</span>' : '') + '</span></div><span class="tti">' + esc(t.title) + '</span>' + (B.big ? '<span class="tow">' + need + (t.st === 'verify' ? '<span class="warm">▸ verifying</span>' : '') + (blocked ? '<span class="warm">waiting for your answer</span>' : '') + (t.scope && t.scope !== '-' ? '<span class="dim">' + esc(t.scope) + '</span>' : '') + '</span>' : '') + (children.length ? '<div class="subtasks"></div>' : '');
       if (n._h !== html) { n._h = html; n.innerHTML = html; }
       n.classList.toggle('blocked', !!blocked); n.title = id + ' · ' + t.title + ' · ' + (t.owner || '');
+    });
+    m.torder.forEach(id => {
+      const t = m.tasks[id], n = B.nodes[id]; if (!n || t.parent && !B.expanded.has(t.parent)) return;
       const col = t.parent && B.nodes[t.parent] ? B.nodes[t.parent].querySelector('.subtasks') : B.cols[t.st] || B.cols.todo;
       if (col && n.parentNode !== col) { col.appendChild(n); if (vis && before[id]) moved.push(id); }
     });

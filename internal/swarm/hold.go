@@ -11,6 +11,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/shellparse"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
@@ -215,7 +216,7 @@ func (h *holdHooks) BeforeTool(ctx context.Context, c agent.ToolHookCall) agent.
 		if len(o.UpdatedInput) > 0 {
 			input = o.UpdatedInput
 		}
-		if json.Unmarshal(input, &in) == nil && (strings.Contains(in.Command, "git push") || strings.Contains(in.Command, "gh pr")) {
+		if json.Unmarshal(input, &in) == nil && publishesManagerWork(in.Command) {
 			if err := h.s.flushManager(ctx, h.m); err != nil {
 				return agent.ToolHookOutcome{Veto: true, Reason: err.Error()}
 			}
@@ -335,4 +336,36 @@ func (s *Swarm) agentBudgetSpent(m *member) bool {
 	}
 	_, c := m.a.Usage()
 	return !(c < s.cfg.AgentBudgetUSD) // a cost that is not a number counts as spent
+}
+
+// publishesManagerWork recognizes publication commands, including shell wrappers
+// and Git's global directory/configuration flags. Opaque scripts remain subject
+// to ordinary session permissions; this hook does not interpret their contents.
+func publishesManagerWork(command string) bool {
+	for _, c := range shellparse.Parse(command).Commands {
+		program := shellparse.ProgramName(c.Program)
+		if program != "git" && program != "gh" {
+			continue
+		}
+		args := c.Args
+		for len(args) > 0 {
+			word := args[0]
+			args = args[1:]
+			switch word {
+			case "-C", "-c", "--git-dir", "--work-tree", "--namespace", "--repo", "-R", "--hostname":
+				if len(args) > 0 {
+					args = args[1:]
+				}
+				continue
+			}
+			if strings.HasPrefix(word, "-") {
+				continue
+			}
+			if program == "git" && word == "push" || program == "gh" && word == "pr" {
+				return true
+			}
+			break
+		}
+	}
+	return false
 }

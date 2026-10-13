@@ -32,6 +32,9 @@ test('pool subtasks expand inside their parent and retain their own owner and st
   parent.querySelector('[data-pool-toggle]').click(); await L.settle();
   const child = parent.querySelector('.subtasks .tcard[data-task="T11"]');
   assert.ok(child); assert.equal(child.dataset.owner, 'be-2'); assert.match(child.textContent, /✓/);
+  const m=L.SL.sessions.active.m; m.torder=['T11','T10'];
+  await L.event('task',{id:'T10',title:'Updated aggregate',owner:'be-1',s:'running',poolPhase:'reconciling',poolMembers:['be-1','be-2']});
+  await L.settle(); assert.ok(L.$('.tcard[data-task="T10"] .subtasks .tcard[data-task="T11"]'));
 });
 
 test('GitHub toggles belong to one objective and do not leak across tabs', async () => {
@@ -47,4 +50,16 @@ test('GitHub toggles belong to one objective and do not leak across tabs', async
   await L.type('another objective'); L.press('enter'); await L.settle();
   const next = L.posts.filter(p => p.path.endsWith('/messages')).at(-1);
   assert.equal(next.body.autoFix, undefined); assert.equal(next.body.autoMerge, undefined);
+});
+
+
+test('an expired cache page advances to a full retained page', async () => {
+ const L=await boot(),S=L.SL.sessions.active;
+ for(let i=1;i<=600;i++) L.SL.model.reduce(S.m,{k:'req',id:'mgr',t:i,ratio:.95},S);
+ L.SL.ui.cacheFollow=false;L.SL.ui.cacheAgent='mgr';L.SL.views.show('cache');await L.settle();
+ for(let i=0;i<20;i++){L.$('[data-cache-page="prev"]').click();await L.settle();}
+ for(let i=601;i<=1100;i++) L.SL.model.reduce(S.m,{k:'req',id:'mgr',t:i,ratio:.95},S);
+ await L.settle();L.$('[data-cache-page="next"]').click();await L.settle();
+ const labels=L.doc.querySelectorAll('.hbar .nn').map(n=>Number(n.textContent));
+ assert.ok(labels.length>=6);assert.ok(labels[0]>=701);assert.ok(labels.at(-1)>labels[0]);
 });
