@@ -9,6 +9,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/skills/mdfile"
 )
 
 type githubFake struct {
@@ -28,6 +31,12 @@ func (f *githubFake) exec(_ context.Context, name string, args ...string) ([]byt
 		return nil, errors.New("unknown flag: --slurp")
 	}
 	switch {
+	case strings.HasPrefix(c, "git for-each-ref"):
+		return []byte("origin\n"), nil
+	case strings.HasPrefix(c, "git remote get-url"):
+		return []byte("https://github.com/owner/repo\n"), nil
+	case strings.HasPrefix(c, "git config"):
+		return nil, nil
 	case c == "git rev-parse HEAD":
 		return []byte(f.pr.HeadRefOid), nil
 	case c == "git symbolic-ref --quiet --short HEAD":
@@ -43,11 +52,13 @@ func (f *githubFake) exec(_ context.Context, name string, args ...string) ([]byt
 		return json.Marshal(f.pr)
 	case strings.Contains(c, "api graphql"):
 		if f.threads == "" {
-			return []byte(`{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}`), nil
+			return []byte(`{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[],"pageInfo":{"hasNextPage":false}}}}}}`), nil
 		}
 		return []byte(f.threads), nil
 	case strings.Contains(c, "squashMergeAllowed"):
 		return []byte(`{"mergeCommitAllowed":true}`), nil
+	case strings.Contains(c, "defaultBranchRef"):
+		return []byte("main\n"), nil
 	case strings.Contains(c, "repo view"):
 		return []byte("owner/repo\n"), nil
 	case strings.Contains(c, "pr merge"):
@@ -64,6 +75,9 @@ func (f *githubFake) exec(_ context.Context, name string, args ...string) ([]byt
 func setup(t *testing.T, options Options) (*Controller, *githubFake) {
 	t.Helper()
 	f := &githubFake{pr: pull{Number: 4, URL: "https://github.com/owner/repo/pull/4", HeadRefOid: "head-a", State: "OPEN", MergeStateStatus: "CLEAN"}}
+	f.pr.BaseRefName = "main"
+	f.pr.HeadRepository = &struct{ Name string }{"repo"}
+	f.pr.HeadRepositoryOwner = &struct{ Login string }{"owner"}
 	c := &Controller{Path: filepath.Join(t.TempDir(), "delivery.json"), Exec: f.exec}
 	if err := c.Start("repair cache", options); err != nil {
 		t.Fatal(err)
@@ -305,8 +319,15 @@ func TestReviewVerdictAcceptsOnlyTheFinalStructuredBlock(t *testing.T) {
 
 func TestDiscoveryPinsPRAndReadsEveryReviewPage(t *testing.T) {
 	c, f := setup(t, Options{AutoFix: true})
-	f.threads = `{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}
- {"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"id":"late-thread","isResolved":false,"comments":{"nodes":[{"body":"repair this finding"}]}}]}}}}}`
+	c.Exec = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if slices.Contains(args, "graphql") {
+			if strings.Contains(strings.Join(args, " "), `after:null`) {
+				return []byte(`{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[],"pageInfo":{"hasNextPage":true,"endCursor":"page-two"}}}}}}`), nil
+			}
+			return []byte(`{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"id":"late-thread","isResolved":false,"comments":{"nodes":[{"body":"repair this finding"}]}}],"pageInfo":{"hasNextPage":false}}}}}}`), nil
+		}
+		return f.exec(ctx, name, args...)
+	}
 	d, err := c.Step(context.Background())
 	if err != nil || !strings.Contains(d.Prompt, "late-thread") {
 		t.Fatalf("paginated discovery: %+v %v", d, err)
@@ -322,6 +343,105 @@ func TestDiscoveryPinsPRAndReadsEveryReviewPage(t *testing.T) {
 		if strings.HasPrefix(call, "git ") {
 			t.Fatalf("rediscovered branch after pinning PR: %s", call)
 		}
+	}
+}
+
+func TestDiscoveryIdentity(t *testing.T) {
+	for _, kind := range []string{"fork", "unknown", "base", "later fork"} {
+		t.Run(kind, func(t *testing.T) {
+			c, f := setup(t, Options{AutoFix: true})
+			if kind == "later fork" {
+				if _, err := c.Step(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			switch kind {
+			case "fork", "later fork":
+				f.pr.HeadRepositoryOwner.Login = "outsider"
+			case "unknown":
+				f.pr.HeadRepository = nil
+			case "base":
+				f.pr.BaseRefName = "other"
+			}
+			if _, err := c.Step(context.Background()); err == nil {
+				t.Fatal("authorized mismatched identity")
+			}
+			if kind != "later fork" && c.State.PR != "" {
+				t.Fatal("pinned rejected PR")
+			}
+		})
+	}
+}
+
+func TestDiscoveryConfiguredPushAndBase(t *testing.T) {
+	c, f := setup(t, Options{AutoFix: true})
+	f.pr.HeadRepositoryOwner.Login = "fork-owner"
+	f.pr.BaseRefName = "release"
+	c.Exec = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if name == "git" && args[0] == "config" {
+			return []byte("release"), nil
+		}
+		if name == "gh" && slices.Contains(args, "https://github.com/owner/repo") {
+			return []byte("fork-owner/repo"), nil
+		}
+		return f.exec(ctx, name, args...)
+	}
+	if _, err := c.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if c.State.PushRepo != "fork-owner/repo" || c.State.Base != "release" {
+		t.Fatalf("binding: %+v", c.State)
+	}
+}
+
+func TestReviewPaginationFailsClosed(t *testing.T) {
+	for _, page := range []string{
+		`{"nodes":[]}`,
+		`{"nodes":[],"pageInfo":{"hasNextPage":true}}`,
+		`{"nodes":[],"pageInfo":{"hasNextPage":true,"endCursor":"repeat"}}`,
+		`{"nodes":[],"pageInfo":{"hasNextPage":"invalid"}}`,
+	} {
+		t.Run(page, func(t *testing.T) {
+			c, f := setup(t, Options{AutoFix: true})
+			f.threads = `{"data":{"repository":{"pullRequest":{"reviewThreads":` + page + `}}}}`
+			if _, err := c.Step(context.Background()); err == nil {
+				t.Fatal("accepted incomplete pagination")
+			}
+		})
+	}
+}
+
+func TestGeneratedReviewCommandsRespectGuardedAsks(t *testing.T) {
+	c, f := setup(t, Options{AutoFix: true})
+	root := t.TempDir()
+	e, err := perm.NewEngine(perm.Config{Mode: perm.ModeBypass, Root: root, Home: t.TempDir(), Ask: []string{"Edit(./.sleipnir/**)", "Edit(./.claude/**)", "Edit(./.git/hooks/**)", "Edit(./.git/config)", "Edit(~/.sleipnir/**)", "Edit(~/.claude/**)"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages := 0
+	c.Exec = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if slices.Contains(args, "graphql") {
+			words := []string{name}
+			for _, arg := range args {
+				words = append(words, mdfile.ShellQuote(arg))
+			}
+			command := strings.Join(words, " ")
+			v := e.Classify(perm.Request{Tool: "Bash", Cwd: root, Command: command})
+			if v.Verdict != perm.Allow || strings.Contains(v.Rule, "Edit(") {
+				t.Fatalf("generated command blocked: %+v\n%s", v, command)
+			}
+			pages++
+			if pages == 1 {
+				return []byte(`{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[],"pageInfo":{"hasNextPage":true,"endCursor":"next"}}}}}}`), nil
+			}
+		}
+		return f.exec(ctx, name, args...)
+	}
+	if _, err := c.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if pages != 2 {
+		t.Fatalf("pages = %d", pages)
 	}
 }
 
