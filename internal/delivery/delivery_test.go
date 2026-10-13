@@ -427,19 +427,21 @@ func TestGeneratedStepCommandsRespectGuardedAsks(t *testing.T) {
 		}
 		command := strings.Join(words, " ")
 		v := e.Classify(perm.Request{Tool: "Bash", Cwd: root, Command: command})
-		// Windows currently rejects URL colons as unsupported path streams.
+		// Windows currently rejects URL and GraphQL colons as unsupported path streams.
 		// Assert that exact hard denial, not a protected-file ask or any other denial.
-		windowsURL := ""
+		windowsOperand := ""
 		for _, arg := range args {
-			if arg == "https://github.com/owner/repo/pull/4" || arg == "https://github.com/owner/repo" {
-				windowsURL = arg
+			if arg == "https://github.com/owner/repo/pull/4" || arg == "https://github.com/owner/repo" ||
+				arg == `query=query{repository(owner:"owner",name:"repo"){pullRequest(number:4){reviewThreads(first:100,after:null){nodes{id isResolved comments(first:100){nodes{body url author{login}}}} pageInfo{hasNextPage endCursor}}}}}` ||
+				arg == `query=query{repository(owner:"owner",name:"repo"){pullRequest(number:4){reviewThreads(first:100,after:"next"){nodes{id isResolved comments(first:100){nodes{body url author{login}}}} pageInfo{hasNextPage endCursor}}}}}` {
+				windowsOperand = arg
 				break
 			}
 		}
-		if runtime.GOOS == "windows" && windowsURL != "" {
-			want := "Windows streams, device names, and names ending in dots or spaces are not supported: " + windowsURL
+		if runtime.GOOS == "windows" && windowsOperand != "" {
+			want := "Windows streams, device names, and names ending in dots or spaces are not supported: " + windowsOperand
 			if v.Verdict != perm.Deny || v.Tier != "hard" || v.NoOneToAsk || strings.Contains(v.Rule, "Edit(") || v.Why != want {
-				t.Fatalf("unexpected Windows URL classification: %+v\n%s", v, command)
+				t.Fatalf("unexpected Windows operand classification: %+v\n%s", v, command)
 			}
 		} else if v.Verdict != perm.Allow || strings.Contains(v.Rule, "Edit(") {
 			t.Fatalf("generated command blocked: %+v\n%s", v, command)
