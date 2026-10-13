@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -147,10 +148,19 @@ func (c *Controller) Step(ctx context.Context) (Directive, error) {
 		}
 		c.State.Repo = strings.TrimSpace(string(b))
 	}
-	args := []string{"pr", "view"}
-	if c.State.PR != "" {
-		args = append(args, c.State.PR)
+	selector := c.State.PR
+	if selector == "" {
+		// With --repo, gh requires an explicit selector even inside a checkout.
+		b, err := c.Exec(ctx, "git", "symbolic-ref", "--quiet", "--short", "HEAD")
+		if err != nil {
+			return d, fmt.Errorf("discover delivery branch: %w", err)
+		}
+		selector = strings.TrimSpace(string(b))
+		if selector == "" {
+			return d, fmt.Errorf("delivery requires a working branch")
+		}
 	}
+	args := []string{"pr", "view", selector}
 	args = append(args, "--repo", c.State.Repo, "--json", "number,url,headRefOid,headRefName,baseRefName,state,mergeStateStatus,reviewDecision,isDraft,statusCheckRollup,mergeCommit")
 	b, err := c.Exec(ctx, "gh", args...)
 	if err != nil {
@@ -318,11 +328,11 @@ func (c *Controller) reviews(ctx context.Context, number int) (string, error) {
 		return "", fmt.Errorf("invalid repository name")
 	}
 	query := `query($owner:String!,$repo:String!,$number:Int!,$endCursor:String){repository(owner:$owner,name:$repo){pullRequest(number:$number){reviewThreads(first:100,after:$endCursor){nodes{id isResolved comments(first:100){nodes{body url author{login}}}} pageInfo{hasNextPage endCursor}}}}}`
-	b, err := c.Exec(ctx, "gh", "api", "graphql", "--paginate", "--slurp", "-f", "query="+query, "-f", "owner="+owner, "-f", "repo="+repo, "-F", fmt.Sprintf("number=%d", number))
+	b, err := c.Exec(ctx, "gh", "api", "graphql", "--paginate", "-f", "query="+query, "-f", "owner="+owner, "-f", "repo="+repo, "-F", fmt.Sprintf("number=%d", number))
 	if err != nil {
 		return "", err
 	}
-	var pages []struct {
+	type reviewPage struct {
 		Data *struct {
 			Repository *struct {
 				PullRequest *struct {
@@ -342,8 +352,20 @@ func (c *Controller) reviews(ctx context.Context, number int) (string, error) {
 			}
 		}
 	}
-	if err = json.Unmarshal(b, &pages); err != nil {
-		return "", err
+	// gh --paginate emits successive JSON objects. Decode the stream directly
+	// rather than requiring the newer --slurp flag.
+	var pages []reviewPage
+	decoder := json.NewDecoder(bytes.NewReader(b))
+	for {
+		var page reviewPage
+		err := decoder.Decode(&page)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return "", err
+		}
+		pages = append(pages, page)
 	}
 	if len(pages) == 0 {
 		return "", fmt.Errorf("GitHub returned no review snapshot")

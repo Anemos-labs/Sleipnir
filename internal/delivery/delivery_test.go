@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +21,15 @@ type githubFake struct {
 func (f *githubFake) exec(_ context.Context, name string, args ...string) ([]byte, error) {
 	c := name + " " + strings.Join(args, " ")
 	f.calls = append(f.calls, c)
+	if name == "gh" && len(args) >= 3 && args[0] == "pr" && args[1] == "view" && strings.HasPrefix(args[2], "--") && slices.Contains(args, "--repo") {
+		return []byte("argument required when using the --repo flag"), errors.New("missing PR selector")
+	}
+	if slices.Contains(args, "--slurp") {
+		return nil, errors.New("unknown flag: --slurp")
+	}
 	switch {
+	case c == "git symbolic-ref --quiet --short HEAD":
+		return []byte("codex/delivery-fix\n"), nil
 	case strings.Contains(c, "comments,reviews"):
 		if f.summary == "" {
 			return []byte(`{"comments":[],"reviews":[]}`), nil
@@ -30,7 +39,7 @@ func (f *githubFake) exec(_ context.Context, name string, args ...string) ([]byt
 		return json.Marshal(f.pr)
 	case strings.Contains(c, "api graphql"):
 		if f.threads == "" {
-			return []byte(`[{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}]`), nil
+			return []byte(`{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}`), nil
 		}
 		return []byte(f.threads), nil
 	case strings.Contains(c, "squashMergeAllowed"):
@@ -287,5 +296,44 @@ func TestReviewVerdictAcceptsOnlyTheFinalStructuredBlock(t *testing.T) {
 	}
 	if c.State.ReviewVerdict != "pending" {
 		t.Fatal("accepted a verdict preceding contradictory prose")
+	}
+}
+
+func TestDiscoveryPinsPRAndReadsEveryReviewPage(t *testing.T) {
+	c, f := setup(t, Options{AutoFix: true})
+	f.threads = `{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}
+ {"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"id":"late-thread","isResolved":false,"comments":{"nodes":[{"body":"repair this finding"}]}}]}}}}}`
+	d, err := c.Step(context.Background())
+	if err != nil || !strings.Contains(d.Prompt, "late-thread") {
+		t.Fatalf("paginated discovery: %+v %v", d, err)
+	}
+	if c.State.PR != f.pr.URL {
+		t.Fatalf("PR not pinned: %+v", c.State)
+	}
+	f.calls = nil
+	if _, err := c.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, call := range f.calls {
+		if strings.HasPrefix(call, "git ") {
+			t.Fatalf("rediscovered branch after pinning PR: %s", call)
+		}
+	}
+}
+
+func TestDiscoveryWithoutPRRequestsOpening(t *testing.T) {
+	c, f := setup(t, Options{AutoFix: true})
+	c.Exec = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if name == "gh" && len(args) > 2 && args[0] == "pr" && args[1] == "view" {
+			if args[2] != "codex/delivery-fix" {
+				t.Fatalf("missing working branch selector: %v", args)
+			}
+			return []byte("no pull requests found for branch codex/delivery-fix"), errors.New("not found")
+		}
+		return f.exec(ctx, name, args...)
+	}
+	d, err := c.Step(context.Background())
+	if err != nil || d.Phase != "opening" || d.Prompt == "" {
+		t.Fatalf("missing PR: %+v %v", d, err)
 	}
 }
