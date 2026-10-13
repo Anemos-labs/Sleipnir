@@ -15,6 +15,12 @@ import (
 // text before the first unknown piece, so "~/.ssh/$KEY" is still seen to be
 // inside ~/.ssh.
 func (rs *resolver) expandWord(w, cwd string) (out, partial string, dynamic bool) {
+	return rs.expandWordVars(w, cwd, nil)
+}
+
+// expandWordVars is expandWord that also knows the shell variables the same command line assigned a known value to (vars, see
+// evaluator.noteAssignments).
+func (rs *resolver) expandWordVars(w, cwd string, vars map[string]string) (out, partial string, dynamic bool) {
 	switch {
 	case w == "~" || strings.HasPrefix(w, "~/"):
 		if rs.home == "" {
@@ -77,7 +83,11 @@ func (rs *resolver) expandWord(w, cwd string) (out, partial string, dynamic bool
 			}
 			b.WriteString(cwd)
 		default:
-			return "", b.String(), true
+			v, ok := vars[name]
+			if !ok {
+				return "", b.String(), true
+			}
+			b.WriteString(v)
 		}
 		i = j
 	}
@@ -127,7 +137,7 @@ func (ev *evaluator) resolve(u pathUse, cw *cwdSet) []access {
 	}
 	base := access{
 		raw: raw, read: !u.write || u.both, write: u.write || u.both,
-		tree: u.tree, content: u.content, nameOnly: u.nameOnly,
+		tree: u.tree, content: u.content, nameOnly: u.nameOnly, format: u.format,
 	}
 	// mk builds an access. unclean is the path as the kernel will walk it, ".."
 	// components included: "link/../x" is the parent of link's target, so it must
@@ -152,7 +162,7 @@ func (ev *evaluator) resolve(u pathUse, cw *cwdSet) []access {
 	}
 	var out []access
 	one := func(cwd string) {
-		w, partial, dyn := ev.rs.expandWord(filepath.ToSlash(raw), cwd)
+		w, partial, dyn := ev.rs.expandWordVars(filepath.ToSlash(raw), cwd, ev.vars)
 		if dyn {
 			a := mk("", true)
 			if partial != "" {
@@ -226,7 +236,7 @@ func (ev *evaluator) cdTo(cw *cwdSet, target string) *cwdSet {
 		next.unknown = true
 	}
 	for _, d := range cw.dirs {
-		w, _, dyn := ev.rs.expandWord(target, d)
+		w, _, dyn := ev.rs.expandWordVars(target, d, ev.vars)
 		if dyn {
 			next.unknown = true
 			continue

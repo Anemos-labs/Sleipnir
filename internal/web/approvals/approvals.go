@@ -77,6 +77,9 @@ const (
 	ByCanceled = "canceled"
 	ByClosed   = "closed"
 	ByNobody   = "nobody"
+	// ByManager is the team's manager: a worker's routine question it answered never reaches the bridge, and the translator sends
+	// its ask and answer together from the log's perm.decide.
+	ByManager = "manager"
 )
 
 // noAnswer is the decision of a question that ended without an answer: a refusal that the engine words for the model (it turns it

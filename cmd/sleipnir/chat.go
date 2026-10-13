@@ -75,6 +75,7 @@ func cmdChat(ctx context.Context, args []string) error {
 	cf := registerChatFlags(fs) // chatflags.go: the same flags as `sleipnir web` parses for its sessions
 	model, cwd, mode, swarmN, trust, verbose, budget, noMCP, verify := cf.model, cf.cwd, cf.mode, cf.swarmN, cf.trust, cf.verbose, cf.budget, cf.noMCP, cf.verify
 	isolation, commit, mailman, autoDocs, resume, allow, plain, noAnim := cf.isolation, cf.commit, cf.mailman, cf.autoDocs, cf.resume, cf.allow, cf.plain, cf.noAnim
+	managerApproves := cf.managerApproves
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -103,8 +104,9 @@ func cmdChat(ctx context.Context, args []string) error {
 		return chatOptions(session.Options{
 			Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: team, Workers: workers,
 			TrustProject: *trust, BudgetUSD: *budget, Resume: spec, NoMCP: *noMCP,
-			Verify: *verify, Isolation: *isolation, Commit: *commit, Mailman: mailman(), AutoDocs: autoDocs(), RoleModels: roleModels,
-			Team: append([]session.TeamSlot(nil), teamSlots...), DefaultTeam: true, Allow: expandAllow(*allow),
+			Verify: *verify, Isolation: *isolation, Commit: *commit, Mailman: mailman(), AutoDocs: autoDocs(), ManagerApproves: managerApproves(),
+			RoleModels: roleModels,
+			Team:       append([]session.TeamSlot(nil), teamSlots...), DefaultTeam: true, Allow: expandAllow(*allow),
 		})
 	}
 	if !*plain && app.CanDrawChat(os.Stdin, os.Stdout, os.Getenv) {

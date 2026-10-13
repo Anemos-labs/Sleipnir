@@ -94,7 +94,7 @@ func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []Recov
 			card += "\n" + taskCard(task, w.ID, true)
 		}
 		if tree != nil {
-			card += isolationCard
+			card += isolationCard(integrationRefOf(tree))
 		}
 		notes := kv.NewLayer("notes:"+w.ID, kv.KindNotes, 1, []kv.Segment{{Key: "assignment", Text: card, Vol: kv.VolFrozen}})
 		m, err := s.newMember(w.ID, role, notes, NewEvidence(), tree)

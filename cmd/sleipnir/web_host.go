@@ -39,6 +39,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/update"
 	"github.com/anemos-labs/sleipnir/internal/web"
 	"github.com/anemos-labs/sleipnir/internal/web/approvals"
+	"github.com/anemos-labs/sleipnir/internal/web/dirs"
 	"github.com/anemos-labs/sleipnir/internal/web/seam"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
@@ -874,6 +875,9 @@ type newSessionDefaults struct {
 	// UnlimitedEnv is the environment setting that gives a terminal session the budget the dialog calls off: the command line under
 	// the dialog starts with it for a team with no budget.
 	UnlimitedEnv string `json:"unlimitedEnv"`
+	// IsolationSet says that --isolation or swarm.isolation named the isolation; without it the isolation is the built-in default,
+	// and the dialog picks worktree for a team in a folder that can have it.
+	IsolationSet bool `json:"isolationSet,omitempty"`
 }
 
 // unlimitedEnv is what the terminal needs to run a team with no spending cap, as a new session of the page does when its budget is
@@ -882,7 +886,7 @@ const unlimitedEnv = "SLEIPNIR_SWARM_BUDGET_USD=0"
 
 // defaults reads the server's flags over the configuration, as the chat's options would have them.
 func (h *webHostImpl) defaults() newSessionDefaults {
-	cfg, _, _ := config.Load(config.LoadOpts{Cwd: h.d.Cwd, UntrustedProject: true})
+	cfg, rep, _ := config.Load(config.LoadOpts{Cwd: h.d.Cwd, UntrustedProject: true})
 	d := newSessionDefaults{NewSessionRequest: wire.NewSessionRequest{
 		Cwd: h.d.Cwd, Model: h.d.Model, Mode: h.d.Mode, Isolation: h.d.Isolation, Verify: h.d.Verify, Commit: h.d.Commit,
 		TrustProject: h.d.TrustProject, NoMcp: h.d.NoMCP, Effort: "default", Rules: append([]string{}, h.d.Allow...),
@@ -897,6 +901,8 @@ func (h *webHostImpl) defaults() newSessionDefaults {
 		d.Team = append(d.Team, wire.TeamSlot{Role: t.Role, Model: t.Model})
 	}
 	d.AutoDocs = h.d.AutoDocs
+	d.ManagerApproves = h.d.ManagerApproves
+	d.IsolationSet = d.Isolation != ""
 	d.MinWorkers = session.MinTeamWorkers
 	if h.d.BudgetUSD > 0 {
 		b := h.d.BudgetUSD
@@ -908,6 +914,10 @@ func (h *webHostImpl) defaults() newSessionDefaults {
 		}
 		if d.Isolation == "" {
 			d.Isolation = cfg.Swarm.Isolation
+			// the built-in "none" is no one's choice: only a layer of the configuration that names it is (the report says which did)
+			if rep != nil {
+				_, d.IsolationSet = rep.Origins["swarm.isolation"]
+			}
 		}
 		if cfg.Swarm.MaxWorkers > 0 {
 			d.MaxWorkers = cfg.Swarm.MaxWorkers
@@ -917,6 +927,9 @@ func (h *webHostImpl) defaults() newSessionDefaults {
 			d.Budget = &b
 		}
 		d.Mailman = cfg.Swarm.Mailman
+	}
+	if d.Isolation == "" && h.d.Workers > 0 {
+		d.Isolation = defaultIsolation(context.Background(), h.d.Cwd, false)
 	}
 	if d.Isolation == "" {
 		d.Isolation = config.IsolationNone
@@ -928,6 +941,25 @@ func (h *webHostImpl) defaults() newSessionDefaults {
 		d.Mode = "default"
 	}
 	return d
+}
+
+// defaultIsolation is the isolation a team gets in dir when nobody chose one (not the request, the server's --isolation or the
+// configuration): worktree when dir is the root of a git repository with a commit, or a folder that the request makes one (newRepo,
+// which starts it with a commit); "" otherwise, which leaves the session's own default (none). Each writer of a team then works in a
+// tree of its own and its work reaches the checkout through the verifying merge queue, which a team sharing one tree does not have.
+func defaultIsolation(ctx context.Context, dir string, newRepo bool) string {
+	if newRepo {
+		return config.IsolationWorktree
+	}
+	if dirs.Inspect(dir).Git != "repo" {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(ctx, repoProbeTimeout)
+	defer cancel()
+	if p := session.ProbeRepo(ctx, dir); p.Probed && !p.Bare && p.HasCommits {
+		return config.IsolationWorktree
+	}
+	return ""
 }
 
 // ---- trust step of a new session ---------------------------------------------------------------------------------------------

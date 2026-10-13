@@ -47,8 +47,9 @@ type unit struct {
 	accesses []access
 	redirs   []access
 	high     *riskInfo
-	dyn      string // reason the command word itself cannot be judged
-	envBad   string // env assignment that changes what the command runs
+	dyn      string   // reason the command word itself cannot be judged
+	envBad   string   // env assignment that changes what the command runs
+	envAcc   []access // the files the values of its environment assignments name (read)
 	network  bool
 
 	tool bool // a non-shell tool request
@@ -65,6 +66,9 @@ type evaluator struct {
 	rs         *resolver
 	r          Request
 	globBudget int
+	unroutine  bool // a part of the request is not routine (routine.go)
+	// vars are the shell variables an earlier statement of the same command line set to a known value (noteAssignments).
+	vars map[string]string
 }
 
 // evaluate runs bounded permission analysis and escalates implicitly allowed high-risk actions to
@@ -78,6 +82,7 @@ func (e *Engine) evaluate(v *view, r Request) verdict {
 		}
 		return ask("the tool marked this action high risk", nil).protected(TierGuarded)
 	}
+	res.routine = res.kind == vAsk && !ev.unroutine && !res.askRule && res.tier == "" && r.Risk != RiskHigh
 	return res
 }
 
@@ -149,8 +154,23 @@ func (ev *evaluator) bash(cmd string) verdict {
 	}
 	cw := &cwdSet{dirs: []string{ev.startDir()}}
 	res := verdict{kind: vAllow, explicit: true, reason: "empty command"}
+	conflicted := map[string]bool{}
+	track := varsTrackable(cmd)
 	for i, s := range an.Commands {
 		v := ev.judge(ev.buildUnit(s, cw))
+		if track {
+			if reassigns(s) {
+				ev.vars, track = nil, false // a builtin may set any variable from here on
+			} else if unconditional(cmd, s) {
+				ev.noteAssignments(s, cw, conflicted)
+			} else {
+				for _, env := range s.Env { // an assignment that may not run leaves the name unknown
+					name, _, _ := strings.Cut(env, "=")
+					delete(ev.vars, name)
+					conflicted[name] = true
+				}
+			}
+		}
 		if v.kind == vDeny { // nothing can outrank a denial
 			return v
 		}
@@ -164,6 +184,9 @@ func (ev *evaluator) bash(cmd string) verdict {
 	if why == "" && tooMany {
 		why = fmt.Sprintf("it has more than %d commands, too many to check", maxUnits)
 	}
+	if why != "" {
+		ev.unroutine = true
+	}
 	if why == "" || res.kind == vDeny || free(ev.v.mode) {
 		return res
 	}
@@ -176,6 +199,94 @@ func (ev *evaluator) bash(cmd string) verdict {
 	res.rem = nil // remembering one command would not stop the construct asking again
 	res.reason = "cannot be checked beforehand: " + why + "; " + res.reason
 	return res
+}
+
+// noteAssignments records the variables a statement made only of assignments (SCR="$TMPDIR/x") sets to a value the engine can
+// expand, for the statements after it: "$SCR" then names that path. A name assigned two different values on the line, a value
+// that cannot be expanded, or a name that steers programs (envDangerous) is not known; conflicted remembers the names that lost
+// their value. Only a statement with no program assigns shell variables; an assignment before a program is that program's
+// environment.
+func (ev *evaluator) noteAssignments(s shellparse.Simple, cw *cwdSet, conflicted map[string]bool) {
+	if s.Program != "" {
+		return
+	}
+	for _, env := range s.Env {
+		name, val, ok := strings.Cut(env, "=")
+		if !ok || name == "" || envDangerous(env) {
+			continue
+		}
+		// Do not expand shell-literal or mixed-quoted values as variables.
+		literal := strings.ContainsAny(s.Raw, "'\\")
+		val = unquoteAssigned(val)
+		var w string
+		dyn := literal || len(cw.dirs) != 1 || cw.unknown
+		if !dyn {
+			w, _, dyn = ev.rs.expandWordVars(val, cw.dirs[0], ev.vars)
+		}
+		prev, had := ev.vars[name]
+		switch {
+		case dyn || conflicted[name] || had && prev != w:
+			delete(ev.vars, name)
+			conflicted[name] = true
+		default:
+			if ev.vars == nil {
+				ev.vars = map[string]string{}
+			}
+			ev.vars[name] = w
+		}
+	}
+}
+
+// varsTrackable reports whether a command line is simple enough for noteAssignments: no function definitions, whose bodies may
+// set variables when they are called.
+func varsTrackable(cmd string) bool {
+	return !strings.Contains(cmd, "()") && !strings.Contains(cmd, "function ") && !strings.Contains(cmd, "&")
+}
+
+// reassignBuiltins are the commands that may set or unset a shell variable without an assignment statement.
+var reassignBuiltins = map[string]bool{
+	"read": true, "declare": true, "typeset": true, "local": true, "export": true, "readonly": true, "unset": true,
+	"mapfile": true, "readarray": true, "getopts": true, "let": true, "eval": true, "source": true, ".": true, "printf": true,
+	"for": true, "select": true,
+}
+
+// reassigns reports whether s may set a variable other than by a plain assignment statement.
+func reassigns(s shellparse.Simple) bool {
+	return s.LoopVar != "" || reassignBuiltins[shellparse.ProgramName(s.Program)]
+}
+
+// unconditional reports whether the statement s certainly runs when the line runs: its text comes before any && || | ( { or a
+// compound command's keyword, so it is not on the right of a condition, in a pipeline, a subshell, a group, a loop or a branch.
+func unconditional(cmd string, s shellparse.Simple) bool {
+	if s.Nested || s.Piped || s.Raw == "" || strings.Count(cmd, s.Raw) != 1 {
+		return false
+	}
+	at := strings.Index(cmd, s.Raw)
+	if at < 0 {
+		return false
+	}
+	before := cmd[:at]
+	for _, marker := range []string{"&&", "||", "|", "(", "{", "`"} {
+		if strings.Contains(before, marker) {
+			return false
+		}
+	}
+	for _, w := range strings.FieldsFunc(before, func(r rune) bool { return r == ' ' || r == '\t' || r == '\n' || r == ';' }) {
+		switch w {
+		case "if", "then", "else", "elif", "while", "until", "do", "case", "for", "select":
+			return false
+		}
+	}
+	return true
+}
+
+// unquoteAssigned removes the double quotes around an assigned value ("$TMPDIR/x"); a single-quoted value is literal and has no
+// variable to expand, so its quotes are removed as well.
+func unquoteAssigned(v string) string {
+	if len(v) >= 2 && (v[0] == '"' && v[len(v)-1] == '"' || v[0] == '\'' && v[len(v)-1] == '\'') {
+		return v[1 : len(v)-1]
+	}
+	return v
 }
 
 // opaqueReason names the constructs whose effect cannot be judged from the text.
@@ -266,18 +377,15 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 	u := &unit{simple: &sp, label: label(s), name: shellparse.ProgramName(s.Program)}
 
 	for _, env := range s.Env {
-		bad := false
-		if s.Program == "" {
-			bad = envDangerous(env)
-		} else {
-			bad = !envBenign(env)
-		}
-		if bad && u.envBad == "" {
+		// An assignment of a plain value (PORT=8080 ./bin/app) changes what a program reads, not which program runs or what it loads:
+		// only the names that do (PATH, LD_PRELOAD, GIT_*, a proxy, see envDangerous) keep the command from any allow rule. A value
+		// that names a file is judged as a read of that file, whether or not a rule allows the command (envAcc).
+		if envDangerous(env) && u.envBad == "" {
 			u.envBad = envName(env)
 		}
 		if _, val, ok := strings.Cut(env, "="); ok {
 			for _, c := range pathCandidates(val) {
-				u.accesses = append(u.accesses, ev.resolve(pathUse{raw: c}, cw)...)
+				u.envAcc = append(u.envAcc, ev.resolve(pathUse{raw: c}, cw)...)
 			}
 		}
 	}
@@ -308,6 +416,16 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 			u.why = "not on the read-only allowlist"
 		}
 		uses = unknownUses(s.Args)
+		if u.name == "git" {
+			if g, ok := gitRepoUses(s.Args); ok {
+				uses = g // writes only into the repository: its operands are read
+			}
+		}
+		if formatter(u.name, s.Args) {
+			for i := range uses {
+				uses[i].format = true
+			}
+		}
 		if u.name == "" {
 			// ./tool or /opt/x/tool: running a file reads it; it is not a write.
 			uses = append([]pathUse{{raw: s.Program}}, uses...)
@@ -491,7 +609,7 @@ func (ev *evaluator) bareStar(p string) bool {
 	if dir == "." {
 		return true // the current directory, normally the workspace
 	}
-	w, _, dyn := ev.rs.expandWord(dir, ev.startDir())
+	w, _, dyn := ev.rs.expandWordVars(dir, ev.startDir(), ev.vars)
 	if dyn {
 		return true
 	}

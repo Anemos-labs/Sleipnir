@@ -90,7 +90,7 @@
     const swarm = d.swarm != null ? d.swarm : 8, cwd = (def && def.dir) || d.cwd || '', tm = teamSeed(d.team);
     /* with the server's defaults an absent field is the CLI's own default (no verify command); the budget starts at off, which the server honours: a team has no cap unless one is set */
     const act = SL.sessions && SL.sessions.active, actModel = act && !act.placeholder && !act.recorded ? act.meta.model : '';
-    return { name: '', cwd, gitInit: true, testsSummary: d.testsPreset || '', unlimitedEnv: d.unlimitedEnv || '', model: d.model || actModel || (D.models[0] ? D.models[0].ref : ''), mode: d.mode || 'default', swarm, isolation: d.isolation || (swarm ? 'worktree' : 'none'), verify: d.verify != null ? d.verify : has ? '' : 'go test {dirs}', commit: !!d.commit, mailman: !!d.mailman, mailmanDefault: !!d.mailman, budget: d.budget ? String(d.budget) : 'off', rules: (d.rules || []).slice(), trustProject: d.trustProject !== false, noMcp: !!d.noMcp, goalText: '', effort: d.effort || 'default', roleModels: Object.assign({}, d.roleModels || {}), maxWorkers: d.maxWorkers || 0, minWorkers: d.minWorkers || 8, counts: tm.counts, slotModels: tm.models, perSlot: tm.per, openRoles: Object.keys(tm.per).reduce((o, r) => { o[r] = true; return o; }, {}), single: swarm === 0, autoDocs: d.autoDocs !== false, resume: '' };
+    return { name: '', cwd, gitInit: true, testsSummary: d.testsPreset || '', unlimitedEnv: d.unlimitedEnv || '', model: d.model || actModel || (D.models[0] ? D.models[0].ref : ''), mode: d.mode || 'default', swarm, isolation: d.isolation || (swarm ? 'worktree' : 'none'), verify: d.verify != null ? d.verify : has ? '' : 'go test {dirs}', commit: !!d.commit, mailman: !!d.mailman, mailmanDefault: !!d.mailman, budget: d.budget ? String(d.budget) : 'off', rules: (d.rules || []).slice(), trustProject: d.trustProject !== false, noMcp: !!d.noMcp, goalText: '', effort: d.effort || 'default', roleModels: Object.assign({}, d.roleModels || {}), maxWorkers: d.maxWorkers || 0, minWorkers: d.minWorkers || 8, counts: tm.counts, slotModels: tm.models, perSlot: tm.per, openRoles: Object.keys(tm.per).reduce((o, r) => { o[r] = true; return o; }, {}), single: swarm === 0, autoDocs: d.autoDocs !== false, managerApproves: d.managerApproves !== false, isoAuto: !d.isolationSet, resume: '' };
   }
   /** The counts and models of a team the server names (one entry per slot), or the default team: one worker of each role. A role whose
    *  slots all run one model has it in models; a role whose slots run different models has them, slot by slot, in per. */
@@ -129,7 +129,7 @@
   dialogs.cliLine = function (st) {
     const q = shellQuote, off = (!st.budget || st.budget === 'off') && Number(st.swarm) > 0, f = [(off && st.unlimitedEnv ? st.unlimitedEnv + ' ' : '') + 'sleipnir chat'];   // a team of the terminal has a cap of its own unless the environment lifts it
     if (st.resume) f.push('--resume ' + q(st.resume)); if (st.cwd && st.cwd !== '.') f.push('--cwd ' + q(st.cwd)); f.push('--model ' + q(st.model)); f.push('--mode ' + q(st.mode)); const tm = st.counts ? teamOf(st) : { n: st.swarm, slots: [] }; f.push('--swarm ' + q(tm.n)); f.push('--isolation ' + q(st.isolation));
-    if (st.verify) f.push('--verify ' + q(st.verify)); if (st.commit) f.push('--commit'); if (st.mailman) f.push('--mailman'); else if (st.mailmanDefault) f.push('--mailman=false'); if (tm.n > 0 && st.autoDocs === false) f.push('--auto-docs=false');
+    if (st.verify) f.push('--verify ' + q(st.verify)); if (st.commit) f.push('--commit'); if (st.mailman) f.push('--mailman'); else if (st.mailmanDefault) f.push('--mailman=false'); if (tm.n > 0 && st.autoDocs === false) f.push('--auto-docs=false'); if (tm.n > 0 && st.managerApproves === false) f.push('--manager-approves=false');
     if (st.budget && st.budget !== 'off') f.push('--budget-usd ' + q(st.budget)); if (tm.slots.length) tm.slots.forEach(t => f.push('--role-model ' + q(t.model ? t.role + '=' + t.model : t.role))); else Object.keys(st.roleModels || {}).forEach(r => f.push('--role-model ' + q(r + '=' + st.roleModels[r]))); (st.rules || []).forEach(r => f.push('--allow ' + q(r)));
     if (st.trustProject) f.push('--trust-project'); if (st.noMcp) f.push('--no-mcp');
     const first = st.makeDir || st.makeGit ? '# first, as the page does: ' + [st.makeDir ? 'make the folder' : '', st.makeGit ? 'run git init in it, with an empty first commit' : ''].filter(Boolean).join(', then ') + '\n' : '';
@@ -147,6 +147,7 @@
     isolation: '<b>none</b>: workers edit your folder directly.<br><b>worktree</b>: each worker edits a private copy of the project; finished work is checked, merged, and only then applied to your folder. Teams only.',
     verify: 'A command that checks a worker’s task before it counts as done: it runs when a worker hands a task in, and a failure sends the task back to the worker. With isolation <b>worktree</b> it also runs before each merge. <span class="mono">{dirs}</span> stands for the folders the task changed. Empty: no automatic check. Teams only. It runs on your machine, so you confirm it when you start.',
     commit: 'When the team’s verified work is applied, commit it to your current branch instead of leaving uncommitted edits. Needs isolation <b>worktree</b> and a clean checkout on a branch. Teams only.',
+    managerApproves: 'The manager answers the workers’ routine questions itself (builds, tests and edits inside a worker’s own scope); each of its decisions shows in one collapsed line in the chat. Anything else still asks you. Teams only.',
     mailman: 'A small extra agent boils bursts of worker messages down to a digest, so the manager is not flooded. It runs on the <span class="mono">mailman</span> role model. Teams only.',
     trustProject: 'Use this project’s own instructions (AGENTS.md), skills, hooks, allow rules and tool servers. Only for code you trust: you are shown the files first.',
     noMcp: 'Do not start MCP tool servers (extra tools a project or your configuration adds).',
@@ -174,7 +175,8 @@
    * it is not known): a reason for each control that is blocked ('' when it is free), and the values that are sent and shown. No
    * combination that cannot start is sent: 0 workers is a single agent (isolation none, no verify, commit or mailman); worktree
    * isolation needs the root of a git repository with a commit, or a folder that git init makes one; --commit needs worktree isolation
-   * and a clean checkout on a branch. What is not known is not blocked: the server checks again before it opens a tab.
+   * and a clean checkout on a branch. What is not known is not blocked: the server checks again before it opens a tab. An isolation
+   * that nobody chose (st.isoAuto) is worktree where the folder can have it and none elsewhere.
    */
   dialogs.nsGate = function (st, state) {
     const g = { team: '', worktree: '', commit: '', isolation: st.isolation === 'worktree' ? 'worktree' : 'none', commitOn: !!st.commit, mailman: !!st.mailman, verify: st.verify || '' };
@@ -190,6 +192,9 @@
         : d.git === 'offer' ? 'Not a git repository yet: check git init above to make one (with a first commit), or use isolation none.'
         : d.git === 'files' ? 'Not a git repository: run git init and commit there, or pick a repository’s root folder.' : '';
     }
+    /* isolation nobody chose (st.isoAuto: neither the person nor the server's flags or configuration named one) follows the folder:
+       worktree for the root of a repository with a commit, or one git init makes, else none */
+    if (st.isoAuto) g.isolation = state && d.level !== 'bad' && !g.worktree && (made || (d.git === 'repo' && r && !r.bare && r.hasCommits)) ? 'worktree' : 'none';
     if (g.worktree) g.isolation = 'none';
     if (g.isolation !== 'worktree') g.commit = 'Commit needs isolation worktree' + (g.worktree ? ', which this folder cannot have.' : '.');
     else if (!made && r && r.detached) g.commit = 'Commit moves the checked-out branch, and HEAD is detached: check out a branch first.';
@@ -201,6 +206,7 @@
     if (SL.data) { SL.data.load('projects'); SL.data.load('models'); }
     const st = Object.assign(seedOf(), seed || {}), folder = ui.folder;
     if (seed && seed.swarm != null && seed.single == null) st.single = +seed.swarm === 0;   // a seed that names a size: 0 is a single agent
+    if (seed && seed.isolation != null && seed.isoAuto == null) st.isoAuto = false;          // ... and one that names the isolation chose it
     const models = () => { const l = D.models.map(m => m.ref); if (st.model && l.indexOf(st.model) < 0) l.unshift(st.model); return l; };
     let fm = null;
     const fstate = () => (fm ? fm.state() : null);
@@ -221,7 +227,7 @@
       '<h3 class="lab nsh">Team</h3>' + field('model (--model)', '<select id="nsModel" aria-label="Model">' + models().map(r => '<option' + (r === st.model ? ' selected' : '') + '>' + esc(r) + '</option>').join('') + '</select>', '', help('model', 'the model')) +
       field('team (--swarm, --role-model)', '<div class="seg" role="group" aria-label="Team preset"><button type="button" data-tpreset="full">Full team</button><button type="button" data-tpreset="single">Single agent</button></div> <span class="dim" id="nsSw"></span><div id="nsTeamRows" class="nsteamrows"></div><div class="nserr err" id="nsTeamErr" role="alert" hidden></div>', '', help('workers', 'the team')) +
       team(field('isolation', seg('isolation', ['none', 'worktree'], st.isolation), '', help('isolation', 'isolation')) + field('verify tasks with (--verify)', inp('nsVerify', st.verify, 'aria-label="verify command" placeholder="e.g. go test {dirs}" spellcheck="false" autocomplete="off"') + '<div class="chips" id="nsVerifyHints"></div>', '', help('verify', '--verify')) +
-        field('team options', opt('commit', '--commit', '--commit') + opt('mailman', '--mailman', '--mailman') + opt('autoDocs', 'auto-docs (--auto-docs)', '--auto-docs'))) +
+        field('team options', opt('commit', '--commit', '--commit') + opt('mailman', '--mailman', '--mailman') + opt('autoDocs', 'auto-docs (--auto-docs)', '--auto-docs') + opt('managerApproves', 'manager answers routine questions (--manager-approves)', '--manager-approves'))) +
       '</div><div><h3 class="lab nsh">Permissions and limits</h3>' +
       field('pre-approve actions (--allow)', '<div class="nsd nsquiet" id="nsRuleOff" role="status" hidden>' + NS_HELP.quiet + '</div><fieldset class="nsfs" id="nsRuleSet"><div class="field-row" style="margin:0"><input id="nsRule" type="text" placeholder="tests, Bash(go test:*)" aria-label="Allow rule" spellcheck="false" autocomplete="off"><button class="btn sm" type="button" id="nsAddRule">Add</button></div><div class="nserr err" id="nsRuleErr" role="alert" hidden></div><div id="nsRules" class="tags"></div><div class="chips" id="nsRuleEx">' + ruleEx + '</div></fieldset>', '', help('allow', 'a pre-approved action')) +
       field('trust and tools', opt('trustProject', '--trust-project', '--trust-project') + opt('noMcp', '--no-mcp', '--no-mcp')) +
@@ -241,6 +247,7 @@
           $$('[data-seg="isolation"]', b).forEach(x => { x.disabled = team || (x.dataset.v === 'worktree' && !!g.worktree); x.setAttribute('aria-pressed', String(x.dataset.v === g.isolation)); });
           if (commitBox) { commitBox.disabled = !!g.commit; commitBox.checked = g.commitOn; }
           if (mailBox) { mailBox.disabled = team; mailBox.checked = g.mailman; }
+          const mgrBox = $('[data-k="managerApproves"]', b); if (mgrBox) { mgrBox.disabled = team; mgrBox.checked = !team && st.managerApproves !== false; }
           const v = $('#nsVerify', b); if (v) { v.disabled = team; if (team) v.value = ''; else if (document.activeElement !== v && v.value !== st.verify) v.value = st.verify; }
           $$('[data-vh]', b).forEach(c => { c.disabled = team; });
         }
@@ -290,7 +297,7 @@
         sc.listen(b, 'change', e => { const t = e.target; if (t.id === 'nsModel') st.model = t.value; else if (t.dataset.tmodel) { const r = t.dataset.tmodel; st.slotModels = st.slotModels || {}; if (st.perSlot) delete st.perSlot[r]; st.slotModels[r] = t.value; } else if (t.dataset.tslot) setSlotModel(st, t.dataset.tslot, +t.dataset.ti, t.value); else if (t.dataset.k) st[t.dataset.k] = t.checked; paint(); });
         sc.listen(b, 'click', e => {
           const mr = e.target.closest('[data-nsmode]'); if (mr) { st.mode = mr.dataset.nsmode; paint(); return; }
-          const x = e.target.closest('[data-seg]'); if (x) { if (x.disabled) return; st[x.dataset.seg] = x.dataset.v; $$('[data-seg="' + x.dataset.seg + '"]', b).forEach(y => y.setAttribute('aria-pressed', y === x)); paint(); return; }
+          const x = e.target.closest('[data-seg]'); if (x) { if (x.disabled) return; st[x.dataset.seg] = x.dataset.v; if (x.dataset.seg === 'isolation') st.isoAuto = false; $$('[data-seg="' + x.dataset.seg + '"]', b).forEach(y => y.setAttribute('aria-pressed', y === x)); paint(); return; }
           const vh = e.target.closest('[data-vh]'); if (vh) { if (vh.disabled) return; st.verify = vh.dataset.vh; $('#nsVerify', b).value = st.verify; paint(); return; }
           const ex = e.target.closest('[data-ex]'); if (ex) { if (!quiet()) addRule(ex.dataset.ex); paint(); return; }
           const rr = e.target.closest('[data-rr]'); if (rr && !quiet()) { st.rules.splice(+rr.dataset.rr, 1); paint(); }
@@ -319,6 +326,7 @@
             const spec = { name: st.name.trim() || undefined, cwd: state ? state.path : typed, model: st.model, mode: st.mode, swarm: tm.n, isolation: st.isolation, verify: st.verify, commit: st.commit, mailman: st.mailman, rules: rulesNow(), trustProject: st.trustProject, noMcp: st.noMcp, goalText: st.goalText.trim() || undefined, effort: st.effort, roleModels: tm.slots.length ? {} : roleModels };
             if (tm.slots.length) spec.team = tm.slots;
             if (tm.n > 0 && st.autoDocs === false) spec.autoDocs = false;
+            if (tm.n > 0 && st.managerApproves === false) spec.managerApproves = false;   // on is the server's default: only an off is sent
             const g = gate(); Object.assign(spec, { isolation: g.isolation, verify: g.verify, commit: g.commitOn, mailman: g.mailman });   /* nothing that cannot start: dialogs.nsGate */
             spec.budget = bud > 0 ? bud : 0;   // 0 is off: the server does not put its own cap on the session
             if (st.resume) spec.resume = st.resume;
@@ -342,18 +350,55 @@
    * request is the New session dialog's own start, where choosing the mode in the dialog is the confirmation (its own warning says so).
    */
   function askConfirm(o) {
+    /* a long list of allow rules is shown as one line; the tests preset is named as such, which needs its rules (the Permissions cache) */
+    const long = (o.reasons || []).some(r => /^allow /.test(String(r)) && ui.approvals.ruleList(String(r).slice(6)).length > LONG_RULES);
+    const need = long && !(D.testsPreset && D.testsPreset.length) && SL.data && SL.sessions && SL.sessions.active && !SL.sessions.active.placeholder && !SL.sessions.active.recorded;
+    if (!need) return askConfirmNow(o);
+    return Promise.race([SL.data.load('permissions').catch(() => false), new Promise(r => setTimeout(r, 1500))]).then(() => askConfirmNow(o));
+  }
+  /** More allow rules than this in one reason are one line that opens to the list. */
+  const LONG_RULES = 6;
+  /** The tools the tests preset covers, in a few words (the server's summary before its colon, else the commands of its rules): "go, cargo, npm…". */
+  function presetTools(rules) {
+    const d = SL.live && SL.live.defaults && SL.live.defaults(), sum = d && d.testsPreset ? String(d.testsPreset).split(':')[0] : '';
+    const words = sum ? sum.split(/,\s*|\s+and\s+/).map(w => w.trim()).filter(Boolean) : rules.map(r => (/^Bash\(([^\s:)]+)/.exec(r) || [])[1]).filter((w, i, a) => w && a.indexOf(w) === i);
+    return words.slice(0, 3).join(', ') + (words.length > 3 ? '…' : '');
+  }
+  /**
+   * The reasons of a confirmation as the dialog lists them: every reason on a line of its own, except that the rules of an "allow …" reason
+   * that names more than LONG_RULES are one line at the end with their count and a ▸ that shows them all, and the rules of the tests
+   * preset (all of them, D.testsPreset) are one line of their own ("allow the tests preset: …"). Returns {lines: the short reasons,
+   * groups: [{label, html, rules}] of the long ones (html: the label's markup, the rules in it marked as a reason is)}.
+   */
+  function confirmReasons(reasons) {
+    const preset = (D.testsPreset || []).map(String), lines = [], groups = [];
+    reasons.forEach(r => {
+      const m = /^allow ([\s\S]+)$/.exec(r); if (!m) { lines.push(r); return; }
+      let rules = ui.approvals.ruleList(m[1]);
+      if (preset.length && preset.every(p => rules.includes(p))) { groups.push({ label: 'allow the tests preset: build and test commands of ' + presetTools(preset) + ' (' + preset.length + ' rules)', html: esc('allow the tests preset: build and test commands of ' + presetTools(preset) + ' (' + preset.length + ' rules)'), rules: preset }); rules = rules.filter(x => !preset.includes(x)); }
+      if (!rules.length) return;
+      if (rules.length > LONG_RULES) groups.push({ label: 'allow ' + rules.length + ' rules: ' + rules.slice(0, 2).join(', ') + '…', html: 'allow ' + rules.length + ' rules: ' + ui.longText.mark(rules.slice(0, 2).join(', ')) + '…', rules }); else lines.push('allow ' + rules.join(', '));
+    });
+    return { lines, groups };
+  }
+  dialogs.confirmReasons = confirmReasons;
+  function askConfirmNow(o) {
     return new Promise(resolve => {
       let done = false; const finish = v => { if (!done) { done = true; resolve(v); } };
       const path = String(o.path || '').split('?')[0], fromNew = o.method === 'POST' && path === '/api/sessions';
       const dm = ((o.reasons || []).map(r => /^permission mode (bypass|yolo)$/.exec(r)).find(Boolean) || [])[1], typed = !!dm && !fromNew;
       const t = ASK_TITLE.find(x => x[0].test(path)), S = SL.sessions && SL.sessions.active, who = S && !S.placeholder && !fromNew ? '<b>' + esc(S.name) + '</b>' : 'the session';
-      const rs = (o.reasons || []).map(String), list = rs.length ? '<ul class="plist">' + rs.map(r => '<li><span class="pg">⚠</span><span class="pt">' + ui.longText.mark(r) + '</span></li>').join('') + '</ul>' : esc(o.message || 'this action needs a confirmation');
+      const rs = (o.reasons || []).map(String), cr = confirmReasons(rs);
+      /* every reason is on screen at once: the short ones first, then each long list of rules as one line with ▸ that opens it */
+      const list = rs.length ? '<ul class="plist">' + cr.lines.map(r => '<li><span class="pg">⚠</span><span class="pt">' + ui.longText.mark(r) + '</span></li>').join('') +
+        cr.groups.map((g, i) => '<li class="cf-rules"><span class="pg">⚠</span><span class="pt"><button class="cf-tog" type="button" data-rules="' + i + '" aria-expanded="false" aria-controls="cfRules' + i + '">' + g.html + ' <span class="dx">▸ show</span></button><ul class="cf-rl" id="cfRules' + i + '" hidden>' + g.rules.map(x => '<li class="mono">' + ui.longText.mark(x) + '</li>').join('') + '</ul></span></li>').join('') + '</ul>' : esc(o.message || 'this action needs a confirmation');
       /* the request it confirms, whole: the method and the path (with its query), and the scope the server named */
       const req = '<p class="cf-req"><span class="dim">the request</span> <span class="mono">' + esc(String(o.method || '').toUpperCase()) + ' ' + esc(o.path || '') + '</span>' + (o.scope ? '<br><span class="dim">its scope</span> <span class="mono">' + esc(o.scope) + '</span>' : '') + '</p>';
       ui.modal({ title: t ? t[1] : 'Confirm', kicker: 'confirm', desc: '', color: 'var(--err)', cls: 'confirm', focus: typed ? '#cfType' : '[data-no]', onClose: () => finish(false),
-        body: '<p class="cf-t">This raises what ' + who + ' may do:</p>' + ui.longText.line(rs.join('\n'), 'the reasons') + '<div class="cf-d qblk">' + list + '</div>' + req + (typed ? '<div class="dangerbox"><span>' + esc(TYPE_TEXT[dm]) + '</span><input id="cfType" type="text" autocomplete="off" aria-label="Type the mode name to confirm"></div>' : '') + '<div class="row2"><button class="btn danger" type="button" data-ok' + (typed ? ' disabled' : '') + '>' + (typed ? 'Set it' : 'Yes, go ahead') + '</button><button class="btn" type="button" data-no>Cancel</button></div>',
+        body: '<p class="cf-t">This raises what ' + who + ' may do:</p>' + (cr.lines.length + cr.groups.length > 8 ? ui.longText.line(cr.lines.concat(cr.groups.map(g => g.label)).join('\n'), 'the reasons', true) : ui.longText.line(cr.lines.join('\n'), 'the reasons')) + '<div class="cf-d qblk">' + list + '</div>' + req + (typed ? '<div class="dangerbox"><span>' + esc(TYPE_TEXT[dm]) + '</span><input id="cfType" type="text" autocomplete="off" aria-label="Type the mode name to confirm"></div>' : '') + '<div class="row2"><button class="btn danger" type="button" data-ok' + (typed ? ' disabled' : '') + '>' + (typed ? 'Set it' : 'Yes, go ahead') + '</button><button class="btn" type="button" data-no>Cancel</button></div>',
         onMount(b, sc, close) {
           const ok = $('[data-ok]', b); sc.listen(b, 'click', ui.longText.click);
+          sc.listen(b, 'click', e => { const t = e.target.closest && e.target.closest('[data-rules]'); if (!t) return; const open = t.getAttribute('aria-expanded') !== 'true', l = $('#cfRules' + t.dataset.rules, b); t.setAttribute('aria-expanded', String(open)); if (l) l.hidden = !open; $('.dx', t).textContent = open ? '▾ hide' : '▸ show'; });
           if (typed) { const i = $('#cfType', b); sc.listen(i, 'input', () => { ok.disabled = i.value.trim() !== dm; }); sc.listen(i, 'keydown', e => { if (e.key === 'Enter' && !ok.disabled) { e.preventDefault(); ok.click(); } }); }
           sc.listen(ok, 'click', () => { if (ok.disabled) return; finish(true); close(); }); sc.listen($('[data-no]', b), 'click', () => close());
         } });

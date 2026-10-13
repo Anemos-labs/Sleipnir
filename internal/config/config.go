@@ -175,6 +175,10 @@ type Permissions struct {
 	Deny  []string `json:"deny,omitempty"`
 	// Roles overrides the above per swarm role.
 	Roles map[string]RolePermissions `json:"roles,omitempty"`
+	// ManagerApproves puts a team worker's routine permission question (one that stays inside the workspace and that nothing
+	// guards) to the manager before the person (internal/swarm approvals.go). Unset is true; --manager-approves=false turns it off
+	// for one session.
+	ManagerApproves *bool `json:"manager_approves,omitempty"`
 }
 
 // RolePermissions is the per-role permission override.

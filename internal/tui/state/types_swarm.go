@@ -267,6 +267,8 @@ const (
 	PermByPolicy = "policy"
 	// PermByCanceled: the run was cancelled while the question waited, which is not an answer.
 	PermByCanceled = "canceled"
+	// PermByManager: the team's manager answered a worker's routine question (internal/swarm approvals.go), so no person was asked.
+	PermByManager = "manager"
 )
 
 // PermAsk is a permission question, as perm.ask records it: the permission engine could not settle a tool call by its rules and
@@ -318,15 +320,18 @@ type Perms struct {
 	// the session ends.
 	Pending []PermAsk      `json:"pending,omitempty"`
 	Recent  []PermDecision `json:"recent,omitempty"`
-	// Asked counts perm.ask events, Allowed and Denied the decisions by their answer, and ByUser, ByNoOne, ByPolicy and Canceled
-	// by who made them (a decision by someone else counts in Allowed or Denied only).
-	Asked    int `json:"asked,omitempty"`
-	Allowed  int `json:"allowed,omitempty"`
-	Denied   int `json:"denied,omitempty"`
-	ByUser   int `json:"by_user,omitempty"`
-	ByNoOne  int `json:"by_no_one,omitempty"`
-	ByPolicy int `json:"by_policy,omitempty"`
-	Canceled int `json:"canceled,omitempty"`
+	// Asked counts perm.ask events, Allowed and Denied the decisions by their answer, and ByUser, ByNoOne, ByPolicy, Canceled and
+	// ByManager by who made them (a decision by someone else counts in Allowed or Denied only). ManagerApproved is how many of the
+	// manager's were a yes.
+	Asked           int `json:"asked,omitempty"`
+	Allowed         int `json:"allowed,omitempty"`
+	Denied          int `json:"denied,omitempty"`
+	ByUser          int `json:"by_user,omitempty"`
+	ByNoOne         int `json:"by_no_one,omitempty"`
+	ByPolicy        int `json:"by_policy,omitempty"`
+	Canceled        int `json:"canceled,omitempty"`
+	ByManager       int `json:"by_manager,omitempty"`
+	ManagerApproved int `json:"manager_approved,omitempty"`
 	// Abandoned counts the questions that never got their answer in the log: their agent's run ended or was cancelled first, or the
 	// session ended (or a log was read from the middle).
 	Abandoned int `json:"abandoned,omitempty"`

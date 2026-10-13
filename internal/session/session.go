@@ -129,6 +129,9 @@ type Options struct {
 	// without being asked (swarm.Config.AutoDocs). It applies to a team with a docs
 	// slot.
 	AutoDocs *bool
+	// ManagerApproves, when set, overrides permissions.manager_approves (default true): in a team, a worker's routine permission
+	// question goes to the manager before the person (swarm.Config.ManagerApproves).
+	ManagerApproves *bool
 	// Interactive says a person is at the keyboard across turns (sleipnir chat).
 	// Batch runs (run, swarm, RL rollouts) leave it false and the swarm holds the
 	// manager: it may not give a final answer while workers are running or tasks are
@@ -622,6 +625,7 @@ func (s *Session) buildPerm() error {
 		Mode: mode, Root: o.Root, Home: o.Home, StateDir: stateRoot(o.Home), Tmp: s.tmp, TreeParents: extra,
 		Allow: append(append([]string(nil), s.cfg.Permissions.Allow...), o.Allow...), Ask: ask, Deny: s.cfg.Permissions.Deny,
 		Roles: roles, Prompter: s.trackAsks(s.hookPrompter(o.Prompter)), AskTimeout: o.AskTimeout, Audit: s.auditPermission,
+		Delegate: s.delegateApproval,
 	})
 	if err != nil {
 		return fmt.Errorf("permissions: %w", err)
@@ -982,6 +986,7 @@ func (s *Session) build(ctx context.Context) error {
 	autoDocs := s.autoDocsOn() && slices.Contains(sc.Team, swarm.DocsRole)
 	sc.AutoDocs = autoDocs
 	sc.JudgeManagerShell = s.managerProfileBuiltin
+	sc.ManagerApproves = s.managerApprovesOn()
 	for i, t := range team {
 		if t.Model == "" {
 			continue
@@ -1313,6 +1318,10 @@ func (s *Session) Options() Options {
 	if o.AutoDocs != nil {
 		v := *o.AutoDocs
 		o.AutoDocs = &v
+	}
+	if o.ManagerApproves != nil {
+		v := *o.ManagerApproves
+		o.ManagerApproves = &v
 	}
 	o.Team = append([]TeamSlot(nil), o.Team...)
 	return o

@@ -93,3 +93,20 @@ func TestRuntimeShellContextUnavailableKeepsToolsStable(t *testing.T) {
 		}
 	}
 }
+
+// A session whose commands get a TMPDIR of their own says where scratch files go, without naming the directory (its path holds the
+// session's id, and the runtime context is shared by every session); a run that brings its own environment says nothing of it.
+func TestRuntimeContextPointsAtTMPDIR(t *testing.T) {
+	tmp := filepath.Join(t.TempDir(), "sessions", "s-123", "tmp")
+	m := NewManager(Options{Tmp: tmp})
+	defer m.Shutdown()
+	text := m.RuntimeContext()
+	if !strings.Contains(text, ScratchGuidance) || !strings.Contains(text, "/tmp is outside the workspace and asks") || strings.Contains(text, tmp) {
+		t.Errorf("runtime context with a TMPDIR: %q", text)
+	}
+	plain := NewManager(Options{})
+	defer plain.Shutdown()
+	if strings.Contains(plain.RuntimeContext(), "TMPDIR") {
+		t.Errorf("runtime context without a TMPDIR: %q", plain.RuntimeContext())
+	}
+}

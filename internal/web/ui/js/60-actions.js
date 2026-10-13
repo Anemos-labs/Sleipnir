@@ -20,9 +20,11 @@
     density: 'comfortable',   // 'comfortable' | 'compact'
     cache: 'quiet',           // 'quiet' (the default: no savings figures, no hit-% on cards, a small warm clock) | 'full' (every cache figure)
     title: 'auto',            // the tab title badge: 'auto' (the server's default), 'on' or 'off'
+    notify: 'off',            // a browser notification of a question that waits: 'off' (the default) or 'on' (the browser's permission given)
+    notifyAfter: '30',        // ... once it has waited this many seconds while the page is out of sight
     ver: 0,
-    load() { try { const o = JSON.parse(localStorage.getItem('sleipnir.web.settings') || '{}'); ['hover', 'motion', 'density', 'cache', 'title'].forEach(k => { if (typeof o[k] === 'string') settings[k] = o[k]; }); } catch (e) { /* no storage: defaults */ } },
-    save() { try { localStorage.setItem('sleipnir.web.settings', JSON.stringify({ hover: settings.hover, motion: settings.motion, density: settings.density, cache: settings.cache, title: settings.title })); } catch (e) { /* ignore */ } },
+    load() { try { const o = JSON.parse(localStorage.getItem('sleipnir.web.settings') || '{}'); ['hover', 'motion', 'density', 'cache', 'title', 'notify', 'notifyAfter'].forEach(k => { if (typeof o[k] === 'string') settings[k] = o[k]; }); } catch (e) { /* no storage: defaults */ } },
+    save() { try { localStorage.setItem('sleipnir.web.settings', JSON.stringify({ hover: settings.hover, motion: settings.motion, density: settings.density, cache: settings.cache, title: settings.title, notify: settings.notify, notifyAfter: settings.notifyAfter })); } catch (e) { /* ignore */ } },
   };
   const OK = (v, list) => list.includes(v);
 
@@ -31,6 +33,21 @@
   const toast = (t, k) => { if (SL.ui && SL.ui.toast) SL.ui.toast(t, k); };
   /** The failure of a request, shown as the server said it; a 409 is the state not allowing it now. */
   const fail = r => { if (!r || r.ok || r.code === 'aborted' || r.code === 'confirm_required') return; toast(r.message, r.status === 409 ? 'warm' : 'err'); };
+  /** Is r the answer of a tab that is still starting (409 busy: "the session is starting")? */
+  const starting = r => !!r && r.status === 409 && r.code === 'busy' && /is starting/.test(String(r.message || ''));
+  /** The waits before a request refused by a starting tab is sent again: 0.5, 1, 2, 4, then every 5 s, for at most two minutes. */
+  const START_WAITS = [500, 1000, 2000, 4000], START_EVERY = 5000, START_MAX = 120000;
+  /**
+   * Make a request (mk() returns its promise) and, while the tab answers that it is still starting, make it again after a growing wait,
+   * up to START_MAX: a first goal or a line typed into a tab that has just been created waits for it instead of failing. Resolves the
+   * last answer.
+   */
+  function whenStarted(mk) {
+    const t0 = Date.now();
+    const go = n => mk().then(r => { if (!starting(r) || Date.now() - t0 >= START_MAX) return r; const w = n < START_WAITS.length ? START_WAITS[n] : START_EVERY; return new Promise(res => setTimeout(res, w)).then(() => go(n + 1)); });
+    return go(0);
+  }
+  SL.whenStarted = whenStarted;
   /** Send a request; failures toast. onOk(data) runs on success. Returns {ok: true, done}. */
   const send = (p, onOk, onFail) => ({ ok: true, done: p.then(r => { if (r.ok) { if (onOk) onOk(r.data, r); } else if (!onFail || onFail(r) !== true) fail(r); return r; }) });
   const tab = S => api().tab(S.id);
@@ -43,6 +60,9 @@
   act('setMotion', v => { if (OK(v, ['auto', 'reduce', 'full'])) { settings.motion = v; settings.ver++; SL.bus.emit('motion'); settings.save(); } });
   act('setCache', v => { if (OK(v, ['quiet', 'full'])) { settings.cache = v; settings.ver++; document.body.classList.toggle('cq', v === 'quiet'); settings.save(); SL.bus.emit('cache-detail', v); } });
   act('setDensity', v => { if (OK(v, ['comfortable', 'compact'])) { settings.density = v; settings.ver++; document.body.classList.toggle('compact', v === 'compact'); settings.save(); } });
+  /** The notification of a waiting question: on or off, and after how many seconds (5 to 3600). Turning it on asks the browser first:
+   *  SL.ui.approvals.setNotify does that from the click, then calls this. */
+  act('setNotify', (v, after) => { if (OK(v, ['on', 'off'])) settings.notify = v; if (after != null) { const n = parseInt(after, 10); if (n >= 5 && n <= 3600) settings.notifyAfter = String(n); } settings.ver++; settings.save(); });
   act('setTitleBadge', v => { if (OK(v, ['auto', 'on', 'off'])) { settings.title = v; settings.ver++; settings.save(); SL.bus.emit('title-badge'); } });
 
   /* ---------------- per-session actions ---------------- */
@@ -65,7 +85,7 @@
   const launch = (S, patch) => why(S) ? refuse(S) : send(api().patch(tab(S) + '/launch', patch));
   act('setIsolation', (v, sid) => { const S = ses(sid); if (S && OK(v, ['none', 'worktree'])) return launch(S, { isolation: v }); });
   act('setVerify', (v, sid) => { const S = ses(sid); if (S) return launch(S, { verify: String(v == null ? '' : v) }); });
-  act('setFlag', (flag, on, sid) => { const S = ses(sid); if (S && OK(flag, ['commit', 'mailman', 'autoDocs', 'noMcp', 'trustProject'])) return launch(S, { [flag]: !!on }); });
+  act('setFlag', (flag, on, sid) => { const S = ses(sid); if (S && OK(flag, ['commit', 'mailman', 'autoDocs', 'managerApproves', 'noMcp', 'trustProject'])) return launch(S, { [flag]: !!on }); });
   /* rules: effect allow | deny | ask; the origin is shown on the Permissions page */
   act('allowRule', (rule, origin, sid) => addRule(ses(sid), 'allow', rule, origin || 'this session'));
   act('denyRule', (rule, origin, sid) => addRule(ses(sid), 'deny', rule, origin || 'this session'));
@@ -80,7 +100,7 @@
   /* goals */
   /** A goal action; the server says when it waits to run (queued: set and resume as the tab's next item, pause and clear while a turn
    *  stops), and the page says so. */
-  const goal = (S, body) => send(api().post(tab(S) + '/goal', body), d => { if (d && d.queued) toast(body.action === 'set' || body.action === 'resume' ? 'the goal runs as the next item of ' + S.name : 'the goal is ' + (body.action === 'pause' ? 'paused' : 'cleared') + ' once the running turn stops', 'quiet'); });
+  const goal = (S, body) => send(whenStarted(() => api().post(tab(S) + '/goal', body)), d => { if (d && d.queued) toast(body.action === 'set' || body.action === 'resume' ? 'the goal runs as the next item of ' + S.name : 'the goal is ' + (body.action === 'pause' ? 'paused' : 'cleared') + ' once the running turn stops', 'quiet'); });
   act('setGoal', (text, sid) => {
     const S = ses(sid); if (!S) return { ok: false }; text = String(text || '').trim(); if (!text) return { ok: false, why: '/goal needs text' };
     if (why(S)) return refuse(S); return goal(S, { action: 'set', text });
@@ -163,17 +183,22 @@
     const busy = SL.calc.turnRunning(S.wm) || S.meta.running === true, local = busy ? { id: '', text: display, local: true } : null;
     if (local) { S.ui.queued.push(local); S.touch(); }
     const body = { text: full, clientId: api().cid() }; if (full !== display) body.display = display;
-    return send(api().post(tab(S) + '/messages', body), res => { if (local && !(res && res.queued)) { const i = S.ui.queued.indexOf(local); if (i >= 0) { S.ui.queued.splice(i, 1); S.touch(); } } },
+    return send(whenStarted(() => api().post(tab(S) + '/messages', body)), res => { if (local && !(res && res.queued)) { const i = S.ui.queued.indexOf(local); if (i >= 0) { S.ui.queued.splice(i, 1); S.touch(); } } },
       () => { if (local) { const i = S.ui.queued.indexOf(local); if (i >= 0) { S.ui.queued.splice(i, 1); S.touch(); } } return false; });
   });
   /** A slash line the page has no handler for (custom commands, skills, MCP prompts, /mcp reconnect): the server runs it. */
-  act('command', (line, sid) => { const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); return send(api().post(tab(S) + '/command', { line: String(line) }), null, () => false); });
+  act('command', (line, sid) => { const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); return send(whenStarted(() => api().post(tab(S) + '/command', { line: String(line) })), null, () => false); });
 
   /* sessions */
   act('switchSession', id => { const S = SL.sessions.activate(id); if (S && SL.data) SL.data.onSwitch(); return S; });
   const want = { id: null };
-  /** Activate the tab the person just created once the page has it (the tab frame and the response can come in either order). */
-  function activateWhenReady(id) { if (!id) return; if (SL.sessions.get(id)) { want.id = null; ACT.switchSession(id); } else want.id = id; }
+  /** Activate the tab the person just created as soon as the server answers: with its summary (tab) the page makes it a tab at once
+   *  (SL.live.placeTab: its snapshot fills it when it lands); without one, once the page has it (the tab frame and the response can
+   *  come in either order). */
+  function activateWhenReady(id, tab) {
+    if (!id) return; if (!SL.sessions.get(id) && tab && SL.live && SL.live.placeTab) SL.live.placeTab(tab);
+    if (SL.sessions.get(id)) { want.id = null; ACT.switchSession(id); } else want.id = id;
+  }
   SL.bus.on('sessions-changed', () => { if (want.id && SL.sessions.get(want.id)) { const id = want.id; want.id = null; ACT.switchSession(id); } });
   const slug = s => String(s || 'session').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'session';
   /**
@@ -202,7 +227,7 @@
     if (!body.clientId) body.clientId = api().cid();
     const name = spec.name || slug((spec.cwd || '').split('/').filter(Boolean).pop());
     const p = trusting(id => api().post('/api/sessions', body, id ? { confirmId: id } : undefined), opt.confirmId, raisesOf(spec).concat(opt.raises || [])).then(r => {
-      if (r.ok) { activateWhenReady(r.data && r.data.tab && r.data.tab.id); return r; }
+      if (r.ok) { activateWhenReady(r.data && r.data.tab && r.data.tab.id, r.data && r.data.tab); return r; }
       if (!r.declined) fail(r); return r;
     });
     return { ok: true, name, done: p };
@@ -220,7 +245,7 @@
     if (!rec) return { ok: false, why: 'no recorded session to resume' }; if (!rec.resumable) return { ok: false, why: rec.id + ' cannot be resumed (older than the checkpoint window)' };
     const body = Object.assign({ from: recId === 'latest' ? 'latest' : rec.id }, opt && opt.name ? { name: opt.name } : {});
     /* a resume asks for trust as a new session does (the same challenge): the same trust step */
-    return send(trusting(id => api().post('/api/sessions/resume', body, id ? { confirmId: id } : undefined)), d => activateWhenReady(d && d.tab && d.tab.id), r => { if (r.declined) return true; if (r.code === 'hosted' && r.detail && r.detail.tab) { ACT.switchSession(r.detail.tab.id || r.detail.tab); toast(r.message, 'warm'); return true; } return false; });
+    return send(trusting(id => api().post('/api/sessions/resume', body, id ? { confirmId: id } : undefined)), d => activateWhenReady(d && d.tab && d.tab.id, d && d.tab), r => { if (r.declined) return true; if (r.code === 'hosted' && r.detail && r.detail.tab) { ACT.switchSession(r.detail.tab.id || r.detail.tab); toast(r.message, 'warm'); return true; } return false; });
   });
   /** /swarm N, Run settings Apply, "run it again": the team starts again and the manager's conversation carries over (/new and /clear start empty). */
   act('restartTeam', (patch, sid) => {

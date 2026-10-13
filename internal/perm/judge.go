@@ -32,6 +32,8 @@ type verdict struct {
 	// where it came from, tier what kind of decision it is (Classification.Tier;
 	// "" is the mode's).
 	rule, origin, tier string
+	// routine marks a question a delegate may settle before a person is asked (routine.go).
+	routine bool
 }
 
 // by marks a verdict as decided by a rule.
@@ -110,14 +112,16 @@ type view struct {
 
 // allAccesses returns an independent slice of command accesses followed by redirection accesses.
 func (u *unit) allAccesses() []access {
-	all := make([]access, 0, len(u.accesses)+len(u.redirs))
+	all := make([]access, 0, len(u.accesses)+len(u.redirs)+len(u.envAcc))
 	all = append(all, u.accesses...)
+	all = append(all, u.envAcc...)
 	return append(all, u.redirs...)
 }
 
 // judge applies the precedence: built-in protections and user deny rules,
 // then user ask rules, then allow rules and the mode's defaults.
 func (ev *evaluator) judge(u *unit) verdict {
+	ev.noteRoutine(u)
 	all := u.allAccesses()
 	for _, a := range all {
 		if a.invalid != "" {
@@ -155,7 +159,7 @@ func (ev *evaluator) judge(u *unit) verdict {
 	if r := ev.restrictMatch(ev.v.deny, u, all); r != nil {
 		return deny("denied by rule " + r.String()).by(r)
 	}
-	if r := ev.restrictMatch(ev.v.ask, u, all); r != nil {
+	if r := ev.restrictMatch(ev.v.ask, u, ev.rs.outsideTmp(all)); r != nil {
 		if ev.v.mode == ModeYolo { // yolo never asks: a rule that would have asked refuses instead
 			return deny("yolo mode never asks, and rule " + r.String() + " requires approval; allow it with an Allow rule or leave yolo").by(r)
 		}
@@ -187,11 +191,27 @@ func (rs *resolver) leavesConfinement(c rootPair, a access, agent string) string
 	if a.dynamic || a.real == "" {
 		return ""
 	}
-	if inside(c.real, a.real) || !rs.inWorkspace(a.real) {
-		return ""
+	if inside(c.real, a.real) || !rs.inWorkspace(a.real) || rs.inTmp(a.real) {
+		return "" // the session's scratch directory ($TMPDIR) is every agent's, as /tmp would be
 	}
 	return agent + " works only inside its own tree; " + clipText(a.raw, 80) +
 		" is elsewhere in the workspace (the shared checkout or another agent's tree). Use paths relative to your working directory"
+}
+
+// outsideTmp drops the accesses inside the session's scratch directory, for the Ask rules: $TMPDIR is made for the session's commands,
+// and a rule that asks before a write to the harness's own directory (where the scratch directory of a session lives) is not about it.
+// Deny rules and the built-in protections still see every access.
+func (rs *resolver) outsideTmp(all []access) []access {
+	if rs.tmpReal == "" {
+		return all
+	}
+	out := all[:0:0]
+	for _, a := range all {
+		if a.dynamic || !rs.inTmp(a.real) {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // clipText retains at most n runes and appends an ellipsis when needed; n must be nonnegative.
@@ -248,6 +268,9 @@ func (ev *evaluator) decideCommand(u *unit) verdict {
 		for _, a := range u.accesses {
 			res = combineAccess(res, ev.accessVerdict(a, u))
 		}
+	}
+	for _, a := range u.envAcc {
+		res = combineAccess(res, ev.accessVerdict(a, u))
 	}
 	for _, a := range u.redirs {
 		res = combineAccess(res, ev.accessVerdict(a, u))
@@ -416,7 +439,7 @@ func ruleHits(r *crule, a access, restrict bool) bool {
 	}
 	for _, g := range r.globs {
 		matches := g.matches
-		if restrict && a.tree {
+		if restrict && a.tree && !a.format {
 			matches = g.overlapsTree
 		}
 		if restrict && a.lex != "" && matches(a.lex) {

@@ -245,7 +245,7 @@ func (h *handover) run(shared *kv.Layer) (res HandoverResult, err error) {
 	}
 	card := taskCard(t, h.to, true)
 	if h.tree != nil {
-		card += isolationCard
+		card += isolationCard(integrationRefOf(h.tree))
 	}
 	card += "\n" + handoverRecap(t, pm.id, h.to, h.summary, state)
 	notes := kv.NewLayer("notes:"+h.to, kv.KindNotes, 1, []kv.Segment{{Key: "assignment", Text: card, Vol: kv.VolFrozen}})

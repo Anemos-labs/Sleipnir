@@ -133,7 +133,8 @@ type webTab struct {
 // newTab makes a tab and starts its turn goroutine; the caller starts its first generation.
 func newTab(h *webHostImpl, id, name string, base session.Options) *webTab {
 	t := &webTab{h: h, id: id, name: name, base: base, createdAt: time.Now().UnixMilli(), origins: map[string]string{},
-		wake: make(chan struct{}, 1), done: make(chan struct{}), closedDone: make(chan struct{}), endReason: session.EndExit}
+		wake: make(chan struct{}, 1), done: make(chan struct{}), closedDone: make(chan struct{}), endReason: session.EndExit,
+		starting: true} // the caller starts the first generation: a request that comes first waits for it (readySession)
 	t.cond = sync.NewCond(&t.mu)
 	t.ctx, t.stop = context.WithCancel(context.WithoutCancel(h.ctx))
 	t.goals.yield = func() bool {
@@ -199,6 +200,34 @@ func (t *webTab) cwdLocked() string {
 func (t *webTab) session() *session.Session {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	return t.s
+}
+
+// startWait bounds how long a request that arrives while the tab's session starts (or starts again) waits for it.
+const startWait = 3 * time.Minute
+
+// readySession is the tab's session once it has started: a request that arrives while the session is starting or starting again
+// (the first goal or the effort that the page sends right after New session, a command typed at once) waits for it instead of
+// being refused, up to startWait. It returns nil when the start failed, the tab was closed, the wait ran out or ctx ended.
+func (t *webTab) readySession(ctx context.Context) *session.Session {
+	wake := func() {
+		t.mu.Lock()
+		t.cond.Broadcast()
+		t.mu.Unlock()
+	}
+	stop := context.AfterFunc(ctx, wake)
+	defer stop()
+	timer := time.AfterFunc(startWait, wake)
+	defer timer.Stop()
+	deadline := time.Now().Add(startWait)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for !t.closed && (t.starting || t.restarting) && ctx.Err() == nil && time.Now().Before(deadline) {
+		t.cond.Wait()
+	}
+	if t.closed || t.starting || t.restarting {
+		return nil
+	}
 	return t.s
 }
 
@@ -715,9 +744,9 @@ func (t *webTab) Command(ctx context.Context, req wire.CommandRequest) (wire.Com
 	if len(line) > 64<<10 {
 		return wire.CommandResult{}, werr(http.StatusBadRequest, "empty", "the command is too long")
 	}
-	s := t.session()
+	s := t.readySession(ctx)
 	if s == nil {
-		return wire.CommandResult{}, werr(http.StatusConflict, "busy", "the session is starting: try again in a moment")
+		return wire.CommandResult{}, errNoSession
 	}
 	name := strings.Fields(line)[0]
 	if !knownCommand(s, name) {
@@ -1087,6 +1116,10 @@ func (t *webTab) Interrupt(ctx context.Context, target string) error {
 
 // ---- exclusive sections ----------------------------------------------------------------------------------------------------
 
+// errNoSession is the refusal of a request to a tab whose session did not start (or whose start outlasted startWait): the tab's rows
+// say why.
+var errNoSession = werr(http.StatusConflict, "no_session", "the session did not start: its rows say why")
+
 // errTabBusy is the refusal of an exclusive section while a turn runs.
 var errTabBusy = werr(http.StatusConflict, "busy", "a turn is running: try again when it is over")
 
@@ -1178,9 +1211,9 @@ func (t *webTab) Goal(ctx context.Context, req wire.GoalRequest) error {
 // goalRoute is Goal, reporting whether the action waits to run (set and resume always run as the tab's next item; pause and clear
 // wait while a turn stops): the goal's state then is still the one before it.
 func (t *webTab) goalRoute(ctx context.Context, req wire.GoalRequest) (waits bool, err error) {
-	s := t.session()
+	s := t.readySession(ctx)
 	if s == nil {
-		return false, werr(http.StatusConflict, "busy", "the session is starting: try again in a moment")
+		return false, errNoSession
 	}
 	return t.goalAction(ctx, s, req, true)
 }
@@ -1380,9 +1413,9 @@ func (t *webTab) SetEffort(ctx context.Context, req wire.EffortRequest) (wire.Ef
 	if !slices.Contains(effortLevels, lv) {
 		return wire.EffortResult{}, werr(http.StatusBadRequest, "bad_level", "the level is default, none, minimal, low, medium, high, xhigh or max")
 	}
-	s := t.session()
+	s := t.readySession(ctx)
 	if s == nil {
-		return wire.EffortResult{}, werr(http.StatusConflict, "busy", "the session is starting: try again in a moment")
+		return wire.EffortResult{}, errNoSession
 	}
 	t.sessMu.Lock()
 	s.SetEffort(lv)
@@ -1558,7 +1591,7 @@ func (t *webTab) StageLaunch(ctx context.Context, p wire.LaunchPatch) error {
 		v := *p.Verify
 		t.staged.Verify = &v
 	}
-	for _, pair := range []struct{ from, to **bool }{{&p.Commit, &t.staged.Commit}, {&p.Mailman, &t.staged.Mailman}, {&p.AutoDocs, &t.staged.AutoDocs}, {&p.NoMcp, &t.staged.NoMcp}, {&p.TrustProject, &t.staged.TrustProject}} {
+	for _, pair := range []struct{ from, to **bool }{{&p.Commit, &t.staged.Commit}, {&p.Mailman, &t.staged.Mailman}, {&p.AutoDocs, &t.staged.AutoDocs}, {&p.ManagerApproves, &t.staged.ManagerApproves}, {&p.NoMcp, &t.staged.NoMcp}, {&p.TrustProject, &t.staged.TrustProject}} {
 		if *pair.from != nil {
 			v := **pair.from
 			*pair.to = &v
@@ -1583,6 +1616,8 @@ func (t *webTab) StageLaunch(ctx context.Context, p wire.LaunchPatch) error {
 		t.sys("◇", "--mailman "+onOff(*p.Mailman)+" (applies when the team starts again)")
 	case p.AutoDocs != nil:
 		t.sys("◇", "--auto-docs "+onOff(*p.AutoDocs)+" (applies when the team starts again)")
+	case p.ManagerApproves != nil:
+		t.sys("◇", "--manager-approves "+onOff(*p.ManagerApproves)+" (applies when the team starts again)")
 	case p.NoMcp != nil:
 		t.sys("◇", "--no-mcp "+onOff(*p.NoMcp)+" (applies when the team starts again)")
 	case p.TrustProject != nil:
@@ -1613,6 +1648,9 @@ func (t *webTab) stagedFlags() []string {
 	}
 	if st.AutoDocs != nil {
 		f = append(f, "--auto-docs="+strconv.FormatBool(*st.AutoDocs))
+	}
+	if st.ManagerApproves != nil {
+		f = append(f, "--manager-approves="+strconv.FormatBool(*st.ManagerApproves))
 	}
 	if st.NoMcp != nil {
 		f = append(f, "--no-mcp="+strconv.FormatBool(*st.NoMcp))
@@ -1959,6 +1997,10 @@ func (t *webTab) meta() wire.MetaPatch {
 	m.Commit = ptr(o.Commit)
 	m.Mailman = ptr(o.Mailman != nil && *o.Mailman)
 	m.AutoDocs = ptr(o.AutoDocs == nil || *o.AutoDocs)
+	m.ManagerApproves = ptr(o.ManagerApproves == nil || *o.ManagerApproves)
+	if s != nil && s.Swarm != nil {
+		m.ManagerApproves = ptr(s.ManagerApproves()) // the session's own answer: the configuration may have turned it off
+	}
 	team := []wire.TeamSlot{}
 	if s != nil && s.Swarm != nil {
 		for _, ts := range s.Team() {
@@ -1987,6 +2029,9 @@ func (t *webTab) meta() wire.MetaPatch {
 	}
 	if staged.AutoDocs != nil {
 		m.AutoDocs = ptr(*staged.AutoDocs)
+	}
+	if staged.ManagerApproves != nil {
+		m.ManagerApproves = ptr(*staged.ManagerApproves)
 	}
 	if staged.NoMcp != nil {
 		m.NoMcp = ptr(*staged.NoMcp)

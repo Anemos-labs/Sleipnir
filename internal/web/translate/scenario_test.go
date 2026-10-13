@@ -153,6 +153,7 @@ func everyKindCorpus(tb testing.TB) []map[string]any {
 	out = append(out, translateLog(tb, mailmanLog(), "/work", true).decoded()...)
 	marked, _ := marksLog()
 	out = append(out, translateLog(tb, marked, "/work", true).decoded()...)
+	out = append(out, translateLog(tb, managerDecideLog(), "/work", true).decoded()...)
 	return out
 }
 

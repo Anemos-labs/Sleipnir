@@ -149,7 +149,7 @@ func (s *Swarm) retryChangedScope(m *member, checked Task) {
 // submitSettledTask submits an implicit completion only for the checked scope,
 // arranging another worker run if a scope update made the result obsolete.
 func (s *Swarm) submitSettledTask(m *member, checked Task, result, evidence string) bool {
-	if err := s.Board.SubmitAt(m.id, checked.ID, checked.Rev, result, evidence, taskGateCheck(checked)); err != nil {
+	if err := s.Board.SubmitAt(m.id, checked.ID, checked.Rev, result, evidence, taskGateCheck(checked), s.reviewSubmission(checked)); err != nil {
 		s.retryChangedScope(m, checked)
 		return false
 	}

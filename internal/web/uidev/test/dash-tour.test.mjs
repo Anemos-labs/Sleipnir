@@ -203,3 +203,15 @@ test('the page: the tour starts by itself once in a browser no test drives, and 
   const again = await boot({ automation: false, storage: { [L.SL.tour.KEY]: L.store.get(L.SL.tour.KEY) } });
   await again.step(3); assert.equal(again.SL.ui.tour.open, false);
 });
+
+test('ending the tour restores the original view and phone pane', async () => {
+  for (const ending of ['skip', 'finish']) {
+    const L = await boot(), { SL, $ } = L;
+    SL.views.show('cache'); $('#app').dataset.pv = 'radio';
+    SL.ui.tour.start(); await L.settle();
+    SL.views.show('cockpit'); $('#app').dataset.pv = 'cockpit';
+    SL.ui.tour.end(ending); await L.settle();
+    assert.equal(SL.views.current.name, 'cache');
+    assert.equal($('#app').dataset.pv, 'radio');
+  }
+});

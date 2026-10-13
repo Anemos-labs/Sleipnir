@@ -46,6 +46,8 @@
       case 'local': return '<div class="msg local"><div class="who">' + esc(e.title) + ' <time>' + T + '</time></div>' + e.html + '</div>';
       case 'mail': return '<div class="msg mailrow" data-ag="' + esc(e.from) + ' ' + esc(e.to) + '"><div class="who"><span style="color:' + agCol(e.from) + '">' + esc(e.from) + '</span> <span class="dim">→</span> <span style="color:' + agCol(e.to) + '">' + esc(e.to) + '</span> <time>' + T + '</time></div><span class="mailtxt">“' + esc(e.text) + '”</span></div>';
       case 'steer': return '<div class="msg steer" data-ag="' + esc(e.to) + '"><div class="who">You → <span style="color:' + agCol(e.to) + '">' + esc(e.to) + '</span> <time>' + T + '</time></div><span>' + esc(e.text) + '</span></div>';
+      /* the manager's answers to the workers' routine questions: one collapsed line that grows while no other row comes between */
+      case 'mgrdec': return '<div class="msg mgrdec">' + (ui.approvals ? ui.approvals.mgrHtml(Array.isArray(e.list) ? e.list : [], !!e.open, 'qmgr') : '') + '</div>';
       case 'ask': return '<div class="msg askrow"' + at + '><span class="lg warm">?</span><span><b>asks:</b> <span class="mono">' + esc(U.clip1(e.q.cmd, 200)) + '</span><span class="rsn">' + esc(U.clip1(e.q.why, 300)) + '</span></span></div>';
       case 'digest': { const d = e.dg, parts = []; if (d.merged.length) parts.push(d.merged.join(', ') + ' merged'); if (d.submitted.length) parts.push(d.submitted.filter((v, i, a) => a.indexOf(v) === i).join(', ') + ' submitted'); if (d.tools) parts.push(d.tools + ' tool calls'); if (d.mails) parts.push(d.mails + ' mail'); if (d.breaks) parts.push(d.breaks + ' cache break' + (d.breaks > 1 ? 's' : '')); if (d.compacts) parts.push(d.compacts + ' compaction' + (d.compacts > 1 ? 's' : '')); if (d.asks) parts.push(d.asks + ' question' + (d.asks > 1 ? 's' : ''));
         const span = d.t1 - d.t0, lab = span >= 90 ? Math.round(span / 60) + ' min' : Math.round(span) + ' s'; return '<div class="msg digest" data-eid="' + nm(e.id) + '"><button class="dtog" type="button" aria-expanded="false"><b>◆ while held · ' + lab + ':</b> ' + esc(parts.join(', ') || 'quiet') + ' <span class="dim">· ' + nm(d.n) + ' events</span><span class="dx">expand</span></button><ol class="drows" hidden data-lazy="1"></ol></div>'; }
@@ -76,6 +78,7 @@
       const el = frag(rowHtml(e, S, m)); if (!el) return null; const rec = { e, el }; L.el.appendChild(el); L.rows.push(rec);
       if (e.k === 'stream' || (e.k === 'say' && e.stream)) { const t = $('.st,.mt', el); if (t) { rec.t = t; rec.done = false; L.stream.push(rec); } }
       if (e.k === 'sys' && e.open) $$('[data-open-page]', el).forEach(b => b.addEventListener('click', () => ui.settingsPage(b.dataset.openPage)));
+      if (e.k === 'mgrdec') { rec.v = e.v; L.dec = rec; }
       return rec;
     }
     function foldOld(L) {
@@ -88,7 +91,7 @@
     function syncLog(L, S, m, force) {
       const list = m.chan.mgr || [], mode = SL.settings.cache;
       if (force || L.m !== m || L.sid !== S.id || L.mode !== mode || list.length < L.pos) {
-        L.el.innerHTML = ''; L.rows = []; L.stream = []; L.foldEl = null; L.nfold = 0; L.pos = 0; L.m = m; L.sid = S.id; L.mode = mode; L.newCount = 0;
+        L.el.innerHTML = ''; L.rows = []; L.stream = []; L.dec = null; L.foldEl = null; L.nfold = 0; L.pos = 0; L.m = m; L.sid = S.id; L.mode = mode; L.newCount = 0;
         let start = list.length; for (let n = 0, i = list.length - 1; i >= 0 && n < L.cap; i--) { start = i; if (!list[i].collapsed && L.want(list[i])) n++; }
         L.nfold = list.slice(0, start).filter(e => !e.collapsed && L.want(e)).length; L.pos = start;
         if (L.nfold) { L.foldEl = mk('div', { class: 'msg foldmark' }, L.nfold + ' earlier rows folded (the log keeps them)'); L.el.appendChild(L.foldEl); }
@@ -98,6 +101,8 @@
         L.stick = true; toEdge(L); wireDigests(L); if (L === TR) pillUpdate(); return;
       }
       let added = 0, empty = $('.empty', L.el);
+      /* the manager's line of decisions grew: drawn again in place, open if it was open */
+      const dec = L.dec; if (dec && dec.v !== dec.e.v && dec.el.parentNode) { const t = $('[data-mgrtog]', dec.el); dec.e.open = !!t && t.getAttribute('aria-expanded') === 'true'; const nx = frag(rowHtml(dec.e, S, m)); if (nx) { dec.el.parentNode.replaceChild(nx, dec.el); dec.el = nx; } dec.v = dec.e.v; }
       while (L.pos < list.length) { const e = list[L.pos++]; if (e.collapsed || !L.want(e)) continue; if (empty && empty.parentNode) { empty.remove(); empty = null; } if (addRow(L, e, S, m)) added++; }
       if (added) { foldOld(L); wireDigests(L); if (L.stick) toEdge(L); else if (L === TR) { L.newCount += added; pillUpdate(); } }
     }

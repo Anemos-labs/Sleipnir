@@ -3,6 +3,7 @@
 # columns: what, byte count, sha256, then for a session the tools in order
 # regenerate: go test ./internal/kv -run TestGoldenToolSpecs -update   (read docs/BUILDING.md, "Changing prompt bytes", first)
 tool apply_patch	718	f28035994a76447cfcf40fa10c8bda1073f8c82f52f7d92e77f160c5251f2b9c
+tool approve	522	14e1af0692eaea8194ca7e7d011500096c259a281f0a92fa802722d69a642f08
 tool bash	981	74011cf462b18f2d93edfaadfef0f42bb732ec3604d615c1e819abdaa2e6767f
 tool bash_kill	322	1b371d1734446bf9327472dec9f851012bc264ceda437045500d95eab911f46f
 tool bash_output	488	ce355af498d34be96f56585310fa641e17cca07c5841247423cbf7e519d2916a
@@ -23,5 +24,5 @@ tool web_search	461	4c247da7eef729594b01434e426278733c975095e38253008bbf154b28ec
 tool write	587	73b777ed8627d2c82797c99bb2d3bd0c983c9df30923c02606b1135f42baf7f7
 session solo	9493	e5854d514d9240275716bb59757fa5e0e36d4c001ea4b9dc97c2183c51b40e8f	apply_patch,bash,bash_kill,bash_output,edit,glob,grep,ls,read,recall,skill,web_fetch,write
 session solo+web_search	9955	3a9eed685027ee4f5e7586670cbb0b549fc8174b167b901a920d29e2978fa429	apply_patch,bash,bash_kill,bash_output,edit,glob,grep,ls,read,recall,skill,web_fetch,web_search,write
-session swarm	13245	28be9c220f7ed74a90aa08ce8d6a4f1b973906fb88d4b42271bf5486814263af	apply_patch,bash,bash_kill,bash_output,edit,glob,grep,ls,mail,note,read,recall,skill,spawn,task,wait,web_fetch,write
-session swarm+web_search	13707	30568faf5ced36cb81b9a37ec77362d28513aa28134d49fbf81e54a8007c3e1f	apply_patch,bash,bash_kill,bash_output,edit,glob,grep,ls,mail,note,read,recall,skill,spawn,task,wait,web_fetch,web_search,write
+session swarm	13768	fdca5dafda1714f28fea2574f5ee1386f0b4c9e7ed31f2b157210c7e202c7afa	apply_patch,approve,bash,bash_kill,bash_output,edit,glob,grep,ls,mail,note,read,recall,skill,spawn,task,wait,web_fetch,write
+session swarm+web_search	14230	c0fe3e345a442f05a8c466da7a7ae614d6e5021419ee2215f1510ae326b58438	apply_patch,approve,bash,bash_kill,bash_output,edit,glob,grep,ls,mail,note,read,recall,skill,spawn,task,wait,web_fetch,web_search,write

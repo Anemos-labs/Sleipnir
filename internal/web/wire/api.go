@@ -189,31 +189,33 @@ type QueuedDrop struct {
 // milliseconds) the moment this run began, which the session time of its events counts from, and ResumedFrom the recorded session
 // that it continues.
 type MetaPatch struct {
-	Cwd          *string            `json:"cwd,omitempty"`
-	Model        *string            `json:"model,omitempty"`
-	Mode         *string            `json:"mode,omitempty"`
-	Effort       *string            `json:"effort,omitempty"`
-	Budget       *float64           `json:"budget,omitempty"`
-	Swarm        *int               `json:"swarm,omitempty"`
-	Isolation    *string            `json:"isolation,omitempty"`
-	Verify       *string            `json:"verify,omitempty"`
-	Commit       *bool              `json:"commit,omitempty"`
-	Mailman      *bool              `json:"mailman,omitempty"`
-	AutoDocs     *bool              `json:"autoDocs,omitempty"`
-	Team         *[]TeamSlot        `json:"team,omitempty"`
-	TrustProject *bool              `json:"trustProject,omitempty"`
-	NoMcp        *bool              `json:"noMcp,omitempty"`
-	RoleModels   *map[string]string `json:"roleModels,omitempty"`
-	Rules        *[]Rule            `json:"rules,omitempty"`
-	GoalText     *string            `json:"goalText,omitempty"`
-	Launch       *string            `json:"launch,omitempty"`
-	StartedAt    *int64             `json:"startedAt,omitempty"`
-	Headless     *bool              `json:"headless,omitempty"`
-	SessionDir   *string            `json:"sessionDir,omitempty"`
-	AskTimeout   *string            `json:"askTimeout,omitempty"`
-	ResumedFrom  *RecordedSession   `json:"resumedFrom,omitempty"`
-	Queued       *[]QueuedLine      `json:"queued,omitempty"`
-	Running      *bool              `json:"running,omitempty"`
+	Cwd       *string  `json:"cwd,omitempty"`
+	Model     *string  `json:"model,omitempty"`
+	Mode      *string  `json:"mode,omitempty"`
+	Effort    *string  `json:"effort,omitempty"`
+	Budget    *float64 `json:"budget,omitempty"`
+	Swarm     *int     `json:"swarm,omitempty"`
+	Isolation *string  `json:"isolation,omitempty"`
+	Verify    *string  `json:"verify,omitempty"`
+	Commit    *bool    `json:"commit,omitempty"`
+	Mailman   *bool    `json:"mailman,omitempty"`
+	AutoDocs  *bool    `json:"autoDocs,omitempty"`
+	// ManagerApproves says whether the team's manager answers its workers' routine permission questions first (--manager-approves).
+	ManagerApproves *bool              `json:"managerApproves,omitempty"`
+	Team            *[]TeamSlot        `json:"team,omitempty"`
+	TrustProject    *bool              `json:"trustProject,omitempty"`
+	NoMcp           *bool              `json:"noMcp,omitempty"`
+	RoleModels      *map[string]string `json:"roleModels,omitempty"`
+	Rules           *[]Rule            `json:"rules,omitempty"`
+	GoalText        *string            `json:"goalText,omitempty"`
+	Launch          *string            `json:"launch,omitempty"`
+	StartedAt       *int64             `json:"startedAt,omitempty"`
+	Headless        *bool              `json:"headless,omitempty"`
+	SessionDir      *string            `json:"sessionDir,omitempty"`
+	AskTimeout      *string            `json:"askTimeout,omitempty"`
+	ResumedFrom     *RecordedSession   `json:"resumedFrom,omitempty"`
+	Queued          *[]QueuedLine      `json:"queued,omitempty"`
+	Running         *bool              `json:"running,omitempty"`
 }
 
 // TabSnapshot is the full state of a tab for a late joiner. Gen is the tab's generation, Seq the sequence number of the last event
@@ -273,6 +275,9 @@ type NewSessionRequest struct {
 	Team []TeamSlot `json:"team,omitempty"`
 	// AutoDocs false makes docs a role the manager assigns (--auto-docs=false); nil or true keeps the docs worker at work by itself.
 	AutoDocs *bool `json:"autoDocs,omitempty"`
+	// ManagerApproves false puts every worker's permission question to the person (--manager-approves=false); nil or true lets the
+	// manager answer the routine ones first.
+	ManagerApproves *bool `json:"managerApproves,omitempty"`
 }
 
 // TeamSlot is one worker slot of a team: its role, and its model ("" is the role's).
@@ -386,6 +391,8 @@ type LaunchPatch struct {
 	AutoDocs     *bool   `json:"autoDocs,omitempty"`
 	NoMcp        *bool   `json:"noMcp,omitempty"`
 	TrustProject *bool   `json:"trustProject,omitempty"`
+	// ManagerApproves stages --manager-approves.
+	ManagerApproves *bool `json:"managerApproves,omitempty"`
 }
 
 // RuleRequest adds (Effect allow, deny, ask) or removes a session rule; "tests" stands for the tests preset.

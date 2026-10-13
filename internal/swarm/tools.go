@@ -18,7 +18,7 @@ import (
 // provider's tool-schema cache shared); who may use what is enforced at run
 // time, from the role and agent id the harness put in the call's Env.
 func (s *Swarm) Tools() []tools.Tool {
-	return []tools.Tool{&taskTool{s}, &mailTool{s}, &noteTool{s}, &spawnTool{s}, &waitTool{s}}
+	return []tools.Tool{&taskTool{s}, &mailTool{s}, &noteTool{s}, &spawnTool{s}, &waitTool{s}, &approveTool{s}}
 }
 
 // refuseService is the answer a service agent (the mailman) gets from every swarm
@@ -224,7 +224,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		if !s.roles[c.Env.Role].ReadOnly {
 			return tools.Errorf("a planning task can only be submitted by a read-only role")
 		}
-		if err := s.Board.submitAgreementAt(me, task.ID, task.Rev, in.Text, "read-only planning; manager reviews the agreement", in.Agreement, taskGateCheck(task)); err != nil {
+		if err := s.Board.submitAgreementAt(me, task.ID, task.Rev, in.Text, "read-only planning; manager reviews the agreement", in.Agreement, taskGateCheck(task), s.reviewSubmission(task)); err != nil {
 			return tools.Errorf("%v", err)
 		}
 		return text("%s is in review. Its agreement requires the manager's acceptance; stop now.", task.ID)
@@ -282,7 +282,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		}
 		summary = out.evidence + "; " + summary
 	}
-	if err := s.Board.submitAgreementAt(me, in.ID, task.Rev, result, summary, in.Agreement, taskGateCheck(task)); err != nil {
+	if err := s.Board.submitAgreementAt(me, in.ID, task.Rev, result, summary, in.Agreement, taskGateCheck(task), s.reviewSubmission(task)); err != nil {
 		return tools.Errorf("%v", err)
 	}
 	s.Leases.ReleaseAll(me)
@@ -307,7 +307,7 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 			if task.Agreement == "" {
 				return tools.Errorf("%s has no agreement to accept", task.ID)
 			}
-			if err := s.Board.Accept(me, task.ID, in.Text, taskGateCheck(task)); err != nil {
+			if err := s.Board.Accept(me, task.ID, in.Text, taskGateCheck(task), s.noteAcceptedCheck(task)); err != nil {
 				return tools.Errorf("%v", err)
 			}
 			return text("%s agreement accepted; dependent work may start", task.ID)
@@ -327,8 +327,11 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 			return &tools.Result{IsError: true, Text: fmt.Sprintf("%s was not accepted: verification `%s` failed (exit %d). Reject it with feedback, or fix it.\n%s",
 				in.ID, ExpandVerify(s.cfg.VerifyCmd, c.Env.Cwd, task.Files), vr.code, tail)}
 		}
-		if err := s.Board.Accept(me, in.ID, in.Text, taskGateCheck(task)); err != nil {
+		if err := s.Board.Accept(me, in.ID, in.Text, taskGateCheck(task), s.noteAcceptedCheck(task)); err != nil {
 			return tools.Errorf("%v", err)
+		}
+		if last := s.reviewPending(); last != "" && s.roleOf(task.Owner) != ReviewerRole {
+			return text("%s accepted. The merged result is not reviewed yet: a reviewer task is due before the goal is reported met", in.ID)
 		}
 		return text("%s accepted", in.ID)
 	case "reject", "reopen":
@@ -654,6 +657,11 @@ func (s *Swarm) stalledWaitReason(agentID string) string {
 		return ""
 	}
 	u := s.unfinishedWork()
+	if u.empty() && len(u.running) == 0 {
+		if last := s.reviewPending(); last != "" {
+			return "Cannot wait: nothing is running, and " + reviewLine(last) + "."
+		}
+	}
 	if len(u.running) > 0 || u.empty() {
 		return ""
 	}

@@ -157,6 +157,16 @@ func (e *Engine) RuleInfos() []RuleInfo {
 	return out
 }
 
+// DeclinedByManager is the refusal reason of the manager's "no" to a worker's question (a delegate's answer, Config.Delegate): the
+// advice not to work around it, then "The manager says: " and its instruction, when it gave one.
+func DeclinedByManager(note string) string {
+	r := "denied by the manager (do not make it another way, with another tool or command; do what the manager says, or ask it)"
+	if note = strings.TrimSpace(note); note != "" {
+		r += " The manager says: " + note
+	}
+	return r
+}
+
 // DeclinedWith is the refusal reason of a person's "no" with an instruction: the
 // engine's advice not to work around the refusal, then "The person says: " and the note
 // (empty note: "denied by user", to which the engine adds the same advice).

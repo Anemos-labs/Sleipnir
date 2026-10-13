@@ -94,6 +94,7 @@ Flags are applied by the commands themselves, after the merge, and always win ov
 | `--swarm N` | the team size: a manager and N workers (the manager is not counted). `0` is a single agent; a team has at least 8 workers, and the default team is one slot of each role. `swarm.max_workers` is the ceiling: a request for more workers than it allows is refused before anything starts | `chat`, `run` |
 | `--role-model role=M` | the model of one role (repeatable). A role the session does not have is an error (`no role named "backnd"`, with the roles it has); without `--swarm` there is only one agent and the flag draws a warning. Given more than once for a worker role, or as a bare role (`--role-model backend`), the values are the team instead: one worker slot each, on its model or the role's, and only the listed roles have slots (`--role-model backend --role-model backend --role-model frontend …`, at least 8). `compactor` and `mailman` only take a model | `chat`, `run`, `swarm`, `web`, `rl rollout`, `rl eval` |
 | `--auto-docs` | `swarm.auto_docs` | `chat`, `run`, `swarm`, `web` |
+| `--manager-approves` | `permissions.manager_approves` | `chat`, `run`, `swarm`, `web` |
 | `--no-web` | removes `web_fetch` and `web_search` | `run`, `swarm` |
 | `--trust-project` | the trust gate of section 4 | `chat`, `run`, `swarm`, `config`, `doctor` |
 
@@ -279,6 +280,7 @@ ChatGPT sign-in token.
 | `ask` | list of rules | `[]` | yes | Actions that always ask, whatever the mode or the allow list says |
 | `deny` | list of rules | `[]` | yes | Actions that are refused, in every mode |
 | `roles` | object | none | yes | Per-role overlay: `roles.<role>` with `mode`, `allow`, `ask`, `deny`. Section 8 |
+| `manager_approves` | boolean | `true` | yes | In a team, a worker's routine permission question (one that stays inside the workspace, reaches no network but this machine, and that no `ask` rule, protection or high-risk marker covers) goes to the manager first, which answers yes, no with an instruction, or passes it to the person; a question it leaves unanswered for a minute comes to the person. `--manager-approves=false` turns it off for one session (`docs/SWARM-PROTOCOL.md`, section 2) |
 
 Rule syntax, precedence, modes and examples are in section 8. Every rule is parsed when the file loads, so a typo is
 an error with a line number, not a rule that silently never matches. A rule that is in both `allow` and `deny` is a
@@ -311,7 +313,7 @@ or replicas may still need cold prefills.
 | `requests_per_minute` | integer | `0` (500) | yes | Request budget of the whole swarm. Lower it if the endpoint answers 429 |
 | `max_concurrent_requests` | integer | `0` (24) | yes | Requests in flight across the swarm |
 | `isolation` | string | `none` | yes | `none` (all agents edit the one working tree, guarded by write leases; `shared` is the older spelling of the same thing) or `worktree`: each writer works in a git worktree of its own and finished work is integrated through a verifying merge queue (`docs/SWARM-PROTOCOL.md`). `--isolation` overrides it. The trees live in your cache directory, whatever the configuration says |
-| `auto_docs` | boolean | `true` | yes | The team's docs worker keeps README, `docs/` and `AGENTS.md` current without being asked: after every accepted task and agreement the harness gives it a `docs: catch up` task with the changes (`docs/SWARM-PROTOCOL.md`). It applies to a team with a docs slot; `--auto-docs=false` makes docs a role the manager assigns |
+| `auto_docs` | boolean | `true` | yes | The team's docs worker keeps README, `docs/` and `AGENTS.md` current without being asked: after accepted tasks and agreements the harness gives it a `docs: catch up` task with the changes, the first once an implementation task is accepted (`docs/SWARM-PROTOCOL.md`). It applies to a team with a docs slot; `--auto-docs=false` makes docs a role the manager assigns |
 | `mailman` | boolean | `false` | yes | Route worker mail through a mailman agent that digests bursts (`docs/SWARM-PROTOCOL.md`); `--mailman` overrides it. It runs on the session's model unless `--role-model mailman=<model>` names one |
 | `budget_usd` | number | `50` | swarm | Total spend cap for a swarm run, retired agents included; when spent, workers stop and no request is admitted. On by default, because a swarm can spend many times what one agent does; `0` (in your own file or `SLEIPNIR_SWARM_BUDGET_USD`) removes it. A project file cannot set it unless trusted (section 4). `--budget-usd` overrides it for one run and is the way to cap a single agent. The run's header line shows the cap, and the message when it is reached says how to raise it. `sleipnir web` does not apply the built-in cap to the sessions started in its page (the New session dialog starts at `off`), only a budget that `--budget-usd` or this key sets |
 
@@ -451,11 +453,11 @@ the prompt for read-only planning; bare `/plan` only changes the mode. Switch to
 asked, so the action is refused with `approval required: <why>` and a message explaining that approval is unavailable.
 A run that was refused something says so at its end, with the commands and the edits and what would let them through (`--mode accept-edits` for edits, a rule for a command). Give the
 run what it needs with `--allow` (repeatable, for this run only: `--allow 'Bash(go test:*)'`, or `--allow tests` for the build and
-test commands of most projects), `permissions.allow` in the configuration, or `--mode`. `tests` stands for `go test|build|vet`,
-`gofmt`, `cargo test|build|check|clippy|fmt`, `npm test` and `npm run test|build|lint`, `pnpm test`, `yarn test`, `node --test`,
-`pytest`, `python -m pytest|unittest`, `mvn test`, `gradle test`, `dotnet test|build`, `make test|check|build|lint` and `ctest`: they
-run the project's own code, as running its tests is meant to, and never install a package, download, or hand an interpreter a
-program of its own. In a terminal the question is
+test commands of most projects), `permissions.allow` in the configuration, or `--mode`. `tests` stands for `go test|build|vet|fmt`,
+`gofmt`, `cargo test|build|check|clippy|fmt`, `npm test` and `npm run test|build|lint|format`, `pnpm test`, `yarn test`, `node --test`,
+`node --check`, `pytest`, `python -m pytest|unittest`, `mvn test`, `gradle test`, `dotnet test|build`, `make test|check|build|lint|fmt|vet`,
+`ctest`, and `curl` or `wget` to this machine only (`Bash(curl:loopback)`, `Bash(wget:loopback)`, below): they run the project's own
+code, as running its tests is meant to, and never install a package, download, or hand an interpreter a program of its own. In a terminal the question is
 `allow? [y]es once / [a]lways this session / [n]o` (`run`, and the line chat); `a` adds a rule for the rest of the session, the exact command or, for the runner commands of `docs/SECURITY.md` (`go test`, `npm run`, `make`...), its prefix (it is not
 written to any file), and anything but `y`/`a` refuses. The chat program asks with a box instead, answered by `1` (yes),
 `2` (yes, and do not ask again for this exact request: the same rule as `a`) or `3` (no; `esc` and Ctrl-D refuse too).
@@ -468,6 +470,7 @@ A rule is `Tool` or `Tool(pattern)` in `allow`, `ask` or `deny`.
 |---|---|
 | `Bash(go test:*)` | a shell command whose words start with `go test` (`:*` or a trailing ` *` allows any further arguments) |
 | `Bash(make lint)` | exactly `make lint` (`make lint extra` is not covered) |
+| `Bash(curl:loopback)` | an HTTP request of `curl` (or `wget`, as `Bash(wget:loopback)`) to this machine only: every URL's host is `127.0.0.1`, `localhost` or `[::1]`, output goes to standard output or `/dev/null`, no option reads a file (`-d @f`, `-T`, `-K`), and no redirect is followed (`curl -L` is not covered; `wget` needs `--max-redirect=0` and `-O -`). It is the smoke test of a server the project's build started |
 | `Bash` or `Bash(*)` | every shell command |
 | `Read(./.env)`, `Read(~/.ssh/**)` | reads of those paths **by any tool**, the shell included (`cat .env` counts) |
 | `Edit(docs/**)` | writes to matching paths, by the edit tools or by shell redirections |

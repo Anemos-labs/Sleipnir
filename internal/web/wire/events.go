@@ -321,7 +321,9 @@ type Ask struct {
 // Answer closes a question: Choice 1 yes, 2 yes and remember for the session, 3 no, 4 yes and allow builds and tests for the session;
 // Note is what the person told the agent with a no. By says who or what resolved it: you, timeout (--ask-timeout passed), canceled
 // (the turn was interrupted), closed (the session ended) or nobody (no page had the interface open for --ask-grace); for any but you the
-// choice is 3. Rule is the allow rule that choice 2 or 4 added.
+// choice is 3, and manager for a worker's routine question that the team's manager answered (internal/swarm approvals.go): its
+// choice is 1 or 3, and the Ask it closes comes in the same instant, never left open on the page. Rule is the allow rule that choice 2
+// or 4 added.
 type Answer struct {
 	Base
 	QID    string `json:"qid"`

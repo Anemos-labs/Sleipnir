@@ -196,6 +196,9 @@ func (s *Session) StartFlags() []string {
 	if o.AutoDocs != nil {
 		f = append(f, "--auto-docs="+strconv.FormatBool(*o.AutoDocs))
 	}
+	if o.ManagerApproves != nil {
+		f = append(f, "--manager-approves="+strconv.FormatBool(*o.ManagerApproves))
+	}
 	if o.NoMCP {
 		f = append(f, "--no-mcp")
 	}

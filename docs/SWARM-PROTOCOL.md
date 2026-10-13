@@ -41,11 +41,34 @@ rollouts may build any team, or none (roles then limited by `MaxWorkers` alone).
 **Auto-docs.** With `swarm.auto_docs` (default true) and a docs slot, the harness keeps the docs worker at work: every
 task the board closes as done that the docs worker did not do becomes a pending change, and when a docs worker is idle
 (or the docs slot is free) the harness gives it one `docs: catch up` task listing every pending change, scoped to
-`**/*.md` and `docs/**`. It never interrupts a running docs worker, and the docs worker's own tasks are not changes. The
+`**/*.md` and `docs/**`. The first pass waits for the first accepted implementation task: an agreement accepted before
+any code exists stays pending (and holds nobody) and is folded into that pass. It never interrupts a running docs worker, and the docs worker's own tasks are not changes. The
 docs worker keeps README, `docs/` and `AGENTS.md` current; `AGENTS.md` is also the team's map of the project. The
 manager's pin says that documentation is automatic, every other worker's pin says to read `AGENTS.md` and to mail facts
 to the docs worker, and every hot view carries the keeper's state (`docs (auto): 2 change(s) pending`). A batch run's
-manager is held while a pass is pending. `--auto-docs=false` makes docs an ordinary role. With mailman mode on (section 5) the harness adds one more, `mailman`, which is not
+manager is held while a pass is pending. `--auto-docs=false` makes docs an ordinary role.
+
+**Staffing and review.** Under the team's occupancy the manager's hot view says when slots are free while ready tasks
+(todo, no owner, dependencies done) wait (`2 free slot(s) (devops, tester), 3 ready task(s) with no owner: start
+workers`), and which idle worker could take a ready task of its role now. In a team with a reviewer slot a merged change
+is due a review: every accepted implementation task of a writer (not an agreement, not the docs worker's) counts as a
+merge, and a task owned by a reviewer accepted after the last merge covers it. Until then the manager's hot view says so,
+its `wait` is refused once nothing else runs, and a batch run's final answer is vetoed (bounded per run as every stop veto
+is). The manager's pin asks for a scout when the code or an outside source is unknown, devops and the tester to start from
+the accepted agreement in parallel with the implementation, and the reviewer pass before the goal is reported met.
+
+**The manager answers routine questions first.** With `permissions.manager_approves` (default true; `--manager-approves`),
+a worker's permission question that the engine marks routine goes to the manager before the person
+(`perm.Config.Delegate`, `internal/swarm/approvals.go`). Routine is decided by the engine, never by the model: the question
+comes from the mode (no `ask` rule, no built-in protection, nothing high risk), every file the action touches resolves inside
+the workspace (the worker's own tree, `$TMPDIR`), it reaches no network but this machine, nothing in it escapes analysis (a
+substitution, a variable that steers what runs), and it is not a package install or download, a signal to another process,
+a service, scheduler or container command. The manager gets a harness message (`Approval A3: be-1 (task T4) asks to run
+"PORT=8080 ./bin/app &" in its own tree. The permission engine asks because: ...`) and answers with the `approve` tool (manager
+only; every agent sends the same tool list): `decision=yes`, `decision=no` with `text` (the worker reads it with the refusal,
+as a person's "no, and tell it what to do"), or `decision=escalate`. A question unanswered within 60 s, or escalated, goes to
+the person as before. The engine records the outcome as `perm.decide` with `by: "manager"`; a manager's yes is never
+remembered as a rule. The page shows each such decision as its question and answer (`by: "manager"`) sent together. With mailman mode on (section 5) the harness adds one more, `mailman`, which is not
 spawnable, is on no roster, board or hot view, and may call `mail` and nothing else.
 
 **Every agent sends the same tool list**, byte for byte (fs, bash, web, recall, skill, any MCP tools, frozen for the session, and the five
@@ -590,7 +613,12 @@ work with `git show <commit>` (the commit is in the task's evidence).
 
 **Nothing in the prompt names a tree.** The tools print paths relative to the working directory, which are the project's
 paths, and the isolation card (`Isolation: your working directory is a private git worktree ...`, which says what the
-harness will do with the work) is appended to the worker's private assignment note, never to a shared layer. The bytes of
+harness will do with the work) is appended to the worker's private assignment note, never to a shared layer. The card says
+that the harness does the version control (it commits and merges a writer's work when it calls task done), that a worker does
+not fetch, pull, merge, rebase, cherry-pick or commit, that teammates' accepted work is in its tree at its next task, and
+names the session's integration branch for reading merged work at any time (`git show sleipnir/<session>/_integration:<path>`,
+and `git log`, `git diff`, `git ls-tree` of it), which needs no approval. The branch name is the same for every worker of a
+session and appears only in these private notes. The bytes of
 G0, G1 and G2 do not change; only a worker's own notes are longer, when the feature is on.
 
 **Confinement is enforced, not conventional.** The permission engine confines every writer to its own tree

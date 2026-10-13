@@ -47,6 +47,12 @@ type Config struct {
 	// Prompter is asked when a request needs a human decision. With no
 	// Prompter such requests are denied ("approval required").
 	Prompter Prompter
+	// Delegate, when set, is asked first about a routine question (routine.go: one that stays inside the workspace and that nothing
+	// guards): in a team, the manager answers its workers' questions. It returns the decision and who made it ("manager"), or by ""
+	// when it does not settle the question (it is not its to answer, the delegate passed it on, or its time ran out): the question
+	// then goes to the Prompter as without a delegate. A delegate's answer is never remembered as a rule. It is called outside any
+	// engine lock, before the question waits its turn for the Prompter.
+	Delegate func(ctx context.Context, r Request) (d Decision, by string)
 	// AskTimeout, when positive, is how long a question may wait for its answer, counted from the moment the Prompter is given it (a
 	// question that waited its turn behind another is not charged for that). One that nobody answers is refused, by "no one" as when
 	// there is no Prompter, and the refusal says so: a worker held at a question for hours, with the person away, is held for nothing.
@@ -74,7 +80,8 @@ type Audit struct {
 	Reason   string
 	Decision Decision
 	// By says who decided: "user" (the prompter), "no one" (there was nobody to ask: a run, a swarm, a rollout), "policy" (a
-	// deny rule, a built-in protection or the mode) or "canceled" (the request was cancelled while it waited).
+	// deny rule, a built-in protection or the mode), "canceled" (the request was cancelled while it waited), or what
+	// Config.Delegate named ("manager").
 	By string
 }
 
@@ -243,7 +250,8 @@ func NewEngine(cfg Config) (*Engine, error) {
 	rs := newResolver(home, cfg.Root, append(append([]string(nil), cfg.ExtraRoots...), cfg.TreeParents...))
 	if cfg.Tmp != "" {
 		rs.tmp = cleanAbs(cfg.Tmp)
-		rs.roots = append(rs.roots, rootPair{lex: rs.tmp, real: realPath(rs.tmp)})
+		rs.tmpReal = realPath(rs.tmp)
+		rs.roots = append(rs.roots, rootPair{lex: rs.tmp, real: rs.tmpReal})
 	}
 	rs.addTreeParents(cfg.TreeParents)
 	e := &Engine{cfg: cfg, rs: rs, mode: mode, roles: map[string]*profile{}, persisted: map[Rule]bool{}}
@@ -431,6 +439,17 @@ func (e *Engine) Check(ctx context.Context, r Request) Decision {
 		return Decision{Allow: true, Reason: "not asked (only a refusal applies): " + v.reason}
 	}
 	e.audit(Audit{Kind: "ask", Request: r, Reason: v.reason})
+	if v.routine && e.cfg.Delegate != nil {
+		shown := r
+		shown.Summary, shown.Why = withWhy(r.Summary, v.reason), strings.TrimSpace(v.reason)
+		if d, by := e.cfg.Delegate(ctx, shown); by != "" {
+			if ctx.Err() != nil {
+				d, by = canceledDecision(ctx), "canceled"
+			}
+			e.audit(Audit{Kind: "decide", Request: r, Reason: d.Reason, Decision: d, By: by})
+			return d
+		}
+	}
 	d := e.resolveAsk(ctx, r, v, judge)
 	by := "user"
 	switch {

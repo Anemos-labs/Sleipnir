@@ -654,7 +654,7 @@ func TestPermissionModesThroughTheAssembledSession(t *testing.T) {
 					return mock.Reply{Text: "acting", ToolCalls: []mock.ToolCall{
 						call("w", "write", map[string]any{"path": "out.txt", "content": "hi\n"}),
 						call("t", "bash", map[string]any{"command": "touch touched.txt"}),
-						call("c", "bash", map[string]any{"command": "curl -s --max-time 1 http://127.0.0.1:9/x"}),
+						call("c", "bash", map[string]any{"command": "curl -s --max-time 1 http://192.0.2.1:9/x"}),
 						call("s", "read", map[string]any{"path": filepath.Join(home, ".ssh", "id_rsa")}),
 					}}
 				}

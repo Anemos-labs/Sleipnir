@@ -15,7 +15,9 @@ import (
 // free, the harness turns all pending changes into one "docs: catch up" task and
 // gives it to the docs worker (reusing an idle one, whose context is warm). It never
 // interrupts a running docs worker, and a docs task's own acceptance is not a change,
-// so the keeper cannot feed itself.
+// so the keeper cannot feed itself. The first pass waits for the first accepted
+// implementation task: an agreement accepted before any code exists describes code
+// that is not there yet, so it stays pending and is folded into that first pass.
 
 // DocsRole is the role auto-docs gives its catch-up tasks to.
 const DocsRole = "docs"
@@ -47,6 +49,7 @@ type docsKeeper struct {
 	last    string    // the last task a finished pass covered
 	passes  int       // finished passes
 	retryAt time.Time // no new attempt before this
+	coded   bool      // an implementation task has been accepted: agreements alone may start a pass
 }
 
 // newDocsKeeper returns the keeper of a swarm whose team has a docs slot and asks
@@ -79,6 +82,7 @@ func (s *Swarm) docsTick(now time.Time) {
 		for _, t := range snap.Tasks {
 			if t.Status == StatusDone || t.Status == StatusFailed {
 				k.seen[t.ID] = true
+				k.coded = k.coded || t.Status == StatusDone && s.implementationTask(t)
 			}
 		}
 		k.primed = true
@@ -88,12 +92,14 @@ func (s *Swarm) docsTick(now time.Time) {
 			continue
 		}
 		k.seen[t.ID] = true
-		if t.Status != StatusDone || s.isDocsTask(t) {
+		if t.Status != StatusDone || s.isDocsTask(t) || t.Kind != TaskKindPlan && !s.implementationTask(t) {
 			continue
 		}
 		kind := "change"
 		if t.Kind == TaskKindPlan {
 			kind = "agreement"
+		} else {
+			k.coded = true
 		}
 		k.pending = append(k.pending, docsChange{task: t.ID, title: t.Title, kind: kind, files: t.Files})
 	}
@@ -122,7 +128,7 @@ func (s *Swarm) docsTick(now time.Time) {
 		}
 		k.open = ""
 	}
-	if len(k.pending) == 0 || now.Before(k.retryAt) {
+	if len(k.pending) == 0 || !k.coded || now.Before(k.retryAt) {
 		k.mu.Unlock()
 		return
 	}
@@ -238,6 +244,8 @@ func (s *Swarm) DocsState() string {
 	switch {
 	case k.open != "":
 		parts = append(parts, "pass "+k.open+" in progress")
+	case len(k.pending) > 0 && !k.coded:
+		parts = append(parts, fmt.Sprintf("%d agreement(s) pending until the first implementation task is accepted", len(k.pending)))
 	case len(k.pending) > 0:
 		parts = append(parts, fmt.Sprintf("%d change(s) pending", len(k.pending)))
 	default:
@@ -252,8 +260,9 @@ func (s *Swarm) DocsState() string {
 	return "docs (auto): " + strings.Join(parts, " · ")
 }
 
-// docsPending reports whether auto-docs still has work: pending changes or a pass in
-// progress.
+// docsPending reports whether auto-docs still has work: a pass in progress, or pending
+// changes that may start one (agreements alone, before any implementation task was
+// accepted, start nothing and hold nobody).
 func (s *Swarm) docsPending() bool {
 	k := s.docs
 	if k == nil {
@@ -261,5 +270,5 @@ func (s *Swarm) docsPending() bool {
 	}
 	k.mu.Lock()
 	defer k.mu.Unlock()
-	return k.open != "" || len(k.pending) > 0
+	return k.open != "" || len(k.pending) > 0 && k.coded
 }

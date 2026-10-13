@@ -108,7 +108,7 @@ func TestSectionsMatchTheSpecifiedFields(t *testing.T) {
 		"Swarm":       {"max_workers", "requests_per_minute", "max_concurrent_requests", "isolation", "mailman", "auto_docs", "budget_usd"},
 		"Tools":       {"max_output_chars", "default_timeout_sec", "max_timeout_sec", "web_allow_private", "web_allow_hosts"},
 		"Models":      {"default", "roles", "favorites"},
-		"Permissions": {"mode", "allow", "ask", "deny", "roles"},
+		"Permissions": {"mode", "allow", "ask", "deny", "roles", "manager_approves"},
 		"Provider":    {"dialect", "base_url", "api_key_env", "auth", "headers", "options", "allow_hosts", "allow_insecure_http"},
 		"Config":      {"providers", "models", "permissions", "cache", "swarm", "tools", "hooks", "mcp"},
 	}

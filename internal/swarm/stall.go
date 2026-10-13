@@ -200,7 +200,7 @@ func (s *Swarm) progressCall(call core.Block, res *tools.Result) bool {
 			return true
 		}
 		return false
-	case "mail", "note", "spawn", "wait":
+	case "mail", "note", "spawn", "wait", "approve":
 		return false
 	}
 	if reg := s.deps.Registry; reg != nil {

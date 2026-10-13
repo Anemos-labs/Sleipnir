@@ -21,11 +21,11 @@
    *  w and h are the size a card gets when it is added; minW and minH the smallest it can be made. */
   const PARTS = [
     { id: 'hero', title: 'The horse', desc: 'the team as a horse: each of the eight legs is one role of the team', minW: 2, minH: 4, w: 4, h: 8 },
-    { id: 'team', title: 'Manager and stalls', desc: 'the manager\'s card and one stall per worker; a free leg names its free slot', minW: 3, minH: 4, w: 8, h: 8 },
+    { id: 'team', title: 'Manager and stalls', desc: 'the manager\'s card and one stall per worker; a free slot names its role', minW: 3, minH: 4, w: 8, h: 8 },
     { id: 'gantt', title: 'Swarm gantt', desc: 'what each agent did in the last 60 seconds, with the replay controls', minW: 3, minH: 4, w: 6, h: 7 },
     { id: 'tasks', title: 'Task board', desc: 'the tasks by status: todo, running, verify, merged', minW: 3, minH: 4, w: 6, h: 7 },
     { id: 'queue', title: 'Merge queue', desc: 'what is being verified and merged, conflicts and bounces', minW: 2, minH: 2, w: 4, h: 3 },
-    { id: 'mail', title: 'Mail, latest', desc: 'the last four mails between agents', minW: 2, minH: 2, w: 5, h: 3 },
+    { id: 'mail', title: 'Mail, latest', desc: 'the last 30 mails between agents', minW: 2, minH: 2, w: 5, h: 3 },
     { id: 'gov', title: 'Governor', desc: 'requests per minute, 429s and retries', minW: 2, minH: 2, w: 3, h: 3 },
   ];
   /** The views of the rail a card can hold: [view, title, description]. The Workspace card has its four tabs (Files, Changes,

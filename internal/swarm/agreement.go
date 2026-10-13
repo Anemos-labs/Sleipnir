@@ -111,7 +111,7 @@ func (s *Swarm) claimCheck(agent string, readOnly bool) TaskCheck {
 		}
 		card := claimedCards(snap, agent, &t)
 		if s.isolated() && !readOnly {
-			card += isolationCard
+			card += isolationCard(s.integrationRef())
 		}
 		if len(card) > maxClaimedAssignmentBytes {
 			return fmt.Errorf("assignment context exceeds 24000 bytes: finish an owned task or assign another worker")

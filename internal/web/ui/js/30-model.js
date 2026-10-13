@@ -66,7 +66,7 @@
     const m = { sid: S.id, t: 0, ver: 0, nid: 0, chat: !(opts && opts.noChat), ag: {}, order: [], tasks: {}, torder: [], q: null, merged: [], conflicts: 0, bounced: 0,
       mail: [], marks: [], plan: [], planText: null, verdict: '', verdictKind: '', left: [], goal: { state: S.meta.goalText ? 'active' : 'none' }, qs: [], anomalies: [], compactions: [], ckpts: [],
       reqLog: [], flash: { t: -999, id: null }, lastReq: -9999, lastBreakT: -9999, streams: {}, diff: {}, rpm: 0, rpmHist: [], final: null, chan: { mgr: [], mail: [] }, folded: {}, steps: 0, refused: 0,
-      mids: {}, midOrder: [], stalls: {}, handovers: [], alerts: {}, mailstat: null, svc: null, ttl: 0, r429: 0, retries: 0, inflight: 0, queued: 0, turn: false };
+      mids: {}, midOrder: [], stalls: {}, handovers: [], alerts: {}, mailstat: null, svc: null, mgrDec: [], ttl: 0, r429: 0, retries: 0, inflight: 0, queued: 0, turn: false };
     (S.roster || []).forEach(r => addAgent(m, r));
     return m;
   }
@@ -92,6 +92,12 @@
     if (list.length > CHAN_CAP) { list.splice(0, 500); m.folded[ch] = (m.folded[ch] || 0) + 500; }
   }
   const chOf = id => id === 'mgr' ? 'mgr' : id;
+  /** The last entry of the manager's channel that is part of the conversation (not team activity: a feed row, a digest, a break, a
+   *  compaction, a worker's stream), looking back at most 400 entries; null when there is none. */
+  function lastTalk(list) {
+    for (let i = (list || []).length - 1, n = 0; i >= 0 && n < 400; i--, n++) { const e = list[i]; if (e.k === 'feed' || e.k === 'digest' || e.k === 'break' || e.k === 'compact' || (e.k === 'stream' && e.ag !== 'mgr')) continue; return e; }
+    return null;
+  }
 
   function closeSeg(a, t) { if (a.cur) { a.cur.t1 = t; a.cur = null; } }
 
@@ -195,6 +201,13 @@
         if (q) { q.answered = ev.choice; q.tAns = ev.t; q.note = ev.note; q.by = ev.by; }
         if (m.qs.length > QS_CAP) { let drop = m.qs.length - QS_CAP; m.qs = m.qs.filter(x => !(x.answered && drop > 0 && drop-- > 0)); }   /* the oldest answered ones go; an open one never */
         m.q = m.qs.find(x => !x.answered) || null;
+        if (ev.by === 'manager') {
+          /* the manager answered a worker's routine question (--manager-approves): one more line of its decisions, never a question for the person */
+          const dec = { qid: ev.qid, agent: q ? q.agent : '', task: q ? q.task : '', cmd: q ? q.cmd : '', choice: ev.choice, ok: ev.choice !== 3, t: ev.t };
+          m.mgrDec.push(dec); capList(m.mgrDec, QS_CAP);
+          if (m.chat) { const last = lastTalk(m.chan.mgr); if (last && last.k === 'mgrdec' && !last.collapsed) { last.list.push(dec); capList(last.list, QS_CAP); last.v++; } else push(m, ctx, 'mgr', { k: 'mgrdec', list: [dec], v: 1, t: ev.t }, ev); }
+          break;
+        }
         /* a question the person answered, or one that closed without an answer (canceled, timed out, the session closed, no page open): a quiet row */
         if (q) push(m, ctx, 'mgr', ev.by && ev.by !== 'you' ? { k: 'sys', glyph: '⊘', text: 'refused without an answer (' + (SL.u.own(BY_WORD, ev.by) || 'closed') + '): ' + q.agent + ': ' + SL.u.clip1(q.cmd, 200), ag: q.agent, t: ev.t }
           : { k: 'sys', glyph: '❯', text: 'you answered ' + ev.choice + ' to ' + q.agent + ': ' + SL.u.clip1(q.cmd, 200), ag: q.agent, t: ev.t }, ev);

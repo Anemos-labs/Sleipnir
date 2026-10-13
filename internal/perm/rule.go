@@ -26,6 +26,7 @@ const (
 //	Bash(git status:*)          prefix match on the parsed command; ":*" = any args
 //	Bash(npm run test)          exact match on the parsed command
 //	Bash(*) or Bash             any shell command
+//	Bash(curl:loopback)         curl or wget fetching from this machine only (127.0.0.1, localhost, [::1]); see loopbackHTTP
 //	Edit(src/**)                writes to paths matching a gitignore-like glob
 //	Read(~/.ssh/**)             reads of such paths (by any tool, shell included)
 //	WebFetch(domain:example.com) requests to a host (and its subdomains)
@@ -129,8 +130,9 @@ type crule struct {
 
 	globs []*pathGlob // classRead / classWrite: lexical and symlink-resolved forms
 
-	argv    []string // classBash: prefix or exact tokens
-	anyArgs bool
+	argv     []string // classBash: prefix or exact tokens
+	anyArgs  bool
+	loopback bool // classBash: "prog:loopback", a request of curl or wget to this machine only (loopbackHTTP)
 
 	domain string // classWeb: "domain:" rules
 	urlPat string // classWeb: other patterns are wildcards over the URL
@@ -162,6 +164,11 @@ func compileRule(r Rule, res *resolver) (*crule, error) {
 			return c, nil
 		}
 		switch {
+		case strings.HasSuffix(p, ":loopback"):
+			p, c.loopback = strings.TrimSpace(strings.TrimSuffix(p, ":loopback")), true
+			if p != "curl" && p != "wget" {
+				return nil, fmt.Errorf("perm: rule %s: only curl and wget take :loopback", r)
+			}
 		case strings.HasSuffix(p, ":*"):
 			p, c.anyArgs = strings.TrimSpace(p[:len(p)-2]), true
 		case strings.HasSuffix(p, " *"):
@@ -248,6 +255,9 @@ func (c *crule) nameMatches(tool string) bool {
 func (c *crule) matchArgv(argv []string) bool {
 	if c.blanket {
 		return true
+	}
+	if c.loopback {
+		return len(argv) > 0 && argv[0] == c.argv[0] && loopbackHTTP(argv[0], argv[1:])
 	}
 	if len(argv) < len(c.argv) || (!c.anyArgs && len(argv) != len(c.argv)) {
 		return false

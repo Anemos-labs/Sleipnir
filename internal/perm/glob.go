@@ -16,6 +16,7 @@ import (
 type resolver struct {
 	home, homeReal string
 	tmp            string     // the session's private scratch directory (Config.Tmp), "" when it has none
+	tmpReal        string     // tmp with symlinks followed
 	roots          []rootPair // workspace roots: Root first, then any extras
 	// treeBases are "<tree parent>/*" (each parent lexical and resolved): relative
 	// patterns are anchored at every per-agent tree as well as at the root.
@@ -113,7 +114,12 @@ func inside(dir, p string) bool {
 	return p == dir || strings.HasPrefix(p, strings.TrimSuffix(dir, "/")+"/")
 }
 
-// inWorkspace reports whether a resolved path lies inside a workspace root.
+// inTmp reports whether a resolved path lies inside the session's scratch directory (Config.Tmp).
+func (rs *resolver) inTmp(real string) bool {
+	return rs.tmpReal != "" && real != "" && inside(rs.tmpReal, real)
+}
+
+// inWorkspace reports whether a resolved path lies under one of the workspace roots.
 func (rs *resolver) inWorkspace(real string) bool {
 	for _, r := range rs.roots {
 		if inside(r.real, real) {

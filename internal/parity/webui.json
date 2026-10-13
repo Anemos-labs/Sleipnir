@@ -1887,6 +1887,14 @@
      "flag": "mailman"
     },
     {
+     "id": "flag:managerApproves",
+     "scope": "config",
+     "keys": [
+      "permissions.manager_approves"
+     ],
+     "flag": "manager-approves"
+    },
+    {
      "id": "flag:noMcp",
      "scope": "flag",
      "flag": "no-mcp"
@@ -2031,6 +2039,11 @@
      "scope": "view"
     },
     {
+     "id": "id:notifySec",
+     "scope": "browser",
+     "note": "after how many seconds a waiting question is notified, kept in this browser"
+    },
+    {
      "id": "seg:cache",
      "scope": "browser"
     },
@@ -2048,6 +2061,10 @@
     },
     {
      "id": "seg:navmode",
+     "scope": "browser"
+    },
+    {
+     "id": "seg:notify",
      "scope": "browser"
     },
     {
@@ -2082,6 +2099,7 @@
    "commit --commit",
    "mailman --mailman",
    "autoDocs auto-docs (--auto-docs)",
+   "managerApproves manager answers routine questions (--manager-approves)",
    "trustProject --trust-project",
    "noMcp --no-mcp"
   ],
@@ -2093,6 +2111,7 @@
    "cwd",
    "isolation",
    "mailman",
+   "manager-approves",
    "mode",
    "model",
    "no-mcp",
@@ -2130,7 +2149,7 @@
    "nsVerifyHints",
    "nsWarn"
   ],
-  "commandLine": "sleipnir chat --resume 20260101-000000-abcdef --cwd /p --model a/m --mode plan --swarm 8 --isolation worktree --verify v --commit --mailman --auto-docs=false --budget-usd 5 --role-model backend=a/w --allow tests --trust-project --no-mcp",
+  "commandLine": "sleipnir chat --resume 20260101-000000-abcdef --cwd /p --model a/m --mode plan --swarm 8 --isolation worktree --verify v --commit --mailman --auto-docs=false --manager-approves=false --budget-usd 5 --role-model backend=a/w --allow tests --trust-project --no-mcp",
   "flags": [
    "allow",
    "auto-docs",
@@ -2139,6 +2158,7 @@
    "cwd",
    "isolation",
    "mailman",
+   "manager-approves",
    "mode",
    "model",
    "no-mcp",
@@ -2156,6 +2176,7 @@
    "cwd",
    "isolation",
    "mailman",
+   "manager-approves",
    "mode",
    "model",
    "no-mcp",
@@ -2172,6 +2193,7 @@
    "commit",
    "cwd",
    "mailman",
+   "manager-approves",
    "mode",
    "model",
    "no-mcp",
@@ -2296,6 +2318,7 @@
      "cwd",
      "isolation",
      "mailman",
+     "manager-approves",
      "mode",
      "model",
      "no-anim",
@@ -2353,6 +2376,7 @@
      "isolation",
      "json",
      "mailman",
+     "manager-approves",
      "max-steps",
      "mode",
      "model",
@@ -2394,6 +2418,7 @@
      "isolation",
      "json",
      "mailman",
+     "manager-approves",
      "max-steps",
      "mode",
      "model",

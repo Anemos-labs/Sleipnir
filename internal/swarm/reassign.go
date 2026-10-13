@@ -28,7 +28,7 @@ const reassignBrief = "New assignment. It replaces the assignment in <my-notes> 
 func reassignStart(snap *Snapshot, m *member) runStart {
 	card := claimedCards(snap, m.id, nil)
 	if m.tree != nil {
-		card += isolationCard
+		card += isolationCard(integrationRefOf(m.tree))
 	}
 	return runStart{brief: reassignBrief, card: card}
 }

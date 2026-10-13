@@ -16,6 +16,33 @@
     }
   },
   {
+    "name": "approve",
+    "description": "Manager only. Answer a worker's permission question that the harness put to you (\"Approval A3: ...\"): id, decision (yes, no or escalate), text (with no: what the worker should do instead). Say yes to what the task needs inside the worker's tree; escalate what you cannot judge, so the person decides.",
+    "input_schema": {
+      "properties": {
+        "decision": {
+          "enum": [
+            "yes",
+            "no",
+            "escalate"
+          ],
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "decision"
+      ],
+      "type": "object"
+    }
+  },
+  {
     "name": "bash",
     "description": "Run a command in the shell identified by the shared runtime context and return its combined stdout and stderr followed by the exit code. Each agent's working directory persists between calls. stdin is empty, so never run anything that waits for input. Long output is truncated and the result names a handle for paging through the rest. Set run_in_background for servers, watchers and long jobs: it returns a job id for bash_output and bash_kill. Use the dedicated tools for reading, searching and editing files.",
     "input_schema": {
