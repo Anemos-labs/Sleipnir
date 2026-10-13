@@ -411,7 +411,7 @@ func (s *Swarm) poolCurrent(_ *Snapshot, task Task) error {
 	generation := s.review.merges
 	s.review.mu.Unlock()
 	if task.Pool.Generation != generation {
-		return fmt.Errorf("combined result changed; restart pool reconcile, inspect and confirm")
+		return fmt.Errorf("combined result changed: a merge or task revision superseded this reconciliation, even if its agreement text is unchanged; the pool leader must call pool reconcile again, then every member must inspect and confirm the new revision")
 	}
 	return nil
 }

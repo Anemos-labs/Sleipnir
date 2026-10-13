@@ -264,7 +264,7 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 			var extra []string
 			if r.ReadOnly && s.isolated() {
 				ref := s.integrationRef()
-				extra = append(extra, "Isolation: Your read-only checkout stays at the original project until the run finishes. Inspect accepted work with git show "+ref+":<path>, git ls-tree or git diff of "+ref+". Resuming a task does not refresh this checkout; do not block waiting for it.")
+				extra = append(extra, "Isolation: Your read-only tools use the original project checkout, which can lag behind integrated work. Inspect merged work with git show "+ref+":<path>, git ls-tree or git diff of "+ref+". Resuming a task does not refresh this checkout; do not block waiting for it.")
 			}
 			if isMgr {
 				if t := s.TeamState(); t != "" {

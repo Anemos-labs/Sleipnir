@@ -642,7 +642,7 @@ func TestIsolatedReviewerReadsIntegrationWithoutWaitingForCheckoutRefresh(t *tes
 	id := iso.mustSpawn("reviewer", "Review integrated work")
 	rvWait(t, "reviewer idle", func() bool { return iso.idle(id) })
 	for _, want := range []string{
-		"Your read-only checkout stays at the original project",
+		"Your read-only tools use the original project checkout, which can lag behind integrated work",
 		"git show sleipnir/t/_integration:<path>",
 		"Resuming a task does not refresh this checkout",
 	} {
