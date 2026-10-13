@@ -492,3 +492,35 @@ func TestAGoalTypedDuringAWakeRunTakesTheManager(t *testing.T) {
 		t.Fatalf("a goal typed during a wake run: %v, %v", res, err)
 	}
 }
+
+// Repeated wake attempts must not release the reservation owned by an active
+// manager run; otherwise the next event can start a concurrent conversation.
+func TestBusyWakeKeepsTheManagersReservation(t *testing.T) {
+	r := newRVRigWith(t, Config{WakeManager: true, WakeQuiet: time.Hour}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "unexpected wake"} }, nil)
+	a, err := r.sw.StartManager()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := r.sw.get(a.ID())
+	r.sw.noteManagerSeen(r.sw.Board.Snapshot())
+	if !r.sw.reserveManager(m) {
+		t.Fatal("could not reserve idle manager")
+	}
+	defer r.sw.releaseManager(m)
+	a.Send("A worker has completed; inspect when the current run permits.")
+	for i := 0; i < 3; i++ {
+		r.sw.tryWake()
+		m.mu.Lock()
+		running := m.life == lifeRunning
+		m.mu.Unlock()
+		if !running {
+			t.Fatalf("wake attempt %d released another run's reservation", i+1)
+		}
+		if n := r.sw.Wakes(); n != 0 {
+			t.Fatalf("busy wake counted as a run: %d", n)
+		}
+	}
+	if n := managerCalls(r); n != 0 {
+		t.Fatalf("started %d concurrent requests", n)
+	}
+}

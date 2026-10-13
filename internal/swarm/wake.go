@@ -192,7 +192,8 @@ func (s *Swarm) tryWake() {
 	s.mu.Lock()
 	ctx := s.rootCtx
 	s.mu.Unlock()
-	if !s.reserveManager(m) || !s.track(func() {
+	reserved := s.reserveManager(m)
+	if !reserved || !s.track(func() {
 		s.emitAs(m.id, events.TypeSwarmWake, map[string]any{"n": n, "note": note})
 		s.managerNotice(m, "wake", note)
 		mail := Message{ID: s.nextHarnessID(), From: harnessSender, To: m.id, Kind: "info", Text: note}
@@ -201,7 +202,10 @@ func (s *Swarm) tryWake() {
 		w.mu.Lock()
 		w.wakes--
 		w.mu.Unlock()
-		s.releaseManager(m)
+		// A failed reservation belongs to an existing run, which alone may release it.
+		if reserved {
+			s.releaseManager(m)
+		}
 	}
 }
 
