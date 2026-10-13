@@ -155,20 +155,29 @@ func (c *Controller) Step(ctx context.Context) (Directive, error) {
 		if err != nil {
 			return d, fmt.Errorf("discover delivery branch: %w", err)
 		}
-		selector = strings.TrimSpace(string(b))
-		if selector == "" {
+		branch := strings.TrimSpace(string(b))
+		if branch == "" {
 			return d, fmt.Errorf("delivery requires a working branch")
 		}
+		b, err = c.Exec(ctx, "gh", "pr", "list", "--repo", c.State.Repo, "--head", branch, "--state", "open", "--limit", "2", "--json", "url", "--jq", ".[].url")
+		if err != nil {
+			return d, err
+		}
+		matches := strings.Fields(string(b))
+		if len(matches) == 0 {
+			d.Prompt = "Create a pull request for this completed objective on its working branch. Commit and push the assembled verified work; reuse an existing matching PR. Do this directly without creating a worker task merely to open the PR."
+			d.Phase = "opening"
+			return c.finish(d)
+		}
+		if len(matches) != 1 {
+			return d, fmt.Errorf("multiple open pull requests match branch %q; delivery cannot choose safely until the branch has one matching open PR", branch)
+		}
+		selector = matches[0]
 	}
 	args := []string{"pr", "view", selector}
 	args = append(args, "--repo", c.State.Repo, "--json", "number,url,headRefOid,headRefName,baseRefName,state,mergeStateStatus,reviewDecision,isDraft,statusCheckRollup,mergeCommit")
 	b, err := c.Exec(ctx, "gh", args...)
 	if err != nil {
-		if c.State.PR == "" && strings.Contains(strings.ToLower(string(b)), "no pull requests") {
-			d.Prompt = "Create a pull request for this completed objective on its working branch. Commit and push the assembled verified work; reuse an existing matching PR. Do this directly without creating a worker task merely to open the PR."
-			d.Phase = "opening"
-			return c.finish(d)
-		}
 		return d, err
 	}
 	var pr pull
@@ -177,6 +186,15 @@ func (c *Controller) Step(ctx context.Context) (Directive, error) {
 	}
 	if pr.Number <= 0 || pr.HeadRefOid == "" {
 		return d, fmt.Errorf("GitHub returned an incomplete PR snapshot")
+	}
+	if c.State.PR == "" {
+		b, err := c.Exec(ctx, "git", "rev-parse", "HEAD")
+		if err != nil {
+			return d, fmt.Errorf("discover delivery checkout head: %w", err)
+		}
+		if strings.TrimSpace(string(b)) != pr.HeadRefOid {
+			return d, fmt.Errorf("discovered PR %s head does not match local HEAD; commit and push the intended checkout, then retry delivery", pr.URL)
+		}
 	}
 	if c.State.Head != pr.HeadRefOid {
 		if c.State.MergeEnabled && pr.State == "OPEN" {

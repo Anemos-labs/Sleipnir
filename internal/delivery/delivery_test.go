@@ -28,6 +28,8 @@ func (f *githubFake) exec(_ context.Context, name string, args ...string) ([]byt
 		return nil, errors.New("unknown flag: --slurp")
 	}
 	switch {
+	case c == "git rev-parse HEAD":
+		return []byte(f.pr.HeadRefOid), nil
 	case c == "git symbolic-ref --quiet --short HEAD":
 		return []byte("codex/delivery-fix\n"), nil
 	case strings.Contains(c, "comments,reviews"):
@@ -35,6 +37,8 @@ func (f *githubFake) exec(_ context.Context, name string, args ...string) ([]byt
 			return []byte(`{"comments":[],"reviews":[]}`), nil
 		}
 		return []byte(f.summary), nil
+	case strings.Contains(c, "pr list"):
+		return []byte(f.pr.URL), nil
 	case strings.Contains(c, "pr view"):
 		return json.Marshal(f.pr)
 	case strings.Contains(c, "api graphql"):
@@ -321,19 +325,72 @@ func TestDiscoveryPinsPRAndReadsEveryReviewPage(t *testing.T) {
 	}
 }
 
+func TestDiscoveryNumericBranchUsesResolvedURL(t *testing.T) {
+	c, f := setup(t, Options{AutoFix: true})
+	c.Exec = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if name == "git" && args[0] == "symbolic-ref" {
+			return []byte("94\n"), nil
+		}
+		if name == "gh" && len(args) > 2 && args[0] == "pr" {
+			switch args[1] {
+			case "list":
+				if !slices.Contains(args, "--head") || !slices.Contains(args, "94") {
+					t.Fatalf("missing head branch filter: %v", args)
+				}
+			case "view":
+				if args[2] != f.pr.URL {
+					t.Fatalf("ambiguous PR selector: %v", args)
+				}
+			}
+		}
+		return f.exec(ctx, name, args...)
+	}
+	if _, err := c.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDiscoveryWithoutPRRequestsOpening(t *testing.T) {
 	c, f := setup(t, Options{AutoFix: true})
 	c.Exec = func(ctx context.Context, name string, args ...string) ([]byte, error) {
-		if name == "gh" && len(args) > 2 && args[0] == "pr" && args[1] == "view" {
-			if args[2] != "codex/delivery-fix" {
+		if name == "gh" && len(args) > 2 && args[0] == "pr" && args[1] == "list" {
+			if !slices.Contains(args, "codex/delivery-fix") {
 				t.Fatalf("missing working branch selector: %v", args)
 			}
-			return []byte("no pull requests found for branch codex/delivery-fix"), errors.New("not found")
+			return nil, nil
 		}
 		return f.exec(ctx, name, args...)
 	}
 	d, err := c.Step(context.Background())
 	if err != nil || d.Phase != "opening" || d.Prompt == "" {
 		t.Fatalf("missing PR: %+v %v", d, err)
+	}
+}
+
+func TestDiscoveryRefusesAmbiguityAndHeadMismatch(t *testing.T) {
+	for _, scenario := range []string{"ambiguous", "head mismatch"} {
+		t.Run(scenario, func(t *testing.T) {
+			c, f := setup(t, Options{AutoFix: true, AutoMerge: true})
+			c.Exec = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+				if scenario == "ambiguous" && name == "gh" && len(args) > 1 && args[1] == "list" {
+					return []byte(f.pr.URL + "\nhttps://github.com/owner/repo/pull/5\n"), nil
+				}
+				if scenario == "head mismatch" && name == "git" && args[0] == "rev-parse" {
+					return []byte("other-head\n"), nil
+				}
+				return f.exec(ctx, name, args...)
+			}
+			_, err := c.Step(context.Background())
+			guidance := "one matching open PR"
+			if scenario == "head mismatch" {
+				guidance = "commit and push the intended checkout"
+			}
+			if err == nil || !strings.Contains(err.Error(), guidance) {
+				t.Fatalf("expected actionable refusal: %v", err)
+			}
+			if c.State.PR != "" || c.State.Head != "" || c.State.MergeEnabled {
+				t.Fatalf("authorized mismatching discovery: %+v", c.State)
+			}
+		})
 	}
 }
