@@ -152,6 +152,11 @@ func (s *Session) Run(ctx context.Context, objective string) (*Result, error) {
 			if err != nil {
 				return result, err
 			}
+			if d.AssessReview && result != nil {
+				if err := c.RecordReview(result.Text); err != nil {
+					return result, err
+				}
+			}
 			continue
 		}
 		timer := time.NewTimer(d.Wait)

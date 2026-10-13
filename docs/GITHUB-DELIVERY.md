@@ -11,6 +11,8 @@ model requests while checks are pending. Auto-fix returns failed checks, conflic
 unresolved review threads and changed review summaries (including CodeRabbit) to
 the manager. Findings are evidence to evaluate: valid findings are repaired;
 inapplicable findings need an explanation before their threads are resolved.
+The manager must explicitly clear review summaries; a blocked or missing verdict
+prevents auto-merge even when GitHub reports no open review thread.
 Repairs keep the existing task IDs and role pools. Conflicts are resolved by merging
 the base into the working branch, without force-pushing.
 

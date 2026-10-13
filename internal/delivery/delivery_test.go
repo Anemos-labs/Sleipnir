@@ -71,6 +71,9 @@ func TestRepairSameObjectiveAndInspectBotSummaries(t *testing.T) {
 	if strings.Contains(strings.Join(f.calls, "\n"), "pr merge") {
 		t.Fatal("merged with findings")
 	}
+	if err := c.RecordReview(`{"delivery_review":"clear"}`); err != nil {
+		t.Fatal(err)
+	}
 	d, err = c.Step(context.Background())
 	if err != nil || d.Prompt != "" {
 		t.Fatalf("unchanged summary repeatedly invoked model: %+v %v", d, err)
@@ -204,5 +207,40 @@ func TestNewObjectiveCannotDiscardPendingMerge(t *testing.T) {
 	}
 	if c.State.Objective != "repair cache" || !c.State.MergeEnabled {
 		t.Fatal("lost original objective")
+	}
+}
+
+func TestReportedReviewBlockerPreventsMerge(t *testing.T) {
+	c, f := setup(t, Options{AutoMerge: true})
+	f.summary = `{"comments":[{"body":"Possible regression"}]}`
+	d, err := c.Step(context.Background())
+	if err != nil || !d.AssessReview {
+		t.Fatalf("review not requested: %+v %v", d, err)
+	}
+	if err := c.RecordReview("I have inspected it."); err != nil {
+		t.Fatal(err)
+	}
+	if c.State.ReviewVerdict != "pending" {
+		t.Fatal("implicit acknowledgement cleared findings")
+	}
+	if err := c.RecordReview(`{"delivery_review":"blocked"}`); err != nil {
+		t.Fatal(err)
+	}
+	c.State.SettledAt = time.Now().Add(-2 * time.Minute)
+	d, err = c.Step(context.Background())
+	if err != nil || d.Done || d.Prompt != "" || d.Phase != "review blocked" {
+		t.Fatalf("blocker ignored: %+v %v", d, err)
+	}
+	if strings.Contains(strings.Join(f.calls, "\n"), "--auto") {
+		t.Fatal("merged despite manager's blocker")
+	}
+	saved, err := Load(c.Path, f.exec)
+	if err != nil || saved.State.ReviewVerdict != "blocked" {
+		t.Fatalf("lost verdict: %+v %v", saved, err)
+	}
+	f.pr.HeadRefOid = "new-head"
+	d, err = c.Step(context.Background())
+	if err != nil || !d.AssessReview {
+		t.Fatalf("new head not assessed: %+v %v", d, err)
 	}
 }
