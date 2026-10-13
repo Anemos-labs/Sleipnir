@@ -5,6 +5,20 @@ in the chat composer. The terminal equivalents are `--auto-fix`, `--auto-merge`
 and `/delivery fix|merge|both|off`. These choices reset for the next objective.
 `gh` must be installed and authenticated for the repository.
 
+PR discovery requires a working branch with an intended Git push remote and exactly
+one push URL. Configure the branch's upstream/push remote (for example with
+`git push --set-upstream origin HEAD`); the controller resolves that push URL with
+`gh` and refuses unknown or ambiguous repository identity. A discovered PR must
+match that head repository and the local checkout commit, not just the branch name.
+The intended base is the target repository's default branch unless configured with
+`git config branch.<name>.gh-merge-base <base-branch>` (replace the placeholders
+with the working branch and desired base). This is also the setting used by
+`gh pr create` for a nondefault base. Discovery refuses multiple open PRs matching
+the branch rather than selecting one arbitrarily. The controller pins the PR URL,
+head repository and base branch and rechecks the repository/base identity on later
+snapshots. To change that binding, configure the intended push remote/base and
+start delivery for a new objective; `/delivery resume` retains the saved binding.
+
 The manager implements, verifies, commits, pushes and opens or reuses the PR.
 Opening the PR is a direct manager operation. The controller polls GitHub without
 model requests while checks are pending. Auto-fix returns failed checks, conflicts,

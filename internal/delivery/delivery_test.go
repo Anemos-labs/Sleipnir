@@ -411,7 +411,7 @@ func TestReviewPaginationFailsClosed(t *testing.T) {
 	}
 }
 
-func TestGeneratedReviewCommandsRespectGuardedAsks(t *testing.T) {
+func TestGeneratedStepCommandsRespectGuardedAsks(t *testing.T) {
 	c, f := setup(t, Options{AutoFix: true})
 	root := t.TempDir()
 	e, err := perm.NewEngine(perm.Config{Mode: perm.ModeBypass, Root: root, Home: t.TempDir(), Ask: []string{"Edit(./.sleipnir/**)", "Edit(./.claude/**)", "Edit(./.git/hooks/**)", "Edit(./.git/config)", "Edit(~/.sleipnir/**)", "Edit(~/.claude/**)"}})
@@ -420,16 +420,16 @@ func TestGeneratedReviewCommandsRespectGuardedAsks(t *testing.T) {
 	}
 	pages := 0
 	c.Exec = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		words := []string{name}
+		for _, arg := range args {
+			words = append(words, mdfile.ShellQuote(arg))
+		}
+		command := strings.Join(words, " ")
+		v := e.Classify(perm.Request{Tool: "Bash", Cwd: root, Command: command})
+		if v.Verdict != perm.Allow || strings.Contains(v.Rule, "Edit(") {
+			t.Fatalf("generated command blocked: %+v\n%s", v, command)
+		}
 		if slices.Contains(args, "graphql") {
-			words := []string{name}
-			for _, arg := range args {
-				words = append(words, mdfile.ShellQuote(arg))
-			}
-			command := strings.Join(words, " ")
-			v := e.Classify(perm.Request{Tool: "Bash", Cwd: root, Command: command})
-			if v.Verdict != perm.Allow || strings.Contains(v.Rule, "Edit(") {
-				t.Fatalf("generated command blocked: %+v\n%s", v, command)
-			}
 			pages++
 			if pages == 1 {
 				return []byte(`{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[],"pageInfo":{"hasNextPage":true,"endCursor":"next"}}}}}}`), nil
