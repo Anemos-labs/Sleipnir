@@ -7,6 +7,7 @@ package swarm
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -576,6 +577,55 @@ func TestResumeBringsTheBlockedWorkersTreeUpToDate(t *testing.T) {
 	}
 	if !r.prov.sawEver("your tree now includes the work merged so far") {
 		t.Fatal("the worker was not told")
+	}
+}
+
+func TestBusyWorkerResumeRefreshesOnItsNextClaim(t *testing.T) {
+	waiting, proceed := make(chan struct{}), make(chan struct{})
+	released := false
+	defer func() {
+		if !released {
+			close(proceed)
+		}
+	}()
+	sc := script{
+		"be-1": {
+			act(writeCall("a.txt", "preserved draft\n"), rvToolCall{"task", map[string]any{"action": "block", "id": "T1", "text": "need frontend integration"}}),
+			func(c *rvCall) rvReply {
+				close(waiting)
+				<-proceed
+				return act(rvToolCall{"task", map[string]any{"action": "claim", "id": "T1"}})(c)
+			},
+			act(catCall("b.txt")),
+			act(doneCall("T1", "finished on refreshed integration")),
+		},
+		"fe-1": {act(writeCall("b.txt", "merged dependency\n")), act(doneCall("T2", "edited b"))},
+	}
+	r := newIsoRig(t, isoOpts{verify: true}, sc.fn())
+	r.sw.StartManager()
+	r.mustSpawn("backend", "edit a", "a.txt")
+	select {
+	case <-waiting:
+	case <-time.After(5 * time.Second):
+		t.Fatal("worker did not reach the blocked, active boundary")
+	}
+	r.mustSpawn("frontend", "edit b", "b.txt")
+	r.waitStatus("T2", StatusReview)
+	res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "resume", "id": "T1"})
+	if res.IsError {
+		t.Fatal(res.Text)
+	}
+	if got := readText(t, filepath.Join(r.cwd("be-1"), "b.txt")); got != "bravo\n" {
+		t.Fatalf("manager changed a busy worker's checkout: %q", got)
+	}
+	close(proceed)
+	released = true
+	r.waitStatus("T1", StatusReview)
+	if got := r.sawText("be-1", "b.txt"); got != "merged dependency\n" {
+		t.Fatalf("resumed self-claim kept stale integration: %q", got)
+	}
+	if got := readText(t, filepath.Join(r.cwd("be-1"), "a.txt")); got != "preserved draft\n" {
+		t.Fatalf("refresh lost the worker's draft: %q", got)
 	}
 }
 

@@ -216,7 +216,11 @@ func (s *Swarm) afterResume(ctx context.Context, caller string, byManager bool, 
 		return ""
 	}
 	if byManager && om.isActive() {
-		return "; its worker is running and keeps its tree (it picks up merged work when it next resumes)"
+		om.mu.Lock()
+		om.needsTreeSync = true
+		om.mu.Unlock()
+		s.notify(om.id, "info", taskID+" was resumed by the manager. Call task claim on this same task to refresh your checkout with integrated work, then re-read the relevant files.")
+		return "; its worker is running: refresh is queued for its next task claim (including this same task); tell it to claim and re-read before continuing"
 	}
 	note, err := s.syncTree(ctx, om)
 	msg := "your tree now includes the work merged so far"

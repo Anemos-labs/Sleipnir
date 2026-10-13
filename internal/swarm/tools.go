@@ -142,9 +142,16 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		s.trackClaim(me, in.ID)
 		// A self-claim is the same handoff as spawn reuse: dependencies may have
 		// landed while this persistent worker was planning in an older checkout.
-		if before.Owner != me || before.Status != StatusDoing {
-			if m := s.get(me); m != nil && m.tree != nil {
+		if m := s.get(me); m != nil && m.tree != nil {
+			m.mu.Lock()
+			refresh := m.needsTreeSync
+			m.needsTreeSync = false
+			m.mu.Unlock()
+			if refresh || before.Owner != me || before.Status != StatusDoing {
 				if note, err := s.syncTree(ctx, m); err != nil {
+					m.mu.Lock()
+					m.needsTreeSync = true
+					m.mu.Unlock()
 					return text("%s is yours, but the checkout could not receive integrated work: %s. Repair the checkout or ask the manager before implementing.", in.ID, cleanText(err.Error(), 200)), nil
 				} else if note != "" {
 					return text("%s is yours. %s Resolve these conflicts before implementing.", in.ID, note), nil

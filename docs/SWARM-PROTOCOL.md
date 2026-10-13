@@ -702,7 +702,9 @@ the integration tip and runs the verifier (`--verify`) on the merged result, and
 
 A bounce is rework like any other: after `MaxAttempts` (3) the task returns to `todo`, the worker is stopped and the manager is
 told once. A worker sees other agents' work only when it is merged: a new worker starts from the integration tip, and a reused
-worker, a resumed task and a bounced worker have their tree brought up to it. Nothing else crosses between trees, and there is
+worker, a resumed task and a bounced worker have their tree brought up to it. If the manager resumes a still-active worker,
+the refresh is deferred to that worker's next `task claim`, including a claim of the same task. The worker receives a notice
+to claim and re-read before continuing; its checkout is not changed underneath an active tool call. Nothing else crosses between trees, and there is
 no new tool: a worker that needs merged work blocks its task and says what it needs, as before. The one exception is a
 handover (section 6): the owner's tree is committed on its own branch and the successor's tree starts at that commit, so
 unmerged work moves with the task. It reaches the integration branch only through the successor's `done`, like any
