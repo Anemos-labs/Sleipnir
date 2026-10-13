@@ -598,3 +598,21 @@ func TestGoalPauseTypedDuringATurnActsAtOnce(t *testing.T) {
 		t.Errorf("%d interrupt events, want 1", n)
 	}
 }
+
+func TestWebDeliveryCommandReportsItsResult(t *testing.T) {
+	project := webWorld(t)
+	_, base := newWebModel(t, sayScript("ok"))
+	r := newWebRig(t, soloDefaults(project), base)
+	tab := r.ready("")
+	for _, tc := range []struct{ line, want string }{
+		{"/delivery both", "GitHub automation set for the next objective: both"},
+		{"/delivery off", "GitHub automation set for the next objective: off"},
+		{"/delivery resume", "no delivery workflow to resume"},
+	} {
+		var res wire.CommandResult
+		r.json("POST", "/api/sessions/"+tab.ID+"/command", wire.CommandRequest{Line: tc.line}, 200, &res)
+		if res.Output != tc.want {
+			t.Errorf("%s: got %q, want %q", tc.line, res.Output, tc.want)
+		}
+	}
+}
