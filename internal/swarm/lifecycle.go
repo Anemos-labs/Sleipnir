@@ -259,6 +259,10 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 			txt := RenderHot(snap, agentID, r.Name, isMgr, s.cfg.Hot, d.Est)
 			// the team's occupancy (the manager's) and the auto-docs state (everyone's) go inside the frame too
 			var extra []string
+			if r.ReadOnly && s.isolated() {
+				ref := s.integrationRef()
+				extra = append(extra, "Isolation: Your read-only checkout stays at the original project until the run finishes. Inspect accepted work with git show "+ref+":<path>, git ls-tree or git diff of "+ref+". Resuming a task does not refresh this checkout; do not block waiting for it.")
+			}
 			if isMgr {
 				if t := s.TeamState(); t != "" {
 					extra = append(extra, t)

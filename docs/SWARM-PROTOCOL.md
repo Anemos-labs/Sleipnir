@@ -658,6 +658,9 @@ also has a writable private tree; direct edits pass verification and the merge q
 before publication or completion. Reviewers and scouts read the shared checkout,
 which holds a task's work after it is applied, or inspect merged work with
 `git show <commit>` (the commit is in the task's evidence).
+Read-only workers' live context names the integration branch and directs them to
+read it with `git show`, `git ls-tree` or `git diff`. Resuming their tasks does not
+refresh the original checkout; review does not wait for that checkout to change.
 
 **Nothing in the prompt names a tree.** The tools print paths relative to the working directory, which are the project's
 paths, and the isolation card (`Isolation: your working directory is a private git worktree ...`, which says what the
@@ -666,8 +669,8 @@ that the harness does the version control (it commits and merges a writer's work
 not fetch, pull, merge, rebase, cherry-pick or commit, that teammates' accepted work is in its tree at its next task, and
 names the session's integration branch for reading merged work at any time (`git show sleipnir/<session>/_integration:<path>`,
 and `git log`, `git diff`, `git ls-tree` of it), which needs no approval. The branch name is the same for every worker of a
-session and appears only in these private notes. The bytes of
-G0, G1 and G2 do not change; only a worker's own notes are longer, when the feature is on.
+session and appears in private writer notes and read-only workers' live context. The bytes of
+G0, G1 and G2 do not change; private notes and the uncached live tail carry the isolation guidance.
 
 **Confinement is enforced, not conventional.** The permission engine confines every writer to its own tree
 (`perm.Engine.Confine`): whatever it reads or writes inside the workspace (the checkout, another agent's tree) outside its

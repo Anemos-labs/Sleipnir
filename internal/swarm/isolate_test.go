@@ -634,3 +634,23 @@ func TestAnIsolatedWriterIsToldHowToReadMergedWork(t *testing.T) {
 		t.Errorf("a detached tree's card: %q", got)
 	}
 }
+
+func TestIsolatedReviewerReadsIntegrationWithoutWaitingForCheckoutRefresh(t *testing.T) {
+	iso := newIsoRig(t, isoOpts{cfg: Config{MaxWriters: 1}}, func(ctx context.Context, c *rvCall) rvReply {
+		return rvReply{Text: "nothing to do"}
+	})
+	id := iso.mustSpawn("reviewer", "Review integrated work")
+	rvWait(t, "reviewer idle", func() bool { return iso.idle(id) })
+	for _, want := range []string{
+		"Your read-only checkout stays at the original project",
+		"git show sleipnir/t/_integration:<path>",
+		"Resuming a task does not refresh this checkout",
+	} {
+		if !iso.prov.sawEver(want) {
+			t.Errorf("reviewer was not told %q", want)
+		}
+	}
+	if iso.sw.get(id).tree != nil {
+		t.Fatal("read-only reviewer unexpectedly acquired a writable tree")
+	}
+}
