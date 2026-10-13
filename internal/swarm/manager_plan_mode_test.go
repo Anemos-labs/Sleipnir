@@ -15,7 +15,7 @@ import (
 // inside the other: the engine refuses what it cannot prove read-only, `go test` among it, which the allowlist accepts, and it allows read-only
 // compound commands that the allowlist rejects (`git status && ls src | wc -l`). What this test pins is what they share: every write is
 // refused, and the refusal says the session is planning instead of sending the manager off to spawn a worker for a change nobody can make yet.
-const managerWritesMsg = "the manager does not edit files: explicit test profile"
+const managerWritesMsg = "the manager does not edit files: spawn a worker for the change (explicit test profile)"
 
 func TestTheManagerInPlanModeIsJudgedByTheEnginesOwnProfile(t *testing.T) {
 	root := t.TempDir()

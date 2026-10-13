@@ -26,7 +26,7 @@ func (s *Swarm) flushManager(ctx context.Context, m *member) error {
 		return fmt.Errorf("manager changes were not integrated: %s %v", result.bounce, result.infra)
 	}
 	if result.evidence == "nothing to merge: the tree has no changes" {
-		return nil
+		return s.syncManager(ctx, m)
 	}
 	s.review.mu.Lock()
 	s.review.merges++
