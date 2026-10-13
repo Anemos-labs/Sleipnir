@@ -89,7 +89,8 @@ test('the horse: a leg is a role, labelled with its worker or its count, and a l
   const P = await boot({ route: (m, p) => p === '/api/sessions/a/snapshot' ? partial : undefined });
   assert.equal(P.doc.querySelectorAll('.stall.ghost').length, 22, 'all unoccupied slots appear beyond eight workers');
   assert.equal(P.$('.stall[data-role="backend"] .legn').textContent, 'leg 3', 'chips derive their leg from role, not stale roster indices');
-  assert.match(P.$('.stall.ghost').getAttribute('aria-label'), /backend slot is free on leg 3/);
+  assert.equal(P.$('.stall.ghost').getAttribute('aria-label'), 'backend slot is free');
+  assert.equal(P.$('.stall.ghost .s-id').textContent, 'free backend slot');
   const custom = Object.assign({}, snap, { meta: Object.assign({}, snap.meta, { team: [{ role: 'unspawned' }, { role: 'second' }, { role: 'first' }] }), roster: [roster[0], { ...roster[1], id: 'one', role: 'first' }, { ...roster[2], id: 'two', role: 'second' }] });
   const C = await boot({ route: (m, p) => p === '/api/sessions/a/snapshot' ? custom : undefined });
   assert.equal(C.SL.ui.hero.legOfRole(C.SL.sessions.active, 'first'), 0, 'custom roles follow roster spawn order, matching translator');

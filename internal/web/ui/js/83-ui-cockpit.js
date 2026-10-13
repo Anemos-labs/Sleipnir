@@ -121,7 +121,7 @@
         });
         /* Every unoccupied team slot, by role, including slots beyond the eight legs. */
         const free = (S.meta.team || []).map(t => t.role); workers.forEach(w => { const k = free.indexOf(w.role); if (k >= 0) free.splice(k, 1); });
-        free.forEach(role => { stallsEl.appendChild(mk('div', { class: 'stall ghost', 'aria-label': role + ' slot is free' }, '<span class="s-top"><b class="s-id">' + esc(role) + '</b><span class="s-role">free</span></span><span class="s-doing">a free ' + esc(role) + ' slot: the manager starts it when the work needs one</span>')); });
+        free.forEach(role => { stallsEl.appendChild(mk('div', { class: 'stall ghost', 'aria-label': role + ' slot is free' }, '<span class="s-top"><b class="s-id">free ' + esc(role) + ' slot</b></span><span class="s-doing">a free ' + esc(role) + ' slot: the manager starts it when the work needs one</span>')); });
       }
       sc.listen(stallsEl, 'keydown', e => { if (!/^Arrow/.test(e.key)) return; const cards = $$('.stall:not(.ghost)', stallsEl), i = cards.indexOf(document.activeElement); if (i < 0) return; const d = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 4, ArrowUp: -4 }[e.key], n = cards[i + d]; if (n) { e.preventDefault(); e.stopPropagation(); n.focus(); } }, true);
       cx.RC = RC; cx.ST = ST; sc.onUnmount(() => { if (cx.RC === RC) { cx.RC = null; cx.ST = {}; } });
