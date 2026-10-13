@@ -67,6 +67,9 @@ func (s *Swarm) handoverStopWait() time.Duration { return s.cfg.StuckGrace }
 // recap, and retires the predecessor once it holds nothing else. See the comment at
 // the top of handover.go for the guarantees.
 func (s *Swarm) Handover(ctx context.Context, req HandoverReq) (HandoverResult, error) {
+	if s.cfg.PersistentPools {
+		return HandoverResult{}, fmt.Errorf("persistent pools retain worker context: revise or reassign the existing task to an existing pool member; do not create a successor")
+	}
 	s.spawnMu.Lock()
 	defer s.spawnMu.Unlock()
 	if err := s.alive(); err != nil {

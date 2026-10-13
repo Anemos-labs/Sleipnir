@@ -67,7 +67,7 @@ func (t *Translator) syncTask(id string, ts float64, force bool) {
 	if len(tk.Files) > 0 {
 		scope = strings.Join(tk.Files, ", ")
 	}
-	ev := &TaskX{Task: wire.Task{ID: id, Title: line(tk.Title, capArg), Owner: uiID(tk.Owner), Deps: tk.Deps, Scope: line(scope, capPath), S: col,
+	ev := &TaskX{Task: wire.Task{ID: id, Parent: tk.Parent, PoolPhase: tk.PoolPhase, PoolMembers: tk.PoolMembers, Title: line(tk.Title, capArg), Owner: uiID(tk.Owner), Deps: tk.Deps, Scope: line(scope, capPath), S: col,
 		Closure: line(closure, capID)}, Failed: tk.State == state.TaskFailed, Attempts: tk.Attempts, Blocked: tk.Status == "blocked"}
 	if len(ev.Deps) == 0 {
 		ev.Deps = nil

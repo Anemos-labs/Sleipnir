@@ -18,6 +18,7 @@ import (
 // in-process restarts of `sleipnir web` (restartArgs, then parseChatFlags) and for its New session dialog (argsFor, then
 // parseChatFlags), so that the three accept the same words with the same defaults and messages.
 type chatFlagSet struct {
+	autoFix, autoMerge       *bool
 	model, cwd, mode, verify *string
 	swarmN                   *int
 	trust, verbose, noMCP    *bool
@@ -35,6 +36,8 @@ type chatFlagSet struct {
 // registerChatFlags defines every flag of `sleipnir chat` on fs, with the descriptions the help prints.
 func registerChatFlags(fs *flag.FlagSet) *chatFlagSet {
 	f := &chatFlagSet{}
+	f.autoFix = fs.Bool("auto-fix", false, "repair CI and PR review findings for the next objective")
+	f.autoMerge = fs.Bool("auto-merge", false, "merge the next objective PR when checks and repository requirements pass")
 	f.model = fs.String("model", "", "model: provider/model or a bare id for the default provider")
 	f.cwd = fs.String("cwd", "", "working directory")
 	f.mode = fs.String("mode", "", "permissions: default | accept-edits | plan | bypass | yolo")
@@ -59,6 +62,7 @@ func registerChatFlags(fs *flag.FlagSet) *chatFlagSet {
 
 // chatFlags is a parsed `sleipnir chat` command line.
 type chatFlags struct {
+	autoFix, autoMerge                  bool
 	model, cwd, mode, verify, isolation string
 	// workers is --swarm N; swarmGiven says whether the line had --swarm (without it the caller's default applies).
 	workers    int
@@ -86,7 +90,7 @@ func (f *chatFlagSet) values(fs *flag.FlagSet) (chatFlags, error) {
 	if err != nil {
 		return chatFlags{}, err
 	}
-	out := chatFlags{
+	out := chatFlags{autoFix: *f.autoFix, autoMerge: *f.autoMerge,
 		model: *f.model, cwd: *f.cwd, mode: *f.mode, verify: *f.verify, isolation: *f.isolation,
 		workers: *f.swarmN, trust: *f.trust, verbose: *f.verbose, noMCP: *f.noMCP, budget: *f.budget, commit: *f.commit,
 		mailman: f.mailman(), autoDocs: f.autoDocs(), managerApproves: f.managerApproves(), resume: spec, allow: append([]string(nil), (*f.allow)...), plain: *f.plain, noAnim: *f.noAnim,
@@ -160,7 +164,7 @@ func (f chatFlags) options() session.Options {
 			rm[k] = v
 		}
 	}
-	return chatOptions(session.Options{
+	return chatOptions(session.Options{AutoFix: f.autoFix, AutoMerge: f.autoMerge,
 		Cwd: f.cwd, Model: f.model, Mode: perm.Mode(f.mode), Swarm: team, Workers: workers,
 		TrustProject: f.trust, BudgetUSD: f.budget, Resume: f.resume, NoMCP: f.noMCP,
 		Verify: f.verify, Isolation: f.isolation, Commit: f.commit, Mailman: f.mailman, AutoDocs: f.autoDocs, ManagerApproves: f.managerApproves,

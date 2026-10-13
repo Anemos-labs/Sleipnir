@@ -16,8 +16,8 @@ func TestDefaultTeamIsOneOfEachRole(t *testing.T) {
 	if got := DefaultTeam(WorkerRoleOrder, 8); !slices.Equal(got, WorkerRoleOrder) {
 		t.Errorf("--swarm 8: %v, want one of each: %v", got, WorkerRoleOrder)
 	}
-	if n, _ := TeamCounts(DefaultTeam(WorkerRoleOrder, 9)); n["backend"] != 2 || n["docs"] != 2 {
-		t.Errorf("--swarm 9 shares the extra slot among the roles: %v", n)
+	if n, _ := TeamCounts(DefaultTeam(WorkerRoleOrder, 9)); n["architect"] != 2 || n["backend"] != 1 || n["docs"] != 1 {
+		t.Errorf("--swarm 9 allocates exactly nine slots: %v", n)
 	}
 	if DefaultTeam(WorkerRoleOrder, 0) != nil || DefaultTeam(nil, 8) != nil {
 		t.Error("a single agent or no roles is no team")

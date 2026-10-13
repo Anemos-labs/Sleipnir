@@ -251,6 +251,10 @@ Usage of chat:
         a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, node, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint, format and vet, go mod init and tidy, and curl or wget to this machine only (127.0.0.1, localhost, [::1]), never install or run); more in docs/CONFIGURATION.md
   -auto-docs
         swarm: the team's docs worker keeps README, docs/ and AGENTS.md current after every accepted task without being asked (default: config swarm.auto_docs, true; --auto-docs=false makes docs a role the manager assigns)
+  -auto-fix
+        repair CI and PR review findings for the next objective
+  -auto-merge
+        merge the next objective PR when checks and repository requirements pass
   -budget-usd float
         stop when spend reaches this many US dollars
   -commit
@@ -477,6 +481,10 @@ flags:
         refuse a question to the person that nobody answers within this time, and tell the worker (default: wait for the person); for a run that is left alone
   -auto-docs
         swarm: the team's docs worker keeps README, docs/ and AGENTS.md current after every accepted task without being asked (default: config swarm.auto_docs, true; --auto-docs=false makes docs a role the manager assigns)
+  -auto-fix
+        repair CI and PR review findings for this objective
+  -auto-merge
+        merge this objective PR after checks and repository requirements pass
   -budget-usd float
         stop when spend reaches this many US dollars
   -capture

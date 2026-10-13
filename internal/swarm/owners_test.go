@@ -113,8 +113,8 @@ func TestOnlyTheOwningRoleWritesAnOwnedPath(t *testing.T) {
 	// The manager is refused by the guard too, with what it can do instead; so is an id
 	// that is no member (no role owns anything for it).
 	err = r.sw.Leases.BeforeWrite(r.sw.ManagerID(), "web/app.css")
-	if err == nil || err.Error() != "web/app.css belongs to the frontend role: only a frontend worker may change it. Create a task for a frontend worker and leave the change to it" {
-		t.Errorf("manager: %v", err)
+	if err != nil {
+		t.Errorf("manager should honor active leases without role-only rejection: %v", err)
 	}
 	if err := r.sw.Leases.BeforeWrite("ghost", "web/x.html"); err == nil {
 		t.Error("an agent of no role wrote an owned path")

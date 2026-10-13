@@ -52,6 +52,7 @@ func (s *Swarm) superviseOnce(now time.Time) {
 		m := m
 		s.guard("member "+m.id, func() { s.superviseMember(m, now) })
 	}
+	s.guard("repairs", func() { s.repairTick(now) })
 	s.guard("stalls", s.sweepStalls)
 	s.guard("docs", func() { s.docsTick(now) })
 }
@@ -95,6 +96,10 @@ func (s *Swarm) watch(m *member, rs *runState, now time.Time) {
 	warned := m.stuckWarn
 	aborted := rs.abortAt
 	question := ""
+	if s.cfg.PersistentPools && m.asking > 0 {
+		m.mu.Unlock()
+		return
+	}
 	if m.asking > 0 {
 		question = m.askWhat
 	}
@@ -153,6 +158,16 @@ func (s *Swarm) abandon(m *member, rs *runState) {
 	m.mu.Lock()
 	if m.run != rs || m.life != lifeRunning {
 		m.mu.Unlock()
+		return
+	}
+	if s.cfg.PersistentPools {
+		first := !rs.quarantined
+		rs.quarantined = true
+		m.mu.Unlock()
+		if first {
+			s.Board.RaiseAlertKey("stuck", stuckAlertKey(m.id, rs.id), m.id+" ignored cancellation; its slot and context are retained until it stops")
+			s.notifyManager(m.id + " did not stop when cancelled. Do not replace it or assign concurrent work to its slot. Its task remains pending; a process restart can resume its checkpoint.")
+		}
 		return
 	}
 	tasks := make(map[string]uint64, len(rs.tasks))

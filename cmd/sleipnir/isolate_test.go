@@ -93,7 +93,19 @@ func TestRunSwarmWithWorktreeIsolationAppliesAndReportsTheResult(t *testing.T) {
 			case 1:
 				return mock.Reply{Text: "accepting", ToolCalls: []mock.ToolCall{call("m4", "task", map[string]any{"action": "accept", "id": "T1"})}}
 			}
+			if n == 2 {
+				return mock.Reply{ToolCalls: []mock.ToolCall{call("m5", "spawn", map[string]any{"role": "reviewer", "task": "Review integrated notes"}), call("m6", "wait", map[string]any{"until": []string{"T2"}, "timeout_sec": 60})}}
+			}
+			if n == 3 {
+				return mock.Reply{ToolCalls: []mock.ToolCall{call("m7", "task", map[string]any{"action": "accept", "id": "T2"})}}
+			}
 			return mock.Reply{Text: "notes.txt added"}
+		}
+		if role == "reviewer" {
+			if n == 0 {
+				return mock.Reply{ToolCalls: []mock.ToolCall{call("r1", "task", map[string]any{"action": "done", "id": tid, "text": "Verified integrated notes"})}}
+			}
+			return mock.Reply{Text: "reviewed"}
 		}
 		switch n {
 		case 0:
@@ -111,7 +123,7 @@ func TestRunSwarmWithWorktreeIsolationAppliesAndReportsTheResult(t *testing.T) {
 	var err error
 	out := capture(t, func() {
 		err = cmdRun(context.Background(), []string{"--cwd", repo, "--mode", "bypass", "--no-web", "--trust-project", "--json",
-			"--swarm", "8", "--isolation", "worktree", "add notes.txt"})
+			"--swarm", "8", "--auto-docs=false", "--isolation", "worktree", "add notes.txt"})
 	})
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)

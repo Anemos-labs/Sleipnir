@@ -21,10 +21,14 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/plan"
 	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/workspace"
 )
 
 // Config sizes and tunes a swarm.
 type Config struct {
+	// PersistentPools retains configured workers and repairs tasks without exhausting attempts.
+	PersistentPools bool
+
 	SessionID string
 	// MaxWorkers bounds the registered workers (running or idle). The manager and
 	// the harness's own service agents (the mailman) are not workers and do not
@@ -267,6 +271,7 @@ type Swarm struct {
 	sharedMu sync.Mutex // serialises SetShared
 
 	mu      sync.Mutex
+	retryAt map[string]time.Time // supervisor-owned repair backoff
 	members map[string]*member
 	// arriving (under mu) holds the IDs of agents that are being added to the team: the task is assigned to the agent before the
 	// agent is registered, and the stall sweep must not read that interval as an owner that left (arrive).
@@ -413,6 +418,10 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 		}
 		with[MailmanRoleName] = MailmanRole()
 		roles = with
+	}
+	if cfg.PersistentPools {
+		cfg.MaxAttempts = 0
+		cfg.IdleRetire = -1
 	}
 	s := &Swarm{cfg: cfg, deps: deps, roles: roles, members: map[string]*member{}, seq: map[string]int{},
 		roleLay: map[string]*kv.Layer{}, hidden: map[string]bool{}, lastSeen: map[string]*Snapshot{}, shared: deps.Shared,
@@ -566,11 +575,20 @@ func (s *Swarm) StartManager() (*agent.Agent, error) {
 	if s.isolated() {
 		notes = kv.NewLayer("notes:"+id, kv.KindNotes, 1, []kv.Segment{{Key: "isolation", Text: managerIsolationCard, Vol: kv.VolFrozen}})
 	}
-	m, err := s.newMember(id, r, notes, NewEvidence(), nil)
+	var tree *workspace.Tree
+	if s.isolated() {
+		var err error
+		tree, err = s.deps.Isolation.Manager.Create(s.runCtx(), id, workspace.CreateOptions{Base: s.deps.Isolation.Queue.Tip(), Reuse: true})
+		if err != nil {
+			return nil, err
+		}
+	}
+	m, err := s.newMember(id, r, notes, NewEvidence(), tree)
 	if err != nil {
 		return nil, err
 	}
 	s.register(m, s.currentShared())
+	s.bindTree(m)
 	s.mu.Lock()
 	s.manager = id
 	s.mu.Unlock()
@@ -668,7 +686,29 @@ func (s *Swarm) runManager(ctx context.Context, m *member, goal, mail string) (r
 			}
 		}()
 		res, err = m.a.Run(runCtx, goal)
+		for s.cfg.PersistentPools && runCtx.Err() == nil && s.budgetErr() == nil {
+			if err != nil && !strings.Contains(err.Error(), "step limit") {
+				break
+			}
+			flushErr := s.flushManager(runCtx, m)
+			if flushErr != nil {
+				m.a.Send(flushErr.Error())
+			}
+			u := s.unfinishedWork()
+			if flushErr == nil && u.empty() && !s.docsPending() && s.reviewPending() == "" {
+				break
+			}
+			m.a.Send("The objective is not complete. Repair and finish the existing tasks, accept reconciled results, and complete the current review. Do not replace unfinished tasks. Use wait for workers.")
+			res, err = m.a.Run(runCtx, "")
+		}
 	}()
+	if s.cfg.PersistentPools && err == nil {
+		if runCtx.Err() != nil {
+			err = runCtx.Err()
+		} else {
+			err = s.budgetErr()
+		}
+	}
 	s.releaseManager(m)
 	s.noteCoordination(m.id, "", "") // a manager that stopped is not waiting
 	state := "done"
@@ -836,10 +876,12 @@ func (s *Swarm) onPromote(from string, ps []kv.Promotion) {
 // the session's permission engine, so a reviewer can never write even if the
 // mode would allow it.
 type roleRequester struct {
+	swarm *Swarm
+	agent string
 	inner perm.Requester
 	role  Role
 	// denyWrites, when set, makes the agent read-only whatever its role says, and is
-	// what it is told: read-only roles, the mailman and the manager.
+	// what it is told: read-only roles and the mailman.
 	denyWrites string
 	// strictShell applies the fallback allowlist to shell commands even when the
 	// permission engine is there to enforce the role's profile: a second, stricter
@@ -854,16 +896,16 @@ type roleRequester struct {
 	planOnly *perm.Engine
 }
 
-// managerWritesMsg is what the manager is told when it tries to change a file.
-const managerWritesMsg = "the manager does not edit files: spawn a worker for the change (or reuse an idle one with spawn agent=...), then review its work"
-
-// readOnlyShellHint is added to a shell command's refusal: "the manager does not edit files" alone told a
-// manager that had only chained two reads with && (a real one, on its first action) that reading was
-// forbidden.
+// readOnlyShellHint explains the strict fallback used without a permission engine.
 const readOnlyShellHint = "; the shell here takes one plain read-only command at a time (ls, cat, grep, find, git status/diff/log, go test), with no pipes, && or redirects"
 
 func (r roleRequester) Check(ctx context.Context, req perm.Request) perm.Decision {
 	req.Role = r.role.Name
+	if r.swarm != nil {
+		if d, handled := r.swarm.poolPermission(ctx, r.agent, r.inner, req); handled {
+			return d
+		}
+	}
 	if r.only != nil && !r.only[req.Tool] {
 		return perm.Decision{Allow: false, Reason: r.denyWrites}
 	}

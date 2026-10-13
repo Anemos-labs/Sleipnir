@@ -273,8 +273,8 @@ func TestAcceptNeedsTheWorkInTheIntegrationBranch(t *testing.T) {
 	}
 }
 
-// Every writer is confined to its own tree, and the manager does not edit files in an
-// isolated run: anything written into the shared checkout would bypass the merge queue.
+// Every writer, including the manager, is confined to its own tree: writes into
+// the shared checkout would bypass the merge queue.
 func TestWritesOutsideTheOwnTreeAreRefused(t *testing.T) {
 	var r *isoRig
 	sc := script{
@@ -292,7 +292,7 @@ func TestWritesOutsideTheOwnTreeAreRefused(t *testing.T) {
 		t.Fatalf("a write reached the shared checkout: %q", got)
 	}
 	err := r.sw.Leases.BeforeWrite("mgr", r.repo+"/a.txt")
-	if err == nil || !strings.Contains(err.Error(), "spawn a worker") {
+	if err == nil || !strings.Contains(err.Error(), "outside your working tree") {
 		t.Fatalf("the manager's write in an isolated run: %v", err)
 	}
 	// And through the permission wrapper, whatever the engine would say.
@@ -668,7 +668,7 @@ func TestIsolatedLeasesNeverBlockButConfineAndAdvise(t *testing.T) {
 			t.Fatalf("a write to %s from be-1's tree: %v", p, err)
 		}
 	}
-	if err := l.BeforeWrite("mgr", "/repo/src/x.go"); err == nil || !strings.Contains(err.Error(), "spawn a worker") {
+	if err := l.BeforeWrite("mgr", "/repo/src/x.go"); err == nil || !strings.Contains(err.Error(), "has none") {
 		t.Fatalf("the manager: %v", err)
 	}
 	// Releasing the writer ends the warning (the scope alert about be-1 is another one).

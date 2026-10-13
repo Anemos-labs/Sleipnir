@@ -306,9 +306,11 @@ type RestartRequest struct {
 // MessageRequest is a line sent from the composer: Text is what reaches the agent, Display what the transcript shows (the line as
 // typed, when it differs), ClientID makes a repeated request return the first answer.
 type MessageRequest struct {
-	Text     string `json:"text"`
-	Display  string `json:"display,omitempty"`
-	ClientID string `json:"clientId,omitempty"`
+	AutoFix   bool   `json:"autoFix,omitempty"`
+	AutoMerge bool   `json:"autoMerge,omitempty"`
+	Text      string `json:"text"`
+	Display   string `json:"display,omitempty"`
+	ClientID  string `json:"clientId,omitempty"`
 }
 
 // SendResult says whether a message was delivered now or queued behind the running turn.

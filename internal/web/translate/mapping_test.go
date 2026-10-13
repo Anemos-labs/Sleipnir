@@ -348,3 +348,16 @@ func TestFrameClasses(t *testing.T) {
 		t.Fatalf("ckpt frames: %+v", ckpts)
 	}
 }
+
+func TestPoolTaskMapping(t *testing.T) {
+	h := newHarness(t, Config{Root: "/work", StartedAt: t0})
+	b := newLog(t0)
+	h.feed(b.add(time.Second, "mgr", "board.op", boardOp("create", "T1", "doing", "rv-1", 1, map[string]any{"title": "review", "pool": map[string]any{"phase": "planning", "members": []string{"rv-1", "rv-2"}}})), b.add(2*time.Second, "rv-1", "board.op", boardOp("create", "T2", "todo", "", 2, map[string]any{"title": "review part", "parent": "T1"})))
+	tasks := ofKind(h.decoded(), "task")
+	if len(tasks) != 2 || tasks[0]["poolPhase"] != "planning" || tasks[1]["parent"] != "T1" {
+		t.Fatalf("pool metadata lost: %+v", tasks)
+	}
+	if len(tasks[0]["poolMembers"].([]any)) != 2 {
+		t.Fatal("pool members lost")
+	}
+}

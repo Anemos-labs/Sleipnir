@@ -182,7 +182,7 @@
     if (S.hist[S.hist.length - 1] !== display) S.hist.push(display);
     const busy = SL.calc.turnRunning(S.wm) || S.meta.running === true, local = busy ? { id: '', text: display, local: true } : null;
     if (local) { S.ui.queued.push(local); S.touch(); }
-    const body = { text: full, clientId: api().cid() }; if (full !== display) body.display = display;
+    const body = { text: full, clientId: api().cid() }; if (opt && opt.autoFix) body.autoFix = true; if (opt && opt.autoMerge) body.autoMerge = true; if (full !== display) body.display = display;
     return send(whenStarted(() => api().post(tab(S) + '/messages', body)), res => { if (local && !(res && res.queued)) { const i = S.ui.queued.indexOf(local); if (i >= 0) { S.ui.queued.splice(i, 1); S.touch(); } } },
       () => { if (local) { const i = S.ui.queued.indexOf(local); if (i >= 0) { S.ui.queued.splice(i, 1); S.touch(); } } return false; });
   });

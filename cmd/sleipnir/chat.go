@@ -101,7 +101,7 @@ func cmdChat(ctx context.Context, args []string) error {
 	}
 	sessionOptions := func(spec string) session.Options {
 		team, workers := teamOf(*swarmN)
-		return chatOptions(session.Options{
+		return chatOptions(session.Options{AutoFix: *cf.autoFix, AutoMerge: *cf.autoMerge,
 			Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: team, Workers: workers,
 			TrustProject: *trust, BudgetUSD: *budget, Resume: spec, NoMCP: *noMCP,
 			Verify: *verify, Isolation: *isolation, Commit: *commit, Mailman: mailman(), AutoDocs: autoDocs(), ManagerApproves: managerApproves(),
@@ -283,6 +283,7 @@ func runTurn(parent context.Context, intr *interrupts, s *session.Session, goal 
 }
 
 const chatHelp = `conversation
+/delivery [mode]   next objective: fix | merge | both | off | resume
 /goal TEXT         work until it is met, judged on evidence (/goal: status)
 /new               start again, empty (same model and mode)
 /clear             the same as /new

@@ -197,6 +197,10 @@ func (s *Session) restore() error {
 			if err := s.restoreWorkers(prev, evs); err != nil {
 				return err
 			}
+		} else if s.opts.DefaultTeam || len(s.opts.Team) > 0 {
+			if err := s.restoreWorkers(prev, evs); err != nil {
+				return err
+			}
 		} else {
 			s.Swarm.ReserveIDs(spawnedIDs(evs))
 			s.Swarm.Board.Restore(prev)

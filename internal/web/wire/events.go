@@ -190,6 +190,9 @@ type State struct {
 // handed_off(be-3)). A task the board failed stays in todo and carries its Closure (the server's TaskX adds failed, attempts and
 // blocked).
 type Task struct {
+	Parent      string   `json:"parent,omitempty"`
+	PoolPhase   string   `json:"poolPhase,omitempty"`
+	PoolMembers []string `json:"poolMembers,omitempty"`
 	Base
 	ID      string   `json:"id"`
 	Title   string   `json:"title,omitempty"`

@@ -30,7 +30,7 @@
 
   /* ---------------- what comes from the server, made plain once (it is data: a log can name anything) ---------------- */
   const { safeId, okId } = SL.u, BAD = SL.u.BAD_ID;
-  const ID_FIELDS = ['id', 'cid', 'qid', 'ag', 'from', 'to', 'owner', 'head', 'task', 'ch', 'mid'], ID_LISTS = ['deps', 'left', 'agents'];
+  const ID_FIELDS = ['id', 'cid', 'qid', 'ag', 'from', 'to', 'owner', 'head', 'task', 'ch', 'mid', 'parent'], ID_LISTS = ['deps', 'left', 'agents', 'poolMembers'];
   const NUM_FIELDS = ['rd', 'un', 'out', 'wr', 'ratio', 'p', 'o', 'rpm', 'r429', 'retries', 'inflight', 'queued', 'conflicts', 'bounced', 'read', 'expected', 'pct', 'ms', 'add', 'del', 'tok', 'ttl', 'turns', 'max', 'attempts', 'rate', 'reqSince', 'n'];
   const STATES = new Set(['think', 'tool', 'edit', 'wait', 'ask', 'idle', 'done', 'stuck']);
   const num = x => typeof x === 'number' && isFinite(x) ? x : (isFinite(+x) ? +x : 0);
@@ -64,7 +64,7 @@
    *  first `plan` event (its steps); the counters of the additive vocabulary start at zero. */
   function newModel(S, opts) {
     const m = { sid: S.id, t: 0, ver: 0, nid: 0, chat: !(opts && opts.noChat), ag: {}, order: [], tasks: {}, torder: [], q: null, merged: [], conflicts: 0, bounced: 0,
-      mail: [], marks: [], plan: [], planText: null, verdict: '', verdictKind: '', left: [], goal: { state: S.meta.goalText ? 'active' : 'none' }, qs: [], anomalies: [], compactions: [], ckpts: [],
+      mail: [], marks: [], plan: [], planText: null, verdict: '', verdictKind: '', left: [], goal: { state: S.meta.goalText ? 'active' : 'none' }, qs: [], anomalies: [], compactions: [], ncompactions: 0, ckpts: [],
       reqLog: [], flash: { t: -999, id: null }, lastReq: -9999, lastBreakT: -9999, streams: {}, diff: {}, rpm: 0, rpmHist: [], final: null, chan: { mgr: [], mail: [] }, folded: {}, steps: 0, refused: 0,
       mids: {}, midOrder: [], stalls: {}, handovers: [], alerts: {}, mailstat: null, svc: null, mgrDec: [], ttl: 0, r429: 0, retries: 0, inflight: 0, queued: 0, turn: false };
     (S.roster || []).forEach(r => addAgent(m, r));
@@ -76,7 +76,7 @@
     if (!okId(r.id) || !okId(r.role)) r = cleanAgent(r);
     if (m.ag[r.id]) { Object.assign(m.ag[r.id], { role: r.role, code: r.code, nth: r.nth, k: r.k, leg: r.leg, scope: r.scope, ro: r.ro, model: r.model }); return m.ag[r.id]; }
     m.ag[r.id] = { id: r.id, role: r.role, code: r.code, nth: r.nth, k: r.k, leg: r.leg, scope: r.scope, ro: r.ro, model: r.model, state: 'idle', doing: r.id === 'mgr' ? 'waits for the first message' : 'not started',
-      task: null, rd: 0, un: 0, out: 0, wr: 0, cost: null, saved: null, layers: null, reqSince: null, calls: 0, ratios: [], rmarks: [], nreq: 0, lastReq: -999, segs: [], cur: null, spawned: r.id === 'mgr', spawnT: r.spawn, steered: null, stateT: 0 };
+      task: null, rd: 0, un: 0, out: 0, wr: 0, cost: null, saved: null, layers: null, reqSince: null, calls: 0, ratios: [], rtimes: [], rcompact: [], pendingCompact: false, rmarks: [], nreq: 0, lastReq: -999, segs: [], cur: null, spawned: r.id === 'mgr', spawnT: r.spawn, steered: null, stateT: 0 };
     m.order.push(r.id); if (r.id !== 'mgr' && !m.chan[r.id]) m.chan[r.id] = [];
     return m.ag[r.id];
   }
@@ -147,7 +147,7 @@
         let T = m.tasks[ev.id];
         if (!T) { T = m.tasks[ev.id] = { id: ev.id, title: ev.title || ev.id, owner: null, deps: [], scope: '', st: 'todo', t: ev.t, ms: 0 }; m.torder.push(ev.id); }
         if (ev.s) { T.st = ev.s; T.t = ev.t; if (ev.s === 'merged' && !m.merged.includes(ev.id)) m.merged.push(ev.id); }
-        T.owner = ev.owner || null;   /* a handover moves the card's owner; a released task has none */
+        T.parent = ev.parent || ''; T.poolPhase = ev.poolPhase || ''; T.poolMembers = Array.isArray(ev.poolMembers) ? ev.poolMembers.slice() : []; T.owner = ev.owner || null;   /* a handover moves the card's owner; a released task has none */
         if (ev.title) T.title = ev.title; T.deps = Array.isArray(ev.deps) ? ev.deps.slice() : []; T.scope = ev.scope || '';
         T.closure = ev.closure || ''; T.failed = !!ev.failed; T.attempts = typeof ev.attempts === 'number' ? ev.attempts : 0;
         break;
@@ -160,7 +160,7 @@
       case 'verdict': m.verdict = ev.text || ''; m.verdictKind = ev.kind || ''; m.left = Array.isArray(ev.left) ? ev.left.slice() : []; break;   /* the whole verdict: what it omits is empty */
       case 'req': {
         if (!A) break;
-        A.ratios.push(ev.ratio); capList(A.ratios, RATIO_CAP); A.nreq++; A.lastReq = ev.t;
+        A.rcompact = A.rcompact || []; A.rcompact.push(!!A.pendingCompact); A.pendingCompact = false; capList(A.rcompact, RATIO_CAP); A.rtimes = A.rtimes || []; A.rtimes.push(ev.t); capList(A.rtimes, RATIO_CAP); A.ratios.push(ev.ratio); capList(A.ratios, RATIO_CAP); A.nreq++; A.lastReq = ev.t;
         A.rmarks.push(ev.mark === 'epoch' || ev.mark === 'rebase' ? ev.mark : ''); capList(A.rmarks, RATIO_CAP);   /* what came before the request: a new shared prefix, thinking dropped */
         if (!ev.hist) {
           const p = ev.p || Math.round((A.rd + A.un) / Math.max(1, A.nreq - 1)) || 1200;
@@ -238,7 +238,7 @@
         /* when the planner decided (a cold cache makes the rewrite free) and how the thread was folded; both are '' when the server does not say,
            and a compaction nobody planned (an emergency one, one a person asked for) has no moment: the page then states no price */
         const moment = ev.moment === 'cold' || ev.moment === 'warm' ? ev.moment : '', mode = ev.mode === 'fork' || ev.mode === 'mask' || ev.mode === 'emergency' ? ev.mode : '';
-        m.compactions.push({ t: ev.t, id: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment, mode }); capList(m.compactions, COMPACT_CAP); addMark(m, { t: ev.t, id: ev.id, g: 'compact' });
+        if (A) A.pendingCompact = true; m.ncompactions = (m.ncompactions || 0) + 1; m.compactions.push({ t: ev.t, id: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment, mode }); capList(m.compactions, COMPACT_CAP); addMark(m, { t: ev.t, id: ev.id, g: 'compact' });
         push(m, ctx, 'mgr', { k: 'compact', ag: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment, mode, t: ev.t }, ev);
         if (ev.id !== 'mgr') push(m, ctx, chOf(ev.id), { k: 'compact', ag: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment, mode, t: ev.t }, ev);
         if (d) d.compacts++;

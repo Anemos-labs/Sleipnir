@@ -12,10 +12,9 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
-// The manager plans, delegates and reviews; it edits no file itself, in a shared checkout as much as in an isolated run, and
-// whatever the permission mode says. Its write tools and a writing shell command are refused at run time with what to do
-// instead, while it keeps the same tool list as every other agent.
-func TestTheManagerEditsNoFileInASharedCheckout(t *testing.T) {
+// The manager may edit directly under session permissions while retaining the
+// same tool schemas as every worker.
+func TestTheManagerEditsFilesUnderSessionPermissions(t *testing.T) {
 	repo := newRepo(t)
 	var refused atomic.Int32
 	client, model := startMock(t, func(c *mock.Call) mock.Reply {
@@ -51,12 +50,12 @@ func TestTheManagerEditsNoFileInASharedCheckout(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, f := range []string{"hello.txt", "shell.txt"} {
-		if _, err := os.Stat(filepath.Join(repo, f)); err == nil {
-			t.Errorf("the manager wrote %s", f)
+		if _, err := os.Stat(filepath.Join(repo, f)); err != nil {
+			t.Errorf("the manager could not write %s: %v", f, err)
 		}
 	}
-	if refused.Load() < 2 {
-		t.Errorf("the manager was told %d times that it does not edit files, want once for the write and once for the shell", refused.Load())
+	if refused.Load() != 0 {
+		t.Errorf("the manager was told %d times that it does not edit files, want none", refused.Load())
 	}
 }
 

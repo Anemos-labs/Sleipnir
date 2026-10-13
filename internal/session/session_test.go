@@ -386,6 +386,7 @@ func TestSwarmSessionDispatchesWorkersWithRealTools(t *testing.T) {
 }
 
 func TestResolveModelAndProviders(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // No developer ChatGPT sign-in participates in provider discovery.
 	t.Setenv("HEIMDALLM_API_KEY", "")
 	t.Setenv("HEIMDALL_API_KEY", "")
 	t.Setenv("OPENROUTER_API_KEY", "")
@@ -423,6 +424,7 @@ func TestResolveModelAndProviders(t *testing.T) {
 }
 
 func TestBuiltInHostsAndLocalServers(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // No developer ChatGPT sign-in participates in provider discovery.
 	for _, k := range []string{"HEIMDALLM_API_KEY", "HEIMDALL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TOGETHER_API_KEY"} {
 		t.Setenv(k, "")
 	}

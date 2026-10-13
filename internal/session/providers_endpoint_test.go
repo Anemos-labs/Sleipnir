@@ -420,6 +420,7 @@ func TestMissingBaseURLAndMissingKeyKeepTheirMessages(t *testing.T) {
 // (openai/gpt-oss-20b): written as it is, it names that provider, whose key is not set. The
 // error says how to reach the model through the provider that is set.
 func TestAModelIdThatStartsWithAProviderNameSaysHowToReachItThroughTheDefaultProvider(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // No developer ChatGPT sign-in participates in provider discovery.
 	clearProviderEnv(t)
 	t.Setenv("HEIMDALLM_API_KEY", "hd-key-for-test")
 	_, _, err := session.BuildProvider(nil, session.ModelRef{Provider: "openai", Model: "gpt-oss-20b"}, session.ProviderOptions{})

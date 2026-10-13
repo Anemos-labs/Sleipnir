@@ -3,7 +3,7 @@
 .cache{display:grid;gap:var(--gap);grid-template-columns:repeat(12,minmax(0,1fr));align-content:start}
 .cache>.panel{min-height:0}
 .c-head{grid-column:1/-1}
-.c-hit{grid-column:1/6}.c-fold{grid-column:6/10}.c-anom{grid-column:10/13}
+.c-hit{grid-column:1/13}.c-fold{grid-column:1/7}.c-anom{grid-column:7/13}
 .c-table{grid-column:1/-1}.c-sum{grid-column:1/-1}
 .c-who{display:flex;gap:14px;flex-wrap:wrap;align-items:baseline;padding:2px 10px 6px;font:500 12.5px var(--f-num);color:var(--fg2)}
 .c-who b.id{font-size:19px;color:var(--c)}
@@ -25,8 +25,8 @@
 .sw-read{background:var(--fg2)}.sw-paid{background:repeating-linear-gradient(135deg,var(--fg2) 0 2px,transparent 2px 5px)}
 .c-miss{padding:2px 10px 8px;font:500 12.5px var(--f-num);color:var(--err)}
 .c-miss span{color:var(--fg2);font-family:var(--f-ui)}
-.hbars{display:flex;align-items:flex-end;gap:6px;height:104px;padding:18px 10px 0;position:relative}
-.hbar{flex:1;max-width:46px;display:flex;flex-direction:column;justify-content:flex-end;height:100%;position:relative;align-items:stretch;min-width:0}
+.hbars{overflow-x:auto;overflow-y:hidden;padding-bottom:20px!important;box-sizing:content-box;display:flex;align-items:flex-end;gap:6px;height:104px;padding:18px 10px 0;position:relative}
+.hbar{flex:0 0 28px;max-width:46px;display:flex;flex-direction:column;justify-content:flex-end;height:100%;position:relative;align-items:stretch;min-width:0}
 .hbar i{display:block;background:var(--ok);min-height:2px}
 .hbar.mid i{background:var(--warm)}.hbar.lo i{background:var(--err)}
 .hbar.z i{background:var(--err);height:3px!important}
@@ -131,3 +131,11 @@
 .sess .sa{display:flex;gap:6px}
 .prune{padding:8px 12px 12px;font-size:12.5px;color:var(--fg2)}
 .prune pre{margin:8px 0;background:var(--well);border:1px solid var(--line);padding:8px 10px;font:400 11.5px/1.5 var(--f-num);color:var(--fg2);white-space:pre-wrap}
+
+.delivery-controls{display:flex;flex-wrap:wrap;gap:12px;padding:6px 10px;font-size:12px}.delivery-controls label{display:flex;align-items:center;gap:4px}
+
+.subtasks { margin-top:8px; padding-left:10px; border-left:2px solid var(--line); }
+.subtasks .tcard { margin-top:6px; }
+
+.c-hit .ph { flex-wrap:wrap; gap:6px; }
+.c-hit .ph .r { flex-wrap:wrap; }

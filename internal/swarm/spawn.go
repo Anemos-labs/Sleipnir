@@ -83,6 +83,34 @@ func (s *Swarm) Spawn(req SpawnReq) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if s.cfg.PersistentPools {
+		if req.Role == "" && req.TaskID != "" {
+			if task, ok := s.Board.Snapshot().Task(req.TaskID); ok {
+				req.Role = task.Role
+			}
+		}
+		counts, _ := TeamCounts(s.cfg.Team)
+		task, _ := s.Board.Snapshot().Task(req.TaskID)
+		if counts[req.Role] > 1 && task.Parent == "" {
+			if task.Status != StatusDoing || task.Pool == nil {
+				return s.startPool(req, files)
+			}
+		}
+		if req.Agent == "" {
+			for _, m := range s.poolMembers(req.Role) {
+				m.mu.Lock()
+				idle := m.life == lifeIdle
+				m.mu.Unlock()
+				if idle {
+					req.Agent = m.id
+					break
+				}
+			}
+		}
+		if req.Agent == "" && len(s.poolMembers(req.Role)) > 0 {
+			return "", fmt.Errorf("%s pool is busy; wait and reuse its existing members", req.Role)
+		}
+	}
 	if req.Agent != "" {
 		return s.spawnReuse(req, files)
 	}
@@ -133,6 +161,14 @@ func (s *Swarm) spawnReuse(req SpawnReq, files []string) (string, error) {
 		return "", errors.New("the manager cannot be given a worker's task")
 	}
 	role := s.roles[m.role]
+	if req.TaskID != "" {
+		if task, ok := s.Board.Snapshot().Task(req.TaskID); ok {
+			task.Owner = m.id
+			if err := poolAssignment(s.Board.Snapshot(), task); err != nil {
+				return "", err
+			}
+		}
+	}
 	if err := s.precheckScope(req, files, role); err != nil {
 		return "", err
 	}
@@ -263,6 +299,9 @@ func (s *Swarm) spawnNew(req SpawnReq, files []string) (string, error) {
 // touch, and the queue enforces it.
 func (s *Swarm) scopeCheck(readOnly bool) TaskCheck {
 	return func(sn *Snapshot, t Task) error {
+		if err := poolAssignment(sn, t); err != nil {
+			return err
+		}
 		if t.Kind == TaskKindPlan && !readOnly {
 			return fmt.Errorf("%s is a read-only planning task: the manager must use spawn with task=%s and role=architect (or scout, reviewer, or a custom read-only role); a writer cannot claim it", t.ID, t.ID)
 		}
@@ -286,7 +325,7 @@ func (s *Swarm) ownerReadOnly(sn *Snapshot, owner string) bool {
 // other tasks writers are working on.
 func (s *Swarm) scopeConflictIn(sn *Snapshot, t Task) error {
 	for _, o := range sn.Tasks {
-		if o.ID == t.ID || len(o.Files) == 0 || (o.Status != StatusDoing && o.Status != StatusBlocked) {
+		if o.Pool != nil || o.ID == t.ID || len(o.Files) == 0 || (o.Status != StatusDoing && o.Status != StatusBlocked) {
 			continue
 		}
 		if s.ownerReadOnly(sn, o.Owner) {
@@ -356,6 +395,9 @@ func (s *Swarm) normScopes(in []string) ([]string, error) {
 
 // Retire removes an idle agent that has nothing waiting for it.
 func (s *Swarm) Retire(id string) error {
+	if s.cfg.PersistentPools {
+		return fmt.Errorf("persistent pool members retain their context; reuse %s", id)
+	}
 	m := s.get(id)
 	if m == nil {
 		return fmt.Errorf("no agent %q", id)

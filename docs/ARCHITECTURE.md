@@ -47,7 +47,10 @@ uses the answer, plan, and tool evidence to decide whether to finish, continue,
 or request user input. Continuations append to the conversation. Cancellation
 pauses the goal. Progress and continuation limits bound the loop.
 
-The manager creates scoped tasks and starts workers as needed. Workers share a
+The manager creates scoped tasks and activates persistent role pools as needed.
+A multi-member pool agrees on one plan, splits scoped children, then reconciles
+one parent result. Workers retain their identities, models and contexts across
+assignments and recovery. Direct manager edits use the session permissions. Workers share a
 tool list and project context; permissions restrict their actions at execution
 time. Task acceptance and optional verification belong to the harness.
 Planning tasks can publish agreements reviewed by the manager before dependent
