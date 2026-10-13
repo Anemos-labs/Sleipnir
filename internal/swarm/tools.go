@@ -149,6 +149,7 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 				} else if note != "" {
 					return text("%s is yours. %s Resolve these conflicts before implementing.", in.ID, note), nil
 				}
+				return text("%s is yours; your checkout now includes integrated work. Re-read the relevant files before implementing.", in.ID), nil
 			}
 		}
 		return text("%s is yours", in.ID), nil
