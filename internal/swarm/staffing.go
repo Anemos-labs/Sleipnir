@@ -37,24 +37,33 @@ type reviewGate struct {
 // noteAccepted records an accepted task for the review gate: a reviewer's task covers every merge before it, any other implementation
 // task that is not documentation is a merge. An agreement is neither.
 func (s *Swarm) noteAccepted(t Task) {
+	_ = s.noteAcceptedCheck(t)(nil, t)
+}
+
+// noteAcceptedCheck runs last under the board lock, before acceptance is published.
+// Resolve role metadata outside that lock to avoid taking the swarm lock under it.
+func (s *Swarm) noteAcceptedCheck(t Task) TaskCheck {
 	role := t.Role
 	if t.Owner != "" {
 		if r := s.roleOf(t.Owner); r != "" {
 			role = r
 		}
 	}
-	g := &s.review
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	switch {
-	case role == ReviewerRole:
-		if generation := g.submitted[t.ID]; generation > g.reviewed {
-			g.reviewed = generation
+	implementation := t.Kind != TaskKindPlan && !s.isDocsTask(t) && !s.roles[role].ReadOnly
+	return func(_ *Snapshot, t Task) error {
+		g := &s.review
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		switch {
+		case role == ReviewerRole:
+			if generation := g.submitted[t.ID]; generation > g.reviewed {
+				g.reviewed = generation
+			}
+		case implementation:
+			g.merges++
+			g.last = t.ID
 		}
-	case t.Kind == TaskKindPlan || s.isDocsTask(t) || s.roles[role].ReadOnly:
-	default:
-		g.merges++
-		g.last = t.ID
+		return nil
 	}
 }
 

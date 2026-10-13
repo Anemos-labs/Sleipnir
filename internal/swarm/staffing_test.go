@@ -4,7 +4,102 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
+
+func TestAcceptanceRecordsGenerationBeforePublication(t *testing.T) {
+	r := newRVRigWith(t, Config{MaxWorkers: 8, VerifyCmd: "true", Verify: func(context.Context, string, string) (string, int, error) { return "ok", 0, nil }, Team: []string{"backend", "reviewer"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	r.sw.Board.Restore(&Snapshot{Tasks: []Task{
+		{ID: "T1", Title: "implement", Role: "backend", Status: StatusTodo},
+		{ID: "T2", Title: "review", Role: ReviewerRole, Status: StatusTodo},
+	}})
+	if err := r.sw.Board.Claim("be-1", "T1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.submitAgreementAt("be-1", "T1", 0, "implemented", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.Claim("rv-1", "T2"); err != nil {
+		t.Fatal(err)
+	}
+	review, _ := r.sw.Board.Snapshot().Task("T2")
+	hold := newHoldEvents(events.Discard{}, events.TypeBoardOp)
+	t.Cleanup(hold.open)
+	r.sw.Board.ev = hold
+	finished := make(chan string, 1)
+	go func() {
+		got := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "accept", "id": "T1"})
+		if got.IsError {
+			finished <- got.Text
+		} else {
+			finished <- ""
+		}
+	}()
+	select {
+	case <-hold.waiting:
+	case result := <-finished:
+		t.Fatalf("acceptance returned before publication: %s", result)
+	case <-time.After(5 * time.Second):
+		t.Fatal("acceptance did not reach publication")
+	}
+	if !r.sw.submitSettledTask(&member{id: review.Owner}, review, "reviewed", "read-only review") {
+		t.Fatal("review submission failed")
+	}
+	hold.open()
+	select {
+	case failed := <-finished:
+		if failed != "" {
+			t.Fatal(failed)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("acceptance did not return")
+	}
+	if got := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "accept", "id": "T2"}); got.IsError {
+		t.Fatal(got.Text)
+	}
+	if got := r.sw.reviewPending(); got != "" {
+		t.Fatalf("review missed the published acceptance: %q", got)
+	}
+	if r.sw.review.merges != 1 {
+		t.Fatalf("acceptance counted %d times", r.sw.review.merges)
+	}
+}
+
+func TestRejectedGateTransitionsDoNotRecordGeneration(t *testing.T) {
+	s := New(Config{Team: []string{"backend", "reviewer"}}, Deps{}, nil)
+	s.Board.Restore(&Snapshot{Tasks: []Task{
+		{ID: "T1", Title: "implement", Role: "backend", Status: StatusTodo},
+		{ID: "T2", Title: "plan review", Role: ReviewerRole, Kind: TaskKindPlan, Status: StatusTodo},
+	}})
+	if err := s.Board.Claim("be-1", "T1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Board.submitAgreementAt("be-1", "T1", 0, "done", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	task, _ := s.Board.Snapshot().Task("T1")
+	stale := task
+	stale.Rev++
+	if err := s.Board.Accept("mgr", "T1", "", taskGateCheck(stale), s.noteAcceptedCheck(stale)); err == nil {
+		t.Fatal("stale acceptance succeeded")
+	}
+	if s.review.merges != 0 {
+		t.Fatal("failed acceptance recorded a merge")
+	}
+	s.noteAccepted(task)
+	if err := s.Board.Claim("rv-1", "T2"); err != nil {
+		t.Fatal(err)
+	}
+	review, _ := s.Board.Snapshot().Task("T2")
+	if err := s.Board.submitAgreementAt("rv-1", "T2", review.Rev, "reviewed", "", "", s.reviewSubmission(review)); err == nil {
+		t.Fatal("missing agreement accepted")
+	}
+	if _, ok := s.review.submitted["T2"]; ok {
+		t.Fatal("failed submission recorded a generation")
+	}
+}
 
 func TestStaleReviewDoesNotCoverLaterMerge(t *testing.T) {
 	for _, kind := range []string{"", TaskKindPlan} {

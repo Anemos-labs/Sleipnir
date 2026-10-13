@@ -307,10 +307,9 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 			if task.Agreement == "" {
 				return tools.Errorf("%s has no agreement to accept", task.ID)
 			}
-			if err := s.Board.Accept(me, task.ID, in.Text, taskGateCheck(task)); err != nil {
+			if err := s.Board.Accept(me, task.ID, in.Text, taskGateCheck(task), s.noteAcceptedCheck(task)); err != nil {
 				return tools.Errorf("%v", err)
 			}
-			s.noteAccepted(task)
 			return text("%s agreement accepted; dependent work may start", task.ID)
 		}
 		if s.hadTree(task.Owner) {
@@ -328,10 +327,9 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 			return &tools.Result{IsError: true, Text: fmt.Sprintf("%s was not accepted: verification `%s` failed (exit %d). Reject it with feedback, or fix it.\n%s",
 				in.ID, ExpandVerify(s.cfg.VerifyCmd, c.Env.Cwd, task.Files), vr.code, tail)}
 		}
-		if err := s.Board.Accept(me, in.ID, in.Text, taskGateCheck(task)); err != nil {
+		if err := s.Board.Accept(me, in.ID, in.Text, taskGateCheck(task), s.noteAcceptedCheck(task)); err != nil {
 			return tools.Errorf("%v", err)
 		}
-		s.noteAccepted(task)
 		if last := s.reviewPending(); last != "" && s.roleOf(task.Owner) != ReviewerRole {
 			return text("%s accepted. The merged result is not reviewed yet: a reviewer task is due before the goal is reported met", in.ID)
 		}

@@ -782,13 +782,13 @@ func (b *Board) submitAgreementAt(agent, id string, rev uint64, result, evidence
 		if rev != 0 && t.Rev != rev {
 			return fmt.Errorf("%s was reassigned while you worked on it", id)
 		}
+		if t.Kind == TaskKindPlan && agreement == "" {
+			return fmt.Errorf("%s is a planning task: submit the full contract with task done's agreement field", id)
+		}
 		for _, check := range checks {
 			if err := check(d.Snapshot, t); err != nil {
 				return err
 			}
-		}
-		if t.Kind == TaskKindPlan && agreement == "" {
-			return fmt.Errorf("%s is a planning task: submit the full contract with task done's agreement field", id)
 		}
 		t.Status, t.Line = StatusReview, ""
 		t.VerificationFailures = 0
