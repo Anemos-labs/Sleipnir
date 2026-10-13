@@ -226,18 +226,18 @@ func (c *Controller) Step(ctx context.Context) (Directive, error) {
 	if pr.Number <= 0 || pr.HeadRefOid == "" {
 		return d, fmt.Errorf("GitHub returned an incomplete PR snapshot")
 	}
-	if c.State.PushRepo == "" || c.State.Base == "" {
-		pushRepo, base, err := c.checkoutIdentity(ctx)
+	pushRepo, base := c.State.PushRepo, c.State.Base
+	if pushRepo == "" || base == "" {
+		pushRepo, base, err = c.checkoutIdentity(ctx)
 		if err != nil {
 			return d, err
 		}
-		c.State.PushRepo, c.State.Base = pushRepo, base
 	}
 	if pr.HeadRepository == nil || pr.HeadRepository.Name == "" || pr.HeadRepositoryOwner == nil || pr.HeadRepositoryOwner.Login == "" || pr.BaseRefName == "" {
 		return d, fmt.Errorf("cannot establish PR head repository and base branch identity")
 	}
-	if !strings.EqualFold(pr.HeadRepositoryOwner.Login+"/"+pr.HeadRepository.Name, c.State.PushRepo) || pr.BaseRefName != c.State.Base {
-		return d, fmt.Errorf("PR does not match intended push repository %s and base branch %s; configure the checkout push remote and branch.<name>.gh-merge-base for a nondefault base, then restart delivery", c.State.PushRepo, c.State.Base)
+	if !strings.EqualFold(pr.HeadRepositoryOwner.Login+"/"+pr.HeadRepository.Name, pushRepo) || pr.BaseRefName != base {
+		return d, fmt.Errorf("PR does not match intended push repository %s and base branch %s; configure the checkout push remote and branch.<name>.gh-merge-base for a nondefault base, then restart delivery", pushRepo, base)
 	}
 	if c.State.PR == "" {
 		b, err = c.Exec(ctx, "git", "rev-parse", "HEAD")
@@ -248,6 +248,7 @@ func (c *Controller) Step(ctx context.Context) (Directive, error) {
 			return d, fmt.Errorf("discovered PR %s head does not match local HEAD; commit and push the intended checkout, then retry delivery", pr.URL)
 		}
 	}
+	c.State.PushRepo, c.State.Base = pushRepo, base
 	if c.State.Head != pr.HeadRefOid {
 		if c.State.MergeEnabled && pr.State == "OPEN" {
 			if err := c.disableMerge(ctx); err != nil {

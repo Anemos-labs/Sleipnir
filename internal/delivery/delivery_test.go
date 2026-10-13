@@ -374,6 +374,36 @@ func TestDiscoveryIdentity(t *testing.T) {
 	}
 }
 
+func TestRejectedDiscoveryCanResumeWithCorrectedBase(t *testing.T) {
+	c, f := setup(t, Options{AutoFix: true})
+	f.pr.BaseRefName = "release"
+	if _, err := c.Step(context.Background()); err == nil {
+		t.Fatal("accepted wrong base")
+	}
+	if c.State.PR != "" || c.State.PushRepo != "" || c.State.Base != "" {
+		t.Fatalf("persisted rejected binding: %+v", c.State)
+	}
+	if err := c.Save(); err != nil {
+		t.Fatal(err)
+	}
+	run := func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if name == "git" && args[0] == "config" {
+			return []byte("release"), nil
+		}
+		return f.exec(ctx, name, args...)
+	}
+	resumed, err := Load(c.Path, run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resumed.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if resumed.State.PR == "" || resumed.State.Base != "release" || resumed.State.PushRepo != "owner/repo" {
+		t.Fatalf("corrected binding not pinned: %+v", resumed.State)
+	}
+}
+
 func TestDiscoveryConfiguredPushAndBase(t *testing.T) {
 	c, f := setup(t, Options{AutoFix: true})
 	f.pr.HeadRepositoryOwner.Login = "fork-owner"

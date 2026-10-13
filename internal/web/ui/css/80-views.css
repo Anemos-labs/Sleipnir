@@ -17,7 +17,7 @@
 .stack .brk{position:absolute;top:-5px;bottom:-5px;width:2px;background:var(--bright)}
 .layer-labels{display:flex;margin:0 10px;font:600 11px var(--f-num);position:relative;height:30px}
 .layer-labels span{flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-top:3px;color:var(--lc)}
-.layer-labels span small{display:block;font:400 10px var(--f-ui);color:var(--dim)}
+.layer-labels span small{display:block;overflow:hidden;text-overflow:ellipsis;font:400 10px var(--f-ui);color:var(--dim)}
 .sharedbr{margin:4px 10px 0;height:10px;border:solid var(--mgr);border-width:0 1px 1px 1px;position:relative;opacity:.7}
 .sharedbr+.shl{margin:0 10px;font:500 11px var(--f-num);color:var(--mgr)}
 .legend2{display:flex;gap:16px;padding:7px 10px 4px;font:500 11.5px var(--f-ui);color:var(--dim);flex-wrap:wrap;align-items:center}
