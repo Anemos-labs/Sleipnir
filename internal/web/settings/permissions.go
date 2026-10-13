@@ -7,6 +7,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/swarm"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
@@ -26,12 +27,9 @@ var permOrder = []string{
 	"the mode's defaults",
 }
 
-// managerWritesText is what a manager's write is refused with: the text of internal/swarm's managerWritesMsg (a test keeps the two
-// equal).
-const managerWritesText = "the manager does not edit files: spawn a worker for the change (or reuse an idle one with spawn agent=...), then review its work"
-
-// managerWritesNote says what the refusal covers.
-const managerWritesNote = "the manager edits no file in any mode: its writes and writing shell commands are refused at run time"
+// managerWritesText and managerWritesNote share the runtime's manager policy text.
+const managerWritesText = swarm.ManagerAuthorityText
+const managerWritesNote = swarm.ManagerAuthorityNote
 
 // Origins of configuration rules, as the Permissions page names them.
 var layerOrigin = map[string]string{

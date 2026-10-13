@@ -19,7 +19,7 @@
   ];
   /** The roles the harness builds in (internal/swarm/roles.go); the server's list replaces it. */
   const ROLES = {
-    manager: { code: 'mgr', ro: false, desc: 'plans, splits the work, delegates, reviews; edits no file' },
+    manager: { code: 'mgr', ro: false, desc: 'coordinates pools and handles direct work' },
     architect: { code: 'ar', ro: true, desc: 'owns planning tasks: interfaces, data shapes, ownership, acceptance criteria; writes no code' },
     scout: { code: 'sc', ro: true, desc: 'maps the code and outside sources (repositories, docs on the web)' },
     backend: { code: 'be', ro: false, desc: 'APIs, data access, services, migrations, background jobs, and their tests' },

@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"github.com/anemos-labs/sleipnir/internal/swarm"
 	"strconv"
 	"strings"
 	"time"
@@ -66,7 +67,7 @@ func (k *chatLook) bannerLines(info ChatInfo, width int) []cell.Line {
 	help := "Message Sleipnir, / for commands, @ for files. Esc interrupts a turn; Ctrl-C twice at the prompt, Ctrl-D or /exit quits."
 	out = append(out, paragraph(k.st.dim, help, width)...)
 	if info.Workers > 0 && info.Resumed == "" {
-		out = append(out, paragraph(k.st.dim, "The manager plans, hands the parts to workers that write in parallel, and reviews their work; it edits no file itself.", width)...)
+		out = append(out, paragraph(k.st.dim, swarm.ManagerAuthorityText+" "+swarm.ManagerAuthorityNote, width)...)
 	}
 	if info.Update != "" {
 		out = append(out, paragraph(k.st.info, clean(info.Update), width)...)

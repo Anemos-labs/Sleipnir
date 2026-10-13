@@ -260,7 +260,7 @@ func TestRoster(t *testing.T) {
 		h.feed(b.add(time.Second, "mgr", "agent.spawn", map[string]any{"id": "ts-" + jsNum(float64(i+1)), "role": "tester"}))
 	}
 	r := h.tr.Roster()
-	if len(r) != 12 || r[0].ID != "mgr" || r[0].Scope != "- (edits no file)" || r[0].Model != "m1" || r[0].Leg != -1 {
+	if len(r) != 12 || r[0].ID != "mgr" || r[0].Scope != "**" || r[0].Model != "m1" || r[0].Leg != -1 {
 		t.Fatalf("roster: %+v", r)
 	}
 	if sc := r[1]; sc.ID != "sc-1" || !sc.RO || sc.Scope != "- (read-only)" || sc.K != 1 || sc.Leg != 1 || sc.Code != "sc" || sc.Nth != 1 || sc.Model != "m2" || sc.Spawn != 2 {

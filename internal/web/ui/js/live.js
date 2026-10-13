@@ -256,7 +256,7 @@
   function rosterOf(events) {
     const ids = ['mgr'], seen = { mgr: true }, codeRole = {}; Object.keys(SL.D.roles).forEach(r => { codeRole[SL.D.roles[r].code] = r; });
     events.forEach(e => { const id = e.k === 'mail' ? null : e.k === 'ask' ? e.q && e.q.agent : e.id; if (!id || seen[id] || !/^[a-z]+-\d+$/.test(id)) return; seen[id] = true; ids.push(id); });
-    return ids.map((id, i) => { const code = id === 'mgr' ? 'mgr' : id.split('-')[0], role = id === 'mgr' ? 'manager' : codeRole[code] || code, ro = !!(SL.D.roles[role] && SL.D.roles[role].ro); return { id, role, code, nth: id === 'mgr' ? 0 : +id.split('-')[1] || 1, k: i, leg: id === 'mgr' ? -1 : (i - 1) % 8, scope: id === 'mgr' ? '- (edits no file)' : ro ? '- (read-only)' : '', ro, model: '', spawn: 0 }; });
+    return ids.map((id, i) => { const code = id === 'mgr' ? 'mgr' : id.split('-')[0], role = id === 'mgr' ? 'manager' : codeRole[code] || code, ro = !!(SL.D.roles[role] && SL.D.roles[role].ro); return { id, role, code, nth: id === 'mgr' ? 0 : +id.split('-')[1] || 1, k: i, leg: id === 'mgr' ? -1 : (i - 1) % 8, scope: id === 'mgr' ? '**' : ro ? '- (read-only)' : '', ro, model: '', spawn: 0 }; });
   }
   /** Fetch a recorded session's UI events from `from` (GET /api/recorded/{sid}/events, page by page) until the server says there are
    *  no more, or MAX_EVENTS (L.maxEvents when set) were read: then cut is true (the log has more than the page holds). Resolves {ok, events, next, cut}. */

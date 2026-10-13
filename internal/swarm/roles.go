@@ -7,6 +7,12 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/kv"
 )
 
+// ManagerAuthorityText describes the manager's runtime policy in both interfaces.
+const ManagerAuthorityText = "The manager can edit files and run commands under the session's permissions."
+
+// ManagerAuthorityNote explains when the manager uses its persistent workers.
+const ManagerAuthorityNote = "Substantial work uses persistent role pools; the manager handles direct requests and GitHub operations."
+
 // Role is a kind of agent. All agents of one role share a role pin, so its
 // conventions are cached once and read by every one of them.
 type Role struct {

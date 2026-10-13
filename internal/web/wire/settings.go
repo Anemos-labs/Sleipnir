@@ -217,7 +217,7 @@ type PermissionsView struct {
 	Session       []Rule            `json:"session"`
 }
 
-// ManagerWrites is what a manager's write is refused with.
+// ManagerWrites describes the manager's authority under session permissions.
 type ManagerWrites struct {
 	Text string `json:"text"`
 	Note string `json:"note"`

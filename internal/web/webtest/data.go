@@ -111,7 +111,7 @@ func Models() wire.ModelsView {
 		},
 		Favs: []string{"anthropic/claude-sonnet-5-5", "anthropic/claude-haiku-5-5"},
 		Roles: []wire.RoleInfo{
-			{Name: "manager", Code: "mgr", Desc: "plans, delegates and reviews; edits no file"},
+			{Name: "manager", Code: "mgr", Desc: "coordinates pools and handles direct work"},
 			{Name: "scout", Code: "sc", RO: true, Desc: "reads and reports; cannot write"},
 			{Name: "backend", Code: "be", Desc: "writes server code"},
 			{Name: "frontend", Code: "fe", Desc: "writes the page"},
@@ -150,7 +150,7 @@ func Permissions(mode string) wire.PermissionsView {
 			{ID: "yolo", Danger: true, Text: "asks for nothing at all"},
 		},
 		Order:         []string{"hard denies", "deny rules", "ask rules", "allow rules", "the mode"},
-		ManagerWrites: wire.ManagerWrites{Text: "the manager edits no file: spawn a worker", Note: "in a team the manager's write tools are refused whatever the mode"},
+		ManagerWrites: wire.ManagerWrites{Text: "The manager can edit files and run commands under the session's permissions.", Note: "Substantial work uses persistent role pools; the manager handles direct requests and GitHub operations."},
 		TestsPreset:   wire.TestsPreset{Name: "tests", Summary: "go, cargo, npm and make: test, build, check, lint and vet; never install or run", Rules: TestsPreset()},
 		Rules: map[string][]wire.Rule{
 			"allow": {{Effect: "allow", Rule: "Bash(go test:*)", Origin: "--allow flag"}},

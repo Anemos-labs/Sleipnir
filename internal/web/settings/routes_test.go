@@ -125,7 +125,7 @@ func TestTheKeyRouteIsNotServed(t *testing.T) {
 // Texts this package keeps a copy of stay those of their source.
 func TestCopiedTextsMatchTheirSources(t *testing.T) {
 	for file, want := range map[string][]string{
-		filepath.Join("..", "..", "swarm", "swarm.go"):            {managerWritesText},
+		filepath.Join("..", "..", "swarm", "roles.go"):            {managerWritesText},
 		filepath.Join("..", "..", "tui", "app", "chat_dialog.go"): {"Yes, use them this time", "Yes, and remember them until they change", "No, leave them out"},
 	} {
 		b, err := os.ReadFile(file)
