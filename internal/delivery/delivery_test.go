@@ -5,9 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/skills/mdfile"
 )
 
 type githubFake struct {
@@ -20,21 +25,41 @@ type githubFake struct {
 func (f *githubFake) exec(_ context.Context, name string, args ...string) ([]byte, error) {
 	c := name + " " + strings.Join(args, " ")
 	f.calls = append(f.calls, c)
+	if name == "gh" && len(args) >= 3 && args[0] == "pr" && args[1] == "view" && strings.HasPrefix(args[2], "--") && slices.Contains(args, "--repo") {
+		return []byte("argument required when using the --repo flag"), errors.New("missing PR selector")
+	}
+	if slices.Contains(args, "--slurp") {
+		return nil, errors.New("unknown flag: --slurp")
+	}
 	switch {
+	case strings.HasPrefix(c, "git for-each-ref"):
+		return []byte("origin\n"), nil
+	case strings.HasPrefix(c, "git remote get-url"):
+		return []byte("https://github.com/owner/repo\n"), nil
+	case strings.HasPrefix(c, "git config"):
+		return nil, nil
+	case c == "git rev-parse HEAD":
+		return []byte(f.pr.HeadRefOid), nil
+	case c == "git symbolic-ref --quiet --short HEAD":
+		return []byte("codex/delivery-fix\n"), nil
 	case strings.Contains(c, "comments,reviews"):
 		if f.summary == "" {
 			return []byte(`{"comments":[],"reviews":[]}`), nil
 		}
 		return []byte(f.summary), nil
+	case strings.Contains(c, "pr list"):
+		return []byte(f.pr.URL), nil
 	case strings.Contains(c, "pr view"):
 		return json.Marshal(f.pr)
 	case strings.Contains(c, "api graphql"):
 		if f.threads == "" {
-			return []byte(`[{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}]`), nil
+			return []byte(`{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[],"pageInfo":{"hasNextPage":false}}}}}}`), nil
 		}
 		return []byte(f.threads), nil
 	case strings.Contains(c, "squashMergeAllowed"):
 		return []byte(`{"mergeCommitAllowed":true}`), nil
+	case strings.Contains(c, "defaultBranchRef"):
+		return []byte("main\n"), nil
 	case strings.Contains(c, "repo view"):
 		return []byte("owner/repo\n"), nil
 	case strings.Contains(c, "pr merge"):
@@ -51,6 +76,9 @@ func (f *githubFake) exec(_ context.Context, name string, args ...string) ([]byt
 func setup(t *testing.T, options Options) (*Controller, *githubFake) {
 	t.Helper()
 	f := &githubFake{pr: pull{Number: 4, URL: "https://github.com/owner/repo/pull/4", HeadRefOid: "head-a", State: "OPEN", MergeStateStatus: "CLEAN"}}
+	f.pr.BaseRefName = "main"
+	f.pr.HeadRepository = &struct{ Name string }{"repo"}
+	f.pr.HeadRepositoryOwner = &struct{ Login string }{"owner"}
 	c := &Controller{Path: filepath.Join(t.TempDir(), "delivery.json"), Exec: f.exec}
 	if err := c.Start("repair cache", options); err != nil {
 		t.Fatal(err)
@@ -287,5 +315,249 @@ func TestReviewVerdictAcceptsOnlyTheFinalStructuredBlock(t *testing.T) {
 	}
 	if c.State.ReviewVerdict != "pending" {
 		t.Fatal("accepted a verdict preceding contradictory prose")
+	}
+}
+
+func TestDiscoveryPinsPRAndReadsEveryReviewPage(t *testing.T) {
+	c, f := setup(t, Options{AutoFix: true})
+	c.Exec = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if slices.Contains(args, "graphql") {
+			if strings.Contains(strings.Join(args, " "), `after:null`) {
+				return []byte(`{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[],"pageInfo":{"hasNextPage":true,"endCursor":"page-two"}}}}}}`), nil
+			}
+			return []byte(`{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"id":"late-thread","isResolved":false,"comments":{"nodes":[{"body":"repair this finding"}]}}],"pageInfo":{"hasNextPage":false}}}}}}`), nil
+		}
+		return f.exec(ctx, name, args...)
+	}
+	d, err := c.Step(context.Background())
+	if err != nil || !strings.Contains(d.Prompt, "late-thread") {
+		t.Fatalf("paginated discovery: %+v %v", d, err)
+	}
+	if c.State.PR != f.pr.URL {
+		t.Fatalf("PR not pinned: %+v", c.State)
+	}
+	f.calls = nil
+	if _, err := c.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, call := range f.calls {
+		if strings.HasPrefix(call, "git ") {
+			t.Fatalf("rediscovered branch after pinning PR: %s", call)
+		}
+	}
+}
+
+func TestDiscoveryIdentity(t *testing.T) {
+	for _, kind := range []string{"fork", "unknown", "base", "later fork"} {
+		t.Run(kind, func(t *testing.T) {
+			c, f := setup(t, Options{AutoFix: true})
+			if kind == "later fork" {
+				if _, err := c.Step(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			switch kind {
+			case "fork", "later fork":
+				f.pr.HeadRepositoryOwner.Login = "outsider"
+			case "unknown":
+				f.pr.HeadRepository = nil
+			case "base":
+				f.pr.BaseRefName = "other"
+			}
+			if _, err := c.Step(context.Background()); err == nil {
+				t.Fatal("authorized mismatched identity")
+			}
+			if kind != "later fork" && c.State.PR != "" {
+				t.Fatal("pinned rejected PR")
+			}
+		})
+	}
+}
+
+func TestRejectedDiscoveryCanResumeWithCorrectedBase(t *testing.T) {
+	c, f := setup(t, Options{AutoFix: true})
+	f.pr.BaseRefName = "release"
+	if _, err := c.Step(context.Background()); err == nil {
+		t.Fatal("accepted wrong base")
+	}
+	if c.State.PR != "" || c.State.PushRepo != "" || c.State.Base != "" {
+		t.Fatalf("persisted rejected binding: %+v", c.State)
+	}
+	if err := c.Save(); err != nil {
+		t.Fatal(err)
+	}
+	run := func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if name == "git" && args[0] == "config" {
+			return []byte("release"), nil
+		}
+		return f.exec(ctx, name, args...)
+	}
+	resumed, err := Load(c.Path, run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resumed.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if resumed.State.PR == "" || resumed.State.Base != "release" || resumed.State.PushRepo != "owner/repo" {
+		t.Fatalf("corrected binding not pinned: %+v", resumed.State)
+	}
+}
+
+func TestDiscoveryConfiguredPushAndBase(t *testing.T) {
+	c, f := setup(t, Options{AutoFix: true})
+	f.pr.HeadRepositoryOwner.Login = "fork-owner"
+	f.pr.BaseRefName = "release"
+	c.Exec = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if name == "git" && args[0] == "config" {
+			return []byte("release"), nil
+		}
+		if name == "gh" && slices.Contains(args, "https://github.com/owner/repo") {
+			return []byte("fork-owner/repo"), nil
+		}
+		return f.exec(ctx, name, args...)
+	}
+	if _, err := c.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if c.State.PushRepo != "fork-owner/repo" || c.State.Base != "release" {
+		t.Fatalf("binding: %+v", c.State)
+	}
+}
+
+func TestReviewPaginationFailsClosed(t *testing.T) {
+	for _, page := range []string{
+		`{"nodes":[]}`,
+		`{"nodes":[],"pageInfo":{"hasNextPage":true}}`,
+		`{"nodes":[],"pageInfo":{"hasNextPage":true,"endCursor":"repeat"}}`,
+		`{"nodes":[],"pageInfo":{"hasNextPage":"invalid"}}`,
+	} {
+		t.Run(page, func(t *testing.T) {
+			c, f := setup(t, Options{AutoFix: true})
+			f.threads = `{"data":{"repository":{"pullRequest":{"reviewThreads":` + page + `}}}}`
+			if _, err := c.Step(context.Background()); err == nil {
+				t.Fatal("accepted incomplete pagination")
+			}
+		})
+	}
+}
+
+func TestGeneratedStepCommandsRespectGuardedAsks(t *testing.T) {
+	c, f := setup(t, Options{AutoFix: true})
+	root := t.TempDir()
+	e, err := perm.NewEngine(perm.Config{Mode: perm.ModeBypass, Root: root, Home: t.TempDir(), Ask: []string{"Edit(./.sleipnir/**)", "Edit(./.claude/**)", "Edit(./.git/hooks/**)", "Edit(./.git/config)", "Edit(~/.sleipnir/**)", "Edit(~/.claude/**)"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages := 0
+	c.Exec = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		words := []string{name}
+		for _, arg := range args {
+			words = append(words, mdfile.ShellQuote(arg))
+		}
+		command := strings.Join(words, " ")
+		v := e.Classify(perm.Request{Tool: "Bash", Cwd: root, Command: command})
+		// Windows currently rejects URL and GraphQL colons as unsupported path streams.
+		// Assert that exact hard denial, not a protected-file ask or any other denial.
+		windowsOperand := ""
+		for _, arg := range args {
+			if arg == "https://github.com/owner/repo/pull/4" || arg == "https://github.com/owner/repo" ||
+				arg == `query=query{repository(owner:"owner",name:"repo"){pullRequest(number:4){reviewThreads(first:100,after:null){nodes{id isResolved comments(first:100){nodes{body url author{login}}}} pageInfo{hasNextPage endCursor}}}}}` ||
+				arg == `query=query{repository(owner:"owner",name:"repo"){pullRequest(number:4){reviewThreads(first:100,after:"next"){nodes{id isResolved comments(first:100){nodes{body url author{login}}}} pageInfo{hasNextPage endCursor}}}}}` {
+				windowsOperand = arg
+				break
+			}
+		}
+		if runtime.GOOS == "windows" && windowsOperand != "" {
+			want := "Windows streams, device names, and names ending in dots or spaces are not supported: " + windowsOperand
+			if v.Verdict != perm.Deny || v.Tier != "hard" || v.NoOneToAsk || strings.Contains(v.Rule, "Edit(") || v.Why != want {
+				t.Fatalf("unexpected Windows operand classification: %+v\n%s", v, command)
+			}
+		} else if v.Verdict != perm.Allow || strings.Contains(v.Rule, "Edit(") {
+			t.Fatalf("generated command blocked: %+v\n%s", v, command)
+		}
+		if slices.Contains(args, "graphql") {
+			pages++
+			if pages == 1 {
+				return []byte(`{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[],"pageInfo":{"hasNextPage":true,"endCursor":"next"}}}}}}`), nil
+			}
+		}
+		return f.exec(ctx, name, args...)
+	}
+	if _, err := c.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if pages != 2 {
+		t.Fatalf("pages = %d", pages)
+	}
+}
+
+func TestDiscoveryNumericBranchUsesResolvedURL(t *testing.T) {
+	c, f := setup(t, Options{AutoFix: true})
+	c.Exec = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if name == "git" && args[0] == "symbolic-ref" {
+			return []byte("94\n"), nil
+		}
+		if name == "gh" && len(args) > 2 && args[0] == "pr" {
+			switch args[1] {
+			case "list":
+				if !slices.Contains(args, "--head") || !slices.Contains(args, "94") {
+					t.Fatalf("missing head branch filter: %v", args)
+				}
+			case "view":
+				if args[2] != f.pr.URL {
+					t.Fatalf("ambiguous PR selector: %v", args)
+				}
+			}
+		}
+		return f.exec(ctx, name, args...)
+	}
+	if _, err := c.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDiscoveryWithoutPRRequestsOpening(t *testing.T) {
+	c, f := setup(t, Options{AutoFix: true})
+	c.Exec = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if name == "gh" && len(args) > 2 && args[0] == "pr" && args[1] == "list" {
+			if !slices.Contains(args, "codex/delivery-fix") {
+				t.Fatalf("missing working branch selector: %v", args)
+			}
+			return nil, nil
+		}
+		return f.exec(ctx, name, args...)
+	}
+	d, err := c.Step(context.Background())
+	if err != nil || d.Phase != "opening" || d.Prompt == "" {
+		t.Fatalf("missing PR: %+v %v", d, err)
+	}
+}
+
+func TestDiscoveryRefusesAmbiguityAndHeadMismatch(t *testing.T) {
+	for _, scenario := range []string{"ambiguous", "head mismatch"} {
+		t.Run(scenario, func(t *testing.T) {
+			c, f := setup(t, Options{AutoFix: true, AutoMerge: true})
+			c.Exec = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+				if scenario == "ambiguous" && name == "gh" && len(args) > 1 && args[1] == "list" {
+					return []byte(f.pr.URL + "\nhttps://github.com/owner/repo/pull/5\n"), nil
+				}
+				if scenario == "head mismatch" && name == "git" && args[0] == "rev-parse" {
+					return []byte("other-head\n"), nil
+				}
+				return f.exec(ctx, name, args...)
+			}
+			_, err := c.Step(context.Background())
+			guidance := "one matching open PR"
+			if scenario == "head mismatch" {
+				guidance = "commit and push the intended checkout"
+			}
+			if err == nil || !strings.Contains(err.Error(), guidance) {
+				t.Fatalf("expected actionable refusal: %v", err)
+			}
+			if c.State.PR != "" || c.State.Head != "" || c.State.MergeEnabled {
+				t.Fatalf("authorized mismatching discovery: %+v", c.State)
+			}
+		})
 	}
 }

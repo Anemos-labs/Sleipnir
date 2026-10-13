@@ -27,6 +27,8 @@ type State struct {
 	Options
 	Objective     string    `json:"objective"`
 	Repo          string    `json:"repo"`
+	PushRepo      string    `json:"pushRepo,omitempty"`
+	Base          string    `json:"base,omitempty"`
 	PR            string    `json:"pr"`
 	Head          string    `json:"head"`
 	Phase         string    `json:"phase"`
@@ -127,10 +129,48 @@ type Directive struct {
 	Phase        string
 }
 
+// checkoutIdentity derives authorization from Git configuration, never PR text.
+// gh also uses branch.<name>.gh-merge-base when creating a nondefault-base PR.
+func (c *Controller) checkoutIdentity(ctx context.Context) (string, string, error) {
+	read := func(name string, args ...string) (string, error) {
+		b, err := c.Exec(ctx, name, args...)
+		return strings.TrimSpace(string(b)), err
+	}
+	branch, err := read("git", "symbolic-ref", "--quiet", "--short", "HEAD")
+	if err != nil || branch == "" {
+		return "", "", fmt.Errorf("cannot establish delivery checkout branch: %v", err)
+	}
+	remote, err := read("git", "for-each-ref", "--format=%(push:remotename)", "refs/heads/"+branch)
+	if err != nil || remote == "" || remote == "." || len(strings.Fields(remote)) != 1 {
+		return "", "", fmt.Errorf("cannot establish intended push repository; configure the checkout push remote and retry delivery")
+	}
+	url, err := read("git", "remote", "get-url", "--push", "--all", remote)
+	if err != nil || len(strings.Fields(url)) != 1 {
+		return "", "", fmt.Errorf("cannot establish one intended push URL for remote %q", remote)
+	}
+	pushRepo, err := read("gh", "repo", "view", url, "--json", "nameWithOwner", "--jq", ".nameWithOwner")
+	if err != nil || len(strings.Split(pushRepo, "/")) != 2 || pushRepo == "/" {
+		return "", "", fmt.Errorf("cannot establish intended push repository for remote %q: %v", remote, err)
+	}
+	base, err := read("git", "config", "--default", "", "--get", "branch."+branch+".gh-merge-base")
+	if err != nil {
+		return "", "", fmt.Errorf("read intended delivery base: %w", err)
+	}
+	if base == "" {
+		base, err = read("gh", "repo", "view", c.State.Repo, "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name")
+	}
+	if err != nil || base == "" || base == "null" || len(strings.Fields(base)) != 1 {
+		return "", "", fmt.Errorf("cannot establish intended base branch; configure branch.%s.gh-merge-base and retry delivery", branch)
+	}
+	return pushRepo, base, nil
+}
+
 // pull is the subset of GitHub's PR snapshot used for completion decisions.
 type pull struct {
 	Number                                                                             int
 	URL, HeadRefOid, HeadRefName, BaseRefName, State, MergeStateStatus, ReviewDecision string
+	HeadRepository                                                                     *struct{ Name string }
+	HeadRepositoryOwner                                                                *struct{ Login string }
 	IsDraft                                                                            bool
 	MergeCommit                                                                        struct{ Oid string }
 	StatusCheckRollup                                                                  []struct{ Name, Status, Conclusion, State string }
@@ -147,18 +187,36 @@ func (c *Controller) Step(ctx context.Context) (Directive, error) {
 		}
 		c.State.Repo = strings.TrimSpace(string(b))
 	}
-	args := []string{"pr", "view"}
-	if c.State.PR != "" {
-		args = append(args, c.State.PR)
-	}
-	args = append(args, "--repo", c.State.Repo, "--json", "number,url,headRefOid,headRefName,baseRefName,state,mergeStateStatus,reviewDecision,isDraft,statusCheckRollup,mergeCommit")
-	b, err := c.Exec(ctx, "gh", args...)
-	if err != nil {
-		if c.State.PR == "" && strings.Contains(strings.ToLower(string(b)), "no pull requests") {
+	selector := c.State.PR
+	if selector == "" {
+		// With --repo, gh requires an explicit selector even inside a checkout.
+		b, err := c.Exec(ctx, "git", "symbolic-ref", "--quiet", "--short", "HEAD")
+		if err != nil {
+			return d, fmt.Errorf("discover delivery branch: %w", err)
+		}
+		branch := strings.TrimSpace(string(b))
+		if branch == "" {
+			return d, fmt.Errorf("delivery requires a working branch")
+		}
+		b, err = c.Exec(ctx, "gh", "pr", "list", "--repo", c.State.Repo, "--head", branch, "--state", "open", "--limit", "2", "--json", "url", "--jq", ".[].url")
+		if err != nil {
+			return d, err
+		}
+		matches := strings.Fields(string(b))
+		if len(matches) == 0 {
 			d.Prompt = "Create a pull request for this completed objective on its working branch. Commit and push the assembled verified work; reuse an existing matching PR. Do this directly without creating a worker task merely to open the PR."
 			d.Phase = "opening"
 			return c.finish(d)
 		}
+		if len(matches) != 1 {
+			return d, fmt.Errorf("multiple open pull requests match branch %q; delivery cannot choose safely until the branch has one matching open PR", branch)
+		}
+		selector = matches[0]
+	}
+	args := []string{"pr", "view", selector}
+	args = append(args, "--repo", c.State.Repo, "--json", "number,url,headRefOid,headRefName,headRepository,headRepositoryOwner,baseRefName,state,mergeStateStatus,reviewDecision,isDraft,statusCheckRollup,mergeCommit")
+	b, err := c.Exec(ctx, "gh", args...)
+	if err != nil {
 		return d, err
 	}
 	var pr pull
@@ -168,6 +226,29 @@ func (c *Controller) Step(ctx context.Context) (Directive, error) {
 	if pr.Number <= 0 || pr.HeadRefOid == "" {
 		return d, fmt.Errorf("GitHub returned an incomplete PR snapshot")
 	}
+	pushRepo, base := c.State.PushRepo, c.State.Base
+	if pushRepo == "" || base == "" {
+		pushRepo, base, err = c.checkoutIdentity(ctx)
+		if err != nil {
+			return d, err
+		}
+	}
+	if pr.HeadRepository == nil || pr.HeadRepository.Name == "" || pr.HeadRepositoryOwner == nil || pr.HeadRepositoryOwner.Login == "" || pr.BaseRefName == "" {
+		return d, fmt.Errorf("cannot establish PR head repository and base branch identity")
+	}
+	if !strings.EqualFold(pr.HeadRepositoryOwner.Login+"/"+pr.HeadRepository.Name, pushRepo) || pr.BaseRefName != base {
+		return d, fmt.Errorf("PR does not match intended push repository %s and base branch %s; configure the checkout push remote and branch.<name>.gh-merge-base for a nondefault base, then restart delivery", pushRepo, base)
+	}
+	if c.State.PR == "" {
+		b, err = c.Exec(ctx, "git", "rev-parse", "HEAD")
+		if err != nil {
+			return d, fmt.Errorf("discover delivery checkout head: %w", err)
+		}
+		if strings.TrimSpace(string(b)) != pr.HeadRefOid {
+			return d, fmt.Errorf("discovered PR %s head does not match local HEAD; commit and push the intended checkout, then retry delivery", pr.URL)
+		}
+	}
+	c.State.PushRepo, c.State.Base = pushRepo, base
 	if c.State.Head != pr.HeadRefOid {
 		if c.State.MergeEnabled && pr.State == "OPEN" {
 			if err := c.disableMerge(ctx); err != nil {
@@ -317,16 +398,16 @@ func (c *Controller) reviews(ctx context.Context, number int) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("invalid repository name")
 	}
-	query := `query($owner:String!,$repo:String!,$number:Int!,$endCursor:String){repository(owner:$owner,name:$repo){pullRequest(number:$number){reviewThreads(first:100,after:$endCursor){nodes{id isResolved comments(first:100){nodes{body url author{login}}}} pageInfo{hasNextPage endCursor}}}}}`
-	b, err := c.Exec(ctx, "gh", "api", "graphql", "--paginate", "--slurp", "-f", "query="+query, "-f", "owner="+owner, "-f", "repo="+repo, "-F", fmt.Sprintf("number=%d", number))
-	if err != nil {
-		return "", err
-	}
-	var pages []struct {
+	literal := func(s string) string { b, _ := json.Marshal(s); return string(b) }
+	type reviewPage struct {
 		Data *struct {
 			Repository *struct {
 				PullRequest *struct {
-					ReviewThreads struct {
+					ReviewThreads *struct {
+						PageInfo *struct {
+							HasNextPage *bool
+							EndCursor   string
+						}
 						Nodes []struct {
 							ID         string
 							IsResolved bool
@@ -342,18 +423,27 @@ func (c *Controller) reviews(ctx context.Context, number int) (string, error) {
 			}
 		}
 	}
-	if err = json.Unmarshal(b, &pages); err != nil {
-		return "", err
-	}
-	if len(pages) == 0 {
-		return "", fmt.Errorf("GitHub returned no review snapshot")
-	}
 	var out strings.Builder
-	for _, page := range pages {
+	after := "null"
+	seen := make(map[string]bool)
+	for count := 0; count < 100; count++ {
+		query := fmt.Sprintf(`query{repository(owner:%s,name:%s){pullRequest(number:%d){reviewThreads(first:100,after:%s){nodes{id isResolved comments(first:100){nodes{body url author{login}}}} pageInfo{hasNextPage endCursor}}}}}`, literal(owner), literal(repo), number, after)
+		b, err := c.Exec(ctx, "gh", "api", "graphql", "-f", "query="+query)
+		if err != nil {
+			return "", err
+		}
+		var page reviewPage
+		if err := json.Unmarshal(b, &page); err != nil {
+			return "", err
+		}
 		if page.Data == nil || page.Data.Repository == nil || page.Data.Repository.PullRequest == nil {
 			return "", fmt.Errorf("GitHub returned an incomplete review snapshot")
 		}
-		for _, thread := range page.Data.Repository.PullRequest.ReviewThreads.Nodes {
+		threads := page.Data.Repository.PullRequest.ReviewThreads
+		if threads == nil || threads.PageInfo == nil || threads.PageInfo.HasNextPage == nil {
+			return "", fmt.Errorf("GitHub returned incomplete review pagination")
+		}
+		for _, thread := range threads.Nodes {
 			if thread.IsResolved {
 				continue
 			}
@@ -362,8 +452,20 @@ func (c *Controller) reviews(ctx context.Context, number int) (string, error) {
 				fmt.Fprintf(&out, "%s %s\n%s\n", comment.Author.Login, comment.URL, clip(comment.Body, 6000))
 			}
 		}
+		if out.Len() > 96000 {
+			return "", fmt.Errorf("review evidence exceeds bounded capture; inspect directly")
+		}
+		if !*threads.PageInfo.HasNextPage {
+			return clip(out.String(), 24000), nil
+		}
+		cursor := threads.PageInfo.EndCursor
+		if strings.TrimSpace(cursor) == "" || len(cursor) > 4096 || seen[cursor] {
+			return "", fmt.Errorf("GitHub returned invalid or repeating review cursor")
+		}
+		seen[cursor] = true
+		after = literal(cursor)
 	}
-	return clip(out.String(), 24000), nil
+	return "", fmt.Errorf("review pagination exceeded 100 pages")
 }
 
 // Pause revokes this workflow's outstanding merge request, then persists a pause.

@@ -873,6 +873,7 @@ func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string
 	switch f[0] {
 	case "/delivery":
 		res.Output = s.DeliveryCommand(strings.TrimSpace(strings.TrimPrefix(line, "/delivery")))
+		return res, nil
 	case "/goal":
 		act := strings.ToLower(arg)
 		req := wire.GoalRequest{Action: act}
