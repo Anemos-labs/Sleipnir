@@ -29,6 +29,72 @@ func TestStaleReviewDoesNotCoverLaterMerge(t *testing.T) {
 	}
 }
 
+func TestCleanStopReviewCapturesMergeGeneration(t *testing.T) {
+	for _, laterMerge := range []bool{false, true} {
+		r := newRVRigWith(t, Config{MaxWorkers: 8, Team: []string{"backend", "reviewer"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+		r.sw.noteAccepted(Task{ID: "T1", Role: "backend"})
+		review := Task{ID: "T2", Title: "review", Role: ReviewerRole, Owner: "rv-1", Status: StatusDoing}
+		r.sw.Board.Restore(&Snapshot{Tasks: []Task{review}})
+		if err := r.sw.Board.Claim(review.Owner, review.ID); err != nil {
+			t.Fatal(err)
+		}
+		review, _ = r.sw.Board.Snapshot().Task(review.ID)
+		if !r.sw.submitSettledTask(&member{id: review.Owner}, review, "reviewed", "read-only review") {
+			t.Fatal("clean-stop review was not submitted")
+		}
+		if laterMerge {
+			r.sw.noteAccepted(Task{ID: "T3", Role: "backend"})
+		}
+		if err := r.sw.Board.Accept("mgr", review.ID, ""); err != nil {
+			t.Fatal(err)
+		}
+		r.sw.noteAccepted(review)
+		want := ""
+		if laterMerge {
+			want = "T3"
+		}
+		if got := r.sw.reviewPending(); got != want {
+			t.Fatalf("later merge %v: pending = %q, want %q", laterMerge, got, want)
+		}
+	}
+}
+
+func TestRejectedCleanStopReviewPreservesMergeGeneration(t *testing.T) {
+	for _, stale := range []string{"scope", "revision", "status"} {
+		t.Run(stale, func(t *testing.T) {
+			r := newRVRigWith(t, Config{MaxWorkers: 8, Team: []string{"backend", "reviewer"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+			r.sw.noteAccepted(Task{ID: "T1", Role: "backend"})
+			review := Task{ID: "T2", Title: "review", Role: ReviewerRole, Status: StatusTodo}
+			r.sw.Board.Restore(&Snapshot{Tasks: []Task{review}})
+			if err := r.sw.Board.Claim("rv-1", review.ID); err != nil {
+				t.Fatal(err)
+			}
+			review, _ = r.sw.Board.Snapshot().Task(review.ID)
+			if err := r.sw.reviewSubmission(review)(nil, review); err != nil {
+				t.Fatal(err)
+			}
+			switch stale {
+			case "scope":
+				review.Files = []string{"stale.go"}
+			case "revision":
+				review.Rev++
+			case "status":
+				if !r.sw.submitSettledTask(&member{id: review.Owner}, review, "reviewed", "read-only review") {
+					t.Fatal("initial submission failed")
+				}
+			}
+			r.sw.noteAccepted(Task{ID: "T3", Role: "backend"})
+			if r.sw.submitSettledTask(&member{id: review.Owner}, review, "stale", "stale") {
+				t.Fatal("stale submission succeeded")
+			}
+			r.sw.noteAccepted(review)
+			if got := r.sw.reviewPending(); got != "T3" {
+				t.Fatalf("rejected submission covered later merge: %q", got)
+			}
+		})
+	}
+}
+
 func TestReadOnlyTasksDoNotStartDocs(t *testing.T) {
 	for _, resume := range []bool{false, true} {
 		r := newRVRigWith(t, Config{MaxWorkers: 8, AutoDocs: true, Team: []string{"backend", "reviewer", "docs"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
