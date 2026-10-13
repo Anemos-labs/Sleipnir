@@ -10,7 +10,7 @@
 .feedh .fc{font-size:11px;line-height:1;transition:transform .12s}
 .feedwrap.shut .fc{transform:rotate(-90deg)}
 .feed{flex:1 1 auto;min-height:0;padding:1px 12px 6px;gap:3px}
-.feed .msg{font-size:11.5px;line-height:1.3}
+.feed .msg{flex-shrink:0;font-size:11.5px;line-height:1.3}
 .feed .msg.live>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .feed .msg.live[data-ag]{cursor:pointer}
 .feed .msg.live[data-ag]:hover{background:var(--panel2)}
