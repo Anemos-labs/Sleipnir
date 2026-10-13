@@ -43,9 +43,21 @@ shared agreement covering conventions, interfaces, work division and acceptance.
 Every member calls `pool agree` with its current revision before `pool execute` can
 unlock writes. The leader creates children with `task create parent=…`, assigns
 existing peers with `spawn`, and claims its own child with `task claim`. Children
-must stay within the parent's role, membership and scope.
+must stay within the parent's role, membership and scope. A worker's self-claim
+updates its isolated checkout from integration, just as an explicit assignment does.
+Recovery preserves every owned parent and child, along with the agreed plan and
+execution phase. Interrupted reconciliation retains its contract but requires a
+fresh inspection and confirmation cycle.
 
-Once all children are accepted, `pool reconcile` assembles the result. In isolated
+Planning-pool children inherit their parent’s task kind when `kind` is omitted.
+Planning children and their reconciled parent submit agreements for acceptance
+without running the implementation verifier. An explicit `kind: work` retains
+code verification. The manager can repair an incorrect kind with `task revise`
+using `kind: plan` or `kind: work`; the task ID and previous worker are retained,
+and prior submissions are invalidated. Planning tasks require a read-only role.
+
+Once all children are accepted, `pool reconcile` assembles the result. Its optional
+`text` replaces the initial plan with the combined contract that all members confirm. In isolated
 runs each member calls `pool inspect` to update its tree, examines the combined
 result, then calls `pool confirm`. Every member must confirm before the parent can
 be submitted and accepted. A newer accepted change invalidates reconciliation.
@@ -646,6 +658,9 @@ also has a writable private tree; direct edits pass verification and the merge q
 before publication or completion. Reviewers and scouts read the shared checkout,
 which holds a task's work after it is applied, or inspect merged work with
 `git show <commit>` (the commit is in the task's evidence).
+Read-only workers' live context names the integration branch and directs them to
+read it with `git show`, `git ls-tree` or `git diff`. Resuming their tasks does not
+refresh the original checkout; review does not wait for that checkout to change.
 
 **Nothing in the prompt names a tree.** The tools print paths relative to the working directory, which are the project's
 paths, and the isolation card (`Isolation: your working directory is a private git worktree ...`, which says what the
@@ -654,8 +669,8 @@ that the harness does the version control (it commits and merges a writer's work
 not fetch, pull, merge, rebase, cherry-pick or commit, that teammates' accepted work is in its tree at its next task, and
 names the session's integration branch for reading merged work at any time (`git show sleipnir/<session>/_integration:<path>`,
 and `git log`, `git diff`, `git ls-tree` of it), which needs no approval. The branch name is the same for every worker of a
-session and appears only in these private notes. The bytes of
-G0, G1 and G2 do not change; only a worker's own notes are longer, when the feature is on.
+session and appears in private writer notes and read-only workers' live context. The bytes of
+G0, G1 and G2 do not change; private notes and the uncached live tail carry the isolation guidance.
 
 **Confinement is enforced, not conventional.** The permission engine confines every writer to its own tree
 (`perm.Engine.Confine`): whatever it reads or writes inside the workspace (the checkout, another agent's tree) outside its
@@ -687,7 +702,10 @@ the integration tip and runs the verifier (`--verify`) on the merged result, and
 
 A bounce is rework like any other: after `MaxAttempts` (3) the task returns to `todo`, the worker is stopped and the manager is
 told once. A worker sees other agents' work only when it is merged: a new worker starts from the integration tip, and a reused
-worker, a resumed task and a bounced worker have their tree brought up to it. Nothing else crosses between trees, and there is
+worker, a resumed task and a bounced worker have their tree brought up to it. Every successful isolated `task claim` refreshes
+the checkout, including a repeated claim while the same task is already doing. If the manager resumes a still-active worker,
+the refresh is deferred to that worker's next `task claim`, including a claim of the same task. The worker receives a notice
+to claim and re-read before continuing; its checkout is not changed underneath an active tool call. Nothing else crosses between trees, and there is
 no new tool: a worker that needs merged work blocks its task and says what it needs, as before. The one exception is a
 handover (section 6): the owner's tree is committed on its own branch and the successor's tree starts at that commit, so
 unmerged work moves with the task. It reaches the integration branch only through the successor's `done`, like any

@@ -116,7 +116,9 @@ func (s *Swarm) claimCheck(agent string, readOnly bool) TaskCheck {
 			}
 		}
 		if check != nil {
-			if err := check(snap, t); err != nil {
+			candidate := t
+			candidate.Owner = agent
+			if err := check(snap, candidate); err != nil {
 				return err
 			}
 		}

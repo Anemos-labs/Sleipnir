@@ -121,6 +121,19 @@ func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []Recov
 		}
 	}
 	s.spent += retiredCost
+	// A pool leader can own its parent and a child simultaneously. Recover all
+	// still-owned assignments, not only the worker's most recent task card.
+	for _, task := range prev.Tasks {
+		if task.Status == StatusDone || task.Status == StatusFailed || task.Owner == "" {
+			continue
+		}
+		for _, m := range restored {
+			if task.Owner == m.id {
+				owners[task.ID] = m.id
+				break
+			}
+		}
+	}
 	s.Board.RestoreOwners(prev, owners)
 	for _, m := range restored {
 		m.setState(s, "idle", "restored; waiting for a task to restart")

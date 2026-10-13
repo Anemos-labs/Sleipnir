@@ -65,7 +65,18 @@ func (b *Board) beginPool(by, id string, members []string) error {
 			return fmt.Errorf("dependency %s is not complete", why.ID)
 		}
 		t.Owner, t.Status, t.Rev = members[0], StatusDoing, d.Version
-		t.Pool = &PoolState{Members: slices.Clone(members), Phase: "planning", Revision: 1}
+		if t.Pool != nil && slices.Equal(t.Pool.Members, members) {
+			p := *t.Pool
+			if p.Phase == "reconciling" {
+				// The resumed checkout must be inspected again before acceptance.
+				p.Phase = "executing"
+				p.Revision++
+				p.Votes, p.Inspected = nil, nil
+			}
+			t.Pool = &p
+		} else {
+			t.Pool = &PoolState{Members: slices.Clone(members), Phase: "planning", Revision: 1}
+		}
 		return d.put(i, t)
 	})
 }
@@ -160,7 +171,12 @@ func (s *Swarm) startPool(req SpawnReq, files []string) (string, error) {
 	if err := s.Board.beginPool(req.By, id, ids); err != nil {
 		return "", err
 	}
-	s.wakePool(id, "Plan together. The first member leads. Use pool propose, agree, execute, reconcile and confirm. The leader creates scoped child tasks with task create parent="+id+" and assigns them with spawn (use task claim for its own child). All members contribute before execution, and inspect the combined result before confirming reconciliation.")
+	task, _ := s.Board.Snapshot().Task(id)
+	if task.Pool.Phase == "executing" {
+		s.wakePool(id, "Continue the accepted plan and existing child tasks; do not recreate them. Reconcile, inspect and confirm the combined result when the children are complete.")
+	} else {
+		s.wakePool(id, "Plan together. The first member leads. Use pool propose, agree, execute, reconcile and confirm. The leader creates scoped child tasks with task create parent="+id+" and assigns them with spawn (use task claim for its own child). All members contribute before execution, and inspect the combined result before confirming reconciliation.")
+	}
 	return ids[0], nil
 }
 
@@ -203,7 +219,7 @@ type poolTool struct{ s *Swarm }
 
 // Spec describes the persistent pool protocol shared by every agent.
 func (t *poolTool) Spec() core.ToolSpec {
-	return core.ToolSpec{Name: "pool", NoTreeWrites: true, Description: "Cooperate on a role pool's parent task. Leader: propose an agreement (theme/style, interfaces, work division, acceptance); execute after everyone agrees; reconcile after all children are accepted. Every member: call inspect during reconciliation to update your checkout, examine the combined result, then confirm. Agree to the proposal or confirm the reconciled result, with the exact revision from task get. Use mail to discuss objections; the manager resolves disagreements. During execution the leader may create scoped child tasks and assign existing members. Return one parent result with task done after every member confirms.", InputSchema: json.RawMessage(`{"type":"object","properties":{"action":{"type":"string","enum":["propose","agree","execute","reconcile","inspect","confirm"]},"id":{"type":"string"},"revision":{"type":"integer"},"text":{"type":"string"}},"required":["action","id"]}`)}
+	return core.ToolSpec{Name: "pool", NoTreeWrites: true, Description: "Cooperate on a role pool's parent task. Leader: propose an agreement (theme/style, interfaces, work division, acceptance); execute after everyone agrees; reconcile after all children are accepted (text = the combined contract to confirm). Every member: call inspect during reconciliation to update your checkout, examine the combined result, then confirm. Agree to the proposal or confirm the reconciled result, with the exact revision from task get. Use mail to discuss objections; the manager resolves disagreements. During execution the leader may create scoped child tasks and assign existing members. Return one parent result with task done after every member confirms.", InputSchema: json.RawMessage(`{"type":"object","properties":{"action":{"type":"string","enum":["propose","agree","execute","reconcile","inspect","confirm"]},"id":{"type":"string"},"revision":{"type":"integer"},"text":{"type":"string"}},"required":["action","id"]}`)}
 }
 
 // Run applies one phase transition after checking leadership and membership.
@@ -283,6 +299,9 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 				if child.Parent == task.ID && child.Status != StatusDone {
 					return fmt.Errorf("child %s is not complete", child.ID)
 				}
+			}
+			if agreement != "" {
+				p.Agreement = agreement
 			}
 			p.Phase = "reconciling"
 			task.Status = StatusDoing
@@ -392,7 +411,7 @@ func (s *Swarm) poolCurrent(_ *Snapshot, task Task) error {
 	generation := s.review.merges
 	s.review.mu.Unlock()
 	if task.Pool.Generation != generation {
-		return fmt.Errorf("combined result changed; restart pool reconcile, inspect and confirm")
+		return fmt.Errorf("combined result changed: a merge or task revision superseded this reconciliation, even if its agreement text is unchanged; the pool leader must call pool reconcile again, then every member must inspect and confirm the new revision")
 	}
 	return nil
 }

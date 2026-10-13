@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/perm"
@@ -371,6 +372,10 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 	if !web.DecodeJSON(w, r, &body) {
 		return
 	}
+	if utf8.RuneCountInString(strings.TrimSpace(body.GoalText)) > maxGoalLen {
+		writeErr(w, werr(http.StatusBadRequest, "bad_goal", "the goal is longer than 4,000 characters"))
+		return
+	}
 	key := idemKey("sessions", body.ClientID)
 	if !h.idemClaim(w, r, key) {
 		return
@@ -413,10 +418,6 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, werr(http.StatusBadRequest, "bad_flags", "the effort is default, none, minimal, low, medium, high, xhigh or max"))
 			return
 		}
-	}
-	if len(body.GoalText) > 4*maxGoalLen {
-		writeErr(w, werr(http.StatusBadRequest, "bad_flags", "the first goal is longer than 4,000 characters"))
-		return
 	}
 	team := len(body.Team) > 0 || body.Swarm != nil && *body.Swarm > 0 || body.Swarm == nil && h.d.Workers > 0
 	if body.Isolation == "" && body.Resume == "" && team && h.d.Isolation == "" && !h.configIsolation(dir) {

@@ -481,6 +481,11 @@ type TaskCheck func(s *Snapshot, t Task) error
 // createLocked validates a spec and appends the task. Nothing is modified when it
 // returns an error.
 func (b *Board) createLocked(d *draft, spec TaskSpec) (Task, error) {
+	if spec.Kind == "" && spec.Parent != "" {
+		if parent, ok := d.Snapshot.Task(spec.Parent); ok {
+			spec.Kind = parent.Kind
+		}
+	}
 	if spec.Kind == "work" {
 		spec.Kind = ""
 	}

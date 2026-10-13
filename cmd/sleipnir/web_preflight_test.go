@@ -11,6 +11,27 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
+func TestWebNewSessionRejectsOverlongGoalBeforeCreatingAnything(t *testing.T) {
+	project := webWorld(t)
+	_, base := newWebModel(t, sayScript("ok"))
+	r := newWebRig(t, soloDefaults(project), base)
+	r.ready("")
+	before := len(r.h.Tabs())
+	for _, text := range []string{strings.Repeat("x", maxGoalLen+1), strings.Repeat("🌲", maxGoalLen+1)} {
+		code, body := r.do("POST", "/api/sessions", wire.NewSessionRequest{Cwd: project, GoalText: text})
+		if code != 400 || !strings.Contains(string(body), "4,000") {
+			t.Fatalf("overlong goal: %d %s", code, body)
+		}
+		if len(r.h.Tabs()) != before {
+			t.Fatal("invalid goal created a session")
+		}
+	}
+	code, body := r.do("POST", "/api/sessions", wire.NewSessionRequest{Cwd: project, GoalText: " \n" + strings.Repeat("🌲", maxGoalLen) + "\n "})
+	if code != 201 {
+		t.Fatalf("trimmed Unicode goal at the limit: %d %s", code, body)
+	}
+}
+
 // A new session whose isolation settings cannot start is refused before a tab opens (409 isolation, with the session's own reason),
 // and before the confirmation of an unknown folder is asked for; a combination that can start goes on to that confirmation.
 func TestWebNewSessionRefusesIsolationThatCannotStart(t *testing.T) {

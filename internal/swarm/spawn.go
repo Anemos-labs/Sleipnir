@@ -174,6 +174,9 @@ func (s *Swarm) spawnReuse(req SpawnReq, files []string) (string, error) {
 	}
 	rs, ctx, ok := s.reserve(m)
 	if !ok {
+		if s.cfg.PersistentPools {
+			return "", fmt.Errorf("%s is still working; mail it the existing task ID to claim, or wait and reuse it", m.id)
+		}
 		return "", fmt.Errorf("%s is still working; wait for it or spawn a new worker", m.id)
 	}
 	if !role.ReadOnly && !s.isolated() {

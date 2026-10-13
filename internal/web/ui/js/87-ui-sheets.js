@@ -261,7 +261,7 @@
           const rows = $('#nsTeamRows', b), err = $('#nsTeamErr', b);
           rows.hidden = st.single;
           err.hidden = !tm.short; err.textContent = tm.short ? 'A team has at least ' + (st.minWorkers || 8) + ' workers: add ' + ((st.minWorkers || 8) - tm.n) + ' more, or choose Single agent.' : '';
-          const modelOpts = cur => '<option value=""' + (cur || cur === null ? '' : ' selected') + '>worker model</option>' + models().map(r => '<option' + (r === cur ? ' selected' : '') + '>' + esc(r) + '</option>').join('');
+          const modelOpts = cur => { const refs = models(); if (cur && !refs.includes(cur)) refs.unshift(cur); return '<option value=""' + (cur || cur === null ? '' : ' selected') + '>worker model</option>' + refs.map(r => '<option' + (r === cur ? ' selected' : '') + '>' + esc(r) + '</option>').join(''); };
           const roles = D.roleOrder.concat(Object.keys(st.counts).filter(r => D.roleOrder.indexOf(r) < 0));
           const key = JSON.stringify([st.single, st.counts, st.slotModels, st.perSlot, st.openRoles, st.roleModels, tm.n]); if (rows._k === key) return; rows._k = key;
           const full = st.maxWorkers && tm.n >= st.maxWorkers;
@@ -293,8 +293,14 @@
         const ruleErr = msg => { const e = $('#nsRuleErr', b); e.hidden = !msg; e.textContent = msg || ''; };
         /* a rule typed or clicked is added once; a typed one that cannot be a rule is said so and kept in its field */
         const addRule = v => { v = String(v).trim(); if (!v || quiet()) return true; const bad = ruleProblem(v); ruleErr(bad); if (bad) return false; if (!st.rules.includes(v)) st.rules.push(v); return true; };
-        sc.listen(b, 'input', e => { const t = e.target; if (t.id === 'nsName') st.name = t.value; else if (t.id === 'nsVerify') st.verify = t.value; else if (t.id === 'nsBudget') st.budget = t.value.trim();  else if (t.id === 'nsGoal') st.goalText = t.value; else if (t.id === 'nsRule') ruleErr(''); paint(); });
+        // Checkbox input precedes change; repainting here would restore the old checked state before change reads it.
+        sc.listen(b, 'input', e => { const t = e.target; if (t.dataset.k) return; if (t.id === 'nsName') st.name = t.value; else if (t.id === 'nsVerify') st.verify = t.value; else if (t.id === 'nsBudget') st.budget = t.value.trim();  else if (t.id === 'nsGoal') st.goalText = t.value; else if (t.id === 'nsRule') ruleErr(''); paint(); });
         sc.listen(b, 'change', e => { const t = e.target; if (t.id === 'nsModel') st.model = t.value; else if (t.dataset.tmodel) { const r = t.dataset.tmodel; st.slotModels = st.slotModels || {}; if (st.perSlot) delete st.perSlot[r]; st.slotModels[r] = t.value; } else if (t.dataset.tslot) setSlotModel(st, t.dataset.tslot, +t.dataset.ti, t.value); else if (t.dataset.k) st[t.dataset.k] = t.checked; paint(); });
+        sc.on('models-changed', () => {
+          $('#nsModel', b).innerHTML = models().map(r => '<option' + (r === st.model ? ' selected' : '') + '>' + esc(r) + '</option>').join('');
+          $('#nsTeamRows', b)._k = null;
+          paint();
+        });
         sc.listen(b, 'click', e => {
           const mr = e.target.closest('[data-nsmode]'); if (mr) { st.mode = mr.dataset.nsmode; paint(); return; }
           const x = e.target.closest('[data-seg]'); if (x) { if (x.disabled) return; st[x.dataset.seg] = x.dataset.v; if (x.dataset.seg === 'isolation') st.isoAuto = false; $$('[data-seg="' + x.dataset.seg + '"]', b).forEach(y => y.setAttribute('aria-pressed', y === x)); paint(); return; }
@@ -312,6 +318,7 @@
         let starting = false;
         sc.listen($('#nsStart', b), 'click', () => {
           if (starting) return;
+          if (Array.from(st.goalText.trim()).length > 4000) { ui.toast('The goal is longer than 4,000 characters. Shorten it before starting.', 'err'); return; }
           const bud = st.budget === 'off' || st.budget === '' ? 0 : parseFloat(st.budget); if (st.budget !== 'off' && st.budget !== '' && !(bud > 0)) { ui.toast('the budget is a number of dollars, or off', 'err'); return; }
           /* what was typed or chosen but not added yet is part of what starts (an allow rule in its field, a role and model picked) */
           const pending = $('#nsRule', b); if (!quiet() && !addRule(pending.value)) return; if (!quiet()) pending.value = '';
