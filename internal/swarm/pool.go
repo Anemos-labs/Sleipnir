@@ -65,7 +65,18 @@ func (b *Board) beginPool(by, id string, members []string) error {
 			return fmt.Errorf("dependency %s is not complete", why.ID)
 		}
 		t.Owner, t.Status, t.Rev = members[0], StatusDoing, d.Version
-		t.Pool = &PoolState{Members: slices.Clone(members), Phase: "planning", Revision: 1}
+		if t.Pool != nil && slices.Equal(t.Pool.Members, members) {
+			p := *t.Pool
+			if p.Phase == "reconciling" {
+				// The resumed checkout must be inspected again before acceptance.
+				p.Phase = "executing"
+				p.Revision++
+				p.Votes, p.Inspected = nil, nil
+			}
+			t.Pool = &p
+		} else {
+			t.Pool = &PoolState{Members: slices.Clone(members), Phase: "planning", Revision: 1}
+		}
 		return d.put(i, t)
 	})
 }
@@ -160,7 +171,12 @@ func (s *Swarm) startPool(req SpawnReq, files []string) (string, error) {
 	if err := s.Board.beginPool(req.By, id, ids); err != nil {
 		return "", err
 	}
-	s.wakePool(id, "Plan together. The first member leads. Use pool propose, agree, execute, reconcile and confirm. The leader creates scoped child tasks with task create parent="+id+" and assigns them with spawn (use task claim for its own child). All members contribute before execution, and inspect the combined result before confirming reconciliation.")
+	task, _ := s.Board.Snapshot().Task(id)
+	if task.Pool.Phase == "executing" {
+		s.wakePool(id, "Continue the accepted plan and existing child tasks; do not recreate them. Reconcile, inspect and confirm the combined result when the children are complete.")
+	} else {
+		s.wakePool(id, "Plan together. The first member leads. Use pool propose, agree, execute, reconcile and confirm. The leader creates scoped child tasks with task create parent="+id+" and assigns them with spawn (use task claim for its own child). All members contribute before execution, and inspect the combined result before confirming reconciliation.")
+	}
 	return ids[0], nil
 }
 

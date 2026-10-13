@@ -74,3 +74,85 @@ func TestRecoveredTaskReservationIsReleasedWithItsWorker(t *testing.T) {
 		})
 	}
 }
+
+func TestResumePoolKeepsParentAndChildAssignments(t *testing.T) {
+	previous := NewBoard(nil)
+	parent, err := previous.CreateTask("mgr", TaskSpec{Title: "Agreed feature", Role: "backend"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := []string{"be-1", "be-2"}
+	if err := previous.beginPool("mgr", parent.ID, ids); err != nil {
+		t.Fatal(err)
+	}
+	if err := previous.poolUpdate("be-1", parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error {
+		p.Phase = "executing"
+		p.Agreement = "Keep the agreed interface and existing child ownership."
+		p.Revision = 7
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	child, err := previous.CreateTask("be-1", TaskSpec{Title: "Existing child", Role: "backend", Parent: parent.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := previous.Claim("be-1", child.ID); err != nil {
+		t.Fatal(err)
+	}
+	r := newRVRig(t, Config{PersistentPools: true, Team: []string{"backend", "backend"}, MaxWorkers: 2}, func(ctx context.Context, _ *rvCall) rvReply { <-ctx.Done(); return rvReply{Text: "stopped"} })
+	if err := r.sw.RestoreTeam(context.Background(), previous.Snapshot(), []RecoveredWorker{{ID: "be-1", Role: "backend", Task: child.ID}, {ID: "be-2", Role: "backend"}}, map[string]string{"be-1": "backend", "be-2": "backend"}, 0); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{parent.ID, child.ID} {
+		task, _ := r.sw.Board.Snapshot().Task(id)
+		if task.Owner != "be-1" {
+			t.Fatalf("lost assignment %s: %+v", id, task)
+		}
+	}
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: parent.ID, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := r.sw.Board.Snapshot().Task(parent.ID)
+	if got.Pool.Phase != "executing" || got.Pool.Revision != 7 || got.Pool.Agreement == "" {
+		t.Fatalf("resume discarded agreed plan: %+v", got.Pool)
+	}
+	if len(r.sw.Board.Snapshot().Tasks) != 2 {
+		t.Fatal("resume replaced existing tasks")
+	}
+}
+
+func TestResumePoolReconciliationRequiresFreshConfirmation(t *testing.T) {
+	previous := NewBoard(nil)
+	parent, err := previous.CreateTask("mgr", TaskSpec{Title: "Review combined work", Role: "reviewer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := []string{"rv-1", "rv-2"}
+	if err := previous.beginPool("mgr", parent.ID, ids); err != nil {
+		t.Fatal(err)
+	}
+	if err := previous.poolUpdate("rv-1", parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error {
+		p.Phase = "reconciling"
+		p.Agreement = "Final combined report"
+		p.Revision = 3
+		p.Votes = append([]string(nil), ids...)
+		p.Inspected = append([]string(nil), ids...)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := previous.Snapshot().Task(parent.ID)
+	restored := NewBoard(nil)
+	restored.RestoreOwners(previous.Snapshot(), map[string]string{parent.ID: "rv-1"})
+	if err := restored.beginPool("mgr", parent.ID, ids); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := restored.Snapshot().Task(parent.ID)
+	if got.Pool.Phase != "executing" || got.Pool.Agreement != before.Pool.Agreement || got.Pool.Revision != 4 || len(got.Pool.Votes) != 0 || len(got.Pool.Inspected) != 0 {
+		t.Fatalf("resumed reconciliation reused old confirmations: %+v", got.Pool)
+	}
+	if before.Pool.Phase != "reconciling" || len(before.Pool.Votes) != 2 {
+		t.Fatal("resume mutated previous snapshot")
+	}
+}

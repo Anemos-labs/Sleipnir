@@ -26,6 +26,10 @@ func TestWebNewSessionRejectsOverlongGoalBeforeCreatingAnything(t *testing.T) {
 			t.Fatal("invalid goal created a session")
 		}
 	}
+	code, body := r.do("POST", "/api/sessions", wire.NewSessionRequest{Cwd: project, GoalText: " \n" + strings.Repeat("🌲", maxGoalLen) + "\n "})
+	if code != 201 {
+		t.Fatalf("trimmed Unicode goal at the limit: %d %s", code, body)
+	}
 }
 
 // A new session whose isolation settings cannot start is refused before a tab opens (409 isolation, with the session's own reason),

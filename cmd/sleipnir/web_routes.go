@@ -419,10 +419,6 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if len(body.GoalText) > 4*maxGoalLen {
-		writeErr(w, werr(http.StatusBadRequest, "bad_flags", "the first goal is longer than 4,000 characters"))
-		return
-	}
 	team := len(body.Team) > 0 || body.Swarm != nil && *body.Swarm > 0 || body.Swarm == nil && h.d.Workers > 0
 	if body.Isolation == "" && body.Resume == "" && team && h.d.Isolation == "" && !h.configIsolation(dir) {
 		body.Isolation = defaultIsolation(r.Context(), dir, plan.git) // a team in a repository works in trees of its own

@@ -43,7 +43,11 @@ shared agreement covering conventions, interfaces, work division and acceptance.
 Every member calls `pool agree` with its current revision before `pool execute` can
 unlock writes. The leader creates children with `task create parent=…`, assigns
 existing peers with `spawn`, and claims its own child with `task claim`. Children
-must stay within the parent's role, membership and scope.
+must stay within the parent's role, membership and scope. A worker's self-claim
+updates its isolated checkout from integration, just as an explicit assignment does.
+Recovery preserves every owned parent and child, along with the agreed plan and
+execution phase. Interrupted reconciliation retains its contract but requires a
+fresh inspection and confirmation cycle.
 
 Planning-pool children inherit their parent’s task kind when `kind` is omitted.
 Planning children and their reconciled parent submit agreements for acceptance
