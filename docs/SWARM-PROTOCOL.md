@@ -102,17 +102,20 @@ swarm tools), so the provider caches the schemas once for the whole swarm. Roles
 each call under the session posture *and* the role's profile (read-only roles run under the plan profile: writes and
 mutating commands are denied by the engine that understands shell syntax, not by a command allowlist; the manager
 uses the session's permissions and any explicit manager profile), and swarm
-tools check the caller's role, which the harness puts in the call (`spawn`, `create`, `accept`, `reject`, `reopen`,
-`fail` and scope changes are manager-only). Without a permission engine (tests, embedding) read-only roles fall back
+tools check the caller's role, which the harness puts in the call. The manager owns
+assignments, revisions and scope changes. A pool leader can create and accept its
+scoped children and assign existing pool members. Without a permission engine (tests, embedding) read-only roles fall back
 to a strict allowlist of one plain inspection command (no operators, redirections, substitutions, exec flags, or
 paths outside the project).
 
 | Tool | Actions | Notes |
 |---|---|---|
-| `task` | create\*, list, get, claim, update, block, resume, done, handover, accept\*, reject\*, reopen\*, fail\* | \* manager only; `fail` needs a typed `reason`; see sections 4 and 6 |
+| `task` | create, list, get, claim, update, block, resume, done, accept, reject, reopen, revise, resolve, fail, handover | Manager: create, accept, reject, reopen, revise, resolve and scope changes; pool leaders may create and accept their children. Persistent pools refuse `fail` and fresh-worker `handover`; embedded callers retain them (`fail` needs a typed `reason`). See sections 4 and 6. |
 | `mail` | send | one recipient; typed; section 5 |
 | `note` | propose | a bounded fact in the live view; older proposals can be evicted |
-| `spawn` | role, task, optional `agent=` to reuse an idle worker | manager only; section 6 |
+| `spawn` | role, task, optional `agent=` to reuse an idle worker | Manager or pool leader assigning an existing member to its child; section 6 |
+| `pool` | propose, agree, execute, reconcile, inspect, confirm | Leader or manager coordinates phases; every member acknowledges the current agreement and reconciled result |
+| `approve` | answer a delegated worker permission question | Manager only; explicit policy denials and escalations still apply |
 | `wait` | until tasks change, mail arrives, or a timeout | sleeps at no request cost; reports what changed since the caller last looked |
 
 A manager waiting on unfinished work with no running workers receives an error
