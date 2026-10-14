@@ -49,11 +49,32 @@ func TestARevisionThatOnlyWidensTheScopeStopsNobody(t *testing.T) {
 	if c.Status != StatusDoing || c.Owner != lead || !slices.Equal(c.Files, []string{"app/api.py", ".gitignore"}) {
 		t.Fatalf("child after widening: %s owner=%s %v", c.Status, c.Owner, c.Files)
 	}
-	// A scope that drops a glob is a real revision: the child goes back to its worker to redo.
+	// A scope that drops a glob is a real revision: the child goes back to the board, with a new revision.
+	before := c.Rev
 	if got := revise(child.ID, ".gitignore"); strings.Contains(got, "widened in place") {
 		t.Fatalf("a narrower scope was taken as a widening: %q", got)
 	}
-	if c, _ := r.sw.Board.Snapshot().Task(child.ID); c.Status != StatusTodo && c.Rev == child.Rev {
-		t.Fatalf("the narrowing revise did not revise: %+v", c)
+	if c, _ := r.sw.Board.Snapshot().Task(child.ID); c.Status != StatusTodo || c.Rev == before {
+		t.Fatalf("the narrowing revise did not revise: status %s, rev %d (was %d)", c.Status, c.Rev, before)
+	}
+}
+
+// A running planning task's scope widens in place too, under the read-only check it was assigned with (a writer's check refuses a
+// planning task outright).
+func TestARunningPlanningTasksScopeWidensInPlace(t *testing.T) {
+	r := newRVRig(t, Config{MaxWorkers: 2}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "thinking"} })
+	plan, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "contract", Role: "architect", Kind: TaskKindPlan, Files: []string{"docs/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.sw.Board.assignTask(assignReq{by: "mgr", agent: "ar-1", id: plan.ID}); err != nil {
+		t.Fatal(err)
+	}
+	res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "revise", "id": plan.ID, "files": []string{"docs/**", "api.md"}, "text": "the API reference too"})
+	if res.IsError || !strings.Contains(res.Text, "widened in place") {
+		t.Fatalf("revise: %q", res.Text)
+	}
+	if p, _ := r.sw.Board.Snapshot().Task(plan.ID); p.Status != StatusDoing || p.Owner != "ar-1" || !slices.Contains(p.Files, "api.md") {
+		t.Fatalf("the planning task after widening: %s owner=%s %v", p.Status, p.Owner, p.Files)
 	}
 }

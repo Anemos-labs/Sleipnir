@@ -294,7 +294,9 @@ func (t *taskTool) widenInPlace(c *tools.Call, in taskIn, task Task) *tools.Resu
 	if added == 0 {
 		return nil
 	}
-	if err := t.s.Board.SetScope(c.Env.Agent, in.ID, files, t.s.scopeCheck(false)); err != nil {
+	// a planning task, or one of a read-only role, is held to the read-only check, as when it was assigned
+	readOnly := task.Kind == TaskKindPlan || t.s.roles[task.Role].ReadOnly
+	if err := t.s.Board.SetScope(c.Env.Agent, in.ID, files, t.s.scopeCheck(readOnly)); err != nil {
 		return tools.Errorf("cannot widen the scope of %s: %v", in.ID, err)
 	}
 	return text("%s: scope widened in place (%s); its workers keep going. (%s) Widening a scope needs no revise: update with files does it.",
