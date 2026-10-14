@@ -519,7 +519,7 @@ A rule is `Tool` or `Tool(pattern)` in `allow`, `ask` or `deny`.
 | `Bash(make lint)` | exactly `make lint` (`make lint extra` is not covered) |
 | `Bash(curl:loopback)` | an HTTP request of `curl` (or `wget`, as `Bash(wget:loopback)`) to this machine only: every URL's host is `127.0.0.1`, `localhost` or `[::1]`, output goes to standard output or `/dev/null`, no option reads a file (`-d @f`, `-T`, `-K`), and no redirect is followed (`curl -L` is not covered; `wget` needs `--max-redirect=0` and `-O -`). It is the smoke test of a server the project's build started |
 | `Bash(python:venv)` | a Python virtual environment of the workspace: creating one (`python -m venv DIR`, `virtualenv DIR`, `uv venv [DIR]`) in a directory of the workspace that is not a workspace root, installing into one with its own pip from the package index (`DIR/bin/pip install`, `DIR/bin/python -m pip install`, `uv pip install --python DIR/bin/python`), and running the tests with one (`DIR/bin/python -m pytest\|unittest\|py_compile\|compileall`, `DIR/bin/pytest`). The environment must have a `pyvenv.cfg`, keep its entries and its `site-packages` inside itself, and have scripts that run its own python, a link to an installed interpreter (not a wrapper, a copy or a program of the workspace); an install takes requirement names with versions, `-r`/`-c` files and `-e`/local paths of the workspace, `-U`, `-q`, `--pre`, `--no-input`, `--no-cache-dir` and `--disable-pip-version-check`, and nothing that changes where packages come from or go (an index, `--find-links`, `--trusted-host`, `--target`, `--prefix`, `--user`, a URL or a repository). See `docs/SECURITY.md` |
-| `Bash(python:venv-tests)` | of what `Bash(python:venv)` covers, only running the tests with an environment of the workspace (`DIR/bin/python -m pytest\|unittest\|py_compile\|compileall`, `DIR/bin/pytest`), under the same conditions on the environment and the files the run names; never creating one or installing into one. The read-only roles hold it |
+| `Bash(python:venv-tests)` | of what `Bash(python:venv)` covers, only running the tests and checks with an environment of the workspace (`DIR/bin/python -m pytest\|unittest\|py_compile\|compileall`, `DIR/bin/pytest`), under the same conditions on the environment and the files the run names; never creating one or installing into one. The read-only roles hold it |
 | `Bash(mypy:workspace)` | the prefix with any arguments (as `Bash(mypy:*)`), when every file the command names, operands and option values alike, resolves inside the workspace |
 | `Bash` or `Bash(*)` | every shell command |
 | `Read(./.env)`, `Read(~/.ssh/**)` | reads of those paths **by any tool**, the shell included (`cat .env` counts) |
@@ -589,8 +589,8 @@ Role names: `worker` is the role of a single agent (`chat`/`run` without `--swar
 `scout`, `backend`, `frontend`, `devops`, `tester`, `docs`, `reviewer`, plus roles defined in `.sleipnir/agents/`
 The legacy `fullstack` role is unavailable. `architect`, `reviewer` and `scout` are
 read-only in the engine (plan mode, with `go test`, `go vet`, `pytest`, `python -m pytest`, `python -m unittest`,
-`node --test`, `npm test`, `npm run test` with arguments, `cargo test`, `cargo check`, `make test` and the tests run with a virtual
-environment of the workspace (`Bash(python:venv-tests)`) allowed so they can verify what they review; a refusal tells
+`node --test`, `npm test`, `npm run test` with arguments, `cargo test`, `cargo check`, `make test` and the tests and checks run with a
+virtual environment of the workspace (`Bash(python:venv-tests)`) allowed so they can verify what they review; a refusal tells
 them so). Their
 profile also denies the job tools `bash_output` and `bash_kill` by name: background jobs are session-wide, and a
 reviewer could otherwise read another agent's job output. Read-only roles may also fetch and search the web, as far as

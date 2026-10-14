@@ -28,7 +28,7 @@ const (
 //	Bash(*) or Bash             any shell command
 //	Bash(curl:loopback)         curl or wget fetching from this machine only (127.0.0.1, localhost, [::1]); see loopbackHTTP
 //	Bash(python:venv)           a Python virtual environment of the workspace: creating it, installing into it (venv.go)
-//	Bash(python:venv-tests)     running the tests with one, and no more: no creating, no installing (venv.go)
+//	Bash(python:venv-tests)     running the tests and checks with one, and no more: no creating, no installing (venv.go)
 //	Bash(mypy:workspace)        the prefix with any arguments, when every file it names is inside the workspace
 //	Edit(src/**)                writes to paths matching a gitignore-like glob
 //	Read(~/.ssh/**)             reads of such paths (by any tool, shell included)
