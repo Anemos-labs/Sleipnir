@@ -632,6 +632,8 @@ func (ev *evaluator) commandAllowRule(u *unit) *crule {
 			}
 		case !r.matchCommand(*u.simple, false), r.workspace && !ev.withinWorkspace(u, r):
 			continue
+		case !r.blanket && r.anyArgs && runsAnother(u.simple.Program, u.simple.Args):
+			continue // the rule named the runner, not a program the runner is told to run (runnerRefused)
 		}
 		if !r.blanket {
 			return r

@@ -39,6 +39,66 @@ var workspaceRefused = map[string][]string{
 	"eslint":       {"--fix", "--init", "--fix-type"},
 }
 
+// runnerRefused are, for a build or test runner, the options that make it run a program of the caller's choosing instead of the
+// project's own build and tests: go test -exec PROG runs the test binary through PROG, cargo --config can set a runner or a compiler
+// wrapper, npm --script-shell runs the scripts with another shell, node --require loads any module first (and --test-reporter a module that is not a built-in reporter), make SHELL=PROG runs every
+// recipe with PROG. A prefix rule names the runner (Bash(go test:*), the tests preset's and the read-only roles' rules, or the person's
+// own), so a command with one of these options is not the command the rule allowed: it is judged as if no such rule existed.
+var runnerRefused = map[string][]string{
+	"go":     {"-exec", "--exec", "-toolexec", "--toolexec", "-vettool", "--vettool"},
+	"cargo":  {"--config", "-Z"},
+	"npm":    {"--script-shell", "--node-options"},
+	"pnpm":   {"--script-shell", "--node-options"},
+	"yarn":   {"--script-shell", "--node-options"},
+	"node":   {"--require", "-r", "--import", "--loader", "--experimental-loader", "--env-file"},
+	"make":   {"SHELL", ".SHELLFLAGS", "MAKESHELL", "-f", "--file", "--makefile", "--eval", "-E"},
+	"gradle": {"-I", "--init-script"}, "./gradlew": {"-I", "--init-script"},
+}
+
+// runsAnother reports whether a runner's arguments carry an option of runnerRefused (with its value attached or not), or, for go, link
+// flags that name the external linker or archiver to run (-ldflags=-extld=PROG; -ldflags "-X main.version=1" is a build's own).
+func runsAnother(prog string, args []string) bool {
+	if hasLong(args, runnerRefused[prog]...) {
+		return true
+	}
+	if prog == "node" {
+		return customReporter(args)
+	}
+	if prog != "go" {
+		return false
+	}
+	for i, a := range args {
+		name, val, eq := strings.Cut(strings.TrimLeft(a, "-"), "=")
+		if !strings.HasPrefix(a, "-") || name != "ldflags" {
+			continue
+		}
+		if !eq && i+1 < len(args) {
+			val = args[i+1]
+		}
+		if strings.Contains(val, "extld") || strings.Contains(val, "extar") {
+			return true
+		}
+	}
+	return false
+}
+
+// nodeReporters are the test reporters built into node; any other --test-reporter value is a module node loads and runs.
+var nodeReporters = map[string]bool{"spec": true, "tap": true, "dot": true, "junit": true, "lcov": true}
+
+// customReporter reports whether node's arguments name a test reporter that is not built in (--test-reporter=./mine.js).
+func customReporter(args []string) bool {
+	for i, a := range args {
+		val, ok := strings.CutPrefix(a, "--test-reporter=")
+		if !ok && a == "--test-reporter" && i+1 < len(args) {
+			val, ok = args[i+1], true
+		}
+		if ok && !nodeReporters[val] {
+			return true
+		}
+	}
+	return false
+}
+
 // workspaceFileLists are the prefixes of the preset's ":workspace" rules whose program compiles the files it is given and, given none,
 // a default set of its own: python -m compileall with no file compiles every directory of sys.path (the interpreter's own included),
 // and both read a list of files from standard input or a file (-, -i) that the engine cannot see. compiledFiles holds them to naming

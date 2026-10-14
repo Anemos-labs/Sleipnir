@@ -7,6 +7,17 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A prefix rule for a build or test runner (`Bash(go test:*)`, the tests
+  preset, the read-only roles' rules, or a rule of the person's) no longer
+  covers an option that makes the runner run a program of the caller's
+  choosing: `go test -exec PROG`, `-toolexec`, `-vettool`, `-ldflags` naming
+  `-extld`/`-extar`, `cargo --config` and `-Z`, `npm`/`pnpm`/`yarn
+  --script-shell` and `--node-options`, `node --require`/`--import`/loaders,
+  `make SHELL=`, `-f`, `--eval`, `gradle --init-script`. Such a command is
+  judged as if the rule did not exist: it asks, or a read-only role is refused.
+  Before, a read-only reviewer could run `go test -exec='rm -rf x' ./...`
+  under its `Bash(go test:*)`. Prompt bytes: none change.
+
 - The goal judge's evidence search lists the newest records first, an
   evidence request it wraps in a code fence or in words is read, and an answer
   that is neither a request nor a verdict is asked for again (twice) and then
