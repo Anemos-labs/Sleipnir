@@ -619,9 +619,18 @@ func (s *Swarm) Integrate(ctx context.Context) *IntegrationReport {
 // integrateLocked is Integrate for a caller that holds apply.mu; commit chooses commits
 // on the person's branch over a patch to the working tree.
 func (s *Swarm) integrateLocked(ctx context.Context, commit bool) *IntegrationReport {
+	return s.integrateLockedTip(ctx, commit, "")
+}
+
+// integrateLockedTip applies only the previewed tip when expectedTip is set.
+// The caller holds apply.mu; fast-forward also checks under the queue turn.
+func (s *Swarm) integrateLockedTip(ctx context.Context, commit bool, expectedTip string) *IntegrationReport {
 	iso := s.deps.Isolation
 	q := iso.Queue
 	rep := &IntegrationReport{Branch: q.Branch(), Base: q.Base(), Tip: q.Tip()}
+	if expectedTip != "" && rep.Tip != expectedTip {
+		return s.notApplied(rep, iso, ErrAcceptChanged.Error())
+	}
 	if err := s.recoverApplication(ctx); err != nil {
 		return s.notApplied(rep, iso, err.Error())
 	}
@@ -726,7 +735,7 @@ func (s *Swarm) applyCommits(ctx context.Context, rep *IntegrationReport, iso *I
 			return s.notApplied(rep, iso, "could not save integration intent: "+err.Error())
 		}
 	}
-	res, err := iso.Queue.FastForward(ctx)
+	res, err := iso.Queue.FastForwardChecked(ctx, rep.Tip)
 	if err != nil {
 		return s.notApplied(rep, iso, firstLineOf(err.Error(), 300))
 	}
@@ -962,6 +971,9 @@ type AcceptOptions struct {
 	// checkout's position a dry run reported: if either moved since, Accept changes
 	// nothing and fails with ErrAcceptChanged (the person confirmed another set of work).
 	ExpectTip, ExpectFrom string
+	// ExpectCommitMode pins the dry-run Git operation (fast-forward or commit).
+	// A changed checkout that needs another operation must be authorized again.
+	ExpectCommitMode string
 }
 
 // AcceptReport says what Accept did, or would do.
@@ -972,6 +984,8 @@ type AcceptReport struct {
 	// Files are the paths the application changes (or commits); Tasks the tasks whose
 	// merges it brings.
 	Files, Tasks []string
+	// CommitMode names the Git operation needed: fast-forward or commit.
+	CommitMode string
 	// Waiting says there is verified work to apply or to commit.
 	Waiting bool
 	// CanCommit says Commits is possible now; CommitBlocked says why not (ErrCheckoutDirty
@@ -1033,6 +1047,13 @@ func (s *Swarm) Accept(ctx context.Context, o AcceptOptions) (*AcceptReport, err
 	}
 	rep.Checkout = st.Branch
 	dirty := checkoutDirty(st, iso.Manager)
+	rep.CommitMode = "commit"
+	if len(dirty) == 0 {
+		rep.CommitMode = "fast-forward"
+	}
+	if !o.DryRun && o.ExpectCommitMode != "" && o.ExpectCommitMode != rep.CommitMode {
+		return rep, ErrAcceptChanged
+	}
 	// A dirty file is the team's applied work when the integration applied it and it is
 	// still exactly what it applied; anything else is the person's own.
 	applied := map[string]bool{}
@@ -1090,7 +1111,7 @@ func (s *Swarm) Accept(ctx context.Context, o AcceptOptions) (*AcceptReport, err
 		if len(incoming) == 0 {
 			return rep, ErrNothingToAccept
 		}
-		ir := s.integrateLocked(ctx, false)
+		ir := s.integrateLockedTip(ctx, false, rep.Tip)
 		rep.Applied, rep.Message = ir.Applied, ir.Message
 		if !ir.Applied {
 			return rep, errors.New(ir.Message)
@@ -1105,7 +1126,7 @@ func (s *Swarm) Accept(ctx context.Context, o AcceptOptions) (*AcceptReport, err
 	}
 	if len(dirty) == 0 {
 		// A clean checkout: the branch moves to the tip, the agents' commits and all.
-		ir := s.integrateLocked(ctx, true)
+		ir := s.integrateLockedTip(ctx, true, rep.Tip)
 		rep.Applied, rep.Committed, rep.Message, rep.Commit = ir.Applied, ir.Committed, ir.Message, ir.Tip
 		if !ir.Applied {
 			return rep, errors.New(ir.Message)
@@ -1115,7 +1136,7 @@ func (s *Swarm) Accept(ctx context.Context, o AcceptOptions) (*AcceptReport, err
 	// The checkout holds the team's work as uncommitted edits: bring it up to the tip,
 	// check that those files are exactly the verified result, and commit them alone.
 	if len(incoming) > 0 {
-		ir := s.integrateLocked(ctx, false)
+		ir := s.integrateLockedTip(ctx, false, rep.Tip)
 		if !ir.Applied {
 			rep.Message = ir.Message
 			return rep, errors.New(ir.Message)

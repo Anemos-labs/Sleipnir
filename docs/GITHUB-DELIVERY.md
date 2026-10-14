@@ -30,8 +30,11 @@ The manager implements, verifies, commits, pushes and opens or reuses the PR.
 Opening the PR is a direct manager operation. In isolated teams, `task deliver`
 with `text` set to a commit message verifies direct manager edits and commits the
 integrated result to the original checkout without creating a board task. It
-refuses unrelated dirty files, branch movement and explicit permission denials. The controller polls GitHub without
-model requests while checks are pending. Auto-fix returns failed checks, conflicts,
+refuses unrelated dirty files, branch movement and explicit permission denials.
+Authorization names the actual fast-forward or path-limited commit operations,
+and both the operation and integration tip must still match the preview. The controller polls GitHub without
+model requests while checks are pending. Controller command results are stored
+as durable evidence for standing-goal judgments. Auto-fix returns failed checks, conflicts,
 unresolved review threads and changed review summaries (including CodeRabbit) to
 the manager. Findings are evidence to evaluate: valid findings are repaired;
 inapplicable findings need an explanation before their threads are resolved.

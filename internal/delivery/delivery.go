@@ -583,6 +583,9 @@ func (c *Controller) afterMerge(ctx context.Context, pr pull) (Directive, error)
 // Missing, pending, mismatched, and unsupported claims leave delivery incomplete.
 func (c *Controller) RecordRelease(response string) error {
 	lines := strings.Split(strings.TrimSpace(response), "\n")
+	if len(lines) >= 3 && strings.TrimSpace(lines[len(lines)-1]) == "```" && strings.HasPrefix(strings.TrimSpace(lines[len(lines)-3]), "```") {
+		lines = lines[:len(lines)-1]
+	}
 	var v struct {
 		Verdict  string `json:"delivery_release"`
 		Commit   string `json:"commit"`

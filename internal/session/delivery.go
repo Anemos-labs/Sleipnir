@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -199,6 +200,18 @@ func (s *Session) deliveryExec(dir string) delivery.Exec {
 				}
 			}
 		}
-		return run(ctx, name, args...)
+		out, err := run(ctx, name, args...)
+		ref, storeErr := s.Blobs.Put(out)
+		if storeErr != nil {
+			return out, errors.Join(err, fmt.Errorf("save delivery evidence: %w", storeErr))
+		}
+		data := map[string]any{"command": command, "cwd": dir, "ref": ref, "error": err != nil}
+		if err != nil {
+			data["reason"] = err.Error()
+		}
+		if _, logErr := s.Log.Emit("", "delivery.evidence", data); logErr != nil {
+			return out, errors.Join(err, logErr)
+		}
+		return out, err
 	}
 }

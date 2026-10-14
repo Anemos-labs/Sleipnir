@@ -39,6 +39,9 @@ func (s *Session) ClearGoalPlan() {
 // workers and turns. Inspection is read-only and bounded; failures never certify
 // completion. worked reports tool activity in the latest agent turn.
 func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict, worked bool, err error) {
+	if g == nil || g.StartSeq == 0 {
+		return goal.Verdict{Kind: goal.Continue}, false, fmt.Errorf("goal has no durable evidence boundary; save it before starting work")
+	}
 	a := s.Main()
 	if a == nil {
 		return goal.Verdict{Kind: goal.Continue}, false, fmt.Errorf("no agent to judge")
@@ -48,7 +51,7 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 	if err != nil {
 		return goal.Verdict{Kind: goal.Continue}, false, err
 	}
-	evidence, err := s.goalEvidence(g, cutoff, evidenceRequest{})
+	evidence, err := s.goalEvidence(ctx, g, cutoff, evidenceRequest{})
 	if err != nil {
 		return goal.Verdict{Kind: goal.Continue}, false, err
 	}
@@ -61,11 +64,23 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 	if s.Swarm != nil {
 		var board strings.Builder
 		for _, task := range s.Swarm.Board.Snapshot().Tasks {
-			fmt.Fprintf(&board, "%s %s %s\n", task.ID, task.Status, task.Title)
+			fmt.Fprintf(&board, "%s %s closure=%s target=%s %s\n", task.ID, task.Status, task.Closure.Kind(), task.Closure.Target(), task.Title)
 		}
 		prompt.Messages[0].Blocks = append(prompt.Messages[0].Blocks, core.Text("Current task board (status only, not proof of correctness):\n"+board.String()))
 	}
+	est := core.NewBytesEstimator()
 	for round := 0; round < 24; round++ {
+		if window := s.Model.ContextTokens; window > 0 {
+			tokens := est.Tokens(goal.JudgeSystem) + 1200
+			for _, message := range prompt.Messages {
+				for _, block := range message.Blocks {
+					tokens += est.Tokens(block.PlainText()) + 8
+				}
+			}
+			if tokens > window*3/4 {
+				return goal.Verdict{Kind: goal.Continue}, worked, fmt.Errorf("evidence inspection reached the model context budget")
+			}
+		}
 		if budget := s.Budget(); budget > 0 && s.Cost() >= budget {
 			return goal.Verdict{Kind: goal.Continue}, worked, fmt.Errorf("session budget reached during evidence inspection")
 		}
@@ -86,8 +101,8 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 			v, _ = goal.ParseVerdict(response)
 			break
 		}
-		s.Log.Emit("", "goal.inspect", map[string]any{"record": req.Record, "query": req.Query, "offset": req.Offset, "cutoff": cutoff})
-		data, e := s.goalEvidence(g, cutoff, req)
+		s.Log.Emit("", "goal.inspect", map[string]any{"record": req.Record, "records": req.Records, "query": req.Query, "offset": req.Offset, "cutoff": cutoff})
+		data, e := s.goalEvidence(ctx, g, cutoff, req)
 		if e != nil {
 			return goal.Verdict{Kind: goal.Continue}, worked, e
 		}
@@ -99,8 +114,9 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 		}
 	}
 	if v.Kind == goal.Done && s.Swarm != nil {
-		for _, task := range s.Swarm.Board.Snapshot().Tasks {
-			if task.Status != swarm.StatusDone {
+		snapshot := s.Swarm.Board.Snapshot()
+		for _, task := range snapshot.Tasks {
+			if goalTaskUnfinished(task, snapshot) {
 				v = goal.Verdict{Kind: goal.Continue, Reason: "the task board still contains unfinished work", Left: []string{"Repair or explicitly resolve existing task " + task.ID + " before completing the goal"}}
 				break
 			}
@@ -112,6 +128,39 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 	}
 	s.Log.Emit("", judgeEvent, map[string]any{"verdict": v.Kind, "reason": v.Reason, "left": left})
 	return v, worked, nil
+}
+
+// goalTaskUnfinished distinguishes unresolved work from explicit dispositions.
+// Superseded chains must terminate in a completed replacement; cycles, missing
+// targets, blocked work and exhausted verification remain incomplete.
+func goalTaskUnfinished(task swarm.Task, snapshot *swarm.Snapshot) bool {
+	seen := map[string]bool{}
+	following := false
+	for {
+		if seen[task.ID] {
+			return true
+		}
+		seen[task.ID] = true
+		if task.Status == swarm.StatusDone {
+			return false
+		}
+		if task.Status != swarm.StatusFailed {
+			return true
+		}
+		switch task.Closure.Kind() {
+		case swarm.CloseCanceled, swarm.CloseDenied:
+			return following
+		case swarm.CloseSuperseded:
+			following = true
+			var ok bool
+			task, ok = snapshot.Task(task.Closure.Target())
+			if !ok {
+				return true
+			}
+		default:
+			return true
+		}
+	}
 }
 
 // judgeEvent is the log record of a judge's verdict: its kind, its reason and what it found missing, so that the history of a
@@ -202,7 +251,8 @@ func short(s string, n int) string {
 // goalEvent is the log record of a standing goal; a nil goal says it was cleared or met.
 const goalEvent = "goal.state"
 
-// SaveGoal records the goal in the session log, so that a chat that is resumed (after /model, /login, a restart) still has it.
+// SaveGoal records a resumable goal. Call it before its first turn to establish
+// the objective boundary; JudgeGoal refuses a goal whose boundary was not saved.
 func (s *Session) SaveGoal(g *goal.State) {
 	if g != nil && g.StartSeq == 0 {
 		g.StartSeq, _ = s.Log.Emit("", "goal.start", map[string]any{"objective": g.Objective})
@@ -228,7 +278,7 @@ func (s *Session) LoadGoal() *goal.State {
 		if json.Unmarshal(e.Data, &d) == nil {
 			if d.Goal != nil && d.Goal.StartSeq == 0 {
 				d.Goal.StartSeq = e.Seq
-				if last != nil && last.Objective == d.Goal.Objective {
+				if last != nil && !last.Done && last.Objective == d.Goal.Objective {
 					d.Goal.StartSeq = last.StartSeq
 				}
 			}

@@ -45,6 +45,7 @@ func TestAGoalIsJudgedOnEvidenceAndSentOnWithWhatIsMissing(t *testing.T) {
 	}
 	defer s.Close()
 	g := goal.New("make sure the project builds")
+	s.SaveGoal(g)
 
 	if _, err := s.Run(context.Background(), goal.Start(g)); err != nil {
 		t.Fatal(err)
@@ -86,6 +87,7 @@ func TestAnInterruptedTurnPausesTheGoal(t *testing.T) {
 	}
 	defer s.Close()
 	g := goal.New("x")
+	s.SaveGoal(g)
 	note, next := s.GoalTurn(context.Background(), g, context.Canceled)
 	if !strings.Contains(note, "goal paused: you interrupted it") || next != "" || g.Paused == "" {
 		t.Errorf("after a cancelled turn: %q %q paused=%q", note, next, g.Paused)

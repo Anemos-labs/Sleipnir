@@ -17,7 +17,8 @@ each turn and can request another pass. It searches the durable session log for
 worker and manager tool evidence across earlier turns and compaction. Results are
 paged, including full stored tool outputs, so missing evidence in the current
 conversation does not by itself require repeating completed work. Inspection is
-read-only and bounded to 24 retrieval requests per judgment; an exhausted
+read-only, supports batched record reads, and is bounded by the session budget,
+model context budget and 24 retrieval requests per judgment; an exhausted
 inspection limit pauses the goal without certifying completion. `/goal` shows its state and plan.
 
 Escape or Ctrl+C during a turn cancels it. `/goal pause` and `/goal clear`

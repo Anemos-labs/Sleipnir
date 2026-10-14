@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/skills/mdfile"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
@@ -56,12 +57,28 @@ func (t *taskTool) deliver(ctx context.Context, c *tools.Call, in taskIn) *tools
 	if d := c.Env.Perm.Check(ctx, req); !d.Allow {
 		return tools.Errorf("delivery denied: %s", d.Reason)
 	}
-	req.Tool = "bash"
-	req.Command = "git commit -m '" + strings.ReplaceAll(message, "'", "'\\''") + "'"
-	if d := c.Env.Perm.Check(ctx, req); !d.Allow {
-		return tools.Errorf("delivery commit denied: %s", d.Reason)
+	// Mirror the Git argument vectors, keeping the message on stdin. Path and
+	// task rules were checked above; command rules see the actual operation.
+	commands := [][]string{{"git", "merge", "--no-edit", "--no-verify", "--no-autostash", "--no-stat", "--no-log", "--no-squash", "--no-gpg-sign", "-m", "Merge " + preview.Tip, "--ff-only", "--end-of-options", preview.Tip}}
+	if preview.CommitMode == "commit" {
+		commands = [][]string{
+			append([]string{"git", "add", "-A", "--"}, preview.Files...),
+			append([]string{"git", "diff", "--cached", "--quiet", "--no-ext-diff", "--ignore-submodules=dirty", "--"}, preview.Files...),
+			append([]string{"git", "commit", "--no-verify", "--no-gpg-sign", "--cleanup=whitespace", "-F", "-", "--only", "--"}, preview.Files...),
+		}
 	}
-	report, err := s.Accept(ctx, AcceptOptions{Commits: true, Message: message, ExpectTip: preview.Tip, ExpectFrom: preview.From})
+	req.Tool = "bash"
+	for _, command := range commands {
+		quoted := make([]string, len(command))
+		for i, arg := range command {
+			quoted[i] = mdfile.ShellQuote(arg)
+		}
+		req.Command = strings.Join(quoted, " ")
+		if d := c.Env.Perm.Check(ctx, req); !d.Allow {
+			return tools.Errorf("delivery Git operation denied: %s", d.Reason)
+		}
+	}
+	report, err := s.Accept(ctx, AcceptOptions{Commits: true, Message: message, ExpectTip: preview.Tip, ExpectFrom: preview.From, ExpectCommitMode: preview.CommitMode})
 	if err != nil {
 		return tools.Errorf("delivery needs repair: %v", err)
 	}

@@ -130,7 +130,7 @@ paths outside the project).
 
 | Tool | Actions | Notes |
 |---|---|---|
-| `task` | create, list, get, claim, update, block, resume, done, accept, reject, reopen, revise, resolve, fail, handover | Manager: create, accept, reject, reopen, revise, resolve and scope changes; pool leaders may create and accept their children. Persistent pools refuse `fail` and fresh-worker `handover`; embedded callers retain them (`fail` needs a typed `reason`). See sections 4 and 6. |
+| `task` | create, list, get, claim, update, block, resume, done, accept, reject, reopen, revise, resolve, fail, handover, deliver | Manager: create, accept, reject, reopen, revise, resolve, deliver and scope changes; pool leaders may create and accept their children. Persistent pools refuse `fail` and fresh-worker `handover`; embedded callers retain them (`fail` needs a typed `reason`). See sections 4 and 6. |
 | `mail` | send | one recipient; typed; section 5 |
 | `note` | propose | a bounded fact in the live view; older proposals can be evicted |
 | `spawn` | role, task, optional `agent=` to reuse an idle worker | Manager or pool leader assigning an existing member to its child; section 6 |

@@ -1,12 +1,14 @@
 package session
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/goal"
+	"github.com/anemos-labs/sleipnir/internal/swarm"
 )
 
 func TestGoalEvidenceSurvivesNoiseAndKeepsObjectiveBoundaries(t *testing.T) {
@@ -36,30 +38,132 @@ func TestGoalEvidenceSurvivesNoiseAndKeepsObjectiveBoundaries(t *testing.T) {
 	log.Emit("worker", events.TypeToolCall, map[string]any{"name": "bash", "input": "future goal passed"})
 	log.Flush()
 	for _, query := range []string{"old goal", "future goal"} {
-		got, err := s.goalEvidence(g, cutoff, evidenceRequest{Query: query})
+		got, err := s.goalEvidence(context.Background(), g, cutoff, evidenceRequest{Query: query})
 		if err != nil || !strings.Contains(got, "No matching evidence") {
 			t.Fatalf("boundary %s: %s %v", query, got, err)
 		}
 	}
-	got, err := s.goalEvidence(g, cutoff, evidenceRequest{Query: "UNIQUE PASS"})
+	got, err := s.goalEvidence(context.Background(), g, cutoff, evidenceRequest{Query: "UNIQUE PASS"})
 	if err != nil || !strings.Contains(got, "UNIQUE PASS 37 tests") || !strings.Contains(got, "agent=ts-2") {
 		t.Fatalf("lost long worker evidence: %s %v", got, err)
 	}
-	got, err = s.goalEvidence(g, cutoff, evidenceRequest{Record: record, Offset: 11000})
+	got, err = s.goalEvidence(context.Background(), g, cutoff, evidenceRequest{Record: record, Offset: 11000})
 	if err != nil || !strings.Contains(got, "UNIQUE PASS 37 tests") {
 		t.Fatalf("cannot page full output: %s %v", got, err)
 	}
-	got, err = s.goalEvidence(g, cutoff, evidenceRequest{Query: "wait", Offset: 140})
+	got, err = s.goalEvidence(context.Background(), g, cutoff, evidenceRequest{Query: "wait", Offset: 140})
 	if err != nil || !strings.Contains(got, "shown=10") {
 		t.Fatalf("pagination: %s %v", got, err)
 	}
+	batch, err := s.goalEvidence(context.Background(), g, cutoff, evidenceRequest{Records: []uint64{record, record + 1}})
+	if err != nil || !strings.Contains(batch, fmt.Sprintf("record=%d", record)) || !strings.Contains(batch, "wait") {
+		t.Fatalf("batch read: %s %v", batch, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := s.goalEvidence(ctx, g, cutoff, evidenceRequest{}); err != context.Canceled {
+		t.Fatalf("canceled scan continued: %v", err)
+	}
 	// The immutable log, not an agent's live/compacted thread, supplies the output.
 	restored := &Session{Dir: dir, Log: log, Blobs: s.Blobs}
-	got, err = restored.goalEvidence(g, cutoff, evidenceRequest{Record: record, Offset: 11000})
+	got, err = restored.goalEvidence(context.Background(), g, cutoff, evidenceRequest{Record: record, Offset: 11000})
 	if err != nil || !strings.Contains(got, "UNIQUE PASS 37 tests") {
 		t.Fatal("restore lost evidence")
 	}
 	if got := evidenceText(events.Event{Type: events.TypeTurnAppend, Data: []byte(`{"role":"assistant","blocks":[{"kind":"text","text":"everything passed"}]}`)}); got != "" {
 		t.Fatal("assistant claim became proof")
+	}
+}
+
+func TestDeliveryCommandsBecomeDurableGoalEvidence(t *testing.T) {
+	dir := t.TempDir()
+	log, err := events.Open(dir, "delivery-evidence")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer log.Close()
+	s := &Session{Dir: dir, Log: log, Blobs: events.NewMemBlobs()}
+	g := goal.New("inspect delivery")
+	s.SaveGoal(g)
+	if _, err := s.deliveryExec(dir)(context.Background(), "git", "--version"); err != nil {
+		t.Fatal(err)
+	}
+	cutoff, err := s.goalEvidenceCutoff()
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence, err := s.goalEvidence(context.Background(), g, cutoff, evidenceRequest{Query: "git version"})
+	if err != nil || !strings.Contains(evidence, "delivery.evidence") || !strings.Contains(evidence, "git version") {
+		t.Fatalf("missing controller proof: %s %v", evidence, err)
+	}
+}
+
+func TestGoalRejectsMissingBoundaryAfterFailedSave(t *testing.T) {
+	dir := t.TempDir()
+	log, err := events.Open(dir, "missing-boundary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Session{Dir: dir, Log: log, Blobs: events.NewMemBlobs()}
+	log.Emit("old-worker", events.TypeToolCall, map[string]string{"name": "old objective passed"})
+	if err := log.Close(); err != nil {
+		t.Fatal(err)
+	}
+	g := goal.New("new objective")
+	s.SaveGoal(g)
+	if g.StartSeq != 0 {
+		t.Fatal("failed save assigned a boundary")
+	}
+	reopened, err := events.Open(dir, "missing-boundary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	s.Log = reopened
+	cutoff, err := s.goalEvidenceCutoff()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.goalEvidence(context.Background(), g, cutoff, evidenceRequest{}); err == nil {
+		t.Fatal("unsaved goal searched prior objectives")
+	}
+	if _, _, err := s.JudgeGoal(context.Background(), g); err == nil || !strings.Contains(err.Error(), "evidence boundary") {
+		t.Fatalf("judge accepted unsaved goal: %v", err)
+	}
+}
+
+func TestGoalTaskGateDistinguishesDispositionFromUnfinishedWork(t *testing.T) {
+	closeAs := func(kind swarm.ClosureKind, target string) swarm.Closure {
+		c, err := swarm.NewClosure(kind, target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	for _, tc := range []struct {
+		name   string
+		task   swarm.Task
+		others []swarm.Task
+		open   bool
+	}{
+		{"done", swarm.Task{ID: "T1", Status: swarm.StatusDone}, nil, false},
+		{"working", swarm.Task{ID: "T1", Status: swarm.StatusDoing}, nil, true},
+		{"canceled", swarm.Task{ID: "T1", Status: swarm.StatusFailed, Closure: closeAs(swarm.CloseCanceled, "")}, nil, false},
+		{"denied", swarm.Task{ID: "T1", Status: swarm.StatusFailed, Closure: closeAs(swarm.CloseDenied, "")}, nil, false},
+		{"failed verification", swarm.Task{ID: "T1", Status: swarm.StatusFailed, Closure: closeAs(swarm.CloseVerifier, "")}, nil, true},
+		{"exhausted", swarm.Task{ID: "T1", Status: swarm.StatusFailed, Closure: closeAs(swarm.CloseExhausted, "")}, nil, true},
+		{"blocked", swarm.Task{ID: "T1", Status: swarm.StatusFailed, Closure: closeAs(swarm.CloseBlockedOn, "T2")}, []swarm.Task{{ID: "T2", Status: swarm.StatusDone}}, true},
+		{"replaced", swarm.Task{ID: "T1", Status: swarm.StatusFailed, Closure: closeAs(swarm.CloseSuperseded, "T2")}, []swarm.Task{{ID: "T2", Status: swarm.StatusDone}}, false},
+		{"replacement unfinished", swarm.Task{ID: "T1", Status: swarm.StatusFailed, Closure: closeAs(swarm.CloseSuperseded, "T2")}, []swarm.Task{{ID: "T2", Status: swarm.StatusDoing}}, true},
+		{"replacement canceled", swarm.Task{ID: "T1", Status: swarm.StatusFailed, Closure: closeAs(swarm.CloseSuperseded, "T2")}, []swarm.Task{{ID: "T2", Status: swarm.StatusFailed, Closure: closeAs(swarm.CloseCanceled, "")}}, true},
+		{"replacement absent", swarm.Task{ID: "T1", Status: swarm.StatusFailed, Closure: closeAs(swarm.CloseSuperseded, "T2")}, nil, true},
+		{"replacement cycle", swarm.Task{ID: "T1", Status: swarm.StatusFailed, Closure: closeAs(swarm.CloseSuperseded, "T1")}, nil, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sn := &swarm.Snapshot{Tasks: append([]swarm.Task{tc.task}, tc.others...)}
+			if got := goalTaskUnfinished(tc.task, sn); got != tc.open {
+				t.Fatalf("unfinished=%v want %v", got, tc.open)
+			}
+		})
 	}
 }
