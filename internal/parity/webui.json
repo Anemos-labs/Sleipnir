@@ -821,15 +821,6 @@
    ]
   },
   {
-   "group": "time",
-   "name": "Pin the hold",
-   "kind": "action",
-   "live": true,
-   "effects": [
-    "pin"
-   ]
-  },
-  {
    "group": "the program (sleipnir ...)",
    "name": "sleipnir chat",
    "kind": "program",
@@ -2024,7 +2015,7 @@
    "id": "look",
    "title": "Appearance & motion",
    "group": "browser",
-   "summary": "hover, motion, density and the keys",
+   "summary": "motion, density, notifications and the keys",
    "controls": [
     {
      "id": "do:dash-edit",
@@ -2055,10 +2046,6 @@
     },
     {
      "id": "seg:density",
-     "scope": "browser"
-    },
-    {
-     "id": "seg:hover",
      "scope": "browser"
     },
     {

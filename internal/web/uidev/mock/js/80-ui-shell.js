@@ -34,7 +34,7 @@
     });
     sc.frame((dtView, vt, S) => {
       if (!S || !S.m) return; const m = S.m;
-      txt('el', $('#vElapsed'), mmss(vt)); const gap = S.wt - vt, lh = $('#liveHint'); lh.hidden = gap < 1; if (gap >= 1) txt('lh', lh, ' · live +' + Math.round(gap) + 's');
+      txt('el', $('#vElapsed'), mmss(vt)); const gap = S.replay ? S.wt - vt : 0, lh = $('#liveHint'); lh.hidden = gap < 1; if (gap >= 1) txt('lh', lh, ' · live +' + Math.round(gap) + 's');
       const left = calc.warmLeft(m, vt), tgt = Math.max(0, left) / WARM_LIFE, rw = $('#ringWarm'), low = left > 0 && left < WARM_RED, cold = left <= 0, still = ui.still();
       if (tgt > H.disp) H.disp = still ? tgt : Math.min(tgt, H.disp + dtView * 3.4); else H.disp = tgt;
       rw.classList.toggle('low', low); rw.classList.toggle('cold', cold); $('#warmArc').style.strokeDashoffset = RING_C * (1 - H.disp);

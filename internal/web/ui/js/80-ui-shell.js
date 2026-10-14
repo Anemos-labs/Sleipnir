@@ -44,12 +44,12 @@
       else if (S.replay) { b.hidden = false; b.innerHTML = '<b>Replay</b><span>' + mmss(S.vt) + ' of ' + mmss(S.wt) + '</span><span>' + (S.replay.playing ? 'playing ' + S.replay.speed + 'x' : 'paused') + '</span><span class="dim">' + (S.recorded ? (S.follow ? 'watching ' + esc(S.sid) + ' · read-only · the run belongs to another process' : esc(S.sid) + ' · a recorded session, read-only') : 'the whole cockpit follows the log; actions act on the live session') + '</span>' + cut + '<span class="sp"></span><button type="button" data-act="live">go live</button>'; }
       else if (S.recorded) { b.hidden = false; b.innerHTML = '<b>' + (S.follow ? 'Watching' : 'Recorded') + '</b><span class="dim">' + (S.follow ? 'watching ' + esc(S.sid) + ' · read-only · the run belongs to another process' : esc(S.sid) + ' · a recorded session, read-only: ↺ Resume continues it') + '</span>' + cut + '<span class="sp"></span>'; }
       else b.hidden = true;
-      const q = calc.openQuestion(S.wm), qb = $('#qBanner');   /* questions come from the world model: never held back */ qb.hidden = !q; if (q) $('#qBannerT').textContent = q.agent + ' asks: ' + q.cmd;
+      const q = calc.openQuestion(S.wm), qb = $('#qBanner');   /* questions come from the world model: a replay never hides one */ qb.hidden = !q; if (q) $('#qBannerT').textContent = q.agent + ' asks: ' + q.cmd;
       renderTabs(S); renderFooter(S, m); paintMode(S);
     });
     sc.frame((dtView, vt, S) => {
       if (!S || !S.m) return; const m = S.m;
-      txt('el', $('#vElapsed'), mmss(vt)); const gap = S.wt - vt, lh = $('#liveHint'); lh.hidden = gap < 1; if (gap >= 1) txt('lh', lh, ' · live +' + Math.round(gap) + 's');
+      txt('el', $('#vElapsed'), mmss(vt)); const gap = S.replay ? S.wt - vt : 0, lh = $('#liveHint'); lh.hidden = gap < 1; if (gap >= 1) txt('lh', lh, ' · live +' + Math.round(gap) + 's');   /* a replay: how far behind the live edge it is */
       const left = calc.warmLeft(m, vt), tgt = Math.max(0, left) / (m.ttl || WARM_LIFE), rw = $('#ringWarm'), low = left > 0 && left < WARM_RED, cold = left <= 0, still = ui.still();
       if (tgt > H.disp) H.disp = still ? tgt : Math.min(tgt, H.disp + dtView * 3.4); else H.disp = tgt;
       rw.classList.toggle('low', low); rw.classList.toggle('cold', cold); $('#warmArc').style.strokeDashoffset = RING_C * (1 - H.disp);

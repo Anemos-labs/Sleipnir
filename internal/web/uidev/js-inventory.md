@@ -19,9 +19,9 @@ The contracts between modules are listed after the table. A module reads another
 | `00-util.js` | `SL.u` helpers (escaping, id checks, number and time formats, element builders, PRNG, bus) and `SL.bus`. | Shared |
 | `api.js` | `SL.api`, the page's only door to the server: requests under `/api/` with the session cookie and the `X-Sleipnir-Web` header, the confirmation flow for a `428`, single-use confirmation ids, the event stream with its reconnects. A call never throws. | Shipped only |
 | `11-data-live.js` | `SL.D`, `SL.G` and `SL.data`: the catalogues (models, roles, providers, rules, skills, MCP servers, trust, configuration, schedule, the command spec) and the state shared by every session, as caches over the API that read as empty until they arrive; plus the page's own tables (the permission modes, the key list, the names and colours of the prompt layers, the built-in roles). | Live (counterpart: `10-fixtures.js`, `11-data-adapter.js`) |
-| `20-clock.js` | `SL.time`: the view clock and the time governor (hold, slow, catch-up, quiet period). | Shared |
+| `20-clock.js` | `SL.time`: the page's wall clock, the rate of the view clock in a replay, and the quiet period of the keyboard. | Shared |
 | `30-model.js` | `SL.model` (the pure reducer from events to a session's model, which first makes each server event plain) and `SL.calc` (every derived number: hit, cost, savings, warm clock, tasks, questions). | Shared |
-| `50-sessions.js` | `SL.sessions` and the `Session` class: the registry of the tabs the page shows, the event log, the world and view clocks (`advanceWorld`, `advanceView`, `stepWorld`, `stepView`), `rebuild`, `collapse`, `seek`, `unseen`, `state`, the placeholder session of a server that hosts no tab, the recorded-session list and pruning. | Live (counterpart: `50-sessions.js`, `40-scripts.js`) |
+| `50-sessions.js` | `SL.sessions` and the `Session` class: the registry of the tabs the page shows, the event log, the world and view clocks (`advanceWorld`, `advanceView`, `followWorld`, `stepWorld`, `stepView`), `rebuild`, `seek`, `state`, the placeholder session of a server that hosts no tab, the recorded-session list and pruning. | Live (counterpart: `50-sessions.js`, `40-scripts.js`) |
 | `60-actions.js` | `SL.act` (every action a person can take: a synchronous check that returns `{ok: false, why}`, else a request to the API whose result is `done`), `SL.settings` (per-viewer settings in `localStorage`) and `SL.actions`. The effect of an action reaches the screen as the events and meta the server sends back. | Live (counterpart: `60-actions.js`) |
 | `live.js` | `SL.live`: the boot sequence (hello, stream, snapshots), the frames that become sessions, events, meta and rosters, the connection state, recorded sessions opened read-only or followed, the server's defaults for a new session. | Shipped only |
 | `70-view.js` | Scopes and views (everything a view starts dies with it), hover cross-highlighting (`SL.link`), the one frame loop (`SL.loop`). | Shared |
@@ -30,7 +30,7 @@ The contracts between modules are listed after the table. A module reads another
 | `82-ui-board.js` | The task board (todo, running, verify, merged) used by the cockpit and the Board view. | Shared |
 | `83-ui-cockpit.js` | The Cockpit view: horse, manager card, stalls, gantt, board, merge queue, mail, governor, each drawn into a card of the dashboard; the mail arcs. | Shared |
 | `83b-ui-dash.js` | The Cockpit's dashboard: `SL.dash` (the layout of cards: the catalogue, the default layout, normalize, load and save in localStorage, move, resize, add, remove, the keys of a focused card) and `ui.dash` (the grid, the lock, dragging and resizing, the Add card picker, cards that hold a view). | Shipped only |
-| `84-ui-chat.js` | `SL.chat`: the Radio rail (manager conversation, read-only team feed, plan box, hold chip, composer). | Shared |
+| `84-ui-chat.js` | `SL.chat`: the Radio rail (manager conversation, read-only team feed, plan box, composer). | Shared |
 | `85-ui-approvals.js` | The approval question and the cross-session inbox, with the quiet-period rule for answering. | Shared |
 | `86-ui-overlays.js` | Modal sheets, toasts, in-page confirm, icons, the reduced-motion switch (`ui.still`), the `?` help dots of a dialog (`ui.help`, `ui.helpMount`: an explanation that shows on hover, focus and tap). | Shared |
 | `87b-ui-folder.js` | The folder field of the New session dialog: a path that completes folder names as it is typed (`GET /api/fs/dirs`) and the words that say what the path is. The words and the text a taken name makes have no DOM. | Shared |
@@ -56,7 +56,7 @@ The contracts between modules are listed after the table. A module reads another
    the richer sections used by Settings, Tools and the workspace. Every field the code reads is a `D.<name>` or `X.<name>` in the
    files above. A field that has not arrived reads as its empty shape.
 2. **Sessions (`SL.sessions`, `Session`)**: `list`, `active`, `get`, `activate`, `needs`, `recorded`, and the `Session` fields
-   `id name kind meta roster log wt vt widx idx wm m ui hold replay hist`. Events enter only through `Session.add`;
+   `id name kind meta roster log wt vt widx idx wm m ui replay hist`. Events enter only through `Session.add`;
    `{t, k, ...fields}` with `t` in session seconds and `k` one of the kinds listed in `30-model.js`
    (`internal/web/wire/events.go` has their fields).
 3. **Actions (`SL.act.*`)**: the names are used by the renderers, the palette and the keyboard. A result is `{ok, why}` where an
@@ -65,9 +65,9 @@ The contracts between modules are listed after the table. A module reads another
    `liveFile`, `pending`, `filesFrom`, `lines`, with `ops` (restore, hunk revert, accept) and `merge` for the requests the screens make.
 5. **Runner**: `SL.runner.buildRequest` builds the request for a command from its form state and `createRun` drives one run; the
    server answers with a run id and streams `out` and `err` lines and a result. A line is `{k, t}`.
-6. **Time**: the world clock advances one second per wall second for every session; the view clock is the governor's
-   (`20-clock.js`). The server's events carry their own `t`; the reducer, the hold and the catch-up logic do not depend on where
-   the events come from.
+6. **Time**: the world clock advances one second per wall second for every session; live, the view clock is the world clock, and
+   in a replay it runs at the replay's speed (`20-clock.js`). The server's events carry their own `t`; the reducer and the clocks do
+   not depend on where the events come from.
 
 Text that came from a tool, a file, mail or a model is data: it reaches the page through `U.esc` (`00-util.js`) or `textContent`,
 never as markup. Every string the API returns follows that rule.

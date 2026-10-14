@@ -1,10 +1,6 @@
-/* rail additions: channels, hold chip, transcript row kinds, digest */
+/* rail additions: channels, transcript row kinds */
 .rail-h{flex:none}
 .rail-h .rm{flex:1}
-.holdchip{font:600 11px/1 var(--f-num);color:var(--warm);border:1px solid var(--warm-b);background:var(--warm-a);padding:4px 8px;border-radius:10px;white-space:nowrap;cursor:pointer}
-.holdchip:hover{background:var(--warm-b)}
-.holdchip.pinned{color:var(--bright);background:var(--mgr-a);border-color:var(--c-mgr)}
-.holdchip.catching{color:var(--fe);border-color:var(--info-b);background:var(--info-a);cursor:default}
 .chans{display:flex;flex-wrap:wrap;gap:3px;padding:7px 8px 6px;border-bottom:1px solid var(--line);flex:none}
 .chan{display:flex;align-items:center;gap:5px;padding:4px 7px;border:1px solid var(--line2);border-radius:2px;font:600 11.5px/1 var(--f-num);color:var(--dim);background:var(--panel2);white-space:nowrap}
 .chan .cg{font-style:normal;font-size:11px;width:11px;text-align:center;color:var(--c)}
@@ -39,19 +35,12 @@
 .msg.empty,.msg.foldmark{color:var(--dim);font:italic 12px var(--f-ui);text-align:center;padding:4px 0}
 .msg.foldmark{border-bottom:1px dashed var(--line2);padding-bottom:6px;margin-bottom:2px}
 .msg.stream.code pre{margin:2px 0 0;white-space:pre-wrap;font:500 11.5px/1.45 var(--f-num);color:var(--fg);background:var(--well);border:1px solid var(--line);padding:6px 8px}
-.msg.digest{border:1px solid var(--line2);background:linear-gradient(90deg,var(--mgr-a),transparent);padding:0}
-.msg.digest .dtog{display:block;width:100%;padding:6px 9px;font:500 12px/1.35 var(--f-num);color:var(--fg2);text-align:left}
-.msg.digest .dtog b{color:var(--c-mgr)}
-.msg.digest .dx{float:right;color:var(--fe);font-size:11px}
-.msg.digest .drows{margin:0;padding:6px 12px 8px 26px;border-top:1px solid var(--line);font:400 11px/1.5 var(--f-num);color:var(--dim);max-height:180px;overflow:auto}
-.msg.digest .drows time{color:var(--faint)}
 .pastechip{background:var(--panel2);border:1px solid var(--line2);padding:1px 5px;border-radius:2px;font:500 11px var(--f-num);color:var(--fg2)}
 .qmore{font:600 10.5px var(--f-num);color:var(--warm);margin:6px 0 0}
 .qbox .row2{display:flex;gap:6px;margin-top:6px}
 .qbox .field{margin:0}
 .qbox input.tellIn{flex:1;background:var(--well);border:1px solid var(--line2);padding:6px 9px;font:500 12.5px var(--f-ui);color:var(--bright);border-radius:2px;width:100%}
 .planbox>div>.verdict{border-top:1px solid var(--line)}
-.rail-h .holdchip[hidden]{display:none}
 .composer .qd .qt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .composer textarea:disabled{opacity:.5;cursor:not-allowed}
 

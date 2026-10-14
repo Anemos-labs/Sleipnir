@@ -196,6 +196,7 @@ class El extends Target {
     if (!quiet) this._log('children'); return n;
   }
   removeChild(n) { const i = this.childNodes.indexOf(n); if (i >= 0) { this._log('children'); this.childNodes.splice(i, 1); n.parentNode = null; } return n; }
+  replaceChild(n, old) { if (old.parentNode !== this) throw new Error('replaceChild: not a child'); const nx = old.nextSibling; this.removeChild(old); this.insertBefore(n, nx); return old; }
   remove() { if (this.parentNode) this.parentNode.removeChild(this); }
   contains(n) { for (let x = n; x; x = x.parentNode) if (x === this) return true; return false; }
   getAttribute(n) { n = String(n).toLowerCase(); return this._attrs.has(n) ? this._attrs.get(n) : null; }

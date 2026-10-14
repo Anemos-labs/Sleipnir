@@ -31,7 +31,7 @@
     const o = { ag: {}, tasks: {}, merged: m.merged.slice(), plan: m.plan.slice(), goal: m.goal.state, mail: m.mail.length, anom: m.anomalies.length, comp: m.compactions.length, steps: m.steps, refused: m.refused, lastReq: m.lastReq, rpm: m.rpm, qs: m.qs.map(q => q.id + ':' + q.answered), q: m.qHead ? m.qHead.task + m.qHead.step : null };
     m.order.forEach(id => { const a = m.ag[id]; o.ag[id] = [a.state, a.doing, a.task, Math.round(a.rd * 100) / 100, Math.round(a.un * 100) / 100, a.out, a.calls, a.nreq, a.ratios.map(r => Math.round(r * 1000) / 1000).join(','), a.segs.length]; });
     m.torder.forEach(id => { o.tasks[id] = m.tasks[id].st; });
-    o.chan = {}; if (!noChan) Object.keys(m.chan).forEach(c => { const k = {}; m.chan[c].forEach(e => { if (e.k !== 'digest') k[e.k] = (k[e.k] || 0) + 1; }); o.chan[c] = k; });
+    o.chan = {}; if (!noChan) Object.keys(m.chan).forEach(c => { const k = {}; m.chan[c].forEach(e => { k[e.k] = (k[e.k] || 0) + 1; }); o.chan[c] = k; });
     return JSON.stringify(o);
   };
   /* expose the hooks once the page's namespace has its views (00-namespace.js and 70-view.js have run) */

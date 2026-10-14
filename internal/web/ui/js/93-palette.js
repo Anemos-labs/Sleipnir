@@ -80,7 +80,6 @@
     SL.sessions.list.forEach(S => items.push({ g: 'sessions', name: 'Switch to ' + S.name, d: S.meta.cwd + ' · ' + S.state(), fn: () => SL.act.switchSession(S.id), live: true, dyn: true }));
     if (!SL.sessions.list.length) items.push({ g: 'sessions', name: 'Switch to', d: '', fn: () => {}, live: false, dyn: true, hidden: true });
     items.push({ g: 'help', name: 'Take the tour', d: 'the guided tour: each part of the page and how it works', fn: () => ui.tour.start(), live: true }, { g: 'help', name: 'Customise the Cockpit', d: 'move, resize, add and remove its cards; any view can be a card', fn: () => { SL.views.show('cockpit'); ui.dash.setLocked(false); }, live: true });
-    items.push({ g: 'time', name: 'Pin the hold', d: 'freeze the view while you read (Space over the chat; Esc releases)', fn: () => ui.togglePin(), live: true });
     D.spec.commands.forEach(c => items.push({ g: 'the program (sleipnir ...)', name: 'sleipnir ' + c.path.join(' '), d: c.summary || '', cli: c.path, live: true }));
   }
   function filter(q, slashOnly) {

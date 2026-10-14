@@ -56,7 +56,6 @@
     items.push({ g: 'go to', name: 'Radio', d: 'open the Radio rail and focus the composer', fn: () => ui.rail.focus(), live: true });
     items.push({ g: 'sessions', name: 'New session…', d: 'start another sleipnir session (all the chat flags)', fn: () => ui.dialogs.newSession(), live: true }, { g: 'sessions', name: 'Resume a session…', d: 'a recorded session, with ↺', fn: () => ui.dialogs.resume(), live: true }, { g: 'sessions', name: 'Needs you (inbox)', d: 'open questions in every session', fn: () => ui.inbox.toggle(), live: true }, { g: 'sessions', name: 'Rename this session…', d: 'a name for the tab', fn: () => ui.dialogs.rename(S_()), live: true }, { g: 'sessions', name: 'Close this session…', d: 'stops its team; the log stays on disk', fn: () => ui.closeSessionAsk(S_()), live: true }, { g: 'sessions', name: 'Team…', d: 'workers, role models, isolation, verify', fn: () => ui.settingsPage('run'), live: true });
     SL.sessions.list.forEach(S => items.push({ g: 'sessions', name: 'Switch to ' + S.name, d: S.meta.cwd + ' · ' + S.state(), fn: () => SL.act.switchSession(S.id), live: true, dyn: true }));
-    items.push({ g: 'time', name: 'Pin the hold', d: 'freeze the view while you read (Space over the chat; Esc releases)', fn: () => ui.togglePin(), live: true });
     D.spec.commands.forEach(c => items.push({ g: 'the program (sleipnir ...)', name: 'sleipnir ' + c.path.join(' '), d: c.summary || '', cli: c.path, live: true }));
   }
   function filter(q, slashOnly) {

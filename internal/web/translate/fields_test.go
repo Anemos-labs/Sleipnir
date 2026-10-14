@@ -54,7 +54,7 @@ var required = map[string][]string{
 
 // notProduced are the kinds of the reference page that the server never sends: the page makes them itself, or they belong to a
 // scripted reply.
-var notProduced = map[string]bool{"local": true, "digest": true, "reply": true}
+var notProduced = map[string]bool{"local": true, "reply": true}
 
 // has reports whether the event has the dotted field.
 func has(e map[string]any, field string) bool {
@@ -202,7 +202,7 @@ func TestEveryFieldTheReducerReadsIsProduced(t *testing.T) {
 	}
 }
 
-// Every kind of the vocabulary is produced by some test (the 30 kinds of the reference page but local, digest and reply, and the
+// Every kind of the vocabulary is produced by some test (the kinds of the reference page but local and reply, and the
 // additive ones).
 func TestEveryKindIsCovered(t *testing.T) {
 	corpus := everyKindCorpus(t)

@@ -1,15 +1,16 @@
 /* 30-model.js: SL.model, the pure reducer from events to a session's model, and SL.calc, every number derived from it.
  *
- * An event is {t, k, ...fields} (t = session seconds). `reduce(m, ev, ctx)` is the ONLY thing that changes a model. It runs twice per
+ * An event is {t, k, ...fields} (t = session seconds). `reduce(m, ev)` is the ONLY thing that changes a model. It runs twice per
  * session: on the world model (events up to the world clock, no chat rows, drives the director and needs-you) and on the view model
- * (events up to the view clock, with chat rows). Both read the same events in the same order, so after a catch-up the two are equal.
+ * (events up to the view clock, with chat rows). Both read the same events in the same order, so once the view reaches the world
+ * clock the two are equal.
  *
  * Every number on screen is derived from the per-agent token table in the model (read, uncached, out): hit, cost, savings, the HUD ring,
  * the Cache tab, the stalls and the drawer all call SL.calc, so they agree to the percent at every moment.
  *
  * Event kinds (their fields and caps are the types of internal/web/wire/events.go): say, sys, tool, note, state, task, plan, verdict,
  * req, use, warm, gov, mail, ckpt, ask, answer, queue, merge, break, compact, stream, goal, final, local, steer, reply, interrupt,
- * refuse, digest, and more, turn, stall, handover, layers (plus alert, mailstat and svc when the server sends them). Fields that real data
+ * refuse, more, turn, stall, handover, layers (plus alert, mailstat and svc when the server sends them). Fields that real data
  * carries beyond what a screen draws are kept in the model and change no rendering path. */
 (function (SL) {
   'use strict';
@@ -23,7 +24,6 @@
   /** Push a mark of the gantt (the cap holds for every kind). */
   const addMark = (m, x) => { m.marks.push(x); if (m.marks.length > MARK_CAP) m.marks.splice(0, m.marks.length - MARK_CAP); };
   const capList = (l, n) => { if (l.length > n) l.splice(0, l.length - n); };
-  const VISIBLE = new Set(['say', 'sys', 'tool', 'note', 'mail', 'break', 'compact', 'ask', 'merge', 'steer', 'reply', 'refuse', 'interrupt', 'local']);
 
   const priceOf = id => id === 'mgr' ? D.prices.mgr : D.prices.worker;
   const MAIL_CAP = 400, HANDOVER_CAP = 100;
@@ -81,56 +81,52 @@
     return m.ag[r.id];
   }
 
-  /** Push a transcript entry. `animate`/`digest` come from ctx: collapsed rows are kept (state equality) but flagged and, for a digest, summarised. */
-  function push(m, ctx, ch, entry, ev, summarize = true) {
+  /** Push a transcript entry onto a channel of a model that has chat rows (the view model). */
+  function push(m, ch, entry, ev) {
     if (!m.chat) return;
     const list = m.chan[ch] || (m.chan[ch] = []);
     entry.id = ++m.nid; if (entry.t == null) entry.t = ev.t; if (ev && ev.at && entry.at == null) entry.at = ev.at;
     if (ev && ev.mid && (entry.k === 'say' || entry.k === 'stream')) { entry.mid = ev.mid; if (!m.mids[ev.mid]) { m.mids[ev.mid] = []; m.midOrder.push(ev.mid); if (m.midOrder.length > MID_CAP) delete m.mids[m.midOrder.shift()]; } m.mids[ev.mid].push(entry); }
-    if (ctx && ctx.digest) { entry.collapsed = true; if (summarize && ctx.digest.rows.length < 160) ctx.digest.rows.push({ ch, k: entry.k, t: entry.t, text: entry.text || entry.arg || (entry.name ? entry.name : '') || (entry.id2 || '') , who: entry.who || entry.ag || '' }); }
     list.push(entry);
     if (list.length > CHAN_CAP) { list.splice(0, 500); m.folded[ch] = (m.folded[ch] || 0) + 500; }
   }
   const chOf = id => id === 'mgr' ? 'mgr' : id;
-  /** The last entry of the manager's channel that is part of the conversation (not team activity: a feed row, a digest, a break, a
+  /** The last entry of the manager's channel that is part of the conversation (not team activity: a feed row, a break, a
    *  compaction, a worker's stream), looking back at most 400 entries; null when there is none. */
   function lastTalk(list) {
-    for (let i = (list || []).length - 1, n = 0; i >= 0 && n < 400; i--, n++) { const e = list[i]; if (e.k === 'feed' || e.k === 'digest' || e.k === 'break' || e.k === 'compact' || (e.k === 'stream' && e.ag !== 'mgr')) continue; return e; }
+    for (let i = (list || []).length - 1, n = 0; i >= 0 && n < 400; i--, n++) { const e = list[i]; if (e.k === 'feed' || e.k === 'break' || e.k === 'compact' || (e.k === 'stream' && e.ag !== 'mgr')) continue; return e; }
     return null;
   }
 
   function closeSeg(a, t) { if (a.cur) { a.cur.t1 = t; a.cur = null; } }
 
-  /** Apply one event to a model. ctx: {digest?} (collapsed replay). Returns nothing; bumps m.ver. */
-  function reduce(m, ev, ctx) {
-    ctx = ctx || {};
+  /** Apply one event to a model. Returns nothing; bumps m.ver. */
+  function reduce(m, ev) {
     m.t = ev.t; m.ver++;
     const A = ev.id ? m.ag[ev.id] : null;
-    const d = ctx.digest;
     switch (ev.k) {
       case 'say': {
-        if (ev.who === 'you') push(m, ctx, 'mgr', { k: 'you', text: ev.text, t: ev.t }, ev);
-        else if (ev.who === 'sys') push(m, ctx, 'mgr', { k: 'sys', glyph: ev.glyph || '◇', text: ev.text, plan: !!ev.plan, task: ev.task, open: ev.open, t: ev.t }, ev);
-        else if (ev.who === 'scouts') push(m, ctx, 'mgr', { k: 'scouts', lines: ev.lines, t: ev.t }, ev);
-        else if (ev.who === 'mgr') push(m, ctx, 'mgr', { k: 'say', ag: 'mgr', text: ev.text, stream: ev.stream !== false, rate: ev.rate || 70, t: ev.t, done: !ev.mid }, ev);
-        else if (ev.who === 'local') push(m, ctx, 'mgr', { k: 'local', title: ev.title, html: ev.html, t: ev.t }, ev);
+        if (ev.who === 'you') push(m, 'mgr', { k: 'you', text: ev.text, t: ev.t }, ev);
+        else if (ev.who === 'sys') push(m, 'mgr', { k: 'sys', glyph: ev.glyph || '◇', text: ev.text, plan: !!ev.plan, task: ev.task, open: ev.open, t: ev.t }, ev);
+        else if (ev.who === 'scouts') push(m, 'mgr', { k: 'scouts', lines: ev.lines, t: ev.t }, ev);
+        else if (ev.who === 'mgr') push(m, 'mgr', { k: 'say', ag: 'mgr', text: ev.text, stream: ev.stream !== false, rate: ev.rate || 70, t: ev.t, done: !ev.mid }, ev);
+        else if (ev.who === 'local') push(m, 'mgr', { k: 'local', title: ev.title, html: ev.html, t: ev.t }, ev);
         break;
       }
-      case 'sys': push(m, ctx, ev.ch || 'mgr', { k: 'sys', glyph: ev.glyph || '◇', text: ev.text, ag: ev.ag, task: ev.task, open: ev.open, t: ev.t }, ev); break;
-      case 'local': push(m, ctx, 'mgr', { k: 'local', title: ev.title, html: ev.html, t: ev.t }, ev); break;
+      case 'sys': push(m, ev.ch || 'mgr', { k: 'sys', glyph: ev.glyph || '◇', text: ev.text, ag: ev.ag, task: ev.task, open: ev.open, t: ev.t }, ev); break;
+      case 'local': push(m, 'mgr', { k: 'local', title: ev.title, html: ev.html, t: ev.t }, ev); break;
       case 'tool': {
-        if (A) A.calls++; m.steps++; if (d) d.tools++;
+        if (A) A.calls++; m.steps++;
         const e = { k: 'tool', ag: ev.id, name: ev.name, arg: ev.arg, out: ev.out, ok: ev.ok !== false, refused: !!ev.refused, reason: ev.reason, file: ev.file, add: ev.add, del: ev.del, task: ev.task || (A && A.task), t: ev.t };
         if (ev.refused) { m.refused++; e.ok = false; }
-        push(m, ctx, chOf(ev.id), e, ev);
-        if (ev.id !== 'mgr') push(m, ctx, 'mgr', { k: 'feed', ag: ev.id, g: ev.refused ? 'x' : /^(Write|Edit)/.test(ev.name) ? 'edit' : ev.name === 'Bash' ? 'tool' : 'tool', text: ev.name + ' ' + (ev.arg || '') + (ev.add ? ' +' + ev.add : ''), task: e.task, t: ev.t }, ev);
+        push(m, chOf(ev.id), e, ev);
+        if (ev.id !== 'mgr') push(m, 'mgr', { k: 'feed', ag: ev.id, g: ev.refused ? 'x' : /^(Write|Edit)/.test(ev.name) ? 'edit' : ev.name === 'Bash' ? 'tool' : 'tool', text: ev.name + ' ' + (ev.arg || '') + (ev.add ? ' +' + ev.add : ''), task: e.task, t: ev.t }, ev);
         break;
       }
       case 'note': {
         const e = { k: 'note', ag: ev.id, g: ev.g || 'done', text: ev.text, task: ev.task || (A && A.task), t: ev.t };
-        push(m, ctx, chOf(ev.id), e, ev);
-        if (ev.id !== 'mgr') push(m, ctx, 'mgr', { k: 'feed', ag: ev.id, g: ev.g || 'done', text: ev.text, task: e.task, t: ev.t }, ev);
-        if (d && /^submitted/.test(ev.text)) d.submitted.push(e.task);
+        push(m, chOf(ev.id), e, ev);
+        if (ev.id !== 'mgr') push(m, 'mgr', { k: 'feed', ag: ev.id, g: ev.g || 'done', text: ev.text, task: e.task, t: ev.t }, ev);
         break;
       }
       case 'state': {
@@ -140,7 +136,7 @@
         A.state = ev.s; A.doing = ev.doing != null ? ev.doing : A.doing; if (ev.task !== undefined) A.task = ev.task; A.spawned = true; A.stateT = ev.t; A.reqSince = typeof ev.reqSince === 'number' ? ev.reqSince : null;
         A.cur = { s: ev.s, t0: ev.t, t1: null, doing: A.doing }; A.segs.push(A.cur); if (A.segs.length > SEG_CAP) A.segs.splice(0, 200);
         delete m.streams[ev.id];
-        if (prev !== ev.s && ['ask', 'done', 'stuck', 'idle', 'wait'].includes(ev.s) && ev.id !== 'mgr') push(m, ctx, chOf(ev.id), { k: 'st', ag: ev.id, s: ev.s, text: A.doing, task: A.task, t: ev.t }, ev);
+        if (prev !== ev.s && ['ask', 'done', 'stuck', 'idle', 'wait'].includes(ev.s) && ev.id !== 'mgr') push(m, chOf(ev.id), { k: 'st', ag: ev.id, s: ev.s, text: A.doing, task: A.task, t: ev.t }, ev);
         break;
       }
       case 'task': {   /* each task event is the whole task (the server's TaskX): a field it omits is empty, never "as before" */
@@ -177,9 +173,8 @@
         m.mail.push({ t: ev.t, from: ev.from, to: ev.to, text: ev.text, at: ev.at, tok: ev.tok }); if (m.mail.length > MAIL_CAP) m.mail.shift();
         addMark(m, { t: ev.t, id: ev.from, g: 'mail' });
         const e = { k: 'mail', from: ev.from, to: ev.to, text: ev.text, t: ev.t };
-        push(m, ctx, 'mail', e, ev); if (ev.from !== 'you') push(m, ctx, chOf(ev.from), Object.assign({}, e), ev); if (ev.to !== ev.from) push(m, ctx, chOf(ev.to), Object.assign({}, e), ev);
-        push(m, ctx, 'mgr', { k: 'feed', ag: ev.from, g: 'mail', text: 'mail → ' + ev.to, task: A && A.task, to: ev.to, t: ev.t }, ev);
-        if (d) d.mails++;
+        push(m, 'mail', e, ev); if (ev.from !== 'you') push(m, chOf(ev.from), Object.assign({}, e), ev); if (ev.to !== ev.from) push(m, chOf(ev.to), Object.assign({}, e), ev);
+        push(m, 'mgr', { k: 'feed', ag: ev.from, g: 'mail', text: 'mail → ' + ev.to, task: A && A.task, to: ev.to, t: ev.t }, ev);
         break;
       }
       case 'ckpt': {   /* the same id updates in place (its file set grows while it is current) */
@@ -191,9 +186,8 @@
       case 'ask': {
         const q = Object.assign({}, ev.q, { t0: ev.t, answered: null, choice: null }); m.qs.push(q); m.q = m.qs.find(x => !x.answered) || null;
         addMark(m, { t: ev.t, id: q.agent, g: 'ask' });
-        push(m, ctx, 'mgr', { k: 'feed', ag: q.agent, g: 'ask', text: 'asks: ' + SL.u.clip1(q.cmd, 200), task: q.task, t: ev.t }, ev);   /* the question itself shows the command whole */
-        push(m, ctx, chOf(q.agent), { k: 'ask', ag: q.agent, q, t: ev.t }, ev);
-        if (d) d.asks++;
+        push(m, 'mgr', { k: 'feed', ag: q.agent, g: 'ask', text: 'asks: ' + SL.u.clip1(q.cmd, 200), task: q.task, t: ev.t }, ev);   /* the question itself shows the command whole */
+        push(m, chOf(q.agent), { k: 'ask', ag: q.agent, q, t: ev.t }, ev);
         break;
       }
       case 'answer': {
@@ -205,11 +199,11 @@
           /* the manager answered a worker's routine question (--manager-approves): one more line of its decisions, never a question for the person */
           const dec = { qid: ev.qid, agent: q ? q.agent : '', task: q ? q.task : '', cmd: q ? q.cmd : '', choice: ev.choice, ok: ev.choice !== 3, t: ev.t };
           m.mgrDec.push(dec); capList(m.mgrDec, QS_CAP);
-          if (m.chat) { const last = lastTalk(m.chan.mgr); if (last && last.k === 'mgrdec' && !last.collapsed) { last.list.push(dec); capList(last.list, QS_CAP); last.v++; } else push(m, ctx, 'mgr', { k: 'mgrdec', list: [dec], v: 1, t: ev.t }, ev); }
+          if (m.chat) { const last = lastTalk(m.chan.mgr); if (last && last.k === 'mgrdec') { last.list.push(dec); capList(last.list, QS_CAP); last.v++; } else push(m, 'mgr', { k: 'mgrdec', list: [dec], v: 1, t: ev.t }, ev); }
           break;
         }
         /* a question the person answered, or one that closed without an answer (canceled, timed out, the session closed, no page open): a quiet row */
-        if (q) push(m, ctx, 'mgr', ev.by && ev.by !== 'you' ? { k: 'sys', glyph: '⊘', text: 'refused without an answer (' + (SL.u.own(BY_WORD, ev.by) || 'closed') + '): ' + q.agent + ': ' + SL.u.clip1(q.cmd, 200), ag: q.agent, t: ev.t }
+        if (q) push(m, 'mgr', ev.by && ev.by !== 'you' ? { k: 'sys', glyph: '⊘', text: 'refused without an answer (' + (SL.u.own(BY_WORD, ev.by) || 'closed') + '): ' + q.agent + ': ' + SL.u.clip1(q.cmd, 200), ag: q.agent, t: ev.t }
           : { k: 'sys', glyph: '❯', text: 'you answered ' + ev.choice + ' to ' + q.agent + ': ' + SL.u.clip1(q.cmd, 200), ag: q.agent, t: ev.t }, ev);
         break;
       }
@@ -217,21 +211,19 @@
       case 'merge': {
         const T = m.tasks[ev.id]; if (!T) break; T.st = 'merged'; T.ms = ev.ms; T.t = ev.t; if (!m.merged.includes(ev.id)) m.merged.push(ev.id);
         addMark(m, { t: ev.t, id: T.owner, g: 'merge' }); m.lastMerge = ev;
-        push(m, ctx, 'mgr', { k: 'sys', glyph: '✓', text: ev.id + ' merged: rebase ✓ · ' + ev.cmd + ' ✓ ' + (ev.ms < 1000 ? ev.ms + 'ms' : (ev.ms / 1000).toFixed(1) + 's'), task: ev.id, ag: T.owner, t: ev.t }, ev);
-        if (T.owner) push(m, ctx, chOf(T.owner), { k: 'note', ag: T.owner, g: 'done', text: ev.id + ' merged ✓ ' + ev.cmd + ' ' + (ev.ms / 1000).toFixed(1) + 's', task: ev.id, t: ev.t }, ev);
-        if (d) d.merged.push(ev.id);
+        push(m, 'mgr', { k: 'sys', glyph: '✓', text: ev.id + ' merged: rebase ✓ · ' + ev.cmd + ' ✓ ' + (ev.ms < 1000 ? ev.ms + 'ms' : (ev.ms / 1000).toFixed(1) + 's'), task: ev.id, ag: T.owner, t: ev.t }, ev);
+        if (T.owner) push(m, chOf(T.owner), { k: 'note', ag: T.owner, g: 'done', text: ev.id + ' merged ✓ ' + ev.cmd + ' ' + (ev.ms / 1000).toFixed(1) + 's', task: ev.id, t: ev.t }, ev);
         break;
       }
       case 'break': {
         /* a quiet break (the endpoint's own miss that the terminal would not say without /verbose: wire.Break.Quiet) is kept for the Cache
-           view and the rows /verbose shows, and leaves the cards, the flash, the count and the digest alone */
+           view and the rows /verbose shows, and leaves the cards, the flash and the count alone */
         const quiet = !!ev.quiet, row = { k: 'break', ag: ev.id, kind: ev.kind, read: ev.read, expected: ev.expected, why: ev.why, layer: ev.layer || '', missUsd: ev.missUsd, quiet, t: ev.t };
         m.anomalies.push({ t: ev.t, id: ev.id, kind: ev.kind, read: ev.read, expected: ev.expected, why: ev.why, layer: ev.layer || '', missUsd: ev.missUsd, quiet }); capList(m.anomalies, ANOM_CAP);
         if (!quiet) { m.flash = { t: ev.t, id: ev.id, kind: ev.kind, layer: ev.layer || '' }; m.lastBreakT = ev.t; }
         addMark(m, { t: ev.t, id: ev.id, g: 'break' });
-        push(m, ctx, 'mgr', row, ev, !quiet);
-        push(m, ctx, chOf(ev.id), Object.assign({}, row), ev, !quiet);
-        if (d && !quiet) d.breaks++;
+        push(m, 'mgr', row, ev);
+        push(m, chOf(ev.id), Object.assign({}, row), ev);
         break;
       }
       case 'compact': {
@@ -239,37 +231,36 @@
            and a compaction nobody planned (an emergency one, one a person asked for) has no moment: the page then states no price */
         const moment = ev.moment === 'cold' || ev.moment === 'warm' ? ev.moment : '', mode = ev.mode === 'fork' || ev.mode === 'mask' || ev.mode === 'emergency' ? ev.mode : '';
         if (A) A.pendingCompact = true; m.ncompactions = (m.ncompactions || 0) + 1; m.compactions.push({ t: ev.t, id: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment, mode }); capList(m.compactions, COMPACT_CAP); addMark(m, { t: ev.t, id: ev.id, g: 'compact' });
-        push(m, ctx, 'mgr', { k: 'compact', ag: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment, mode, t: ev.t }, ev);
-        if (ev.id !== 'mgr') push(m, ctx, chOf(ev.id), { k: 'compact', ag: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment, mode, t: ev.t }, ev);
-        if (d) d.compacts++;
+        push(m, 'mgr', { k: 'compact', ag: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment, mode, t: ev.t }, ev);
+        if (ev.id !== 'mgr') push(m, chOf(ev.id), { k: 'compact', ag: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment, mode, t: ev.t }, ev);
         break;
       }
       case 'stream': {
         m.streams[ev.id] = { t0: ev.t, text: ev.text, rate: ev.rate, code: !!ev.code, mid: ev.mid, file: ev.file, done: !ev.mid };
         const e = { k: 'stream', ag: ev.id, text: ev.text, rate: ev.rate, code: !!ev.code, t: ev.t };
-        push(m, ctx, chOf(ev.id), e, ev); if (!ev.code && ev.id !== 'mgr') push(m, ctx, 'mgr', Object.assign({}, e), ev);
+        push(m, chOf(ev.id), e, ev); if (!ev.code && ev.id !== 'mgr') push(m, 'mgr', Object.assign({}, e), ev);
         break;
       }
       case 'diff': if (typeof ev.file === 'string' && !(ev.file in Object.prototype)) m.diff[ev.file] = ev; break;
       case 'goal': m.goal = { state: ev.s, objective: ev.objective || '', turns: ev.turns || 0, max: ev.max || 0, paused: ev.paused || '', reason: ev.reason || '' }; break;   /* the whole goal: what it omits is empty */
-      case 'final': m.final = { t: ev.t, steps: m.steps }; m.turn = false; push(m, ctx, 'mgr', { k: 'final', t: ev.t }, ev); break;
+      case 'final': m.final = { t: ev.t, steps: m.steps }; m.turn = false; push(m, 'mgr', { k: 'final', t: ev.t }, ev); break;
       case 'steer': {
         const e = { k: 'steer', to: ev.to, text: ev.text, t: ev.t };
-        push(m, ctx, ev.to === 'mgr' ? 'mgr' : ev.to, e, ev); if (ev.to !== 'mgr' && !ev.quiet) push(m, ctx, 'mgr', { k: 'feed', ag: ev.to, g: 'steer', text: 'your answer: ' + ev.text, t: ev.t }, ev);
+        push(m, ev.to === 'mgr' ? 'mgr' : ev.to, e, ev); if (ev.to !== 'mgr' && !ev.quiet) push(m, 'mgr', { k: 'feed', ag: ev.to, g: 'steer', text: 'your answer: ' + ev.text, t: ev.t }, ev);
         if (m.ag[ev.to]) m.ag[ev.to].steered = ev.t;
         break;
       }
-      case 'reply': push(m, ctx, chOf(ev.id), { k: 'say', ag: ev.id, text: ev.text, stream: true, rate: 80, t: ev.t }, ev); break;
+      case 'reply': push(m, chOf(ev.id), { k: 'say', ag: ev.id, text: ev.text, stream: true, rate: 80, t: ev.t }, ev); break;
       case 'interrupt': {
-        push(m, ctx, 'mgr', { k: 'sys', glyph: '⏹', text: ev.id === 'turn' ? 'you interrupted the turn; the goal is paused' : 'you interrupted ' + ev.id, ag: ev.id === 'turn' ? null : ev.id, t: ev.t }, ev);
-        if (ev.id !== 'turn' && ev.id !== 'mgr') push(m, ctx, chOf(ev.id), { k: 'sys', glyph: '⏹', text: 'interrupted by you', ag: ev.id, t: ev.t }, ev);
+        push(m, 'mgr', { k: 'sys', glyph: '⏹', text: ev.id === 'turn' ? 'you interrupted the turn; the goal is paused' : 'you interrupted ' + ev.id, ag: ev.id === 'turn' ? null : ev.id, t: ev.t }, ev);
+        if (ev.id !== 'turn' && ev.id !== 'mgr') push(m, chOf(ev.id), { k: 'sys', glyph: '⏹', text: 'interrupted by you', ag: ev.id, t: ev.t }, ev);
         break;
       }
       case 'refuse': {
         m.refused++;
         const e = { k: 'tool', ag: ev.id, name: ev.name, arg: ev.arg, out: '', ok: false, refused: true, reason: ev.reason, t: ev.t, task: A && A.task };
-        push(m, ctx, chOf(ev.id), e, ev);
-        push(m, ctx, 'mgr', { k: 'feed', ag: ev.id, g: 'x', text: 'refused: ' + ev.name + ' ' + (ev.arg || ''), t: ev.t }, ev);
+        push(m, chOf(ev.id), e, ev);
+        push(m, 'mgr', { k: 'feed', ag: ev.id, g: 'x', text: 'refused: ' + ev.name + ' ' + (ev.arg || ''), t: ev.t }, ev);
         addMark(m, { t: ev.t, id: ev.id, g: 'refuse' });
         break;
       }
@@ -291,14 +282,12 @@
         m.svc = { rd: n(ev.rd), un: n(ev.un), out: n(ev.out), wr: n(ev.wr), cost: n(ev.cost), saved: n(ev.saved), savedPartial: !!ev.savedPartial, unpriced: n(ev.unpriced), list: Math.max(0, n(ev.list)), plan: !!ev.plan };
         break;
       }
-      case 'digest': break;
       default: break;
     }
   }
 
-  /** Reduce events [from, to) of a log into m (silent, optional digest context). */
-  function reduceRange(m, log, from, to, ctx) { for (let i = from; i < to; i++) reduce(m, log[i], ctx); }
-  const isVisible = ev => VISIBLE.has(ev.k);
+  /** Reduce events [from, to) of a log into m. */
+  function reduceRange(m, log, from, to) { for (let i = from; i < to; i++) reduce(m, log[i]); }
 
   /* ---------------- derived numbers: the only place tokens become percentages and dollars ---------------- */
   const calc = {
@@ -345,6 +334,6 @@
   /** Why a question closed without the person's answer (VOCAB 5.17 `by`), in the words of its transcript row. */
   const BY_WORD = { timeout: 'nobody answered in time', canceled: 'canceled', closed: 'the session closed', nobody: 'no page was open' };
   const PLAN_ST = { pending: 'pending', doing: 'act', act: 'act', done: 'done', verify: 'verify', edit: 'edit', ask: 'ask', queued: 'queued' };
-  SL.model = { newModel, addAgent, reduce, reduceRange, isVisible, VISIBLE, CHAN_CAP, clean, cleanRoster };
+  SL.model = { newModel, addAgent, reduce, reduceRange, CHAN_CAP, clean, cleanRoster };
   SL.calc = calc;
 })(SL);
