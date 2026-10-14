@@ -30,7 +30,7 @@
       /* a plan's usage fills no budget: the budget counts what is billed per token, and the plan bills nothing per token. A session that
          mixes the two fills its gauge with the billed part; one that is all the plan's says the budget is not touched */
       { const only = U.planOnly(c); txt('budget', $('#vBudget'), only ? 'plan' : (c.plan ? 'plan · ' : '') + (meta.budget ? 'of ' + fmtUsd(meta.budget, 2) : 'no budget')); $('#vBudget').className = c.plan ? 'plantag' : '';
-        const gf = $('#gaugeFill'), gw = gf.parentNode, hb = gw.parentNode; gw.classList.toggle('plan', !!c.plan); gw.setAttribute('aria-label', only ? 'budget not used: the plan bills nothing per token' : 'budget used');
+        const gf = $('#gaugeFill'), gw = gf.parentNode, hb = gw.parentNode; gw.classList.toggle('plan', !!c.plan); gw.setAttribute('aria-label', only ? 'budget not used: the plan bills nothing per token' : !meta.budget ? 'no budget set' : 'budget used: ' + Math.round(U.budgetPct(c, meta.budget)) + '% billed, ' + fmtUsd(c.cost, 2) + ' of ' + fmtUsd(meta.budget, 2));
         hb.title = c.plan ? U.PLAN_HELP + ': the budget (--budget-usd) counts only what is billed per token' + (meta.budget ? ', ' + fmtUsd(c.cost, 2) + ' of ' + fmtUsd(meta.budget, 2) + ' so far' : '') : 'the budget of this session (--budget-usd)';
         gf.style.width = (meta.budget && !only ? Math.max(1.6, U.budgetPct(c, meta.budget)) : 0) + '%'; }
       $('#hitArc').style.strokeDashoffset = HIT_C * (1 - c.pct / 100); txt('hit', $('#hitTxt'), String(c.pct)); txt('hitc', $('#hitChipN'), String(c.pct)); $('#ringHit').title = 'read ' + U.fmtN(c.read) + ' / prompt ' + U.fmtN(c.prompt) + ' = ' + c.hit1 + '%';
