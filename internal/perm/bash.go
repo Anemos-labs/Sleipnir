@@ -450,10 +450,11 @@ func varsTrackable(cmd string, an shellparse.Analysis) bool {
 	return true
 }
 
-// reassignBuiltins are the commands that may set or unset a shell variable without an assignment statement.
+// reassignBuiltins are the commands that may set or unset a shell variable without an assignment statement (printf with -v:
+// printfAssigns).
 var reassignBuiltins = map[string]bool{
 	"read": true, "declare": true, "typeset": true, "local": true, "export": true, "readonly": true, "unset": true,
-	"mapfile": true, "readarray": true, "getopts": true, "let": true, "eval": true, "source": true, ".": true, "printf": true,
+	"mapfile": true, "readarray": true, "getopts": true, "let": true, "eval": true, "source": true, ".": true,
 	"for": true, "select": true, "wait": true, "coproc": true,
 }
 
@@ -462,7 +463,17 @@ func reassigns(s shellparse.Simple) bool {
 	if _, ok := declaration(s); ok {
 		return false
 	}
-	return s.LoopVar != "" || reassignBuiltins[shellparse.ProgramName(s.Program)]
+	name := shellparse.ProgramName(s.Program)
+	if name == "printf" {
+		return printfAssigns(s.Args)
+	}
+	return s.LoopVar != "" || reassignBuiltins[name]
+}
+
+// printfAssigns reports whether a printf may set a variable: printf -v NAME does, and so may one whose first word is only known when
+// the line runs (a variable, a substitution, a glob). printf 'date\n' > "$F" sets nothing.
+func printfAssigns(args []string) bool {
+	return len(args) > 0 && (strings.HasPrefix(args[0], "-v") || strings.ContainsAny(args[0], "$`*?["))
 }
 
 // unconditional reports whether the statement s certainly runs when the line runs: its text comes before any && || | ( { or a
@@ -651,6 +662,11 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 		}
 		if tr, ok := testRunnerUses(u.name, s.Args); ok {
 			uses = tr // a test runner reads the tests below its operands (testrunners.go)
+		}
+		if u.name == "curl" {
+			if cu, ok := curlUses(s.Args, func(w string) ([]string, bool) { return ev.knownWords(w, cw) }); ok {
+				uses = cu // URLs and data are not files; the files curl touches are named (curluses.go)
+			}
 		}
 		if formatter(u.name, s.Args) || checker(u.name, s.Args) {
 			for i := range uses {

@@ -7,6 +7,17 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- curl's URLs, headers and data are not judged as files: a smoke test's request
+  body holding a variable no longer reads as a write to an unknown place. The
+  files curl reads and writes are judged: `-o` and the name `-O` takes from
+  the URL (below `--output-dir`), `-c`, `-D`, `-d @file`, `-H @file`, `-F
+  name=@file` and its `headers=@file`, `-T`, certificates, `-n`, and the file
+  a `file:` URL names. A config file (`-K`), a name the server picks (`-J`), a
+  URL whose scheme is only known when the command runs, and an option curl is
+  not known by here keep the stricter analysis. A `printf` without `-v` no
+  longer makes the check forget the variables the line set. Prompt bytes: none
+  change.
+
 - A pool child that goes to review says who takes it out: its pool's leader
   (or the manager) accepts it with `task accept`, and the pool reconciles once
   every child is accepted. A leader submitting its own child is told to accept
