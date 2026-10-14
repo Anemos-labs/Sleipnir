@@ -315,6 +315,13 @@ func (c *crule) matchWords(prog string, args []string) bool {
 	return true
 }
 
+// coversRunner reports whether a matching Bash rule covers the command as the runner it names: a prefix rule (Bash(go test:*)) does not
+// cover an option that makes the runner run a program of the caller's choosing (runsAnother). A blanket rule and an exact command are
+// what they say.
+func (c *crule) coversRunner(s shellparse.Simple) bool {
+	return c.blanket || !c.anyArgs || !runsAnother(s.Program, s.Args)
+}
+
 // dynamicWord reports whether a word still holds shell syntax that the parser
 // did not resolve (variables, substitutions, globs, tildes, braces).
 func dynamicWord(w string) bool {

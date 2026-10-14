@@ -1,6 +1,10 @@
 package perm
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/anemos-labs/sleipnir/internal/shellparse"
+)
 
 // TestsAllow is the preset of allow rules for the commands that build, check, format and test a project (`--allow tests`, the answer
 // "allow builds and tests for this session" of a question about such a command, and accept-edits mode). They run the project's own
@@ -52,14 +56,32 @@ var runnerRefused = map[string][]string{
 	"yarn":   {"--script-shell", "--node-options"},
 	"node":   {"--require", "-r", "--import", "--loader", "--experimental-loader", "--env-file"},
 	"make":   {"SHELL", ".SHELLFLAGS", "MAKESHELL", "-f", "--file", "--makefile", "--eval", "-E"},
-	"gradle": {"-I", "--init-script"}, "./gradlew": {"-I", "--init-script"},
+	"gradle": {"-I", "--init-script"}, "gradlew": {"-I", "--init-script"},
 }
 
-// runsAnother reports whether a runner's arguments carry an option of runnerRefused (with its value attached or not), or, for go, link
-// flags that name the external linker or archiver to run (-ldflags=-extld=PROG; -ldflags "-X main.version=1" is a build's own).
+// runsAnother reports whether a runner's arguments carry an option of runnerRefused, with its value apart, after "=", or (for a
+// one-letter option) attached ("-fother.mk", "-Zflag", or "-sf other.mk" for make's clusters); or, for go, link flags that name the
+// external linker or archiver to run (-ldflags=-extld=PROG; -ldflags "-X main.version=1" is a build's own). prog is the program as
+// written; its base name selects the runner (/usr/bin/go is go, ./gradlew is gradlew).
 func runsAnother(prog string, args []string) bool {
-	if hasLong(args, runnerRefused[prog]...) {
+	prog = shellparse.ProgramName(prog)
+	refused := runnerRefused[prog]
+	if hasLong(args, refused...) {
 		return true
+	}
+	for _, a := range args {
+		if len(a) < 3 || a[0] != '-' || a[1] == '-' {
+			continue
+		}
+		for _, o := range refused {
+			if len(o) != 2 || o[0] != '-' {
+				continue
+			}
+			// attached: -fother.mk; make also takes clusters of one-letter options (-sf other.mk, -kE '...')
+			if a[1] == o[1] || prog == "make" && strings.IndexByte(a[1:], o[1]) >= 0 {
+				return true
+			}
+		}
 	}
 	if prog == "node" {
 		return customReporter(args)
