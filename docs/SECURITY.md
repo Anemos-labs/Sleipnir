@@ -217,10 +217,9 @@ in it whose rest is only known when the command runs (`"$TMPDIR/$X"`) could leav
 that the variable is the cause; it is never routine.
 
 A file whose name is only known when the command runs (`cat "$F"`, `echo x > "$OUT"`) cannot be checked against the built-in protections
-or the `deny` and `ask` rules, which `bypass` mode still applies. `bypass` asks about it when it may be one of them: a name with no known
-beginning may be any file, and one whose known beginning names a directory (`"docs/$X"`, `~/"$X"`) may be anything below that directory,
-so it asks when something below it is guarded (`~/.ssh` below home, a `deny` rule's `secrets/` below the project). This covers the files a
-command certainly names: the operands of the commands the engine knows, redirections and the file tools. The words of an unlisted program
+or the `deny` and `ask` rules, which `bypass` mode still applies, so `bypass` asks about it: a name with no known beginning may be any
+file, and the unknown part of one whose beginning names a directory (`"docs/$X"`, `"$TMPDIR/$X"`) may hold a `../` that leads out of it.
+This covers the files a command certainly names: the operands of the commands the engine knows, redirections and the file tools. The words of an unlisted program
 and the value of an assignment, which only might be files, a `cd`, and a use that reads only names (`ls "$X"`) do not ask. `yolo` mode
 never asks, and lets such a name pass.
 

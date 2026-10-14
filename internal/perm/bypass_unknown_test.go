@@ -7,9 +7,9 @@ import (
 )
 
 // Bypass mode still applies the built-in protections and the deny and ask rules, and a file whose name is only known when the command
-// runs cannot be checked against them: bypass asks about it when it may be one they guard. A name with a known beginning below which
-// nothing is guarded passes, and so do the words that only might be files (an unlisted program's operands, an assignment's value), a
-// cd and a name-only use. Yolo mode never asks.
+// runs cannot be checked against them: bypass asks about it, since even a name with a known directory ("docs/$X") may lead out of it
+// with a "../". The words that only might be files (an unlisted program's operands, an assignment's value), a cd and a name-only use
+// pass. Yolo mode never asks.
 func TestBypassAsksAboutAFileOnlyKnownWhenItMayBeGuarded(t *testing.T) {
 	f := newFixture(t)
 	cfg := Config{Mode: ModeBypass, Tmp: t.TempDir(), Ask: []string{"Edit(./.sleipnir/**)"}, Deny: []string{"Read(./secrets/**)"}}
@@ -21,8 +21,8 @@ func TestBypassAsksAboutAFileOnlyKnownWhenItMayBeGuarded(t *testing.T) {
 		{`cat < "$F"`, "ask"},                   // a redirection's file
 		{`echo hi > "$F"`, "ask"},               // a redirection's file
 		{`printf x > ".sleipnir/$N"`, "ask"},    // the ask rule covers the directory
-		{`cat "docs/$X"`, "allow"},              // nothing below docs/ is guarded
-		{`cat "$TMPDIR/$X"`, "allow"},           // the session's scratch directory
+		{`cat "docs/$X"`, "ask"},                // X may be ../../.ssh/id_rsa
+		{`cat "$TMPDIR/$X"`, "ask"},             // and lead out of the scratch directory as well
 		{`cd "$X"`, "allow"},                    // cd reads nothing
 		{`ls "$X"`, "allow"},                    // names only
 		{`node app.js --port "$PORT"`, "allow"}, // an unlisted program's words only might be files

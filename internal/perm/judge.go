@@ -389,25 +389,13 @@ func (ev *evaluator) decideTool(u *unit) verdict {
 }
 
 // unknownMayBeGuarded says why a file whose name is only known when the command runs may be one that a built-in protection, a deny rule
-// or an ask rule guards, or "" when it cannot be: its known beginning names a directory, and nothing below it is guarded. A name with
-// no known beginning ("$F") may be any file.
+// or an ask rule guards. It always may: a name with no known beginning ("$F") may be any file, and the unknown part of one with a known
+// directory ("docs/$X") may hold a "../" that leads out of it.
 func (ev *evaluator) unknownMayBeGuarded(a access) string {
 	if !a.prefix || a.real == "" {
 		return "it may be any file"
 	}
-	t := a
-	t.dynamic, t.tree, t.content = false, true, a.read // whatever the unknown part names lies below the directory
-	if p := ev.rs.protect(t); p.tier != tierNone {
-		return "it may be a protected file (" + p.why + ")"
-	}
-	for _, rules := range [][]*crule{ev.v.deny, ev.v.ask} {
-		for _, r := range rules {
-			if (r.class == classRead && a.read || r.class == classWrite && a.write) && ruleHits(r, t, true) {
-				return "it may be a file rule " + r.String() + " covers"
-			}
-		}
-	}
-	return ""
+	return "its unknown part may lead out of " + ev.rs.display(a.real) + " (a ../ in it)"
 }
 
 // accessVerdict applies allow rules and the mode's defaults to one file access.
@@ -418,9 +406,6 @@ func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 		switch {
 		case mode == ModeBypass && !a.guess:
 			why := ev.unknownMayBeGuarded(a)
-			if why == "" {
-				return allow(string(mode) + " mode")
-			}
 			// bypass mode still applies the built-in protections and the deny and ask rules, which cannot be checked against a file
 			// that is only known when the command runs
 			return ask(quote(a.raw)+" is a file name that is only known when the command runs ("+unknownWords(a.raw)+"), and "+why+
