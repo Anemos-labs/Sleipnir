@@ -11,7 +11,7 @@ they do not indicate whether a change has been released.
   scout) reads a file outside the workspace as the session does, without a
   question: its plan profile keeps it from writing, not from reading the Go
   toolchain's source or a module cache. Before, every such read asked the
-  person, even in bypass mode (a 32-worker run asked twice in 18 minutes).
+  person, even in bypass mode.
   Writes outside the workspace stay refused; the built-in protections and the
   deny and ask rules still apply; in any other mode the read still asks.
   Prompt bytes: none change.
