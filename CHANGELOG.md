@@ -14,7 +14,10 @@ they do not indicate whether a change has been released.
   reconcile` refused for a child in review says so. When the last member
   confirms the reconciled result, the leader is told to submit it with `task
   done`, and a second reconcile of an unchanged, fully confirmed result is
-  refused with that advice. Prompt bytes: none change (tool results and mail).
+  refused with that advice. A member's `confirm` refused because a merge
+  superseded the reconciliation mails the leader to reconcile again and tells
+  the member to wait for the new revision. Prompt bytes: none change (tool
+  results and mail).
 
 - Providers take `options.model_extra_body`: per model id, request members put
   over `extra_body` for that model only (one gateway, an upstream pinned for

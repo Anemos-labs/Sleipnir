@@ -105,3 +105,38 @@ func TestAConfirmedPoolIsToldToSubmit(t *testing.T) {
 		t.Errorf("a second reconcile of a confirmed result: %q", res.Text)
 	}
 }
+
+// A confirm refused because a merge superseded the reconciliation tells the leader, the one who can reconcile again, and tells the
+// member to wait for the new revision. In a trial the member, told only that "the pool leader must call pool reconcile again", kept
+// calling pool inspect while the leader polled the task.
+func TestASupersededReconciliationReachesTheLeader(t *testing.T) {
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"frontend", "frontend"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "working"} })
+	if _, err := r.sw.Spawn(SpawnReq{Role: "frontend", Title: "web", Files: []string{"web/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	parent := r.sw.Board.Snapshot().Tasks[0]
+	lead, other := parent.Pool.Members[0], parent.Pool.Members[1]
+	if err := r.sw.Board.poolUpdate("mgr", parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if res := r.callTool(context.Background(), "pool", lead, "frontend", map[string]any{"action": "reconcile", "id": parent.ID, "text": "combined"}); res.IsError {
+		t.Fatal(res.Text)
+	}
+	r.sw.review.mu.Lock()
+	r.sw.review.merges++ // another task's work lands
+	r.sw.review.mu.Unlock()
+	p, _ := r.sw.Board.Snapshot().Task(parent.ID)
+	res := r.callTool(context.Background(), "pool", other, "frontend", map[string]any{"action": "confirm", "id": parent.ID, "revision": p.Pool.Revision})
+	if !res.IsError || !strings.Contains(res.Text, "The leader "+lead+" has been told") {
+		t.Fatalf("the member's refused confirm: %q", res.Text)
+	}
+	told := false
+	for _, e := range r.log.All() {
+		if e.Type == events.TypeMailSend && strings.Contains(string(e.Data), "Call pool reconcile again") && strings.Contains(string(e.Data), `"to":"`+lead+`"`) {
+			told = true
+		}
+	}
+	if !told {
+		t.Error("the leader was not told to reconcile again")
+	}
+}

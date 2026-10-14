@@ -286,6 +286,7 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			}
 		}
 	}
+	stale := "" // the leader of a pool whose reconciliation a confirm found superseded
 	err = s.Board.poolUpdate(by, in.ID, func(sn *Snapshot, task *Task, p *PoolState) error {
 		leader := by == task.Owner || c.Env.Role == "manager"
 		member := slices.Contains(p.Members, by)
@@ -310,6 +311,7 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			if in.Action == "confirm" {
 				phase = "reconciling"
 				if err := s.poolCurrent(sn, *task); err != nil {
+					stale = task.Owner
 					return err
 				}
 				if s.isolated() && !slices.Contains(p.Inspected, by) {
@@ -362,6 +364,11 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		return nil
 	})
 	if err != nil {
+		if stale != "" && stale != by {
+			// Only the leader reconciles again; a member that is merely refused keeps inspecting a result nobody will renew.
+			s.notify(stale, "request", fmt.Sprintf("Pool %s: %s could not confirm, because a merge or task revision superseded the reconciliation. Call pool reconcile again; then every member inspects and confirms the new revision.", in.ID, by))
+			return tools.Errorf("%v. The leader %s has been told; wait for its new revision (wait), then inspect and confirm it.", err, stale), nil
+		}
 		return tools.Errorf("%v", err), nil
 	}
 	if in.Action == "reconcile" && s.isolated() {
