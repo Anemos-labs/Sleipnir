@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // A pool child in review is accepted by the pool's leader (or the manager), and the pool reconciles once every child is accepted.
@@ -138,5 +139,37 @@ func TestASupersededReconciliationReachesTheLeader(t *testing.T) {
 	}
 	if !told {
 		t.Error("the leader was not told to reconcile again")
+	}
+}
+
+// While members agree on the leader's proposal, the manager's proposal is refused: it would reset their votes and restart the round,
+// as it did several times in a demo run. Without votes the manager may still propose (a leader that cannot).
+func TestTheManagerDoesNotResetAPoolThatIsAgreeing(t *testing.T) {
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"frontend", "frontend"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "working"} })
+	if _, err := r.sw.Spawn(SpawnReq{Role: "frontend", Title: "web", Files: []string{"web/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	parent := r.sw.Board.Snapshot().Tasks[0]
+	lead, other := parent.Pool.Members[0], parent.Pool.Members[1]
+	call := func(as, role string, args map[string]any) *tools.Result {
+		args["id"] = parent.ID
+		return r.callTool(context.Background(), "pool", as, role, args)
+	}
+	if res := call("mgr", "manager", map[string]any{"action": "propose", "text": "a plan from the manager"}); res.IsError {
+		t.Fatalf("the manager's proposal with no votes: %s", res.Text)
+	}
+	if res := call(lead, "frontend", map[string]any{"action": "propose", "text": "the leader's plan"}); res.IsError {
+		t.Fatal(res.Text)
+	}
+	p, _ := r.sw.Board.Snapshot().Task(parent.ID)
+	if res := call(other, "frontend", map[string]any{"action": "agree", "revision": p.Pool.Revision}); res.IsError {
+		t.Fatal(res.Text)
+	}
+	res := call("mgr", "manager", map[string]any{"action": "propose", "text": "another plan"})
+	if !res.IsError || !strings.Contains(res.Text, "Mail the leader "+lead) {
+		t.Fatalf("the manager's proposal during agreement: %q", res.Text)
+	}
+	if q, _ := r.sw.Board.Snapshot().Task(parent.ID); len(q.Pool.Votes) != 1 || q.Pool.Revision != p.Pool.Revision {
+		t.Fatalf("the votes were reset: %+v", q.Pool)
 	}
 }

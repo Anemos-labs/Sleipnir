@@ -295,6 +295,10 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			if !leader || p.Phase != "planning" || agreement == "" {
 				return fmt.Errorf("leader must propose a nonempty agreement during planning")
 			}
+			if by != task.Owner && len(p.Votes) > 0 {
+				// a new proposal resets the votes: from the manager, while members agree on the leader's, it only restarts the round
+				return fmt.Errorf("the pool is agreeing on revision %d (%s agreed); a new proposal would reset that. Mail the leader %s what should change, or wait for the agreement", p.Revision, strings.Join(p.Votes, ", "), task.Owner)
+			}
 			p.Agreement = agreement
 			p.Revision++
 			p.Votes = nil

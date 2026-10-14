@@ -16,7 +16,9 @@ they do not indicate whether a change has been released.
   done`, and a second reconcile of an unchanged, fully confirmed result is
   refused with that advice. A member's `confirm` refused because a merge
   superseded the reconciliation mails the leader to reconcile again and tells
-  the member to wait for the new revision. Prompt bytes: none change (tool
+  the member to wait for the new revision. While members agree on the
+  leader's proposal, a proposal from the manager is refused (it would reset
+  their votes) and points to the leader. Prompt bytes: none change (tool
   results and mail).
 
 - Providers take `options.model_extra_body`: per model id, request members put
