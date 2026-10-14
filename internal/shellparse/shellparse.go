@@ -90,6 +90,10 @@ type Simple struct {
 	Child bool
 	// Piped marks a command that reads from the previous command's pipe.
 	Piped bool
+	// Cond marks a command whose assignments may not reach the commands after it: it may not run (inside if, while, until or for,
+	// after && or || in its list) or runs in a shell of its own (in a ( ) subshell, on either side of a pipe, in the background), or
+	// it is in a { } group, which a later && or || may skip as a whole.
+	Cond bool
 	// LoopVar is the variable of a for/select loop, on the pseudo-command "for" whose Args are the loop's word list ("f" in
 	// `for f in a b c`); empty everywhere else, and for a loop with no word list.
 	LoopVar string
@@ -108,6 +112,7 @@ type Analysis struct {
 	PipesToShell           bool // curl ... | sh, ... | bash, ... | sudo bash
 	Background             bool // some command is terminated by a single &
 	HasHeredoc             bool
+	HasArithmetic          bool   // an arithmetic expansion $((...)), which may assign a variable ($((n=5)))
 	Parsed                 bool   // false: too complex to trust, see Problem
 	Problem                string // first reason Parsed became false
 }

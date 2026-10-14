@@ -208,17 +208,9 @@ func (ev *evaluator) bash(cmd string) verdict {
 		}
 		v := ev.judgeWith(s, cw, ev.vars)
 		if track {
-			if an.Background && backgrounded(cmd, s) {
-				// a command run in the background (cmd &) assigns in a shell of its own: what it sets is not the line's
-				for _, env := range assignedBy(s) {
-					ev.forget(envName(env), conflicted)
-				}
-				if reassigns(s) {
-					ev.vars, ev.exported, track = nil, nil, false
-				}
-			} else if reassigns(s) {
+			if reassigns(s) {
 				ev.vars, ev.exported, track = nil, nil, false // a builtin may set any variable from here on
-			} else if unconditional(cmd, s) {
+			} else if unconditional(s) {
 				ev.noteAssignments(s, cw, conflicted)
 			} else {
 				for _, env := range assignedBy(s) { // an assignment that may not run leaves the name unknown
@@ -458,17 +450,12 @@ func validName(s string) bool {
 	return true
 }
 
-// varsTrackable reports whether a command line is simple enough for noteAssignments: no function definitions, whose bodies may set
-// variables when they are called (a command run in the background is handled where it is met: its assignments are its own); no
-// arithmetic, which assigns
-// ($((n=5))); and no trap action that assigns, since it may run between any two commands.
+// varsTrackable reports whether a command line is simple enough for noteAssignments, from what the parser found: the line parsed (a
+// function definition, whose body may set variables when it is called, and an arithmetic command leave it unparsed); it has no
+// arithmetic expansion, which may assign ($((n=5))); and no trap action assigns, since it may run between any two commands. Quoted
+// text and here-document bodies are the parser's business: printf 'func main() {...}' > main.go defines nothing.
 func varsTrackable(cmd string, an shellparse.Analysis) bool {
-	// Quoted text is not a definition: printf 'func main() {...}' > main.go defines no function. Arithmetic still runs inside double
-	// quotes ("$((n=5))"), so only single-quoted text is left out of that check.
-	// A heredoc's body is text for a command's standard input, not the line's syntax; one with a quoted delimiter (<<'EOF') is not even
-	// expanded, while an unquoted one still runs $((...)) inside.
-	code, unsingled := blankQuoted(blankHeredocs(cmd, false), true), blankQuoted(blankHeredocs(cmd, true), false)
-	if strings.Contains(code, "()") || strings.Contains(code, "function ") || strings.Contains(unsingled, "((") {
+	if !an.Parsed || an.HasArithmetic {
 		return false
 	}
 	for _, s := range an.Commands {
@@ -477,139 +464,6 @@ func varsTrackable(cmd string, an shellparse.Analysis) bool {
 		}
 	}
 	return true
-}
-
-// blankQuoted returns s with the text inside single quotes (and $'...') replaced by spaces, and with double too the text inside
-// double quotes, so that what is left is the shell's own syntax. A backslash outside single quotes escapes the next character, which
-// then never opens or closes a quote. The length and the positions of s are kept.
-func blankQuoted(s string, double bool) string {
-	b := []byte(s)
-	var q byte // the open quote: '\'', '"', or 'a' for $'...'
-	for i := 0; i < len(b); i++ {
-		c := b[i]
-		switch {
-		case q == 0 && c == '\\':
-			i++
-		case q == 0 && c == '\'':
-			q = '\''
-			if i > 0 && b[i-1] == '$' {
-				q = 'a'
-			}
-		case q == 0 && c == '"':
-			q = '"'
-		case q == '\'' && c == '\'', q == 'a' && c == '\'', q == '"' && c == '"':
-			q = 0
-		case q == 'a' && c == '\\', q == '"' && c == '\\':
-			if q == 'a' || double {
-				b[i] = ' '
-				if i+1 < len(b) {
-					b[i+1] = ' '
-				}
-			}
-			i++
-		case q == '\'' || q == 'a' || q == '"' && double:
-			b[i] = ' '
-		}
-	}
-	return string(b)
-}
-
-// backgrounded reports whether s is run in the background in cmd: its text is followed by a single "&" (not "&&", not the "&>" of a
-// redirection). When s's text cannot be found once in cmd, it says true, which forgets what s assigns.
-func backgrounded(cmd string, s shellparse.Simple) bool {
-	if s.Raw == "" || strings.Count(cmd, s.Raw) != 1 {
-		return true
-	}
-	after := strings.TrimLeft(cmd[strings.Index(cmd, s.Raw)+len(s.Raw):], " \t")
-	return strings.HasPrefix(after, "&") && !strings.HasPrefix(after, "&&") && !strings.HasPrefix(after, "&>")
-}
-
-// blankHeredocs returns s with the bodies of its here-documents replaced by spaces (the newlines kept), only those whose delimiter is
-// quoted (<<'EOF', <<"EOF", <<\EOF: a literal body) when quotedOnly is set. A body ends at a line that is its delimiter (after leading
-// tabs for <<-); a "<<" whose delimiter line never comes (a shift in $((1<<2)), a here-string <<<) is left as it is.
-func blankHeredocs(s string, quotedOnly bool) string {
-	b := []byte(s)
-	var q byte // the quote the scan is inside: a "<<" there is text, not a here-document
-	for i := 0; i+1 < len(b); i++ {
-		switch c := b[i]; {
-		case q == 0 && c == '\\', q == '"' && c == '\\', q == 'a' && c == '\\': // $'...' escapes as "..." does, \' included
-			i++
-			continue
-		case q == 0 && c == '\'' && i > 0 && b[i-1] == '$':
-			q = 'a'
-			continue
-		case q == 0 && (c == '\'' || c == '"'):
-			q = c
-			continue
-		case q != 0 && (c == q || q == 'a' && c == '\''):
-			q = 0
-			continue
-		case q != 0:
-			continue
-		}
-		if b[i] != '<' || b[i+1] != '<' || i+2 < len(b) && b[i+2] == '<' || i > 0 && b[i-1] == '<' {
-			continue
-		}
-		j := i + 2
-		tabs := j < len(b) && b[j] == '-'
-		if tabs {
-			j++
-		}
-		for j < len(b) && (b[j] == ' ' || b[j] == '\t') {
-			j++
-		}
-		quoted := false
-		var tag []byte
-		for j < len(b) && !strings.ContainsRune(" \t\n;&|<>()", rune(b[j])) {
-			switch b[j] {
-			case '\'', '"', '\\':
-				quoted = true
-			default:
-				tag = append(tag, b[j])
-			}
-			j++
-		}
-		if len(tag) == 0 {
-			continue
-		}
-		nl := strings.IndexByte(string(b[j:]), '\n')
-		if nl < 0 {
-			continue
-		}
-		start := j + nl + 1
-		end, closed := start, false
-		for end <= len(b) {
-			stop := strings.IndexByte(string(b[end:]), '\n')
-			line := b[end:]
-			if stop >= 0 {
-				line = b[end : end+stop]
-			}
-			l := string(line)
-			if tabs {
-				l = strings.TrimLeft(l, "\t")
-			}
-			if l == string(tag) {
-				closed = true
-				break
-			}
-			if stop < 0 {
-				break
-			}
-			end += stop + 1
-		}
-		if !closed {
-			continue
-		}
-		if !quotedOnly || quoted {
-			for k := start; k < end; k++ {
-				if b[k] != '\n' {
-					b[k] = ' '
-				}
-			}
-		}
-		i = end
-	}
-	return string(b)
 }
 
 // reassignBuiltins are the commands that may set or unset a shell variable without an assignment statement (printf with -v:
@@ -638,70 +492,11 @@ func printfAssigns(args []string) bool {
 	return len(args) > 0 && (strings.HasPrefix(args[0], "-v") || strings.ContainsAny(args[0], "$`*?["))
 }
 
-// withoutClosedSubstitutions blanks the command substitutions of s that close in it ($(...), `...`), quoted or not, so that what is
-// left shows only the grouping, conditions and pipes around the end of s. A substitution that is still open at the end stays: what
-// follows it is inside it.
-func withoutClosedSubstitutions(s string) string {
-	b := []byte(s)
-	for i := 0; i < len(b); i++ {
-		switch {
-		case b[i] == '$' && i+1 < len(b) && b[i+1] == '(':
-			depth, j := 0, i+1
-			for ; j < len(b); j++ {
-				if b[j] == '(' {
-					depth++
-				} else if b[j] == ')' {
-					if depth--; depth == 0 {
-						break
-					}
-				}
-			}
-			if j >= len(b) {
-				return string(b) // open to the end
-			}
-			for k := i; k <= j; k++ {
-				b[k] = ' '
-			}
-			i = j
-		case b[i] == '`':
-			j := strings.IndexByte(string(b[i+1:]), '`')
-			if j < 0 {
-				return string(b)
-			}
-			for k := i; k <= i+1+j; k++ {
-				b[k] = ' '
-			}
-			i += 1 + j
-		}
-	}
-	return string(b)
-}
-
-// unconditional reports whether the statement s certainly runs when the line runs: its text comes before any && || | ( { or a
-// compound command's keyword, so it is not on the right of a condition, in a pipeline, a subshell, a group, a loop or a branch.
-func unconditional(cmd string, s shellparse.Simple) bool {
-	if s.Nested || s.Piped || s.Raw == "" || strings.Count(cmd, s.Raw) != 1 {
-		return false
-	}
-	at := strings.Index(cmd, s.Raw)
-	if at < 0 {
-		return false
-	}
-	// cd "$(pwd)"; X=1 sets X: the statement is not inside the substitution; and quoted text and heredoc bodies are text, not grouping
-	// or keywords (printf 'if (x) {' > f; X=1).
-	before := blankQuoted(blankHeredocs(withoutClosedSubstitutions(cmd[:at]), false), true)
-	for _, marker := range []string{"&&", "||", "|", "(", "{", "`"} {
-		if strings.Contains(before, marker) {
-			return false
-		}
-	}
-	for _, w := range strings.FieldsFunc(before, func(r rune) bool { return r == ' ' || r == '\t' || r == '\n' || r == ';' }) {
-		switch w {
-		case "if", "then", "else", "elif", "while", "until", "do", "case", "for", "select":
-			return false
-		}
-	}
-	return true
+// unconditional reports whether the statement s certainly runs when the line runs, in the line's own shell: the parser did not mark
+// it Cond (inside a compound command, a group or a subshell, after && or ||, in a pipeline, in the background) and it is not inside
+// a substitution.
+func unconditional(s shellparse.Simple) bool {
+	return !s.Nested && !s.Piped && !s.Cond && s.Raw != ""
 }
 
 // unquoteAssigned removes the double quotes around an assigned value ("$TMPDIR/x"); a single-quoted value is literal and has no

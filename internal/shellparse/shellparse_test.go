@@ -740,3 +740,51 @@ func TestALoopsVariableIsReportedWithItsWordList(t *testing.T) {
 		}
 	}
 }
+
+// Cond marks a command whose assignments may not reach the commands after it, and HasArithmetic an arithmetic expansion, which may
+// assign: the permission engine keeps a line's variables known from these, not from scanning its text.
+func TestCondAndArithmeticAreWhatTheShellDoes(t *testing.T) {
+	conds := func(src string) []bool {
+		var out []bool
+		for _, s := range Parse(src).Commands {
+			out = append(out, s.Cond)
+		}
+		return out
+	}
+	for src, want := range map[string][]bool{
+		"a=1; b=2":                           {false, false},
+		"a=1 && b=2":                         {false, true},
+		"a=1 || b=2; c=3":                    {false, true, false},
+		"a | b; c":                           {true, true, false},
+		"a & b":                              {true, false},
+		"if a; then b=1; fi; c=2":            {true, true, false},
+		"for f in x; do b=1; done; c=2":      {false, true, false}, // the loop header always runs; its variable is a reassignment
+		"{ a=1; }; b=2":                      {true, false},
+		"(a=1); b=2":                         {true, false},
+		"cat > f <<'EOF'\nf() { }\nEOF\nd=1": {false, false},
+	} {
+		got := conds(src)
+		if len(got) != len(want) {
+			t.Errorf("%q: %d commands %v, want %v", src, len(got), got, want)
+			continue
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Errorf("%q: Cond %v, want %v", src, got, want)
+				break
+			}
+		}
+	}
+	for src, want := range map[string]bool{
+		"echo $((n=5))":                true,
+		`echo "$((n=5))"`:              true,
+		"echo '$((n=5))'":              false,
+		"cat <<EOF\n$((n=5))\nEOF\n":   true,
+		"cat <<'EOF'\n$((n=5))\nEOF\n": false,
+		"echo $(date)":                 false,
+	} {
+		if got := Parse(src).HasArithmetic; got != want {
+			t.Errorf("%q: HasArithmetic %v, want %v", src, got, want)
+		}
+	}
+}
