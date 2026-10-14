@@ -198,7 +198,7 @@ input box, and a footer with the permission mode, the keys of the pages (`ctrl+t
 the session (`docs/UX.md` describes each). The page carries no statistic: cost, cache hit and what the cache saved are on the stats page. From a pipe or a file, with `TERM=dumb`, or with
 `--plain`, it is the line chat: no colour, no redrawing, a prompt `› `, a goal per line until the input ends, and an action that
 needs approval is refused (with `--plain` on a terminal it asks, listing the answers with the numbers the chat's dialog gives them: `1`
-yes, `2` don't ask again when that can be remembered, `3` the builds and tests when offered, no last; the letters `y`, `a`, `t` and `n`
+yes, `2` don't ask again when that can be remembered, `3` the builds and tests when offered, then no (`4` when `3` is offered, else `3`; the numbers do not shift when `2` is absent); the letters `y`, `a`, `t` and `n`
 work too, and any other text is a no with what to do instead). `--resume
 ID|latest` and `--continue` continue an earlier session, a team's included (`docs/EXTENDING.md` section 6). Slash commands are listed below.
 
@@ -215,7 +215,7 @@ state directory. `/` opens the palette of commands, `@` completes a path, `shift
 that was shown collapsed (a tool's long output is its first and last lines).
 
 **Approvals.** A tool that needs approval puts a box in the live region: the command, or the change as a diff, and why it asks.
-`1` is yes, `2` is yes and do not ask again for this exact request for the rest of the session (a test or build command such as `go test ./a`: the command, not the arguments; an edit inside the project: edits inside it; the box says which), offered only when the rule it adds would let the same request through, `3` is yes and allow the builds and tests of most projects for the session, when the question is about one of them, and the last, `3` or `4`, is no and tell Sleipnir what
+`1` is yes, `2` is yes and do not ask again for this exact request for the rest of the session (a test or build command such as `go test ./a`: the command, not the arguments; an edit inside the project: edits inside it; the box says which), offered only when the rule it adds would let the same request through, `3` is yes and allow the builds and tests of most projects for the session, when the question is about one of them, and no is `4` when `3` is offered and `3` otherwise (the numbers do not shift when `2` is absent): no and tell Sleipnir what
 to do instead (the numbers are the web page's: without the second answer, no is still `3`); the arrows and Tab with Enter choose too, and `esc` is no. Letters never answer. A question takes keys only after
 the keyboard has been quiet for a moment since it appeared, and says so ("your typing goes to the prompt until you pause"), so a
 sentence that is half typed when the question appears, or a line typed ahead, cannot approve anything. Ctrl-D at a question is no
@@ -270,7 +270,7 @@ Usage of chat:
   -mailman
         swarm: route worker mail through a mailman agent that digests bursts (default: config swarm.mailman; --mailman=false turns it off for this run). Its model: --role-model mailman=<model>
   -manager-approves
-        swarm: a worker's routine permission question (a command inside its own tree that no rule covers, nothing protected, no network but this machine) goes to the manager before you; unanswered in a minute it comes to you (default: config permissions.manager_approves, true; --manager-approves=false asks you directly)
+        swarm: a worker's routine permission question (a command inside its own tree that no rule covers, nothing protected, no network but this machine, or an install into a virtual environment of the workspace from the package index) goes to the manager before you; unanswered in a minute it comes to you (default: config permissions.manager_approves, true; --manager-approves=false asks you directly)
   -mode string
         permissions: default | accept-edits | plan | bypass | yolo
   -model string
@@ -280,7 +280,7 @@ Usage of chat:
   -no-mcp
         start no MCP tool servers
   -plain
-        plain lines, as when the input or the output is not a terminal: no colour, no status line, no redrawing, approvals typed as y, a or n
+        plain lines, as when the input or the output is not a terminal: no colour, no status line, no redrawing, approvals answered by the dialog's numbers or by y, a, t or n
   -resume string
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
@@ -413,7 +413,7 @@ flags:
   -mailman
         swarm: route worker mail through a mailman agent that digests bursts (default: config swarm.mailman; --mailman=false turns it off for this run). Its model: --role-model mailman=<model>
   -manager-approves
-        swarm: a worker's routine permission question (a command inside its own tree that no rule covers, nothing protected, no network but this machine) goes to the manager before you; unanswered in a minute it comes to you (default: config permissions.manager_approves, true; --manager-approves=false asks you directly)
+        swarm: a worker's routine permission question (a command inside its own tree that no rule covers, nothing protected, no network but this machine, or an install into a virtual environment of the workspace from the package index) goes to the manager before you; unanswered in a minute it comes to you (default: config permissions.manager_approves, true; --manager-approves=false asks you directly)
   -mode string
         default permissions of new sessions: default | accept-edits | plan | bypass | yolo
   -model string
@@ -506,7 +506,7 @@ flags:
   -mailman
         swarm: route worker mail through a mailman agent that digests bursts (default: config swarm.mailman; --mailman=false turns it off for this run). Its model: --role-model mailman=<model>
   -manager-approves
-        swarm: a worker's routine permission question (a command inside its own tree that no rule covers, nothing protected, no network but this machine) goes to the manager before you; unanswered in a minute it comes to you (default: config permissions.manager_approves, true; --manager-approves=false asks you directly)
+        swarm: a worker's routine permission question (a command inside its own tree that no rule covers, nothing protected, no network but this machine, or an install into a virtual environment of the workspace from the package index) goes to the manager before you; unanswered in a minute it comes to you (default: config permissions.manager_approves, true; --manager-approves=false asks you directly)
   -max-steps int
         step limit for a single agent (default 200)
   -mode string

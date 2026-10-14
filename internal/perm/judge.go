@@ -615,9 +615,13 @@ func (ev *evaluator) commandAllowRule(u *unit) *crule {
 	return blanket
 }
 
-// withinWorkspace is the condition of a ":workspace" rule: none of the rule's refused options is given, and every file the command
-// names (operands and option values, judged as an unlisted command's are) resolves inside the workspace (accessesInWorkspace).
+// withinWorkspace is the condition of a ":workspace" rule: none of the rule's refused options is given, a compiler of files names the
+// files it compiles (compiledFiles), and every file the command names (operands and option values, judged as an unlisted command's
+// are) resolves inside the workspace (accessesInWorkspace).
 func (ev *evaluator) withinWorkspace(u *unit, r *crule) bool {
+	if r.fileList && (len(u.simple.Args) < len(r.argv)-1 || compiledFiles(u.simple.Args[len(r.argv)-1:]) != "") {
+		return false
+	}
 	return !hasLong(u.simple.Args, r.refused...) && ev.accessesInWorkspace(u)
 }
 

@@ -1,5 +1,7 @@
 package perm
 
+import "strings"
+
 // TestsAllow is the preset of allow rules for the commands that build, check, format and test a project (`--allow tests`, the answer
 // "allow builds and tests for this session" of a question about such a command, and accept-edits mode). They run the project's own
 // code, as running its tests is meant to. Two of them reach beyond the project's files, and only so far: an HTTP request to this
@@ -35,6 +37,51 @@ var workspaceRefused = map[string][]string{
 	"pyright":      {"--createstub", "--writebaseline"},
 	"tsc --noEmit": {"-b", "--build", "--init", "--generateTrace", "--generateCpuProfile"},
 	"eslint":       {"--fix", "--init", "--fix-type"},
+}
+
+// workspaceFileLists are the prefixes of the preset's ":workspace" rules whose program compiles the files it is given and, given none,
+// a default set of its own: python -m compileall with no file compiles every directory of sys.path (the interpreter's own included),
+// and both read a list of files from standard input or a file (-, -i) that the engine cannot see. compiledFiles holds them to naming
+// their files.
+var workspaceFileLists = map[string]bool{
+	"python -m py_compile": true, "python3 -m py_compile": true, "python -m compileall": true, "python3 -m compileall": true,
+}
+
+// compileValueOptions are the options of compileall that take the next argument as their value, which is not a file to compile.
+var compileValueOptions = map[string]bool{"-d": true, "-s": true, "-p": true, "-x": true, "-r": true, "-j": true, "-o": true, "-e": true,
+	"--invalidation-mode": true}
+
+// compiledFiles is why the arguments of python -m py_compile or compileall (after the module) do not name the files it compiles: it
+// names none, so compileall would compile every directory of sys.path, or it reads its list from standard input or a file ("-", -i),
+// whose paths are not on the command line. "" when they name them.
+func compiledFiles(args []string) string {
+	files := 0
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-":
+			return "it reads the files to compile from standard input"
+		case a == "-i" || (strings.HasPrefix(a, "-i") && !strings.HasPrefix(a, "--")):
+			return "it reads the files to compile from a list (-i)"
+		case a == "--":
+			for _, b := range args[i+1:] {
+				if b == "-" {
+					return "it reads the files to compile from standard input"
+				}
+				files++
+			}
+			i = len(args)
+		case compileValueOptions[a]:
+			i++
+		case strings.HasPrefix(a, "-"):
+		default:
+			files++
+		}
+	}
+	if files == 0 {
+		return "it names no file to compile (compileall would compile every directory of sys.path)"
+	}
+	return ""
 }
 
 // PresetTests is the name of that set in a Decision.

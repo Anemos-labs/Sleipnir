@@ -439,7 +439,7 @@ func autoDocsFlag(fs *flag.FlagSet) func() *bool {
 // charge.
 func managerApprovesFlag(fs *flag.FlagSet) func() *bool {
 	var t triBool
-	fs.Var(&t, "manager-approves", "swarm: a worker's routine permission question (a command inside its own tree that no rule covers, nothing protected, no network but this machine) goes to the manager before you; unanswered in a minute it comes to you (default: config permissions.manager_approves, true; --manager-approves=false asks you directly)")
+	fs.Var(&t, "manager-approves", "swarm: a worker's routine permission question (a command inside its own tree that no rule covers, nothing protected, no network but this machine, or an install into a virtual environment of the workspace from the package index) goes to the manager before you; unanswered in a minute it comes to you (default: config permissions.manager_approves, true; --manager-approves=false asks you directly)")
 	return func() *bool {
 		if !t.set {
 			return nil

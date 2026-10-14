@@ -353,6 +353,9 @@ func (ev *evaluator) venvRun(prog string, script bool, args []string, files bool
 	v := &venvUse{dir: dir, why: why}
 	v.uses = append([]pathUse{{raw: prog, noFollow: true}}, unknownUses(args)...)
 	if why == "" && files {
+		v.why = compiledFiles(args[2:])
+	}
+	if v.why == "" && files {
 		for _, a := range args[2:] {
 			if strings.HasPrefix(a, "-") {
 				continue

@@ -55,7 +55,7 @@ func registerChatFlags(fs *flag.FlagSet) *chatFlagSet {
 	fs.Var(f.roleModels, "role-model", roleModelHelp)
 	f.resume = resumeFlags(fs)
 	f.allow = allowFlags(fs)
-	f.plain = fs.Bool("plain", false, "plain lines, as when the input or the output is not a terminal: no colour, no status line, no redrawing, approvals typed as y, a or n")
+	f.plain = fs.Bool("plain", false, "plain lines, as when the input or the output is not a terminal: no colour, no status line, no redrawing, approvals answered by the dialog's numbers or by y, a, t or n")
 	f.noAnim = fs.Bool("no-anim", false, "no animation: the spinner stands still, and nothing sweeps, folds or flashes (also SLEIPNIR_ANIM=0, REDUCE_MOTION=1 and NO_COLOR)")
 	return f
 }

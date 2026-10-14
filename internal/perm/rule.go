@@ -141,7 +141,9 @@ type crule struct {
 	// workspace: "prefix:workspace", the prefix with any arguments, provided every file the command names resolves inside the
 	// workspace and none of the options of refused is given.
 	workspace bool
-	refused   []string
+	// fileList: the program compiles the files it names, and others when it names none (workspaceFileLists, compiledFiles).
+	fileList bool
+	refused  []string
 
 	domain string // classWeb: "domain:" rules
 	urlPat string // classWeb: other patterns are wildcards over the URL
@@ -198,6 +200,7 @@ func compileRule(r Rule, res *resolver) (*crule, error) {
 		c.argv = toks
 		if c.workspace {
 			c.refused = workspaceRefused[strings.Join(toks, " ")]
+			c.fileList = workspaceFileLists[strings.Join(toks, " ")]
 		}
 	case classWeb:
 		switch {
