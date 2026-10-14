@@ -757,6 +757,8 @@ func TestCondAndArithmeticAreWhatTheShellDoes(t *testing.T) {
 		"a=1 || b=2; c=3":                    {false, true, false},
 		"a | b; c":                           {true, true, false},
 		"a & b":                              {true, false},
+		"a=1 && b &; c":                      {true, true, false}, // the whole list runs in the background
+		"a=1; b && c & d":                    {false, true, true, false},
 		"if a; then b=1; fi; c=2":            {true, true, false},
 		"for f in x; do b=1; done; c=2":      {false, true, false}, // the loop header always runs; its variable is a reassignment
 		"{ a=1; }; b=2":                      {true, false},
