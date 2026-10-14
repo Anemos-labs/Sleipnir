@@ -202,7 +202,8 @@ func (s *Swarm) wakePool(id, message string) {
 	}
 }
 
-// poolPermission makes planning and reconciliation read-only for pool members. A refusal says why in the pool's terms (poolReadOnly):
+// poolPermission makes planning and reconciliation read-only for pool members, who keep the research and checks of a read-only role
+// (perm.ReadOnlyAllow: the web, the project's tests) within what the session allows. A refusal says why in the pool's terms (poolReadOnly):
 // the plan-mode engine's own words ("present a plan instead of acting", "no one to ask") would send a member that is waiting for its
 // subtask round in circles.
 func (s *Swarm) poolPermission(ctx context.Context, id string, inner perm.Requester, req perm.Request) (perm.Decision, bool) {
@@ -218,11 +219,17 @@ func (s *Swarm) poolPermission(ctx context.Context, id string, inner perm.Reques
 			}
 		}
 		if e, ok := inner.(*perm.Engine); ok {
-			d := e.PlanOnly().Check(ctx, req)
-			if !d.Allow {
-				d.Reason = poolReadOnly(t, id) + " Refused: " + planCause(d.Reason)
+			if po := e.PlanOnly(perm.ReadOnlyAllow...); po != nil {
+				d := po.Check(ctx, req)
+				if !d.Allow {
+					d.Reason = poolReadOnly(t, id) + " Refused: " + planCause(d.Reason)
+					return d, true
+				}
+				// Read-only, or the research and checks of a read-only role (the web, the project's tests): a member plans with what a
+				// reviewer may use, and the session's own engine still decides, so the pool never grants more than the session does.
+				return inner.Check(ctx, req), true
 			}
-			return d, true
+			return perm.Decision{Reason: poolReadOnly(t, id)}, true
 		}
 		if req.Writes || (req.Tool == "bash" && !readOnlyCommand(req.Command)) {
 			return perm.Decision{Reason: poolReadOnly(t, id)}, true

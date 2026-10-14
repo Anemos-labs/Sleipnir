@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -61,4 +62,40 @@ func TestAPoolMembersRefusalSaysWhatLetsItWrite(t *testing.T) {
 	call(leader, "reconcile", 0, "")
 	write.Agent = member
 	check(member, write, "phase reconciling", "pool inspect", "confirm", "mail the leader "+leader)
+}
+
+// A pool plans before it builds, and planning is research: a member reads an API's documentation or a package registry and runs the
+// project's tests, as a reviewer may, while it still writes nothing. The session decides what that research needs: in a session that
+// asks before reaching the network, a planner is not let through silently. (In a trial an architect pool could not look up a library's
+// current version while choosing it: web_fetch was refused as "plan mode (read-only)".)
+func TestAPlanningPoolMemberResearchesAsAReviewerMay(t *testing.T) {
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"backend", "backend"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "waiting"} })
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "build the API", Files: []string{"api/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	parent := r.sw.Board.Snapshot().Tasks[0]
+	member := parent.Pool.Members[1]
+	root := t.TempDir()
+	engine := func(mode perm.Mode) *perm.Engine {
+		e, err := perm.NewEngine(perm.Config{Root: root, Home: t.TempDir(), Mode: mode})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return e
+	}
+	fetch := perm.Request{Agent: member, Role: "backend", Tool: "web_fetch", Network: true, Input: json.RawMessage(`{"url":"https://proxy.golang.org/modernc.org/sqlite/@v/list"}`)}
+	tests := perm.Request{Agent: member, Role: "backend", Tool: "bash", Command: "go test ./..."}
+	write := perm.Request{Agent: member, Role: "backend", Tool: "write", Paths: []string{filepath.Join(root, "api/server.go")}, Writes: true}
+	bypass := engine(perm.ModeBypass)
+	for _, req := range []perm.Request{fetch, tests} {
+		if d, handled := r.sw.poolPermission(context.Background(), member, bypass, req); !handled || !d.Allow {
+			t.Errorf("%s %s: a planning member may research and check: %+v %v", req.Tool, req.Command, d, handled)
+		}
+	}
+	if d, handled := r.sw.poolPermission(context.Background(), member, bypass, write); !handled || d.Allow || !strings.Contains(d.Reason, "pool task "+parent.ID) {
+		t.Errorf("a planning member wrote: %+v %v", d, handled)
+	}
+	if d, _ := r.sw.poolPermission(context.Background(), member, engine(perm.ModeDefault), fetch); d.Allow {
+		t.Errorf("a session that asks before the network let a planner through without asking: %+v", d)
+	}
 }
