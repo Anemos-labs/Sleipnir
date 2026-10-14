@@ -331,6 +331,9 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 				return fmt.Errorf("only the leader starts reconciliation after execution")
 			}
 			for _, child := range sn.Tasks {
+				if child.Parent == task.ID && child.Status == StatusReview {
+					return fmt.Errorf("child %s waits in review: the leader (or the manager) checks it and accepts it (task accept id=%s) or rejects it with feedback; reconcile once every child is accepted", child.ID, child.ID)
+				}
 				if child.Parent == task.ID && child.Status != StatusDone {
 					return fmt.Errorf("child %s is not complete", child.ID)
 				}

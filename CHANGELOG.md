@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A pool child that goes to review says who takes it out: its pool's leader
+  (or the manager) accepts it with `task accept`, and the pool reconciles once
+  every child is accepted. A leader submitting its own child is told to accept
+  it itself; a member's submission is mailed to the leader; and `pool
+  reconcile` refused for a child in review says so. Prompt bytes: none change
+  (tool results and mail).
+
 - Providers take `options.model_extra_body`: per model id, request members put
   over `extra_body` for that model only (one gateway, an upstream pinned for
   one of its models, the others routed as before). Prompt bytes: none change.
