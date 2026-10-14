@@ -146,7 +146,7 @@ func (h *webHostImpl) routes(srv *web.Server) {
 		h.idemDone(key, true, http.StatusOK, res)
 		ok(w, res)
 	})
-	h.tabRoute(srv, "POST /api/sessions/{id}/command", web.RouteOpts{}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
+	h.tabRoute(srv, "POST /api/sessions/{id}/command", web.RouteOpts{MaxBody: goalBodyMax}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
 		var body wire.CommandRequest
 		if !web.DecodeJSON(w, r, &body) {
 			return

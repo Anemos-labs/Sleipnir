@@ -108,3 +108,21 @@ func TestWebGoalTakesALongBriefAndRefusesOneCharacterMore(t *testing.T) {
 		t.Fatalf("a goal at the limit: %d %s", code, body)
 	}
 }
+
+// A /goal line sent as a slash command (POST .../command) reaches the goal's own check: the route and the line limit take a goal at
+// the character limit in four-byte characters, and one character more is refused by the goal check (the command's output, sent
+// false), not as a too-long command.
+func TestWebGoalAsACommandReachesTheGoalCheck(t *testing.T) {
+	project := webWorld(t)
+	_, base := newWebModel(t, sayScript("ok"))
+	r := newWebRig(t, soloDefaults(project), base)
+	tab := r.ready("")
+	code, body := r.do("POST", "/api/sessions/"+tab.ID+"/command", wire.CommandRequest{Line: "/goal " + strings.Repeat("🌲", maxGoalLen+1)})
+	if code != 200 || !strings.Contains(string(body), "the goal is longer than 32,000 characters") || !strings.Contains(string(body), `"sent":false`) {
+		t.Fatalf("overlong goal as a command: %d %s", code, body)
+	}
+	code, body = r.do("POST", "/api/sessions/"+tab.ID+"/command", wire.CommandRequest{Line: "/goal " + strings.Repeat("🌲", maxGoalLen)})
+	if code != 200 || strings.Contains(string(body), "longer than") || strings.Contains(string(body), "too long") {
+		t.Fatalf("a goal at the limit as a command: %d %s", code, body)
+	}
+}

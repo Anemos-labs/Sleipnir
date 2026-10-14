@@ -47,8 +47,11 @@ const (
 	// goalBodyMax is the body cap of the routes that carry a goal: the longest goal at six bytes a character (the widest a character
 	// gets in JSON, an escaped control character) and the room the other fields always had.
 	goalBodyMax = int64(maxGoalLen)*6 + 64<<10
-	maxSteerLen = 4000
-	maxHist     = 200
+	// maxCommandLen bounds a slash line in bytes: the longest goal in four-byte characters with room for its command ("/goal ..."),
+	// so the line reaches the goal's own check, which counts characters.
+	maxCommandLen = maxGoalLen*4 + 64<<10
+	maxSteerLen   = 4000
+	maxHist       = 200
 	// closeLimit bounds the end of an isolated run when a tab closes or restarts (Session.Finish's own limit).
 	closeLimit = 5 * time.Minute
 )
@@ -749,7 +752,7 @@ func (t *webTab) Command(ctx context.Context, req wire.CommandRequest) (wire.Com
 	if !strings.HasPrefix(line, "/") || len(line) < 2 {
 		return wire.CommandResult{}, werr(http.StatusBadRequest, "empty", "a command starts with /")
 	}
-	if len(line) > 64<<10 {
+	if len(line) > maxCommandLen {
 		return wire.CommandResult{}, werr(http.StatusBadRequest, "empty", "the command is too long")
 	}
 	s := t.readySession(ctx)

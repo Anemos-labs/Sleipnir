@@ -8,8 +8,8 @@ they do not indicate whether a change has been released.
 ## Compatibility changes
 
 - `sleipnir web` takes a goal of up to 32,000 characters (was 4,000), in the
-  New session dialog and as `/goal TEXT`; the routes that carry one accept a
-  body large enough for it. An over-long goal is refused with the code
+  New session dialog and as `/goal TEXT` (through the goal route or as a slash
+  command); the routes that carry one accept a body large enough for it. An over-long goal is refused with the code
   `bad_goal` (was `empty`). The page refuses it before sending, a `/goal` line
   the server refuses comes back into the composer as a refused message does,
   and the Goal sheet opens only once the server has taken the goal: before, a
