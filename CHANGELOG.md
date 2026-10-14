@@ -17,7 +17,9 @@ they do not indicate whether a change has been released.
   conventions still win and changes stay focused; a request for something
   simple, minimal or a prototype gets that. The manager plans security,
   packaging, documentation, scale tests and a visual design pass as tasks of
-  their own; the frontend sets up a typed stack and a design system and
+  their own when the goal builds a product, works through review findings by
+  severity and reports a round of only minor polish as remaining instead of
+  starting another; the frontend sets up a typed stack and a design system and
   screenshots every screen; the reviewer judges the result as a shipped
   product, says bluntly when an interface looks dated, and checks security as
   an attacker; the tester covers security, scale and browser end-to-end tests;
