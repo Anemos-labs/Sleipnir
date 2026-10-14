@@ -85,6 +85,9 @@ func TestWaitToolReportsChangesBetweenWaits(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// The manager saw the board when it spawned them: a change after that is news to its first wait, however late that wait starts
+	// (on a slow runner it started after the change, took the changed board as its baseline and slept to its timeout).
+	r.sw.setSeen("mgr", b.Snapshot())
 
 	first := make(chan string, 1)
 	go func() {
