@@ -60,7 +60,10 @@ Once all children are accepted, `pool reconcile` assembles the result. Its optio
 `text` replaces the initial plan with the combined contract that all members confirm. In isolated
 runs each member calls `pool inspect` to update its tree, examines the combined
 result, then calls `pool confirm`. Every member must confirm before the parent can
-be submitted and accepted. A newer accepted change invalidates reconciliation.
+be submitted and accepted. A newer change that may touch the pool's files invalidates
+reconciliation: an accepted task or a revised one whose scope overlaps the pool's, a
+direct manager edit of one of its files, or a change whose files are not known. A
+change elsewhere in the tree leaves it current. A restored team reconciles again.
 Objections go through typed mail; the manager settles disagreements and can revise
 the existing task. A member that cannot take part (its model keeps failing or does
 not answer) is excused by the manager with `pool excuse` (`member`, `text` = why):

@@ -28,10 +28,48 @@ const maxStaffingLines = 3
 // reviewGate counts code merges and the review that covers them.
 type reviewGate struct {
 	mu        sync.Mutex
-	merges    int            // accepted implementation tasks of writers
+	merges    int            // changes that reached the shared tree: accepted implementation tasks, manager changes, revisions
 	reviewed  int            // merges counted when a reviewer's task was last accepted
 	last      string         // the last of them
 	submitted map[string]int // merge generation covered by each submitted review
+	// landed are the scopes each merge (by its number) may have touched, for the pools whose reconciled result it supersedes
+	// (poolCurrent). A merge with no entry, or with no scopes, may have touched any file.
+	landed map[int][]string
+}
+
+// landLocked counts a change that reached the shared tree as the next merge: id names it, scopes are the files (or globs) it may
+// have touched, none when that is not known. g.mu is held.
+func (g *reviewGate) landLocked(id string, scopes []string) {
+	g.merges++
+	g.last = id
+	if g.landed == nil {
+		g.landed = map[int][]string{}
+	}
+	g.landed[g.merges] = append([]string(nil), scopes...)
+}
+
+// touchedSince returns the first merge after generation that may have touched a file of scopes, or 0 when none did. A count
+// below generation (a team restored with a fresh count) is a change too.
+func (g *reviewGate) touchedSince(generation int, scopes []string) int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.merges < generation {
+		return generation
+	}
+	for n := generation + 1; n <= g.merges; n++ {
+		landed := g.landed[n]
+		if len(landed) == 0 || len(scopes) == 0 {
+			return n
+		}
+		for _, a := range landed {
+			for _, b := range scopes {
+				if scopesOverlap(a, b) {
+					return n
+				}
+			}
+		}
+	}
+	return 0
 }
 
 // noteAccepted records an accepted task for the review gate: a reviewer's task covers every merge before it, any other implementation
@@ -60,8 +98,7 @@ func (s *Swarm) noteAcceptedCheck(t Task) TaskCheck {
 				g.reviewed = generation
 			}
 		case implementation:
-			g.merges++
-			g.last = t.ID
+			g.landLocked(t.ID, t.Files)
 		}
 		return nil
 	}
