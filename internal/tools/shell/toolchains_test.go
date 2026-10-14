@@ -68,7 +68,11 @@ func TestToolchainContextOnWindows(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "make.CMD"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	pathList := `C:\nowhere;/` + dir // a UNC-shaped entry (two separators), which a Unix runner resolves to dir
+	entry := dir // drive-qualified on a Windows runner
+	if runtime.GOOS != "windows" {
+		entry = "/" + dir // UNC-shaped (two separators), which a Unix runner resolves to dir
+	}
+	pathList := `C:\nowhere;` + entry
 	for name, want := range map[string]bool{"node": true, "make": true, "go": false} {
 		if got := onPath("windows", name, pathList, ""); got != want {
 			t.Errorf("onPath(windows, %s) = %v, want %v", name, got, want)
