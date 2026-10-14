@@ -111,7 +111,6 @@ they do not indicate whether a change has been released.
   contract. Reconciliation retains the combined contract supplied for every
   member to confirm. Prompt bytes: the task and pool tool descriptions change G0, incurring a
   one-time cache miss.
-
 - Configured teams retain role pools and worker conversations. Each multi-member
   pool agrees on one plan, delegates scoped children and reconciles one parent
   result. Task revisions and retries preserve IDs; unneeded work closes with an
