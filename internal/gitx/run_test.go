@@ -289,14 +289,13 @@ func waitGone(t *testing.T, what string, pid int, within time.Duration) {
 // later write to that repository then fails.)
 func TestRunnerStopsCommandsGentlyFirstSoTheyCanRemoveTheirLocks(t *testing.T) {
 	dir := newRepo(t)
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
 	gitShim, out := shim(t, `
 case " $* " in *" status "*)
-  : > "$D/held.lock"
-  trap 'echo term > "$D/got-term"; rm -f "$D/held.lock"; exit 143' TERM
-  sleep 30 &
-  echo ready > "$D/ready"
-  wait
-  exit 0;;
+  GITX_TERM_HELPER="$D" exec '`+strings.ReplaceAll(self, "'", `'\''`)+`';;
 esac
 exec "$REAL" "$@"`)
 	r, err := Open(dir, WithGitPath(gitShim), WithHermeticConfig())
