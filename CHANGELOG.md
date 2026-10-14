@@ -10,13 +10,13 @@ they do not indicate whether a change has been released.
 - A prefix rule for a build or test runner (`Bash(go test:*)`, the tests
   preset, the read-only roles' rules, or a rule of the person's) no longer
   covers an option that makes the runner run a program of the caller's
-  choosing: `go test -exec PROG`, `-toolexec`, `-vettool`, `-ldflags` naming
+  choosing, for example `go test -exec PROG`, `-toolexec`, `-vettool`, `-ldflags` naming
   `-extld`/`-extar`, `cargo --config` and `-Z`, `npm`/`pnpm`/`yarn
   --script-shell` and `--node-options`, `node --require`/`--import`/loaders,
-  `make SHELL=`, `-f`, `--eval`, `gradle --init-script`. Such a command is
-  judged as if the rule did not exist: it asks, or a read-only role is refused.
-  Before, a read-only reviewer could run `go test -exec='rm -rf x' ./...`
-  under its `Bash(go test:*)`. Prompt bytes: none change.
+  `make SHELL=`, `-f`, `--eval`, `gradle --init-script` (the full list is in
+  docs/CONFIGURATION.md). Such a command is judged as if the rule did not
+  exist: it asks, or a read-only role is refused; `Bash(go test:*)` does not
+  cover `go test -exec='rm -rf x' ./...`. Prompt bytes: none change.
 
 - A pool member that is planning or reconciling keeps the research and checks
   of a read-only role: it may fetch and search the web (an API's

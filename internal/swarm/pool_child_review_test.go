@@ -13,7 +13,7 @@ import (
 // In a trial the leader submitted both children and waited for the manager, the manager waited for the children, and the leader's
 // reconcile was refused with "child T4 is not complete": nobody said who takes a child out of review.
 func TestWhoAcceptsAPoolChildInReviewIsSaid(t *testing.T) {
-	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"backend", "backend"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "working"} })
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"backend", "backend"}}, idleModel)
 	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "backend", Files: []string{"app/**"}, By: "mgr"}); err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestWhoAcceptsAPoolChildInReviewIsSaid(t *testing.T) {
 // result is refused with the same advice. In a trial the leader reconciled again after both confirmations, which reopened them. A
 // child reopened after that is what the refusal names: submitting would be refused while it is not complete.
 func TestAConfirmedPoolIsToldToSubmit(t *testing.T) {
-	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"backend", "backend"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "working"} })
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"backend", "backend"}}, idleModel)
 	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "backend", Files: []string{"app/**"}, By: "mgr"}); err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestAConfirmedPoolIsToldToSubmit(t *testing.T) {
 // member to wait for the new revision. In a trial the member, told only that "the pool leader must call pool reconcile again", kept
 // calling pool inspect while the leader polled the task.
 func TestASupersededReconciliationReachesTheLeader(t *testing.T) {
-	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"frontend", "frontend"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "working"} })
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"frontend", "frontend"}}, idleModel)
 	if _, err := r.sw.Spawn(SpawnReq{Role: "frontend", Title: "web", Files: []string{"web/**"}, By: "mgr"}); err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestASupersededReconciliationReachesTheLeader(t *testing.T) {
 // While members agree on the leader's proposal, the manager's proposal is refused: it would reset their votes and restart the round,
 // as it did several times in a demo run. Without votes the manager may still propose (a leader that cannot).
 func TestTheManagerDoesNotResetAPoolThatIsAgreeing(t *testing.T) {
-	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"frontend", "frontend"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "working"} })
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"frontend", "frontend"}}, idleModel)
 	if _, err := r.sw.Spawn(SpawnReq{Role: "frontend", Title: "web", Files: []string{"web/**"}, By: "mgr"}); err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestTheManagerDoesNotResetAPoolThatIsAgreeing(t *testing.T) {
 // A merge elsewhere in the tree leaves a pool's reconciliation current; one that may touch the pool's files supersedes it, and so
 // does one whose files are not known. In a team trial the docs worker's merges reopened the frontend pool's confirmations twice.
 func TestOnlyAMergeInThePoolsFilesSupersedesItsReconciliation(t *testing.T) {
-	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"frontend", "frontend"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "working"} })
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"frontend", "frontend"}}, idleModel)
 	if _, err := r.sw.Spawn(SpawnReq{Role: "frontend", Title: "web", Files: []string{"web/**"}, By: "mgr"}); err != nil {
 		t.Fatal(err)
 	}
@@ -237,3 +237,7 @@ func TestOnlyAMergeInThePoolsFilesSupersedesItsReconciliation(t *testing.T) {
 		t.Fatalf("a merge with unknown files left the reconciliation current: %q", res.Text)
 	}
 }
+
+// idleModel never answers until the member is stopped: these tests drive the board through the tools, and a woken member whose turn
+// ended would take its child to review before the test does (a race a slow runner lost).
+func idleModel(ctx context.Context, _ *rvCall) rvReply { <-ctx.Done(); return rvReply{Text: "stopped"} }
