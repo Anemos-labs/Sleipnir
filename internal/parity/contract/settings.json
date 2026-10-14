@@ -119,10 +119,6 @@
   ],
   "web_only": [
     {
-      "item": "browser:look.seg:hover",
-      "reason": "how the view slows or holds while the pointer is over the chat; a setting of this browser kept in localStorage, with no configuration key and no terminal counterpart"
-    },
-    {
       "item": "browser:look.seg:motion",
       "reason": "reduces or restores motion in this browser; the terminal's counterpart is --no-anim, /anim and SLEIPNIR_ANIM, which the Motion setting follows when it is on auto"
     },

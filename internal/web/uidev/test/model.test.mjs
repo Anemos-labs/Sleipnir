@@ -20,22 +20,19 @@ function rosterOf(events) {
   return ids.map((id, i) => ({ id, role: id === 'mgr' ? 'manager' : 'worker', code: id.split('-')[0], nth: 1, k: i, leg: i - 1, scope: '', ro: false, model: 'm', spawn: 0 }));
 }
 const session = events => ({ id: 't', meta: { goalText: '' }, roster: rosterOf(events) });
-/** Every kind the reducer handles (the thirty of the reference page, the five additive kinds and the three the translator adds). */
-const KNOWN = new Set('say sys local tool note state task plan verdict req use warm gov mail ckpt ask answer queue merge break compact stream diff goal final steer reply interrupt refuse digest more turn stall handover layers alert mailstat svc'.split(' '));
+/** Every kind the reducer handles (the kinds of the reference page, the five additive kinds and the three the translator adds). */
+const KNOWN = new Set('say sys local tool note state task plan verdict req use warm gov mail ckpt ask answer queue merge break compact stream diff goal final steer reply interrupt refuse more turn stall handover layers alert mailstat svc'.split(' '));
 
 test('the golden streams exist', () => { assert.ok(goldens.length >= 2, 'no golden UI stream under ' + GOLDEN); });
 
 for (const f of goldens) {
-  test('golden ' + f + ': every kind is known, the chat model and the world model agree, and a held (digested) run ends equal', () => {
+  test('golden ' + f + ': every kind is known, and the chat model and the world model agree', () => {
     const SL = setup(), evs = read(f), S = session(evs);
     evs.forEach(e => assert.ok(KNOWN.has(e.k), f + ': unknown kind ' + e.k));
-    const world = SL.model.newModel(S, { noChat: true }), view = SL.model.newModel(S), held = SL.model.newModel(S);
+    const world = SL.model.newModel(S, { noChat: true }), view = SL.model.newModel(S);
     evs.forEach(e => { SL.model.reduce(world, e); SL.model.reduce(view, e); });
-    const half = Math.floor(evs.length / 2), dg = { tools: 0, merged: [], submitted: [], breaks: 0, mails: 0, asks: 0, compacts: 0, rows: [] };
-    evs.forEach((e, i) => SL.model.reduce(held, e, i < half ? { digest: dg } : {}));
     const sig = m => plain({ tasks: m.tasks, merged: m.merged, plan: m.plan, planText: m.planText, goal: m.goal, verdict: m.verdict, ckpts: m.ckpts, qs: m.qs.map(q => [q.id, q.answered, q.by]), ag: Object.fromEntries(m.order.map(id => [id, [m.ag[id].state, m.ag[id].rd, m.ag[id].un, m.ag[id].out, m.ag[id].wr, m.ag[id].cost, m.ag[id].layers, m.ag[id].ratios.length]])), ttl: m.ttl, r429: m.r429, retries: m.retries, conflicts: m.conflicts, bounced: m.bounced, mailstat: m.mailstat, alerts: m.alerts, stalls: m.stalls, turn: m.turn });
     assert.deepEqual(sig(view), sig(world));
-    assert.deepEqual(sig(held), sig(world));
     // the numbers on screen come from the server's cost when it is sent
     const T = SL.calc.totals(world), sum = world.order.reduce((s, id) => s + (typeof world.ag[id].cost === 'number' ? world.ag[id].cost : 0), 0);
     assert.ok(Math.abs(T.cost - sum) < 1e-9, 'cost is the sum of the reported costs');
@@ -98,8 +95,6 @@ test('use, warm, gov, queue, layers, stall, alert, handover, mailstat: counters 
   SL.model.reduce(m, { t: 5, k: 'alert', s: 'clear', kind: 'stalled', key: 'be-1' }); assert.equal(Object.keys(m.alerts).length, 0);
   SL.model.reduce(m, { t: 5, k: 'handover', task: 'T1', from: 'be-1', to: 'be-2', s: 'done' }); assert.equal(m.handovers.length, 1);
   SL.model.reduce(m, { t: 5, k: 'mailstat', sent: 3, delivered: 2, dropped: 1 }); assert.equal(m.mailstat.sent, 3);
-  // the hidden kinds do not count as visible (the hold chip's "new")
-  ['more', 'turn', 'stall', 'handover', 'layers'].forEach(k => assert.equal(SL.model.isVisible({ k }), false));
 });
 
 test('compact: the moment the planner decided at (warm or cold) and the mode are kept with the compaction, in the log of every channel and for the Cache view; anything else is dropped', () => {
@@ -148,7 +143,6 @@ test('sys: the rows of the feed-style events (a hold, a wake, a job, a rejected 
   SL.model.reduce(m, { t: 1, k: 'sys', ch: 'mgr', glyph: '⚠', text: 'the manager answered while work was unfinished and was sent back to it · T1 is unfinished', ag: 'mgr' });
   SL.model.reduce(m, { t: 2, k: 'sys', ch: 'mgr', glyph: '↺', text: 'T1: the merge was rolled back', ag: 'be-1', task: 'T1' });
   assert.deepEqual(plain(m.chan.mgr.map(e => [e.k, e.glyph, e.ag, e.task])), [['sys', '⚠', 'mgr', null], ['sys', '↺', 'be-1', 'T1']]);
-  assert.equal(SL.model.isVisible({ k: 'sys' }), true);
   for (let i = 0; i < SL.model.CHAN_CAP + 700; i++) SL.model.reduce(m, { t: 3 + i, k: 'sys', ch: 'mgr', glyph: '✓', text: 'background job j' + i + ' finished: make', ag: 'be-1' });
   assert.ok(m.chan.mgr.length <= SL.model.CHAN_CAP, 'the channel holds ' + m.chan.mgr.length);
   assert.ok(m.folded.mgr >= 500, 'the rows that left are counted');

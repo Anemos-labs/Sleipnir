@@ -28,6 +28,17 @@ they do not indicate whether a change has been released.
   price for the extra tokens. The simulator's default workload already assumes
   9,000 constant tokens (tools and constitution), about what a team now sends.
 
+- Web: the view follows the session as it happens. Nothing holds it while the
+  pointer or the keyboard focus rests on the conversation, and a tab that comes
+  back from the background draws every row it missed, with no summary row in
+  their place. The hold chip, its catch-up, the Hover setting and the palette's
+  "Pin the hold" are removed; Space pauses the view (a replay) wherever the
+  pointer is, and a replay keeps its speeds. At phone width the Manager card no
+  longer breaks its words, the stalls no longer overlap, the team's card grows
+  with its stalls, the Workspace's verify strip no longer covers the file,
+  Settings tables fit the screen, recorded sessions show as cards, diagrams keep
+  a readable size and scroll sideways, and small controls take a 32 px touch.
+
 - Standing-goal judgments can search durable tool evidence across workers,
   turns and compaction instead of relying on clipped recent results. Manager
   `task deliver` commits verified integration directly to the original checkout,

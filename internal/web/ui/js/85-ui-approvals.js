@@ -207,8 +207,8 @@
   /** Say a new question once (role=alert), never the ticking parts of the strip. */
   function announce(text) { let st = $('#qStatus'); if (!st) { st = document.createElement('div'); st.id = 'qStatus'; st.className = 'sr'; st.setAttribute('role', 'alert'); document.body.appendChild(st); } st.textContent = text; }
   /**
-   * Draw the front question of S from m, which is S's world model: a question is never held back by the hold, a pin, a pause or a scrub
-   * of the view. The strip is built once per question; another question arriving behind it changes only its "+N waiting" line, so a
+   * Draw the front question of S from m, which is S's world model: a question is never held back by a paused or scrubbed view (a
+   * replay). The strip is built once per question; another question arriving behind it changes only its "+N waiting" line, so a
    * half-typed instruction (3: tell Sleipnir what to do instead), its focus and the blocks' scroll stay as they are.
    */
   function render(S, m) {

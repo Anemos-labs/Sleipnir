@@ -64,6 +64,10 @@
   .fld{grid-template-columns:minmax(0,1fr)}.g2{grid-template-columns:minmax(0,1fr)}.dgrid{grid-template-columns:minmax(0,1fr)}.frow{grid-template-columns:minmax(0,1fr)}
   .gov{grid-template-columns:repeat(3,1fr)}.legend{display:none}.g-ctl .scrub{min-width:40px}
   .ph{flex-wrap:wrap;row-gap:4px}.ph .r{flex-wrap:wrap;white-space:normal;justify-content:flex-end;min-width:0;max-width:100%;row-gap:4px}
+  /* a diagram keeps the size it is drawn at and scrolls sideways (scaled to the width, its labels were too small to read, and the replay
+     tape's were squeezed flat): the dependencies 700 wide, the mail between agents 1040, the tape 1100 (90-views-a.js) */
+  .dg,.flow .pb,.tape{overflow-x:auto;overflow-y:hidden}
+  .dg svg{width:700px;max-width:none}.flow svg{width:1040px;max-width:none}.tape svg{width:1100px!important;max-width:none}
 }
 @container main (min-width:480px) and (max-width:620px){
   .stalls{grid-template-columns:repeat(4,minmax(0,1fr))}
@@ -107,6 +111,14 @@
   .rail-h{padding:9px 16px}.talk{padding:6px 16px}.chans{padding:7px 16px 6px}.chhead{padding:5px 16px}
   #toasts{left:16px;bottom:120px}
   .popover.ibxpop{right:8px!important;left:8px;width:auto}
+  /* the strip's actions keep their glyphs (+, ↺, ⋯) and the questions their count, so that the session tabs keep their room; with no
+     question the inbox button goes */
+  .sstrip #sNew,.sstrip #sRes{font-size:0;gap:0;padding:0 12px}.sstrip #sNew span,.sstrip #sRes span{font-size:15px}
+  .sstrip .sact.inbox.has{font-size:0}.sstrip .sact.inbox:not(.has){display:none}.sstrip .sact.inboxall{min-width:32px;justify-content:center}
+  /* every small control takes a touch of at least 32 px square: an invisible box around it, the control keeps its size */
+  :where(.btn,.seg button,.qh,.star,.mode,.cbar .send,.sh-h .x,.dr-h .x,.dash-lock){position:relative}
+  .btn::after,.btn.sm::after,.stx::after,.seg button::after,.qh::after,.star::after,.mode::after,.cbar .send::after,.sh-h .x::after,.dr-h .x::after,.dash-lock::after{content:"";position:absolute;left:50%;top:50%;width:max(100%,32px);height:max(100%,32px);transform:translate(-50%,-50%)}
+  .wtk{min-height:32px}
 }
 #mnav{grid-area:bar;display:none;background:var(--panel);border-top:1px solid var(--line2);padding-bottom:env(safe-area-inset-bottom)}
 @media (max-width:900px){
@@ -118,7 +130,7 @@
   #mnav .ping{position:absolute;top:6px;left:calc(50% + 10px);width:8px;height:8px;border-radius:50%;background:var(--warm);animation:askpulse 1.4s infinite}
 }
 body.compact{--gap:5px}body.compact .stall{padding:5px 8px 5px}body.compact .msg{font-size:12.5px}
-/* motion: the governor handles pace; this handles the OS preference and the Motion setting */
+/* motion: the view clock's rate handles pace (a paused replay stands still); this handles the OS preference and the Motion setting */
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}.qstrip,.stall[data-state="ask"],.mgr-card[data-state="ask"]{animation:none}}
 body.still *,body.still *::before,body.still *::after{animation:none!important;transition:none!important}
 .hh{font:700 12.5px var(--f-lab);letter-spacing:.16em;text-transform:uppercase;fill:var(--fg2)}.hs{font:500 11px var(--f-num);fill:var(--dim)}
