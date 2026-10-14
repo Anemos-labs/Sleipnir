@@ -23,6 +23,9 @@ type access struct {
 	// loop's word list), so files whose secrecy is in their contents are not at risk.
 	nameOnly bool
 	redir    bool // comes from a redirection rather than an argument
+	// guess: a word that may or may not name a file (an operand of an unlisted command, the value of an assignment), judged as one
+	// because it might be.
+	guess bool
 	// format: a source formatter's operand. Its walk rewrites the files of one language into an equivalent layout, so an ask or
 	// deny rule about a directory below the operand (Edit(./.sleipnir/**) under "gofmt -w .") does not cover it; a rule about the
 	// operand itself, or a directory above it, still does.

@@ -476,6 +476,45 @@ func printfAssigns(args []string) bool {
 	return len(args) > 0 && (strings.HasPrefix(args[0], "-v") || strings.ContainsAny(args[0], "$`*?["))
 }
 
+// withoutClosedSubstitutions blanks the command substitutions of s that close in it ($(...), `...`), quoted or not, so that what is
+// left shows only the grouping, conditions and pipes around the end of s. A substitution that is still open at the end stays: what
+// follows it is inside it.
+func withoutClosedSubstitutions(s string) string {
+	b := []byte(s)
+	for i := 0; i < len(b); i++ {
+		switch {
+		case b[i] == '$' && i+1 < len(b) && b[i+1] == '(':
+			depth, j := 0, i+1
+			for ; j < len(b); j++ {
+				if b[j] == '(' {
+					depth++
+				} else if b[j] == ')' {
+					if depth--; depth == 0 {
+						break
+					}
+				}
+			}
+			if j >= len(b) {
+				return string(b) // open to the end
+			}
+			for k := i; k <= j; k++ {
+				b[k] = ' '
+			}
+			i = j
+		case b[i] == '`':
+			j := strings.IndexByte(string(b[i+1:]), '`')
+			if j < 0 {
+				return string(b)
+			}
+			for k := i; k <= i+1+j; k++ {
+				b[k] = ' '
+			}
+			i += 1 + j
+		}
+	}
+	return string(b)
+}
+
 // unconditional reports whether the statement s certainly runs when the line runs: its text comes before any && || | ( { or a
 // compound command's keyword, so it is not on the right of a condition, in a pipeline, a subshell, a group, a loop or a branch.
 func unconditional(cmd string, s shellparse.Simple) bool {
@@ -486,7 +525,7 @@ func unconditional(cmd string, s shellparse.Simple) bool {
 	if at < 0 {
 		return false
 	}
-	before := cmd[:at]
+	before := withoutClosedSubstitutions(cmd[:at]) // cd "$(pwd)"; X=1 sets X: the statement is not inside the substitution
 	for _, marker := range []string{"&&", "||", "|", "(", "{", "`"} {
 		if strings.Contains(before, marker) {
 			return false
@@ -606,7 +645,10 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 		}
 		if _, val, ok := strings.Cut(env, "="); ok {
 			for _, c := range pathCandidates(val) {
-				u.envAcc = append(u.envAcc, ev.resolve(pathUse{raw: c}, cw)...)
+				for _, a := range ev.resolve(pathUse{raw: c}, cw) {
+					a.guess = true
+					u.envAcc = append(u.envAcc, a)
+				}
 			}
 		}
 	}

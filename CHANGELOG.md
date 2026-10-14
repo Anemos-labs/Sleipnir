@@ -7,6 +7,16 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `bypass` mode asks about a file whose name is only known when the command
+  runs when it may be one that a built-in protection, a `deny` rule or an `ask`
+  rule guards (`cat "$F"`, `cat ~/"$X"`, `echo x > "$OUT"`); before, it let
+  any such name pass. A name whose known directory holds nothing guarded, the
+  words of an unlisted program, an assignment's value, `cd` and name-only uses
+  still pass. A relative name's known directory is the one it names
+  (`secrets/$X` is inside `secrets/`), and a command substitution that closed
+  earlier in the line (`cd "$(pwd)"; F=...`) no longer makes the variables
+  set after it unknown. Prompt bytes: none change.
+
 - curl's URLs, headers and data are not judged as files: a smoke test's request
   body holding a variable no longer reads as a write to an unknown place. The
   files curl reads and writes are judged: `-o` and the name `-O` takes from

@@ -281,6 +281,15 @@ func (ev *evaluator) decideCommand(u *unit) verdict {
 			res = combineAccess(res, ev.accessVerdict(a, u))
 		}
 	}
+	if mode == ModeBypass {
+		// bypass mode judges the files a command certainly names (above, only the rules and protections a file it can name could
+		// meet were applied); a file name that is only known when the command runs may be one they guard (accessVerdict)
+		for _, a := range u.accesses {
+			if a.dynamic && !a.guess && !a.nameOnly && u.name != "cd" { // names are not what is guarded, and cd reads nothing
+				res = combineAccess(res, ev.accessVerdict(a, u))
+			}
+		}
+	}
 	for _, a := range u.envAcc {
 		res = combineAccess(res, ev.accessVerdict(a, u))
 	}
@@ -379,12 +388,44 @@ func (ev *evaluator) decideTool(u *unit) verdict {
 	return res
 }
 
+// unknownMayBeGuarded says why a file whose name is only known when the command runs may be one that a built-in protection, a deny rule
+// or an ask rule guards, or "" when it cannot be: its known beginning names a directory, and nothing below it is guarded. A name with
+// no known beginning ("$F") may be any file.
+func (ev *evaluator) unknownMayBeGuarded(a access) string {
+	if !a.prefix || a.real == "" {
+		return "it may be any file"
+	}
+	t := a
+	t.dynamic, t.tree, t.content = false, true, a.read // whatever the unknown part names lies below the directory
+	if p := ev.rs.protect(t); p.tier != tierNone {
+		return "it may be a protected file (" + p.why + ")"
+	}
+	for _, rules := range [][]*crule{ev.v.deny, ev.v.ask} {
+		for _, r := range rules {
+			if (r.class == classRead && a.read || r.class == classWrite && a.write) && ruleHits(r, t, true) {
+				return "it may be a file rule " + r.String() + " covers"
+			}
+		}
+	}
+	return ""
+}
+
 // accessVerdict applies allow rules and the mode's defaults to one file access.
 func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 	mode := ev.v.mode
 	rem := func() []Rule { return ev.rememberAccess(a, u) } // only needed when it asks
 	if a.dynamic {
 		switch {
+		case mode == ModeBypass && !a.guess:
+			why := ev.unknownMayBeGuarded(a)
+			if why == "" {
+				return allow(string(mode) + " mode")
+			}
+			// bypass mode still applies the built-in protections and the deny and ask rules, which cannot be checked against a file
+			// that is only known when the command runs
+			return ask(quote(a.raw)+" is a file name that is only known when the command runs ("+unknownWords(a.raw)+"), and "+why+
+				"; bypass mode still asks before a file a protection or a rule guards: write the path out, or set the variable earlier "+
+				"in the same command", nil)
 		case free(mode):
 			return allow(string(mode) + " mode")
 		case mode == ModePlan && a.write:
