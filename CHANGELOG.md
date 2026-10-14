@@ -11,6 +11,15 @@ they do not indicate whether a change has been released.
   session's scratch directory, as the shell does; before, it named a directory
   "$TMPDIR" under the project. Prompt bytes: the runtime context's scratch
   sentence says so (G1, one-time cache miss).
+- Providers take `options.model_extra_body`: per model id, request members put
+  over `extra_body` for that model only (one gateway, an upstream pinned for
+  one of its models, the others routed as before). Prompt bytes: none change.
+
+- The options of an `openai-responses` provider are checked like the other
+  dialects': an unknown name warns, a wrong value (`reasoning_summary`, a
+  `model_extra_body` entry that is not an object) is an error. Such a provider
+  with `capture_tokens` or `--capture` is refused at startup, since the
+  Responses API returns no token ids. Prompt bytes: none change.
 
 - The tests preset (`--allow tests`, the "builds and tests" answer, `accept-edits`) covers a
   Python virtual environment of the workspace (`Bash(python:venv)`): creating
