@@ -33,6 +33,7 @@ type parser struct {
 	blocks     int  // open if/while/until/for/select compounds
 	andOr      bool // an && or || came before the command being read, in its list
 	last       int  // index in out of the last command finish emitted, -1 before any
+	listStart  int  // index in out of the first command of the current and-or list (after the last ;, & or newline)
 	have       bool // a complete command (or group) precedes the next operator
 	needCmd    bool // an && || | is waiting for its right-hand side
 	nextPiped  bool
@@ -249,6 +250,7 @@ func (p *parser) op(t token) {
 		p.finish()
 		p.have = false
 		p.andOr = false
+		p.listStart = len(p.out)
 	case ";":
 		if !(p.cur.has || p.have || p.skipHeader) {
 			p.st.problem("empty command before ;")
@@ -258,6 +260,7 @@ func (p *parser) op(t token) {
 		p.have = false
 		p.needCmd = false
 		p.andOr = false
+		p.listStart = len(p.out)
 	case "&&", "||", "|", "|&":
 		if !(p.cur.has || p.have) {
 			p.st.problem("operator " + t.text + " without a command before it")
@@ -276,10 +279,11 @@ func (p *parser) op(t token) {
 			p.st.problem("& without a command before it")
 		}
 		p.finish()
-		p.markLast() // a background job assigns in a shell of its own
+		p.markList() // the whole and-or list before & runs in the background, in a shell of its own (a=1 && b &)
 		p.have = false
 		p.needCmd = false
 		p.andOr = false
+		p.listStart = len(p.out)
 		if p.top {
 			p.st.an.Background = true
 		}
@@ -373,6 +377,13 @@ func (p *parser) finish() {
 func (p *parser) markLast() {
 	if p.last >= 0 && p.last < len(p.out) {
 		p.out[p.last].Cond = true
+	}
+}
+
+// markList marks every command of the current and-or list as Cond.
+func (p *parser) markList() {
+	for i := p.listStart; i < len(p.out); i++ {
+		p.out[i].Cond = true
 	}
 }
 
