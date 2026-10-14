@@ -142,3 +142,45 @@ func TestTheRepositoryRootAndTheWorkingDirectoryAreKnownSubstitutions(t *testing
 		}
 	}
 }
+
+// A here-document's body is a command's input, not the line's syntax: Go source written with cat <<'EOF' keeps the variables the line
+// sets known, so DATA=$TMPDIR/rwdata; rm -rf $DATA after it is judged as that scratch directory (a backend agent's smoke test was asked
+// about as "a recursive delete of $DATA"). An unquoted heredoc still expands $((...)), which may assign, and a definition after the body
+// is still one.
+func TestAHeredocBodyKeepsTheLinesVariablesKnown(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: t.TempDir()})
+	for _, c := range []struct{ cmd, want string }{
+		{"cat > $TMPDIR/smoke.go <<'EOF'\npackage main\n\nfunc main() {\n\tif len(x) > 2 { run() }\n}\nEOF\nDATA=$TMPDIR/rwdata; rm -rf $DATA\ngo run $TMPDIR/smoke.go $DATA", "allow"},
+		{"cat > $TMPDIR/a.txt <<-\"END\"\n\tf() is text\n\tEND\nD=$TMPDIR/x; rm -rf $D", "allow"},
+		{"cat > $TMPDIR/a.txt <<EOF\nf() and g()\nEOF\nD=$TMPDIR/x; rm -rf $D", "allow"}, // "()" in an unquoted body is text too
+		{"cat > $TMPDIR/a.txt <<EOF\nx $((D=1))\nEOF\nD=$TMPDIR/x; rm -rf $D", "ask"},    // arithmetic in an unquoted body runs
+		{"cat > $TMPDIR/a.txt <<'EOF'\ntext\nEOF\nD=$TMPDIR/x; g() { D=/; }; g; rm -rf $D", "ask"},
+		{"D=$TMPDIR/x; echo $((1<<2)); rm -rf $D", "ask"}, // arithmetic (and no heredoc)
+	} {
+		d := e.Check(context.Background(), Request{Agent: "be-3", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%q\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
+
+func TestBlankHeredocs(t *testing.T) {
+	for _, c := range []struct {
+		in         string
+		quotedOnly bool
+		want       string
+	}{
+		{"cat <<'EOF'\nf()\nEOF\nx()", false, "cat <<'EOF'\n   \nEOF\nx()"},
+		{"cat <<EOF\nf()\nEOF\n", true, "cat <<EOF\nf()\nEOF\n"},
+		{"cat <<EOF\nf()\nEOF\n", false, "cat <<EOF\n   \nEOF\n"},
+		{"cat <<-E\n\tf()\n\tE\n", false, "cat <<-E\n    \n\tE\n"},
+		{"echo $((1<<2)) f()", false, "echo $((1<<2)) f()"},
+		{"cat <<< 'f()'", false, "cat <<< 'f()'"},
+		{"cat <<EOF\nnever closed f()", false, "cat <<EOF\nnever closed f()"},
+	} {
+		if got := blankHeredocs(c.in, c.quotedOnly); got != c.want {
+			t.Errorf("blankHeredocs(%q, %v) = %q, want %q", c.in, c.quotedOnly, got, c.want)
+		}
+	}
+}

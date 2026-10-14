@@ -7,13 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
-- The variables a command line sets stay known when quoted text in it holds
-  `()`, `function ` or `((`: `printf 'func main() {...}' > main.go` defines no
-  function, so a later `rm -rf "$d"` of a scratch directory the line named is
+- The variables a command line sets stay known when quoted text or a
+  here-document body in it holds `()`, `function `, `((`, braces or keywords:
+  `printf 'func main() {...}' > main.go` or Go source written with
+  `cat <<'EOF'` defines no function, so a later `rm -rf "$d"` of a scratch
+  directory the line named is
   judged as that directory. Before, any `()` in the line made every variable
   unknown, and bypass mode asked about the delete as high risk. A real
-  function definition, and arithmetic inside double quotes (`"$((n=1))"`),
-  still stop the tracking. Two command substitutions are known values:
+  function definition, and arithmetic inside double quotes (`"$((n=1))"`) or
+  an unquoted here-document, still stop the tracking. Two command substitutions are known values:
   `$(pwd)` is the directory the command runs in, and
   `$(git rev-parse --show-toplevel)` the nearest directory at or above it
   that holds a `.git`, so `cd "$(git rev-parse --show-toplevel)" && go test

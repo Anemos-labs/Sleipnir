@@ -444,7 +444,9 @@ func validName(s string) bool {
 func varsTrackable(cmd string, an shellparse.Analysis) bool {
 	// Quoted text is not a definition: printf 'func main() {...}' > main.go defines no function. Arithmetic still runs inside double
 	// quotes ("$((n=5))"), so only single-quoted text is left out of that check.
-	code, unsingled := blankQuoted(cmd, true), blankQuoted(cmd, false)
+	// A heredoc's body is text for a command's standard input, not the line's syntax; one with a quoted delimiter (<<'EOF') is not even
+	// expanded, while an unquoted one still runs $((...)) inside.
+	code, unsingled := blankQuoted(blankHeredocs(cmd, false), true), blankQuoted(blankHeredocs(cmd, true), false)
 	if an.Background || strings.Contains(code, "()") || strings.Contains(code, "function ") || strings.Contains(unsingled, "((") {
 		return false
 	}
@@ -487,6 +489,77 @@ func blankQuoted(s string, double bool) string {
 		case q == '\'' || q == 'a' || q == '"' && double:
 			b[i] = ' '
 		}
+	}
+	return string(b)
+}
+
+// blankHeredocs returns s with the bodies of its here-documents replaced by spaces (the newlines kept), only those whose delimiter is
+// quoted (<<'EOF', <<"EOF", <<\EOF: a literal body) when quotedOnly is set. A body ends at a line that is its delimiter (after leading
+// tabs for <<-); a "<<" whose delimiter line never comes (a shift in $((1<<2)), a here-string <<<) is left as it is.
+func blankHeredocs(s string, quotedOnly bool) string {
+	b := []byte(s)
+	for i := 0; i+1 < len(b); i++ {
+		if b[i] != '<' || b[i+1] != '<' || i+2 < len(b) && b[i+2] == '<' || i > 0 && b[i-1] == '<' {
+			continue
+		}
+		j := i + 2
+		tabs := j < len(b) && b[j] == '-'
+		if tabs {
+			j++
+		}
+		for j < len(b) && (b[j] == ' ' || b[j] == '\t') {
+			j++
+		}
+		quoted := false
+		var tag []byte
+		for j < len(b) && !strings.ContainsRune(" \t\n;&|<>()", rune(b[j])) {
+			switch b[j] {
+			case '\'', '"', '\\':
+				quoted = true
+			default:
+				tag = append(tag, b[j])
+			}
+			j++
+		}
+		if len(tag) == 0 {
+			continue
+		}
+		nl := strings.IndexByte(string(b[j:]), '\n')
+		if nl < 0 {
+			continue
+		}
+		start := j + nl + 1
+		end, closed := start, false
+		for end <= len(b) {
+			stop := strings.IndexByte(string(b[end:]), '\n')
+			line := b[end:]
+			if stop >= 0 {
+				line = b[end : end+stop]
+			}
+			l := string(line)
+			if tabs {
+				l = strings.TrimLeft(l, "\t")
+			}
+			if l == string(tag) {
+				closed = true
+				break
+			}
+			if stop < 0 {
+				break
+			}
+			end += stop + 1
+		}
+		if !closed {
+			continue
+		}
+		if !quotedOnly || quoted {
+			for k := start; k < end; k++ {
+				if b[k] != '\n' {
+					b[k] = ' '
+				}
+			}
+		}
+		i = end
 	}
 	return string(b)
 }
@@ -566,7 +639,9 @@ func unconditional(cmd string, s shellparse.Simple) bool {
 	if at < 0 {
 		return false
 	}
-	before := withoutClosedSubstitutions(cmd[:at]) // cd "$(pwd)"; X=1 sets X: the statement is not inside the substitution
+	// cd "$(pwd)"; X=1 sets X: the statement is not inside the substitution; and quoted text and heredoc bodies are text, not grouping
+	// or keywords (printf 'if (x) {' > f; X=1).
+	before := blankQuoted(blankHeredocs(withoutClosedSubstitutions(cmd[:at]), false), true)
 	for _, marker := range []string{"&&", "||", "|", "(", "{", "`"} {
 		if strings.Contains(before, marker) {
 			return false
