@@ -1251,6 +1251,9 @@ func (t *webTab) goalAction(ctx context.Context, s *session.Session, req wire.Go
 			if err != nil {
 				return
 			}
+			if req.AutoFix || req.AutoMerge {
+				s.SetDelivery(req.AutoFix, req.AutoMerge)
+			}
 			webAction(s, "goal", "set")
 			t.emit(&wire.Say{Who: "you", Text: clip("/goal "+text, 16<<10)})
 			t.addHist("/goal " + text)

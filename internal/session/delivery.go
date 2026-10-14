@@ -133,7 +133,7 @@ func (s *Session) Run(ctx context.Context, objective string) (*Result, error) {
 				return result, err
 			}
 		}
-		if s.opts.BudgetUSD > 0 && s.Cost() >= s.opts.BudgetUSD {
+		if budget := s.Budget(); budget > 0 && s.Cost() >= budget {
 			return result, fmt.Errorf("delivery paused: budget reached")
 		}
 		d, err := c.Step(ctx)
@@ -154,6 +154,11 @@ func (s *Session) Run(ctx context.Context, objective string) (*Result, error) {
 			result, err = s.runTurn(ctx, d.Prompt)
 			if err != nil {
 				return result, err
+			}
+			if d.AssessRelease && result != nil {
+				if err := c.RecordRelease(result.Text); err != nil {
+					return result, err
+				}
 			}
 			if d.AssessReview && result != nil {
 				if err := c.RecordReview(result.Text); err != nil {

@@ -290,6 +290,7 @@
     /* ---------- wiring ---------- */
     sc.update((S, m) => { if (!S || !m) return; sync(false); renderPlan(S, m); composerUpdate(S); if (inp.value !== S.ui.draft && document.activeElement !== inp) inp.value = S.ui.draft || ''; ui.approvals.render(S, S.wm); });
     sc.frame(frameFn);
+    sc.on('delivery-choice', e => { const S = SL.sessions.active; if (S && S.id === e.sid) { const d = S.ui.delivery || {}; $('#autoFixCI').checked = !!d.autoFix; $('#autoMergePR').checked = !!d.autoMerge; } });
     sc.on('activated', () => { const S = SL.sessions.active, d = S && S.ui.delivery || {}; $('#autoFixCI').checked = !!d.autoFix; $('#autoMergePR').checked = !!d.autoMerge; TR.m = null; FD.m = null; sync(true); });
     sc.on('rebuilt', () => { TR.m = null; FD.m = null; });
     sc.on('cache-detail', () => { TR.m = null; FD.m = null; sync(true); });

@@ -87,3 +87,15 @@ test('following again returns to the latest cache page even for the same agent',
   assert.equal(L.SL.ui.cacheFollow, true);
   assert.equal(L.doc.querySelectorAll('.hbar .nn').at(-1).textContent, '100');
 });
+
+test('standing goals consume automation choices without authorizing later goals', async () => {
+ const L=await boot();
+ for (const id of ['autoFixCI','autoMergePR']) { L.$('#'+id).checked=true; L.$('#'+id).dispatchEvent(new FakeEvent('change',{bubbles:true})); }
+ await L.type('/goal repair and deliver'); L.press('enter'); await L.settle();
+ const sent=L.posts.filter(p=>p.path.endsWith('/goal')).at(-1);
+ assert.equal(sent.body.action,'set'); assert.equal(sent.body.autoFix,true); assert.equal(sent.body.autoMerge,true);
+ assert.equal(L.$('#autoFixCI').checked,false); assert.equal(L.$('#autoMergePR').checked,false);
+ L.SL.act.setGoal('another objective'); await L.settle();
+ const next=L.posts.filter(p=>p.path.endsWith('/goal')).at(-1);
+ assert.equal(next.body.autoFix,undefined); assert.equal(next.body.autoMerge,undefined);
+});

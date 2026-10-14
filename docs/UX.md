@@ -13,7 +13,12 @@ answer during work.
 ## Goals and interruption
 
 `/goal TEXT` starts a standing goal. The completion judge checks evidence after
-each turn and can request another pass. `/goal` shows its state and plan.
+each turn and can request another pass. It searches the durable session log for
+worker and manager tool evidence across earlier turns and compaction. Results are
+paged, including full stored tool outputs, so missing evidence in the current
+conversation does not by itself require repeating completed work. Inspection is
+read-only and bounded to 24 retrieval requests per judgment; an exhausted
+inspection limit pauses the goal without certifying completion. `/goal` shows its state and plan.
 
 Escape or Ctrl+C during a turn cancels it. `/goal pause` and `/goal clear`
 interrupt first, then update goal state after the running turn has stopped.

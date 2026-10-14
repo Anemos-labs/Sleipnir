@@ -422,9 +422,10 @@ func Layered(w Workload, p Provider, o LayeredOptions) Result {
 						out := kv.Outcome{SnapTokens: job.snapTok, SpineAdded: job.spine, RetainedTokens: job.rt, SpineAfter: spineAfter,
 							SpineRewritten: evicted, NotesChanged: true, NotesAfter: notesTok + notesGrowth, TailTokens: tailPrior}
 						job.held++
-						if stale, _ := pl.Stale(job.snapTok, threadTok, job.held); stale {
+						commit := pl.ShouldCommit(st, out)
+						if stale, _ := pl.Stale(job.snapTok, threadTok, job.held); stale && !commit.Yes {
 							job = nil // dropped; a new one may start below
-						} else if d := pl.ShouldCommit(st, out); d.Yes {
+						} else if commit.Yes {
 							epoch++
 							thread = append([]seg{{fmt.Sprintf("ret:%s:%d:%d", id, taskNo, epoch), job.rt, false}}, tail...)
 							threadTok = job.rt + tailTok

@@ -194,3 +194,40 @@ func TestConfineIsSafeForConcurrentUse(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestVerifiedIntegrationRetainsRulesAndWorkerIsolation(t *testing.T) {
+	f := newFixture(t)
+	mine := filepath.Join(f.base, "manager")
+	if err := os.MkdirAll(mine, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, deny := range []string{"", "Bash(git commit:*)", "Edit(src/a.go)"} {
+		cfg := Config{Root: f.root, Home: f.home, ExtraRoots: []string{mine}, Mode: ModeBypass}
+		if deny != "" {
+			cfg.Deny = []string{deny}
+		}
+		e, err := NewEngine(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		e.Confine("mgr", mine)
+		r := Request{Agent: "mgr", Role: "manager", Tool: "bash", Command: "git commit -m verified", Cwd: f.root, Writes: true}
+		if d := e.Check(bg, r); d.Allow {
+			t.Fatal("ordinary command escaped confinement")
+		}
+		r.VerifiedIntegration = true
+		if deny == "Edit(src/a.go)" {
+			r.Tool = "task"
+			r.Command = ""
+			r.Paths = []string{filepath.Join(f.root, "src/a.go")}
+		}
+		d := e.Check(bg, r)
+		if d.Allow != (deny == "") {
+			t.Fatalf("rule %q: %+v", deny, d)
+		}
+		r.Role = "backend"
+		if d := e.Check(bg, r); d.Allow {
+			t.Fatal("worker borrowed integration authority")
+		}
+	}
+}

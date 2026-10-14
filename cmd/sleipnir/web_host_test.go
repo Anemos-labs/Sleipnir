@@ -1038,3 +1038,36 @@ func TestAQuestionThatCannotBeSentIsRefused(t *testing.T) {
 		t.Errorf("open questions %+v", open)
 	}
 }
+
+func TestGoalSubmissionCarriesDeliveryAuthorization(t *testing.T) {
+	m, base := newWebModel(t, func(*mock.Call) mock.Reply { return mock.Reply{Text: "held objective"} })
+	m.hold("delivery-goal-fixture")
+	r := newWebRig(t, soloDefaults(webWorld(t)), base)
+	tab := r.ready("")
+	path := "/api/sessions/" + tab.ID
+	r.json("POST", path+"/goal", wire.GoalRequest{Action: "set", Text: "delivery-goal-fixture", AutoFix: true, AutoMerge: true}, 200, nil)
+	deadline := time.Now().Add(10 * time.Second)
+	for m.asked("delivery-goal-fixture") < 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if m.asked("delivery-goal-fixture") < 0 {
+		t.Fatal("goal did not reach model")
+	}
+	data, err := os.ReadFile(filepath.Join(r.h.tab(tab.ID).session().Dir, "delivery.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state struct {
+		AutoFix, AutoMerge bool
+		Objective          string
+	}
+	if err := json.Unmarshal(data, &state); err != nil {
+		t.Fatal(err)
+	}
+	if !state.AutoFix || !state.AutoMerge || !strings.Contains(state.Objective, "delivery-goal-fixture") {
+		t.Fatalf("goal lost authorization: %s", data)
+	}
+	// Cancel before releasing the held model: this test never contacts GitHub.
+	r.json("POST", path+"/goal", wire.GoalRequest{Action: "pause"}, 200, nil)
+	m.releaseAll()
+}

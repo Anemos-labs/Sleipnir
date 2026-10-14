@@ -130,7 +130,7 @@ func (s *Swarm) integrationRef() string {
 const managerIsolationCard = "Isolation: every writer works in a private git worktree. Their work is merged, one task at a time, into a shared " +
 	"integration branch and verified there; the user's checkout does not show it while the run is going. When the run ends the harness applies the " +
 	"integrated result to the checkout (as uncommitted changes, or as commits when the user asked for that): never tell the user to merge anything. " +
-	"You also have a writable worktree. Direct edits are verified and integrated by the harness before completion or PR publication; sync the assembled result before inspecting it. The evidence of a task in review names its merge."
+	"Use task deliver with text set to a commit message to commit the verified result directly to the original checkout; no board task is needed. You also have a writable worktree. Direct edits are verified and integrated by the harness before completion or PR publication; sync the assembled result before inspecting it. The evidence of a task in review names its merge."
 
 // mergeRec is the harness's record that a task's work is in the integration branch.
 type mergeRec struct {

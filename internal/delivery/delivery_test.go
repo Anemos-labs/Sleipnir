@@ -164,10 +164,25 @@ func TestMergeCompletionWaitsForMainAndRelease(t *testing.T) {
 		t.Fatalf("pending main: %+v %v", d, err)
 	}
 	f.runs = `[{"name":"ci","status":"completed","conclusion":"success","headSha":"merged-sha"}]`
+	if _, err := c.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	c.State.SettledAt = time.Now().Add(-2 * time.Minute)
 	d, err = c.Step(context.Background())
 	if err != nil || d.Done || !strings.Contains(d.Prompt, "published artifacts") {
 		t.Fatalf("release evidence: %+v %v", d, err)
+	}
+	for _, response := range []string{"done", `{"delivery_release":"pending","commit":"merged-sha","evidence":"release queued"}`, `{"delivery_release":"verified","commit":"other-sha","evidence":"passed"}`, `{"delivery_release":"verified","commit":"merged-sha","evidence":""}`} {
+		if err := c.RecordRelease(response); err != nil {
+			t.Fatal(err)
+		}
+		d, err = c.Step(context.Background())
+		if err != nil || d.Done || !d.AssessRelease {
+			t.Fatalf("accepted unverified response %q: %+v %v", response, d, err)
+		}
+	}
+	if err := c.RecordRelease(`{"delivery_release":"verified","commit":"merged-sha","evidence":"CI succeeded; release tag matches merge; artifacts downloaded and checksums passed"}`); err != nil {
+		t.Fatal(err)
 	}
 	d, err = c.Step(context.Background())
 	if err != nil || !d.Done || d.Phase != "merged" {

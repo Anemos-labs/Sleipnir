@@ -347,8 +347,10 @@ type AnswerResult struct {
 
 // GoalRequest sets, pauses, resumes or clears the standing goal.
 type GoalRequest struct {
-	Action string `json:"action"`
-	Text   string `json:"text,omitempty"`
+	AutoFix   bool   `json:"autoFix,omitempty"`
+	AutoMerge bool   `json:"autoMerge,omitempty"`
+	Action    string `json:"action"`
+	Text      string `json:"text,omitempty"`
 }
 
 // ModeRequest sets the permission mode (default, accept-edits, plan, bypass or yolo); bypass and yolo need an X-Confirm id.

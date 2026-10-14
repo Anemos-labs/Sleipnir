@@ -65,6 +65,14 @@ Objections go through typed mail; the manager settles disagreements and can revi
 the existing task. Parent phase and member identities appear on the board; children
 are grouped under their parent (expandable cards in the browser, indented terminal rows).
 
+**Direct manager delivery.** `task deliver` verifies the manager's direct changes,
+integrates them, and commits the verified result to the original checkout. `text`
+supplies a commit message when already-applied edits need a new commit; a clean
+checkout fast-forwards to the verified integration commits. This operation creates
+no board task. It retains explicit permission rules, refuses unrelated dirty files
+or a changed branch, and rechecks the integration snapshot after authorization.
+Workers cannot invoke it. Push and PR commands remain direct manager operations.
+
 **Repair.** Configured teams do not expire idle contexts or exhaust a task's total
 repair attempts. Failed assignments return to the same worker with bounded backoff.
 `task revise` changes the existing title, description, scope or dependencies and

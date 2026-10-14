@@ -25,17 +25,20 @@ type Options struct {
 // State is a durable checkpoint. Readiness is always reevaluated against Head.
 type State struct {
 	Options
-	Objective     string    `json:"objective"`
-	Repo          string    `json:"repo"`
-	PushRepo      string    `json:"pushRepo,omitempty"`
-	Base          string    `json:"base,omitempty"`
-	PR            string    `json:"pr"`
-	Head          string    `json:"head"`
-	Phase         string    `json:"phase"`
-	MergeEnabled  bool      `json:"mergeEnabled"`
-	ReviewStamp   string    `json:"reviewStamp,omitempty"`
-	ReviewVerdict string    `json:"reviewVerdict,omitempty"`
-	SettledAt     time.Time `json:"settledAt,omitempty"`
+	Objective       string    `json:"objective"`
+	Repo            string    `json:"repo"`
+	PushRepo        string    `json:"pushRepo,omitempty"`
+	Base            string    `json:"base,omitempty"`
+	PR              string    `json:"pr"`
+	Head            string    `json:"head"`
+	Phase           string    `json:"phase"`
+	MergeEnabled    bool      `json:"mergeEnabled"`
+	ReviewStamp     string    `json:"reviewStamp,omitempty"`
+	ReviewVerdict   string    `json:"reviewVerdict,omitempty"`
+	ReleaseCommit   string    `json:"releaseCommit,omitempty"`
+	ReleaseStamp    string    `json:"releaseStamp,omitempty"`
+	ReleaseEvidence string    `json:"releaseEvidence,omitempty"`
+	SettledAt       time.Time `json:"settledAt,omitempty"`
 }
 
 // Exec runs an argument-vector command in the objective's repository.
@@ -122,11 +125,12 @@ func (c *Controller) Start(objective string, o Options) error {
 // Directive either supplies actionable evidence, waits without a model request,
 // or reports a verified terminal outcome.
 type Directive struct {
-	Prompt       string
-	AssessReview bool
-	Wait         time.Duration
-	Done         bool
-	Phase        string
+	Prompt        string
+	AssessReview  bool
+	AssessRelease bool
+	Wait          time.Duration
+	Done          bool
+	Phase         string
 }
 
 // checkoutIdentity derives authorization from Git configuration, never PR text.
@@ -534,7 +538,17 @@ func (c *Controller) afterMerge(ctx context.Context, pr pull) (Directive, error)
 	if err = json.Unmarshal(b, &runs); err != nil {
 		return d, err
 	}
+	stamp := fmt.Sprintf("%x", sha256.Sum256(b))
+	if c.State.ReleaseStamp != stamp || c.State.ReleaseCommit != pr.MergeCommit.Oid {
+		c.State.ReleaseStamp = stamp
+		c.State.ReleaseCommit = pr.MergeCommit.Oid
+		c.State.ReleaseEvidence = ""
+		c.State.SettledAt = time.Time{}
+	}
 	for _, run := range runs {
+		if run.HeadSha != pr.MergeCommit.Oid {
+			return d, fmt.Errorf("workflow evidence does not match merge commit")
+		}
 		if run.Status != "completed" {
 			c.State.SettledAt = time.Time{}
 			return c.finish(d)
@@ -553,15 +567,33 @@ func (c *Controller) afterMerge(ctx context.Context, pr pull) (Directive, error)
 	if time.Since(c.State.SettledAt) < 60*time.Second {
 		return c.finish(d)
 	}
-	if c.State.Phase != "verifying release" {
+	if c.State.ReleaseEvidence == "" {
+		d.AssessRelease = true
 		d.Phase = "verifying release"
-		d.Prompt = "The PR is merged at " + pr.MergeCommit.Oid + ". Verify the base-branch CI and any release triggered by this merge. Inspect release workflow status, tag commit, and published artifacts; report the concrete evidence. Do not change repository protections or use paid services. If release publication was intentionally skipped, report its recorded reason."
+		d.Prompt = "The PR is merged at " + pr.MergeCommit.Oid + ". Verify the base-branch CI and any release triggered by this merge. Inspect release workflow status, tag commit, and published artifacts; report the concrete evidence. Do not change repository protections or use paid services. If release publication was intentionally skipped, report its recorded reason. Finish with one JSON line: {\"delivery_release\":\"verified|pending\",\"commit\":\"" + pr.MergeCommit.Oid + "\",\"evidence\":\"CI links, tag and artifact checks, or concrete evidence that no release applies\"}. Use verified only after inspecting these sources; a missing or pending release is not success."
 		return c.finish(d)
 	}
 	d.Done = true
 	d.Phase = "merged"
 	c.State.MergeEnabled = false
 	return c.finish(d)
+}
+
+// RecordRelease binds explicit release verification to the observed merge commit.
+// Missing, pending, mismatched, and unsupported claims leave delivery incomplete.
+func (c *Controller) RecordRelease(response string) error {
+	lines := strings.Split(strings.TrimSpace(response), "\n")
+	var v struct {
+		Verdict  string `json:"delivery_release"`
+		Commit   string `json:"commit"`
+		Evidence string `json:"evidence"`
+	}
+	c.State.ReleaseEvidence = ""
+	if json.Unmarshal([]byte(lines[len(lines)-1]), &v) == nil && v.Verdict == "verified" &&
+		v.Commit != "" && v.Commit == c.State.ReleaseCommit && strings.TrimSpace(v.Evidence) != "" {
+		c.State.ReleaseEvidence = clip(v.Evidence, 6000)
+	}
+	return c.Save()
 }
 
 // reviewSummary observes top-level reviews and comments, including bot summaries.

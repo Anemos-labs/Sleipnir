@@ -215,6 +215,12 @@ const (
 
 // Request describes one action awaiting a decision.
 type Request struct {
+	// VerifiedIntegration is set only by the harness delivery bridge, after an
+	// integration dry run. It permits the manager to apply those exact verified
+	// files to the original checkout; all path protections and user rules remain.
+	// It is never decoded from model tool arguments.
+	VerifiedIntegration bool `json:"-"`
+
 	Agent string          `json:"agent"`
 	Role  string          `json:"role,omitempty"`
 	Tool  string          `json:"tool"`
