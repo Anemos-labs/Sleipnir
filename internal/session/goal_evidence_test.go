@@ -55,6 +55,10 @@ func TestGoalEvidenceSurvivesNoiseAndKeepsObjectiveBoundaries(t *testing.T) {
 	if err != nil || !strings.Contains(got, "shown=10") {
 		t.Fatalf("pagination: %s %v", got, err)
 	}
+	past, err := s.goalEvidence(context.Background(), g, cutoff, evidenceRequest{Records: []uint64{record, record + 1}, Offset: 1000000})
+	if err != nil || !strings.Contains(past, fmt.Sprintf("record=%d offset past end", record)) || !strings.Contains(past, fmt.Sprintf("\nrecord=%d offset past end", record+1)) {
+		t.Fatalf("past-end batch records: %s %v", past, err)
+	}
 	batch, err := s.goalEvidence(context.Background(), g, cutoff, evidenceRequest{Records: []uint64{record, record + 1}})
 	if err != nil || !strings.Contains(batch, fmt.Sprintf("record=%d", record)) || !strings.Contains(batch, "wait") {
 		t.Fatalf("batch read: %s %v", batch, err)

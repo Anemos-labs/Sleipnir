@@ -112,7 +112,7 @@ func (s *Session) goalEvidence(ctx context.Context, g *goal.State, cutoff uint64
 			found[e.Seq] = true
 			r := []rune(body)
 			if req.Offset > len(r) {
-				fmt.Fprintf(&out, "offset past end (%d runes)", len(r))
+				fmt.Fprintf(&out, "record=%d offset past end (%d runes)\n", e.Seq, len(r))
 				return nil
 			}
 			end := req.Offset + min(8000, len(r)-req.Offset)
@@ -121,7 +121,7 @@ func (s *Session) goalEvidence(ctx context.Context, g *goal.State, cutoff uint64
 				return nil
 			}
 			readRunes += end - req.Offset
-			fmt.Fprintf(&out, "record=%d agent=%s type=%s runes=%d:%d/%d\n%s", e.Seq, e.Agent, e.Type, req.Offset, end, len(r), string(r[req.Offset:end]))
+			fmt.Fprintf(&out, "record=%d agent=%s type=%s runes=%d:%d/%d\n%s\n", e.Seq, e.Agent, e.Type, req.Offset, end, len(r), string(r[req.Offset:end]))
 			shown++
 			return nil
 		}
