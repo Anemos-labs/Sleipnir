@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
@@ -164,6 +166,98 @@ func TestAPlanSessionShowsTheListPriceAndBudgetsCountTheBill(t *testing.T) {
 		t.Errorf("%d model.response events", responses)
 	}
 	if sum := session.Summarize(filepath.Join(res.Dir, "events.jsonl")); !sum.Plan || sum.CostUSD != 0 || math.Abs(sum.ListUSD-3*perRequest) > 1e-9 {
+		t.Errorf("listing summary: %+v", sum)
+	}
+}
+
+// A team whose manager is billed per token and whose worker runs a ChatGPT plan's model the table does not know: the worker's usage
+// has no list price (list_usd 0 on its responses), and the session still ended on a plan, so session.end says plan and list_usd 0.
+func TestABilledTeamWithAWorkerOnAnUnknownPlanModelEndsOnAPlan(t *testing.T) {
+	signedIn(t)
+	repo := newRepo(t)
+	var planCalls atomic.Int32
+	plan := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		planCalls.Add(1)
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "event: response.completed\ndata: "+`{"type":"response.completed","response":{"id":"w1","model":"gpt-next-x","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"surveyed"}]}],"usage":{"input_tokens":5000,"output_tokens":100}}}`+"\n\n")
+	}))
+	defer plan.Close()
+	manager := mock.New(mock.Config{Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}}, func(c *mock.Call) mock.Reply {
+		if _, role, _ := whoIs(c); role != "manager" {
+			return mock.Reply{Text: "nothing to digest"}
+		}
+		if assistantTurns(c) == 0 {
+			return mock.Reply{Text: "dispatching", ToolCalls: []mock.ToolCall{
+				call("t1", "task", map[string]any{"action": "create", "title": "Survey the code", "role": "scout"}),
+				call("s1", "spawn", map[string]any{"role": "scout", "task": "T1"}),
+			}}
+		}
+		for deadline := time.Now().Add(30 * time.Second); planCalls.Load() == 0 && time.Now().Before(deadline); {
+			time.Sleep(10 * time.Millisecond) // the worker has asked its plan's model before the manager finishes
+		}
+		return mock.Reply{Text: "finished"}
+	})
+	mts := manager.Start()
+	defer mts.Close()
+
+	cfg := config.Defaults()
+	cfg.Providers = map[string]config.Provider{
+		"gw":   {BaseURL: mts.URL},
+		"plan": {Dialect: config.DialectOpenAIResponses, Auth: config.AuthChatGPTPlan, BaseURL: plan.URL + "/v1"},
+	}
+	s, err := session.New(context.Background(), session.Options{
+		Cwd: repo, Root: repo, Home: t.TempDir(), Dir: t.TempDir(), Config: cfg, Model: "gw/acme/main",
+		Mode: perm.ModeBypass, NoWeb: true, TrustProject: true, Offline: true,
+		Swarm: true, Workers: 1, RoleModels: map[string]string{"scout": "plan/gpt-next-x"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Model.Plan {
+		t.Fatal("the manager's model is billed per token, not a plan's")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	res, err := s.Run(ctx, "survey the repository")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if planCalls.Load() == 0 {
+		t.Fatal("the worker never asked its plan's model")
+	}
+	if !res.Plan || res.ListUSD != 0 || res.CostUSD <= 0 {
+		t.Errorf("result: plan %v, list %v, cost %v; want a plan's session with no list price and a billed manager", res.Plan, res.ListUSD, res.CostUSD)
+	}
+	var end map[string]any
+	var planResponses int
+	for _, e := range readEvents(t, res.Dir) {
+		var p map[string]any
+		if err := json.Unmarshal(e.Data, &p); err != nil {
+			t.Fatal(err)
+		}
+		switch e.Type {
+		case events.TypeModelResponse:
+			if v, ok := p["list_usd"]; ok {
+				planResponses++
+				if v != 0.0 || p["cost_usd"] != 0.0 {
+					t.Errorf("a response of the unknown plan model: list_usd %v, cost_usd %v", v, p["cost_usd"])
+				}
+			}
+		case events.TypeSessionEnd:
+			end = p
+		}
+	}
+	if planResponses == 0 {
+		t.Error("no response carried list_usd: the plan's answers are not marked")
+	}
+	if end == nil || end["plan"] != true || end["list_usd"] != 0.0 || !(end["cost_usd"].(float64) > 0) {
+		t.Errorf("session.end: %v", end)
+	}
+	if sum := session.Summarize(filepath.Join(res.Dir, "events.jsonl")); !sum.Plan || sum.ListUSD != 0 {
 		t.Errorf("listing summary: %+v", sum)
 	}
 }

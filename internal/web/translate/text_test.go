@@ -141,6 +141,17 @@ func TestPlanUsageIsShownAtTheListPrice(t *testing.T) {
 		t.Fatalf("svc: %v", s)
 	}
 
+	// a plan's model the table does not know: list_usd 0 still marks the usage as the plan's
+	unknown := newHarness(t, Config{Root: "/work", StartedAt: t0})
+	ub := newLog(t0)
+	unknown.feed(
+		ub.add(time.Second, "be-1", "model.request", map[string]any{"req": "r1", "kind": "main", "model": "gpt-next-x"}),
+		ub.add(time.Second, "be-1", "model.response", map[string]any{"req": "r1", "model": "gpt-next-x", "usage": map[string]any{"input_tokens": 100}, "cost_usd": 0.0, "list_usd": 0.0}),
+	)
+	if u := ofKind(unknown.decoded(), "use"); len(u) == 0 || u[len(u)-1]["plan"] != true || u[len(u)-1]["cost"] != 0.0 {
+		t.Fatalf("a plan's answer at an unknown list price: %v", u)
+	}
+
 	billed := newHarness(t, Config{Root: "/work", StartedAt: t0})
 	bb := newLog(t0)
 	billed.feed(

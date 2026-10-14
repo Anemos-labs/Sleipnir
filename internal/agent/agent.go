@@ -352,8 +352,10 @@ type Agent struct {
 	man     core.ManifestState
 	usage   core.Usage
 	costUSD float64
-	// listUSD is the API list-price value of usage a subscription plan covered (cost.Model.Plan): shown, never budgeted.
-	listUSD float64
+	// listUSD is the API list-price value of usage a subscription plan covered (cost.Model.Plan): shown, never budgeted. planUsed says
+	// such usage was accounted at all: a plan's model whose list price is not known adds nothing to listUSD and is still a plan's.
+	listUSD  float64
+	planUsed bool
 
 	// Cache state (see warm.go).
 	lastStart         time.Time
@@ -564,6 +566,14 @@ func (a *Agent) ListUSD() float64 {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.listUSD
+}
+
+// PlanUsage returns ListUSD and whether any of the agent's requests, main or side, was accounted on a subscription plan's model: used
+// is true for a plan's model whose list price is not known, whose list value is then zero.
+func (a *Agent) PlanUsage() (list float64, used bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.listUSD, a.planUsed
 }
 
 // Thread exposes the live thread (read-only use: snapshots).

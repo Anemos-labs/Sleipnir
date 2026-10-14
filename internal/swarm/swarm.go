@@ -296,8 +296,10 @@ type Swarm struct {
 	spent    float64              // spend of agents that have left (the budget ledger)
 	lastSeen map[string]*Snapshot // per agent: the board at the end of its last wait
 	wg       sync.WaitGroup
-	// spentList is the API list-price value of the plan-covered usage of agents that have left (shown, never budgeted).
+	// spentList is the API list-price value of the plan-covered usage of agents that have left (shown, never budgeted), and spentPlan
+	// says one of them used a plan at all.
 	spentList float64
+	spentPlan bool
 	// retiring are the members detach has taken off the roster and not yet folded into spent and spentList (it waits for their
 	// agents to close first); the totals count them as members.
 	retiring map[*member]struct{}

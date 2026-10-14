@@ -501,7 +501,8 @@ func TestRetireFoldsSpendAccountedWhileTheAgentCloses(t *testing.T) {
 	}
 	rvWait(t, "worker idle", func() bool { return r.idle(id) })
 	worker := r.sw.get(id).a
-	before, beforeList := r.sw.TotalCost(), r.sw.TotalListCost()
+	before := r.sw.TotalCost()
+	beforeList, _ := r.sw.TotalListCost()
 	const lateCost, lateList = 1.0, 0.5
 
 	oldClose, oldSpend := closeAgent, agentSpend
@@ -514,12 +515,12 @@ func TestRetireFoldsSpendAccountedWhileTheAgentCloses(t *testing.T) {
 		}
 		return oldClose(a)
 	}
-	agentSpend = func(a *agent.Agent) (float64, float64) {
-		c, l := oldSpend(a)
+	agentSpend = func(a *agent.Agent) (float64, float64, bool) {
+		c, l, p := oldSpend(a)
 		if a == worker && late {
-			c, l = c+lateCost, l+lateList
+			c, l, p = c+lateCost, l+lateList, true // the late response was a plan's
 		}
-		return c, l
+		return c, l, p
 	}
 	if err := r.sw.Retire(id); err != nil {
 		t.Fatal(err)
@@ -530,8 +531,8 @@ func TestRetireFoldsSpendAccountedWhileTheAgentCloses(t *testing.T) {
 	if got := r.sw.TotalCost(); math.Abs(got-(before+lateCost)) > 1e-9 {
 		t.Errorf("TotalCost after the retirement = $%.4f, want $%.4f: the spend accounted while it closed is lost or doubled", got, before+lateCost)
 	}
-	if got := r.sw.TotalListCost(); math.Abs(got-(beforeList+lateList)) > 1e-9 {
-		t.Errorf("TotalListCost after the retirement = $%.4f, want $%.4f", got, beforeList+lateList)
+	if got, plan := r.sw.TotalListCost(); math.Abs(got-(beforeList+lateList)) > 1e-9 || !plan {
+		t.Errorf("TotalListCost after the retirement = $%.4f (plan %v), want $%.4f and a plan's usage", got, plan, beforeList+lateList)
 	}
 }
 

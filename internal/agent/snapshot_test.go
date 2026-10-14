@@ -238,6 +238,57 @@ func TestLatestSnapshotKeepsPostSnapshotIDsAndSpending(t *testing.T) {
 	}
 }
 
+// A plan's response after the snapshot is recovered with its list-price value and the mark that a plan was used, also when its list
+// price was not known (list_usd 0); a billed response does not set the mark.
+func TestLatestSnapshotRecoversPlanUsage(t *testing.T) {
+	dir := t.TempDir()
+	log, err := events.Open(dir, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	blobs, err := events.NewDirBlobs(filepath.Join(dir, "blobs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(agent.Snapshot{Version: 1, Agent: "main", Requests: 1, NextTurn: 2})
+	hash, err := blobs.Put(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	log.Emit("main", events.TypeAgentSnapshot, map[string]any{"blob": hash})
+	log.Emit("main", events.TypeModelResponse, map[string]any{"req": "main.2", "usage": core.Usage{InputTokens: 3}, "cost_usd": 0.5})
+	if err := log.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if billed, err := agent.LatestSnapshot(dir, "main"); err != nil || billed.PlanUsed || billed.ListUSD != 0 {
+		t.Fatalf("a billed response marked a plan: %+v %v", billed, err)
+	}
+
+	dir2 := t.TempDir()
+	log2, err := events.Open(dir2, "s2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	blobs2, err := events.NewDirBlobs(filepath.Join(dir2, "blobs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash2, err := blobs2.Put(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	log2.Emit("main", events.TypeAgentSnapshot, map[string]any{"blob": hash2})
+	log2.Emit("main", events.TypeModelResponse, map[string]any{"req": "main.2", "usage": core.Usage{InputTokens: 3}, "cost_usd": 0, "list_usd": 0})
+	log2.Emit("main", events.TypeModelResponse, map[string]any{"req": "main.3", "usage": core.Usage{InputTokens: 3}, "cost_usd": 0, "list_usd": 0.25})
+	if err := log2.Close(); err != nil {
+		t.Fatal(err)
+	}
+	planned, err := agent.LatestSnapshot(dir2, "main")
+	if err != nil || !planned.PlanUsed || planned.ListUSD != 0.25 || planned.CostUSD != 0 {
+		t.Fatalf("the plan's responses after the snapshot: %+v %v", planned, err)
+	}
+}
+
 func TestSnapshotEachStepKeepsCompletedToolBatches(t *testing.T) {
 	r := newRig(t, rigOpts{noCompact: true, snapSteps: true}, workLoop(3))
 	if _, err := r.agent.Run(context.Background(), "record each step"); err != nil {

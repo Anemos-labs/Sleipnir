@@ -489,6 +489,7 @@ func (a *Agent) account(resp *provider.Response, label string, model cost.Model)
 	a.usage = a.usage.Add(resp.Usage)
 	a.costUSD += usd
 	a.listUSD += list
+	a.planUsed = a.planUsed || model.Plan
 	delete(a.pendingRequests, label)
 	a.mu.Unlock()
 	a.emit(events.TypeModelResponse, a.responsePayload(withList(map[string]any{

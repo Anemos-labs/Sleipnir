@@ -87,6 +87,26 @@ func TestAPlansSessionShowsTheListPriceMarked(t *testing.T) {
 	}
 }
 
+// A plan's model the table does not know answers with list_usd 0: the terminal still marks the session and the agent as a plan's.
+func TestAPlanAnswerWithNoListPriceIsStillAPlans(t *testing.T) {
+	b := statetest.NewBuilder()
+	p := statetest.ResponsePayload("w-1.1", "gpt-next-x", 100, 0, 0, 10, 0)
+	p["list_usd"] = 0.0
+	st := state.New()
+	st.ApplyAll([]events.Event{b.Spawn("w-1", "backend", "T1", "mgr"), b.Request("w-1", "w-1.1", "gpt-next-x", "pk", statetest.Sec{Name: "shared", Tokens: 100}),
+		b.Emit("w-1", events.TypeModelResponse, p)})
+	sn := st.Snapshot()
+	if sp := sn.Spend(); !sp.Plan || sp.Shown() != 0 {
+		t.Fatalf("the session's spend: %+v", sp)
+	}
+	if a, ok := sn.Agent("w-1"); !ok || !a.Plan {
+		t.Fatalf("the agent: %+v", a)
+	}
+	if head := strings.Join(stats(Scene{Snap: sn}), " | "); !strings.Contains(head, "≈$0.00 plan") {
+		t.Errorf("the header: %s", head)
+	}
+}
+
 // The status line marks what this turn has used as a plan's only when this turn's usage was a plan's: a billed turn after a turn on
 // the plan says "$0.01", and the plan's usage that follows in the same turn makes it "≈… plan".
 func TestTheStatusLineMarksOnlyThisTurnsPlanUsage(t *testing.T) {

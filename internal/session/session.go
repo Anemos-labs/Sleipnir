@@ -208,8 +208,10 @@ type Session struct {
 	plans   *plan.Store // each agent's plan, which a standing goal reads as its requirements (goal.go)
 	// judgeUSD is what a standing goal's judge has cost (goal.go), under mu.
 	judgeUSD float64
-	// judgeListUSD is the API list-price value of the judge's usage when its model is on a subscription plan, under mu.
+	// judgeListUSD is the API list-price value of the judge's usage when its model is on a subscription plan, and judgePlan says the
+	// judge used one, under mu.
 	judgeListUSD float64
+	judgePlan    bool
 
 	// team is the team the swarm was built with (Team).
 	team []TeamSlot
@@ -1449,19 +1451,22 @@ func (s *Session) cost() float64 {
 }
 
 // listCost is cost's counterpart for the usage a subscription plan covered: its value at the API list price (cost.Model.ListUSD), which
-// the interfaces show and no budget counts. plan reports whether the session's model is on a plan or any such usage was recorded (a
-// plan's model whose list price is not known has a list cost of zero and is still a plan's).
+// the interfaces show and no budget counts. plan reports whether the session's model is on a plan or any agent's, compactor's or the
+// goal judge's request was accounted on a plan's model: a plan's model whose list price is not known adds nothing to list and is still
+// a plan's (a worker of a billed team that runs such a model, say).
 func (s *Session) listCost() (list float64, plan bool) {
 	s.mu.Lock()
-	list = s.judgeListUSD
+	list, plan = s.judgeListUSD, s.judgePlan
 	s.mu.Unlock()
 	switch {
 	case s.Swarm != nil:
-		list += s.Swarm.TotalListCost()
+		l, p := s.Swarm.TotalListCost()
+		list, plan = list+l, plan || p
 	case s.Agent != nil:
-		list += s.Agent.ListUSD()
+		l, p := s.Agent.PlanUsage()
+		list, plan = list+l, plan || p
 	}
-	return list, s.Model.Plan || list > 0
+	return list, plan || s.Model.Plan
 }
 
 // plannerFor is the compaction planner that the cache settings ask for. A soft limit that is set above the default hard one would never

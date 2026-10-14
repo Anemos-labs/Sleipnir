@@ -234,6 +234,7 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 	a.usage = a.usage.Add(u)
 	a.costUSD += usd
 	a.listUSD += list
+	a.planUsed = a.planUsed || a.cfg.Model.Plan
 	delete(a.pendingRequests, reqID)
 	a.lastStart = start
 	a.mainReqs++

@@ -50,6 +50,10 @@ test('the reducer over a plan\'s recording: nothing billed, the list-price value
   const be = SL.calc.agent(m.ag['be-1']);
   assert.equal(be.plan, true); assert.ok(be.list > 0); assert.equal(be.cost, 0);
   assert.equal(SL.u.fmtSpend(T, 4), '≈$' + (T.list).toFixed(4));
+  // a plan's model the table does not know: its use event says plan with no list figure, and the agent is still a plan's
+  SL.model.reduce(m, { t: 99, k: 'use', id: 'mgr', rd: 0, un: 100, out: 1, wr: 0, cost: 0, saved: 0, plan: true });
+  const mg = SL.calc.agent(m.ag.mgr);
+  assert.equal(mg.plan, true); assert.equal(mg.list, 0); assert.equal(SL.u.fmtSpend(mg, 2), '≈$0.00');
 });
 
 const session = o => Object.assign({ id: 'p', name: 'p', roster: [{ id: 'mgr', role: 'manager', model: 'chatgpt/gpt-6-luna' }], wm: {}, m: {}, meta: { model: 'chatgpt/gpt-6-luna', mode: 'default', effort: 'default', budget: 5, roleModels: {}, rules: [], swarm: 0, isolation: 'none', verify: '', cwd: '/p', trustProject: true } }, o || {});

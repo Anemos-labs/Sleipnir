@@ -452,11 +452,12 @@ func (s *Swarm) detach(m *member) {
 	m.stopTimers()
 	_ = closeAgent(m.a) // cancels and waits for its compaction job, releases its archive index
 	if own {
-		cost, list := agentSpend(m.a)
+		cost, list, plan := agentSpend(m.a)
 		s.mu.Lock()
 		delete(s.retiring, m)
 		s.spent += cost
 		s.spentList += list
+		s.spentPlan = s.spentPlan || plan
 		s.mu.Unlock()
 	}
 	requeued := s.Board.RequeueOwned(m.id, "its worker was retired")
