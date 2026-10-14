@@ -433,13 +433,12 @@ var inlineCodeFlags = map[string][]string{
 // to the program as sys.argv.
 var codeEndsOptions = map[string]bool{"python": true}
 
-// denoEvalBareFlags are the deno eval options that never take the next word as their value (a value they have is written after
-// "="), so the code may follow them: deno eval -p CODE, deno eval --env-file=.env CODE.
+// denoEvalBareFlags are the deno eval options that never take a value, so the code may follow them (deno eval -p CODE). An option
+// that may take one, in its own word or after "=" (--env-file FILE, --lock, --reload, --config FILE), is not among them: the word
+// after it may be its value, so which word is the code is unclear and nothing is taken out.
 var denoEvalBareFlags = map[string]bool{
-	"-p": true, "--print": true, "-q": true, "--quiet": true, "--check": true, "--no-check": true, "--no-config": true,
-	"--no-lock": true, "--no-npm": true, "--no-remote": true, "--cached-only": true, "--lock": true, "--frozen": true,
-	"--frozen-lockfile": true, "--reload": true, "-r": true, "--inspect": true, "--inspect-brk": true, "--inspect-wait": true,
-	"--env-file": true, "--node-modules-dir": true, "--vendor": true, "--unsafely-ignore-certificate-errors": true,
+	"-p": true, "--print": true, "-q": true, "--quiet": true, "--no-config": true, "--no-lock": true, "--no-npm": true,
+	"--no-remote": true, "--cached-only": true,
 }
 
 // withoutInlineCode returns args without the program an interpreter is given on its command line: node -e "x.then(m=>{...})" is

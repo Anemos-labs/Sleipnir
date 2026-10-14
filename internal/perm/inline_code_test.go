@@ -32,6 +32,7 @@ func TestAnInterpretersInlineProgramIsNotAPath(t *testing.T) {
 		// deno eval's options are read before its code, so a file one names is still judged
 		{`deno eval --env-file=.sleipnir/secrets.env 'console.log(1)'`, "ask"},
 		{`deno eval --config .sleipnir/deno.json 'console.log(1)'`, "ask"},
+		{`deno eval --env-file .sleipnir/secrets.env 'console.log(1)'`, "ask"},
 		{`deno eval 'console.log(1)' .sleipnir/config.json`, "ask"},
 	} {
 		d := e.Check(context.Background(), Request{Agent: "dc-1", Tool: "Bash", Command: f.expand(c.cmd)})
