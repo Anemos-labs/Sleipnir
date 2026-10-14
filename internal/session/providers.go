@@ -584,6 +584,9 @@ func BuildProvider(cfg *config.Config, ref ModelRef, o ProviderOptions) (provide
 		}
 		client = buildAnthropic(ref, p, base, key, o)
 	case config.DialectOpenAIResponses:
+		if o.CaptureTokens || optBool(p.Options, "capture_tokens") {
+			return nil, cost.Model{}, fmt.Errorf("provider %q speaks the %s dialect, which returns no token ids or logprobs; RL capture needs a self-hosted chat-completions server (vLLM, SGLang)", ref.Provider, config.DialectOpenAIResponses)
+		}
 		if client, err = buildResponses(ref, p, base, key, o); err != nil {
 			return nil, cost.Model{}, err
 		}

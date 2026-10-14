@@ -142,10 +142,21 @@ func TestValidate(t *testing.T) {
 			},
 		},
 		{
-			name: "the options of a dialect that has no adapter are not judged",
+			name: "the Responses dialect's options are judged too",
 			mutate: func(c *Config) {
-				c.Providers = map[string]Provider{"r": {Dialect: "openai-responses", Options: map[string]any{"anything": 1.0}}}
+				c.Providers = map[string]Provider{
+					"ok": {Dialect: "openai-responses", Options: map[string]any{
+						"reasoning_summary": "concise", "extra_body": map[string]any{"store": false}, "request_timeout_sec": float64(60),
+						"model_extra_body": map[string]any{"gpt-6-luna": map[string]any{"service_tier": "flex"}},
+					}},
+					"r": {Dialect: "openai-responses", Options: map[string]any{
+						"anything": 1.0, "reasoning_summary": "loud", "model_extra_body": map[string]any{"gpt-6-luna": "flex"},
+					}},
+				}
 			},
+			wantErr:  []string{"providers.r.options.model_extra_body.gpt-6-luna", "providers.r.options.reasoning_summary"},
+			wantWarn: []string{"providers.r.options.anything"},
+			contains: map[string]string{"providers.r.options.reasoning_summary": "must be one of auto, concise, detailed"},
 		},
 		{
 			name: "provider names",

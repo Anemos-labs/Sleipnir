@@ -95,6 +95,11 @@ var anthropicOptions = map[string]optionSpec{
 	"thinking_display":      {kind: optString, values: []string{"summarized", "omitted", "updates"}},
 }
 
+// responsesOptions are the extras of the Responses dialect.
+var responsesOptions = map[string]optionSpec{
+	"reasoning_summary": {kind: optString, values: []string{"auto", "concise", "detailed"}},
+}
+
 // optionSpecs returns the options a provider of the dialect accepts. ok is false for
 // a dialect that has none to check against (one whose adapter is not built).
 func optionSpecs(dialect string) (specs map[string]optionSpec, ok bool) {
@@ -104,6 +109,8 @@ func optionSpecs(dialect string) (specs map[string]optionSpec, ok bool) {
 		extra = chatOptions
 	case DialectAnthropic:
 		extra = anthropicOptions
+	case DialectOpenAIResponses:
+		extra = responsesOptions
 	default:
 		return nil, false
 	}

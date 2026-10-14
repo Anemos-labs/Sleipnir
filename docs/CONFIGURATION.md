@@ -417,7 +417,7 @@ suspecting the endpoint.
 | `capture_tokens` | bool | `false` | Declares that the server can return prompt and completion token ids and logprobs (a self-hosted vLLM or SGLang policy server). It does not switch capture on: the request members `logprobs: true` and `return_token_ids: true` are sent only when `--capture` is given (`run`, `doctor`, `rl rollout`, `rl eval`) |
 | `context_window` | int | model-dependent | The context window, in tokens, that the server really gives the model. A catalogue that lists ids only (Ollama, LM Studio, llama.cpp, vLLM) does not say, so a model of a keyless server on this machine is assumed to have **8192** tokens and to cost nothing; say the real window here (`"providers": {"ollama": {"options": {"context_window": 32768}}}`, after raising `num_ctx` in Ollama itself, which cuts a longer prompt off without a word). Compaction keeps the prompt inside it |
 
-Both dialects also take the timeouts below. A silent server is cut off, so no request holds an agent for ever.
+Every dialect also takes the timeouts below. A silent server is cut off, so no request holds an agent for ever.
 
 | Option | Type | Default | Effect |
 |---|---|---|---|
@@ -447,6 +447,15 @@ Both dialects also take the timeouts below. A silent server is cut off, so no re
 
 `capture_tokens` on an `anthropic` provider is refused at startup: the Messages API returns no token ids or logprobs,
 and RL data capture needs a chat-completions server.
+
+### Options of `openai-responses`
+
+| Option | Type | Default | Effect |
+|---|---|---|---|
+| `reasoning_summary` | string | none | `auto`, `concise` or `detailed`: ask for the readable summary of the model's reasoning (some models need the organisation verified) |
+
+The Responses dialect also takes `extra_body`, `model_extra_body`, `context_window` and the timeouts, as `openai-chat`
+does. `capture_tokens` is refused at startup, as on an `anthropic` provider: the Responses API returns no token ids.
 
 ## 8. Permissions in detail
 

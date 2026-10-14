@@ -642,7 +642,7 @@ func TestModelExtraBodyAppliesToItsModelOnly(t *testing.T) {
 		http.Error(w, "stop", http.StatusBadRequest)
 	}))
 	defer srv.Close()
-	for _, dialect := range []string{config.DialectOpenAIChat, config.DialectAnthropic} {
+	for _, dialect := range []string{config.DialectOpenAIChat, config.DialectOpenAIResponses, config.DialectAnthropic} {
 		t.Run(dialect, func(t *testing.T) {
 			cfg := &config.Config{Providers: map[string]config.Provider{"p": {
 				Dialect: dialect, BaseURL: srv.URL,
