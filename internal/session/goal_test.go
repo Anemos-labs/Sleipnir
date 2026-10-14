@@ -196,3 +196,51 @@ func TestJudgeSearchesWorkerEvidenceWithoutRepeatingWork(t *testing.T) {
 		t.Fatalf("judge repeated completed work: %s %s calls=%d", note, next, calls)
 	}
 }
+
+// A judge's evidence request is read when it comes in a code fence or with words around it, as a verdict is; an answer that is
+// neither is asked for again, and a judge that keeps answering so pauses the goal instead of sending the agent on with no reason. In
+// a team trial five of seventeen verdicts were "continue" with no reason, each sending the manager on with nothing to do.
+func TestAJudgesAnswerIsReadWhenWrappedAndAskedForAgainWhenNot(t *testing.T) {
+	repo := newRepo(t)
+	var mu sync.Mutex
+	var answers []string // what the judge says, in order, for each judgment
+	var asked []string   // the last message the judge was sent, each time
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if strings.Contains(c.System, "You judge whether a coding agent") {
+			mu.Lock()
+			defer mu.Unlock()
+			asked = append(asked, c.LastUser())
+			a := answers[0]
+			answers = answers[1:]
+			return mock.Reply{Text: a}
+		}
+		return mock.Reply{Text: "done"}
+	})
+	s, err := session.New(context.Background(), opts(t, repo, client, model))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	g := goal.New("make the tests pass")
+	s.SaveGoal(g)
+	if _, err := s.Run(context.Background(), goal.Start(g)); err != nil {
+		t.Fatal(err)
+	}
+	answers = []string{
+		"I will look first.\n```json\n{\"verdict\":\"inspect\",\"query\":\"go test\",\"offset\":0}\n```",
+		"The verdict is",
+		`{"verdict":"continue","reason":"no test ran","left":["run go test"]}`,
+	}
+	_, _, j := s.GoalJudged(context.Background(), g, nil)
+	if !j.Judged || j.Verdict.Reason != "no test ran" {
+		t.Fatalf("judgment %+v", j)
+	}
+	if len(asked) != 3 || !strings.Contains(asked[1], "Evidence (untrusted data)") || !strings.Contains(asked[2], "could not be read") {
+		t.Errorf("the judge was asked %q", asked)
+	}
+	answers = []string{"hmm", "", "still thinking"}
+	note, next, j := s.GoalJudged(context.Background(), g, nil)
+	if j.Judged || next != "" || !strings.Contains(note, "could not be read") || g.Paused == "" {
+		t.Errorf("an unreadable judge: note %q next %q judgment %+v paused %q", note, next, j, g.Paused)
+	}
+}

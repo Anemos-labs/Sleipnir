@@ -58,7 +58,7 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 	prompt := &core.Prompt{
 		Model:    s.Model.ID,
 		System:   []core.Block{core.Text(goal.JudgeSystem)},
-		Params:   core.Params{MaxTokens: 1200},
+		Params:   core.Params{MaxTokens: judgeMaxTokens},
 		Messages: []core.Message{{Role: core.RoleUser, Blocks: []core.Block{core.Text(goal.JudgePrompt(g, s.GoalPlan(), answer, []string{evidence}))}}},
 	}
 	roster, err := s.goalEvidence(ctx, g, cutoff, evidenceRequest{Record: cutoff})
@@ -74,9 +74,10 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 		prompt.Messages[0].Blocks = append(prompt.Messages[0].Blocks, core.Text("Current task board (status only, not proof of correctness):\n"+board.String()))
 	}
 	est := core.NewBytesEstimator()
+	unread := 0 // answers in a row that were neither an evidence request nor a verdict
 	for round := 0; round < 24; round++ {
 		if window := s.Model.ContextTokens; window > 0 {
-			tokens := est.Tokens(goal.JudgeSystem) + 1200
+			tokens := est.Tokens(goal.JudgeSystem) + judgeMaxTokens
 			for _, message := range prompt.Messages {
 				for _, block := range message.Blocks {
 					tokens += est.Tokens(block.PlainText()) + 8
@@ -103,11 +104,23 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 		s.judgePlan = s.judgePlan || s.Model.Plan
 		s.mu.Unlock()
 		response := resp.Turn.PlainText()
-		var req evidenceRequest
-		if json.Unmarshal([]byte(strings.TrimSpace(response)), &req) != nil || req.Verdict != "inspect" {
-			v, _ = goal.ParseVerdict(response)
-			break
+		req, inspect := judgeInspection(response)
+		if !inspect {
+			var ok bool
+			if v, ok = goal.ParseVerdict(response); ok {
+				break
+			}
+			// An answer that is neither (cut off, or not JSON) is asked for again: read as "continue" with no reason, it sent the
+			// agent on with nothing to do.
+			if unread++; unread > judgeRereads {
+				return goal.Verdict{Kind: goal.Continue}, worked, fmt.Errorf("the judge's answer could not be read (%d tries)", unread)
+			}
+			prompt.Messages = append(prompt.Messages,
+				core.Message{Role: core.RoleAssistant, Blocks: []core.Block{core.Text(response)}},
+				core.Message{Role: core.RoleUser, Blocks: []core.Block{core.Text(judgeReread)}})
+			continue
 		}
+		unread = 0
 		s.Log.Emit("", "goal.inspect", map[string]any{"record": req.Record, "records": req.Records, "query": req.Query, "offset": req.Offset, "cutoff": cutoff})
 		data, e := s.goalEvidence(ctx, g, cutoff, req)
 		if e != nil {
@@ -119,6 +132,9 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 		if round == 23 {
 			return goal.Verdict{Kind: goal.Continue}, worked, fmt.Errorf("evidence inspection limit reached; completion remains unproven")
 		}
+	}
+	if v.Kind == "" { // the rounds ran out on a reread
+		return goal.Verdict{Kind: goal.Continue}, worked, fmt.Errorf("evidence inspection limit reached; completion remains unproven")
 	}
 	if v.Kind == goal.Done && s.Swarm != nil {
 		snapshot := s.Swarm.Board.Snapshot()
@@ -135,6 +151,28 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 	}
 	s.Log.Emit("", judgeEvent, map[string]any{"verdict": v.Kind, "reason": v.Reason, "left": left})
 	return v, worked, nil
+}
+
+// judgeMaxTokens bounds a judge's answer. A model that reasons before it answers spends part of it on that: at 1200 a reasoning
+// judge could be cut off before its JSON, which read as "continue" with no reason.
+const judgeMaxTokens = 4000
+
+// judgeRereads is how many answers in a row the judge may give that are neither an evidence request nor a verdict before the
+// judgment fails (and the goal pauses); judgeReread is what it is told each time.
+const (
+	judgeRereads = 2
+	judgeReread  = `Your answer could not be read. Reply with one JSON object only: an evidence request {"verdict":"inspect",...} or a final verdict {"verdict":"done|continue|blocked","reason":"...","left":[...]}.`
+)
+
+// judgeInspection reads an evidence request out of a judge's answer, which may have words around it or a code fence, as a verdict
+// may (goal.ParseVerdict).
+func judgeInspection(text string) (evidenceRequest, bool) {
+	var req evidenceRequest
+	i, j := strings.Index(text, "{"), strings.LastIndex(text, "}")
+	if i < 0 || j <= i || json.Unmarshal([]byte(text[i:j+1]), &req) != nil {
+		return evidenceRequest{}, false
+	}
+	return req, strings.EqualFold(strings.TrimSpace(req.Verdict), "inspect")
 }
 
 // goalTaskUnfinished distinguishes unresolved work from explicit dispositions.

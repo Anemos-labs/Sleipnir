@@ -171,3 +171,43 @@ func TestGoalTaskGateDistinguishesDispositionFromUnfinishedWork(t *testing.T) {
 		})
 	}
 }
+
+// The judge's search lists the newest matches first, so the last run of a check is what it sees before the runs that came before
+// it; offsets count back from the newest, and the rosters of earlier judgments are not search results. In a team trial the judge's
+// searches surfaced the first test runs of a long session and it asked again and again for "the final test run", which existed.
+func TestGoalEvidenceListsTheNewestFirst(t *testing.T) {
+	dir := t.TempDir()
+	log, err := events.Open(dir, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer log.Close()
+	s := &Session{Dir: dir, Log: log, Blobs: events.NewMemBlobs()}
+	g := goal.New("ship")
+	s.SaveGoal(g)
+	var runs []uint64
+	for _, n := range []int{3, 5, 9} {
+		seq, _ := log.Emit("be-1", events.TypeToolCall, map[string]any{"name": "bash", "input": fmt.Sprintf("pytest: %d passed", n)})
+		runs = append(runs, seq)
+		if _, err := s.goalEvidenceCutoff(); err != nil { // a judgment in between
+			t.Fatal(err)
+		}
+	}
+	cutoff, err := s.goalEvidenceCutoff()
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := func(got string) string { return strings.SplitN(got, "\n", 2)[0] }
+	got, err := s.goalEvidence(context.Background(), g, cutoff, evidenceRequest{Query: "passed"})
+	if err != nil || !strings.HasPrefix(first(got), fmt.Sprintf("record=%d ", runs[2])) || !strings.Contains(got, "matching records=3 shown=3") {
+		t.Fatalf("search, newest first: %s %v", got, err)
+	}
+	got, err = s.goalEvidence(context.Background(), g, cutoff, evidenceRequest{Query: "passed", Offset: 1})
+	if err != nil || !strings.HasPrefix(first(got), fmt.Sprintf("record=%d ", runs[1])) || !strings.Contains(got, "shown=2") {
+		t.Fatalf("search from offset 1: %s %v", got, err)
+	}
+	got, err = s.goalEvidence(context.Background(), g, cutoff, evidenceRequest{})
+	if err != nil || !strings.HasPrefix(first(got), fmt.Sprintf("record=%d ", runs[2])) || strings.Contains(got, "goal.evidence") {
+		t.Fatalf("the first page: %s %v", got, err)
+	}
+}

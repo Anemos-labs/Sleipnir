@@ -15,11 +15,14 @@ answer during work.
 `/goal TEXT` starts a standing goal. The completion judge checks evidence after
 each turn and can request another pass. It searches the durable session log for
 worker and manager tool evidence across earlier turns and compaction. Results are
-paged, including full stored tool outputs, so missing evidence in the current
+paged newest first, including full stored tool outputs, so the latest run of a
+check is found before older ones and missing evidence in the current
 conversation does not by itself require repeating completed work. Inspection is
 read-only, supports batched record reads, and is bounded by the session budget,
 model context budget and 24 retrieval requests per judgment; an exhausted
-inspection limit pauses the goal without certifying completion. `/goal` shows its state and plan.
+inspection limit pauses the goal without certifying completion. A judge answer
+that is neither an evidence request nor a verdict is asked for again, twice at
+most; a third pauses the goal. `/goal` shows its state and plan.
 
 Escape or Ctrl+C during a turn cancels it. `/goal pause` and `/goal clear`
 interrupt first, then update goal state after the running turn has stopped.
