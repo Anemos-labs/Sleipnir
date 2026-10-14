@@ -429,23 +429,53 @@ var inlineCodeFlags = map[string][]string{
 	"lua": {"-e"}, "Rscript": {"-e"}, "bun": {"-e", "--eval", "-p", "--print"},
 }
 
-// withoutInlineCode returns args without the programs an interpreter is given on its command line: node -e "x.then(m=>{...})" is
+// codeEndsOptions are the interpreters whose program ends their own options: python -c CODE hands every later word, -c included,
+// to the program as sys.argv.
+var codeEndsOptions = map[string]bool{"python": true}
+
+// denoEvalBareFlags are the deno eval options that never take the next word as their value (a value they have is written after
+// "="), so the code may follow them: deno eval -p CODE, deno eval --env-file=.env CODE.
+var denoEvalBareFlags = map[string]bool{
+	"-p": true, "--print": true, "-q": true, "--quiet": true, "--check": true, "--no-check": true, "--no-config": true,
+	"--no-lock": true, "--no-npm": true, "--no-remote": true, "--cached-only": true, "--lock": true, "--frozen": true,
+	"--frozen-lockfile": true, "--reload": true, "-r": true, "--inspect": true, "--inspect-brk": true, "--inspect-wait": true,
+	"--env-file": true, "--node-modules-dir": true, "--vendor": true, "--unsafely-ignore-certificate-errors": true,
+}
+
+// withoutInlineCode returns args without the program an interpreter is given on its command line: node -e "x.then(m=>{...})" is
 // code, not a file name, and reading it as one found paths in it ("m=>{" split at "=") and variables ("'\$1'" written in it), which
 // made a quoted script look like a write to an unknown place. The interpreter may do anything its program says, as with any program
-// it runs; what is judged file by file is its other operands (a script's own arguments). Glued forms (-e'code', --eval=code) go too.
+// it runs; what is judged file by file is every other word: its options and their values, and a script's own arguments. The scan
+// stops where the interpreter's own option parsing does (at "--", at the first word that is not an option, and for python after
+// -c CODE), so a later "-c FILE" is an argument and stays. Glued forms (-e'code', --eval=code) count as programs too. A deno eval
+// option whose value may be the next word leaves the code where it cannot be told apart, so nothing is taken out.
 func withoutInlineCode(prog string, args []string) []string {
-	flags := inlineCodeFlags[shellparse.InterpreterName(prog)]
 	if prog == "deno" && len(args) > 1 && args[0] == "eval" {
-		return args[2:]
+		for i := 1; i < len(args); i++ {
+			a := args[i]
+			switch {
+			case a == "--":
+				return args
+			case strings.HasPrefix(a, "-") && len(a) > 1:
+				if !strings.Contains(a, "=") && !denoEvalBareFlags[a] {
+					return args // --config FILE, or an option this does not know: which word is the code is unclear
+				}
+			default:
+				return append(append([]string(nil), args[1:i]...), args[i+1:]...) // the subcommand and the code go
+			}
+		}
+		return args
 	}
+	name := shellparse.InterpreterName(prog)
+	flags := inlineCodeFlags[name]
 	if len(flags) == 0 {
 		return args
 	}
 	out := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
 		a := args[i]
-		if a == "--" {
-			return append(out, args[i:]...)
+		if a == "--" || !strings.HasPrefix(a, "-") || len(a) == 1 {
+			return append(out, args[i:]...) // the interpreter's options end here
 		}
 		code := false
 		for _, f := range flags {
@@ -461,6 +491,8 @@ func withoutInlineCode(prog string, args []string) []string {
 		}
 		if !code {
 			out = append(out, a)
+		} else if codeEndsOptions[name] && i+1 < len(args) {
+			return append(out, args[i+1:]...)
 		}
 	}
 	return out

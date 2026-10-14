@@ -23,6 +23,16 @@ func TestAnInterpretersInlineProgramIsNotAPath(t *testing.T) {
 		{`node -e "console.log(1)" > .sleipnir/out.txt`, "ask"},
 		{`python3 -c "import sys" .sleipnir/config.json`, "ask"},
 		{`node -e "x" -- .sleipnir/config.json`, "ask"},
+		// python's program ends its options: a later -c is the program's own argument, and so is the file after it
+		{`python3 -c 'import sys' -c .sleipnir/config.json`, "ask"},
+		// a script's arguments after its name are not the interpreter's options
+		{`perl script.pl -e .sleipnir/config.json`, "ask"},
+		{`deno eval 'console.log(m=>{1})'`, "allow"},
+		{`deno eval -p 'x=>{1}'`, "allow"},
+		// deno eval's options are read before its code, so a file one names is still judged
+		{`deno eval --env-file=.sleipnir/secrets.env 'console.log(1)'`, "ask"},
+		{`deno eval --config .sleipnir/deno.json 'console.log(1)'`, "ask"},
+		{`deno eval 'console.log(1)' .sleipnir/config.json`, "ask"},
 	} {
 		d := e.Check(context.Background(), Request{Agent: "dc-1", Tool: "Bash", Command: f.expand(c.cmd)})
 		if got := outcome(d); got != c.want {
