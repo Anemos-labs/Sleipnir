@@ -2,6 +2,7 @@ package perm
 
 import (
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/shellparse"
@@ -271,12 +272,23 @@ func partsNameEntries(full, empty string) bool {
 // expansion is what the evaluator knows of the variables of the line it judges.
 func (ev *evaluator) expansion() expansion { return expansion{vars: ev.vars, off: ev.off} }
 
-// knownWord is a word with the parts the check knows put in (expandWordVars, from the directory the command line starts in); when the
-// rest is only known as the command runs, it is the known beginning and false.
-func (ev *evaluator) knownWord(w string) (string, bool) {
-	out, partial, dyn := ev.rs.expandWordVars(w, ev.startDir(), ev.expansion())
-	if dyn {
-		return partial, false
+// knownWords are a word with the parts the check knows put in (expandWordVars), once for each directory the command may run in (cw),
+// so that $PWD is each of them; whole is false when part of the word is only known as the command runs, and a word is then its known
+// beginning.
+func (ev *evaluator) knownWords(w string, cw *cwdSet) (words []string, whole bool) {
+	dirs := cw.dirs
+	if cw.unknown || len(dirs) == 0 {
+		dirs = append(slices.Clone(dirs), "")
 	}
-	return out, true
+	whole = true
+	for _, d := range dirs {
+		out, partial, dyn := ev.rs.expandWordVars(w, d, ev.expansion())
+		if dyn {
+			out, whole = partial, false
+		}
+		if !slices.Contains(words, out) {
+			words = append(words, out)
+		}
+	}
+	return words, whole
 }

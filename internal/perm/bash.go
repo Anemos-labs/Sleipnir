@@ -664,7 +664,7 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 			uses = tr // a test runner reads the tests below its operands (testrunners.go)
 		}
 		if u.name == "curl" {
-			if cu, ok := curlUses(s.Args, ev.knownWord); ok {
+			if cu, ok := curlUses(s.Args, func(w string) ([]string, bool) { return ev.knownWords(w, cw) }); ok {
 				uses = cu // URLs and data are not files; the files curl touches are named (curluses.go)
 			}
 		}

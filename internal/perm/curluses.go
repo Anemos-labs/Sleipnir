@@ -33,8 +33,9 @@ var (
 )
 
 // curlUses returns the files a curl command line reads and writes, and false when it cannot name them (see above). known is a word
-// with the variables the check knows put in; when the rest is only known as the command runs it returns the known beginning and false.
-func curlUses(args []string, known func(string) (string, bool)) ([]pathUse, bool) {
+// with the variables the check knows put in, once for each directory the command may run in; when part of it is only known as the
+// command runs, it returns the known beginnings and false.
+func curlUses(args []string, known func(string) ([]string, bool)) ([]pathUse, bool) {
 	var (
 		uses       []pathUse
 		urls, outs []string
@@ -116,20 +117,22 @@ func curlUses(args []string, known func(string) (string, bool)) ([]pathUse, bool
 		}
 	}
 	for _, u := range urls {
-		w, whole := known(u)
-		file, path, ok := curlFileURL(w, whole)
-		if !ok {
-			return nil, false
-		}
-		if file {
-			uses = append(uses, pathUse{raw: path, both: true}) // read, or written by an upload (-T) to it
-		}
-		if remoteName {
-			n, ok := curlRemoteName(w, whole)
+		ws, whole := known(u)
+		for _, w := range ws {
+			file, path, ok := curlFileURL(w, whole)
 			if !ok {
 				return nil, false
 			}
-			outs = append(outs, n)
+			if file {
+				uses = append(uses, pathUse{raw: path, both: true}) // read, or written by an upload (-T) to it
+			}
+			if remoteName {
+				n, ok := curlRemoteName(w, whole)
+				if !ok {
+					return nil, false
+				}
+				outs = append(outs, n)
+			}
 		}
 	}
 	for _, o := range outs {

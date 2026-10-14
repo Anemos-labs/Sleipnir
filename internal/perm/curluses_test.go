@@ -31,8 +31,9 @@ func TestCurlsDataIsNotAFile(t *testing.T) {
 		{`curl -s file://{root}/secrets/key.txt`, "deny"},
 		{`curl -s --url FILE://localhost{root}/secrets/key.txt -o /dev/null`, "deny"},
 		{`curl -s file://{home}/.ssh/id_rsa`, "deny"},
-		{`D={root}/secrets; curl -s "file://$D/key.txt"`, "deny"}, // a variable the line set is put in
-		{`curl -s -T main.go file://{root}/.sleipnir/x`, "ask"},   // an upload to a file: URL writes it
+		{`D={root}/secrets; curl -s "file://$D/key.txt"`, "deny"},    // a variable the line set is put in
+		{`cd sub; curl -s "file://$PWD/../secrets/key.txt"`, "deny"}, // $PWD is each directory the line may be in
+		{`curl -s -T main.go file://{root}/.sleipnir/x`, "ask"},      // an upload to a file: URL writes it
 		{`curl -s -O localhost:8099/app.js`, "allow"},
 		{`curl -s -O "localhost:8099/x/.env?v=1"`, "deny"}, // -O writes ./.env, the name the URL ends in
 		{`curl -s --output-dir .sleipnir -O localhost:8099/settings.json`, "ask"},
