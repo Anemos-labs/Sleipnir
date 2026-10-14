@@ -25,6 +25,9 @@ type PoolState struct {
 	Votes      []string `json:"votes"`
 	Inspected  []string `json:"inspected,omitempty"`
 	Generation int      `json:"generation"`
+	// Excused are the members the manager took out of the pool (pool excuse): they no longer vote, and stay read-only while the pool
+	// task is open.
+	Excused []string `json:"excused,omitempty"`
 }
 
 // poolUpdate serializes a cooperation step with task transitions.
@@ -54,10 +57,18 @@ func (b *Board) poolUpdate(by, id string, fn func(*Snapshot, *Task, *PoolState) 
 func (b *Board) beginPool(by, id string, members []string) error {
 	return b.mutate(by, "assign", func(d *draft) error {
 		i := taskIdx(d.Snapshot, id)
-		if i < 0 || len(members) == 0 {
+		if i < 0 {
 			return fmt.Errorf("pool needs a task and members")
 		}
 		t := d.Tasks[i]
+		var excused []string
+		if t.Pool != nil {
+			excused = t.Pool.Excused
+			members = slices.DeleteFunc(slices.Clone(members), func(m string) bool { return slices.Contains(excused, m) })
+		}
+		if len(members) == 0 {
+			return fmt.Errorf("pool needs a task and members")
+		}
 		if t.Status != StatusTodo || t.Parent != "" {
 			return fmt.Errorf("%s is not an unassigned parent task", id)
 		}
@@ -75,7 +86,7 @@ func (b *Board) beginPool(by, id string, members []string) error {
 			}
 			t.Pool = &p
 		} else {
-			t.Pool = &PoolState{Members: slices.Clone(members), Phase: "planning", Revision: 1}
+			t.Pool = &PoolState{Members: slices.Clone(members), Phase: "planning", Revision: 1, Excused: slices.Clone(excused)}
 		}
 		return d.put(i, t)
 	})
@@ -171,13 +182,13 @@ func (s *Swarm) startPool(req SpawnReq, files []string) (string, error) {
 	if err := s.Board.beginPool(req.By, id, ids); err != nil {
 		return "", err
 	}
-	task, _ := s.Board.Snapshot().Task(id)
+	task, _ := s.Board.Snapshot().Task(id) // its owner leads: the first member the manager has not excused
 	if task.Pool.Phase == "executing" {
 		s.wakePool(id, "Continue the accepted plan and existing child tasks; do not recreate them. Reconcile, inspect and confirm the combined result when the children are complete.")
 	} else {
 		s.wakePool(id, "Plan together. The first member leads. Use pool propose, agree, execute, reconcile and confirm. The leader creates scoped child tasks with task create parent="+id+" and assigns them with spawn (use task claim for its own child). All members contribute before execution, and inspect the combined result before confirming reconciliation.")
 	}
-	return ids[0], nil
+	return task.Owner, nil
 }
 
 // wakePool uses harness mail so idle members retain their existing conversation.
@@ -196,10 +207,10 @@ func (s *Swarm) wakePool(id, message string) {
 // subtask round in circles.
 func (s *Swarm) poolPermission(ctx context.Context, id string, inner perm.Requester, req perm.Request) (perm.Decision, bool) {
 	for _, t := range s.Board.Snapshot().Tasks {
-		if t.Pool == nil || t.Status == StatusDone || t.Status == StatusFailed || !slices.Contains(t.Pool.Members, id) {
+		if t.Pool == nil || t.Status == StatusDone || t.Status == StatusFailed || !slices.Contains(t.Pool.Members, id) && !slices.Contains(t.Pool.Excused, id) {
 			continue
 		}
-		if t.Pool.Phase == "executing" {
+		if t.Pool.Phase == "executing" && slices.Contains(t.Pool.Members, id) { // an excused member writes nothing, its children included
 			for _, child := range s.Board.Snapshot().Tasks {
 				if child.Parent == t.ID && child.Owner == id && child.Status == StatusDoing {
 					return perm.Decision{}, false
@@ -254,14 +265,14 @@ type poolTool struct{ s *Swarm }
 
 // Spec describes the persistent pool protocol shared by every agent.
 func (t *poolTool) Spec() core.ToolSpec {
-	return core.ToolSpec{Name: "pool", NoTreeWrites: true, Description: "Cooperate on a role pool's parent task. Leader: propose an agreement (theme/style, interfaces, work division, acceptance); execute after everyone agrees; reconcile after all children are accepted (text = the combined contract to confirm). Every member: call inspect during reconciliation to update your checkout, examine the combined result, then confirm. Agree to the proposal or confirm the reconciled result, with the exact revision from task get. Use mail to discuss objections; the manager resolves disagreements. During execution the leader may create scoped child tasks and assign existing members. Return one parent result with task done after every member confirms.", InputSchema: json.RawMessage(`{"type":"object","properties":{"action":{"type":"string","enum":["propose","agree","execute","reconcile","inspect","confirm"]},"id":{"type":"string"},"revision":{"type":"integer"},"text":{"type":"string"}},"required":["action","id"]}`)}
+	return core.ToolSpec{Name: "pool", NoTreeWrites: true, Description: "Cooperate on a role pool's parent task. Leader: propose an agreement (theme/style, interfaces, work division, acceptance); execute after everyone agrees; reconcile after all children are accepted (text = the combined contract to confirm). Every member: call inspect during reconciliation to update your checkout, examine the combined result, then confirm. Agree to the proposal or confirm the reconciled result, with the exact revision from task get. Use mail to discuss objections; the manager resolves disagreements. During execution the leader may create scoped child tasks and assign existing members. Return one parent result with task done after every member confirms. Manager: excuse a member that cannot take part (its model keeps failing or does not answer; member = its id, text = why): it leaves the pool, its votes stop counting, its open subtasks return to the board, and the next member leads if it led.", InputSchema: json.RawMessage(`{"type":"object","properties":{"action":{"type":"string","enum":["propose","agree","execute","reconcile","inspect","confirm","excuse"]},"id":{"type":"string"},"member":{"type":"string"},"revision":{"type":"integer"},"text":{"type":"string"}},"required":["action","id"]}`)}
 }
 
 // Run applies one phase transition after checking leadership and membership.
 func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	var in struct {
-		Action, ID, Text string
-		Revision         int
+		Action, ID, Text, Member string
+		Revision                 int
 	}
 	if r := decode(c.Input, &in); r != nil {
 		return r, nil
@@ -311,6 +322,9 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 				p.Inspected = append(p.Inspected, by)
 			}
 		case "agree", "confirm":
+			if !member {
+				return fmt.Errorf("only the pool's members %s; the manager proposes, and excuses a member that cannot take part", in.Action)
+			}
 			phase := "planning"
 			if in.Action == "confirm" {
 				phase = "reconciling"
@@ -322,7 +336,7 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 					return fmt.Errorf("call pool inspect, read the combined result, then confirm")
 				}
 			}
-			if !member || p.Phase != phase || p.Agreement == "" || in.Revision != p.Revision {
+			if p.Phase != phase || p.Agreement == "" || in.Revision != p.Revision {
 				return fmt.Errorf("read the current pool agreement and revision before acknowledging %s", phase)
 			}
 			if !slices.Contains(p.Votes, by) {
@@ -362,6 +376,25 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			p.Revision++
 			p.Votes = nil
 			p.Inspected = nil
+		case "excuse":
+			switch {
+			case c.Env.Role != "manager":
+				return fmt.Errorf("only the manager excuses a pool member")
+			case !slices.Contains(p.Members, in.Member):
+				return fmt.Errorf("%q is not a member of the %s pool (members: %s)", in.Member, task.ID, strings.Join(p.Members, ", "))
+			case agreement == "":
+				return fmt.Errorf("say why %s is excused (text)", in.Member)
+			case len(p.Members) == 1:
+				return fmt.Errorf("%s is the pool's last member: revise or resolve %s instead", in.Member, task.ID)
+			}
+			gone := func(m string) bool { return m == in.Member }
+			p.Members = slices.DeleteFunc(p.Members, gone)
+			p.Votes = slices.DeleteFunc(p.Votes, gone)
+			p.Inspected = slices.DeleteFunc(p.Inspected, gone)
+			p.Excused = append(p.Excused, in.Member)
+			if task.Owner == in.Member {
+				task.Owner, task.Rev = p.Members[0], sn.Version // a new assignment
+			}
 		default:
 			return fmt.Errorf("unknown pool action")
 		}
@@ -375,6 +408,9 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		}
 		return tools.Errorf("%v", err), nil
 	}
+	if in.Action == "excuse" {
+		return s.excused(by, in.ID, in.Member, agreement), nil
+	}
 	if in.Action == "reconcile" && s.isolated() {
 		rep := s.Integrate(ctx)
 		if !rep.Applied && rep.News() {
@@ -382,7 +418,13 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			return tools.Errorf("combined result could not be applied: %s", rep.Message), nil
 		}
 	}
-	if in.Action == "propose" || in.Action == "execute" || in.Action == "reconcile" {
+	if in.Action == "execute" {
+		task, _ := s.Board.Snapshot().Task(in.ID)
+		steps := poolExecuteSteps(task)
+		s.wakePool(in.ID, "Pool updated: execute. "+steps)
+		return text("%s: execute recorded. %s", in.ID, steps), nil
+	}
+	if in.Action == "propose" || in.Action == "reconcile" {
 		s.wakePool(in.ID, "Pool updated: "+in.Action+". "+agreement)
 	} else {
 		task, _ := s.Board.Snapshot().Task(in.ID)
@@ -399,6 +441,21 @@ func poolReadyNote(t Task, action string) string {
 		return ""
 	}
 	return fmt.Sprintf(". Every member has confirmed revision %d: submit the pool's result with task done id=%s (reconciling again would only reopen the confirmations)", t.Pool.Revision, t.ID)
+}
+
+// poolExecuteSteps is what a pool does once it executes: writing opens inside child tasks only, so the leader splits the agreed work
+// into children, claims its own and assigns the others'. Without it, members that had agreed tried to write the parent's files, were
+// refused, and gave up.
+func poolExecuteSteps(t Task) string {
+	others := make([]string, 0, len(t.Pool.Members))
+	for _, m := range t.Pool.Members {
+		if m != t.Owner {
+			others = append(others, m)
+		}
+	}
+	return fmt.Sprintf("Writing is open now, inside child tasks only: a member writes while it owns a child task of %s in doing, and is read-only until then. "+
+		"The leader %s creates one child per share of the agreed work (task create parent=%s role=%s with its files), claims its own (task claim), "+
+		"and assigns each other member (%s) its child (spawn agent=MEMBER task=CHILD).", t.ID, t.Owner, t.ID, t.Role, strings.Join(others, ", "))
 }
 
 // poolComplete prevents aggregate submission before all members reconcile.
@@ -501,4 +558,22 @@ func poolScopes(sn *Snapshot, t Task) error {
 		}
 	}
 	return nil
+}
+
+// excused finishes a manager's pool excuse: the member's open subtasks of the parent return to the board unassigned, the member is told
+// to stop, and the rest of the pool is woken with its new membership (the votes it already gave still count).
+func (s *Swarm) excused(by, id, member, why string) *tools.Result {
+	released := s.Board.requeueChildren(by, id, member, "its owner was excused from the pool")
+	ids := make([]string, len(released))
+	for i, t := range released {
+		ids[i] = t.ID
+	}
+	task, _ := s.Board.Snapshot().Task(id)
+	s.notify(member, "info", fmt.Sprintf("The manager excused you from pool task %s: %s. Stop work on it: its files are not yours to change while it is open.", id, why))
+	note := ""
+	if len(ids) > 0 {
+		note = " Released subtasks, unassigned again: " + strings.Join(ids, ", ") + "."
+	}
+	s.wakePool(id, fmt.Sprintf("Pool updated: %s excused (%s). Members: %s; leader %s.%s", member, why, strings.Join(task.Pool.Members, ", "), task.Owner, note))
+	return text("%s: %s excused; members %s; leader %s.%s", id, member, strings.Join(task.Pool.Members, ", "), task.Owner, note)
 }
