@@ -1178,7 +1178,7 @@ func (h *webHostImpl) hello(r *http.Request) helloBody {
 	body := helloBody{Hello: wire.Hello{
 		Boot: h.boot, Now: time.Now().UnixMilli(), Tabs: h.Tabs(), Active: h.Active(), Version: version, StreamAfter: after,
 		Server: wire.ServerInfo{Addr: r.Host, Loopback: true, Version: version, Label: shortVersion(version), Build: buildDescription()},
-		Limits: wire.Limits{MaxBody: int(web.DefaultMaxBody), MaxMessage: maxMessage, MaxQuestions: approvals.DefaultMaxPerTab},
+		Limits: wire.Limits{MaxBody: int(web.DefaultMaxBody), MaxMessage: maxMessage, MaxGoal: maxGoalLen, MaxQuestions: approvals.DefaultMaxPerTab},
 		UI:     wire.UIInfo{Version: uiv},
 	}, UI: ui}
 	d := h.defaults()

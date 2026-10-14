@@ -16,7 +16,7 @@
 
   /* ---------- slash commands: name -> handler(arg) ---------- */
   const H = {
-    '/goal': a => { if (a && a !== 'status') { const w = a.split(/\s+/)[0]; if (w === 'pause') return SL.act.pauseGoal(); if (w === 'resume') return SL.act.resumeGoal(); if (w === 'clear') return SL.act.clearGoal(); const r = SL.act.setGoal(a); if (r && r.ok === false) { if (r.why && !r.fixture) ui.toast(r.why, 'warm'); } else return ui.sheets.goal(a.trim()); } ui.sheets.goal(); },
+    '/goal': a => { if (a && a !== 'status') { const w = a.split(/\s+/)[0]; if (w === 'pause') return SL.act.pauseGoal(); if (w === 'resume') return SL.act.resumeGoal(); if (w === 'clear') return SL.act.clearGoal(); const r = SL.act.setGoal(a); if (r && r.ok === false) { if (r.why && !r.fixture) ui.toast(r.why, 'warm'); return r; } if (r && r.done) r.done.then(x => { if (x && x.ok) ui.sheets.goal(a.trim()); }); else ui.sheets.goal(a.trim()); return r; } ui.sheets.goal(); },
     '/new': () => newChat(), '/clear': () => newChat(),
     '/resume': a => { if (a) { const r = SL.act.resumeSession(a); if (r && r.ok === false) ui.toast(r.why, 'warm'); } else ui.dialogs.resume(); },
     '/sessions': () => SL.views.show('sessions'),
