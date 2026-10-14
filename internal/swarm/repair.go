@@ -3,6 +3,7 @@ package swarm
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -125,6 +126,9 @@ func (t *taskTool) reviseTask(ctx context.Context, c *tools.Call, in taskIn) *to
 	}
 	if in.Kind == TaskKindPlan && !s.roles[task.Role].ReadOnly {
 		return tools.Errorf("a planning task requires a read-only role")
+	}
+	if r := t.widenInPlace(c, in, task); r != nil {
+		return r
 	}
 	owners := []string{task.Owner}
 	if task.Pool != nil {
@@ -260,4 +264,39 @@ func dependsOn(sn *Snapshot, from, target string, seen map[string]bool) bool {
 		}
 	}
 	return false
+}
+
+// widenInPlace handles a revise whose only change is a wider scope of a task that is under way: the globs it had and more, nothing
+// else revised. That is what update files does, so it is done the same way: the scope grows in place and nobody stops. A revise
+// otherwise stops the task's workers, sends its children back to the board and puts a pool back to planning, which in a trial
+// threw away two workers' progress and made a pool agree again because the manager added .gitignore to its scope. It returns nil
+// for any other revise.
+func (t *taskTool) widenInPlace(c *tools.Call, in taskIn, task Task) *tools.Result {
+	if in.Action != "revise" || in.Files == nil || in.Title != "" || in.Description != "" || in.Kind != "" || in.Deps != nil ||
+		task.Status != StatusDoing {
+		return nil
+	}
+	files, err := t.s.normScopes(in.Files)
+	if err != nil {
+		return nil // the revise reports it
+	}
+	added := 0
+	for _, f := range files {
+		if !slices.Contains(task.Files, f) {
+			added++
+		}
+	}
+	for _, f := range task.Files {
+		if !slices.Contains(files, f) {
+			return nil // a narrower or different scope: a real revision
+		}
+	}
+	if added == 0 {
+		return nil
+	}
+	if err := t.s.Board.SetScope(c.Env.Agent, in.ID, files, t.s.scopeCheck(false)); err != nil {
+		return tools.Errorf("cannot widen the scope of %s: %v", in.ID, err)
+	}
+	return text("%s: scope widened in place (%s); its workers keep going. (%s) Widening a scope needs no revise: update with files does it.",
+		in.ID, strings.Join(files, ", "), cleanText(in.Text, 200))
 }
