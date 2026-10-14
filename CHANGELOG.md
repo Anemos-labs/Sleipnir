@@ -18,6 +18,15 @@ they do not indicate whether a change has been released.
   exist: it asks, or a read-only role is refused; `Bash(go test:*)` does not
   cover `go test -exec='rm -rf x' ./...`. Prompt bytes: none change.
 
+- The manager and the architect give a user interface (pages, components,
+  styling, client code, a service's web interface) to the frontend role when
+  the team has one, with the API it calls as a backend task of its own, and
+  the unit tests beside code to that code's implementer; the tester works
+  black-box in test directories of its own, so its scope does not reach into
+  packages the implementers lease. Prompt bytes: the manager, architect and
+  tester role layers change, so the first request of each after the upgrade
+  writes them anew.
+
 - In a `bypass` or `yolo` session, a read-only role (architect, reviewer,
   scout) reads a file outside the workspace as the session does, without a
   question: its plan profile keeps it from writing, not from reading the Go
