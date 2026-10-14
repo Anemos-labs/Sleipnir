@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- In a `bypass` or `yolo` session, a read-only role (architect, reviewer,
+  scout) reads a file outside the workspace as the session does, without a
+  question: its plan profile keeps it from writing, not from reading the Go
+  toolchain's source or a module cache. Before, every such read asked the
+  person, even in bypass mode (a 32-worker run asked twice in 18 minutes).
+  Writes outside the workspace stay refused; the built-in protections and the
+  deny and ask rules still apply; in any other mode the read still asks.
+  Prompt bytes: none change.
+
 - The goal judge's evidence search lists the newest records first, an
   evidence request it wraps in a code fence or in words is read, and an answer
   that is neither a request nor a verdict is asked for again (twice) and then

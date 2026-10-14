@@ -253,6 +253,16 @@ func TestRoleProfiles(t *testing.T) {
 		{name: "session deny applies to roles", mode: ModeBypass, deny: []string{"Read(secrets/**)"}, roles: roles, req: as("qa", read(R+"secrets/key.txt")), want: "deny", why: "denied by rule"},
 		{name: "role with session allow rule", mode: ModeDefault, allow: []string{"Edit(docs/**)"}, roles: roles, req: as("docs", write(R+"docs/x.md")), want: "allow"},
 		{name: "reviewer plan mode with session allow rule for edits", mode: ModeDefault, allow: []string{"Edit(docs/**)"}, roles: roles, req: as("reviewer", write(R+"docs/x.md")), want: "deny"},
+		// A read-only role is kept from writing, not from reading what its session reads: in bypass or yolo a toolchain's source or a
+		// module cache outside the workspace is read without a question (a 32-worker run asked the person twice in 18 minutes for
+		// such reads); the protections, the rules and the session's own mode elsewhere still decide.
+		{name: "reviewer reads outside the workspace as a bypass session does", mode: ModeBypass, roles: roles, req: as("reviewer", read("{out}/go/src/internal/syslist/syslist.go")), want: "allow"},
+		{name: "reviewer greps outside the workspace as a bypass session does", mode: ModeBypass, roles: roles, req: as("reviewer", bash("grep -E 'linux|darwin' {out}/go/src/internal/syslist/syslist.go")), want: "allow"},
+		{name: "reviewer reads outside the workspace in yolo", mode: ModeYolo, roles: roles, req: as("reviewer", read("{out}/go/src/x.go")), want: "allow"},
+		{name: "reviewer still asks for an outside read in a default session", mode: ModeDefault, roles: roles, req: as("reviewer", read("{out}/go/src/x.go")), want: "ask"},
+		{name: "reviewer still cannot write outside in bypass", mode: ModeBypass, roles: roles, req: as("reviewer", write("{out}/x.txt")), want: "deny", why: "plan mode"},
+		{name: "reviewer reading outside still hits protections", mode: ModeBypass, roles: roles, req: as("reviewer", read("{home}/.ssh/id_rsa")), want: "deny"},
+		{name: "reviewer reading outside still hits deny rules", mode: ModeBypass, deny: []string{"Read({out}/secret/**)"}, roles: roles, req: as("reviewer", read("{out}/secret/k.txt")), want: "deny", why: "denied by rule"},
 	}
 	runCases(t, f, cases)
 }
