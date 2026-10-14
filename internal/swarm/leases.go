@@ -24,7 +24,9 @@ import (
 //     task, or whose task declares no scope, is not restricted.
 //   - Leases. An agent that writes a file holds an exclusive lease on it for as
 //     long as it keeps working (a TTL, refreshed by each write), so two agents do
-//     not waste effort on the same file. Leases complement, not replace, the
+//     not waste effort on the same file. The manager's lease yields to a worker:
+//     its edits are interventions (a one-line fix it was asked for), and the worker
+//     that owns the work must not be locked out of its own file until they expire. Leases complement, not replace, the
 //     content-hash staleness check in tools.FileState: that check guarantees
 //     correctness even if a lease is stolen.
 //
@@ -427,13 +429,25 @@ func (l *Leases) BeforeWrite(agent, path string) error {
 	now := l.now()
 	cur, ok := l.held[path]
 	if ok && cur.holder != agent && now.Sub(cur.last) < l.ttl {
-		holder, ago := cur.holder, now.Sub(cur.last).Round(time.Second)
+		holder, ago, roleOf := cur.holder, now.Sub(cur.last).Round(time.Second), l.roleOf
 		l.mu.Unlock()
-		if l.board != nil {
-			l.board.RaiseAlertKey("lease", path, fmt.Sprintf("%s wanted a file leased to %s", safeToken(agent, 24), safeToken(holder, 24)))
+		// the roles are looked up without the lease lock (roleOf reads the swarm); a manager's lease gives way to a worker
+		if !yields(roleOf, holder, agent) {
+			if l.board != nil {
+				l.board.RaiseAlertKey("lease", path, fmt.Sprintf("%s wanted a file leased to %s", safeToken(agent, 24), safeToken(holder, 24)))
+			}
+			l.emit(agent, "conflict", path, holder)
+			return fmt.Errorf("%s is being edited by %s (last write %s ago). Work on something else, or mail %s if you need a change there", path, holder, ago, holder)
 		}
-		l.emit(agent, "conflict", path, holder)
-		return fmt.Errorf("%s is being edited by %s (last write %s ago). Work on something else, or mail %s if you need a change there", path, holder, ago, holder)
+		l.mu.Lock()
+		if c, still := l.held[path]; still && c.holder != holder && c.holder != agent && now.Sub(c.last) < l.ttl {
+			// another worker took the file meanwhile: that lease does not yield
+			other := c.holder
+			l.mu.Unlock()
+			l.emit(agent, "conflict", path, other)
+			return fmt.Errorf("%s is being edited by %s. Work on something else, or mail %s if you need a change there", path, other, other)
+		}
+		cur, ok = l.held[path]
 	}
 	acquired := !ok || cur.holder != agent
 	l.held[path] = &lease{holder: agent, last: now}
@@ -445,6 +459,11 @@ func (l *Leases) BeforeWrite(agent, path string) error {
 		l.emit(agent, "acquire", path, "")
 	}
 	return nil
+}
+
+// yields reports whether a lease that holder keeps gives way to a write by agent: the manager's lease does to any other agent.
+func yields(roleOf func(string) string, holder, agent string) bool {
+	return roleOf != nil && roleOf(holder) == "manager" && roleOf(agent) != "manager"
 }
 
 // AfterWrite implements tools.Guard: a write refreshes the lease.
