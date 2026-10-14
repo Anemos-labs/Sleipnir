@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Read-only roles (reviewer, scout, architect) run the project's tests the way
+  the writers do: `python -m pytest`, `python -m unittest`, `node --test`, and
+  the tests and checks run with a virtual environment of the workspace (the new rule
+  `Bash(python:venv-tests)`, the run part of `Bash(python:venv)`: no creating,
+  no installing). Their refusals say what the role does instead of telling it
+  to present a plan. Prompt bytes: none change.
+
 - A test runner given paths reads them: `pytest .`, `python -m pytest tests`,
   `python -m unittest discover -s tests` and `node --test .` are not writes
   into every directory below their operands, so the protected configuration
