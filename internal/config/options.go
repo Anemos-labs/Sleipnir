@@ -23,6 +23,7 @@ const (
 	optSeconds // a number of seconds: not negative, and at most a day
 	optStrings // a list of strings
 	optObject
+	optObjects // an object whose values are objects (per-model request members, keyed by model id)
 )
 
 // String returns a user-facing description of the expected provider option type.
@@ -40,6 +41,8 @@ func (k optKind) String() string {
 		return "a list of strings"
 	case optObject:
 		return "an object"
+	case optObjects:
+		return "an object of objects keyed by model id"
 	}
 	return "a value"
 }
@@ -61,6 +64,7 @@ var commonOptions = map[string]optionSpec{
 	"stream_timeout_sec":      {kind: optSeconds},
 	"request_timeout_sec":     {kind: optSeconds},
 	"extra_body":              {kind: optObject},
+	"model_extra_body":        {kind: optObjects}, // model id -> members merged over extra_body for that model only
 	"capture_tokens":          {kind: optBool},
 	"context_window":          {kind: optInt}, // tokens: what the server really gives the model (a local server's catalogue does not say)
 }
@@ -91,6 +95,11 @@ var anthropicOptions = map[string]optionSpec{
 	"thinking_display":      {kind: optString, values: []string{"summarized", "omitted", "updates"}},
 }
 
+// responsesOptions are the extras of the Responses dialect.
+var responsesOptions = map[string]optionSpec{
+	"reasoning_summary": {kind: optString, values: []string{"auto", "concise", "detailed"}},
+}
+
 // optionSpecs returns the options a provider of the dialect accepts. ok is false for
 // a dialect that has none to check against (one whose adapter is not built).
 func optionSpecs(dialect string) (specs map[string]optionSpec, ok bool) {
@@ -100,6 +109,8 @@ func optionSpecs(dialect string) (specs map[string]optionSpec, ok bool) {
 		extra = chatOptions
 	case DialectAnthropic:
 		extra = anthropicOptions
+	case DialectOpenAIResponses:
+		extra = responsesOptions
 	default:
 		return nil, false
 	}
@@ -217,6 +228,17 @@ func (v *validator) optionValue(at []string, spec optionSpec, val any) {
 	case optObject:
 		if _, ok := val.(map[string]any); !ok {
 			bad()
+		}
+	case optObjects:
+		m, ok := val.(map[string]any)
+		if !ok {
+			bad()
+			return
+		}
+		for _, id := range sortedKeys(m) {
+			if _, ok := m[id].(map[string]any); !ok {
+				v.err(append(slices.Clone(at), id), "must be an object (the members merged into requests for model %s)", id)
+			}
 		}
 	}
 }

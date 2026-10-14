@@ -227,7 +227,7 @@ the built-in provider: its URL, dialect, key variable, options and headers stay.
 
 | Key | Type | Default | Applied | Meaning |
 |---|---|---|---|---|
-| `dialect` | string | `openai-chat` | yes | The wire protocol: `openai-chat` (OpenAI-style chat completions), `anthropic` (Messages API) or `openai-responses` (OpenAI's Responses API: `{"dialect": "openai-responses"}` on an `openai`-style provider with a key; options `reasoning_summary` (`auto`, `concise`, `detailed`: ask for the reasoning's summary), `extra_body`, and the timeouts of the others) |
+| `dialect` | string | `openai-chat` | yes | The wire protocol: `openai-chat` (OpenAI-style chat completions), `anthropic` (Messages API) or `openai-responses` (OpenAI's Responses API: `{"dialect": "openai-responses"}` on an `openai`-style provider with a key; options `reasoning_summary` (`auto`, `concise`, `detailed`: ask for the reasoning's summary), `extra_body`, `model_extra_body`, and the timeouts of the others) |
 | `auth` | string | none (an API key) | yes | `chatgpt-plan`: the provider is a ChatGPT plan, signed in with `sleipnir login chatgpt` (the built-in provider `chatgpt` is one). There is no key; the dialect is `openai-responses`; where the token goes is the provider's own `base_url`, never an environment variable's or a project file's |
 | `base_url` | string | none | yes | Absolute http(s) URL, required for every provider that is not built in. `openai-chat` posts to `<base_url>/chat/completions`. `anthropic` posts to `<base_url>/v1/messages`, or to `<base_url>/messages` when the URL already ends in `/v1`. A trailing `/` is ignored. Credentials inside the URL produce a warning. A key is sent over `https`, or over plain `http` to loopback only, unless `allow_insecure_http` says otherwise; a redirect is followed only within the original scheme, host and port |
 | `allow_hosts` | list of strings | none | yes | **User file only.** Hosts, besides the provider's own, that may receive its key when the URL arrives through the environment (`<NAME>_BASE_URL`) or a project file: `"gateway.example.com"` or `"gateway.example.com:8443"`, case-insensitive. A refusal prints the exact snippet to add |
@@ -413,10 +413,11 @@ suspecting the endpoint.
 | `reasoning_effort_field` | string | `reasoning_effort` | Any non-empty value lets the selected effort through as `reasoning_effort`; an explicit empty string disables it. No effort is sent until one is selected with `/effort`. The harness maps it to the closest level the model supports |
 | `cache_control_parts` | bool | `false` | Add `cache_control` markers to content parts at breakpoints, for gateways that front Anthropic models |
 | `extra_body` | object | none | Members merged into the top level of every request body. They replace members of the same name, so do not use it to change `model` or `messages` |
+| `model_extra_body` | object | none | Per model id (the reference without the provider: `minimaxai/minimax-m3`), members put over `extra_body` in that model's requests only: a routing preference for one model of a gateway, while its other models keep the provider-wide members. Each value must be an object |
 | `capture_tokens` | bool | `false` | Declares that the server can return prompt and completion token ids and logprobs (a self-hosted vLLM or SGLang policy server). It does not switch capture on: the request members `logprobs: true` and `return_token_ids: true` are sent only when `--capture` is given (`run`, `doctor`, `rl rollout`, `rl eval`) |
 | `context_window` | int | model-dependent | The context window, in tokens, that the server really gives the model. A catalogue that lists ids only (Ollama, LM Studio, llama.cpp, vLLM) does not say, so a model of a keyless server on this machine is assumed to have **8192** tokens and to cost nothing; say the real window here (`"providers": {"ollama": {"options": {"context_window": 32768}}}`, after raising `num_ctx` in Ollama itself, which cuts a longer prompt off without a word). Compaction keeps the prompt inside it |
 
-Both dialects also take the timeouts below. A silent server is cut off, so no request holds an agent for ever.
+Every dialect also takes the timeouts below. A silent server is cut off, so no request holds an agent for ever.
 
 | Option | Type | Default | Effect |
 |---|---|---|---|
@@ -442,9 +443,19 @@ Both dialects also take the timeouts below. A silent server is cut off, so no re
 | `thinking_display` | string | none | Value of `thinking.display`, sent only when a request carries a `thinking` object. Replay binding can require such an object after compaction |
 | `thinking_budget` | integer | `8192` | `budget_tokens` when thinking is requested on a model that uses a token budget instead of adaptive thinking. Clamped below the request's output limit; thinking is omitted when the limit cannot fit the minimum budget |
 | `extra_body` | object | none | Members merged into the request body. Naming a member the adapter owns (`model`, `max_tokens`, `stream`, `thinking`, `output_config`, `temperature`, `stop_sequences`, `metadata`, `tool_choice`, `tools`, `system`, `messages`) is an error |
+| `model_extra_body` | object | none | Per model id, members put over `extra_body` in that model's requests only, with the same restriction on the adapter's own members |
 
 `capture_tokens` on an `anthropic` provider is refused at startup: the Messages API returns no token ids or logprobs,
 and RL data capture needs a chat-completions server.
+
+### Options of `openai-responses`
+
+| Option | Type | Default | Effect |
+|---|---|---|---|
+| `reasoning_summary` | string | none | `auto`, `concise` or `detailed`: ask for the readable summary of the model's reasoning (some models need the organisation verified) |
+
+The Responses dialect also takes `extra_body`, `model_extra_body`, `context_window` and the timeouts, as `openai-chat`
+does. `capture_tokens` is refused at startup, as on an `anthropic` provider: the Responses API returns no token ids.
 
 ## 8. Permissions in detail
 
@@ -635,7 +646,11 @@ URL override is read from `HEIMDALLM_BASE_URL` only.
       "headers": { "X-Title": "Sleipnir" },
       "options": {
         "session_header": true,  // send the routing key as X-Session-Id
-        "cache_key_body": true   // and as prompt_cache_key in the request body
+        "cache_key_body": true,  // and as prompt_cache_key in the request body
+        // one model routed to one upstream; the provider's other models keep the default routing
+        "model_extra_body": {
+          "minimaxai/minimax-m3": { "provider": { "only": ["impcc"], "allow_fallbacks": false } }
+        }
       }
     }
   },

@@ -19,7 +19,7 @@ func TestProviderOptionReferenceMatchesConfiguration(t *testing.T) {
 	}
 	section, _, _ = strings.Cut(section, "\n## ")
 	want := map[string]bool{}
-	for _, dialect := range []string{config.DialectOpenAIChat, config.DialectAnthropic} {
+	for _, dialect := range []string{config.DialectOpenAIChat, config.DialectAnthropic, config.DialectOpenAIResponses} {
 		for _, name := range config.ProviderOptionNames(dialect) {
 			want[name] = true
 		}
