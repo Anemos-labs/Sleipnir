@@ -18,6 +18,7 @@ func TestCurlsDataIsNotAFile(t *testing.T) {
 		{`curl -sS -o /dev/null -w '%{http_code}' -X DELETE "localhost:8099/api/categories/$CID"`, "allow"},
 		{`curl -s -F "file=@tests/fixtures/ok.csv" localhost:8099/api/import`, "allow"},
 		{`curl -s localhost:8099/api/export.csv -o export.csv`, "allow"},
+		{`for p in / /js/app.js; do curl -s -o /dev/null -w "%{http_code} /$p\n" "localhost:8099$p"; done`, "allow"},
 		// the files curl touches are judged
 		{`curl -s localhost:8099/ -o .sleipnir/page.html`, "ask"},
 		{`curl -s -d @secrets/token localhost:8099/api`, "deny"},
