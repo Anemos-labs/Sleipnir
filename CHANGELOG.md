@@ -10,7 +10,7 @@ they do not indicate whether a change has been released.
 - The file tools take a path that starts with `$TMPDIR` or `${TMPDIR}` to the
   session's scratch directory, as the shell does; before, it named a directory
   "$TMPDIR" under the project. Prompt bytes: the runtime context's scratch
-  sentence says so (G1, one-time cache miss).
+  sentence (G1) says so.
 
 - Providers take `options.model_extra_body`: per model id, request members put
   over `extra_body` for that model only (one gateway, an upstream pinned for
