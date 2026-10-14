@@ -231,3 +231,23 @@ func TestAutoDocsTracksAcceptedRevisions(t *testing.T) {
 		t.Fatalf("repaired acceptance was not collected exactly once: %+v", got)
 	}
 }
+
+// The roles that write and run tests know to set up a missing runner inside the project, and the manager carries the user's words
+// into the tasks and holds the goal until the tests have run.
+func TestPinsCarryVerificationAndTheUsersWords(t *testing.T) {
+	roles := BuiltinRoles()
+	for _, name := range []string{"tester", "devops", "backend"} {
+		if !strings.Contains(roles[name].Pin, ".venv") {
+			t.Errorf("the %s pin does not say how to set up a missing test runner", name)
+		}
+	}
+	mgr := roles["manager"].Pin
+	for _, want := range []string{"Copy the explicit requirements into the tasks verbatim", "Demand evidence", "line by line", "Size the team to the goal"} {
+		if !strings.Contains(mgr, want) {
+			t.Errorf("the manager pin does not say %q", want)
+		}
+	}
+	if !strings.Contains(roles["architect"].Pin, "never renames what the user named") {
+		t.Error("the architect pin lets an agreement rename what the user named")
+	}
+}

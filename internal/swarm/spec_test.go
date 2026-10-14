@@ -467,6 +467,8 @@ func TestWatchdogAlertsThenCancelsAStuckWorker(t *testing.T) {
 	if n := len(r.sw.Board.Snapshot().Alerts); n != 0 {
 		t.Fatalf("the stuck alert outlived the run (%d alerts)", n)
 	}
+	// the alert's mail is delivered after the board changes: wait for it, then check it was sent once
+	rvWait(t, "the manager to be told the worker was stuck", func() bool { return mailSent(r, "stuck: no progress") >= 1 })
 	if mailSent(r, "stuck: no progress") != 1 {
 		t.Fatal("the manager was not told, once, that the worker was stuck")
 	}

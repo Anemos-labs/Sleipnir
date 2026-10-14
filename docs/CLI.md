@@ -191,7 +191,7 @@ not covered, and running it (go test, make, a hook's script) is what every appro
 
 ### `sleipnir chat`
 
-Interactive session. On a terminal chat without `--swarm` is a team of a manager and eight workers, one of each role (kept under `swarm.max_workers`); the manager plans, delegates and reviews, and edits no file itself. `--swarm N` sets the number of workers (at least 8), `--role-model` given once per worker names a team of your own (`--role-model backend --role-model backend ...`), `--swarm 0` is a single agent, and the line chat (a pipe, `--plain`) is a single agent too. On a terminal that can be drawn on (stdin and stdout are terminals and `TERM` is not `dumb`) the chat is a
+Interactive session. On a terminal chat without `--swarm` is a team of a manager and eight workers, one of each role (kept under `swarm.max_workers`); the manager plans, delegates and reviews, and handles small direct requests itself. `--swarm N` sets the number of workers (at least 8), `--role-model` given once per worker names a team of your own (`--role-model backend --role-model backend ...`), `--swarm 0` is a single agent, and the line chat (a pipe, `--plain`) is a single agent too. On a terminal that can be drawn on (stdin and stdout are terminals and `TERM` is not `dumb`) the chat is a
 program: what is said goes into the terminal's own scrollback (so copy, search, tmux and SSH work on it), and the last few rows,
 the live region, are redrawn in place: a status line (what the agent is doing, for how long, tokens, cost, `esc to interrupt`), the
 input box, and a footer with the permission mode, the keys of the pages (`ctrl+t` stats, `ctrl+g` cockpit for a team) and the model and
