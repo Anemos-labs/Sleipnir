@@ -41,6 +41,7 @@ func rowOf(r session.Recorded, now time.Time) recordedRow {
 		ID: r.ID, Name: runner.Clean(r.Name), First: runner.Clean(first), Model: runner.Clean(r.Model), Cost: r.CostUSD,
 		MB: mb(r.Bytes), AgeS: max(now.Sub(r.LastWritten).Seconds(), 0), Agents: r.Agents, Resumable: r.Resumable,
 		Dur: r.Duration.Seconds(), Interrupted: r.Interrupted, Cwd: r.Cwd, LastWritten: r.LastWritten.UnixMilli(), Locked: r.Locked,
+		List: r.ListUSD, Plan: r.Plan,
 	}, Live: r.Live}
 	if r.Integration != nil {
 		in := *r.Integration

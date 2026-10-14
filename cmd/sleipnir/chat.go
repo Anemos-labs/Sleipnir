@@ -268,8 +268,8 @@ func runTurn(parent context.Context, intr *interrupts, s *session.Session, goal 
 	intr.run(parent, func(ctx context.Context) { res, err = s.Run(ctx, goal) })
 	fmt.Fprintln(os.Stdout)
 	if res != nil {
-		fmt.Fprintf(os.Stderr, "── %s · %d steps · $%.4f · cache hit %.0f%%\n",
-			time.Since(start).Round(time.Second), res.Steps, res.CostUSD, res.Usage.HitRatio()*100)
+		fmt.Fprintf(os.Stderr, "── %s · %d steps · %s · cache hit %.0f%%\n",
+			time.Since(start).Round(time.Second), res.Steps, spentText(res.CostUSD, res.ListUSD, res.Plan), res.Usage.HitRatio()*100)
 	}
 	switch {
 	case err == nil:

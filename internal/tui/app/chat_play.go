@@ -475,7 +475,7 @@ func (p *chatPlayer) endTurn(e *ChatTurnEnd) error {
 	if p.asking != nil {
 		return errors.New("the turn ended with a question that no key had answered")
 	}
-	res := TurnResult{Steps: e.Steps, CostUSD: e.CostUSD, HitRatio: e.HitRatio, Message: e.Message}
+	res := TurnResult{Steps: e.Steps, CostUSD: e.CostUSD, HitRatio: e.HitRatio, Message: e.Message, ListUSD: e.ListUSD, Plan: e.Plan}
 	switch e.Err {
 	case "":
 	case ErrTranscriptCanceled:

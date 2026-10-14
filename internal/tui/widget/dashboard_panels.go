@@ -29,6 +29,18 @@ func dashMoney(f float64) string {
 	return "$" + strconv.FormatFloat(f, 'f', 0, 64)
 }
 
+// dashSpend is the spend as the title bar and the list write it: "$0.31/$5" against a budget, "$0.31" without one, and "≈$0.31 plan"
+// when it includes usage a subscription plan covered (at the API list price, which no budget counts).
+func dashSpend(d DashboardData) string {
+	switch {
+	case d.Plan:
+		return "≈" + dashMoney(d.Spend) + " " + PlanTag
+	case d.Budget > 0:
+		return dashMoney(d.Spend) + "/" + dashMoney(d.Budget)
+	}
+	return dashMoney(d.Spend)
+}
+
 // dashCount writes a small number in words, the way the sketch does ("one prefix, eight riders"), and larger ones in digits.
 func dashCount(n int) string {
 	words := [...]string{"no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"}
@@ -143,11 +155,7 @@ func dashGait(frame int, legs []Leg) int {
 // ratio on the right, and a line between. What does not fit is cut: first the right side piece by piece, then the task.
 func dashTitleBar(d DashboardData, width int, below []int, p Palette) cell.Line {
 	agents := dashAgents(len(d.Agents))
-	spend := dashMoney(d.Spend)
-	if d.Budget > 0 {
-		spend += "/" + dashMoney(d.Budget)
-	}
-	stats := []string{"◷ " + showElapsed(d.Elapsed), agents, spend, "⛁ " + showPercent(d.HitRatio)}
+	stats := []string{"◷ " + showElapsed(d.Elapsed), agents, dashSpend(d), "⛁ " + showPercent(d.HitRatio)}
 	if st := showClean(d.Status); st != "" {
 		stats = append([]string{st}, stats...)
 	}
@@ -289,9 +297,16 @@ func dashGovernor(d DashboardData, w int, p Palette) []cell.Line {
 	}
 	b.add(p.dimSt(), "  retries ").add(cell.Style{}, strconv.Itoa(g.Retries))
 	out = append(out, showFit(b.line(), w))
-	if d.Budget > 0 {
+	switch {
+	case d.Plan:
+		// what a subscription plan covered, at the API list price: it fills no budget, so no meter is drawn for it
+		out = append(out, showFit(cell.Join(cell.Text("≈"+dashMoney(d.Spend)+" "), cell.Styled(p.dimSt(), PlanTag)), w))
+		if d.Budget > 0 {
+			out = append(out, meter("billed ", d.Billed/d.Budget, dashMoney(d.Billed)+"/"+dashMoney(d.Budget)))
+		}
+	case d.Budget > 0:
 		out = append(out, meter("", d.Spend/d.Budget, dashMoney(d.Spend)+"/"+dashMoney(d.Budget)))
-	} else {
+	default:
 		out = append(out, showFit(cell.Styled(cell.Style{}, dashMoney(d.Spend)), w))
 	}
 	if d.PrefixTTL > 0 || d.PrefixLeft > 0 {

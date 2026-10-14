@@ -210,8 +210,9 @@ func resumeChoices(s *session.Session) func() []input.Choice {
 		for _, d := range s.EarlierSessions(12) {
 			var model, prompt string
 			var usd float64
-			summarize(filepath.Join(d, "events.jsonl"), &model, &prompt, &usd)
-			detail := fmt.Sprintf("$%.4f  %s", usd, prompt)
+			var plan bool
+			summarize(filepath.Join(d, "events.jsonl"), &model, &prompt, &usd, &plan)
+			detail := fmt.Sprintf("%s  %s", spentText(usd, 0, plan), prompt)
 			if fi, err := os.Stat(d); err == nil {
 				detail = ago(time.Since(fi.ModTime())) + "  " + detail
 			}
@@ -347,6 +348,7 @@ func (h *sessionHost) Turn(ctx context.Context, goal string) app.TurnResult {
 	out := app.TurnResult{Err: err}
 	if res != nil {
 		out.Steps, out.CostUSD, out.HitRatio = res.Steps, res.CostUSD, res.Usage.HitRatio()
+		out.ListUSD, out.Plan = res.ListUSD, res.Plan
 	}
 	if errors.Is(err, agent.ErrBudget) {
 		out.Message = tools.SanitizeForTerminal(budgetStopped(h.s, res).Error())

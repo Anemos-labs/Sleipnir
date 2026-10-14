@@ -132,10 +132,12 @@ type runEnd struct {
 	out  string
 }
 
-// totalsBase is what the session had used when a turn began, so that the status line can say what this turn has used.
+// totalsBase is what the session had used when a turn began, so that the status line can say what this turn has used. cost is the
+// figure shown (state.Spend.Shown: the bill and what a subscription plan covered, at the API list price), list the plan's part of it:
+// the turn's figure is marked as a plan's only when this turn's list-price value grew.
 type totalsBase struct {
 	prompt, output int64
-	cost           float64
+	cost, list     float64
 }
 
 // queued is something typed ahead: a line, or a Ctrl-D (the end of the input), in the order it was typed.
@@ -925,7 +927,8 @@ const longTurn = 30 * time.Second
 func (m *chatModel) turnEnded(r *run, res TurnResult) {
 	m.statsOpen = false
 	m.cockpit, m.cockpitBack = false, false // the answer is written into the scrollback, which the page hides
-	if res.Steps > 0 || res.CostUSD > 0 {   // a turn that was cancelled before the model answered did nothing worth a record
+	// a turn that was cancelled before the model answered did nothing worth a record
+	if res.Steps > 0 || res.CostUSD+res.ListUSD > 0 {
 		m.block(bkSummary, []cell.Line{m.k.turnSummary(m.since(r.started), res, m.cols)})
 	}
 	if res.Err == nil && m.since(r.started) >= longTurn && m.c.Bell != nil {
@@ -993,8 +996,9 @@ func (m *chatModel) since(t time.Time) time.Duration {
 
 // totalsNow is what the session has used so far.
 func (m *chatModel) totalsNow() totalsBase {
-	t := m.snapshot().Totals
-	return totalsBase{prompt: t.Tokens.Prompt(), output: t.Tokens.Output, cost: t.CostUSD}
+	sn := m.snapshot()
+	t := sn.Totals
+	return totalsBase{prompt: t.Tokens.Prompt(), output: t.Tokens.Output, cost: sn.Spend().Shown(), list: t.ListUSD}
 }
 
 // ---- the scrollback ----
@@ -1159,7 +1163,7 @@ func (m *chatModel) statusView(sn *state.Snapshot) statusView {
 	}
 	t := sn.Totals
 	s.tokIn, s.tokOut = max(t.Tokens.Prompt()-r.base.prompt, 0), max(t.Tokens.Output-r.base.output, 0)
-	s.cost = max(t.CostUSD-r.base.cost, 0)
+	s.cost, s.plan = max(sn.Spend().Shown()-r.base.cost, 0), t.ListUSD-r.base.list > 0 // a plan's usage in this turn, not an earlier one
 	s.kind = statusThinking
 	if a, ok := sn.Focused(""); ok {
 		switch {

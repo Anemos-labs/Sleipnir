@@ -15,6 +15,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/catalog"
 	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/tui/input"
 )
@@ -76,7 +77,7 @@ search (all must appear, any case). Favorites, marked *, come first.
 	filter := fs.String("filter", "", "only ids containing this text (same as a word)")
 	fs.BoolVar(&f.Tools, "tools", false, "only models that accept tools")
 	fs.BoolVar(&f.Reasoning, "reasoning", false, "only models with configurable reasoning")
-	fs.Float64Var(&f.MaxOut, "max-price", 0, "only models with an output price of at most this many dollars per million tokens")
+	fs.Float64Var(&f.MaxOut, "max-price", 0, "only models with an output price of at most this many dollars per million tokens (a ChatGPT plan's model: the API list price of the same model)")
 	minCtx := fs.String("min-context", "", "only models with at least this context window (128k, 1m)")
 	fs.BoolVar(&f.OnlyFavorite, "fav", false, "only favorites")
 	if err := fs.Parse(args); err != nil {
@@ -178,16 +179,25 @@ func fetchModels(ctx context.Context, sources []modelSource) (all []modelRow, er
 	return catalog.FetchEntries(ctx, userHome(), toCatalog(sources))
 }
 
-// planProvider marks catalog entries authenticated through ChatGPT. The catalog
-// supplies no per-token prices, so tables label their price cells "plan".
+// planProvider marks catalog entries authenticated through ChatGPT. The plan bills
+// nothing per token; its models are listed at the API's list price of the same
+// model (catalog.Entry.ShownPrice), tagged "plan".
 const planProvider = catalog.PlanProvider
 
-// priceOut is the output price of a row as the tables show it: a plan's models say "plan".
+// planNote explains the "plan" tag of a price: what the figure is, and who pays.
+const planNote = "plan: the API's list price of the same model; your ChatGPT plan covers its use, nothing is billed per token"
+
+// priceOut is the output price of a row as the menus show it: a plan's model at the API's list price, tagged "plan" (just "plan" when
+// that price is not known).
 func priceOut(r modelRow) string {
-	if r.Model.Provider == planProvider {
-		return "plan"
+	p := r.ShownPrice()
+	if r.Plan() {
+		if p == (cost.Price{}) {
+			return "plan"
+		}
+		return fmt.Sprintf("$%.3g/M out, plan", p.OutputPerM)
 	}
-	return fmt.Sprintf("$%.3g/M out", r.Model.Price.OutputPerM)
+	return fmt.Sprintf("$%.3g/M out", p.OutputPerM)
 }
 
 // modelMenu is what `/model ` completes from: the chat models of every provider with a key, favorites first, then by reference. /fav stars
@@ -280,9 +290,17 @@ func saveFavorites(home string, favs []string) error { return catalog.SaveFavori
 func favoriteSet(cfg *config.Config) map[string]bool { return catalog.Favorites(cfg) }
 
 // printModels writes the table: favorites first, then by reference. On a terminal too narrow for it the columns that tell least go first
-// (REASONING, then the cached price, then the input price) and, as a last resort, a reference is cut short.
+// (REASONING, then the cached price, then the input price) and, as a last resort, a reference is cut short. A plan's model is listed at
+// the API's list price of the same model with its output price tagged "plan"; when one is listed, a line on stderr says what the tag
+// means.
 func printModels(w io.Writer, all []modelRow, f modelFilter, fav map[string]bool) error {
-	return printModelsWidth(w, all, f, fav, termWidth(w))
+	if err := printModelsWidth(w, all, f, fav, termWidth(w)); err != nil {
+		return err
+	}
+	if slices.ContainsFunc(all, func(r modelRow) bool { return r.Plan() && f.keep(r, fav) }) {
+		fmt.Fprintln(os.Stderr, wrapBlockFor(os.Stderr, planNote))
+	}
+	return nil
 }
 
 // printModelsWidth is printModels for a terminal width (0: not a terminal, the whole table).
@@ -305,10 +323,13 @@ func printModelsWidth(w io.Writer, all []modelRow, f modelFilter, fav map[string
 		if fav[r.Ref] {
 			name = "* " + name
 		}
-		p := r.Model.Price
+		p := r.ShownPrice()
 		in, cached, out := fmt.Sprintf("%.4f", p.InputPerM), fmt.Sprintf("%.4f", p.CacheReadPerM), fmt.Sprintf("%.4f", p.OutputPerM)
-		if r.Model.Provider == planProvider {
-			in, cached, out = "plan", "plan", "plan"
+		switch {
+		case r.Plan() && p == (cost.Price{}): // a plan's model the built-in table does not know: no list price to show
+			in, cached, out = "?", "?", "? plan"
+		case r.Plan():
+			out += " plan" // the API's list price; the plan bills nothing per token
 		}
 		cells = append(cells, []string{name, human(r.Model.ContextTokens), in, cached, out,
 			fmt.Sprint(r.SupportsTools()), fmt.Sprint(r.SupportsReasoning())})

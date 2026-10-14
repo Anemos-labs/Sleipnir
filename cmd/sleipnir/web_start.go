@@ -266,7 +266,8 @@ func (t *webTab) afterStart(s *session.Session, spec startSpec) {
 	if a := s.Main(); s.Resumed() && a != nil {
 		t.note("↺", resumedLine(s, a))
 		sum := session.Summarize(eventsPath(s.Dir))
-		rec := wire.RecordedSession{ID: s.ID, First: clip(sum.First, 300), Model: sum.Model, Cost: sum.CostUSD, Cwd: sum.Cwd, Resumable: true}
+		rec := wire.RecordedSession{ID: s.ID, First: clip(sum.First, 300), Model: sum.Model, Cost: sum.CostUSD, Cwd: sum.Cwd, Resumable: true,
+			List: sum.ListUSD, Plan: sum.Plan}
 		if !sum.Started.IsZero() && !sum.Last.IsZero() {
 			rec.Dur = sum.Last.Sub(sum.Started).Seconds()
 			rec.LastWritten = sum.Last.UnixMilli()

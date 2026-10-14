@@ -65,6 +65,9 @@ type Recorded struct {
 	Live bool
 	// Integration is how the end of an isolated team's run went, from the log's last swarm.integration event (nil: none).
 	Integration *Integration
+	// ListUSD and Plan are what a subscription plan covered (Summary.ListUSD).
+	ListUSD float64
+	Plan    bool
 }
 
 // Integration is the end of an isolated run as a listing reports it: whether the verified result reached the checkout, and when it
@@ -79,9 +82,12 @@ type Integration struct {
 
 // Summary is what a listing reads from a session's log in one pass.
 type Summary struct {
-	// Model is the model of the last session.start; CostUSD the cost of the last session.end.
+	// Model is the model of the last session.start; CostUSD the cost of the last session.end, and ListUSD and Plan what it says a
+	// subscription plan covered (the value at the API list price, shown with CostUSD and marked as the plan's; see session.Result).
 	Model   string
 	CostUSD float64
+	ListUSD float64
+	Plan    bool
 	// First is the first input a person typed (a task the harness handed out is not one), with its whitespace collapsed; empty when
 	// nothing was asked.
 	First string
@@ -156,10 +162,12 @@ func Summarize(path string) Summary {
 		case events.TypeSessionEnd:
 			var d struct {
 				Cost   float64 `json:"cost_usd"`
+				List   float64 `json:"list_usd"`
+				Plan   bool    `json:"plan"`
 				Reason string  `json:"reason"`
 			}
 			_ = json.Unmarshal(e.Data, &d)
-			s.CostUSD, s.EndReason, s.Open = d.Cost, d.Reason, false
+			s.CostUSD, s.ListUSD, s.Plan, s.EndReason, s.Open = d.Cost, d.List, d.Plan, d.Reason, false
 		case isolationEvent:
 			_ = json.Unmarshal(e.Data, &iso)
 		case integrationStateEvent:
@@ -414,7 +422,7 @@ func evictGone(root string, seen map[string]bool) {
 func recordedOf(id, dir string, fi, log fs.FileInfo, c cachedListing) Recorded {
 	r := Recorded{
 		ID: id, Dir: dir, First: c.sum.First, Model: c.sum.Model, Cwd: c.sum.Cwd, CostUSD: c.sum.CostUSD, Bytes: c.bytes,
-		Agents: c.sum.Agents, Resumable: c.resumable, Integration: c.sum.Integration,
+		Agents: c.sum.Agents, Resumable: c.resumable, Integration: c.sum.Integration, ListUSD: c.sum.ListUSD, Plan: c.sum.Plan,
 	}
 	r.LastWritten = fi.ModTime()
 	if log.ModTime().After(r.LastWritten) {

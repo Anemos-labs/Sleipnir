@@ -78,6 +78,8 @@ func TestModelValidate(t *testing.T) {
 		{"id of 256 bytes", func(m *Model) { m.ID = strings.Repeat("a", MaxModelIDBytes) }, ""},
 		{"NaN price", func(m *Model) { m.Price.InputPerM = math.NaN() }, "not a number"},
 		{"negative price", func(m *Model) { m.Price.OutputPerM = -20 }, "negative"},
+		{"NaN list price", func(m *Model) { m.Plan, m.ListPrice.InputPerM = true, math.NaN() }, "list price: input price is not a number"},
+		{"negative list price", func(m *Model) { m.Plan, m.ListPrice.OutputPerM = true, -1 }, "list price: output price is negative"},
 		{"negative window", func(m *Model) { m.ContextTokens = -1 }, "context window"},
 		{"absurd window", func(m *Model) { m.ContextTokens = MaxWindowTokens + 1 }, "context window"},
 		{"a window that overflows the planner's arithmetic", func(m *Model) { m.ContextTokens = math.MaxInt64 }, "context window"},
@@ -99,6 +101,71 @@ func TestModelValidate(t *testing.T) {
 				t.Fatalf("Validate = %v, want a complaint containing %q", err, tc.bad)
 			}
 		})
+	}
+}
+
+// The table holds OpenAI's API list prices (standard tier, short context, USD per million tokens) for the models a ChatGPT plan offers,
+// under every spelling a reference may use: input, cached input, the short-context cache-write rate (for both lifetimes) and output.
+func TestOpenAIListPrices(t *testing.T) {
+	want := map[string][4]float64{ // input, cached input, cache write, output
+		"gpt-6-astra":   {10.00, 1.00, 12.50, 50.00},
+		"gpt-6.1-sol":   {2.00, 0.10, 2.50, 10.00},
+		"gpt-6-sol":     {2.00, 0.20, 2.50, 10.00},
+		"gpt-6-luna":    {0.10, 0.01, 0.125, 0.50},
+		"gpt-5.6-sol":   {4.00, 0.40, 5.00, 20.00},
+		"gpt-5.6-terra": {2.00, 0.20, 2.50, 12.00},
+		"gpt-5.6-luna":  {0.20, 0.02, 0.25, 1.20},
+	}
+	table := Defaults()
+	openai := 0
+	for _, m := range table.All() {
+		if m.Provider == "openai" {
+			openai++
+		}
+	}
+	if openai != len(want) {
+		t.Errorf("the table has %d OpenAI models, want %d", openai, len(want))
+	}
+	for id, p := range want {
+		for _, spelling := range []string{id, strings.ReplaceAll(id, ".", "-"), "openai/" + id, strings.ToUpper(id)} {
+			m, ok := table.Lookup(spelling)
+			if !ok {
+				t.Errorf("%s is not in the table", spelling)
+				continue
+			}
+			got := m.Price
+			if m.ID != id || got.InputPerM != p[0] || got.CacheReadPerM != p[1] || got.CacheWrite5mPerM != p[2] || got.CacheWrite1hPerM != p[2] ||
+				got.OutputPerM != p[3] || !m.Cache.Auto || m.Cache.Explicit || m.Plan {
+				t.Errorf("%s: %s %+v", spelling, m.ID, got)
+			}
+		}
+	}
+	// gpt-6.1-sol and gpt-6-sol are different models: the dot is not dropped, it becomes a dash
+	if a, _ := table.Lookup("gpt-6.1-sol"); a.Price.CacheReadPerM != 0.10 {
+		t.Errorf("gpt-6.1-sol took gpt-6-sol's price: %+v", a.Price)
+	}
+}
+
+// OnPlan bills nothing per token and keeps a listed price as the list price; ListUSD prices usage at it, and only for a plan's model.
+func TestOnPlanMovesThePriceToTheListPrice(t *testing.T) {
+	m, _ := Defaults().Lookup("gpt-6-luna")
+	u := core.Usage{InputTokens: 20_000, CacheReadTokens: 80_000, OutputTokens: 2_000}
+	if m.ListUSD(u) != 0 {
+		t.Errorf("a per-token model has a list figure: %v", m.ListUSD(u))
+	}
+	p := m.OnPlan(true)
+	if !p.Plan || p.Price != (Price{}) || p.ListPrice != m.Price || p.Price.USD(u) != 0 {
+		t.Fatalf("OnPlan(true): %+v", p)
+	}
+	if got := p.ListUSD(u); math.Abs(got-0.0038) > 1e-12 {
+		t.Errorf("ListUSD = %v, want 0.0038", got)
+	}
+	if err := p.Validate(); err != nil {
+		t.Errorf("a plan's model is valid: %v", err)
+	}
+	unknown := Fallback("gpt-next").OnPlan(false)
+	if !unknown.Plan || unknown.Price != (Price{}) || unknown.ListPrice != (Price{}) || unknown.ListUSD(u) != 0 {
+		t.Errorf("OnPlan(false): a guess is not a list price: %+v", unknown)
 	}
 }
 

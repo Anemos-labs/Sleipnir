@@ -11,6 +11,7 @@
   "goal_turns": 0,
   "goal_verdict": "",
   "handovers": 0,
+  "list_usd": 0,
   "mail_delivered": 2,
   "mail_dropped": 0,
   "mail_sent": 2,
@@ -29,6 +30,7 @@
     "T8"
   ],
   "permission_denials": 1,
+  "plan": false,
   "questions_asked": 0,
   "rate_limited": 0,
   "retries": 0,

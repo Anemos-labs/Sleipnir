@@ -66,7 +66,7 @@ func TestExplicitPlanModelCatalogUsesSignIn(t *testing.T) {
 				if r.Method != http.MethodGet || r.URL.String() != chatgptauth.Resource+"/models" || r.Header.Get("Authorization") != "Bearer fixture-token" {
 					return nil, fmt.Errorf("catalog request used the wrong endpoint or authentication mode")
 				}
-				return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"models":[{"slug":"gpt-fixture","display_name":"Fixture","visibility":"list","context_window":131072},{"slug":"hidden-fixture","visibility":"hide"}]}`))}, nil
+				return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"models":[{"slug":"gpt-fixture","display_name":"Fixture","visibility":"list","context_window":131072},{"slug":"gpt-6-luna","visibility":"list","context_window":272000},{"slug":"hidden-fixture","visibility":"hide"}]}`))}, nil
 			})
 			var err error
 			out := capture(t, func() { err = cmdModels(context.Background(), []string{"--provider", tc.provider}) })
@@ -75,6 +75,16 @@ func TestExplicitPlanModelCatalogUsesSignIn(t *testing.T) {
 			}
 			if calls != 1 || !strings.Contains(out, tc.provider+"/gpt-fixture") || strings.Contains(out, "hidden-fixture") || !strings.Contains(out, "131k") {
 				t.Fatalf("calls=%d; catalog:\n%s", calls, out)
+			}
+			// a model the built-in table knows is listed at the API's list price of the same model, tagged as the plan's
+			var luna string
+			for _, line := range strings.Split(out, "\n") {
+				if strings.Contains(line, tc.provider+"/gpt-6-luna") {
+					luna = line
+				}
+			}
+			if !strings.Contains(luna, "0.1000") || !strings.Contains(luna, "0.0100") || !strings.Contains(luna, "0.5000 plan") {
+				t.Fatalf("gpt-6-luna is not at its list price:\n%s", out)
 			}
 		})
 	}
@@ -112,22 +122,32 @@ func TestExplicitModelCatalogEndpointDoesNotBorrowPlanCredentials(t *testing.T) 
 	}
 }
 
+// planRow is a ChatGPT plan's model as the catalogue lists it: nothing billed per token, and list the API's list price of the same model
+// (zero when the table does not know it).
+func planRow(ref string, ctx int, list cost.Price, supported ...string) modelRow {
+	r := row(ref, ctx, 0, supported...)
+	r.Model.Provider, r.Model.Plan, r.Model.ListPrice = planProvider, true, list
+	return r
+}
+
 func TestModelCatalogTableDistinguishesPlanFromTokenPrices(t *testing.T) {
-	plan := row("chatgpt/gpt-fixture", 131072, 0, "tools", "reasoning_effort")
-	plan.Model.Provider = planProvider
+	plan := planRow("chatgpt/gpt-6-luna", 272_000, cost.Price{InputPerM: 0.1, CacheReadPerM: 0.01, OutputPerM: 0.5}, "tools", "reasoning_effort")
+	unknown := planRow("chatgpt/gpt-fixture", 131072, cost.Price{}, "tools", "reasoning_effort")
 	priced := row("api/priced", 32768, 2.5, "tools")
 	priced.Model.Price = cost.Price{InputPerM: 1, CacheReadPerM: 0.1, OutputPerM: 2.5}
 	for _, width := range []int{0, 110, 80, 60} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			var out bytes.Buffer
-			if err := printModelsWidth(&out, []modelRow{plan, priced}, modelFilter{}, nil, width); err != nil {
+			if err := printModelsWidth(&out, []modelRow{plan, unknown, priced}, modelFilter{}, nil, width); err != nil {
 				t.Fatal(err)
 			}
 			lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-			if len(lines) != 3 || !strings.Contains(lines[1], "2.5000") || !strings.Contains(lines[2], "plan") || strings.Contains(lines[2], "0.0000") {
+			// the plan's model at the API list price, tagged; one the table does not know says so instead of $0; a per-token price untagged
+			if len(lines) != 4 || !strings.Contains(lines[1], "2.5000") || strings.Contains(lines[1], "plan") ||
+				!strings.Contains(lines[2], "0.5000 plan") || !strings.Contains(lines[3], "? plan") || strings.Contains(lines[3], "0.0000") {
 				t.Fatalf("plan and per-token prices are ambiguous:\n%s", out.String())
 			}
-			if width == 0 && (strings.Count(lines[2], "plan") != 3 || !strings.Contains(lines[1], "1.0000") || !strings.Contains(lines[1], "0.1000")) {
+			if width == 0 && (!strings.Contains(lines[2], "0.1000") || !strings.Contains(lines[2], "0.0100") || !strings.Contains(lines[1], "1.0000") || !strings.Contains(lines[1], "0.1000")) {
 				t.Fatalf("full price columns changed:\n%s", out.String())
 			}
 			for _, line := range lines {
@@ -140,21 +160,28 @@ func TestModelCatalogTableDistinguishesPlanFromTokenPrices(t *testing.T) {
 }
 
 func TestModelPriceFilterExcludesUnpricedPlans(t *testing.T) {
-	plan := row("chatgpt/gpt-fixture", 131072, 0, "tools")
-	plan.Model.Provider = planProvider
+	plan := planRow("chatgpt/gpt-fixture", 131072, cost.Price{}, "tools")
+	listed := planRow("chatgpt/gpt-6-sol", 272_000, cost.Price{InputPerM: 2, CacheReadPerM: 0.2, OutputPerM: 10}, "tools")
 	local := row("local/fixture", 8192, 0, "tools")
 	priced := row("api/priced", 32768, 2.5, "tools")
 	for _, tc := range []struct {
-		limit                           float64
-		wantPlan, wantLocal, wantPriced bool
+		limit                                       float64
+		wantPlan, wantListed, wantLocal, wantPriced bool
 	}{
-		{0, true, true, true},
-		{1, false, true, false},
-		{2.5, false, true, true},
+		{0, true, true, true, true},
+		{1, false, false, true, false},
+		{2.5, false, false, true, true},
+		{10, false, true, true, true}, // a plan's model is filtered by the API list price of the same model
 	} {
 		f := modelFilter{MaxOut: tc.limit}
-		if f.keep(plan, nil) != tc.wantPlan || f.keep(local, nil) != tc.wantLocal || f.keep(priced, nil) != tc.wantPriced {
-			t.Errorf("limit %g: plan=%v, local=%v, priced=%v", tc.limit, f.keep(plan, nil), f.keep(local, nil), f.keep(priced, nil))
+		if f.keep(plan, nil) != tc.wantPlan || f.keep(listed, nil) != tc.wantListed || f.keep(local, nil) != tc.wantLocal || f.keep(priced, nil) != tc.wantPriced {
+			t.Errorf("limit %g: plan=%v, listed=%v, local=%v, priced=%v", tc.limit, f.keep(plan, nil), f.keep(listed, nil), f.keep(local, nil), f.keep(priced, nil))
 		}
+	}
+	if got := priceOut(listed); got != "$10/M out, plan" {
+		t.Errorf("the /model menu says %q", got)
+	}
+	if got := priceOut(plan); got != "plan" {
+		t.Errorf("the /model menu says %q for a plan's model without a list price", got)
 	}
 }

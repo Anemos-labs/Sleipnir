@@ -24,6 +24,10 @@ type UseX struct {
 	wire.Use
 	SavedPartial bool  `json:"savedPartial,omitempty"`
 	Unpriced     int64 `json:"unpriced,omitempty"`
+	// List is what the agent's usage that a subscription plan covered comes to at the API list price, and Plan says it had such
+	// usage (state.Agent.ListUSD and Plan): Cost has nothing of it, and a page shows Cost+List marked as the plan's.
+	List float64 `json:"list,omitempty"`
+	Plan bool    `json:"plan,omitempty"`
 }
 
 // CompactX is a compact event with Moment and Mode. Moment says whether the shared prefix's cache was "warm" when the planner decided
@@ -106,6 +110,8 @@ type SvcUse struct {
 	Saved        float64 `json:"saved"`
 	SavedPartial bool    `json:"savedPartial,omitempty"`
 	Unpriced     int64   `json:"unpriced,omitempty"`
+	List         float64 `json:"list,omitempty"` // as UseX.List
+	Plan         bool    `json:"plan,omitempty"`
 }
 
 // extKinds names the kind of each extension type.
