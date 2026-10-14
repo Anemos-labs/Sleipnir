@@ -361,13 +361,34 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			return tools.Errorf("combined result could not be applied: %s", rep.Message), nil
 		}
 	}
-	if in.Action == "propose" || in.Action == "execute" || in.Action == "reconcile" {
+	if in.Action == "execute" {
+		task, _ := s.Board.Snapshot().Task(in.ID)
+		steps := poolExecuteSteps(task)
+		s.wakePool(in.ID, "Pool updated: execute. "+steps)
+		return text("%s: execute recorded. %s", in.ID, steps), nil
+	}
+	if in.Action == "propose" || in.Action == "reconcile" {
 		s.wakePool(in.ID, "Pool updated: "+in.Action+". "+agreement)
 	} else {
 		task, _ := s.Board.Snapshot().Task(in.ID)
 		s.notify(task.Owner, "info", by+" recorded "+in.Action+" for "+in.ID)
 	}
 	return text("%s: %s recorded", in.ID, in.Action), nil
+}
+
+// poolExecuteSteps is what a pool does once it executes: writing opens inside child tasks only, so the leader splits the agreed work
+// into children, claims its own and assigns the others'. Without it, members that had agreed tried to write the parent's files, were
+// refused, and gave up.
+func poolExecuteSteps(t Task) string {
+	others := make([]string, 0, len(t.Pool.Members))
+	for _, m := range t.Pool.Members {
+		if m != t.Owner {
+			others = append(others, m)
+		}
+	}
+	return fmt.Sprintf("Writing is open now, inside child tasks only: a member writes while it owns a child task of %s in doing, and is read-only until then. "+
+		"The leader %s creates one child per share of the agreed work (task create parent=%s with its files), claims its own (task claim), "+
+		"and assigns each other member (%s) its child (spawn agent=MEMBER task=CHILD).", t.ID, t.Owner, t.ID, strings.Join(others, ", "))
 }
 
 // poolComplete prevents aggregate submission before all members reconcile.

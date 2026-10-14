@@ -3,9 +3,12 @@ package swarm
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 func TestPoolRequiresEveryModelAndReconciliation(t *testing.T) {
@@ -41,8 +44,24 @@ func TestPoolRequiresEveryModelAndReconciliation(t *testing.T) {
 	if len(old.Votes) != 0 {
 		t.Fatal("published snapshot mutated")
 	}
-	if call(ids[0], "execute", 0, "") {
+	exec := r.callTool(context.Background(), "pool", ids[0], "backend", map[string]any{"id": parent.ID, "action": "execute"})
+	if exec.IsError {
 		t.Fatal("execution refused")
+	}
+	// The leader and the members are told how writing opens: in child tasks, created, claimed and assigned by the leader.
+	for _, want := range []string{"inside child tasks only", "task create parent=" + parent.ID, "task claim", "spawn agent=", ids[1]} {
+		if !strings.Contains(exec.Text, want) {
+			t.Errorf("execute result %q lacks %q", exec.Text, want)
+		}
+	}
+	woke := 0
+	for _, e := range r.log.All() {
+		if e.Type == events.TypeMailSend && strings.Contains(string(e.Data), "Pool updated: execute. Writing is open now, inside child tasks only") {
+			woke++
+		}
+	}
+	if woke != len(ids) {
+		t.Errorf("%d members were told how writing opens, want %d", woke, len(ids))
 	}
 	child, err := r.sw.Board.CreateTask(ids[0], TaskSpec{Parent: parent.ID, Title: "handler", Role: "backend", Files: []string{"api/handler.go"}})
 	if err != nil {

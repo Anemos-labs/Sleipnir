@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `pool execute` says what comes next, in its result and in the mail that wakes
+  the members: writing opens inside child tasks only; the leader creates one
+  child per share of the agreed work, claims its own and assigns each other
+  member its child. Pools that had agreed no longer stall with every member
+  refused and waiting. Prompt bytes: none change (tool results and mail).
+
 - The tests preset (`--allow tests`, the "builds and tests" answer, `accept-edits`) covers a
   Python virtual environment of the workspace (`Bash(python:venv)`): creating
   one, installing into it with its own pip from the package index, and running
