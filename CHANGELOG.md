@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A `task revise` whose only change is a wider scope of a task under way (the
+  globs it had, and more) widens the scope in place, as `task update` with
+  files does: nobody is stopped, children keep their owners and a pool stays
+  executing. A pool parent's scope can grow while its children run (their
+  scopes no longer count as conflicts with it). Prompt bytes: none change.
+
 - Read-only roles (reviewer, scout, architect) run the project's tests the way
   the writers do: `python -m pytest`, `python -m unittest`, `node --test`, and
   the tests and checks run with a virtual environment of the workspace (the new rule
