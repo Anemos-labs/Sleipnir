@@ -13,7 +13,13 @@ they do not indicate whether a change has been released.
   judged as that directory. Before, any `()` in the line made every variable
   unknown, and bypass mode asked about the delete as high risk. A real
   function definition, and arithmetic inside double quotes (`"$((n=1))"`),
-  still stop the tracking. Prompt bytes: none change.
+  still stop the tracking. Two command substitutions are known values:
+  `$(pwd)` is the directory the command runs in, and
+  `$(git rev-parse --show-toplevel)` the nearest directory at or above it
+  that holds a `.git`, so `cd "$(git rev-parse --show-toplevel)" && go test
+  ./...` is judged in that directory and its paths against the rules; any
+  other substitution, or a line that names a `GIT_` variable, stays unknown.
+  Prompt bytes: none change.
 
 - The goal judge's evidence search lists the newest records first, an
   evidence request it wraps in a code fence or in words is read, and an answer

@@ -2,6 +2,8 @@ package perm
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -107,6 +109,36 @@ func TestBlankQuoted(t *testing.T) {
 	} {
 		if got := blankQuoted(c.in, c.double); got != c.want {
 			t.Errorf("blankQuoted(%q, %v) = %q, want %q", c.in, c.double, got, c.want)
+		}
+	}
+}
+
+// Two command substitutions have a value fixed by where the command runs: $(pwd) is the directory and $(git rev-parse --show-toplevel)
+// the nearest one at or above it that holds a .git. A line that starts with cd "$(git rev-parse --show-toplevel)" (a common first step of
+// an agent's test run) is judged in that directory, so its relative paths are known, and the deny rules still see them. Any other
+// substitution, or a line that names a GIT_ variable (git may then answer for another tree), stays unknown and asks in bypass mode.
+func TestTheRepositoryRootAndTheWorkingDirectoryAreKnownSubstitutions(t *testing.T) {
+	f := newFixture(t)
+	if err := os.MkdirAll(filepath.Join(f.root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(f.root, "internal", "web"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: t.TempDir(), Deny: []string{"Read(./secrets/**)"}})
+	for _, c := range []struct{ cmd, want string }{
+		{`cd "$(git rev-parse --show-toplevel)" && go vet ./internal/web/... && go test ./internal/web/... -v 2>&1 | tail -40`, "allow"},
+		{`cat "$(git rev-parse --show-toplevel)/internal/web/x.go"`, "allow"},
+		{`cd "$(pwd)" && cat web/x.go`, "allow"},
+		{`cd "$(git rev-parse --show-toplevel)" && cat secrets/k`, "deny"},
+		{`cat "$(git rev-parse --show-toplevel)/secrets/k"`, "deny"},
+		{`cd "$(git rev-parse --git-dir)" && cat x`, "ask"},
+		{`GIT_DIR=/elsewhere; cd "$(git rev-parse --show-toplevel)" && cat x`, "ask"},
+		{`cd "$(git rev-parse --show-toplevel)/$X" && cat x`, "ask"},
+	} {
+		d := e.Check(context.Background(), Request{Agent: "be-6", Tool: "Bash", Command: f.expand(c.cmd), Cwd: filepath.Join(f.root, "internal")})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
 		}
 	}
 }

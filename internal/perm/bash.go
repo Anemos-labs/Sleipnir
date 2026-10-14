@@ -77,6 +77,8 @@ type evaluator struct {
 	// off are the variables the engine otherwise knows ($HOME, $TMPDIR, $PWD, the special parameters) that the line assigns or
 	// otherwise names (expansion.off).
 	off map[string]bool
+	// gitEnv: the line names a GIT_ variable, so $(git rev-parse --show-toplevel) is not taken as the repository around the directory.
+	gitEnv bool
 	// index is set when a unit of the request installs packages into a virtual environment of the workspace (venv.go): the one
 	// routine question that reaches beyond this machine, to the package index.
 	index bool
@@ -183,6 +185,7 @@ func (ev *evaluator) bash(cmd string) verdict {
 		return false
 	}
 	ev.off = harnessOff(cmd, an.Commands)
+	ev.gitEnv = strings.Contains(cmd, "GIT_")
 	ev.cleanEnv = false
 	for _, c := range an.Commands {
 		ev.cleanEnv = ev.cleanEnv || slices.Contains(c.Wrappers, "env")
@@ -329,7 +332,7 @@ func (ev *evaluator) noteAssignments(s shellparse.Simple, cw *cwdSet, conflicted
 		var w string
 		dyn := literal || len(cw.dirs) != 1 || cw.unknown
 		if !dyn {
-			w, _, dyn = ev.rs.expandWordVars(val, cw.dirs[0], expansion{vars: before, off: ev.off})
+			w, _, dyn = ev.rs.expandWordVars(val, cw.dirs[0], expansion{vars: before, off: ev.off, gitEnv: ev.gitEnv})
 		}
 		prev, had := ev.vars[name]
 		switch {
