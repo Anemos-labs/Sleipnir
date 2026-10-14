@@ -6,6 +6,7 @@ import (
 	"maps"
 	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -74,9 +75,13 @@ type evaluator struct {
 	// exported those of them an export (or declare -x) statement gave to the commands the line starts.
 	vars     map[string]string
 	exported map[string]bool
+	// fallible are the known variables whose value came from a command's output (expansion.fallible)
+	fallible map[string]bool
 	// off are the variables the engine otherwise knows ($HOME, $TMPDIR, $PWD, the special parameters) that the line assigns or
 	// otherwise names (expansion.off).
 	off map[string]bool
+	// gitEnv: the line names a GIT_ variable, so $(git rev-parse --show-toplevel) is not taken as the repository around the directory.
+	gitEnv bool
 	// index is set when a unit of the request installs packages into a virtual environment of the workspace (venv.go): the one
 	// routine question that reaches beyond this machine, to the package index.
 	index bool
@@ -183,6 +188,7 @@ func (ev *evaluator) bash(cmd string) verdict {
 		return false
 	}
 	ev.off = harnessOff(cmd, an.Commands)
+	ev.gitEnv = strings.Contains(cmd, "GIT_")
 	ev.cleanEnv = false
 	for _, c := range an.Commands {
 		ev.cleanEnv = ev.cleanEnv || slices.Contains(c.Wrappers, "env")
@@ -205,7 +211,7 @@ func (ev *evaluator) bash(cmd string) verdict {
 		if track {
 			if reassigns(s) {
 				ev.vars, ev.exported, track = nil, nil, false // a builtin may set any variable from here on
-			} else if unconditional(cmd, s) {
+			} else if unconditional(s) {
 				ev.noteAssignments(s, cw, conflicted)
 			} else {
 				for _, env := range assignedBy(s) { // an assignment that may not run leaves the name unknown
@@ -286,6 +292,7 @@ func stableVars(at, end map[string]string) map[string]string {
 func (ev *evaluator) forget(name string, conflicted map[string]bool) {
 	delete(ev.vars, name)
 	delete(ev.exported, name)
+	delete(ev.fallible, name)
 	conflicted[name] = true
 }
 
@@ -329,7 +336,7 @@ func (ev *evaluator) noteAssignments(s shellparse.Simple, cw *cwdSet, conflicted
 		var w string
 		dyn := literal || len(cw.dirs) != 1 || cw.unknown
 		if !dyn {
-			w, _, dyn = ev.rs.expandWordVars(val, cw.dirs[0], expansion{vars: before, off: ev.off})
+			w, _, dyn = ev.rs.expandWordVars(val, cw.dirs[0], expansion{vars: before, off: ev.off, gitEnv: ev.gitEnv})
 		}
 		prev, had := ev.vars[name]
 		switch {
@@ -342,6 +349,15 @@ func (ev *evaluator) noteAssignments(s shellparse.Simple, cw *cwdSet, conflicted
 			ev.vars[name] = w
 			if exported {
 				ev.markExported(name)
+			}
+			// a value from a command's output is empty when the command fails
+			if e, _, edyn := ev.rs.expandWordVars(val, cw.dirs[0], expansion{vars: before, off: ev.off, gitEnv: ev.gitEnv, fallible: ev.fallible, emptied: true}); !edyn && e != w {
+				if ev.fallible == nil {
+					ev.fallible = map[string]bool{}
+				}
+				ev.fallible[name] = true
+			} else {
+				delete(ev.fallible, name)
 			}
 		}
 		if s.Program == "" {
@@ -435,11 +451,13 @@ func validName(s string) bool {
 	return true
 }
 
-// varsTrackable reports whether a command line is simple enough for noteAssignments: no function definitions, whose bodies may set
-// variables when they are called; no command run in the background, whose assignments are its own; no arithmetic, which assigns
-// ($((n=5))); and no trap action that assigns, since it may run between any two commands.
+// varsTrackable reports whether a command line is simple enough for noteAssignments, from what the parser found: the line parsed (a
+// function definition, whose body may set variables when it is called, and an arithmetic command leave it unparsed); it has no
+// arithmetic expansion and no other place bash evaluates arithmetic (mayAssignArithmetically), where an expression may assign
+// ($((n=5))); and no trap action assigns, since it may run between any two commands. Quoted
+// text and here-document bodies are the parser's business: printf 'func main() {...}' > main.go defines nothing.
 func varsTrackable(cmd string, an shellparse.Analysis) bool {
-	if an.Background || strings.Contains(cmd, "()") || strings.Contains(cmd, "function ") || strings.Contains(cmd, "((") {
+	if !an.Parsed || an.HasArithmetic || mayAssignArithmetically(cmd) {
 		return false
 	}
 	for _, s := range an.Commands {
@@ -448,6 +466,27 @@ func varsTrackable(cmd string, an shellparse.Analysis) bool {
 		}
 	}
 	return true
+}
+
+// arithmeticContexts are the other places bash evaluates arithmetic, where an expression may assign (d=5): the operands of [[ ... -eq
+// ... ]] and its kin, an array subscript in an assignment or an expansion (a[d=5]=1, ${a[d=5]}), a substring offset (${x:d=5}), and
+// the legacy $[...]. Matched on the raw text, so a quoted look-alike also counts: that only makes the line's variables unknown.
+var arithmeticContexts = []*regexp.Regexp{
+	regexp.MustCompile(`\$\[`),
+	regexp.MustCompile(`\[\[[^\]]*\s-(eq|ne|lt|le|gt|ge)\s`),
+	regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*\[[^\]]*\]\+?=`),
+	regexp.MustCompile(`\$\{[^}]*\[`),
+	regexp.MustCompile(`\$\{[^}:]*:[^-=?+}]`),
+}
+
+// mayAssignArithmetically reports whether cmd holds one of the arithmeticContexts.
+func mayAssignArithmetically(cmd string) bool {
+	for _, re := range arithmeticContexts {
+		if re.MatchString(cmd) {
+			return true
+		}
+	}
+	return false
 }
 
 // reassignBuiltins are the commands that may set or unset a shell variable without an assignment statement (printf with -v:
@@ -476,68 +515,11 @@ func printfAssigns(args []string) bool {
 	return len(args) > 0 && (strings.HasPrefix(args[0], "-v") || strings.ContainsAny(args[0], "$`*?["))
 }
 
-// withoutClosedSubstitutions blanks the command substitutions of s that close in it ($(...), `...`), quoted or not, so that what is
-// left shows only the grouping, conditions and pipes around the end of s. A substitution that is still open at the end stays: what
-// follows it is inside it.
-func withoutClosedSubstitutions(s string) string {
-	b := []byte(s)
-	for i := 0; i < len(b); i++ {
-		switch {
-		case b[i] == '$' && i+1 < len(b) && b[i+1] == '(':
-			depth, j := 0, i+1
-			for ; j < len(b); j++ {
-				if b[j] == '(' {
-					depth++
-				} else if b[j] == ')' {
-					if depth--; depth == 0 {
-						break
-					}
-				}
-			}
-			if j >= len(b) {
-				return string(b) // open to the end
-			}
-			for k := i; k <= j; k++ {
-				b[k] = ' '
-			}
-			i = j
-		case b[i] == '`':
-			j := strings.IndexByte(string(b[i+1:]), '`')
-			if j < 0 {
-				return string(b)
-			}
-			for k := i; k <= i+1+j; k++ {
-				b[k] = ' '
-			}
-			i += 1 + j
-		}
-	}
-	return string(b)
-}
-
-// unconditional reports whether the statement s certainly runs when the line runs: its text comes before any && || | ( { or a
-// compound command's keyword, so it is not on the right of a condition, in a pipeline, a subshell, a group, a loop or a branch.
-func unconditional(cmd string, s shellparse.Simple) bool {
-	if s.Nested || s.Piped || s.Raw == "" || strings.Count(cmd, s.Raw) != 1 {
-		return false
-	}
-	at := strings.Index(cmd, s.Raw)
-	if at < 0 {
-		return false
-	}
-	before := withoutClosedSubstitutions(cmd[:at]) // cd "$(pwd)"; X=1 sets X: the statement is not inside the substitution
-	for _, marker := range []string{"&&", "||", "|", "(", "{", "`"} {
-		if strings.Contains(before, marker) {
-			return false
-		}
-	}
-	for _, w := range strings.FieldsFunc(before, func(r rune) bool { return r == ' ' || r == '\t' || r == '\n' || r == ';' }) {
-		switch w {
-		case "if", "then", "else", "elif", "while", "until", "do", "case", "for", "select":
-			return false
-		}
-	}
-	return true
+// unconditional reports whether the statement s certainly runs when the line runs, in the line's own shell: the parser did not mark
+// it Cond (inside a compound command, a group or a subshell, after && or ||, in a pipeline, in the background) and it is not inside
+// a substitution.
+func unconditional(s shellparse.Simple) bool {
+	return !s.Nested && !s.Piped && !s.Cond && s.Raw != ""
 }
 
 // unquoteAssigned removes the double quotes around an assigned value ("$TMPDIR/x"); a single-quoted value is literal and has no

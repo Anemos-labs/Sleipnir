@@ -74,6 +74,32 @@ func (ev *evaluator) resolve(u pathUse, cw *cwdSet) []access {
 		return a
 	}
 	var out []access
+	// addKnown adds the accesses of a word whose value is known: relative to cwd, and each file a glob in it matches.
+	addKnown := func(w, cwd string) {
+		abs := w
+		if !filepath.IsAbs(abs) {
+			if cwd == "" {
+				out = append(out, mk("", true))
+				return
+			}
+			abs = cwd + "/" + abs
+		}
+		if hasGlob(abs) {
+			ms, ok := expandGlob(abs, &ev.globBudget)
+			switch {
+			case !ok:
+				out = append(out, mk("", true))
+			case len(ms) == 0: // the shell passes the pattern through unchanged
+				out = append(out, mk(abs, false))
+			default:
+				for _, m := range ms {
+					out = append(out, mk(m, false))
+				}
+			}
+			return
+		}
+		out = append(out, mk(abs, false))
+	}
 	one := func(cwd string) {
 		w, partial, dyn := ev.rs.expandWordVars(filepath.ToSlash(raw), cwd, ev.expansion())
 		if dyn {
@@ -100,29 +126,12 @@ func (ev *evaluator) resolve(u pathUse, cw *cwdSet) []access {
 			out = append(out, a)
 			return
 		}
-		abs := w
-		if !filepath.IsAbs(abs) {
-			if cwd == "" {
-				out = append(out, mk("", true))
-				return
-			}
-			abs = cwd + "/" + abs
+		addKnown(w, cwd)
+		// A part that comes from a command's output is empty when the command fails: the word then names something else
+		// ("$d/proc/self/environ" is /proc/self/environ, "$D"/* is /*), which is judged too. A word that is empty then names nothing.
+		if e, _, edyn := ev.rs.expandWordVars(filepath.ToSlash(raw), cwd, ev.emptiedExpansion()); !edyn && e != w && e != "" {
+			addKnown(e, cwd)
 		}
-		if hasGlob(abs) {
-			ms, ok := expandGlob(abs, &ev.globBudget)
-			switch {
-			case !ok:
-				out = append(out, mk("", true))
-			case len(ms) == 0: // the shell passes the pattern through unchanged
-				out = append(out, mk(abs, false))
-			default:
-				for _, m := range ms {
-					out = append(out, mk(m, false))
-				}
-			}
-			return
-		}
-		out = append(out, mk(abs, false))
 	}
 	if strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "~") ||
 		strings.HasPrefix(raw, "$HOME") || strings.HasPrefix(raw, "${HOME}") {

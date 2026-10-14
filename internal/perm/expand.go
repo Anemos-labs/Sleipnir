@@ -2,6 +2,7 @@ package perm
 
 import (
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -15,6 +16,12 @@ import (
 type expansion struct {
 	vars map[string]string
 	off  map[string]bool
+	// gitEnv: the line names a GIT_ variable (GIT_DIR=..., export GIT_WORK_TREE), so git may not answer for the directory it runs in.
+	gitEnv bool
+	// fallible are the variables set from a command's output ($(git rev-parse --show-toplevel)), which is empty when the command
+	// fails; emptied expands them, and such substitutions themselves, to "" (what the shell has when the command failed).
+	fallible map[string]bool
+	emptied  bool
 }
 
 // fragmentParams are the shell's special parameters whose value is a number (EPOCHREALTIME a decimal one): it never holds a "/" and is
@@ -189,6 +196,22 @@ func (rs *resolver) expandWordVars(w, cwd string, x expansion) (out, partial str
 			continue
 		}
 		j := i + 1
+		if j < len(w) && w[j] == '(' && !strings.HasPrefix(w[j:], "((") {
+			k := strings.IndexByte(w[j:], ')')
+			if k < 0 {
+				return "", b.String(), true
+			}
+			v, ok := rs.knownSubstitution(w[j+1:j+k], cwd, x)
+			if !ok {
+				return "", b.String(), true
+			}
+			if x.emptied && fallibleSubstitution(w[j+1:j+k]) {
+				v = ""
+			}
+			put(v)
+			i = j + k + 1
+			continue
+		}
 		var name string
 		switch {
 		case j < len(w) && w[j] == '{':
@@ -236,6 +259,9 @@ func (rs *resolver) expandWordVars(w, cwd string, x expansion) (out, partial str
 			if !ok {
 				return "", b.String(), true
 			}
+			if x.emptied && x.fallible[name] {
+				v = ""
+			}
 			put(v)
 		}
 		i = j
@@ -244,6 +270,63 @@ func (rs *resolver) expandWordVars(w, cwd string, x expansion) (out, partial str
 		return "", "", true
 	}
 	return b.String(), "", false
+}
+
+// knownSubstitution is the output of a command substitution whose value is fixed by where the command runs: $(pwd) is the directory,
+// $(git rev-parse --show-toplevel) the nearest directory at or above it that holds a .git (a repository's or a worktree's). Any
+// other command, a directory that is not known, or a line that points git elsewhere (GIT_DIR, GIT_WORK_TREE) gives ok false.
+func (rs *resolver) knownSubstitution(cmd, cwd string, x expansion) (string, bool) {
+	if cwd == "" || x.off["PWD"] {
+		return "", false
+	}
+	switch strings.Join(strings.Fields(cmd), " ") {
+	case "pwd", "pwd -L":
+		return cwd, true
+	case "git rev-parse --show-toplevel":
+		if x.gitEnv {
+			return "", false
+		}
+		for d := cwd; ; d = filepath.Dir(d) {
+			if _, err := os.Lstat(filepath.Join(d, ".git")); err == nil {
+				// git stops at the first .git it meets; one that is not a repository (no HEAD) or a worktree pointer that leads
+				// nowhere makes it fail, and the substitution is then empty: not known
+				return d, gitMarker(filepath.Join(d, ".git"))
+			}
+			if filepath.Dir(d) == d {
+				return "", false
+			}
+		}
+	}
+	return "", false
+}
+
+// gitMarker reports whether a .git entry is one git accepts as a repository: a directory with a HEAD, or a file "gitdir: DIR" whose
+// DIR (relative to the file's directory) is a directory with a HEAD.
+func gitMarker(p string) bool {
+	fi, err := os.Stat(p)
+	if err != nil {
+		return false
+	}
+	if fi.IsDir() {
+		_, err := os.Stat(filepath.Join(p, "HEAD"))
+		return err == nil
+	}
+	b, err := os.ReadFile(p)
+	if err != nil || !strings.HasPrefix(string(b), "gitdir:") {
+		return false
+	}
+	dir := strings.TrimSpace(strings.TrimPrefix(string(b), "gitdir:"))
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(filepath.Dir(p), dir)
+	}
+	_, err = os.Stat(filepath.Join(dir, "HEAD"))
+	return err == nil
+}
+
+// fallibleSubstitution reports whether a known command substitution can come back empty: git rev-parse fails outside a repository.
+// $(pwd) prints the directory it runs in.
+func fallibleSubstitution(cmd string) bool {
+	return strings.Join(strings.Fields(cmd), " ") == "git rev-parse --show-toplevel"
 }
 
 // fragment reports whether name is a special parameter that expands to a number in the session's shell (fragmentParams, less the
@@ -270,7 +353,17 @@ func partsNameEntries(full, empty string) bool {
 }
 
 // expansion is what the evaluator knows of the variables of the line it judges.
-func (ev *evaluator) expansion() expansion { return expansion{vars: ev.vars, off: ev.off} }
+func (ev *evaluator) expansion() expansion {
+	return expansion{vars: ev.vars, off: ev.off, gitEnv: ev.gitEnv, fallible: ev.fallible}
+}
+
+// emptiedExpansion is expansion with every part that comes from a command's output empty, as the shell has it when the command
+// failed: a word judged both ways cannot reach a protected path ("$d/proc/self/environ") or the root ("$D"/*) through a failure.
+func (ev *evaluator) emptiedExpansion() expansion {
+	x := ev.expansion()
+	x.emptied = true
+	return x
+}
 
 // knownWords are a word with the parts the check knows put in (expandWordVars), once for each directory the command may run in (cw),
 // so that $PWD is each of them; whole is false when part of the word is only known as the command runs, and a word is then its known
