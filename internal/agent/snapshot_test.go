@@ -380,9 +380,11 @@ func TestCompactNowOnAFreshAgentSaysThereIsNothingToFold(t *testing.T) {
 func TestACompactorModelWritesTheSummaryWhileTheThreadFitsItsWindow(t *testing.T) {
 	var mu sync.Mutex
 	var compactorCalls int
+	var compactorModels []string
 	csrv := mock.New(mock.Config{}, func(c *mock.Call) mock.Reply {
 		mu.Lock()
 		compactorCalls++
+		compactorModels = append(compactorModels, c.Model)
 		mu.Unlock()
 		n := 0
 		for _, m := range c.Messages {
@@ -429,6 +431,14 @@ func TestACompactorModelWritesTheSummaryWhileTheThreadFitsItsWindow(t *testing.T
 	if own, theirs := run(200_000); own != 0 || theirs != 1 {
 		t.Errorf("a thread that fits the compactor's window: the agent's own model compacted %d times, the compactor %d (want 0 and 1)", own, theirs)
 	}
+	// The request names the compactor's model, not the agent's: an agent on one provider and a compactor on another sent the
+	// agent's model to the compactor's endpoint, which answered 404 for every compaction.
+	mu.Lock()
+	if len(compactorModels) != 1 || compactorModels[0] != "small-compactor" {
+		t.Errorf("the compactor's endpoint was asked for model %q, want the compactor's own (small-compactor)", compactorModels)
+	}
+	compactorModels = nil
+	mu.Unlock()
 	if own, theirs := run(1_000); own != 1 || theirs != 0 {
 		t.Errorf("a thread too big for the compactor's window: own %d, compactor %d (want 1 and 0)", own, theirs)
 	}

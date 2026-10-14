@@ -388,6 +388,11 @@ func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus s
 		Caps: a.caps(prof), Policy: a.cfg.KVPolicy, Params: a.requestParams(prov, model.ID),
 		CacheKey: a.cacheKey(&snap), Est: a.est,
 	}, instr)
+	if model.ID != "" {
+		// The fork names the agent's model, whose cache it reads; a compactor model of its own is asked by its name (its endpoint
+		// may not serve the agent's model at all, and it shares no cache with it).
+		p.Model = model.ID
+	}
 	a.mu.Lock()
 	a.forkN++
 	label := fmt.Sprintf("%s.c%d", a.cfg.ID, a.forkN)
