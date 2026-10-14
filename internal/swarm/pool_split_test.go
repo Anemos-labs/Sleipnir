@@ -69,3 +69,52 @@ func TestASecondParentTakesTheMembersAnExecutingPoolCanSpare(t *testing.T) {
 		t.Fatalf("a third parent with nobody to spare: %v", err)
 	}
 }
+
+// A member chosen to leave a pool may take work in it before the split happens (a subtask claimed or assigned meanwhile): the split
+// re-checks in the same change of the board that begins the new pool, and such a member stays where it is.
+func TestAMemberThatTookWorkMeanwhileStaysInItsPool(t *testing.T) {
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 4, Team: []string{"backend", "backend", "backend", "backend"}},
+		func(ctx context.Context, _ *rvCall) rvReply { <-ctx.Done(); return rvReply{Text: "stopped"} })
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "control plane", Files: []string{"server/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	first := r.sw.Board.Snapshot().Tasks[0]
+	members := slices.Clone(first.Pool.Members)
+	if err := r.sw.Board.poolUpdate("mgr", first.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	second, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "agent", Role: "backend", Files: []string{"agent/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	spare, release, err := r.sw.spareMembers(SpawnReq{Role: "backend", TaskID: second.ID, By: "mgr"}, r.sw.poolMembers("backend"))
+	if err != nil || len(spare) != 3 || len(release[first.ID]) != 3 {
+		t.Fatalf("the plan: %d spare, release %v, %v", len(spare), release, err)
+	}
+	// the race: the leader gives one of the chosen members a subtask before the split
+	child, err := r.sw.Board.CreateTask(first.Owner, TaskSpec{Parent: first.ID, Title: "store", Role: "backend", Files: []string{"server/store/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	busy := release[first.ID][0]
+	if _, err := r.sw.Board.assignTask(assignReq{by: first.Owner, agent: busy, id: child.ID}); err != nil {
+		t.Fatal(err)
+	}
+	ids := make([]string, len(spare))
+	for i, m := range spare {
+		ids[i] = m.id
+	}
+	released, err := r.sw.Board.splitPool("mgr", second.ID, ids, release)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap := r.sw.Board.Snapshot()
+	f, _ := snap.Task(first.ID)
+	s, _ := snap.Task(second.ID)
+	if !slices.Contains(f.Pool.Members, busy) || slices.Contains(s.Pool.Members, busy) || slices.Contains(released[first.ID], busy) {
+		t.Errorf("%s took a subtask of %s before the split: first pool %v, second pool %v, released %v", busy, first.ID, f.Pool.Members, s.Pool.Members, released)
+	}
+	if len(s.Pool.Members) != 2 || !slices.Contains(f.Pool.Members, members[0]) {
+		t.Errorf("first pool %v, second pool %v", f.Pool.Members, s.Pool.Members)
+	}
+}
