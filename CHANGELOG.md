@@ -7,6 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The file tools take a path that starts with `$TMPDIR` or `${TMPDIR}` to the
+  session's scratch directory, as the shell does; before, it named a directory
+  "$TMPDIR" under the project. Prompt bytes: the runtime context's scratch
+  sentence says so (G1, one-time cache miss).
+
 - The tests preset (`--allow tests`, the "builds and tests" answer, `accept-edits`) covers a
   Python virtual environment of the workspace (`Bash(python:venv)`): creating
   one, installing into it with its own pip from the package index, and running

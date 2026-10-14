@@ -293,7 +293,7 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 		Events: d.Events, Blobs: d.Blobs, Archive: d.Archive, Files: d.Files, Guard: guardWithAfter{s.Leases, after}, Snap: snap,
 		Handles: d.Handles, Perm: requester, Limiter: s.Gov, Gate: s.Gate,
 		Sink:    &memberSink{Sink: sink, s: s, m: m, ev: ev},
-		Workdir: workdir, Root: root, Limits: d.Limits,
+		Workdir: workdir, Root: root, Tmp: d.Tmp, Limits: d.Limits,
 		Planner: d.Planner, KVPolicy: d.KVPolicy, SessionID: s.cfg.SessionID, AffinityShards: s.cfg.AffinityShards,
 		BlockingCompaction: d.BlockingCompaction,
 		OnPromote:          s.onPromote, Est: d.Est, Now: d.Now, MaxSteps: r.MaxSteps, Priority: r.Priority,

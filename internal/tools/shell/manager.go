@@ -285,7 +285,7 @@ func (m *Manager) RuntimeContext() string {
 
 // ScratchGuidance is the runtime context's sentence about scratch files, in a session whose commands get a TMPDIR of their own
 // (Options.Tmp). The permission engine allows writes there and asks before a write elsewhere outside the workspace, naming the directory.
-const ScratchGuidance = "Scratch files go in $TMPDIR (the TMPDIR environment variable: a directory private to this session, writable by every agent); /tmp is outside the workspace and asks."
+const ScratchGuidance = "Scratch files go in $TMPDIR (the TMPDIR environment variable: a directory private to this session, writable by every agent; the file tools take $TMPDIR/name too); /tmp is outside the workspace and asks."
 
 func detectShell(override string) (shellInfo, error) {
 	candidates := []string{"bash", "sh"}
