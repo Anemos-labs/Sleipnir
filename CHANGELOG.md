@@ -17,7 +17,8 @@ they do not indicate whether a change has been released.
   that only might be a file (an unlisted program's operand, `node script.mjs
   .`) is judged as the path it spells, not as a tree an `ask` rule overlaps.
   `go run` is understood: it reads and builds its package and passes the rest
-  to the program. `$(mktemp ...)` names a new path in `$TMPDIR`. A command run
+  to the program. `$(mktemp ...)` names a new path in `$TMPDIR` (and, as a substitution that
+  can fail, is also judged empty: `rm -rf "$D"/*` is not allowed). A command run
   in the background (`server &`) no longer makes every variable of the line
   unknown; only what it assigns itself is. Prompt bytes: none change.
 
@@ -34,7 +35,11 @@ they do not indicate whether a change has been released.
   `$(git rev-parse --show-toplevel)` the nearest directory at or above it
   that holds a `.git`, so `cd "$(git rev-parse --show-toplevel)" && go test
   ./...` is judged in that directory and its paths against the rules; any
-  other substitution, or a line that names a `GIT_` variable, stays unknown.
+  other substitution, a `.git` that is not a repository, or a line that names
+  a `GIT_` variable, stays unknown. A substitution that can fail is empty when
+  it does, so a word built from it, directly or through a variable, is judged
+  that way as well (`"$d/proc/self/environ"` reaches the protected file, and
+  `"$D"/*` the root).
 
 - In a `bypass` or `yolo` session, a read-only role (architect, reviewer,
   scout) reads a file outside the workspace as the session does, without a

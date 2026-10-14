@@ -18,6 +18,10 @@ type expansion struct {
 	off  map[string]bool
 	// gitEnv: the line names a GIT_ variable (GIT_DIR=..., export GIT_WORK_TREE), so git may not answer for the directory it runs in.
 	gitEnv bool
+	// fallible are the variables set from a command's output ($(git rev-parse --show-toplevel)), which is empty when the command
+	// fails; emptied expands them, and such substitutions themselves, to "" (what the shell has when the command failed).
+	fallible map[string]bool
+	emptied  bool
 }
 
 // fragmentParams are the shell's special parameters whose value is a number (EPOCHREALTIME a decimal one): it never holds a "/" and is
@@ -201,6 +205,9 @@ func (rs *resolver) expandWordVars(w, cwd string, x expansion) (out, partial str
 			if !ok {
 				return "", b.String(), true
 			}
+			if x.emptied && fallibleSubstitution(w[j+1:j+k]) {
+				v = ""
+			}
 			put(v)
 			i = j + k + 1
 			continue
@@ -252,6 +259,9 @@ func (rs *resolver) expandWordVars(w, cwd string, x expansion) (out, partial str
 			if !ok {
 				return "", b.String(), true
 			}
+			if x.emptied && x.fallible[name] {
+				v = ""
+			}
 			put(v)
 		}
 		i = j
@@ -281,7 +291,9 @@ func (rs *resolver) knownSubstitution(cmd, cwd string, x expansion) (string, boo
 		}
 		for d := cwd; ; d = filepath.Dir(d) {
 			if _, err := os.Lstat(filepath.Join(d, ".git")); err == nil {
-				return d, true
+				// git stops at the first .git it meets; one that is not a repository (no HEAD) or a worktree pointer that leads
+				// nowhere makes it fail, and the substitution is then empty: not known
+				return d, gitMarker(filepath.Join(d, ".git"))
 			}
 			if filepath.Dir(d) == d {
 				return "", false
@@ -317,6 +329,36 @@ func (rs *resolver) mktempPath(cmd string, x expansion) (string, bool) {
 	return rs.tmp + "/mktemp.XXXXXXXXXX", true
 }
 
+// gitMarker reports whether a .git entry is one git accepts as a repository: a directory with a HEAD, or a file "gitdir: DIR" whose
+// DIR (relative to the file's directory) is a directory with a HEAD.
+func gitMarker(p string) bool {
+	fi, err := os.Stat(p)
+	if err != nil {
+		return false
+	}
+	if fi.IsDir() {
+		_, err := os.Stat(filepath.Join(p, "HEAD"))
+		return err == nil
+	}
+	b, err := os.ReadFile(p)
+	if err != nil || !strings.HasPrefix(string(b), "gitdir:") {
+		return false
+	}
+	dir := strings.TrimSpace(strings.TrimPrefix(string(b), "gitdir:"))
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(filepath.Dir(p), dir)
+	}
+	_, err = os.Stat(filepath.Join(dir, "HEAD"))
+	return err == nil
+}
+
+// fallibleSubstitution reports whether a known command substitution can come back empty: git rev-parse fails outside a repository,
+// mktemp when it cannot create the file. $(pwd) prints the directory it runs in.
+func fallibleSubstitution(cmd string) bool {
+	f := strings.Fields(cmd)
+	return strings.Join(f, " ") == "git rev-parse --show-toplevel" || len(f) > 0 && f[0] == "mktemp"
+}
+
 // fragment reports whether name is a special parameter that expands to a number in the session's shell (fragmentParams, less the
 // names the harness's environment defines).
 func (rs *resolver) fragment(name string) bool {
@@ -342,7 +384,15 @@ func partsNameEntries(full, empty string) bool {
 
 // expansion is what the evaluator knows of the variables of the line it judges.
 func (ev *evaluator) expansion() expansion {
-	return expansion{vars: ev.vars, off: ev.off, gitEnv: ev.gitEnv}
+	return expansion{vars: ev.vars, off: ev.off, gitEnv: ev.gitEnv, fallible: ev.fallible}
+}
+
+// emptiedExpansion is expansion with every part that comes from a command's output empty, as the shell has it when the command
+// failed: a word judged both ways cannot reach a protected path ("$d/proc/self/environ") or the root ("$D"/*) through a failure.
+func (ev *evaluator) emptiedExpansion() expansion {
+	x := ev.expansion()
+	x.emptied = true
+	return x
 }
 
 // knownWords are a word with the parts the check knows put in (expandWordVars), once for each directory the command may run in (cw),
