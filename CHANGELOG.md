@@ -16,6 +16,15 @@ they do not indicate whether a change has been released.
   refused goal emptied the composer while the sheet said it was starting. The
   page reads the limit from `hello.limits.maxGoal`. Prompt bytes: none change.
 
+- In a `bypass` or `yolo` session, a read-only role (architect, reviewer,
+  scout) reads a file outside the workspace as the session does, without a
+  question: its plan profile keeps it from writing, not from reading the Go
+  toolchain's source or a module cache. Before, every such read asked the
+  person, even in bypass mode.
+  Writes outside the workspace stay refused; the built-in protections and the
+  deny and ask rules still apply; in any other mode the read still asks.
+  Prompt bytes: none change.
+
 - A pool member that is planning or reconciling keeps the research and checks
   of a read-only role: it may fetch and search the web (an API's
   documentation, a package registry's versions) and run the project's tests
