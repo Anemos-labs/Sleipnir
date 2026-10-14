@@ -160,7 +160,7 @@
   };
   /** Examples of allow rules, each with what it lets through; the first is the server's own preset (its summary comes with the defaults). */
   const RULE_EXAMPLES = [
-    ['tests', 'the build and test commands of most projects (never install or run)'],
+    ['tests', 'the build and test commands of most projects, and a Python virtual environment in the workspace (no other install)'],
     ['Bash(go test:*)', 'the command go test, with any arguments'],
     ['Bash(npm run build)', 'exactly that command, nothing more'],
     ['Edit(docs/**)', 'editing files under docs/'],

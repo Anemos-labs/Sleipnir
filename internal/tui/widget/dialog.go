@@ -13,6 +13,17 @@ type DialogOption struct {
 	Label string   // the text after the number: "Yes"
 	Hint  string   // dim text after the label: "(esc)"
 	Keys  []string // keys that choose this option, besides its number: "y", "esc" (see DialogKeys)
+	// Num is the number drawn before the label and typed to choose the option; 0 is its position (1, 2, ...). A question whose
+	// answers keep their numbers when one is not offered (1 yes, 3 no) gives them here.
+	Num int
+}
+
+// Number is the number of the option at position i of options: its Num, or i+1.
+func Number(options []DialogOption, i int) int {
+	if n := options[i].Num; n > 0 {
+		return n
+	}
+	return i + 1
 }
 
 // PermissionOptions are the three choices of the permission prompt: 1 yes (key y), 2 yes and do not ask again for scope (key
@@ -58,7 +69,10 @@ func Dialog(title string, body []cell.Line, options []DialogOption, selected int
 
 func dialogOptionLines(options []DialogOption, selected, width int, th Theme) []cell.Line {
 	g := th.glyphs()
-	numW := len(strconv.Itoa(len(options)))
+	numW := 1
+	for i := range options {
+		numW = max(numW, len(strconv.Itoa(Number(options, i))))
+	}
 	var out []cell.Line
 	for i, o := range options {
 		sel := i == selected
@@ -68,7 +82,7 @@ func dialogOptionLines(options []DialogOption, selected, width int, th Theme) []
 			markStyle = composeStyle(th.Accent, cell.Style{Attr: cell.Bold})
 			numStyle, labelStyle = th.Strong, th.Strong
 		}
-		num := fmt.Sprintf("%*d. ", numW, i+1)
+		num := fmt.Sprintf("%*d. ", numW, Number(options, i))
 		prefixW := cell.StringWidth(marker) + len(num)
 		text := cell.Styled(labelStyle, strings.TrimSpace(safeOneLine(o.Label)))
 		if hint := strings.TrimSpace(safeOneLine(o.Hint)); hint != "" {
@@ -93,8 +107,8 @@ func dialogOptionLines(options []DialogOption, selected, width int, th Theme) []
 
 // DialogKeys maps a pressed key to the option it chooses. key is the key's name as the input layer reports it: a character
 // ("y", "1", "N") or a name ("esc", "enter"); names compare case-insensitively, and "escape" is "esc", "return" is "enter".
-// An option is chosen by any of its Keys; failing that, a digit 1..9 chooses the option in that position (so the numbers
-// drawn by Dialog always work, unless a key list claims the digit for another option). When several options list the same
+// An option is chosen by any of its Keys; failing that, a digit 1..9 chooses the option of that number (Number: its Num, or its
+// position), so the numbers drawn by Dialog always work, unless a key list claims the digit for another option. When several options list the same
 // key the first wins. ok is false for an empty or unknown key, a digit with no such option, or no options; index is then 0.
 // Enter and the arrow keys are not handled here: they act on the selected option, which the caller tracks.
 func DialogKeys(key string, options []DialogOption) (index int, ok bool) {
@@ -110,8 +124,10 @@ func DialogKeys(key string, options []DialogOption) (index int, ok bool) {
 		}
 	}
 	if len(k) == 1 && k[0] >= '1' && k[0] <= '9' {
-		if n := int(k[0] - '0'); n <= len(options) {
-			return n - 1, true
+		for i := range options {
+			if Number(options, i) == int(k[0]-'0') {
+				return i, true
+			}
 		}
 	}
 	return 0, false

@@ -273,6 +273,11 @@ var safeSpecs = map[string]*argSpec{
 	"[":         {noPaths: true},
 	"[[":        {noPaths: true},
 	"wait":      {noPaths: true},
+	"exit":      {noPaths: true},
+	"return":    {noPaths: true},
+	"break":     {noPaths: true},
+	"continue":  {noPaths: true},
+	"trap":      {noPaths: true}, // its action is judged as the commands it runs (shellparse Simple.Deferred)
 	"tac":       {},
 	"rev":       {},
 	"nl":        {short: "bfhilnsvw"},

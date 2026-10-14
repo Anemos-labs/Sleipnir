@@ -538,8 +538,10 @@ func decision(t *testing.T, ch <-chan perm.Decision) perm.Decision {
 	}
 }
 
+// bashRequest is a question about a command, with the rule a "don't ask again" would remember, as the engine sends it.
 func bashRequest(cmd string) perm.Request {
-	return perm.Request{Agent: "main", Tool: "bash", Command: cmd, Summary: "run a command [not on the allow list]"}
+	return perm.Request{Agent: "main", Tool: "bash", Command: cmd, Summary: "run a command [not on the allow list]",
+		RememberRules: []string{"Bash(" + cmd + ")"}}
 }
 
 func TestChatAQuestionIsADialogAndEachKeyAnswersIt(t *testing.T) {
@@ -1164,11 +1166,11 @@ func TestStatusAndPermissionsAnswerBesideATurn(t *testing.T) {
 
 // What the engine says a yes would remember is what the second option says.
 func TestChatTheSecondOptionNamesWhatItRemembers(t *testing.T) {
-	opts, _ := dialogOptions(perm.Request{Tool: "bash", Command: "go test ./a", Remembers: `"go test" commands`})
+	opts, _ := dialogOptions(perm.Request{Tool: "bash", Command: "go test ./a", Remembers: `"go test" commands`, RememberRules: []string{"Bash(go test:*)"}})
 	if got := opts[1].Label; got != `Yes, and don't ask again for "go test" commands this session` {
 		t.Errorf("label %q", got)
 	}
-	opts, _ = dialogOptions(perm.Request{Tool: "edit"})
+	opts, _ = dialogOptions(perm.Request{Tool: "edit", RememberRules: []string{"Edit(/w/a.go)"}})
 	if got := opts[1].Label; got != "Yes, and don't ask again for this change this session" {
 		t.Errorf("label %q", got)
 	}

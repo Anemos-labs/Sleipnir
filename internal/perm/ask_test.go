@@ -130,7 +130,7 @@ func TestAskAnswers(t *testing.T) {
 		t.Errorf("prompter saw %+v", last)
 	}
 	// The one-line summary a human reads says why they are being asked.
-	if !strings.HasPrefix(last.Summary, q.Summary) || !strings.Contains(last.Summary, "not on the read-only allowlist") {
+	if !strings.HasPrefix(last.Summary, q.Summary) || !strings.Contains(last.Summary, "the tests preset (--allow tests) allows it") {
 		t.Errorf("prompt summary %q", last.Summary)
 	}
 }

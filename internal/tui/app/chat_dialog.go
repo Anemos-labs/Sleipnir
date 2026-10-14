@@ -35,105 +35,71 @@ type dialog struct {
 	armAt time.Time // keys answer from this moment
 	// shownAt is when the question appeared, and toolKey the call it is about (empty when the program has not seen it start): the time
 	// between them and the answer is not part of the call's duration.
-	shownAt time.Time
-	toolKey string
-	opts    []widget.DialogOption
-	kind    dialogKind
-	title   string
-	body    []cell.Line
-	width   int    // the width body was laid out for
-	current string // what the file of a write holds as the question appears: what the preview is a change of
+	shownAt   time.Time
+	toolKey   string
+	opts      []widget.DialogOption
+	decisions []perm.Decision // what each option decides
+	title     string
+	body      []cell.Line
+	width     int    // the width body was laid out for
+	current   string // what the file of a write holds as the question appears: what the preview is a change of
 }
 
 // defaultAnswerAfter is the pause before a question takes an answer from the keyboard.
 const defaultAnswerAfter = 350 * time.Millisecond
 
-// dialogKind says which of the questions it is: most are about one action, and two are the harness's own, with answers of their own.
-type dialogKind int
-
-const (
-	kindAction      dialogKind = iota // a tool call that needs a person's word
-	kindMCP                           // whether to start a project's tool server
-	kindTrust                         // whether to use the project's own instructions and settings
-	kindActionTests                   // a build or test command: a fourth answer allows them all for the session
-)
-
-// dialogOptions are the three answers of a question. The second one is what the old prompt called "always": it remembers the
-// exact request for the rest of the session (for a project's tool server, the exact entry for the project; for the project's own
-// files, the files as they are now).
+// dialogOptions are the answers of a question and the decision of each. A question about an action has perm.Answers: 1 yes; 2 yes, and
+// don't ask again (only when the engine can remember a rule that lets the request through: Request.RememberRules); 3 yes, and allow the
+// builds and tests (for a build or test command: Request.OffersTests); and no, last, with the number the web page gives it too (3, or 4
+// after the builds and tests). The harness's own two questions have three answers each: the second remembers, for a project's tool
+// server the exact entry for the project, for the project's own files the files as they are now.
 //
 // The options are chosen by their numbers, by the arrows and enter, and the last one by esc. They have no letters (the line prompt's
 // y, a and n): a letter is what a sentence is made of, and a question answered by the letters of a line that is being typed is the
 // fault this program exists to be safe against.
-func dialogOptions(r perm.Request) (opts []widget.DialogOption, kind dialogKind) {
+func dialogOptions(r perm.Request) (opts []widget.DialogOption, decisions []perm.Decision) {
+	no := widget.DialogOption{Label: perm.AnswerNoLabel, Hint: "(esc)", Keys: []string{"esc"}}
 	switch r.Tool {
 	case perm.ToolMCPServer:
-		return []widget.DialogOption{
-			{Label: "Yes, start it this time"},
-			{Label: "Yes, and remember this exact entry for this project"},
-			{Label: "No", Hint: "(esc)", Keys: []string{"esc"}},
-		}, kindMCP
+		no.Label = "No"
+		return []widget.DialogOption{{Label: "Yes, start it this time"}, {Label: "Yes, and remember this exact entry for this project"}, no},
+			[]perm.Decision{perm.DecisionYes, {Allow: true, Reason: "approved by user for this project", Remember: perm.ScopeProject}, perm.DecisionNo}
 	case perm.ToolProjectTrust:
-		return []widget.DialogOption{
-			{Label: "Yes, use them this time"},
-			{Label: "Yes, and remember them until they change"},
-			{Label: "No, leave them out", Hint: "(esc)", Keys: []string{"esc"}},
-		}, kindTrust
+		no.Label = "No, leave them out"
+		return []widget.DialogOption{{Label: "Yes, use them this time"}, {Label: "Yes, and remember them until they change"}, no},
+			[]perm.Decision{perm.DecisionYes, {Allow: true, Reason: "trusted by user until the files change", Remember: perm.ScopeProject}, perm.DecisionNo}
 	}
-	what := "this request"
-	switch strings.ToLower(r.Tool) {
-	case "bash":
-		what = "this command"
-	case "edit", "write", "apply_patch":
-		what = "this change"
+	for _, a := range perm.Answers(r) {
+		o := widget.DialogOption{Label: a.Label, Num: a.Key}
+		if !a.Decision.Allow {
+			o.Hint, o.Keys = no.Hint, no.Keys
+		}
+		opts = append(opts, o)
+		decisions = append(decisions, a.Decision)
 	}
-	if r.Remembers != "" {
-		what = r.Remembers
-	}
-	if r.OffersTests { // a worker's go test is the first of many: one yes may cover the builds and tests of every worker
-		return []widget.DialogOption{
-			{Label: "Yes"},
-			{Label: "Yes, and don't ask again for " + what + " this session"},
-			{Label: "Yes, and allow builds and tests (go, npm, cargo, pytest, make…) for this session"},
-			{Label: "No, and tell Sleipnir what to do instead", Hint: "(esc)", Keys: []string{"esc"}},
-		}, kindActionTests
-	}
-	return []widget.DialogOption{
-		{Label: "Yes"},
-		{Label: "Yes, and don't ask again for " + what + " this session"},
-		{Label: "No, and tell Sleipnir what to do instead", Hint: "(esc)", Keys: []string{"esc"}},
-	}, kindAction
+	return opts, decisions
 }
 
-// AnswerFor is what a key decides when it is pressed at the dialog of a question: the digits 1 to 3 are the dialog's options (yes; yes
-// and do not ask again for this exact request this session; no), in the order the dialog lists them, and any other key decides nothing
-// (ok is false): there is no letter that answers. It is the dialog's own table. The recording of a chat (sleipnir chat-record) answers
-// the questions of its session with it, so that what the session was told is what the dialog would have told it, and the player
-// of the recording (PlayChat) checks that the program, given the same key, decides the same.
+// AnswerFor is what a key decides when it is pressed at the dialog of a question: a digit that is the number of one of the dialog's
+// options (dialogOptions) chooses it, and any other key decides nothing (ok is false): there is no letter that answers. It is the
+// dialog's own table. The recording of a chat (sleipnir chat-record) answers the questions of its session with it, so that what the
+// session was told is what the dialog would have told it, and the player of the recording (PlayChat) checks that the program, given the
+// same key, decides the same.
 func AnswerFor(r perm.Request, k input.Key) (dec perm.Decision, ok bool) {
-	opts, kind := dialogOptions(r)
-	if !isChoice(k, len(opts)) {
+	opts, decisions := dialogOptions(r)
+	if !isChoice(k, opts) {
 		return perm.Decision{}, false
 	}
-	d := &dialog{kind: kind}
-	return d.decision(int(k.R - '1')), true
+	i, _ := widget.DialogKeys(string(k.R), opts)
+	return decisions[i], true
 }
 
 // decision is the answer option i stands for.
 func (d *dialog) decision(i int) perm.Decision {
-	switch {
-	case i == 0:
-		return perm.Decision{Allow: true, Reason: "allowed by user"}
-	case i == 1 && d.kind == kindMCP:
-		return perm.Decision{Allow: true, Reason: "approved by user for this project", Remember: perm.ScopeProject}
-	case i == 1 && d.kind == kindTrust:
-		return perm.Decision{Allow: true, Reason: "trusted by user until the files change", Remember: perm.ScopeProject}
-	case i == 1:
-		return perm.Decision{Allow: true, Reason: "allowed by user for the session", Remember: perm.ScopeSession}
-	case i == 2 && d.kind == kindActionTests:
-		return perm.Decision{Allow: true, Reason: "builds and tests allowed by user for the session", Remember: perm.ScopeSession, Preset: perm.PresetTests}
+	if i < 0 || i >= len(d.decisions) {
+		return perm.DecisionNo
 	}
-	return perm.Decision{Allow: false, Reason: "denied by user"}
+	return d.decisions[i]
 }
 
 // armed says whether the question takes an answer at now.

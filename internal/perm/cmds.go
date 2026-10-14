@@ -95,7 +95,7 @@ func analyseSafe(prog string, args []string) safeAnalysis {
 	if prog == "command" && len(args) >= 1 && (args[0] == "-v" || args[0] == "-V") {
 		return safeAnalysis{ok: true}
 	}
-	return safeAnalysis{why: "not on the read-only allowlist"}
+	return safeAnalysis{why: unlisted}
 }
 
 // gitSafeSubcommands are read-only whatever their (non-output) options are.
@@ -636,6 +636,23 @@ func sharedBranch(name string) bool {
 var formatters = map[string]string{
 	"gofmt": "", "goimports": "", "gofumpt": "", "go": "fmt", "cargo": "fmt", "rustfmt": "", "prettier": "", "black": "",
 	"isort": "", "ruff": "format", "clang-format": "", "shfmt": "", "terraform": "fmt", "dotnet": "format",
+}
+
+// checkers are the read-only checkers of the tests preset (its ":workspace" rules but the compilers, which write .pyc files): their walk
+// of a tree reads it and writes at most a cache of their own at its top, so, as for a formatter, a rule about a directory below an
+// operand does not cover them (access.format); one about the operand itself still does, and so do the built-in protections.
+var checkers = [][]string{{"ruff", "check"}, {"ruff", "format", "--check"}, {"ruff", "format", "--diff"}, {"mypy"}, {"pyright"},
+	{"tsc", "--noEmit"}, {"eslint"}}
+
+// checker reports whether prog with args is one of the checkers, without an option of workspaceRefused (--fix, --install-types, ...),
+// which makes it more than a check.
+func checker(prog string, args []string) bool {
+	for _, c := range checkers {
+		if prog == c[0] && hasPrefixArgs(args, c[1:]...) {
+			return !hasLong(args, workspaceRefused[strings.Join(c, " ")]...)
+		}
+	}
+	return false
 }
 
 // formatter reports whether prog with args is a source formatter (formatters): a program with no subcommand listed is one whatever its

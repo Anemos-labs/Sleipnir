@@ -10,6 +10,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 	"github.com/anemos-labs/sleipnir/internal/tui/input"
 	"github.com/anemos-labs/sleipnir/internal/tui/state/statetest"
+	"github.com/anemos-labs/sleipnir/internal/tui/widget"
 	"github.com/anemos-labs/sleipnir/internal/tui/widget/widgettest"
 )
 
@@ -70,11 +71,12 @@ func TestTheChatSaysItIsWaitingForTheModelWhenARequestIsUnanswered(t *testing.T)
 // The question about a build or test command has a fourth answer, which allows the builds and tests of every worker for the session: a team of
 // eight asks for go test, go build and gofmt one after the other, and one yes should cover them. Every other question keeps its three.
 func TestAQuestionAboutATestCommandOffersToAllowBuildsAndTests(t *testing.T) {
-	plain := perm.Request{Tool: "Bash", Command: "curl https://example.com"}
+	plain := perm.Request{Tool: "Bash", Command: "curl https://example.com", RememberRules: []string{"Bash(curl https://example.com)"}}
 	if opts, _ := dialogOptions(plain); len(opts) != 3 {
 		t.Errorf("an ordinary question has %d answers", len(opts))
 	}
-	test := perm.Request{Tool: "Bash", Command: "go test ./...", Remembers: `"go test" commands`, OffersTests: true}
+	test := perm.Request{Tool: "Bash", Command: "go test ./...", Remembers: `"go test" commands`, OffersTests: true,
+		RememberRules: []string{"Bash(go test:*)"}}
 	opts, _ := dialogOptions(test)
 	if len(opts) != 4 || !strings.Contains(opts[2].Label, "builds and tests") {
 		t.Fatalf("a question about go test has %d answers: %+v", len(opts), opts)
@@ -88,5 +90,39 @@ func TestAQuestionAboutATestCommandOffersToAllowBuildsAndTests(t *testing.T) {
 	}
 	if _, ok := AnswerFor(plain, input.RuneKey('4', 0)); ok {
 		t.Error("an ordinary question has no fourth answer")
+	}
+}
+
+// A question whose answer cannot be remembered has no "don't ask again": the engine sent no rule, so the answer would remember nothing
+// and the next request would ask again. The other answers keep their numbers, as on the web page (1 yes, 3 no; 3 builds and tests and
+// 4 no), and the labels are the engine's (perm.Answers), which the line prompter prints as well.
+func TestAQuestionWithNothingToRememberDoesNotOfferIt(t *testing.T) {
+	once := perm.Request{Tool: "Bash", Command: `rm -f "$F"`}
+	opts, _ := dialogOptions(once)
+	if len(opts) != 2 || opts[0].Label != perm.AnswerYesLabel || opts[1].Label != perm.AnswerNoLabel || opts[1].Num != 3 {
+		t.Fatalf("answers %+v", opts)
+	}
+	if _, ok := AnswerFor(once, input.RuneKey('2', 0)); ok {
+		t.Error("2 answers a question that offers nothing to remember")
+	}
+	if no, ok := AnswerFor(once, input.RuneKey('3', 0)); !ok || no.Allow || no.Remember != perm.ScopeOnce {
+		t.Errorf("3: %+v %v", no, ok)
+	}
+	tests := perm.Request{Tool: "Bash", Command: `go test ./... > "$OUT"`, OffersTests: true}
+	opts, _ = dialogOptions(tests)
+	if len(opts) != 3 || opts[1].Label != perm.AnswerTestsLabel || opts[1].Num != 3 || opts[2].Num != 4 {
+		t.Fatalf("answers %+v", opts)
+	}
+	if d, ok := AnswerFor(tests, input.RuneKey('3', 0)); !ok || d.Preset != perm.PresetTests {
+		t.Errorf("3: %+v %v", d, ok)
+	}
+	if d, ok := AnswerFor(tests, input.RuneKey('4', 0)); !ok || d.Allow {
+		t.Errorf("4: %+v %v", d, ok)
+	}
+	lines := widgettest.Flatten(widget.Dialog("Bash", nil, opts, 0, 80, widget.MonoTheme()))
+	for _, want := range []string{"1. Yes", "3. Yes, and allow builds and tests", "4. No, and tell Sleipnir what to do instead"} {
+		if !strings.Contains(lines, want) {
+			t.Errorf("the dialog does not draw %q:\n%s", want, lines)
+		}
 	}
 }

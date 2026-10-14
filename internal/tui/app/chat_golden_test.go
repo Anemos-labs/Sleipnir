@@ -95,7 +95,8 @@ func liveFixtures(t testing.TB, k *chatLook, cols, rows int) map[string]liveView
 	ask := base
 	ask.ed = chatEditor(t, k, cols, "", goldenCommands)
 	ask.status = statusView{kind: statusAsking, elapsed: 20 * time.Second}
-	req := perm.Request{Agent: "main", Tool: "bash", Command: "go test -race ./...", Summary: "run a command [not on the allow list]"}
+	req := perm.Request{Agent: "main", Tool: "bash", Command: "go test -race ./...", Summary: "run a command [not on the allow list]",
+		RememberRules: []string{"Bash(go test:*)"}}
 	title, body := k.requestBody(req, nil, widget.BoxInnerWidth(cols, widget.BoxHardWrap()), "/work/proj", "")
 	opts, _ := dialogOptions(req)
 	ask.dlg = &dialogView{title: title, body: body, options: opts, armed: true}
@@ -105,7 +106,8 @@ func liveFixtures(t testing.TB, k *chatLook, cols, rows int) map[string]liveView
 
 	askEdit := ask
 	call := &toolRun{name: "edit", input: mustJSON(map[string]any{"path": "/work/proj/orders/list.go", "old_string": "offset := page * size", "new_string": "offset := (page - 1) * size"})}
-	req = perm.Request{Agent: "main", Tool: "edit", Paths: []string{"/work/proj/orders/list.go"}, Summary: "edit orders/list.go [outside the allow list]"}
+	req = perm.Request{Agent: "main", Tool: "edit", Paths: []string{"/work/proj/orders/list.go"}, Summary: "edit orders/list.go [outside the allow list]",
+		RememberRules: []string{"Edit(/work/proj/**)"}}
 	title, body = k.requestBody(req, call, widget.BoxInnerWidth(cols, widget.BoxHardWrap()), "/work/proj", "")
 	opts, _ = dialogOptions(req)
 	askEdit.dlg = &dialogView{title: title, body: body, options: opts, sel: 1, armed: false}

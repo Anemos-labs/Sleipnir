@@ -724,7 +724,7 @@ Edit(~/.sleipnir/**)   Edit(~/.claude/**)
 ```
 
 A write there **always asks, in every mode, `bypass` included** (`yolo`, which never asks, refuses it), and an unattended run refuses it
-(`approval required: rule Edit(./.sleipnir/**) requires approval`). It covers the file tools and shell redirections
-(`echo x > .sleipnir/notes.txt` asks). Answering `a` ("always this session") does not remember it: a question that comes
-from an Ask rule is asked every time. Writes under `.git/` are refused outright by a separate built-in protection (use
+(`approval required: rule Edit(./.sleipnir/**) requires approval for ".sleipnir/notes.txt"; an answer to it is not remembered`). It covers
+the file tools and shell redirections (`echo x > .sleipnir/notes.txt` asks). The question has no "don't ask again": a question that comes
+from an Ask rule is asked every time. The session's scratch directory (`$TMPDIR`, which lives in `~/.sleipnir`) is not covered. Writes under `.git/` are refused outright by a separate built-in protection (use
 `git` commands). To let an agent maintain these files, approve each write, or edit them yourself.

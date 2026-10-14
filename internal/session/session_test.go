@@ -910,6 +910,43 @@ func TestScratchFilesGoToThePrivateTmpdir(t *testing.T) {
 	}
 }
 
+// The scratch directory of a real session lies in the harness's own directory (~/.sleipnir/sessions/<id>/tmp), which a rule guards. A
+// script that names its scratch files with the shell's pid, exports their name, removes them in a trap and sends errors there asks
+// nothing in accept-edits mode; the rule is not blamed for a program the script runs.
+func TestAScratchScriptInTheStateDirectoryAsksNothing(t *testing.T) {
+	t.Setenv("SLEIPNIR_HOME", "") // the state directory is below the home that the test gives
+	script := "set -eu\nexport F=\"$TMPDIR/check-$$.json\"\ntrap 'rm -f \"$F\"' EXIT\necho '{}' > \"$F\"\ncat \"$F\"\n" +
+		"if false 2>\"$TMPDIR/err-$$\"; then echo 'unexpected' >&2; exit 1; fi\nrm -f \"$TMPDIR/err-$$\"\necho done"
+	repo := newRepo(t)
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if assistantTurns(c) == 0 {
+			return mock.Reply{ToolCalls: []mock.ToolCall{call("m", "bash", map[string]any{"command": script})}}
+		}
+		return mock.Reply{Text: "done"}
+	})
+	o := opts(t, repo, client, model)
+	o.Home = t.TempDir()
+	o.Dir = filepath.Join(o.Home, ".sleipnir", "sessions", "s1")
+	o.Mode = perm.ModeAcceptEdits
+	o.Prompter = func(ctx context.Context, r perm.Request) perm.Decision {
+		t.Errorf("asked: %+v", r)
+		return perm.Decision{}
+	}
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := s.Run(context.Background(), "go"); err != nil {
+		t.Fatal(err)
+	}
+	trial := "export TASKS_FILE=\"$TMPDIR/todo-check-$$.json\"\npython3 -m todo list\ncat \"$TASKS_FILE\""
+	c := s.Perm.Classify(perm.Request{Agent: "main", Tool: "bash", Command: trial, Cwd: repo})
+	if c.Verdict == perm.Allow || strings.Contains(c.Why, "Edit(") || !strings.Contains(c.Why, "runs the Python module todo") {
+		t.Errorf("the program of a scratch script: %+v", c)
+	}
+}
+
 // /model moves the single agent to another model and keeps the conversation: the new endpoint's first request holds the
 // first goal, the old endpoint hears nothing more, and a swarm is refused.
 func TestSwitchModelKeepsTheThreadOnTheNewEndpoint(t *testing.T) {

@@ -35,6 +35,7 @@ var safeCommands = []string{
 	`for f in a b c; do echo $f; done`, `for f in main.go src/a.go; do cat "$f"; done`, `for d in src docs; do ls $d; done`, `for f in main.go src/a.go; do echo "== $f =="; head -3 "$f"; done`, `for f in src/*.go; do wc -l "$f"; done`, `for f in main.go; do cat ${f}; done`, `for i in 1 2 3; do echo $i; done`, `for f in $LIST; do echo $f; done`, `for f in src/*.go; do echo $f; done`,
 	`for f in *; do echo $f; done`, `for f in link-*; do echo $f; done`, `for f in *; do echo $f; done`, `if [ -f main.go ]; then echo yes; fi`,
 	`while false; do :; done`, `(cd src && ls)`, `{ ls; pwd; }`, `! grep -q x main.go`, `FOO=bar`, `LC_ALL=C sort main.go`,
+	`export FOO=bar`, `readonly FOO=bar`, `declare -x FOO=bar`, `export F=main.go; cat "$F"`, `exit 0`, `trap 'echo done' EXIT`,
 	`LANG=C ls`, `TZ=UTC date`, `cat "$HOME/proj/main.go"`, `cat ~/proj/main.go`, `ls ${HOME}/proj`, `ls $PWD`,
 	`cat link-in`, `ls -la .git`, `cat .git/config`, `git ls-files | head`, `time ls`, `nohup ls`, `env LC_ALL=C ls`, `env -i cat main.go`, `env -u X cat main.go`, `exec ls`,
 	`cat main.go | tr a-z A-Z | sort -u | uniq -c | head -3`, `sort main.go | uniq > /dev/null`,
@@ -67,7 +68,7 @@ func TestBashAllowlist(t *testing.T) {
 		`rm x`, `mkdir x`, `touch x`, `cp a b`, `mv a b`, `chmod +x x`, `ln -s a b`, `curl http://example.com`, `wget http://example.com`,
 		`ssh host`, `scp a host:`, `kill 1`, `xargs ls`, `bash script.sh`, `sh script.sh`, `./script.sh`, `/tmp/x/prog`, `source env.sh`, `. env.sh`,
 		`set`, `set -- a b`, `set -o allexport`, `set -a`, `set -o`, `set -f`,
-		`export FOO=bar`, `alias ls=x`, `read x`, `nc host 1`, `ping host`, `vim x`, `less x`, `tar tf x.tar`, `unzip -l x.zip`,
+		`export`, `export -p`, `export -f ls`, `declare -p`, `declare -n r=PATH`, `declare -i n=x`, `local x=1`, `unset x`, `alias ls=x`, `read x`, `nc host 1`, `ping host`, `vim x`, `less x`, `tar tf x.tar`, `unzip -l x.zip`,
 		`node -e 'x'`, `node --version x`, `python --version x`,
 		// reads outside the workspace
 		`cat /etc/hosts`, `cat link-outdir/../secret`, `cat src/../link-outdir/secret.txt`, `cat ../outside/secret.txt`, `cat link-out`, `cat link-outdir/secret.txt`, `ls /tmp`, `ls ~`, `ls ..`, `cat ~/notes.txt`,
@@ -89,6 +90,7 @@ func TestBashAllowlist(t *testing.T) {
 		`cat main.go | python -`, `cat main.go | node`, `cat main.go | sudo bash`, `cat main.go | xargs sh -c 'echo'`, `cat main.go | source /dev/stdin`,
 		`echo x | bash`, `bash <<< 'ls'`, `bash -c 'ls'`, `sh -c 'ls'`, `eval ls`, `eval "ls"`, `env FOO=1 bash -c ls`,
 		// environment hijacking
+		`export PATH=/tmp/evil`, `export LD_PRELOAD=/tmp/x.so; ls`, `declare -x GIT_DIR=x`, `readonly IFS=x`, `PWD=/tmp; cat "$PWD/x"`,
 		`MAKEFLAGS=x make`, `LD_PRELOAD=/tmp/x.so ls`, `PATH=/tmp/evil:$PATH ls`, `PATH=/tmp/evil`, `IFS=x`, `GIT_SSH_COMMAND=x git status`,
 		`PAGER=sh git log`, `HOME=/tmp git status`, `GIT_EXTERNAL_DIFF=x git diff`, `BASH_ENV=x ls`, `NODE_OPTIONS=x node --version`,
 		`CC=/tmp/x go build ./...`, `npm_config_script_shell=x npm test`, `PERL5LIB=x perl -v`, `RUSTC_WRAPPER=x cargo build`, `ftp_proxy=x curl ftp://h`,

@@ -280,7 +280,7 @@ ChatGPT sign-in token.
 | `ask` | list of rules | `[]` | yes | Actions that always ask, whatever the mode or the allow list says |
 | `deny` | list of rules | `[]` | yes | Actions that are refused, in every mode |
 | `roles` | object | none | yes | Per-role overlay: `roles.<role>` with `mode`, `allow`, `ask`, `deny`. Section 8 |
-| `manager_approves` | boolean | `true` | yes | In a team, a worker's routine permission question (one that stays inside the workspace, reaches no network but this machine, and that no `ask` rule, protection or high-risk marker covers) goes to the manager first, which answers yes, no with an instruction, or passes it to the person; a question it leaves unanswered for a minute comes to the person. `--manager-approves=false` turns it off for one session (`docs/SWARM-PROTOCOL.md`, section 2) |
+| `manager_approves` | boolean | `true` | yes | In a team, a worker's routine permission question (one that stays inside the workspace, reaches no network but this machine, or only the package index for an install into a virtual environment of the workspace, and that no `ask` rule, protection or high-risk marker covers) goes to the manager first, which answers yes, no with an instruction, or passes it to the person; a question it leaves unanswered for a minute comes to the person. `--manager-approves=false` turns it off for one session (`docs/SWARM-PROTOCOL.md`, section 2) |
 
 Rule syntax, precedence, modes and examples are in section 8. Every rule is parsed when the file loads, so a typo is
 an error with a line number, not a rule that silently never matches. A rule that is in both `allow` and `deny` is a
@@ -440,7 +440,7 @@ The engine decides every tool call before it runs. A request is settled by the f
 | Mode | Behaviour |
 |---|---|
 | `default` | Reads inside the workspace and read-only shell commands are allowed; everything else asks |
-| `accept-edits` | Also writes inside the workspace (file tools, redirections, `mkdir`, `touch`, `cp`, `mv`, `rm`, `rmdir`, `tee` on workspace paths) and the commands that build and test a project (`go test`, `npm test`, `cargo build`, `pytest`, `make test`… the `--allow tests` list); `ask` and `deny` rules still win |
+| `accept-edits` | Also writes inside the workspace (file tools, redirections, `mkdir`, `touch`, `cp`, `mv`, `rm`, `rmdir`, `tee` on workspace paths) and the commands that build, check and test a project, a Python virtual environment of the workspace included (`go test`, `npm test`, `cargo build`, `pytest`, `make test`, `.venv/bin/pip install`… the `--allow tests` list); `ask` and `deny` rules still win |
 | `plan` | Read-only. Writes, network access and commands that are not provably read-only are refused with a message that says to present a plan. An `allow` rule still carves an exception (say `Edit(docs/plan.md)`) |
 | `bypass` | Full control without asking, except about the very dangerous: the high-risk class (`sudo`, a recursive delete of the workspace, home or `/`, or of a path only known when the command runs such as `rm -rf "$DIR"`, a forced push to a shared branch, disk tools, shutdown) still asks. Hard denies, `deny` rules, guarded paths without an `allow` rule and `ask` rules still apply |
 | `yolo` | Never asks anything, for runs with nobody there: what `bypass` allows, and the high-risk class too. Hard denies, `deny` rules and guarded paths still refuse, and so does a rule that would have asked (an `ask` rule): refusing is not a question. For sandboxes. `--continue` never brings `bypass` or `yolo` back |
@@ -456,11 +456,23 @@ run what it needs with `--allow` (repeatable, for this run only: `--allow 'Bash(
 test commands of most projects), `permissions.allow` in the configuration, or `--mode`. `tests` stands for `go test|build|vet|fmt`,
 `gofmt`, `cargo test|build|check|clippy|fmt`, `npm test` and `npm run test|build|lint|format`, `pnpm test`, `yarn test`, `node --test`,
 `node --check`, `pytest`, `python -m pytest|unittest`, `mvn test`, `gradle test`, `dotnet test|build`, `make test|check|build|lint|fmt|vet`,
-`ctest`, and `curl` or `wget` to this machine only (`Bash(curl:loopback)`, `Bash(wget:loopback)`, below): they run the project's own
-code, as running its tests is meant to, and never install a package, download, or hand an interpreter a program of its own. In a terminal the question is
-`allow? [y]es once / [a]lways this session / [n]o` (`run`, and the line chat); `a` adds a rule for the rest of the session, the exact command or, for the runner commands of `docs/SECURITY.md` (`go test`, `npm run`, `make`...), its prefix (it is not
-written to any file), and anything but `y`/`a` refuses. The chat program asks with a box instead, answered by `1` (yes),
-`2` (yes, and do not ask again for this exact request: the same rule as `a`) or `3` (no; `esc` and Ctrl-D refuse too).
+`ctest`; `python -m py_compile|compileall`, `ruff check`, `ruff format --check|--diff`, `mypy`, `pyright`, `tsc --noEmit` and `eslint` on
+files of the workspace (`Bash(...:workspace)`, below), without the options that make them rewrite or install (`--fix`, `mypy
+--install-types`, `pyright --createstub`, `tsc --build`); a Python virtual environment of the workspace (`Bash(python:venv)`, below:
+creating it, installing into it from the package index, running the tests with it); and `curl` or `wget` to this machine only
+(`Bash(curl:loopback)`, `Bash(wget:loopback)`, below). They run the project's own code, as running its tests is meant to. The one install
+they allow is into a virtual environment of the workspace; no other package install or download, and no interpreter given a program of its
+own.
+
+In a terminal (`run`, and the line chat) the question lists its answers with the numbers that the chat's dialog and the web page give them:
+`1` yes; `2` yes, and don't ask again for the rest of the session, which adds the exact command or, for the runner commands of
+`docs/SECURITY.md` (`go test`, `npm run`, `make`...), its prefix (it is not written to any file); `3` yes, and allow the builds and tests of
+the `tests` set for the session, offered for a command of that set; and no, last (`3`, or `4` after the builds and tests). Answer `2` is
+offered only when the rule it adds would let the same request through: not for a question an `ask` rule puts, a command with a variable in
+it (the rule would allow whatever the variable holds), a program that reads its code from its standard input (`python3 - <<'PY'`), a path
+only known when the command runs, or a role whose stricter mode leaves out the session's rules. The line prompter also takes the letters
+`y`, `a`, `t` and `n`; any other text is a no, with that text as what to do instead. The chat program asks with a box of the same answers,
+chosen by their numbers (`esc` and Ctrl-D refuse too).
 
 ### Rules
 
@@ -471,6 +483,8 @@ A rule is `Tool` or `Tool(pattern)` in `allow`, `ask` or `deny`.
 | `Bash(go test:*)` | a shell command whose words start with `go test` (`:*` or a trailing ` *` allows any further arguments) |
 | `Bash(make lint)` | exactly `make lint` (`make lint extra` is not covered) |
 | `Bash(curl:loopback)` | an HTTP request of `curl` (or `wget`, as `Bash(wget:loopback)`) to this machine only: every URL's host is `127.0.0.1`, `localhost` or `[::1]`, output goes to standard output or `/dev/null`, no option reads a file (`-d @f`, `-T`, `-K`), and no redirect is followed (`curl -L` is not covered; `wget` needs `--max-redirect=0` and `-O -`). It is the smoke test of a server the project's build started |
+| `Bash(python:venv)` | a Python virtual environment of the workspace: creating one (`python -m venv DIR`, `virtualenv DIR`, `uv venv [DIR]`) in a directory of the workspace that is not a workspace root, installing into one with its own pip from the package index (`DIR/bin/pip install`, `DIR/bin/python -m pip install`, `uv pip install --python DIR/bin/python`), and running the tests with one (`DIR/bin/python -m pytest\|unittest\|py_compile\|compileall`, `DIR/bin/pytest`). The environment must have a `pyvenv.cfg`, keep its entries and its `site-packages` inside itself, and have scripts that run its own python; an install takes requirement names with versions, `-r`/`-c` files and `-e`/local paths of the workspace, `-U`, `-q`, `--pre`, `--no-input`, `--no-cache-dir` and `--disable-pip-version-check`, and nothing that changes where packages come from or go (an index, `--find-links`, `--trusted-host`, `--target`, `--prefix`, `--user`, a URL or a repository). See `docs/SECURITY.md` |
+| `Bash(mypy:workspace)` | the prefix with any arguments (as `Bash(mypy:*)`), when every file the command names, operands and option values alike, resolves inside the workspace |
 | `Bash` or `Bash(*)` | every shell command |
 | `Read(./.env)`, `Read(~/.ssh/**)` | reads of those paths **by any tool**, the shell included (`cat .env` counts) |
 | `Edit(docs/**)` | writes to matching paths, by the edit tools or by shell redirections |
@@ -516,9 +530,10 @@ A refusal reaches the model as a tool error naming the cause. These are real mes
 unattended, in `default` mode:
 
 ```text
-bash  make lint extra   -> permission denied: approval required: default mode: make lint extra: not on the read-only allowlist
+bash  ./bin/app --port 8080 -> permission denied: approval required: default mode: ./bin/app --port 8080: runs the program ./bin/app; it asks before running a program that is not read-only
+bash  make lint extra   -> permission denied: approval required: default mode: make lint extra: builds, checks or tests the project; accept-edits mode or the tests preset (--allow tests) allows it
 bash  curl https://...  -> permission denied: denied by rule Bash(curl:*)
-bash  git push origin   -> permission denied: approval required: rule Bash(git push:*) requires approval
+bash  git push origin   -> permission denied: approval required: rule Bash(git push:*) requires approval; an answer to it is not remembered
 write secrets/x.txt     -> permission denied (write secrets/x.txt): denied by rule Edit(./secrets/**)
 read  .env              -> permission denied (read .env): built-in protection: ... is an .env file and may hold secrets
 bash  cat ~/.ssh/id_rsa -> permission denied: built-in protection: ~/.ssh holds credentials: ~/.ssh/id_rsa is protected

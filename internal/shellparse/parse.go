@@ -375,7 +375,21 @@ func (p *parser) scripts(s *Simple) {
 	}
 	l := newLexer(script, p.st, p.depth+1)
 	toks, _ := l.lexUntil(false)
-	p.pending = append(p.pending, parseTokens(p.st, script, toks, p.depth+1, false, true)...)
+	inner := parseTokens(p.st, script, toks, p.depth+1, false, true)
+	switch base := stdBase(prog); {
+	case base == "trap":
+		mark(inner, func(c *Simple) { c.Deferred = true })
+	case base != "eval":
+		mark(inner, func(c *Simple) { c.Child = true }) // sh -c, su -c: a new shell
+	}
+	p.pending = append(p.pending, inner...)
+}
+
+// mark applies f to every command of cmds.
+func mark(cmds []Simple, f func(*Simple)) {
+	for i := range cmds {
+		f(&cmds[i])
+	}
 }
 
 // stdinScripts parses heredocs and here-strings that feed a shell reading its
@@ -395,7 +409,9 @@ func (p *parser) stdinScripts(s *Simple, bodies []string) {
 		}
 		l := newLexer(b, p.st, p.depth+1)
 		toks, _ := l.lexUntil(false)
-		p.pending = append(p.pending, parseTokens(p.st, b, toks, p.depth+1, false, true)...)
+		inner := parseTokens(p.st, b, toks, p.depth+1, false, true)
+		mark(inner, func(c *Simple) { c.Child = true })
+		p.pending = append(p.pending, inner...)
 	}
 }
 

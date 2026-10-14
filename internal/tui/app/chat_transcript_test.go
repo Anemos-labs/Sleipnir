@@ -136,8 +136,8 @@ func TestTheWriterRefusesWhatTheReaderWould(t *testing.T) {
 }
 
 func TestAnswerForIsTheDialogsOwnTable(t *testing.T) {
-	bash := perm.Request{Agent: "main", Tool: "bash", Command: "go test ./...", Summary: "run a command"}
-	edit := perm.Request{Agent: "main", Tool: "edit", Paths: []string{"/w/a.go"}, Summary: "edit a.go"}
+	bash := perm.Request{Agent: "main", Tool: "bash", Command: "go test ./...", Summary: "run a command", RememberRules: []string{"Bash(go test:*)"}}
+	edit := perm.Request{Agent: "main", Tool: "edit", Paths: []string{"/w/a.go"}, Summary: "edit a.go", RememberRules: []string{"Edit(/w/**)"}}
 	server := perm.Request{Agent: "main", Tool: "mcp-server", Summary: "start a server"}
 	for _, r := range []perm.Request{bash, edit} {
 		for key, want := range map[rune]perm.Decision{

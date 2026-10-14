@@ -197,7 +197,9 @@ the live region, are redrawn in place: a status line (what the agent is doing, f
 input box, and a footer with the permission mode, the keys of the pages (`ctrl+t` stats, `ctrl+g` cockpit for a team) and the model and
 the session (`docs/UX.md` describes each). The page carries no statistic: cost, cache hit and what the cache saved are on the stats page. From a pipe or a file, with `TERM=dumb`, or with
 `--plain`, it is the line chat: no colour, no redrawing, a prompt `› `, a goal per line until the input ends, and an action that
-needs approval is refused (with `--plain` on a terminal it asks `allow? [y]es once / [a]lways this session / [n]o`). `--resume
+needs approval is refused (with `--plain` on a terminal it asks, listing the answers with the numbers the chat's dialog gives them: `1`
+yes, `2` don't ask again when that can be remembered, `3` the builds and tests when offered, no last; the letters `y`, `a`, `t` and `n`
+work too, and any other text is a no with what to do instead). `--resume
 ID|latest` and `--continue` continue an earlier session, a team's included (`docs/EXTENDING.md` section 6). Slash commands are listed below.
 
 A question rings the terminal's bell once as it appears (`SLEIPNIR_BELL=0` silences it), so that a person in another window sees it in the tab.
@@ -213,8 +215,8 @@ state directory. `/` opens the palette of commands, `@` completes a path, `shift
 that was shown collapsed (a tool's long output is its first and last lines).
 
 **Approvals.** A tool that needs approval puts a box in the live region: the command, or the change as a diff, and why it asks.
-`1` is yes, `2` is yes and do not ask again for this exact request for the rest of the session (a test or build command such as `go test ./a`: the command, not the arguments; an edit inside the project: edits inside it; the box says which), `3` is no and tell Sleipnir what
-to do instead; the arrows and Tab with Enter choose too, and `esc` is no. Letters never answer. A question takes keys only after
+`1` is yes, `2` is yes and do not ask again for this exact request for the rest of the session (a test or build command such as `go test ./a`: the command, not the arguments; an edit inside the project: edits inside it; the box says which), offered only when the rule it adds would let the same request through, `3` is yes and allow the builds and tests of most projects for the session, when the question is about one of them, and the last, `3` or `4`, is no and tell Sleipnir what
+to do instead (the numbers are the web page's: without the second answer, no is still `3`); the arrows and Tab with Enter choose too, and `esc` is no. Letters never answer. A question takes keys only after
 the keyboard has been quiet for a moment since it appeared, and says so ("your typing goes to the prompt until you pause"), so a
 sentence that is half typed when the question appears, or a line typed ahead, cannot approve anything. Ctrl-D at a question is no
 answer: a refusal that says so. Questions that arrive together (agents of a swarm) are asked one at a time, each after the same
@@ -248,7 +250,7 @@ and `/queue` answers the same way.
 ```text
 Usage of chat:
   -allow value
-        a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, node, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint, format and vet, go mod init and tidy, and curl or wget to this machine only (127.0.0.1, localhost, [::1]), never install or run); more in docs/CONFIGURATION.md
+        a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, node, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint, format and vet, go mod init and tidy; ruff, mypy, pyright, tsc and eslint checks of the workspace; a Python virtual environment in the workspace (create it, install into it from the package index, test with it); curl or wget to this machine only (127.0.0.1, localhost, [::1]); no other install or download); more in docs/CONFIGURATION.md
   -auto-docs
         swarm: the team's docs worker keeps README, docs/ and AGENTS.md current after every accepted task without being asked (default: config swarm.auto_docs, true; --auto-docs=false makes docs a role the manager assigns)
   -auto-fix
@@ -391,7 +393,7 @@ flags:
   -addr string
         listen address; only a loopback address is accepted (127.0.0.1:0 picks a free port) (default "127.0.0.1:6969")
   -allow value
-        a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, node, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint, format and vet, go mod init and tidy, and curl or wget to this machine only (127.0.0.1, localhost, [::1]), never install or run); more in docs/CONFIGURATION.md
+        a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, node, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint, format and vet, go mod init and tidy; ruff, mypy, pyright, tsc and eslint checks of the workspace; a Python virtual environment in the workspace (create it, install into it from the package index, test with it); curl or wget to this machine only (127.0.0.1, localhost, [::1]); no other install or download); more in docs/CONFIGURATION.md
   -ask-grace duration
         refuse the open questions when no page has had the interface open for this long (0 never refuses for that) (default 1m0s)
   -ask-timeout duration
@@ -476,7 +478,7 @@ Runs one goal through the harness. The prompt may be '-' to read stdin.
 
 flags:
   -allow value
-        a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, node, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint, format and vet, go mod init and tidy, and curl or wget to this machine only (127.0.0.1, localhost, [::1]), never install or run); more in docs/CONFIGURATION.md
+        a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, node, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint, format and vet, go mod init and tidy; ruff, mypy, pyright, tsc and eslint checks of the workspace; a Python virtual environment in the workspace (create it, install into it from the package index, test with it); curl or wget to this machine only (127.0.0.1, localhost, [::1]); no other install or download); more in docs/CONFIGURATION.md
   -ask-timeout duration
         refuse a question to the person that nobody answers within this time, and tell the worker (default: wait for the person); for a run that is left alone
   -auto-docs
