@@ -202,7 +202,9 @@ func (s *Swarm) wakePool(id, message string) {
 	}
 }
 
-// poolPermission makes planning and reconciliation read-only for pool members.
+// poolPermission makes planning and reconciliation read-only for pool members. A refusal says why in the pool's terms (poolReadOnly):
+// the plan-mode engine's own words ("present a plan instead of acting", "no one to ask") would send a member that is waiting for its
+// subtask round in circles.
 func (s *Swarm) poolPermission(ctx context.Context, id string, inner perm.Requester, req perm.Request) (perm.Decision, bool) {
 	for _, t := range s.Board.Snapshot().Tasks {
 		if t.Pool == nil || t.Status == StatusDone || t.Status == StatusFailed || !slices.Contains(t.Pool.Members, id) && !slices.Contains(t.Pool.Excused, id) {
@@ -216,13 +218,46 @@ func (s *Swarm) poolPermission(ctx context.Context, id string, inner perm.Reques
 			}
 		}
 		if e, ok := inner.(*perm.Engine); ok {
-			return e.PlanOnly().Check(ctx, req), true
+			d := e.PlanOnly().Check(ctx, req)
+			if !d.Allow {
+				d.Reason = poolReadOnly(t, id) + " Refused: " + planCause(d.Reason)
+			}
+			return d, true
 		}
 		if req.Writes || (req.Tool == "bash" && !readOnlyCommand(req.Command)) {
-			return perm.Decision{Reason: "pool members may write only their assigned subtasks after agreement"}, true
+			return perm.Decision{Reason: poolReadOnly(t, id)}, true
 		}
 	}
 	return perm.Decision{}, false
+}
+
+// poolReadOnly says why a member of the pool task t may not change anything now, and what lets it: agreement and execution while the
+// pool plans, a child task of its own while it executes, confirmation while it reconciles.
+func poolReadOnly(t Task, id string) string {
+	head := fmt.Sprintf("You are a member of pool task %s (phase %s, revision %d, leader %s): members change nothing", t.ID, t.Pool.Phase, t.Pool.Revision, t.Owner)
+	switch t.Pool.Phase {
+	case "executing":
+		if t.Owner == id {
+			return head + " outside a child task. As the leader, create a child task with task create parent=" + t.ID + " and claim it (task claim), or assign it with spawn."
+		}
+		return head + " outside a child task assigned to them. Ask the leader " + t.Owner + " for one with mail, or wait for its assignment; read the code meanwhile."
+	case "reconciling":
+		return head + " while the pool reconciles. Inspect the combined result (pool inspect) and confirm it, or mail the leader " + t.Owner + " what is wrong."
+	default:
+		return head + " until every member agrees and the leader executes. Take part with pool propose or agree (the revision from task get); after execution you write inside the child task assigned to you."
+	}
+}
+
+// planCause is the cause in a plan-mode refusal, without the plan-mode advice and the note that nobody can be asked, which do not
+// apply to a pool member.
+func planCause(reason string) string {
+	reason = strings.TrimPrefix(reason, "approval required: ")
+	reason = strings.TrimPrefix(reason, "plan mode (read-only): ")
+	reason = strings.TrimPrefix(reason, "plan mode: ")
+	if i := strings.Index(reason, " (this run has no one to ask"); i >= 0 {
+		reason = reason[:i]
+	}
+	return strings.TrimSuffix(strings.TrimSuffix(reason, ". Present a plan instead of acting"), "; approval needed")
 }
 
 // poolTool exposes cooperation without granting worker-creation authority.
