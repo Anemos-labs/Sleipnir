@@ -7,6 +7,26 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A request to build something is a request for a product: production quality
+  is implied and never has to be asked for. The constitution has a new section,
+  "Build to ship" (complete workflows with their unhappy paths, secure by
+  default with a threat model, a professionally designed interface on mature
+  maintained libraries, tested at realistic scale, every screen looked at in a
+  real browser), and a new project starts on a current, well-maintained stack
+  instead of a minimal layout. Inside an existing project its stack and
+  conventions still win and changes stay focused; a request for something
+  simple, minimal or a prototype gets that. The manager plans security,
+  packaging, documentation, scale tests and a visual design pass as tasks of
+  their own; the frontend sets up a typed stack and a design system and
+  screenshots every screen; the reviewer judges the result as a shipped
+  product, says bluntly when an interface looks dated, and checks security as
+  an attacker; the tester covers security, scale and browser end-to-end tests;
+  the architect chooses the stack and writes a threat model and design system
+  into the agreement; devops ships release builds, CI and a vulnerability
+  scan. Prompt bytes: the constitution (solo and team) and the manager,
+  frontend, tester, reviewer, architect and devops role layers change, so the
+  first request of each after the upgrade writes those layers anew.
+
 - The goal judge's evidence search lists the newest records first, an
   evidence request it wraps in a code fence or in words is read, and an answer
   that is neither a request nor a verdict is asked for again (twice) and then

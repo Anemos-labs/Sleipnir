@@ -35,3 +35,28 @@ func TestConstitutionTeachesSpecificationAndVerification(t *testing.T) {
 		}
 	}
 }
+
+// A request to build something is a request for a product: the constitution makes production quality the default (complete,
+// secure, designed, fast at scale, looked at), so nobody has to ask for it, while changes inside an existing project stay focused.
+func TestConstitutionImpliesProductionQuality(t *testing.T) {
+	for _, swarm := range []bool{false, true} {
+		c := agent.Constitution(agent.ConstitutionOpts{Swarm: swarm})
+		for _, want := range []string{
+			"# Build to ship",
+			"Production quality is implied",
+			"Secure by default",
+			"professionally designed product",
+			"Fast at realistic scale",
+			"render every screen in a real browser",
+			"its stack and conventions win",
+			"keep it that",
+		} {
+			if !strings.Contains(c, want) {
+				t.Errorf("swarm=%v: the constitution does not say %q", swarm, want)
+			}
+		}
+		if strings.Contains(c, "no more and no less") {
+			t.Errorf("swarm=%v: the constitution still caps a build at the literal request", swarm)
+		}
+	}
+}
