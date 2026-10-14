@@ -19,7 +19,7 @@ func TestWebNewSessionRejectsOverlongGoalBeforeCreatingAnything(t *testing.T) {
 	before := len(r.h.Tabs())
 	for _, text := range []string{strings.Repeat("x", maxGoalLen+1), strings.Repeat("🌲", maxGoalLen+1)} {
 		code, body := r.do("POST", "/api/sessions", wire.NewSessionRequest{Cwd: project, GoalText: text})
-		if code != 400 || !strings.Contains(string(body), "4,000") {
+		if code != 400 || !strings.Contains(string(body), "32,000") {
 			t.Fatalf("overlong goal: %d %s", code, body)
 		}
 		if len(r.h.Tabs()) != before {
@@ -88,5 +88,23 @@ func TestWebNewSessionRefusesIsolationThatCannotStart(t *testing.T) {
 	empty := t.TempDir()
 	if code, body := r.do("POST", "/api/sessions", wire.NewSessionRequest{Cwd: empty, Swarm: &team, Isolation: "worktree", Commit: true, GitInit: true}); code != 428 {
 		t.Errorf("a folder that git init makes a repository: %d %s", code, body)
+	}
+}
+
+// A tab's /goal takes a goal as long as a new session's: up to maxGoalLen characters, four bytes each if need be, within the route's
+// body cap; one character more is refused as bad_goal, and nothing is queued. (A product brief of 4,248 characters was once refused
+// at 4,000.)
+func TestWebGoalTakesALongBriefAndRefusesOneCharacterMore(t *testing.T) {
+	project := webWorld(t)
+	_, base := newWebModel(t, sayScript("ok"))
+	r := newWebRig(t, soloDefaults(project), base)
+	tab := r.ready("")
+	code, body := r.do("POST", "/api/sessions/"+tab.ID+"/goal", wire.GoalRequest{Action: "set", Text: strings.Repeat("🌲", maxGoalLen+1)})
+	if code != 400 || !strings.Contains(string(body), `"bad_goal"`) || !strings.Contains(string(body), "32,000") {
+		t.Fatalf("overlong goal: %d %s", code, body)
+	}
+	code, body = r.do("POST", "/api/sessions/"+tab.ID+"/goal", wire.GoalRequest{Action: "set", Text: strings.Repeat("🌲", maxGoalLen)})
+	if code != 200 {
+		t.Fatalf("a goal at the limit: %d %s", code, body)
 	}
 }

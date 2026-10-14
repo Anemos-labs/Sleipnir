@@ -66,7 +66,7 @@ func (h *webHostImpl) routes(srv *web.Server) {
 		ok(w, map[string]any{"projects": h.Projects(r.Context())})
 	}, web.RouteOpts{})
 	srv.HandleFunc("GET /api/fs/dirs", h.fsDirs, web.RouteOpts{})
-	srv.HandleFunc("POST /api/sessions", h.newSession, web.RouteOpts{})
+	srv.HandleFunc("POST /api/sessions", h.newSession, web.RouteOpts{MaxBody: goalBodyMax})
 	srv.HandleFunc("POST /api/sessions/resume", h.resume, web.RouteOpts{})
 	h.tabRoute(srv, "GET /api/sessions/{id}/snapshot", web.RouteOpts{WriteTimeout: snapshotWrite}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
 		snap, err := t.snapshot(r.Context())
@@ -248,7 +248,7 @@ func (h *webHostImpl) routes(srv *web.Server) {
 	}, web.RouteOpts{MaxBody: 16 << 10})
 
 	// 10. Goal.
-	h.tabRoute(srv, "POST /api/sessions/{id}/goal", web.RouteOpts{}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
+	h.tabRoute(srv, "POST /api/sessions/{id}/goal", web.RouteOpts{MaxBody: goalBodyMax}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
 		var body wire.GoalRequest
 		if !web.DecodeJSON(w, r, &body) {
 			return
@@ -373,7 +373,7 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if utf8.RuneCountInString(strings.TrimSpace(body.GoalText)) > maxGoalLen {
-		writeErr(w, werr(http.StatusBadRequest, "bad_goal", "the goal is longer than 4,000 characters"))
+		writeErr(w, werr(http.StatusBadRequest, "bad_goal", "the goal is longer than 32,000 characters"))
 		return
 	}
 	key := idemKey("sessions", body.ClientID)

@@ -41,9 +41,12 @@ import (
 
 // Limits of the person's input: the length of a name, a rule, a goal and a steering message, and the lines of input history a tab keeps.
 const (
-	maxNameLen  = 60
-	maxRuleLen  = 500
-	maxGoalLen  = 4000
+	maxNameLen = 60
+	maxRuleLen = 500
+	maxGoalLen = 32000
+	// goalBodyMax is the body cap of the routes that carry a goal: the longest goal at six bytes a character (the widest a character
+	// gets in JSON, an escaped control character) and the room the other fields always had.
+	goalBodyMax = int64(maxGoalLen)*6 + 64<<10
 	maxSteerLen = 4000
 	maxHist     = 200
 	// closeLimit bounds the end of an isolated run when a tab closes or restarts (Session.Finish's own limit).
@@ -1245,7 +1248,7 @@ func (t *webTab) goalAction(ctx context.Context, s *session.Session, req wire.Go
 		case text == "":
 			return false, werr(http.StatusBadRequest, "empty", "/goal needs text")
 		case utf8.RuneCountInString(text) > maxGoalLen:
-			return false, werr(http.StatusBadRequest, "empty", "the goal is longer than 4,000 characters")
+			return false, werr(http.StatusBadRequest, "bad_goal", "the goal is longer than 32,000 characters")
 		}
 		_, _, _, err := t.enqueue(queued{text: oneLineCLI("/goal "+text, 200), op: func(ctx context.Context, s *session.Session) {
 			start, err := t.goals.Set(s, text)
