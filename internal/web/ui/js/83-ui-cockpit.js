@@ -136,7 +136,7 @@
       }
       function update(S2, m) {
         if (!m) return; const mg = m.ag.mgr; fillCard(RC, mg, calc.agent(mg), true, m);
-        if (!nW) { const log = (m.chan.mgr || []).filter(e => e.k === 'tool' && !e.collapsed).slice(-6).reverse(); $('.sololog', body).innerHTML = log.map(e => '<li><b>' + esc(e.name) + '</b> ' + esc(e.arg || '') + (e.out ? ' <span class="dim">' + esc(e.out) + '</span>' : '') + '</li>').join('') || '<li class="dim">nothing yet</li>'; }
+        if (!nW) { const log = (m.chan.mgr || []).filter(e => e.k === 'tool').slice(-6).reverse(); $('.sololog', body).innerHTML = log.map(e => '<li><b>' + esc(e.name) + '</b> ' + esc(e.arg || '') + (e.out ? ' <span class="dim">' + esc(e.out) + '</span>' : '') + '</li>').join('') || '<li class="dim">nothing yet</li>'; }
         workers.forEach(w => { const A = m.ag[w.id]; fillCard(ST[w.id], A, calc.agent(A), A.spawned, m); });
       }
       function frame(dt, vt, S2) {

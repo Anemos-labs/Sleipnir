@@ -6,7 +6,7 @@
  * A leg moves with the busiest of its role's workers (the order of PRIO); its label is the worker's id when the role has one slot,
  * else the role's short name and its count ("be ×4"); hovering or focusing it lists the role's workers and their states. A role
  * with no worker yet stands as a free leg. The manager takes no leg and is not drawn on the horse: it has its own card.
- * Motion is driven by dtView (the governor), so a hold freezes the stride and a catch-up speeds it. Glow only on state: a working leg is
+ * Motion is driven by dtView (20-clock.js), so a paused replay freezes the stride and a fast one speeds it. Glow only on state: a working leg is
  * faintly haloed, `ask` pulses amber, `stuck` red, `done` stands planted and bright, `idle` is dim, a free leg is a ghost.
  * The prefix bar's sizes are the manager's latest prompt by layer (SL.D.layers); it is redrawn when they change, and drawn in equal
  * parts until the first request has reported them. */

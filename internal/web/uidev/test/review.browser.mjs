@@ -1,8 +1,9 @@
 // review.browser.mjs: what a person does with the page while the server keeps talking, on the REAL server (`sleipnir web --fixture
 // all`) in headless Chromium: typing in a form while a roster frame arrives; writing "what to do instead" while a second question
-// arrives; a question while the view is held or paused; the arrow keys on the session tabs and the views rail; Enter while an input
-// method composes; the Doctor, Runner, Schedule and Sessions views and the New session dialog at phone and short-window sizes; what a
-// screen reader hears; a message or a New session the server refuses; error toasts; the session menu opened and closed many times.
+// arrives; a question while the pointer rests on the conversation or the view is paused; the arrow keys on the session tabs and the
+// views rail; Enter while an input method composes; the Doctor, Runner, Schedule and Sessions views and the New session dialog at phone
+// and short-window sizes; what a screen reader hears; a message or a New session the server refuses; error toasts; the session menu
+// opened and closed many times.
 //
 //   go build -o /tmp/x/sleipnir ./cmd/sleipnir
 //   SLEIPNIR_BIN=/tmp/x/sleipnir [OUT=dir] [UI_REV=<git revision>] node internal/web/uidev/test/review.browser.mjs
@@ -86,18 +87,19 @@ try {
     await ev(`SL.ui.inbox.close()`); await closeAll(); return { strip: s.v, inbox: i.v };
   });
 
-  await step('(5) a question shows at once while the view is held (pointer over the chat) or paused (Space), with a toast when paused', async () => {
+  await step('(5) a question shows at once with the pointer on the conversation (the view keeps running) or while the view is paused (Space), with a toast when paused', async () => {
     const r = await ev(`const r = document.querySelector('#talk').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2];`);
-    await p.move(r[0], r[1]); await p.sleep(700); await ask('qr-hold', 'git push');
-    await waitFor(`document.querySelector('#qSlot .qopts[data-q="qr-hold"]')`, 3000).catch(() => {});
-    const held = await ev(`return { strip: !!document.querySelector('#qSlot .qopts[data-q="qr-hold"]'), hover: SL.time.T.hover };`);
-    await p.shot(path.join(out, 'q-held.png')); await p.move(5, 5); await p.sleep(500); await closeAll(); await p.sleep(300);
+    await p.move(r[0], r[1]); await p.sleep(700); await ask('qr-over', 'git push');
+    await waitFor(`document.querySelector('#qSlot .qopts[data-q="qr-over"]')`, 3000).catch(() => {});
+    const over = await ev(`const S = SL.sessions.active; return { strip: !!document.querySelector('#qSlot .qopts[data-q="qr-over"]'), live: !S.replay && Math.abs(S.wt - S.vt) < 0.5 };`);
+    await p.shot(path.join(out, 'q-pointer-on-chat.png')); await p.move(5, 5); await p.sleep(500); await closeAll(); await p.sleep(300);
     await ev(`document.activeElement && document.activeElement.blur();`); await p.key(' '); await p.sleep(300); await ask('qr-pause', 'git push --force');
     await waitFor(`document.querySelector('#qSlot .qopts[data-q="qr-pause"]')`, 3000).catch(() => {});
+    await waitFor(`Array.from(document.querySelectorAll('.toast')).some(t => /question is waiting/.test(t.textContent))`, 3000).catch(() => {});   /* the toast follows the question by 0.9 s */
     const paused = await ev(`return { strip: !!document.querySelector('#qSlot .qopts[data-q="qr-pause"]'), replay: !!SL.sessions.active.replay, toast: Array.from(document.querySelectorAll('.toast')).map(t => t.textContent).join(' | ') };`);
     await p.shot(path.join(out, 'q-paused.png')); await ev(`SL.sessions.active.goLive(); SL.sessions.active.touch();`); await closeAll();
-    must(held.strip, 'held: ' + JSON.stringify(held)); must(paused.strip && paused.replay && /question is waiting \(the view is paused\)/.test(paused.toast), 'paused: ' + JSON.stringify(paused));
-    return { held: held.strip, paused: paused.strip };
+    must(over.strip && over.live, 'pointer on the conversation: ' + JSON.stringify(over)); must(paused.strip && paused.replay && /question is waiting \(replay: go live to answer\)/.test(paused.toast), 'paused: ' + JSON.stringify(paused));
+    return { over: over.strip, paused: paused.strip };
   });
 
   await step('(9) the arrows, Home and End on the session tabs and the views rail move there, never the view\'s clock or the agent', async () => {

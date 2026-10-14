@@ -67,9 +67,8 @@ func TestTheManagerAnswersAWorkersRoutineQuestion(t *testing.T) {
 	} {
 		res := ask(r, worker, "PORT=18098 ./bin/app &")
 		id := waitQuestion(t, r)
-		if !mailSaid(r, mgr, "Approval "+id+": "+worker) {
-			t.Errorf("the manager was not told about %s", id)
-		}
+		// the question is registered before its mail is delivered: wait for the mail rather than read it once
+		rvWait(t, "the manager to be told about "+id, func() bool { return mailSaid(r, mgr, "Approval "+id+": "+worker) })
 		if out := r.callTool(ctx, "approve", worker, "backend", map[string]any{"id": id, "decision": "yes"}); !out.IsError {
 			t.Errorf("a worker answered a question: %q", out.Text)
 		}

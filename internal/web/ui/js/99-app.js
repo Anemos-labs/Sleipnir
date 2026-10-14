@@ -14,7 +14,7 @@
     if (document.title !== t) document.title = t;
   }
   function boot() {
-    SL.settings.load(); SL.time.setMode(SL.settings.hover); ui.applyMotion(); document.body.classList.toggle('compact', SL.settings.density === 'compact'); document.body.classList.toggle('cq', SL.settings.cache === 'quiet');
+    SL.settings.load(); ui.applyMotion(); document.body.classList.toggle('compact', SL.settings.density === 'compact'); document.body.classList.toggle('cq', SL.settings.cache === 'quiet');
     SL.live.start().then(h => { serverMotion(h); mountShell(); });
   }
   /** Motion "auto" also stands still when the server runs with SLEIPNIR_ANIM=0 or REDUCE_MOTION; a choice the person
@@ -54,7 +54,7 @@
        workers' routine questions itself, at once) */
     sh.on('ask-arrived', ({ S, q }) => {
       paintTitle();
-      sh.timeout(() => { const live = S.wm && S.wm.qs.find(x => x.id === q.id); if (!live || live.answered || S.closed) return; const act = SL.sessions.active; if (S !== act || SL.time.holdWanted() || S.replay) ui.toast((S === act ? (S.replay ? 'a question is waiting (replay: go live to answer): ' : 'a question is waiting behind the hold: ') : S.name + ': ') + q.agent + ' wants to run ' + SL.u.clip1(q.cmd, 80), 'warm'); }, 900);
+      sh.timeout(() => { const live = S.wm && S.wm.qs.find(x => x.id === q.id); if (!live || live.answered || S.closed) return; const act = SL.sessions.active; if (S !== act || S.replay) ui.toast((S === act ? 'a question is waiting (replay: go live to answer): ' : S.name + ': ') + q.agent + ' wants to run ' + SL.u.clip1(q.cmd, 80), 'warm'); }, 900);
     });
     sh.on('goal-met', S => { if (S !== SL.sessions.active) ui.toast(S.name + ': goal met', 'ok'); });
     sh.on('session-done', S => {

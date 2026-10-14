@@ -48,3 +48,18 @@
 .reclist .tbl td.mono{white-space:nowrap}
 .reclist .tbl td.bright{min-width:140px}
 @container main (max-width:1150px){.sessv{grid-template-columns:minmax(0,1fr)}.livecards{grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}}
+/* narrow: a recorded session is a card, not a row wider than the screen whose Resume and Replay sat out of sight: its id, age and pick box,
+ * then its first prompt, then its agents, cost and size with the buttons */
+@container main (max-width:620px){
+  .reclist{overflow:visible}
+  .reclist .tbl,.reclist .tbl thead,.reclist .tbl tbody{display:block}
+  .reclist .tbl tr{display:flex;flex-wrap:wrap;align-items:center;gap:5px 10px;padding:8px 2px;border-bottom:1px solid var(--line)}
+  .reclist .tbl th,.reclist .tbl td{display:block;padding:0;border:0;background:none}
+  .reclist .tbl thead th:not(:first-child){display:none}
+  .reclist .tbl thead .chk .sr{position:static;width:auto;height:auto;margin:0;overflow:visible;clip:auto;white-space:normal;font:500 11.5px var(--f-ui);letter-spacing:0;text-transform:none;color:var(--dim)}
+  .reclist .tbl tbody td:nth-child(8){margin-left:auto}
+  .reclist .tbl tbody td:nth-child(4){order:1;flex:1 1 100%;min-width:0;overflow-wrap:break-word}
+  .reclist .tbl tbody td:nth-child(n+5):nth-child(-n+7),.reclist .tbl tbody td:nth-child(9){order:2}
+  .reclist .tbl tbody td:nth-child(5)::before{content:"agents "}.reclist .tbl tbody td:nth-child(7)::after{content:" MB"}
+  .reclist .tbl tbody td:nth-child(9){margin-left:auto;white-space:normal;text-align:right}
+}
