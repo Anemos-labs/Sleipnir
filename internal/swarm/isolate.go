@@ -1100,7 +1100,20 @@ func (s *Swarm) Accept(ctx context.Context, o AcceptOptions) (*AcceptReport, err
 		if ok, err := repo.IsAncestor(ctx, st.Head, rep.Tip); err != nil {
 			return nil, err
 		} else if !ok {
-			rep.CommitBlocked = fmt.Errorf("%w: %s has commits the session did not start from", ErrBranchMoved, cleanText(st.Branch, 80))
+			// Committing already-applied edits produces a different history from
+			// the integration branch. A clean, identical tree with no pending
+			// work is still a verified no-op, including after session restoration.
+			same := false
+			if !rep.Waiting {
+				d, err := repo.Diff(ctx, rep.Tip, gitx.DiffOptions{To: st.Head, NoPatch: true})
+				if err != nil {
+					return nil, err
+				}
+				same = d.Empty()
+			}
+			if !same {
+				rep.CommitBlocked = fmt.Errorf("%w: %s has commits the session did not start from", ErrBranchMoved, cleanText(st.Branch, 80))
+			}
 		}
 	}
 	rep.CanCommit = rep.CommitBlocked == nil

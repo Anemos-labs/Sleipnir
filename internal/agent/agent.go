@@ -497,6 +497,9 @@ func New(cfg Config) (*Agent, error) {
 // ID returns the agent id.
 func (a *Agent) ID() string { return a.cfg.ID }
 
+// ModelID returns the immutable model identifier requested by this agent.
+func (a *Agent) ModelID() string { return a.cfg.Model.ID }
+
 // mailPrefix starts every message the swarm's router delivers. Anything else
 // sent to an agent comes from the human driving it.
 const mailPrefix = "[mail"

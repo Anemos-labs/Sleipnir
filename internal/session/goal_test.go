@@ -170,6 +170,9 @@ func TestJudgeSearchesWorkerEvidenceWithoutRepeatingWork(t *testing.T) {
 		}
 		calls++
 		if calls == 1 {
+			if !strings.Contains(c.LastUser(), "Current harness roster") || !strings.Contains(c.LastUser(), `"model":"mock-1"`) {
+				t.Errorf("missing current model identity: %s", c.LastUser())
+			}
 			return mock.Reply{Text: `{"verdict":"inspect","query":"unique verification passed","offset":0}`}
 		}
 		if !strings.Contains(c.LastUser(), "unique verification passed") {

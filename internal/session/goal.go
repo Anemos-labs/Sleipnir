@@ -61,6 +61,11 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 		Params:   core.Params{MaxTokens: 1200},
 		Messages: []core.Message{{Role: core.RoleUser, Blocks: []core.Block{core.Text(goal.JudgePrompt(g, s.GoalPlan(), answer, []string{evidence}))}}},
 	}
+	roster, err := s.goalEvidence(ctx, g, cutoff, evidenceRequest{Record: cutoff})
+	if err != nil {
+		return goal.Verdict{Kind: goal.Continue}, worked, err
+	}
+	prompt.Messages[0].Blocks = append(prompt.Messages[0].Blocks, core.Text("Current harness roster (requested model identities, not proof of task correctness):\n"+roster))
 	if s.Swarm != nil {
 		var board strings.Builder
 		for _, task := range s.Swarm.Board.Snapshot().Tasks {

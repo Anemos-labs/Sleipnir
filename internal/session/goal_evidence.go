@@ -26,7 +26,7 @@ type evidenceRequest struct {
 // agent context. Claims in assistant prose are deliberately excluded.
 func evidenceText(e events.Event) string {
 	switch e.Type {
-	case "delivery.evidence", events.TypeToolCall, events.TypeToolResult, events.TypeAgentSpawn, events.TypeAgentRestore, events.TypeTaskMerge, events.TypeMergeMerged, events.TypeMergeVerifyFail, events.TypeToolJob:
+	case "goal.evidence", "delivery.evidence", events.TypeToolCall, events.TypeToolResult, events.TypeAgentSpawn, events.TypeAgentRestore, events.TypeTaskMerge, events.TypeMergeMerged, events.TypeMergeVerifyFail, events.TypeToolJob:
 		return string(e.Data)
 	case events.TypeTurnAppend:
 		var t core.Turn
@@ -162,9 +162,33 @@ func (s *Session) goalEvidence(ctx context.Context, g *goal.State, cutoff uint64
 // goalEvidenceCutoff flushes pending results before establishing an immutable
 // view. The marker also makes successive judgment progress measurable on resume.
 func (s *Session) goalEvidenceCutoff() (uint64, error) {
-	seq, err := s.Log.Emit("", "goal.evidence", nil)
+	seq, err := s.Log.Emit("", "goal.evidence", map[string]any{"agents": s.goalRuntimeRoster()})
 	if err != nil {
 		return 0, err
 	}
 	return seq, s.Log.Flush()
+}
+
+// goalAgentIdentity records current harness identities without copying workers' conversations.
+type goalAgentIdentity struct {
+	ID    string `json:"id"`
+	Role  string `json:"role"`
+	Model string `json:"model"`
+}
+
+// goalRuntimeRoster supplies current model assignments even when the agents were
+// created before this objective. Model labels are requested identities, not proof
+// of implementation correctness or of a provider's internal routing.
+func (s *Session) goalRuntimeRoster() []goalAgentIdentity {
+	var roster []goalAgentIdentity
+	if s.Swarm != nil {
+		snapshot := s.Swarm.Board.Snapshot()
+		for _, a := range s.Swarm.LiveAgents() {
+			info, _ := snapshot.Agent(a.ID())
+			roster = append(roster, goalAgentIdentity{a.ID(), info.Role, a.ModelID()})
+		}
+	} else if a := s.Main(); a != nil {
+		roster = append(roster, goalAgentIdentity{a.ID(), "solo", a.ModelID()})
+	}
+	return roster
 }

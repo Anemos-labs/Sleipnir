@@ -139,14 +139,15 @@ func (g *goalLoop) State() *goal.State {
 	return cloneGoal(g.goal)
 }
 
-// set replaces the goal (nil clears it) and saves it in the session's log.
+// set saves the goal before publishing its copy, retaining the evidence boundary
+// assigned by SaveGoal. A nil state clears it.
 func (g *goalLoop) set(s *session.Session, st *goal.State) {
-	g.mu.Lock()
-	g.goal = cloneGoal(st)
-	g.mu.Unlock()
 	if s != nil {
 		s.SaveGoal(st)
 	}
+	g.mu.Lock()
+	g.goal = cloneGoal(st)
+	g.mu.Unlock()
 }
 
 // Load takes the goal the session's log last recorded (a resumed session's, paused), or none.

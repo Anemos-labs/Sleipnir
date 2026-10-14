@@ -1053,6 +1053,9 @@ func TestGoalSubmissionCarriesDeliveryAuthorization(t *testing.T) {
 	if m.asked("delivery-goal-fixture") < 0 {
 		t.Fatal("goal did not reach model")
 	}
+	if state := r.h.tab(tab.ID).goals.State(); state == nil || state.StartSeq == 0 {
+		t.Fatal("web goal lost its saved evidence boundary")
+	}
 	data, err := os.ReadFile(filepath.Join(r.h.tab(tab.ID).session().Dir, "delivery.json"))
 	if err != nil {
 		t.Fatal(err)

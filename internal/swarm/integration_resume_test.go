@@ -128,3 +128,42 @@ func TestIntegrationResumePreservesEditsInAnAmbiguousCrash(t *testing.T) {
 		t.Fatalf("reconciled recovery: %+v", report)
 	}
 }
+
+func TestDeliveredCommitIsANoopAfterResume(t *testing.T) {
+	r := newIsoRig(t, isoOpts{}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "idle"} })
+	integrationCandidate(t, r)
+	var durable IntegrationState
+	r.iso.SaveIntegration = func(state IntegrationState) error { durable = state; return nil }
+	ctx := context.Background()
+	if rep := r.sw.Integrate(ctx); !rep.Applied {
+		t.Fatal(rep.Message)
+	}
+	if rep, err := r.sw.Accept(ctx, AcceptOptions{Commits: true}); err != nil || !rep.Committed {
+		t.Fatalf("commit: %+v %v", rep, err)
+	}
+	restarted := &Swarm{deps: Deps{Isolation: r.iso}}
+	if err := restarted.RestoreIntegration(ctx, durable); err != nil {
+		t.Fatal(err)
+	}
+	before := gitOut(t, r.repo, "rev-parse", "HEAD")
+	rep, err := restarted.Accept(ctx, AcceptOptions{Commits: true, DryRun: true})
+	if err != nil || rep.Waiting || !rep.CanCommit {
+		t.Fatalf("no-op: %+v %v", rep, err)
+	}
+	if got := gitOut(t, r.repo, "rev-parse", "HEAD"); got != before {
+		t.Fatal("preview mutated HEAD")
+	}
+	if err := os.WriteFile(filepath.Join(r.repo, "resume.txt"), []byte("foreign change\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rep, err = restarted.Accept(ctx, AcceptOptions{Commits: true, DryRun: true})
+	if err != nil || !errors.Is(rep.CommitBlocked, ErrCheckoutDirty) {
+		t.Fatalf("dirty: %+v %v", rep, err)
+	}
+	gitOut(t, r.repo, "add", "resume.txt")
+	gitOut(t, r.repo, "commit", "-m", "foreign change")
+	rep, err = restarted.Accept(ctx, AcceptOptions{Commits: true, DryRun: true})
+	if err != nil || !errors.Is(rep.CommitBlocked, ErrBranchMoved) {
+		t.Fatalf("moved: %+v %v", rep, err)
+	}
+}
