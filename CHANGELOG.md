@@ -7,6 +7,20 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A pool child that goes to review says who takes it out: its pool's leader
+  (or the manager) accepts it with `task accept`, and the pool reconciles once
+  every child is accepted. A leader submitting its own child is told to accept
+  it itself; a member's submission is mailed to the leader; and `pool
+  reconcile` refused for a child in review says so. When the last member
+  confirms the reconciled result, the leader is told to submit it with `task
+  done`, and a second reconcile of an unchanged, fully confirmed result is
+  refused with that advice. A member's `confirm` refused because a merge
+  superseded the reconciliation mails the leader to reconcile again and tells
+  the member to wait for the new revision. While members agree on the
+  leader's proposal, a proposal from the manager is refused (it would reset
+  their votes) and points to the leader. Prompt bytes: none change (tool
+  results and mail).
+
 - The file tools take a path that starts with `$TMPDIR` or `${TMPDIR}` to the
   session's scratch directory, as the shell does; before, it named a directory
   "$TMPDIR" under the project. Prompt bytes: the runtime context's scratch
