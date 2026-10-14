@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A pool member that is planning or reconciling keeps the research and checks
+  of a read-only role: it may fetch and search the web (an API's
+  documentation, a package registry's versions) and run the project's tests
+  and static checks, and the session's own permissions still decide. Before, a
+  planning pool was judged in plan mode with no allow rule at all, so an
+  architect pool could not look up the current version of a library it was
+  choosing. Writes stay refused until the member's child task. Prompt bytes:
+  none change.
+
 - A request to build something is a request for a product: production quality
   is implied and never has to be asked for. The constitution has a new section,
   "Build to ship" (complete workflows with their unhappy paths, secure by
