@@ -7,6 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The file tools take a path that starts with `$TMPDIR` or `${TMPDIR}` to the
+  session's scratch directory, as the shell does; before, it named a directory
+  "$TMPDIR" under the project. Prompt bytes: the runtime context's scratch
+  sentence (G1) says so.
+
 - The manager can excuse a pool member that cannot take part (`pool excuse`,
   `member` and a reason): it leaves the pool, the other members' agreement and
   confirmation suffice, its open subtasks of the parent return to the board
