@@ -334,7 +334,29 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		return tools.Errorf("%v", err)
 	}
 	s.Leases.ReleaseAll(me)
+	if note := s.poolChildInReview(me, task); note != "" {
+		return text("%s is now in review (%s). %s Give your final one-paragraph summary and stop.", in.ID, summary, note)
+	}
 	return text("%s is now in review (%s). Give your final one-paragraph summary and stop.", in.ID, summary)
+}
+
+// poolChildInReview says who takes a pool child out of review, and tells its pool's leader when another member submitted it: the
+// leader (or the manager) accepts it, and the pool reconciles once every child is accepted. In a trial the leader submitted both
+// children of its pool and waited for the manager, who waited for the children, until the leader's reconcile was refused. It
+// returns "" for a task that is not a child of an executing pool.
+func (s *Swarm) poolChildInReview(by string, t Task) string {
+	if t.Parent == "" {
+		return ""
+	}
+	p, ok := s.Board.Snapshot().Task(t.Parent)
+	if !ok || p.Pool == nil || p.Pool.Phase != "executing" {
+		return ""
+	}
+	if p.Owner == by {
+		return fmt.Sprintf("As the leader of pool %s, check it and accept it yourself (task accept id=%s), or reject it with feedback; reconcile once every child is accepted.", p.ID, t.ID)
+	}
+	s.notify(p.Owner, "request", fmt.Sprintf("Child %s of pool %s is in review (%s): check it and accept it (task accept id=%s) or reject it with feedback; reconcile once every child is accepted.", t.ID, p.ID, by, t.ID))
+	return fmt.Sprintf("The leader of pool %s, %s, accepts it (it has been told), and the pool reconciles once every child is accepted.", p.ID, p.Owner)
 }
 
 // review is the manager's verdict on a task: accept (after the harness re-runs
