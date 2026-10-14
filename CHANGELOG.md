@@ -16,6 +16,13 @@ they do not indicate whether a change has been released.
   provider were compacted by their own model. Prompt bytes: the compactor
   request names the compactor's model; the agents' prompts do not change.
 
+- A role works several parents side by side. Assigning a role a parent while
+  another of its parents is open no longer fails with "wait before assigning
+  another parent" whenever the role has a pool: the members an executing
+  parent can spare (not its leader, no open subtask of it) leave its pool and
+  form the new parent's, and its leader is told. A parent still agreeing on its
+  plan, or one whose members are all busy, refuses with what to do instead.
+
 - `sleipnir web` takes a goal of up to 32,000 characters (was 4,000), in the
   New session dialog and as `/goal TEXT` (through the goal route or as a slash
   command); the routes that carry one accept a body large enough for it. An over-long goal is refused with the code
