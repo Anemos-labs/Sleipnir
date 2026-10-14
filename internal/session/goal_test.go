@@ -227,7 +227,7 @@ func TestAJudgesAnswerIsReadWhenWrappedAndAskedForAgainWhenNot(t *testing.T) {
 		t.Fatal(err)
 	}
 	answers = []string{
-		"I will look first.\n```json\n{\"verdict\":\"inspect\",\"query\":\"go test\",\"offset\":0}\n```",
+		"I will look first (a request is {example} shaped).\n```json\n{\"verdict\":\"inspect\",\"query\":\"go test\",\"offset\":0}\n```",
 		"The verdict is",
 		`{"verdict":"continue","reason":"no test ran","left":["run go test"]}`,
 	}
@@ -242,5 +242,15 @@ func TestAJudgesAnswerIsReadWhenWrappedAndAskedForAgainWhenNot(t *testing.T) {
 	note, next, j := s.GoalJudged(context.Background(), g, nil)
 	if j.Judged || next != "" || !strings.Contains(note, "could not be read") || g.Paused == "" {
 		t.Errorf("an unreadable judge: note %q next %q judgment %+v paused %q", note, next, j, g.Paused)
+	}
+	// an unreadable answer in the last round, after evidence requests, is no verdict either
+	g.Paused = ""
+	answers = nil
+	for i := 0; i < 23; i++ {
+		answers = append(answers, `{"verdict":"inspect","query":"go test","offset":0}`)
+	}
+	answers = append(answers, "The verdict is")
+	if _, next, j := s.GoalJudged(context.Background(), g, nil); j.Judged || next != "" || j.Err == nil || !strings.Contains(j.Err.Error(), "inspection limit") {
+		t.Errorf("an unreadable last round: next %q judgment %+v", next, j)
 	}
 }

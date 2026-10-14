@@ -106,8 +106,8 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 		response := resp.Turn.PlainText()
 		req, inspect := judgeInspection(response)
 		if !inspect {
-			var ok bool
-			if v, ok = goal.ParseVerdict(response); ok {
+			if pv, ok := goal.ParseVerdict(response); ok {
+				v = pv
 				break
 			}
 			// An answer that is neither (cut off, or not JSON) is asked for again: read as "continue" with no reason, it sent the
@@ -167,12 +167,13 @@ const (
 // judgeInspection reads an evidence request out of a judge's answer, which may have words around it or a code fence, as a verdict
 // may (goal.ParseVerdict).
 func judgeInspection(text string) (evidenceRequest, bool) {
-	var req evidenceRequest
-	i, j := strings.Index(text, "{"), strings.LastIndex(text, "}")
-	if i < 0 || j <= i || json.Unmarshal([]byte(text[i:j+1]), &req) != nil {
-		return evidenceRequest{}, false
+	for _, o := range goal.Objects(text) {
+		var req evidenceRequest
+		if json.Unmarshal(o, &req) == nil && strings.EqualFold(strings.TrimSpace(req.Verdict), "inspect") {
+			return req, true
+		}
 	}
-	return req, strings.EqualFold(strings.TrimSpace(req.Verdict), "inspect")
+	return evidenceRequest{}, false
 }
 
 // goalTaskUnfinished distinguishes unresolved work from explicit dispositions.

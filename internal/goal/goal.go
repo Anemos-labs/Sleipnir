@@ -53,21 +53,42 @@ type Verdict struct {
 // ParseVerdict reads a judge's answer: JSON, possibly with words around it or in a fence. An answer that cannot be read is "continue" with no
 // reason (the judge failing must not end work that is not done); ok says whether it was read.
 func ParseVerdict(text string) (v Verdict, ok bool) {
-	i, j := strings.Index(text, "{"), strings.LastIndex(text, "}")
-	if i >= 0 && j > i && json.Unmarshal([]byte(text[i:j+1]), &v) == nil {
-		switch v.Kind = strings.ToLower(strings.TrimSpace(v.Kind)); v.Kind {
+	for _, o := range Objects(text) {
+		var c Verdict
+		if json.Unmarshal(o, &c) != nil {
+			continue
+		}
+		switch c.Kind = strings.ToLower(strings.TrimSpace(c.Kind)); c.Kind {
 		case Done, Continue, Blocked:
-			v.Reason = oneLine(v.Reason, 300)
-			for k := range v.Left {
-				v.Left[k] = oneLine(v.Left[k], 160)
+			c.Reason = oneLine(c.Reason, 300)
+			for k := range c.Left {
+				c.Left[k] = oneLine(c.Left[k], 160)
 			}
-			if len(v.Left) > 8 {
-				v.Left = v.Left[:8]
+			if len(c.Left) > 8 {
+				c.Left = c.Left[:8]
 			}
-			return v, true
+			return c, true
 		}
 	}
 	return Verdict{Kind: Continue}, false
+}
+
+// Objects are the JSON objects in a judge's answer, in order: each "{" that starts one, so that braces in the words around it
+// ("{example}") or a second object do not hide it.
+func Objects(text string) []json.RawMessage {
+	var out []json.RawMessage
+	for i := strings.IndexByte(text, '{'); i >= 0; {
+		var o json.RawMessage
+		if json.NewDecoder(strings.NewReader(text[i:])).Decode(&o) == nil && len(o) > 0 && o[0] == '{' {
+			out = append(out, o)
+		}
+		next := strings.IndexByte(text[i+1:], '{')
+		if next < 0 {
+			break
+		}
+		i += next + 1
+	}
+	return out
 }
 
 // JudgeSystem is what the judge is told it is.
