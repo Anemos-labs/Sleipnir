@@ -118,7 +118,7 @@ func (ev *evaluator) testsCover(u *unit) bool {
 			if u.venv.ok() && ev.accessesInWorkspace(u) {
 				return true
 			}
-		case r.matchCommand(*u.simple, false) && (!r.workspace || ev.withinWorkspace(u, r)):
+		case r.matchCommand(*u.simple, false) && r.coversRunner(*u.simple) && (!r.workspace || ev.withinWorkspace(u, r)):
 			return true
 		}
 	}
