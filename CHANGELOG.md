@@ -14,7 +14,7 @@ they do not indicate whether a change has been released.
   pool task is open. A pool no longer waits for ever on a member whose model
   fails. An `agree` or `confirm` from outside the pool (the manager's, say) is
   told that only members acknowledge. Prompt bytes: the pool tool's description and schema
-  change G0, incurring a one-time miss of the shared tool prefix.
+  change G0, so a cached tool prefix of an earlier version no longer matches.
 
 - The tests preset (`--allow tests`, the "builds and tests" answer, `accept-edits`) covers a
   Python virtual environment of the workspace (`Bash(python:venv)`): creating

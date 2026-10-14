@@ -210,7 +210,7 @@ func (s *Swarm) poolPermission(ctx context.Context, id string, inner perm.Reques
 		if t.Pool == nil || t.Status == StatusDone || t.Status == StatusFailed || !slices.Contains(t.Pool.Members, id) && !slices.Contains(t.Pool.Excused, id) {
 			continue
 		}
-		if t.Pool.Phase == "executing" {
+		if t.Pool.Phase == "executing" && slices.Contains(t.Pool.Members, id) { // an excused member writes nothing, its children included
 			for _, child := range s.Board.Snapshot().Tasks {
 				if child.Parent == t.ID && child.Owner == id && child.Status == StatusDoing {
 					return perm.Decision{}, false
@@ -314,6 +314,9 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 				p.Inspected = append(p.Inspected, by)
 			}
 		case "agree", "confirm":
+			if !member {
+				return fmt.Errorf("only the pool's members %s; the manager proposes, and excuses a member that cannot take part", in.Action)
+			}
 			phase := "planning"
 			if in.Action == "confirm" {
 				phase = "reconciling"
@@ -323,9 +326,6 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 				if s.isolated() && !slices.Contains(p.Inspected, by) {
 					return fmt.Errorf("call pool inspect, read the combined result, then confirm")
 				}
-			}
-			if !member {
-				return fmt.Errorf("only the pool's members %s; the manager proposes, and excuses a member that cannot take part", in.Action)
 			}
 			if p.Phase != phase || p.Agreement == "" || in.Revision != p.Revision {
 				return fmt.Errorf("read the current pool agreement and revision before acknowledging %s", phase)
@@ -377,7 +377,7 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			p.Inspected = slices.DeleteFunc(p.Inspected, gone)
 			p.Excused = append(p.Excused, in.Member)
 			if task.Owner == in.Member {
-				task.Owner = p.Members[0]
+				task.Owner, task.Rev = p.Members[0], sn.Version // a new assignment
 			}
 		default:
 			return fmt.Errorf("unknown pool action")

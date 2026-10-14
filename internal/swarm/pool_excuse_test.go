@@ -84,10 +84,11 @@ func TestTheManagerExcusesAPoolMemberThatCannotTakePart(t *testing.T) {
 	if bad || !strings.Contains(msg, child.ID) || !strings.Contains(msg, "leader "+peer) {
 		t.Fatalf("excusing the leader: %q", msg)
 	}
+	before := p.Rev
 	p, _ = r.sw.Board.Snapshot().Task(parent.ID)
 	c, _ := r.sw.Board.Snapshot().Task(child.ID)
-	if p.Owner != peer || c.Owner != "" || c.Status != StatusTodo {
-		t.Fatalf("leader %s, child %+v", p.Owner, c)
+	if p.Owner != peer || p.Rev <= before || c.Owner != "" || c.Status != StatusTodo {
+		t.Fatalf("leader %s (rev %d, was %d), child %+v", p.Owner, p.Rev, before, c)
 	}
 	if msg, bad := pool("mgr", "manager", map[string]any{"action": "excuse", "member": peer, "text": "x"}); !bad || !strings.Contains(msg, "last member") {
 		t.Fatalf("the last member was excused: %q", msg)
@@ -101,5 +102,39 @@ func TestTheManagerExcusesAPoolMemberThatCannotTakePart(t *testing.T) {
 	rc, _ := sn.Task(child.ID)
 	if !slices.Equal(rp.Pool.Members, p.Pool.Members) || !slices.Equal(rp.Pool.Excused, p.Pool.Excused) || rp.Owner != peer || rc.Owner != "" || rc.Status != StatusTodo {
 		t.Fatalf("replayed: %+v %+v", rp, rc)
+	}
+}
+
+// An excused member writes nothing while the pool is open, not even in a child task it still owned when it was excused (the excuse
+// and the release of its children are two board operations).
+func TestAnExcusedMemberDoesNotWriteInItsChild(t *testing.T) {
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"frontend", "frontend"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "waiting"} })
+	if _, err := r.sw.Spawn(SpawnReq{Role: "frontend", Title: "build the UI", Files: []string{"web/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	parent := r.sw.Board.Snapshot().Tasks[0]
+	lead, other := parent.Pool.Members[0], parent.Pool.Members[1]
+	if err := r.sw.Board.poolUpdate("mgr", parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	child, err := r.sw.Board.CreateTask(lead, TaskSpec{Parent: parent.ID, Title: "charts", Role: "frontend", Files: []string{"web/charts.js"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.sw.Board.assignTask(assignReq{by: lead, agent: other, id: child.ID}); err != nil {
+		t.Fatal(err)
+	}
+	// The state between the two operations: excused, its child still its own and doing.
+	if err := r.sw.Board.poolUpdate("mgr", parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error {
+		p.Members, p.Excused = []string{lead}, []string{other}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := r.sw.Board.Snapshot().Task(child.ID); c.Owner != other || c.Status != StatusDoing {
+		t.Fatalf("setup: %+v", c)
+	}
+	if d, handled := r.sw.poolPermission(context.Background(), other, perm.AllowAll{}, perm.Request{Tool: "write", Paths: []string{"web/charts.js"}, Writes: true}); !handled || d.Allow {
+		t.Fatalf("an excused member writes in its child: handled=%v %+v", handled, d)
 	}
 }
