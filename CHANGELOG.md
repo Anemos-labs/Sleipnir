@@ -16,6 +16,17 @@ they do not indicate whether a change has been released.
   provider were compacted by their own model. Prompt bytes: the compactor
   request names the compactor's model; the agents' prompts do not change.
 
+- A prefix rule for a build or test runner (`Bash(go test:*)`, the tests
+  preset, the read-only roles' rules, or a rule of the person's) no longer
+  covers an option that makes the runner run a program of the caller's
+  choosing, for example `go test -exec PROG`, `-toolexec`, `-vettool`, `-ldflags` naming
+  `-extld`/`-extar`, `cargo --config` and `-Z`, `npm`/`pnpm`/`yarn
+  --script-shell` and `--node-options`, `node --require`/`--import`/loaders,
+  `make SHELL=`, `-f`, `--eval`, `gradle --init-script` (the full list is in
+  docs/CONFIGURATION.md). Such a command is judged as if the rule did not
+  exist: it asks, or a read-only role is refused; `Bash(go test:*)` does not
+  cover `go test -exec='rm -rf x' ./...`. Prompt bytes: none change.
+
 - The manager and the architect give a user interface (pages, components,
   styling, client code, a service's web interface) to the frontend role when
   the team has one, with the API it calls as a backend task of its own, and
