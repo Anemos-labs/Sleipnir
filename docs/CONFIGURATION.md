@@ -594,7 +594,9 @@ virtual environment of the workspace (`Bash(python:venv-tests)`) allowed so they
 them so). Their
 profile also denies the job tools `bash_output` and `bash_kill` by name: background jobs are session-wide, and a
 reviewer could otherwise read another agent's job output. Read-only roles may also fetch and search the web, as far as
-the session's mode and rules allow. The manager uses the session's mode and rules, like a solo agent; it has no implicit
+the session's mode and rules allow. In a `bypass` or `yolo` session they read files outside the workspace as the session
+does (a toolchain's source, a module cache), without a question; the built-in protections and the deny and ask rules
+still apply, and in any other mode such a read asks. The manager uses the session's mode and rules, like a solo agent; it has no implicit
 read-only profile. Explicit role restrictions still apply. It can handle small edits,
 commits, pushes and PR operations directly. Isolated managers receive their own writable
 tree, and the harness verifies and integrates their edits.
