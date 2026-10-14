@@ -211,8 +211,7 @@ func (t *taskTool) reviseTask(ctx context.Context, c *tools.Call, in taskIn) *to
 		s.wakePool(parent.ID, "Child "+task.ID+" was revised. Repair the existing children and reconcile the combined result again.")
 	}
 	s.review.mu.Lock()
-	s.review.merges++
-	s.review.last = task.ID
+	s.review.landLocked(task.ID, append(slices.Clone(task.Files), in.Files...)) // what it covered and what it covers now
 	s.review.mu.Unlock()
 	return text("%s revised in place; its existing worker will retry", in.ID)
 }

@@ -15,6 +15,13 @@ they do not indicate whether a change has been released.
   names work, never evidence for the judge to be shown; the judge's answer
   limit is 4000 tokens (was 1200).
 
+- A pool's reconciled result is superseded only by a change that may touch the
+  pool's files (an accepted or revised task whose scope overlaps the pool's, a
+  direct manager edit of one of its files, or a change whose files are not
+  known); a merge elsewhere in the tree no longer reopens every pool's
+  confirmations. Prompt bytes: the refusal of a stale confirm says "in the
+  pool's files".
+
 - curl's URLs, headers and data are not judged as files: a smoke test's request
   body holding a variable no longer reads as a write to an unknown place. The
   files curl reads and writes are judged: `-o` and the name `-O` takes from

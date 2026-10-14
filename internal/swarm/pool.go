@@ -525,16 +525,15 @@ func scopeContains(parents []string, child string) bool {
 	return false
 }
 
-// poolCurrent rejects votes or submissions over a superseded combined result.
+// poolCurrent rejects votes or submissions over a superseded combined result: one that a merge, a manager change or a task revision
+// may have changed since the pool reconciled it, because it touched the pool's files (or files that are not known). A merge elsewhere
+// in the tree leaves it current.
 func (s *Swarm) poolCurrent(_ *Snapshot, task Task) error {
 	if task.Pool == nil {
 		return nil
 	}
-	s.review.mu.Lock()
-	generation := s.review.merges
-	s.review.mu.Unlock()
-	if task.Pool.Generation != generation {
-		return fmt.Errorf("combined result changed: a merge or task revision superseded this reconciliation, even if its agreement text is unchanged; the pool leader must call pool reconcile again, then every member must inspect and confirm the new revision")
+	if n := s.review.touchedSince(task.Pool.Generation, task.Files); n != 0 {
+		return fmt.Errorf("combined result changed: a merge or task revision in the pool's files superseded this reconciliation, even if its agreement text is unchanged; the pool leader must call pool reconcile again, then every member must inspect and confirm the new revision")
 	}
 	return nil
 }
