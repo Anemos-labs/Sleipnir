@@ -41,6 +41,13 @@ func TestASecondParentTakesTheMembersAnExecutingPoolCanSpare(t *testing.T) {
 	if _, err := r.sw.Board.assignTask(assignReq{by: first.Owner, agent: members[1], id: child.ID}); err != nil {
 		t.Fatal(err)
 	}
+	// a second parent that cannot begin (no such task) takes nobody from the first
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: "T99", By: "mgr"}); err == nil {
+		t.Fatal("a pool began for a task that does not exist")
+	}
+	if f, _ := r.sw.Board.Snapshot().Task(first.ID); !slices.Equal(f.Pool.Members, members) {
+		t.Fatalf("a failed second parent took members from the first: %v", f.Pool.Members)
+	}
 	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: second.ID, By: "mgr"}); err != nil {
 		t.Fatalf("a second parent while the first executes: %v", err)
 	}

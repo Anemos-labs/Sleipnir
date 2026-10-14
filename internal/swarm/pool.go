@@ -157,10 +157,11 @@ func (s *Swarm) ensurePool(role string) ([]*member, error) {
 }
 
 // spareMembers is the members of req.Role that can form the pool of a new parent: those in no open pool of the role, and those an
-// executing pool can spare (not its leader, no open subtask of it), which it releases from its member list (they are not excused: they
-// owe it nothing more). It says why when there are none: a pool still planning needs every member, and an executing one may have
-// every member busy. The member named in req.Agent leads when it is among them.
-func (s *Swarm) spareMembers(req SpawnReq, all []*member) ([]*member, error) {
+// executing pool can spare (not its leader, no open subtask of it), with release, the members each such pool is to let go once the
+// new pool has begun (they are not excused: they owe it nothing more). Nothing changes here. It says why when there are none: a pool
+// still planning needs every member, and an executing one may have every member busy. The member named in req.Agent leads when it is
+// among them.
+func (s *Swarm) spareMembers(req SpawnReq, all []*member) ([]*member, map[string][]string, error) {
 	snap := s.Board.Snapshot()
 	inPool := map[string]string{} // member -> the open parent whose pool holds it
 	var busy []Task
@@ -174,7 +175,7 @@ func (s *Swarm) spareMembers(req SpawnReq, all []*member) ([]*member, error) {
 		}
 	}
 	if len(busy) == 0 {
-		return all, nil
+		return all, nil, nil
 	}
 	openChild := map[string]bool{} // member+parent that owns an open subtask
 	for _, c := range snap.Tasks {
@@ -199,22 +200,11 @@ func (s *Swarm) spareMembers(req SpawnReq, all []*member) ([]*member, error) {
 	if len(spare) == 0 {
 		t := busy[0]
 		if t.Pool.Phase != "executing" {
-			return nil, fmt.Errorf("the %s pool is still agreeing on %s's plan with every member; once it executes, members without a subtask of it can take another parent. Wait for that (call wait), or have %s's leader %s take this work as a child of %s",
+			return nil, nil, fmt.Errorf("the %s pool is still agreeing on %s's plan with every member; once it executes, members without a subtask of it can take another parent. Wait for that (call wait), or have %s's leader %s take this work as a child of %s",
 				req.Role, t.ID, t.ID, t.Owner, t.ID)
 		}
-		return nil, fmt.Errorf("every %s member is busy on %s (its leader %s, or an open subtask); assign this parent again when one is free (call wait), or have %s take it as a child of %s",
+		return nil, nil, fmt.Errorf("every %s member is busy on %s (its leader %s, or an open subtask); assign this parent again when one is free (call wait), or have %s take it as a child of %s",
 			req.Role, t.ID, t.Owner, t.Owner, t.ID)
-	}
-	for parent, ids := range release {
-		if err := s.Board.poolUpdate(req.By, parent, func(_ *Snapshot, _ *Task, p *PoolState) error {
-			p.Members = slices.DeleteFunc(p.Members, func(m string) bool { return slices.Contains(ids, m) })
-			p.Votes = slices.DeleteFunc(p.Votes, func(m string) bool { return slices.Contains(ids, m) })
-			p.Inspected = slices.DeleteFunc(p.Inspected, func(m string) bool { return slices.Contains(ids, m) })
-			return nil
-		}); err != nil {
-			return nil, err
-		}
-		s.notifyPoolRelease(parent, ids, req)
 	}
 	if req.Agent != "" {
 		for i, m := range spare {
@@ -224,19 +214,15 @@ func (s *Swarm) spareMembers(req SpawnReq, all []*member) ([]*member, error) {
 			}
 		}
 	}
-	return spare, nil
+	return spare, release, nil
 }
 
 // notifyPoolRelease tells the leader of parent which members another parent of its role took, so it does not wait for their
 // confirmation or assign them its next subtask.
-func (s *Swarm) notifyPoolRelease(parent string, ids []string, req SpawnReq) {
+func (s *Swarm) notifyPoolRelease(parent string, ids []string, next string) {
 	t, ok := s.Board.Snapshot().Task(parent)
-	if !ok || t.Owner == "" {
+	if !ok || t.Owner == "" || t.Pool == nil {
 		return
-	}
-	next := "a new parent"
-	if req.TaskID != "" {
-		next = req.TaskID
 	}
 	s.notify(t.Owner, "info", fmt.Sprintf("Pool %s: %s left it for %s (they held none of its subtasks); its members are now %s.",
 		parent, strings.Join(ids, ", "), next, strings.Join(t.Pool.Members, ", ")))
@@ -251,7 +237,7 @@ func (s *Swarm) startPool(req SpawnReq, files []string) (string, error) {
 	// A role's members work one parent per pool. When the role already has an open parent, the members that parent can spare (it
 	// executes its plan, they do not lead it and hold none of its open subtasks) leave its pool and form this parent's, so independent
 	// parts run side by side; a parent still agreeing on its plan needs every member, and one whose members are all busy spares none.
-	members, err = s.spareMembers(req, members)
+	members, release, err := s.spareMembers(req, members)
 	if err != nil {
 		return "", err
 	}
@@ -269,6 +255,18 @@ func (s *Swarm) startPool(req SpawnReq, files []string) (string, error) {
 	}
 	if err := s.Board.beginPool(req.By, id, ids); err != nil {
 		return "", err
+	}
+	// only now that the new pool exists do the members leave the pools that spared them
+	for parent, left := range release {
+		if err := s.Board.poolUpdate(req.By, parent, func(_ *Snapshot, _ *Task, p *PoolState) error {
+			p.Members = slices.DeleteFunc(p.Members, func(m string) bool { return slices.Contains(left, m) })
+			p.Votes = slices.DeleteFunc(p.Votes, func(m string) bool { return slices.Contains(left, m) })
+			p.Inspected = slices.DeleteFunc(p.Inspected, func(m string) bool { return slices.Contains(left, m) })
+			return nil
+		}); err != nil {
+			return "", err
+		}
+		s.notifyPoolRelease(parent, left, id)
 	}
 	task, _ := s.Board.Snapshot().Task(id) // its owner leads: the first member the manager has not excused
 	if task.Pool.Phase == "executing" {
