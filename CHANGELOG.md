@@ -11,7 +11,7 @@ they do not indicate whether a change has been released.
   recursive delete of a broad or unknown path, a forced push to a shared
   branch, disk tools, shutdown) and a write into `.sleipnir/`, `.claude/` or
   git hooks and config. A file whose name is only known when the command runs
-  is allowed, or refused when a `deny` rule of the person's may cover it (any
+  is allowed, or refused when a `deny` rule may cover it (any
   `Read` rule for a read, any `Edit` rule for a write); it no longer asks. A
   read-only role in a `bypass` session reads such a name the same way. A word
   that only might be a file (an unlisted program's operand, `node script.mjs
@@ -23,7 +23,7 @@ they do not indicate whether a change has been released.
   unknown; only what it assigns itself is. Prompt bytes: none change.
 
 - The variables a command line sets stay known when quoted text or a
-  here-document body in it holds `()`, `function `, `((`, braces or keywords:
+  here-document body in it holds `()`, the keyword `function`, `((`, braces or keywords:
   `printf 'func main() {...}' > main.go` or Go source written with
   `cat <<'EOF'` defines no function, so a later `rm -rf "$d"` of a scratch
   directory the line named is
