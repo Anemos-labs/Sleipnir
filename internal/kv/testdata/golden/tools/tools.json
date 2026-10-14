@@ -313,7 +313,7 @@
   },
   {
     "name": "pool",
-    "description": "Cooperate on a role pool's parent task. Leader: propose an agreement (theme/style, interfaces, work division, acceptance); execute after everyone agrees; reconcile after all children are accepted (text = the combined contract to confirm). Every member: call inspect during reconciliation to update your checkout, examine the combined result, then confirm. Agree to the proposal or confirm the reconciled result, with the exact revision from task get. Use mail to discuss objections; the manager resolves disagreements. During execution the leader may create scoped child tasks and assign existing members. Return one parent result with task done after every member confirms.",
+    "description": "Cooperate on a role pool's parent task. Leader: propose an agreement (theme/style, interfaces, work division, acceptance); execute after everyone agrees; reconcile after all children are accepted (text = the combined contract to confirm). Every member: call inspect during reconciliation to update your checkout, examine the combined result, then confirm. Agree to the proposal or confirm the reconciled result, with the exact revision from task get. Use mail to discuss objections; the manager resolves disagreements. During execution the leader may create scoped child tasks and assign existing members. Return one parent result with task done after every member confirms. Manager: excuse a member that cannot take part (its model keeps failing or does not answer; member = its id, text = why): it leaves the pool, its votes stop counting, its open subtasks return to the board, and the next member leads if it led.",
     "input_schema": {
       "properties": {
         "action": {
@@ -323,11 +323,15 @@
             "execute",
             "reconcile",
             "inspect",
-            "confirm"
+            "confirm",
+            "excuse"
           ],
           "type": "string"
         },
         "id": {
+          "type": "string"
+        },
+        "member": {
           "type": "string"
         },
         "revision": {

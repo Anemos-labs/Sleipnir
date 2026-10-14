@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The manager can excuse a pool member that cannot take part (`pool excuse`,
+  `member` and a reason): it leaves the pool, the other members' agreement and
+  confirmation suffice, its open subtasks of the parent return to the board
+  unassigned, the next member leads if it led, and it stays read-only while the
+  pool task is open. The manager can thus keep a pool from waiting for ever on a
+  member whose model fails. An `agree` or `confirm` from outside the pool (the manager's, say) is
+  told that only members acknowledge. Prompt bytes: the pool tool's description and schema
+  change G0, so a cached tool prefix of an earlier version no longer matches.
+
 - A `task revise` whose only change is a wider scope of a task under way (the
   globs it had, and more) widens the scope in place, as `task update` with
   files does: nobody is stopped, children keep their owners and a pool stays
