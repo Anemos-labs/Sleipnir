@@ -72,7 +72,11 @@ func compiledFiles(args []string) string {
 			i = len(args)
 		case a == "--invalidation-mode":
 			i++
+		case strings.HasPrefix(a, "--invalidation-mode="), a == "--hardlink-dupes", a == "--quiet":
 		case strings.HasPrefix(a, "--"):
+			// argparse takes a prefix of a long option as the option ("--inv" is --invalidation-mode), so a long option that is not
+			// spelled out may be one that takes the next argument: refuse it rather than count that argument as a file
+			return "it gives an option (" + a + ") that is not one of compileall's spelled out in full"
 		case strings.HasPrefix(a, "-"):
 		cluster:
 			for k := 1; k < len(a); k++ {
