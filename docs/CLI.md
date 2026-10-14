@@ -452,7 +452,8 @@ goes to stdout, a one-line summary (time, steps, cost, cache hit ratio, compacti
 was asked, which includes a command that exited with a status other than 0 or ran out of time, and `exit_code` for a
 command), `response`, `notice`, and a final `{"type":"result", ...}` with `text`, `steps`, `cost_usd`, `usage`, `hit_ratio`,
 `compactions`, `stop`, `session`, `dir`, `elapsed_ms`, `error` and, for a swarm that stopped with work left, `unfinished`
-(and the status is 3). `--cwd` must name a directory that exists. Unattended (stdin not a terminal) nothing can be
+(and the status is 3); a session on a ChatGPT plan adds `list_usd` (its usage at the API list price, which the plan does not
+bill) and `"plan": true`, and its summary line shows that figure as `≈$0.0123 plan`. `--cwd` must name a directory that exists. Unattended (stdin not a terminal) nothing can be
 approved: an action that needs approval is refused. Slash commands are not expanded in `run`. `swarm` and `run --swarm`
 are the same command.
 
@@ -744,7 +745,7 @@ search (all must appear, any case). Favorites, marked *, come first.
   -filter string
         only ids containing this text (same as a word)
   -max-price float
-        only models with an output price of at most this many dollars per million tokens
+        only models with an output price of at most this many dollars per million tokens (a ChatGPT plan's model: the API list price of the same model)
   -min-context string
         only models with at least this context window (128k, 1m)
   -provider string

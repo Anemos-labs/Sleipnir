@@ -9,6 +9,23 @@
   const fmtK = n => n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(Math.round(n));
   const fmtN = n => Math.round(n).toLocaleString('en-US');
   const fmtUsd = (n, d) => '$' + n.toFixed(d == null ? (n < .1 ? 4 : 2) : d);
+  /** Usage a subscription plan covered (a ChatGPT sign-in) bills nothing per token: its figure is shown at the API list price, with a '≈'
+   *  and the plan tag, and PLAN_HELP is what the tag says (the terminal's state.PlanHelp, word for word). */
+  const PLAN_HELP = 'at API list price; billed to your ChatGPT plan';
+  /** The figure a cost record ({cost, list, plan}: calc.agent, calc.totals, a recorded session) is shown at: what was billed, plus what
+   *  a plan covered at the API list price. */
+  const spendOf = c => (Number(c.cost) || 0) + (c.plan ? Number(c.list) || 0 : 0);
+  /** spendOf as text: fmtUsd, with a leading '≈' for a figure that includes what a plan covered. A plan's figure under a cent has four
+   *  decimals whatever d asks (as the terminal's widget.USD writes it): a plan's usage is often that small, and '≈$0.00' would read as
+   *  nothing. */
+  const fmtSpend = (c, d) => { const n = spendOf(c); return c.plan ? '≈' + fmtUsd(n, n > 0 && n < 0.01 ? 4 : d) : fmtUsd(n, d); };
+  /** The plan tag beside a figure that includes what a plan covered (markup; '' for any other figure). */
+  const planTag = c => c && c.plan ? ' <span class="plantag" title="' + PLAN_HELP + '">plan</span>' : '';
+  /** Whether a cost record is all a plan's: plan usage and nothing billed, so that no budget is touched at all. A session that mixes the
+   *  two has billed spend, which its budget counts. */
+  const planOnly = c => !!(c && c.plan) && !(Number(c.cost) > 0);
+  /** How full a budget gauge is, in percent: what was billed against the budget. A plan's usage never fills it. */
+  const budgetPct = (c, budget) => budget > 0 ? Math.min(100, (Number(c.cost) || 0) / budget * 100) : 0;
   const fmtMs = ms => ms < 1000 ? Math.round(ms) + 'ms' : (ms / 1000).toFixed(1) + 's';
   const pct = (a, b) => b > 0 ? Math.round(100 * a / b) : 0;
   /** m:ss from seconds, rounding up (a countdown shows 0:25 for 24.3 s). */
@@ -58,6 +75,6 @@
   /** Is this key event part of an input method's composition (a CJK candidate being chosen)? Its Enter picks a candidate: it never
    *  sends, submits or runs a shortcut. */
   const composing = e => !!e && (e.isComposing === true || e.keyCode === 229);
-  SL.u = { composing, agCol, okId, safeId, BAD_ID, own, clip1, NSV, $, $$, esc, fmtK, fmtN, fmtUsd, fmtMs, pct, clock, mmss, tod, dur, clamp, hitCls, mk, sv, frag, rng, hash, uid, deepCopy, upperBound, makeBus, copy, ucfirst };
+  SL.u = { composing, agCol, okId, safeId, BAD_ID, own, clip1, NSV, $, $$, esc, fmtK, fmtN, fmtUsd, PLAN_HELP, spendOf, fmtSpend, planTag, planOnly, budgetPct, fmtMs, pct, clock, mmss, tod, dur, clamp, hitCls, mk, sv, frag, rng, hash, uid, deepCopy, upperBound, makeBus, copy, ucfirst };
   SL.bus = makeBus();
 })(SL);

@@ -29,6 +29,10 @@ type described struct {
 // run was priced with. A log is read elsewhere and later (the inspector, a training pipeline),
 // where the endpoint's catalogue may not be at hand; without this it would price a marketplace
 // model with a generic estimate hundreds of times off the gateway's bill.
+//
+// Plan marks a model reached through a subscription plan (a ChatGPT sign-in): its prices are then
+// the API's list prices for the same model (zero when they are not known), which show what the
+// usage would cost on the API; the plan bills none of it, and no budget counts it.
 type modelRecord struct {
 	Source           string  `json:"source"`
 	Context          int     `json:"context"`
@@ -39,6 +43,7 @@ type modelRecord struct {
 	CacheWrite1hPerM float64 `json:"cache_write_1h_per_m"`
 	ExplicitCache    bool    `json:"explicit_cache,omitempty"`
 	TTLSeconds       int     `json:"ttl_s,omitempty"`
+	Plan             bool    `json:"plan,omitempty"`
 }
 
 // describe refines the harness's description of a model of p from the endpoint's own catalogue
@@ -79,11 +84,15 @@ func (s *Session) modelRecords() map[string]modelRecord {
 			m.ContextTokens = s.Model.ContextTokens // the main model's window may have been overridden
 		}
 		ttl := m.Cache.DefaultTTL()
+		p := m.Price
+		if m.Plan {
+			p = m.ListPrice
+		}
 		out[id] = modelRecord{
 			Source: d.src, Context: m.ContextTokens,
-			InputPerM: m.Price.InputPerM, OutputPerM: m.Price.OutputPerM, CacheReadPerM: m.Price.CacheReadPerM,
-			CacheWrite5mPerM: m.Price.CacheWrite5mPerM, CacheWrite1hPerM: m.Price.CacheWrite1hPerM,
-			ExplicitCache: m.Cache.Explicit, TTLSeconds: int(ttl / time.Second),
+			InputPerM: p.InputPerM, OutputPerM: p.OutputPerM, CacheReadPerM: p.CacheReadPerM,
+			CacheWrite5mPerM: p.CacheWrite5mPerM, CacheWrite1hPerM: p.CacheWrite1hPerM,
+			ExplicitCache: m.Cache.Explicit, TTLSeconds: int(ttl / time.Second), Plan: m.Plan,
 		}
 	}
 	return out

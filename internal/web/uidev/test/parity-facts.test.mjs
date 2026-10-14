@@ -4,7 +4,7 @@
 // recordings are run through both interfaces and the same facts must come out. internal/parity/facts_test.go folds each recording with
 // the State of internal/tui/state, which every terminal view reads, and writes the facts to internal/parity/testdata/facts-<recording>.json.
 // This test loads the page stream the translator makes of the same recording (internal/web/translate/testdata/*.ui.jsonl, and
-// internal/parity/testdata/team.ui.jsonl for the hand-built team log), reduces it with the page's reducer exactly as model.test.mjs does,
+// internal/parity/testdata/team.ui.jsonl and plan.ui.jsonl for the hand-built logs), reduces it with the page's reducer exactly as model.test.mjs does,
 // computes the same facts (their definitions are in the header of facts_test.go) and compares. A fact on which the interfaces differ is
 // listed in internal/parity/contract/facts.json as "<recording>/<fact>" with its reason: a listed fact that no longer differs, and a
 // difference that is not listed, both fail.
@@ -26,6 +26,7 @@ const RECORDINGS = [
   { name: 'handbook', streams: [{ file: path.join(TRANSLATE, 'demo-handbook.ui.jsonl'), hosted: true }, { file: path.join(TRANSLATE, 'demo-handbook-watch.ui.jsonl'), hosted: false }] },
   { name: 'shop', streams: [{ file: path.join(TRANSLATE, 'demo-shop.ui.jsonl'), hosted: true }, { file: path.join(TRANSLATE, 'demo-shop-watch.ui.jsonl'), hosted: false }] },
   { name: 'team', streams: [{ file: path.join(PARITY, 'testdata', 'team.ui.jsonl'), hosted: false }] },
+  { name: 'plan', streams: [{ file: path.join(PARITY, 'testdata', 'plan.ui.jsonl'), hosted: false }] },
 ];
 /** The facts that a hosted tab's stream does not carry because they come from the sink. */
 const SINK_FED = new Set(['tool_calls', 'tool_errors', 'permission_denials']);
@@ -80,6 +81,8 @@ export function webFacts(events) {
     tokens_cache_write: T.wr,
     tokens_output: T.out,
     cost_usd: T.cost,
+    list_usd: T.list,
+    plan: T.plan,
     savings_usd: T.saved,
     cache_hit_ratio: T.hit,
     main_responses: m.order.reduce((n, id) => n + m.ag[id].nreq, 0),

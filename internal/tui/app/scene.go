@@ -195,7 +195,7 @@ func stats(s Scene) []string {
 		s.Mode.label(sn.Session.Ended),
 		"◷ " + widget.Duration(elapsed(sn).Round(time.Second)),
 		fmt.Sprint(agents) + noun,
-		widget.USD(sn.Totals.CostUSD),
+		widget.Spend(sn.Spend().Shown(), sn.Spend().Plan),
 		"⛁ " + widget.Percent(sn.Totals.HitRatio()),
 	}
 }

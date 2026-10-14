@@ -551,7 +551,7 @@ func (r *chatRecorder) typeLine(ctx context.Context, line string, cancelAfter in
 		<-done
 		return ctx.Err()
 	}
-	end := &app.ChatTurnEnd{Steps: res.Steps, CostUSD: res.CostUSD, HitRatio: res.HitRatio, Message: res.Message}
+	end := &app.ChatTurnEnd{Steps: res.Steps, CostUSD: res.CostUSD, HitRatio: res.HitRatio, Message: res.Message, ListUSD: res.ListUSD, Plan: res.Plan}
 	switch {
 	case res.Err == nil:
 	case errors.Is(res.Err, context.Canceled):

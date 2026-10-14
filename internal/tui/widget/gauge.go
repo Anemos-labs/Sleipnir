@@ -198,6 +198,22 @@ func Tokens(n int) string {
 	return strconv.Itoa(n) // not reached: the last unit always answers
 }
 
+// PlanTag is the word put beside a figure that includes usage a subscription plan covered, shown at the API list price (PlanUSD).
+const PlanTag = "plan"
+
+// PlanUSD formats a figure that includes usage a subscription plan covered, shown at the API list price: USD with a leading "≈", for it
+// is what the usage would cost on the API, not what was billed. A view puts PlanTag beside it where there is room.
+func PlanUSD(x float64) string { return "≈" + USD(x) }
+
+// Spend formats a cost figure: USD, or for a figure that includes usage a subscription plan covered (plan), PlanUSD followed by
+// PlanTag ("≈$0.12 plan").
+func Spend(x float64, plan bool) string {
+	if plan {
+		return PlanUSD(x) + " " + PlanTag
+	}
+	return USD(x)
+}
+
 // USD formats a dollar amount for a cost display: "$0.0021" below a cent (four decimals), "$1.24" from a cent up (two decimals,
 // thousands separated by commas: "$1,234.50"), "$0.00" for exactly zero and "<$0.0001" for anything positive but smaller than
 // that, so a real cost is never shown as zero. A negative amount (a saving) has a leading "-". NaN is "$?" and infinity

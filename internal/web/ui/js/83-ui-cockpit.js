@@ -130,7 +130,7 @@
         const s = spawned ? A.state : 'idle'; R.el.dataset.state = s; const [g, w] = SG[s]; R.g.textContent = g; R.sw.textContent = w;
         if (!R.streaming) R.doing.textContent = spawned ? (ui.waitingFor(A, SL.sessions.active ? SL.sessions.active.vt : 0) || A.doing) : 'not started';
         if (R.chip) { R.chip.textContent = A.id === 'mgr' ? R.chip.textContent : (A.task || '–'); R.chip.className = 'chip task' + (A.task && m.tasks[A.task] && m.tasks[A.task].st === 'merged' ? ' t-merged' : ''); if (A.id !== 'mgr') R.el.setAttribute('data-task', A.task || ''); }
-        R.tok.innerHTML = fmtK(c.prompt) + '<span class="u"> tok</span>'; R.cost.textContent = fmtUsd(c.cost, 3); R.hit.textContent = c.prompt ? c.pct + '%' : '–'; R.hit.className = 'hit n-hit ' + (c.prompt ? hitCls(c.pct) : '');
+        R.tok.innerHTML = fmtK(c.prompt) + '<span class="u"> tok</span>'; R.cost.textContent = U.fmtSpend(c, 3); R.cost.title = c.plan ? U.PLAN_HELP : ''; R.hit.textContent = c.prompt ? c.pct + '%' : '–'; R.hit.className = 'hit n-hit ' + (c.prompt ? hitCls(c.pct) : '');
         R.el.setAttribute('aria-label', A.id + ' ' + A.role + ', ' + w + ': ' + A.doing);
         if (R.n !== A.nreq) { R.n = A.nreq; R.spark.innerHTML = sparkBars(A.ratios.slice(-SPARK_N), 150, 40); }   /* the last SPARK_N requests: a long run draws no more bars */
       }

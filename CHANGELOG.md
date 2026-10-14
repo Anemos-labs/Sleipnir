@@ -32,6 +32,22 @@ they do not indicate whether a change has been released.
   that project-environment installs may come to it, a one-time cache miss of
   that pin; no other stable layer changes.
 
+- The built-in price table includes OpenAI's `gpt-6-astra`, `gpt-6.1-sol`, `gpt-6-sol`,
+  `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra` and `gpt-5.6-luna` at the API's
+  standard-tier, short-context list prices (input, cached input, cache writes at
+  1.25 times input, output); `openai/<model>` is priced at them
+  instead of the $3/$15 fallback. A model the table prices keeps the id its
+  reference names in requests (`openrouter/openai/gpt-6-luna` sends
+  `openai/gpt-6-luna`). A ChatGPT plan's usage is shown at the same list
+  prices, marked `≈$0.12 plan` in the terminal and with a `plan` tag in the
+  browser; `cost_usd` stays 0 and every budget counts only what is billed.
+  Events: a plan's `model.response` adds `list_usd`, `session.start` model
+  records add `plan`, `session.end` adds `list_usd` and `plan`, and the page's
+  `use` and `svc` events add `list` and `plan`. `sleipnir models` lists a
+  plan's models at the list price tagged `plan`, and `--max-price` filters
+  them by it. The reasoning-effort range of `gpt-6.1-sol` applies. Prompt
+  bytes: unchanged.
+
 - Agents are told much more about what is expected of them. The constitution
   grows from about 1,000 to about 3,700 tokens (4,100 in a team): the user's
   words as the specification (names, commands and formats kept exactly,

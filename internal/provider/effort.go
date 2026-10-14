@@ -68,6 +68,8 @@ func ClosestEffort(want string, supported []string) string {
 
 // ModelEfforts describes known API effort ranges. Unknown model IDs are left
 // to the endpoint; validation responses can refine these defaults per route.
+// The id is matched in cost.Normalize's form, which writes a dot as a dash
+// ("gpt-6.1-sol" is "gpt-6-1-sol").
 // Sources: https://developers.openai.com/api/docs/guides/latest-model and
 // https://api-docs.deepseek.com/api/create-chat-completion/.
 func ModelEfforts(model string) ([]string, bool) {
@@ -75,7 +77,7 @@ func ModelEfforts(model string) ([]string, bool) {
 	switch {
 	case strings.HasPrefix(id, "deepseek-v4"), id == "deepseek-flash":
 		return []string{"none", "low", "high", "max"}, true
-	case strings.HasPrefix(id, "gpt-6-astra"), strings.HasPrefix(id, "gpt-6.1-sol"):
+	case strings.HasPrefix(id, "gpt-6-astra"), strings.HasPrefix(id, "gpt-6-1-sol"):
 		return []string{"low", "medium", "high", "xhigh", "max"}, true
 	case strings.HasPrefix(id, "gpt-6-sol"), strings.HasPrefix(id, "gpt-6-luna"):
 		return []string{"none", "low", "medium", "high", "xhigh", "max"}, true

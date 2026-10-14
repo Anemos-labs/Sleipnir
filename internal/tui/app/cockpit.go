@@ -41,7 +41,9 @@ func CockpitData(sn *state.Snapshot, opt CockpitOptions) widget.DashboardData {
 	d := widget.DashboardData{
 		Title:    sn.Session.Goal,
 		Elapsed:  elapsed(sn),
-		Spend:    sn.Totals.CostUSD,
+		Spend:    sn.Spend().Shown(),
+		Plan:     sn.Spend().Plan,
+		Billed:   sn.Totals.CostUSD,
 		Budget:   sn.Totals.BudgetUSD,
 		HitRatio: sn.Totals.HitRatio(),
 		NoAnim:   opt.NoAnim,
@@ -206,7 +208,7 @@ func agentRows(sn *state.Snapshot, opt CockpitOptions) []widget.AgentRow {
 		}
 		r := widget.AgentRow{
 			ID: a.ID, Role: a.Role, RoleColor: roleColor(a.Role), State: status(a),
-			Doing: doing(a, tasks), Shared: shared, Own: own, Hit: a.Stack.Hit, Cost: a.CostUSD, Scope: scope(a),
+			Doing: doing(a, tasks), Shared: shared, Own: own, Hit: a.Stack.Hit, Cost: a.Spend().Shown(), Plan: a.Plan, Scope: scope(a),
 		}
 		if lane, ok := lanes[a.ID]; ok {
 			r.Levels, r.Marks = lane8(lane)

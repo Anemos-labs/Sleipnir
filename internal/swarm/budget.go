@@ -14,20 +14,63 @@ import (
 // evaded: the request governor asks before every request, and the moment the total
 // is over the line every running worker is stopped.
 
-// TotalCost sums spend across every agent, running or retired.
-func (s *Swarm) TotalCost() float64 {
+// closeAgent closes a retired member's agent, and agentSpend reads what an agent has cost, what its plan-covered usage comes to at the
+// API list price and whether it had any (agent.Agent.PlanUsage). They are variables so that a test can stand between the two (detach
+// reads the spend after the close).
+var (
+	closeAgent = func(a *agent.Agent) error { return a.Close() }
+	agentSpend = func(a *agent.Agent) (cost, list float64, plan bool) {
+		_, c := a.Usage()
+		l, p := a.PlanUsage()
+		return c, l, p
+	}
+)
+
+// counted are the agents whose spend is not yet in the ledger: the members, and the members being retired (detach), with the ledger
+// (the spend, the list-price value and whether a plan was used) read in the same critical section, so that an agent is counted exactly
+// once whatever detach does meanwhile.
+func (s *Swarm) counted() (spent, list float64, plan bool, ms []*member) {
 	s.mu.Lock()
-	spent := s.spent
-	ms := make([]*member, 0, len(s.members))
+	defer s.mu.Unlock()
+	ms = make([]*member, 0, len(s.members)+len(s.retiring))
 	for _, m := range s.members {
 		ms = append(ms, m)
 	}
-	s.mu.Unlock()
+	for m := range s.retiring {
+		ms = append(ms, m)
+	}
+	return s.spent, s.spentList, s.spentPlan, ms
+}
+
+// TotalCost sums spend across every agent, running or retired.
+func (s *Swarm) TotalCost() float64 {
+	spent, _, _, ms := s.counted()
 	for _, m := range ms {
 		_, c := m.a.Usage()
 		spent += c
 	}
 	return spent
+}
+
+// TotalListCost sums, across every agent running or retired, the API list-price value of the usage a subscription plan covered
+// (agent.Agent.ListUSD): what the interfaces show for that usage. plan says any agent's request was accounted on a plan's model, which
+// a plan's model whose list price is not known does without adding to list. No budget reads them; TotalCost is the spend.
+func (s *Swarm) TotalListCost() (list float64, plan bool) {
+	_, list, plan, ms := s.counted()
+	for _, m := range ms {
+		l, p := m.a.PlanUsage()
+		list, plan = list+l, plan || p
+	}
+	return list, plan
+}
+
+// AddRetiredListCost folds into TotalListCost the list-price value, and whether a plan was used, of agents of an earlier run that a
+// resume does not bring back (the counterpart of RestoreTeam's retiredCost for the budget ledger).
+func (s *Swarm) AddRetiredListCost(list float64, plan bool) {
+	s.mu.Lock()
+	s.spentList += list
+	s.spentPlan = s.spentPlan || plan
+	s.mu.Unlock()
 }
 
 // budgetErr returns a non-nil error once the swarm budget is spent. The error wraps

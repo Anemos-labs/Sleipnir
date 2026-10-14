@@ -45,6 +45,10 @@ type TurnResult struct {
 	Steps    int
 	CostUSD  float64
 	HitRatio float64
+	// ListUSD is what a subscription plan covered, at the API list price, and Plan says the session runs on one: the record of the
+	// turn shows CostUSD+ListUSD as "≈$0.01 plan" (session.Result).
+	ListUSD float64
+	Plan    bool
 	// Err is nil for a turn that finished, an error that is context.Canceled for one that was cancelled, and what the harness
 	// says for one that failed. Message, when set, is what the person is told instead of "error: " and Err.
 	Err     error

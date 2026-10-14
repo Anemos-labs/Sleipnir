@@ -599,21 +599,27 @@ func BuildProvider(cfg *config.Config, ref ModelRef, o ProviderOptions) (provide
 	prof := client.Profile()
 
 	m, ok := cost.Defaults().Lookup(ref.Model)
-	if !ok {
+	if ok {
+		// The table prices the model; the request names it as the reference does (a marketplace's "openai/gpt-6-luna" is not the
+		// API's "gpt-6-luna").
+		m.ID = ref.Model
+	} else {
 		m = cost.Fallback(ref.Model)
 		// An unknown model on a chat endpoint gets the endpoint's own cache
 		// behaviour; prices stay an estimate until the catalogue supplies them.
 		m.Cache = prof.Cache
-		if p.Auth == config.AuthChatGPTPlan {
-			m.Price = cost.Price{} // a plan is paid for by the month: what the tokens come to is not a bill
-		}
-		if p.APIKeyEnv == "" && localBase(base) {
-			// A server on this machine (Ollama, LM Studio, llama.cpp, vLLM) costs nothing per token, and its catalogue lists ids only: no price to
-			// show, and no window. The window is a cautious one (Ollama serves a few thousand tokens unless told otherwise, and cuts the rest off
-			// without a word), so that compaction keeps the prompt inside what the server gives; options.context_window says the real one.
-			m.Price = cost.Price{}
-			m.ContextTokens = localContextWindow
-		}
+	}
+	if p.Auth == config.AuthChatGPTPlan {
+		// A plan is paid for by the month: the tokens bill nothing and no budget counts them. The API's list price of the same model
+		// (the table's, when it knows the model) is kept to show what the usage would cost on the API.
+		m = m.OnPlan(ok)
+	}
+	if !ok && p.APIKeyEnv == "" && localBase(base) {
+		// A server on this machine (Ollama, LM Studio, llama.cpp, vLLM) costs nothing per token, and its catalogue lists ids only: no price to
+		// show, and no window. The window is a cautious one (Ollama serves a few thousand tokens unless told otherwise, and cuts the rest off
+		// without a word), so that compaction keeps the prompt inside what the server gives; options.context_window says the real one.
+		m.Price = cost.Price{}
+		m.ContextTokens = localContextWindow
 	}
 	if n := optInt(p.Options, "context_window"); n > 0 {
 		m.ContextTokens = n
@@ -649,8 +655,8 @@ func EnrichModel(ctx context.Context, cacheDir, baseURL string, m cost.Model) co
 
 // enrichModel is EnrichModel that also says whether the catalogue had the model.
 func enrichModel(ctx context.Context, cacheDir, baseURL string, m cost.Model) (cost.Model, bool) {
-	if m.Provider != "unknown" || baseURL == "" {
-		return m, false
+	if m.Provider != "unknown" || m.Plan || baseURL == "" {
+		return m, false // a plan's model is billed nothing per token, whatever a catalogue says
 	}
 	// The catalogue decides the prices a budget is computed from: over plain http it
 	// could be rewritten on the way, so it is only read over https or from this

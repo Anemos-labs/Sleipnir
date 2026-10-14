@@ -264,10 +264,33 @@ event log records what each was described with (the numbers and where they came 
 gateway's, not the fallback's. `sleipnir models` prints a marketplace catalogue with prices.
 `--context-window N` on `run` overrides the window for one run.
 
-`sleipnir models --provider chatgpt` uses the saved ChatGPT sign-in. Its price
-columns say `plan`, because that catalog supplies no per-token prices. A positive
-`--max-price` filter excludes these rows. Tuning a built-in provider without
-setting `base_url` preserves its authentication mode.
+The built-in table (`internal/cost/defaults.go`) holds Anthropic's Claude models and OpenAI's `gpt-6-astra`, `gpt-6.1-sol`,
+`gpt-6-sol`, `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra` and `gpt-5.6-luna`. The OpenAI prices are the API's standard tier
+for short context (at most 272k input tokens), per million tokens, from <https://developers.openai.com/api/docs/pricing>:
+input, cached input, cache writes (the short-context cache-write rate, 1.25 times input) and output. A prompt longer than
+272k tokens is billed at higher long-context rates that the table does not model, so its figure is a lower bound. The table prices `openai/<model>`
+(the API with a key) and the same model on a marketplace (`openrouter/openai/gpt-6-luna`); the request still names the model
+as the reference does. Their context window in the table is a cautious 200k, as for a model nothing knows; the provider's
+`options.context_window` sets the real one.
+
+**A ChatGPT plan.** A plan (`auth: chatgpt-plan`, the built-in provider `chatgpt`) bills nothing per token. Its usage is
+shown at the API list price of the same model from the table, marked as the plan's: `≈$0.12 plan` in the terminal and the
+same figure with a `plan` tag in the browser, both explained as "at API list price; billed to your ChatGPT plan". In the
+event log every `model.response` of a plan's model keeps `cost_usd` at 0 and adds `list_usd` (its usage at the list price;
+0 when the table does not know the model), `session.start` records the list prices with `"plan": true`, and `session.end`
+adds `list_usd` and `"plan": true`. Responses of every other model have no `list_usd`: their `cost_usd` is the figure shown.
+Savings and the cost of cache misses of a plan's session are computed at the same list prices.
+
+**Budgets count what is billed.** `--budget-usd`, `/budget`, a team's `swarm.budget_usd` (the $50 default), a scheduled job's
+budget and the RL caps read `cost_usd` only. A plan's usage never fills them, whatever its list-price value. A budget gauge
+fills with what is billed: a session that is all on a plan says "plan" and stays empty, and one that mixes a plan with billed
+models fills with the billed part.
+
+`sleipnir models --provider chatgpt` uses the saved ChatGPT sign-in. A plan's model is listed at the API list price of the
+same model with its output price tagged `plan` (`?` when the table does not know the model), and a note on stderr says what
+the tag means. `--max-price` filters a plan's models by that list price; one with no known list price is left out by any
+limit. Settings › Models in the browser and the chat's `/model` menu show the same prices and tag. Tuning a built-in provider
+without setting `base_url` preserves its authentication mode.
 An explicit `models --base-url URL` lists that endpoint without borrowing the
 ChatGPT sign-in token.
 

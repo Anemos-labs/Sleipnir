@@ -142,6 +142,39 @@ type Model struct {
 	// Enforces preserved-thinking checks: editing history before a thinking
 	// block invalidates the block (400 or dropped, depending on account).
 	PreservedThinking bool
+	// Plan says the model is reached through a subscription plan (a ChatGPT
+	// sign-in) that bills nothing per token. Price is then zero, so the usage
+	// counts against no budget, and ListPrice holds the provider's API list
+	// price for the same model (zero when it is not known): the interfaces show
+	// the usage at that price, marked as covered by the plan.
+	Plan bool
+	// ListPrice is the API list price of a Plan model; see Plan. It is zero for
+	// every other model, whose Price already is what its usage is shown at.
+	ListPrice Price
+}
+
+// OnPlan returns m as reached through a subscription plan: Plan set, the
+// price it had moved to ListPrice when listed is true (it is the API's list
+// price, from the built-in table) and left out otherwise (a guess is not a list
+// price), and nothing billed per token.
+func (m Model) OnPlan(listed bool) Model {
+	m.Plan, m.ListPrice = true, Price{}
+	if listed {
+		m.ListPrice = m.Price
+	}
+	m.Price = Price{}
+	return m
+}
+
+// ListUSD prices a usage record at the API list price of a Plan model, for
+// display: the figure no budget counts. It is zero for a model that is not on a
+// plan, and for a plan model whose list price is unknown. Like USD it never
+// returns NaN or a negative figure.
+func (m Model) ListUSD(u core.Usage) float64 {
+	if !m.Plan {
+		return 0
+	}
+	return m.ListPrice.USD(u)
 }
 
 var (

@@ -51,6 +51,10 @@ type Snapshot struct {
 	Compactions int         `json:"compactions"`
 	Usage       core.Usage  `json:"usage"`
 	CostUSD     float64     `json:"cost_usd"`
+	// ListUSD is the API list-price value of the usage a subscription plan covered (Agent.ListUSD), and PlanUsed says there was such
+	// usage (Agent.PlanUsage).
+	ListUSD  float64 `json:"list_usd,omitempty"`
+	PlanUsed bool    `json:"plan_used,omitempty"`
 	// PendingRequests have reserved IDs but their usage is not included above.
 	PendingRequests   []string `json:"pending_requests,omitempty"`
 	PendingAssignment string   `json:"pending_assignment,omitempty"`
@@ -92,7 +96,7 @@ func (a *Agent) Snapshot() Snapshot {
 		Turns: th.Turns, NextTurn: th.NextID, ThreadEpoch: th.Epoch,
 		Spine: layerState(a.stack.Spine), Notes: layerState(a.stack.Notes),
 		Epoch: a.epoch, Requests: a.reqN, Forks: a.forkN, Compactions: a.comp.count,
-		Usage: a.usage, CostUSD: a.costUSD,
+		Usage: a.usage, CostUSD: a.costUSD, ListUSD: a.listUSD, PlanUsed: a.planUsed,
 		PendingRequests:   slices.Sorted(maps.Keys(a.pendingRequests)),
 		PendingAssignment: a.pendingAssignment,
 	}
@@ -247,7 +251,7 @@ func (a *Agent) Restore(s Snapshot) error {
 	}
 	a.epoch = s.Epoch + 1
 	a.reqN, a.forkN, a.comp.count = s.Requests, s.Forks, s.Compactions
-	a.usage, a.costUSD = s.Usage, s.CostUSD
+	a.usage, a.costUSD, a.listUSD, a.planUsed = s.Usage, s.CostUSD, s.ListUSD, s.PlanUsed
 	a.pendingAssignment = s.PendingAssignment
 	a.man = core.ManifestState{} // the next request is encoded in full: a new segment of the log
 	if a.cfg.Provider.Profile().ReplayThinking && a.cfg.ApplyPolicy.StripThinking {
@@ -316,6 +320,7 @@ func LatestSnapshot(dir, agentID string) (*Snapshot, error) {
 		Req     string     `json:"req"`
 		Usage   core.Usage `json:"usage"`
 		CostUSD float64    `json:"cost_usd"`
+		ListUSD *float64   `json:"list_usd"` // present on a plan's response only
 	}{}
 	err = events.Scan(filepath.Join(dir, "events.jsonl"), func(e events.Event) error {
 		if e.Agent != agentID {
@@ -334,6 +339,7 @@ func LatestSnapshot(dir, agentID string) (*Snapshot, error) {
 				Req     string     `json:"req"`
 				Usage   core.Usage `json:"usage"`
 				CostUSD float64    `json:"cost_usd"`
+				ListUSD *float64   `json:"list_usd"` // present on a plan's response only
 			}
 			if err := json.Unmarshal(e.Data, &response); err != nil {
 				return err
@@ -379,6 +385,10 @@ func LatestSnapshot(dir, agentID string) (*Snapshot, error) {
 		if slices.Contains(s.PendingRequests, response.Req) || (!side && n > s.Requests) || (side && n > s.Forks) {
 			s.Usage = s.Usage.Add(response.Usage)
 			s.CostUSD += response.CostUSD
+			if response.ListUSD != nil {
+				s.ListUSD += *response.ListUSD
+				s.PlanUsed = true
+			}
 		}
 	}
 	s.Requests, s.Forks, s.NextTurn = max(s.Requests, requests), max(s.Forks, forks), max(s.NextTurn, nextTurn)

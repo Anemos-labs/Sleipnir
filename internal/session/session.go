@@ -208,6 +208,10 @@ type Session struct {
 	plans   *plan.Store // each agent's plan, which a standing goal reads as its requirements (goal.go)
 	// judgeUSD is what a standing goal's judge has cost (goal.go), under mu.
 	judgeUSD float64
+	// judgeListUSD is the API list-price value of the judge's usage when its model is on a subscription plan, and judgePlan says the
+	// judge used one, under mu.
+	judgeListUSD float64
+	judgePlan    bool
 
 	// team is the team the swarm was built with (Team).
 	team []TeamSlot
@@ -301,6 +305,10 @@ type Result struct {
 	// nobody finished); empty when the work was settled, and for a run that is not a swarm. A caller that wants to know whether
 	// the run did what it was asked reads it here instead of parsing the answer.
 	Unfinished string
+	// ListUSD is the value at the API list price of the usage a subscription plan covered, and Plan says the session ran on one (see
+	// cost.Model.Plan): a summary shows CostUSD+ListUSD marked as the plan's. Budgets count CostUSD only.
+	ListUSD float64
+	Plan    bool
 }
 
 // New builds a session.
@@ -1224,6 +1232,7 @@ func (s *Session) result(res *agent.Result, err error) (*Result, error) {
 		out.CostUSD = s.Swarm.TotalCost()
 		out.Unfinished = s.Swarm.Unfinished()
 	}
+	out.ListUSD, out.Plan = s.listCost()
 	return out, err
 }
 
@@ -1412,7 +1421,12 @@ func (s *Session) Close() error {
 		s.ckptLog.close() // the checkpoints' last changes, before the log ends
 	}
 	if started {
-		s.Log.Emit("", events.TypeSessionEnd, map[string]any{"cost_usd": s.cost(), "reason": reason})
+		end := map[string]any{"cost_usd": s.cost(), "reason": reason}
+		if list, plan := s.listCost(); plan {
+			// What a subscription plan covered, at the API list price; cost_usd stays what was billed.
+			end["list_usd"], end["plan"] = list, true
+		}
+		s.Log.Emit("", events.TypeSessionEnd, end)
 	}
 	err := s.Log.Close()
 	if s.unlock != nil {
@@ -1434,6 +1448,25 @@ func (s *Session) cost() float64 {
 		return c + judge
 	}
 	return judge
+}
+
+// listCost is cost's counterpart for the usage a subscription plan covered: its value at the API list price (cost.Model.ListUSD), which
+// the interfaces show and no budget counts. plan reports whether the session's model is on a plan or any agent's, compactor's or the
+// goal judge's request was accounted on a plan's model: a plan's model whose list price is not known adds nothing to list and is still
+// a plan's (a worker of a billed team that runs such a model, say).
+func (s *Session) listCost() (list float64, plan bool) {
+	s.mu.Lock()
+	list, plan = s.judgeListUSD, s.judgePlan
+	s.mu.Unlock()
+	switch {
+	case s.Swarm != nil:
+		l, p := s.Swarm.TotalListCost()
+		list, plan = list+l, plan || p
+	case s.Agent != nil:
+		l, p := s.Agent.PlanUsage()
+		list, plan = list+l, plan || p
+	}
+	return list, plan || s.Model.Plan
 }
 
 // plannerFor is the compaction planner that the cache settings ask for. A soft limit that is set above the default hard one would never
