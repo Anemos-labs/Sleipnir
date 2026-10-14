@@ -320,7 +320,7 @@
         let starting = false;
         sc.listen($('#nsStart', b), 'click', () => {
           if (starting) return;
-          if (Array.from(st.goalText.trim()).length > 4000) { ui.toast('The goal is longer than 4,000 characters. Shorten it before starting.', 'err'); return; }
+          if (Array.from(st.goalText.trim()).length > SL.goalMax()) { ui.toast('The goal is longer than ' + SL.goalMax().toLocaleString('en') + ' characters. Shorten it before starting.', 'err'); return; }
           const bud = st.budget === 'off' || st.budget === '' ? 0 : parseFloat(st.budget); if (st.budget !== 'off' && st.budget !== '' && !(bud > 0)) { ui.toast('the budget is a number of dollars, or off', 'err'); return; }
           /* what was typed or chosen but not added yet is part of what starts (an allow rule in its field, a role and model picked) */
           const pending = $('#nsRule', b); if (!quiet() && !addRule(pending.value)) return; if (!quiet()) pending.value = '';
