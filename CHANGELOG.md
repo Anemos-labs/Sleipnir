@@ -15,6 +15,7 @@ they do not indicate whether a change has been released.
   fails. An `agree` or `confirm` from outside the pool (the manager's, say) is
   told that only members acknowledge. Prompt bytes: the pool tool's description and schema
   change G0, so a cached tool prefix of an earlier version no longer matches.
+
 - Providers take `options.model_extra_body`: per model id, request members put
   over `extra_body` for that model only (one gateway, an upstream pinned for
   one of its models, the others routed as before). Prompt bytes: none change.
@@ -112,6 +113,7 @@ they do not indicate whether a change has been released.
   contract. Reconciliation retains the combined contract supplied for every
   member to confirm. Prompt bytes: the task and pool tool descriptions change G0, incurring a
   one-time cache miss.
+
 - Configured teams retain role pools and worker conversations. Each multi-member
   pool agrees on one plan, delegates scoped children and reconciles one parent
   result. Task revisions and retries preserve IDs; unneeded work closes with an
