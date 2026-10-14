@@ -407,6 +407,9 @@ func (e *Engine) snapshotWith(role string, extra []*crule) (sess, prof *view) {
 		prof = &view{
 			mode: stricter(e.mode, p.mode), role: role,
 			deny: cat(e.deny, p.deny), ask: cat(e.ask, p.ask), allow: cat(allow, p.allow),
+			// A read-only role in a session that reads anywhere: its profile keeps it from writing, not from reading a toolchain's
+			// source or a module cache the session itself would read without asking.
+			readFree: p.mode == ModePlan && free(e.mode),
 		}
 		if modeRank(prof.mode) < modeRank(e.mode) {
 			// A role that takes a stricter posture is judged from scratch under
