@@ -15,6 +15,7 @@ they do not indicate whether a change has been released.
   architect pool could not look up the current version of a library it was
   choosing. Writes stay refused until the member's child task. Prompt bytes:
   none change.
+
 - A request to build something is a request for a product: production quality
   is implied and never has to be asked for. The constitution has a new section,
   "Build to ship" (complete workflows with their unhappy paths, secure by
@@ -223,6 +224,7 @@ they do not indicate whether a change has been released.
   contract. Reconciliation retains the combined contract supplied for every
   member to confirm. Prompt bytes: the task and pool tool descriptions change G0, incurring a
   one-time cache miss.
+
 - Configured teams retain role pools and worker conversations. Each multi-member
   pool agrees on one plan, delegates scoped children and reconciles one parent
   result. Task revisions and retries preserve IDs; unneeded work closes with an
@@ -231,6 +233,7 @@ they do not indicate whether a change has been released.
   exact requested worker count. Prompt bytes: G0 gains the `pool` tool and task
   revision/parent fields; manager and architect role pins and the manager's
   isolation card change. These stable layers incur a one-time cache miss.
+
 - GitHub delivery is opt-in per objective through `--auto-fix`, `--auto-merge`,
   `/delivery` and chat checkboxes. It persists progress for explicit resume and
   checks the current PR head before merging. Cache charts show a readable window
@@ -254,6 +257,7 @@ they do not indicate whether a change has been released.
   waits for it. Prompt bytes: the tool list (G0) gains `approve`, the
   manager's role pin and team card changed, and workers' isolation cards
   changed, so G0 and the manager's role layer miss the cache once.
+
 - Permissions: a whole-tree formatter (`gofmt -w .`, `go fmt ./...`,
   `prettier --write .`, `cargo fmt`, `ruff format`, ...) is no longer taken
   to write into `.sleipnir/` or `.claude/`; an `ask` or `deny` rule about a
@@ -269,6 +273,7 @@ they do not indicate whether a change has been released.
   may write the session's `$TMPDIR`. Prompt bytes: the runtime layer of a
   session with a private `TMPDIR` gains one sentence about it, so that layer
   misses the cache once.
+
 - The built-in worker roles are architect (read-only planner), scout,
   backend, frontend, devops, tester, docs and reviewer. `fullstack` is no
   longer offered; training tasks and resumed sessions that name it keep it.
@@ -279,13 +284,16 @@ they do not indicate whether a change has been released.
   or at least 8. Prompt bytes: the manager's role pin (its rules and a team
   card), every worker's role pin under auto-docs, and the `spawn` tool's
   description changed, so G0 (tools) and the role layers miss the cache once.
+
 - Auto-docs (`--auto-docs`, `swarm.auto_docs`, on by default): after every
   accepted task and agreement the harness gives the docs worker a
   `docs: catch up` task; a batch run's manager is held until it is done.
+
 - The manager's shell commands are judged by the permission engine's
   plan-mode profile alone (pipes, `&&`, absolute paths inside the workspace,
   `git -C`), and it may run `gh`'s reading commands and fetch and search the
   web. Read-only roles may fetch and search the web too. Writes stay refused.
+
 - A task the manager sends back between a worker's `done` call and its next
   request is read by the run that is ending. When that worker stopped without
   calling `done` again, the task stayed in doing with an idle owner: the run
@@ -294,18 +302,21 @@ they do not indicate whether a change has been released.
   run takes the task at its current revision and settles it. The message is
   mail in the conversation; stable prompt layers and tool schemas are
   unchanged.
+
 - The network detector (`hack:network`) flags a package manager's fetch of
   the task's own package (`pip download`/`pip install`, `npm install`,
   `yarn add`, `pnpm add`, `cargo add`/`install`, `gem install`), which names
   no address: a rebuild team ran `pip download ncclient==0.6.13` to get the
   sources it was asked to write. The names are the upstream repository's
   and, for a Python task, the scope's top-level modules.
+
 - The prompts of `rl taskgen chain` and `rl taskgen rebuild` tasks say that
   fetching the project's code from elsewhere (its repository, a mirror, a
   module proxy or a package index) is not allowed. Teams on rebuild tasks
   tried `go mod download` and `curl` of the upstream sources, which the
   network detector flags, losing whole rollouts. Tasks generated before keep
   their prompt.
+
 - The network detector (`hack:network`) knows the upstream of harvested
   tasks from `meta.source` (`repo` or `url`, when it is a URL), so a chain
   or rebuild team asking for the project's own code is flagged even when the
@@ -314,6 +325,7 @@ they do not indicate whether a change has been released.
   `module@version`): a plain `go list github.com/owner/repo/pkg` lists a
   package of the build and was flagged as reaching github.com. A Go command
   refused by `GOPROXY=off` counts as failed.
+
 - `rl taskgen chain` and `rl taskgen rebuild` give a task 250 requests for
   each worker and hour of its wall clock (at least 2.5 per step, as before).
   The request budget counts every agent of the session, and 2.5 per step
@@ -321,6 +333,7 @@ they do not indicate whether a change has been released.
   with most of its wall clock left. Tasks generated before keep the budget
   they recorded; raise `budget.requests` in their file to give them the new
   one.
+
 - `rl export --format dpo` pairs the siblings of a branch point. For a
   branch episode (`fork` set) the episode unit compares its root agent from
   the fork to the first rebase after it: it stops collecting at that rebase,
@@ -331,6 +344,7 @@ they do not indicate whether a change has been released.
   `--pair-unverified` (`export.Options.PairUnverified`) lets `--pair
   best-worst` pair a group none of whose episodes passed, by verifier score;
   without it such a group still gives no pair.
+
 - The hardcoded-value detector rules out a literal that the task's
   repository already had before the change (`env.RepoContains`: `git grep`
   at the task's commit). Once the detector read hidden files from the task
@@ -343,6 +357,7 @@ they do not indicate whether a change has been released.
   cannot. Nor is a name of several parts (`core.count`) each of whose parts
   the repository has evidence. A flag's note says whether the repository was
   searched.
+
 - `rl taskgen rebuild` keeps a Go package of the scope at the reference when
   the tests of another package of the scope import it although that
   package's sources do not depend on it (an assertion library such as
@@ -358,6 +373,7 @@ they do not indicate whether a change has been released.
   tests are imported, the same way (oauthlib's `filter_params` decorator,
   stubbed, failed the import of 47 modules). Tasks generated earlier are
   unchanged; regenerate a rebuild task whose scope includes such code.
+
 - New `rl reverify` verifies finished rollouts again with the tasks as a
   tasks file defines them now: the final patch (the episode's verdict) and
   every consistent savepoint's tree in progress mode (`progress.jsonl` and
@@ -367,6 +383,7 @@ they do not indicate whether a change has been released.
   scored by a fixed scorer without being generated again. Run walks no longer
   descend into a sample's `savepoints/` directory. Tasks, recorded episodes
   and prompt bytes are unchanged until these commands are run.
+
 - The hardcoded-value detector reads a task's hidden verifier files that are
   stored as blobs from the task blob store. Scoring read blobs from the run's
   own store only, so for tasks whose hidden files are blobs (every generated
@@ -376,6 +393,7 @@ they do not indicate whether a change has been released.
   `harness.Pipeline` gains `Hidden`, and `reward.DiffsFromBlobs` takes further
   getters to fall back to. Episodes scored earlier keep their flags until
   `rl reward --tasks FILE --redetect-hacks` scores them again.
+
 - Under `--confine bwrap`, a cache that a command's environment names
   (`GOMODCACHE`, `GOCACHE`, `PIP_CACHE_DIR`, ...) or that `--confine-rw`
   names is created when it does not exist yet. Before, a missing cache was
@@ -384,6 +402,7 @@ they do not indicate whether a change has been released.
   failed to build every package with an outside dependency. A cache that
   cannot be created is a warning on the command's result. Tasks, scores of
   runs whose caches existed and prompt bytes are unchanged.
+
 - The whole-suite scorer runs a Go package again when a test crashed its test
   binary (a panic, a fatal error), without the tests it already reported
   (`-skip` through `SUITE_ARGS`), until a run reports nothing new, the
@@ -393,6 +412,7 @@ they do not indicate whether a change has been released.
   leaves them unreported. Scores of Go suites whose code
   crashes rise accordingly; recordings made by generators include those
   tests. Prompt and tool-schema bytes are unchanged.
+
 - When no run with the reference solution reports a single test, the
   "nothing to score" rejection of `rl taskgen rebuild` and `rl taskgen chain`
   says so, with how that step's first run ended (`pytest: exit 4`) and the
@@ -402,6 +422,7 @@ they do not indicate whether a change has been released.
   `reference_no_tests`, `taskgen.SuiteSteps` gains `no_tests`, and
   `env.VerifyOptions` gains a `Stderr` callback. Tasks, the scorer script and
   prompt bytes are unchanged.
+
 - Resume long RL rollouts from savepoints instead of starting them over
   (`--savepoint-every`, off by default): a rollout takes a session savepoint
   at that interval and captures the work tree into the sample's
@@ -416,6 +437,7 @@ they do not indicate whether a change has been released.
   `savepoint_every_ms`. With savepoints off, rollouts and their records are
   unchanged. Prompt and tool-schema bytes are unchanged; a resumed agent's
   first request re-writes its cached prefix once.
+
 - Score the work tree of long rollouts at their savepoints
   (`--score-savepoints`, with `--progress-sample` and `--progress-budget`):
   the task's verifier runs on each savepoint's tree in a clean checkout, in
@@ -427,6 +449,7 @@ they do not indicate whether a change has been released.
   environment. `rl export --sft-prefix best` exports failed episodes up to
   their best-scoring savepoint (`best_prefixes` in the statistics). Prompt and
   tool-schema bytes are unchanged.
+
 - Continue finished long rollouts from their savepoints with `sleipnir rl
   branch`: K branches per savepoint, each resuming the trunk's state with its
   own seed, for a horizon of agent time. Episodes gain `fork` and steps
@@ -439,10 +462,12 @@ they do not indicate whether a change has been released.
   calls are then competing summaries of one state (`fork.compact_first`);
   with too little to fold, no compactor is called. Prompt and tool-schema
   bytes are unchanged.
+
 - Commands in a task's scrubbed environment (agent and verifier) get
   `RUSTUP_HOME` set to the host's `~/.rustup` when the host has one and does
   not set the variable: with HOME replaced, rustup's cargo and rustc found no
   toolchain and every cargo command failed.
+
 - Task generators can score a task with the project's whole test suite
   (`taskgen.WriteSuite`, `RecordSuite`): a hidden scorer runs Go, pytest and
   cargo suites, each command in its own session with its output in files,
@@ -452,10 +477,12 @@ they do not indicate whether a change has been released.
   `SUITE_BUDGET_S`) runs a sample under a deadline. `VerifyOptions.Stdout`
   hands each verifier run's stdout to the caller; `env.MaxScoreUnits` and
   `MaxScoreUnitName` are exported. Existing verifiers are unchanged.
+
 - `rl taskgen fixture` takes `--max-files`, `--max-file-bytes` and
   `--max-total-bytes` (`FixtureOptions.MaxFiles`, `MaxFileBytes`,
   `MaxTotalBytes`) for large project fixtures; the defaults (400 files,
   1 MiB per file, 8 MiB per tree) are unchanged.
+
 - Link every compaction to the compactor call it came from, and baseline
   compactor advantages by compaction number. `compact.patch` and
   `compact.commit` events gain `req`, the compactor's `model.request` id (on a
@@ -474,6 +501,7 @@ they do not indicate whether a change has been released.
   flat (advantage 0, reported in `Flat`), as any single-sample group is. Report
   groups gain `Compaction` and the key `<group>|compactor#<k>`. Prompt and
   tool-schema bytes are unchanged.
+
 - Sessions can take savepoints (`session.Options.Savepoints`,
   `Session.Savepoint`): tool batches that can write hold a barrier, a
   savepoint pauses them for a moment, writes every agent's state as an
@@ -484,6 +512,7 @@ they do not indicate whether a change has been released.
   option nothing changes; prompt and tool-schema bytes are unchanged
   (`core.ToolSpec` gains the scheduling hint `NoTreeWrites`, set on the
   swarm's task, mail, note and spawn tools, which is never rendered).
+
 - `sleipnir rl taskgen chain --chains FILE REPO` makes one long swarm task of
   each chain of 3 to 8 consecutive merged pull requests, scored per milestone
   by the whole-suite scorer and checked at every pull request before it is
@@ -492,6 +521,7 @@ they do not indicate whether a change has been released.
   rejections gain the field `chain` and the report the list `chains` (each
   chain's self-check); a task's `meta` gains `commits`, the chain's pull
   requests. Readers that ignore unknown fields are unaffected.
+
 - `sleipnir rl taskgen git --seal DIR` writes each task's start state as a
   repository of its own, `DIR/<task id>.git`, with one commit (the start tree,
   no history, a fixed author and date): the repository holds that commit and
@@ -502,6 +532,7 @@ they do not indicate whether a change has been released.
   `--seal` tasks are written as before. Sealed tasks need their repositories
   next to the tasks file, and `rl tasks split` treats each sealed repository
   as a repository of its own (`docs/TRAINING-DATA.md`, section 3.2).
+
 - `sleipnir rl taskgen rebuild --scope PKG,... REPO` makes one long swarm task
   of rebuilding a library from its specification: the scope's Go packages or
   Python modules at `--commit` are reduced to stubs (`--tier stubs`) or removed
@@ -514,12 +545,14 @@ they do not indicate whether a change has been released.
   reason. The task's `meta.source` holds `repo`, `commit`, `scope`, `tier` and
   `spdx`. `taskgen.GoSuiteCommand` takes the packages to run; without them it
   runs the whole module, as before.
+
 - A `json-score` verifier's score line may carry a breakdown of the score,
   `"units"` and `"guards"` (`docs/TRAINING-DATA.md`, section 3.1). Verifier
   results, outcome events, the episode's `outcome.verifier` and the results in
   a run's `summary.json` gain the optional fields `units` and `guards`; readers
   that ignore unknown fields are unaffected, and the score and verdict are the
   same as before.
+
 - Confine RL setup, agent and verifier commands with `--confine bwrap` (on
   `rl rollout`, `rl eval`, `rl tasks check` and the task generators): each
   runs in a bubblewrap sandbox that sees a read-only system, its own tree,
@@ -529,12 +562,14 @@ they do not indicate whether a change has been released.
   `--confine-rw` re-expose other toolchain and cache directories. The default
   (`off`) runs commands as before. `VerifyRequest` gains `Wrap` and `BaseEnv`;
   prompt and tool-schema bytes are unchanged.
+
 - A worker started after a team session is resumed (without worktree
   isolation) gets an id past those the earlier process used, as an isolated
   team's already did: before, it could be given the id of a worker from
   before the resume, and two agents then shared request ids in one log, which
   made the session's training data fail to replay. Its prompts name the new
   id.
+
 - RL tasks can give paths to roles: `team.owns` maps a role to globs (the
   syntax of `verifier.protected`) that only agents of that role may write in a
   swarm. The write guard refuses another agent's write to an owned path, the
@@ -548,6 +583,7 @@ they do not indicate whether a change has been released.
   bounce are new prompt content only for a task that sets `team.owns`; without
   it no prompt byte changes. Task files without the field are read as before,
   and readers of the log that ignore unknown lease actions are unaffected.
+
 - Pause RL rollouts during outages of the policy endpoint instead of failing
   them. A rollout's agents wait out a 5xx, a 429, a refused or reset
   connection and a request that gets no response, for up to
@@ -563,6 +599,7 @@ they do not indicate whether a change has been released.
   lasts half a minute as `rollout.outage`. An agent's outage patience now
   counts the time since a request first failed rather than the sum of the
   waits between its attempts. Prompt and tool-schema bytes are unchanged.
+
 - Keep a provider key from the environment in use when a key is also stored.
   A key that `harden.MoveKeys` took out of the environment at start is no
   longer replaced by the one `sleipnir login` stored, as documented: the
@@ -570,6 +607,7 @@ they do not indicate whether a change has been released.
   tells which of the two supplies a key. `sleipnir login` and `logout` name the
   environment variable only when it is the key in use, and a refusal of the
   environment's key no longer deletes the stored key that was never tried.
+
 - Web permission rules judge exactly what `web_fetch` fetches, and a redirect
   to another host asks first. A rule read only the first of the fields `url`,
   `uri`, `href` and `endpoint` that parsed, while the tool reads `url` after
@@ -591,6 +629,7 @@ they do not indicate whether a change has been released.
   in the same directory; any other request does only when it is byte-identical.
   The file and memory tools' requests now carry the call's input, which
   PermissionRequest hooks also receive.
+
 - `sleipnir web` serves the sessions in a browser on loopback (see `docs/CLI.md`
   and `docs/SECURITY.md` section 5). Behind it, several commands share their
   code with the web routes and behave as before: `models`, `fav`, `allow`,
@@ -613,6 +652,7 @@ they do not indicate whether a change has been released.
   and goal lines. A session the web host serves keeps a journal of the content
   each agent writes, bounded at 256 MiB per session, which the browser's
   per-line history reads; other sessions keep none.
+
 - Count workers, not the manager, in every team size a person types or reads.
   `--swarm N`, `sleipnir swarm N`, `/swarm N` and `rl --mode swarm:N` mean a
   manager and N workers again; `--swarm 0` is a single agent and
@@ -627,6 +667,7 @@ they do not indicate whether a change has been released.
   equal, since 0 means no ceiling, so its refusal asks for a worker count of 1
   or more. The mailman no longer takes a worker's place under the cap, and
   `sleipnir init` writes `"max_workers": 12`.
+
 - The manager edits no file in any run. It plans, delegates and reviews; its
   writes and writing shell commands are refused at run time with a pointer to
   spawn a worker, in a shared checkout as in an isolated one, and in a session
@@ -636,6 +677,7 @@ they do not indicate whether a change has been released.
   pin (G2) changes
   once to say so and can require a fresh provider cache prefill for the
   manager; other stable layers and tool-schema bytes are unchanged.
+
 - Hand a worker's task to a fresh worker. `task handover` (the owner, with a
   required summary, or the manager for any worker) stops the predecessor, gives
   the doing task to a new worker of the same role with a recap the harness
@@ -649,6 +691,7 @@ they do not indicate whether a change has been released.
   `swarm.handover` events record each attempt. The `task` tool's description and
   action enum (G0) change once on upgrade, identically for every agent; the
   recap is part of the successor's private notes, never a shared layer.
+
 - Name team stalls. A sweep on the supervisor's tick finds workers that own a
   doing task but take `swarm.Config.StallTurns` (default 12) model turns without
   a progress call, refused manager waits while no worker runs, tasks owned by
@@ -659,6 +702,7 @@ they do not indicate whether a change has been released.
   `friction` reports them under `swarm.stall`; `Swarm.Stalls` and
   `Swarm.StallCounts` expose them to embedders. Stable prompt layers and
   tool-schema bytes are unchanged; nudges arrive as ordinary harness mail.
+
 - Close tasks with typed reasons. Done tasks record `verified` or `agreed`;
   failed tasks record `blocked_on(task)`, `superseded(task)`, `canceled`,
   `denied`, `verifier` or the harness's `exhausted`. `task fail` requires
@@ -670,6 +714,7 @@ they do not indicate whether a change has been released.
   a `Closure`. The `task` tool's description and input schema (G0) change once on
   upgrade, identically for every agent, and can require a fresh provider cache
   prefill; stable prompt layers are unchanged.
+
 - Add best-of-n efficiency data to RL episodes and exports. Episodes gain the
   signals `tool_calls`, `stuck_warnings`, `stuck_stops`, `repeated_reads` and
   `final_answer_chars` and the soft flag `looped`; sft, dpo and groups records
@@ -682,6 +727,7 @@ they do not indicate whether a change has been released.
   print `score=` and `reward=` separately. DPO episode pairs whose chosen and
   rejected sides are identical are counted as `pair:same_continuation` and no
   longer exported, in both pairing modes.
+
 - Make RL tasks portable and their rewards honest about a start that already
   scores. `verifier.expect.regex` gates an answer on a pattern;
   `verifier.baseline_score` records the untouched start's score of a
@@ -697,10 +743,12 @@ they do not indicate whether a change has been released.
   in reward scoring and `workspace_roots`, and Windows verifiers get a scrubbed
   environment with the system variables they need. Prompt and tool-schema bytes
   are unchanged.
+
 - Reject task actions that require an ID when it is omitted or blank. The error
   identifies the missing field and explains how to find the task ID before
   retrying; invalid calls leave the board unchanged. Role restrictions and
   manager review remain enforced. Stable prompt and tool-schema bytes are unchanged.
+
 - Describe the detected command shell and operating system in frozen shared
   runtime context for every agent. The `bash` description no longer promises
   Bash execution or recommends `&&` for every shell. Tool-description (G0) and
@@ -708,15 +756,18 @@ they do not indicate whether a change has been released.
   provider cache prefill. Runtime guidance stays byte-identical within a
   session; tool input schemas, default shell selection, and permission rules are
   unchanged. Uppercase `.EXE` shell names retain their native invocation flags.
+
 - Retry ref-lock creation when concurrent branch deletion removes its parent
   directory. The existing lock-wait bound still applies; missing revisions,
   permission failures, and ref-value conflicts are not treated as contention.
   Prompt and tool-schema bytes are unchanged.
+
 - Base verification reminders on tool outcomes. Refused edits no longer count
   as code changes, and refused test commands no longer count as executed tests
   or clear evidence of a failing run. A successful edit outside test files also
   clears a pending warning from the same batch. Existing advisory messages,
   stable prompt layers, and tool-schema bytes are unchanged.
+
 - Make `/plan <prompt>` submit a planning request after switching to plan mode,
   preserving the supplied text and current team. Bare `/plan` remains a mode-only
   command. The planning instruction is appended in the new user turn; stable
@@ -728,14 +779,17 @@ they do not indicate whether a change has been released.
   background compaction remains the default. Both modes retain the same commit
   policy, cancellation, timeout and fallback. Stable prompt and tool-schema
   bytes are unchanged; a blocking commit can rebase the next request earlier.
+
 - Bind task verification and merge evidence to the checked assignment and scope.
   Scope changes invalidate in-flight results without spending verification retries;
   implicit completion retries the current scope. Acceptance rejects obsolete
   evidence. Stable prompt and tool-schema bytes are unchanged.
+
 - Keep delayed task failures and merge results scoped to their original assignment.
   Exhausted merge retries and manager failure actions cannot cancel a replacement
   run, and an older merge record cannot erase a newer assignment's acceptance
   evidence. Stable prompt and tool-schema bytes are unchanged.
+
 - Interpret Go package selectors separately from literal filenames, allowing
   recursive test, build, list, and vet commands on Windows. Preserve literal
   output flags and custom test arguments. Apply explicit deny and ask rules to
@@ -743,16 +797,19 @@ they do not indicate whether a change has been released.
   parent tree. Require approval for Go overlays before build/test allow rules,
   since their replacement paths are not visible in command operands. Stable
   prompt and tool-schema bytes are unchanged.
+
 - Return an actionable error when a manager waits on unfinished work with no
   running workers, allowing the repetition guard to bound repeated impossible
   waits. Preserve waits for active workers, future work, mail, and settled targets.
   Planning-task claim errors name the spawn action needed to start a read-only
   owner. Stable prompt and tool-schema bytes are unchanged.
+
 - Resolve native Windows workspace paths consistently for file permissions, including
   existing and new files, symlink and junction targets, protected files, explicit
   rules, and worker confinement. Require native permission and file-tool regressions
   in CI. Permission patterns use forward slashes; unsupported Windows path namespaces
   and aliases are refused. Shell-analysis limitations remain unchanged.
+
 - Carry reviewed task agreements into dependent assignments, including transitive
   prerequisites, compaction, worker reuse, and recovery. Add full task retrieval
   and preserve tasks claimed during a run as harness assignments. Team guidance
@@ -764,26 +821,34 @@ they do not indicate whether a change has been released.
   Swarm constitution, manager role, and coordination tool bytes change once on
   upgrade; agreements do not rewrite shared project context per request. Assignment
   retention changes take effect at the existing declared compaction rebase.
+
 - Add `/effort` to inspect and change reasoning effort during chat, including
   running teams. Map each model to its closest supported level and recover from
   explicit effort validation errors with bounded retries. Preserve the preference
   on resume. Effort changes declare a cache rebase and may invalidate the provider's
   message cache; prompt text and tool schemas remain stable.
+
 - Bind watchdog cancellation and alerts to the worker run that was checked, so
   a delayed decision or alert cleanup cannot stop or clear warnings for its replacement.
+
 - Check composite benchmark tasks against all recorded reference patches instead
   of skipping them. Reject malformed reference metadata during task admission.
   Exclude four mined tasks whose hidden tests require unspecified symbols and
   refresh the suite lock to 56 tasks.
+
 - Label assigned task paths as `SCOPE` in the agent table. A write lease on one
   file no longer appears as ownership of its enclosing directory.
+
 - Publish a worker's ending before allowing reassignment or mail recovery, so
   late terminal events cannot make its new run appear stopped. Ignore cleanup
   from an older run when a newer run owns the worker and its write leases.
+
 - Show a stopped worker's recorded failure reason in its agent-table row.
+
 - Contain Windows task and integration verifiers in Job Objects so cancellation,
   timeouts, and completed commands also terminate their remaining descendants.
   Command startup fails if the job cannot be established.
+
 - Preserve the beginning and end of long task-verification logs, including the
   final failure diagnostic. Use the same runner as integration verification for
   bounded output capture, environment scrubbing, and process cleanup.
@@ -791,42 +856,51 @@ they do not indicate whether a change has been released.
   output also exceeds their line limit.
   Scrub inherited environment names containing a delimited `KEY` component,
   including `SIGNING_KEY_CONTENT`, from task and integration verifiers.
+
 - Deliver recovery mail that arrives while a worker's request fails. New mail can
   wake the worker once; unread mail from before that run cannot create a retry
   loop. Report worker failures to the manager even after task submission, without
   undoing submitted work or newer assignments. Recovery appends mail to the
   conversation; stable prompt layers and tool schemas are unchanged.
+
 - Preserve Windows `cmd` quoting for verification, hooks, and shell commands,
   including paths with spaces. Disable Command Processor AutoRun for those
   commands so registry startup commands do not alter harness execution.
+
 - Keep canceled verification runners within the configured concurrency limit
   until they exit. Include queue wait and scope discovery in the verification
   deadline, and discard results received after that deadline. Serialize captured
   stdout and stderr to prevent buffer races and preserve the combined output cap.
+
 - Bound repeated task-verification failures across explicit completion calls and
   implicit worker stops. Persist the repair count through recovery; after two
   repair retries, count a failed attempt and notify the manager with verifier
   evidence. Cancellation and verifier infrastructure errors do not spend repair
   retries. Show terminal failures in their own board column instead of counting
   them as running tasks. Stable prompt layers and tool schemas are unchanged.
+
 - Preserve ChatGPT sign-in authentication when listing a provider's models or
   tuning built-in provider options. Label plan model prices as `plan` instead of
   zero dollars and exclude them from numeric price limits. Explicit catalog URLs
   do not inherit sign-in credentials.
+
 - Include concurrent `doctor --deep` requests in request, usage, and reported-cost
   totals. Mark incomplete cost data as unavailable, retain failed warm-up samples,
   and stop later probes after cancellation.
+
 - Preserve complete messages during `doctor` cache probes for message-boundary
   providers, including concurrent warm-up bursts. Grow the sequential probe by
   appending responses and user turns, and avoid
   interpreting rounded usage counts as cache-write block sizes. Probe history
   adds input tokens; ordinary session prompts and the renderer are unchanged.
+
 - Resume isolated teams with their original Git base, worker conversations and
   unfinished worktrees. Preserve task ownership and applied integration positions;
   reconcile interrupted checkout writes without overwriting ambiguous edits. Keep
   recovery state until explicit session pruning, which salvages unique worker work.
   Recovery rebuilds shared context through the existing declared rebase; stable
   prompt layers, tool schemas and the renderer format are unchanged.
+
 - Allow up to 16,384 estimated instruction tokens by default, bounded to one
   quarter of the initial model's context window, with an explicit
   `cache.instruction_max_tokens` override. Preserve later instruction files
@@ -835,22 +909,30 @@ they do not indicate whether a change has been released.
   limit: their first request uses a new shared prefix and may incur a cache write.
   Subsequent turns retain identical instruction bytes; larger instructions add
   input tokens. G0, tool schemas, and the renderer format are unchanged.
+
 - Send the Responses `session-id` routing header consistently with the body
   cache key, preserving affinity across related requests.
+
 - Preserve live-state notices in Responses history so later requests retain
   earlier message boundaries. The stable G0-G2 layers and renderer format are
   unchanged. Persisted notices add input until compaction; the update interval
   limits growth. Provider hit rates require endpoint measurement, and the
   simulator does not model Responses message-boundary writes.
+
 - Derive routing keys from the full session identity. Independent sessions no
   longer share a key just because their IDs start with the same date. Existing
   sessions may incur a cold request when moving to the new key.
+
 - Wait for generated Responses content before releasing cache warm-up followers.
+
 - Account for Responses cache writes as a separate input category without
   double-counting tokens. Cache diagnostics distinguish internal prefix stability
   from unverified provider behavior.
+
 - Show live statistics and agents panels without adding stale snapshots to chat.
+
 - Interrupt active work when pausing or clearing a goal, or exiting chat.
+
 - Replace development journals and anecdotal performance claims with usage,
   design contracts, limitations, and reproducible validation procedures.
 
