@@ -333,6 +333,10 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			if !leader || (p.Phase != "executing" && p.Phase != "reconciling") {
 				return fmt.Errorf("only the leader starts reconciliation after execution")
 			}
+			if p.Phase == "reconciling" && len(p.Votes) == len(p.Members) && s.poolCurrent(sn, *task) == nil {
+				// reconciling again would only reopen the confirmations of a result nothing has changed
+				return fmt.Errorf("every member has confirmed revision %d and nothing has changed since: the pool's result is ready, submit it with task done id=%s", p.Revision, task.ID)
+			}
 			for _, child := range sn.Tasks {
 				if child.Parent == task.ID && child.Status == StatusReview {
 					return fmt.Errorf("child %s waits in review: the leader (or the manager) checks it and accepts it (task accept id=%s) or rejects it with feedback; reconcile once every child is accepted", child.ID, child.ID)
@@ -371,9 +375,19 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		s.wakePool(in.ID, "Pool updated: "+in.Action+". "+agreement)
 	} else {
 		task, _ := s.Board.Snapshot().Task(in.ID)
-		s.notify(task.Owner, "info", by+" recorded "+in.Action+" for "+in.ID)
+		s.notify(task.Owner, "info", by+" recorded "+in.Action+" for "+in.ID+poolReadyNote(task, in.Action))
 	}
 	return text("%s: %s recorded", in.ID, in.Action), nil
+}
+
+// poolReadyNote is what the leader is told when the last member confirms the reconciled result: it is ready, and the next step is
+// to submit it. In a trial the leader called reconcile again after every member had confirmed, which only reopened the
+// confirmations. It returns "" before then.
+func poolReadyNote(t Task, action string) string {
+	if action != "confirm" || t.Pool == nil || t.Pool.Phase != "reconciling" || len(t.Pool.Votes) != len(t.Pool.Members) {
+		return ""
+	}
+	return fmt.Sprintf(". Every member has confirmed revision %d: submit the pool's result with task done id=%s (reconciling again would only reopen the confirmations)", t.Pool.Revision, t.ID)
 }
 
 // poolComplete prevents aggregate submission before all members reconcile.

@@ -66,3 +66,42 @@ func TestWhoAcceptsAPoolChildInReviewIsSaid(t *testing.T) {
 		t.Errorf("the manager's inspect: %q", res.Text)
 	}
 }
+
+// Once every member has confirmed the reconciled result, the leader is told to submit it, and a second reconcile of the unchanged
+// result is refused with the same advice. In a trial the leader reconciled again after both confirmations, which reopened them.
+func TestAConfirmedPoolIsToldToSubmit(t *testing.T) {
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"backend", "backend"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "working"} })
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "backend", Files: []string{"app/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	parent := r.sw.Board.Snapshot().Tasks[0]
+	lead, other := parent.Pool.Members[0], parent.Pool.Members[1]
+	if err := r.sw.Board.poolUpdate("mgr", parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	pool := func(as string, args map[string]any) string {
+		args["id"] = parent.ID
+		res := r.callTool(context.Background(), "pool", as, "backend", args)
+		if res.IsError {
+			t.Fatalf("%s %v: %s", as, args["action"], res.Text)
+		}
+		return res.Text
+	}
+	pool(lead, map[string]any{"action": "reconcile", "text": "the combined contract"})
+	p, _ := r.sw.Board.Snapshot().Task(parent.ID)
+	pool(lead, map[string]any{"action": "confirm", "revision": p.Pool.Revision})
+	pool(other, map[string]any{"action": "confirm", "revision": p.Pool.Revision})
+	ready := false
+	for _, e := range r.log.All() {
+		if e.Type == events.TypeMailSend && strings.Contains(string(e.Data), "Every member has confirmed revision") && strings.Contains(string(e.Data), "task done id="+parent.ID) {
+			ready = true
+		}
+	}
+	if !ready {
+		t.Error("the leader was not told to submit once every member confirmed")
+	}
+	res := r.callTool(context.Background(), "pool", lead, "backend", map[string]any{"action": "reconcile", "id": parent.ID})
+	if !res.IsError || !strings.Contains(res.Text, "submit it with task done id="+parent.ID) {
+		t.Errorf("a second reconcile of a confirmed result: %q", res.Text)
+	}
+}
