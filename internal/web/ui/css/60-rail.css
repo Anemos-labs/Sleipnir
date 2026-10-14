@@ -77,6 +77,8 @@ mark.nca{unicode-bidi:isolate-override;direction:ltr;background:var(--warm-a);co
 .msg .who time{font:400 10px var(--f-num);color:var(--dim);letter-spacing:0}
 .msg.you{border-left:2px solid var(--fg);padding-left:8px;color:var(--bright)}
 .msg.you .code{display:block}
+/* the person's message keeps the lines it was typed in (a brief with paragraphs and lists), and a long word wraps */
+.msg.you>span{white-space:pre-wrap;overflow-wrap:anywhere}
 .msg.mgr .who{color:var(--mgr)}
 .msg.sys{color:var(--fg2);font-size:12.5px;display:flex;gap:7px}
 .msg.sys .sg{font-family:var(--f-num);color:var(--mgr);flex:none;width:14px;text-align:center}
