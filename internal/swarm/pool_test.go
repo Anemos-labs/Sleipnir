@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync/atomic"
@@ -49,19 +50,28 @@ func TestPoolRequiresEveryModelAndReconciliation(t *testing.T) {
 		t.Fatal("execution refused")
 	}
 	// The leader and the members are told how writing opens: in child tasks, created, claimed and assigned by the leader.
-	for _, want := range []string{"inside child tasks only", "task create parent=" + parent.ID, "task claim", "spawn agent=", ids[1]} {
+	for _, want := range []string{"inside child tasks only", "task create parent=" + parent.ID + " role=backend", "task claim", "spawn agent=", ids[1]} {
 		if !strings.Contains(exec.Text, want) {
 			t.Errorf("execute result %q lacks %q", exec.Text, want)
 		}
 	}
-	woke := 0
+	woke := map[string]int{}
 	for _, e := range r.log.All() {
-		if e.Type == events.TypeMailSend && strings.Contains(string(e.Data), "Pool updated: execute. Writing is open now, inside child tasks only") {
-			woke++
+		if e.Type != events.TypeMailSend {
+			continue
+		}
+		var m Message
+		if err := json.Unmarshal(e.Data, &m); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(m.Text, "Pool updated: execute. Writing is open now, inside child tasks only") {
+			woke[m.To]++
 		}
 	}
-	if woke != len(ids) {
-		t.Errorf("%d members were told how writing opens, want %d", woke, len(ids))
+	for _, id := range ids {
+		if woke[id] != 1 {
+			t.Errorf("%s was told how writing opens %d times, want once", id, woke[id])
+		}
 	}
 	child, err := r.sw.Board.CreateTask(ids[0], TaskSpec{Parent: parent.ID, Title: "handler", Role: "backend", Files: []string{"api/handler.go"}})
 	if err != nil {

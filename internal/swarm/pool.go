@@ -387,8 +387,8 @@ func poolExecuteSteps(t Task) string {
 		}
 	}
 	return fmt.Sprintf("Writing is open now, inside child tasks only: a member writes while it owns a child task of %s in doing, and is read-only until then. "+
-		"The leader %s creates one child per share of the agreed work (task create parent=%s with its files), claims its own (task claim), "+
-		"and assigns each other member (%s) its child (spawn agent=MEMBER task=CHILD).", t.ID, t.Owner, t.ID, strings.Join(others, ", "))
+		"The leader %s creates one child per share of the agreed work (task create parent=%s role=%s with its files), claims its own (task claim), "+
+		"and assigns each other member (%s) its child (spawn agent=MEMBER task=CHILD).", t.ID, t.Owner, t.ID, t.Role, strings.Join(others, ", "))
 }
 
 // poolComplete prevents aggregate submission before all members reconcile.
