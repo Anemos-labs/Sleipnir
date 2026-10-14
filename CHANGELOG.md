@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A role works several parents side by side. Assigning a role a parent while
+  another of its parents is open no longer fails with "wait before assigning
+  another parent" whenever the role has a pool: the members an executing
+  parent can spare (not its leader, no open subtask of it) leave its pool and
+  form the new parent's, and its leader is told. A parent still agreeing on its
+  plan, or one whose members are all busy, refuses with what to do instead.
+  Prompt bytes: none change.
+
 - A pool member that is planning or reconciling keeps the research and checks
   of a read-only role: it may fetch and search the web (an API's
   documentation, a package registry's versions) and run the project's tests
