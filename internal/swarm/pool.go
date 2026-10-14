@@ -256,7 +256,8 @@ func (s *Swarm) startPool(req SpawnReq, files []string) (string, error) {
 	if err := s.Board.beginPool(req.By, id, ids); err != nil {
 		return "", err
 	}
-	// only now that the new pool exists do the members leave the pools that spared them
+	// only now that the new pool exists do the members leave the pools that spared them. A pool that closed meanwhile holds nobody:
+	// there is nothing to release from it, and the new pool starts all the same.
 	for parent, left := range release {
 		if err := s.Board.poolUpdate(req.By, parent, func(_ *Snapshot, _ *Task, p *PoolState) error {
 			p.Members = slices.DeleteFunc(p.Members, func(m string) bool { return slices.Contains(left, m) })
@@ -264,7 +265,7 @@ func (s *Swarm) startPool(req SpawnReq, files []string) (string, error) {
 			p.Inspected = slices.DeleteFunc(p.Inspected, func(m string) bool { return slices.Contains(left, m) })
 			return nil
 		}); err != nil {
-			return "", err
+			continue
 		}
 		s.notifyPoolRelease(parent, left, id)
 	}
