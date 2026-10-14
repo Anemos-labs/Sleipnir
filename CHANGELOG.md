@@ -7,6 +7,27 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Agents are told much more about what is expected of them. The constitution
+  grows from about 1,000 to about 3,700 tokens (4,100 in a team): the user's
+  words as the specification (names, commands and formats kept exactly,
+  requirements checked before finishing), verification that actually runs
+  (a missing test runner set up in a project virtual environment, never
+  system-wide; no weakened tests; no claims of tests that did not run),
+  debugging, conventions for command-line programs, data files, services and
+  interfaces, git hygiene, when to ask, and worked examples. The manager and
+  every worker role pin say how their role meets those expectations, and the
+  team card no longer tells the manager it edits no file. The shared context
+  gains a toolchain segment listing which common build and test commands are
+  on PATH. Prompt bytes: G0 (constitution), G1 (new frozen `toolchains`
+  segment) and every role pin change; each incurs a one-time cache miss. A
+  team's G0 grows by about 2,900 tokens and each role pin by 100 to 500,
+  sent on every request. Where the provider caches prompts and the prefix is
+  read from its cache, that is about 300 input-token equivalents per request
+  at a 10% cached-read price (an estimate; the provider's reported cache reads
+  are the measure); without prompt caching every request pays the full input
+  price for the extra tokens. The simulator's default workload already assumes
+  9,000 constant tokens (tools and constitution), about what a team now sends.
+
 - Web: the view follows the session as it happens. Nothing holds it while the
   pointer or the keyboard focus rests on the conversation, and a tab that comes
   back from the background draws every row it missed, with no summary row in
