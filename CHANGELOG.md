@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The goal judge's evidence search lists the newest records first, an
+  evidence request it wraps in a code fence or in words is read, and an answer
+  that is neither a request nor a verdict is asked for again (twice) and then
+  pauses the goal instead of sending the agent on with no reason. Prompt bytes:
+  the judge's system prompt says results come newest first and that `left`
+  names work, never evidence for the judge to be shown; the judge's answer
+  limit is 4000 tokens (was 1200).
+
 - `bypass` mode asks about a file whose name is only known when the command
   runs, which may be one that a built-in protection, a `deny` rule or an `ask`
   rule guards (`cat "$F"`, `cat "docs/$X"`, `echo x > "$OUT"`); before, it let

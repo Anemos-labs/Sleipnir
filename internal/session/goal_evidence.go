@@ -44,9 +44,12 @@ func evidenceText(e events.Event) string {
 	return ""
 }
 
-// goalEvidence pages or searches the durable log through a fixed cutoff. Search
-// snippets include matches in the middle of long output, and record reads retain
-// pagination rather than silently throwing away the rest of a result.
+// goalEvidence pages or searches the durable log through a fixed cutoff. A search
+// (an empty query pages every record) lists the newest matches first, so the last
+// test run and the last smoke check are what the judge sees before older ones; an
+// offset counts back from the newest. Search snippets include matches in the middle
+// of long output, and record reads retain pagination rather than silently throwing
+// away the rest of a result.
 func (s *Session) goalEvidence(ctx context.Context, g *goal.State, cutoff uint64, req evidenceRequest) (string, error) {
 	if g == nil || g.StartSeq == 0 {
 		return "", fmt.Errorf("goal has no durable evidence boundary; save it before starting work")
@@ -76,6 +79,9 @@ func (s *Session) goalEvidence(ctx context.Context, g *goal.State, cutoff uint64
 	reading := len(wanted) > 0
 	var out strings.Builder
 	matched, shown, readRunes := 0, 0, 0
+	// A search lists the newest matches first: the last offset+20 matches are kept as the log is read, in a ring.
+	keep := req.Offset + 20
+	var ring []string
 	err := events.Scan(filepath.Join(s.Dir, "events.jsonl"), func(e events.Event) error {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -125,21 +131,25 @@ func (s *Session) goalEvidence(ctx context.Context, g *goal.State, cutoff uint64
 			shown++
 			return nil
 		}
+		if e.Type == "goal.evidence" {
+			return nil // an earlier judgment's roster; the current one comes with the request
+		}
 		folded := strings.ToLower(body)
 		at := strings.Index(folded, strings.ToLower(req.Query))
 		if at < 0 {
 			return nil
 		}
 		matched++
-		if matched <= req.Offset || shown >= 20 {
-			return nil
-		}
 		// Slice by runes so a match next to Unicode cannot produce invalid UTF-8.
 		start := max(0, len([]rune(folded[:at]))-80)
 		r := []rune(body)
 		snippet := string(r[start:min(start+300, len(r))])
-		fmt.Fprintf(&out, "record=%d agent=%s type=%s %s\n", e.Seq, e.Agent, e.Type, strings.Join(strings.Fields(snippet), " "))
-		shown++
+		line := fmt.Sprintf("record=%d agent=%s type=%s %s\n", e.Seq, e.Agent, e.Type, strings.Join(strings.Fields(snippet), " "))
+		if i := (matched - 1) % keep; i == len(ring) {
+			ring = append(ring, line)
+		} else {
+			ring[i] = line
+		}
 		return nil
 	})
 	if err != nil {
@@ -151,7 +161,11 @@ func (s *Session) goalEvidence(ctx context.Context, g *goal.State, cutoff uint64
 		}
 	}
 	if !reading {
-		fmt.Fprintf(&out, "matching records=%d shown=%d offset=%d; next offset=%d\n", matched, shown, req.Offset, req.Offset+shown)
+		for back := req.Offset; back < matched && shown < 20; back++ {
+			out.WriteString(ring[(matched-1-back)%keep])
+			shown++
+		}
+		fmt.Fprintf(&out, "matching records=%d shown=%d offset=%d (newest first); next offset=%d\n", matched, shown, req.Offset, req.Offset+shown)
 	}
 	if shown == 0 {
 		out.WriteString("No matching evidence.\n")
