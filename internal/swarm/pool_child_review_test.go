@@ -193,3 +193,47 @@ func TestTheManagerDoesNotResetAPoolThatIsAgreeing(t *testing.T) {
 		t.Fatalf("the votes were reset: %+v", q.Pool)
 	}
 }
+
+// A merge elsewhere in the tree leaves a pool's reconciliation current; one that may touch the pool's files supersedes it, and so
+// does one whose files are not known. In a team trial the docs worker's merges reopened the frontend pool's confirmations twice.
+func TestOnlyAMergeInThePoolsFilesSupersedesItsReconciliation(t *testing.T) {
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"frontend", "frontend"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "working"} })
+	if _, err := r.sw.Spawn(SpawnReq{Role: "frontend", Title: "web", Files: []string{"web/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	parent := r.sw.Board.Snapshot().Tasks[0]
+	lead, other := parent.Pool.Members[0], parent.Pool.Members[1]
+	if err := r.sw.Board.poolUpdate("mgr", parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	pool := func(as string, args map[string]any) *tools.Result {
+		args["id"] = parent.ID
+		return r.callTool(context.Background(), "pool", as, "frontend", args)
+	}
+	land := func(id string, files ...string) {
+		r.sw.review.mu.Lock()
+		r.sw.review.landLocked(id, files)
+		r.sw.review.mu.Unlock()
+	}
+	if res := pool(lead, map[string]any{"action": "reconcile", "text": "combined"}); res.IsError {
+		t.Fatal(res.Text)
+	}
+	land("T9", "README.md", "docs/**")
+	land("manager changes", "api/app.py")
+	p, _ := r.sw.Board.Snapshot().Task(parent.ID)
+	if res := pool(other, map[string]any{"action": "confirm", "revision": p.Pool.Revision}); res.IsError {
+		t.Fatalf("a merge outside web/** superseded the reconciliation: %s", res.Text)
+	}
+	land("T7", "web/js/app.js")
+	if res := pool(lead, map[string]any{"action": "confirm", "revision": p.Pool.Revision}); !res.IsError || !strings.Contains(res.Text, "combined result changed") {
+		t.Fatalf("a merge in web/** left the reconciliation current: %q", res.Text)
+	}
+	if res := pool(lead, map[string]any{"action": "reconcile", "text": "combined again"}); res.IsError {
+		t.Fatal(res.Text)
+	}
+	land("T8") // files not known
+	p, _ = r.sw.Board.Snapshot().Task(parent.ID)
+	if res := pool(other, map[string]any{"action": "confirm", "revision": p.Pool.Revision}); !res.IsError || !strings.Contains(res.Text, "combined result changed") {
+		t.Fatalf("a merge with unknown files left the reconciliation current: %q", res.Text)
+	}
+}

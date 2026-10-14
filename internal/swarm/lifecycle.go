@@ -226,9 +226,11 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 			if previous != nil {
 				previous(id, path)
 			}
+			if rel, err := filepath.Rel(root, path); err == nil && filepath.IsLocal(rel) {
+				path = filepath.ToSlash(rel)
+			}
 			s.review.mu.Lock()
-			s.review.merges++
-			s.review.last = "manager changes"
+			s.review.landLocked("manager changes", []string{path})
 			s.review.mu.Unlock()
 		}
 	}
