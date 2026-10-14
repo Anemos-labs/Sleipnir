@@ -10,14 +10,31 @@ import (
 // command-level approval policy. Unknown flags and test-binary arguments keep
 // the conservative unknown-command analysis.
 func goPathUses(args []string) ([]pathUse, bool) {
-	if len(args) == 0 || !inList([]string{"test", "list", "build", "vet"}, args[0]) {
+	if len(args) == 0 || !inList([]string{"test", "list", "build", "vet", "run"}, args[0]) {
 		return nil, false
 	}
 	sub, rest := args[0], args[1:]
+	// go run takes the build flags, then one package (or its .go files), then the program's own arguments: words to the program,
+	// judged as an unlisted program's are.
+	flagSub := sub
+	if sub == "run" {
+		flagSub = "build"
+	}
 	var uses []pathUse
 	packages, closed := false, false
 	for i := 0; i < len(rest); i++ {
 		a := rest[i]
+		if sub == "run" && (!strings.HasPrefix(a, "-") || a == "-") {
+			packages = true
+			uses = append(uses, goPackageUse(a))
+			j := i + 1
+			for strings.HasSuffix(a, ".go") && j < len(rest) && strings.HasSuffix(rest[j], ".go") && !strings.HasPrefix(rest[j], "-") {
+				uses = append(uses, goPackageUse(rest[j]))
+				j++
+			}
+			uses = append(uses, unknownUses(rest[j:])...)
+			break
+		}
 		if !strings.HasPrefix(a, "-") || a == "-" {
 			if closed {
 				uses = append(uses, unknownUses(rest[i:])...)
@@ -46,7 +63,7 @@ func goPathUses(args []string) ([]pathUse, bool) {
 			}
 			name = short
 		}
-		kind, known := goPathFlag(sub, name)
+		kind, known := goPathFlag(flagSub, name)
 		if !known || (sub != "test" && packages) {
 			uses = append(uses, unknownUses(rest[i:])...)
 			break

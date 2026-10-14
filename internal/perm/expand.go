@@ -266,6 +266,9 @@ func (rs *resolver) expandWordVars(w, cwd string, x expansion) (out, partial str
 // $(git rev-parse --show-toplevel) the nearest directory at or above it that holds a .git (a repository's or a worktree's). Any
 // other command, a directory that is not known, or a line that points git elsewhere (GIT_DIR, GIT_WORK_TREE) gives ok false.
 func (rs *resolver) knownSubstitution(cmd, cwd string, x expansion) (string, bool) {
+	if v, ok := rs.mktempPath(cmd, x); ok {
+		return v, true
+	}
 	if cwd == "" || x.off["PWD"] {
 		return "", false
 	}
@@ -286,6 +289,32 @@ func (rs *resolver) knownSubstitution(cmd, cwd string, x expansion) (string, boo
 		}
 	}
 	return "", false
+}
+
+// mktempPath is what $(mktemp ...) prints, as far as the rules care: a new file or directory in $TMPDIR, the session's scratch
+// directory. It stands for one name there (the random part is never "", "." or ".."), so "rm -rf "$D"" after D=$(mktemp -d) deletes
+// inside the scratch directory. Only the plain forms count: the options -d, -q, -t, -u and their long names, and at most one template
+// without a "/" or a variable; a template or --tmpdir/-p that names a directory, or a line that sets TMPDIR, gives ok false.
+func (rs *resolver) mktempPath(cmd string, x expansion) (string, bool) {
+	f := strings.Fields(cmd)
+	if len(f) == 0 || f[0] != "mktemp" || rs.tmp == "" || x.off["TMPDIR"] {
+		return "", false
+	}
+	templates := 0
+	for _, w := range f[1:] {
+		switch {
+		case w == "-d" || w == "-q" || w == "-t" || w == "-u" || w == "-dt" || w == "-td" || w == "-qd" || w == "-dq" ||
+			w == "--directory" || w == "--quiet" || w == "--dry-run":
+		case strings.HasPrefix(w, "-"), strings.ContainsAny(w, "/$`\\'\""):
+			return "", false
+		default:
+			templates++
+		}
+	}
+	if templates > 1 {
+		return "", false
+	}
+	return rs.tmp + "/mktemp.XXXXXXXXXX", true
 }
 
 // fragment reports whether name is a special parameter that expands to a number in the session's shell (fragmentParams, less the
