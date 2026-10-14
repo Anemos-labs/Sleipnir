@@ -115,6 +115,9 @@ type view struct {
 	ask   []*crule
 	allow []*crule
 	role  string
+	// readFree marks a plan-mode role inside a bypass or yolo session: the role is read-only, so it writes nothing, but where it may
+	// read is the session's to say, and the session reads anywhere a protection or a rule does not guard.
+	readFree bool
 }
 
 // allAccesses returns an independent slice of command accesses followed by redirection accesses.
@@ -436,6 +439,9 @@ func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 	case ModePlan:
 		if a.write {
 			return deny(planReason("it would write " + a.raw))
+		}
+		if ev.v.readFree && !ev.rs.inWorkspace(a.real) {
+			return allow("read outside the workspace, which the session's mode allows")
 		}
 	case ModeAcceptEdits:
 		if a.write {
