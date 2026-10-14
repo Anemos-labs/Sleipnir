@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The manager can excuse a pool member that cannot take part (`pool excuse`,
+  `member` and a reason): it leaves the pool, the other members' agreement and
+  confirmation suffice, its open subtasks of the parent return to the board
+  unassigned, the next member leads if it led, and it stays read-only while the
+  pool task is open. A pool no longer waits for ever on a member whose model
+  fails. An `agree` or `confirm` from outside the pool (the manager's, say) is
+  told that only members acknowledge. Prompt bytes: the pool tool's description and schema
+  change G0, incurring a one-time miss of the shared tool prefix.
+
 - The tests preset (`--allow tests`, the "builds and tests" answer, `accept-edits`) covers a
   Python virtual environment of the workspace (`Bash(python:venv)`): creating
   one, installing into it with its own pip from the package index, and running

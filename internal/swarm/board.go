@@ -1230,6 +1230,33 @@ func (b *Board) RequeueOwned(agent, reason string) []Task {
 	return out
 }
 
+// requeueChildren returns the open subtasks (doing, blocked, todo) of parent that agent owns to the board unassigned, as RequeueOwned
+// does for all of an agent's tasks; it returns the tasks it changed.
+func (b *Board) requeueChildren(by, parent, agent, reason string) []Task {
+	var out []Task
+	_ = b.mutate(by, "requeue", func(d *draft) error {
+		for i, t := range d.Tasks {
+			if t.Parent == parent && t.Owner == agent && (t.Status == StatusDoing || t.Status == StatusBlocked || t.Status == StatusTodo) {
+				t.Status, t.Owner, t.Line, t.Rev = StatusTodo, "", cleanText(reason, maxLineRunes), d.Version
+				t.BlockedOn = ""
+				d.tasks()[i] = t
+				out = append(out, t)
+			}
+		}
+		if len(out) == 0 {
+			return errNoChange
+		}
+		ids := make([]string, len(out))
+		for i, t := range out {
+			ids[i] = t.ID
+		}
+		d.set("tasks", ids)
+		d.set("line", cleanText(reason, maxLineRunes))
+		return nil
+	})
+	return out
+}
+
 // resumedLine explains why an interrupted task is waiting after recovery.
 const resumedLine = "the session was resumed: waiting to restart"
 

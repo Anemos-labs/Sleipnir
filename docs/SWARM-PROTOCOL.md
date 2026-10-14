@@ -62,7 +62,12 @@ runs each member calls `pool inspect` to update its tree, examines the combined
 result, then calls `pool confirm`. Every member must confirm before the parent can
 be submitted and accepted. A newer accepted change invalidates reconciliation.
 Objections go through typed mail; the manager settles disagreements and can revise
-the existing task. Parent phase and member identities appear on the board; children
+the existing task. A member that cannot take part (its model keeps failing or does
+not answer) is excused by the manager with `pool excuse` (`member`, `text` = why):
+it leaves the pool and its votes stop counting, so the others' agreement and
+confirmation suffice; its open subtasks of the parent return to the board
+unassigned; the next member leads if it led; and it stays read-only while the
+parent is open. A resumed pool keeps it out. The last member cannot be excused. Parent phase and member identities appear on the board; children
 are grouped under their parent (expandable cards in the browser, indented terminal rows).
 
 **Direct manager delivery.** `task deliver` verifies the manager's direct changes,
@@ -137,7 +142,7 @@ paths outside the project).
 | `mail` | send | one recipient; typed; section 5 |
 | `note` | propose | a bounded fact in the live view; older proposals can be evicted |
 | `spawn` | role, task, optional `agent=` to reuse an idle worker | Manager or pool leader assigning an existing member to its child; section 6 |
-| `pool` | propose, agree, execute, reconcile, inspect, confirm | Leader or manager coordinates phases; every member acknowledges the current agreement and reconciled result |
+| `pool` | propose, agree, execute, reconcile, inspect, confirm, excuse | Leader or manager coordinates phases; every member acknowledges the current agreement and reconciled result; the manager excuses a member that cannot take part |
 | `approve` | answer a delegated worker permission question | Manager only; explicit policy denials and escalations still apply |
 | `wait` | until tasks change, mail arrives, or a timeout | sleeps at no request cost; reports what changed since the caller last looked |
 
