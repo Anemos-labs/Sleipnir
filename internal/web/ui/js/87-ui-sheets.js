@@ -21,8 +21,10 @@
   const refused = r => { if (r && r.ok === false) { if (r.why) ui.toast(r.why, 'warm'); return true; } return false; };
 
   /* ---------- goal ---------- */
-  sheets.goal = function () {
-    const S = S_(), m = S.m || S.wm, gs = m.goal.state, goalText = S.meta.goalText || m.goal.objective || '';
+  /** The Goal sheet. pending is the text of a goal just set that the session has not taken up yet (a set runs as the tab's next
+   *  item): the sheet shows it, starting, rather than "No goal set". */
+  sheets.goal = function (pending) {
+    const S = S_(), m = S.m || S.wm, known = S.meta.goalText || m.goal.objective || '', goalText = known || pending || '', gs = known || !pending ? m.goal.state : 'starting';
     /* evidence: the tasks merged, then what the judge says is left (unchecked), or its reason when the goal is met */
     const ev = m.torder.map(t => [t + ' ' + m.tasks[t].title + ' merged', m.tasks[t].st === 'merged']).concat(gs === 'met' ? (m.goal.reason ? [[m.goal.reason, true]] : []) : (m.left || []).map(x => [x, false]));
     const done = m.plan.filter(s => s === 'done').length, plan = S.plan, max = m.goal.max, used = m.goal.turns || 0;
