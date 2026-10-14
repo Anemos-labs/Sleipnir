@@ -21,10 +21,12 @@ they do not indicate whether a change has been released.
   on PATH. Prompt bytes: G0 (constitution), G1 (new frozen `toolchains`
   segment) and every role pin change; each incurs a one-time cache miss. A
   team's G0 grows by about 2,900 tokens and each role pin by 100 to 500,
-  written once a session (pins once a role epoch) and read on every request
-  at the cached rate, about 300 input-token equivalents per request at a 10%
-  read price. The simulator's default workload already assumes 9,000 constant
-  tokens (tools and constitution), about what a team now sends.
+  sent on every request. Where the provider caches prompts and the prefix is
+  read from its cache, that is about 300 input-token equivalents per request
+  at a 10% cached-read price (an estimate; the provider's reported cache reads
+  are the measure); without prompt caching every request pays the full input
+  price for the extra tokens. The simulator's default workload already assumes
+  9,000 constant tokens (tools and constitution), about what a team now sends.
 
 - Standing-goal judgments can search durable tool evidence across workers,
   turns and compaction instead of relying on clipped recent results. Manager

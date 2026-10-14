@@ -2,7 +2,6 @@ package shell
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -23,27 +22,43 @@ var probedCommands = []string{
 }
 
 // ToolchainContext says which of the commonly needed commands are on the PATH that commands run with, and which are not, so an
-// agent knows before it writes a test whether it can run it. It only looks the names up (nothing is run), lists them in a fixed
-// order and names no directory, so the text is the same for every agent of a session and stable across the session's requests.
+// agent knows before it writes a test whether it can run it, and how to set up a missing Python tool on this machine. It only looks
+// the names up (nothing is run), lists them in a fixed order and names no directory, so the text is the same for every agent of a
+// session and stable across the session's requests.
 func (m *Manager) ToolchainContext() string {
-	pathList := os.Getenv("PATH")
+	pathList, pathExt := os.Getenv("PATH"), os.Getenv("PATHEXT")
 	if m.opts.BaseEnv != nil {
-		pathList = envValue(m.opts.BaseEnv, "PATH")
+		pathList, pathExt = envValue(m.opts.BaseEnv, "PATH"), envValue(m.opts.BaseEnv, "PATHEXT")
 	}
+	return toolchainText(runtime.GOOS, func(name string) bool { return onPath(runtime.GOOS, name, pathList, pathExt) })
+}
+
+// toolchainText renders the toolchain list for an operating system, given which commands are installed.
+func toolchainText(goos string, installed func(string) bool) string {
 	var found, missing []string
+	have := map[string]bool{}
 	for _, name := range probedCommands {
-		if onPath(name, pathList) {
+		if installed(name) {
 			found = append(found, name)
+			have[name] = true
 		} else {
 			missing = append(missing, name)
 		}
+	}
+	py, bin := "python3", ".venv/bin/"
+	if !have["python3"] && have["python"] {
+		py = "python"
+	}
+	if goos == "windows" {
+		bin = `.venv\Scripts\`
 	}
 	var b strings.Builder
 	b.WriteString("Commands on PATH: ")
 	b.WriteString(listOrNone(found))
 	b.WriteString(".\nNot on PATH: ")
 	b.WriteString(listOrNone(missing))
-	b.WriteString(".\nA missing tool the project needs is set up inside the project, never system-wide: for Python, python3 -m venv .venv, then .venv/bin/pip install the tool and run it with .venv/bin/python -m.")
+	b.WriteString(".\nA missing tool the project needs is set up inside the project, never system-wide. For Python on this machine: " +
+		py + " -m venv .venv, then " + bin + "pip install the tool (or -r requirements.txt), and run it with " + bin + "python -m <tool>.")
 	return b.String()
 }
 
@@ -71,20 +86,38 @@ func envValue(env []string, key string) string {
 	return v
 }
 
-// onPath reports whether name is an executable file in one of the directories of pathList. On Windows it defers to exec.LookPath,
-// which applies PATHEXT; elsewhere it checks each directory for a regular file with an execute bit.
-func onPath(name, pathList string) bool {
-	if runtime.GOOS == "windows" {
-		_, err := exec.LookPath(name)
-		return err == nil
+// onPath reports whether name is a command in one of the directories of pathList on goos. On Windows a command is a file whose name
+// is name plus one of the extensions of pathExt (PATHEXT; ".COM;.EXE;.BAT;.CMD" when empty), as the shell would find it; elsewhere it
+// is a regular file with an execute bit.
+func onPath(goos, name, pathList, pathExt string) bool {
+	sep := string(os.PathListSeparator)
+	if goos == "windows" {
+		sep = ";"
+		if pathExt == "" {
+			pathExt = ".COM;.EXE;.BAT;.CMD"
+		}
 	}
-	for _, dir := range filepath.SplitList(pathList) {
+	for _, dir := range strings.Split(pathList, sep) {
 		if dir == "" {
 			continue
 		}
-		fi, err := os.Stat(filepath.Join(dir, name))
-		if err == nil && fi.Mode().IsRegular() && fi.Mode().Perm()&0o111 != 0 {
-			return true
+		if goos != "windows" {
+			fi, err := os.Stat(filepath.Join(dir, name))
+			if err == nil && fi.Mode().IsRegular() && fi.Mode().Perm()&0o111 != 0 {
+				return true
+			}
+			continue
+		}
+		for _, ext := range strings.Split(pathExt, ";") {
+			if ext == "" {
+				continue
+			}
+			if fi, err := os.Stat(filepath.Join(dir, name+strings.ToLower(ext))); err == nil && fi.Mode().IsRegular() {
+				return true
+			}
+			if fi, err := os.Stat(filepath.Join(dir, name+ext)); err == nil && fi.Mode().IsRegular() {
+				return true
+			}
 		}
 	}
 	return false

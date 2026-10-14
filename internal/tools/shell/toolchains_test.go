@@ -50,3 +50,31 @@ func TestToolchainContextListsWhatIsInstalled(t *testing.T) {
 		t.Errorf("an empty PATH: %q", got)
 	}
 }
+
+// On Windows the advice names the interpreter that is installed and the environment's Scripts directory, and the lookup searches the
+// session's PATH with PATHEXT (the command shell's rules), not the harness process's PATH.
+func TestToolchainContextOnWindows(t *testing.T) {
+	text := toolchainText("windows", func(name string) bool { return name == "python" || name == "git" })
+	if !strings.Contains(text, `python -m venv .venv, then .venv\Scripts\pip install`) || !strings.Contains(text, `.venv\Scripts\python -m <tool>`) {
+		t.Errorf("Windows advice: %q", text)
+	}
+	if unix := toolchainText("linux", func(name string) bool { return name == "python3" }); !strings.Contains(unix, "python3 -m venv .venv, then .venv/bin/pip install") {
+		t.Errorf("Unix advice: %q", unix)
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "node.exe"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "make.CMD"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pathList := `C:\nowhere;` + dir
+	for name, want := range map[string]bool{"node": true, "make": true, "go": false} {
+		if got := onPath("windows", name, pathList, ""); got != want {
+			t.Errorf("onPath(windows, %s) = %v, want %v", name, got, want)
+		}
+	}
+	if onPath("windows", "node", pathList, ".BAT") {
+		t.Error("PATHEXT without .EXE still found node.exe")
+	}
+}
