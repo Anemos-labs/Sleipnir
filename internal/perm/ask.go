@@ -178,11 +178,17 @@ func (e *Engine) lead(ctx context.Context, key string, p *pending, r Request, v 
 	shown := r
 	shown.Summary = withWhy(r.Summary, v.reason)
 	shown.Why = strings.TrimSpace(v.reason)
-	if !v.askRule && len(v.rem) > 0 {
+	shown.PackageIndex = v.index
+	// "Don't ask again" is offered only when the rules it adds would let this very request through: a part that is only known when
+	// it runs, or that another rule or a stricter role keeps asking about, would make it a promise the next question breaks.
+	if v.askRule || len(v.rem) == 0 || !e.settles(r, v.rem) {
+		v.rem = nil
+	}
+	if len(v.rem) > 0 {
 		shown.Remembers = e.rememberPhrase(v.rem)
-		shown.OffersTests = e.offersTests(v.rem)
 		shown.RememberRules = e.rememberRules(v.rem)
 	}
+	shown.OffersTests = !v.askRule && (v.tests || e.offersTests(v.rem))
 	pctx := ctx
 	if e.cfg.AskTimeout > 0 {
 		var cancel context.CancelFunc
@@ -236,6 +242,26 @@ func (e *Engine) remember(d Decision, v verdict) {
 		}
 		e.addRule(d.Remember, rule, origin)
 	}
+}
+
+// settles reports whether the request would be allowed without a question once the rules of a "don't ask again" answer (rem, widened
+// as that answer widens them) are added for the session.
+func (e *Engine) settles(r Request, rem []Rule) bool {
+	extra := make([]*crule, 0, len(rem))
+	for _, rule := range rem {
+		w, _ := e.widen(rule)
+		w.Action = Allow
+		c, err := compileRule(w, e.rs)
+		if err != nil {
+			return false
+		}
+		extra = append(extra, c)
+	}
+	sess, prof := e.snapshotWith(r.Role, extra)
+	if e.evaluate(sess, r).kind != vAllow {
+		return false
+	}
+	return prof == nil || e.evaluate(prof, r).kind == vAllow
 }
 
 // rememberRules are the rules a yes "and don't ask again" for the session would add

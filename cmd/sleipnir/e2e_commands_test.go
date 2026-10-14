@@ -322,7 +322,7 @@ func TestRunUnattendedRefusesWhatNeedsApproval(t *testing.T) {
 	m.on("@write", writes("approved.txt"))
 	w := newWorld(t, m.url())
 	r := w.run("", "run", "@write")
-	assertRun(t, r, 0, nil, []string{"✗ write approved.txt", "!allow?"})
+	assertRun(t, r, 0, nil, []string{"✗ write approved.txt", "!" + linePrompt})
 	if exists(filepath.Join(w.project, "approved.txt")) {
 		t.Error("the write was done")
 	}

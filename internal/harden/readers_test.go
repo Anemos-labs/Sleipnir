@@ -31,6 +31,7 @@ var notCredentials = map[string]string{
 	"cmd/sleipnir/provider.go:v":                        "<PROVIDER>_BASE_URL: a URL the provider's key may be sent to, judged by provider.CheckEndpoint",
 	"internal/session/providers.go:envBaseURLVar(name)": "<PROVIDER>_BASE_URL, as above",
 	"internal/tools/web/fetch.go:k":                     "HTTPS_PROXY and friends: never moved (LooksSecret exempts them, and net/http reads them itself)",
+	"internal/perm/expand.go:n":                         "the shell's numeric special parameters (envFragments: BASHPID, RANDOM, ...): only whether one is defined is read, never its value",
 }
 
 // testSupport is code that lives outside _test.go files so that several test packages can use it,

@@ -74,7 +74,9 @@
 //   - ModeDefault: reads inside the workspace and read-only shell commands are
 //     allowed; everything else asks.
 //   - ModeAcceptEdits: also writes inside the workspace, including redirections
-//     and mkdir, touch, cp, mv, rm, rmdir, tee on workspace paths.
+//     and mkdir, touch, cp, mv, rm, rmdir, tee on workspace paths, and the
+//     commands of the tests preset (TestsAllow), a Python virtual environment of
+//     the workspace among them (venv.go).
 //   - ModePlan: read-only. Anything that writes, reaches the network or is not a
 //     provably read-only command is denied with a message that says so. Allow
 //     rules still carve exceptions (say, Edit(docs/plan.md)).
@@ -144,7 +146,11 @@
 // Decision.Remember turns an answer into an exact rule (a command, a path, a
 // host) for the session or, through Config.Persist, the project; a refusal is
 // remembered as a Deny rule. Constructs that always ask (substitutions and the
-// like) and questions caused by an Ask rule are never remembered.
+// like) and questions caused by an Ask rule are never remembered, and neither is
+// a command with a variable in it or one that reads its program from standard
+// input. The question offers to remember (Request.RememberRules) only when the
+// rules would let the same request through; an answer that remembers is ignored
+// otherwise. The answers and their words are Answers'.
 //
 // # Roles
 //
@@ -243,8 +249,12 @@ type Request struct {
 	OffersTests bool `json:"offers_tests,omitempty"`
 	// Why is the reason the engine asks (the verdict's reason), set on a question; Summary keeps its "[reason]" suffix for the TUI.
 	Why string `json:"why,omitempty"`
-	// RememberRules are the rules a "don't ask again" answer would add, set on a question.
+	// RememberRules are the rules a "don't ask again" answer would add, set on a question; empty when no answer can be remembered
+	// (the request would still be asked about with them added).
 	RememberRules []string `json:"remember_rules,omitempty"`
+	// PackageIndex is set by the engine on a question about a request that installs packages into a Python virtual environment of the
+	// workspace: besides this machine, it reaches the package index, and the install runs the packages' build code.
+	PackageIndex bool `json:"package_index,omitempty"`
 }
 
 // Scope says how long a remembered decision lasts.

@@ -134,7 +134,8 @@ make a project's tool servers start without asking: each entry of a `.mcp.json` 
 * **It is not a sandbox.** A command the mode lets through runs as you, with your files, your network, your git credentials
   and your SSH agent. The permission engine judges commands by parsing them; parsing shell is best effort. A program you
   approve (`go test`, `make`, `npm test`, `pytest`) runs the repository's code with full rights, and `bypass` and `yolo` modes turn asking
-  off (`accept-edits` already lets the build and test commands through). For a repository you do not trust, use a container, a VM or the wrapper in section 3, not the permission prompt.
+  off (`accept-edits` already lets the build and test commands through, and installs into a virtual environment of the workspace, which
+  run code from the package index). For a repository you do not trust, use a container, a VM or the wrapper in section 3, not the permission prompt.
 * **Same-user reach.** Section 2 closes `/proc/<pid>/environ`, `/proc/<pid>/mem` and ptrace of the harness for unprivileged
   same-user commands. It does not stop root or a process with `CAP_SYS_PTRACE`; it does not hide keys that live elsewhere: the
   environment of the shell that launched the harness (`/proc/<shell pid>/environ`), dotfiles and credential files, keyrings,
@@ -154,12 +155,21 @@ make a project's tool servers start without asking: each entry of a `.mcp.json` 
 
 A yes for the rest of the session is an exact rule (`Bash(mytool build ./x)`), except for edits inside the project and for a short table of runner commands (`internal/perm/runner.go`: `go test|build|vet`, `npm test|run`, `pytest`, `cargo test|build|check`, `make`, `git add|commit|status`), where it is the prefix (`Bash(go test:*)`): a person doing test-driven work is not asked again for every package. An edit is never repeated exactly, so a yes to an edit inside the project (`Edit(<root>/**)`) is a yes to edits inside it, as accept-edits mode would give; an edit outside the project stays exact, and what the project keeps asked about (`ask` rules, the protected configuration directories) or denied (`.git`, credentials) stays so, whatever was allowed. The dialog names what it remembers ("don't ask again for "go test" commands", "...for edits in this project"), the engine tells it (`Request.Remembers`). What this adds: any arguments, among them flags such as `go test -exec`, which run a program of the model's choosing. A test run already executes whatever tests the repository has (a model that can write a test file can run anything through `go test`), so the prefix gives up little that the exact rule did not. What it does not cover stays asked about: another subcommand (`go run`), a chain (`go test ./a && rm -rf x`), a command with an environment assignment that steers what runs or wrappers (`sudo`, `timeout`). The rule never names the directory the command ran in, so a yes for `cd <tree> && ./bin/app` covers `./bin/app` in every worker's tree. It is never offered for shells, interpreters, `rm`, `sudo`, `curl` or anything not in the table; a no stays exact, nothing beyond the session is widened, and an unattended session has nobody to give the yes.
 
+The answer is offered only when the rules it adds would let the same request through (`internal/perm/ask.go`): a rule is a command's words,
+so one with a variable in it (`rm -f "$F"`) would allow whatever the variable holds next time, and one for a program that reads its code
+from standard input (`python3 - <<'PY'`) would allow any code; a path only known when the command runs, a question an `ask` rule puts, and a
+role whose stricter mode leaves out the session's rules would ask again anyway. None of these is offered, in the chat's dialog, the line
+prompter or the web page, and an answer that offered nothing remembers nothing.
+
 ### The manager's answers
 
 In a team, a worker's question that the engine marks routine is put to the manager before the person (`permissions.manager_approves`,
 `docs/SWARM-PROTOCOL.md` section 2). The class is the engine's: an action whose files all resolve inside the workspace, that reaches no
 network but this machine, that no `ask` rule, built-in protection or high-risk marker covers, and that is not a package install, a
-download, a signal to another process or a container, service or scheduler command. The manager is a model reading the worker's
+download, a signal to another process or a container, service or scheduler command. The one install that is routine is the one the tests
+preset allows, into a virtual environment of the workspace from the package index (below); the manager is told that it reaches the index.
+A program is judged by its name wherever it is run from: `.venv/bin/pip install --index-url ...` and `/usr/bin/pip install` are installs,
+and never reach the manager. The manager is a model reading the worker's
 command as data; what it approves runs with the mode's rights, inside those bounds. An unlisted program it approves (`./bin/app`,
 `python3 tools/gen.py`) can do whatever the program does, as it could after a person's yes; the bound is the class, not the
 program. Its answers are never remembered as rules, and `--manager-approves=false` puts every question to the person.
@@ -187,7 +197,72 @@ yes can be remembered. Every other git subcommand that is not read-only (`checko
 of an unlisted command, whose operands may be written.
 
 The session's scratch directory (`$TMPDIR`) is every agent's: a writer confined to its own tree writes there, and an `ask` rule about the
-state directory (where the scratch directory lives) does not ask about it; `deny` rules and the built-in protections still apply.
+state directory (where the scratch directory lives) does not ask about it; `deny` rules and the built-in protections still apply. A name
+in it whose rest is only known when the command runs (`"$TMPDIR/$X"`) could leave it with a `../`, so the rule asks, and the question says
+that the variable is the cause; it is never routine.
+
+### Variables a command line sets
+
+A variable that the same line sets to a value the engine can expand (`F="$TMPDIR/x"`, `export F=...`, `readonly F=...`, `declare -x
+F=...`) names that value in the commands after it, so `rm -rf "$F"` is judged as the path it is. It is done only where it is sound: the
+statement runs unconditionally (not after `&&`, `||` or a pipe, not in a subshell, a loop or a branch), the value is not empty (`${F:=x}`
+would replace an empty one), a name assigned two values is unknown, and nothing in the line can change variables behind the analysis' back
+(`read`, `eval`, `source`, `unset`, `wait -p`, `printf`, arithmetic, a function definition, a command in the background). A declaration
+expands all its values before it assigns any (`export a=1 b=$a` gives `b` the old `a`). A new shell (`sh -c`, a script on a shell's standard
+input) sees only the variables the line exported; the commands of a trap are judged as they run, after the rest of the line, in every
+directory the line may be in by then and with only the variables that were known where the trap was set and still are at its end; a trap
+that assigns makes the whole line unknown. The shell's own variables are never taken as assigned (`PWD`, which `cd` changes; `RANDOM`,
+`SECONDS` and `LINENO`, whose reads are not what was assigned; `UID` and `PPID`, which cannot be assigned), and a line that assigns
+`HOME`, `TMPDIR` or `PWD` no longer expands them as the harness's.
+
+The shell's special parameters whose value is a number (`$$`, `$?`, `$#`, `$!`, `$PPID`, and bash's `$BASHPID`, `$RANDOM`, `$SRANDOM`,
+`$SECONDS`, `$EPOCHSECONDS`, `$EPOCHREALTIME`, `$UID`, `$EUID`, `$LINENO`) are a piece of a name: `"$TMPDIR/out-$$.json"` is a file in
+`$TMPDIR`. A number holds no `/` and is never `.` or `..`, but some of them may be empty (`$!` before a background job; bash's names
+under another `sh`), so a name part that an empty value would make `""`, `.` or `..` (`"$TMPDIR/$!"`, `"$TMPDIR/.$RANDOM"`) is not known;
+neither is a parameter the line assigns or names otherwise, or one the harness's environment defines (another `sh` would expand it to
+that value). The value of `$(mktemp)` is not tracked: a failed `mktemp` leaves the variable empty, and an empty variable in a path
+(`"$F"/*`) is the root.
+
+### Project virtual environments
+
+The tests preset (`--allow tests`, the fourth answer of a question about a build or test command, and `accept-edits` mode) includes a
+Python virtual environment of the workspace (`Bash(python:venv)`, `internal/perm/venv.go`): creating one (`python -m venv DIR`,
+`virtualenv DIR`, `uv venv [DIR]`), installing packages into it with its own pip (`DIR/bin/pip install`, `DIR/bin/python -m pip install`,
+`uv pip install --python DIR/bin/python`), and running the tests with it (`DIR/bin/python -m pytest`, `DIR/bin/pytest`). In `default` mode
+these are routine questions, which the manager of a team may answer. It is the one place where an allowed or routine command reaches
+beyond this machine: the package index pip or uv is configured with.
+
+What an install does is run code from the internet with the user's rights: a source distribution's build code runs during the install,
+and the packages it installs run when the tests import them. A package name chosen by a model can be a malicious package of the index.
+The preset does not make that safer than it is; it keeps the install where the tests are, and the command honest about its source:
+
+* The environment is a directory of the workspace and not a workspace root (the project, an agent's tree, `$TMPDIR`); to install into it
+  or run it, it has a `pyvenv.cfg`, every entry of it, of its `lib` directories and of their `site-packages` resolves inside it, its
+  pip and pytest are files whose first line runs its own python (a copy of an environment made elsewhere runs the original's), and that
+  python is a link to an installed interpreter: followed through its links, a native executable (ELF or Mach-O, not a script) named
+  python, outside the workspace. CPython takes the environment from a `pyvenv.cfg` beside the path it was started by, so a link keeps
+  the environment, while a wrapper that starts another python (`exec /usr/bin/python3 "$@"`, with or without `#!`) would install into
+  the system's or the user's `site-packages`; a wrapper, a link to a script, a program of the workspace and a copy of the interpreter
+  (`python -m venv --copies`) ask. An install therefore lands in the workspace. A directory that already holds something other than an
+  environment is not used, and `--clear` and `--upgrade` ask. A test run with the environment is allowed only while every file it names
+  is inside the workspace (`pytest --basetemp=/elsewhere` asks).
+* An install names requirements by name and version (`pytest>=8`, `requests[socks]==2.32`), `-r` and `-c` files and `-e` or local paths
+  of the workspace, and `-U`, `-q`, `--pre`, `--no-input`, `--no-cache-dir` and `--disable-pip-version-check`. An option that changes
+  where packages come from (`-i`, `--index-url`, `--extra-index-url`, `-f`, `--trusted-host`, `--no-index`, uv's `--index` and
+  `--config-file`) or where they go (`--target`, `--prefix`, `--root`, `--user`, `--src`, `--break-system-packages`, uv's `--system`), a
+  URL or a repository (`git+https://...`, `name @ https://...`), a file outside the workspace, and `uv pip install` without `--python`
+  (uv would pick an environment by itself) ask, and are not routine. So do `pip install` of the system or the user's Python, `python -m
+  pip install`, and every other installer, as before.
+* What the project's own files say is the project's: a requirement file can name an index or a URL, `pyproject.toml` can name direct
+  references and a build backend, `setup.py` runs, a `pip.conf` inside the environment and `[tool.uv]` settings apply. A model that can
+  edit those files can point an install anywhere, as it can make the tests run anything; the preset is no stronger than the tests it lets
+  run. Caches are written where pip and uv keep them (`~/.cache/pip`, `~/.cache/uv`), and `uv venv` may download a Python build when no
+  installed one fits.
+* The checks are made when the command is judged: a link swapped into the environment between the check and the install is not seen.
+
+To keep installs to a person, do not give the session the tests preset (`default` mode, no `--allow tests`), answer the question about a
+build command without its fourth answer, or add `"deny": ["Bash(python:venv)"]` (or `"ask"`); `--manager-approves=false` keeps them from
+the manager.
 
 ### A loop over files that are written out
 
@@ -210,7 +285,7 @@ Call `harden.Process()` first thing in `main` (`cmd/sleipnir` does). It never fa
 | ChatGPT sign-in | `sleipnir login chatgpt` keeps the sign-in (access, refresh and ID tokens, the client id OpenAI issued, a host id) in `~/.sleipnir/chatgpt.json` (mode 0600, written atomically). Only `internal/chatgptauth` reads it: the tools and child processes of a session never see a token, and the file is guarded like the other token files of the home directory (a model's read or write of it asks). The sign-in is sent to the provider's own address only: no environment variable and no project file can name another. The redirect is a loopback port that answers one request with the right state; an ID token is checked for issuer, audience, nonce and expiry (not its signature: it came straight from the token endpoint over TLS, which OpenID Connect allows to stand in for it). `sleipnir logout chatgpt` revokes the refresh token | same | same |
 | Stored keys | `sleipnir login` keeps a key in `~/.sleipnir/auth.json` (mode 0600, written atomically, never in `config.json`, which people share), keyed by the provider's key variable. At start `config.LoadStoredKeys` hands them to `harden.Provide`: they live in the process's memory like a moved key, an environment variable of the same name wins (including one that `harden.MoveKeys` has already taken out of the environment: a stored key never replaces it, and `harden.SourceOf` says whether the environment or the file supplies the key in use), and no tool or child process sees them. The file is under `~/.sleipnir`, so a model's write to it asks in every mode. It is as safe as the user's home directory: another program running as the same user can read it, as it can read `~/.ssh` | same | same |
 | Keys out of the harness's own environment | `cmd/sleipnir` calls `harden.Process(harden.MoveKeys())`: provider API keys (every variable ending in `API_KEY`, and any credential the configuration names, such as a provider's `api_key_env`) move into memory and are unset, so no child that inherits the environment (git, hooks, verifiers, MCP servers) receives them. Every reader goes through `harden.Secret` (a source-level test, `TestReadersOfCredentialsUseSecret`, fails on a new `os.Getenv` of a credential; `TestKeysLeaveTheEnvironmentButStillReachTheirReaders` runs the real code paths in a child that did what `main` does). MCP `${NAME}` references still resolve against the same set of variables as before, held keys included, and approving a project entry still lists the variables it asks for. On macOS and Windows this keeps keys out of children, not out of `ps eww` for the harness itself: the key was in the environment when the process started | same | same |
-| Scratch files of commands | `TMPDIR` is `<state>/sessions/<id>/tmp` (0700) for every command of a session (not for a rollout, which brings its own environment). The permission engine treats that directory as part of the workspace of every agent (an isolated writer included) and knows `$TMPDIR`, so `mktemp` and `go build -o $TMPDIR/x` need no question; the runtime context tells the model that scratch files go there and that `/tmp` asks, and a refusal of any other place names the directory. A program that ignores `TMPDIR` and writes `/tmp` is still asked about | same | same |
+| Scratch files of commands | `TMPDIR` is `<state>/sessions/<id>/tmp` (0700) for every command of a session (not for a rollout, which brings its own environment). The permission engine treats that directory as part of the workspace of every agent (an isolated writer included) and knows `$TMPDIR`, so `echo x > "$TMPDIR/out-$$.json"` and `go build -o $TMPDIR/x` need no question in `accept-edits` mode; the runtime context tells the model that scratch files go there and that `/tmp` asks, and a refusal of any other place names the directory. A program that ignores `TMPDIR` and writes `/tmp` is still asked about | same | same |
 | Process tree cleanup | Own session and process group, SIGTERM then SIGKILL of the group; strays are reaped at shutdown | same | Windows task and integration verifiers use Job Objects to terminate descendants on cancellation, timeout, and exit. Other command runners use `taskkill /T`, best effort |
 | Shell used | `bash`, else `sh`; the working directory persists between calls | same | `pwsh`, `powershell` or `cmd`; no working-directory persistence, no cwd guard |
 | Terminal safety of tool output | `tools.SanitizeForTerminal` strips escape sequences, C0/C1 controls, bidi and other invisible characters and CRs; the shell tool already cleans its own output as it reads it. The UI must call the helper for file, web and listing text before printing | same | same |

@@ -27,6 +27,8 @@ const (
 //	Bash(npm run test)          exact match on the parsed command
 //	Bash(*) or Bash             any shell command
 //	Bash(curl:loopback)         curl or wget fetching from this machine only (127.0.0.1, localhost, [::1]); see loopbackHTTP
+//	Bash(python:venv)           a Python virtual environment of the workspace: creating it, installing into it (venv.go)
+//	Bash(mypy:workspace)        the prefix with any arguments, when every file it names is inside the workspace
 //	Edit(src/**)                writes to paths matching a gitignore-like glob
 //	Read(~/.ssh/**)             reads of such paths (by any tool, shell included)
 //	WebFetch(domain:example.com) requests to a host (and its subdomains)
@@ -133,6 +135,15 @@ type crule struct {
 	argv     []string // classBash: prefix or exact tokens
 	anyArgs  bool
 	loopback bool // classBash: "prog:loopback", a request of curl or wget to this machine only (loopbackHTTP)
+	// venv: "python:venv", a command that creates a virtual environment of the workspace or installs into one from the package index
+	// (venv.go); it is matched against the analysed command, never against words.
+	venv bool
+	// workspace: "prefix:workspace", the prefix with any arguments, provided every file the command names resolves inside the
+	// workspace and none of the options of refused is given.
+	workspace bool
+	// fileList: the program compiles the files it names, and others when it names none (workspaceFileLists, compiledFiles).
+	fileList bool
+	refused  []string
 
 	domain string // classWeb: "domain:" rules
 	urlPat string // classWeb: other patterns are wildcards over the URL
@@ -169,6 +180,14 @@ func compileRule(r Rule, res *resolver) (*crule, error) {
 			if p != "curl" && p != "wget" {
 				return nil, fmt.Errorf("perm: rule %s: only curl and wget take :loopback", r)
 			}
+		case strings.HasSuffix(p, ":venv"):
+			if strings.TrimSpace(strings.TrimSuffix(p, ":venv")) != "python" {
+				return nil, fmt.Errorf("perm: rule %s: only python takes :venv (Bash(python:venv))", r)
+			}
+			c.venv, c.argv = true, []string{"python"}
+			return c, nil
+		case strings.HasSuffix(p, ":workspace"):
+			p, c.anyArgs, c.workspace = strings.TrimSpace(strings.TrimSuffix(p, ":workspace")), true, true
 		case strings.HasSuffix(p, ":*"):
 			p, c.anyArgs = strings.TrimSpace(p[:len(p)-2]), true
 		case strings.HasSuffix(p, " *"):
@@ -179,6 +198,10 @@ func compileRule(r Rule, res *resolver) (*crule, error) {
 			return nil, fmt.Errorf("perm: rule %s: cannot tokenise command pattern", r)
 		}
 		c.argv = toks
+		if c.workspace {
+			c.refused = workspaceRefused[strings.Join(toks, " ")]
+			c.fileList = workspaceFileLists[strings.Join(toks, " ")]
+		}
 	case classWeb:
 		switch {
 		case p == "" || p == "*":
@@ -253,17 +276,30 @@ func (c *crule) nameMatches(tool string) bool {
 
 // matchArgv reports whether argv satisfies a bash rule's tokens.
 func (c *crule) matchArgv(argv []string) bool {
+	if len(argv) == 0 {
+		return c.blanket
+	}
+	return c.matchWords(argv[0], argv[1:])
+}
+
+// matchWords is matchArgv for the program and its arguments apart (no slice is built for them).
+func (c *crule) matchWords(prog string, args []string) bool {
 	if c.blanket {
 		return true
 	}
 	if c.loopback {
-		return len(argv) > 0 && argv[0] == c.argv[0] && loopbackHTTP(argv[0], argv[1:])
+		return prog == c.argv[0] && loopbackHTTP(prog, args)
 	}
-	if len(argv) < len(c.argv) || (!c.anyArgs && len(argv) != len(c.argv)) {
+	n := len(args) + 1
+	if n < len(c.argv) || (!c.anyArgs && n != len(c.argv)) {
 		return false
 	}
 	for i, t := range c.argv {
-		if !wildMatch(t, argv[i]) {
+		w := prog
+		if i > 0 {
+			w = args[i-1]
+		}
+		if !wildMatch(t, w) {
 			return false
 		}
 	}
@@ -318,11 +354,14 @@ func commandForms(s shellparse.Simple, restrict bool) [][]string {
 
 // matchCommand reports whether the bash rule covers a simple command.
 func (c *crule) matchCommand(s shellparse.Simple, restrict bool) bool {
-	if c.class != classBash {
+	if c.class != classBash || c.venv { // a venv rule is matched against the unit (evaluator.commandAllowRule)
 		return false
 	}
 	if c.blanket {
 		return true
+	}
+	if !restrict { // the command as written (commandForms), without building it
+		return !dynamicProgram(s.Program) && c.matchWords(s.Program, s.Args)
 	}
 	for _, f := range commandForms(s, restrict) {
 		if c.matchArgv(f) {

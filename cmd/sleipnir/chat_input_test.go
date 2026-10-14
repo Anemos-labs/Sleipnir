@@ -38,6 +38,9 @@ type probeReader struct {
 	delivered int
 }
 
+// linePrompt ends a question of the line prompter (run, the plain chat): what a test waits for.
+const linePrompt = session.LineAnswerPrompt
+
 func (p *probeReader) Read(b []byte) (int, error) {
 	p.mu.Lock()
 	p.inRead = true
@@ -174,13 +177,13 @@ type question struct {
 // shown and the input knows it is waiting for the answer.
 func (c *chatInput) startQuestion(ctx context.Context) *question {
 	c.t.Helper()
-	shown := strings.Count(c.out.String(), "allow? [y]es once")
+	shown := strings.Count(c.out.String(), linePrompt)
 	q := &question{done: make(chan struct{})}
 	go func() {
 		q.d = c.ask(ctx, perm.Request{Agent: "main", Tool: "write", Summary: "write notes.txt"})
 		close(q.done)
 	}()
-	c.waitUntil("the question being shown", func() bool { return strings.Count(c.out.String(), "allow? [y]es once") > shown })
+	c.waitUntil("the question being shown", func() bool { return strings.Count(c.out.String(), linePrompt) > shown })
 	c.waitUntil("the input waiting for the answer", func() bool {
 		select {
 		case <-q.done: // decided already: by a line that was not typed after the question

@@ -276,7 +276,7 @@ func TestPlainChatCtrlDAtAQuestionIsARefusal(t *testing.T) {
 	c := startPlainChat(t, w)
 
 	c.send("@write")
-	c.expect("allow? [y]es once")
+	c.expect(linePrompt)
 	c.ctrlD()
 	if out := c.untilPrompt(); !strings.Contains(out, "✗ write approved.txt") {
 		t.Errorf("the write should have been refused:\n%s", out)
@@ -327,7 +327,7 @@ func TestPlainChatSIGTERMEndsTheProcess(t *testing.T) {
 // A tool that needs approval in the default mode asks on the terminal, and only what the
 // person types after the question is the answer.
 func TestPlainChatApproval(t *testing.T) {
-	const ask = "allow? [y]es once / [a]lways this session / [n]o: "
+	const ask = linePrompt
 	for _, tc := range []struct {
 		name, answer string
 		allowed      bool
@@ -381,17 +381,17 @@ func TestPlainChatApprovalAlwaysRemembersTheExactRequest(t *testing.T) {
 	c := startPlainChat(t, w)
 
 	c.send("@touch-a")
-	c.expect("allow? [y]es once")
+	c.expect(linePrompt)
 	c.send("a")
 	c.untilPrompt()
 
 	c.send("@touch-a-again") // the same command: no question, the turn runs to its end
-	if out := c.untilPrompt(); strings.Contains(out, "allow?") {
+	if out := c.untilPrompt(); strings.Contains(out, linePrompt) {
 		t.Errorf("the same command was asked about again:\n%s", out)
 	}
 
 	c.send("@touch-b") // another command: a question
-	c.expect("allow? [y]es once")
+	c.expect(linePrompt)
 	c.send("n")
 	c.untilPrompt()
 
@@ -415,7 +415,7 @@ func TestPlainChatCtrlCDuringAnApprovalThenAGoal(t *testing.T) {
 	c := startPlainChat(t, w)
 
 	c.send("@write")
-	c.expect("allow? [y]es once")
+	c.expect(linePrompt)
 	c.ctrlC()
 	c.expect("(cancelled)")
 	c.prompt()
@@ -461,7 +461,7 @@ func TestPlainChatALineTypedAheadIsNotTheAnswer(t *testing.T) {
 	}
 	held.release() // the model asks for approval
 
-	c.expect("allow? [y]es once")
+	c.expect(linePrompt)
 	c.send("y") // typed after the question: the answer
 	out := c.untilPrompt()
 	if !strings.Contains(out, "✓ write approved.txt") {
@@ -594,7 +594,7 @@ func TestChatFromAPipeRefusesWhatNeedsApproval(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", r.code, r.stdout, r.stderr)
 	}
-	if strings.Contains(r.stderr, "allow?") {
+	if strings.Contains(r.stderr, linePrompt) {
 		t.Errorf("a question was asked with no one to answer it:\n%s", r.stderr)
 	}
 	if exists(filepath.Join(w.project, "approved.txt")) {
@@ -617,7 +617,7 @@ func TestRunAsksOnTheTerminal(t *testing.T) {
 			w := newWorld(t, m.url())
 			term := ptytest.Start(t, w.cmd("run", "@write"))
 			c := &chatTerm{t: t, w: w, term: term}
-			c.expect("allow? [y]es once / [a]lways this session / [n]o: ")
+			c.expect(linePrompt)
 			c.send(tc.answer)
 			c.expect("2 steps") // the footer: the tool call, then the answer
 			c.exited(0)
@@ -636,8 +636,8 @@ func TestRunAskTimeoutRefusesAQuestionNobodyAnswers(t *testing.T) {
 	w := newWorld(t, m.url())
 	term := ptytest.Start(t, w.cmd("run", "--ask-timeout", "300ms", "@write"))
 	c := &chatTerm{t: t, w: w, term: term}
-	c.expect("allow? [y]es once / [a]lways this session / [n]o: ") // the question is on the screen, and nobody types
-	c.expect("2 steps")                                            // the tool call, then the answer: the run went on
+	c.expect(linePrompt) // the question is on the screen, and nobody types
+	c.expect("2 steps")  // the tool call, then the answer: the run went on
 	c.exited(0)
 	if exists(filepath.Join(w.project, "approved.txt")) {
 		t.Error("the write was done though nobody answered")
@@ -664,7 +664,7 @@ func TestRunCtrlCAtAQuestionEndsTheRun(t *testing.T) {
 	w := newWorld(t, m.url())
 	term := ptytest.Start(t, w.cmd("run", "@write"))
 	c := &chatTerm{t: t, w: w, term: term}
-	c.expect("allow? [y]es once / [a]lways this session / [n]o: ")
+	c.expect(linePrompt)
 	c.ctrlC()
 	c.expect("sleipnir: interrupted")
 	c.exited(130)

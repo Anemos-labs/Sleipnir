@@ -95,7 +95,7 @@ func chatStory(t *testing.T) *ChatTranscript {
 	edit := p.call("c2", "edit", map[string]any{"path": "/work/proj/a.go", "old_string": "x := page * size", "new_string": "x := (page - 1) * size"})
 	p.at(4300).put(ChatRecord{Kind: RecToolStart, Agent: "main", Call: edit})
 	p.put(ChatRecord{Kind: RecAsk, Ask: &ChatAsk{Request: perm.Request{Agent: "main", Role: "worker", Tool: "edit", Paths: []string{"/work/proj/a.go"},
-		Summary: "edit a.go [default mode: writing /work/proj/a.go needs approval]"}, Allow: true}})
+		Summary: "edit a.go [default mode: writing /work/proj/a.go needs approval]", RememberRules: []string{"Edit(/work/proj/**)"}}, Allow: true}})
 	p.at(6200).key("1")
 	p.at(6200).put(ChatRecord{Kind: RecToolEnd, Agent: "main", Call: edit, TookMS: 1900,
 		Result: &ChatResult{Text: "Edited a.go", Meta: map[string]any{"added": float64(1), "removed": float64(1),

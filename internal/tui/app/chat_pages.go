@@ -17,8 +17,8 @@ import (
 
 // ask puts a question on the screen.
 func (m *chatModel) ask(q *question) {
-	opts, kind := dialogOptions(q.req)
-	d := &dialog{q: q, opts: opts, kind: kind, armAt: m.clock().Add(m.c.AnswerAfter), shownAt: m.clock()}
+	opts, decisions := dialogOptions(q.req)
+	d := &dialog{q: q, opts: opts, decisions: decisions, armAt: m.clock().Add(m.c.AnswerAfter), shownAt: m.clock()}
 	if strings.EqualFold(q.req.Tool, "write") {
 		d.current = currentText(q.req.Paths)
 	}

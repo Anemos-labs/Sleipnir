@@ -80,6 +80,14 @@ type Simple struct {
 	// Nested marks commands extracted from a substitution, eval or sh -c string
 	// rather than written at the top level of the line.
 	Nested bool
+	// Deferred marks commands of a trap action: they run later, when the signal
+	// arrives or the shell exits, with the variables and the working directory
+	// of that moment rather than of the place the trap is written.
+	Deferred bool
+	// Child marks commands that a new shell process runs (the string of sh -c,
+	// bash -c or su -c, a script fed to a shell's standard input): it sees the
+	// exported variables of the line, not the ones it only assigned.
+	Child bool
 	// Piped marks a command that reads from the previous command's pipe.
 	Piped bool
 	// LoopVar is the variable of a for/select loop, on the pseudo-command "for" whose Args are the loop's word list ("f" in

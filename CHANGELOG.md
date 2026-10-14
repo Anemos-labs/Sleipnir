@@ -7,6 +7,31 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The tests preset (`--allow tests`, the "builds and tests" answer, `accept-edits`) covers a
+  Python virtual environment of the workspace (`Bash(python:venv)`): creating
+  one, installing into it with its own pip from the package index, and running
+  the tests with it, when its python is a link to an installed interpreter
+  (not a wrapper, a copy or a program of the workspace); installs that change the index or the target, URLs, files
+  outside the workspace and every other installer still ask. These installs are
+  routine, and the manager is told they reach the package index. A program run
+  by path is judged by its name (`.venv/bin/pip install --index-url ...` is an
+  install). The preset also takes `py_compile`, `compileall`, `ruff check`,
+  `mypy`, `pyright`, `tsc --noEmit` and `eslint` on files of the workspace
+  (`Bash(prefix:workspace)`). `export`, `readonly` and `declare -x` keep a
+  variable known; `$$`, `$RANDOM` and the other numeric parameters are part of
+  a name (`"$TMPDIR/x-$$.json"`); traps are judged with what is true when they
+  run and `sh -c` with the exported variables only; assigning `PWD`, `RANDOM`
+  and the like makes them unknown. Reasons say what a command does and what
+  would allow it; a name in `$TMPDIR` known only at run time is named as the
+  cause instead of the state directory's rule. "Don't ask again" is offered
+  only when the rule it adds lets the same request through, and never for a
+  command with a variable or a program read from standard input. The chat's
+  dialog and the line prompter list the web page's answers and numbers (1 yes,
+  2 don't ask again, 3 builds and tests, no last); the line prompter takes text
+  as a no with what to do instead. Prompt bytes: the manager's role pin says
+  that project-environment installs may come to it, a one-time cache miss of
+  that pin; no other stable layer changes.
+
 - The built-in price table includes OpenAI's `gpt-6-astra`, `gpt-6.1-sol`, `gpt-6-sol`,
   `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra` and `gpt-5.6-luna` at the API's
   standard-tier, short-context list prices (input, cached input, cache writes at

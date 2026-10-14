@@ -421,7 +421,7 @@ func (m *chatModel) question() *dialog {
 // dialogKey gives a key to a question, if the question is to have it (see the notes at the top of chat_dialog.go), and reports
 // whether it did. A key the question does not take goes on to the prompt, and starts the wait for a quiet keyboard again.
 //
-// The keys that answer are the digits 1 to 3, and (while the prompt is empty) enter on the choice the arrows made, esc for no and
+// The keys that answer are the numbers of the options, and (while the prompt is empty) enter on the choice the arrows made, esc for no and
 // Ctrl-D for no answer. Letters never answer, and neither does enter when the person has typed something into the prompt: that
 // enter is sending what they typed.
 func (m *chatModel) dialogKey(d *dialog, k input.Key) bool {
@@ -434,7 +434,7 @@ func (m *chatModel) dialogKey(d *dialog, k input.Key) bool {
 		return false
 	}
 	switch {
-	case isChoice(k, len(d.opts)):
+	case isChoice(k, d.opts):
 	case m.ed.Empty() && (k.Is(input.Esc, 0) || k.Is(input.Enter, 0) || isNavigation(k) || k.IsRune('d', input.Ctrl)):
 	default:
 		d.armAt = now.Add(m.c.AnswerAfter)
@@ -450,9 +450,13 @@ func (m *chatModel) dialogKey(d *dialog, k input.Key) bool {
 	return true // a key that moved the choice
 }
 
-// isChoice reports whether k is the number of one of the n options. Any other digit is part of what is being typed.
-func isChoice(k input.Key, n int) bool {
-	return k.Kind == input.KindRune && k.Mod == 0 && k.R >= '1' && k.R <= '9' && int(k.R-'0') <= n
+// isChoice reports whether k is the number of one of the options (widget.Number). Any other digit is part of what is being typed.
+func isChoice(k input.Key, opts []widget.DialogOption) bool {
+	if k.Kind != input.KindRune || k.Mod != 0 || k.R < '1' || k.R > '9' {
+		return false
+	}
+	_, ok := widget.DialogKeys(string(k.R), opts)
+	return ok
 }
 
 // isNavigation reports the keys that move the choice of a question and do nothing else.

@@ -378,19 +378,19 @@ func errorf(status int, code, msg string, detail any) *wire.Error {
 	return &wire.Error{Status: status, Code: code, Msg: msg, Detail: detail}
 }
 
-// decision is what an answer means (the terminal dialog's table, internal/tui/app/chat_dialog.go).
+// decision is what an answer means: the decisions of perm.Answers, which the terminal's dialog and line prompter give too.
 func decision(q *question, choice int, note string) perm.Decision {
 	switch {
 	case choice == 1:
-		return perm.Decision{Allow: true, Reason: "allowed by user"}
+		return perm.DecisionYes
 	case choice == 2 && q.q.Kind == "mcp":
 		return perm.Decision{Allow: true, Reason: "approved by user for this project", Remember: perm.ScopeProject}
 	case choice == 2 && q.q.Kind == "trust":
 		return perm.Decision{Allow: true, Reason: "trusted by user until the files change", Remember: perm.ScopeProject}
 	case choice == 2:
-		return perm.Decision{Allow: true, Reason: "allowed by user for the session", Remember: perm.ScopeSession}
+		return perm.DecisionRemember
 	case choice == 4:
-		return perm.Decision{Allow: true, Reason: "builds and tests allowed by user for the session", Remember: perm.ScopeSession, Preset: perm.PresetTests}
+		return perm.DecisionTests
 	}
 	return perm.Decision{Allow: false, Reason: perm.DeclinedWith(note)}
 }

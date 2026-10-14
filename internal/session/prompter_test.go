@@ -38,7 +38,7 @@ const promptGuard = 20 * time.Second
 func waitForQuestions(t *testing.T, out *lockedBuffer, n int) {
 	t.Helper()
 	deadline := time.Now().Add(promptGuard)
-	for strings.Count(out.String(), "allow? [y]es once") < n {
+	for strings.Count(out.String(), LineAnswerPrompt) < n {
 		if time.Now().After(deadline) {
 			t.Fatalf("the prompter did not print %d question(s) in %v; it printed %q", n, promptGuard, out.String())
 		}
@@ -60,7 +60,19 @@ func decisionWithin(t *testing.T, c <-chan perm.Decision, what string) perm.Deci
 }
 
 func toolRequest() perm.Request {
-	return perm.Request{Agent: "worker-2", Tool: "write", Summary: "write notes.txt [default mode: writing notes.txt needs approval]"}
+	return perm.Request{Agent: "worker-2", Tool: "write", Summary: "write notes.txt [default mode: writing notes.txt needs approval]",
+		RememberRules: []string{"Edit(/work/**)"}, Remembers: "edits in this project"}
+}
+
+// onceRequest is a question whose answer cannot be remembered (the engine found no rule that would let it through again).
+func onceRequest() perm.Request {
+	return perm.Request{Agent: "worker-2", Tool: "bash", Summary: `rm -f "$F" [the file is only known when the command runs]`}
+}
+
+// testsRequest is a question about a build or test command, which offers the tests preset.
+func testsRequest() perm.Request {
+	return perm.Request{Agent: "be-1", Tool: "bash", Summary: "go test ./...", RememberRules: []string{"Bash(go test:*)"},
+		Remembers: `"go test" commands`, OffersTests: true}
 }
 
 func serverRequest() perm.Request {
@@ -71,8 +83,9 @@ func trustRequest() perm.Request {
 	return perm.Request{Tool: perm.ToolProjectTrust, Summary: "use this project's own instructions and settings?\nAGENTS.md: instructions, 1.3 KB\n.claude/skills/ (3 files): skills, 4.1 KB\n\nThese are added to every prompt. [changed since you trusted it: AGENTS.md changed]"}
 }
 
-// A question is answered by the line the person types: y once, a for the session, anything
-// else (an empty line too) refuses. What `run` and `mcp test` use.
+// A question is answered by the line the person types: the number of an answer or its letter (y once, a for the session when it can be
+// remembered, t for the builds and tests when offered, n); any other text refuses and is what to do instead; an empty line refuses. What
+// `run` and `mcp test` use.
 func TestTerminalPrompterAnswers(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -89,8 +102,18 @@ func TestTerminalPrompterAnswers(t *testing.T) {
 		{"n", toolRequest(), "n\n", perm.Decision{Reason: "denied by user"}},
 		{"no", toolRequest(), "no\n", perm.Decision{Reason: "denied by user"}},
 		{"an empty line", toolRequest(), "\n", perm.Decision{Reason: "denied by user"}},
-		{"something else", toolRequest(), "sure, why not\n", perm.Decision{Reason: "denied by user"}},
+		{"something else is what to do instead", toolRequest(), "use the file tool\n", perm.Decision{Reason: perm.DeclinedWith("use the file tool")}},
 		{"p is not an answer to a tool", toolRequest(), "p\n", perm.Decision{Reason: "denied by user"}},
+		{"1", toolRequest(), "1\n", perm.Decision{Allow: true, Reason: "allowed by user"}},
+		{"2 remembers", toolRequest(), "2\n", perm.Decision{Allow: true, Reason: "allowed by user for the session", Remember: perm.ScopeSession}},
+		{"3 is no", toolRequest(), "3\n", perm.Decision{Reason: "denied by user"}},
+		{"nothing to remember: a", onceRequest(), "a\n", perm.Decision{Reason: "denied by user"}},
+		{"nothing to remember: 2", onceRequest(), "2\n", perm.Decision{Reason: "denied by user"}},
+		{"nothing to remember: always", onceRequest(), "always\n", perm.Decision{Reason: "denied by user"}},
+		{"tests: 3", testsRequest(), "3\n", perm.Decision{Allow: true, Reason: "builds and tests allowed by user for the session", Remember: perm.ScopeSession, Preset: perm.PresetTests}},
+		{"tests: t", testsRequest(), "t\n", perm.Decision{Allow: true, Reason: "builds and tests allowed by user for the session", Remember: perm.ScopeSession, Preset: perm.PresetTests}},
+		{"tests: 4 is no", testsRequest(), "4\n", perm.Decision{Reason: "denied by user"}},
+		{"no tests offered: t", toolRequest(), "t\n", perm.Decision{Reason: "denied by user"}},
 		{"a server: y", serverRequest(), "y\n", perm.Decision{Allow: true, Reason: "allowed by user"}},
 		{"a server: p remembers the entry", serverRequest(), "p\n", perm.Decision{Allow: true, Reason: "approved by user for this project", Remember: perm.ScopeProject}},
 		{"a server: project", serverRequest(), "project\n", perm.Decision{Allow: true, Reason: "approved by user for this project", Remember: perm.ScopeProject}},
@@ -126,8 +149,12 @@ func TestTerminalPrompterShowsTheQuestion(t *testing.T) {
 		req  perm.Request
 		want string
 	}{
-		{"a tool", toolRequest(), "\nworker-2 wants to: write notes.txt [default mode: writing notes.txt needs approval]\n  allow? [y]es once / [a]lways this session / [n]o: "},
-		{"an unnamed agent", perm.Request{Tool: "bash", Summary: "run ls"}, "\nagent wants to: run ls\n  allow? [y]es once / [a]lways this session / [n]o: "},
+		{"a tool", toolRequest(), "\nworker-2 wants to: write notes.txt [default mode: writing notes.txt needs approval]\n" +
+			"  1 Yes\n  2 Yes, and don't ask again for edits in this project this session\n  3 No, and tell Sleipnir what to do instead\n  " + LineAnswerPrompt},
+		{"an unnamed agent, nothing to remember", perm.Request{Tool: "bash", Summary: "run ls"}, "\nagent wants to: run ls\n" +
+			"  1 Yes\n  3 No, and tell Sleipnir what to do instead\n  " + LineAnswerPrompt},
+		{"a test command", testsRequest(), "\nbe-1 wants to: go test ./...\n  1 Yes\n  2 Yes, and don't ask again for \"go test\" commands this session\n" +
+			"  3 Yes, and allow builds and tests (go, npm, cargo, pytest, make…) for this session\n  4 No, and tell Sleipnir what to do instead\n  " + LineAnswerPrompt},
 		{"a server", serverRequest(), "\nSleipnir wants to start the project's MCP server \"files\" (npx files-server)\n  start it? [y]es this time / [p]roject: remember this exact entry / [n]o: "},
 		{"the project's own files", trustRequest(), "\nSleipnir asks: use this project's own instructions and settings?\n  AGENTS.md: instructions, 1.3 KB\n  .claude/skills/ (3 files): skills, 4.1 KB\n\n  These are added to every prompt. [changed since you trusted it: AGENTS.md changed]\n  use them? [y]es this time / [r]emember until they change / [n]o: "},
 	} {
@@ -193,7 +220,7 @@ func TestTerminalPrompterAsksOneQuestionAtATime(t *testing.T) {
 	if d := decisionWithin(t, second, "the second question"); d.Allow {
 		t.Errorf("the second question: %+v", d)
 	}
-	if n := strings.Count(out.String(), "allow?"); n != 2 {
+	if n := strings.Count(out.String(), LineAnswerPrompt); n != 2 {
 		t.Errorf("%d questions were shown, want 2:\n%s", n, out.String())
 	}
 }
@@ -247,7 +274,8 @@ func TestLinePrompterLetsTheAnswerFunctionShowTheQuestion(t *testing.T) {
 	if before != "" {
 		t.Errorf("the question was on the screen before the answer function asked for it: %q", before)
 	}
-	want := "\nworker-2 wants to: write notes.txt [default mode: writing notes.txt needs approval]\n  allow? [y]es once / [a]lways this session / [n]o: "
+	want := "\nworker-2 wants to: write notes.txt [default mode: writing notes.txt needs approval]\n" +
+		"  1 Yes\n  2 Yes, and don't ask again for edits in this project this session\n  3 No, and tell Sleipnir what to do instead\n  " + LineAnswerPrompt
 	if after != want {
 		t.Errorf("after show the screen had %q, want %q (once)", after, want)
 	}
@@ -323,7 +351,7 @@ func TestLinePrompterAsksOneQuestionAtATime(t *testing.T) {
 	if d := decisionWithin(t, second, "the second question"); !d.Allow {
 		t.Errorf("second: %+v", d)
 	}
-	if n := strings.Count(out.String(), "allow?"); n != 2 {
+	if n := strings.Count(out.String(), LineAnswerPrompt); n != 2 {
 		t.Errorf("%d questions were shown, want 2:\n%s", n, out.String())
 	}
 }

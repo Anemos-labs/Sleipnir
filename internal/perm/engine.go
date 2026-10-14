@@ -385,12 +385,20 @@ func (e *Engine) addRule(scope Scope, rule Rule, origin string) {
 
 // snapshot captures the session view and, for a configured role, the role's
 // stricter overlay.
-func (e *Engine) snapshot(role string) (sess, prof *view) {
+func (e *Engine) snapshot(role string) (sess, prof *view) { return e.snapshotWith(role, nil) }
+
+// snapshotWith is snapshot with extra allow rules added to the session's, as if they had been added for the session (settles).
+func (e *Engine) snapshotWith(role string, extra []*crule) (sess, prof *view) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	sess = &view{mode: e.mode, deny: e.deny, ask: e.ask, allow: e.allow}
+	allow, allowEdits := e.allow, e.allowEdits
+	if len(extra) > 0 {
+		allow = append(append(make([]*crule, 0, len(allow)+len(extra)), allow...), extra...)
+		allowEdits = withTests(allow, e.tests)
+	}
+	sess = &view{mode: e.mode, deny: e.deny, ask: e.ask, allow: allow}
 	if e.mode == ModeAcceptEdits { // accept-edits lets the builds and tests of the project through, as it does the edits: Deny and Ask rules still win
-		sess.allow = e.allowEdits
+		sess.allow = allowEdits
 	}
 	if p, ok := e.roles[role]; ok && role != "" {
 		cat := func(a, b []*crule) []*crule {
@@ -398,7 +406,7 @@ func (e *Engine) snapshot(role string) (sess, prof *view) {
 		}
 		prof = &view{
 			mode: stricter(e.mode, p.mode), role: role,
-			deny: cat(e.deny, p.deny), ask: cat(e.ask, p.ask), allow: cat(e.allow, p.allow),
+			deny: cat(e.deny, p.deny), ask: cat(e.ask, p.ask), allow: cat(allow, p.allow),
 		}
 		if modeRank(prof.mode) < modeRank(e.mode) {
 			// A role that takes a stricter posture is judged from scratch under
@@ -441,7 +449,7 @@ func (e *Engine) Check(ctx context.Context, r Request) Decision {
 	e.audit(Audit{Kind: "ask", Request: r, Reason: v.reason})
 	if v.routine && e.cfg.Delegate != nil {
 		shown := r
-		shown.Summary, shown.Why = withWhy(r.Summary, v.reason), strings.TrimSpace(v.reason)
+		shown.Summary, shown.Why, shown.PackageIndex = withWhy(r.Summary, v.reason), strings.TrimSpace(v.reason), v.index
 		if d, by := e.cfg.Delegate(ctx, shown); by != "" {
 			if ctx.Err() != nil {
 				d, by = canceledDecision(ctx), "canceled"

@@ -778,3 +778,20 @@ func TestAnAnswerIsNeverReportedBeforeItsAsk(t *testing.T) {
 		t.Errorf("reported %v, want the ask before its answer", order)
 	}
 }
+
+// The page words the answers of a question as the terminal does (perm.Answers: the chat's dialog and the line prompter use them), and
+// numbers them alike: 1 yes, 2 yes and don't ask again, 3 the builds and tests when offered, and no last.
+func TestThePageWordsTheAnswersAsTheTerminalDoes(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "ui", "js", "85-ui-approvals.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(b)
+	tmpl := strings.SplitN(perm.AnswerRememberLabel("WHAT"), "WHAT", 2)
+	for _, want := range []string{"'" + perm.AnswerYesLabel + "'", "'" + perm.AnswerTestsLabel + "'", perm.AnswerNoLabel,
+		strings.ReplaceAll(tmpl[0], "'", "\\'"), tmpl[1], "{ 1: 1, 2: 2, 4: 3, 3: 4 }"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("85-ui-approvals.js does not hold %q", want)
+		}
+	}
+}

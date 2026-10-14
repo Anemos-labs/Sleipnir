@@ -114,11 +114,15 @@ func approvalText(id string, r perm.Request, task string, ownTree bool, timeout 
 	if task != "" {
 		who += " (task " + task + ")"
 	}
-	return fmt.Sprintf("Approval %s: %s asks to run %q %s. The permission engine asks because: %s. "+
-		"It stays inside the workspace and reaches no network but this machine; nothing protected is involved. "+
+	reach := "It stays inside the workspace and reaches no network but this machine; nothing protected is involved. "
+	if r.PackageIndex {
+		reach = "It installs Python packages into a virtual environment inside the workspace: it reaches the package index, and the " +
+			"install runs the packages' build code; nothing else leaves the workspace and nothing protected is involved. "
+	}
+	return fmt.Sprintf("Approval %s: %s asks to run %q %s. The permission engine asks because: %s. %s"+
 		"Answer with approve id=%s decision=yes, decision=no with text= saying what to do instead, or decision=escalate to put it to the person. "+
 		"With no answer within %s it goes to the person.",
-		id, who, cleanText(what, 400), where, cleanText(r.Why, 300), id, timeout)
+		id, who, cleanText(what, 400), where, cleanText(r.Why, 300), reach, id, timeout)
 }
 
 // answerApproval delivers the manager's answer to a waiting question.

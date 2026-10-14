@@ -1,6 +1,7 @@
 package perm
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -34,6 +35,11 @@ type verdict struct {
 	rule, origin, tier string
 	// routine marks a question a delegate may settle before a person is asked (routine.go).
 	routine bool
+	// index marks a request that installs packages into a virtual environment of the workspace: it reaches the package index.
+	index bool
+	// tests marks a question about a command the tests preset covers that its exact rule does not name (a venv install): the
+	// question offers the preset as an answer.
+	tests bool
 }
 
 // by marks a verdict as decided by a rule.
@@ -77,6 +83,7 @@ func combine(a, b verdict) verdict {
 	case a.kind == vAsk:
 		a.rem = mergeRules(a.rem, b.rem)
 		a.askRule = a.askRule || b.askRule
+		a.tests = a.tests || b.tests
 	}
 	return a
 }
@@ -159,11 +166,15 @@ func (ev *evaluator) judge(u *unit) verdict {
 	if r := ev.restrictMatch(ev.v.deny, u, all); r != nil {
 		return deny("denied by rule " + r.String()).by(r)
 	}
-	if r := ev.restrictMatch(ev.v.ask, u, ev.rs.outsideTmp(all)); r != nil {
+	if r, hit := ev.restrictHit(ev.v.ask, u, ev.rs.outsideTmp(all)); r != nil {
+		why, unknown := ev.askRuleReason(r, hit)
 		if ev.v.mode == ModeYolo { // yolo never asks: a rule that would have asked refuses instead
-			return deny("yolo mode never asks, and rule " + r.String() + " requires approval; allow it with an Allow rule or leave yolo").by(r)
+			return deny("yolo mode never asks, and " + why + "; allow it with an Allow rule or leave yolo").by(r)
 		}
-		v := ask("rule "+r.String()+" requires approval", nil).by(r)
+		if !unknown {
+			why += "; an answer to it is not remembered"
+		}
+		v := ask(why, nil).by(r)
 		v.askRule = true
 		return v
 	}
@@ -228,7 +239,7 @@ func (ev *evaluator) decideCommand(u *unit) verdict {
 	if !free(mode) {
 		switch {
 		case u.envBad != "":
-			r := "environment assignment " + u.envBad + " can change what runs"
+			r := "environment assignment " + u.envBad + " can change what runs, so no allow rule applies to " + quote(u.label)
 			if mode == ModePlan {
 				return deny(planReason(r))
 			}
@@ -257,9 +268,10 @@ func (ev *evaluator) decideCommand(u *unit) verdict {
 	case mode == ModePlan:
 		res = deny(planReason(u.label + " is not a read-only command"))
 	case u.class == cmdFSWrite:
-		res = ask(ev.modeReason(u.label+" modifies files; approve it, or use accept-edits mode to allow this inside the workspace"), ev.remember(u))
+		res = ask(ev.modeReason(u.label+": changes files; it asks before every change, and accept-edits mode allows changes inside the workspace"), ev.remember(u))
 	default:
-		res = ask(ev.modeReason(u.label+": "+u.why), ev.remember(u))
+		res = ask(ev.unlistedReason(u), ev.remember(u))
+		res.tests = ev.testsCover(u)
 	}
 	if res.kind == vDeny {
 		return res
@@ -381,7 +393,8 @@ func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 		if a.unresolved {
 			return ask("Go resolves package "+quote(a.raw)+" through module configuration; use a local package path such as ./... or approve the command", nil)
 		}
-		return ask(quote(a.raw)+" is a file name that is only known when the command runs, so it cannot be checked beforehand", nil)
+		return ask(quote(a.raw)+" is a file name that is only known when the command runs ("+unknownWords(a.raw)+"), so it cannot be "+
+			"checked beforehand; write the path out, or set the variable earlier in the same command", nil)
 	}
 	if a.write && !a.read && harmlessDevice(fold(a.real)) {
 		return allow("harmless device")
@@ -406,8 +419,11 @@ func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 			return ask(ev.modeReason("writes "+a.raw+" "+ev.outsideWorkspace(true)+"; approval needed"), rem())
 		}
 	default:
+		if a.write && ev.rs.inWorkspace(a.real) {
+			return ask(ev.modeReason("writing "+a.raw+" needs approval; accept-edits mode allows writes inside the workspace"), rem())
+		}
 		if a.write {
-			return ask(ev.modeReason("writing "+a.raw+" needs approval"), rem())
+			return ask(ev.modeReason("writes "+a.raw+" "+ev.outsideWorkspace(true)+"; approval needed"), rem())
 		}
 	}
 	if ev.rs.inWorkspace(a.real) {
@@ -453,35 +469,100 @@ func ruleHits(r *crule, a access, restrict bool) bool {
 }
 
 func (ev *evaluator) restrictMatch(rules []*crule, u *unit, all []access) *crule {
+	r, _ := ev.restrictHit(rules, u, all)
+	return r
+}
+
+// restrictHit is restrictMatch that also returns the access a Read or Edit rule matched (nil for a rule about the command or the
+// tool).
+func (ev *evaluator) restrictHit(rules []*crule, u *unit, all []access) (*crule, *access) {
 	for _, r := range rules {
 		switch r.class {
 		case classBash:
-			if u.simple != nil && r.matchCommand(*u.simple, true) {
-				return r
+			if r.venv && u.venv != nil || u.simple != nil && r.matchCommand(*u.simple, true) {
+				return r, nil
 			}
 		case classRead:
-			for _, a := range all {
+			for i, a := range all {
 				if a.read && ruleHits(r, a, true) {
-					return r
+					return r, &all[i]
 				}
 			}
 		case classWrite:
-			for _, a := range all {
+			for i, a := range all {
 				if a.write && ruleHits(r, a, true) {
-					return r
+					return r, &all[i]
 				}
 			}
 		case classWeb:
 			if u.tool && r.matchWeb(*u.req, true) {
-				return r
+				return r, nil
 			}
 		default:
 			if u.tool && r.matchOther(*u.req) {
-				return r
+				return r, nil
 			}
 		}
 	}
-	return nil
+	return nil, nil
+}
+
+// askRuleReason says why an Ask rule asks: the rule and the path it covers. A path in $TMPDIR whose rest is only known when the
+// command runs is said to be that (unknown), since it is the unknown part that brings the rule in (a "../" in it would leave $TMPDIR
+// for the state directory around it), and the fix is the model's. An answer to a question an Ask rule puts is never remembered.
+func (ev *evaluator) askRuleReason(r *crule, hit *access) (why string, unknown bool) {
+	if hit != nil && hit.dynamic && hit.prefix && ev.rs.inTmp(hit.real) {
+		return quote(hit.raw) + " is in $TMPDIR, but " + unknownWords(hit.raw) + " is only known when the command runs, so it could " +
+			"lead out of $TMPDIR, into what rule " + r.String() + " covers; write to a fixed name in $TMPDIR, or set the variable " +
+			"earlier in the same command", true
+	}
+	what := ""
+	if hit != nil {
+		what = " for " + quote(hit.raw)
+	}
+	return "rule " + r.String() + " requires approval" + what, false
+}
+
+// unknownWords names the variables of a word that the engine does not know ("$X", "$X and $Y"), or "a part of it" when the unknown
+// part is not a variable (a substitution, ~user).
+func unknownWords(raw string) string {
+	var names []string
+	for i := 0; i < len(raw); i++ {
+		if raw[i] != '$' || i+1 >= len(raw) {
+			continue
+		}
+		j, name := i+1, ""
+		switch {
+		case raw[j] == '{': // ${X}, ${X:-d}: the name is what comes first
+			k := j + 1
+			for k < len(raw) && isNameByte(raw[k]) {
+				k++
+			}
+			name = raw[j+1 : k]
+		default:
+			k := j
+			for k < len(raw) && isNameByte(raw[k]) {
+				k++
+			}
+			name = raw[j:k]
+		}
+		if name == "" || name == "HOME" || name == "TMPDIR" || name == "PWD" {
+			continue
+		}
+		if _, special := fragmentParams[name]; special {
+			continue
+		}
+		if n := "$" + name; !slices.Contains(names, n) {
+			names = append(names, n)
+		}
+	}
+	switch len(names) {
+	case 0:
+		return "a part of it"
+	case 1:
+		return names[0]
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
 // accessAllowRule returns the first matching allow rule of the access's read or write class.
@@ -516,7 +597,14 @@ func (ev *evaluator) commandAllowRule(u *unit) *crule {
 	}
 	var blanket *crule
 	for _, r := range ev.v.allow {
-		if r.class != classBash || !r.matchCommand(*u.simple, false) {
+		switch {
+		case r.class != classBash:
+			continue
+		case r.venv:
+			if !u.venv.ok() || !ev.accessesInWorkspace(u) {
+				continue
+			}
+		case !r.matchCommand(*u.simple, false), r.workspace && !ev.withinWorkspace(u, r):
 			continue
 		}
 		if !r.blanket {
@@ -527,6 +615,28 @@ func (ev *evaluator) commandAllowRule(u *unit) *crule {
 	return blanket
 }
 
+// withinWorkspace is the condition of a ":workspace" rule: none of the rule's refused options is given, a compiler of files names the
+// files it compiles (compiledFiles), and every file the command names (operands and option values, judged as an unlisted command's
+// are) resolves inside the workspace (accessesInWorkspace).
+func (ev *evaluator) withinWorkspace(u *unit, r *crule) bool {
+	if r.fileList && (len(u.simple.Args) < len(r.argv)-1 || compiledFiles(u.simple.Args[len(r.argv)-1:]) != "") {
+		return false
+	}
+	return !hasLong(u.simple.Args, r.refused...) && ev.accessesInWorkspace(u)
+}
+
+// accessesInWorkspace reports whether every file a command names resolves inside the workspace. An allow rule that is more than a
+// command's words (":workspace", "python:venv") holds to it, since a command it allows is not judged file by file
+// (pytest --basetemp=/elsewhere, --junitxml=/elsewhere/x.xml).
+func (ev *evaluator) accessesInWorkspace(u *unit) bool {
+	for _, a := range u.accesses {
+		if a.dynamic || a.invalid != "" || a.real == "" || !ev.rs.inWorkspace(a.real) {
+			return false
+		}
+	}
+	return true
+}
+
 // overridesRisk reports whether an allow rule speaks specifically enough to
 // permit a command flagged high risk.
 func (ev *evaluator) overridesRisk(u *unit) bool {
@@ -534,7 +644,7 @@ func (ev *evaluator) overridesRisk(u *unit) bool {
 		return false
 	}
 	for _, r := range ev.v.allow {
-		if r.class != classBash || r.blanket || !r.matchCommand(*u.simple, false) {
+		if r.class != classBash || r.blanket || r.venv || r.workspace || !r.matchCommand(*u.simple, false) {
 			continue
 		}
 		if !r.anyArgs || len(u.high.markers) == 0 {
@@ -602,7 +712,17 @@ func (ev *evaluator) buildRemember(u *unit) []Rule {
 	if s == nil || u.envBad != "" || u.dyn != "" || s.Program == "" {
 		return nil
 	}
+	// A rule is the command's words. One with a variable in it would match whatever the variable holds the next time, and a program
+	// that reads its code from standard input (python3 - <<'PY') would be allowed with any code: neither is remembered.
+	if shellparse.ReadsCodeFromStdin(programBase(s.Program), s.Args) {
+		return nil
+	}
 	argv := append([]string{s.Program}, s.Args...)
+	for _, w := range argv {
+		if strings.ContainsAny(w, "$`") {
+			return nil
+		}
+	}
 	for _, w := range argv {
 		if strings.Contains(w, "*") {
 			// It would become a wildcard in the rule. A test run with a glob (node --test test/*.test.js) is remembered as its runner alone:

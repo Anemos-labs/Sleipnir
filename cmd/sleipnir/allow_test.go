@@ -40,13 +40,15 @@ EOF`, nil},
 }
 
 // Every rule of the tests preset is one the engine accepts, and none lets a program run what it is given: no bare interpreter, no
-// install, no download. The one network rule is an HTTP request to this machine (curl and wget with :loopback).
+// install, no download. The network rules are analysed ones, never prefixes: an HTTP request to this machine (curl and wget with
+// :loopback), and a Python virtual environment of the workspace (python:venv), whose installs reach the package index only and land in
+// the workspace (internal/perm venv.go and its tests).
 func TestTestsPresetIsValidAndNamesNoInterpreterOrInstaller(t *testing.T) {
 	for _, r := range testsAllow {
 		if _, err := perm.ParseRule(perm.Allow, r); err != nil {
 			t.Errorf("%s: %v", r, err)
 		}
-		if r == "Bash(curl:loopback)" || r == "Bash(wget:loopback)" {
+		if r == "Bash(curl:loopback)" || r == "Bash(wget:loopback)" || r == "Bash(python:venv)" {
 			continue
 		}
 		for _, bad := range []string{"Bash(python:", "Bash(python3:", "Bash(node:", "Bash(npx:", "Bash(go:", "Bash(go run", "install", "curl", "wget", "pip", "go get", "go generate"} {

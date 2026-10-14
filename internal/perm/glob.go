@@ -21,13 +21,17 @@ type resolver struct {
 	// treeBases are "<tree parent>/*" (each parent lexical and resolved): relative
 	// patterns are anchored at every per-agent tree as well as at the root.
 	treeBases []string
+	// envFrag are the special parameters of a shell that the environment of the harness defines (definedFragments).
+	envFrag map[string]bool
+	// treeParents are the resolved tree parents (Config.TreeParents): each directory directly below one is an agent's tree.
+	treeParents []string
 }
 
 type rootPair struct{ lex, real string }
 
 // newResolver records cleaned lexical and resolved forms of home and nonempty allowed roots.
 func newResolver(home, root string, extra []string) *resolver {
-	rs := &resolver{home: cleanAbs(home)}
+	rs := &resolver{home: cleanAbs(home), envFrag: definedFragments()}
 	rs.homeReal = realPath(rs.home)
 	for _, r := range append([]string{root}, extra...) {
 		if r == "" {
@@ -52,7 +56,24 @@ func (rs *resolver) addTreeParents(parents []string) {
 		for _, d := range uniq(l, realPath(l)) {
 			rs.treeBases = append(rs.treeBases, escapeGlob(d)+"/*")
 		}
+		rs.treeParents = append(rs.treeParents, realPath(l))
 	}
+}
+
+// isRoot reports whether real (resolved) is a workspace root itself rather than a directory of one: the project, an extra root,
+// $TMPDIR, or an agent's tree (a directory directly below a tree parent).
+func (rs *resolver) isRoot(real string) bool {
+	for _, r := range rs.roots {
+		if real == r.real {
+			return true
+		}
+	}
+	for _, p := range rs.treeParents {
+		if filepath.Dir(real) == p {
+			return true
+		}
+	}
+	return false
 }
 
 // root is the primary workspace root ("" if none was configured).

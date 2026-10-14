@@ -7,93 +7,6 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/shellparse"
 )
 
-// expandWord expands the parts of a shell word that a permission check can
-// know: a leading tilde, $HOME / ${HOME}, $PWD / ${PWD} and, when the session has a
-// private scratch directory, $TMPDIR / ${TMPDIR}. dynamic reports that
-// something else (another variable, a substitution, ~user) is left, in which
-// case the word does not name a file the engine can judge; partial is then the
-// text before the first unknown piece, so "~/.ssh/$KEY" is still seen to be
-// inside ~/.ssh.
-func (rs *resolver) expandWord(w, cwd string) (out, partial string, dynamic bool) {
-	return rs.expandWordVars(w, cwd, nil)
-}
-
-// expandWordVars is expandWord that also knows the shell variables the same command line assigned a known value to (vars, see
-// evaluator.noteAssignments).
-func (rs *resolver) expandWordVars(w, cwd string, vars map[string]string) (out, partial string, dynamic bool) {
-	switch {
-	case w == "~" || strings.HasPrefix(w, "~/"):
-		if rs.home == "" {
-			return "", "", true
-		}
-		w = rs.home + w[1:]
-	case w == "~+" || strings.HasPrefix(w, "~+/"):
-		if cwd == "" {
-			return "", "", true
-		}
-		w = cwd + w[2:]
-	case strings.HasPrefix(w, "~"):
-		return "", "", true // ~user, ~-, ~1
-	}
-	if !strings.ContainsAny(w, "$`") {
-		return w, "", false
-	}
-	var b strings.Builder
-	for i := 0; i < len(w); {
-		c := w[i]
-		if c == '`' {
-			return "", b.String(), true
-		}
-		if c != '$' {
-			b.WriteByte(c)
-			i++
-			continue
-		}
-		j := i + 1
-		var name string
-		if j < len(w) && w[j] == '{' {
-			k := strings.IndexByte(w[j:], '}')
-			if k < 0 {
-				return "", b.String(), true
-			}
-			name = w[j+1 : j+k]
-			j += k + 1
-		} else {
-			k := j
-			for k < len(w) && (w[k] == '_' || w[k] >= 'a' && w[k] <= 'z' || w[k] >= 'A' && w[k] <= 'Z' || w[k] >= '0' && w[k] <= '9') {
-				k++
-			}
-			name = w[j:k]
-			j = k
-		}
-		switch name {
-		case "HOME":
-			if rs.home == "" {
-				return "", b.String(), true
-			}
-			b.WriteString(rs.home)
-		case "TMPDIR":
-			if rs.tmp == "" {
-				return "", b.String(), true
-			}
-			b.WriteString(rs.tmp)
-		case "PWD":
-			if cwd == "" {
-				return "", b.String(), true
-			}
-			b.WriteString(cwd)
-		default:
-			v, ok := vars[name]
-			if !ok {
-				return "", b.String(), true
-			}
-			b.WriteString(v)
-		}
-		i = j
-	}
-	return b.String(), "", false
-}
-
 // cwdSet is the set of directories the shell may be in. A cd inside a subshell
 // or pipeline does not leak out, but tracking that exactly is not worth the
 // risk of being wrong, so after a cd every later command is judged against
@@ -162,7 +75,7 @@ func (ev *evaluator) resolve(u pathUse, cw *cwdSet) []access {
 	}
 	var out []access
 	one := func(cwd string) {
-		w, partial, dyn := ev.rs.expandWordVars(filepath.ToSlash(raw), cwd, ev.vars)
+		w, partial, dyn := ev.rs.expandWordVars(filepath.ToSlash(raw), cwd, ev.expansion())
 		if dyn {
 			a := mk("", true)
 			if partial != "" {
@@ -236,7 +149,7 @@ func (ev *evaluator) cdTo(cw *cwdSet, target string) *cwdSet {
 		next.unknown = true
 	}
 	for _, d := range cw.dirs {
-		w, _, dyn := ev.rs.expandWordVars(target, d, ev.vars)
+		w, _, dyn := ev.rs.expandWordVars(target, d, ev.expansion())
 		if dyn {
 			next.unknown = true
 			continue

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -316,9 +317,12 @@ func (s *JSONSink) Notice(a, level, msg string) {
 var _ agent.Sink = (*TextSink)(nil)
 var _ agent.Sink = (*JSONSink)(nil)
 
-// TerminalPrompter asks the user on the terminal whether an action may proceed:
-// y (once), a (always for this session), n (deny). Requests are serialised so
-// parallel agents never interleave questions.
+// TerminalPrompter asks the user on the terminal whether an action may proceed. A question
+// about an action lists the answers of perm.Answers with their numbers, as the chat's dialog
+// and the web page do (1 yes; 2 yes and don't ask again, when that can be remembered; 3 yes
+// and allow builds and tests, when offered; no last), and takes a number, the letter of an
+// answer (y, a, t, n), or any other text as the last one: no, and what to do instead. An empty
+// line is a no. Requests are serialised so parallel agents never interleave questions.
 //
 // It reads its answers from in itself, one line per question: right for a command that
 // reads nothing else from in (run, mcp test). A command that reads in for something else
@@ -363,19 +367,27 @@ func LinePrompter(answer func(ctx context.Context, show func()) (string, error),
 				// The files that come with the project: the answer that remembers is for exactly these.
 				fmt.Fprintf(out, "\nSleipnir asks: %s\n  use them? [y]es this time / [r]emember until they change / [n]o: ", indentLines(r.Summary))
 			default:
-				fmt.Fprintf(out, "\n%s wants to: %s\n  allow? [y]es once / [a]lways this session / [n]o: ", who, r.Summary)
+				fmt.Fprintf(out, "\n%s wants to: %s\n", who, r.Summary)
+				for _, a := range perm.Answers(r) {
+					fmt.Fprintf(out, "  %d %s\n", a.Key, a.Label)
+				}
+				fmt.Fprint(out, "  "+LineAnswerPrompt)
 			}
 		})
 		line, err := answer(ctx, show)
 		if err != nil {
 			return perm.Decision{Allow: false, Reason: "no answer"}
 		}
-		switch strings.ToLower(strings.TrimSpace(line)) {
+		said := strings.TrimSpace(line)
+		switch strings.ToLower(said) {
 		case "y", "yes":
 			return perm.Decision{Allow: true, Reason: "allowed by user"}
 		case "a", "always":
-			if r.Tool != perm.ToolMCPServer && r.Tool != perm.ToolProjectTrust {
-				return perm.Decision{Allow: true, Reason: "allowed by user for the session", Remember: perm.ScopeSession}
+			if r.Tool == perm.ToolMCPServer || r.Tool == perm.ToolProjectTrust {
+				break
+			}
+			if d, ok := lineAnswer(r, "a"); ok {
+				return d
 			}
 		case "p", "project":
 			if r.Tool == perm.ToolMCPServer {
@@ -385,9 +397,36 @@ func LinePrompter(answer func(ctx context.Context, show func()) (string, error),
 			if r.Tool == perm.ToolProjectTrust {
 				return perm.Decision{Allow: true, Reason: "trusted by user until the files change", Remember: perm.ScopeProject}
 			}
+		case "", "n", "no":
+		default:
+			if r.Tool == perm.ToolMCPServer || r.Tool == perm.ToolProjectTrust {
+				break
+			}
+			if d, ok := lineAnswer(r, said); ok {
+				return d
+			}
+			if len(said) == 1 {
+				break // the number or letter of an answer this question does not offer: no
+			}
+			// Anything else is the last answer: no, and what to do instead, in the person's words.
+			return perm.Decision{Allow: false, Reason: perm.DeclinedWith(said)}
 		}
 		return perm.Decision{Allow: false, Reason: "denied by user"}
 	}
+}
+
+// LineAnswerPrompt ends the question about an action that the line prompter prints, after the numbered answers (perm.Answers).
+const LineAnswerPrompt = "answer with its number (or y, a, t, n), or type what to do instead: "
+
+// lineAnswer is the answer of perm.Answers that a typed word names: its number, or its letter. ok is false for a word that names none
+// of the answers the question offers ("a" when nothing can be remembered).
+func lineAnswer(r perm.Request, word string) (perm.Decision, bool) {
+	for _, a := range perm.Answers(r) {
+		if word == strconv.Itoa(a.Key) || strings.EqualFold(word, a.Letter) {
+			return a.Decision, true
+		}
+	}
+	return perm.Decision{}, false
 }
 
 // indentLines indents every line of s but the first (and leaves a blank one blank), so that a question that runs over several lines reads

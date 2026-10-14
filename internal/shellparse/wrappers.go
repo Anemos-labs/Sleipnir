@@ -500,6 +500,16 @@ var interpreterInline = map[string]string{
 
 var scriptExts = []string{".py", ".pl", ".rb", ".js", ".mjs", ".cjs", ".ts", ".php", ".lua", ".R", ".tcl"}
 
+// ReadsCodeFromStdin reports whether prog with args runs what arrives on its standard input as a program: a shell with no script
+// operand or with -s, an interpreter (python, node, perl, ...) given "-" or no script, xargs that runs a shell. prog is a bare name
+// or a binary of a standard directory; any other path is not recognised.
+func ReadsCodeFromStdin(prog string, args []string) bool { return readsCodeFromStdin(prog, args) }
+
+// InterpreterName maps the base name of a program to the interpreter it is (python3.11 is "python", nodejs is "node"), or "" when it
+// is not one of the interpreters the parser knows.
+func InterpreterName(base string) string { return interpreterName(base) }
+
+// readsCodeFromStdin is ReadsCodeFromStdin.
 func readsCodeFromStdin(prog string, args []string) bool {
 	base := stdBase(prog)
 	switch {

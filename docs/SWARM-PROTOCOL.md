@@ -108,8 +108,11 @@ a worker's permission question that the engine marks routine goes to the manager
 (`perm.Config.Delegate`, `internal/swarm/approvals.go`). Routine is decided by the engine, never by the model: the question
 comes from the mode (no `ask` rule, no built-in protection, nothing high risk), every file the action touches resolves inside
 the workspace (the worker's own tree, `$TMPDIR`), it reaches no network but this machine, nothing in it escapes analysis (a
-substitution, a variable that steers what runs), and it is not a package install or download, a signal to another process,
-a service, scheduler or container command. The manager gets a harness message (`Approval A3: be-1 (task T4) asks to run
+substitution, a variable that steers what runs, a path only known when the command runs), and it is not a package install or download,
+a signal to another process, a service, scheduler or container command. The one install that is routine is the one the tests preset
+allows: creating a Python virtual environment in the workspace and installing into it from the package index with its own pip
+(`Bash(python:venv)`, `docs/SECURITY.md`); its message tells the manager that it reaches the package index and runs the packages' build
+code. A program is judged by its name wherever it is run from, so `.venv/bin/pip install --index-url ...` is an install, not routine. The manager gets a harness message (`Approval A3: be-1 (task T4) asks to run
 "PORT=8080 ./bin/app &" in its own tree. The permission engine asks because: ...`) and answers with the `approve` tool (manager
 only; every agent sends the same tool list): `decision=yes`, `decision=no` with `text` (the worker reads it with the refusal,
 as a person's "no, and tell it what to do"), or `decision=escalate`. A question unanswered within 60 s, or escalated, goes to

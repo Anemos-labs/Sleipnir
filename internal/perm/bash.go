@@ -3,8 +3,10 @@ package perm
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/shellparse"
@@ -51,6 +53,7 @@ type unit struct {
 	envBad   string   // env assignment that changes what the command runs
 	envAcc   []access // the files the values of its environment assignments name (read)
 	network  bool
+	venv     *venvUse // a command that creates or installs into a Python virtual environment (venv.go)
 
 	tool bool // a non-shell tool request
 	req  *Request
@@ -67,8 +70,18 @@ type evaluator struct {
 	r          Request
 	globBudget int
 	unroutine  bool // a part of the request is not routine (routine.go)
-	// vars are the shell variables an earlier statement of the same command line set to a known value (noteAssignments).
-	vars map[string]string
+	// vars are the shell variables an earlier statement of the same command line set to a known value (noteAssignments), and
+	// exported those of them an export (or declare -x) statement gave to the commands the line starts.
+	vars     map[string]string
+	exported map[string]bool
+	// off are the variables the engine otherwise knows ($HOME, $TMPDIR, $PWD, the special parameters) that the line assigns or
+	// otherwise names (expansion.off).
+	off map[string]bool
+	// index is set when a unit of the request installs packages into a virtual environment of the workspace (venv.go): the one
+	// routine question that reaches beyond this machine, to the package index.
+	index bool
+	// cleanEnv is set when a command of the line runs under env, which can start a new shell without the exported variables.
+	cleanEnv bool
 }
 
 // evaluate runs bounded permission analysis and escalates implicitly allowed high-risk actions to
@@ -83,6 +96,7 @@ func (e *Engine) evaluate(v *view, r Request) verdict {
 		return ask("the tool marked this action high risk", nil).protected(TierGuarded)
 	}
 	res.routine = res.kind == vAsk && !ev.unroutine && !res.askRule && res.tier == "" && r.Risk != RiskHigh
+	res.index = ev.index
 	return res
 }
 
@@ -154,30 +168,62 @@ func (ev *evaluator) bash(cmd string) verdict {
 	}
 	cw := &cwdSet{dirs: []string{ev.startDir()}}
 	res := verdict{kind: vAllow, explicit: true, reason: "empty command"}
+	first := true
+	// fold adds one command's verdict; it reports a denial, which nothing can outrank.
+	fold := func(v verdict) bool {
+		if v.kind == vDeny {
+			res = v
+			return true
+		}
+		if first {
+			res, first = v, false
+		} else {
+			res = combine(res, v)
+		}
+		return false
+	}
+	ev.off = harnessOff(cmd, an.Commands)
+	ev.cleanEnv = false
+	for _, c := range an.Commands {
+		ev.cleanEnv = ev.cleanEnv || slices.Contains(c.Wrappers, "env")
+	}
 	conflicted := map[string]bool{}
-	track := varsTrackable(cmd)
-	for i, s := range an.Commands {
-		v := ev.judge(ev.buildUnit(s, cw))
+	track := varsTrackable(cmd, an)
+	// The commands of a trap action run when the signal arrives or the shell exits: they are judged after the rest, in every directory
+	// the line may be in by then, and with only the variables that were known when the trap was set and still are at the end.
+	type deferred struct {
+		s    shellparse.Simple
+		vars map[string]string
+	}
+	var later []deferred
+	for _, s := range an.Commands {
+		if s.Deferred {
+			later = append(later, deferred{s: s, vars: maps.Clone(ev.vars)})
+			continue
+		}
+		v := ev.judgeWith(s, cw, ev.vars)
 		if track {
 			if reassigns(s) {
-				ev.vars, track = nil, false // a builtin may set any variable from here on
+				ev.vars, ev.exported, track = nil, nil, false // a builtin may set any variable from here on
 			} else if unconditional(cmd, s) {
 				ev.noteAssignments(s, cw, conflicted)
 			} else {
-				for _, env := range s.Env { // an assignment that may not run leaves the name unknown
-					name, _, _ := strings.Cut(env, "=")
-					delete(ev.vars, name)
-					conflicted[name] = true
+				for _, env := range assignedBy(s) { // an assignment that may not run leaves the name unknown
+					ev.forget(envName(env), conflicted)
 				}
 			}
 		}
-		if v.kind == vDeny { // nothing can outrank a denial
-			return v
+		if fold(v) {
+			return res
 		}
-		if i == 0 {
-			res = v
-		} else {
-			res = combine(res, v)
+	}
+	for _, d := range later {
+		var vars map[string]string
+		if track {
+			vars = stableVars(d.vars, ev.vars)
+		}
+		if fold(ev.judgeWith(d.s, cw, vars)) {
+			return res
 		}
 	}
 	why := opaqueReason(cmd, an)
@@ -201,18 +247,80 @@ func (ev *evaluator) bash(cmd string) verdict {
 	return res
 }
 
-// noteAssignments records the variables a statement made only of assignments (SCR="$TMPDIR/x") sets to a value the engine can
-// expand, for the statements after it: "$SCR" then names that path. A name assigned two different values on the line, a value
-// that cannot be expanded, or a name that steers programs (envDangerous) is not known; conflicted remembers the names that lost
-// their value. Only a statement with no program assigns shell variables; an assignment before a program is that program's
-// environment.
-func (ev *evaluator) noteAssignments(s shellparse.Simple, cw *cwdSet, conflicted map[string]bool) {
-	if s.Program != "" {
-		return
+// judgeWith judges one command with vars as the variables the line has set when it runs. A command that a new shell runs (sh -c,
+// a script on a shell's standard input) sees only those of them the line exported.
+func (ev *evaluator) judgeWith(s shellparse.Simple, cw *cwdSet, vars map[string]string) verdict {
+	saved := ev.vars
+	ev.vars = vars
+	if s.Child {
+		ev.vars = nil
+		for n, v := range vars {
+			if ev.exported[n] && !ev.cleanEnv { // env -i, env -u: the new shell may not get them
+				if ev.vars == nil {
+					ev.vars = map[string]string{}
+				}
+				ev.vars[n] = v
+			}
+		}
 	}
-	for _, env := range s.Env {
+	defer func() { ev.vars = saved }()
+	return ev.judge(ev.buildUnit(s, cw))
+}
+
+// stableVars are the variables of at (what was known where a trap was set) that end holds with the same value: whenever the trap
+// runs after that, they hold that value.
+func stableVars(at, end map[string]string) map[string]string {
+	var out map[string]string
+	for n, v := range at {
+		if w, ok := end[n]; ok && w == v {
+			if out == nil {
+				out = map[string]string{}
+			}
+			out[n] = v
+		}
+	}
+	return out
+}
+
+// forget makes a variable unknown for the rest of the line.
+func (ev *evaluator) forget(name string, conflicted map[string]bool) {
+	delete(ev.vars, name)
+	delete(ev.exported, name)
+	conflicted[name] = true
+}
+
+// noteAssignments records the variables a statement made only of assignments (SCR="$TMPDIR/x"), or a declaration of the form
+// export, readonly or declare NAME=value, sets to a value the engine can expand, for the statements after it: "$SCR" then names
+// that path. A name assigned two different values on the line, a value that cannot be expanded or is empty (${SCR:=/etc} would
+// replace it), a name that steers programs (envDangerous) and a variable of the shell's own (untrackedVars) is not known; conflicted
+// remembers the names that lost their value. An assignment before a program is that program's environment, not a shell variable.
+func (ev *evaluator) noteAssignments(s shellparse.Simple, cw *cwdSet, conflicted map[string]bool) {
+	assigns, exported := s.Env, false
+	if s.Program != "" {
+		d, ok := declaration(s)
+		if !ok {
+			return
+		}
+		assigns, exported = d.assigns, d.exported
+		for _, n := range d.names {
+			if exported && ev.vars[n] != "" {
+				ev.markExported(n)
+			}
+		}
+	}
+	// The values of a declaration are expanded before it assigns any of them (export a=1 b=$a gives b the old a); the values of an
+	// assignment statement one after the other.
+	before := ev.vars
+	if s.Program != "" {
+		before = maps.Clone(ev.vars)
+	}
+	for _, env := range assigns {
 		name, val, ok := strings.Cut(env, "=")
-		if !ok || name == "" || envDangerous(env) {
+		if !ok || name == "" {
+			continue
+		}
+		if strings.HasSuffix(name, "+") || envDangerous(env) || untrackedVars[name] || strings.HasPrefix(name, "BASH") {
+			ev.forget(strings.TrimSuffix(name, "+"), conflicted)
 			continue
 		}
 		// Do not expand shell-literal or mixed-quoted values as variables.
@@ -221,37 +329,139 @@ func (ev *evaluator) noteAssignments(s shellparse.Simple, cw *cwdSet, conflicted
 		var w string
 		dyn := literal || len(cw.dirs) != 1 || cw.unknown
 		if !dyn {
-			w, _, dyn = ev.rs.expandWordVars(val, cw.dirs[0], ev.vars)
+			w, _, dyn = ev.rs.expandWordVars(val, cw.dirs[0], expansion{vars: before, off: ev.off})
 		}
 		prev, had := ev.vars[name]
 		switch {
-		case dyn || conflicted[name] || had && prev != w:
-			delete(ev.vars, name)
-			conflicted[name] = true
+		case dyn || w == "" || conflicted[name] || had && prev != w:
+			ev.forget(name, conflicted)
 		default:
 			if ev.vars == nil {
 				ev.vars = map[string]string{}
 			}
 			ev.vars[name] = w
+			if exported {
+				ev.markExported(name)
+			}
+		}
+		if s.Program == "" {
+			before = ev.vars
 		}
 	}
 }
 
-// varsTrackable reports whether a command line is simple enough for noteAssignments: no function definitions, whose bodies may
-// set variables when they are called.
-func varsTrackable(cmd string) bool {
-	return !strings.Contains(cmd, "()") && !strings.Contains(cmd, "function ") && !strings.Contains(cmd, "&")
+// markExported records that a known variable is in the environment of the commands the line starts.
+func (ev *evaluator) markExported(name string) {
+	if ev.exported == nil {
+		ev.exported = map[string]bool{}
+	}
+	ev.exported[name] = true
+}
+
+// untrackedVars are variables of the shell itself: what a read of them gives is not what was assigned (RANDOM, SECONDS, LINENO), an
+// assignment to them fails (UID, PPID) or a builtin changes them (PWD and OLDPWD by cd, OPTIND by getopts, REPLY by read, _ by every
+// command). harnessNames are not tracked either.
+var untrackedVars = map[string]bool{
+	"_": true, "PWD": true, "OLDPWD": true, "HOME": true, "TMPDIR": true, "PPID": true, "UID": true, "EUID": true, "GROUPS": true,
+	"RANDOM": true, "SRANDOM": true, "SECONDS": true, "LINENO": true, "EPOCHSECONDS": true, "EPOCHREALTIME": true, "FUNCNAME": true,
+	"HISTCMD": true, "DIRSTACK": true, "PIPESTATUS": true, "OPTIND": true, "OPTARG": true, "REPLY": true, "SHELLOPTS": true, "IFS": true,
+}
+
+// assignedBy lists the NAME=value assignments a statement makes to shell variables: those of an assignment statement, or of a
+// declaration (export, readonly, declare NAME=value).
+func assignedBy(s shellparse.Simple) []string {
+	if s.Program == "" {
+		return s.Env
+	}
+	if d, ok := declaration(s); ok {
+		return d.assigns
+	}
+	return nil
+}
+
+// decl is a declaration builtin written as plain assignments: export a=1 b, readonly a=1, declare -x a=1.
+type decl struct {
+	assigns  []string // NAME=value operands, in order
+	names    []string // NAME operands, which keep their value
+	exported bool     // export, or declare/typeset -x: the values reach the commands the line starts
+}
+
+// declaration reads export, readonly, declare and typeset whose operands are all NAME=value or NAME, with no option (declare and
+// typeset may have -x and -r). Anything else (export -f, declare -n, declare -i, an array, local outside a function) is not one, and
+// keeps its own analysis. A declaration with no operand lists variables, and is not one either.
+func declaration(s shellparse.Simple) (decl, bool) {
+	prog := shellparse.ProgramName(s.Program)
+	var d decl
+	switch prog {
+	case "export":
+		d.exported = true
+	case "readonly", "declare", "typeset":
+	default:
+		return d, false
+	}
+	for _, a := range s.Args {
+		switch {
+		case strings.HasPrefix(a, "-"):
+			flags := a[1:]
+			if prog == "export" || prog == "readonly" || flags == "" || strings.Trim(flags, "xr") != "" {
+				return decl{}, false
+			}
+			d.exported = d.exported || strings.Contains(flags, "x")
+		case strings.Contains(a, "="):
+			name, _, _ := strings.Cut(a, "=")
+			if !validName(name) {
+				return decl{}, false
+			}
+			d.assigns = append(d.assigns, a)
+		case validName(a):
+			d.names = append(d.names, a)
+		default:
+			return decl{}, false
+		}
+	}
+	return d, len(d.assigns)+len(d.names) > 0
+}
+
+// validName reports whether s is a shell variable name.
+func validName(s string) bool {
+	if s == "" || s[0] >= '0' && s[0] <= '9' {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if !isNameByte(s[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// varsTrackable reports whether a command line is simple enough for noteAssignments: no function definitions, whose bodies may set
+// variables when they are called; no command run in the background, whose assignments are its own; no arithmetic, which assigns
+// ($((n=5))); and no trap action that assigns, since it may run between any two commands.
+func varsTrackable(cmd string, an shellparse.Analysis) bool {
+	if an.Background || strings.Contains(cmd, "()") || strings.Contains(cmd, "function ") || strings.Contains(cmd, "((") {
+		return false
+	}
+	for _, s := range an.Commands {
+		if s.Deferred && (reassigns(s) || len(assignedBy(s)) > 0) {
+			return false
+		}
+	}
+	return true
 }
 
 // reassignBuiltins are the commands that may set or unset a shell variable without an assignment statement.
 var reassignBuiltins = map[string]bool{
 	"read": true, "declare": true, "typeset": true, "local": true, "export": true, "readonly": true, "unset": true,
 	"mapfile": true, "readarray": true, "getopts": true, "let": true, "eval": true, "source": true, ".": true, "printf": true,
-	"for": true, "select": true,
+	"for": true, "select": true, "wait": true, "coproc": true,
 }
 
-// reassigns reports whether s may set a variable other than by a plain assignment statement.
+// reassigns reports whether s may set a variable other than by a plain assignment statement or a declaration (declaration).
 func reassigns(s shellparse.Simple) bool {
+	if _, ok := declaration(s); ok {
+		return false
+	}
 	return s.LoopVar != "" || reassignBuiltins[shellparse.ProgramName(s.Program)]
 }
 
@@ -293,13 +503,13 @@ func unquoteAssigned(v string) string {
 func opaqueReason(cmd string, an shellparse.Analysis) string {
 	switch {
 	case !an.Parsed:
-		return "the command could not be parsed reliably (" + an.Problem + ")"
+		return "the command could not be parsed reliably (" + an.Problem + "); split it into simpler commands"
 	case an.HasCommandSubstitution:
-		return "it contains a command substitution whose output decides what runs"
+		return "it contains a command substitution, whose output is only known when it runs; run the inner command on its own first"
 	case an.HasProcessSubstitution:
-		return "it contains a process substitution"
+		return "it contains a process substitution; write the data to a file first"
 	case an.PipesToShell:
-		return "it pipes data into a shell or interpreter"
+		return "it pipes data into a shell or interpreter, which runs whatever arrives"
 	case evaluatesQuotedSubstitution(cmd, an):
 		return "quoted text that looks like a command substitution could be run by bash's own expression evaluation"
 	}
@@ -376,7 +586,7 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 	sp := s
 	u := &unit{simple: &sp, label: label(s), name: shellparse.ProgramName(s.Program)}
 
-	for _, env := range s.Env {
+	assign := func(env string) {
 		// An assignment of a plain value (PORT=8080 ./bin/app) changes what a program reads, not which program runs or what it loads:
 		// only the names that do (PATH, LD_PRELOAD, GIT_*, a proxy, see envDangerous) keep the command from any allow rule. A value
 		// that names a file is judged as a read of that file, whether or not a rule allows the command (envAcc).
@@ -389,15 +599,33 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 			}
 		}
 	}
+	for _, env := range s.Env {
+		assign(env)
+	}
 	u.redirs = ev.redirAccesses(s.Redirects, cw)
 	if s.Program == "" {
 		u.class = cmdNoop
 		return u
 	}
-	if dynamicProgram(s.Program) || strings.HasPrefix(s.Program, "~") {
-		u.dyn = "the command name is built from a variable, glob or substitution"
+	if d, ok := declaration(s); ok && !dynamicProgram(s.Program) {
+		// export a=1, readonly a=1, declare -x a=1: assignments, judged as an assignment statement is (an exported PATH or LD_PRELOAD
+		// steers the commands after it, and asks).
+		for _, a := range d.assigns {
+			assign(a)
+		}
+		u.class = cmdNoop
+		return u
 	}
-	u.network = isNetwork(u.name, s.Args)
+	if dynamicProgram(s.Program) || strings.HasPrefix(s.Program, "~") {
+		u.dyn = "the command name is built from a variable, glob or substitution; write the program's name out"
+	}
+	// A program given by its path (.venv/bin/pip, /usr/bin/curl, ./node_modules/.bin/x) is what its name says for the questions of
+	// what it reaches: an install, the network.
+	u.network = isNetwork(programBase(s.Program), s.Args)
+	if u.dyn == "" {
+		u.venv = ev.venvCommand(s, cw)
+		ev.index = ev.index || u.venv.reachesIndex()
+	}
 
 	var uses []pathUse
 	chdir := ""
@@ -413,7 +641,7 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 	}
 	if u.class == cmdUnknown {
 		if u.why == "" {
-			u.why = "not on the read-only allowlist"
+			u.why = unlisted
 		}
 		uses = unknownUses(s.Args)
 		if u.name == "git" {
@@ -421,7 +649,7 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 				uses = g // writes only into the repository: its operands are read
 			}
 		}
-		if formatter(u.name, s.Args) {
+		if formatter(u.name, s.Args) || checker(u.name, s.Args) {
 			for i := range uses {
 				uses[i].format = true
 			}
@@ -429,6 +657,9 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 		if u.name == "" {
 			// ./tool or /opt/x/tool: running a file reads it; it is not a write.
 			uses = append([]pathUse{{raw: s.Program}}, uses...)
+		}
+		if u.venv != nil && u.venv.uses != nil {
+			uses = u.venv.uses // what a virtual environment's command reads and writes is known (venv.go)
 		}
 	}
 	if u.name == "go" && u.dyn == "" {
@@ -609,7 +840,7 @@ func (ev *evaluator) bareStar(p string) bool {
 	if dir == "." {
 		return true // the current directory, normally the workspace
 	}
-	w, _, dyn := ev.rs.expandWordVars(dir, ev.startDir(), ev.vars)
+	w, _, dyn := ev.rs.expandWordVars(dir, ev.startDir(), ev.expansion())
 	if dyn {
 		return true
 	}

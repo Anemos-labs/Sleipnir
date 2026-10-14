@@ -113,3 +113,16 @@ func mailSaid(r *rvRig, agent, text string) bool {
 	}
 	return false
 }
+
+// The manager is told what a question reaches: the workspace and this machine, or, for an install into the project's virtual
+// environment, the package index as well.
+func TestTheApprovalSaysWhatTheRequestReaches(t *testing.T) {
+	plain := approvalText("A1", perm.Request{Agent: "be-1", Command: "./bin/app", Why: "x"}, "T1", true, time.Minute)
+	if !strings.Contains(plain, "reaches no network but this machine") || strings.Contains(plain, "package index") {
+		t.Errorf("an ordinary question: %q", plain)
+	}
+	install := approvalText("A2", perm.Request{Agent: "be-1", Command: ".venv/bin/pip install pytest", Why: "x", PackageIndex: true}, "T1", true, time.Minute)
+	if !strings.Contains(install, "it reaches the package index") || strings.Contains(install, "reaches no network") {
+		t.Errorf("an install: %q", install)
+	}
+}
