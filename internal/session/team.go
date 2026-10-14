@@ -96,7 +96,7 @@ func teamNames(team []TeamSlot) []string {
 func (s *Session) roleCaps(name string, r swarm.Role) string {
 	switch {
 	case name == "manager":
-		return "edits no file · shell: read-only commands, tests, gh reads · web: fetch, search"
+		return "edits files and runs commands under the session's permissions · web: fetch, search"
 	case r.ReadOnly:
 		if _, own := s.ext.profiles[name]; own {
 			return "read-only · shell and web: as its definition allows"

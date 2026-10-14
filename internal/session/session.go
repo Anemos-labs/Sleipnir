@@ -660,6 +660,9 @@ func (s *Session) buildShared(ctx context.Context) error {
 	segs := []kv.Segment{{Key: "runtime", Text: s.shell.RuntimeContext(), Vol: kv.VolFrozen}}
 	est := core.NewBytesEstimator()
 	if !s.opts.NoRecon {
+		// The machine's half of the survey: which build and test commands exist, so an agent knows before it writes a test whether it
+		// can run it. Frozen like the runtime: an install during the session does not change the cached prefix.
+		segs = append(segs, kv.Segment{Key: "toolchains", Text: s.shell.ToolchainContext(), Vol: kv.VolFrozen})
 		rc, err := BuildRecon(ctx, ReconOptions{Root: s.opts.Root, BudgetTokens: s.opts.ReconBudget, Est: est})
 		if err == nil {
 			s.Recon = rc
@@ -1118,7 +1121,7 @@ func soloRole() swarm.Role {
 	return swarm.Role{Name: "worker", Short: "w", Priority: agent.PrioInteractive, MaxSteps: 200, Pin: soloPin}
 }
 
-const soloPin = `You are working alone on the user's task. Understand it, make the change with the smallest correct diff, and check your work by running the project's own build and tests before you report. Say plainly what you did, what you verified and what remains.`
+const soloPin = `You are working alone on the user's task, with no team to delegate to. Understand it, list its requirements, make the change with the smallest correct diff, and check your work by running the project's own build and tests, and the program itself, before you report. When a test tool is missing, set it up inside the project (for Python, a virtual environment in .venv) rather than skipping the run. Say plainly what you did, what you verified and what remains.`
 
 // writeGuard routes post-write notifications to the checkpoint store so a rewind
 // can tell an agent's last write from a human's later edit.

@@ -17,8 +17,10 @@ they do not guarantee it.
 | G6 | Task board and relevant team updates | Route-dependent |
 
 Stable layers come first. All agents send the same tool list; permissions apply
-at execution time. Shared and role context must remain concise because it is
-sent on every request.
+at execution time. Every stable layer is sent on every request and, once
+cached, read at the cached-input price: the constitution carries the full
+working guidance once for every agent, while shared and role context stay
+focused on what differs by project and by role.
 
 ## Rendering
 
