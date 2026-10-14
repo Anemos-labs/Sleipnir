@@ -46,6 +46,9 @@ type venvUse struct {
 // ok reports whether the tests preset's Bash(python:venv) allows the command.
 func (v *venvUse) ok() bool { return v != nil && v.why == "" }
 
+// testRun reports whether the command only runs the tests (or a check) with an environment: what Bash(python:venv-tests) covers.
+func (v *venvUse) testRun() bool { return v != nil && !v.create && !v.install }
+
 // reachesIndex reports whether the command is an install the preset allows: it reaches the package index.
 func (v *venvUse) reachesIndex() bool { return v.ok() && v.install }
 

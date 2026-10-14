@@ -230,7 +230,8 @@ Python virtual environment of the workspace (`Bash(python:venv)`, `internal/perm
 `virtualenv DIR`, `uv venv [DIR]`), installing packages into it with its own pip (`DIR/bin/pip install`, `DIR/bin/python -m pip install`,
 `uv pip install --python DIR/bin/python`), and running the tests with it (`DIR/bin/python -m pytest`, `DIR/bin/pytest`). In `default` mode
 these are routine questions, which the manager of a team may answer. It is the one place where an allowed or routine command reaches
-beyond this machine: the package index pip or uv is configured with.
+beyond this machine: the package index pip or uv is configured with. The read-only roles (reviewer, scout, architect) hold only the run
+part (`Bash(python:venv-tests)`): they run the tests with an environment the writers made, and never create one or install into it.
 
 What an install does is run code from the internet with the user's rights: a source distribution's build code runs during the install,
 and the packages it installs run when the tests import them. A package name chosen by a model can be a malicious package of the index.

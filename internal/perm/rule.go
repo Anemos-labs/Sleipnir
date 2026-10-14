@@ -28,6 +28,7 @@ const (
 //	Bash(*) or Bash             any shell command
 //	Bash(curl:loopback)         curl or wget fetching from this machine only (127.0.0.1, localhost, [::1]); see loopbackHTTP
 //	Bash(python:venv)           a Python virtual environment of the workspace: creating it, installing into it (venv.go)
+//	Bash(python:venv-tests)     running the tests with one, and no more: no creating, no installing (venv.go)
 //	Bash(mypy:workspace)        the prefix with any arguments, when every file it names is inside the workspace
 //	Edit(src/**)                writes to paths matching a gitignore-like glob
 //	Read(~/.ssh/**)             reads of such paths (by any tool, shell included)
@@ -138,6 +139,8 @@ type crule struct {
 	// venv: "python:venv", a command that creates a virtual environment of the workspace or installs into one from the package index
 	// (venv.go); it is matched against the analysed command, never against words.
 	venv bool
+	// venvTests: "python:venv-tests", of what python:venv covers only running the tests with an environment (no creation, no install).
+	venvTests bool
 	// workspace: "prefix:workspace", the prefix with any arguments, provided every file the command names resolves inside the
 	// workspace and none of the options of refused is given.
 	workspace bool
@@ -180,6 +183,12 @@ func compileRule(r Rule, res *resolver) (*crule, error) {
 			if p != "curl" && p != "wget" {
 				return nil, fmt.Errorf("perm: rule %s: only curl and wget take :loopback", r)
 			}
+		case strings.HasSuffix(p, ":venv-tests"):
+			if strings.TrimSpace(strings.TrimSuffix(p, ":venv-tests")) != "python" {
+				return nil, fmt.Errorf("perm: rule %s: only python takes :venv-tests (Bash(python:venv-tests))", r)
+			}
+			c.venv, c.venvTests, c.argv = true, true, []string{"python"}
+			return c, nil
 		case strings.HasSuffix(p, ":venv"):
 			if strings.TrimSpace(strings.TrimSuffix(p, ":venv")) != "python" {
 				return nil, fmt.Errorf("perm: rule %s: only python takes :venv (Bash(python:venv))", r)
