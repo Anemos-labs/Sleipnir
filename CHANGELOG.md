@@ -14,6 +14,15 @@ they do not indicate whether a change has been released.
   form the new parent's, and its leader is told. A parent still agreeing on its
   plan, or one whose members are all busy, refuses with what to do instead.
 
+- `sleipnir web` takes a goal of up to 32,000 characters (was 4,000), in the
+  New session dialog and as `/goal TEXT` (through the goal route or as a slash
+  command); the routes that carry one accept a body large enough for it. An over-long goal is refused with the code
+  `bad_goal` (was `empty`). The page refuses it before sending, a `/goal` line
+  the server refuses comes back into the composer as a refused message does,
+  and the Goal sheet opens only once the server has taken the goal: before, a
+  refused goal emptied the composer while the sheet said it was starting. The
+  page reads the limit from `hello.limits.maxGoal`. Prompt bytes: none change.
+
 - A prefix rule for a build or test runner (`Bash(go test:*)`, the tests
   preset, the read-only roles' rules, or a rule of the person's) no longer
   covers an option that makes the runner run a program of the caller's

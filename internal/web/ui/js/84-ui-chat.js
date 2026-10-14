@@ -221,7 +221,8 @@
       /* a replay never changes the session: the line stays in the composer */
       if (v.charAt(0) !== '/' && S.replay) { ui.toast('go live to talk: a replay never changes the session (the line is kept)', 'warm'); return; }
       const pasted = RS.pasted.slice(); inp.value = ''; S.ui.draft = ''; autosize(); closeSlash(); RS.pasted = []; RS.hi = -1; if (S.hist[S.hist.length - 1] !== v) S.hist.push(v);
-      if (v.charAt(0) === '/') { SL.palette.runLine(v); return; }
+      /* a slash line that is an action of the session (/goal TEXT) comes back into the composer when it is refused, as a message does */
+      if (v.charAt(0) === '/') { const r = SL.palette.runLine(v); if (r && r.ok === false) restore(S, v, pasted); else if (r && r.done) r.done.then(res => { if (res && res.ok === false && res.code !== 'aborted' && !restore(S, v, pasted)) ui.toast('not sent: ' + clip1(v, 60) + ' (↑ brings it back)', 'warm'); }); return; }
       /* the agent gets the pasted text; the transcript keeps the chips */
       const full = v.replace(/\[pasted text #(\d+) \+\d+ lines\]/g, (m0, n) => pasted[+n - 1] != null ? pasted[+n - 1] : m0);
       const delivery = { autoFix: !!$('#autoFixCI').checked, autoMerge: !!$('#autoMergePR').checked };

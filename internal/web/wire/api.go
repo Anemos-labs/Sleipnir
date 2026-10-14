@@ -92,11 +92,12 @@ type ServerInfo struct {
 	Build    string `json:"build,omitempty"`
 }
 
-// Limits are the limits the page respects: the largest request body in bytes, the largest message in bytes, and how many questions
-// of one tab may be open at once.
+// Limits are the limits the page respects: the largest request body in bytes, the largest message in bytes, the longest goal in
+// characters, and how many questions of one tab may be open at once.
 type Limits struct {
 	MaxBody      int `json:"maxBody"`
 	MaxMessage   int `json:"maxMessage"`
+	MaxGoal      int `json:"maxGoal"`
 	MaxQuestions int `json:"maxQuestions"`
 }
 
