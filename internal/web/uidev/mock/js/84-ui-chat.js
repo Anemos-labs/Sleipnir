@@ -1,8 +1,7 @@
 /* 84-ui-chat.js: SL.chat, the Radio rail: the conversation with the manager (the person talks to the manager only), the read-only Team activity
- * feed below it, the plan box, the hold chip and the composer. The transcript is the one place the time governor is felt most: while the pointer is over it (or focus is in it, or
- * the hold is pinned) the view clock stops and nothing is appended, scrolled or typed; on release it catches up (bounded, see 50-sessions.js).
+ * feed below it, the plan box and the composer. A row is drawn as soon as its event reaches the view, wherever the pointer or the focus is.
  *
- * DOM budget: at most ROW_CAP rows exist per log; older rows are folded into one marker, a collapsed span of time is ONE digest row.
+ * DOM budget: at most ROW_CAP rows exist per log; older rows are folded into one marker.
  * The entries themselves live in the model (m.chan.mgr); this file only renders them. */
 (function (SL) {
   'use strict';
@@ -38,18 +37,16 @@
       case 'mail': return '<div class="msg mailrow" data-ag="' + esc(e.from) + ' ' + esc(e.to) + '"><div class="who"><span style="color:' + agCol(e.from) + '">' + esc(e.from) + '</span> <span class="dim">→</span> <span style="color:' + agCol(e.to) + '">' + esc(e.to) + '</span> <time>' + T + '</time></div><span class="mailtxt">“' + esc(e.text) + '”</span></div>';
       case 'steer': return '<div class="msg steer" data-ag="' + esc(e.to) + '"><div class="who">You → <span style="color:' + agCol(e.to) + '">' + esc(e.to) + '</span> <time>' + T + '</time></div><span>' + esc(e.text) + '</span></div>';
       case 'ask': return '<div class="msg askrow"' + at + '><span class="lg warm">?</span><span><b>asks:</b> <span class="mono">' + esc(e.q.cmd) + '</span><span class="rsn">' + esc(e.q.why) + '</span></span></div>';
-      case 'digest': { const d = e.dg, parts = []; if (d.merged.length) parts.push(d.merged.join(', ') + ' merged'); if (d.submitted.length) parts.push(d.submitted.filter((v, i, a) => a.indexOf(v) === i).join(', ') + ' submitted'); if (d.tools) parts.push(d.tools + ' tool calls'); if (d.mails) parts.push(d.mails + ' mail'); if (d.breaks) parts.push(d.breaks + ' cache break' + (d.breaks > 1 ? 's' : '')); if (d.compacts) parts.push(d.compacts + ' compaction' + (d.compacts > 1 ? 's' : '')); if (d.asks) parts.push(d.asks + ' question' + (d.asks > 1 ? 's' : ''));
-        const span = d.t1 - d.t0, lab = span >= 90 ? Math.round(span / 60) + ' min' : Math.round(span) + ' s'; return '<div class="msg digest" data-eid="' + e.id + '"><button class="dtog" type="button" aria-expanded="false"><b>◆ while held · ' + lab + ':</b> ' + esc(parts.join(', ') || 'quiet') + ' <span class="dim">· ' + d.n + ' events</span><span class="dx">expand</span></button><ol class="drows" hidden data-lazy="1"></ol></div>'; }
     }
     return '';
   }
 
-  /** An entry of the manager's log that is team activity (a worker's tool call, mail, a cache break, a compaction, a collapsed span): it is shown
+  /** An entry of the manager's log that is team activity (a worker's tool call, mail, a cache break, a compaction): it is shown
    * read-only in the Team activity feed. Everything else is the conversation with the manager. */
-  function isFeed(e) { return e.k === 'feed' || e.k === 'digest' || e.k === 'break' || e.k === 'compact' || (e.k === 'stream' && e.ag !== 'mgr'); }
+  function isFeed(e) { return e.k === 'feed' || e.k === 'break' || e.k === 'compact' || (e.k === 'stream' && e.ag !== 'mgr'); }
 
   function mount(sc) {
-    const talk = $('#talk'), feed = $('#feed'), pill = $('#newPill'), chip_ = $('#holdChip');
+    const talk = $('#talk'), feed = $('#feed'), pill = $('#newPill');
     /** a log view over the manager's channel: its own rows, scroll position and typing state (the chat and the Team activity feed are two of them) */
     const mkLog = (el, want, cap, none) => ({ el, want, cap, none, pos: 0, m: null, sid: null, mode: null, rows: [], stream: [], stick: true, newCount: 0, foldEl: null, nfold: 0, programmatic: false });
     const TR = mkLog(talk, e => !isFeed(e), ROW_CAP, 'Nothing yet. Type a message, or / for commands.'), FD = mkLog(feed, isFeed, 90, 'The team has not done anything yet.');
@@ -79,23 +76,22 @@
       const list = m.chan.mgr || [], mode = SL.settings.cache;
       if (force || L.m !== m || L.sid !== S.id || L.mode !== mode || list.length < L.pos) {
         L.el.innerHTML = ''; L.rows = []; L.stream = []; L.foldEl = null; L.nfold = 0; L.pos = 0; L.m = m; L.sid = S.id; L.mode = mode; L.newCount = 0;
-        let start = list.length; for (let n = 0, i = list.length - 1; i >= 0 && n < L.cap; i--) { start = i; if (!list[i].collapsed && L.want(list[i])) n++; }
-        L.nfold = list.slice(0, start).filter(e => !e.collapsed && L.want(e)).length; L.pos = start;
+        let start = list.length; for (let n = 0, i = list.length - 1; i >= 0 && n < L.cap; i--) { start = i; if (L.want(list[i])) n++; }
+        L.nfold = list.slice(0, start).filter(e => L.want(e)).length; L.pos = start;
         if (L.nfold) { L.foldEl = mk('div', { class: 'msg foldmark' }, L.nfold + ' earlier rows folded (the log keeps them)'); L.el.appendChild(L.foldEl); }
-        if (!list.some(e => !e.collapsed && L.want(e))) L.el.appendChild(mk('div', { class: 'msg empty' }, L.none));
+        if (!list.some(e => L.want(e))) L.el.appendChild(mk('div', { class: 'msg empty' }, L.none));
         const empty = $('.empty', L.el);
-        while (L.pos < list.length) { const e = list[L.pos++]; if (e.collapsed || !L.want(e)) continue; if (empty && empty.parentNode) empty.remove(); addRow(L, e, S, m); }
-        L.stick = true; toEdge(L); wireDigests(L); if (L === TR) pillUpdate(); return;
+        while (L.pos < list.length) { const e = list[L.pos++]; if (!L.want(e)) continue; if (empty && empty.parentNode) empty.remove(); addRow(L, e, S, m); }
+        L.stick = true; toEdge(L); if (L === TR) pillUpdate(); return;
       }
       let added = 0, empty = $('.empty', L.el);
-      while (L.pos < list.length) { const e = list[L.pos++]; if (e.collapsed || !L.want(e)) continue; if (empty && empty.parentNode) { empty.remove(); empty = null; } if (addRow(L, e, S, m)) added++; }
-      if (added) { foldOld(L); wireDigests(L); if (L.stick) toEdge(L); else if (L === TR) { L.newCount += added; pillUpdate(); } }
+      while (L.pos < list.length) { const e = list[L.pos++]; if (!L.want(e)) continue; if (empty && empty.parentNode) { empty.remove(); empty = null; } if (addRow(L, e, S, m)) added++; }
+      if (added) { foldOld(L); if (L.stick) toEdge(L); else if (L === TR) { L.newCount += added; pillUpdate(); } }
     }
     function sync(force) {
       const S = SL.sessions.active; if (!S || !S.m) return; const m = S.m;
       chHead(S, m); syncLog(TR, S, m, force); syncLog(FD, S, m, force); feedHead(S);
     }
-    function wireDigests(L) { $$('.digest .dtog:not([data-w])', L.el).forEach(b => { b.dataset.w = 1; sc.listen(b, 'click', () => { const o = b.nextElementSibling, open = o.hidden; if (open && o.dataset.lazy) { delete o.dataset.lazy; const S = SL.sessions.active, e = (S.m.chan.mgr || []).find(x => x.k === 'digest' && x.id === +b.closest('.digest').dataset.eid); if (e) o.innerHTML = e.dg.rows.slice(0, 60).map(r => '<li><time>' + tod(S.meta.t0, r.t) + '</time> <span style="color:' + agCol(r.who || 'mgr') + '">' + esc(r.who || '') + '</span> ' + esc(r.k) + ' ' + esc(r.text || '') + '</li>').join('') + (e.dg.rows.length > 60 ? '<li class="dim">… ' + (e.dg.n - 60) + ' more</li>' : ''); } o.hidden = !open; b.setAttribute('aria-expanded', String(open)); $('.dx', b).textContent = open ? 'collapse' : 'expand'; }); }); }
     /** the task thread of an agent as a stepper: lease, work, submit, verify, merge (drawn in the read-only Details drawer) */
     function thread(m, A) {
       const T = A.task && m.tasks[A.task]; if (!T) return '<div class="tsteps off">no task: ' + esc(A.doing || '') + '</div>';
@@ -122,26 +118,11 @@
     sc.listen(feed, 'click', e => { const r = e.target.closest('.msg[data-ag]'); if (!r || window.getSelection().toString()) return; const id = (r.dataset.ag || '').split(' ')[0], S = SL.sessions.active; if (S && S.m && S.m.ag[id]) ui.openDrawer(id); });
     sc.listen(document.getElementById('rail'), 'click', e => { const b = e.target.closest('#chHead [data-ch]'); if (!b) return; const r = SL.act.interrupt('turn'); ui.toast(r.ok ? 'interrupted: the goal is paused' : (r.why || 'nothing to interrupt'), r.ok ? 'warm' : ''); });
 
-    /* ---------- per-frame: streaming text, the hold chip, the held class ---------- */
+    /* ---------- per-frame: streaming text ---------- */
     function frameFn(dt, vt, S) {
       if (!S || !S.m) return;
-      [TR, FD].forEach(L => { for (let i = L.stream.length - 1; i >= 0; i--) { const r = L.stream[i], el = r.t; if (!el || !el.dataset.full) continue; const [s, done] = ui.typed(el.dataset.full, +el.dataset.t0, +el.dataset.rate, vt); const t = s + (done ? '' : '▍'); if (el._t !== t) { el._t = t; el.textContent = t; if (L.stick && !SL.time.held) toEdge(L); } if (done) { r.done = true; L.stream.splice(i, 1); } } });
-      holdChip(S);
+      [TR, FD].forEach(L => { for (let i = L.stream.length - 1; i >= 0; i--) { const r = L.stream[i], el = r.t; if (!el || !el.dataset.full) continue; const [s, done] = ui.typed(el.dataset.full, +el.dataset.t0, +el.dataset.rate, vt); const t = s + (done ? '' : '▍'); if (el._t !== t) { el._t = t; el.textContent = t; if (L.stick) toEdge(L); } if (done) { r.done = true; L.stream.splice(i, 1); } } });
     }
-    function holdChip(S) {
-      const T = SL.time.T, held = SL.time.holdWanted(), n = S.unseen(), catching = T.catching, sig = (held ? (T.pinned ? 'p' : 'h') : catching ? 'c' : '') + n + '|' + Math.round(S.wt - S.vt);
-      if (chip_._sig === sig) return; chip_._sig = sig;
-      const on = held || catching; chip_.hidden = !on; document.body.classList.toggle('held', held && T.rate < .05);
-      if (!on) { chip_.setAttribute('aria-pressed', 'false'); return; }
-      chip_.setAttribute('aria-pressed', String(T.pinned)); chip_.className = 'holdchip' + (T.pinned ? ' pinned' : '') + (catching && !held ? ' catching' : '');
-      chip_.textContent = held ? (T.pinned ? '◔ pinned · ' : '◔ holding · ') + n + ' new' : '▸▸ catching up · ' + Math.max(0, Math.round(S.wt - S.vt)) + 's';
-      chip_.title = held ? (T.pinned ? 'Pinned: click or press Esc to release' : 'Holding while the pointer is over the chat. Click or press Space to pin; Esc releases.') : 'Replaying what happened while held, up to 6x';
-    }
-    sc.listen(chip_, 'click', () => togglePin());
-    function togglePin() { const S = SL.sessions.active; if (!S) return; const on = !SL.time.T.pinned; S.hold.pinned = on; S.hold.vtSaved = on ? S.vt : null; SL.time.pin(on); holdChip(S); }
-    ui.togglePin = togglePin;
-    sc.on('hold', () => { const S = SL.sessions.active; if (S) { S.hold.pinned = SL.time.T.pinned; holdChip(S); } });
-    sc.listen(talk, 'keydown', e => { if (e.key === ' ' && e.target === talk) { e.preventDefault(); togglePin(); } });
 
     /* ---------- plan box ---------- */
     const planBox = $('#planBox'), GL = { done: '✓', verify: '▸', act: '✎', edit: '✎', ask: '?', queued: '◌', pending: '◌' };
@@ -181,7 +162,6 @@
       const S = SL.sessions.active; let v = inp.value.trim(); if (!v) return; inp.value = ''; autosize(); closeSlash(); RS.pasted = []; RS.hi = -1; S.hist.push(v);
       if (v.charAt(0) === '/') { SL.palette.runLine(v); return; }
       if (S.replay) { ui.toast('go live to talk: a replay never changes the session', 'warm'); return; }
-      if (SL.time.holdWanted()) { SL.time.release(); SL.time.pin(false); S.hold.pinned = false; }
       const r = SL.act.send(v); if (r && r.ok === false && r.why) ui.toast(r.why, 'warm'); composerUpdate(S);
     }
     sc.listen(inp, 'input', () => { autosize(); SL.time.noteKey(); updateSlash(); const S = SL.sessions.active; if (S) S.ui.draft = inp.value; });
@@ -215,7 +195,7 @@
     sc.on('activated', () => { TR.m = null; FD.m = null; sync(true); });
     sc.on('rebuilt', () => { TR.m = null; FD.m = null; });
     sc.on('cache-detail', () => { TR.m = null; FD.m = null; sync(true); });
-    ui.chat = { sync, togglePin, TR, FD };
+    ui.chat = { sync, TR, FD };
   }
   SL.chat = { mount, rowHtml, ROW_CAP };
 })(SL);

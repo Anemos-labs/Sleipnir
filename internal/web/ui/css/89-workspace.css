@@ -149,3 +149,10 @@
 .ws-sb{flex-wrap:nowrap}
 .wq{flex:1 1 240px;min-width:0;overflow:hidden}
 .wtks{flex:2 1 260px;max-height:58px;overflow:hidden;justify-content:flex-end}
+/* narrow: the verify / merge strip has a row of its own under the file (sharing the file's row, it covered it), and its queue line and
+ * every task chip wrap instead of being cut (these follow the rules above, which keep the strip on one line where it is wide) */
+@container main (max-width:620px){
+  .ws-strip{grid-column:1;grid-row:4}
+  .ws-sb{flex-wrap:wrap}.wq{flex:1 1 100%}.wtks{flex:1 1 100%;max-height:none;justify-content:flex-start}
+  .wqh{white-space:normal;flex-wrap:wrap}
+}

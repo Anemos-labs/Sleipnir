@@ -81,6 +81,9 @@ body.cq .qfull{display:none!important}
 body.cq .stall .n-hit,body.cq .stall .s-spark,body.cq .mgr-card .n-hit,body.cq .mgr-card .s-spark{display:none}
 body.cq .stall .s-nums{margin-top:auto}
 body.cq .mgr-card{grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"top doing nums" "meta doing nums"}
+/* narrow, the Manager card stacks in Quiet too: the rule above outranks the narrow layouts of 53-dash.css and 90-responsive.css */
+@container card (max-width:520px){body.cq .mgr-card{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"top nums" "doing doing" "meta meta"}}
+@container main (max-width:620px){body.cq .mgr-card{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"top nums" "doing doing" "meta meta"}}
 .s-meta .brk .bx{display:inline}
 body.cq .s-meta .brk{border:0;padding:0 2px;font-size:13px;color:var(--warm);animation:none;margin-left:auto}
 body.cq .s-meta .brk .bx{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
@@ -97,6 +100,8 @@ body.cq #ringWarm.low .ring-arc{stroke:var(--err)}
 body.cq #ringWarm .rt small{font-size:10px;letter-spacing:.08em}
 body.cq #ringWarm .note{display:none}
 body.cq #ringWarm.low .note,body.cq #ringWarm.cold .note{display:block}
+/* a phone: the ring says cold itself; the note would wrap the top bar onto a third line */
+@media (max-width:900px){body.cq #ringWarm.low .note,body.cq #ringWarm.cold .note{display:none}}
 body.cq #ringWarm:not(.low):not(.cold) .rv{fill:var(--fg2)}
 body.cq #ringWarm.pulse .ring-flash{animation:none}
 body.cq #ringWarm.pulse.low .ring-flash,body.cq #ringWarm.pulse.cold .ring-flash{animation:ringflash .7s ease-out}
@@ -107,6 +112,9 @@ body.cq .anom .a b{color:var(--warm)}
 
 /* dialogs live outside the views' container: their two-column grids and label columns fold on a phone */
 @media (max-width:760px){.sheet .g2{grid-template-columns:minmax(0,1fr)}.sheet .fld{grid-template-columns:minmax(0,1fr)}.sheet .fld>label{padding-top:0}}
+/* a phone: a key list puts each key above what it does (a column as wide as the longest key left a word per line beside it) */
+@media (max-width:620px){.kv.keys2{grid-template-columns:minmax(0,1fr);row-gap:1px}.kv.keys2 dd{margin-bottom:7px}}
+@container main (max-width:620px){.kv.keys2{grid-template-columns:minmax(0,1fr);row-gap:1px}.kv.keys2 dd{margin-bottom:7px}}
 /* Team activity: when the section is squeezed to its header, the half row left under it is hidden */
 .feedwrap{container-type:size}
 @container (max-height:64px){.feed{visibility:hidden}}
@@ -128,6 +136,8 @@ body.cq .anom .a b{color:var(--warm)}
 .dirabs{font-size:11px;color:var(--dim);word-break:break-all}.dirnote{font:400 11.5px/1.35 var(--f-ui);color:var(--dim)}
 .nsgit,.nsopt{display:flex;align-items:center;flex-basis:100%;margin:3px 0}
 .nsgit[hidden]{display:none}.nsgit .chk,.nsopt .chk{margin:0;white-space:nowrap}
+/* a phone: a long option wraps instead of running off the sheet */
+@media (max-width:620px){.nsgit .chk,.nsopt .chk{white-space:normal;min-width:0;align-items:flex-start}.nsgit .chk input,.nsopt .chk input{flex:none;margin-top:1px}}
 .nsd{font:400 11.5px/1.35 var(--f-ui);color:var(--dim)}
 .nsteam{flex-basis:100%;display:flex;flex-direction:column;gap:8px}.nsteam.nsoff>:not(.nswhy){opacity:.5}
 .nswhy{flex-basis:100%;margin:3px 0 0;font:500 11.5px/1.35 var(--f-ui);color:var(--warm)}.nswhy[hidden]{display:none}

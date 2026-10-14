@@ -358,7 +358,7 @@ func TestList(t *testing.T) {
   const SHORTCUTS = [
     ['Enter', 'send'], ['\\ at line end · alt+enter · ctrl+j', 'newline'], ['↑ ↓ · ctrl+r', 'history, search history'], ['/', 'command palette (also ctrl+k)'], ['@', 'path completion'],
     ['shift+tab', 'permission mode: default → accept-edits → plan (never bypass, never yolo)'], ['ctrl+t · alt+t', 'stats page (Cache)'], ['ctrl+g · alt+g', 'team cockpit'], ['ctrl+o', 'expand collapsed tool output'],
-    ['esc', 'release a hold, close an overlay, answer 3 to a question, then interrupt the turn'], ['ctrl+c', 'discard the line; twice quits'], ['o c m b r s', 'Cockpit, Cache, Mail, Board, Replay, Sessions'], ['space', 'over the chat: pin the hold; elsewhere: pause the view'],
+    ['esc', 'close an overlay, answer 3 to a question, leave a replay, then interrupt the turn'], ['ctrl+c', 'discard the line; twice quits'], ['o c m b r s', 'Cockpit, Cache, Mail, Board, Replay, Sessions'], ['space', 'pause or resume the view'],
     ['← → · + −', 'seek 10 s · speed (replay)'], ['1 2 3', 'answer a question (after the keyboard has been quiet for a moment)'], ['?', 'this list'],
   ];
   const CONFIG = [

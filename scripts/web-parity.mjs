@@ -257,7 +257,7 @@ const FREEZE = `(() => {
   for (const a of document.getAnimations()) {
     try {
       const t = a.effect && a.effect.getComputedTiming();
-      a.playbackRate = 1;   // the reference page slows every animation to 0 while the hold is on, and finish() refuses a stopped animation
+      a.playbackRate = 1;   // a paused replay slows every animation to 0, and finish() refuses a stopped animation
       if (t && Number.isFinite(t.endTime)) a.finish(); else { a.pause(); a.currentTime = 0; }
       n++;
     } catch (e) { /* not ours to freeze */ }

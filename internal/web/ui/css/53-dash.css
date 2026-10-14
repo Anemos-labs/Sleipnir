@@ -67,6 +67,10 @@
 .dash[data-stack="1"] .dash-grid{grid-template-columns:minmax(0,1fr);grid-auto-rows:auto}
 .dash[data-stack="1"] .dcard{grid-column:1/-1!important;grid-row:auto!important;height:calc(var(--h,8) * 34px);min-height:150px}
 .dash[data-stack="1"] .dc-rs,.dash[data-stack="1"] .dash-hint{display:none}
+/* narrow, the team's card is as tall as its stalls: the page scrolls instead of a box inside it, and each row is as tall as a stall
+ * (a fixed row shorter than a stall's min-height let the stalls overlap) */
+.dash[data-stack="1"] .dcard.dc-team{height:auto;container-type:inline-size}
+.dash[data-stack="1"] .dc-team .stalls{overflow:visible;grid-auto-rows:minmax(132px,auto)}
 /* a large team: the stalls in role bands (83-ui-cockpit.js, DENSE), one line per worker, the band's head naming its count and models */
 .stalls.dense{display:flex;flex-direction:column;gap:4px;overflow-y:auto}
 .sgroup{display:grid;grid-template-columns:minmax(96px,128px) minmax(0,1fr);gap:6px;align-items:start;border-left:2px solid var(--c);padding-left:6px}

@@ -10,13 +10,12 @@
 
   /* ---------------- per-viewer settings (localStorage is a convenience: the page works without it) ---------------- */
   const settings = SL.settings = {
-    hover: 'both',            // 'both' = hold on chat + slow on linked items | 'chat' = hold on chat only | 'off'
     motion: 'auto',           // 'auto' (follow the system) | 'reduce' | 'full'
     density: 'comfortable',   // 'comfortable' | 'compact'
     cache: 'quiet',           // 'quiet' (the default: no savings figures, no hit-% on cards, a small warm clock) | 'full' (every cache figure)
     ver: 0,
-    load() { try { const o = JSON.parse(localStorage.getItem('sleipnir.web.settings') || '{}'); ['hover', 'motion', 'density', 'cache'].forEach(k => { if (typeof o[k] === 'string') settings[k] = o[k]; }); } catch (e) { /* no storage: defaults */ } },
-    save() { try { localStorage.setItem('sleipnir.web.settings', JSON.stringify({ hover: settings.hover, motion: settings.motion, density: settings.density, cache: settings.cache })); } catch (e) { /* ignore */ } },
+    load() { try { const o = JSON.parse(localStorage.getItem('sleipnir.web.settings') || '{}'); ['motion', 'density', 'cache'].forEach(k => { if (typeof o[k] === 'string') settings[k] = o[k]; }); } catch (e) { /* no storage: defaults */ } },
+    save() { try { localStorage.setItem('sleipnir.web.settings', JSON.stringify({ motion: settings.motion, density: settings.density, cache: settings.cache })); } catch (e) { /* ignore */ } },
   };
   const OK = (v, list) => list.includes(v);
 
@@ -44,7 +43,6 @@
   }
 
   /* ---------------- settings actions ---------------- */
-  act('setHover', v => { if (OK(v, ['both', 'chat', 'off'])) { settings.hover = v; settings.ver++; SL.time.setMode(v); settings.save(); } });
   act('setMotion', v => { if (OK(v, ['auto', 'reduce', 'full'])) { settings.motion = v; settings.ver++; SL.bus.emit('motion'); settings.save(); } });
   act('setCache', v => { if (OK(v, ['quiet', 'full'])) { settings.cache = v; settings.ver++; document.body.classList.toggle('cq', v === 'quiet'); settings.save(); SL.bus.emit('cache-detail', v); } });
   act('setDensity', v => { if (OK(v, ['comfortable', 'compact'])) { settings.density = v; settings.ver++; document.body.classList.toggle('compact', v === 'compact'); settings.save(); } });
