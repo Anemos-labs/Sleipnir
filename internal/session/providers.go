@@ -429,9 +429,7 @@ func buildChat(ref ModelRef, p config.Provider, base, key string, o ProviderOpti
 		// option still disables it for endpoints without this control.
 		oo.ReasoningEffortField = "reasoning_effort"
 	}
-	if extra, ok := p.Options["extra_body"].(map[string]any); ok {
-		oo.ExtraBody = extra
-	}
+	oo.ExtraBody = extraBodyFor(p, ref.Model)
 	client := openaichat.New(openaichat.Config{
 		Name: ref.Provider, BaseURL: base, APIKey: key, Headers: p.Headers, Options: oo,
 		HTTPClient: o.HTTPClient, OnHeaders: o.OnHeaders, AllowInsecureHTTP: p.AllowInsecureHTTP,
@@ -476,9 +474,7 @@ func buildResponses(ref ModelRef, p config.Provider, base, key string, o Provide
 		auth = st
 	}
 	oo := openairesp.Options{Plan: plan, ReasoningSummary: optString(p.Options, "reasoning_summary")}
-	if extra, ok := p.Options["extra_body"].(map[string]any); ok {
-		oo.ExtraBody = extra
-	}
+	oo.ExtraBody = extraBodyFor(p, ref.Model)
 	return openairesp.New(openairesp.Config{
 		Name: ref.Provider, BaseURL: base, Auth: auth, Headers: p.Headers, Options: oo,
 		HTTPClient: o.HTTPClient, OnHeaders: o.OnHeaders, AllowInsecureHTTP: p.AllowInsecureHTTP,
@@ -518,9 +514,7 @@ func buildAnthropic(ref ModelRef, p config.Provider, base, key string, o Provide
 		ThinkingBudget:     optInt(p.Options, "thinking_budget"),
 		MaxBreakpoints:     optInt(p.Options, "max_breakpoints"),
 	}
-	if extra, ok := p.Options["extra_body"].(map[string]any); ok {
-		ao.ExtraBody = extra
-	}
+	ao.ExtraBody = extraBodyFor(p, ref.Model)
 	client := anthropic.New(anthropic.Config{
 		Name: ref.Provider, BaseURL: base, APIKey: key, Headers: p.Headers, Model: ref.Model,
 		AuthStyle: optString(p.Options, "auth_style"), Version: optString(p.Options, "version"),
@@ -715,4 +709,24 @@ func loadCatalog(ctx context.Context, cacheDir, baseURL string) []gateway.Entry 
 		}
 	}
 	return es
+}
+
+// extraBodyFor is what a request for model is given beside the adapter's own members: the provider's extra_body, with the members
+// of model_extra_body[model] put over it (one gateway, a routing preference for one of its models: Heimdallm's provider.only for
+// minimaxai/minimax-m3, while deepseek keeps the default routing). nil when there is neither.
+func extraBodyFor(p config.Provider, model string) map[string]any {
+	base, _ := p.Options["extra_body"].(map[string]any)
+	per, _ := p.Options["model_extra_body"].(map[string]any)
+	over, _ := per[model].(map[string]any)
+	if len(over) == 0 {
+		return base
+	}
+	out := make(map[string]any, len(base)+len(over))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range over {
+		out[k] = v
+	}
+	return out
 }

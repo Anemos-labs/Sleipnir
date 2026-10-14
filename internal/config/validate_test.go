@@ -82,6 +82,7 @@ func TestValidate(t *testing.T) {
 						"max_tokens_field": "max_completion_tokens", "reasoning_effort_field": "reasoning_effort",
 						"first_byte_timeout_sec": float64(90), "stream_idle_timeout_sec": 30, "stream_timeout_sec": float64(3600),
 						"request_timeout_sec": float64(300), "extra_body": map[string]any{"top_k": float64(40)}, "capture_tokens": true,
+						"model_extra_body": map[string]any{"minimaxai/minimax-m3": map[string]any{"provider": map[string]any{"only": []any{"impcc"}}}},
 					}},
 					"msgs": {Dialect: "anthropic", Options: map[string]any{
 						"auth_style": "Bearer", "version": "2023-06-01", "betas": []any{"a", "b"}, "session_header_name": "X-Session",
@@ -115,6 +116,7 @@ func TestValidate(t *testing.T) {
 					"chat": {Options: map[string]any{
 						"session_header": "yes", "system_role": "root", "max_tokens_field": 5, "first_byte_timeout_sec": -1.0,
 						"request_timeout_sec": "60", "extra_body": []any{1.0}, "stream_timeout_sec": 200000.0,
+						"model_extra_body": map[string]any{"a/m": "x"},
 					}},
 					"msgs": {Dialect: "anthropic", Options: map[string]any{
 						"auth_style": "basic", "betas": "x", "default_max_tokens": 1.5, "thinking_budget": -1.0,
@@ -124,6 +126,7 @@ func TestValidate(t *testing.T) {
 			},
 			wantErr: []string{
 				"providers.chat.options.extra_body", "providers.chat.options.first_byte_timeout_sec", "providers.chat.options.max_tokens_field",
+				`providers.chat.options.model_extra_body["a/m"]`,
 				"providers.chat.options.request_timeout_sec", "providers.chat.options.session_header", "providers.chat.options.system_role",
 				"providers.msgs.options.auth_style", "providers.msgs.options.betas", "providers.msgs.options.cache_control",
 				"providers.msgs.options.default_max_tokens", "providers.msgs.options.max_breakpoints", "providers.msgs.options.thinking_budget",

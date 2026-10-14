@@ -7,6 +7,10 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Providers take `options.model_extra_body`: per model id, request members put
+  over `extra_body` for that model only (one gateway, an upstream pinned for
+  one of its models, the others routed as before). Prompt bytes: none change.
+
 - The tests preset (`--allow tests`, the "builds and tests" answer, `accept-edits`) covers a
   Python virtual environment of the workspace (`Bash(python:venv)`): creating
   one, installing into it with its own pip from the package index, and running

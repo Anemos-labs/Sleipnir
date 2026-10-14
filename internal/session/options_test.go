@@ -95,8 +95,10 @@ func TestProviderOptionsMatchTheBuilders(t *testing.T) {
 		for k := range read[builder] {
 			got[k] = true
 		}
-		for k := range read["BuildProvider"] { // read for every dialect
-			got[k] = true
+		for _, common := range []string{"BuildProvider", "extraBodyFor"} { // read for every dialect (every builder calls extraBodyFor)
+			for k := range read[common] {
+				got[k] = true
+			}
 		}
 		want := config.ProviderOptionNames(dialect)
 		if strings.Join(keyList(got), ",") != strings.Join(want, ",") {
