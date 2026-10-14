@@ -19,7 +19,7 @@ func TestWebNewSessionRejectsOverlongGoalBeforeCreatingAnything(t *testing.T) {
 	before := len(r.h.Tabs())
 	for _, text := range []string{strings.Repeat("x", maxGoalLen+1), strings.Repeat("🌲", maxGoalLen+1)} {
 		code, body := r.do("POST", "/api/sessions", wire.NewSessionRequest{Cwd: project, GoalText: text})
-		if code != 400 || !strings.Contains(string(body), "4,000") {
+		if code != 400 || !strings.Contains(string(body), "32,000") {
 			t.Fatalf("overlong goal: %d %s", code, body)
 		}
 		if len(r.h.Tabs()) != before {
@@ -88,5 +88,55 @@ func TestWebNewSessionRefusesIsolationThatCannotStart(t *testing.T) {
 	empty := t.TempDir()
 	if code, body := r.do("POST", "/api/sessions", wire.NewSessionRequest{Cwd: empty, Swarm: &team, Isolation: "worktree", Commit: true, GitInit: true}); code != 428 {
 		t.Errorf("a folder that git init makes a repository: %d %s", code, body)
+	}
+}
+
+// A tab's /goal takes a goal as long as a new session's: up to maxGoalLen characters, four bytes each if need be, within the route's
+// body cap; one character more is refused as bad_goal, and nothing is queued. (A product brief of 4,248 characters was once refused
+// at 4,000.)
+func TestWebGoalTakesALongBriefAndRefusesOneCharacterMore(t *testing.T) {
+	project := webWorld(t)
+	_, base := newWebModel(t, sayScript("ok"))
+	r := newWebRig(t, soloDefaults(project), base)
+	tab := r.ready("")
+	code, body := r.do("POST", "/api/sessions/"+tab.ID+"/goal", wire.GoalRequest{Action: "set", Text: strings.Repeat("🌲", maxGoalLen+1)})
+	if code != 400 || !strings.Contains(string(body), `"bad_goal"`) || !strings.Contains(string(body), "32,000") {
+		t.Fatalf("overlong goal: %d %s", code, body)
+	}
+	code, body = r.do("POST", "/api/sessions/"+tab.ID+"/goal", wire.GoalRequest{Action: "set", Text: strings.Repeat("🌲", maxGoalLen)})
+	if code != 200 {
+		t.Fatalf("a goal at the limit: %d %s", code, body)
+	}
+}
+
+// A /goal line sent as a slash command (POST .../command) reaches the goal's own check: the route and the line limit take a goal at
+// the character limit in four-byte characters, and one character more is refused by the goal check (the command's output, sent
+// false), not as a too-long command.
+func TestWebGoalAsACommandReachesTheGoalCheck(t *testing.T) {
+	project := webWorld(t)
+	_, base := newWebModel(t, sayScript("ok"))
+	r := newWebRig(t, soloDefaults(project), base)
+	tab := r.ready("")
+	code, body := r.do("POST", "/api/sessions/"+tab.ID+"/command", wire.CommandRequest{Line: "/goal " + strings.Repeat("🌲", maxGoalLen+1)})
+	if code != 200 || !strings.Contains(string(body), "the goal is longer than 32,000 characters") || !strings.Contains(string(body), `"sent":false`) {
+		t.Fatalf("overlong goal as a command: %d %s", code, body)
+	}
+	code, body = r.do("POST", "/api/sessions/"+tab.ID+"/command", wire.CommandRequest{Line: "/goal " + strings.Repeat("🌲", maxGoalLen)})
+	if code != 200 || strings.Contains(string(body), "longer than") || strings.Contains(string(body), "too long") {
+		t.Fatalf("a goal at the limit as a command: %d %s", code, body)
+	}
+}
+
+// The goal routes take any JSON spelling of a goal at the limit, the widest included: a character beyond the basic plane written as
+// two \uXXXX escapes is twelve bytes.
+func TestWebGoalAtTheLimitFitsInItsWidestJSON(t *testing.T) {
+	project := webWorld(t)
+	_, base := newWebModel(t, sayScript("ok"))
+	r := newWebRig(t, soloDefaults(project), base)
+	tab := r.ready("")
+	body := `{"action":"set","text":"` + strings.Repeat(`\ud83c\udf32`, maxGoalLen) + `"}`
+	code, out := r.do("POST", "/api/sessions/"+tab.ID+"/goal", json.RawMessage(body))
+	if code != 200 {
+		t.Fatalf("a goal at the limit in escaped surrogate pairs: %d %.200s", code, out)
 	}
 }
