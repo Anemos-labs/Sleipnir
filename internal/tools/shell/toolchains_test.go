@@ -68,7 +68,7 @@ func TestToolchainContextOnWindows(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "make.CMD"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	pathList := `C:\nowhere;` + dir
+	pathList := `C:\nowhere;/` + dir // a UNC-shaped entry (two separators), which a Unix runner resolves to dir
 	for name, want := range map[string]bool{"node": true, "make": true, "go": false} {
 		if got := onPath("windows", name, pathList, ""); got != want {
 			t.Errorf("onPath(windows, %s) = %v, want %v", name, got, want)
@@ -96,7 +96,7 @@ func TestToolchainContextSkipsRelativePathEntries(t *testing.T) {
 	if !onPath("linux", "pytest", dir, "") {
 		t.Error("the absolute entry was not searched")
 	}
-	for dir, want := range map[string]bool{`C:\tools`: true, `\\srv\share`: true, `\tools`: true, `tools`: false, `.\bin`: false, `C:tools`: false} {
+	for dir, want := range map[string]bool{`C:\tools`: true, `\\srv\share`: true, `\tools`: false, `/tools`: false, `//srv/share`: true, `tools`: false, `.\bin`: false, `C:tools`: false} {
 		if got := isAbsFor("windows", dir); got != want {
 			t.Errorf("isAbsFor(windows, %q) = %v, want %v", dir, got, want)
 		}

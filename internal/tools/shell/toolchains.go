@@ -124,14 +124,16 @@ func onPath(goos, name, pathList, pathExt string) bool {
 	return false
 }
 
-// isAbsFor reports whether dir names the same directory whatever the working directory: rooted at "/" elsewhere; on Windows rooted
-// at a separator (a UNC path or the current drive's root) or a drive letter followed by a separator.
+// isAbsFor reports whether dir names the same directory whatever the working directory and drive: rooted at "/" elsewhere; on
+// Windows a drive letter followed by a separator, or a UNC path (two separators). A single leading separator is the current drive's
+// root, which differs between agents on different drives.
 func isAbsFor(goos, dir string) bool {
 	if goos != "windows" {
 		return strings.HasPrefix(dir, "/")
 	}
-	if strings.HasPrefix(dir, `\`) || strings.HasPrefix(dir, "/") {
+	sep := func(c byte) bool { return c == '\\' || c == '/' }
+	if len(dir) >= 2 && sep(dir[0]) && sep(dir[1]) {
 		return true
 	}
-	return len(dir) >= 3 && dir[1] == ':' && (dir[2] == '\\' || dir[2] == '/')
+	return len(dir) >= 3 && dir[1] == ':' && sep(dir[2])
 }
