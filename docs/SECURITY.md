@@ -196,6 +196,12 @@ few more) read their operands: `git add .` and `git fetch .` are not writes into
 yes can be remembered. Every other git subcommand that is not read-only (`checkout`, `reset`, `merge`, `stash`, `clean`) keeps the analysis
 of an unlisted command, whose operands may be written.
 
+A test runner given paths to find tests in (`pytest .`, `python -m pytest tests`, `python -m unittest discover -s tests`, `node --test .`)
+reads them: `node --test .` is not a write into every directory of the project, so the `Edit(./.sleipnir/**)` ask rule does not stop it.
+Only the runner's options that name no file to write are recognised (patterns, counts, reporters by name, a start directory); any other
+(`--basetemp`, `--junitxml`, `--test-reporter-destination`, `--import`) keeps the analysis of an unlisted command. The tests themselves
+are the project's code, run as the runner runs them.
+
 The session's scratch directory (`$TMPDIR`) is every agent's: a writer confined to its own tree writes there, and an `ask` rule about the
 state directory (where the scratch directory lives) does not ask about it; `deny` rules and the built-in protections still apply. A name
 in it whose rest is only known when the command runs (`"$TMPDIR/$X"`) could leave it with a `../`, so the rule asks, and the question says
