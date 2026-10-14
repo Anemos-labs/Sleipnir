@@ -80,7 +80,7 @@ func keyList(m map[string]bool) []string {
 // that is listed but not read would be accepted and ignored.
 func TestProviderOptionsMatchTheBuilders(t *testing.T) {
 	read := optionKeysRead(t)
-	for _, fn := range []string{"buildChat", "buildAnthropic", "BuildProvider"} {
+	for _, fn := range []string{"buildChat", "buildAnthropic", "buildResponses", "BuildProvider"} {
 		if len(read[fn]) == 0 {
 			var have []string
 			for name := range read {
@@ -90,13 +90,15 @@ func TestProviderOptionsMatchTheBuilders(t *testing.T) {
 			t.Fatalf("found no option reads in %s: the scan needs updating (functions with reads: %v)", fn, have)
 		}
 	}
-	for dialect, builder := range map[string]string{config.DialectOpenAIChat: "buildChat", config.DialectAnthropic: "buildAnthropic"} {
+	for dialect, builder := range map[string]string{config.DialectOpenAIChat: "buildChat", config.DialectAnthropic: "buildAnthropic", config.DialectOpenAIResponses: "buildResponses"} {
 		got := map[string]bool{}
 		for k := range read[builder] {
 			got[k] = true
 		}
-		for k := range read["BuildProvider"] { // read for every dialect
-			got[k] = true
+		for _, common := range []string{"BuildProvider", "extraBodyFor"} { // read for every dialect (every builder calls extraBodyFor)
+			for k := range read[common] {
+				got[k] = true
+			}
 		}
 		want := config.ProviderOptionNames(dialect)
 		if strings.Join(keyList(got), ",") != strings.Join(want, ",") {
