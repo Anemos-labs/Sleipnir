@@ -26,8 +26,9 @@ import (
 //
 // The environment must be a directory of the workspace that is not a workspace root (the project, an agent's tree, $TMPDIR); every
 // entry of it, of its lib directories and of their site-packages must resolve inside it; and to install into it or run it, it must be
-// one (a pyvenv.cfg) whose scripts run its own python. So an install lands in the workspace, never in the system's or the user's
-// site-packages. The options of an install are a short list (requirement and constraint files and editable paths inside the workspace,
+// one (a pyvenv.cfg) whose python is a link to an installed interpreter and whose scripts run that python (ownInterpreter, ownScript).
+// So an install lands in the workspace, never in the system's or the user's site-packages; a test run is allowed while every file it
+// names is inside the workspace. The options of an install are a short list (requirement and constraint files and editable paths inside the workspace,
 // -U, -q, --pre, --no-input, --no-cache-dir, --disable-pip-version-check); an option that changes where packages come from (an index,
 // find-links, a trusted host) or where they go (--target, --prefix, --root, --user, --src, --break-system-packages), a URL or a
 // repository, or a file outside the workspace keeps the command asking, and it is then not routine. What the project's own files say (a
@@ -215,8 +216,9 @@ var requirementSpec = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9
 	`( *(~=|===|==|!=|<=|>=|<|>) *[A-Za-z0-9.*+!_-]+ *(, *(~=|===|==|!=|<=|>=|<|>) *[A-Za-z0-9.*+!_-]+ *)*)?$`)
 
 // ownEnv is why the environment of a program of its bin directory is not one the preset installs into or runs: it is not in such a
-// directory, the directory is not one of the workspace, it is not an environment that keeps what it holds inside it, or (script) the
-// program is a script that does not run the environment's own python. It returns the environment's resolved directory.
+// directory, the directory is not one of the workspace, it is not an environment that keeps what it holds inside it, or the program
+// does not run the environment's own interpreter (ownInterpreter): prog is that interpreter (DIR/bin/python), or, with script, a
+// script whose first line names it (DIR/bin/pip, DIR/bin/pytest). It returns the environment's resolved directory.
 func (ev *evaluator) ownEnv(prog string, script bool, cw *cwdSet) (dir, real, why string) {
 	dir = venvOf(prog)
 	if dir == "" {
@@ -226,10 +228,63 @@ func (ev *evaluator) ownEnv(prog string, script bool, cw *cwdSet) (dir, real, wh
 	if why == "" {
 		why = venvLayout(real, dir)
 	}
-	if why == "" && script {
-		why = ownScript(real, path.Base(prog), prog)
+	if why != "" {
+		return dir, real, why
 	}
-	return dir, real, why
+	interp := path.Base(prog)
+	if script {
+		var shebang string
+		if shebang, why = ownScript(real, interp, prog); why != "" {
+			return dir, real, why
+		}
+		interp = filepath.Base(shebang)
+	}
+	return dir, real, ev.ownInterpreter(real, interp, prog)
+}
+
+// ownInterpreter is why DIR/bin/<name> of the environment real is not its own Python interpreter, the one thing that makes python -m
+// pip install into the environment: CPython takes the environment from a pyvenv.cfg beside (or above) the path it was started by, so
+// a link to an installed interpreter (what python -m venv, virtualenv and uv venv make) runs in the environment, while a program that
+// starts another python (a wrapper script, "exec /usr/bin/python3") runs that one, which installs into the system's or the user's
+// site-packages. So the entry, followed through its links, must end at a native executable (ELF or Mach-O: not a script, which a
+// shell would also run without a "#!") named python, outside the workspace (a program of the workspace is one an agent can write).
+// A copy of an interpreter made by python -m venv --copies is therefore not taken: it asks.
+func (ev *evaluator) ownInterpreter(real, name, shown string) string {
+	notOwn := shown + " does not run the environment's own interpreter (a link to an installed python)"
+	p := filepath.Join(real, "bin", name)
+	if _, err := os.Lstat(p); err != nil || shellparse.InterpreterName(name) != "python" {
+		return notOwn
+	}
+	target := realPath(p)
+	fi, err := os.Stat(target)
+	switch {
+	case target == "" || err != nil || !fi.Mode().IsRegular() || fi.Mode().Perm()&0o111 == 0:
+		return notOwn
+	case shellparse.InterpreterName(filepath.Base(target)) != "python":
+		return notOwn
+	case ev.rs.inWorkspace(target):
+		return shown + " runs a program of the workspace, not an installed python"
+	}
+	f, err := os.Open(target)
+	if err != nil {
+		return notOwn
+	}
+	defer f.Close()
+	var magic [4]byte
+	if _, err := io.ReadFull(f, magic[:]); err != nil || !nativeExecutable(magic) {
+		return notOwn
+	}
+	return ""
+}
+
+// nativeExecutable reports whether the first bytes of a file are those of an executable the kernel runs itself: ELF, or Mach-O (thin
+// or universal).
+func nativeExecutable(m [4]byte) bool {
+	switch string(m[:]) {
+	case "\x7fELF", "\xfe\xed\xfa\xce", "\xfe\xed\xfa\xcf", "\xce\xfa\xed\xfe", "\xcf\xfa\xed\xfe", "\xca\xfe\xba\xbe":
+		return true
+	}
+	return false
 }
 
 // pipInstall judges an install by the pip of an environment: DIR/bin/pip install (script true) or DIR/bin/python -m pip install. It
@@ -506,20 +561,20 @@ func listDir(dir string, limit int) ([]string, bool) {
 	return names, len(names) <= limit
 }
 
-// ownScript is why a script of an environment's bin directory (real, its entry name) does not run the environment's own python: it is
-// a link (to another pip), not a file, or its first line runs another interpreter (a copy of an environment made elsewhere runs the
-// python of the original). pip writes its python's absolute path on the first line, or, for a long one, as "”'exec' PATH" on the
-// second.
-func ownScript(real, name, shown string) string {
+// ownScript is why a script of an environment's bin directory (real, its entry name) does not run a python of that bin directory: it
+// is a link (to another pip), not a file, or its first line runs another interpreter (a copy of an environment made elsewhere runs the
+// python of the original). pip writes its python's absolute path on the first line, or, for a long one, on the second, after the
+// shell's "exec". It returns that interpreter's path, which ownEnv holds to ownInterpreter.
+func ownScript(real, name, shown string) (interp, why string) {
 	p := filepath.Join(real, "bin", name)
 	notOwn := shown + " does not run the environment's own python"
 	fi, err := os.Lstat(p)
 	if err != nil || !fi.Mode().IsRegular() {
-		return notOwn
+		return "", notOwn
 	}
 	f, err := os.Open(p)
 	if err != nil {
-		return notOwn
+		return "", notOwn
 	}
 	defer f.Close()
 	sc := bufio.NewScanner(io.LimitReader(f, 4096))
@@ -528,9 +583,9 @@ func ownScript(real, name, shown string) string {
 		lines = append(lines, sc.Text())
 	}
 	if len(lines) == 0 || !strings.HasPrefix(lines[0], "#!") {
-		return notOwn
+		return "", notOwn
 	}
-	interp := strings.TrimSpace(lines[0][2:])
+	interp = strings.TrimSpace(lines[0][2:])
 	if interp == "/bin/sh" && len(lines) > 1 {
 		if rest, ok := strings.CutPrefix(lines[1], `'''exec' "`); ok {
 			interp, _, _ = strings.Cut(rest, `"`)
@@ -540,7 +595,7 @@ func ownScript(real, name, shown string) string {
 	}
 	bin := realPath(filepath.Join(real, "bin"))
 	if !filepath.IsAbs(interp) || shellparse.InterpreterName(filepath.Base(interp)) != "python" || realPath(filepath.Dir(interp)) != bin {
-		return notOwn
+		return "", notOwn
 	}
-	return ""
+	return interp, ""
 }

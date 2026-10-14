@@ -10,7 +10,8 @@ they do not indicate whether a change has been released.
 - The tests preset (`--allow tests`, the fourth answer, `accept-edits`) covers a
   Python virtual environment of the workspace (`Bash(python:venv)`): creating
   one, installing into it with its own pip from the package index, and running
-  the tests with it; installs that change the index or the target, URLs, files
+  the tests with it, when its python is a link to an installed interpreter
+  (not a wrapper, a copy or a program of the workspace); installs that change the index or the target, URLs, files
   outside the workspace and every other installer still ask. These installs are
   routine, and the manager is told they reach the package index. A program run
   by path is judged by its name (`.venv/bin/pip install --index-url ...` is an

@@ -2,17 +2,49 @@ package perm
 
 import (
 	"context"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 )
 
+// installedPython is the path of an installed Python interpreter that is a native executable, what the python of an environment links
+// to; the test is skipped on a machine without one (python3 -m venv may not work on it either: it needs ensurepip).
+func installedPython(t *testing.T) string {
+	t.Helper()
+	for _, name := range []string{"python3", "python"} {
+		p, err := exec.LookPath(name)
+		if err != nil {
+			continue
+		}
+		if real, err := filepath.EvalSymlinks(p); err == nil && isNative(real) {
+			return real
+		}
+	}
+	t.Skip("no installed Python interpreter that is a native executable")
+	return ""
+}
+
+// isNative reports whether the file at p starts as an ELF or Mach-O executable.
+func isNative(p string) bool {
+	f, err := os.Open(p)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	var m [4]byte
+	_, err = io.ReadFull(f, m[:])
+	return err == nil && nativeExecutable(m)
+}
+
 // makeVenv lays out a virtual environment at dir as python -m venv makes one: pyvenv.cfg, bin with a pip whose first line runs the
-// environment's python (a link to the system's), lib/pythonX.Y/site-packages and the lib64 link.
+// environment's python (a link to an installed interpreter), lib/pythonX.Y/site-packages and the lib64 link.
 func makeVenv(t *testing.T, dir string) {
 	t.Helper()
+	python := installedPython(t)
 	for _, d := range []string{"bin", "include", "lib/python3.12/site-packages"} {
 		if err := os.MkdirAll(filepath.Join(dir, d), 0o755); err != nil {
 			t.Fatal(err)
@@ -29,7 +61,7 @@ func makeVenv(t *testing.T, dir string) {
 			t.Fatal(err)
 		}
 	}
-	for link, target := range map[string]string{"bin/python3": "/usr/bin/python3", "bin/python": "python3", "lib64": "lib"} {
+	for link, target := range map[string]string{"bin/python3": python, "bin/python": "python3", "lib64": "lib"} {
 		if err := os.Symlink(target, filepath.Join(dir, link)); err != nil {
 			t.Fatal(err)
 		}
@@ -286,6 +318,157 @@ func TestTheTestsPresetChecksInsideTheWorkspace(t *testing.T) {
 		".venv/bin/pip install --user pytest": "ask"} {
 		if d := e.Check(bg, Request{Agent: "be-1", Tool: "Bash", Command: cmd, Cwd: r.wtA}); outcome(d) != want {
 			t.Errorf("--allow tests: %q: %+v, want %s", cmd, d, want)
+		}
+	}
+}
+
+// The python of an environment must be a link to an installed interpreter: python -m pip starts the interpreter by the environment's
+// path, and only then does it install into the environment. A wrapper that starts another python (a script, with or without "#!"), a
+// link to a script, a program of the workspace or another program installs elsewhere, by every form that runs it: python -m pip,
+// python -m pytest, uv pip install --python, and the environment's pip, whose first line runs that python. Those ask, and are not routine.
+func TestAnEnvironmentsInterpreterMustBeItsOwn(t *testing.T) {
+	r := venvRig(t, ModeAcceptEdits, nil)
+	python := installedPython(t)
+	write := func(p, body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	relink := func(dir, target string) {
+		t.Helper()
+		for _, n := range []string{"bin/python", "bin/python3"} {
+			p := filepath.Join(dir, n)
+			if err := os.Remove(p); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(target, p); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	wrapped := func(name, body string) string {
+		t.Helper()
+		dir := filepath.Join(r.wtA, name)
+		makeVenv(t, dir)
+		for _, n := range []string{"bin/python", "bin/python3"} {
+			p := filepath.Join(dir, n)
+			if err := os.Remove(p); err != nil {
+				t.Fatal(err)
+			}
+			write(p, body)
+		}
+		return name
+	}
+	fv := wrapped(".fv", "#!/bin/sh\nexec "+python+" \"$@\"\n")
+	bare := wrapped(".bare", "exec "+python+" \"$@\"\n") // no "#!": a shell runs it as a script all the same
+	toScript := ".toscript"
+	makeVenv(t, filepath.Join(r.wtA, toScript))
+	write(filepath.Join(r.f.outside, "py", "python3"), "#!/bin/sh\nexec "+python+" \"$@\"\n")
+	relink(filepath.Join(r.wtA, toScript), filepath.Join(r.f.outside, "py", "python3"))
+	toWorkspace := ".toworkspace" // a copy of the interpreter in the workspace: a program an agent can write
+	makeVenv(t, filepath.Join(r.wtA, toWorkspace))
+	b, err := os.ReadFile(python)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(filepath.Join(r.wtA, "tools", "python3"), string(b))
+	relink(filepath.Join(r.wtA, toWorkspace), filepath.Join(r.wtA, "tools", "python3"))
+	toShell := ".toshell"
+	makeVenv(t, filepath.Join(r.wtA, toShell))
+	sh, err := filepath.EvalSymlinks("/bin/sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	relink(filepath.Join(r.wtA, toShell), sh)
+	var bad []string
+	for _, dir := range []string{fv, bare, toScript, toWorkspace, toShell} {
+		bad = append(bad, dir+"/bin/python -m pip install evilpkg", dir+"/bin/python3 -m pip install evilpkg",
+			dir+"/bin/python -m pytest -q", dir+"/bin/python3 -m py_compile src/app.py",
+			"uv pip install --python "+dir+"/bin/python evilpkg", dir+"/bin/pip install evilpkg", dir+"/bin/pytest -q")
+	}
+	for _, cmd := range bad {
+		if d := r.check("be-1", r.wtA, cmd); d.Allow {
+			t.Errorf("%q: allowed (%s)", cmd, d.Reason)
+		} else if !strings.Contains(d.Reason, "interpreter") && !strings.Contains(d.Reason, "installed python") {
+			t.Errorf("%q: the reason does not name the interpreter: %q", cmd, d.Reason)
+		}
+	}
+	// the one made by python -m venv: a link to the installed interpreter
+	for _, cmd := range []string{".venv/bin/python -m pip install pytest", ".venv/bin/python3 -m pip install pytest", ".venv/bin/python -m pytest -q",
+		"uv pip install --python .venv/bin/python pytest", ".venv/bin/pip install pytest", ".venv/bin/pytest -q"} {
+		if d := r.check("be-1", r.wtA, cmd); !d.Allow {
+			t.Errorf("%q: %+v", cmd, d)
+		}
+	}
+	// and none of the bad ones is routine in default mode
+	q := venvRig(t, ModeDefault, func(context.Context, Request) Decision { return Decision{} })
+	for _, dir := range []string{fv, bare} {
+		makeVenvLike(t, filepath.Join(r.wtA, dir), filepath.Join(q.wtA, dir))
+	}
+	delegated := 0
+	q.e.cfg.Delegate = func(context.Context, Request) (Decision, string) {
+		delegated++
+		return Decision{Allow: true}, "manager"
+	}
+	for _, cmd := range []string{fv + "/bin/python -m pip install evilpkg", bare + "/bin/python3 -m pip install evilpkg", fv + "/bin/python -m pytest -q",
+		"uv pip install --python " + fv + "/bin/python evilpkg", fv + "/bin/pip install evilpkg"} {
+		if d := q.check("be-1", q.wtA, cmd); d.Allow || delegated != 0 {
+			t.Errorf("%q: %+v, %d questions to the manager", cmd, d, delegated)
+		}
+	}
+}
+
+// makeVenvLike copies the environment at from to to, its links as links and its files with their content and mode, rewriting the
+// paths of from in the files' first lines.
+func makeVenvLike(t *testing.T, from, to string) {
+	t.Helper()
+	err := filepath.Walk(from, func(p string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(from, p)
+		dst := filepath.Join(to, rel)
+		switch {
+		case fi.Mode()&os.ModeSymlink != 0:
+			target, err := os.Readlink(p)
+			if err != nil {
+				return err
+			}
+			return os.Symlink(target, dst)
+		case fi.IsDir():
+			return os.MkdirAll(dst, 0o755)
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(dst, []byte(strings.ReplaceAll(string(b), from, to)), fi.Mode().Perm())
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A test or check run with an environment is allowed by the preset while every file it names is inside the workspace: a matching rule
+// is not judged file by file, so a pytest option that writes elsewhere would otherwise pass.
+func TestAnEnvironmentsTestRunStaysInTheWorkspace(t *testing.T) {
+	r := venvRig(t, ModeAcceptEdits, nil)
+	for cmd, want := range map[string]string{
+		".venv/bin/pytest -q --junitxml=report.xml":                     "allow",
+		".venv/bin/pytest -q --junitxml=" + r.f.outside + "/x.xml":      "ask",
+		".venv/bin/python -m pytest --basetemp=" + r.f.outside + "/tmp": "ask",
+		".venv/bin/python -m pytest --basetemp=" + r.tmp + "/pt":        "allow",
+	} {
+		d := r.check("be-1", r.wtA, cmd)
+		if outcome(d) != want {
+			t.Errorf("%q: %s (%q), want %s", cmd, outcome(d), d.Reason, want)
+		}
+		if want == "ask" && !strings.Contains(d.Reason, "it names a file outside the workspace") {
+			t.Errorf("%q: reason %q", cmd, d.Reason)
 		}
 	}
 }

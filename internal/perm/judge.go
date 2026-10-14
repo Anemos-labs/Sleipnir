@@ -601,7 +601,7 @@ func (ev *evaluator) commandAllowRule(u *unit) *crule {
 		case r.class != classBash:
 			continue
 		case r.venv:
-			if !u.venv.ok() {
+			if !u.venv.ok() || !ev.accessesInWorkspace(u) {
 				continue
 			}
 		case !r.matchCommand(*u.simple, false), r.workspace && !ev.withinWorkspace(u, r):
@@ -616,11 +616,15 @@ func (ev *evaluator) commandAllowRule(u *unit) *crule {
 }
 
 // withinWorkspace is the condition of a ":workspace" rule: none of the rule's refused options is given, and every file the command
-// names (operands and option values, judged as an unlisted command's are) resolves inside the workspace.
+// names (operands and option values, judged as an unlisted command's are) resolves inside the workspace (accessesInWorkspace).
 func (ev *evaluator) withinWorkspace(u *unit, r *crule) bool {
-	if hasLong(u.simple.Args, r.refused...) {
-		return false
-	}
+	return !hasLong(u.simple.Args, r.refused...) && ev.accessesInWorkspace(u)
+}
+
+// accessesInWorkspace reports whether every file a command names resolves inside the workspace. An allow rule that is more than a
+// command's words (":workspace", "python:venv") holds to it, since a command it allows is not judged file by file
+// (pytest --basetemp=/elsewhere, --junitxml=/elsewhere/x.xml).
+func (ev *evaluator) accessesInWorkspace(u *unit) bool {
 	for _, a := range u.accesses {
 		if a.dynamic || a.invalid != "" || a.real == "" || !ev.rs.inWorkspace(a.real) {
 			return false

@@ -237,10 +237,15 @@ and the packages it installs run when the tests import them. A package name chos
 The preset does not make that safer than it is; it keeps the install where the tests are, and the command honest about its source:
 
 * The environment is a directory of the workspace and not a workspace root (the project, an agent's tree, `$TMPDIR`); to install into it
-  or run it, it has a `pyvenv.cfg`, every entry of it, of its `lib` directories and of their `site-packages` resolves inside it, and its
-  pip and pytest are files whose first line runs its own python (a copy of an environment made elsewhere runs the original's). An install
-  therefore lands in the workspace, never in the system's or the user's `site-packages`. A directory that already holds something other
-  than an environment is not used, and `--clear` and `--upgrade` ask.
+  or run it, it has a `pyvenv.cfg`, every entry of it, of its `lib` directories and of their `site-packages` resolves inside it, its
+  pip and pytest are files whose first line runs its own python (a copy of an environment made elsewhere runs the original's), and that
+  python is a link to an installed interpreter: followed through its links, a native executable (ELF or Mach-O, not a script) named
+  python, outside the workspace. CPython takes the environment from a `pyvenv.cfg` beside the path it was started by, so a link keeps
+  the environment, while a wrapper that starts another python (`exec /usr/bin/python3 "$@"`, with or without `#!`) would install into
+  the system's or the user's `site-packages`; a wrapper, a link to a script, a program of the workspace and a copy of the interpreter
+  (`python -m venv --copies`) ask. An install therefore lands in the workspace. A directory that already holds something other than an
+  environment is not used, and `--clear` and `--upgrade` ask. A test run with the environment is allowed only while every file it names
+  is inside the workspace (`pytest --basetemp=/elsewhere` asks).
 * An install names requirements by name and version (`pytest>=8`, `requests[socks]==2.32`), `-r` and `-c` files and `-e` or local paths
   of the workspace, and `-U`, `-q`, `--pre`, `--no-input`, `--no-cache-dir` and `--disable-pip-version-check`. An option that changes
   where packages come from (`-i`, `--index-url`, `--extra-index-url`, `-f`, `--trusted-host`, `--no-index`, uv's `--index` and

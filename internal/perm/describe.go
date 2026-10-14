@@ -40,7 +40,11 @@ func (ev *evaluator) does(u *unit) string {
 	case u.venv != nil && u.venv.install:
 		return "installs Python packages into the virtual environment " + orDefault(u.venv.dir, "it names") + becauseNot(u.venv.why)
 	case u.venv != nil:
-		return "runs the tests or checks with the virtual environment " + orDefault(u.venv.dir, "it names") + becauseNot(u.venv.why)
+		why := u.venv.why
+		if why == "" && !ev.accessesInWorkspace(u) {
+			why = "it names a file outside the workspace"
+		}
+		return "runs the tests or checks with the virtual environment " + orDefault(u.venv.dir, "it names") + becauseNot(why)
 	case installs(base, s.Args):
 		return "installs, removes or downloads packages, outside a virtual environment of the workspace"
 	case ev.testsNear(u) != "":
@@ -111,7 +115,7 @@ func (ev *evaluator) testsCover(u *unit) bool {
 	for _, r := range ev.e.tests {
 		switch {
 		case r.venv:
-			if u.venv.ok() {
+			if u.venv.ok() && ev.accessesInWorkspace(u) {
 				return true
 			}
 		case r.matchCommand(*u.simple, false) && (!r.workspace || ev.withinWorkspace(u, r)):
