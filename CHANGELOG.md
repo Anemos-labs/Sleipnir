@@ -16,6 +16,13 @@ they do not indicate whether a change has been released.
   told that only members acknowledge. Prompt bytes: the pool tool's description and schema
   change G0, so a cached tool prefix of an earlier version no longer matches.
 
+- A test runner given paths reads them: `pytest .`, `python -m pytest tests`,
+  `python -m unittest discover -s tests` and `node --test .` are not writes
+  into every directory below their operands, so the protected configuration
+  directory's ask rule no longer stops them in bypass mode. Only options that
+  name no file to write are recognised; any other keeps the stricter
+  analysis. Prompt bytes: none change.
+
 - `pool execute` says what comes next, in its result and in the mail that wakes
   the members: writing opens inside child tasks only; the leader creates one
   child per share of the agreed work, claims its own and assigns each other
