@@ -101,3 +101,19 @@ func TestAWideningDoesNotOverwriteAnInterveningChange(t *testing.T) {
 		t.Fatalf("the intervening revision's scope was overwritten: %v", now.Files)
 	}
 }
+
+// The manager's update with only text, on a task someone else owns, says what the manager's own actions are, not "mail the manager".
+func TestTheManagersTextUpdateSaysWhatToDoInstead(t *testing.T) {
+	r := newRVRig(t, Config{MaxWorkers: 2}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "working"} })
+	task, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "web", Role: "frontend", Files: []string{"web/js/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.sw.Board.assignTask(assignReq{by: "mgr", agent: "fe-1", id: task.ID}); err != nil {
+		t.Fatal(err)
+	}
+	res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "update", "id": task.ID, "text": "include web/css/styles.css"})
+	if !res.IsError || !strings.Contains(res.Text, "files= widens or sets its scope") || strings.Contains(res.Text, "or the manager") {
+		t.Fatalf("the manager's text update: %q", res.Text)
+	}
+}
