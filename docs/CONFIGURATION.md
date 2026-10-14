@@ -578,7 +578,7 @@ Role names: `worker` is the role of a single agent (`chat`/`run` without `--swar
 `scout`, `backend`, `frontend`, `devops`, `tester`, `docs`, `reviewer`, plus roles defined in `.sleipnir/agents/`
 The legacy `fullstack` role is unavailable. `architect`, `reviewer` and `scout` are
 read-only in the engine (plan mode, with `go test`, `go vet`, `pytest`, `python -m pytest`, `python -m unittest`,
-`node --test`, `npm test`, `npm run test:*`, `cargo test`, `cargo check`, `make test` and the tests run with a virtual
+`node --test`, `npm test`, `npm run test` with arguments, `cargo test`, `cargo check`, `make test` and the tests run with a virtual
 environment of the workspace (`Bash(python:venv-tests)`) allowed so they can verify what they review; a refusal tells
 them so). Their
 profile also denies the job tools `bash_output` and `bash_kill` by name: background jobs are session-wide, and a
