@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -133,7 +134,7 @@ func (s *Session) Run(ctx context.Context, objective string) (*Result, error) {
 				return result, err
 			}
 		}
-		if s.opts.BudgetUSD > 0 && s.Cost() >= s.opts.BudgetUSD {
+		if budget := s.Budget(); budget > 0 && s.Cost() >= budget {
 			return result, fmt.Errorf("delivery paused: budget reached")
 		}
 		d, err := c.Step(ctx)
@@ -154,6 +155,11 @@ func (s *Session) Run(ctx context.Context, objective string) (*Result, error) {
 			result, err = s.runTurn(ctx, d.Prompt)
 			if err != nil {
 				return result, err
+			}
+			if d.AssessRelease && result != nil {
+				if err := c.RecordRelease(result.Text); err != nil {
+					return result, err
+				}
 			}
 			if d.AssessReview && result != nil {
 				if err := c.RecordReview(result.Text); err != nil {
@@ -194,6 +200,18 @@ func (s *Session) deliveryExec(dir string) delivery.Exec {
 				}
 			}
 		}
-		return run(ctx, name, args...)
+		out, err := run(ctx, name, args...)
+		ref, storeErr := s.Blobs.Put(out)
+		if storeErr != nil {
+			return out, errors.Join(err, fmt.Errorf("save delivery evidence: %w", storeErr))
+		}
+		data := map[string]any{"command": command, "cwd": dir, "ref": ref, "error": err != nil}
+		if err != nil {
+			data["reason"] = err.Error()
+		}
+		if _, logErr := s.Log.Emit("", "delivery.evidence", data); logErr != nil {
+			return out, errors.Join(err, logErr)
+		}
+		return out, err
 	}
 }

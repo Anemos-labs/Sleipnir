@@ -147,7 +147,7 @@ func (ev *evaluator) judge(u *unit) verdict {
 			}
 		}
 	}
-	if c, ok := ev.e.confinement(ev.r.Agent); ok {
+	if c, ok := ev.e.confinement(ev.r.Agent); ok && !(ev.r.VerifiedIntegration && ev.r.Role == "manager") {
 		for _, a := range all {
 			if why := ev.rs.leavesConfinement(c, a, ev.r.Agent); why != "" {
 				v := deny("isolation: " + why)

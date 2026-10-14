@@ -1183,6 +1183,20 @@ type FastForwardResult struct {
 // Finish's patch or the integration branch remain the way to hand the result back.
 // In copy mode there is no user repository to move.
 func (q *Queue) FastForward(ctx context.Context) (*FastForwardResult, error) {
+	return q.fastForward(ctx, "")
+}
+
+// FastForwardChecked refuses a changed integration tip after acquiring the queue
+// turn, so applying a preview cannot include work accepted during authorization.
+func (q *Queue) FastForwardChecked(ctx context.Context, expectedTip string) (*FastForwardResult, error) {
+	if expectedTip == "" {
+		return nil, fmt.Errorf("%w: missing expected integration tip", ErrNotFastForward)
+	}
+	return q.fastForward(ctx, expectedTip)
+}
+
+// fastForward serializes the verified branch move against integration changes.
+func (q *Queue) fastForward(ctx context.Context, expectedTip string) (*FastForwardResult, error) {
 	m := q.m
 	if m.st.mode != ModeWorktree || m.Repo == nil {
 		return nil, fmt.Errorf("%w: copy mode has no repository branch to fast-forward; apply Finish's patch", ErrUnsupported)
@@ -1194,6 +1208,9 @@ func (q *Queue) FastForward(ctx context.Context) (*FastForwardResult, error) {
 	q.mu.Lock()
 	tip := q.tip
 	q.mu.Unlock()
+	if expectedTip != "" && tip != expectedTip {
+		return nil, fmt.Errorf("%w: integration tip changed after preview", ErrNotFastForward)
+	}
 	r := m.Repo
 
 	branch, err := r.Branch(ctx)

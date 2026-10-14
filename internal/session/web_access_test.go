@@ -87,6 +87,7 @@ func TestTheJudgesVerdictIsLoggedAndHandedToTheHost(t *testing.T) {
 	}
 	defer s.Close()
 	g := goal.New("make the tests pass")
+	s.SaveGoal(g)
 	if _, err := s.Run(context.Background(), goal.Start(g)); err != nil {
 		t.Fatal(err)
 	}
@@ -141,6 +142,7 @@ func TestAJudgeThatFailsIsReportedAsNotJudged(t *testing.T) {
 	}
 	defer s.Close()
 	g := goal.New("x")
+	s.SaveGoal(g)
 	if _, err := s.Run(context.Background(), goal.Start(g)); err != nil {
 		t.Fatal(err)
 	}

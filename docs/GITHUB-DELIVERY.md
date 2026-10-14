@@ -2,7 +2,8 @@
 
 Each objective can independently enable **Auto-fix CI & reviews** and **Auto-merge**
 in the chat composer. The terminal equivalents are `--auto-fix`, `--auto-merge`
-and `/delivery fix|merge|both|off`. These choices reset for the next objective.
+and `/delivery fix|merge|both|off`. These choices apply to messages and standing goals, including `/goal TEXT`, and
+reset for the next objective.
 `gh` must be installed and authenticated for the repository.
 
 Windows delivery is currently unsupported: the existing Windows hard path
@@ -26,8 +27,14 @@ snapshots. To change that binding, configure the intended push remote/base and
 start delivery for a new objective; `/delivery resume` retains the saved binding.
 
 The manager implements, verifies, commits, pushes and opens or reuses the PR.
-Opening the PR is a direct manager operation. The controller polls GitHub without
-model requests while checks are pending. Auto-fix returns failed checks, conflicts,
+Opening the PR is a direct manager operation. In isolated teams, `task deliver`
+with `text` set to a commit message verifies direct manager edits and commits the
+integrated result to the original checkout without creating a board task. It
+refuses unrelated dirty files, branch movement and explicit permission denials.
+Authorization names the actual fast-forward or path-limited commit operations,
+and both the operation and integration tip must still match the preview. The controller polls GitHub without
+model requests while checks are pending. Controller command results are stored
+as durable evidence for standing-goal judgments. Auto-fix returns failed checks, conflicts,
 unresolved review threads and changed review summaries (including CodeRabbit) to
 the manager. Findings are evidence to evaluate: valid findings are repaired;
 inapplicable findings need an explanation before their threads are resolved.
@@ -40,7 +47,10 @@ Auto-merge uses a repository-supported merge method and the current head SHA. It
 never uses administrator bypasses or changes branch protection. Pending checks,
 requested changes, unresolved threads and merge conflicts prevent the merge request.
 After merge, it waits for base-branch workflows and asks the manager to verify any
-release, its tag commit and published artifacts. Repository requirements remain the
+release, its tag commit and published artifacts. Completion requires an explicit
+verification response naming the observed merge commit and concrete evidence;
+missing or pending verification cannot complete delivery. A changed workflow
+snapshot invalidates the previous release verification. Repository requirements remain the
 source of truth; GitHub can decline a merge after an earlier readiness snapshot.
 
 Progress is checkpointed in the session's `delivery.json`. Closing a browser tab

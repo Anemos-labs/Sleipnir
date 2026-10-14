@@ -65,6 +65,14 @@ Objections go through typed mail; the manager settles disagreements and can revi
 the existing task. Parent phase and member identities appear on the board; children
 are grouped under their parent (expandable cards in the browser, indented terminal rows).
 
+**Direct manager delivery.** `task deliver` verifies the manager's direct changes,
+integrates them, and commits the verified result to the original checkout. `text`
+supplies a commit message when already-applied edits need a new commit; a clean
+checkout fast-forwards to the verified integration commits. This operation creates
+no board task. It retains explicit permission rules, refuses unrelated dirty files
+or a changed branch, and rechecks the integration snapshot after authorization.
+Workers cannot invoke it. Push and PR commands remain direct manager operations.
+
 **Repair.** Configured teams do not expire idle contexts or exhaust a task's total
 repair attempts. Failed assignments return to the same worker with bounded backoff.
 `task revise` changes the existing title, description, scope or dependencies and
@@ -122,7 +130,7 @@ paths outside the project).
 
 | Tool | Actions | Notes |
 |---|---|---|
-| `task` | create, list, get, claim, update, block, resume, done, accept, reject, reopen, revise, resolve, fail, handover | Manager: create, accept, reject, reopen, revise, resolve and scope changes; pool leaders may create and accept their children. Persistent pools refuse `fail` and fresh-worker `handover`; embedded callers retain them (`fail` needs a typed `reason`). See sections 4 and 6. |
+| `task` | create, list, get, claim, update, block, resume, done, accept, reject, reopen, revise, resolve, fail, handover, deliver | Manager: create, accept, reject, reopen, revise, resolve, deliver and scope changes; pool leaders may create and accept their children. Persistent pools refuse `fail` and fresh-worker `handover`; embedded callers retain them (`fail` needs a typed `reason`). See sections 4 and 6. |
 | `mail` | send | one recipient; typed; section 5 |
 | `note` | propose | a bounded fact in the live view; older proposals can be evicted |
 | `spawn` | role, task, optional `agent=` to reuse an idle worker | Manager or pool leader assigning an existing member to its child; section 6 |

@@ -303,7 +303,7 @@ request raises something says so. Bodies and answers are the `wire` types named;
 
 | Method | Path | Does | Confirmation |
 |---|---|---|---|
-| `POST` | `/api/sessions/{id}/goal` | `wire.GoalRequest`: `action` is `set` (with `text`), `pause`, `resume` or `clear`; answers `{ok, state, queued}`: `queued` says that the action waits to run (`set` and `resume` run as the tab's next item; `pause` and `clear` while a turn stops), and `state` is then the goal's state before it | - |
+| `POST` | `/api/sessions/{id}/goal` | `wire.GoalRequest` (`autoFix` and `autoMerge` apply only to `set`, for that objective): `action` is `set` (with `text`), `pause`, `resume` or `clear`; answers `{ok, state, queued}`: `queued` says that the action waits to run (`set` and `resume` run as the tab's next item; `pause` and `clear` while a turn stops), and `state` is then the goal's state before it | - |
 | `POST` | `/api/sessions/{id}/mode` | `wire.ModeRequest`: `default`, `accept-edits`, `plan`, `bypass`, `yolo` | `mode:<mode>:<tab>` for `bypass` and `yolo` |
 | `POST` | `/api/sessions/{id}/model` | `wire.ModelRequest`: the manager's model, or a role's; a team starts again on it. Answers `{ok, restarted}`; `422 model` for a model that cannot be used | Through the restart, when it raises |
 | `POST` | `/api/sessions/{id}/effort` | `wire.EffortRequest`; `wire.EffortResult` has the level the model applies | - |

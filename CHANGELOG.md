@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Standing-goal judgments can search durable tool evidence across workers,
+  turns and compaction instead of relying on clipped recent results. Manager
+  `task deliver` commits verified integration directly to the original checkout,
+  respecting permission rules and dirty-checkout guards. GitHub delivery requires
+  explicit release verification tied to the merge commit and rechecks changed
+  workflow evidence. Useful ready compactions commit before staleness eviction.
+  Prompt bytes: the task schema and description change G0; the manager isolation
+  card changes private notes. These layers incur a one-time cache miss.
+
 - Planning-pool children inherit the parent's task kind unless explicitly set.
   Managers can revise a task's kind in place to repair an incorrect verifier
   contract. Reconciliation retains the combined contract supplied for every

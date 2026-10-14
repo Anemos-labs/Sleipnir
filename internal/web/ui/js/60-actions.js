@@ -103,7 +103,15 @@
   const goal = (S, body) => send(whenStarted(() => api().post(tab(S) + '/goal', body)), d => { if (d && d.queued) toast(body.action === 'set' || body.action === 'resume' ? 'the goal runs as the next item of ' + S.name : 'the goal is ' + (body.action === 'pause' ? 'paused' : 'cleared') + ' once the running turn stops', 'quiet'); });
   act('setGoal', (text, sid) => {
     const S = ses(sid); if (!S) return { ok: false }; text = String(text || '').trim(); if (!text) return { ok: false, why: '/goal needs text' };
-    if (why(S)) return refuse(S); return goal(S, { action: 'set', text });
+    if (why(S)) return refuse(S);
+    const delivery = Object.assign({}, S.ui.delivery || {}), body = { action: 'set', text };
+    if (delivery.autoFix) body.autoFix = true; if (delivery.autoMerge) body.autoMerge = true;
+    const r = goal(S, body);
+    if (r && r.ok !== false) {
+      const cleared = {}; S.ui.delivery = cleared; SL.bus.emit('delivery-choice', { sid: S.id });
+      if (r.done) r.done.then(res => { if (res && res.ok === false && res.code !== 'aborted' && S.ui.delivery === cleared) { S.ui.delivery = delivery; SL.bus.emit('delivery-choice', { sid: S.id }); } });
+    }
+    return r;
   });
   act('pauseGoal', sid => { const S = ses(sid); if (!S || why(S)) return S ? refuse(S) : { ok: false }; if (S.wm.goal.state !== 'active') return { ok: false, why: 'no active goal to pause' }; return goal(S, { action: 'pause' }); });
   act('resumeGoal', sid => { const S = ses(sid); if (!S || why(S)) return S ? refuse(S) : { ok: false }; if (S.wm.goal.state !== 'paused') return { ok: false, why: 'the goal is not paused' }; return goal(S, { action: 'resume' }); });

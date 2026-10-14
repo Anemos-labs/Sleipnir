@@ -181,3 +181,27 @@ func TestBlockingCompactionExhaustsBudgetBeforeForegroundRequest(t *testing.T) {
 		})
 	}
 }
+
+func TestReadyCompactionSurvivesLargeAppendOnlyGrowth(t *testing.T) {
+	a, log := newBlockingAgent(t, blockingProvider{do: func(context.Context, *provider.Request) (*provider.Response, error) {
+		return blockingReply(`{"keep_from":"t17","spine":[{"turns":"t1-t16","line":"Inspected implementation and tests."}]}`), nil
+	}})
+	a.startCompaction(context.Background(), "test")
+	a.jobs.Wait()
+	if a.comp.ready == nil {
+		t.Fatal("no ready patch")
+	}
+	for i := 0; i < 12; i++ {
+		a.thread.Append(core.Turn{Role: core.RoleUser, Blocks: []core.Block{core.Text(strings.Repeat("New evidence must survive. ", 300))}})
+	}
+	a.boundary(context.Background())
+	if a.comp.count != 1 {
+		t.Fatalf("ready useful patch discarded: commits=%d rejects=%v", a.comp.count, log.OfType(events.TypeCompactReject))
+	}
+	turns := a.thread.Snapshot().Turns
+	for _, turn := range turns[len(turns)-12:] {
+		if !strings.Contains(turn.PlainText(), "New evidence must survive.") {
+			t.Fatal("lost appended evidence")
+		}
+	}
+}

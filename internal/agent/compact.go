@@ -85,11 +85,14 @@ func (a *Agent) boundary(ctx context.Context) {
 	}
 	a.mu.Unlock()
 
-	// A patch must not be able to hold compaction hostage: one computed against a
-	// thread the agent has since outgrown, or one that has waited too long for a
-	// commit moment, is dropped and proposed again below.
+	// Append-only growth is preserved by commit. Use a beneficial ready patch
+	// before considering staleness; discarding it first can starve compaction on
+	// busy workers. Staleness still expires patches that cannot repay a commit.
 	if rp != nil {
-		if stale, why := a.cfg.Planner.Stale(rp.snapLive, st.ThreadTokens, held); stale {
+		a.mu.Lock()
+		canCommit := a.cfg.Planner.ShouldCommit(st, a.outcomeLocked(rp)).Yes
+		a.mu.Unlock()
+		if stale, why := a.cfg.Planner.Stale(rp.snapLive, st.ThreadTokens, held); stale && !canCommit {
 			a.mu.Lock()
 			if a.comp.ready == rp {
 				a.comp.ready = nil
