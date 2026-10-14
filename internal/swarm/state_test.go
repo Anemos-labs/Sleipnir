@@ -85,17 +85,12 @@ func TestWaitToolReportsChangesBetweenWaits(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// The manager saw the board when it spawned them: a change after that is news to its first wait, however late that wait starts
-	// (on a slow runner it started after the change, took the changed board as its baseline and slept to its timeout).
+	// The manager saw the board when it spawned them.
 	r.sw.setSeen("mgr", b.Snapshot())
 
-	first := make(chan string, 1)
-	go func() {
-		first <- r.callTool(context.Background(), "wait", "mgr", "manager", map[string]any{"timeout_sec": 5}).Text
-	}()
-	time.Sleep(50 * time.Millisecond)
-	b.Finish("be-2", "T2", StatusReview, "other result") // wakes the first wait
-	if res := <-first; !strings.Contains(res, "T2 → review") {
+	// A change after the manager looked and before it waits is news to the wait: it is reported at once, not slept through.
+	b.Finish("be-2", "T2", StatusReview, "other result")
+	if res := r.callTool(context.Background(), "wait", "mgr", "manager", map[string]any{"timeout_sec": 5}).Text; !strings.Contains(res, "T2 → review") {
 		t.Fatalf("first wait: %q", res)
 	}
 	// While the manager's model is thinking about that result, the worker finishes.
