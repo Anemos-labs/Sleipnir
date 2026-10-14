@@ -281,7 +281,7 @@ func planLog(testing.TB) []events.Event {
 	b.add(0, "", "log.open", map[string]any{"schema": 1})
 	b.add(step, "", "session.start", map[string]any{"model": "gpt-6-luna", "provider": "chatgpt", "swarm": true, "root": "/work/plan", "cwd": "/work/plan", "mailman": true,
 		"models": map[string]any{"gpt-6-luna": map[string]any{"source": "table", "plan": true, "input_per_m": 0.10, "output_per_m": 0.50, "cache_read_per_m": 0.01,
-			"cache_write_5m_per_m": 0.10, "cache_write_1h_per_m": 0.10, "ttl_s": 300, "context": 200000}}})
+			"cache_write_5m_per_m": 0.125, "cache_write_1h_per_m": 0.125, "ttl_s": 300, "context": 200000}}})
 	b.add(step, "mgr", "user.input", map[string]any{"text": "Add a health endpoint"})
 	b.add(step, "swarm", "agent.spawn", map[string]any{"id": "mgr", "role": "manager", "model": "gpt-6-luna"})
 	b.add(step, "mgr", "model.request", req("p1", "main"))

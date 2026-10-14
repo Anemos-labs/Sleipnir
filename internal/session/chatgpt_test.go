@@ -151,7 +151,7 @@ func TestAPlanSessionShowsTheListPriceAndBudgetsCountTheBill(t *testing.T) {
 			}
 		case events.TypeSessionStart:
 			rec, _ := p["models"].(map[string]any)["gpt-6-luna"].(map[string]any)
-			if rec["plan"] != true || rec["source"] != "table" || rec["input_per_m"] != 0.1 || rec["cache_read_per_m"] != 0.01 || rec["output_per_m"] != 0.5 {
+			if rec["plan"] != true || rec["source"] != "table" || rec["input_per_m"] != 0.1 || rec["cache_read_per_m"] != 0.01 || rec["output_per_m"] != 0.5 || rec["cache_write_5m_per_m"] != 0.125 {
 				t.Errorf("session.start records %v", rec)
 			}
 		case events.TypeSessionEnd:

@@ -105,16 +105,16 @@ func TestModelValidate(t *testing.T) {
 }
 
 // The table holds OpenAI's API list prices (standard tier, short context, USD per million tokens) for the models a ChatGPT plan offers,
-// under every spelling a reference may use, with no cache-write premium.
+// under every spelling a reference may use: input, cached input, the short-context cache-write rate (for both lifetimes) and output.
 func TestOpenAIListPrices(t *testing.T) {
-	want := map[string][3]float64{ // input, cached input, output
-		"gpt-6-astra":   {10.00, 1.00, 50.00},
-		"gpt-6.1-sol":   {2.00, 0.10, 10.00},
-		"gpt-6-sol":     {2.00, 0.20, 10.00},
-		"gpt-6-luna":    {0.10, 0.01, 0.50},
-		"gpt-5.6-sol":   {4.00, 0.40, 20.00},
-		"gpt-5.6-terra": {2.00, 0.20, 12.00},
-		"gpt-5.6-luna":  {0.20, 0.02, 1.20},
+	want := map[string][4]float64{ // input, cached input, cache write, output
+		"gpt-6-astra":   {10.00, 1.00, 12.50, 50.00},
+		"gpt-6.1-sol":   {2.00, 0.10, 2.50, 10.00},
+		"gpt-6-sol":     {2.00, 0.20, 2.50, 10.00},
+		"gpt-6-luna":    {0.10, 0.01, 0.125, 0.50},
+		"gpt-5.6-sol":   {4.00, 0.40, 5.00, 20.00},
+		"gpt-5.6-terra": {2.00, 0.20, 2.50, 12.00},
+		"gpt-5.6-luna":  {0.20, 0.02, 0.25, 1.20},
 	}
 	table := Defaults()
 	openai := 0
@@ -134,8 +134,8 @@ func TestOpenAIListPrices(t *testing.T) {
 				continue
 			}
 			got := m.Price
-			if m.ID != id || got.InputPerM != p[0] || got.CacheReadPerM != p[1] || got.OutputPerM != p[2] ||
-				got.CacheWrite5mPerM != p[0] || got.CacheWrite1hPerM != p[0] || !m.Cache.Auto || m.Cache.Explicit || m.Plan {
+			if m.ID != id || got.InputPerM != p[0] || got.CacheReadPerM != p[1] || got.CacheWrite5mPerM != p[2] || got.CacheWrite1hPerM != p[2] ||
+				got.OutputPerM != p[3] || !m.Cache.Auto || m.Cache.Explicit || m.Plan {
 				t.Errorf("%s: %s %+v", spelling, m.ID, got)
 			}
 		}

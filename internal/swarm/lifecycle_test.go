@@ -9,6 +9,7 @@ package swarm
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -483,6 +484,54 @@ func TestRetireKeepsSpendInTheBudget(t *testing.T) {
 	}
 	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "C", By: "mgr"}); err == nil {
 		t.Fatal("the swarm budget reopened after a retirement")
+	}
+}
+
+// What a retired agent's compaction job accounts while the agent closes reaches the ledger, once: detach reads the spend after Close
+// has waited for the job, and counts the agent as a member until then. (A compaction response landing during Close is simulated: the
+// spend read after the close is higher than before it.)
+func TestRetireFoldsSpendAccountedWhileTheAgentCloses(t *testing.T) {
+	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply {
+		return rvReply{Text: "ok", Usage: core.Usage{InputTokens: 100_000}} // $0.40 at 4$/M
+	})
+	r.sw.StartManager()
+	id, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "A", By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, "worker idle", func() bool { return r.idle(id) })
+	worker := r.sw.get(id).a
+	before, beforeList := r.sw.TotalCost(), r.sw.TotalListCost()
+	const lateCost, lateList = 1.0, 0.5
+
+	oldClose, oldSpend := closeAgent, agentSpend
+	t.Cleanup(func() { closeAgent, agentSpend = oldClose, oldSpend })
+	late, during := false, -1.0
+	closeAgent = func(a *agent.Agent) error {
+		if a == worker {
+			during = r.sw.TotalCost() // the agent is closing: still counted, not yet in the ledger
+			late = true               // a compaction response is accounted now
+		}
+		return oldClose(a)
+	}
+	agentSpend = func(a *agent.Agent) (float64, float64) {
+		c, l := oldSpend(a)
+		if a == worker && late {
+			c, l = c+lateCost, l+lateList
+		}
+		return c, l
+	}
+	if err := r.sw.Retire(id); err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(during-before) > 1e-9 {
+		t.Errorf("while the agent closed TotalCost was $%.4f, want $%.4f: the retiring agent must be counted once", during, before)
+	}
+	if got := r.sw.TotalCost(); math.Abs(got-(before+lateCost)) > 1e-9 {
+		t.Errorf("TotalCost after the retirement = $%.4f, want $%.4f: the spend accounted while it closed is lost or doubled", got, before+lateCost)
+	}
+	if got := r.sw.TotalListCost(); math.Abs(got-(beforeList+lateList)) > 1e-9 {
+		t.Errorf("TotalListCost after the retirement = $%.4f, want $%.4f", got, beforeList+lateList)
 	}
 }
 

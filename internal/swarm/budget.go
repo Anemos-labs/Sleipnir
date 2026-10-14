@@ -14,15 +14,31 @@ import (
 // evaded: the request governor asks before every request, and the moment the total
 // is over the line every running worker is stopped.
 
-// TotalCost sums spend across every agent, running or retired.
-func (s *Swarm) TotalCost() float64 {
+// closeAgent closes a retired member's agent, and agentSpend reads what an agent has cost and what its plan-covered usage comes to at
+// the API list price. They are variables so that a test can stand between the two (detach reads the spend after the close).
+var (
+	closeAgent = func(a *agent.Agent) error { return a.Close() }
+	agentSpend = func(a *agent.Agent) (cost, list float64) { _, c := a.Usage(); return c, a.ListUSD() }
+)
+
+// counted are the agents whose spend is not yet in the ledger: the members, and the members being retired (detach), with the ledger
+// read in the same critical section, so that an agent is counted exactly once whatever detach does meanwhile.
+func (s *Swarm) counted() (spent, list float64, ms []*member) {
 	s.mu.Lock()
-	spent := s.spent
-	ms := make([]*member, 0, len(s.members))
+	defer s.mu.Unlock()
+	ms = make([]*member, 0, len(s.members)+len(s.retiring))
 	for _, m := range s.members {
 		ms = append(ms, m)
 	}
-	s.mu.Unlock()
+	for m := range s.retiring {
+		ms = append(ms, m)
+	}
+	return s.spent, s.spentList, ms
+}
+
+// TotalCost sums spend across every agent, running or retired.
+func (s *Swarm) TotalCost() float64 {
+	spent, _, ms := s.counted()
 	for _, m := range ms {
 		_, c := m.a.Usage()
 		spent += c
@@ -33,13 +49,7 @@ func (s *Swarm) TotalCost() float64 {
 // TotalListCost sums, across every agent running or retired, the API list-price value of the usage a subscription plan covered
 // (agent.Agent.ListUSD): what the interfaces show for that usage. No budget reads it; TotalCost is the spend.
 func (s *Swarm) TotalListCost() float64 {
-	s.mu.Lock()
-	list := s.spentList
-	ms := make([]*member, 0, len(s.members))
-	for _, m := range s.members {
-		ms = append(ms, m)
-	}
-	s.mu.Unlock()
+	_, list, ms := s.counted()
 	for _, m := range ms {
 		list += m.a.ListUSD()
 	}

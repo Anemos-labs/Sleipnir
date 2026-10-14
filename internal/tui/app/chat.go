@@ -133,10 +133,11 @@ type runEnd struct {
 }
 
 // totalsBase is what the session had used when a turn began, so that the status line can say what this turn has used. cost is the
-// figure shown (state.Spend.Shown: the bill and what a subscription plan covered, at the API list price).
+// figure shown (state.Spend.Shown: the bill and what a subscription plan covered, at the API list price), list the plan's part of it:
+// the turn's figure is marked as a plan's only when this turn's list-price value grew.
 type totalsBase struct {
 	prompt, output int64
-	cost           float64
+	cost, list     float64
 }
 
 // queued is something typed ahead: a line, or a Ctrl-D (the end of the input), in the order it was typed.
@@ -997,7 +998,7 @@ func (m *chatModel) since(t time.Time) time.Duration {
 func (m *chatModel) totalsNow() totalsBase {
 	sn := m.snapshot()
 	t := sn.Totals
-	return totalsBase{prompt: t.Tokens.Prompt(), output: t.Tokens.Output, cost: sn.Spend().Shown()}
+	return totalsBase{prompt: t.Tokens.Prompt(), output: t.Tokens.Output, cost: sn.Spend().Shown(), list: t.ListUSD}
 }
 
 // ---- the scrollback ----
@@ -1162,7 +1163,7 @@ func (m *chatModel) statusView(sn *state.Snapshot) statusView {
 	}
 	t := sn.Totals
 	s.tokIn, s.tokOut = max(t.Tokens.Prompt()-r.base.prompt, 0), max(t.Tokens.Output-r.base.output, 0)
-	s.cost, s.plan = max(sn.Spend().Shown()-r.base.cost, 0), sn.Spend().Plan
+	s.cost, s.plan = max(sn.Spend().Shown()-r.base.cost, 0), t.ListUSD-r.base.list > 0 // a plan's usage in this turn, not an earlier one
 	s.kind = statusThinking
 	if a, ok := sn.Focused(""); ok {
 		switch {

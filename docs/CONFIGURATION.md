@@ -266,9 +266,9 @@ gateway's, not the fallback's. `sleipnir models` prints a marketplace catalogue 
 
 The built-in table (`internal/cost/defaults.go`) holds Anthropic's Claude models and OpenAI's `gpt-6-astra`, `gpt-6.1-sol`,
 `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra` and `gpt-5.6-luna`. The OpenAI prices are the API's standard tier
-for short context (at most 272k input tokens), per million tokens, from <https://developers.openai.com/api/docs/pricing>;
-OpenAI charges no cache-write premium, so a cache write is priced as input. A prompt longer than 272k tokens is billed at a
-higher long-context rate that the table does not model, so its figure is a lower bound. The table prices `openai/<model>`
+for short context (at most 272k input tokens), per million tokens, from <https://developers.openai.com/api/docs/pricing>:
+input, cached input, cache writes (the short-context cache-write rate, 1.25 times input) and output. A prompt longer than
+272k tokens is billed at higher long-context rates that the table does not model, so its figure is a lower bound. The table prices `openai/<model>`
 (the API with a key) and the same model on a marketplace (`openrouter/openai/gpt-6-luna`); the request still names the model
 as the reference does. Their context window in the table is a cautious 200k, as for a model nothing knows; the provider's
 `options.context_window` sets the real one.
@@ -282,8 +282,9 @@ adds `list_usd` and `"plan": true`. Responses of every other model have no `list
 Savings and the cost of cache misses of a plan's session are computed at the same list prices.
 
 **Budgets count what is billed.** `--budget-usd`, `/budget`, a team's `swarm.budget_usd` (the $50 default), a scheduled job's
-budget and the RL caps read `cost_usd` only. A plan's usage never fills them, whatever its list-price value; a budget gauge of a
-plan's session says "plan" instead of filling.
+budget and the RL caps read `cost_usd` only. A plan's usage never fills them, whatever its list-price value. A budget gauge
+fills with what is billed: a session that is all on a plan says "plan" and stays empty, and one that mixes a plan with billed
+models fills with the billed part.
 
 `sleipnir models --provider chatgpt` uses the saved ChatGPT sign-in. A plan's model is listed at the API list price of the
 same model with its output price tagged `plan` (`?` when the table does not know the model), and a note on stderr says what

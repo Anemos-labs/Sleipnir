@@ -27,6 +27,14 @@ test('the helpers: a plan\'s figure is the bill plus the list-price value, with 
   assert.match(U.planTag({ plan: true }), /class="plantag" title="at API list price; billed to your ChatGPT plan">plan</);
   assert.equal(U.planTag({ plan: false }), '');
   assert.equal(U.fmtSpend({ cost: '<img>', list: 'x', plan: true }, 2), '≈$0.00', 'what is not a number is nothing');
+  // a budget gauge fills with what was billed, also in a session that mixes plan usage and billed usage
+  assert.equal(U.planOnly({ cost: 0, list: 0.3, plan: true }), true);
+  assert.equal(U.planOnly({ cost: 0.2, list: 0.3, plan: true }), false, 'a mixed session has billed spend');
+  assert.equal(U.planOnly({ cost: 0, plan: false }), false);
+  assert.equal(U.budgetPct({ cost: 2.5, list: 9, plan: true }, 5), 50);
+  assert.equal(U.budgetPct({ cost: 0, list: 9, plan: true }, 5), 0);
+  assert.equal(U.budgetPct({ cost: 9 }, 5), 100);
+  assert.equal(U.budgetPct({ cost: 1 }, 0), 0, 'no budget, no fill');
 });
 
 test('the reducer over a plan\'s recording: nothing billed, the list-price value per agent and in all, as the terminal computes it', () => {
@@ -53,6 +61,18 @@ test('the budget page of a plan\'s session: the list-price figure marked, and a 
   assert.match(html, /id="budSpent">≈\$0\.0076</);
   assert.match(html, /plan: at API list price; billed to your ChatGPT plan/);
   assert.match(html, /class="gauge wide plan"><i id="budBar" style="width:0%"/, 'the budget counts what is billed: nothing fills it');
+  assert.match(html, /id="budPct">\$0\.00 billed: the plan counts against no budget</);
+  // a session that mixes plan usage and billed usage: its gauge fills with the bill, and no exemption is claimed
+  SL.calc.totals = () => ({ cost: 2.5, list: 0.75, plan: true, pct: 70, prompt: 1000, out: 100, saved: 0.002 });
+  const mixed = SL.toolkit.settings.pages.budget(session(), SL.toolkit.settings.newState({ page: 'budget' }));
+  assert.match(mixed, /id="budSpent">≈\$3\.2500</);
+  assert.match(mixed, /class="gauge wide plan"><i id="budBar" style="width:50%"/);
+  assert.match(mixed, /id="budPct">50% used \(billed; the plan&#39;s part is not counted\)</);
+  assert.doesNotMatch(mixed, /counts against no budget/);
+  assert.match(mixed, /spent, with plan usage at API list price/);
+  const T = SL.toolkit.settings;
+  assert.equal(T.budNote({ cost: 0, plan: true }, 0), 'no limit; the plan counts against no budget');
+  assert.equal(T.budNote({ cost: 1, plan: false }, 4), '25% used');
   SL.calc.totals = () => ({ cost: 2.5, list: 0, plan: false, pct: 70, prompt: 1000, out: 100, saved: 0.002 });
   const billed = SL.toolkit.settings.pages.budget(session(), SL.toolkit.settings.newState({ page: 'budget' }));
   assert.match(billed, /id="budSpent">\$2\.5000</); assert.match(billed, /class="gauge wide"><i id="budBar" style="width:50%"/);
@@ -69,6 +89,24 @@ test('the Models page shows a plan\'s model at the API list price, tagged plan',
   assert.match(row('chatgpt/gpt-6-luna'), /class="tag ok" title="a ChatGPT plan covers its use[^"]*">plan</);
   assert.doesNotMatch(row('chatgpt/gpt-6-luna'), /price unknown/);
   assert.doesNotMatch(row('a/priced'), />plan</);
+});
+
+test('a live session card: the plan\'s label, tooltip and gauge are drawn again when the session\'s first plan usage arrives', () => {
+  const S = { id: 's1', name: 'work', sid: 'x', recorded: false, state: () => 'run', roster: [{ id: 'mgr' }], wm: { merged: [], torder: [] }, meta: { cwd: '/p', model: 'chatgpt/gpt-6-luna', mode: 'default', launch: 'sleipnir chat', started: '', budget: 5 } };
+  const { SL } = page({ modules: ['91-views-b.js'], sessions: [S] }), K = SL.toolkit.sessions;
+  let totals = { cost: 0, list: 0, plan: false, pct: 0, prompt: 0, out: 0, saved: 0 };
+  SL.calc.totals = () => totals;
+  const before = K.liveSig([S], [], 0, 0), card = K.cardHtml(S);
+  assert.doesNotMatch(card, /plan ·|gauge wide plan/);
+  totals = { cost: 0, list: 0.0038, plan: true, pct: 80, prompt: 1000, out: 10, saved: 0 };
+  assert.notEqual(K.liveSig([S], [], 0, 0), before, 'the cards are drawn again: their plan markup is drawn with them');
+  const planned = K.cardHtml(S);
+  assert.match(planned, /data-c="cost" title="at API list price; billed to your ChatGPT plan">≈\$0\.0038</);
+  assert.match(planned, /plan · of \$5\.00/);
+  assert.match(planned, /class="gauge wide plan"><i style="width:0%"/);
+  totals = { cost: 1, list: 0.5, plan: true, pct: 80, prompt: 1000, out: 10, saved: 0 };   // mixed: the bill fills the gauge
+  assert.match(K.cardHtml(S), /class="gauge wide plan"><i style="width:20%"/);
+  assert.equal(K.liveSig([S], [], 0, 0), K.liveSig([S], [], 0, 0), 'the signature is stable while nothing changes');
 });
 
 test('a recorded session that ran on a plan shows its list-price figure, marked', () => {

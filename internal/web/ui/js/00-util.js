@@ -21,6 +21,11 @@
   const fmtSpend = (c, d) => { const n = spendOf(c); return c.plan ? '≈' + fmtUsd(n, n > 0 && n < 0.01 ? 4 : d) : fmtUsd(n, d); };
   /** The plan tag beside a figure that includes what a plan covered (markup; '' for any other figure). */
   const planTag = c => c && c.plan ? ' <span class="plantag" title="' + PLAN_HELP + '">plan</span>' : '';
+  /** Whether a cost record is all a plan's: plan usage and nothing billed, so that no budget is touched at all. A session that mixes the
+   *  two has billed spend, which its budget counts. */
+  const planOnly = c => !!(c && c.plan) && !(Number(c.cost) > 0);
+  /** How full a budget gauge is, in percent: what was billed against the budget. A plan's usage never fills it. */
+  const budgetPct = (c, budget) => budget > 0 ? Math.min(100, (Number(c.cost) || 0) / budget * 100) : 0;
   const fmtMs = ms => ms < 1000 ? Math.round(ms) + 'ms' : (ms / 1000).toFixed(1) + 's';
   const pct = (a, b) => b > 0 ? Math.round(100 * a / b) : 0;
   /** m:ss from seconds, rounding up (a countdown shows 0:25 for 24.3 s). */
@@ -70,6 +75,6 @@
   /** Is this key event part of an input method's composition (a CJK candidate being chosen)? Its Enter picks a candidate: it never
    *  sends, submits or runs a shortcut. */
   const composing = e => !!e && (e.isComposing === true || e.keyCode === 229);
-  SL.u = { composing, agCol, okId, safeId, BAD_ID, own, clip1, NSV, $, $$, esc, fmtK, fmtN, fmtUsd, PLAN_HELP, spendOf, fmtSpend, planTag, fmtMs, pct, clock, mmss, tod, dur, clamp, hitCls, mk, sv, frag, rng, hash, uid, deepCopy, upperBound, makeBus, copy, ucfirst };
+  SL.u = { composing, agCol, okId, safeId, BAD_ID, own, clip1, NSV, $, $$, esc, fmtK, fmtN, fmtUsd, PLAN_HELP, spendOf, fmtSpend, planTag, planOnly, budgetPct, fmtMs, pct, clock, mmss, tod, dur, clamp, hitCls, mk, sv, frag, rng, hash, uid, deepCopy, upperBound, makeBus, copy, ucfirst };
   SL.bus = makeBus();
 })(SL);

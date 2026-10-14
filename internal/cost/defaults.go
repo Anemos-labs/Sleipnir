@@ -16,10 +16,11 @@ func anthropicCache(minPrefix int) CacheModel {
 	}
 }
 
-// openaiCache models OpenAI-style automatic prefix caching: no markers, no
-// write premium, a 1024-token floor and 128-token increments. Retention is
-// short in memory; the planner treats it as ~5 minutes unless the request
-// asks for extended retention.
+// openaiCache models OpenAI-style automatic prefix caching: no markers, a
+// 1024-token floor and 128-token increments (what a cache write costs is the
+// price's: OpenAI's own API charges a premium, see openai; gateways do not).
+// Retention is short in memory; the planner treats it as ~5 minutes unless the
+// request asks for extended retention.
 func openaiCache() CacheModel {
 	return CacheModel{
 		Auto:             true,
@@ -46,15 +47,16 @@ func claude(id string, ctx, maxOut int, in, out, read float64, minPrefix int, pt
 	}
 }
 
-// openai constructs an OpenAI model of the table: its API list prices for input, cached input and output, no cache-write premium (a
-// write is billed as plain input, as gateway entries do), and automatic prefix caching. The context window is the harness's cautious
+// openai constructs an OpenAI model of the table: its API list prices for input, cached input, cache writes (the short-context
+// cache-write rate, 1.25 times input, for both lifetimes the price has) and output, and automatic prefix caching. The context window
+// is the harness's cautious
 // 200k (Fallback's), not the API's, so that compaction starts where it did before the table knew these models; the provider's
 // options.context_window says the real one. The output limit is the family's 128k, which a request asks no more than 16k of unless
 // told otherwise.
-func openai(id string, in, cached, out float64) Model {
+func openai(id string, in, cached, write, out float64) Model {
 	return Model{
 		ID: id, Provider: "openai", ContextTokens: 200_000, MaxOutput: 128_000,
-		Price: Price{InputPerM: in, OutputPerM: out, CacheReadPerM: cached, CacheWrite5mPerM: in, CacheWrite1hPerM: in},
+		Price: Price{InputPerM: in, OutputPerM: out, CacheReadPerM: cached, CacheWrite5mPerM: write, CacheWrite1hPerM: write},
 		Cache: openaiCache(),
 	}
 }
@@ -84,13 +86,14 @@ func Defaults() *Table {
 		claude("claude-sonnet-5", 1_000_000, 128_000, 2, 10, 0.20, 1024, false),
 		claude("claude-sonnet-4-6", 1_000_000, 128_000, 3, 15, 0.30, 1024, false),
 		claude("claude-haiku-4-5", 200_000, 64_000, 1, 5, 0.10, 4096, false),
-		openai("gpt-6-astra", 10.00, 1.00, 50.00),
-		openai("gpt-6.1-sol", 2.00, 0.10, 10.00),
-		openai("gpt-6-sol", 2.00, 0.20, 10.00),
-		openai("gpt-6-luna", 0.10, 0.01, 0.50),
-		openai("gpt-5.6-sol", 4.00, 0.40, 20.00),
-		openai("gpt-5.6-terra", 2.00, 0.20, 12.00),
-		openai("gpt-5.6-luna", 0.20, 0.02, 1.20),
+		// input, cached input, cache write, output
+		openai("gpt-6-astra", 10.00, 1.00, 12.50, 50.00),
+		openai("gpt-6.1-sol", 2.00, 0.10, 2.50, 10.00),
+		openai("gpt-6-sol", 2.00, 0.20, 2.50, 10.00),
+		openai("gpt-6-luna", 0.10, 0.01, 0.125, 0.50),
+		openai("gpt-5.6-sol", 4.00, 0.40, 5.00, 20.00),
+		openai("gpt-5.6-terra", 2.00, 0.20, 2.50, 12.00),
+		openai("gpt-5.6-luna", 0.20, 0.02, 0.25, 1.20),
 		// Deterministic test model served by the built-in mock provider.
 		Model{
 			ID: "mock-1", Provider: "mock", ContextTokens: 1_000_000, MaxOutput: 64_000,

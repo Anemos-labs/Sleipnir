@@ -9,7 +9,8 @@ they do not indicate whether a change has been released.
 
 - The built-in price table includes OpenAI's `gpt-6-astra`, `gpt-6.1-sol`, `gpt-6-sol`,
   `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra` and `gpt-5.6-luna` at the API's
-  standard-tier, short-context list prices; `openai/<model>` is priced at them
+  standard-tier, short-context list prices (input, cached input, cache writes at
+  1.25 times input, output); `openai/<model>` is priced at them
   instead of the $3/$15 fallback. A model the table prices keeps the id its
   reference names in requests (`openrouter/openai/gpt-6-luna` sends
   `openai/gpt-6-luna`). A ChatGPT plan's usage is shown at the same list

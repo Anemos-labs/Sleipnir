@@ -431,18 +431,34 @@ func (s *Swarm) Retire(id string) error {
 
 // detach removes a retired member from the swarm: its spend goes into the budget
 // ledger, its tasks return to todo, its leases and its board entry are dropped.
+//
+// The spend is read after the agent is closed: Close waits for a compaction job,
+// whose response can still be accounted while it stops, and a figure read before
+// would leave that response out of the ledger for good. Until then the member is
+// in retiring, which TotalCost and TotalListCost count as they count members, so
+// the budget counts its spend exactly once throughout.
 func (s *Swarm) detach(m *member) {
 	s.mu.Lock()
-	if s.members[m.id] == m {
+	own := s.members[m.id] == m
+	if own {
 		delete(s.members, m.id)
-		_, c := m.a.Usage()
-		s.spent += c
-		s.spentList += m.a.ListUSD()
+		if s.retiring == nil {
+			s.retiring = map[*member]struct{}{}
+		}
+		s.retiring[m] = struct{}{}
 	}
 	delete(s.lastSeen, m.id)
 	s.mu.Unlock()
 	m.stopTimers()
-	_ = m.a.Close() // cancels and waits for its compaction job, releases its archive index
+	_ = closeAgent(m.a) // cancels and waits for its compaction job, releases its archive index
+	if own {
+		cost, list := agentSpend(m.a)
+		s.mu.Lock()
+		delete(s.retiring, m)
+		s.spent += cost
+		s.spentList += list
+		s.mu.Unlock()
+	}
 	requeued := s.Board.RequeueOwned(m.id, "its worker was retired")
 	s.Leases.ReleaseAll(m.id)
 	s.retireTree(m) // an isolated worker's tree goes with it when nothing would be lost

@@ -220,7 +220,7 @@ tokens, cost and estimated saving of the harness's own service agents (the mailm
 `use` event, and a page adds them to the totals of its agents so that the totals are those of the run. A `use` or `svc` event
 whose usage a ChatGPT plan covered carries `plan: true` and `list`, that usage at the API list price (its `cost` is what was
 billed: nothing); a page shows `cost` plus `list` with a "≈" and a `plan` tag, "at API list price; billed to your ChatGPT
-plan", and draws no budget gauge filling with it. A recorded session (`GET /api/recorded`) carries the same two fields from its
+plan", and fills a budget gauge with `cost` only. A recorded session (`GET /api/recorded`) carries the same two fields from its
 `session.end`.
 
 Events that have a line in the terminal's feed and no kind of their own become `sys` rows of the manager's channel, with `ag` the

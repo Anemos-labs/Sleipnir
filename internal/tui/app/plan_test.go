@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"math"
 	"strings"
 	"testing"
@@ -71,6 +72,10 @@ func TestAPlansSessionShowsTheListPriceMarked(t *testing.T) {
 	if !strings.Contains(gov, "billed $0/$5") || strings.Contains(gov, "$0.0076/$5") {
 		t.Errorf("the budget is drawn against the plan's figure:\n%s", gov)
 	}
+	d.Billed, d.Spend = 2.5, 2.5076 // a session that mixes billed usage with the plan's: the meter is the bill's
+	if gov := plainText(widget.Dashboard(d, 140, 40, 0, widget.MonoPalette())); !strings.Contains(gov, "billed $2.50/$5") || !strings.Contains(gov, "≈$2.51 plan") {
+		t.Errorf("a mixed session's budget meter:\n%s", gov)
+	}
 
 	k := goldenLook(true)
 	got := k.turnSummary(2*time.Second, TurnResult{Steps: 2, ListUSD: 0.0076, Plan: true}, 100).Plain()
@@ -80,6 +85,50 @@ func TestAPlansSessionShowsTheListPriceMarked(t *testing.T) {
 	if got := k.turnSummary(2*time.Second, TurnResult{Steps: 2, CostUSD: 0.0076}, 100).Plain(); strings.Contains(got, "≈") || strings.Contains(got, "plan") {
 		t.Errorf("a billed turn is marked as a plan's: %q", got)
 	}
+}
+
+// The status line marks what this turn has used as a plan's only when this turn's usage was a plan's: a billed turn after a turn on
+// the plan says "$0.01", and the plan's usage that follows in the same turn makes it "≈… plan".
+func TestTheStatusLineMarksOnlyThisTurnsPlanUsage(t *testing.T) {
+	r := startChat(t, rigOpts{cols: 120, rows: 24})
+	b := statetest.NewBuilder()
+	r.ctrl('t')
+	r.shows("nothing has been sent yet")
+	r.emit(planEvents(b)...) // an earlier turn, on the plan
+	r.shows("≈$0.0076 plan")
+	r.special(input.Esc)
+	r.shows("Message Sleipnir")
+
+	started, finish := make(chan struct{}), make(chan struct{})
+	r.host.turn = func(ctx context.Context, _ string) TurnResult {
+		close(started)
+		select {
+		case <-ctx.Done():
+		case <-finish:
+		}
+		return TurnResult{}
+	}
+	defer close(finish)
+	r.submit("next")
+	<-started
+	status := func(s string) string {
+		for _, line := range strings.Split(s, "\n") {
+			if strings.Contains(line, "esc to interrupt") {
+				return line
+			}
+		}
+		return ""
+	}
+	r.emit(b.Request("w-1", "w-1.3", "claude-x", "pk", statetest.Sec{Name: "shared", Tokens: 100}),
+		b.Response("w-1", "w-1.3", "claude-x", 1000, 0, 0, 100, 0.0123))
+	line := status(r.until("the billed turn's cost", func(s string) bool { return strings.Contains(status(s), "$0.01") }))
+	if strings.Contains(line, "plan") || strings.Contains(line, "≈") {
+		t.Errorf("a billed turn after a plan's is marked as the plan's: %q", line)
+	}
+	p := statetest.ResponsePayload("w-1.4", "gpt-6-luna", 20_000, 80_000, 0, 2_000, 0)
+	p["list_usd"] = 0.0038
+	r.emit(b.Request("w-1", "w-1.4", "gpt-6-luna", "pk", statetest.Sec{Name: "shared", Tokens: 100}), b.Emit("w-1", events.TypeModelResponse, p))
+	r.until("the plan's usage in this turn", func(s string) bool { return strings.Contains(status(s), "≈$0.02 plan") })
 }
 
 // The chat's stats page and status line say the same: the figure at the list price, its mark, and what the mark means.

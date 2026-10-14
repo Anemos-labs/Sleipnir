@@ -126,7 +126,13 @@
   }
   /** the confirm of "Forget all…": the directories it forgets */
   const forgetSpec = dirs => ({ title: 'Forget every directory', text: 'Forget the <b>' + dirs.length + '</b> director' + (dirs.length === 1 ? 'y' : 'ies') + ' you said yes to? Their own files are left out of the next session until you say yes again.', detail: '<span class="mono">' + esc(dirs.map(d => d.dir).join('\n')) + '</span>', ok: 'Forget them', danger: true });
-  TK.settings = { trustFlow, trustPost, forgetSpec, projectState, TRUST_WHY, modelRows, modelsCli, rulesIn, dayTxt, keyInfo, runLine, clampWorkers, teamWord, ledgerRows, warningRow, issueRow, configWarnings, promptCmds, curModel, PAGES };
+  /** The words under the spend of the Budget page: spent, or what a plan's figure is (text). */
+  const budLabel = c => U.planOnly(c) ? 'plan: ' + U.PLAN_HELP : c.plan ? 'spent, with plan usage ' + U.PLAN_HELP : 'spent';
+  /** The words under the budget gauge (text): how much of the budget the bill used, and for a session that is all a plan's, that the plan
+   *  counts against no budget. A session that mixes the two is measured by its bill, as its budget is. */
+  const budNote = (c, budget) => U.planOnly(c) ? (budget ? fmtUsd(0, 2) + ' billed: the plan counts against no budget' : 'no limit; the plan counts against no budget')
+    : budget ? Math.round(U.budgetPct(c, budget)) + '% used' + (c.plan ? ' (billed; the plan\'s part is not counted)' : '') : 'no limit';
+  TK.settings = { trustFlow, trustPost, forgetSpec, projectState, TRUST_WHY, budLabel, budNote, modelRows, modelsCli, rulesIn, dayTxt, keyInfo, runLine, clampWorkers, teamWord, ledgerRows, warningRow, issueRow, configWarnings, promptCmds, curModel, PAGES };
 
   /* ---------------- the pages: pure builders of markup from the session S and the page state ST ---------------- */
   const P = {};
@@ -152,7 +158,7 @@
         card('Reasoning effort', '<span class="mono">/effort</span>', row('Effort', seg('effort', efforts(), S.meta.effort, 'Reasoning effort'), 'the harness maps a level to the closest one each model supports') + '<p class="stubnote" style="margin:0">Current: <b id="effNow">' + esc(S.meta.effort) + '</b>' + applied + '. Effort applies to the turns from now on; it never changes the cached prefix.</p>');
     };
     P.budget = (S, ST) => {
-      const c = calc.totals(S.wm); return card('This session’s budget', '<span class="mono">--budget-usd</span> · <span class="mono">/budget</span>', '<div class="bigrow"><div><div class="big num" id="budSpent">' + U.fmtSpend(c, 4) + '</div><small id="budSpentLbl">' + (c.plan ? 'plan: ' + esc(U.PLAN_HELP) : 'spent') + '</small></div><div><div class="big num dimv">' + (S.meta.budget ? fmtUsd(S.meta.budget, 2) : 'off') + '</div><small>budget</small></div><div class="gaugecol"><div class="gauge wide' + (c.plan ? ' plan' : '') + '"><i id="budBar" style="width:' + (S.meta.budget && !c.plan ? Math.min(100, c.cost / S.meta.budget * 100) : 0) + '%"></i></div><small id="budPct">' + (S.meta.budget ? Math.round(c.cost / S.meta.budget * 100) + '% used' : 'no limit') + '</small></div></div>' +
+      const c = calc.totals(S.wm); return card('This session’s budget', '<span class="mono">--budget-usd</span> · <span class="mono">/budget</span>', '<div class="bigrow"><div><div class="big num" id="budSpent">' + U.fmtSpend(c, 4) + '</div><small id="budSpentLbl">' + esc(budLabel(c)) + '</small></div><div><div class="big num dimv">' + (S.meta.budget ? fmtUsd(S.meta.budget, 2) : 'off') + '</div><small>budget</small></div><div class="gaugecol"><div class="gauge wide' + (c.plan ? ' plan' : '') + '"><i id="budBar" style="width:' + U.budgetPct(c, S.meta.budget) + '%"></i></div><small id="budPct">' + esc(budNote(c, S.meta.budget)) + '</small></div></div>' +
         row('Set the budget', '<input id="bIn" type="text" inputmode="decimal" value="' + (S.meta.budget ? S.meta.budget.toFixed(2) : 'off') + '" aria-label="Budget in dollars" style="width:110px"> <button class="btn pri" type="button" data-do="budget">Set</button> <button class="btn" type="button" data-do="budget-off">Off</button>', 'a number of dollars, or off; when the budget is reached the turn and the goal pause themselves', 'bIn')) +
         card('Cost by agent', '<span class="mono">/cost</span>', '<table class="tbl" id="budTbl"><thead><tr><th>agent</th><th class="r">prompt tok</th><th class="r qfull">hit</th><th class="r">out tok</th><th class="r">cost</th></tr></thead><tbody></tbody></table><p class="stubnote qfull" style="margin:8px 0 0"><span id="budSavedLbl">Saved est. at list price</span>: <b id="budSaved"></b> (an estimate).</p><p class="stubnote" id="budUnpriced" hidden style="margin:8px 0 0"></p><p class="stubnote" style="margin:8px 0 0">Every figure derives from one table of tokens per agent, so this page, the HUD, the stalls and the Cache view agree.</p>');
     };
@@ -247,9 +253,9 @@
     const toast = ui.toast;
 
     const budTick = S => {
-      const c = calc.totals(S.wm), e = $('#budSpent', page); if (!e) return; e.textContent = U.fmtSpend(c, 4); $('#budSpentLbl', page).textContent = c.plan ? 'plan: ' + U.PLAN_HELP : 'spent'; $('#budBar', page).parentNode.classList.toggle('plan', !!c.plan);
-      /* a plan bills nothing per token: what it covered fills no budget, and the gauge says so instead of filling */
-      $('#budBar', page).style.width = (S.meta.budget && !c.plan ? Math.min(100, c.cost / S.meta.budget * 100) : 0) + '%'; $('#budPct', page).textContent = c.plan ? (S.meta.budget ? fmtUsd(c.cost, 2) + ' billed: the plan counts against no budget' : 'no limit; the plan counts against no budget') : S.meta.budget ? Math.round(c.cost / S.meta.budget * 100) + '% used' : 'no limit'; $('#budSaved', page).textContent = fmtUsd(c.saved, 3);
+      const c = calc.totals(S.wm), e = $('#budSpent', page); if (!e) return; e.textContent = U.fmtSpend(c, 4); $('#budSpentLbl', page).textContent = budLabel(c); $('#budBar', page).parentNode.classList.toggle('plan', !!c.plan);
+      /* a plan bills nothing per token: the gauge fills with what was billed, and says the plan counts against no budget when that is nothing */
+      $('#budBar', page).style.width = U.budgetPct(c, S.meta.budget) + '%'; $('#budPct', page).textContent = budNote(c, S.meta.budget); $('#budSaved', page).textContent = fmtUsd(c.saved, 3);
       $('#budSavedLbl', page).textContent = c.savedPartial ? 'Saved at least' : 'Saved est. at list price'; const un = $('#budUnpriced', page), n = Number(c.unpriced) || 0; un.hidden = !n; un.textContent = n ? fmtN(n) + ' tokens at unknown prices are not counted in the cost.' : '';
       const h = S.wm.order.map(id => { const A = S.wm.ag[id], a = calc.agent(A); return '<tr><td class="bright" style="color:' + agColor(id) + '">' + esc(id) + '</td><td class="r num">' + fmtN(a.prompt) + '</td><td class="r num qfull ' + U.hitCls(a.pct) + '">' + (a.prompt ? a.pct + '%' : '–') + '</td><td class="r num">' + fmtN(a.out) + '</td><td class="r num">' + U.fmtSpend(a, 4) + '</td></tr>'; }).join('') + '<tr class="tot"><td>all</td><td class="r num">' + fmtN(c.prompt) + '</td><td class="r num qfull">' + c.pct + '%</td><td class="r num">' + fmtN(c.out) + '</td><td class="r num">' + U.fmtSpend(c, 4) + U.planTag(c) + '</td></tr>';
       const tb = $('#budTbl tbody', page); if (tb._h !== h) { tb._h = h; tb.innerHTML = h; }

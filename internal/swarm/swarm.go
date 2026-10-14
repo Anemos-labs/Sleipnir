@@ -298,6 +298,9 @@ type Swarm struct {
 	wg       sync.WaitGroup
 	// spentList is the API list-price value of the plan-covered usage of agents that have left (shown, never budgeted).
 	spentList float64
+	// retiring are the members detach has taken off the roster and not yet folded into spent and spentList (it waits for their
+	// agents to close first); the totals count them as members.
+	retiring map[*member]struct{}
 
 	verifySem               chan struct{}
 	verifyRan, verifyFailed atomic.Int32 // runs of the verify command, and those that failed (VerifyRuns)
