@@ -637,12 +637,16 @@ func (s *Session) buildPerm() error {
 }
 
 // readOnlyRoleAllow lets read-only roles (reviewers, scouts) verify what they
-// review: run the project's tests and static checks. Everything that writes or
+// review: run the project's tests and static checks, with the project's own
+// Python virtual environment too (Bash(python:venv-tests): running the tests
+// with it, never creating it or installing into it). Everything that writes or
 // executes anything else stays denied by the plan-mode profile; the engine
 // understands shell syntax, so "go test ./... && rm -rf x" is not allowed by
 // the first half.
 var readOnlyRoleAllow = []string{
 	"Bash(go test:*)", "Bash(go vet:*)", "Bash(pytest:*)", "Bash(npm test)", "Bash(npm run test:*)",
+	"Bash(python -m pytest:*)", "Bash(python3 -m pytest:*)", "Bash(python -m unittest:*)", "Bash(python3 -m unittest:*)",
+	"Bash(python:venv-tests)", "Bash(node --test:*)",
 	"Bash(cargo test:*)", "Bash(cargo check:*)", "Bash(make test)",
 	// Research reads the web: a scout maps an outside repository, an architect reads an
 	// API's documentation. The session's own mode and rules still decide (the profile
