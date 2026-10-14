@@ -196,6 +196,11 @@ few more) read their operands: `git add .` and `git fetch .` are not writes into
 yes can be remembered. Every other git subcommand that is not read-only (`checkout`, `reset`, `merge`, `stash`, `clean`) keeps the analysis
 of an unlisted command, whose operands may be written.
 
+curl's words are URLs, headers and data, not files: a request body that holds a variable (`-d "{\"id\":$ID}"`) is not a write to
+an unknown place. The files curl does touch are judged: what it writes (`-o`, `-c`, `-D`, `--trace`, `--output-dir`, `-O` into the
+current directory) and what it reads (`-d @file`, `-F name=@file`, `-T`, `-K`, certificates, a cookie file, `~/.netrc` with `-n`). An
+option that is not on its list keeps the analysis of an unlisted command.
+
 The session's scratch directory (`$TMPDIR`) is every agent's: a writer confined to its own tree writes there, and an `ask` rule about the
 state directory (where the scratch directory lives) does not ask about it; `deny` rules and the built-in protections still apply. A name
 in it whose rest is only known when the command runs (`"$TMPDIR/$X"`) could leave it with a `../`, so the rule asks, and the question says

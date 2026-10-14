@@ -649,6 +649,11 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 				uses = g // writes only into the repository: its operands are read
 			}
 		}
+		if u.name == "curl" {
+			if cu, ok := curlUses(s.Args); ok {
+				uses = cu // URLs and data are not files; the files curl touches are named (curluses.go)
+			}
+		}
 		if formatter(u.name, s.Args) || checker(u.name, s.Args) {
 			for i := range uses {
 				uses[i].format = true

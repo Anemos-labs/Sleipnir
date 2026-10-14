@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- curl's URLs, headers and data are not judged as files: a smoke test's request
+  body holding a variable no longer reads as a write to an unknown place. The
+  files curl reads and writes (`-o`, `-c`, `-D`, `-O`, `-d @file`, `-F
+  name=@file`, `-T`, `-K`, certificates, `-n`) are judged as before, and an
+  option it is not known by keeps the stricter analysis. Prompt bytes: none
+  change.
+
 - `pool execute` says what comes next, in its result and in the mail that wakes
   the members: writing opens inside child tasks only; the leader creates one
   child per share of the agreed work, claims its own and assigns each other
