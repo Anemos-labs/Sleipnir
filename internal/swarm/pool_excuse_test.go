@@ -93,16 +93,18 @@ func TestTheManagerExcusesAPoolMemberThatCannotTakePart(t *testing.T) {
 	if msg, bad := pool("mgr", "manager", map[string]any{"action": "excuse", "member": peer, "text": "x"}); !bad || !strings.Contains(msg, "last member") {
 		t.Fatalf("the last member was excused: %q", msg)
 	}
-	// The log rebuilds the same pool.
-	sn, err := ReplayBoard(r.log.All())
-	if err != nil {
-		t.Fatal(err)
-	}
-	rp, _ := sn.Task(parent.ID)
-	rc, _ := sn.Task(child.ID)
-	if !slices.Equal(rp.Pool.Members, p.Pool.Members) || !slices.Equal(rp.Pool.Excused, p.Pool.Excused) || rp.Owner != peer || rc.Owner != "" || rc.Status != StatusTodo {
-		t.Fatalf("replayed: %+v %+v", rp, rc)
-	}
+	// The log rebuilds the same pool, once the board's queued events are written (another goroutine may be flushing them).
+	var rp, rc Task
+	rvWait(t, "the log to rebuild the pool", func() bool {
+		sn, err := ReplayBoard(r.log.All())
+		if err != nil {
+			t.Fatal(err)
+		}
+		rp, _ = sn.Task(parent.ID)
+		rc, _ = sn.Task(child.ID)
+		return rp.Pool != nil && slices.Equal(rp.Pool.Members, p.Pool.Members) && slices.Equal(rp.Pool.Excused, p.Pool.Excused) &&
+			rp.Owner == peer && rc.Owner == "" && rc.Status == StatusTodo
+	})
 }
 
 // An excused member writes nothing while the pool is open, not even in a child task it still owned when it was excused (the excuse
