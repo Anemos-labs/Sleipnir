@@ -407,9 +407,10 @@ func TestShutdown(t *testing.T) {
 		t.Errorf("Shutdown took %v", d)
 	}
 	// Every process was sent SIGKILL by the time Shutdown returned; one that is still finishing its exit (a stray that Shutdown
-	// cannot wait for, on a loaded runner) is given time to go, and one that survives fails the wait.
+	// cannot wait for, on a loaded runner) is given time to go, and one that survives fails the wait. The bound is waitFor's hang
+	// guard: the wait ends as soon as the process is gone.
 	for _, pid := range pids {
-		waitDead(t, pid, 5*time.Second)
+		waitDead(t, pid, time.Minute)
 	}
 	select {
 	case res := <-fg:
