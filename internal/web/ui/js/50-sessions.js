@@ -5,18 +5,20 @@
  * model `m` (events up to the view clock `vt`, with chat rows; what the screen shows).
  *
  *   world  wt  advances 1 s per wall second for EVERY session, and an arriving event or a ping moves it forward to the server's time
- *   view   vt  advances by dtView (the governor's rate) for the active session; it is never ahead of wt; gap = wt - vt
+ *   view   vt  live, the world clock (followWorld moves it there every frame); in a replay, advanced by dtView at the replay's speed; never
+ *              ahead of wt
  *
  * The events come from the server (live.js builds each session from a snapshot and adds the stream's events); the page itself adds
- * only `local` cards. While the view is held, events pile up between vt and wt: they are in the log, not applied. On release the view
- * first collapses everything older than TIME_CONST.WINDOW seconds (applied instantly, one digest row in the chat), then replays the
- * rest fast (see 20-clock.js). Switching sessions rebuilds the view model of the new active session from its log. */
+ * only `local` cards. Live, every event up to the world clock is applied to the view in the frame after it arrived, also after the tab
+ * was hidden: every missed row is drawn. Switching sessions rebuilds the view model of the new active session from its log. */
 (function (SL) {
   'use strict';
   const U = SL.u, { upperBound } = U;
-  const R = () => SL.model, TC = SL.TIME_CONST;
+  const R = () => SL.model;
+  /** Seconds of world time before the live edge whose events are animated when the view catches up (older ones are drawn, not animated). */
+  const FRESH = 2;
 
-  const reg = { list: [], byId: {}, active: null, counter: 0, recorded: [], recordedMb: null, pruned: [], wasCatching: false, placeholder: null };
+  const reg = { list: [], byId: {}, active: null, counter: 0, recorded: [], recordedMb: null, pruned: [], placeholder: null };
 
   /** Seconds since local midnight now (the clock of a new session's start). */
   const nowTod = () => { const d = new Date(); return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds() + d.getMilliseconds() / 1000; };
@@ -33,7 +35,6 @@
       this.meta = Object.assign({}, DEFAULT_META, { cwd: spec.cwd || '' }, spec.meta || {}); this.meta.rules = (this.meta.rules || []).slice(); this.meta.roleModels = Object.assign({}, this.meta.roleModels || {});
       if (spec.headless) this.meta.headless = true;
       this.ui = { chan: 'mgr', view: 'cockpit', scroll: {}, draft: '', planOpen: false, selAg: null, drawer: null, drawerTab: 'log', queued: [] };
-      this.hold = { pinned: false, vtSaved: null };
       this.replay = null; this.hist = []; this.metaVer = 0; this.closed = false; this.runs = 0; this.actionLog = [];
       this.roster = spec.roster || [{ id: 'mgr', role: 'manager', code: 'mgr', nth: 0, k: 0, leg: -1, scope: '-', ro: false, model: this.meta.model, spawn: 0 }];
       this.reset([], 0, 0);
@@ -46,7 +47,7 @@
       this.log = log; this.seq = seq || 0; this.lastSeq = seq || 0; this.runs++;
       const last = log.length ? log[log.length - 1].t : 0;
       /* the server's clock; an event stamped later waits for the clock to reach it */
-      this.wt = now > 0 ? now : last; this.vt = this.wt; this.widx = 0; this.idx = 0; this.visW = 0; this.visV = 0;
+      this.wt = now > 0 ? now : last; this.vt = this.wt; this.widx = 0; this.idx = 0;
       this.wm = R().newModel(this, { noChat: true }); this.m = null;
       this.stepWorld(this.wt, true);
       this.ui.drawer = null; this.replay = null;
@@ -62,7 +63,7 @@
     stepWorld(untilT, silent) {
       const log = this.log, R_ = R();
       while (this.widx < log.length && log[this.widx].t <= untilT + 1e-9) {
-        const ev = log[this.widx++]; R_.reduce(this.wm, ev); if (R_.isVisible(ev)) this.visW++;
+        const ev = log[this.widx++]; R_.reduce(this.wm, ev);
         if (!silent) this.afterWorld(ev);
         else if (ev.k === 'ask') SL.bus.emit('needs-changed', this);
       }
@@ -76,42 +77,37 @@
     advanceWorld(dt) { this.wt += dt; this.stepWorld(this.wt); }
     /** The server's clock: the world clock never runs behind an event or a ping. */
     catchUp(t) { if (t > this.wt) this.wt = t; }
-    /** Number of events of visible kinds the view has not shown yet. */
-    unseen() { return Math.max(0, this.visW - this.visV); }
-    gap() { return this.wt - this.vt; }
 
     /* ---- view side (active session only) ---- */
-    /** Apply events up to view time t to the view model. animate=true emits them on the 'ev' bus for effects. */
-    stepView(untilT, animate) {
+    /** Apply events up to view time t to the view model. Each event applied at or after animateFrom (a time; true: every one) is also
+     *  emitted on the 'ev' bus for its effects (the mail arcs). Returns the number applied. */
+    stepView(untilT, animateFrom) {
       const log = this.log, R_ = R(), m = this.m; if (!m) return 0; let n = 0;
+      const from = animateFrom === true ? -Infinity : typeof animateFrom === 'number' ? animateFrom : Infinity;
       while (this.idx < log.length && log[this.idx].t <= untilT + 1e-9 && this.idx < this.widx) {
-        const ev = log[this.idx++]; R_.reduce(m, ev); if (R_.isVisible(ev)) this.visV++; n++;
-        if (animate) SL.bus.emit('ev', { S: this, ev });
+        const ev = log[this.idx++]; R_.reduce(m, ev); n++;
+        if (ev.t >= from) SL.bus.emit('ev', { S: this, ev });
       }
       return n;
     }
+    /** Replay: move the view clock by dtView (never past the world clock) and apply what it reached. */
     advanceView(dtView) {
       if (!this.m) return;
       const target = Math.min(this.wt, this.vt + dtView);
       this.vt = target; this.stepView(target, true);
     }
+    /** Live: the view clock is the world clock. Every event up to it is applied; only those of the last FRESH seconds are animated,
+     *  so a tab that comes back after a long time draws every row it missed without a burst of effects. */
+    followWorld() {
+      if (!this.m) return 0;
+      this.vt = this.wt; return this.stepView(this.wt, this.wt - FRESH);
+    }
     /** Rebuild the view model from the log, silently, at time t. */
     rebuild(t) {
-      t = Math.min(t, this.wt); this.m = R().newModel(this); this.idx = 0; this.visV = 0; this.vt = t;
+      t = Math.min(t, this.wt); this.m = R().newModel(this); this.idx = 0; this.vt = t;
       const log = this.log, R_ = R(), m = this.m;
-      while (this.idx < log.length && log[this.idx].t <= t + 1e-9 && this.idx < this.widx) { const ev = log[this.idx++]; R_.reduce(m, ev); if (R_.isVisible(ev)) this.visV++; }
+      while (this.idx < log.length && log[this.idx].t <= t + 1e-9 && this.idx < this.widx) { const ev = log[this.idx++]; R_.reduce(m, ev); }
       m.ver++; SL.bus.emit('rebuilt', this);
-    }
-    /** Collapse: apply everything older than wt - WINDOW instantly and summarise it as one digest row; the rest will replay. */
-    collapse() {
-      if (!this.m) return false;
-      const boundary = this.wt - TC.WINDOW; if (this.vt >= boundary - 1e-9) return false;
-      const dg = { tools: 0, merged: [], submitted: [], breaks: 0, mails: 0, asks: 0, compacts: 0, rows: [], t0: this.vt, t1: boundary }, log = this.log, R_ = R(), m = this.m; let n = 0;
-      while (this.idx < log.length && log[this.idx].t <= boundary && this.idx < this.widx) { const ev = log[this.idx++]; R_.reduce(m, ev, { digest: dg }); if (R_.isVisible(ev)) this.visV++; n++; }
-      this.vt = boundary; dg.n = n;
-      if (n) { m.nid++; m.chan.mgr.push({ k: 'digest', id: m.nid, t: boundary, t0: dg.t0, t1: dg.t1, dg }); m.ver++; }
-      SL.bus.emit('collapsed', { S: this, dg });
-      return true;
     }
     /** Jump the view to the live edge without animating (leaving replay, switching back). */
     goLive() { this.replay = null; this.rebuild(this.wt); }
@@ -151,11 +147,9 @@
     const S = id == null || id === '' ? placeholder() : reg.byId[id]; if (!S) return null;
     const prev = reg.active;
     if (prev === S) return S;
-    if (prev) { if (prev.hold.pinned && prev.m) prev.hold.vtSaved = prev.vt; prev.m = null; }
+    if (prev) prev.m = null;
     reg.active = S;
-    S.rebuild(S.hold.pinned && S.hold.vtSaved != null ? S.hold.vtSaved : S.wt);
-    reg.wasCatching = false;
-    SL.time.pin(S.hold.pinned);
+    S.rebuild(S.wt);
     SL.bus.emit('activated', S);
     return S;
   }

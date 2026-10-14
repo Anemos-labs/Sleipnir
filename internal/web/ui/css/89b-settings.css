@@ -63,3 +63,17 @@
 .setpanel .ph{flex-wrap:wrap}
 .setpanel .ph .r{white-space:normal;flex-wrap:wrap;justify-content:flex-end;min-width:0;max-width:100%;text-align:right}
 .setpanel .ph .r .mono{overflow-wrap:anywhere}
+/* the page scrolls, so its body never shrinks to the page's height (a body that did squeezed the models table to a box of a few rows) */
+.setbody2{flex:none}
+/* narrow: a table is as tall as its rows (the page scrolls, not a box inside it) and fits the width: a role's model menu takes the cell it
+ * has, and a rule, a path or a hash breaks where it must; a table that is still wider (the models) scrolls sideways inside its frame */
+@container main (max-width:620px){
+  .settable{max-height:none;overflow-y:hidden}
+  .setpage .tbl select{width:100%;min-width:0}
+  .setpage .tbl .mono{overflow-wrap:anywhere}
+  /* the role table: the role and its workers on one line, its model menu under them as wide as the page */
+  .setpage .tbl:has(select[data-role]),.setpage .tbl:has(select[data-role]) tbody{display:block}
+  .setpage .tbl:has(select[data-role]) tr{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:7px 2px;border-bottom:1px solid var(--line)}
+  .setpage .tbl:has(select[data-role]) td{display:block;padding:0;border:0;background:none}
+  .setpage .tbl:has(select[data-role]) td:last-child{flex:1 1 100%;min-width:0}
+}

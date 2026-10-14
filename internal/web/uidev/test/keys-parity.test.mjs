@@ -8,7 +8,7 @@
 // fake event stream. Nothing waits for time: the page's timers and clock are moved by the test.
 //
 // A key "does something" in a state when, after it, the page changed anything a person could see (an element, an attribute, a
-// class, the text, which element has the focus), changed its own state (the view clock, the replay, the hold, the selection), made
+// class, the text, which element has the focus), changed its own state (the view clock, the replay, the selection), made
 // a request, or claimed the key (preventDefault). The text box's own editing (backspace, the caret keys, undo) is the browser's and is
 // not page code, so it is not simulated; typing a character is, because the page reacts to the text (the `/` and `@` menus).
 //
@@ -80,7 +80,6 @@ const STATES = [
   { name: 'question-composer', about: 'a question is open; the message box is focused and empty', keys: ANSWER, setup: async L => { await asked(L); L.focus('#input'); } },
   { name: 'replay', about: 'the view is a paused replay of the session', setup: async L => { await L.step(1); L.SL.sessions.active.seek(L.SL.sessions.active.vt, false); L.doc.body.focus(); await L.settle(); } },
   { name: 'cache', about: 'the Cache view is shown', setup: async L => { L.SL.views.show('cache'); L.doc.body.focus(); await L.settle(); } },
-  { name: 'hold', about: 'the hold on the conversation is pinned', setup: async L => { L.SL.ui.togglePin(); L.doc.body.focus(); await L.settle(); } },
   { name: 'help', about: 'the keys and commands sheet is open', keys: ['esc', 'tab', 'shift+tab', 'enter'], setup: async L => { L.doc.body.focus(); L.press('?'); await L.settle(); } },
   { name: 'palette', about: 'the command palette is open', keys: MENU, setup: async L => { L.press('ctrl+k'); await L.settle(); } },
   { name: 'session-tab', about: 'a session tab has the focus', keys: WIDGET, two: true, setup: async L => { L.focus('.stab'); } },
@@ -102,11 +101,11 @@ const STATES = [
 
 const maskTyping = rows => rows.filter(r => !/^textarea#input /.test(r));
 function snapshotOf(L) {
-  const SL = L.SL, S = SL.sessions.active, T = SL.time.T, a = L.doc.activeElement;
+  const SL = L.SL, S = SL.sessions.active, a = L.doc.activeElement;
   return JSON.stringify({
     focus: a ? a.localName + '#' + a.id + '.' + (a._attrs.get('class') || '') + '/' + (a._attrs.get('data-sid') || a._attrs.get('data-nav') || '') : '', view: SL.views.current && SL.views.current.name, active: S && S.id,
-    time: { pinned: T.pinned, suppress: T.suppress, hover: T.hover, focus: T.focus }, dirty: SL.loop.dirty, link: SL.link.sel,
-    session: S && { metaVer: S.metaVer, vt: Math.round(S.vt * 1000), replay: S.replay, hold: S.hold, feedOpen: S.ui.feedOpen, planOpen: S.ui.planOpen, verbose: S.ui.verbose },
+    dirty: SL.loop.dirty, link: SL.link.sel,
+    session: S && { metaVer: S.metaVer, vt: Math.round(S.vt * 1000), replay: S.replay, feedOpen: S.ui.feedOpen, planOpen: S.ui.planOpen, verbose: S.ui.verbose },
     sessions: SL.sessions.list.map(x => x.id), calls: L.calls.length,
   });
 }

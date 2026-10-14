@@ -1,6 +1,6 @@
 /* 94-keys.js: SL.keys, the global keyboard handling (shell scope).
- * Esc precedence, in this order: (1) release a hold, (2) close an overlay (modal, inbox, session menu, drawer, slash menu), (3) answer a
- * question with choice 3 when the keyboard has been quiet, (4) leave a field, (5) interrupt the running turn (pauses the goal).
+ * Esc precedence, in this order: (1) close an overlay (modal, inbox, session menu, drawer, slash menu), (2) answer a question with
+ * choice 3 when the keyboard has been quiet, (3) leave a field, (4) leave a replay, (5) interrupt the running turn (pauses the goal).
  * Answer keys 1/2/3 count only after the quiet period (see 85-ui-approvals.js); every other key press resets that period. */
 (function (SL) {
   'use strict';
@@ -16,7 +16,6 @@
       if (!mod && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === '1' || e.key === '2' || e.key === '3') && !ui.hasModal() && (!inField || (t.id === 'input' && t.value === ''))) { if (ui.approvals.tryKey(e.key)) { e.preventDefault(); return; } }
       if (!mod) SL.time.noteKey();
       if (e.key === 'Escape') {
-        if (SL.time.holdWanted()) { const S = SL.sessions.active; S.hold.pinned = false; S.hold.vtSaved = null; SL.time.pin(false); SL.time.release(); e.preventDefault(); return; }
         if (ui.hasModal()) { e.preventDefault(); ui.closeModal(); return; }
         if (ui.inbox && ui.inbox.isOpen()) { ui.inbox.close(); e.preventDefault(); return; }
         if ($('.sessmenu') || $('.budpop') || $('.modemenu')) return;
@@ -39,8 +38,7 @@
       if (k === '?') { e.preventDefault(); ui.sheets.help(); return; }
       if (VIEW_KEYS[k]) { e.preventDefault(); if (window.innerWidth <= 900) $('#app').dataset.pv = 'main'; SL.views.show(VIEW_KEYS[k]); return; }
       if (k === ' ' && !(t && (t.tagName === 'BUTTON' || t.tagName === 'A' || t.getAttribute('role') === 'button'))) {
-        e.preventDefault(); if (SL.time.T.hover === 'chat' || SL.time.holdWanted()) { ui.togglePin(); return; }
-        if (!S.replay) S.seek(S.vt, false); else S.replay.playing = !S.replay.playing; S.touch(); return;
+        e.preventDefault(); if (!S.replay) S.seek(S.vt, false); else S.replay.playing = !S.replay.playing; S.touch(); return;
       }
       if (k === 'ArrowLeft' || k === 'ArrowRight') { if (t && t.matches && t.matches('input[type=range]')) return; e.preventDefault(); const d = (e.shiftKey ? 60 : 10) * (k === 'ArrowLeft' ? -1 : 1); S.seek(S.vt + d, S.replay ? S.replay.playing : false); S.touch(); return; }
       if (k === 'Home') { S.seek(0, false); S.touch(); return; } if (k === 'End') { S.goLive(); S.touch(); return; }

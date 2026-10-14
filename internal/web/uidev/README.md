@@ -28,7 +28,7 @@ confirmations, the stream) and `js/live.js` (`SL.live`, the boot sequence, the s
 
 | File | In the reference page | In the shipped page |
 | --- | --- | --- |
-| `js/50-sessions.js` | `SL.sessions`: the registry, the `Session` class with its two clocks and event log, creation, restart, pruning, the recorded-session list, all produced locally. | The same clocks, log, `rebuild` and `collapse`; the registry follows the tabs the server hosts, and events come from the stream. |
+| `js/50-sessions.js` | `SL.sessions`: the registry, the `Session` class with its two clocks and event log, creation, restart, pruning, the recorded-session list, all produced locally. | The same clocks, log, `rebuild` and `followWorld`; the registry follows the tabs the server hosts, and events come from the stream. |
 | `js/60-actions.js` | `SL.act`: every action a person can take, applied to the simulation by inserting synthetic events; `SL.G`, the state shared by every session. | The same action names, arguments and `{ok, why}` results; each action is a request to the API, and its effect arrives as events and meta from the server. `SL.G` is built by `js/11-data-live.js`. |
 | `js/92-runner.js` | The runner's simulated outputs for `sim`, `sessions prune`, `trust`, `mcp`, `doctor` and the generic fallback. | The same form and output pane; a run is a child process of the server and its output is streamed. |
 | `js/96b-ws-data.js` | `SL.ws`: file contents, status, ownership, blame and hunks at any checkpoint, computed from the data pack's change sets. | The same methods, filled from the workspace routes of the API (tree, file as of a checkpoint, diff, per-line authorship). |

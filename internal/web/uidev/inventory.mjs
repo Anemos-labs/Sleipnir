@@ -163,7 +163,6 @@ function instrument(SL) {
   ui.toast = () => {};
   ui.closeSessionAsk = () => rec('closeSession');
   ui.compactDialog = () => rec('dialog:compact');
-  ui.togglePin = () => rec('pin');
   ui.setDraft = () => rec('draft');
   ui.applyMotion = () => {};
   ui.inbox = { toggle: () => rec('inbox:toggle') };
@@ -291,7 +290,8 @@ function dialogInventory(SL, chatFlags) {
   const rs = captureModal(SL, () => ui.dialogs.resume());
   if (!ns || !rs) throw new Error('a dialog did not open in the inventory');
   const labels = [...ns.body.matchAll(/<label>([^<]*)<\/label>/g)].map(m => m[1]);
-  const checks = [...ns.body.matchAll(/<label class="chk"><input type="checkbox" data-k="([A-Za-z]+)"[^>]*> ([^<]*)<\/label>/g)].map(m => m[1] + ' ' + m[2].trim());
+  /* a checkbox's text may hold markup of its own (a span that keeps a flag on one line): its text is what counts */
+  const checks = [...ns.body.matchAll(/<label class="chk"><input type="checkbox" data-k="([A-Za-z]+)"[^>]*> ([\s\S]*?)<\/label>/g)].map(m => m[1] + ' ' + m[2].replace(/<[^>]*>/g, '').trim());
   const full = { resume: '20260101-000000-abcdef', cwd: '/p', model: 'a/m', mode: 'plan', swarm: 8, autoDocs: false, managerApproves: false, isolation: 'worktree', verify: 'v', commit: true, mailman: true, mailmanDefault: false,
     budget: '5', roleModels: { backend: 'a/w' }, rules: ['tests'], trustProject: true, noMcp: true, goalText: '' };
   const line = ui.dialogs.cliLine(full), lineOff = ui.dialogs.cliLine(Object.assign({}, full, { mailman: false, mailmanDefault: true }));

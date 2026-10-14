@@ -94,41 +94,38 @@
   }
   function setHover(el) { if (L.hover === el) return; L.hover = el; apply(); }
   function select(id) { L.sel = id || null; apply(); }
-  /** Pointer classes for the governor: over a chat transcript -> hold; over a linkable source -> slow. */
+  /** The pointer and the focus over a linkable source (a stall, a leg, a gantt row, a mail row, a task card ...) light up what it is
+   *  linked to; nothing else changes (the view clock never depends on where the pointer is). */
   function bind(scope) {
     const app = document.getElementById('app');
     scope.listen(app, 'pointerover', e => {
       const t = e.target; if (!t.closest) return;
-      const inChat = t.closest('.talk');
       const src = t.closest('[data-ag],[data-task],[data-file]');
-      SL.time.setHover(inChat ? 'chat' : src ? 'linked' : null);
       setHover(src && !t.closest('.dr-f,.composer') ? src : null);
     });
-    scope.listen(app, 'pointerleave', () => { SL.time.setHover(null); setHover(null); });
-    scope.listen(document, 'pointerleave', () => { SL.time.setHover(null); setHover(null); });
-    scope.listen(app, 'focusin', e => { const c = e.target.closest && e.target.closest('.talk'); if (c) SL.time.setFocus(true); const s = e.target.closest && e.target.closest('[data-ag]'); if (s && !c) setHover(s); });
-    scope.listen(app, 'focusout', e => { if (e.target.closest && e.target.closest('.talk')) SL.time.setFocus(false); if (!(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('[data-ag]'))) setHover(null); });
+    scope.listen(app, 'pointerleave', () => setHover(null));
+    scope.listen(document, 'pointerleave', () => setHover(null));
+    scope.listen(app, 'focusin', e => { const s = e.target.closest && !e.target.closest('.talk') && e.target.closest('[data-ag]'); if (s) setHover(s); });
+    scope.listen(app, 'focusout', e => { if (!(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('[data-ag]'))) setHover(null); });
   }
   L.apply = apply; L.setHover = setHover; L.select = select; L.bind = bind;
 
   /* ---------------- the frame loop ---------------- */
-  const loop = SL.loop = { frames: new Set(), updaters: new Set(), manual: false, running: false, last: 0, key: '', dirty: true, cssRate: 1, frameNo: 0 };
+  const loop = SL.loop = { frames: new Set(), updaters: new Set(), manual: false, running: false, last: 0, key: '', dirty: true, cssRate: 1, frameNo: 0, errors: 0 };
   function renderKey(S) { return S ? S.id + '|' + (S.m ? S.m.ver : 0) + '|' + S.metaVer + '|' + SL.settings.ver + '|' + (S.replay ? 1 : 0) + '|' + SL.sessions.list.length + '|' + SL.G.ver : ''; }
-  /** One frame: wall time advances the world of every session; the governor turns it into view time for the active one. */
+  /** One frame: wall time advances the world of every session; live, the view of the active one follows its world, and in a replay it
+   *  moves at the replay's speed. */
   function step(dtWall) {
     const T = SL.time.T; T.wall += dtWall * 1000; loop.frameNo++;
     const list = SL.sessions.list; for (let i = 0; i < list.length; i++) list[i].advanceWorld(dtWall);
     SL.actions.pump();
     const S = SL.sessions.active, rep = S && S.replay ? S.replay : null;
-    const wasCatching = T.catching;
-    const dtView = SL.time.tick(dtWall, S ? S.wt - S.vt : 0, rep);
+    const dtView = SL.time.tick(dtWall, rep);
     if (S && S.m) {
-      if (T.catching && !wasCatching && !rep) S.collapse();
-      S.advanceView(dtView);
-      if (T.snap) { S.vt = S.wt; S.stepView(S.wt, true); }
-      if (rep && rep.playing && S.vt >= S.wt - 1e-6) { S.replay = null; SL.bus.emit('replay-ended', S); }
+      if (rep) { S.advanceView(dtView); if (rep.playing && S.vt >= S.wt - 1e-6) { S.replay = null; SL.bus.emit('replay-ended', S); } }
+      else S.followWorld();
     }
-    // CSS keyframes (glows, carets) follow the governor too, capped at 1x
+    // CSS keyframes (glows, carets) follow the rate too, capped at 1x: a paused replay stands still
     const r = Math.min(1, T.rate);
     if (document.getAnimations && (Math.abs(r - loop.cssRate) > 0.004 || r < 0.995)) { loop.cssRate = r; document.getAnimations().forEach(a => { try { a.playbackRate = r; } catch (e) { /* not an animation we can scale */ } }); }
     const vt = S ? S.vt : 0;
@@ -136,9 +133,17 @@
     if (key !== loop.key || loop.dirty) { loop.key = key; loop.dirty = false; Array.from(loop.updaters).forEach(rec => { if (rec.sc.alive) { try { rec.fn(S, S && S.m); } catch (e) { console.error(e); } } }); if (L.active || L.sel) apply(); }
     Array.from(loop.frames).forEach(rec => { if (rec.sc.alive) { try { rec.fn(dtView, vt, S, dtWall); } catch (e) { console.error(e); } } });
   }
+  /** Run the loop on the display's frames. A frame that throws is logged and the next frame runs: one bad event or renderer never
+   *  stops the page. A hidden page takes no step (the browser does not run its frames); its first frame back draws what it missed. */
   function start() {
     if (loop.running) return; loop.running = true;
-    const tick = now => { if (!loop.running) return; if (loop.manual) { loop.last = now; requestAnimationFrame(tick); return; } const dt = Math.min(0.1, Math.max(0, (now - loop.last) / 1000)); loop.last = now; if (!document.hidden) step(dt); requestAnimationFrame(tick); };
+    const tick = now => {
+      if (!loop.running) return;
+      requestAnimationFrame(tick);
+      if (loop.manual) { loop.last = now; return; }
+      const dt = Math.min(0.1, Math.max(0, (now - loop.last) / 1000)); loop.last = now;
+      if (!document.hidden) { try { step(dt); } catch (e) { loop.errors++; console.error(e); } }
+    };
     requestAnimationFrame(t => { loop.last = t; requestAnimationFrame(tick); });
   }
   loop.step = step; loop.start = start;

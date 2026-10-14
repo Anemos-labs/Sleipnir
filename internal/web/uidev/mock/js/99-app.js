@@ -4,13 +4,13 @@
   'use strict';
   const U = SL.u, { $ } = U, ui = SL.ui;
   function boot() {
-    SL.settings.load(); SL.time.setMode(SL.settings.hover); ui.applyMotion(); document.body.classList.toggle('compact', SL.settings.density === 'compact'); document.body.classList.toggle('cq', SL.settings.cache === 'quiet');
+    SL.settings.load(); ui.applyMotion(); document.body.classList.toggle('compact', SL.settings.density === 'compact'); document.body.classList.toggle('cq', SL.settings.cache === 'quiet');
     SL.sessions.init();
     SL.views.V.host = $('#views');
     const sh = SL.shell = SL.makeScope($('#app'), 'shell');
     ui.shell.mount(sh); ui.navMount(sh); SL.chat.mount(sh); ui.approvals.mount(sh); SL.link.bind(sh); SL.keys.mount(sh);
     sh.on('activated', S => { SL.views.show(S.ui.view || 'cockpit'); });
-    sh.on('ask-arrived', ({ S, q }) => { const act = SL.sessions.active; if (S !== act || SL.time.holdWanted()) { ui.toast((S === act ? 'a question is waiting behind the hold: ' : S.name + ': ') + q.agent + ' wants to run ' + q.cmd, 'warm'); const an = $('#announcer'); if (an) an.textContent = S.name + ': a question is waiting for you'; } });
+    sh.on('ask-arrived', ({ S, q }) => { const act = SL.sessions.active; if (S !== act || S.replay) { ui.toast((S === act ? 'a question is waiting (replay: go live to answer): ' : S.name + ': ') + q.agent + ' wants to run ' + q.cmd, 'warm'); const an = $('#announcer'); if (an) an.textContent = S.name + ': a question is waiting for you'; } });
     sh.on('session-done', S => { if (S !== SL.sessions.active) ui.toast(S.name + ': goal met', 'ok'); });
     sh.on('roster-changed', S => { if (S === SL.sessions.active) SL.views.show(SL.views.current ? SL.views.current.name : 'cockpit'); });
     sh.on('sessions-changed', () => { SL.loop.dirty = true; });

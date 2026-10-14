@@ -168,7 +168,10 @@ columns by the card's shape, the gantt fits its rows to the card's height, the b
 Cockpit is unlocked the cards' contents do not take clicks, so that a press arranges and never acts. With the keyboard, a card is a
 focus stop while unlocked: the arrows move it one cell, the arrows with shift held resize it, and `Delete` removes it; a
 screen reader hears its new place and size. Below a width of 620 pixels the cards stack in one column, in their order on the grid,
-each as tall as its rows, and are rearranged with the keyboard.
+each as tall as its rows (the team's card as tall as its stalls, so that the page scrolls rather than a box inside it), and are
+rearranged with the keyboard. At that width a wide diagram (the dependencies, the mail between agents, the replay tape) keeps the
+size it is drawn at and scrolls sideways. In the phone layout (a window up to 900 pixels wide) every small control takes a touch
+of at least 32 pixels square.
 
 The layout is kept in the browser (localStorage), not on the server, so another browser has its own; a stored layout that does not
 read, or that a later version of the page cannot use, gives the default layout. Settings › Appearance has `Customise the Cockpit`
@@ -190,16 +193,16 @@ time the page opens. It starts again on demand from the `Take the tour` button o
 command palette (`ctrl+K`), and Settings › Appearance. It never starts by itself in a browser driven by automation
 (`navigator.webdriver`). The terminal has no tour: its chat program shows `/help`.
 
-### Hold and catch-up
+### The live view and questions
 
-The view keeps its own clock. While the pointer is over the conversation, keyboard focus is in it, or the hold is pinned (click
-the hold chip, or Space over the conversation), the view stops: nothing is appended, scrolled or typed, and the chip counts what
-arrived. Pointing at a stall or another linked item slows the view. On release, what is older than 18 seconds is folded into one
-digest row and the rest replays at up to six times speed. Questions are not held back: the question box, the `Needs you` count
-and the tab's badge appear at once, also while the view is held, paused or scrubbed, with a toast when the question is behind the
-hold, in a paused view or in another tab. A form being typed in stays as it is when the team grows or the page fetches a tab
-again. The tab title shows
-`(? N)` while questions wait, unless Settings › Appearance turns the badge off.
+The view follows the session as it happens: an event is drawn as soon as it arrives, wherever the pointer or the keyboard focus
+is, and a tab that was in the background or hidden draws every row it missed, as rows, when it is shown again. Pointing at a stall
+or another linked item highlights what it is linked to and changes nothing else. Space, and the controls of the gantt and the
+Replay view, pause the view: a paused or scrubbed view is a replay of the session, and End or Esc goes back to live. Questions are
+not held back: the question box, the `Needs you` count and the tab's badge appear at once, also while the view is paused or
+scrubbed, with a toast when the question is in a paused view or in another tab. A form being typed in stays as it is when the
+team grows or the page fetches a tab again. The tab title shows `(? N)` while questions wait, unless Settings › Appearance turns
+the badge off.
 
 While a question waits in any session, every view shows `Needs you` in the session strip and at the top of the left rail, with
 the number of open questions and how long the oldest has waited. A click on it makes that question's session the active one,
@@ -244,7 +247,7 @@ server also refuses an answer given within 350 ms. The `Needs you` inbox answers
 | `/`, `@` | commands of the session; a path of the project |
 | `Tab`, `Enter`, `↑` `↓`, `Esc` in a menu | complete, choose, close (commands, paths, permission mode, palette) |
 | `shift+Tab` | mode default → accept-edits → plan (never bypass or yolo) |
-| `Esc` | release the hold, close what is open, answer no, leave a field or a replay, then interrupt the turn |
+| `Esc` | close what is open, answer no, leave a field or a replay, then interrupt the turn |
 | `ctrl+C` | discard the line; during a turn, interrupt it; twice at an empty prompt, close the session |
 | `ctrl+D` | in an empty message box, or with nothing focused, close the session, asking first as its tab's close does; with text in the box, the browser's own |
 | `1` `2` `3` `4` | answer the question in front, once the keyboard is quiet; 2 only where it would remember something, 4 only for a build or test command |
