@@ -69,7 +69,8 @@ func TestWhoAcceptsAPoolChildInReviewIsSaid(t *testing.T) {
 }
 
 // Once every member has confirmed the reconciled result, the leader is told to submit it, and a second reconcile of the unchanged
-// result is refused with the same advice. In a trial the leader reconciled again after both confirmations, which reopened them.
+// result is refused with the same advice. In a trial the leader reconciled again after both confirmations, which reopened them. A
+// child reopened after that is what the refusal names: submitting would be refused while it is not complete.
 func TestAConfirmedPoolIsToldToSubmit(t *testing.T) {
 	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"backend", "backend"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "working"} })
 	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "backend", Files: []string{"app/**"}, By: "mgr"}); err != nil {
@@ -88,6 +89,18 @@ func TestAConfirmedPoolIsToldToSubmit(t *testing.T) {
 		}
 		return res.Text
 	}
+	c, err := r.sw.Board.CreateTask(lead, TaskSpec{Parent: parent.ID, Title: "api", Role: "backend", Files: []string{"app/api.py"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.sw.Board.assignTask(assignReq{by: lead, agent: lead, id: c.ID}); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range []map[string]any{{"action": "done", "id": c.ID, "text": "implemented"}, {"action": "accept", "id": c.ID}} {
+		if res := r.callTool(context.Background(), "task", lead, "backend", args); res.IsError {
+			t.Fatalf("task %v: %s", args["action"], res.Text)
+		}
+	}
 	pool(lead, map[string]any{"action": "reconcile", "text": "the combined contract"})
 	p, _ := r.sw.Board.Snapshot().Task(parent.ID)
 	pool(lead, map[string]any{"action": "confirm", "revision": p.Pool.Revision})
@@ -104,6 +117,13 @@ func TestAConfirmedPoolIsToldToSubmit(t *testing.T) {
 	res := r.callTool(context.Background(), "pool", lead, "backend", map[string]any{"action": "reconcile", "id": parent.ID})
 	if !res.IsError || !strings.Contains(res.Text, "submit it with task done id="+parent.ID) {
 		t.Errorf("a second reconcile of a confirmed result: %q", res.Text)
+	}
+	if err := r.sw.Board.Reopen("mgr", c.ID); err != nil {
+		t.Fatal(err)
+	}
+	res = r.callTool(context.Background(), "pool", lead, "backend", map[string]any{"action": "reconcile", "id": parent.ID})
+	if !res.IsError || !strings.Contains(res.Text, "child "+c.ID+" is not complete") {
+		t.Errorf("a reconcile with a reopened child: %q", res.Text)
 	}
 }
 

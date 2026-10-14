@@ -353,10 +353,6 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			if !leader || (p.Phase != "executing" && p.Phase != "reconciling") {
 				return fmt.Errorf("only the leader starts reconciliation after execution")
 			}
-			if p.Phase == "reconciling" && len(p.Votes) == len(p.Members) && s.poolCurrent(sn, *task) == nil {
-				// reconciling again would only reopen the confirmations of a result nothing has changed
-				return fmt.Errorf("every member has confirmed revision %d and nothing has changed since: the pool's result is ready, submit it with task done id=%s", p.Revision, task.ID)
-			}
 			for _, child := range sn.Tasks {
 				if child.Parent == task.ID && child.Status == StatusReview {
 					return fmt.Errorf("child %s waits in review: the leader (or the manager) checks it and accepts it (task accept id=%s) or rejects it with feedback; reconcile once every child is accepted", child.ID, child.ID)
@@ -364,6 +360,10 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 				if child.Parent == task.ID && child.Status != StatusDone {
 					return fmt.Errorf("child %s is not complete", child.ID)
 				}
+			}
+			if p.Phase == "reconciling" && len(p.Votes) == len(p.Members) && s.poolCurrent(sn, *task) == nil {
+				// (every child is complete) reconciling again would only reopen the confirmations of a result nothing has changed
+				return fmt.Errorf("every member has confirmed revision %d and nothing has changed since: the pool's result is ready, submit it with task done id=%s", p.Revision, task.ID)
 			}
 			if agreement != "" {
 				p.Agreement = agreement
