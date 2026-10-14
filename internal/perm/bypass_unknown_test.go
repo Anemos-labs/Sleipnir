@@ -246,3 +246,24 @@ func TestAFailedMktempIsJudgedEmpty(t *testing.T) {
 		}
 	}
 }
+
+// Bash evaluates arithmetic, which may assign, beyond $((...)): in [[ ]] comparisons, array subscripts, substring offsets and the
+// legacy $[...]. Each makes the line's variables unknown, so rm -rf "$d" after one asks; ${PORT:-8080} and [[ -f x ]] do not.
+func TestOtherArithmeticContextsMakeTheLinesVariablesUnknown(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: t.TempDir()})
+	for _, c := range []struct{ cmd, want string }{
+		{`d="$TMPDIR/x"; [[ 1 -eq d=5 ]]; rm -rf "$d"`, "ask"},
+		{`d="$TMPDIR/x"; a[d=5]=1; rm -rf "$d"`, "ask"},
+		{`d="$TMPDIR/x"; echo ${a[d=5]}; rm -rf "$d"`, "ask"},
+		{`d="$TMPDIR/x"; echo ${x:d=5}; rm -rf "$d"`, "ask"},
+		{`d="$TMPDIR/x"; echo $[d=5]; rm -rf "$d"`, "ask"},
+		{`d="$TMPDIR/x"; echo "${PORT:-8080}"; rm -rf "$d"`, "allow"},
+		{`d="$TMPDIR/x"; [[ -f x ]] && echo y; rm -rf "$d"`, "allow"},
+	} {
+		d := e.Check(context.Background(), Request{Agent: "be-1", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}

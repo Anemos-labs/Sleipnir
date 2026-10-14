@@ -6,6 +6,7 @@ import (
 	"maps"
 	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -452,10 +453,11 @@ func validName(s string) bool {
 
 // varsTrackable reports whether a command line is simple enough for noteAssignments, from what the parser found: the line parsed (a
 // function definition, whose body may set variables when it is called, and an arithmetic command leave it unparsed); it has no
-// arithmetic expansion, which may assign ($((n=5))); and no trap action assigns, since it may run between any two commands. Quoted
+// arithmetic expansion and no other place bash evaluates arithmetic (mayAssignArithmetically), where an expression may assign
+// ($((n=5))); and no trap action assigns, since it may run between any two commands. Quoted
 // text and here-document bodies are the parser's business: printf 'func main() {...}' > main.go defines nothing.
 func varsTrackable(cmd string, an shellparse.Analysis) bool {
-	if !an.Parsed || an.HasArithmetic {
+	if !an.Parsed || an.HasArithmetic || mayAssignArithmetically(cmd) {
 		return false
 	}
 	for _, s := range an.Commands {
@@ -464,6 +466,27 @@ func varsTrackable(cmd string, an shellparse.Analysis) bool {
 		}
 	}
 	return true
+}
+
+// arithmeticContexts are the other places bash evaluates arithmetic, where an expression may assign (d=5): the operands of [[ ... -eq
+// ... ]] and its kin, an array subscript in an assignment or an expansion (a[d=5]=1, ${a[d=5]}), a substring offset (${x:d=5}), and
+// the legacy $[...]. Matched on the raw text, so a quoted look-alike also counts: that only makes the line's variables unknown.
+var arithmeticContexts = []*regexp.Regexp{
+	regexp.MustCompile(`\$\[`),
+	regexp.MustCompile(`\[\[[^\]]*\s-(eq|ne|lt|le|gt|ge)\s`),
+	regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*\[[^\]]*\]\+?=`),
+	regexp.MustCompile(`\$\{[^}]*\[`),
+	regexp.MustCompile(`\$\{[^}:]*:[^-=?+}]`),
+}
+
+// mayAssignArithmetically reports whether cmd holds one of the arithmeticContexts.
+func mayAssignArithmetically(cmd string) bool {
+	for _, re := range arithmeticContexts {
+		if re.MatchString(cmd) {
+			return true
+		}
+	}
+	return false
 }
 
 // reassignBuiltins are the commands that may set or unset a shell variable without an assignment statement (printf with -v:
