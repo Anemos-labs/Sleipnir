@@ -328,7 +328,8 @@ func (s *Swarm) ownerReadOnly(sn *Snapshot, owner string) bool {
 // other tasks writers are working on.
 func (s *Swarm) scopeConflictIn(sn *Snapshot, t Task) error {
 	for _, o := range sn.Tasks {
-		if o.Pool != nil || o.ID == t.ID || len(o.Files) == 0 || (o.Status != StatusDoing && o.Status != StatusBlocked) {
+		if o.Pool != nil || o.ID == t.ID || (t.ID != "" && o.Parent == t.ID) || len(o.Files) == 0 || (o.Status != StatusDoing && o.Status != StatusBlocked) {
+			// a pool parent's own children are inside its scope by construction, not in its way
 			continue
 		}
 		if s.ownerReadOnly(sn, o.Owner) {
