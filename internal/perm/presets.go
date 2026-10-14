@@ -1,6 +1,10 @@
 package perm
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/anemos-labs/sleipnir/internal/shellparse"
+)
 
 // TestsAllow is the preset of allow rules for the commands that build, check, format and test a project (`--allow tests`, the answer
 // "allow builds and tests for this session" of a question about such a command, and accept-edits mode). They run the project's own
@@ -37,6 +41,104 @@ var workspaceRefused = map[string][]string{
 	"pyright":      {"--createstub", "--writebaseline"},
 	"tsc --noEmit": {"-b", "--build", "--init", "--generateTrace", "--generateCpuProfile"},
 	"eslint":       {"--fix", "--init", "--fix-type"},
+}
+
+// runnerRefused are, for a build or test runner, the options that make it run a program of the caller's choosing instead of the
+// project's own build and tests: go test -exec PROG runs the test binary through PROG, cargo --config can set a runner or a compiler
+// wrapper, npm --script-shell runs the scripts with another shell, node --require loads any module first (and --test-reporter a module that is not a built-in reporter), make SHELL=PROG runs every
+// recipe with PROG. A prefix rule names the runner (Bash(go test:*), the tests preset's and the read-only roles' rules, or the person's
+// own), so a command with one of these options is not the command the rule allowed: it is judged as if no such rule existed.
+var runnerRefused = map[string][]string{
+	"go":     {"-exec", "--exec", "-toolexec", "--toolexec", "-vettool", "--vettool"},
+	"cargo":  {"--config", "-Z"},
+	"npm":    {"--script-shell", "--node-options"},
+	"pnpm":   {"--script-shell", "--node-options"},
+	"yarn":   {"--script-shell", "--node-options"},
+	"node":   {"--require", "-r", "--import", "--loader", "--experimental-loader", "--env-file"},
+	"make":   {"SHELL", ".SHELLFLAGS", "MAKESHELL", "-f", "--file", "--makefile", "--eval", "-E"},
+	"gradle": {"-I", "--init-script"}, "gradlew": {"-I", "--init-script"},
+}
+
+// runsAnother reports whether a runner's arguments carry an option of runnerRefused, with its value apart, after "=", or (for a
+// one-letter option) attached ("-fother.mk", "-Zflag", or "-sf other.mk" for make's clusters); or, for go, link flags that name the
+// external linker or archiver to run (-ldflags=-extld=PROG; -ldflags "-X main.version=1" is a build's own). prog is the program as
+// written; its base name selects the runner (/usr/bin/go is go, ./gradlew is gradlew).
+func runsAnother(prog string, args []string) bool {
+	prog = shellparse.ProgramName(prog)
+	refused := runnerRefused[prog]
+	if hasLong(args, refused...) {
+		return true
+	}
+	if prog == "make" {
+		// a command-line variable takes every assignment operator of make: SHELL:=PROG, SHELL::=, SHELL?=, SHELL+=, SHELL!=
+		for _, a := range args {
+			for _, n := range refused {
+				if !strings.HasPrefix(n, "-") && strings.HasPrefix(a, n) && makeAssigns(a[len(n):]) {
+					return true
+				}
+			}
+		}
+	}
+	for _, a := range args {
+		if len(a) < 3 || a[0] != '-' || a[1] == '-' {
+			continue
+		}
+		for _, o := range refused {
+			if len(o) != 2 || o[0] != '-' {
+				continue
+			}
+			// attached: -fother.mk; make also takes clusters of one-letter options (-sf other.mk, -kE '...')
+			if a[1] == o[1] || prog == "make" && strings.IndexByte(a[1:], o[1]) >= 0 {
+				return true
+			}
+		}
+	}
+	if prog == "node" {
+		return customReporter(args)
+	}
+	if prog != "go" {
+		return false
+	}
+	for i, a := range args {
+		name, val, eq := strings.Cut(strings.TrimLeft(a, "-"), "=")
+		if !strings.HasPrefix(a, "-") || name != "ldflags" {
+			continue
+		}
+		if !eq && i+1 < len(args) {
+			val = args[i+1]
+		}
+		if strings.Contains(val, "extld") || strings.Contains(val, "extar") {
+			return true
+		}
+	}
+	return false
+}
+
+// makeAssigns reports whether rest (what follows a variable's name in a make argument) is one of make's assignment operators.
+func makeAssigns(rest string) bool {
+	for _, op := range []string{"=", ":=", "::=", ":::=", "?=", "+=", "!="} {
+		if strings.HasPrefix(rest, op) {
+			return true
+		}
+	}
+	return false
+}
+
+// nodeReporters are the test reporters built into node; any other --test-reporter value is a module node loads and runs.
+var nodeReporters = map[string]bool{"spec": true, "tap": true, "dot": true, "junit": true, "lcov": true}
+
+// customReporter reports whether node's arguments name a test reporter that is not built in (--test-reporter=./mine.js).
+func customReporter(args []string) bool {
+	for i, a := range args {
+		val, ok := strings.CutPrefix(a, "--test-reporter=")
+		if !ok && a == "--test-reporter" && i+1 < len(args) {
+			val, ok = args[i+1], true
+		}
+		if ok && !nodeReporters[val] {
+			return true
+		}
+	}
+	return false
 }
 
 // workspaceFileLists are the prefixes of the preset's ":workspace" rules whose program compiles the files it is given and, given none,
