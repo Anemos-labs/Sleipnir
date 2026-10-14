@@ -26,6 +26,24 @@ func TestCurlsDataIsNotAFile(t *testing.T) {
 		{`curl -s -F "f=@secrets/token" localhost:8099/api`, "deny"},
 		{`curl -s -c .sleipnir/jar localhost:8099/`, "ask"},
 		{`curl -s --some-new-option .sleipnir/x localhost:8099/`, "ask"}, // an unknown option: every word may be a file, as before
+		{`curl -s -H 'X-Token: abc' -H @secrets/headers localhost:8099/`, "deny"},
+		{`curl -s -F "f=x;type=text/plain;headers=@secrets/headers" localhost:8099/api`, "deny"},
+		{`curl -s file://{root}/secrets/key.txt`, "deny"},
+		{`curl -s --url FILE://localhost{root}/secrets/key.txt -o /dev/null`, "deny"},
+		{`curl -s file://{home}/.ssh/id_rsa`, "deny"},
+		{`D={root}/secrets; curl -s "file://$D/key.txt"`, "deny"}, // a variable the line set is put in
+		{`curl -s -T main.go file://{root}/.sleipnir/x`, "ask"},   // an upload to a file: URL writes it
+		{`curl -s -O localhost:8099/app.js`, "allow"},
+		{`curl -s -O "localhost:8099/x/.env?v=1"`, "deny"}, // -O writes ./.env, the name the URL ends in
+		{`curl -s --output-dir .sleipnir -O localhost:8099/settings.json`, "ask"},
+		{`curl -s --output-dir .sleipnir -o /page.html localhost:8099/`, "ask"}, // below --output-dir, even with a leading /
+		// what curl alone cannot name keeps the analysis of an unlisted command, in which a word holding $CID may be any file
+		{`curl -s -K curl.cfg -d "{\"id\":$CID}" localhost:8099/api`, "not allow"},  // a config file holds options of its own
+		{`curl -s -J -O -d "{\"id\":$CID}" localhost:8099/api/export`, "not allow"}, // the server names the file
+		{`curl -s "$U" -d "{\"id\":$CID}"`, "not allow"},                            // the URL's scheme is only known when it runs
+		{`curl -s "file://$P/key.txt" -d "{\"id\":$CID}"`, "not allow"},
+		{`curl -s "localhost:8099/{a,b}.js" -o "out_#1.js" -d "{\"id\":$CID}"`, "not allow"},
+		{`B=localhost:8099; printf -v B '%s' file://{root}/secrets/key.txt; curl -s "$B" -d "{\"id\":$CID}"`, "not allow"}, // printf -v sets B
 	} {
 		d := e.Check(context.Background(), Request{Agent: "fe-1", Tool: "Bash", Command: f.expand(c.cmd)})
 		got := outcome(d)

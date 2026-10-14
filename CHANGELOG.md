@@ -9,9 +9,13 @@ they do not indicate whether a change has been released.
 
 - curl's URLs, headers and data are not judged as files: a smoke test's request
   body holding a variable no longer reads as a write to an unknown place. The
-  files curl reads and writes (`-o`, `-c`, `-D`, `-O`, `-d @file`, `-F
-  name=@file`, `-T`, `-K`, certificates, `-n`) are judged as before, and an
-  option it is not known by keeps the stricter analysis. Prompt bytes: none
+  files curl reads and writes are judged: `-o` and the name `-O` takes from
+  the URL (below `--output-dir`), `-c`, `-D`, `-d @file`, `-H @file`, `-F
+  name=@file` and its `headers=@file`, `-T`, certificates, `-n`, and the file
+  a `file:` URL names. A config file (`-K`), a name the server picks (`-J`), a
+  URL whose scheme is only known when the command runs, and an option curl is
+  not known by here keep the stricter analysis. A `printf` without `-v` no
+  longer makes the check forget the variables the line set. Prompt bytes: none
   change.
 
 - The file tools take a path that starts with `$TMPDIR` or `${TMPDIR}` to the

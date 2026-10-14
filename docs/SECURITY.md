@@ -203,9 +203,12 @@ Only the runner's options that name no file to write are recognised (patterns, c
 are the project's code, run as the runner runs them.
 
 curl's words are URLs, headers and data, not files: a request body that holds a variable (`-d "{\"id\":$ID}"`) is not a write to
-an unknown place. The files curl does touch are judged: what it writes (`-o`, `-c`, `-D`, `--trace`, `--output-dir`, `-O` into the
-current directory) and what it reads (`-d @file`, `-F name=@file`, `-T`, `-K`, certificates, a cookie file, `~/.netrc` with `-n`). An
-option that is not on its list keeps the analysis of an unlisted command.
+an unknown place. The files curl does touch are judged: what it writes (`-o`, `-c`, `-D`, `--trace`, and with `-O` the last part of
+the URL's path, each below `--output-dir` when one is given) and what it reads (`-d @file`, `-H @file`, `-F name=@file` and a form
+field's `headers=@file`, `-T`, certificates, a cookie file, `~/.netrc` with `-n`, the file a `file:` URL names, which an upload also
+writes). What it cannot name keeps the analysis of an unlisted command: an option that is not on its list, a config file (`-K`, whose
+options are not read), a file name the server picks (`-J`), a URL whose scheme or `file:` path is only known when the command runs,
+and an output name filled from a URL glob (`#1`).
 
 The session's scratch directory (`$TMPDIR`) is every agent's: a writer confined to its own tree writes there, and an `ask` rule about the
 state directory (where the scratch directory lives) does not ask about it; `deny` rules and the built-in protections still apply. A name

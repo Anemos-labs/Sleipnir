@@ -270,3 +270,13 @@ func partsNameEntries(full, empty string) bool {
 
 // expansion is what the evaluator knows of the variables of the line it judges.
 func (ev *evaluator) expansion() expansion { return expansion{vars: ev.vars, off: ev.off} }
+
+// knownWord is a word with the parts the check knows put in (expandWordVars, from the directory the command line starts in); when the
+// rest is only known as the command runs, it is the known beginning and false.
+func (ev *evaluator) knownWord(w string) (string, bool) {
+	out, partial, dyn := ev.rs.expandWordVars(w, ev.startDir(), ev.expansion())
+	if dyn {
+		return partial, false
+	}
+	return out, true
+}
