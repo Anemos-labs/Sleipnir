@@ -216,11 +216,19 @@ state directory (where the scratch directory lives) does not ask about it; `deny
 in it whose rest is only known when the command runs (`"$TMPDIR/$X"`) could leave it with a `../`, so the rule asks, and the question says
 that the variable is the cause; it is never routine.
 
+A file whose name is only known when the command runs (`cat "$F"`, `echo x > "$OUT"`) cannot be checked against the built-in protections
+or the `deny` and `ask` rules, which `bypass` mode still applies, so `bypass` asks about it: a name with no known beginning may be any
+file, and the unknown part of one whose beginning names a directory (`"docs/$X"`, `"$TMPDIR/$X"`) may hold a `../` that leads out of it.
+This covers the files a command certainly names: the operands of the commands the engine knows, redirections and the file tools. The words of an unlisted program
+and the value of an assignment, which only might be files, a `cd`, and a use that reads only names (`ls "$X"`) do not ask. `yolo` mode
+never asks, and lets such a name pass.
+
 ### Variables a command line sets
 
 A variable that the same line sets to a value the engine can expand (`F="$TMPDIR/x"`, `export F=...`, `readonly F=...`, `declare -x
 F=...`) names that value in the commands after it, so `rm -rf "$F"` is judged as the path it is. It is done only where it is sound: the
-statement runs unconditionally (not after `&&`, `||` or a pipe, not in a subshell, a loop or a branch), the value is not empty (`${F:=x}`
+statement runs unconditionally (not after `&&`, `||` or a pipe, not in a subshell, a loop or a branch; a command substitution that closed
+before it, as in `cd "$(pwd)"; F=...`, does not count), the value is not empty (`${F:=x}`
 would replace an empty one), a name assigned two values is unknown, and nothing in the line can change variables behind the analysis' back
 (`read`, `eval`, `source`, `unset`, `wait -p`, `printf`, arithmetic, a function definition, a command in the background). A declaration
 expands all its values before it assigns any (`export a=1 b=$a` gives `b` the old `a`). A new shell (`sh -c`, a script on a shell's standard

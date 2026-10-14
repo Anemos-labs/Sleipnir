@@ -50,7 +50,7 @@ func (ev *evaluator) resolve(u pathUse, cw *cwdSet) []access {
 	}
 	base := access{
 		raw: raw, read: !u.write || u.both, write: u.write || u.both,
-		tree: u.tree, content: u.content, nameOnly: u.nameOnly, format: u.format,
+		tree: u.tree, content: u.content, nameOnly: u.nameOnly, format: u.format, guess: u.both,
 	}
 	// mk builds an access. unclean is the path as the kernel will walk it, ".."
 	// components included: "link/../x" is the parent of link's target, so it must
@@ -82,7 +82,11 @@ func (ev *evaluator) resolve(u pathUse, cw *cwdSet) []access {
 				// The known part still says where the word points: ~/.ssh/$KEY
 				// is somewhere inside ~/.ssh whatever $KEY is.
 				if !filepath.IsAbs(partial) && cwd != "" {
+					dir := strings.HasSuffix(partial, "/")
 					partial = filepath.Join(cwd, partial)
+					if dir {
+						partial += "/" // docs/$X is inside docs, not beside it (Join drops the slash)
+					}
 				}
 				if filepath.IsAbs(partial) {
 					dir := partial

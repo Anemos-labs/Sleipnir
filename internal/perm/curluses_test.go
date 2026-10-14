@@ -10,7 +10,7 @@ import (
 // curl -X POST localhost:8099/api/transactions -d "{...\"category_id\":$CID}". A file curl writes or reads is still judged.
 func TestCurlsDataIsNotAFile(t *testing.T) {
 	f := newFixture(t)
-	e := f.engine(t, Config{Mode: ModeBypass, Ask: []string{"Edit(./.sleipnir/**)", "Edit(~/.sleipnir/**)"}, Deny: []string{"Read(./secrets/**)"}})
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: t.TempDir(), Ask: []string{"Edit(./.sleipnir/**)", "Edit(~/.sleipnir/**)"}, Deny: []string{"Read(./secrets/**)"}})
 	for _, c := range []struct{ cmd, want string }{
 		{`CID=$(curl -s -X POST localhost:8099/api/categories -d '{"name":"Food"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])'); curl -s -X POST localhost:8099/api/transactions -H 'Content-Type: application/json' -d "{\"date\":\"2025-03-01\",\"category_id\":$CID}" >/dev/null`, "allow"},
 		{`curl -s -X POST localhost:8099/api/budgets -d "{\"month\":\"2025-03\",\"category_id\":$CID}"`, "allow"},
