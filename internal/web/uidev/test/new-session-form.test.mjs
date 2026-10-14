@@ -195,12 +195,12 @@ test('a catalogue arriving while the dialog is open refreshes all model pickers 
 
 test('an overlong first goal remains editable and sends no new-session request', async () => {
   const L = await open();
-  const goal = 'x'.repeat(4001);
+  const goal = 'x'.repeat(L.SL.goalMax() + 1);
   type(L, '#nsGoal', goal);
   await start(L);
   assert.equal(spec(L), null);
   assert.equal(L.$('#nsGoal').value, goal);
-  assert.match(L.$('#toasts').textContent, /4,000/);
+  assert.match(L.$('#toasts').textContent, /32,000/);
 });
 
 test('a clean repository root with a team: worktree and --commit are free, and what was chosen is sent', async () => {

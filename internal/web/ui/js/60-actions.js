@@ -47,6 +47,9 @@
     return go(0);
   }
   SL.whenStarted = whenStarted;
+  /** The longest goal the server takes, in characters (hello.limits.maxGoal). */
+  const goalMax = () => (SL.live && SL.live.hello && SL.live.hello.limits && SL.live.hello.limits.maxGoal) || 32000;
+  SL.goalMax = goalMax;
   /** Send a request; failures toast. onOk(data) runs on success. Returns {ok: true, done}. */
   const send = (p, onOk, onFail) => ({ ok: true, done: p.then(r => { if (r.ok) { if (onOk) onOk(r.data, r); } else if (!onFail || onFail(r) !== true) fail(r); return r; }) });
   const tab = S => api().tab(S.id);
@@ -101,6 +104,7 @@
   const goal = (S, body) => send(whenStarted(() => api().post(tab(S) + '/goal', body)), d => { if (d && d.queued) toast(body.action === 'set' || body.action === 'resume' ? 'the goal runs as the next item of ' + S.name : 'the goal is ' + (body.action === 'pause' ? 'paused' : 'cleared') + ' once the running turn stops', 'quiet'); });
   act('setGoal', (text, sid) => {
     const S = ses(sid); if (!S) return { ok: false }; text = String(text || '').trim(); if (!text) return { ok: false, why: '/goal needs text' };
+    if (Array.from(text).length > goalMax()) return { ok: false, why: 'the goal is longer than ' + goalMax().toLocaleString('en') + ' characters: shorten it (the text is kept)' };
     if (why(S)) return refuse(S);
     const delivery = Object.assign({}, S.ui.delivery || {}), body = { action: 'set', text };
     if (delivery.autoFix) body.autoFix = true; if (delivery.autoMerge) body.autoMerge = true;
