@@ -16,6 +16,24 @@ const maxPathBytes = 32 << 10
 
 var errSymlinkLoop = errors.New("too many levels of symbolic links")
 
+// expandTmp turns a leading $TMPDIR or ${TMPDIR} into the session's scratch directory: the runtime context tells a model that
+// scratch files go in $TMPDIR, and a file tool is given the path as a model writes it, not through a shell that would expand it,
+// so without this "$TMPDIR/x" became a directory named "$TMPDIR" under the project. Any other variable is left as written.
+func expandTmp(p, tmp string) string {
+	if tmp == "" {
+		return p
+	}
+	for _, v := range []string{"$TMPDIR", "${TMPDIR}"} {
+		if p == v {
+			return tmp
+		}
+		if rest, ok := strings.CutPrefix(p, v+"/"); ok {
+			return filepath.Join(tmp, rest)
+		}
+	}
+	return p
+}
+
 // absClean makes p absolute against cwd and cleans it. A leading "~" is expanded
 // because models routinely write ~/x, and silently creating a directory literally
 // named "~" under the project is never what anyone wants.
@@ -148,7 +166,7 @@ func relWithin(base, p string) (string, bool) {
 // symlink inside the project that leads out of it is reported by its real,
 // outside location, so the permission engine sees the escape.
 func (k *call) resolve(raw string) (string, error) {
-	lex, err := absClean(k.env.Cwd, raw)
+	lex, err := absClean(k.env.Cwd, expandTmp(raw, k.env.Tmp))
 	if err != nil {
 		return "", err
 	}
@@ -178,7 +196,7 @@ func (k *call) resolve(raw string) (string, error) {
 // "vendor/lib.go" removes the link and never the file it points to. The
 // directory part is canonicalised as usual.
 func (k *call) resolveEntry(raw string) (string, error) {
-	lex, err := absClean(k.env.Cwd, raw)
+	lex, err := absClean(k.env.Cwd, expandTmp(raw, k.env.Tmp))
 	if err != nil {
 		return "", err
 	}

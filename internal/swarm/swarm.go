@@ -197,6 +197,8 @@ type Deps struct {
 
 	Workdir string
 	Root    string
+	// Tmp is the session's scratch directory, the $TMPDIR of its commands (agent.Config.Tmp).
+	Tmp     string
 	Params  core.Params
 	Effort  *provider.EffortSetting
 	Planner kv.Planner

@@ -193,7 +193,9 @@ type Config struct {
 
 	Workdir string
 	Root    string
-	Limits  tools.Limits
+	// Tmp is the session's scratch directory, the $TMPDIR its commands get; the file tools expand a leading $TMPDIR to it.
+	Tmp    string
+	Limits tools.Limits
 
 	// Cache engine tuning.
 	Planner     kv.Planner

@@ -113,6 +113,9 @@ type Env struct {
 	// Root is the project root permissions are scoped to.
 	Cwd  string
 	Root string
+	// Tmp is the session's scratch directory (the TMPDIR its commands get): a path a model writes as $TMPDIR/x or ${TMPDIR}/x
+	// names a file there. Empty when the session keeps none.
+	Tmp string
 
 	Files   *FileState
 	Guard   Guard
