@@ -32,11 +32,11 @@ func (b *Board) poolUpdate(by, id string, fn func(*Snapshot, *Task, *PoolState) 
 	return b.mutate(by, "update", func(d *draft) error {
 		i := taskIdx(d.Snapshot, id)
 		if i < 0 {
-			return fmt.Errorf("no task %s", id)
+			return fmt.Errorf("no task %s: pool acts on a role pool's parent task, one the manager assigned (spawn) to a role with several members; task list shows them", id)
 		}
 		t := d.Tasks[i]
 		if t.Pool == nil || t.Status == StatusDone || t.Status == StatusFailed {
-			return fmt.Errorf("%s is not an active pool task", id)
+			return fmt.Errorf("%s is not an active pool task: pool acts on a role pool's parent task while it is open; task list shows them", id)
 		}
 		p := *t.Pool
 		p.Members = slices.Clone(p.Members)
@@ -274,6 +274,9 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 	if in.Action == "inspect" {
 		parent, ok := s.Board.Snapshot().Task(in.ID)
 		if !ok || parent.Pool == nil || parent.Pool.Phase != "reconciling" || !slices.Contains(parent.Pool.Members, by) {
+			if c.Env.Role == "manager" {
+				return tools.Errorf("only a reconciling pool member can inspect: the manager reads the combined result with the file tools, and accepts the parent once every member has confirmed it"), nil
+			}
 			return tools.Errorf("only a reconciling pool member can inspect"), nil
 		}
 		if m := s.get(by); m != nil {

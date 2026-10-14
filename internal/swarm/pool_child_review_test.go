@@ -58,4 +58,11 @@ func TestWhoAcceptsAPoolChildInReviewIsSaid(t *testing.T) {
 	if !res.IsError || !strings.Contains(res.Text, "waits in review") || !strings.Contains(res.Text, "task accept id=") {
 		t.Errorf("reconcile with children in review: %q", res.Text)
 	}
+	// pool on a task that is not a pool parent, and the manager's inspect, say what pool works on
+	if res := r.callTool(context.Background(), "pool", "mgr", "manager", map[string]any{"action": "propose", "id": "root", "text": "x"}); !res.IsError || !strings.Contains(res.Text, "role pool's parent task") {
+		t.Errorf("pool on no task: %q", res.Text)
+	}
+	if res := r.callTool(context.Background(), "pool", "mgr", "manager", map[string]any{"action": "inspect", "id": parent.ID}); !res.IsError || !strings.Contains(res.Text, "the manager reads the combined result") {
+		t.Errorf("the manager's inspect: %q", res.Text)
+	}
 }
