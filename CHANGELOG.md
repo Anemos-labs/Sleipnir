@@ -28,8 +28,9 @@ they do not indicate whether a change has been released.
   command with a variable or a program read from standard input. The chat's
   dialog and the line prompter list the web page's answers and numbers (1 yes,
   2 don't ask again, 3 builds and tests, no last); the line prompter takes text
-  as a no with what to do instead. Prompt bytes: none of the stable layers
-  change.
+  as a no with what to do instead. Prompt bytes: the manager's role pin says
+  that project-environment installs may come to it, a one-time cache miss of
+  that pin; no other stable layer changes.
 
 - Web: the view follows the session as it happens. Nothing holds it while the
   pointer or the keyboard focus rests on the conversation, and a tab that comes
