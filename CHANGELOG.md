@@ -16,6 +16,12 @@ they do not indicate whether a change has been released.
   told that only members acknowledge. Prompt bytes: the pool tool's description and schema
   change G0, so a cached tool prefix of an earlier version no longer matches.
 
+- `pool execute` says what comes next, in its result and in the mail that wakes
+  the members: writing opens inside child tasks only; the leader creates one
+  child per share of the agreed work, claims its own and assigns each other
+  member its child. Pools that had agreed no longer stall with every member
+  refused and waiting. Prompt bytes: none change (tool results and mail).
+
 - Providers take `options.model_extra_body`: per model id, request members put
   over `extra_body` for that model only (one gateway, an upstream pinned for
   one of its models, the others routed as before). Prompt bytes: none change.
