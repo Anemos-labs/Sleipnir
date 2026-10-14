@@ -29,6 +29,17 @@ func TestRoleModelNamesModelsOrATeam(t *testing.T) {
 	if _, _, err := parse("backend", "backend", "tester"); err == nil || !strings.Contains(err.Error(), "at least 8") {
 		t.Errorf("a team of three: %v", err)
 	}
+	// the manager's model given beside a team is its model, not a ninth slot
+	withMgr := append([]string{"manager=m/x"}, eight...)
+	if m, n, err := parse(withMgr...); err != nil || n != 8 || m["manager"] != "m/x" || m["mailman"] != "x/y" {
+		t.Errorf("a team of eight and the manager's model: %v %d %v", m, n, err)
+	}
+	if _, _, err := parse("manager"); err == nil || !strings.Contains(err.Error(), "takes a model") {
+		t.Errorf("a bare manager: %v", err)
+	}
+	if _, _, err := parse("manager=a/b", "manager=c/d"); err == nil {
+		t.Error("manager twice")
+	}
 	if _, _, err := parse("mailman"); err == nil || !strings.Contains(err.Error(), "takes a model") {
 		t.Errorf("a bare mailman: %v", err)
 	}
