@@ -1,6 +1,7 @@
 package perm
 
 import (
+	"github.com/anemos-labs/sleipnir/internal/shellparse"
 	"os"
 	"path/filepath"
 	"strings"
@@ -419,6 +420,50 @@ func targetDirUses(s scanned) []pathUse {
 		uses = append(uses, pathUse{raw: v, write: true, tree: true})
 	}
 	return uses
+}
+
+// inlineCodeFlags are, per interpreter (shellparse.InterpreterName), the options whose value is a program given on the command line
+// (python -c CODE, node -e CODE, perl -e CODE, ...).
+var inlineCodeFlags = map[string][]string{
+	"python": {"-c"}, "node": {"-e", "--eval", "-p", "--print"}, "perl": {"-e", "-E"}, "ruby": {"-e"}, "php": {"-r"},
+	"lua": {"-e"}, "Rscript": {"-e"}, "bun": {"-e", "--eval", "-p", "--print"},
+}
+
+// withoutInlineCode returns args without the programs an interpreter is given on its command line: node -e "x.then(m=>{...})" is
+// code, not a file name, and reading it as one found paths in it ("m=>{" split at "=") and variables ("'\$1'" written in it), which
+// made a quoted script look like a write to an unknown place. The interpreter may do anything its program says, as with any program
+// it runs; what is judged file by file is its other operands (a script's own arguments). Glued forms (-e'code', --eval=code) go too.
+func withoutInlineCode(prog string, args []string) []string {
+	flags := inlineCodeFlags[shellparse.InterpreterName(prog)]
+	if prog == "deno" && len(args) > 1 && args[0] == "eval" {
+		return args[2:]
+	}
+	if len(flags) == 0 {
+		return args
+	}
+	out := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			return append(out, args[i:]...)
+		}
+		code := false
+		for _, f := range flags {
+			switch {
+			case a == f:
+				code, i = true, i+1 // the next word is the program
+			case strings.HasPrefix(f, "--") && strings.HasPrefix(a, f+"="), !strings.HasPrefix(f, "--") && len(a) > len(f) && strings.HasPrefix(a, f):
+				code = true // --eval=code, -ecode
+			}
+			if code {
+				break
+			}
+		}
+		if !code {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // unknownUses treats every operand of an unlisted command as a path it may read

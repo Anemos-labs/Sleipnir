@@ -643,7 +643,7 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 		if u.why == "" {
 			u.why = unlisted
 		}
-		uses = unknownUses(s.Args)
+		uses = unknownUses(withoutInlineCode(u.name, s.Args))
 		if u.name == "git" {
 			if g, ok := gitRepoUses(s.Args); ok {
 				uses = g // writes only into the repository: its operands are read
