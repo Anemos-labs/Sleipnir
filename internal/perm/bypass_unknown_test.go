@@ -184,3 +184,37 @@ func TestBlankHeredocs(t *testing.T) {
 		}
 	}
 }
+
+// A substitution that can fail ($(git rev-parse --show-toplevel)) is empty when it does: a word built from it, directly or through a
+// variable, is judged as that too, so "$d/proc/self/environ" cannot reach the protected file and "$D"/* cannot reach the root through
+// a failure. A .git that is not a repository (no HEAD, a worktree pointer that leads nowhere) makes git fail: the substitution is then
+// not known. A "<<" inside quotes is text, not a here-document that could hide what follows it.
+func TestAFailedSubstitutionIsJudgedEmpty(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: t.TempDir()})
+	for _, c := range []struct{ cmd, want string }{
+		{`d=$(git rev-parse --show-toplevel); cat "$d/proc/self/environ"`, "deny"},
+		{`cat "$(git rev-parse --show-toplevel)/proc/self/environ"`, "deny"},
+		{`D=$(git rev-parse --show-toplevel); rm -rf "$D"/*`, "deny"}, // empty, it is /*: the system directories
+		{`d=$(git rev-parse --show-toplevel); cat "$d/README.md"`, "allow"},
+		{`d=$(pwd); cat "$d/README.md"`, "allow"},
+		{`echo "a <<EOF"; d=$TMPDIR/x; f() { d=/; }; f; echo EOF; rm -rf "$d"`, "ask"},
+	} {
+		d := e.Check(context.Background(), Request{Agent: "be-6", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+	// a .git that is not a repository
+	bad := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bad, ".git"), []byte("not a pointer\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	x := expansion{}
+	if _, ok := (&resolver{}).knownSubstitution("git rev-parse --show-toplevel", filepath.Join(bad), x); ok {
+		t.Error("an invalid .git file was taken as a repository")
+	}
+	if _, ok := (&resolver{}).knownSubstitution("git rev-parse --show-toplevel", f.root, x); !ok {
+		t.Error("the fixture's repository was not recognised")
+	}
+}

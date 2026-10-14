@@ -74,6 +74,8 @@ type evaluator struct {
 	// exported those of them an export (or declare -x) statement gave to the commands the line starts.
 	vars     map[string]string
 	exported map[string]bool
+	// fallible are the known variables whose value came from a command's output (expansion.fallible)
+	fallible map[string]bool
 	// off are the variables the engine otherwise knows ($HOME, $TMPDIR, $PWD, the special parameters) that the line assigns or
 	// otherwise names (expansion.off).
 	off map[string]bool
@@ -289,6 +291,7 @@ func stableVars(at, end map[string]string) map[string]string {
 func (ev *evaluator) forget(name string, conflicted map[string]bool) {
 	delete(ev.vars, name)
 	delete(ev.exported, name)
+	delete(ev.fallible, name)
 	conflicted[name] = true
 }
 
@@ -345,6 +348,15 @@ func (ev *evaluator) noteAssignments(s shellparse.Simple, cw *cwdSet, conflicted
 			ev.vars[name] = w
 			if exported {
 				ev.markExported(name)
+			}
+			// a value from a command's output is empty when the command fails
+			if e, _, edyn := ev.rs.expandWordVars(val, cw.dirs[0], expansion{vars: before, off: ev.off, gitEnv: ev.gitEnv, fallible: ev.fallible, emptied: true}); !edyn && e != w {
+				if ev.fallible == nil {
+					ev.fallible = map[string]bool{}
+				}
+				ev.fallible[name] = true
+			} else {
+				delete(ev.fallible, name)
 			}
 		}
 		if s.Program == "" {
@@ -498,7 +510,21 @@ func blankQuoted(s string, double bool) string {
 // tabs for <<-); a "<<" whose delimiter line never comes (a shift in $((1<<2)), a here-string <<<) is left as it is.
 func blankHeredocs(s string, quotedOnly bool) string {
 	b := []byte(s)
+	var q byte // the quote the scan is inside: a "<<" there is text, not a here-document
 	for i := 0; i+1 < len(b); i++ {
+		switch c := b[i]; {
+		case q == 0 && c == '\\', q == '"' && c == '\\':
+			i++
+			continue
+		case q == 0 && (c == '\'' || c == '"'):
+			q = c
+			continue
+		case q != 0 && c == q:
+			q = 0
+			continue
+		case q != 0:
+			continue
+		}
 		if b[i] != '<' || b[i+1] != '<' || i+2 < len(b) && b[i+2] == '<' || i > 0 && b[i-1] == '<' {
 			continue
 		}
