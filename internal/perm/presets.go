@@ -69,6 +69,16 @@ func runsAnother(prog string, args []string) bool {
 	if hasLong(args, refused...) {
 		return true
 	}
+	if prog == "make" {
+		// a command-line variable takes every assignment operator of make: SHELL:=PROG, SHELL::=, SHELL?=, SHELL+=, SHELL!=
+		for _, a := range args {
+			for _, n := range refused {
+				if !strings.HasPrefix(n, "-") && strings.HasPrefix(a, n) && makeAssigns(a[len(n):]) {
+					return true
+				}
+			}
+		}
+	}
 	for _, a := range args {
 		if len(a) < 3 || a[0] != '-' || a[1] == '-' {
 			continue
@@ -98,6 +108,16 @@ func runsAnother(prog string, args []string) bool {
 			val = args[i+1]
 		}
 		if strings.Contains(val, "extld") || strings.Contains(val, "extar") {
+			return true
+		}
+	}
+	return false
+}
+
+// makeAssigns reports whether rest (what follows a variable's name in a make argument) is one of make's assignment operators.
+func makeAssigns(rest string) bool {
+	for _, op := range []string{"=", ":=", "::=", ":::=", "?=", "+=", "!="} {
+		if strings.HasPrefix(rest, op) {
 			return true
 		}
 	}
