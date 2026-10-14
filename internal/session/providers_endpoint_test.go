@@ -629,3 +629,47 @@ func TestEnrichModelDoesNotReadACatalogueOverPlainHTTPFromAnotherMachine(t *test
 		t.Fatalf("loopback: %+v after %d requests", got.Price, requests.Load())
 	}
 }
+
+// model_extra_body puts members over extra_body for one model of a provider only: one gateway, a routing preference for one of its
+// models (Heimdallm's provider.only for minimax) while the others keep the provider-wide members.
+func TestModelExtraBodyAppliesToItsModelOnly(t *testing.T) {
+	clearProviderEnv(t)
+	bodies := make(chan map[string]any, 4)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var b map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&b)
+		bodies <- b
+		http.Error(w, "stop", http.StatusBadRequest)
+	}))
+	defer srv.Close()
+	for _, dialect := range []string{config.DialectOpenAIChat, config.DialectOpenAIResponses, config.DialectAnthropic} {
+		t.Run(dialect, func(t *testing.T) {
+			cfg := &config.Config{Providers: map[string]config.Provider{"p": {
+				Dialect: dialect, BaseURL: srv.URL,
+				Options: map[string]any{
+					"extra_body":       map[string]any{"user": "team", "provider": map[string]any{"sort": "price"}},
+					"model_extra_body": map[string]any{"vendor/pinned": map[string]any{"provider": map[string]any{"only": []any{"impcc"}, "allow_fallbacks": false}}},
+				},
+			}}}
+			send := func(model string) map[string]any {
+				p, m, err := session.BuildProvider(cfg, session.ModelRef{Provider: "p", Model: model}, session.ProviderOptions{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				prompt := &core.Prompt{Model: m.ID, Messages: []core.Message{{Role: core.RoleUser, Blocks: []core.Block{core.Text("hi")}}}, Params: core.Params{MaxTokens: 16}}
+				_, _ = p.Do(context.Background(), &provider.Request{Prompt: prompt}, nil)
+				return <-bodies
+			}
+			pinned, other := send("vendor/pinned"), send("vendor/other")
+			if pv, _ := pinned["provider"].(map[string]any); pv == nil || fmt.Sprint(pv["only"]) != "[impcc]" || pv["allow_fallbacks"] != false || pv["sort"] != nil {
+				t.Errorf("the pinned model's body: %v", pinned["provider"])
+			}
+			if pinned["user"] != "team" || other["user"] != "team" {
+				t.Errorf("extra_body members were lost: %v / %v", pinned["user"], other["user"])
+			}
+			if ov, _ := other["provider"].(map[string]any); ov == nil || ov["sort"] != "price" || ov["only"] != nil {
+				t.Errorf("another model of the provider got the pin: %v", other["provider"])
+			}
+		})
+	}
+}

@@ -15,6 +15,15 @@ they do not indicate whether a change has been released.
   fails. An `agree` or `confirm` from outside the pool (the manager's, say) is
   told that only members acknowledge. Prompt bytes: the pool tool's description and schema
   change G0, so a cached tool prefix of an earlier version no longer matches.
+- Providers take `options.model_extra_body`: per model id, request members put
+  over `extra_body` for that model only (one gateway, an upstream pinned for
+  one of its models, the others routed as before). Prompt bytes: none change.
+
+- The options of an `openai-responses` provider are checked like the other
+  dialects': an unknown name warns, a wrong value (`reasoning_summary`, a
+  `model_extra_body` entry that is not an object) is an error. Such a provider
+  with `capture_tokens` or `--capture` is refused at startup, since the
+  Responses API returns no token ids. Prompt bytes: none change.
 
 - The tests preset (`--allow tests`, the "builds and tests" answer, `accept-edits`) covers a
   Python virtual environment of the workspace (`Bash(python:venv)`): creating
