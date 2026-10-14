@@ -126,3 +126,17 @@ func TestWebGoalAsACommandReachesTheGoalCheck(t *testing.T) {
 		t.Fatalf("a goal at the limit as a command: %d %s", code, body)
 	}
 }
+
+// The goal routes take any JSON spelling of a goal at the limit, the widest included: a character beyond the basic plane written as
+// two \uXXXX escapes is twelve bytes.
+func TestWebGoalAtTheLimitFitsInItsWidestJSON(t *testing.T) {
+	project := webWorld(t)
+	_, base := newWebModel(t, sayScript("ok"))
+	r := newWebRig(t, soloDefaults(project), base)
+	tab := r.ready("")
+	body := `{"action":"set","text":"` + strings.Repeat(`\ud83c\udf32`, maxGoalLen) + `"}`
+	code, out := r.do("POST", "/api/sessions/"+tab.ID+"/goal", json.RawMessage(body))
+	if code != 200 {
+		t.Fatalf("a goal at the limit in escaped surrogate pairs: %d %.200s", code, out)
+	}
+}

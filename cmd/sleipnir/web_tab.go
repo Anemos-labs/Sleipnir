@@ -44,9 +44,9 @@ const (
 	maxNameLen = 60
 	maxRuleLen = 500
 	maxGoalLen = 32000
-	// goalBodyMax is the body cap of the routes that carry a goal: the longest goal at six bytes a character (the widest a character
-	// gets in JSON, an escaped control character) and the room the other fields always had.
-	goalBodyMax = int64(maxGoalLen)*6 + 64<<10
+	// goalBodyMax is the body cap of the routes that carry a goal: the longest goal at twelve bytes a character (the widest a character
+	// gets in JSON, a character beyond the basic plane written as two \uXXXX escapes) and the room the other fields always had.
+	goalBodyMax = int64(maxGoalLen)*12 + 64<<10
 	// maxCommandLen bounds a slash line in bytes: the longest goal in four-byte characters with room for its command ("/goal ..."),
 	// so the line reaches the goal's own check, which counts characters.
 	maxCommandLen = maxGoalLen*4 + 64<<10
