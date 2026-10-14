@@ -479,7 +479,7 @@ func (ev *evaluator) restrictHit(rules []*crule, u *unit, all []access) (*crule,
 	for _, r := range rules {
 		switch r.class {
 		case classBash:
-			if r.venv && u.venv != nil || u.simple != nil && r.matchCommand(*u.simple, true) {
+			if r.venv && u.venv != nil && (!r.venvTests || u.venv.testRun()) || u.simple != nil && r.matchCommand(*u.simple, true) {
 				return r, nil
 			}
 		case classRead:
@@ -601,7 +601,7 @@ func (ev *evaluator) commandAllowRule(u *unit) *crule {
 		case r.class != classBash:
 			continue
 		case r.venv:
-			if !u.venv.ok() || !ev.accessesInWorkspace(u) {
+			if !u.venv.ok() || r.venvTests && !u.venv.testRun() || !ev.accessesInWorkspace(u) {
 				continue
 			}
 		case !r.matchCommand(*u.simple, false), r.workspace && !ev.withinWorkspace(u, r):
