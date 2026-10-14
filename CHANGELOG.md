@@ -12,6 +12,7 @@ they do not indicate whether a change has been released.
   child per share of the agreed work, claims its own and assigns each other
   member its child. Pools that had agreed no longer stall with every member
   refused and waiting. Prompt bytes: none change (tool results and mail).
+
 - Providers take `options.model_extra_body`: per model id, request members put
   over `extra_body` for that model only (one gateway, an upstream pinned for
   one of its models, the others routed as before). Prompt bytes: none change.
@@ -109,6 +110,7 @@ they do not indicate whether a change has been released.
   contract. Reconciliation retains the combined contract supplied for every
   member to confirm. Prompt bytes: the task and pool tool descriptions change G0, incurring a
   one-time cache miss.
+
 - Configured teams retain role pools and worker conversations. Each multi-member
   pool agrees on one plan, delegates scoped children and reconciles one parent
   result. Task revisions and retries preserve IDs; unneeded work closes with an
@@ -117,6 +119,7 @@ they do not indicate whether a change has been released.
   exact requested worker count. Prompt bytes: G0 gains the `pool` tool and task
   revision/parent fields; manager and architect role pins and the manager's
   isolation card change. These stable layers incur a one-time cache miss.
+
 - GitHub delivery is opt-in per objective through `--auto-fix`, `--auto-merge`,
   `/delivery` and chat checkboxes. It persists progress for explicit resume and
   checks the current PR head before merging. Cache charts show a readable window
