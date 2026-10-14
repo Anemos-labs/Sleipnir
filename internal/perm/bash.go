@@ -532,13 +532,16 @@ func blankHeredocs(s string, quotedOnly bool) string {
 	var q byte // the quote the scan is inside: a "<<" there is text, not a here-document
 	for i := 0; i+1 < len(b); i++ {
 		switch c := b[i]; {
-		case q == 0 && c == '\\', q == '"' && c == '\\':
+		case q == 0 && c == '\\', q == '"' && c == '\\', q == 'a' && c == '\\': // $'...' escapes as "..." does, \' included
 			i++
+			continue
+		case q == 0 && c == '\'' && i > 0 && b[i-1] == '$':
+			q = 'a'
 			continue
 		case q == 0 && (c == '\'' || c == '"'):
 			q = c
 			continue
-		case q != 0 && c == q:
+		case q != 0 && (c == q || q == 'a' && c == '\''):
 			q = 0
 			continue
 		case q != 0:

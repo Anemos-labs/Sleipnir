@@ -265,6 +265,7 @@ func TestAFailedSubstitutionIsJudgedEmpty(t *testing.T) {
 		{`d=$(git rev-parse --show-toplevel); cat "$d/README.md"`, "allow"},
 		{`d=$(pwd); cat "$d/README.md"`, "allow"},
 		{`echo "a <<EOF"; d=$TMPDIR/x; f() { d=/; }; f; echo EOF; rm -rf "$d"`, "ask"},
+		{"echo $'\\'' '<<EOF'\nd=$TMPDIR/x; f() { d=/; }; f\nEOF\nrm -rf \"$d\"", "ask"}, // an escaped quote inside $'...' does not end it
 	} {
 		d := e.Check(context.Background(), Request{Agent: "be-6", Tool: "Bash", Command: f.expand(c.cmd)})
 		if got := outcome(d); got != c.want {
