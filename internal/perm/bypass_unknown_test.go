@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/anemos-labs/sleipnir/internal/shellparse"
 )
 
 // Bypass asks only about the very dangerous: the high-risk class (sudo, a recursive delete of a broad or unknown path, ...) and a write
@@ -224,5 +226,27 @@ func TestGoRunMktempAndReadOnlyRolesInBypass(t *testing.T) {
 		if got := outcome(d); got != c.want {
 			t.Errorf("%s %s = %s (%s), want %s", c.role, c.cmd, got, d.Reason, c.want)
 		}
+	}
+}
+
+// A command run in the background assigns in a shell of its own, and the rest of the line keeps the variables it set: D=$(mktemp -d);
+// server & PID=$!; ...; rm -rf "$D" deletes the scratch directory (a backend agent's smoke test was asked about as "a recursive delete
+// of $D"). What the background command itself assigns is not the line's.
+func TestABackgroundJobKeepsTheLinesVariablesKnown(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: t.TempDir()})
+	for _, c := range []struct{ cmd, want string }{
+		{`D=$(mktemp -d); go build -o "$TMPDIR/srv" ./cmd/x && "$TMPDIR/srv" --data "$D" & APP=$!; sleep 2; kill $APP; rm -rf "$D"`, "allow"},
+		{`D=$TMPDIR/x; sleep 1 & rm -rf "$D"`, "allow"},
+		{`D=$TMPDIR/x; D=/ & rm -rf "$D"`, "ask"}, // the background assignment may or may not have run: D is no longer known
+		{`D=$TMPDIR/x; cmd 2>&1 & rm -rf "$D"`, "allow"},
+	} {
+		d := e.Check(context.Background(), Request{Agent: "be-7", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+	if !backgrounded("a & b", shellparse.Simple{Raw: "a"}) || backgrounded("a && b", shellparse.Simple{Raw: "a"}) || backgrounded("a &> f", shellparse.Simple{Raw: "a"}) {
+		t.Error("backgrounded")
 	}
 }

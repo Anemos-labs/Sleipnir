@@ -17,8 +17,9 @@ they do not indicate whether a change has been released.
   that only might be a file (an unlisted program's operand, `node script.mjs
   .`) is judged as the path it spells, not as a tree an `ask` rule overlaps.
   `go run` is understood: it reads and builds its package and passes the rest
-  to the program. `$(mktemp ...)` names a new path in `$TMPDIR`. Prompt bytes:
-  none change.
+  to the program. `$(mktemp ...)` names a new path in `$TMPDIR`. A command run
+  in the background (`server &`) no longer makes every variable of the line
+  unknown; only what it assigns itself is. Prompt bytes: none change.
 
 - The variables a command line sets stay known when quoted text or a
   here-document body in it holds `()`, `function `, `((`, braces or keywords:

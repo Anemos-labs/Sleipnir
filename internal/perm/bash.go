@@ -206,7 +206,15 @@ func (ev *evaluator) bash(cmd string) verdict {
 		}
 		v := ev.judgeWith(s, cw, ev.vars)
 		if track {
-			if reassigns(s) {
+			if an.Background && backgrounded(cmd, s) {
+				// a command run in the background (cmd &) assigns in a shell of its own: what it sets is not the line's
+				for _, env := range assignedBy(s) {
+					ev.forget(envName(env), conflicted)
+				}
+				if reassigns(s) {
+					ev.vars, ev.exported, track = nil, nil, false
+				}
+			} else if reassigns(s) {
 				ev.vars, ev.exported, track = nil, nil, false // a builtin may set any variable from here on
 			} else if unconditional(cmd, s) {
 				ev.noteAssignments(s, cw, conflicted)
@@ -439,7 +447,8 @@ func validName(s string) bool {
 }
 
 // varsTrackable reports whether a command line is simple enough for noteAssignments: no function definitions, whose bodies may set
-// variables when they are called; no command run in the background, whose assignments are its own; no arithmetic, which assigns
+// variables when they are called (a command run in the background is handled where it is met: its assignments are its own); no
+// arithmetic, which assigns
 // ($((n=5))); and no trap action that assigns, since it may run between any two commands.
 func varsTrackable(cmd string, an shellparse.Analysis) bool {
 	// Quoted text is not a definition: printf 'func main() {...}' > main.go defines no function. Arithmetic still runs inside double
@@ -447,7 +456,7 @@ func varsTrackable(cmd string, an shellparse.Analysis) bool {
 	// A heredoc's body is text for a command's standard input, not the line's syntax; one with a quoted delimiter (<<'EOF') is not even
 	// expanded, while an unquoted one still runs $((...)) inside.
 	code, unsingled := blankQuoted(blankHeredocs(cmd, false), true), blankQuoted(blankHeredocs(cmd, true), false)
-	if an.Background || strings.Contains(code, "()") || strings.Contains(code, "function ") || strings.Contains(unsingled, "((") {
+	if strings.Contains(code, "()") || strings.Contains(code, "function ") || strings.Contains(unsingled, "((") {
 		return false
 	}
 	for _, s := range an.Commands {
@@ -491,6 +500,16 @@ func blankQuoted(s string, double bool) string {
 		}
 	}
 	return string(b)
+}
+
+// backgrounded reports whether s is run in the background in cmd: its text is followed by a single "&" (not "&&", not the "&>" of a
+// redirection). When s's text cannot be found once in cmd, it says true, which forgets what s assigns.
+func backgrounded(cmd string, s shellparse.Simple) bool {
+	if s.Raw == "" || strings.Count(cmd, s.Raw) != 1 {
+		return true
+	}
+	after := strings.TrimLeft(cmd[strings.Index(cmd, s.Raw)+len(s.Raw):], " \t")
+	return strings.HasPrefix(after, "&") && !strings.HasPrefix(after, "&&") && !strings.HasPrefix(after, "&>")
 }
 
 // blankHeredocs returns s with the bodies of its here-documents replaced by spaces (the newlines kept), only those whose delimiter is
