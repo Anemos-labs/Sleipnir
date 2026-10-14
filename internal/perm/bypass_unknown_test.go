@@ -7,37 +7,54 @@ import (
 	"testing"
 )
 
-// Bypass mode still applies the built-in protections and the deny and ask rules, and a file whose name is only known when the command
-// runs cannot be checked against them: bypass asks about it, since even a name with a known directory ("docs/$X") may lead out of it
-// with a "../". The words that only might be files (an unlisted program's operands, an assignment's value), a cd and a name-only use
-// pass. Yolo mode never asks.
-func TestBypassAsksAboutAFileOnlyKnownWhenItMayBeGuarded(t *testing.T) {
+// Bypass asks only about the very dangerous: the high-risk class (sudo, a recursive delete of a broad or unknown path, ...) and a write
+// into a directory whose contents steer later sessions (.sleipnir/, .claude/, git hooks). A file whose name is only known when the
+// command runs is allowed; when a deny rule of the person's may cover it (any Read rule for a read, any Edit rule for a write), it is
+// refused instead, and nothing asks. The words that only might be files (an unlisted program's operands, an assignment's value), a cd
+// and a name-only use pass. Yolo mode never asks.
+func TestBypassAsksOnlyAboutTheVeryDangerous(t *testing.T) {
 	f := newFixture(t)
-	cfg := Config{Mode: ModeBypass, Tmp: t.TempDir(), Ask: []string{"Edit(./.sleipnir/**)"}, Deny: []string{"Read(./secrets/**)"}}
-	e := f.engine(t, cfg)
-	for _, c := range []struct{ cmd, want string }{
-		{`cat "$U"`, "ask"},                     // may be any file
-		{`cat "$PWD/$X"`, "ask"},                // secrets/ is below the project
-		{`cat ~/"$X"`, "ask"},                   // ~/.ssh is below home
-		{`cat < "$F"`, "ask"},                   // a redirection's file
-		{`echo hi > "$F"`, "ask"},               // a redirection's file
-		{`printf x > ".sleipnir/$N"`, "ask"},    // the ask rule covers the directory
-		{`cat "docs/$X"`, "ask"},                // X may be ../../.ssh/id_rsa
-		{`cat "$TMPDIR/$X"`, "ask"},             // and lead out of the scratch directory as well
-		{`cd "$X"`, "allow"},                    // cd reads nothing
-		{`ls "$X"`, "allow"},                    // names only
-		{`node app.js --port "$PORT"`, "allow"}, // an unlisted program's words only might be files
-		{`ID=$(curl -s localhost:8099/api/x | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])'); echo "$ID"`, "allow"},
-		{`cd "$(pwd)"; X="$TMPDIR/a.db"; rm -f "$X"`, "allow"}, // the substitution in cd does not make X unknown
-		{`D=docs; cat "$D/README.md"`, "allow"},                // a variable the line set
+	ruled := Config{Mode: ModeBypass, Tmp: t.TempDir(), Ask: []string{"Edit(./.sleipnir/**)"}, Deny: []string{"Read(./secrets/**)"}}
+	plain := Config{Mode: ModeBypass, Tmp: t.TempDir(), Ask: []string{"Edit(./.sleipnir/**)"}}
+	for _, c := range []struct {
+		cmd          string
+		ruled, plain string
+	}{
+		{`cat "$U"`, "deny", "allow"},               // may be any file: the read deny rule may cover it
+		{`cat "$PWD/$X"`, "deny", "allow"},          // secrets/ is below the project
+		{`cat ~/"$X"`, "deny", "allow"},             // and below home, through a ../
+		{`cat < "$F"`, "deny", "allow"},             // a redirection's file
+		{`echo hi > "$F"`, "allow", "allow"},        // a write: no Edit deny rule
+		{`cat "docs/$X"`, "deny", "allow"},          // X may be ../secrets/k
+		{`cat "$TMPDIR/$X"`, "deny", "allow"},       // and lead out of the scratch directory as well
+		{`printf x > ".sleipnir/$N"`, "ask", "ask"}, // a write into the steering directory
+		{`printf x > .sleipnir/config.json`, "ask", "ask"},
+		{`rm -rf "$X"`, "ask", "ask"},                    // high risk: an empty X is "" or "/"
+		{`sudo ls`, "ask", "ask"},                        // high risk
+		{`cd "$X"`, "allow", "allow"},                    // cd reads nothing
+		{`ls "$X"`, "allow", "allow"},                    // names only
+		{`node app.js --port "$PORT"`, "allow", "allow"}, // an unlisted program's words only might be files
+		{`node script.mjs .`, "deny", "allow"},           // nor is "." a tree it writes (the deny rule still sees the tree it may read)
+		{`go run . -data-dir "$D"`, "deny", "allow"},     // go run reads its package (a tree, under the deny rule); the rest is the program's
+		{`D=$(mktemp -d); go run ./cmd/x -data-dir "$D" > "$D/log"; rm -rf "$D"`, "allow", "allow"}, // mktemp names a new scratch path
+		{`ID=$(curl -s localhost:8099/api/x | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])'); echo "$ID"`, "allow", "allow"},
+		{`cd "$(pwd)"; X="$TMPDIR/a.db"; rm -f "$X"`, "allow", "allow"}, // the substitution in cd does not make X unknown
+		{`D=docs; cat "$D/README.md"`, "allow", "allow"},                // a variable the line set
+		{`go test ravenwatch/internal/store`, "deny", "allow"},          // an import path is read where the module puts it
 	} {
-		d := e.Check(context.Background(), Request{Agent: "be-1", Tool: "Bash", Command: f.expand(c.cmd)})
-		if got := outcome(d); got != c.want {
-			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		for _, k := range []struct {
+			name string
+			cfg  Config
+			want string
+		}{{"with a read deny rule", ruled, c.ruled}, {"without", plain, c.plain}} {
+			d := f.engine(t, k.cfg).Check(context.Background(), Request{Agent: "be-1", Tool: "Bash", Command: f.expand(c.cmd)})
+			if got := outcome(d); got != k.want {
+				t.Errorf("%s (%s)\n  = %s (%s), want %s", c.cmd, k.name, got, d.Reason, k.want)
+			}
 		}
 	}
-	cfg.Mode = ModeYolo
-	y := f.engine(t, cfg)
+	ruled.Mode = ModeYolo
+	y := f.engine(t, ruled)
 	if d := y.Check(context.Background(), Request{Agent: "be-1", Tool: "Bash", Command: `cat "$U"`}); outcome(d) != "allow" {
 		t.Errorf("yolo: %s (%s)", outcome(d), d.Reason)
 	}
@@ -98,9 +115,9 @@ func TestTheRepositoryRootAndTheWorkingDirectoryAreKnownSubstitutions(t *testing
 		{`cd "$(pwd)" && cat web/x.go`, "allow"},
 		{`cd "$(git rev-parse --show-toplevel)" && cat secrets/k`, "deny"},
 		{`cat "$(git rev-parse --show-toplevel)/secrets/k"`, "deny"},
-		{`cd "$(git rev-parse --git-dir)" && cat x`, "ask"},
-		{`GIT_DIR=/elsewhere; cd "$(git rev-parse --show-toplevel)" && cat x`, "ask"},
-		{`cd "$(git rev-parse --show-toplevel)/$X" && cat x`, "ask"},
+		{`cd "$(git rev-parse --git-dir)" && cat x`, "deny"}, // unknown: the read deny rule may cover it
+		{`GIT_DIR=/elsewhere; cd "$(git rev-parse --show-toplevel)" && cat x`, "deny"},
+		{`cd "$(git rev-parse --show-toplevel)/$X" && cat x`, "deny"},
 	} {
 		d := e.Check(context.Background(), Request{Agent: "be-6", Tool: "Bash", Command: f.expand(c.cmd), Cwd: filepath.Join(f.root, "internal")})
 		if got := outcome(d); got != c.want {
@@ -127,6 +144,50 @@ func TestAHeredocBodyKeepsTheLinesVariablesKnown(t *testing.T) {
 		d := e.Check(context.Background(), Request{Agent: "be-3", Tool: "Bash", Command: f.expand(c.cmd)})
 		if got := outcome(d); got != c.want {
 			t.Errorf("%q\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
+
+// go run reads and builds its package and passes the rest to the program; $(mktemp ...) is a new path in $TMPDIR unless the line moves
+// $TMPDIR or the template names a directory; a read-only role in a bypass session reads a name only known when the command runs as the
+// session does.
+func TestGoRunMktempAndReadOnlyRolesInBypass(t *testing.T) {
+	f := newFixture(t)
+	roles := map[string]RoleProfile{"reviewer": {Mode: ModePlan}}
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: t.TempDir(), Ask: []string{"Edit(./.sleipnir/**)"}, Roles: roles})
+	for _, c := range []struct{ role, cmd, want string }{
+		{"", `go run .`, "allow"},
+		{"", `go run main.go util.go -mock 3`, "allow"},
+		{"", `go run . -out .sleipnir/x`, "ask"}, // a word naming the steering directory may be written there
+		{"", `D=$(mktemp -d); rm -rf "$D"`, "allow"},
+		{"", `D=$(mktemp -d -t rw.XXXXXX); rm -rf "$D"`, "allow"},
+		{"", `D=$(mktemp -d /x/rw.XXXXXX); rm -rf "$D"`, "ask"},
+		{"", `TMPDIR=/; D=$(mktemp -d); rm -rf "$D"`, "ask"},
+		{"reviewer", `cat "$F"`, "allow"},
+		{"reviewer", `echo x > "$F"`, "deny"}, // a read-only role still writes nothing
+	} {
+		d := e.Check(context.Background(), Request{Agent: "a", Role: c.role, Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%s %s = %s (%s), want %s", c.role, c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
+
+// A command run in the background assigns in a shell of its own, and the rest of the line keeps the variables it set: D=$(mktemp -d);
+// server & PID=$!; ...; rm -rf "$D" deletes the scratch directory (a backend agent's smoke test was asked about as "a recursive delete
+// of $D"). What the background command itself assigns is not the line's.
+func TestABackgroundJobKeepsTheLinesVariablesKnown(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: t.TempDir()})
+	for _, c := range []struct{ cmd, want string }{
+		{`D=$(mktemp -d); go build -o "$TMPDIR/srv" ./cmd/x && "$TMPDIR/srv" --data "$D" & APP=$!; sleep 2; kill $APP; rm -rf "$D"`, "allow"},
+		{`D=$TMPDIR/x; sleep 1 & rm -rf "$D"`, "allow"},
+		{`D=$TMPDIR/x; D=/ & rm -rf "$D"`, "ask"}, // the background assignment may or may not have run: D is no longer known
+		{`D=$TMPDIR/x; cmd 2>&1 & rm -rf "$D"`, "allow"},
+	} {
+		d := e.Check(context.Background(), Request{Agent: "be-7", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
 		}
 	}
 }
@@ -166,6 +227,23 @@ func TestAFailedSubstitutionIsJudgedEmpty(t *testing.T) {
 	}
 	if _, ok := (&resolver{}).knownSubstitution("git rev-parse --show-toplevel", f.root, x); !ok {
 		t.Error("the fixture's repository was not recognised")
+	}
+}
+
+// $(mktemp) can fail, and is then empty: rm -rf "$D" after D=$(mktemp -d) deletes nothing in that case, while rm -rf "$D"/* would be
+// rm -rf /*, which the system directories' protection refuses.
+func TestAFailedMktempIsJudgedEmpty(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: t.TempDir()})
+	for _, c := range []struct{ cmd, want string }{
+		{`D=$(mktemp -d); rm -rf "$D"`, "allow"},
+		{`D=$(mktemp -d); rm -rf "$D"/*`, "deny"},
+		{`D=$(mktemp -d); cat "$D/proc/self/environ"`, "deny"},
+	} {
+		d := e.Check(context.Background(), Request{Agent: "be-7", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
 	}
 }
 

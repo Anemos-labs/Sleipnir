@@ -216,12 +216,17 @@ state directory (where the scratch directory lives) does not ask about it; `deny
 in it whose rest is only known when the command runs (`"$TMPDIR/$X"`) could leave it with a `../`, so the rule asks, and the question says
 that the variable is the cause; it is never routine.
 
-A file whose name is only known when the command runs (`cat "$F"`, `echo x > "$OUT"`) cannot be checked against the built-in protections
-or the `deny` and `ask` rules, which `bypass` mode still applies, so `bypass` asks about it: a name with no known beginning may be any
-file, and the unknown part of one whose beginning names a directory (`"docs/$X"`, `"$TMPDIR/$X"`) may hold a `../` that leads out of it.
-This covers the files a command certainly names: the operands of the commands the engine knows, redirections and the file tools. The words of an unlisted program
-and the value of an assignment, which only might be files, a `cd`, and a use that reads only names (`ls "$X"`) do not ask. `yolo` mode
-never asks, and lets such a name pass.
+`bypass` asks only about the very dangerous: the high-risk class, and a write into a directory whose contents steer later sessions
+(`.sleipnir/`, `.claude/`, git hooks and config). A file whose name is only known when the command runs (`cat "$F"`, `echo x > "$OUT"`)
+cannot be checked against the built-in protections or the rules, so `bypass` allows it, unless a `deny` rule of the person's may cover
+it: any `Read` rule for a read, any `Edit` rule for a write, since a name with no known beginning may be any file and the unknown part
+of one whose beginning names a directory (`"docs/$X"`, `"$TMPDIR/$X"`) may hold a `../` that leads out of it. Such a name is then
+refused, and the refusal says why; nothing asks. A name whose known part is inside a steering directory (`".sleipnir/$N"`) still asks.
+A built-in protection cannot see a name it cannot read: in `bypass` mode a command that spells a protected path through a variable is
+not stopped by the engine (as it is not stopped from running a program that reads it); use a container where that matters. The words
+of an unlisted program and the value of an assignment, which only might be files, are judged as the path they spell, not as a tree
+below it (`node script.mjs .`). Two command substitutions have known values: `$(pwd)` and `$(git rev-parse --show-toplevel)`, and
+`$(mktemp ...)` names a new path in `$TMPDIR`. `yolo` mode never asks, and lets such a name pass.
 
 ### Variables a command line sets
 

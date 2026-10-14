@@ -169,7 +169,7 @@ func (ev *evaluator) judge(u *unit) verdict {
 	if r := ev.restrictMatch(ev.v.deny, u, all); r != nil {
 		return deny("denied by rule " + r.String()).by(r)
 	}
-	if r, hit := ev.restrictHit(ev.v.ask, u, ev.rs.outsideTmp(all)); r != nil {
+	if r, hit := ev.restrictHit(ev.v.ask, u, ev.askAccesses(all)); r != nil {
 		why, unknown := ev.askRuleReason(r, hit)
 		if ev.v.mode == ModeYolo { // yolo never asks: a rule that would have asked refuses instead
 			return deny("yolo mode never asks, and " + why + "; allow it with an Allow rule or leave yolo").by(r)
@@ -192,6 +192,31 @@ func (ev *evaluator) judge(u *unit) verdict {
 		return ev.decideTool(u)
 	}
 	return ev.decideCommand(u)
+}
+
+// askAccesses are the accesses the ask rules are judged against: those outside the session's scratch directory (outsideTmp), and, in
+// bypass mode, a word that only might be a file (an unlisted program's operand: node script.mjs .) as the path it names rather than
+// as the whole tree below it. Bypass asks only about the very dangerous: a program handed "." does not write .sleipnir/ because the
+// project holds it (in bypass it may run anyway), while a write that names .sleipnir/ itself still asks, and so does a known read of a
+// tree that a rule of the person's asks about. Deny rules still see whole trees.
+func (ev *evaluator) askAccesses(all []access) []access {
+	out := ev.rs.outsideTmp(all)
+	if ev.v.mode != ModeBypass {
+		return out
+	}
+	var cp []access
+	for i, a := range out {
+		if a.guess && a.tree {
+			if cp == nil {
+				cp = slices.Clone(out)
+			}
+			cp[i].tree = false
+		}
+	}
+	if cp == nil {
+		return out
+	}
+	return cp
 }
 
 // quote renders a value as a Go-escaped quoted string for permission diagnostics.
@@ -391,6 +416,18 @@ func (ev *evaluator) decideTool(u *unit) verdict {
 	return res
 }
 
+// denyMayCover is a deny rule of the view that may cover an access whose file is only known when the command runs: any Read rule for
+// a read, any Edit rule for a write (the name may be any file, and even one with a known directory may lead out of it). nil when there
+// is none.
+func (ev *evaluator) denyMayCover(a access) *crule {
+	for _, r := range ev.v.deny {
+		if r.class == classRead && a.read || r.class == classWrite && a.write {
+			return r
+		}
+	}
+	return nil
+}
+
 // unknownMayBeGuarded says why a file whose name is only known when the command runs may be one that a built-in protection, a deny rule
 // or an ask rule guards. It always may: a name with no known beginning ("$F") may be any file, and the unknown part of one with a known
 // directory ("docs/$X") may hold a "../" that leads out of it.
@@ -407,13 +444,18 @@ func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 	rem := func() []Rule { return ev.rememberAccess(a, u) } // only needed when it asks
 	if a.dynamic {
 		switch {
-		case mode == ModeBypass && !a.guess:
-			why := ev.unknownMayBeGuarded(a)
-			// bypass mode still applies the built-in protections and the deny and ask rules, which cannot be checked against a file
-			// that is only known when the command runs
-			return ask(quote(a.raw)+" is a file name that is only known when the command runs ("+unknownWords(a.raw)+"), and "+why+
-				"; bypass mode still asks before a file a protection or a rule guards: write the path out, or set the variable earlier "+
-				"in the same command", nil)
+		case mode == ModeBypass || ev.v.readFree && !a.write:
+			// Bypass asks only about the very dangerous (the high-risk class). A file whose name is only known when the command runs
+			// cannot be checked against the rules: a deny rule of the person's that may cover it refuses it, and nothing asks.
+			if r := ev.denyMayCover(a); r != nil && !a.guess {
+				return deny(quote(a.raw) + " is a file name that is only known when the command runs (" + unknownWords(a.raw) + "), and " +
+					"the deny rule " + r.String() + " may cover it (" + ev.unknownMayBeGuarded(a) + "): write the path out, or set the variable " +
+					"earlier in the same command").by(r)
+			}
+			if mode == ModeBypass {
+				return allow("bypass mode")
+			}
+			return allow("a read the session's mode allows")
 		case free(mode):
 			return allow(string(mode) + " mode")
 		case mode == ModePlan && a.write:

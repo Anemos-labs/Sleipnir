@@ -24,8 +24,10 @@ func TestATestRunnerReadsThePathsItIsGiven(t *testing.T) {
 		{"pytest --basetemp=.sleipnir/tmp .", "not allow"},
 		{"pytest --junitxml .sleipnir/report.xml tests", "not allow"},
 		{"node --test --test-reporter-destination=.sleipnir/out.txt .", "not allow"},
-		{"node --test --import ./hook.mjs .", "not allow"},
-		{"node script.mjs .", "not allow"},
+		// an option not on the list, or a program that is not a runner: "." is a word that only might be a file, which bypass does not
+		// ask about (default mode does, below)
+		{"node --test --import ./hook.mjs .", "allow"},
+		{"node script.mjs .", "allow"},
 	} {
 		d := e.Check(context.Background(), Request{Agent: "fe-1", Tool: "Bash", Command: f.expand(c.cmd)})
 		got := outcome(d)
@@ -34,6 +36,18 @@ func TestATestRunnerReadsThePathsItIsGiven(t *testing.T) {
 		}
 		if got != c.want {
 			t.Errorf("%s = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
+
+// Outside bypass, a program that is not a test runner (or a runner given an option it does not know) handed "." may write the tree,
+// which covers the protected configuration directory: it is not allowed without a question.
+func TestAnUnknownProgramHandedTheProjectAsksOutsideBypass(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeAcceptEdits, Ask: []string{"Edit(./.sleipnir/**)", "Edit(~/.sleipnir/**)"}})
+	for _, cmd := range []string{"node --test --import ./hook.mjs .", "node script.mjs ."} {
+		if d := e.Check(context.Background(), Request{Agent: "fe-1", Tool: "Bash", Command: f.expand(cmd)}); outcome(d) == "allow" {
+			t.Errorf("%s = allow (%s)", cmd, d.Reason)
 		}
 	}
 }
