@@ -216,7 +216,7 @@ that was shown collapsed (a tool's long output is its first and last lines).
 
 **Approvals.** A tool that needs approval puts a box in the live region: the command, or the change as a diff, and why it asks.
 `1` is yes, `2` is yes and do not ask again for this exact request for the rest of the session (a test or build command such as `go test ./a`: the command, not the arguments; an edit inside the project: edits inside it; the box says which), offered only when the rule it adds would let the same request through, `3` is yes and allow the builds and tests of most projects for the session, when the question is about one of them, and no is `4` when `3` is offered and `3` otherwise (the numbers do not shift when `2` is absent): no and tell Sleipnir what
-to do instead (the numbers are the web page's: without the second answer, no is still `3`); the arrows and Tab with Enter choose too, and `esc` is no. Letters never answer. A question takes keys only after
+to do instead (the numbers are the web page's); the arrows and Tab with Enter choose too, and `esc` is no. Letters never answer. A question takes keys only after
 the keyboard has been quiet for a moment since it appeared, and says so ("your typing goes to the prompt until you pause"), so a
 sentence that is half typed when the question appears, or a line typed ahead, cannot approve anything. Ctrl-D at a question is no
 answer: a refusal that says so. Questions that arrive together (agents of a swarm) are asked one at a time, each after the same

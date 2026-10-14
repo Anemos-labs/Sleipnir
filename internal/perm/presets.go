@@ -47,13 +47,14 @@ var workspaceFileLists = map[string]bool{
 	"python -m py_compile": true, "python3 -m py_compile": true, "python -m compileall": true, "python3 -m compileall": true,
 }
 
-// compileValueOptions are the options of compileall that take the next argument as their value, which is not a file to compile.
-var compileValueOptions = map[string]bool{"-d": true, "-s": true, "-p": true, "-x": true, "-r": true, "-j": true, "-o": true, "-e": true,
-	"--invalidation-mode": true}
+// compileValueLetters are the short options of compileall that take a value (-d DESTDIR, -s, -p, -x, -r, -j, -o, -e): the rest of
+// their cluster ("-j4"), or the next argument when they end it ("-qj 4"), is that value, not a file to compile.
+var compileValueLetters = map[byte]bool{'d': true, 's': true, 'p': true, 'x': true, 'r': true, 'j': true, 'o': true, 'e': true}
 
 // compiledFiles is why the arguments of python -m py_compile or compileall (after the module) do not name the files it compiles: it
 // names none, so compileall would compile every directory of sys.path, or it reads its list from standard input or a file ("-", -i),
-// whose paths are not on the command line. "" when they name them.
+// whose paths are not on the command line. "" when they name them. Short options are read as argparse reads them, one letter at a
+// time in a cluster ("-qi list" is -q -i list).
 func compiledFiles(args []string) string {
 	files := 0
 	for i := 0; i < len(args); i++ {
@@ -61,8 +62,6 @@ func compiledFiles(args []string) string {
 		switch {
 		case a == "-":
 			return "it reads the files to compile from standard input"
-		case a == "-i" || (strings.HasPrefix(a, "-i") && !strings.HasPrefix(a, "--")):
-			return "it reads the files to compile from a list (-i)"
 		case a == "--":
 			for _, b := range args[i+1:] {
 				if b == "-" {
@@ -71,9 +70,22 @@ func compiledFiles(args []string) string {
 				files++
 			}
 			i = len(args)
-		case compileValueOptions[a]:
+		case a == "--invalidation-mode":
 			i++
+		case strings.HasPrefix(a, "--"):
 		case strings.HasPrefix(a, "-"):
+		cluster:
+			for k := 1; k < len(a); k++ {
+				switch c := a[k]; {
+				case c == 'i':
+					return "it reads the files to compile from a list (-i)"
+				case compileValueLetters[c]:
+					if k == len(a)-1 {
+						i++ // the value is the next argument
+					}
+					break cluster // the value is the rest of the cluster
+				}
+			}
 		default:
 			files++
 		}

@@ -7,7 +7,7 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
-- The tests preset (`--allow tests`, the fourth answer, `accept-edits`) covers a
+- The tests preset (`--allow tests`, the "builds and tests" answer, `accept-edits`) covers a
   Python virtual environment of the workspace (`Bash(python:venv)`): creating
   one, installing into it with its own pip from the package index, and running
   the tests with it, when its python is a link to an installed interpreter
