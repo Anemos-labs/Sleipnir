@@ -38,6 +38,13 @@ tester 0/1`). A team has at least 8 workers on the command line and in the page;
 rollouts may build any team, or none (roles then limited by `MaxWorkers` alone).
 
 **Cooperating pools.** Multiple slots of a role activate together for one parent task.
+A role works several parents side by side: when the manager assigns a role a parent
+while another of its parents is open, the members that one can spare (it is executing
+its plan, and they neither lead it nor hold an open subtask of it) leave its pool,
+without being excused, and form the new parent's pool; its leader is told who left.
+A parent whose pool is still agreeing on its plan needs every member, and one whose
+members are all busy spares none: the assignment is then refused with what to do
+(wait, or have the busy parent's leader take the work as a child).
 The first configured member leads, including after resume. `pool propose` records a
 shared agreement covering conventions, interfaces, work division and acceptance.
 Every member calls `pool agree` with its current revision before `pool execute` can
