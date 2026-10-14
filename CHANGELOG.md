@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The variables a command line sets stay known when quoted text in it holds
+  `()`, `function ` or `((`: `printf 'func main() {...}' > main.go` defines no
+  function, so a later `rm -rf "$d"` of a scratch directory the line named is
+  judged as that directory. Before, any `()` in the line made every variable
+  unknown, and bypass mode asked about the delete as high risk. A real
+  function definition, and arithmetic inside double quotes (`"$((n=1))"`),
+  still stop the tracking. Prompt bytes: none change.
+
 - The goal judge's evidence search lists the newest records first, an
   evidence request it wraps in a code fence or in words is read, and an answer
   that is neither a request nor a verdict is asked for again (twice) and then

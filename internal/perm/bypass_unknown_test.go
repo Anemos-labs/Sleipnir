@@ -68,3 +68,45 @@ func TestARelativeUnknownNameIsInsideItsKnownDirectory(t *testing.T) {
 		t.Errorf("cat secrets/$X: %s (%s)", outcome(d), d.Reason)
 	}
 }
+
+// Quoted text defines no function and runs no arithmetic: a line that writes Go source with printf ('func main() {...}') keeps the
+// variables it set known, so its rm -rf "$d" of a scratch directory it named is judged as that directory. (A devops agent's 12-line
+// build check was asked about as "a recursive delete of $d, a path that is only known when the command runs" because of the "()" in
+// a printf.) A real function definition, or arithmetic in double quotes, still stops the tracking.
+func TestQuotedParenthesesKeepTheLinesVariablesKnown(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: t.TempDir()})
+	for _, c := range []struct{ cmd, want string }{
+		{`d="$TMPDIR/mkverify"; rm -rf "$d"; mkdir -p "$d/cmd/raven"; cd "$d"
+printf 'package main\n\nimport "fmt"\n\nfunc main() { fmt.Println("raven") }\n' > cmd/raven/main.go`, "allow"},
+		{`d="$TMPDIR/x"; echo "f() is fine in quotes"; rm -rf "$d"`, "allow"},
+		{`d="$TMPDIR/x"; echo $'a function () here'; rm -rf "$d"`, "allow"},
+		{`d="$TMPDIR/x"; f() { d=/; }; f; rm -rf "$d"`, "ask"},   // a function may set d
+		{`d="$TMPDIR/x"; echo "$((n=1))"; rm -rf "$d"`, "ask"},   // arithmetic runs inside double quotes
+		{`d="$TMPDIR/x"; function g { :; }; rm -rf "$d"`, "ask"}, // a definition with the keyword
+	} {
+		d := e.Check(context.Background(), Request{Agent: "dv-1", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
+
+func TestBlankQuoted(t *testing.T) {
+	for _, c := range []struct {
+		in     string
+		double bool
+		want   string
+	}{
+		{`printf 'f() {}' > x`, true, `printf '      ' > x`},
+		{`echo "a()" 'b()' c()`, true, `echo "   " '   ' c()`},
+		{`echo "a()" 'b()' c()`, false, `echo "a()" '   ' c()`},
+		{`echo \'f() x\'`, true, `echo \'f() x\'`},
+		{`echo $'it\'s ()' ()`, true, `echo $'        ' ()`},
+		{`echo "q\"()" ()`, true, `echo "     " ()`},
+	} {
+		if got := blankQuoted(c.in, c.double); got != c.want {
+			t.Errorf("blankQuoted(%q, %v) = %q, want %q", c.in, c.double, got, c.want)
+		}
+	}
+}

@@ -439,7 +439,10 @@ func validName(s string) bool {
 // variables when they are called; no command run in the background, whose assignments are its own; no arithmetic, which assigns
 // ($((n=5))); and no trap action that assigns, since it may run between any two commands.
 func varsTrackable(cmd string, an shellparse.Analysis) bool {
-	if an.Background || strings.Contains(cmd, "()") || strings.Contains(cmd, "function ") || strings.Contains(cmd, "((") {
+	// Quoted text is not a definition: printf 'func main() {...}' > main.go defines no function. Arithmetic still runs inside double
+	// quotes ("$((n=5))"), so only single-quoted text is left out of that check.
+	code, unsingled := blankQuoted(cmd, true), blankQuoted(cmd, false)
+	if an.Background || strings.Contains(code, "()") || strings.Contains(code, "function ") || strings.Contains(unsingled, "((") {
 		return false
 	}
 	for _, s := range an.Commands {
@@ -448,6 +451,41 @@ func varsTrackable(cmd string, an shellparse.Analysis) bool {
 		}
 	}
 	return true
+}
+
+// blankQuoted returns s with the text inside single quotes (and $'...') replaced by spaces, and with double too the text inside
+// double quotes, so that what is left is the shell's own syntax. A backslash outside single quotes escapes the next character, which
+// then never opens or closes a quote. The length and the positions of s are kept.
+func blankQuoted(s string, double bool) string {
+	b := []byte(s)
+	var q byte // the open quote: '\'', '"', or 'a' for $'...'
+	for i := 0; i < len(b); i++ {
+		c := b[i]
+		switch {
+		case q == 0 && c == '\\':
+			i++
+		case q == 0 && c == '\'':
+			q = '\''
+			if i > 0 && b[i-1] == '$' {
+				q = 'a'
+			}
+		case q == 0 && c == '"':
+			q = '"'
+		case q == '\'' && c == '\'', q == 'a' && c == '\'', q == '"' && c == '"':
+			q = 0
+		case q == 'a' && c == '\\', q == '"' && c == '\\':
+			if q == 'a' || double {
+				b[i] = ' '
+				if i+1 < len(b) {
+					b[i+1] = ' '
+				}
+			}
+			i++
+		case q == '\'' || q == 'a' || q == '"' && double:
+			b[i] = ' '
+		}
+	}
+	return string(b)
 }
 
 // reassignBuiltins are the commands that may set or unset a shell variable without an assignment statement (printf with -v:
