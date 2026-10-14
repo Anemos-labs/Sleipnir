@@ -8,7 +8,7 @@ they do not indicate whether a change has been released.
 ## Compatibility changes
 
 - The variables a command line sets stay known when quoted text or a
-  here-document body in it holds `()`, `function `, `((`, braces or keywords:
+  here-document body in it holds `()`, the keyword `function`, `((`, braces or keywords:
   `printf 'func main() {...}' > main.go` or Go source written with
   `cat <<'EOF'` defines no function, so a later `rm -rf "$d"` of a scratch
   directory the line named is
