@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `bypass` mode asks about a file whose name is only known when the command
+  runs, which may be one that a built-in protection, a `deny` rule or an `ask`
+  rule guards (`cat "$F"`, `cat "docs/$X"`, `echo x > "$OUT"`); before, it let
+  any such name pass. The words of an unlisted program, an assignment's value,
+  `cd` and name-only uses still pass. A relative name's known directory is the one it names
+  (`secrets/$X` is inside `secrets/`), and a command substitution that closed
+  earlier in the line (`cd "$(pwd)"; F=...`) no longer makes the variables
+  set after it unknown. Prompt bytes: none change.
+
 - A pool's reconciled result is superseded only by a change that may touch the
   pool's files (an accepted or revised task whose scope overlaps the pool's, a
   direct manager edit of one of its files, or a change whose files are not
