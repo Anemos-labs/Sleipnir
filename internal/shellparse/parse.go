@@ -30,6 +30,9 @@ type parser struct {
 
 	parens     int
 	groups     int
+	blocks     int  // open if/while/until/for/select compounds
+	andOr      bool // an && or || came before the command being read, in its list
+	last       int  // index in out of the last command finish emitted, -1 before any
 	have       bool // a complete command (or group) precedes the next operator
 	needCmd    bool // an && || | is waiting for its right-hand side
 	nextPiped  bool
@@ -52,7 +55,7 @@ const (
 // parseTokens runs a shell parser over the supplied tokens with shared state and returns collected
 // simple commands.
 func parseTokens(st *state, src string, toks []token, depth int, top, nested bool) []Simple {
-	p := &parser{st: st, src: src, toks: toks, depth: depth, top: top, nested: nested}
+	p := &parser{st: st, src: src, toks: toks, depth: depth, top: top, nested: nested, last: -1}
 	p.run()
 	return p.out
 }
@@ -146,9 +149,15 @@ func (p *parser) word(t token) {
 // token was consumed.
 func (p *parser) reserved(t token) bool {
 	switch t.text {
-	case "!", "if", "then", "elif", "else", "while", "until", "do":
+	case "if", "while", "until":
+		p.blocks++
+		return true
+	case "!", "then", "elif", "else", "do":
 		return true
 	case "fi", "done":
+		if p.blocks > 0 {
+			p.blocks--
+		}
 		p.have = true
 		return true
 	case "esac":
@@ -167,6 +176,7 @@ func (p *parser) reserved(t token) bool {
 		p.have = true
 		return true
 	case "for", "select":
+		p.blocks++
 		p.skipHeader = true
 		p.header = nil
 		p.headerTok = t
@@ -238,6 +248,7 @@ func (p *parser) op(t token) {
 		p.endHeader()
 		p.finish()
 		p.have = false
+		p.andOr = false
 	case ";":
 		if !(p.cur.has || p.have || p.skipHeader) {
 			p.st.problem("empty command before ;")
@@ -246,6 +257,7 @@ func (p *parser) op(t token) {
 		p.finish()
 		p.have = false
 		p.needCmd = false
+		p.andOr = false
 	case "&&", "||", "|", "|&":
 		if !(p.cur.has || p.have) {
 			p.st.problem("operator " + t.text + " without a command before it")
@@ -254,13 +266,20 @@ func (p *parser) op(t token) {
 		p.have = false
 		p.needCmd = true
 		p.nextPiped = t.text == "|" || t.text == "|&"
+		if p.nextPiped {
+			p.markLast() // the writing side of a pipe runs in a shell of its own too
+		} else {
+			p.andOr = true
+		}
 	case "&":
 		if !(p.cur.has || p.have) {
 			p.st.problem("& without a command before it")
 		}
 		p.finish()
+		p.markLast() // a background job assigns in a shell of its own
 		p.have = false
 		p.needCmd = false
+		p.andOr = false
 		if p.top {
 			p.st.an.Background = true
 		}
@@ -325,7 +344,8 @@ func (p *parser) finish() {
 	}
 	c := p.cur
 	p.cur = builder{}
-	s := Simple{Env: c.env, Redirects: c.redirs, Nested: p.nested, Piped: c.piped}
+	s := Simple{Env: c.env, Redirects: c.redirs, Nested: p.nested, Piped: c.piped,
+		Cond: c.piped || p.andOr || p.parens > 0 || p.groups > 0 || p.blocks > 0}
 	if c.start >= 0 && c.end <= len(p.src) && c.start <= c.end {
 		s.Raw = p.src[c.start:c.end]
 	}
@@ -344,8 +364,16 @@ func (p *parser) finish() {
 	p.scripts(&s)
 	p.stdinScripts(&s, c.bodies)
 	p.out = append(p.out, s)
+	p.last = len(p.out) - 1
 	p.have = true
 	p.flush()
+}
+
+// markLast marks the command finish emitted last as Cond (it ran in a shell of its own: a pipe's writing side, a background job).
+func (p *parser) markLast() {
+	if p.last >= 0 && p.last < len(p.out) {
+		p.out[p.last].Cond = true
+	}
 }
 
 // flush moves pending simple commands into output and clears the pending queue.

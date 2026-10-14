@@ -7,24 +7,26 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
-- The variables a command line sets stay known when quoted text or a
-  here-document body in it holds `()`, the keyword `function`, `((`, braces or keywords:
-  `printf 'func main() {...}' > main.go` or Go source written with
-  `cat <<'EOF'` defines no function, so a later `rm -rf "$d"` of a scratch
-  directory the line named is
-  judged as that directory. Before, any `()` in the line made every variable
-  unknown, and bypass mode asked about the delete as high risk. A real
-  function definition, and arithmetic inside double quotes (`"$((n=1))"`) or
-  an unquoted here-document, still stop the tracking. Two command substitutions are known values:
-  `$(pwd)` is the directory the command runs in, and
-  `$(git rev-parse --show-toplevel)` the nearest directory at or above it
-  that holds a `.git`, so `cd "$(git rev-parse --show-toplevel)" && go test
-  ./...` is judged in that directory and its paths against the rules; any
-  other substitution, a `.git` that is not a repository, or a line that names
-  a `GIT_` variable, stays unknown. A substitution that can fail is empty when
-  it does, so a word built from it, directly or through a variable, is judged
-  that way as well (`"$d/proc/self/environ"` reaches the protected file, and
-  `"$D"/*` the root).
+- The variables a command line sets stay known on what the shell parser
+  found, not on the line's text: quoted text or a here-document body that
+  holds `()`, the keyword `function`, `((`, braces or keywords
+  (`printf 'func main() {...}' > main.go`, Go source written with
+  `cat <<'EOF'`) no longer makes them unknown, so a later `rm -rf "$d"` of a
+  scratch directory the line named is judged as that directory. A line the
+  parser does not parse (a function definition among others), an arithmetic
+  expansion (`$((n=1))`, in a word, double quotes or an unquoted
+  here-document), and a statement the parser marks conditional (in a
+  compound command, a group or a subshell, after `&&` or `||`, in a
+  pipeline, in the background) still stop or skip the tracking. Two command
+  substitutions are known values: `$(pwd)` is the directory the command runs
+  in, and `$(git rev-parse --show-toplevel)` the nearest directory at or
+  above it that holds a `.git`, so `cd "$(git rev-parse --show-toplevel)" &&
+  go test ./...` is judged in that directory and its paths against the rules;
+  any other substitution, a `.git` that is not a repository, or a line that
+  names a `GIT_` variable, stays unknown. A substitution that can fail is
+  empty when it does, so a word built from it, directly or through a
+  variable, is judged that way as well (`"$d/proc/self/environ"` reaches the
+  protected file, and `"$D"/*` the root). Prompt bytes: none change.
 
 - A prefix rule for a build or test runner (`Bash(go test:*)`, the tests
   preset, the read-only roles' rules, or a rule of the person's) no longer

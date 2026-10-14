@@ -308,6 +308,7 @@ func (l *lexer) arith(w *wbuf, nested *[]Simple) bool {
 				l.nest--
 				w.litStr(l.src[start : i+2])
 				l.pos = i + 2
+				l.st.an.HasArithmetic = true
 				return true
 			}
 			return false

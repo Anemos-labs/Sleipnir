@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -45,20 +44,6 @@ func TestBypassAsksAboutAFileOnlyKnownWhenItMayBeGuarded(t *testing.T) {
 }
 
 // A statement after a command substitution that has closed is not inside it: cd "$(pwd)"; X=1 sets X for what follows.
-func TestWithoutClosedSubstitutions(t *testing.T) {
-	for in, want := range map[string]string{
-		`cd "$(pwd)"; `:          `cd "      "; `,
-		"a=`date`; ":             "a=      ; ",
-		`x=$(echo $(id -u)); `:   "x=" + strings.Repeat(" ", 16) + "; ",
-		`echo "$(cat <<x`:        `echo "$(cat <<x`, // still open: what follows is inside it
-		"echo `":                 "echo `",
-		`cd x && $(true); (y); `: `cd x &&        ; (y); `,
-	} {
-		if got := withoutClosedSubstitutions(in); got != want {
-			t.Errorf("%q: %q, want %q", in, got, want)
-		}
-	}
-}
 
 // A relative name whose known part ends in a directory is inside that directory: secrets/$X is a file in secrets/, which a deny rule
 // covers, not one beside it. filepath.Join dropped the slash, so the known directory was taken to be the one above.
@@ -90,25 +75,6 @@ printf 'package main\n\nimport "fmt"\n\nfunc main() { fmt.Println("raven") }\n' 
 		d := e.Check(context.Background(), Request{Agent: "dv-1", Tool: "Bash", Command: f.expand(c.cmd)})
 		if got := outcome(d); got != c.want {
 			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
-		}
-	}
-}
-
-func TestBlankQuoted(t *testing.T) {
-	for _, c := range []struct {
-		in     string
-		double bool
-		want   string
-	}{
-		{`printf 'f() {}' > x`, true, `printf '      ' > x`},
-		{`echo "a()" 'b()' c()`, true, `echo "   " '   ' c()`},
-		{`echo "a()" 'b()' c()`, false, `echo "a()" '   ' c()`},
-		{`echo \'f() x\'`, true, `echo \'f() x\'`},
-		{`echo $'it\'s ()' ()`, true, `echo $'        ' ()`},
-		{`echo "q\"()" ()`, true, `echo "     " ()`},
-	} {
-		if got := blankQuoted(c.in, c.double); got != c.want {
-			t.Errorf("blankQuoted(%q, %v) = %q, want %q", c.in, c.double, got, c.want)
 		}
 	}
 }
@@ -165,26 +131,6 @@ func TestAHeredocBodyKeepsTheLinesVariablesKnown(t *testing.T) {
 	}
 }
 
-func TestBlankHeredocs(t *testing.T) {
-	for _, c := range []struct {
-		in         string
-		quotedOnly bool
-		want       string
-	}{
-		{"cat <<'EOF'\nf()\nEOF\nx()", false, "cat <<'EOF'\n   \nEOF\nx()"},
-		{"cat <<EOF\nf()\nEOF\n", true, "cat <<EOF\nf()\nEOF\n"},
-		{"cat <<EOF\nf()\nEOF\n", false, "cat <<EOF\n   \nEOF\n"},
-		{"cat <<-E\n\tf()\n\tE\n", false, "cat <<-E\n    \n\tE\n"},
-		{"echo $((1<<2)) f()", false, "echo $((1<<2)) f()"},
-		{"cat <<< 'f()'", false, "cat <<< 'f()'"},
-		{"cat <<EOF\nnever closed f()", false, "cat <<EOF\nnever closed f()"},
-	} {
-		if got := blankHeredocs(c.in, c.quotedOnly); got != c.want {
-			t.Errorf("blankHeredocs(%q, %v) = %q, want %q", c.in, c.quotedOnly, got, c.want)
-		}
-	}
-}
-
 // A substitution that can fail ($(git rev-parse --show-toplevel)) is empty when it does: a word built from it, directly or through a
 // variable, is judged as that too, so "$d/proc/self/environ" cannot reach the protected file and "$D"/* cannot reach the root through
 // a failure. A .git that is not a repository (no HEAD, a worktree pointer that leads nowhere) makes git fail: the substitution is then
@@ -200,6 +146,9 @@ func TestAFailedSubstitutionIsJudgedEmpty(t *testing.T) {
 		{`d=$(pwd); cat "$d/README.md"`, "allow"},
 		{`echo "a <<EOF"; d=$TMPDIR/x; f() { d=/; }; f; echo EOF; rm -rf "$d"`, "ask"},
 		{"echo $'\\'' '<<EOF'\nd=$TMPDIR/x; f() { d=/; }; f\nEOF\nrm -rf \"$d\"", "ask"}, // an escaped quote inside $'...' does not end it
+		{`echo \$'x'; d=$TMPDIR/x; f() { d=/; }; f; rm -rf "$d"`, "ask"},                 // \$' opens a plain quote; the definition is real
+		{`echo $$'x'; d=$TMPDIR/x; f() { d=/; }; f; rm -rf "$d"`, "ask"},                 // so does $$'
+		{"d=\"$TMPDIR/x\"; cat <<EOF\n'\nEOF\necho $((d=1))\nrm -rf $d", "ask"},          // a quote in an unquoted body hides no arithmetic
 	} {
 		d := e.Check(context.Background(), Request{Agent: "be-6", Tool: "Bash", Command: f.expand(c.cmd)})
 		if got := outcome(d); got != c.want {
