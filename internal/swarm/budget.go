@@ -30,6 +30,30 @@ func (s *Swarm) TotalCost() float64 {
 	return spent
 }
 
+// TotalListCost sums, across every agent running or retired, the API list-price value of the usage a subscription plan covered
+// (agent.Agent.ListUSD): what the interfaces show for that usage. No budget reads it; TotalCost is the spend.
+func (s *Swarm) TotalListCost() float64 {
+	s.mu.Lock()
+	list := s.spentList
+	ms := make([]*member, 0, len(s.members))
+	for _, m := range s.members {
+		ms = append(ms, m)
+	}
+	s.mu.Unlock()
+	for _, m := range ms {
+		list += m.a.ListUSD()
+	}
+	return list
+}
+
+// AddRetiredListCost folds into TotalListCost the list-price value that agents of an earlier run, which a resume does not bring back,
+// had shown (the counterpart of RestoreTeam's retiredCost for the budget ledger).
+func (s *Swarm) AddRetiredListCost(list float64) {
+	s.mu.Lock()
+	s.spentList += list
+	s.mu.Unlock()
+}
+
 // budgetErr returns a non-nil error once the swarm budget is spent. The error wraps
 // agent.ErrBudget, so an agent whose request is refused ends its run as
 // budget-exhausted.

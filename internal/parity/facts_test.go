@@ -12,9 +12,10 @@ package parity
 // read that file.
 //
 // The recordings are the demo's handbook session (statetest.DemoEvents) and shop session (the log behind the translator's golden
-// streams), and a hand-built team log that holds what those do not: a goal and its verdicts, permission questions, stalls, a
-// handover, a conflict, a failed worker, the harness's mailman, a retry, checkpoints. The team log's page stream is written by
-// this test (translate.Replay) and checked in, so that the JavaScript half reads what the translator really makes of it.
+// streams), a hand-built team log that holds what those do not: a goal and its verdicts, permission questions, stalls, a
+// handover, a conflict, a failed worker, the harness's mailman, a retry, checkpoints; and a hand-built log of a team on a ChatGPT
+// plan, whose usage bills nothing and is shown at the API list price. The hand-built logs' page streams are written by this test
+// (translate.Replay) and checked in, so that the JavaScript half reads what the translator really makes of them.
 //
 // The facts, with the definitions both halves keep:
 //
@@ -31,6 +32,8 @@ package parity
 //	tokens_cache_write     prompt tokens written to the cache
 //	tokens_output          output tokens
 //	cost_usd               cost as the responses report it
+//	list_usd               what the usage a subscription plan covered comes to at the API list price (the responses' list_usd)
+//	plan                   whether any response was covered by a subscription plan (its figures are then shown marked as the plan's)
 //	savings_usd            what the cache reads saved against uncached input, at list price
 //	cache_hit_ratio        cache reads over prompt tokens, weighted by tokens
 //	main_responses         answers to main requests, summed over the agents
@@ -101,6 +104,7 @@ var recordings = []recording{
 	{name: "handbook", events: func(testing.TB) []events.Event { return statetest.DemoEvents() }},
 	{name: "shop", events: shopLog},
 	{name: "team", events: teamLog, stream: "team.ui.jsonl"},
+	{name: "plan", events: planLog, stream: "plan.ui.jsonl"},
 }
 
 // testdataDir is internal/parity/testdata.
@@ -258,6 +262,53 @@ func teamLog(testing.TB) []events.Event {
 	return b.evs
 }
 
+// planLog is a log of a small team on a ChatGPT plan, hand-built from the shapes the producers write: session.start records the model's
+// API list prices with plan: true, and every response, the manager's, a worker's, a compactor fork's and the mailman's, bills nothing
+// (cost_usd 0) and carries its value at the list price (list_usd). The facts are those figures, summed as both interfaces show them.
+func planLog(testing.TB) []events.Event {
+	b := &logBuilder{at: time.Date(2026, 10, 13, 9, 0, 0, 0, time.UTC)}
+	const step = 200 * time.Millisecond
+	req := func(id, kind string) map[string]any {
+		return map[string]any{"req": id, "kind": kind, "model": "gpt-6-luna", "prefix_key": "pk-plan",
+			"sections": []map[string]any{{"name": "shared", "tokens": 4000, "hash": "h1"}, {"name": "role", "tokens": 300}}}
+	}
+	// gpt-6-luna's list price: $0.10 a million input tokens, $0.01 cached, $0.50 out (internal/cost)
+	resp := func(id string, in, read, out int, side bool) map[string]any {
+		list := (float64(in)*0.10 + float64(read)*0.01 + float64(out)*0.50) / 1e6
+		return map[string]any{"req": id, "model": "gpt-6-luna", "usage": map[string]any{"input_tokens": in, "cache_read_tokens": read, "output_tokens": out},
+			"cost_usd": 0.0, "list_usd": list, "total_ms": 900, "stop": "tool_use", "side": side}
+	}
+	b.add(0, "", "log.open", map[string]any{"schema": 1})
+	b.add(step, "", "session.start", map[string]any{"model": "gpt-6-luna", "provider": "chatgpt", "swarm": true, "root": "/work/plan", "cwd": "/work/plan", "mailman": true,
+		"models": map[string]any{"gpt-6-luna": map[string]any{"source": "table", "plan": true, "input_per_m": 0.10, "output_per_m": 0.50, "cache_read_per_m": 0.01,
+			"cache_write_5m_per_m": 0.10, "cache_write_1h_per_m": 0.10, "ttl_s": 300, "context": 200000}}})
+	b.add(step, "mgr", "user.input", map[string]any{"text": "Add a health endpoint"})
+	b.add(step, "swarm", "agent.spawn", map[string]any{"id": "mgr", "role": "manager", "model": "gpt-6-luna"})
+	b.add(step, "mgr", "model.request", req("p1", "main"))
+	b.add(step, "mgr", "model.response", resp("p1", 4300, 0, 400, false))
+	b.add(step, "swarm", "agent.spawn", map[string]any{"id": "be-1", "role": "backend", "task": "T1", "model": "gpt-6-luna", "by": "mgr", "parent": "mgr"})
+	b.add(step, "swarm", "agent.spawn", map[string]any{"id": "mm-1", "role": "mailman", "service": true, "model": "gpt-6-luna"})
+	b.add(step, "be-1", "model.request", req("p2", "main"))
+	b.add(step, "be-1", "model.response", resp("p2", 300, 4000, 900, false))
+	for i := 0; i < 8; i++ { // the worker reads its way through the code, a request and a tool call at a time
+		id := fmt.Sprintf("p2.%d", i)
+		b.add(step, "be-1", "model.request", req(id, "main"))
+		b.add(step, "be-1", "model.response", resp(id, 150+10*i, 4300, 120, false))
+		call := fmt.Sprintf("c%d", i)
+		b.add(step, "be-1", "tool.call", map[string]any{"id": call, "name": "read", "input": map[string]any{"path": fmt.Sprintf("/work/plan/api/f%d.go", i)}})
+		b.add(step, "be-1", "tool.result", map[string]any{"id": call, "name": "read", "error": false, "ms": 4})
+	}
+	b.add(step, "be-1", "model.request", req("p3", "main"))
+	b.add(step, "be-1", "model.response", resp("p3", 1200, 4300, 1500, false))
+	b.add(step, "be-1", "model.request", req("p3c", "compact"))
+	b.add(step, "be-1", "model.response", resp("p3c", 900, 4300, 600, true))
+	b.add(step, "mm-1", "model.request", req("m1", "main"))
+	b.add(step, "mm-1", "model.response", resp("m1", 500, 0, 80, false))
+	b.add(step, "mgr", "model.request", req("p4", "main"))
+	b.add(step, "mgr", "model.response", resp("p4", 200, 4300, 120, false))
+	return b.evs
+}
+
 // ---- the terminal's facts ------------------------------------------------------------------------------------------------------------
 
 // round6 writes a figure to six decimals.
@@ -305,7 +356,7 @@ func stateFacts(evs []events.Event) map[string]any {
 		f["manager_state"] = "none"
 	}
 
-	var merged []string
+	merged := []string{} // a run with nothing merged has an empty list, as the page computes it
 	for _, id := range st.TaskIDs() {
 		if tk, ok := st.Task(id); ok && tk.State == state.TaskMerged {
 			merged = append(merged, id)
@@ -321,6 +372,7 @@ func stateFacts(evs []events.Event) map[string]any {
 	f["tokens_prompt"], f["tokens_cache_read"] = tot.Tokens.Prompt(), tot.Tokens.CacheRead
 	f["tokens_cache_write"], f["tokens_output"] = tot.Tokens.CacheWrite, tot.Tokens.Output
 	f["cost_usd"], f["savings_usd"], f["cache_hit_ratio"] = round6(tot.CostUSD), round6(tot.Savings.SavedUSD), round6(tot.HitRatio())
+	f["list_usd"], f["plan"] = round6(tot.ListUSD), tot.Plan
 	responses := 0
 	for _, a := range sn.Agents {
 		if !a.Service && a.Role != swarm.MailmanRoleName {

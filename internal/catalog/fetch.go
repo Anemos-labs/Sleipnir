@@ -154,7 +154,9 @@ func entriesOf(src Source, es []gateway.Entry) []Entry {
 }
 
 // PlanModels lists the models available through the ChatGPT sign-in kept under home, with context windows when the plan's list
-// gives them (0 otherwise). They have no prices.
+// gives them (0 otherwise). The plan publishes no per-token prices and bills none: an entry has the API's list price of the same
+// model from the built-in table (cost.Defaults) as its cost.Model.ListPrice, which rows show marked as the plan's (Entry.ShownPrice),
+// and none (unknown) for a model the table does not know.
 func PlanModels(ctx context.Context, home string) ([]gateway.Entry, error) {
 	st, err := chatgptauth.Open(chatgptauth.Options{Path: chatgptauth.Path(home)})
 	if err != nil {
@@ -164,9 +166,14 @@ func PlanModels(ctx context.Context, home string) ([]gateway.Entry, error) {
 	if err != nil {
 		return nil, err
 	}
+	table := cost.Defaults()
 	out := make([]gateway.Entry, 0, len(ms))
 	for _, m := range ms {
-		out = append(out, gateway.Entry{Model: cost.Model{ID: m.Slug, Provider: PlanProvider, ContextTokens: m.ContextWindow}, Modality: "text->text", Supported: []string{"tools", "reasoning_effort"}})
+		e := gateway.Entry{Model: cost.Model{ID: m.Slug, Provider: PlanProvider, ContextTokens: m.ContextWindow, Plan: true}, Modality: "text->text", Supported: []string{"tools", "reasoning_effort"}}
+		if listed, ok := table.Lookup(m.Slug); ok {
+			e.Model.ListPrice = listed.Price
+		}
+		out = append(out, e)
 	}
 	return out, nil
 }

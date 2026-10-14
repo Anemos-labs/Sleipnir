@@ -22,6 +22,8 @@ type AgentRow struct {
 	// Hit is the share of its last request that was served from the cache, 0..1. A dark tail in the agent's bar is what it lost.
 	Hit  float64
 	Cost float64 // dollars spent so far
+	// Plan says Cost includes usage a subscription plan covered, at the API list price: the cell shows it with a "≈".
+	Plan bool
 	// Scope summarizes assigned task paths (orders/*), independently of write leases.
 	Scope string
 	// Levels is the agent's activity for the gantt, a bucket a second, 0 to 8; Levels[i] is the bucket LevelsFrom+i (see Lane).
@@ -82,6 +84,10 @@ type DashboardData struct {
 	Elapsed       time.Duration
 	Spend, Budget float64
 	HitRatio      float64
+	// Plan says Spend includes usage a subscription plan covered, at the API list price: it is shown "≈$1.20 plan" and never drawn
+	// against the budget, which counts only Billed, the part billed per token (ignored unless Plan).
+	Plan   bool
+	Billed float64
 	// Shared is the prefix every agent shares (G0 to G2), PrefixLeft how long the provider will still keep it of PrefixTTL.
 	Shared                []Layer
 	PrefixLeft, PrefixTTL time.Duration

@@ -4,7 +4,7 @@
  * address and the stream's state (connected, reconnecting, disconnected). */
 (function (SL) {
   'use strict';
-  const U = SL.u, { $, $$, esc, mk, fmtUsd, mmss, clock, pct, hitCls } = U, calc = SL.calc;
+  const U = SL.u, { $, $$, esc, mk, fmtUsd, fmtSpend, planTag, spendOf, mmss, clock, pct, hitCls } = U, calc = SL.calc;
   const ui = SL.ui = SL.ui || {};
   const WARM_LIFE = 25, WARM_RED = 8, RING_C = 2 * Math.PI * 22, HIT_C = 2 * Math.PI * 19;
   const SESS_GLYPH = { run: '●', ask: '?', idle: '◌', done: '✓', paused: '⏸' };
@@ -26,9 +26,12 @@
       const goalText = meta.goalText || (m.goal.state !== 'cleared' && m.goal.objective) || '';   /* the server's goal events name it too */
       $('#goalLab').textContent = goalText ? 'Goal' : 'Session'; const gs = $('#goalState'); gs.hidden = !goalText; const gst = m.goal.state; gs.textContent = gst === 'met' ? 'met ✓' : gst === 'paused' ? 'paused' : gst === 'cleared' ? 'cleared' : 'active'; gs.style.color = gst === 'met' ? 'var(--ok)' : gst === 'paused' ? 'var(--warm)' : '';
       txt('goalT', $('#goalT'), goalText || 'no goal: a chat with the manager (type /goal TEXT to set one)');
-      txt('cost', $('#vCost'), fmtUsd(c.cost, 2)); $('#vCost').title = fmtUsd(c.cost, 4) + ' (list prices)' + unpricedNote(c.unpriced);
-      txt('budget', $('#vBudget'), meta.budget ? 'of ' + fmtUsd(meta.budget, 2) : 'no budget');
-      $('#gaugeFill').style.width = (meta.budget ? Math.min(100, Math.max(1.6, c.cost / meta.budget * 100)) : 0) + '%';
+      txt('cost', $('#vCost'), fmtSpend(c, 2)); $('#vCost').title = c.plan ? fmtSpend(c, 4) + ' ' + U.PLAN_HELP : fmtUsd(c.cost, 4) + ' (list prices)' + unpricedNote(c.unpriced);
+      /* a plan's usage fills no budget: the budget counts what is billed per token, and the plan bills nothing per token */
+      txt('budget', $('#vBudget'), c.plan ? 'plan' : meta.budget ? 'of ' + fmtUsd(meta.budget, 2) : 'no budget'); $('#vBudget').className = c.plan ? 'plantag' : '';
+      { const gf = $('#gaugeFill'), gw = gf.parentNode, hb = gw.parentNode; gw.classList.toggle('plan', !!c.plan); gw.setAttribute('aria-label', c.plan ? 'budget not used: the plan bills nothing per token' : 'budget used');
+        hb.title = c.plan ? U.PLAN_HELP + ': the budget (--budget-usd) counts only what is billed per token' + (meta.budget ? ', ' + fmtUsd(c.cost, 2) + ' of ' + fmtUsd(meta.budget, 2) + ' so far' : '') : 'the budget of this session (--budget-usd)';
+        gf.style.width = (meta.budget && !c.plan ? Math.min(100, Math.max(1.6, c.cost / meta.budget * 100)) : 0) + '%'; }
       $('#hitArc').style.strokeDashoffset = HIT_C * (1 - c.pct / 100); txt('hit', $('#hitTxt'), String(c.pct)); txt('hitc', $('#hitChipN'), String(c.pct)); $('#ringHit').title = 'read ' + U.fmtN(c.read) + ' / prompt ' + U.fmtN(c.prompt) + ' = ' + c.hit1 + '%';
       $('#ringHit').classList.toggle('dip', c.pct < 80);
       txt('teamLab', $('#teamLab'), nW ? 'manager + ' + nW + ' worker' + (nW === 1 ? '' : 's') : 'single agent');
@@ -68,8 +71,8 @@
     const strip = $('#sstrip');
     const SESS_ICON = { run: '●', ask: '?', idle: '◌', done: '✓', paused: '⏸' };
     function stripHtml() {
-      const act = SL.sessions.active, nd = SL.sessions.needs(); let spent = 0, cap = 0, n = SL.sessions.list.length;
-      SL.sessions.list.forEach(S => { spent += calc.totals(S.wm).cost; cap += S.meta.budget || 0; });
+      const act = SL.sessions.active, nd = SL.sessions.needs(); let spent = 0, cap = 0, plans = false, n = SL.sessions.list.length;
+      SL.sessions.list.forEach(S => { const t = calc.totals(S.wm); spent += spendOf(t); if (t.plan) plans = true; cap += S.meta.budget || 0; });
       let h = '<div class="stabs" role="tablist" aria-label="Sessions">' + SL.sessions.list.map(S => {
         const st = S.state(), q = nd.filter(x => x.S === S).length, sel = S === act, gl = (S.meta.headless || S.follow) && st === 'run' ? '⟳' : SESS_ICON[st];
         return '<div class="stabw' + (sel ? ' sel' : '') + '" role="presentation" data-state="' + st + '"><button class="stab' + (sel ? ' sel' : '') + '" role="tab" type="button" data-sid="' + esc(S.id) + '" aria-selected="' + sel + '" data-state="' + st + '" title="' + esc(S.name + ' · ' + S.meta.cwd + ' · ' + ST_WORD[st] + (S.meta.headless ? ' · headless job: nobody can answer' : '') + ' (double-click to rename, middle-click to close)') + '"><i class="sg" aria-hidden="true">' + gl + '</i><span class="sn">' + esc(S.name) + '</span><span class="sc num" data-cost="' + esc(S.id) + '"></span>' + (S.meta.mode === 'bypass' || S.meta.mode === 'yolo' ? '<span class="dgm" title="' + esc(S.meta.mode) + ' mode: this session does not ask before it acts">⚠<span class="sr"> ' + esc(S.meta.mode) + ' mode</span></span>' : '') + (q ? '<span class="nb" title="a question waits for you">? ' + q + '</span>' : '') + '<span class="sr">' + ST_WORD[st] + (q ? ', ' + q + ' question' + (q > 1 ? 's' : '') + ' waiting' : '') + '</span></button><button class="stx" type="button" data-close="' + esc(S.id) + '" aria-label="Close ' + esc(S.name) + '" title="Close this session…">×</button></div>';
@@ -80,7 +83,7 @@
       const nq = nd.reduce((n, x) => n + (x.waiting || 1), 0);
       h += nd.length ? '<button class="sact inbox has inboxbtn" type="button" id="sInbox" data-needgo title="open the question that has waited longest (switches to its session)" aria-label="' + nq + ' question' + (nq === 1 ? '' : 's') + ' wait for you: open the oldest"><i class="nyq" aria-hidden="true">?</i>Needs you <b class="num">' + nq + '</b><span class="nyage num" data-needage></span></button><button class="sact inboxall inboxbtn" type="button" id="sInboxAll" aria-haspopup="dialog" aria-expanded="false" title="every open question, in every session" aria-label="Every open question">▾</button>'
         : '<button class="sact inbox inboxbtn" type="button" id="sInbox" aria-haspopup="dialog" aria-expanded="false" title="open questions in every session">Needs you <b class="num">0</b></button>';
-      h += '<button class="sact gbud" type="button" id="sBud" aria-haspopup="dialog" title="spent by every session this page runs (list prices)"><span class="dim">all ' + n + '</span> <b class="num" data-gbud>' + fmtUsd(spent, 2) + '</b>' + (cap ? ' <span class="dim">of ' + fmtUsd(cap, 2) + '</span>' : '') + '</button>';
+      h += '<button class="sact gbud" type="button" id="sBud" aria-haspopup="dialog" title="spent by every session this page runs (list prices' + (plans ? '; ≈: ' + U.PLAN_HELP : '') + ')"><span class="dim">all ' + n + '</span> <b class="num" data-gbud>' + fmtSpend({ cost: spent, plan: plans }, 2) + '</b>' + (cap ? ' <span class="dim">of ' + fmtUsd(cap, 2) + '</span>' : '') + '</button>';
       const upd = SL.live.hello && SL.live.hello.update; if (upd && upd.latest && upd.latest !== upd.current) h += '<button class="tag ok" type="button" id="sUpd" title="' + esc(upd.notice || 'a newer release is out: sleipnir update installs it') + '">↑ ' + esc(upd.latest) + '</button>';
       h += connHtml();
       return h;
@@ -104,9 +107,9 @@
       stripCosts();
     }
     function stripCosts() {
-      let spent = 0; SL.sessions.list.forEach(S => { spent += calc.totals(S.wm).cost; });
-      $$('[data-cost]', strip).forEach(el => { const S = SL.sessions.get(el.dataset.cost); if (S) { const t = fmtUsd(calc.totals(S.wm).cost, 2); if (el.textContent !== t) el.textContent = t; } });
-      const g = $('[data-gbud]', strip); if (g) { const t = fmtUsd(spent, 2); if (g.textContent !== t) g.textContent = t; }
+      let spent = 0, plans = false; SL.sessions.list.forEach(S => { const t = calc.totals(S.wm); spent += spendOf(t); if (t.plan) plans = true; });
+      $$('[data-cost]', strip).forEach(el => { const S = SL.sessions.get(el.dataset.cost); if (S) { const c = calc.totals(S.wm), t = fmtSpend(c, 2); if (el.textContent !== t) { el.textContent = t; el.title = c.plan ? U.PLAN_HELP : ''; } } });
+      const g = $('[data-gbud]', strip); if (g) { const t = fmtSpend({ cost: spent, plan: plans }, 2); if (g.textContent !== t) g.textContent = t; }
     }
     sc.update(renderStrip); sc.on('sessions-changed', () => { strip._sig = ''; renderStrip(); }); sc.on('needs-changed', () => { strip._sig = ''; renderStrip(); }); sc.on('activated', () => { strip._sig = ''; renderStrip(); });
     /** The Close confirm. An isolated team's verified work is applied first: the confirm says how, and the result toast is the
@@ -134,9 +137,9 @@
     /** the all-sessions budget: spent against each session's own budget (the budget is per session; this is the sum) */
     function budgetPop(btn) {
       const ex = $('.budpop'); if (ex) { if (ex._off) ex._off(); else ex.remove(); return; }
-      const rows = SL.sessions.list.map(S => { const c = calc.totals(S.wm), b = S.meta.budget; return '<tr><td class="bright">' + esc(S.name) + '</td><td class="r num">' + fmtUsd(c.cost, 3) + '</td><td class="r dim num">' + (b ? 'of ' + fmtUsd(b, 2) : 'no budget') + '</td><td><div class="gauge wide"><i style="width:' + (b ? Math.min(100, c.cost / b * 100) : 0) + '%"></i></div></td></tr>'; }).join('');
-      const unp = SL.sessions.list.reduce((s, S) => s + calc.totals(S.wm).unpriced, 0);
-      const p = mk('div', { class: 'popover budpop', role: 'dialog', 'aria-label': 'Spend of every session' }, '<h3 class="lab" style="margin:0 0 8px">spend of every session</h3><table class="tbl"><tbody>' + rows + '</tbody></table><p class="stubnote" style="margin:8px 0 0">Each session has its own budget (--budget-usd); a turn pauses itself at its limit. List prices; the sum is an estimate' + (unp > 0 ? '; ' + U.fmtN(unp) + ' tokens at unknown prices are not counted' : '') + '.</p>');
+      const rows = SL.sessions.list.map(S => { const c = calc.totals(S.wm), b = S.meta.budget; return '<tr><td class="bright">' + esc(S.name) + '</td><td class="r num">' + fmtSpend(c, 3) + planTag(c) + '</td><td class="r dim num">' + (b ? 'of ' + fmtUsd(b, 2) : 'no budget') + '</td><td><div class="gauge wide' + (c.plan ? ' plan' : '') + '"><i style="width:' + (b && !c.plan ? Math.min(100, c.cost / b * 100) : 0) + '%"></i></div></td></tr>'; }).join('');
+      const unp = SL.sessions.list.reduce((s, S) => s + calc.totals(S.wm).unpriced, 0), plans = SL.sessions.list.some(S => calc.totals(S.wm).plan);
+      const p = mk('div', { class: 'popover budpop', role: 'dialog', 'aria-label': 'Spend of every session' }, '<h3 class="lab" style="margin:0 0 8px">spend of every session</h3><table class="tbl"><tbody>' + rows + '</tbody></table><p class="stubnote" style="margin:8px 0 0">Each session has its own budget (--budget-usd); a turn pauses itself at its limit. List prices; the sum is an estimate' + (unp > 0 ? '; ' + U.fmtN(unp) + ' tokens at unknown prices are not counted' : '') + '.' + (plans ? ' A figure marked <span class="plantag">plan</span> is ' + U.PLAN_HELP + ': no budget counts it.' : '') + '</p>');
       const app = $('#app'); app.appendChild(p); const r = btn.getBoundingClientRect(), ar = app.getBoundingClientRect(); p.style.top = (r.bottom - ar.top + 4) + 'px'; p.style.right = Math.max(8, ar.right - r.right) + 'px';
       const off = () => { p.remove(); document.removeEventListener('pointerdown', away, true); document.removeEventListener('keydown', esck, true); };
       const away = e => { if (!p.contains(e.target) && !e.target.closest('#sBud')) off(); }, esck = e => { if (e.key === 'Escape') { e.stopPropagation(); off(); btn.focus(); } };
@@ -147,7 +150,7 @@
     function renderFooter(S, m) {
       const mg = m.ag.mgr, c = calc.totals(m), q = calc.openQuestion(S.wm), slow = ui.waitingFor(mg, S.vt), word = m.goal.state === 'met' ? 'goal met' : q ? q.agent + ' waits for your answer' : mg.state === 'wait' ? 'manager waiting for the team' : S.replay ? 'replay' : slow ? 'manager ' + slow : 'manager ' + (mg.doing || mg.state);
       const col = m.goal.state === 'met' ? 'var(--ok)' : q ? 'var(--warm)' : 'var(--mgr)', sl = $('#statusLine');
-      const h = '<span class="dot" style="--c:' + col + '">●</span><span>' + esc(word) + '</span><span class="dim">·</span><span class="num">' + mmss(S.vt) + '</span><span class="dim">·</span><span class="num">↑' + U.fmtK(mg.rd + mg.un) + ' ↓' + U.fmtK(mg.out) + '</span><span class="dim">·</span><span class="num">' + fmtUsd(c.cost, 2) + '</span><span class="dim">·</span><span><kbd>esc</kbd> to interrupt</span>' + (m.goal.state === 'met' ? '<button class="btn sm" type="button" data-act="again">↺ run it again</button>' : '');
+      const h = '<span class="dot" style="--c:' + col + '">●</span><span>' + esc(word) + '</span><span class="dim">·</span><span class="num">' + mmss(S.vt) + '</span><span class="dim">·</span><span class="num">↑' + U.fmtK(mg.rd + mg.un) + ' ↓' + U.fmtK(mg.out) + '</span><span class="dim">·</span><span class="num"' + (c.plan ? ' title="' + U.PLAN_HELP + '"' : '') + '>' + fmtSpend(c, 2) + planTag(c) + '</span><span class="dim">·</span><span><kbd>esc</kbd> to interrupt</span>' + (m.goal.state === 'met' ? '<button class="btn sm" type="button" data-act="again">↺ run it again</button>' : '');
       if (sl._h !== h) { sl._h = h; sl.innerHTML = h; }
       txt('fm', $('#footModel'), S.placeholder ? '' : S.meta.model + ' · ' + S.sid);
       txt('rm', $('#railModel'), S.meta.model);

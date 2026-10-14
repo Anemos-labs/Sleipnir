@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +15,9 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/session"
 )
@@ -90,6 +94,94 @@ func TestAChatGPTSignInIsAProviderThatSendsThePlansToken(t *testing.T) {
 	}
 	if !strings.Contains(gotBody, `"type":"namespace"`) || strings.Contains(gotBody, "max_output_tokens") || !strings.Contains(gotBody, `"store":false`) {
 		t.Errorf("the plan's rules: %s", gotBody)
+	}
+}
+
+// A ChatGPT plan bills nothing per token, so cost_usd stays 0 and no budget counts the plan's usage, however small the budget; what
+// the usage would cost on the API, at the built-in table's list price, is recorded beside it (list_usd on every response, the list prices
+// with plan: true in session.start, list_usd and plan on session.end and in the Result), for the interfaces to show.
+func TestAPlanSessionShowsTheListPriceAndBudgetsCountTheBill(t *testing.T) {
+	signedIn(t)
+	requests := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "text/event-stream")
+		// 100k prompt tokens, 80k of them read from the cache, and 2k out: at gpt-6-luna's list price ($0.10 in, $0.01 cached, $0.50 out
+		// per million) that is $0.0038 a request
+		io.WriteString(w, "event: response.completed\ndata: "+`{"type":"response.completed","response":{"id":"r1","model":"gpt-6-luna","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"done"}]}],"usage":{"input_tokens":100000,"input_tokens_details":{"cached_tokens":80000},"output_tokens":2000}}}`+"\n\n")
+	}))
+	defer ts.Close()
+	cfg := planConfig(ts.URL + "/v1")
+	repo := newRepo(t)
+	s, err := session.New(context.Background(), session.Options{
+		Home: t.TempDir(), Dir: t.TempDir(), Config: cfg, Model: "chatgpt/gpt-6-luna", Cwd: repo, Root: repo,
+		Mode: perm.ModeBypass, NoWeb: true, TrustProject: true, Offline: true,
+		BudgetUSD: 0.001, // less than one request comes to at the list price
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s.Model.Plan || s.Model.Price != (cost.Price{}) || s.Model.ListPrice.InputPerM != 0.10 || s.Model.ID != "gpt-6-luna" {
+		t.Fatalf("the plan's model: %+v", s.Model)
+	}
+	var res *session.Result
+	for turn := 0; turn < 3; turn++ {
+		if res, err = s.Run(context.Background(), "say done"); err != nil {
+			t.Fatalf("turn %d: the plan's usage stopped the run against a $0.001 budget: %v", turn+1, err)
+		}
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	const perRequest = 0.0038
+	if requests != 3 || res.CostUSD != 0 || !res.Plan || math.Abs(res.ListUSD-3*perRequest) > 1e-9 {
+		t.Fatalf("requests %d, result %+v", requests, res)
+	}
+	var responses int
+	for _, e := range readEvents(t, res.Dir) {
+		var p map[string]any
+		if err := json.Unmarshal(e.Data, &p); err != nil {
+			t.Fatal(err)
+		}
+		switch e.Type {
+		case events.TypeModelResponse:
+			responses++
+			if p["cost_usd"] != 0.0 || math.Abs(p["list_usd"].(float64)-perRequest) > 1e-9 {
+				t.Errorf("model.response: cost_usd %v, list_usd %v", p["cost_usd"], p["list_usd"])
+			}
+		case events.TypeSessionStart:
+			rec, _ := p["models"].(map[string]any)["gpt-6-luna"].(map[string]any)
+			if rec["plan"] != true || rec["source"] != "table" || rec["input_per_m"] != 0.1 || rec["cache_read_per_m"] != 0.01 || rec["output_per_m"] != 0.5 {
+				t.Errorf("session.start records %v", rec)
+			}
+		case events.TypeSessionEnd:
+			if p["cost_usd"] != 0.0 || p["plan"] != true || math.Abs(p["list_usd"].(float64)-3*perRequest) > 1e-9 {
+				t.Errorf("session.end: %v", p)
+			}
+		}
+	}
+	if responses != 3 {
+		t.Errorf("%d model.response events", responses)
+	}
+	if sum := session.Summarize(filepath.Join(res.Dir, "events.jsonl")); !sum.Plan || sum.CostUSD != 0 || math.Abs(sum.ListUSD-3*perRequest) > 1e-9 {
+		t.Errorf("listing summary: %+v", sum)
+	}
+}
+
+// The same model on the API with a key is billed at the table's price, and a response carries no list_usd: cost_usd is the figure.
+func TestAnAPIKeyModelIsBilledAtTheTablePriceWithoutAListFigure(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "k")
+	_, m, err := session.BuildProvider(config.Defaults(), session.ModelRef{Provider: "openai", Model: "gpt-6.1-sol"}, session.ProviderOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Plan || m.ListPrice != (cost.Price{}) || m.Price.InputPerM != 2 || m.Price.CacheReadPerM != 0.10 || m.Price.OutputPerM != 10 || m.ID != "gpt-6.1-sol" {
+		t.Fatalf("openai/gpt-6.1-sol: %+v", m)
+	}
+	// A marketplace names the model with its author: the request keeps that name, the table still prices it.
+	t.Setenv("OPENROUTER_API_KEY", "k")
+	if _, m, err = session.BuildProvider(config.Defaults(), session.ModelRef{Provider: "openrouter", Model: "openai/gpt-6-luna"}, session.ProviderOptions{}); err != nil || m.ID != "openai/gpt-6-luna" || m.Price.OutputPerM != 0.5 {
+		t.Fatalf("openrouter/openai/gpt-6-luna: %+v %v", m, err)
 	}
 }
 

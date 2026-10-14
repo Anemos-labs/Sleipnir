@@ -137,6 +137,9 @@ type ChatTurnEnd struct {
 	HitRatio float64 `json:"hit_ratio,omitempty"`
 	Err      string  `json:"err,omitempty"`
 	Message  string  `json:"message,omitempty"`
+	// ListUSD and Plan are TurnResult's: what a subscription plan covered, at the API list price.
+	ListUSD float64 `json:"list_usd,omitempty"`
+	Plan    bool    `json:"plan,omitempty"`
 }
 
 // ErrTranscriptCanceled is ChatTurnEnd.Err of a cancelled turn.

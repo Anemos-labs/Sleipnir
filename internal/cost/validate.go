@@ -68,6 +68,9 @@ func (m Model) Validate() error {
 	if err := m.Price.Validate(); err != nil {
 		return err
 	}
+	if err := m.ListPrice.Validate(); err != nil {
+		return fmt.Errorf("list price: %w", err)
+	}
 	if m.ContextTokens < 0 || m.ContextTokens > MaxWindowTokens {
 		return fmt.Errorf("context window %d is outside 0..%d", m.ContextTokens, MaxWindowTokens)
 	}

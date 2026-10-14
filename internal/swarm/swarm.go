@@ -296,6 +296,8 @@ type Swarm struct {
 	spent    float64              // spend of agents that have left (the budget ledger)
 	lastSeen map[string]*Snapshot // per agent: the board at the end of its last wait
 	wg       sync.WaitGroup
+	// spentList is the API list-price value of the plan-covered usage of agents that have left (shown, never budgeted).
+	spentList float64
 
 	verifySem               chan struct{}
 	verifyRan, verifyFailed atomic.Int32 // runs of the verify command, and those that failed (VerifyRuns)

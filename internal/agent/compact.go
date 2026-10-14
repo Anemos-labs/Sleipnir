@@ -484,15 +484,17 @@ func (a *Agent) account(resp *provider.Response, label string, model cost.Model)
 	if resp.CostUSD != nil {
 		usd = *resp.CostUSD
 	}
+	list := model.ListUSD(resp.Usage)
 	a.mu.Lock()
 	a.usage = a.usage.Add(resp.Usage)
 	a.costUSD += usd
+	a.listUSD += list
 	delete(a.pendingRequests, label)
 	a.mu.Unlock()
-	a.emit(events.TypeModelResponse, a.responsePayload(map[string]any{
+	a.emit(events.TypeModelResponse, a.responsePayload(withList(map[string]any{
 		"req": label, "id": resp.ID, "model": resp.Model, "usage": resp.Usage, "cost_usd": usd,
 		"hit_ratio": resp.Usage.HitRatio(), "side": true, "stop": resp.Stop,
-	}, resp))
+	}, model, list), resp))
 }
 
 // commit applies a ready patch: an atomic replacement of the retained thread

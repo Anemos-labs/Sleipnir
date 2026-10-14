@@ -26,11 +26,7 @@ func dashList(d DashboardData, width, height int, frame int, p Palette) []cell.L
 
 	var stats showRowBuf
 	stats.add(cell.Style{}, "◷ "+showElapsed(d.Elapsed)+" · "+dashAgents(len(d.Agents)))
-	if d.Budget > 0 {
-		stats.add(cell.Style{}, " · "+dashMoney(d.Spend)+"/"+dashMoney(d.Budget))
-	} else {
-		stats.add(cell.Style{}, " · "+dashMoney(d.Spend))
-	}
+	stats.add(cell.Style{}, " · "+dashSpend(d))
 	stats.add(cell.Style{}, " · ⛁ "+showPercent(d.HitRatio))
 	out = append(out, showFit(stats.line(), width))
 	if height == 2 {

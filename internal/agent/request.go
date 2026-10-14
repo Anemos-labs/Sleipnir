@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/kv"
 	"github.com/anemos-labs/sleipnir/internal/provider"
@@ -211,6 +212,7 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 	if resp.CostUSD != nil {
 		usd = *resp.CostUSD
 	}
+	list := a.cfg.Model.ListUSD(u) // a plan's usage at the API list price: shown, never budgeted
 	totalIn := u.TotalInput()
 	estAll := kv.PromptTokens(r.Prompt, a.est)
 
@@ -231,6 +233,7 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 	expectedCold := !first && ttl > 0 && a.cfg.Planner.IsCold(prevStart, start, ttl)
 	a.usage = a.usage.Add(u)
 	a.costUSD += usd
+	a.listUSD += list
 	delete(a.pendingRequests, reqID)
 	a.lastStart = start
 	a.mainReqs++
@@ -303,14 +306,14 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 			break
 		}
 	}
-	a.emit(events.TypeModelResponse, a.responsePayload(map[string]any{
+	a.emit(events.TypeModelResponse, a.responsePayload(withList(map[string]any{
 		"req": reqID, "id": resp.ID, "model": resp.Model, "provider": resp.Provider,
 		"usage": u, "cost_usd": usd, "gateway_cost": resp.CostUSD != nil,
 		"hit_ratio": u.HitRatio(), "expected_read": expected, "missed": missed, "anomaly": anomaly,
 		"expected_cold": expectedCold, "hot_mode": caps.HotMode.String(),
 		"stop": resp.Stop, "ttfb_ms": resp.TTFB.Milliseconds(), "total_ms": resp.Total.Milliseconds(),
 		"transformations": resp.Transformations,
-	}, resp))
+	}, a.cfg.Model, list), resp))
 	a.cfg.Sink.Response(a.cfg.ID, resp, u.HitRatio())
 	return resp, epoch, nil
 }
@@ -423,6 +426,17 @@ func (a *Agent) responsePayload(p map[string]any, resp *provider.Response) map[s
 				p["tokens"] = h
 			}
 		}
+	}
+	return p
+}
+
+// withList adds list_usd to a model.response payload when the model is reached through a subscription plan: the usage priced at
+// the API's list price (0 when that price is not known), which the interfaces show in place of the plan's nothing, marked as the plan's.
+// cost_usd stays what was billed. A response of any other model has no list_usd: its cost_usd already is the figure shown, and the
+// logs of every other session keep their shape.
+func withList(p map[string]any, m cost.Model, list float64) map[string]any {
+	if m.Plan {
+		p["list_usd"] = list
 	}
 	return p
 }

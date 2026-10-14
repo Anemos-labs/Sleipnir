@@ -11,6 +11,7 @@
   "goal_turns": 3,
   "goal_verdict": "continue",
   "handovers": 2,
+  "list_usd": 0,
   "mail_delivered": 1,
   "mail_dropped": 1,
   "mail_sent": 2,
@@ -23,6 +24,7 @@
     "T2"
   ],
   "permission_denials": 1,
+  "plan": false,
   "questions_asked": 2,
   "rate_limited": 1,
   "retries": 1,

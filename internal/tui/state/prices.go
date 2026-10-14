@@ -23,12 +23,14 @@ type modelWire struct {
 	CacheWrite1hPerM float64 `json:"cache_write_1h_per_m"`
 	TTLSeconds       int     `json:"ttl_s"`
 	Context          int64   `json:"context"`
+	Plan             bool    `json:"plan"` // a subscription plan's model: the prices are the API's list prices, which it does not bill
 }
 
-// recordModels takes the prices a session.start carries. A recorded price is what the run was billed by, so it wins over the
-// table; "fallback" is the harness's guess for a model nothing knew, which is not a price to compute a saving from; an entry
-// whose prices are not sane numbers (cost.Price.Validate) is not used at all. At most 24 models are taken, the smallest ids
-// first, so that the result does not depend on the order a map is read in.
+// recordModels takes the prices a session.start carries. A recorded price is what the run was billed by (for a plan's model, the
+// API's list price, which is what its usage is shown at), so it wins over the table; "fallback" is the harness's guess for a model
+// nothing knew, which is not a price to compute a saving from; an entry whose prices are not sane numbers (cost.Price.Validate) is
+// not used at all. At most 24 models are taken, the smallest ids first, so that the result does not depend on the order a map is
+// read in.
 func (s *State) recordModels(m map[string]modelWire) {
 	ids := make([]string, 0, len(m))
 	for id := range m {
@@ -51,7 +53,7 @@ func (s *State) recordModels(m map[string]modelWire) {
 			continue
 		}
 		n++
-		info := ModelInfo{ID: id, Source: "session", Known: true, TTLSeconds: w.TTLSeconds, ContextTokens: int(clampTokens(w.Context)),
+		info := ModelInfo{ID: id, Source: "session", Known: true, Plan: w.Plan, TTLSeconds: w.TTLSeconds, ContextTokens: int(clampTokens(w.Context)),
 			Price: Price{InputPerM: p.InputPerM, OutputPerM: p.OutputPerM, CacheReadPerM: p.CacheReadPerM,
 				CacheWrite5mPerM: p.CacheWrite5mPerM, CacheWrite1hPerM: p.CacheWrite1hPerM}}
 		if w.Source == "fallback" {

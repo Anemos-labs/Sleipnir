@@ -32,6 +32,10 @@ textarea{font:500 13px/1.4 var(--f-ui);resize:vertical}
 .tabbar [role=tab][aria-selected=true]{color:var(--bright)}.tabbar [role=tab][aria-selected=true]::after{content:"";position:absolute;left:8px;right:8px;bottom:-1px;height:2px;background:var(--c-mgr)}
 .meter{height:6px;background:var(--panel2);border:1px solid var(--line2);position:relative;overflow:hidden;min-width:80px}.meter i{position:absolute;inset:0 auto 0 0;background:var(--ok)}
 .gauge.wide{width:100%}
+/* a figure at the API list price that a subscription plan covers: the "plan" tag beside it, and a budget gauge that it does not fill */
+.plantag{display:inline-block;margin-left:5px;padding:0 4px;font:600 10px/1.45 var(--f-num);font-style:normal;letter-spacing:.02em;color:var(--fe);border:1px solid var(--info-b);border-radius:2px;vertical-align:1px;cursor:help}
+.gauge.plan{border-style:dashed}.gauge.plan i{display:none}
+.hm b em.plantag{font:600 10px/1.45 var(--f-num);color:var(--fe)}
 .lrows{display:flex;flex-direction:column;gap:1px}
 [data-tip]{position:relative}
 [data-tip]:hover::after,[data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;left:0;top:calc(100% + 6px);z-index:50;background:var(--raise);border:1px solid var(--line2);color:var(--bright);padding:5px 9px;font:400 12px/1.35 var(--f-ui);white-space:normal;width:max-content;max-width:260px;box-shadow:0 8px 24px var(--shade);pointer-events:none}

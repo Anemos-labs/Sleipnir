@@ -1,0 +1,104 @@
+{"t":0.4,"k":"say","seq":1,"who":"you","text":"Add a health endpoint","stream":false}
+{"t":0.4,"k":"turn","seq":2,"s":"start"}
+{"t":0.4,"k":"state","seq":3,"id":"mgr","s":"think","doing":"thinking","task":null}
+{"t":0.8,"k":"state","seq":4,"id":"mgr","s":"think","doing":"thinking","task":null,"reqSince":0.8}
+{"t":0.8,"k":"gov","seq":5,"rpm":1,"r429":0,"retries":0}
+{"t":1,"k":"req","seq":6,"id":"mgr","ratio":0,"p":4300,"o":400}
+{"t":1,"k":"use","seq":7,"id":"mgr","rd":0,"un":4300,"out":400,"wr":0,"cost":0,"saved":0,"list":0.00063,"plan":true}
+{"t":1,"k":"layers","seq":8,"id":"mgr","toks":[0,4000,300,0,0,0]}
+{"t":1,"k":"warm","seq":9,"ttl":300}
+{"t":1,"k":"state","seq":10,"id":"mgr","s":"think","doing":"thinking","task":null}
+{"t":1.2,"k":"state","seq":11,"id":"be-1","s":"think","doing":"thinking","task":"T1"}
+{"t":1.6,"k":"state","seq":12,"id":"be-1","s":"think","doing":"thinking","task":"T1","reqSince":1.6}
+{"t":1.8,"k":"req","seq":13,"id":"be-1","ratio":0.9302325581395349,"p":4300,"o":900}
+{"t":1.8,"k":"use","seq":14,"id":"be-1","rd":4000,"un":300,"out":900,"wr":0,"cost":0,"saved":0.0003600000000000001,"list":0.00052,"plan":true}
+{"t":1.8,"k":"layers","seq":15,"id":"be-1","toks":[0,4000,300,0,0,0]}
+{"t":1.8,"k":"warm","seq":16,"ttl":300}
+{"t":1.8,"k":"state","seq":17,"id":"be-1","s":"think","doing":"thinking","task":"T1"}
+{"t":2,"k":"state","seq":18,"id":"be-1","s":"think","doing":"thinking","task":"T1","reqSince":2}
+{"t":2.2,"k":"req","seq":19,"id":"be-1","ratio":0.9662921348314607,"p":4450,"o":120}
+{"t":2.2,"k":"use","seq":20,"id":"be-1","rd":8300,"un":450,"out":1020,"wr":0,"cost":0,"saved":0.0007470000000000002,"list":0.0006379999999999999,"plan":true}
+{"t":2.2,"k":"layers","seq":21,"id":"be-1","toks":[150,4000,300,0,0,0]}
+{"t":2.2,"k":"warm","seq":22,"ttl":300}
+{"t":2.2,"k":"state","seq":23,"id":"be-1","s":"think","doing":"thinking","task":"T1"}
+{"t":2.4,"k":"state","seq":24,"id":"be-1","s":"tool","doing":"Read /work/plan/api/f0.go","task":"T1"}
+{"t":2.6,"k":"state","seq":25,"id":"be-1","s":"think","doing":"thinking","task":"T1"}
+{"t":2.6,"k":"tool","seq":26,"id":"be-1","name":"Read","arg":"/work/plan/api/f0.go","out":"","ok":true,"task":"T1","tid":"c0","ms":4}
+{"t":2.8,"k":"state","seq":27,"id":"be-1","s":"think","doing":"thinking","task":"T1","reqSince":2.8}
+{"t":3,"k":"req","seq":28,"id":"be-1","ratio":0.9641255605381166,"p":4460,"o":120}
+{"t":3,"k":"use","seq":29,"id":"be-1","rd":12600,"un":610,"out":1140,"wr":0,"cost":0,"saved":0.0011340000000000002,"list":0.0007569999999999999,"plan":true}
+{"t":3,"k":"layers","seq":30,"id":"be-1","toks":[150,4000,300,0,0,10]}
+{"t":3,"k":"warm","seq":31,"ttl":300}
+{"t":3,"k":"state","seq":32,"id":"be-1","s":"think","doing":"thinking","task":"T1"}
+{"t":3.2,"k":"state","seq":33,"id":"be-1","s":"tool","doing":"Read /work/plan/api/f1.go","task":"T1"}
+{"t":3.4,"k":"state","seq":34,"id":"be-1","s":"think","doing":"thinking","task":"T1"}
+{"t":3.4,"k":"tool","seq":35,"id":"be-1","name":"Read","arg":"/work/plan/api/f1.go","out":"","ok":true,"task":"T1","tid":"c1","ms":4}
+{"t":3.6,"k":"state","seq":36,"id":"be-1","s":"think","doing":"thinking","task":"T1","reqSince":3.6}
+{"t":3.8,"k":"req","seq":37,"id":"be-1","ratio":0.9619686800894854,"p":4470,"o":120}
+{"t":3.8,"k":"use","seq":38,"id":"be-1","rd":16900,"un":780,"out":1260,"wr":0,"cost":0,"saved":0.0015210000000000002,"list":0.0008769999999999998,"plan":true}
+{"t":3.8,"k":"layers","seq":39,"id":"be-1","toks":[150,4000,300,0,0,20]}
+{"t":3.8,"k":"warm","seq":40,"ttl":300}
+{"t":3.8,"k":"state","seq":41,"id":"be-1","s":"think","doing":"thinking","task":"T1"}
+{"t":4,"k":"state","seq":42,"id":"be-1","s":"tool","doing":"Read /work/plan/api/f2.go","task":"T1"}
+{"t":4.2,"k":"state","seq":43,"id":"be-1","s":"think","doing":"thinking","task":"T1"}
+{"t":4.2,"k":"tool","seq":44,"id":"be-1","name":"Read","arg":"/work/plan/api/f2.go","out":"","ok":true,"task":"T1","tid":"c2","ms":4}
+{"t":4.4,"k":"state","seq":45,"id":"be-1","s":"think","doing":"thinking","task":"T1","reqSince":4.4}
+{"t":4.6,"k":"req","seq":46,"id":"be-1","ratio":0.9598214285714286,"p":4480,"o":120}
+{"t":4.6,"k":"use","seq":47,"id":"be-1","rd":21200,"un":960,"out":1380,"wr":0,"cost":0,"saved":0.0019080000000000004,"list":0.0009979999999999998,"plan":true}
+{"t":4.6,"k":"layers","seq":48,"id":"be-1","toks":[150,4000,300,0,0,30]}
+{"t":4.6,"k":"warm","seq":49,"ttl":300}
+{"t":4.6,"k":"state","seq":50,"id":"be-1","s":"think","doing":"thinking","task":"T1"}
+{"t":4.8,"k":"state","seq":51,"id":"be-1","s":"tool","doing":"Read /work/plan/api/f3.go","task":"T1"}
+{"t":5,"k":"state","seq":52,"id":"be-1","s":"think","doing":"thinking","task":"T1"}
+{"t":5,"k":"tool","seq":53,"id":"be-1","name":"Read","arg":"/work/plan/api/f3.go","out":"","ok":true,"task":"T1","tid":"c3","ms":4}
+{"t":5.2,"k":"state","seq":54,"id":"be-1","s":"think","doing":"thinking","task":"T1","reqSince":5.2}
+{"t":5.4,"k":"req","seq":55,"id":"be-1","ratio":0.9576837416481069,"p":4490,"o":120}
+{"t":5.4,"k":"use","seq":56,"id":"be-1","rd":25500,"un":1150,"out":1500,"wr":0,"cost":0,"saved":0.0022950000000000006,"list":0.0011199999999999997,"plan":true}
+{"t":5.4,"k":"layers","seq":57,"id":"be-1","toks":[150,4000,300,0,0,40]}
+{"t":5.4,"k":"warm","seq":58,"ttl":300}
+{"t":5.4,"k":"state","seq":59,"id":"be-1","s":"think","doing":"thinking","task":"T1"}
+{"t":5.6,"k":"state","seq":60,"id":"be-1","s":"tool","doing":"Read /work/plan/api/f4.go","task":"T1"}
+{"t":5.8,"k":"state","seq":61,"id":"be-1","s":"think","doing":"thinking","task":"T1"}
+{"t":5.8,"k":"gov","seq":62,"rpm":7,"r429":0,"retries":0}
+{"t":5.8,"k":"tool","seq":63,"id":"be-1","name":"Read","arg":"/work/plan/api/f4.go","out":"","ok":true,"task":"T1","tid":"c4","ms":4}
+{"t":6,"k":"state","seq":64,"id":"be-1","s":"think","doing":"thinking","task":"T1","reqSince":6}
+{"t":6.2,"k":"req","seq":65,"id":"be-1","ratio":0.9555555555555556,"p":4500,"o":120}
+{"t":6.2,"k":"use","seq":66,"id":"be-1","rd":29800,"un":1350,"out":1620,"wr":0,"cost":0,"saved":0.002682000000000001,"list":0.0012429999999999997,"plan":true}
+{"t":6.2,"k":"layers","seq":67,"id":"be-1","toks":[150,4000,300,0,0,50]}
+{"t":6.2,"k":"warm","seq":68,"ttl":300}
+{"t":6.2,"k":"state","seq":69,"id":"be-1","s":"think","doing":"thinking","task":"T1"}
+{"t":6.4,"k":"state","seq":70,"id":"be-1","s":"tool","doing":"Read /work/plan/api/f5.go","task":"T1"}
+{"t":6.6,"k":"state","seq":71,"id":"be-1","s":"think","doing":"thinking","task":"T1"}
+{"t":6.6,"k":"tool","seq":72,"id":"be-1","name":"Read","arg":"/work/plan/api/f5.go","out":"","ok":true,"task":"T1","tid":"c5","ms":4}
+{"t":6.8,"k":"state","seq":73,"id":"be-1","s":"think","doing":"thinking","task":"T1","reqSince":6.8}
+{"t":7,"k":"req","seq":74,"id":"be-1","ratio":0.9534368070953437,"p":4510,"o":120}
+{"t":7,"k":"use","seq":75,"id":"be-1","rd":34100,"un":1560,"out":1740,"wr":0,"cost":0,"saved":0.003069000000000001,"list":0.0013669999999999997,"plan":true}
+{"t":7,"k":"layers","seq":76,"id":"be-1","toks":[150,4000,300,0,0,60]}
+{"t":7,"k":"warm","seq":77,"ttl":300}
+{"t":7,"k":"state","seq":78,"id":"be-1","s":"think","doing":"thinking","task":"T1"}
+{"t":7.2,"k":"state","seq":79,"id":"be-1","s":"tool","doing":"Read /work/plan/api/f6.go","task":"T1"}
+{"t":7.4,"k":"state","seq":80,"id":"be-1","s":"think","doing":"thinking","task":"T1"}
+{"t":7.4,"k":"tool","seq":81,"id":"be-1","name":"Read","arg":"/work/plan/api/f6.go","out":"","ok":true,"task":"T1","tid":"c6","ms":4}
+{"t":7.6,"k":"state","seq":82,"id":"be-1","s":"think","doing":"thinking","task":"T1","reqSince":7.6}
+{"t":7.8,"k":"req","seq":83,"id":"be-1","ratio":0.9513274336283186,"p":4520,"o":120}
+{"t":7.8,"k":"use","seq":84,"id":"be-1","rd":38400,"un":1780,"out":1860,"wr":0,"cost":0,"saved":0.003456000000000001,"list":0.0014919999999999998,"plan":true}
+{"t":7.8,"k":"layers","seq":85,"id":"be-1","toks":[150,4000,300,0,0,70]}
+{"t":7.8,"k":"warm","seq":86,"ttl":300}
+{"t":7.8,"k":"state","seq":87,"id":"be-1","s":"think","doing":"thinking","task":"T1"}
+{"t":8,"k":"state","seq":88,"id":"be-1","s":"tool","doing":"Read /work/plan/api/f7.go","task":"T1"}
+{"t":8.2,"k":"state","seq":89,"id":"be-1","s":"think","doing":"thinking","task":"T1"}
+{"t":8.2,"k":"tool","seq":90,"id":"be-1","name":"Read","arg":"/work/plan/api/f7.go","out":"","ok":true,"task":"T1","tid":"c7","ms":4}
+{"t":8.4,"k":"state","seq":91,"id":"be-1","s":"think","doing":"thinking","task":"T1","reqSince":8.4}
+{"t":8.6,"k":"req","seq":92,"id":"be-1","ratio":0.7818181818181819,"p":5500,"o":1500}
+{"t":8.6,"k":"use","seq":93,"id":"be-1","rd":42700,"un":2980,"out":3360,"wr":0,"cost":0,"saved":0.0038430000000000014,"list":0.002405,"plan":true}
+{"t":8.6,"k":"layers","seq":94,"id":"be-1","toks":[150,4000,300,0,0,1050]}
+{"t":8.6,"k":"warm","seq":95,"ttl":300}
+{"t":8.6,"k":"state","seq":96,"id":"be-1","s":"think","doing":"thinking","task":"T1"}
+{"t":9,"k":"use","seq":97,"id":"be-1","rd":47000,"un":3880,"out":3960,"wr":0,"cost":0,"saved":0.004230000000000001,"list":0.0028380000000000002,"plan":true}
+{"t":9.4,"k":"svc","seq":98,"rd":0,"un":500,"out":80,"wr":0,"cost":0,"saved":0,"list":0.00009,"plan":true}
+{"t":9.6,"k":"state","seq":99,"id":"mgr","s":"think","doing":"thinking","task":null,"reqSince":9.6}
+{"t":9.8,"k":"req","seq":100,"id":"mgr","ratio":0.9555555555555556,"p":4500,"o":120}
+{"t":9.8,"k":"use","seq":101,"id":"mgr","rd":4300,"un":4500,"out":520,"wr":0,"cost":0,"saved":0.0003870000000000001,"list":0.000753,"plan":true}
+{"t":9.8,"k":"layers","seq":102,"id":"mgr","toks":[150,4000,300,0,0,50]}
+{"t":9.8,"k":"warm","seq":103,"ttl":300}
+{"t":9.8,"k":"state","seq":104,"id":"mgr","s":"think","doing":"thinking","task":null}

@@ -9,6 +9,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/tui/cell"
+	"github.com/anemos-labs/sleipnir/internal/tui/state"
 	"github.com/anemos-labs/sleipnir/internal/tui/widget"
 )
 
@@ -98,8 +99,14 @@ func (m *chatModel) statsLines() []cell.Line {
 	}
 	pad := func(label string) string { return fmt.Sprintf("  %-7s", label) }
 	var cost, cache row
-	cost.add(st.dim, pad("cost")).add(cell.Style{}, widget.USD(t.CostUSD)).
-		add(st.dim, " "+m.k.g.dot+" "+widget.Tokens(int(t.Tokens.Prompt()))+" in, "+widget.Tokens(int(t.Tokens.Output))+" out "+m.k.g.dot+" "+count(t.Responses, "request", "requests"))
+	sp := sn.Spend()
+	if sp.Plan {
+		// what a subscription plan covered, at the API list price: the plan bills it, not the tokens (the line under it says so)
+		cost.add(st.dim, pad("cost")).add(cell.Style{}, widget.PlanUSD(sp.Shown())+" ").add(st.dim, widget.PlanTag)
+	} else {
+		cost.add(st.dim, pad("cost")).add(cell.Style{}, widget.USD(t.CostUSD))
+	}
+	cost.add(st.dim, " "+m.k.g.dot+" "+widget.Tokens(int(t.Tokens.Prompt()))+" in, "+widget.Tokens(int(t.Tokens.Output))+" out "+m.k.g.dot+" "+count(t.Responses, "request", "requests"))
 	cache.add(st.dim, pad("cache")).add(hitStyle(st, t.HitRatio()), widget.Percent(t.HitRatio())).add(st.dim, " of the prompts came from the provider's cache")
 	if s := t.Savings; s.Known() && s.SavedUSD > 0 {
 		lead := " " + m.k.g.dot + " saved " + m.k.g.approx + " "
@@ -108,7 +115,11 @@ func (m *chatModel) statsLines() []cell.Line {
 		}
 		cache.add(st.dim, lead).add(st.good, widget.USD(s.SavedUSD)).add(st.dim, " at list price")
 	}
-	out := []cell.Line{cell.Styled(st.dim, "  "+m.k.g.compact+" stats"), m.k.fit(cost.line(), m.cols), m.k.fit(cache.line(), m.cols)}
+	out := []cell.Line{cell.Styled(st.dim, "  "+m.k.g.compact+" stats"), m.k.fit(cost.line(), m.cols)}
+	if sp.Plan {
+		out = append(out, m.k.fit(cell.Styled(st.dim, pad("")+state.PlanHelp), m.cols))
+	}
+	out = append(out, m.k.fit(cache.line(), m.cols))
 	if a := stackAgent(&liveView{snap: sn}); a != nil {
 		layers := promptLayers(a, m.mem.g0est())
 		o := widget.NewStackOpts(max(m.cols-4, 20), a.Stack.Read)

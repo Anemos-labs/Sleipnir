@@ -9,6 +9,15 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 )
 
+// agentCost is the COST cell of a row: the money, and for a row whose cost includes usage a subscription plan covered (shown at the
+// API list price) a dim "≈" before it, which the title bar's "plan" tag explains.
+func agentCost(r AgentRow, p Palette) cell.Line {
+	if r.Plan {
+		return cell.Join(cell.Styled(p.dimSt(), "≈"), cell.Text(showMoney(r.Cost)))
+	}
+	return cell.Text(showMoney(r.Cost))
+}
+
 // showMoney writes dollars the way the UI does: $0.012, $12.34, $123 ($0.0003 for a cost under a twentieth of a cent, so that it does not read as nothing). Negative and NaN are $0.000.
 func showMoney(f float64) string {
 	if f != f || f < 0 {
@@ -102,10 +111,13 @@ func AgentTable(rows []AgentRow, width int, frame int, p Palette) []cell.Line {
 	if width <= 0 || len(rows) == 0 {
 		return nil
 	}
-	agentW, scopeW := 6, 5
+	agentW, scopeW, costW := 6, 5, 7
 	for _, r := range rows {
 		agentW = max(agentW, cell.StringWidth(showClean(r.ID))+1+cell.StringWidth(showClean(r.Role)))
 		scopeW = max(scopeW, cell.StringWidth(showClean(r.Scope)))
+		if r.Plan {
+			costW = 8 // room for the "≈" of a cost a subscription plan covered
+		}
 	}
 	agentW, scopeW = min(agentW, 14), min(scopeW, 12)
 	cols := []agentTableCol{
@@ -114,7 +126,7 @@ func AgentTable(rows []AgentRow, width int, frame int, p Palette) []cell.Line {
 		{key: "doing", title: "DOING"},
 		{key: "bar", title: "PROMPT", w: showClamp(width/5, 12, 28), drop: 4},
 		{key: "tok", title: "TOK", w: 6, right: true, drop: 3},
-		{key: "cost", title: "COST", w: 7, right: true, drop: 2},
+		{key: "cost", title: "COST", w: costW, right: true, drop: 2},
 		{key: "hit", title: "⛁", w: 4, right: true},
 		{key: "scope", title: "SCOPE", w: scopeW, drop: 1},
 	}
@@ -197,7 +209,7 @@ func AgentTable(rows []AgentRow, width int, frame int, p Palette) []cell.Line {
 			"state": cell.Styled(state.style(p), glyph+" "+state.Word()),
 			"doing": cell.Styled(doingSt, showClean(r.Doing)),
 			"tok":   cell.Text(showTokens(showTok(r.Shared) + showTok(r.Own))),
-			"cost":  cell.Text(showMoney(r.Cost)),
+			"cost":  agentCost(r, p),
 			"hit":   hit,
 			"scope": cell.Styled(p.dimSt(), scope),
 		}

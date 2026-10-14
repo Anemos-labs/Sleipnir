@@ -64,6 +64,8 @@ type Session struct {
 	EndedAt    time.Time `json:"ended_at,omitzero"`
 	EndReason  string    `json:"end_reason,omitempty"`
 	EndCostUSD float64   `json:"end_cost_usd,omitempty"` // what the harness reported at session.end
+	// EndListUSD is what session.end reported a subscription plan covered, at the API list price (see Totals.ListUSD).
+	EndListUSD float64 `json:"end_list_usd,omitempty"`
 
 	// Goal is the first thing a person typed, one line.
 	Goal string `json:"goal,omitempty"`
@@ -126,6 +128,11 @@ type Agent struct {
 	// CostUSD is what the responses reported (model.response cost_usd, the gateway's number when it gave one), compactor calls included.
 	CostUSD  float64 `json:"cost_usd"`
 	SavedUSD float64 `json:"saved_usd,omitempty"` // the saving of this agent's cache reads, at list price where the model's price is known
+	// ListUSD is what the agent's usage that a subscription plan covered comes to at the API list price (model.response list_usd), and
+	// Plan says it had such usage: CostUSD has nothing of it (the plan bills nothing per token), and the interfaces show the sum,
+	// marked as the plan's (Spend).
+	ListUSD float64 `json:"list_usd,omitempty"`
+	Plan    bool    `json:"plan,omitempty"`
 	// UnpricedReadTokens are the cache-read tokens of this agent's responses whose model price is unknown: SavedUSD does not count
 	// them, so it is a lower bound when this is not zero.
 	UnpricedReadTokens int64 `json:"unpriced_read_tokens,omitempty"`
@@ -381,6 +388,9 @@ type ModelInfo struct {
 	// Known is false for "fallback" and "unknown": no saving is computed for such a model.
 	Known bool  `json:"known"`
 	Price Price `json:"price,omitzero"`
+	// Plan says the run reached the model through a subscription plan: Price is then the API's list price of the same model, which
+	// the plan does not bill (savings computed from it are at that price too).
+	Plan bool `json:"plan,omitempty"`
 	// TTLSeconds is the cache entry lifetime the provider profile carried, 0 when the events did not say.
 	TTLSeconds int `json:"ttl_s,omitempty"`
 	// ContextTokens is the model's context window as the run used it (session.start records the main model's window after any
@@ -430,6 +440,10 @@ type Totals struct {
 	Anomalies     int `json:"anomalies,omitempty"`
 	// CostUSD is the sum of the cost_usd of the responses, as reported.
 	CostUSD float64 `json:"cost_usd"`
+	// ListUSD is the sum of the list_usd of the responses: what the usage a subscription plan covered comes to at the API list price.
+	// No budget counts it. Plan says some response had such usage.
+	ListUSD float64 `json:"list_usd,omitempty"`
+	Plan    bool    `json:"plan,omitempty"`
 	// Tokens sums every response (main and side); its HitRatio is weighted by tokens.
 	Tokens  Tokens  `json:"tokens"`
 	Savings Savings `json:"savings"`
@@ -442,6 +456,29 @@ type Totals struct {
 
 // HitRatio is the token-weighted hit ratio of every response.
 func (t Totals) HitRatio() float64 { return t.Tokens.HitRatio() }
+
+// PlanHelp is the line that explains a figure marked as a plan's, in every interface: what it is and who pays it.
+const PlanHelp = "at API list price; billed to your ChatGPT plan"
+
+// Spend is a cost figure as the interfaces show it. Billed is what was billed per token (every budget counts it); List is what the
+// usage a subscription plan covered comes to at the API list price; Plan says the figure includes such usage: it is then shown as
+// Shown with a "≈" and a "plan" tag, and PlanHelp says what that means.
+type Spend struct {
+	Billed, List float64
+	Plan         bool
+}
+
+// Shown is the figure to show: the bill plus the list-price value of what the plan covered.
+func (s Spend) Shown() float64 { return s.Billed + s.List }
+
+// Spend is the session's figure, over every response. It is marked as a plan's from the first answer that a plan covered, as the web
+// interface marks it (the page learns of a plan from the same answers).
+func (sn *Snapshot) Spend() Spend {
+	return Spend{Billed: sn.Totals.CostUSD, List: sn.Totals.ListUSD, Plan: sn.Totals.Plan}
+}
+
+// Spend is the agent's figure.
+func (a *Agent) Spend() Spend { return Spend{Billed: a.CostUSD, List: a.ListUSD, Plan: a.Plan} }
 
 // Stats counts what the State did with the events it was given: for a footer, a debug view and the tests.
 type Stats struct {

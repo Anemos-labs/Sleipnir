@@ -205,6 +205,10 @@ func runCommand(ctx context.Context, name string, args []string) error {
 			if res.Unfinished != "" {
 				out["unfinished"] = res.Unfinished
 			}
+			if res.Plan {
+				// a subscription plan's session: cost_usd is what was billed (nothing per token), list_usd its usage at the API list price
+				out["list_usd"], out["plan"] = res.ListUSD, true
+			}
 			if ref := s.RefusedWithNoOneToAsk(); len(ref) > 0 {
 				out["refused_no_one_to_ask"] = ref
 			}
@@ -494,10 +498,19 @@ func cmdRecon(ctx context.Context, args []string) error {
 	return nil
 }
 
+// spentText is a cost as the line chat, `run` and the session lists write it: "$0.0123", or for a session on a subscription plan (a
+// ChatGPT sign-in) the bill plus what the plan covered at the API list price, "≈$0.0123 plan" (state.PlanHelp says what that is).
+func spentText(billed, list float64, plan bool) string {
+	if plan {
+		return fmt.Sprintf("≈$%.4f plan", billed+list)
+	}
+	return fmt.Sprintf("$%.4f", billed)
+}
+
 // runSummary is the line a run ends on: how long, how many steps, what it cost, and where the session is kept. On a terminal too narrow for all
 // of it on one line, the directory (the long part) is on a line of its own, under the rest, shortened with ~ where it can be.
 func runSummary(out io.Writer, took time.Duration, res *session.Result) string {
-	line := fmt.Sprintf("── %s · %d steps · $%.4f · cache hit %.0f%% · %d compactions", took.Round(time.Second), res.Steps, res.CostUSD, res.Usage.HitRatio()*100, res.Compactions)
+	line := fmt.Sprintf("── %s · %d steps · %s · cache hit %.0f%% · %d compactions", took.Round(time.Second), res.Steps, spentText(res.CostUSD, res.ListUSD, res.Plan), res.Usage.HitRatio()*100, res.Compactions)
 	if w := termWidth(out); w > 0 && utf8.RuneCountInString(line)+3+utf8.RuneCountInString(res.Dir) >= w {
 		return line + "\n   " + tildePath(res.Dir)
 	}

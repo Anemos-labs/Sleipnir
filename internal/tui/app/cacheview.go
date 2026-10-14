@@ -581,6 +581,10 @@ func sessionPanel(s Scene, w int) []cell.Line {
 		}
 		a.add(st.dim, lead).add(st.good, widget.USD(t.Savings.SavedUSD)).add(st.dim, " (list price)")
 	}
+	if sp := s.Snap.Spend(); sp.Plan {
+		// the session's cost, at the API list price: a subscription plan covers it
+		a.add(st.dim, " · cost ").add(cell.Style{}, widget.PlanUSD(sp.Shown())).add(st.dim, " "+widget.PlanTag)
+	}
 	out := []cell.Line{fit(a.line(), w)}
 	var b row
 	b.add(st.dim, fmt.Sprintf("%d %s", t.Compactions, plural(t.Compactions, "compaction", "compactions")))

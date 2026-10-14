@@ -45,17 +45,30 @@ func entry(ref string, ctx int, in, out float64, modality string, supported ...s
 		Modality: modality, Supported: supported}}
 }
 
+// planEntry is a ChatGPT plan's model as PlanModels lists it: nothing billed per token, and the API's list price of the same model
+// (from the built-in table) when the table knows the model.
+func planEntry(ref string, ctx int, supported ...string) Entry {
+	e := entry(ref, ctx, 0, 0, "text->text", supported...)
+	e.Model.Provider, e.Model.Plan, e.Model.Price = PlanProvider, true, cost.Price{}
+	_, id, _ := strings.Cut(ref, "/")
+	if m, ok := cost.Defaults().Lookup(id); ok {
+		e.Model.ListPrice = m.Price
+	}
+	return e
+}
+
 // The filter of `sleipnir models` and the Models page, case by case.
 func TestFilterGolden(t *testing.T) {
-	plan := entry("chatgpt/gpt-x", 400_000, 0, 0, "text->text", "tools", "reasoning_effort")
-	plan.Model.Provider = PlanProvider
+	plan := planEntry("chatgpt/gpt-x", 400_000, "tools", "reasoning_effort") // a model the table does not know: no list price
+	luna := planEntry("chatgpt/gpt-6-luna", 272_000, "tools", "reasoning_effort")
+	sol := planEntry("chatgpt/gpt-6-sol", 272_000, "tools", "reasoning_effort")
 	all := []Entry{
 		entry("heimdallm/qwen/qwen3.8-27b", 262_144, 0.1, 0.2, "text->text", "tools", "reasoning"),
 		entry("heimdallm/qwen/qwen3.8-flash-next", 262_144, 0.05, 0.1, "text->text"),
 		entry("openrouter/moonshotai/kimi-k3", 300_000, 1, 3, "text->text", "tools", "reasoning_effort"),
 		entry("ollama/llama3:8b", 0, 0, 0, ""),
 		entry("heimdallm/embedder", 8000, 0.01, 0, "text->embedding"),
-		plan,
+		plan, luna, sol,
 	}
 	fav := map[string]bool{"ollama/llama3:8b": true}
 	for _, tc := range []struct {
@@ -63,11 +76,14 @@ func TestFilterGolden(t *testing.T) {
 		f    Filter
 		want []string
 	}{
-		{"chat models only", Filter{}, []string{"chatgpt/gpt-x", "heimdallm/qwen/qwen3.8-27b", "heimdallm/qwen/qwen3.8-flash-next", "ollama/llama3:8b", "openrouter/moonshotai/kimi-k3"}},
-		{"all", Filter{All: true}, []string{"chatgpt/gpt-x", "heimdallm/embedder", "heimdallm/qwen/qwen3.8-27b", "heimdallm/qwen/qwen3.8-flash-next", "ollama/llama3:8b", "openrouter/moonshotai/kimi-k3"}},
+		{"chat models only", Filter{}, []string{"chatgpt/gpt-6-luna", "chatgpt/gpt-6-sol", "chatgpt/gpt-x", "heimdallm/qwen/qwen3.8-27b", "heimdallm/qwen/qwen3.8-flash-next", "ollama/llama3:8b", "openrouter/moonshotai/kimi-k3"}},
+		{"all", Filter{All: true}, []string{"chatgpt/gpt-6-luna", "chatgpt/gpt-6-sol", "chatgpt/gpt-x", "heimdallm/embedder", "heimdallm/qwen/qwen3.8-27b", "heimdallm/qwen/qwen3.8-flash-next", "ollama/llama3:8b", "openrouter/moonshotai/kimi-k3"}},
 		{"words, any case", Filter{Words: []string{"QWEN", "flash"}}, []string{"heimdallm/qwen/qwen3.8-flash-next"}},
-		{"tools and reasoning", Filter{Tools: true, Reasoning: true}, []string{"chatgpt/gpt-x", "heimdallm/qwen/qwen3.8-27b", "openrouter/moonshotai/kimi-k3"}},
-		{"output price ceiling leaves the plan out", Filter{MaxOut: 0.5}, []string{"heimdallm/qwen/qwen3.8-27b", "heimdallm/qwen/qwen3.8-flash-next", "ollama/llama3:8b"}},
+		{"tools and reasoning", Filter{Tools: true, Reasoning: true}, []string{"chatgpt/gpt-6-luna", "chatgpt/gpt-6-sol", "chatgpt/gpt-x", "heimdallm/qwen/qwen3.8-27b", "openrouter/moonshotai/kimi-k3"}},
+		// a plan's model is filtered by the API list price of the same model ($0.50 out for gpt-6-luna, $10 for gpt-6-sol); one whose
+		// list price is not known is left out by any ceiling
+		{"output price ceiling, a plan's model at its list price", Filter{MaxOut: 0.5}, []string{"chatgpt/gpt-6-luna", "heimdallm/qwen/qwen3.8-27b", "heimdallm/qwen/qwen3.8-flash-next", "ollama/llama3:8b"}},
+		{"a higher ceiling", Filter{MaxOut: 10}, []string{"chatgpt/gpt-6-luna", "chatgpt/gpt-6-sol", "heimdallm/qwen/qwen3.8-27b", "heimdallm/qwen/qwen3.8-flash-next", "ollama/llama3:8b", "openrouter/moonshotai/kimi-k3"}},
 		{"context floor", Filter{MinContext: 280_000}, []string{"chatgpt/gpt-x", "openrouter/moonshotai/kimi-k3"}},
 		{"favourites", Filter{OnlyFavorite: true}, []string{"ollama/llama3:8b"}},
 	} {
@@ -85,8 +101,7 @@ func TestFilterGolden(t *testing.T) {
 }
 
 func TestRowsSayWhenAPriceIsUnknown(t *testing.T) {
-	plan := entry("chatgpt/gpt-x", 0, 0, 0, "text->text", "tools")
-	plan.Model.Provider = PlanProvider
+	plan := planEntry("chatgpt/gpt-x", 0, "tools")
 	for _, tc := range []struct {
 		e     Entry
 		known bool
@@ -95,6 +110,7 @@ func TestRowsSayWhenAPriceIsUnknown(t *testing.T) {
 		{entry("a/output-only", 1000, 0, 2, "text->text"), true},
 		{entry("ollama/ids-only", 0, 0, 0, ""), false},
 		{plan, false},
+		{planEntry("chatgpt/gpt-6-luna", 272_000, "tools"), true},
 	} {
 		r := RowOf(tc.e)
 		if r.PriceKnown() != tc.known || (r.In == nil) != (r.Out == nil) || (r.In == nil) != (r.Cached == nil) {
@@ -106,6 +122,10 @@ func TestRowsSayWhenAPriceIsUnknown(t *testing.T) {
 	}
 	if r := RowOf(entry("a/b", 1, 1.5, 2.5, "text->text")); *r.In != 1.5 || *r.Out != 2.5 || !r.Chat {
 		t.Errorf("prices are carried: %+v", r)
+	}
+	// a plan's model shows the API list price of the same model, marked as the plan's
+	if r := RowOf(planEntry("chatgpt/gpt-6.1-sol", 500_000, "tools")); !r.Plan || r.In == nil || *r.In != 2 || *r.Cached != 0.1 || *r.Out != 10 {
+		t.Errorf("a plan's row: %+v", r)
 	}
 }
 

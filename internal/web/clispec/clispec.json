@@ -104,7 +104,7 @@
   {"name":"base-url","arg":"string","default":null,"repeatable":false,"desc":"API base URL (overrides the provider default)"},
   {"name":"fav","arg":"bool","default":null,"repeatable":false,"desc":"only favorites"},
   {"name":"filter","arg":"string","default":null,"repeatable":false,"desc":"only ids containing this text (same as a word)"},
-  {"name":"max-price","arg":"float","default":null,"repeatable":false,"desc":"only models with an output price of at most this many dollars per million tokens"},
+  {"name":"max-price","arg":"float","default":null,"repeatable":false,"desc":"only models with an output price of at most this many dollars per million tokens (a ChatGPT plan's model: the API list price of the same model)"},
   {"name":"min-context","arg":"string","default":null,"repeatable":false,"desc":"only models with at least this context window (128k, 1m)"},
   {"name":"provider","arg":"string","default":null,"defaultNote":"auto-detect","repeatable":false,"desc":"heimdallm | openrouter | openai | custom (default: auto-detect)","choices":["heimdallm","openrouter","openai","custom"]},
   {"name":"reasoning","arg":"bool","default":null,"repeatable":false,"desc":"only models with configurable reasoning","choices":["drop","field","keep"]},

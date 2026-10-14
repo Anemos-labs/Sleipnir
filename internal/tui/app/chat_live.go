@@ -54,6 +54,7 @@ type statusView struct {
 	tokIn   int64
 	tokOut  int64
 	cost    float64
+	plan    bool // cost includes usage a subscription plan covered, at the API list price: it is written "≈$0.01 plan"
 	flash   bool // a cache break: the line is in the alarm style for a moment
 	// waiting is how long the request in flight has gone unanswered, once that is long (slowRequest): 0 before.
 	waiting time.Duration
@@ -438,7 +439,7 @@ func (k *chatLook) statusLine(v *liveView, w int) cell.Line {
 		segs = append(segs, seg{fmt.Sprintf("%s%s %s%s", k.g.up, widget.Tokens(int(s.tokIn)), k.g.down, widget.Tokens(int(s.tokOut))), k.st.dim, 5})
 	}
 	if s.cost > 0 {
-		segs = append(segs, seg{widget.USD(s.cost), cell.Style{}, 2})
+		segs = append(segs, seg{widget.Spend(s.cost, s.plan), cell.Style{}, 2})
 	}
 	hint := "esc to interrupt"
 	segs = append(segs, seg{hint, k.st.dim, 4})

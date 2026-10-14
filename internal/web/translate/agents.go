@@ -326,7 +326,8 @@ func (t *Translator) sendUse(hid string, ts float64, force bool) {
 		return
 	}
 	u := &UseX{Use: wire.Use{ID: uid, Rd: a.Tokens.CacheRead, Un: a.Tokens.Input + a.Tokens.CacheWrite, Out: a.Tokens.Output,
-		Wr: a.Tokens.CacheWrite, Cost: a.CostUSD, Saved: a.SavedUSD}, SavedPartial: a.UnpricedReadTokens > 0, Unpriced: a.UnpricedReadTokens}
+		Wr: a.Tokens.CacheWrite, Cost: a.CostUSD, Saved: a.SavedUSD}, SavedPartial: a.UnpricedReadTokens > 0, Unpriced: a.UnpricedReadTokens,
+		List: a.ListUSD, Plan: a.Plan}
 	if !force && o.use != nil && *o.use == *u {
 		return
 	}
@@ -338,7 +339,8 @@ func (t *Translator) sendUse(hid string, ts float64, force bool) {
 // svcRow is what one service agent of the harness has used: its token table, cost and estimated saving.
 type svcRow struct {
 	rd, un, out, wr, unpriced int64
-	cost, saved               float64
+	cost, saved, list         float64
+	plan                      bool
 }
 
 // noteSvc records what a service agent (the harness id of one the translator keeps out of the roster) has used so far, from the State.
@@ -352,7 +354,7 @@ func (t *Translator) noteSvc(hid string) {
 		return
 	}
 	t.d.svc[hid] = svcRow{rd: a.Tokens.CacheRead, un: a.Tokens.Input + a.Tokens.CacheWrite, out: a.Tokens.Output, wr: a.Tokens.CacheWrite,
-		unpriced: a.UnpricedReadTokens, cost: a.CostUSD, saved: a.SavedUSD}
+		unpriced: a.UnpricedReadTokens, cost: a.CostUSD, saved: a.SavedUSD, list: a.ListUSD, plan: a.Plan}
 }
 
 // sendSvc sends the total of what the service agents have used when it changed (or always, with force), as one svc event.
@@ -362,6 +364,7 @@ func (t *Translator) sendSvc(ts float64, force bool) {
 		r := t.d.svc[hid]
 		u.Rd, u.Un, u.Out, u.Wr, u.Unpriced = u.Rd+r.rd, u.Un+r.un, u.Out+r.out, u.Wr+r.wr, u.Unpriced+r.unpriced
 		u.Cost, u.Saved = u.Cost+r.cost, u.Saved+r.saved
+		u.List, u.Plan = u.List+r.list, u.Plan || r.plan
 	}
 	u.SavedPartial = u.Unpriced > 0
 	if !force && ((t.d.svcSent == nil && u == (SvcUse{})) || (t.d.svcSent != nil && *t.d.svcSent == u)) {

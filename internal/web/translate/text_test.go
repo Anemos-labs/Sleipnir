@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -106,6 +107,50 @@ func TestHonestPrices(t *testing.T) {
 	u := ofKind(h.decoded(), "use")
 	if len(u) != 1 || u[0]["savedPartial"] != true || u[0]["unpriced"] != 900.0 || u[0]["saved"] != 0.0 {
 		t.Fatalf("use: %v", u)
+	}
+}
+
+// Usage a subscription plan covered bills nothing (cost 0) and is shown at the API list price: the agent's use event, and the service
+// agents' svc event, carry that figure as list and say plan; an agent on a per-token price has neither.
+func TestPlanUsageIsShownAtTheListPrice(t *testing.T) {
+	h := newHarness(t, Config{Root: "/work", StartedAt: t0})
+	b := newLog(t0)
+	h.feed(
+		b.add(time.Second, "", "session.start", map[string]any{"model": "gpt-6-luna", "swarm": true, "mailman": true,
+			"models": map[string]any{"gpt-6-luna": map[string]any{"source": "table", "plan": true, "input_per_m": 0.1, "output_per_m": 0.5, "cache_read_per_m": 0.01}}}),
+		b.add(time.Second, "swarm", "agent.spawn", map[string]any{"id": "be-1", "role": "backend", "model": "gpt-6-luna", "by": "mgr", "parent": "mgr"}),
+		b.add(time.Second, "swarm", "agent.spawn", map[string]any{"id": "mm-1", "role": "mailman", "service": true, "model": "gpt-6-luna"}),
+		b.add(time.Second, "be-1", "model.request", map[string]any{"req": "r1", "kind": "main", "model": "gpt-6-luna"}),
+		b.add(time.Second, "be-1", "model.response", map[string]any{"req": "r1", "model": "gpt-6-luna", "usage": map[string]any{"input_tokens": 1000, "cache_read_tokens": 9000, "output_tokens": 200},
+			"cost_usd": 0.0, "list_usd": 0.00029}),
+		b.add(time.Second, "mm-1", "model.request", map[string]any{"req": "m1", "kind": "main", "model": "gpt-6-luna"}),
+		b.add(time.Second, "mm-1", "model.response", map[string]any{"req": "m1", "model": "gpt-6-luna", "usage": map[string]any{"input_tokens": 100, "output_tokens": 20},
+			"cost_usd": 0.0, "list_usd": 0.00002}),
+	)
+	evs := h.decoded()
+	u := ofKind(evs, "use")
+	if len(u) == 0 {
+		t.Fatal("no use event")
+	}
+	last := u[len(u)-1]
+	if last["id"] != "be-1" || last["cost"] != 0.0 || last["plan"] != true || math.Abs(last["list"].(float64)-0.00029) > 1e-12 {
+		t.Fatalf("use: %v", last)
+	}
+	s := ofKind(evs, "svc")
+	if len(s) == 0 || s[len(s)-1]["plan"] != true || math.Abs(s[len(s)-1]["list"].(float64)-0.00002) > 1e-12 {
+		t.Fatalf("svc: %v", s)
+	}
+
+	billed := newHarness(t, Config{Root: "/work", StartedAt: t0})
+	bb := newLog(t0)
+	billed.feed(
+		bb.add(time.Second, "be-1", "model.request", map[string]any{"req": "r1", "kind": "main", "model": "claude-opus-5-5"}),
+		bb.add(time.Second, "be-1", "model.response", map[string]any{"req": "r1", "model": "claude-opus-5-5", "usage": map[string]any{"input_tokens": 100}, "cost_usd": 0.0004}),
+	)
+	for _, e := range ofKind(billed.decoded(), "use") {
+		if _, ok := e["list"]; ok || e["plan"] != nil {
+			t.Fatalf("a per-token agent's use carries a plan's fields: %v", e)
+		}
 	}
 }
 

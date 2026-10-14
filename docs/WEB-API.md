@@ -217,7 +217,11 @@ further ones are not said). A page keeps a quiet break for its cache view and le
 cards and its counts. A `req` event carries `mark` when the agent took a new shared prefix (`epoch`) or dropped its thinking blocks (`rebase`) before the request it reports, the places the terminal marks
 on an agent's hit-ratio line. An `svc` event carries, as absolute values, the
 tokens, cost and estimated saving of the harness's own service agents (the mailman) together; they are in no roster and have no
-`use` event, and a page adds them to the totals of its agents so that the totals are those of the run.
+`use` event, and a page adds them to the totals of its agents so that the totals are those of the run. A `use` or `svc` event
+whose usage a ChatGPT plan covered carries `plan: true` and `list`, that usage at the API list price (its `cost` is what was
+billed: nothing); a page shows `cost` plus `list` with a "≈" and a `plan` tag, "at API list price; billed to your ChatGPT
+plan", and draws no budget gauge filling with it. A recorded session (`GET /api/recorded`) carries the same two fields from its
+`session.end`.
 
 Events that have a line in the terminal's feed and no kind of their own become `sys` rows of the manager's channel, with `ag` the
 agent they are about, in the words of that line (the translator reads them from the same state the terminal folds, so the two

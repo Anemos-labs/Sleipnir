@@ -515,6 +515,10 @@ type RecordedSession struct {
 	Cwd         string  `json:"cwd,omitempty"`
 	LastWritten int64   `json:"lastWritten"`
 	Locked      bool    `json:"locked,omitempty"`
+	// List is what a subscription plan covered, at the API list price, and Plan says the session ran on one: a page shows Cost+List
+	// marked as the plan's (session.Summary).
+	List float64 `json:"list,omitempty"`
+	Plan bool    `json:"plan,omitempty"`
 }
 
 // PruneRequest asks what `sessions prune` would delete, or deletes it (Apply: the route needs an X-Confirm id).

@@ -298,7 +298,7 @@ func (k *chatLook) turnSummary(elapsed time.Duration, res TurnResult, width int)
 	if res.Steps > 0 {
 		parts = append(parts, count(res.Steps, "step", "steps"))
 	}
-	parts = append(parts, widget.USD(res.CostUSD))
+	parts = append(parts, widget.Spend(res.CostUSD+res.ListUSD, res.Plan))
 	text := k.g.rule + " " + strings.Join(parts, " "+k.g.dot+" ")
 	return k.fit(cell.Styled(k.st.dim, text), width)
 }

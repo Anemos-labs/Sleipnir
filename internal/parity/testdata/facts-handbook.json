@@ -11,6 +11,7 @@
   "goal_turns": 0,
   "goal_verdict": "",
   "handovers": 0,
+  "list_usd": 0,
   "mail_delivered": 0,
   "mail_dropped": 0,
   "mail_sent": 0,
@@ -28,6 +29,7 @@
     "T7"
   ],
   "permission_denials": 0,
+  "plan": false,
   "questions_asked": 0,
   "rate_limited": 0,
   "retries": 0,

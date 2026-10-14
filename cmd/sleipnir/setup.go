@@ -20,6 +20,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/mcp"
 	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/tui/state"
 )
 
 // init registers project initialization, configuration, and session-listing commands.
@@ -275,7 +276,7 @@ func printSessions(out, errw io.Writer, dir string, n int) error {
 		id, model, prompt string
 		when              time.Time
 		cost              float64
-		resumable         bool
+		resumable, plan   bool
 	}
 	var rows []row
 	for _, e := range ents {
@@ -298,7 +299,7 @@ func printSessions(out, errw io.Writer, dir string, n int) error {
 		}
 		r := rows[i]
 		d := filepath.Join(root, r.id)
-		summarize(filepath.Join(d, "events.jsonl"), &r.model, &r.prompt, &r.cost)
+		summarize(filepath.Join(d, "events.jsonl"), &r.model, &r.prompt, &r.cost, &r.plan)
 		if r.prompt == "" {
 			continue
 		}
@@ -307,6 +308,7 @@ func printSessions(out, errw io.Writer, dir string, n int) error {
 	}
 	rows = shown
 	width := termWidth(out)
+	plans := false
 	for _, r := range rows {
 		mark := " "
 		if r.resumable {
@@ -316,7 +318,11 @@ func printSessions(out, errw io.Writer, dir string, n int) error {
 		if width > 0 && width < 110 {
 			model = "" // the widest column: a narrow terminal keeps the id, the cost and what was asked
 		}
-		head := fmt.Sprintf("%s %s  %-9s %s$%-8.4f ", mark, r.id, ago(time.Since(r.when)), model, r.cost)
+		spent := fmt.Sprintf("$%-8.4f", r.cost)
+		if r.plan {
+			spent, plans = fmt.Sprintf("≈$%-7.4f", r.cost), true // what a subscription plan covered, at the API list price
+		}
+		head := fmt.Sprintf("%s %s  %-9s %s%s ", mark, r.id, ago(time.Since(r.when)), model, spent)
 		prompt := r.prompt
 		if width > 0 {
 			prompt = fit(prompt, width-1-utf8.RuneCountInString(head))
@@ -327,15 +333,19 @@ func printSessions(out, errw io.Writer, dir string, n int) error {
 		fmt.Fprintln(errw, "no sessions yet") // a directory that exists and holds nothing worth listing is the same as none
 	} else {
 		fmt.Fprintln(errw, wrapBlockFor(errw, "↺ can be continued: sleipnir chat --resume <id>   (or --continue for this project's newest)"))
+		if plans {
+			fmt.Fprintln(errw, wrapBlockFor(errw, "≈ "+state.PlanHelp))
+		}
 	}
 	return nil
 }
 
 // summarize reads just enough of a log for a listing line (session.Summarize): the model from session.start, the first user input,
-// and the cost from session.end.
-func summarize(path string, model, prompt *string, usd *float64) {
+// and the cost from session.end; for a session on a subscription plan the cost is the bill plus what the plan covered at the API list
+// price, and plan is set.
+func summarize(path string, model, prompt *string, usd *float64, plan *bool) {
 	sum := session.Summarize(path)
-	*model, *usd = sum.Model, sum.CostUSD
+	*model, *usd, *plan = sum.Model, sum.CostUSD+sum.ListUSD, sum.Plan
 	if sum.First != "" {
 		*prompt = oneLineCLI(sum.First, 70)
 	}

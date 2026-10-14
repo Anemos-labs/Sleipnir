@@ -65,7 +65,7 @@ func (s *State) onSessionStart(e events.Event, t time.Time) {
 	ss.Renderer, ss.Mode = clip(p.Renderer, textID), clip(firstOf(p.Mode, p.PermMode), textID)
 	ss.Swarm = ss.Swarm || p.Swarm
 	ss.Isolation, ss.Mailman, ss.Resumed = clip(p.Isolation, textID), p.Mailman, p.Resumed
-	ss.Ended, ss.EndedAt, ss.EndReason, ss.EndCostUSD = false, time.Time{}, "", 0 // a resumed session goes on after the end of the run before
+	ss.Ended, ss.EndedAt, ss.EndReason, ss.EndCostUSD, ss.EndListUSD = false, time.Time{}, "", 0, 0 // a resumed session goes on after the end of the run before
 	ss.ReconTokens, ss.SharedHash = clampTokens(p.ReconTokens), short(p.SharedHash)
 	s.recordModels(p.Models)
 	s.line(e.Seq, t, "", FeedSession, GlyphInfo, "session started: "+firstOf(ss.Model, "model unknown"), firstOf(ss.Provider, ""))
@@ -74,15 +74,21 @@ func (s *State) onSessionStart(e events.Event, t time.Time) {
 func (s *State) onSessionEnd(e events.Event, t time.Time) {
 	var p struct {
 		CostUSD float64 `json:"cost_usd"`
+		ListUSD float64 `json:"list_usd"`
+		Plan    bool    `json:"plan"`
 		Reason  string  `json:"reason"`
 	}
 	if !s.decode(e.Data, maxPayload, &p) {
 		return
 	}
 	ss := &s.sess
-	ss.Ended, ss.EndedAt, ss.EndReason, ss.EndCostUSD = true, t, clip(p.Reason, textID), usd(p.CostUSD)
+	ss.Ended, ss.EndedAt, ss.EndReason, ss.EndCostUSD, ss.EndListUSD = true, t, clip(p.Reason, textID), usd(p.CostUSD), usd(p.ListUSD)
+	cost := fmtUSD(ss.EndCostUSD)
+	if p.Plan {
+		cost = "≈" + fmtUSD(ss.EndCostUSD+ss.EndListUSD) + " plan" // what a subscription plan covered, at the API list price
+	}
 	s.idleAgents("", t)
-	s.line(e.Seq, t, "", FeedSession, GlyphInfo, "session ended ("+firstOf(ss.EndReason, "other")+")", fmtUSD(ss.EndCostUSD))
+	s.line(e.Seq, t, "", FeedSession, GlyphInfo, "session ended ("+firstOf(ss.EndReason, "other")+")", cost)
 }
 
 // idleAgents ends the run of every agent that is still working but keep: whatever it was doing has no more to do, because the session is
@@ -102,7 +108,7 @@ func (s *State) idleAgents(keep string, t time.Time) {
 // ends nothing). Recovered workers stay idle until their tasks restart.
 func (s *State) onRestore(e events.Event, t time.Time) {
 	ss := &s.sess
-	ss.Ended, ss.EndedAt, ss.EndReason, ss.EndCostUSD = false, time.Time{}, "", 0 // its session.start waits for a goal
+	ss.Ended, ss.EndedAt, ss.EndReason, ss.EndCostUSD, ss.EndListUSD = false, time.Time{}, "", 0, 0 // its session.start waits for a goal
 	s.idleAgents(e.Agent, t)
 }
 

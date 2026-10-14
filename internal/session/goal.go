@@ -99,6 +99,7 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 		}
 		s.mu.Lock()
 		s.judgeUSD += usd
+		s.judgeListUSD += s.Model.ListUSD(resp.Usage)
 		s.mu.Unlock()
 		response := resp.Turn.PlainText()
 		var req evidenceRequest

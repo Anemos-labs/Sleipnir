@@ -437,6 +437,7 @@ func (s *Swarm) detach(m *member) {
 		delete(s.members, m.id)
 		_, c := m.a.Usage()
 		s.spent += c
+		s.spentList += m.a.ListUSD()
 	}
 	delete(s.lastSeen, m.id)
 	s.mu.Unlock()

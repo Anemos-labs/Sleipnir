@@ -35,9 +35,9 @@ Each dimension lists the items of both interfaces from their code, never from a 
 | Keys | every key pressed in the states of the chat program | every key dispatched in the states of the page | `internal/tui/app` `TestKeysParityTerminal`, `internal/web/uidev/test/keys-parity.test.mjs`, `internal/parity` `TestKeysTerminalAndWebAgree` |
 
 Lists cannot see a fix: an event read differently, a total that includes one more thing. The facts dimension covers that. The same
-recordings (`internal/web/translate/testdata`, `internal/parity/testdata/team.ui.jsonl`) go through both interfaces, and the facts
-(agents and their final states, tasks by status, tokens, cost, cache hit ratio, merge counters, goal, stalls, mail and others)
-must come out equal. A difference is a failure naming the fact, the recording and both values.
+recordings (`internal/web/translate/testdata`, `internal/parity/testdata/team.ui.jsonl` and `plan.ui.jsonl`, a team on a ChatGPT
+plan) go through both interfaces, and the facts (agents and their final states, tasks by status, tokens, cost, a plan's usage at
+the API list price, cache hit ratio, merge counters, goal, stalls, mail and others) must come out equal. A difference is a failure naming the fact, the recording and both values.
 
 The keys the page tells its users about are held to the same record. The Help sheet and Settings › Look › Keys are read as the page draws them
 (the rows they build themselves and the rows of `SHORTCUTS` in `internal/web/ui/js/11-data-live.js`), and

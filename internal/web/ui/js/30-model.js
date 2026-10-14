@@ -170,7 +170,7 @@
         }
         break;
       }
-      case 'use': if (A) { A.rd = ev.rd; A.un = ev.un; A.out = ev.out; if (ev.wr != null) A.wr = ev.wr; if (typeof ev.cost === 'number') A.cost = ev.cost; if (typeof ev.saved === 'number') A.saved = ev.saved; A.savedPartial = !!ev.savedPartial; A.unpriced = typeof ev.unpriced === 'number' ? ev.unpriced : 0; } break;
+      case 'use': if (A) { A.rd = ev.rd; A.un = ev.un; A.out = ev.out; if (ev.wr != null) A.wr = ev.wr; if (typeof ev.cost === 'number') A.cost = ev.cost; if (typeof ev.saved === 'number') A.saved = ev.saved; A.savedPartial = !!ev.savedPartial; A.unpriced = typeof ev.unpriced === 'number' ? ev.unpriced : 0; A.list = typeof ev.list === 'number' && isFinite(ev.list) && ev.list > 0 ? ev.list : 0; A.onPlan = !!ev.plan; } break;
       case 'warm': m.lastReq = ev.t; m.ttl = ev.ttl || 0; break;
       case 'gov': m.rpm = ev.rpm; m.rpmHist.push({ t: ev.t, rpm: ev.rpm }); if (m.rpmHist.length > 60) m.rpmHist.shift(); if (ev.r429 != null) m.r429 = ev.r429; if (ev.retries != null) m.retries = ev.retries; m.inflight = ev.inflight || 0; m.queued = ev.queued || 0; break;
       case 'mail': {
@@ -288,7 +288,7 @@
       case 'mailstat': m.mailstat = ev; break;
       case 'svc': {   /* what the harness's own service agents (the mailman) have used, in all: no row of their own, but part of the run's totals */
         const n = x => typeof x === 'number' && isFinite(x) ? x : 0;
-        m.svc = { rd: n(ev.rd), un: n(ev.un), out: n(ev.out), wr: n(ev.wr), cost: n(ev.cost), saved: n(ev.saved), savedPartial: !!ev.savedPartial, unpriced: n(ev.unpriced) };
+        m.svc = { rd: n(ev.rd), un: n(ev.un), out: n(ev.out), wr: n(ev.wr), cost: n(ev.cost), saved: n(ev.saved), savedPartial: !!ev.savedPartial, unpriced: n(ev.unpriced), list: Math.max(0, n(ev.list)), plan: !!ev.plan };
         break;
       }
       case 'digest': break;
@@ -302,18 +302,19 @@
 
   /* ---------------- derived numbers: the only place tokens become percentages and dollars ---------------- */
   const calc = {
-    /** {prompt, read, un, out, hit (0..1), pct (rounded %), cost, saved} for one agent. */
+    /** {prompt, read, un, out, hit (0..1), pct (rounded %), cost, saved, list, plan} for one agent. cost is what was billed; list what a
+     *  subscription plan covered at the API list price, and plan whether there was any (SL.u.fmtSpend shows the two together). */
     agent(a) {
       const pr = priceOf(a.id), prompt = a.rd + a.un, hit = prompt > 0 ? a.rd / prompt : 0;
       const cost = typeof a.cost === 'number' ? a.cost : (a.un * pr.in + a.rd * pr.cached + a.out * pr.out) / 1e6, saved = typeof a.saved === 'number' ? a.saved : a.rd * (pr.in - pr.cached) / 1e6;
-      return { prompt, read: a.rd, un: a.un, out: a.out, wr: a.wr || 0, hit, pct: Math.round(hit * 100), cost, saved, savedPartial: !!a.savedPartial, unpriced: a.unpriced || 0 };
+      return { prompt, read: a.rd, un: a.un, out: a.out, wr: a.wr || 0, hit, pct: Math.round(hit * 100), cost, saved, savedPartial: !!a.savedPartial, unpriced: a.unpriced || 0, list: a.list || 0, plan: !!a.onPlan };
     },
     /** Totals over every agent of a model (manager included) and what the harness's service agents used (they have no row of their own). */
     totals(m) {
-      const t = { prompt: 0, read: 0, un: 0, out: 0, wr: 0, cost: 0, saved: 0, calls: 0, savedPartial: false, unpriced: 0 };
-      m.order.forEach(id => { const c = calc.agent(m.ag[id]); t.prompt += c.prompt; t.read += c.read; t.un += c.un; t.out += c.out; t.wr += c.wr; t.cost += c.cost; t.saved += c.saved; t.calls += m.ag[id].calls; if (c.savedPartial) t.savedPartial = true; t.unpriced += c.unpriced; });
+      const t = { prompt: 0, read: 0, un: 0, out: 0, wr: 0, cost: 0, saved: 0, calls: 0, savedPartial: false, unpriced: 0, list: 0, plan: false };
+      m.order.forEach(id => { const c = calc.agent(m.ag[id]); t.prompt += c.prompt; t.read += c.read; t.un += c.un; t.out += c.out; t.wr += c.wr; t.cost += c.cost; t.saved += c.saved; t.calls += m.ag[id].calls; if (c.savedPartial) t.savedPartial = true; t.unpriced += c.unpriced; t.list += c.list; if (c.plan) t.plan = true; });
       const v = m.svc;
-      if (v) { t.prompt += v.rd + v.un; t.read += v.rd; t.un += v.un; t.out += v.out; t.wr += v.wr; t.cost += v.cost; t.saved += v.saved; if (v.savedPartial) t.savedPartial = true; t.unpriced += v.unpriced; }
+      if (v) { t.prompt += v.rd + v.un; t.read += v.rd; t.un += v.un; t.out += v.out; t.wr += v.wr; t.cost += v.cost; t.saved += v.saved; if (v.savedPartial) t.savedPartial = true; t.unpriced += v.unpriced; t.list += v.list || 0; if (v.plan) t.plan = true; }
       t.hit = t.prompt > 0 ? t.read / t.prompt : 0; t.pct = Math.round(t.hit * 100); t.hit1 = Math.round(t.hit * 1000) / 10;
       return t;
     },

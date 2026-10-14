@@ -33,6 +33,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/swarm"
 	"github.com/anemos-labs/sleipnir/internal/trust"
 	"github.com/anemos-labs/sleipnir/internal/tui/app"
+	"github.com/anemos-labs/sleipnir/internal/tui/state"
 	"github.com/anemos-labs/sleipnir/internal/web/approvals"
 	"github.com/anemos-labs/sleipnir/internal/web/seam"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
@@ -1386,9 +1387,13 @@ func (t *webTab) setModel(ctx context.Context, req wire.ModelRequest) (bool, err
 		_, err := t.whenIdle(ctx, "/model "+ref, func(ctx context.Context, s *session.Session) {
 			t.sessMu.Lock()
 			got, err := s.SwitchModel(ctx, ref)
-			unpriced := false
+			unpriced, plan := false, false
 			if err == nil {
-				unpriced = s.Model.Price.InputPerM == 0 && s.Model.Price.OutputPerM == 0
+				shown := s.Model.Price // a subscription plan's model is shown at the API list price of the same model
+				if s.Model.Plan {
+					shown, plan = s.Model.ListPrice, true
+				}
+				unpriced = shown.InputPerM == 0 && shown.OutputPerM == 0
 				t.refreshView(s)
 			}
 			t.sessMu.Unlock()
@@ -1398,8 +1403,11 @@ func (t *webTab) setModel(ctx context.Context, req wire.ModelRequest) (bool, err
 			}
 			webAction(s, "model", got)
 			text := "model: " + got + " (the conversation carries over; the prompt cache starts over)"
-			if unpriced {
+			switch {
+			case unpriced:
 				text += " (price unknown)"
+			case plan:
+				text += " (plan: costs are shown " + state.PlanHelp + ")"
 			}
 			t.sys("◇", text)
 			t.publishMeta()

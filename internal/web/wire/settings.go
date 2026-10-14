@@ -4,7 +4,8 @@ package wire
 // commands and hooks, configuration layers, permissions, trust, the schedule and the doctor. None carries a secret: a key is never
 // returned, and environment and header values are withheld.
 
-// ModelRow is one model of the catalogue. In, Out and Cached are US dollars per million tokens; nil means the price is unknown.
+// ModelRow is one model of the catalogue. In, Out and Cached are US dollars per million tokens; nil means the price is unknown. Plan
+// marks a ChatGPT plan's model: its prices are the API list prices of the same model, which the plan does not bill (catalog.Row).
 type ModelRow struct {
 	Ref        string   `json:"ref"`
 	Provider   string   `json:"provider"`

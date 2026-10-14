@@ -18,6 +18,11 @@ func TestEffortChoosesNearestAcceptedLevel(t *testing.T) {
 		{"deepseek-v4.1-flash", "max", "max"},
 		{"gpt-6-astra", "off", "low"},
 		{"gpt-6.1-sol", "max", "max"},
+		// gpt-6.1-sol takes no "none": the lowest level it accepts is low, also for its marketplace and date-suffixed spellings
+		{"gpt-6.1-sol", "off", "low"},
+		{"openai/gpt-6.1-sol", "none", "low"},
+		{"GPT-6.1-Sol-20261001", "minimal", "low"},
+		{"gpt-6-sol", "off", "none"},
 		{"gpt-6-luna", "off", "none"},
 		{"unknown-model", "ultra", "max"},
 		{"unknown-model", "typo", ""},

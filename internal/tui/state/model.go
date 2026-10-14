@@ -65,6 +65,7 @@ type responseWire struct {
 	Provider     string    `json:"provider"`
 	Usage        usageWire `json:"usage"`
 	CostUSD      *float64  `json:"cost_usd"`
+	ListUSD      *float64  `json:"list_usd"` // present only for a model on a subscription plan
 	ExpectedRead int64     `json:"expected_read"`
 	Missed       int64     `json:"missed"`
 	Anomaly      bool      `json:"anomaly"`
@@ -172,14 +173,20 @@ func (s *State) onResponse(e events.Event, t time.Time) {
 	}
 	side := p.Side || (had && rq.side)
 	u := p.Usage.tokens()
-	var cost float64
+	var cost, list float64
 	if p.CostUSD != nil {
 		cost = usd(*p.CostUSD)
+	}
+	plan := p.ListUSD != nil
+	if plan {
+		list = usd(*p.ListUSD)
 	}
 
 	tot := &s.totals
 	tot.Responses++
 	tot.CostUSD += cost
+	tot.ListUSD += list
+	tot.Plan = tot.Plan || plan
 	addTokens(&tot.Tokens, u)
 	var saved float64
 	var model *modelState
@@ -204,6 +211,8 @@ func (s *State) onResponse(e events.Event, t time.Time) {
 	a.failed = failure{}
 	addTokens(&a.Tokens, u)
 	a.CostUSD += cost
+	a.ListUSD += list
+	a.Plan = a.Plan || plan
 	a.SavedUSD += saved
 	if !priced {
 		a.UnpricedReadTokens = min(a.UnpricedReadTokens+u.CacheRead, maxTokens)

@@ -310,7 +310,7 @@ func (s *Session) restoreWorkers(prev *swarm.Snapshot, evs []events.Event) error
 	}
 	ids := map[string]string{}
 	var restored []swarm.RecoveredWorker
-	var retiredCost float64
+	var retiredCost, retiredList float64
 	for id, w := range workers {
 		ids[id] = w.Role
 		if snaps[id] {
@@ -324,12 +324,14 @@ func (s *Session) restoreWorkers(prev *swarm.Snapshot, evs []events.Event) error
 			restored = append(restored, w)
 		} else if w.Snapshot != nil {
 			retiredCost += w.Snapshot.CostUSD
+			retiredList += w.Snapshot.ListUSD
 		}
 	}
 	sort.Slice(restored, func(i, j int) bool { return order[restored[i].ID] > order[restored[j].ID] })
 	if err := s.Swarm.RestoreTeam(context.Background(), prev, restored, ids, retiredCost); err != nil {
 		return err
 	}
+	s.Swarm.AddRetiredListCost(retiredList)
 	for _, w := range restored {
 		if _, err := agent.RebuildArchiveFrom(s.Dir, w.ID, w.ID, s.archive); err != nil {
 			s.notice(w.ID, "resume: archive could not be restored: "+err.Error())
