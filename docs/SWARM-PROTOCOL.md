@@ -135,7 +135,11 @@ mutating commands are denied by the engine that understands shell syntax, not by
 uses the session's permissions and any explicit manager profile), and swarm
 tools check the caller's role, which the harness puts in the call. The manager owns
 assignments, revisions and scope changes. A pool leader can create and accept its
-scoped children and assign existing pool members. Without a permission engine (tests, embedding) read-only roles fall back
+scoped children and assign existing pool members. A pool member that is not
+writing inside its own child task (planning, reconciliation) is judged under the
+plan profile with the research and checks a read-only role keeps (web fetch and
+search, the project's tests and static checks), and then by its own permissions,
+so a pool never grants more than the session does. Without a permission engine (tests, embedding) read-only roles fall back
 to a strict allowlist of one plain inspection command (no operators, redirections, substitutions, exec flags, or
 paths outside the project).
 
