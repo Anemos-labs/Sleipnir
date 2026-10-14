@@ -40,7 +40,7 @@ servers are supported too. See [Providers](docs/PROVIDERS.md).
 Type a task in chat. The default team is one manager and eight workers, one of
 each role (architect, scout, backend, frontend, devops, tester, docs, reviewer);
 workers start when the manager needs them. The manager plans, delegates and
-reviews, and edits no file itself; the docs worker keeps the documentation
+reviews, and handles small direct requests itself; the docs worker keeps the documentation
 current by itself. `--swarm N` sets the number of workers (at least 8),
 `--role-model` repeated per worker names a team of your own, and
 `sleipnir --swarm 0` is a single agent.
