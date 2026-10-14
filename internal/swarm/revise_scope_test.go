@@ -78,3 +78,26 @@ func TestARunningPlanningTasksScopeWidensInPlace(t *testing.T) {
 		t.Fatalf("the planning task after widening: %s owner=%s %v", p.Status, p.Owner, p.Files)
 	}
 }
+
+// The widening is made on the task as it was read: a revision or a requeue in between leaves the task as that change made it.
+func TestAWideningDoesNotOverwriteAnInterveningChange(t *testing.T) {
+	r := newRVRig(t, Config{MaxWorkers: 2}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "working"} })
+	task, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "api", Role: "backend", Files: []string{"app/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.sw.Board.assignTask(assignReq{by: "mgr", agent: "be-1", id: task.ID}); err != nil {
+		t.Fatal(err)
+	}
+	was, _ := r.sw.Board.Snapshot().Task(task.ID)
+	// another revision lands between the read and the widening
+	if err := r.sw.Board.revise("mgr", task.ID, TaskSpec{Files: []string{"app/api/**"}}, "narrower"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.widenScope("mgr", was, []string{"app/**", ".gitignore"}, func(*Snapshot, Task) error { return nil }); err == nil || !strings.Contains(err.Error(), "changed while its scope was being widened") {
+		t.Fatalf("widening over an intervening revision: %v", err)
+	}
+	if now, _ := r.sw.Board.Snapshot().Task(task.ID); !slices.Equal(now.Files, []string{"app/api/**"}) {
+		t.Fatalf("the intervening revision's scope was overwritten: %v", now.Files)
+	}
+}
