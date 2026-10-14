@@ -294,8 +294,9 @@ func (t *taskTool) widenInPlace(c *tools.Call, in taskIn, task Task) *tools.Resu
 	if added == 0 {
 		return nil
 	}
-	// a planning task, or one of a read-only role, is held to the read-only check, as when it was assigned
-	readOnly := task.Kind == TaskKindPlan || t.s.roles[task.Role].ReadOnly
+	// a planning task, or one a read-only role's agent holds, is held to the read-only check, as when it was assigned (a task's role
+	// is only the one suggested for it; its owner is who works on it)
+	readOnly := task.Kind == TaskKindPlan || t.s.ownerReadOnly(t.s.Board.Snapshot(), task.Owner)
 	if err := t.s.Board.SetScope(c.Env.Agent, in.ID, files, t.s.scopeCheck(readOnly)); err != nil {
 		return tools.Errorf("cannot widen the scope of %s: %v", in.ID, err)
 	}
