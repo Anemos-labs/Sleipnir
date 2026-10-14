@@ -3,6 +3,7 @@ package swarm
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -125,6 +126,9 @@ func (t *taskTool) reviseTask(ctx context.Context, c *tools.Call, in taskIn) *to
 	}
 	if in.Kind == TaskKindPlan && !s.roles[task.Role].ReadOnly {
 		return tools.Errorf("a planning task requires a read-only role")
+	}
+	if r := t.widenInPlace(c, in, task); r != nil {
+		return r
 	}
 	owners := []string{task.Owner}
 	if task.Pool != nil {
@@ -260,4 +264,77 @@ func dependsOn(sn *Snapshot, from, target string, seen map[string]bool) bool {
 		}
 	}
 	return false
+}
+
+// widenInPlace handles a revise whose only change is a wider scope of a task that is under way: the globs it had and more, nothing
+// else revised. That is what update files does, so it is done the same way: the scope grows in place and nobody stops. A revise
+// otherwise stops the task's workers, sends its children back to the board and puts a pool back to planning, which in a trial
+// threw away two workers' progress and made a pool agree again because the manager added .gitignore to its scope. It returns nil
+// for any other revise.
+func (t *taskTool) widenInPlace(c *tools.Call, in taskIn, task Task) *tools.Result {
+	if in.Action != "revise" || in.Files == nil || in.Title != "" || in.Description != "" || in.Kind != "" || in.Deps != nil ||
+		task.Status != StatusDoing {
+		return nil
+	}
+	files, err := t.s.normScopes(in.Files)
+	if err != nil {
+		return nil // the revise reports it
+	}
+	added := 0
+	for _, f := range files {
+		if !slices.Contains(task.Files, f) {
+			added++
+		}
+	}
+	for _, f := range task.Files {
+		if !slices.Contains(files, f) {
+			return nil // a narrower or different scope: a real revision
+		}
+	}
+	if added == 0 {
+		return nil
+	}
+	// a planning task, or one a read-only role's agent holds, is held to the read-only check, as when it was assigned (a task's role
+	// is only the one suggested for it; its owner is who works on it), judged on the board the scope change is made against
+	check := func(sn *Snapshot, cand Task) error {
+		return t.s.scopeCheck(cand.Kind == TaskKindPlan || t.s.ownerReadOnly(sn, cand.Owner))(sn, cand)
+	}
+	if err := t.s.Board.widenScope(c.Env.Agent, task, files, check); err != nil {
+		return tools.Errorf("cannot widen the scope of %s: %v", in.ID, err)
+	}
+	return text("%s: scope widened in place (%s); its workers keep going. (%s) Widening a scope needs no revise: update with files does it.",
+		in.ID, strings.Join(files, ", "), cleanText(in.Text, 200))
+}
+
+// widenScope sets the wider scope files on the task as it was read (was): inside the board mutation the task must still be doing, at
+// the same revision, with every glob it had, or nothing changes. A revision or a requeue between the read and the change would
+// otherwise be overwritten with a scope computed from the old task, and the caller would report workers kept going that had stopped.
+func (b *Board) widenScope(by string, was Task, files []string, check TaskCheck) error {
+	return b.mutate(by, "scope", func(d *draft) error {
+		i := taskIdx(d.Snapshot, was.ID)
+		if i < 0 {
+			return fmt.Errorf("no task %s", was.ID)
+		}
+		t := d.Tasks[i]
+		if t.Status != StatusDoing || t.Rev != was.Rev || t.Owner != was.Owner {
+			return fmt.Errorf("%s changed while its scope was being widened (now %s, owner %q): read it again with task get", was.ID, t.Status, t.Owner)
+		}
+		for _, f := range t.Files {
+			if !slices.Contains(files, f) {
+				return fmt.Errorf("%s's scope changed while it was being widened: read it again with task get", was.ID)
+			}
+		}
+		nf, err := cleanScopes(files)
+		if err != nil {
+			return err
+		}
+		t.Files = nf
+		if err := poolScopes(d.Snapshot, t); err != nil {
+			return err
+		}
+		if err := check(d.Snapshot, t); err != nil {
+			return err
+		}
+		return d.put(i, t)
+	})
 }

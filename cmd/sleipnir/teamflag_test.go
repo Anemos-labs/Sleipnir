@@ -1,8 +1,11 @@
 package main
 
 import (
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
 // --role-model has two uses: a role once with a model is that role's model on the default team; a role repeated, or bare, makes the
@@ -73,4 +76,33 @@ func roleModelArgs(vals []string) []string {
 		out = append(out, "--role-model", v)
 	}
 	return out
+}
+
+// The New session request of a custom team with the manager's model keeps that model: argsFor writes it beside the team's slots
+// (a worker role's model is its slots'), and the chat's parser reads it back as the manager's model, not a ninth slot.
+func TestACustomTeamKeepsTheManagersModelThroughArgsFor(t *testing.T) {
+	var team []wire.TeamSlot
+	for _, role := range []string{"architect", "scout", "backend", "backend", "frontend", "devops", "tester", "reviewer"} {
+		team = append(team, wire.TeamSlot{Role: role, Model: "mock/w"})
+	}
+	n := 8
+	args := argsFor(wire.NewSessionRequest{Cwd: "/p", Model: "mock/m", Swarm: &n, Team: team,
+		RoleModels: map[string]string{"manager": "mock/boss", "backend": "mock/dropped"}})
+	var vals []string
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == "--role-model" {
+			vals = append(vals, args[i+1])
+		}
+	}
+	if !slices.Contains(vals, "manager=mock/boss") || slices.Contains(vals, "backend=mock/dropped") || len(vals) != 9 {
+		t.Fatalf("--role-model values: %v", vals)
+	}
+	f, err := parseChatFlags(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := f.options()
+	if o.RoleModels["manager"] != "mock/boss" || len(o.Team) != 8 || o.Workers != 8 {
+		t.Fatalf("options: manager %q, team %d, workers %d", o.RoleModels["manager"], len(o.Team), o.Workers)
+	}
 }

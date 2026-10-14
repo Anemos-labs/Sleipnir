@@ -218,6 +218,12 @@ func (t *taskTool) update(c *tools.Call, in taskIn) *tools.Result {
 		}
 	}
 	if in.Text != "" {
+		if c.Env.Role == "manager" {
+			if task, ok := s.Board.Snapshot().Task(in.ID); ok && task.Owner != me {
+				// update's text is the owner's progress line; the manager's own changes have their actions
+				return tools.Errorf("update's text is the progress line of %s's owner, %s. To change the task: files= widens or sets its scope (with update, or revise with only files), revise with a description changes its requirements; to tell %s something, mail it", in.ID, task.Owner, task.Owner)
+			}
+		}
 		if err := s.Board.Update(me, in.ID, in.Text); err != nil {
 			return tools.Errorf("%v", err)
 		}

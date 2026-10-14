@@ -1,6 +1,7 @@
 package perm
 
 import (
+	"github.com/anemos-labs/sleipnir/internal/shellparse"
 	"os"
 	"path/filepath"
 	"strings"
@@ -419,6 +420,81 @@ func targetDirUses(s scanned) []pathUse {
 		uses = append(uses, pathUse{raw: v, write: true, tree: true})
 	}
 	return uses
+}
+
+// inlineCodeFlags are, per interpreter (shellparse.InterpreterName), the options whose value is a program given on the command line
+// (python -c CODE, node -e CODE, perl -e CODE, ...).
+var inlineCodeFlags = map[string][]string{
+	"python": {"-c"}, "node": {"-e", "--eval", "-p", "--print"}, "perl": {"-e", "-E"}, "ruby": {"-e"}, "php": {"-r"},
+	"lua": {"-e"}, "Rscript": {"-e"}, "bun": {"-e", "--eval", "-p", "--print"},
+}
+
+// codeEndsOptions are the interpreters whose program ends their own options: python -c CODE hands every later word, -c included,
+// to the program as sys.argv.
+var codeEndsOptions = map[string]bool{"python": true}
+
+// denoEvalBareFlags are the deno eval options that never take a value, so the code may follow them (deno eval -p CODE). An option
+// that may take one, in its own word or after "=" (--env-file FILE, --lock, --reload, --config FILE), is not among them: the word
+// after it may be its value, so which word is the code is unclear and nothing is taken out.
+var denoEvalBareFlags = map[string]bool{
+	"-p": true, "--print": true, "-q": true, "--quiet": true, "--no-config": true, "--no-lock": true, "--no-npm": true,
+	"--no-remote": true, "--cached-only": true,
+}
+
+// withoutInlineCode returns args without the program an interpreter is given on its command line: node -e "x.then(m=>{...})" is
+// code, not a file name, and reading it as one found paths in it ("m=>{" split at "=") and variables ("'\$1'" written in it), which
+// made a quoted script look like a write to an unknown place. The interpreter may do anything its program says, as with any program
+// it runs; what is judged file by file is every other word: its options and their values, and a script's own arguments. The scan
+// stops where the interpreter's own option parsing does (at "--", at the first word that is not an option, and for python after
+// -c CODE), so a later "-c FILE" is an argument and stays. Glued forms (-e'code', --eval=code) count as programs too. A deno eval
+// option whose value may be the next word leaves the code where it cannot be told apart, so nothing is taken out.
+func withoutInlineCode(prog string, args []string) []string {
+	if prog == "deno" && len(args) > 1 && args[0] == "eval" {
+		for i := 1; i < len(args); i++ {
+			a := args[i]
+			switch {
+			case a == "--":
+				return args
+			case strings.HasPrefix(a, "-") && len(a) > 1:
+				if !strings.Contains(a, "=") && !denoEvalBareFlags[a] {
+					return args // --config FILE, or an option this does not know: which word is the code is unclear
+				}
+			default:
+				return append(append([]string(nil), args[1:i]...), args[i+1:]...) // the subcommand and the code go
+			}
+		}
+		return args
+	}
+	name := shellparse.InterpreterName(prog)
+	flags := inlineCodeFlags[name]
+	if len(flags) == 0 {
+		return args
+	}
+	out := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" || !strings.HasPrefix(a, "-") || len(a) == 1 {
+			return append(out, args[i:]...) // the interpreter's options end here
+		}
+		code := false
+		for _, f := range flags {
+			switch {
+			case a == f:
+				code, i = true, i+1 // the next word is the program
+			case strings.HasPrefix(f, "--") && strings.HasPrefix(a, f+"="), !strings.HasPrefix(f, "--") && len(a) > len(f) && strings.HasPrefix(a, f):
+				code = true // --eval=code, -ecode
+			}
+			if code {
+				break
+			}
+		}
+		if !code {
+			out = append(out, a)
+		} else if codeEndsOptions[name] && i+1 < len(args) {
+			return append(out, args[i+1:]...)
+		}
+	}
+	return out
 }
 
 // unknownUses treats every operand of an unlisted command as a path it may read

@@ -197,6 +197,8 @@ type Deps struct {
 
 	Workdir string
 	Root    string
+	// Tmp is the session's scratch directory, the $TMPDIR of its commands (agent.Config.Tmp).
+	Tmp     string
 	Params  core.Params
 	Effort  *provider.EffortSetting
 	Planner kv.Planner
@@ -963,7 +965,27 @@ func (r roleRequester) Check(ctx context.Context, req perm.Request) perm.Decisio
 			return perm.Decision{Allow: false, Reason: r.denyWrites}
 		}
 	}
-	return r.inner.Check(ctx, req)
+	d := r.inner.Check(ctx, req)
+	if !d.Allow && r.role.ReadOnly && r.only == nil {
+		d.Reason = readOnlyRoleReason(r.role.Name, d.Reason)
+	}
+	return d
+}
+
+// readOnlyRoleChecks are the test and check commands a read-only role's profile allows by default (session.readOnlyRoleAllow).
+const readOnlyRoleChecks = "go test, go vet, pytest, python -m pytest, .venv/bin/python -m pytest, node --test, npm test, cargo test, make test"
+
+// readOnlyRoleReason rewrites the refusal of a read-only role's plan profile, which tells a planner to "present a plan", into one for
+// a reviewer or a scout: what it does instead. Any other reason is returned as it is.
+func readOnlyRoleReason(role, reason string) string {
+	const head, tail = "plan mode (read-only): ", ". Present a plan instead of acting"
+	prefix := "role " + role + ": " + head
+	if !strings.HasPrefix(reason, prefix) || !strings.HasSuffix(reason, tail) {
+		return reason
+	}
+	what := strings.TrimSuffix(strings.TrimPrefix(reason, prefix), tail)
+	return fmt.Sprintf("the %s role is read-only: %s. It runs the project's tests and checks (%s) and reports what should change instead of changing it",
+		role, what, readOnlyRoleChecks)
 }
 
 // readOnlyCommand is the fallback allowlist for read-only roles' shell use when no

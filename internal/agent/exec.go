@@ -177,7 +177,7 @@ func (a *Agent) readOnly(c core.Block) bool {
 // env builds a defaulted tool environment from agent configuration with a no-op output callback.
 func (a *Agent) env() *tools.Env {
 	return (&tools.Env{
-		Agent: a.cfg.ID, Role: a.cfg.Role, Cwd: a.cfg.Workdir, Root: a.cfg.Root,
+		Agent: a.cfg.ID, Role: a.cfg.Role, Cwd: a.cfg.Workdir, Root: a.cfg.Root, Tmp: a.cfg.Tmp,
 		Files: a.cfg.Files, Guard: a.cfg.Guard, Perm: a.cfg.Perm, Snap: a.cfg.Snap,
 		Blobs: a.cfg.Blobs, Emit: a.cfg.Events, Handles: a.cfg.Handles,
 		Limits: a.cfg.Limits, Now: a.cfg.Now,

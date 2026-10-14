@@ -14,6 +14,40 @@ they do not indicate whether a change has been released.
   option it is not known by keeps the stricter analysis. Prompt bytes: none
   change.
 
+- The file tools take a path that starts with `$TMPDIR` or `${TMPDIR}` to the
+  session's scratch directory, as the shell does; before, it named a directory
+  "$TMPDIR" under the project. Prompt bytes: the runtime context's scratch
+  sentence (G1) says so.
+
+- The manager can excuse a pool member that cannot take part (`pool excuse`,
+  `member` and a reason): it leaves the pool, the other members' agreement and
+  confirmation suffice, its open subtasks of the parent return to the board
+  unassigned, the next member leads if it led, and it stays read-only while the
+  pool task is open. The manager can thus keep a pool from waiting for ever on a
+  member whose model fails. An `agree` or `confirm` from outside the pool (the manager's, say) is
+  told that only members acknowledge. Prompt bytes: the pool tool's description and schema
+  change G0, so a cached tool prefix of an earlier version no longer matches.
+
+- A `task revise` whose only change is a wider scope of a task under way (the
+  globs it had, and more) widens the scope in place, as `task update` with
+  files does: nobody is stopped, children keep their owners and a pool stays
+  executing. A pool parent's scope can grow while its children run (their
+  scopes no longer count as conflicts with it). Prompt bytes: none change.
+
+- Read-only roles (reviewer, scout, architect) run the project's tests the way
+  the writers do: `python -m pytest`, `python -m unittest`, `node --test`, and
+  the tests and checks run with a virtual environment of the workspace (the new rule
+  `Bash(python:venv-tests)`, the run part of `Bash(python:venv)`: no creating,
+  no installing). Their refusals say what the role does instead of telling it
+  to present a plan. Prompt bytes: none change.
+
+- A test runner given paths reads them: `pytest .`, `python -m pytest tests`,
+  `python -m unittest discover -s tests` and `node --test .` are not writes
+  into every directory below their operands, so the protected configuration
+  directory's ask rule no longer stops them in bypass mode. Only options that
+  name no file to write are recognised; any other keeps the stricter
+  analysis. Prompt bytes: none change.
+
 - `pool execute` says what comes next, in its result and in the mail that wakes
   the members: writing opens inside child tasks only; the leader creates one
   child per share of the agreed work, claims its own and assigns each other
