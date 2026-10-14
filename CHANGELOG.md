@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A compactor model of its own (`--role-model compactor=M`,
+  `models.roles.compactor`) is asked by its own name. Before, the compaction
+  request kept the agent's model name, so an agent on one provider with a
+  compactor on another sent its model to the compactor's endpoint (every
+  compaction of a ChatGPT-plan agent with a Heimdallm compactor failed with
+  404 and fell back to mechanical folding), and agents on the compactor's own
+  provider were compacted by their own model. Prompt bytes: the compactor
+  request names the compactor's model; the agents' prompts do not change.
+
 - A role works several parents side by side. Assigning a role a parent while
   another of its parents is open no longer fails with "wait before assigning
   another parent" whenever the role has a pool: the members an executing
