@@ -86,9 +86,10 @@ func envValue(env []string, key string) string {
 	return v
 }
 
-// onPath reports whether name is a command in one of the directories of pathList on goos. On Windows a command is a file whose name
-// is name plus one of the extensions of pathExt (PATHEXT; ".COM;.EXE;.BAT;.CMD" when empty), as the shell would find it; elsewhere it
-// is a regular file with an execute bit.
+// onPath reports whether name is a command in one of the absolute directories of pathList on goos. On Windows a command is a file
+// whose name is name plus one of the extensions of pathExt (PATHEXT; ".COM;.EXE;.BAT;.CMD" when empty), as the shell would find it;
+// elsewhere it is a regular file with an execute bit. A relative entry (".", "node_modules/.bin") is skipped: it names a different
+// directory for every agent's working directory, and the list is one text shared by the whole session.
 func onPath(goos, name, pathList, pathExt string) bool {
 	sep := string(os.PathListSeparator)
 	if goos == "windows" {
@@ -98,7 +99,7 @@ func onPath(goos, name, pathList, pathExt string) bool {
 		}
 	}
 	for _, dir := range strings.Split(pathList, sep) {
-		if dir == "" {
+		if dir == "" || !isAbsFor(goos, dir) {
 			continue
 		}
 		if goos != "windows" {
@@ -121,4 +122,16 @@ func onPath(goos, name, pathList, pathExt string) bool {
 		}
 	}
 	return false
+}
+
+// isAbsFor reports whether dir names the same directory whatever the working directory: rooted at "/" elsewhere; on Windows rooted
+// at a separator (a UNC path or the current drive's root) or a drive letter followed by a separator.
+func isAbsFor(goos, dir string) bool {
+	if goos != "windows" {
+		return strings.HasPrefix(dir, "/")
+	}
+	if strings.HasPrefix(dir, `\`) || strings.HasPrefix(dir, "/") {
+		return true
+	}
+	return len(dir) >= 3 && dir[1] == ':' && (dir[2] == '\\' || dir[2] == '/')
 }

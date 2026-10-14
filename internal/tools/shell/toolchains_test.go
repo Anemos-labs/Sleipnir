@@ -78,3 +78,27 @@ func TestToolchainContextOnWindows(t *testing.T) {
 		t.Error("PATHEXT without .EXE still found node.exe")
 	}
 }
+
+// A relative PATH entry names a different directory for each agent's working directory, so the session-wide list does not count
+// what it would find (here: an executable in the harness's own working directory).
+func TestToolchainContextSkipsRelativePathEntries(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("covered by the Windows table below")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "pytest"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	if onPath("linux", "pytest", ".", "") || onPath("linux", "pytest", "bin:.", "") {
+		t.Error("a relative PATH entry was resolved against the process's working directory")
+	}
+	if !onPath("linux", "pytest", dir, "") {
+		t.Error("the absolute entry was not searched")
+	}
+	for dir, want := range map[string]bool{`C:\tools`: true, `\\srv\share`: true, `\tools`: true, `tools`: false, `.\bin`: false, `C:tools`: false} {
+		if got := isAbsFor("windows", dir); got != want {
+			t.Errorf("isAbsFor(windows, %q) = %v, want %v", dir, got, want)
+		}
+	}
+}
