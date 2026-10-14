@@ -57,4 +57,8 @@ func TestAPoolMembersRefusalSaysWhatLetsItWrite(t *testing.T) {
 	check(leader, write, "As the leader", "task create parent="+parent.ID)
 	read := perm.Request{Agent: member, Role: "frontend", Tool: "bash", Command: "ls -la /tmp"}
 	check(member, read, "pool task "+parent.ID)
+	// While the pool reconciles, a member is told to inspect the combined result and confirm it.
+	call(leader, "reconcile", 0, "")
+	write.Agent = member
+	check(member, write, "phase reconciling", "pool inspect", "confirm", "mail the leader "+leader)
 }
