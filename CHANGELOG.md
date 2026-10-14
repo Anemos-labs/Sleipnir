@@ -13,6 +13,14 @@ they do not indicate whether a change has been released.
   parent can spare (not its leader, no open subtask of it) leave its pool and
   form the new parent's, and its leader is told. A parent still agreeing on its
   plan, or one whose members are all busy, refuses with what to do instead.
+
+- In a `bypass` or `yolo` session, a read-only role (architect, reviewer,
+  scout) reads a file outside the workspace as the session does, without a
+  question: its plan profile keeps it from writing, not from reading the Go
+  toolchain's source or a module cache. Before, every such read asked the
+  person, even in bypass mode.
+  Writes outside the workspace stay refused; the built-in protections and the
+  deny and ask rules still apply; in any other mode the read still asks.
   Prompt bytes: none change.
 
 - A pool member that is planning or reconciling keeps the research and checks
