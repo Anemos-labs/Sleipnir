@@ -78,8 +78,10 @@ type evaluator struct {
 	// fallible are the known variables whose value came from a command's output (expansion.fallible)
 	fallible map[string]bool
 	// off are the variables the engine otherwise knows ($HOME, $TMPDIR, $PWD, the special parameters) that the line assigns or
-	// otherwise names (expansion.off).
-	off map[string]bool
+	// otherwise names (expansion.off). childOff is the same for the commands a new shell runs (shellparse.Simple.Child): what
+	// such a shell assigns or sources is unknown in it, not in the line's own shell, so off leaves those commands out. childOff
+	// keeps what the line's own shell assigns: an exported value (export TMPDIR=/etc) is what the new shell starts with.
+	off, childOff map[string]bool
 	// gitEnv: the line names a GIT_ variable, so $(git rev-parse --show-toplevel) is not taken as the repository around the directory.
 	gitEnv bool
 	// index is set when a unit of the request installs packages into a virtual environment of the workspace (venv.go): the one
@@ -194,7 +196,8 @@ func (ev *evaluator) bash(cmd string) verdict {
 	// The scans of the line's text for what may change its variables read the shell's code: the body of a heredoc that is a
 	// program's data (python3 - <<'PY' ... os.environ["TMPDIR"] ... PY) is blank there (shellparse.Analysis.Literal).
 	code := an.Code(cmd)
-	ev.off = harnessOff(code, an.Commands)
+	ev.off = harnessOff(code, slices.DeleteFunc(slices.Clone(an.Commands), func(s shellparse.Simple) bool { return s.Child }))
+	ev.childOff = harnessOff(code, an.Commands)
 	ev.gitEnv = strings.Contains(code, "GIT_")
 	ev.cleanEnv = false
 	for _, c := range an.Commands {
@@ -226,7 +229,10 @@ func (ev *evaluator) bash(cmd string) verdict {
 				ev.forget(n, conflicted)
 			}
 		}
-		if track && len(s.Arith) > 0 {
+		// A command that a new shell runs (sh -c, bash -c, su -c, a script on a shell's standard input) assigns, sources and
+		// evaluates arithmetic in that shell: none of it reaches this line's variables. A loop it is in still makes the loop's
+		// names unknown before it runs (above), since it sees what the line exported.
+		if track && len(s.Arith) > 0 && !s.Child {
 			if names, all := arithAssigns(s.Arith, i, ints); all {
 				ev.vars, ev.exported, track = nil, nil, false // an expansion may set any variable from here on
 			} else {
@@ -236,7 +242,7 @@ func (ev *evaluator) bash(cmd string) verdict {
 			}
 		}
 		v := ev.judgeWith(s, cw, ev.vars)
-		if track {
+		if track && !s.Child {
 			if reassigns(s) {
 				if names, all := reassignedNames(s); all {
 					ev.vars, ev.exported, track = nil, nil, false // a builtin may set any variable from here on
@@ -301,9 +307,10 @@ func (ev *evaluator) bash(cmd string) verdict {
 // judgeWith judges one command with vars as the variables the line has set when it runs. A command that a new shell runs (sh -c,
 // a script on a shell's standard input) sees only those of them the line exported.
 func (ev *evaluator) judgeWith(s shellparse.Simple, cw *cwdSet, vars map[string]string) verdict {
-	saved := ev.vars
+	saved, savedOff := ev.vars, ev.off
 	ev.vars = vars
 	if s.Child {
+		ev.off = ev.childOff
 		ev.vars = nil
 		for n, v := range vars {
 			if ev.exported[n] && !ev.cleanEnv { // env -i, env -u: the new shell may not get them
@@ -314,7 +321,7 @@ func (ev *evaluator) judgeWith(s shellparse.Simple, cw *cwdSet, vars map[string]
 			}
 		}
 	}
-	defer func() { ev.vars = saved }()
+	defer func() { ev.vars, ev.off = saved, savedOff }()
 	return ev.judge(ev.buildUnit(s, cw))
 }
 
@@ -666,7 +673,7 @@ func reassignedNames(s shellparse.Simple) (names []string, all bool) {
 func loopAssignments(cmds []shellparse.Simple, ints map[string]int) (map[int][]string, map[int]bool) {
 	names, all := map[int][]string{}, map[int]bool{}
 	for i, s := range cmds {
-		if s.Loop == 0 || s.Deferred {
+		if s.Loop == 0 || s.Deferred || s.Child { // what a new shell assigns stays in that shell
 			continue
 		}
 		if len(s.Arith) > 0 {
