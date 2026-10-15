@@ -65,8 +65,9 @@
   .gov{grid-template-columns:repeat(3,1fr)}.legend{display:none}.g-ctl .scrub{min-width:40px}
   .ph{flex-wrap:wrap;row-gap:4px}.ph .r{flex-wrap:wrap;white-space:normal;justify-content:flex-end;min-width:0;max-width:100%;row-gap:4px}
   /* a diagram keeps the size it is drawn at and scrolls sideways (scaled to the width, its labels were too small to read, and the replay
-     tape's were squeezed flat): the dependencies 700 wide, the mail between agents 1040, the tape 1100 (90-views-a.js) */
-  .dg,.flow .pb,.tape{overflow-x:auto;overflow-y:hidden}
+     tape's were squeezed flat): the dependencies 700 wide, the mail between agents 1040, the tape 1100 (90-views-a.js); a dependency
+     graph too tall for its panel scrolls down as well */
+  .flow .pb,.tape{overflow-x:auto;overflow-y:hidden}.dg{overflow:auto}
   .dg svg{width:700px;max-width:none}.flow svg{width:1040px;max-width:none}.tape svg{width:1100px!important;max-width:none}
 }
 @container main (min-width:480px) and (max-width:620px){
@@ -135,4 +136,4 @@ body.compact{--gap:5px}body.compact .stall{padding:5px 8px 5px}body.compact .msg
 body.still *,body.still *::before,body.still *::after{animation:none!important;transition:none!important}
 .hh{font:700 12.5px var(--f-lab);letter-spacing:.16em;text-transform:uppercase;fill:var(--fg2)}.hs{font:500 11px var(--f-num);fill:var(--dim)}
 .ic{fill:currentColor;display:block}.btn .ic,.g-ctl .btn .ic{display:inline-block;vertical-align:-1px}
-.bcols [data-col="merged"] .tcard .tti{display:none}.bcols [data-col="merged"] .tcard{padding:3px 6px}
+.bcols [data-col="merged"] .tcard .tti{display:none}.bcols [data-col="merged"] .tcard{padding:3px 6px}.bcols [data-col="merged"] .tcard.trow .tti{display:block}.bcols [data-col="merged"] .tcard.trow{padding:1px 5px}
