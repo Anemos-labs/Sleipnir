@@ -21,8 +21,9 @@ they do not indicate whether a change has been released.
   confirmation is missing. The leader is no longer mailed each vote: the
   vote that completes a round tells it once what follows. `pool get` reads
   a task as `task get` does; another unknown action lists pool's actions.
-  `pool inspect` answers with the pool's task in full, and a proposal or
-  reconciliation with the revision it made; `pool inspect` outside
+  `pool inspect` and a reconciliation without text answer with the pool's
+  task in full, and a proposal or reconciliation text with the revision
+  it made; `pool inspect` outside
   reconciliation and a proposal after planning say what to use instead. The `task` and `spawn` refusals state the rule (the
   manager's, except that a pool leader creates, accepts and assigns the
   children of the pool it leads while it executes) and the condition that

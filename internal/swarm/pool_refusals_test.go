@@ -386,3 +386,22 @@ func TestAnUnknownTaskIsNamedToALeaderThatAcceptsIt(t *testing.T) {
 	r.refused(r.task(r.lead, map[string]any{"action": "accept", "id": "T99"}), "accept of an unknown task", "no task T99")
 	r.refused(r.task(r.lead, map[string]any{"action": "revise", "id": "T99", "text": "x"}), "revise of an unknown task", "only the manager can revise tasks")
 }
+
+// A reconciliation without text keeps the earlier agreement, which its caller did not write: the answer shows the pool's task in
+// full, so the leader's confirm without a revision counts for a text it was shown.
+func TestAReconciliationWithoutTextShowsTheAgreementItKeeps(t *testing.T) {
+	r := newPoolRig(t)
+	r.executing()
+	got := r.must(r.pool(r.lead, map[string]any{"action": "reconcile"}), "reconcile without text")
+	head, body, _ := strings.Cut(got, "\n")
+	if !strings.Contains(head, "reconcile recorded as revision 3; it keeps the agreement shown below") {
+		t.Errorf("the answer: %q", head)
+	}
+	var task Task
+	if err := json.Unmarshal([]byte(body), &task); err != nil || task.Pool == nil || task.Pool.Agreement != "split handlers and tests" || task.Pool.Revision != 3 {
+		t.Fatalf("the answer does not show the pool: %v %q", err, body)
+	}
+	if got := r.must(r.pool(r.lead, map[string]any{"action": "confirm"}), "the leader's confirm with no revision"); !strings.Contains(got, "(the revision you last read)") {
+		t.Errorf("the leader's confirm: %q", got)
+	}
+}

@@ -560,7 +560,7 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			p.Revision++
 			p.Votes = nil
 			p.Inspected = nil
-			read = true
+			read = agreement != "" // without text it keeps an agreement the caller is shown below, not one it wrote
 		case "excuse":
 			switch {
 			case !manager:
@@ -624,6 +624,14 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 	}
 	if in.Action == "propose" || in.Action == "reconcile" {
 		s.wakePool(in.ID, "Pool updated: "+in.Action+". "+agreement)
+		if !read {
+			// A reconciliation without text keeps the earlier agreement: the answer is the pool's task in full, the read it counts.
+			res := s.readTask(c, in.ID, "pool reconcile")
+			if !res.IsError {
+				res.Text = fmt.Sprintf("%s: reconcile recorded as revision %d; it keeps the agreement shown below. The pool's task:\n%s", in.ID, after.Revision, res.Text)
+			}
+			return res, nil
+		}
 		// The caller wrote this revision's text: the answer names the revision, and the text is the one it sent.
 		return text("%s: %s recorded as revision %d", in.ID, in.Action, after.Revision), nil
 	}
