@@ -323,8 +323,12 @@ func TestSecSound_RouterBoundaries(t *testing.T) {
 	if _, err := r.Send("be-1", "be-2", "order", "x"); err == nil {
 		t.Error("unknown kind accepted")
 	}
-	if _, err := r.Send("be-1", "be-2", "info", strings.Repeat("x", 601)); err == nil {
+	def := DefaultRouterConfig()
+	if _, err := r.Send("be-1", "be-2", "info", strings.Repeat("x", def.MaxContentChars+1)); err == nil {
 		t.Error("oversized mail accepted")
+	}
+	if _, err := r.Send("be-1", "be-2", "request", strings.Repeat("x", def.MaxChars+1)); err == nil {
+		t.Error("oversized request accepted")
 	}
 	if _, err := r.Send("be-1", "be-2", "info", "hi"); err != nil {
 		t.Fatal(err)

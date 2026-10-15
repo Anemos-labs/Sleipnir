@@ -25,6 +25,25 @@ they do not indicate whether a change has been released.
   Prompt bytes: the live view and `task get` of a requeued or revised task
   no longer show the stale result and evidence; nothing cached changes.
 
+- Mail that carries content (`info`, `answer`, `contract`) may have 1,200
+  characters; mail that asks for something (`request`, `blocker`) keeps 600
+  (`RouterConfig.MaxContentChars` and `MaxChars`; a configuration without a
+  content limit holds every kind to `MaxChars`). A message over its kind's
+  limit is refused with its length, how far over the limit it is, a target
+  below the limit, and where long content lasts: a file in the sender's task
+  scope, or the agreement submitted with `task done`, read with `task get`.
+  In mailman mode a `blocker` to the manager is delivered at once and never
+  digested; the mailman is asked only for a recipient with at least three
+  parcels in a batch (two or fewer are delivered directly); it is shown each
+  parcel whole, within 16,000 characters of parcel text per request, instead
+  of its first 240 characters; and a burst's quiet period is counted from its
+  last parcel, so the supervisor's housekeeping no longer holds every burst
+  for the full 6-second maximum. Prompt bytes: no stable layer changes (the
+  mail tool's description states no limit, and the mailman's pin is
+  unchanged); the refusal is new tool-result text, a content message can put
+  up to 1,200 characters into its recipient's thread, and the batch in the
+  mailman's thread carries whole parcels.
+
 - Every teammate is in every agent's live view. The team section listed
   the first 30 teammates in roster order and dropped the rest silently, so
   in a team of more than 30 the last workers were shown to nobody, the

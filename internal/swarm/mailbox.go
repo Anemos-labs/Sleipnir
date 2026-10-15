@@ -85,15 +85,50 @@ func validKind(k string) bool {
 // storm. Agents never write to each other's context directly: everything goes
 // through the router, which validates, sanitises, rate-limits, dedupes and audits.
 type RouterConfig struct {
-	MaxPerMinute     int           // per sender
-	MaxPerPairPerMin int           // per sender->recipient
-	MaxChars         int           // per message
-	DedupeWindow     time.Duration // identical text to the same recipient
+	MaxPerMinute     int // per sender
+	MaxPerPairPerMin int // per sender->recipient
+	// MaxChars bounds a message that asks for something (request, blocker): the recipient
+	// acts on it, and a long ask belongs in a task description or a file.
+	MaxChars int
+	// MaxContentChars bounds a message that carries content (info, answer, contract): a
+	// pool member's planning input, review findings, the shape of a changed interface. Zero
+	// means MaxChars.
+	MaxContentChars int
+	DedupeWindow    time.Duration // identical text to the same recipient
 }
 
-// DefaultRouterConfig returns conservative limits.
+// DefaultRouterConfig returns conservative limits: 600 characters for a request or a
+// blocker, 1,200 for mail that carries content.
 func DefaultRouterConfig() RouterConfig {
-	return RouterConfig{MaxPerMinute: 8, MaxPerPairPerMin: 3, MaxChars: 600, DedupeWindow: 5 * time.Minute}
+	return RouterConfig{MaxPerMinute: 8, MaxPerPairPerMin: 3, MaxChars: 600, MaxContentChars: 1200, DedupeWindow: 5 * time.Minute}
+}
+
+// contentKind reports whether a mail kind carries content rather than asking for
+// something: info, answer and contract.
+func contentKind(kind string) bool {
+	return kind == "info" || kind == "answer" || kind == "contract"
+}
+
+// maxCharsFor returns the length limit for a message of the given kind.
+func (c RouterConfig) maxCharsFor(kind string) int {
+	if contentKind(kind) && c.MaxContentChars > 0 {
+		return c.MaxContentChars
+	}
+	return c.MaxChars
+}
+
+// tooLong is the refusal of a message over its kind's limit, written for the model that
+// sent it. Models do not count characters reliably: told only the limit, they retry a few
+// characters shorter and are refused again. So it says by how much the message is over,
+// gives a target with some margin, and names the places that hold long content:
+// a file in the sender's task scope (for a role that writes), read by its path, and the
+// agreement submitted with task done (at most 6000 bytes), read with task get and
+// inherited by dependent tasks. Notes hold 300 characters and are not offered.
+func tooLong(kind string, n, limit int) error {
+	return fmt.Errorf("message too long: %d characters, %d over the %d-character limit for %s mail. "+
+		"Cut it to what the recipient needs (aim for about %d), or put the detail where it lasts and mail where to find it: "+
+		"a file in your task's scope if you can write, or the agreement you submit with task done (read with task get)",
+		n, n-limit, limit, kind, limit*5/6/10*10)
 }
 
 // Router validates and delivers mail (the Bifröst).
@@ -260,8 +295,8 @@ func (r *Router) Send(from, to, kind, text string) (Message, error) {
 	if !known {
 		return Message{}, fmt.Errorf("no agent %q (agents: %s)", cleanText(to, 40), strings.Join(ids, ", "))
 	}
-	if n := utf8.RuneCountInString(raw); n > r.cfg.MaxChars {
-		return Message{}, fmt.Errorf("message too long (%d chars, max %d): send the essential fact only", n, r.cfg.MaxChars)
+	if n, limit := utf8.RuneCountInString(raw), r.cfg.maxCharsFor(kind); n > limit {
+		return Message{}, tooLong(kind, n, limit)
 	}
 	text = cleanText(raw, 0)
 	if text == "" {

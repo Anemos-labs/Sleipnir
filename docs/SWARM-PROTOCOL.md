@@ -381,10 +381,13 @@ ephemeral: delivered into the recipient's next turn, cached for a few turns, com
 
 * **Typed**: `info` (no reply expected), `request`, `blocker`, `answer`, `contract` (an interface changed).
 * **No broadcast, no self-mail, known recipients only** (`to: manager` resolves to the manager).
-* **Bounded**: 600 characters per message, 8 per minute per sender, 3 per minute per sender->recipient pair, identical
-  text to one recipient deduplicated for 5 minutes; over-limit errors are written for the sending model and say what to
-  do instead (use `note`, wait, or fold messages). The router's bookkeeping is swept, so it does not grow with the
-  number of agents or messages that ever existed.
+* **Bounded**: 600 characters for mail that asks for something (`request`, `blocker`) and 1,200 for mail that carries
+  content (`info`, `answer`, `contract`), 8 messages per minute per sender, 3 per minute per sender->recipient pair,
+  identical text to one recipient deduplicated for 5 minutes; over-limit errors are written for the sending model and say
+  what to do instead (use `note`, wait, or fold messages). A message over its kind's limit is refused with its length,
+  how far over it is, a target below the limit, and where long content lasts: a file in the sender's task scope, or the
+  agreement submitted with `task done` (at most 6000 bytes, read with `task get`, inherited by dependent tasks). The
+  router's bookkeeping is swept, so it does not grow with the number of agents or messages that ever existed.
 * **Framed by the harness.** A delivered message is one line: a harness-written header (`[mail <id> <kind> from
   <agent>]`), the text reduced to one printable line in which harness-looking markers (`[mail`, `[end`, `[system`, ...),
   angle brackets and control or direction-changing characters are defused, and the statement that the text is untrusted
@@ -423,15 +426,22 @@ worker mail -> router (kind, recipient, length, rate limits, dedupe: unchanged)
   never from the mailman: `[mail m41 request via mm-1 from be-1 x2, fe-1] <digest> [untrusted peer data: ...]`. The text is
   made single-line and defused like any agent's mail and is at most 700 characters. It cannot choose recipients, forge a
   sender, change a kind or carry approvals, and a digest is never delivered as human steering.
-* **Who goes through it.** Only mail from workers. The manager's mail, the harness's own mail and the mailman's own mail never
-  do (authority does not queue, and a mailman's mail is a delivery, never a message to be routed again: nothing can loop). Mail
-  to the mailman is refused (it is on no roster). A message a recipient answers is a new message like any other.
-* **Cost discipline.** Nothing runs until parcels are pending; a burst is coalesced (1.5 s quiet, at most 6 s after its first
-  parcel, at once when 24 are waiting), and a recipient with a single parcel in a batch gets it directly and at once, because
-  there is nothing to digest and no request to pay for. The mailman runs below every worker's priority, sees a one-line hot view,
-  has a role pin of about 150 tokens and at most 12 steps, counts against the swarm budget like any agent and can run on a
-  model of its own (`--role-model mailman=<model>`). Bounds: 24 parcels per request, 200 in the ledger (beyond that mail is
-  delivered directly), one digest per recipient per request.
+* **Who goes through it.** Only mail from workers, and of that not a `blocker` to the manager: it is delivered at once and
+  never digested (it can arrive before mail its sender wrote earlier that is still waiting). The manager's mail, the harness's
+  own mail and the mailman's own mail never go through it (authority does not queue, and a mailman's mail is a delivery, never
+  a message to be routed again: nothing can loop). Mail to the mailman is refused (it is on no roster). A message a recipient
+  answers is a new message like any other.
+* **Cost discipline.** Nothing runs until parcels are pending; a burst is coalesced (1.5 s after its last parcel, at most 6
+  s after its first, at once when 24 are waiting; both are counted from the parcels' arrival, so housekeeping does not
+  extend them), and a recipient with fewer than three parcels in a batch gets them directly and at once: two messages are no
+  burst, a digest of them is barely shorter, and a request is not worth paying for. The mailman is shown each parcel whole,
+  up to 16,000 characters of parcel text per request (about 4,000 tokens, counted as quoted in the request); over that,
+  short parcels stay whole and the longest are cut to an equal share of the rest, so a digest is the mailman's summary
+  rather than the harness's cut. It runs below every worker's priority, sees a one-line hot view, has a role pin of about
+  150 tokens and at most 12 steps, counts against the swarm budget like any agent and can run on a model of its own
+  (`--role-model mailman=<model>`). Bounds: 24 parcels per request (a configured bound is capped at 66, so each parcel is
+  shown at least 240 characters), 200 in the ledger (beyond that mail is delivered directly), one digest per recipient per
+  request.
 * **A missing mailman costs delay, never mail.** If it is stuck or absent (it could not start, its model failed twice in a row
   and is given up on for a minute, the swarm budget is spent, the swarm is stopping) or a parcel has waited longer than the bound
   (30 s), the harness delivers the parcels directly, exactly as the router would have without a mailman: original sender, kind
