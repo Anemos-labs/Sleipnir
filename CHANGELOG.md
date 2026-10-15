@@ -17,8 +17,8 @@ they do not indicate whether a change has been released.
   of their own (beyond the cap, or dropped for the budget) are counted on a
   final `+N not shown: …` line instead of in "(+N more lines omitted)",
   which names the most relevant of them: at most 64, fewer when the budget
-  needs it, the rest counted (`and 6 more`). The omission note is now
-  within the budget too. Prompt bytes: the live view's team section changes
+  needs it, the rest counted (`and 6 more`). The omission note is
+  included in the budget too. Prompt bytes: the live view's team section changes
   (order of dropping, the new line); it is per-request text, so nothing
   cached changes.
 
