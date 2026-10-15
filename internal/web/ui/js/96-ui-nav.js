@@ -67,9 +67,9 @@
     const m = S && S.m, b = {}; if (!m) return b;
     const q = calc.waiting(S.wm); if (q) b.radio = ['? ' + q, 'warm', q + ' question' + (q > 1 ? 's' : '') + ' waiting'];
     if (ui.ws && ui.ws.counts) { const c = ui.ws.counts(S); if (c && c.changed) b.changes = [String(c.changed), '', c.changed + ' changed file' + (c.changed > 1 ? 's' : '')]; if (c && c.ckpts) b.checkpoints = [String(c.ckpts), '', c.ckpts + ' checkpoint' + (c.ckpts > 1 ? 's' : '')]; }   // the Workspace index may not be here yet: no badge until it is
-    const nAn = m.anomalies.filter(a => !a.quiet).length;   /* the endpoint's own small misses are the Cache view's, not a badge's (wire.Break.Quiet) */
+    const n = calc.counts(m), nAn = n.loud;   /* the endpoint's own small misses are the Cache view's, not a badge's (wire.Break.Quiet); counts, never a bounded list's length */
     if (nAn) b.cache = SL.settings.cache === 'full' ? ['⚠ ' + nAn, 'err', nAn + ' cache anomal' + (nAn > 1 ? 'ies' : 'y')] : ['⚠', '', nAn + ' cache anomal' + (nAn > 1 ? 'ies' : 'y')];
-    if (m.mail.length) b.mail = [String(m.mail.length), '', m.mail.length + ' mails routed'];
+    if (n.mail) b.mail = [String(n.mail), '', n.mail + ' mail' + (n.mail > 1 ? 's' : '') + ' routed'];
     const live = SL.sessions.list.filter(x => !x.recorded && !x.placeholder).length;   // read-only tabs and the empty placeholder are not running sessions
     b.sessions = [String(live), '', live + ' sessions live'];
     return b;
