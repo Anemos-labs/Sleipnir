@@ -28,8 +28,8 @@ func reduce(tb testing.TB, raws ...[]wire.Raw) *mirror {
 
 // view is what of a mirror a page shows outside the transcript, as comparable JSON: every agent's state, tokens, layers and ratio
 // series, the tasks and the order they merged in, the plan, the goal, the verdict, the checkpoints, the open questions, the mails,
-// anomalies and compactions with their times, the warm clock, the governor, the queue, the alerts, the stalls, the mail counts and
-// what the service agents used.
+// anomalies and compactions with their times and how many there were in all, the warm clock, the governor, the queue, the alerts,
+// the stalls, the mail counts and what the service agents used.
 // The time of an agent's last request is left out: a keyframe gives the ratio series at its own t.
 func view(tb testing.TB, m *mirror) string {
 	tb.Helper()
@@ -112,7 +112,8 @@ func view(tb testing.TB, m *mirror) string {
 	out := map[string]any{"agents": agents, "tasks": tasks, "torder": m.torder, "merged": m.merged, "plan": stripT(m.plan),
 		"goal": stripT(m.goal), "verdict": stripT(m.verdict), "ckpts": ckpts, "open": opens, "mails": mails, "anoms": anoms,
 		"comps": comps, "warm": stripT(m.warm), "gov": stripT(m.gov), "queue": stripT(m.queue), "alerts": alerts, "stalls": stalls,
-		"mailstat": stripT(m.mailstat), "svc": stripT(m.svc)}
+		"mailstat": stripT(m.mailstat), "svc": stripT(m.svc),
+		"count": map[string]int{"breaks": m.count.breaks, "loud": m.count.loud, "compacts": m.count.compacts, "mails": m.count.mails}}
 	b, err := json.MarshalIndent(out, "", " ")
 	if err != nil {
 		tb.Fatal(err)
@@ -290,5 +291,73 @@ func TestJournalBoundsUnderAFlood(t *testing.T) {
 	}
 	if j.pbytes > maxKeyframeBytes {
 		t.Fatalf("periodic keyframes hold %d bytes", j.pbytes)
+	}
+}
+
+// longJournal is a journal of a long run: more mails, cache breaks (most of them quiet, the loud ones early) and compactions than a
+// keyframe carries, in a journal of 200 events. It returns every event it added and how many of each kind there were.
+func longJournal() (j *journal, all []wire.Raw, want counts) {
+	const breaks, compacts, mails = 3*mirrorAnoms + 7, 2*mirrorAnoms + 3, 3*mirrorMails + 11
+	j = newJournal(200, 1<<20)
+	seq := uint64(0)
+	add := func(e wire.Event) {
+		seq++
+		h := baseOf(e)
+		h.K, h.T, h.Seq = kindOf(e), float64(seq)/10, seq
+		raw, _ := json.Marshal(e)
+		all = append(all, raw)
+		j.add(seq, h.T, h.K, raw, e)
+	}
+	want = counts{breaks: breaks, compacts: compacts, mails: mails}
+	for i := 0; i < max(breaks, compacts, mails); i++ {
+		if i < breaks {
+			quiet := i%3 != 0 && i > 20 // the loud ones are early and rare: most of them leave the mirror's list
+			if !quiet {
+				want.loud++
+			}
+			add(&wire.Break{ID: "be-1", Kind: "low_hit", Read: i, Expected: 1000, Why: "w", Quiet: quiet})
+		}
+		if i < compacts {
+			add(&CompactX{Compact: wire.Compact{ID: "fe-1", From: 1000 + i, To: 400, Pct: -60}})
+		}
+		if i < mails {
+			add(&MailX{Mail: wire.Mail{From: "be-1", To: "mgr", Text: "m"}})
+		}
+	}
+	return j, all, want
+}
+
+// A long run has more mails, cache breaks and compactions than a keyframe carries (the mirror's caps): the keyframe's tally says how
+// many came before the ones it carries, so a reduction of keyframe ⧺ retained events counts every one of them, the quiet breaks apart
+// from the others, at the front of the journal and at every periodic keyframe Seek answers with.
+func TestKeyframeTallyKeepsTheTotals(t *testing.T) {
+	j, all, want := longJournal()
+	kf, retained, last := j.snapshot()
+	if j.evicted == 0 || len(retained) > 200 {
+		t.Fatalf("the journal evicted %d and holds %d", j.evicted, len(retained))
+	}
+	tallies := 0
+	for _, r := range kf {
+		if containsRaw([]wire.Raw{r}, `"k":"tally"`) {
+			tallies++
+		}
+	}
+	if tallies != 1 {
+		t.Fatalf("the keyframe has %d tallies, want one", tallies)
+	}
+	if got := reduce(t, kf, retained).count; got != want {
+		t.Fatalf("keyframe ⧺ retained counts %+v, every event %+v", got, want)
+	}
+	if got := reduce(t, all).count; got != want {
+		t.Fatalf("every event counts %+v, want %+v", got, want)
+	}
+	for _, at := range []uint64{last - 150, last - 30, last} {
+		skf, sevs, ok := j.seek(at)
+		if !ok {
+			t.Fatalf("seek %d refused", at)
+		}
+		if got, want := reduce(t, skf, sevs).count, reduce(t, all[:at]).count; got != want {
+			t.Fatalf("seek %d counts %+v, the events up to it %+v", at, got, want)
+		}
 	}
 }

@@ -68,7 +68,7 @@
      tape's were squeezed flat): the dependencies 700 wide, the mail between agents 1040, the tape 1100 (90-views-a.js); a dependency
      graph too tall for its panel scrolls down as well */
   .flow .pb,.tape{overflow-x:auto;overflow-y:hidden}.dg{overflow:auto}
-  .dg svg{width:700px;max-width:none}.flow svg{width:1040px;max-width:none}.tape svg{width:1100px!important;max-width:none}
+  .dg svg{width:700px;max-width:none}.flow svg{width:calc(1040px * var(--fw, 1));max-width:none}.tape svg{width:1100px!important;max-width:none}
 }
 @container main (min-width:480px) and (max-width:620px){
   .stalls{grid-template-columns:repeat(4,minmax(0,1fr))}

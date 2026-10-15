@@ -86,6 +86,51 @@ func TestSummarizeReadsWhatAListingShows(t *testing.T) {
 	}
 }
 
+// A run that wrote no session.end (it is still running, or its process died) costs what its responses report: a 15-hour team run on a
+// ChatGPT plan reads as the plan's figure, not $0.00, and a run resumed after one that ended adds its responses to that end's figures.
+// The agents are the team's: the harness's own writers and its mailman are none of them.
+func TestSummarizeCountsARunThatHasNotEnded(t *testing.T) {
+	dir := t.TempDir()
+	t0 := time.Date(2026, 10, 15, 0, 37, 0, 0, time.UTC)
+	writeLog(t, dir, t0, t0,
+		[3]any{"session.start", "", map[string]any{"model": "gpt-6-luna", "mailman": true}},
+		[3]any{"agent.spawn", "swarm", map[string]any{"id": "mm-1", "role": "mailman", "service": true}},
+		[3]any{"model.response", "mgr", map[string]any{"cost_usd": 0, "list_usd": 1.25}},
+		[3]any{"model.response", "be-1", map[string]any{"cost_usd": 0.5}},
+		[3]any{"model.response", "mm-1", map[string]any{"cost_usd": 0, "list_usd": 0.75}},
+		[3]any{"model.response", "fe-1", map[string]any{"cost_usd": -3}},
+		[3]any{"model.response", "fe-1", json.RawMessage(`{"cost_usd":1,"list_usd":1e400}`)},
+		[3]any{"board.op", "harness", map[string]any{}},
+		[3]any{"workspace.create", "_integration", map[string]any{}},
+		[3]any{"mail.send", "swarm", map[string]any{}},
+	)
+	s := Summarize(filepath.Join(dir, "events.jsonl"))
+	if !s.Open || s.CostUSD != 0.5 || s.ListUSD != 2 || !s.Plan {
+		t.Errorf("an open run: cost %v, list %v, plan %v, open %v", s.CostUSD, s.ListUSD, s.Plan, s.Open)
+	}
+	if s.Agents != 3 || !s.Mailman {
+		t.Errorf("agents %d (want mgr, be-1, fe-1), mailman %v", s.Agents, s.Mailman)
+	}
+	writeLog(t, dir, t0, t0,
+		[3]any{"session.start", "", map[string]any{"model": "m"}},
+		[3]any{"model.response", "mgr", map[string]any{"cost_usd": 0.25}},
+		[3]any{"session.end", "", map[string]any{"cost_usd": 1.5, "reason": "exit"}},
+		[3]any{"session.start", "", map[string]any{"model": "m"}},
+		[3]any{"model.response", "mgr", map[string]any{"cost_usd": 0.25}},
+	)
+	if s := Summarize(filepath.Join(dir, "events.jsonl")); s.CostUSD != 1.75 || s.Plan || s.Mailman {
+		t.Errorf("a resumed run: the end's figure and the responses after it: %v (plan %v, mailman %v)", s.CostUSD, s.Plan, s.Mailman)
+	}
+	writeLog(t, dir, t0, t0,
+		[3]any{"session.start", "", map[string]any{"model": "m"}},
+		[3]any{"model.response", "mgr", map[string]any{"cost_usd": 0.25}},
+		[3]any{"session.end", "", map[string]any{"cost_usd": 0.3, "reason": "exit"}},
+	)
+	if s := Summarize(filepath.Join(dir, "events.jsonl")); s.CostUSD != 0.3 {
+		t.Errorf("an ended run: its session.end says what it cost: %v", s.CostUSD)
+	}
+}
+
 func TestIntegrationIsReadFromTheLog(t *testing.T) {
 	dir := t.TempDir()
 	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)

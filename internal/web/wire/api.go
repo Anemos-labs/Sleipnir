@@ -517,9 +517,11 @@ type RecordedSession struct {
 	LastWritten int64   `json:"lastWritten"`
 	Locked      bool    `json:"locked,omitempty"`
 	// List is what a subscription plan covered, at the API list price, and Plan says the session ran on one: a page shows Cost+List
-	// marked as the plan's (session.Summary).
+	// marked as the plan's (session.Summary). A session whose last run wrote no session.end has the sum of that run's responses added.
 	List float64 `json:"list,omitempty"`
 	Plan bool    `json:"plan,omitempty"`
+	// Mailman says the last run had the mailman mode on (--mailman): a replay of it shows the mailman as on.
+	Mailman bool `json:"mailman,omitempty"`
 }
 
 // PruneRequest asks what `sessions prune` would delete, or deletes it (Apply: the route needs an X-Confirm id).
