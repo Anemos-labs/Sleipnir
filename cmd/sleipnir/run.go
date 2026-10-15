@@ -74,7 +74,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	autoFix := fs.Bool("auto-fix", false, "repair CI and PR review findings for this objective")
 	autoMerge := fs.Bool("auto-merge", false, "merge this objective PR after checks and repository requirements pass")
 	swarmN := fs.Int("swarm", 0, "run a manager and N workers instead of a single agent (config swarm.max_workers is the ceiling)")
-	maxSteps := fs.Int("max-steps", 0, "step limit for a single agent (default 200)")
+	maxSteps := fs.Int("max-steps", 0, "step cap of a single agent's run, which also keeps team roles at theirs (unset: windows of 200 steps that go on while the agent keeps editing)")
 	budget := fs.Float64("budget-usd", 0, "stop when spend reaches this many US dollars")
 	verify := fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge). {dirs} in it stands for the directories the task may touch (./... without a scope), so that each task is verified on its own work: 'go test {dirs}'")
 	isolation, commit := isolationFlags(fs)
@@ -147,7 +147,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	o := session.Options{AutoFix: *autoFix, AutoMerge: *autoMerge,
 		AskTimeout: *askTimeout,
 		Cwd:        *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: team, Workers: workers,
-		MaxSteps: *maxSteps, BudgetUSD: *budget, Verify: *verify, NoRecon: *noRecon, TrustProject: *trust,
+		MaxSteps: *maxSteps, FixedSteps: *maxSteps > 0, BudgetUSD: *budget, Verify: *verify, NoRecon: *noRecon, TrustProject: *trust,
 		Dir: *dir, ContextWindow: *ctxWin, CaptureTokens: *capture, NoWeb: *noWeb, RoleModels: roleModels,
 		Resume: spec, NoMCP: *noMCP, Isolation: *isolation, Commit: *commit, Mailman: mailman(), Allow: expandAllow(*allow),
 		AutoDocs: autoDocs(), ManagerApproves: managerApproves(), Team: teamSlots, DefaultTeam: true,
