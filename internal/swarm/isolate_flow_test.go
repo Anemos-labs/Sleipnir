@@ -229,7 +229,7 @@ func TestBouncesAreBoundedAndTheTaskReturnsToThePool(t *testing.T) {
 }
 
 // A task whose worker made no change has nothing to merge: it is reported as such and
-// proceeds, and the manager can accept it.
+// proceeds to review. The manager accepts it by saying why no change was needed.
 func TestEmptyMergeIsReportedAndProceeds(t *testing.T) {
 	sc := script{"be-1": {act(doneCall("T1", "there was nothing to do"))}}
 	r := newIsoRig(t, isoOpts{verify: true}, sc.fn())
@@ -239,7 +239,10 @@ func TestEmptyMergeIsReportedAndProceeds(t *testing.T) {
 	if ev := r.task("T1").Evidence; !strings.Contains(ev, "nothing to merge") {
 		t.Fatalf("evidence %q", ev)
 	}
-	if res := r.accept("T1"); res.IsError {
+	if res := r.accept("T1"); !res.IsError || !strings.Contains(res.Text, "nothing to merge") {
+		t.Fatalf("an empty merge was accepted as work: %s", res.Text)
+	}
+	if res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "accept", "id": "T1", "text": "nothing to change: the check found nothing to fix"}); res.IsError {
 		t.Fatal(res.Text)
 	}
 	rep := r.finish()

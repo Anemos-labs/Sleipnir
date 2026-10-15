@@ -21,6 +21,24 @@ they do not indicate whether a change has been released.
   harness mail to two agents instead of the pool-wide "Child T was
   revised" mail; nothing cached changes.
 
+- `task accept` refuses an implementation task whose recorded harness
+  evidence says no file was edited (in an isolated run, unless its merge
+  carried a change): it reached review without work, often submitted by the
+  gate for a worker that stopped without `done`. A task with no recorded
+  evidence (submitted on the board directly by an embedder) is not judged.
+  The refusal names the evidence; the manager rejects the task, or accepts
+  it with text `nothing to change: <why>`. Planning tasks, pool results,
+  documentation, read-only roles' tasks and submissions with an agreement
+  are accepted as before. A task that the harness requeues, or that the
+  manager revises or reopens, no longer keeps the result and evidence of an
+  earlier submission on the board (the event log keeps them); a failed
+  verification gate still records its own. Evidence is recorded per task:
+  an edit counts for the task its agent is working on, or for the one other
+  task it is doing whose scope holds the file, so a task's submission lists
+  the files edited for it, not for the agent's other or earlier tasks.
+  Prompt bytes: the live view and `task get` of a requeued or revised task
+  no longer show the stale result and evidence; nothing cached changes.
+
 - Writer scopes overlap only when some path could lie in both: `**` is
   aligned as matching aligns it, instead of colliding with everything, so
   `**/*.md` overlaps `docs/**` and `web/*` but not `web/*.ts` or

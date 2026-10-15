@@ -209,6 +209,10 @@ Statuses: `todo -> doing -> review -> done`, with `blocked` and `failed` as side
   | reopen | failed | todo (the closure is cleared) |
   | requeue (the harness) | doing, blocked | todo, or failed (`exhausted`, or `verifier` after the gate's retries) after `MaxAttempts` |
 
+  A task that goes back to `todo` (requeue, revise, reopen) leaves the result and evidence of the earlier submission
+  off the board; the event log keeps them. Only a failed verification gate keeps its own evidence, which the next
+  attempt repairs.
+
   Every assignment gets a new `rev`; the harness settles a finished run only against the `rev` it started with, so a run
   that ends late can never undo a newer assignment (a reject, a reuse). Nor is that newer assignment left with an idle
   owner: when a run ends cleanly while its worker holds a task in doing at a `rev` the run did not start with, and no
@@ -256,7 +260,10 @@ worker: done(text)          --> the HARNESS runs the gate:
                               fail  -> doing (the verifier output is returned to the worker for up to two repair retries)
 worker stops without done   the same gate runs on its behalf; on failure the worker is sent back to work with the
                             output (twice at most), then the task returns to todo and the manager is told once
-manager: accept             done    (re-runs the verifier when configured; a task cannot become done without a pass)
+manager: accept             done    (re-runs the verifier when configured; a task cannot become done without a pass;
+                                     an implementation task whose harness evidence reports no edited file, in a
+                                     shared or an isolated run, is refused unless its isolated merge carried a change
+                                     or the manager says why none was needed; see below for the tasks not held to it)
 manager: reject / reopen    review -> doing with feedback (or todo when the worker is gone); reopen also failed -> todo
 manager: fail               failed  (with a typed reason, section 3; its worker, if running, is stopped)
 ```
@@ -312,6 +319,28 @@ result cannot submit the task, accept it, or spend a verification retry. An
 implicitly stopped worker receives a request to finish and verify the current
 scope. In isolation, changing scope after submission requires rejection and
 resubmission before acceptance can use a new matching merge record.
+
+**Accepting work in which nothing changed.** In a shared or an isolated run, an implementation task whose harness
+evidence reports no edited file reached review without work: a worker that stops without `done` is submitted by the gate
+as it is. `accept` refuses it and says what was seen, unless, in an isolated run, its merge for the current assignment
+carried a change (edits made by commands, which the evidence does not see). The manager rejects it with what is missing,
+or, when the task needs no change, accepts it with text that starts `nothing to change:` followed by why; the text is
+appended to the result. Planning tasks, pool results (their children carry the work), documentation, tasks of read-only
+roles and submissions that carry an agreement are not held to it, and `resolve` closes a task that is no longer needed
+without accepting it. Only evidence the harness recorded is judged: every submission through the gate carries it, and a
+task an embedder submitted on the board directly, with none, is not refused for it. In a shared tree, work done only by
+shell commands is accepted with the `nothing to change:` text.
+
+Evidence is per task. An edit counts for the task the agent is working on (the one it last claimed or was started on),
+or, when the edited file is in the scope of exactly one other task it is doing, for that task (a pool task's scope does
+not count: its work is its children's); commands count for the task it is working on. A worker that moves to another task
+starts that task's record (the event log keeps every call), and one that edits task A, keeps A in doing and claims task B
+submits B with B's evidence alone. An agent always keeps the records of the tasks it holds (doing, blocked or in review)
+and otherwise those of its last 16 tasks, so a worker that comes back to a task it no longer held (requeued, then
+restarted on it) finds the record as it left it only while that record is kept. When it is not, or when another worker
+takes the task, the submission shows only what was done since; if that is nothing, `accept` refuses it as above even
+though the earlier work is in the tree, and the manager accepts it with `nothing to change:` and the earlier work as the
+reason, or rejects it.
 
 Rules for implementation tasks: a task never leaves `doing` for review without the gate; `accept` cannot bypass the verifier, and a verifier
 that could not run (error, timeout) is reported as such and is never a pass (nor a failed test); verification is

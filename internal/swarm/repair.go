@@ -43,7 +43,8 @@ func (s *Swarm) repairTick(now time.Time) {
 }
 
 // revise changes a task in place after its current execution has stopped. Its
-// evidence remains in the event log; old submissions cannot pass the new revision.
+// result and evidence leave the board and remain in the event log; old submissions
+// cannot pass the new revision.
 func (b *Board) revise(by, id string, spec TaskSpec, reason string) error {
 	return b.mutate(by, "requeue", func(d *draft) error {
 		i := taskIdx(d.Snapshot, id)
@@ -94,6 +95,7 @@ func (b *Board) revise(by, id string, spec TaskSpec, reason string) error {
 		t.Status = StatusTodo
 		t.Rev = d.Version
 		t.Line = cleanText(reason, maxLineRunes)
+		t.Result, t.Evidence = "", ""
 		t.Agreement = ""
 		t.Agreements = nil
 		if t.Pool != nil {
