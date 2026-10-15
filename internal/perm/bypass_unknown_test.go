@@ -260,6 +260,34 @@ func TestALoopOverThePositionalParametersSetsItsVariable(t *testing.T) {
 	}
 }
 
+// A "$" that starts no expansion is the character: pgrep -af "$INSTALL/raven($| )" names a path in $TMPDIR, not one with a part
+// only known when the command runs (a tester was asked about it, as a write that might leave $TMPDIR for ~/.sleipnir, where a
+// session's scratch directory lives). A "$" before a name, a brace, a parenthesis, a bracket or a special parameter still expands.
+func TestADollarThatStartsNoExpansionIsTheCharacter(t *testing.T) {
+	f := newFixture(t)
+	tmp := filepath.Join(f.home, ".sleipnir", "sessions", "s1", "tmp")
+	if err := os.MkdirAll(tmp, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: tmp, Ask: []string{"Edit(~/.sleipnir/**)"}})
+	for _, c := range []struct{ cmd, want string }{
+		{`INSTALL="$TMPDIR/opt/ravenwatch"; pgrep -af "$INSTALL/raven($| )" || true`, "allow"},
+		{`node tool.js "$TMPDIR/a$"`, "allow"},
+		{`node tool.js "$TMPDIR/a$/b$%c$ d"`, "allow"},
+		{`node tool.js "$TMPDIR/$*"`, "ask"},
+		{`node tool.js "$TMPDIR/$@"`, "ask"},
+		{`node tool.js "$TMPDIR/${X}"`, "ask"},
+		{`node tool.js "$TMPDIR/$[1]"`, "ask"},
+		{`node tool.js "$TMPDIR/$(id -un)"`, "ask"},
+		{`node tool.js "$TMPDIR/$-"`, "ask"},
+	} {
+		d := e.Check(context.Background(), Request{Agent: "ts-4", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
+
 // A substitution that can fail ($(git rev-parse --show-toplevel)) is empty when it does: a word built from it, directly or through a
 // variable, is judged as that too, so "$d/proc/self/environ" cannot reach the protected file and "$D"/* cannot reach the root through
 // a failure. A .git that is not a repository (no HEAD, a worktree pointer that leads nowhere) makes git fail: the substitution is then
