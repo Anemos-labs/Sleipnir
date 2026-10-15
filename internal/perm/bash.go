@@ -378,7 +378,7 @@ func (ev *evaluator) noteAssignments(s shellparse.Simple, cw *cwdSet, conflicted
 		// Do not expand shell-literal or mixed-quoted values as variables.
 		literal := strings.ContainsAny(s.Raw, "'\\")
 		val = unquoteAssigned(val)
-		if inner, ok := soleSubstitution(val); ok && tokenSubstitution(inner) && !conflicted[name] {
+		if inner, ok := soleSubstitution(val); ok && tokenSubstitution(inner) && !conflicted[name] && substitutes(s.Raw, name) {
 			// ts="$(date -u '+%Y%m%dT%H%M%SZ')": one name token, whatever quotes the command has, and nothing when it fails
 			if prev, had := ev.vars[name]; had && prev != tokenPlaceholder(inner) {
 				ev.forget(name, conflicted)
@@ -437,6 +437,22 @@ func (ev *evaluator) noteAssignments(s shellparse.Simple, cw *cwdSet, conflicted
 		if s.Program == "" {
 			before = ev.vars
 		}
+	}
+}
+
+// substitutes reports whether the assignment of name in raw, a command's source text, gives its value unquoted or in double quotes,
+// where $( ) runs: ts='$(date +%s)' and ts=\$(date) assign the text as written.
+func substitutes(raw, name string) bool {
+	for k := 0; ; {
+		j := strings.Index(raw[k:], name+"=")
+		if j < 0 {
+			return false
+		}
+		at := k + j
+		if v := at + len(name) + 1; (at == 0 || !isNameByte(raw[at-1])) && v < len(raw) {
+			return raw[v] == '$' || raw[v] == '"'
+		}
+		k = at + 1
 	}
 }
 

@@ -417,6 +417,8 @@ func TestATokenSubstitutionIsAPieceOfAName(t *testing.T) {
 		{`D="$TMPDIR/x"; ts="$(cat f)"; printf x > "$D/$ts"`, "ask"},
 		{`D="$TMPDIR/x"; ts="$(date +$FMT)"; printf x > "$D/$ts"`, "ask"},
 		{`D="$TMPDIR/x"; for i in $(seq 1 $N); do printf x > "$D/$i"; done`, "ask"},
+		{`TZ='<a/b>0'; printf x > "$TMPDIR/y$(date +%Z)"`, "ask"}, // %Z is TZ's name, here a/b: no name token
+		{`ts='$(date +%s)'; printf x > "$TMPDIR/$ts"`, "ask"},     // single quotes: no substitution, text the engine does not track (as before)
 	} {
 		d := e.Check(context.Background(), Request{Agent: "ts-3", Tool: "Bash", Command: f.expand(c.cmd)})
 		if got := outcome(d); got != c.want {

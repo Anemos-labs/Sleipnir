@@ -430,8 +430,9 @@ func tokenSubstitution(cmd string) bool {
 	return false
 }
 
-// tokenFormat reports whether a date format prints one name token: at least one conversion, every conversion numeric or a zone
-// (%s %N %Y %m %d %H %M %S %j %F %T and the like, with flags and a width), and literal letters, digits and _ . : + - between them.
+// tokenFormat reports whether a date format prints one name token: at least one conversion, every conversion numeric (%s %N %Y %m %d
+// %H %M %S %j %F %T %z and the like, with flags and a width), and literal letters, digits and _ . : + - between them. Not %Z: the zone's
+// name comes from TZ, which the line may set to anything (TZ='<a/b>0' makes it a/b).
 func tokenFormat(f string) bool {
 	conv := false
 	for i := 0; i < len(f); i++ {
@@ -449,7 +450,7 @@ func tokenFormat(f string) bool {
 		for i < len(f) && f[i] >= '0' && f[i] <= '9' {
 			i++
 		}
-		if i >= len(f) || strings.IndexByte("sNYmdHMSjuwyeIklCgGVUWzZFTR", f[i]) < 0 {
+		if i >= len(f) || strings.IndexByte("sNYmdHMSjuwyeIklCgGVUWzFTR", f[i]) < 0 {
 			return false
 		}
 		conv = true

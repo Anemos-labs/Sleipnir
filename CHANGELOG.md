@@ -9,7 +9,8 @@ they do not indicate whether a change has been released.
 
 - A command that prints one name token is a piece of a file name, as `$$`
   is: `date` with a `+FORMAT` of numeric conversions and plain characters
-  (`+%Y%m%dT%H%M%SZ`, `+%s`), `seq` over numbers, `id -u`/`-g`, `nproc` and
+  (`+%Y%m%dT%H%M%SZ`, `+%s`; not `%Z`, the zone name `TZ` sets), `seq` over
+  numbers, `id -u`/`-g`, `nproc` and
   `uuidgen`. `"$D/rw.$(date +%s).tar.gz"`, a variable set to such a
   substitution, and the variable of `for i in $(seq 1 800)` name a file in
   `$D`. The output is also judged empty, as a failed command leaves it, so
