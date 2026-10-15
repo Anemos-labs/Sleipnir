@@ -201,4 +201,52 @@ func TestAReusedWorkersEvidenceIsItsNewTasks(t *testing.T) {
 	if got := ev.Edited(); len(got) != 0 {
 		t.Fatalf("another task's edits were kept: %v", got)
 	}
+	ev.Begin("T5") // and back: T5's record is T5's again
+	if got := ev.Edited(); len(got) != 1 || !strings.Contains(ev.SummaryFor("T5"), "edited 1") || !evidenceShowsNoEdits(ev.SummaryFor("T6")) {
+		t.Fatalf("records got mixed: T5 %q, T6 %q", ev.SummaryFor("T5"), ev.SummaryFor("T6"))
+	}
+}
+
+// A task is judged on its own edits. A worker that edits task A's files, keeps A in doing and claims task B submits B with the
+// evidence of B alone: an edit of A's files, before the claim or after it, counts for A, and B, in which it changed nothing, is
+// not accepted as work.
+func TestATaskIsJudgedOnItsOwnEdits(t *testing.T) {
+	editA := rvToolCall{Name: "edit", Args: map[string]any{"path": "api/a.go"}}
+	script := []rvReply{
+		{Tools: []rvToolCall{editA}},
+		{Tools: []rvToolCall{{Name: "task", Args: map[string]any{"action": "claim", "id": "T1"}}}},
+		{Tools: []rvToolCall{editA, {Name: "task", Args: map[string]any{"action": "done", "id": "T1", "text": "b is fine"}}}},
+		{Text: "submitted b"},
+	}
+	r := newRVRig(t, Config{}, gatedWorkers(map[string][]rvReply{"be-1": script}))
+	r.sw.StartManager()
+	b, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "task b", Files: []string{"api/b.go"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "task a", Files: []string{"api/a.go"}, By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := currentTask(r.sw.Board.Snapshot(), id)
+	var got Task
+	rvWait(t, "task b in review", func() bool {
+		got, _ = r.sw.Board.Snapshot().Task(b.ID)
+		return got.Status == StatusReview
+	})
+	if !evidenceShowsNoEdits(got.Evidence) {
+		t.Fatalf("task b carries task a's edits: %q", got.Evidence)
+	}
+	if res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "accept", "id": b.ID, "text": "ok"}); !res.IsError {
+		t.Fatalf("task b, in which nothing changed, was accepted: %s", res.Text)
+	}
+	// The run ends with task a still in doing: the gate submits it with its own evidence, both edits of a.go.
+	var ta Task
+	rvWait(t, "task a in review", func() bool {
+		ta, _ = r.sw.Board.Snapshot().Task(a)
+		return ta.Status == StatusReview && r.idle(id)
+	})
+	if !strings.HasPrefix(ta.Evidence, "edited 1 (a.go)") {
+		t.Fatalf("task a's evidence lost its edits: %q", ta.Evidence)
+	}
 }

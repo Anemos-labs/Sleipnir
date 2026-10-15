@@ -306,7 +306,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 	if result == "" {
 		result = "completed"
 	}
-	summary := ev.Summary()
+	summary := ev.SummaryFor(task.ID)
 	if m != nil && m.tree != nil {
 		if err := s.checkTaskGate(task); err != nil {
 			return tools.Errorf("%v", err)

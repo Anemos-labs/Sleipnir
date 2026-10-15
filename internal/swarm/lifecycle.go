@@ -212,6 +212,9 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 	}
 	m := &member{id: id, role: r.Name, ev: ev, state: "idle", manager: isMgr, readOnly: r.ReadOnly, service: isSvc, sink: sink, notify: make(chan struct{}, 1),
 		tree: tree, dir: workdir, slot: -1}
+	if ev != nil {
+		ev.setRoute(func(path string) string { return s.editTask(id, path) })
+	}
 	m.box.init()
 	if slot >= -1 {
 		m.slot = slot
@@ -582,7 +585,7 @@ func (s *Swarm) unreserve(m *member, rs *runState) {
 	s.wg.Done()
 }
 
-// adopt records the tasks the agent is doing now as the run's assignments, and points its evidence at its task (beginEvidence).
+// adopt records the tasks the agent is doing now as the run's assignments, and points its evidence at the one its status shows.
 func (s *Swarm) adopt(m *member, rs *runState) {
 	snap := s.Board.Snapshot()
 	m.mu.Lock()
@@ -594,23 +597,32 @@ func (s *Swarm) adopt(m *member, rs *runState) {
 			}
 		}
 	}
+	task := m.task
 	m.mu.Unlock()
-	beginEvidence(snap, m)
+	if t, ok := snap.Task(task); ok && t.Owner == m.id && t.Status == StatusDoing {
+		m.ev.Begin(task)
+	}
 }
 
-// beginEvidence points the member's evidence at the one task it is doing (Evidence.Begin), so what it submits for that task is
-// what it did for it. A member doing several tasks at once (a pool's leader with a child of its own) keeps one record for them.
-func beginEvidence(snap *Snapshot, m *member) {
-	only := ""
-	for _, t := range snap.Tasks {
-		if t.Owner == m.id && t.Status == StatusDoing {
-			if only != "" {
-				return
-			}
-			only = t.ID
-		}
+// editTask names the task an edit of path by agent belongs to: the one task it is doing whose scope holds the path, or "" (its
+// current task) when none of its scopes holds the path or several do. A pool task is not one: its work is its children's, and
+// a leader's edit inside its own child's scope is the child's. It reads the board only.
+func (s *Swarm) editTask(agent, path string) string {
+	rel, ok := s.Leases.rel(path)
+	if !ok {
+		return ""
 	}
-	m.ev.Begin(only)
+	hit := ""
+	for _, t := range s.Board.Snapshot().Tasks {
+		if t.Owner != agent || t.Status != StatusDoing || t.Pool != nil || len(t.Files) == 0 || !inScope(t.Files, rel) {
+			continue
+		}
+		if hit != "" {
+			return ""
+		}
+		hit = t.ID
+	}
+	return hit
 }
 
 // trackClaim adds a task the agent claimed during its run to the run's assignments.
@@ -632,7 +644,7 @@ func (s *Swarm) trackClaim(agentID, taskID string) {
 	m.mailWakes, m.wakeLimited = 0, false
 	m.mu.Unlock()
 	m.madeProgress()
-	beginEvidence(s.Board.Snapshot(), m)
+	m.ev.Begin(taskID)
 	card := claimedCards(s.Board.Snapshot(), agentID, nil)
 	if m.tree != nil {
 		card += isolationCard(integrationRefOf(m.tree))
@@ -1008,7 +1020,7 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 		if res != nil {
 			summary = strings.TrimSpace(res.Text)
 		}
-		evid := m.ev.Summary()
+		evid := m.ev.SummaryFor(id)
 		if vr.ok && m.tree != nil {
 			if s.checkTaskGate(t) != nil {
 				s.retryChangedScope(m, t)

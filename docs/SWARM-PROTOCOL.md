@@ -242,8 +242,10 @@ worker: done(text)          --> the HARNESS runs the gate:
                               fail  -> doing (the verifier output is returned to the worker for up to two repair retries)
 worker stops without done   the same gate runs on its behalf; on failure the worker is sent back to work with the
                             output (twice at most), then the task returns to todo and the manager is told once
-manager: accept             done    (re-runs the verifier when configured; a task cannot become done without a pass,
-                                     nor without a file change unless the manager says why none was needed)
+manager: accept             done    (re-runs the verifier when configured; a task cannot become done without a pass;
+                                     an implementation task whose harness evidence reports no edited file, in a
+                                     shared or an isolated run, is refused unless its isolated merge carried a change
+                                     or the manager says why none was needed; see below for the tasks not held to it)
 manager: reject / reopen    review -> doing with feedback (or todo when the worker is gone); reopen also failed -> todo
 manager: fail               failed  (with a typed reason, section 3; its worker, if running, is stopped)
 ```
@@ -300,17 +302,23 @@ implicitly stopped worker receives a request to finish and verify the current
 scope. In isolation, changing scope after submission requires rejection and
 resubmission before acceptance can use a new matching merge record.
 
-**Accepting work in which nothing changed.** An implementation task whose evidence records no edited file (and, in an
-isolated run, whose merge for the current assignment was empty) reached review without work: a worker that stops without
-`done` is submitted by the gate as it is. `accept` refuses it and says what was seen. The manager rejects it with what is
-missing, or, when the task needs no change, accepts it with text that starts `nothing to change:` followed by why; the
-text is appended to the result. Planning tasks, pool results (their children carry the work), documentation, tasks of
-read-only roles and submissions that carry an agreement are not held to it, and `resolve` closes a task that is no
-longer needed without accepting it. Edits made by shell commands are not in the evidence: in a shared tree, work done
-only that way is accepted with the same text. Evidence is per task: a worker reused for another task starts a new record
-(the event log keeps the old one), and one that comes back to the same task (requeued, sent back, restarted on it) keeps
-what it did on it; a worker doing several tasks at once (a pool's leader with a child of its own) keeps one record for
-all of them.
+**Accepting work in which nothing changed.** In a shared or an isolated run, an implementation task whose harness
+evidence reports no edited file reached review without work: a worker that stops without `done` is submitted by the gate
+as it is. `accept` refuses it and says what was seen, unless, in an isolated run, its merge for the current assignment
+carried a change (edits made by commands, which the evidence does not see). The manager rejects it with what is missing,
+or, when the task needs no change, accepts it with text that starts `nothing to change:` followed by why; the text is
+appended to the result. Planning tasks, pool results (their children carry the work), documentation, tasks of read-only
+roles and submissions that carry an agreement are not held to it, and `resolve` closes a task that is no longer needed
+without accepting it. Only evidence the harness recorded is judged: every submission through the gate carries it, and a
+task an embedder submitted on the board directly, with none, is not refused for it. In a shared tree, work done only by
+shell commands is accepted with the `nothing to change:` text.
+
+Evidence is per task. An edit counts for the task the agent is working on (the one it last claimed or was started on),
+or, when the edited file is in the scope of exactly one other task it is doing, for that task (a pool task's scope does
+not count: its work is its children's); commands count for the task it is working on. A worker that moves to another task starts that task's record (the event log keeps every call),
+one that comes back to a task (requeued, sent back, restarted on it) finds its record as it left it, and one that edits
+task A, keeps A in doing and claims task B submits B with B's evidence alone. An agent keeps the records of its last 16
+tasks.
 
 Rules for implementation tasks: a task never leaves `doing` for review without the gate; `accept` cannot bypass the verifier, and a verifier
 that could not run (error, timeout) is reported as such and is never a pass (nor a failed test); verification is
