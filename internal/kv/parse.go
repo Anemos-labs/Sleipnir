@@ -467,8 +467,10 @@ func repairQuotes(s string, budget int) (raw []byte, n, fixes, spent int, err er
 		for q > 0 && q < len(t) && (t[q] == ' ' || t[q] == '\t' || t[q] == '\n' || t[q] == '\r') {
 			q--
 		}
-		if off >= 0 && off < len(t) && t[off] == '"' && q < off-1 {
-			return nil, 0, fixes, spent, e // "a" "b": a comma missing between two strings, not a quote of the model's text ("say "hi"")
+		if off >= 0 && off < len(t) && t[off] == '"' && (q < off-1 || strings.Contains(se.Error(), "after array element")) {
+			// "a" "b", or ["a""b"] in a list: a comma missing between two strings, not a quote of the model's text. A quote right
+			// after one in a value ("read "b"") is the model's.
+			return nil, 0, fixes, spent, e
 		}
 		if q < 1 || q >= len(t) || t[q] != '"' || escaped(t, q) {
 			return nil, 0, fixes, spent, e

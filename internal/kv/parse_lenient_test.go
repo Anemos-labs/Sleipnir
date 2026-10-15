@@ -109,7 +109,9 @@ func TestAnUnescapedQuoteInsideAStringIsReadAsText(t *testing.T) {
 	}
 	for _, bad := range []string{
 		`{"keep_from":"t9","spine":[{"turns":"t1-t8","line":"x"},]}`,
-		`{"keep_from":"t9","spine":[{"turns":"t1-t8" "line":"x"}]}`, // a missing comma is no quote of the model's text
+		`{"keep_from":"t9","spine":[{"turns":"t1-t8" "line":"x"}]}`,                       // a missing comma is no quote of the model's text
+		`{"keep_from":"t9","spine":[{"turns":"t1-t8","line":"x"}],"mask":["t3.0""t4.0"]}`, // nor in a list, quote against quote
+		`{"keep_from":"t9","spine":["a""b"]}`,
 		`{"keep_from":"t9","spine":[{"turns":"t1-t8","line":"` + strings.Repeat(`a "b" `, 20) + `"}]}`,
 	} {
 		if p, err := ParsePatch(bad); err == nil {
