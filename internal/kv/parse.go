@@ -35,7 +35,7 @@ import (
 // entry does not discard an otherwise good patch. Nothing here trusts the content: Apply
 // vets every field against the agent's real thread.
 func ParsePatch(reply string) (*Patch, error) {
-	c, n, err := chooseCandidate(reply)
+	c, n, repaired, err := chooseCandidate(reply)
 	if err != nil {
 		return nil, err
 	}
@@ -50,6 +50,9 @@ func ParsePatch(reply string) (*Patch, error) {
 	p.Warnings = append(warns, p.Warnings...)
 	if n > 1 {
 		p.Warnings = append(p.Warnings, fmt.Sprintf("the reply held %d patch objects; the last preferred one was used", n))
+	}
+	if repaired > 0 {
+		p.Warnings = append(p.Warnings, fmt.Sprintf("the patch had %d unescaped quote(s) inside its strings, read as text", repaired))
 	}
 	return p, nil
 }
@@ -259,7 +262,7 @@ func buildPatch(rp *rawPatch) (*Patch, error) {
 
 // chooseCandidate finds the patch object in a reply (see ParsePatch) and reports how
 // many candidates the reply held.
-func chooseCandidate(reply string) ([]byte, int, error) {
+func chooseCandidate(reply string) ([]byte, int, int, error) {
 	fences := jsonFences(reply)
 	inFence := func(pos int) bool {
 		for _, f := range fences {
@@ -271,9 +274,10 @@ func chooseCandidate(reply string) ([]byte, int, error) {
 	}
 
 	type cand struct {
-		raw    []byte
-		fenced bool
-		at     int
+		raw      []byte
+		fenced   bool
+		at       int
+		repaired int // quotes repairQuotes escaped
 	}
 	var cands []cand
 	var lastErr, brokenErr error
@@ -295,10 +299,19 @@ func chooseCandidate(reply string) ([]byte, int, error) {
 			continue
 		}
 		if budget <= 0 {
-			return nil, 0, fmt.Errorf("compaction reply is too tangled to parse")
+			return nil, 0, 0, fmt.Errorf("compaction reply is too tangled to parse")
 		}
 		raw, n, err := decodeObject(reply[i:])
 		budget -= max(n, 16)
+		repaired := 0
+		if err != nil && strings.Contains(strings.ToLower(reply[i:min(len(reply), i+n+16)]), "keep_from") {
+			// the model's commonest slip: a quote inside a string it did not escape ("line": "fixed the "foo" handler")
+			r, rn, fixes, spent, rerr := repairQuotes(reply[i:], budget)
+			budget -= spent
+			if rerr == nil {
+				raw, n, err, repaired = r, rn, nil, fixes
+			}
+		}
 		if err != nil {
 			lastErr = err
 			if strings.Contains(strings.ToLower(reply[i:min(len(reply), i+n+16)]), "keep_from") {
@@ -312,7 +325,7 @@ func chooseCandidate(reply string) ([]byte, int, error) {
 			KeepFrom json.RawMessage `json:"keep_from"`
 		}
 		if json.Unmarshal(raw, &probe) == nil && len(probe.KeepFrom) > 0 {
-			cands = append(cands, cand{raw: raw, fenced: inFence(i), at: i})
+			cands = append(cands, cand{raw: raw, fenced: inFence(i), at: i, repaired: repaired})
 			i += n // a candidate's own contents are not candidates
 			continue
 		}
@@ -321,17 +334,17 @@ func chooseCandidate(reply string) ([]byte, int, error) {
 	if len(cands) == 0 {
 		switch {
 		case lastErr != nil && errors.Is(lastErr, io.ErrUnexpectedEOF):
-			return nil, 0, fmt.Errorf("unterminated JSON object in compaction reply")
+			return nil, 0, 0, fmt.Errorf("unterminated JSON object in compaction reply")
 		case brokenErr != nil:
 			// the model wrote "keep_from" and then broke the JSON: objects inside it that decode (the spine's entries) are not the
 			// patch, and "no keep_from" would be a false thing to say about it
-			return nil, 0, fmt.Errorf("compaction patch is not valid JSON: %w", brokenErr)
+			return nil, 0, 0, fmt.Errorf("compaction patch is not valid JSON: %w", brokenErr)
 		case sawObject:
-			return nil, 0, fmt.Errorf("compaction patch has no keep_from")
+			return nil, 0, 0, fmt.Errorf("compaction patch has no keep_from")
 		case lastErr != nil:
-			return nil, 0, fmt.Errorf("compaction patch is not valid JSON: %w", lastErr)
+			return nil, 0, 0, fmt.Errorf("compaction patch is not valid JSON: %w", lastErr)
 		}
-		return nil, 0, fmt.Errorf("no JSON object in compaction reply")
+		return nil, 0, 0, fmt.Errorf("no JSON object in compaction reply")
 	}
 	best := -1
 	for i, c := range cands {
@@ -346,9 +359,9 @@ func chooseCandidate(reply string) ([]byte, int, error) {
 	// chosen one, is the model's real answer cut short or garbled: refuse rather than
 	// answer with something it quoted earlier.
 	if broken > cands[best].at {
-		return nil, 0, fmt.Errorf("the compaction reply ends with an incomplete patch object")
+		return nil, 0, 0, fmt.Errorf("the compaction reply ends with an incomplete patch object")
 	}
-	return cands[best].raw, len(cands), nil
+	return cands[best].raw, len(cands), cands[best].repaired, nil
 }
 
 // startsObject reports whether the '{' at s[i] starts the first member of a JSON
@@ -397,6 +410,56 @@ func decodeObject(s string) (raw []byte, n int, err error) {
 		return nil, max(n, 1), err
 	}
 	return v, int(dec.InputOffset()), nil
+}
+
+// maxQuoteRepairs bounds the quotes repairQuotes escapes in one object.
+const maxQuoteRepairs = 32
+
+// repairQuotes decodes a patch object whose JSON broke on a quote the model did not escape inside a string ("line": "fixed the
+// "foo" handler" stops the string at "fixed the "). When the decoder fails on the character right after a string (after a key, a
+// key:value pair or an array element), the quote that closed that string early is escaped and the object decoded again, up to
+// maxQuoteRepairs times; any other error is returned as it is, and so is a quote after a blank ("a" "b": a comma is missing). Every
+// attempt is charged to spent, the bytes read; it stops once that reaches budget, the caller's allowance for the whole reply. It returns the object, the bytes of s it spans and the quotes it
+// escaped. Nothing about the content is trusted more for it: the patch still has to name a keep_from and pass Apply.
+func repairQuotes(s string, budget int) (raw []byte, n, fixes, spent int, err error) {
+	b := []byte(s)
+	for {
+		dec := json.NewDecoder(bytes.NewReader(b))
+		var v json.RawMessage
+		e := dec.Decode(&v)
+		spent += max(int(dec.InputOffset()), 16)
+		if e == nil {
+			return v, int(dec.InputOffset()) - fixes, fixes, spent, nil
+		}
+		var se *json.SyntaxError
+		if fixes >= maxQuoteRepairs || spent >= budget || !errors.As(e, &se) ||
+			!strings.Contains(se.Error(), "after object key") && !strings.Contains(se.Error(), "after array element") {
+			return nil, 0, fixes, spent, e
+		}
+		spent += int(se.Offset)
+		off := int(se.Offset) - 1 // the stray character; the quote that ended the string is before it, past blanks
+		q := off - 1
+		for q > 0 && q < len(b) && (b[q] == ' ' || b[q] == '\t' || b[q] == '\n' || b[q] == '\r') {
+			q--
+		}
+		if off >= 0 && off < len(b) && b[off] == '"' && q < off-1 {
+			return nil, 0, fixes, spent, e // "a" "b": a comma missing between two strings, not a quote of the model's text ("say "hi"")
+		}
+		if q < 1 || q >= len(b) || b[q] != '"' || escaped(b, q) {
+			return nil, 0, fixes, spent, e
+		}
+		b = append(b[:q:q], append([]byte{'\\'}, b[q:]...)...)
+		fixes++
+	}
+}
+
+// escaped reports whether the byte at b[i] is escaped: an odd number of backslashes before it ("\\"" ends a string, "\"" does not).
+func escaped(b []byte, i int) bool {
+	n := 0
+	for j := i - 1; j >= 0 && b[j] == '\\'; j-- {
+		n++
+	}
+	return n%2 == 1
 }
 
 // span is a byte range of the reply.

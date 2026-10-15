@@ -7,6 +7,16 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A compaction patch whose JSON broke on a quote the model did not escape
+  inside a string (`"line": "fixed the "foo" handler"`) is read with that
+  quote as text instead of refused, with a warning; the agent keeps the
+  model's own digest of its work instead of folding mechanically. Replayed
+  over the 348 compactor replies of a 32-worker run, 156 patches are used
+  instead of 116. A missing comma (`"a" "b"`) and JSON broken any other way
+  are still refused, at most 32 quotes are repaired per patch, and every
+  attempt counts against the parser's bound on hostile replies. Prompt
+  bytes: none change.
+
 - A `$` that starts no expansion (`$|` in a regex, a trailing `$`) is the
   character, as it is in bash: `pgrep -af "$INSTALL/raven($| )"` names a
   known path rather than one with a part only known when the command runs,
