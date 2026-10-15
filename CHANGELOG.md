@@ -13,7 +13,10 @@ they do not indicate whether a change has been released.
   asked about when a `case` followed it, even in `bypass`. An assignment or
   `unset` inside a body makes that variable unknown after the `case`. A
   malformed `case` (no `in`, no `esac`, a body that leaves a group open) is
-  still unparsed. Prompt bytes: none change.
+  still unparsed. A `&` after any compound command (`fi`, `done`, `}`, `)`,
+  `esac`) marks the whole list as run in the background, the commands before
+  the compound included, and a `|` after one the whole compound; a `for`
+  header after `&&` or `|` is conditional. Prompt bytes: none change.
 
 - `bypass` asks only about the very dangerous: the high-risk class (`sudo`, a
   recursive delete of a broad or unknown path, a forced push to a shared

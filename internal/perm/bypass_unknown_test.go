@@ -205,7 +205,9 @@ func TestACaseStatementKeepsTheLinesVariablesKnown(t *testing.T) {
 		{`T="$TMPDIR/t"; case "$1" in a) T=/;; esac; rm -rf "$T"`, "ask"},
 		{`T="$TMPDIR/t"; case "$1" in a) unset T;; esac; rm -rf "$T"/*`, "ask"},
 		{`case "$1" in a) T="$TMPDIR/t";; esac; rm -rf "$T"`, "ask"},
-		{`T="$TMPDIR/t"; case "$1" in a) rm -rf "$T";;`, "ask"}, // no esac: not parsed, nothing is known
+		{`T="$TMPDIR/t"; case "$1" in a) rm -rf "$T";;`, "ask"},              // no esac: not parsed, nothing is known
+		{`T=/; T="$TMPDIR/t" && case y in *) :;; esac & rm -rf "$T"`, "ask"}, // the second assignment ran in the background
+		{`T=/; for T in "$TMPDIR/t"; do :; done | cat; rm -rf "$T"`, "ask"},  // and this loop in the pipe's shell
 	} {
 		d := e.Check(context.Background(), Request{Agent: "dv-1", Tool: "Bash", Command: f.expand(c.cmd)})
 		if got := outcome(d); got != c.want {

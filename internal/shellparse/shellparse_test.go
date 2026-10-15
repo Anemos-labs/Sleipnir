@@ -776,6 +776,18 @@ func TestCondAndArithmeticAreWhatTheShellDoes(t *testing.T) {
 		"(a=1); b=2":                             {true, false},
 		"cat > f <<'EOF'\nf() { }\nEOF\nd=1":     {false, false},
 		"case $x in a) b=1;; *) c=2;; esac; d=3": {true, true, false}, // a body runs when its pattern matches
+		// & after a compound command sends the whole list to the background, what came before the compound included
+		"a=1 && case x in *) b;; esac &":  {true, true},
+		"a=1 && if x; then b; fi & c=2":   {true, true, true, false},
+		"a=1 && while x; do b; done &":    {true, true, true},
+		"a=1 && { b; c; } &":              {true, true, true},
+		"a=1 && (b; c) &":                 {true, true, true},
+		"a=1 && for f in x; do b; done &": {true, true, true},
+		"a=1 && for f in x; do b; done":   {false, true, true},       // the header runs only when a=1 succeeded
+		"for f in x; do b; done | c; d=1": {true, true, true, false}, // a pipe's writing side is the whole loop
+		"if a; then b; fi > out | c; d=1": {true, true, true, true, false},
+		"x | for f in y; do b; done; d=1": {true, true, true, false},
+		"if a; then b=1 & fi; c=2":        {true, true, false},
 	} {
 		got := conds(src)
 		if len(got) != len(want) {

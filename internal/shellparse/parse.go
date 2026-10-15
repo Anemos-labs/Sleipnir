@@ -42,6 +42,17 @@ type parser struct {
 	headerTok  token       // the "for" keyword, for Raw
 	inDbl      bool        // inside [[ ... ]]
 	cases      []caseFrame // the open case statements, innermost last
+	lists      []listFrame // the and-or lists of the open compound commands, innermost last
+	headerCond bool        // the for/select being read runs only conditionally or in a shell of its own
+}
+
+// listFrame is the and-or list a compound command (if, while, until, for, select, case, { }, ( )) belongs to, set aside while
+// its body is read, and where the compound's own commands begin in out. At the compound's end the list is the enclosing one
+// again: an & after "fi" sends the whole list to the background, the commands before the compound included, and a | after it
+// runs the whole compound in a shell of its own.
+type listFrame struct {
+	start, body int
+	andOr       bool
 }
 
 // caseFrame is one open case statement: where its reading is (the word to match, a pattern list, a body) and the nesting of
@@ -166,6 +177,7 @@ func (p *parser) word(t token) {
 func (p *parser) reserved(t token) bool {
 	switch t.text {
 	case "if", "while", "until":
+		p.open()
 		p.blocks++
 		return true
 	case "!", "then", "elif", "else", "do":
@@ -173,6 +185,7 @@ func (p *parser) reserved(t token) bool {
 	case "fi", "done":
 		if p.blocks > 0 {
 			p.blocks--
+			p.close()
 		}
 		p.have = true
 		return true
@@ -184,6 +197,7 @@ func (p *parser) reserved(t token) bool {
 		}
 		return true
 	case "{":
+		p.open()
 		p.groups++
 		return true
 	case "}":
@@ -191,16 +205,20 @@ func (p *parser) reserved(t token) bool {
 			p.st.problem("unmatched }")
 		} else {
 			p.groups--
+			p.close()
 		}
 		p.have = true
 		return true
 	case "for", "select":
+		p.headerCond = p.andOr || p.nextPiped || p.parens > 0 || p.groups > 0 || p.blocks > 0 || len(p.cases) > 0
+		p.open()
 		p.blocks++
 		p.skipHeader = true
 		p.header = nil
 		p.headerTok = t
 		return true
 	case "case":
+		p.open()
 		p.cases = append(p.cases, caseFrame{at: caseSubject, parens: p.parens, groups: p.groups, block: p.blocks})
 		return true
 	case "time":
@@ -328,6 +346,7 @@ func (p *parser) op(t token) {
 			p.st.problem("arithmetic command (( )) is not analysed")
 		}
 		p.st.an.HasSubshell = true
+		p.open()
 		p.parens++
 		p.needCmd = false
 	case ")":
@@ -336,6 +355,7 @@ func (p *parser) op(t token) {
 			p.st.problem("unmatched )")
 		} else {
 			p.parens--
+			p.close()
 		}
 		p.have = true
 	default: // ;; ;& ;;& outside a case body
@@ -366,7 +386,26 @@ func (p *parser) endCase(c *caseFrame) {
 		p.st.problem("unexpected esac")
 	}
 	p.cases = p.cases[:len(p.cases)-1]
+	p.close()
 	p.have = true
+}
+
+// open sets the current and-or list aside at the start of a compound command; its body's commands begin a list of their own.
+func (p *parser) open() {
+	p.lists = append(p.lists, listFrame{start: p.listStart, body: len(p.out), andOr: p.andOr})
+	p.listStart = len(p.out)
+}
+
+// close ends the innermost compound command: the enclosing and-or list is current again, and the compound is the last
+// command of it (what a following | runs in a shell of its own).
+func (p *parser) close() {
+	if len(p.lists) == 0 {
+		return
+	}
+	f := p.lists[len(p.lists)-1]
+	p.lists = p.lists[:len(p.lists)-1]
+	p.listStart, p.andOr = f.start, f.andOr
+	p.last = f.body
 }
 
 func (p *parser) redir(t token) {
@@ -427,15 +466,18 @@ func (p *parser) finish() {
 	p.scripts(&s)
 	p.stdinScripts(&s, c.bodies)
 	p.out = append(p.out, s)
-	p.last = len(p.out) - 1
+	if len(c.words) > 0 || !p.have { // "done > out" is the compound's redirection: the compound stays the last command
+		p.last = len(p.out) - 1
+	}
 	p.have = true
 	p.flush()
 }
 
-// markLast marks the command finish emitted last as Cond (it ran in a shell of its own: a pipe's writing side, a background job).
+// markLast marks the last command of the list as Cond (it ran in a shell of its own: a pipe's writing side): the command finish
+// emitted last, or every command of the compound command that ended last.
 func (p *parser) markLast() {
-	if p.last >= 0 && p.last < len(p.out) {
-		p.out[p.last].Cond = true
+	for i := max(p.last, 0); p.last >= 0 && i < len(p.out); i++ {
+		p.out[i].Cond = true
 	}
 }
 
@@ -548,7 +590,7 @@ func (p *parser) endHeader() {
 		raw = p.src[p.headerTok.start:p.headerTok.end]
 	}
 	p.out = append(p.out, Simple{
-		Program: "for", Args: append([]string(nil), words...), Raw: raw, Nested: p.nested, LoopVar: loopVar,
+		Program: "for", Args: append([]string(nil), words...), Raw: raw, Nested: p.nested, LoopVar: loopVar, Cond: p.headerCond,
 	})
 	p.have = true
 	p.flush()
