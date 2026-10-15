@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,16 +31,22 @@ const (
 	maxHotTasks       = 40 // the manager's view
 	maxHotTasksWorker = 14
 	maxHotFailed      = 3
-	maxHotAgents      = 30
+	maxHotAgents      = 30 // teammates with a line of their own in a worker's view; the others are named (maxHotAgentNames)
+	maxHotAgentsMgr   = 64 // the same in the manager's view, which decides about every worker and has the larger budget
+	maxHotAgentNames  = 64 // teammates named on the "not shown" line, a few tokens each
 	maxHotNotes       = 8
 )
 
 // hline is one candidate line with a priority; lower priority numbers survive
-// budget pressure longer.
+// budget pressure longer. Within one priority, a line with a higher drop goes
+// first (a less relevant teammate), then the older one. agent names the teammate
+// of a team line, who is named on the "not shown" line when the line is dropped.
 type hline struct {
-	prio int
-	sec  int
-	text string
+	prio  int
+	sec   int
+	text  string
+	drop  int
+	agent string
 }
 
 // RenderHot builds one agent's view of the board. It is a pure function of the
@@ -75,7 +82,7 @@ func RenderHot(s *Snapshot, agent, role string, isManager bool, cfg HotConfig, e
 
 	var lines []hline
 	add := func(prio, sec int, format string, args ...any) {
-		lines = append(lines, hline{prio, sec, fmt.Sprintf(format, args...)})
+		lines = append(lines, hline{prio: prio, sec: sec, text: fmt.Sprintf(format, args...)})
 	}
 
 	// 0: who am I.
@@ -129,15 +136,15 @@ func RenderHot(s *Snapshot, agent, role string, isManager bool, cfg HotConfig, e
 		}
 	}
 
-	// 4: teammates, relevant first.
+	// 4: teammates, relevant first. A teammate is on a line of its own or on the "not shown"
+	// line, so nobody reads a teammate's absence from the view as its absence from the team:
+	// that line names the most relevant of them (at most maxHotAgentNames, fewer when the
+	// budget needs it) and counts every one. The lines go in roster order; relevance decides
+	// who gets one (maxHotAgents, maxHotAgentsMgr) and who is named first when the budget drops
+	// lines.
 	var idle, running, other int
-	owners := map[string]bool{}
-	for _, t := range s.Tasks {
-		if t.Owner != "" && (mine[t.ID] || related[t.ID]) {
-			owners[t.Owner] = true
-		}
-	}
-	shown := 0
+	rank := teammateRanks(s, agent, role, isManager, mine, related)
+	var mates []AgentInfo
 	for _, a := range s.Agents {
 		if a.ID == agent {
 			continue
@@ -150,20 +157,38 @@ func RenderHot(s *Snapshot, agent, role string, isManager bool, cfg HotConfig, e
 		default:
 			other++
 		}
-		prio := 6
-		if owners[a.ID] || a.Role == role {
-			prio = 4
-		}
-		if isManager {
-			prio = 4
-		}
-		if shown >= maxHotAgents {
-			hidden++
+		mates = append(mates, a)
+	}
+	byRank := append([]AgentInfo(nil), mates...)
+	sort.SliceStable(byRank, func(i, j int) bool { return rank[byRank[i].ID] < rank[byRank[j].ID] })
+	pos := make(map[string]int, len(byRank)) // place by relevance
+	at := make(map[string]int, len(mates))   // place on the roster
+	for i, a := range byRank {
+		pos[a.ID] = i
+	}
+	for i, a := range mates {
+		at[a.ID] = i
+	}
+	capAgents := maxHotAgents
+	if isManager {
+		capAgents = maxHotAgentsMgr
+	}
+	var unlisted []string // teammates beyond the cap, most relevant first
+	for _, a := range byRank[min(len(byRank), capAgents):] {
+		unlisted = append(unlisted, a.ID)
+	}
+	for _, a := range mates {
+		if pos[a.ID] >= capAgents {
 			continue
 		}
-		shown++
-		add(prio, 3, "%s", agentLine(a))
+		prio := 6
+		if rank[a.ID] < rankOthers || isManager {
+			prio = 4
+		}
+		lines = append(lines, hline{prio: prio, sec: 3, text: agentLine(a), drop: pos[a.ID], agent: a.ID})
 	}
+	namesAt := len(lines) // the "not shown" line ends the team section
+	lines = append(lines, hline{prio: 1, sec: 3})
 
 	// 5: notes proposed for shared context but not yet merged: the newest few.
 	var notes []Note
@@ -183,7 +208,8 @@ func RenderHot(s *Snapshot, agent, role string, isManager bool, cfg HotConfig, e
 	}
 
 	// Assemble under budget: drop the highest priority numbers first (within one
-	// priority, the oldest lines first), until it fits. Every line is estimated once and
+	// priority, the least relevant teammate first, otherwise the oldest line), until it
+	// fits; a teammate whose line is dropped is named on the "not shown" line. Every line is estimated once and
 	// dropped in a single pass; a real render then checks the estimate, and only the
 	// remainder (section headers, rounding) needs another round, so the cost is
 	// O(lines log lines), not a re-render per dropped line.
@@ -191,11 +217,27 @@ func RenderHot(s *Snapshot, agent, role string, isManager bool, cfg HotConfig, e
 	for i := range keep {
 		keep[i] = true
 	}
+	dropped := hidden
+	names := maxHotAgentNames // how many teammates the "not shown" line names; it counts them all
+	// named writes the "not shown" line: the teammates beyond the cap and those whose lines were dropped.
+	named := func() {
+		ids := append([]string(nil), unlisted...)
+		for i, l := range lines {
+			if l.agent != "" && !keep[i] {
+				ids = append(ids, l.agent)
+			}
+		}
+		lines[namesAt].text, keep[namesAt] = notShownLine(ids, pos, at, names)
+	}
 	render := func() string {
-		return assemble(lines, keep, s.Version, len(s.Agents), running, idle, other, open, done, agent)
+		named()
+		txt := assemble(lines, keep, s.Version, len(s.Agents), running, idle, other, open, done, agent)
+		if dropped > 0 {
+			txt = strings.Replace(txt, "</live>", fmt.Sprintf("(+%d more lines omitted)\n</live>", dropped), 1)
+		}
+		return txt
 	}
 	txt := render()
-	dropped := hidden
 	if total := est.Tokens(txt); total > budget {
 		var order []int
 		for i := range lines {
@@ -203,24 +245,129 @@ func RenderHot(s *Snapshot, agent, role string, isManager bool, cfg HotConfig, e
 				order = append(order, i)
 			}
 		}
-		sort.SliceStable(order, func(a, b int) bool { return lines[order[a]].prio > lines[order[b]].prio })
-		pos := 0
-		for total > budget && pos < len(order) {
-			for total > budget && pos < len(order) { // drop by the estimate ...
-				i := order[pos]
-				pos++
+		sort.SliceStable(order, func(a, b int) bool {
+			la, lb := lines[order[a]], lines[order[b]]
+			if la.prio != lb.prio {
+				return la.prio > lb.prio
+			}
+			return la.drop > lb.drop
+		})
+		next := 0
+		for total > budget && next < len(order) {
+			for total > budget && next < len(order) { // drop by the estimate ...
+				i := order[next]
+				next++
 				keep[i] = false
-				dropped++
+				if lines[i].agent == "" {
+					dropped++ // a teammate's line is not lost: the teammate is named instead
+				}
 				total -= est.Tokens(lines[i].text) + 1
 			}
-			txt = render() // ... then look at the real text: headers and rounding may need a bit more
+			txt = render() // ... then look at the real text: headers, rounding and names may need a bit more
+			total = est.Tokens(txt)
+		}
+		// Every line that may go has gone: the "not shown" line names fewer teammates (the least relevant first), down to
+		// none, and still counts them all.
+		for total > budget && names > 0 {
+			names = min(names-1, names*budget/total)
+			txt = render()
 			total = est.Tokens(txt)
 		}
 	}
-	if dropped > 0 {
-		txt = strings.Replace(txt, "</live>", fmt.Sprintf("(+%d more lines omitted)\n</live>", dropped), 1)
-	}
 	return txt
+}
+
+// Relevance tiers of a teammate to the reader of a live view (teammateRanks).
+const (
+	rankNeighbour = iota // works with the reader or waits on it
+	rankRole             // the reader's role
+	rankOthers           // everyone else
+)
+
+// teammateRanks says how much the reader needs to see each teammate (rankNeighbour first). For a worker the neighbours are the
+// manager, the members and leader of the pools it is in and the owners of their subtasks, the owners of the tasks its own depend
+// on or that depend on its own (related), of its task's parent and children, and of tasks blocked on its own; then come the
+// workers of its role. For the manager the neighbours are the workers that wait on it (a task in review or blocked), then those
+// at work on a task; idle workers come last. mine and related are the reader's open tasks and the tasks linked to them by a
+// dependency. It reads the snapshot only.
+func teammateRanks(s *Snapshot, agent, role string, isManager bool, mine, related map[string]bool) map[string]int {
+	rank := make(map[string]int, len(s.Agents))
+	if isManager {
+		for _, a := range s.Agents {
+			rank[a.ID] = rankOthers
+		}
+		for _, t := range s.Tasks {
+			switch {
+			case t.Owner == "":
+			case t.Status == StatusReview || t.Status == StatusBlocked:
+				rank[t.Owner] = rankNeighbour
+			case t.Status == StatusDoing && rank[t.Owner] != rankNeighbour:
+				rank[t.Owner] = rankRole
+			}
+		}
+		return rank
+	}
+	near := map[string]bool{}
+	pools := map[string]bool{} // open pool tasks the reader is in
+	for _, t := range s.Tasks {
+		if t.Pool != nil && t.Status != StatusDone && t.Status != StatusFailed &&
+			(t.Owner == agent || slices.Contains(t.Pool.Members, agent) || slices.Contains(t.Pool.Excused, agent)) {
+			pools[t.ID] = true
+			near[t.Owner] = true
+			for _, m := range t.Pool.Members {
+				near[m] = true
+			}
+		}
+	}
+	parents := map[string]bool{} // parents of the reader's own tasks
+	for _, t := range s.Tasks {
+		if mine[t.ID] && t.Parent != "" {
+			parents[t.Parent] = true
+		}
+	}
+	for _, t := range s.Tasks {
+		switch {
+		case t.Owner == "":
+		case related[t.ID]: // a dependency of the reader's work, or work that depends on it, whatever its status
+			near[t.Owner] = true
+		case t.Status == StatusDone || t.Status == StatusFailed:
+		case pools[t.Parent] || parents[t.ID] || mine[t.Parent] || mine[t.BlockedOn]:
+			near[t.Owner] = true
+		}
+	}
+	for _, a := range s.Agents {
+		switch {
+		case near[a.ID] || a.Role == "manager":
+			rank[a.ID] = rankNeighbour
+		case a.Role == role:
+			rank[a.ID] = rankRole
+		default:
+			rank[a.ID] = rankOthers
+		}
+	}
+	return rank
+}
+
+// notShownLine is the line for the teammates the view has no line for: how many, and the names of the most relevant max of them
+// (pos is each one's place by relevance) in roster order (at). It returns false when there are none.
+func notShownLine(ids []string, pos, at map[string]int, max int) (string, bool) {
+	if len(ids) == 0 {
+		return "", false
+	}
+	n := len(ids)
+	if max <= 0 {
+		return fmt.Sprintf("+%d not shown", n), true
+	}
+	if n > max {
+		sort.Slice(ids, func(i, j int) bool { return pos[ids[i]] < pos[ids[j]] })
+		ids = ids[:max]
+	}
+	sort.Slice(ids, func(i, j int) bool { return at[ids[i]] < at[ids[j]] })
+	more := ""
+	if n > len(ids) {
+		more = fmt.Sprintf(" and %d more", n-len(ids))
+	}
+	return fmt.Sprintf("+%d not shown: %s%s", n, strings.Join(ids, ", "), more), true
 }
 
 // pickTasks chooses which of the candidate tasks (indexes into s.Tasks, in board order)
