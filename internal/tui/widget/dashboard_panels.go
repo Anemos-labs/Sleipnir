@@ -1,5 +1,5 @@
 // The panels of the cockpit that are not widgets of their own: the title bar, the prefix fan with its clock, the governor, the live
-// feed and the key hints, and what is derived from the agents (legs of the horse, riders of the fan, the ones to show).
+// feed and the key hints, and what is derived from the agents (legs of the horse, the agents of the fan, the ones to show).
 
 package widget
 
@@ -41,7 +41,7 @@ func dashSpend(d DashboardData) string {
 	return dashMoney(d.Spend)
 }
 
-// dashCount writes a small number in words, the way the sketch does ("one prefix, eight riders"), and larger ones in digits.
+// dashCount writes a small number in words, the way the sketch does ("one prefix, eight agents"), and larger ones in digits.
 func dashCount(n int) string {
 	words := [...]string{"no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"}
 	if n >= 0 && n < len(words) {
@@ -103,7 +103,7 @@ var LegRoles = []string{"architect", "scout", "backend", "frontend", "devops", "
 // any other role after them in the order its first worker is listed, eight to a round (a ninth role shares leg 0). A leg has its
 // role's colour and is busy while any worker of the role runs a tool or edits, so a team of 32, four of each role, moves the same
 // eight legs as a team of eight; a role with no worker stands, in the colour of its place. A worker with no role is a role of its
-// own. The manager rides (it is in the fan of riders) and the mailman carries mail: neither is a leg.
+// own. The manager reads the prefix (it is in the fan) and the mailman carries mail: neither is a leg.
 func dashLegs(agents []AgentRow) []Leg {
 	legs := make([]Leg, 8)
 	for k := range legs {
@@ -206,16 +206,16 @@ func frameTitleBar(task string, stats []string, width int, below []int, p Palett
 	return c.line()
 }
 
-// dashFan is the panel of the prefix: its title, the prefix and its clock, and the fan of riders.
+// dashFan is the panel of the prefix: its title, the prefix and its clock, and the fan of the agents that read it.
 func dashFan(d DashboardData, w int, p Palette) []cell.Line {
 	if w < 8 {
 		return nil
 	}
 	var out []cell.Line
 	n := len(d.Agents)
-	noun := " riders"
+	noun := " agents"
 	if n == 1 {
-		noun = " rider"
+		noun = " agent"
 	}
 	out = append(out, showFit(cell.Styled(cell.Style{Attr: cell.Bold}, "one prefix, "+dashCount(n)+noun), w))
 
@@ -243,13 +243,13 @@ func dashFan(d DashboardData, w int, p Palette) []cell.Line {
 	}
 	out = append(out, showFit(b.line(), w), nil)
 
-	riders := make([]string, n)
+	readers := make([]string, n)
 	weights := make([]int, n)
 	for i, a := range d.Agents {
-		riders[i] = a.ID
+		readers[i] = a.ID
 		weights[i] = int(float64(showTok(a.Shared)) * showUnit(a.Hit))
 	}
-	return append(out, FanShared(d.Shared, riders, weights, w, p)...)
+	return append(out, FanShared(d.Shared, readers, weights, w, p)...)
 }
 
 // dashMeter is a little meter of ▰ and ▱ for a ratio, green while there is room and amber and red as it fills.

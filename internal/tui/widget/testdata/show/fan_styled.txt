@@ -1,6 +1,6 @@
-# lines are layer G1's colour: Bold for heavy, Dim for a rider that read nothing; its label is dim too
+# lines are layer G1's colour: Bold for heavy, Dim for an agent that read nothing; its label is dim too
 
-== four riders
+== four agents
 {G0|████████████}{G1|██████████}{G2|██████}
      {G0+b|G0}         {G1+b|G1}      {G2+b|G2}
    {G1+d|╎}      {G1+b|┃}      {G1|│}      {G1|╎}

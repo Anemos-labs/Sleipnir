@@ -1,4 +1,4 @@
-// The shared-prefix fan: one cached prefix and a line down to every rider that reads it (docs/UX.md, "one prefix, eight riders";
+// The shared-prefix fan: one cached prefix and a line down to every agent that reads it (docs/UX.md, "one prefix, eight agents";
 // the top right of the swarm sketch swarm.png).
 
 package widget
@@ -14,7 +14,7 @@ func fanDefaultLayers() []Layer {
 
 const fanDrop = 3 // the rows of the lines between the bar and the labels
 
-// Fan draws the shared prefix, G0 to G2, as one bar over the whole width, with a line down from it to each rider's label:
+// Fan draws the shared prefix, G0 to G2, as one bar over the whole width, with a line down from it to each agent's label:
 //
 //	████████████████████████████████████████████████████
 //	         G0                G1              G2
@@ -23,19 +23,19 @@ const fanDrop = 3 // the rows of the lines between the bar and the labels
 //	   ╎      ┃      │      ╎      │      ╎      ┃
 //	  m0     w1     w2     w3     w4     w5     w7
 //
-// The weight of a line says how many tokens that rider read from the cache: ┃ for most of what the heaviest read, │ for a fair
-// share, ╎ for less, and ╎ dim (with a dim label) for a rider that read nothing, a cold one. weights[i] belongs to
-// ridersLabels[i]; a missing weight is 0 and extra weights are ignored, and a negative one is 0.
+// The weight of a line says how many tokens that agent read from the cache: ┃ for most of what the heaviest read, │ for a fair
+// share, ╎ for less, and ╎ dim (with a dim label) for an agent that read nothing, a cold one. weights[i] belongs to
+// ids[i]; a missing weight is 0 and extra weights are ignored, and a negative one is 0.
 //
 // Riders are spread evenly. When there are more than fit (a label and a space each) the first ones are drawn and the last
-// column says how many more there are (+42). With no riders it is the bar and its labels only, and a width too short for one
-// rider is the bar alone; a width <= 0 draws nothing.
-func Fan(ridersLabels []string, weights []int, width int, p Palette) []cell.Line {
-	return FanShared(fanDefaultLayers(), ridersLabels, weights, width, p)
+// column says how many more there are (+42). With no agents it is the bar and its labels only, and a width too short for one
+// agent is the bar alone; a width <= 0 draws nothing.
+func Fan(ids []string, weights []int, width int, p Palette) []cell.Line {
+	return FanShared(fanDefaultLayers(), ids, weights, width, p)
 }
 
 // FanShared is Fan for the real shared layers: the bar shows them by size and in their colours, all of it read from the cache.
-func FanShared(shared []Layer, ridersLabels []string, weights []int, width int, p Palette) []cell.Line {
+func FanShared(shared []Layer, ids []string, weights []int, width int, p Palette) []cell.Line {
 	if width <= 0 {
 		return nil
 	}
@@ -51,13 +51,13 @@ func FanShared(shared []Layer, ridersLabels []string, weights []int, width int, 
 	bar, labels := StackBar(layers, NewStackOpts(width, total), p)
 	out := []cell.Line{bar, labels}
 
-	n := len(ridersLabels)
+	n := len(ids)
 	if n == 0 {
 		return out
 	}
 	names := make([]string, n)
 	cw := 2
-	for i, s := range ridersLabels {
+	for i, s := range ids {
 		names[i] = showTrunc(showClean(s), 8)
 		if w := cell.StringWidth(names[i]) + 1; w > cw {
 			cw = w
@@ -71,8 +71,8 @@ func FanShared(shared []Layer, ridersLabels []string, weights []int, width int, 
 	if n > cols {
 		more = n - (cols - 1)
 		n = cols - 1
-		if n < 1 { // not even room for one rider and the count: the count alone
-			n, more = 0, len(ridersLabels)
+		if n < 1 { // not even room for one agent and the count: the count alone
+			n, more = 0, len(ids)
 		}
 	}
 	slots := n

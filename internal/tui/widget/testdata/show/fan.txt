@@ -1,6 +1,6 @@
-# Fan: the shared prefix and a line to every rider; ┃ read most from the cache, │ a fair share, ╎ less, ╎ dim (and a dim label) nothing
+# Fan: the shared prefix and a line to every agent that reads it; ┃ read most from the cache, │ a fair share, ╎ less, ╎ dim (and a dim label) nothing
 
-== eight riders, width 56 (width 56, 6 lines)
+== eight agents, width 56 (width 56, 6 lines)
 ████████████████████████████████████████████████████████|
            G0                    G1              G2     |
    ╎      ┃      ┃      │      │      ╎      ╎      ┃   |
@@ -8,7 +8,7 @@
    ╎      ┃      ┃      │      │      ╎      ╎      ┃   |
    m0     w1     w2     w3     w4     w5     w6     w7  |
 
-== eight riders, width 48 (width 48, 6 lines)
+== eight agents, width 48 (width 48, 6 lines)
 ████████████████████████████████████████████████|
          G0                 G1            G2    |
    ╎     ┃     ┃     │     │     ╎     ╎     ┃  |
@@ -16,7 +16,7 @@
    ╎     ┃     ┃     │     │     ╎     ╎     ┃  |
    m0    w1    w2    w3    w4    w5    w6    w7 |
 
-== eight riders, width 40 (width 40, 6 lines)
+== eight agents, width 40 (width 40, 6 lines)
 ████████████████████████████████████████|
        G0              G1         G2    |
   ╎    ┃    ┃    │    │    ╎    ╎    ┃  |
@@ -24,7 +24,7 @@
   ╎    ┃    ┃    │    │    ╎    ╎    ┃  |
   m0   w1   w2   w3   w4   w5   w6   w7 |
 
-== eight riders, width 32 (width 32, 6 lines)
+== eight agents, width 32 (width 32, 6 lines)
 ████████████████████████████████|
       G0          G1       G2   |
   ╎   ┃   ┃   │   │   ╎   ╎   ┃ |
@@ -32,16 +32,16 @@
   ╎   ┃   ┃   │   │   ╎   ╎   ┃ |
   m0  w1  w2  w3  w4  w5  w6  w7|
 
-== eight riders, width 24 (width 24, 6 lines)
+== eight agents, width 24 (width 24, 6 lines)
 ████████████████████████|
     G0        G1    G2  |
  ╎  ┃  ┃  │  │  ╎  ╎  ┃ |
  ╎  ┃  ┃  │  │  ╎  ╎  ┃ |
  ╎  ┃  ┃  │  │  ╎  ╎  ┃ |
  m0 w1 w2 w3 w4 w5 w6 w7|
-# more riders than fit: the first ones and a count
+# more agents than fit: the first ones and a count
 
-== 50 riders, width 40 (width 40, 6 lines)
+== 50 agents, width 40 (width 40, 6 lines)
 ████████████████████████████████████████|
        G0              G1         G2    |
   │   │   │   ┃   ┃   │   │   │   ┃     |
@@ -49,7 +49,7 @@
   │   │   │   ┃   ┃   │   │   │   ┃     |
   w0  w1  w2  w3  w4  w5  w6  w7  w8 +41|
 
-== 50 riders, width 12 (width 12, 6 lines)
+== 50 agents, width 12 (width 12, 6 lines)
 ████████████|
  G0   G1 G2 |
   │   ┃     |
@@ -67,11 +67,11 @@
      m0        w1        w2        w3   |
 # odd input
 
-== no riders (width 30, 2 lines)
+== no agents (width 30, 2 lines)
 ██████████████████████████████|
      G0          G1      G2   |
 
-== riders without weights (width 30, 6 lines)
+== agents without weights (width 30, 6 lines)
 ██████████████████████████████|
      G0          G1      G2   |
      ╎         ╎         ╎    |

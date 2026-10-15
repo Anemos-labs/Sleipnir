@@ -15,7 +15,7 @@
 │    █ G5 thread   3.2k   33% ██▓░░░░░ partial              0                                                │
 │    total         9.6k  100% █████▓░░ 78% hit                                                               │
 ├─ hit ratio per request ────────────────────────────────────────┬─ its prefix ──────────────────────────────┤
-│      ⚠ ◆                                                       │ shared 1.2k tokens of G1–G2 · 3 riders    │
+│      ⚠ ◆                                                       │ shared 1.2k tokens of G1–G2 · 3 agents    │
 │ ▁▇▇▇▇▂▇▇▇                                                      │ mgr w1 w2                                 │
 │ 9 requests · mean 63% · lowest 0% at request 1                 │ ● warm 5:00 ▰▰▰▰▰▰▰▰                      │
 │ ⚠ cache break   ◆ compaction   ↻ new epoch                     │                                           │
