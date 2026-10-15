@@ -39,7 +39,7 @@ func TestE2EDemoShowsTheTeamAndKeepsTheLastScreenUntilQ(t *testing.T) {
 	s.WriteString("m")
 	waitScreen(t, s, 100, 36, "the mail view", shows("mail ·"))
 	s.WriteString("o")
-	waitScreen(t, s, 100, 36, "the cockpit again", shows("riders"))
+	waitScreen(t, s, 100, 36, "the cockpit again", shows("one prefix"))
 
 	s.WriteString("q")
 	exitStatus(t, s, 0)
