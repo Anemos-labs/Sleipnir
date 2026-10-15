@@ -146,6 +146,12 @@ type fileRec struct {
 	// gen counts Before calls on this record (not persisted). After uses it to
 	// notice that another agent announced a write while it was fingerprinting.
 	gen uint64
+	// postSeq is the capture number (Store.captures) of the fingerprint in Post
+	// (not persisted). Two agents whose writes follow the same Before both pass the
+	// gen check; the one that read the file first must not overwrite what the later
+	// read found, or Post is stale and a restore takes the last write for someone
+	// else's edit.
+	postSeq uint64
 	// gapNext says that the file was changed by someone who is not recording
 	// between the last journaled write and the next Before (not persisted): the
 	// next journal entry is marked as following a gap.
@@ -252,6 +258,9 @@ type Store struct {
 	// journalOn says it was enabled.
 	journalLeft int64
 	journalOn   atomic.Bool
+	// captures numbers the fingerprints After takes, in the order they start
+	// reading the file (fileRec.postSeq).
+	captures uint64
 }
 
 // New opens (creating if needed) the checkpoint store in dir. Existing
@@ -831,9 +840,11 @@ func (s *Store) after(agent, path string) {
 				cp, rec = s.cps[i], r
 			}
 		}
-		var gen uint64
+		var gen, seq uint64
 		if rec != nil {
 			gen = rec.gen
+			s.captures++
+			seq = s.captures
 		}
 		s.mu.Unlock()
 		if rec == nil {
@@ -841,12 +852,15 @@ func (s *Store) after(agent, path string) {
 		}
 		// Fingerprinting reads the file, so it happens outside the lock. If another
 		// agent announced a write meanwhile (gen moved), what was read may already
-		// be stale: drop it and let that agent's own After record the truth.
+		// be stale: drop it and let that agent's own After record the truth. Of the
+		// fingerprints that pass, the one whose read started last wins: it read the
+		// file after every write whose After started earlier.
 		st, data := s.capture(p)
+		fresh := func() bool { return rec.gen == gen && seq > rec.postSeq } // callers hold s.mu
 		if !s.journalOn.Load() {
 			s.mu.Lock()
-			if rec.gen == gen {
-				rec.Post = &st
+			if fresh() {
+				rec.Post, rec.postSeq = &st, seq
 				rec.Last = s.now()
 				_ = s.persistLocked(cp)
 			}
@@ -857,8 +871,8 @@ func (s *Store) after(agent, path string) {
 		s.mu.Lock()
 		now := s.now()
 		w := jwrite{Agent: cleanText(agent, 128), At: now} // content unknown unless the fingerprint is this write's
-		if rec.gen == gen {
-			rec.Post = &st
+		if fresh() {
+			rec.Post, rec.postSeq = &st, seq
 			rec.Last = now
 			w.Kind, w.Blob, w.Sum, w.Size, w.MTime = st.Kind, blob, st.Sum, st.Size, st.MTime
 		}
