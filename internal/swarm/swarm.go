@@ -144,7 +144,8 @@ type Config struct {
 	// of parcels must be quiet before the mailman is asked (default 1.5s),
 	// MailmanMax the longest a burst may postpone it (6s), MailmanBound the longest any
 	// parcel waits before the harness delivers it directly (30s), MailmanBatch how
-	// many parcels one request of the mailman covers (24), MailmanMaxPending how many
+	// many parcels one request of the mailman covers (24, at most 66: each parcel is shown
+	// at least 240 characters within the request's budget), MailmanMaxPending how many
 	// the harness holds at all before delivering directly (200), and MailmanDigestChars
 	// the longest digest (700).
 	Mailman            bool
@@ -406,6 +407,7 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 	if cfg.MailmanBatch <= 0 {
 		cfg.MailmanBatch = def.MailmanBatch
 	}
+	cfg.MailmanBatch = min(cfg.MailmanBatch, mailmanMaxBatch)
 	if cfg.MailmanMaxPending <= 0 {
 		cfg.MailmanMaxPending = def.MailmanMaxPending
 	}
