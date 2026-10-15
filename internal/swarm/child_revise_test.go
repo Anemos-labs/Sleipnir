@@ -3,6 +3,7 @@ package swarm
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -182,5 +183,50 @@ func TestAChildReviseKeepsAPlanningPoolPlanning(t *testing.T) {
 	if p.Status != StatusTodo || p.Rev != before.Rev || p.Pool.Phase != "planning" || p.Pool.Revision != before.Pool.Revision || len(p.Pool.Votes) != 1 {
 		t.Fatalf("a planning pool was moved on by a child revise: %s rev %d->%d, phase %s, revision %d->%d, votes %v",
 			p.Status, before.Rev, p.Rev, p.Pool.Phase, before.Pool.Revision, p.Pool.Revision, p.Pool.Votes)
+	}
+}
+
+// A child revised after its pool's result was accepted reopens the pool: the parent is done no more, its leader gets a new
+// assignment of it, the pool executes again at a new revision with no confirmation or inspection of the old result, and the
+// leader and the child's owner are told.
+func TestAChildReviseReopensAnAcceptedPool(t *testing.T) {
+	r, parent, children := childReviseRig(t)
+	lead, owner, bystander := parent.Pool.Members[0], parent.Pool.Members[1], parent.Pool.Members[2]
+	if err := r.sw.Board.poolUpdate("mgr", parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error {
+		p.Phase, p.Revision, p.Agreement = "reconciling", p.Revision+1, "the combined contract"
+		p.Votes, p.Inspected = slices.Clone(p.Members), slices.Clone(p.Members)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.Submit(lead, parent.ID, "combined result", "pool reconciled and verified"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.Accept("mgr", parent.ID, "accepted"); err != nil {
+		t.Fatal(err)
+	}
+	accepted, _ := r.sw.Board.Snapshot().Task(parent.ID)
+	if accepted.Status != StatusDone {
+		t.Fatalf("setup: parent %s", accepted.Status)
+	}
+	if res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "revise", "id": children[1].ID, "description": "handle the empty page", "text": "missed case"}); res.IsError {
+		t.Fatal(res.Text)
+	}
+	p, _ := r.sw.Board.Snapshot().Task(parent.ID)
+	if p.Status != StatusDoing || p.Owner != lead || p.Rev == accepted.Rev || !p.Closure.IsZero() {
+		t.Fatalf("the accepted parent was not reopened to its leader: %s owner %s rev %d->%d closure %v", p.Status, p.Owner, accepted.Rev, p.Rev, p.Closure)
+	}
+	if p.Pool.Phase != "executing" || p.Pool.Revision != accepted.Pool.Revision+1 || len(p.Pool.Votes) != 0 || len(p.Pool.Inspected) != 0 {
+		t.Fatalf("pool after the revise: phase %s, revision %d (was %d), votes %v, inspected %v", p.Pool.Phase, p.Pool.Revision, accepted.Pool.Revision, p.Pool.Votes, p.Pool.Inspected)
+	}
+	if p.Result != "" || p.Evidence != "" {
+		t.Fatalf("the reopened parent keeps its old result: %q / %q", p.Result, p.Evidence)
+	}
+	told := harnessMail(r, "revised")
+	if told[lead] != 1 || told[owner] != 1 || told[bystander] != 0 {
+		t.Fatalf("notices: %v (want one each to the leader %s and the owner %s, none to %s)", told, lead, owner, bystander)
+	}
+	if n := harnessMail(r, "reconcile once every child is done")[lead]; n != 1 {
+		t.Fatalf("the leader was not told the pool executes again (%d)", n)
 	}
 }
