@@ -46,8 +46,9 @@ var feedCases = []feedCase{
 		"✗", "a panic in be-1's output sink was recovered · index out of range [3] with length 2", "be-1"},
 	{"a compaction rejected", "be-1", "compact.reject", map[string]any{"stage": "stale", "reason": "the thread moved while the patch was made"},
 		"⚠", "compaction rejected (stale) · the thread moved while the patch was made", "be-1"},
+	// routine: the mechanical compaction that follows says why on its own line
 	{"a compactor's patch that was unusable", "be-1", "compact.reject", map[string]any{"stage": "model_patch", "reason": "the patch dropped the last user turn", "fallback": "mechanical"},
-		"⚠", "the compactor's patch was unusable: folding mechanically instead · the patch dropped the last user turn", "be-1"},
+		"", "", ""},
 	{"a new epoch of the shared prefix", "swarm", "layer.commit", map[string]any{"scope": "shared-epoch", "reason": "the constitution changed", "hash": "abc123def456"},
 		"↻", "the shared prefix was re-written: a new epoch · the constitution changed", ""},
 	{"an agent that took the new prefix", "be-1", "layer.commit", map[string]any{"scope": "shared-sync", "reason": "the agent took the new prefix"}, "", "", ""},

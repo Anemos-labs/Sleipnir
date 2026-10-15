@@ -67,6 +67,8 @@ type agentState struct {
 	hitIdx     int // the main responses folded in: the index of the next sample
 	mainReqs   int // the main requests sent
 	plan       planInfo
+	fallback   bool   // the compactor's patch was refused and the harness compacts mechanically: the next fork commit is that one
+	fallbackOf string // why the patch was refused, when it said ("" when it did not)
 	prefix     string // the prefix group it rides
 	touch      touchInfo
 	lastTask   string  // the task it last held, for settling "done" whichever of the accept and the end comes first
