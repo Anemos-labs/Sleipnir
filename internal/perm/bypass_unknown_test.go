@@ -140,7 +140,7 @@ func TestAHeredocBodyKeepsTheLinesVariablesKnown(t *testing.T) {
 		{"cat > $TMPDIR/a.txt <<EOF\nf() and g()\nEOF\nD=$TMPDIR/x; rm -rf $D", "allow"}, // "()" in an unquoted body is text too
 		{"cat > $TMPDIR/a.txt <<EOF\nx $((D=1))\nEOF\nD=$TMPDIR/x; rm -rf $D", "ask"},    // arithmetic in an unquoted body runs
 		{"cat > $TMPDIR/a.txt <<'EOF'\ntext\nEOF\nD=$TMPDIR/x; g() { D=/; }; g; rm -rf $D", "ask"},
-		{"D=$TMPDIR/x; echo $((1<<2)); rm -rf $D", "ask"}, // arithmetic (and no heredoc)
+		{"D=$TMPDIR/x; echo $((1<<2)); rm -rf $D", "allow"}, // a shift, not a heredoc; and an expansion that names no variable sets none
 	} {
 		d := e.Check(context.Background(), Request{Agent: "be-3", Tool: "Bash", Command: f.expand(c.cmd)})
 		if got := outcome(d); got != c.want {
@@ -286,6 +286,42 @@ func TestALoopsAssignmentsReachItsWholeBody(t *testing.T) {
 		d := e.Check(context.Background(), Request{Agent: "ts-3", Tool: "Bash", Command: f.expand(c.cmd)})
 		if got := outcome(d); got != c.want {
 			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
+
+// An arithmetic expansion assigns only integers, and only to the names it reaches: those of its text, and those named by the values
+// of the variables it reads, which bash evaluates as expressions too. When every name it reads holds an integer (a number, another
+// expansion, $(date +%s), from an unconditional assignment before it), only the names of its text become unknown; a test script's
+// counter (n=$((n+1))) or timer ($(( $(date +%s) - S0 ))) no longer makes the scratch directory it deletes unknown. A name that may
+// hold anything (x='D=0', read, the environment, $1), a substitution or ${...} in the expression, or one the parser cannot place
+// (a case subject), still makes every variable unknown.
+func TestArithmeticAssignsOnlyTheNamesItReaches(t *testing.T) {
+	f := newFixture(t)
+	tmp := filepath.Join(f.home, ".sleipnir", "sessions", "s1", "tmp")
+	if err := os.MkdirAll(tmp, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: tmp, Ask: []string{"Edit(~/.sleipnir/**)"}})
+	for _, c := range []struct{ cmd, want string }{
+		{"SD=\"$TMPDIR/t67\"; DD=\"$SD/rw\"; rm -rf \"$DD\"; mkdir -p \"$DD\"\nn=1\nfor ts in a b c; do printf x > \"$DD/$ts\"; n=$((n+1)); done\nrm -rf \"$DD\"", "allow"},
+		{"UP=\"$TMPDIR/up\"; S0=$(date +%s); S=\"$UP/bundle-crash\"; rm -rf \"$S\"; echo \"took=$(( $(date +%s) - S0 ))s\"; rm -rf \"$S\"", "allow"},
+		{`D="$TMPDIR/x"; n=1; echo $((RANDOM % 5 + n)); rm -rf "$D"`, "allow"},
+		{`D="$TMPDIR/x"; : $((D=0)); rm -rf "$D"/*`, "ask"},
+		{`x='D=0'; D="$TMPDIR/x"; : $((x)); rm -rf "$D"/*`, "ask"},
+		{`read v; D="$TMPDIR/x"; : $((v)); rm -rf "$D"`, "ask"},
+		{`D="$TMPDIR/x"; : $(( $(cat f) )); rm -rf "$D"`, "ask"},
+		{`D="$TMPDIR/x"; : $((n+1)); rm -rf "$D"`, "ask"}, // n is the environment's
+		{`D="$TMPDIR/x"; n=1; : $(( $1 + n )); rm -rf "$D"`, "ask"},
+		{`D="$TMPDIR/x"; n=1; : $(( ${n} )); rm -rf "$D"`, "ask"},
+		{"D=\"$TMPDIR/x\"; n=1; cat <<EOF\n$((D=n))\nEOF\nrm -rf \"$D\"/*", "ask"},
+		{`D="$TMPDIR/x"; case $((D=0)) in *) :;; esac; rm -rf "$D"/*`, "ask"},
+		{`D="$TMPDIR/x"; n=1; while :; do rm -rf "$D"/*; : $((D=n)); done`, "ask"},
+		{`D="$TMPDIR/x"; if a; then n=1; fi; : $((n)); rm -rf "$D"`, "ask"}, // n may still be the environment's
+	} {
+		d := e.Check(context.Background(), Request{Agent: "ts-3", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%q\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
 		}
 	}
 }

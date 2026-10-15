@@ -10,6 +10,7 @@ type builder struct {
 	piped      bool
 	bodies     []string // heredoc bodies and here-strings feeding the command's stdin
 	literal    []Span   // where the bodies of its heredocs with a quoted delimiter are in the source
+	arith      []string // the arithmetic expansions of its words (Simple.Arith)
 }
 
 // parser groups a token stream into simple commands. It is deliberately not a
@@ -41,6 +42,7 @@ type parser struct {
 	skipHeader bool // inside the word list of for/select
 	header     []string
 	headerTok  token       // the "for" keyword, for Raw
+	headerAri  []string    // the arithmetic expansions of the loop's words
 	inDbl      bool        // inside [[ ... ]]
 	cases      []caseFrame // the open case statements, innermost last
 	lists      []listFrame // the and-or lists of the open compound commands, innermost last
@@ -136,6 +138,7 @@ func (p *parser) word(t token) {
 			return
 		}
 		p.header = append(p.header, t.text)
+		p.headerAri = append(p.headerAri, t.arith...)
 		if t.end > p.headerTok.end {
 			p.headerTok.end = t.end
 		}
@@ -165,12 +168,14 @@ func (p *parser) word(t token) {
 		}
 		p.touch(t)
 		p.cur.words = append(p.cur.words, t.text)
+		p.cur.arith = append(p.cur.arith, t.arith...)
 		return
 	}
 	if !p.cur.has && !t.quoted && p.reserved(t) {
 		return
 	}
 	p.touch(t)
+	p.cur.arith = append(p.cur.arith, t.arith...)
 	if t.assign && len(p.cur.words) == 0 {
 		p.cur.env = append(p.cur.env, t.text)
 		return
@@ -452,6 +457,7 @@ func (p *parser) redir(t token) {
 		p.i++
 		p.pending = append(p.pending, tg.nested...)
 		p.touch(tg)
+		p.cur.arith = append(p.cur.arith, tg.arith...)
 		r.Target = tg.text
 		switch {
 		case tg.hasBody:
@@ -478,7 +484,8 @@ func (p *parser) finish() {
 	c := p.cur
 	p.cur = builder{}
 	s := Simple{Env: c.env, Redirects: c.redirs, Nested: p.nested, Piped: c.piped,
-		Cond: c.piped || p.andOr || p.parens > 0 || p.groups > 0 || p.blocks > 0 || len(p.cases) > 0, Loop: p.curLoop}
+		Cond: c.piped || p.andOr || p.parens > 0 || p.groups > 0 || p.blocks > 0 || len(p.cases) > 0, Loop: p.curLoop, Arith: c.arith}
+	p.st.arithOn += len(c.arith)
 	if c.start >= 0 && c.end <= len(p.src) && c.start <= c.end {
 		s.Raw = p.src[c.start:c.end]
 	}
@@ -604,8 +611,8 @@ func (p *parser) endHeader() {
 		return
 	}
 	p.skipHeader = false
-	words := p.header
-	p.header = nil
+	words, arith := p.header, p.headerAri
+	p.header, p.headerAri = nil, nil
 	loopVar, in := "", false
 	for i, w := range words {
 		if w == "in" && i >= 1 {
@@ -637,8 +644,9 @@ func (p *parser) endHeader() {
 		raw = p.src[p.headerTok.start:p.headerTok.end]
 	}
 	p.out = append(p.out, Simple{
-		Program: "for", Args: append([]string(nil), words...), Raw: raw, Nested: p.nested, LoopVar: loopVar, Cond: p.headerCond, Loop: p.curLoop,
+		Program: "for", Args: append([]string(nil), words...), Raw: raw, Nested: p.nested, LoopVar: loopVar, Cond: p.headerCond, Loop: p.curLoop, Arith: arith,
 	})
+	p.st.arithOn += len(arith)
 	p.have = true
 	p.flush()
 }

@@ -23,6 +23,7 @@ type token struct {
 	assign bool // word starts with an unquoted NAME= (env assignment shape)
 	nested []Simple
 	alts   []string // assign-shaped words only: the brace expansion, if any
+	arith  []string // the arithmetic expansions in the word, or in the body of the heredoc it delimits
 
 	// body is set on the delimiter word of a heredoc once its body has been
 	// read; hasBody distinguishes an empty body from none.
@@ -45,6 +46,7 @@ type lexer struct {
 	depth    int // nesting of substitutions (each gets its own lexer)
 	nest     int // nesting of ${...} and $((...)) inside this lexer
 	heredocs []pendingHeredoc
+	exprs    []string // the arithmetic expressions read and not yet given to a token (token.arith)
 }
 
 // maxNest bounds ${ ${ ${ ... and $(( $(( ... inside one lexer; anything deeper
@@ -244,6 +246,7 @@ func (l *lexer) readHeredocs(toks []token) []Simple {
 	l.heredocs = nil
 	var nested []Simple
 	for _, h := range hs {
+		mark := len(l.exprs)
 		bodyStart := l.pos
 		bodyEnd := -1
 		for l.pos < l.end {
@@ -277,6 +280,10 @@ func (l *lexer) readHeredocs(toks []token) []Simple {
 		if !h.quoted && bodyEnd > bodyStart {
 			l.scanExpansions(bodyStart, bodyEnd, &nested)
 		}
+		if h.tokIdx < len(toks) {
+			toks[h.tokIdx].arith = append(toks[h.tokIdx].arith, l.exprs[mark:]...)
+		}
+		l.exprs = l.exprs[:mark]
 	}
 	return nested
 }

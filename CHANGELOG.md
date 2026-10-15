@@ -7,6 +7,20 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- An arithmetic expansion no longer makes every variable of the line
+  unknown. Bash arithmetic assigns only integers, and only to the names it
+  reaches: those its text names, and those named by the values of the
+  variables it reads. When every name an expansion reads holds an integer
+  on the line (a number, another expansion or `$(date +%s)`, assigned
+  unconditionally before it), only the names of its text become unknown, so
+  a counter (`n=$((n+1))`) or a timer (`$(( $(date +%s) - S0 ))`) leaves the
+  scratch directory the line deletes known. A name that may hold anything
+  (`x='D=0'`, `read`, the environment, `$1`), a substitution or `${...}`
+  inside the expression, or an expansion the parser places on no command
+  (a `case` subject) still makes every variable unknown. A loop's variable
+  is now also bound in the redirections of its body (`> "$DD/$ts"`).
+  Prompt bytes: none change.
+
 - A loop's assignments reach its whole body: a loop runs its commands again,
   so what any of them assigns may be there before the first one runs.
   `X="$TMPDIR/a"; while :; do rm -rf "$X"/*; X=/; done` was allowed and

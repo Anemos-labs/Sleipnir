@@ -103,6 +103,9 @@ type Simple struct {
 	// Loop identifies the outermost while, until, for or select loop the command is in (0: none); commands with the same Loop are
 	// in one loop. A loop runs its commands again, so an assignment anywhere in it may come before any of them.
 	Loop int
+	// Arith are the arithmetic expansions of the command, the text between $(( and )): in its words, assignments and
+	// redirections, and in the bodies of its heredocs. An expansion may assign a variable ($((n=5))) as the words are expanded.
+	Arith []string
 }
 
 // Analysis is the result of Parse.
@@ -126,6 +129,10 @@ type Analysis struct {
 	// runs it as neither shell code nor this shell's input (not sh, source, read or mapfile; a python - <<'PY' script is its data).
 	// No text there can assign this shell's variables or run in it.
 	Literal []Span
+	// ArithKnown is true when every arithmetic expansion of the line is on the command it belongs to (Simple.Arith); false when
+	// one is where the parser reports no command (a case pattern, the words of an unreadable loop), so what it may assign is not
+	// known.
+	ArithKnown bool
 }
 
 // Span is a range of bytes [Start, End) of the parsed text.
@@ -155,6 +162,9 @@ type state struct {
 	limit int
 	dead  bool
 	loops int // the loops numbered so far (Simple.Loop), across nested parses
+	arith int // the arithmetic expansions read, across nested parses
+	// arithOn counts those given to a command (Simple.Arith)
+	arithOn int
 }
 
 // problem records only the first parse problem and marks the analysis incomplete.
@@ -193,6 +203,7 @@ func Parse(cmd string) Analysis {
 	toks, _ := l.lexUntil(false)
 	st.an.Commands = parseTokens(st, cmd, toks, 0, true, false)
 	st.an.PipesToShell = pipesToShell(st.an.Commands)
+	st.an.ArithKnown = st.arithOn == st.arith
 	return st.an
 }
 

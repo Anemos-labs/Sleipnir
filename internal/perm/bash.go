@@ -207,9 +207,11 @@ func (ev *evaluator) bash(cmd string) verdict {
 	var later []deferred
 	// A loop runs its commands again: what any of them assigns may already be there when the first one runs, so the names a loop
 	// assigns are unknown from its start (all of them when one of its builtins may set any).
-	loopNames, loopAll := loopAssignments(an.Commands)
+	// An arithmetic expansion assigns, as the command's words are expanded, only the names it reaches (arithAssigns).
+	ints := intVars(an.Commands)
+	loopNames, loopAll := loopAssignments(an.Commands, ints)
 	entered := map[int]bool{}
-	for _, s := range an.Commands {
+	for i, s := range an.Commands {
 		if s.Deferred {
 			later = append(later, deferred{s: s, vars: maps.Clone(ev.vars)})
 			continue
@@ -221,6 +223,15 @@ func (ev *evaluator) bash(cmd string) verdict {
 			}
 			for _, n := range loopNames[s.Loop] {
 				ev.forget(n, conflicted)
+			}
+		}
+		if track && len(s.Arith) > 0 {
+			if names, all := arithAssigns(s.Arith, i, ints); all {
+				ev.vars, ev.exported, track = nil, nil, false // an expansion may set any variable from here on
+			} else {
+				for _, n := range names {
+					ev.forget(n, conflicted)
+				}
 			}
 		}
 		v := ev.judgeWith(s, cw, ev.vars)
@@ -474,17 +485,17 @@ func validName(s string) bool {
 }
 
 // varsTrackable reports whether a command line is simple enough for noteAssignments, from what the parser found: the line parsed (a
-// function definition, whose body may set variables when it is called, and an arithmetic command leave it unparsed); it has no
-// arithmetic expansion and no other place bash evaluates arithmetic (mayAssignArithmetically), where an expression may assign
-// ($((n=5))); and no trap action assigns, since it may run between any two commands. Quoted
-// text and here-document bodies are the parser's business: printf 'func main() {...}' > main.go defines nothing.
-// cmd is the line's code (shellparse.Analysis.Code).
+// function definition, whose body may set variables when it is called, and an arithmetic command leave it unparsed); each of its
+// arithmetic expansions ($((n=5))) is on the command it belongs to (shellparse.Analysis.ArithKnown; arithAssigns says what it may
+// assign); it has no other place bash evaluates arithmetic (mayAssignArithmetically); and no trap action assigns, since it may run
+// between any two commands. Quoted text and here-document bodies are the parser's business: printf 'func main() {...}' > main.go
+// defines nothing. cmd is the line's code (shellparse.Analysis.Code).
 func varsTrackable(cmd string, an shellparse.Analysis) bool {
-	if !an.Parsed || an.HasArithmetic || mayAssignArithmetically(cmd) {
+	if !an.Parsed || an.HasArithmetic && !an.ArithKnown || mayAssignArithmetically(cmd) {
 		return false
 	}
 	for _, s := range an.Commands {
-		if s.Deferred && (reassigns(s) || len(assignedBy(s)) > 0) {
+		if s.Deferred && (reassigns(s) || len(assignedBy(s)) > 0 || len(s.Arith) > 0) {
 			return false
 		}
 	}
@@ -568,11 +579,16 @@ func reassignedNames(s shellparse.Simple) (names []string, all bool) {
 
 // loopAssignments are the names the commands of each loop (shellparse.Simple.Loop) may set, and the loops one of whose builtins
 // may set any variable.
-func loopAssignments(cmds []shellparse.Simple) (map[int][]string, map[int]bool) {
+func loopAssignments(cmds []shellparse.Simple, ints map[string]int) (map[int][]string, map[int]bool) {
 	names, all := map[int][]string{}, map[int]bool{}
-	for _, s := range cmds {
+	for i, s := range cmds {
 		if s.Loop == 0 || s.Deferred {
 			continue
+		}
+		if len(s.Arith) > 0 {
+			n, a := arithAssigns(s.Arith, i, ints)
+			names[s.Loop] = append(names[s.Loop], n...)
+			all[s.Loop] = all[s.Loop] || a
 		}
 		for _, env := range assignedBy(s) {
 			names[s.Loop] = append(names[s.Loop], envName(env))

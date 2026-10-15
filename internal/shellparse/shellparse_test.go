@@ -889,3 +889,31 @@ func TestLoopIsTheOutermostLoopACommandIsIn(t *testing.T) {
 		t.Errorf("Loop = %v, want %v with two different loops", got, want)
 	}
 }
+
+// Arith holds each arithmetic expansion on the command it belongs to: in its words and redirections, the bodies of its unquoted
+// heredocs and a loop's list. One the parser places on no command (a case subject) leaves ArithKnown false; quoted text holds none.
+func TestArithIsOnTheCommandItBelongsTo(t *testing.T) {
+	for src, want := range map[string]struct {
+		arith [][]string
+		known bool
+	}{
+		"n=1; n=$((n+1))":                  {[][]string{nil, {"n+1"}}, true},
+		`echo "t=$(( $(date +%s) - S0 ))"`: {[][]string{{" $(date +%s) - S0 "}, nil}, true},
+		"cat <<EOF > f\n$((D=0))\nEOF":     {[][]string{{"D=0"}}, true},
+		"echo $(echo $((a=1)))":            {[][]string{nil, {"a=1"}}, true},
+		"for i in $((1+1)) b; do :; done":  {[][]string{{"1+1"}, nil}, true},
+		"x=$(( $((1)) + 2 ))":              {[][]string{{"1", " $((1)) + 2 "}}, true},
+		"echo '$((x=1))'":                  {[][]string{nil}, true},
+		"case $((n=1)) in *) :;; esac":     {[][]string{nil}, false},
+		"cat <<'EOF'\n$((D=0))\nEOF":       {[][]string{nil}, true},
+	} {
+		an := Parse(src)
+		var got [][]string
+		for _, s := range an.Commands {
+			got = append(got, s.Arith)
+		}
+		if !reflect.DeepEqual(got, want.arith) || an.ArithKnown != want.known {
+			t.Errorf("%q: Arith %q known %v, want %q known %v", src, got, an.ArithKnown, want.arith, want.known)
+		}
+	}
+}
