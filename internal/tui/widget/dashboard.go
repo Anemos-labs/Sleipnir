@@ -1,5 +1,5 @@
 // The swarm cockpit, composed from the widgets of this package (docs/UX.md, "Watch"; swarm.png): a title bar, the horse and the fan
-// of riders, the agent table, the gantt and the task board, the merge queue, mail, governor and heatmap, the live feed and the
+// of agents, the agent table, the gantt and the task board, the merge queue, mail, governor and heatmap, the live feed and the
 // keys. One function from data and a size to lines; the layout that fits the size is chosen here.
 
 package widget
@@ -47,7 +47,7 @@ type dashPlan struct {
 // gait, the spinners, a mail arriving; any integer is a frame, and a pace that follows the load is worked out inside).
 //
 // What is shown follows the size. From 96 columns it is as sketched: title bar with the clock, the agents, the spend and the hit
-// ratio; the horse and the fan of riders over the shared prefix and its clock; the agent table; the gantt of the last minute beside
+// ratio; the horse and the fan of the agents over the shared prefix and its clock; the agent table; the gantt of the last minute beside
 // the task board; the merge queue, the mail, the governor and the heatmap of all the agents; the live feed; the keys. From 70 columns the gantt
 // and the heatmap are left out, from 60 the governor too; below 60 columns, or below 8 rows, it is a plain one-column list.
 //
@@ -281,7 +281,7 @@ func dashAssemble(d DashboardData, width int, bands []dashBand, p Palette) []cel
 	return append(out, dashRule(width, "╰", "╯", prev, nil, nil, nil, p))
 }
 
-// dashTopBand is the horse with the fan of riders beside it; the horse is left out when the width holds none.
+// dashTopBand is the horse with the fan of the agents beside it; the horse is left out when the width holds none.
 func dashTopBand(d DashboardData, iw, horseRows, frame int, p Palette) (dashBand, bool) {
 	const fanMin = 26
 	legs := dashLegs(d.Agents)

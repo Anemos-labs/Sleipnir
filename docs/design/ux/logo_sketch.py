@@ -81,7 +81,7 @@ p{position:absolute;left:58px;top:92px;margin:0;font:italic 19px 'Liberation San
   %s%s
   %s
   <g stroke='#c2185b' stroke-width='3'><path d='M380 210 C420 226 470 224 520 214' opacity='.0'/></g>
-</g></svg><div class=cap>eight legs: one for each rider on the shared prefix (a design sketch of the mark)</div></div>"""
+</g></svg><div class=cap>eight legs: one for each worker on the shared prefix (a design sketch of the mark)</div></div>"""
             % (far_legs, body, INK, neck, INK, head, INK, mane, tail, eye, nostril, near_legs))
 
 

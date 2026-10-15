@@ -6,7 +6,7 @@
 │                                   G0                                   G1 G2         G5          │
 │ █ cached 5.6k  ░ paid 114  ▏ breakpoint                                     ● warm 5:00 ▰▰▰▰▰▰▰▰ │
 ├─ hit ratio per request ──────────────────────────────────┬─ its prefix ──────────────────────────┤
-│                                                          │ shared 362 tokens of G1–G2 · 1 rider  │
+│                                                          │ shared 362 tokens of G1–G2 · 1 agent  │
 │ ▁████                                                    │ mgr                                   │
 │ 5 requests · mean 74% · lowest 0% at request 1           │ ● warm 5:00 ▰▰▰▰▰▰▰▰                  │
 │ ⚠ cache break   ◆ compaction   ↻ new epoch               │                                       │

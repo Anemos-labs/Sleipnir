@@ -184,7 +184,9 @@ func (t *Translator) stateOf(uid string, a state.Agent) *StateX {
 	case state.StatusDone:
 		s, doing = "done", firstNonEmpty(a.Evidence, "done")
 	case state.StatusError:
-		s, doing = "stuck", "failed: "+firstNonEmpty(t.d.lastErr[uid], a.Stuck.Note, a.EndState, "the run stopped")
+		// The harness's line for the stop says why it stopped ("step limit reached", "stopped with an error: ..."); the last
+		// guard note is older than the stop and about something else, and a provider error may have been recovered from since.
+		s, doing = "stuck", "failed: "+firstNonEmpty(a.Line, t.d.lastErr[uid], a.Stuck.Note, a.EndState, "the run stopped")
 	default:
 		s, doing = "idle", "waits for work"
 	}
