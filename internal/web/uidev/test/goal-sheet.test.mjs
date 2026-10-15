@@ -36,3 +36,17 @@ test('a goal longer than the server takes is refused before it is sent, and kept
   assert.equal(L.$('#input').value, line, 'the text is kept');
   assert.equal(L.SL.ui.hasModal(), false);
 });
+
+// A brief is shown as it was written: its lines stay lines and a `code` span is code, so `raven simulate --hosts 5000` does not
+// run into one paragraph with --hosts drawn as a dash by the proportional face.
+test('the Goal sheet keeps the lines of a brief and shows its code spans as code', async () => {
+  const L = await boot();
+  const text = 'Build Ravenwatch.\n- `raven`, the agent.\n\nMock mode: `raven simulate --hosts 5000` <b>x</b>', i = L.focus('#input');
+  i.value = '/goal ' + text; i.dispatchEvent(new FakeEvent('input', { bubbles: true })); await L.settle();
+  L.press('enter'); await L.settle();
+  assert.equal(L.posts.filter(p => p.path.endsWith('/goal')).at(-1).body.text, text);
+  const big = L.doc.querySelector('.goal-big');
+  assert.equal(big.textContent, text.replace(/`/g, ''), 'every line and character is there, the markup escaped');
+  assert.deepEqual(Array.from(big.querySelectorAll('code')).map(c => c.textContent), ['raven', 'raven simulate --hosts 5000']);
+  assert.equal(big.querySelectorAll('b').length, 0, 'text from the goal is never markup');
+});

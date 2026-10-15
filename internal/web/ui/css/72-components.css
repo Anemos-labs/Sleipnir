@@ -56,7 +56,8 @@ textarea{font:500 13px/1.4 var(--f-ui);resize:vertical}
 .kv.keys2 dt{text-transform:none;font:500 11px var(--f-num);letter-spacing:0;color:var(--fg2)}
 .kv.keys2 dd{font-family:var(--f-ui);font-size:12.5px}
 .boxed{border:1px solid var(--line);padding:8px 10px;margin-bottom:10px}
-.goal-big{font-size:15px;line-height:1.45;margin:0 0 12px;color:var(--bright)}
+.goal-big{font-size:15px;line-height:1.45;margin:0 0 12px;color:var(--bright);white-space:pre-wrap;overflow-wrap:anywhere;max-height:44vh;overflow:auto}
+.goal-big code{font:500 13px var(--f-num);color:var(--fg);background:var(--well);border:1px solid var(--line);padding:0 4px}
 .st-active,.st-met{color:var(--ok)}.st-paused{color:var(--warm)}
 .modes{display:flex;flex-direction:column;gap:6px}
 .btn.mrow2{justify-content:flex-start;padding:9px 12px;text-align:left}
