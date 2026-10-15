@@ -393,6 +393,62 @@ func TestADollarThatStartsNoExpansionIsTheCharacter(t *testing.T) {
 	}
 }
 
+// A command that prints one name token (date +%Y%m%dT%H%M%SZ, seq, id -u, nproc, uuidgen) gives a piece of a file name, as $$ does:
+// "$D/rw.$ts.tar.gz" with ts=$(date ...) is a file in $D, and so is "$D/pad$i.txt" in a loop over $(seq 1 800) (testers' backup
+// drills were asked about both). It is judged empty too, as the command's failure leaves it, so rm -rf "$HOME/$ts" is still refused.
+// A format that prints a "/" (%D), a dot alone, or any other command's output is still only known when the line runs.
+func TestATokenSubstitutionIsAPieceOfAName(t *testing.T) {
+	f := newFixture(t)
+	tmp := filepath.Join(f.home, ".sleipnir", "sessions", "s1", "tmp")
+	if err := os.MkdirAll(tmp, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: tmp, Ask: []string{"Edit(~/.sleipnir/**)"}})
+	for _, c := range []struct{ cmd, want string }{
+		{`D="$TMPDIR/x"; for i in $(seq 1 800); do printf x > "$D/pad$i.txt"; done`, "allow"},
+		{`D="$TMPDIR/x"; ts="$(date -u '+%Y%m%dT%H%M%SZ')"; printf x > "$D/rw.$ts.tar.gz"`, "allow"},
+		{`D="$TMPDIR/x"; ts="$(date -u -d "+$off sec" '+%Y%m%dT%H%M%SZ')"; printf x > "$D/rw.$ts.tar.gz"`, "allow"},
+		{`D="$TMPDIR/x"; printf x > "$D/log-$(date +%s).txt"`, "allow"},
+		{`D="$TMPDIR/x"; ts="$(date -u +%s)"; rm -rf "$D/$ts"`, "allow"},
+		{`D="$TMPDIR/x"; u=$(id -u); printf x > "$D/run-$u-$(nproc).log"`, "allow"},
+		{`ts="$(date +%s)"; rm -rf "$HOME/$ts"`, "deny"},          // the date may fail: rm -rf "$HOME/"
+		{`D="$TMPDIR/x"; printf x > "$D/$(date +%D).txt"`, "ask"}, // %D prints m/d/y
+		{`D="$TMPDIR/x"; printf x > "$D/$(date +.)"`, "ask"},
+		{`D="$TMPDIR/x"; ts="$(cat f)"; printf x > "$D/$ts"`, "ask"},
+		{`D="$TMPDIR/x"; ts="$(date +$FMT)"; printf x > "$D/$ts"`, "ask"},
+		{`D="$TMPDIR/x"; for i in $(seq 1 $N); do printf x > "$D/$i"; done`, "ask"},
+	} {
+		d := e.Check(context.Background(), Request{Agent: "ts-3", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
+
+// A cd to a directory only known when the line runs (cd "$(git rev-parse --show-toplevel 2>/dev/null || pwd)", the first line of
+// many a script) makes relative paths unknown, not full ones: "$TMPDIR/x", and a variable set to it, still name that path. A relative
+// path, and a value that names the directory ($PWD, $(pwd)), are still only known when the line runs.
+func TestAnUnknownDirectoryKeepsFullPathsKnown(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: t.TempDir()})
+	for _, c := range []struct{ cmd, want string }{
+		{"cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"\nT=\"$TMPDIR/bk\"; rm -rf \"$T\"", "allow"},
+		{`cd "$X"; rm -rf "$TMPDIR/bk"`, "allow"},
+		{`cd "$X"; T="$TMPDIR/bk"; rm -rf "$T"`, "allow"},
+		{`cd "$X"; rm -rf build`, "ask"},
+		{`cd "$X"; D=build; rm -rf "$D"`, "ask"},
+		{`cd "$X"; D="$PWD/x"; rm -rf "$D"`, "ask"},
+		{`cd "$X"; D="$(pwd)/x"; rm -rf "$D"`, "ask"},
+		{`cd "$X"; cat ~/.ssh/id_rsa`, "deny"},
+		{`cd "$X"; rm -rf "$HOME"`, "deny"},
+	} {
+		d := e.Check(context.Background(), Request{Agent: "dv-3", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
+
 // A substitution that can fail ($(git rev-parse --show-toplevel)) is empty when it does: a word built from it, directly or through a
 // variable, is judged as that too, so "$d/proc/self/environ" cannot reach the protected file and "$D"/* cannot reach the root through
 // a failure. A .git that is not a repository (no HEAD, a worktree pointer that leads nowhere) makes git fail: the substitution is then
