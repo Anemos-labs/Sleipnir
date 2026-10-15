@@ -147,7 +147,9 @@ func changeNotNeeded(note string) bool {
 // manager accepts it anyway with text that starts "nothing to change:" and says why. Planning tasks, pool results (their
 // children carry the work), documentation, read-only roles' tasks and a submission that carries an agreement, whose
 // deliverable may be no change, are not held to it, and a task closed as no longer needed (resolve) does not pass through
-// accept. Roles and merge records are read here, outside the board lock; the check reads the task under it.
+// accept. Every submission through the gate carries the harness's evidence; a task an embedder submitted on the board directly
+// (Board.Submit, Board.Finish) has none, and nothing seen is not "seen nothing": it is not judged. Roles and merge records are
+// read here, outside the board lock; the check reads the task under it.
 func (s *Swarm) emptyWorkCheck(t Task, note string) TaskCheck {
 	if t.Pool != nil || !s.implementationTask(t) || changeNotNeeded(note) {
 		return func(*Snapshot, Task) error { return nil }
