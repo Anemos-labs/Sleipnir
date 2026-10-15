@@ -54,7 +54,10 @@ must stay within the parent's role, membership and scope. A child's scope is ins
 its parent's when every path each entry names lies there: a path without a glob is
 that path (`README.md` lies inside `**/*.md`), and a glob is compared segment by
 segment (`docs/*.md` and `*.md` lie inside `**/*.md`, `docs/**` does not); a glob
-only several parent entries cover together counts as outside. A worker's self-claim
+only several parent entries cover together counts as outside. A child writes only
+what both scopes hold: the lease guard, and the merge queue in an isolated run,
+refuse a child's change below a path it names that lies outside the parent's scope
+(`docs/pkg/x.go` for a child `docs/pkg` of a parent `docs/*`). A worker's self-claim
 updates its isolated checkout from integration, just as an explicit assignment does.
 Recovery preserves every owned parent and child, along with the agreed plan and
 execution phase. Interrupted reconciliation retains its contract but requires a

@@ -199,3 +199,42 @@ func TestAPoolChildMayNameFilesInsideItsParentsGlob(t *testing.T) {
 		t.Errorf("narrowing the child to README.md: %v", err)
 	}
 }
+
+// A child's literal path lies inside its parent's glob as the path it names; if it names a directory, the child still writes only
+// what the parent's scope holds, at write time in a shared tree and in the merge queue of an isolated one.
+func TestAPoolChildWritesOnlyInsideItsParentsScope(t *testing.T) {
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"backend", "backend"}}, idleModel)
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "docs", Files: []string{"docs/*"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	parent := r.sw.Board.Snapshot().Tasks[0]
+	lead, other := parent.Pool.Members[0], parent.Pool.Members[1]
+	if err := r.sw.Board.poolUpdate("mgr", parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	child, err := r.sw.Board.CreateTask(lead, TaskSpec{Parent: parent.ID, Title: "pkg", Role: "backend", Files: []string{"docs/pkg"}})
+	if err != nil {
+		t.Fatalf("a child naming a path the parent's glob holds: %v", err)
+	}
+	if _, err := r.sw.Board.assignTask(assignReq{by: lead, agent: other, id: child.ID}); err != nil {
+		t.Fatal(err)
+	}
+	root := r.sw.deps.Root
+	if err := r.sw.Leases.BeforeWrite(other, root+"/docs/pkg"); err != nil {
+		t.Errorf("the path the child names: %v", err)
+	}
+	err = r.sw.Leases.BeforeWrite(other, root+"/docs/pkg/deep/file.go")
+	if err == nil || !strings.Contains(err.Error(), "outside the scope of its parent "+parent.ID+" (docs/*)") {
+		t.Errorf("a write below the child's path, outside the parent's scope: %v", err)
+	}
+	if err := r.sw.Leases.BeforeWrite(other, root+"/web/x.go"); err == nil || !strings.Contains(err.Error(), "outside the scope of your task") {
+		t.Errorf("a write outside both: %v", err)
+	}
+	refuse := r.sw.submitRefusal("backend", child)
+	if refuse == nil || refuse("docs/pkg") != "" || !strings.Contains(refuse("docs/pkg/deep/file.go"), "outside the scope of the parent "+parent.ID) {
+		t.Error("the merge queue's refusal does not hold a child to its parent's scope")
+	}
+	if loose, _ := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "loose", Role: "backend", Files: []string{"x/**"}}); r.sw.submitRefusal("backend", loose) != nil {
+		t.Error("a task with no parent is refused files by its parent")
+	}
+}

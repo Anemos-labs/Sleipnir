@@ -316,7 +316,7 @@ func (s *Swarm) integrate(ctx context.Context, m *member, t Task) integration {
 	}
 	res, err := iso.Queue.Submit(ctx, workspace.Submission{
 		Agent: m.id, Tree: m.tree, Task: subject, VerifyCmd: ExpandVerify(s.cfg.VerifyCmd, m.dir, t.Files), Message: subject,
-		Scope: t.Files, EnforceScope: len(t.Files) > 0, Refuse: s.ownedRefusal(m.role),
+		Scope: t.Files, EnforceScope: len(t.Files) > 0, Refuse: s.submitRefusal(m.role, t),
 	})
 	if err != nil {
 		if ctx.Err() != nil {
@@ -380,6 +380,31 @@ func (s *Swarm) ownedRefusal(role string) func(string) string {
 	return func(rel string) string {
 		if own := foreignOwners(s.deps.Owners, role, rel); len(own) > 0 {
 			return displayPath(rel) + " belongs to " + ownersText(own)
+		}
+		return ""
+	}
+}
+
+// submitRefusal is the merge queue's refusal of single files for task t, submitted by an agent of role: a path another role owns
+// (ownedRefusal), or, for a pool child whose parent declares a scope, a path outside the parent's scope (the lease guard's rule in
+// a shared tree, parentRefuses). Nil when neither applies.
+func (s *Swarm) submitRefusal(role string, t Task) func(string) string {
+	owned := s.ownedRefusal(role)
+	var parent Task
+	if t.Parent != "" {
+		parent, _ = s.Board.Snapshot().Task(t.Parent)
+	}
+	if len(parent.Files) == 0 {
+		return owned
+	}
+	return func(rel string) string {
+		if owned != nil {
+			if why := owned(rel); why != "" {
+				return why
+			}
+		}
+		if !inScope(parent.Files, rel) {
+			return displayPath(rel) + " is outside the scope of the parent " + parent.ID + " (" + strings.Join(shownScopes(parent.Files), ", ") + ")"
 		}
 		return ""
 	}

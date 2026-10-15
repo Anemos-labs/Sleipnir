@@ -18,10 +18,13 @@ they do not indicate whether a change has been released.
   child's scope lies inside its parent's when every path it names does:
   `README.md`, `*.md` and `docs/*.md` lie inside `**/*.md`, `src/a.go`
   inside the directory `src`; a glob is compared segment by segment, and
-  one only several parent entries cover together stays outside. The
-  refusal names the parent and its scope, and an overlap refusal for a task
-  the spawn would create says "this task" instead of an empty id. Prompt
-  bytes: none change; the refusals are thread text.
+  one only several parent entries cover together stays outside. A child
+  writes only what its parent's scope also holds: the lease guard and, in
+  an isolated run, the merge queue refuse a change below a child's path
+  that lies outside the parent's scope. The refusal names the parent and
+  its scope, and an overlap refusal for a task the spawn would create says
+  "this task" instead of an empty id. Prompt bytes: none change; the
+  refusals are thread text.
 
 - What a new shell does stays in that shell: an assignment, a `source`, a
   `read` or an arithmetic expansion inside `sh -c`, `bash -c`, `su -c` or a
