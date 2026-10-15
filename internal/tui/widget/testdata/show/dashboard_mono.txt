@@ -2,7 +2,7 @@
 
 == 100x40, 8 agents, no colours (width 100, 40 lines)
 ╭ SLEIPNIR ▸ swarm “add pagination to every list endpoin…  ◷ 02:10 · 8 agents · $0.31/$20 · ⛁ 94% ─╮|
-│                            ▄▄         │ one prefix, eight riders                                 │|
+│                            ▄▄         │ one prefix, eight agents                                 │|
 │                         ░▄██▄█▄       │ shared G0–G2 41.2k tokens  ◕ warm 3:41 ▰▰▰▰▰▰▱▱          │|
 │                       ░░▄██▀▀██       │                                                          │|
 │         ░░░░▄▄████████░▄██▀           │ ████████████████████████████████████████████████████████ │|

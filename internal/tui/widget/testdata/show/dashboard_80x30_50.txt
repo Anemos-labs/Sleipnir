@@ -2,7 +2,7 @@
 
 == 80x30, 50 agents (width 80, 30 lines)
 ╭ SLEIPNIR ▸ swarm “add pagination …  ◷ 02:10 · 50 agents · $0.31/$20 · ⛁ 94% ─╮|
-│                        ▄▄     │ one prefix, 50 riders                        │|
+│                        ▄▄     │ one prefix, 50 agents                        │|
 │                     ▄▄██▀█▄   │ shared G0–G2 41.2k tokens  ◕ warm 3:41 ▰▰▰▱  │|
 │                   ▄█▀██▀▀██   │                                              │|
 │     ▄▄▄▄▄▄█████████▀██▀       │ ████████████████████████████████████████████ │|

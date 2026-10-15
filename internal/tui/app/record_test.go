@@ -31,7 +31,7 @@ func TestRecordIsADeterministicAnimation(t *testing.T) {
 			t.Fatalf("the recording is not well-formed XML: %v", err)
 		}
 	}
-	for _, want := range []string{"@keyframes", ">SLEIPNIR</text>", ">riders</text>", ">gantt</text>"} {
+	for _, want := range []string{"@keyframes", ">SLEIPNIR</text>", ">agents</text>", ">gantt</text>"} {
 		if !strings.Contains(a, want) {
 			t.Errorf("the recording lacks %q", want)
 		}
