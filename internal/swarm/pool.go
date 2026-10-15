@@ -358,6 +358,11 @@ func (s *Swarm) wakePool(id, message string) {
 // the plan-mode engine's own words ("present a plan instead of acting", "no one to ask") would send a member that is waiting for its
 // subtask round in circles.
 func (s *Swarm) poolPermission(ctx context.Context, id string, inner perm.Requester, req perm.Request) (perm.Decision, bool) {
+	if req.Tool == perm.ToolMemory {
+		// The agent's own notes are no change to the project the pool coordinates: the session decides, and puts the note to the
+		// person (a long run lost twelve lessons about pool procedure that members tried to keep while their pool planned).
+		return perm.Decision{}, false
+	}
 	for _, t := range s.Board.Snapshot().Tasks {
 		if t.Pool == nil || t.Status == StatusDone || t.Status == StatusFailed || !slices.Contains(t.Pool.Members, id) && !slices.Contains(t.Pool.Excused, id) {
 			continue

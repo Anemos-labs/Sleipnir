@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A member of a role pool may keep a memory note while its pool plans,
+  reconciles or waits for a subtask: the note goes to the session, which
+  puts it to the person with the exact text, as it does for any agent. It
+  was refused by the pool's read-only check, and the log showed a question
+  "decided by no one" that nobody had been asked. That check (and any
+  `PlanOnly` engine) is now a silent probe: it asks no one, delegates
+  nothing to the manager, records nothing in the audit and keeps no rule.
+  Prompt bytes: none change.
+
 - A compaction patch whose JSON broke on a quote the model did not escape
   inside a string (`"line": "fixed the "foo" handler"`) is read with that
   quote as text instead of refused, with a warning; the agent keeps the

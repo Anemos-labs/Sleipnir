@@ -99,3 +99,36 @@ func TestAPlanningPoolMemberResearchesAsAReviewerMay(t *testing.T) {
 		t.Errorf("a session that asks before the network let a planner through without asking: %+v", d)
 	}
 }
+
+// A member's memory note is no change to the project its pool coordinates: while the pool plans, the note goes to the session, which
+// puts it to the person with the exact text. (A long run lost twelve such notes: each was refused by the pool's read-only probe, with a
+// "no one to ask" that the person never saw.)
+func TestAPoolMemberMayKeepANote(t *testing.T) {
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"backend", "backend"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "waiting"} })
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "build the API", Files: []string{"api/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	parent := r.sw.Board.Snapshot().Tasks[0]
+	member := parent.Pool.Members[1]
+	home := t.TempDir()
+	var asked []perm.Request
+	e, err := perm.NewEngine(perm.Config{Root: t.TempDir(), Home: home, Mode: perm.ModeBypass, Ask: []string{"Edit(~/.sleipnir/**)"},
+		Prompter: func(_ context.Context, r perm.Request) perm.Decision {
+			asked = append(asked, r)
+			return perm.Decision{Allow: true}
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr := roleRequester{inner: e, role: Role{Name: "backend"}, swarm: r.sw, agent: member}
+	note := perm.Request{Agent: member, Tool: perm.ToolMemory, Summary: "remember: vote the instant a revision lands",
+		Paths: []string{filepath.Join(home, ".sleipnir", "MEMORY.md")}, Writes: true, Risk: perm.RiskMedium}
+	if d := rr.Check(context.Background(), note); !d.Allow || len(asked) != 1 || !strings.Contains(asked[0].Summary, "vote the instant a revision lands") {
+		t.Fatalf("the note was not put to the person: %+v, asked %d", d, len(asked))
+	}
+	// a change to the project is still the pool's to refuse while it plans
+	write := perm.Request{Agent: member, Tool: "write", Paths: []string{filepath.Join(home, "api", "x.go")}, Writes: true}
+	if d := rr.Check(context.Background(), write); d.Allow || !strings.Contains(d.Reason, "pool task "+parent.ID) {
+		t.Errorf("a planning member wrote: %+v", d)
+	}
+}
