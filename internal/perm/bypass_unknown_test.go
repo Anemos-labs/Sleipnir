@@ -317,6 +317,10 @@ func TestArithmeticAssignsOnlyTheNamesItReaches(t *testing.T) {
 		{`D="$TMPDIR/x"; : $(( $(cat f) )); rm -rf "$D"`, "ask"},
 		{`D="$TMPDIR/x"; : $((n+1)); rm -rf "$D"`, "ask"}, // n is the environment's
 		{`D="$TMPDIR/x"; n=1; : $(( $1 + n )); rm -rf "$D"`, "ask"},
+		{`D="$TMPDIR/x"; : $(( $* )); rm -rf "$D"/*`, "ask"}, // the positional parameters may be D=0
+		{`D="$TMPDIR/x"; : $(( $@ )); rm -rf "$D"/*`, "ask"},
+		{`D="$TMPDIR/x"; : $(( $- )); rm -rf "$D"/*`, "ask"},
+		{`bash -c 'D="$TMPDIR/x"; : $(( $* )); rm -rf "$D"/*' _ D=0`, "ask"},
 		{`D="$TMPDIR/x"; n=1; : $(( ${n} )); rm -rf "$D"`, "ask"},
 		{"D=\"$TMPDIR/x\"; n=1; cat <<EOF\n$((D=n))\nEOF\nrm -rf \"$D\"/*", "ask"},
 		{`D="$TMPDIR/x"; case $((D=0)) in *) :;; esac; rm -rf "$D"/*`, "ask"},

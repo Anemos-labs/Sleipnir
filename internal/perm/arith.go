@@ -160,12 +160,10 @@ func arithAssigns(exprs []string, at int, ints map[string]int) (names []string, 
 			switch {
 			case c == '$' && i+1 < len(e) && strings.IndexByte("#?$!", e[i+1]) >= 0:
 				i += 2
+			case c == '$' && i+1 < len(e) && (e[i+1] >= '0' && e[i+1] <= '9' || strings.IndexByte("@*-", e[i+1]) >= 0):
+				return nil, true // the positional parameters ($1, $@, $*) or the shell's flags ($-): text the line does not know
 			case c == '$' && i+1 < len(e) && !isNameByte(e[i+1]) && e[i+1] != '{':
 				i++
-			case c == '$' && i+1 < len(e) && e[i+1] >= '0' && e[i+1] <= '9':
-				return nil, true // a positional parameter
-			case c == '$' && i+1 < len(e) && strings.IndexByte("@*-", e[i+1]) >= 0:
-				return nil, true
 			case c == '$':
 				i++
 			case isNameByte(c) && (c < '0' || c > '9') && (i == 0 || !isNameByte(e[i-1]) && e[i-1] != '#'):
