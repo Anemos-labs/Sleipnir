@@ -382,11 +382,13 @@ func (s *State) onAgentEnd(e events.Event, t time.Time) {
 	s.line(e.Seq, t, a.ID, FeedEnd, glyph, text, a.Evidence)
 }
 
-// sentBack says why an agent's answer was sent back, by the phase of the agent.stuck that records it.
+// sentBack says why the loop gave an agent that is not stuck a note (most often: why its answer was sent back), by the
+// phase of the agent.stuck that records it.
 var sentBack = map[string]string{
 	"plan":   "the answer was sent back: the plan still has open steps",
 	"verify": "the answer was sent back: code changed and no tests ran",
 	"leak":   "the message was sent back: it was a tool call written as text",
+	"steps":  "told to wrap up: the run is near its step limit and its last window changed little",
 }
 
 func (s *State) onStuck(e events.Event, t time.Time) {

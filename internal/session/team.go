@@ -135,7 +135,11 @@ func (s *Session) teamCard(roles swarm.Roles, team []TeamSlot, autoDocs bool) st
 		if name == swarm.DocsRole && autoDocs {
 			b.WriteString(" · standing (auto)")
 		}
-		fmt.Fprintf(&b, " · max %d steps a task", r.MaxSteps)
+		if s.opts.FixedSteps {
+			fmt.Fprintf(&b, " · max %d steps a task", r.MaxSteps)
+		} else {
+			fmt.Fprintf(&b, " · %d steps a task, more while it keeps editing", r.MaxSteps)
+		}
 		if t := s.roleSummary(name); t != "" {
 			b.WriteString(" · " + t)
 		}

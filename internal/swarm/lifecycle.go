@@ -299,6 +299,7 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 		Planner: d.Planner, KVPolicy: d.KVPolicy, SessionID: s.cfg.SessionID, AffinityShards: s.cfg.AffinityShards,
 		BlockingCompaction: d.BlockingCompaction,
 		OnPromote:          s.onPromote, Est: d.Est, Now: d.Now, MaxSteps: r.MaxSteps, Priority: r.Priority,
+		ExtendSteps: !isMgr && !isSvc && !s.cfg.FixedSteps, WrapUp: workerWrapUp,
 		PlanOpen:  planOpen(d.Plans),
 		BudgetUSD: s.cfg.AgentBudgetUSD, Hooks: hooks, NoMailReopen: !isMgr, // a worker's mail is read by its next run (afterIdle), which owns what the mail changes
 	}
@@ -804,6 +805,11 @@ func (s *Swarm) forceIdle(m *member, rs *runState) {
 	}
 	m.mu.Unlock()
 }
+
+// workerWrapUp is what a worker is told to do with the steps it has left when its run is about to end at the step limit
+// (agent.Config.WrapUp): a successor that gets the task with a summary loses nothing, one that finds it in todo starts over.
+const workerWrapUp = "If your task is not finished, hand it over (task handover, text = what is done, what is left, what you learned): " +
+	"a fresh worker of your role carries on from your work. If it is finished, mark it done."
 
 type stopKind int
 
