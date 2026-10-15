@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode"
 )
@@ -14,10 +15,12 @@ import (
 // ("notes.txt") and globs ("api/**", "web/*.tsx", "src/{a,b}/**"). Patterns are
 // relative to the repository root; "**" spans directories, "*" does not.
 //
-// Two things use them. Spawn and claim refuse tasks whose scopes overlap another
+// Three things use them. Spawn and claim refuse tasks whose scopes overlap another
 // active writer's (scopesOverlap: conservative, it may report an overlap that is
-// not one but never misses one), and the lease guard refuses a write outside the
-// writer's own scope (scopeMatch: exact).
+// not one but never misses one), the lease guard refuses a write outside the
+// writer's own scope (scopeMatch: exact), and a pool child's scope must lie inside
+// its parent's (scopeContains: conservative the other way, it may refuse a child
+// that fits but never admits one that does not).
 
 const (
 	maxScopeEntries = 16
@@ -213,11 +216,22 @@ func inScope(scopes []string, rel string) bool {
 // scopesOverlap reports whether two scope entries can match a common path. It is
 // conservative: spelling variants of one directory ("src//a", "./src/a",
 // "src/../src/a", "Src/a", "src\a") are the same, an absolute pattern is compared
-// with a relative one at every alignment, and a glob against a glob counts as an
-// overlap; a directory is not confused with a longer name ("src/a" versus "src/ab").
-func scopesOverlap(a, b string) bool {
-	ax, aerr := altsOf(a)
-	bx, berr := altsOf(b)
+// with a relative one at every alignment, and a glob segment against a glob segment
+// counts as an overlap; a directory is not confused with a longer name ("src/a"
+// versus "src/ab"). "**" is aligned as matching aligns it, so "**/*.md" and
+// "web/**" overlap (web/README.md) while "*.md" and "web/**" do not. A path
+// without a glob also covers what lies below it ("web/package.json" covers
+// "web/package.json/x.md"); scopesOverlapIn can rule that out for files.
+func scopesOverlap(a, b string) bool { return scopesOverlapIn(a, b, nil) }
+
+// scopesOverlapIn is scopesOverlap knowing which entries name files: file(p), for
+// a cleaned relative entry p without a glob, reports that p names a regular file,
+// which has nothing below it, so the entry covers that file alone ("**/*.md" and
+// the file "web/package.json" are then disjoint). A nil file, or a false answer
+// (a directory, a path that does not exist yet), keeps the directory reading.
+func scopesOverlapIn(a, b string, file func(string) bool) bool {
+	ax, aerr := altsOf(a, file)
+	bx, berr := altsOf(b, file)
 	if aerr != nil || berr != nil {
 		return true // cannot analyse: assume they collide
 	}
@@ -231,7 +245,16 @@ func scopesOverlap(a, b string) bool {
 	return false
 }
 
-func altsOf(p string) ([]string, error) {
+// scopeAlt is one brace alternative of a scope entry, lower-cased for comparison:
+// file says it names a regular file (see scopesOverlapIn).
+type scopeAlt struct {
+	pat  string
+	file bool
+}
+
+// altsOf cleans a scope entry for comparison and expands its braces. Whether an
+// alternative names a file is asked with its own spelling, before lower-casing.
+func altsOf(p string, file func(string) bool) ([]scopeAlt, error) {
 	p = strings.ReplaceAll(strings.TrimSpace(p), `\`, "/")
 	if p == "" {
 		return nil, errors.New("empty scope")
@@ -243,12 +266,28 @@ func altsOf(p string) ([]string, error) {
 	} else if !abs {
 		c = strings.TrimPrefix(c, "./")
 	}
-	return expandBraces(strings.ToLower(c))
+	alts, err := expandBraces(c)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]scopeAlt, len(alts))
+	for i, a := range alts {
+		out[i] = scopeAlt{pat: strings.ToLower(a), file: file != nil && !abs && !hasMeta(a) && file(a)}
+	}
+	return out, nil
 }
 
-func altOverlap(a, b string) bool {
-	sa, aAbs := segments(a)
-	sb, bAbs := segments(b)
+// altOverlap compares two brace alternatives: relative ones segment by segment,
+// an absolute one against a relative one at every alignment (absVsRel).
+func altOverlap(a, b scopeAlt) bool {
+	sa, aAbs := segments(a.pat)
+	sb, bAbs := segments(b.pat)
+	if a.file {
+		sa = strings.Split(a.pat, "/") // a file: no "**" below it
+	}
+	if b.file {
+		sb = strings.Split(b.pat, "/")
+	}
 	switch {
 	case aAbs == bAbs:
 		return segsOverlap(sa, sb)
@@ -270,36 +309,38 @@ func absVsRel(abs, rel []string) bool {
 	return false
 }
 
+// segsOverlap reports whether some path matches both segment patterns. "**" spans
+// zero or more segments on either side, as in matchSegs: at each step one side's
+// "**" either ends or takes the segment the other side matches next, and two other
+// segments must be compatible (segCompat). Every pair of positions is explored at
+// most once, so many "**" cannot make it slow.
 func segsOverlap(a, b []string) bool {
-	for i := 0; ; i++ {
+	tried := make(map[[2]int]bool) // positions already explored; they led nowhere
+	var from func(i, j int) bool
+	from = func(i, j int) bool {
+		if i == len(a) && j == len(b) {
+			return true
+		}
+		if tried[[2]int{i, j}] {
+			return false
+		}
+		tried[[2]int{i, j}] = true
 		switch {
-		case i >= len(a) && i >= len(b):
-			return true
-		case i >= len(a):
-			return allGlobstar(b[i:])
-		case i >= len(b):
-			return allGlobstar(a[i:])
+		case i < len(a) && a[i] == "**":
+			return from(i+1, j) || j < len(b) && from(i, j+1)
+		case j < len(b) && b[j] == "**":
+			return from(i, j+1) || i < len(a) && from(i+1, j)
+		case i < len(a) && j < len(b):
+			return segCompat(a[i], b[j]) && from(i+1, j+1)
 		}
-		x, y := a[i], b[i]
-		if x == "**" || y == "**" {
-			return true
-		}
-		if !segCompat(x, y) {
-			return false
-		}
+		return false
 	}
+	return from(0, 0)
 }
 
-// allGlobstar reports whether all remaining segments are **, including an empty segment list.
-func allGlobstar(s []string) bool {
-	for _, x := range s {
-		if x != "**" {
-			return false
-		}
-	}
-	return true
-}
-
+// segCompat reports whether one path segment could match both segment patterns: literal against literal must be equal, a glob
+// must match a literal, two globs of the form "*"+suffix ("*.md", "*_test.go") need one suffix to end the other, and any other
+// glob against a glob counts as compatible (deciding it exactly is not worth it here).
 func segCompat(x, y string) bool {
 	hx, hy := hasMeta(x), hasMeta(y)
 	switch {
@@ -312,7 +353,117 @@ func segCompat(x, y string) bool {
 		ok, err := path.Match(y, x)
 		return err != nil || ok
 	}
+	sx, okx := starSuffix(x)
+	sy, oky := starSuffix(y)
+	if okx && oky {
+		return strings.HasSuffix(sx, sy) || strings.HasSuffix(sy, sx)
+	}
 	return true
+}
+
+// starSuffix returns the literal suffix of a segment pattern of the form "*"+suffix (no other glob character, no escape), and
+// whether it has that form. "*" is the empty suffix.
+func starSuffix(seg string) (string, bool) {
+	suffix, ok := strings.CutPrefix(seg, "*")
+	if !ok || strings.ContainsAny(suffix, `*?[]\`) {
+		return "", false
+	}
+	return suffix, true
+}
+
+// scopeContains reports whether every path the child scope entry names lies inside
+// one of the parent entries. A child names the paths it matches, not what lies
+// below them: "README.md" is that file, so it lies inside "**/*.md" as scopeMatch
+// places it, and "docs/*.md" is the Markdown files directly in docs. A parent
+// entry keeps its full reading (a directory and everything under it). A glob child
+// is compared segment by segment (globSegsContain), each of its brace alternatives
+// inside one parent entry; what that cannot decide (a glob that only a union of
+// parent entries covers, an absolute entry) is outside.
+func scopeContains(parents []string, child string) bool {
+	if slices.Contains(parents, child) {
+		return true
+	}
+	kids, err := expandBraces(child)
+	if err != nil || strings.HasPrefix(child, "/") {
+		return false
+	}
+	for _, k := range kids {
+		if !inParent(parents, strings.Split(strings.Trim(k, "/"), "/")) {
+			return false
+		}
+	}
+	return true
+}
+
+// inParent reports whether one parent entry (one of its brace alternatives) contains every path of the child segments.
+func inParent(parents []string, kid []string) bool {
+	for _, p := range parents {
+		alts, err := expandBraces(p)
+		if err != nil {
+			continue
+		}
+		for _, a := range alts {
+			if ps, abs := segments(a); !abs && globSegsContain(ps, kid) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// globSegsContain reports whether every path that matches the segment pattern c
+// also matches p ("**" spans zero or more segments in both). It is sound, not
+// complete: a "**" of c is covered only by a "**" of p, and a glob segment of c
+// only as segContains decides. Every pair of positions is explored at most once.
+func globSegsContain(p, c []string) bool {
+	tried := make(map[[2]int]bool) // positions already explored; they led nowhere
+	var from func(i, j int) bool
+	from = func(i, j int) bool {
+		if j == len(c) {
+			return allGlobstar(p[i:])
+		}
+		if i == len(p) || tried[[2]int{i, j}] {
+			return false
+		}
+		tried[[2]int{i, j}] = true
+		switch {
+		case p[i] == "**":
+			// p's "**" matches nothing here, or takes what c[j] matches (one segment, or all that c's own "**" spans)
+			return from(i+1, j) || from(i, j+1)
+		case c[j] == "**":
+			return false
+		}
+		return segContains(p[i], c[j]) && from(i+1, j+1)
+	}
+	return from(0, 0)
+}
+
+// allGlobstar reports whether all remaining segments are **, including an empty segment list.
+func allGlobstar(s []string) bool {
+	for _, x := range s {
+		if x != "**" {
+			return false
+		}
+	}
+	return true
+}
+
+// segContains reports whether every segment that matches c also matches p (neither is "**"): an equal pattern, a literal c that
+// p matches, p "*", or p "*" followed by a literal suffix that c, a valid pattern, also ends with ("*.md" contains "api*.md").
+func segContains(p, c string) bool {
+	switch {
+	case p == c || p == "*":
+		return true
+	case !hasMeta(c):
+		ok, err := path.Match(p, c)
+		return err == nil && ok
+	}
+	suffix, ok := starSuffix(p)
+	if !ok || !strings.HasSuffix(c, suffix) {
+		return false
+	}
+	_, err := path.Match(c, "")
+	return err == nil
 }
 
 // relTo returns p relative to root as a slash path, and whether p lies inside it.

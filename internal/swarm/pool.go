@@ -660,32 +660,20 @@ func poolAssignment(sn *Snapshot, t Task) error {
 	return poolScope(p, t)
 }
 
-// poolScope prevents child revisions from broadening their parent's file scope.
+// poolScope prevents child revisions from broadening their parent's file scope: every entry of the child's scope lies inside the
+// parent's (scopeContains).
 func poolScope(p, t Task) error {
 	if len(p.Files) > 0 {
 		if len(t.Files) == 0 {
-			return fmt.Errorf("child needs an explicit scope inside its parent")
+			return fmt.Errorf("child needs an explicit scope inside its parent %s (%s)", p.ID, strings.Join(p.Files, ", "))
 		}
 		for _, f := range t.Files {
-			if !slices.Contains(p.Files, f) && !scopeContains(p.Files, f) {
-				return fmt.Errorf("child scope %s is outside parent scope", f)
+			if !scopeContains(p.Files, f) {
+				return fmt.Errorf("child scope %s is outside the scope of its parent %s (%s)", f, p.ID, strings.Join(p.Files, ", "))
 			}
 		}
 	}
 	return nil
-}
-
-// scopeContains admits exact paths and recursive descendants, never a broader glob.
-func scopeContains(parents []string, child string) bool {
-	for _, p := range parents {
-		if p == "**" || p == child {
-			return true
-		}
-		if strings.HasSuffix(p, "/**") && strings.HasPrefix(child, strings.TrimSuffix(p, "**")) {
-			return true
-		}
-	}
-	return false
 }
 
 // poolCurrent rejects votes or submissions over a superseded combined result: one that a merge, a manager change or a task revision

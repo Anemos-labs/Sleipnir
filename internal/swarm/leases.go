@@ -288,24 +288,55 @@ func (l *Leases) scopeOf(agent string) (scopes, ids []string, scoped bool) {
 }
 
 // checkScopeAt refuses a write by agent to path outside the scope of the tasks it is
-// doing. The caller has already made the path relative to the repository root (rel;
-// relOK says it lies inside it).
+// doing, and a pool child's write outside its parent's scope (parentRefuses). The
+// caller has already made the path relative to the repository root (rel; relOK says
+// it lies inside it).
 func (l *Leases) checkScopeAt(agent, path, rel string, relOK bool) error {
 	scopes, ids, scoped := l.scopeOf(agent)
 	if !scoped {
 		return nil
 	}
 	if relOK && inScope(scopes, rel) {
-		return nil
-	}
-	shown := scopes
-	if len(shown) > 4 {
-		shown = append(append([]string(nil), shown[:4]...), "…")
+		parent, refused := l.parentRefuses(agent, rel)
+		if !refused {
+			return nil
+		}
+		l.board.RaiseAlertKey("scope", "scope:"+agent, fmt.Sprintf("%s tried to write outside the scope of its task (%s)", safeToken(agent, 24), strings.Join(ids, ",")))
+		l.emit(agent, "scope", path, "")
+		return fmt.Errorf("%s is inside the scope of your task but outside the scope of its parent %s (%s). Edit only inside both; if the task needs more, ask the manager (mail)",
+			displayPath(path), parent.ID, strings.Join(shownScopes(parent.Files), ", "))
 	}
 	l.board.RaiseAlertKey("scope", "scope:"+agent, fmt.Sprintf("%s tried to write outside the scope of its task (%s)", safeToken(agent, 24), strings.Join(ids, ",")))
 	l.emit(agent, "scope", path, "")
 	return fmt.Errorf("%s is outside the scope of your task %s (scope: %s). Edit only inside your scope; if the task needs more, ask the manager to widen it (mail)",
-		displayPath(path), strings.Join(ids, ", "), strings.Join(shown, ", "))
+		displayPath(path), strings.Join(ids, ", "), strings.Join(shownScopes(scopes), ", "))
+}
+
+// shownScopes is a scope list as a refusal shows it: at most four entries, then an ellipsis.
+func shownScopes(scopes []string) []string {
+	if len(scopes) > 4 {
+		return append(append([]string(nil), scopes[:4]...), "…")
+	}
+	return scopes
+}
+
+// parentRefuses reports the parent whose scope refuses rel when no task agent is doing allows it: rel lies in a task's scope,
+// and, for a pool child whose parent declares a scope, in the parent's too. A child's scope lies inside its parent's by the paths
+// it names (scopeContains); one that names a directory must not reach below it out of the parent's area.
+func (l *Leases) parentRefuses(agent, rel string) (Task, bool) {
+	snap := l.board.Snapshot()
+	var refusing Task
+	for _, t := range snap.Tasks {
+		if t.Pool != nil || t.Owner != agent || t.Status != StatusDoing || !inScope(t.Files, rel) {
+			continue
+		}
+		p, ok := snap.Task(t.Parent)
+		if t.Parent == "" || !ok || len(p.Files) == 0 || inScope(p.Files, rel) {
+			return Task{}, false
+		}
+		refusing = p
+	}
+	return refusing, refusing.ID != ""
 }
 
 // displayPath abbreviates long paths to a 119-byte suffix preceded by an ellipsis; it may split
