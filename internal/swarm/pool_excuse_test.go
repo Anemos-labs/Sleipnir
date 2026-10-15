@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/perm"
@@ -14,7 +15,21 @@ import (
 // excuses such a member: it leaves the pool, the others' agreement suffices, its open subtasks return to the board, the next member
 // leads when it led, and it stays read-only while the pool task is open.
 func TestTheManagerExcusesAPoolMemberThatCannotTakePart(t *testing.T) {
-	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 3, Team: []string{"frontend", "frontend", "frontend"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "waiting"} })
+	// held is the member whose model calls wait for release, and holding is set while one of them waits.
+	var held atomic.Value
+	var holding atomic.Bool
+	release := make(chan struct{})
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 3, Team: []string{"frontend", "frontend", "frontend"}}, func(ctx context.Context, c *rvCall) rvReply {
+		if h, _ := held.Load().(string); h != "" && c.Agent == h {
+			holding.Store(true)
+			select {
+			case <-release:
+			case <-ctx.Done():
+			}
+			holding.Store(false)
+		}
+		return rvReply{Text: "waiting"}
+	})
 	if _, err := r.sw.Spawn(SpawnReq{Role: "frontend", Title: "build the UI", Files: []string{"web/**"}, By: "mgr"}); err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +87,13 @@ func TestTheManagerExcusesAPoolMemberThatCannotTakePart(t *testing.T) {
 		t.Fatalf("an excused member may write: handled=%v %+v", handled, d)
 	}
 
-	// Its open subtasks go back to the board; a leader that is excused hands the lead on.
+	// Its open subtasks go back to the board; a leader that is excused hands the lead on. The leader is a live agent: a run of its own
+	// that ends with the subtask in doing hands it in for review (settleClean), and work handed in is not taken back. So its model
+	// calls wait until the excuse is done: it is woken, and the subtask is given to it only once its model call waits, so no run of
+	// its own can end, and hand the subtask in, before the excuse.
+	held.Store(lead)
+	r.sw.notify(lead, "info", "hold on")
+	rvWait(t, "the leader's model call to be held", holding.Load)
 	child, err := r.sw.Board.CreateTask(lead, TaskSpec{Parent: parent.ID, Title: "charts", Role: "frontend", Files: []string{"web/charts.js"}})
 	if err != nil {
 		t.Fatal(err)
@@ -81,6 +102,8 @@ func TestTheManagerExcusesAPoolMemberThatCannotTakePart(t *testing.T) {
 		t.Fatal(err)
 	}
 	msg, bad = pool("mgr", "manager", map[string]any{"action": "excuse", "member": lead, "text": "out of budget"})
+	held.Store("")
+	close(release)
 	if bad || !strings.Contains(msg, child.ID) || !strings.Contains(msg, "leader "+peer) {
 		t.Fatalf("excusing the leader: %q", msg)
 	}
