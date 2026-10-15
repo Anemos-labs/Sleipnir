@@ -526,8 +526,21 @@ The **hot view** is the always-fresh part of each agent's prompt: its own status
 scope violations, stuck workers), related tasks and teammates, pending shared notes. It is personalised, deterministic
 and token-capped (900 tokens for workers, 2200 for the manager), it is the only per-request uncached text in the
 system, and it costs the same whatever the age of the session: it lists at most 14 tasks (40 for the manager, most
-relevant first, at most 3 failed), 30 teammates, the 8 newest notes and 6 alerts, and selects what fits the budget in
-one pass. How it reaches the model depends on the provider (`docs/CACHE-DESIGN.md`, HotMode): inline at the tail
+relevant first, at most 3 failed), 30 teammates (64 for the manager), the 8 newest notes and 6 alerts, and selects what
+fits the budget in one pass.
+
+Every teammate is accounted for in every view: on a line of its own (role, state, task, activity), or on one line at the
+end of the team section that counts the teammates without a line and names the most relevant of them
+(`+3 not shown: rv-3, rv-4, sc-1`), so nobody reads a teammate's absence from the view as its absence from the team. That
+line names at most 64 teammates and fewer when the budget needs it (down to the count alone); the rest are counted
+(`and 6 more`). Relevance decides who gets a line, whose line the budget drops first and who is named first. For a worker
+the most relevant are the manager, the members and leader of its pools and the owners of their subtasks, the owners of
+the tasks its own depend on or that depend on its own, of its task's parent and children, and of tasks blocked on its
+own; then the workers of its role; then everyone else. For the manager they are the workers that wait on it (a task in
+review or blocked), then those at work on a task, then idle ones; under budget pressure its teammate lines go before its
+task lines, and those teammates are named instead.
+
+How the hot view reaches the model depends on the provider (`docs/CACHE-DESIGN.md`, HotMode): inline at the tail
 (default), or, where the provider binds thinking blocks to the exact prefix, as a persisted frozen message
 (turn-scoped system messages where the provider has them, otherwise appended only when it changes) so history stays
 append-only.
