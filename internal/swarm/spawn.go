@@ -325,8 +325,10 @@ func (s *Swarm) ownerReadOnly(sn *Snapshot, owner string) bool {
 }
 
 // scopeConflictIn reports overlap between a task's scope and the scopes of the
-// other tasks writers are working on.
+// other tasks writers are working on. An entry that names a file in the shared
+// tree covers that file alone (scopeFiles).
 func (s *Swarm) scopeConflictIn(sn *Snapshot, t Task) error {
+	file := s.scopeFiles()
 	for _, o := range sn.Tasks {
 		if o.Pool != nil || o.ID == t.ID || (t.ID != "" && o.Parent == t.ID) || len(o.Files) == 0 || (o.Status != StatusDoing && o.Status != StatusBlocked) {
 			// a pool parent's own children are inside its scope by construction, not in its way
@@ -337,13 +339,41 @@ func (s *Swarm) scopeConflictIn(sn *Snapshot, t Task) error {
 		}
 		for _, a := range t.Files {
 			for _, b := range o.Files {
-				if scopesOverlap(a, b) {
-					return fmt.Errorf("scope %q overlaps %s (%s, held by %s). Give the two tasks disjoint areas, or make %s depend on %s", a, o.ID, b, o.Owner, t.ID, o.ID)
+				if scopesOverlapIn(a, b, file) {
+					this := t.ID
+					if this == "" {
+						this = "this task"
+					}
+					return fmt.Errorf("scope %q overlaps %s (%s, held by %s). Give the two tasks disjoint areas, or make %s depend on %s", a, o.ID, b, o.Owner, this, o.ID)
 				}
 			}
 		}
 	}
 	return nil
+}
+
+// scopeFiles returns the test scopesOverlapIn uses to tell a file from a directory: a relative scope entry without a glob names a
+// file when it is a regular file under the repository root (Deps.Root, or Workdir without one). A directory, a path that does not
+// exist yet, and every entry when no root is known keep the reading that covers what lies below them too. Answers are kept for
+// the one check the function serves.
+func (s *Swarm) scopeFiles() func(string) bool {
+	root := s.deps.Root
+	if root == "" {
+		root = s.deps.Workdir
+	}
+	if root == "" {
+		return nil
+	}
+	known := map[string]bool{}
+	return func(p string) bool {
+		isFile, ok := known[p]
+		if !ok {
+			fi, err := os.Stat(filepath.Join(root, filepath.FromSlash(p)))
+			isFile = err == nil && fi.Mode().IsRegular()
+			known[p] = isFile
+		}
+		return isFile
+	}
 }
 
 // roots are the directories a scope is relative to.

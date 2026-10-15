@@ -7,6 +7,22 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Writer scopes overlap only when some path could lie in both: `**` is
+  aligned as matching aligns it, instead of colliding with everything, so
+  `**/*.md` overlaps `docs/**` and `web/*` but not `web/*.ts` or
+  `**/*_test.go`, and two `*`-and-suffix globs (`*.md`, `*.go`) are
+  disjoint unless one suffix ends the other. A path without a glob that
+  names a regular file in the shared tree covers that file alone, so
+  `**/*.md` and the file `web/package.json` no longer collide; a directory,
+  or a path that does not exist yet, still covers what is below it. A pool
+  child's scope lies inside its parent's when every path it names does:
+  `README.md`, `*.md` and `docs/*.md` lie inside `**/*.md`, `src/a.go`
+  inside the directory `src`; a glob is compared segment by segment, and
+  one only several parent entries cover together stays outside. The
+  refusal names the parent and its scope, and an overlap refusal for a task
+  the spawn would create says "this task" instead of an empty id. Prompt
+  bytes: none change; the refusals are thread text.
+
 - What a new shell does stays in that shell: an assignment, a `source`, a
   `read` or an arithmetic expansion inside `sh -c`, `bash -c`, `su -c` or a
   script fed to a shell no longer makes the line's own variables, or its
