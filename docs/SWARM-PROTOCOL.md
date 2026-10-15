@@ -307,7 +307,9 @@ missing, or, when the task needs no change, accepts it with text that starts `no
 text is appended to the result. Planning tasks, pool results (their children carry the work), documentation, tasks of
 read-only roles and submissions that carry an agreement are not held to it, and `resolve` closes a task that is no
 longer needed without accepting it. Edits made by shell commands are not in the evidence: in a shared tree, work done
-only that way is accepted with the same text.
+only that way is accepted with the same text. Evidence is per task: a worker reused for another task starts a new record
+(the event log keeps the old one), and one that comes back to the same task (requeued, sent back, restarted on it) keeps
+what it did on it; a pool's leader doing a child of its own keeps one record for both.
 
 Rules for implementation tasks: a task never leaves `doing` for review without the gate; `accept` cannot bypass the verifier, and a verifier
 that could not run (error, timeout) is reported as such and is never a pass (nor a failed test); verification is

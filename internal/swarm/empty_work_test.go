@@ -150,3 +150,55 @@ func TestRequeueAndReviseDropTheOldResultAndEvidence(t *testing.T) {
 		t.Fatalf("after the last attempt: %s, result %q, evidence %q", failed.Status, failed.Result, failed.Evidence)
 	}
 }
+
+// A reused worker's evidence for a new task is what it did for that task: a worker that edited files for its last task and changes
+// nothing for the next one submits "no files edited", and that task is not accepted as work. Coming back to the same task keeps
+// what it did on it.
+func TestAReusedWorkersEvidenceIsItsNewTasks(t *testing.T) {
+	script := []rvReply{
+		{Tools: []rvToolCall{{Name: "edit", Args: map[string]any{"path": "api/users.go"}}, {Name: "task", Args: map[string]any{"action": "done", "id": "T1", "text": "paginated"}}}},
+		{Text: "paginated the users endpoint"},
+		{Text: "nothing to do here"},
+	}
+	r := newRVRig(t, Config{}, gatedWorkers(map[string][]rvReply{"be-1": script}))
+	r.sw.StartManager()
+	ctx := context.Background()
+	accept := func(id string) *tools.Result {
+		return r.callTool(ctx, "task", "mgr", "manager", map[string]any{"action": "accept", "id": id, "text": "ok"})
+	}
+	id, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "paginate users", By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, "T1 in review", func() bool { tk, _ := r.sw.Board.Snapshot().Task("T1"); return tk.Status == StatusReview && r.idle(id) })
+	if res := accept("T1"); res.IsError {
+		t.Fatalf("T1: %s", res.Text)
+	}
+	if _, err := r.sw.Spawn(SpawnReq{Agent: id, Title: "sort users", By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	var second Task
+	rvWait(t, "T2 in review", func() bool {
+		second, _ = r.sw.Board.Snapshot().Task("T2")
+		return second.Status == StatusReview && r.idle(id)
+	})
+	if !evidenceShowsNoEdits(second.Evidence) {
+		t.Fatalf("T2 carries T1's evidence: %q", second.Evidence)
+	}
+	if res := accept("T2"); !res.IsError {
+		t.Fatalf("T2, in which nothing changed, was accepted: %s", res.Text)
+	}
+
+	ev := NewEvidence()
+	ev.Begin("T5")
+	in, _ := json.Marshal(map[string]any{"path": "a.go"})
+	ev.Observe(core.Block{ToolName: "edit", Input: in}, &tools.Result{Text: "ok"}, time.Now())
+	ev.Begin("T5") // back on the same task: its edits stay
+	if got := ev.Edited(); len(got) != 1 {
+		t.Fatalf("the same task's edits were dropped: %v", got)
+	}
+	ev.Begin("T6")
+	if got := ev.Edited(); len(got) != 0 {
+		t.Fatalf("another task's edits were kept: %v", got)
+	}
+}

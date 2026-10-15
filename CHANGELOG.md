@@ -16,9 +16,11 @@ they do not indicate whether a change has been released.
   submissions with an agreement are accepted as before. A task that the
   harness requeues, or that the manager revises or reopens, no longer keeps
   the result and evidence of an earlier submission on the board (the event
-  log keeps them); a failed verification gate still records its own.
-  Prompt bytes: the live view and `task get` of a requeued or revised task
-  no longer show the stale result and evidence; nothing cached changes.
+  log keeps them); a failed verification gate still records its own. A
+  worker reused for another task starts a new evidence record, so its next
+  submission no longer lists the files of its last task. Prompt bytes: the
+  live view and `task get` of a requeued or revised task no longer show the
+  stale result and evidence; nothing cached changes.
 
 - What a new shell does stays in that shell: an assignment, a `source`, a
   `read` or an arithmetic expansion inside `sh -c`, `bash -c`, `su -c` or a

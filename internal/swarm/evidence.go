@@ -24,6 +24,9 @@ type Evidence struct {
 	reads    int
 	calls    int
 	commands []CmdRecord
+	// task is the task the edits and commands were observed for (Begin): a worker that is reused for another task starts a
+	// new record, so its next submission does not carry the files of its last one.
+	task string
 }
 
 // CmdRecord is one shell command and its exit status.
@@ -52,6 +55,22 @@ var exitRe = regexp.MustCompile(`\[exit code (-?\d+)\]`)
 
 // NewEvidence returns an empty record.
 func NewEvidence() *Evidence { return &Evidence{edited: map[string]int{}} }
+
+// Begin points the record at task, the one task its agent is now doing. A record of another task is dropped (the event log
+// keeps every call it saw), so a reused worker's evidence for a new task starts empty; the record of the same task is kept, so a
+// worker that comes back to its task (requeued, sent back, restarted on it) keeps the edits it made on it. The raw counters
+// (Counts' reads and calls) go on counting.
+func (e *Evidence) Begin(task string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if task == "" || task == e.task {
+		return
+	}
+	if e.task != "" {
+		e.edited, e.commands = map[string]int{}, nil
+	}
+	e.task = task
+}
 
 // exitOf recovers a command's exit status. The structured status in Result.Meta
 // is authoritative (it survives output truncation); the mark in the text is the

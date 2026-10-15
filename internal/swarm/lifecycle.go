@@ -582,11 +582,10 @@ func (s *Swarm) unreserve(m *member, rs *runState) {
 	s.wg.Done()
 }
 
-// adopt records the tasks the agent is doing now as the run's assignments.
+// adopt records the tasks the agent is doing now as the run's assignments, and points its evidence at its task (beginEvidence).
 func (s *Swarm) adopt(m *member, rs *runState) {
 	snap := s.Board.Snapshot()
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	for _, t := range snap.Tasks {
 		if t.Owner == m.id && t.Status == StatusDoing {
 			rs.tasks[t.ID] = t.Rev
@@ -595,6 +594,23 @@ func (s *Swarm) adopt(m *member, rs *runState) {
 			}
 		}
 	}
+	m.mu.Unlock()
+	beginEvidence(snap, m)
+}
+
+// beginEvidence points the member's evidence at the one task it is doing (Evidence.Begin), so what it submits for that task is
+// what it did for it. A member doing several tasks at once (a pool's leader with a child of its own) keeps one record for them.
+func beginEvidence(snap *Snapshot, m *member) {
+	only := ""
+	for _, t := range snap.Tasks {
+		if t.Owner == m.id && t.Status == StatusDoing {
+			if only != "" {
+				return
+			}
+			only = t.ID
+		}
+	}
+	m.ev.Begin(only)
 }
 
 // trackClaim adds a task the agent claimed during its run to the run's assignments.
@@ -616,6 +632,7 @@ func (s *Swarm) trackClaim(agentID, taskID string) {
 	m.mailWakes, m.wakeLimited = 0, false
 	m.mu.Unlock()
 	m.madeProgress()
+	beginEvidence(s.Board.Snapshot(), m)
 	card := claimedCards(s.Board.Snapshot(), agentID, nil)
 	if m.tree != nil {
 		card += isolationCard(integrationRefOf(m.tree))
