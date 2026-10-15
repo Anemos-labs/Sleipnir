@@ -511,8 +511,19 @@ The **hot view** is the always-fresh part of each agent's prompt: its own status
 scope violations, stuck workers), related tasks and teammates, pending shared notes. It is personalised, deterministic
 and token-capped (900 tokens for workers, 2200 for the manager), it is the only per-request uncached text in the
 system, and it costs the same whatever the age of the session: it lists at most 14 tasks (40 for the manager, most
-relevant first, at most 3 failed), 30 teammates, the 8 newest notes and 6 alerts, and selects what fits the budget in
-one pass. How it reaches the model depends on the provider (`docs/CACHE-DESIGN.md`, HotMode): inline at the tail
+relevant first, at most 3 failed), 30 teammates (64 for the manager), the 8 newest notes and 6 alerts, and selects what
+fits the budget in one pass.
+
+Every teammate is in every view, on a line of its own (role, state, task, activity) or named on one line at the end of
+the team section (`+3 not shown: rv-3, rv-4, sc-1`), so nobody reads a teammate's absence from the view as its absence
+from the team. Relevance decides who gets a line and whose line the budget drops first. For a worker the most relevant
+are the manager, the members and leader of its pools and the owners of their subtasks, the owners of the tasks its own
+depend on or that depend on its own, of its task's parent and children, and of tasks blocked on its own; then the
+workers of its role; then everyone else. For the manager they are the workers that wait on it (a task in review or
+blocked), then those at work on a task, then idle ones; under budget pressure its teammate lines go before its task
+lines, and the teammates are named instead. A line costs about a dozen tokens and a name two or three, so a 32-worker
+team takes about 450 tokens of the manager's 2,200 with a line each, and under 100 named. At most 64 teammates are named;
+beyond them the line says how many more there are. How it reaches the model depends on the provider (`docs/CACHE-DESIGN.md`, HotMode): inline at the tail
 (default), or, where the provider binds thinking blocks to the exact prefix, as a persisted frozen message
 (turn-scoped system messages where the provider has them, otherwise appended only when it changes) so history stays
 append-only.

@@ -7,6 +7,19 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Every teammate is in every agent's live view. The team section listed
+  the first 30 teammates in roster order and dropped the rest silently, so
+  in a team of more than 30 the last workers were shown to nobody, the
+  manager included. Teammates are now ranked by relevance before the cap (a
+  worker's pool mates, the owners of related tasks and the manager first,
+  then its role; for the manager, workers waiting on it, then those at
+  work), the manager's view lists up to 64, and a teammate without a line
+  of its own (beyond the cap, or dropped for the budget) is named on a
+  final `+N not shown: …` line instead of counted in "(+N more lines
+  omitted)". Prompt bytes: the live view's team section changes (order of
+  dropping, the new line); it is per-request text, so nothing cached
+  changes.
+
 - What a new shell does stays in that shell: an assignment, a `source`, a
   `read` or an arithmetic expansion inside `sh -c`, `bash -c`, `su -c` or a
   script fed to a shell no longer makes the line's own variables, or its
