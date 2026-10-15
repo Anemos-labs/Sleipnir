@@ -21,6 +21,9 @@
   const refused = r => { if (r && r.ok === false) { if (r.why) ui.toast(r.why, 'warm'); return true; } return false; };
 
   /* ---------- goal ---------- */
+  /** The goal as written: its lines kept (the sheet's CSS wraps them as typed) and each `code` span in the monospace face, where a
+   *  flag such as --hosts reads as two hyphens rather than a dash. */
+  const goalHtml = t => esc(t).replace(/`([^`\n]+)`/g, '<code>$1</code>');
   /** The Goal sheet. pending is the text of a goal just set that the session has not taken up yet (a set runs as the tab's next
    *  item): the sheet shows it, starting, rather than "No goal set". */
   sheets.goal = function (pending) {
@@ -29,7 +32,7 @@
     const ev = m.torder.map(t => [t + ' ' + m.tasks[t].title + ' merged', m.tasks[t].st === 'merged']).concat(gs === 'met' ? (m.goal.reason ? [[m.goal.reason, true]] : []) : (m.left || []).map(x => [x, false]));
     const done = m.plan.filter(s => s === 'done').length, plan = S.plan, max = m.goal.max, used = m.goal.turns || 0;
     ui.modal({ title: 'Goal', kicker: '/goal', desc: 'work until it is met, judged on evidence', wide: true, body:
-      '<p class="goal-big">' + (goalText ? esc(goalText) : '<span class="dim">No goal set. <kbd>/goal TEXT</kbd> sets one: the manager works until the judge finds the evidence.</span>') + '</p>' +
+      '<p class="goal-big">' + (goalText ? goalHtml(goalText) : '<span class="dim">No goal set. <kbd>/goal TEXT</kbd> sets one: the manager works until the judge finds the evidence.</span>') + '</p>' +
       (goalText ? '<div class="g2"><div><h3 class="lab">plan, from the planner</h3><ul class="plist">' + plan.map((p, i) => '<li class="' + m.plan[i] + '"><span class="pg">' + ({ done: '✓', verify: '▸', act: '✎', edit: '✎', ask: '?', queued: '◌', pending: '◌' }[m.plan[i]] || '◌') + '</span><span class="pt">' + (i + 1) + '. ' + esc(p) + '</span></li>').join('') + '</ul></div><div><h3 class="lab">the judge, on evidence</h3><div class="verdict ' + (gs === 'met' ? 'met' : '') + ' boxed"><b>verdict</b>' + esc((m.verdict || 'no verdict yet').replace(/`/g, '')) + '</div><ul class="plist">' + ev.map(([t, ok]) => '<li class="' + (ok ? 'done' : '') + '"><span class="pg">' + (ok ? '✓' : '◌') + '</span><span class="pt">' + esc(t) + '</span></li>').join('') + '</ul></div></div>' +
         '<p class="stubnote">State <b class="st-' + gs + '">' + gs + '</b> · ' + done + '/' + plan.length + ' steps · ' + m.merged.length + '/' + m.torder.length + ' tasks merged · judged on evidence at every turn boundary' + (max ? ' · continuation limit ' + max + ' turns, used ' + used : '') + (m.goal.paused && gs === 'paused' ? ' · paused: ' + esc(m.goal.paused) : '') + '</p>' +
         '<div class="row2"><button class="btn" type="button" data-g="pause"' + (gs !== 'active' ? ' disabled' : '') + '>Pause the goal <kbd>esc</kbd></button><button class="btn" type="button" data-g="resume"' + (gs !== 'paused' ? ' disabled' : '') + '>Resume</button><button class="btn danger" type="button" data-g="clear">Clear the goal</button></div>' : '<div class="field-row"><input id="goalIn" type="text" placeholder="e.g. add pagination to /orders; go test ./... must pass" aria-label="Goal text"><button class="btn pri" type="button" data-g="set">Set the goal</button></div>'),
