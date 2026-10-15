@@ -7,6 +7,30 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Pool refusals name the condition that failed and the call that would
+  succeed. An `agree` or `confirm` is refused for one stated cause: no
+  revision (`pool agree needs revision: T6 is at revision 2 (planning)`), a
+  stale or unknown revision, nothing proposed yet, the pool already
+  executing (`no vote needed`), or the wrong phase for the action (with
+  the call that phase takes). A vote without `revision` counts for the
+  revision the member last read in full (`task get`, `pool inspect`, or the
+  proposal or reconciliation it wrote) while that revision and its
+  agreement are current. A refused `pool execute` names the members still
+  to agree, a refused `pool reconcile` or parent `task done` each
+  unfinished child with its status and owner, or the members whose
+  confirmation is missing. The leader is no longer mailed each vote: the
+  vote that completes a round tells it once what follows. `pool get` reads
+  a task as `task get` does; another unknown action lists pool's actions.
+  `pool inspect` outside reconciliation and a proposal after planning say
+  what to use instead. The `task` and `spawn` refusals state the rule (the
+  manager's, except that a pool leader creates, accepts and assigns the
+  children of the pool it leads while it executes) and the condition that
+  failed; messages that offered a leader to reject a child now say to ask
+  the manager. A child created without a role takes its parent's, and a
+  child stays claimable while its parent is blocked on it. Prompt bytes:
+  none change; tool descriptions and schemas are unchanged, and the
+  refusals and notices are thread text.
+
 - What a new shell does stays in that shell: an assignment, a `source`, a
   `read` or an arithmetic expansion inside `sh -c`, `bash -c`, `su -c` or a
   script fed to a shell no longer makes the line's own variables, or its

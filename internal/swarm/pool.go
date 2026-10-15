@@ -431,7 +431,8 @@ func (t *poolTool) Spec() core.ToolSpec {
 	return core.ToolSpec{Name: "pool", NoTreeWrites: true, Description: "Cooperate on a role pool's parent task. Leader: propose an agreement (theme/style, interfaces, work division, acceptance); execute after everyone agrees; reconcile after all children are accepted (text = the combined contract to confirm). Every member: call inspect during reconciliation to update your checkout, examine the combined result, then confirm. Agree to the proposal or confirm the reconciled result, with the exact revision from task get. Use mail to discuss objections; the manager resolves disagreements. During execution the leader may create scoped child tasks and assign existing members. Return one parent result with task done after every member confirms. Manager: excuse a member that cannot take part (its model keeps failing or does not answer; member = its id, text = why): it leaves the pool, its votes stop counting, its open subtasks return to the board, and the next member leads if it led.", InputSchema: json.RawMessage(`{"type":"object","properties":{"action":{"type":"string","enum":["propose","agree","execute","reconcile","inspect","confirm","excuse"]},"id":{"type":"string"},"member":{"type":"string"},"revision":{"type":"integer"},"text":{"type":"string"}},"required":["action","id"]}`)}
 }
 
-// Run applies one phase transition after checking leadership and membership.
+// Run applies one phase transition after checking leadership and membership. A refusal names the condition that failed and the
+// call that would succeed (pool_refusals.go).
 func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	var in struct {
 		Action, ID, Text, Member string
@@ -441,17 +442,31 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		return r, nil
 	}
 	s, by := t.s, c.Env.Agent
+	in.ID = strings.TrimSpace(in.ID)
+	switch in.Action {
+	case "get":
+		// Not an action of the schema: models reach for it to read a pool's state, which task get shows.
+		return s.readTask(c, in.ID, "pool get"), nil
+	case "propose", "agree", "execute", "reconcile", "inspect", "confirm", "excuse":
+	default:
+		where := "task get id=" + cleanText(in.ID, 20)
+		if in.ID == "" {
+			where = "task get with the pool's parent task id (task list shows them)"
+		}
+		return tools.Errorf("unknown pool action %q: pool's actions are propose, agree, execute, reconcile, inspect, confirm and excuse. A pool's state (phase, revision, agreement, votes) is in %s", cleanText(in.Action, 30), where), nil
+	}
 	agreement, err := cleanAgreement(in.Text)
 	if err != nil {
 		return tools.Errorf("%v", err), nil
 	}
+	manager := c.Env.Role == "manager"
 	if in.Action == "inspect" {
 		parent, ok := s.Board.Snapshot().Task(in.ID)
-		if !ok || parent.Pool == nil || parent.Pool.Phase != "reconciling" || !slices.Contains(parent.Pool.Members, by) {
-			if c.Env.Role == "manager" {
-				return tools.Errorf("only a reconciling pool member can inspect: the manager reads the combined result with the file tools, and accepts the parent once every member has confirmed it"), nil
-			}
-			return tools.Errorf("only a reconciling pool member can inspect"), nil
+		if !ok {
+			parent.ID = in.ID
+		}
+		if err := inspectRefusal(parent, ok, by, manager); err != nil {
+			return tools.Errorf("%v", err), nil
 		}
 		if m := s.get(by); m != nil {
 			note, err := s.syncTree(ctx, m)
@@ -461,13 +476,15 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		}
 	}
 	stale := "" // the leader of a pool whose reconciliation a confirm found superseded
+	var vote poolVote
+	read := false       // the caller read or wrote the pool's current revision with this action
+	var after PoolState // the pool as this action left it
 	err = s.Board.poolUpdate(by, in.ID, func(sn *Snapshot, task *Task, p *PoolState) error {
-		leader := by == task.Owner || c.Env.Role == "manager"
 		member := slices.Contains(p.Members, by)
 		switch in.Action {
 		case "propose":
-			if !leader || p.Phase != "planning" || agreement == "" {
-				return fmt.Errorf("leader must propose a nonempty agreement during planning")
+			if err := proposeRefusal(*task, *p, by, manager, agreement); err != nil {
+				return err
 			}
 			if by != task.Owner && len(p.Votes) > 0 {
 				// a new proposal resets the votes: from the manager, while members agree on the leader's, it only restarts the round
@@ -477,52 +494,57 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			p.Revision++
 			p.Votes = nil
 			p.Inspected = nil
+			read = true
 		case "inspect":
 			if !member || p.Phase != "reconciling" {
-				return fmt.Errorf("pool is not reconciling")
+				return fmt.Errorf("%s is not reconciling any more: read it with task get id=%s", task.ID, task.ID)
 			}
 			if !slices.Contains(p.Inspected, by) {
 				p.Inspected = append(p.Inspected, by)
 			}
+			read = true
 		case "agree", "confirm":
-			if !member {
-				return fmt.Errorf("only the pool's members %s; the manager proposes, and excuses a member that cannot take part", in.Action)
+			if err := voterRefusal(*task, *p, by, in.Action, manager); err != nil {
+				return err
 			}
-			phase := "planning"
+			if err := votePhaseRefusal(*task, *p, by, in.Action, s.isolated()); err != nil {
+				return err
+			}
 			if in.Action == "confirm" {
-				phase = "reconciling"
 				if err := s.poolCurrent(sn, *task); err != nil {
 					stale = task.Owner
 					return err
 				}
 				if s.isolated() && !slices.Contains(p.Inspected, by) {
-					return fmt.Errorf("call pool inspect, read the combined result, then confirm")
+					return fmt.Errorf("call pool inspect id=%s first: it brings the combined result of revision %d into your checkout; read it, then pool confirm id=%s revision=%d", task.ID, p.Revision, task.ID, p.Revision)
 				}
 			}
-			if p.Phase != phase || p.Agreement == "" || in.Revision != p.Revision {
-				return fmt.Errorf("read the current pool agreement and revision before acknowledging %s", phase)
+			rev, implicit := in.Revision, false
+			lastRead, current := s.poolReads.last(by, task.ID, *p)
+			if rev == 0 && current {
+				// No revision, but the member's last read is this revision with this agreement: the vote binds to what it read.
+				rev, implicit = p.Revision, true
 			}
-			if !slices.Contains(p.Votes, by) {
+			if rev != p.Revision {
+				return voteRevisionRefusal(*task, *p, in.Action, in.Revision, lastRead)
+			}
+			again := slices.Contains(p.Votes, by)
+			if !again {
 				p.Votes = append(p.Votes, by)
 				sort.Strings(p.Votes)
 			}
+			missing := missingVotes(*p)
+			vote = poolVote{rev: p.Revision, implicit: implicit, voted: len(p.Members) - len(missing), members: len(p.Members),
+				missing: missing, completes: !again && len(missing) == 0, leader: task.Owner}
 		case "execute":
-			if !leader || p.Phase != "planning" || len(p.Votes) != len(p.Members) {
-				return fmt.Errorf("every pool member must agree before execution")
+			if err := executeRefusal(*task, *p, by, manager); err != nil {
+				return err
 			}
 			p.Phase = "executing"
 			p.Votes = nil
 		case "reconcile":
-			if !leader || (p.Phase != "executing" && p.Phase != "reconciling") {
-				return fmt.Errorf("only the leader starts reconciliation after execution")
-			}
-			for _, child := range sn.Tasks {
-				if child.Parent == task.ID && child.Status == StatusReview {
-					return fmt.Errorf("child %s waits in review: the leader (or the manager) checks it and accepts it (task accept id=%s) or rejects it with feedback; reconcile once every child is accepted", child.ID, child.ID)
-				}
-				if child.Parent == task.ID && child.Status != StatusDone {
-					return fmt.Errorf("child %s is not complete", child.ID)
-				}
+			if err := reconcileRefusal(sn, *task, *p, by, manager); err != nil {
+				return err
 			}
 			if p.Phase == "reconciling" && len(p.Votes) == len(p.Members) && s.poolCurrent(sn, *task) == nil {
 				// (every child is complete) reconciling again would only reopen the confirmations of a result nothing has changed
@@ -539,9 +561,10 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			p.Revision++
 			p.Votes = nil
 			p.Inspected = nil
+			read = true
 		case "excuse":
 			switch {
-			case c.Env.Role != "manager":
+			case !manager:
 				return fmt.Errorf("only the manager excuses a pool member")
 			case !slices.Contains(p.Members, in.Member):
 				return fmt.Errorf("%q is not a member of the %s pool (members: %s)", in.Member, task.ID, strings.Join(p.Members, ", "))
@@ -558,11 +581,13 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			if task.Owner == in.Member {
 				task.Owner, task.Rev = p.Members[0], sn.Version // a new assignment
 			}
-		default:
-			return fmt.Errorf("unknown pool action")
 		}
+		after = *p
 		return nil
 	})
+	if err == nil && read {
+		s.poolReads.note(by, Task{ID: in.ID, Pool: &after})
+	}
 	if err != nil {
 		if stale != "" && stale != by {
 			// Only the leader reconciles again; a member that is merely refused keeps inspecting a result nobody will renew.
@@ -571,39 +596,72 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		}
 		return tools.Errorf("%v", err), nil
 	}
-	if in.Action == "excuse" {
+	switch in.Action {
+	case "excuse":
 		return s.excused(by, in.ID, in.Member, agreement), nil
-	}
-	if in.Action == "reconcile" && s.isolated() {
-		rep := s.Integrate(ctx)
-		if !rep.Applied && rep.News() {
-			_ = s.Board.poolUpdate(by, in.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil })
-			return tools.Errorf("combined result could not be applied: %s", rep.Message), nil
+	case "reconcile":
+		if s.isolated() {
+			rep := s.Integrate(ctx)
+			if !rep.Applied && rep.News() {
+				_ = s.Board.poolUpdate(by, in.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil })
+				return tools.Errorf("combined result could not be applied: %s", rep.Message), nil
+			}
 		}
-	}
-	if in.Action == "execute" {
+	case "execute":
 		task, _ := s.Board.Snapshot().Task(in.ID)
 		steps := poolExecuteSteps(task)
 		s.wakePool(in.ID, "Pool updated: execute. "+steps)
 		return text("%s: execute recorded. %s", in.ID, steps), nil
+	case "agree", "confirm":
+		return s.voteRecorded(by, in.ID, in.Action, vote), nil
 	}
 	if in.Action == "propose" || in.Action == "reconcile" {
 		s.wakePool(in.ID, "Pool updated: "+in.Action+". "+agreement)
-	} else {
-		task, _ := s.Board.Snapshot().Task(in.ID)
-		s.notify(task.Owner, "info", by+" recorded "+in.Action+" for "+in.ID+poolReadyNote(task, in.Action))
 	}
 	return text("%s: %s recorded", in.ID, in.Action), nil
 }
 
-// poolReadyNote is what the leader is told when the last member confirms the reconciled result: it is ready, and the next step is
-// to submit it. In a trial the leader called reconcile again after every member had confirmed, which only reopened the
-// confirmations. It returns "" before then.
-func poolReadyNote(t Task, action string) string {
-	if action != "confirm" || t.Pool == nil || t.Pool.Phase != "reconciling" || len(t.Pool.Votes) != len(t.Pool.Members) {
-		return ""
+// poolVote is what an agree or confirm that counted leaves for its answer: the revision, whether it was the voter's last read
+// (implicit: no revision was given), the round's count and the members still to vote, whether this vote completed the round, and
+// the pool's leader.
+type poolVote struct {
+	rev, voted, members int
+	implicit, completes bool
+	missing             []string
+	leader              string
+}
+
+// voteRecorded answers a member whose agree or confirm counted: the revision, who has yet to vote, and, once every member has, what
+// follows. The leader is told once, by the vote that completes the round when another member cast it; single votes are not mailed
+// to it (the leader's refused execute names the members still to agree).
+func (s *Swarm) voteRecorded(by, id, action string, v poolVote) *tools.Result {
+	head := fmt.Sprintf("%s: %s recorded for revision %d", id, action, v.rev)
+	if v.implicit {
+		head += " (the revision you last read)"
 	}
-	return fmt.Sprintf(". Every member has confirmed revision %d: submit the pool's result with task done id=%s (reconciling again would only reopen the confirmations)", t.Pool.Revision, t.ID)
+	if len(v.missing) > 0 {
+		return text("%s; %d of %d members, waiting for %s.", head, v.voted, v.members, strings.Join(v.missing, ", "))
+	}
+	next := poolRoundDone(id, action, v.rev)
+	if v.completes && v.leader != by {
+		s.notify(v.leader, "request", "Pool "+id+": "+next+".")
+	}
+	if v.leader == by {
+		return text("%s. %s.", head, next)
+	}
+	if action == "agree" {
+		return text("%s. Every member has agreed to revision %d; the leader %s executes it.", head, v.rev, v.leader)
+	}
+	return text("%s. Every member has confirmed revision %d; the leader %s submits it.", head, v.rev, v.leader)
+}
+
+// poolRoundDone is what the leader does once every member has agreed to revision rev (execute it) or confirmed it (submit the
+// result). In a trial the leader called reconcile again after every member had confirmed, which only reopened the confirmations.
+func poolRoundDone(id, action string, rev int) string {
+	if action == "agree" {
+		return fmt.Sprintf("Every member has agreed to revision %d: execute it with pool execute id=%s", rev, id)
+	}
+	return fmt.Sprintf("Every member has confirmed revision %d: submit the pool's result with task done id=%s (reconciling again would only reopen the confirmations)", rev, id)
 }
 
 // poolExecuteSteps is what a pool does once it executes: writing opens inside child tasks only, so the leader splits the agreed work
@@ -621,41 +679,52 @@ func poolExecuteSteps(t Task) string {
 		"and assigns each other member (%s) its child (spawn agent=MEMBER task=CHILD).", t.ID, t.Owner, t.ID, t.Role, strings.Join(others, ", "))
 }
 
-// poolComplete prevents aggregate submission before all members reconcile.
+// poolComplete prevents aggregate submission before all members reconcile: it names the children that are not done, or the
+// members whose confirmation is missing.
 func poolComplete(sn *Snapshot, t Task) error {
-	if t.Pool != nil {
-		for _, child := range sn.Tasks {
-			if child.Parent == t.ID && child.Status != StatusDone {
-				return fmt.Errorf("child %s is not done", child.ID)
-			}
-		}
+	if t.Pool == nil {
+		return nil
 	}
-	if t.Pool != nil && (t.Pool.Phase != "reconciling" || len(t.Pool.Votes) != len(t.Pool.Members)) {
-		return fmt.Errorf("%s needs reconciliation confirmed by every pool member", t.ID)
+	if open := unfinishedChildren(sn, t.ID); len(open) > 0 {
+		return fmt.Errorf("%s", notComplete(open, "done"))
+	}
+	if t.Pool.Phase != "reconciling" {
+		return fmt.Errorf("%s needs reconciliation confirmed by every pool member: it is %s; its leader %s reconciles (pool reconcile id=%s) once every child is accepted, then every member confirms", t.ID, t.Pool.Phase, t.Owner, t.ID)
+	}
+	if missing := missingVotes(*t.Pool); len(missing) > 0 {
+		return fmt.Errorf("%s needs reconciliation confirmed by every pool member: waiting for %s to confirm revision %d (%d of %d confirmed)",
+			t.ID, strings.Join(missing, ", "), t.Pool.Revision, len(t.Pool.Members)-len(missing), len(t.Pool.Members))
 	}
 	return nil
 }
 
-// poolChildAuthor permits a leader to create only children of its active pool.
-func (s *Swarm) poolChildAuthor(by, parent, role string) bool {
-	p, ok := s.Board.Snapshot().Task(parent)
-	return ok && p.Owner == by && p.Pool != nil && p.Pool.Phase == "executing" && p.Role == role
-}
-
-// poolAssignment verifies that children stay in their agreed pool and parent scope.
+// poolAssignment verifies that children stay in their agreed pool and parent scope. A child is created, claimed and assigned while
+// its parent executes, and also while the parent is blocked on that very child (its leader waits for it: the child must be able to
+// start).
 func poolAssignment(sn *Snapshot, t Task) error {
 	if t.Parent == "" {
 		return nil
 	}
 	p, ok := sn.Task(t.Parent)
-	if !ok || p.Pool == nil || p.Pool.Phase != "executing" || p.Status != StatusDoing {
-		return fmt.Errorf("parent pool must be executing")
+	switch {
+	case !ok:
+		return fmt.Errorf("parent %s is missing", t.Parent)
+	case p.Pool == nil:
+		return fmt.Errorf("%s is not a role pool's parent task: a child (parent=) belongs to one", p.ID)
+	case p.Pool.Phase != "executing":
+		return fmt.Errorf("parent pool %s is %s: its children are created, claimed and assigned while it executes", p.ID, p.Pool.Phase)
+	case p.Status == StatusBlocked && p.BlockedOn != "" && p.BlockedOn == t.ID:
+		// the parent waits for this child
+	case p.Status == StatusBlocked:
+		return fmt.Errorf("parent pool %s is blocked%s: its children are claimed and assigned while it executes; its leader %s resumes it (task resume id=%s)", p.ID, onTask(p.BlockedOn), ownerOrUnassigned(p.Owner), p.ID)
+	case p.Status != StatusDoing:
+		return fmt.Errorf("parent pool %s is %s: its children are claimed and assigned while it executes", p.ID, p.Status)
 	}
 	if t.Role != p.Role {
-		return fmt.Errorf("child role must match its parent pool")
+		return fmt.Errorf("a child of %s has its role, %s, not %q", p.ID, p.Role, t.Role)
 	}
 	if t.Owner != "" && !slices.Contains(p.Pool.Members, t.Owner) {
-		return fmt.Errorf("child owner must be a member of its parent pool")
+		return fmt.Errorf("%s is not a member of %s's pool (members: %s): a child of it goes to one of them", t.Owner, p.ID, strings.Join(p.Pool.Members, ", "))
 	}
 	return poolScope(p, t)
 }

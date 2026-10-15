@@ -48,8 +48,19 @@ members are all busy spares none: the assignment is then refused with what to do
 The first configured member leads, including after resume. `pool propose` records a
 shared agreement covering conventions, interfaces, work division and acceptance.
 Every member calls `pool agree` with its current revision before `pool execute` can
-unlock writes. The leader creates children with `task create parent=…`, assigns
-existing peers with `spawn`, and claims its own child with `task claim`. Children
+unlock writes. A vote (`agree`, `confirm`) without `revision` counts for the revision
+the member last read in full (`task get`, `pool inspect`, or the proposal or
+reconciliation it wrote) while that revision and its agreement are current; that
+memory is not kept across a restart. Otherwise a refusal names its one cause (no
+revision, a stale or unknown one, nothing proposed yet, the pool already executing,
+the wrong phase for the action) with the current revision and phase and the exact
+call. Single votes are not mailed to the leader: the vote that completes a round
+tells it once what follows (`pool execute`, or `task done` with the result), and a
+refused `pool execute` names the members still to agree. The leader creates children
+with `task create parent=…` (a child takes the parent's role and kind unless it names
+them), assigns existing peers with `spawn`, and claims its own child with `task
+claim`. A child is created, claimed and assigned while its parent executes, and also
+while the parent is blocked on that very child. Children
 must stay within the parent's role, membership and scope. A worker's self-claim
 updates its isolated checkout from integration, just as an explicit assignment does.
 Recovery preserves every owned parent and child, along with the agreed plan and
@@ -152,11 +163,11 @@ paths outside the project).
 
 | Tool | Actions | Notes |
 |---|---|---|
-| `task` | create, list, get, claim, update, block, resume, done, accept, reject, reopen, revise, resolve, fail, handover, deliver | Manager: create, accept, reject, reopen, revise, resolve, deliver and scope changes; pool leaders may create and accept their children. Persistent pools refuse `fail` and fresh-worker `handover`; embedded callers retain them (`fail` needs a typed `reason`). See sections 4 and 6. |
+| `task` | create, list, get, claim, update, block, resume, done, accept, reject, reopen, revise, resolve, fail, handover, deliver | Manager: create, accept, reject, reopen, revise, resolve, deliver and scope changes; pool leaders may create and accept the children of the pool they lead while it executes (a refusal names the condition that failed: the leader, the phase or the role). Persistent pools refuse `fail` and fresh-worker `handover`; embedded callers retain them (`fail` needs a typed `reason`). See sections 4 and 6. |
 | `mail` | send | one recipient; typed; section 5 |
 | `note` | propose | a bounded fact in the live view; older proposals can be evicted |
 | `spawn` | role, task, optional `agent=` to reuse an idle worker | Manager or pool leader assigning an existing member to its child; section 6 |
-| `pool` | propose, agree, execute, reconcile, inspect, confirm, excuse | Leader or manager coordinates phases; every member acknowledges the current agreement and reconciled result; the manager excuses a member that cannot take part |
+| `pool` | propose, agree, execute, reconcile, inspect, confirm, excuse | Leader or manager coordinates phases; every member acknowledges the current agreement and reconciled result; the manager excuses a member that cannot take part. `pool get` is read as `task get`; another unknown action is refused with the list of actions |
 | `approve` | answer a delegated worker permission question | Manager only; explicit policy denials and escalations still apply |
 | `wait` | until tasks change, mail arrives, or a timeout | sleeps at no request cost; reports what changed since the caller last looked |
 
