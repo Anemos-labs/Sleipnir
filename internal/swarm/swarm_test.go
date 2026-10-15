@@ -163,8 +163,8 @@ func TestRouterRules(t *testing.T) {
 	if _, err := r.Send("be-1", "fe-1", "", "fact 4"); err == nil || !strings.Contains(err.Error(), "several times") {
 		t.Fatalf("pair limit: %v", err)
 	}
-	if _, err := r.Send("be-1", "fe-1", "", strings.Repeat("x", 601)); err == nil {
-		t.Fatal("length cap")
+	if _, err := r.Send("be-1", "fe-1", "request", strings.Repeat("x", 601)); err == nil || !strings.Contains(err.Error(), "message too long") {
+		t.Fatalf("length cap: %v", err)
 	}
 	if _, err := r.Send("be-1", "mgr", "shout", "hi"); err == nil {
 		t.Fatal("unknown kind must be rejected")
@@ -174,6 +174,46 @@ func TestRouterRules(t *testing.T) {
 	}
 	if f := (*got)[0].Format(); f != "[mail m1 blocker from be-1] blocked on schema" {
 		t.Fatalf("format = %q", f)
+	}
+}
+
+// A request or a blocker asks for something and is held to 600 characters; info, an
+// answer or a contract carries content and may have 1,200. A message over its kind's
+// limit is refused with what its sender needs to fix it in one try: its length, how far
+// over it is, a target with some margin, and where long content lasts instead.
+func TestMailLengthLimitIsByKindAndItsRefusalSaysHowToFixIt(t *testing.T) {
+	r, got := newRouter(t)
+	_, err := r.Send("be-1", "mgr", "request", strings.Repeat("x", 855))
+	if err == nil {
+		t.Fatal("an 855-character request was accepted")
+	}
+	for _, want := range []string{"855 characters", "255 over the 600-character limit for request mail", "aim for about 500",
+		"a file in your task's scope", "the agreement you submit with task done", "task get"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not say %q: %v", want, err)
+		}
+	}
+	if _, err := r.Send("be-1", "mgr", "blocker", strings.Repeat("b", 601)); err == nil || !strings.Contains(err.Error(), "1 over the 600-character limit for blocker mail") {
+		t.Fatalf("a 601-character blocker: %v", err)
+	}
+	for _, kind := range []string{"info", "answer", "contract"} {
+		if _, err := r.Send("be-1", "fe-1", kind, strings.Repeat(kind[:1], 1200)); err != nil {
+			t.Fatalf("1,200 characters of %s: %v", kind, err)
+		}
+	}
+	if _, err := r.Send("fe-1", "mgr", "", strings.Repeat("i", 900)); err != nil {
+		t.Fatalf("900 characters of mail with no kind (info): %v", err)
+	}
+	_, err = r.Send("fe-1", "be-1", "contract", strings.Repeat("c", 1201))
+	if err == nil || !strings.Contains(err.Error(), "1201 characters, 1 over the 1200-character limit for contract mail") || !strings.Contains(err.Error(), "aim for about 1000") {
+		t.Fatalf("a 1,201-character contract: %v", err)
+	}
+	if len(*got) != 4 {
+		t.Fatalf("delivered %d, want the three content messages and the info", len(*got))
+	}
+	// A configuration that sets no content limit holds every kind to MaxChars.
+	if c := (RouterConfig{MaxChars: 600}); c.maxCharsFor("answer") != 600 || c.maxCharsFor("request") != 600 {
+		t.Fatal("an unset content limit is not the general one")
 	}
 }
 
