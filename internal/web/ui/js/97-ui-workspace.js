@@ -247,7 +247,7 @@
       const grp = new Map(), order = [];
       rows.forEach(r => { const key = W2.group === 'agent' ? (r.owner || '?') : (r.task || 'no task'); if (!grp.has(key)) { grp.set(key, []); order.push(key); } grp.get(key).push(r); });
       c.pends.forEach(p => { if (rows.some(r => r.path === p.path)) return; const key = W2.group === 'agent' ? p.ag : (p.task || 'no task'); if (!grp.has(key)) { grp.set(key, []); order.push(key); } const cut = p.path.lastIndexOf('/'); grp.get(key).unshift({ path: p.path, name: p.path.slice(cut + 1), dir: cut < 0 ? '' : p.path.slice(0, cut), status: 'A', owner: p.ag, task: p.task, add: F.lines(p.text).length, del: 0, writing: true, cp: null }); });
-      order.sort((x, y) => x < y ? -1 : 1);
+      order.sort(SL.ui.board.idCmp);   /* T2 before T10, be-2 before be-10 */
       const items = [];
       order.forEach(key => { const list = grp.get(key); items.push({ k: 'g', key, add: list.reduce((s, r) => s + r.add, 0), del: list.reduce((s, r) => s + r.del, 0) }); list.forEach(r => items.push({ k: 'r', r })); });
       if (c.mk.restore) items.push({ k: 'g', rest: true });
@@ -434,7 +434,7 @@
 
     /* ---------------- bottom: the verify / merge strip ---------------- */
     function stripHtml(c) {
-      const m = c.m, S = c.S, qh = m.qHead, merged = m.merged.slice().sort(), isGoal = qh && qh.task === 'goal';
+      const m = c.m, S = c.S, qh = m.qHead, merged = m.merged, isGoal = qh && qh.task === 'goal';
       const chips = m.torder.map(t => { const T = own(m.tasks, t), failed = !!T.failed && T.st === 'todo', st = failed ? ['✗ failed', 'err'] : own(TASK_ST, T.st) || ['', ''], blocked = T.st === 'running' && hasOpenAsk(m, t); return '<button type="button" class="wtk" data-taskf="' + esc(t) + '" data-task="' + esc(t) + '" style="--c:' + aCol(S, T.owner) + '" aria-pressed="' + (c.W.task === t) + '" title="' + esc(t + ' ' + T.title + ' · ' + (T.owner || '') + ' · ' + (blocked ? 'asks you' : st[0]) + (failed && T.closure && T.closure.kind ? ' (' + T.closure.kind + ')' : '') + ' (click: show only its changes; alt-click: its verify output)') + '"><b>' + vt(t) + '</b><span class="' + (blocked ? 'warm' : st[1]) + '" aria-hidden="true">' + (blocked ? '?' : st[0].split(' ')[0]) + '</span><span class="sr">' + esc(t + ' ' + (blocked ? 'asks you' : st[0])) + '</span></button>'; }).join('');
       const chg = c.I ? changeRows(c) : derived(S).map(r => ({ path: r.path })), rvd = c.I ? chg.filter(r => c.lastId(r.path) && own(c.mk.reviewed, r.path) === c.lastId(r.path)).length : 0;
       const isol = (c.I && c.I.isolation ? c.I.isolation : S.meta.isolation) === 'worktree', gate = S.meta.verify ? merged.length + m.bounced : 0;
