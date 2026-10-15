@@ -10,6 +10,7 @@ type builder struct {
 	piped      bool
 	bodies     []string // heredoc bodies and here-strings feeding the command's stdin
 	literal    []Span   // where the bodies of its heredocs with a quoted delimiter are in the source
+	arith      []string // the arithmetic expansions of its words (Simple.Arith)
 }
 
 // parser groups a token stream into simple commands. It is deliberately not a
@@ -41,10 +42,13 @@ type parser struct {
 	skipHeader bool // inside the word list of for/select
 	header     []string
 	headerTok  token       // the "for" keyword, for Raw
+	headerAri  []string    // the arithmetic expansions of the loop's words
 	inDbl      bool        // inside [[ ... ]]
 	cases      []caseFrame // the open case statements, innermost last
 	lists      []listFrame // the and-or lists of the open compound commands, innermost last
 	headerCond bool        // the for/select being read runs only conditionally or in a shell of its own
+	loops      int         // open while, until, for and select loops
+	curLoop    int         // Simple.Loop of the commands being read: the outermost open loop, 0 outside any
 }
 
 // listFrame is the and-or list a compound command (if, while, until, for, select, case, { }, ( )) belongs to, set aside while
@@ -54,6 +58,7 @@ type parser struct {
 type listFrame struct {
 	start, body int
 	andOr       bool
+	loop        bool // the compound is a while, until, for or select loop
 }
 
 // caseFrame is one open case statement: where its reading is (the word to match, a pattern list, a body) and the nesting of
@@ -133,6 +138,7 @@ func (p *parser) word(t token) {
 			return
 		}
 		p.header = append(p.header, t.text)
+		p.headerAri = append(p.headerAri, t.arith...)
 		if t.end > p.headerTok.end {
 			p.headerTok.end = t.end
 		}
@@ -162,12 +168,14 @@ func (p *parser) word(t token) {
 		}
 		p.touch(t)
 		p.cur.words = append(p.cur.words, t.text)
+		p.cur.arith = append(p.cur.arith, t.arith...)
 		return
 	}
 	if !p.cur.has && !t.quoted && p.reserved(t) {
 		return
 	}
 	p.touch(t)
+	p.cur.arith = append(p.cur.arith, t.arith...)
 	if t.assign && len(p.cur.words) == 0 {
 		p.cur.env = append(p.cur.env, t.text)
 		return
@@ -184,7 +192,7 @@ func (p *parser) word(t token) {
 func (p *parser) reserved(t token) bool {
 	switch t.text {
 	case "if", "while", "until":
-		p.open()
+		p.open(t.text != "if")
 		p.blocks++
 		return true
 	case "!", "then", "elif", "else", "do":
@@ -204,7 +212,7 @@ func (p *parser) reserved(t token) bool {
 		}
 		return true
 	case "{":
-		p.open()
+		p.open(false)
 		p.groups++
 		return true
 	case "}":
@@ -218,14 +226,14 @@ func (p *parser) reserved(t token) bool {
 		return true
 	case "for", "select":
 		p.headerCond = p.andOr || p.nextPiped || p.parens > 0 || p.groups > 0 || p.blocks > 0 || len(p.cases) > 0
-		p.open()
+		p.open(true)
 		p.blocks++
 		p.skipHeader = true
 		p.header = nil
 		p.headerTok = t
 		return true
 	case "case":
-		p.open()
+		p.open(false)
 		p.cases = append(p.cases, caseFrame{at: caseSubject, parens: p.parens, groups: p.groups, block: p.blocks})
 		return true
 	case "time":
@@ -353,7 +361,7 @@ func (p *parser) op(t token) {
 			p.st.problem("arithmetic command (( )) is not analysed")
 		}
 		p.st.an.HasSubshell = true
-		p.open()
+		p.open(false)
 		p.parens++
 		p.needCmd = false
 	case ")":
@@ -400,10 +408,20 @@ func (p *parser) endCase(c *caseFrame) {
 // open sets the current and-or list aside at the start of a compound command; its body's commands begin a list of their own.
 // The compound is the command an && || | was waiting for, so a newline after its first line ends that line ("a && for f in x"
 // then "do b; done" on the next: the do is not a word of the loop's list, and b is a command).
-func (p *parser) open() {
-	p.lists = append(p.lists, listFrame{start: p.listStart, body: len(p.out), andOr: p.andOr})
+//
+// loop is set for a while, until, for or select loop: the commands read until it ends are in it (Simple.Loop), and in the loop
+// that encloses it, if any, since that one runs them all again.
+func (p *parser) open(loop bool) {
+	p.lists = append(p.lists, listFrame{start: p.listStart, body: len(p.out), andOr: p.andOr, loop: loop})
 	p.listStart = len(p.out)
 	p.needCmd = false
+	if loop {
+		if p.loops == 0 {
+			p.st.loops++
+			p.curLoop = p.st.loops
+		}
+		p.loops++
+	}
 }
 
 // close ends the innermost compound command: the enclosing and-or list is current again, and the compound is the last
@@ -416,6 +434,11 @@ func (p *parser) close() {
 	p.lists = p.lists[:len(p.lists)-1]
 	p.listStart, p.andOr = f.start, f.andOr
 	p.last = f.body
+	if f.loop {
+		if p.loops--; p.loops == 0 {
+			p.curLoop = 0
+		}
+	}
 }
 
 func (p *parser) redir(t token) {
@@ -434,6 +457,7 @@ func (p *parser) redir(t token) {
 		p.i++
 		p.pending = append(p.pending, tg.nested...)
 		p.touch(tg)
+		p.cur.arith = append(p.cur.arith, tg.arith...)
 		r.Target = tg.text
 		switch {
 		case tg.hasBody:
@@ -460,7 +484,8 @@ func (p *parser) finish() {
 	c := p.cur
 	p.cur = builder{}
 	s := Simple{Env: c.env, Redirects: c.redirs, Nested: p.nested, Piped: c.piped,
-		Cond: c.piped || p.andOr || p.parens > 0 || p.groups > 0 || p.blocks > 0 || len(p.cases) > 0}
+		Cond: c.piped || p.andOr || p.parens > 0 || p.groups > 0 || p.blocks > 0 || len(p.cases) > 0, Loop: p.curLoop, Arith: c.arith}
+	p.st.arithOn += len(c.arith)
 	if c.start >= 0 && c.end <= len(p.src) && c.start <= c.end {
 		s.Raw = p.src[c.start:c.end]
 	}
@@ -504,8 +529,14 @@ func (p *parser) markList() {
 	}
 }
 
-// flush moves pending simple commands into output and clears the pending queue.
+// flush moves pending simple commands into output and clears the pending queue. Inside a loop, the commands of a substitution are
+// in it as well, whatever loops of their own they have.
 func (p *parser) flush() {
+	if p.curLoop != 0 {
+		for i := range p.pending {
+			p.pending[i].Loop = p.curLoop
+		}
+	}
 	if len(p.pending) > 0 {
 		p.out = append(p.out, p.pending...)
 		p.pending = nil
@@ -535,6 +566,8 @@ func (p *parser) scripts(s *Simple) {
 	switch base := stdBase(prog); {
 	case base == "trap":
 		mark(inner, func(c *Simple) { c.Deferred = true })
+	case base == "mapfile" || base == "readarray":
+		mark(inner, func(c *Simple) { c.Cond = true }) // in this shell, as often as the input has quanta of lines: maybe never
 	case base != "eval":
 		mark(inner, func(c *Simple) { c.Child = true }) // sh -c, su -c: a new shell
 	}
@@ -580,8 +613,8 @@ func (p *parser) endHeader() {
 		return
 	}
 	p.skipHeader = false
-	words := p.header
-	p.header = nil
+	words, arith := p.header, p.headerAri
+	p.header, p.headerAri = nil, nil
 	loopVar, in := "", false
 	for i, w := range words {
 		if w == "in" && i >= 1 {
@@ -613,8 +646,9 @@ func (p *parser) endHeader() {
 		raw = p.src[p.headerTok.start:p.headerTok.end]
 	}
 	p.out = append(p.out, Simple{
-		Program: "for", Args: append([]string(nil), words...), Raw: raw, Nested: p.nested, LoopVar: loopVar, Cond: p.headerCond,
+		Program: "for", Args: append([]string(nil), words...), Raw: raw, Nested: p.nested, LoopVar: loopVar, Cond: p.headerCond, Loop: p.curLoop, Arith: arith,
 	})
+	p.st.arithOn += len(arith)
 	p.have = true
 	p.flush()
 }

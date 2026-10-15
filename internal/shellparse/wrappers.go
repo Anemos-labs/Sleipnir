@@ -428,6 +428,13 @@ func shellOpts(args []string) (cflag, sflag bool, next int) {
 
 // inlineScript returns the command string that prog (already the effective
 // program) will execute, for eval, sh -c, su -c and trap.
+// InlineScript is the command string a program runs as shell code (sh -c, eval, trap, su -c, mapfile -C), and whether it has one
+// or is written as if it had (sh -c with no string).
+func InlineScript(prog string, args []string) (string, bool) {
+	s, kind := inlineScript(prog, args)
+	return s, kind != inlineNone
+}
+
 func inlineScript(prog string, args []string) (string, int) {
 	base := stdBase(prog)
 	switch {
@@ -445,6 +452,34 @@ func inlineScript(prog string, args []string) (string, int) {
 			return "", inlineNone
 		}
 		return strings.Join(args, " "), inlineFound
+	case base == "mapfile" || base == "readarray":
+		// mapfile -C callback [-c quantum]: the callback is evaluated in this shell every quantum lines, with the index and the
+		// line it read appended as words: text from the input, so they are given as "$@", which is not known.
+		for i := 0; i < len(args); i++ {
+			a := args[i]
+			if a == "--" || len(a) < 2 || a[0] != '-' {
+				break
+			}
+			for j := 1; j < len(a); j++ {
+				switch a[j] {
+				case 'C':
+					cb := a[j+1:]
+					if cb == "" {
+						if i+1 >= len(args) {
+							return "", inlineMissing
+						}
+						cb = args[i+1]
+					}
+					return cb + ` 0 "$@"`, inlineFound
+				case 'd', 'n', 'O', 's', 'u', 'c': // an option with a value: the rest of the word, or the next one
+					if j+1 == len(a) {
+						i++
+					}
+					j = len(a)
+				}
+			}
+		}
+		return "", inlineNone
 	case base == "trap":
 		// trap [-lp] [--] action sigspec...: the action is a command string that
 		// runs when the signal (or shell exit) arrives.

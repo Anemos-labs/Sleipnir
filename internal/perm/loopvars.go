@@ -1,6 +1,7 @@
 package perm
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/shellparse"
@@ -101,9 +102,13 @@ func expandBound(s shellparse.Simple, bound map[string][]string) []shellparse.Si
 	if len(bound) == 0 {
 		return []shellparse.Simple{s}
 	}
-	// the variables the arguments mention, in order of first mention
+	// the variables the arguments and the redirection targets mention, in order of first mention
+	words := slices.Clone(s.Args)
+	for _, r := range s.Redirects {
+		words = append(words, r.Target)
+	}
 	var names []string
-	for _, a := range s.Args {
+	for _, a := range words {
 		for name := range bound {
 			if strings.Contains(a, "$"+name) || strings.Contains(a, "${"+name+"}") {
 				if !containsName(names, name) {
@@ -127,14 +132,23 @@ func expandBound(s shellparse.Simple, bound map[string][]string) []shellparse.Si
 	for {
 		c := s
 		c.Args = make([]string, len(s.Args))
+		c.Redirects = slices.Clone(s.Redirects)
 		ok := true
-		for i, a := range s.Args {
-			c.Args[i] = a
+		bind := func(w string) string {
 			for j, n := range names {
 				var done bool
-				if c.Args[i], done = substituteVar(c.Args[i], n, bound[n][pick[j]]); !done {
+				if w, done = substituteVar(w, n, bound[n][pick[j]]); !done {
 					ok = false
 				}
+			}
+			return w
+		}
+		for i, a := range s.Args {
+			c.Args[i] = bind(a)
+		}
+		for i := range c.Redirects {
+			if !strings.HasPrefix(c.Redirects[i].Op, "<<") || c.Redirects[i].Op == "<<<" {
+				c.Redirects[i].Target = bind(c.Redirects[i].Target)
 			}
 		}
 		if !ok {

@@ -165,8 +165,12 @@ func (ev *evaluator) bash(cmd string) verdict {
 	}
 	an := shellparse.Parse(cmd)
 	an.Commands = bindLoopVars(cmd, an.Commands)
+	// What each loop assigns is taken from all of its commands, those past the bound below included. An arithmetic expansion
+	// assigns, as the command's words are expanded, only the names it reaches (arithAssigns).
+	ints := intVars(an.Commands)
+	loopNames, loopAll := loopAssignments(an.Commands, ints)
 	// Judging costs file-system lookups per command; a line with thousands of
-	// commands is checked up to a bound and then never auto-allowed.
+	// commands is checked up to a bound and then never auto-allowed, in any mode.
 	tooMany := len(an.Commands) > maxUnits
 	if tooMany {
 		an.Commands = an.Commands[:maxUnits]
@@ -205,15 +209,42 @@ func (ev *evaluator) bash(cmd string) verdict {
 		vars map[string]string
 	}
 	var later []deferred
-	for _, s := range an.Commands {
+	// A loop runs its commands again: what any of them assigns may already be there when the first one runs, so the names a loop
+	// assigns are unknown from its start (all of them when one of its builtins may set any).
+	entered := map[int]bool{}
+	for i, s := range an.Commands {
 		if s.Deferred {
 			later = append(later, deferred{s: s, vars: maps.Clone(ev.vars)})
 			continue
 		}
+		if track && s.Loop != 0 && !entered[s.Loop] {
+			entered[s.Loop] = true
+			if loopAll[s.Loop] {
+				ev.vars, ev.exported, track = nil, nil, false
+			}
+			for _, n := range loopNames[s.Loop] {
+				ev.forget(n, conflicted)
+			}
+		}
+		if track && len(s.Arith) > 0 {
+			if names, all := arithAssigns(s.Arith, i, ints); all {
+				ev.vars, ev.exported, track = nil, nil, false // an expansion may set any variable from here on
+			} else {
+				for _, n := range names {
+					ev.forget(n, conflicted)
+				}
+			}
+		}
 		v := ev.judgeWith(s, cw, ev.vars)
 		if track {
 			if reassigns(s) {
-				ev.vars, ev.exported, track = nil, nil, false // a builtin may set any variable from here on
+				if names, all := reassignedNames(s); all {
+					ev.vars, ev.exported, track = nil, nil, false // a builtin may set any variable from here on
+				} else {
+					for _, n := range names {
+						ev.forget(n, conflicted)
+					}
+				}
 			} else if unconditional(s) {
 				ev.noteAssignments(s, cw, conflicted)
 			} else {
@@ -242,8 +273,19 @@ func (ev *evaluator) bash(cmd string) verdict {
 	if why != "" {
 		ev.unroutine = true
 	}
-	if why == "" || res.kind == vDeny || free(ev.v.mode) {
+	if why == "" || res.kind == vDeny {
 		return res
+	}
+	if free(ev.v.mode) {
+		if !tooMany {
+			return res
+		}
+		// The commands past the bound were not judged at all, so a mode that allows what it is not asked about cannot allow them:
+		// bypass asks, and yolo, which never asks, refuses.
+		if ev.v.mode == ModeYolo {
+			return deny("cannot be checked beforehand: " + why + "; split it into shorter commands")
+		}
+		return ask("cannot be checked beforehand: "+why, nil).protected(TierGuarded)
 	}
 	if ev.v.mode == ModePlan {
 		return deny(planReason("cannot verify that the command is read-only: " + why))
@@ -455,17 +497,17 @@ func validName(s string) bool {
 }
 
 // varsTrackable reports whether a command line is simple enough for noteAssignments, from what the parser found: the line parsed (a
-// function definition, whose body may set variables when it is called, and an arithmetic command leave it unparsed); it has no
-// arithmetic expansion and no other place bash evaluates arithmetic (mayAssignArithmetically), where an expression may assign
-// ($((n=5))); and no trap action assigns, since it may run between any two commands. Quoted
-// text and here-document bodies are the parser's business: printf 'func main() {...}' > main.go defines nothing.
-// cmd is the line's code (shellparse.Analysis.Code).
+// function definition, whose body may set variables when it is called, and an arithmetic command leave it unparsed); each of its
+// arithmetic expansions ($((n=5))) is on the command it belongs to (shellparse.Analysis.ArithKnown; arithAssigns says what it may
+// assign); it has no other place bash evaluates arithmetic (mayAssignArithmetically); and no trap action assigns, since it may run
+// between any two commands. Quoted text and here-document bodies are the parser's business: printf 'func main() {...}' > main.go
+// defines nothing. cmd is the line's code (shellparse.Analysis.Code).
 func varsTrackable(cmd string, an shellparse.Analysis) bool {
-	if !an.Parsed || an.HasArithmetic || mayAssignArithmetically(cmd) {
+	if !an.Parsed || an.HasArithmetic && !an.ArithKnown || mayAssignArithmetically(cmd) {
 		return false
 	}
 	for _, s := range an.Commands {
-		if s.Deferred && (reassigns(s) || len(assignedBy(s)) > 0) {
+		if s.Deferred && (reassigns(s) || len(assignedBy(s)) > 0 || len(s.Arith) > 0) {
 			return false
 		}
 	}
@@ -511,6 +553,83 @@ func reassigns(s shellparse.Simple) bool {
 		return printfAssigns(s.Args)
 	}
 	return s.LoopVar != "" || reassignBuiltins[name]
+}
+
+// reassignedNames are the variables a statement of reassigns may set: a loop's variable (and REPLY, which select sets), the names
+// a builtin is given (read, unset, getopts, mapfile, wait -p, printf -v; and the variables they set when given none), and nothing
+// for a plain wait. all is true when they are not known from its words: eval, source, let (an arithmetic expression may set any
+// variable it reaches), a declaration that is not plain assignments, coproc, and a name only known when the line runs.
+func reassignedNames(s shellparse.Simple) (names []string, all bool) {
+	if s.LoopVar != "" {
+		return []string{s.LoopVar, "REPLY"}, false
+	}
+	name := shellparse.ProgramName(s.Program)
+	switch name {
+	case "read", "unset", "getopts", "mapfile", "readarray", "wait", "printf":
+	default:
+		return nil, true
+	}
+	ops, opsAll := assignedNames(s)
+	if opsAll {
+		return nil, true // mapfile -C: the callback runs text in this shell
+	}
+	if name == "printf" { // printf -v NAME or printf -vNAME
+		ops = nil
+		if a := s.Args; len(a) > 0 {
+			if t := strings.TrimPrefix(a[0], "-v"); t != a[0] && t != "" {
+				ops = []string{t}
+			} else if a[0] == "-v" && len(a) > 1 {
+				ops = []string{a[1]}
+			} else {
+				return nil, true // a first word only known when the line runs (printfAssigns)
+			}
+		}
+	}
+	for _, a := range ops {
+		if strings.ContainsAny(a, "$`*?[") { // a word only known when the line runs, or a glob a file name may turn into another name
+			return nil, true
+		}
+		if n, _, _ := strings.Cut(a, "["); validName(n) {
+			names = append(names, n)
+		}
+	}
+	switch name {
+	case "read":
+		names = append(names, "REPLY")
+	case "mapfile", "readarray":
+		names = append(names, "MAPFILE")
+	case "getopts":
+		names = append(names, "OPTARG", "OPTIND")
+	}
+	return names, false
+}
+
+// loopAssignments are the names the commands of each loop (shellparse.Simple.Loop) may set, and the loops one of whose builtins
+// may set any variable.
+func loopAssignments(cmds []shellparse.Simple, ints map[string]int) (map[int][]string, map[int]bool) {
+	names, all := map[int][]string{}, map[int]bool{}
+	for i, s := range cmds {
+		if s.Loop == 0 || s.Deferred {
+			continue
+		}
+		if len(s.Arith) > 0 {
+			n, a := arithAssigns(s.Arith, i, ints)
+			names[s.Loop] = append(names[s.Loop], n...)
+			all[s.Loop] = all[s.Loop] || a
+		}
+		for _, env := range assignedBy(s) {
+			names[s.Loop] = append(names[s.Loop], envName(env))
+		}
+		if d, ok := declaration(s); ok {
+			names[s.Loop] = append(names[s.Loop], d.names...)
+		}
+		if reassigns(s) {
+			n, a := reassignedNames(s)
+			names[s.Loop] = append(names[s.Loop], n...)
+			all[s.Loop] = all[s.Loop] || a
+		}
+	}
+	return names, all
 }
 
 // printfAssigns reports whether a printf may set a variable: printf -v NAME does, and so may one whose first word is only known when

@@ -2,6 +2,7 @@ package shellparse
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -328,6 +329,10 @@ b"`, cmds: []cmd{c("echo", "ab")}},
 	{in: `select X do cat ~/.ssh/id_rsa; done`, cmds: []cmd{c("for"), c("cat", "~/.ssh/id_rsa")}},
 	{in: "for X\ndo rm x; done", cmds: []cmd{c("for"), c("rm", "x")}},
 	{in: `for X Y; do echo; done`, cmds: []cmd{c("echo")}, flags: fBad},
+	// mapfile -C: the callback runs in this shell with the index and the line it read appended
+	{in: `mapfile -t -C 'rm -f' -c 1 a < f`, cmds: []cmd{anyArgs("mapfile"), c("rm", "-f", "0", "$@")}},
+	{in: `readarray -tC 'echo x' a < f`, cmds: []cmd{anyArgs("readarray"), c("echo", "x", "0", "$@")}},
+	{in: `mapfile -t a < f`, cmds: []cmd{anyArgs("mapfile")}},
 	{in: `select x in a b; do echo $x; done`, cmds: []cmd{c("for", "a", "b"), c("echo", "$x")}},
 	{in: `for x in {1..3}; do echo $x; done`, cmds: []cmd{c("for", "1", "2", "3"), c("echo", "$x")}},
 	{in: `while read l; do echo "$l"; done < in`, cmds: []cmd{c("read", "l"), c("echo", "$l"), c("")}},
@@ -863,6 +868,56 @@ func TestLiteralHeredocBodiesAreAProgramsData(t *testing.T) {
 		}
 		if !want && code != src {
 			t.Errorf("%q: Code blanked text that is not literal: %q", src, code)
+		}
+	}
+}
+
+// Loop names the outermost loop a command is in: a loop runs all of its commands again, those of a loop or a substitution inside it
+// too, and an if, a group or a case is no loop.
+func TestLoopIsTheOutermostLoopACommandIsIn(t *testing.T) {
+	loops := func(src string) []int {
+		var out []int
+		for _, s := range Parse(src).Commands {
+			out = append(out, s.Loop)
+		}
+		return out
+	}
+	got := loops("a; while x; do b; for y in z; do c; done; echo $(d); done; e; until f; do g; done; if h; then i; fi; { j; }")
+	// a, x, b, for, c, echo, d, e, f, g, h, i, j
+	if len(got) != 13 {
+		t.Fatalf("%v", got)
+	}
+	l1, l2 := got[1], got[9]
+	want := []int{0, l1, l1, l1, l1, l1, l1, 0, l2, l2, 0, 0, 0}
+	if l1 == 0 || l2 == 0 || l1 == l2 || !slices.Equal(got, want) {
+		t.Errorf("Loop = %v, want %v with two different loops", got, want)
+	}
+}
+
+// Arith holds each arithmetic expansion on the command it belongs to: in its words and redirections, the bodies of its unquoted
+// heredocs and a loop's list. One the parser places on no command (a case subject) leaves ArithKnown false; quoted text holds none.
+func TestArithIsOnTheCommandItBelongsTo(t *testing.T) {
+	for src, want := range map[string]struct {
+		arith [][]string
+		known bool
+	}{
+		"n=1; n=$((n+1))":                  {[][]string{nil, {"n+1"}}, true},
+		`echo "t=$(( $(date +%s) - S0 ))"`: {[][]string{{" $(date +%s) - S0 "}, nil}, true},
+		"cat <<EOF > f\n$((D=0))\nEOF":     {[][]string{{"D=0"}}, true},
+		"echo $(echo $((a=1)))":            {[][]string{nil, {"a=1"}}, true},
+		"for i in $((1+1)) b; do :; done":  {[][]string{{"1+1"}, nil}, true},
+		"x=$(( $((1)) + 2 ))":              {[][]string{{"1", " $((1)) + 2 "}}, true},
+		"echo '$((x=1))'":                  {[][]string{nil}, true},
+		"case $((n=1)) in *) :;; esac":     {[][]string{nil}, false},
+		"cat <<'EOF'\n$((D=0))\nEOF":       {[][]string{nil}, true},
+	} {
+		an := Parse(src)
+		var got [][]string
+		for _, s := range an.Commands {
+			got = append(got, s.Arith)
+		}
+		if !reflect.DeepEqual(got, want.arith) || an.ArithKnown != want.known {
+			t.Errorf("%q: Arith %q known %v, want %q known %v", src, got, an.ArithKnown, want.arith, want.known)
 		}
 	}
 }
