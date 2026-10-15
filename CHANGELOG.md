@@ -7,6 +7,17 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A loop's assignments reach its whole body: a loop runs its commands again,
+  so what any of them assigns may be there before the first one runs.
+  `X="$TMPDIR/a"; while :; do rm -rf "$X"/*; X=/; done` was allowed and
+  deletes `/*` the second time round; the names a `while`, `until`, `for` or
+  `select` loop assigns are now unknown from its start. A builtin that may
+  set a variable makes only the names it can set unknown, not every
+  variable of the line: a loop's variable, the names given to `read`,
+  `unset`, `getopts`, `mapfile`, `wait -p` and `printf -v`, and nothing for a
+  plain `wait`. `eval`, `source`, `let` and a name only known when the line
+  runs still make every variable unknown. Prompt bytes: none change.
+
 - A `for` (or `select`) loop with no word list is understood. Written
   `for X do ...; done`, with no `;` before the `do`, its body used to be read
   as more words of the loop, so the commands in it were not judged at all:

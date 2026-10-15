@@ -205,15 +205,34 @@ func (ev *evaluator) bash(cmd string) verdict {
 		vars map[string]string
 	}
 	var later []deferred
+	// A loop runs its commands again: what any of them assigns may already be there when the first one runs, so the names a loop
+	// assigns are unknown from its start (all of them when one of its builtins may set any).
+	loopNames, loopAll := loopAssignments(an.Commands)
+	entered := map[int]bool{}
 	for _, s := range an.Commands {
 		if s.Deferred {
 			later = append(later, deferred{s: s, vars: maps.Clone(ev.vars)})
 			continue
 		}
+		if track && s.Loop != 0 && !entered[s.Loop] {
+			entered[s.Loop] = true
+			if loopAll[s.Loop] {
+				ev.vars, ev.exported, track = nil, nil, false
+			}
+			for _, n := range loopNames[s.Loop] {
+				ev.forget(n, conflicted)
+			}
+		}
 		v := ev.judgeWith(s, cw, ev.vars)
 		if track {
 			if reassigns(s) {
-				ev.vars, ev.exported, track = nil, nil, false // a builtin may set any variable from here on
+				if names, all := reassignedNames(s); all {
+					ev.vars, ev.exported, track = nil, nil, false // a builtin may set any variable from here on
+				} else {
+					for _, n := range names {
+						ev.forget(n, conflicted)
+					}
+				}
 			} else if unconditional(s) {
 				ev.noteAssignments(s, cw, conflicted)
 			} else {
@@ -511,6 +530,63 @@ func reassigns(s shellparse.Simple) bool {
 		return printfAssigns(s.Args)
 	}
 	return s.LoopVar != "" || reassignBuiltins[name]
+}
+
+// reassignedNames are the variables a statement of reassigns may set: a loop's variable (and REPLY, which select sets), the names
+// a builtin is given (read, unset, getopts, mapfile, wait -p, printf -v; and the variables they set when given none), and nothing
+// for a plain wait. all is true when they are not known from its words: eval, source, let (an arithmetic expression may set any
+// variable it reaches), a declaration that is not plain assignments, coproc, and a name only known when the line runs.
+func reassignedNames(s shellparse.Simple) (names []string, all bool) {
+	if s.LoopVar != "" {
+		return []string{s.LoopVar, "REPLY"}, false
+	}
+	name := shellparse.ProgramName(s.Program)
+	switch name {
+	case "read", "unset", "getopts", "mapfile", "readarray", "wait", "printf":
+	default:
+		return nil, true
+	}
+	ops, _ := assignedNames(s)
+	for _, a := range ops {
+		if strings.ContainsAny(a, "$`") {
+			return nil, true
+		}
+		if n, _, _ := strings.Cut(a, "["); validName(n) {
+			names = append(names, n)
+		}
+	}
+	switch name {
+	case "read":
+		names = append(names, "REPLY")
+	case "mapfile", "readarray":
+		names = append(names, "MAPFILE")
+	case "getopts":
+		names = append(names, "OPTARG", "OPTIND")
+	}
+	return names, false
+}
+
+// loopAssignments are the names the commands of each loop (shellparse.Simple.Loop) may set, and the loops one of whose builtins
+// may set any variable.
+func loopAssignments(cmds []shellparse.Simple) (map[int][]string, map[int]bool) {
+	names, all := map[int][]string{}, map[int]bool{}
+	for _, s := range cmds {
+		if s.Loop == 0 || s.Deferred {
+			continue
+		}
+		for _, env := range assignedBy(s) {
+			names[s.Loop] = append(names[s.Loop], envName(env))
+		}
+		if d, ok := declaration(s); ok {
+			names[s.Loop] = append(names[s.Loop], d.names...)
+		}
+		if reassigns(s) {
+			n, a := reassignedNames(s)
+			names[s.Loop] = append(names[s.Loop], n...)
+			all[s.Loop] = all[s.Loop] || a
+		}
+	}
+	return names, all
 }
 
 // printfAssigns reports whether a printf may set a variable: printf -v NAME does, and so may one whose first word is only known when

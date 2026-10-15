@@ -100,6 +100,9 @@ type Simple struct {
 	// `for f in a b c`); empty everywhere else. A loop with no word list (`for f; do`, `for f do`) walks the positional
 	// parameters: its pseudo-command has LoopVar and no Args.
 	LoopVar string
+	// Loop identifies the outermost while, until, for or select loop the command is in (0: none); commands with the same Loop are
+	// in one loop. A loop runs its commands again, so an assignment anywhere in it may come before any of them.
+	Loop int
 }
 
 // Analysis is the result of Parse.
@@ -151,6 +154,7 @@ type state struct {
 	steps int
 	limit int
 	dead  bool
+	loops int // the loops numbered so far (Simple.Loop), across nested parses
 }
 
 // problem records only the first parse problem and marks the analysis incomplete.

@@ -2,6 +2,7 @@ package shellparse
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -864,5 +865,27 @@ func TestLiteralHeredocBodiesAreAProgramsData(t *testing.T) {
 		if !want && code != src {
 			t.Errorf("%q: Code blanked text that is not literal: %q", src, code)
 		}
+	}
+}
+
+// Loop names the outermost loop a command is in: a loop runs all of its commands again, those of a loop or a substitution inside it
+// too, and an if, a group or a case is no loop.
+func TestLoopIsTheOutermostLoopACommandIsIn(t *testing.T) {
+	loops := func(src string) []int {
+		var out []int
+		for _, s := range Parse(src).Commands {
+			out = append(out, s.Loop)
+		}
+		return out
+	}
+	got := loops("a; while x; do b; for y in z; do c; done; echo $(d); done; e; until f; do g; done; if h; then i; fi; { j; }")
+	// a, x, b, for, c, echo, d, e, f, g, h, i, j
+	if len(got) != 13 {
+		t.Fatalf("%v", got)
+	}
+	l1, l2 := got[1], got[9]
+	want := []int{0, l1, l1, l1, l1, l1, l1, 0, l2, l2, 0, 0, 0}
+	if l1 == 0 || l2 == 0 || l1 == l2 || !slices.Equal(got, want) {
+		t.Errorf("Loop = %v, want %v with two different loops", got, want)
 	}
 }

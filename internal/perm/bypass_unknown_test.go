@@ -260,6 +260,36 @@ func TestALoopOverThePositionalParametersSetsItsVariable(t *testing.T) {
 	}
 }
 
+// A loop runs its commands again, so what its body assigns may be there before any of them: X="$TMPDIR/a"; while :; do rm -rf
+// "$X"/*; X=/; done deletes /* the second time round. The names a loop assigns are unknown from its start. A builtin that may set a
+// variable makes only the names it can set unknown (a loop's variable, read's names; nothing for wait), not every variable of the
+// line: a tester's for i in $(seq 1 200) or wait "$pid" made the scratch directory it then deleted unknown.
+func TestALoopsAssignmentsReachItsWholeBody(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: t.TempDir()})
+	for _, c := range []struct{ cmd, want string }{
+		{`X="$TMPDIR/a"; while true; do rm -rf "$X"/*; X=/; done`, "ask"},
+		{`X="$TMPDIR/a"; until false; do rm -rf "$X"/*; X=/; done`, "ask"},
+		{"X=\"$TMPDIR/a\"\nwhile :; do\n  rm -rf \"$X\"/*\n  X=$(echo /)\ndone", "ask"},
+		{`X="$TMPDIR/a"; for i in 1 2; do while :; do rm -rf "$X"/*; break; done; X=/; done`, "ask"},
+		{`X="$TMPDIR/a"; while :; do read X; rm -rf "$X"/*; done`, "ask"},
+		{`D="$TMPDIR/a"; for i in $(seq 1 3); do sleep 0; done; rm -rf "$D"`, "allow"},
+		{`D="$TMPDIR/a"; sleep 1 & p=$!; wait "$p"; rm -rf "$D"`, "allow"},
+		{`D="$TMPDIR/a"; read -r x < f; rm -rf "$D"`, "allow"},
+		{`D="$TMPDIR/a"; while read -r l; do echo "$l"; done < f; rm -rf "$D"`, "allow"},
+		{`D="$TMPDIR/a"; read -r D < f; rm -rf "$D"`, "ask"},
+		{`D="$TMPDIR/a"; for D in /; do :; done; rm -rf "$D"`, "ask"},
+		{`D="$TMPDIR/a"; read "$v" < f; rm -rf "$D"`, "ask"},
+		{`D="$TMPDIR/a"; eval x; rm -rf "$D"`, "ask"},
+		{`D="$TMPDIR/a"; let x=1; rm -rf "$D"`, "ask"},
+	} {
+		d := e.Check(context.Background(), Request{Agent: "ts-3", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
+
 // A substitution that can fail ($(git rev-parse --show-toplevel)) is empty when it does: a word built from it, directly or through a
 // variable, is judged as that too, so "$d/proc/self/environ" cannot reach the protected file and "$D"/* cannot reach the root through
 // a failure. A .git that is not a repository (no HEAD, a worktree pointer that leads nowhere) makes git fail: the substitution is then
