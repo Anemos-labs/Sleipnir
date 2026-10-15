@@ -25,7 +25,8 @@ type Role struct {
 	ReadOnly bool
 	// Priority orders this role's requests under contention (agent.Prio*).
 	Priority int
-	// MaxSteps bounds one assignment.
+	// MaxSteps bounds one assignment: a window of it, followed by another while the worker makes new edits, unless the
+	// swarm keeps fixed limits (Config.FixedSteps) or the role is the manager's or the harness's own.
 	MaxSteps int
 }
 

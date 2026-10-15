@@ -331,7 +331,7 @@ secret-handling problems with file:line and a concrete fix. Do not modify files.
 | `disallowedTools` | list of rules | Tool rules the role may never use (`WebFetch`, `Bash(rm:*)`) |
 | `model` | string | `provider/model` this role runs on (`inherit` or empty: the session's model). Applied; `--role-model role=model` overrides it |
 | `permissionMode` | string | `default`, `plan`, `accept-edits`/`acceptEdits`. Values that would loosen the session (`bypassPermissions`, `dontAsk`, `auto`) are ignored with a warning |
-| `maxTurns` | integer | Step budget of one assignment, 1 to 1,000 (default 150) |
+| `maxTurns` | integer | Steps of one window of an assignment, 1 to 1,000 (default 150): another follows while the worker makes new edits, unless the session keeps fixed step limits |
 | `priority` | integer | Order of this role's requests under contention: 0 interactive, 1 worker (default), 2 background |
 | `short` | string | Prefix of the agent ids (`sr` gives `sr-1`, `sr-2`), 2 to 4 lower-case letters or digits starting with a letter; derived from the name when absent or already used |
 | `readonly` | bool | Sleipnir addition: the role may not write files or run mutating commands |

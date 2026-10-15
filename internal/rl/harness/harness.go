@@ -246,6 +246,7 @@ func (h *Harness) options(spec env.RunSpec, cfg *config.Config, p provider.Provi
 		Savepoints: spec.Savepoints != nil,
 		Mode:       h.mode(), // no Prompter: nobody answers, and the engine then refuses with the reason and what to do instead
 		MaxSteps:   spec.Budget.Steps, BudgetUSD: spec.Budget.USD,
+		FixedSteps:    true, // the step budget is part of the task
 		ContextWindow: firstPositive(spec.Budget.ContextWindow, h.ContextTokens),
 		TrustProject:  !h.IgnoreRepoInstructions,
 		NoWeb:         !task.Network, Offline: true,
