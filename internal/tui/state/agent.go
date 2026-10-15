@@ -402,7 +402,13 @@ func (s *State) onStuck(e events.Event, t time.Time) {
 	}
 	note := clean(firstOf(p.Note, p.Error), textLine)
 	if text, ok := sentBack[p.Phase]; ok {
-		// The loop sent an answer back; no call failed, so the agent is not stuck.
+		// The loop gave a note that is not about a failing call, so the agent is not stuck. An answer sent back (every phase but
+		// the wrap-up's) also says it stopped repeating a call: the model answered instead. The wrap-up note comes with the
+		// results of a batch whose call may have failed again, so it leaves that as it was.
+		if a := s.agent(e.Agent, t); a != nil && a.Stuck.Active && p.Phase != "steps" {
+			a.Stuck.Active = false
+			a.refresh()
+		}
 		s.line(e.Seq, t, e.Agent, FeedNote, GlyphInfo, text, note)
 		return
 	}
