@@ -315,10 +315,14 @@ shell commands is accepted with the `nothing to change:` text.
 
 Evidence is per task. An edit counts for the task the agent is working on (the one it last claimed or was started on),
 or, when the edited file is in the scope of exactly one other task it is doing, for that task (a pool task's scope does
-not count: its work is its children's); commands count for the task it is working on. A worker that moves to another task starts that task's record (the event log keeps every call),
-one that comes back to a task (requeued, sent back, restarted on it) finds its record as it left it, and one that edits
-task A, keeps A in doing and claims task B submits B with B's evidence alone. An agent keeps the records of its last 16
-tasks, and always those of the tasks it still holds (doing, blocked or in review).
+not count: its work is its children's); commands count for the task it is working on. A worker that moves to another task
+starts that task's record (the event log keeps every call), and one that edits task A, keeps A in doing and claims task B
+submits B with B's evidence alone. An agent always keeps the records of the tasks it holds (doing, blocked or in review)
+and otherwise those of its last 16 tasks, so a worker that comes back to a task it no longer held (requeued, then
+restarted on it) finds the record as it left it only while that record is kept. When it is not, or when another worker
+takes the task, the submission shows only what was done since; if that is nothing, `accept` refuses it as above even
+though the earlier work is in the tree, and the manager accepts it with `nothing to change:` and the earlier work as the
+reason, or rejects it.
 
 Rules for implementation tasks: a task never leaves `doing` for review without the gate; `accept` cannot bypass the verifier, and a verifier
 that could not run (error, timeout) is reported as such and is never a pass (nor a failed test); verification is
