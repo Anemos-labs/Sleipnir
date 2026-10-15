@@ -108,7 +108,7 @@ func showHorse(ls []cell.Line) []string {
 	return out
 }
 
-// showRiders reads the row of the fan that names the riders: the ones it names and the "+N" that counts the others (0 without).
+// showRiders reads the row of the fan that names the agents: the ones it names and the "+N" that counts the others (0 without).
 func showRiders(ls []cell.Line) (named []string, more int) {
 	for _, row := range showTopRows(ls) {
 		_, fan := showSplitTop(row)

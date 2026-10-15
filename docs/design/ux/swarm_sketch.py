@@ -80,10 +80,10 @@ def swarm():
                 s.put(3 + cx, 1 + cy // 2, "▀", ct)
             else:
                 s.put(3 + cx, 1 + cy // 2, "▄", cu)
-    s.put(3, 14, "eight legs · eight riders", P["dim"])
+    s.put(3, 14, "eight legs · eight agents", P["dim"])
 
     # shared prefix panel (raw rows: it sits in the header)
-    s.box(52, 1, 58, 13, "one prefix, eight riders", P["faint"])
+    s.box(52, 1, 58, 13, "one prefix, eight agents", P["faint"])
     s.runs(54, 2, [("shared G0–G2 ", P["fg"], None, "b"), ("41.2k tokens  ", P["dim"]), ("◕ warm 3:41 ", P["yellow"]), ("▰▰▰▰▰▰▰", P["yellow"]), ("▱", P["faint"])])
     x = 54
     for name, n in (("G0", 20), ("G1", 16), ("G2", 10)):
@@ -98,7 +98,7 @@ def swarm():
         for j in range(5):
             s.put(cx + 1, 6 + j, "┃" if heavy[i] == 2 else "│" if heavy[i] else "╎", LAYER["G1"], dim=(heavy[i] == 0))
         s.put(cx, 11, lab, P["fg"], bold=True)
-    s.put(54, 12, "every rider reads the same cached 41.2k: none re-reads it at full price", P["dim"])
+    s.put(54, 12, "every agent reads the same cached 41.2k: none re-reads it at full price", P["dim"])
     s.raw = False
 
     # agents board
@@ -211,7 +211,7 @@ def swarm():
 
     notes = [
         (4, 1, INK["e"], ["Eight legs, eight workers: a leg lifts while", "its worker runs a tool; the gait quickens", "with load. Idle = a standing horse.", "(--no-anim: standing horse, no motion)"]),
-        (6, 2, INK["a"], ["SPAWN = CACHE FORK. One cached prefix", "(G0–G2, 41.2k) carries every rider; a new", "worker pays a cache READ for it plus a", "two-line task card, never a full-price re-read."]),
+        (6, 2, INK["a"], ["SPAWN = CACHE FORK. One cached prefix", "(G0–G2, 41.2k) carries every agent; a new", "worker pays a cache READ for it plus a", "two-line task card, never a full-price re-read."]),
         (18, 3, INK["c"], ["each row's bar: bright = inherited from", "the shared prefix, dimmer = the agent's own", "notes and thread. w7's went dark: it lost", "its cache, and the ⛁ column says 88%."]),
         (20, 4, INK["d"], ["states: ⠹ thinking ⚙ tool ✎ edit", "✉ waiting on mail ◌ idle ✓ done", "⚠ stuck (the repeat guard fired)"]),
         (29, 5, INK["b"], ["swarm gantt: the last minute of every agent.", "✉ mail  ◆ compaction  ⚠ stuck — the", "parallelism you paid for, made visible."]),

@@ -95,7 +95,7 @@ func TestE2EReplayIsAFullScreenProgram(t *testing.T) {
 	s.WriteString("b")
 	waitScreen(t, s, 100, 36, "the board view", shows("board ·", "task board"))
 	s.WriteString("o")
-	waitScreen(t, s, 100, 36, "the cockpit again", shows("riders"))
+	waitScreen(t, s, 100, 36, "the cockpit again", shows("one prefix"))
 	s.WriteString("?")
 	waitScreen(t, s, 100, 36, "the help", shows("keys", "pause and go on"))
 	s.WriteString("x")
@@ -156,7 +156,7 @@ func TestE2EReplayRestoresTheTerminalOnSIGTERM(t *testing.T) {
 // The screen follows the window: a new size is a new layout, every line of it inside the window.
 func TestE2EReplayFollowsTheSizeOfTheWindow(t *testing.T) {
 	_, s := startReplay(t)
-	waitScreen(t, s, 100, 36, "the cockpit", shows("SLEIPNIR", "riders"))
+	waitScreen(t, s, 100, 36, "the cockpit", shows("SLEIPNIR", "one prefix"))
 	// What the program writes after the resize is laid out for the new window, and begins with a clear of the screen, so an emulator of
 	// the new size that is given everything written from here on ends up with a whole frame whatever else of the old one it got.
 	// The mark is taken before the window changes: taken after, on a machine that stalls, it could fall in the middle of the new frame.

@@ -2,7 +2,7 @@
 
 == 60x24, 8 agents (width 60, 24 lines)
 ╭ SLEIPNIR ▸ swa…  ◷ 02:10 · 8 agents · $0.31/$20 · ⛁ 94% ─╮|
-│                       ▄▄   │ one prefix, eight riders    │|
+│                       ▄▄   │ one prefix, eight agents    │|
 │                    ▄▄██▀█▄ │ shared G0–G2 41.2k tokens   │|
 │                  ▄█▀██▀▀██ │                             │|
 │    ▄▄▄▄▄▄█████████▀██▀     │ ███████████████████████████ │|
