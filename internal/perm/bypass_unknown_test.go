@@ -286,6 +286,10 @@ func TestALoopsAssignmentsReachItsWholeBody(t *testing.T) {
 		{`D="$TMPDIR/a"; printf -vD '%s' /; rm -rf "$D"/*`, "ask"}, // printf -v with the name attached
 		{`D="$TMPDIR/a"; printf -v D '%s' /; rm -rf "$D"/*`, "ask"},
 		{`D="$TMPDIR/a"; printf -v x '%s' 1; rm -rf "$D"`, "allow"},
+		{`D="$TMPDIR/a"; printf -v D* '%s' /; rm -rf "$D"/*`, "ask"}, // a glob: a file D in the directory makes it D
+		{`D="$TMPDIR/a"; read D? < f; rm -rf "$D"/*`, "ask"},
+		{`D="$TMPDIR/a"; read a[1] < f; rm -rf "$D"`, "ask"},
+		{`read HOM? < f; rm -rf "$HOME/x"`, "ask"},
 	} {
 		d := e.Check(context.Background(), Request{Agent: "ts-3", Tool: "Bash", Command: f.expand(c.cmd)})
 		if got := outcome(d); got != c.want {

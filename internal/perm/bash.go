@@ -583,7 +583,7 @@ func reassignedNames(s shellparse.Simple) (names []string, all bool) {
 		}
 	}
 	for _, a := range ops {
-		if strings.ContainsAny(a, "$`") {
+		if strings.ContainsAny(a, "$`*?[") { // a word only known when the line runs, or a glob a file name may turn into another name
 			return nil, true
 		}
 		if n, _, _ := strings.Cut(a, "["); validName(n) {

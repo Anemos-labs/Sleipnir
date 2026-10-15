@@ -79,7 +79,7 @@ func harnessOff(cmd string, cmds []shellparse.Simple) map[string]bool {
 	for _, c := range cmds {
 		names, all := assignedNames(c)
 		for _, a := range names {
-			all = all || strings.ContainsAny(a, "$`")
+			all = all || strings.ContainsAny(a, "$`*?[") // HOM* names HOME when a file HOME is there
 			for _, n := range harnessNames {
 				if a == n || strings.HasPrefix(a, n+"=") || strings.HasPrefix(a, n+"[") {
 					set(n)
