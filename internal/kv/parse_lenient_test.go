@@ -87,6 +87,7 @@ func TestAnUnescapedQuoteInsideAStringIsReadAsText(t *testing.T) {
 		{"a colon after it", `{"keep_from":"t9","spine":[{"turns":"t1-t8","line":"set "port": 8080 in config"}]}`, `set "port": 8080 in config`, 0, 2},
 		{"a dash after it", `{"keep_from":"t9","spine":[{"turns":"t1-t8","line":"ran "go test" — 3 failures"}]}`, `ran "go test" — 3 failures`, 0, 2},
 		{"after an escaped backslash", `{"keep_from":"t9","spine":[{"turns":"t1-t8","line":"path C:\\"tmp" done"}]}`, `path C:\"tmp" done`, 0, 2},
+		{"keep_from after a long line", `{"spine":[{"turns":"t1-t8","line":"ran "go vet" over every package of the module, then the race tests, and wrote down what failed"}],"keep_from":"t9"}`, `ran "go vet" over every package of the module, then the race tests, and wrote down what failed`, 0, 2},
 		{"in two entries", `{"keep_from":"t9","spine":[{"turns":"t1-t8","line":"x"}],"mask":["t3.0"],"notes":[{"op":"add","text":"the "api" key is in .env"}]}`, "x", 1, 2},
 		{"in a fence, after prose", "Here is the patch:\n```json\n" + `{"keep_from":"t9","spine":[{"turns":"t1-t8","line":"read "a" and "b""}]}` + "\n```", `read "a" and "b"`, 0, 4},
 	} {

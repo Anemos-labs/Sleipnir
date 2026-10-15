@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -281,6 +282,22 @@ func chooseCandidate(reply string) ([]byte, int, int, error) {
 		repaired int // quotes repairQuotes escaped
 	}
 	var cands []cand
+	// where the reply says keep_from, found once: a candidate that breaks before its own keep_from (the field comes last) is still
+	// worth a repair
+	lower := strings.ToLower(reply)
+	var keeps []int
+	for k := 0; ; {
+		j := strings.Index(lower[k:], "keep_from")
+		if j < 0 {
+			break
+		}
+		keeps = append(keeps, k+j)
+		k += j + 1
+	}
+	keepFromAfter := func(i int) bool {
+		j := sort.SearchInts(keeps, i)
+		return j < len(keeps)
+	}
 	var lastErr, brokenErr error
 	sawObject := false
 	broken := -1 // where the last attempt that looked like a patch but did not decode began
@@ -289,6 +306,7 @@ func chooseCandidate(reply string) ([]byte, int, int, error) {
 	// allowance is refused (the caller falls back to a mechanical patch) rather than
 	// judged from part of it.
 	budget := 16*len(reply) + 1<<20
+	repairBudget := 4*len(reply) + 1<<18
 	for i := 0; i < len(reply); {
 		j := strings.IndexByte(reply[i:], '{')
 		if j < 0 {
@@ -305,10 +323,11 @@ func chooseCandidate(reply string) ([]byte, int, int, error) {
 		raw, n, err := decodeObject(reply[i:])
 		budget -= max(n, 16)
 		repaired := 0
-		if err != nil && strings.Contains(strings.ToLower(reply[i:min(len(reply), i+n+16)]), "keep_from") {
-			// the model's commonest slip: a quote inside a string it did not escape ("line": "fixed the "foo" handler")
-			r, rn, fixes, spent, rerr := repairQuotes(reply[i:], budget)
-			budget -= spent
+		if err != nil && repairBudget > 0 && quoteRepairable(err) && keepFromAfter(i) {
+			// the model's commonest slip: a quote inside a string it did not escape ("line": "fixed the "foo" handler"); repairs
+			// draw on an allowance of their own, so failed ones before the answer never cost the scan that finds it
+			r, rn, fixes, spent, rerr := repairQuotes(reply[i:], repairBudget)
+			repairBudget -= spent
 			if rerr == nil {
 				raw, n, err, repaired = r, rn, nil, fixes
 			}
@@ -429,15 +448,19 @@ func repairQuotes(s string, budget int) (raw []byte, n, fixes, spent int, err er
 		var v json.RawMessage
 		e := dec.Decode(&v)
 		spent += max(int(dec.InputOffset()), 16)
+		if spent >= budget {
+			return nil, 0, fixes, spent, errors.New("compaction reply is too tangled to parse")
+		}
 		if e == nil {
 			return v, int(dec.InputOffset()) - fixes, fixes, spent, nil
 		}
 		var se *json.SyntaxError
-		if fixes >= maxQuoteRepairs || spent >= budget || !errors.As(e, &se) ||
-			!strings.Contains(se.Error(), "after object key") && !strings.Contains(se.Error(), "after array element") {
+		if fixes >= maxQuoteRepairs || spent >= budget || !quoteRepairable(e) || !errors.As(e, &se) {
 			return nil, 0, fixes, spent, e
 		}
-		spent += int(se.Offset)
+		if spent += int(se.Offset); spent >= budget {
+			return nil, 0, fixes, spent, e
+		}
 		// The stray character ends at Offset in one Go version and starts there in another, and may be a multi-byte rune ("—"):
 		// off is where the rune that ends at Offset begins, and the quote that ended the string is before it, past blanks.
 		end := min(max(int(se.Offset), 0), len(b))
@@ -456,6 +479,13 @@ func repairQuotes(s string, budget int) (raw []byte, n, fixes, spent int, err er
 		b = append(b[:q:q], append([]byte{'\\'}, b[q:]...)...)
 		fixes++
 	}
+}
+
+// quoteRepairable reports whether a decode error is the kind repairQuotes mends: an unexpected character right after a string (after a
+// key, a key:value pair or an array element).
+func quoteRepairable(err error) bool {
+	var se *json.SyntaxError
+	return errors.As(err, &se) && (strings.Contains(se.Error(), "after object key") || strings.Contains(se.Error(), "after array element"))
 }
 
 // escaped reports whether the byte at b[i] is escaped: an odd number of backslashes before it ("\\"" ends a string, "\"" does not).
