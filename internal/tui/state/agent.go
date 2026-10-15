@@ -67,6 +67,7 @@ type agentState struct {
 	hitIdx     int // the main responses folded in: the index of the next sample
 	mainReqs   int // the main requests sent
 	plan       planInfo
+	fallback   string // why the compactor's last patch was unusable, for the line of the mechanical compaction that follows
 	prefix     string // the prefix group it rides
 	touch      touchInfo
 	lastTask   string  // the task it last held, for settling "done" whichever of the accept and the end comes first

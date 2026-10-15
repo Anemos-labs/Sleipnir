@@ -166,6 +166,12 @@ func (s *State) onCompactReject(e events.Event, t time.Time) {
 			a.Compacting = false // the attempt is over; with a fallback the harness goes on with a mechanical patch
 		}
 		a.active(t)
+		if fallback {
+			// Routine, and harmless: the mechanical compaction that follows says so on its own line, with this reason, rather than
+			// a warning of its own (a long team run filled the manager's rail with them).
+			a.fallback = clean(p.Reason, textShort)
+			return
+		}
 	}
 	text := "compaction rejected"
 	if fallback {
@@ -239,6 +245,12 @@ func (s *State) onCompactCommit(e events.Event, t time.Time) {
 		detail = "at a cold moment: the rewrite costs nothing extra"
 	case "warm":
 		detail = "at a warm moment: a declared, priced rebase"
+	}
+	if a != nil && a.fallback != "" {
+		// the compaction a refused model patch fell back to (onCompactReject)
+		text = "compacted mechanically " + fmtTok(c.Before) + " → " + fmtTok(c.After)
+		detail = "the compactor's patch was unusable: " + a.fallback
+		a.fallback = ""
 	}
 	s.line(e.Seq, t, e.Agent, FeedCompact, GlyphCompact, text, detail)
 }
