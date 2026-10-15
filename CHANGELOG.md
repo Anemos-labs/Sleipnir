@@ -7,6 +7,16 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- What a new shell does stays in that shell: an assignment, a `source`, a
+  `read` or an arithmetic expansion inside `sh -c`, `bash -c`, `su -c` or a
+  script fed to a shell no longer makes the line's own variables, or its
+  `$HOME`, `$TMPDIR` and `$PWD`, unknown. `T=$(mktemp -d); sh -c '. ./x.sh';
+  rm -rf "$T"` is allowed in bypass mode; a devops agent's preflight test
+  of this shape was asked about three times in an hour. Inside the new
+  shell its own names stay unknown, `eval` and `.` still count (they run in
+  this shell), and a loop around a new shell still makes what the loop
+  assigns unknown to it. Prompt bytes: none change.
+
 - A member of a role pool may keep a memory note while its pool plans,
   reconciles or waits for a subtask: the note goes to the session, which
   puts it to the person with the exact text, as it does for any agent. It

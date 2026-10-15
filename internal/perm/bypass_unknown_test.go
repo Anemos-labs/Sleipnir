@@ -526,3 +526,35 @@ func TestOtherArithmeticContextsMakeTheLinesVariablesUnknown(t *testing.T) {
 		}
 	}
 }
+
+// A command that a new shell runs (sh -c, bash -c, a script on a shell's standard input) assigns and sources in that shell: the
+// line's variables are what they were. A devops agent's preflight test sourced the project's installer in `sh -c` between
+// T=$(mktemp -d) and rm -rf "$T", and was asked about "a recursive delete of $T" three times in one hour: a source anywhere made
+// $TMPDIR, and with it the mktemp directory, unknown to the whole line. What eval and . do still counts: they run in this shell.
+// A loop around a new shell still makes the names it assigns unknown to that shell, which sees what the line exported.
+func TestAChildShellDoesNotChangeTheLinesVariables(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: t.TempDir()})
+	for _, c := range []struct{ cmd, want string }{
+		{`T=$(mktemp -d); sh -c '. scripts/x.sh' _; rm -rf "$T"`, "allow"},
+		{`T=$(mktemp -d); bash -c 'source a.sh'; rm -rf "$T"`, "allow"},
+		{`T=$(mktemp -d); sh -c 'T=/; echo "$T"' _; rm -rf "$T"`, "allow"},
+		{`T=$(mktemp -d); sh -c 'export T=/; read T; unset T; for T in /; do :; done; echo $((T=1))'; rm -rf "$T"`, "allow"},
+		{"T=$(mktemp -d)\nbash <<'EOF'\nT=/\n. ./x.sh\nEOF\nrm -rf \"$T\"", "allow"},
+		{"cd /x\nT=$(mktemp -d)\ncp a \"$T/e.json\"\nINSTALL_UNIX_NO_MAIN=1 sh -c '. scripts/install-unix.sh; check \"$1\" && echo A || echo R' _ \"$T/e.json\" 2>/dev/null\nrm -rf \"$T\"", "allow"},
+		{`T=$(mktemp -d); eval 'T=/'; rm -rf "$T"`, "deny"}, // eval runs in this shell
+		{`T=$(mktemp -d); . ./a.sh; rm -rf "$T"`, "ask"},    // so does .
+		{`sh -c 'D=/; rm -rf "$D"'`, "ask"},                 // inside the new shell its own names are unknown
+		{`export T=$TMPDIR/a; for i in 1 2; do sh -c 'rm -rf "$T"'; export T=/; done`, "ask"},
+		{`export T=$TMPDIR/a; sh -c 'rm -rf "$T"'`, "allow"},
+		{`sh -c 'TMPDIR=/etc; rm -rf "$TMPDIR/x"'`, "ask"},        // what the new shell assigns is unknown in it
+		{`bash -c '. ./x.sh; rm -rf "$TMPDIR/x"'`, "ask"},         // and so is all of it after it sources
+		{`sh -c '. ./x.sh'; rm -rf "$TMPDIR/x"`, "allow"},         // but not in the line's own shell
+		{`sh -c 'cd /etc'; T=$(mktemp -d); rm -rf "$T"`, "allow"}, // nor its directory
+	} {
+		d := e.Check(context.Background(), Request{Agent: "dv-2", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%q\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
