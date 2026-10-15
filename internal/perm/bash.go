@@ -79,7 +79,8 @@ type evaluator struct {
 	fallible map[string]bool
 	// off are the variables the engine otherwise knows ($HOME, $TMPDIR, $PWD, the special parameters) that the line assigns or
 	// otherwise names (expansion.off). childOff is the same for the commands a new shell runs (shellparse.Simple.Child): what
-	// such a shell assigns or sources is unknown in it, not in the line's own shell, so off leaves those commands out.
+	// such a shell assigns or sources is unknown in it, not in the line's own shell, so off leaves those commands out. childOff
+	// keeps what the line's own shell assigns: an exported value (export TMPDIR=/etc) is what the new shell starts with.
 	off, childOff map[string]bool
 	// gitEnv: the line names a GIT_ variable, so $(git rev-parse --show-toplevel) is not taken as the repository around the directory.
 	gitEnv bool

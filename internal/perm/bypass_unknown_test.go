@@ -547,9 +547,10 @@ func TestAChildShellDoesNotChangeTheLinesVariables(t *testing.T) {
 		{`sh -c 'D=/; rm -rf "$D"'`, "ask"},                 // inside the new shell its own names are unknown
 		{`export T=$TMPDIR/a; for i in 1 2; do sh -c 'rm -rf "$T"'; export T=/; done`, "ask"},
 		{`export T=$TMPDIR/a; sh -c 'rm -rf "$T"'`, "allow"},
-		{`sh -c 'TMPDIR=/etc; rm -rf "$TMPDIR/x"'`, "ask"},        // what the new shell assigns is unknown in it
-		{`bash -c '. ./x.sh; rm -rf "$TMPDIR/x"'`, "ask"},         // and so is all of it after it sources
-		{`sh -c '. ./x.sh'; rm -rf "$TMPDIR/x"`, "allow"},         // but not in the line's own shell
+		{`sh -c 'TMPDIR=/etc; rm -rf "$TMPDIR/x"'`, "ask"}, // what the new shell assigns is unknown in it
+		{`bash -c '. ./x.sh; rm -rf "$TMPDIR/x"'`, "ask"},  // and so is all of it after it sources
+		{`sh -c '. ./x.sh'; rm -rf "$TMPDIR/x"`, "allow"},
+		{`export TMPDIR=/etc; sh -c 'rm -rf "$TMPDIR/x"'`, "ask"}, // what the line exports is what the new shell starts with         // but not in the line's own shell
 		{`sh -c 'cd /etc'; T=$(mktemp -d); rm -rf "$T"`, "allow"}, // nor its directory
 	} {
 		d := e.Check(context.Background(), Request{Agent: "dv-2", Tool: "Bash", Command: f.expand(c.cmd)})

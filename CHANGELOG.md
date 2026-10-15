@@ -11,9 +11,9 @@ they do not indicate whether a change has been released.
   `read` or an arithmetic expansion inside `sh -c`, `bash -c`, `su -c` or a
   script fed to a shell no longer makes the line's own variables, or its
   `$HOME`, `$TMPDIR` and `$PWD`, unknown. `T=$(mktemp -d); sh -c '. ./x.sh';
-  rm -rf "$T"` is allowed in bypass mode; a devops agent's preflight test
-  of this shape was asked about three times in an hour. Inside the new
-  shell its own names stay unknown, `eval` and `.` still count (they run in
+  rm -rf "$T"` is allowed in bypass mode. Inside the new shell its own
+  names stay unknown, and so do the harness's names the line assigns
+  (an exported one reaches it); `eval` and `.` still count (they run in
   this shell), and a loop around a new shell still makes what the loop
   assigns unknown to it. Prompt bytes: none change.
 
