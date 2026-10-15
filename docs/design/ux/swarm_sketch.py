@@ -80,10 +80,10 @@ def swarm():
                 s.put(3 + cx, 1 + cy // 2, "▀", ct)
             else:
                 s.put(3 + cx, 1 + cy // 2, "▄", cu)
-    s.put(3, 14, "eight legs · eight riders", P["dim"])
+    s.put(3, 14, "eight legs · eight agents", P["dim"])
 
     # shared prefix panel (raw rows: it sits in the header)
-    s.box(52, 1, 58, 13, "one prefix, eight riders", P["faint"])
+    s.box(52, 1, 58, 13, "one prefix, eight agents", P["faint"])
     s.runs(54, 2, [("shared G0–G2 ", P["fg"], None, "b"), ("41.2k tokens  ", P["dim"]), ("◕ warm 3:41 ", P["yellow"]), ("▰▰▰▰▰▰▰", P["yellow"]), ("▱", P["faint"])])
     x = 54
     for name, n in (("G0", 20), ("G1", 16), ("G2", 10)):

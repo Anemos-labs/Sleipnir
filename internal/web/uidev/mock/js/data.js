@@ -259,7 +259,7 @@ S.layers = [
 { id: 'G5', name: 'thread',         contextRow: 'thread (verbatim)', tokens: 1400, tokensRange: [580, 1400], holds: 'the conversation and tool results, verbatim, append-only between rebases',                           changes: 'append between rebases', shared: false, color: '#e0af68', prefix: false },
 ];
 S.layerNotes = {
-sharedPrefix: { layers: ['G0', 'G1', 'G2'], tokens: 4500, text: 'G0-G2 are the shared prefix every rider reads from the cache (4.5k tokens)' },
+sharedPrefix: { layers: ['G0', 'G1', 'G2'], tokens: 4500, text: 'G0-G2 are the shared prefix every agent reads from the cache (4.5k tokens)' },
 hot: { id: 'G6', name: 'board and team updates', holds: 'task board, one-line agent statuses, relevant mail: the hot tail, rendered per request', changes: 'route-dependent', note: 'docs/CACHE-DESIGN.md lists G6; the stats page shows G0-G5' },
 declaredEvents: 'a change to the bytes of a stable layer is a declared, priced event (a rebase): compaction, shared-context update, reasoning-binding recovery',
 };
