@@ -45,6 +45,7 @@ var differentialSnippets = []string{
 	`until false; do mk1; break; done`, `if true; then mk1; else mk2; fi`, `if mk1; then mk2; fi`, `if true; then mk1; elif true; then mk2; fi`,
 	`case x in x) mk1;; esac`, `case x in y) mk1;; x) mk2;; esac`, `case $(mk1) in *) mk2;; esac`, `case x in x|y) mk1 ;; esac`,
 	`case x in x) mk1;& y) mk2;; esac`, `case x in x) mk1;;& *) mk2;; esac`, `case x in y) mk1;; *) mk2; esac`, `case x in (x) mk1;; esac`,
+	"set -- a; for i do mk1; done", "set -- a; for i\ndo mk1; done", "set -- a; select i do mk1; break; done </dev/null",
 	"true && for i in 1\ndo mk1; done", "false || for i in 1\ndo :; done; mk1", "echo | for i in 1\ndo mk1; done", `true && case x in esac; mk1`,
 	`case x in x) case y in y) mk1;; esac;; esac`, "case x in\n  x)\n    mk1\n    ;;\nesac\nmk2", `case x in $(mk1)) mk2;; esac`, `case x in x) (mk1);; esac | cat`,
 	`[[ -n $(mk1) ]] && mk2`, `[[ a == a && b == b ]] && mk1`, `[ -n "$(mk1)" ] && mk2`, `(( $(mk1 >/dev/null; echo 1) )) && mk2`,

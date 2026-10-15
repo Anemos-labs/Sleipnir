@@ -240,6 +240,26 @@ func TestAProgramsHeredocIsItsData(t *testing.T) {
 	}
 }
 
+// A for loop with no word list walks the positional parameters, which a line can set to anything (set -- $(echo /)): it sets its
+// variable to what is only known when the command runs. Written "for X do", with no ";" before the do, its body is commands: it used
+// to be read as more words of the loop, so for X do rm -rf ~; done was no command at all.
+func TestALoopOverThePositionalParametersSetsItsVariable(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: t.TempDir()})
+	for _, c := range []struct{ cmd, want string }{
+		{`set -- $(echo /); X="$TMPDIR/a"; for X; do :; done; rm -rf "$X"/*`, "ask"},
+		{`set -- "$(dirname /a)"; X="$TMPDIR/a"; for X do :; done; rm -rf "$X"/*`, "ask"},
+		{"X=\"$TMPDIR/a\"; for X\ndo :; done; rm -rf \"$X\"/*", "ask"},
+		{`for X do rm -rf ~; done`, "deny"},
+		{`for X do cat ~/.ssh/id_rsa; done`, "deny"},
+	} {
+		d := e.Check(context.Background(), Request{Agent: "be-1", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
+
 // A substitution that can fail ($(git rev-parse --show-toplevel)) is empty when it does: a word built from it, directly or through a
 // variable, is judged as that too, so "$d/proc/self/environ" cannot reach the protected file and "$D"/* cannot reach the root through
 // a failure. A .git that is not a repository (no HEAD, a worktree pointer that leads nowhere) makes git fail: the substitution is then
