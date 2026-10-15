@@ -22,6 +22,19 @@ they do not indicate whether a change has been released.
   (order of dropping, the new line); it is per-request text, so nothing
   cached changes.
 
+- The stall sweep no longer takes a shell command that only reads for
+  progress. A worker that reads code with `cat`, `sed -n`, `grep` or `find`
+  (chained with `cd`, `echo` banners, pipes into `sort` or `head`,
+  `2>/dev/null`) is reading, as it is with the read tool, and is found as
+  `claimed_no_progress` after `StallTurns` turns. A line counts as reading
+  when every command in it is on the permission engine's read-only allowlist
+  and no redirection writes a file (`perm.ReadsOnly`). Edits, task updates,
+  test and check runs (`go test`, `npm test`, `pytest`, `go vet`) and any
+  command that may change files still restart the count. Prompt bytes: the
+  stall nudge and the finding's detail say "without editing a file, running
+  a test or a command that changes files, or updating the task" and that
+  reading is not progress; nothing cached changes.
+
 - What a new shell does stays in that shell: an assignment, a `source`, a
   `read` or an arithmetic expansion inside `sh -c`, `bash -c`, `su -c` or a
   script fed to a shell no longer makes the line's own variables, or its
