@@ -155,6 +155,16 @@ empty (`no slot`), and pointing at a leg or focusing it lists its workers and th
 Above twelve workers the stalls are drawn in role bands, one line per worker, each band naming its count and its models; the gantt
 draws one lane per worker inside a band per role when a row would be thinner than 11 pixels.
 
+On the task board every task is in the column of its own status, and a column's count is the number of its tasks. A subtask in its
+parent's column is drawn inside the parent's card, open in todo, running and verify and folded in merged, behind a toggle that says
+how many it holds (`▾ 2 subtasks`); a subtask in another column is a card of that column marked with its parent (`↳ T124`), and the
+parent's card says where the others are (`+ 6 in todo · 1 merged`). A failed task stays in todo with its `✗` and is counted apart
+(`3 + 1 ✗`). Past eight merged tasks, the merged column is one line per task (id, owner, title, time of the merge), the newest merge
+first, and an empty column is drawn narrower. The Cockpit's merge queue names the twelve newest merges and counts the earlier ones.
+The Board view's dependency graph draws every task when they fit its panel; otherwise the merged tasks that no unfinished task waits
+on are one node (`✓ 118 merged`), a column taller than the panel is wrapped into several, and a graph that still does not fit is
+drawn at full size and scrolls. Two nodes never overlap.
+
 ### The Cockpit's cards
 
 The Cockpit is a grid of cards, twelve columns wide, whose rows fill the height of the view. Its default layout is the horse, the
