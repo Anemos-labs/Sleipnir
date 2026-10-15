@@ -2,6 +2,7 @@ package kv
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -141,6 +142,23 @@ func TestSec_S03_ParsePatchIsBoundedOnHostileReplies(t *testing.T) {
 		if err != nil || p.KeepFrom != 9 {
 			t.Errorf("%s: the real patch was not found: %+v %v", name, p, err)
 		}
+	}
+}
+
+// Each repairable object is mended by escaping a quote, which copies the rest of the reply: those copies are charged to the repair
+// allowance, so many of them before the answer cost memory in proportion to the reply, not to its square (50,000 of them in 800 KB
+// allocated 100 GB before the charge), and the answer is still found.
+func TestRepairsBeforeTheAnswerAreBounded(t *testing.T) {
+	in := strings.Repeat(`{"x":"a "b" c"} `, 50_000) + realPatch
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	p, err := ParsePatch(in)
+	runtime.ReadMemStats(&after)
+	if err != nil || p.KeepFrom != 9 {
+		t.Fatalf("the real patch was not found: %+v %v", p, err)
+	}
+	if got := after.TotalAlloc - before.TotalAlloc; got > uint64(100*len(in)) {
+		t.Errorf("parsing %d bytes allocated %d bytes", len(in), got)
 	}
 }
 
