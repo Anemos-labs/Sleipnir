@@ -335,8 +335,19 @@ b"`, cmds: []cmd{c("echo", "ab")}},
 	{in: `[[ a < b ]]`, cmds: []cmd{c("[[", "a", "<", "b", "]]")}},
 	{in: `[[ -f a`, cmds: []cmd{anyArgs("[[")}, flags: fBad},
 	{in: `while true; do sleep 1; done &`, cmds: []cmd{c("true"), c("sleep", "1")}, flags: fBG},
-	{in: `case x in a) echo a;; b) echo b;; esac`, cmds: []cmd{c("echo", "a"), c("echo", "b")}, flags: fBad},
-	{in: `case x in a) cat ~/.ssh/id_rsa ;; esac`, cmds: []cmd{c("cat", "~/.ssh/id_rsa")}, flags: fBad},
+	{in: `case x in a) echo a;; b) echo b;; esac`, cmds: []cmd{c("echo", "a"), c("echo", "b")}},
+	{in: `case x in a) cat ~/.ssh/id_rsa ;; esac`, cmds: []cmd{c("cat", "~/.ssh/id_rsa")}},
+	{in: "case \"$f\" in\n  *.tar.gz|*.tgz) tar -tzf \"$f\" ;;\n  (*.zip) unzip -l \"$f\" ;&\n  *) echo other\nesac; echo done", cmds: []cmd{c("tar", "-tzf", "$f"), c("unzip", "-l", "$f"), c("echo", "other"), c("echo", "done")}},
+	{in: `case $(id -u) in 0) echo root;; esac`, cmds: []cmd{c("echo", "root"), c("id", "-u")}, flags: fCS},
+	{in: `case x in a) case y in b) echo b;; esac;; esac && echo ok`, cmds: []cmd{c("echo", "b"), c("echo", "ok")}},
+	{in: `case x in a) ;; b) esac`, cmds: []cmd{}},
+	{in: `case x in a) echo esac;; esac`, cmds: []cmd{c("echo", "esac")}},
+	{in: `case x in a) echo a;;`, cmds: []cmd{c("echo", "a")}, flags: fBad},              // no esac
+	{in: `case x a) echo a;; esac`, cmds: []cmd{}, flags: fBad},                          // no in
+	{in: `case x in a) (echo a;; esac`, cmds: []cmd{c("echo", "a")}, flags: fBad | fSub}, // a body that leaves a ( open
+	{in: `case x in a > f) echo a;; esac`, cmds: []cmd{c("echo", "a")}, flags: fBad},
+	{in: `echo a;; echo b`, cmds: []cmd{c("echo", "a"), c("echo", "b")}, flags: fBad},
+	{in: `esac`, cmds: []cmd{}, flags: fBad},
 	{in: `function f { echo hi; }; f`, cmds: []cmd{anyArgs("f"), anyArgs("f")}, flags: fBad},
 	{in: `f() { echo hi; }; f`, cmds: []cmd{anyArgs("f"), anyArgs("echo"), anyArgs("f")}, flags: fBad | fSub},
 	{in: `:(){ :|:& };:`, cmds: []cmd{anyArgs(":"), anyArgs(":"), anyArgs(":"), anyArgs(":")}, flags: fBad | fSub | fBG},
@@ -752,18 +763,19 @@ func TestCondAndArithmeticAreWhatTheShellDoes(t *testing.T) {
 		return out
 	}
 	for src, want := range map[string][]bool{
-		"a=1; b=2":                           {false, false},
-		"a=1 && b=2":                         {false, true},
-		"a=1 || b=2; c=3":                    {false, true, false},
-		"a | b; c":                           {true, true, false},
-		"a & b":                              {true, false},
-		"a=1 && b &; c":                      {true, true, false}, // the whole list runs in the background
-		"a=1; b && c & d":                    {false, true, true, false},
-		"if a; then b=1; fi; c=2":            {true, true, false},
-		"for f in x; do b=1; done; c=2":      {false, true, false}, // the loop header always runs; its variable is a reassignment
-		"{ a=1; }; b=2":                      {true, false},
-		"(a=1); b=2":                         {true, false},
-		"cat > f <<'EOF'\nf() { }\nEOF\nd=1": {false, false},
+		"a=1; b=2":                               {false, false},
+		"a=1 && b=2":                             {false, true},
+		"a=1 || b=2; c=3":                        {false, true, false},
+		"a | b; c":                               {true, true, false},
+		"a & b":                                  {true, false},
+		"a=1 && b &; c":                          {true, true, false}, // the whole list runs in the background
+		"a=1; b && c & d":                        {false, true, true, false},
+		"if a; then b=1; fi; c=2":                {true, true, false},
+		"for f in x; do b=1; done; c=2":          {false, true, false}, // the loop header always runs; its variable is a reassignment
+		"{ a=1; }; b=2":                          {true, false},
+		"(a=1); b=2":                             {true, false},
+		"cat > f <<'EOF'\nf() { }\nEOF\nd=1":     {false, false},
+		"case $x in a) b=1;; *) c=2;; esac; d=3": {true, true, false}, // a body runs when its pattern matches
 	} {
 		got := conds(src)
 		if len(got) != len(want) {

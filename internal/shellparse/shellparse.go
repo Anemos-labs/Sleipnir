@@ -7,8 +7,8 @@
 // # Stance
 //
 // The analyser over-approximates. When a construct cannot be understood with
-// confidence (unterminated quotes, case statements, function definitions,
-// arithmetic commands, env -S, too much nesting, ...) Parse sets Parsed=false
+// confidence (unterminated quotes, function definitions, arithmetic
+// commands, env -S, too much nesting, ...) Parse sets Parsed=false
 // instead of guessing, and callers must treat such input as untrusted. Even
 // then Commands holds a best-effort list, so a caller can still veto on what
 // it did see: a command that is visibly bad stays bad when the rest is opaque.
@@ -28,7 +28,9 @@
 // reported as a pseudo-command with Program "for" and the words after "in" as
 // Args, so the files a loop walks are visible. A redirection that applies to a
 // whole compound command ("done > out", "} > out", ") > out") appears as a
-// command with no Program and just the Redirects.
+// command with no Program and just the Redirects. A case statement's subject
+// and patterns are words the shell matches, not commands: only their
+// substitutions are reported; the commands of its bodies are, and are Cond.
 //
 // # Testing
 //

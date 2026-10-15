@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A `case` statement is parsed: the commands of its bodies are judged as any
+  other (as conditional ones), and the line keeps the variables it set. It
+  used to make the whole line unparsed, so `T="$TMPDIR/t"; rm -rf "$T"` was
+  asked about when a `case` followed it, even in `bypass`. An assignment or
+  `unset` inside a body makes that variable unknown after the `case`. A
+  malformed `case` (no `in`, no `esac`, a body that leaves a group open) is
+  still unparsed. Prompt bytes: none change.
+
 - `bypass` asks only about the very dangerous: the high-risk class (`sudo`, a
   recursive delete of a broad or unknown path, a forced push to a shared
   branch, disk tools, shutdown) and a write into `.sleipnir/`, `.claude/` or

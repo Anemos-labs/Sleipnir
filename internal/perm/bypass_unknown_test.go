@@ -192,6 +192,28 @@ func TestABackgroundJobKeepsTheLinesVariablesKnown(t *testing.T) {
 	}
 }
 
+// A case statement is parsed: a line with one keeps what it set (a packaging dry run listed each archive by its kind after
+// T="$TMPDIR/t25"; rm -rf "$T", and was asked about as if T were unknown). An assignment or unset in a body runs only when its
+// pattern matches, so the variable is no longer known after it.
+func TestACaseStatementKeepsTheLinesVariablesKnown(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: t.TempDir()})
+	for _, c := range []struct{ cmd, want string }{
+		{"T=\"$TMPDIR/t25\"; rm -rf \"$T\"; mkdir -p \"$T\"\nsh scripts/dist.sh \"$T\"\n" +
+			`for a in "$T"/dist/*; do case "$a" in *.tar.gz) tar -tzf "$a";; *.zip) python3 -c "import zipfile,sys;print(zipfile.ZipFile(sys.argv[1]).namelist())" "$a";; esac; done`, "allow"},
+		{`T="$TMPDIR/t"; case "$1" in a) echo "$T";; *) rm -rf "$T";; esac`, "allow"},
+		{`T="$TMPDIR/t"; case "$1" in a) T=/;; esac; rm -rf "$T"`, "ask"},
+		{`T="$TMPDIR/t"; case "$1" in a) unset T;; esac; rm -rf "$T"/*`, "ask"},
+		{`case "$1" in a) T="$TMPDIR/t";; esac; rm -rf "$T"`, "ask"},
+		{`T="$TMPDIR/t"; case "$1" in a) rm -rf "$T";;`, "ask"}, // no esac: not parsed, nothing is known
+	} {
+		d := e.Check(context.Background(), Request{Agent: "dv-1", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
+
 // A substitution that can fail ($(git rev-parse --show-toplevel)) is empty when it does: a word built from it, directly or through a
 // variable, is judged as that too, so "$d/proc/self/environ" cannot reach the protected file and "$D"/* cannot reach the root through
 // a failure. A .git that is not a repository (no HEAD, a worktree pointer that leads nowhere) makes git fail: the substitution is then
