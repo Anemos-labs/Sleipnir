@@ -376,6 +376,24 @@ func TestCompactionCommitsSayWhenAndHowMuch(t *testing.T) {
 	if sn = st.Snapshot(); !feedHas(sn, FeedCompact, "a", "rejected (stale)") {
 		t.Errorf("feed %s", js(sn.Feed))
 	}
+
+	// A fallback whose attempt ended without its compaction (the patch went stale, the run stopped) does not name the next one, and a
+	// refusal that gave no reason still says that the compaction was mechanical.
+	apply(t, st, b.Emit("a", events.TypeCompactPlan, map[string]any{"decision": "start", "mode": "fork", "warm": true}))
+	apply(t, st, b.Emit("a", events.TypeCompactReject, map[string]any{"stage": "model_patch", "reason": "first", "fallback": "mechanical"}))
+	apply(t, st, b.Emit("a", events.TypeCompactReject, map[string]any{"stage": "stale", "reason": "the thread grew"}))
+	apply(t, st, b.Emit("a", events.TypeCompactPlan, map[string]any{"decision": "start", "mode": "fork", "warm": false}))
+	apply(t, st, b.Emit("a", events.TypeCompactCommit, map[string]any{"reason": "cold moment", "removed_tokens": 5000, "retained_tokens": 500, "snap_tokens": 5500, "spine_added": 100}))
+	apply(t, st, b.Emit("a", events.TypeCompactPlan, map[string]any{"decision": "start", "mode": "fork", "warm": false}))
+	apply(t, st, b.Emit("a", events.TypeCompactReject, map[string]any{"stage": "model_patch", "fallback": "mechanical"}))
+	apply(t, st, b.Emit("a", events.TypeCompactCommit, map[string]any{"reason": "fallback", "removed_tokens": 3000, "retained_tokens": 300, "snap_tokens": 3300, "spine_added": 50, "fallback": true}))
+	sn = st.Snapshot()
+	if feedHas(sn, FeedCompact, "a", "unusable: first") || !feedHas(sn, FeedCompact, "a", "compacted 5.5k → 600") {
+		t.Errorf("an ended attempt's fallback named a later compaction: %s", js(sn.Feed))
+	}
+	if !feedHas(sn, FeedCompact, "a", "compacted mechanically 3.3k → 350") {
+		t.Errorf("a refusal without a reason lost the mechanical label: %s", js(sn.Feed))
+	}
 }
 
 func TestTotalsHitRatioIsWeightedByTokens(t *testing.T) {
