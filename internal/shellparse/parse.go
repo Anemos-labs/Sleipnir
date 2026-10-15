@@ -391,9 +391,12 @@ func (p *parser) endCase(c *caseFrame) {
 }
 
 // open sets the current and-or list aside at the start of a compound command; its body's commands begin a list of their own.
+// The compound is the command an && || | was waiting for, so a newline after its first line ends that line ("a && for f in x"
+// then "do b; done" on the next: the do is not a word of the loop's list, and b is a command).
 func (p *parser) open() {
 	p.lists = append(p.lists, listFrame{start: p.listStart, body: len(p.out), andOr: p.andOr})
 	p.listStart = len(p.out)
+	p.needCmd = false
 }
 
 // close ends the innermost compound command: the enclosing and-or list is current again, and the compound is the last

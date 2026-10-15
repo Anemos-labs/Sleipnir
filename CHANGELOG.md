@@ -16,7 +16,11 @@ they do not indicate whether a change has been released.
   still unparsed. A `&` after any compound command (`fi`, `done`, `}`, `)`,
   `esac`) marks the whole list as run in the background, the commands before
   the compound included, and a `|` after one the whole compound; a `for`
-  header after `&&` or `|` is conditional. Prompt bytes: none change.
+  header after `&&` or `|` is conditional. A loop that follows `&&`, `||` or
+  `|` and continues on the next line (`true && for f in x`, then `do rm -rf
+  ~; done`) has its body read as commands; its next line used to be read as
+  words of the loop's list, so `bypass` allowed the delete. An empty `case`
+  after `&&` is parsed. Prompt bytes: none change.
 
 - `bypass` asks only about the very dangerous: the high-risk class (`sudo`, a
   recursive delete of a broad or unknown path, a forced push to a shared

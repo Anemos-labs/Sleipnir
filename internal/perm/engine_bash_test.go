@@ -156,7 +156,7 @@ func TestBashAllowlist(t *testing.T) {
 		// compound commands: any denied part denies the whole
 		`ls; cat ~/.ssh/id_rsa`, `ls && cat ~/.ssh/id_rsa`, `ls || cat ~/.ssh/id_rsa`, `ls | cat ~/.ssh/id_rsa`, `pwd; ls; cat ~/.aws/credentials; echo done`,
 		`(cat ~/.ssh/id_rsa)`, `{ cat ~/.ssh/id_rsa; }`, `if true; then cat ~/.ssh/id_rsa; fi`, `for f in a; do cat ~/.ssh/id_rsa; done`,
-		`while true; do cat ~/.ssh/id_rsa; done`, `case x in x) cat ~/.ssh/id_rsa;; esac`, `echo a & cat ~/.ssh/id_rsa`,
+		`while true; do cat ~/.ssh/id_rsa; done`, `case x in x) cat ~/.ssh/id_rsa;; esac`, "true && for f in x\ndo cat ~/.ssh/id_rsa; done", `echo a & cat ~/.ssh/id_rsa`,
 		// working directory tricks
 		`cd .. && cat .ssh/id_rsa`, `cd ..; cat .ssh/id_rsa`, `(cd ..; cat .ssh/id_rsa)`, `(cd src); cat ../../.ssh/id_rsa`, `cd src; cd ..; cd ..; cat .ssh/id_rsa`,
 		`cd ~ && cat .ssh/id_rsa`, `cd $HOME && cat .aws/credentials`, `cd ~/.ssh`, `cd ~/.aws && ls`, `pushd ~/.ssh`, `cd .. && cat .ssh/*`,

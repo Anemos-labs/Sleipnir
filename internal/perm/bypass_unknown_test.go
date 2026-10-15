@@ -29,13 +29,14 @@ func TestBypassAsksOnlyAboutTheVeryDangerous(t *testing.T) {
 		{`cat "$TMPDIR/$X"`, "deny", "allow"},       // and lead out of the scratch directory as well
 		{`printf x > ".sleipnir/$N"`, "ask", "ask"}, // a write into the steering directory
 		{`printf x > .sleipnir/config.json`, "ask", "ask"},
-		{`rm -rf "$X"`, "ask", "ask"},                    // high risk: an empty X is "" or "/"
-		{`sudo ls`, "ask", "ask"},                        // high risk
-		{`cd "$X"`, "allow", "allow"},                    // cd reads nothing
-		{`ls "$X"`, "allow", "allow"},                    // names only
-		{`node app.js --port "$PORT"`, "allow", "allow"}, // an unlisted program's words only might be files
-		{`node script.mjs .`, "deny", "allow"},           // nor is "." a tree it writes (the deny rule still sees the tree it may read)
-		{`go run . -data-dir "$D"`, "deny", "allow"},     // go run reads its package (a tree, under the deny rule); the rest is the program's
+		{`rm -rf "$X"`, "ask", "ask"},                             // high risk: an empty X is "" or "/"
+		{`sudo ls`, "ask", "ask"},                                 // high risk
+		{"true && for f in x\ndo rm -rf ~; done", "deny", "deny"}, // the next line of a loop after && is its body, not its list
+		{`cd "$X"`, "allow", "allow"},                             // cd reads nothing
+		{`ls "$X"`, "allow", "allow"},                             // names only
+		{`node app.js --port "$PORT"`, "allow", "allow"},          // an unlisted program's words only might be files
+		{`node script.mjs .`, "deny", "allow"},                    // nor is "." a tree it writes (the deny rule still sees the tree it may read)
+		{`go run . -data-dir "$D"`, "deny", "allow"},              // go run reads its package (a tree, under the deny rule); the rest is the program's
 		{`D=$(mktemp -d); go run ./cmd/x -data-dir "$D" > "$D/log"; rm -rf "$D"`, "allow", "allow"}, // mktemp names a new scratch path
 		{`ID=$(curl -s localhost:8099/api/x | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])'); echo "$ID"`, "allow", "allow"},
 		{`cd "$(pwd)"; X="$TMPDIR/a.db"; rm -f "$X"`, "allow", "allow"}, // the substitution in cd does not make X unknown
