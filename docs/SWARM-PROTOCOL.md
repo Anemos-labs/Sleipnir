@@ -65,7 +65,14 @@ with `task create parent=…` (a child takes the parent's role and kind unless i
 them), assigns existing peers with `spawn`, and claims its own child with `task
 claim`. A child is created, claimed and assigned while its parent executes, and also
 while the parent is blocked on that very child. Children
-must stay within the parent's role, membership and scope. A worker's self-claim
+must stay within the parent's role, membership and scope. A child's scope is inside
+its parent's when every path each entry names lies there: a path without a glob is
+that path (`README.md` lies inside `**/*.md`), and a glob is compared segment by
+segment (`docs/*.md` and `*.md` lie inside `**/*.md`, `docs/**` does not); a glob
+only several parent entries cover together counts as outside. A child writes only
+what both scopes hold: the lease guard, and the merge queue in an isolated run,
+refuse a child's change below a path it names that lies outside the parent's scope
+(`docs/pkg/x.go` for a child `docs/pkg` of a parent `docs/*`). A worker's self-claim
 updates its isolated checkout from integration, just as an explicit assignment does.
 Recovery preserves every owned parent and child, along with the agreed plan and
 execution phase. Interrupted reconciliation retains its contract but requires a
@@ -509,7 +516,13 @@ Layered, cheapest first:
    under it), files, and globs (`api/**`, `web/*.tsx`, `src/{a,b}/**`; `**` spans directories, `*` does not), relative to
    the repository root. Overlapping scopes between active *writer* tasks (doing or blocked) are refused at spawn and
    claim, comparing normalised patterns (`src//a`, `./src/a`, `src/../src/a`, absolute paths, case and `\` variants are
-   the same directory; `src/a` and `src/ab` are not); read-only roles neither take part nor are blocked. Scopes are
+   the same directory; `src/a` and `src/ab` are not); read-only roles neither take part nor are blocked. Two scopes
+   overlap when some path could lie in both, with `**` aligned as in matching: `**/*.md` overlaps `docs/**` and
+   `web/*` (`web/README.md`), not `*.md` with `web/**`, nor `**/*.md` with `**/*.go`. Two globs in one segment
+   count as overlapping unless both are `*` and a suffix (`*.md`, `*_test.go`) and neither suffix ends the other.
+   A path without a glob also covers what is below it (a directory), unless it names a regular file in the tree:
+   `**/*.md` and the file `web/package.json` are disjoint, and a path that does not exist yet keeps the directory
+   reading. Scopes are
    **enforced at write time** by the lease guard: an edit outside the scope of the writer's task is rejected with a
    message naming the scope, and raises a fixed-text alert. A worker cannot widen its own scope (only the manager can,
    through `task update files`). An agent with no task, or whose task declares no scope, is not restricted.
