@@ -219,6 +219,10 @@ const (
 	ToolProjectTrust = "project-trust"
 )
 
+// ToolMemory is the memory tool (internal/tools/memtool): a change to the agent's notes in ~/.sleipnir/MEMORY.md, put to the person
+// with the exact note. It changes nothing of the project.
+const ToolMemory = "memory"
+
 // Request describes one action awaiting a decision.
 type Request struct {
 	// VerifiedIntegration is set only by the harness delivery bridge, after an

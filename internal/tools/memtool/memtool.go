@@ -50,7 +50,7 @@ const schema = `{"type":"object","properties":{` +
 // Spec implements tools.Tool.
 func (*Tool) Spec() core.ToolSpec {
 	return core.ToolSpec{
-		Name: "memory",
+		Name: perm.ToolMemory,
 		Description: "Your long-term memory: short notes shown to you at the start of every future session, in any project. " +
 			"add one when you learn something lasting: how the user wants things done, a fact about their setup, a mistake not to repeat. " +
 			"One fact per note, under 300 characters. Never save task progress, anything the code or the project files already say, or secrets. " +
@@ -129,7 +129,7 @@ func (t *Tool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 
 func (t *Tool) authorize(ctx context.Context, c *tools.Call, summary string) *tools.Result {
 	d := c.Env.Perm.Check(ctx, perm.Request{
-		Agent: c.Env.Agent, Role: c.Env.Role, Tool: "memory", Summary: summary, Input: c.Input,
+		Agent: c.Env.Agent, Role: c.Env.Role, Tool: perm.ToolMemory, Summary: summary, Input: c.Input,
 		Paths: []string{t.path}, Writes: true, Risk: perm.RiskMedium,
 	})
 	if d.Allow {
