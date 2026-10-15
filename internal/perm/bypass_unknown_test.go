@@ -29,13 +29,14 @@ func TestBypassAsksOnlyAboutTheVeryDangerous(t *testing.T) {
 		{`cat "$TMPDIR/$X"`, "deny", "allow"},       // and lead out of the scratch directory as well
 		{`printf x > ".sleipnir/$N"`, "ask", "ask"}, // a write into the steering directory
 		{`printf x > .sleipnir/config.json`, "ask", "ask"},
-		{`rm -rf "$X"`, "ask", "ask"},                    // high risk: an empty X is "" or "/"
-		{`sudo ls`, "ask", "ask"},                        // high risk
-		{`cd "$X"`, "allow", "allow"},                    // cd reads nothing
-		{`ls "$X"`, "allow", "allow"},                    // names only
-		{`node app.js --port "$PORT"`, "allow", "allow"}, // an unlisted program's words only might be files
-		{`node script.mjs .`, "deny", "allow"},           // nor is "." a tree it writes (the deny rule still sees the tree it may read)
-		{`go run . -data-dir "$D"`, "deny", "allow"},     // go run reads its package (a tree, under the deny rule); the rest is the program's
+		{`rm -rf "$X"`, "ask", "ask"},                             // high risk: an empty X is "" or "/"
+		{`sudo ls`, "ask", "ask"},                                 // high risk
+		{"true && for f in x\ndo rm -rf ~; done", "deny", "deny"}, // the next line of a loop after && is its body, not its list
+		{`cd "$X"`, "allow", "allow"},                             // cd reads nothing
+		{`ls "$X"`, "allow", "allow"},                             // names only
+		{`node app.js --port "$PORT"`, "allow", "allow"},          // an unlisted program's words only might be files
+		{`node script.mjs .`, "deny", "allow"},                    // nor is "." a tree it writes (the deny rule still sees the tree it may read)
+		{`go run . -data-dir "$D"`, "deny", "allow"},              // go run reads its package (a tree, under the deny rule); the rest is the program's
 		{`D=$(mktemp -d); go run ./cmd/x -data-dir "$D" > "$D/log"; rm -rf "$D"`, "allow", "allow"}, // mktemp names a new scratch path
 		{`ID=$(curl -s localhost:8099/api/x | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])'); echo "$ID"`, "allow", "allow"},
 		{`cd "$(pwd)"; X="$TMPDIR/a.db"; rm -f "$X"`, "allow", "allow"}, // the substitution in cd does not make X unknown
@@ -186,6 +187,30 @@ func TestABackgroundJobKeepsTheLinesVariablesKnown(t *testing.T) {
 		{`D=$TMPDIR/x; cmd 2>&1 & rm -rf "$D"`, "allow"},
 	} {
 		d := e.Check(context.Background(), Request{Agent: "be-7", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
+
+// A case statement is parsed: a line with one keeps what it set (a packaging dry run listed each archive by its kind after
+// T="$TMPDIR/t25"; rm -rf "$T", and was asked about as if T were unknown). An assignment or unset in a body runs only when its
+// pattern matches, so the variable is no longer known after it.
+func TestACaseStatementKeepsTheLinesVariablesKnown(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: t.TempDir()})
+	for _, c := range []struct{ cmd, want string }{
+		{"T=\"$TMPDIR/t25\"; rm -rf \"$T\"; mkdir -p \"$T\"\nsh scripts/dist.sh \"$T\"\n" +
+			`for a in "$T"/dist/*; do case "$a" in *.tar.gz) tar -tzf "$a";; *.zip) python3 -c "import zipfile,sys;print(zipfile.ZipFile(sys.argv[1]).namelist())" "$a";; esac; done`, "allow"},
+		{`T="$TMPDIR/t"; case "$1" in a) echo "$T";; *) rm -rf "$T";; esac`, "allow"},
+		{`T="$TMPDIR/t"; case "$1" in a) T=/;; esac; rm -rf "$T"`, "ask"},
+		{`T="$TMPDIR/t"; case "$1" in a) unset T;; esac; rm -rf "$T"/*`, "ask"},
+		{`case "$1" in a) T="$TMPDIR/t";; esac; rm -rf "$T"`, "ask"},
+		{`T="$TMPDIR/t"; case "$1" in a) rm -rf "$T";;`, "ask"},              // no esac: not parsed, nothing is known
+		{`T=/; T="$TMPDIR/t" && case y in *) :;; esac & rm -rf "$T"`, "ask"}, // the second assignment ran in the background
+		{`T=/; for T in "$TMPDIR/t"; do :; done | cat; rm -rf "$T"`, "ask"},  // and this loop in the pipe's shell
+	} {
+		d := e.Check(context.Background(), Request{Agent: "dv-1", Tool: "Bash", Command: f.expand(c.cmd)})
 		if got := outcome(d); got != c.want {
 			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
 		}
