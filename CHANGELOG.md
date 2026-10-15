@@ -16,6 +16,16 @@ they do not indicate whether a change has been released.
   nothing to the manager, records nothing in the audit and keeps no rule.
   Prompt bytes: none change.
 
+- A compaction patch whose JSON broke on a quote the model did not escape
+  inside a string (`"line": "fixed the "foo" handler"`) is read with that
+  quote as text instead of refused, with a warning; the agent keeps the
+  model's own digest of its work instead of folding mechanically. Replayed
+  over the 348 compactor replies of a 32-worker run, 156 patches are used
+  instead of 116. A missing comma (`"a" "b"`) and JSON broken any other way
+  are still refused, at most 32 quotes are repaired per patch, and every
+  attempt counts against the parser's bound on hostile replies. Prompt
+  bytes: none change.
+
 - A command that prints one name token is a piece of a file name, as `$$`
   is: `date` with a `+FORMAT` of numeric conversions and plain characters
   (`+%Y%m%dT%H%M%SZ`, `+%s`; not `%Z`, the zone name `TZ` sets), `seq` over
