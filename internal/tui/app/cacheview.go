@@ -386,13 +386,13 @@ func prefixPanel(s Scene, a *state.Agent, w int) []cell.Line {
 	var out []cell.Line
 	var h row
 	h.add(st.bold, "shared ").add(cell.Style{}, widget.Tokens(pf.Tokens)).add(st.dim, " tokens of G1–G2 · ").
-		add(st.bold, fmt.Sprint(pf.Riders)).add(st.dim, " "+plural(pf.Riders, "rider", "riders"))
+		add(st.bold, fmt.Sprint(pf.Riders)).add(st.dim, " "+plural(pf.Riders, "agent", "agents"))
 	out = append(out, fit(h.line(), w))
-	riders := make([]string, 0, len(pf.Agents))
+	readers := make([]string, 0, len(pf.Agents))
 	for _, id := range pf.Agents {
-		riders = append(riders, clean(id))
+		readers = append(readers, clean(id))
 	}
-	shown := strings.Join(riders, " ")
+	shown := strings.Join(readers, " ")
 	out = append(out, fit(cell.Styled(st.dim, shown), w))
 	if left, total, ok := ttlOf(sn, "prefix", pf.Key); ok {
 		out = append(out, widget.TTL(left, total, w, s.Pal))
