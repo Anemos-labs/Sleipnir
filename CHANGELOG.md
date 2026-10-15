@@ -25,7 +25,11 @@ they do not indicate whether a change has been released.
   runs still make every variable unknown. A line of more commands than the
   engine judges (2000) is no longer allowed in `bypass` or `yolo`: the
   commands past that bound were never judged, so `bypass` asks and `yolo`
-  refuses, as other modes already asked. Prompt bytes: none change.
+  refuses, as other modes already asked. The callback of `mapfile -C` (and
+  `readarray -C`) is judged as the shell code it is, with the line it read
+  as an unknown last word; it used to be no command at all, so
+  `mapfile -C 'cat ~/.ssh/id_rsa;:' -c 1 x < f` was allowed in `bypass`. A
+  callback may set any variable. Prompt bytes: none change.
 
 - A `for` (or `select`) loop with no word list is understood. Written
   `for X do ...; done`, with no `;` before the `do`, its body used to be read

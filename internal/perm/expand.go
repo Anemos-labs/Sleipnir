@@ -103,7 +103,10 @@ func assignedNames(c shellparse.Simple) (names []string, all bool) {
 	switch shellparse.ProgramName(c.Program) {
 	case "eval", "source", ".":
 		return nil, true
-	case "read", "unset", "getopts", "mapfile", "readarray", "let", "coproc":
+	case "mapfile", "readarray":
+		_, callback := shellparse.InlineScript(c.Program, args)
+		return args, callback // a -C callback runs text in this shell
+	case "read", "unset", "getopts", "let", "coproc":
 		return args, false
 	case "printf":
 		if len(args) > 0 && strings.HasPrefix(args[0], "-v") {

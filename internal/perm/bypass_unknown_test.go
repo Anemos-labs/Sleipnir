@@ -290,6 +290,9 @@ func TestALoopsAssignmentsReachItsWholeBody(t *testing.T) {
 		{`D="$TMPDIR/a"; read D? < f; rm -rf "$D"/*`, "ask"},
 		{`D="$TMPDIR/a"; read a[1] < f; rm -rf "$D"`, "ask"},
 		{`read HOM? < f; rm -rf "$HOME/x"`, "ask"},
+		{`D="$TMPDIR/a"; mapfile -C 'D=/;:' -c 1 x < f; rm -rf "$D"/*`, "ask"}, // the callback runs text in this shell
+		{`readarray -t -C 'rm -rf' -c 1 x < f`, "ask"},                         // and gets the line it read as a word: rm -rf 0 LINE
+		{`D="$TMPDIR/a"; mapfile -t x < f; rm -rf "$D"`, "allow"},
 	} {
 		d := e.Check(context.Background(), Request{Agent: "ts-3", Tool: "Bash", Command: f.expand(c.cmd)})
 		if got := outcome(d); got != c.want {

@@ -558,7 +558,10 @@ func reassignedNames(s shellparse.Simple) (names []string, all bool) {
 	default:
 		return nil, true
 	}
-	ops, _ := assignedNames(s)
+	ops, opsAll := assignedNames(s)
+	if opsAll {
+		return nil, true // mapfile -C: the callback runs text in this shell
+	}
 	if name == "printf" { // printf -v NAME or printf -vNAME
 		ops = nil
 		if a := s.Args; len(a) > 0 {
