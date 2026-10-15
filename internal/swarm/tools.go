@@ -94,7 +94,7 @@ func (s *Swarm) readTask(c *tools.Call, id, how string) *tools.Result {
 	if err != nil {
 		return tools.Errorf("%v", err)
 	}
-	s.poolReads.note(c.Env.Agent, task)
+	s.poolReads.note(c.Env.Agent, task, s.turnOf(c.Env.Agent), false)
 	return c.Env.Finish(string(data), false)
 }
 

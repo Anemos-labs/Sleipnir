@@ -52,8 +52,10 @@ unlock writes. A vote (`agree`, `confirm`) without `revision` counts for the rev
 the member last read in full (`task get`, `pool inspect`, which answers with the
 pool's task, or the proposal or reconciliation text it wrote, whose answer names
 the revision; a reconciliation without text answers with the pool's task) while
-that revision and its agreement are current; that
-memory is not kept across a restart. Otherwise a refusal names its one cause (no
+that revision and its agreement are current. A read counts once its result has
+reached the model: one from an earlier model response than the vote's, or a text
+the member wrote; a read in the vote's own batch of calls does not. That memory is
+not kept across a restart. Otherwise a refusal names its one cause (no
 revision, a stale or unknown one, nothing proposed yet, the pool already executing,
 the wrong phase for the action) with the current revision and phase and the exact
 call. Single votes are not mailed to the leader: the vote that completes a round

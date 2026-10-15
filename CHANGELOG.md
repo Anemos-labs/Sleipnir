@@ -15,8 +15,9 @@ they do not indicate whether a change has been released.
   the call that phase takes). A vote without `revision` counts for the
   revision the member last read in full (`task get`, `pool inspect`, or the
   proposal or reconciliation text it wrote) while that revision and its
-  agreement are current. A refused `pool execute` names the members still
-  to agree. A refused `pool reconcile` or parent `task done` names each
+  agreement are current, once that read's result has reached the model (a
+  read in the vote's own batch of calls does not count). A refused `pool
+  execute` names the members still to agree. A refused `pool reconcile` or parent `task done` names each
   unfinished child with its status and owner, or the members whose
   confirmation is missing. The leader is no longer mailed each vote: the
   vote that completes a round tells it once what follows. `pool get` reads

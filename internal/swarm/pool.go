@@ -475,7 +475,8 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			}
 		}
 	}
-	stale := "" // the leader of a pool whose reconciliation a confirm found superseded
+	stale := ""          // the leader of a pool whose reconciliation a confirm found superseded
+	turn := s.turnOf(by) // constant during this batch of calls: taken outside the board's lock
 	var vote poolVote
 	read := false       // the caller wrote the pool's current revision with this action (propose, reconcile)
 	var after PoolState // the pool as this action left it
@@ -519,13 +520,15 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 				}
 			}
 			rev, implicit := in.Revision, false
-			lastRead, current := s.poolReads.last(by, task.ID, *p)
-			if rev == 0 && current {
-				// No revision, but the member's last read is this revision with this agreement: the vote binds to what it read.
+			got, _ := s.poolReads.last(by, task.ID)
+			current := got.of(*p)
+			if rev == 0 && current && got.seenBefore(turn) {
+				// No revision, but the member's last read is this revision with this agreement, and it had seen that read when it
+				// wrote the vote: the vote binds to what it read.
 				rev, implicit = p.Revision, true
 			}
 			if rev != p.Revision {
-				return voteRevisionRefusal(*task, *p, in.Action, in.Revision, lastRead)
+				return voteRevisionRefusal(*task, *p, in.Action, in.Revision, got.rev, current && !got.seenBefore(turn))
 			}
 			again := slices.Contains(p.Votes, by)
 			if !again {
@@ -585,7 +588,7 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		return nil
 	})
 	if err == nil && read {
-		s.poolReads.note(by, Task{ID: in.ID, Pool: &after})
+		s.poolReads.note(by, Task{ID: in.ID, Pool: &after}, turn, true)
 	}
 	if err != nil {
 		if stale != "" && stale != by {

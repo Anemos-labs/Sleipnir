@@ -73,6 +73,16 @@ func (r *poolRig) refused(res *tools.Result, what string, want ...string) string
 	return res.Text
 }
 
+// nextResponse stands for a new model response of member id: the results of its earlier calls have reached it.
+func (r *poolRig) nextResponse(id string) {
+	r.t.Helper()
+	m := r.sw.get(id)
+	if m == nil {
+		r.t.Fatalf("no member %s", id)
+	}
+	m.turns.Add(1)
+}
+
 // rev is the parent's current pool revision.
 func (r *poolRig) rev() int {
 	p, _ := r.sw.Board.Snapshot().Task(r.parent.ID)
@@ -117,6 +127,7 @@ func TestAVoteWithoutRevisionCountsForWhatTheMemberRead(t *testing.T) {
 		"pool agree needs revision: "+id+" is at revision 2 (planning)", "task get id="+id, "pool agree id="+id+" revision=2")
 
 	r.must(r.task(r.second, map[string]any{"action": "get", "id": id}), "task get")
+	r.nextResponse(r.second)
 	got := r.must(r.pool(r.second, map[string]any{"action": "agree"}), "an agree with no revision after task get")
 	for _, want := range []string{"agree recorded for revision 2 (the revision you last read)", "1 of 3 members", "waiting for " + r.lead + ", " + r.third} {
 		if !strings.Contains(got, want) {
@@ -327,24 +338,33 @@ func TestABlockedParentKeepsTheChildItWaitsForClaimable(t *testing.T) {
 		"parent pool "+id+" is blocked on T2", "its leader "+r.lead+" resumes it (task resume id="+id+")")
 }
 
-// A read counts for a vote only while the pool is at that revision with that agreement: a pool that begins again restarts its
-// revisions, and a member that read revision 2 of the old plan has not read revision 2 of the new one.
+// A read counts for a vote only while the pool is at that revision with that agreement (a pool that begins again restarts its
+// revisions, and a member that read revision 2 of the old plan has not read revision 2 of the new one), and only once its result
+// has reached the model: a read from an earlier response, or a text it wrote itself.
 func TestAPoolReadIsOfOneRevisionAndAgreement(t *testing.T) {
 	var r poolReads
 	old := PoolState{Revision: 2, Agreement: "old plan"}
-	r.note("be-2", Task{ID: "T1", Pool: &old})
-	if rev, current := r.last("be-2", "T1", old); rev != 2 || !current {
-		t.Errorf("the plan it read: %d %v", rev, current)
+	r.note("be-2", Task{ID: "T1", Pool: &old}, 4, false)
+	got, ok := r.last("be-2", "T1")
+	if !ok || got.rev != 2 || !got.of(old) {
+		t.Errorf("the plan it read: %+v %v", got, ok)
 	}
-	if rev, current := r.last("be-2", "T1", PoolState{Revision: 2, Agreement: "new plan"}); rev != 2 || current {
-		t.Errorf("another plan at the same revision: %d %v", rev, current)
+	if got.of(PoolState{Revision: 2, Agreement: "new plan"}) {
+		t.Error("another plan at the same revision counts as read")
 	}
-	if _, current := r.last("be-3", "T1", old); current {
+	if got.seenBefore(4) || !got.seenBefore(5) || got.seenBefore(-1) {
+		t.Error("a read counts only from a later response")
+	}
+	if _, ok := r.last("be-3", "T1"); ok {
 		t.Error("another member's read")
 	}
-	r.note("be-2", Task{ID: "T2"}) // not a pool: nothing to remember
-	if rev, _ := r.last("be-2", "T2", old); rev != 0 {
-		t.Errorf("a task without a pool was remembered: %d", rev)
+	r.note("be-2", Task{ID: "T1", Pool: &old}, 4, true)
+	if got, _ := r.last("be-2", "T1"); !got.seenBefore(4) {
+		t.Error("a text the member wrote counts in the same response")
+	}
+	r.note("be-2", Task{ID: "T2"}, 4, false) // not a pool: nothing to remember
+	if _, ok := r.last("be-2", "T2"); ok {
+		t.Error("a task without a pool was remembered")
 	}
 }
 
@@ -364,6 +384,7 @@ func TestInspectShowsThePoolItRecordsAsRead(t *testing.T) {
 		t.Errorf("the reconciliation's answer: %q", got)
 	}
 	got := r.must(r.pool(r.second, map[string]any{"action": "inspect"}), "inspect")
+	r.nextResponse(r.second)
 	head, body, _ := strings.Cut(got, "\n")
 	if !strings.Contains(head, "inspect recorded") {
 		t.Errorf("inspect's answer: %q", head)
@@ -401,7 +422,29 @@ func TestAReconciliationWithoutTextShowsTheAgreementItKeeps(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &task); err != nil || task.Pool == nil || task.Pool.Agreement != "split handlers and tests" || task.Pool.Revision != 3 {
 		t.Fatalf("the answer does not show the pool: %v %q", err, body)
 	}
+	r.refused(r.pool(r.lead, map[string]any{"action": "confirm"}), "the leader's confirm with no revision in the reconcile's batch", "same batch of calls")
+	r.nextResponse(r.lead)
 	if got := r.must(r.pool(r.lead, map[string]any{"action": "confirm"}), "the leader's confirm with no revision"); !strings.Contains(got, "(the revision you last read)") {
 		t.Errorf("the leader's confirm: %q", got)
 	}
+}
+
+// A read counts for a vote without a revision only once its result has reached the model. A read and a vote in one batch of
+// calls run in order, but the model wrote the vote before it saw the read: that vote is refused, and the same vote in the next
+// response counts.
+func TestAReadInTheVotesOwnBatchDoesNotCount(t *testing.T) {
+	r := newPoolRig(t)
+	id := r.parent.ID
+	r.must(r.pool(r.lead, map[string]any{"action": "propose", "text": "split handlers and tests"}), "propose")
+	r.nextResponse(r.second)
+	r.must(r.task(r.second, map[string]any{"action": "get", "id": id}), "task get")
+	r.refused(r.pool(r.second, map[string]any{"action": "agree"}), "an agree with no revision in the read's batch",
+		"pool agree needs revision: "+id+" is at revision 2 (planning), and your read of it ran in the same batch of calls as this vote",
+		"vote with revision=2: pool agree id="+id+" revision=2")
+	r.nextResponse(r.second)
+	if got := r.must(r.pool(r.second, map[string]any{"action": "agree"}), "the agree in the next response"); !strings.Contains(got, "(the revision you last read)") {
+		t.Errorf("the agree in the next response: %q", got)
+	}
+	// The leader wrote the proposal itself: it may agree in the same batch.
+	r.must(r.pool(r.lead, map[string]any{"action": "agree"}), "the proposer's agree")
 }

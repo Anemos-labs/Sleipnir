@@ -14,18 +14,24 @@ import (
 // order), and free of timestamps.
 
 // poolReads remembers, per agent and pool task, the revision and agreement the agent last read in full: task get (or pool get),
-// pool inspect, or a proposal or reconciliation it wrote itself. A vote without a revision counts for the current revision when the
-// voter's last read is that revision with that agreement, so a vote still binds to a text the member has seen. It is held in memory
-// only: after a restart a member reads the task again.
+// pool inspect, a reconciliation without text (whose answer is the pool's task), or a proposal or reconciliation text it wrote
+// itself. A vote without a revision counts for the current revision when the voter's last read is that revision with that
+// agreement, and the read's result reached the model before it wrote the vote: a read the model wrote itself, or one from an
+// earlier model response than the vote's (a read in the same batch of calls as the vote runs before the vote, but the model had
+// not seen it). So a vote still binds to a text the member has seen. It is held in memory only: after a restart a member reads the
+// task again.
 type poolReads struct {
 	mu   sync.Mutex
 	seen map[[2]string]poolRead // agent, task id -> what it read
 }
 
-// poolRead is one read of a pool: its revision and a hash of its agreement (a pool that begins again restarts its revisions).
+// poolRead is one read of a pool: its revision and a hash of its agreement (a pool that begins again restarts its revisions), the
+// reader's model response count when it read (turn; -1 when not known), and whether the reader wrote the text itself.
 type poolRead struct {
-	rev  int
-	text uint64
+	rev      int
+	text     uint64
+	turn     int64
+	authored bool
 }
 
 // agreementHash is the hash poolRead keeps of an agreement.
@@ -35,8 +41,9 @@ func agreementHash(s string) uint64 {
 	return h.Sum64()
 }
 
-// note records that agent read pool task t as it is now.
-func (r *poolReads) note(agent string, t Task) {
+// note records that agent read pool task t as it is now, during its model response number turn (-1 when not known), or wrote
+// its text itself (authored).
+func (r *poolReads) note(agent string, t Task, turn int64, authored bool) {
 	if agent == "" || t.Pool == nil {
 		return
 	}
@@ -45,18 +52,26 @@ func (r *poolReads) note(agent string, t Task) {
 	if r.seen == nil {
 		r.seen = map[[2]string]poolRead{}
 	}
-	r.seen[[2]string{agent, t.ID}] = poolRead{rev: t.Pool.Revision, text: agreementHash(t.Pool.Agreement)}
+	r.seen[[2]string{agent, t.ID}] = poolRead{rev: t.Pool.Revision, text: agreementHash(t.Pool.Agreement), turn: turn, authored: authored}
 }
 
-// last returns the revision agent last read of pool task id (0 for none), and whether that read is of p as it is now.
-func (r *poolReads) last(agent, id string, p PoolState) (rev int, current bool) {
+// last returns agent's last read of pool task id, and whether there is one.
+func (r *poolReads) last(agent, id string) (poolRead, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	got, ok := r.seen[[2]string{agent, id}]
-	if !ok {
-		return 0, false
-	}
-	return got.rev, got.rev == p.Revision && got.text == agreementHash(p.Agreement)
+	return got, ok
+}
+
+// of reports whether the read is of p as it is now: the same revision with the same agreement.
+func (pr poolRead) of(p PoolState) bool {
+	return pr.rev == p.Revision && pr.text == agreementHash(p.Agreement)
+}
+
+// seenBefore reports whether the read's result reached the model before its response number now: it wrote the text itself, or
+// the read came in an earlier response. A turn that is not known (-1) never counts.
+func (pr poolRead) seenBefore(now int64) bool {
+	return pr.authored || pr.turn >= 0 && now >= 0 && pr.turn < now
 }
 
 // missingVotes lists the members whose agreement or confirmation of the current revision is missing, in the pool's member order.
@@ -114,10 +129,14 @@ func confirmCall(t Task, p PoolState, by string, isolated bool) string {
 }
 
 // voteRevisionRefusal refuses a vote whose revision is missing (given 0), stale or unknown: it says the current revision and
-// phase and the exact call. read is the revision the voter last read (0 for none).
-func voteRevisionRefusal(t Task, p PoolState, action string, given, read int) error {
-	next := fmt.Sprintf("read it (task get id=%s), then call pool %s id=%s revision=%d", t.ID, action, t.ID, p.Revision)
+// phase and the exact call. read is the revision the voter last read (0 for none); sameBatch says that read is of the current
+// revision but ran in the same batch of calls as the vote, before the model had seen it.
+func voteRevisionRefusal(t Task, p PoolState, action string, given, read int, sameBatch bool) error {
+	call := fmt.Sprintf("pool %s id=%s revision=%d", action, t.ID, p.Revision)
+	next := fmt.Sprintf("read it (task get id=%s), then call %s", t.ID, call)
 	switch {
+	case given == 0 && sameBatch:
+		return fmt.Errorf("pool %s needs revision: %s is at revision %d (%s), and your read of it ran in the same batch of calls as this vote, before you had seen it. Read its result first, then vote with revision=%d: %s", action, t.ID, p.Revision, p.Phase, p.Revision, call)
 	case given == 0 && read == 0:
 		return fmt.Errorf("pool %s needs revision: %s is at revision %d (%s); %s", action, t.ID, p.Revision, p.Phase, next)
 	case given == 0:
@@ -275,4 +294,13 @@ func onTask(id string) string {
 		return ""
 	}
 	return " on " + id
+}
+
+// turnOf returns how many model responses agent has received (its current batch of calls belongs to the last), or -1 for an agent
+// the swarm does not run. A member's count changes only between its batches of calls.
+func (s *Swarm) turnOf(agent string) int64 {
+	if m := s.get(agent); m != nil {
+		return m.turns.Load()
+	}
+	return -1
 }
