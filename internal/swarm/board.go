@@ -1031,13 +1031,16 @@ func (b *Board) Requeue(agent, id string, rev uint64, reason string, countAttemp
 
 // requeuedTask releases an assignment or marks its final failure, closed as kind.
 // Only a counted attempt resets its verification budget; interruption preserves
-// that budget.
+// that budget. The result and evidence of an earlier submission belong to the
+// assignment that made it: they leave the board (the event log keeps them), so a
+// task back in todo does not show an old "accepted" or "no files edited" as its own.
 func requeuedTask(t Task, rev uint64, reason string, countAttempt bool, maxAttempts int, kind ClosureKind) Task {
 	if countAttempt {
 		t.Attempts++
 		t.VerificationFailures = 0
 	}
 	t.Rev, t.Line = rev, ""
+	t.Result, t.Evidence = "", ""
 	if maxAttempts > 0 && t.Attempts >= maxAttempts {
 		t.Status, t.Closure = StatusFailed, closeAs(kind)
 		t.Result = cleanText(reason, maxResultRunes)
@@ -1072,11 +1075,11 @@ func (b *Board) FailVerification(agent, id string, rev uint64, reason, evidence 
 			}
 		}
 		t.VerificationFailures++
-		t.Evidence = cleanText(evidence, maxEvidRunes)
 		if t.VerificationFailures >= max(1, maxFailures) {
 			t = requeuedTask(t, d.Version, reason, true, maxAttempts, CloseVerifier)
 			d.set("op", "requeue") // preserve the board event contract used by live views
 		}
+		t.Evidence = cleanText(evidence, maxEvidRunes) // this attempt's failed gate, which the next one repairs
 		if err := d.put(i, t); err != nil {
 			return err
 		}
