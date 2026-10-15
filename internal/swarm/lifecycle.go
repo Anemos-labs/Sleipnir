@@ -213,7 +213,10 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 	m := &member{id: id, role: r.Name, ev: ev, state: "idle", manager: isMgr, readOnly: r.ReadOnly, service: isSvc, sink: sink, notify: make(chan struct{}, 1),
 		tree: tree, dir: workdir, slot: -1}
 	if ev != nil {
-		ev.setRoute(func(path string) string { return s.editTask(id, path) })
+		ev.bind(func(path string) string { return s.editTask(id, path) }, func(task string) bool {
+			t, ok := s.Board.Snapshot().Task(task)
+			return ok && t.Owner == id && (t.Status == StatusDoing || t.Status == StatusBlocked || t.Status == StatusReview)
+		})
 	}
 	m.box.init()
 	if slot >= -1 {

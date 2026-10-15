@@ -3,6 +3,7 @@ package swarm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -248,5 +249,39 @@ func TestATaskIsJudgedOnItsOwnEdits(t *testing.T) {
 	})
 	if !strings.HasPrefix(ta.Evidence, "edited 1 (a.go)") {
 		t.Fatalf("task a's evidence lost its edits: %q", ta.Evidence)
+	}
+}
+
+// The records of tasks an agent still holds are never dropped to bound the evidence: many finished tasks later, a task still
+// in doing keeps its edits, and when every record is of a held task the evidence grows past its bound instead.
+func TestEvidenceKeepsTheRecordsOfHeldTasks(t *testing.T) {
+	ev := NewEvidence()
+	held := map[string]bool{"T1": true}
+	ev.bind(nil, func(task string) bool { return held[task] })
+	edit := func(path string) {
+		in, _ := json.Marshal(map[string]any{"path": path})
+		ev.Observe(core.Block{ToolName: "edit", Input: in}, &tools.Result{Text: "ok"}, time.Now())
+	}
+	ev.Begin("T1")
+	edit("a.go")
+	for i := 2; i < 2+3*maxEvidenceTasks; i++ {
+		ev.Begin(fmt.Sprintf("T%d", i))
+	}
+	if sum := ev.SummaryFor("T1"); !strings.HasPrefix(sum, "edited 1 (a.go)") {
+		t.Fatalf("a held task's record was dropped: %q", sum)
+	}
+	if n := len(ev.tasks); n > maxEvidenceTasks {
+		t.Fatalf("%d records kept, bound %d", n, maxEvidenceTasks)
+	}
+	for i := 100; i < 100+2*maxEvidenceTasks; i++ { // every task held: nothing may go
+		task := fmt.Sprintf("T%d", i)
+		held[task] = true
+		ev.Begin(task)
+		edit(task + ".go")
+	}
+	for i := 100; i < 100+2*maxEvidenceTasks; i++ {
+		if sum := ev.SummaryFor(fmt.Sprintf("T%d", i)); !strings.HasPrefix(sum, "edited 1") {
+			t.Fatalf("T%d's record was dropped while held: %q", i, sum)
+		}
 	}
 }

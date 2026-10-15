@@ -318,7 +318,7 @@ or, when the edited file is in the scope of exactly one other task it is doing, 
 not count: its work is its children's); commands count for the task it is working on. A worker that moves to another task starts that task's record (the event log keeps every call),
 one that comes back to a task (requeued, sent back, restarted on it) finds its record as it left it, and one that edits
 task A, keeps A in doing and claims task B submits B with B's evidence alone. An agent keeps the records of its last 16
-tasks.
+tasks, and always those of the tasks it still holds (doing, blocked or in review).
 
 Rules for implementation tasks: a task never leaves `doing` for review without the gate; `accept` cannot bypass the verifier, and a verifier
 that could not run (error, timeout) is reported as such and is never a pass (nor a failed test); verification is

@@ -35,6 +35,9 @@ type Evidence struct {
 	// route, when set, names the task an edited path belongs to, "" for the current one (Swarm.editTask): an edit of a file
 	// in the scope of another task its agent is doing counts for that task.
 	route func(path string) string
+	// held, when set, reports whether a task is still its agent's (doing, blocked or in review): the record of such a task
+	// is never dropped, so work on it cannot read as "no files edited".
+	held func(task string) bool
 }
 
 // evRecord is what was observed for one task.
@@ -96,8 +99,9 @@ func (e *Evidence) Begin(task string) {
 	e.task = task
 }
 
-// recordLocked returns task's record, made when it has none; past maxEvidenceTasks the oldest record other than the current
-// one is dropped. e.mu is held.
+// recordLocked returns task's record, made when it has none. Past maxEvidenceTasks the oldest records of tasks the agent no
+// longer holds are dropped; the current task's, task's and those of tasks it still holds (held) are kept, past the bound if
+// need be: it is then bounded by what the agent holds. e.mu is held.
 func (e *Evidence) recordLocked(task string) *evRecord {
 	if r, ok := e.tasks[task]; ok {
 		return r
@@ -106,7 +110,7 @@ func (e *Evidence) recordLocked(task string) *evRecord {
 	e.tasks[task] = r
 	e.order = append(e.order, task)
 	for i := 0; len(e.tasks) > maxEvidenceTasks && i < len(e.order); {
-		if old := e.order[i]; old != e.task && old != task {
+		if old := e.order[i]; old != e.task && old != task && (e.held == nil || !e.held(old)) {
 			delete(e.tasks, old)
 			e.order = append(e.order[:i], e.order[i+1:]...)
 			continue
@@ -116,10 +120,11 @@ func (e *Evidence) recordLocked(task string) *evRecord {
 	return r
 }
 
-// setRoute installs the function that names the task an edited path belongs to (Evidence.route).
-func (e *Evidence) setRoute(route func(path string) string) {
+// bind installs what the evidence asks its swarm: the task an edited path belongs to (route) and whether a task is still its
+// agent's (held).
+func (e *Evidence) bind(route func(path string) string, held func(task string) bool) {
 	e.mu.Lock()
-	e.route = route
+	e.route, e.held = route, held
 	e.mu.Unlock()
 }
 
