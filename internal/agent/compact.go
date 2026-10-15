@@ -233,15 +233,16 @@ func (a *Agent) plannerStateLocked() kv.State {
 	}
 	pol := a.cfg.ApplyPolicy
 	pol.Caps = caps
-	// The agent knows the step cap of this run; beyond that it has no idea how much
-	// work is left, so the planner's horizon applies.
+	// The agent knows the step cap of this run, when it has one (a run whose windows
+	// go on while it makes progress has none until its last); beyond that it has no
+	// idea how much work is left, so the planner's horizon applies.
 	remaining := 0.0
 	horizon := a.cfg.Planner.HorizonTurns
 	if horizon == 0 {
 		horizon = kv.DefaultPlanner().HorizonTurns
 	}
-	if left := float64(a.cfg.MaxSteps - a.stepInRun); left < horizon {
-		remaining = left
+	if n, ok := a.stepsLeftLocked(); ok && float64(n) < horizon {
+		remaining = float64(n)
 		if remaining < 1 {
 			remaining = 1
 		}

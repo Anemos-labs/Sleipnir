@@ -235,7 +235,7 @@ func TestAStuckAgentShowsItUntilACallSucceeds(t *testing.T) {
 // The loop sends an answer back for an open plan, for tests not run, and for a call written as text (phases plan, verify, leak): no call
 // failed, so the agent is not stuck and the feed does not say that it is.
 func TestAnAnswerSentBackIsNotAStuckAgent(t *testing.T) {
-	for phase, want := range map[string]string{"plan": "plan", "verify": "tests", "leak": "tool call"} {
+	for phase, want := range map[string]string{"plan": "plan", "verify": "tests", "leak": "tool call", "steps": "wrap up"} {
 		b := newB()
 		st := New()
 		apply(t, st, b.Spawn("w-1", "backend", "T1", "mgr"))
@@ -251,6 +251,25 @@ func TestAnAnswerSentBackIsNotAStuckAgent(t *testing.T) {
 		}
 		if !feedHas(sn, FeedNote, "w-1", want) {
 			t.Errorf("%s: no line about it in the feed: %v", phase, sn.Feed)
+		}
+	}
+}
+
+// An answer sent back after a repetition nudge ends the stuck state: the model answered instead of repeating the call. The wrap-up
+// note before a step limit does not, since it comes with the results of a batch whose call may have failed again.
+func TestAnAnswerSentBackEndsAStuckState(t *testing.T) {
+	for phase, active := range map[string]bool{"plan": false, "verify": false, "leak": false, "steps": true} {
+		b := newB()
+		st := New()
+		apply(t, st, b.Spawn("w-1", "backend", "T1", "mgr"))
+		apply(t, st, b.Request("w-1", "w-1.1", "m", "pk", secShared()))
+		apply(t, st, b.Emit("w-1", events.TypeAgentStuck, map[string]any{"phase": "nudge", "guard": "repeat", "note": "the same call failed 4 times"}))
+		if a := agentOf(t, st.Snapshot(), "w-1"); !a.Stuck.Active {
+			t.Fatalf("a nudge did not make the agent stuck: %+v", a.Stuck)
+		}
+		apply(t, st, b.Emit("w-1", events.TypeAgentStuck, map[string]any{"phase": phase, "note": "[harness] a note"}))
+		if a := agentOf(t, st.Snapshot(), "w-1"); a.Stuck.Active != active {
+			t.Errorf("%s after a nudge: stuck %v, want %v", phase, a.Stuck.Active, active)
 		}
 	}
 }
