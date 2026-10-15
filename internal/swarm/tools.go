@@ -78,6 +78,55 @@ type taskIn struct {
 	Deps, Files                                                                         []string
 }
 
+// readTask is task get, and pool get, which models reach for to read a pool's state: the whole task as JSON. A pool task's revision
+// and agreement are remembered as what the caller read, so its vote without a revision counts for them (poolReads). how names the
+// call in the refusal for a missing id.
+func (s *Swarm) readTask(c *tools.Call, id, how string) *tools.Result {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return tools.Errorf("%s requires id: use the task ID from your assignment or call task with action=list to find it, then retry with id set", how)
+	}
+	task, ok := s.Board.Snapshot().Task(id)
+	if !ok {
+		return tools.Errorf("no task %s", cleanText(id, 20))
+	}
+	data, err := json.MarshalIndent(task, "", "  ")
+	if err != nil {
+		return tools.Errorf("%v", err)
+	}
+	s.poolReads.note(c.Env.Agent, task, s.turnOf(c.Env.Agent), false)
+	return c.Env.Finish(string(data), false)
+}
+
+// reviewRefusal says why a worker may not accept, reject, reopen, fail, revise or resolve a task: these are the manager's, except
+// that a pool leader accepts the children of the pool it leads while it executes. It returns nil for that exception.
+func (s *Swarm) reviewRefusal(me string, in taskIn) *tools.Result {
+	sn := s.Board.Snapshot()
+	task, ok := sn.Task(in.ID)
+	what := "the task"
+	if in.ID != "" {
+		what = cleanText(in.ID, 20)
+	}
+	if in.Action == "accept" && in.ID != "" && !ok {
+		// a leader may accept some tasks: an id that names none is the mistake to report (the other actions are the manager's
+		// whatever the id names)
+		return tools.Errorf("no task %s: task list shows the board", what)
+	}
+	if in.Action != "accept" {
+		if p, ok := sn.Task(task.Parent); ok && task.Parent != "" && p.Pool != nil && p.Owner == me {
+			return tools.Errorf("only the manager can %s tasks; as the leader of %s you accept its children in review (task accept id=%s) and nothing more: mail the manager what %s needs", in.Action, p.ID, task.ID, what)
+		}
+		return tools.Errorf("only the manager can %s tasks: mail the manager what %s needs", in.Action, what)
+	}
+	if task.Parent == "" {
+		return tools.Errorf("only the manager accepts %s: a pool leader accepts only the children of the pool it leads", what)
+	}
+	if err := poolChildAuthority(sn, me, task.Parent, task.Role); err != nil {
+		return tools.Errorf("only the manager accepts tasks, and a pool leader the children of the pool it leads while it executes: %v", err)
+	}
+	return nil
+}
+
 func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	if r := t.s.refuseService(c.Env.Role); r != nil {
 		return r, nil
@@ -93,9 +142,10 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 	// Validate required IDs before board operations; keep role refusals first.
 	switch in.Action {
 	case "accept", "reject", "reopen", "fail", "revise", "resolve":
-		child, _ := s.Board.Snapshot().Task(in.ID)
-		if !isMgr && !(in.Action == "accept" && s.poolChildAuthor(me, child.Parent, child.Role)) {
-			return tools.Errorf("only the manager or the child task leader can %s tasks", in.Action), nil
+		if !isMgr {
+			if r := s.reviewRefusal(me, in); r != nil {
+				return r, nil
+			}
 		}
 		fallthrough
 	case "get", "claim", "update", "done", "block", "resume", "handover":
@@ -107,8 +157,19 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 	case "deliver":
 		return t.deliver(ctx, c, in), nil
 	case "create":
-		if !isMgr && !s.poolChildAuthor(me, in.Parent, in.Role) {
-			return tools.Errorf("only the manager or the parent pool leader creates tasks: mail the manager what needs doing, or note a fact for the team"), nil
+		in.Parent = strings.TrimSpace(in.Parent)
+		if in.Parent != "" && strings.TrimSpace(in.Role) == "" {
+			if p, ok := s.Board.Snapshot().Task(in.Parent); ok {
+				in.Role = p.Role // a child takes its parent's role unless it names one
+			}
+		}
+		if !isMgr && in.Parent == "" {
+			return tools.Errorf("only the manager creates tasks, and a pool leader the children of the pool it leads while it executes (task create parent=ID): mail the manager what needs doing, or note a fact for the team"), nil
+		}
+		if !isMgr {
+			if err := poolChildAuthority(s.Board.Snapshot(), me, in.Parent, in.Role); err != nil {
+				return tools.Errorf("only the manager creates tasks, and a pool leader the children of the pool it leads while it executes: %v", err), nil
+			}
 		}
 		files, err := s.normScopes(in.Files)
 		if err != nil {
@@ -126,15 +187,7 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 	case "list":
 		return c.Env.Finish(renderTaskList(s.Board.Snapshot()), false), nil
 	case "get":
-		task, ok := s.Board.Snapshot().Task(in.ID)
-		if !ok {
-			return tools.Errorf("no task %s", in.ID), nil
-		}
-		data, err := json.MarshalIndent(task, "", "  ")
-		if err != nil {
-			return nil, err
-		}
-		return c.Env.Finish(string(data), false), nil
+		return s.readTask(c, in.ID, "task get"), nil
 	case "claim":
 		ro := s.roles[c.Env.Role].ReadOnly
 		if err := s.Board.claim(me, in.ID, s.claimCheck(me, ro)); err != nil {
@@ -353,9 +406,9 @@ func (s *Swarm) poolChildInReview(by string, t Task) string {
 		return ""
 	}
 	if p.Owner == by {
-		return fmt.Sprintf("As the leader of pool %s, check it and accept it yourself (task accept id=%s), or reject it with feedback; reconcile once every child is accepted.", p.ID, t.ID)
+		return fmt.Sprintf("As the leader of pool %s, check it and accept it yourself (task accept id=%s), or mail the manager what to fix so it rejects it; reconcile once every child is accepted.", p.ID, t.ID)
 	}
-	s.notify(p.Owner, "request", fmt.Sprintf("Child %s of pool %s is in review (%s): check it and accept it (task accept id=%s) or reject it with feedback; reconcile once every child is accepted.", t.ID, p.ID, by, t.ID))
+	s.notify(p.Owner, "request", fmt.Sprintf("Child %s of pool %s is in review (%s): check it and accept it (task accept id=%s), or mail the manager what to fix so it rejects it; reconcile once every child is accepted.", t.ID, p.ID, by, t.ID))
 	return fmt.Sprintf("The leader of pool %s, %s, accepts it (it has been told), and the pool reconciles once every child is accepted.", p.ID, p.Owner)
 }
 
@@ -608,9 +661,16 @@ func (t *spawnTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error)
 		}
 	}
 	if c.Env.Role != "manager" {
-		child, ok := t.s.Board.Snapshot().Task(req.TaskID)
-		if !ok || !t.s.poolChildAuthor(c.Env.Agent, child.Parent, child.Role) || req.Agent == "" {
-			return tools.Errorf("only a pool leader may assign an existing member to its child task"), nil
+		sn := t.s.Board.Snapshot()
+		child, ok := sn.Task(req.TaskID)
+		switch {
+		case !ok || child.Parent == "":
+			return tools.Errorf("only the manager starts workers; a pool leader assigns an existing member of its pool to one of its children (spawn agent=MEMBER task=CHILD)"), nil
+		case req.Agent == "":
+			return tools.Errorf("name the member with agent=: a pool leader assigns an existing member of its pool to its child (spawn agent=MEMBER task=%s)", child.ID), nil
+		}
+		if err := poolChildAuthority(sn, c.Env.Agent, child.Parent, child.Role); err != nil {
+			return tools.Errorf("only the manager assigns tasks, and a pool leader the children of the pool it leads while it executes: %v", err), nil
 		}
 	}
 	id, err := t.s.Spawn(req)

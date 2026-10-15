@@ -291,6 +291,8 @@ type Swarm struct {
 	docs *docsKeeper
 	// review counts code merges and the reviewer's acceptance that covers them (staffing.go).
 	review reviewGate
+	// poolReads is the pool revision each agent last read, for votes that do not name one (pool_refusals.go).
+	poolReads poolReads
 	// approvals (under mu) are the workers' questions waiting for the manager's answer, by id; aseq numbers them (approvals.go).
 	approvals map[string]*approvalQ
 	aseq      atomic.Int64

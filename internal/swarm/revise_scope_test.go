@@ -11,7 +11,10 @@ import (
 // the children keep their owners, and a pool stays executing. In a trial the manager added .gitignore to a running backend pool's
 // scope with revise: both workers were stopped, their children went back to the board, and the pool had to agree again.
 func TestARevisionThatOnlyWidensTheScopeStopsNobody(t *testing.T) {
-	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"backend", "backend"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "working"} })
+	// The members' runs last until they are stopped (idleModel): a leader whose run ended on its own with the child in doing would
+	// hand the child in for review (settleClean), and a child in review is not under way, so whether the widening found it doing
+	// depended on when the leader's run ended (it failed so on a slow CI runner).
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"backend", "backend"}}, idleModel)
 	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "backend", Files: []string{"app/**"}, By: "mgr"}); err != nil {
 		t.Fatal(err)
 	}
