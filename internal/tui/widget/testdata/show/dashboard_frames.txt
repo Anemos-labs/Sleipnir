@@ -3,7 +3,7 @@
 
 == frame 0 (width 80, 12 lines)
 ╭ SLEIPNIR ▸ swarm “add pagination t…  ◷ 02:10 · 8 agents · $0.31/$20 · ⛁ 94% ─╮|
-│                        ▄▄     │ one prefix, eight riders                     │|
+│                        ▄▄     │ one prefix, eight agents                     │|
 │                     ▄▄██▀█▄   │ shared G0–G2 41.2k tokens  ◕ warm 3:41 ▰▰▰▱  │|
 │                   ▄█▀██▀▀██   │                                              │|
 │     ▄▄▄▄▄▄█████████▀██▀       │ ████████████████████████████████████████████ │|
@@ -17,7 +17,7 @@
 
 == frame 2 (width 80, 12 lines)
 ╭ SLEIPNIR ▸ swarm “add pagination t…  ◷ 02:10 · 8 agents · $0.31/$20 · ⛁ 94% ─╮|
-│                        ▄▄     │ one prefix, eight riders                     │|
+│                        ▄▄     │ one prefix, eight agents                     │|
 │                     ▄▄██▀█▄   │ shared G0–G2 41.2k tokens  ◕ warm 3:41 ▰▰▰▱  │|
 │                   ▄█▀██▀▀██   │                                              │|
 │     ▄▄▄▄▄▄█████████▀██▀       │ ████████████████████████████████████████████ │|
@@ -31,7 +31,7 @@
 
 == frame 4 (width 80, 12 lines)
 ╭ SLEIPNIR ▸ swarm “add pagination t…  ◷ 02:10 · 8 agents · $0.31/$20 · ⛁ 94% ─╮|
-│                        ▄▄     │ one prefix, eight riders                     │|
+│                        ▄▄     │ one prefix, eight agents                     │|
 │                     ▄▄██▀█▄   │ shared G0–G2 41.2k tokens  ◕ warm 3:41 ▰▰▰▱  │|
 │                   ▄█▀██▀▀██   │                                              │|
 │     ▄▄▄▄▄▄█████████▀██▀       │ ████████████████████████████████████████████ │|
@@ -45,7 +45,7 @@
 
 == frame 6 (width 80, 12 lines)
 ╭ SLEIPNIR ▸ swarm “add pagination t…  ◷ 02:10 · 8 agents · $0.31/$20 · ⛁ 94% ─╮|
-│                        ▄▄     │ one prefix, eight riders                     │|
+│                        ▄▄     │ one prefix, eight agents                     │|
 │                     ▄▄██▀█▄   │ shared G0–G2 41.2k tokens  ◕ warm 3:41 ▰▰▰▱  │|
 │                   ▄█▀██▀▀██   │                                              │|
 │     ▄▄▄▄▄▄█████████▀██▀       │ ████████████████████████████████████████████ │|
@@ -60,7 +60,7 @@
 
 == all busy, frame 0 (width 80, 12 lines)
 ╭ SLEIPNIR ▸ swarm “add pagination t…  ◷ 02:10 · 8 agents · $0.31/$20 · ⛁ 94% ─╮|
-│                        ▄▄     │ one prefix, eight riders                     │|
+│                        ▄▄     │ one prefix, eight agents                     │|
 │                     ▄▄██▀█▄   │ shared G0–G2 41.2k tokens  ◕ warm 3:41 ▰▰▰▱  │|
 │                   ▄█▀██▀▀██   │                                              │|
 │     ▄▄▄▄▄▄█████████▀██▀       │ ████████████████████████████████████████████ │|
@@ -74,7 +74,7 @@
 
 == all busy, frame 1 (width 80, 12 lines)
 ╭ SLEIPNIR ▸ swarm “add pagination t…  ◷ 02:10 · 8 agents · $0.31/$20 · ⛁ 94% ─╮|
-│                        ▄▄     │ one prefix, eight riders                     │|
+│                        ▄▄     │ one prefix, eight agents                     │|
 │                     ▄▄██▀█▄   │ shared G0–G2 41.2k tokens  ◕ warm 3:41 ▰▰▰▱  │|
 │                   ▄█▀██▀▀██   │                                              │|
 │     ▄▄▄▄▄▄█████████▀██▀       │ ████████████████████████████████████████████ │|
@@ -88,7 +88,7 @@
 
 == all busy, frame 2 (width 80, 12 lines)
 ╭ SLEIPNIR ▸ swarm “add pagination t…  ◷ 02:10 · 8 agents · $0.31/$20 · ⛁ 94% ─╮|
-│                        ▄▄     │ one prefix, eight riders                     │|
+│                        ▄▄     │ one prefix, eight agents                     │|
 │                     ▄▄██▀█▄   │ shared G0–G2 41.2k tokens  ◕ warm 3:41 ▰▰▰▱  │|
 │                   ▄█▀██▀▀██   │                                              │|
 │     ▄▄▄▄▄▄█████████▀██▀       │ ████████████████████████████████████████████ │|
@@ -102,7 +102,7 @@
 
 == all busy, frame 3 (width 80, 12 lines)
 ╭ SLEIPNIR ▸ swarm “add pagination t…  ◷ 02:10 · 8 agents · $0.31/$20 · ⛁ 94% ─╮|
-│                        ▄▄     │ one prefix, eight riders                     │|
+│                        ▄▄     │ one prefix, eight agents                     │|
 │                     ▄▄██▀█▄   │ shared G0–G2 41.2k tokens  ◕ warm 3:41 ▰▰▰▱  │|
 │                   ▄█▀██▀▀██   │                                              │|
 │     ▄▄▄▄▄▄█████████▀██▀       │ ████████████████████████████████████████████ │|
@@ -117,7 +117,7 @@
 
 == frame 0, no animation (width 80, 12 lines)
 ╭ SLEIPNIR ▸ swarm “add pagination t…  ◷ 02:10 · 8 agents · $0.31/$20 · ⛁ 94% ─╮|
-│                        ▄▄     │ one prefix, eight riders                     │|
+│                        ▄▄     │ one prefix, eight agents                     │|
 │                     ▄▄██▀█▄   │ shared G0–G2 41.2k tokens  ◕ warm 3:41 ▰▰▰▱  │|
 │                   ▄█▀██▀▀██   │                                              │|
 │     ▄▄▄▄▄▄█████████▀██▀       │ ████████████████████████████████████████████ │|
@@ -131,7 +131,7 @@
 
 == frame 5, no animation (width 80, 12 lines)
 ╭ SLEIPNIR ▸ swarm “add pagination t…  ◷ 02:10 · 8 agents · $0.31/$20 · ⛁ 94% ─╮|
-│                        ▄▄     │ one prefix, eight riders                     │|
+│                        ▄▄     │ one prefix, eight agents                     │|
 │                     ▄▄██▀█▄   │ shared G0–G2 41.2k tokens  ◕ warm 3:41 ▰▰▰▱  │|
 │                   ▄█▀██▀▀██   │                                              │|
 │     ▄▄▄▄▄▄█████████▀██▀       │ ████████████████████████████████████████████ │|

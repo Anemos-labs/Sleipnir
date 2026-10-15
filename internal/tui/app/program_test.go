@@ -166,7 +166,7 @@ func TestKeysChooseTheView(t *testing.T) {
 	for _, k := range []struct {
 		key  rune
 		want string
-	}{{'c', "cache ·"}, {'m', "mail"}, {'b', "board"}, {'o', "riders"}} {
+	}{{'c', "cache ·"}, {'m', "mail"}, {'b', "board"}, {'o', "one prefix"}} {
 		if f := r.rune(k.key); !strings.Contains(f, k.want) {
 			t.Errorf("after %q the screen lacks %q:\n%s", k.key, k.want, f)
 		}
@@ -176,7 +176,7 @@ func TestKeysChooseTheView(t *testing.T) {
 		t.Errorf("tab goes to the next view (the cache):\n%s", f)
 	}
 	f = r.press(input.SpecialKey(input.Tab, input.Shift))
-	if !strings.Contains(f, "riders") {
+	if !strings.Contains(f, "one prefix") {
 		t.Errorf("shift-tab goes back to the cockpit:\n%s", f)
 	}
 	f = r.rune('3')
@@ -184,7 +184,7 @@ func TestKeysChooseTheView(t *testing.T) {
 		t.Errorf("3 is the mail:\n%s", f)
 	}
 	f = r.press(input.SpecialKey(input.Esc, 0))
-	if !strings.Contains(f, "riders") {
+	if !strings.Contains(f, "one prefix") {
 		t.Errorf("Esc is the way back to the cockpit:\n%s", f)
 	}
 	f = r.press(input.SpecialKey(input.Esc, 0))

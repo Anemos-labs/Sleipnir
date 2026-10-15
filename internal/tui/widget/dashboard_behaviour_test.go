@@ -47,7 +47,7 @@ func TestDashboardModesByWidth(t *testing.T) {
 				t.Errorf("%s: a panel called %q that this width has no room for", what, w)
 			}
 		}
-		if text := showPlain(ls); !strings.Contains(text, "one prefix, eight riders") || len(showHorse(ls)) == 0 {
+		if text := showPlain(ls); !strings.Contains(text, "one prefix, eight agents") || len(showHorse(ls)) == 0 {
 			t.Errorf("%s: the horse and the fan are the heart of the cockpit and always there", what)
 		}
 		if title := ls[0].Plain(); !strings.Contains(title, "8 agents") || !strings.Contains(title, "SLEIPNIR") {
@@ -191,8 +191,8 @@ func TestDashboardFiftyAgents(t *testing.T) {
 				t.Errorf("%s: the stuck agent %s is not in the table: %v", what, s, ids)
 			}
 		}
-		if !strings.Contains(text, "one prefix, 50 riders") {
-			t.Errorf("%s: the fan does not say how many riders there are", what)
+		if !strings.Contains(text, "one prefix, 50 agents") {
+			t.Errorf("%s: the fan does not say how many agents read the prefix", what)
 		}
 		named, extra := showRiders(ls)
 		if extra == 0 || len(named)+extra != 50 || named[0] != "m0" {
@@ -220,17 +220,17 @@ func TestDashboardHeadlineAndFan(t *testing.T) {
 		}
 	}
 	text := showPlain(ls)
-	for _, want := range []string{"one prefix, eight riders", "shared G0–G2 41.2k tokens", "◕ warm 3:41 ▰▰▰▰▰▰▱▱", "  G0 ", " G1 ", " G2 "} {
+	for _, want := range []string{"one prefix, eight agents", "shared G0–G2 41.2k tokens", "◕ warm 3:41 ▰▰▰▰▰▰▱▱", "  G0 ", " G1 ", " G2 "} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the fan lacks %q:\n%s", want, text)
 		}
 	}
 	named, more := showRiders(ls)
 	if want := []string{"m0", "w1", "w2", "w3", "w4", "w5", "w6", "w7"}; !reflect.DeepEqual(named, want) || more != 0 {
-		t.Errorf("the riders are %v and %d more, want %v", named, more, want)
+		t.Errorf("the agents of the fan are %v and %d more, want %v", named, more, want)
 	}
 	if !strings.Contains(text, "┃") || !strings.Contains(text, "│") || !strings.Contains(text, "╎") {
-		t.Errorf("the drops of the fan are heavy where a rider's share of the prefix is big, and light where it is small")
+		t.Errorf("the drops of the fan are heavy where an agent's share of the prefix is big, and light where it is small")
 	}
 
 	// the title bar without a budget, and with numbers that make no sense
@@ -245,17 +245,17 @@ func TestDashboardHeadlineAndFan(t *testing.T) {
 		t.Errorf("NaN money and a negative clock are zero: %q", title)
 	}
 
-	// one rider and none
+	// one agent and none
 	d = showSketchDashboard(8)
 	d.Agents = d.Agents[:1]
 	ls = widget.Dashboard(d, 100, 40, 0, p)
-	if !strings.Contains(ls[0].Plain(), " 1 agent ·") || !strings.Contains(showPlain(ls), "one prefix, one rider ") {
-		t.Errorf("one agent is a rider, not riders:\n%s", showPlain(ls))
+	if !strings.Contains(ls[0].Plain(), " 1 agent ·") || !strings.Contains(showPlain(ls), "one prefix, one agent ") {
+		t.Errorf("one agent is one agent, not agents:\n%s", showPlain(ls))
 	}
 	d.Agents = nil
 	ls = widget.Dashboard(d, 100, 40, 0, p)
-	if !strings.Contains(ls[0].Plain(), " 0 agents ·") || !strings.Contains(showPlain(ls), "one prefix, no riders") {
-		t.Errorf("no agents, no riders:\n%s", showPlain(ls))
+	if !strings.Contains(ls[0].Plain(), " 0 agents ·") || !strings.Contains(showPlain(ls), "one prefix, no agents") {
+		t.Errorf("no agents, none in the fan:\n%s", showPlain(ls))
 	}
 }
 
@@ -445,7 +445,7 @@ func TestDashboardOddData(t *testing.T) {
 		}
 	}
 
-	// a huge swarm: the table shows a few, says how many are left, keeps the stuck ones, and the fan counts the riders
+	// a huge swarm: the table shows a few, says how many are left, keeps the stuck ones, and the fan counts the agents
 	big := showSketchDashboard(3000)
 	for _, sz := range showDashSizes {
 		what := fmt.Sprintf("3000 agents at %dx%d", sz.w, sz.h)
@@ -458,8 +458,8 @@ func TestDashboardOddData(t *testing.T) {
 		if len(ids) == 0 || len(ids)+more != 3000 {
 			t.Errorf("%s: %d agents listed and %d more", what, len(ids), more)
 		}
-		if !strings.Contains(showPlain(ls), "one prefix, 3000 riders") {
-			t.Errorf("%s: the fan does not count the riders", what)
+		if !strings.Contains(showPlain(ls), "one prefix, 3000 agents") {
+			t.Errorf("%s: the fan does not count the agents", what)
 		}
 	}
 

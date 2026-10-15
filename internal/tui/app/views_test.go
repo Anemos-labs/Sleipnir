@@ -96,7 +96,7 @@ func TestTheCacheViewTellsTheStoryOfAnAgent(t *testing.T) {
 		"▏", "cached", "paid", "breakpoint", // the legend
 		"warm",                                                   // the clock
 		"hit ratio per request", "⚠ cache break", "◆ compaction", // the history and its marks
-		"its prefix", "3 riders", "mgr w1 w2", // who shares the prefix
+		"its prefix", "3 agents", "mgr w1 w2", // who shares the prefix
 		"compactions", "31.2k", "2.4k", "cold", // the fold, and the moment it was made at
 		"cache anomalies", "drift", "notes", // the break and the layer that diverged
 		"every agent's cache", "› mgr", "w1", "w2", // the comparison, with the agent marked
