@@ -1,6 +1,7 @@
 package checkpoint
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
@@ -921,5 +923,70 @@ func TestNewValidatesItsArguments(t *testing.T) {
 	os.WriteFile(file, []byte("x"), 0o644)
 	if _, err := New(filepath.Join(file, "sub"), events.NewMemBlobs(), wd); err == nil {
 		t.Fatal("a dir under a regular file must be an error")
+	}
+}
+
+// heldBlobs holds the Put of one content until released: the gap between an After's read of a file and its record, widened at will.
+type heldBlobs struct {
+	events.Blobs
+	hold    []byte
+	reached chan struct{}
+	release chan struct{}
+}
+
+func (b *heldBlobs) Put(data []byte) (core.Hash, error) {
+	if bytes.Equal(data, b.hold) {
+		close(b.reached)
+		<-b.release
+	}
+	return b.Blobs.Put(data)
+}
+
+// Two writes that follow the same Before both pass After's check that nobody announced a write meanwhile. The After that read
+// the file first must not record what it read after the later one has: the record would be stale, and a restore would take the
+// last write for someone else's edit (a 24-agent stress test failed so in CI: "restored 11, 1 in conflict").
+func TestAnEarlierFingerprintDoesNotOverwriteALaterOne(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "proj")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(root, "f.txt")
+	if err := os.WriteFile(p, []byte("original\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	hb := &heldBlobs{Blobs: events.NewMemBlobs(), hold: []byte("written by a"), reached: make(chan struct{}), release: make(chan struct{})}
+	s, err := New(filepath.Join(base, "cp"), hb, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.EnableJournal(0)
+	cp := s.Begin("phase")
+	if err := s.Before("a", p); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("written by a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Before("b", p); err != nil { // b announces its write before a's After starts: both see the same gen
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.After("a", p) // reads "written by a", then waits in the journal's Put
+	}()
+	<-hb.reached
+	if err := os.WriteFile(p, []byte("written by b"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s.After("b", p)
+	close(hb.release)
+	<-done
+	if rep := mustRestore(t, s, cp, RestoreOpts{}); !rep.OK() {
+		t.Fatalf("%s\n%+v", rep.Summary(), rep.Files)
+	}
+	if b, err := os.ReadFile(p); err != nil || string(b) != "original\n" {
+		t.Fatalf("f.txt = %q (%v), want the original", b, err)
 	}
 }
