@@ -204,7 +204,7 @@ are the types of `internal/web/wire/events.go`, found by their `k`:
 | Ordinary | `more` |
 
 Kinds and fields that the server adds to the base vocabulary are in `internal/web/translate/events.go`: the kinds `alert`,
-`mailstat` and `svc`, and extra fields on `state`, `task`, `mail`, `use`, `tool`, `compact` and `req`. A `compact` event says in
+`mailstat`, `svc` and `tally`, and extra fields on `state`, `task`, `mail`, `use`, `tool`, `compact` and `req`. A `compact` event says in
 `moment` whether the shared prefix's cache was `warm` (a declared, priced rebase) or `cold` (the rewrite costs nothing extra) when
 the compaction was decided, and has none for a compaction that no plan preceded (an emergency compaction, or one a person asked
 for): nobody chose its moment and the log does not tell its price, so a page states none for it. `mode` says how the thread was
@@ -221,7 +221,16 @@ tokens, cost and estimated saving of the harness's own service agents (the mailm
 whose usage a ChatGPT plan covered carries `plan: true` and `list`, that usage at the API list price (its `cost` is what was
 billed: nothing); a page shows `cost` plus `list` with a "≈" and a `plan` tag, "at API list price; billed to your ChatGPT
 plan", and fills a budget gauge with `cost` only. A recorded session (`GET /api/recorded`) carries the same two fields from its
-`session.end`.
+`session.end`; when its last run wrote none (it is still running, or its process died), the figures of the responses after the last
+`session.end` are added, as the terminal's state sums them. Its `agents` are the manager and the workers that wrote to the log (the
+harness's own writers and its mailman are not counted), and `mailman` says that the last run had the mailman mode on, which a replay
+of it shows.
+
+A keyframe carries only the newest mails (400), cache breaks and compactions (100 each). A `tally` event, sent only in a keyframe,
+says how many of each came before the ones it carries: `breaks`, `loud` (the breaks among them without `quiet`), `compacts` and
+`mails`, numbers to add to what a page counts as it reduces the events, never totals. A page that counts every `break`, `compact`
+and `mail` it reduces and adds a tally's numbers has the run's counts whatever the journal kept; a list a page keeps is bounded too,
+and its length is never shown as a count.
 
 Events that have a line in the terminal's feed and no kind of their own become `sys` rows of the manager's channel, with `ag` the
 agent they are about, in the words of that line (the translator reads them from the same state the terminal folds, so the two
