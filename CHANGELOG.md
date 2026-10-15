@@ -7,6 +7,19 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A revise of a pool child concerns the child: the pool's leader and the
+  child's owner are told, not every member. The parent keeps its
+  assignment (its rev) while its leader works on it, so the leader's run is
+  not told its task changed; the leader's own child is revised without
+  stopping the leader, which claims it again. A pool that was reconciling,
+  or whose result was submitted or accepted, still executes again with a new
+  revision and no confirmation left; a pool that plans or executes keeps its
+  revision and votes. The manager is no longer asked to resume a pool
+  leader whose run its own revise (or a shutdown) stopped; a leader's
+  failure still reaches it. Prompt bytes: the child-revise notice is new
+  harness mail to two agents instead of the pool-wide "Child T was
+  revised" mail; nothing cached changes.
+
 - What a new shell does stays in that shell: an assignment, a `source`, a
   `read` or an arithmetic expansion inside `sh -c`, `bash -c`, `su -c` or a
   script fed to a shell no longer makes the line's own variables, or its

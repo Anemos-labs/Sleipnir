@@ -134,7 +134,16 @@ func (t *taskTool) reviseTask(ctx context.Context, c *tools.Call, in taskIn) *to
 	if task.Pool != nil {
 		owners = task.Pool.Members
 	}
+	leader := "" // the leader of the pool a revised child belongs to
+	if p, ok := before.Task(task.Parent); ok && task.Parent != "" && p.Pool != nil {
+		leader = p.Owner
+	}
 	for _, id := range owners {
+		if id == leader {
+			// The leader's own child: its run also leads the pool, which a revised child does not stop. The child goes back
+			// to the board, the leader is told (childRevised), and its writes stop until it claims the child again.
+			continue
+		}
 		m := s.get(id)
 		if m == nil {
 			continue
@@ -187,33 +196,89 @@ func (t *taskTool) reviseTask(ctx context.Context, c *tools.Call, in taskIn) *to
 		}
 	}
 	if task.Parent != "" {
-		parent, _ := s.Board.Snapshot().Task(task.Parent)
-		if parent.Status == StatusDone {
-			if err := s.Board.Reopen(c.Env.Agent, parent.ID); err != nil {
-				return tools.Errorf("parent repair: %v", err)
-			}
+		if err := s.childRevised(c.Env.Agent, task, in.Text); err != nil {
+			return tools.Errorf("parent repair: %v", err)
 		}
-		if err := s.Board.poolUpdate(c.Env.Agent, parent.ID, func(sn *Snapshot, p *Task, state *PoolState) error {
+	}
+	s.review.mu.Lock()
+	s.review.landLocked(task.ID, append(slices.Clone(task.Files), in.Files...)) // what it covered and what it covers now
+	s.review.mu.Unlock()
+	return text("%s revised in place; its existing worker will retry", in.ID)
+}
+
+// childRevised brings the pool parent of a revised child back in line with it, and tells the two agents it concerns: the
+// pool's leader and the child's owner (by, who revised it, knows). It changes the parent no more than the revision requires:
+//
+//   - A parent whose combined result was being confirmed, or was submitted or accepted, has lost it: the pool goes back to
+//     executing, and its revision moves on with no confirmation and no inspection, so a confirmation of the old result
+//     can neither count nor arrive late. That is what keeps an agreement honest: a vote is for one revision.
+//   - A parent that was submitted or accepted (review, done) or is not assigned (todo) gets a new assignment of the leader,
+//     a new rev, as a send-back or a reopen gives one.
+//   - A parent the leader is working on (doing, blocked) keeps its assignment: its rev does not move, so its leader's run
+//     is not told that its task changed under it, and a pool that plans or executes keeps its revision and votes, which a
+//     child's revision does not touch.
+func (s *Swarm) childRevised(by string, child Task, why string) error {
+	parent, ok := s.Board.Snapshot().Task(child.Parent)
+	if !ok || parent.Pool == nil {
+		return nil
+	}
+	if parent.Status == StatusDone {
+		if err := s.Board.Reopen(by, parent.ID); err != nil {
+			return err
+		}
+	}
+	reset := false
+	var cur Task
+	err := s.Board.poolUpdate(by, parent.ID, func(sn *Snapshot, p *Task, state *PoolState) error {
+		assigned := p.Status == StatusDoing || p.Status == StatusBlocked
+		if !assigned {
 			p.Rev = sn.Version
 			p.Status = StatusDoing
 			p.Owner = parent.Owner
 			if p.Owner == "" {
 				p.Owner = state.Members[0]
 			}
+		}
+		if !assigned || state.Phase == "reconciling" {
+			reset = state.Phase != "executing" || len(state.Votes) > 0 || len(state.Inspected) > 0
 			state.Phase = "executing"
 			state.Revision++
 			state.Votes = nil
 			state.Inspected = nil
-			return nil
-		}); err != nil {
-			return tools.Errorf("parent repair: %v", err)
 		}
-		s.wakePool(parent.ID, "Child "+task.ID+" was revised. Repair the existing children and reconcile the combined result again.")
+		cur = *p
+		cur.Pool = state
+		return nil
+	})
+	if err != nil {
+		return err
 	}
-	s.review.mu.Lock()
-	s.review.landLocked(task.ID, append(slices.Clone(task.Files), in.Files...)) // what it covered and what it covers now
-	s.review.mu.Unlock()
-	return text("%s revised in place; its existing worker will retry", in.ID)
+	why = cleanText(why, 200)
+	var lead, own string
+	switch {
+	case child.Owner == cur.Owner:
+		lead = fmt.Sprintf("%s revised your child %s (%s): it is todo again; claim it (task claim id=%s) to continue it.", by, child.ID, why, child.ID)
+	case s.cfg.PersistentPools && child.Owner != "":
+		lead = fmt.Sprintf("%s revised child %s of %s (%s): it is todo again, and the harness restarts %s on it.", by, child.ID, child.Owner, why, child.Owner)
+		own = fmt.Sprintf("%s revised your child task %s (%s): stop work on it; the harness restarts you on it.", by, child.ID, why)
+	default:
+		lead = fmt.Sprintf("%s revised child %s (%s): it is todo again; assign it (spawn agent=MEMBER task=%s) or claim it.", by, child.ID, why, child.ID)
+		if child.Owner != "" {
+			own = fmt.Sprintf("%s revised your child task %s (%s): stop work on it; the leader %s assigns it again.", by, child.ID, why, cur.Owner)
+		}
+	}
+	if reset {
+		lead += " The pool is executing again: reconcile once every child is done."
+	}
+	tell := func(to, msg string) {
+		if to != "" && to != by && msg != "" {
+			s.notify(to, "request", fmt.Sprintf("Pool task %s, leader %s, phase %s, revision %d. %s Read task get %s for its scope.",
+				cur.ID, cur.Owner, cur.Pool.Phase, cur.Pool.Revision, msg, child.ID))
+		}
+	}
+	tell(cur.Owner, lead)
+	tell(child.Owner, own)
+	return nil
 }
 
 // resolve records an explicit disposition without representing abandoned work as verified.

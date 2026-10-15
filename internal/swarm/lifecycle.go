@@ -1091,12 +1091,19 @@ func (s *Swarm) resumeReturnedWork(ctx context.Context, m *member, rs *runState,
 	s.notify(m.id, "request", fmt.Sprintf("%s still yours and not done: returned to you while your last run was ending (task get shows why). Finish, then call task done again.", what))
 }
 
-// settleStopped returns the tasks of a run that stopped abnormally to the pool.
+// settleStopped returns the tasks of a run that stopped abnormally to the pool. A pool
+// leader's stop is the manager's to resume, and is worth a line only when the manager
+// could not have caused it, as for any other stop: not when the leader's run was
+// cancelled from outside (the manager's revise of the pool, a shutdown) or stopped by
+// the harness for a stated reason that is not a failure.
 func (s *Swarm) settleStopped(m *member, tasks map[string]uint64, kind stopKind, why string, count bool) string {
 	var notes []string
+	quiet := kind == stopInterrupted || (kind == stopHarness && !count)
 	for _, id := range sortedKeys(tasks) {
 		if task, ok := s.Board.Snapshot().Task(id); ok && task.Pool != nil {
-			s.notify(s.ManagerID(), "request", "Pool leader stopped on "+id+": "+why+". Resume this pool with its existing members.")
+			if !quiet {
+				s.notify(s.ManagerID(), "request", "Pool leader stopped on "+id+": "+why+". Resume this pool with its existing members.")
+			}
 			continue
 		}
 		nt, applied := s.Board.Requeue(m.id, id, tasks[id], why, count, s.cfg.MaxAttempts)
