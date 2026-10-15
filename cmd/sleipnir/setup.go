@@ -341,8 +341,8 @@ func printSessions(out, errw io.Writer, dir string, n int) error {
 }
 
 // summarize reads just enough of a log for a listing line (session.Summarize): the model from session.start, the first user input,
-// and the cost from session.end; for a session on a subscription plan the cost is the bill plus what the plan covered at the API list
-// price, and plan is set.
+// and the cost from session.end (with the responses of a run that wrote none added); for a session on a subscription plan the cost is
+// the bill plus what the plan covered at the API list price, and plan is set.
 func summarize(path string, model, prompt *string, usd *float64, plan *bool) {
 	sum := session.Summarize(path)
 	*model, *usd, *plan = sum.Model, sum.CostUSD+sum.ListUSD, sum.Plan

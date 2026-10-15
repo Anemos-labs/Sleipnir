@@ -106,7 +106,7 @@
       if (!got.ok && !(got.events || []).length) return failed(id, rec, got.r || {});
       const events = (got.events || []).filter(e => e && typeof e === 'object').map(inbound).sort((a, b) => a.t - b.t || (a.seq || 0) - (b.seq || 0));
       let S = ss().get(id);
-      if (!S) S = ss().make({ id, name: t.name || id, sid: t.sid, cwd: t.cwd, headless: t.headless, order: t.order != null ? t.order : 1000, recorded: true, follow: true, meta: { headless: !!t.headless }, roster: rosterOf(events) });
+      if (!S) S = ss().make({ id, name: t.name || id, sid: t.sid, cwd: t.cwd, headless: t.headless, order: t.order != null ? t.order : 1000, recorded: true, follow: true, meta: { headless: !!t.headless, mailman: !!recordedRow(t.sid).mailman }, roster: rosterOf(events) });
       else S.roster = rosterOf(events);
       const last = events.length ? events[events.length - 1] : null;
       S.reset(events, events.reduce((n, e) => Math.max(n, e.seq || 0), 0), last ? last.t : 0); S.truncated = got.cut ? events.length : 0; S.loading = null;
@@ -252,12 +252,17 @@
 
   /* ---------------- recorded sessions opened read-only, or followed ---------------- */
   const PAGE = 5000, MAX_EVENTS = 400000, FOLLOW_MS = 2000;
-  /** The agents of a recorded log, in the order they first act: the manager first, workers on legs by that order. */
+  /** The short name of the harness's own mailman (swarm.MailmanRole): a service of the harness, in no roster and no worker. */
+  const MAILMAN_CODE = 'mm';
+  /** The agents of a recorded log, in the order they first act: the manager first, workers on legs by that order. The mailman is no
+   *  agent of the team (a hosted tab's roster leaves it out too), though its own cache breaks name it. */
   function rosterOf(events) {
     const ids = ['mgr'], seen = { mgr: true }, codeRole = {}; Object.keys(SL.D.roles).forEach(r => { codeRole[SL.D.roles[r].code] = r; });
-    events.forEach(e => { const id = e.k === 'mail' ? null : e.k === 'ask' ? e.q && e.q.agent : e.id; if (!id || seen[id] || !/^[a-z]+-\d+$/.test(id)) return; seen[id] = true; ids.push(id); });
+    events.forEach(e => { const id = e.k === 'mail' ? null : e.k === 'ask' ? e.q && e.q.agent : e.id; if (!id || seen[id] || !/^[a-z]+-\d+$/.test(id) || id.split('-')[0] === MAILMAN_CODE) return; seen[id] = true; ids.push(id); });
     return ids.map((id, i) => { const code = id === 'mgr' ? 'mgr' : id.split('-')[0], role = id === 'mgr' ? 'manager' : codeRole[code] || code, ro = !!(SL.D.roles[role] && SL.D.roles[role].ro); return { id, role, code, nth: id === 'mgr' ? 0 : +id.split('-')[1] || 1, k: i, leg: id === 'mgr' ? -1 : (i - 1) % 8, scope: id === 'mgr' ? '**' : ro ? '- (read-only)' : '', ro, model: '', spawn: 0 }; });
   }
+  /** The Sessions view's row of a recorded session ({} when the list does not have it): its model, its mailman mode and its times. */
+  const recordedRow = sid => (ss().recorded || []).find(x => x && x.id === sid) || {};
   /** Fetch a recorded session's UI events from `from` (GET /api/recorded/{sid}/events, page by page) until the server says there are
    *  no more, or MAX_EVENTS (L.maxEvents when set) were read: then cut is true (the log has more than the page holds). Resolves {ok, events, next, cut}. */
   async function recordedEvents(sid, from) {
@@ -289,9 +294,9 @@
     if (have) { SL.act.switchSession(id); return { ok: true, data: { tab: { id } } }; }
     const got = await recordedEvents(sid, 0);
     if (!got.ok) { if (SL.ui && SL.ui.toast) SL.ui.toast(got.r.message, 'err'); return got.r; }
-    const rec = (ss().recorded || []).find(x => x.id === sid) || {}, events = got.events.filter(e => e && typeof e === 'object').map(inbound);
+    const rec = recordedRow(sid), events = got.events.filter(e => e && typeof e === 'object').map(inbound);
     events.sort((a, b) => a.t - b.t || (a.seq || 0) - (b.seq || 0));
-    const S = ss().make({ id, name: rec.name || ('replay ' + sid.slice(9, 15)), sid, recorded: true, follow: !!opt.follow, order: 1e6, cwd: rec.cwd || '', meta: { model: rec.model || '', headless: !!opt.follow, startedAt: rec.lastWritten && rec.dur ? rec.lastWritten - rec.dur * 1000 : 0 }, roster: rosterOf(events) });
+    const S = ss().make({ id, name: rec.name || ('replay ' + sid.slice(9, 15)), sid, recorded: true, follow: !!opt.follow, order: 1e6, cwd: rec.cwd || '', meta: { model: rec.model || '', headless: !!opt.follow, mailman: !!rec.mailman, startedAt: rec.lastWritten && rec.dur ? rec.lastWritten - rec.dur * 1000 : 0 }, roster: rosterOf(events) });
     const last = events.length ? events[events.length - 1] : null;
     S.reset(events, last && last.seq || 0, last ? last.t : 0); S.cursor = got.next; S.truncated = got.cut ? events.length : 0;
     SL.bus.emit('sessions-changed');

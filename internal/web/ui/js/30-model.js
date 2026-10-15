@@ -10,8 +10,12 @@
  *
  * Event kinds (their fields and caps are the types of internal/web/wire/events.go): say, sys, tool, note, state, task, plan, verdict,
  * req, use, warm, gov, mail, ckpt, ask, answer, queue, merge, break, compact, stream, goal, final, local, steer, reply, interrupt,
- * refuse, more, turn, stall, handover, layers (plus alert, mailstat and svc when the server sends them). Fields that real data
- * carries beyond what a screen draws are kept in the model and change no rendering path. */
+ * refuse, more, turn, stall, handover, layers (plus alert, mailstat, svc and tally when the server sends them). Fields that real data
+ * carries beyond what a screen draws are kept in the model and change no rendering path.
+ *
+ * A list that a long run grows is bounded (the newest entries stay), so its length is never shown as a count: the mails, the cache
+ * anomalies (and the loud ones among them) and the compactions are counted as they come (nmail, nanom, nloud, ncompactions), and a
+ * keyframe's tally adds the ones it stands for without carrying them. SL.calc.counts reads them. */
 (function (SL) {
   'use strict';
   const { upperBound } = SL.u;
@@ -19,19 +23,19 @@
   const CHAN_CAP = 4500;          // entries kept per channel in memory (the DOM keeps far fewer)
   const MARK_CAP = 800, SEG_CAP = 1200;
   /* every list a long stream grows is bounded: the ratios of an agent's requests (the count stays in nreq), the streamed messages still
-     open, the answered questions, the anomalies and the compactions */
+     open, the answered questions, the anomalies and the compactions (their counts stay in nanom, nloud and ncompactions) */
   const RATIO_CAP = 400, MID_CAP = 1000, QS_CAP = 300, ANOM_CAP = 500, COMPACT_CAP = 500;
   /** Push a mark of the gantt (the cap holds for every kind). */
   const addMark = (m, x) => { m.marks.push(x); if (m.marks.length > MARK_CAP) m.marks.splice(0, m.marks.length - MARK_CAP); };
   const capList = (l, n) => { if (l.length > n) l.splice(0, l.length - n); };
 
   const priceOf = id => id === 'mgr' ? D.prices.mgr : D.prices.worker;
-  const MAIL_CAP = 400, HANDOVER_CAP = 100;
+  const MAIL_CAP = 400, HANDOVER_CAP = 100;   /* the count of the mails stays in nmail */
 
   /* ---------------- what comes from the server, made plain once (it is data: a log can name anything) ---------------- */
   const { safeId, okId } = SL.u, BAD = SL.u.BAD_ID;
   const ID_FIELDS = ['id', 'cid', 'qid', 'ag', 'from', 'to', 'owner', 'head', 'task', 'ch', 'mid', 'parent'], ID_LISTS = ['deps', 'left', 'agents', 'poolMembers'];
-  const NUM_FIELDS = ['rd', 'un', 'out', 'wr', 'ratio', 'p', 'o', 'rpm', 'r429', 'retries', 'inflight', 'queued', 'conflicts', 'bounced', 'read', 'expected', 'pct', 'ms', 'add', 'del', 'tok', 'ttl', 'turns', 'max', 'attempts', 'rate', 'reqSince', 'n'];
+  const NUM_FIELDS = ['rd', 'un', 'out', 'wr', 'ratio', 'p', 'o', 'rpm', 'r429', 'retries', 'inflight', 'queued', 'conflicts', 'bounced', 'read', 'expected', 'pct', 'ms', 'add', 'del', 'tok', 'ttl', 'turns', 'max', 'attempts', 'rate', 'reqSince', 'n', 'breaks', 'loud', 'compacts', 'mails'];
   const STATES = new Set(['think', 'tool', 'edit', 'wait', 'ask', 'idle', 'done', 'stuck']);
   const num = x => typeof x === 'number' && isFinite(x) ? x : (isFinite(+x) ? +x : 0);
   /** An id field: a finite number stays (a count such as a compaction's from and to shares the name), a string is made plain, any other value is BAD_ID. */
@@ -64,7 +68,7 @@
    *  first `plan` event (its steps); the counters of the additive vocabulary start at zero. */
   function newModel(S, opts) {
     const m = { sid: S.id, t: 0, ver: 0, nid: 0, chat: !(opts && opts.noChat), ag: {}, order: [], tasks: {}, torder: [], q: null, merged: [], conflicts: 0, bounced: 0,
-      mail: [], marks: [], plan: [], planText: null, verdict: '', verdictKind: '', left: [], goal: { state: S.meta.goalText ? 'active' : 'none' }, qs: [], anomalies: [], compactions: [], ncompactions: 0, ckpts: [],
+      mail: [], marks: [], plan: [], planText: null, verdict: '', verdictKind: '', left: [], goal: { state: S.meta.goalText ? 'active' : 'none' }, qs: [], anomalies: [], compactions: [], ncompactions: 0, nanom: 0, nloud: 0, nmail: 0, nMgrDec: 0, nMgrDen: 0, decMark: { n: 0, d: 0 }, ckpts: [],
       reqLog: [], flash: { t: -999, id: null }, lastReq: -9999, lastBreakT: -9999, streams: {}, diff: {}, rpm: 0, rpmHist: [], final: null, chan: { mgr: [], mail: [] }, folded: {}, steps: 0, refused: 0,
       mids: {}, midOrder: [], stalls: {}, handovers: [], alerts: {}, mailstat: null, svc: null, mgrDec: [], ttl: 0, r429: 0, retries: 0, inflight: 0, queued: 0, turn: false };
     (S.roster || []).forEach(r => addAgent(m, r));
@@ -170,7 +174,7 @@
       case 'warm': m.lastReq = ev.t; m.ttl = ev.ttl || 0; break;
       case 'gov': m.rpm = ev.rpm; m.rpmHist.push({ t: ev.t, rpm: ev.rpm }); if (m.rpmHist.length > 60) m.rpmHist.shift(); if (ev.r429 != null) m.r429 = ev.r429; if (ev.retries != null) m.retries = ev.retries; m.inflight = ev.inflight || 0; m.queued = ev.queued || 0; break;
       case 'mail': {
-        m.mail.push({ t: ev.t, from: ev.from, to: ev.to, text: ev.text, at: ev.at, tok: ev.tok }); if (m.mail.length > MAIL_CAP) m.mail.shift();
+        m.mail.push({ t: ev.t, from: ev.from, to: ev.to, text: ev.text, at: ev.at, tok: ev.tok }); if (m.mail.length > MAIL_CAP) m.mail.shift(); m.nmail++;
         addMark(m, { t: ev.t, id: ev.from, g: 'mail' });
         const e = { k: 'mail', from: ev.from, to: ev.to, text: ev.text, t: ev.t };
         push(m, 'mail', e, ev); if (ev.from !== 'you') push(m, chOf(ev.from), Object.assign({}, e), ev); if (ev.to !== ev.from) push(m, chOf(ev.to), Object.assign({}, e), ev);
@@ -198,10 +202,11 @@
         if (ev.by === 'manager') {
           /* the manager answered a worker's routine question (--manager-approves): one more line of its decisions, never a question for the person */
           const dec = { qid: ev.qid, agent: q ? q.agent : '', task: q ? q.task : '', cmd: q ? q.cmd : '', choice: ev.choice, ok: ev.choice !== 3, t: ev.t };
-          m.mgrDec.push(dec); capList(m.mgrDec, QS_CAP);
-          if (m.chat) { const last = lastTalk(m.chan.mgr); if (last && last.k === 'mgrdec') { last.list.push(dec); capList(last.list, QS_CAP); last.v++; } else push(m, 'mgr', { k: 'mgrdec', list: [dec], v: 1, t: ev.t }, ev); }
+          m.mgrDec.push(dec); capList(m.mgrDec, QS_CAP); m.nMgrDec++; if (!dec.ok) m.nMgrDen++;   /* the list keeps the newest; the counts are of all */
+          if (m.chat) { const last = lastTalk(m.chan.mgr); if (last && last.k === 'mgrdec') { last.list.push(dec); capList(last.list, QS_CAP); last.n++; if (!dec.ok) last.nd++; last.v++; } else push(m, 'mgr', { k: 'mgrdec', list: [dec], n: 1, nd: dec.ok ? 0 : 1, v: 1, t: ev.t }, ev); }
           break;
         }
+        if (q) m.decMark = { n: m.nMgrDec, d: m.nMgrDen };   /* the manager's decisions after this one are its recent ones (the rail's line) */
         /* a question the person answered, or one that closed without an answer (canceled, timed out, the session closed, no page open): a quiet row */
         if (q) push(m, 'mgr', ev.by && ev.by !== 'you' ? { k: 'sys', glyph: '⊘', text: 'refused without an answer (' + (SL.u.own(BY_WORD, ev.by) || 'closed') + '): ' + q.agent + ': ' + SL.u.clip1(q.cmd, 200), ag: q.agent, t: ev.t }
           : { k: 'sys', glyph: '❯', text: 'you answered ' + ev.choice + ' to ' + q.agent + ': ' + SL.u.clip1(q.cmd, 200), ag: q.agent, t: ev.t }, ev);
@@ -219,7 +224,7 @@
         /* a quiet break (the endpoint's own miss that the terminal would not say without /verbose: wire.Break.Quiet) is kept for the Cache
            view and the rows /verbose shows, and leaves the cards, the flash and the count alone */
         const quiet = !!ev.quiet, row = { k: 'break', ag: ev.id, kind: ev.kind, read: ev.read, expected: ev.expected, why: ev.why, layer: ev.layer || '', missUsd: ev.missUsd, quiet, t: ev.t };
-        m.anomalies.push({ t: ev.t, id: ev.id, kind: ev.kind, read: ev.read, expected: ev.expected, why: ev.why, layer: ev.layer || '', missUsd: ev.missUsd, quiet }); capList(m.anomalies, ANOM_CAP);
+        m.anomalies.push({ t: ev.t, id: ev.id, kind: ev.kind, read: ev.read, expected: ev.expected, why: ev.why, layer: ev.layer || '', missUsd: ev.missUsd, quiet }); capList(m.anomalies, ANOM_CAP); m.nanom++; if (!quiet) m.nloud++;
         if (!quiet) { m.flash = { t: ev.t, id: ev.id, kind: ev.kind, layer: ev.layer || '' }; m.lastBreakT = ev.t; }
         addMark(m, { t: ev.t, id: ev.id, g: 'break' });
         push(m, 'mgr', row, ev);
@@ -230,7 +235,7 @@
         /* when the planner decided (a cold cache makes the rewrite free) and how the thread was folded; both are '' when the server does not say,
            and a compaction nobody planned (an emergency one, one a person asked for) has no moment: the page then states no price */
         const moment = ev.moment === 'cold' || ev.moment === 'warm' ? ev.moment : '', mode = ev.mode === 'fork' || ev.mode === 'mask' || ev.mode === 'emergency' ? ev.mode : '';
-        if (A) A.pendingCompact = true; m.ncompactions = (m.ncompactions || 0) + 1; m.compactions.push({ t: ev.t, id: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment, mode }); capList(m.compactions, COMPACT_CAP); addMark(m, { t: ev.t, id: ev.id, g: 'compact' });
+        if (A) A.pendingCompact = true; m.ncompactions++; m.compactions.push({ t: ev.t, id: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment, mode }); capList(m.compactions, COMPACT_CAP); addMark(m, { t: ev.t, id: ev.id, g: 'compact' });
         push(m, 'mgr', { k: 'compact', ag: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment, mode, t: ev.t }, ev);
         if (ev.id !== 'mgr') push(m, chOf(ev.id), { k: 'compact', ag: ev.id, from: ev.from, to: ev.to, pct: ev.pct, moment, mode, t: ev.t }, ev);
         break;
@@ -277,6 +282,11 @@
       case 'layers': if (A && Array.isArray(ev.toks)) A.layers = ev.toks.slice(0, 6); break;
       case 'alert': { const k = String(ev.key || ev.kind || ''); if (k in Object.prototype) break; if (ev.s === 'clear') delete m.alerts[k]; else m.alerts[k] = { kind: ev.kind, text: ev.text, t: ev.t, at: ev.at }; break; }
       case 'mailstat': m.mailstat = ev; break;
+      case 'tally': {   /* a keyframe's: the mails, anomalies and compactions before the ones it carries (numbers to add, never totals) */
+        const n = x => typeof x === 'number' && isFinite(x) && x > 0 ? Math.floor(x) : 0;
+        m.nanom += n(ev.breaks); m.nloud += n(ev.loud); m.ncompactions += n(ev.compacts); m.nmail += n(ev.mails);
+        break;
+      }
       case 'svc': {   /* what the harness's own service agents (the mailman) have used, in all: no row of their own, but part of the run's totals */
         const n = x => typeof x === 'number' && isFinite(x) ? x : 0;
         m.svc = { rd: n(ev.rd), un: n(ev.un), out: n(ev.out), wr: n(ev.wr), cost: n(ev.cost), saved: n(ev.saved), savedPartial: !!ev.savedPartial, unpriced: n(ev.unpriced), list: Math.max(0, n(ev.list)), plan: !!ev.plan };
@@ -327,6 +337,13 @@
     openQuestion(m) { return m.qs.find(q => !q.answered) || null; },
     waiting(m) { return m.qs.filter(q => !q.answered).length; },
     mergedCount(m) { return m.merged.length; },
+    /** The counts a screen shows, never the length of a bounded list: anomalies (all of them, and the loud ones a person is told of),
+     *  compactions, and mail (the terminal's figure: the larger of the router's routed and sent counts when the server sends them,
+     *  else the mails counted). kept says how many of each the model's lists hold, so that a screen can say it shows the latest N. */
+    counts(m) {
+      const st = m.mailstat, mail = st && (st.sent != null || st.routed != null) ? Math.max(st.sent || 0, st.routed || 0) : m.nmail;
+      return { anomalies: m.nanom, loud: m.nloud, compactions: m.ncompactions, mail, kept: { anomalies: m.anomalies.length, compactions: m.compactions.length, mail: m.mail.length } };
+    },
     allMerged(m) { return m.torder.length > 0 && m.torder.every(t => m.tasks[t].st === 'merged'); },
   };
 
