@@ -7,6 +7,23 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A step limit is a window, not a ceiling, for team workers and for the
+  single agent of `sleipnir run`, the terminal and the web interface. A run
+  that made at least 3 new edits in its last window (an edit it repeats does
+  not count) goes on for another window of the same length, with a notice.
+  A run that did not is told in the results of its last step how many steps
+  are left (a tenth of the window, 2 to 10) and to leave the tree building
+  and hand its task over (a worker; in a persistent pool, which keeps its
+  workers, record where the task stands with `task update`) or give its
+  answer (a single agent);
+  then it ends at the limit as before, recorded as `agent.stuck` with phase
+  `steps`. Before, a worker was stopped mid-edit with nothing said to its
+  successor, and the stop counted as a failed attempt. The manager, the
+  mailman, RL rollouts and `sleipnir run --max-steps N` keep a fixed
+  ceiling. Prompt bytes: a team manager's pin says `N steps a task, more
+  while it keeps editing` for each role instead of `max N steps a task`
+  (unchanged with a fixed ceiling); the wrap-up note is new thread text.
+
 - A member of a role pool may keep a memory note while its pool plans,
   reconciles or waits for a subtask: the note goes to the session, which
   puts it to the person with the exact text, as it does for any agent. It

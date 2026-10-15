@@ -41,9 +41,10 @@ const (
 )
 
 const (
-	// DefaultMaxSteps bounds one assignment of a role that does not say.
+	// DefaultMaxSteps is the step window of one assignment of a role that does not say (agent.Config.ExtendSteps: another
+	// window follows while the worker makes new edits, unless the session keeps fixed limits).
 	DefaultMaxSteps = 150
-	// MaxStepsCap is the largest step budget a definition may ask for.
+	// MaxStepsCap is the largest step window a definition may ask for.
 	MaxStepsCap = 1000
 
 	// DefaultWarnPinTokens and DefaultMaxPinTokens are the pin size limits. The
