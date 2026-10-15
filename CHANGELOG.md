@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A `$` that starts no expansion (`$|` in a regex, a trailing `$`) is the
+  character, as it is in bash: `pgrep -af "$INSTALL/raven($| )"` names a
+  known path rather than one with a part only known when the command runs,
+  which `bypass` asked about as a write that might leave `$TMPDIR` for
+  `~/.sleipnir`. Prompt bytes: none change.
+
 - An arithmetic expansion no longer makes every variable of the line
   unknown. Bash arithmetic assigns only integers, and only to the names it
   reaches: those its text names, and those named by the values of the
