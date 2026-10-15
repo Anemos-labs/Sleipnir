@@ -818,3 +818,40 @@ func TestCondAndArithmeticAreWhatTheShellDoes(t *testing.T) {
 		}
 	}
 }
+
+// A heredoc with a quoted delimiter read by a program as its own data (python3 - <<'PY') is Literal: nothing in it can assign this
+// shell's variables or run in it. A body a shell reads as code, a builtin brings into the shell, a program spelled by a variable or
+// a script path reads, or one inside a substitution, is not; nor is an unquoted body, which the shell expands.
+func TestLiteralHeredocBodiesAreAProgramsData(t *testing.T) {
+	for src, want := range map[string]bool{
+		"python3 - <<'PY'\nbase = os.environ[\"TMPDIR\"]\nPY\necho done": true,
+		"python3 - x.json <<\"EOF\"\no[\"k\"]=1\nEOF":                    true,
+		"cat <<'E' > f.json\n{\"TMPDIR\": 1}\nE":                         true,
+		"node - <<-'JS'\n\tprocess.env.HOME\n\tJS":                       true,
+		"python3 - <<PY\nos.environ[\"TMPDIR\"]\nPY":                     false, // unquoted: expanded by the shell
+		"sh <<'SH'\nTMPDIR=/etc\nSH":                                     false,
+		"bash -s <<'SH'\nTMPDIR=/etc\nSH":                                false,
+		"read x <<'E'\nTMPDIR=/etc\nE":                                   false,
+		"source /dev/stdin <<'E'\nTMPDIR=/etc\nE":                        false,
+		"$PY - <<'E'\nTMPDIR=/etc\nE":                                    false,
+		"./run.sh <<'E'\nTMPDIR=/etc\nE":                                 false,
+		"while read l; do :; done <<'E'\nTMPDIR=/etc\nE":                 false,
+		"echo \"$(python3 - <<'E'\nTMPDIR\nE\n)\"":                       false,
+	} {
+		an := Parse(src)
+		if got := len(an.Literal) > 0; got != want {
+			t.Errorf("%q: Literal %v, want %v", src, an.Literal, want)
+			continue
+		}
+		code := an.Code(src)
+		if len(code) != len(src) || strings.Count(code, "\n") != strings.Count(src, "\n") {
+			t.Errorf("%q: Code changed the length or the lines: %q", src, code)
+		}
+		if want && (strings.Contains(code, "TMPDIR") || strings.Contains(code, "HOME") || strings.Contains(code, `o["k"]`)) {
+			t.Errorf("%q: Code still holds the body: %q", src, code)
+		}
+		if !want && code != src {
+			t.Errorf("%q: Code blanked text that is not literal: %q", src, code)
+		}
+	}
+}

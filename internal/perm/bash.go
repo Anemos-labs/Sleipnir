@@ -187,14 +187,17 @@ func (ev *evaluator) bash(cmd string) verdict {
 		}
 		return false
 	}
-	ev.off = harnessOff(cmd, an.Commands)
-	ev.gitEnv = strings.Contains(cmd, "GIT_")
+	// The scans of the line's text for what may change its variables read the shell's code: the body of a heredoc that is a
+	// program's data (python3 - <<'PY' ... os.environ["TMPDIR"] ... PY) is blank there (shellparse.Analysis.Literal).
+	code := an.Code(cmd)
+	ev.off = harnessOff(code, an.Commands)
+	ev.gitEnv = strings.Contains(code, "GIT_")
 	ev.cleanEnv = false
 	for _, c := range an.Commands {
 		ev.cleanEnv = ev.cleanEnv || slices.Contains(c.Wrappers, "env")
 	}
 	conflicted := map[string]bool{}
-	track := varsTrackable(cmd, an)
+	track := varsTrackable(code, an)
 	// The commands of a trap action run when the signal arrives or the shell exits: they are judged after the rest, in every directory
 	// the line may be in by then, and with only the variables that were known when the trap was set and still are at the end.
 	type deferred struct {
@@ -456,6 +459,7 @@ func validName(s string) bool {
 // arithmetic expansion and no other place bash evaluates arithmetic (mayAssignArithmetically), where an expression may assign
 // ($((n=5))); and no trap action assigns, since it may run between any two commands. Quoted
 // text and here-document bodies are the parser's business: printf 'func main() {...}' > main.go defines nothing.
+// cmd is the line's code (shellparse.Analysis.Code).
 func varsTrackable(cmd string, an shellparse.Analysis) bool {
 	if !an.Parsed || an.HasArithmetic || mayAssignArithmetically(cmd) {
 		return false

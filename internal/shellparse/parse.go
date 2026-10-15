@@ -9,6 +9,7 @@ type builder struct {
 	has        bool
 	piped      bool
 	bodies     []string // heredoc bodies and here-strings feeding the command's stdin
+	literal    []Span   // where the bodies of its heredocs with a quoted delimiter are in the source
 }
 
 // parser groups a token stream into simple commands. It is deliberately not a
@@ -431,6 +432,9 @@ func (p *parser) redir(t token) {
 		switch {
 		case tg.hasBody:
 			p.cur.bodies = append(p.cur.bodies, tg.body)
+			if tg.quoted {
+				p.cur.literal = append(p.cur.literal, Span{Start: tg.bodyStart, End: tg.bodyE})
+			}
 		case t.text == "<<<":
 			p.cur.bodies = append(p.cur.bodies, tg.text)
 		}
@@ -468,6 +472,9 @@ func (p *parser) finish() {
 	}
 	p.scripts(&s)
 	p.stdinScripts(&s, c.bodies)
+	if p.depth == 0 && !p.nested && len(c.literal) > 0 && readsAsData(s) {
+		p.st.an.Literal = append(p.st.an.Literal, c.literal...)
+	}
 	p.out = append(p.out, s)
 	if len(c.words) > 0 || !p.have { // "done > out" is the compound's redirection: the compound stays the last command
 		p.last = len(p.out) - 1

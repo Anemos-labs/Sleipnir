@@ -509,6 +509,26 @@ func ReadsCodeFromStdin(prog string, args []string) bool { return readsCodeFromS
 // is not one of the interpreters the parser knows.
 func InterpreterName(base string) string { return interpreterName(base) }
 
+// readsAsData reports whether the program of s takes its standard input as data of its own, so a heredoc fed to it cannot change
+// this shell: a program named in plain words (not "$X") that is no shell reading code (sh, bash -s, source /dev/stdin; an
+// interpreter such as python - runs its own language, in its own process) and no builtin that brings the input into the shell
+// (read, mapfile, readarray, eval, source, .).
+func readsAsData(s Simple) bool {
+	prog, args := s.EffectiveCommand()
+	base := stdBase(prog)
+	if base == "" || strings.ContainsAny(prog, "$`") {
+		return false
+	}
+	switch base {
+	case "read", "mapfile", "readarray", "eval", "source", ".", "exec", "builtin", "command", "busybox", "xargs":
+		return false
+	}
+	if posixShells[base] || base == "csh" || base == "tcsh" || base == "fish" {
+		return false
+	}
+	return !readsCodeFromStdin(prog, args) || interpreterName(base) != ""
+}
+
 // readsCodeFromStdin is ReadsCodeFromStdin.
 func readsCodeFromStdin(prog string, args []string) bool {
 	base := stdBase(prog)
