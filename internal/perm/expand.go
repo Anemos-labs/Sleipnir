@@ -212,6 +212,15 @@ func (rs *resolver) expandWordVars(w, cwd string, x expansion) (out, partial str
 				return "", b.String(), true
 			}
 			v, ok := rs.knownSubstitution(w[j+1:j+k], cwd, x)
+			if !ok && tokenSubstitution(w[j+1:j+k]) {
+				// what it prints is one name token: a piece of a file name, as $$ is, and nothing when the command fails
+				frag = true
+				if !x.emptied {
+					b.WriteString(tokenPlaceholder(w[j+1 : j+k]))
+				}
+				i = j + k + 1
+				continue
+			}
 			if !ok {
 				return "", b.String(), true
 			}
@@ -371,6 +380,88 @@ func gitMarker(p string) bool {
 func fallibleSubstitution(cmd string) bool {
 	f := strings.Fields(cmd)
 	return strings.Join(f, " ") == "git rev-parse --show-toplevel" || len(f) > 0 && f[0] == "mktemp"
+}
+
+// tokenSubstitution reports whether a command substitution prints only name tokens: letters, digits and _ . : + - (never a "/", a
+// blank, or a token that is only dots, so never "." or ".."). It knows date with a +FORMAT of numeric conversions and such characters
+// (date -u +%Y%m%dT%H%M%SZ; -d DATE may name any date), seq over numbers, id -u and -g, nproc and uuidgen.
+func tokenSubstitution(cmd string) bool {
+	f, ok := shellparse.Fields(cmd)
+	if !ok || len(f) == 0 {
+		return false
+	}
+	args := f[1:]
+	switch f[0] {
+	case "date":
+		format := false
+		for i := 0; i < len(args); i++ {
+			switch a := args[i]; {
+			case a == "-u" || a == "--utc":
+			case a == "-d" || a == "--date":
+				i++ // the date it formats: any, the output is still FORMAT's
+			case strings.HasPrefix(a, "--date=") || strings.HasPrefix(a, "-d") && len(a) > 2:
+			case strings.HasPrefix(a, "+") && !format:
+				if !tokenFormat(a[1:]) {
+					return false
+				}
+				format = true
+			default:
+				return false
+			}
+		}
+		return format
+	case "seq":
+		if len(args) == 0 || len(args) > 3 {
+			return false
+		}
+		for _, a := range args {
+			if a == "" || strings.Trim(a, "0123456789.-") != "" {
+				return false
+			}
+		}
+		return true
+	case "id":
+		return len(args) == 1 && (args[0] == "-u" || args[0] == "-g")
+	case "nproc":
+		return len(args) == 0 || len(args) == 1 && args[0] == "--all"
+	case "uuidgen":
+		return len(args) == 0 || len(args) == 1 && (args[0] == "-r" || args[0] == "-t")
+	}
+	return false
+}
+
+// tokenFormat reports whether a date format prints one name token: at least one conversion, every conversion numeric (%s %N %Y %m %d
+// %H %M %S %j %F %T %z and the like, with flags and a width), and literal letters, digits and _ . : + - between them. Not %Z: the zone's
+// name comes from TZ, which the line may set to anything (TZ='<a/b>0' makes it a/b).
+func tokenFormat(f string) bool {
+	conv := false
+	for i := 0; i < len(f); i++ {
+		c := f[i]
+		if c != '%' {
+			if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || strings.IndexByte("_.:+-", c) >= 0) {
+				return false
+			}
+			continue
+		}
+		i++
+		for i < len(f) && strings.IndexByte("-_0^#", f[i]) >= 0 {
+			i++
+		}
+		for i < len(f) && f[i] >= '0' && f[i] <= '9' {
+			i++
+		}
+		if i >= len(f) || strings.IndexByte("sNYmdHMSjuwyeIklCgGVUWzFTR", f[i]) < 0 {
+			return false
+		}
+		conv = true
+	}
+	return conv
+}
+
+// tokenPlaceholder is how a tokenSubstitution stands in a known word: its program, "$(date)", a piece of a name with no "/".
+func tokenPlaceholder(cmd string) string {
+	f, _ := shellparse.Fields(cmd)
+	return "$(" + f[0] + ")"
 }
 
 // fragment reports whether name is a special parameter that expands to a number in the session's shell (fragmentParams, less the
