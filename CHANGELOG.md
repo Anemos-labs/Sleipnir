@@ -14,7 +14,8 @@ they do not indicate whether a change has been released.
   stopping the leader, which claims it again. A pool that was reconciling,
   or whose result was submitted or accepted, still executes again with a new
   revision and no confirmation left; a pool that plans or executes keeps its
-  revision and votes. The manager is no longer asked to resume a pool
+  revision and votes, and one back in planning is no longer moved to
+  executing before its members agree. The manager is no longer asked to resume a pool
   leader whose run its own revise (or a shutdown) stopped; a leader's
   failure still reaches it. Prompt bytes: the child-revise notice is new
   harness mail to two agents instead of the pool-wide "Child T was

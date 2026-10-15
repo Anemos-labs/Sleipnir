@@ -212,11 +212,12 @@ func (t *taskTool) reviseTask(ctx context.Context, c *tools.Call, in taskIn) *to
 //   - A parent whose combined result was being confirmed, or was submitted or accepted, has lost it: the pool goes back to
 //     executing, and its revision moves on with no confirmation and no inspection, so a confirmation of the old result
 //     can neither count nor arrive late. That is what keeps an agreement honest: a vote is for one revision.
-//   - A parent that was submitted or accepted (review, done) or is not assigned (todo) gets a new assignment of the leader,
-//     a new rev, as a send-back or a reopen gives one.
-//   - A parent the leader is working on (doing, blocked) keeps its assignment: its rev does not move, so its leader's run
-//     is not told that its task changed under it, and a pool that plans or executes keeps its revision and votes, which a
-//     child's revision does not touch.
+//   - A parent that was submitted or accepted (review, done) gets a new assignment of the leader, a new rev, as a send-back
+//     or a reopen gives one.
+//   - Any other parent keeps its assignment and, unless it was reconciling, its phase, revision and votes, which a child's
+//     revision does not touch. Its rev does not move while its leader works on it (doing, blocked), so the leader's run is
+//     not told that its task changed under it; one that is not assigned (todo, after a revise of the pool itself put it
+//     back to planning) stays so, and the pool agrees and executes before its children start again.
 func (s *Swarm) childRevised(by string, child Task, why string) error {
 	parent, ok := s.Board.Snapshot().Task(child.Parent)
 	if !ok || parent.Pool == nil {
@@ -227,11 +228,11 @@ func (s *Swarm) childRevised(by string, child Task, why string) error {
 			return err
 		}
 	}
+	hadResult := parent.Status == StatusReview || parent.Status == StatusDone // a submitted or accepted result is no longer whole
 	reset := false
 	var cur Task
 	err := s.Board.poolUpdate(by, parent.ID, func(sn *Snapshot, p *Task, state *PoolState) error {
-		assigned := p.Status == StatusDoing || p.Status == StatusBlocked
-		if !assigned {
+		if hadResult {
 			p.Rev = sn.Version
 			p.Status = StatusDoing
 			p.Owner = parent.Owner
@@ -239,7 +240,7 @@ func (s *Swarm) childRevised(by string, child Task, why string) error {
 				p.Owner = state.Members[0]
 			}
 		}
-		if !assigned || state.Phase == "reconciling" {
+		if hadResult || state.Phase == "reconciling" {
 			reset = state.Phase != "executing" || len(state.Votes) > 0 || len(state.Inspected) > 0
 			state.Phase = "executing"
 			state.Revision++
@@ -276,7 +277,11 @@ func (s *Swarm) childRevised(by string, child Task, why string) error {
 				cur.ID, cur.Owner, cur.Pool.Phase, cur.Pool.Revision, msg, child.ID))
 		}
 	}
-	tell(cur.Owner, lead)
+	leader := cur.Owner
+	if leader == "" {
+		leader = cur.LastOwner // a parent back in todo: the leader the harness restarts on it
+	}
+	tell(leader, lead)
 	tell(child.Owner, own)
 	return nil
 }

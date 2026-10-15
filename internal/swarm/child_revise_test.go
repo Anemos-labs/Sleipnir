@@ -156,3 +156,31 @@ func TestAPoolReviseDoesNotAskTheManagerToResumeIt(t *testing.T) {
 		t.Fatalf("a leader that failed on its own was reported %d times", n)
 	}
 }
+
+// A child revised while its pool is back in planning (the manager revised the pool task itself) leaves the pool planning: the
+// parent is not handed out, and its phase, revision and votes stay, so the members agree and execute before any child starts.
+func TestAChildReviseKeepsAPlanningPoolPlanning(t *testing.T) {
+	r, parent, children := childReviseRig(t)
+	lead := parent.Pool.Members[0]
+	if err := r.sw.Board.revise("mgr", parent.ID, TaskSpec{Desc: "two packages"}, "new layout"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.poolUpdate("mgr", parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error {
+		p.Agreement, p.Votes = "split by package", []string{lead}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := r.sw.Board.Snapshot().Task(parent.ID)
+	if before.Status != StatusTodo || before.Pool.Phase != "planning" {
+		t.Fatalf("setup: parent %s, phase %s", before.Status, before.Pool.Phase)
+	}
+	if res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "revise", "id": children[1].ID, "description": "validate input", "text": "missing validation"}); res.IsError {
+		t.Fatal(res.Text)
+	}
+	p, _ := r.sw.Board.Snapshot().Task(parent.ID)
+	if p.Status != StatusTodo || p.Rev != before.Rev || p.Pool.Phase != "planning" || p.Pool.Revision != before.Pool.Revision || len(p.Pool.Votes) != 1 {
+		t.Fatalf("a planning pool was moved on by a child revise: %s rev %d->%d, phase %s, revision %d->%d, votes %v",
+			p.Status, before.Rev, p.Rev, p.Pool.Phase, before.Pool.Revision, p.Pool.Revision, p.Pool.Votes)
+	}
+}
