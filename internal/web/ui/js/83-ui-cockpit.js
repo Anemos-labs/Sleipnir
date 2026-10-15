@@ -67,7 +67,7 @@
   /** The governor note: a plain sentence while nothing throttles, the counts when something does. */
   ui.govNote = m => (m.r429 || m.retries) ? m.r429 + ' 429' + (m.r429 === 1 ? '' : 's') + ', ' + m.retries + ' retr' + (m.retries === 1 ? 'y' : 'ies') + ': the endpoint is throttling the team' : 'no 429s, no retries: nothing is throttling the team';
   /** `routed N · dup N · mailman on/off`: the dup term only when the server counts duplicates. */
-  ui.mailNote = (m, S) => { const st = m.mailstat; return 'routed ' + (st && st.sent != null ? st.sent : m.mail.length) + (st && st.dup != null ? ' · dup ' + st.dup : '') + ' · mailman ' + (S.meta.mailman ? 'on' : 'off'); };
+  ui.mailNote = (m, S) => { const st = m.mailstat; return 'routed ' + calc.counts(m).mail + (st && st.dup != null ? ' · dup ' + st.dup : '') + ' · mailman ' + (S.meta.mailman ? 'on' : 'off'); };
   function miniTl(A, vt, col) {
     let out = '', w0 = vt - 60;
     A.segs.forEach(sg => {

@@ -154,6 +154,8 @@ func everyKindCorpus(tb testing.TB) []map[string]any {
 	marked, _ := marksLog()
 	out = append(out, translateLog(tb, marked, "/work", true).decoded()...)
 	out = append(out, translateLog(tb, managerDecideLog(), "/work", true).decoded()...)
+	long, _, _ := longJournal()
+	out = append(out, decodeAll(tb, long.keyframe())...) // a keyframe's own kinds: the tally
 	return out
 }
 

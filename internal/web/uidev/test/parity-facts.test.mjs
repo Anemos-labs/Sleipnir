@@ -101,8 +101,8 @@ export function webFacts(events) {
     stalls_open: Object.keys(m.stalls).length,
     handovers: m.handovers.length,
     alerts_open: Object.keys(m.alerts).length,
-    compactions: m.compactions.length,
-    cache_breaks: m.anomalies.length,
+    compactions: SL.calc.counts(m).compactions,   /* counted, never the length of the bounded list a screen draws */
+    cache_breaks: SL.calc.counts(m).anomalies,
     retries: m.retries,
     rate_limited: m.r429,
   };
