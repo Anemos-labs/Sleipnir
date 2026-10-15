@@ -53,6 +53,10 @@ type Config struct {
 	BudgetUSD float64
 	// AgentBudgetUSD caps each worker.
 	AgentBudgetUSD float64
+	// FixedSteps keeps each role's MaxSteps a ceiling on one assignment. Without it a worker that is still making edits
+	// when it reaches the limit goes on for another window of the same length, and one that is not is told to wrap up or
+	// hand its task over (agent.Config.ExtendSteps). The manager and the harness's own agents always keep the ceiling.
+	FixedSteps bool
 	// VerifyCmd, when set, is run in an agent's workdir before its task may leave
 	// "doing", and again when the manager accepts it: the harness, not the model,
 	// decides whether work is finished.

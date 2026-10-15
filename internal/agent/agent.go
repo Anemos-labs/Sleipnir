@@ -161,6 +161,13 @@ type Config struct {
 	VerifyHint string
 	// PlanOpen says how many steps of the agent's plan are not done (nil: there is no plan tool). A run that would end with some is sent back once.
 	PlanOpen func(agent string) int
+	// ExtendSteps makes MaxSteps the length of a window of a run instead of its ceiling: a window in which the agent made
+	// progress (new edits) is followed by another, and one without by a few steps to wrap up, after which the run ends with
+	// ErrStepLimit (see steps.go). Off, the run ends after MaxSteps requests, which is what a rollout with a step budget needs.
+	ExtendSteps bool
+	// WrapUp is the last sentence of the note that tells an agent its run is about to end at the step limit: what to do
+	// with the steps that are left. Empty is "give your answer: what is done, what is left, and how to continue".
+	WrapUp string
 	// HotMode requests a hot-tail mechanism. The zero value (kv.HotInline) lets
 	// the harness choose for the route: persist-on-change on models that enforce
 	// preserved thinking, turn-scoped where the provider supports it, inline
@@ -222,7 +229,7 @@ type Config struct {
 	Est core.Estimator
 	Now func() time.Time
 
-	MaxSteps  int     // per Run; default 200
+	MaxSteps  int     // per Run, or per window of a Run with ExtendSteps; default 200
 	BudgetUSD float64 // 0: unlimited
 	Priority  int
 
@@ -380,6 +387,7 @@ type Agent struct {
 	truncated           bool
 	rep                 repeatGuard // the run's failed calls (see repeat.go); used by run only
 	tests               testGuard   // a failing test run followed by edits to tests only (see testguard.go); used by run only
+	win                 stepWindow  // the run's step windows (see steps.go); used by run only
 
 	// Hot tail persistence (kv.HotPersist).
 	hotFP  string // fingerprint of the newest persisted notice ("" when none)
@@ -390,6 +398,8 @@ type Agent struct {
 	enforcing atomic.Bool
 
 	stepInRun   int
+	stepEnd     int  // the step at which the current window of the run ends
+	stepFinal   bool // the run ends at stepEnd: no window can follow (stepsLeftLocked)
 	lastMaskReq int
 	lastSnap    core.Hash     // the blob of the newest snapshot written
 	recoverable *Snapshot     // the newest snapshot taken at a tool-batch boundary (Config.Barrier)
@@ -492,7 +502,7 @@ func New(cfg Config) (*Agent, error) {
 	}
 	th := kv.NewThread()
 	th.SetClock(cfg.Now)
-	a := &Agent{cfg: cfg, est: cfg.Est, thread: th, lastMaskReq: -1 << 20}
+	a := &Agent{cfg: cfg, est: cfg.Est, thread: th, lastMaskReq: -1 << 20, stepEnd: cfg.MaxSteps, stepFinal: !cfg.ExtendSteps}
 	a.life, a.lifeCancel = context.WithCancel(context.Background())
 	a.stack = kv.Stack{
 		Agent: cfg.ID, Role: cfg.Role, Model: cfg.Model.ID,
@@ -761,7 +771,9 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 			a.emit(events.TypeAgentCancel, map[string]any{"phase": phase, "cause": cause, "steps": res.Steps})
 		}
 	}()
-	for step := 0; step < a.cfg.MaxSteps; step++ {
+	a.win.reset()
+	limit := a.cfg.MaxSteps // the step at which the current window ends (steps.go)
+	for step := 0; step < limit || a.nextWindow(step, &limit); step++ {
 		if err := ctx.Err(); err != nil {
 			return res, err
 		}
@@ -776,7 +788,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 			}
 		}
 		a.mu.Lock()
-		a.stepInRun = step
+		a.stepInRun, a.stepEnd, a.stepFinal = step, limit, a.win.grace || !a.cfg.ExtendSteps
 		a.mu.Unlock()
 		a.drainAssignment()
 		a.boundary(ctx)
@@ -824,7 +836,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 			}
 			a.cfg.Sink.Notice(a.cfg.ID, "warn", fmt.Sprintf("the response reached the output limit (%d tokens): asking the model to carry on (%d of %d)",
 				a.cfg.Params.MaxTokens, cutoffs, maxCutoffRounds))
-			a.pushUser(core.OriginSystem, []core.Block{core.Text(cutoffNudge)})
+			a.pushUser(core.OriginSystem, a.wrapUp([]core.Block{core.Text(cutoffNudge)}, limit-step-1))
 			continue
 		}
 		cutoffs = 0
@@ -835,7 +847,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 				leakNudges++
 				note := fmt.Sprintf("[harness] Your last message was not an answer: it held part of your chat format (%s) where a tool call should be, and no tool ran. Make the call again, one call, with its arguments as JSON, or give your answer in plain words.", m)
 				a.emit(events.TypeAgentStuck, map[string]any{"phase": "leak", "note": note})
-				a.pushUser(core.OriginSystem, []core.Block{core.Text(note)})
+				a.pushUser(core.OriginSystem, a.wrapUp([]core.Block{core.Text(note)}, limit-step-1))
 				continue
 			}
 			// Mail or steering that arrived while this answer was being produced would
@@ -856,7 +868,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 					vetoes++
 					// A nudge from the harness, not something the user typed: it must
 					// not be pinned into the instructions notes as the user's word.
-					a.pushUser(core.OriginSystem, []core.Block{core.Text("[stop hook] " + o.Reason)})
+					a.pushUser(core.OriginSystem, a.wrapUp([]core.Block{core.Text("[stop hook] " + o.Reason)}, limit-step-1))
 					continue
 				}
 			}
@@ -866,7 +878,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 				planNudges++
 				note := fmt.Sprintf("[harness] Your plan still has %d open step(s) (see it above). Do them, or send the plan again with the steps that are done marked done and the ones you no longer mean removed, then give your answer.", open)
 				a.emit(events.TypeAgentStuck, map[string]any{"phase": "plan", "note": note})
-				a.pushUser(core.OriginSystem, []core.Block{core.Text(note)})
+				a.pushUser(core.OriginSystem, a.wrapUp([]core.Block{core.Text(note)}, limit-step-1))
 				continue
 			}
 			// Code changed, no test run since: the answer would claim a result nobody looked at. Once, with the project's own command.
@@ -874,7 +886,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 				verifyNudges++
 				note := fmt.Sprintf("[harness] You changed code and have not run the tests since. Run `%s` and fix what fails, or say plainly why you cannot, before you give your answer.", a.cfg.VerifyHint)
 				a.emit(events.TypeAgentStuck, map[string]any{"phase": "verify", "note": note})
-				a.pushUser(core.OriginSystem, []core.Block{core.Text(note)})
+				a.pushUser(core.OriginSystem, a.wrapUp([]core.Block{core.Text(note)}, limit-step-1))
 				continue
 			}
 			u, c := a.Usage()
@@ -884,7 +896,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 			return res, nil
 		}
 		phase = "tools"
-		stuck := a.toolBatch(ctx, calls)
+		stuck := a.toolBatch(ctx, calls, limit-step-1)
 		phase = "between"
 		if stuck != nil {
 			// The results are in the thread, so it stays valid; the run ends here.
@@ -892,15 +904,16 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 			return res, stuck
 		}
 	}
-	return res, fmt.Errorf("agent %s: %w %d reached", a.cfg.ID, ErrStepLimit, a.cfg.MaxSteps)
+	return res, fmt.Errorf("agent %s: %w %d reached", a.cfg.ID, ErrStepLimit, limit)
 }
 
 // toolBatch runs one batch of calls and appends their results (and any mail and
 // guard notes) to the thread, holding Config.Barrier shared for the whole of it
 // when the batch may write (batchWrites), and notes the recoverable snapshot
 // before releasing it. stuck is the repeat guard's verdict that the run must
-// end.
-func (a *Agent) toolBatch(ctx context.Context, calls []core.Block) (stuck error) {
+// end. left is how many requests the run has after this step, for a wrap-up note
+// the batch's results carry (wrapUp).
+func (a *Agent) toolBatch(ctx context.Context, calls []core.Block, left int) (stuck error) {
 	if b := a.cfg.Barrier; b != nil {
 		if a.batchWrites(calls) {
 			b.RLock()
@@ -924,6 +937,10 @@ func (a *Agent) toolBatch(ctx context.Context, calls []core.Block) (stuck error)
 	if note != "" && stuck == nil {
 		blocks = append(blocks, core.Text(note))
 		a.emit(events.TypeAgentStuck, map[string]any{"phase": "nudge", "guard": guard, "note": note})
+	}
+	a.win.observe(calls, results)
+	if stuck == nil {
+		blocks = a.wrapUp(blocks, left)
 	}
 	a.pushUser(core.OriginTool, blocks)
 	a.noteRecoverable()

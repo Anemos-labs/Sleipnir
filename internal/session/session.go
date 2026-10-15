@@ -158,8 +158,12 @@ type Options struct {
 	Mailman *bool
 
 	// Limits.
-	MaxSteps  int
-	BudgetUSD float64
+	MaxSteps int
+	// FixedSteps keeps MaxSteps, and every team role's step limit, a ceiling on one run (agent.Config.ExtendSteps off): a
+	// rollout's step budget is part of its task, and a person who names a limit means it. Without it a run that is still
+	// making edits at its limit goes on for another window of the same length.
+	FixedSteps bool
+	BudgetUSD  float64
 	// NoBudget lifts the cap a swarm has from swarm.budget_usd (the built-in cap unless the configuration sets another) when BudgetUSD
 	// sets none; BudgetUSD still wins. It is SLEIPNIR_SWARM_BUDGET_USD=0 for one session. A single agent has no such cap.
 	NoBudget      bool
@@ -825,7 +829,7 @@ func (s *Session) build(ctx context.Context) error {
 				Sink: o.Sink, Workdir: o.Cwd, Root: o.Root, Tmp: s.tmp, Limits: limits,
 				Planner: planner, KVPolicy: kvPol, SessionID: s.ID, Est: est, Now: o.Now,
 				BlockingCompaction: s.cfg.Cache.CompactionMode == "blocking",
-				MaxSteps:           orDefault(o.MaxSteps, 200), BudgetUSD: o.BudgetUSD, CaptureTokens: o.CaptureTokens,
+				MaxSteps:           orDefault(o.MaxSteps, 200), ExtendSteps: !o.FixedSteps, BudgetUSD: o.BudgetUSD, CaptureTokens: o.CaptureTokens,
 				Hooks: s.agentHooks(), OutagePatience: outagePatience(o.OutagePatience), WaitUnreachable: o.WaitUnreachable,
 				Barrier: s.agentBarrier(),
 			})
@@ -877,6 +881,7 @@ func (s *Session) build(ctx context.Context) error {
 	}
 	sc.VerifyCmd = o.Verify
 	sc.Verify = s.verifier()
+	sc.FixedSteps = o.FixedSteps
 	sc.HoldManager, sc.WakeManager = sc.PersistentPools || !o.Interactive, o.Interactive
 	sc.Mailman = s.mailmanOn()
 
