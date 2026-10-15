@@ -291,6 +291,131 @@ func TestSingleParcelsGoDirectWithoutAMailmanRun(t *testing.T) {
 	}
 }
 
+// Two parcels for one recipient are no burst: a digest of them is little shorter than
+// they are, and it would cost a request and a delay. They are delivered directly; the
+// mailman is asked only once a recipient has three waiting.
+func TestTwoParcelsForARecipientGoDirect(t *testing.T) {
+	r := mailmanRig(t, Config{MailmanQuiet: 20 * time.Millisecond, MailmanMax: 60 * time.Millisecond}, nil, nil, nil)
+	to := r.team(1)
+	for i := 0; i < 2; i++ {
+		for _, id := range to {
+			if _, err := r.sw.Router.Send(fmt.Sprintf("w-%d", i), id, "info", fmt.Sprintf("progress %d for %s", i, id)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	st := mailSettled(t, r, 4)
+	if st.Direct != 4 || st.Digests != 0 || st.Batches != 0 {
+		t.Fatalf("stats %+v: two parcels for a recipient must go directly", st)
+	}
+	if r.sw.get("mm-1") != nil || r.prov.callsFor("mm-1") != 0 {
+		t.Fatal("a mailman was started for two parcels a recipient")
+	}
+}
+
+// A blocker to the manager never waits in the mailroom: it is delivered at once, as its
+// worker wrote it, and is never digested. The same worker's other mail to the manager,
+// and a blocker to a peer, are parcels as before.
+func TestBlockerToTheManagerSkipsTheMailroom(t *testing.T) {
+	r := mailmanRig(t, Config{MailmanQuiet: time.Hour, MailmanMax: time.Hour}, nil, nil, nil)
+	to := r.team(1)
+	m, err := r.sw.Router.Send("w-1", "manager", "blocker", "cannot write internal/agent: outside T14's scope")
+	if err != nil || m.Via != "" || m.To != "mgr" {
+		t.Fatalf("a blocker to the manager went through the mailroom: %+v %v", m, err)
+	}
+	if st := r.sw.MailmanStats(); st.Parcels != 0 || st.Pending != 0 {
+		t.Fatalf("the blocker became a parcel: %+v", st)
+	}
+	delivered := false
+	for _, e := range r.log.OfType(events.TypeMailDeliver) {
+		delivered = delivered || (e.Agent == "mgr" && strings.Contains(string(e.Data), `"`+m.ID+`"`))
+	}
+	if !delivered {
+		t.Fatal("the blocker was not delivered to the manager at once")
+	}
+	for _, tc := range []struct{ to, kind string }{{"mgr", "request"}, {to[1], "blocker"}} {
+		if m, err := r.sw.Router.Send("w-1", tc.to, tc.kind, "a "+tc.kind+" for "+tc.to); err != nil || m.Via != "mailman" {
+			t.Fatalf("a %s to %s was not a parcel: %+v %v", tc.kind, tc.to, m, err)
+		}
+	}
+}
+
+// The mailman is shown whole parcels, so that a digest is its summary and not the
+// harness's cut: three long contracts reach it in full.
+func TestMailmanSeesWholeParcels(t *testing.T) {
+	var mu sync.Mutex
+	var seen string
+	mm := func(ctx context.Context, c *rvCall) rvReply {
+		if batch, answered := rvBatch(c); batch != "" && answered == 0 {
+			mu.Lock()
+			seen = batch
+			mu.Unlock()
+		}
+		return digesting(nil)(ctx, c)
+	}
+	router := looseRouter()
+	router.MaxContentChars = 1200
+	r := mailmanRig(t, Config{MailmanQuiet: 20 * time.Millisecond, MailmanMax: 60 * time.Millisecond, Router: router}, mm, nil, nil)
+	r.team(0)
+	var texts []string
+	for k := 0; k < 3; k++ {
+		text := fmt.Sprintf("contract %d: %s end of contract %d", k, strings.TrimSpace(strings.Repeat("field ", 160)), k)
+		texts = append(texts, text)
+		if _, err := r.sw.Router.Send(fmt.Sprintf("w-%d", k), "mgr", "contract", text); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if st := mailSettled(t, r, 3); st.Digests != 1 {
+		t.Fatalf("stats %+v", st)
+	}
+	mu.Lock()
+	batch := seen
+	mu.Unlock()
+	for k, text := range texts {
+		if !strings.Contains(batch, text) {
+			t.Fatalf("parcel %d (%d characters) was not shown whole to the mailman:\n%s", k, len(text), batch)
+		}
+	}
+}
+
+// What the mailman is shown fits a budget per request: every parcel whole when the batch
+// fits, otherwise the short parcels whole and the long ones cut to an equal share of what
+// is left, never below a floor.
+func TestParcelViewKeepsShortParcelsWholeWithinTheBudget(t *testing.T) {
+	if v := parcelView([]int{600, 900, 1200}, mailmanViewBudget, mailmanParcelFloor); v != 0 {
+		t.Fatalf("a batch within the budget is cut at %d", v)
+	}
+	if v := parcelView(nil, mailmanViewBudget, mailmanParcelFloor); v != 0 {
+		t.Fatalf("an empty batch is cut at %d", v)
+	}
+	if v := parcelView([]int{2000, 100, 2000}, 1000, 240); v != 450 {
+		t.Fatalf("cap %d: the short parcel whole and 450 of each long one fill a budget of 1000", v)
+	}
+	if v := parcelView([]int{1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200},
+		mailmanViewBudget, mailmanParcelFloor); v != mailmanViewBudget/24 || v < 600 {
+		t.Fatalf("a full batch of the longest messages is cut at %d", v)
+	}
+	if v := parcelView([]int{1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000}, 1000, 240); v != 240 {
+		t.Fatalf("cap %d: the floor holds", v)
+	}
+}
+
+// The quiet period that ends a burst is counted from its last parcel's arrival. The
+// supervisor's housekeeping, which runs more often than the quiet period lasts, does not
+// restart it: a lone parcel waits MailmanQuiet, not MailmanMax.
+func TestQuietBurstIsDispatchedWhileTheSupervisorRuns(t *testing.T) {
+	r := mailmanRig(t, Config{MailmanQuiet: 100 * time.Millisecond, MailmanMax: 10 * time.Second, SuperviseEvery: 10 * time.Millisecond}, nil, nil, nil)
+	r.team(0)
+	start := time.Now()
+	if _, err := r.sw.Router.Send("w-1", "mgr", "info", "one update"); err != nil {
+		t.Fatal(err)
+	}
+	mailSettled(t, r, 1)
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("a lone parcel waited %s: the quiet period restarted on every housekeeping pass", d.Round(time.Millisecond))
+	}
+}
+
 // Mail written by the manager and by the harness itself, and the mailman's own, is never
 // taken as a parcel.
 func TestAuthorityMailBypassesTheMailman(t *testing.T) {
@@ -651,23 +776,23 @@ func TestMailmanBounds(t *testing.T) {
 		}
 	})
 	t.Run("a batch covers a bounded number of parcels", func(t *testing.T) {
-		// A long quiet period: the ten parcels are all in before anything but a full batch
+		// A long quiet period: the twelve parcels are all in before anything but a full batch
 		// (four) can start a request, however slowly this test is scheduled.
 		r := mailmanRig(t, Config{MailmanQuiet: 300 * time.Millisecond, MailmanMax: 2 * time.Second, MailmanBatch: 4}, nil, nil, nil)
 		r.team(0)
-		for k := 0; k < 10; k++ {
+		for k := 0; k < 12; k++ {
 			if _, err := r.sw.Router.Send("w-1", "mgr", "info", fmt.Sprintf("n%d", k)); err != nil {
 				t.Fatal(err)
 			}
 		}
-		st := mailSettled(t, r, 10)
+		st := mailSettled(t, r, 12)
 		for _, d := range digestEvents(r) {
 			if len(d.Parcels) > 4 {
 				t.Fatalf("a digest stands for %d parcels, the batch bound is 4", len(d.Parcels))
 			}
 		}
 		if st.Batches < 3 {
-			t.Fatalf("%d batches for 10 parcels with a bound of 4", st.Batches)
+			t.Fatalf("%d batches for 12 parcels with a bound of 4", st.Batches)
 		}
 	})
 }
