@@ -442,9 +442,9 @@ const maxQuoteRepairs = 32
 // attempt is charged to spent, the bytes read; it stops once that reaches budget, the caller's allowance for the whole reply. It returns the object, the bytes of s it spans and the quotes it
 // escaped. Nothing about the content is trusted more for it: the patch still has to name a keep_from and pass Apply.
 func repairQuotes(s string, budget int) (raw []byte, n, fixes, spent int, err error) {
-	b := []byte(s)
+	t := s // the text as repaired so far: s itself until a quote is escaped, so a failed first try copies nothing
 	for {
-		dec := json.NewDecoder(bytes.NewReader(b))
+		dec := json.NewDecoder(strings.NewReader(t))
 		var v json.RawMessage
 		e := dec.Decode(&v)
 		spent += max(int(dec.InputOffset()), 16)
@@ -455,28 +455,29 @@ func repairQuotes(s string, budget int) (raw []byte, n, fixes, spent int, err er
 			return v, int(dec.InputOffset()) - fixes, fixes, spent, nil
 		}
 		var se *json.SyntaxError
-		if fixes >= maxQuoteRepairs || spent >= budget || !quoteRepairable(e) || !errors.As(e, &se) {
-			return nil, 0, fixes, spent, e
-		}
-		if spent += int(se.Offset); spent >= budget {
+		if fixes >= maxQuoteRepairs || !quoteRepairable(e) || !errors.As(e, &se) {
 			return nil, 0, fixes, spent, e
 		}
 		// The stray character ends at Offset in one Go version and starts there in another, and may be a multi-byte rune ("—"):
 		// off is where the rune that ends at Offset begins, and the quote that ended the string is before it, past blanks.
-		end := min(max(int(se.Offset), 0), len(b))
-		_, size := utf8.DecodeLastRune(b[:end])
+		end := min(max(int(se.Offset), 0), len(t))
+		_, size := utf8.DecodeLastRuneInString(t[:end])
 		off := end - max(size, 1)
 		q := off - 1
-		for q > 0 && q < len(b) && (b[q] == ' ' || b[q] == '\t' || b[q] == '\n' || b[q] == '\r') {
+		for q > 0 && q < len(t) && (t[q] == ' ' || t[q] == '\t' || t[q] == '\n' || t[q] == '\r') {
 			q--
 		}
-		if off >= 0 && off < len(b) && b[off] == '"' && q < off-1 {
+		if off >= 0 && off < len(t) && t[off] == '"' && q < off-1 {
 			return nil, 0, fixes, spent, e // "a" "b": a comma missing between two strings, not a quote of the model's text ("say "hi"")
 		}
-		if q < 1 || q >= len(b) || b[q] != '"' || escaped(b, q) {
+		if q < 1 || q >= len(t) || t[q] != '"' || escaped(t, q) {
 			return nil, 0, fixes, spent, e
 		}
-		b = append(b[:q:q], append([]byte{'\\'}, b[q:]...)...)
+		// escaping the quote copies the text: that is charged too, so many repairable objects cost no more than the allowance
+		if spent += len(t); spent >= budget {
+			return nil, 0, fixes, spent, e
+		}
+		t = t[:q] + `\` + t[q:]
 		fixes++
 	}
 }
@@ -489,7 +490,7 @@ func quoteRepairable(err error) bool {
 }
 
 // escaped reports whether the byte at b[i] is escaped: an odd number of backslashes before it ("\\"" ends a string, "\"" does not).
-func escaped(b []byte, i int) bool {
+func escaped(b string, i int) bool {
 	n := 0
 	for j := i - 1; j >= 0 && b[j] == '\\'; j-- {
 		n++
