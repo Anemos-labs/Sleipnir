@@ -359,7 +359,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 	if result == "" {
 		result = "completed"
 	}
-	summary := ev.Summary()
+	summary := ev.SummaryFor(task.ID)
 	if m != nil && m.tree != nil {
 		if err := s.checkTaskGate(task); err != nil {
 			return tools.Errorf("%v", err)
@@ -441,6 +441,10 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 			}
 			return text("%s agreement accepted; dependent work may start", task.ID)
 		}
+		empty := s.emptyWorkCheck(task, in.Text)
+		if err := empty(nil, task); err != nil { // before the verifier: work nobody did is not worth a run of it
+			return tools.Errorf("%v", err)
+		}
 		if s.hadTree(task.Owner) {
 			// Isolated run: the shared checkout does not hold the work yet, so the verifier
 			// is not re-run there. The merge queue verified the merged result; a task is
@@ -456,7 +460,7 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 			return &tools.Result{IsError: true, Text: fmt.Sprintf("%s was not accepted: verification `%s` failed (exit %d). Reject it with feedback, or fix it.\n%s",
 				in.ID, ExpandVerify(s.cfg.VerifyCmd, c.Env.Cwd, task.Files), vr.code, tail)}
 		}
-		if err := s.Board.Accept(me, in.ID, in.Text, taskGateCheck(task), s.noteAcceptedCheck(task)); err != nil {
+		if err := s.Board.Accept(me, in.ID, in.Text, taskGateCheck(task), empty, s.noteAcceptedCheck(task)); err != nil {
 			return tools.Errorf("%v", err)
 		}
 		if last := s.reviewPending(); last != "" && s.roleOf(task.Owner) != ReviewerRole {

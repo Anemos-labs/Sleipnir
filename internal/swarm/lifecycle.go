@@ -212,6 +212,12 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 	}
 	m := &member{id: id, role: r.Name, ev: ev, state: "idle", manager: isMgr, readOnly: r.ReadOnly, service: isSvc, sink: sink, notify: make(chan struct{}, 1),
 		tree: tree, dir: workdir, slot: -1}
+	if ev != nil {
+		ev.bind(func(path string) string { return s.editTask(id, path) }, func(task string) bool {
+			t, ok := s.Board.Snapshot().Task(task)
+			return ok && t.Owner == id && (t.Status == StatusDoing || t.Status == StatusBlocked || t.Status == StatusReview)
+		})
+	}
 	m.box.init()
 	if slot >= -1 {
 		m.slot = slot
@@ -582,11 +588,10 @@ func (s *Swarm) unreserve(m *member, rs *runState) {
 	s.wg.Done()
 }
 
-// adopt records the tasks the agent is doing now as the run's assignments.
+// adopt records the tasks the agent is doing now as the run's assignments, and points its evidence at the one its status shows.
 func (s *Swarm) adopt(m *member, rs *runState) {
 	snap := s.Board.Snapshot()
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	for _, t := range snap.Tasks {
 		if t.Owner == m.id && t.Status == StatusDoing {
 			rs.tasks[t.ID] = t.Rev
@@ -595,6 +600,32 @@ func (s *Swarm) adopt(m *member, rs *runState) {
 			}
 		}
 	}
+	task := m.task
+	m.mu.Unlock()
+	if t, ok := snap.Task(task); ok && t.Owner == m.id && t.Status == StatusDoing {
+		m.ev.Begin(task)
+	}
+}
+
+// editTask names the task an edit of path by agent belongs to: the one task it is doing whose scope holds the path, or "" (its
+// current task) when none of its scopes holds the path or several do. A pool task is not one: its work is its children's, and
+// a leader's edit inside its own child's scope is the child's. It reads the board only.
+func (s *Swarm) editTask(agent, path string) string {
+	rel, ok := s.Leases.rel(path)
+	if !ok {
+		return ""
+	}
+	hit := ""
+	for _, t := range s.Board.Snapshot().Tasks {
+		if t.Owner != agent || t.Status != StatusDoing || t.Pool != nil || len(t.Files) == 0 || !inScope(t.Files, rel) {
+			continue
+		}
+		if hit != "" {
+			return ""
+		}
+		hit = t.ID
+	}
+	return hit
 }
 
 // trackClaim adds a task the agent claimed during its run to the run's assignments.
@@ -616,6 +647,7 @@ func (s *Swarm) trackClaim(agentID, taskID string) {
 	m.mailWakes, m.wakeLimited = 0, false
 	m.mu.Unlock()
 	m.madeProgress()
+	m.ev.Begin(taskID)
 	card := claimedCards(s.Board.Snapshot(), agentID, nil)
 	if m.tree != nil {
 		card += isolationCard(integrationRefOf(m.tree))
@@ -991,7 +1023,7 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 		if res != nil {
 			summary = strings.TrimSpace(res.Text)
 		}
-		evid := m.ev.Summary()
+		evid := m.ev.SummaryFor(id)
 		if vr.ok && m.tree != nil {
 			if s.checkTaskGate(t) != nil {
 				s.retryChangedScope(m, t)
@@ -1091,12 +1123,19 @@ func (s *Swarm) resumeReturnedWork(ctx context.Context, m *member, rs *runState,
 	s.notify(m.id, "request", fmt.Sprintf("%s still yours and not done: returned to you while your last run was ending (task get shows why). Finish, then call task done again.", what))
 }
 
-// settleStopped returns the tasks of a run that stopped abnormally to the pool.
+// settleStopped returns the tasks of a run that stopped abnormally to the pool. A pool
+// leader's stop is the manager's to resume, and is worth a line only when the manager
+// could not have caused it, as for any other stop: not when the leader's run was
+// cancelled from outside (the manager's revise of the pool, a shutdown) or stopped by
+// the harness for a stated reason that is not a failure.
 func (s *Swarm) settleStopped(m *member, tasks map[string]uint64, kind stopKind, why string, count bool) string {
 	var notes []string
+	quiet := kind == stopInterrupted || (kind == stopHarness && !count)
 	for _, id := range sortedKeys(tasks) {
 		if task, ok := s.Board.Snapshot().Task(id); ok && task.Pool != nil {
-			s.notify(s.ManagerID(), "request", "Pool leader stopped on "+id+": "+why+". Resume this pool with its existing members.")
+			if !quiet {
+				s.notify(s.ManagerID(), "request", "Pool leader stopped on "+id+": "+why+". Resume this pool with its existing members.")
+			}
 			continue
 		}
 		nt, applied := s.Board.Requeue(m.id, id, tasks[id], why, count, s.cfg.MaxAttempts)

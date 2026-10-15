@@ -18,13 +18,39 @@ import (
 // Evidence is what the harness itself observed an agent do. Status shown on the
 // board and the case for "done" are derived from it, not from what the model
 // says about its own progress: self-reports are optimistic and stale.
+//
+// What it observes is kept per task: a worker's edits and commands count for the task they were made for, so a task is
+// judged on its own work, not on the files its worker edited for another one (Begin, route).
 type Evidence struct {
-	mu       sync.Mutex
+	mu    sync.Mutex
+	reads int
+	calls int
+	// cur is the record of task, the task Begin last pointed the evidence at ("" before any: what the agent did before it
+	// had a task, which its first task adopts). tasks holds the record of every task seen, the oldest dropped past
+	// maxEvidenceTasks.
+	task  string
+	cur   *evRecord
+	tasks map[string]*evRecord
+	order []string
+	// route, when set, names the task an edited path belongs to, "" for the current one (Swarm.editTask): an edit of a file
+	// in the scope of another task its agent is doing counts for that task.
+	route func(path string) string
+	// held, when set, reports whether a task is still its agent's (doing, blocked or in review): the record of such a task
+	// is never dropped, so work on it cannot read as "no files edited".
+	held func(task string) bool
+}
+
+// evRecord is what was observed for one task.
+type evRecord struct {
 	edited   map[string]int
-	reads    int
-	calls    int
 	commands []CmdRecord
 }
+
+// maxEvidenceTasks bounds how many tasks' records one agent's evidence keeps.
+const maxEvidenceTasks = 16
+
+// newRecord returns an empty record.
+func newRecord() *evRecord { return &evRecord{edited: map[string]int{}} }
 
 // CmdRecord is one shell command and its exit status.
 type CmdRecord struct {
@@ -51,7 +77,56 @@ func (c CmdRecord) Passed() bool { return c.Known && !c.Masked && c.Exit == 0 }
 var exitRe = regexp.MustCompile(`\[exit code (-?\d+)\]`)
 
 // NewEvidence returns an empty record.
-func NewEvidence() *Evidence { return &Evidence{edited: map[string]int{}} }
+func NewEvidence() *Evidence { return &Evidence{cur: newRecord(), tasks: map[string]*evRecord{}} }
+
+// Begin points the evidence at task, the task its agent is now working on: what it does from now on counts for that task
+// (route excepted). The first task adopts what the agent did before it had one; a task seen before gets its record back, so
+// a worker that comes back to its task (requeued, sent back, restarted on it) keeps the edits it made on it; a new task starts
+// empty, so a reused worker's evidence for it does not list the files of its last one. The raw counters (Counts' reads and
+// calls) go on counting.
+func (e *Evidence) Begin(task string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if task == "" || task == e.task {
+		return
+	}
+	if e.task == "" {
+		e.tasks[task] = e.cur
+		e.order = append(e.order, task)
+	} else {
+		e.cur = e.recordLocked(task)
+	}
+	e.task = task
+}
+
+// recordLocked returns task's record, made when it has none. Past maxEvidenceTasks the oldest records of tasks the agent no
+// longer holds are dropped; the current task's, task's and those of tasks it still holds (held) are kept, past the bound if
+// need be: it is then bounded by what the agent holds. e.mu is held.
+func (e *Evidence) recordLocked(task string) *evRecord {
+	if r, ok := e.tasks[task]; ok {
+		return r
+	}
+	r := newRecord()
+	e.tasks[task] = r
+	e.order = append(e.order, task)
+	for i := 0; len(e.tasks) > maxEvidenceTasks && i < len(e.order); {
+		if old := e.order[i]; old != e.task && old != task && (e.held == nil || !e.held(old)) {
+			delete(e.tasks, old)
+			e.order = append(e.order[:i], e.order[i+1:]...)
+			continue
+		}
+		i++
+	}
+	return r
+}
+
+// bind installs what the evidence asks its swarm: the task an edited path belongs to (route) and whether a task is still its
+// agent's (held).
+func (e *Evidence) bind(route func(path string) string, held func(task string) bool) {
+	e.mu.Lock()
+	e.route, e.held = route, held
+	e.mu.Unlock()
+}
 
 // exitOf recovers a command's exit status. The structured status in Result.Meta
 // is authoritative (it survives output truncation); the mark in the text is the
@@ -91,29 +166,54 @@ func exitOf(res *tools.Result) (code int, known bool) {
 	return 0, false
 }
 
-// Observe folds one finished tool call into the record.
-func (e *Evidence) Observe(call core.Block, res *tools.Result, now time.Time) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.calls++
-	failed := res == nil || res.IsError
+// editedBy lists the paths a successful edit call changed, nil for any other call.
+func editedBy(call core.Block, res *tools.Result) []string {
+	if res == nil || res.IsError {
+		return nil
+	}
 	switch call.ToolName {
 	case "edit", "write":
-		if !failed {
-			if p := jsonString(call.Input, "path", "file_path"); p != "" {
-				e.noteEdit(p)
-			}
+		if p := jsonString(call.Input, "path", "file_path"); p != "" {
+			return []string{p}
 		}
 	case "apply_patch":
-		if !failed {
-			for _, l := range strings.Split(jsonString(call.Input, "patch"), "\n") {
-				for _, pre := range []string{"*** Update File: ", "*** Add File: ", "*** Delete File: "} {
-					if strings.HasPrefix(l, pre) {
-						e.noteEdit(strings.TrimSpace(strings.TrimPrefix(l, pre)))
-					}
+		var out []string
+		for _, l := range strings.Split(jsonString(call.Input, "patch"), "\n") {
+			for _, pre := range []string{"*** Update File: ", "*** Add File: ", "*** Delete File: "} {
+				if strings.HasPrefix(l, pre) {
+					out = append(out, strings.TrimSpace(strings.TrimPrefix(l, pre)))
 				}
 			}
 		}
+		return out
+	}
+	return nil
+}
+
+// Observe folds one finished tool call into the record: an edit into the record of the task it belongs to (route), anything
+// else into the current task's.
+func (e *Evidence) Observe(call core.Block, res *tools.Result, now time.Time) {
+	paths := editedBy(call, res)
+	e.mu.Lock()
+	route := e.route
+	e.mu.Unlock()
+	owners := make([]string, len(paths))
+	if route != nil {
+		for i, p := range paths {
+			owners[i] = route(p) // outside e.mu: it reads the board
+		}
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.calls++
+	for i, p := range paths {
+		r := e.cur
+		if t := owners[i]; t != "" && t != e.task {
+			r = e.recordLocked(t)
+		}
+		r.noteEdit(p)
+	}
+	switch call.ToolName {
 	case "read", "grep", "glob", "ls":
 		e.reads++
 	case "bash":
@@ -121,59 +221,107 @@ func (e *Evidence) Observe(call core.Block, res *tools.Result, now time.Time) {
 		isTest, masked := classifyCommand(cmd)
 		rec := CmdRecord{Cmd: cleanText(firstLine(cmd, 100), 100), At: now, Test: isTest, Masked: masked}
 		rec.Exit, rec.Known = exitOf(res)
-		e.commands = append(e.commands, rec)
-		if len(e.commands) > 40 {
-			e.commands = e.commands[len(e.commands)-40:]
+		e.cur.commands = append(e.cur.commands, rec)
+		if len(e.cur.commands) > 40 {
+			e.cur.commands = e.cur.commands[len(e.cur.commands)-40:]
 		}
 	}
 }
 
 // noteEdit records an edited path (bounded: an agent editing thousands of files
 // keeps a bounded record).
-func (e *Evidence) noteEdit(p string) {
-	if _, ok := e.edited[p]; !ok && len(e.edited) >= 512 {
+func (r *evRecord) noteEdit(p string) {
+	if _, ok := r.edited[p]; !ok && len(r.edited) >= 512 {
 		return
 	}
-	e.edited[p]++
+	r.edited[p]++
 }
 
-// Edited lists edited paths, sorted.
-func (e *Evidence) Edited() []string {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	out := make([]string, 0, len(e.edited))
-	for p := range e.edited {
+// files lists the record's edited paths, sorted.
+func (r *evRecord) files() []string {
+	out := make([]string, 0, len(r.edited))
+	for p := range r.edited {
 		out = append(out, p)
 	}
 	sort.Strings(out)
 	return out
 }
 
-// LastTest returns the most recent test-like command.
-func (e *Evidence) LastTest() (CmdRecord, bool) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	for i := len(e.commands) - 1; i >= 0; i-- {
-		if e.commands[i].Test {
-			return e.commands[i], true
+// lastTest returns the record's most recent test-like command.
+func (r *evRecord) lastTest() (CmdRecord, bool) {
+	for i := len(r.commands) - 1; i >= 0; i-- {
+		if r.commands[i].Test {
+			return r.commands[i], true
 		}
 	}
 	return CmdRecord{}, false
 }
 
-// Summary renders the evidence as one line for the board and the manager.
+// Edited lists the paths edited for the current task, sorted.
+func (e *Evidence) Edited() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.cur.files()
+}
+
+// LastTest returns the most recent test-like command of the current task.
+func (e *Evidence) LastTest() (CmdRecord, bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.cur.lastTest()
+}
+
+// Summary renders the evidence of the current task as one line for the board and the manager.
 func (e *Evidence) Summary() string {
-	files := e.Edited()
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.cur.summary()
+}
+
+// SummaryFor renders the evidence of task as one line: what was observed for it, which is nothing when the agent was never
+// pointed at it and has had another task (a record before any task belongs to the first one).
+func (e *Evidence) SummaryFor(task string) string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	r, ok := e.tasks[task]
+	switch {
+	case ok:
+	case task == e.task || e.task == "":
+		r = e.cur
+	default:
+		r = newRecord()
+	}
+	return r.summary()
+}
+
+// evidenceNoEdits is the clause of a summary (Evidence.Summary) that says the harness saw no file edited.
+const evidenceNoEdits = "no files edited"
+
+// evidenceShowsNoEdits reports whether evidence the harness recorded on the board says that it saw no file edited: one of its
+// "; "-separated clauses is the one Summary writes for that. Evidence is harness-written text (a worker cannot set it), so the
+// clause is the harness's own record, not a claim.
+func evidenceShowsNoEdits(evidence string) bool {
+	for _, clause := range strings.Split(evidence, "; ") {
+		if clause == evidenceNoEdits {
+			return true
+		}
+	}
+	return false
+}
+
+// summary renders a record as one line.
+func (r *evRecord) summary() string {
+	files := r.files()
 	var parts []string
 	switch n := len(files); {
 	case n == 0:
-		parts = append(parts, "no files edited")
+		parts = append(parts, evidenceNoEdits)
 	case n <= 4:
 		parts = append(parts, fmt.Sprintf("edited %d (%s)", n, cleanText(strings.Join(base(files), ", "), 90)))
 	default:
 		parts = append(parts, fmt.Sprintf("edited %d (%s, …)", n, cleanText(strings.Join(base(files[:4]), ", "), 90)))
 	}
-	if t, ok := e.LastTest(); ok {
+	if t, ok := r.lastTest(); ok {
 		var verdict string
 		switch {
 		case !t.Known:
@@ -192,11 +340,11 @@ func (e *Evidence) Summary() string {
 	return strings.Join(parts, "; ")
 }
 
-// Counts reports raw counters.
+// Counts reports raw counters: the edits of the current task, and every read and call.
 func (e *Evidence) Counts() (edits, reads, calls int) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	for _, n := range e.edited {
+	for _, n := range e.cur.edited {
 		edits += n
 	}
 	return edits, e.reads, e.calls
