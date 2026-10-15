@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/workspace"
 )
 
 // "**" is aligned the way matching aligns it: two scopes overlap only when some path could lie in both. Before, any "**" on either
@@ -236,5 +238,54 @@ func TestAPoolChildWritesOnlyInsideItsParentsScope(t *testing.T) {
 	}
 	if loose, _ := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "loose", Role: "backend", Files: []string{"x/**"}}); r.sw.submitRefusal("backend", loose) != nil {
 		t.Error("a task with no parent is refused files by its parent")
+	}
+}
+
+// In an isolated run the merge queue holds a pool child to its parent's scope: a child "docs/pkg" of a parent "docs/*" that
+// changed docs/pkg/deep/file.go is refused, naming the parent; one that changed docs/pkg itself merges.
+func TestTheMergeQueueHoldsAPoolChildToItsParentsScope(t *testing.T) {
+	r := newIsoRig(t, isoOpts{}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "idle"} })
+	parent, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "docs", Role: "backend", Files: []string{"docs/*"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.beginPool("mgr", parent.ID, []string{"be-1", "be-2"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.poolUpdate("mgr", parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	child, err := r.sw.Board.CreateTask("be-1", TaskSpec{Parent: parent.ID, Title: "pkg", Role: "backend", Files: []string{"docs/pkg"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	submit := func(name, file string) workspace.Result {
+		t.Helper()
+		ctx := context.Background()
+		w, err := r.mgr.Create(ctx, name, workspace.CreateOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := filepath.Join(w.Path, filepath.FromSlash(file))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Commit(ctx, "child change"); err != nil {
+			t.Fatal(err)
+		}
+		res, err := r.q.Submit(ctx, workspace.Submission{Agent: name, Tree: w, Task: child.ID, Scope: child.Files, EnforceScope: true, Refuse: r.sw.submitRefusal("backend", child)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return *res
+	}
+	if res := submit("be-2", "docs/pkg/deep/file.go"); res.Outcome != workspace.OutcomeRejected || !strings.Contains(res.Reason, "outside the scope of the parent "+parent.ID+" (docs/*)") {
+		t.Errorf("a change below the child's path, outside the parent's scope: %s %q", res.Outcome, res.Reason)
+	}
+	if res := submit("be-3", "docs/pkg"); !res.Merged() {
+		t.Errorf("a change of the path the child names: %s %q", res.Outcome, res.Reason)
 	}
 }
