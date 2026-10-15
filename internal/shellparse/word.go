@@ -37,6 +37,7 @@ func (l *lexer) clamp() {
 // shell would. noBrace suppresses that (heredoc delimiters).
 func (l *lexer) lexWord(noBrace bool) []token {
 	start := l.pos
+	mark := len(l.exprs)
 	var w wbuf
 	var nested []Simple
 	quoted, assign, assignOK := false, false, true
@@ -110,6 +111,10 @@ loop:
 	tok := token{kind: tkWord, start: start, end: l.pos, quoted: quoted, assign: assign}
 	tok.text = string(w.v)
 	tok.nested = nested
+	if len(l.exprs) > mark {
+		tok.arith = append([]string(nil), l.exprs[mark:]...)
+		l.exprs = l.exprs[:mark]
+	}
 	if noBrace || !hasBraceCandidate(&w) {
 		return []token{tok}
 	}
@@ -130,13 +135,13 @@ loop:
 		}
 		t := tok
 		t.text = v
-		t.nested = nil
+		t.nested, t.arith = nil, nil
 		out = append(out, t)
 	}
 	if len(out) == 0 {
 		return nil
 	}
-	out[0].nested = nested
+	out[0].nested, out[0].arith = nested, tok.arith
 	return out
 }
 
@@ -309,6 +314,8 @@ func (l *lexer) arith(w *wbuf, nested *[]Simple) bool {
 				w.litStr(l.src[start : i+2])
 				l.pos = i + 2
 				l.st.an.HasArithmetic = true
+				l.exprs = append(l.exprs, l.src[start+3:i])
+				l.st.arith++
 				return true
 			}
 			return false

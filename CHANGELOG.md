@@ -13,6 +13,38 @@ they do not indicate whether a change has been released.
   which `bypass` asked about as a write that might leave `$TMPDIR` for
   `~/.sleipnir`. Prompt bytes: none change.
 
+- An arithmetic expansion no longer makes every variable of the line
+  unknown. Bash arithmetic assigns only integers, and only to the names it
+  reaches: those its text names, and those named by the values of the
+  variables it reads. When every name an expansion reads holds an integer
+  on the line (a number, another expansion or `$(date +%s)`, assigned
+  unconditionally before it), only the names of its text become unknown, so
+  a counter (`n=$((n+1))`) or a timer (`$(( $(date +%s) - S0 ))`) leaves the
+  scratch directory the line deletes known. A name that may hold anything
+  (`x='D=0'`, `read`, the environment, `$1`), a substitution or `${...}`
+  inside the expression, or an expansion the parser places on no command
+  (a `case` subject) still makes every variable unknown. A loop's variable
+  is now also bound in the redirections of its body (`> "$DD/$ts"`).
+  Prompt bytes: none change.
+
+- A loop's assignments reach its whole body: a loop runs its commands again,
+  so what any of them assigns may be there before the first one runs.
+  `X="$TMPDIR/a"; while :; do rm -rf "$X"/*; X=/; done` was allowed and
+  deletes `/*` the second time round; the names a `while`, `until`, `for` or
+  `select` loop assigns are now unknown from its start. A builtin that may
+  set a variable makes only the names it can set unknown, not every
+  variable of the line: a loop's variable, the names given to `read`,
+  `unset`, `getopts`, `mapfile`, `wait -p` and `printf -v`, and nothing for a
+  plain `wait`. `eval`, `source`, `let` and a name only known when the line
+  runs still make every variable unknown. A line of more commands than the
+  engine judges (2000) is no longer allowed in `bypass` or `yolo`: the
+  commands past that bound were never judged, so `bypass` asks and `yolo`
+  refuses, as other modes already asked. The callback of `mapfile -C` (and
+  `readarray -C`) is judged as the shell code it is, with the line it read
+  as an unknown last word; it used to be no command at all, so
+  `mapfile -C 'cat ~/.ssh/id_rsa;:' -c 1 x < f` was allowed in `bypass`. A
+  callback may set any variable. Prompt bytes: none change.
+
 - A `for` (or `select`) loop with no word list is understood. Written
   `for X do ...; done`, with no `;` before the `do`, its body used to be read
   as more words of the loop, so the commands in it were not judged at all:

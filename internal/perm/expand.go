@@ -79,7 +79,7 @@ func harnessOff(cmd string, cmds []shellparse.Simple) map[string]bool {
 	for _, c := range cmds {
 		names, all := assignedNames(c)
 		for _, a := range names {
-			all = all || strings.ContainsAny(a, "$`")
+			all = all || strings.ContainsAny(a, "$`*?[") // HOM* names HOME when a file HOME is there
 			for _, n := range harnessNames {
 				if a == n || strings.HasPrefix(a, n+"=") || strings.HasPrefix(a, n+"[") {
 					set(n)
@@ -103,7 +103,10 @@ func assignedNames(c shellparse.Simple) (names []string, all bool) {
 	switch shellparse.ProgramName(c.Program) {
 	case "eval", "source", ".":
 		return nil, true
-	case "read", "unset", "getopts", "mapfile", "readarray", "let", "coproc":
+	case "mapfile", "readarray":
+		_, callback := shellparse.InlineScript(c.Program, args)
+		return args, callback // a -C callback runs text in this shell
+	case "read", "unset", "getopts", "let", "coproc":
 		return args, false
 	case "printf":
 		if len(args) > 0 && strings.HasPrefix(args[0], "-v") {

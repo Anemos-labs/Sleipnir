@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -140,7 +141,7 @@ func TestAHeredocBodyKeepsTheLinesVariablesKnown(t *testing.T) {
 		{"cat > $TMPDIR/a.txt <<EOF\nf() and g()\nEOF\nD=$TMPDIR/x; rm -rf $D", "allow"}, // "()" in an unquoted body is text too
 		{"cat > $TMPDIR/a.txt <<EOF\nx $((D=1))\nEOF\nD=$TMPDIR/x; rm -rf $D", "ask"},    // arithmetic in an unquoted body runs
 		{"cat > $TMPDIR/a.txt <<'EOF'\ntext\nEOF\nD=$TMPDIR/x; g() { D=/; }; g; rm -rf $D", "ask"},
-		{"D=$TMPDIR/x; echo $((1<<2)); rm -rf $D", "ask"}, // arithmetic (and no heredoc)
+		{"D=$TMPDIR/x; echo $((1<<2)); rm -rf $D", "allow"}, // a shift, not a heredoc; and an expansion that names no variable sets none
 	} {
 		d := e.Check(context.Background(), Request{Agent: "be-3", Tool: "Bash", Command: f.expand(c.cmd)})
 		if got := outcome(d); got != c.want {
@@ -256,6 +257,110 @@ func TestALoopOverThePositionalParametersSetsItsVariable(t *testing.T) {
 		d := e.Check(context.Background(), Request{Agent: "be-1", Tool: "Bash", Command: f.expand(c.cmd)})
 		if got := outcome(d); got != c.want {
 			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
+
+// A loop runs its commands again, so what its body assigns may be there before any of them: X="$TMPDIR/a"; while :; do rm -rf
+// "$X"/*; X=/; done deletes /* the second time round. The names a loop assigns are unknown from its start. A builtin that may set a
+// variable makes only the names it can set unknown (a loop's variable, read's names; nothing for wait), not every variable of the
+// line: a tester's for i in $(seq 1 200) or wait "$pid" made the scratch directory it then deleted unknown.
+func TestALoopsAssignmentsReachItsWholeBody(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: t.TempDir()})
+	for _, c := range []struct{ cmd, want string }{
+		{`X="$TMPDIR/a"; while true; do rm -rf "$X"/*; X=/; done`, "ask"},
+		{`X="$TMPDIR/a"; until false; do rm -rf "$X"/*; X=/; done`, "ask"},
+		{"X=\"$TMPDIR/a\"\nwhile :; do\n  rm -rf \"$X\"/*\n  X=$(echo /)\ndone", "ask"},
+		{`X="$TMPDIR/a"; for i in 1 2; do while :; do rm -rf "$X"/*; break; done; X=/; done`, "ask"},
+		{`X="$TMPDIR/a"; while :; do read X; rm -rf "$X"/*; done`, "ask"},
+		{`D="$TMPDIR/a"; for i in $(seq 1 3); do sleep 0; done; rm -rf "$D"`, "allow"},
+		{`D="$TMPDIR/a"; sleep 1 & p=$!; wait "$p"; rm -rf "$D"`, "allow"},
+		{`D="$TMPDIR/a"; read -r x < f; rm -rf "$D"`, "allow"},
+		{`D="$TMPDIR/a"; while read -r l; do echo "$l"; done < f; rm -rf "$D"`, "allow"},
+		{`D="$TMPDIR/a"; read -r D < f; rm -rf "$D"`, "ask"},
+		{`D="$TMPDIR/a"; for D in /; do :; done; rm -rf "$D"`, "ask"},
+		{`D="$TMPDIR/a"; read "$v" < f; rm -rf "$D"`, "ask"},
+		{`D="$TMPDIR/a"; eval x; rm -rf "$D"`, "ask"},
+		{`D="$TMPDIR/a"; let x=1; rm -rf "$D"`, "ask"},
+		{`D="$TMPDIR/a"; printf -vD '%s' /; rm -rf "$D"/*`, "ask"}, // printf -v with the name attached
+		{`D="$TMPDIR/a"; printf -v D '%s' /; rm -rf "$D"/*`, "ask"},
+		{`D="$TMPDIR/a"; printf -v x '%s' 1; rm -rf "$D"`, "allow"},
+		{`D="$TMPDIR/a"; printf -v D* '%s' /; rm -rf "$D"/*`, "ask"}, // a glob: a file D in the directory makes it D
+		{`D="$TMPDIR/a"; read D? < f; rm -rf "$D"/*`, "ask"},
+		{`D="$TMPDIR/a"; read a[1] < f; rm -rf "$D"`, "ask"},
+		{`read HOM? < f; rm -rf "$HOME/x"`, "ask"},
+		{`D="$TMPDIR/a"; mapfile -C 'D=/;:' -c 1 x < f; rm -rf "$D"/*`, "ask"}, // the callback runs text in this shell
+		{`readarray -t -C 'rm -rf' -c 1 x < f`, "ask"},                         // and gets the line it read as a word: rm -rf 0 LINE
+		{`D="$TMPDIR/a"; mapfile -t x < f; rm -rf "$D"`, "allow"},
+	} {
+		d := e.Check(context.Background(), Request{Agent: "ts-3", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
+
+// An arithmetic expansion assigns only integers, and only to the names it reaches: those of its text, and those named by the values
+// of the variables it reads, which bash evaluates as expressions too. When every name it reads holds an integer (a number, another
+// expansion, $(date +%s), from an unconditional assignment before it), only the names of its text become unknown; a test script's
+// counter (n=$((n+1))) or timer ($(( $(date +%s) - S0 ))) no longer makes the scratch directory it deletes unknown. A name that may
+// hold anything (x='D=0', read, the environment, $1), a substitution or ${...} in the expression, or one the parser cannot place
+// (a case subject), still makes every variable unknown.
+func TestArithmeticAssignsOnlyTheNamesItReaches(t *testing.T) {
+	f := newFixture(t)
+	tmp := filepath.Join(f.home, ".sleipnir", "sessions", "s1", "tmp")
+	if err := os.MkdirAll(tmp, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: tmp, Ask: []string{"Edit(~/.sleipnir/**)"}})
+	for _, c := range []struct{ cmd, want string }{
+		{"SD=\"$TMPDIR/t67\"; DD=\"$SD/rw\"; rm -rf \"$DD\"; mkdir -p \"$DD\"\nn=1\nfor ts in a b c; do printf x > \"$DD/$ts\"; n=$((n+1)); done\nrm -rf \"$DD\"", "allow"},
+		{"UP=\"$TMPDIR/up\"; S0=$(date +%s); S=\"$UP/bundle-crash\"; rm -rf \"$S\"; echo \"took=$(( $(date +%s) - S0 ))s\"; rm -rf \"$S\"", "allow"},
+		{`D="$TMPDIR/x"; n=1; echo $((RANDOM % 5 + n)); rm -rf "$D"`, "allow"},
+		{`D="$TMPDIR/x"; : $((D=0)); rm -rf "$D"/*`, "ask"},
+		{`x='D=0'; D="$TMPDIR/x"; : $((x)); rm -rf "$D"/*`, "ask"},
+		{`read v; D="$TMPDIR/x"; : $((v)); rm -rf "$D"`, "ask"},
+		{`D="$TMPDIR/x"; : $(( $(cat f) )); rm -rf "$D"`, "ask"},
+		{`D="$TMPDIR/x"; : $((n+1)); rm -rf "$D"`, "ask"}, // n is the environment's
+		{`D="$TMPDIR/x"; n=1; : $(( $1 + n )); rm -rf "$D"`, "ask"},
+		{`D="$TMPDIR/x"; : $(( $* )); rm -rf "$D"/*`, "ask"}, // the positional parameters may be D=0
+		{`D="$TMPDIR/x"; : $(( $@ )); rm -rf "$D"/*`, "ask"},
+		{`D="$TMPDIR/x"; : $(( $- )); rm -rf "$D"/*`, "ask"},
+		{`bash -c 'D="$TMPDIR/x"; : $(( $* )); rm -rf "$D"/*' _ D=0`, "ask"},
+		{`D="$TMPDIR/x"; n=1; : $(( ${n} )); rm -rf "$D"`, "ask"},
+		{"D=\"$TMPDIR/x\"; n=1; cat <<EOF\n$((D=n))\nEOF\nrm -rf \"$D\"/*", "ask"},
+		{`D="$TMPDIR/x"; case $((D=0)) in *) :;; esac; rm -rf "$D"/*`, "ask"},
+		{`D="$TMPDIR/x"; n=1; while :; do rm -rf "$D"/*; : $((D=n)); done`, "ask"},
+		{`D="$TMPDIR/x"; if a; then n=1; fi; : $((n)); rm -rf "$D"`, "ask"}, // n may still be the environment's
+	} {
+		d := e.Check(context.Background(), Request{Agent: "ts-3", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%q\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
+
+// A line of more commands than the engine judges (maxUnits) is checked up to that bound, and what follows is not judged at all: no
+// mode allows it. Bypass asks, yolo (which never asks) refuses; a loop that assigns past the bound counts as well.
+func TestALineTooLongToCheckIsNeverAllowed(t *testing.T) {
+	f := newFixture(t)
+	pad := strings.Repeat(":; ", maxUnits+1)
+	for _, c := range []struct {
+		mode Mode
+		cmd  string
+		want string
+	}{
+		{ModeBypass, pad + "rm -rf ~", "ask"},
+		{ModeBypass, pad + "cat ~/.ssh/id_rsa", "ask"},
+		{ModeBypass, `X="$TMPDIR/a"; while true; do rm -rf "$X"/*; ` + pad + `X=/; done`, "ask"},
+		{ModeYolo, pad + "rm -rf ~", "deny"},
+		{ModeDefault, pad + "ls", "ask"},
+		{ModeBypass, strings.Repeat(":; ", 10) + "ls", "allow"},
+	} {
+		d := f.engine(t, Config{Mode: c.mode, Tmp: t.TempDir()}).Check(context.Background(), Request{Agent: "be-1", Tool: "Bash", Command: c.cmd})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%s %.40q...: %s (%s), want %s", c.mode, c.cmd[len(c.cmd)-40:], got, d.Reason, c.want)
 		}
 	}
 }
