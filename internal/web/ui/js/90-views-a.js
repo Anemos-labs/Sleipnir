@@ -85,20 +85,69 @@
   } });
 
   /* ======================================================================== BOARD */
+  /** The geometry of the Dependencies graph: a node's width and height, the least gaps between columns and between rows, the margin. */
+  const DG = { nw: 168, nh: 46, gx: 40, gy: 10, pad: 12 }, GOAL = '#goal', FOLD = '#fold';
+  /** Where the Dependencies graph draws its nodes in a W × H box. A node is a task, the goal (GOAL), or the fold (FOLD): the merged
+   *  tasks that no unfinished task waits on, drawn as one node when the graph is too large to draw whole. A column is a depth of
+   *  dependencies (a task one deeper than its deepest dependency); a column taller than the box is wrapped into several. The first of
+   *  these that fits the box is drawn: every task, a column per depth; the folded graph, a column per depth; every task, wrapped; the
+   *  folded graph, wrapped. Else the folded graph is wrapped into as many rows as keep its columns in the width, and the drawing is
+   *  larger than the box (its host scrolls). Two nodes never overlap.
+   *  Returns {pos: Map(id → {x, y}), edges: [[from, to]], folded: [ids], cols: [[ids of a column]], W, H}. */
+  function depLayout(m, W, H) {
+    const { nw, nh, gx, gy, pad } = DG, T = m.tasks, ids = m.torder.filter(id => T[id]), open = id => T[id].st !== 'merged';
+    const waitedOn = new Set(), depended = new Set();
+    ids.forEach(id => T[id].deps.forEach(d => { if (!T[d]) return; depended.add(d); if (open(id)) waitedOn.add(d); }));
+    function graph(fold) {
+      const shown = fold ? ids.filter(id => open(id) || waitedOn.has(id)) : ids, inG = new Set(shown), folded = fold ? ids.filter(id => !inG.has(id)) : [];
+      const deps = new Map(); shown.forEach(id => { const d = T[id].deps.filter(x => inG.has(x)); if (folded.length && T[id].deps.some(x => T[x] && !inG.has(x))) d.push(FOLD); deps.set(id, d); });
+      if (folded.length) deps.set(FOLD, []);
+      const lvl = new Map(), busy = new Set(), lv = id => { if (lvl.has(id)) return lvl.get(id); if (busy.has(id)) return 0; busy.add(id); const d = deps.get(id), v = d.length ? 1 + Math.max.apply(null, d.map(lv)) : 0; busy.delete(id); lvl.set(id, v); return v; };
+      const all = (folded.length ? [FOLD] : []).concat(shown); all.forEach(lv);
+      const byL = []; all.forEach(id => { const L = lvl.get(id); (byL[L] || (byL[L] = [])).push(id); }); for (let i = 0; i < byL.length; i++) byL[i] = byL[i] || [];
+      /* a column after the first is ordered by where its dependencies are, so that fewer edges cross */
+      const at = new Map(); byL.forEach((col, L) => { if (L) { const key = id => { const d = deps.get(id); return d.reduce((s, x) => s + ((at.has(x) ? at.get(x) : 0) + .5) / byL[lvl.get(x)].length, 0) / d.length; }, k = new Map(col.map(id => [id, key(id)])); col.sort((a, b) => k.get(a) - k.get(b)); } col.forEach((id, i) => at.set(id, i)); });
+      const edges = []; shown.forEach(id => deps.get(id).forEach(d => edges.push([d, id])));
+      const needed = new Set(); edges.forEach(e => needed.add(e[0]));
+      shown.forEach(id => { if (!needed.has(id)) edges.push([id, GOAL]); }); if (folded.some(id => !depended.has(id))) edges.push([FOLD, GOAL]);
+      return { byL, edges, folded, tall: Math.max.apply(null, byL.map(c => c.length)) };
+    }
+    const rowsFit = Math.max(1, Math.floor((H - 2 * pad + gy) / (nh + gy))), colsFit = Math.max(2, Math.floor((W - 2 * pad + gx) / (nw + gx)));
+    const ncols = (g, R) => g.byL.reduce((s, c) => s + Math.ceil(c.length / R), 0) + 1, fits = (g, R) => Math.min(R, g.tall) <= rowsFit && ncols(g, R) <= colsFit;
+    const full = graph(false), fold = ids.some(id => !open(id) && !waitedOn.has(id)) ? graph(true) : full;
+    let g, R;
+    if (fits(full, full.tall)) { g = full; R = full.tall; } else if (fits(fold, fold.tall)) { g = fold; R = fold.tall; } else if (fits(full, rowsFit)) { g = full; R = rowsFit; } else { g = fold; R = rowsFit; while (ncols(g, R) > colsFit && R < g.tall) R++; }
+    const rows = Math.min(R, g.tall), C = ncols(g, R), Hd = Math.max(H, 2 * pad + rows * (nh + gy) - gy), Wd = Math.max(W, 2 * pad + C * (nw + gx) - gx);
+    const pitch = C > 1 ? (Wd - 2 * pad - nw) / (C - 1) : 0, slot = (i, k) => pad + (k === 1 ? .5 : i / (k - 1)) * (Hd - nh - 2 * pad);
+    const pos = new Map(), cols = []; let c = 0;
+    g.byL.forEach(col => { const subs = Math.ceil(col.length / R); for (let j = 0; j < subs; j++) { const part = col.slice(j * R, (j + 1) * R), k = subs > 1 ? R : part.length; part.forEach((id, i) => pos.set(id, { x: pad + c * pitch, y: slot(i, k) })); cols.push(part); c++; } });
+    pos.set(GOAL, { x: pad + c * pitch, y: slot(0, 1) }); cols.push([GOAL]);
+    return { pos, edges: g.edges, folded: g.folded, cols, W: Wd, H: Hd };
+  }
+  ui.depLayout = depLayout; ui.depLayout.DG = DG; ui.depLayout.GOAL = GOAL; ui.depLayout.FOLD = FOLD;
+  /** The Dependencies graph as SVG markup in a W × H box (larger when it does not fit: see depLayout), and the words of its head. */
+  function depSvg(S, m, W, H) {
+    const { nw, nh } = DG, L = depLayout(m, W, H), T = m.tasks, P = L.pos, nf = L.folded.length;
+    const st = id => id === GOAL ? (m.goal.state === 'met' ? 'merged' : 'todo') : id === FOLD ? 'merged' : T[id].st;
+    const eh = L.edges.map(([a, b]) => { const A1 = P.get(a), B1 = P.get(b), x1 = A1.x + nw, y1 = A1.y + nh / 2, x2 = B1.x, y2 = B1.y + nh / 2, mx = (x1 + x2) / 2, done = st(a) === 'merged'; return '<path class="ed ' + (done ? 'done' : 'live') + '" d="M' + x1 + ' ' + y1 + ' C' + mx + ' ' + y1 + ' ' + mx + ' ' + y2 + ' ' + (x2 - 6) + ' ' + y2 + '"/><path d="M' + (x2 - 8) + ' ' + (y2 - 4) + ' L' + x2 + ' ' + y2 + ' L' + (x2 - 8) + ' ' + (y2 + 4) + '" fill="none" stroke="' + (done ? 'var(--ok)' : 'var(--warm)') + '" stroke-width="1.6" opacity="' + (done ? .7 : 1) + '"/>'; }).join('');
+    const clip = (s, n) => s.length > n ? s.slice(0, n - 1) + '…' : s;
+    const nodes = Array.from(P.keys()).map(id => { const p = P.get(id), tr = ' transform="translate(' + p.x + ' ' + p.y + ')"', box = '<rect width="' + nw + '" height="' + nh + '" rx="2"/>';
+      if (id === GOAL) return '<g class="nd" data-st="' + st(id) + '"' + tr + '>' + box + '<text x="10" y="19">◇ goal</text><text class="sub" x="10" y="35">' + esc(clip(S.meta.verify ? S.meta.verify.replace('{dirs}', './...') : 'checks on the merged result', 28)) + '</text></g>';
+      if (id === FOLD) return '<g class="nd fold" data-st="merged"' + tr + '><title>' + esc(nf + ' merged tasks that no unfinished task waits on: ' + L.folded.slice().sort(ui.board.idCmp).join(' ')) + '</title>' + box + '<text x="10" y="19" fill="var(--ok)">✓ ' + nf + ' merged</text><text class="sub" x="10" y="35">nothing open waits on them</text></g>';
+      const t = T[id]; return '<g class="nd" data-st="' + esc(t.st) + '" data-task="' + esc(id) + '" data-ag="' + esc(t.owner || '') + '"' + tr + ' style="cursor:pointer" data-open="' + esc(t.owner || '') + '"><title>' + esc(id + ' · ' + t.title + (t.owner ? ' · ' + t.owner : '')) + '</title>' + box + '<text x="10" y="19" fill="' + agCol(t.owner || 'mgr') + '">' + esc(clip(id, 12)) + ' <tspan fill="var(--dim)" font-weight="400">' + esc(clip(t.owner || '', 9)) + '</tspan></text><text class="sub" x="10" y="35">' + esc(clip(t.title, 27)) + '</text>' + (t.failed ? '<text x="' + (nw - 10) + '" y="19" text-anchor="end" fill="var(--err)"><title>' + esc('failed: ' + (t.closure || 'closed')) + '</title>✗</text>' : t.st === 'merged' ? '<text x="' + (nw - 10) + '" y="19" text-anchor="end" fill="var(--ok)">✓</text>' : t.st === 'verify' ? '<text x="' + (nw - 10) + '" y="19" text-anchor="end" fill="var(--warm)">▸</text>' : '') + '</g>'; }).join('');
+    const big = L.W > W || L.H > H, size = big ? ' width="' + L.W + '" height="' + L.H + '" style="width:' + L.W + 'px;height:' + L.H + 'px"' : '';
+    return { html: '<svg viewBox="0 0 ' + L.W + ' ' + L.H + '"' + size + ' preserveAspectRatio="xMidYMid meet" role="img" aria-label="task dependencies">' + eh + nodes + '</svg>', head: 'a task waits for the tasks it depends on' + (nf ? ' · ' + nf + ' merged tasks folded into one' : '') };
+  }
   reg({ name: 'board', title: 'Board', mount(sc, root, params, S0) {
     root.innerHTML = '<div class="boardv"><section class="panel"><div class="ph"><h2>Task board</h2><div class="r"><span class="bbsum"></span><span>drag disabled: the manager moves tasks</span></div></div><div class="kan"></div></section><section class="panel"><div class="ph"><h2>Dependencies</h2><div class="r"><span class="dgsum">a task waits for the tasks it depends on</span></div></div><div class="dg"></div></section></div>';
     const B = ui.board.make(sc, $('.kan', root), true), host = $('.dg', root);
     function render(S, m) {
-      if (!m) return; const c = ui.board.update(B, m), bx = ui.boardMarks(B, m); $('.bbsum', root).textContent = (c.merged || 0) + ' merged · ' + (c.verify || 0) + ' verify · ' + (c.running || 0) + ' running · ' + Math.max(0, (c.todo || 0) - m.torder.filter(t => m.tasks[t].failed && m.tasks[t].st === 'todo').length) + ' todo' + ui.boardExtra(bx); ui.alertsSlot($('.bbsum', root), m);
-      const ids = m.torder; if (!ids.length) { host.innerHTML = '<div class="c-note">No tasks yet: the manager creates them from the plan.</div>'; return; }
-      const W = Math.max(700, host.clientWidth || 900), Hh = Math.max(200, host.clientHeight || 260), nw = 168, nh = 46, P = {};
-      const lvl = {}; const lv = id => { if (lvl[id] != null) return lvl[id]; const t = m.tasks[id]; return lvl[id] = t.deps.length ? 1 + Math.max.apply(null, t.deps.filter(d => m.tasks[d]).map(lv).concat([-1])) : 0; }; ids.forEach(lv);
-      const maxL = Math.max.apply(null, ids.map(id => lvl[id])) + 1, gx = (W - nw - 24) / Math.max(1, maxL), byL = {}; ids.forEach(id => { (byL[lvl[id]] = byL[lvl[id]] || []).push(id); });
-      Object.keys(byL).forEach(L => byL[L].forEach((id, i) => { const k = byL[L].length; P[id] = { x: 12 + L * gx, y: 12 + (k === 1 ? .5 : i / (k - 1)) * (Hh - nh - 24) }; })); P.G = { x: 12 + maxL * gx, y: 12 + .5 * (Hh - nh - 24) };
-      const edges = []; ids.forEach(id => m.tasks[id].deps.forEach(d => { if (P[d]) edges.push([d, id]); })); const leaves = ids.filter(id => !ids.some(o => m.tasks[o].deps.includes(id))); leaves.forEach(id => edges.push([id, 'G']));
-      const eh = edges.map(([a, b]) => { const A1 = P[a], B1 = P[b], x1 = A1.x + nw, y1 = A1.y + nh / 2, x2 = B1.x, y2 = B1.y + nh / 2, mx = (x1 + x2) / 2, done = a !== 'G' && m.tasks[a].st === 'merged'; return '<path class="ed ' + (done ? 'done' : 'live') + '" d="M' + x1 + ' ' + y1 + ' C' + mx + ' ' + y1 + ' ' + mx + ' ' + y2 + ' ' + (x2 - 6) + ' ' + y2 + '"/><path d="M' + (x2 - 8) + ' ' + (y2 - 4) + ' L' + x2 + ' ' + y2 + ' L' + (x2 - 8) + ' ' + (y2 + 4) + '" fill="none" stroke="' + (done ? 'var(--ok)' : 'var(--warm)') + '" stroke-width="1.6" opacity="' + (done ? .7 : 1) + '"/>'; }).join('');
-      const nh2 = Object.keys(P).map(id => { const p = P[id]; if (id === 'G') return '<g class="nd" data-st="' + (m.goal.state === 'met' ? 'merged' : 'todo') + '" transform="translate(' + p.x + ' ' + p.y + ')"><rect width="' + nw + '" height="' + nh + '" rx="2"/><text x="10" y="19">◇ goal</text><text class="sub" x="10" y="35">' + (S.meta.verify ? esc(S.meta.verify.replace('{dirs}', './...')) : 'checks on the merged result') + '</text></g>'; const t = m.tasks[id]; return '<g class="nd" data-st="' + esc(t.st) + '" data-task="' + esc(id) + '" data-ag="' + esc(t.owner || '') + '" transform="translate(' + p.x + ' ' + p.y + ')" style="cursor:pointer" data-open="' + esc(t.owner || '') + '"><rect width="' + nw + '" height="' + nh + '" rx="2"/><text x="10" y="19" fill="' + agCol(t.owner || 'mgr') + '">' + esc(id) + ' <tspan fill="var(--dim)" font-weight="400">' + esc(t.owner || '') + '</tspan></text><text class="sub" x="10" y="35">' + esc(t.title.length > 27 ? t.title.slice(0, 26) + '…' : t.title) + '</text>' + (t.failed ? '<text x="' + (nw - 10) + '" y="19" text-anchor="end" fill="var(--err)"><title>' + esc('failed: ' + (t.closure || 'closed')) + '</title>✗</text>' : t.st === 'merged' ? '<text x="' + (nw - 10) + '" y="19" text-anchor="end" fill="var(--ok)">✓</text>' : t.st === 'verify' ? '<text x="' + (nw - 10) + '" y="19" text-anchor="end" fill="var(--warm)">▸</text>' : '') + '</g>'; }).join('');
-      const dh = '<svg viewBox="0 0 ' + W + ' ' + Hh + '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="task dependencies">' + eh + nh2 + '</svg>'; if (host._h !== dh) { host._h = dh; host.innerHTML = dh; }
+      if (!m) return; const c = ui.board.update(B, m, S), bx = ui.boardMarks(B, m); $('.bbsum', root).textContent = (c.merged || 0) + ' merged · ' + (c.verify || 0) + ' verify · ' + (c.running || 0) + ' running · ' + Math.max(0, (c.todo || 0) - m.torder.filter(t => m.tasks[t].failed && m.tasks[t].st === 'todo').length) + ' todo' + ui.boardExtra(bx); ui.alertsSlot($('.bbsum', root), m);
+      if (!m.torder.length) { host._h = ''; host.innerHTML = '<div class="c-note">No tasks yet: the manager creates them from the plan.</div>'; $('.dgsum', root).textContent = 'a task waits for the tasks it depends on'; return; }
+      /* drawn at the size of the panel's content box (one pixel of the drawing is one of the screen), at least 700 × 200 */
+      const cs = getComputedStyle(host), px = k => parseFloat(cs[k]) || 0, w = (host.clientWidth || 900) - px('paddingLeft') - px('paddingRight'), h = (host.clientHeight || 260) - px('paddingTop') - px('paddingBottom');
+      const d = depSvg(S, m, Math.max(700, Math.floor(w)), Math.max(200, Math.floor(h))); $('.dgsum', root).textContent = d.head;
+      if (host._h !== d.html) { host._h = d.html; host.innerHTML = d.html; }
     }
     sc.listen(host, 'click', e => { const o = e.target.closest('[data-open]'); if (o && o.dataset.open) ui.openDrawer(o.dataset.open); });
     sc.listen(root, 'click', e => { const a = e.target.closest('[data-alerts]'); if (a) { const S = SL.sessions.active; ui.alertsPop(a, S, S.m); } });
