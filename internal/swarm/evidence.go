@@ -161,13 +161,28 @@ func (e *Evidence) LastTest() (CmdRecord, bool) {
 	return CmdRecord{}, false
 }
 
+// evidenceNoEdits is the clause of a summary (Evidence.Summary) that says the harness saw no file edited.
+const evidenceNoEdits = "no files edited"
+
+// evidenceShowsNoEdits reports whether evidence the harness recorded on the board says that it saw no file edited: one of its
+// "; "-separated clauses is the one Summary writes for that. Evidence is harness-written text (a worker cannot set it), so the
+// clause is the harness's own record, not a claim.
+func evidenceShowsNoEdits(evidence string) bool {
+	for _, clause := range strings.Split(evidence, "; ") {
+		if clause == evidenceNoEdits {
+			return true
+		}
+	}
+	return false
+}
+
 // Summary renders the evidence as one line for the board and the manager.
 func (e *Evidence) Summary() string {
 	files := e.Edited()
 	var parts []string
 	switch n := len(files); {
 	case n == 0:
-		parts = append(parts, "no files edited")
+		parts = append(parts, evidenceNoEdits)
 	case n <= 4:
 		parts = append(parts, fmt.Sprintf("edited %d (%s)", n, cleanText(strings.Join(base(files), ", "), 90)))
 	default:

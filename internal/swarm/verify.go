@@ -129,6 +129,48 @@ func taskGateCheck(expected Task) TaskCheck {
 	}
 }
 
+// nothingToChange starts the text with which the manager accepts implementation work in which the harness saw no file change,
+// followed by why none was needed (emptyWorkCheck).
+const nothingToChange = "nothing to change:"
+
+// changeNotNeeded reports whether an accept's text says why the work needs no change: it starts with nothingToChange (in any
+// case) and gives a reason after it.
+func changeNotNeeded(note string) bool {
+	n := strings.TrimSpace(note)
+	return len(n) > len(nothingToChange) && strings.EqualFold(n[:len(nothingToChange)], nothingToChange) &&
+		strings.TrimSpace(n[len(nothingToChange):]) != ""
+}
+
+// emptyWorkCheck refuses to accept an implementation task in which the harness saw no file change: its evidence records no
+// edited file and, in an isolated run, no merge of this assignment carried a change. Such a task reached review without work
+// (a worker that stops without done is submitted by the gate as it is), and accepting it would close the work as verified. The
+// manager accepts it anyway with text that starts "nothing to change:" and says why. Planning tasks, pool results (their
+// children carry the work), documentation, read-only roles' tasks and a submission that carries an agreement, whose
+// deliverable may be no change, are not held to it, and a task closed as no longer needed (resolve) does not pass through
+// accept. Roles and merge records are read here, outside the board lock; the check reads the task under it.
+func (s *Swarm) emptyWorkCheck(t Task, note string) TaskCheck {
+	if t.Pool != nil || !s.implementationTask(t) || changeNotNeeded(note) {
+		return func(*Snapshot, Task) error { return nil }
+	}
+	merged := false // an isolated run's merge of this assignment changed the tree, whatever the evidence saw edit it
+	if s.hadTree(t.Owner) {
+		rec, ok := s.mergedFor(t)
+		merged = ok && !rec.empty
+	}
+	return func(_ *Snapshot, cur Task) error {
+		if merged || cur.Agreement != "" || !evidenceShowsNoEdits(cur.Evidence) {
+			return nil
+		}
+		return emptyWorkError(cur.ID, "evidence: "+cur.Evidence)
+	}
+}
+
+// emptyWorkError is the refusal of an accept that emptyWorkCheck holds back: what was seen, and the two ways on.
+func emptyWorkError(id, seen string) error {
+	return fmt.Errorf("%s was not accepted: the harness saw no file change in it (%s). If work is missing, reject it with what to do; "+
+		"if the task needs no change, accept it with text %q followed by why", id, seen, nothingToChange+" ")
+}
+
 // checkTaskGate rejects an obsolete result before further merge or retry work.
 // The final board mutation repeats this check atomically.
 func (s *Swarm) checkTaskGate(expected Task) error {

@@ -137,7 +137,7 @@ func TestHeldManagerIsSentBackUntilTheBoardIsSettled(t *testing.T) {
 		}
 		if c.Assistants == 0 {
 			rvBlock(ctx, gate)
-			return rvReply{Tools: []rvToolCall{{"task", map[string]any{"action": "done", "id": "T1", "text": "added"}}}}
+			return rvReply{Tools: []rvToolCall{{"edit", map[string]any{"path": "notes.go"}}, {"task", map[string]any{"action": "done", "id": "T1", "text": "added"}}}}
 		}
 		return rvReply{Text: "summary"}
 	})
@@ -352,7 +352,7 @@ func TestUserStopHooksRunBeforeTheGuard(t *testing.T) {
 		}
 		if c.Assistants == 0 {
 			rvBlock(ctx, gate)
-			return rvReply{Tools: []rvToolCall{{"task", map[string]any{"action": "done", "id": "T1", "text": "added"}}}}
+			return rvReply{Tools: []rvToolCall{{"edit", map[string]any{"path": "notes.go"}}, {"task", map[string]any{"action": "done", "id": "T1", "text": "added"}}}}
 		}
 		return rvReply{Text: "summary"}
 	}, func(d *Deps) { d.Hooks = inner })
@@ -424,7 +424,7 @@ func finishingRig(t *testing.T, gate chan struct{}) (*rvRig, *recordingHooks) {
 			return rvReply{Text: "finished"}
 		}
 		if c.Assistants == 0 {
-			return rvReply{Tools: []rvToolCall{{"task", map[string]any{"action": "done", "id": "T1", "text": "added"}}}}
+			return rvReply{Tools: []rvToolCall{{"edit", map[string]any{"path": "notes.go"}}, {"task", map[string]any{"action": "done", "id": "T1", "text": "added"}}}}
 		}
 		rvBlock(ctx, gate) // the closing message
 		return rvReply{Text: "summary"}

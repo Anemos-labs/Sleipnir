@@ -96,6 +96,7 @@ func TestAConfirmedPoolIsToldToSubmit(t *testing.T) {
 	if _, err := r.sw.Board.assignTask(assignReq{by: lead, agent: lead, id: c.ID}); err != nil {
 		t.Fatal(err)
 	}
+	sawEdit(t, r, lead, "app/api.py")
 	for _, args := range []map[string]any{{"action": "done", "id": c.ID, "text": "implemented"}, {"action": "accept", "id": c.ID}} {
 		if res := r.callTool(context.Background(), "task", lead, "backend", args); res.IsError {
 			t.Fatalf("task %v: %s", args["action"], res.Text)

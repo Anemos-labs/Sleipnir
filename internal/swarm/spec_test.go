@@ -276,7 +276,7 @@ func TestAcceptReRunsTheVerifier(t *testing.T) {
 	}}
 	r := newRVRig(t, cfg, func(ctx context.Context, c *rvCall) rvReply {
 		if c.Role == "backend" && c.Assistants == 0 {
-			return rvReply{Tools: []rvToolCall{{"task", map[string]any{"action": "done", "id": "T1", "text": "implemented"}}}}
+			return rvReply{Tools: []rvToolCall{{"edit", map[string]any{"path": "api/users.go"}}, {"task", map[string]any{"action": "done", "id": "T1", "text": "implemented"}}}}
 		}
 		return rvReply{Text: "summary"}
 	})

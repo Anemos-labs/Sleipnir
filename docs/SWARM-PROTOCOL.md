@@ -191,6 +191,10 @@ Statuses: `todo -> doing -> review -> done`, with `blocked` and `failed` as side
   | reopen | failed | todo (the closure is cleared) |
   | requeue (the harness) | doing, blocked | todo, or failed (`exhausted`, or `verifier` after the gate's retries) after `MaxAttempts` |
 
+  A task that goes back to `todo` (requeue, revise, reopen) leaves the result and evidence of the earlier submission
+  off the board; the event log keeps them. Only a failed verification gate keeps its own evidence, which the next
+  attempt repairs.
+
   Every assignment gets a new `rev`; the harness settles a finished run only against the `rev` it started with, so a run
   that ends late can never undo a newer assignment (a reject, a reuse). Nor is that newer assignment left with an idle
   owner: when a run ends cleanly while its worker holds a task in doing at a `rev` the run did not start with, and no
@@ -238,7 +242,8 @@ worker: done(text)          --> the HARNESS runs the gate:
                               fail  -> doing (the verifier output is returned to the worker for up to two repair retries)
 worker stops without done   the same gate runs on its behalf; on failure the worker is sent back to work with the
                             output (twice at most), then the task returns to todo and the manager is told once
-manager: accept             done    (re-runs the verifier when configured; a task cannot become done without a pass)
+manager: accept             done    (re-runs the verifier when configured; a task cannot become done without a pass,
+                                     nor without a file change unless the manager says why none was needed)
 manager: reject / reopen    review -> doing with feedback (or todo when the worker is gone); reopen also failed -> todo
 manager: fail               failed  (with a typed reason, section 3; its worker, if running, is stopped)
 ```
@@ -294,6 +299,15 @@ result cannot submit the task, accept it, or spend a verification retry. An
 implicitly stopped worker receives a request to finish and verify the current
 scope. In isolation, changing scope after submission requires rejection and
 resubmission before acceptance can use a new matching merge record.
+
+**Accepting work in which nothing changed.** An implementation task whose evidence records no edited file (and, in an
+isolated run, whose merge for the current assignment was empty) reached review without work: a worker that stops without
+`done` is submitted by the gate as it is. `accept` refuses it and says what was seen. The manager rejects it with what is
+missing, or, when the task needs no change, accepts it with text that starts `nothing to change:` followed by why; the
+text is appended to the result. Planning tasks, pool results (their children carry the work), documentation, tasks of
+read-only roles and submissions that carry an agreement are not held to it, and `resolve` closes a task that is no
+longer needed without accepting it. Edits made by shell commands are not in the evidence: in a shared tree, work done
+only that way is accepted with the same text.
 
 Rules for implementation tasks: a task never leaves `doing` for review without the gate; `accept` cannot bypass the verifier, and a verifier
 that could not run (error, timeout) is reported as such and is never a pass (nor a failed test); verification is
