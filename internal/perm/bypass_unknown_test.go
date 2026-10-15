@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -282,10 +283,37 @@ func TestALoopsAssignmentsReachItsWholeBody(t *testing.T) {
 		{`D="$TMPDIR/a"; read "$v" < f; rm -rf "$D"`, "ask"},
 		{`D="$TMPDIR/a"; eval x; rm -rf "$D"`, "ask"},
 		{`D="$TMPDIR/a"; let x=1; rm -rf "$D"`, "ask"},
+		{`D="$TMPDIR/a"; printf -vD '%s' /; rm -rf "$D"/*`, "ask"}, // printf -v with the name attached
+		{`D="$TMPDIR/a"; printf -v D '%s' /; rm -rf "$D"/*`, "ask"},
+		{`D="$TMPDIR/a"; printf -v x '%s' 1; rm -rf "$D"`, "allow"},
 	} {
 		d := e.Check(context.Background(), Request{Agent: "ts-3", Tool: "Bash", Command: f.expand(c.cmd)})
 		if got := outcome(d); got != c.want {
 			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
+
+// A line of more commands than the engine judges (maxUnits) is checked up to that bound, and what follows is not judged at all: no
+// mode allows it. Bypass asks, yolo (which never asks) refuses; a loop that assigns past the bound counts as well.
+func TestALineTooLongToCheckIsNeverAllowed(t *testing.T) {
+	f := newFixture(t)
+	pad := strings.Repeat(":; ", maxUnits+1)
+	for _, c := range []struct {
+		mode Mode
+		cmd  string
+		want string
+	}{
+		{ModeBypass, pad + "rm -rf ~", "ask"},
+		{ModeBypass, pad + "cat ~/.ssh/id_rsa", "ask"},
+		{ModeBypass, `X="$TMPDIR/a"; while true; do rm -rf "$X"/*; ` + pad + `X=/; done`, "ask"},
+		{ModeYolo, pad + "rm -rf ~", "deny"},
+		{ModeDefault, pad + "ls", "ask"},
+		{ModeBypass, strings.Repeat(":; ", 10) + "ls", "allow"},
+	} {
+		d := f.engine(t, Config{Mode: c.mode, Tmp: t.TempDir()}).Check(context.Background(), Request{Agent: "be-1", Tool: "Bash", Command: c.cmd})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%s %.40q...: %s (%s), want %s", c.mode, c.cmd[len(c.cmd)-40:], got, d.Reason, c.want)
 		}
 	}
 }

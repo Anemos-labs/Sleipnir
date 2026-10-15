@@ -16,7 +16,10 @@ they do not indicate whether a change has been released.
   variable of the line: a loop's variable, the names given to `read`,
   `unset`, `getopts`, `mapfile`, `wait -p` and `printf -v`, and nothing for a
   plain `wait`. `eval`, `source`, `let` and a name only known when the line
-  runs still make every variable unknown. Prompt bytes: none change.
+  runs still make every variable unknown. A line of more commands than the
+  engine judges (2000) is no longer allowed in `bypass` or `yolo`: the
+  commands past that bound were never judged, so `bypass` asks and `yolo`
+  refuses, as other modes already asked. Prompt bytes: none change.
 
 - A `for` (or `select`) loop with no word list is understood. Written
   `for X do ...; done`, with no `;` before the `do`, its body used to be read
