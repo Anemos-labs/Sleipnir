@@ -566,6 +566,8 @@ func (p *parser) scripts(s *Simple) {
 	switch base := stdBase(prog); {
 	case base == "trap":
 		mark(inner, func(c *Simple) { c.Deferred = true })
+	case base == "mapfile" || base == "readarray":
+		mark(inner, func(c *Simple) { c.Cond = true }) // in this shell, as often as the input has quanta of lines: maybe never
 	case base != "eval":
 		mark(inner, func(c *Simple) { c.Child = true }) // sh -c, su -c: a new shell
 	}
