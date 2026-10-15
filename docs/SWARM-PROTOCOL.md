@@ -593,7 +593,7 @@ state gives the same findings:
 
 | Kind | Holds when | Told |
 |---|---|---|
-| `claimed_no_progress` | a running worker owns a doing task and has taken `StallTurns` turns without a progress call: a successful call of a tool that is neither read-only nor a coordination tool (an edit, a command), or task `update`, `block`, `done`, `resume`, `claim` or `handover`. A new assignment restarts the count | the worker |
+| `claimed_no_progress` | a running worker owns a doing task and has taken `StallTurns` turns without a progress call: a successful call of a tool that is neither read-only nor a coordination tool (an edit, a test run, a command that may change files), or task `update`, `block`, `done`, `resume`, `claim` or `handover`. A shell command that only reads and prints is not one: every command of the line is on the permission engine's read-only allowlist (`cat`, `sed -n`, `grep`, `find` without `-exec`, `git log`, `cd`, `echo`), no assignment steers what runs, and no redirection writes a file (`perm.ReadsOnly`); a test or check run (`go test`, `npm test`, `pytest`, `go vet`) is progress. A new assignment restarts the count | the worker |
 | `manager_waiting_on_idle` | the manager's wait was refused (section 2) because no worker runs and work remains, and its latest coordination call is still `wait` | the manager, by the refusal itself |
 | `orphaned_task` | a doing or blocked task, or a todo task reserved for an agent, is owned by an agent that is not on the team, on two consecutive sweeps (a spawn in progress is not one) | the manager |
 | `blocked_cycle` | blocked tasks' `blocked_on` targets lead back to themselves; one finding per cycle, named by its lowest task id | the manager |

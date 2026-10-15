@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // Seeded-regression tests for the stall sweep: each named stall is seeded and must be
@@ -145,6 +147,84 @@ func TestStallClaimedNoProgress(t *testing.T) {
 			t.Fatalf("a worker that makes progress was found stalled: %+v", stallEvents(r))
 		}
 	})
+}
+
+// A worker that reads the code through the shell (cat, sed -n, grep, chained with && and echo banners, as one ten-hour run did
+// 975 times in 1,147 commands without one stall finding) is reading: the sweep finds it as it finds a worker that reads with the
+// read tool. A test run is progress (a tester's work, a writer's check), and so is a command that may change files.
+func TestStallShellReadsAreNotProgress(t *testing.T) {
+	bash := func(cmd string) rvReply {
+		return rvReply{Tools: []rvToolCall{{Name: "bash", Args: map[string]any{"command": cmd}}}}
+	}
+	look := bash(`cd web && echo "===== Incidents.tsx =====" && cat -n src/pages/Incidents.tsx && sed -n '1,80p' src/lib/types.ts | head -40 2>/dev/null`)
+	rig := func(t *testing.T, script []rvReply) *rvRig {
+		r := newRVRig(t, stallCfg(), gatedWorkers(map[string][]rvReply{"be-1": script}))
+		r.sw.deps.Registry.Register(rvFakeTool{name: "bash", run: func(context.Context, *tools.Call) *tools.Result {
+			return &tools.Result{Text: "ok\n[exit code 0]", Meta: map[string]any{"exit_code": 0}}
+		}})
+		r.sw.StartManager()
+		return r
+	}
+	t.Run("seeded: a worker that reads with shell commands", func(t *testing.T) {
+		r := rig(t, repeat(3, look))
+		id, task := spawnWorker(t, r, "incidents page", 4)
+		r.sw.sweepStalls()
+		f, ok := active(r, StallClaimedNoProgress)
+		if !ok || f.Task != task.ID || f.Agent != id {
+			t.Fatalf("a worker that only read through the shell for 3 turns was not found: %+v, %v; events %+v", f, ok, stallEvents(r))
+		}
+		if !nudged(r, id) {
+			t.Error("the worker was not told")
+		}
+	})
+	t.Run("healthy: a worker that runs the tests", func(t *testing.T) {
+		r := rig(t, []rvReply{look, bash("go test ./api/..."), look, bash("cd web && npm test"), look})
+		spawnWorker(t, r, "incidents page", 6)
+		r.sw.sweepStalls()
+		if n := raised(r, StallClaimedNoProgress); n != 0 {
+			t.Fatalf("a worker that runs the tests was found stalled: %+v", stallEvents(r))
+		}
+	})
+	t.Run("healthy: a worker that changes files with the shell", func(t *testing.T) {
+		r := rig(t, []rvReply{look, bash("gofmt -w api/users.go"), look, bash("mkdir -p web/src/pages && cat src/a.ts"), look})
+		spawnWorker(t, r, "incidents page", 6)
+		r.sw.sweepStalls()
+		if n := raised(r, StallClaimedNoProgress); n != 0 {
+			t.Fatalf("a worker whose commands change files was found stalled: %+v", stallEvents(r))
+		}
+	})
+}
+
+// progressCall judges a shell command by what it can do: reading and printing is not progress, a test run, a check or anything
+// that may write is; a failed call never is.
+func TestProgressCallShell(t *testing.T) {
+	s := &Swarm{}
+	call := func(cmd string) core.Block {
+		in, _ := json.Marshal(map[string]any{"command": cmd})
+		return core.Block{ToolName: "bash", Input: in}
+	}
+	ok := &tools.Result{Text: "[exit code 0]", Meta: map[string]any{"exit_code": 0}}
+	for cmd, want := range map[string]bool{
+		`cat -n src/a.ts`: false,
+		`cd /repo/web && echo "== a ==" && sed -n '64,115p' src/a.ts && grep -n "x" src/b.ts`: false,
+		`find web -type f 2>/dev/null | sort || echo "none"`:                                  false,
+		`git log --oneline -5 && git diff --stat`:                                             false,
+		`go test ./...`:                                    true,
+		`go vet ./internal/swarm`:                          true,
+		`cd web && npm test -- --run Incidents`:            true,
+		`echo "== tests ==" && go test ./api/ 2>&1 | tail`: true,
+		`npx tsc --noEmit -p tsconfig.json`:                true,
+		`sed -i 's/a/b/' x.go`:                             true,
+		`cat > notes.md <<'EOF'\nx\nEOF`:                   true,
+		`python3 scripts/gen.py`:                           true,
+	} {
+		if got := s.progressCall(call(cmd), ok); got != want {
+			t.Errorf("progressCall(%q) = %v, want %v", cmd, got, want)
+		}
+	}
+	if s.progressCall(call("go test ./..."), &tools.Result{IsError: true, Text: "denied"}) {
+		t.Error("a refused command is progress")
+	}
 }
 
 func TestStallManagerWaitingOnIdle(t *testing.T) {
