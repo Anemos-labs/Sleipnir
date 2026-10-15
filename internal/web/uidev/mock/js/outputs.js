@@ -665,12 +665,12 @@ S.resetSessionState = function () { _sess = S.newSessionState(); return _sess; }
 function agentTotals(sx) { return S.totals(sx.team); }
 function costLine(sx) {
 if (!sx.swarm) { var a = sx.team[0]; return 'input ' + a.uncached + ' (uncached) + ' + a.read + ' cached-read + 0 cache-write · output ' + a.out + ' · hit ' + Math.round(a.read / a.prompt * 100) + '% · ' + F.usd4(S.costOf(a)); }
-var m = sx.team.filter(function (a) { return a.rider; })[0], t = agentTotals(sx);
+var m = sx.team.filter(function (a) { return a.isManager; })[0], t = agentTotals(sx);
 return 'input ' + m.uncached + ' (uncached) + ' + m.read + ' cached-read + 0 cache-write · output ' + m.out + ' · hit ' + Math.round(m.read / m.prompt * 100) + '% · ' + t.costText4;
 }
 OUT['/cost'] = function (fl, ctx) { return res([L('err', costLine(ss(ctx)))], 0, 3); };
 OUT['/context'] = function (fl, ctx) {
-var m = ss(ctx).team.filter(function (a) { return a.rider || a.id === 'main'; })[0] || ss(ctx).team[0], lt = m.layerTokens;
+var m = ss(ctx).team.filter(function (a) { return a.isManager || a.id === 'main'; })[0] || ss(ctx).team[0], lt = m.layerTokens;
 var row = function (n, t) { return L('err', '  ' + F.padR(n, 16) + ' ' + F.padL(t, 7) + ' tokens'); };
 return res([row('constitution', lt.G0), row('shared pin', lt.G1), row('role pin', lt.G2), row('notes', lt.G3), row('spine', lt.G4), row('thread (verbatim)', lt.G5)], 0, 4);
 };
