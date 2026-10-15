@@ -165,8 +165,12 @@ func (ev *evaluator) bash(cmd string) verdict {
 	}
 	an := shellparse.Parse(cmd)
 	an.Commands = bindLoopVars(cmd, an.Commands)
+	// What each loop assigns is taken from all of its commands, those past the bound below included. An arithmetic expansion
+	// assigns, as the command's words are expanded, only the names it reaches (arithAssigns).
+	ints := intVars(an.Commands)
+	loopNames, loopAll := loopAssignments(an.Commands, ints)
 	// Judging costs file-system lookups per command; a line with thousands of
-	// commands is checked up to a bound and then never auto-allowed.
+	// commands is checked up to a bound and then never auto-allowed, in any mode.
 	tooMany := len(an.Commands) > maxUnits
 	if tooMany {
 		an.Commands = an.Commands[:maxUnits]
@@ -207,9 +211,6 @@ func (ev *evaluator) bash(cmd string) verdict {
 	var later []deferred
 	// A loop runs its commands again: what any of them assigns may already be there when the first one runs, so the names a loop
 	// assigns are unknown from its start (all of them when one of its builtins may set any).
-	// An arithmetic expansion assigns, as the command's words are expanded, only the names it reaches (arithAssigns).
-	ints := intVars(an.Commands)
-	loopNames, loopAll := loopAssignments(an.Commands, ints)
 	entered := map[int]bool{}
 	for i, s := range an.Commands {
 		if s.Deferred {
@@ -272,8 +273,19 @@ func (ev *evaluator) bash(cmd string) verdict {
 	if why != "" {
 		ev.unroutine = true
 	}
-	if why == "" || res.kind == vDeny || free(ev.v.mode) {
+	if why == "" || res.kind == vDeny {
 		return res
+	}
+	if free(ev.v.mode) {
+		if !tooMany {
+			return res
+		}
+		// The commands past the bound were not judged at all, so a mode that allows what it is not asked about cannot allow them:
+		// bypass asks, and yolo, which never asks, refuses.
+		if ev.v.mode == ModeYolo {
+			return deny("cannot be checked beforehand: " + why + "; split it into shorter commands")
+		}
+		return ask("cannot be checked beforehand: "+why, nil).protected(TierGuarded)
 	}
 	if ev.v.mode == ModePlan {
 		return deny(planReason("cannot verify that the command is read-only: " + why))
@@ -558,6 +570,18 @@ func reassignedNames(s shellparse.Simple) (names []string, all bool) {
 		return nil, true
 	}
 	ops, _ := assignedNames(s)
+	if name == "printf" { // printf -v NAME or printf -vNAME
+		ops = nil
+		if a := s.Args; len(a) > 0 {
+			if t := strings.TrimPrefix(a[0], "-v"); t != a[0] && t != "" {
+				ops = []string{t}
+			} else if a[0] == "-v" && len(a) > 1 {
+				ops = []string{a[1]}
+			} else {
+				return nil, true // a first word only known when the line runs (printfAssigns)
+			}
+		}
+	}
 	for _, a := range ops {
 		if strings.ContainsAny(a, "$`") {
 			return nil, true
