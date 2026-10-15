@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A heredoc that is a program's data (`python3 - <<'PY'`, a quoted
+  delimiter, read by a program named in plain words that is no shell and no
+  builtin such as `read` or `source`) no longer counts as text that may
+  change the line's variables: `os.environ["TMPDIR"]` in a Python script does
+  not make `$TMPDIR` unknown, and `o["k"]=1` is not taken for an array
+  assignment. A line that named a scratch directory and then fed Python a
+  script was asked about deleting it in `bypass`. A body a shell runs, a
+  builtin reads or the shell expands still counts. Prompt bytes: none change.
+
 - A `case` statement is parsed: the commands of its bodies are judged as any
   other (as conditional ones), and the line keeps the variables it set. It
   used to make the whole line unparsed, so `T="$TMPDIR/t"; rm -rf "$T"` was

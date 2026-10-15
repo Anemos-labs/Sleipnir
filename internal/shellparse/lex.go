@@ -26,8 +26,9 @@ type token struct {
 
 	// body is set on the delimiter word of a heredoc once its body has been
 	// read; hasBody distinguishes an empty body from none.
-	body    string
-	hasBody bool
+	body             string
+	hasBody          bool
+	bodyStart, bodyE int // where the body is in the lexed text
 }
 
 type pendingHeredoc struct {
@@ -271,6 +272,7 @@ func (l *lexer) readHeredocs(toks []token) []Simple {
 		if h.tokIdx < len(toks) {
 			toks[h.tokIdx].body = l.src[bodyStart:bodyEnd]
 			toks[h.tokIdx].hasBody = true
+			toks[h.tokIdx].bodyStart, toks[h.tokIdx].bodyE = bodyStart, bodyEnd
 		}
 		if !h.quoted && bodyEnd > bodyStart {
 			l.scanExpansions(bodyStart, bodyEnd, &nested)

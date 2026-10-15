@@ -217,6 +217,29 @@ func TestACaseStatementKeepsTheLinesVariablesKnown(t *testing.T) {
 	}
 }
 
+// A heredoc that is a program's data (python3 - <<'PY') cannot change this shell, so what it says does not make the line's variables
+// unknown: os.environ["TMPDIR"] in a Python script is not an assignment of $TMPDIR, and o["copy_to"]="..." is not an array
+// assignment (two devops runs were asked about deleting the scratch directory they had just named). A body a shell runs, a builtin
+// reads, or the shell expands still counts.
+func TestAProgramsHeredocIsItsData(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: t.TempDir()})
+	for _, c := range []struct{ cmd, want string }{
+		{"SB=\"$TMPDIR/drill\"; rm -rf \"$SB\"; mkdir -p \"$SB/data\"\npython3 - <<'PY'\nimport sqlite3, os\nbase = os.environ[\"TMPDIR\"]\nsqlite3.connect(base + \"/drill/data/x.db\").close()\nPY\nrm -rf \"$SB\"", "allow"},
+		{"d=$(mktemp -d); cp packaging/raven.json \"$d/bad.json\"\npython3 - \"$d/bad.json\" <<'EOF'\nimport json,sys\np=sys.argv[1]; o=json.load(open(p)); o[\"copy_to\"]=\"/etc/raven\"; json.dump(o,open(p,\"w\"))\nEOF\nrm -rf \"$d\"", "allow"},
+		{"python3 - <<PY\nos.environ[\"TMPDIR\"]\nPY\nrm -rf \"$TMPDIR/x\"", "ask"}, // unquoted: the shell expands the body
+		{"source /dev/stdin <<'E'\nTMPDIR=/\nE\nrm -rf \"$TMPDIR\"/*", "ask"},
+		{"read TMPDIR <<'E'\n/\nE\nrm -rf \"$TMPDIR\"/*", "ask"},
+		{"$PY - <<'E'\nTMPDIR=/\nE\nrm -rf \"$TMPDIR\"/*", "ask"},
+		{"sh <<'E'\nTMPDIR=/\nE\nrm -rf \"$TMPDIR\"/*", "ask"},
+	} {
+		d := e.Check(context.Background(), Request{Agent: "dv-3", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%q\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
+
 // A substitution that can fail ($(git rev-parse --show-toplevel)) is empty when it does: a word built from it, directly or through a
 // variable, is judged as that too, so "$d/proc/self/environ" cannot reach the protected file and "$D"/* cannot reach the root through
 // a failure. A .git that is not a repository (no HEAD, a worktree pointer that leads nowhere) makes git fail: the substitution is then

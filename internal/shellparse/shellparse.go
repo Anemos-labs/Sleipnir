@@ -117,6 +117,31 @@ type Analysis struct {
 	HasArithmetic          bool   // an arithmetic expansion $((...)), which may assign a variable ($((n=5)))
 	Parsed                 bool   // false: too complex to trust, see Problem
 	Problem                string // first reason Parsed became false
+	// Literal are the bodies of the line's heredocs that are data to another program: a quoted delimiter (no expansion), on a
+	// command of the line itself (not inside a substitution or a string run by sh -c), read by a program named in plain words that
+	// runs it as neither shell code nor this shell's input (not sh, source, read or mapfile; a python - <<'PY' script is its data).
+	// No text there can assign this shell's variables or run in it.
+	Literal []Span
+}
+
+// Span is a range of bytes [Start, End) of the parsed text.
+type Span struct{ Start, End int }
+
+// Code is src, the text that was parsed, with the Literal bodies blanked (every byte but a newline made a space): what a scan of
+// the line's text for the shell's own constructs reads.
+func (a Analysis) Code(src string) string {
+	if len(a.Literal) == 0 {
+		return src
+	}
+	b := []byte(src)
+	for _, s := range a.Literal {
+		for i := max(s.Start, 0); i < s.End && i < len(b); i++ {
+			if b[i] != '\n' {
+				b[i] = ' '
+			}
+		}
+	}
+	return string(b)
 }
 
 // state is shared by every lexer and parser working on one Parse call.
