@@ -14,25 +14,25 @@ they do not indicate whether a change has been released.
   executing (`no vote needed`), or the wrong phase for the action (with
   the call that phase takes). A vote without `revision` counts for the
   revision the member last read in full (`task get`, `pool inspect`, or the
-  proposal or reconciliation it wrote) while that revision and its
+  proposal or reconciliation text it wrote) while that revision and its
   agreement are current. A refused `pool execute` names the members still
-  to agree, a refused `pool reconcile` or parent `task done` each
+  to agree. A refused `pool reconcile` or parent `task done` names each
   unfinished child with its status and owner, or the members whose
   confirmation is missing. The leader is no longer mailed each vote: the
   vote that completes a round tells it once what follows. `pool get` reads
   a task as `task get` does; another unknown action lists pool's actions.
   `pool inspect` and a reconciliation without text answer with the pool's
-  task in full, and a proposal or reconciliation text with the revision
-  it made; `pool inspect` outside
-  reconciliation and a proposal after planning say what to use instead. The `task` and `spawn` refusals state the rule (the
-  manager's, except that a pool leader creates, accepts and assigns the
-  children of the pool it leads while it executes) and the condition that
-  failed (an `accept` of an unknown id says there is no such task);
-  messages that offered a leader to reject a child now say to ask the
-  manager. A child created without a role takes its parent's, and a
-  child stays claimable while its parent is blocked on it. Prompt bytes:
-  none change; tool descriptions and schemas are unchanged, and the
-  refusals and notices are thread text.
+  task in full, and a proposal or reconciliation text with the revision it
+  made. `pool inspect` outside reconciliation and a proposal after planning
+  say what to use instead. The `task` and `spawn` refusals state the rule
+  (the manager's, except that a pool leader creates, accepts and assigns
+  the children of the pool it leads while it executes) and the condition
+  that failed; an `accept` of an unknown id says there is no such task.
+  Messages that offered a leader to reject a child now say to ask the
+  manager. A child created without a role takes its parent's, and a child
+  stays claimable while its parent is blocked on it. Prompt bytes: none
+  change; tool descriptions and schemas are unchanged, and the refusals and
+  notices are thread text.
 
 - The stall sweep no longer takes a shell command that only reads for
   progress. A worker that reads code with `cat`, `sed -n`, `grep` or `find`
