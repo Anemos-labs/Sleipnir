@@ -47,7 +47,7 @@
       case 'mail': return '<div class="msg mailrow" data-ag="' + esc(e.from) + ' ' + esc(e.to) + '"><div class="who"><span style="color:' + agCol(e.from) + '">' + esc(e.from) + '</span> <span class="dim">→</span> <span style="color:' + agCol(e.to) + '">' + esc(e.to) + '</span> <time>' + T + '</time></div><span class="mailtxt">“' + esc(e.text) + '”</span></div>';
       case 'steer': return '<div class="msg steer" data-ag="' + esc(e.to) + '"><div class="who">You → <span style="color:' + agCol(e.to) + '">' + esc(e.to) + '</span> <time>' + T + '</time></div><span>' + esc(e.text) + '</span></div>';
       /* the manager's answers to the workers' routine questions: one collapsed line that grows while no other row comes between */
-      case 'mgrdec': return '<div class="msg mgrdec">' + (ui.approvals ? ui.approvals.mgrHtml(Array.isArray(e.list) ? e.list : [], !!e.open, 'qmgr') : '') + '</div>';
+      case 'mgrdec': return '<div class="msg mgrdec">' + (ui.approvals ? ui.approvals.mgrHtml(Array.isArray(e.list) ? e.list : [], !!e.open, 'qmgr', typeof e.n === 'number' ? { n: e.n, d: e.nd || 0 } : null) : '') + '</div>';
       case 'ask': return '<div class="msg askrow"' + at + '><span class="lg warm">?</span><span><b>asks:</b> <span class="mono">' + esc(U.clip1(e.q.cmd, 200)) + '</span><span class="rsn">' + esc(U.clip1(e.q.why, 300)) + '</span></span></div>';
     }
     return '';

@@ -10,10 +10,10 @@ import (
 
 // The mirror is a Go reduction of what the page's world model holds, minus the transcript rows: per agent its state,
 // token table, ratio history and prompt layers; the tasks and the merged list; the plan, the goal and the verdict; the checkpoints;
-// the open questions; the last mails, anomalies and compactions; the warm clock, the governor, the merge queue; the board's alerts,
-// the open stall findings, the mail counts and what the harness's service agents used. The journal folds into one mirror every
-// event it evicts, and the keyframe of a snapshot is that mirror written back as events: a page that reduces keyframe ⧺ retained
-// events ends where one that reduced every event would, for everything but the transcript.
+// the open questions; the last mails, anomalies and compactions, and how many there were in all; the warm clock, the governor, the
+// merge queue; the board's alerts, the open stall findings, the mail counts and what the harness's service agents used. The journal
+// folds into one mirror every event it evicts, and the keyframe of a snapshot is that mirror written back as events: a page that
+// reduces keyframe ⧺ retained events ends where one that reduced every event would, for everything but the transcript.
 
 // The caps of the mirror.
 const (
@@ -63,9 +63,13 @@ type mirror struct {
 	sorder   []string
 	mailstat *MailStat
 	svc      *SvcUse
+	count    counts  // the mails, cache breaks and compactions folded, the ones the caps let go included
 	t        float64 // the t of the newest event folded
 	n        uint64  // events folded
 }
+
+// counts are how many events of the kinds whose number a page shows a mirror folded: a Tally's fields as totals.
+type counts struct{ breaks, loud, compacts, mails int }
 
 // newMirror returns an empty mirror.
 func newMirror() *mirror {
@@ -172,16 +176,29 @@ func (m *mirror) fold(e wire.Event) {
 	case *MailX:
 		c := *v
 		m.mails = appendCapped(m.mails, &c, mirrorMails)
+		m.count.mails++
 	case *wire.Mail:
 		m.mails = appendCapped(m.mails, &MailX{Mail: *v}, mirrorMails)
+		m.count.mails++
 	case *wire.Break:
 		c := *v
 		m.anoms = appendCapped(m.anoms, &c, mirrorAnoms)
+		m.count.breaks++
+		if !v.Quiet {
+			m.count.loud++
+		}
 	case *CompactX:
 		c := *v
 		m.comps = appendCapped(m.comps, &c, mirrorAnoms)
+		m.count.compacts++
 	case *wire.Compact:
 		m.comps = appendCapped(m.comps, &CompactX{Compact: *v}, mirrorAnoms)
+		m.count.compacts++
+	case *Tally:
+		m.count.breaks += max(v.Breaks, 0)
+		m.count.loud += max(v.Loud, 0)
+		m.count.compacts += max(v.Compacts, 0)
+		m.count.mails += max(v.Mails, 0)
 	case *wire.Warm:
 		c := *v
 		m.warm = &c
@@ -294,22 +311,28 @@ func (m *mirror) markMerged(id string) {
 }
 
 // keyframe writes the mirror back as events (seq 0): the dated ones (open questions, mails, anomalies, compactions, checkpoints)
-// at their own t, oldest first, then everything else at t0, which is not before any of them.
+// at their own t, oldest first, then everything else at t0, which is not before any of them. A tally says how many mails, anomalies
+// and compactions came before the ones it carries.
 func (m *mirror) keyframe(t0 float64) []wire.Event {
 	var dated []wire.Event
 	for _, id := range m.qorder {
 		c := *m.open[id]
 		dated = append(dated, &c)
 	}
-	for _, v := range lastN(m.mails, mirrorMails) {
+	mails, anoms, comps := lastN(m.mails, mirrorMails), lastN(m.anoms, mirrorAnoms), lastN(m.comps, mirrorAnoms)
+	tally := Tally{Breaks: m.count.breaks - len(anoms), Loud: m.count.loud, Compacts: m.count.compacts - len(comps), Mails: m.count.mails - len(mails)}
+	for _, v := range mails {
 		c := *v
 		dated = append(dated, &c)
 	}
-	for _, v := range lastN(m.anoms, mirrorAnoms) {
+	for _, v := range anoms {
 		c := *v
 		dated = append(dated, &c)
+		if !v.Quiet {
+			tally.Loud--
+		}
 	}
-	for _, v := range lastN(m.comps, mirrorAnoms) {
+	for _, v := range comps {
 		c := *v
 		dated = append(dated, &c)
 	}
@@ -415,6 +438,10 @@ func (m *mirror) keyframe(t0 float64) []wire.Event {
 		c := *m.stalls[k]
 		at(&c)
 	}
+	tally.Breaks, tally.Loud, tally.Compacts, tally.Mails = max(tally.Breaks, 0), max(tally.Loud, 0), max(tally.Compacts, 0), max(tally.Mails, 0)
+	if tally.Breaks+tally.Loud+tally.Compacts+tally.Mails > 0 {
+		at(&tally)
+	}
 	return out
 }
 
@@ -512,6 +539,8 @@ func newOfKind(k string) wire.Event {
 		return &MailStat{}
 	case "svc":
 		return &SvcUse{}
+	case "tally":
+		return &Tally{}
 	}
 	return nil
 }

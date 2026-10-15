@@ -70,7 +70,8 @@
 /* ---------- Mail view ---------- */
 .mailv{display:grid;grid-template-columns:minmax(300px,1.05fr) minmax(0,1.4fr);gap:var(--gap);grid-template-rows:auto minmax(0,1fr);height:100%;min-height:560px}
 .mailv .flow{grid-column:1/-1}
-.flow svg{display:block;width:100%;height:auto}
+.flow .pb{overflow-x:auto}
+.flow svg{display:block;width:calc(100% * var(--fw, 1));height:auto}   /* --fw: a team too large for the width at 9 units a node draws wider, and scrolls */
 .databan{display:flex;align-items:center;gap:9px;background:var(--warm-a);border:1px solid var(--warm-b);color:var(--warm);padding:6px 10px;font:600 12px var(--f-ui);margin:0 10px 8px}
 .databan .ic{font-family:var(--f-num)}
 .mail-l{overflow:auto}
