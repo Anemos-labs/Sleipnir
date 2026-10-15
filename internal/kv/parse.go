@@ -8,6 +8,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
 )
@@ -437,7 +438,11 @@ func repairQuotes(s string, budget int) (raw []byte, n, fixes, spent int, err er
 			return nil, 0, fixes, spent, e
 		}
 		spent += int(se.Offset)
-		off := int(se.Offset) - 1 // the stray character; the quote that ended the string is before it, past blanks
+		// The stray character ends at Offset in one Go version and starts there in another, and may be a multi-byte rune ("—"):
+		// off is where the rune that ends at Offset begins, and the quote that ended the string is before it, past blanks.
+		end := min(max(int(se.Offset), 0), len(b))
+		_, size := utf8.DecodeLastRune(b[:end])
+		off := end - max(size, 1)
 		q := off - 1
 		for q > 0 && q < len(b) && (b[q] == ' ' || b[q] == '\t' || b[q] == '\n' || b[q] == '\r') {
 			q--
