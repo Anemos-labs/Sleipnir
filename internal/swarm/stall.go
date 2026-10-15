@@ -433,7 +433,7 @@ func (s *Swarm) sweepStalls() {
 	for _, f := range raised {
 		s.emit(events.TypeSwarmStall, stallEvent("raise", f))
 		if f.Notify != "" {
-			s.notify(f.Notify, "request", stallNudge(f, s.stallTurns()))
+			s.notify(f.Notify, "request", stallNudge(f, s.stallTurns(), s.cfg.PersistentPools))
 		}
 	}
 }
@@ -444,13 +444,19 @@ func stallEvent(action string, f Stall) map[string]any {
 }
 
 // stallNudge is the harness mail that tells the responsible agent about a finding:
-// what was observed and what would end it. It holds ids and counts only.
-func stallNudge(f Stall, k int64) string {
+// what was observed and what would end it. It holds ids and counts only. pools says the
+// swarm keeps persistent pools, which refuse a handover (Handover): a worker there that
+// cannot continue says so on the task and blocks it instead.
+func stallNudge(f Stall, k int64, pools bool) string {
 	switch f.Kind {
 	case StallClaimedNoProgress:
+		out := "or hand it over (task handover) if you cannot continue."
+		if pools {
+			out = "or, if you cannot continue, say why on the task (task update) and block it."
+		}
 		return fmt.Sprintf("Stall check: you took %d turns on %s without editing a file, running a test or a command that changes files, or updating the task "+
 			"(reading files, with any tool or command, is not progress). "+
-			"Make the next change, or update the task with what you are doing, block it (target = the task you wait for), or hand it over (task handover) if you cannot continue.", k, f.Task)
+			"Make the next change, or update the task with what you are doing, block it (target = the task you wait for), %s", k, f.Task, out)
 	case StallOrphanedTask:
 		return fmt.Sprintf("Stall check: %s. Nobody can finish it: fail it with a reason (and reopen it to start it again).", f.Detail)
 	case StallBlockedCycle:

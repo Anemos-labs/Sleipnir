@@ -126,6 +126,9 @@ type member struct {
 	// turns counts the agent's model responses, and quietFrom is the count at its last
 	// progress call or new assignment: the stall sweep's measure (stall.go).
 	turns, quietFrom atomic.Int64
+	// worked is one more than the turn count at the member's last progress call (0: none yet). Unlike quietFrom, a new
+	// assignment does not set it: it says the member did something, for the excuse guard (excuseRefusal).
+	worked atomic.Int64
 	// pubMu serialises status publication: whoever publishes last reads the
 	// newest state, so the board never keeps a stale one.
 	pubMu sync.Mutex
@@ -535,6 +538,7 @@ func (k *memberSink) ToolEnd(a string, call core.Block, res *tools.Result, took 
 	k.safely(func() {
 		if k.s.progressCall(call, res) {
 			k.m.madeProgress()
+			k.m.worked.Store(k.m.turns.Load() + 1)
 		}
 	})
 	if call.ToolName == "wait" {
