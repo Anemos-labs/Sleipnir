@@ -52,6 +52,13 @@ func definedFragments() map[string]bool {
 	return out
 }
 
+// literalDollar reports whether a "$" followed by c is the character "$" in bash: c starts no parameter name ($x, $1, $_), no braced
+// or special parameter (${x}, $*, $@, $-, $?, $#, $!, $$), no substitution or arithmetic ($(...), $((...)), $[...]) and no quoting
+// ($'...', $"..."). A word reaches the expander with its quotes removed, so a quote or backslash after "$" counts as one of those.
+func literalDollar(c byte) bool {
+	return !isNameByte(c) && strings.IndexByte("{([*@-?#!$'\"\\`", c) < 0
+}
+
 // harnessNames are the variables whose expansion the engine knows without the line assigning them: $HOME, $TMPDIR and $PWD from its
 // configuration and the working directory, and the named special parameters. A line that assigns one of them (PWD=/etc; cat "$PWD/x")
 // makes it unknown for that line.
@@ -224,6 +231,10 @@ func (rs *resolver) expandWordVars(w, cwd string, x expansion) (out, partial str
 		case j < len(w) && strings.IndexByte("$?#!", w[j]) >= 0:
 			name = w[j : j+1]
 			j++
+		case j >= len(w) || literalDollar(w[j]):
+			put("$") // "$" before what cannot start an expansion ($| in a regex, a trailing $) is the character itself
+			i = j
+			continue
 		default:
 			k := j
 			for k < len(w) && isNameByte(w[k]) {

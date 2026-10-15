@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A `$` that starts no expansion (`$|` in a regex, a trailing `$`) is the
+  character, as it is in bash: `pgrep -af "$INSTALL/raven($| )"` names a
+  known path rather than one with a part only known when the command runs,
+  which `bypass` asked about as a write that might leave `$TMPDIR` for
+  `~/.sleipnir`. Prompt bytes: none change.
+
 - A loop's assignments reach its whole body: a loop runs its commands again,
   so what any of them assigns may be there before the first one runs.
   `X="$TMPDIR/a"; while :; do rm -rf "$X"/*; X=/; done` was allowed and
