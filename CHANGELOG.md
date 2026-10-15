@@ -26,6 +26,21 @@ they do not indicate whether a change has been released.
   up to 1,200 characters into its recipient's thread, and the batch in the
   mailman's thread carries whole parcels.
 
+- Every teammate is in every agent's live view. The team section listed
+  the first 30 teammates in roster order and dropped the rest silently, so
+  in a team of more than 30 the last workers were shown to nobody, the
+  manager included. Teammates are now ranked by relevance before the cap (a
+  worker's pool mates, the owners of related tasks and the manager first,
+  then its role; for the manager, workers waiting on it, then those at
+  work), and the manager's view lists up to 64. Teammates without a line
+  of their own (beyond the cap, or dropped for the budget) are counted on a
+  final `+N not shown: …` line instead of in "(+N more lines omitted)",
+  which names the most relevant of them: at most 64, fewer when the budget
+  needs it, the rest counted (`and 6 more`). The omission note is
+  included in the budget too. Prompt bytes: the live view's team section changes
+  (order of dropping, the new line); it is per-request text, so nothing
+  cached changes.
+
 - The stall sweep no longer takes a shell command that only reads for
   progress. A worker that reads code with `cat`, `sed -n`, `grep` or `find`
   (chained with `cd`, `echo` banners, pipes into `sort` or `head`,
