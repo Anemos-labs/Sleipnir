@@ -1,5 +1,5 @@
 ╭ SLEIPNIR ▸ The handbook has one document per topic in docs…  ◷ 00:00 · 8 agents · $0.20 · ⛁ 92% ─╮
-│                            ▄▄         │ one prefix, eight riders                                 │
+│                            ▄▄         │ one prefix, eight agents                                 │
 │                         ░▄██▄█▄       │ shared G0–G2 4.5k tokens  ● warm 5:00 ▰▰▰▰▰▰▰▰           │
 │                       ░░▄██▀▀██       │                                                          │
 │         ░░░░▄▄████████░▄██▀           │ ████████████████████████████████████████████████████████ │
