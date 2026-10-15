@@ -99,7 +99,18 @@ Workers cannot invoke it. Push and PR commands remain direct manager operations.
 repair attempts. Failed assignments return to the same worker with bounded backoff.
 `task revise` changes the existing title, description, scope or dependencies and
 invalidates its old submission; dependency cycles are refused and accepted dependents
-are reopened. `task resolve` records “no longer needed” with an explanation once any
+are reopened. A revised pool child returns to the board; its owner's run is stopped,
+unless the owner is the pool's leader, whose run also leads the pool and goes on (it
+claims the child again). The parent changes no more than that requires: a pool that
+was reconciling, or whose result was submitted or accepted, executes again with its
+revision moved on and no confirmation or inspection left, so none of the old result
+counts; a parent that was submitted or accepted gets a new assignment of its leader;
+any other parent keeps its assignment, and a pool that plans or executes keeps its
+revision and votes (a pool back in planning after a revise of the pool task itself
+stays there, and agrees and executes before its children start again). The leader and the child's owner are
+told; the rest of the pool is not. A revise of the pool task itself stops every
+member and the harness restarts them, so the manager is not asked to resume it: a
+leader's stop reaches the manager only when the manager could not have caused it. `task resolve` records “no longer needed” with an explanation once any
 children are closed. The manager cannot finish while tasks, reconciliation or review
 remain unresolved. Cancellation, budget exhaustion and unanswered permission requests
 stop or suspend progress without pretending that the objective succeeded. A tool
