@@ -146,7 +146,13 @@ func (ev *evaluator) resolve(u pathUse, cw *cwdSet) []access {
 		one(d)
 	}
 	if cw.unknown || len(cw.dirs) == 0 {
-		out = append(out, mk("", true))
+		// A word whose value is a full path wherever the line is ($TMPDIR/x, a variable set to one) names that path from a
+		// directory only known when the line runs too (cd "$(git rev-parse ... || pwd)"); any other is only known then.
+		if w, _, dyn := ev.rs.expandWordVars(filepath.ToSlash(raw), "", ev.expansion()); !dyn && filepath.IsAbs(w) {
+			one("")
+		} else {
+			out = append(out, mk("", true))
+		}
 	}
 	return out
 }

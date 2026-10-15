@@ -17,6 +17,18 @@ they do not indicate whether a change has been released.
   attempt counts against the parser's bound on hostile replies. Prompt
   bytes: none change.
 
+- A command that prints one name token is a piece of a file name, as `$$`
+  is: `date` with a `+FORMAT` of numeric conversions and plain characters
+  (`+%Y%m%dT%H%M%SZ`, `+%s`; not `%Z`, the zone name `TZ` sets), `seq` over
+  numbers, `id -u`/`-g`, `nproc` and
+  `uuidgen`. `"$D/rw.$(date +%s).tar.gz"`, a variable set to such a
+  substitution, and the variable of `for i in $(seq 1 800)` name a file in
+  `$D`. The output is also judged empty, as a failed command leaves it, so
+  `rm -rf "$HOME/$ts"` is still refused. And a `cd` to a directory only
+  known when the line runs (`cd "$(git rev-parse --show-toplevel || pwd)"`)
+  makes relative paths unknown, not full ones: `"$TMPDIR/x"` and a variable
+  set to it still name that path. Prompt bytes: none change.
+
 - A `$` that starts no expansion (`$|` in a regex, a trailing `$`) is the
   character, as it is in bash: `pgrep -af "$INSTALL/raven($| )"` names a
   known path rather than one with a part only known when the command runs,

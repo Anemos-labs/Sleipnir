@@ -378,10 +378,39 @@ func (ev *evaluator) noteAssignments(s shellparse.Simple, cw *cwdSet, conflicted
 		// Do not expand shell-literal or mixed-quoted values as variables.
 		literal := strings.ContainsAny(s.Raw, "'\\")
 		val = unquoteAssigned(val)
+		if inner, ok := soleSubstitution(val); ok && tokenSubstitution(inner) && !conflicted[name] && substitutes(s.Raw, name) {
+			// ts="$(date -u '+%Y%m%dT%H%M%SZ')": one name token, whatever quotes the command has, and nothing when it fails
+			if prev, had := ev.vars[name]; had && prev != tokenPlaceholder(inner) {
+				ev.forget(name, conflicted)
+				continue
+			}
+			if ev.vars == nil {
+				ev.vars = map[string]string{}
+			}
+			ev.vars[name] = tokenPlaceholder(inner)
+			if exported {
+				ev.markExported(name)
+			}
+			if ev.fallible == nil {
+				ev.fallible = map[string]bool{}
+			}
+			ev.fallible[name] = true
+			if s.Program == "" {
+				before = ev.vars
+			}
+			continue
+		}
+		// The directory matters only to a value that names it ($PWD, ~+, $(pwd)), which cannot be expanded without one: any other is
+		// the same wherever the line is, so a cd to a place only known when the line runs (cd "$(git rev-parse ... || pwd)") does not
+		// make "$TMPDIR/x" unknown. A relative value stays text, resolved where it is used.
+		cwd := ""
+		if len(cw.dirs) == 1 && !cw.unknown {
+			cwd = cw.dirs[0]
+		}
 		var w string
-		dyn := literal || len(cw.dirs) != 1 || cw.unknown
+		dyn := literal
 		if !dyn {
-			w, _, dyn = ev.rs.expandWordVars(val, cw.dirs[0], expansion{vars: before, off: ev.off, gitEnv: ev.gitEnv})
+			w, _, dyn = ev.rs.expandWordVars(val, cwd, expansion{vars: before, off: ev.off, gitEnv: ev.gitEnv})
 		}
 		prev, had := ev.vars[name]
 		switch {
@@ -396,7 +425,7 @@ func (ev *evaluator) noteAssignments(s shellparse.Simple, cw *cwdSet, conflicted
 				ev.markExported(name)
 			}
 			// a value from a command's output is empty when the command fails
-			if e, _, edyn := ev.rs.expandWordVars(val, cw.dirs[0], expansion{vars: before, off: ev.off, gitEnv: ev.gitEnv, fallible: ev.fallible, emptied: true}); !edyn && e != w {
+			if e, _, edyn := ev.rs.expandWordVars(val, cwd, expansion{vars: before, off: ev.off, gitEnv: ev.gitEnv, fallible: ev.fallible, emptied: true}); !edyn && e != w {
 				if ev.fallible == nil {
 					ev.fallible = map[string]bool{}
 				}
@@ -409,6 +438,34 @@ func (ev *evaluator) noteAssignments(s shellparse.Simple, cw *cwdSet, conflicted
 			before = ev.vars
 		}
 	}
+}
+
+// substitutes reports whether the assignment of name in raw, a command's source text, gives its value unquoted or in double quotes,
+// where $( ) runs: ts='$(date +%s)' and ts=\$(date) assign the text as written.
+func substitutes(raw, name string) bool {
+	for k := 0; ; {
+		j := strings.Index(raw[k:], name+"=")
+		if j < 0 {
+			return false
+		}
+		at := k + j
+		if v := at + len(name) + 1; (at == 0 || !isNameByte(raw[at-1])) && v < len(raw) {
+			return raw[v] == '$' || raw[v] == '"'
+		}
+		k = at + 1
+	}
+}
+
+// soleSubstitution returns the command of a value that is exactly one command substitution, $(cmd), and whether it is one.
+func soleSubstitution(v string) (string, bool) {
+	if !strings.HasPrefix(v, "$(") || strings.HasPrefix(v, "$((") || !strings.HasSuffix(v, ")") {
+		return "", false
+	}
+	inner := v[2 : len(v)-1]
+	if strings.ContainsAny(inner, "()`") {
+		return "", false // a nested substitution or a parenthesis: not one plain command
+	}
+	return inner, true
 }
 
 // markExported records that a known variable is in the environment of the commands the line starts.

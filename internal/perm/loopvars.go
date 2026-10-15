@@ -59,7 +59,7 @@ func bindLoopVars(cmd string, cmds []shellparse.Simple) []shellparse.Simple {
 	var out []shellparse.Simple
 	for _, s := range cmds {
 		if s.Program == "for" && s.LoopVar != "" {
-			if v := s.LoopVar; bindableName(v) && !assigned[v] && loopCount[v] == 1 && plainWords(s.Args) {
+			if v := s.LoopVar; bindableName(v) && !assigned[v] && loopCount[v] == 1 && (plainWords(s.Args) || tokenList(s.Args)) {
 				bound[v] = s.Args
 			}
 			out = append(out, s)
@@ -81,6 +81,16 @@ func bindableName(n string) bool {
 		}
 	}
 	return true
+}
+
+// tokenList says whether a loop's list is one substitution that prints name tokens (for i in $(seq 1 800)): the variable is bound to
+// it, and stands in the body as such a token, a piece of a file name (tokenSubstitution).
+func tokenList(words []string) bool {
+	if len(words) != 1 {
+		return false
+	}
+	inner, ok := soleSubstitution(words[0])
+	return ok && tokenSubstitution(inner)
 }
 
 // plainWords says whether a loop's words can stand for themselves: each is short and made of what a file name is made of.
