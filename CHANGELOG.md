@@ -7,6 +7,19 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The stall sweep no longer takes a shell command that only reads for
+  progress. A worker that reads code with `cat`, `sed -n`, `grep` or `find`
+  (chained with `cd`, `echo` banners, pipes into `sort` or `head`,
+  `2>/dev/null`) is reading, as it is with the read tool, and is found as
+  `claimed_no_progress` after `StallTurns` turns. A line counts as reading
+  when every command in it is on the permission engine's read-only allowlist
+  and no redirection writes a file (`perm.ReadsOnly`). Edits, task updates,
+  test and check runs (`go test`, `npm test`, `pytest`, `go vet`) and any
+  command that may change files still restart the count. Prompt bytes: the
+  stall nudge and the finding's detail say "without editing a file, running
+  a test or a command that changes files, or updating the task" and that
+  reading is not progress; nothing cached changes.
+
 - A step limit is a window, not a ceiling, for team workers and for the
   single agent of `sleipnir run`, the terminal and the web interface. A run
   that made at least 3 new edits in its last window (an edit it repeats does

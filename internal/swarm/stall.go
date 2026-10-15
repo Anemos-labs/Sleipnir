@@ -9,6 +9,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
@@ -31,8 +32,9 @@ type StallKind string
 
 const (
 	// StallClaimedNoProgress: a running worker owns a doing task and has taken
-	// Config.StallTurns model turns without a progress call (a successful edit or
-	// command, or a task update, block or done).
+	// Config.StallTurns model turns without a progress call (a successful edit, a
+	// test run or a command that may change files, or a task update, block or done).
+	// A command that only reads and prints is not one (progressCall).
 	StallClaimedNoProgress StallKind = "claimed_no_progress"
 	// StallManagerWaitingOnIdle: the manager's wait was refused because unfinished
 	// work remains and no worker is running. It holds while the manager's latest
@@ -188,7 +190,9 @@ func (s *Swarm) waitRefused() {
 
 // progressCall reports whether a finished tool call is progress on a task: a
 // successful call of a tool that is neither read-only nor a coordination tool, or a
-// task call that reports on the work. Reading, listing, waiting and mail are not.
+// task call that reports on the work. Reading, listing, waiting and mail are not, and
+// neither is a shell command that only reads and prints (shellReadsOnly): a worker that
+// reads the code one `cat` or `sed -n` at a time is reading, whatever tool it reads with.
 func (s *Swarm) progressCall(call core.Block, res *tools.Result) bool {
 	if res == nil || res.IsError {
 		return false
@@ -202,6 +206,8 @@ func (s *Swarm) progressCall(call core.Block, res *tools.Result) bool {
 		return false
 	case "mail", "note", "spawn", "wait", "approve":
 		return false
+	case "bash":
+		return !shellReadsOnly(jsonString(call.Input, "command"))
 	}
 	if reg := s.deps.Registry; reg != nil {
 		if tl, ok := reg.Get(call.ToolName); ok && tl.Spec().ReadOnly {
@@ -209,6 +215,17 @@ func (s *Swarm) progressCall(call core.Block, res *tools.Result) bool {
 		}
 	}
 	return true
+}
+
+// shellReadsOnly reports whether a shell command line only inspects: every command of it is on the permission engine's
+// read-only allowlist and no redirection writes a file (perm.ReadsOnly), and it runs no test. A test or check run (go test,
+// npm test, pytest, go vet: classifyCommand, the evidence's own test detection) is progress even though it changes no file:
+// it is how a tester works and how a writer checks its edits, and it is what the evidence reports as the last test.
+func shellReadsOnly(cmd string) bool {
+	if isTest, _ := classifyCommand(cmd); isTest {
+		return false
+	}
+	return perm.ReadsOnly(cmd)
 }
 
 // memberView is what the sweep reads of one member.
@@ -257,7 +274,7 @@ func (s *Swarm) stallFindings() []Stall {
 			if task := currentTask(snap, id); task != "" {
 				if t, _ := snap.Task(task); t.Status == StatusDoing {
 					out = append(out, Stall{Kind: StallClaimedNoProgress, Task: task, Agent: id, Notify: id,
-						Detail: fmt.Sprintf("%s took %d model turns on %s without editing a file, running a command or updating the task", id, v.quiet, task)})
+						Detail: fmt.Sprintf("%s took %d model turns on %s without editing a file, running a test or a command that changes files, or updating the task", id, v.quiet, task)})
 				}
 			}
 		}
@@ -431,7 +448,8 @@ func stallEvent(action string, f Stall) map[string]any {
 func stallNudge(f Stall, k int64) string {
 	switch f.Kind {
 	case StallClaimedNoProgress:
-		return fmt.Sprintf("Stall check: you took %d turns on %s without editing a file, running a command or updating the task. "+
+		return fmt.Sprintf("Stall check: you took %d turns on %s without editing a file, running a test or a command that changes files, or updating the task "+
+			"(reading files, with any tool or command, is not progress). "+
 			"Make the next change, or update the task with what you are doing, block it (target = the task you wait for), or hand it over (task handover) if you cannot continue.", k, f.Task)
 	case StallOrphanedTask:
 		return fmt.Sprintf("Stall check: %s. Nobody can finish it: fail it with a reason (and reopen it to start it again).", f.Detail)
