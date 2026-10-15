@@ -321,8 +321,13 @@ b"`, cmds: []cmd{c("echo", "ab")}},
 	{in: `for f in ~/.ssh/*; do cat "$f"; done`, cmds: []cmd{c("for", "~/.ssh/*"), c("cat", "$f")}},
 	{in: "for f in a\\\n b; do :; done", cmds: []cmd{c("for", "a", "b"), c(":")}},
 	{in: "for f in x y\ndo echo $f\ndone", cmds: []cmd{c("for", "x", "y"), c("echo", "$f")}},
-	{in: `for f; do echo $f; done`, cmds: []cmd{c("echo", "$f")}},
-	{in: `for f in; do echo $f; done`, cmds: []cmd{c("echo", "$f")}},
+	{in: `for f; do echo $f; done`, cmds: []cmd{c("for"), c("echo", "$f")}}, // the positional parameters
+	{in: `for f in; do echo $f; done`, cmds: []cmd{c("for"), c("echo", "$f")}},
+	// for NAME do: the do is the keyword, and the body is commands, not words of the loop
+	{in: `for X do rm -rf ~; done`, cmds: []cmd{c("for"), c("rm", "-rf", "~")}},
+	{in: `select X do cat ~/.ssh/id_rsa; done`, cmds: []cmd{c("for"), c("cat", "~/.ssh/id_rsa")}},
+	{in: "for X\ndo rm x; done", cmds: []cmd{c("for"), c("rm", "x")}},
+	{in: `for X Y; do echo; done`, cmds: []cmd{c("echo")}, flags: fBad},
 	{in: `select x in a b; do echo $x; done`, cmds: []cmd{c("for", "a", "b"), c("echo", "$x")}},
 	{in: `for x in {1..3}; do echo $x; done`, cmds: []cmd{c("for", "1", "2", "3"), c("echo", "$x")}},
 	{in: `while read l; do echo "$l"; done < in`, cmds: []cmd{c("read", "l"), c("echo", "$l"), c("")}},
@@ -747,11 +752,17 @@ func TestALoopsVariableIsReportedWithItsWordList(t *testing.T) {
 	if len(an.Commands) < 2 || an.Commands[0].Program != "for" || an.Commands[0].LoopVar != "f" || len(an.Commands[0].Args) != 2 {
 		t.Fatalf("%+v", an.Commands)
 	}
-	for _, line := range []string{`for ((i=0;i<3;i++)); do echo $i; done`, `echo f in a b`, `for f; do echo $f; done`} {
+	for _, line := range []string{`for ((i=0;i<3;i++)); do echo $i; done`, `echo f in a b`} {
 		for _, c := range Parse(line).Commands {
 			if c.LoopVar != "" {
 				t.Errorf("%q: %+v", line, c)
 			}
+		}
+	}
+	// A loop with no word list sets its variable from the positional parameters: it is reported, with no words.
+	for _, line := range []string{`for f; do echo $f; done`, `for f do echo $f; done`, "for f\ndo echo $f; done", `select f; do break; done`} {
+		if c := Parse(line).Commands; len(c) < 2 || c[0].Program != "for" || c[0].LoopVar != "f" || len(c[0].Args) != 0 {
+			t.Errorf("%q: %+v", line, c)
 		}
 	}
 }

@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A `for` (or `select`) loop with no word list is understood. Written
+  `for X do ...; done`, with no `;` before the `do`, its body used to be read
+  as more words of the loop, so the commands in it were not judged at all:
+  `for X do cat ~/.ssh/id_rsa; done` was allowed. And `for X; do` (or
+  `for X do`) sets X from the positional parameters, which a line can set
+  (`set -- $(echo /)`); X is now unknown after it, so a later
+  `rm -rf "$X"/*` asks. Prompt bytes: none change.
+
 - A heredoc that is a program's data (`python3 - <<'PY'`, a quoted
   delimiter, read by a program named in plain words that is no shell and no
   builtin such as `read` or `source`) no longer counts as text that may

@@ -97,7 +97,8 @@ type Simple struct {
 	// it is in a { } group, which a later && or || may skip as a whole.
 	Cond bool
 	// LoopVar is the variable of a for/select loop, on the pseudo-command "for" whose Args are the loop's word list ("f" in
-	// `for f in a b c`); empty everywhere else, and for a loop with no word list.
+	// `for f in a b c`); empty everywhere else. A loop with no word list (`for f; do`, `for f do`) walks the positional
+	// parameters: its pseudo-command has LoopVar and no Args.
 	LoopVar string
 }
 

@@ -126,6 +126,12 @@ func (p *parser) touch(t token) {
 
 func (p *parser) word(t token) {
 	if p.skipHeader {
+		if !t.quoted && t.text == "do" && len(p.header) == 1 {
+			// for NAME do ... done: no word list, and none of the ";" or newline a list needs before its do. The do is the
+			// keyword, and what follows it is the body, not words of the loop.
+			p.endHeader()
+			return
+		}
 		p.header = append(p.header, t.text)
 		if t.end > p.headerTok.end {
 			p.headerTok.end = t.end
@@ -576,20 +582,27 @@ func (p *parser) endHeader() {
 	p.skipHeader = false
 	words := p.header
 	p.header = nil
-	loopVar := ""
+	loopVar, in := "", false
 	for i, w := range words {
 		if w == "in" && i >= 1 {
 			if i == 1 && isName(words[0]) {
 				loopVar = words[0]
 			}
-			words = words[i+1:]
+			words, in = words[i+1:], true
 			break
 		}
-		if i == len(words)-1 {
-			words = nil // no "in": the loop runs over the positional parameters
-		}
 	}
-	if len(words) == 0 {
+	if !in {
+		// for NAME; do / for NAME do: the loop walks the positional parameters, which are only known when the line runs. It is
+		// reported with no words, and its variable, which it sets (set -- / before it makes NAME "/").
+		if len(words) == 1 && isName(words[0]) {
+			loopVar = words[0]
+		} else {
+			p.st.problem("for without in")
+		}
+		words = nil
+	}
+	if len(words) == 0 && loopVar == "" {
 		return
 	}
 	if p.cur.has { // cannot happen for well-formed input; keep the pieces apart
