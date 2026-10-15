@@ -13,7 +13,9 @@ they do not indicate whether a change has been released.
   not count) goes on for another window of the same length, with a notice.
   A run that did not is told in the results of its last step how many steps
   are left (a tenth of the window, 2 to 10) and to leave the tree building
-  and hand its task over (a worker) or give its answer (a single agent);
+  and hand its task over (a worker; in a persistent pool, which keeps its
+  workers, record where the task stands with `task update`) or give its
+  answer (a single agent);
   then it ends at the limit as before, recorded as `agent.stuck` with phase
   `steps`. Before, a worker was stopped mid-edit with nothing said to its
   successor, and the stop counted as a failed attempt. The manager, the

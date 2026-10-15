@@ -299,7 +299,7 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 		Planner: d.Planner, KVPolicy: d.KVPolicy, SessionID: s.cfg.SessionID, AffinityShards: s.cfg.AffinityShards,
 		BlockingCompaction: d.BlockingCompaction,
 		OnPromote:          s.onPromote, Est: d.Est, Now: d.Now, MaxSteps: r.MaxSteps, Priority: r.Priority,
-		ExtendSteps: !isMgr && !isSvc && !s.cfg.FixedSteps, WrapUp: workerWrapUp,
+		ExtendSteps: !isMgr && !isSvc && !s.cfg.FixedSteps, WrapUp: s.wrapUp(),
 		PlanOpen:  planOpen(d.Plans),
 		BudgetUSD: s.cfg.AgentBudgetUSD, Hooks: hooks, NoMailReopen: !isMgr, // a worker's mail is read by its next run (afterIdle), which owns what the mail changes
 	}
@@ -810,6 +810,19 @@ func (s *Swarm) forceIdle(m *member, rs *runState) {
 // (agent.Config.WrapUp): a successor that gets the task with a summary loses nothing, one that finds it in todo starts over.
 const workerWrapUp = "If your task is not finished, hand it over (task handover, text = what is done, what is left, what you learned): " +
 	"a fresh worker of your role carries on from your work. If it is finished, mark it done."
+
+// poolWrapUp is workerWrapUp for persistent pools, which keep their workers and refuse a handover (Handover): the worker's
+// task comes back to it with its conversation, so what it needs is a status that says where the work stands.
+const poolWrapUp = "If your task is not finished, record where it stands (task update, text = one line: what is done, what is left): " +
+	"the task comes back to you with this conversation. If it is finished, mark it done."
+
+// wrapUp is the wrap-up instruction for this swarm's workers.
+func (s *Swarm) wrapUp() string {
+	if s.cfg.PersistentPools {
+		return poolWrapUp
+	}
+	return workerWrapUp
+}
 
 type stopKind int
 

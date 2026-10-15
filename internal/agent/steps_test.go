@@ -166,3 +166,19 @@ func TestWithoutExtendStepsTheLimitIsACeiling(t *testing.T) {
 		t.Fatalf("a fixed limit said something: notices %q", r.sink.all())
 	}
 }
+
+// The note counts the edits of the window that ended, not one the first wrap-up step made after it.
+func TestTheWrapUpNoteCountsTheWindowThatEnded(t *testing.T) {
+	r, sc := stepRig(t, 10, true, func(n int, _ bool) (string, string) {
+		if n <= 2 || n == 11 {
+			return newEdit(n)
+		}
+		return "read", `{}`
+	})
+	if _, err := r.agent.Run(context.Background(), "build it"); !errors.Is(err, agent.ErrStepLimit) {
+		t.Fatalf("err = %v, want the step limit", err)
+	}
+	if _, noteAt, note := sc.requests(); noteAt != 12 || !strings.Contains(note, "Your last 10 steps made only 2 new edits.") {
+		t.Fatalf("note at %d: %q", noteAt, note)
+	}
+}

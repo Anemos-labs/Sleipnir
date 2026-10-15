@@ -53,3 +53,19 @@ func TestAWorkerStillEditingAtItsStepLimitKeepsItsTask(t *testing.T) {
 		})
 	}
 }
+
+// A persistent pool keeps its workers and refuses a handover, so its workers are told to record where the task stands instead.
+func TestAPoolWorkerIsNotToldToHandOver(t *testing.T) {
+	for _, c := range []struct {
+		pools bool
+		want  string
+	}{{false, "task handover"}, {true, "task update"}} {
+		s := &Swarm{cfg: Config{PersistentPools: c.pools}}
+		if got := s.wrapUp(); !strings.Contains(got, c.want) {
+			t.Errorf("persistent pools %v: wrap-up %q lacks %q", c.pools, got, c.want)
+		}
+	}
+	if strings.Contains(poolWrapUp, "handover") {
+		t.Errorf("the pool wrap-up names the handover a pool refuses: %q", poolWrapUp)
+	}
+}

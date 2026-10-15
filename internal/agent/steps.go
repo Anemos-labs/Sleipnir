@@ -41,6 +41,7 @@ type stepWindow struct {
 	edits int              // new successful edits in the current window
 	grace bool             // the last window made no progress: the run ends at its limit
 	owed  bool             // the wrap-up note has not been delivered yet
+	ended int              // new edits of the window that ended without progress, for the note (edits goes on counting)
 }
 
 // reset starts a run with no windows behind it.
@@ -88,7 +89,7 @@ func (a *Agent) nextWindow(step int, limit *int) bool {
 	g := graceSteps(window)
 	a.cfg.Sink.Notice(a.cfg.ID, "warn", fmt.Sprintf("%d steps so far and %d new edits in the last %d: %d steps left to wrap up",
 		step, w.edits, window, g))
-	w.grace, w.owed = true, true
+	w.grace, w.owed, w.ended = true, true, w.edits
 	*limit += g
 	return true
 }
@@ -106,7 +107,7 @@ func (a *Agent) wrapUp(blocks []core.Block, left int) []core.Block {
 		what = "Then give your answer: what is done, what is left, and how to continue."
 	}
 	note := fmt.Sprintf("[harness] Your last %d steps made %s. This run ends after %s. Finish or set aside the change "+
-		"you are on so that the tree is left in a state that builds. %s", a.cfg.MaxSteps, editCount(w.edits), stepCount(left), what)
+		"you are on so that the tree is left in a state that builds. %s", a.cfg.MaxSteps, editCount(w.ended), stepCount(left), what)
 	a.emit(events.TypeAgentStuck, map[string]any{"phase": "steps", "note": note})
 	return append(blocks, core.Text(note))
 }
