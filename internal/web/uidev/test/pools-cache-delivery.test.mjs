@@ -21,20 +21,24 @@ test('600 requests retain cumulative counts and render a bounded window of reada
   L.$('[data-cache-page="latest"]').click(); await L.settle(); assert.equal(labels().at(-1), 600);
 });
 
-test('pool subtasks expand inside their parent and retain their own owner and status', async () => {
+test('pool subtasks in their parent\'s column fold inside it, the others are cards of their own column, and each keeps its owner and status', async () => {
   const L = await boot();
   await L.event('task', { id: 'T10', title: 'Review combined result', owner: 'be-1', s: 'running', poolPhase: 'reconciling', poolMembers: ['be-1', 'be-2'] });
-  await L.event('task', { id: 'T11', title: 'Review concurrency', owner: 'be-2', parent: 'T10', s: 'merged' });
+  await L.event('task', { id: 'T11', title: 'Review concurrency', owner: 'be-2', parent: 'T10', s: 'running' });
+  await L.event('task', { id: 'T12', title: 'Review storage', owner: 'be-2', parent: 'T10', s: 'merged' });
   await L.step(5); L.SL.views.show('board'); await L.settle();
   const parent = L.$('.tcard[data-task="T10"]'); assert.ok(parent);
   assert.match(parent.textContent, /reconciling/);
-  assert.equal(L.$('.tcard[data-task="T11"]'), null);
-  parent.querySelector('[data-pool-toggle]').click(); await L.settle();
   const child = parent.querySelector('.subtasks .tcard[data-task="T11"]');
-  assert.ok(child); assert.equal(child.dataset.owner, 'be-2'); assert.match(child.textContent, /✓/);
-  const m=L.SL.sessions.active.m; m.torder=['T11','T10'];
+  assert.ok(child, 'open in a column of unfinished work'); assert.equal(child.dataset.owner, 'be-2');
+  const merged = L.$('.kan [data-col="merged"] .tcard[data-task="T12"]');
+  assert.ok(merged); assert.equal(merged.dataset.owner, 'be-2'); assert.match(merged.textContent, /✓/); assert.match(merged.textContent, /↳ T10/);
+  parent.querySelector('[data-pool-toggle]').click(); await L.settle();
+  assert.equal(L.$('.tcard[data-task="T11"]'), null);
+  L.$('.tcard[data-task="T10"] [data-pool-toggle]').click(); await L.settle();
+  const m=L.SL.sessions.active.m; m.torder=['T11','T12','T10'];
   await L.event('task',{id:'T10',title:'Updated aggregate',owner:'be-1',s:'running',poolPhase:'reconciling',poolMembers:['be-1','be-2']});
-  await L.settle(); assert.ok(L.$('.tcard[data-task="T10"] .subtasks .tcard[data-task="T11"]'));
+  await L.settle(); assert.ok(L.$('.tcard[data-task="T10"] .subtasks .tcard[data-task="T11"]'), 'a subtask listed before its parent still nests in it');
 });
 
 test('GitHub toggles belong to one objective and do not leak across tabs', async () => {
