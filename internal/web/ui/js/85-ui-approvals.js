@@ -221,9 +221,9 @@
         const wall = SL.time.T.wall, t0 = shown['_d' + done.id] == null ? (shown['_d' + done.id] = wall) : shown['_d' + done.id], left = DONE_MS - (wall - t0);
         if (left > 0 && done.by === 'manager') {
           /* the manager answered: one collapsed line of its recent decisions, never a card the person has to read */
-          const recent = mgrRecent(m);
-          key = 'm' + done.id + '|' + recent.length + '|' + (slot._mgrOpen ? 1 : 0);
-          html = recent.length ? mgrHtml(recent, !!slot._mgrOpen, 'qmgr qdone') : '';
+          const recent = mgrRecent(m), tot = mgrRecentCount(m);
+          key = 'm' + done.id + '|' + recent.length + '|' + tot.n + '|' + (slot._mgrOpen ? 1 : 0);
+          html = recent.length ? mgrHtml(recent, !!slot._mgrOpen, 'qmgr qdone', tot) : '';
           if (slot._k !== key) { clearTimeout(slot._t); const id = done.id; slot._t = setTimeout(() => { slot._t = 0; if (slot._mgrOpen) shown['_d' + id] = SL.time.T.wall; else shown['_d' + id] = -Infinity; const A = SL.sessions.active; if (A) render(A, A.wm); }, left + 50); }
         } else if (left > 0) {
           key = 'd' + done.id + done.answered;
@@ -255,18 +255,23 @@
     const mine = (m.qs || []).filter(x => x.answered && x.by !== 'manager').reduce((t, x) => Math.max(t, x.tAns == null ? -Infinity : x.tAns), -Infinity);
     return (m.mgrDec || []).filter(d => d.t >= mine);
   }
-  /** The words of a list of the manager's decisions: "the manager approved N actions", or with a denial "the manager answered N questions: A approved, D denied". */
-  function mgrLabel(list) {
-    const n = list.length, d = list.filter(x => !x.ok).length, a = n - d, pl = (k, w) => k + ' ' + w + (k === 1 ? '' : 's');
+  /** How many decisions mgrRecent stands for: {n, d (denied)}, counted as they came (its list keeps only the newest). */
+  function mgrRecentCount(m) { const k = m.decMark || { n: 0, d: 0 }; return { n: Math.max(0, (m.nMgrDec || 0) - k.n), d: Math.max(0, (m.nMgrDen || 0) - k.d) }; }
+  /** The words of a list of the manager's decisions: "the manager approved N actions", or with a denial "the manager answered N questions:
+   *  A approved, D denied". tot ({n, d}) is how many decisions the list stands for when it keeps only the newest of them. */
+  function mgrLabel(list, tot) {
+    const n = tot && tot.n >= list.length ? tot.n : list.length, d = tot && tot.n >= list.length ? tot.d : list.filter(x => !x.ok).length, a = n - d, pl = (k, w) => k + ' ' + w + (k === 1 ? '' : 's');
     return d ? 'the manager answered ' + pl(n, 'question') + ': ' + a + ' approved, ' + d + ' denied' : 'the manager approved ' + pl(n, 'action');
   }
   /**
    * The manager's decisions as one collapsed line ("the manager approved N actions ▸") that opens to the list: the agent, the command and
-   * approved or denied. cls is the class of the box (in the chat a row, in the rail a quiet line). Every text is escaped.
+   * approved or denied. cls is the class of the box (in the chat a row, in the rail a quiet line); tot ({n, d}) is how many decisions the
+   * list stands for when it keeps only the newest (mgrLabel). Every text is escaped.
    */
-  function mgrHtml(list, open, cls) {
+  function mgrHtml(list, open, cls, tot) {
+    const all = tot && tot.n >= list.length ? tot.n : list.length, shown = Math.min(60, list.length);
     const rows = list.slice(-60).map(d => '<li><b style="color:' + U.agCol(d.agent) + '">' + esc(d.agent || '?') + '</b>' + (d.task ? ' <span class="dim">' + esc(d.task) + '</span>' : '') + ' <span class="mono">' + esc(clip1(d.cmd, 160)) + '</span> ' + (d.ok ? '<span class="ok">approved</span>' : '<span class="err">denied</span>') + '</li>').join('');
-    return '<div class="' + cls + '"><button class="qmgr-t" type="button" data-mgrtog aria-expanded="' + open + '"><span class="lg" aria-hidden="true">' + (list.some(d => !d.ok) ? '⊘' : '✓') + '</span><span>' + esc(mgrLabel(list)) + '</span><span class="dx" aria-hidden="true">' + (open ? '▾' : '▸') + '</span></button><ol class="qmgr-l"' + (open ? '' : ' hidden') + '>' + (list.length > 60 ? '<li class="dim">' + (list.length - 60) + ' earlier ones are in the log</li>' : '') + rows + '</ol></div>';
+    return '<div class="' + cls + '"><button class="qmgr-t" type="button" data-mgrtog aria-expanded="' + open + '"><span class="lg" aria-hidden="true">' + (list.some(d => !d.ok) ? '⊘' : '✓') + '</span><span>' + esc(mgrLabel(list, tot)) + '</span><span class="dx" aria-hidden="true">' + (open ? '▾' : '▸') + '</span></button><ol class="qmgr-l"' + (open ? '' : ' hidden') + '>' + (all > shown ? '<li class="dim">' + (all - shown) + ' earlier ones are in the log</li>' : '') + rows + '</ol></div>';
   }
   /** Who closed a question when it was not the person (the `by` of an answer event). */
   const BY = { manager: 'answered by the manager', timeout: 'refused: nobody answered in time', canceled: 'refused: canceled (the turn stopped, or the question could not be shown)', closed: 'refused: the session closed', nobody: 'refused: no page was open to answer' };
@@ -274,7 +279,7 @@
   const cmdHtml = q => { const m = markNonAscii(q.cmd); return lenLine(q.cmd, 'the command') + '<div class="qcmd qblk"><i>' + mark(q.cwd || '.') + ' $</i> ' + m.html + '</div>' + markNote(m); };
   /** Why it asks, in a block of its own scroll (a reason can be as long as the command it explains). */
   const whyHtml = (q, id) => lenLine(q.why, 'the reason') + '<div class="qwhy qblk"' + (id ? ' id="' + id + '"' : '') + '><b>why it asks</b>' + mark(q.why) + '</div>';
-  ui.approvals = { render, arm, answer, paintMeters, shown, wants, choiceText, keyOf, choiceOfKey, offersTwo, diffLines, parseDiff, counts, ruleList, mgrHtml, mgrLabel, mgrRecent, html: { cmd: cmdHtml, why: whyHtml, change: changeHtml, opts } };
+  ui.approvals = { render, arm, answer, paintMeters, shown, wants, choiceText, keyOf, choiceOfKey, offersTwo, diffLines, parseDiff, counts, ruleList, mgrHtml, mgrLabel, mgrRecent, mgrRecentCount, html: { cmd: cmdHtml, why: whyHtml, change: changeHtml, opts } };
   /**
    * Keys 1/2/3 (4 with the fourth answer) and Esc answer the front question of the active session: only when it is on screen and armed.
    * Returns true when the key answered, 'opened' when the question was not on screen (the rail was folded away or another pane was in

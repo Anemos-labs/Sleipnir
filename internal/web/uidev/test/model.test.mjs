@@ -20,8 +20,9 @@ function rosterOf(events) {
   return ids.map((id, i) => ({ id, role: id === 'mgr' ? 'manager' : 'worker', code: id.split('-')[0], nth: 1, k: i, leg: i - 1, scope: '', ro: false, model: 'm', spawn: 0 }));
 }
 const session = events => ({ id: 't', meta: { goalText: '' }, roster: rosterOf(events) });
-/** Every kind the reducer handles (the kinds of the reference page, the five additive kinds and the three the translator adds). */
-const KNOWN = new Set('say sys local tool note state task plan verdict req use warm gov mail ckpt ask answer queue merge break compact stream diff goal final steer reply interrupt refuse more turn stall handover layers alert mailstat svc'.split(' '));
+/** Every kind the reducer handles (the kinds of the reference page, the five additive kinds and the four the translator adds: tally only
+ *  in a keyframe). */
+const KNOWN = new Set('say sys local tool note state task plan verdict req use warm gov mail ckpt ask answer queue merge break compact stream diff goal final steer reply interrupt refuse more turn stall handover layers alert mailstat svc tally'.split(' '));
 
 test('the golden streams exist', () => { assert.ok(goldens.length >= 2, 'no golden UI stream under ' + GOLDEN); });
 
