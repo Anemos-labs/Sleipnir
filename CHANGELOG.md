@@ -14,7 +14,10 @@ they do not indicate whether a change has been released.
   not make `$TMPDIR` unknown, and `o["k"]=1` is not taken for an array
   assignment. A line that named a scratch directory and then fed Python a
   script was asked about deleting it in `bypass`. A body a shell runs, a
-  builtin reads or the shell expands still counts. Prompt bytes: none change.
+  builtin reads or the shell expands still counts. A `$` that starts no
+  expansion (`$|` in a regex, a trailing `$`) is the character, so
+  `pgrep -af "$INSTALL/raven($| )"` names a known path rather than one that
+  might leave `$TMPDIR`. Prompt bytes: none change.
 
 - A `case` statement is parsed: the commands of its bodies are judged as any
   other (as conditional ones), and the line keeps the variables it set. It
