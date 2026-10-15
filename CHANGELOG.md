@@ -20,6 +20,16 @@ they do not indicate whether a change has been released.
   a test or a command that changes files, or updating the task" and that
   reading is not progress; nothing cached changes.
 
+- What a new shell does stays in that shell: an assignment, a `source`, a
+  `read` or an arithmetic expansion inside `sh -c`, `bash -c`, `su -c` or a
+  script fed to a shell no longer makes the line's own variables, or its
+  `$HOME`, `$TMPDIR` and `$PWD`, unknown. `T=$(mktemp -d); sh -c '. ./x.sh';
+  rm -rf "$T"` is allowed in bypass mode. Inside the new shell its own
+  names stay unknown, and so do the harness's names the line assigns
+  (an exported one reaches it); `eval` and `.` still count (they run in
+  this shell), and a loop around a new shell still makes what the loop
+  assigns unknown to it. Prompt bytes: none change.
+
 - A step limit is a window, not a ceiling, for team workers and for the
   single agent of `sleipnir run`, the terminal and the web interface. A run
   that made at least 3 new edits in its last window (an edit it repeats does
