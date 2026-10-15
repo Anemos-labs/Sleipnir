@@ -477,7 +477,7 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 	}
 	stale := "" // the leader of a pool whose reconciliation a confirm found superseded
 	var vote poolVote
-	read := false       // the caller read or wrote the pool's current revision with this action
+	read := false       // the caller wrote the pool's current revision with this action (propose, reconcile)
 	var after PoolState // the pool as this action left it
 	err = s.Board.poolUpdate(by, in.ID, func(sn *Snapshot, task *Task, p *PoolState) error {
 		member := slices.Contains(p.Members, by)
@@ -502,7 +502,6 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			if !slices.Contains(p.Inspected, by) {
 				p.Inspected = append(p.Inspected, by)
 			}
-			read = true
 		case "agree", "confirm":
 			if err := voterRefusal(*task, *p, by, in.Action, manager); err != nil {
 				return err
@@ -614,9 +613,19 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		return text("%s: execute recorded. %s", in.ID, steps), nil
 	case "agree", "confirm":
 		return s.voteRecorded(by, in.ID, in.Action, vote), nil
+	case "inspect":
+		// The member's checkout holds the combined result; the answer is the pool's task in full (task get), the read its confirm
+		// without a revision counts for.
+		res := s.readTask(c, in.ID, "pool inspect")
+		if !res.IsError {
+			res.Text = fmt.Sprintf("%s: inspect recorded; your checkout holds the combined result. Examine it, then confirm. The pool's task:\n%s", in.ID, res.Text)
+		}
+		return res, nil
 	}
 	if in.Action == "propose" || in.Action == "reconcile" {
 		s.wakePool(in.ID, "Pool updated: "+in.Action+". "+agreement)
+		// The caller wrote this revision's text: the answer names the revision, and the text is the one it sent.
+		return text("%s: %s recorded as revision %d", in.ID, in.Action, after.Revision), nil
 	}
 	return text("%s: %s recorded", in.ID, in.Action), nil
 }

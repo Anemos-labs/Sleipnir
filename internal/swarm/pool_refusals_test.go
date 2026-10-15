@@ -347,3 +347,42 @@ func TestAPoolReadIsOfOneRevisionAndAgreement(t *testing.T) {
 		t.Errorf("a task without a pool was remembered: %d", rev)
 	}
 }
+
+// pool inspect answers with the pool's task in full, which is the read a confirm without a revision counts for; a proposal or a
+// reconciliation answers with the revision it made.
+func TestInspectShowsThePoolItRecordsAsRead(t *testing.T) {
+	r := newPoolRig(t)
+	id := r.parent.ID
+	if got := r.must(r.pool(r.lead, map[string]any{"action": "propose", "text": "split handlers and tests"}), "propose"); got != id+": propose recorded as revision 2" {
+		t.Errorf("the proposal's answer: %q", got)
+	}
+	for _, m := range []string{r.lead, r.second, r.third} {
+		r.must(r.pool(m, map[string]any{"action": "agree", "revision": 2}), "agree")
+	}
+	r.must(r.pool(r.lead, map[string]any{"action": "execute"}), "execute")
+	if got := r.must(r.pool(r.lead, map[string]any{"action": "reconcile", "text": "the combined contract"}), "reconcile"); got != id+": reconcile recorded as revision 3" {
+		t.Errorf("the reconciliation's answer: %q", got)
+	}
+	got := r.must(r.pool(r.second, map[string]any{"action": "inspect"}), "inspect")
+	head, body, _ := strings.Cut(got, "\n")
+	if !strings.Contains(head, "inspect recorded") {
+		t.Errorf("inspect's answer: %q", head)
+	}
+	var task Task
+	if err := json.Unmarshal([]byte(body), &task); err != nil || task.Pool == nil || task.Pool.Revision != 3 || task.Pool.Agreement != "the combined contract" ||
+		task.Pool.Phase != "reconciling" {
+		t.Fatalf("inspect does not show the pool: %v %q", err, body)
+	}
+	if got := r.must(r.pool(r.second, map[string]any{"action": "confirm"}), "a confirm with no revision after inspect"); !strings.Contains(got, "revision 3 (the revision you last read)") {
+		t.Errorf("confirm after inspect: %q", got)
+	}
+}
+
+// A leader that accepts a task that does not exist is told so: it may accept its children, so the id is the mistake. The actions
+// that are the manager's whatever the id names keep the refusal of the role.
+func TestAnUnknownTaskIsNamedToALeaderThatAcceptsIt(t *testing.T) {
+	r := newPoolRig(t)
+	r.executing()
+	r.refused(r.task(r.lead, map[string]any{"action": "accept", "id": "T99"}), "accept of an unknown task", "no task T99")
+	r.refused(r.task(r.lead, map[string]any{"action": "revise", "id": "T99", "text": "x"}), "revise of an unknown task", "only the manager can revise tasks")
+}

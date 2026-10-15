@@ -49,8 +49,9 @@ The first configured member leads, including after resume. `pool propose` record
 shared agreement covering conventions, interfaces, work division and acceptance.
 Every member calls `pool agree` with its current revision before `pool execute` can
 unlock writes. A vote (`agree`, `confirm`) without `revision` counts for the revision
-the member last read in full (`task get`, `pool inspect`, or the proposal or
-reconciliation it wrote) while that revision and its agreement are current; that
+the member last read in full (`task get`, `pool inspect`, which answers with the
+pool's task, or the proposal or reconciliation it wrote, whose answer names the
+revision) while that revision and its agreement are current; that
 memory is not kept across a restart. Otherwise a refusal names its one cause (no
 revision, a stale or unknown one, nothing proposed yet, the pool already executing,
 the wrong phase for the action) with the current revision and phase and the exact

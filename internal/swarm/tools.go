@@ -102,10 +102,15 @@ func (s *Swarm) readTask(c *tools.Call, id, how string) *tools.Result {
 // that a pool leader accepts the children of the pool it leads while it executes. It returns nil for that exception.
 func (s *Swarm) reviewRefusal(me string, in taskIn) *tools.Result {
 	sn := s.Board.Snapshot()
-	task, _ := sn.Task(in.ID)
+	task, ok := sn.Task(in.ID)
 	what := "the task"
 	if in.ID != "" {
 		what = cleanText(in.ID, 20)
+	}
+	if in.Action == "accept" && in.ID != "" && !ok {
+		// a leader may accept some tasks: an id that names none is the mistake to report (the other actions are the manager's
+		// whatever the id names)
+		return tools.Errorf("no task %s: task list shows the board", what)
 	}
 	if in.Action != "accept" {
 		if p, ok := sn.Task(task.Parent); ok && task.Parent != "" && p.Pool != nil && p.Owner == me {
