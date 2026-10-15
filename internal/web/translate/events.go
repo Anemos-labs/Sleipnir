@@ -8,7 +8,7 @@ import (
 )
 
 // The events of this file extend the vocabulary of package wire additively: an existing kind with optional fields (a reader that does
-// not know them ignores them), or a new kind (alert, mailstat, svc). Each embeds the wire type it extends, so it encodes as that type's
+// not know them ignores them), or a new kind (alert, mailstat, svc, tally). Each embeds the wire type it extends, so it encodes as that type's
 // fields plus its own, and it is a wire.Event through the embedded Base.
 
 // StateX is a state event with reqSince: the session time at which the agent's oldest unanswered main request was sent (the page
@@ -114,11 +114,23 @@ type SvcUse struct {
 	Plan         bool    `json:"plan,omitempty"`
 }
 
+// Tally is a new kind, sent only in a keyframe: how many events of the kinds whose number a page shows the keyframe stands for
+// without carrying them. A keyframe carries only the newest mails, cache breaks and compactions (the mirror's caps), so a page that
+// counts the events it reduces adds these to its counts: Breaks cache breaks, Loud of them not quiet (wire.Break.Quiet), Compacts
+// compactions and Mails mails. Each is a number to add, never a total, so the order a page reduces a keyframe in does not matter.
+type Tally struct {
+	wire.Base
+	Breaks   int `json:"breaks"`
+	Loud     int `json:"loud"`
+	Compacts int `json:"compacts"`
+	Mails    int `json:"mails"`
+}
+
 // extKinds names the kind of each extension type.
 var extKinds = map[reflect.Type]string{
 	reflect.TypeOf(&StateX{}): "state", reflect.TypeOf(&UseX{}): "use", reflect.TypeOf(&TaskX{}): "task", reflect.TypeOf(&MailX{}): "mail",
 	reflect.TypeOf(&ToolX{}): "tool", reflect.TypeOf(&Alert{}): "alert", reflect.TypeOf(&MailStat{}): "mailstat", reflect.TypeOf(&SvcUse{}): "svc",
-	reflect.TypeOf(&CompactX{}): "compact", reflect.TypeOf(&ReqX{}): "req",
+	reflect.TypeOf(&CompactX{}): "compact", reflect.TypeOf(&ReqX{}): "req", reflect.TypeOf(&Tally{}): "tally",
 }
 
 // kindOf names the kind of any event of the vocabulary, the extensions included ("" for an unknown type).

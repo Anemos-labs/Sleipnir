@@ -119,5 +119,5 @@ test('a recorded session that ran on a plan shows its list-price figure, marked'
   const html = S.recHtml([rec('a1', { list: 0.42, plan: true }), rec('b2', { cost: 0.42 })], { sel: new Set(), hosted: new Set(), now: 1e12 });
   const row = id => html.split('<tr data-rid="').find(p => p.startsWith(id + '"'));
   assert.match(row('a1'), /≈\$0\.42 <span class="plantag"/);
-  assert.match(row('b2'), /<td class="r">\$0\.42<\/td>/);
+  assert.match(row('b2'), /<td class="r nowrap">\$0\.42<\/td>/, 'the figure and its tag stay on one line');
 });

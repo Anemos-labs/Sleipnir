@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -68,6 +69,8 @@ type Recorded struct {
 	// ListUSD and Plan are what a subscription plan covered (Summary.ListUSD).
 	ListUSD float64
 	Plan    bool
+	// Mailman is the mailman mode of the last run (Summary.Mailman).
+	Mailman bool
 }
 
 // Integration is the end of an isolated run as a listing reports it: whether the verified result reached the checkout, and when it
@@ -84,6 +87,8 @@ type Integration struct {
 type Summary struct {
 	// Model is the model of the last session.start; CostUSD the cost of the last session.end, and ListUSD and Plan what it says a
 	// subscription plan covered (the value at the API list price, shown with CostUSD and marked as the plan's; see session.Result).
+	// A run that wrote no session.end (it is still running, or its process died) adds what its model responses report, the
+	// cost_usd and list_usd the terminal's State sums: the last session.end's figures plus those of the responses after it.
 	Model   string
 	CostUSD float64
 	ListUSD float64
@@ -93,9 +98,12 @@ type Summary struct {
 	First string
 	// Cwd and Root are the working directory and the project root of the first session.start.
 	Cwd, Root string
+	// Mailman is the mailman mode of the last session.start (--mailman).
+	Mailman bool
 	// Started is the time of the first session.start, Last the time of the last event.
 	Started, Last time.Time
-	// Agents counts the distinct agents that wrote to the log.
+	// Agents counts the distinct agents that wrote to the log: the manager and the workers, without the harness's own writers
+	// (swarm, harness, curator, its worktrees such as _integration) and its service agents (the mailman, spawned with service set).
 	Agents int
 	// EndReason is the reason of the last session.end; Open is true when a session.start follows the last session.end (or there is
 	// no end at all): the last run did not close the session.
@@ -122,7 +130,7 @@ func Summarize(path string) Summary {
 	defer f.Close()
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 1<<20), 16<<20)
-	agents := map[string]bool{}
+	agents, services := map[string]bool{}, map[string]bool{}
 	var (
 		started bool
 		iso     struct {
@@ -130,6 +138,8 @@ func Summarize(path string) Summary {
 			Commit bool   `json:"commit"`
 		}
 		applied string
+		// what the responses after the last session.end report: the spend of a run that has not ended
+		open responseSpend
 	)
 	for sc.Scan() {
 		var e events.Event
@@ -139,18 +149,31 @@ func Summarize(path string) Summary {
 		if !e.TS.IsZero() {
 			s.Last = e.TS
 		}
-		if e.Agent != "" && len(agents) < maxAgents {
+		if e.Agent != "" && !harnessWriter(e.Agent) && len(agents) < maxAgents {
 			agents[e.Agent] = true
 		}
 		switch e.Type {
 		case events.TypeSessionStart:
-			var d struct{ Model, Cwd, Root string }
+			var d struct {
+				Model, Cwd, Root string
+				Mailman          bool `json:"mailman"`
+			}
 			_ = json.Unmarshal(e.Data, &d)
-			s.Model = d.Model
+			s.Model, s.Mailman = d.Model, d.Mailman
 			if !started {
 				started, s.Started, s.Cwd, s.Root = true, e.TS, d.Cwd, d.Root
 			}
 			s.Open = true
+		case events.TypeAgentSpawn:
+			var d struct {
+				ID      string `json:"id"`
+				Service bool   `json:"service"`
+			}
+			if json.Unmarshal(e.Data, &d) == nil && d.Service && d.ID != "" && len(services) < maxAgents {
+				services[d.ID] = true
+			}
+		case events.TypeModelResponse:
+			open.add(e.Data)
 		case events.TypeUserInput:
 			if s.First == "" {
 				var d struct{ Text, Origin string }
@@ -168,6 +191,7 @@ func Summarize(path string) Summary {
 			}
 			_ = json.Unmarshal(e.Data, &d)
 			s.CostUSD, s.ListUSD, s.Plan, s.EndReason, s.Open = d.Cost, d.List, d.Plan, d.Reason, false
+			open = responseSpend{}
 		case isolationEvent:
 			_ = json.Unmarshal(e.Data, &iso)
 		case integrationStateEvent:
@@ -188,8 +212,57 @@ func Summarize(path string) Summary {
 			s.Integration = integrationOf(d.Branch, d.Reason, d.Applied, d.Committed, len(d.Files), iso.Commit, iso.Base, applied)
 		}
 	}
-	s.Agents = len(agents)
+	for id := range agents {
+		if !services[id] {
+			s.Agents++
+		}
+	}
+	if s.Open {
+		s.CostUSD += open.cost
+		s.ListUSD += open.list
+		s.Plan = s.Plan || open.plan
+	}
 	return s
+}
+
+// harnessWriter reports whether a writer of a log is the harness itself, never an agent of the team: the swarm, the harness and the
+// curator (the names the terminal's State reads as no agent), and a worktree of its own, whose name starts with an underscore (the
+// integration tree, _integration).
+func harnessWriter(name string) bool {
+	return name == "swarm" || name == "harness" || name == "curator" || strings.HasPrefix(name, "_")
+}
+
+// responseSpend sums what model responses report: the cost billed, the value at the API list price of the usage a subscription plan
+// covered (a response carries list_usd only then), and whether any response was a plan's, as the terminal's State sums them.
+type responseSpend struct {
+	cost, list float64
+	plan       bool
+}
+
+// add folds one model.response's data. A figure that is not a finite amount of at least zero counts as zero.
+func (r *responseSpend) add(data json.RawMessage) {
+	var d struct {
+		Cost *float64 `json:"cost_usd"`
+		List *float64 `json:"list_usd"`
+	}
+	if json.Unmarshal(data, &d) != nil {
+		return
+	}
+	if d.Cost != nil {
+		r.cost += amount(*d.Cost)
+	}
+	if d.List != nil {
+		r.list += amount(*d.List)
+		r.plan = true
+	}
+}
+
+// amount is a reported dollar amount made safe to add: NaN, an infinity and a negative figure are zero.
+func amount(f float64) float64 {
+	if math.IsNaN(f) || math.IsInf(f, 0) || f < 0 {
+		return 0
+	}
+	return f
 }
 
 // integrationOf words the end of an isolated run as the swarm reports it (swarm.IntegrationReport): the message, and for a result
@@ -423,6 +496,7 @@ func recordedOf(id, dir string, fi, log fs.FileInfo, c cachedListing) Recorded {
 	r := Recorded{
 		ID: id, Dir: dir, First: c.sum.First, Model: c.sum.Model, Cwd: c.sum.Cwd, CostUSD: c.sum.CostUSD, Bytes: c.bytes,
 		Agents: c.sum.Agents, Resumable: c.resumable, Integration: c.sum.Integration, ListUSD: c.sum.ListUSD, Plan: c.sum.Plan,
+		Mailman: c.sum.Mailman,
 	}
 	r.LastWritten = fi.ModTime()
 	if log.ModTime().After(r.LastWritten) {
