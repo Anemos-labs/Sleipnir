@@ -402,15 +402,17 @@ worker mail -> router (kind, recipient, length, rate limits, dedupe: unchanged)
   own mail and the mailman's own mail never go through it (authority does not queue, and a mailman's mail is a delivery, never
   a message to be routed again: nothing can loop). Mail to the mailman is refused (it is on no roster). A message a recipient
   answers is a new message like any other.
-* **Cost discipline.** Nothing runs until parcels are pending; a burst is coalesced (1.5 s after its last parcel, at most 6 s
-  after its first, at once when 24 are waiting; both are counted from the parcels' arrival, so housekeeping does not extend
-  them), and a recipient with fewer than three parcels in a batch gets them directly and at once: two messages are no burst,
-  a digest of them is barely shorter, and a request is not worth paying for. The mailman is shown each parcel whole, up to
-  16,000 characters of parcel text per request (about 4,000 tokens); over that, short parcels stay whole and the longest are
-  cut to an equal share of the rest, so a digest is the mailman's summary rather than the harness's cut. It runs below every
-  worker's priority, sees a one-line hot view, has a role pin of about 150 tokens and at most 12 steps, counts against the
-  swarm budget like any agent and can run on a model of its own (`--role-model mailman=<model>`). Bounds: 24 parcels per
-  request, 200 in the ledger (beyond that mail is delivered directly), one digest per recipient per request.
+* **Cost discipline.** Nothing runs until parcels are pending; a burst is coalesced (1.5 s after its last parcel, at most 6
+  s after its first, at once when 24 are waiting; both are counted from the parcels' arrival, so housekeeping does not
+  extend them), and a recipient with fewer than three parcels in a batch gets them directly and at once: two messages are no
+  burst, a digest of them is barely shorter, and a request is not worth paying for. The mailman is shown each parcel whole,
+  up to 16,000 characters of parcel text per request (about 4,000 tokens, counted as quoted in the request); over that,
+  short parcels stay whole and the longest are cut to an equal share of the rest, so a digest is the mailman's summary
+  rather than the harness's cut. It runs below every worker's priority, sees a one-line hot view, has a role pin of about
+  150 tokens and at most 12 steps, counts against the swarm budget like any agent and can run on a model of its own
+  (`--role-model mailman=<model>`). Bounds: 24 parcels per request (a configured bound is capped at 66, so each parcel is
+  shown at least 240 characters), 200 in the ledger (beyond that mail is delivered directly), one digest per recipient per
+  request.
 * **A missing mailman costs delay, never mail.** If it is stuck or absent (it could not start, its model failed twice in a row
   and is given up on for a minute, the swarm budget is spent, the swarm is stopping) or a parcel has waited longer than the bound
   (30 s), the harness delivers the parcels directly, exactly as the router would have without a mailman: original sender, kind

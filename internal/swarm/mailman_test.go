@@ -8,12 +8,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/core"
@@ -380,23 +383,74 @@ func TestMailmanSeesWholeParcels(t *testing.T) {
 
 // What the mailman is shown fits a budget per request: every parcel whole when the batch
 // fits, otherwise the short parcels whole and the long ones cut to an equal share of what
-// is left, never below a floor.
+// is left. The budget wins whatever the batch: a configured batch bound is capped so that
+// the share never falls below the floor.
 func TestParcelViewKeepsShortParcelsWholeWithinTheBudget(t *testing.T) {
-	if v := parcelView([]int{600, 900, 1200}, mailmanViewBudget, mailmanParcelFloor); v != 0 {
+	shown := func(lens []int, view int) int {
+		n := 0
+		for _, l := range lens {
+			if view > 0 {
+				l = min(l, view)
+			}
+			n += l
+		}
+		return n
+	}
+	if v := parcelView([]int{600, 900, 1200}, mailmanViewBudget); v != 0 {
 		t.Fatalf("a batch within the budget is cut at %d", v)
 	}
-	if v := parcelView(nil, mailmanViewBudget, mailmanParcelFloor); v != 0 {
+	if v := parcelView(nil, mailmanViewBudget); v != 0 {
 		t.Fatalf("an empty batch is cut at %d", v)
 	}
-	if v := parcelView([]int{2000, 100, 2000}, 1000, 240); v != 450 {
+	if v := parcelView([]int{2000, 100, 2000}, 1000); v != 450 {
 		t.Fatalf("cap %d: the short parcel whole and 450 of each long one fill a budget of 1000", v)
 	}
-	if v := parcelView([]int{1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200, 1200},
-		mailmanViewBudget, mailmanParcelFloor); v != mailmanViewBudget/24 || v < 600 {
-		t.Fatalf("a full batch of the longest messages is cut at %d", v)
+	for _, n := range []int{24, mailmanMaxBatch, mailmanMaxBatch + 1, 200} {
+		lens := slices.Repeat([]int{1200}, n)
+		v := parcelView(lens, mailmanViewBudget)
+		if got := shown(lens, v); got > mailmanViewBudget {
+			t.Fatalf("%d parcels of 1,200 characters: %d shown, over the budget of %d", n, got, mailmanViewBudget)
+		}
+		if n <= mailmanMaxBatch && v < mailmanParcelFloor {
+			t.Fatalf("%d parcels (a batch the cap allows): each cut at %d, below the floor of %d", n, v, mailmanParcelFloor)
+		}
 	}
-	if v := parcelView([]int{1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000}, 1000, 240); v != 240 {
-		t.Fatalf("cap %d: the floor holds", v)
+	// A batch bound above the cap is lowered to it: a raised MailmanBatch cannot push a
+	// request past its budget.
+	for _, batch := range []int{67, 1000} {
+		if got := New(Config{Mailman: true, MailmanBatch: batch}, Deps{}, nil).cfg.MailmanBatch; got != mailmanMaxBatch {
+			t.Fatalf("MailmanBatch %d became %d, want the cap %d", batch, got, mailmanMaxBatch)
+		}
+	}
+}
+
+// The budget counts the parcel text as the request carries it: quoted, so a quote or a
+// backslash takes two characters. A batch of quote-heavy mail stays within the budget,
+// and a cut never splits an escape.
+func TestMailmanBatchBudgetCountsQuotedText(t *testing.T) {
+	s := New(Config{Mailman: true}, Deps{}, nil)
+	b := &mailBatch{order: []string{"mgr"}, byTo: map[string][]*parcel{}}
+	text := strings.Repeat(`"\`, 600) // 1,200 characters, 2,400 quoted
+	for k := 0; k < s.cfg.MailmanBatch; k++ {
+		b.byTo["mgr"] = append(b.byTo["mgr"], &parcel{msg: Message{ID: fmt.Sprintf("m%d", k), From: "w-1", To: "mgr", Kind: "info", Text: text}})
+	}
+	out := s.mail.render(b)
+	parcels := 0
+	for _, m := range regexp.MustCompile(` \(\d+\) w-1 info: ("(?:[^"\\]|\\.)*");`).FindAllStringSubmatch(out, -1) {
+		got, err := strconv.Unquote(m[1])
+		if err != nil {
+			t.Fatalf("a parcel is not a whole quoted string (a cut split an escape): %v\n%s", err, m[1])
+		}
+		if !strings.HasSuffix(got, "…") || !strings.HasPrefix(text, strings.TrimSuffix(got, "…")) {
+			t.Fatalf("parcel shown as %q: not a cut of the original", got)
+		}
+		parcels += utf8.RuneCountInString(m[1]) - 2
+	}
+	if n := len(b.byTo["mgr"]); parcels == 0 || strings.Count(out, " w-1 info: ") != n {
+		t.Fatalf("%d parcels rendered, want %d:\n%s", strings.Count(out, " w-1 info: "), n, out)
+	}
+	if parcels > mailmanViewBudget {
+		t.Fatalf("the batch carries %d characters of quoted parcel text, over the budget of %d", parcels, mailmanViewBudget)
 	}
 }
 
