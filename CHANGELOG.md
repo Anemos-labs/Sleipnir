@@ -13,12 +13,14 @@ they do not indicate whether a change has been released.
   manager included. Teammates are now ranked by relevance before the cap (a
   worker's pool mates, the owners of related tasks and the manager first,
   then its role; for the manager, workers waiting on it, then those at
-  work), the manager's view lists up to 64, and a teammate without a line
-  of its own (beyond the cap, or dropped for the budget) is named on a
-  final `+N not shown: …` line instead of counted in "(+N more lines
-  omitted)". Prompt bytes: the live view's team section changes (order of
-  dropping, the new line); it is per-request text, so nothing cached
-  changes.
+  work), and the manager's view lists up to 64. Teammates without a line
+  of their own (beyond the cap, or dropped for the budget) are counted on a
+  final `+N not shown: …` line instead of in "(+N more lines omitted)",
+  which names the most relevant of them: at most 64, fewer when the budget
+  needs it, the rest counted (`and 6 more`). The omission note is now
+  within the budget too. Prompt bytes: the live view's team section changes
+  (order of dropping, the new line); it is per-request text, so nothing
+  cached changes.
 
 - What a new shell does stays in that shell: an assignment, a `source`, a
   `read` or an arithmetic expansion inside `sh -c`, `bash -c`, `su -c` or a

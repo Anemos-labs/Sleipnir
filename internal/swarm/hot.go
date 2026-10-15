@@ -136,10 +136,12 @@ func RenderHot(s *Snapshot, agent, role string, isManager bool, cfg HotConfig, e
 		}
 	}
 
-	// 4: teammates, relevant first. Every teammate is either on a line of its own or named
-	// on the "not shown" line, so nobody reads a teammate's absence from the view as its
-	// absence from the team. The lines go in roster order; relevance decides who gets one
-	// (maxHotAgents, maxHotAgentsMgr) and who is named first when the budget drops lines.
+	// 4: teammates, relevant first. A teammate is on a line of its own or on the "not shown"
+	// line, so nobody reads a teammate's absence from the view as its absence from the team:
+	// that line names the most relevant of them (at most maxHotAgentNames, fewer when the
+	// budget needs it) and counts every one. The lines go in roster order; relevance decides
+	// who gets one (maxHotAgents, maxHotAgentsMgr) and who is named first when the budget drops
+	// lines.
 	var idle, running, other int
 	rank := teammateRanks(s, agent, role, isManager, mine, related)
 	var mates []AgentInfo
@@ -216,18 +218,24 @@ func RenderHot(s *Snapshot, agent, role string, isManager bool, cfg HotConfig, e
 		keep[i] = true
 	}
 	dropped := hidden
-	named := func() { // the "not shown" line: capped teammates and those whose lines were dropped
+	names := maxHotAgentNames // how many teammates the "not shown" line names; it counts them all
+	// named writes the "not shown" line: the teammates beyond the cap and those whose lines were dropped.
+	named := func() {
 		ids := append([]string(nil), unlisted...)
 		for i, l := range lines {
 			if l.agent != "" && !keep[i] {
 				ids = append(ids, l.agent)
 			}
 		}
-		lines[namesAt].text, keep[namesAt] = notShownLine(ids, pos, at)
+		lines[namesAt].text, keep[namesAt] = notShownLine(ids, pos, at, names)
 	}
 	render := func() string {
 		named()
-		return assemble(lines, keep, s.Version, len(s.Agents), running, idle, other, open, done, agent)
+		txt := assemble(lines, keep, s.Version, len(s.Agents), running, idle, other, open, done, agent)
+		if dropped > 0 {
+			txt = strings.Replace(txt, "</live>", fmt.Sprintf("(+%d more lines omitted)\n</live>", dropped), 1)
+		}
+		return txt
 	}
 	txt := render()
 	if total := est.Tokens(txt); total > budget {
@@ -258,9 +266,13 @@ func RenderHot(s *Snapshot, agent, role string, isManager bool, cfg HotConfig, e
 			txt = render() // ... then look at the real text: headers, rounding and names may need a bit more
 			total = est.Tokens(txt)
 		}
-	}
-	if dropped > 0 {
-		txt = strings.Replace(txt, "</live>", fmt.Sprintf("(+%d more lines omitted)\n</live>", dropped), 1)
+		// Every line that may go has gone: the "not shown" line names fewer teammates (the least relevant first), down to
+		// none, and still counts them all.
+		for total > budget && names > 0 {
+			names = min(names-1, names*budget/total)
+			txt = render()
+			total = est.Tokens(txt)
+		}
 	}
 	return txt
 }
@@ -336,16 +348,19 @@ func teammateRanks(s *Snapshot, agent, role string, isManager bool, mine, relate
 	return rank
 }
 
-// notShownLine names the teammates the view has no line for, at most maxHotAgentNames of them (the most relevant: pos is each
-// one's place by relevance), in roster order (at). It returns false when there are none.
-func notShownLine(ids []string, pos, at map[string]int) (string, bool) {
+// notShownLine is the line for the teammates the view has no line for: how many, and the names of the most relevant max of them
+// (pos is each one's place by relevance) in roster order (at). It returns false when there are none.
+func notShownLine(ids []string, pos, at map[string]int, max int) (string, bool) {
 	if len(ids) == 0 {
 		return "", false
 	}
 	n := len(ids)
-	if n > maxHotAgentNames {
+	if max <= 0 {
+		return fmt.Sprintf("+%d not shown", n), true
+	}
+	if n > max {
 		sort.Slice(ids, func(i, j int) bool { return pos[ids[i]] < pos[ids[j]] })
-		ids = ids[:maxHotAgentNames]
+		ids = ids[:max]
 	}
 	sort.Slice(ids, func(i, j int) bool { return at[ids[i]] < at[ids[j]] })
 	more := ""

@@ -126,7 +126,34 @@ func TestLiveRosterDropsTheLeastRelevantFirst(t *testing.T) {
 			t.Errorf("%s is neither shown nor named:\n%s", a.ID, view)
 		}
 	}
-	if tok := est.Tokens(view); tok > 260 {
+	if tok := est.Tokens(view); tok > 220 {
 		t.Fatalf("view is %d tokens, budget 220:\n%s", tok, view)
+	}
+}
+
+// The "not shown" line fits the budget too: with more teammates than it can name in the tokens left, it names fewer of them, the
+// most relevant first, and still counts them all.
+func TestLiveRosterNamesFitTheBudget(t *testing.T) {
+	b := NewBoard(nil)
+	b.SetLimits(BoardLimits{MaxTasks: 200})
+	b.SetAgent(AgentInfo{ID: "mgr", Role: "manager", State: "running"})
+	for i := 0; i < 70; i++ {
+		b.SetAgent(AgentInfo{ID: fmt.Sprintf("backend-worker-%05d", i), Role: "backend", State: "idle"})
+	}
+	est := core.NewBytesEstimator().WithRatio(4)
+	for _, budget := range []int{220, 120} {
+		view := RenderHot(b.Snapshot(), "backend-worker-00007", "backend", false, HotConfig{MaxTokens: budget}, est)
+		if tok := est.Tokens(view); tok > budget {
+			t.Fatalf("view is %d tokens, budget %d:\n%s", tok, budget, view)
+		}
+		if !strings.Contains(view, "+70 not shown") && !strings.Contains(view, " not shown: ") {
+			t.Fatalf("the teammates are not accounted for:\n%s", view)
+		}
+		if !mentioned(view, "mgr") {
+			t.Errorf("the most relevant teammate, the manager, is not named first:\n%s", view)
+		}
+		if n := strings.Count(view, "backend-worker-"); n >= 69 || !regexp.MustCompile(`not shown: .* and \d+ more`).MatchString(view) {
+			t.Errorf("the line named %d teammates and did not count the rest:\n%s", n, view)
+		}
 	}
 }
