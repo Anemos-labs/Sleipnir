@@ -89,14 +89,11 @@ func TestTheManagerExcusesAPoolMemberThatCannotTakePart(t *testing.T) {
 
 	// Its open subtasks go back to the board; a leader that is excused hands the lead on. The leader is a live agent: a run of its own
 	// that ends with the subtask in doing hands it in for review (settleClean), and work handed in is not taken back. So its model
-	// calls wait until the excuse is done, and the subtask is given to it only when it is idle or waiting.
+	// calls wait until the excuse is done: it is woken, and the subtask is given to it only once its model call waits, so no run of
+	// its own can end, and hand the subtask in, before the excuse.
 	held.Store(lead)
-	rvWait(t, "the leader to be idle or held", func() bool {
-		m := r.sw.get(lead)
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		return m.life == lifeIdle || holding.Load()
-	})
+	r.sw.notify(lead, "info", "hold on")
+	rvWait(t, "the leader's model call to be held", holding.Load)
 	child, err := r.sw.Board.CreateTask(lead, TaskSpec{Parent: parent.ID, Title: "charts", Role: "frontend", Files: []string{"web/charts.js"}})
 	if err != nil {
 		t.Fatal(err)
