@@ -31,7 +31,7 @@
   }
   ui.sparkBars = sparkBars;
   /** The board's additions: a ✗ mark on a failed card (its closure as the title), `try N` when a task took more
-   *  than one attempt; todo's count leaves failed tasks out. Returns {failed, blocked}. Runs after ui.board.update on the same board. */
+   *  than one attempt; todo's count gives failed tasks apart (`3 + 1 ✗`). Returns {failed, blocked}. Runs after ui.board.update on the same board. */
   ui.boardMarks = function (B, m) {
     let failed = 0, blocked = 0, todoFailed = 0;
     m.torder.forEach(id => {
@@ -42,7 +42,8 @@
       let tr = n.querySelector('.tmark'); const nTry = t.attempts > 1 ? 'try ' + t.attempts : '';
       if (nTry && tow) { if (!tr) { tr = document.createElement('span'); tr.className = 'dim tmark'; tow.appendChild(tr); } tr.textContent = nTry; } else if (tr) tr.remove();
     });
-    if (todoFailed) { const c = B.host.querySelector('[data-col="todo"] .cnt'); if (c) c.textContent = String(Math.max(0, (+c.textContent || 0) - todoFailed)); }
+    /* a failed task stays in todo with its ✗: the head counts it apart, so that the count still accounts for every card of the column */
+    if (todoFailed) { const c = B.host.querySelector('[data-col="todo"] .cnt'); if (c) { const left = Math.max(0, (+c.textContent || 0) - todoFailed); c.innerHTML = left + ' <span class="bad">+ ' + todoFailed + ' ✗</span>'; c.title = left + ' to do, ' + todoFailed + ' failed'; } }
     return { failed, blocked };
   };
   /** The words added to a board summary: " (N blocked)", " · N failed". */
@@ -226,19 +227,21 @@
       body.innerHTML = '<section class="panel p-board" aria-label="Task board"><div class="ph"><h2>Task board</h2><div class="r"><span class="bsum"></span><span>drag disabled</span></div></div><div class="bcols"></div></section>';
       const B = ui.board.make(sc, $('.bcols', body), false), bsum = $('.bsum', body);
       sc.listen(body, 'click', e => { const a = e.target.closest('[data-alerts]'); if (a) { const S2 = SL.sessions.active; ui.alertsPop(a, S2, S2.m); } });
-      const update = (S2, m) => { if (!m) return; const cnt = ui.board.update(B, m), bx = ui.boardMarks(B, m); bsum.textContent = (cnt.merged || 0) + ' merged · ' + (cnt.verify || 0) + ' verify · ' + (cnt.running || 0) + ' running' + ui.boardExtra(bx); ui.alertsSlot(bsum, m); };
+      const update = (S2, m) => { if (!m) return; const cnt = ui.board.update(B, m, S2), bx = ui.boardMarks(B, m); bsum.textContent = (cnt.merged || 0) + ' merged · ' + (cnt.verify || 0) + ' verify · ' + (cnt.running || 0) + ' running' + ui.boardExtra(bx); ui.alertsSlot(bsum, m); };
       sc.update(update); update(S, S.m);
     };
   }
+  /** The merge queue names this many merged tasks, the newest first, and counts the others. */
+  const QUEUE_IDS = 12;
   function partQueue() {
     return (sc, body, S) => {
       body.innerHTML = '<section class="panel p-queue" aria-label="Merge queue"><div class="ph"><h2>Merge queue</h2><div class="r"><span class="qsum"></span></div></div><div class="qbody"></div></section>';
       const qbody = $('.qbody', body), qsum = $('.qsum', body);
       function renderQueue(m) {
-        const h = m.qHead, merged = m.merged.slice().sort(), isGoal = h && h.task === 'goal'; let html = '';
+        const h = m.qHead, merged = ui.board.newestMerged(m), shown = merged.slice(0, QUEUE_IDS), isGoal = h && h.task === 'goal'; let html = '';
         if (h) html += '<div class="qhead"><div class="qline"><span class="tri">▸</span><b style="color:' + (isGoal ? 'var(--mgr)' : agCol((m.tasks[h.task] || {}).owner || 'mgr')) + '">' + (isGoal ? '◇ goal' : esc(h.task)) + '</b>' + (isGoal ? '<span>all merged</span>' : '<span>rebase <span class="ok">✓</span></span>') + '<span class="dim">·</span><span>' + (h.step === 'verified' ? 'verified' : 'verifying') + '</span></div><div class="qline"><span class="dim">$</span><span class="cmd">' + esc(h.cmd) + '</span></div><div class="qbar" aria-hidden="true">' + (h.step === 'verified' ? '<i style="width:100%;left:0;animation:none;background:var(--ok)"></i>' : '<i></i>') + '</div><div class="qline dim"><span class="qel num">0.0s elapsed</span></div></div>';
         else html += '<div class="qhead"><div class="qline dim"><span>▹ queue empty</span><span>·</span><span>the next submission is rebased, then verified' + (S.meta.verify ? ' with <span class="mono">' + esc(S.meta.verify) + '</span>' : '') + '</span></div></div>';
-        html += '<div class="qmeta"><span>merged ' + (merged.map(id => '<b style="color:' + agCol((m.tasks[id] || {}).owner || 'mgr') + '">' + esc(id) + '</b>').join(' ') || '–') + '</span><span>conflicts <b>' + esc(m.conflicts) + '</b></span><span>bounced <b>' + esc(m.bounced) + '</b></span></div>';
+        html += '<div class="qmeta"><span title="newest first">merged ' + (shown.map(id => { const t = m.tasks[id] || {}; return '<b style="color:' + agCol(t.owner || 'mgr') + '" title="' + esc(id + (t.title ? ' · ' + t.title : '') + (t.owner ? ' · ' + t.owner : '') + (t.t != null ? ' · merged ' + ui.todAt(S, t) : '')) + '">' + esc(id) + '</b>'; }).join(' ') || '–') + (merged.length > shown.length ? ' <span class="dim">and ' + (merged.length - shown.length) + ' earlier</span>' : '') + '</span><span>conflicts <b>' + esc(m.conflicts) + '</b></span><span>bounced <b>' + esc(m.bounced) + '</b></span></div>';
         if (qbody._h !== html) { qbody._h = html; qbody.innerHTML = html; } qsum.textContent = merged.length + ' merged';
       }
       sc.update((S2, m) => { if (m) renderQueue(m); });
