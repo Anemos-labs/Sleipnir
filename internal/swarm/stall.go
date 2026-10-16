@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
@@ -50,10 +51,21 @@ const (
 	// StallReviewStarved: a task has been in review for Config.StallTurns manager
 	// turns without the manager reading or deciding it.
 	StallReviewStarved StallKind = "review_starved"
+	// StallIdleCapacity: the manager of a configured team waits on the few workers
+	// still at work while at least half of the team, and two workers or more, have been
+	// idle for idleCapacityAfter. Waiting is right when the open tasks are all the
+	// objective needs, and costs the idle workers' time when more remains: the manager is
+	// told who is free, once, and decides. It clears when they are at work again or the
+	// manager stops waiting.
+	StallIdleCapacity StallKind = "idle_capacity"
 )
 
+// idleCapacityAfter is how long a worker of a configured team has been idle before it
+// counts toward StallIdleCapacity.
+var idleCapacityAfter = 15 * time.Minute
+
 // StallKinds lists every stall kind in a fixed order.
-var StallKinds = []StallKind{StallClaimedNoProgress, StallManagerWaitingOnIdle, StallOrphanedTask, StallBlockedCycle, StallReviewStarved}
+var StallKinds = []StallKind{StallClaimedNoProgress, StallManagerWaitingOnIdle, StallOrphanedTask, StallBlockedCycle, StallReviewStarved, StallIdleCapacity}
 
 // Stall is one finding of the sweep. Every field is harness-written: ids, kinds and
 // counts, never text an agent wrote.
@@ -233,6 +245,7 @@ type memberView struct {
 	running, manager, service bool
 	quiet                     int64 // model turns since its last progress call
 	turns                     int64
+	idleSince                 time.Time // when its last run ended (zero: it has not run, or runs now)
 }
 
 // stallFindings computes what holds now. It reads the board, the roster and the turn
@@ -249,6 +262,9 @@ func (s *Swarm) stallFindings() []Stall {
 	for id, m := range s.members {
 		m.mu.Lock()
 		v := memberView{running: m.life == lifeRunning, manager: m.manager, service: m.service}
+		if m.life == lifeIdle {
+			v.idleSince = m.idleAt
+		}
 		m.mu.Unlock()
 		v.turns = m.turns.Load()
 		v.quiet = v.turns - m.quietFrom.Load()
@@ -292,6 +308,28 @@ func (s *Swarm) stallFindings() []Stall {
 			Detail: "the manager waited, but no worker is running and the board needs it: " + u.summary(holdListCap)})
 	}
 	s.stalls.refused = false
+
+	// idle_capacity: the manager waits on a few workers while most of the team has been idle for a while.
+	if mgr != "" && s.stalls.waiting && anyWorker && !u.empty() && s.teamLimited() {
+		at := s.deps.Now()
+		var idle []string
+		workers := 0
+		for id, v := range views {
+			if v.manager || v.service {
+				continue
+			}
+			workers++
+			if !v.running && !v.idleSince.IsZero() && at.Sub(v.idleSince) >= idleCapacityAfter && inProgress(snap, id, "", "") == "" {
+				idle = append(idle, id)
+			}
+		}
+		if len(idle) >= 2 && 2*len(idle) >= workers {
+			sort.Strings(idle)
+			out = append(out, Stall{Kind: StallIdleCapacity, Agent: mgr, Notify: mgr,
+				Detail: fmt.Sprintf("%d of %d workers have been idle for %d minutes or more (%s) while the manager waits for %s",
+					len(idle), workers, int(idleCapacityAfter/time.Minute), shownIDs(idle, 8), u.summary(holdListCap))})
+		}
+	}
 
 	// orphaned_task: confirmed on a second sweep, so the moment between a spawn's
 	// assignment and its registration (or a retirement and its requeue) is not one.
@@ -463,6 +501,17 @@ func stallNudge(f Stall, k int64, pools bool) string {
 		return "Stall check: tasks are " + f.Detail + ", so none of them can continue. Decide one (resume it with what it needs), or fail one with reason blocked_on."
 	case StallReviewStarved:
 		return fmt.Sprintf("Stall check: %s. Read it (task get %s), then accept or reject it.", f.Detail, f.Task)
+	case StallIdleCapacity:
+		return "Stall check: " + f.Detail + ". If the objective needs more than the open tasks (a requirement nobody has started, a gap you found), " +
+			"create that work and assign it now: an idle worker starts at once. If the open tasks are all that is left, keep waiting."
 	}
 	return "Stall check: " + f.Detail
+}
+
+// shownIDs is ids joined with ", ", at most n of them and "+k more" for the rest.
+func shownIDs(ids []string, n int) string {
+	if len(ids) <= n {
+		return strings.Join(ids, ", ")
+	}
+	return strings.Join(ids[:n], ", ") + fmt.Sprintf(" +%d more", len(ids)-n)
 }
