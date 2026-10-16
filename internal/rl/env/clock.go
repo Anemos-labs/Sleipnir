@@ -43,6 +43,7 @@ var (
 type WallClock struct {
 	wall, maxPause time.Duration // zero: no limit
 	notify         func(down bool, cause string)
+	now            func() time.Time // the clock's time source (the runner's: Runner.Now)
 
 	mu        sync.Mutex
 	start     time.Time
@@ -56,7 +57,14 @@ type WallClock struct {
 // NewWallClock starts a clock with an active-time budget of wall and an outage limit of maxPause (zero: no limit for either).
 // notify, if set, is called after each change of state (down, with what caused it; up), outside the clock's lock.
 func NewWallClock(wall, maxPause time.Duration, notify func(down bool, cause string)) *WallClock {
-	return &WallClock{wall: max(wall, 0), maxPause: max(maxPause, 0), notify: notify, start: time.Now(), wake: make(chan struct{}, 1)}
+	return newWallClockAt(time.Now, wall, maxPause, notify)
+}
+
+// newWallClockAt is NewWallClock on the time source now: a runner's clock reads the time the runner does (Runner.Now). Its limits
+// are still waited for in real time, and checked against now each time a wait ends, so a source that runs ahead of real time
+// (a test's, which jumps forward while the endpoint is down) is read correctly.
+func newWallClockAt(now func() time.Time, wall, maxPause time.Duration, notify func(down bool, cause string)) *WallClock {
+	return &WallClock{wall: max(wall, 0), maxPause: max(maxPause, 0), notify: notify, now: now, start: now(), wake: make(chan struct{}, 1)}
 }
 
 // Down marks the policy endpoint as down from now, with cause describing the failure, and reports whether that began an outage
@@ -70,7 +78,7 @@ func (c *WallClock) Down(cause string) bool {
 		c.mu.Unlock()
 		return false
 	}
-	c.downSince = time.Now()
+	c.downSince = c.now()
 	c.outages++
 	c.mu.Unlock()
 	c.changed(true, cause)
@@ -88,7 +96,7 @@ func (c *WallClock) Up() (lasted time.Duration, ended bool) {
 		c.mu.Unlock()
 		return 0, false
 	}
-	lasted = time.Since(c.downSince)
+	lasted = c.now().Sub(c.downSince)
 	c.paused += lasted
 	c.downSince = time.Time{}
 	c.mu.Unlock()
@@ -115,7 +123,7 @@ func (c *WallClock) Stop() {
 	}
 	c.mu.Lock()
 	if c.stopped.IsZero() {
-		c.stopped = time.Now()
+		c.stopped = c.now()
 	}
 	c.mu.Unlock()
 }
@@ -166,7 +174,7 @@ func (c *WallClock) nowLocked() time.Time {
 	if !c.stopped.IsZero() {
 		return c.stopped
 	}
-	return time.Now()
+	return c.now()
 }
 
 // pausedLocked is the paused time up to now.
@@ -186,7 +194,7 @@ func (c *WallClock) next() (left time.Duration, cause error) {
 	if !c.stopped.IsZero() {
 		return 0, nil
 	}
-	now := time.Now()
+	now := c.now()
 	paused := c.pausedLocked(now)
 	switch {
 	case c.downSince.IsZero() && c.wall > 0:
