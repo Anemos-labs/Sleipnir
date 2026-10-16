@@ -312,8 +312,15 @@ func TestPoolReadsAndMisplacedActionsPointToTheRightCall(t *testing.T) {
 	r.refused(r.pool(r.second, map[string]any{"action": "list", "id": ""}), "pool list",
 		`unknown pool action "list": pool's actions are propose, agree, execute, reconcile, inspect, confirm and excuse`, "task get with the pool's parent task id")
 	r.refused(r.pool(r.second, map[string]any{"action": "status"}), "pool status", "task get id="+id)
-	r.refused(r.pool(r.second, map[string]any{"action": "inspect"}), "an inspect while planning",
-		id+" is planning (revision 1): pool inspect is for the combined result once the pool reconciles", "task get id="+id)
+	early := r.must(r.pool(r.second, map[string]any{"action": "inspect"}), "an inspect while planning")
+	head, body, _ := strings.Cut(early, "\n\n")
+	if head != id+" is planning (revision 1): there is no combined result to inspect until it reconciles, so this is the pool as task get shows it." {
+		t.Errorf("an inspect while planning: %q", head)
+	}
+	if err := json.Unmarshal([]byte(body), &task); err != nil || task.ID != id || task.Pool == nil {
+		t.Errorf("an inspect while planning reads the pool: %v %q", err, body)
+	}
+	r.refused(r.pool(r.third+"x", map[string]any{"action": "inspect"}), "an inspect by a stranger", "you are not a member of "+id+"'s pool")
 	r.executing()
 	r.refused(r.pool(r.lead, map[string]any{"action": "propose", "text": "a new plan"}), "the leader's proposal while executing",
 		id+" is executing revision 2's plan: a proposal is made while it plans", "task create parent="+id, "the manager to revise "+id)
@@ -447,4 +454,22 @@ func TestAReadInTheVotesOwnBatchDoesNotCount(t *testing.T) {
 	}
 	// The leader wrote the proposal itself: it may agree in the same batch.
 	r.must(r.pool(r.lead, map[string]any{"action": "agree"}), "the proposer's agree")
+}
+
+// Accepting a task that is already done (a pool child whose verification closed it, or one accepted earlier) answers that there is
+// nothing to accept instead of refusing: in a 12-worker run leaders and the manager accepted verified children five times in the
+// first 45 minutes, and each refusal cost a turn. A task that is not in review and not done is still refused.
+func TestAcceptingADoneTaskIsNotAMistake(t *testing.T) {
+	r := newPoolRig(t)
+	r.executing()
+	r.must(r.task(r.lead, map[string]any{"action": "create", "parent": r.parent.ID, "title": "handlers", "files": []string{"app/handlers.go"}}), "create")
+	r.refused(r.task(r.lead, map[string]any{"action": "accept", "id": "T2"}), "an accept of a todo child", "T2 is todo: a task is accepted from review")
+	if err := r.sw.Board.resolve("mgr", "T2", "not needed"); err != nil {
+		t.Fatal(err)
+	}
+	for _, as := range []string{r.lead, "mgr"} {
+		if got := r.must(r.task(as, map[string]any{"action": "accept", "id": "T2"}), "an accept of a done child by "+as); got != "T2 is already done (unneeded): nothing to accept" {
+			t.Errorf("%s: %q", as, got)
+		}
+	}
 }

@@ -465,6 +465,12 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		if !ok {
 			parent.ID = in.ID
 		}
+		if inspectEarly(parent, ok, by, manager) {
+			// Nothing is combined before the pool reconciles; the read the member wanted is the pool as it stands.
+			return s.readTaskNoted(c, in.ID, "pool inspect", func(t Task) string {
+				return fmt.Sprintf("%s is %s (revision %d): there is no combined result to inspect until it reconciles, so this is the pool as task get shows it.", t.ID, t.Pool.Phase, t.Pool.Revision)
+			}), nil
+		}
 		if err := inspectRefusal(parent, ok, by, manager); err != nil {
 			return tools.Errorf("%v", err), nil
 		}

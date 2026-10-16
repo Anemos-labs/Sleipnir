@@ -82,6 +82,11 @@ type taskIn struct {
 // and agreement are remembered as what the caller read, so its vote without a revision counts for them (poolReads). how names the
 // call in the refusal for a missing id.
 func (s *Swarm) readTask(c *tools.Call, id, how string) *tools.Result {
+	return s.readTaskNoted(c, id, how, nil)
+}
+
+// readTaskNoted is readTask with a line put before the task, written from it (note may be nil).
+func (s *Swarm) readTaskNoted(c *tools.Call, id, how string, note func(Task) string) *tools.Result {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return tools.Errorf("%s requires id: use the task ID from your assignment or call task with action=list to find it, then retry with id set", how)
@@ -95,6 +100,9 @@ func (s *Swarm) readTask(c *tools.Call, id, how string) *tools.Result {
 		return tools.Errorf("%v", err)
 	}
 	s.poolReads.note(c.Env.Agent, task, s.turnOf(c.Env.Agent), false)
+	if note != nil {
+		data = append([]byte(note(task)+"\n\n"), data...)
+	}
 	return c.Env.Finish(string(data), false)
 }
 
@@ -423,6 +431,10 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 	}
 	switch in.Action {
 	case "accept":
+		if task.Status == StatusDone {
+			// Accepted already (a verified child of a pool, or an earlier accept): asking again is not a mistake to correct.
+			return text("%s is already done (%s): nothing to accept", in.ID, task.Closure.String())
+		}
 		if task.Status != StatusReview {
 			return tools.Errorf("%s is %s: a task is accepted from review, after its worker calls done", in.ID, task.Status)
 		}
