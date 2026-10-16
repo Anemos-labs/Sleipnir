@@ -35,6 +35,8 @@ type shopScript struct {
 	mu    sync.Mutex
 	step  map[string]int
 	marks map[string]bool
+	// the cart's loop (cart): the checks it has run, and the step at which it heard it was repeating itself (-1 not yet)
+	cartChecks, cartFixedAt int
 }
 
 // newShopScript initializes independent step and milestone maps, defaulting nonpositive timing
@@ -43,7 +45,7 @@ func newShopScript(scale float64) *shopScript {
 	if scale <= 0 {
 		scale = 1
 	}
-	return &shopScript{scale: scale, step: map[string]int{}, marks: map[string]bool{}}
+	return &shopScript{scale: scale, step: map[string]int{}, marks: map[string]bool{}, cartFixedAt: -1}
 }
 
 // sec converts script seconds to a duration using the configured playback scale.
@@ -118,7 +120,7 @@ func (s *shopScript) respond(c *mock.Call) mock.Reply {
 		if id == "be-1" {
 			r = s.catalogue(id, n)
 		} else {
-			r = s.cart(id, n)
+			r = s.cart(id, n, c.LastUser())
 		}
 	case "frontend":
 		r = s.web(id, n)
@@ -290,24 +292,46 @@ func (s *shopScript) catalogue(id string, n int) mock.Reply {
 
 // ---- the cart (be-2): a check that fails until the harness says it is going round in circles ----
 
-func (s *shopScript) cart(id string, n int) mock.Reply {
+// repeatNote is what the repetition guard's note says (agent.repeatGuard): the cart runs its check until it hears it.
+const repeatNote = "has now failed the same way"
+
+// cartMaxChecks bounds the loop should the guard never speak, so that the run ends and the test says so instead of hanging.
+const cartMaxChecks = 10
+
+// cart runs the cart's check until the harness tells it it is repeating itself, and only then writes the fix. The loop follows what the
+// worker hears, not its step number: a request more or fewer (a retry, a turn spent otherwise on a loaded machine) does not move it.
+func (s *shopScript) cart(id string, n int, last string) mock.Reply {
 	switch n {
 	case 0:
 		return mock.Reply{Text: "I need the rules for totals before I write them.", ToolCalls: []mock.ToolCall{readCall("r1", "docs/design.md"), readCall("r2", "docs/api.md")}}
 	case 1:
 		return mock.Reply{Text: "A first version of the cart; the rounding is still to do.", ToolCalls: []mock.ToolCall{writeCall("w1", "shop/cart/cart.go", cartGoFirst)}}
-	case 2, 3, 4:
-		return mock.Reply{Text: "Running the cart's checks.", ToolCalls: []mock.ToolCall{bashCall("c"+strconv.Itoa(n), "sh checks.sh")}}
-	case 5:
-		// The provider's cache goes away for a few seconds: every request in that time finds nothing of the prefix it was promised, and
-		// the harness says so (a cache anomaly per agent that had a warm cache), with what each miss cost.
-		s.srv.CacheOutage(s.sec(2.5))
-		return mock.Reply{Text: "Running the cart's checks again.", ToolCalls: []mock.ToolCall{bashCall("c5", "sh checks.sh")}}
-	case 6:
+	}
+	s.mu.Lock()
+	if s.cartFixedAt < 0 && (strings.Contains(last, repeatNote) || s.cartChecks >= cartMaxChecks) {
+		s.cartFixedAt = n
+	}
+	fixedAt := s.cartFixedAt
+	if fixedAt < 0 {
+		s.cartChecks++
+	}
+	checks := s.cartChecks
+	s.mu.Unlock()
+	if fixedAt < 0 {
+		if checks == 4 {
+			// The provider's cache goes away for a few seconds: every request in that time finds nothing of the prefix it was promised,
+			// and the harness says so (a cache anomaly per agent that had a warm cache), with what each miss cost.
+			s.srv.CacheOutage(s.sec(2.5))
+			return mock.Reply{Text: "Running the cart's checks again.", ToolCalls: []mock.ToolCall{bashCall("c"+strconv.Itoa(checks), "sh checks.sh")}}
+		}
+		return mock.Reply{Text: "Running the cart's checks.", ToolCalls: []mock.ToolCall{bashCall("c"+strconv.Itoa(checks), "sh checks.sh")}}
+	}
+	switch n - fixedAt {
+	case 0:
 		return mock.Reply{Text: "That is four times the same failure. The message says where: the total is not rounded. I will write the rounding instead of running the check again.", ToolCalls: []mock.ToolCall{writeCall("w2", "shop/cart/cart.go", cartGoFixed)}}
-	case 7:
-		return mock.Reply{Text: "Now the check.", ToolCalls: []mock.ToolCall{bashCall("c7", "sh checks.sh")}}
-	case 8:
+	case 1:
+		return mock.Reply{Text: "Now the check.", ToolCalls: []mock.ToolCall{bashCall("c-fixed", "sh checks.sh")}}
+	case 2:
 		return mock.Reply{Text: "Done.", ToolCalls: []mock.ToolCall{doneCall("d1", "T5", "the cart: lines, and a total in whole cents rounded once at the end")}}
 	}
 	return mock.Reply{Text: "The cart is merged: lines, and a total in whole cents rounded once at the end."}
