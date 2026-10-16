@@ -265,6 +265,11 @@ func clipText(s string, n int) string {
 func (ev *evaluator) decideCommand(u *unit) verdict {
 	mode := ev.v.mode
 	if !free(mode) {
+		// A file whose name is only known when the command runs and that a deny rule may cover is refused here as bypass mode refuses
+		// it below: before anything asks about the command or an allow rule lets it through, since a deny rule beats both.
+		if v, ok := ev.unknownRefusal(u); ok {
+			return v
+		}
 		switch {
 		case u.envBad != "":
 			r := "environment assignment " + u.envBad + " can change what runs, so no allow rule applies to " + quote(u.label)
@@ -313,7 +318,7 @@ func (ev *evaluator) decideCommand(u *unit) verdict {
 		// bypass mode judges the files a command certainly names (above, only the rules and protections a file it can name could
 		// meet were applied); a file name that is only known when the command runs may be one they guard (accessVerdict)
 		for _, a := range u.accesses {
-			if a.dynamic && !a.guess && !a.nameOnly && u.name != "cd" { // names are not what is guarded, and cd reads nothing
+			if a.dynamic && u.namesFile(a) {
 				res = combineAccess(res, ev.accessVerdict(a, u))
 			}
 		}
@@ -353,6 +358,11 @@ func combineAccess(res, av verdict) verdict {
 func (ev *evaluator) decideTool(u *unit) verdict {
 	r := *u.req
 	mode := ev.v.mode
+	if !free(mode) { // as bypass mode refuses it in accessVerdict
+		if v, ok := ev.unknownRefusal(u); ok {
+			return v
+		}
+	}
 	if u.dyn != "" && !free(mode) { // too many paths to judge one by one
 		if mode == ModePlan {
 			return deny(planReason(u.dyn))
@@ -438,6 +448,52 @@ func (ev *evaluator) unknownMayBeGuarded(a access) string {
 	return "its unknown part may lead out of " + ev.rs.display(a.real) + " (a ../ in it)"
 }
 
+// namesFile reports whether a command certainly names the file of one of its operands, the files whose name, when it is only known as
+// the command runs, a deny rule that may cover it refuses (unknownRefusal): not a word that only might be a file (an unlisted program's
+// operand), not a name that is only listed (ls, stat, find: names are not what is guarded), and not the directory cd enters (cd reads
+// nothing).
+func (u *unit) namesFile(a access) bool {
+	return !a.guess && !a.nameOnly && u.name != "cd"
+}
+
+// unknownDenied refuses an access whose file name is only known when the command runs when a deny rule of the view may cover it
+// (denyMayCover): the name cannot be checked against the rule, and a deny rule beats every allow rule and every question, so the
+// refusal does not depend on the mode. Yolo mode, which lets such a name pass, does not call it. A word that only might be a file (an
+// unlisted program's operand, an assignment's value) is not refused. ok is false when the access is not refused.
+func (ev *evaluator) unknownDenied(a access) (verdict, bool) {
+	if !a.dynamic || a.guess {
+		return verdict{}, false
+	}
+	r := ev.denyMayCover(a)
+	if r == nil {
+		return verdict{}, false
+	}
+	return deny(quote(a.raw) + " is a file name that is only known when the command runs (" + unknownWords(a.raw) + "), and " +
+		"the deny rule " + r.String() + " may cover it (" + ev.unknownMayBeGuarded(a) + "): write the path out, or set the variable " +
+		"earlier in the same command").by(r), true
+}
+
+// unknownRefusal is unknownDenied for the first access of a unit it refuses: a file the unit names (namesFile), an assignment's value
+// or a redirection. These are the accesses bypass mode judges this way (decideCommand, accessVerdict), so a name it refuses is refused
+// in the modes that ask as well. ok is false when nothing is refused.
+func (ev *evaluator) unknownRefusal(u *unit) (verdict, bool) {
+	for _, a := range u.accesses {
+		if u.namesFile(a) {
+			if v, ok := ev.unknownDenied(a); ok {
+				return v, true
+			}
+		}
+	}
+	for _, as := range [][]access{u.envAcc, u.redirs} {
+		for _, a := range as {
+			if v, ok := ev.unknownDenied(a); ok {
+				return v, true
+			}
+		}
+	}
+	return verdict{}, false
+}
+
 // accessVerdict applies allow rules and the mode's defaults to one file access.
 func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 	mode := ev.v.mode
@@ -447,10 +503,8 @@ func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 		case mode == ModeBypass || ev.v.readFree && !a.write:
 			// Bypass asks only about the very dangerous (the high-risk class). A file whose name is only known when the command runs
 			// cannot be checked against the rules: a deny rule of the person's that may cover it refuses it, and nothing asks.
-			if r := ev.denyMayCover(a); r != nil && !a.guess {
-				return deny(quote(a.raw) + " is a file name that is only known when the command runs (" + unknownWords(a.raw) + "), and " +
-					"the deny rule " + r.String() + " may cover it (" + ev.unknownMayBeGuarded(a) + "): write the path out, or set the variable " +
-					"earlier in the same command").by(r)
+			if v, ok := ev.unknownDenied(a); ok {
+				return v
 			}
 			if mode == ModeBypass {
 				return allow("bypass mode")

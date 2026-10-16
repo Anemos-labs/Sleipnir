@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A file whose name is only known when the command runs (`cat "$F"`, `cat
+  < "$F"`, `go test "$PKG"`, a file tool given `$F`) is refused in `plan`,
+  `default` and `accept-edits` mode when a `deny` rule may cover it (any
+  `Read` rule for a read, any `Edit` rule for a write), as `bypass` already
+  refused it: it is no longer asked about, and an `allow` rule (the tests
+  preset's `go test`) no longer lets it through. Without such a rule these
+  modes still ask. `yolo` is unchanged. Prompt bytes: none change.
+
 - A `sleipnir web` session ends after 24 hours without use instead of 24
   hours after sign-in: a request in the second half of that time moves its
   end a full 24 hours ahead and sends the cookie again, and an open page asks

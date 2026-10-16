@@ -469,6 +469,10 @@ The engine decides every tool call before it runs. A request is settled by the f
 4. Your `allow` rules.
 5. The mode's defaults.
 
+A file whose name is only known when the command runs (`cat "$F"`) cannot be matched against a `deny` rule. When one may
+cover it (any `Read` rule for a read, any `Edit` rule for a write), the name is refused in every mode but `yolo`, in place
+of what steps 4 and 5 would decide; see `docs/SECURITY.md`.
+
 ### Modes
 
 | Mode | Behaviour |
