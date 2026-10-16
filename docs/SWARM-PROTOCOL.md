@@ -206,10 +206,23 @@ paths outside the project).
 | `wait` | until tasks change, mail arrives, or a timeout | sleeps at no request cost; reports what changed since the caller last looked |
 
 A manager waiting on unfinished work with no running workers receives an error
-with the task IDs and actions needed to advance them. Repeated identical errors
-are bounded by the agent's repetition guard. Active-worker waits still sleep;
-settled targets, pending mail, and unseen task changes are reported first. Empty
-boards and worker waits remain available for future work or messages.
+with the task IDs and actions needed to advance them. So does a manager waiting
+while no worker runs and every task of the board is settled (done or failed): no
+task can change state, and the error says to start the work the objective still
+needs or to end the turn. A wait that began while a worker ran ends this way when
+the last worker goes idle, instead of sleeping to its timeout. Repeated identical
+errors are bounded by the agent's repetition guard. Active-worker waits still
+sleep; settled targets, pending mail, and unseen task changes are reported first.
+An empty board (before the first task), a settled board whose accepted change
+the docs keeper is about to take up, mail still with the mailman, and worker
+waits remain available for future work or messages. `until`, like `task`'s
+`deps`, takes a list of task IDs or one string of them (`"T3"`, `"T3, T4"`).
+
+A restored team's idle workers that hold an unfinished task show
+`restored; waiting for T7 to restart`; the others are plainly idle and free for
+new work. When a standing goal sends the manager of a team on, the continuation
+names the workers that are idle and hold no open task (`3 of its 12 workers are
+free (be-2, be-3, fe-1)`) and asks for what is missing to be split among them.
 
 ## 3. The board
 

@@ -283,7 +283,19 @@ func (s *Session) GoalJudged(ctx context.Context, g *goal.State, turnErr error) 
 	if reason == "" {
 		reason = "the judge's answer could not be read"
 	}
-	return fmt.Sprintf("goal not met yet: %s (continuation %d of %d)", reason, g.Turns, g.Max), goal.Continuation(g, s.GoalPlan(), v), j
+	return fmt.Sprintf("goal not met yet: %s (continuation %d of %d)", reason, g.Turns, g.Max), s.GoalContinuation(g, v), j
+}
+
+// GoalContinuation is the message that sends the agent on after verdict v (goal.Continuation), with, for the manager of a team, the
+// workers that are free (swarm.FreeCapacity).
+func (s *Session) GoalContinuation(g *goal.State, v goal.Verdict) string {
+	msg := goal.Continuation(g, s.GoalPlan(), v)
+	if s.Swarm != nil {
+		if line := s.Swarm.FreeCapacity(); line != "" {
+			msg += "\n\n" + line
+		}
+	}
+	return msg
 }
 
 // short retains at most n runes including an ellipsis when truncated; n must be positive.
