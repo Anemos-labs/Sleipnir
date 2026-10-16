@@ -62,8 +62,8 @@ func idleCapacityRigWith(t *testing.T, idleFor time.Duration, withTask bool) *rv
 	return r
 }
 
-// The manager waits on one worker while three of four have been idle for twenty minutes: it is told who is free, once, and the
-// finding clears when it stops waiting. In a 12-worker run ten workers sat idle for forty minutes while the manager waited on the
+// The manager waits on one worker while three of four have been idle for twenty minutes: it is told who is free, once, also across
+// the calls it makes between waits, and the finding clears when the idle workers are at work again. In a 12-worker run ten workers sat idle for forty minutes while the manager waited on the
 // last two tasks, having written that much of the objective was still unbuilt.
 func TestStallIdleCapacity(t *testing.T) {
 	t.Run("seeded: most of the team idle while the manager waits", func(t *testing.T) {
@@ -80,10 +80,30 @@ func TestStallIdleCapacity(t *testing.T) {
 		if n := raised(r, StallIdleCapacity); n != 1 {
 			t.Errorf("raised %d times", n)
 		}
-		r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "list"})
+		// the manager wakes, looks and waits again, as it does for every task that settles: the team is as idle as it was, and it is
+		// not told again
+		for i := 0; i < 3; i++ {
+			r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "list"})
+			r.sw.sweepStalls()
+			if _, ok := active(r, StallIdleCapacity); !ok {
+				t.Fatal("the finding cleared when the manager stopped waiting, with the team as idle as before")
+			}
+			r.sw.noteCoordination("mgr", "wait", "")
+			r.sw.sweepStalls()
+		}
+		if n := raised(r, StallIdleCapacity); n != 1 {
+			t.Errorf("raised %d times over three waits of an unchanged team", n)
+		}
+		// the idle workers go to work: it clears
+		for _, id := range []string{"be-2", "be-3"} {
+			task, _ := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "work of " + id})
+			if err := r.sw.Board.Assign("mgr", id, task.ID); err != nil {
+				t.Fatal(err)
+			}
+		}
 		r.sw.sweepStalls()
 		if _, ok := active(r, StallIdleCapacity); ok {
-			t.Fatal("the finding outlived the manager's wait")
+			t.Fatal("the finding outlived the idle workers' new work")
 		}
 	})
 	t.Run("healthy: nothing is open, a worker runs with no task", func(t *testing.T) {
