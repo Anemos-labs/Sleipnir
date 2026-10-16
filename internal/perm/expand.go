@@ -299,7 +299,7 @@ func (rs *resolver) expandWordVars(w, cwd string, x expansion) (out, partial str
 // $(git rev-parse --show-toplevel) the nearest directory at or above it that holds a .git (a repository's or a worktree's). Any
 // other command, a directory that is not known, or a line that points git elsewhere (GIT_DIR, GIT_WORK_TREE) gives ok false.
 func (rs *resolver) knownSubstitution(cmd, cwd string, x expansion) (string, bool) {
-	if v, ok := rs.mktempPath(cmd, x); ok {
+	if v, ok := rs.mktempPath(cmd, cwd, x); ok {
 		return v, true
 	}
 	if cwd == "" || x.off["PWD"] {
@@ -326,30 +326,113 @@ func (rs *resolver) knownSubstitution(cmd, cwd string, x expansion) (string, boo
 	return "", false
 }
 
-// mktempPath is what $(mktemp ...) prints, as far as the rules care: a new file or directory in $TMPDIR, the session's scratch
-// directory. It stands for one name there (the random part is never "", "." or ".."), so "rm -rf "$D"" after D=$(mktemp -d) deletes
-// inside the scratch directory. Only the plain forms count: the options -d, -q, -t, -u and their long names, and at most one template
-// without a "/" or a variable; a template or --tmpdir/-p that names a directory, or a line that sets TMPDIR, gives ok false.
-func (rs *resolver) mktempPath(cmd string, x expansion) (string, bool) {
-	f := strings.Fields(cmd)
-	if len(f) == 0 || f[0] != "mktemp" || rs.tmp == "" || x.off["TMPDIR"] {
+// mktempPath is what $(mktemp ...) prints, as far as the rules care: a new file or directory, one name in a known directory, with the
+// template's run of X's as "$(mktemp)" (tokenPlaceholder), so that the name is never "", "." or "..": rm -rf "$D" after
+// D=$(mktemp -d "$TMPDIR/x.XXXX") deletes inside the scratch directory. The directory is GNU mktemp's: the template's own (a relative
+// one stays relative, as mktemp prints it); with -p DIR or --tmpdir=DIR, DIR; with -t, with an empty or no DIR, or with no template,
+// $TMPDIR, which the engine knows only as the session's scratch directory and not on a line that names TMPDIR (unset, mktemp would
+// use /tmp, which the engine cannot tell). Only these forms count: the options -d, -q, -t, -u, -p DIR and their long names, and at
+// most one template, whose last part ends in three or more X's (with -t, a prefix without them, to which BSD's mktemp adds the random
+// part) and which is a plain name with -t or a DIR. The template and DIR expand to the same text whether or not a command of the line
+// failed, with no unknown variable, glob, brace, blank, "~" or ".." part. A dry run (-u) creates nothing: its name counts only in the
+// scratch directory, the session's own. Anything else gives ok false.
+func (rs *resolver) mktempPath(cmd, cwd string, x expansion) (string, bool) {
+	if strings.ContainsAny(cmd, "'\\`~()") {
+		// a quoted "$" or "~" is the character, and a substitution inside is not one plain command: keep to the words the expansion
+		// reads as the shell does
 		return "", false
 	}
-	templates := 0
-	for _, w := range f[1:] {
-		switch {
-		case w == "-d" || w == "-q" || w == "-t" || w == "-u" || w == "-dt" || w == "-td" || w == "-qd" || w == "-dq" ||
-			w == "--directory" || w == "--quiet" || w == "--dry-run":
-		case strings.HasPrefix(w, "-"), strings.ContainsAny(w, "/$`\\'\""):
+	f, ok := shellparse.Fields(cmd)
+	if !ok || len(f) == 0 || f[0] != "mktemp" {
+		return "", false
+	}
+	var template, dir string
+	templates, hasDir, dashT, dry := 0, false, false, false
+	for i := 1; i < len(f); i++ {
+		switch w := f[i]; {
+		case w == "--directory" || w == "--quiet":
+		case w == "--dry-run":
+			dry = true
+		case w == "--tmpdir" || strings.HasPrefix(w, "--tmpdir="):
+			hasDir, dir = true, strings.TrimPrefix(strings.TrimPrefix(w, "--tmpdir"), "=")
+		case strings.HasPrefix(w, "--"):
 			return "", false
+		case len(w) > 1 && w[0] == '-':
+			for j := 1; j < len(w); j++ {
+				switch w[j] {
+				case 'd', 'q':
+				case 'u':
+					dry = true
+				case 't':
+					dashT = true
+				case 'p': // -p DIR or -pDIR, the last option of its word
+					hasDir, dir = true, w[j+1:]
+					if dir == "" {
+						if i+1 == len(f) {
+							return "", false
+						}
+						i++
+						dir = f[i]
+					}
+					j = len(w)
+				default:
+					return "", false
+				}
+			}
 		default:
+			template = w
 			templates++
 		}
 	}
 	if templates > 1 {
 		return "", false
 	}
-	return rs.tmp + "/mktemp.XXXXXXXXXX", true
+	// known expands a word to the same text whether or not a command of the line failed
+	known := func(w string) (string, bool) {
+		full, empty := x, x
+		full.emptied, empty.emptied = false, true
+		v, _, dyn := rs.expandWordVars(w, cwd, full)
+		e, _, edyn := rs.expandWordVars(w, cwd, empty)
+		return v, !dyn && !edyn && v == e && !hasGlob(v) && !strings.ContainsAny(v, " \t\n\v\f\r{}") &&
+			!slices.Contains(strings.Split(v, "/"), "..")
+	}
+	if dir, ok = known(dir); !ok {
+		return "", false
+	}
+	if template, ok = known(template); !ok {
+		return "", false
+	}
+	base := "" // the directory of the name when the template does not hold it
+	switch {
+	case dashT || hasDir && dir == "" || !hasDir && templates == 0:
+		if rs.tmp == "" || x.off["TMPDIR"] {
+			return "", false
+		}
+		base = rs.tmp
+	case hasDir:
+		base = dir
+	}
+	if templates == 0 {
+		template = "tmp.XXXXXXXXXX"
+	}
+	if base != "" && strings.Contains(template, "/") {
+		return "", false
+	}
+	xs := len(template) - len(strings.TrimRight(template, "X"))
+	if xs < 3 {
+		if !dashT {
+			return "", false
+		}
+		template, xs = template+".", 0 // BSD's -t takes a prefix and adds a dot and the random part (GNU's fails)
+	}
+	if dry && (rs.tmp == "" || base != rs.tmp) {
+		return "", false
+	}
+	p := template[:len(template)-xs] + tokenPlaceholder(cmd)
+	if base != "" {
+		p = strings.TrimSuffix(base, "/") + "/" + p
+	}
+	return p, true
 }
 
 // gitMarker reports whether a .git entry is one git accepts as a repository: a directory with a HEAD, or a file "gitdir: DIR" whose
