@@ -76,7 +76,7 @@ not a guarantee that the current interface or performance matches a capture.
 
 `sleipnir web` serves the same sessions in a browser. The first line it prints is the address to open (see
 [Command-line reference](CLI.md)); opening it signs the browser in and replaces the address with a clean one. A tab that
-has no session, or whose session has ended (24 hours, logout, or a rotation of the token), shows a short page that says to
+has no session, or whose session has ended (24 hours without use, logout, or a rotation of the token), shows a short page that says to
 open the address again; nothing is shown from the session until then.
 
 - The page follows a session through an event stream. When the connection drops, the browser reconnects and the server

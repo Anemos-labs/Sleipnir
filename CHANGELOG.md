@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A `sleipnir web` session ends after 24 hours without use instead of 24
+  hours after sign-in: a request in the second half of that time moves its
+  end a full 24 hours ahead and sends the cookie again, and an open page asks
+  the server every half hour, so a page watching a long run is no longer
+  signed out of it. Prompt bytes: none change.
+
 - The manager may not excuse a pool member that is running and made
   progress (an edit, a test, a task update) within the stall check's bound
   of model turns; the refusal names it and says to ask it by mail. A member
