@@ -139,7 +139,9 @@ worker is never run concurrently on that identity.
 **Auto-docs.** With `swarm.auto_docs` (default true) and a docs slot, the harness keeps the docs worker at work: every
 task the board closes as done that the docs worker did not do becomes a pending change, and when a docs worker is idle
 (or the docs slot is free) the harness gives it one `docs: catch up` task listing every pending change, scoped to
-`**/*.md` and `docs/**`. The first pass waits for the first accepted implementation task: an agreement accepted before
+`**/*.md` and `docs/**`, or to `*.md` and `docs/**` while a task in progress holds a directory (which may hold Markdown,
+so the wider scope would wait for every such task to close; Markdown inside a held directory stays its holder's). A pass
+that cannot start says why in the keeper's state (`pass T12 waiting to start: scope "*.md" overlaps T6 …`). The first pass waits for the first accepted implementation task: an agreement accepted before
 any code exists stays pending (and holds nobody) and is folded into that pass. It never interrupts a running docs worker, and the docs worker's own tasks are not changes. The
 docs worker keeps README, `docs/` and `AGENTS.md` current; `AGENTS.md` is also the team's map of the project. The
 manager's pin says that documentation is automatic, every other worker's pin says to read `AGENTS.md` and to mail facts

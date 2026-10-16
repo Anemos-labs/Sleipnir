@@ -251,3 +251,42 @@ func TestPinsCarryVerificationAndTheUsersWords(t *testing.T) {
 		t.Error("the architect pin lets an agreement rename what the user named")
 	}
 }
+
+// A docs pass starts while code tasks hold directories: "**/*.md" overlaps internal/api/** (which may hold a README), so the pass
+// takes the Markdown at the root and docs/ instead of waiting for every such task to close. A pass that cannot start at all says
+// why in the keeper's state. In a 12-worker run the first pass waited behind the backend's directories for half an hour.
+func TestAutoDocsStartsBesideADirectoryWriter(t *testing.T) {
+	cfg := Config{MaxWorkers: 8, AutoDocs: true, Team: []string{"backend", "devops", "docs"}}
+	r := newRVRigWith(t, cfg, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	now := r.sw.deps.Now()
+	r.sw.docsTick(now)
+	r.sw.Board.Restore(&Snapshot{Tasks: []Task{
+		{ID: "T1", Title: "add the cart endpoint", Status: StatusDone, Role: "backend"},
+		{ID: "T2", Title: "add the order endpoint", Status: StatusTodo, Role: "backend", Files: []string{"internal/api/**"}},
+		{ID: "T3", Title: "packaging", Status: StatusTodo, Role: "devops", Files: []string{"README.md", "docs/**"}},
+	}})
+	for _, c := range [][2]string{{"be-1", "T2"}, {"dv-1", "T3"}} {
+		if err := r.sw.Board.claim(c[0], c[1], nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r.sw.docsTick(now)
+	pass, _ := r.sw.Board.Snapshot().Task("T4")
+	if !strings.HasPrefix(pass.Title, DocsTaskTitle) || pass.Owner != "" {
+		t.Fatalf("T4: %+v", pass)
+	}
+	if st := r.sw.DocsState(); !strings.Contains(st, "pass T4 waiting to start: scope") || !strings.Contains(st, "overlaps T3") {
+		t.Errorf("state while T3 holds README.md: %q", st)
+	}
+	if err := r.sw.Board.resolve("mgr", "T3", "not needed"); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.docsTick(now.Add(docsRetry))
+	pass, _ = r.sw.Board.Snapshot().Task("T4")
+	if pass.Status != StatusDoing || pass.Owner == "" || strings.Join(pass.Files, " ") != "*.md docs/**" {
+		t.Fatalf("beside T2 on internal/api/** the pass is %s, owned by %q, scoped %v", pass.Status, pass.Owner, pass.Files)
+	}
+	if st := r.sw.DocsState(); !strings.Contains(st, "pass T4 in progress") {
+		t.Errorf("state once started: %q", st)
+	}
+}
