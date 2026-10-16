@@ -498,9 +498,10 @@ func (b *boardTracker) onBoardOp(actor, op string, raw json.RawMessage, ts time.
 			t.Status, t.Line = "doing", ""
 			set(t)
 		}
-	case "requeue":
-		// One task went back to the queue (or failed, after too many attempts); only
-		// logs with the full task state say which, so there is nothing to guess.
+	case "requeue", "reserve":
+		// One task went back to the queue (or failed, after too many attempts), or a
+		// todo task was reserved for a pool member; only logs with the full task state
+		// say which, so there is nothing to guess.
 		if t := b.ensure2(id, ts); t != nil && full {
 			set(t)
 		}
