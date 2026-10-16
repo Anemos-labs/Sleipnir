@@ -226,7 +226,7 @@ A built-in protection cannot see a name it cannot read: in `bypass` mode a comma
 not stopped by the engine (as it is not stopped from running a program that reads it); use a container where that matters. The words
 of an unlisted program and the value of an assignment, which only might be files, are judged as the path they spell, not as a tree
 below it (`node script.mjs .`). Two command substitutions have known values: `$(pwd)` and `$(git rev-parse --show-toplevel)`, and
-`$(mktemp ...)` names a new path in `$TMPDIR`. `yolo` mode never asks, and lets such a name pass.
+`$(mktemp ...)` names a new path in the directory `mktemp` creates it in (see below). `yolo` mode never asks, and lets such a name pass.
 
 ### Variables a command line sets
 
@@ -248,8 +248,20 @@ The shell's special parameters whose value is a number (`$$`, `$?`, `$#`, `$!`, 
 `$TMPDIR`. A number holds no `/` and is never `.` or `..`, but some of them may be empty (`$!` before a background job; bash's names
 under another `sh`), so a name part that an empty value would make `""`, `.` or `..` (`"$TMPDIR/$!"`, `"$TMPDIR/.$RANDOM"`) is not known;
 neither is a parameter the line assigns or names otherwise, or one the harness's environment defines (another `sh` would expand it to
-that value). The value of `$(mktemp)` is not tracked: a failed `mktemp` leaves the variable empty, and an empty variable in a path
-(`"$F"/*`) is the root.
+that value).
+
+`$(mktemp ...)` is one new name in a known directory, so `tmp=$(mktemp -d "$TMPDIR/demo.XXXX")` makes `rm -rf "$tmp"` a delete inside
+`$TMPDIR`. The directory is the one GNU `mktemp` picks: the template's own (`"$TMPDIR/demo.XXXX"`, `/x/rw.XXXXXX`; a relative template
+stays relative, as `mktemp` prints it), the `DIR` of `-p DIR` or `--tmpdir=DIR`, and `$TMPDIR` with `-t`, with an empty or no `DIR`, or
+with no template. `$TMPDIR` is known only as the session's scratch directory, and not on a line that names `TMPDIR`; otherwise such a
+name is unknown (where `TMPDIR` is unset, `mktemp` uses `/tmp`, which the engine cannot tell). Only the options `-d`, `-q`, `-t`, `-u`, `-p` and their long names count, with at
+most one template whose last part ends in three or more `X`s (with `-t`, a prefix without them, as BSD's `mktemp` takes it), which is a
+plain name with `-t` or a `DIR`. The template and `DIR` expand to the same text whatever a command of the line printed: an unknown
+variable, a value from a command's output, a glob, a brace, a blank, `~`, `..` or a substitution in them leaves the name unknown. A dry
+run (`-u`) creates nothing, so its name counts only in the scratch directory, which is the session's own. A failed `mktemp` prints nothing
+and leaves the variable empty, as does any command whose output a variable holds (`$(git rev-parse --show-toplevel)`): a word built from
+it is judged that way as well, so `rm -rf "$tmp"` deletes the new directory or nothing, `rm -rf "$tmp"/*` (the root's contents) is
+refused, and `rm -rf "$tmp"*` (the working directory's contents) is a high-risk recursive delete.
 
 ### Project virtual environments
 

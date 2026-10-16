@@ -150,9 +150,9 @@ func TestAHeredocBodyKeepsTheLinesVariablesKnown(t *testing.T) {
 	}
 }
 
-// go run reads and builds its package and passes the rest to the program; $(mktemp ...) is a new path in $TMPDIR unless the line moves
-// $TMPDIR or the template names a directory; a read-only role in a bypass session reads a name only known when the command runs as the
-// session does.
+// go run reads and builds its package and passes the rest to the program; $(mktemp ...) is a new path in $TMPDIR, or in the directory
+// its template names, unless the line moves $TMPDIR; a read-only role in a bypass session reads a name only known when the command runs
+// as the session does.
 func TestGoRunMktempAndReadOnlyRolesInBypass(t *testing.T) {
 	f := newFixture(t)
 	roles := map[string]RoleProfile{"reviewer": {Mode: ModePlan}}
@@ -163,7 +163,8 @@ func TestGoRunMktempAndReadOnlyRolesInBypass(t *testing.T) {
 		{"", `go run . -out .sleipnir/x`, "ask"}, // a word naming the steering directory may be written there
 		{"", `D=$(mktemp -d); rm -rf "$D"`, "allow"},
 		{"", `D=$(mktemp -d -t rw.XXXXXX); rm -rf "$D"`, "allow"},
-		{"", `D=$(mktemp -d /x/rw.XXXXXX); rm -rf "$D"`, "ask"},
+		{"", `D=$(mktemp -d /x/rw.XXXXXX); rm -rf "$D"`, "allow"}, // a new directory in /x
+		{"", `D=$(mktemp -d /x/rw.$N.XXXXXX); rm -rf "$D"`, "ask"},
 		{"", `TMPDIR=/; D=$(mktemp -d); rm -rf "$D"`, "ask"},
 		{"reviewer", `cat "$F"`, "allow"},
 		{"reviewer", `echo x > "$F"`, "deny"}, // a read-only role still writes nothing
@@ -498,10 +499,161 @@ func TestAFailedMktempIsJudgedEmpty(t *testing.T) {
 		{`D=$(mktemp -d); rm -rf "$D"`, "allow"},
 		{`D=$(mktemp -d); rm -rf "$D"/*`, "deny"},
 		{`D=$(mktemp -d); cat "$D/proc/self/environ"`, "deny"},
+		{`D=$(mktemp -d); rm -rf "$D"*`, "ask"}, // *: the working directory's contents
+		{`ts=$(date +%s); rm -rf "$ts"*`, "ask"},
 	} {
 		d := e.Check(context.Background(), Request{Agent: "be-7", Tool: "Bash", Command: f.expand(c.cmd)})
 		if got := outcome(d); got != c.want {
 			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
+
+// A variable set from $(mktemp -d "$TMPDIR/x.XXXX") names a new directory in $TMPDIR, as one set from $(mktemp -d) does: a team's
+// smoke test built a server into one, ran it with its data and logs there and removed it in an EXIT trap, and was asked about "a
+// recursive delete of $tmp" each time. The template's own directory, or -p's, is where the name is judged. mktemp leaves the variable
+// empty when it fails, so a target that an empty value makes the root or the working directory's contents ("$tmp/"*, "$tmp"*) is
+// still refused or asked about. A template the engine cannot expand, a dry run outside the scratch directory, a second value and a
+// line that sets TMPDIR leave the name unknown.
+func TestAMktempTemplateNamesANewPathInItsDirectory(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: t.TempDir(), Ask: []string{"Edit(./.sleipnir/**)"}})
+	for _, c := range []struct{ cmd, want string }{
+		{`set -e; tmp=$(mktemp -d "$TMPDIR/demo.XXXX"); go build -o "$tmp/demo" ./cmd/demo; "$tmp/demo" serve --data-dir "$tmp/data" ` +
+			`--addr 127.0.0.1:18089 >"$tmp/out" 2>"$tmp/err" & pid=$!; trap 'kill $pid 2>/dev/null || true; rm -rf "$tmp"' EXIT; ` +
+			`sleep 1; curl -s 127.0.0.1:18089/`, "allow"},
+		{`tmp=$(mktemp -d "$TMPDIR/x.XXXX"); rm -rf "$tmp"`, "allow"},
+		{`tmp=$(mktemp -d "${TMPDIR}/XXX"); trap 'rm -rf "$tmp"' EXIT; go build -o "$tmp/app" ./cmd/x; "$tmp/app" >"$tmp/out"`, "allow"},
+		{`tmp=$(mktemp -d "$TMPDIR/x.XXXX"); go build -o "$tmp/bin" ./cmd/x`, "deny"}, // /bin when mktemp fails
+		{`tmp=$(mktemp -d -p "$TMPDIR" run.XXXXXX); rm -rf "$tmp"`, "allow"},
+		{`tmp=$(mktemp -d --tmpdir run.XXXXXX); rm -rf "$tmp"`, "allow"},
+		{`B="$TMPDIR/b"; mkdir -p "$B"; tmp=$(mktemp -d "$B/x.XXXX"); rm -rf "$tmp"`, "allow"},
+		{`export tmp=$(mktemp -d "$TMPDIR/x.XXXX"); rm -rf "$tmp"`, "allow"},
+		{`tmp=$(mktemp -d build/x.XXXX); rm -rf "$tmp"`, "allow"},                                        // relative: below the working directory
+		{`tmp=$(mktemp -d "$TMPDIR/x.XXXX"); tmp=$(mktemp -d "$TMPDIR/x.XXXX"); rm -rf "$tmp"`, "allow"}, // either is a new x.* there
+		// what a failed mktemp, or the target's own "..", makes of it
+		{`tmp=$(mktemp -d "$TMPDIR/x.XXXX"); rm -rf "$tmp/"*`, "deny"}, // /*
+		{`tmp=$(mktemp -d "$TMPDIR/x.XXXX"); rm -rf $tmp/*`, "deny"},
+		{`tmp=$(mktemp -d "$TMPDIR/x.XXXX"); rm -rf "$tmp"/.*`, "ask"},
+		{`tmp=$(mktemp -d "$TMPDIR/x.XXXX"); rm -rf "$tmp"*`, "ask"}, // *
+		{`tmp=$(mktemp -d "$TMPDIR/x.XXXX"); cat "$tmp/proc/self/environ"`, "deny"},
+		{`tmp=$(mktemp -d "$TMPDIR/x.XXXX"); rm -rf "$tmp/.."`, "deny"},
+		// the directory is judged
+		{`D=$(mktemp -d "$HOME/.ssh/x.XXXX"); rm -rf "$D"`, "deny"},
+		{`D=$(mktemp -d -p .sleipnir); rm -rf "$D"`, "ask"},
+		// not known
+		{`tmp=$(mktemp -d "$TMPDIR/x.XXXX"); tmp=$(mktemp -d "$TMPDIR/y.XXXX"); rm -rf "$tmp"`, "ask"},
+		{`tmp=$(mktemp -d "$X/x.XXXX"); rm -rf "$tmp"`, "ask"},
+		{`tmp=$(mktemp -d "$TMPDIR/$X.XXXX"); rm -rf "$tmp"`, "ask"},
+		{`tmp=$(mktemp -d "$(pwd)/x.XXXX"); rm -rf "$tmp"`, "ask"},
+		{`tmp=$(mktemp -u "$TMPDIR/x.XXXX"); rm -rf "$tmp"`, "ask"},
+		{`tmp=$(mktemp -d "$TMPDIR/../x.XXXX"); rm -rf "$tmp"`, "ask"},
+		{`tmp=$(mktemp -d "$TMPDIR/x.XX"); rm -rf "$tmp"`, "ask"},
+		{`tmp=$(mktemp -d "$TMPDIR/x*.XXXX"); rm -rf "$tmp"`, "ask"},
+		{`TMPDIR=/; tmp=$(mktemp -d -p "" x.XXXX); rm -rf "$tmp"`, "ask"},
+		{`P=$(git rev-parse --show-toplevel); tmp=$(mktemp -d -p "$P"); rm -rf "$tmp"`, "ask"}, // P is empty when git fails
+	} {
+		d := e.Check(context.Background(), Request{Agent: "be-7", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+	// a file: with an Edit deny rule, a name only known when the command runs is refused, and a new file in $TMPDIR is not
+	ruled := f.engine(t, Config{Mode: ModeBypass, Tmp: t.TempDir(), Deny: []string{"Edit(./secrets/**)"}})
+	for _, c := range []struct{ cmd, want string }{
+		{`f=$(mktemp "$TMPDIR/x.XXXX"); rm -f "$f"`, "allow"},
+		{`f=$(mktemp -p secrets); rm -f "$f"`, "deny"},
+		{`f=$(mktemp "$X/x.XXXX"); rm -f "$f"`, "deny"},
+		{`f=$(mktemp -u "$TMPDIR/x.XXXX"); rm -f "$f"`, "deny"},
+	} {
+		d := ruled.Check(context.Background(), Request{Agent: "be-7", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
+
+// mktempPath takes GNU mktemp's directory: the template's, -p's, or $TMPDIR's, which the engine knows only as the scratch directory of
+// a session that has one and a line that does not name TMPDIR. It answers the same whether a command of the line failed or not, so a
+// variable set from it is judged empty as well (noteAssignments).
+func TestMktempPathIsANameInItsDirectory(t *testing.T) {
+	rs := &resolver{home: "/h", tmp: "/s/tmp"}
+	x := expansion{vars: map[string]string{"B": "/b", "P": "/p"}, fallible: map[string]bool{"P": true}}
+	for cmd, want := range map[string]string{
+		`mktemp -d`:                          "/s/tmp/tmp.$(mktemp)",
+		`mktemp`:                             "/s/tmp/tmp.$(mktemp)",
+		`mktemp -u`:                          "/s/tmp/tmp.$(mktemp)",
+		`mktemp -q -d -t rw.XXXXXX`:          "/s/tmp/rw.$(mktemp)",
+		`mktemp -dt rw`:                      "/s/tmp/rw.$(mktemp)", // BSD: a prefix
+		`mktemp -d "$TMPDIR/demo.XXXX"`:      "/s/tmp/demo.$(mktemp)",
+		`mktemp -d ${TMPDIR}/XXX`:            "/s/tmp/$(mktemp)",
+		`mktemp --directory "$B/run.XXXXXX"`: "/b/run.$(mktemp)",
+		`mktemp -d "$HOME/x.XXXX"`:           "/h/x.$(mktemp)",
+		`mktemp -d /x/rw.XXXXXX`:             "/x/rw.$(mktemp)",
+		`mktemp -d x.XXXX`:                   "x.$(mktemp)", // GNU: in the working directory
+		`mktemp -d build/x.XXXX`:             "build/x.$(mktemp)",
+		`mktemp -d -p /x`:                    "/x/tmp.$(mktemp)",
+		`mktemp -dp /x/ rw.XXXX`:             "/x/rw.$(mktemp)",
+		`mktemp -dp/x rw.XXXX`:               "/x/rw.$(mktemp)",
+		`mktemp -d --tmpdir=/x rw.XXXX`:      "/x/rw.$(mktemp)",
+		`mktemp -d --tmpdir rw.XXXX`:         "/s/tmp/rw.$(mktemp)",
+		`mktemp -d -p "" rw.XXXX`:            "/s/tmp/rw.$(mktemp)",
+		`mktemp -d -t -p /x rw.XXXX`:         "/s/tmp/rw.$(mktemp)", // -t prefers $TMPDIR
+		`mktemp -u -p "$TMPDIR"`:             "/s/tmp/tmp.$(mktemp)",
+		`mktemp -u /x/rw.XXXX`:               "", // a dry run creates nothing outside the scratch directory
+		`mktemp -u "$TMPDIR/x.XXXX"`:         "",
+		`mktemp -d "$X/x.XXXX"`:              "",
+		`mktemp -d -p "$P"`:                  "", // empty when the command P came from failed: $TMPDIR, or /tmp
+		`mktemp -d "$TMPDIR/*.XXXX"`:         "",
+		`mktemp -d "$TMPDIR/a b.XXXX"`:       "",
+		`mktemp -d "$TMPDIR/{a,b}.XXXX"`:     "",
+		`mktemp -d "$TMPDIR/../x.XXXX"`:      "",
+		`mktemp -d "$TMPDIR/x.XX"`:           "",
+		`mktemp -d "$TMPDIR/XXXX/x"`:         "",
+		`mktemp -d "$TMPDIR/x.XXXX/"`:        "",
+		`mktemp -d x`:                        "",
+		`mktemp -d ""`:                       "",
+		`mktemp -d a.XXXX b.XXXX`:            "",
+		`mktemp -d --suffix=.d x.XXXX`:       "",
+		`mktemp -d -- x.XXXX`:                "",
+		`mktemp -d -t /x/rw.XXXX`:            "",
+		`mktemp -d -p /x sub/rw.XXXX`:        "",
+		`mktemp -d -p /x /y/rw.XXXX`:         "",
+		`mktemp -d -p`:                       "",
+		`mktemp -d '$TMPDIR/x.XXXX'`:         "", // the characters $TMPDIR
+		`mktemp -d "\$TMPDIR/x.XXXX"`:        "",
+		`mktemp -d ~/x.XXXX`:                 "",
+		`mktemp -d "$(pwd)/x.XXXX"`:          "",
+		`TMPDIR=/ mktemp -d`:                 "",
+		`env mktemp -d`:                      "",
+	} {
+		for _, emptied := range []bool{false, true} {
+			x.emptied = emptied
+			got, ok := rs.mktempPath(cmd, "/w", x)
+			if ok != (want != "") || got != want {
+				t.Errorf("%s (emptied %v) = %q, %v; want %q", cmd, emptied, got, ok, want)
+			}
+		}
+	}
+	// $TMPDIR is not known without a scratch directory, nor on a line that names TMPDIR; a directory the template or -p names still is
+	off := expansion{off: map[string]bool{"TMPDIR": true}}
+	for _, c := range []struct {
+		rs        *resolver
+		x         expansion
+		cmd, want string
+	}{
+		{&resolver{}, expansion{}, `mktemp -d`, ""},
+		{&resolver{}, expansion{}, `mktemp -d -t x.XXXX`, ""},
+		{&resolver{}, expansion{}, `mktemp -d /x/XXX`, "/x/$(mktemp)"},
+		{&resolver{}, expansion{}, `mktemp -d -p /x`, "/x/tmp.$(mktemp)"},
+		{&resolver{}, expansion{}, `mktemp -u -p /x`, ""},
+		{rs, off, `mktemp -d`, ""},
+		{rs, off, `mktemp -d --tmpdir x.XXXX`, ""},
+		{rs, off, `mktemp -d "$TMPDIR/x.XXXX"`, ""},
+		{rs, off, `mktemp -d -p /x`, "/x/tmp.$(mktemp)"},
+	} {
+		if got, ok := c.rs.mktempPath(c.cmd, "/w", c.x); ok != (c.want != "") || got != c.want {
+			t.Errorf("%s (tmp %q, off %v) = %q, %v; want %q", c.cmd, c.rs.tmp, c.x.off, got, ok, c.want)
 		}
 	}
 }

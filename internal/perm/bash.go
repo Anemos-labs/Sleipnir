@@ -417,7 +417,9 @@ func (ev *evaluator) noteAssignments(s shellparse.Simple, cw *cwdSet, conflicted
 		var w string
 		dyn := literal
 		if !dyn {
-			w, _, dyn = ev.rs.expandWordVars(val, cwd, expansion{vars: before, off: ev.off, gitEnv: ev.gitEnv})
+			// with fallible too, so that this pass and the emptied one below agree on a substitution that reads it: $(mktemp -p "$D")
+			// is unknown in both when D came from a command's output (mktempPath)
+			w, _, dyn = ev.rs.expandWordVars(val, cwd, expansion{vars: before, off: ev.off, gitEnv: ev.gitEnv, fallible: ev.fallible})
 		}
 		prev, had := ev.vars[name]
 		switch {
@@ -1006,6 +1008,9 @@ func (ev *evaluator) highRisk(u *unit) *riskInfo {
 			if ev.bareStar(p) {
 				return &riskInfo{why: "recursive delete of " + p, markers: mk}
 			}
+			if e := ev.emptiedWord(p); e != "" && ev.bareStar(e) {
+				return &riskInfo{why: "recursive delete of " + p + ", which is " + e + " when a command whose output it holds fails", markers: mk}
+			}
 		}
 	case name == "chmod" || name == "chown" || name == "chgrp":
 		if !(hasShort(args, "R") || hasLong(args, "--recursive")) {
@@ -1057,6 +1062,16 @@ func (ev *evaluator) broad(real string) bool {
 		}
 	}
 	return false
+}
+
+// emptiedWord is what a word is when the command substitutions it holds, directly or through a variable, printed nothing
+// (evaluator.emptiedExpansion), or "" when that is the word itself: "$D"* is * when D=$(mktemp -d) failed.
+func (ev *evaluator) emptiedWord(p string) string {
+	e, _, dyn := ev.rs.expandWordVars(p, ev.startDir(), ev.emptiedExpansion())
+	if w, _, _ := ev.rs.expandWordVars(p, ev.startDir(), ev.expansion()); dyn || w == e {
+		return ""
+	}
+	return e
 }
 
 // bareStar recognises rm targets like *, .*, ./*, /*, ~/*, ../* whose directory
