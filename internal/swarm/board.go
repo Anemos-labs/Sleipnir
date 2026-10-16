@@ -780,6 +780,23 @@ func errNotOwner(id, owner string) error {
 	return fmt.Errorf("%s belongs to %s, not to you: mail them, or the manager if it should move", id, owner)
 }
 
+// errNotDoing refuses a change that needs a task in progress, with what the task's status asks for instead. A model told only that a
+// task "is done, not doing" tends to try the settled task again: a manager tried to record a new verification on its finished one
+// three times.
+func errNotDoing(id string, status TaskStatus) error {
+	switch status {
+	case StatusDone, StatusFailed:
+		return fmt.Errorf("%s is %s, not doing: its result stands. Say what came after it in your answer or by mail, or put new work in a new task", id, status)
+	case StatusReview:
+		return fmt.Errorf("%s is in review, not doing: it waits for the manager to accept or reject it", id)
+	case StatusBlocked:
+		return fmt.Errorf("%s is blocked, not doing: resume it first (task resume) once what blocked it is settled", id)
+	case StatusTodo:
+		return fmt.Errorf("%s is todo, not doing: claim it first (task claim)", id)
+	}
+	return fmt.Errorf("%s is %s, not doing", id, status)
+}
+
 // Update sets the one-line progress of a task the agent is working on.
 func (b *Board) Update(agent, id, line string) error {
 	return b.mutate(agent, "update", func(d *draft) error {
@@ -788,7 +805,7 @@ func (b *Board) Update(agent, id, line string) error {
 			return err
 		}
 		if t.Status != StatusDoing {
-			return fmt.Errorf("%s is %s, not doing", id, t.Status)
+			return errNotDoing(id, t.Status)
 		}
 		line = cleanText(line, maxLineRunes)
 		if t.Line == line {
@@ -824,7 +841,7 @@ func (b *Board) submitAgreementAt(agent, id string, rev uint64, result, evidence
 			return err
 		}
 		if t.Status != StatusDoing {
-			return fmt.Errorf("%s is %s, not doing", id, t.Status)
+			return errNotDoing(id, t.Status)
 		}
 		if rev != 0 && t.Rev != rev {
 			return fmt.Errorf("%s was reassigned while you worked on it", id)
@@ -1126,7 +1143,7 @@ func (b *Board) BlockOn(agent, id, on, reason string) error {
 			return err
 		}
 		if t.Status != StatusDoing {
-			return fmt.Errorf("%s is %s, not doing", id, t.Status)
+			return errNotDoing(id, t.Status)
 		}
 		if on != "" {
 			if on == id {
