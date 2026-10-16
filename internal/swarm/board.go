@@ -622,13 +622,24 @@ type assignReq struct {
 	spec      TaskSpec // creation spec, or (Files non-nil) the scope to set on an existing task
 	setScope  bool     // apply spec.Files to an existing task
 	check     TaskCheck
+	// reserve leaves the task todo, owned by agent (a "reserve" operation): only agent
+	// can claim it, and nothing is started. Reserving it again for the same agent
+	// changes nothing.
+	reserve bool
+	// transfer lets the assigner give away a task it owns itself (a pool leader that
+	// claimed a child of its pool it meant for a member).
+	transfer bool
 }
 
 // assignTask creates (optionally) and assigns a task in one operation: a refused
 // assignment leaves nothing behind on the board.
 func (b *Board) assignTask(r assignReq) (Task, error) {
 	var out Task
-	err := b.mutate(r.by, "assign", func(d *draft) (err error) {
+	op := "assign"
+	if r.reserve {
+		op = "reserve"
+	}
+	err := b.mutate(r.by, op, func(d *draft) (err error) {
 		var t Task
 		i := -1
 		if r.id == "" {
@@ -650,12 +661,15 @@ func (b *Board) assignTask(r assignReq) (Task, error) {
 			switch {
 			case t.Status == StatusDone || t.Status == StatusFailed:
 				return fmt.Errorf("%s is already %s", r.id, t.Status)
-			case t.Owner != "" && t.Owner == r.by && t.Owner != r.agent:
+			case r.reserve && t.Owner == r.agent && t.Status == StatusTodo:
+				out = t
+				return errNoChange // already reserved for this agent
+			case t.Owner != "" && t.Owner == r.by && t.Owner != r.agent && !r.transfer:
 				// The assigner is the owner: a manager that claimed a task it meant to hand over. The second real swarm run did,
 				// and went on for turns, because the only thing the board said was whose the task was.
 				return fmt.Errorf("%s is claimed by you, so no worker can be put on it: release it with task revise and assign the existing task to the worker "+
 					"(a manager hands tasks over, it does not claim them)", r.id)
-			case t.Owner != "" && t.Owner != r.agent:
+			case t.Owner != "" && t.Owner != r.agent && !(r.transfer && t.Owner == r.by):
 				return fmt.Errorf("%s is already owned by %s", r.id, t.Owner)
 			case t.Status == StatusReview:
 				return fmt.Errorf("%s is in review: accept it, or reject it to send it back", r.id)
@@ -684,6 +698,9 @@ func (b *Board) assignTask(r assignReq) (Task, error) {
 			}
 		}
 		t.Owner, t.Status, t.Line, t.Rev = r.agent, StatusDoing, "", d.Version
+		if r.reserve {
+			t.Status = StatusTodo
+		}
 		if err := d.put(i, t); err != nil {
 			return err
 		}
