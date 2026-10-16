@@ -548,11 +548,16 @@ func (p *parser) markLast() {
 	}
 }
 
-// markList marks every command of the current and-or list as Cond, and in no && chain: the list runs in the background.
+// markList marks every command of the current and-or list as Cond and no ChainLink: the list runs in the background. A list of the
+// line's own shell leaves its && chain; one inside a link (a && { b & } && c) stays in the chain of that link, which starts it.
 func (p *parser) markList() {
+	own := p.own()
 	for i := p.listStart; i < len(p.out); i++ {
 		p.out[i].Cond = true
-		p.out[i].AndChain, p.out[i].ChainLink = 0, false
+		p.out[i].ChainLink = false
+		if own {
+			p.out[i].AndChain = 0
+		}
 	}
 }
 

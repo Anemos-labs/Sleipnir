@@ -448,6 +448,7 @@ var chainSnippets = []string{
 	`true && v1=a && case x in x) mk1;; esac`, `true && v1=a && while true; do mk1; break; done`, `true && v1=a && for i in 1; do mk1; done`,
 	`true && v1=a && mk1 > /dev/stdout`, `true && v1=a && { false || mk1; }`, `true && v1=a && mk1 && v2=b && v3=c && mk2`, `false || true && v1=a && mk1`,
 	`true && v1=a && trap mk1 EXIT`, `true && v1=a && mk1 & wait`, `if false; then :; fi && v1=a && mk1`, `case x in y) ;; esac && v1=a && mk1`,
+	`true && v1=a && { mk2 & wait; } && mk1`, `true && v1=a && if true; then mk2 & wait; fi && mk1`,
 }
 
 // A link of an && chain (ChainLink) has made its assignments whenever a later command of its chain runs: checked against bash, where
