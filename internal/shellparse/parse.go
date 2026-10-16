@@ -49,6 +49,8 @@ type parser struct {
 	headerCond bool        // the for/select being read runs only conditionally or in a shell of its own
 	loops      int         // open while, until, for and select loops
 	curLoop    int         // Simple.Loop of the commands being read: the outermost open loop, 0 outside any
+	chain      int         // Simple.AndChain of the commands being read (the top-level parser only): 0 after an || of the line's own list
+	chains     int         // the chains numbered so far
 }
 
 // listFrame is the and-or list a compound command (if, while, until, for, select, case, { }, ( )) belongs to, set aside while
@@ -82,8 +84,23 @@ const (
 // simple commands.
 func parseTokens(st *state, src string, toks []token, depth int, top, nested bool) []Simple {
 	p := &parser{st: st, src: src, toks: toks, depth: depth, top: top, nested: nested, last: -1}
+	p.newChain()
 	p.run()
 	return p.out
+}
+
+// own reports whether the parser is reading the line's own and-or list: the top-level parser, outside any compound command, group,
+// subshell or case statement. Only there do the operators begin and end && chains (Simple.AndChain).
+func (p *parser) own() bool {
+	return p.top && p.parens == 0 && p.groups == 0 && p.blocks == 0 && len(p.cases) == 0
+}
+
+// newChain begins the && chain of a new and-or list of the line's own shell, at the line's start and after its ;, & and newlines.
+func (p *parser) newChain() {
+	if p.own() {
+		p.chains++
+		p.chain = p.chains
+	}
 }
 
 func (p *parser) run() {
@@ -316,6 +333,7 @@ func (p *parser) op(t token) {
 		p.have = false
 		p.andOr = false
 		p.listStart = len(p.out)
+		p.newChain()
 	case ";":
 		if !(p.cur.has || p.have || p.skipHeader) {
 			p.st.problem("empty command before ;")
@@ -326,6 +344,7 @@ func (p *parser) op(t token) {
 		p.needCmd = false
 		p.andOr = false
 		p.listStart = len(p.out)
+		p.newChain()
 	case "&&", "||", "|", "|&":
 		if !(p.cur.has || p.have) {
 			p.st.problem("operator " + t.text + " without a command before it")
@@ -339,6 +358,9 @@ func (p *parser) op(t token) {
 		} else {
 			p.andOr = true
 		}
+		if t.text == "||" && p.own() {
+			p.chain = 0 // what follows may run although a link before it did not: the rest of the list is in no chain
+		}
 	case "&":
 		if !(p.cur.has || p.have) {
 			p.st.problem("& without a command before it")
@@ -349,6 +371,7 @@ func (p *parser) op(t token) {
 		p.needCmd = false
 		p.andOr = false
 		p.listStart = len(p.out)
+		p.newChain()
 		if p.top {
 			p.st.an.Background = true
 		}
@@ -484,7 +507,9 @@ func (p *parser) finish() {
 	c := p.cur
 	p.cur = builder{}
 	s := Simple{Env: c.env, Redirects: c.redirs, Nested: p.nested, Piped: c.piped,
-		Cond: c.piped || p.andOr || p.parens > 0 || p.groups > 0 || p.blocks > 0 || len(p.cases) > 0, Loop: p.curLoop, Arith: c.arith}
+		Cond: c.piped || p.andOr || p.parens > 0 || p.groups > 0 || p.blocks > 0 || len(p.cases) > 0, Loop: p.curLoop, Arith: c.arith,
+		// "} > out" is the redirection of the group before it, which is the link
+		AndChain: p.chain, ChainLink: p.chain != 0 && !c.piped && p.own() && (len(c.words) > 0 || !p.have)}
 	p.st.arithOn += len(c.arith)
 	if c.start >= 0 && c.end <= len(p.src) && c.start <= c.end {
 		s.Raw = p.src[c.start:c.end]
@@ -515,26 +540,39 @@ func (p *parser) finish() {
 }
 
 // markLast marks the last command of the list as Cond (it ran in a shell of its own: a pipe's writing side): the command finish
-// emitted last, or every command of the compound command that ended last.
+// emitted last, or every command of the compound command that ended last. It stays in its && chain, but is no ChainLink.
 func (p *parser) markLast() {
 	for i := max(p.last, 0); p.last >= 0 && i < len(p.out); i++ {
 		p.out[i].Cond = true
+		p.out[i].ChainLink = false
 	}
 }
 
-// markList marks every command of the current and-or list as Cond.
+// markList marks every command of the current and-or list as Cond and no ChainLink: the list runs in the background. A list of the
+// line's own shell leaves its && chain; one inside a link (a && { b & } && c) stays in the chain of that link, which starts it.
 func (p *parser) markList() {
+	own := p.own()
 	for i := p.listStart; i < len(p.out); i++ {
 		p.out[i].Cond = true
+		p.out[i].ChainLink = false
+		if own {
+			p.out[i].AndChain = 0
+		}
 	}
 }
 
 // flush moves pending simple commands into output and clears the pending queue. Inside a loop, the commands of a substitution are
-// in it as well, whatever loops of their own they have.
+// in it as well, whatever loops of their own they have; and they are in the && chain of the link being read (the top-level parser
+// only), since they run as part of it.
 func (p *parser) flush() {
 	if p.curLoop != 0 {
 		for i := range p.pending {
 			p.pending[i].Loop = p.curLoop
+		}
+	}
+	if p.top {
+		for i := range p.pending {
+			p.pending[i].AndChain, p.pending[i].ChainLink = p.chain, false
 		}
 	}
 	if len(p.pending) > 0 {
@@ -647,6 +685,7 @@ func (p *parser) endHeader() {
 	}
 	p.out = append(p.out, Simple{
 		Program: "for", Args: append([]string(nil), words...), Raw: raw, Nested: p.nested, LoopVar: loopVar, Cond: p.headerCond, Loop: p.curLoop, Arith: arith,
+		AndChain: p.chain,
 	})
 	p.st.arithOn += len(arith)
 	p.have = true

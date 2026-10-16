@@ -233,8 +233,9 @@ below it (`node script.mjs .`). Two command substitutions have known values: `$(
 A variable that the same line sets to a value the engine can expand (`F="$TMPDIR/x"`, `export F=...`, `readonly F=...`, `declare -x
 F=...`) names that value in the commands after it, so `rm -rf "$F"` is judged as the path it is. It is done only where it is sound: the
 statement runs unconditionally (not after `&&`, `||` or a pipe, not in a subshell, a loop or a branch; a command substitution that closed
-before it, as in `cd "$(pwd)"; F=...`, does not count), the value is not empty (`${F:=x}`
-would replace an empty one), a name assigned two values is unknown, and nothing in the line can change variables behind the analysis' back
+before it, as in `cd "$(pwd)"; F=...`, does not count), or it is a link after the first of an `&&` chain, whose following links are
+then the only place the value is known (see below); the value is not empty (`${F:=x}` would replace an empty one), a name assigned two values is unknown,
+and nothing in the line can change variables behind the analysis' back
 (`read`, `eval`, `source`, `unset`, `wait -p`, `printf`, arithmetic, a function definition, a command in the background). A declaration
 expands all its values before it assigns any (`export a=1 b=$a` gives `b` the old `a`). A new shell (`sh -c`, a script on a shell's standard
 input) sees only the variables the line exported; the commands of a trap are judged as they run, after the rest of the line, in every
@@ -242,6 +243,21 @@ directory the line may be in by then and with only the variables that were known
 that assigns makes the whole line unknown. The shell's own variables are never taken as assigned (`PWD`, which `cd` changes; `RANDOM`,
 `SECONDS` and `LINENO`, whose reads are not what was assigned; `UID` and `PPID`, which cannot be assigned), and a line that assigns
 `HOME`, `TMPDIR` or `PWD` no longer expands them as the harness's.
+
+Each link of an `&&` chain runs only when the link before it succeeded, so an assignment in a link has been made whenever a later link
+runs: in `cd <dir> && F="$TMPDIR/x" && rm -rf "$F" && tool --profile "$F"`, both commands after the assignment name `$TMPDIR/x`. The
+chain is the links of one list that its first link joins by `&&` alone, and what such a link assigns is known to everything the later
+links hold (a pipeline, a group, a subshell, a branch, a substitution; a new shell sees it only when the link exported it). The link
+itself must be a plain statement of the line's own shell: an assignment, or a declaration whose operands all have a value (`export
+F=...`, not `export F=... G`); one in a pipeline, a subshell, a group, a loop or a branch, or in a list of the line's own shell sent to
+the background, is not one. A background job inside a later link (`a && F=x && { b & wait; } && rm -rf "$F"`) starts after the links
+before it and does not end the chain. The rules for values above hold as they do anywhere (a value from a command's output may be
+empty, two values make a name unknown), and in the link's own substitutions, which run before it assigns (`X=$(rm -rf "$F") F=...`),
+its names are unknown. Once an `||` has appeared in the list (`a || F=x && rm -rf "$F"`, where a successful `a` skips the assignment
+and still runs `rm`), the rest of the list is in no chain. After the chain (`;`, `&`, a newline, an `||`), and for a trap set inside
+it, a name assigned in a link after the first is unknown: the chain may have stopped before the assignment. The first link runs
+whenever its list does, so what it assigns stays known after the chain, as an unconditional statement's value does (`F=x && a; rm -rf
+"$F"`).
 
 The shell's special parameters whose value is a number (`$$`, `$?`, `$#`, `$!`, `$PPID`, and bash's `$BASHPID`, `$RANDOM`, `$SRANDOM`,
 `$SECONDS`, `$EPOCHSECONDS`, `$EPOCHREALTIME`, `$UID`, `$EUID`, `$LINENO`) are a piece of a name: `"$TMPDIR/out-$$.json"` is a file in

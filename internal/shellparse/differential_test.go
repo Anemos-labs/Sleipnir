@@ -436,3 +436,90 @@ func keys(m map[string]bool) []string {
 	sort.Strings(out)
 	return out
 }
+
+// chainSnippets assign v1..v3 in the links of && chains, and run mk1..mk9 after them in the same list, after it, and behind an ||.
+var chainSnippets = []string{
+	`true && v1=a && mk1`, `v1=a && mk1`, `mk2 && v1=a && v2=b && mk1`, `true && v1=a v2=b && mk1`, `true && export v1=a && mk1`,
+	`! false && v1=a && mk1`, "true &&\n v1=a &&\n mk1", `false && v1=a && mk1; mk2`, `false && v1=a; mk1`, "false && v1=a\nmk1",
+	`false && v1=a & wait; mk1`, `false || v1=a && mk1`, `false && v1=a || mk1`, `v2=b && false && v1=a || mk1 && mk2`,
+	`true && v1=a | true && mk1`, `true && (v1=a) && mk1`, `true && { v1=a; } && mk1`, `true && if true; then v1=a; fi && mk1`,
+	`true && v1=a && false || mk1`, `true && ! v1=a || mk1`, `true && v1=a && mk1 | mk2`, `true && v1=a && (mk1) && { mk2; }`,
+	`true && v1=a && echo $(mk1)`, `true && v1=a && eval mk1`, `true && v1=a && if true; then mk1; fi`,
+	`true && v1=a && case x in x) mk1;; esac`, `true && v1=a && while true; do mk1; break; done`, `true && v1=a && for i in 1; do mk1; done`,
+	`true && v1=a && mk1 > /dev/stdout`, `true && v1=a && { false || mk1; }`, `true && v1=a && mk1 && v2=b && v3=c && mk2`, `false || true && v1=a && mk1`,
+	`true && v1=a && trap mk1 EXIT`, `true && v1=a && mk1 & wait`, `if false; then :; fi && v1=a && mk1`, `case x in y) ;; esac && v1=a && mk1`,
+	`true && v1=a && { mk2 & wait; } && mk1`, `true && v1=a && if true; then mk2 & wait; fi && mk1`,
+}
+
+// A link of an && chain (ChainLink) has made its assignments whenever a later command of its chain runs: checked against bash, where
+// mk1..mk9 print the values of v1..v3 they see. A new shell (sh -c) sees only what was exported, and a trap runs later; neither is
+// checked here.
+func TestChainLinksAssignBeforeTheirChainRunsDifferential(t *testing.T) {
+	if testing.Short() {
+		t.Skip("short mode")
+	}
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not installed")
+	}
+	dir := t.TempDir()
+	prelude := `for n in 1 2 3 4 5 6 7 8 9; do eval "mk$n() { echo EXEC:mk$n:\"\$v1\":\"\$v2\":\"\$v3\"; }"; done` + "\n"
+	checked := 0
+	for _, sn := range chainSnippets {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		cmd := exec.CommandContext(ctx, bash, "--noprofile", "--norc", "-c", prelude+sn)
+		cmd.Dir = dir
+		cmd.Env = []string{"PATH=/usr/bin:/bin", "HOME=" + dir}
+		out, _ := cmd.Output() // a snippet may fail after running its markers; that is fine
+		cancel()
+		saw := map[string][]string{} // marker -> "v1:v2:v3" of each run
+		for _, tok := range strings.Fields(string(out)) {
+			if rest, ok := strings.CutPrefix(tok, "EXEC:"); ok {
+				name, vals, _ := strings.Cut(rest, ":")
+				saw[name] = append(saw[name], vals)
+			}
+		}
+		an := Parse(sn)
+		if !an.Parsed {
+			t.Errorf("%q: not parsed (%s)", sn, an.Problem)
+			continue
+		}
+		assigned := map[int]map[string]string{} // chain -> what its links assigned so far
+		for _, c := range an.Commands {
+			if c.ChainLink {
+				as := c.Env
+				if c.Program == "export" {
+					as = c.Args
+				}
+				for _, a := range as {
+					if n, v, ok := strings.Cut(a, "="); ok {
+						if assigned[c.AndChain] == nil {
+							assigned[c.AndChain] = map[string]string{}
+						}
+						assigned[c.AndChain][n] = v
+					}
+				}
+			}
+			if !strings.HasPrefix(c.Program, "mk") || c.Child || c.Deferred || c.AndChain == 0 {
+				continue
+			}
+			for _, vals := range saw[c.Program] {
+				got := strings.Split(vals, ":")
+				for i, n := range []string{"v1", "v2", "v3"} {
+					want, ok := assigned[c.AndChain][n]
+					if !ok {
+						continue
+					}
+					checked++
+					if i >= len(got) || got[i] != want {
+						t.Errorf("%q: %s ran with %s:%s, but an earlier link of its chain assigned %q", sn, c.Program, n, vals, want)
+					}
+				}
+			}
+		}
+	}
+	if checked < 25 {
+		t.Errorf("only %d assignments were compared with bash", checked)
+	}
+	t.Logf("compared %d assignments of chain links with what bash ran after them", checked)
+}
