@@ -7,6 +7,17 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The session's `compactor` model is benched when 5 of its last 8 patches
+  cannot be used (JSON that does not parse, a tool call in place of the
+  patch, a patch that does not apply): every agent then compacts on its own
+  model, reading its own cache, and the compactor is asked again every 10th
+  compaction until 3 of those probes in a row are usable. Before, each such
+  patch fell back to the mechanical compaction, which keeps no summary.
+  Compactions while it is benched are booked at each agent's model price.
+  The `compact.patch` request event says which model was asked (`model`,
+  `compactor`), and a `compactor` stage records each change. Prompt bytes:
+  none change.
+
 - Read-only roles (reviewer, scout, architect) run the project's static
   checks as well as its tests: `node --check`, and on the tests preset's
   terms (every file inside the workspace, no `--fix`, `--install-types`,

@@ -810,12 +810,17 @@ func (s *Session) build(ctx context.Context) error {
 			if err != nil {
 				return nil, err
 			}
+			var health *agent.CompactorHealth
+			if comp != nil {
+				health = agent.NewCompactorHealth()
+			}
 			p := params
 			if o.Params.MaxTokens == 0 {
 				p.MaxTokens = min(s.Model.MaxOutput, 16000)
 			}
 			return agent.New(agent.Config{
-				ID: "main", Role: role.Name, Model: s.Model, Provider: s.Provider, Compactor: comp, CompactorModel: compModel, Tools: reg, ToolSpecs: specs,
+				ID: "main", Role: role.Name, Model: s.Model, Provider: s.Provider, Compactor: comp, CompactorModel: compModel, CompactorHealth: health,
+				Tools: reg, ToolSpecs: specs,
 				Const: constLayer, Shared: shared, RoleL: role.Layer(),
 				Params: p, Effort: &s.effort, Events: s.Log, Blobs: s.Blobs, Archive: archive, Files: files,
 				Hot: func(id string) []core.Block {
@@ -889,8 +894,12 @@ func (s *Session) build(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	var health *agent.CompactorHealth
+	if comp != nil {
+		health = agent.NewCompactorHealth()
+	}
 	deps := swarm.Deps{
-		Provider: s.Provider, Model: s.Model, Compactor: comp, CompactorModel: compModel, Registry: reg, Plans: plans,
+		Provider: s.Provider, Model: s.Model, Compactor: comp, CompactorModel: compModel, CompactorHealth: health, Registry: reg, Plans: plans,
 		Const: constLayer, Shared: shared,
 		Events: s.Log, Blobs: s.Blobs, Archive: archive, Files: files, Perm: s.Perm,
 		Snap: s.Ckpt, Handles: handles,

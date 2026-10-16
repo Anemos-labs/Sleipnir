@@ -176,9 +176,11 @@ func DefaultConfig() Config {
 type Deps struct {
 	Provider provider.Provider
 	Model    cost.Model
-	// Compactor and CompactorModel are agent.Config's, for every agent.
-	Compactor      provider.Provider
-	CompactorModel cost.Model
+	// Compactor, CompactorModel and CompactorHealth are agent.Config's, for every agent: one record of how the
+	// compactor's patches fared serves the whole team.
+	Compactor       provider.Provider
+	CompactorModel  cost.Model
+	CompactorHealth *agent.CompactorHealth
 	// Plans holds each agent's plan (internal/plan); nil: no plan tool.
 	Plans *plan.Store
 	// OutagePatience and WaitUnreachable are agent.Config's for every agent of the swarm.
