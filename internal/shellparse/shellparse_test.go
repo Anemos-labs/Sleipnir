@@ -3,6 +3,7 @@ package shellparse
 import (
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -831,6 +832,59 @@ func TestCondAndArithmeticAreWhatTheShellDoes(t *testing.T) {
 	} {
 		if got := Parse(src).HasArithmetic; got != want {
 			t.Errorf("%q: HasArithmetic %v, want %v", src, got, want)
+		}
+	}
+}
+
+// AndChain groups the links of an and-or list of the line's own shell that its first link joins by && alone, with every command such
+// a link holds; ChainLink marks the links that are simple commands of this shell. An || ends the chain for the rest of its list, a ;,
+// & or newline begins another, a background list is in none, and the lists inside a compound command or a substitution are no chains.
+func TestAndChainIsTheLinksJoinedByAndAlone(t *testing.T) {
+	chains := func(src string) []string {
+		var out []string
+		for _, s := range Parse(src).Commands {
+			c := strconv.Itoa(s.AndChain)
+			if s.ChainLink {
+				c += "L"
+			}
+			out = append(out, c)
+		}
+		return out
+	}
+	for src, want := range map[string][]string{
+		"a && P=1 && b || d; e":                  {"1L", "1L", "1L", "0", "2L"},
+		"a; b\nc && d":                           {"1L", "2L", "3L", "3L"},
+		"a || P=1 && b":                          {"1L", "0", "0"},
+		"a &&\n P=1 &&\n b":                      {"1L", "1L", "1L"}, // a newline after && continues the list
+		"a && P=1 | b && c":                      {"1L", "1", "1", "1L"},
+		"a | b && c":                             {"1", "1", "1L"},
+		"a && P=1 & c":                           {"0", "0", "2L"},
+		"a && if b; then P=1; fi && c":           {"1L", "1", "1", "1L"},
+		"if a; then b || c; fi && d":             {"1", "1", "1", "1L"}, // an || inside the if is not one of the line's list
+		"a && { P=1; } > out && c":               {"1L", "1", "1", "1L"},
+		"a && (P=1) && c":                        {"1L", "1", "1L"},
+		"a && for f in x; do b; done && c":       {"1L", "1", "1", "1L"},
+		"case x in *) a && b;; esac && c":        {"1", "1", "1L"},
+		"a && echo $(P=1 && b) && c":             {"1L", "1L", "1", "1", "1L"},
+		"a && sh -c 'b && c' && d":               {"1L", "1L", "1", "1", "1L"},
+		"a && trap 'b' EXIT":                     {"1L", "1L", "1"},
+		"a; P=1 && b || c $(d)":                  {"1L", "2L", "2L", "0", "0"},
+		"a && b; case $(c) in *) d;; esac && e":  {"1L", "1L", "2", "2", "2L"},
+		"a && b & c; d":                          {"0", "0", "2L", "3L"},
+		"if a; then b & fi && c":                 {"1", "0", "1L"}, // a background list is in no chain
+		"a && while b; do c; done | d && e || f": {"1L", "1", "1", "1", "1L", "0"},
+	} {
+		if got := chains(src); !slices.Equal(got, want) {
+			t.Errorf("%q: AndChain %v, want %v", src, got, want)
+		}
+	}
+	// A ChainLink is Cond only for the && before it; its other reasons (a pipe, a group, a subshell, a branch, the background) make
+	// it no link.
+	for _, src := range []string{"a && P=1 && b | c && (d) && { e; } && if f; then g; fi && h", "a; b && c & d && e"} {
+		for _, s := range Parse(src).Commands {
+			if s.ChainLink && (s.Piped || s.Nested || s.AndChain == 0) {
+				t.Errorf("%q: %q is a ChainLink: %+v", src, s.Raw, s)
+			}
 		}
 	}
 }

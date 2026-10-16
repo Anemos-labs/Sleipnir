@@ -195,6 +195,59 @@ func TestABackgroundJobKeepsTheLinesVariablesKnown(t *testing.T) {
 	}
 }
 
+// Each link of an && chain runs only when the one before it succeeded, so an assignment in a link has been made whenever a later link
+// runs: an unattended run kept stopping on cd <project> && P="$TMPDIR/ffprofile" && rm -rf "$P" && firefox -profile "$P" ..., asked
+// about "a recursive delete of $P". Past the chain (after ;, a newline or &), or behind an || that may skip the assignment, the name is
+// unknown, as is one assigned where the shell may not keep it (a pipeline, a subshell, a group, a branch, the background) or to a value
+// the engine cannot be sure of.
+func TestAnAndChainKnowsWhatItsLinksAssigned(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: t.TempDir()})
+	for _, c := range []struct{ cmd, want string }{
+		{`cd {root} && P="$TMPDIR/ffprofile" && rm -rf "$P" && firefox -profile "$P" --screenshot "$TMPDIR/f.png" --window-size=1280,800 "file://{root}/index.html"`, "allow"},
+		{`cd x && D="$TMPDIR/d" && rm -rf "$D"`, "allow"},
+		{`D="$TMPDIR/d" && mkdir -p "$D" && rm -rf "$D"`, "allow"},
+		{`cd x && D="$TMPDIR/d" && E="$D/e" && rm -rf "$E"`, "allow"},           // a value built from one the chain set
+		{`cd x && export D="$TMPDIR/d" && sh -c 'rm -rf "$D"'`, "allow"},        // exported in the chain: the new shell starts with it
+		{`cd x && D="$TMPDIR/d" && ls "$D" | head && rm -rf "$D"`, "allow"},     // a pipeline later in the chain does not end it
+		{`cd x && D="$TMPDIR/d" && { rm -rf "$D"; } && (rm -rf "$D")`, "allow"}, // nor do a group and a subshell, which see D
+		{`cd x && D=$(mktemp -d) && rm -rf "$D"`, "allow"},                      // a new scratch path
+		{`cd x && D="$TMPDIR/d" && echo "$(rm -rf "$D")"`, "allow"},             // a later link's substitution
+		{`cd x && D=$(mktemp -d) && rm -rf "$D"/*`, "deny"},                     // empty when mktemp fails: /*
+		{`cd x && D=/ && rm -rf "$D"`, "deny"},                                  // known, and the root
+		{`cd x && F="{home}/.ssh/id_rsa" && cat "$F"`, "deny"},                  // known, and protected
+		{`cd x && D="$TMPDIR/d"; rm -rf "$D"`, "ask"},                           // after ;, the chain may have stopped before D=
+		{"cd x && D=\"$TMPDIR/d\"\nrm -rf \"$D\"", "ask"},
+		{`cd x && D="$TMPDIR/d" && sleep 1 & rm -rf "$D"`, "ask"},
+		{`false || D="$TMPDIR/d" && rm -rf "$D"`, "ask"}, // false succeeding skips D= and still runs rm
+		{`a && D="$TMPDIR/d" || rm -rf "$D"`, "ask"},
+		{`if c; then D="$TMPDIR/d"; fi && rm -rf "$D"`, "ask"},
+		{`(D="$TMPDIR/d") && rm -rf "$D"`, "ask"},
+		{`D="$TMPDIR/d" | true && rm -rf "$D"`, "ask"},
+		{`{ D="$TMPDIR/d"; } && rm -rf "$D"`, "ask"},
+		{`cd x && D="$TMPDIR/d" && sleep 1 && rm -rf "$D" &`, "ask"}, // the whole list runs in the background
+		{`D=/; cd x && D="$TMPDIR/d" && rm -rf "$D"`, "ask"},         // two values
+		{`cd x && D="$TMPDIR/d" && D=/ && rm -rf "$D"`, "ask"},       // two values in the chain
+		{`cd x && D="$TMPDIR/d" && read D && rm -rf "$D"`, "ask"},    // a builtin may set it
+		{`cd x && D="$TMPDIR/d" && for D in /; do :; done && rm -rf "$D"`, "ask"},
+		{`cd x && D="$TMPDIR/d" && sh -c 'rm -rf "$D"'`, "ask"},     // not exported: the new shell does not have it
+		{`cd x && export D="$TMPDIR/d" E && rm -rf "$D"`, "ask"},    // a declaration that also names E
+		{`cd x && D="$TMPDIR/d" && trap 'rm -rf "$D"' EXIT`, "ask"}, // the trap runs after the chain, which may have stopped
+		{`cd x && X=$(rm -rf "$D") D="$TMPDIR/d" && :`, "ask"},      // the link's own substitution runs before it assigns D
+		{`D="$TMPDIR/a"; cd x && D=/ X=$(rm -rf "$D")`, "ask"},
+		{`cd x && D=$(cat name) && rm -rf "$D"`, "ask"},                 // a value only known when the line runs
+		{`D=$(git rev-parse --show-toplevel) && rm -rf "$D"/*`, "deny"}, // empty when git fails: /*
+		{`true && D=$(git rev-parse --show-toplevel) && rm -rf "$D"/*`, "deny"},
+		{`cd {root} && D=$(git rev-parse --show-toplevel) && rm -rf "$D"/*`, "deny"},
+		{`cd x && D=$(git rev-parse --show-toplevel) && rm -rf "$D"/*`, "ask"}, // the repository around x is not known
+	} {
+		d := e.Check(context.Background(), Request{Agent: "be-7", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
+
 // A case statement is parsed: a line with one keeps what it set (a packaging dry run listed each archive by its kind after
 // T="$TMPDIR/t25"; rm -rf "$T", and was asked about as if T were unknown). An assignment or unset in a body runs only when its
 // pattern matches, so the variable is no longer known after it.

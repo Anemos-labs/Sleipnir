@@ -215,10 +215,28 @@ func (ev *evaluator) bash(cmd string) verdict {
 	// A loop runs its commands again: what any of them assigns may already be there when the first one runs, so the names a loop
 	// assigns are unknown from its start (all of them when one of its builtins may set any).
 	entered := map[int]bool{}
+	// An assignment in a link of an && chain (a && P=x && rm -rf "$P") has been made whenever a later command of the chain runs, so it
+	// is known there (chained). The chain may stop before it, so the names its links assigned are unknown once the line is past it.
+	// The substitutions of a link run while it is expanded, before it has assigned everything (X=$(rm -rf "$P") P=x), and are listed
+	// right after it: in them, the names the link assigns are unknown (linkNames).
+	chain, chainNames, linkNames := 0, []string(nil), []string(nil)
+	endChain := func() {
+		for _, n := range chainNames {
+			ev.forget(n, conflicted)
+		}
+		chainNames = nil
+	}
 	for i, s := range an.Commands {
 		if s.Deferred {
 			later = append(later, deferred{s: s, vars: maps.Clone(ev.vars)})
 			continue
+		}
+		if s.AndChain != chain {
+			endChain()
+			chain = s.AndChain
+		}
+		if !s.Nested {
+			linkNames = nil
 		}
 		if track && s.Loop != 0 && !entered[s.Loop] {
 			entered[s.Loop] = true
@@ -241,7 +259,7 @@ func (ev *evaluator) bash(cmd string) verdict {
 				}
 			}
 		}
-		v := ev.judgeWith(s, cw, ev.vars)
+		v := ev.judgeWith(s, cw, withoutNames(ev.vars, linkNames))
 		if track && !s.Child {
 			if reassigns(s) {
 				if names, all := reassignedNames(s); all {
@@ -253,6 +271,12 @@ func (ev *evaluator) bash(cmd string) verdict {
 				}
 			} else if unconditional(s) {
 				ev.noteAssignments(s, cw, conflicted)
+			} else if chained(s) {
+				ev.noteAssignments(s, cw, conflicted)
+				for _, env := range assignedBy(s) {
+					chainNames = append(chainNames, envName(env))
+					linkNames = append(linkNames, envName(env))
+				}
 			} else {
 				for _, env := range assignedBy(s) { // an assignment that may not run leaves the name unknown
 					ev.forget(envName(env), conflicted)
@@ -263,6 +287,7 @@ func (ev *evaluator) bash(cmd string) verdict {
 			return res
 		}
 	}
+	endChain()
 	for _, d := range later {
 		var vars map[string]string
 		if track {
@@ -709,6 +734,38 @@ func printfAssigns(args []string) bool {
 // a substitution.
 func unconditional(s shellparse.Simple) bool {
 	return !s.Nested && !s.Piped && !s.Cond && s.Raw != ""
+}
+
+// chained reports whether the statement s is a link of an && chain of the line's own shell (shellparse.Simple.ChainLink) whose
+// assignments are known to the later commands of its chain and to nothing after it: it is reached from the chain's first link by &&
+// alone, in this shell (not in a pipeline, a subshell, a group, a loop or a branch, not in the background), and it is not inside a
+// substitution. A declaration that also names variables without a value (export a=1 b) is not one: what it does to b would outlast
+// the chain.
+func chained(s shellparse.Simple) bool {
+	if !s.ChainLink || s.AndChain == 0 || s.Nested || s.Piped || s.Raw == "" {
+		return false
+	}
+	if d, ok := declaration(s); ok && len(d.names) > 0 {
+		return false
+	}
+	return true
+}
+
+// withoutNames returns vars less the variables names, as a copy when that removes any: vars itself is not changed.
+func withoutNames(vars map[string]string, names []string) map[string]string {
+	var out map[string]string
+	for _, n := range names {
+		if _, ok := vars[n]; ok {
+			if out == nil {
+				out = maps.Clone(vars)
+			}
+			delete(out, n)
+		}
+	}
+	if out == nil {
+		return vars
+	}
+	return out
 }
 
 // unquoteAssigned removes the double quotes around an assigned value ("$TMPDIR/x"); a single-quoted value is literal and has no

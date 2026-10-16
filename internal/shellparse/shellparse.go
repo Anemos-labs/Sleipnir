@@ -96,6 +96,18 @@ type Simple struct {
 	// after && or || in its list) or runs in a shell of its own (in a ( ) subshell, on either side of a pipe, in the background), or
 	// it is in a { } group, which a later && or || may skip as a whole.
 	Cond bool
+	// AndChain identifies the && chain the command is part of (0: none). A chain is the links of one and-or list of the line's own
+	// shell that its first link joins by && alone: in "a && b && c || d; e" a, b and c are one chain, d is in none and e starts
+	// another. Every command a link holds is in its chain: the commands of a pipeline, a compound command or a subshell, and those
+	// of the link's substitutions and of the strings it hands to eval, sh -c or trap, which are listed after the link and run while
+	// it runs (a substitution: while it is expanded, before it assigns). A command of a later link runs only after each earlier
+	// link ran. The and-or lists inside a compound command, a substitution or a string are no chains of their own, and the commands
+	// of a list sent to the background (&) are in no chain.
+	AndChain int
+	// ChainLink marks a link of AndChain that is a simple command of the line's own shell: not in a pipeline, a compound command, a
+	// group or a subshell. Its assignments are made in this shell before any later link of its chain runs; whether the chain gets
+	// as far as it is known only when the line runs. A ChainLink command is Cond only for the && before it, if any.
+	ChainLink bool
 	// LoopVar is the variable of a for/select loop, on the pseudo-command "for" whose Args are the loop's word list ("f" in
 	// `for f in a b c`); empty everywhere else. A loop with no word list (`for f; do`, `for f do`) walks the positional
 	// parameters: its pseudo-command has LoopVar and no Args.
