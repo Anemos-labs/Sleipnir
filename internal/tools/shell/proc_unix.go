@@ -11,6 +11,9 @@ import (
 	"syscall"
 )
 
+// probesGroup says that groupAlive can tell whether a process group is gone (waitPumps).
+const probesGroup = true
+
 // configureCmd puts the command in a session of its own. That isolates the
 // process tree (pid == process-group id, so kill(-pid) reaches every
 // descendant that did not deliberately leave) and detaches it from the
