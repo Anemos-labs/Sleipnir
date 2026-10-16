@@ -685,11 +685,14 @@ func (t *spawnTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error)
 			return tools.Errorf("only the manager assigns tasks, and a pool leader the children of the pool it leads while it executes: %v", err), nil
 		}
 	}
-	id, err := t.s.Spawn(req)
+	r, err := t.s.spawn(req)
 	if err != nil {
 		return tools.Errorf("%v", err), nil
 	}
-	return text("%s started; it will report through the board. Use wait to sleep until something changes.", id), nil
+	if r.Reserved {
+		return text("%s is still in a turn, so %s is reserved for it: it was told to claim it, and is started on it if its run ends first. Use wait to sleep until something changes.", r.Agent, req.TaskID), nil
+	}
+	return text("%s started; it will report through the board. Use wait to sleep until something changes.", r.Agent), nil
 }
 
 // ---- wait -------------------------------------------------------------------
