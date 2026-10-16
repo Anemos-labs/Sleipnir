@@ -252,9 +252,10 @@ func TestPinsCarryVerificationAndTheUsersWords(t *testing.T) {
 	}
 }
 
-// A docs pass starts while code tasks hold directories: "**/*.md" overlaps internal/api/** (which may hold a README), so the pass
-// takes the Markdown at the root and docs/ instead of waiting for every such task to close. A pass that cannot start at all says
-// why in the keeper's state. In a 12-worker run the first pass waited behind the backend's directories for half an hour.
+// A docs pass and code work do not wait for each other: the pass takes the Markdown at the root and docs/, so it starts beside a
+// task that holds internal/api/** (which may hold a README), and while it runs, tasks scoped to a directory or to a file not there
+// yet are claimed. With "**/*.md" the first pass of a 12-worker run waited half an hour behind the backend's directories, and the
+// next one, while it ran, kept every SDK and web task from being claimed. A pass that cannot start at all says why.
 func TestAutoDocsStartsBesideADirectoryWriter(t *testing.T) {
 	cfg := Config{MaxWorkers: 8, AutoDocs: true, Team: []string{"backend", "devops", "docs"}}
 	r := newRVRigWith(t, cfg, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
@@ -288,5 +289,16 @@ func TestAutoDocsStartsBesideADirectoryWriter(t *testing.T) {
 	}
 	if st := r.sw.DocsState(); !strings.Contains(st, "pass T4 in progress") {
 		t.Errorf("state once started: %q", st)
+	}
+	for _, c := range []struct{ id, scope string }{{"T5", "sdk/python/**"}, {"T6", "web/index.html"}} {
+		if _, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: c.scope, Role: "backend", Files: []string{c.scope}}); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.sw.Board.claim("be-2", c.id, r.sw.claimCheck("be-2", false)); err != nil {
+			t.Errorf("a task on %s beside the docs pass: %v", c.scope, err)
+		}
+		if err := r.sw.Board.resolve("mgr", c.id, "not needed"); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

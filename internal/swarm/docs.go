@@ -25,25 +25,13 @@ const DocsRole = "docs"
 // DocsTaskTitle starts the title of every catch-up task the harness creates.
 const DocsTaskTitle = "docs: catch up"
 
-// docsScope is the scope of a catch-up task: Markdown files anywhere and the docs
-// directory. Code stays with the roles that own it.
-var docsScope = []string{"**/*.md", "docs/**"}
-
-// docsRootScope is the scope of a pass that starts while tasks in progress hold
-// directories: the Markdown at the root and the docs directory. A held directory may
-// hold Markdown (internal/api/** a README), so "**/*.md" overlaps every one of them,
-// and a pass scoped so would wait until no code task is open; what lies in a held
-// directory stays its holder's until that task closes.
-var docsRootScope = []string{"*.md", "docs/**"}
-
-// docsScopeNow is the scope of pass id started now: docsScope when no task in progress
-// is in its way, else docsRootScope.
-func (s *Swarm) docsScopeNow(id string) []string {
-	if s.scopeConflictIn(s.Board.Snapshot(), Task{ID: id, Files: docsScope}) == nil {
-		return docsScope
-	}
-	return docsRootScope
-}
+// docsScope is the scope of a catch-up task: the Markdown at the root and the docs
+// directory. Code stays with the roles that own it, and so does Markdown inside a
+// code directory: "**/*.md" would overlap every directory a task holds or will claim
+// (internal/api/** may hold a README; web/index.html, not there yet, may become a
+// directory), so a pass scoped so waited for every code task to close, and while it
+// ran no task scoped to a directory could be claimed.
+var docsScope = []string{"*.md", "docs/**"}
 
 // docsRetry is how long the keeper waits before it tries again to start a catch-up
 // task that could not be started (no free slot, a scope overlap, the budget).
@@ -128,7 +116,7 @@ func (s *Swarm) docsTick(now time.Time) {
 			open, due := k.open, !now.Before(k.retryAt)
 			k.mu.Unlock()
 			if agentID, busy := s.docsWorker(); due && !busy {
-				_, err := s.Spawn(SpawnReq{Role: DocsRole, Agent: agentID, TaskID: open, Files: s.docsScopeNow(open), By: "harness"})
+				_, err := s.Spawn(SpawnReq{Role: DocsRole, Agent: agentID, TaskID: open, By: "harness"})
 				k.mu.Lock()
 				k.waiting = ""
 				if err != nil {
@@ -161,7 +149,7 @@ func (s *Swarm) docsTick(now time.Time) {
 	// The pass is put on the board first and then assigned by id: a start that fails
 	// leaves this one task in todo, which the next tick hands out again (above),
 	// never a second task for the same changes.
-	task, err := s.Board.CreateTask("harness", TaskSpec{Title: DocsTaskTitle + " (" + docsSummary(batch) + ")", Desc: docsBrief(batch), Role: DocsRole, Files: s.docsScopeNow("")})
+	task, err := s.Board.CreateTask("harness", TaskSpec{Title: DocsTaskTitle + " (" + docsSummary(batch) + ")", Desc: docsBrief(batch), Role: DocsRole, Files: docsScope})
 	k.mu.Lock()
 	if err != nil {
 		k.retryAt = now.Add(docsRetry)
