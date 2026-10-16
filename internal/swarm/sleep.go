@@ -1,6 +1,8 @@
 package swarm
 
 import (
+	"errors"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -31,7 +33,12 @@ func shellSleep(command string) time.Duration {
 	return total
 }
 
-// sleepArg reads one argument of sleep as GNU sleep does: a number with an optional unit (s, m, h, d). Anything else is 0.
+// longestSleep is what one argument of sleep counts for at most: a longer one, or "inf", which GNU sleep takes as forever, is
+// saturated rather than discarded (it is a wait all the same) and never overflows a time.Duration.
+const longestSleep = 365 * 24 * time.Hour
+
+// sleepArg reads one argument of sleep as GNU sleep does: a number with an optional unit (s, m, h, d), at most longestSleep.
+// Anything else is 0.
 func sleepArg(a string) time.Duration {
 	unit := time.Second
 	switch {
@@ -45,8 +52,11 @@ func sleepArg(a string) time.Duration {
 		a, unit = strings.TrimSuffix(a, "d"), 24*time.Hour
 	}
 	f, err := strconv.ParseFloat(a, 64)
-	if err != nil || f < 0 || f > 1e6 {
+	if err != nil && !errors.Is(err, strconv.ErrRange) || math.IsNaN(f) || f < 0 {
 		return 0
+	}
+	if f*unit.Seconds() >= longestSleep.Seconds() { // also +Inf, and a number too big for a float (ErrRange)
+		return longestSleep
 	}
 	return time.Duration(f * float64(unit))
 }

@@ -20,6 +20,13 @@ func TestShellSleep(t *testing.T) {
 		"go build ./... && sleep 1m 30":                             90 * time.Second,
 		"sleep 2 && curl -fsS http://127.0.0.1:8080/healthz":        2 * time.Second,
 		"sleep 0.5h":            30 * time.Minute,
+		"sleep 1000001":         1000001 * time.Second, // eleven days and more: counted, no longer discarded
+		"sleep 2000d":           longestSleep,
+		"sleep inf":             longestSleep,
+		"sleep 1e400":           longestSleep,
+		"sleep 59.9":            59900 * time.Millisecond,
+		"sleep nan":             0,
+		"sleep -5":              0,
 		"timeout 900 sleep 300": 5 * time.Minute,
 		"for i in $(seq 1 30); do curl -fsS localhost:8080 && break; sleep 10; done": 0,
 		"if true; then sleep 600; fi": 0,
