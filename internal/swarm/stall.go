@@ -19,9 +19,10 @@ import (
 // can also stop making progress while every agent is busy: a worker reads without
 // ever changing anything, the manager waits for workers that are not running, a task
 // is owned by an agent that no longer exists, two tasks are blocked on each other, a
-// submission sits in review while the manager does other things. The sweep names
-// these conditions from the board, the roster and turn counters only (no clocks, no
-// model text), so the same state always gives the same findings.
+// submission sits in review while the manager does other things, most of a team sits
+// idle while the manager waits on the rest. The sweep names these conditions from the
+// board, the roster and turn counters (no model text), so the same state always gives
+// the same findings; idle_capacity alone also reads how long workers have been idle.
 //
 // A finding is raised once, when its condition starts to hold: a swarm.stall event
 // (action raise) is logged and the agent that can act on it is told once by harness
@@ -310,7 +311,7 @@ func (s *Swarm) stallFindings() []Stall {
 	s.stalls.refused = false
 
 	// idle_capacity: the manager waits on a few workers while most of the team has been idle for a while.
-	if mgr != "" && s.stalls.waiting && anyWorker && !u.empty() && s.teamLimited() {
+	if mgr != "" && s.stalls.waiting && anyWorker && openTask(snap) && s.teamLimited() {
 		at := s.deps.Now()
 		var idle []string
 		workers := 0
@@ -327,7 +328,7 @@ func (s *Swarm) stallFindings() []Stall {
 			sort.Strings(idle)
 			out = append(out, Stall{Kind: StallIdleCapacity, Agent: mgr, Notify: mgr,
 				Detail: fmt.Sprintf("%d of %d workers have been idle for %d minutes or more (%s) while the manager waits for %s",
-					len(idle), workers, int(idleCapacityAfter/time.Minute), shownIDs(idle, 8), u.summary(holdListCap))})
+					len(idle), workers, int(idleCapacityAfter/time.Minute), strings.Join(idle, ", "), u.summary(holdListCap))})
 		}
 	}
 
@@ -508,10 +509,13 @@ func stallNudge(f Stall, k int64, pools bool) string {
 	return "Stall check: " + f.Detail
 }
 
-// shownIDs is ids joined with ", ", at most n of them and "+k more" for the rest.
-func shownIDs(ids []string, n int) string {
-	if len(ids) <= n {
-		return strings.Join(ids, ", ")
+// openTask reports whether the board holds a task that is not closed (todo, doing, blocked or in review): a running worker with no
+// task is not unfinished work.
+func openTask(sn *Snapshot) bool {
+	for _, t := range sn.Tasks {
+		if t.Status != StatusDone && t.Status != StatusFailed {
+			return true
+		}
 	}
-	return strings.Join(ids[:n], ", ") + fmt.Sprintf(" +%d more", len(ids)-n)
+	return false
 }

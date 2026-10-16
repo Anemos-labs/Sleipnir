@@ -10,6 +10,11 @@ import (
 // An idle-capacity rig: a configured team of four (be-1..3, fe-1) made idle, be-1 at work on T1, and the manager, which waits.
 // idleFor sets how long the others have been idle. Members are set by hand: none of them runs a goroutine.
 func idleCapacityRig(t *testing.T, idleFor time.Duration) *rvRig {
+	return idleCapacityRigWith(t, idleFor, true)
+}
+
+// idleCapacityRigWith is idleCapacityRig whose T1 is given to be-1 only when withTask is set.
+func idleCapacityRigWith(t *testing.T, idleFor time.Duration, withTask bool) *rvRig {
 	t.Helper()
 	cfg := stallCfg()
 	cfg.PersistentPools, cfg.MaxWorkers, cfg.Team = true, 4, []string{"backend", "backend", "backend", "frontend"}
@@ -25,9 +30,16 @@ func idleCapacityRig(t *testing.T, idleFor time.Duration) *rvRig {
 		}
 	}
 	r.sw.spawnMu.Unlock()
-	task, _ := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "paginate users"})
-	if err := r.sw.Board.Assign("mgr", "be-1", task.ID); err != nil {
-		t.Fatal(err)
+	for _, id := range []string{"be-1", "be-2", "be-3", "fe-1"} {
+		if m := r.sw.get(id); m.idleAt.IsZero() {
+			t.Fatalf("%s was made idle with no time: a pool member that has not run would never count", id)
+		}
+	}
+	if withTask {
+		task, _ := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "paginate users"})
+		if err := r.sw.Board.Assign("mgr", "be-1", task.ID); err != nil {
+			t.Fatal(err)
+		}
 	}
 	now := r.sw.deps.Now()
 	for _, id := range []string{"be-1", "be-2", "be-3", "fe-1"} {
@@ -72,6 +84,13 @@ func TestStallIdleCapacity(t *testing.T) {
 		r.sw.sweepStalls()
 		if _, ok := active(r, StallIdleCapacity); ok {
 			t.Fatal("the finding outlived the manager's wait")
+		}
+	})
+	t.Run("healthy: nothing is open, a worker runs with no task", func(t *testing.T) {
+		r := idleCapacityRigWith(t, 20*time.Minute, false)
+		r.sw.sweepStalls()
+		if n := raised(r, StallIdleCapacity); n != 0 {
+			t.Fatalf("a settled board was found: %+v", stallEvents(r))
 		}
 	})
 	t.Run("healthy: the team went idle a moment ago", func(t *testing.T) {
