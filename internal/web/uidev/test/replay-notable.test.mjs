@@ -11,5 +11,7 @@ test('the replay\'s notable events leave out the endpoint\'s quiet cache breaks,
   const rows = L.doc.querySelectorAll('.evlist .mrow').map(r => r.textContent);
   assert.equal(rows.filter(t => /cache break on mgr/.test(t)).length, 1, 'the break the terminal says, not the twenty it keeps quiet');
   assert.ok(rows.some(t => /start on T2/.test(t)), 'the mail is not pushed out of the list');
+  const tape = L.doc.querySelectorAll('.tapeSvg text').filter(n => n.textContent === '⚠');
+  assert.equal(tape.length, 1, 'the tape marks the said break only');
   assert.equal(L.SL.sessions.active.log.filter(e => e.k === 'break').length, 21, 'every break stays in the log the Cache view reads');
 });
