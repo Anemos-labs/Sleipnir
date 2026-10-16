@@ -99,7 +99,11 @@ not answer) is excused by the manager with `pool excuse` (`member`, `text` = why
 it leaves the pool and its votes stop counting, so the others' agreement and
 confirmation suffice; its open subtasks of the parent return to the board
 unassigned; the next member leads if it led; and it stays read-only while the
-parent is open. A resumed pool keeps it out. The last member cannot be excused. Parent phase and member identities appear on the board; children
+parent is open. A resumed pool keeps it out. The last member cannot be excused, and
+neither can one that is running and made progress (an edit, a test, a task update)
+within the stall check's bound of model turns: being out of the manager's view or
+quiet in mail is not a sign that a member stopped. One that has stopped, made no
+progress at all, or gone the bound without progress may be excused. Parent phase and member identities appear on the board; children
 are grouped under their parent (expandable cards in the browser, indented terminal rows).
 
 **Direct manager delivery.** `task deliver` verifies the manager's direct changes,

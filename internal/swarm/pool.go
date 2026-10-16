@@ -475,6 +475,11 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			}
 		}
 	}
+	if in.Action == "excuse" && manager {
+		if why := s.excuseRefusal(in.Member); why != "" {
+			return tools.Errorf("%s", why), nil
+		}
+	}
 	stale := ""          // the leader of a pool whose reconciliation a confirm found superseded
 	turn := s.turnOf(by) // constant during this batch of calls: taken outside the board's lock
 	var vote poolVote
@@ -797,6 +802,34 @@ func poolScopes(sn *Snapshot, t Task) error {
 		}
 	}
 	return nil
+}
+
+// excuseRefusal is why the manager may not excuse member now ("" when it may): the member is running and has made progress (an
+// edit, a test, a task update: progressCall) within the stall check's bound of model turns. A member that is not in the live view,
+// or quiet in mail, may still be working; excusing it releases its subtasks and leases to others while it writes. One that has gone
+// the bound without progress, has made none at all, or has stopped, may be excused: a loop of reads is not progress, so a stuck
+// member is not shielded.
+func (s *Swarm) excuseRefusal(member string) string {
+	m := s.get(member)
+	if m == nil {
+		return ""
+	}
+	m.mu.Lock()
+	running := m.life == lifeRunning
+	m.mu.Unlock()
+	k := s.stallTurns()
+	if k == 0 {
+		k = defaultStallTurns
+	}
+	worked := m.worked.Load()
+	if !running || worked == 0 {
+		return ""
+	}
+	since := m.turns.Load() - (worked - 1)
+	if since >= k {
+		return ""
+	}
+	return fmt.Sprintf("%s is working: it is running and made progress %d model turns ago. Ask it what it is doing (mail), or excuse it once it has stopped or gone %d turns without progress", member, since, k)
 }
 
 // excused finishes a manager's pool excuse: the member's open subtasks of the parent return to the board unassigned, the member is told

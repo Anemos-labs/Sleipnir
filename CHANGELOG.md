@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The manager may not excuse a pool member that is running and made
+  progress (an edit, a test, a task update) within the stall check's bound
+  of model turns; the refusal names it and says to ask it by mail. A member
+  that has stopped, made no progress at all, or gone the bound without
+  progress (a loop of reads included) may still be excused. In a persistent
+  pool the stall check's nudge no longer offers a `task handover`, which such
+  pools refuse: it says to state why on the task and block it. Prompt bytes:
+  none change (the nudge and the refusal are mail and tool results).
+
 - Pool refusals name the condition that failed and the call that would
   succeed. An `agree` or `confirm` is refused for one stated cause: no
   revision (`pool agree needs revision: T6 is at revision 2 (planning)`), a
