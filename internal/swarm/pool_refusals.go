@@ -245,6 +245,14 @@ func ownerOrUnassigned(owner string) string {
 	return owner
 }
 
+// inspectEarly reports a pool inspect by a member of an open pool that has not reconciled yet: it is answered as a read of the
+// pool (task get), since there is no combined result yet. Members asked for it before reconciling eight times in the first 45
+// minutes of a 12-worker run, and every refusal said to call task get instead.
+func inspectEarly(t Task, ok bool, by string, manager bool) bool {
+	return ok && !manager && t.Pool != nil && t.Status != StatusDone && t.Status != StatusFailed &&
+		slices.Contains(t.Pool.Members, by) && t.Pool.Phase != "reconciling"
+}
+
 // inspectRefusal refuses pool inspect outside a reconciling pool the caller is a member of, and says what reads a pool instead.
 // ok says whether the task exists.
 func inspectRefusal(t Task, ok bool, by string, manager bool) error {
