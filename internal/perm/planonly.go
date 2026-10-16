@@ -3,13 +3,18 @@ package perm
 // ReadOnlyAllow are the allow rules of a read-only posture that still researches and verifies: a reviewer, a scout or an architect
 // runs the project's tests and static checks (with the project's own Python virtual environment too, Bash(python:venv-tests): running
 // the tests with it, never creating it or installing into it) and reads the web (an outside repository, an API's documentation, a
-// package registry). Everything that writes or executes anything else stays denied by plan mode; the engine understands shell syntax, so
+// package registry). The static checks are a syntax check (node --check) and the tests preset's read-only checkers (checkers: ruff
+// check, mypy, pyright, tsc --noEmit, eslint) on the preset's terms: every file they name inside the workspace, none of the options that
+// make them write the project's files or install (workspaceRefused). Formatters are not among them: a rule for gofmt -l would allow
+// gofmt -l -w. Everything that writes or executes anything else stays denied by plan mode; the engine understands shell syntax, so
 // "go test ./... && rm -rf x" is not allowed by its first half. Callers must not change the slice.
 var ReadOnlyAllow = []string{
 	"Bash(go test:*)", "Bash(go vet:*)", "Bash(pytest:*)", "Bash(npm test)", "Bash(npm run test:*)",
 	"Bash(python -m pytest:*)", "Bash(python3 -m pytest:*)", "Bash(python -m unittest:*)", "Bash(python3 -m unittest:*)",
-	"Bash(python:venv-tests)", "Bash(node --test:*)",
+	"Bash(python:venv-tests)", "Bash(node --test:*)", "Bash(node --check:*)",
 	"Bash(cargo test:*)", "Bash(cargo check:*)", "Bash(make test)",
+	"Bash(ruff check:workspace)", "Bash(ruff format --check:workspace)", "Bash(ruff format --diff:workspace)",
+	"Bash(mypy:workspace)", "Bash(pyright:workspace)", "Bash(tsc --noEmit:workspace)", "Bash(eslint:workspace)",
 	"WebFetch", "WebSearch",
 }
 

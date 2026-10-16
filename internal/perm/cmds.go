@@ -725,7 +725,7 @@ var checkers = [][]string{{"ruff", "check"}, {"ruff", "format", "--check"}, {"ru
 func checker(prog string, args []string) bool {
 	for _, c := range checkers {
 		if prog == c[0] && hasPrefixArgs(args, c[1:]...) {
-			return !hasLong(args, workspaceRefused[strings.Join(c, " ")]...)
+			return refusedOption(args, workspaceRefused[strings.Join(c, " ")]) == ""
 		}
 	}
 	return false

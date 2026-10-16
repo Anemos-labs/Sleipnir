@@ -67,3 +67,45 @@ func TestPlanOnlyAsksNoOneAndRecordsNothing(t *testing.T) {
 		t.Errorf("the session's engine: %+v, asked %d", d, prompted)
 	}
 }
+
+// A read-only role runs the project's static checks as well as its tests: a syntax check and the read-only checkers, never the options
+// that make them write the project's files or a report, install, or load a program of the caller's choosing, nor a file outside the
+// workspace. A
+// reviewer in a bypass session was refused `node --check web/js/app.js` twice in one review and checked the code by eye instead.
+func TestReadOnlyRolesRunTheStaticChecks(t *testing.T) {
+	root := t.TempDir()
+	for _, mode := range []Mode{ModeAcceptEdits, ModeBypass} { // in default mode the session itself asks about checks; a role only narrows it
+		e, err := NewEngine(Config{Mode: mode, Root: root, Home: t.TempDir(),
+			Roles: map[string]RoleProfile{"reviewer": {Mode: ModePlan, Allow: ReadOnlyAllow}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		check := func(cmd string) Decision {
+			return e.Check(context.Background(), Request{Agent: "rv-1", Role: "reviewer", Tool: "bash", Command: cmd, Cwd: root})
+		}
+		for _, cmd := range []string{
+			"node --check web/js/app.js && node --check web/js/views.js", "tsc --noEmit -p .", "eslint web/js",
+			"ruff check src", "ruff format --check .", "mypy src", "pyright", "node --test web/js",
+			"eslint --format json web/js", "ruff check --output-format json src", "mypy --strict src",
+		} {
+			if d := check(cmd); !d.Allow {
+				t.Errorf("%s: a reviewer may not run %q: %s", mode, cmd, d.Reason)
+			}
+		}
+		for _, cmd := range []string{
+			"node --check --require ./evil.js web/js/app.js", "node web/js/app.js", "eslint --fix web/js", "ruff check --fix src",
+			"mypy --install-types src", "tsc --noEmit --build", "eslint /etc", "gofmt -l -w .", "ruff format src",
+			"node --check web/js/app.js && rm -rf web",
+			// a report is a file of their own: attached, in a cluster, or after "="
+			"eslint -o report.json web/js", "eslint --output-file=report.json web/js", "ruff check -oout.txt src",
+			"ruff check -qo out.txt src", "ruff check --output-file out.txt src", "mypy --junit-xml j.xml src",
+			"mypy --html-report h src", "tsc --noEmit --incremental", "tsc --noEmit --tsBuildInfoFile b.json",
+			"eslint --suppress-all web/js", "eslint --suppress-rule no-console web/js", "eslint --prune-suppressions web/js",
+			`ruff check --config "fix = true" src`, "ruff check --config=other.toml src",
+		} {
+			if d := check(cmd); d.Allow {
+				t.Errorf("%s: a reviewer may run %q", mode, cmd)
+			}
+		}
+	}
+}

@@ -183,7 +183,11 @@ spawnable, is on no roster, board or hot view, and may call `mail` and nothing e
 **Every agent sends the same tool list**, byte for byte (fs, bash, web, recall, skill, any MCP tools, frozen for the session, and the
 swarm tools), so the provider caches the schemas once for the whole swarm. Roles are restricted at run time: the permission engine judges
 each call under the session posture *and* the role's profile (read-only roles run under the plan profile: writes and
-mutating commands are denied by the engine that understands shell syntax, not by a command allowlist; the manager
+mutating commands are denied by the engine that understands shell syntax, not by a command allowlist, and the project's
+tests and static checks stay allowed, `perm.ReadOnlyAllow`: `go test`, `go vet`, `pytest`, `node --test`, `node --check`,
+`cargo test`, `cargo check`, `make test`, and on the tests preset's terms, every file inside the workspace and no option
+that writes the project's files or installs, `ruff check`, `ruff format --check`, `ruff format --diff`, `mypy`, `pyright`,
+`tsc --noEmit` and `eslint`; the manager
 uses the session's permissions and any explicit manager profile), and swarm
 tools check the caller's role, which the harness puts in the call. The manager owns
 assignments, revisions and scope changes. A pool leader can create and accept its

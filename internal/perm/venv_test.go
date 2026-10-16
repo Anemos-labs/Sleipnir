@@ -326,7 +326,15 @@ func TestTheTestsPresetChecksInsideTheWorkspace(t *testing.T) {
 		{cmd: "tsc --noEmit --generateTrace trace", want: "ask", why: "--generateTrace"},
 		{cmd: "eslint src", want: "allow"},
 		{cmd: "eslint --fix src", want: "ask", why: "--fix"},
-		{cmd: "eslint -o " + r.f.outside + "/report.json src", want: "ask", why: "outside the workspace"},
+		{cmd: "eslint -o " + r.f.outside + "/report.json src", want: "ask", why: "-o"},
+		{cmd: "eslint -o report.json src", want: "ask", why: "-o"}, // a report is a file of its own, inside the workspace too
+		{cmd: "ruff check -qo out.txt src", want: "ask", why: "-o"},
+		{cmd: `ruff check --config "fix = true" src`, want: "ask", why: "--config"}, // a setting can turn the fixes on
+		{cmd: "ruff check --output-format json src", want: "allow"},
+		{cmd: "mypy --junit-xml junit.xml src", want: "ask", why: "--junit-xml"},
+		{cmd: "tsc --noEmit --incremental", want: "ask", why: "--incremental"},
+		{cmd: "eslint --suppress-all src", want: "ask", why: "--suppress-all"}, // rewrites eslint-suppressions.json
+		{cmd: "eslint --cache src", want: "allow"},                             // a cache of its own, as ruff's and mypy's
 	} {
 		d := r.check("be-1", r.wtA, c.cmd)
 		if got := outcome(d); got != c.want {
