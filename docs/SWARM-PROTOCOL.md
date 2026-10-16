@@ -201,7 +201,7 @@ paths outside the project).
 | `mail` | send | one recipient; typed; section 5 |
 | `note` | propose | a bounded fact in the live view; older proposals can be evicted |
 | `spawn` | role, task, optional `agent=` to reuse an idle worker | Manager or pool leader assigning an existing member to its child; section 6 |
-| `pool` | propose, agree, execute, reconcile, inspect, confirm, excuse | Leader or manager coordinates phases; every member acknowledges the current agreement and reconciled result; the manager excuses a member that cannot take part. `pool get` is read as `task get`; another unknown action is refused with the list of actions |
+| `pool` | propose, agree, execute, reconcile, inspect, confirm, excuse | Leader or manager coordinates phases; every member acknowledges the current agreement and reconciled result; the manager excuses a member that cannot take part. `pool get` is read as `task get`, and so is a member's `pool inspect` before the pool reconciles (with a line saying nothing is combined yet); another unknown action is refused with the list of actions |
 | `approve` | answer a delegated worker permission question | Manager only; explicit policy denials and escalations still apply |
 | `wait` | until tasks change, mail arrives, or a timeout | sleeps at no request cost; reports what changed since the caller last looked |
 
@@ -231,7 +231,7 @@ Statuses: `todo -> doing -> review -> done`, with `blocked` and `failed` as side
   | block / resume | doing / blocked (owner; the manager may resume) | blocked / doing |
   | submit (the gate, section 4) | doing (owner) | review |
   | handover (section 6) | doing (owner, or the manager) | doing (a fresh worker) |
-  | accept | review | done (`verified`, or `agreed` for a planning task) |
+  | accept | review (a task already done is answered "nothing to accept", not refused) | done (`verified`, or `agreed` for a planning task) |
   | reject (send back) | review | doing (same owner) |
   | fail (with a reason) | todo, doing, blocked, review | failed |
   | reopen | failed | todo (the closure is cleared) |
