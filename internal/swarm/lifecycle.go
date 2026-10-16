@@ -525,11 +525,9 @@ func (k *memberSink) Notice(a, level, msg string) {
 func (k *memberSink) ToolStart(a string, call core.Block) {
 	k.m.touch(k.s)
 	if k.m.manager {
-		tool := call.ToolName
-		if managerSleeps(tool, call.Input) {
-			tool = "wait" // a sleep in the shell is a wait, for the stall sweep too
-		}
-		k.safely(func() { k.s.noteCoordination(k.m.id, tool, jsonString(call.Input, "id")) })
+		// A long sleep in the shell is noted as a wait by the manager's tool hook (holdHooks.BeforeTool), which runs after this
+		// notice and sees the input the call runs with.
+		k.safely(func() { k.s.noteCoordination(k.m.id, call.ToolName, jsonString(call.Input, "id")) })
 	}
 	k.safely(func() { k.m.setState(k.s, "running", activity(call)) })
 	k.safely(func() { k.Sink.ToolStart(a, call) })

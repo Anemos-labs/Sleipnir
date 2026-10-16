@@ -17,29 +17,40 @@ import (
 const managerSleepWaits = time.Minute
 
 // shellSleep is how long a shell command sleeps in its own shell, by the sleep commands it runs in line ("sleep 300; date",
-// "build && sleep 1m 30"): what it waits for. A sleep whose duration is not a number (a variable) counts for nothing, and so does
-// one that may not run in line (in a loop, whose count is not known, in an if, a pipe or the background: shellparse.Simple.Cond)
-// unless it is a link of an && chain, which runs in order.
+// "build && sleep 1m 30"): what it waits for, at most longestSleep. A sleep with an operand that is not a duration (a variable,
+// "nan", none at all) fails at once, as GNU sleep does, and counts for nothing; so does one that may not run in line (in a loop,
+// whose count is not known, in an if, a pipe or the background: shellparse.Simple.Cond) unless it is a link of an && chain, which
+// runs in order.
 func shellSleep(command string) time.Duration {
 	var total time.Duration
 	for _, c := range shellparse.Parse(command).Commands {
-		if shellparse.ProgramName(c.Program) != "sleep" || c.Nested || c.Child || c.Deferred || c.Cond && !c.ChainLink {
+		if shellparse.ProgramName(c.Program) != "sleep" || c.Nested || c.Child || c.Deferred || c.Cond && !c.ChainLink || len(c.Args) == 0 {
 			continue
 		}
+		var this time.Duration
+		valid := true
 		for _, a := range c.Args {
-			total += sleepArg(a)
+			d, ok := sleepArg(a)
+			if !ok {
+				valid = false
+				break
+			}
+			this = min(this+d, longestSleep) // saturated: a sum of long operands must not overflow
+		}
+		if valid {
+			total = min(total+this, longestSleep)
 		}
 	}
 	return total
 }
 
-// longestSleep is what one argument of sleep counts for at most: a longer one, or "inf", which GNU sleep takes as forever, is
-// saturated rather than discarded (it is a wait all the same) and never overflows a time.Duration.
+// longestSleep is what a sleep counts for at most: a longer one, or "inf", which GNU sleep takes as forever, is saturated rather
+// than discarded (it is a wait all the same) and never overflows a time.Duration.
 const longestSleep = 365 * 24 * time.Hour
 
-// sleepArg reads one argument of sleep as GNU sleep does: a number with an optional unit (s, m, h, d), at most longestSleep.
-// Anything else is 0.
-func sleepArg(a string) time.Duration {
+// sleepArg reads one argument of sleep as GNU sleep does: a number with an optional unit (s, m, h, d), at most longestSleep. ok is
+// false for anything else (a variable, "nan", a negative number), which makes GNU sleep fail.
+func sleepArg(a string) (d time.Duration, ok bool) {
 	unit := time.Second
 	switch {
 	case strings.HasSuffix(a, "s"):
@@ -53,12 +64,12 @@ func sleepArg(a string) time.Duration {
 	}
 	f, err := strconv.ParseFloat(a, 64)
 	if err != nil && !errors.Is(err, strconv.ErrRange) || math.IsNaN(f) || f < 0 {
-		return 0
+		return 0, false
 	}
 	if f*unit.Seconds() >= longestSleep.Seconds() { // also +Inf, and a number too big for a float (ErrRange)
-		return longestSleep
+		return longestSleep, true
 	}
-	return time.Duration(f * float64(unit))
+	return time.Duration(f * float64(unit)), true
 }
 
 // managerSleeps reports whether a tool call of the manager is a wait in the shell: a bash command that sleeps managerSleepWaits

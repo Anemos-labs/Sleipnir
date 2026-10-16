@@ -272,6 +272,9 @@ func (h *holdHooks) BeforeTool(ctx context.Context, c agent.ToolHookCall) agent.
 				h.s.waitRefused()
 				return agent.ToolHookOutcome{Veto: true, Reason: reason + " (A sleep in the shell is a wait. To follow a long job of your own, start it with run_in_background and read its output when the board is in hand.)"}
 			}
+			// For the stall sweep too. It is noted here, on the input the user's hooks may have rewritten, which the call runs
+			// with: the tool-start notice before the hooks (memberSink.ToolStart) noted the call as written.
+			h.s.noteCoordination(h.m.id, "wait", "")
 		}
 		if json.Unmarshal(input, &in) == nil && publishesManagerWork(in.Command) {
 			if err := h.s.flushManager(ctx, h.m); err != nil {

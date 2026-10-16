@@ -9,6 +9,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // A sleep counts for what it waits in the command's own shell: in line or in an && chain, in GNU sleep's units; one in a loop, an
@@ -19,15 +20,20 @@ func TestShellSleep(t *testing.T) {
 		`sleep 1800; date -u +%FT%TZ; wc -l "$TMPDIR/events.jsonl"`: 30 * time.Minute,
 		"go build ./... && sleep 1m 30":                             90 * time.Second,
 		"sleep 2 && curl -fsS http://127.0.0.1:8080/healthz":        2 * time.Second,
-		"sleep 0.5h":            30 * time.Minute,
-		"sleep 1000001":         1000001 * time.Second, // eleven days and more: counted, no longer discarded
-		"sleep 2000d":           longestSleep,
-		"sleep inf":             longestSleep,
-		"sleep 1e400":           longestSleep,
-		"sleep 59.9":            59900 * time.Millisecond,
-		"sleep nan":             0,
-		"sleep -5":              0,
-		"timeout 900 sleep 300": 5 * time.Minute,
+		"sleep 0.5h":                            30 * time.Minute,
+		"sleep 1000001":                         1000001 * time.Second, // eleven days and more: counted, no longer discarded
+		"sleep 2000d":                           longestSleep,
+		"sleep inf":                             longestSleep,
+		"sleep 1e400":                           longestSleep,
+		"sleep 59.9":                            59900 * time.Millisecond,
+		"sleep nan":                             0,
+		"sleep -5":                              0,
+		"sleep nan 60":                          0, // GNU sleep fails at once: an invalid operand makes the whole command none
+		"sleep":                                 0,
+		"sleep 30; sleep 40":                    70 * time.Second,
+		"sleep " + strings.Repeat("365d ", 300): longestSleep, // saturated, no overflow
+		strings.Repeat("sleep 365d; ", 300):     longestSleep,
+		"timeout 900 sleep 300":                 5 * time.Minute,
 		"for i in $(seq 1 30); do curl -fsS localhost:8080 && break; sleep 10; done": 0,
 		"if true; then sleep 600; fi": 0,
 		"sleep 600 &":                 0,
@@ -77,18 +83,36 @@ func TestAManagersShellSleepIsAWait(t *testing.T) {
 	}
 }
 
-// While the manager sleeps in the shell it counts as waiting for the stall sweep, as it does in wait.
+// While the manager sleeps in the shell it counts as waiting for the stall sweep, as it does in wait. It is judged on the input the
+// call runs with: a user's hook that rewrites a short command into a long sleep makes it a wait, and the tool-start notice (which
+// comes before the hooks and sees the command as written) does not decide it.
 func TestAManagersShellSleepCountsAsWaiting(t *testing.T) {
 	r := idleCapacityRig(t, 20*time.Minute)
-	r.sw.noteCoordination("mgr", "task", "")
-	in, _ := json.Marshal(map[string]string{"command": "sleep 900; tail -5 sim.log"})
-	if !managerSleeps("bash", in) {
-		t.Fatal("a 15-minute sleep is no wait")
-	}
+	in, _ := json.Marshal(map[string]string{"command": "date"})
+	slept, _ := json.Marshal(map[string]string{"command": "sleep 900; tail -5 sim.log"})
+	h := &holdHooks{s: r.sw, m: r.sw.get("mgr"), inner: rewriteHooks{to: slept}}
 	sink := &memberSink{s: r.sw, m: r.sw.get("mgr"), Sink: agent.NopSink{}, ev: NewEvidence()}
-	sink.ToolStart("mgr", core.ToolUse("1", "bash", in))
+	sink.ToolStart("mgr", core.ToolUse("1", "bash", in)) // as written: no sleep
+	if o := h.BeforeTool(context.Background(), agent.ToolHookCall{Agent: "mgr", Role: "manager", Tool: "bash", Input: in}); o.Veto {
+		t.Fatalf("a sleep while a worker runs was refused: %s", o.Reason)
+	}
 	r.sw.sweepStalls()
 	if _, ok := active(r, StallIdleCapacity); !ok {
 		t.Fatal("most of the team idle while the manager sleeps in the shell was not found")
 	}
+}
+
+// rewriteHooks stands for a user's hooks that replace every tool call's input.
+type rewriteHooks struct{ to json.RawMessage }
+
+func (h rewriteHooks) BeforeTool(context.Context, agent.ToolHookCall) agent.ToolHookOutcome {
+	return agent.ToolHookOutcome{UpdatedInput: h.to}
+}
+
+func (rewriteHooks) AfterTool(context.Context, agent.ToolHookCall, *tools.Result) agent.ToolHookOutcome {
+	return agent.ToolHookOutcome{}
+}
+
+func (rewriteHooks) BeforeStop(context.Context, string, string, string, bool) agent.StopOutcome {
+	return agent.StopOutcome{}
 }
