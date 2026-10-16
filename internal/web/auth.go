@@ -88,6 +88,9 @@ type principal struct {
 	sum   [sha256.Size]byte // the session's key, for logout
 	done  <-chan struct{}   // closed when the credential is revoked
 	valid func() bool       // false once the credential expired or was revoked
+	// renewed says the lookup that found this session moved its end (lookup): the answer sends the cookie again, so the browser
+	// keeps it as long as the server does.
+	renewed bool
 }
 
 // errBadCredential is a presented credential that is wrong.
@@ -389,7 +392,10 @@ func (a *authority) endSessionLocked(sum [sha256.Size]byte) {
 	}
 }
 
-// lookup returns the principal of a cookie value, or nil if it names no live session.
+// lookup returns the principal of a cookie value, or nil if it names no live session. A session slides: once half of its
+// time is gone, a request with it moves its end to a full TTL from now (principal.renewed). A page left open on a long run
+// keeps its session, since it asks the server something at least every half hour (live.js); one closed for a TTL signs in
+// again with the run's link.
 func (a *authority) lookup(value string) *principal {
 	if value == "" || len(value) > maxCredentialLen {
 		return nil
@@ -401,11 +407,18 @@ func (a *authority) lookup(value string) *principal {
 	if s == nil {
 		return nil
 	}
-	if !a.now().Before(s.expires) {
+	now := a.now()
+	if !now.Before(s.expires) {
 		a.endSessionLocked(sum)
 		return nil
 	}
-	return a.sessionPrincipalLocked(sum)
+	renewed := false
+	if s.expires.Sub(now) < a.ttl/2 {
+		s.expires, renewed = now.Add(a.ttl), true
+	}
+	p := a.sessionPrincipalLocked(sum)
+	p.renewed = renewed
+	return p
 }
 
 // logout ends the session of a cookie principal.
@@ -550,6 +563,9 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request, info *reqI
 	for _, c := range r.CookiesNamed(CookieName) {
 		if p := s.auth.lookup(c.Value); p != nil {
 			info.p = p
+			if p.renewed {
+				s.setSessionCookie(w, r, c.Value)
+			}
 			return true
 		}
 	}

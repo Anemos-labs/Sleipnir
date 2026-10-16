@@ -18,6 +18,9 @@
 (function (SL) {
   'use strict';
   const BUFFER = 10000, RETRY_MS = 2000, LOG_CAP = 75000;
+  /** How often an open page asks the server something even when it has nothing to ask: the session cookie slides on use (24 h
+   *  without use ends it), and a page that only reads the stream would otherwise be signed out of a long run. */
+  const KEEP_MS = 30 * 60 * 1000;
   /** The waits before a failed snapshot is fetched again: 1, 2, 4, 8 s, then every 15 s (a test may shorten them). */
   const RETRY = { steps: [1000, 2000, 4000, 8000], later: 15000 };
   const L = SL.live = { hello: null, state: 'connecting', addr: '127.0.0.1:6969', stream: null, booted: false, pending: {}, gen: {}, started: false, tabs: {}, RETRY, LOG_CAP, ver: {}, stopped: false };
@@ -233,6 +236,8 @@
       const h = L.hello = await hello();
       L.addr = (h.server && h.server.addr) || L.addr;
       openStream(h.streamAfter || 0);
+      const keep = setInterval(() => { api().get('/api/hello', { noRetry: true }); }, KEEP_MS);
+      if (keep && keep.unref) keep.unref(); // node tests: never keep the process alive
       const tabs = (h.tabs || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
       tabs.forEach(t => { L.tabs[t.id] = t; });
       const D = SL.data;

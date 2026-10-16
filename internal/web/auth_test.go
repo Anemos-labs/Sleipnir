@@ -241,16 +241,31 @@ func TestSessionsExpireAndAreBounded(t *testing.T) {
 	get := func(c string) int {
 		return rg.do(req{target: "/api/ping", header: map[string]string{"Cookie": c}}).Code
 	}
+	renews := func(c string) bool {
+		w := rg.do(req{target: "/api/ping", header: map[string]string{"Cookie": c}})
+		return w.Code == 200 && strings.Contains(w.Header().Get("Set-Cookie"), CookieName+"=")
+	}
 	if get(cookie) != 200 {
 		t.Fatal("fresh session refused")
 	}
-	rg.clock.Advance(59 * time.Minute)
-	if get(cookie) != 200 {
-		t.Error("session ended early")
+	// Use in the first half of its time leaves the session as it is; use in the second half moves its end a full TTL ahead and
+	// sends the cookie again, so a page left open on a long run is never signed out.
+	rg.clock.Advance(20 * time.Minute)
+	if renews(cookie) {
+		t.Error("a session with most of its time left was renewed")
 	}
-	rg.clock.Advance(2 * time.Minute)
+	rg.clock.Advance(39 * time.Minute)
+	if !renews(cookie) {
+		t.Error("a session used near its end was not renewed, or the cookie was not sent again")
+	}
+	rg.clock.Advance(50 * time.Minute) // 109 minutes after the login, 50 after the renewal
+	if get(cookie) != 200 {
+		t.Error("a renewed session ended at its first end")
+	}
+	// Unused for a whole TTL, it ends, and does not come back.
+	rg.clock.Advance(61 * time.Minute)
 	if get(cookie) != 401 {
-		t.Error("session did not expire (the lifetime is absolute, not refreshed by use)")
+		t.Error("a session unused for a whole TTL did not end")
 	}
 	if get(cookie) != 401 {
 		t.Error("expired session came back")

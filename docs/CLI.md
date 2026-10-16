@@ -310,7 +310,7 @@ http://127.0.0.1:6969/?token=...
 
 The token in the address is 256 random bits, made when the command starts, valid for that run only, and accepted nowhere else:
 there is no flag or environment variable that sets it, and it appears only on that line. The page exchanges it for a session
-cookie (HttpOnly, SameSite=Strict, 24 hours) and removes it from the address bar; the server keeps the sessions, so a session can
+cookie (HttpOnly, SameSite=Strict, ended by 24 hours without use; an open page keeps it) and removes it from the address bar; the server keeps the sessions, so a session can
 be ended without ending the run. A browser without a session is told to open the address again. A script uses the same token as
 `Authorization: Bearer <token>`; every request other than GET also needs `X-Sleipnir-Web: 1` and, with a body, `Content-Type:
 application/json`. `GET /healthz` answers without a token and says nothing but `{"ok":true}`; `GET /api/ping` needs one. The routes,

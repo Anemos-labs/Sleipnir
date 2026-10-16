@@ -54,7 +54,8 @@ type Config struct {
 	Logf func(format string, args ...any)
 	// Hub configures the event hub (Server.Hub).
 	Hub HubConfig
-	// SessionTTL is how long a cookie session lasts, counted from the token exchange. Default 24h.
+	// SessionTTL is how long a cookie session lasts without use. It slides: a request made after half of it moves its end to a
+	// full TTL from then (authority.lookup), so a page left open never signs out. Default 24h.
 	SessionTTL time.Duration
 	// ConfirmTTL is how long a confirmation id can be spent. Default one minute.
 	ConfirmTTL time.Duration
