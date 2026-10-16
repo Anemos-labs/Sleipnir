@@ -326,7 +326,10 @@ type Swarm struct {
 	// handoffs remembers each task's latest completed handover (handover.go), so a
 	// repeated request is answered without a second one. handoverFault is a test hook
 	// that fails a handover at a named phase; nil in production.
-	handoffs      map[string]handoffRec
+	handoffs map[string]handoffRec
+	// poolReserved maps a pool child to the member it was reserved for while that member was still running
+	// (reserveChild); the repair pass starts the member on it if its run ends before it claims it. Guarded by mu.
+	poolReserved  map[string]string
 	handoverFault func(phase string) error
 
 	// Worktree isolation (isolate.go): the harness's record of which task assignments
@@ -445,6 +448,7 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 		verifySem: make(chan struct{}, cfg.MaxVerifies), merged: map[string]mergeRec{}, bounces: map[string]int{}, treeAgents: map[string]bool{}}
 	s.stalls.init()
 	s.handoffs = map[string]handoffRec{}
+	s.poolReserved = map[string]string{}
 	s.Board = NewBoard(deps.Events)
 	s.Board.SetClock(deps.Now)
 	s.Board.SetLimits(cfg.Board)

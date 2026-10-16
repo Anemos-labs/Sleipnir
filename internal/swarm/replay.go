@@ -70,7 +70,7 @@ func ReplayBoard(evs []events.Event) (*Snapshot, error) {
 		}
 		snap.Version = m.Version
 		switch m.Op {
-		case "create", "claim", "assign", "update", "scope", "finish", "block", "resume", "requeue":
+		case "create", "claim", "assign", "reserve", "update", "scope", "finish", "block", "resume", "requeue":
 			if m.Task == "" {
 				// RequeueOwned names the tasks it returned; the per-task state follows in
 				// the event of the individual requeue when there is one.
