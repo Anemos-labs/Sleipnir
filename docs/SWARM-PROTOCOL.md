@@ -63,7 +63,12 @@ tells it once what follows (`pool execute`, or `task done` with the result), and
 refused `pool execute` names the members still to agree. The leader creates children
 with `task create parent=…` (a child takes the parent's role and kind unless it names
 them), assigns existing peers with `spawn`, and claims its own child with `task
-claim`. A child is created, claimed and assigned while its parent executes, and also
+claim`. A member that is still in a turn (waiting for its share, or finishing one)
+cannot be started, so `spawn` reserves the child for it instead (a `reserve`
+operation): the child stays todo, owned by that member, the member is told to claim
+it, and the harness starts it on the child if its run ends first. A member already
+working on another child is refused, with the members who have none. A leader that
+claimed a child it meant for a member gives it away with the same `spawn`. A child is created, claimed and assigned while its parent executes, and also
 while the parent is blocked on that very child. Children
 must stay within the parent's role, membership and scope. A child's scope is inside
 its parent's when every path each entry names lies there: a path without a glob is
@@ -221,7 +226,8 @@ Statuses: `todo -> doing -> review -> done`, with `blocked` and `failed` as side
 
   | Verb | From | To |
   |---|---|---|
-  | claim / spawn (assign) | todo, unowned, dependencies done, scope free | doing |
+  | claim / spawn (assign) | todo, unowned (or reserved for the claimer), dependencies done, scope free | doing |
+  | spawn onto a pool member in a turn (reserve) | todo, unowned, or the leader's own child | todo, owned by the member |
   | block / resume | doing / blocked (owner; the manager may resume) | blocked / doing |
   | submit (the gate, section 4) | doing (owner) | review |
   | handover (section 6) | doing (owner, or the manager) | doing (a fresh worker) |
@@ -695,7 +701,7 @@ mode, section 5), `workspace.create`/`remove`/`prune`/`commit`/`reset` and
 `merge.queued`/`merged`/`conflict`/`verify_failed`/`rolled_back`/`rejected`/`fast_forward` (worktree isolation; the
 workspace layer emits them), `task.merge` (one submission's outcome, per task) and `swarm.integration` (the result reaching
 the checkout, or not), compaction and cache events. A `board.op` names its operation
-(`create`, `claim`, `assign`, `update`, `scope`, `finish`, `block`, `resume`, `requeue`, `agent`, `agent-remove`,
+(`create`, `claim`, `assign`, `reserve`, `update`, `scope`, `finish`, `block`, `resume`, `requeue`, `agent`, `agent-remove`,
 `note`, `notes-take`, `alert`, `alert-clear`, `alert-expire`), the new version, and its operands (the task's status,
 owner, line, result, evidence, attempts, rev, scope, closure and blocked_on, plus title, description, role and
 dependencies at creation; for a handover's `assign`, the predecessor `from` and the `assignment_closure`; an agent's

@@ -19,11 +19,27 @@ func (s *Swarm) repairTick(now time.Time) {
 	if s.retryAt == nil {
 		s.retryAt = map[string]time.Time{}
 	}
+	s.mu.Lock()
+	reserved := make(map[string]string, len(s.poolReserved))
+	for id, agent := range s.poolReserved {
+		reserved[id] = agent
+	}
+	s.mu.Unlock()
 	for _, t := range s.Board.Snapshot().Tasks {
-		if t.Status != StatusTodo || t.LastOwner == "" || now.Before(s.retryAt[t.ID]) {
+		// A pool child reserved for a member that was in a turn (reserveChild): the member's run has ended without claiming it.
+		forMember := t.Status == StatusTodo && t.Owner != "" && reserved[t.ID] == t.Owner
+		who := t.LastOwner
+		if forMember {
+			who = t.Owner
+		} else if reserved[t.ID] != "" {
+			s.mu.Lock()
+			delete(s.poolReserved, t.ID) // claimed, revised or reassigned since
+			s.mu.Unlock()
+		}
+		if t.Status != StatusTodo || who == "" || now.Before(s.retryAt[t.ID]) {
 			continue
 		}
-		m := s.get(t.LastOwner)
+		m := s.get(who)
 		if m == nil {
 			continue
 		}
@@ -35,8 +51,8 @@ func (s *Swarm) repairTick(now time.Time) {
 			continue
 		}
 		s.retryAt[t.ID] = now.Add(30 * time.Second)
-		if _, err := s.Spawn(SpawnReq{Role: m.role, Agent: m.id, TaskID: t.ID, By: "harness"}); err != nil {
-			continue
+		if _, err := s.Spawn(SpawnReq{Role: m.role, Agent: m.id, TaskID: t.ID, By: "harness"}); err != nil || forMember {
+			continue // a reserved child's start is its assignment
 		}
 		s.notify(m.id, "request", "Repair the existing task "+t.ID+" using its recorded failure evidence; do not replace it. Ask the pool leader or manager to revise the assignment if needed.")
 	}
