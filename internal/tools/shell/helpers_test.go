@@ -145,7 +145,8 @@ func (h *harness) startJob(env *tools.Env, command string, extra ...map[string]a
 	if res.IsError {
 		h.t.Fatalf("starting job: %s", res.Text)
 	}
-	id, ok := strings.CutPrefix(res.Text, "job ")
+	first, _, _ := strings.Cut(res.Text, "\n") // a note may follow on lines of its own
+	id, ok := strings.CutPrefix(first, "job ")
 	if !ok || !strings.HasSuffix(id, " started") {
 		h.t.Fatalf("unexpected start text %q", res.Text)
 	}
