@@ -2,10 +2,13 @@ package swarm
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // heldModel answers every model call at once, except those of the members it holds, which stay in their turn until their run is
@@ -121,12 +124,22 @@ func TestAReservedChildStartsWhenItsMemberGoesIdle(t *testing.T) {
 		t.Fatalf("T2 started while its member was in a turn: %s", c.Status)
 	}
 	r.release(h, r.second) // its runs end without a claim
+	// The start is the assignment in the log: the member, no longer held, ends that run at once and its work moves on (to review),
+	// so the board may already be past doing when the test looks; on a loaded runner it was.
+	started := func() bool {
+		for _, e := range r.log.OfType(events.TypeBoardOp) {
+			var op struct{ Op, Task, Owner, Status string }
+			if json.Unmarshal(e.Data, &op) == nil && op.Op == "assign" && op.Task == "T2" && op.Owner == r.second && op.Status == "doing" {
+				return true
+			}
+		}
+		return false
+	}
 	i := 0
 	rvWait(t, "T2 started for "+r.second, func() bool {
 		i++
 		r.sw.repairTick(now.Add(time.Duration(i) * time.Minute))
-		c, _ := r.sw.Board.Snapshot().Task("T2")
-		return c.Status == StatusDoing && c.Owner == r.second
+		return started()
 	})
 	r.sw.repairTick(now.Add(time.Duration(i+1) * time.Minute))
 	r.sw.mu.Lock()
