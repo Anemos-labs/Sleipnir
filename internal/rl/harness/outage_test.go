@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -87,11 +88,31 @@ func outageRun(t *testing.T, plan chaos.Plan, mut func(*env.Runner)) (*env.Runne
 // On 2026-10-11 the gateway timed out and refused connections for about twenty minutes and then eighty, and every rollout that
 // was running then ended as an infra failure. Now the agent waits the outage out and the rollout's wall clock stops meanwhile: an
 // outage longer than the whole wall budget leaves the rollout to finish its work, and the record says which part was the outage.
+//
+// The outage is long on the runner's clock, not in real time: the clock jumps past the budget while the endpoint is down. Waiting a
+// real outage longer than a real budget made the budget the test's margin for its own work, and a CI runner starved by the
+// packages beside it spent 4.3 s of a 2 s budget on two requests and an edit.
 func TestARolloutSitsOutAnOutageLongerThanItsWallBudget(t *testing.T) {
 	if testing.Short() {
 		t.Skip("end-to-end")
 	}
-	rn, task := outageRun(t, downForAWhile(2500*time.Millisecond), func(r *env.Runner) { r.MaxWall = 2 * time.Second })
+	const budget = 30 * time.Second
+	var skew atomic.Int64 // how far the runner's clock is ahead of real time
+	// Four requests go unanswered. The third comes after a failure has stopped the clock (the agent retries once the harness has
+	// seen one), and moves the clock past the whole budget: were it counted as active time, the run would end on its budget.
+	down := chaos.PlanFunc(func(n int, _ *http.Request) chaos.Fault {
+		if n == 3 {
+			skew.Add(int64(budget + 3*time.Second))
+		}
+		if n <= 4 {
+			return chaos.Fault{Kind: chaos.Reset}
+		}
+		return chaos.Fault{}
+	})
+	rn, task := outageRun(t, down, func(r *env.Runner) {
+		r.MaxWall = budget
+		r.Now = func() time.Time { return time.Now().Add(time.Duration(skew.Load())) }
+	})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	sum, err := rn.Rollout(ctx, []rl.Task{task}, 1, env.RolloutOpts{RunID: "outage", Policy: env.PolicySpec{Model: "mock-1"}})
@@ -102,8 +123,8 @@ func TestARolloutSitsOutAnOutageLongerThanItsWallBudget(t *testing.T) {
 	if sum.Completed != 1 || sum.Infra != 0 || r.Status != env.StatusOK || !r.Pass || r.Claimed != "done" {
 		t.Fatalf("the rollout did not survive the outage: %+v (infra: %+v)", r, sum.InfraErrors)
 	}
-	if r.WallMs < 2000 || r.PausedMs < 2000 || r.ActiveWallMs >= 2000 {
-		t.Errorf("wall %dms active %dms paused %dms: the run outlasted its 2s budget and the outage is what was paused", r.WallMs, r.ActiveWallMs, r.PausedMs)
+	if b := budget.Milliseconds(); r.WallMs < b || r.PausedMs < b || r.ActiveWallMs >= b {
+		t.Errorf("wall %dms active %dms paused %dms: the run outlasted its %s budget and the outage is what was paused", r.WallMs, r.ActiveWallMs, r.PausedMs, budget)
 	}
 
 	// The log says when the endpoint went down, how (nothing answered), and when it came back.
@@ -120,7 +141,7 @@ func TestARolloutSitsOutAnOutageLongerThanItsWallBudget(t *testing.T) {
 			t.Fatal(err)
 		}
 		phases = append(phases, d.Phase+"/"+d.Class+"/"+d.Kind)
-		if d.Phase == "end" && d.OutageMs < 2000 {
+		if d.Phase == "end" && d.OutageMs < budget.Milliseconds() {
 			t.Errorf("the outage lasted %dms by the log", d.OutageMs)
 		}
 	}

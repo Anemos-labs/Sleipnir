@@ -199,7 +199,9 @@ type Runner struct {
 	// quick, workers wait for it.
 	Progress func(Progress)
 	Logf     func(format string, args ...any)
-	Now      func() time.Time
+	// Now, if set, is the runner's time source (default time.Now): the times it records, and the wall clock that a rollout's
+	// budget and outages are measured on (WallClock).
+	Now func() time.Time
 }
 
 // RolloutOpts configures one Rollout call.
@@ -1081,7 +1083,7 @@ func (rn *run) runHarness(ctx context.Context, spec RunSpec, wall time.Duration,
 	if pause := rn.r.maxOutagePause(); pause > 0 {
 		notices := &outageNotices{rn: rn, spec: spec}
 		defer notices.close()
-		clock = NewWallClock(wall, pause, notices.changed)
+		clock = newWallClockAt(rn.r.now, wall, pause, notices.changed)
 		spec.Clock = clock
 		rctx, cancel = clock.Watch(ctx)
 	} else if wall > 0 {
