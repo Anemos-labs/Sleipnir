@@ -88,6 +88,15 @@ func (t *bashTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 	if hasTimeout && timeoutSec < 0 {
 		return fail(env, "bash: field \"timeout\" must be positive seconds, got %v", timeoutSec), nil
 	}
+	millis := ""
+	if hasTimeout && timeoutSec >= millisTimeout {
+		// Models used to shell tools that take milliseconds send 120000 for two minutes; read as seconds it is thirty-three hours
+		// (cut to the cap), and a command that hangs holds the agent for the whole cap. No foreground command is meant to run for
+		// 2.8 hours or more.
+		millis = fmt.Sprintf("[timeout %s was read as milliseconds (%s): the field is in seconds]", strconv.FormatFloat(timeoutSec, 'f', -1, 64),
+			strconv.FormatFloat(timeoutSec/1000, 'f', -1, 64)+"s")
+		timeoutSec /= 1000
+	}
 	description, _, err := a.str("description")
 	if err != nil {
 		return fail(env, "bash: %v", err), nil
@@ -137,10 +146,26 @@ func (t *bashTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 	if background {
 		// The job starts where the agent currently is (but its own `cd` never
 		// moves the agent), and its supervisor owns the wait-group slot from here on.
-		return m.startJob(env, sh, command, m.startDir(env, base), backgroundTimeout(timeoutSec, hasTimeout)), nil
+		return withNote(m.startJob(env, sh, command, m.startDir(env, base), backgroundTimeout(timeoutSec, hasTimeout)), millis), nil
 	}
 	defer m.end()
-	return m.runForeground(ctx, env, sh, command, base, foregroundTimeout(timeoutSec, hasTimeout, env.Limits)), nil
+	return m.runForeground(ctx, env, sh, command, base, foregroundTimeout(timeoutSec, hasTimeout, env.Limits), millis), nil
+}
+
+// millisTimeout is the smallest timeout that is read as milliseconds (10 s), not seconds (2.8 hours).
+const millisTimeout = 10000
+
+// withNote puts note on its own line after a background job's result text ("" leaves the result as it is).
+func withNote(res *tools.Result, note string) *tools.Result {
+	if note == "" || res == nil {
+		return res
+	}
+	if res.Text == "" {
+		res.Text = note
+	} else {
+		res.Text += "\n" + note
+	}
+	return res
 }
 
 // fail builds a model-visible error result through Finish, so even an
@@ -238,8 +263,9 @@ func humanBytes(n int64) string {
 }
 
 // runForeground runs the command to completion (or death) and builds the
-// result. The caller holds a Manager wait-group slot for the duration.
-func (m *Manager) runForeground(ctx context.Context, env *tools.Env, sh shellInfo, command, base string, timeout time.Duration) *tools.Result {
+// result; note, when not "", is a line of its own among the result's marks, before
+// the exit code. The caller holds a Manager wait-group slot for the duration.
+func (m *Manager) runForeground(ctx context.Context, env *tools.Env, sh shellInfo, command, base string, timeout time.Duration, note string) *tools.Result {
 	dir := m.startDir(env, base)
 
 	script := command
@@ -276,10 +302,10 @@ func (m *Manager) runForeground(ctx context.Context, env *tools.Env, sh shellInf
 	body := sk.snapshot()
 	st, exited := p.status()
 
-	var note string
+	var cwdNote string
 	final := dir
 	if cwdFile != "" && reason != killTimeout && reason != killCancel && reason != killShutdown {
-		final, note = m.recordCwd(env, base, dir, cwdFile)
+		final, cwdNote = m.recordCwd(env, base, dir, cwdFile)
 	}
 
 	raw, ctrl := p.raw.Load(), p.ctrl.Load()
@@ -291,8 +317,10 @@ func (m *Manager) runForeground(ctx context.Context, env *tools.Env, sh shellInf
 	}
 
 	var marks []string
-	if note != "" {
-		marks = append(marks, note)
+	for _, n := range []string{note, cwdNote} {
+		if n != "" {
+			marks = append(marks, n)
+		}
 	}
 	switch reason {
 	case killTimeout:
