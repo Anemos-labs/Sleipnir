@@ -141,11 +141,8 @@ func beginPoolIn(d *draft, id string, members []string) error {
 	if len(members) == 0 {
 		return fmt.Errorf("pool needs a task and members")
 	}
-	if t.Status != StatusTodo || t.Parent != "" {
-		return fmt.Errorf("%s is not an unassigned parent task", id)
-	}
-	if ok, why := depsDone(d.Snapshot, t); !ok {
-		return fmt.Errorf("dependency %s is not complete", why.ID)
+	if err := poolReady(d.Snapshot, t); err != nil {
+		return err
 	}
 	t.Owner, t.Status, t.Rev = members[0], StatusDoing, d.Version
 	if t.Pool != nil && slices.Equal(t.Pool.Members, members) {
@@ -161,6 +158,17 @@ func beginPoolIn(d *draft, id string, members []string) error {
 		t.Pool = &PoolState{Members: slices.Clone(members), Phase: "planning", Revision: 1, Excused: slices.Clone(excused)}
 	}
 	return d.put(i, t)
+}
+
+// poolReady says why the task t cannot begin a pool now, or nil: it must be an unassigned parent task whose dependencies are done.
+func poolReady(sn *Snapshot, t Task) error {
+	if t.Status != StatusTodo || t.Parent != "" {
+		return fmt.Errorf("%s is not an unassigned parent task", t.ID)
+	}
+	if ok, why := depsDone(sn, t); !ok {
+		return fmt.Errorf("dependency %s is not complete", why.ID)
+	}
+	return nil
 }
 
 // poolMembers returns members in configuration order, which defines leadership.
@@ -301,6 +309,16 @@ func (s *Swarm) notifyPoolRelease(parent string, ids []string, next string) {
 
 // startPool assigns a parent and wakes its members to cooperate, not to write.
 func (s *Swarm) startPool(req SpawnReq, files []string) (string, error) {
+	// A pool that cannot begin leaves nothing behind: its members are made only for a task that is ready. They used to be made first,
+	// and a parent whose dependency was open left three frontend members on the roster, "starting", for the forty minutes until it was.
+	if req.TaskID != "" {
+		sn := s.Board.Snapshot()
+		if t, ok := sn.Task(req.TaskID); ok {
+			if err := poolReady(sn, t); err != nil {
+				return "", err
+			}
+		}
+	}
 	members, err := s.ensurePool(req.Role)
 	if err != nil {
 		return "", err
