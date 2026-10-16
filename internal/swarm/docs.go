@@ -152,12 +152,12 @@ func (s *Swarm) docsTick(now time.Time) {
 	task, err := s.Board.CreateTask("harness", TaskSpec{Title: DocsTaskTitle + " (" + docsSummary(batch) + ")", Desc: docsBrief(batch), Role: DocsRole, Files: docsScope})
 	k.mu.Lock()
 	if err != nil {
-		k.retryAt = now.Add(docsRetry)
+		k.retryAt, k.waiting = now.Add(docsRetry), cleanText(err.Error(), 160)
 		k.mu.Unlock()
 		return
 	}
 	k.pending = k.pending[len(batch):]
-	k.open, k.last = task.ID, batch[len(batch)-1].task
+	k.open, k.last, k.waiting = task.ID, batch[len(batch)-1].task, ""
 	k.mu.Unlock()
 	id, err := s.Spawn(SpawnReq{Role: DocsRole, Agent: agentID, TaskID: task.ID, By: "harness"})
 	if err != nil {
@@ -251,6 +251,8 @@ func (s *Swarm) DocsState() string {
 	switch {
 	case k.open != "" && k.waiting != "":
 		parts = append(parts, "pass "+k.open+" waiting to start: "+k.waiting)
+	case k.waiting != "":
+		parts = append(parts, "pass waiting to start: "+k.waiting)
 	case k.open != "":
 		parts = append(parts, "pass "+k.open+" in progress")
 	case len(k.pending) > 0 && !k.coded:
