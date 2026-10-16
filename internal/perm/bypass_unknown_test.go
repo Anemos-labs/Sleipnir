@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -59,6 +60,72 @@ func TestBypassAsksOnlyAboutTheVeryDangerous(t *testing.T) {
 	y := f.engine(t, ruled)
 	if d := y.Check(context.Background(), Request{Agent: "be-1", Tool: "Bash", Command: `cat "$U"`}); outcome(d) != "allow" {
 		t.Errorf("yolo: %s (%s)", outcome(d), d.Reason)
+	}
+}
+
+// A file whose name is only known when the command runs, and that a deny rule may cover, is refused in every mode that bypass refuses
+// it in: plan, default and accept-edits too, before they ask about the command or an allow rule (the tests preset's go test) lets it
+// through. A deny rule beats every question and every allow rule, and a person asked about "$F" cannot see what it holds either. The
+// modes stay ordered (FuzzCheckShell): a looser mode never refuses what a stricter one asks about or allows. The first rows are inputs
+// the fuzzer found: the shell's name ($0), a positional parameter ($1 followed by digits), an unknown variable and an unparsed
+// substitution. The words that only might be files, a cd and a name-only use are not refused, and yolo mode lets such a name pass.
+func TestAnUnknownNameADenyRuleMayCoverIsRefusedInEveryMode(t *testing.T) {
+	f := newFixture(t)
+	modes := append(slices.Clone(modesByRestriction), ModeYolo)
+	engines := func(deny string) map[Mode]*Engine {
+		es := map[Mode]*Engine{}
+		for _, m := range modes {
+			es[m] = f.engine(t, Config{Mode: m, Allow: []string{"Bash(make:*)"}, Deny: []string{deny}})
+		}
+		return es
+	}
+	reads, writes := engines("Read(secrets/**)"), engines("Edit(secrets/**)")
+	for _, c := range []struct {
+		req  rq
+		edit bool   // judged under the Edit deny rule instead of the Read one
+		want string // plan, default, accept-edits, bypass, yolo
+	}{
+		{req: bash("cat $00"), want: "deny deny deny deny allow"}, // $0, then a 0
+		{req: bash("$0/0"), want: "deny deny deny deny allow"},    // running a file reads it
+		{req: bash("cat /$1000000000"), want: "deny deny deny deny allow"},
+		{req: bash("cat $A0"), want: "deny deny deny deny allow"},
+		{req: bash("/`"), want: "deny deny deny deny allow"}, // an unterminated substitution
+		{req: bash(`cat "$F"`), want: "deny deny deny deny allow"},
+		{req: bash(`cat < "$F"`), want: "deny deny deny deny allow"},
+		{req: bash(`cat "docs/$X"`), want: "deny deny deny deny allow"},  // X may be ../secrets/k
+		{req: bash(`go test "$PKG"`), want: "deny deny deny deny allow"}, // accept-edits allowed it by the tests preset
+		{req: read("$F"), want: "deny deny deny deny allow"},
+		{req: bash(`echo x > "$F"`), edit: true, want: "deny deny deny deny allow"},
+		{req: write("$F"), edit: true, want: "deny deny deny deny allow"},
+		{req: bash(`echo x > "$F"`), want: "deny ask ask allow allow"},       // a write, and the rule is about reads
+		{req: bash(`cat "$F"`), edit: true, want: "ask ask ask allow allow"}, // a read, and the rule is about edits
+		{req: bash(`ls "$F"`), want: "ask ask ask allow allow"},              // names only
+		{req: bash(`cd "$F"`), want: "ask ask ask allow allow"},              // cd reads nothing
+		{req: bash(`node app.js "$F"`), want: "deny ask ask allow allow"},    // an unlisted program's words only might be files
+		{req: bash(`FOO="$F" ls`), want: "ask ask ask allow allow"},          // and so may an assignment's value
+	} {
+		es := reads
+		if c.edit {
+			es = writes
+		}
+		want := strings.Fields(c.want)
+		got := map[Mode]string{}
+		for i, m := range modes {
+			r := f.request(c.req)
+			r.Agent = "be-1"
+			d := es[m].Check(context.Background(), r)
+			if got[m] = outcome(d); got[m] != want[i] {
+				t.Errorf("%s %q%v (edit rule %v) in %s mode = %s (%s), want %s", c.req.tool, c.req.cmd, c.req.paths, c.edit, m, got[m], d.Reason, want[i])
+			}
+			if got[m] == "deny" && m != ModePlan && !strings.Contains(d.Reason, "only known when the command runs") {
+				t.Errorf("%s %q%v in %s mode is refused for another reason: %s", c.req.tool, c.req.cmd, c.req.paths, m, d.Reason)
+			}
+		}
+		for i := 0; i+1 < len(modes); i++ {
+			if a, b := modes[i], modes[i+1]; severity[got[a]] < severity[got[b]] {
+				t.Errorf("%s %q%v: %s gives %s but the stricter %s gives %s", c.req.tool, c.req.cmd, c.req.paths, b, got[b], a, got[a])
+			}
+		}
 	}
 }
 

@@ -221,12 +221,18 @@ that the variable is the cause; it is never routine.
 cannot be checked against the built-in protections or the rules, so `bypass` allows it, unless a `deny` rule of the person's may cover
 it: any `Read` rule for a read, any `Edit` rule for a write, since a name with no known beginning may be any file and the unknown part
 of one whose beginning names a directory (`"docs/$X"`, `"$TMPDIR/$X"`) may hold a `../` that leads out of it. Such a name is then
-refused, and the refusal says why; nothing asks. A name whose known part is inside a steering directory (`".sleipnir/$N"`) still asks.
+refused, and the refusal says why; nothing asks. The refusal does not depend on the mode: `plan`, `default` and `accept-edits` refuse
+the same name in place of the question their defaults would put about it or of what an `allow` rule would let through (`go test
+"$PKG"` under the tests preset), since a `deny` rule beats both and a person asked about `"$F"` cannot see what it holds either;
+without such a rule they ask. It is a file the command certainly names: a word that only might be a file (an unlisted program's
+operand, an assignment's value), a name that is only listed (`ls "$X"`) and the directory `cd` enters are not refused this way. A
+name whose known part is inside a steering directory (`".sleipnir/$N"`) still asks.
 A built-in protection cannot see a name it cannot read: in `bypass` mode a command that spells a protected path through a variable is
 not stopped by the engine (as it is not stopped from running a program that reads it); use a container where that matters. The words
 of an unlisted program and the value of an assignment, which only might be files, are judged as the path they spell, not as a tree
 below it (`node script.mjs .`). Two command substitutions have known values: `$(pwd)` and `$(git rev-parse --show-toplevel)`, and
-`$(mktemp ...)` names a new path in the directory `mktemp` creates it in (see below). `yolo` mode never asks, and lets such a name pass.
+`$(mktemp ...)` names a new path in the directory `mktemp` creates it in (see below). `yolo` mode never asks, and lets such a name pass,
+whatever `deny` rule may cover it.
 
 ### Variables a command line sets
 
