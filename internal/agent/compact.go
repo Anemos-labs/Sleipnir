@@ -375,7 +375,7 @@ func (a *Agent) propose(ctx context.Context, snap kv.Stack, reason string) (*rea
 // /compact): they are typed by the person driving the agent, so they may steer the
 // compactor, unlike text the agent found in tool output.
 func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus string) (*readyPatch, error) {
-	prov, model := a.compactorFor(snap)
+	prov, model, byCompactor, gen := a.compactorFor(snap)
 	prof := prov.Profile()
 	pol := a.applyPolicy()
 	instr := kv.Instruction(&snap, a.est, pol)
@@ -401,7 +401,8 @@ func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus s
 	a.mu.Unlock()
 	defer a.clearPending(label)
 	a.recordRequest(label, &kv.Rendered{Prompt: p, Sections: nil}, nil, kv.Check{}, prof, KindCompactor, false)
-	a.emit(events.TypeCompactPatch, map[string]any{"stage": "request", "req": label, "reason": reason, "thread_from": firstID(snap), "thread_to": lastID(snap)})
+	a.emit(events.TypeCompactPatch, map[string]any{"stage": "request", "req": label, "reason": reason, "thread_from": firstID(snap), "thread_to": lastID(snap),
+		"model": model.ID, "compactor": byCompactor})
 
 	z := kv.Sizer{Est: a.est, Caps: pol.Caps}
 	snapLive := z.Turns(snap.Thread.Turns)
@@ -423,6 +424,7 @@ func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus s
 		defer a.clearPending(label)
 		a.recordRequest(label, &kv.Rendered{Prompt: p}, nil, kv.Check{}, prof, KindCompactor, false)
 	}
+	answered := err == nil // the model answered: what fails from here on is its patch, not the request
 	if err == nil {
 		a.account(resp, label, model)
 		w := model.Price.Weights()
@@ -445,6 +447,9 @@ func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus s
 	var res *kv.ApplyResult
 	if err == nil {
 		res, err = kv.Apply(&snap, patch, a.est, pol)
+	}
+	if byCompactor && answered {
+		a.noteCompactor(model.ID, gen, err == nil)
 	}
 	if err != nil {
 		// Fallback: deterministic compaction. Never leave the agent stuck with a
@@ -471,17 +476,36 @@ func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus s
 }
 
 // compactorFor picks who writes the patch for snap: the session's compactor model while the thread fits its
-// window with room for the answer, else the agent's own.
-func (a *Agent) compactorFor(snap kv.Stack) (provider.Provider, cost.Model) {
+// window with room for the answer and the compactor is trusted (CompactorHealth), else the agent's own. byCompactor
+// says which, and gen the compactor's standing it was asked under.
+func (a *Agent) compactorFor(snap kv.Stack) (prov provider.Provider, model cost.Model, byCompactor bool, gen int) {
 	c := a.cfg.Compactor
 	if c == nil {
-		return a.cfg.Provider, a.cfg.Model
+		return a.cfg.Provider, a.cfg.Model, false, 0
 	}
 	z := kv.Sizer{Est: a.est, Caps: a.caps(c.Profile())}
 	if w := a.cfg.CompactorModel.ContextTokens; w > 0 && z.Turns(snap.Thread.Turns)+a.stackPrefixTokens(snap) < w*3/4 {
-		return c, a.cfg.CompactorModel
+		if ask, g := a.cfg.CompactorHealth.use(); ask {
+			return c, a.cfg.CompactorModel, true, g
+		}
 	}
-	return a.cfg.Provider, a.cfg.Model
+	return a.cfg.Provider, a.cfg.Model, false, 0
+}
+
+// noteCompactor records whether the patch the compactor model answered with, asked under standing gen, could be used, and says
+// so when that changes whether the agents ask it.
+func (a *Agent) noteCompactor(model string, gen int, ok bool) {
+	changed, benched, failed, n := a.cfg.CompactorHealth.record(gen, ok)
+	if !changed {
+		return
+	}
+	msg := fmt.Sprintf("the compactor %s wrote patches again that could be used: it writes the summaries again", model)
+	if benched {
+		msg = fmt.Sprintf("the compactor %s wrote %d of its last %d patches in a form that could not be used: agents compact on their own models, "+
+			"and it is asked again every %dth compaction", model, failed, n, compactorProbeEvery)
+	}
+	a.emit(events.TypeCompactPatch, map[string]any{"stage": "compactor", "model": model, "benched": benched, "failed": failed, "of": n})
+	a.cfg.Sink.Notice(a.cfg.ID, "warn", msg)
 }
 
 // account books a side request (compactor, curator) against the agent.

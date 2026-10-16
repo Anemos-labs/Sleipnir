@@ -142,7 +142,10 @@ type Config struct {
 	// agent's own model compacts.
 	Compactor      provider.Provider
 	CompactorModel cost.Model
-	Tools          *tools.Registry
+	// CompactorHealth, shared by every agent of the session, records how the compactor's patches fared; while most of its
+	// recent ones failed, each agent compacts on its own model (CompactorHealth). Nil trusts the compactor always.
+	CompactorHealth *CompactorHealth
+	Tools           *tools.Registry
 	// ToolSpecs is the frozen, sorted tool list every agent in the session sends.
 	ToolSpecs []core.ToolSpec
 

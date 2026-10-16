@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
@@ -441,5 +442,88 @@ func TestACompactorModelWritesTheSummaryWhileTheThreadFitsItsWindow(t *testing.T
 	mu.Unlock()
 	if own, theirs := run(1_000); own != 1 || theirs != 0 {
 		t.Errorf("a thread too big for the compactor's window: own %d, compactor %d (want 1 and 0)", own, theirs)
+	}
+}
+
+// A compactor model whose patches cannot be used is benched for the whole session: after five failed patches every agent compacts
+// on its own model, the person is told once, and the log says so. A 12-worker run's compactor wrote a usable patch 211 times in
+// 494, and every other one left the agent with the mechanical fallback.
+func TestACompactorWhosePatchesFailIsBenchedForEveryAgent(t *testing.T) {
+	var mu sync.Mutex
+	compactorCalls := 0
+	csrv := mock.New(mock.Config{}, func(c *mock.Call) mock.Reply {
+		mu.Lock()
+		compactorCalls++
+		mu.Unlock()
+		return mock.Reply{Text: `{"keep_from":"t3","spine":[{"turns":"t1-t2","line":"read the file and the`} // cut off, as the run's were
+	})
+	ts := csrv.Start()
+	t.Cleanup(ts.Close)
+	prof := openaichat.DefaultProfile("compactor", ts.URL)
+	cclient := openaichat.New(openaichat.Config{Name: "compactor", BaseURL: ts.URL, Profile: &prof})
+	cm := cost.Fallback("small-compactor")
+	cm.ContextTokens = 200_000
+	health := agent.NewCompactorHealth()
+	sink := &noticeSink{}
+
+	// each compaction is another agent of the session, as in a team: they share the record
+	compact := func() (own int, r *rig) {
+		pl := kv.DefaultPlanner()
+		pl.SoftThreadTokens, pl.HardThreadTokens = 1_000_000, 2_000_000
+		var ownCalls atomic.Int32 // the mock answers on its own goroutine
+		r = newRig(t, rigOpts{planner: pl, compactor: cclient, compactorModel: cm, compactorHealth: health, sink: sink}, scriptedWork(8, func(c *mock.Call) string {
+			ownCalls.Add(1)
+			n := 0
+			for _, m := range c.Messages {
+				if m.Role == "assistant" {
+					n++
+				}
+			}
+			return compactorPatch(2*n - 3)(c)
+		}))
+		if _, err := r.agent.Run(context.Background(), "build everything"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := r.agent.CompactNow(context.Background(), ""); err != nil {
+			t.Fatal(err)
+		}
+		return int(ownCalls.Load()), r
+	}
+	for i := 1; i <= 5; i++ {
+		if own, _ := compact(); own != 0 {
+			t.Fatalf("compaction %d: the agent's own model wrote the patch while the compactor was trusted", i)
+		}
+	}
+	mu.Lock()
+	asked := compactorCalls
+	mu.Unlock()
+	if asked != 5 || !health.Benched() {
+		t.Fatalf("after five unusable patches: the compactor was asked %d times, benched %v", asked, health.Benched())
+	}
+	own, r := compact()
+	mu.Lock()
+	asked = compactorCalls
+	mu.Unlock()
+	if own != 1 || asked != 5 {
+		t.Fatalf("the sixth compaction: own model %d, compactor asked %d times in all (want 1 and 5)", own, asked)
+	}
+	var benchedNotices int
+	for _, n := range sink.all() {
+		if strings.Contains(n, "the compactor small-compactor wrote 5 of its last 5 patches in a form that could not be used") {
+			benchedNotices++
+		}
+	}
+	if benchedNotices != 1 {
+		t.Errorf("the person was told %d times, want once: %q", benchedNotices, sink.all())
+	}
+	for _, e := range r.log.OfType(events.TypeCompactPatch) {
+		var d struct {
+			Stage, Model string
+			Compactor    bool
+		}
+		_ = json.Unmarshal(e.Data, &d)
+		if d.Stage == "request" && (d.Compactor || d.Model == "small-compactor") {
+			t.Errorf("the benched compactor was asked for this agent's patch: %s", e.Data)
+		}
 	}
 }

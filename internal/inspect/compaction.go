@@ -123,6 +123,11 @@ func (s *Session) onCompactPatch(ev *events.Event, ts time.Time) {
 		Fallback       bool     `json:"fallback"`
 		Warnings       []string `json:"warnings"`
 		CostITE        float64  `json:"cost_ite"`
+		Model          string   `json:"model"`     // request, compactor: the model asked for the patch
+		Compactor      bool     `json:"compactor"` // request: the session's compactor model, not the agent's own
+		Benched        bool     `json:"benched"`   // compactor: it is no longer asked (true) or trusted again
+		Failed         int      `json:"failed"`
+		Of             int      `json:"of"`
 	}
 	if json.Unmarshal(ev.Data, &p) != nil {
 		s.badPay++
@@ -149,8 +154,18 @@ func (s *Session) onCompactPatch(ev *events.Event, ts time.Time) {
 		ep.Warnings = capStrings(p.Warnings, 8)
 		ep.step(ts, ev.Seq, "ready", fmt.Sprintf("patch ready (%s): folds %s tokens, keeps %s verbatim, adds %s spine tokens",
 			ep.Patch, fmtK(p.RemovedTokens), fmtK(p.RetainedTokens), fmtK(p.SpineAdded)))
+	case "compactor": // the session's compactor model was benched or trusted again
+		if p.Benched {
+			ep.step(ts, ev.Seq, "compactor", fmt.Sprintf("compactor %s benched: %d of its last %d patches could not be used; agents compact on their own models", p.Model, p.Failed, p.Of))
+		} else {
+			ep.step(ts, ev.Seq, "compactor", fmt.Sprintf("compactor %s trusted again", p.Model))
+		}
 	default: // "request": the compactor fork was sent
-		ep.step(ts, ev.Seq, "request", "compactor fork requested: same prefix as the agent, one instruction appended")
+		if p.Compactor {
+			ep.step(ts, ev.Seq, "request", fmt.Sprintf("patch requested from the compactor model %s: the agent's request, one instruction appended", p.Model))
+		} else {
+			ep.step(ts, ev.Seq, "request", "compactor fork requested: same prefix as the agent, one instruction appended")
+		}
 	}
 }
 
