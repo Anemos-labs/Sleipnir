@@ -101,6 +101,7 @@ func TestReadOnlyRolesRunTheStaticChecks(t *testing.T) {
 			"ruff check -qo out.txt src", "ruff check --output-file out.txt src", "mypy --junit-xml j.xml src",
 			"mypy --html-report h src", "tsc --noEmit --incremental", "tsc --noEmit --tsBuildInfoFile b.json",
 			"eslint --suppress-all web/js", "eslint --suppress-rule no-console web/js", "eslint --prune-suppressions web/js",
+			`ruff check --config "fix = true" src`, "ruff check --config=other.toml src",
 		} {
 			if d := check(cmd); d.Allow {
 				t.Errorf("%s: a reviewer may run %q", mode, cmd)

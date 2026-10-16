@@ -33,11 +33,11 @@ var TestsAllow = []string{
 }
 
 // workspaceRefused are, for the prefixes of the preset's ":workspace" rules, the options that take a command off the rule: they
-// rewrite the project's files (--fix, eslint's suppressions file), write files of their own (--createstub, --init, --generateTrace, a
+// rewrite the project's files (--fix, eslint's suppressions file, ruff --config "fix = true"), write files of their own (--createstub, --init, --generateTrace, a
 // report: eslint -o, mypy --junit-xml, tsc's build information), or install packages (mypy --install-types runs pip in the Python that runs mypy). A
 // one-letter option counts attached and in a cluster as well (refusedOption).
 var workspaceRefused = map[string][]string{
-	"ruff check": {"--fix", "--unsafe-fixes", "--add-noqa", "--fix-only", "-o", "--output-file"},
+	"ruff check": {"--fix", "--unsafe-fixes", "--add-noqa", "--fix-only", "-o", "--output-file", "--config"},
 	"mypy": {"--install-types", "--junit-xml", "--html-report", "--txt-report", "--xml-report", "--xslt-html-report",
 		"--xslt-txt-report", "--linecount-report", "--linecoverage-report", "--lineprecision-report", "--any-exprs-report",
 		"--cobertura-xml-report"},

@@ -329,6 +329,7 @@ func TestTheTestsPresetChecksInsideTheWorkspace(t *testing.T) {
 		{cmd: "eslint -o " + r.f.outside + "/report.json src", want: "ask", why: "-o"},
 		{cmd: "eslint -o report.json src", want: "ask", why: "-o"}, // a report is a file of its own, inside the workspace too
 		{cmd: "ruff check -qo out.txt src", want: "ask", why: "-o"},
+		{cmd: `ruff check --config "fix = true" src`, want: "ask", why: "--config"}, // a setting can turn the fixes on
 		{cmd: "ruff check --output-format json src", want: "allow"},
 		{cmd: "mypy --junit-xml junit.xml src", want: "ask", why: "--junit-xml"},
 		{cmd: "tsc --noEmit --incremental", want: "ask", why: "--incremental"},
