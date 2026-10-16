@@ -258,7 +258,9 @@ func TestPinsCarryVerificationAndTheUsersWords(t *testing.T) {
 // next one, while it ran, kept every SDK and web task from being claimed. A pass that cannot start at all says why.
 func TestAutoDocsStartsBesideADirectoryWriter(t *testing.T) {
 	cfg := Config{MaxWorkers: 8, AutoDocs: true, Team: []string{"backend", "devops", "docs"}}
-	r := newRVRigWith(t, cfg, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	// The docs worker stays in its turn (idleModel): a worker that answered at once would submit the pass, and a pass in review holds
+	// no scope, so the claims beside it below would test nothing (and the status check raced the submission).
+	r := newRVRigWith(t, cfg, idleModel, nil)
 	now := r.sw.deps.Now()
 	r.sw.docsTick(now)
 	r.sw.Board.Restore(&Snapshot{Tasks: []Task{
