@@ -87,7 +87,7 @@ func resumeGoal(s *session.Session, g *goal.State) string {
 	g.Paused, g.Repeats = "", 0
 	g.Max = g.Turns + goal.MaxTurns
 	g.Turns++
-	return goal.Continuation(g, s.GoalPlan(), goal.Verdict{Kind: goal.Continue, Reason: g.Reason})
+	return s.GoalContinuation(g, goal.Verdict{Kind: goal.Continue, Reason: g.Reason})
 }
 
 // goalEvent is what the web's goal loop reports while it runs a turn: Kind "ran" (a run of the session returned: Result, Err),

@@ -271,6 +271,33 @@ func (s *Swarm) DocsState() string {
 	return "docs (auto): " + strings.Join(parts, " · ")
 }
 
+// docsWillStart reports whether auto-docs has work (docsPending) or is about to collect some: a task finished since the keeper last
+// looked that would start a pass. The keeper collects on the supervisor's tick, so a manager that waits right after an accept sees
+// the board before the keeper does.
+func (s *Swarm) docsWillStart(snap *Snapshot) bool {
+	k := s.docs
+	if k == nil {
+		return false
+	}
+	if s.docsPending() {
+		return true
+	}
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if !k.primed {
+		return false // what was done before the keeper first looks is not news to it (docsTick)
+	}
+	for _, t := range snap.Tasks {
+		if rev, seen := k.seen[t.ID]; t.Status != StatusDone || (seen && rev == t.Rev) || s.isDocsTask(t) {
+			continue
+		}
+		if s.implementationTask(t) || t.Kind == TaskKindPlan && k.coded {
+			return true
+		}
+	}
+	return false
+}
+
 // docsPending reports whether auto-docs still has work: a pass in progress, or pending
 // changes that may start one (agreements alone, before any implementation task was
 // accepted, start nothing and hold nobody).

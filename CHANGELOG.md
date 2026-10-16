@@ -15,6 +15,18 @@ they do not indicate whether a change has been released.
   `tsc --noEmit` and `eslint`. They still run only what the session allows:
   in `default` mode these still ask. Prompt bytes: none change.
 
+- A team manager's `wait` is refused when no worker is running and every task
+  of the board is settled, as it already was with unfinished work and nobody
+  running: the error says to start what the objective still needs or to end
+  the turn. A wait that began while a worker ran ends that way when the last
+  worker goes idle. An empty board, a docs pass about to start, and mail still
+  with the mailman still allow the wait. `wait`'s `until` and `task`'s `deps`
+  take one string of task IDs as well as a list. A restored worker shows
+  `restored; waiting for T7 to restart` only while it holds an unfinished task.
+  A standing goal's continuation to a team manager names the free workers.
+  Prompt bytes: the tool schemas and stable layers do not change; the
+  continuation message, which joins the conversation's tail, gains a line.
+
 - A file whose name is only known when the command runs (`cat "$F"`, `cat
   < "$F"`, `go test "$PKG"`, a file tool given `$F`) is refused in `plan`,
   `default` and `accept-edits` mode when a `deny` rule may cover it (any

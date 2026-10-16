@@ -3,6 +3,7 @@ package swarm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -164,6 +165,54 @@ func (s *Swarm) unfinishedWork() unfinishedWork {
 		u.running = append(u.running, item)
 	}
 	return u
+}
+
+// freeListCap bounds the worker ids FreeCapacity names.
+const freeListCap = 8
+
+// FreeCapacity is a line for the manager that names the team's free workers, or "" when none is free. A standing goal adds it to
+// the message that sends the manager on (session.GoalContinuation): what the judge found missing is work for them, and a manager
+// sent on to "take the next concrete step" otherwise tends to take it alone while the team waits.
+func (s *Swarm) FreeCapacity() string {
+	free, workers := s.freeWorkers()
+	if len(free) == 0 {
+		return ""
+	}
+	names := strings.Join(free[:min(len(free), freeListCap)], ", ")
+	if len(free) > freeListCap {
+		names += fmt.Sprintf(" and %d more", len(free)-freeListCap)
+	}
+	return fmt.Sprintf("You lead a team, and %d of its %d workers are free (%s). Split what is missing by role into tasks and start "+
+		"them side by side with spawn; do yourself only what is smaller than a handoff.", len(free), workers, names)
+}
+
+// freeWorkers returns the team's workers that are idle and hold no open task (sorted), and how many workers the team has: the
+// capacity the manager is not using. The manager and the harness's services are not workers.
+func (s *Swarm) freeWorkers() (free []string, workers int) {
+	snap := s.Board.Snapshot()
+	s.mu.Lock()
+	members := make([]*member, 0, len(s.members))
+	for _, m := range s.members {
+		members = append(members, m)
+	}
+	s.mu.Unlock()
+	for _, m := range members {
+		if m.manager || m.service {
+			continue
+		}
+		m.mu.Lock()
+		l := m.life
+		m.mu.Unlock()
+		if l == lifeRetired {
+			continue
+		}
+		workers++
+		if l == lifeIdle && !ownsOpenTask(snap, m.id) {
+			free = append(free, m.id)
+		}
+	}
+	sort.Strings(free)
+	return free, workers
 }
 
 // holdHooks wraps the hooks an agent was given (the user's own, possibly none) and
