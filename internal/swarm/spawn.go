@@ -57,16 +57,32 @@ func writerCapError(active, limit int) error {
 // so concurrent spawns, reuses and self-claims cannot exceed a limit or give two
 // agents the same task; a refused spawn leaves nothing behind.
 func (s *Swarm) Spawn(req SpawnReq) (string, error) {
+	r, err := s.spawn(req)
+	return r.Agent, err
+}
+
+// SpawnResult says what a spawn did.
+type SpawnResult struct {
+	// Agent is the worker that was started, or the member the task was reserved for.
+	Agent string
+	// Reserved reports that Agent, a member of the task's pool, was still running: the
+	// task waits for it, todo and owned by it, and it was told to claim it (reserveChild).
+	Reserved bool
+}
+
+// spawn is Spawn with the full result.
+func (s *Swarm) spawn(req SpawnReq) (SpawnResult, error) {
 	s.spawnMu.Lock()
 	defer s.spawnMu.Unlock()
+	started := func(id string, err error) (SpawnResult, error) { return SpawnResult{Agent: id}, err }
 	if err := s.alive(); err != nil {
-		return "", err
+		return SpawnResult{}, err
 	}
 	if err := s.budgetErr(); err != nil {
-		return "", err
+		return SpawnResult{}, err
 	}
 	if req.TaskID == "" && strings.TrimSpace(req.Title) == "" {
-		return "", errors.New("spawn needs a task id or a title")
+		return SpawnResult{}, errors.New("spawn needs a task id or a title")
 	}
 	if req.Agent == "" && req.TaskID != "" {
 		if task, ok := s.Board.Snapshot().Task(strings.TrimSpace(req.TaskID)); ok && task.Owner != "" {
@@ -81,7 +97,7 @@ func (s *Swarm) Spawn(req SpawnReq) (string, error) {
 	}
 	files, err := s.normScopes(req.Files)
 	if err != nil {
-		return "", err
+		return SpawnResult{}, err
 	}
 	if s.cfg.PersistentPools {
 		if req.Role == "" && req.TaskID != "" {
@@ -93,7 +109,7 @@ func (s *Swarm) Spawn(req SpawnReq) (string, error) {
 		task, _ := s.Board.Snapshot().Task(req.TaskID)
 		if counts[req.Role] > 1 && task.Parent == "" {
 			if task.Status != StatusDoing || task.Pool == nil {
-				return s.startPool(req, files)
+				return started(s.startPool(req, files))
 			}
 		}
 		if req.Agent == "" {
@@ -108,13 +124,13 @@ func (s *Swarm) Spawn(req SpawnReq) (string, error) {
 			}
 		}
 		if req.Agent == "" && len(s.poolMembers(req.Role)) > 0 {
-			return "", fmt.Errorf("%s pool is busy; wait and reuse its existing members", req.Role)
+			return SpawnResult{}, fmt.Errorf("%s pool is busy; wait and reuse its existing members", req.Role)
 		}
 	}
 	if req.Agent != "" {
 		return s.spawnReuse(req, files)
 	}
-	return s.spawnNew(req, files)
+	return started(s.spawnNew(req, files))
 }
 
 // assignFor builds the board operation that gives a task to an agent.
@@ -152,46 +168,57 @@ func (s *Swarm) precheckScope(req SpawnReq, files []string, role Role) error {
 	return s.scopeConflictIn(sn, t)
 }
 
-func (s *Swarm) spawnReuse(req SpawnReq, files []string) (string, error) {
+func (s *Swarm) spawnReuse(req SpawnReq, files []string) (SpawnResult, error) {
 	m := s.get(req.Agent)
 	if m == nil || m.service {
-		return "", fmt.Errorf("no agent %q", cleanText(req.Agent, 40))
+		return SpawnResult{}, fmt.Errorf("no agent %q", cleanText(req.Agent, 40))
 	}
 	if m.manager {
-		return "", errors.New("the manager cannot be given a worker's task")
+		return SpawnResult{}, errors.New("the manager cannot be given a worker's task")
 	}
 	role := s.roles[m.role]
+	transfer := false
 	if req.TaskID != "" {
-		if task, ok := s.Board.Snapshot().Task(req.TaskID); ok {
+		sn := s.Board.Snapshot()
+		if task, ok := sn.Task(req.TaskID); ok {
+			transfer = leaderTransfer(sn, req.By, task)
 			task.Owner = m.id
-			if err := poolAssignment(s.Board.Snapshot(), task); err != nil {
-				return "", err
+			if err := poolAssignment(sn, task); err != nil {
+				return SpawnResult{}, err
 			}
 		}
 	}
 	if err := s.precheckScope(req, files, role); err != nil {
-		return "", err
+		return SpawnResult{}, err
 	}
 	rs, ctx, ok := s.reserve(m)
 	if !ok {
 		if s.cfg.PersistentPools {
-			return "", fmt.Errorf("%s is still working; mail it the existing task ID to claim, or wait and reuse it", m.id)
+			if r, handled, err := s.reserveChild(req, m, role, files, transfer); handled {
+				return r, err
+			}
+			return SpawnResult{}, fmt.Errorf("%s is still working; mail it the existing task ID to claim, or wait and reuse it", m.id)
 		}
-		return "", fmt.Errorf("%s is still working; wait for it or spawn a new worker", m.id)
+		return SpawnResult{}, fmt.Errorf("%s is still working; wait for it or spawn a new worker", m.id)
 	}
 	if !role.ReadOnly && !s.isolated() {
 		// The reserved member counts as active: the cap applies to reuse as well. (An
 		// isolated run has no writer cap: every writer edits a tree of its own.)
 		if w := s.activeWriters(); w > s.cfg.MaxWriters {
 			s.unreserve(m, rs)
-			return "", writerCapError(w-1, s.cfg.MaxWriters)
+			return SpawnResult{}, writerCapError(w-1, s.cfg.MaxWriters)
 		}
 	}
-	task, err := s.Board.assignTask(s.assignFor(req, m.id, role, files))
+	ar := s.assignFor(req, m.id, role, files)
+	ar.transfer = transfer
+	task, err := s.Board.assignTask(ar)
 	if err != nil {
 		s.unreserve(m, rs)
-		return "", err
+		return SpawnResult{}, err
 	}
+	s.mu.Lock()
+	delete(s.poolReserved, task.ID)
+	s.mu.Unlock()
 	m.mu.Lock()
 	m.task, m.gateTries = task.ID, 0
 	m.recovered = false
@@ -207,7 +234,83 @@ func (s *Swarm) spawnReuse(req SpawnReq, files []string) (string, error) {
 		start.brief += "\n" + note
 	}
 	s.launch(m, rs, ctx, start)
-	return m.id, nil
+	return SpawnResult{Agent: m.id}, nil
+}
+
+// leaderTransfer reports whether by is the leader of t's pool giving away a child it
+// owns itself: a leader that claimed a child it meant for a member (a member it could
+// not reach at that moment) can still assign it with spawn.
+func leaderTransfer(sn *Snapshot, by string, t Task) bool {
+	if by == "" || t.Owner != by || t.Parent == "" || (t.Status != StatusDoing && t.Status != StatusTodo) {
+		return false
+	}
+	p, ok := sn.Task(t.Parent)
+	return ok && p.Pool != nil && p.Owner == by
+}
+
+// reserveChild gives a child of an executing pool to a member of that pool whose run
+// has not ended: it is waiting for its share, or finishing a turn, so it cannot be
+// started, but it can be told. The child stays todo, owned by the member, so no one
+// else claims it; the member is told by harness mail to claim it, and if its run ends
+// first the repair pass starts it on the child (repairTick). A member with work of
+// its own in progress is refused, with the members who have none. handled is false
+// when this does not apply (not a pool child, or a member that is retiring).
+func (s *Swarm) reserveChild(req SpawnReq, m *member, role Role, files []string, transfer bool) (SpawnResult, bool, error) {
+	sn := s.Board.Snapshot()
+	t, ok := sn.Task(strings.TrimSpace(req.TaskID))
+	if !ok || t.Parent == "" {
+		return SpawnResult{}, false, nil
+	}
+	p, ok := sn.Task(t.Parent)
+	if !ok || p.Pool == nil {
+		return SpawnResult{}, false, nil
+	}
+	m.mu.Lock()
+	running := m.life == lifeRunning
+	m.mu.Unlock()
+	if !running {
+		return SpawnResult{}, false, nil
+	}
+	if t.Owner == m.id && t.Status != StatusTodo {
+		return SpawnResult{}, true, fmt.Errorf("%s already has %s (%s)", m.id, t.ID, t.Status)
+	}
+	if cur := inProgress(sn, m.id, t.ID, p.ID); cur != "" {
+		var free []string
+		for _, id := range p.Pool.Members {
+			if id != m.id && inProgress(sn, id, t.ID, p.ID) == "" {
+				free = append(free, id)
+			}
+		}
+		if len(free) == 0 {
+			return SpawnResult{}, true, fmt.Errorf("%s is working on %s and every member of %s's pool has a child in progress: wait for one to finish, then assign %s", m.id, cur, p.ID, t.ID)
+		}
+		return SpawnResult{}, true, fmt.Errorf("%s is working on %s: give %s to a member with no child in progress (%s), or wait for %s", m.id, cur, t.ID, strings.Join(free, ", "), m.id)
+	}
+	ar := s.assignFor(req, m.id, role, files)
+	ar.reserve, ar.transfer = true, transfer
+	got, err := s.Board.assignTask(ar)
+	if err != nil {
+		return SpawnResult{}, true, err
+	}
+	s.mu.Lock()
+	s.poolReserved[got.ID] = m.id
+	s.mu.Unlock()
+	if t.Owner != m.id { // a repeated reservation tells the member nothing new
+		s.notify(m.id, "request", fmt.Sprintf("%s (a child of %s) is reserved for you by %s: claim it now (task claim id=%s) and start; task get id=%s shows it.",
+			got.ID, p.ID, safeToken(req.By, 24), got.ID, got.ID))
+	}
+	return SpawnResult{Agent: m.id, Reserved: true}, true, nil
+}
+
+// inProgress is the task agent is working on, other than skip and the pool parent
+// parent: a doing or blocked task it owns, or "".
+func inProgress(sn *Snapshot, agent, skip, parent string) string {
+	for _, t := range sn.Tasks {
+		if t.Owner == agent && t.ID != skip && t.ID != parent && (t.Status == StatusDoing || t.Status == StatusBlocked) {
+			return t.ID
+		}
+	}
+	return ""
 }
 
 func (s *Swarm) spawnNew(req SpawnReq, files []string) (string, error) {

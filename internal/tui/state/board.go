@@ -77,7 +77,7 @@ func (s *State) onBoardOp(e events.Event, t time.Time) {
 		s.board.version = p.Version
 	}
 	switch p.Op {
-	case "create", "claim", "assign", "update", "scope", "finish", "block", "resume", "requeue":
+	case "create", "claim", "assign", "reserve", "update", "scope", "finish", "block", "resume", "requeue":
 		s.taskOp(e, t, &p)
 	case "agent":
 		id := firstOf(p.Agent, e.Agent)
