@@ -9,6 +9,9 @@ import (
 	"strconv"
 )
 
+// probesGroup says that groupAlive cannot tell whether a process group is gone: there are none to probe (waitPumps).
+const probesGroup = false
+
 // Non-Unix platforms (Windows in practice) have no process groups to signal.
 // This is deliberately minimal: taskkill /T walks the process tree, which is
 // the closest equivalent, and everything else degrades to killing the leader.

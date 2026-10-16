@@ -672,3 +672,29 @@ func TestLooksSecret(t *testing.T) {
 		t.Errorf("env = %v", env)
 	}
 }
+
+// Readers that are behind when a command ends are waited for once its process group is gone: every write end is closed, so EOF
+// is certain. On a loaded runner a reader had not run within the grace, and a line the command printed was lost from its result.
+// A process of the group still alive keeps the pipes open, and the result does not wait for it beyond the grace.
+func TestWaitPumpsWaitsForReadersBehindWhenTheGroupIsGone(t *testing.T) {
+	if !probesGroup {
+		t.Skip("no process groups to probe")
+	}
+	for _, tc := range []struct {
+		name  string
+		alive bool
+		want  bool
+	}{{"group gone", false, true}, {"a stray holds the pipes", true, false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &proc{pumpsDone: make(chan struct{}), alive: func(int) bool { return tc.alive }}
+			time.AfterFunc(300*time.Millisecond, func() { close(p.pumpsDone) }) // the readers catch up after the grace
+			start := time.Now()
+			if got := p.waitPumps(50 * time.Millisecond); got != tc.want {
+				t.Errorf("waitPumps = %v, want %v", got, tc.want)
+			}
+			if took := time.Since(start); !tc.alive && took < 250*time.Millisecond || tc.alive && took > 250*time.Millisecond {
+				t.Errorf("waited %v", took)
+			}
+		})
+	}
+}

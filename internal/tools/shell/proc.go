@@ -305,9 +305,14 @@ func (p *proc) closeReaders() {
 	}
 }
 
-// waitPumps gives the pumps a moment to drain what the process wrote just
-// before exiting. Returns false if they are still running (a background
-// process kept the pipes open).
+// drainCeiling bounds how long a finished command whose process group is gone waits for its readers (waitPumps).
+const drainCeiling = 2 * time.Second
+
+// waitPumps gives the pumps a moment to drain what the process wrote just before exiting. When grace passes and a process of
+// the group is still alive, a background process keeps the pipes open, and waitPumps returns false (the result must not wait for
+// it). When none is, every write end is closed and EOF is on its way: only the readers are behind, as they are on a loaded
+// machine, so it waits for them, up to drainCeiling, rather than lose what the command printed. Where the group cannot be probed
+// (probesGroup), grace is all it waits.
 func (p *proc) waitPumps(grace time.Duration) bool {
 	if p.pumpsFinished() {
 		return true
@@ -318,6 +323,16 @@ func (p *proc) waitPumps(grace time.Duration) bool {
 	case <-p.pumpsDone:
 		return true
 	case <-t.C:
+	}
+	if !probesGroup || p.alive(p.pid) {
+		return false
+	}
+	c := time.NewTimer(drainCeiling)
+	defer c.Stop()
+	select {
+	case <-p.pumpsDone:
+		return true
+	case <-c.C:
 		return false
 	}
 }
