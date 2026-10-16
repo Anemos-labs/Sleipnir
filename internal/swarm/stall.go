@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
@@ -18,9 +19,10 @@ import (
 // can also stop making progress while every agent is busy: a worker reads without
 // ever changing anything, the manager waits for workers that are not running, a task
 // is owned by an agent that no longer exists, two tasks are blocked on each other, a
-// submission sits in review while the manager does other things. The sweep names
-// these conditions from the board, the roster and turn counters only (no clocks, no
-// model text), so the same state always gives the same findings.
+// submission sits in review while the manager does other things, most of a team sits
+// idle while the manager waits on the rest. The sweep names these conditions from the
+// board, the roster and turn counters (no model text), so the same state always gives
+// the same findings; idle_capacity alone also reads how long workers have been idle.
 //
 // A finding is raised once, when its condition starts to hold: a swarm.stall event
 // (action raise) is logged and the agent that can act on it is told once by harness
@@ -50,10 +52,21 @@ const (
 	// StallReviewStarved: a task has been in review for Config.StallTurns manager
 	// turns without the manager reading or deciding it.
 	StallReviewStarved StallKind = "review_starved"
+	// StallIdleCapacity: the manager of a configured team waits on the few workers
+	// still at work while at least half of the team, and two workers or more, have been
+	// idle for idleCapacityAfter owning no open task. Waiting is right when the open tasks are all the
+	// objective needs, and costs the idle workers' time when more remains: the manager is
+	// told who is free, once, and decides. It clears when they are at work again or the
+	// manager stops waiting.
+	StallIdleCapacity StallKind = "idle_capacity"
 )
 
+// idleCapacityAfter is how long a worker of a configured team has been idle before it
+// counts toward StallIdleCapacity.
+var idleCapacityAfter = 15 * time.Minute
+
 // StallKinds lists every stall kind in a fixed order.
-var StallKinds = []StallKind{StallClaimedNoProgress, StallManagerWaitingOnIdle, StallOrphanedTask, StallBlockedCycle, StallReviewStarved}
+var StallKinds = []StallKind{StallClaimedNoProgress, StallManagerWaitingOnIdle, StallOrphanedTask, StallBlockedCycle, StallReviewStarved, StallIdleCapacity}
 
 // Stall is one finding of the sweep. Every field is harness-written: ids, kinds and
 // counts, never text an agent wrote.
@@ -233,6 +246,7 @@ type memberView struct {
 	running, manager, service bool
 	quiet                     int64 // model turns since its last progress call
 	turns                     int64
+	idleSince                 time.Time // when its last run ended (zero: it has not run, or runs now)
 }
 
 // stallFindings computes what holds now. It reads the board, the roster and the turn
@@ -249,6 +263,9 @@ func (s *Swarm) stallFindings() []Stall {
 	for id, m := range s.members {
 		m.mu.Lock()
 		v := memberView{running: m.life == lifeRunning, manager: m.manager, service: m.service}
+		if m.life == lifeIdle {
+			v.idleSince = m.idleAt
+		}
 		m.mu.Unlock()
 		v.turns = m.turns.Load()
 		v.quiet = v.turns - m.quietFrom.Load()
@@ -292,6 +309,28 @@ func (s *Swarm) stallFindings() []Stall {
 			Detail: "the manager waited, but no worker is running and the board needs it: " + u.summary(holdListCap)})
 	}
 	s.stalls.refused = false
+
+	// idle_capacity: the manager waits on a few workers while most of the team has been idle for a while.
+	if mgr != "" && s.stalls.waiting && anyWorker && openTask(snap) && s.teamLimited() {
+		at := s.deps.Now()
+		var idle []string
+		workers := 0
+		for id, v := range views {
+			if v.manager || v.service {
+				continue
+			}
+			workers++
+			if !v.running && !v.idleSince.IsZero() && at.Sub(v.idleSince) >= idleCapacityAfter && !ownsOpenTask(snap, id) {
+				idle = append(idle, id)
+			}
+		}
+		if len(idle) >= 2 && 2*len(idle) >= workers {
+			sort.Strings(idle)
+			out = append(out, Stall{Kind: StallIdleCapacity, Agent: mgr, Notify: mgr,
+				Detail: fmt.Sprintf("%d of %d workers have been idle for %d minutes or more (%s) while the manager waits for %s",
+					len(idle), workers, int(idleCapacityAfter/time.Minute), strings.Join(idle, ", "), u.summary(holdListCap))})
+		}
+	}
 
 	// orphaned_task: confirmed on a second sweep, so the moment between a spawn's
 	// assignment and its registration (or a retirement and its requeue) is not one.
@@ -463,6 +502,31 @@ func stallNudge(f Stall, k int64, pools bool) string {
 		return "Stall check: tasks are " + f.Detail + ", so none of them can continue. Decide one (resume it with what it needs), or fail one with reason blocked_on."
 	case StallReviewStarved:
 		return fmt.Sprintf("Stall check: %s. Read it (task get %s), then accept or reject it.", f.Detail, f.Task)
+	case StallIdleCapacity:
+		return "Stall check: " + f.Detail + ". If the objective needs more than the open tasks (a requirement nobody has started, a gap you found), " +
+			"create that work and assign it now: an idle worker starts at once. If the open tasks are all that is left, keep waiting."
 	}
 	return "Stall check: " + f.Detail
+}
+
+// ownsOpenTask reports whether agent owns a task that is not closed: one reserved for it, in progress, blocked or in review (a pool
+// leader's pool task among them). Such a worker is not free, whatever it is doing now.
+func ownsOpenTask(sn *Snapshot, agent string) bool {
+	for _, t := range sn.Tasks {
+		if t.Owner == agent && t.Status != StatusDone && t.Status != StatusFailed {
+			return true
+		}
+	}
+	return false
+}
+
+// openTask reports whether the board holds a task that is not closed (todo, doing, blocked or in review): a running worker with no
+// task is not unfinished work.
+func openTask(sn *Snapshot) bool {
+	for _, t := range sn.Tasks {
+		if t.Status != StatusDone && t.Status != StatusFailed {
+			return true
+		}
+	}
+	return false
 }
