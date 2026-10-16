@@ -135,8 +135,19 @@ func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []Recov
 		}
 	}
 	s.Board.RestoreOwners(prev, owners)
+	// Only a worker that holds an unfinished task waits for it to restart; one whose last task is settled is plain idle, free for new
+	// work (a line saying it waits would tell the manager it is taken).
+	held := map[string][]string{}
+	for task, owner := range owners {
+		held[owner] = append(held[owner], task)
+	}
 	for _, m := range restored {
-		m.setState(s, "idle", "restored; waiting for a task to restart")
+		line := ""
+		if ts := held[m.id]; len(ts) > 0 {
+			sort.Strings(ts)
+			line = "restored; waiting for " + strings.Join(ts, ", ") + " to restart"
+		}
+		m.setState(s, "idle", line)
 	}
 	return nil
 }
