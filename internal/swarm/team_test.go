@@ -251,3 +251,54 @@ func TestPinsCarryVerificationAndTheUsersWords(t *testing.T) {
 		t.Error("the architect pin lets an agreement rename what the user named")
 	}
 }
+
+// A docs pass and code work do not wait for each other: the pass takes the Markdown at the root and docs/, so it starts beside a
+// task that holds internal/api/** (which may hold a README), and while it runs, tasks scoped to a directory or to a file not there
+// yet are claimed. With "**/*.md" the first pass of a 12-worker run waited half an hour behind the backend's directories, and the
+// next one, while it ran, kept every SDK and web task from being claimed. A pass that cannot start at all says why.
+func TestAutoDocsStartsBesideADirectoryWriter(t *testing.T) {
+	cfg := Config{MaxWorkers: 8, AutoDocs: true, Team: []string{"backend", "devops", "docs"}}
+	r := newRVRigWith(t, cfg, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	now := r.sw.deps.Now()
+	r.sw.docsTick(now)
+	r.sw.Board.Restore(&Snapshot{Tasks: []Task{
+		{ID: "T1", Title: "add the cart endpoint", Status: StatusDone, Role: "backend"},
+		{ID: "T2", Title: "add the order endpoint", Status: StatusTodo, Role: "backend", Files: []string{"internal/api/**"}},
+		{ID: "T3", Title: "packaging", Status: StatusTodo, Role: "devops", Files: []string{"README.md", "docs/**"}},
+	}})
+	for _, c := range [][2]string{{"be-1", "T2"}, {"dv-1", "T3"}} {
+		if err := r.sw.Board.claim(c[0], c[1], nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r.sw.docsTick(now)
+	pass, _ := r.sw.Board.Snapshot().Task("T4")
+	if !strings.HasPrefix(pass.Title, DocsTaskTitle) || pass.Owner != "" {
+		t.Fatalf("T4: %+v", pass)
+	}
+	if st := r.sw.DocsState(); !strings.Contains(st, "pass T4 waiting to start: scope") || !strings.Contains(st, "overlaps T3") {
+		t.Errorf("state while T3 holds README.md: %q", st)
+	}
+	if err := r.sw.Board.resolve("mgr", "T3", "not needed"); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.docsTick(now.Add(docsRetry))
+	pass, _ = r.sw.Board.Snapshot().Task("T4")
+	if pass.Status != StatusDoing || pass.Owner == "" || strings.Join(pass.Files, " ") != "*.md docs/**" {
+		t.Fatalf("beside T2 on internal/api/** the pass is %s, owned by %q, scoped %v", pass.Status, pass.Owner, pass.Files)
+	}
+	if st := r.sw.DocsState(); !strings.Contains(st, "pass T4 in progress") {
+		t.Errorf("state once started: %q", st)
+	}
+	for _, c := range []struct{ id, scope string }{{"T5", "sdk/python/**"}, {"T6", "web/index.html"}} {
+		if _, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: c.scope, Role: "backend", Files: []string{c.scope}}); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.sw.Board.claim("be-2", c.id, r.sw.claimCheck("be-2", false)); err != nil {
+			t.Errorf("a task on %s beside the docs pass: %v", c.scope, err)
+		}
+		if err := r.sw.Board.resolve("mgr", c.id, "not needed"); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
