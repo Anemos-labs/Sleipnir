@@ -1351,3 +1351,18 @@ func TestALargeTimeoutIsMilliseconds(t *testing.T) {
 		t.Errorf("a background job's result: %q", res.Text)
 	}
 }
+
+// A background job given a timeout in milliseconds is killed when that many milliseconds have passed, not seconds.
+func TestABackgroundJobTimesOutInMilliseconds(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, Options{KillGrace: 300 * time.Millisecond})
+	env := h.env("bgms")
+	start := time.Now()
+	id := h.startJob(env, "sleep 60", map[string]any{"timeout": 10000})
+	waitFor(t, "the job killed after 10 s", 30*time.Second, func() bool {
+		return strings.Contains(h.output(env, id).Text, "killed (timed out)")
+	})
+	if took := time.Since(start); took < 9*time.Second {
+		t.Errorf("killed after %v: the timeout was not 10 s", took)
+	}
+}
