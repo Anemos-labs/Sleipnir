@@ -42,6 +42,13 @@ func TestNotDoingRefusalsSayWhatToDoInstead(t *testing.T) {
 	if err := b.Accept("mgr", task.ID, "ok"); err != nil {
 		t.Fatal(err)
 	}
+	// the board's own callers give the same refusal
+	if err := b.Submit("be-1", task.ID, "again", ""); err == nil || !strings.Contains(err.Error(), "is done, not doing: its result stands") {
+		t.Errorf("submit of a done task: %v", err)
+	}
+	if err := b.BlockOn("be-1", task.ID, "", "still blocked"); err == nil || !strings.Contains(err.Error(), "is done, not doing: its result stands") {
+		t.Errorf("block of a done task: %v", err)
+	}
 	for _, action := range []string{"update", "done"} {
 		if got := call(action); !strings.Contains(got, "is done, not doing: its result stands") || !strings.Contains(got, "new task") {
 			t.Errorf("%s of a done task: %s", action, got)
