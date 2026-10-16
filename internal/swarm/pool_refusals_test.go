@@ -473,3 +473,19 @@ func TestAcceptingADoneTaskIsNotAMistake(t *testing.T) {
 		}
 	}
 }
+
+// An inspect while the pool plans is a read of the pool: an agree without a revision that follows it counts for the revision it
+// showed, as after task get.
+func TestAnEarlyInspectCountsAsAReadForAVote(t *testing.T) {
+	r := newPoolRig(t)
+	id := r.parent.ID
+	r.must(r.pool(r.lead, map[string]any{"action": "propose", "text": "split handlers and tests"}), "propose")
+	got := r.must(r.pool(r.second, map[string]any{"action": "inspect"}), "an inspect while planning")
+	if head, _, _ := strings.Cut(got, "\n\n"); head != id+" is planning (revision 2): there is no combined result to inspect until it reconciles, so this is the pool as task get shows it." {
+		t.Errorf("an inspect while planning: %q", head)
+	}
+	r.nextResponse(r.second)
+	if got := r.must(r.pool(r.second, map[string]any{"action": "agree"}), "an agree with no revision after the inspect"); !strings.Contains(got, "agree recorded for revision 2 (the revision you last read)") {
+		t.Errorf("agree after the inspect: %q", got)
+	}
+}
