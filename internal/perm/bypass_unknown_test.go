@@ -275,9 +275,14 @@ func TestAStatementsSubstitutionsRunBeforeItsLaterAssignments(t *testing.T) {
 		{`export X=$(sh -c "rm -rf $D") D="$TMPDIR/d"`, "ask"}, // a new shell started before the export
 		{`export D="$TMPDIR/d" X=$(sh -c "rm -rf $D")`, "ask"},
 		{`D="$TMPDIR/d"; export D X=$(sh -c 'rm -rf "$D"')`, "ask"}, // D is exported only after X's value is expanded
-		{`cd x && X=$(rm -rf "$D") D="$TMPDIR/d" && :`, "ask"},      // a link of an && chain
-		{`D="$TMPDIR/d"; X=$(rm -rf "$D")`, "allow"},                // an earlier statement assigned D
-		{`D="$TMPDIR/d" X=$(rm -rf "$D")`, "allow"},                 // the assignment to its left is made first
+		// and only after a trap set in X's substitution has fired
+		{`D="$TMPDIR/d"; export D X=$(trap 'sh -c '"'"'rm -rf "$D"'"'"'' EXIT)`, "ask"},
+		{`D="$TMPDIR/d"; export D X=$(trap "sh -c 'rm -rf \"\$D\"'" EXIT)`, "ask"},
+		{`D="$TMPDIR/d"; export D X=$(trap "rm -rf $D" EXIT)`, "allow"}, // no new shell: the trap's own D
+		{`D="$TMPDIR/d"; export D; X=$(trap 'sh -c '"'"'rm -rf "$D"'"'"'' EXIT)`, "allow"},
+		{`cd x && X=$(rm -rf "$D") D="$TMPDIR/d" && :`, "ask"}, // a link of an && chain
+		{`D="$TMPDIR/d"; X=$(rm -rf "$D")`, "allow"},           // an earlier statement assigned D
+		{`D="$TMPDIR/d" X=$(rm -rf "$D")`, "allow"},            // the assignment to its left is made first
 		{`D="$TMPDIR/d" X=$(rm -rf "$D") Y=$(rm -rf "$D")`, "allow"},
 		{`D="$TMPDIR/d" X=$(trap "rm -rf $D" EXIT)`, "allow"},
 		{"D=\"$TMPDIR/d\" <<EOF\n$(rm -rf \"$D\")\nEOF", "allow"},  // a heredoc is expanded after the assignments

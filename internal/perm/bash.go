@@ -206,10 +206,12 @@ func (ev *evaluator) bash(cmd string) verdict {
 	conflicted := map[string]bool{}
 	track := varsTrackable(code, an)
 	// The commands of a trap action run when the signal arrives or the shell exits: they are judged after the rest, in every directory
-	// the line may be in by then, and with only the variables that were known when the trap was set and still are at the end.
+	// the line may be in by then, and with only the variables that were known when the trap was set and still are at the end. A trap
+	// set in a statement's own substitution fires before the statement has exported the names in unexp.
 	type deferred struct {
-		s    shellparse.Simple
-		vars map[string]string
+		s     shellparse.Simple
+		vars  map[string]string
+		unexp []string
 	}
 	var later []deferred
 	// A loop runs its commands again: what any of them assigns may already be there when the first one runs, so the names a loop
@@ -238,7 +240,7 @@ func (ev *evaluator) bash(cmd string) verdict {
 		if s.Deferred {
 			later = append(later, deferred{s: s, vars: maps.Clone(ev.vars)})
 			if before {
-				later = append(later, deferred{s: s, vars: maps.Clone(withoutNames(ev.vars, hide))})
+				later = append(later, deferred{s: s, vars: maps.Clone(withoutNames(ev.vars, hide)), unexp: unexp})
 			}
 			continue
 		}
@@ -305,7 +307,7 @@ func (ev *evaluator) bash(cmd string) verdict {
 		if track {
 			vars = stableVars(d.vars, ev.vars)
 		}
-		if fold(ev.judgeWith(d.s, cw, vars)) {
+		if fold(ev.judgeAs(d.s, cw, vars, withoutKeys(ev.exported, d.unexp))) {
 			return res
 		}
 	}
