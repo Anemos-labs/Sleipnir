@@ -309,7 +309,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		return tools.Errorf("%v", errNotOwner(in.ID, task.Owner))
 	}
 	if task.Status != StatusDoing {
-		return tools.Errorf("%s is %s, not doing", in.ID, task.Status)
+		return tools.Errorf("%v", errNotDoing(in.ID, task.Status))
 	}
 	if _, err := cleanAgreement(in.Agreement); err != nil {
 		return tools.Errorf("%v", err)
