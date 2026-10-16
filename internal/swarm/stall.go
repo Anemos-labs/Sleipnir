@@ -56,8 +56,8 @@ const (
 	// still at work while at least half of the team, and two workers or more, have been
 	// idle for idleCapacityAfter owning no open task. Waiting is right when the open tasks are all the
 	// objective needs, and costs the idle workers' time when more remains: the manager is
-	// told who is free, once, and decides. It clears when they are at work again or the
-	// manager stops waiting.
+	// told who is free, once, and decides. It clears when they are at work again, when no
+	// worker runs or no task is open; the manager's calls between two waits do not clear it.
 	StallIdleCapacity StallKind = "idle_capacity"
 )
 
@@ -310,8 +310,13 @@ func (s *Swarm) stallFindings() []Stall {
 	}
 	s.stalls.refused = false
 
-	// idle_capacity: the manager waits on a few workers while most of the team has been idle for a while.
-	if mgr != "" && s.stalls.waiting && anyWorker && openTask(snap) && s.teamLimited() {
+	// idle_capacity: the manager waits on a few workers while most of the team has been idle for a while. Waiting raises it; once
+	// raised it holds while the team stays so, whatever the manager does in between: a manager wakes from a wait for every task
+	// that settles, and a finding cleared by each of its other calls was raised, and mailed, anew by its next wait (41 times in two
+	// hours of a 12-worker run).
+	idleKey := Stall{Kind: StallIdleCapacity, Agent: mgr}.key()
+	_, idleActive := s.stalls.active[idleKey]
+	if mgr != "" && (s.stalls.waiting || idleActive) && anyWorker && openTask(snap) && s.teamLimited() {
 		at := s.deps.Now()
 		var idle []string
 		workers := 0

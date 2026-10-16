@@ -690,7 +690,7 @@ same findings; `idle_capacity` alone also reads how long workers have been idle:
 | `orphaned_task` | a doing or blocked task, or a todo task reserved for an agent, is owned by an agent that is not on the team, on two consecutive sweeps (a spawn in progress is not one) | the manager |
 | `blocked_cycle` | blocked tasks' `blocked_on` targets lead back to themselves; one finding per cycle, named by its lowest task id | the manager |
 | `review_starved` | a task has waited in review for `StallTurns` manager turns without the manager naming it in a task call | the manager |
-| `idle_capacity` | in a configured team, the manager waits while at least one worker runs, a task is still open, and at least half of the workers, and two or more, have been idle for 15 minutes owning no open task (none reserved, in progress, blocked or in review) | the manager (who is free, once; it decides whether the objective needs more than the open tasks) |
+| `idle_capacity` | in a configured team, the manager waits while at least one worker runs, a task is still open, and at least half of the workers, and two or more, have been idle for 15 minutes owning no open task (none reserved, in progress, blocked or in review); once raised it holds while that is so, whether or not the manager is still waiting | the manager (who is free, once; it decides whether the objective needs more than the open tasks) |
 
 `StallTurns` is `swarm.Config.StallTurns` (default 12; negative turns the two turn-based kinds off). A finding is
 raised once while its condition holds: a `swarm.stall` event (`action: raise`) and one harness mail ("Stall check: ...",
