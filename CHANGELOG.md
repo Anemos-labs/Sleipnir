@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A team manager's shell command that sleeps a minute or more (`sleep 1800;
+  date`) is a wait: it is refused, with the reason a `wait` gets, when no
+  worker runs and work needs the manager or every task is settled, and the
+  stall sweep counts the manager as waiting while it runs. Shorter sleeps,
+  and sleeps in loops or the background, are unchanged. Prompt bytes: none
+  change.
+
 - The session's `compactor` model is benched when 5 of its last 8 patches
   cannot be used (JSON that does not parse, a tool call in place of the
   patch, a patch that does not apply): every agent then compacts on its own
