@@ -29,6 +29,8 @@ test('pool subtasks in their parent\'s column fold inside it, the others are car
   await L.step(5); L.SL.views.show('board'); await L.settle();
   const parent = L.$('.tcard[data-task="T10"]'); assert.ok(parent);
   assert.match(parent.textContent, /reconciling/);
+  const members = parent.querySelectorAll('.dim').find(e => /reconciling/.test(e.textContent));
+  assert.equal(members.textContent, 'reconciling · be-1, be-2', 'the members by name: a model id is on the member\'s card, not repeated here');
   const child = parent.querySelector('.subtasks .tcard[data-task="T11"]');
   assert.ok(child, 'open in a column of unfinished work'); assert.equal(child.dataset.owner, 'be-2');
   const merged = L.$('.kan [data-col="merged"] .tcard[data-task="T12"]');
