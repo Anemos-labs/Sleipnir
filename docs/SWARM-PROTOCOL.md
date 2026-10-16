@@ -223,7 +223,8 @@ Statuses: `todo -> doing -> review -> done`, with `blocked` and `failed` as side
 
   | Verb | From | To |
   |---|---|---|
-  | claim / spawn (assign) | todo, unowned, dependencies done, scope free | doing |
+  | claim / spawn (assign) | todo, unowned (or reserved for the claimer), dependencies done, scope free | doing |
+  | spawn onto a pool member in a turn (reserve) | todo, unowned, or the leader's own child | todo, owned by the member |
   | block / resume | doing / blocked (owner; the manager may resume) | blocked / doing |
   | submit (the gate, section 4) | doing (owner) | review |
   | handover (section 6) | doing (owner, or the manager) | doing (a fresh worker) |
