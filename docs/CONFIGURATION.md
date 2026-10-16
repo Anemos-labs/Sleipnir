@@ -495,8 +495,9 @@ test commands of most projects), `permissions.allow` in the configuration, or `-
 `gofmt`, `cargo test|build|check|clippy|fmt`, `npm test` and `npm run test|build|lint|format`, `pnpm test`, `yarn test`, `node --test`,
 `node --check`, `pytest`, `python -m pytest|unittest`, `mvn test`, `gradle test`, `dotnet test|build`, `make test|check|build|lint|fmt|vet`,
 `ctest`; `python -m py_compile|compileall`, `ruff check`, `ruff format --check|--diff`, `mypy`, `pyright`, `tsc --noEmit` and `eslint` on
-files of the workspace (`Bash(...:workspace)`, below), without the options that make them rewrite or install (`--fix`, `mypy
---install-types`, `pyright --createstub`, `tsc --build`), and `py_compile` and `compileall` only when they name their files (given none,
+files of the workspace (`Bash(...:workspace)`, below), without the options that make them rewrite, write files of their own or
+install (`--fix`, `mypy --install-types`, `pyright --createstub`, `tsc --build`, a report file: `eslint -o`, `ruff check
+--output-file`, `mypy --junit-xml` and its other reports, `tsc --incremental`), and `py_compile` and `compileall` only when they name their files (given none,
 `compileall` compiles every directory of `sys.path`; `-` and `-i` read a list the engine cannot see); a Python virtual environment of the workspace (`Bash(python:venv)`, below:
 creating it, installing into it from the package index, running the tests with it); and `curl` or `wget` to this machine only
 (`Bash(curl:loopback)`, `Bash(wget:loopback)`, below). They run the project's own code, as running its tests is meant to. The one install

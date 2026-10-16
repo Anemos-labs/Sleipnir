@@ -13,7 +13,13 @@ they do not indicate whether a change has been released.
   `--build` or other option that writes the project's files or installs)
   `ruff check`, `ruff format --check|--diff`, `mypy`, `pyright`,
   `tsc --noEmit` and `eslint`. They still run only what the session allows:
-  in `default` mode these still ask. Prompt bytes: none change.
+  in `default` mode these still ask. For every role, the tests preset no
+  longer covers a checker that writes a report or build information
+  (`eslint -o`, `ruff check -o|--output-file`, `mypy --junit-xml` and its
+  other report options, `tsc --incremental|--tsBuildInfoFile`); a one-letter
+  option counts attached and in a cluster (`-qo out.txt`). Such a command is
+  judged as if the preset did not exist, so it asks where the mode asks.
+  Prompt bytes: none change.
 
 - A team manager's `wait` is refused when no worker is running and every task
   of the board is settled, as it already was with unfinished work and nobody

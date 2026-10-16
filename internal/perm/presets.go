@@ -33,14 +33,38 @@ var TestsAllow = []string{
 }
 
 // workspaceRefused are, for the prefixes of the preset's ":workspace" rules, the options that take a command off the rule: they
-// rewrite the project's files (--fix), write files of their own (--createstub, --init, --generateTrace), or install packages
-// (mypy --install-types runs pip in the Python that runs mypy).
+// rewrite the project's files (--fix), write files of their own (--createstub, --init, --generateTrace, a report: eslint -o, mypy
+// --junit-xml, tsc's build information), or install packages (mypy --install-types runs pip in the Python that runs mypy). A
+// one-letter option counts attached and in a cluster as well (refusedOption).
 var workspaceRefused = map[string][]string{
-	"ruff check":   {"--fix", "--unsafe-fixes", "--add-noqa", "--fix-only"},
-	"mypy":         {"--install-types"},
+	"ruff check": {"--fix", "--unsafe-fixes", "--add-noqa", "--fix-only", "-o", "--output-file"},
+	"mypy": {"--install-types", "--junit-xml", "--html-report", "--txt-report", "--xml-report", "--xslt-html-report",
+		"--xslt-txt-report", "--linecount-report", "--linecoverage-report", "--lineprecision-report", "--any-exprs-report",
+		"--cobertura-xml-report"},
 	"pyright":      {"--createstub", "--writebaseline"},
-	"tsc --noEmit": {"-b", "--build", "--init", "--generateTrace", "--generateCpuProfile"},
-	"eslint":       {"--fix", "--init", "--fix-type"},
+	"tsc --noEmit": {"-b", "--build", "--init", "--generateTrace", "--generateCpuProfile", "--incremental", "--tsBuildInfoFile"},
+	"eslint":       {"--fix", "--init", "--fix-type", "-o", "--output-file"},
+}
+
+// refusedOption returns the first of names that args give: as the argument itself or with "=value", and, for a one-letter option
+// ("-o"), attached to its value ("-oreport.json") or in a cluster of one-letter options ("-qo report.json"), as the checkers' option
+// parsers take it. "" when none is given. A cluster that only holds the letter in another option's attached value is refused too:
+// the rule then does not apply, and the command is judged without it.
+func refusedOption(args []string, names []string) string {
+	for _, n := range names {
+		if hasLong(args, n) {
+			return n
+		}
+		if len(n) != 2 || n[0] != '-' || n[1] == '-' {
+			continue
+		}
+		for _, a := range args {
+			if len(a) > 2 && a[0] == '-' && a[1] != '-' && strings.IndexByte(a[1:], n[1]) >= 0 {
+				return n
+			}
+		}
+	}
+	return ""
 }
 
 // runnerRefused are, for a build or test runner, the options that make it run a program of the caller's choosing instead of the

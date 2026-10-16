@@ -135,10 +135,8 @@ func (ev *evaluator) testsNear(u *unit) string {
 		if !r.workspace || !r.matchCommand(*u.simple, false) || ev.withinWorkspace(u, r) {
 			continue
 		}
-		for _, f := range r.refused {
-			if hasLong(u.simple.Args, f) {
-				return "with " + f + " it does more than check (the tests preset leaves it out)"
-			}
+		if f := refusedOption(u.simple.Args, r.refused); f != "" {
+			return "with " + f + " it does more than check (the tests preset leaves it out)"
 		}
 		return "it names a file outside the workspace (the tests preset allows it inside the workspace only)"
 	}

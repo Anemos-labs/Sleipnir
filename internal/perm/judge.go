@@ -752,7 +752,7 @@ func (ev *evaluator) withinWorkspace(u *unit, r *crule) bool {
 	if r.fileList && (len(u.simple.Args) < len(r.argv)-1 || compiledFiles(u.simple.Args[len(r.argv)-1:]) != "") {
 		return false
 	}
-	return !hasLong(u.simple.Args, r.refused...) && ev.accessesInWorkspace(u)
+	return refusedOption(u.simple.Args, r.refused) == "" && ev.accessesInWorkspace(u)
 }
 
 // accessesInWorkspace reports whether every file a command names resolves inside the workspace. An allow rule that is more than a

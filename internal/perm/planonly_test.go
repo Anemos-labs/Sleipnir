@@ -69,7 +69,8 @@ func TestPlanOnlyAsksNoOneAndRecordsNothing(t *testing.T) {
 }
 
 // A read-only role runs the project's static checks as well as its tests: a syntax check and the read-only checkers, never the options
-// that make them write the project's files, install, or load a program of the caller's choosing, nor a file outside the workspace. A
+// that make them write the project's files or a report, install, or load a program of the caller's choosing, nor a file outside the
+// workspace. A
 // reviewer in a bypass session was refused `node --check web/js/app.js` twice in one review and checked the code by eye instead.
 func TestReadOnlyRolesRunTheStaticChecks(t *testing.T) {
 	root := t.TempDir()
@@ -85,6 +86,7 @@ func TestReadOnlyRolesRunTheStaticChecks(t *testing.T) {
 		for _, cmd := range []string{
 			"node --check web/js/app.js && node --check web/js/views.js", "tsc --noEmit -p .", "eslint web/js",
 			"ruff check src", "ruff format --check .", "mypy src", "pyright", "node --test web/js",
+			"eslint --format json web/js", "ruff check --output-format json src", "mypy --strict src",
 		} {
 			if d := check(cmd); !d.Allow {
 				t.Errorf("%s: a reviewer may not run %q: %s", mode, cmd, d.Reason)
@@ -94,6 +96,10 @@ func TestReadOnlyRolesRunTheStaticChecks(t *testing.T) {
 			"node --check --require ./evil.js web/js/app.js", "node web/js/app.js", "eslint --fix web/js", "ruff check --fix src",
 			"mypy --install-types src", "tsc --noEmit --build", "eslint /etc", "gofmt -l -w .", "ruff format src",
 			"node --check web/js/app.js && rm -rf web",
+			// a report is a file of their own: attached, in a cluster, or after "="
+			"eslint -o report.json web/js", "eslint --output-file=report.json web/js", "ruff check -oout.txt src",
+			"ruff check -qo out.txt src", "ruff check --output-file out.txt src", "mypy --junit-xml j.xml src",
+			"mypy --html-report h src", "tsc --noEmit --incremental", "tsc --noEmit --tsBuildInfoFile b.json",
 		} {
 			if d := check(cmd); d.Allow {
 				t.Errorf("%s: a reviewer may run %q", mode, cmd)
