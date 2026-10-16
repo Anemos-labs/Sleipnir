@@ -1328,3 +1328,41 @@ func TestACdToAnInventedDirectoryIsAnsweredWithoutAskingAnyone(t *testing.T) {
 		}
 	}
 }
+
+// A timeout of 10000 or more is read as milliseconds, and the result says so: models used to shell tools that take milliseconds
+// send 120000 for two minutes, which as seconds was cut to the ten-minute cap, so a command that hung (a test that started a
+// server) held a manager, and with it a whole team, for ten minutes. One bash call in eight with a timeout in a long run did it.
+func TestALargeTimeoutIsMilliseconds(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, Options{KillGrace: 300 * time.Millisecond})
+	res := h.bash(h.env("ms"), "sleep 30", map[string]any{"timeout": 10000})
+	for _, want := range []string{"[timeout 10000 was read as milliseconds (10s): the field is in seconds]", "[timed out after 10s]"} {
+		if !strings.Contains(res.Text, want) {
+			t.Errorf("text = %q, want it to contain %q", res.Text, want)
+		}
+	}
+	if !strings.HasSuffix(res.Text, "[exit code 143]") {
+		t.Errorf("the exit code is not the last line: %q", res.Text)
+	}
+	if res := h.bash(h.env("s"), "echo fine", map[string]any{"timeout": 9999}); res.Text != "fine\n[exit code 0]" {
+		t.Errorf("a timeout under 10000 is seconds and says nothing: %q", res.Text)
+	}
+	if res := h.bash(h.env("bg"), "echo started", map[string]any{"timeout": 120000, "run_in_background": true}); !strings.Contains(res.Text, "[timeout 120000 was read as milliseconds (120s): the field is in seconds]") {
+		t.Errorf("a background job's result: %q", res.Text)
+	}
+}
+
+// A background job given a timeout in milliseconds is killed when that many milliseconds have passed, not seconds.
+func TestABackgroundJobTimesOutInMilliseconds(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, Options{KillGrace: 300 * time.Millisecond})
+	env := h.env("bgms")
+	start := time.Now()
+	id := h.startJob(env, "sleep 60", map[string]any{"timeout": 10000})
+	waitFor(t, "the job killed after 10 s", 30*time.Second, func() bool {
+		return strings.Contains(h.output(env, id).Text, "killed (timed out)")
+	})
+	if took := time.Since(start); took < 9*time.Second {
+		t.Errorf("killed after %v: the timeout was not 10 s", took)
+	}
+}
