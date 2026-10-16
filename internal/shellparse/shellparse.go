@@ -100,7 +100,7 @@ type Simple struct {
 	// shell that its first link joins by && alone: in "a && b && c || d; e" a, b and c are one chain, d is in none and e starts
 	// another. Every command a link holds is in its chain: the commands of a pipeline, a compound command or a subshell, and those
 	// of the link's substitutions and of the strings it hands to eval, sh -c or trap, which are listed after the link and run while
-	// it runs (a substitution: while it is expanded, before it assigns). A command of a later link runs only after each earlier
+	// it runs (a substitution: while it is expanded, see InAssign). A command of a later link runs only after each earlier
 	// link ran. The and-or lists inside a compound command, a substitution or a string are no chains of their own, and the commands
 	// of a list sent to the background (&) are in no chain.
 	AndChain int
@@ -108,6 +108,12 @@ type Simple struct {
 	// group or a subshell. Its assignments are made in this shell before any later link of its chain runs; whether the chain gets
 	// as far as it is known only when the line runs. A ChainLink command is Cond only for the && before it, if any.
 	ChainLink bool
+	// InAssign is set on the commands of a substitution in the value of an assignment (X=$(cmd)) of a command of the line's own
+	// shell, which are listed after that command: the number of that assignment in the command's Env, from 1; 0 everywhere else.
+	// A statement made only of assignments expands and makes them one after the other, so such a substitution sees the assignments
+	// before its own made and the others not yet; the substitutions of its redirections and heredocs run after all of them. A
+	// declaration (export X=$(cmd) D=x) expands all its words, InAssign 0, before it assigns any.
+	InAssign int
 	// LoopVar is the variable of a for/select loop, on the pseudo-command "for" whose Args are the loop's word list ("f" in
 	// `for f in a b c`); empty everywhere else. A loop with no word list (`for f; do`, `for f do`) walks the positional
 	// parameters: its pseudo-command has LoopVar and no Args.
