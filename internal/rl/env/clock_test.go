@@ -6,6 +6,7 @@ import (
 	"errors"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -273,5 +274,27 @@ func TestTheOutageSettingsReachTheHarnessAndTheManifest(t *testing.T) {
 	}
 	if m.Config.OutagePatienceMs != DefaultOutagePatience.Milliseconds() || m.Config.MaxOutagePauseMs != DefaultMaxOutagePause.Milliseconds() {
 		t.Errorf("manifest config %+v", m.Config)
+	}
+}
+
+// A runner's clock reads the runner's time source: time it moves forward while the endpoint is down is paused, never active.
+func TestAWallClockReadsItsTimeSource(t *testing.T) {
+	var mu sync.Mutex
+	at := time.Unix(1000, 0)
+	now := func() time.Time { mu.Lock(); defer mu.Unlock(); return at }
+	move := func(d time.Duration) { mu.Lock(); at = at.Add(d); mu.Unlock() }
+	c := newWallClockAt(now, time.Minute, 0, nil)
+	move(10 * time.Second)
+	c.Down("reset")
+	move(time.Hour)
+	if lasted, ended := c.Up(); !ended || lasted != time.Hour {
+		t.Fatalf("the outage lasted %s (ended %v), want 1h", lasted, ended)
+	}
+	move(5 * time.Second)
+	if a, p := c.Active(), c.Paused(); a != 15*time.Second || p != time.Hour {
+		t.Fatalf("active %s paused %s, want 15s and 1h", a, p)
+	}
+	if left, cause := c.next(); cause != ErrWallBudget || left != 45*time.Second {
+		t.Fatalf("next: %s %v, want 45s of the wall budget", left, cause)
 	}
 }
