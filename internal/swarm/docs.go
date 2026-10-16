@@ -25,9 +25,13 @@ const DocsRole = "docs"
 // DocsTaskTitle starts the title of every catch-up task the harness creates.
 const DocsTaskTitle = "docs: catch up"
 
-// docsScope is the scope of a catch-up task: Markdown files anywhere and the docs
-// directory. Code stays with the roles that own it.
-var docsScope = []string{"**/*.md", "docs/**"}
+// docsScope is the scope of a catch-up task: the Markdown at the root and the docs
+// directory. Code stays with the roles that own it, and so does Markdown inside a
+// code directory: "**/*.md" would overlap every directory a task holds or will claim
+// (internal/api/** may hold a README; web/index.html, not there yet, may become a
+// directory), so a pass scoped so waited for every code task to close, and while it
+// ran no task scoped to a directory could be claimed.
+var docsScope = []string{"*.md", "docs/**"}
 
 // docsRetry is how long the keeper waits before it tries again to start a catch-up
 // task that could not be started (no free slot, a scope overlap, the budget).
@@ -46,6 +50,7 @@ type docsKeeper struct {
 	seen    map[string]uint64 // last observed terminal revision; same-ID repairs are new changes
 	pending []docsChange
 	open    string    // the catch-up task in progress ("" none)
+	waiting string    // why open could not be started at the last attempt ("" it was)
 	last    string    // the last task a finished pass covered
 	passes  int       // finished passes
 	retryAt time.Time // no new attempt before this
@@ -111,11 +116,13 @@ func (s *Swarm) docsTick(now time.Time) {
 			open, due := k.open, !now.Before(k.retryAt)
 			k.mu.Unlock()
 			if agentID, busy := s.docsWorker(); due && !busy {
-				if _, err := s.Spawn(SpawnReq{Role: DocsRole, Agent: agentID, TaskID: open, By: "harness"}); err != nil {
-					k.mu.Lock()
-					k.retryAt = now.Add(docsRetry)
-					k.mu.Unlock()
+				_, err := s.Spawn(SpawnReq{Role: DocsRole, Agent: agentID, TaskID: open, By: "harness"})
+				k.mu.Lock()
+				k.waiting = ""
+				if err != nil {
+					k.retryAt, k.waiting = now.Add(docsRetry), cleanText(err.Error(), 160)
 				}
+				k.mu.Unlock()
 			}
 			return
 		}
@@ -126,7 +133,7 @@ func (s *Swarm) docsTick(now time.Time) {
 		if ok && t.Status == StatusDone {
 			k.passes++
 		}
-		k.open = ""
+		k.open, k.waiting = "", ""
 	}
 	if len(k.pending) == 0 || !k.coded || now.Before(k.retryAt) {
 		k.mu.Unlock()
@@ -145,17 +152,17 @@ func (s *Swarm) docsTick(now time.Time) {
 	task, err := s.Board.CreateTask("harness", TaskSpec{Title: DocsTaskTitle + " (" + docsSummary(batch) + ")", Desc: docsBrief(batch), Role: DocsRole, Files: docsScope})
 	k.mu.Lock()
 	if err != nil {
-		k.retryAt = now.Add(docsRetry)
+		k.retryAt, k.waiting = now.Add(docsRetry), cleanText(err.Error(), 160)
 		k.mu.Unlock()
 		return
 	}
 	k.pending = k.pending[len(batch):]
-	k.open, k.last = task.ID, batch[len(batch)-1].task
+	k.open, k.last, k.waiting = task.ID, batch[len(batch)-1].task, ""
 	k.mu.Unlock()
 	id, err := s.Spawn(SpawnReq{Role: DocsRole, Agent: agentID, TaskID: task.ID, By: "harness"})
 	if err != nil {
 		k.mu.Lock()
-		k.retryAt = now.Add(docsRetry)
+		k.retryAt, k.waiting = now.Add(docsRetry), cleanText(err.Error(), 160)
 		k.mu.Unlock()
 		return
 	}
@@ -242,6 +249,10 @@ func (s *Swarm) DocsState() string {
 	defer k.mu.Unlock()
 	var parts []string
 	switch {
+	case k.open != "" && k.waiting != "":
+		parts = append(parts, "pass "+k.open+" waiting to start: "+k.waiting)
+	case k.waiting != "":
+		parts = append(parts, "pass waiting to start: "+k.waiting)
 	case k.open != "":
 		parts = append(parts, "pass "+k.open+" in progress")
 	case len(k.pending) > 0 && !k.coded:
