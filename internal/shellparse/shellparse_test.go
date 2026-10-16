@@ -891,6 +891,31 @@ func TestAndChainIsTheLinksJoinedByAndAlone(t *testing.T) {
 	}
 }
 
+// InAssign names the assignment whose value holds the substitution a command came from, counted in the Env of the command before it:
+// every command of that substitution, those of a substitution inside it too. The substitutions of words, redirections and heredocs,
+// a declaration's operands among them, and the commands of a string run by a new shell or eval, are in none.
+func TestInAssignIsTheAssignmentASubstitutionIsIn(t *testing.T) {
+	for src, want := range map[string][]int{
+		"X=$(a) D=1 Y=$(b; c) >$(d)":     {0, 1, 3, 3, 0},
+		"X=$(echo $(a)) D=1":             {0, 1, 1},
+		"export X=$(a) D=1":              {0, 0},
+		"A=$(a) cmd $(b)":                {0, 1, 0},
+		"X=`a` Y=\"$(b)\"":               {0, 1, 2},
+		"D=1 <<EOF\n$(a)\nEOF":           {0, 0},
+		"sh -c 'X=$(a)'":                 {0, 0, 0},
+		"if t; then X=$(a); fi; Y=$(b)":  {0, 0, 1, 0, 1},
+		"a && X=$(b) || Y=$(c) | d=$(e)": {0, 0, 1, 0, 1, 0, 1},
+	} {
+		var got []int
+		for _, s := range Parse(src).Commands {
+			got = append(got, s.InAssign)
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("%q: InAssign %v, want %v", src, got, want)
+		}
+	}
+}
+
 // A heredoc with a quoted delimiter read by a program as its own data (python3 - <<'PY') is Literal: nothing in it can assign this
 // shell's variables or run in it. A body a shell reads as code, a builtin brings into the shell, a program spelled by a variable or
 // a script path reads, or one inside a substitution, is not; nor is an unquoted body, which the shell expands.

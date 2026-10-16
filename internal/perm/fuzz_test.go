@@ -23,6 +23,7 @@ func FuzzCheckShell(f *testing.F) {
 		"FOO=1 ls", "PATH=/tmp ls", "for f in *; do rm $f; done", "cat .env", "cat <(ls)", "bash -c 'rm -rf ~'", `echo "unterminated`,
 		"cat {home}/.aws/credentials", "rm -rf link-ssh/*", "dd of=/dev/sda", ":(){ :|:& };:", "cat <<EOF\n$(id)\nEOF",
 		`cd src && D="$TMPDIR/d" && rm -rf "$D"`, `cd src && D=~ && cat "$D/.ssh/id_rsa" || cat "$D/x"; rm -rf "$D"`,
+		`X=$(rm -rf "$D") D="$TMPDIR/d" Y=$(rm -rf "$D")`, `export D="$TMPDIR/d" X=$(sh -c "rm -rf $D")`,
 		// A name only known when the command runs that the Read deny rule may cover: refused in every mode, not only in bypass.
 		"cat $00", "$0/0", "cat /$1000000000", "cat $A0", "/`", `go test "$PKG"`, `ls "$F"`, `node app.js "$F"`,
 	} {

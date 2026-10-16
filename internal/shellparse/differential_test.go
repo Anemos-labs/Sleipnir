@@ -451,6 +451,86 @@ var chainSnippets = []string{
 	`true && v1=a && { mk2 & wait; } && mk1`, `true && v1=a && if true; then mk2 & wait; fi && mk1`,
 }
 
+// assignOrderSnippets are statements whose substitutions run mk1..mk9 between, before and after their assignments of v1..v3.
+var assignOrderSnippets = []string{
+	`v1=a X=$(mk1) v2=b`, `X=$(mk1) v1=a`, `v1=a v2=b X=$(mk1) v3=c`, `v1=a X=$(mk1)$(mk2) Y=$(mk3) v2=b`, `v1=a X="$(mk1)" v2=b`,
+	`v1=a X=$(echo $(mk1)) v2=b`, "v1=a X=`mk1` v2=b", `v1=a X=${v9:-$(mk1)} v2=b`, `v1=a >"$(mk1; echo /dev/null)" v2=b`,
+	`>"$(mk1; echo /dev/null)" v1=a`, "v1=a <<EOF\n$(mk1)\nEOF", `export v1=a X=$(mk1) v2=b`, `declare v1=a X=$(mk1)`,
+	`readonly X=$(mk1) v1=a`, `true && v1=a X=$(mk1) v2=b && mk2`, `v3=c; v1=a X=$(mk1)`, `v1=a X=$(mk1 | mk2) v2=b`,
+}
+
+// InAssign says which of a statement's assignments its substitution commands see: those before the assignment that holds them, all
+// of them for its redirections and heredocs, none for a declaration's operands. Checked against bash, where v1..v3 start as "old" and
+// mk1..mk9 print, on standard error (a substitution keeps its standard output), the values they see.
+func TestInAssignIsTheOrderBashAssignsInDifferential(t *testing.T) {
+	if testing.Short() {
+		t.Skip("short mode")
+	}
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not installed")
+	}
+	dir := t.TempDir()
+	prelude := `v1=old v2=old v3=old; for n in 1 2 3 4 5 6 7 8 9; do eval "mk$n() { echo EXEC:mk$n:\"\$v1\":\"\$v2\":\"\$v3\" >&2; }"; done` + "\n"
+	idx := map[string]int{"v1": 0, "v2": 1, "v3": 2}
+	checked := 0
+	for _, sn := range assignOrderSnippets {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		cmd := exec.CommandContext(ctx, bash, "--noprofile", "--norc", "-c", prelude+sn)
+		cmd.Dir = dir
+		cmd.Env = []string{"PATH=/usr/bin:/bin", "HOME=" + dir}
+		out, _ := cmd.CombinedOutput()
+		cancel()
+		saw := map[string][]string{}
+		for _, tok := range strings.Fields(string(out)) {
+			if rest, ok := strings.CutPrefix(tok, "EXEC:"); ok {
+				name, vals, _ := strings.Cut(rest, ":")
+				saw[name] = append(saw[name], vals)
+			}
+		}
+		an := Parse(sn)
+		if !an.Parsed {
+			t.Errorf("%q: not parsed (%s)", sn, an.Problem)
+			continue
+		}
+		var stmt Simple
+		for _, c := range an.Commands {
+			if !c.Nested {
+				stmt = c
+				continue
+			}
+			if !strings.HasPrefix(c.Program, "mk") {
+				continue
+			}
+			assigns, decl := stmt.Env, stmt.Program != ""
+			if decl {
+				assigns = stmt.Args
+			}
+			for j, a := range assigns {
+				n, v, ok := strings.Cut(a, "=")
+				i, tracked := idx[n]
+				if !ok || !tracked {
+					continue
+				}
+				want := "old" // not yet assigned when the substitution ran
+				if !decl && (c.InAssign == 0 || j < c.InAssign-1) {
+					want = v
+				}
+				for _, vals := range saw[c.Program] {
+					checked++
+					if got := strings.Split(vals, ":"); i >= len(got) || got[i] != want {
+						t.Errorf("%q: %s (InAssign %d) ran with %s:%s, want %s=%q", sn, c.Program, c.InAssign, n, vals, n, want)
+					}
+				}
+			}
+		}
+	}
+	if checked < 25 {
+		t.Errorf("only %d values were compared with bash", checked)
+	}
+	t.Logf("compared %d values seen by a statement's substitutions with bash", checked)
+}
+
 // A link of an && chain (ChainLink) has made its assignments whenever a later command of its chain runs: checked against bash, where
 // mk1..mk9 print the values of v1..v3 they see. A new shell (sh -c) sees only what was exported, and a trap runs later; neither is
 // checked here.

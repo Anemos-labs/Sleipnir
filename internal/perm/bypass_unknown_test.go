@@ -322,6 +322,53 @@ func TestAnAndChainKnowsWhatItsLinksAssigned(t *testing.T) {
 	}
 }
 
+// The substitutions of a statement run while bash expands it, before it has made all its assignments: in X=$(rm -rf "$D") D=x, rm
+// removes the D from before the line, and a declaration (export, declare, readonly) expands all its words before it assigns any. Such
+// a command is judged with what the statement had not yet assigned or exported as unknown; an assignment to the left of it, one an
+// earlier statement made, and the substitutions of the statement's redirections and heredocs, which run after its assignments, see
+// the new values. Where the two views differ, the stricter verdict stands: a protected read stays refused.
+func TestAStatementsSubstitutionsRunBeforeItsLaterAssignments(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeBypass, Tmp: t.TempDir()})
+	for _, c := range []struct{ cmd, want string }{
+		{`X=$(rm -rf "$D") D="$TMPDIR/d"`, "ask"},
+		{`export X=$(rm -rf "$D") D="$TMPDIR/d"`, "ask"},
+		{`declare -x X=$(rm -rf "$D") D="$TMPDIR/d"`, "ask"},
+		{`readonly X=$(rm -rf "$D") D="$TMPDIR/d"`, "ask"},
+		{`export D="$TMPDIR/d" X=$(rm -rf "$D")`, "ask"}, // a declaration expands X's value before it assigns D
+		{`X=$(rm -rf "$D") D="$TMPDIR/d" Y=$(rm -rf "$D")`, "ask"},
+		{`X=$(echo $(rm -rf "$D")) D="$TMPDIR/d"`, "ask"},      // a substitution inside one
+		{`X=$(trap "rm -rf $D" EXIT) D="$TMPDIR/d"`, "ask"},    // a trap of the substitution's shell, which ends first
+		{`export X=$(sh -c "rm -rf $D") D="$TMPDIR/d"`, "ask"}, // a new shell started before the export
+		{`export D="$TMPDIR/d" X=$(sh -c "rm -rf $D")`, "ask"},
+		{`D="$TMPDIR/d"; export D X=$(sh -c 'rm -rf "$D"')`, "ask"}, // D is exported only after X's value is expanded
+		// and only after a trap set in X's substitution has fired
+		{`D="$TMPDIR/d"; export D X=$(trap 'sh -c '"'"'rm -rf "$D"'"'"'' EXIT)`, "ask"},
+		{`D="$TMPDIR/d"; export D X=$(trap "sh -c 'rm -rf \"\$D\"'" EXIT)`, "ask"},
+		{`D="$TMPDIR/d"; export D X=$(trap "rm -rf $D" EXIT)`, "allow"}, // no new shell: the trap's own D
+		{`D="$TMPDIR/d"; export D; X=$(trap 'sh -c '"'"'rm -rf "$D"'"'"'' EXIT)`, "allow"},
+		{`cd x && X=$(rm -rf "$D") D="$TMPDIR/d" && :`, "ask"}, // a link of an && chain
+		{`D="$TMPDIR/d"; X=$(rm -rf "$D")`, "allow"},           // an earlier statement assigned D
+		{`D="$TMPDIR/d" X=$(rm -rf "$D")`, "allow"},            // the assignment to its left is made first
+		{`D="$TMPDIR/d" X=$(rm -rf "$D") Y=$(rm -rf "$D")`, "allow"},
+		{`D="$TMPDIR/d" X=$(trap "rm -rf $D" EXIT)`, "allow"},
+		{"D=\"$TMPDIR/d\" <<EOF\n$(rm -rf \"$D\")\nEOF", "allow"},  // a heredoc is expanded after the assignments
+		{`D="$TMPDIR/d"; X=$(rm -rf "$D") D="$TMPDIR/d"`, "allow"}, // the same value before and after
+		{`export D="$TMPDIR/d"; X=$(sh -c 'rm -rf "$D"')`, "allow"},
+		{`D="$TMPDIR/d"; export D; X=$(sh -c 'rm -rf "$D"')`, "allow"},
+		{`D="$TMPDIR/d"; case $(rm -rf "$D") in *) ;; esac`, "allow"}, // a later statement's substitution
+		{`cd x && D="$TMPDIR/d" X=$(rm -rf "$D") && rm -rf "$D"`, "allow"},
+		{`D="{home}/.ssh/id_rsa" X=$(cat "$D")`, "deny"}, // cat reads the key
+		{`X=$(cat "$D") D="{home}/.ssh/id_rsa"`, "deny"}, // the stricter of the two views
+		{`D=/ X=$(rm -rf "$D")`, "deny"},
+	} {
+		d := e.Check(context.Background(), Request{Agent: "be-7", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%q\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
+
 // A case statement is parsed: a line with one keeps what it set (a packaging dry run listed each archive by its kind after
 // T="$TMPDIR/t25"; rm -rf "$T", and was asked about as if T were unknown). An assignment or unset in a body runs only when its
 // pattern matches, so the variable is no longer known after it.

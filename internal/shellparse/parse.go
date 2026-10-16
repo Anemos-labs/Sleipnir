@@ -195,6 +195,11 @@ func (p *parser) word(t token) {
 	p.cur.arith = append(p.cur.arith, t.arith...)
 	if t.assign && len(p.cur.words) == 0 {
 		p.cur.env = append(p.cur.env, t.text)
+		if p.top { // run put t's substitution commands last in pending
+			for i := max(len(p.pending)-len(t.nested), 0); i < len(p.pending); i++ {
+				p.pending[i].InAssign = len(p.cur.env)
+			}
+		}
 		return
 	}
 	if t.alts != nil {
