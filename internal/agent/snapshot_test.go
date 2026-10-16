@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
@@ -469,8 +470,9 @@ func TestACompactorWhosePatchesFailIsBenchedForEveryAgent(t *testing.T) {
 	compact := func() (own int, r *rig) {
 		pl := kv.DefaultPlanner()
 		pl.SoftThreadTokens, pl.HardThreadTokens = 1_000_000, 2_000_000
+		var ownCalls atomic.Int32 // the mock answers on its own goroutine
 		r = newRig(t, rigOpts{planner: pl, compactor: cclient, compactorModel: cm, compactorHealth: health, sink: sink}, scriptedWork(8, func(c *mock.Call) string {
-			own++
+			ownCalls.Add(1)
 			n := 0
 			for _, m := range c.Messages {
 				if m.Role == "assistant" {
@@ -485,7 +487,7 @@ func TestACompactorWhosePatchesFailIsBenchedForEveryAgent(t *testing.T) {
 		if _, err := r.agent.CompactNow(context.Background(), ""); err != nil {
 			t.Fatal(err)
 		}
-		return own, r
+		return int(ownCalls.Load()), r
 	}
 	for i := 1; i <= 5; i++ {
 		if own, _ := compact(); own != 0 {

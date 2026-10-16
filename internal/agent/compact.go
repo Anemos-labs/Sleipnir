@@ -375,7 +375,7 @@ func (a *Agent) propose(ctx context.Context, snap kv.Stack, reason string) (*rea
 // /compact): they are typed by the person driving the agent, so they may steer the
 // compactor, unlike text the agent found in tool output.
 func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus string) (*readyPatch, error) {
-	prov, model, byCompactor := a.compactorFor(snap)
+	prov, model, byCompactor, gen := a.compactorFor(snap)
 	prof := prov.Profile()
 	pol := a.applyPolicy()
 	instr := kv.Instruction(&snap, a.est, pol)
@@ -449,7 +449,7 @@ func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus s
 		res, err = kv.Apply(&snap, patch, a.est, pol)
 	}
 	if byCompactor && answered {
-		a.noteCompactor(model.ID, err == nil)
+		a.noteCompactor(model.ID, gen, err == nil)
 	}
 	if err != nil {
 		// Fallback: deterministic compaction. Never leave the agent stuck with a
@@ -477,23 +477,25 @@ func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus s
 
 // compactorFor picks who writes the patch for snap: the session's compactor model while the thread fits its
 // window with room for the answer and the compactor is trusted (CompactorHealth), else the agent's own. byCompactor
-// says which.
-func (a *Agent) compactorFor(snap kv.Stack) (prov provider.Provider, model cost.Model, byCompactor bool) {
+// says which, and gen the compactor's standing it was asked under.
+func (a *Agent) compactorFor(snap kv.Stack) (prov provider.Provider, model cost.Model, byCompactor bool, gen int) {
 	c := a.cfg.Compactor
 	if c == nil {
-		return a.cfg.Provider, a.cfg.Model, false
+		return a.cfg.Provider, a.cfg.Model, false, 0
 	}
 	z := kv.Sizer{Est: a.est, Caps: a.caps(c.Profile())}
-	if w := a.cfg.CompactorModel.ContextTokens; w > 0 && z.Turns(snap.Thread.Turns)+a.stackPrefixTokens(snap) < w*3/4 && a.cfg.CompactorHealth.use() {
-		return c, a.cfg.CompactorModel, true
+	if w := a.cfg.CompactorModel.ContextTokens; w > 0 && z.Turns(snap.Thread.Turns)+a.stackPrefixTokens(snap) < w*3/4 {
+		if ask, g := a.cfg.CompactorHealth.use(); ask {
+			return c, a.cfg.CompactorModel, true, g
+		}
 	}
-	return a.cfg.Provider, a.cfg.Model, false
+	return a.cfg.Provider, a.cfg.Model, false, 0
 }
 
-// noteCompactor records whether the patch the compactor model answered with could be used, and says so when that changes
-// whether the agents ask it.
-func (a *Agent) noteCompactor(model string, ok bool) {
-	changed, benched, failed, n := a.cfg.CompactorHealth.record(ok)
+// noteCompactor records whether the patch the compactor model answered with, asked under standing gen, could be used, and says
+// so when that changes whether the agents ask it.
+func (a *Agent) noteCompactor(model string, gen int, ok bool) {
+	changed, benched, failed, n := a.cfg.CompactorHealth.record(gen, ok)
 	if !changed {
 		return
 	}

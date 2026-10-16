@@ -27,38 +27,47 @@ type CompactorHealth struct {
 	recent  []bool // while trusted, the latest compactorWindow patches the compactor wrote; while benched, its probes (oldest first)
 	benched bool
 	skipped int // compactions written by the agents' own models since the compactor was last asked
+	// gen counts the changes of standing. A compaction runs in the background while other agents' patches may bench or restore
+	// the compactor: its result is recorded only under the standing it was asked under (use returns gen, record takes it back), so
+	// a request asked while trusted that ends after the bench is no probe, and a probe that ends after the restore is no failure
+	// of the trusted compactor.
+	gen int
 }
 
 // NewCompactorHealth returns a record that trusts the compactor.
 func NewCompactorHealth() *CompactorHealth { return &CompactorHealth{} }
 
 // use reports whether the next compaction asks the compactor: always while it is trusted; while it is benched, every
-// compactorProbeEvery-th compaction, the others going to the agent's own model.
-func (h *CompactorHealth) use() bool {
+// compactorProbeEvery-th compaction, the others going to the agent's own model. gen is the standing it was asked under, for record.
+func (h *CompactorHealth) use() (ask bool, gen int) {
 	if h == nil {
-		return true
+		return true, 0
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if !h.benched {
-		return true
+		return true, h.gen
 	}
 	h.skipped++
 	if h.skipped >= compactorProbeEvery {
 		h.skipped = 0
-		return true
+		return true, h.gen
 	}
-	return false
+	return false, h.gen
 }
 
-// record notes whether a patch the compactor wrote could be used, and reports a change of standing (changed, with benched the new
-// one) and the failures among the patches the record holds (failed of n).
-func (h *CompactorHealth) record(ok bool) (changed, benched bool, failed, n int) {
+// record notes whether a patch the compactor wrote, asked under standing gen (use), could be used, and reports a change of
+// standing (changed, with benched the new one) and the failures among the patches the record holds (failed of n). A patch asked
+// under another standing than the present one is not recorded.
+func (h *CompactorHealth) record(gen int, ok bool) (changed, benched bool, failed, n int) {
 	if h == nil {
 		return false, false, 0, 0
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if gen != h.gen {
+		return false, h.benched, 0, len(h.recent)
+	}
 	h.recent = append(h.recent, ok)
 	if len(h.recent) > compactorWindow {
 		h.recent = h.recent[len(h.recent)-compactorWindow:]
@@ -74,6 +83,9 @@ func (h *CompactorHealth) record(ok bool) (changed, benched bool, failed, n int)
 		h.benched, h.skipped, h.recent, changed = true, 0, nil, true
 	case h.benched && n >= compactorRestoreAfter && !slices.Contains(h.recent[n-compactorRestoreAfter:], false):
 		h.benched, h.recent, changed = false, nil, true
+	}
+	if changed {
+		h.gen++
 	}
 	return changed, h.benched, failed, n
 }
