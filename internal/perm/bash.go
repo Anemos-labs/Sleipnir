@@ -206,10 +206,12 @@ func (ev *evaluator) bash(cmd string) verdict {
 	conflicted := map[string]bool{}
 	track := varsTrackable(code, an)
 	// The commands of a trap action run when the signal arrives or the shell exits: they are judged after the rest, in every directory
-	// the line may be in by then, and with only the variables that were known when the trap was set and still are at the end.
+	// the line may be in by then, and with only the variables that were known when the trap was set and still are at the end. A trap
+	// set in a statement's own substitution fires before the statement has exported the names in unexp.
 	type deferred struct {
-		s    shellparse.Simple
-		vars map[string]string
+		s     shellparse.Simple
+		vars  map[string]string
+		unexp []string
 	}
 	var later []deferred
 	// A loop runs its commands again: what any of them assigns may already be there when the first one runs, so the names a loop
@@ -217,26 +219,34 @@ func (ev *evaluator) bash(cmd string) verdict {
 	entered := map[int]bool{}
 	// An assignment in a link of an && chain (a && P=x && rm -rf "$P") has been made whenever a later command of the chain runs, so it
 	// is known there (chained). The chain may stop before it, so the names its links assigned are unknown once the line is past it.
-	// The substitutions of a link run while it is expanded, before it has assigned everything (X=$(rm -rf "$P") P=x), and are listed
-	// right after it: in them, the names the link assigns are unknown (linkNames).
-	chain, chainNames, linkNames := 0, []string(nil), []string(nil)
+	chain, chainNames := 0, []string(nil)
 	endChain := func() {
 		for _, n := range chainNames {
 			ev.forget(n, conflicted)
 		}
 		chainNames = nil
 	}
+	// The substitutions of a statement run while bash expands it, and are listed right after it (stmt): X=$(rm -rf "$D") D=x runs rm
+	// with the old D. Such a command is judged again without the names the statement made known (fresh) or exported (freshExp) that
+	// it had not yet assigned when the command ran (unassigned), and the stricter verdict stands.
+	var stmt shellparse.Simple
+	var fresh, freshExp []string
 	for i, s := range an.Commands {
+		if !s.Nested {
+			fresh, freshExp = nil, nil
+		}
+		hide, unexp := unassigned(stmt, s, fresh, freshExp)
+		before := len(hide)+len(unexp) > 0
 		if s.Deferred {
 			later = append(later, deferred{s: s, vars: maps.Clone(ev.vars)})
+			if before {
+				later = append(later, deferred{s: s, vars: maps.Clone(withoutNames(ev.vars, hide)), unexp: unexp})
+			}
 			continue
 		}
 		if s.AndChain != chain {
 			endChain()
 			chain = s.AndChain
-		}
-		if !s.Nested {
-			linkNames = nil
 		}
 		if track && s.Loop != 0 && !entered[s.Loop] {
 			entered[s.Loop] = true
@@ -259,7 +269,10 @@ func (ev *evaluator) bash(cmd string) verdict {
 				}
 			}
 		}
-		v := ev.judgeWith(s, cw, withoutNames(ev.vars, linkNames))
+		v := ev.judgeWith(s, cw, ev.vars)
+		if before && v.kind != vDeny {
+			v = combine(v, ev.judgeAs(s, cw, withoutNames(ev.vars, hide), withoutKeys(ev.exported, unexp)))
+		}
 		if track && !s.Child {
 			if reassigns(s) {
 				if names, all := reassignedNames(s); all {
@@ -270,12 +283,13 @@ func (ev *evaluator) bash(cmd string) verdict {
 					}
 				}
 			} else if unconditional(s) {
-				ev.noteAssignments(s, cw, conflicted)
+				stmt = s
+				fresh, freshExp = ev.noteStatement(s, cw, conflicted)
 			} else if chained(s) {
-				ev.noteAssignments(s, cw, conflicted)
+				stmt = s
+				fresh, freshExp = ev.noteStatement(s, cw, conflicted)
 				for _, env := range assignedBy(s) {
 					chainNames = append(chainNames, envName(env))
-					linkNames = append(linkNames, envName(env))
 				}
 			} else {
 				for _, env := range assignedBy(s) { // an assignment that may not run leaves the name unknown
@@ -293,7 +307,7 @@ func (ev *evaluator) bash(cmd string) verdict {
 		if track {
 			vars = stableVars(d.vars, ev.vars)
 		}
-		if fold(ev.judgeWith(d.s, cw, vars)) {
+		if fold(ev.judgeAs(d.s, cw, vars, withoutKeys(ev.exported, d.unexp))) {
 			return res
 		}
 	}
@@ -348,6 +362,76 @@ func (ev *evaluator) judgeWith(s shellparse.Simple, cw *cwdSet, vars map[string]
 	}
 	defer func() { ev.vars, ev.off = saved, savedOff }()
 	return ev.judge(ev.buildUnit(s, cw))
+}
+
+// judgeAs is judgeWith with exported as the variables the line has exported when s runs.
+func (ev *evaluator) judgeAs(s shellparse.Simple, cw *cwdSet, vars map[string]string, exported map[string]bool) verdict {
+	saved := ev.exported
+	ev.exported = exported
+	defer func() { ev.exported = saved }()
+	return ev.judgeWith(s, cw, vars)
+}
+
+// noteStatement notes the assignments of the statement s (noteAssignments) and returns the names it made known that were not known
+// before it, and those it exported that were not exported before it: what its own substitutions, which run before it has assigned,
+// may still see as they were. A name it gave a second value is unknown after it, and one given the same value was already known.
+func (ev *evaluator) noteStatement(s shellparse.Simple, cw *cwdSet, conflicted map[string]bool) (fresh, freshExp []string) {
+	names := statementNames(s)
+	known := make([]bool, len(names))
+	exported := make([]bool, len(names))
+	for k, n := range names {
+		_, known[k] = ev.vars[n]
+		exported[k] = ev.exported[n]
+	}
+	ev.noteAssignments(s, cw, conflicted)
+	for k, n := range names {
+		if _, ok := ev.vars[n]; ok && !known[k] {
+			fresh = append(fresh, n)
+		}
+		if ev.exported[n] && !exported[k] {
+			freshExp = append(freshExp, n)
+		}
+	}
+	return fresh, freshExp
+}
+
+// unassigned are the names of fresh and freshExp, which the statement stmt made known or exported, that it had not yet assigned or
+// exported when bash ran s, a command of its substitutions. A declaration expands all its words before it assigns: all of them. An
+// assignment statement makes its assignments one after the other: those it makes only at or after the assignment whose value holds
+// the substitution (shellparse.Simple.InAssign); the substitutions of its redirections and heredocs run after all of them.
+func unassigned(stmt, s shellparse.Simple, fresh, freshExp []string) (hide, unexp []string) {
+	if len(fresh)+len(freshExp) == 0 {
+		return nil, nil
+	}
+	if stmt.Program != "" {
+		return fresh, freshExp
+	}
+	if s.InAssign == 0 {
+		return nil, nil
+	}
+	done := map[string]bool{}
+	for _, env := range stmt.Env[:min(s.InAssign-1, len(stmt.Env))] {
+		done[envName(env)] = true
+	}
+	for _, n := range fresh {
+		if !done[n] {
+			hide = append(hide, n)
+		}
+	}
+	return hide, nil
+}
+
+// statementNames are the variables a statement assigns (assignedBy) or, as a declaration, names without a value (export a=1 b: a
+// and b).
+func statementNames(s shellparse.Simple) []string {
+	var names []string
+	for _, env := range assignedBy(s) {
+		names = append(names, envName(env))
+	}
+	if d, ok := declaration(s); ok {
+		names = append(names, d.names...)
+	}
+	return names
 }
 
 // stableVars are the variables of at (what was known where a trap was set) that end holds with the same value: whenever the trap
@@ -764,6 +848,23 @@ func withoutNames(vars map[string]string, names []string) map[string]string {
 	}
 	if out == nil {
 		return vars
+	}
+	return out
+}
+
+// withoutKeys returns set less the keys names, as a copy when that removes any: set itself is not changed.
+func withoutKeys(set map[string]bool, names []string) map[string]bool {
+	var out map[string]bool
+	for _, n := range names {
+		if set[n] {
+			if out == nil {
+				out = maps.Clone(set)
+			}
+			delete(out, n)
+		}
+	}
+	if out == nil {
+		return set
 	}
 	return out
 }
