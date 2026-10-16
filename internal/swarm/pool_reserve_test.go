@@ -18,6 +18,13 @@ type heldModel struct {
 	held map[string]bool
 }
 
+// hold keeps id's later model calls in their turn, as the leader's are.
+func (h *heldModel) hold(id string) {
+	h.mu.Lock()
+	h.held[id] = true
+	h.mu.Unlock()
+}
+
 func (h *heldModel) unhold(id string) {
 	h.mu.Lock()
 	delete(h.held, id)
@@ -169,7 +176,7 @@ func TestAChildIsNotReservedForAMemberWithWorkInProgress(t *testing.T) {
 // A leader that claimed a child it meant for a member gives it away with spawn: to a member in a turn as a reservation, to an
 // idle one as an assignment. Before, the board only said the task was the leader's, and only the manager could revise it.
 func TestALeaderGivesAwayAChildItClaimed(t *testing.T) {
-	r, _ := newHeldPoolRig(t)
+	r, h := newHeldPoolRig(t)
 	r.executing()
 	r.must(r.task(r.lead, map[string]any{"action": "create", "parent": r.parent.ID, "title": "handlers", "files": []string{"app/handlers/**"}}), "create")
 	r.must(r.task(r.lead, map[string]any{"action": "create", "parent": r.parent.ID, "title": "store", "files": []string{"app/store/**"}}), "create")
@@ -181,6 +188,9 @@ func TestALeaderGivesAwayAChildItClaimed(t *testing.T) {
 		t.Fatalf("T2 is %s, owned by %q: want todo, reserved for %s", c.Status, c.Owner, r.second)
 	}
 	rvWait(t, r.third+" idle", func() bool { return r.idle(r.third) })
+	// Held in the turn the spawn starts: a member whose turn ends at once submits its child before the test looks (on a loaded
+	// runner T3 was already in review).
+	h.hold(r.third)
 	r.spawn(r.lead, map[string]any{"agent": r.third, "task": "T3"})
 	if c, _ := r.sw.Board.Snapshot().Task("T3"); c.Status != StatusDoing || c.Owner != r.third {
 		t.Fatalf("T3 is %s, owned by %q: want doing, %s", c.Status, c.Owner, r.third)
