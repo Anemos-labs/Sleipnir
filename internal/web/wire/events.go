@@ -462,7 +462,7 @@ type Turn struct {
 }
 
 // Stall is a supervision finding of the team about an agent (ID) or a Task, raised or cleared (S is raise or clear). Kind is
-// claimed_no_progress, manager_waiting_on_idle, orphaned_task, blocked_cycle or review_starved, and Text the detail (at most 200
+// claimed_no_progress, manager_waiting_on_idle, orphaned_task, blocked_cycle, review_starved or idle_capacity, and Text the detail (at most 200
 // characters). The server also sends a Sys line for it.
 type Stall struct {
 	Base

@@ -213,8 +213,9 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 			}
 		}
 	}
+	// A member is made idle, and has been since it was made (idle_capacity counts a pool member that has not run yet).
 	m := &member{id: id, role: r.Name, ev: ev, state: "idle", manager: isMgr, readOnly: r.ReadOnly, service: isSvc, sink: sink, notify: make(chan struct{}, 1),
-		tree: tree, dir: workdir, slot: -1}
+		tree: tree, dir: workdir, slot: -1, idleAt: s.deps.Now()}
 	if ev != nil {
 		ev.bind(func(path string) string { return s.editTask(id, path) }, func(task string) bool {
 			t, ok := s.Board.Snapshot().Task(task)
