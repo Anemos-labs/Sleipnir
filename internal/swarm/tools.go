@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/tools"
@@ -43,6 +44,25 @@ func decode(in json.RawMessage, v any) *tools.Result {
 	return nil
 }
 
+// idList is a list of task ids in a tool's input that also takes the ids as one string, "T3" or "T3, T4": models often send a list
+// of one id as the id itself. A value of another type is the decoding error a list would give.
+type idList []string
+
+// UnmarshalJSON decodes a JSON array of strings, or one string split at commas and white space.
+func (l *idList) UnmarshalJSON(b []byte) error {
+	var one string
+	if err := json.Unmarshal(b, &one); err == nil {
+		*l = strings.FieldsFunc(one, func(r rune) bool { return r == ',' || unicode.IsSpace(r) })
+		return nil
+	}
+	var many []string
+	if err := json.Unmarshal(b, &many); err != nil {
+		return err
+	}
+	*l = many
+	return nil
+}
+
 // text formats a successful text-only tool result.
 func text(format string, args ...any) *tools.Result {
 	return &tools.Result{Text: fmt.Sprintf(format, args...)}
@@ -75,7 +95,8 @@ func (t *taskTool) Spec() core.ToolSpec {
 
 type taskIn struct {
 	Action, ID, Title, Description, Role, Kind, Text, Agreement, Reason, Target, Parent string
-	Deps, Files                                                                         []string
+	Deps                                                                                idList
+	Files                                                                               []string
 }
 
 // readTask is task get, and pool get, which models reach for to read a pool's state: the whole task as JSON. A pool task's revision
@@ -719,8 +740,8 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		return r, nil
 	}
 	var in struct {
-		TimeoutSec int      `json:"timeout_sec"`
-		Until      []string `json:"until"`
+		TimeoutSec int    `json:"timeout_sec"`
+		Until      idList `json:"until"`
 	}
 	if r := decode(c.Input, &in); r != nil {
 		return r, nil
@@ -825,15 +846,23 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 }
 
 // stalledWaitReason returns manager actions when unfinished work has no running
-// worker. Worker waits and empty boards remain available for future mail or work.
+// worker, and when no worker is running and every task of the board is settled: no
+// task can change state then, and only the manager can start the next work. Worker
+// waits and an empty board (before the first task) remain available for future mail
+// or work, and so does a settled board that the docs keeper is about to take up or
+// whose mail is still with the mailman.
 func (s *Swarm) stalledWaitReason(agentID string) string {
 	if agentID != s.ManagerID() {
 		return ""
 	}
 	u := s.unfinishedWork()
-	if u.empty() && len(u.running) == 0 {
+	if u.empty() {
 		if last := s.reviewPending(); last != "" {
 			return "Cannot wait: nothing is running, and " + reviewLine(last) + "."
+		}
+		if snap := s.Board.Snapshot(); len(snap.Tasks) > 0 && !s.docsWillStart(snap) && s.MailmanStats().Pending == 0 && !s.inboxPending(agentID) {
+			return "Cannot wait: no worker is running and every task is settled, so nothing on the board will change. " +
+				"Start the work the objective still needs (spawn idle workers on new tasks, side by side), or end your turn and say where things stand."
 		}
 	}
 	if len(u.running) > 0 || u.empty() {
@@ -842,6 +871,17 @@ func (s *Swarm) stalledWaitReason(agentID string) string {
 	return "Cannot wait: no workers are running and work needs manager action (" + u.summary(holdListCap) + "). " +
 		"Use spawn to start or reuse a worker on an unstarted task; planning tasks need the architect, a scout, a reviewer, or a custom read-only role. " +
 		"Review submissions with task get and accept or reject them; resolve blocked tasks or fail abandoned work."
+}
+
+// inboxPending moves the agent's coalesced mail into its inbox and reports whether any waits there. Read after the mailman's count,
+// it sees a digest that the mailman delivered in between.
+func (s *Swarm) inboxPending(agentID string) bool {
+	m := s.get(agentID)
+	if m == nil {
+		return false
+	}
+	m.pump(s)
+	return m.a.PendingInbox() > 0
 }
 
 // taskIDs formats the first-to-last task ID range in snapshot order, or a label for an empty
