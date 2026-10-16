@@ -265,6 +265,14 @@ func (h *holdHooks) BeforeTool(ctx context.Context, c agent.ToolHookCall) agent.
 		if len(o.UpdatedInput) > 0 {
 			input = o.UpdatedInput
 		}
+		if managerSleeps(c.Tool, input) {
+			// A sleep in the shell is a wait, and is refused when a wait would be: the board needs the manager, or nothing it waits
+			// for can change.
+			if reason := h.s.stalledWaitReason(h.m.id); reason != "" {
+				h.s.waitRefused()
+				return agent.ToolHookOutcome{Veto: true, Reason: reason + " (A sleep in the shell is a wait. To follow a long job of your own, start it with run_in_background and read its output when the board is in hand.)"}
+			}
+		}
 		if json.Unmarshal(input, &in) == nil && publishesManagerWork(in.Command) {
 			if err := h.s.flushManager(ctx, h.m); err != nil {
 				return agent.ToolHookOutcome{Veto: true, Reason: err.Error()}

@@ -221,6 +221,10 @@ An empty board (before the first task), a settled board whose accepted change
 the docs keeper is about to take up, mail still with the mailman, and worker
 waits remain available for future work or messages. `until`, like `task`'s
 `deps`, takes a list of task IDs or one string of them (`"T3"`, `"T3, T4"`).
+A sleep of a minute or more in the manager's shell (`sleep 1800; date`, counted
+in line and along `&&` chains, not in loops or the background) is a wait: it is
+refused with the same reason when a wait would be, and the stall sweep counts
+the manager as waiting while it runs.
 
 A restored team's idle workers that hold an unfinished task show
 `restored; waiting for T7 to restart`; the others are plainly idle and free for
