@@ -871,7 +871,9 @@ func TestAndChainIsTheLinksJoinedByAndAlone(t *testing.T) {
 		"a; P=1 && b || c $(d)":                  {"1L", "2L", "2L", "0", "0"},
 		"a && b; case $(c) in *) d;; esac && e":  {"1L", "1L", "2", "2", "2L"},
 		"a && b & c; d":                          {"0", "0", "2L", "3L"},
-		"if a; then b & fi && c":                 {"1", "0", "1L"}, // a background list is in no chain
+		"if a; then b & fi && c":                 {"1", "1", "1L"}, // a background list inside a link stays in its chain
+		"a && { b & wait; } && c":                {"1L", "1", "1", "1L"},
+		"a || { b & wait; } && c":                {"1L", "0", "0", "0"},
 		"a && while b; do c; done | d && e || f": {"1L", "1", "1", "1", "1L", "0"},
 	} {
 		if got := chains(src); !slices.Equal(got, want) {

@@ -216,6 +216,7 @@ func TestAnAndChainKnowsWhatItsLinksAssigned(t *testing.T) {
 		{`cd x && D=$(mktemp -d) && rm -rf "$D"/*`, "deny"},                     // empty when mktemp fails: /*
 		{`cd x && D=/ && rm -rf "$D"`, "deny"},                                  // known, and the root
 		{`cd x && F="{home}/.ssh/id_rsa" && cat "$F"`, "deny"},                  // known, and protected
+		{`D="$TMPDIR/d" && false; rm -rf "$D"`, "allow"},                        // the first link runs whenever its list does
 		{`cd x && D="$TMPDIR/d"; rm -rf "$D"`, "ask"},                           // after ;, the chain may have stopped before D=
 		{"cd x && D=\"$TMPDIR/d\"\nrm -rf \"$D\"", "ask"},
 		{`cd x && D="$TMPDIR/d" && sleep 1 & rm -rf "$D"`, "ask"},
@@ -225,10 +226,16 @@ func TestAnAndChainKnowsWhatItsLinksAssigned(t *testing.T) {
 		{`(D="$TMPDIR/d") && rm -rf "$D"`, "ask"},
 		{`D="$TMPDIR/d" | true && rm -rf "$D"`, "ask"},
 		{`{ D="$TMPDIR/d"; } && rm -rf "$D"`, "ask"},
-		{`cd x && D="$TMPDIR/d" && sleep 1 && rm -rf "$D" &`, "ask"}, // the whole list runs in the background
-		{`D=/; cd x && D="$TMPDIR/d" && rm -rf "$D"`, "ask"},         // two values
-		{`cd x && D="$TMPDIR/d" && D=/ && rm -rf "$D"`, "ask"},       // two values in the chain
-		{`cd x && D="$TMPDIR/d" && read D && rm -rf "$D"`, "ask"},    // a builtin may set it
+		{`cd x && D="$TMPDIR/d" && sleep 1 && rm -rf "$D" &`, "ask"},             // the whole list runs in the background
+		{`true && D="$TMPDIR/d" && { sleep 1 & wait; } && rm -rf "$D"`, "allow"}, // a background job inside a link: the chain goes on
+		{`true && D="$TMPDIR/d" && if true; then sleep 1 & fi && rm -rf "$D"`, "allow"},
+		{`true && D="$TMPDIR/d" && { D=/ & wait; } && rm -rf "$D"`, "ask"}, // an assignment in it may or may not have run
+		{`a && D="$TMPDIR/d" & rm -rf "$D"`, "ask"},
+		{`false || D="$TMPDIR/d" && { sleep 1 & wait; } && rm -rf "$D"`, "ask"},
+		{`a || true && D="$TMPDIR/d" && { sleep 1 & wait; } && rm -rf "$D"`, "ask"},
+		{`D=/; cd x && D="$TMPDIR/d" && rm -rf "$D"`, "ask"},      // two values
+		{`cd x && D="$TMPDIR/d" && D=/ && rm -rf "$D"`, "ask"},    // two values in the chain
+		{`cd x && D="$TMPDIR/d" && read D && rm -rf "$D"`, "ask"}, // a builtin may set it
 		{`cd x && D="$TMPDIR/d" && for D in /; do :; done && rm -rf "$D"`, "ask"},
 		{`cd x && D="$TMPDIR/d" && sh -c 'rm -rf "$D"'`, "ask"},     // not exported: the new shell does not have it
 		{`cd x && export D="$TMPDIR/d" E && rm -rf "$D"`, "ask"},    // a declaration that also names E

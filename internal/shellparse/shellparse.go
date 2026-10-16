@@ -101,8 +101,9 @@ type Simple struct {
 	// another. Every command a link holds is in its chain: the commands of a pipeline, a compound command or a subshell, and those
 	// of the link's substitutions and of the strings it hands to eval, sh -c or trap, which are listed after the link and run while
 	// it runs (a substitution: while it is expanded, see InAssign). A command of a later link runs only after each earlier
-	// link ran. The and-or lists inside a compound command, a substitution or a string are no chains of their own, and the commands
-	// of a list sent to the background (&) are in no chain.
+	// link ran. The and-or lists inside a compound command, a substitution or a string are no chains of their own. The commands of
+	// a list of the line's own shell sent to the background (a && b &) are in no chain; a background list inside a link (a && { b &
+	// } && c) is in the chain of that link.
 	AndChain int
 	// ChainLink marks a link of AndChain that is a simple command of the line's own shell: not in a pipeline, a compound command, a
 	// group or a subshell. Its assignments are made in this shell before any later link of its chain runs; whether the chain gets
