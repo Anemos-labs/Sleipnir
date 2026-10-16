@@ -47,4 +47,25 @@ func TestNotDoingRefusalsSayWhatToDoInstead(t *testing.T) {
 			t.Errorf("%s of a done task: %s", action, got)
 		}
 	}
+
+	// a task reserved for the worker is todo until it claims it; a failed one is settled as a done one is
+	other, err := b.CreateTask("mgr", TaskSpec{Title: "paginate users", Role: "backend"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.assignTask(assignReq{by: "mgr", agent: "be-1", id: other.ID, reserve: true}); err != nil {
+		t.Fatal(err)
+	}
+	callOn := func(action, id string) string {
+		return r.callTool(context.Background(), "task", "be-1", "backend", map[string]any{"action": action, "id": id, "text": "started"}).Text
+	}
+	if got := callOn("update", other.ID); !strings.Contains(got, "is todo, not doing: claim it first (task claim)") {
+		t.Errorf("update of a reserved todo task: %s", got)
+	}
+	if err := b.Fail("mgr", other.ID, closeAs(CloseCanceled), "not needed"); err != nil {
+		t.Fatal(err)
+	}
+	if got := callOn("done", other.ID); !strings.Contains(got, "is failed, not doing: its result stands") {
+		t.Errorf("done of a failed task: %s", got)
+	}
 }
