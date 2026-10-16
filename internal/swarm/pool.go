@@ -229,8 +229,10 @@ func (s *Swarm) ensurePool(role string) ([]*member, error) {
 		s.mu.Unlock()
 		s.register(m, s.currentShared())
 		s.bindTree(m)
-		m.setState(s, "idle", "")
 		s.emit(events.TypeAgentSpawn, map[string]any{"id": id, "role": role, "model": m.model.ID})
+		// A member is made idle, so setState would publish nothing, and a reader of the log would take the spawn for the start of a
+		// run: the member is said to be idle until its pool starts it (a pool that could not begin left three members "starting").
+		m.publish(s)
 	}
 	return s.poolMembers(role), nil
 }
@@ -313,10 +315,12 @@ func (s *Swarm) startPool(req SpawnReq, files []string) (string, error) {
 	// and a parent whose dependency was open left three frontend members on the roster, "starting", for the forty minutes until it was.
 	if req.TaskID != "" {
 		sn := s.Board.Snapshot()
-		if t, ok := sn.Task(req.TaskID); ok {
-			if err := poolReady(sn, t); err != nil {
-				return "", err
-			}
+		t, ok := sn.Task(req.TaskID)
+		if !ok {
+			return "", fmt.Errorf("no task %s", cleanText(req.TaskID, 20))
+		}
+		if err := poolReady(sn, t); err != nil {
+			return "", err
 		}
 	}
 	members, err := s.ensurePool(req.Role)
