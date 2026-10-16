@@ -374,7 +374,7 @@ func rosterEvent(e events.Event, ent *wire.RosterEntry) bool {
 			return false
 		}
 		switch p.Op {
-		case "claim", "assign", "scope", "requeue", "finish", "block", "resume", "agent-remove":
+		case "claim", "assign", "reserve", "scope", "requeue", "finish", "block", "resume", "agent-remove":
 			return true
 		}
 	}
