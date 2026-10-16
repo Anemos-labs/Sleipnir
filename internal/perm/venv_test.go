@@ -332,6 +332,8 @@ func TestTheTestsPresetChecksInsideTheWorkspace(t *testing.T) {
 		{cmd: "ruff check --output-format json src", want: "allow"},
 		{cmd: "mypy --junit-xml junit.xml src", want: "ask", why: "--junit-xml"},
 		{cmd: "tsc --noEmit --incremental", want: "ask", why: "--incremental"},
+		{cmd: "eslint --suppress-all src", want: "ask", why: "--suppress-all"}, // rewrites eslint-suppressions.json
+		{cmd: "eslint --cache src", want: "allow"},                             // a cache of its own, as ruff's and mypy's
 	} {
 		d := r.check("be-1", r.wtA, c.cmd)
 		if got := outcome(d); got != c.want {

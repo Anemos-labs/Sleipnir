@@ -100,6 +100,7 @@ func TestReadOnlyRolesRunTheStaticChecks(t *testing.T) {
 			"eslint -o report.json web/js", "eslint --output-file=report.json web/js", "ruff check -oout.txt src",
 			"ruff check -qo out.txt src", "ruff check --output-file out.txt src", "mypy --junit-xml j.xml src",
 			"mypy --html-report h src", "tsc --noEmit --incremental", "tsc --noEmit --tsBuildInfoFile b.json",
+			"eslint --suppress-all web/js", "eslint --suppress-rule no-console web/js", "eslint --prune-suppressions web/js",
 		} {
 			if d := check(cmd); d.Allow {
 				t.Errorf("%s: a reviewer may run %q", mode, cmd)

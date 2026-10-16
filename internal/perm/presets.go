@@ -33,8 +33,8 @@ var TestsAllow = []string{
 }
 
 // workspaceRefused are, for the prefixes of the preset's ":workspace" rules, the options that take a command off the rule: they
-// rewrite the project's files (--fix), write files of their own (--createstub, --init, --generateTrace, a report: eslint -o, mypy
-// --junit-xml, tsc's build information), or install packages (mypy --install-types runs pip in the Python that runs mypy). A
+// rewrite the project's files (--fix, eslint's suppressions file), write files of their own (--createstub, --init, --generateTrace, a
+// report: eslint -o, mypy --junit-xml, tsc's build information), or install packages (mypy --install-types runs pip in the Python that runs mypy). A
 // one-letter option counts attached and in a cluster as well (refusedOption).
 var workspaceRefused = map[string][]string{
 	"ruff check": {"--fix", "--unsafe-fixes", "--add-noqa", "--fix-only", "-o", "--output-file"},
@@ -43,7 +43,7 @@ var workspaceRefused = map[string][]string{
 		"--cobertura-xml-report"},
 	"pyright":      {"--createstub", "--writebaseline"},
 	"tsc --noEmit": {"-b", "--build", "--init", "--generateTrace", "--generateCpuProfile", "--incremental", "--tsBuildInfoFile"},
-	"eslint":       {"--fix", "--init", "--fix-type", "-o", "--output-file"},
+	"eslint":       {"--fix", "--init", "--fix-type", "-o", "--output-file", "--suppress-all", "--suppress-rule", "--prune-suppressions"},
 }
 
 // refusedOption returns the first of names that args give: as the argument itself or with "=value", and, for a one-letter option
