@@ -101,18 +101,14 @@ func TestQuestionsCoalesceOnlyByteIdenticalRequests(t *testing.T) {
 			e.Check(context.Background(), r)
 		}(edit(content))
 	}
-	// the first question is open; give the others time to coalesce or queue
-	deadline := time.Now().Add(2 * time.Second)
-	for {
+	// the first question is open, the second A waits on it, and B has a question of its own queued: only then is the first one
+	// answered (a fixed pause was not enough on a loaded runner, and the second A, arriving after the answer, asked again)
+	waitFor(t, "A coalesced and B queued", func() bool {
+		waiters, prompts := e.inflightWaiters()
 		mu.Lock()
-		n := asked
-		mu.Unlock()
-		if n >= 1 || time.Now().After(deadline) {
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	time.Sleep(50 * time.Millisecond)
+		defer mu.Unlock()
+		return asked == 1 && waiters == 1 && prompts == 2
+	})
 	close(release)
 	wg.Wait()
 	mu.Lock()
