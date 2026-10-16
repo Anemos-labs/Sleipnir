@@ -54,7 +54,7 @@ const (
 	StallReviewStarved StallKind = "review_starved"
 	// StallIdleCapacity: the manager of a configured team waits on the few workers
 	// still at work while at least half of the team, and two workers or more, have been
-	// idle for idleCapacityAfter. Waiting is right when the open tasks are all the
+	// idle for idleCapacityAfter owning no open task. Waiting is right when the open tasks are all the
 	// objective needs, and costs the idle workers' time when more remains: the manager is
 	// told who is free, once, and decides. It clears when they are at work again or the
 	// manager stops waiting.
@@ -320,7 +320,7 @@ func (s *Swarm) stallFindings() []Stall {
 				continue
 			}
 			workers++
-			if !v.running && !v.idleSince.IsZero() && at.Sub(v.idleSince) >= idleCapacityAfter && inProgress(snap, id, "", "") == "" {
+			if !v.running && !v.idleSince.IsZero() && at.Sub(v.idleSince) >= idleCapacityAfter && !ownsOpenTask(snap, id) {
 				idle = append(idle, id)
 			}
 		}
@@ -507,6 +507,17 @@ func stallNudge(f Stall, k int64, pools bool) string {
 			"create that work and assign it now: an idle worker starts at once. If the open tasks are all that is left, keep waiting."
 	}
 	return "Stall check: " + f.Detail
+}
+
+// ownsOpenTask reports whether agent owns a task that is not closed: one reserved for it, in progress, blocked or in review (a pool
+// leader's pool task among them). Such a worker is not free, whatever it is doing now.
+func ownsOpenTask(sn *Snapshot, agent string) bool {
+	for _, t := range sn.Tasks {
+		if t.Owner == agent && t.Status != StatusDone && t.Status != StatusFailed {
+			return true
+		}
+	}
+	return false
 }
 
 // openTask reports whether the board holds a task that is not closed (todo, doing, blocked or in review): a running worker with no

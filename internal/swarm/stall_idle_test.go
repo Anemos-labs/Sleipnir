@@ -100,6 +100,24 @@ func TestStallIdleCapacity(t *testing.T) {
 			t.Fatalf("a team idle for five minutes was found: %+v", stallEvents(r))
 		}
 	})
+	t.Run("healthy: workers owning a task in review or reserved for them are not free", func(t *testing.T) {
+		r := idleCapacityRig(t, 20*time.Minute)
+		review, _ := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "work of be-2"})
+		if err := r.sw.Board.Assign("mgr", "be-2", review.ID); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.sw.Board.Submit("be-2", review.ID, "done", "edited a.go"); err != nil {
+			t.Fatal(err)
+		}
+		reserved, _ := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "work of be-3"})
+		if _, err := r.sw.Board.assignTask(assignReq{by: "mgr", agent: "be-3", id: reserved.ID, reserve: true}); err != nil {
+			t.Fatal(err)
+		}
+		r.sw.sweepStalls()
+		if n := raised(r, StallIdleCapacity); n != 0 {
+			t.Fatalf("workers owning open tasks counted as free: %+v", stallEvents(r))
+		}
+	})
 	t.Run("healthy: workers with work in progress are not free", func(t *testing.T) {
 		r := idleCapacityRig(t, 20*time.Minute)
 		for _, id := range []string{"be-2", "be-3"} {
