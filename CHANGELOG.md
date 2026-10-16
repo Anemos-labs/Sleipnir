@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Read-only roles (reviewer, scout, architect) run the project's static
+  checks as well as its tests: `node --check`, and on the tests preset's
+  terms (every file inside the workspace, no `--fix`, `--install-types`,
+  `--build` or other option that writes the project's files or installs)
+  `ruff check`, `ruff format --check|--diff`, `mypy`, `pyright`,
+  `tsc --noEmit` and `eslint`. They still run only what the session allows:
+  in `default` mode these still ask. Prompt bytes: none change.
+
 - A file whose name is only known when the command runs (`cat "$F"`, `cat
   < "$F"`, `go test "$PKG"`, a file tool given `$F`) is refused in `plan`,
   `default` and `accept-edits` mode when a `deny` rule may cover it (any

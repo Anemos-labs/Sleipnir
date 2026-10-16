@@ -985,7 +985,8 @@ func (r roleRequester) Check(ctx context.Context, req perm.Request) perm.Decisio
 }
 
 // readOnlyRoleChecks are the test and check commands a read-only role's profile allows by default (session.readOnlyRoleAllow).
-const readOnlyRoleChecks = "go test, go vet, pytest, python -m pytest, .venv/bin/python -m pytest, node --test, npm test, cargo test, make test"
+const readOnlyRoleChecks = "go test, go vet, pytest, python -m pytest, .venv/bin/python -m pytest, node --test, node --check, npm test, cargo test, " +
+	"make test, tsc --noEmit, eslint, ruff check, mypy, pyright"
 
 // readOnlyRoleReason rewrites the refusal of a read-only role's plan profile, which tells a planner to "present a plan", into one for
 // a reviewer or a scout: what it does instead. Any other reason is returned as it is.
