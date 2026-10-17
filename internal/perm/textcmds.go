@@ -234,14 +234,15 @@ func analyseNpm(args []string) safeAnalysis {
 	return safeAnalysis{why: unlisted}
 }
 
-// analyseGitConfig allows git config to read a value: --get, --get-all and --get-regexp, a lone key (git config user.name), and git
-// config get KEY. Listing every value (--list, -l, git config list) is allowed with --local or --worktree only: the user's and the
+// analyseGitConfig allows git config to read a value: --get and --get-all, a lone key (section.name: git config user.name; a bare
+// word is a subcommand, and git config edit opens an editor), and git config get KEY. Listing values (--list, -l, git config list,
+// and --get-regexp, which lists the keys it matches) is allowed with --local or --worktree only: the user's and the
 // system's configuration lie outside the workspace and may hold credentials (an http.extraHeader, a url with a token). Any other
 // option, a scope other than the repository's (--global, --system, --file, --blob), or a key with a value (which sets it) takes the
 // command off the list.
 func analyseGitConfig(rest []string) safeAnalysis {
 	var pos []string
-	get, list, local := false, false, false
+	get, list, local, regexp := false, false, false, false
 	for i := 0; i < len(rest); i++ {
 		a := rest[i]
 		name, _, hasVal := strings.Cut(a, "=")
@@ -252,7 +253,7 @@ func analyseGitConfig(rest []string) safeAnalysis {
 		case !strings.HasPrefix(a, "-"):
 			pos = append(pos, a)
 		case a == "--get" || a == "--get-all" || a == "--get-regexp":
-			get = true
+			get, regexp = true, regexp || a == "--get-regexp"
 		case a == "--list" || a == "-l":
 			list = true
 		case a == "--local" || a == "--worktree":
@@ -282,7 +283,11 @@ func analyseGitConfig(rest []string) safeAnalysis {
 		if len(pos) == 0 || len(pos) > 2 {
 			return safeAnalysis{why: "git config --get without a name"}
 		}
-	case !get && !list && len(pos) == 1:
+		if regexp && !local {
+			return safeAnalysis{why: "git config --get-regexp reads the user's configuration too, which may hold credentials: add --local"}
+		}
+	case !get && !list && len(pos) == 1 && strings.Contains(pos[0], "."):
+		// A key is section.name; a bare word is a subcommand (git config edit opens an editor).
 	default:
 		return safeAnalysis{why: "git config with a value sets it"}
 	}

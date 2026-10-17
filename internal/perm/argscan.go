@@ -323,8 +323,12 @@ var safeSpecs = map[string]*argSpec{
 	"hexdump":  {short: "efns", long: []string{"format", "format-file", "length", "skip"}, pathVals: []string{"-f", "--format-file"}},
 	"xxd":      {short: "cglos", maxPos: 1}, // a second operand is the file it writes
 	"strings": {short: "ntTe", long: []string{"bytes", "radix", "target", "encoding"},
-		check: func(pos []string, _ *scanned) string {
-			for _, p := range pos {
+		check: func(pos []string, s *scanned) string {
+			words := append([]string(nil), pos...) // binutils expands every word that starts with "@", an option's value too
+			for _, vs := range s.flags {
+				words = append(words, vs...)
+			}
+			for _, p := range words {
 				if strings.HasPrefix(p, "@") {
 					return "strings @FILE reads its arguments from FILE" // binutils' response files
 				}

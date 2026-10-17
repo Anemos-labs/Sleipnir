@@ -51,7 +51,7 @@ var safeCommands = []string{
 	`join main.go src/a.go`, `expand -t 4 main.go`, `unexpand main.go`, `od -c main.go`, `od -A x -t x1z main.go`, `hexdump -C main.go`,
 	`xxd main.go`, `xxd -l 16 main.go`, `strings main.go`, `strings -n 8 main.go`, `base64 main.go`, `base64 -w0 main.go`,
 	`ps aux`, `ps -o pid,etime,cmd -p 1`, `ps aux | grep -v grep`, `pgrep -f vite`, `pgrep -af node`,
-	`git config user.name`, `git config --get remote.origin.url`, `git config --get-regexp '^remote\.'`, `git config get user.name`,
+	`git config user.name`, `git config --get remote.origin.url`, `git config --local --get-regexp '^remote\.'`, `git config get user.name`,
 	`git config --local --list`, `git config --list --show-origin --local`, `git config --type=bool --get core.bare`,
 	`npm ls`, `npm ls --depth=0`, `npm list --all --json`, `npm run`,
 }
@@ -84,7 +84,7 @@ func TestBashAllowlist(t *testing.T) {
 		`gawk -i inplace '{print}' main.go`, `awk -v ARGC=3 '{print}' main.go`, `awk`, `mawk -W exec x`,
 		`jq -n env`, `jq -n '$ENV.HOME'`, `jq -f prog.jq main.go`, `jq -L lib -n 1`, `jq -n 'import "x" as y; 1'`, `jq`,
 		`jq --from-file prog.jq main.go`, `jq --seq --unknown . main.go`, `xxd main.go out.bin`, `base64 -o out main.go`,
-		`ps auxe`, `ps eww`, `ps -E`, `pgrep -F /etc/passwd x`, `strings @args.txt`, `jq -n '"x" | modulemeta'`,
+		`ps auxe`, `ps eww`, `ps -E`, `pgrep -F /etc/passwd x`, `strings @args.txt`, `strings -n @args.txt main.go`, `git config --get-regexp .`, `git config edit`, `jq -n '"x" | modulemeta'`,
 		"awk '{pri\\\nnt > \"x\"}' main.go", `git config --local --list --includes`,
 		`git config user.name x`, `git config --global user.name`, `git config --list`, `git config --system --list`,
 		`git config --unset user.name`, `git config --add x.y z`, `git config --file x.cfg --list`, `git config -e`, `git config --get`,
