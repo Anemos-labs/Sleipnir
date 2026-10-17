@@ -261,6 +261,8 @@ Usage of chat:
         stop when spend reaches this many US dollars
   -commit
         swarm with --isolation worktree: commit the verified result onto your branch instead of leaving uncommitted edits (needs a clean checkout on a branch)
+  -compact-at int
+        start compacting an agent's conversation when it fills this percentage of its model's context window, from 10 to 90: higher keeps more of what it read in view and costs more per request (default: config cache.compact_at_percent, else 25)
   -continue
         continue this project's newest session (same as --resume latest)
   -cwd string
@@ -404,6 +406,8 @@ flags:
         default spending limit of new sessions, in US dollars
   -commit
         swarm with --isolation worktree: commit the verified result onto your branch instead of leaving uncommitted edits (needs a clean checkout on a branch)
+  -compact-at int
+        default compaction share of new sessions: an agent's conversation is compacted when it fills this percentage of its model's context window, from 10 to 90 (default: config cache.compact_at_percent, else 25)
   -continue
         continue this project's newest session (same as --resume latest)
   -cwd string

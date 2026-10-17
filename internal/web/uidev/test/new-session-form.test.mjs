@@ -41,6 +41,45 @@ test('the command line lifts the terminal\'s cap of a team when the budget is of
   assert.match(cli(S), /^sleipnir chat /, 'a single agent has no cap to lift');
 });
 
+test('the compaction share starts at the share a session takes anyway, and is in the command line and sent only when it differs', async () => {
+  const L = await open({}, { compactAtDefault: 25 });
+  assert.equal(L.$('#nsCompact').value, '25');
+  assert.equal(L.$('#nsCompactOut').textContent, '25% · default');
+  assert.doesNotMatch(cli(L), /--compact-at/);
+  assert.equal(L.$('#nsCompactReset').hidden, true, 'nothing to go back to');
+  type(L, '#nsCompact', '40'); await L.settle();
+  assert.match(cli(L), / --compact-at 40( |$)/);
+  assert.equal(L.$('#nsCompactOut').textContent, '40% · default 25%');
+  assert.equal(L.$('#nsCompact').getAttribute('aria-valuetext'), '40% · default 25%', 'a screen reader hears what the slider means');
+  assert.equal(L.$('#nsCompactReset').hidden, false);
+  await start(L);
+  assert.equal(spec(L).compactAt, 40);
+  // moved back to the default, the share is the configuration's again: nothing is sent
+  const M = await open({}, { compactAtDefault: 25 });
+  type(M, '#nsCompact', '40'); type(M, '#nsCompact', '25'); await M.settle();
+  assert.doesNotMatch(cli(M), /--compact-at/);
+  await start(M);
+  assert.equal('compactAt' in spec(M), false);
+  // sleipnir web's --compact-at is where it starts, and it is sent (the session would take the configuration's without it); the
+  // default button goes back to the configuration's
+  const W = await open({}, { compactAt: 40, compactAtDefault: 30 });
+  assert.equal(W.$('#nsCompact').value, '40');
+  assert.match(cli(W), / --compact-at 40( |$)/);
+  W.$('#nsCompactReset').click(); await W.settle();
+  assert.equal(W.$('#nsCompact').value, '30');
+  assert.equal(W.$('#nsCompactOut').textContent, '30% · default');
+  assert.doesNotMatch(cli(W), /--compact-at/);
+  await start(W);
+  assert.equal('compactAt' in spec(W), false);
+  // where the configuration's token limits apply, nothing is sent until a share is chosen
+  const T = await open({}, { compactAtDefault: 0 });
+  assert.equal(T.$('#nsCompactOut').textContent, 'token limits (default)');
+  assert.doesNotMatch(cli(T), /--compact-at/);
+  type(T, '#nsCompact', '25'); await T.settle();
+  assert.match(cli(T), / --compact-at 25( |$)/);
+  assert.equal(T.$('#nsCompactOut').textContent, '25% · default: token limits');
+});
+
 test('in bypass and yolo the allow rules cannot be changed, are not sent and are not in the command line; another mode gets them back', async () => {
   const L = await open({ rules: ['Bash(make:*)'] });
   assert.equal(L.$('#nsRuleSet').disabled, false);

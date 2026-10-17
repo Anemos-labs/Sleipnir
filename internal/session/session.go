@@ -169,6 +169,10 @@ type Options struct {
 	NoBudget      bool
 	ContextWindow int // overrides the model's window (RL: small windows force compaction)
 	Params        core.Params
+	// CompactAtPercent, when set, overrides cache.compact_at_percent for this session (--compact-at): the share of each model's
+	// context window, in percent from 10 to 90, that an agent's conversation may fill before compaction is considered. 0 leaves
+	// it to the configuration.
+	CompactAtPercent int
 
 	// Shared-layer contents.
 	NoRecon     bool
@@ -400,6 +404,9 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	if b := o.BudgetUSD; math.IsNaN(b) || math.IsInf(b, 0) || b < 0 {
 		// Anything but a positive number reads as "no budget" below; a typo must not do that.
 		return nil, fmt.Errorf("budget: --budget-usd must be zero (no limit) or a positive amount, got %v", b)
+	}
+	if err := CheckCompactAt(o.CompactAtPercent); err != nil {
+		return nil, err
 	}
 	s := &Session{opts: o, cfg: cfg, cfgRep: rep, trust: tinfo, deliveryOptions: delivery.Options{AutoFix: o.AutoFix, AutoMerge: o.AutoMerge}}
 	if o.Savepoints {
@@ -777,7 +784,7 @@ func (s *Session) build(ctx context.Context) error {
 	constText := agent.Constitution(agent.ConstitutionOpts{Swarm: o.Swarm})
 	constLayer := kv.NewLayer("const", kv.KindConst, 1, []kv.Segment{{Text: constText, Vol: kv.VolFrozen}})
 
-	planner := plannerFor(s.cfg.Cache)
+	planner := plannerFor(cacheSettings(s.cfg.Cache, o))
 	kvPol := kv.DefaultPolicy()
 	if c := s.cfg.Cache; c.MinLayerForBreakpoint > 0 {
 		kvPol.MinLayerForBreakpoint = c.MinLayerForBreakpoint
@@ -1475,6 +1482,34 @@ func (s *Session) listCost() (list float64, plan bool) {
 		list, plan = list+l, plan || p
 	}
 	return list, plan || s.Model.Plan
+}
+
+// cacheSettings are the configuration's cache settings with what the session's options say over them: --compact-at over
+// compact_at_percent.
+func cacheSettings(c config.Cache, o Options) config.Cache {
+	if o.CompactAtPercent > 0 {
+		c.CompactAtPercent = o.CompactAtPercent
+	}
+	return c
+}
+
+// CheckCompactAt refuses a compaction share that is not one: 0 (the configuration's) or a percentage from 10 to 90, as
+// cache.compact_at_percent takes it.
+func CheckCompactAt(percent int) error {
+	if percent != 0 && (percent < 10 || percent > 90) {
+		return fmt.Errorf("--compact-at must be from 10 to 90 (percent of each model's context window), or 0 for the configuration's, got %d", percent)
+	}
+	return nil
+}
+
+// CompactAtPercent is the share of each model's context window, in percent, at which the cache settings c start compaction:
+// compact_at_percent, else 25. It is 0 when token limits set without compact_at_percent apply to every model instead (plannerFor).
+func CompactAtPercent(c config.Cache) int {
+	p := plannerFor(c)
+	if p.CompactAt < 0 {
+		return 0
+	}
+	return int(math.Round(p.CompactAt * 100))
 }
 
 // plannerFor is the compaction planner that the cache settings ask for. Compaction starts at a share of each model's window

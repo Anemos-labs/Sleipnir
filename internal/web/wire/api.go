@@ -279,6 +279,9 @@ type NewSessionRequest struct {
 	// ManagerApproves false puts every worker's permission question to the person (--manager-approves=false); nil or true lets the
 	// manager answer the routine ones first.
 	ManagerApproves *bool `json:"managerApproves,omitempty"`
+	// CompactAt is the percentage of each model's context window at which agents' compaction starts, 10 to 90 (--compact-at);
+	// nil or 0 leaves it to the configuration (cache.compact_at_percent, else 25).
+	CompactAt *int `json:"compactAt,omitempty"`
 }
 
 // TeamSlot is one worker slot of a team: its role, and its model ("" is the role's).
