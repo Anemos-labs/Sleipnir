@@ -334,9 +334,11 @@ the manager.
 
 `for f in p1/p1.go p2/p2.go; do cat "$f"; done` names its files in its list, so each command of its body is judged as the command it will be, once for
 each word (`internal/perm/loopvars.go`). It is done only where it is sound: the words are plain (no variable, substitution, quote, space or shell
-syntax), at most sixteen, the variable is lower case (not `PATH` or `HOME`), exactly one loop sets it and nothing else in the line assigns it, nothing
-in the line can change variables behind the analysis' back (`read`, `mapfile`, `eval`, `declare`, `export`, `printf -v`, `((`, an `IFS`), and a use that
-is not a plain `$f` (`${f%.go}`) stays dynamic. A loop over `~/.ssh/id_rsa`, or over a path outside the workspace, is denied or asked about like the
+syntax), or such a word wholly in quotes with no glob and no leading `~` (`"390,844"`, which stands for what is inside the quotes), at most
+sixteen, the variable is lower case (not `PATH` or `HOME`), exactly one loop sets it and nothing else in the line assigns it, nothing in the line can
+change variables behind the analysis' back (`read`, `mapfile`, `eval`, `declare`, `export`, `printf -v`, `((`, an `IFS`), and a use that is not a
+plain `$f` (`${f%.go}`) stays dynamic. A command that uses the variables of nested loops is judged once for each combination, up to 64 of them (a
+screenshot loop over 9 pages, 2 sizes and 2 themes is 36); past that it stays dynamic. A loop over `~/.ssh/id_rsa`, or over a path outside the workspace, is denied or asked about like the
 command it expands to; a list that is not written out (`for f in $(ls)`) asks as before.
 
 ## 2. What is scrubbed and hardened, per OS

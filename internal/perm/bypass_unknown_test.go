@@ -885,3 +885,53 @@ func TestAChildShellDoesNotChangeTheLinesVariables(t *testing.T) {
 		}
 	}
 }
+
+// A screenshot loop of a frontend worker (a live run): nested loops over pages, quoted sizes and themes write one file each into the scratch
+// directory. Each variable stands for one of its loop's words, quoted ones included, so every file the command writes is known, and none of
+// them is in a path an ask rule of the person's covers: bypass does not ask. A quoted word that holds a variable is not bound, and the
+// file stays unknown.
+func TestALoopOverQuotedWordsNamesItsFiles(t *testing.T) {
+	f := newFixture(t)
+	// A team agent's scratch directory is inside the session's state directory, which the ask rule covers: a name that is not known could
+	// lead out of the scratch directory into the rest of it.
+	tmp := filepath.Join(f.home, ".sleipnir", "sessions", "s1", "tmp")
+	if err := os.MkdirAll(tmp, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{Mode: ModeBypass, Tmp: tmp, Ask: []string{"Edit(~/.sleipnir/**)"}}
+	shots := `for route in insights funnels retention paths people live dashboards settings login; do
+  for size in "390,844" "1440,900"; do
+    for theme in light dark; do
+      timeout 60 firefox --screenshot "$TMPDIR/tess-$route-$size-$theme.png" --window-size "$size" "http://127.0.0.1:8731/$route?theme=$theme" >/dev/null 2>&1 || echo "fail $route $size $theme"
+    done
+  done
+done`
+	for _, c := range []struct{ cmd, want string }{
+		{shots, "allow"},
+		{`for size in "390,844" '1440,900'; do firefox --screenshot "$TMPDIR/s-$size.png" http://127.0.0.1:8731/; done`, "allow"},
+		{`for size in "$W,844"; do firefox --screenshot "$TMPDIR/s-$size.png" http://127.0.0.1:8731/; done`, "ask"}, // a variable in the quotes
+	} {
+		d := f.engine(t, cfg).Check(context.Background(), Request{Agent: "fe-1", Tool: "Bash", Command: f.expand(c.cmd)})
+		if got := outcome(d); got != c.want {
+			t.Errorf("%s\n  = %s (%s), want %s", c.cmd, got, d.Reason, c.want)
+		}
+	}
+}
+
+// What a quoted loop word stands for: what is inside the quotes when that is a plain word without a glob, and nothing otherwise.
+func TestUnquotedWord(t *testing.T) {
+	for _, c := range []struct {
+		in, want string
+		ok       bool
+	}{
+		{`"390,844"`, "390,844", true}, {`'dark'`, "dark", true}, {`"a.b-c_d"`, "a.b-c_d", true},
+		{`"*"`, "", false}, {`"src/*.go"`, "", false}, {`"a?"`, "", false}, {`"[ab]"`, "", false}, // a glob is not expanded in quotes
+		{`"$W"`, "", false}, {`"a b"`, "", false}, {`"a;b"`, "", false}, {`"a'b"`, "", false}, {`'a"b'`, "", false},
+		{`""`, "", false}, {`"x'`, "", false}, {`plain`, "", false}, {`"~/x"`, "", false}, // nor is a "~" in quotes
+	} {
+		got, ok := unquotedWord(c.in)
+		if got != c.want || ok != c.ok {
+			t.Errorf("unquotedWord(%s) = %q, %v; want %q, %v", c.in, got, ok, c.want, c.ok)
+		}
+	}
+}

@@ -13,6 +13,14 @@ they do not indicate whether a change has been released.
   the manager spawned the child five times against "parent pool T6 is todo".
   Prompt bytes: none change.
 
+- The permission engine binds a loop variable whose words are quoted plain
+  words (`for size in "390,844" "1440,900"`) to what is inside the quotes,
+  and judges a command that uses the variables of nested loops once for each
+  combination up to 64 (was 32). A frontend worker's screenshot loop over 9
+  pages, 2 sizes and 2 themes into `$TMPDIR` asked in bypass mode because
+  its file names were unknown; it is now allowed. Quoted words with a glob,
+  a variable or a leading `~` stay unbound. Prompt bytes: none change.
+
 - The web interface writes token counts as the terminal does: "1.2k",
   "3.4M", "1.2B", with one decimal above 999 (it stopped at k: an agent with
   three million tokens showed "3000k"). Its footer shows the tokens of every
