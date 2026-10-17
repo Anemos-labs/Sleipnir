@@ -1002,3 +1002,29 @@ func TestArithIsOnTheCommandItBelongsTo(t *testing.T) {
 		}
 	}
 }
+
+// npx installs the package it is asked for when it is not there, so the program it runs is the word after it only when the install is
+// forbidden (--no, --no-install): then it is peeled like a wrapper. Without that, or with an option that names, installs or builds what
+// runs, npx stays the program.
+func TestNpxIsPeeledOnlyWhenItInstallsNothing(t *testing.T) {
+	for _, c := range []struct{ in, prog string }{
+		{`npx --no-install tsc --noEmit`, "tsc"},
+		{`npx --no eslint src`, "eslint"},
+		{`npx -q --no tsc --noEmit`, "tsc"},
+		{`npx --no -- tsc --noEmit`, "tsc"},
+		{`npx tsc --noEmit`, "npx"},
+		{`npx --yes tsc`, "npx"},
+		{`npx -y tsc`, "npx"},
+		{`npx --no -p typescript tsc`, "npx"},
+		{`npx --no -c 'tsc --noEmit'`, "npx"},
+		{`npx --no`, "npx"},
+	} {
+		a := Parse(c.in)
+		if len(a.Commands) == 0 {
+			t.Fatalf("%q: no commands", c.in)
+		}
+		if got := a.Commands[0].Program; got != c.prog {
+			t.Errorf("%q: program %q, want %q", c.in, got, c.prog)
+		}
+	}
+}

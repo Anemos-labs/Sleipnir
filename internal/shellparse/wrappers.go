@@ -51,7 +51,7 @@ func isAssignment(a string) bool {
 var wrapperSet = map[string]bool{
 	"env": true, "command": true, "builtin": true, "nohup": true, "time": true,
 	"exec": true, "nice": true, "ionice": true, "setsid": true, "stdbuf": true,
-	"timeout": true,
+	"timeout": true, "npx": true,
 }
 
 // peel strips wrapper programs from s in place, folding env assignments and
@@ -257,6 +257,33 @@ func unwrap(name string, args []string) (rest, env []string, redirs []Redirect, 
 			default:
 				break opts6
 			}
+		}
+	case "npx":
+		// npx runs a package's program, and first installs the package when it is not there (`npx tsc` without TypeScript installs an
+		// unrelated package named tsc). --no, and its older spelling --no-install, forbid the install: the command is the program it names,
+		// the project's own (node_modules/.bin) or nothing. Without one of them, or with an option that names, installs or builds what runs
+		// (-p, --package, -c, --call, -y, --yes), npx is not peeled: it stays the program, as before.
+		noInstall := false
+	opts8:
+		for i < len(args) {
+			a := args[i]
+			switch {
+			case a == "--":
+				i++
+				break opts8
+			case a == "--no" || a == "--no-install" || a == "--yes=false":
+				noInstall = true
+				i++
+			case a == "-q" || a == "--quiet" || a == "--silent":
+				i++
+			case len(a) > 1 && a[0] == '-':
+				return nil, nil, nil, ""
+			default:
+				break opts8
+			}
+		}
+		if !noInstall {
+			return nil, nil, nil, ""
 		}
 	case "timeout":
 	opts7:
