@@ -30,6 +30,19 @@ they do not indicate whether a change has been released.
   restart. New `swarm.restart` events
   record each restart. Prompt bytes: none change.
 
+- The compactor decides what to keep by what the work in progress depends
+  on: its brief states a budget (half of the planner's soft limit for the
+  agent's model), the priorities (the task's criteria, the files being
+  edited, the material the output is built from, unresolved errors) and,
+  for each foldable unit, its size, how much keeping from it keeps, the
+  references of its large results and the reads made stale by a later edit
+  or read of the same file. A patch may name results to `keep`, which stay
+  verbatim where old bulky results were masked by age. The mechanical
+  fallback keeps the same budget, at most half the thread, instead of a
+  quarter of it. Prompt bytes: the compactor's brief changes; it is the
+  appended instruction of a fork request, after every cached block, so no
+  cached prefix changes.
+
 - `sleipnir chat --compact-at N` and `sleipnir web --compact-at N` set the
   share of each model's context window, from 10 to 90 percent, at which a
   session's agents start compacting, over `cache.compact_at_percent` for

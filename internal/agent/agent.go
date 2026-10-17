@@ -607,6 +607,15 @@ func (a *Agent) Stack() kv.Stack {
 func (a *Agent) applyPolicy() kv.ApplyPolicy {
 	pol := a.cfg.ApplyPolicy
 	pol.Caps = a.caps(a.cfg.Provider.Profile())
+	if pol.KeepTarget == 0 {
+		// Half of the soft limit for this model: a compaction leaves the working material of the task in view, and the thread
+		// has room to grow before the next one.
+		window := a.cfg.Model.ContextTokens
+		if a.cfg.Model.WindowGuessed {
+			window = 0 // a placeholder sizes nothing: the token limits apply (kv.State.WindowGuessed)
+		}
+		pol.KeepTarget = a.cfg.Planner.LimitsFor(window).Soft / 2
+	}
 	return pol
 }
 
