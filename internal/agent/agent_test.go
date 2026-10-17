@@ -282,6 +282,50 @@ func TestCompactionStartsAtAShareOfTheModelsWindow(t *testing.T) {
 	}
 }
 
+// The compactor is given a budget of half the agent's soft limit for its model, so a compaction leaves the working material of the
+// task in view instead of the newest few exchanges alone.
+func TestTheCompactorIsGivenHalfTheSoftLimitAsItsBudget(t *testing.T) {
+	pl := tokenPlanner()
+	pl.SoftThreadTokens = 6500
+	pl.MinThreadTokens = 2000
+	var mu sync.Mutex
+	var briefs []string
+	r := newRig(t, rigOpts{planner: pl, mock: mock.Config{Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}}},
+		scriptedWork(22, func(c *mock.Call) string {
+			mu.Lock()
+			briefs = append(briefs, c.LastUser())
+			mu.Unlock()
+			n := 0
+			for _, m := range c.Messages {
+				if m.Role == "assistant" {
+					n++
+				}
+			}
+			return compactorPatch(max(2*n-6, 3))(c)
+		}))
+	if _, err := r.agent.Run(context.Background(), "please build the whole thing"); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) { // a background job may still be asking
+		mu.Lock()
+		n := len(briefs)
+		mu.Unlock()
+		if n > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the compactor was never asked")
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	for _, b := range briefs {
+		if !strings.Contains(b, "keep about 3.2k of it verbatim") {
+			t.Fatalf("a brief without the budget of half the 6.5k soft limit:\n%s", b)
+		}
+	}
+}
+
 func TestBackgroundCompactionShrinksPromptAndCacheRecovers(t *testing.T) {
 	pl := tokenPlanner()
 	pl.SoftThreadTokens = 6500
