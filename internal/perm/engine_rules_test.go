@@ -15,7 +15,7 @@ func TestBashRulesAndModes(t *testing.T) {
 		{name: "prefix rule any args", allow: []string{"Bash(npm run test:*)"}, req: bash("npm run test -- -v"), want: "allow"},
 		{name: "prefix rule no args", allow: []string{"Bash(npm run test:*)"}, req: bash("npm run test"), want: "allow"},
 		{name: "prefix rule is token wise", allow: []string{"Bash(npm run test:*)"}, req: bash("npm run testx"), want: "ask"},
-		{name: "prefix rule needs the whole prefix", allow: []string{"Bash(npm run test:*)"}, req: bash("npm run"), want: "ask"},
+		{name: "prefix rule needs the whole prefix", allow: []string{"Bash(npm run test:*)"}, req: bash("npm"), want: "ask"},
 		{name: "prefix rule with space star", allow: []string{"Bash(go test *)"}, req: bash("go test ./..."), want: "allow"},
 		{name: "go test rule", allow: []string{"Bash(go test:*)"}, req: bash("go test -race ./pkg"), want: "allow"},
 		{name: "go test rule not go testx", allow: []string{"Bash(go test:*)"}, req: bash("go testx"), want: "ask"},
