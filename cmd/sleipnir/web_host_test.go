@@ -950,12 +950,12 @@ func TestWebHostTrustStep(t *testing.T) {
 // The chat's flags are parsed by one parser for the chat, the restarts and the New session dialog: the dialog's request becomes the
 // arguments the dialog's command line shows, and they give the options the request asked for.
 func TestChatFlagsAreSharedWithTheNewSessionDialog(t *testing.T) {
-	eight, five := 8, 5.0
+	eight, five, forty := 8, 5.0, 40
 	req := wire.NewSessionRequest{Cwd: "/p", Model: "mock/mock-1", Mode: "bypass", Swarm: &eight, Isolation: "worktree", Verify: "go test {dirs}",
-		Commit: true, Mailman: true, Budget: &five, Rules: []string{"tests", "Bash(make:*)"}, TrustProject: true, NoMcp: true,
+		Commit: true, Mailman: true, Budget: &five, CompactAt: &forty, Rules: []string{"tests", "Bash(make:*)"}, TrustProject: true, NoMcp: true,
 		RoleModels: map[string]string{"scout": "a/b", "backend": "c/d"}}
 	args := argsFor(req)
-	want := "--cwd /p --model mock/mock-1 --mode bypass --swarm 8 --isolation worktree --verify go test {dirs} --commit --mailman --budget-usd 5 --allow tests --allow Bash(make:*) --trust-project --no-mcp --role-model backend=c/d --role-model scout=a/b"
+	want := "--cwd /p --model mock/mock-1 --mode bypass --swarm 8 --isolation worktree --verify go test {dirs} --commit --mailman --budget-usd 5 --compact-at 40 --allow tests --allow Bash(make:*) --trust-project --no-mcp --role-model backend=c/d --role-model scout=a/b"
 	if got := strings.Join(args, " "); got != want {
 		t.Errorf("argsFor:\n got %s\nwant %s", got, want)
 	}
@@ -965,11 +965,11 @@ func TestChatFlagsAreSharedWithTheNewSessionDialog(t *testing.T) {
 	}
 	o := f.options()
 	if !o.Interactive || o.Cwd != "/p" || o.Model != "mock/mock-1" || string(o.Mode) != "bypass" || !o.Swarm || o.Workers != 8 || o.Isolation != "worktree" ||
-		o.Verify != "go test {dirs}" || !o.Commit || o.Mailman == nil || !*o.Mailman || o.BudgetUSD != 5 || !o.TrustProject || !o.NoMCP ||
+		o.Verify != "go test {dirs}" || !o.Commit || o.Mailman == nil || !*o.Mailman || o.BudgetUSD != 5 || o.CompactAtPercent != 40 || !o.TrustProject || !o.NoMCP ||
 		o.RoleModels["scout"] != "a/b" || len(o.Allow) < 10 {
 		t.Errorf("options %+v", o)
 	}
-	for _, bad := range [][]string{{"--mode", "sideways"}, {"--isolation", "docker"}, {"--swarm", "-1"}, {"--budget-usd", "-2"}, {"positional"}, {"--nope"}, {"--resume", "x", "--continue"}} {
+	for _, bad := range [][]string{{"--mode", "sideways"}, {"--isolation", "docker"}, {"--swarm", "-1"}, {"--budget-usd", "-2"}, {"--compact-at", "95"}, {"positional"}, {"--nope"}, {"--resume", "x", "--continue"}} {
 		if _, err := parseChatFlags(bad); err == nil {
 			t.Errorf("parseChatFlags(%q) accepted it", bad)
 		}

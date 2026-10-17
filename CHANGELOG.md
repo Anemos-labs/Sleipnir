@@ -7,6 +7,16 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `sleipnir chat --compact-at N` and `sleipnir web --compact-at N` set the
+  share of each model's context window, from 10 to 90 percent, at which a
+  session's agents start compacting, over `cache.compact_at_percent` for
+  that session; 0 or no flag leaves the configuration's. The New session
+  dialog of the page has a slider for it (default: the configuration's
+  share, else 25%), sends it only when it differs from that default, and
+  shows it in its command line. A restart (`/restart`, `/swarm`, `/model`,
+  `/new`, and the page's restart family) keeps the share the session was
+  started with. Prompt bytes: none change.
+
 - Compaction starts at a share of each model's context window instead of a
   fixed 20,000-token conversation: by default when the conversation fills
   25% of the window (`cache.compact_at_percent`, 10 to 90), forced halfway

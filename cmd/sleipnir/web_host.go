@@ -878,6 +878,10 @@ type newSessionDefaults struct {
 	// IsolationSet says that --isolation or swarm.isolation named the isolation; without it the isolation is the built-in default,
 	// and the dialog picks worktree for a team in a folder that can have it.
 	IsolationSet bool `json:"isolationSet,omitempty"`
+	// CompactAtDefault is the compaction share a session takes when the request names none, in percent of each model's context
+	// window: cache.compact_at_percent of the configuration, else 25; 0 when the configuration's token limits apply instead. The
+	// dialog sends its compactAt only when it differs (CompactAt, above, is sleipnir web's --compact-at, which it starts from).
+	CompactAtDefault int `json:"compactAtDefault"`
 }
 
 // unlimitedEnv is what the terminal needs to run a team with no spending cap, as a new session of the page does when its budget is
@@ -902,6 +906,11 @@ func (h *webHostImpl) defaults() newSessionDefaults {
 	}
 	d.AutoDocs = h.d.AutoDocs
 	d.ManagerApproves = h.d.ManagerApproves
+	if h.d.CompactAtPercent > 0 {
+		c := h.d.CompactAtPercent
+		d.CompactAt = &c
+	}
+	d.CompactAtDefault = session.CompactAtPercent(config.Cache{})
 	d.IsolationSet = d.Isolation != ""
 	d.MinWorkers = session.MinTeamWorkers
 	if h.d.BudgetUSD > 0 {
@@ -926,6 +935,7 @@ func (h *webHostImpl) defaults() newSessionDefaults {
 			b := cfg.Swarm.BudgetUSD
 			d.Budget = &b
 		}
+		d.CompactAtDefault = session.CompactAtPercent(cfg.Cache)
 		d.Mailman = cfg.Swarm.Mailman
 	}
 	if d.Isolation == "" && h.d.Workers > 0 {
