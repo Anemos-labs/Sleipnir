@@ -392,3 +392,30 @@ func TestAPatternOverTheCapMatchesNothingEvenItsOwnLiteral(t *testing.T) {
 		t.Fatal("a pattern inside the cap with a space in it does not match itself")
 	}
 }
+
+// IsLockfile names the dependency lockfiles at any depth, by exact base name; OutOfScopeForMerge drops them from what is out of
+// scope and keeps every other file.
+func TestOutOfScopeForMergeExemptsLockfiles(t *testing.T) {
+	for _, f := range []string{"Cargo.lock", "crates/a/Cargo.lock", "web/package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml",
+		"yarn.lock", "bun.lockb", "go.sum", "tools/go.sum", "poetry.lock", "uv.lock", "Gemfile.lock", "composer.lock"} {
+		if !IsLockfile(f) {
+			t.Errorf("IsLockfile(%q) = false", f)
+		}
+	}
+	for _, f := range []string{"Cargo.toml", "package.json", "go.mod", "cargo.lock", "Cargo.lock.bak", "docs/Cargo.lock.md", "lock", ""} {
+		if IsLockfile(f) {
+			t.Errorf("IsLockfile(%q) = true", f)
+		}
+	}
+	scope := []string{"docs/**"}
+	if got := OutOfScopeForMerge([]string{"docs/a.md", "Cargo.lock", "web/yarn.lock"}, scope); got != nil {
+		t.Errorf("only lockfiles outside the scope: %v", got)
+	}
+	got := OutOfScopeForMerge([]string{"Cargo.toml", "Cargo.lock", "docs/a.md", "src/lib.rs"}, scope)
+	if strings.Join(got, ",") != "Cargo.toml,src/lib.rs" {
+		t.Errorf("OutOfScopeForMerge = %v", got)
+	}
+	if OutOfScopeForMerge([]string{"src/lib.rs"}, nil) != nil {
+		t.Error("an empty scope leaves nothing out of scope")
+	}
+}

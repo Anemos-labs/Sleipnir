@@ -564,6 +564,38 @@ func OutOfScope(files, scope []string) []string {
 	return out
 }
 
+// regeneratedLockfiles are the base names of the dependency lockfiles that a build tool rewrites on its own when it runs
+// (cargo build writes Cargo.lock, npm install package-lock.json, go mod tidy go.sum), whatever task the run was for.
+var regeneratedLockfiles = map[string]bool{
+	"Cargo.lock": true, "package-lock.json": true, "npm-shrinkwrap.json": true, "pnpm-lock.yaml": true, "yarn.lock": true,
+	"bun.lockb": true, "go.sum": true, "poetry.lock": true, "uv.lock": true, "Gemfile.lock": true, "composer.lock": true,
+}
+
+// IsLockfile reports whether file (a repository-relative path) is a dependency lockfile that a build tool regenerates, at any
+// depth: Cargo.lock, package-lock.json, npm-shrinkwrap.json, pnpm-lock.yaml, yarn.lock, bun.lockb, go.sum, poetry.lock,
+// uv.lock, Gemfile.lock or composer.lock. The name is compared exactly, case included.
+func IsLockfile(file string) bool {
+	return regeneratedLockfiles[path.Base(filepath.ToSlash(file))]
+}
+
+// OutOfScopeForMerge is OutOfScope without the dependency lockfiles (IsLockfile): a task that only edits documentation still
+// regenerates Cargo.lock when it runs cargo, and that change alone does not take the submission outside its scope. The lockfile
+// is still merged like any other file, so a change that conflicts with the integration branch still comes back as a conflict,
+// and a refusal of the path (a role that owns it) is judged separately.
+func OutOfScopeForMerge(files, scope []string) []string {
+	out := OutOfScope(files, scope)
+	kept := out[:0]
+	for _, f := range out {
+		if !IsLockfile(f) {
+			kept = append(kept, f)
+		}
+	}
+	if len(kept) == 0 {
+		return nil
+	}
+	return kept
+}
+
 // Assert reports the files t changed (relative to its base, committed or not,
 // renames counted at both ends) that lie outside scope. It is what the harness
 // runs when an agent says it is done, so that "stay inside your scope" is checked

@@ -892,7 +892,11 @@ checkout by a merge, so a rule that guarded only the checkout would guard nothin
 
 **Leases become advisory.** Nobody can block anybody, so the writer cap and the scope-overlap refusal are lifted. Two writers
 touching the same repository-relative path raise the usual alert, which names the agents and never the file, and warns of a
-merge conflict. A scope still says which files a task may touch, and the merge queue enforces it on the commit.
+merge conflict. A scope still says which files a task may touch, and the merge queue enforces it on the commit. A dependency
+lockfile that a build tool regenerates (`Cargo.lock`, `package-lock.json`, `npm-shrinkwrap.json`, `pnpm-lock.yaml`,
+`yarn.lock`, `bun.lockb`, `go.sum`, `poetry.lock`, `uv.lock`, `Gemfile.lock`, `composer.lock`, at any depth) does not count
+against the scope: a documentation task that ran `cargo` still merges with the `Cargo.lock` the run rewrote. The lockfile is
+merged like any other file, so a conflicting change comes back as a conflict, and a path another role owns is still refused.
 
 **The manager is told** in its private notes (never a shared layer) that writers work in private worktrees, that the checkout does
 not show their work until the run ends, that the harness then applies the result (never something to ask the user to merge), and that
