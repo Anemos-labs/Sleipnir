@@ -23,6 +23,7 @@ type chatFlagSet struct {
 	swarmN                   *int
 	trust, verbose, noMCP    *bool
 	budget                   *float64
+	compactAt                *int
 	isolation                *string
 	commit                   *bool
 	mailman, autoDocs        func() *bool
@@ -45,6 +46,7 @@ func registerChatFlags(fs *flag.FlagSet) *chatFlagSet {
 	f.trust = fs.Bool("trust-project", false, trustProjectHelp)
 	f.verbose = fs.Bool("verbose", false, "print notices and tool errors")
 	f.budget = fs.Float64("budget-usd", 0, "stop when spend reaches this many US dollars")
+	f.compactAt = fs.Int("compact-at", 0, compactAtHelp)
 	f.noMCP = fs.Bool("no-mcp", false, "start no MCP tool servers")
 	f.verify = fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge). {dirs} in it stands for the directories the task may touch (./... without a scope), so that each task is verified on its own work: 'go test {dirs}'")
 	f.isolation, f.commit = isolationFlags(fs)
@@ -82,6 +84,8 @@ type chatFlags struct {
 	allow           []string // as typed: the name tests is not expanded
 	plain           bool
 	noAnim          bool
+	// compactAt is --compact-at: a percentage of each model's context window, 0 for the configuration's.
+	compactAt int
 }
 
 // values reads what was parsed into a chatFlags. fs is the set the flags were registered on.
@@ -92,7 +96,7 @@ func (f *chatFlagSet) values(fs *flag.FlagSet) (chatFlags, error) {
 	}
 	out := chatFlags{autoFix: *f.autoFix, autoMerge: *f.autoMerge,
 		model: *f.model, cwd: *f.cwd, mode: *f.mode, verify: *f.verify, isolation: *f.isolation,
-		workers: *f.swarmN, trust: *f.trust, verbose: *f.verbose, noMCP: *f.noMCP, budget: *f.budget, commit: *f.commit,
+		workers: *f.swarmN, trust: *f.trust, verbose: *f.verbose, noMCP: *f.noMCP, budget: *f.budget, compactAt: *f.compactAt, commit: *f.commit,
 		mailman: f.mailman(), autoDocs: f.autoDocs(), managerApproves: f.managerApproves(), resume: spec, allow: append([]string(nil), (*f.allow)...), plain: *f.plain, noAnim: *f.noAnim,
 	}
 	if out.roleModels, out.team, err = f.roleModels.split(); err != nil {
@@ -115,7 +119,8 @@ func (f *chatFlagSet) values(fs *flag.FlagSet) (chatFlags, error) {
 
 // parseChatFlags parses chat arguments with the same defaults, validation and messages as `sleipnir chat` (ContinueOnError: an
 // error is returned, nothing is printed and nothing exits). It also refuses what `sleipnir chat` would refuse only when the session
-// starts (an unknown mode or isolation, a negative budget or team), and positional arguments, which the chat does not take.
+// starts (an unknown mode or isolation, a negative budget or team, a compaction share outside 10 to 90), and positional arguments,
+// which the chat does not take.
 func parseChatFlags(args []string) (chatFlags, error) {
 	fs := flag.NewFlagSet("chat", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -147,6 +152,9 @@ func parseChatFlags(args []string) (chatFlags, error) {
 	if f.budget < 0 || f.budget != f.budget {
 		return chatFlags{}, errors.New("--budget-usd must not be negative")
 	}
+	if err := session.CheckCompactAt(f.compactAt); err != nil {
+		return chatFlags{}, err
+	}
 	if f.workers < 0 {
 		return chatFlags{}, errors.New("--swarm must not be negative")
 	}
@@ -166,12 +174,15 @@ func (f chatFlags) options() session.Options {
 	}
 	return chatOptions(session.Options{AutoFix: f.autoFix, AutoMerge: f.autoMerge,
 		Cwd: f.cwd, Model: f.model, Mode: perm.Mode(f.mode), Swarm: team, Workers: workers,
-		TrustProject: f.trust, BudgetUSD: f.budget, Resume: f.resume, NoMCP: f.noMCP,
+		TrustProject: f.trust, BudgetUSD: f.budget, CompactAtPercent: f.compactAt, Resume: f.resume, NoMCP: f.noMCP,
 		Verify: f.verify, Isolation: f.isolation, Commit: f.commit, Mailman: f.mailman, AutoDocs: f.autoDocs, ManagerApproves: f.managerApproves,
 		RoleModels: rm,
 		Team:       append([]session.TeamSlot(nil), f.team...), DefaultTeam: true, Allow: expandAllow(f.allow),
 	})
 }
+
+// compactAtHelp is the help of --compact-at of `sleipnir chat`.
+const compactAtHelp = "start compacting an agent's conversation when it fills this percentage of its model's context window, from 10 to 90: higher keeps more of what it read in view and costs more per request (default: config cache.compact_at_percent, else 25)"
 
 // newSessionRequest is the body of POST /api/sessions: the New session dialog's fields (wire.NewSessionRequest), the session it
 // resumes with those settings (Resume), and the page's idempotency key.
@@ -182,8 +193,8 @@ type newSessionRequest struct {
 }
 
 // argsFor renders the New session dialog's request as chat arguments, in the order the dialog's command line shows them: --cwd,
-// --model, --mode, --swarm, --isolation, --verify, --commit, --mailman, --auto-docs=false, --manager-approves=false, --budget-usd, --allow, --trust-project,
-// --no-mcp, then --role-model: the role models in the order of the roles' names, then the team's slots in team order. The name, the first goal and the effort are not chat flags: the host applies them
+// --model, --mode, --swarm, --isolation, --verify, --commit, --mailman, --auto-docs=false, --manager-approves=false, --budget-usd, --compact-at,
+// --allow, --trust-project, --no-mcp, then --role-model: the role models in the order of the roles' names, then the team's slots in team order. The name, the first goal and the effort are not chat flags: the host applies them
 // once the session has started.
 func argsFor(req wire.NewSessionRequest) []string {
 	var a []string
@@ -219,6 +230,9 @@ func argsFor(req wire.NewSessionRequest) []string {
 	}
 	if req.Budget != nil && *req.Budget != 0 {
 		a = append(a, "--budget-usd", strconv.FormatFloat(*req.Budget, 'f', -1, 64))
+	}
+	if req.CompactAt != nil && *req.CompactAt != 0 {
+		a = append(a, "--compact-at", strconv.Itoa(*req.CompactAt))
 	}
 	for _, r := range req.Rules {
 		if strings.TrimSpace(r) != "" {

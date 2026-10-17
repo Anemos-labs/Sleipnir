@@ -47,3 +47,44 @@ func TestTheCompactionShareComesFromTheCacheSettings(t *testing.T) {
 		}
 	}
 }
+
+// --compact-at (Options.CompactAtPercent) is the session's share over the configuration's, and over its token limits for a model whose
+// window is known; 0 leaves the configuration in charge. CompactAtPercent says, in percent, the share the settings start compaction at,
+// and 0 where token limits apply instead.
+func TestTheSessionsCompactionShareWinsOverTheConfigurations(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		cache   config.Cache
+		percent int
+		share   float64
+	}{
+		{"nothing set", config.Cache{}, 0, 0.25},
+		{"the flag alone", config.Cache{}, 60, 0.60},
+		{"the flag over the configuration's share", config.Cache{CompactAtPercent: 30}, 60, 0.60},
+		{"the flag over the configuration's token limits", config.Cache{ThreadSoftLimitTokens: 30_000}, 40, 0.40},
+		{"no flag: the configuration's share", config.Cache{CompactAtPercent: 30}, 0, 0.30},
+		{"no flag: the configuration's token limits", config.Cache{CompactThresholdTokens: 90_000}, 0, -1},
+	} {
+		cache := cacheSettings(c.cache, Options{CompactAtPercent: c.percent})
+		if got := plannerFor(cache).CompactAt; got != c.share {
+			t.Errorf("%s: share %v, want %v", c.name, got, c.share)
+		}
+		want := int(c.share * 100)
+		if c.share < 0 {
+			want = 0
+		}
+		if got := CompactAtPercent(cache); got != want {
+			t.Errorf("%s: CompactAtPercent %d, want %d", c.name, got, want)
+		}
+	}
+	for _, n := range []int{0, 10, 25, 90} {
+		if err := CheckCompactAt(n); err != nil {
+			t.Errorf("%d: %v", n, err)
+		}
+	}
+	for _, n := range []int{-1, 5, 9, 91, 100} {
+		if err := CheckCompactAt(n); err == nil {
+			t.Errorf("%d was taken for a share", n)
+		}
+	}
+}

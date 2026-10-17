@@ -114,7 +114,11 @@ file it named, with their count and size, and each path that could not be read; 
 screen and repeats the request with the confirmation of exactly that list. A project that could not be read whole is trusted for
 that session only. A team's isolation that neither the person nor `sleipnir web --isolation` nor `swarm.isolation` chose follows the folder:
 `worktree` in the root of a git repository with a commit, or in a folder that git init will make one, else `none`. The team options
-include `manager answers routine questions` (`--manager-approves`, on by default; only an off is sent). Once the server has made
+include `manager answers routine questions` (`--manager-approves`, on by default; only an off is sent). `compaction at` (`--compact-at`)
+is a slider from 10 to 90 percent of each model's context window, with what its value means beside it: it starts at
+`sleipnir web --compact-at`, else at the share a session takes without the flag (`cache.compact_at_percent`, else 25%, or the
+configuration's token limits), and is sent, and shown in the command line, only when it differs from that share; `default` takes
+it back. Once the server has made
 the session, its tab is in front at once, before its first state arrives; a goal, a line or a command sent to it while it starts is
 sent again, after 0.5, 1, 2 and 4 seconds and then every 5, until it has started (for at most two minutes), and the Workspace waits
 for it in the same way without a message. When the server does not start the session, the dialog opens again as it was, with the reason under its

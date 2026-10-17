@@ -168,7 +168,7 @@ func (s *Session) RoleModels() []RoleModel {
 }
 
 // StartFlags are the `sleipnir chat` flags that reproduce this session's shape (a team and its size, the verifier, isolation, tool servers, trust,
-// the budget, the roles named by flags), for a restart that changes one thing and keeps the rest.
+// the budget, the compaction share, the roles named by flags), for a restart that changes one thing and keeps the rest.
 func (s *Session) StartFlags() []string {
 	o := s.opts
 	var f []string
@@ -207,6 +207,9 @@ func (s *Session) StartFlags() []string {
 	}
 	if o.BudgetUSD > 0 {
 		f = append(f, "--budget-usd", strconv.FormatFloat(o.BudgetUSD, 'f', -1, 64))
+	}
+	if o.CompactAtPercent > 0 {
+		f = append(f, "--compact-at", strconv.Itoa(o.CompactAtPercent))
 	}
 	roles := make([]string, 0, len(o.RoleModels))
 	for role := range o.RoleModels {
