@@ -109,3 +109,38 @@ func TestReadOnlyRolesRunTheStaticChecks(t *testing.T) {
 		}
 	}
 }
+
+// A reviewer runs a JavaScript project's tests the way its README says (npm test -- --run for vitest, pnpm test, yarn test) and a
+// Rust project's lints (cargo clippy), and reads text and JSON with awk and jq, which the read-only list judges on their own.
+// cargo clippy --fix rewrites the sources and stays refused, as eslint --fix does.
+func TestReadOnlyRolesRunTheProjectsTestsAndLints(t *testing.T) {
+	root := t.TempDir()
+	for _, mode := range []Mode{ModeAcceptEdits, ModeBypass} {
+		e, err := NewEngine(Config{Mode: mode, Root: root, Home: t.TempDir(),
+			Roles: map[string]RoleProfile{"reviewer": {Mode: ModePlan, Allow: ReadOnlyAllow}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		check := func(cmd string) Decision {
+			return e.Check(context.Background(), Request{Agent: "rv-1", Role: "reviewer", Tool: "bash", Command: cmd, Cwd: root})
+		}
+		for _, cmd := range []string{
+			"npm test -- --run", "npm test -- --run 2>&1 | tail -20", "pnpm test", "pnpm test -- --run", "yarn test --watch=false",
+			"cargo clippy", "cargo clippy --all-targets -- -D warnings", "jq -r .scripts package.json", "awk -F: '{print $1}' x.txt",
+			"git config --get remote.origin.url", "ps aux | grep -v grep", "npm ls --depth=0",
+		} {
+			if d := check(cmd); !d.Allow {
+				t.Errorf("%s: a reviewer may not run %q: %s", mode, cmd, d.Reason)
+			}
+		}
+		for _, cmd := range []string{
+			"cargo clippy --fix", "cargo clippy --fix --allow-dirty", "cargo clippy --manifest-path /etc/x/Cargo.toml",
+			"pnpm install", "yarn add left-pad", "npm test && npm install", "awk '{print > \"x\"}' x.txt", "jq -n env",
+			"git config user.name x",
+		} {
+			if d := check(cmd); d.Allow {
+				t.Errorf("%s: a reviewer may run %q", mode, cmd)
+			}
+		}
+	}
+}
