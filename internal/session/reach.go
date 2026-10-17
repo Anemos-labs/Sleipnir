@@ -10,12 +10,13 @@ import (
 // checkReach asks whether the main model's endpoint can be reached at all, once, when an interactive session starts, and says
 // so with a notice when it cannot: without it a session reads as ready until its first request has spent its retries on an
 // endpoint the network never let it talk to. It runs beside the start and never holds it up; a session closed by the time
-// the answer comes says nothing.
-func (s *Session) checkReach() {
-	if s.Provider == nil {
+// the answer comes says nothing. p is the provider the session started with, taken before the check runs: a model switch may
+// replace s.Provider meanwhile.
+func (s *Session) checkReach(p provider.Provider) {
+	if p == nil {
 		return
 	}
-	base := s.Provider.Profile().BaseURL
+	base := p.Profile().BaseURL
 	e := provider.Reach(context.Background(), nil, base)
 	if e == nil {
 		return

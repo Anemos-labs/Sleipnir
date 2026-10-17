@@ -413,6 +413,9 @@ func TestAFailedRequestAndAPausedGoalAreStops(t *testing.T) {
 		goal("the turn failed"), goal("the turn failed"), // the same pause written twice is one
 		goal(""), goal("you paused it"), // a pause a person asked for is not friction
 		state("w1", "failed"),
+		// a restarted run reuses the id: its own failure, with no failed request of its own, is counted
+		ev{"mgr", events.TypeModelRequest, map[string]any{"req": "mgr.2"}},
+		state("mgr", "failed"),
 	)
 	rep, err := Mine([]string{dir}, Options{})
 	if err != nil {
@@ -432,8 +435,8 @@ func TestAFailedRequestAndAPausedGoalAreStops(t *testing.T) {
 	if f := find(rep, ReqFailed, ""); f == nil || f.Wasted != 1 {
 		t.Errorf("the failed request is not counted as the request it wasted: %+v", f)
 	}
-	if f := find(rep, AgentFailed, "mgr"); f != nil {
-		t.Errorf("the manager's failed state is counted besides the request that failed it: %+v", f)
+	if f := find(rep, AgentFailed, "mgr"); f == nil || f.Count != 1 {
+		t.Errorf("the manager's failures: %+v, want the restarted run's alone (the first is its failed request's)", f)
 	}
 	if f := find(rep, GoalPaused, "you paused it"); f != nil {
 		t.Errorf("a pause a person asked for is friction: %+v", f)

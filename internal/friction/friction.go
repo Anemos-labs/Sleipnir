@@ -526,10 +526,15 @@ func mineLog(path, session string, rep *Report, add func(session, category, key 
 				failedReq[e.Agent] = true
 				add(session, ReqFailed, failureKey(d.Error), S3, ex(d.Error), d.Req)
 			}
+		case events.TypeModelRequest:
+			failedReq[e.Agent] = false // a new request (a restarted run reuses the agent's id): its outcome is its own
 		case events.TypeAgentState:
 			var d struct{ State string }
-			if json.Unmarshal(e.Data, &d) == nil && d.State == "failed" && !failedReq[e.Agent] {
-				add(session, AgentFailed, firstNonEmpty(e.Agent, "?"), S3, ex(e.Agent+" failed"), req)
+			if json.Unmarshal(e.Data, &d) == nil && d.State == "failed" {
+				if !failedReq[e.Agent] {
+					add(session, AgentFailed, firstNonEmpty(e.Agent, "?"), S3, ex(e.Agent+" failed"), req)
+				}
+				failedReq[e.Agent] = false // the failed request explained this failure, not the next one
 			}
 		case typeGoalState:
 			var d struct{ Goal *struct{ Paused string } }
