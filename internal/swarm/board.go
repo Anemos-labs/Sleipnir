@@ -1069,6 +1069,36 @@ func (b *Board) Requeue(agent, id string, rev uint64, reason string, countAttemp
 	return out, applied
 }
 
+// retryInPlace counts a failed attempt at a task its worker keeps: the harness restarts that worker on it (restart.go). It
+// applies only while agent owns the task in doing at rev (0: any). The task stays doing and the agent's, with a new rev (a late
+// result of the failed run is stale), the stop as its line, and the attempt counted as Requeue counts one, which also resets its
+// verification budget. It never closes the task: the caller restarts a worker only while maxAttempts leaves an attempt after this
+// one. It reports whether it applied.
+func (b *Board) retryInPlace(agent, id string, rev uint64, reason string) (Task, bool) {
+	var out Task
+	applied := false
+	_ = b.mutate("harness", "requeue", func(d *draft) error {
+		i := taskIdx(d.Snapshot, id)
+		if i < 0 {
+			return errNoChange
+		}
+		t := d.Tasks[i]
+		if t.Owner != agent || t.Status != StatusDoing || (rev != 0 && t.Rev != rev) {
+			return errNoChange
+		}
+		t.Attempts++
+		t.VerificationFailures = 0
+		t.Rev, t.Line = d.Version, cleanText(reason, maxLineRunes)
+		t.Result, t.Evidence = "", ""
+		if err := d.put(i, t); err != nil {
+			return err
+		}
+		out, applied = t, true
+		return nil
+	})
+	return out, applied
+}
+
 // requeuedTask releases an assignment or marks its final failure, closed as kind.
 // Only a counted attempt resets its verification budget; interruption preserves
 // that budget. The result and evidence of an earlier submission belong to the

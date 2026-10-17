@@ -122,7 +122,7 @@ func (s *Swarm) unfinishedWork() unfinishedWork {
 			continue
 		}
 		m.mu.Lock()
-		if m.life == lifeRunning {
+		if m.life == lifeRunning || m.restart != nil { // a worker the harness is about to restart is at work (restart.go)
 			running[m.id] = true
 		}
 		m.mu.Unlock()

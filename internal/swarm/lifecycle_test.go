@@ -712,10 +712,13 @@ func TestReuseDuringFinishRunIsRefusedNotOverwritten(t *testing.T) {
 }
 
 // A panic anywhere on a worker's run path (here the provider adapter) is contained:
-// the process survives, the worker is marked failed, its task goes back to todo and
-// the manager is told in one line.
+// the process survives, and the manager is told in one line each time. The first crash
+// counts an attempt and the harness restarts the worker on its task (restart.go); the
+// task keeps its last attempt for the manager, so the second crash marks the worker
+// failed and puts its task back to todo.
 func TestWorkerPanicIsContained(t *testing.T) {
-	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply {
+	clock := newFakeClock()
+	r := newClockRig(t, Config{MaxWriters: 4}, clock, func(ctx context.Context, c *rvCall) rvReply {
 		if c.Role == "backend" {
 			panic("adapter bug: nil pointer in worker request")
 		}
@@ -726,14 +729,22 @@ func TestWorkerPanicIsContained(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	rvWait(t, "the crashed worker to settle and be restarted", func() bool {
+		return r.idle(id) && mailSent(r, "restarts it on its own") == 1
+	})
+	if tk, _ := r.sw.Board.Snapshot().Task("T1"); tk.Status != StatusDoing || tk.Owner != id || tk.Attempts != 1 {
+		t.Fatalf("T1 = %s/%s attempts=%d after the first crash, want doing, %s's, 1 attempt", tk.Status, tk.Owner, tk.Attempts, id)
+	}
+	clock.Advance(restartBackoff)
+	r.sw.superviseOnce(clock.Now())
 	rvWait(t, "the crashed worker to settle and notify the manager", func() bool {
 		a, _ := r.sw.Board.Snapshot().Agent(id)
 		// A worker becomes available before its failure notice is published.
-		return a.State == "failed" && r.idle(id) && mailSent(r, "crashed") > 0
+		return a.State == "failed" && r.idle(id) && mailSent(r, "returned to todo") > 0
 	})
 	tk, _ := r.sw.Board.Snapshot().Task("T1")
-	if tk.Status != StatusTodo || tk.Owner != "" || tk.Attempts != 1 {
-		t.Fatalf("T1 = %s/%s attempts=%d after the crash, want todo, unowned, 1 attempt", tk.Status, tk.Owner, tk.Attempts)
+	if tk.Status != StatusTodo || tk.Owner != "" || tk.Attempts != 2 {
+		t.Fatalf("T1 = %s/%s attempts=%d after the second crash, want todo, unowned, 2 attempts", tk.Status, tk.Owner, tk.Attempts)
 	}
 	if h := r.sw.Leases.HeldBy(id); len(h) != 0 {
 		t.Fatalf("leases still held: %v", h)

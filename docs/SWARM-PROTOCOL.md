@@ -120,7 +120,10 @@ or a changed branch, and rechecks the integration snapshot after authorization.
 Workers cannot invoke it. Push and PR commands remain direct manager operations.
 
 **Repair.** Configured teams do not expire idle contexts or exhaust a task's total
-repair attempts. Failed assignments return to the same worker with bounded backoff.
+repair attempts. Failed assignments return to the same worker with bounded backoff:
+first as automatic restarts with the work kept in place (section 10), then, past their
+bound, through the board (the task waits in todo and the repair pass restarts its last
+owner on it at most every 30 seconds).
 `task revise` changes the existing title, description, scope or dependencies and
 invalidates its old submission; dependency cycles are refused and accepted dependents
 are reopened. A revised pool child returns to the board; its owner's run is stopped,
@@ -257,6 +260,7 @@ Statuses: `todo -> doing -> review -> done`, with `blocked` and `failed` as side
   | fail (with a reason) | todo, doing, blocked, review | failed |
   | reopen | failed | todo (the closure is cleared) |
   | requeue (the harness) | doing, blocked | todo, or failed (`exhausted`, or `verifier` after the gate's retries) after `MaxAttempts` |
+  | retry in place (the harness, an automatic restart, section 10) | doing, whose worker's run failed | doing (same owner, new `rev`, the attempt counted; `board.op` `requeue`) |
 
   A task that goes back to `todo` (requeue, revise, reopen) leaves the result and evidence of the earlier submission
   off the board; the event log keeps them. Only a failed verification gate keeps its own evidence, which the next
@@ -580,6 +584,7 @@ Limits, all enforced in code:
 | per-agent budget (USD) | unlimited | `Config.AgentBudgetUSD`, for library users; no configuration key sets it |
 | steps per assignment | windows of 60-150 by role, then another while the worker made at least 3 new edits in the last; without them, a few steps to wrap up (hand the task over, or in a persistent pool record where it stands with `task update`, or mark it done) and a stop. The manager and the mailman keep a fixed ceiling, as does every role with `FixedSteps` (RL rollouts, `sleipnir run --max-steps`) | runaway guard that does not stop a worker in the middle of its work; the repetition guard and the budgets end a run that has gone wrong |
 | attempts per task | unlimited for configured pools; 3 for embedded callers | configured pools repair the existing task until accepted, cancelled or budget-limited |
+| automatic restarts of a worker whose run failed | 2 in a row on the same work, after 5 s and 10 s; without persistent pools, only while the task keeps an attempt for the manager | a failed run does not leave its worker idle on its work until the manager notices (section 10) |
 | idle retire | disabled for configured pools; 15 min for embedded callers | persistent members retain their conversations; embedded callers may reclaim idle slots |
 
 ## 7. Workspace safety
@@ -669,16 +674,56 @@ an instruction.
 
 | Failure | Behaviour |
 |---|---|
-| worker stops (crash, panic, provider error, step or budget limit) | its task returns to `todo` (or `failed` after 3 attempts), leases are released, the manager is told in one line; a panic anywhere on the worker's goroutines is contained (the process, the manager and the other workers carry on) |
-| cancelled from outside (Ctrl-C, shutdown, the manager cancelled) | workers are stopped with it; their tasks return to `todo`, no attempt is counted, no notice is sent |
-| stuck worker | watchdog: no model or tool event for 10 minutes -> alert; at 20 minutes the run is cancelled and its task requeued (attempt counted); a run that ignores the cancel for 30 more seconds is abandoned: the worker is retired and its goroutine left to finish alone. A worker that is waiting for the person to answer a question (an approval prompt, `Swarm.Asking`) is stopped the same way, but the alert and the manager's line name the question, because nobody is at fault in the worker |
-| provider outage / 429 / 5xx | retry with backoff inside the request: six attempts, and then, for an endpoint that answered with a status of 500 or more or with 429, more of them every half minute until five minutes have passed since the request first failed (a worker that said nothing for ten is not stuck: each notice counts as a sign of life); the governor slows the whole swarm. Only then does the run end, and the task goes back to the board with an attempt counted |
+| worker stops (crash, panic, provider error, step limit, repetition guard) | the attempt is counted and leases are released; a worker that holds work is restarted on it by the harness (automatic restarts, below), and otherwise, or past the restarts' bound, its task returns to `todo` (or `failed` after 3 attempts); the manager is told in one line either way; a panic anywhere on the worker's goroutines is contained (the process, the manager and the other workers carry on) |
+| worker spends its own budget (`Config.AgentBudgetUSD`) | as a stop above, but never restarted automatically |
+| cancelled from outside (Ctrl-C, shutdown, the manager cancelled) | workers are stopped with it; their tasks return to `todo`, no attempt is counted, no notice is sent; an automatic restart that was waiting is called off |
+| stuck worker | watchdog: no model or tool event for 10 minutes -> alert; at 20 minutes the run is cancelled (attempt counted) and settled as a stop, so a worker that holds work is restarted on it; a run that ignores the cancel for 30 more seconds is abandoned: the worker is retired and its goroutine left to finish alone. A worker that is waiting for the person to answer a question (an approval prompt, `Swarm.Asking`) is stopped the same way, but the alert and the manager's line name the question, because nobody is at fault in the worker, and it is not restarted (it would ask again) |
+| provider outage / 429 / 5xx | retry with backoff inside the request: six attempts, and then, for an endpoint that answered with a status of 500 or more or with 429, more of them every half minute until five minutes have passed since the request first failed (a worker that said nothing for ten is not stuck: each notice counts as a sign of life); the governor slows the whole swarm. Only then does the run end, as a stop with an attempt counted (first row) |
 | swarm budget spent | no request is admitted, running workers are stopped, the manager is told once |
 | manager finishes | a batch run holds it until the board is settled (section 4); when the bound is reached the run ends and names what was left. In an interactive session workers legitimately outlive the turn and finished work wakes the manager (section 13) |
 | shutdown | agents are cancelled and awaited for at most 10 s; nothing new starts afterwards |
 | verifier flaky or broken | infra errors (could not run, timed out) are reported as such and never fail a task nor count as a pass; `--verify-repeats N` (on `rl tasks check` and `rl rollout`) requires unanimity |
 | forged or hostile mail | defused and framed as data; never grants anything |
 | a team that stops making progress | the stall sweep below names it and tells the agent that can act |
+
+### Automatic restarts
+
+A worker whose run fails while it holds work is restarted on that work by the harness, so it is neither left idle with its
+task nor shown as failed while nothing would change that until the manager acts. The work it holds is a task in `doing`,
+the pool task it leads, or, when it holds no task, its place in an open pool (a member that waits for its pool's next phase).
+
+* **Which stops.** A crash, a provider error, the step limit, the repetition guard, responses cut off by the output limit,
+  and the watchdog's stop of a worker that showed no sign of life. Never a run that was interrupted (a shutdown, the person,
+  the manager's revise or `fail`), a stop of the harness that is no failure (a handover, a merge that could not run), a run that
+  spent its own budget or the swarm's, a watchdog stop of a worker that was waiting for the person's answer (a restart would
+  ask again), a step-limit stop under `FixedSteps` (the limit is a ceiling on the assignment there), a worker that is to be
+  retired, or one that holds nothing.
+* **The work stays the worker's.** A task it holds stays in `doing` with the same owner and a new `rev`, its failed attempt
+  counted in place (the `retry in place` transition, section 3); nobody else can claim it in the meantime. A pool task it
+  leads is unchanged.
+* **Bounded.** At most 2 restarts in a row of one worker on the same work, the first after 5 seconds and the second after
+  10 (the supervisor starts a restart on its first pass after that time). A run that ends on its own starts a new row. Without
+  persistent pools a task is restarted on only while the restarted run, if it failed too, would leave the task an attempt for
+  the manager to give to another worker (`MaxAttempts`; with the default of 3, one restart). Past the bound the stop is settled
+  as before: the task returns to `todo` (in a persistent pool the repair pass restarts its last owner on it), a pool leader's
+  stop asks the manager to resume the pool, and the worker shows as failed.
+* **What each side is told.** The manager gets one line per stop: that the worker stopped, why, that the harness restarts it
+  (restart n of 2) and what it keeps, so that it does not reassign the work or start another worker for it; past the bound,
+  the usual line ends by saying how many restarts were made. The restarted run starts with harness mail that says why the
+  last run stopped, what the worker still holds, and what to do differently: after the step limit, that the run has a fresh
+  step allowance and should make the next concrete change or record where the task stands; after the repetition guard, to
+  take a different approach; after the watchdog, not to run a hanging command the same way again.
+* **What the interfaces show.** The run's `agent.end` says it failed (the feed records the stop); the worker's state that
+  follows is `idle`, line `restarting: <why>`, until the restarted run starts, so neither interface shows it as stuck. A worker
+  whose failed run is not restarted keeps the `failed` state. The manager's stop guard and its `wait` count a worker whose
+  restart is waiting as one at work.
+* **Called off.** An interrupt of the team or a spent swarm budget calls off the restarts that wait: the tasks they kept go
+  back to `todo` (their attempt was counted when the run failed) and the worker shows as failed. A restart whose work has left
+  the worker meanwhile (reassigned, handed over, revised, failed, or a pool that closed) starts nothing, and the worker shows
+  as `idle`: what it held is in other hands or closed, so it is free.
+
+`swarm.restart` events record each restart: `scheduled` (n, max, tasks, pool, why), `start`, `dropped` (reason) and
+`exhausted` (the bound stopped one more).
 
 ### Named stalls
 
@@ -717,7 +762,8 @@ Every operation is an event: `agent.spawn` and `agent.assign` (a reused worker),
 `agent.end`, `agent.panic`, `board.op`, `mail.send`/`mail.deliver`/`mail.drop`, `lease` (acquire, conflict, scope,
 owner, overlap, release), `governor` (rate-limit episodes), `swarm.budget`, `swarm.hold`/`swarm.unfinished` (the manager's stop guard),
 `swarm.wake`/`swarm.wake.paused` (waking an idle manager), `swarm.wake_limit` (peer mail stopped waking a worker),
-`swarm.stall` (a named stall raised or cleared, section 10), `swarm.handover` (a handover's `begin`, `done` or `abort`,
+`swarm.stall` (a named stall raised or cleared, section 10), `swarm.restart` (an automatic restart of a worker whose run
+failed: `scheduled`, `start`, `dropped`, `exhausted`; section 10), `swarm.handover` (a handover's `begin`, `done` or `abort`,
 section 6), `mail.route`/`mail.batch`/`mail.digest`/`mail.direct`/`mail.mailman` (mailman
 mode, section 5), `workspace.create`/`remove`/`prune`/`commit`/`reset` and
 `merge.queued`/`merged`/`conflict`/`verify_failed`/`rolled_back`/`rejected`/`fast_forward` (worktree isolation; the

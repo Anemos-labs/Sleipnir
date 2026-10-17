@@ -180,7 +180,7 @@ func (r *richScript) manager(c *mock.Call, k int) mock.Reply {
 			call("s1", "spawn", map[string]any{"role": "scout", "task": "T1"}),
 			call("s2", "spawn", map[string]any{"role": "scout", "task": "T2"}),
 			call("s3", "spawn", map[string]any{"role": "docs", "task": "T3"}),
-			call("w", "wait", map[string]any{"until": []string{"T1", "T3"}, "timeout_sec": 120}),
+			call("w", "wait", map[string]any{"until": []string{"T1", "T2", "T3"}, "timeout_sec": 120}),
 		}}
 	}
 	settled := strings.Contains(toolResults(c), "all awaited tasks settled")
@@ -192,8 +192,8 @@ func (r *richScript) manager(c *mock.Call, k int) mock.Reply {
 	r.mu.Unlock()
 	switch {
 	case settled && !done:
-		// The probe (T2) was put back on the board by the harness when its worker was stopped, and nobody takes it up again: the
-		// manager says it is finished all the same, and the swarm holds it to that, as it does a batch run's manager.
+		// The probe (T2) reached review only after the harness restarted its stopped worker, and with nothing to show: the manager
+		// leaves it there and says it is finished all the same, and the swarm holds it to that, as it does a batch run's manager.
 		return mock.Reply{Text: "Accepting what is finished.", ToolCalls: []mock.ToolCall{
 			call("a1", "task", map[string]any{"action": "accept", "id": "T1"}),
 			call("a3", "task", map[string]any{"action": "accept", "id": "T3"}),
@@ -201,7 +201,7 @@ func (r *richScript) manager(c *mock.Call, k int) mock.Reply {
 	case !done && k < 20:
 		// Mail arrived, or the wait ran out, before everything settled: sleep again.
 		return mock.Reply{Text: "waiting", ToolCalls: []mock.ToolCall{
-			call(fmt.Sprintf("w%d", k), "wait", map[string]any{"until": []string{"T1", "T3"}, "timeout_sec": 120})}}
+			call(fmt.Sprintf("w%d", k), "wait", map[string]any{"until": []string{"T1", "T2", "T3"}, "timeout_sec": 120})}}
 	}
 	return mock.Reply{Text: "The survey and the notes are in; the probe is written off."}
 }
@@ -220,7 +220,7 @@ func (r *richScript) reader(k int, tid string) mock.Reply {
 }
 
 // flaky makes the same failing call four times in a turn, which the repetition guard answers with a nudge, and four times again,
-// which ends the run.
+// which ends the run. The harness restarts the worker on its task, and the restarted run gives up in words, which submits the task.
 func (r *richScript) flaky(k int) mock.Reply {
 	if k > 1 {
 		return mock.Reply{Text: "I cannot get past this."}

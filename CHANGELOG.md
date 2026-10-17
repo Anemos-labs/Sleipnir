@@ -7,6 +7,29 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A team worker whose run fails while it holds work (a task in doing, the
+  pool it leads, or its place in an open pool) is restarted on that work by
+  the harness: after 5 seconds, then 10, at most twice in a row on the same
+  work, with harness mail that says why the last run stopped and what to do
+  differently (after the step limit: the run has a fresh step allowance,
+  make the next concrete change or record where the task stands). The task
+  stays assigned to the worker with status `doing`, and its failed attempt
+  is counted in place (`board.op` `requeue` with the status unchanged).
+  Without persistent pools, the harness restarts a worker on a task only
+  while the task still leaves the manager an attempt for another worker.
+  The manager is told once per stop that the worker is restarted and must
+  not be replaced; past the bound the stop is settled as before, and the
+  manager's line says how many restarts were made. While a restart waits
+  the worker's state is `idle` with the line `restarting: <why>`, so the
+  terminal and the web interface no longer show it as stuck; a worker whose
+  failed run is not restarted still shows as failed, and one whose waiting
+  restart is dropped because its work moved on to other hands or closed
+  shows as `idle`. Budget stops, interrupts, unanswered questions,
+  step-limit stops under `FixedSteps` and workers that hold nothing are not
+  restarted; an interrupt or a spent swarm budget calls off a waiting
+  restart. New `swarm.restart` events
+  record each restart. Prompt bytes: none change.
+
 - The compactor decides what to keep by what the work in progress depends
   on: its brief states a budget (half of the planner's soft limit for the
   agent's model), the priorities (the task's criteria, the files being

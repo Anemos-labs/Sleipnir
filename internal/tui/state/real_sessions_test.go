@@ -248,13 +248,17 @@ func TestTheStateOfARealRichSessionAgreesWithAnIndependentCount(t *testing.T) {
 		t.Error("the feed does not mention the compaction")
 	}
 
-	// The scout that repeated a failing call: a nudge first and then its run was stopped, which failed it and put its task back.
+	// The scout that repeated a failing call: a nudge first and then its run was stopped, which counted an attempt at its task; the
+	// harness restarted it on the task, and the restarted run ended on its own, which submitted the task.
 	fl, _ := sn.Agent("sc-2")
-	if fl.Stuck.Nudges != 1 || fl.Stuck.Stops != 1 || fl.Stuck.Phase != "stop" || fl.Status != StatusError || fl.EndState != "failed" || fl.ToolErrors != 8 {
+	if fl.Stuck.Nudges != 1 || fl.Stuck.Stops != 1 || fl.Stuck.Phase != "stop" || fl.Status != StatusIdle || fl.EndState != "idle" || fl.ToolErrors != 8 {
 		t.Errorf("sc-2: %+v status %s end %q", fl.Stuck, fl.Status, fl.EndState)
 	}
-	if tk := taskOf(t, sn, "T2"); tk.Status != "todo" || tk.Attempts != 1 || tk.State != TaskTodo {
-		t.Errorf("T2 went back to the pool: %+v", tk)
+	if tk := taskOf(t, sn, "T2"); tk.Status != "review" || tk.Owner != "sc-2" || tk.Attempts != 1 || tk.State != TaskVerifying {
+		t.Errorf("T2 after its worker's restart: %+v", tk)
+	}
+	if !feedHas(sn, FeedEnd, "sc-2", "stopped with a failure") {
+		t.Error("the feed does not mention the failed run")
 	}
 	if !feedHas(sn, FeedStuck, "sc-2", "") {
 		t.Error("the feed does not mention the stuck agent")
@@ -287,8 +291,9 @@ func TestTheStateOfARealRichSessionAgreesWithAnIndependentCount(t *testing.T) {
 		}
 	}
 
-	// The mail: the writer's two notes and the harness's, all delivered, the lane of the writer marked.
-	if m := sn.Mail.Counts; m.Sent != 3 || m.Delivered != 3 || len(sn.Mail.Recent) != 3 {
+	// The mail: the writer's two notes and the harness's two (to the manager that the scout is restarted, to the scout why), all
+	// delivered, the lane of the writer marked.
+	if m := sn.Mail.Counts; m.Sent != 4 || m.Delivered != 4 || len(sn.Mail.Recent) != 4 {
 		t.Errorf("mail %+v", sn.Mail)
 	}
 	for _, m := range sn.Mail.Recent {
