@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -1364,5 +1365,35 @@ func TestABackgroundJobTimesOutInMilliseconds(t *testing.T) {
 	})
 	if took := time.Since(start); took < 9*time.Second {
 		t.Errorf("killed after %v: the timeout was not 10 s", took)
+	}
+}
+
+// A background process that a command started with its output sent elsewhere holds none of the command's pipes, and nothing kept
+// it in view: it outlived the session. A manager's "nohup tessera serve >log 2>&1 </dev/null &" went on holding 17 GB after the
+// web server it ran under was restarted. Its process group, still alive when the command ends, is ended at Shutdown.
+func TestADetachedBackgroundProcessEndsAtShutdown(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, Options{DrainGrace: 100 * time.Millisecond, KillGrace: 300 * time.Millisecond})
+	env := h.env("a")
+	res := h.bash(env, `nohup sleep 600 >/dev/null 2>&1 </dev/null & echo "pid=$!"`)
+	var pid int
+	if _, err := fmt.Sscanf(res.Text, "pid=%d\n[exit code 0]", &pid); err != nil {
+		t.Fatalf("text = %q (%v)", res.Text, err)
+	}
+	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) }) // a failure must not leave it behind
+	if !pidAlive(pid) {
+		t.Fatal("the background process was killed although the command finished normally")
+	}
+	// a later command of the session still finds it running
+	if res := h.bash(env, fmt.Sprintf("kill -0 %d && echo alive", pid)); !strings.HasPrefix(res.Text, "alive") {
+		t.Fatalf("the background process was gone before the session ended: %q", res.Text)
+	}
+	h.m.Shutdown()
+	// Shutdown waits for what it ends: the process is gone when it returns, give or take its reaping (waitDead's bound is a
+	// minute, which a sleep of its own could outlast)
+	for deadline := time.Now().Add(5 * time.Second); pidAlive(pid); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("pid %d outlived the session's Shutdown", pid)
+		}
 	}
 }
