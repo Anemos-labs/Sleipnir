@@ -13,12 +13,14 @@ import (
 // the loop header one copy for each word of the list, with the variable replaced by it, so that each is judged as the command it will be.
 //
 // It binds only what it can be sure of. The words must be plain (no variable, substitution, quote, space or shell syntax: a glob is fine, the
-// list is expanded by the shell exactly as the engine expands it); at most maxLoopWords of them; and nothing in the line may be able to change
-// the variable or the way it is split: an assignment to it, read, mapfile, eval, declare and the like, printf -v, an IFS. Whatever it does not
-// bind stays dynamic, and asks, as before.
+// list is expanded by the shell exactly as the engine expands it), or such a word in quotes with no glob in it ("390,844", 'dark': the quotes
+// only keep it whole, and it stands for what is inside them); at most maxLoopWords of them; and nothing in the line may be able to change the
+// variable or the way it is split: an assignment to it, read, mapfile, eval, declare and the like, printf -v, an IFS. Whatever it does not bind
+// stays dynamic, and asks, as before. A command is judged once for each combination of the words of the loops it uses, up to maxCopies: a
+// screenshot loop over 9 pages, 2 sizes and 2 themes is 36.
 const (
 	maxLoopWords = 16
-	maxCopies    = 32
+	maxCopies    = 64
 )
 
 // mutatesVariables are the builtins that can change a variable (or run text that can) by something other than a plain assignment.
@@ -59,8 +61,10 @@ func bindLoopVars(cmd string, cmds []shellparse.Simple) []shellparse.Simple {
 	var out []shellparse.Simple
 	for _, s := range cmds {
 		if s.Program == "for" && s.LoopVar != "" {
-			if v := s.LoopVar; bindableName(v) && !assigned[v] && loopCount[v] == 1 && (plainWords(s.Args) || tokenList(s.Args)) {
-				bound[v] = s.Args
+			if v := s.LoopVar; bindableName(v) && !assigned[v] && loopCount[v] == 1 {
+				if words, ok := loopWords(s.Args); ok {
+					bound[v] = words
+				}
 			}
 			out = append(out, s)
 			continue
@@ -91,6 +95,44 @@ func tokenList(words []string) bool {
 	}
 	inner, ok := soleSubstitution(words[0])
 	return ok && tokenSubstitution(inner)
+}
+
+// loopWords are the values a loop's words give its variable, when the engine can be sure of them: plain words (plainWords) and a
+// substitution of name tokens (tokenList) stand for themselves, and a plain word in quotes without a glob for what is inside the quotes
+// (unquotedWord).
+func loopWords(words []string) ([]string, bool) {
+	if plainWords(words) || tokenList(words) {
+		return words, true
+	}
+	if len(words) == 0 || len(words) > maxLoopWords {
+		return nil, false
+	}
+	out := make([]string, len(words))
+	for i, w := range words {
+		if plainWords([]string{w}) {
+			out[i] = w
+			continue
+		}
+		v, ok := unquotedWord(w)
+		if !ok {
+			return nil, false
+		}
+		out[i] = v
+	}
+	return out, true
+}
+
+// unquotedWord is what a word wholly in single or double quotes stands for, when that is a plain word (plainWords) without a glob or a
+// leading "~": in quotes neither is expanded, and the engine would expand them where the variable is used.
+func unquotedWord(w string) (string, bool) {
+	if len(w) < 3 || (w[0] != '"' && w[0] != '\'') || w[len(w)-1] != w[0] {
+		return "", false
+	}
+	inner := w[1 : len(w)-1]
+	if strings.ContainsAny(inner, "*?[") || strings.HasPrefix(inner, "~") || !plainWords([]string{inner}) {
+		return "", false
+	}
+	return inner, true
 }
 
 // plainWords says whether a loop's words can stand for themselves: each is short and made of what a file name is made of.

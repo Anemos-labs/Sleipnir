@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The permission engine binds a loop variable whose words are quoted plain
+  words (`for size in "390,844" "1440,900"`) to what is inside the quotes,
+  and judges a command that uses the variables of nested loops once for each
+  combination up to 64 (was 32). A frontend worker's screenshot loop over 9
+  pages, 2 sizes and 2 themes into `$TMPDIR` asked in bypass mode because
+  its file names were unknown; it is now allowed. Quoted words with a glob,
+  a variable or a leading `~` stay unbound. Prompt bytes: none change.
+
 - A pool's leader may set the scope of a child of its pool that nobody has
   claimed (`task update id=… files=[…]`, inside the pool's scope), and a
   claim refused because a child overlaps a sibling says that the leader can
