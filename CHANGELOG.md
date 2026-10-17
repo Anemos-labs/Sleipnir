@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A permission question that ended without an answer (no page had the web
+  interface open for `--ask-grace`, the input of a line prompter ended) is
+  refused with the same advice as one that passed `--ask-timeout`: the tool
+  result reads `approval required: REASON (no answer, so nothing was
+  approved: do not ask for it again; ...)` instead of `no answer`. Both
+  refusals now tell the model not to ask for the same thing again. `free`
+  and `uptime` join the read-only list. Prompt bytes: none change.
+
 - The permission engine's read-only list takes in the commands agents use
   to read text and JSON and to look at the machine: `awk` and `jq` when
   their program only selects and prints (no `system`, `getline`, redirected

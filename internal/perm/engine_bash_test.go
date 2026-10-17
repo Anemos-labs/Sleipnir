@@ -11,7 +11,7 @@ var safeCommands = []string{
 	`ls`, `ls -la`, `ls src`, `ls -R src`, `ls src/*.go`, `cat main.go`, `cat src/a.go src/b.go`,
 	`head -n 5 main.go`, `head -5 main.go`, `tail -n +2 main.go`, `tail -f main.go`, `wc -l main.go`,
 	`pwd`, `echo hi`, `echo "$HOME"`, `echo '$(date)'`, "echo '`date`'", `grep '$(date)' main.go`, `echo $((1+1))`, `for i in 1 2 3; do echo $((i*2)); done`, `echo $UNSET_VARIABLE`, `printf '%s\n' hi`, `which git`, `whoami`,
-	`date`, `date +%s`, `date -u +%FT%T`, `uname -a`, `stat main.go`, `stat -c %s main.go`, `file main.go`,
+	`date`, `date +%s`, `date -u +%FT%T`, `uname -a`, `free -m`, `free -h`, `uptime`, `stat main.go`, `stat -c %s main.go`, `file main.go`,
 	`du -sh .`, `du -sh src`, `df -h`, `tree src`, `tree -L 2`, `sort main.go`, `sort -u -k2 main.go`,
 	`uniq main.go`, `cut -d, -f1 main.go`, `cut -d/ -f1 main.go`, `tr a b`, `diff main.go src/a.go`,
 	`diff -u main.go src/a.go`, `diff -r src docs`, `cmp main.go src/a.go`, `basename src/a.go`, `dirname src/a.go`,

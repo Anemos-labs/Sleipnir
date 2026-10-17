@@ -261,6 +261,8 @@ var safeSpecs = map[string]*argSpec{
 	"uname":     {noPaths: true},
 	"id":        {noPaths: true},
 	"nproc":     {noPaths: true},
+	"free":      {short: "sc", long: []string{"seconds", "count"}, noPaths: true},
+	"uptime":    {noPaths: true},
 	"echo":      {noPaths: true},
 	"printf":    {noPaths: true},
 	"sleep":     {noPaths: true},

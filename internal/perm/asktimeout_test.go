@@ -27,13 +27,33 @@ func TestAskTimeoutRefusesAQuestionNobodyAnswers(t *testing.T) {
 	if d.Allow {
 		t.Fatalf("a question nobody answered was allowed: %+v", d)
 	}
-	for _, want := range []string{"approval required", "nobody answered within 40ms", "nothing was approved", "finish and say which permission you needed"} {
+	for _, want := range []string{"approval required", "nobody answered within 40ms", "nothing was approved", "do not ask for it again", "finish and say which permission you needed"} {
 		if !strings.Contains(d.Reason, want) {
 			t.Errorf("the refusal %q lacks %q", d.Reason, want)
 		}
 	}
 	if !sameStrings(l.kinds(), []string{"ask", "decide:no one"}) {
 		t.Errorf("the audit trail is %v, want the question and a refusal by no one", l.kinds())
+	}
+}
+
+// A question that the prompter gave up on without an answer (no page had the interface open, the input ended) is refused with the
+// same advice as one that timed out: the model is told not to ask for it again, and to work with what is allowed. Told only
+// "no answer", a manager asked for the same refused network probe again and again.
+func TestAnUnansweredQuestionTellsTheModelNotToAskAgain(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Prompter: func(context.Context, Request) Decision { return Decision{Reason: "no answer"} }})
+	d := e.Check(context.Background(), f.request(read("{out}/secret.txt")))
+	if d.Allow {
+		t.Fatalf("a question nobody answered was allowed: %+v", d)
+	}
+	for _, want := range []string{"approval required", "no answer", "nothing was approved", "do not ask for it again", "finish and say which permission you needed"} {
+		if !strings.Contains(d.Reason, want) {
+			t.Errorf("the refusal %q lacks %q", d.Reason, want)
+		}
+	}
+	if strings.Contains(d.Reason, "the person said no") {
+		t.Errorf("an unanswered question reads as a person's no: %q", d.Reason)
 	}
 }
 
