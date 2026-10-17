@@ -715,11 +715,12 @@ the pool task it leads, or, when it holds no task, its place in an open pool (a 
   take a different approach; after the watchdog, not to run a hanging command the same way again.
 * **What the interfaces show.** The run's `agent.end` says it failed (the feed records the stop); the worker's state that
   follows is `idle`, line `restarting: <why>`, until the restarted run starts, so neither interface shows it as stuck. A worker
-  that is not restarted keeps the `failed` state. The manager's stop guard and its `wait` count a worker whose restart is
-  waiting as one at work.
+  whose failed run is not restarted keeps the `failed` state. The manager's stop guard and its `wait` count a worker whose
+  restart is waiting as one at work.
 * **Called off.** An interrupt of the team or a spent swarm budget calls off the restarts that wait: the tasks they kept go
   back to `todo` (their attempt was counted when the run failed) and the worker shows as failed. A restart whose work has left
-  the worker meanwhile (reassigned, handed over, revised, failed, or a pool that closed) starts nothing.
+  the worker meanwhile (reassigned, handed over, revised, failed, or a pool that closed) starts nothing, and the worker shows
+  as `idle`: what it held is in other hands or closed, so it is free.
 
 `swarm.restart` events record each restart: `scheduled` (n, max, tasks, pool, why), `start`, `dropped` (reason) and
 `exhausted` (the bound stopped one more).

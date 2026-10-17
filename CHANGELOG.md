@@ -19,13 +19,15 @@ they do not indicate whether a change has been released.
   while the task still leaves the manager an attempt for another worker.
   The manager is told once per stop that the worker is restarted and must
   not be replaced; past the bound the stop is settled as before, and the
-  manager's line says how many restarts were made. While a
-  restart waits the worker's state is `idle` with the line `restarting:
-  <why>`, so the terminal and the web interface no longer show it as stuck;
-  a worker that is not restarted still shows as failed. Budget stops,
-  interrupts, unanswered questions, step-limit stops under `FixedSteps`
-  and workers that hold nothing are not restarted; an interrupt or a spent
-  swarm budget calls off a waiting restart. New `swarm.restart` events
+  manager's line says how many restarts were made. While a restart waits
+  the worker's state is `idle` with the line `restarting: <why>`, so the
+  terminal and the web interface no longer show it as stuck; a worker whose
+  failed run is not restarted still shows as failed, and one whose waiting
+  restart is dropped because its work moved on to other hands or closed
+  shows as `idle`. Budget stops, interrupts, unanswered questions,
+  step-limit stops under `FixedSteps` and workers that hold nothing are not
+  restarted; an interrupt or a spent swarm budget calls off a waiting
+  restart. New `swarm.restart` events
   record each restart. Prompt bytes: none change.
 
 - `sleipnir chat --compact-at N` and `sleipnir web --compact-at N` set the
