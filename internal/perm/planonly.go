@@ -9,10 +9,10 @@ package perm
 // gofmt -l -w. Everything that writes or executes anything else stays denied by plan mode; the engine understands shell syntax, so
 // "go test ./... && rm -rf x" is not allowed by its first half. Callers must not change the slice.
 var ReadOnlyAllow = []string{
-	"Bash(go test:*)", "Bash(go vet:*)", "Bash(pytest:*)", "Bash(npm test)", "Bash(npm run test:*)",
+	"Bash(go test:*)", "Bash(go vet:*)", "Bash(pytest:*)", "Bash(npm test:*)", "Bash(npm run test:*)", "Bash(pnpm test:*)", "Bash(yarn test:*)",
 	"Bash(python -m pytest:*)", "Bash(python3 -m pytest:*)", "Bash(python -m unittest:*)", "Bash(python3 -m unittest:*)",
 	"Bash(python:venv-tests)", "Bash(node --test:*)", "Bash(node --check:*)",
-	"Bash(cargo test:*)", "Bash(cargo check:*)", "Bash(make test)",
+	"Bash(cargo test:*)", "Bash(cargo check:*)", "Bash(cargo clippy:workspace)", "Bash(make test)",
 	"Bash(ruff check:workspace)", "Bash(ruff format --check:workspace)", "Bash(ruff format --diff:workspace)",
 	"Bash(mypy:workspace)", "Bash(pyright:workspace)", "Bash(tsc --noEmit:workspace)", "Bash(eslint:workspace)",
 	"WebFetch", "WebSearch",

@@ -7,6 +7,21 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The permission engine's read-only list takes in the commands agents use
+  to read text and JSON and to look at the machine: `awk` and `jq` when
+  their program only selects and prints (no `system`, `getline`, redirected
+  `print`, `ENVIRON`, `ARGV`, gawk's `@`; no jq `env`, `$ENV`, modules or
+  `-f`), `egrep`, `fgrep`, `column`, `comm`, `join`, `expand`, `unexpand`,
+  `od`, `hexdump`, `xxd`, `strings`, `base64`, `ps` (not the forms that
+  print each process's environment) and `pgrep`, reads of `git config`
+  (`git config user.name`, `--get`, and `--list` with `--local`), `npm ls`
+  and a bare `npm run`. They no longer ask in default mode and are no
+  longer refused to read-only roles and planning pool members. Read-only
+  roles also run `npm test` with arguments (`npm test -- --run`), `pnpm
+  test`, `yarn test` and `cargo clippy` without `--fix`. In a probe of 250
+  commands agents commonly run, these were the read-only ones the engine
+  refused. Prompt bytes: none change.
+
 - The manager's `spawn` of an existing task while every member of its role
   is busy is queued instead of refused: the harness starts it on the first
   member of the role that is free and tells the manager. The refusal it

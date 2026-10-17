@@ -39,6 +39,16 @@ func analyseSafe(prog string, args []string) safeAnalysis {
 		return analyseFind(args)
 	case "sed":
 		return analyseSed(args)
+	case "awk", "gawk", "mawk", "nawk":
+		return analyseAwk(args)
+	case "jq":
+		return analyseJq(args)
+	case "ps":
+		return analysePs(args)
+	case "npm":
+		if sa := analyseNpm(args); sa.ok || sa.why != unlisted {
+			return sa
+		} // npm --version is a version probe, below
 	case "for":
 		// shellparse reports the word list of a for/select loop as this
 		// pseudo-command. The loop only walks the names, so links are not
@@ -197,6 +207,10 @@ loop:
 	case sub == "stash":
 		if len(rest) == 0 || (rest[0] != "list" && rest[0] != "show") {
 			return safeAnalysis{why: "git stash changes the stash"}
+		}
+	case sub == "config":
+		if sa := analyseGitConfig(rest); !sa.ok {
+			return sa
 		}
 	case sub == "worktree":
 		if len(rest) == 0 || rest[0] != "list" {
