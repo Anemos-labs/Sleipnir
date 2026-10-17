@@ -111,7 +111,7 @@ func TestAListIsKeptPerAccountAndEndpoint(t *testing.T) {
 		store("https://api.example/v1/models", "", "a@example.com"),
 	} {
 		if p := other.ListPath(dir); p == a {
-			t.Errorf("%+v %+v is kept where user-1's list is", other.opts, other.c)
+			t.Errorf("the list of %s for subject %q, email %q is kept where user-1's is", other.opts.Models, other.c.Subject, other.c.Email)
 		}
 	}
 }
