@@ -148,6 +148,12 @@ body.cq .anom .a b{color:var(--warm)}
 .nschip:hover,.nschip[aria-pressed="true"]{border-color:var(--fe);color:var(--bright)}
 .nsfs{flex-basis:100%;min-width:0;margin:0;padding:0;border:0}.nsfs:disabled{opacity:.5}.nsfs:disabled .tag button,.nsfs:disabled .nschip{cursor:not-allowed}
 .nsquiet{flex-basis:100%;margin:4px 0;padding:6px 9px;border:1px solid var(--line2);background:var(--panel2);color:var(--fg2)}.nsquiet[hidden]{display:none}
+/* the compaction share: a slider from 10 to 90 with what its value means beside it, and a way back to the default; the two keep one
+   width, so that the slider does not change length under the pointer when the default is crossed */
+.nscompact{display:flex;align-items:center;gap:10px;flex:1 1 100%;min-width:0}
+.nscompact input[type=range]{flex:1 1 100px;min-width:0;margin:0;accent-color:var(--c-mgr)}
+.nscv{flex:none;width:calc(17ch + 72px);display:flex;align-items:center;gap:6px;font:500 12px/1.25 var(--f-num);color:var(--fg2)}
+.nscv output{flex:1 1 auto;min-width:0}.nscv .btn{flex:none}.nscv .btn[hidden]{display:none}
 
 /* ---------- help dots: a ? that explains, on hover, on focus and on a tap ---------- */
 .qh{display:inline-grid;place-items:center;flex:none;width:16px;height:16px;margin:0 0 0 6px;padding:0;border:1px solid var(--line2);border-radius:50%;background:transparent;color:var(--dim);font:700 10px/1 var(--f-num);cursor:help;vertical-align:middle}

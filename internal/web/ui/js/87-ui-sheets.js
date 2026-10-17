@@ -93,9 +93,10 @@
   function seedOf() {
     const has = !!(SL.live && SL.live.defaults()), d = has ? SL.live.defaults() : {}, projects = (D.extra.projects || []), def = projects.find(p => p.default) || projects[0];
     const swarm = d.swarm != null ? d.swarm : 8, cwd = (def && def.dir) || d.cwd || '', tm = teamSeed(d.team);
-    /* with the server's defaults an absent field is the CLI's own default (no verify command); the budget starts at off, which the server honours: a team has no cap unless one is set */
+    /* with the server's defaults an absent field is the CLI's own default (no verify command); the budget starts at off, which the server honours: a team has no cap unless one is set.
+       The compaction share starts at sleipnir web's --compact-at (compactAt), else at the share a session takes without the flag (compactAtDefault: the configuration's, else 25; 0 when its token limits apply) */
     const act = SL.sessions && SL.sessions.active, actModel = act && !act.placeholder && !act.recorded ? act.meta.model : '';
-    return { name: '', cwd, gitInit: true, testsSummary: d.testsPreset || '', unlimitedEnv: d.unlimitedEnv || '', model: d.model || actModel || (D.models[0] ? D.models[0].ref : ''), mode: d.mode || 'default', swarm, isolation: d.isolation || (swarm ? 'worktree' : 'none'), verify: d.verify != null ? d.verify : has ? '' : 'go test {dirs}', commit: !!d.commit, mailman: !!d.mailman, mailmanDefault: !!d.mailman, budget: d.budget ? String(d.budget) : 'off', rules: (d.rules || []).slice(), trustProject: d.trustProject !== false, noMcp: !!d.noMcp, goalText: '', effort: d.effort || 'default', roleModels: Object.assign({}, d.roleModels || {}), maxWorkers: d.maxWorkers || 0, minWorkers: d.minWorkers || 8, counts: tm.counts, slotModels: tm.models, perSlot: tm.per, openRoles: Object.keys(tm.per).reduce((o, r) => { o[r] = true; return o; }, {}), single: swarm === 0, autoDocs: d.autoDocs !== false, managerApproves: d.managerApproves !== false, isoAuto: !d.isolationSet, resume: '' };
+    return { name: '', cwd, gitInit: true, testsSummary: d.testsPreset || '', unlimitedEnv: d.unlimitedEnv || '', model: d.model || actModel || (D.models[0] ? D.models[0].ref : ''), mode: d.mode || 'default', swarm, isolation: d.isolation || (swarm ? 'worktree' : 'none'), verify: d.verify != null ? d.verify : has ? '' : 'go test {dirs}', commit: !!d.commit, mailman: !!d.mailman, mailmanDefault: !!d.mailman, budget: d.budget ? String(d.budget) : 'off', rules: (d.rules || []).slice(), trustProject: d.trustProject !== false, noMcp: !!d.noMcp, goalText: '', effort: d.effort || 'default', roleModels: Object.assign({}, d.roleModels || {}), maxWorkers: d.maxWorkers || 0, minWorkers: d.minWorkers || 8, counts: tm.counts, slotModels: tm.models, perSlot: tm.per, openRoles: Object.keys(tm.per).reduce((o, r) => { o[r] = true; return o; }, {}), single: swarm === 0, autoDocs: d.autoDocs !== false, managerApproves: d.managerApproves !== false, isoAuto: !d.isolationSet, resume: '', compactAt: d.compactAt ? +d.compactAt : null, compactAtBase: d.compactAtDefault != null ? +d.compactAtDefault : 25 };
   }
   /** The counts and models of a team the server names (one entry per slot), or the default team: one worker of each role. A role whose
    *  slots all run one model has it in models; a role whose slots run different models has them, slot by slot, in per. */
@@ -128,6 +129,16 @@
    *  inside becomes '\''). */
   const shellQuote = a => { a = String(a == null ? '' : a); return /^[A-Za-z0-9_@%+=:,./-]+$/.test(a) ? a : "'" + a.replace(/'/g, "'\\''") + "'"; };
   ui.shellQuote = shellQuote;
+  /** The --compact-at a New session state sends: its share, a whole percentage from 10 to 90, when one was chosen and it is not the
+   *  share the session takes without the flag (compactAtBase: the configuration's, 0 for its token limits); else 0, nothing to send. */
+  dialogs.compactAtSent = st => { const v = st.compactAt == null || st.compactAt === '' ? NaN : Math.round(Number(st.compactAt)); return v >= 10 && v <= 90 && v !== Number(st.compactAtBase) ? v : 0; };
+  /** What the compaction control of a New session state says: the share, and whether it is the default (or the configuration's token
+   *  limits when nothing was chosen and they apply). */
+  dialogs.compactAtText = st => {
+    const base = Number(st.compactAtBase), v = st.compactAt == null ? null : Math.round(Number(st.compactAt));
+    if (v == null) return base > 0 ? base + '% · default' : 'token limits (default)';
+    return v + '%' + (v === base ? ' · default' : base > 0 ? ' · default ' + base + '%' : ' · default: token limits');
+  };
   /** The `sleipnir chat` command line of a New session state, every value quoted for a shell (Copy the command pastes it as it is); a
    *  comment above it says what the page does first when the folder is made or becomes a git repository (the command line has no flag
    *  for that), and the first goal follows as a comment, on one line. */
@@ -135,7 +146,7 @@
     const q = shellQuote, off = (!st.budget || st.budget === 'off') && Number(st.swarm) > 0, f = [(off && st.unlimitedEnv ? st.unlimitedEnv + ' ' : '') + 'sleipnir chat'];   // a team of the terminal has a cap of its own unless the environment lifts it
     if (st.resume) f.push('--resume ' + q(st.resume)); if (st.cwd && st.cwd !== '.') f.push('--cwd ' + q(st.cwd)); f.push('--model ' + q(st.model)); f.push('--mode ' + q(st.mode)); const tm = st.counts ? teamOf(st) : { n: st.swarm, slots: [] }; f.push('--swarm ' + q(tm.n)); f.push('--isolation ' + q(st.isolation));
     if (st.verify) f.push('--verify ' + q(st.verify)); if (st.commit) f.push('--commit'); if (st.mailman) f.push('--mailman'); else if (st.mailmanDefault) f.push('--mailman=false'); if (tm.n > 0 && st.autoDocs === false) f.push('--auto-docs=false'); if (tm.n > 0 && st.managerApproves === false) f.push('--manager-approves=false');
-    if (st.budget && st.budget !== 'off') f.push('--budget-usd ' + q(st.budget)); if (tm.slots.length) tm.slots.forEach(t => f.push('--role-model ' + q(t.model ? t.role + '=' + t.model : t.role))); else Object.keys(st.roleModels || {}).forEach(r => f.push('--role-model ' + q(r + '=' + st.roleModels[r]))); (st.rules || []).forEach(r => f.push('--allow ' + q(r)));
+    if (st.budget && st.budget !== 'off') f.push('--budget-usd ' + q(st.budget)); const ca = dialogs.compactAtSent(st); if (ca) f.push('--compact-at ' + q(ca)); if (tm.slots.length) tm.slots.forEach(t => f.push('--role-model ' + q(t.model ? t.role + '=' + t.model : t.role))); else Object.keys(st.roleModels || {}).forEach(r => f.push('--role-model ' + q(r + '=' + st.roleModels[r]))); (st.rules || []).forEach(r => f.push('--allow ' + q(r)));
     if (st.trustProject) f.push('--trust-project'); if (st.noMcp) f.push('--no-mcp');
     const first = st.makeDir || st.makeGit ? '# first, as the page does: ' + [st.makeDir ? 'make the folder' : '', st.makeGit ? 'run git init in it, with an empty first commit' : ''].filter(Boolean).join(', then ') + '\n' : '';
     return first + f.join(' ') + (st.goalText ? '\n  # then: /goal ' + String(st.goalText).replace(/[\r\n]+/g, ' ') : '');
@@ -158,6 +169,7 @@
     noMcp: 'Do not start MCP tool servers (extra tools a project or your configuration adds).',
     allow: 'By default the session asks before it runs a command or edits a file. A rule here answers yes in advance, for this session only. A rule is a tool name, or a tool name with a pattern: <span class="mono">Tool(pattern)</span>. Click an example to add it. Not used in bypass and yolo, which never ask.',
     quiet: 'bypass and yolo never ask: the rules are not used here (they are kept for other modes).',
+    compactAt: 'Compaction starts when an agent’s conversation fills this share of its model’s context window: higher keeps more of what it read in view, and costs more per request. It is forced halfway from there to 95%. The default is <span class="mono">cache.compact_at_percent</span> of the configuration, else 25%; where the configuration sets token limits instead, they apply until a share is chosen here.',
     budget: 'The session stops when it has spent this many US dollars. <span class="mono">off</span>: no limit, which is how it starts here (the terminal caps a team at $50 unless the configuration says otherwise).',
     roles: 'A role left on <i>worker model</i> runs on the model above.',
     goal: 'The first thing to work on. Empty: a plain chat. With a goal, the manager works until a judge finds the evidence that it is met.',
@@ -237,6 +249,7 @@
       field('pre-approve actions (--allow)', '<div class="nsd nsquiet" id="nsRuleOff" role="status" hidden>' + NS_HELP.quiet + '</div><fieldset class="nsfs" id="nsRuleSet"><div class="field-row" style="margin:0"><input id="nsRule" type="text" placeholder="tests, Bash(go test:*)" aria-label="Allow rule" spellcheck="false" autocomplete="off"><button class="btn sm" type="button" id="nsAddRule">Add</button></div><div class="nserr err" id="nsRuleErr" role="alert" hidden></div><div id="nsRules" class="tags"></div><div class="chips" id="nsRuleEx">' + ruleEx + '</div></fieldset>', '', help('allow', 'a pre-approved action')) +
       field('trust and tools', opt('trustProject', '--trust-project', '--trust-project') + opt('noMcp', '--no-mcp', '--no-mcp')) +
       field('budget (--budget-usd)', inp('nsBudget', st.budget, 'inputmode="decimal" aria-label="Budget in dollars"'), '', help('budget', 'the budget')) +
+      field('compaction at (--compact-at)', '<div class="nscompact"><input id="nsCompact" type="range" min="10" max="90" step="1" value="' + (st.compactAt != null ? st.compactAt : st.compactAtBase || 25) + '" aria-label="Compaction share, percent of each model’s context window"><span class="nscv"><output id="nsCompactOut" for="nsCompact"></output><button type="button" class="btn sm" id="nsCompactReset" hidden>default</button></span></div>', '', help('compactAt', 'the compaction share')) +
       field('first goal (optional)', '<textarea id="nsGoal" rows="3" placeholder="e.g. add pagination to the orders endpoint, with tests" aria-label="Goal">' + esc(st.goalText) + '</textarea>', '', help('goal', 'the first goal')) + '</div></div><div class="nsmodefld">' + field('mode (--mode)', modePick(st.mode), '', help('mode', 'a mode')) + '</div>' +
       '<h3 class="lab" style="margin:12px 0 4px">the same command line</h3><pre class="pre cli" id="nsCli"></pre><div class="row2"><button class="btn pri" type="button" id="nsStart">Start the session</button><button class="btn" type="button" id="nsCopy">Copy the command</button><button class="btn" type="button" data-close>Cancel</button></div>',
       onMount(b, sc, close) {
@@ -291,6 +304,9 @@
           $('#nsRules', b).innerHTML = st.rules.map((r, i) => '<span class="tag">' + esc(r) + ' <button type="button" data-rr="' + i + '" aria-label="remove ' + esc(r) + '">×</button></span>').join('');
           $('#nsGitRow', b).hidden = folder.describe(fstate()).git !== 'offer'; paintVerify();
           $('#nsRuleSet', b).disabled = quiet(); $('#nsRuleOff', b).hidden = !quiet();
+          /* the compaction share: the slider at the share (the default's place when none was chosen), what it means beside it, and a way back to the default */
+          const cs = $('#nsCompact', b), cpos = String(st.compactAt != null ? st.compactAt : st.compactAtBase || 25), ctext = dialogs.compactAtText(st);
+          if (cs.value !== cpos) cs.value = cpos; cs.setAttribute('aria-valuetext', ctext); $('#nsCompactOut', b).textContent = ctext; $('#nsCompactReset', b).hidden = st.compactAt == null;
           paintGate();
         };
         ui.helpMount(b, sc);
@@ -299,7 +315,7 @@
         /* a rule typed or clicked is added once; a typed one that cannot be a rule is said so and kept in its field */
         const addRule = v => { v = String(v).trim(); if (!v || quiet()) return true; const bad = ruleProblem(v); ruleErr(bad); if (bad) return false; if (!st.rules.includes(v)) st.rules.push(v); return true; };
         // Checkbox input precedes change; repainting here would restore the old checked state before change reads it.
-        sc.listen(b, 'input', e => { const t = e.target; if (t.dataset.k) return; if (t.id === 'nsName') st.name = t.value; else if (t.id === 'nsVerify') st.verify = t.value; else if (t.id === 'nsBudget') st.budget = t.value.trim();  else if (t.id === 'nsGoal') st.goalText = t.value; else if (t.id === 'nsRule') ruleErr(''); paint(); });
+        sc.listen(b, 'input', e => { const t = e.target; if (t.dataset.k) return; if (t.id === 'nsName') st.name = t.value; else if (t.id === 'nsVerify') st.verify = t.value; else if (t.id === 'nsBudget') st.budget = t.value.trim(); else if (t.id === 'nsCompact') st.compactAt = Math.round(Number(t.value)); else if (t.id === 'nsGoal') st.goalText = t.value; else if (t.id === 'nsRule') ruleErr(''); paint(); });
         sc.listen(b, 'change', e => { const t = e.target; if (t.id === 'nsModel') st.model = t.value; else if (t.dataset.tmodel) { const r = t.dataset.tmodel; st.slotModels = st.slotModels || {}; if (st.perSlot) delete st.perSlot[r]; st.slotModels[r] = t.value; } else if (t.dataset.tslot) setSlotModel(st, t.dataset.tslot, +t.dataset.ti, t.value); else if (t.dataset.k) st[t.dataset.k] = t.checked; paint(); });
         sc.on('models-changed', () => {
           $('#nsModel', b).innerHTML = models().map(r => '<option' + (r === st.model ? ' selected' : '') + '>' + esc(r) + '</option>').join('');
@@ -308,6 +324,7 @@
         });
         sc.listen(b, 'click', e => {
           const mr = e.target.closest('[data-nsmode]'); if (mr) { st.mode = mr.dataset.nsmode; paint(); return; }
+          if (e.target.closest('#nsCompactReset')) { st.compactAt = null; paint(); $('#nsCompact', b).focus(); return; }
           const x = e.target.closest('[data-seg]'); if (x) { if (x.disabled) return; st[x.dataset.seg] = x.dataset.v; if (x.dataset.seg === 'isolation') st.isoAuto = false; $$('[data-seg="' + x.dataset.seg + '"]', b).forEach(y => y.setAttribute('aria-pressed', y === x)); paint(); return; }
           const vh = e.target.closest('[data-vh]'); if (vh) { if (vh.disabled) return; st.verify = vh.dataset.vh; $('#nsVerify', b).value = st.verify; paint(); return; }
           const ex = e.target.closest('[data-ex]'); if (ex) { if (!quiet()) addRule(ex.dataset.ex); paint(); return; }
@@ -341,6 +358,7 @@
             if (tm.n > 0 && st.managerApproves === false) spec.managerApproves = false;   // on is the server's default: only an off is sent
             const g = gate(); Object.assign(spec, { isolation: g.isolation, verify: g.verify, commit: g.commitOn, mailman: g.mailman });   /* nothing that cannot start: dialogs.nsGate */
             spec.budget = bud > 0 ? bud : 0;   // 0 is off: the server does not put its own cap on the session
+            const ca = dialogs.compactAtSent(st); if (ca) spec.compactAt = ca;   // the share the session takes anyway is not sent: the configuration keeps it
             if (st.resume) spec.resume = st.resume;
             const raises = [];
             if (state && !state.exists) { spec.createDir = true; raises.push('make the folder ' + spec.cwd); } else if (state && !state.known) raises.push('work in ' + spec.cwd + ', a folder this server has not worked in');

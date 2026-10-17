@@ -110,6 +110,7 @@ func mergeOptions(base session.Options, f chatFlags, defaultCwd string) session.
 	}
 	out.Mode, out.Swarm, out.Workers, out.TrustProject = o.Mode, o.Swarm, o.Workers, o.TrustProject || base.TrustProject
 	out.BudgetUSD, out.Resume, out.NoMCP = o.BudgetUSD, o.Resume, o.NoMCP || base.NoMCP
+	out.CompactAtPercent = o.CompactAtPercent
 	out.Verify, out.Isolation, out.Commit, out.Mailman = o.Verify, o.Isolation, o.Commit, o.Mailman
 	out.RoleModels, out.Allow, out.Interactive = o.RoleModels, o.Allow, true
 	out.Team, out.AutoDocs, out.DefaultTeam, out.ManagerApproves = o.Team, o.AutoDocs, o.DefaultTeam, o.ManagerApproves
@@ -628,6 +629,9 @@ func chatArgsOf(d webDefaults, resume string) []string {
 	a = append(a, "--swarm", strconv.Itoa(workers))
 	if d.BudgetUSD > 0 {
 		a = append(a, "--budget-usd", strconv.FormatFloat(d.BudgetUSD, 'f', -1, 64))
+	}
+	if d.CompactAtPercent > 0 {
+		a = append(a, "--compact-at", strconv.Itoa(d.CompactAtPercent))
 	}
 	if d.Isolation != "" {
 		a = append(a, "--isolation", d.Isolation)

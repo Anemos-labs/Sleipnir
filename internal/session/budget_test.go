@@ -13,7 +13,7 @@ import (
 
 // A swarm has a spending cap unless the user removes it (in the configuration, or for one session with NoBudget),
 // --budget-usd wins over the configuration and over NoBudget, and a budget that could not stop anything (NaN, negative) is refused
-// instead of quietly meaning "none".
+// instead of quietly meaning "none"; so is a compaction share outside 10 to 90 (--compact-at).
 func TestSwarmBudgetDefaultsFlagsAndBadValues(t *testing.T) {
 	repo := newRepo(t)
 	client, model := startMock(t, func(*mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
@@ -50,6 +50,12 @@ func TestSwarmBudgetDefaultsFlagsAndBadValues(t *testing.T) {
 	for _, bad := range []float64{math.NaN(), math.Inf(1), -1} {
 		if _, err := build(func(o *session.Options, _ *config.Config) { o.BudgetUSD = bad }); err == nil || !strings.Contains(err.Error(), "--budget-usd must be zero") {
 			t.Errorf("budget %v: %v", bad, err)
+		}
+	}
+	// A compaction share that is not one is refused in the same way, before anything starts.
+	for _, bad := range []int{-1, 5, 95} {
+		if _, err := build(func(o *session.Options, _ *config.Config) { o.CompactAtPercent = bad }); err == nil || !strings.Contains(err.Error(), "--compact-at must be from 10 to 90") {
+			t.Errorf("compaction share %d: %v", bad, err)
 		}
 	}
 	// A single agent has only what the flag says.
