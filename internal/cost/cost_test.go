@@ -348,3 +348,13 @@ func TestDollarsShowsWhatIsWorthLessThanACent(t *testing.T) {
 		}
 	}
 }
+
+// A model nothing describes gets a placeholder window, marked as such.
+func TestFallbackMarksItsWindowAsGuessed(t *testing.T) {
+	if m := Fallback("some/model"); !m.WindowGuessed || m.ContextTokens != 200_000 {
+		t.Fatalf("fallback %+v", m)
+	}
+	if m, ok := Defaults().Lookup("mock-1"); ok && m.WindowGuessed {
+		t.Fatal("a table model's window is not a guess")
+	}
+}

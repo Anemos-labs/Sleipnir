@@ -49,10 +49,10 @@ func claude(id string, ctx, maxOut int, in, out, read float64, minPrefix int, pt
 
 // openai constructs an OpenAI model of the table: its API list prices for input, cached input, cache writes (the short-context
 // cache-write rate, 1.25 times input, for both lifetimes the price has) and output, and automatic prefix caching. The context window
-// is the harness's cautious
-// 200k (Fallback's), not the API's, so that compaction starts where it did before the table knew these models; the provider's
-// options.context_window says the real one. The output limit is the family's 128k, which a request asks no more than 16k of unless
-// told otherwise.
+// is the harness's cautious 200k (Fallback's), used where the provider reports none (OpenAI's own /models lists ids only): a
+// session takes the window a marketplace's catalogue or a ChatGPT plan's model list gives, and the provider's
+// options.context_window over both. The output limit is the family's 128k, which a request asks no more than 16k of unless told
+// otherwise.
 func openai(id string, in, cached, write, out float64) Model {
 	return Model{
 		ID: id, Provider: "openai", ContextTokens: 200_000, MaxOutput: 128_000,

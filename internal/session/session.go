@@ -241,6 +241,8 @@ type Session struct {
 	// described are the models the session may call (the main one and the roles'), with
 	// where each description came from; session.start records them.
 	described map[string]described
+	// unlisted are the providers' model lists (models.go) that could not be read: none is asked twice in a session.
+	unlisted map[string]bool
 
 	Registry *tools.Registry
 	Specs    []core.ToolSpec
@@ -476,7 +478,7 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		return nil, err
 	}
 	if o.ContextWindow > 0 {
-		s.Model.ContextTokens = o.ContextWindow
+		s.Model.ContextTokens, s.Model.WindowGuessed = o.ContextWindow, false
 	}
 
 	// Hooks, then skills and role definitions, then permissions (which need the

@@ -1075,7 +1075,9 @@ func TestThePlanToolsListIsShownBackAndHoldsTheRunOpen(t *testing.T) {
 }
 
 // A model on a server of this machine (no key, a loopback address) costs nothing and, since its catalogue lists ids only, gets a cautious
-// window that options.context_window can raise; a model of a hosted provider keeps the conservative price estimate.
+// window that options.context_window can raise; a model of a hosted provider keeps the conservative price estimate. The cautious window is
+// the one compaction keeps the thread inside (the server cuts off what does not fit), so it is not marked guessed the way the hosted
+// fallback's 200,000 is: the token limits that apply to a guessed window (20,000 and 60,000) would be past it.
 func TestAModelOnALocalServerIsFreeAndHasACautiousWindow(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Providers = map[string]config.Provider{
@@ -1091,13 +1093,13 @@ func TestAModelOnALocalServerIsFreeAndHasACautiousWindow(t *testing.T) {
 		}
 		return m
 	}
-	if m := build("local"); m.Price.InputPerM != 0 || m.Price.OutputPerM != 0 || m.ContextTokens != 8192 {
+	if m := build("local"); m.Price.InputPerM != 0 || m.Price.OutputPerM != 0 || m.ContextTokens != 8192 || m.WindowGuessed {
 		t.Errorf("local: %+v", m)
 	}
-	if m := build("big"); m.ContextTokens != 32768 {
-		t.Errorf("options.context_window: %d", m.ContextTokens)
+	if m := build("big"); m.ContextTokens != 32768 || m.WindowGuessed {
+		t.Errorf("options.context_window: %d (guessed %v)", m.ContextTokens, m.WindowGuessed)
 	}
-	if m := build("hosted"); m.Price.OutputPerM == 0 || m.ContextTokens != 200_000 {
+	if m := build("hosted"); m.Price.OutputPerM == 0 || m.ContextTokens != 200_000 || !m.WindowGuessed {
 		t.Errorf("hosted keeps the estimate: %+v", m)
 	}
 }

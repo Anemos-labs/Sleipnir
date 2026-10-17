@@ -616,13 +616,13 @@ func BuildProvider(cfg *config.Config, ref ModelRef, o ProviderOptions) (provide
 		// show, and no window. The window is a cautious one (Ollama serves a few thousand tokens unless told otherwise, and cuts the rest off
 		// without a word), so that compaction keeps the prompt inside what the server gives; options.context_window says the real one.
 		m.Price = cost.Price{}
-		m.ContextTokens = localContextWindow
+		m.ContextTokens, m.WindowGuessed = localContextWindow, false // cautious on purpose: compaction keeps the prompt inside it
 	}
 	if n := optInt(p.Options, "context_window"); n > 0 {
-		m.ContextTokens = n
+		m.ContextTokens, m.WindowGuessed = n, false
 	}
 	if m.ContextTokens == 0 {
-		m.ContextTokens = 200_000
+		m.ContextTokens, m.WindowGuessed = 200_000, true
 	}
 	return client, m, nil
 }
@@ -652,34 +652,61 @@ func EnrichModel(ctx context.Context, cacheDir, baseURL string, m cost.Model) co
 
 // enrichModel is EnrichModel that also says whether the catalogue had the model.
 func enrichModel(ctx context.Context, cacheDir, baseURL string, m cost.Model) (cost.Model, bool) {
-	if m.Provider != "unknown" || m.Plan || baseURL == "" {
+	if m.Provider != "unknown" || m.Plan || !catalogueReadable(baseURL) {
 		return m, false // a plan's model is billed nothing per token, whatever a catalogue says
 	}
-	// The catalogue decides the prices a budget is computed from: over plain http it
-	// could be rewritten on the way, so it is only read over https or from this
-	// machine.
-	if provider.CheckKeyTransport(baseURL) != nil {
-		return m, false
-	}
-	entries := loadCatalog(ctx, cacheDir, baseURL)
-	for _, e := range entries {
-		if e.Model.ID == m.ID || cost.Normalize(e.Model.ID) == cost.Normalize(m.ID) {
-			p := e.Model.Price
-			if e.Model.ContextTokens == 0 && p.InputPerM == 0 && p.OutputPerM == 0 {
-				// a catalogue that lists ids only (OpenAI's own, Ollama's, LM Studio's) knows nothing about the model: what is known stands
-				return m, false
-			}
-			out := e.Model // every entry has passed cost.Model.Validate (gateway.Parse, gateway.Vet)
-			out.ID = m.ID
-			if out.ContextTokens == 0 {
-				out.ContextTokens = m.ContextTokens
-			}
-			return out, true
-		}
-	}
-	return m, false
+	return enrichFrom(loadCatalog(ctx, cacheDir, baseURL), m)
 }
 
+// catalogueReadable reports whether the catalogue of baseURL may be read. It decides the
+// prices a budget is computed from and the window compaction keeps to: over plain http
+// it could be rewritten on the way, so it is only read over https or from this machine.
+func catalogueReadable(baseURL string) bool {
+	return baseURL != "" && provider.CheckKeyTransport(baseURL) == nil
+}
+
+// enrichFrom replaces the description of m with its entry in entries (exact prices and
+// window, the window m had when the entry gives none); ok is false when entries have no
+// entry for m, or one that knows nothing about it.
+func enrichFrom(entries []gateway.Entry, m cost.Model) (cost.Model, bool) {
+	e, found := findEntry(entries, m.ID)
+	if !found {
+		return m, false
+	}
+	p := e.Model.Price
+	if e.Model.ContextTokens == 0 && p.InputPerM == 0 && p.OutputPerM == 0 {
+		// a catalogue that lists ids only (OpenAI's own, Ollama's, LM Studio's) knows nothing about the model: what is known stands
+		return m, false
+	}
+	out := e.Model // every entry has passed cost.Model.Validate (gateway.Parse, gateway.Vet)
+	out.ID = m.ID
+	if out.ContextTokens == 0 {
+		out.ContextTokens, out.WindowGuessed = m.ContextTokens, m.WindowGuessed // no window of its own: m's stands, guess or not
+	}
+	return out, true
+}
+
+// findEntry is the entry of entries for model id: the one with that exact id, else the
+// first whose id is the same once normalised (cost.Normalize: no vendor prefix, no
+// date or version suffix).
+func findEntry(entries []gateway.Entry, id string) (gateway.Entry, bool) {
+	for _, e := range entries {
+		if e.Model.ID == id {
+			return e, true
+		}
+	}
+	n := cost.Normalize(id)
+	for _, e := range entries {
+		if cost.Normalize(e.Model.ID) == n {
+			return e, true
+		}
+	}
+	return gateway.Entry{}, false
+}
+
+// loadCatalog is the catalogue of baseURL: the copy kept under cacheDir when it is younger
+// than catalogTTL and passes gateway.Vet, else a download (six seconds at most), which is
+// then kept. nil when there is neither.
 func loadCatalog(ctx context.Context, cacheDir, baseURL string) []gateway.Entry {
 	var path string
 	if cacheDir != "" {
