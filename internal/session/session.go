@@ -237,6 +237,8 @@ type Session struct {
 	// described are the models the session may call (the main one and the roles'), with
 	// where each description came from; session.start records them.
 	described map[string]described
+	// unlisted are the providers' model lists (models.go) that could not be read: none is asked twice in a session.
+	unlisted map[string]bool
 
 	Registry *tools.Registry
 	Specs    []core.ToolSpec
