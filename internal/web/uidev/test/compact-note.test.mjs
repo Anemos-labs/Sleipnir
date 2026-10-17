@@ -29,7 +29,7 @@ function assertNoClaim(L, mode) {
   assert.equal(note, mode ? mode + ' compaction' : '', 'the fold says how the thread was folded, and nothing else');
   assert.ok(row.endsWith(mode ? 'be-1 · ' + mode + ' compaction' : 'be-1'), 'the row ends with its agent and how it was made: ' + row);
   assert.doesNotMatch(note, CLAIMS); assert.doesNotMatch(row, CLAIMS);
-  assert.match(row, /◆ compacted9k → 1k/, 'the committed compaction is shown with its sizes');
+  assert.match(row, /◆ compacted9\.0k → 1\.0k/, 'the committed compaction is shown with its sizes');
 }
 
 test('a compaction with a moment says it in its row and in the fold, in the terminal\'s words', async () => {
