@@ -52,6 +52,9 @@ type Entry struct {
 	// Endpoints is how many providers serve the model. With a single endpoint,
 	// session affinity cannot change where a request lands.
 	Endpoints int
+	// Unpriced says the catalogue published no price for the model (vLLM's and
+	// SGLang's give a window and no prices): its zero prices are unknown, not free.
+	Unpriced bool
 }
 
 // SupportsTools reports whether the model accepts tool definitions.
@@ -64,7 +67,7 @@ func (e Entry) SupportsReasoning() bool {
 
 // IsChat reports whether the model produces text from text (the only kind a
 // coding agent can use). A catalogue that does not say what its models take and give
-// (OpenAI's own, Ollama's, vLLM's and LM Studio's list nothing but ids) leaves the
+// (OpenAI's own, Ollama's, vLLM's and LM Studio's say nothing of it) leaves the
 // question open, and open counts as yes: the alternative is a listing of nothing.
 func (e Entry) IsChat() bool {
 	return e.Modality == "" || strings.HasSuffix(e.Modality, "->text")
@@ -83,7 +86,10 @@ func has(list []string, s string) bool {
 type rawModel struct {
 	ID            string `json:"id"`
 	ContextLength int    `json:"context_length"`
-	Architecture  struct {
+	// MaxModelLen is the window of vLLM's and SGLang's catalogues: the one the server was
+	// started with, which is the one it serves.
+	MaxModelLen  int `json:"max_model_len"`
+	Architecture struct {
 		Modality string `json:"modality"`
 	} `json:"architecture"`
 	Pricing struct {
@@ -158,8 +164,12 @@ func entryOf(m rawModel) (Entry, error) {
 	if m.TopProvider.MaxCompletionTokens != nil {
 		maxOut = *m.TopProvider.MaxCompletionTokens
 	}
+	window := m.ContextLength
+	if window == 0 {
+		window = m.MaxModelLen
+	}
 	model := cost.Model{
-		ID: m.ID, Provider: "gateway", ContextTokens: m.ContextLength, MaxOutput: maxOut,
+		ID: m.ID, Provider: "gateway", ContextTokens: window, MaxOutput: maxOut,
 		Price: cost.Price{
 			InputPerM: in, OutputPerM: outp, CacheReadPerM: read,
 			CacheWrite5mPerM: in, CacheWrite1hPerM: in, // no write premium
@@ -174,6 +184,7 @@ func entryOf(m rawModel) (Entry, error) {
 		Modality:  capability(m.Architecture.Modality),
 		Supported: capabilities(m.SupportedParameters),
 		Endpoints: max(m.EndpointCount, 0),
+		Unpriced:  strings.TrimSpace(m.Pricing.Prompt) == "" && strings.TrimSpace(m.Pricing.Completion) == "",
 	}, nil
 }
 
