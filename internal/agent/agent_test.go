@@ -27,14 +27,18 @@ type fakeTool struct {
 	name         string
 	readOnly     bool
 	noTreeWrites bool
+	schema       string // the input schema; "" is an object of anything
 	run          func(in json.RawMessage) *tools.Result
 	// runCtx, when set, is used instead of run and gets the call's context and the call.
 	runCtx func(ctx context.Context, c *tools.Call) *tools.Result
 }
 
 func (f fakeTool) Spec() core.ToolSpec {
-	return core.ToolSpec{Name: f.name, Description: "fake " + f.name, InputSchema: json.RawMessage(`{"type":"object"}`), ReadOnly: f.readOnly,
-		NoTreeWrites: f.noTreeWrites}
+	schema := json.RawMessage(`{"type":"object"}`)
+	if f.schema != "" {
+		schema = json.RawMessage(f.schema)
+	}
+	return core.ToolSpec{Name: f.name, Description: "fake " + f.name, InputSchema: schema, ReadOnly: f.readOnly, NoTreeWrites: f.noTreeWrites}
 }
 
 func (f fakeTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {

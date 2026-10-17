@@ -16,7 +16,7 @@ import (
 // hours) must never keep a savepoint from finding a moment when nothing writes.
 func (a *Agent) batchWrites(calls []core.Block) bool {
 	for _, c := range calls {
-		t, ok := a.cfg.Tools.Get(a.toolNameFor(c.ToolName))
+		t, ok := a.cfg.Tools.Get(a.callTool(c))
 		if ok && !t.Spec().ReadOnly && !t.Spec().NoTreeWrites {
 			return true
 		}
