@@ -289,7 +289,7 @@ function dialogInventory(SL, chatFlags) {
   const ns = captureModal(SL, () => ui.dialogs.newSession());
   const rs = captureModal(SL, () => ui.dialogs.resume());
   if (!ns || !rs) throw new Error('a dialog did not open in the inventory');
-  const labels = [...ns.body.matchAll(/<label>([^<]*)<\/label>/g)].map(m => m[1]);
+  const labels = [...ns.body.matchAll(/<label>([\s\S]*?)<\/label>/g)].map(m => m[1].replace(/<[^>]*>/g, ''));   // a flag name is in a span that keeps it whole
   /* a checkbox's text may hold markup of its own (a span that keeps a flag on one line): its text is what counts */
   const checks = [...ns.body.matchAll(/<label class="chk"><input type="checkbox" data-k="([A-Za-z]+)"[^>]*> ([\s\S]*?)<\/label>/g)].map(m => m[1] + ' ' + m[2].replace(/<[^>]*>/g, '').trim());
   const full = { resume: '20260101-000000-abcdef', cwd: '/p', model: 'a/m', mode: 'plan', swarm: 8, autoDocs: false, managerApproves: false, isolation: 'worktree', verify: 'v', commit: true, mailman: true, mailmanDefault: false,
