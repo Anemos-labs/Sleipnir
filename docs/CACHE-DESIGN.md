@@ -62,9 +62,24 @@ differences.
 
 ## Compaction
 
-The planner chooses whether and when to replace old context. A compactor
-proposes a patch; deterministic validation protects user instructions, tool
-pairs, and retained history. Mechanical masking provides a fallback.
+The planner chooses whether and when to replace old context: from the share of
+each model's window set by `cache.compact_at_percent` (a quarter by default),
+forced halfway from there to 95% of it. A compactor proposes a patch;
+deterministic validation protects user instructions, tool pairs, and retained
+history. Mechanical masking provides a fallback.
+
+The compactor is given a budget, half of the planner's soft limit for the
+agent's model, and decides what to keep by what the work in progress depends
+on rather than by age: the task's statement and criteria, the files being
+edited, the material the current output is built from (a file being
+documented, a spec being implemented), unresolved errors. Its brief lists each
+foldable unit with its size, how much keeping from it would keep, the
+references of its large tool results and the reads made stale by a later edit
+or read of the same file. Besides `keep_from`, the folded turns' spine lines
+and the notes, a patch names results in the kept region to `mask` (replaced by
+a placeholder that `recall` restores) and results to `keep`, which stay
+verbatim where the harness would otherwise mask old bulky results by age. The
+mechanical fallback keeps the same budget, never more than half the thread.
 
 Committing a patch changes private prefix bytes and can require a cache rewrite.
 The archive and `recall` retain older conversation content. Compaction can reduce

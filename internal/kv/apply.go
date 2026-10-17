@@ -17,6 +17,10 @@ import (
 type ApplyPolicy struct {
 	// MinKeepUnits is how many of the newest units always stay verbatim.
 	MinKeepUnits int
+	// KeepTarget is the size, in tokens, the compactor is asked to keep verbatim (from keep_from on, after its masks), and
+	// what a mechanical compaction keeps; 0 states no budget (a mechanical one keeps a quarter of the thread). The agent sets it
+	// from the planner's soft limit for its model (half of it), so a compaction leaves the working material of the task in view.
+	KeepTarget int
 	// MaxSpineLineChars truncates over-long digest lines.
 	MaxSpineLineChars int
 	// AutoMaskAfterUnits masks bulky tool results in retained units older than
@@ -430,6 +434,10 @@ func retain(turns []core.Turn, units []Unit, keepIdx int, p *Patch, pol ApplyPol
 	for _, m := range p.Mask {
 		masked[[2]int64{int64(m.Turn), int64(m.Index)}] = true
 	}
+	kept := map[[2]int64]bool{} // results the work still depends on: never masked automatically
+	for _, k := range p.Keep {
+		kept[[2]int64{int64(k.Turn), int64(k.Index)}] = true
+	}
 	labels := toolLabels(turns)
 	// The newest units are what the agent is acting on: a model-written patch may
 	// name any result it likes, but the ones in the protected units are never masked
@@ -490,7 +498,7 @@ func retain(turns []core.Turn, units []Unit, keepIdx int, p *Patch, pol ApplyPol
 						explicit = false
 						refused[ref] = true
 					}
-					auto := pol.AutoMaskAfterUnits > 0 && fromEnd >= pol.AutoMaskAfterUnits && tok >= pol.MaskMinTokens
+					auto := pol.AutoMaskAfterUnits > 0 && fromEnd >= pol.AutoMaskAfterUnits && tok >= pol.MaskMinTokens && !kept[ref]
 					if (explicit || auto) && !isMasked(b) {
 						mb := maskBlock(b, tr.ID, resultIdx, labels[b.ToolID], tok)
 						if saved := tok - BlockTokens(mb, est); saved > 0 {
