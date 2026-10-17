@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A child of a pool whose parent is todo (after a resume the parent waits,
+  reserved for its leader, until it is started again) is refused with how to
+  start the parent first (`spawn task=T6 agent=dv-1`). In a resumed team run
+  the manager spawned the child five times against "parent pool T6 is todo".
+  Prompt bytes: none change.
+
 - The web interface writes token counts as the terminal does: "1.2k",
   "3.4M", "1.2B", with one decimal above 999 (it stopped at k: an agent with
   three million tokens showed "3000k"). Its footer shows the tokens of every

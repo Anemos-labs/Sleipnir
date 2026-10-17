@@ -522,3 +522,29 @@ func TestAPoolLeaderNarrowsAnUnclaimedChild(t *testing.T) {
 	}
 	r.refused(r.task(r.lead, map[string]any{"action": "update", "id": a.ID, "files": []string{"app/lib/**"}}), "a claimed child's scope", "only the manager can change a task's scope")
 }
+
+// After a resume a pool's parent is todo, reserved for its leader, until it is started again; a child of it cannot be assigned before. The
+// refusal says how to start the parent: in a resumed team run the manager tried to spawn the child five times.
+func TestAChildOfAResumedPoolSaysHowToStartTheParent(t *testing.T) {
+	r := newPoolRig(t)
+	if err := r.sw.Board.poolUpdate("mgr", r.parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	child, err := r.sw.Board.CreateTask(r.lead, TaskSpec{Parent: r.parent.ID, Title: "handlers", Role: "backend", Files: []string{"app/handlers/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.mutate("harness", "requeue", func(d *draft) error { // what Board.RestoreOwners leaves after a resume
+		i := taskIdx(d.Snapshot, r.parent.ID)
+		p := d.Tasks[i]
+		p.Status, p.Line = StatusTodo, resumedLine
+		return d.put(i, p)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	want := "start " + r.parent.ID + " first (spawn task=" + r.parent.ID + " agent=" + r.lead + "), then its children"
+	r.refused(r.task("mgr", map[string]any{"action": "claim", "id": child.ID}), "a child of a parent waiting to restart", want)
+	if _, err := r.sw.Spawn(SpawnReq{Agent: r.second, TaskID: child.ID, By: "mgr"}); err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("spawning the child: %v, want it to say %q", err, want)
+	}
+}
