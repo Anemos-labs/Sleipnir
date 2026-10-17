@@ -89,6 +89,10 @@ func TransportError(parent context.Context, err error) *Error {
 	if errors.Is(parent.Err(), context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 		return &Error{Kind: ErrNetwork, Message: "request cancelled", Err: err}
 	}
+	var pe *ProxyRefusedError
+	if errors.As(err, &pe) {
+		return proxyRefusal(pe, err)
+	}
 	var ne net.Error
 	if errors.As(err, &ne) && ne.Timeout() {
 		return &Error{Kind: ErrTimeout, Message: msg, Err: err}
