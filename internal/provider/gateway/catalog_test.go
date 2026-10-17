@@ -76,3 +76,27 @@ func TestAModelWithoutAModalityIsListedAsChat(t *testing.T) {
 		t.Fatalf("IsChat by model: %v (a catalogue that does not say is taken as chat; one that says text->image is not)", chat)
 	}
 }
+
+// vLLM's and SGLang's catalogues give the window a model is served with as max_model_len, and no prices: the entry has that
+// window and says it is unpriced, so its zero prices are not read as free. A window both fields give is context_length's.
+func TestAvLLMCatalogueGivesItsWindowAndNoPrices(t *testing.T) {
+	es, err := Parse([]byte(`{"object":"list","data":[{"id":"Qwen/Qwen3-8B","object":"model","owned_by":"vllm","max_model_len":32768},` +
+		`{"id":"a/b","context_length":1000,"max_model_len":500,"pricing":{"prompt":"0.000001","completion":"0.000002"}},` +
+		`{"id":"c/free","context_length":1000,"pricing":{"prompt":"0","completion":"0"}}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]Entry{}
+	for _, e := range es {
+		byID[e.Model.ID] = e
+	}
+	if e := byID["Qwen/Qwen3-8B"]; e.Model.ContextTokens != 32768 || !e.Unpriced {
+		t.Errorf("vLLM's entry: window %d, unpriced %v; want 32768, unpriced", e.Model.ContextTokens, e.Unpriced)
+	}
+	if e := byID["a/b"]; e.Model.ContextTokens != 1000 || e.Unpriced {
+		t.Errorf("a priced entry: window %d, unpriced %v; want context_length's 1000, priced", e.Model.ContextTokens, e.Unpriced)
+	}
+	if e := byID["c/free"]; e.Unpriced {
+		t.Error("a model the catalogue prices at zero is free, not unpriced")
+	}
+}
