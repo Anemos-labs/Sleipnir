@@ -215,7 +215,8 @@ func Prepare(objective, dir, root string) (*State, error) {
 	return g, nil
 }
 
-// readSpec reads a spec file named by ref, relative to dir, refusing one that resolves (symbolic links followed) outside root.
+// readSpec reads a spec file named by ref, relative to dir, inside root: through os.Root, so that neither ".." nor a symbolic link
+// takes it out of the project.
 func readSpec(ref, dir, root string) (string, error) {
 	if root == "" {
 		root = dir
@@ -224,22 +225,22 @@ func readSpec(ref, dir, root string) (string, error) {
 	if !filepath.IsAbs(p) {
 		p = filepath.Join(dir, p)
 	}
-	real, err := filepath.EvalSymlinks(p)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return "", errors.New("no such file")
-		}
-		return "", err
-	}
-	realRoot, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		return "", err
-	}
-	if rel, err := filepath.Rel(realRoot, real); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	rel, err := filepath.Rel(root, p)
+	if err != nil || !filepath.IsLocal(rel) {
 		return "", ErrSpecOutside
 	}
-	f, err := os.Open(real)
+	r, err := os.OpenRoot(root)
 	if err != nil {
+		return "", err
+	}
+	defer r.Close()
+	f, err := r.Open(rel)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return "", errors.New("no such file")
+	case err != nil && strings.Contains(err.Error(), "escapes"):
+		return "", ErrSpecOutside
+	case err != nil:
 		return "", err
 	}
 	defer f.Close()
