@@ -15,6 +15,12 @@ they do not indicate whether a change has been released.
   and its members' claims were refused for half an hour. Prompt bytes: the
   task tool's refusal texts change; no prompt layer does.
 
+- A tool call named `tool.action` (`task.get`, `pool.agree`, also behind a
+  `functions.` namespace) runs as that tool with the action in its input,
+  when the tool's schema has that action and the call's input names no
+  other one; the event log's `tool.call` says which tool ran (`as`).
+  Before, it was refused as an unknown tool. Prompt bytes: none change.
+
 - The manager may excuse a pool member whose runs are failing (one the
   harness is restarting after a failed run, or whose restarted run is under
   way) even while it seems to make progress. A model that loops on `go test`

@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"sync"
 	"testing"
@@ -48,6 +49,49 @@ func TestAToolNameWithChatFormatArtifactsStillRuns(t *testing.T) {
 	}
 	if n != 2 {
 		t.Errorf("%d tool.call events say which tool ran, want 2", n)
+	}
+}
+
+// Some models address an action of a tool as a tool of its own ("task.get"). Where the tool's schema has that action, the call
+// runs as the tool with the action in its input; a call whose input names another action is not guessed at, nor is an action the
+// tool does not have.
+func TestAToolActionWrittenAsAToolNameRuns(t *testing.T) {
+	board := fakeTool{name: "board", schema: `{"type":"object","properties":{"action":{"type":"string","enum":["get","list"]},"id":{"type":"string"}},"required":["action"]}`,
+		run: func(in json.RawMessage) *tools.Result { return &tools.Result{Text: "board:" + string(in)} }}
+	r := newRig(t, rigOpts{noCompact: true, tools: []fakeTool{board}}, func(c *mock.Call) mock.Reply {
+		if len(c.Messages) < 4 {
+			return mock.Reply{ToolCalls: []mock.ToolCall{
+				{ID: "d1", Name: "board.get", Args: `{"id":"T1"}`},
+				{ID: "d2", Name: "functions.board.list", Args: `{}`},
+				{ID: "d3", Name: "board.get", Args: `{"action":"get","id":"T2"}`},
+				{ID: "d4", Name: "board.get", Args: `{"action":"list"}`},
+				{ID: "d5", Name: "board.close", Args: `{"id":"T1"}`},
+			}}
+		}
+		return mock.Reply{Text: "done"}
+	})
+	if _, err := r.agent.Run(context.Background(), "go"); err != nil {
+		t.Fatal(err)
+	}
+	results := r.agent.Thread().Snapshot().Turns[2].Blocks
+	for i, want := range []string{`board:{"action":"get","id":"T1"}`, `board:{"action":"list"}`, `board:{"action":"get","id":"T2"}`} {
+		if results[i].IsError || results[i].PlainText() != want {
+			t.Errorf("call %d = %+v, want %q", i+1, results[i], want)
+		}
+	}
+	for i, name := range []string{"board.get", "board.close"} {
+		if b := results[3+i]; !b.IsError || !strings.Contains(b.PlainText(), `unknown tool "`+name+`"`) {
+			t.Errorf("call %d (%s) was guessed at: %+v", 4+i, name, b)
+		}
+	}
+	n := 0
+	for _, e := range r.log.OfType("tool.call") {
+		if strings.Contains(string(e.Data), `"as":"board"`) {
+			n++
+		}
+	}
+	if n != 3 {
+		t.Errorf("%d tool.call events say the board tool ran, want 3", n)
 	}
 }
 

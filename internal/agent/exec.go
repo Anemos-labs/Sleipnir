@@ -167,7 +167,7 @@ func (a *Agent) budgetResults(results []core.Block, refused int) {
 // readOnly resolves a tool's runtime name and reads its declared mutability; unknown tools are
 // treated as side-effect-free failures.
 func (a *Agent) readOnly(c core.Block) bool {
-	t, ok := a.cfg.Tools.Get(a.toolNameFor(c.ToolName))
+	t, ok := a.cfg.Tools.Get(a.callTool(c))
 	if !ok {
 		return true // errors are cheap and side-effect free
 	}
@@ -189,6 +189,9 @@ func (a *Agent) env() *tools.Env {
 func (a *Agent) runOne(ctx context.Context, call core.Block) (out core.Block, exitFailed bool) {
 	start := time.Now()
 	name := a.toolNameFor(call.ToolName)
+	if tool, in, ok := actionCall(a.cfg.Tools.Get, call.ToolName, call.Input); ok {
+		name, call.Input = tool, in // "task.get": the task tool with action get (see actionCall)
+	}
 	a.cfg.Sink.ToolStart(a.cfg.ID, a.shownCall(call))
 	callEvent := map[string]any{"id": call.ToolID, "name": call.ToolName, "input": json.RawMessage(call.Input)}
 	if name != call.ToolName {
@@ -315,13 +318,86 @@ var _ = fmt.Sprintf
 
 // shownCall is a call as the person is shown it: the tool it meant, not its name with a piece of the model's chat format stuck to it.
 func (a *Agent) shownCall(c core.Block) core.Block {
-	c.ToolName = a.toolNameFor(c.ToolName)
+	c.ToolName = a.callTool(c)
 	return c
 }
 
-// toolNameFor is the tool a call's name means (see repairToolName).
+// toolNameFor is the tool a call's name means once the pieces of a chat format are cut off it (repairToolName).
 func (a *Agent) toolNameFor(name string) string {
 	return repairToolName(func(n string) bool { _, ok := a.cfg.Tools.Get(n); return ok }, name)
+}
+
+// callTool is the tool a call runs as: the tool of an unambiguous "tool.action" call (actionCall), else toolNameFor its name.
+// runOne runs it, and the person is shown it and the scheduler orders by it.
+func (a *Agent) callTool(c core.Block) string {
+	if tool, _, ok := actionCall(a.cfg.Tools.Get, c.ToolName, c.Input); ok {
+		return tool
+	}
+	return a.toolNameFor(c.ToolName)
+}
+
+// dottedAction reads a call name written as "tool.action" ("task.get", "pool.agree", "functions.task.get"): some models address an
+// action of a tool as a tool of its own. ok is false unless tool is a tool whose input schema lists action among the values of its
+// "action" property; nothing else is guessed.
+func dottedAction(get func(string) (tools.Tool, bool), name string) (tool, action string, ok bool) {
+	n := strings.TrimSpace(name)
+	for _, ns := range []string{"functions.", "function.", "tools.", "tool."} {
+		n = strings.TrimPrefix(n, ns)
+	}
+	tool, action, found := strings.Cut(n, ".")
+	if !found || tool == "" || action == "" {
+		return "", "", false
+	}
+	t, has := get(tool)
+	if !has {
+		return "", "", false
+	}
+	var schema struct {
+		Properties struct {
+			Action struct {
+				Enum []string `json:"enum"`
+			} `json:"action"`
+		} `json:"properties"`
+	}
+	if json.Unmarshal(t.Spec().InputSchema, &schema) != nil {
+		return "", "", false
+	}
+	for _, v := range schema.Properties.Action.Enum {
+		if v == action {
+			return tool, action, true
+		}
+	}
+	return "", "", false
+}
+
+// actionCall is the call a "tool.action" name means (dottedAction): the tool, with the action put in its input. It applies only
+// when the input is an object that names no action or the same one; a call whose input names another action is ambiguous and is
+// left as it was (an unknown tool, whose answer lists the tools). The call is unambiguous otherwise, and refusing it costs the
+// model a step: a model that wrote task.get three times in a run's first half hour was refused each time.
+func actionCall(get func(string) (tools.Tool, bool), name string, input json.RawMessage) (tool string, in json.RawMessage, ok bool) {
+	if _, has := get(name); has {
+		return "", nil, false
+	}
+	tool, action, ok := dottedAction(get, name)
+	if !ok {
+		return "", nil, false
+	}
+	obj := map[string]any{}
+	if len(strings.TrimSpace(string(input))) > 0 && json.Unmarshal(input, &obj) != nil {
+		return "", nil, false
+	}
+	if obj == nil {
+		obj = map[string]any{}
+	}
+	if v, has := obj["action"]; has && v != action && v != "" {
+		return "", nil, false
+	}
+	obj["action"] = action
+	b, err := json.Marshal(obj)
+	if err != nil {
+		return "", nil, false
+	}
+	return tool, b, true
 }
 
 // repairToolName maps a tool name that a model wrote with pieces of its own chat format still attached to the tool it means. Some
