@@ -535,6 +535,9 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		s.restorePermissions()
 	}
 	built = true
+	if o.Interactive && !o.Offline {
+		go s.checkReach()
+	}
 	return s, nil
 }
 

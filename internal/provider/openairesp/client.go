@@ -106,14 +106,15 @@ func New(cfg Config) *Client {
 // HTTP/2 connections.
 func newTransport() *http.Transport {
 	return &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          256,
-		MaxIdleConnsPerHost:   128,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   15 * time.Second,
-		ExpectContinueTimeout: time.Second,
-		DialContext:           (&net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		Proxy:                  http.ProxyFromEnvironment,
+		OnProxyConnectResponse: provider.CheckProxyConnect,
+		ForceAttemptHTTP2:      true,
+		MaxIdleConns:           256,
+		MaxIdleConnsPerHost:    128,
+		IdleConnTimeout:        90 * time.Second,
+		TLSHandshakeTimeout:    15 * time.Second,
+		ExpectContinueTimeout:  time.Second,
+		DialContext:            (&net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
 	}
 }
 
