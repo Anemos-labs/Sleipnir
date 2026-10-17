@@ -186,12 +186,15 @@ func analysePs(args []string) safeAnalysis {
 	s := sp.scan(args)
 	words := s.pos
 	if runtime.GOOS != "linux" {
-		// Elsewhere the option letters differ (macOS ps -g takes no value), so a word read as an option's value may be options.
+		// Elsewhere the option letters differ (macOS ps -g takes no value), so a word read as an option's value may be options; the
+		// values of -o, -O and -p (a format and process ids, on every system) are not.
 		if s.has("-e") {
 			return safeAnalysis{why: "ps -e prints the environment of each process here"}
 		}
-		for _, vs := range s.flags {
-			words = append(words, vs...)
+		for f, vs := range s.flags {
+			if f != "-o" && f != "-O" && f != "-p" {
+				words = append(words, vs...)
+			}
 		}
 	}
 	if s.has("-E") {

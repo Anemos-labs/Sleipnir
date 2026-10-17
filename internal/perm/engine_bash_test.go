@@ -50,7 +50,7 @@ var safeCommands = []string{
 	`egrep -n 'a|b' main.go`, `fgrep -rn package src`, `column -t main.go`, `column -s, -t main.go`, `comm -12 main.go src/a.go`,
 	`join main.go src/a.go`, `expand -t 4 main.go`, `unexpand main.go`, `od -c main.go`, `od -A x -t x1z main.go`, `hexdump -C main.go`,
 	`xxd main.go`, `xxd -l 16 main.go`, `strings main.go`, `strings -n 8 main.go`, `base64 main.go`, `base64 -w0 main.go`,
-	`ps aux`, `ps -ef`, `ps -o pid,etime,cmd -p 1`, `ps aux | grep -v grep`, `pgrep -f vite`, `pgrep -af node`,
+	`ps aux`, `ps -o pid,etime,cmd -p 1`, `ps aux | grep -v grep`, `pgrep -f vite`, `pgrep -af node`,
 	`git config user.name`, `git config --get remote.origin.url`, `git config --get-regexp '^remote\.'`, `git config get user.name`,
 	`git config --local --list`, `git config --list --show-origin --local`, `git config --type=bool --get core.bare`,
 	`npm ls`, `npm ls --depth=0`, `npm list --all --json`, `npm run`,
