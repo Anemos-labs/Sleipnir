@@ -35,7 +35,7 @@ func blockingReply(text string) *provider.Response {
 
 func newBlockingAgent(t *testing.T, p blockingProvider) (*Agent, *events.MemLog) {
 	t.Helper()
-	pl := kv.DefaultPlanner()
+	pl := tokenPlanner()
 	pl.SoftThreadTokens, pl.HardThreadTokens = 1, 1
 	log := events.NewMemLog()
 	a, err := New(Config{
@@ -204,4 +204,12 @@ func TestReadyCompactionSurvivesLargeAppendOnlyGrowth(t *testing.T) {
 			t.Fatal("lost appended evidence")
 		}
 	}
+}
+
+// tokenPlanner is the default planner on its token limits (kv.Planner.CompactAt negative), as the blocking-compaction tests
+// set them on a mock model whose window is a million tokens.
+func tokenPlanner() kv.Planner {
+	p := kv.DefaultPlanner()
+	p.CompactAt = -1
+	return p
 }

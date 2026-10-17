@@ -250,7 +250,7 @@ func (a *Agent) plannerStateLocked() kv.State {
 	return kv.State{
 		PrefixTokens: prefix, NotesTokens: notes, SpineTokens: spine,
 		ThreadTokens: thread, PromptTokens: prefix + notes + spine + thread,
-		ContextWindow: a.cfg.Model.ContextTokens, Warm: a.isWarmLocked(a.cfg.Now()),
+		ContextWindow: a.cfg.Model.ContextTokens, WindowGuessed: a.cfg.Model.WindowGuessed, Warm: a.isWarmLocked(a.cfg.Now()),
 		Remaining: remaining, W: w, Write: write, Explicit: explicit,
 		MaskableTokens: kv.MaskableTokens(&s, a.est, pol), SinceMask: a.reqN - a.lastMaskReq,
 	}

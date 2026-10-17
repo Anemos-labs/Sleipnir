@@ -27,3 +27,23 @@ func TestAHighSoftLimitRaisesTheHardLimitUnlessItWasSet(t *testing.T) {
 		}
 	}
 }
+
+// Compaction starts at a share of each model's window: a quarter by default, compact_at_percent when it is set. Token limits set
+// without it keep applying to every model, as before the share existed.
+func TestTheCompactionShareComesFromTheCacheSettings(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		cache config.Cache
+		share float64
+	}{
+		{"the default quarter", config.Cache{}, 0.25},
+		{"a share that is set", config.Cache{CompactAtPercent: 40}, 0.40},
+		{"token limits alone apply to every model", config.Cache{ThreadSoftLimitTokens: 30_000}, -1},
+		{"a hard token limit alone too", config.Cache{CompactThresholdTokens: 90_000}, -1},
+		{"a share wins over token limits for a model with a known window", config.Cache{CompactAtPercent: 30, ThreadSoftLimitTokens: 30_000}, 0.30},
+	} {
+		if got := plannerFor(c.cache).CompactAt; got != c.share {
+			t.Errorf("%s: share %v, want %v", c.name, got, c.share)
+		}
+	}
+}

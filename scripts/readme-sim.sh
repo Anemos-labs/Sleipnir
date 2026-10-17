@@ -34,6 +34,13 @@ go build -o "$bin" ./cmd/sleipnir
   echo 'agent needs only 6k tokens to orient, so there is little for a pin to replace), `bloated pins` (a sloppy 40k shared and'
   echo '20k role pin against the same 30k of exploration) and `huge exploration` (a monorepo where a cold agent reads 90k).'
   echo
+  echo 'The layered policy compacts when an agent'"'"'s conversation fills a quarter of its model'"'"'s window (the default'
+  echo '`cache.compact_at_percent`); the simulated window is 1M tokens, so these tasks keep their whole conversation. On the'
+  echo 'explicit cache that costs about what compaction did, since every commit re-writes the prefix at the write premium; on the'
+  echo 'automatic cache each request reads the larger context at 0.25x, and `long tasks` and `small repo` cost more than'
+  echo 'summary compaction at 100k: the price of keeping what an agent read in view. A lower `cache.compact_at_percent` trades'
+  echo 'that memory back for cost.'
+  echo
   echo 'Layering wins when the shared pin is dense. The pin replaces each agent'"'"'s own orientation; once it is larger than'
   echo 'that orientation it costs every request of every agent more than it saves (`bloated pins` above loses on the'
   echo 'marketplace cache and roughly ties on the explicit one). Sweeping the total pin size (`pins(k)`, split into shared and'

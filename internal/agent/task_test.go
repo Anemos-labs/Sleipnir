@@ -109,7 +109,7 @@ func TestRunTaskWithNothingAddsNoTurn(t *testing.T) {
 // is folded, the notes' assignment is the new card and the instructions section holds
 // nothing the harness said.
 func TestRunTaskAssignmentSurvivesCompactionAsTheAssignmentNotAnInstruction(t *testing.T) {
-	pl := kv.DefaultPlanner()
+	pl := tokenPlanner()
 	pl.SoftThreadTokens = 1_000_000 // the background planner stays out of it
 	pl.HardThreadTokens = 2_000_000
 	notes := kv.NewLayer("notes:be-1", kv.KindNotes, 1, []kv.Segment{{Key: "assignment", Text: "You are be-1. Your assignment is task T-1: build the parser.", Vol: kv.VolFrozen}})

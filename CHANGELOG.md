@@ -27,6 +27,24 @@ they do not indicate whether a change has been released.
   swarm budget calls off a waiting restart. New `swarm.restart` events
   record each restart. Prompt bytes: none change.
 
+- Compaction starts at a share of each model's context window instead of a
+  fixed 20,000-token conversation: by default when the conversation fills
+  25% of the window (`cache.compact_at_percent`, 10 to 90), forced halfway
+  from there to 95%. On a model with a 1M-token window that is 250,000
+  tokens instead of 20,000, so an agent keeps what it read for its current
+  work in view through a long task; in a 12-worker run under the old limit,
+  58% of the reads that followed a compaction re-read a file whose earlier
+  read had just been folded away. Requests carry a larger context in
+  exchange: on an automatic prefix cache the simulated cost of long tasks
+  roughly doubles (docs/CACHE-ECONOMICS.md), while on an explicit cache,
+  where each compaction re-writes the prefix, it stays about level. Token
+  limits set without `compact_at_percent` (`thread_soft_limit_tokens`,
+  `compact_threshold_tokens`) keep applying to every model, and a model
+  whose window is not known (a model nothing describes, whose 200,000-token
+  window is a placeholder) uses them. Prompt bytes: the stable layers do not
+  change; the conversation stays verbatim for longer before it is folded, so
+  requests past the former 20,000-token limit carry more of it.
+
 - Every model a session calls takes its context window from what its
   provider reports, for models the built-in table knows as well: the
   endpoint's catalogue entry, or for a ChatGPT plan the plan's own model

@@ -61,7 +61,7 @@ func newARVCfg(t *testing.T, p provider.Provider, planner kv.Planner, mutate fun
 }
 
 func aggressivePlanner() kv.Planner {
-	pl := kv.DefaultPlanner()
+	pl := tokenPlanner()
 	pl.SoftThreadTokens = 1500
 	pl.MinThreadTokens = 500
 	return pl
@@ -551,7 +551,7 @@ func TestSec_S25_TheStopHookNudgeIsNotTheUsersWord(t *testing.T) {
 func TestSec_S49_ManualCompactFocusIsOneEscapedLine(t *testing.T) {
 	var mu sync.Mutex
 	var brief string
-	pl := kv.DefaultPlanner()
+	pl := tokenPlanner()
 	pl.SoftThreadTokens, pl.HardThreadTokens = 1_000_000, 2_000_000
 	r := newRig(t, rigOpts{planner: pl}, scriptedWork(8, func(c *mock.Call) string {
 		mu.Lock()
@@ -594,7 +594,7 @@ func TestSec_S49_ManualCompactFocusIsOneEscapedLine(t *testing.T) {
 // ---- promotions --------------------------------------------------------------------------
 
 func TestSec_S25_PromotionsReachTheBoardVettedAndMarkedUnverified(t *testing.T) {
-	pl := kv.DefaultPlanner()
+	pl := tokenPlanner()
 	pl.SoftThreadTokens = 6500
 	pl.MinThreadTokens = 2000
 	fts := []secRevTool{{name: "fetch", run: func(json.RawMessage) string { return strings.Repeat("build output line with details\n", 110) }}}

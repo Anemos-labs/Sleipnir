@@ -471,7 +471,7 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		return nil, err
 	}
 	if o.ContextWindow > 0 {
-		s.Model.ContextTokens = o.ContextWindow
+		s.Model.ContextTokens, s.Model.WindowGuessed = o.ContextWindow, false
 	}
 
 	// Hooks, then skills and role definitions, then permissions (which need the
@@ -1477,8 +1477,10 @@ func (s *Session) listCost() (list float64, plan bool) {
 	return list, plan || s.Model.Plan
 }
 
-// plannerFor is the compaction planner that the cache settings ask for. A soft limit that is set above the default hard one would never
-// be reached, the hard limit forcing the compaction first, so the hard limit follows it up unless it was set too.
+// plannerFor is the compaction planner that the cache settings ask for. Compaction starts at a share of each model's window
+// (compact_at_percent, 25 by default); token limits set without it keep applying to every model, as they did before the share
+// existed, and apply to a model whose window is not known in any case. A soft limit that is set above the default hard one
+// would never be reached, the hard limit forcing the compaction first, so the hard limit follows it up unless it was set too.
 func plannerFor(c config.Cache) kv.Planner {
 	p := kv.DefaultPlanner()
 	if c.ThreadSoftLimitTokens > 0 {
@@ -1488,6 +1490,12 @@ func plannerFor(c config.Cache) kv.Planner {
 		p.HardThreadTokens = c.CompactThresholdTokens
 	} else if p.SoftThreadTokens > p.HardThreadTokens {
 		p.HardThreadTokens = p.SoftThreadTokens
+	}
+	switch {
+	case c.CompactAtPercent > 0:
+		p.CompactAt = float64(c.CompactAtPercent) / 100
+	case c.ThreadSoftLimitTokens > 0 || c.CompactThresholdTokens > 0:
+		p.CompactAt = -1
 	}
 	return p
 }

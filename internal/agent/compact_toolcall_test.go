@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
-	"github.com/anemos-labs/sleipnir/internal/kv"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 )
 
@@ -19,7 +18,7 @@ import (
 // 20 of one model's 127 compactions that had a patch in them that was valid and was never used. The call is never run, and the patch
 // is judged as any other.
 func TestAValidPatchIsUsedEvenWhenTheCompactorAlsoCalledATool(t *testing.T) {
-	pl := kv.DefaultPlanner()
+	pl := tokenPlanner()
 	pl.SoftThreadTokens = 6500
 	pl.MinThreadTokens = 2000
 	var mu sync.Mutex
@@ -98,7 +97,7 @@ func rejections(r *rig) []string {
 
 // A reply that only called a tool, with nothing in its text that is a patch, is still a failed compaction, with the reason that says so.
 func TestACompactorThatOnlyCalledAToolIsStillAFailedCompaction(t *testing.T) {
-	pl := kv.DefaultPlanner()
+	pl := tokenPlanner()
 	pl.SoftThreadTokens = 2500
 	pl.MinThreadTokens = 800
 	var mu sync.Mutex

@@ -14,7 +14,6 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/events"
-	"github.com/anemos-labs/sleipnir/internal/kv"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/provider/openaichat"
 )
@@ -312,7 +311,7 @@ func TestSnapshotEachStepKeepsCompletedToolBatches(t *testing.T) {
 
 func TestCompactNowFoldsTheThreadOnRequestAndKeepsWorking(t *testing.T) {
 	var sawFocus bool
-	pl := kv.DefaultPlanner()
+	pl := tokenPlanner()
 	pl.SoftThreadTokens = 1_000_000 // the background planner stays out of it
 	pl.HardThreadTokens = 2_000_000
 	r := newRig(t, rigOpts{planner: pl}, scriptedWork(8, func(c *mock.Call) string {
@@ -406,7 +405,7 @@ func TestACompactorModelWritesTheSummaryWhileTheThreadFitsItsWindow(t *testing.T
 		mu.Unlock()
 		cm := cost.Fallback("small-compactor")
 		cm.ContextTokens = window
-		pl := kv.DefaultPlanner()
+		pl := tokenPlanner()
 		pl.SoftThreadTokens, pl.HardThreadTokens = 1_000_000, 2_000_000
 		var own int
 		r := newRig(t, rigOpts{planner: pl, compactor: cclient, compactorModel: cm}, scriptedWork(8, func(c *mock.Call) string {
@@ -468,7 +467,7 @@ func TestACompactorWhosePatchesFailIsBenchedForEveryAgent(t *testing.T) {
 
 	// each compaction is another agent of the session, as in a team: they share the record
 	compact := func() (own int, r *rig) {
-		pl := kv.DefaultPlanner()
+		pl := tokenPlanner()
 		pl.SoftThreadTokens, pl.HardThreadTokens = 1_000_000, 2_000_000
 		var ownCalls atomic.Int32 // the mock answers on its own goroutine
 		r = newRig(t, rigOpts{planner: pl, compactor: cclient, compactorModel: cm, compactorHealth: health, sink: sink}, scriptedWork(8, func(c *mock.Call) string {

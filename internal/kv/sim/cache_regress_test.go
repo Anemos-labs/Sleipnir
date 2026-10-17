@@ -103,16 +103,19 @@ func TestSimGateIsKeyedAndTimedLikeTheRealOne(t *testing.T) {
 // true rather than assumed, and what the code now does that the first model
 // ignored (commit penalty with tail, spine and notes; masking rate limit; the
 // entry-lifetime warm test; no oracle horizon) costs a point or two.
+//
+// It is measured at the planner's token limits (tokenLayered), where both compaction paths run within the workload: the default
+// share of a 1M window is not reached by its threads.
 func TestSimHeadlineWithTheFixesStaysInTheDocumentedRange(t *testing.T) {
 	w := DefaultWorkload(20)
 	p := Anthropic()
 	naive := Naive(w, p, NaiveOptions{})
 	sum := Naive(w, p, NaiveOptions{CompactAt: 100_000})
-	lay := Layered(w, p, DefaultLayered())
+	lay := Layered(w, p, tokenLayered())
 	vsNaive, vsSum := (lay.ITE/naive.ITE-1)*100, (lay.ITE/sum.ITE-1)*100
 	t.Logf("20 workers, Anthropic-like: layered %.1fM, plain %.1fM (%+.0f%%), plain+summary %.1fM (%+.0f%%); %d forks, %d mask commits", lay.ITE/1e6, naive.ITE/1e6, vsNaive, sum.ITE/1e6, vsSum, lay.Compactions, lay.MaskCommits)
 	if vsNaive > -30 || vsNaive < -42 || vsSum > -20 || vsSum < -34 {
-		t.Fatalf("headline %+.0f%% vs plain / %+.0f%% vs plain+summary left the documented range (about -36%% / -26%%): update docs/CACHE-DESIGN.md §8 with the new numbers", vsNaive, vsSum)
+		t.Fatalf("headline %+.0f%% vs plain / %+.0f%% vs plain+summary at the token limits left its range (about -36%% / -26%%)", vsNaive, vsSum)
 	}
 	if lay.Compactions == 0 || lay.MaskCommits == 0 {
 		t.Fatalf("both compaction paths must be exercised: forks=%d masks=%d", lay.Compactions, lay.MaskCommits)

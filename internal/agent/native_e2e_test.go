@@ -186,7 +186,7 @@ func TestCacheEcon_NativeAdapterAgentSurvivesACompactionCommit(t *testing.T) {
 		t.Run(fmt.Sprintf("turn-scoped=%v", turnScoped), func(t *testing.T) {
 			const steps = 14
 			c, srv, _ := nativeRig(t, turnScoped, steps)
-			pl := kv.DefaultPlanner()
+			pl := tokenPlanner()
 			pl.SoftThreadTokens, pl.HardThreadTokens, pl.MinThreadTokens = 500, 900, 300
 			a, log := cxAgent(t, cxOpts{prov: c, hot: cxBoard(), planner: pl, model: nativeModel})
 			res, err := a.Run(context.Background(), "find out why the build fails and fix it")

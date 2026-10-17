@@ -616,13 +616,13 @@ func BuildProvider(cfg *config.Config, ref ModelRef, o ProviderOptions) (provide
 		// show, and no window. The window is a cautious one (Ollama serves a few thousand tokens unless told otherwise, and cuts the rest off
 		// without a word), so that compaction keeps the prompt inside what the server gives; options.context_window says the real one.
 		m.Price = cost.Price{}
-		m.ContextTokens = localContextWindow
+		m.ContextTokens, m.WindowGuessed = localContextWindow, false // cautious on purpose: compaction keeps the prompt inside it
 	}
 	if n := optInt(p.Options, "context_window"); n > 0 {
-		m.ContextTokens = n
+		m.ContextTokens, m.WindowGuessed = n, false
 	}
 	if m.ContextTokens == 0 {
-		m.ContextTokens = 200_000
+		m.ContextTokens, m.WindowGuessed = 200_000, true
 	}
 	return client, m, nil
 }
@@ -681,7 +681,7 @@ func enrichFrom(entries []gateway.Entry, m cost.Model) (cost.Model, bool) {
 	out := e.Model // every entry has passed cost.Model.Validate (gateway.Parse, gateway.Vet)
 	out.ID = m.ID
 	if out.ContextTokens == 0 {
-		out.ContextTokens = m.ContextTokens
+		out.ContextTokens, out.WindowGuessed = m.ContextTokens, m.WindowGuessed // no window of its own: m's stands, guess or not
 	}
 	return out, true
 }

@@ -89,7 +89,7 @@ func (s *Session) describe(ctx context.Context, p provider.Provider, m cost.Mode
 		case m.Plan:
 			if configured == 0 {
 				if n := s.planWindow(ctx, base, m.ID); n > 0 {
-					m.ContextTokens, win = n, sourceCatalogue
+					m.ContextTokens, m.WindowGuessed, win = n, false, sourceCatalogue
 				}
 			}
 		case m.Provider == "unknown":
@@ -102,12 +102,12 @@ func (s *Session) describe(ctx context.Context, p provider.Provider, m cost.Mode
 			}
 		case configured == 0:
 			if e, ok := findEntry(s.catalogue(ctx, base), m.ID); ok && e.Model.ContextTokens > 0 {
-				m.ContextTokens, win = e.Model.ContextTokens, sourceCatalogue
+				m.ContextTokens, m.WindowGuessed, win = e.Model.ContextTokens, false, sourceCatalogue
 			}
 		}
 	}
 	if configured > 0 {
-		m.ContextTokens, win = configured, sourceConfigured
+		m.ContextTokens, m.WindowGuessed, win = configured, false, sourceConfigured
 	}
 	s.note(m, src, win)
 	return m

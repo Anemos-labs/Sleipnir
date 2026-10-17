@@ -85,7 +85,7 @@ func TestALongRunKeepsABoundedFootprint(t *testing.T) {
 	}
 	model := cost.Model{ID: "arv-1", ContextTokens: 1_000_000, Cache: cost.OpenAICacheModel(),
 		Price: cost.Price{InputPerM: 4, OutputPerM: 20, CacheReadPerM: 1, CacheWrite5mPerM: 4, CacheWrite1hPerM: 4}}
-	pl := kv.DefaultPlanner()
+	pl := tokenPlanner()
 	pl.SoftThreadTokens = 12000
 	pl.MinThreadTokens = 3000
 	blobs, err := events.NewDirBlobs(t.TempDir()) // on disk, as in a session: a store held in memory would be the test's own growth
