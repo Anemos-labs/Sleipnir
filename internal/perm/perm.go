@@ -67,7 +67,7 @@
 // forms. Bash rules match the parsed command: "Bash(git status:*)" is a token
 // prefix, "Bash(npm run test)" is exact, "Bash(*)" or "Bash" is any command.
 // Allow rules match the command as written (./git is not git); Deny and Ask
-// rules also see through sudo, env, nohup, time, absolute paths and quoting.
+// rules also see through sudo, env, nohup, time, npx --no-install (which installs nothing), absolute paths and quoting.
 //
 // # Modes
 //

@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `npx --no-install X` and `npx --no X` are read as `X` by the permission
+  engine (npx installs nothing then: it runs the project's own program or
+  fails), so a read-only reviewer can type-check with the project's
+  TypeScript (`npx --no-install tsc --noEmit`) under the `tsc --noEmit`
+  rule. A plain `npx`, which installs a package it does not find (`npx tsc`
+  without TypeScript installs an unrelated `tsc`), stays the program, and a
+  read-only role refused one is told the `--no-install` form. Prompt bytes:
+  none change.
+
 - A child of a pool whose parent is todo (after a resume the parent waits,
   reserved for its leader, until it is started again) is refused with how to
   start the parent first (`spawn task=T6 agent=dv-1`). In a resumed team run
