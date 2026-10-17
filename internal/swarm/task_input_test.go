@@ -1,6 +1,8 @@
 package swarm
 
 import (
+	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -77,11 +79,14 @@ func TestTaskIDValidationPreservesActionAndRoleRules(t *testing.T) {
 			t.Errorf("worker %s lost its role refusal: %+v", action, result)
 		}
 	}
-	for _, action := range []string{"", "unknown"} {
+	for action, want := range map[string]string{"": "task was called without an action: give one of create, list, get", "unknown": `unknown action "unknown": task's actions are create, list, get`} {
 		result := secRevCall(t, tool, "mgr", "manager", map[string]any{"action": action})
-		if !result.IsError || !strings.Contains(result.Text, "unknown action") {
-			t.Errorf("unknown action requires an action correction: %+v", result)
+		if !result.IsError || !strings.Contains(result.Text, want) {
+			t.Errorf("action %q: %+v, want an error saying %q", action, result, want)
 		}
+	}
+	if result := secRevCall(t, tool, "mgr", "manager", map[string]any{}); !result.IsError || !strings.Contains(result.Text, "without an action") {
+		t.Errorf("an empty call is not told it has no action: %+v", result)
 	}
 	for _, in := range []map[string]any{
 		{"action": "list"},
@@ -90,5 +95,24 @@ func TestTaskIDValidationPreservesActionAndRoleRules(t *testing.T) {
 		if result := secRevCall(t, tool, "mgr", "manager", in); result.IsError {
 			t.Errorf("%s must work without an ID: %s", in["action"], result.Text)
 		}
+	}
+}
+
+// The actions the task tool names when it refuses one are the actions of its schema.
+func TestTaskActionsAreTheSchemas(t *testing.T) {
+	s := secRevSwarm()
+	defer s.Shutdown()
+	var schema struct {
+		Properties struct {
+			Action struct {
+				Enum []string `json:"enum"`
+			} `json:"action"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(secRevTool(t, s, "task").Spec().InputSchema, &schema); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(schema.Properties.Action.Enum, taskActions) {
+		t.Errorf("schema actions %v, refusal names %v", schema.Properties.Action.Enum, taskActions)
 	}
 }
