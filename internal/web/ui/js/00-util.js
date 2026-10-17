@@ -6,7 +6,18 @@
   const $$ = (s, r) => Array.prototype.slice.call((r || document).querySelectorAll(s));
   /** HTML-escape a value: everything that came from a tool, a file, a mail or the model is data and goes through here. */
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const fmtK = n => n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(Math.round(n));
+  /** A count with a unit, as the terminal writes token counts (widget.Tokens): "812", "1.2k", "999.9k", "1.2M", "3.4B". Above 999 it
+   *  always has one decimal, so a column of counts keeps its shape, and it rounds to the unit shown with the carry (999,960 is "1.0M"). */
+  const fmtK = n => {
+    let v = Math.round(Number(n) || 0);
+    if (v < 0) return '-' + fmtK(-v);
+    if (v < 1000) return String(v);
+    for (const [div, unit] of [[1e3, 'k'], [1e6, 'M'], [1e9, 'B']]) {
+      const tenths = Math.floor((v + div / 20) / (div / 10));
+      if (tenths < 10000 || unit === 'B') return Math.floor(tenths / 10) + '.' + (tenths % 10) + unit;
+    }
+    return String(v);
+  };
   const fmtN = n => Math.round(n).toLocaleString('en-US');
   const fmtUsd = (n, d) => '$' + n.toFixed(d == null ? (n < .1 ? 4 : 2) : d);
   /** Usage a subscription plan covered (a ChatGPT sign-in) bills nothing per token: its figure is shown at the API list price, with a '≈'
