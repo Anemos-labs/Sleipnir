@@ -54,6 +54,7 @@ func (s *Swarm) superviseOnce(now time.Time) {
 	}
 	s.guard("restarts", func() { s.restartTick(now) })
 	s.guard("repairs", func() { s.repairTick(now) })
+	s.guard("queued spawns", func() { s.queueTick(now) })
 	s.guard("stalls", s.sweepStalls)
 	s.guard("docs", func() { s.docsTick(now) })
 }

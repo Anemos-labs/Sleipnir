@@ -237,6 +237,17 @@ func (s *Swarm) ensurePool(role string) ([]*member, error) {
 	return s.poolMembers(role), nil
 }
 
+// noSpareMember is why a role's pool cannot begin a new parent now: every member of the role is held by another parent (its plan
+// still needs every member, or each member leads one or holds an open subtask of one). It passes as soon as a member is free, which
+// is why the spawn tool queues the parent instead of refusing it (queueSpawn).
+type noSpareMember struct {
+	role, msg string
+	held      string // what holds the members ("be-1 leads T2, be-2 leads T3"), for the queued answer
+}
+
+// Error is the refusal, with what to do instead.
+func (e *noSpareMember) Error() string { return e.msg }
+
 // spareMembers is the members of req.Role that can form the pool of a new parent: those in no open pool of the role, and those an
 // executing pool can spare (not its leader, no open subtask of it), with release, the members each such pool is to let go once the
 // new pool has begun (they are not excused: they owe it nothing more). Nothing changes here. It says why when there are none: a pool
@@ -281,11 +292,15 @@ func (s *Swarm) spareMembers(req SpawnReq, all []*member) ([]*member, map[string
 	if len(spare) == 0 {
 		t := busy[0]
 		if t.Pool.Phase != "executing" {
-			return nil, nil, fmt.Errorf("the %s pool is still agreeing on %s's plan with every member; once it executes, members without a subtask of it can take another parent. Wait for that (call wait), or have %s's leader %s take this work as a child of %s",
-				req.Role, t.ID, t.ID, t.Owner, t.ID)
+			return nil, nil, &noSpareMember{role: req.Role, held: t.ID + "'s pool is agreeing on its plan with every member", msg: fmt.Sprintf("the %s pool is still agreeing on %s's plan with every member; once it executes, members without a subtask of it can take another parent. Wait for that (call wait), or have %s's leader %s take this work as a child of %s",
+				req.Role, t.ID, t.ID, t.Owner, t.ID)}
 		}
-		return nil, nil, fmt.Errorf("every %s member is busy on %s (its leader %s, or an open subtask); assign this parent again when one is free (call wait), or have %s take it as a child of %s",
-			req.Role, t.ID, t.Owner, t.Owner, t.ID)
+		var leads []string
+		for _, b := range busy {
+			leads = append(leads, b.Owner+" leads "+b.ID)
+		}
+		return nil, nil, &noSpareMember{role: req.Role, held: strings.Join(leads, ", "), msg: fmt.Sprintf("every %s member is busy (%s; a pool's leader and the members with an open subtask of it stay with it); assign this parent again when one is free (call wait), or have %s take it as a child of %s",
+			req.Role, strings.Join(leads, ", "), t.Owner, t.ID)}
 	}
 	if req.Agent != "" {
 		for i, m := range spare {

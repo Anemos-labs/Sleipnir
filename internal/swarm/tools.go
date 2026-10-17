@@ -3,6 +3,7 @@ package swarm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -733,6 +734,17 @@ func (t *spawnTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error)
 		}
 	}
 	r, err := t.s.spawn(req)
+	var busy *noSpareMember
+	if errors.As(err, &busy) && req.TaskID != "" && c.Env.Role == "manager" {
+		if task, ok := t.s.Board.Snapshot().Task(req.TaskID); ok && task.Status == StatusTodo && task.Owner == "" {
+			// Nobody of the role is free now: the harness starts it when one is (spawnqueue.go), so the manager does not retry.
+			was := "is queued"
+			if !t.s.queueSpawn(req) {
+				was = "was already queued"
+			}
+			return text("%s %s for the next free %s member (%s). The harness starts it then and tells you: do not spawn it again; use wait.", req.TaskID, was, busy.role, busy.held), nil
+		}
+	}
 	if err != nil {
 		return tools.Errorf("%v", err), nil
 	}

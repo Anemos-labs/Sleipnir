@@ -280,7 +280,8 @@ type Swarm struct {
 	sharedMu sync.Mutex // serialises SetShared
 
 	mu      sync.Mutex
-	retryAt map[string]time.Time // supervisor-owned repair backoff
+	retryAt map[string]time.Time   // supervisor-owned repair backoff
+	queued  map[string]queuedSpawn // parents waiting for a free member of their role (spawnqueue.go), by task id; guarded by mu
 	members map[string]*member
 	// arriving (under mu) holds the IDs of agents that are being added to the team: the task is assigned to the agent before the
 	// agent is registered, and the stall sweep must not read that interval as an owner that left (arrive).
