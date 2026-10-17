@@ -20,8 +20,10 @@ they do not indicate whether a change has been released.
   where each compaction re-writes the prefix, it stays about level. Token
   limits set without `compact_at_percent` (`thread_soft_limit_tokens`,
   `compact_threshold_tokens`) keep applying to every model, and a model
-  whose window is not known uses them. Prompt bytes: none change; the
-  conversation is folded later.
+  whose window is not known (a model nothing describes, whose 200,000-token
+  window is a placeholder) uses them. Prompt bytes: the stable layers do not
+  change; the conversation stays verbatim for longer before it is folded, so
+  requests past the former 20,000-token limit carry more of it.
 
 - A background process that a shell command started and left running with
   its output sent elsewhere (`nohup server >log 2>&1 </dev/null &`) now ends

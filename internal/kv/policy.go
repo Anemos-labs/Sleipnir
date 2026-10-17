@@ -158,8 +158,10 @@ type State struct {
 	ThreadTokens int
 	// PromptTokens: whole prompt size.
 	PromptTokens int
-	// ContextWindow of the model, in tokens.
+	// ContextWindow of the model, in tokens. WindowGuessed says it is a placeholder for a model nothing describes: the limits
+	// are then the token limits (LimitsFor of no window), while the prompt-near-window pressure still reads it.
 	ContextWindow int
+	WindowGuessed bool
 	// Warm reports whether the agent's cached prefix is expected to still be
 	// resident for its next request.
 	Warm bool
@@ -268,10 +270,19 @@ func (p Planner) LimitsFor(window int) Limits {
 	return l
 }
 
+// shareWindow is the window the planner's share applies to: none for a placeholder window, whose share would be no limit of the
+// model's (a fallback's 200,000 tokens would put the soft limit at 50,000 for a server that may serve 8,000).
+func (s State) shareWindow() int {
+	if s.WindowGuessed {
+		return 0
+	}
+	return s.ContextWindow
+}
+
 // pressure reports hard thread-size or context-window pressure, prioritizing the thread limit when
 // both apply.
 func (s State) pressure(p Planner) (string, bool) {
-	l := p.LimitsFor(s.ContextWindow)
+	l := p.LimitsFor(s.shareWindow())
 	switch {
 	case s.ThreadTokens >= l.Hard:
 		return fmt.Sprintf("thread %dk over hard limit %dk", s.ThreadTokens/1000, l.Hard/1000), true
@@ -293,7 +304,7 @@ func (s State) pressure(p Planner) (string, bool) {
 //     pay for its own compactor call within the remaining turns.
 func (p Planner) ShouldStart(s State) Decision {
 	p.fill()
-	soft := p.LimitsFor(s.ContextWindow).Soft
+	soft := p.LimitsFor(s.shareWindow()).Soft
 	maskOK := s.MaskableTokens >= p.MaskMinTokens && s.SinceMask >= p.MaskMinInterval
 	if why, forced := s.pressure(p); forced {
 		if !s.Warm && maskOK {

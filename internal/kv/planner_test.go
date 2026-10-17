@@ -168,3 +168,23 @@ func TestPlannerStartsAtAShareOfTheWindow(t *testing.T) {
 		t.Fatalf("past the hard limit, cold: %+v", d)
 	}
 }
+
+// A placeholder window (a model nothing describes) sizes nothing: the planner uses its token limits, not a quarter of the guess,
+// while the prompt-near-window pressure still reads it.
+func TestAGuessedWindowKeepsTheTokenLimits(t *testing.T) {
+	pl := DefaultPlanner()
+	s := priced()
+	s.ContextWindow, s.WindowGuessed = 200_000, true
+	s.ThreadTokens, s.PromptTokens = 25_000, 39_000
+	if d := pl.ShouldStart(s); !d.Yes || !strings.Contains(d.Reason, "soft limit 20k") {
+		t.Fatalf("a 25k thread of a guessed window: %+v", d)
+	}
+	s.WindowGuessed = false
+	if d := pl.ShouldStart(s); d.Yes {
+		t.Fatalf("the same thread of a known 200k window is under its 50k share: %+v", d)
+	}
+	s.WindowGuessed, s.ThreadTokens, s.PromptTokens, s.Warm = true, 10_000, 130_000, false
+	if d := pl.ShouldStart(s); !d.Yes || !strings.Contains(d.Reason, "context window") {
+		t.Fatalf("the guessed window still bounds the prompt: %+v", d)
+	}
+}

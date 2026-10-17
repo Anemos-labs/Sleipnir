@@ -469,7 +469,7 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		return nil, err
 	}
 	if o.ContextWindow > 0 {
-		s.Model.ContextTokens = o.ContextWindow
+		s.Model.ContextTokens, s.Model.WindowGuessed = o.ContextWindow, false
 	}
 
 	// Hooks, then skills and role definitions, then permissions (which need the

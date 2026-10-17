@@ -136,6 +136,9 @@ type Model struct {
 	ID            string
 	Provider      string // "anthropic", "openai", ...
 	ContextTokens int
+	// WindowGuessed says ContextTokens is a placeholder (Fallback's, for a model nothing describes), not the model's window: what
+	// is sized as a share of the window (the compaction planner's limits) uses fixed sizes instead.
+	WindowGuessed bool `json:"-"`
 	MaxOutput     int
 	Price         Price
 	Cache         CacheModel
@@ -275,7 +278,7 @@ func (t *Table) All() []Model {
 // reads, 1.25x writes, no minimum knowledge. Costs are reported as estimates.
 func Fallback(id string) Model {
 	return Model{
-		ID: id, Provider: "unknown", ContextTokens: 200_000, MaxOutput: 16_000,
+		ID: id, Provider: "unknown", ContextTokens: 200_000, WindowGuessed: true, MaxOutput: 16_000,
 		Price: Price{InputPerM: 3, OutputPerM: 15, CacheReadPerM: 0.3, CacheWrite5mPerM: 3.75, CacheWrite1hPerM: 6},
 		Cache: anthropicCache(1024),
 	}
