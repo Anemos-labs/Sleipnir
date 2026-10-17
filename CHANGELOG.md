@@ -15,6 +15,11 @@ they do not indicate whether a change has been released.
   its file names were unknown; it is now allowed. Quoted words with a glob,
   a variable or a leading `~` stay unbound. Prompt bytes: none change.
 
+- The web interface writes token counts as the terminal does: "1.2k",
+  "3.4M", "1.2B", with one decimal above 999 (it stopped at k: an agent with
+  three million tokens showed "3000k"). Its footer shows the tokens of every
+  agent of the session instead of the manager's. Prompt bytes: none change.
+
 - A pool's leader may set the scope of a child of its pool that nobody has
   claimed (`task update id=… files=[…]`, inside the pool's scope), and a
   claim refused because a child overlaps a sibling says that the leader can
