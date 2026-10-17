@@ -39,6 +39,7 @@ type issuer struct {
 	expiresIn   int
 	failRefresh string // an error code the refresh grant answers with
 	idClaims    func(map[string]any)
+	listed      atomic.Int32 // requests for the model list
 }
 
 func newIssuer(t *testing.T) *issuer {
@@ -58,6 +59,7 @@ func newIssuer(t *testing.T) *issuer {
 		is.mu.Unlock()
 	})
 	mux.HandleFunc("/models", func(w http.ResponseWriter, r *http.Request) {
+		is.listed.Add(1)
 		if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer at-") {
 			w.WriteHeader(http.StatusUnauthorized)
 			return

@@ -12,7 +12,6 @@
 package chatgptauth
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/json"
@@ -125,7 +124,13 @@ func writeConnection(path string, c connection) error {
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".chatgpt-*.tmp")
+	return writeFileAtomic(path, append(b, '\n'), ".chatgpt-*.tmp")
+}
+
+// writeFileAtomic replaces path with data through a temporary file of the same directory (named after pattern) and a rename, readable
+// by the owner only.
+func writeFileAtomic(path string, data []byte, pattern string) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), pattern)
 	if err != nil {
 		return err
 	}
@@ -134,7 +139,7 @@ func writeConnection(path string, c connection) error {
 		tmp.Close()
 		return err
 	}
-	if _, err := tmp.Write(append(b, '\n')); err != nil {
+	if _, err := tmp.Write(data); err != nil {
 		tmp.Close()
 		return err
 	}
@@ -484,51 +489,6 @@ type Model struct {
 	Slug          string
 	DisplayName   string
 	ContextWindow int // tokens, when the list says (0 when it does not)
-}
-
-// Models lists the models the plan can use, as the API gives them: its answer is {"models":[{slug, display_name, visibility}]}, not the
-// {"data":[{id}]} of the public list, and only the ones whose visibility is "list" are meant to be offered.
-func (s *Store) Models(ctx context.Context) ([]Model, error) {
-	tok, err := s.Token(ctx)
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.opts.Models, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+tok)
-	req.Header.Set("Accept", "application/json")
-	resp, err := s.opts.HTTP.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
-	if resp.StatusCode == http.StatusUnauthorized {
-		s.Refused(tok)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("the model list answered http %d: %s", resp.StatusCode, clip(string(bytes.TrimSpace(b)), 200))
-	}
-	var list struct {
-		Models []struct {
-			Slug        string `json:"slug"`
-			DisplayName string `json:"display_name"`
-			Visibility  string `json:"visibility"`
-			Window      int    `json:"context_window"`
-		} `json:"models"`
-	}
-	if err := json.Unmarshal(b, &list); err != nil {
-		return nil, errors.New("the model list is not JSON")
-	}
-	var out []Model
-	for _, m := range list.Models {
-		if m.Visibility == "list" && m.Slug != "" && len(m.Slug) <= 200 {
-			out = append(out, Model{Slug: m.Slug, DisplayName: clip(m.DisplayName, 200), ContextWindow: max(m.Window, 0)})
-		}
-	}
-	return out, nil
 }
 
 // randomString is n random bytes as unpadded base64url.
