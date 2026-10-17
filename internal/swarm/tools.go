@@ -285,6 +285,19 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 	return tools.Errorf("%s", actionRefusal("task", in.Action, taskActions)), nil
 }
 
+// leadsUnclaimedChild reports whether agent leads the pool whose child id is, and nobody has claimed the child yet. Such a leader
+// may set the child's scope (inside its pool's, poolScopes): it divided the work, and when two of its children overlap it is the
+// one that knows how to part them. In a team run a frontend leader whose two children both had its pool's scope could not narrow
+// either, and its members' claims were refused for half an hour while the manager was busy.
+func leadsUnclaimedChild(sn *Snapshot, agent, id string) bool {
+	t, ok := sn.Task(id)
+	if !ok || t.Parent == "" || t.Owner != "" || t.Status != StatusTodo {
+		return false
+	}
+	p, ok := sn.Task(t.Parent)
+	return ok && p.Pool != nil && p.Owner == agent
+}
+
 // taskActions are the actions of the task tool, as its schema lists them.
 var taskActions = []string{"create", "list", "get", "claim", "update", "done", "block", "resume", "handover", "accept", "reject", "reopen", "fail", "revise", "resolve", "deliver"}
 
@@ -301,8 +314,8 @@ func actionRefusal(tool, action string, actions []string) string {
 func (t *taskTool) update(c *tools.Call, in taskIn) *tools.Result {
 	s, me := t.s, c.Env.Agent
 	if len(in.Files) > 0 {
-		if c.Env.Role != "manager" {
-			return tools.Errorf("only the manager can change a task's scope: mail the manager the paths you need")
+		if c.Env.Role != "manager" && !leadsUnclaimedChild(s.Board.Snapshot(), me, in.ID) {
+			return tools.Errorf("only the manager can change a task's scope (and a pool's leader the scope of a child of its pool that nobody has claimed): mail the manager the paths you need")
 		}
 		files, err := s.normScopes(in.Files)
 		if err != nil {

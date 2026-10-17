@@ -447,7 +447,12 @@ func (s *Swarm) scopeConflictIn(sn *Snapshot, t Task) error {
 					if this == "" {
 						this = "this task"
 					}
-					return fmt.Errorf("scope %q overlaps %s (%s, held by %s). Give the two tasks disjoint areas, or make %s depend on %s", a, o.ID, b, o.Owner, this, o.ID)
+					err := fmt.Sprintf("scope %q overlaps %s (%s, held by %s). Give the two tasks disjoint areas, or make %s depend on %s", a, o.ID, b, o.Owner, this, o.ID)
+					if p, ok := sn.Task(t.Parent); ok && t.Parent != "" && t.Parent == o.Parent && p.Pool != nil && t.ID != "" {
+						// two children of one pool: its leader can part them while this one is unclaimed (leadsUnclaimedChild)
+						err += fmt.Sprintf("; %s's leader %s can narrow %s while nobody has claimed it: task update id=%s files=[...] inside %s's scope", p.ID, p.Owner, t.ID, t.ID, p.ID)
+					}
+					return errors.New(err)
 				}
 			}
 		}

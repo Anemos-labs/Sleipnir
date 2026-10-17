@@ -197,7 +197,9 @@ that writes the project's files or installs, `ruff check`, `ruff format --check`
 uses the session's permissions and any explicit manager profile), and swarm
 tools check the caller's role, which the harness puts in the call. The manager owns
 assignments, revisions and scope changes. A pool leader can create and accept its
-scoped children and assign existing pool members. A pool member that is not
+scoped children, set the scope of a child that nobody has claimed (inside the
+pool's scope: when two of its children overlap it parts them), and assign existing
+pool members. A pool member that is not
 writing inside its own child task (planning, reconciliation) is judged under the
 plan profile with the research and checks a read-only role keeps (web fetch and
 search, the project's tests and static checks), and then by its own permissions,
@@ -207,7 +209,7 @@ paths outside the project).
 
 | Tool | Actions | Notes |
 |---|---|---|
-| `task` | create, list, get, claim, update, block, resume, done, accept, reject, reopen, revise, resolve, fail, handover, deliver | Manager: create, accept, reject, reopen, revise, resolve, deliver and scope changes; pool leaders may create and accept the children of the pool they lead while it executes (a refusal names the condition that failed: the leader, the phase or the role). Persistent pools refuse `fail` and fresh-worker `handover`; embedded callers retain them (`fail` needs a typed `reason`). See sections 4 and 6. |
+| `task` | create, list, get, claim, update, block, resume, done, accept, reject, reopen, revise, resolve, fail, handover, deliver | Manager: create, accept, reject, reopen, revise, resolve, deliver and scope changes; pool leaders may create and accept the children of the pool they lead while it executes, and set the scope of one nobody has claimed (`update files`) (a refusal names the condition that failed: the leader, the phase or the role). Persistent pools refuse `fail` and fresh-worker `handover`; embedded callers retain them (`fail` needs a typed `reason`). See sections 4 and 6. |
 | `mail` | send | one recipient; typed; section 5 |
 | `note` | propose | a bounded fact in the live view; older proposals can be evicted |
 | `spawn` | role, task, optional `agent=` to reuse an idle worker | Manager or pool leader assigning an existing member to its child; section 6 |
@@ -607,7 +609,7 @@ Layered, cheapest first:
    reading. Scopes are
    **enforced at write time** by the lease guard: an edit outside the scope of the writer's task is rejected with a
    message naming the scope, and raises a fixed-text alert. A worker cannot widen its own scope (only the manager can,
-   through `task update files`). An agent with no task, or whose task declares no scope, is not restricted.
+   through `task update files`; a pool's leader can set the scope of a child of its pool nobody has claimed). An agent with no task, or whose task declares no scope, is not restricted.
 2. **Write leases** with a TTL and conflict alerts (visible in the hot view of the agents involved; the alert names the
    agents, never a file name, and goes away when the lease is released or expires).
 3. **Content-hash staleness** on every edit: an edit is accepted only if the file is what the agent last read, whichever

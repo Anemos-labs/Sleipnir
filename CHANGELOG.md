@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A pool's leader may set the scope of a child of its pool that nobody has
+  claimed (`task update id=… files=[…]`, inside the pool's scope), and a
+  claim refused because a child overlaps a sibling says that the leader can
+  narrow it. Before, only the manager could change a scope: a frontend
+  leader whose two children both had the pool's scope could not part them,
+  and its members' claims were refused for half an hour. Prompt bytes: the
+  task tool's refusal texts change; no prompt layer does.
+
 - The manager may excuse a pool member whose runs are failing (one the
   harness is restarting after a failed run, or whose restarted run is under
   way) even while it seems to make progress. A model that loops on `go test`
