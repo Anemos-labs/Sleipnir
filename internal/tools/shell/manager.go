@@ -99,7 +99,11 @@ type Manager struct {
 	order  []string // job ids, oldest first
 	cwds   map[string]cwdState
 	procs  map[*proc]struct{}
-	wg     sync.WaitGroup // processes being supervised
+	// lingering are the process groups of finished commands that still had a live member when the command ended: a server a
+	// command started with "nohup … &" and its output sent to a file holds no pipe of the harness, so nothing else keeps it in
+	// view. Shutdown ends them.
+	lingering map[int]struct{}
+	wg        sync.WaitGroup // processes being supervised
 }
 
 // NewManager returns a Manager. Options are optional; when several are given
@@ -147,7 +151,7 @@ func NewManager(opts ...Options) *Manager {
 		stop:  make(chan struct{}),
 		jobs:  map[string]*job{},
 		cwds:  map[string]cwdState{},
-		procs: map[*proc]struct{}{},
+		procs: map[*proc]struct{}{}, lingering: map[int]struct{}{},
 	}
 }
 
@@ -192,10 +196,32 @@ func (m *Manager) track(p *proc) {
 	m.mu.Unlock()
 }
 
-// untrack removes a process from the manager's shutdown registry under its lock.
+// untrack removes a process from the manager's shutdown registry under its lock. A process group that still has a live member
+// once its command has ended is kept in view (lingering) for Shutdown; the groups recorded before that are gone by now are
+// forgotten, so that the record holds no id a later, unrelated group may take.
 func (m *Manager) untrack(p *proc) {
+	lingers := probesGroup && groupAlive(p.pid) // the real check: p.alive is a test's stand-in for killTree
 	m.mu.Lock()
 	delete(m.procs, p)
+	gone := make([]int, 0, len(m.lingering))
+	for g := range m.lingering {
+		gone = append(gone, g)
+	}
+	m.mu.Unlock()
+	for i := 0; i < len(gone); {
+		if groupAlive(gone[i]) {
+			gone = append(gone[:i], gone[i+1:]...)
+			continue
+		}
+		i++
+	}
+	m.mu.Lock()
+	for _, g := range gone {
+		delete(m.lingering, g)
+	}
+	if lingers && !m.closed {
+		m.lingering[p.pid] = struct{}{}
+	}
 	m.mu.Unlock()
 }
 
@@ -231,7 +257,46 @@ func (m *Manager) Shutdown() {
 			p.closeReaders()
 		}()
 	}
+	m.mu.Lock()
+	groups := make([]int, 0, len(m.lingering))
+	for g := range m.lingering {
+		groups = append(groups, g)
+	}
+	m.lingering = map[int]struct{}{}
+	m.mu.Unlock()
+	for _, g := range groups {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			m.endGroup(g)
+		}()
+	}
 	wg.Wait()
+}
+
+// endGroup ends a lingering process group (Manager.lingering) as killTree ends a command's: SIGTERM, then SIGKILL for what is
+// still alive after the grace period, then a bounded wait for the group to be gone. A group with no live member is left alone.
+func (m *Manager) endGroup(pgid int) {
+	if !groupAlive(pgid) {
+		return
+	}
+	termGroup(pgid)
+	grace := time.NewTimer(m.opts.KillGrace)
+	defer grace.Stop()
+	tick := time.NewTicker(20 * time.Millisecond)
+	defer tick.Stop()
+	for groupAlive(pgid) {
+		select {
+		case <-grace.C:
+			killGroup(pgid)
+			deadline := time.Now().Add(5 * time.Second)
+			for groupAlive(pgid) && time.Now().Before(deadline) {
+				time.Sleep(5 * time.Millisecond)
+			}
+			return
+		case <-tick.C:
+		}
+	}
 }
 
 // shellInfo says how to run a script with the detected shell.

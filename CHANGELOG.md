@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A background process that a shell command started and left running with
+  its output sent elsewhere (`nohup server >log 2>&1 </dev/null &`) now ends
+  when the session does, as one that holds the command's output already
+  did. Within the session it keeps running for later commands. Before, it
+  outlived the session. Prompt bytes: none change.
+
 - A team manager's shell command that sleeps a minute or more (`sleep 1800;
   date`) is a wait: it is refused, with the reason a `wait` gets, when no
   worker runs and work needs the manager or every task is settled, and the
