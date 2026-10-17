@@ -108,7 +108,10 @@ parent is open. A resumed pool keeps it out. The last member cannot be excused, 
 neither can one that is running and made progress (an edit, a test, a task update)
 within the stall check's bound of model turns: being out of the manager's view or
 quiet in mail is not a sign that a member stopped. One that has stopped, made no
-progress at all, or gone the bound without progress may be excused. Parent phase and member identities appear on the board; children
+progress at all, or gone the bound without progress may be excused, and so may one
+whose runs are failing: a member the harness is restarting after a failed run, or
+whose restarted run is under way, is not shielded by the tests it keeps running.
+Parent phase and member identities appear on the board; children
 are grouped under their parent (expandable cards in the browser, indented terminal rows).
 
 **Direct manager delivery.** `task deliver` verifies the manager's direct changes,

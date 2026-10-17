@@ -13,6 +13,14 @@ they do not indicate whether a change has been released.
   other one; the event log's `tool.call` says which tool ran (`as`).
   Before, it was refused as an unknown tool. Prompt bytes: none change.
 
+- The manager may excuse a pool member whose runs are failing (one the
+  harness is restarting after a failed run, or whose restarted run is under
+  way) even while it seems to make progress. A model that loops on `go test`
+  and `ls` counted as working, and a pool cannot agree a plan without every
+  member, so a broken member held its pool in planning. A `task` or `pool`
+  call without an action is now told so and given the tool's actions,
+  instead of `unknown action ""`. Prompt bytes: none change.
+
 - A team worker whose run fails while it holds work (a task in doing, the
   pool it leads, or its place in an open pool) is restarted on that work by
   the harness: after 5 seconds, then 10, at most twice in a row on the same

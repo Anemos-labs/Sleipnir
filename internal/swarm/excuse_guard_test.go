@@ -50,6 +50,28 @@ func TestAWorkingMemberIsNotExcused(t *testing.T) {
 	if why := r.sw.excuseRefusal("nobody-1"); why != "" {
 		t.Errorf("an unknown member is refused here, not by the pool's own check: %q", why)
 	}
+	// A member whose runs fail is not shielded by the progress it seems to make: one the harness restarted, running again and
+	// "progressing" (a model that loops on `go test`), and one whose restart waits.
+	set(true, 0)
+	m.mu.Lock()
+	m.restarts = 1
+	m.mu.Unlock()
+	if why := r.sw.excuseRefusal(member); why != "" {
+		t.Errorf("a member running again after a failed run is shielded: %q", why)
+	}
+	m.mu.Lock()
+	m.restarts, m.restart, m.life = 0, &pendingRestart{n: 1}, lifeIdle
+	m.mu.Unlock()
+	if why := r.sw.excuseRefusal(member); why != "" {
+		t.Errorf("a member whose restart waits is shielded: %q", why)
+	}
+	m.mu.Lock()
+	m.restart = nil
+	m.mu.Unlock()
+	set(true, 0)
+	if why := r.sw.excuseRefusal(member); why == "" {
+		t.Error("after a run that ended on its own, a working member is no longer excusable")
+	}
 }
 
 // The stall nudge offers a handover only where one is possible: persistent pools refuse it.

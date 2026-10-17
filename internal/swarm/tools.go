@@ -282,7 +282,20 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		}
 		return t.review(ctx, c, in), nil
 	}
-	return tools.Errorf("unknown action %q", cleanText(in.Action, 30)), nil
+	return tools.Errorf("%s", actionRefusal("task", in.Action, taskActions)), nil
+}
+
+// taskActions are the actions of the task tool, as its schema lists them.
+var taskActions = []string{"create", "list", "get", "claim", "update", "done", "block", "resume", "handover", "accept", "reject", "reopen", "fail", "revise", "resolve", "deliver"}
+
+// actionRefusal is the answer to a call of tool with an action it does not have. A call without one is told so: some models send
+// a second, empty call after the one they meant ({} as its arguments), and "unknown action \"\"" names nothing to do instead.
+func actionRefusal(tool, action string, actions []string) string {
+	list := strings.Join(actions[:len(actions)-1], ", ") + " or " + actions[len(actions)-1]
+	if strings.TrimSpace(action) == "" {
+		return fmt.Sprintf("%s was called without an action: give one of %s (an empty call does nothing; leave it out)", tool, list)
+	}
+	return fmt.Sprintf("unknown action %q: %s's actions are %s", cleanText(action, 30), tool, list)
 }
 
 func (t *taskTool) update(c *tools.Call, in taskIn) *tools.Result {

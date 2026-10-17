@@ -299,7 +299,7 @@ func TestPoolAuthorityRefusalsNameTheFailedCondition(t *testing.T) {
 	}
 }
 
-// pool get reads a pool like task get; another unknown action lists pool's actions and where a pool's state is; inspect outside
+// pool get reads a pool like task get; another unknown action, or none, lists pool's actions and where a pool's state is; inspect outside
 // reconciliation says to read the task; a proposal after planning says how a plan changes.
 func TestPoolReadsAndMisplacedActionsPointToTheRightCall(t *testing.T) {
 	r := newPoolRig(t)
@@ -312,6 +312,7 @@ func TestPoolReadsAndMisplacedActionsPointToTheRightCall(t *testing.T) {
 	r.refused(r.pool(r.second, map[string]any{"action": "list", "id": ""}), "pool list",
 		`unknown pool action "list": pool's actions are propose, agree, execute, reconcile, inspect, confirm and excuse`, "task get with the pool's parent task id")
 	r.refused(r.pool(r.second, map[string]any{"action": "status"}), "pool status", "task get id="+id)
+	r.refused(r.pool(r.second, map[string]any{}), "an empty pool call", "pool was called without an action: give one of propose, agree", "leave it out")
 	early := r.must(r.pool(r.second, map[string]any{"action": "inspect"}), "an inspect while planning")
 	head, body, _ := strings.Cut(early, "\n\n")
 	if head != id+" is planning (revision 1): there is no combined result to inspect until it reconciles, so this is the pool as task get shows it." {
