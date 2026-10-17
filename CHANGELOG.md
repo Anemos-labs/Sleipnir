@@ -22,6 +22,17 @@ they do not indicate whether a change has been released.
   commands agents commonly run, these were the read-only ones the engine
   refused. Prompt bytes: none change.
 
+- A standing goal can name a spec file (`Spec: PATH`) and list milestones
+  in a `Milestones` section of the goal or the spec. The spec is read once
+  when the goal is set and kept with it; the judge rules on every milestone
+  and a `done` verdict that does not confirm each one with evidence is read
+  as `continue`. The verdict JSON gains an optional `milestones` array; the
+  `goal.state` record and the web `goal` event gain `Spec`, `SpecText` and
+  `Milestones` (`spec` and `milestones` on the page). Prompt bytes: a goal
+  without milestones or a spec sends the agent and the judge the same bytes
+  as before; with them, the judge's user message carries the spec and a
+  milestones section, and the goal's first message the spec after its note.
+
 - The manager's `spawn` of an existing task while every member of its role
   is busy is queued instead of refused: the harness starts it on the first
   member of the role that is free and tells the manager. The refusal it

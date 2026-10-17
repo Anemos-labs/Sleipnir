@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/goal"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
@@ -138,5 +140,45 @@ func TestWebGoalAtTheLimitFitsInItsWidestJSON(t *testing.T) {
 	code, out := r.do("POST", "/api/sessions/"+tab.ID+"/goal", json.RawMessage(body))
 	if code != 200 {
 		t.Fatalf("a goal at the limit in escaped surrogate pairs: %d %.200s", code, out)
+	}
+}
+
+// A goal that names a spec file is refused before anything is queued when the file is not there; one that is there carries the
+// spec's milestones to the page, and a judge that says "done" without ruling on them does not end the goal.
+func TestWebGoalReadsItsSpecAndHoldsTheJudgeToItsMilestones(t *testing.T) {
+	project := webWorld(t)
+	_, base := newWebModel(t, sayScript("ok"))
+	r := newWebRig(t, soloDefaults(project), base)
+	tab := r.ready("")
+	path := "/api/sessions/" + tab.ID + "/goal"
+	code, body := r.do("POST", path, wire.GoalRequest{Action: "set", Text: "ship it\nSpec: docs/SPEC.md"})
+	if code != 400 || !strings.Contains(string(body), `"bad_goal"`) || !strings.Contains(string(body), "docs/SPEC.md") {
+		t.Fatalf("a missing spec: %d %s", code, body)
+	}
+	if g := r.h.tab(tab.ID).goals.State(); g != nil {
+		t.Fatalf("a refused goal was set: %+v", g)
+	}
+	if err := os.MkdirAll(filepath.Join(project, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(project, "docs", "SPEC.md"), []byte("## Milestones\n- the API answers\n- the site is up\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r.json("POST", path, wire.GoalRequest{Action: "set", Text: "ship it\nSpec: docs/SPEC.md"}, 200, nil)
+	var g *goal.State
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		if g = r.h.tab(tab.ID).goals.State(); g != nil && g.Paused != "" {
+			break
+		}
+	}
+	if g == nil || g.Spec != "docs/SPEC.md" || len(g.Milestones) != 2 {
+		t.Fatalf("the goal: %+v", g)
+	}
+	if g.Done || g.Paused == "" {
+		t.Errorf("a judge that ruled on no milestone ended the goal: done=%v paused=%q", g.Done, g.Paused)
+	}
+	w := goalWire(g)
+	if w.Spec != "docs/SPEC.md" || len(w.Milestones) != 2 || w.Milestones[1].ID != "M2" || w.Milestones[1].Text != "the site is up" || w.Milestones[0].Met {
+		t.Errorf("the page's goal event: %+v", w)
 	}
 }

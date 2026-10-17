@@ -31,6 +31,9 @@ const (
 	capEvent   = 16384 // the text of one say, stream or more event
 	capMessage = 65536 // the whole of one streamed message
 	capCode    = 65536 // the content of a write shown as a code stream
+
+	capMilestone  = 600 // the text of a goal milestone (goal.MaxMilestoneRunes)
+	capMilestones = 24  // milestones of a goal (goal.MaxMilestones)
 )
 
 var (

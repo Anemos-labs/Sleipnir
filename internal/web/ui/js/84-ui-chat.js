@@ -146,9 +146,10 @@
     function renderPlan(S, m) {
       if (!S.meta.goalText && !(m.goal.objective && m.goal.state !== 'cleared') && !m.torder.length) { planBox.hidden = true; return; } planBox.hidden = false;
       const n = m.plan.filter(s => s === 'done').length, open = S.ui.planOpen, segs = m.plan.map(s => '<i class="' + (s === 'done' ? 'done' : ['verify', 'edit', 'act', 'ask'].includes(s) ? 'act' : '') + '"></i>').join('');
+      const ms = m.goal.milestones || [], msTag = ms.length ? '<span class="num dim" style="font-size:11px" title="milestones the judge found met">· ' + ms.filter(x => x.met).length + '/' + ms.length + ' milestones</span>' : '';
       const verdict = m.verdict ? '<div class="verdict ' + (m.goal.state === 'met' ? 'met' : '') + '"><b>judge</b>' + esc(m.verdict.replace(/`/g, '')) + '</div>' : '';
       const list = '<ul class="plist cp">' + S.plan.map((p, i) => '<li class="' + m.plan[i] + '"><span class="pg">' + GL[m.plan[i]] + '</span><span class="pt">' + (i + 1) + '. ' + esc(p) + '</span><span class="pc">' + (SHORT[m.plan[i]] || m.plan[i]) + '</span></li>').join('') + '</ul>';
-      const html = '<button type="button" id="planTgl" aria-expanded="' + open + '"><span class="ptitle">Goal plan</span><span class="num dim" style="font-size:11px">' + n + '/' + S.plan.length + '</span><span class="pprog">' + segs + '</span><span class="dim" aria-hidden="true">' + (open ? '▾' : '▸') + '</span></button>' + (open ? '<div>' + list + verdict + '</div>' : '');
+      const html = '<button type="button" id="planTgl" aria-expanded="' + open + '"><span class="ptitle">Goal plan</span><span class="num dim" style="font-size:11px">' + n + '/' + S.plan.length + '</span>' + msTag + '<span class="pprog">' + segs + '</span><span class="dim" aria-hidden="true">' + (open ? '▾' : '▸') + '</span></button>' + (open ? '<div>' + list + verdict + '</div>' : '');
       if (planBox._h !== html) { planBox._h = html; planBox.innerHTML = html; }
     }
     sc.listen(planBox, 'click', e => { if (e.target.closest('#planTgl')) { const S = SL.sessions.active; S.ui.planOpen = !S.ui.planOpen; planBox._h = ''; renderPlan(S, S.m); } });

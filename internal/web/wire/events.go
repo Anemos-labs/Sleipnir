@@ -405,15 +405,26 @@ type Diff struct {
 }
 
 // Goal is the standing goal's state: S is active, paused, met or cleared. Objective is the goal's text, Turns the continuation turns
-// used out of Max, Paused why it is paused and Reason the judge's last reason.
+// used out of Max, Paused why it is paused and Reason the judge's last reason. Spec is the spec file the goal names and Milestones the
+// checkpoints the judge rules on one by one, with its last ruling.
 type Goal struct {
 	Base
-	S         string `json:"s"`
-	Objective string `json:"objective,omitempty"`
-	Turns     int    `json:"turns,omitempty"`
-	Max       int    `json:"max,omitempty"`
-	Paused    string `json:"paused,omitempty"`
-	Reason    string `json:"reason,omitempty"`
+	S          string          `json:"s"`
+	Objective  string          `json:"objective,omitempty"`
+	Turns      int             `json:"turns,omitempty"`
+	Max        int             `json:"max,omitempty"`
+	Paused     string          `json:"paused,omitempty"`
+	Reason     string          `json:"reason,omitempty"`
+	Spec       string          `json:"spec,omitempty"`
+	Milestones []GoalMilestone `json:"milestones,omitempty"`
+}
+
+// GoalMilestone is one milestone of a goal: its ID (M1, M2, ...), its text, whether the judge last found it met and the evidence it cited.
+type GoalMilestone struct {
+	ID       string `json:"id"`
+	Text     string `json:"text"`
+	Met      bool   `json:"met,omitempty"`
+	Evidence string `json:"evidence,omitempty"`
 }
 
 // Final ends a turn of the agent the person talks to; it is sent with Turn "end".

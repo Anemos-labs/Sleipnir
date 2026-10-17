@@ -136,6 +136,7 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 	if v.Kind == "" { // the rounds ran out on a reread
 		return goal.Verdict{Kind: goal.Continue}, worked, fmt.Errorf("evidence inspection limit reached; completion remains unproven")
 	}
+	v = g.Reconcile(v) // a goal with milestones is met only when this verdict confirms each one
 	if v.Kind == goal.Done && s.Swarm != nil {
 		snapshot := s.Swarm.Board.Snapshot()
 		for _, task := range snapshot.Tasks {
@@ -149,7 +150,11 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 	if left == nil {
 		left = []string{}
 	}
-	s.Log.Emit("", judgeEvent, map[string]any{"verdict": v.Kind, "reason": v.Reason, "left": left})
+	data := map[string]any{"verdict": v.Kind, "reason": v.Reason, "left": left}
+	if len(g.Milestones) > 0 {
+		data["milestones"] = g.Milestones
+	}
+	s.Log.Emit("", judgeEvent, data)
 	return v, worked, nil
 }
 

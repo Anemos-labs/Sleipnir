@@ -12,6 +12,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/checkpoint"
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/goal"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/tui/app"
@@ -368,6 +369,45 @@ func TestGoalCommandSetsPausesResumesAndClears(t *testing.T) {
 	run("/goal clear")
 	if h.goal != nil {
 		t.Error("clear left the goal")
+	}
+}
+
+// /goal with a spec: a missing file is refused and nothing is set; a spec that is there sets the goal with its milestones, sends the
+// spec's text with the goal, and /goal alone lists the milestones.
+func TestGoalCommandReadsASpecAndListsItsMilestones(t *testing.T) {
+	h := &sessionHost{s: chatSession(t, false, nil)}
+	run := func(line string) (app.CommandResult, string) {
+		var out strings.Builder
+		res, ok := h.programCommand(line, &out)
+		if !ok {
+			t.Fatalf("%s was not handled", line)
+		}
+		return res, out.String()
+	}
+	if res, out := run("/goal ship it, spec: GOAL.md"); res.Send != "" || h.goal != nil || !strings.Contains(out, "goal not set: spec GOAL.md") {
+		t.Fatalf("a missing spec: %+v %q", res, out)
+	}
+	if err := os.WriteFile(filepath.Join(h.s.Cwd(), "GOAL.md"), []byte("Milestones:\n- CLI parses flags\n- release v1 published\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, out := run("/goal ship it, spec: GOAL.md")
+	if h.goal == nil || len(h.goal.Milestones) != 2 || !strings.Contains(out, "2 milestones") || !strings.Contains(res.Send, "release v1 published") {
+		t.Fatalf("a goal with a spec: %+v %q", res, out)
+	}
+	if _, out := run("/goal"); !strings.Contains(out, "milestones 0 of 2 met, from the goal and GOAL.md") || !strings.Contains(out, "M2 [open] release v1 published") {
+		t.Errorf("/goal: %q", out)
+	}
+}
+
+// A copy of a goal shares no milestone with it: the judge's rulings change the milestones of the copy a turn works on while the page
+// reads the published goal.
+func TestCloneGoalCopiesTheMilestones(t *testing.T) {
+	g := goal.New("x")
+	g.Milestones = []goal.Milestone{{ID: "M1", Text: "a"}}
+	c := cloneGoal(g)
+	c.Milestones[0].Met = true
+	if g.Milestones[0].Met {
+		t.Error("the copy's milestones are the original's")
 	}
 }
 
