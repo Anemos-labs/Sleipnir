@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"sync"
 
@@ -164,6 +165,7 @@ func cloneGoal(g *goal.State) *goal.State {
 		return nil
 	}
 	c := *g
+	c.Milestones = slices.Clone(g.Milestones) // the judge's rulings change them in place (goal.State.Reconcile)
 	return &c
 }
 

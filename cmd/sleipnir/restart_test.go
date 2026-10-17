@@ -12,6 +12,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/checkpoint"
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/goal"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/tui/app"
@@ -395,6 +396,18 @@ func TestGoalCommandReadsASpecAndListsItsMilestones(t *testing.T) {
 	}
 	if _, out := run("/goal"); !strings.Contains(out, "milestones 0 of 2 met, from the goal and GOAL.md") || !strings.Contains(out, "M2 [open] release v1 published") {
 		t.Errorf("/goal: %q", out)
+	}
+}
+
+// A copy of a goal shares no milestone with it: the judge's rulings change the milestones of the copy a turn works on while the page
+// reads the published goal.
+func TestCloneGoalCopiesTheMilestones(t *testing.T) {
+	g := goal.New("x")
+	g.Milestones = []goal.Milestone{{ID: "M1", Text: "a"}}
+	c := cloneGoal(g)
+	c.Milestones[0].Met = true
+	if g.Milestones[0].Met {
+		t.Error("the copy's milestones are the original's")
 	}
 }
 
