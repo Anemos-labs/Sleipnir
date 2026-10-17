@@ -98,7 +98,8 @@
 // od, hexdump, xxd, strings, base64, ps, pgrep, a few builtins, git (status, diff,
 // log, show, branch without changes, remote -v, rev-parse, ls-files, blame, config
 // reads, ...), go (version, env, list, vet, build, doc), npm ls, a bare npm run
-// (the list of scripts) and "--version" probes; sed, awk and jq when their script
+// (the list of scripts), "--version" probes, cargo metadata --no-deps, rustc --print
+// and rustup's listings of what is installed (rustcmds.go); sed, awk and jq when their script
 // only selects and prints (textcmds.go, sed.go). Options that write or run
 // programs (find -exec/-delete, sort -o, rg --pre, git -c, go build -toolexec,
 // awk -f, jq -f, ...) take a command off the list. printenv and env are not on
