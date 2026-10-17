@@ -475,6 +475,9 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		if in.ID == "" {
 			where = "task get with the pool's parent task id (task list shows them)"
 		}
+		if strings.TrimSpace(in.Action) == "" {
+			return tools.Errorf("pool was called without an action: give one of propose, agree, execute, reconcile, inspect, confirm or excuse (an empty call does nothing; leave it out). A pool's state (phase, revision, agreement, votes) is in %s", where), nil
+		}
 		return tools.Errorf("unknown pool action %q: pool's actions are propose, agree, execute, reconcile, inspect, confirm and excuse. A pool's state (phase, revision, agreement, votes) is in %s", cleanText(in.Action, 30), where), nil
 	}
 	agreement, err := cleanAgreement(in.Text)
@@ -836,7 +839,9 @@ func poolScopes(sn *Snapshot, t Task) error {
 // edit, a test, a task update: progressCall) within the stall check's bound of model turns. A member that is not in the live view,
 // or quiet in mail, may still be working; excusing it releases its subtasks and leases to others while it writes. One that has gone
 // the bound without progress, has made none at all, or has stopped, may be excused: a loop of reads is not progress, so a stuck
-// member is not shielded.
+// member is not shielded. Nor is one whose runs are failing: a member the harness is restarting after a failed run (restart.go),
+// or one whose restarted run is under way, may be excused at once. A model that loops on `go test` and `ls` makes progress by the
+// count above, run after run, and its pool cannot agree a plan without it.
 func (s *Swarm) excuseRefusal(member string) string {
 	m := s.get(member)
 	if m == nil {
@@ -844,7 +849,11 @@ func (s *Swarm) excuseRefusal(member string) string {
 	}
 	m.mu.Lock()
 	running := m.life == lifeRunning
+	failing := m.restart != nil || m.restarts > 0
 	m.mu.Unlock()
+	if failing {
+		return ""
+	}
 	k := s.stallTurns()
 	if k == 0 {
 		k = defaultStallTurns
