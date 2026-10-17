@@ -14,15 +14,16 @@ import (
 // manager when it does. A queued parent that is assigned, revised or closed meanwhile is dropped from the queue. The queue lives in
 // the process: a resumed session starts with none, and the manager assigns again what is still todo.
 
-// queuedSpawn is a spawn waiting for a free member of its role.
+// queuedSpawn is a spawn waiting for a free member of its role, of the task at revision rev.
 type queuedSpawn struct {
 	req SpawnReq
+	rev uint64
 	at  time.Time
 }
 
-// queueSpawn queues req (a spawn of the existing task req.TaskID that found no free member of its role). It reports whether it
-// was queued now, false when it already was.
-func (s *Swarm) queueSpawn(req SpawnReq) bool {
+// queueSpawn queues req (a spawn of the existing task req.TaskID, at revision rev, that found no free member of its role). It
+// reports whether it was queued now, false when it already was.
+func (s *Swarm) queueSpawn(req SpawnReq, rev uint64) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.queued == nil {
@@ -31,7 +32,7 @@ func (s *Swarm) queueSpawn(req SpawnReq) bool {
 	if _, ok := s.queued[req.TaskID]; ok {
 		return false
 	}
-	s.queued[req.TaskID] = queuedSpawn{req: req, at: s.deps.Now()}
+	s.queued[req.TaskID] = queuedSpawn{req: req, rev: rev, at: s.deps.Now()}
 	return true
 }
 
@@ -67,8 +68,10 @@ func (s *Swarm) queueTick(now time.Time) {
 	}
 	for _, q := range s.queuedTasks() {
 		id := q.req.TaskID
-		if t, ok := s.Board.Snapshot().Task(id); !ok || t.Status != StatusTodo || t.Owner != "" {
-			s.dropQueued(id) // assigned, revised, closed or gone since it was queued: not the harness's to start any more
+		if t, ok := s.Board.Snapshot().Task(id); !ok || t.Status != StatusTodo || t.Owner != "" || t.Rev != q.rev {
+			// assigned, revised (a new revision even when it is still todo), closed or gone since it was queued: not the harness's
+			// to start any more; the manager assigns it again if it wants it started
+			s.dropQueued(id)
 			continue
 		}
 		r, err := s.spawn(q.req)

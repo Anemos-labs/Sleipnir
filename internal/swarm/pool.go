@@ -269,10 +269,10 @@ func (s *Swarm) spareMembers(req SpawnReq, all []*member) ([]*member, map[string
 	if len(busy) == 0 {
 		return all, nil, nil
 	}
-	openChild := map[string]bool{} // member+parent that owns an open subtask
+	openChild := map[string]string{} // member+parent -> the open subtask it owns
 	for _, c := range snap.Tasks {
 		if c.Parent != "" && c.Owner != "" && c.Status != StatusDone && c.Status != StatusFailed {
-			openChild[c.Owner+"\x00"+c.Parent] = true
+			openChild[c.Owner+"\x00"+c.Parent] = c.ID
 		}
 	}
 	release := map[string][]string{} // parent -> members it releases
@@ -284,7 +284,7 @@ func (s *Swarm) spareMembers(req SpawnReq, all []*member) ([]*member, map[string
 			continue
 		}
 		t, _ := snap.Task(parent)
-		if t.Pool.Phase == "executing" && t.Owner != m.id && !openChild[m.id+"\x00"+parent] {
+		if t.Pool.Phase == "executing" && t.Owner != m.id && openChild[m.id+"\x00"+parent] == "" {
 			spare = append(spare, m)
 			release[parent] = append(release[parent], m.id)
 		}
@@ -295,9 +295,15 @@ func (s *Swarm) spareMembers(req SpawnReq, all []*member) ([]*member, map[string
 			return nil, nil, &noSpareMember{role: req.Role, held: t.ID + "'s pool is agreeing on its plan with every member", msg: fmt.Sprintf("the %s pool is still agreeing on %s's plan with every member; once it executes, members without a subtask of it can take another parent. Wait for that (call wait), or have %s's leader %s take this work as a child of %s",
 				req.Role, t.ID, t.ID, t.Owner, t.ID)}
 		}
+		// every member and what holds it: the parent it leads, or the open subtask it owns
 		var leads []string
 		for _, b := range busy {
 			leads = append(leads, b.Owner+" leads "+b.ID)
+			for _, m := range b.Pool.Members {
+				if c := openChild[m+"\x00"+b.ID]; m != b.Owner && c != "" {
+					leads = append(leads, m+" holds "+c+" (of "+b.ID+")")
+				}
+			}
 		}
 		return nil, nil, &noSpareMember{role: req.Role, held: strings.Join(leads, ", "), msg: fmt.Sprintf("every %s member is busy (%s; a pool's leader and the members with an open subtask of it stay with it); assign this parent again when one is free (call wait), or have %s take it as a child of %s",
 			req.Role, strings.Join(leads, ", "), t.Owner, t.ID)}

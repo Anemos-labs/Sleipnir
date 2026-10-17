@@ -153,7 +153,7 @@ func TestAParentWithNoFreeMemberIsQueuedAndStartedWhenOneIs(t *testing.T) {
 		}
 		return res.Text
 	}
-	if got := spawn(next.ID); !strings.Contains(got, next.ID+" is queued for the next free backend member ("+first.Owner+" leads "+first.ID+")") || !strings.Contains(got, "do not spawn it again") {
+	if got := spawn(next.ID); !strings.Contains(got, next.ID+" is queued for the next free backend member ("+first.Owner+" leads "+first.ID+", "+members[1]+" holds "+child.ID+" (of "+first.ID+"))") || !strings.Contains(got, "do not spawn it again") {
 		t.Fatalf("the first spawn: %q", got)
 	}
 	if got := spawn(next.ID); !strings.Contains(got, next.ID+" was already queued") {
@@ -186,7 +186,7 @@ func TestAParentWithNoFreeMemberIsQueuedAndStartedWhenOneIs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r.sw.queueSpawn(SpawnReq{Role: "backend", TaskID: gone.ID, By: "mgr"})
+	r.sw.queueSpawn(SpawnReq{Role: "backend", TaskID: gone.ID, By: "mgr"}, gone.Rev)
 	if err := r.sw.Board.mutate("harness", "test", func(d *draft) error {
 		i := taskIdx(d.Snapshot, gone.ID)
 		g := d.Tasks[i]
@@ -198,5 +198,43 @@ func TestAParentWithNoFreeMemberIsQueuedAndStartedWhenOneIs(t *testing.T) {
 	r.sw.queueTick(r.sw.deps.Now())
 	if len(r.sw.queuedTasks()) != 0 || mailSent(r, gone.ID+" started") != 0 {
 		t.Errorf("a closed parent stayed queued or started: %+v", r.sw.queuedTasks())
+	}
+}
+
+// A queued parent that the manager revises while it waits is a new assignment to make, not the one queued: it is dropped even
+// though it is still todo and unowned, and nothing starts it.
+func TestARevisedQueuedParentIsDropped(t *testing.T) {
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 1, Team: []string{"backend"}},
+		func(ctx context.Context, _ *rvCall) rvReply { <-ctx.Done(); return rvReply{Text: "stopped"} })
+	r.sw.StartManager()
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "control plane", Files: []string{"server/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	next, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "auth middleware", Role: "backend", Files: []string{"auth/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res := r.callTool(context.Background(), "spawn", "mgr", "manager", map[string]any{"role": "backend", "task": next.ID}); res.IsError || !strings.Contains(res.Text, "is queued") {
+		t.Fatalf("spawn: %+v", res)
+	}
+	if err := r.sw.Board.revise("mgr", next.ID, TaskSpec{Desc: "auth middleware, with the project's API keys"}, "requirements changed"); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := r.sw.Board.Snapshot().Task(next.ID); n.Status != StatusTodo || n.Owner != "" {
+		t.Fatalf("the revised task is %s/%s, want todo and unowned", n.Status, n.Owner)
+	}
+	// free the only member: the first parent is closed
+	first := r.sw.Board.Snapshot().Tasks[0]
+	if err := r.sw.Board.mutate("harness", "test", func(d *draft) error {
+		i := taskIdx(d.Snapshot, first.ID)
+		f := d.Tasks[i]
+		f.Status, f.Closure = StatusFailed, closeAs(CloseCanceled)
+		return d.put(i, f)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.queueTick(r.sw.deps.Now())
+	if n, _ := r.sw.Board.Snapshot().Task(next.ID); n.Status != StatusTodo || n.Owner != "" || len(r.sw.queuedTasks()) != 0 {
+		t.Errorf("the revised parent was started or stays queued: %s/%s, queue %+v", n.Status, n.Owner, r.sw.queuedTasks())
 	}
 }

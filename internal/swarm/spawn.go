@@ -123,8 +123,22 @@ func (s *Swarm) spawn(req SpawnReq) (SpawnResult, error) {
 				}
 			}
 		}
-		if req.Agent == "" && len(s.poolMembers(req.Role)) > 0 {
-			return SpawnResult{}, fmt.Errorf("%s pool is busy; wait and reuse its existing members", req.Role)
+		if ms := s.poolMembers(req.Role); req.Agent == "" && len(ms) > 0 {
+			// every member is in a run: the same wait as a role whose pools hold every member (noSpareMember), which the spawn
+			// tool queues
+			var held []string
+			for _, m := range ms {
+				m.mu.Lock()
+				on := m.task
+				m.mu.Unlock()
+				if on != "" {
+					held = append(held, m.id+" works on "+on)
+				} else {
+					held = append(held, m.id+" is in a run")
+				}
+			}
+			return SpawnResult{}, &noSpareMember{role: req.Role, held: strings.Join(held, ", "),
+				msg: fmt.Sprintf("%s pool is busy (%s); wait and reuse its existing members", req.Role, strings.Join(held, ", "))}
 		}
 	}
 	if req.Agent != "" {
