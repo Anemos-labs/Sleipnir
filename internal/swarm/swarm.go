@@ -990,7 +990,7 @@ func (r roleRequester) Check(ctx context.Context, req perm.Request) perm.Decisio
 
 // readOnlyRoleChecks are the test and check commands a read-only role's profile allows by default (session.readOnlyRoleAllow).
 const readOnlyRoleChecks = "go test, go vet, pytest, python -m pytest, .venv/bin/python -m pytest, node --test, node --check, npm test, cargo test, " +
-	"make test, tsc --noEmit, eslint, ruff check, ruff format --check, ruff format --diff, mypy, pyright"
+	"make test, tsc --noEmit, eslint (the project's own through npx --no-install), ruff check, ruff format --check, ruff format --diff, mypy, pyright"
 
 // readOnlyRoleReason rewrites the refusal of a read-only role's plan profile, which tells a planner to "present a plan", into one for
 // a reviewer or a scout: what it does instead. Any other reason is returned as it is.
@@ -1001,8 +1001,13 @@ func readOnlyRoleReason(role, reason string) string {
 		return reason
 	}
 	what := strings.TrimSuffix(strings.TrimPrefix(reason, prefix), tail)
-	return fmt.Sprintf("the %s role is read-only: %s. It runs the project's tests and checks (%s) and reports what should change instead of changing it",
+	out := fmt.Sprintf("the %s role is read-only: %s. It runs the project's tests and checks (%s) and reports what should change instead of changing it",
 		role, what, readOnlyRoleChecks)
+	if strings.HasPrefix(what, "npx ") {
+		// npx installs a package it does not find, so it is not read-only; with --no-install it runs the project's own program or nothing
+		out += ". npx installs a package it does not find: npx --no-install runs the project's own (npx --no-install tsc --noEmit)"
+	}
+	return out
 }
 
 // readOnlyCommand is the fallback allowlist for read-only roles' shell use when no
