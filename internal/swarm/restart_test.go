@@ -423,9 +423,9 @@ func TestAFailedPoolLeaderIsRestartedBeforeTheManagerIsAsked(t *testing.T) {
 	}
 	rvWait(t, "the last failed run", func() bool { _, f := ends(r, lead); return f == maxAutoRestarts+1 && r.idle(lead) })
 	rvWait(t, "the manager to be asked", func() bool { return harnessMail(r, "Pool leader stopped on "+parent.ID)["mgr"] == 1 })
-	if mailSent(r, "The harness restarted "+lead+" automatically twice") != 1 {
-		t.Error("the manager was not told what was tried")
-	}
+	// The line of what was tried is a mail of its own, sent when the stop is settled, after the pool leader's: it is waited for, not
+	// assumed to be there already (on a loaded CI runner it was not, and the test failed on main).
+	rvWait(t, "the manager to be told what was tried", func() bool { return mailSent(r, "The harness restarted "+lead+" automatically twice") == 1 })
 	if p, _ := r.sw.Board.Snapshot().Task(parent.ID); p.Status != StatusDoing || p.Owner != lead || p.Attempts != 0 {
 		t.Errorf("the pool task = %s/%s attempts=%d: a leader's stop changes nothing on it", p.Status, p.Owner, p.Attempts)
 	}
