@@ -995,10 +995,16 @@ func (s *Swarm) finishRun(m *member, rs *runState, ctx context.Context, res *age
 	if retire {
 		restart = false
 	}
+	// The restart's event is made before the restart is published: once m.restart holds it, the supervisor's restartTick may take
+	// it and start it while this run still settles.
+	var scheduled map[string]any
+	if again != nil {
+		scheduled = again.event("scheduled")
+	}
 	m.restart = again
 	m.mu.Unlock()
 	if again != nil {
-		s.emitAs(m.id, eventRestart, again.event("scheduled"))
+		s.emitAs(m.id, eventRestart, scheduled)
 		if s.alive() != nil {
 			// The swarm stopped while the run was settled, after Shutdown called off the restarts it found: this one would never
 			// start, so it is called off here.

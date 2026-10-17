@@ -276,9 +276,11 @@ func (s *Swarm) startRestart(m *member, p *pendingRestart) {
 		m.setIdleState(s, "idle", "") // what it held is in other hands or closed: it is free, and its failure is settled
 		return
 	}
-	p.tasks, p.pool = tasks, pool
-	s.emitAs(m.id, eventRestart, p.event("start"))
-	s.notify(m.id, "request", restartNote(snap, p, s.cfg.PersistentPools))
+	// What is still the worker's goes into a copy: p is the restart the settling run published, and that run may still read it.
+	started := *p
+	started.tasks, started.pool = tasks, pool
+	s.emitAs(m.id, eventRestart, started.event("start"))
+	s.notify(m.id, "request", restartNote(snap, &started, s.cfg.PersistentPools))
 }
 
 // dropRestarts calls off every automatic restart that waits (dropRestart), for reason.
