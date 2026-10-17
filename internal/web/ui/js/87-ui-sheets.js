@@ -14,8 +14,10 @@
   const inp = (id, v, extra) => '<input id="' + id + '" type="text" value="' + esc(v == null ? '' : v) + '" ' + (extra || '') + '>';
   const seg = (name, list, cur) => '<div class="seg" role="group" aria-label="' + name + '">' + list.map(v => '<button type="button" data-seg="' + name + '" data-v="' + esc(v) + '" aria-pressed="' + (String(v) === String(cur)) + '">' + esc(v) + '</button>').join('') + '</div>';
   /* An explanation (ui.help, ui.helpAttr) is page markup: what the server sent into one is escaped by whoever puts it there. */
+  /** A label's flag names kept whole: the narrow label column wraps it at its spaces, never inside "--compact-at" or between its two dashes. */
+  const flagsWhole = label => label.replace(/\(?--[a-z][\w-]*\)?,?/gi, m => '<span class="nowrap">' + m + '</span>');
   /** A labelled control: hint is a line under it, help the markup of a ? dot (ui.help) beside the label. */
-  const field = (label, inner, hint, help) => '<div class="fld">' + (help ? '<div class="fl"><label>' + label + '</label>' + help + '</div>' : '<label>' + label + '</label>') + '<div class="fc">' + inner + (hint ? '<small class="hint">' + hint + '</small>' : '') + '</div></div>';
+  const field = (label, inner, hint, help) => '<div class="fld">' + (help ? '<div class="fl"><label>' + flagsWhole(label) + '</label>' + help + '</div>' : '<label>' + flagsWhole(label) + '</label>') + '<div class="fc">' + inner + (hint ? '<small class="hint">' + hint + '</small>' : '') + '</div></div>';
   ui.fmt = { seg, field, inp, chipTag };
   /** Toast the why of a refused action; returns true when it was refused. */
   const refused = r => { if (r && r.ok === false) { if (r.why) ui.toast(r.why, 'warm'); return true; } return false; };
