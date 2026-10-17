@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A child of a pool whose parent is todo (after a resume the parent waits,
+  reserved for its leader, until it is started again) is refused with how to
+  start the parent first (`spawn task=T6 agent=dv-1`). In a resumed team run
+  the manager spawned the child five times against "parent pool T6 is todo".
+  Prompt bytes: none change.
+
 - The permission engine binds a loop variable whose words are quoted plain
   words (`for size in "390,844" "1440,900"`) to what is inside the quotes,
   and judges a command that uses the variables of nested loops once for each
