@@ -253,16 +253,31 @@ configured provider: from then on a bare marketplace id such as `deepseek/deepse
 | `roles` | object | none | yes | Role name to `provider/model` for swarm roles (`manager`, `worker`-style roles, your own definitions, `mailman`). Lowest priority: `--role-model role=provider/model` and `model:` in an agent definition (`docs/EXTENDING.md`) come first. An entry for a role a session does not have is not an error: one file may serve projects with different roles. The role `compactor` is not an agent: it names the model that writes the compaction summaries for every agent (`qwen/qwen3.8-flash-next` is a cheap choice). It shares no cache with the agent, so it reads the thread at full input price, and it is used only while the thread fits three quarters of its context window; past that, and when no `compactor` is set, each agent compacts on its own model and its own cache. A compactor that writes 5 of its last 8 patches in a form that cannot be used (JSON that does not parse, a tool call in place of the patch) is benched for the session: every agent compacts on its own model, the compactor is asked again every 10th compaction, and it writes the summaries again once 3 of those probes in a row were usable. The chat and the log say when it is benched and when it is back. In the chat, `/roles` shows what each role runs on, and `/roles ` opens a menu of the roles and then, after the `=` of one, of the models (the chat restarts with the choice) |
 | `favorites` | list | none | yes | `provider/model` references that `sleipnir models` lists first, marked `*` (`sleipnir models fav add REF`, `rm`, `list` edit it in your user config) |
 
-**Catalogue and price overrides: there are none.** No key sets a price or a context window. Costs and windows come from,
-in order: a built-in table of well-known models; the endpoint's own catalogue, fetched from `<base_url>/models` when the
-model is not in the table and cached for six hours under `<state>/cache/`; a conservative fallback (200k context, $3 per
-million input tokens, $15 output). When an endpoint reports the cost of a call (Heimdallm does, as `usage.cost`) the bill
-uses that figure and the table is only an estimate. This holds for every model of a session: the main one and the
-models of roles (`--role-model`, `models.roles`, an agent definition's `model:`, the mailman's). `session.start` in the
-event log records what each was described with (the numbers and where they came from: `catalogue`, `table`, `given`,
-`fallback`), and `sleipnir inspect` prices the run with those numbers, so its dollar figures for a marketplace model are the
-gateway's, not the fallback's. `sleipnir models` prints a marketplace catalogue with prices.
-`--context-window N` on `run` overrides the window for one run.
+**Catalogue and price overrides: there are none.** No key sets a price. Prices come from, in order: a built-in table of
+well-known models; the endpoint's own catalogue, fetched from `<base_url>/models` when the model is not in the table and
+cached for six hours under `<state>/cache/`; a conservative fallback ($3 per million input tokens, $15 output). When an
+endpoint reports the cost of a call (Heimdallm does, as `usage.cost`) the bill uses that figure and the table is only an
+estimate.
+
+**The context window is the provider's.** A session takes each model's window from what its provider reports: the
+endpoint's catalogue entry (`context_length`), or for a ChatGPT plan the plan's own model list (`context_window`), for a
+model the table knows as well as for one it does not; the table keeps its prices. Where the provider reports none, the
+table's window stands, else the fallback's 200k (8192 for a keyless server on this machine). The provider's
+`options.context_window` overrides what the provider reports, and `--context-window N` on `run` overrides both for the main
+model of one run. The window decides where compaction keeps the prompt. The plan's list is kept beside the catalogues
+(`<state>/cache/chatgpt-models-*.json`: slugs, names and windows, never a token) for the same six hours. It is asked for
+at most three seconds while a session starts and only with an access token that needs no renewal (a renewal cut off
+midway could lose the rotated refresh token); while it cannot be asked, an older copy is used. A catalogue or list that
+cannot be read is not asked again in the same session. A session that makes no network lookups (RL rollouts, `sleipnir
+demo`) asks nobody: the table's windows stand, and the fallback's for a model the table does not know.
+
+This holds for every model of a session: the main one, the models of roles (`--role-model`, `models.roles`, an agent
+definition's `model:`, the mailman's), a team's slots, the `compactor` and the model `/model` switches to. `session.start` in
+the event log records what each was described with: the numbers, where the prices came from (`source`: `catalogue`,
+`table`, `given`, `fallback`) and where the window came from (`context_source`: the same values, plus `configured` for
+`options.context_window` and `override` for `--context-window`). `sleipnir inspect` prices the run with those numbers, so
+its dollar figures for a marketplace model are the gateway's, not the fallback's. `sleipnir models` prints a marketplace
+catalogue with prices.
 
 The built-in table (`internal/cost/defaults.go`) holds Anthropic's Claude models and OpenAI's `gpt-6-astra`, `gpt-6.1-sol`,
 `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra` and `gpt-5.6-luna`. The OpenAI prices are the API's standard tier
@@ -270,8 +285,8 @@ for short context (at most 272k input tokens), per million tokens, from <https:/
 input, cached input, cache writes (the short-context cache-write rate, 1.25 times input) and output. A prompt longer than
 272k tokens is billed at higher long-context rates that the table does not model, so its figure is a lower bound. The table prices `openai/<model>`
 (the API with a key) and the same model on a marketplace (`openrouter/openai/gpt-6-luna`); the request still names the model
-as the reference does. Their context window in the table is a cautious 200k, as for a model nothing knows; the provider's
-`options.context_window` sets the real one.
+as the reference does. Their context window in the table is a cautious 200k, used where the provider reports none (OpenAI's
+own `/models` lists ids only); a marketplace's catalogue or a ChatGPT plan's list gives the real one.
 
 **A ChatGPT plan.** A plan (`auth: chatgpt-plan`, the built-in provider `chatgpt`) bills nothing per token. Its usage is
 shown at the API list price of the same model from the table, marked as the plan's: `≈$0.12 plan` in the terminal and the
@@ -289,7 +304,8 @@ models fills with the billed part.
 `sleipnir models --provider chatgpt` uses the saved ChatGPT sign-in. A plan's model is listed at the API list price of the
 same model with its output price tagged `plan` (`?` when the table does not know the model), and a note on stderr says what
 the tag means. `--max-price` filters a plan's models by that list price; one with no known list price is left out by any
-limit. Settings › Models in the browser and the chat's `/model` menu show the same prices and tag. Tuning a built-in provider
+limit. Settings › Models in the browser and the chat's `/model` menu show the same prices and tag. Each listing that asks the
+plan keeps its answer where sessions read the windows. Tuning a built-in provider
 without setting `base_url` preserves its authentication mode.
 An explicit `models --base-url URL` lists that endpoint without borrowing the
 ChatGPT sign-in token.
@@ -415,7 +431,7 @@ suspecting the endpoint.
 | `extra_body` | object | none | Members merged into the top level of every request body. They replace members of the same name, so do not use it to change `model` or `messages` |
 | `model_extra_body` | object | none | Per model id (the reference without the provider: `minimaxai/minimax-m3`), members put over `extra_body` in that model's requests only: a routing preference for one model of a gateway, while its other models keep the provider-wide members. Each value must be an object |
 | `capture_tokens` | bool | `false` | Declares that the server can return prompt and completion token ids and logprobs (a self-hosted vLLM or SGLang policy server). It does not switch capture on: the request members `logprobs: true` and `return_token_ids: true` are sent only when `--capture` is given (`run`, `doctor`, `rl rollout`, `rl eval`) |
-| `context_window` | int | model-dependent | The context window, in tokens, that the server really gives the model. A catalogue that lists ids only (Ollama, LM Studio, llama.cpp, vLLM) does not say, so a model of a keyless server on this machine is assumed to have **8192** tokens and to cost nothing; say the real window here (`"providers": {"ollama": {"options": {"context_window": 32768}}}`, after raising `num_ctx` in Ollama itself, which cuts a longer prompt off without a word). Compaction keeps the prompt inside it |
+| `context_window` | int | model-dependent | The context window, in tokens, that the server really gives the model, for every model of the provider. It wins over the window the provider's catalogue reports. A catalogue that lists ids only (Ollama, LM Studio, llama.cpp, vLLM) does not say, so a model of a keyless server on this machine is assumed to have **8192** tokens and to cost nothing; say the real window here (`"providers": {"ollama": {"options": {"context_window": 32768}}}`, after raising `num_ctx` in Ollama itself, which cuts a longer prompt off without a word). Compaction keeps the prompt inside it |
 
 Every dialect also takes the timeouts below. A silent server is cut off, so no request holds an agent for ever.
 

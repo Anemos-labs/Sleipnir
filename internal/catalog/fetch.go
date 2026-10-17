@@ -108,6 +108,10 @@ var (
 	usableSources = func(cfg *config.Config) []Source { return UsableSources(cfg, true) }
 )
 
+// planListURL is the address of the ChatGPT plan's model list ("" is the API's own, chatgptauth.Resource + "/models"); tests point it at a
+// fake.
+var planListURL = ""
+
 // FetchEntries asks the catalogues at once, each for 30 seconds at most, with no cache (what `sleipnir models` does). The entries
 // are those of the catalogues that answered; errs says, per source, why one did not. home is where a ChatGPT plan's sign-in is kept.
 func FetchEntries(ctx context.Context, home string, sources []Source) (all []Entry, errs []error) {
@@ -157,15 +161,44 @@ func entriesOf(src Source, es []gateway.Entry) []Entry {
 // gives them (0 otherwise). The plan publishes no per-token prices and bills none: an entry has the API's list price of the same
 // model from the built-in table (cost.Defaults) as its cost.Model.ListPrice, which rows show marked as the plan's (Entry.ShownPrice),
 // and none (unknown) for a model the table does not know.
+//
+// The list is kept under the state directory's cache/ (chatgptauth.Store.ListPath), where sessions read the plan models' context windows.
 func PlanModels(ctx context.Context, home string) ([]gateway.Entry, error) {
-	st, err := chatgptauth.Open(chatgptauth.Options{Path: chatgptauth.Path(home)})
+	es, _, err := planModels(ctx, home, stateCache(home), false)
+	return es, err
+}
+
+// stateCache is the state directory's cache/ for home, where catalogues and the plan's model list are kept.
+func stateCache(home string) string {
+	return filepath.Join(filepath.Dir(session.TrustLedgerPath(home)), "cache")
+}
+
+// planModels is PlanModels with the list kept under dir: asked and kept there, or (offline) the copy kept there whatever its age. at is
+// when the list was current.
+func planModels(ctx context.Context, home, dir string, offline bool) (es []gateway.Entry, at time.Time, err error) {
+	st, err := chatgptauth.Open(chatgptauth.Options{Path: chatgptauth.Path(home), Models: planListURL})
 	if err != nil {
-		return nil, err
+		return nil, time.Time{}, err
 	}
-	ms, err := st.Models(ctx)
-	if err != nil {
-		return nil, err
+	var ms []chatgptauth.Model
+	if offline {
+		if ms, at, err = chatgptauth.LoadList(st.ListPath(dir)); err != nil || len(ms) == 0 {
+			return nil, time.Time{}, errors.New("no copy of the ChatGPT plan's list is kept here")
+		}
+	} else {
+		if ms, err = st.Models(ctx); err != nil {
+			return nil, time.Time{}, err
+		}
+		at = time.Now()
+		if len(ms) > 0 {
+			_ = chatgptauth.SaveList(st.ListPath(dir), ms)
+		}
 	}
+	return planEntries(ms), at, nil
+}
+
+// planEntries are the catalogue entries of a plan's model list (see PlanModels).
+func planEntries(ms []chatgptauth.Model) []gateway.Entry {
 	table := cost.Defaults()
 	out := make([]gateway.Entry, 0, len(ms))
 	for _, m := range ms {
@@ -175,7 +208,7 @@ func PlanModels(ctx context.Context, home string) ([]gateway.Entry, error) {
 		}
 		out = append(out, e)
 	}
-	return out, nil
+	return out
 }
 
 // CacheTTL is how long a downloaded catalogue is used before it is asked for again (the sessions' own price lookups keep the same
@@ -193,8 +226,8 @@ type Options struct {
 	Config *config.Config
 	// Refresh asks every catalogue again instead of using a copy younger than CacheTTL.
 	Refresh bool
-	// Offline reaches no network: only cached catalogues are read, whatever their age, and local servers and the ChatGPT plan are
-	// not asked.
+	// Offline reaches no network: only cached catalogues and the ChatGPT plan's kept model list are read, whatever their age, and
+	// local servers are not asked.
 	Offline bool
 	// CacheDir overrides where catalogues are cached (default: the state directory's cache/).
 	CacheDir string
@@ -240,7 +273,7 @@ func FetchResult(ctx context.Context, o Options) Result {
 	}
 	dir := o.CacheDir
 	if dir == "" {
-		dir = filepath.Join(filepath.Dir(session.TrustLedgerPath(o.Home)), "cache")
+		dir = stateCache(o.Home)
 	}
 	hc := o.Client
 	if hc == nil {
@@ -260,12 +293,10 @@ func FetchResult(ctx context.Context, o Options) Result {
 			cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 			if src.Plan {
-				if o.Offline {
-					res[i].err = errors.New("the ChatGPT plan's list is not kept offline")
-					return
+				res[i].es, res[i].at, res[i].err = planModels(cctx, o.Home, dir, o.Offline)
+				if !o.Offline {
+					res[i].at = now()
 				}
-				res[i].es, res[i].err = PlanModels(cctx, o.Home)
-				res[i].at = now()
 				return
 			}
 			res[i].es, res[i].at, res[i].err = cachedCatalog(cctx, hc, dir, src.Base, o.Refresh, o.Offline, now)
