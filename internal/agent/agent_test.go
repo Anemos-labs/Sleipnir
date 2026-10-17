@@ -53,6 +53,15 @@ type rig struct {
 	client *openaichat.Client
 }
 
+// tokenPlanner is the default planner on its token limits (kv.Planner.CompactAt negative): the tests that set or rely on
+// SoftThreadTokens and HardThreadTokens run on mock models whose window is a million tokens, where the default share of the
+// window would put the soft limit at 250,000 tokens.
+func tokenPlanner() kv.Planner {
+	p := kv.DefaultPlanner()
+	p.CompactAt = -1
+	return p
+}
+
 type rigOpts struct {
 	mock      mock.Config
 	planner   kv.Planner
@@ -230,8 +239,51 @@ func compactorPatch(keepFrom int) func(c *mock.Call) string {
 	}
 }
 
-func TestBackgroundCompactionShrinksPromptAndCacheRecovers(t *testing.T) {
+// By default an agent's compaction starts at a share of its model's window: a quarter of a 28k window is 7k, so the planner's start
+// names a 7k soft limit (and never the 20k token limit, which this thread does not reach).
+func TestCompactionStartsAtAShareOfTheModelsWindow(t *testing.T) {
+	model := cost.Defaults().All()[0]
+	if m, ok := cost.Defaults().Lookup("mock-1"); ok {
+		model = m
+	}
+	model.Cache = cost.OpenAICacheModel()
+	model.Cache.MinPrefixTokens = 64
+	model.Price = cost.Price{InputPerM: 4, OutputPerM: 20, CacheReadPerM: 1, CacheWrite5mPerM: 4, CacheWrite1hPerM: 4}
+	model.ContextTokens = 28_000
 	pl := kv.DefaultPlanner()
+	pl.MinThreadTokens = 2000
+	r := newRig(t, rigOpts{planner: pl, model: &model, mock: mock.Config{Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}}},
+		scriptedWork(22, func(c *mock.Call) string {
+			n := 0
+			for _, m := range c.Messages {
+				if m.Role == "assistant" {
+					n++
+				}
+			}
+			return compactorPatch(max(2*n-6, 3))(c)
+		}))
+	if _, err := r.agent.Run(context.Background(), "please build the whole thing"); err != nil {
+		t.Fatal(err)
+	}
+	starts := 0
+	for _, e := range r.log.OfType(events.TypeCompactPlan) {
+		var d struct{ Decision, Reason string }
+		_ = json.Unmarshal(e.Data, &d)
+		if d.Decision != "start" {
+			continue
+		}
+		starts++
+		if !strings.Contains(d.Reason, "soft limit 7k") && !strings.Contains(d.Reason, "hard limit") && !strings.Contains(d.Reason, "masking") {
+			t.Errorf("a start not at the window's share: %q", d.Reason)
+		}
+	}
+	if starts == 0 {
+		t.Fatal("no compaction started past a quarter of the window")
+	}
+}
+
+func TestBackgroundCompactionShrinksPromptAndCacheRecovers(t *testing.T) {
+	pl := tokenPlanner()
 	pl.SoftThreadTokens = 6500
 	pl.MinThreadTokens = 2000
 	r := newRig(t, rigOpts{planner: pl, mock: mock.Config{Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}}},
@@ -345,7 +397,7 @@ func TestBackgroundCompactionShrinksPromptAndCacheRecovers(t *testing.T) {
 }
 
 func TestCompactorGarbageFallsBackToMechanical(t *testing.T) {
-	pl := kv.DefaultPlanner()
+	pl := tokenPlanner()
 	pl.SoftThreadTokens = 2500
 	pl.MinThreadTokens = 800
 	r := newRig(t, rigOpts{planner: pl}, scriptedWork(18, func(*mock.Call) string { return "I'm sorry, I can't produce JSON today." }))

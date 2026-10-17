@@ -21,7 +21,7 @@ import (
 // logprobs are kept when the endpoint returned them.
 func TestLogRecordsExactPromptsCompletionsAndTokens(t *testing.T) {
 	blobs := events.NewMemBlobs()
-	pl := kv.DefaultPlanner()
+	pl := tokenPlanner()
 	pl.SoftThreadTokens = 6500
 	pl.MinThreadTokens = 2000
 	r := newRig(t, rigOpts{planner: pl, blobs: blobs, capture: true,

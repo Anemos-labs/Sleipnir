@@ -9,7 +9,6 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/events"
-	"github.com/anemos-labs/sleipnir/internal/kv"
 	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/provider/openaichat"
@@ -116,7 +115,7 @@ func TestEffortCompactorCorrectionUsesItsOwnModelAndUniqueRequests(t *testing.T)
 	client := openaichat.New(openaichat.Config{Name: "compactor", BaseURL: ts.URL, Options: openaichat.Options{ReasoningEffortField: "reasoning_effort"}})
 	model := cost.Fallback("small-compactor")
 	model.ContextTokens = 200_000
-	planner := kv.DefaultPlanner()
+	planner := tokenPlanner()
 	planner.SoftThreadTokens, planner.HardThreadTokens = 1_000_000, 2_000_000
 	r := newRig(t, rigOpts{effort: &effort, planner: planner, compactor: client, compactorModel: model}, scriptedWork(8, func(*mock.Call) string {
 		t.Error("compaction used the main model")

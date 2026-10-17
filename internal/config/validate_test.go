@@ -217,9 +217,23 @@ func TestValidate(t *testing.T) {
 		{
 			name: "cache",
 			mutate: func(c *Config) {
-				c.Cache = Cache{InstructionMaxTokens: -1, SharedTTL: "2h", MinLayerForBreakpoint: -1, CompactThresholdTokens: -1, ThreadSoftLimitTokens: -5, HotMaxTokens: -1, AffinityShards: -2}
+				c.Cache = Cache{InstructionMaxTokens: -1, SharedTTL: "2h", MinLayerForBreakpoint: -1, CompactAtPercent: 95, CompactThresholdTokens: -1, ThreadSoftLimitTokens: -5, HotMaxTokens: -1, AffinityShards: -2}
 			},
-			wantErr: []string{"cache.affinity_shards", "cache.compact_threshold_tokens", "cache.hot_max_tokens", "cache.instruction_max_tokens", "cache.min_layer_for_breakpoint", "cache.shared_ttl", "cache.thread_soft_limit_tokens"},
+			wantErr: []string{"cache.affinity_shards", "cache.compact_at_percent", "cache.compact_threshold_tokens", "cache.hot_max_tokens", "cache.instruction_max_tokens", "cache.min_layer_for_breakpoint", "cache.shared_ttl", "cache.thread_soft_limit_tokens"},
+		},
+		{
+			name: "compact_at_percent is a share of the window from 10 to 90",
+			mutate: func(c *Config) {
+				c.Cache.CompactAtPercent = 5
+			},
+			wantErr:  []string{"cache.compact_at_percent"},
+			contains: map[string]string{"cache.compact_at_percent": "between 10 and 90"},
+		},
+		{
+			name: "compact_at_percent within the bounds",
+			mutate: func(c *Config) {
+				c.Cache.CompactAtPercent = 40
+			},
 		},
 		{
 			name: "cache ttl values",

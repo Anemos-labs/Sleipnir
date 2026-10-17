@@ -7,13 +7,21 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/cost"
 )
 
+// tokenPlanner is the default planner judged on its token limits alone (CompactAt negative), as for a model whose window is not
+// known: the economics below are those of the limits, whatever the window.
+func tokenPlanner() Planner {
+	p := DefaultPlanner()
+	p.CompactAt = -1
+	return p
+}
+
 func priced() State {
 	return State{PrefixTokens: 12_000, NotesTokens: 600, SpineTokens: 1_200, ThreadTokens: 25_000, PromptTokens: 39_000, ContextWindow: 1_000_000,
 		Warm: true, W: cost.Weights{Read: 0.1, Write5m: 1.25, Output: 5}, Write: 1.25, Explicit: true}
 }
 
 func TestPlannerStartMatrix(t *testing.T) {
-	pl := DefaultPlanner()
+	pl := tokenPlanner()
 	for _, c := range []struct {
 		name    string
 		mut     func(*State)
@@ -45,7 +53,7 @@ func TestPlannerStartMatrix(t *testing.T) {
 }
 
 func TestShouldCommitJudgesTheLiveThread(t *testing.T) {
-	pl := DefaultPlanner()
+	pl := tokenPlanner()
 	// A marginal patch: it covers little of a mostly retained thread and a big
 	// spine block is re-written on an explicit cache.
 	s := priced()
@@ -110,5 +118,73 @@ func TestStalePatchesAreDiscarded(t *testing.T) {
 	}
 	if stale, _ := pl.Stale(4_000, 6_500, 2); stale {
 		t.Fatal("small threads get an absolute growth allowance")
+	}
+}
+
+// By default a compaction is considered once the thread fills a quarter of the model's window and forced halfway from there to
+// 95% of it; the share is clamped to 10-90%, the soft limit never falls under MinThreadTokens, and a model whose window is not
+// known (or a negative share) uses the token limits.
+func TestLimitsForAWindow(t *testing.T) {
+	d := DefaultPlanner()
+	share := func(f float64) Planner { p := DefaultPlanner(); p.CompactAt = f; return p }
+	for _, c := range []struct {
+		name       string
+		p          Planner
+		window     int
+		soft, hard int
+		prompt     float64
+	}{
+		{"1M window, default quarter", d, 1_000_000, 250_000, 600_000, 0.6},
+		{"200k window", d, 200_000, 50_000, 120_000, 0.6},
+		{"90% of 1M: the prompt pressure follows the hard limit up", share(0.9), 1_000_000, 900_000, 925_000, 0.925},
+		{"under 10% is clamped to 10%", share(0.05), 1_000_000, 100_000, 525_000, 0.6},
+		{"over 90% is clamped to 90%", share(0.99), 1_000_000, 900_000, 925_000, 0.925},
+		{"a tiny window keeps the floor", d, 8_000, 4_000, 4_800, 0.6},
+		{"window not known: token limits", d, 0, 20_000, 60_000, 0.6},
+		{"negative share: token limits", share(-1), 1_000_000, 20_000, 60_000, 0.6},
+	} {
+		l := c.p.LimitsFor(c.window)
+		if l.Soft != c.soft || l.Hard != c.hard || l.Prompt < c.prompt-1e-9 || l.Prompt > c.prompt+1e-9 {
+			t.Errorf("%s: soft %d hard %d prompt %.3f, want %d %d %.3f", c.name, l.Soft, l.Hard, l.Prompt, c.soft, c.hard, c.prompt)
+		}
+	}
+}
+
+// On a model with a 1M window the default planner leaves a 100k thread alone (a fifth of what it reads stays in view instead of a
+// tenth of it being kept), considers a compaction past a quarter of the window, and forces one past the hard limit.
+func TestPlannerStartsAtAShareOfTheWindow(t *testing.T) {
+	pl := DefaultPlanner()
+	s := priced()
+	s.ThreadTokens, s.PromptTokens = 100_000, 114_000
+	if d := pl.ShouldStart(s); d.Yes || !strings.Contains(d.Reason, "no pressure") {
+		t.Fatalf("a 100k thread of a 1M window: %+v", d)
+	}
+	s.ThreadTokens, s.PromptTokens = 260_000, 274_000
+	if d := pl.ShouldStart(s); !d.Yes || !strings.Contains(d.Reason, "soft limit 250k") {
+		t.Fatalf("past a quarter of the window: %+v", d)
+	}
+	s.ThreadTokens, s.PromptTokens, s.Warm = 610_000, 624_000, false
+	if d := pl.ShouldStart(s); !d.Yes || !strings.Contains(d.Reason, "hard limit 600k") {
+		t.Fatalf("past the hard limit, cold: %+v", d)
+	}
+}
+
+// A placeholder window (a model nothing describes) sizes nothing: the planner uses its token limits, not a quarter of the guess,
+// while the prompt-near-window pressure still reads it.
+func TestAGuessedWindowKeepsTheTokenLimits(t *testing.T) {
+	pl := DefaultPlanner()
+	s := priced()
+	s.ContextWindow, s.WindowGuessed = 200_000, true
+	s.ThreadTokens, s.PromptTokens = 25_000, 39_000
+	if d := pl.ShouldStart(s); !d.Yes || !strings.Contains(d.Reason, "soft limit 20k") {
+		t.Fatalf("a 25k thread of a guessed window: %+v", d)
+	}
+	s.WindowGuessed = false
+	if d := pl.ShouldStart(s); d.Yes {
+		t.Fatalf("the same thread of a known 200k window is under its 50k share: %+v", d)
+	}
+	s.WindowGuessed, s.ThreadTokens, s.PromptTokens, s.Warm = true, 10_000, 130_000, false
+	if d := pl.ShouldStart(s); !d.Yes || !strings.Contains(d.Reason, "context window") {
+		t.Fatalf("the guessed window still bounds the prompt: %+v", d)
 	}
 }

@@ -64,12 +64,24 @@ func TestCommonRandomNumbers(t *testing.T) {
 	}
 }
 
+// tokenLayered is the layered policy with the planner on its token limits (kv.Planner.CompactAt negative): compaction from a
+// 20k thread, whatever the window. It is the cost-first configuration the simulator's claims about compaction are measured in.
+func tokenLayered() LayeredOptions {
+	o := DefaultLayered()
+	o.Planner.CompactAt = -1
+	return o
+}
+
+// At the token limits the layered policy beats plain and summary compaction on both caches, with a smaller average context.
+// With the default, which keeps a quarter of the window in view (here 250k of 1M, which the workload's threads never reach), it
+// still beats plain on both and summary compaction on the explicit cache, where every commit re-writes the prefix at the write
+// premium; on an automatic cache it reads a larger context on every request, which is the price of the memory it keeps.
 func TestLayeredBeatsNaiveAtScale(t *testing.T) {
 	for _, p := range []Provider{Anthropic(), Marketplace(1)} {
 		w := DefaultWorkload(20)
 		naive := Naive(w, p, NaiveOptions{})
 		sum := Naive(w, p, NaiveOptions{CompactAt: 100_000})
-		lay := Layered(w, p, DefaultLayered())
+		lay := Layered(w, p, tokenLayered())
 		if lay.ITE >= sum.ITE {
 			t.Fatalf("%s: layered %.1fM must beat even naive+summary compaction %.1fM", p.Name, lay.ITE/1e6, sum.ITE/1e6)
 		}
@@ -81,6 +93,16 @@ func TestLayeredBeatsNaiveAtScale(t *testing.T) {
 		}
 		if lay.WallSeconds >= naive.WallSeconds {
 			t.Fatalf("%s: skipping orientation should finish sooner (%.0fs vs %.0fs)", p.Name, lay.WallSeconds, naive.WallSeconds)
+		}
+		def := Layered(w, p, DefaultLayered())
+		if def.ITE >= naive.ITE {
+			t.Fatalf("%s: with the default share, layered %.1fM must still beat naive %.1fM", p.Name, def.ITE/1e6, naive.ITE/1e6)
+		}
+		if p.Name == Anthropic().Name && def.ITE >= sum.ITE {
+			t.Fatalf("%s: with the default share, layered %.1fM must beat naive+summary %.1fM on an explicit cache", p.Name, def.ITE/1e6, sum.ITE/1e6)
+		}
+		if def.WallSeconds >= naive.WallSeconds {
+			t.Fatalf("%s: with the default share, skipping orientation should still finish sooner (%.0fs vs %.0fs)", p.Name, def.WallSeconds, naive.WallSeconds)
 		}
 	}
 }

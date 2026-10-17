@@ -10,7 +10,6 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/events"
-	"github.com/anemos-labs/sleipnir/internal/kv"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
@@ -243,7 +242,7 @@ func (c *compactHooks) seen() []string {
 func TestAutomaticCompactionRunsTheCompactionHooks(t *testing.T) {
 	for _, panicking := range []bool{false, true} {
 		t.Run(map[bool]string{false: "hooks", true: "a panicking hook"}[panicking], func(t *testing.T) {
-			pl := kv.DefaultPlanner()
+			pl := tokenPlanner()
 			pl.SoftThreadTokens = 6500
 			pl.MinThreadTokens = 2000
 			hk := &compactHooks{panic: panicking}
@@ -297,7 +296,7 @@ func TestAutomaticCompactionRunsTheCompactionHooks(t *testing.T) {
 
 // A Hooks that does not implement CompactionHooks changes nothing.
 func TestCompactionWithoutCompactionHooksIsUnchanged(t *testing.T) {
-	pl := kv.DefaultPlanner()
+	pl := tokenPlanner()
 	pl.SoftThreadTokens = 6500
 	pl.MinThreadTokens = 2000
 	r := newRig(t, rigOpts{planner: pl, hooks: &fakeHooks{}, mock: mock.Config{Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}}},

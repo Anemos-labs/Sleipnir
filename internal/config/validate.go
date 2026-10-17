@@ -284,6 +284,9 @@ func (v *validator) cache(c Cache) {
 		v.err(seg("cache", "shared_ttl"), "must be \"5m\" or \"1h\", got %q", c.SharedTTL)
 	}
 	v.nonNegative(seg("cache", "min_layer_for_breakpoint"), c.MinLayerForBreakpoint)
+	if n := c.CompactAtPercent; n != 0 && (n < 10 || n > 90) {
+		v.err(seg("cache", "compact_at_percent"), "must be between 10 and 90 (percent of the model's context window), got %d", n)
+	}
 	v.nonNegative(seg("cache", "compact_threshold_tokens"), c.CompactThresholdTokens)
 	v.nonNegative(seg("cache", "thread_soft_limit_tokens"), c.ThreadSoftLimitTokens)
 	if c.CompactionMode != "" && c.CompactionMode != "background" && c.CompactionMode != "blocking" {

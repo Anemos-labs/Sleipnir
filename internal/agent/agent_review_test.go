@@ -181,7 +181,7 @@ func TestConc_CompactorJobEndsWithACancelledRun(t *testing.T) {
 		arvBlock(ctx, mainGate) // the agent is mid-request when the swarm shuts down
 		return arvText("done"), warm
 	}
-	pl := kv.DefaultPlanner()
+	pl := tokenPlanner()
 	pl.SoftThreadTokens = 1500
 	pl.MinThreadTokens = 500
 	a, log := newARV(t, prov, arvRigOpts{planner: pl})

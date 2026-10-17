@@ -349,7 +349,7 @@ func TestPlannerEconomics(t *testing.T) {
 }
 
 func TestPlannerStartTriggers(t *testing.T) {
-	pl := DefaultPlanner()
+	pl := tokenPlanner()
 	base := State{ThreadTokens: 5_000, PromptTokens: 20_000, ContextWindow: 1_000_000, Warm: true}
 	if pl.ShouldStart(base).Yes {
 		t.Fatal("no pressure, warm: do nothing")
