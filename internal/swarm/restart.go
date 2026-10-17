@@ -54,8 +54,11 @@ type pendingRestart struct {
 	due   time.Time
 	n     int      // which restart of the row this is (1-based)
 	tasks []string // the tasks it keeps: work it does, or a pool it leads (sorted)
-	pool  string   // the open pool it is a member of, when it keeps no task
-	why   string   // why the run stopped
+	// revs are the revisions it keeps them at (0: any): a task revised and assigned again since, even to the same worker, is a
+	// new assignment, which the restart neither starts nor returns to the board.
+	revs  map[string]uint64
+	pool  string // the open pool it is a member of, when it keeps no task
+	why   string // why the run stopped
 	cause restartCause
 }
 
@@ -166,14 +169,17 @@ func (s *Swarm) settleFailed(m *member, rs *runState, tasks map[string]uint64, k
 	rest := maps.Clone(tasks)
 	snap := s.Board.Snapshot()
 	var kept []string
+	p.revs = make(map[string]uint64, len(p.tasks))
 	for _, id := range p.tasks {
 		delete(rest, id)
 		if t, ok := snap.Task(id); ok && t.Pool != nil {
 			kept = append(kept, id) // a pool it leads: its members' work, not an attempt of its own
+			p.revs[id] = t.Rev
 			continue
 		}
-		if _, ok := s.Board.retryInPlace(m.id, id, tasks[id], why); ok {
+		if t, ok := s.Board.retryInPlace(m.id, id, tasks[id], why); ok {
 			kept = append(kept, id)
+			p.revs[id] = t.Rev
 		} else {
 			rest[id] = tasks[id] // changed since the plan was made: settled as any other
 		}
@@ -238,7 +244,8 @@ func (s *Swarm) restartTick(now time.Time) {
 
 // startRestart restarts m on the work p kept for it: the note goes to its inbox as harness mail, which starts a run (a worker
 // that some other path started meanwhile reads it in that run). Work that has left the worker since (a reassignment, a revise,
-// a failed or closed task, a pool that finished) is not restarted on; a swarm that may not run work now drops the restart.
+// even one that gave the task back to it, a failed or closed task, a pool that finished) is not restarted on; a swarm that may
+// not run work now drops the restart.
 func (s *Swarm) startRestart(m *member, p *pendingRestart) {
 	switch {
 	case s.alive() != nil:
@@ -254,7 +261,7 @@ func (s *Swarm) startRestart(m *member, p *pendingRestart) {
 	snap := s.Board.Snapshot()
 	var tasks []string
 	for _, id := range p.tasks {
-		if t, ok := snap.Task(id); ok && t.Owner == m.id && t.Status == StatusDoing {
+		if t, ok := snap.Task(id); ok && t.Owner == m.id && t.Status == StatusDoing && (p.revs[id] == 0 || t.Rev == p.revs[id]) {
 			tasks = append(tasks, id)
 		}
 	}
@@ -295,10 +302,11 @@ func (s *Swarm) dropRestarts(reason string) {
 }
 
 // dropRestart calls off a restart the harness had scheduled for m, which is then a worker that failed and is not restarted:
-// the tasks it kept go back to the board (their attempt was counted when the run failed) and its state says that it failed.
+// the tasks it kept go back to the board (their attempt was counted when the run failed), each only at the revision it was kept
+// at, and its state says that it failed.
 func (s *Swarm) dropRestart(m *member, p *pendingRestart, reason string) {
 	for _, id := range p.tasks {
-		s.Board.Requeue(m.id, id, 0, reason, false, s.cfg.MaxAttempts)
+		s.Board.Requeue(m.id, id, p.revs[id], reason, false, s.cfg.MaxAttempts)
 	}
 	s.emitAs(m.id, eventRestart, map[string]any{"phase": "dropped", "reason": reason, "n": p.n})
 	m.setIdleState(s, "failed", p.why)

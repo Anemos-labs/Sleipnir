@@ -468,3 +468,84 @@ func TestAPoolMembersChildStaysItsOwnWhileItIsRestarted(t *testing.T) {
 	rvWait(t, "the restarted run", func() bool { return r.running("be-2") })
 	rvWait(t, "the note", func() bool { return r.prov.sawEver(child.ID + " is still yours") })
 }
+
+// restartWaiting is a rig whose backend worker ended its run at the step limit on T1 and waits for its automatic restart.
+func restartWaiting(t *testing.T, cfg Config) (*rvRig, *fakeClock, string) {
+	t.Helper()
+	clock := newFakeClock()
+	cfg.MaxWriters = 4
+	r := newClockRig(t, cfg, clock, func(_ context.Context, c *rvCall) rvReply {
+		if c.Role != "backend" {
+			return rvReply{Text: "ok"}
+		}
+		return readReply
+	})
+	stepLimitedBackend(r)
+	r.sw.StartManager()
+	id, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "build the API", By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, "the step limit to end the run", func() bool { return r.idle(id) && pendingOf(r, id) != nil })
+	return r, clock, id
+}
+
+// The repair pass starts a todo task on its last owner when that worker is idle. A worker waiting for its automatic restart is
+// idle, but not free: a run on another task would adopt the work the restart keeps, and the restart's wait and note would be
+// lost. The repair pass leaves it to its restart.
+func TestTheRepairPassLeavesAWorkerThatWaitsForItsRestart(t *testing.T) {
+	r, clock, id := restartWaiting(t, Config{PersistentPools: true})
+	other, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "write the docs", Role: "backend"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.Assign("mgr", id, other.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := r.sw.Board.Requeue(id, other.ID, 0, "test: its run failed", true, 0); !ok {
+		t.Fatal("the other task was not returned to the board")
+	}
+	r.sw.repairTick(clock.Now())
+	if !r.idle(id) || pendingOf(r, id) == nil {
+		t.Fatalf("the repair pass started %s while its restart waited", id)
+	}
+	if tk, _ := r.sw.Board.Snapshot().Task(other.ID); tk.Status != StatusTodo || tk.Owner != "" {
+		t.Fatalf("%s = %s/%s, want left on the board", other.ID, tk.Status, tk.Owner)
+	}
+}
+
+// A task an automatic restart keeps can be revised and given to the same worker again while the restart waits. That is a new
+// assignment: the restart, called off or due, neither returns it to the board nor restarts the worker on it.
+func TestARestartLeavesANewAssignmentOfTheTaskItKept(t *testing.T) {
+	reassign := func(t *testing.T, r *rvRig, id string) Task {
+		t.Helper()
+		if _, ok := r.sw.Board.Requeue(id, "T1", 0, "test: revised", false, 0); !ok {
+			t.Fatal("T1 was not revised")
+		}
+		if err := r.sw.Board.Assign("mgr", id, "T1"); err != nil {
+			t.Fatal(err)
+		}
+		tk, _ := r.sw.Board.Snapshot().Task("T1")
+		return tk
+	}
+	t.Run("called off", func(t *testing.T) {
+		r, _, id := restartWaiting(t, Config{})
+		again := reassign(t, r, id)
+		r.sw.dropRestarts("test: the swarm stopped")
+		if tk, _ := r.sw.Board.Snapshot().Task("T1"); tk.Status != StatusDoing || tk.Owner != id || tk.Rev != again.Rev {
+			t.Fatalf("T1 = %s/%s rev %d, want the new assignment (doing, %s's, rev %d)", tk.Status, tk.Owner, tk.Rev, id, again.Rev)
+		}
+	})
+	t.Run("due", func(t *testing.T) {
+		r, clock, id := restartWaiting(t, Config{})
+		reassign(t, r, id)
+		clock.Advance(restartBackoff)
+		r.sw.superviseOnce(clock.Now())
+		if got := restartPhases(r, id); strings.Join(got, ",") != "scheduled,dropped" {
+			t.Fatalf("swarm.restart phases = %v, want the restart dropped: its work has moved on", got)
+		}
+		if r.prov.sawEver("automatic restart 1 of 2") {
+			t.Fatal("the worker was restarted on a new assignment")
+		}
+	})
+}

@@ -46,8 +46,9 @@ func (s *Swarm) repairTick(now time.Time) {
 		m.mu.Lock()
 		idle := m.life == lifeIdle
 		asking := m.asking > 0
+		restarting := m.restart != nil // the harness restarts it on its own work (restart.go), which another run would adopt
 		m.mu.Unlock()
-		if !idle || asking {
+		if !idle || asking || restarting {
 			continue
 		}
 		s.retryAt[t.ID] = now.Add(30 * time.Second)
