@@ -607,6 +607,11 @@ func (a *Agent) Stack() kv.Stack {
 func (a *Agent) applyPolicy() kv.ApplyPolicy {
 	pol := a.cfg.ApplyPolicy
 	pol.Caps = a.caps(a.cfg.Provider.Profile())
+	if pol.KeepTarget == 0 {
+		// Half of the soft limit for this model: a compaction leaves the working material of the task in view, and the thread
+		// has room to grow before the next one.
+		pol.KeepTarget = a.cfg.Planner.LimitsFor(a.cfg.Model.ContextTokens).Soft / 2
+	}
 	return pol
 }
 

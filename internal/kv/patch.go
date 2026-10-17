@@ -24,6 +24,11 @@ type Patch struct {
 	// Mask names tool results to replace with a placeholder (still recoverable
 	// through recall).
 	Mask []MaskRef `json:"-"`
+	// Keep names tool results in the kept region that the work still depends on
+	// (the file being documented, the spec being implemented): they stay verbatim
+	// however old, where ApplyPolicy.AutoMaskAfterUnits would mask them. A result
+	// named in Mask as well is masked.
+	Keep []MaskRef `json:"-"`
 	// Notes edits the agent's tenured notes (layer G3).
 	Notes []NoteOp `json:"-"`
 	// Promote proposes facts for the shared or role layer. Proposals are queued
@@ -79,6 +84,7 @@ type rawPatch struct {
 		Line  string `json:"line"`
 	} `json:"spine"`
 	Mask    []string    `json:"mask"`
+	Keep    []string    `json:"keep"`
 	Notes   []NoteOp    `json:"notes"`
 	Promote []Promotion `json:"promote"`
 }

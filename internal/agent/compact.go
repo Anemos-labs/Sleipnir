@@ -455,7 +455,12 @@ func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus s
 		// Fallback: deterministic compaction. Never leave the agent stuck with a
 		// full thread because a model answered badly.
 		a.emit(events.TypeCompactReject, map[string]any{"stage": "model_patch", "reason": err.Error(), "fallback": "mechanical"})
+		// The budget the compactor was given, never more than half the thread (a mechanical compaction must fold something);
+		// without one, a quarter of it.
 		target := snapLive / 4
+		if pol.KeepTarget > 0 {
+			target = min(pol.KeepTarget, snapLive/2)
+		}
 		if target < 2000 {
 			target = 2000
 		}
