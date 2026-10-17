@@ -612,9 +612,10 @@ func BuildProvider(cfg *config.Config, ref ModelRef, o ProviderOptions) (provide
 		m = m.OnPlan(ok)
 	}
 	if !ok && p.APIKeyEnv == "" && localBase(base) {
-		// A server on this machine (Ollama, LM Studio, llama.cpp, vLLM) costs nothing per token, and its catalogue lists ids only: no price to
-		// show, and no window. The window is a cautious one (Ollama serves a few thousand tokens unless told otherwise, and cuts the rest off
-		// without a word), so that compaction keeps the prompt inside what the server gives; options.context_window says the real one.
+		// A server on this machine (Ollama, LM Studio, llama.cpp, vLLM) costs nothing per token, and its catalogue has no price to show. The
+		// window is a cautious one (Ollama serves a few thousand tokens unless told otherwise, and cuts the rest off without a word), so that
+		// compaction keeps the prompt inside what the server gives, until the session learns the one it serves (describe, servedWindow) or
+		// options.context_window says it.
 		m.Price = cost.Price{}
 		m.ContextTokens, m.WindowGuessed = localContextWindow, false // cautious on purpose: compaction keeps the prompt inside it
 	}
@@ -667,7 +668,9 @@ func catalogueReadable(baseURL string) bool {
 
 // enrichFrom replaces the description of m with its entry in entries (exact prices and
 // window, the window m had when the entry gives none); ok is false when entries have no
-// entry for m, or one that knows nothing about it.
+// entry for m, or one that knows nothing about it. An entry that gives a window and no
+// prices (vLLM's, SGLang's) gives m its window only: prices a catalogue did not publish
+// are not zero.
 func enrichFrom(entries []gateway.Entry, m cost.Model) (cost.Model, bool) {
 	e, found := findEntry(entries, m.ID)
 	if !found {
@@ -677,6 +680,13 @@ func enrichFrom(entries []gateway.Entry, m cost.Model) (cost.Model, bool) {
 	if e.Model.ContextTokens == 0 && p.InputPerM == 0 && p.OutputPerM == 0 {
 		// a catalogue that lists ids only (OpenAI's own, Ollama's, LM Studio's) knows nothing about the model: what is known stands
 		return m, false
+	}
+	if e.Unpriced {
+		if e.Model.ContextTokens == 0 {
+			return m, false
+		}
+		m.ContextTokens, m.WindowGuessed = e.Model.ContextTokens, false
+		return m, true
 	}
 	out := e.Model // every entry has passed cost.Model.Validate (gateway.Parse, gateway.Vet)
 	out.ID = m.ID

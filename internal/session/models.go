@@ -21,6 +21,7 @@ const (
 	sourceFallback   = "fallback"   // nothing knew the model: conservative estimates
 	sourceConfigured = "configured" // the window only: the provider's options.context_window
 	sourceOverride   = "override"   // the window only: Options.ContextWindow (--context-window), the main model's
+	sourceServer     = "server"     // the window only: what the server of this machine that serves the model says it serves it with
 )
 
 // maxRecordedModels bounds the models one session.start lists.
@@ -71,6 +72,9 @@ type modelRecord struct {
 //     prices and window).
 //   - A model the table knows keeps the table's prices and takes the context window its
 //     provider reports: the endpoint's catalogue entry, or a ChatGPT plan's model list.
+//   - A model the table does not know on a server of this machine whose catalogue gives no
+//     window takes the window the server says it serves the model with (servedWindow), where
+//     the server says.
 //   - The provider's options.context_window, when it is set, is the window whatever the
 //     provider reports.
 //
@@ -83,6 +87,7 @@ func (s *Session) describe(ctx context.Context, p provider.Provider, m cost.Mode
 	}
 	win := src
 	configured := s.configuredWindow(p)
+	unknown := m.Provider == "unknown"
 	if !s.opts.Offline {
 		base := p.Profile().BaseURL
 		switch {
@@ -95,7 +100,10 @@ func (s *Session) describe(ctx context.Context, p provider.Provider, m cost.Mode
 		case m.Provider == "unknown":
 			es := s.catalogue(ctx, base)
 			if e, ok := enrichFrom(es, m); ok {
-				m, src = e, sourceCatalogue
+				m = e
+				if publishesPrices(es, m.ID) {
+					src = sourceCatalogue
+				}
 				if reportsWindow(es, m.ID) {
 					win = sourceCatalogue
 				}
@@ -103,6 +111,11 @@ func (s *Session) describe(ctx context.Context, p provider.Provider, m cost.Mode
 		case configured == 0:
 			if e, ok := findEntry(s.catalogue(ctx, base), m.ID); ok && e.Model.ContextTokens > 0 {
 				m.ContextTokens, m.WindowGuessed, win = e.Model.ContextTokens, false, sourceCatalogue
+			}
+		}
+		if unknown && configured == 0 && win != sourceCatalogue && localBase(base) {
+			if n := s.servedWindow(ctx, base, m.ID); n > 0 {
+				m.ContextTokens, m.WindowGuessed, win = n, false, sourceServer
 			}
 		}
 	}
@@ -117,6 +130,12 @@ func (s *Session) describe(ctx context.Context, p provider.Provider, m cost.Mode
 func reportsWindow(entries []gateway.Entry, id string) bool {
 	e, ok := findEntry(entries, id)
 	return ok && e.Model.ContextTokens > 0
+}
+
+// publishesPrices reports whether entries give model id prices of their own.
+func publishesPrices(entries []gateway.Entry, id string) bool {
+	e, ok := findEntry(entries, id)
+	return ok && !e.Unpriced
 }
 
 // configuredWindow is the window the configuration of p's provider sets

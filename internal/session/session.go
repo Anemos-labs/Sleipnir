@@ -243,6 +243,9 @@ type Session struct {
 	described map[string]described
 	// unlisted are the providers' model lists (models.go) that could not be read: none is asked twice in a session.
 	unlisted map[string]bool
+	// served are the windows servers of this machine said they serve models with (served.go), by server and model, 0 for none: each
+	// is asked once in a session.
+	served map[string]int
 
 	Registry *tools.Registry
 	Specs    []core.ToolSpec

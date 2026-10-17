@@ -67,6 +67,23 @@ they do not indicate whether a change has been released.
   quarter of the main model's window, at most 16,384 tokens) follows the
   reported window.
 
+- A model on a server of this machine takes the window the server serves it
+  with instead of an assumed 8,192 tokens: vLLM's and SGLang's catalogue
+  (`max_model_len`), llama.cpp's `/props` (`n_ctx` of a slot), the instance
+  LM Studio has loaded (`/api/v1/models`), and Ollama's `num_ctx` for the
+  model (`/api/show`, at most the model's own context length) or the
+  context its running model was loaded with (`/api/ps`). Where the server
+  does not say, 8,192 stands; `options.context_window` still wins. These
+  questions are asked once per model in a session, for three seconds at
+  most, without a key; `session.start` records `context_source: "server"`
+  for a window learnt this way. A catalogue entry that gives a window and
+  no prices now gives the window only: the model keeps its estimated prices
+  instead of being priced at zero. Compaction on such a model starts at its
+  share of the served window, so a local model served with 32k compacts at
+  8k instead of at about 4k. Prompt bytes: the shared layer's instruction
+  allowance (a quarter of the main model's window) follows the served
+  window for a local main model.
+
 - A background process that a shell command started and left running with
   its output sent elsewhere (`nohup server >log 2>&1 </dev/null &`) now ends
   when the session does, as one that holds the command's output already

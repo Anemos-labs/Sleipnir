@@ -261,9 +261,15 @@ endpoint reports the cost of a call (Heimdallm does, as `usage.cost`) the bill u
 estimate.
 
 **The context window is the provider's.** A session takes each model's window from what its provider reports: the
-endpoint's catalogue entry (`context_length`), or for a ChatGPT plan the plan's own model list (`context_window`), for a
-model the table knows as well as for one it does not; the table keeps its prices. Where the provider reports none, the
-table's window stands, else the fallback's 200k (8192 for a keyless server on this machine). The provider's
+endpoint's catalogue entry (`context_length`, or vLLM's and SGLang's `max_model_len`), or for a ChatGPT plan the plan's own
+model list (`context_window`), for a model the table knows as well as for one it does not; the table keeps its prices. A
+catalogue entry that gives a window and no prices (vLLM's) gives the window only: prices it did not publish are not taken
+as zero. Where the provider reports none, the table's window stands, else the fallback's 200k (8192 for a keyless server on
+this machine). A model the table does not know on a server of this machine whose catalogue gives no window takes the window
+the server says it serves the model with, never the model's maximum: llama.cpp's `/props` (the slot's `n_ctx`), the
+instance LM Studio has loaded (`/api/v1/models`; a model it has not loaded says nothing), and Ollama's `num_ctx` for the
+model (`/api/show`, at most the model's own context length) or else the context its running model was loaded with
+(`/api/ps`). Those questions take three seconds at most, carry no key and are asked once per model in a session. The provider's
 `options.context_window` overrides what the provider reports, and `--context-window N` on `run` overrides both for the main
 model of one run. The window decides where compaction keeps the prompt. The plan's list is kept beside the catalogues
 (`<state>/cache/chatgpt-models-*.json`: slugs, names and windows, never a token) for the same six hours. It is asked for
@@ -276,7 +282,7 @@ This holds for every model of a session: the main one, the models of roles (`--r
 definition's `model:`, the mailman's), a team's slots, the `compactor` and the model `/model` switches to. `session.start` in
 the event log records what each was described with: the numbers, where the prices came from (`source`: `catalogue`,
 `table`, `given`, `fallback`) and where the window came from (`context_source`: the same values, plus `configured` for
-`options.context_window` and `override` for `--context-window`). `sleipnir inspect` prices the run with those numbers, so
+`options.context_window`, `override` for `--context-window` and `server` for what a server of this machine said it serves). `sleipnir inspect` prices the run with those numbers, so
 its dollar figures for a marketplace model are the gateway's, not the fallback's. `sleipnir models` prints a marketplace
 catalogue with prices.
 
@@ -433,7 +439,7 @@ suspecting the endpoint.
 | `extra_body` | object | none | Members merged into the top level of every request body. They replace members of the same name, so do not use it to change `model` or `messages` |
 | `model_extra_body` | object | none | Per model id (the reference without the provider: `minimaxai/minimax-m3`), members put over `extra_body` in that model's requests only: a routing preference for one model of a gateway, while its other models keep the provider-wide members. Each value must be an object |
 | `capture_tokens` | bool | `false` | Declares that the server can return prompt and completion token ids and logprobs (a self-hosted vLLM or SGLang policy server). It does not switch capture on: the request members `logprobs: true` and `return_token_ids: true` are sent only when `--capture` is given (`run`, `doctor`, `rl rollout`, `rl eval`) |
-| `context_window` | int | model-dependent | The context window, in tokens, that the server really gives the model, for every model of the provider. It wins over the window the provider's catalogue reports. A catalogue that lists ids only (Ollama, LM Studio, llama.cpp, vLLM) does not say, so a model of a keyless server on this machine is assumed to have **8192** tokens and to cost nothing; say the real window here (`"providers": {"ollama": {"options": {"context_window": 32768}}}`, after raising `num_ctx` in Ollama itself, which cuts a longer prompt off without a word). Compaction keeps the prompt inside it |
+| `context_window` | int | model-dependent | The context window, in tokens, that the server really gives the model, for every model of the provider. It wins over the window the provider's catalogue reports. A model of a keyless server on this machine costs nothing and takes the window the server says it serves it with (vLLM's catalogue, llama.cpp's `/props`, the instance LM Studio has loaded, Ollama's `num_ctx` or its running model); where the server does not say (an Ollama model with no `num_ctx` that is not running, an LM Studio model not loaded), it is assumed to have **8192** tokens. Say the real window here when the server does not (`"providers": {"ollama": {"options": {"context_window": 32768}}}`, after raising `num_ctx` in Ollama itself, which cuts a longer prompt off without a word). Compaction keeps the prompt inside it |
 
 Every dialect also takes the timeouts below. A silent server is cut off, so no request holds an agent for ever.
 
