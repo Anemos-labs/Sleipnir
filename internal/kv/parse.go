@@ -100,6 +100,13 @@ func decodeRaw(c []byte) (*rawPatch, []string, error) {
 		}
 		warn("mask[%d]: not a reference, ignored", i)
 	}
+	for i, b := range jsonElements(m["keep"]) {
+		if s, ok := jsonScalar(b); ok {
+			rp.Keep = append(rp.Keep, s)
+			continue
+		}
+		warn("keep[%d]: not a reference, ignored", i)
+	}
 	for i, b := range jsonElements(m["notes"]) {
 		var n NoteOp
 		if json.Unmarshal(b, &n) != nil {
@@ -235,6 +242,16 @@ func buildPatch(rp *rawPatch) (*Patch, error) {
 		t, _ := strconv.ParseInt(mm[1], 10, 64)
 		ix, _ := strconv.Atoi(mm[2])
 		p.Mask = append(p.Mask, MaskRef{Turn: core.TurnID(t), Index: ix})
+	}
+	for i, k := range rp.Keep {
+		mm := maskRef.FindStringSubmatch(k)
+		if mm == nil {
+			p.Warnings = append(p.Warnings, fmt.Sprintf("keep[%d]: bad ref %q ignored", i, cutRunes(k, 40)))
+			continue
+		}
+		t, _ := strconv.ParseInt(mm[1], 10, 64)
+		ix, _ := strconv.Atoi(mm[2])
+		p.Keep = append(p.Keep, MaskRef{Turn: core.TurnID(t), Index: ix})
 	}
 	for i, n := range rp.Notes {
 		n.Op = strings.ToLower(strings.TrimSpace(n.Op))
