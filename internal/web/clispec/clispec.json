@@ -10,6 +10,7 @@
   {"name":"auto-merge","arg":"bool","default":null,"repeatable":false,"desc":"merge the next objective PR when checks and repository requirements pass"},
   {"name":"budget-usd","arg":"float","default":null,"repeatable":false,"desc":"stop when spend reaches this many US dollars"},
   {"name":"commit","arg":"bool","default":null,"repeatable":false,"desc":"swarm with --isolation worktree: commit the verified result onto your branch instead of leaving uncommitted edits (needs a clean checkout on a branch)"},
+  {"name":"compact-at","arg":"int","default":null,"defaultNote":"config cache.compact_at_percent, else 25","repeatable":false,"desc":"start compacting an agent's conversation when it fills this percentage of its model's context window, from 10 to 90: higher keeps more of what it read in view and costs more per request (default: config cache.compact_at_percent, else 25)"},
   {"name":"continue","arg":"bool","default":null,"repeatable":false,"desc":"continue this project's newest session (same as --resume latest)"},
   {"name":"cwd","arg":"string","default":null,"repeatable":false,"desc":"working directory"},
   {"name":"isolation","arg":"string","default":null,"defaultNote":"config swarm.isolation","repeatable":false,"desc":"swarm: none | worktree (default: config swarm.isolation). worktree gives every writer a git worktree of its own; finished work is merged and verified through a queue and applied to your checkout at the end","choices":["none","worktree"]},

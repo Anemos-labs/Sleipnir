@@ -38,6 +38,9 @@ type webDefaults struct {
 	TrustProject bool
 	// BudgetUSD is --budget-usd; 0 leaves the configuration in charge.
 	BudgetUSD float64
+	// CompactAtPercent is --compact-at, the percentage of each model's context window at which agents' compaction starts; 0
+	// leaves the configuration in charge.
+	CompactAtPercent int
 	// NoMCP is --no-mcp.
 	NoMCP bool
 	// Verify is --verify.
@@ -141,6 +144,7 @@ func cmdWeb(ctx context.Context, args []string) error {
 	swarmN := fs.Int("swarm", 0, "new sessions are a team of a manager and N workers (config swarm.max_workers is the ceiling); the default is "+strconv.Itoa(defaultWorkers)+" workers, --swarm 0 is a single agent")
 	trust := fs.Bool("trust-project", false, trustProjectHelp)
 	budget := fs.Float64("budget-usd", 0, "default spending limit of new sessions, in US dollars")
+	compactAt := fs.Int("compact-at", 0, "default compaction share of new sessions: an agent's conversation is compacted when it fills this percentage of its model's context window, from 10 to 90 (default: config cache.compact_at_percent, else 25)")
 	noMCP := fs.Bool("no-mcp", false, "start no MCP tool servers in new sessions")
 	verify := fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (see sleipnir chat -h); {dirs} stands for the directories the task may touch")
 	isolation, commit := isolationFlags(fs)
@@ -198,6 +202,9 @@ flags:
 	if *budget < 0 {
 		return usageError(fs, "web: --budget-usd must not be negative")
 	}
+	if err := session.CheckCompactAt(*compactAt); err != nil {
+		return usageError(fs, "web: "+err.Error())
+	}
 	if *swarmN < 0 {
 		return usageError(fs, "web: --swarm must not be negative")
 	}
@@ -230,7 +237,7 @@ flags:
 		return err
 	}
 	d := webDefaults{
-		Cwd: dir, Model: *model, Mode: *mode, Workers: defaultTeam(), TrustProject: *trust, BudgetUSD: *budget,
+		Cwd: dir, Model: *model, Mode: *mode, Workers: defaultTeam(), TrustProject: *trust, BudgetUSD: *budget, CompactAtPercent: *compactAt,
 		NoMCP: *noMCP, Verify: *verify, Isolation: *isolation, Commit: *commit, Mailman: mailman(),
 		RoleModels: roleModels, Team: teamSlots, AutoDocs: autoDocs(), ManagerApproves: managerApproves(), Allow: expandAllow(*allow),
 		Resume:     resumeSpec,
