@@ -7,6 +7,22 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Compaction starts at a share of each model's context window instead of a
+  fixed 20,000-token conversation: by default when the conversation fills
+  25% of the window (`cache.compact_at_percent`, 10 to 90), forced halfway
+  from there to 95%. On a model with a 1M-token window that is 250,000
+  tokens instead of 20,000, so an agent keeps what it read for its current
+  work in view through a long task; in a 12-worker run under the old limit,
+  58% of the reads that followed a compaction re-read a file whose earlier
+  read had just been folded away. Requests carry a larger context in
+  exchange: on an automatic prefix cache the simulated cost of long tasks
+  roughly doubles (docs/CACHE-ECONOMICS.md), while on an explicit cache,
+  where each compaction re-writes the prefix, it stays about level. Token
+  limits set without `compact_at_percent` (`thread_soft_limit_tokens`,
+  `compact_threshold_tokens`) keep applying to every model, and a model
+  whose window is not known uses them. Prompt bytes: none change; the
+  conversation is folded later.
+
 - A background process that a shell command started and left running with
   its output sent elsewhere (`nohup server >log 2>&1 </dev/null &`) now ends
   when the session does, as one that holds the command's output already

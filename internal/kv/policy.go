@@ -10,10 +10,17 @@ import (
 // Pressure thresholds and horizons for the compaction planner. Zero values fall
 // back to the defaults in DefaultPlanner.
 type Planner struct {
+	// CompactAt is the share of the model's context window the verbatim thread
+	// may fill before a compaction is considered (the soft limit); the hard
+	// limit is halfway from it to 95% of the window. It is clamped to
+	// [MinCompactAt, MaxCompactAt]. A model whose window is not known, and a
+	// negative CompactAt, use SoftThreadTokens and HardThreadTokens instead.
+	CompactAt float64
 	// SoftThreadTokens: start compacting once the verbatim thread exceeds this
-	// (and the economics allow it).
+	// (and the economics allow it), where CompactAt does not apply.
 	SoftThreadTokens int
-	// HardThreadTokens: commit as soon as a patch is ready, whatever it costs.
+	// HardThreadTokens: commit as soon as a patch is ready, whatever it costs,
+	// where CompactAt does not apply.
 	HardThreadTokens int
 	// ContextFraction: also treat the prompt as under pressure above this share
 	// of the model's window.
@@ -49,10 +56,23 @@ type Planner struct {
 	StaleGrowthTokens int
 }
 
-// DefaultPlanner returns conservative defaults tuned for agent loops whose
-// verbatim thread should stay well under a few tens of thousands of tokens.
+// The bounds and default of Planner.CompactAt.
+const (
+	MinCompactAt     = 0.10
+	MaxCompactAt     = 0.90
+	DefaultCompactAt = 0.25
+	// hardCeiling is the share of the window the hard limit approaches: the hard
+	// limit sits halfway from CompactAt to it, leaving room for the answer.
+	hardCeiling = 0.95
+)
+
+// DefaultPlanner returns the defaults: a compaction is considered once the
+// verbatim thread fills a quarter of the model's window (CompactAt), which
+// keeps what an agent read for its current work in view through a long task;
+// the token limits apply to a model whose window is not known.
 func DefaultPlanner() Planner {
 	return Planner{
+		CompactAt:        DefaultCompactAt,
 		SoftThreadTokens: 20_000,
 		HardThreadTokens: 60_000,
 		ContextFraction:  0.6,
@@ -74,6 +94,9 @@ func DefaultPlanner() Planner {
 
 func (p *Planner) fill() {
 	d := DefaultPlanner()
+	if p.CompactAt == 0 {
+		p.CompactAt = d.CompactAt
+	}
 	if p.SoftThreadTokens == 0 {
 		p.SoftThreadTokens = d.SoftThreadTokens
 	}
@@ -220,13 +243,39 @@ func (s State) write() float64 {
 // on thresholds alone.
 func (s State) priced() bool { return s.W.Read > 0 }
 
+// Limits are a planner's thresholds for one model: the soft and hard thread limits, in tokens, and the share of the window
+// at which the whole prompt is under pressure.
+type Limits struct {
+	Soft, Hard int
+	Prompt     float64
+}
+
+// LimitsFor resolves the thresholds for a model with the given context window: from CompactAt when the window is known
+// and CompactAt is not negative (the soft limit at that share of the window, at least MinThreadTokens; the hard limit
+// halfway from it to 95%; the prompt pressure at least as high as the hard limit, so it never forces a compaction the
+// chosen share has not reached), else the token limits.
+func (p Planner) LimitsFor(window int) Limits {
+	p.fill()
+	l := Limits{Soft: p.SoftThreadTokens, Hard: p.HardThreadTokens, Prompt: p.ContextFraction}
+	if p.CompactAt < 0 || window <= 0 {
+		return l
+	}
+	f := min(max(p.CompactAt, MinCompactAt), MaxCompactAt)
+	h := f + (hardCeiling-f)/2
+	l.Soft = max(int(f*float64(window)), p.MinThreadTokens)
+	l.Hard = max(int(h*float64(window)), l.Soft)
+	l.Prompt = max(l.Prompt, h)
+	return l
+}
+
 // pressure reports hard thread-size or context-window pressure, prioritizing the thread limit when
 // both apply.
 func (s State) pressure(p Planner) (string, bool) {
+	l := p.LimitsFor(s.ContextWindow)
 	switch {
-	case s.ThreadTokens >= p.HardThreadTokens:
-		return fmt.Sprintf("thread %dk over hard limit %dk", s.ThreadTokens/1000, p.HardThreadTokens/1000), true
-	case s.ContextWindow > 0 && float64(s.PromptTokens) >= p.ContextFraction*float64(s.ContextWindow):
+	case s.ThreadTokens >= l.Hard:
+		return fmt.Sprintf("thread %dk over hard limit %dk", s.ThreadTokens/1000, l.Hard/1000), true
+	case s.ContextWindow > 0 && float64(s.PromptTokens) >= l.Prompt*float64(s.ContextWindow):
 		return "prompt near context window", true
 	}
 	return "", false
@@ -244,6 +293,7 @@ func (s State) pressure(p Planner) (string, bool) {
 //     pay for its own compactor call within the remaining turns.
 func (p Planner) ShouldStart(s State) Decision {
 	p.fill()
+	soft := p.LimitsFor(s.ContextWindow).Soft
 	maskOK := s.MaskableTokens >= p.MaskMinTokens && s.SinceMask >= p.MaskMinInterval
 	if why, forced := s.pressure(p); forced {
 		if !s.Warm && maskOK {
@@ -255,12 +305,12 @@ func (p Planner) ShouldStart(s State) Decision {
 		if s.ThreadTokens >= p.MinThreadTokens && maskOK {
 			return Decision{Yes: true, Mode: ModeMask, Reason: "cache is cold: shrink for free by masking, no model call"}
 		}
-		if s.ThreadTokens >= p.SoftThreadTokens {
+		if s.ThreadTokens >= soft {
 			return Decision{Reason: "cache is cold and there is nothing worth masking: a fork would pay a cold prefix write; waiting for the hard limit or a warm moment"}
 		}
 		return Decision{Reason: "no pressure"}
 	}
-	if s.ThreadTokens < p.SoftThreadTokens {
+	if s.ThreadTokens < soft {
 		return Decision{Reason: "no pressure"}
 	}
 	if s.priced() {
@@ -268,9 +318,9 @@ func (p Planner) ShouldStart(s State) Decision {
 		if net <= 0 {
 			return Decision{NetITE: net, Reason: fmt.Sprintf("thread %dk over soft limit but a compaction would not pay for its own call within the remaining turns (net %+.0f ITE)", s.ThreadTokens/1000, net)}
 		}
-		return Decision{Yes: true, NetITE: net, Reason: fmt.Sprintf("thread %dk over soft limit %dk (expected net %+.0f ITE)", s.ThreadTokens/1000, p.SoftThreadTokens/1000, net)}
+		return Decision{Yes: true, NetITE: net, Reason: fmt.Sprintf("thread %dk over soft limit %dk (expected net %+.0f ITE)", s.ThreadTokens/1000, soft/1000, net)}
 	}
-	return Decision{Yes: true, Reason: fmt.Sprintf("thread %dk over soft limit %dk", s.ThreadTokens/1000, p.SoftThreadTokens/1000)}
+	return Decision{Yes: true, Reason: fmt.Sprintf("thread %dk over soft limit %dk", s.ThreadTokens/1000, soft/1000)}
 }
 
 // estimatedNet prices a typical model compaction of the live thread before a

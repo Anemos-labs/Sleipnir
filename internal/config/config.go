@@ -201,11 +201,18 @@ type Cache struct {
 	// MinLayerForBreakpoint skips a cache breakpoint after a layer smaller than
 	// this many tokens (kv.Policy.MinLayerForBreakpoint; 0 places them always).
 	MinLayerForBreakpoint int `json:"min_layer_for_breakpoint"`
+	// CompactAtPercent is the share of each model's context window, in percent
+	// (10 to 90), that an agent's conversation may fill before compaction is
+	// considered; it is forced halfway from there to 95% (kv.Planner.CompactAt).
+	// Zero uses 25. A model whose window is not known uses the token limits below.
+	CompactAtPercent int `json:"compact_at_percent"`
 	// CompactThresholdTokens is the thread size at which compaction is forced
-	// whatever it costs (kv.Planner.HardThreadTokens).
+	// whatever it costs (kv.Planner.HardThreadTokens): for a model whose window is
+	// not known, and for every model when it or ThreadSoftLimitTokens is set and
+	// CompactAtPercent is not.
 	CompactThresholdTokens int `json:"compact_threshold_tokens"`
 	// ThreadSoftLimitTokens is the thread size at which compaction is considered
-	// (kv.Planner.SoftThreadTokens).
+	// (kv.Planner.SoftThreadTokens), where CompactThresholdTokens applies.
 	ThreadSoftLimitTokens int `json:"thread_soft_limit_tokens"`
 	// CompactionMode selects background (the default) or blocking model compaction.
 	// Blocking waits before the agent's next request; other agents remain concurrent.

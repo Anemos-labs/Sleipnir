@@ -655,7 +655,7 @@ func TestCacheEcon_BackgroundCommitStripsThinkingOfCarriedTurns(t *testing.T) {
 		close(replied)
 		return `{"keep_from":"t5","spine":[{"turns":"t1-t4","line":"explored"}],"mask":[],"notes":[],"promote":[]}`
 	})
-	pl := kv.DefaultPlanner()
+	pl := tokenPlanner()
 	pl.SoftThreadTokens, pl.HardThreadTokens, pl.MinThreadTokens = 500, 900, 300
 	a, log := cxAgent(t, cxOpts{prov: prov, planner: pl})
 	wait := func(c chan struct{}) {
@@ -814,7 +814,7 @@ func TestCacheEcon_BigToolResultIsNotAColdCache(t *testing.T) {
 	prov := &cxProv{prof: cxAnthropicProfile()}
 	prov.handle = cxWorkModel(6, nil)
 	step := 0
-	a, log := cxAgent(t, cxOpts{prov: prov, planner: kv.DefaultPlanner(), toolOut: func(json.RawMessage) *tools.Result {
+	a, log := cxAgent(t, cxOpts{prov: prov, planner: tokenPlanner(), toolOut: func(json.RawMessage) *tools.Result {
 		step++
 		if step == 3 { // `cat big.log`
 			return &tools.Result{Text: strings.Repeat("0123456789abcdef", 3500)} // ~14k tokens
@@ -859,7 +859,7 @@ func TestCacheEcon_NonReportingProviderIsNotCold(t *testing.T) {
 		}
 		return r, err
 	}
-	a, log := cxAgent(t, cxOpts{prov: prov, planner: kv.DefaultPlanner(), toolOut: func(json.RawMessage) *tools.Result {
+	a, log := cxAgent(t, cxOpts{prov: prov, planner: tokenPlanner(), toolOut: func(json.RawMessage) *tools.Result {
 		return &tools.Result{Text: strings.Repeat("0123456789abcdef", 300)} // ~1.2k tokens per step
 	}})
 	if _, err := a.Run(context.Background(), "do the work"); err != nil {
@@ -1120,7 +1120,7 @@ func TestCacheEcon_ColdStartNoLongerForksAModelCall(t *testing.T) {
 	specs, _ := reg.Specs()
 	model := cost.Model{ID: "mock-1", ContextTokens: 1_000_000, Cache: cost.OpenAICacheModel(),
 		Price: cost.Price{InputPerM: 4, OutputPerM: 20, CacheReadPerM: 1, CacheWrite5mPerM: 4, CacheWrite1hPerM: 4}}
-	pl := kv.DefaultPlanner()
+	pl := tokenPlanner()
 	pl.SoftThreadTokens, pl.HardThreadTokens = 100_000, 200_000 // pressure never triggers; only "cold" can
 	log := events.NewMemLog()
 	a, err := agent.New(agent.Config{
@@ -1195,7 +1195,7 @@ func cxCompactionRun(t *testing.T, plain, reportCache bool, steps int, hard int)
 		}
 		return r, err
 	}
-	pl := kv.DefaultPlanner()
+	pl := tokenPlanner()
 	pl.SoftThreadTokens, pl.HardThreadTokens, pl.MinThreadTokens = hard/2, hard, hard/4
 	a, log = cxAgent(t, cxOpts{prov: prov, planner: pl, steps: steps + 20, toolOut: func(json.RawMessage) *tools.Result {
 		return &tools.Result{Text: strings.Repeat("ok line\n", 25)} // ~50 tokens: never worth masking
@@ -1271,7 +1271,7 @@ func TestCacheEcon_ColdAgentAboveTheHardLimitStillFolds(t *testing.T) {
 		}
 		return r, err
 	}
-	pl := kv.DefaultPlanner()
+	pl := tokenPlanner()
 	pl.SoftThreadTokens, pl.HardThreadTokens, pl.MinThreadTokens = 1500, 3000, 800
 	a, log := cxAgent(t, cxOpts{prov: prov, planner: pl, now: clk.Now, steps: 130, toolOut: func(json.RawMessage) *tools.Result {
 		return &tools.Result{Text: strings.Repeat("ok line\n", 25)}
@@ -1309,7 +1309,7 @@ func TestCacheEcon_ColdMaskCommitsAreRateLimitedAndNeverEmpty(t *testing.T) {
 		clk.Advance(6 * time.Minute)
 		return r, err
 	}
-	pl := kv.DefaultPlanner()
+	pl := tokenPlanner()
 	pl.SoftThreadTokens, pl.HardThreadTokens, pl.MinThreadTokens = 20_000, 60_000, 4_000
 	a, log := cxAgent(t, cxOpts{prov: prov, planner: pl, now: clk.Now, steps: 80, toolOut: func(json.RawMessage) *tools.Result {
 		return &tools.Result{Text: strings.Repeat("0123456789abcdef", 375)} // ~1.5k tokens
@@ -1362,7 +1362,7 @@ func TestCacheEcon_PlannerIgnoresReasoningThatIsNeverSent(t *testing.T) {
 	specs, _ := reg.Specs()
 	model := cost.Model{ID: "mock-1", ContextTokens: 1_000_000, Cache: cost.OpenAICacheModel(),
 		Price: cost.Price{InputPerM: 4, OutputPerM: 20, CacheReadPerM: 1, CacheWrite5mPerM: 4, CacheWrite1hPerM: 4}}
-	pl := kv.DefaultPlanner()
+	pl := tokenPlanner()
 	pl.SoftThreadTokens, pl.HardThreadTokens, pl.MinThreadTokens = 3_000, 9_000, 1_500 // the stored thread (~12k) is over both; what is sent (~150) is not
 	log := events.NewMemLog()
 	a, err := agent.New(agent.Config{
@@ -1469,7 +1469,7 @@ func TestCacheEcon_SteeringSurvivesCompactionAndMailDoesNot(t *testing.T) {
 	prov.handle = cxWorkModel(14, func(*cxProv, *core.Prompt) string {
 		return `{"keep_from":"t14","spine":[],"mask":[],"notes":[],"promote":[]}`
 	})
-	pl := kv.DefaultPlanner()
+	pl := tokenPlanner()
 	pl.SoftThreadTokens, pl.HardThreadTokens, pl.MinThreadTokens = 800, 1200, 300
 	a, log := cxAgent(t, cxOpts{prov: prov, planner: pl, steps: 40})
 	a.Steer("never touch the billing package")

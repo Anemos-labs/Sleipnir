@@ -5,6 +5,10 @@
       "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only, as `sleipnir config` does"
     },
     {
+      "item": "cache.compact_at_percent",
+      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only, as `sleipnir config` does"
+    },
+    {
       "item": "cache.compact_threshold_tokens",
       "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only, as `sleipnir config` does"
     },
