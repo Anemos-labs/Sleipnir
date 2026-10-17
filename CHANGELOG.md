@@ -7,6 +7,25 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Every model a session calls takes its context window from what its
+  provider reports, for models the built-in table knows as well: the
+  endpoint's catalogue entry, or for a ChatGPT plan the plan's own model
+  list (`gpt-6-luna`: 272k there, 200k in the table). The table keeps its
+  prices. Where the provider reports no window, the table's stands. A
+  provider's `options.context_window` now wins over the window its
+  catalogue reports (before, the catalogue's replaced it for a model the
+  table did not know). The plan's model list is kept for six hours in
+  `<state>/cache/chatgpt-models-*.json` (no token), asked only with an
+  access token that needs no renewal, and an older copy is used while it
+  cannot be asked; `sleipnir models` and the Models page update it. A
+  catalogue that cannot be read is asked once per session.
+  `session.start` records `context_source` beside `source` for each model.
+  Compaction starts at a different point for a model whose reported window
+  differs from the table's. Prompt bytes: none change for a window of 64k
+  tokens or more; below that, the shared layer's instruction allowance (a
+  quarter of the main model's window, at most 16,384 tokens) follows the
+  reported window.
+
 - A background process that a shell command started and left running with
   its output sent elsewhere (`nohup server >log 2>&1 </dev/null &`) now ends
   when the session does, as one that holds the command's output already
