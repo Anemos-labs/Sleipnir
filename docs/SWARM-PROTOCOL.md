@@ -43,8 +43,12 @@ while another of its parents is open, the members that one can spare (it is exec
 its plan, and they neither lead it nor hold an open subtask of it) leave its pool,
 without being excused, and form the new parent's pool; its leader is told who left.
 A parent whose pool is still agreeing on its plan needs every member, and one whose
-members are all busy spares none: the assignment is then refused with what to do
-(wait, or have the busy parent's leader take the work as a child).
+members are all busy spares none. A `spawn` of an existing task by the manager is then
+queued: the answer names what holds the members (`be-1 leads T2, be-2 leads T3`), and the
+harness starts the task on the first member of the role that is free, on the supervisor's
+pass, and tells the manager; a queued task that is assigned, revised or closed meanwhile is
+dropped from the queue, and a resumed session starts with none. Any other caller is refused
+with what to do (wait, or have the busy parent's leader take the work as a child).
 The first configured member leads, including after resume. `pool propose` records a
 shared agreement covering conventions, interfaces, work division and acceptance.
 Every member calls `pool agree` with its current revision before `pool execute` can

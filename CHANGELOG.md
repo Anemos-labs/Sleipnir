@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The manager's `spawn` of an existing task while every member of its role
+  is busy is queued instead of refused: the harness starts it on the first
+  member of the role that is free and tells the manager. The refusal it
+  replaces named one busy pool ("busy on T2") where several were busy;
+  it now names each with its leader. In a 13-worker run a manager spawned
+  the same backend parent seventeen times in fifty minutes against it.
+  Prompt bytes: none change.
+
 - `npx --no-install X` and `npx --no X` are read as `X` by the permission
   engine (npx installs nothing then: it runs the project's own program or
   fails), so a read-only reviewer can type-check with the project's

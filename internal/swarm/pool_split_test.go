@@ -118,3 +118,123 @@ func TestAMemberThatTookWorkMeanwhileStaysInItsPool(t *testing.T) {
 		t.Errorf("first pool %v, second pool %v", f.Pool.Members, s.Pool.Members)
 	}
 }
+
+// A parent the manager assigns while every member of its role is busy is queued, not refused: the manager is told once, a second
+// spawn of it says it already is, and the harness starts it on the first member that is free and tells the manager. A queued parent
+// that is closed meanwhile is dropped. In a 13-worker run a manager spawned the same backend parent seventeen times in fifty minutes.
+func TestAParentWithNoFreeMemberIsQueuedAndStartedWhenOneIs(t *testing.T) {
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"backend", "backend"}},
+		func(ctx context.Context, _ *rvCall) rvReply { <-ctx.Done(); return rvReply{Text: "stopped"} })
+	r.sw.StartManager()
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "control plane", Files: []string{"server/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	first := r.sw.Board.Snapshot().Tasks[0]
+	members := slices.Clone(first.Pool.Members)
+	if err := r.sw.Board.poolUpdate("mgr", first.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	child, err := r.sw.Board.CreateTask(first.Owner, TaskSpec{Parent: first.ID, Title: "store", Role: "backend", Files: []string{"server/store/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.sw.Board.assignTask(assignReq{by: first.Owner, agent: members[1], id: child.ID}); err != nil {
+		t.Fatal(err)
+	}
+	next, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "auth middleware", Role: "backend", Files: []string{"auth/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	spawn := func(id string) string {
+		t.Helper()
+		res := r.callTool(context.Background(), "spawn", "mgr", "manager", map[string]any{"role": "backend", "task": id})
+		if res.IsError {
+			t.Fatalf("spawn %s: %s", id, res.Text)
+		}
+		return res.Text
+	}
+	if got := spawn(next.ID); !strings.Contains(got, next.ID+" is queued for the next free backend member ("+first.Owner+" leads "+first.ID+", "+members[1]+" holds "+child.ID+" (of "+first.ID+"))") || !strings.Contains(got, "do not spawn it again") {
+		t.Fatalf("the first spawn: %q", got)
+	}
+	if got := spawn(next.ID); !strings.Contains(got, next.ID+" was already queued") {
+		t.Fatalf("the second spawn: %q", got)
+	}
+	r.sw.queueTick(r.sw.deps.Now())
+	if n, _ := r.sw.Board.Snapshot().Task(next.ID); n.Status != StatusTodo || n.Owner != "" {
+		t.Fatalf("%s started while nobody was free: %s/%s", next.ID, n.Status, n.Owner)
+	}
+	// the member's subtask is done: it is free for another parent
+	if err := r.sw.Board.mutate("harness", "test", func(d *draft) error {
+		i := taskIdx(d.Snapshot, child.ID)
+		c := d.Tasks[i]
+		c.Status, c.Closure = StatusDone, closeAs(CloseVerified)
+		return d.put(i, c)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.queueTick(r.sw.deps.Now())
+	n, _ := r.sw.Board.Snapshot().Task(next.ID)
+	if n.Status != StatusDoing || n.Owner != members[1] {
+		t.Fatalf("%s = %s/%s, want started on the free member %s", next.ID, n.Status, n.Owner, members[1])
+	}
+	rvWait(t, "the manager to be told", func() bool { return mailSent(r, next.ID+" started on "+members[1]) == 1 })
+	if len(r.sw.queuedTasks()) != 0 {
+		t.Errorf("still queued: %+v", r.sw.queuedTasks())
+	}
+	// a queued parent closed meanwhile is dropped, and nothing starts
+	gone, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "admin panel", Role: "backend", Files: []string{"admin/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.sw.queueSpawn(SpawnReq{Role: "backend", TaskID: gone.ID, By: "mgr"}, gone.Rev)
+	if err := r.sw.Board.mutate("harness", "test", func(d *draft) error {
+		i := taskIdx(d.Snapshot, gone.ID)
+		g := d.Tasks[i]
+		g.Status, g.Closure = StatusFailed, closeAs(CloseCanceled)
+		return d.put(i, g)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.queueTick(r.sw.deps.Now())
+	if len(r.sw.queuedTasks()) != 0 || mailSent(r, gone.ID+" started") != 0 {
+		t.Errorf("a closed parent stayed queued or started: %+v", r.sw.queuedTasks())
+	}
+}
+
+// A queued parent that the manager revises while it waits is a new assignment to make, not the one queued: it is dropped even
+// though it is still todo and unowned, and nothing starts it.
+func TestARevisedQueuedParentIsDropped(t *testing.T) {
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 1, Team: []string{"backend"}},
+		func(ctx context.Context, _ *rvCall) rvReply { <-ctx.Done(); return rvReply{Text: "stopped"} })
+	r.sw.StartManager()
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "control plane", Files: []string{"server/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	next, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "auth middleware", Role: "backend", Files: []string{"auth/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res := r.callTool(context.Background(), "spawn", "mgr", "manager", map[string]any{"role": "backend", "task": next.ID}); res.IsError || !strings.Contains(res.Text, "is queued") {
+		t.Fatalf("spawn: %+v", res)
+	}
+	if err := r.sw.Board.revise("mgr", next.ID, TaskSpec{Desc: "auth middleware, with the project's API keys"}, "requirements changed"); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := r.sw.Board.Snapshot().Task(next.ID); n.Status != StatusTodo || n.Owner != "" {
+		t.Fatalf("the revised task is %s/%s, want todo and unowned", n.Status, n.Owner)
+	}
+	// free the only member: the first parent is closed
+	first := r.sw.Board.Snapshot().Tasks[0]
+	if err := r.sw.Board.mutate("harness", "test", func(d *draft) error {
+		i := taskIdx(d.Snapshot, first.ID)
+		f := d.Tasks[i]
+		f.Status, f.Closure = StatusFailed, closeAs(CloseCanceled)
+		return d.put(i, f)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.queueTick(r.sw.deps.Now())
+	if n, _ := r.sw.Board.Snapshot().Task(next.ID); n.Status != StatusTodo || n.Owner != "" || len(r.sw.queuedTasks()) != 0 {
+		t.Errorf("the revised parent was started or stays queued: %s/%s, queue %+v", n.Status, n.Owner, r.sw.queuedTasks())
+	}
+}
