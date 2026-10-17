@@ -57,6 +57,7 @@ func goalCommandTo(s *session.Session, gp **goal.State, arg string, out io.Write
 		for _, st := range s.GoalPlan() {
 			fmt.Fprintf(out, "  [%s] %s\n", st.Status, tools.SanitizeForTerminal(st.Step))
 		}
+		writeMilestones(g, out)
 		return ""
 	case "clear":
 		*gp = nil
@@ -75,10 +76,44 @@ func goalCommandTo(s *session.Session, gp **goal.State, arg string, out io.Write
 		}
 		return resumeGoal(s, g)
 	}
-	*gp = goal.New(arg)
+	ng, err := goal.Prepare(arg, s.Cwd(), s.Root())
+	if err != nil {
+		fmt.Fprintln(out, "goal not set: "+tools.SanitizeForTerminal(err.Error()))
+		return ""
+	}
+	*gp = ng
 	s.ClearGoalPlan()
 	fmt.Fprintln(out, "goal set: checked after each turn. Esc pauses it; /goal shows where it stands")
+	if len(ng.Milestones) > 0 {
+		fmt.Fprintf(out, "%d milestones, each ruled on by the judge%s\n", len(ng.Milestones), specNote(ng))
+	}
 	return goal.Start(*gp)
+}
+
+// specNote is ", from the goal and SPEC" for a goal with a spec file, "" otherwise.
+func specNote(g *goal.State) string {
+	if g.Spec == "" {
+		return ""
+	}
+	return ", from the goal and " + tools.SanitizeForTerminal(g.Spec)
+}
+
+// writeMilestones writes a goal's milestones as /goal shows them: met ones with the judge's evidence.
+func writeMilestones(g *goal.State, out io.Writer) {
+	if len(g.Milestones) == 0 {
+		return
+	}
+	fmt.Fprintf(out, "milestones %d of %d met%s\n", g.MetCount(), len(g.Milestones), specNote(g))
+	for _, m := range g.Milestones {
+		mark := "open"
+		if m.Met {
+			mark = "met"
+		}
+		fmt.Fprintf(out, "  %s [%s] %s\n", m.ID, mark, tools.SanitizeForTerminal(m.Text))
+		if m.Met && m.Evidence != "" {
+			fmt.Fprintf(out, "      evidence: %s\n", tools.SanitizeForTerminal(m.Evidence))
+		}
+	}
 }
 
 // resumeGoal takes the pause off a goal and returns the continuation that sends the agent on: a goal that ran out of continuations
@@ -157,13 +192,11 @@ func (g *goalLoop) Load(s *session.Session) {
 	g.mu.Unlock()
 }
 
-// Set starts a goal and returns the message of its first turn; its plan starts empty.
-func (g *goalLoop) Set(s *session.Session, text string) (string, error) {
-	text = strings.TrimSpace(text)
-	if text == "" {
+// Set starts a goal prepared by goal.Prepare and returns the message of its first turn; its plan starts empty.
+func (g *goalLoop) Set(s *session.Session, st *goal.State) (string, error) {
+	if st == nil || st.Objective == "" {
 		return "", errEmptyGoal
 	}
-	st := goal.New(text)
 	s.ClearGoalPlan()
 	g.set(s, st)
 	return goal.Start(st), nil

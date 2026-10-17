@@ -19,3 +19,27 @@ func TestAGoalCarriesItsTurnsAndReason(t *testing.T) {
 		t.Errorf("the goal lost its turns or its reason: %v", goals[0])
 	}
 }
+
+// A goal's spec and milestones, with the judge's last ruling on each, reach the page from the log as the live tab sends them.
+func TestAGoalCarriesItsMilestones(t *testing.T) {
+	h := newHarness(t, Config{Root: "/work", StartedAt: t0})
+	b := newLog(t0)
+	ms := []map[string]any{{"ID": "M1", "Text": "API answers", "Met": true, "Evidence": "record 4"}, {"ID": "M2", "Text": "site is up"}}
+	h.feed(b.add(time.Second, "", "goal.state", map[string]any{"goal": map[string]any{"Objective": "Ship", "Max": 20, "Spec": "docs/SPEC.md", "SpecText": "the whole spec", "Milestones": ms}}))
+	goals := ofKind(h.decoded(), "goal")
+	if len(goals) != 1 {
+		t.Fatalf("goals: %v", goals)
+	}
+	got, _ := goals[0]["milestones"].([]any)
+	if goals[0]["spec"] != "docs/SPEC.md" || len(got) != 2 {
+		t.Fatalf("the goal lost its spec or milestones: %v", goals[0])
+	}
+	m1, _ := got[0].(map[string]any)
+	m2, _ := got[1].(map[string]any)
+	if m1["id"] != "M1" || m1["met"] != true || m1["evidence"] != "record 4" || m2["text"] != "site is up" || m2["met"] != nil {
+		t.Errorf("milestones: %v", got)
+	}
+	if _, ok := goals[0]["specText"]; ok {
+		t.Error("the spec's text was sent to the page")
+	}
+}

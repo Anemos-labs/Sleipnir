@@ -577,7 +577,10 @@ func goalWire(g *goal.State) *wire.Goal {
 	if g == nil {
 		return &wire.Goal{S: "cleared"}
 	}
-	ev := &wire.Goal{S: "active", Objective: clip(g.Objective, maxGoalLen), Turns: g.Turns, Max: g.Max, Paused: clip(g.Paused, 300), Reason: clip(g.Reason, 300)}
+	ev := &wire.Goal{S: "active", Objective: clip(g.Objective, maxGoalLen), Turns: g.Turns, Max: g.Max, Paused: clip(g.Paused, 300), Reason: clip(g.Reason, 300), Spec: clip(g.Spec, 300)}
+	for _, m := range g.Milestones {
+		ev.Milestones = append(ev.Milestones, wire.GoalMilestone{ID: m.ID, Text: m.Text, Met: m.Met, Evidence: m.Evidence})
+	}
 	switch {
 	case g.Done:
 		ev.S = "met"
@@ -1253,8 +1256,12 @@ func (t *webTab) goalAction(ctx context.Context, s *session.Session, req wire.Go
 		case utf8.RuneCountInString(text) > maxGoalLen:
 			return false, werr(http.StatusBadRequest, "bad_goal", "the goal is longer than 32,000 characters")
 		}
-		_, _, _, err := t.enqueue(queued{text: oneLineCLI("/goal "+text, 200), op: func(ctx context.Context, s *session.Session) {
-			start, err := t.goals.Set(s, text)
+		prepared, err := goal.Prepare(text, s.Cwd(), s.Root())
+		if err != nil {
+			return false, werr(http.StatusBadRequest, "bad_goal", "goal not set: "+err.Error())
+		}
+		_, _, _, err = t.enqueue(queued{text: oneLineCLI("/goal "+text, 200), op: func(ctx context.Context, s *session.Session) {
+			start, err := t.goals.Set(s, prepared)
 			if err != nil {
 				return
 			}

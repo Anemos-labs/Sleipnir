@@ -371,6 +371,33 @@ func TestGoalCommandSetsPausesResumesAndClears(t *testing.T) {
 	}
 }
 
+// /goal with a spec: a missing file is refused and nothing is set; a spec that is there sets the goal with its milestones, sends the
+// spec's text with the goal, and /goal alone lists the milestones.
+func TestGoalCommandReadsASpecAndListsItsMilestones(t *testing.T) {
+	h := &sessionHost{s: chatSession(t, false, nil)}
+	run := func(line string) (app.CommandResult, string) {
+		var out strings.Builder
+		res, ok := h.programCommand(line, &out)
+		if !ok {
+			t.Fatalf("%s was not handled", line)
+		}
+		return res, out.String()
+	}
+	if res, out := run("/goal ship it, spec: GOAL.md"); res.Send != "" || h.goal != nil || !strings.Contains(out, "goal not set: spec GOAL.md") {
+		t.Fatalf("a missing spec: %+v %q", res, out)
+	}
+	if err := os.WriteFile(filepath.Join(h.s.Cwd(), "GOAL.md"), []byte("Milestones:\n- CLI parses flags\n- release v1 published\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, out := run("/goal ship it, spec: GOAL.md")
+	if h.goal == nil || len(h.goal.Milestones) != 2 || !strings.Contains(out, "2 milestones") || !strings.Contains(res.Send, "release v1 published") {
+		t.Fatalf("a goal with a spec: %+v %q", res, out)
+	}
+	if _, out := run("/goal"); !strings.Contains(out, "milestones 0 of 2 met, from the goal and GOAL.md") || !strings.Contains(out, "M2 [open] release v1 published") {
+		t.Errorf("/goal: %q", out)
+	}
+}
+
 // A run's last lines say which files it changed, or that it changed none (a run refused its edits ends with a diagnosis and a summary that look alike).
 func TestChangedLineSaysWhatARunChanged(t *testing.T) {
 	cp := func(files ...string) checkpoint.Info { return checkpoint.Info{Files: files} }
