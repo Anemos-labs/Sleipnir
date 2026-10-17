@@ -247,7 +247,7 @@
         break;
       }
       case 'diff': if (typeof ev.file === 'string' && !(ev.file in Object.prototype)) m.diff[ev.file] = ev; break;
-      case 'goal': m.goal = { state: ev.s, objective: ev.objective || '', turns: ev.turns || 0, max: ev.max || 0, paused: ev.paused || '', reason: ev.reason || '' }; break;   /* the whole goal: what it omits is empty */
+      case 'goal': m.goal = { state: ev.s, objective: ev.objective || '', turns: ev.turns || 0, max: ev.max || 0, paused: ev.paused || '', reason: ev.reason || '', spec: ev.spec || '', milestones: Array.isArray(ev.milestones) ? ev.milestones.map(x => ({ id: x.id || '', text: x.text || '', met: !!x.met, evidence: x.evidence || '' })) : [] }; break;   /* the whole goal: what it omits is empty */
       case 'final': m.final = { t: ev.t, steps: m.steps }; m.turn = false; push(m, 'mgr', { k: 'final', t: ev.t }, ev); break;
       case 'steer': {
         const e = { k: 'steer', to: ev.to, text: ev.text, t: ev.t };

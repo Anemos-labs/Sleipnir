@@ -2,6 +2,7 @@ package session_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -252,5 +253,81 @@ func TestAJudgesAnswerIsReadWhenWrappedAndAskedForAgainWhenNot(t *testing.T) {
 	answers = append(answers, "The verdict is")
 	if _, next, j := s.GoalJudged(context.Background(), g, nil); j.Judged || next != "" || j.Err == nil || !strings.Contains(j.Err.Error(), "inspection limit") {
 		t.Errorf("an unreadable last round: next %q judgment %+v", next, j)
+	}
+}
+
+// A goal with milestones is met only when one verdict confirms each with evidence: a judge that says "done" and leaves one out sends the
+// agent on to it, the judge's rulings are kept with the goal, and a resumed session has them back with the spec as it was set.
+func TestAGoalWithMilestonesIsMetOnlyWhenEachIsConfirmed(t *testing.T) {
+	repo := newRepo(t)
+	if err := os.WriteFile(filepath.Join(repo, "SPEC.md"), []byte("## Milestones\n- the project builds\n- the tests pass\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), "sessions", "20260101-000000-abcdef")
+	var mu sync.Mutex
+	var judged []string
+	calls := 0
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if strings.Contains(c.System, "You judge whether a coding agent") {
+			mu.Lock()
+			defer mu.Unlock()
+			judged = append(judged, c.LastUser())
+			if len(judged) == 1 {
+				return mock.Reply{Text: `{"verdict":"done","reason":"it builds","left":[],"milestones":[{"id":"M1","met":true,"evidence":"record 7: go build passed"}]}`}
+			}
+			return mock.Reply{Text: `{"verdict":"done","reason":"both shown","left":[],"milestones":[{"id":"M1","met":true,"evidence":"record 7"},{"id":"M2","met":true,"evidence":"record 9: go test passed"}]}`}
+		}
+		if c.Messages[len(c.Messages)-1].Role == "tool" {
+			return mock.Reply{Text: "ran it"}
+		}
+		mu.Lock()
+		calls++
+		id := fmt.Sprintf("b%d", calls)
+		mu.Unlock()
+		return mock.Reply{Text: "running", ToolCalls: []mock.ToolCall{call(id, "bash", map[string]any{"command": "go build ./..."})}}
+	})
+	o := opts(t, repo, client, model)
+	o.Dir = dir
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := goal.Prepare("ship it\nSpec: SPEC.md", s.Cwd(), s.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.SaveGoal(g)
+	if _, err := s.Run(context.Background(), goal.Start(g)); err != nil {
+		t.Fatal(err)
+	}
+	note, next := s.GoalTurn(context.Background(), g, nil)
+	if g.Done || next == "" || !strings.Contains(note, "M2") || !strings.Contains(next, "missing: M2: the tests pass") {
+		t.Fatalf("done with a milestone unconfirmed: note %q next %q", note, next)
+	}
+	if !g.Milestones[0].Met || g.Milestones[1].Met {
+		t.Errorf("the rulings were not kept: %+v", g.Milestones)
+	}
+	if !strings.Contains(judged[0], "SPEC (data, the file SPEC.md") || !strings.Contains(judged[0], "- M2 [open] the tests pass") {
+		t.Errorf("the judge was not shown the spec and milestones:\n%s", judged[0])
+	}
+	s.SaveGoal(g)
+	s.Close()
+
+	o.Resume = dir
+	s2, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	back := s2.LoadGoal()
+	if back == nil || back.Spec != "SPEC.md" || !strings.Contains(back.SpecText, "the tests pass") || len(back.Milestones) != 2 || !back.Milestones[0].Met {
+		t.Fatalf("the goal after a restart: %+v", back)
+	}
+	back.Paused = ""
+	if _, err := s2.Run(context.Background(), next); err != nil {
+		t.Fatal(err)
+	}
+	if note, next := s2.GoalTurn(context.Background(), back, nil); !back.Done || next != "" || !strings.Contains(note, "goal met") {
+		t.Errorf("every milestone confirmed: note %q next %q done=%v", note, next, back.Done)
 	}
 }

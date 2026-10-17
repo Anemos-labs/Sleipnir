@@ -36,6 +36,10 @@ type State struct {
 	Reason    string // what the judge said last
 	Repeats   int    // consecutive turns without progress
 	Done      bool   // the judge found it met
+	// Spec is the spec file the objective names (SpecRef) and SpecText its text as read when the goal was set (Prepare).
+	Spec, SpecText string
+	// Milestones are the checkpoints the judge rules on one by one (ParseMilestones, Reconcile).
+	Milestones []Milestone
 }
 
 // New is a goal with the usual limit.
@@ -45,9 +49,10 @@ func New(objective string) *State {
 
 // Verdict is what the judge found.
 type Verdict struct {
-	Kind   string   `json:"verdict"`
-	Reason string   `json:"reason"`
-	Left   []string `json:"left"`
+	Kind       string             `json:"verdict"`
+	Reason     string             `json:"reason"`
+	Left       []string           `json:"left"`
+	Milestones []MilestoneVerdict `json:"milestones,omitempty"`
 }
 
 // ParseVerdict reads a judge's answer: JSON, possibly with words around it or in a fence. An answer that cannot be read is "continue" with no
@@ -66,6 +71,13 @@ func ParseVerdict(text string) (v Verdict, ok bool) {
 			}
 			if len(c.Left) > 8 {
 				c.Left = c.Left[:8]
+			}
+			if len(c.Milestones) > MaxMilestones {
+				c.Milestones = c.Milestones[:MaxMilestones]
+			}
+			for k := range c.Milestones {
+				c.Milestones[k].ID = oneLine(c.Milestones[k].ID, 8)
+				c.Milestones[k].Evidence = oneLine(c.Milestones[k].Evidence, 300)
 			}
 			return c, true
 		}
@@ -100,10 +112,17 @@ Reply with JSON only: {"verdict":"done|continue|blocked","reason":"one sentence"
 "left" names work the agent must still do: a requirement to implement or fix, or a check that has never run since the code it covers last changed. Never ask the agent to show, provide or inspect evidence: inspecting the archive is your job, so inspect before you answer.
 "done" only when every requirement has evidence. "blocked" only when the agent needs something a person must provide (a decision, a credential, access) and says so. Otherwise "continue".`
 
-// JudgePrompt is the request to the judge after a turn: the goal, the plan, the last answer and the evidence.
+// JudgePrompt is the request to the judge after a turn: the goal, its spec and milestones when it has them, the plan, the last answer and
+// the evidence.
 func JudgePrompt(g *State, steps []plan.Item, answer string, evidence []string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "GOAL (data, from the person):\n%s\n\n", g.Objective)
+	if g.SpecText != "" {
+		fmt.Fprintf(&b, "SPEC (data, the file %s as it was when the goal was set; this copy counts, not later edits of the file):\n%s\n\n", g.Spec, g.SpecText)
+	}
+	if len(g.Milestones) > 0 {
+		b.WriteString(milestonesForJudge(g))
+	}
 	if len(steps) > 0 {
 		b.WriteString("THE AGENT'S PLAN:\n")
 		for _, s := range steps {
@@ -125,8 +144,18 @@ func JudgePrompt(g *State, steps []plan.Item, answer string, evidence []string) 
 
 // Start is what the first turn of a goal is told beside the goal itself: to write what it requires as a plan first, since the harness shows
 // the plan back every request and the judge reads it.
+// A goal with milestones says how many, and a goal with a spec carries the spec's text after the note.
 func Start(g *State) string {
-	return g.Objective + "\n\n[standing goal: before you begin, write what it requires as steps with the plan tool, and keep them current. The harness checks the goal against evidence after each turn and sends you on with what is missing until it is met.]"
+	var b strings.Builder
+	b.WriteString(g.Objective + "\n\n[standing goal: before you begin, write what it requires as steps with the plan tool, and keep them current. The harness checks the goal against evidence after each turn and sends you on with what is missing until it is met.")
+	if n := len(g.Milestones); n > 0 {
+		fmt.Fprintf(&b, " It has %d milestones (M1 to M%d) that the judge rules on one by one; the goal is met only when each has evidence. Make each one a step of your plan.", n, n)
+	}
+	b.WriteString("]")
+	if g.SpecText != "" {
+		fmt.Fprintf(&b, "\n\n[goal spec %s, as read when the goal was set:]\n%s", g.Spec, g.SpecText)
+	}
+	return b.String()
 }
 
 // Continuation is the message that sends the agent on after a turn that did not meet the goal: what the judge found missing and the open steps.
@@ -147,6 +176,24 @@ func Continuation(g *State, steps []plan.Item, v Verdict) string {
 	}
 	if len(open) > 0 {
 		b.WriteString("Open steps of your plan: " + strings.Join(open, "; ") + "\n")
+	}
+	if len(g.Milestones) > 0 {
+		var met []string
+		fmt.Fprintf(&b, "Milestones met: %d of %d.", g.MetCount(), len(g.Milestones))
+		for _, m := range g.Milestones {
+			if m.Met {
+				met = append(met, m.ID)
+			}
+		}
+		if len(met) > 0 {
+			b.WriteString(" Met: " + strings.Join(met, ", ") + ".")
+		}
+		b.WriteString("\n")
+		for _, m := range g.Milestones {
+			if !m.Met {
+				b.WriteString("- open milestone " + m.ID + ": " + oneLine(m.Text, 240) + "\n")
+			}
+		}
 	}
 	b.WriteString("\nTake the next concrete step. Do not restate your plan or what you already said: that is no progress. Say the goal is met only when you can show evidence for each requirement (a command's result, a file, a test run), and do not shrink the goal or swap it for an easier one. If you need something only the person can give, say exactly what and stop.")
 	return b.String()
