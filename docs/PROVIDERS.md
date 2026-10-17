@@ -66,8 +66,12 @@ to check the selected route. See [cache design](CACHE-DESIGN.md) and
 | `ollama-cloud`, `opencode` | `OLLAMA_API_KEY`, `OPENCODE_API_KEY` |
 | `ollama`, `lmstudio`, `llamacpp`, `vllm`, `sglang`, `jan` | No key by default; local server must be running |
 
+Each model's context window is the one its provider reports: a catalogue's
+`context_length`, or the ChatGPT plan's model list. Where none is reported, the
+built-in table's window or a conservative 200k applies.
 Local routes default to an 8192-token context window and zero monetary cost.
-Set `options.context_window` to match the server. Server configuration determines
+Set `options.context_window` to match the server; it overrides what a provider
+reports. Server configuration determines
 whether prefix caching is enabled and how requests share it.
 
 Additional endpoints and dialect options are configured under `providers` in

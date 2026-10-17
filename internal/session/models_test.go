@@ -21,6 +21,8 @@ import (
 type startRecord struct {
 	Source           string  `json:"source"`
 	Context          int     `json:"context"`
+	ContextSource    string  `json:"context_source"`
+	Plan             bool    `json:"plan"`
 	InputPerM        float64 `json:"input_per_m"`
 	OutputPerM       float64 `json:"output_per_m"`
 	CacheReadPerM    float64 `json:"cache_read_per_m"`
@@ -94,12 +96,12 @@ func TestSessionStartRecordsThePricesEveryModelWasDescribedWith(t *testing.T) {
 	s.Close()
 
 	got := recordedModels(t, o.Dir)
-	if r := got["acme/main"]; r.Source != "catalogue" || r.InputPerM != 2 || r.OutputPerM != 8 || r.CacheReadPerM != 0.5 || r.Context != 65536 {
+	if r := got["acme/main"]; r.Source != "catalogue" || r.ContextSource != "catalogue" || r.InputPerM != 2 || r.OutputPerM != 8 || r.CacheReadPerM != 0.5 || r.Context != 65536 {
 		t.Errorf("main model: %+v", r)
 	}
 	// A role's model is refined from its own endpoint the same way: it used to keep the generic
 	// 200k window and $3/$15 whatever the marketplace said.
-	if r := got["acme/small"]; r.Source != "catalogue" || r.InputPerM != 1 || r.OutputPerM != 4 || r.CacheReadPerM != 0.25 || r.Context != 32768 {
+	if r := got["acme/small"]; r.Source != "catalogue" || r.ContextSource != "catalogue" || r.InputPerM != 1 || r.OutputPerM != 4 || r.CacheReadPerM != 0.25 || r.Context != 32768 {
 		t.Errorf("role model: %+v", r)
 	}
 	if len(got) != 2 {
@@ -126,7 +128,7 @@ func TestOfflineSessionRecordsTheFallbackAsAFallback(t *testing.T) {
 	}
 	s.Close()
 	r := recordedModels(t, o.Dir)["acme/unheard-of"]
-	if r.Source != "fallback" || r.InputPerM != 3 || r.OutputPerM != 15 {
+	if r.Source != "fallback" || r.ContextSource != "fallback" || r.InputPerM != 3 || r.OutputPerM != 15 {
 		t.Errorf("record: %+v", r)
 	}
 
@@ -141,7 +143,7 @@ func TestOfflineSessionRecordsTheFallbackAsAFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 	s2.Close()
-	if r := recordedModels(t, o2.Dir)["mock-1"]; r.Source != "given" || r.InputPerM != 4 || r.Context != 1_000_000 {
+	if r := recordedModels(t, o2.Dir)["mock-1"]; r.Source != "given" || r.ContextSource != "given" || r.InputPerM != 4 || r.Context != 1_000_000 {
 		t.Errorf("given model: %+v", r)
 	}
 }
