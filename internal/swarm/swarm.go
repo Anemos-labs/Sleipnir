@@ -509,6 +509,8 @@ func (s *Swarm) Shutdown() {
 	s.closed = true
 	cancel := s.cancel
 	s.mu.Unlock()
+	// A restart that waits will not start now: its work goes back to the board, as a running worker's does when it is stopped.
+	s.dropRestarts("the swarm stopped")
 	s.wk.stop() // no wake after this
 	if s.mail != nil {
 		s.mail.stop() // and no batch for the mailman

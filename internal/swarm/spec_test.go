@@ -460,9 +460,10 @@ func TestWatchdogAlertsThenCancelsAStuckWorker(t *testing.T) {
 	clock.Advance(10 * time.Minute) // 21 minutes: past twice StuckAfter
 	r.sw.superviseOnce(clock.Now())
 	rvWait(t, "the stuck run to be cancelled and settled", func() bool { return r.idle(id) })
+	// The stop counts an attempt; the worker keeps its task, and the harness restarts it on it (restart.go).
 	tk, _ := r.sw.Board.Snapshot().Task("T1")
-	if tk.Status != StatusTodo || tk.Attempts != 1 {
-		t.Fatalf("T1 = %s attempts=%d, want todo after one attempt", tk.Status, tk.Attempts)
+	if tk.Status != StatusDoing || tk.Owner != id || tk.Attempts != 1 {
+		t.Fatalf("T1 = %s/%s attempts=%d, want doing, %s's, after one attempt", tk.Status, tk.Owner, tk.Attempts, id)
 	}
 	if n := len(r.sw.Board.Snapshot().Alerts); n != 0 {
 		t.Fatalf("the stuck alert outlived the run (%d alerts)", n)

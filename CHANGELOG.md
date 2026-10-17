@@ -7,6 +7,26 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A team worker whose run fails while it holds work (a task in doing, the
+  pool it leads, or its place in an open pool) is restarted on that work by
+  the harness: after 5 seconds, then 10, at most twice in a row on the same
+  work, with harness mail that says why the last run stopped and what to do
+  differently (after the step limit: the run has a fresh step allowance,
+  make the next concrete change or record where the task stands). The task
+  stays the worker's in doing, its failed attempt counted in place
+  (`board.op` `requeue` with the status unchanged); without persistent pools
+  a task is restarted on only while that leaves the manager an attempt for
+  another worker. The manager is told once per stop that the worker is
+  restarted and must not be replaced; past the bound the stop is settled as
+  before, and the manager's line says how many restarts were made. While a
+  restart waits the worker's state is `idle` with the line `restarting:
+  <why>`, so the terminal and the web interface no longer show it as stuck;
+  a worker that is not restarted still shows as failed. Budget stops,
+  interrupts, unanswered questions, step-limit stops under `FixedSteps`
+  and workers that hold nothing are not restarted; an interrupt or a spent
+  swarm budget calls off a waiting restart. New `swarm.restart` events
+  record each restart. Prompt bytes: none change.
+
 - A background process that a shell command started and left running with
   its output sent elsewhere (`nohup server >log 2>&1 </dev/null &`) now ends
   when the session does, as one that holds the command's output already

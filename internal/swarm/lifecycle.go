@@ -58,6 +58,9 @@ type runState struct {
 	count       bool   // whether that stop counts as a failed attempt at the task
 	abortAt     time.Time
 	quarantined bool
+	// asked marks a run the watchdog stopped while it waited for the person to answer a question: a restart would ask again,
+	// so the harness does not restart it on its own (restart.go).
+	asked bool
 }
 
 // member is one registered agent.
@@ -120,6 +123,12 @@ type member struct {
 	// restarting it: it handed over its own task (handover.go). A new run clears it, so a worker that
 	// stayed (it had unread mail) and was given work again is not retired at the end of that run.
 	retireOnIdle bool
+
+	// restart (under mu) is the automatic restart the harness has scheduled after a failed run of the worker (nil: none);
+	// restarts counts the restarts in a row it has made of the worker on the work named by restartKey (restart.go).
+	restart    *pendingRestart
+	restartKey string
+	restarts   int
 
 	// progress is the unix time of the last sign of life (a model or tool event).
 	progress atomic.Int64
@@ -395,10 +404,18 @@ func (s *Swarm) activeWriters() int {
 // state is published at once. A change of the line alone is published at most
 // every statusThrottle, but never dropped: the newest line is flushed when the
 // interval ends.
-func (m *member) setState(s *Swarm, state, line string) {
+func (m *member) setState(s *Swarm, state, line string) { m.changeState(s, state, line, false) }
+
+// setIdleState is setState for a member that is idle: one that a run has reserved since keeps the state its run publishes.
+// The check and the change are one step under the member's lock, so a run that starts at the same moment cannot have its
+// state overwritten by this one.
+func (m *member) setIdleState(s *Swarm, state, line string) { m.changeState(s, state, line, true) }
+
+// changeState is setState; with idleOnly it changes nothing unless the member is idle.
+func (m *member) changeState(s *Swarm, state, line string, idleOnly bool) {
 	line = cleanText(line, 70)
 	m.mu.Lock()
-	if m.life == lifeRetired || (m.state == state && m.line == line) {
+	if m.life == lifeRetired || (m.state == state && m.line == line) || (idleOnly && m.life != lifeIdle) {
 		m.mu.Unlock()
 		return
 	}
@@ -919,19 +936,25 @@ func (s *Swarm) finishRun(m *member, rs *runState, ctx context.Context, res *age
 	m.mu.Unlock()
 
 	kind, why, count := classifyStop(err, reason, reasonCounts, ctx)
+	failed := kind == stopFailed || (kind == stopHarness && count)
 	var line string
+	var again *pendingRestart // the automatic restart of the worker (restart.go), nil when there is none
+	tried := 0                // the automatic restarts already made, when the bound stops one more
 	switch kind {
 	case stopClean:
 		line = s.settleClean(ctx, m, tasks, res)
 		s.resumeReturnedWork(ctx, m, rs, tasks)
+		m.mu.Lock()
+		m.restarts = 0 // a run that ended on its own is a recovery: the next failure starts a new row
+		m.mu.Unlock()
 	default:
-		line = s.settleStopped(m, tasks, kind, why, count)
+		again, tried, line = s.settleFailed(m, rs, tasks, kind, why, count, err)
 	}
 	s.Leases.ReleaseAll(m.id)
 	s.Board.ClearAlertKey("stuck", stuckAlertKey(m.id, rs.id))
 
 	state, stateLine := "idle", ""
-	if kind == stopFailed || (kind == stopHarness && count) {
+	if failed {
 		state, stateLine = "failed", why
 	}
 	snap := s.Board.Snapshot()
@@ -945,8 +968,15 @@ func (s *Swarm) finishRun(m *member, rs *runState, ctx context.Context, res *age
 	// Keep the run reserved until its terminal events are published. Otherwise
 	// mail or reassignment can start a new run whose status is overwritten by
 	// this run's late agent.end event.
-	m.setState(s, state, stateLine)
-	s.emitAs(m.id, events.TypeAgentEnd, map[string]any{"id": m.id, "state": state, "evidence": m.ev.Summary()})
+	if again != nil {
+		// The run failed and the worker is restarted: the end of the run says how it ended, and the state that follows it says
+		// what comes next, so neither interface shows a worker that the harness is restarting as one that is stuck.
+		s.emitAs(m.id, events.TypeAgentEnd, map[string]any{"id": m.id, "state": state, "evidence": m.ev.Summary()})
+		m.setState(s, "idle", "restarting: "+why)
+	} else {
+		m.setState(s, state, stateLine)
+		s.emitAs(m.id, events.TypeAgentEnd, map[string]any{"id": m.id, "state": state, "evidence": m.ev.Summary()})
+	}
 	m.mu.Lock()
 	if m.run != rs {
 		m.mu.Unlock()
@@ -958,14 +988,37 @@ func (s *Swarm) finishRun(m *member, rs *runState, ctx context.Context, res *age
 	// A new message is a recovery trigger even if it arrived just before the
 	// failed run returned. Mail already present at reserve must not repeatedly
 	// restart a run that fails before it can drain its inbox (for example budget).
+	// The end of this run also settles an automatic restart scheduled after an earlier
+	// one: this run's outcome is what decides whether one waits now.
 	restart := kind == stopClean || (kind == stopFailed && m.mailSeq > rs.mailSeq)
 	retire := m.retireOnIdle
 	if retire {
 		restart = false
 	}
+	m.restart = again
 	m.mu.Unlock()
-	if line == "" && (kind == stopFailed || (kind == stopHarness && count)) {
+	if again != nil {
+		s.emitAs(m.id, eventRestart, again.event("scheduled"))
+		if s.alive() != nil {
+			// The swarm stopped while the run was settled, after Shutdown called off the restarts it found: this one would never
+			// start, so it is called off here.
+			m.mu.Lock()
+			own := m.restart == again
+			if own {
+				m.restart = nil
+			}
+			m.mu.Unlock()
+			if own {
+				s.dropRestart(m, again, "the swarm stopped")
+			}
+		}
+	}
+	if line == "" && failed {
 		line = fmt.Sprintf("%s stopped (%s). Check task list for its current assignments; send recovery instructions or reassign unfinished work with spawn.", m.id, why)
+	}
+	if tried > 0 && failed {
+		line = strings.TrimSuffix(line, ".") + fmt.Sprintf(". The harness restarted %s automatically %s on this work, and does not restart it again.", m.id, timesText(tried))
+		s.emitAs(m.id, eventRestart, map[string]any{"phase": "exhausted", "n": tried, "max": maxAutoRestarts, "why": why})
 	}
 	// Publish the failure after making the worker available, so a manager's
 	// immediate recovery action can reserve it.
@@ -1271,7 +1324,8 @@ func (s *Swarm) stopRunFor(m *member, reason string, count bool, taskID string, 
 	return true
 }
 
-// stopWorkers stops every running worker.
+// stopWorkers stops every running worker, and calls off the automatic restarts that are waiting (dropRestart): a worker that
+// was to be restarted is stopped as well.
 func (s *Swarm) stopWorkers(reason string, count bool) int {
 	s.mu.Lock()
 	ms := make([]*member, 0, len(s.members))
@@ -1287,6 +1341,7 @@ func (s *Swarm) stopWorkers(reason string, count bool) int {
 			n++
 		}
 	}
+	s.dropRestarts(reason)
 	return n
 }
 

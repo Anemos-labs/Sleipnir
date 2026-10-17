@@ -52,6 +52,7 @@ func (s *Swarm) superviseOnce(now time.Time) {
 		m := m
 		s.guard("member "+m.id, func() { s.superviseMember(m, now) })
 	}
+	s.guard("restarts", func() { s.restartTick(now) })
 	s.guard("repairs", func() { s.repairTick(now) })
 	s.guard("stalls", s.sweepStalls)
 	s.guard("docs", func() { s.docsTick(now) })
@@ -66,11 +67,12 @@ func (s *Swarm) superviseMember(m *member, now time.Time) {
 		s.wakeForMail(m, "") // a digest of peer mail just arrived: no-op unless the worker is idle
 	}
 	m.mu.Lock()
-	life, rs, idleAt := m.life, m.run, m.idleAt
+	life, rs, idleAt, again := m.life, m.run, m.idleAt, m.restart != nil
 	m.mu.Unlock()
 	switch life {
 	case lifeIdle:
-		if s.cfg.IdleRetire > 0 && !idleAt.IsZero() && now.Sub(idleAt) > s.cfg.IdleRetire {
+		// A worker waiting for its automatic restart is not idle for good.
+		if s.cfg.IdleRetire > 0 && !again && !idleAt.IsZero() && now.Sub(idleAt) > s.cfg.IdleRetire {
 			_ = s.Retire(m.id)
 		}
 	case lifeRunning:
@@ -116,7 +118,7 @@ func (s *Swarm) watch(m *member, rs *runState, now time.Time) {
 			why = fmt.Sprintf("stopped after %s without an answer to its question to the person: %s", quiet.Round(time.Second), question)
 		}
 		if rs.reason == "" {
-			rs.reason, rs.count = why, true
+			rs.reason, rs.count, rs.asked = why, true, question != ""
 		}
 		rs.abortAt = now
 		cancel = true
