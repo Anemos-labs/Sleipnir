@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A tool call named `tool.action` (`task.get`, `pool.agree`, also behind a
+  `functions.` namespace) runs as that tool with the action in its input,
+  when the tool's schema has that action and the call's input names no
+  other one; the event log's `tool.call` says which tool ran (`as`).
+  Before, it was refused as an unknown tool. Prompt bytes: none change.
+
 - A team worker whose run fails while it holds work (a task in doing, the
   pool it leads, or its place in an open pool) is restarted on that work by
   the harness: after 5 seconds, then 10, at most twice in a row on the same
