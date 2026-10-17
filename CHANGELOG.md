@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A pool's leader may set the scope of a child of its pool that nobody has
+  claimed (`task update id=… files=[…]`, inside the pool's scope), and a
+  claim refused because a child overlaps a sibling says that the leader can
+  narrow it. Before, only the manager could change a scope: a frontend
+  leader whose two children both had the pool's scope could not part them,
+  and its members' claims were refused for half an hour. Prompt bytes: the
+  task tool's refusal texts change; no prompt layer does.
+
 - A tool call named `tool.action` (`task.get`, `pool.agree`, also behind a
   `functions.` namespace) runs as that tool with the action in its input,
   when the tool's schema has that action and the call's input names no

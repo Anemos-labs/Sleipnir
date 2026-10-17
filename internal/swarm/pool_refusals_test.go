@@ -490,3 +490,35 @@ func TestAnEarlyInspectCountsAsAReadForAVote(t *testing.T) {
 		t.Errorf("agree after the inspect: %q", got)
 	}
 }
+
+// A pool's leader may set the scope of a child of its pool that nobody has claimed, inside the pool's scope: when two of its children
+// overlap it is the one that parts them. A member may not, nor may the leader once the child is claimed, nor beyond the pool's scope;
+// a claim refused for overlapping a sibling says that the leader can narrow it.
+func TestAPoolLeaderNarrowsAnUnclaimedChild(t *testing.T) {
+	r := newPoolRig(t)
+	if err := r.sw.Board.poolUpdate("mgr", r.parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	child := func(title string) Task {
+		c, err := r.sw.Board.CreateTask(r.lead, TaskSpec{Parent: r.parent.ID, Title: title, Role: "backend", Files: []string{"app/**"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	a, b := child("scaffold"), child("pages")
+	r.refused(r.task(r.second, map[string]any{"action": "update", "id": b.ID, "files": []string{"app/pages/**"}}), "a member's scope change",
+		"only the manager can change a task's scope (and a pool's leader the scope of a child of its pool that nobody has claimed)")
+	r.refused(r.task(r.lead, map[string]any{"action": "update", "id": b.ID, "files": []string{"web/**"}}), "a scope beyond the pool's", "outside the scope of its parent "+r.parent.ID)
+	if err := r.sw.Board.Assign(r.lead, r.second, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if res := r.task(r.third, map[string]any{"action": "claim", "id": b.ID}); !res.IsError || !strings.Contains(res.Text, r.parent.ID+"'s leader "+r.lead+" can narrow "+b.ID) {
+		t.Errorf("a claim refused for overlapping a sibling does not say who can part them: %+v", res)
+	}
+	r.must(r.task(r.lead, map[string]any{"action": "update", "id": b.ID, "files": []string{"app/pages/**"}}), "the leader narrows an unclaimed child")
+	if got, _ := r.sw.Board.Snapshot().Task(b.ID); strings.Join(got.Files, ",") != "app/pages/**" {
+		t.Errorf("%s's scope is %v", b.ID, got.Files)
+	}
+	r.refused(r.task(r.lead, map[string]any{"action": "update", "id": a.ID, "files": []string{"app/lib/**"}}), "a claimed child's scope", "only the manager can change a task's scope")
+}
