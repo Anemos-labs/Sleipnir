@@ -420,6 +420,83 @@ func TestTheLiveViewDoesNotOfferPoolHeldMembersOrQueuedTasks(t *testing.T) {
 	}
 }
 
+// Idle members of a role with nothing ready or queued for it are named to the manager in one line while work is open, so a team
+// does not sit idle while one worker does the only open task: the line leaves out a member that still owns an open task and a role
+// a ready task is offered to, and is silent once nothing on the board is open.
+func TestTheLiveViewNamesIdleMembersWithNothingPlanned(t *testing.T) {
+	r := newRVRigWith(t, Config{MaxWorkers: 8, Team: []string{"backend", "backend", "backend", "tester"}},
+		func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	spawn := func(role, title, files string) (string, string) {
+		t.Helper()
+		id, err := r.sw.Spawn(SpawnReq{Role: role, Title: title, Files: []string{files}, By: "mgr"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rvWait(t, id+" idle", func() bool { return r.idle(id) })
+		for _, task := range r.sw.Board.Snapshot().Tasks {
+			if task.Owner == id && task.Title == title {
+				return id, task.ID
+			}
+		}
+		t.Fatalf("no task %q for %s", title, id)
+		return "", ""
+	}
+	finish := func(member, task string) {
+		t.Helper()
+		if cur, _ := r.sw.Board.Snapshot().Task(task); cur.Status == StatusDoing {
+			if err := r.sw.Board.Submit(member, task, "done", ""); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := r.sw.Board.Accept("mgr", task, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	busy, long := spawn("backend", "control plane", "server/**")
+	be2, t2 := spawn("backend", "store", "store/**")
+	be3, t3 := spawn("backend", "api", "api/**")
+	te, t4 := spawn("tester", "smoke", "e2e/**")
+	finish(be2, t2)
+	finish(be3, t3)
+	finish(te, t4)
+	idleBackend := []string{be2, be3}
+	slices.Sort(idleBackend)
+
+	got := strings.Join(r.sw.staffingLines(r.sw.Board.Snapshot()), "\n")
+	want := "idle with nothing planned for them: " + strings.Join(idleBackend, ", ") + " (backend); " + te + " (tester): " +
+		"plan the next independent work for them (task create with file scopes disjoint from the open tasks, then spawn agent=" +
+		idleBackend[0] + " task=<id>), or leave them idle if nothing independent remains"
+	if !strings.Contains(got, want) {
+		t.Fatalf("live view lines %q lack %q", got, want)
+	}
+	if strings.Contains(got, busy) {
+		t.Errorf("live view lines %q name %s, which still owns %s", got, busy, long)
+	}
+
+	// a ready backend task is offered to the idle backend members instead; the tester is still named
+	next, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "auth", Role: "backend", Files: []string{"auth/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = strings.Join(r.sw.staffingLines(r.sw.Board.Snapshot()), "\n")
+	if want := "idle with nothing planned for them: " + te + " (tester): "; !strings.Contains(got, want) || strings.Contains(got, "(backend);") {
+		t.Errorf("live view lines %q, want only the tester named as unplanned (%q)", got, want)
+	}
+	if !strings.Contains(got, " idle while "+next.ID+" (backend) can start") {
+		t.Errorf("live view lines %q do not offer %s", got, next.ID)
+	}
+
+	// nothing open: the goal's work is finished, and the view says nothing about idle members
+	if err := r.sw.Board.Claim(idleBackend[0], next.ID); err != nil {
+		t.Fatal(err)
+	}
+	finish(idleBackend[0], next.ID)
+	finish(busy, long)
+	if got := r.sw.staffingLines(r.sw.Board.Snapshot()); len(got) != 0 {
+		t.Errorf("live view lines with nothing open: %q", got)
+	}
+}
+
 // A ready parent that kept its pool (returned to the board, spawn reuses its members) is offered its own idle members, and only it:
 // members other pools keep are not offered, and a free member is offered a ready task that has no idle pool of its own.
 func TestTheLiveViewOffersAReadyParentItsOwnPool(t *testing.T) {

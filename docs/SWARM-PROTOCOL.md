@@ -173,7 +173,10 @@ manager is held while a pass is pending. `--auto-docs=false` makes docs an ordin
 
 **Staffing and review.** Under the team's occupancy the manager's hot view says when slots are free while ready tasks
 (todo, no owner, dependencies done) wait (`2 free slot(s) (devops, tester), 3 ready task(s) with no owner: start
-workers`), and which idle worker could take a ready task of its role now. In a team with a reviewer slot a merged change
+workers`), and which idle worker could take a ready task of its role now. While a task is open, idle workers that no pool
+keeps, that own no open task, and whose role has no ready or queued task are named in one line (`idle with nothing planned
+for them: be-2, be-3 (backend); ts-1 (tester): ...`) asking the manager to plan independent work with disjoint file scopes
+for them, or to leave them idle when nothing independent remains. In a team with a reviewer slot a merged change
 is due a review: every accepted implementation task of a writer (not an agreement, not the docs worker's) counts as a
 merge, and a task owned by a reviewer accepted after the last merge covers it. Until then the manager's hot view says so,
 its `wait` is refused once nothing else runs, and the manager's final answer is held. The agent bounds stop vetoes per run; configured
