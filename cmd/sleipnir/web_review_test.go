@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/goal"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
 	"github.com/anemos-labs/sleipnir/internal/trust"
@@ -614,5 +615,60 @@ func TestWebDeliveryCommandReportsItsResult(t *testing.T) {
 		if res.Output != tc.want {
 			t.Errorf("%s: got %q, want %q", tc.line, res.Output, tc.want)
 		}
+	}
+}
+
+// Several model changes in one request restart a team once, with all of them (the manager's as the team's model), and a goal that was
+// active goes on in the next generation without being resumed by hand.
+func TestModelChangesApplyTogetherAndTheGoalGoesOn(t *testing.T) {
+	project := webWorld(t)
+	_, base := newWebModel(t, sayScript("ok"))
+	r := newWebRig(t, teamDefaults(project), base)
+	tab := r.ready("")
+	wt := r.h.tab(tab.ID)
+	s := wt.session()
+	if s.Swarm == nil {
+		t.Fatal("the tab is not a team")
+	}
+	r.json("POST", "/api/sessions/"+tab.ID+"/messages", wire.MessageRequest{Text: "first"}, 200, nil)
+	r.waitEv(tab.ID, "final", nil) // a session with a turn can be resumed
+	wt.goals.set(s, goal.New("ship the shop"))
+	var res struct{ Restarted bool }
+	r.json("POST", "/api/sessions/"+tab.ID+"/model", wire.ModelRequest{Roles: map[string]string{"manager": "mock/mock-1", "tester": "mock/mock-1", "backend": "mock/mock-1"}}, 200, &res)
+	if !res.Restarted {
+		t.Error("a team's model changes did not restart it")
+	}
+	if sid := r.waitForSID(tab.ID, 2); sid != tab.SID {
+		t.Errorf("the restart did not carry the conversation: sid %s, want %s", sid, tab.SID)
+	}
+	wt.mu.Lock()
+	got, gen := append([]string(nil), wt.args...), wt.gen
+	wt.mu.Unlock()
+	if gen != 2 {
+		t.Errorf("one request made %d generations", gen)
+	}
+	for _, want := range []string{"tester=mock/mock-1", "backend=mock/mock-1"} {
+		if i := slices.Index(got, want); i < 1 || got[i-1] != "--role-model" {
+			t.Errorf("the restart's arguments %q lack --role-model %s", got, want)
+		}
+	}
+	if typedFlag(got, "--model") != "mock/mock-1" {
+		t.Errorf("the restart's arguments %q lack the team's model", got)
+	}
+	r.waitEv(tab.ID, "sys", map[string]any{"text": "the goal goes on: it was active when the models changed"})
+
+	// A role a single agent does not have, or a model that is not one, changes nothing.
+	if code, _ := r.do("POST", "/api/sessions/"+tab.ID+"/model", wire.ModelRequest{Roles: map[string]string{"tester": " "}}); code != 422 {
+		t.Errorf("an empty model in a batch = %d", code)
+	}
+	if code, _ := r.do("POST", "/api/sessions/"+tab.ID+"/model", wire.ModelRequest{Roles: map[string]string{"a=b": "mock/mock-1"}}); code != 422 {
+		t.Errorf("a role that is not a name = %d", code)
+	}
+}
+
+// A restart that is not for a change of models leaves an active goal paused, as a resumed session does.
+func TestOtherRestartsDoNotCarryTheGoal(t *testing.T) {
+	if restartCarries["restart"] || restartCarries["swarm"] || restartCarries["new"] || !restartCarries["roles"] || !restartCarries["model"] {
+		t.Errorf("restartCarries = %v", restartCarries)
 	}
 }

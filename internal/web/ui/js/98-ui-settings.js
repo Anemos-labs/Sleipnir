@@ -37,6 +37,22 @@
   const workerModel = S => { const w = arr(S.roster).find(x => x.id !== 'mgr' && x.model); return w ? w.model : S.meta.model; };
   const curModel = (S, role) => role === 'manager' ? S.meta.model : ((S.meta.roleModels || {})[role] || D.roleModels[role] || workerModel(S));
   const ALL_ROLES = () => ['manager'].concat(D.roleOrder);
+  /** the model changes chosen and not yet applied, by session id (role → model): Apply sends them in one request, so a team starts
+   *  again once however many roles change, and editing goes on while it does */
+  const drafts = {};
+  /** the changes of a draft that differ from what S runs now, as [role, model] in the order of the roles */
+  const pendingModels = (S, d) => ALL_ROLES().filter(r => d && d[r] && d[r] !== curModel(S, r)).map(r => [r, d[r]]);
+  /** the model a role shows on the pages: the one chosen for it, else the one it runs on */
+  const shownModel = (S, role) => (drafts[S.id] || {})[role] || curModel(S, role);
+  /** choose a model for a role, to be applied with the others; choosing what it runs on now takes the change back */
+  const stageModel = (S, role, ref) => { const d = drafts[S.id] = drafts[S.id] || {}; if (!ref || ref === curModel(S, role)) delete d[role]; else d[role] = ref; };
+  /** the bar of the changes waiting to be applied, on Models and on Roles & effort ('' when there is none) */
+  const pendingBar = S => {
+    const p = pendingModels(S, drafts[S.id]); if (!p.length) return '';
+    const team = arr(S.roster).length > 1;
+    return '<div class="pendbar" role="status"><span class="pb-t"><b>' + p.length + ' model change' + (p.length === 1 ? '' : 's') + '</b> to apply: ' + p.map(([r, m]) => '<span class="rrc" style="color:' + roleCol(r) + '">' + esc(r) + '</span> → <span class="mono">' + esc(m) + '</span>').join(' · ') + '</span>' +
+      '<span class="pb-a"><button class="btn sm" type="button" data-do="models-discard">Discard</button> <button class="btn sm pri" type="button" data-do="models-apply">' + (team ? 'Apply: the team restarts once' : 'Apply') + '</button></span></div>';
+  };
   const hello = () => TK.hello() || {};
   /** the server's defaults for a new session (hello.defaults), or {} */
   /** the tab title badge as it is now: the person's choice, else the server's default (off when SLEIPNIR_BELL=0) */
@@ -132,29 +148,29 @@
    *  counts against no budget. A session that mixes the two is measured by its bill, as its budget is. */
   const budNote = (c, budget) => U.planOnly(c) ? (budget ? fmtUsd(0, 2) + ' billed: the plan counts against no budget' : 'no limit; the plan counts against no budget')
     : budget ? Math.round(U.budgetPct(c, budget)) + '% used' + (c.plan ? ' (billed; the plan\'s part is not counted)' : '') : 'no limit';
-  TK.settings = { trustFlow, trustPost, forgetSpec, projectState, TRUST_WHY, budLabel, budNote, modelRows, modelsCli, rulesIn, dayTxt, keyInfo, runLine, clampWorkers, teamWord, ledgerRows, warningRow, issueRow, configWarnings, promptCmds, curModel, PAGES };
+  TK.settings = { trustFlow, trustPost, forgetSpec, projectState, TRUST_WHY, budLabel, budNote, modelRows, modelsCli, rulesIn, dayTxt, keyInfo, runLine, clampWorkers, teamWord, ledgerRows, warningRow, issueRow, configWarnings, promptCmds, curModel, pendingModels, PAGES };
 
   /* ---------------- the pages: pure builders of markup from the session S and the page state ST ---------------- */
   const P = {};
 
     P.models = (S, ST) => {
-      const st = ST.models, favs = G.favs || new Set(), all = st.view ? st.view.models : D.models, cur = curModel(S, st.role), rows = modelRows(all, st, favs);
+      const st = ST.models, favs = G.favs || new Set(), all = st.view ? st.view.models : D.models, cur = curModel(S, st.role), shown = shownModel(S, st.role), rows = modelRows(all, st, favs);
       const users = ref => ALL_ROLES().filter(r => curModel(S, r) === ref), errs = arr(st.view ? st.view.errors : D.modelErrors), cl = modelsCli(st);
       const opt = (list, v) => list.map(o => '<option value="' + o[0] + '"' + (v === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('');
-      return '<div class="setfilter"><input id="mq" type="search" placeholder="filter: every word must appear, any case" aria-label="Filter models" value="' + esc(st.q) + '" autocomplete="off"><div class="seg" role="group" aria-label="Filters"><button type="button" data-flt="tools" aria-pressed="' + st.tools + '">tools</button><button type="button" data-flt="reasoning" aria-pressed="' + st.reasoning + '">reasoning</button><button type="button" data-flt="favs" aria-pressed="' + st.favs + '">★ favourites</button><button type="button" data-flt="all" aria-pressed="' + st.all + '" title="include models that do not chat (--all)">all</button></div>' +
+      return pendingBar(S) + '<div class="setfilter"><input id="mq" type="search" placeholder="filter: every word must appear, any case" aria-label="Filter models" value="' + esc(st.q) + '" autocomplete="off"><div class="seg" role="group" aria-label="Filters"><button type="button" data-flt="tools" aria-pressed="' + st.tools + '">tools</button><button type="button" data-flt="reasoning" aria-pressed="' + st.reasoning + '">reasoning</button><button type="button" data-flt="favs" aria-pressed="' + st.favs + '">★ favourites</button><button type="button" data-flt="all" aria-pressed="' + st.all + '" title="include models that do not chat (--all)">all</button></div>' +
         '<button class="btn sm" type="button" data-do="refresh-models"' + (st.busy ? ' disabled' : '') + ' title="asks every provider again; the list is kept 6 h">' + (st.busy ? 'Fetching…' : 'Refresh the catalogue') + '</button>' +
         '<span style="display:inline-flex;align-items:center;gap:8px;white-space:nowrap"><label class="lab" for="mxp">max input $/M</label><select id="mxp" data-sel="maxp">' + opt([['', 'any'], ['0.5', '0.5'], ['1', '1'], ['3', '3'], ['5', '5']], st.maxp) + '</select></span><span style="display:inline-flex;align-items:center;gap:8px;white-space:nowrap"><label class="lab" for="mxo">max output $/M</label><select id="mxo" data-sel="maxo" title="--max-price: the price of the output">' + opt([['', 'any'], ['2', '2'], ['5', '5'], ['10', '10'], ['25', '25']], st.maxo) + '</select></span><span style="display:inline-flex;align-items:center;gap:8px;white-space:nowrap"><label class="lab" for="mnc">min context</label><select id="mnc" data-sel="minc">' + opt([['', 'any'], ['64000', '64k'], ['128000', '128k'], ['400000', '400k']], st.minc) + '</select></span>' +
         '<span style="display:inline-flex;align-items:center;gap:8px;white-space:nowrap"><label class="lab" for="mrl">choose for</label><select id="mrl" data-sel="role">' + ALL_ROLES().map(r => '<option' + (st.role === r ? ' selected' : '') + '>' + esc(r) + '</option>').join('') + '</select></span></div>' +
         (D.modelsNote ? '<p class="stubnote warm" style="margin:0 0 8px">' + esc(D.modelsNote) + '</p>' : '') + (errs.length ? '<p class="stubnote warm" style="margin:0 0 8px">' + errs.length + ' source' + (errs.length === 1 ? '' : 's') + ' of the catalogue could not be read: ' + esc(errs.join(' · ')) + '</p>' : '') +
-        '<div class="settable"><table class="tbl"><thead><tr><th></th><th>model</th><th class="r">context</th><th class="r">in $/M</th><th class="r">out $/M</th><th>tags</th><th>runs</th><th></th></tr></thead><tbody>' + rows.map(mm => '<tr class="' + (mm.ref === cur ? 'sel' : '') + '"><td><button type="button" class="star' + (favs.has(mm.ref) ? ' on' : '') + '" data-fav="' + esc(mm.ref) + '" aria-pressed="' + favs.has(mm.ref) + '" aria-label="' + (favs.has(mm.ref) ? 'unstar ' : 'star ') + esc(mm.ref) + '">' + (favs.has(mm.ref) ? '★' : '☆') + '</button></td><td class="bright">' + esc(mm.ref) + '</td><td class="r">' + fmtK(mm.ctx) + '</td><td class="r">' + (mm.in == null ? '<span class="dim">price unknown</span>' : mm.in.toFixed(2)) + '</td><td class="r">' + (mm.out == null ? '' : mm.out.toFixed(2)) + '</td><td>' + (mm.plan ? tag('plan', 'ok', 'a ChatGPT plan covers its use: the prices are the API list prices of the same model, which the plan does not bill') : '') + (mm.tools ? tag('tools', 'fe') : '') + (mm.reasoning ? tag('reasoning', 'fe') : '') + '</td><td>' + users(mm.ref).map(r => '<span class="rrc" style="color:' + roleCol(r) + '">' + esc(r) + '</span>').join(' ') + '</td><td class="r"><button type="button" class="btn sm' + (mm.ref === cur ? '' : ' pri') + '" data-use="' + esc(mm.ref) + '"' + (mm.ref === cur ? ' disabled' : '') + '>' + (mm.ref === cur ? 'current' : 'Use for ' + esc(st.role)) + '</button></td></tr>').join('') + (rows.length ? '' : '<tr><td colspan="8" class="dim">no model matches</td></tr>') + '</tbody></table></div>' +
-        '<p class="stubnote">' + rows.length + ' of ' + arr(all).length + ' models. Choosing the manager’s model starts the team again on it; choosing for a role restarts that role’s workers. Prices are the catalogue’s; <b>price unknown</b> means the catalogue does not say; a model tagged <b>plan</b> is shown at the API list price of the same model, which your ChatGPT plan does not bill. ' + cli('models', cl.label, ' data-cli-models') + '</p>';
+        '<div class="settable"><table class="tbl"><thead><tr><th></th><th>model</th><th class="r">context</th><th class="r">in $/M</th><th class="r">out $/M</th><th>tags</th><th>runs</th><th></th></tr></thead><tbody>' + rows.map(mm => '<tr class="' + (mm.ref === shown ? 'sel' : '') + (mm.ref === shown && shown !== cur ? ' pend' : '') + '"><td><button type="button" class="star' + (favs.has(mm.ref) ? ' on' : '') + '" data-fav="' + esc(mm.ref) + '" aria-pressed="' + favs.has(mm.ref) + '" aria-label="' + (favs.has(mm.ref) ? 'unstar ' : 'star ') + esc(mm.ref) + '">' + (favs.has(mm.ref) ? '★' : '☆') + '</button></td><td class="bright">' + esc(mm.ref) + '</td><td class="r">' + fmtK(mm.ctx) + '</td><td class="r">' + (mm.in == null ? '<span class="dim">price unknown</span>' : mm.in.toFixed(2)) + '</td><td class="r">' + (mm.out == null ? '' : mm.out.toFixed(2)) + '</td><td>' + (mm.plan ? tag('plan', 'ok', 'a ChatGPT plan covers its use: the prices are the API list prices of the same model, which the plan does not bill') : '') + (mm.tools ? tag('tools', 'fe') : '') + (mm.reasoning ? tag('reasoning', 'fe') : '') + '</td><td>' + users(mm.ref).map(r => '<span class="rrc" style="color:' + roleCol(r) + '">' + esc(r) + '</span>').join(' ') + '</td><td class="r"><button type="button" class="btn sm' + (mm.ref === shown ? '' : ' pri') + '" data-use="' + esc(mm.ref) + '"' + (mm.ref === shown ? ' disabled' : '') + '>' + (mm.ref === shown ? (shown === cur ? 'current' : 'chosen') : (mm.ref === cur ? 'Keep for ' : 'Use for ') + esc(st.role)) + '</button></td></tr>').join('') + (rows.length ? '' : '<tr><td colspan="8" class="dim">no model matches</td></tr>') + '</tbody></table></div>' +
+        '<p class="stubnote">' + rows.length + ' of ' + arr(all).length + ' models. Choosing a model for a role waits with the other changes until you apply them: a team then starts again once, on all of them, and goes on with its goal. Prices are the catalogue’s; <b>price unknown</b> means the catalogue does not say; a model tagged <b>plan</b> is shown at the API list price of the same model, which your ChatGPT plan does not bill. ' + cli('models', cl.label, ' data-cli-models') + '</p>';
     };
     P.roles = (S, ST) => {
-      const m = S.m || S.wm, ef = ST.eff[S.id] || {}, rowsH = ALL_ROLES().map(r => { const ws = S.roster.filter(x => x.role === r && x.id !== 'mgr' || (r === 'manager' && x.id === 'mgr')), cur = curModel(S, r), unk = (D.model(cur) || {}).in == null;
-        return '<tr><td style="color:' + roleCol(r) + ';font-weight:700;width:120px">' + esc(r) + '</td><td class="dim" style="width:150px">' + (ws.length ? ws.map(w => '<span style="color:' + agColor(w.id) + '">' + esc(w.id) + '</span>').join(' ') : '<span class="faint">none on the team</span>') + '</td><td><select data-role="' + esc(r) + '" aria-label="model for ' + esc(r) + '">' + (D.models.some(mm => mm.ref === cur) ? '' : '<option selected>' + esc(cur) + '</option>') + D.models.map(mm => '<option' + (mm.ref === cur ? ' selected' : '') + '>' + esc(mm.ref) + '</option>').join('') + '</select>' + (unk ? ' ' + tag('price unknown', 'warm') : '') + '</td></tr>'; }).join('');
+      const m = S.m || S.wm, ef = ST.eff[S.id] || {}, rowsH = ALL_ROLES().map(r => { const ws = S.roster.filter(x => x.role === r && x.id !== 'mgr' || (r === 'manager' && x.id === 'mgr')), now = curModel(S, r), cur = shownModel(S, r), pend = cur !== now, unk = (D.model(cur) || {}).in == null;
+        return '<tr' + (pend ? ' class="pend"' : '') + '><td style="color:' + roleCol(r) + ';font-weight:700;width:120px">' + esc(r) + '</td><td class="dim" style="width:150px">' + (ws.length ? ws.map(w => '<span style="color:' + agColor(w.id) + '">' + esc(w.id) + '</span>').join(' ') : '<span class="faint">none on the team</span>') + '</td><td><select data-role="' + esc(r) + '" aria-label="model for ' + esc(r) + '">' + (D.models.some(mm => mm.ref === cur) ? '' : '<option selected>' + esc(cur) + '</option>') + D.models.map(mm => '<option' + (mm.ref === cur ? ' selected' : '') + '>' + esc(mm.ref) + '</option>').join('') + '</select>' + (pend ? ' ' + tag('now ' + now, 'warm', 'runs on ' + now + ' until the changes are applied') : '') + (unk ? ' ' + tag('price unknown', 'warm') : '') + '</td></tr>'; }).join('');
       const mailman = '<tr><td style="color:var(--warm);font-weight:700">mailman</td><td class="dim">harness service</td><td><span class="dim">' + (S.meta.mailman ? 'runs on the worker model; digests worker mail (not on the roster, board or legs)' : 'off: worker mail is delivered at once (--mailman turns it on)') + '</span></td></tr>';
       const applied = ef.applied && ef.applied !== S.meta.effort ? ' · this model: <b>' + esc(ef.applied) + '</b>' : '';
-      return card('Which model each role runs on', cli('models', 'models'), '<table class="tbl"><tbody>' + rowsH + mailman + '</tbody></table><p class="stubnote" style="margin:10px 0 0">A role without its own entry runs on the worker model; changing a role restarts its workers on it, keeping the manager’s conversation and the board. <span class="mono">--role-model ROLE=MODEL</span> at start does the same.</p>') +
+      return pendingBar(S) + card('Which model each role runs on', cli('models', 'models'), '<table class="tbl"><tbody>' + rowsH + mailman + '</tbody></table><p class="stubnote" style="margin:10px 0 0">A role without its own entry runs on the worker model. Changes wait until you apply them, all at once: a team starts again once, keeping the manager’s conversation and the board, and goes on with its goal or the work it was doing. <span class="mono">--role-model ROLE=MODEL</span> at start does the same.</p>') +
         card('Reasoning effort', '<span class="mono">/effort</span>', row('Effort', seg('effort', efforts(), S.meta.effort, 'Reasoning effort'), 'the harness maps a level to the closest one each model supports') + '<p class="stubnote" style="margin:0">Current: <b id="effNow">' + esc(S.meta.effort) + '</b>' + applied + '. Effort applies to the turns from now on; it never changes the cached prefix.</p>');
     };
     P.budget = (S, ST) => {
@@ -294,7 +310,7 @@
         else if (k === 'isolation') { ST.run.dirty[S.id] = true; acted(A.setIsolation(v)); } else if (k === 'motion') { A.setMotion(v); ui.applyMotion(); } else if (k === 'density') A.setDensity(v); else if (k === 'cache') A.setCache(v); else if (k === 'title') A.setTitleBadge(v); else if (k === 'notify') { ui.approvals.setNotify(v === 'on').then(() => paint(true)); } else if (k === 'navmode') { ui.nav.setWide(v === 'wide'); } else if (k === 'radiomode') { v === 'open' ? ui.rail.expand() : ui.rail.collapse(); } paint(true); return; }
       const fl = t.closest('[data-flt]'); if (fl) { const k = fl.dataset.flt; ST.models[k] = !ST.models[k]; if (k === 'all') loadModels({ all: ST.models.all, refresh: false }); paint(true); return; }
       const fv = t.closest('[data-fav]'); if (fv) { acted(A.favModel(fv.dataset.fav), d => { if (d && d.note) toast(String(d.note), 'warm'); }); paint(true); return; }
-      const us = t.closest('[data-use]'); if (us) { useModel(us.dataset.use, ST.models.role, S); return; }
+      const us = t.closest('[data-use]'); if (us) { stageModel(S, ST.models.role, us.dataset.use); paint(true); return; }
       const md = t.closest('[data-mode]'); if (md) { acted(A.setMode(md.dataset.mode), () => toast('mode: ' + md.dataset.mode)); return; }
       const dg = t.closest('[data-danger]'); if (dg) { ST.perm.danger = dg.dataset.danger; paint(true); const i = $('#cfIn', page); if (i) i.focus(); return; }
       const rm = t.closest('[data-rm]'); if (rm) { acted(A.removeRule(rm.dataset.rm), () => toast('rule removed: ' + rm.dataset.rm)); return; }
@@ -309,7 +325,7 @@
     });
     sc.listen(page, 'change', e => {
       const t = e.target, S = SL.sessions.active, A = SL.act;
-      if (t.dataset.sel) { ST.models[t.dataset.sel] = t.value; paint(true); } else if (t.dataset.role) useModel(t.value, t.dataset.role, S, true);
+      if (t.dataset.sel) { ST.models[t.dataset.sel] = t.value; paint(true); } else if (t.dataset.role) { stageModel(S, t.dataset.role, t.value); paint(true); }
       else if (t.dataset.flag) { ST.run.dirty[S.id] = true; acted(A.setFlag(t.dataset.flag, t.checked)); } else if (t.id === 'tryTool') ST.perm.tool = t.value;
       else if (t.id === 'notifySec') { A.setNotify(SL.settings.notify, t.value); t.value = SL.settings.notifyAfter; paint(true); }
     });
@@ -321,13 +337,15 @@
     sc.listen(page, 'keydown', e => { const t = e.target; SL.time.noteKey(); if (e.key === 'Enter') { if (t.id === 'bIn') { e.preventDefault(); doIt('budget', SL.sessions.active); } else if (t.id === 'ruleIn') { e.preventDefault(); doIt('rule-add', SL.sessions.active); } else if (t.id === 'tryArg') { e.preventDefault(); doIt('try', SL.sessions.active); } else if (t.id === 'rv') { e.preventDefault(); doIt('verify', SL.sessions.active); } else if (t.id === 'cfIn' && !$('#cfGo', page).disabled) { e.preventDefault(); $('#cfGo', page).click(); } } });
     sc.listen(page, 'click', e => { if (e.target.id === 'cfGo') { const m = ST.perm.danger; ST.perm.danger = null; acted(SL.act.setMode(m, { confirm: m }), () => toast('mode: ' + m + ' (shift+tab will not leave it unasked)', 'err')); paint(true); } });
 
-    /** choose a model for the manager or a role; what the server did (a team that restarts, or a switch in place) is what the toast says */
-    function useModel(ref, role, S, fromSelect) {
-      const A = SL.act, r = role === 'manager' ? A.setModel(ref) : A.setRoleModel(role, ref), team = S.roster.length > 1;
-      acted(r, d => {
+    /** apply the changes chosen for S in one request: what the server did (a team that restarts once, or a switch in place) is what the toast says */
+    function applyModels(S) {
+      const p = pendingModels(S, drafts[S.id]); if (!p.length) { delete drafts[S.id]; toast('no model change to apply', 'warm'); paint(true); return; }
+      const roles = {}; p.forEach(([r, m]) => { roles[r] = m; }); const n = p.length, team = arr(S.roster).length > 1;
+      acted(SL.act.setModels(roles), d => {
+        const d0 = drafts[S.id] || {}; p.forEach(([r, m]) => { if (d0[r] === m) delete d0[r]; });
         const restarted = d ? !!d.restarted : team;
-        toast(role === 'manager' ? (restarted ? 'a team starts again on ' + ref : 'model: ' + ref) : role + ' runs on ' + ref + (restarted ? ' (its workers restart)' : ''), 'ok');
-      }); if (!fromSelect) paint(true);
+        toast(restarted ? 'the team starts again once with ' + n + ' model change' + (n === 1 ? '' : 's') + ', and goes on with its work' : n === 1 ? p[0][0] + ' runs on ' + p[0][1] : n + ' models changed', 'ok'); paint(true);
+      });
     }
     /** fetch the catalogue again: all = include models that do not chat, refresh = ask every provider (network); the answer is this page's list */
     async function loadModels(o) {
@@ -348,6 +366,8 @@
       else if (k === 'rule-tests') { const r = A.allowRule('tests'); acted(r, () => toast('allowed this session: tests (' + (r.added || (X.permissions ? X.permissions.testsPreset.rules.length : arr(D.testsPreset).length)) + ' rules)', 'ok')); paint(true); }
       else if (k === 'try') await checkPerm(S);
       else if (k === 'verify') { const v = $('#rv', page).value.trim(); ST.run.dirty[S.id] = true; acted(A.setVerify(v), () => toast('verify: ' + (v || '(none)'), 'ok')); paint(true); }
+      else if (k === 'models-apply') applyModels(S);
+      else if (k === 'models-discard') { delete drafts[S.id]; paint(true); }
       else if (k === 'apply') { const nn = ST.run.n == null ? S.meta.swarm : ST.run.n; if (nn === S.meta.swarm && !ST.run.dirty[S.id]) { toast('already ' + teamWord(nn), 'warm'); return; } ui.confirm({ title: 'Start the team again', text: 'Restart <b>' + esc(S.name) + '</b> as ' + (nn ? 'a manager and <b>' + nn + '</b> worker' + (nn === 1 ? '' : 's') : 'a single agent') + '? The current run is closed (its checkpoints stay) and the conversation carries over.', ok: 'Restart', danger: true, run: () => { const r = A.restartTeam({ swarm: nn, force: true }); acted(r, () => { ST.run.n = null; delete ST.run.dirty[S.id]; toast('the team starts again: ' + teamWord(nn), 'ok'); }); } }); }
       else if (k === 'copycli') U.copy($('.pre.cli', page).textContent).then(ok => toast(ok ? 'command copied' : 'copy is not available here', ok ? 'ok' : 'warm'));
       else if (k === 'railreset') { ui.rail.setWidth(344); }
