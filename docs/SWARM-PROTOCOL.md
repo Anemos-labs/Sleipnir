@@ -313,6 +313,11 @@ Statuses: `todo -> doing -> review -> done`, with `blocked` and `failed` as side
   `task fail` without a valid `reason` (and `target` for `blocked_on` and `superseded`; the task must exist and be
   another one) is refused with the list of reasons and changes nothing. `task block` takes an optional `target`, the
   task it waits for. The closure is in `task get`, the task list, the live view and every `board.op` for the task.
+* **A create does not duplicate open work.** A create (by the manager, a pool leader, or a spawn that creates its task)
+  is refused when a task under the same parent (or at the top level, for no parent) that is neither done nor failed has
+  the same title after lowercasing and collapsing whitespace; the match is exact, not fuzzy. The refusal names that
+  task and says to use it (`task get id=…`). The check runs inside the board's critical section, so many identical
+  creates issued in parallel in one model response leave one task.
 * Operations are events (`board.op`, section 11), so state can be rebuilt from the log.
 * Notes are *proposals*: eligible for the bounded hot view. Automatic folding into the shared layer is not implemented
   (section 9); agreements use task dependencies instead.
