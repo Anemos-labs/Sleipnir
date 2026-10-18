@@ -105,6 +105,10 @@
       "reason": "a request limit of the swarm: a file or SLEIPNIR_SWARM_REQUESTS_PER_MINUTE in both interfaces; the governor line of the HUD shows its effect and Config layers its value"
     },
     {
+      "item": "tools.builtin_skills",
+      "reason": "a default of the skills catalogue: set in a configuration file or SLEIPNIR_TOOLS_BUILTIN_SKILLS in both interfaces; both list the built-in skills (/skills, Settings > Skills) and Config layers shows its value"
+    },
+    {
       "item": "tools.default_timeout_sec",
       "reason": "limit of the tools: set in a configuration file or a SLEIPNIR_TOOLS_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only"
     },
