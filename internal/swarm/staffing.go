@@ -166,8 +166,9 @@ func reviewLine(last string) string {
 // staffingLines are the manager's live-view lines about unused capacity: free slots while ready tasks have no owner, idle workers
 // whose role has a ready task, and the ready tasks already queued for a free member of their role. It agrees with the spawn tool: a
 // queued task (spawnqueue.go) is not offered again, and an idle member a pool keeps (poolKeeps: its leader, the owner of an open
-// subtask, any member of a pool still agreeing on its plan) is not offered, since a spawn on it would only be queued. Nil when the
-// team does not limit roles or nothing waits.
+// subtask, any member of a pool still agreeing on its plan) is not offered, since a spawn on it would only be queued. While a task is
+// open, idle members of a role with nothing ready or queued for it are named in one line asking the manager to plan independent work
+// for them (unplannedLine); it counts against maxStaffingLines. Nil when the team does not limit roles or nothing waits.
 func (s *Swarm) staffingLines(snap *Snapshot) []string {
 	if !s.teamLimited() || snap == nil {
 		return nil
@@ -220,7 +221,66 @@ func (s *Swarm) staffingLines(snap *Snapshot) []string {
 	if len(ready) > 0 {
 		out, roleLines = offerLines(ready, idle, held, slots, used, order)
 	}
-	return append(out, queuedLines(waiting, maxStaffingLines-roleLines)...)
+	q := queuedLines(waiting, maxStaffingLines-roleLines)
+	out = append(out, q...)
+	if roleLines+len(q) < maxStaffingLines && openTask(snap) {
+		if line := unplannedLine(s.unplannedIdle(snap, idle, held, ready, waiting)); line != "" {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// unplannedIdle returns, by role, the idle members nothing is planned for: not kept by a pool (held), owning no open task, and of
+// a role with no ready unowned task and no queued spawn. The docs worker is left out when the harness keeps it at work (AutoDocs).
+func (s *Swarm) unplannedIdle(snap *Snapshot, idle map[string][]string, held map[string]string, ready []Task, waiting map[string][]string) map[string][]string {
+	planned := map[string]bool{}
+	for _, t := range ready {
+		planned[t.Role] = true
+	}
+	for r := range waiting {
+		planned[r] = true
+	}
+	out := map[string][]string{}
+	for r, ids := range idle {
+		if planned[r] || r == DocsRole && s.AutoDocs() {
+			continue
+		}
+		for _, id := range ids {
+			if held[id] == "" && !ownsOpenTask(snap, id) {
+				out[r] = append(out[r], id)
+			}
+		}
+	}
+	return out
+}
+
+// unplannedLine is the live-view line that names the idle members nothing is planned for (unplannedIdle), by role in role order and
+// by id within a role, and tells the manager to plan independent work for them or leave them idle; "" when there are none.
+func unplannedLine(byRole map[string][]string) string {
+	var groups []string
+	first := ""
+	for _, r := range roleKeys(byRole) {
+		ids := slices.Clone(byRole[r])
+		if len(ids) == 0 {
+			continue
+		}
+		sort.Strings(ids)
+		if first == "" {
+			first = ids[0]
+		}
+		group := strings.Join(ids, ", ")
+		if r != "" {
+			group += " (" + r + ")"
+		}
+		groups = append(groups, group)
+	}
+	if len(groups) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("idle with nothing planned for them: %s: plan the next independent work for them (task create with file scopes "+
+		"disjoint from the open tasks, then spawn agent=%s task=<id>), or leave them idle if nothing independent remains",
+		strings.Join(groups, "; "), first)
 }
 
 // queuedLines tell the manager, per role and at most room lines, which ready tasks already wait in the spawn queue for a free member
