@@ -638,13 +638,21 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 			}
 		}
 		if s.Refuse != nil {
-			if out, why := refused(files, s.Refuse); len(out) > 0 {
+			out, why := refused(files, s.Refuse)
+			if out, why, err = changedFromTip(ctx, hist, prev, theirs, out, why); err != nil {
+				return nil, err
+			}
+			if len(out) > 0 {
 				res.Files = out
 				return q.reject(res, fmt.Sprintf("changed %d file(s) it may not change: %s", len(out), strings.Join(firstN(why, 8), "; "))), nil
 			}
 		}
 		if s.EnforceScope && len(s.Scope) > 0 {
-			if out := OutOfScopeForMerge(files, s.Scope); len(out) > 0 {
+			out := OutOfScopeForMerge(files, s.Scope)
+			if out, _, err = changedFromTip(ctx, hist, prev, theirs, out, nil); err != nil {
+				return nil, err
+			}
+			if len(out) > 0 {
 				res.Files = out
 				return q.reject(res, fmt.Sprintf("changed %d file(s) outside its scope: %s", len(out), strings.Join(firstN(out, 8), ", "))), nil
 			}
@@ -812,6 +820,37 @@ func (q *Queue) publish(ctx context.Context, after, prev, agent string) error {
 		return fmt.Errorf("workspace: the integration branch moved underneath the queue: %w", err)
 	}
 	return fmt.Errorf("workspace: publishing the integration branch failed: %w", err)
+}
+
+// changedFromTip keeps the files (and their reasons, when why is given) whose content in theirs
+// differs from the tip's. A submission that changed a file only to what the integration branch
+// already holds, as when a formatter rewrote code the tip had already reformatted, changes
+// nothing there when merged, so that file does not count against its scope.
+func changedFromTip(ctx context.Context, hist *gitx.Repo, tip, theirs string, files, why []string) ([]string, []string, error) {
+	if len(files) == 0 {
+		return files, why, nil
+	}
+	d, err := hist.Diff(ctx, tip, gitx.DiffOptions{To: theirs, Paths: files, NoPatch: true, MaxFiles: 1 << 20})
+	if err != nil {
+		return nil, nil, err
+	}
+	differ := map[string]bool{}
+	for _, f := range d.Files {
+		differ[f.Path] = true
+		if f.OldPath != "" {
+			differ[f.OldPath] = true
+		}
+	}
+	var keep, keepWhy []string
+	for i, f := range files {
+		if differ[f] {
+			keep = append(keep, f)
+			if why != nil {
+				keepWhy = append(keepWhy, why[i])
+			}
+		}
+	}
+	return keep, keepWhy, nil
 }
 
 // refused asks refuse about each file once and returns, sorted by path, the files it
