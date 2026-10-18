@@ -1573,3 +1573,39 @@ func TestWhatAnAgentCommitsItselfMeetsTheSameGuards(t *testing.T) {
 		t.Fatalf("with the size limit disabled: %+v", r)
 	}
 }
+
+// A file a submission changed only to what the tip already holds does not count against its scope or its refused files:
+// b, branched before a reformatted the shared file, ran the same formatter on it. A different change to that file still
+// rejects b.
+func TestQueueScopeIgnoresChangesTheTipAlreadyHolds(t *testing.T) {
+	e := newQueueEnv(t, QueueOptions{})
+	a, b, c := e.agent("a"), e.agent("b"), e.agent("c")
+	edit(t, a, "store/lib.rs", "fn formatted() {}\n")
+	if r := e.submit(a, "a"); !r.Merged() {
+		t.Fatalf("a: %+v", r)
+	}
+	refuse := func(p string) string {
+		if strings.HasPrefix(p, "store/") {
+			return p + " belongs to the store task"
+		}
+		return ""
+	}
+	scope := []string{"api/**"}
+	edit(t, b, "store/lib.rs", "fn formatted() {}\n")
+	edit(t, b, "api/server.rs", "fn serve() {}\n")
+	if r := mustSubmit(t, e.q, Submission{Tree: b, Task: "b", Scope: scope, EnforceScope: true, Refuse: refuse}); !r.Merged() {
+		t.Fatalf("a change the tip already holds bounced b: %+v", r)
+	}
+
+	edit(t, c, "store/lib.rs", "fn other() {}\n")
+	edit(t, c, "api/client.rs", "fn call() {}\n")
+	r := mustSubmit(t, e.q, Submission{Tree: c, Task: "c", Scope: scope, EnforceScope: true})
+	if r.Outcome != OutcomeRejected || r.Reason != "changed 1 file(s) outside its scope: store/lib.rs" {
+		t.Fatalf("a different change outside the scope: %+v", r)
+	}
+	r = mustSubmit(t, e.q, Submission{Tree: c, Task: "c", Refuse: refuse})
+	if r.Outcome != OutcomeRejected || r.Reason != "changed 1 file(s) it may not change: store/lib.rs belongs to the store task" {
+		t.Fatalf("a different change to a refused file: %+v", r)
+	}
+	e.integrationClean()
+}
