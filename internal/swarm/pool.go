@@ -321,8 +321,13 @@ func (s *Swarm) spareMembers(req SpawnReq, all []*member) ([]*member, map[string
 
 // poolKeeps reports whether the open pooled parent t keeps its member from another parent of the role: a pool still agreeing on
 // its plan keeps every member, an executing one its leader and the members that own an open subtask of it (ownsChild). It is the
-// rule spareMembers applies, and the one the manager's live view applies before it offers an idle member (staffingLines).
+// rule spareMembers applies, and the one the manager's live view applies before it offers an idle member (staffingLines). A parent
+// that is not running (todo after a resume, waiting to be started again) keeps only its leader and the owners of its open subtasks:
+// in a resumed run a planning pool that nobody restarted held every backend member, and an urgent parent queued behind it for an hour.
 func poolKeeps(t Task, member string, ownsChild bool) bool {
+	if t.Status == StatusTodo {
+		return t.Owner == member || ownsChild
+	}
 	return t.Pool.Phase != "executing" || t.Owner == member || ownsChild
 }
 
