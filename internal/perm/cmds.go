@@ -49,6 +49,12 @@ func analyseSafe(prog string, args []string) safeAnalysis {
 		if sa := analyseNpm(args); sa.ok || sa.why != unlisted {
 			return sa
 		} // npm --version is a version probe, below
+	case "cargo":
+		return analyseCargo(args)
+	case "rustc":
+		return analyseRustc(args)
+	case "rustup":
+		return analyseRustup(args)
 	case "for":
 		// shellparse reports the word list of a for/select loop as this
 		// pseudo-command. The loop only walks the names, so links are not
