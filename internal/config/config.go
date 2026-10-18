@@ -263,6 +263,12 @@ type Swarm struct {
 	// (docs/SWARM-PROTOCOL.md). Nil is true; it applies only to a team with a docs
 	// slot. --auto-docs=false turns it off for one session.
 	AutoDocs *bool `json:"auto_docs,omitempty"`
+	// PushProgress pushes a worktree-isolated team's integration branch to the
+	// checkout's push remote after every merge (branch sleipnir/<session>/_integration),
+	// so verified work survives the loss of the machine before the run ends. Nil is
+	// true; it does nothing without a push remote. It only ever writes that branch of
+	// the harness's own namespace, never one of the person's.
+	PushProgress *bool `json:"push_progress,omitempty"`
 	// BudgetUSD is the most a swarm run may spend, retired agents included; 0 is no
 	// limit. It defaults to DefaultSwarmBudgetUSD, a safety net: a swarm can spend many
 	// times what one agent does, and a budget that is off by default is one nobody

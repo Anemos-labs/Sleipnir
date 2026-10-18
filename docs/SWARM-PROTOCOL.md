@@ -956,6 +956,14 @@ remains and closes the temporary integration tree. Worker trees and the original
 and integration references remain available for `--resume`. The CLI prints the report
 (`integration: ...`, and under `"integration"` in `--json`).
 
+**Pushing progress.** With `swarm.push_progress` (default true) every move of the integration branch is pushed, in the
+background, to the checkout's push remote (the branch's push remote, else `origin`) as the branch
+`sleipnir/<session>/_integration`, so verified work survives the loss of the machine long before the run ends. Pushes run
+one at a time and coalesce to the newest tip; they use the person's own git credentials, never prompt, skip `pre-push`
+hooks, and never write any branch but that one. The first push and a push that recovers are announced at level `delivery`;
+a failure is announced once (level `warn`) and retried after the next merge; every attempt is logged (`swarm.progress_push`).
+A resumed session pushes its tip at start. Without a push remote nothing is pushed.
+
 **Recovery.** A stopped or killed session keeps its worker trees, including uncommitted
 edits. Startup cleanup skips namespaces with a `sleipnir/<session>/_resume` recovery
 reference, as well as trees whose owners are alive or cannot be verified as stopped.
