@@ -259,7 +259,7 @@ func (a *Agent) Restore(s Snapshot) error {
 	}
 	a.resyncHotLocked()
 	a.emit(events.TypeAgentRestore, map[string]any{
-		"turns": len(s.Turns), "requests": s.Requests, "spine": s.Spine != nil, "notes": s.Notes != nil,
+		"turns": len(s.Turns), "requests": s.Requests, "spine": s.Spine != nil, "notes": s.Notes != nil, "model": a.cfg.Model.ID,
 	})
 	return nil
 }

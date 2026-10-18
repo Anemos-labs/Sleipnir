@@ -362,10 +362,12 @@ type ModeRequest struct {
 	Mode string `json:"mode"`
 }
 
-// ModelRequest sets the manager's model (Role empty or "manager") or a role's (a team restarts that role).
+// ModelRequest sets the manager's model (Role empty or "manager") or a role's (a team restarts that role). Roles, when it names any,
+// changes several at once instead of Ref and Role: role to model, "manager" for the team's model, all applied by one restart.
 type ModelRequest struct {
-	Ref  string `json:"ref"`
-	Role string `json:"role,omitempty"`
+	Ref   string            `json:"ref,omitempty"`
+	Role  string            `json:"role,omitempty"`
+	Roles map[string]string `json:"roles,omitempty"`
 }
 
 // EffortRequest sets the reasoning effort.
