@@ -10,6 +10,9 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+// dirLocks says whether lockDir excludes other processes.
+const dirLocks = true
+
 // lockDir excludes other writers for the lifetime of the open lock handle.
 // Acquisition never waits, and the operating system releases the lock if the
 // process dies. The returned release function is safe to call more than once.

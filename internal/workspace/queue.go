@@ -339,7 +339,7 @@ func (m *Manager) removeStaleIntegration(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	owner := mk.owner()
+	owner := m.ownerOf(mk)
 	if !mk.Integration || owner == ownerAlive {
 		return fmt.Errorf("%w: the integration tree at %s belongs to a running session", ErrExists, dest)
 	}

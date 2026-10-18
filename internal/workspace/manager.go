@@ -81,6 +81,12 @@ type Manager struct {
 	MaxFileBytes int64
 	// MaxDiffBytes bounds Tree.Diff (default 64 MiB).
 	MaxDiffBytes int
+	// Exclusive says the caller holds a lock that no other process can hold at the
+	// same time for this Prefix, such as the session directory's lock. A tree under
+	// exactly this Prefix whose owner cannot be verified (recorded before a reboot or
+	// a container restart) then belongs to an earlier run of the same session, which
+	// has stopped, and is adopted or cleared as if its owner were known to be gone.
+	Exclusive bool
 	// OnEvent receives workspace events (optional).
 	OnEvent EventFunc
 	// Clock supplies commit times (default time.Now); tests pin it.
@@ -495,7 +501,7 @@ func (m *Manager) reclaimStale(ctx context.Context, agent, dest, branch string) 
 		// A missing directory: ours to clear only if its marker says so and its owner
 		// is gone.
 		mk := m.markerForPath(w.Path)
-		if mk == nil || !m.ownsMarker(mk) || mk.owner() != ownerDead {
+		if mk == nil || !m.ownsMarker(mk) || m.ownerOf(mk) != ownerDead {
 			return fmt.Errorf("%w: %s is registered at %s (missing) and is not ours to clear", ErrExists, nameOr(branch, dest), w.Path)
 		}
 		if err := m.st.base.WorktreeRemove(ctx, w.Path, true); err != nil {
@@ -575,7 +581,7 @@ func (m *Manager) adopt(ctx context.Context, agent, dest, base string) (*Tree, e
 	if mk.Agent != agent || mk.Integration {
 		return nil, ErrExists
 	}
-	owner := mk.owner()
+	owner := m.ownerOf(mk)
 	if owner == ownerUnknown {
 		return nil, ErrExists
 	}
@@ -651,6 +657,16 @@ type Info struct {
 	// Prunable is set when the tree's directory no longer exists.
 	Prunable bool
 	Created  time.Time
+}
+
+// ownerOf is mk.owner, with an owner that cannot be verified counted as gone when
+// the tree is in this manager's own namespace and the caller holds it exclusively.
+func (m *Manager) ownerOf(mk *marker) ownerState {
+	st := mk.owner()
+	if st == ownerUnknown && m.Exclusive && mk.Prefix == m.st.prefix {
+		return ownerDead
+	}
+	return st
 }
 
 // List returns the trees under this manager's prefix and directory, whoever

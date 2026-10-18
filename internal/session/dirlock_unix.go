@@ -11,6 +11,9 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// dirLocks says whether lockDir excludes other processes.
+const dirLocks = true
+
 // lockDir takes an exclusive advisory lock on a session directory for the life of
 // the process, so that two processes cannot append to one event log (resuming a
 // session that is still running elsewhere would interleave two histories under
