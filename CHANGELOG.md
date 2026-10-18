@@ -7,6 +7,19 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A new project is presented by default. "Build to ship" gains "Presented":
+  a new project is a git repository with a `.gitignore`, CI that runs the
+  build, tests and linters, and a README with install and quick start,
+  screenshots of the running product (or real sample output for a program
+  without a screen) and measured numbers with the command behind each. The
+  manager plans CI and the README as tasks of their own, the docs role
+  captures the screenshots and numbers, and the goal judge holds a new
+  product to the same presentation unless the goal asks for something
+  minimal, a prototype, or rules it out. Prompt bytes: the constitution
+  grows by about 165 tokens (solo 4560, swarm 4996), the manager and docs
+  role pins and the judge's system text change; each is written to the
+  cache once.
+
 - In the browser, model changes on Settings › Roles & effort and Settings ›
   Models wait in a bar until Apply sends them together: a team starts again
   once for any number of roles, and editing goes on while it restarts.
