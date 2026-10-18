@@ -500,3 +500,39 @@ func TestNearCommandOffersTheRealOne(t *testing.T) {
 		t.Errorf("nearCommand(xyzzy) = %q, want nothing", got)
 	}
 }
+
+// A custom team keeps its number of workers when a role's model changes: each slot of the role moves to the new model.
+func TestRoleChangeKeepsTheSlotsOfACustomTeam(t *testing.T) {
+	t.Setenv("TOGETHER_API_KEY", "test")
+	team := []session.TeamSlot{
+		{Role: "architect"}, {Role: "scout"}, {Role: "backend", Model: "together/a"}, {Role: "backend", Model: "together/b"},
+		{Role: "backend"}, {Role: "frontend"}, {Role: "devops"}, {Role: "tester"}, {Role: "docs"}, {Role: "reviewer"},
+	}
+	s := chatSessionWith(t, false, nil, func(o *session.Options) {
+		o.Swarm, o.Workers, o.Team = true, len(team), team
+	}, nil)
+	args, err := restartArgs(s, []string{"--role-model", "backend=together/c"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := parseChatFlags(args)
+	if err != nil {
+		t.Fatalf("the restart's own arguments do not parse: %v\n%v", err, args)
+	}
+	slots := f.team
+	if len(slots) != len(team) {
+		t.Fatalf("the team has %d slots after the change, want %d: %v", len(slots), len(team), args)
+	}
+	backends := 0
+	for _, sl := range slots {
+		if sl.Role == "backend" {
+			backends++
+			if sl.Model != "together/c" {
+				t.Errorf("a backend slot kept %q, want together/c", sl.Model)
+			}
+		}
+	}
+	if backends != 3 {
+		t.Errorf("backends = %d, want 3: %v", backends, args)
+	}
+}
