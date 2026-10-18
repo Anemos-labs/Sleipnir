@@ -192,8 +192,13 @@ func (s *Swarm) staffingLines(snap *Snapshot) []string {
 		queued[id] = true
 	}
 	s.mu.Unlock()
-	for r, ids := range idle {
-		idle[r] = slices.DeleteFunc(ids, func(id string) bool { return poolHolder(snap, id) != "" })
+	held := map[string]string{} // idle member -> the parent whose pool keeps it
+	for _, ids := range idle {
+		for _, id := range ids {
+			if h := poolHolder(snap, id); h != "" {
+				held[id] = h
+			}
+		}
 	}
 	var ready []Task
 	waiting := map[string][]string{} // role -> ready tasks already queued for a free member of it
@@ -211,11 +216,19 @@ func (s *Swarm) staffingLines(snap *Snapshot) []string {
 		ready = append(ready, t)
 	}
 	var out []string
+	roleLines := 0
 	if len(ready) > 0 {
-		out = offerLines(ready, idle, slots, used, order)
+		out, roleLines = offerLines(ready, idle, held, slots, used, order)
 	}
+	return append(out, queuedLines(waiting, maxStaffingLines-roleLines)...)
+}
+
+// queuedLines tell the manager, per role and at most room lines, which ready tasks already wait in the spawn queue for a free member
+// of that role, so it waits instead of spawning them again.
+func queuedLines(waiting map[string][]string, room int) []string {
+	var out []string
 	for _, r := range roleKeys(waiting) {
-		if len(out) > maxStaffingLines {
+		if len(out) >= room {
 			break
 		}
 		who := "member"
@@ -229,8 +242,11 @@ func (s *Swarm) staffingLines(snap *Snapshot) []string {
 }
 
 // offerLines are the live-view lines that offer capacity for the ready tasks no one has and no spawn waits for: the free slots, and
-// per role the idle members free to take one now.
-func offerLines(ready []Task, idle map[string][]string, slots, used map[string]int, order []string) []string {
+// per role the idle members free to take one now. held maps an idle member to the parent whose pool keeps it: such a member is offered
+// only that parent, and only when it is one of the ready tasks (a parent returned to the board keeps its pool, and spawn reuses it),
+// never another task. It returns the lines and how many of them are per-role lines, the count maxStaffingLines bounds; the free-slot
+// line is outside the bound.
+func offerLines(ready []Task, idle map[string][]string, held map[string]string, slots, used map[string]int, order []string) ([]string, int) {
 	var free []string
 	nfree := 0
 	for _, r := range order {
@@ -245,24 +261,45 @@ func offerLines(ready []Task, idle map[string][]string, slots, used map[string]i
 			nfree, strings.Join(free, ", "), len(ready)))
 	}
 	byRole := map[string][]string{}
+	isReady := map[string]bool{}
 	for _, t := range ready {
 		if t.Role != "" {
 			byRole[t.Role] = append(byRole[t.Role], t.ID)
+			isReady[t.ID] = true
 		}
 	}
+	roleLines := 0
 	for _, r := range roleKeys(byRole) {
-		if len(out) > maxStaffingLines {
-			break
+		var spare []string
+		own := map[string][]string{} // ready parent -> idle members its own pool keeps
+		for _, id := range idle[r] {
+			switch h := held[id]; {
+			case h == "":
+				spare = append(spare, id)
+			case isReady[h]:
+				own[h] = append(own[h], id)
+			}
 		}
-		ids := idle[r]
-		if len(ids) == 0 {
+		for _, p := range roleKeys(own) {
+			if roleLines >= maxStaffingLines {
+				break
+			}
+			ids := own[p]
+			sort.Strings(ids)
+			out = append(out, fmt.Sprintf("%s idle in the pool of %s (%s), which can start: give it the task now (spawn agent=%s task=%s)",
+				strings.Join(ids, ", "), p, r, ids[0], p))
+			roleLines++
+		}
+		tasks := slices.DeleteFunc(slices.Clone(byRole[r]), func(id string) bool { return len(own[id]) > 0 })
+		if len(spare) == 0 || len(tasks) == 0 || roleLines >= maxStaffingLines {
 			continue
 		}
-		sort.Strings(ids)
+		sort.Strings(spare)
 		out = append(out, fmt.Sprintf("%s idle while %s (%s) can start: give it the task now (spawn agent=%s task=%s)",
-			strings.Join(ids, ", "), strings.Join(byRole[r], ", "), r, ids[0], byRole[r][0]))
+			strings.Join(spare, ", "), strings.Join(tasks, ", "), r, spare[0], tasks[0]))
+		roleLines++
 	}
-	return out
+	return out, roleLines
 }
 
 // roleKeys returns the keys (roles) of m in order.

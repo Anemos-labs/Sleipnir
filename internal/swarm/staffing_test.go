@@ -419,3 +419,47 @@ func TestTheLiveViewDoesNotOfferPoolHeldMembersOrQueuedTasks(t *testing.T) {
 		t.Errorf("live view lines %q lack %q", got, want)
 	}
 }
+
+// A ready parent that kept its pool (returned to the board, spawn reuses its members) is offered its own idle members, and only it:
+// members other pools keep are not offered, and a free member is offered a ready task that has no idle pool of its own.
+func TestTheLiveViewOffersAReadyParentItsOwnPool(t *testing.T) {
+	ready := []Task{{ID: "T1", Role: "backend"}, {ID: "T2", Role: "backend"}}
+	idle := map[string][]string{"backend": {"be-3", "be-1", "be-2", "be-4"}}
+	held := map[string]string{"be-1": "T1", "be-2": "T1", "be-3": "T9"}
+	slots, used := map[string]int{"backend": 4}, map[string]int{"backend": 4}
+	got, n := offerLines(ready, idle, held, slots, used, []string{"backend"})
+	want := []string{
+		"be-1, be-2 idle in the pool of T1 (backend), which can start: give it the task now (spawn agent=be-1 task=T1)",
+		"be-4 idle while T2 (backend) can start: give it the task now (spawn agent=be-4 task=T2)",
+	}
+	if !slices.Equal(got, want) || n != 2 {
+		t.Errorf("offerLines = %q (%d role lines), want %q", got, n, want)
+	}
+}
+
+// The per-role lines stay within maxStaffingLines whatever mix of offers and queued notices fills them; the free-slot line is outside
+// the bound.
+func TestTheStaffingLinesStayWithinTheirBound(t *testing.T) {
+	var ready []Task
+	idle := map[string][]string{}
+	var order []string
+	for _, r := range []string{"a", "b", "c", "d"} {
+		ready = append(ready, Task{ID: "T" + r, Role: r})
+		idle[r] = []string{r + "-1"}
+		order = append(order, r)
+	}
+	got, n := offerLines(ready, idle, nil, map[string]int{"a": 2}, map[string]int{"a": 1}, order)
+	if n != maxStaffingLines || len(got) != maxStaffingLines+1 {
+		t.Fatalf("offerLines = %q (%d role lines), want the free-slot line and %d role lines", got, n, maxStaffingLines)
+	}
+	if got, n := offerLines(ready, idle, nil, nil, nil, order); n != maxStaffingLines || len(got) != maxStaffingLines {
+		t.Fatalf("offerLines with no free slot = %q (%d role lines), want %d", got, n, maxStaffingLines)
+	}
+	waiting := map[string][]string{"x": {"T7"}, "y": {"T8"}}
+	if q := queuedLines(waiting, maxStaffingLines-n); len(q) != 0 {
+		t.Errorf("queued notices %q past a full bound", q)
+	}
+	if q := queuedLines(waiting, 1); len(q) != 1 || !strings.HasPrefix(q[0], "T7 queued for the next free x member") {
+		t.Errorf("queuedLines with room for one = %q", q)
+	}
+}
