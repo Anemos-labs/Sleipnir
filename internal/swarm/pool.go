@@ -843,7 +843,7 @@ func poolScope(p, t Task) error {
 		}
 		for _, f := range t.Files {
 			if !scopeContains(p.Files, f) {
-				return fmt.Errorf("child scope %s is outside the scope of its parent %s (%s)", f, p.ID, strings.Join(p.Files, ", "))
+				return fmt.Errorf("child scope %s is outside the scope of its parent %s (%s): widen the parent first (task update id=%s files=...), then the child", f, p.ID, strings.Join(p.Files, ", "), p.ID)
 			}
 		}
 	}
