@@ -98,7 +98,11 @@ Once all children are accepted, `pool reconcile` assembles the result. Its optio
 `text` replaces the initial plan with the combined contract that all members confirm. In isolated
 runs each member calls `pool inspect` to update its tree, examines the combined
 result, then calls `pool confirm`. Every member must confirm before the parent can
-be submitted and accepted. A newer change that may touch the pool's files invalidates
+be submitted and accepted. When every child of an executing pool is accepted or
+waiting in review and its leader is idle, the harness sends the leader one request:
+accept the children still in review, reconcile, have the members confirm, and submit.
+It is sent again only after a child, the pool's assignment or its revision changes,
+not for each idle turn. A newer change that may touch the pool's files invalidates
 reconciliation: an accepted task or a revised one whose scope overlaps the pool's, a
 direct manager edit of one of its files, or a change whose files are not known. A
 change elsewhere in the tree leaves it current. A restored team reconciles again.
@@ -125,6 +129,9 @@ checkout fast-forwards to the verified integration commits. This operation creat
 no board task. It retains explicit permission rules, refuses unrelated dirty files
 or a changed branch, and rechecks the integration snapshot after authorization.
 Workers cannot invoke it. Push and PR commands remain direct manager operations.
+Between model steps the manager's checkout is submitted to the merge queue only when it
+holds uncommitted changes or commits the integration branch does not contain; a checkout
+that only carries already-integrated work is synced, not submitted.
 
 **Repair.** Configured teams do not expire idle contexts or exhaust a task's total
 repair attempts. Failed assignments return to the same worker with bounded backoff:

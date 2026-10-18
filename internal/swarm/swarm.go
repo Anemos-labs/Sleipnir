@@ -279,6 +279,11 @@ type Swarm struct {
 	spawnMu  sync.Mutex // serialises admission: spawn, reuse and the limits they enforce
 	sharedMu sync.Mutex // serialises SetShared
 
+	// poolWoken maps a pool task to the state of its children its idle leader was last woken for (poolWakeTick); guarded by
+	// poolWakeMu.
+	poolWakeMu sync.Mutex
+	poolWoken  map[string]string
+
 	mu      sync.Mutex
 	retryAt map[string]time.Time   // supervisor-owned repair backoff
 	queued  map[string]queuedSpawn // parents waiting for a free member of their role (spawnqueue.go), by task id; guarded by mu
