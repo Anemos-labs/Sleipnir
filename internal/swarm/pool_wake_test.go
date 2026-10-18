@@ -68,8 +68,8 @@ func acceptAs(t *testing.T, r *rvRig, as, role, id string) {
 }
 
 // An executing pool whose children are all accepted while its leader is idle wakes the leader to reconcile and submit, once per
-// state of the children. In a live run three backend pools stayed executing for an hour, each leader idle with every child merged,
-// and the work queued for a free backend member never started.
+// state of the children. Without the wake the pool stays executing with its leader idle, and work queued for a free member of its
+// role never starts.
 func TestAnIdleLeaderIsWokenWhenItsPoolsChildrenSettle(t *testing.T) {
 	r, parent, lead, other := executingPool(t)
 	settle := func() {
