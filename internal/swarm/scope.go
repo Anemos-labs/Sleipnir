@@ -141,10 +141,11 @@ func segments(p string) (segs []string, abs bool) {
 		return []string{"**"}, abs
 	}
 	segs = strings.Split(p, "/")
-	if last := segs[len(segs)-1]; last != "**" && strings.HasSuffix(last, "**") {
+	last := segs[len(segs)-1]
+	if name := strings.TrimSuffix(last, "**"); name != last && name != "" && !hasMeta(name) {
 		// "crates/api**" means the directory and what lies below it; inside one
 		// segment "**" would act as "*" and match no file below it.
-		segs[len(segs)-1] = strings.TrimRight(last, "*") + "*"
+		segs[len(segs)-1] = name + "*"
 		segs = append(segs, "**")
 	} else if last != "**" && !hasMeta(last) {
 		segs = append(segs, "**")

@@ -120,6 +120,8 @@ func TestScopeTables(t *testing.T) {
 		{"crates/api**", "crates/api/src/auth.rs", true},
 		{"crates/api**", "crates/api", true},
 		{"crates/api**", "crates/web/x.rs", false},
+		{"src/***", "src/private/secret", false}, // only a plain name before "**" widens
+		{"src/a*b**", "src/a1b/x.go", false},
 	}
 	for _, tc := range match {
 		if got := scopeMatch(tc.scope, tc.path); got != tc.want {
