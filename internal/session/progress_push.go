@@ -58,11 +58,12 @@ func clipText(s string, n int) string {
 }
 
 // pushRemote is the remote the checkout's branch pushes to: its configured push
-// remote, else "origin" when that exists; "" when there is none.
+// remote (not ".", the repository itself), else "origin" when that exists; "" when
+// there is none.
 func pushRemote(ctx context.Context, git gitRunner, branch string) string {
 	if branch != "" {
 		if out, err := git(ctx, "for-each-ref", "--format=%(push:remotename)", "refs/heads/"+branch); err == nil {
-			if r := strings.TrimSpace(string(out)); r != "" && !strings.ContainsAny(r, " \n/") {
+			if r := strings.TrimSpace(string(out)); r != "" && r != "." && !strings.ContainsAny(r, " \n/") {
 				return r
 			}
 		}
@@ -159,7 +160,8 @@ func (p *progressPusher) push(tip string) error {
 	return err
 }
 
-// Wait returns when no push is running, or when ctx ends.
+// Wait returns when no push is running, or when ctx ends. An early return says
+// nothing about the push in flight: it runs on to its own timeout.
 func (p *progressPusher) Wait(ctx context.Context) {
 	if p == nil {
 		return

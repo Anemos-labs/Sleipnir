@@ -75,3 +75,16 @@ func TestProgressPusherReportsFailureOnceAndRetries(t *testing.T) {
 		t.Fatalf("pushed again: %v", pushed)
 	}
 }
+
+// A branch whose push remote is "." (the repository itself) falls back to origin.
+func TestPushRemoteIgnoresTheRepositoryItself(t *testing.T) {
+	git := func(ctx context.Context, args ...string) ([]byte, error) {
+		if args[0] == "for-each-ref" {
+			return []byte(".\n"), nil
+		}
+		return nil, nil
+	}
+	if got := pushRemote(context.Background(), git, "main"); got != "origin" {
+		t.Fatalf("remote %q, want origin", got)
+	}
+}
