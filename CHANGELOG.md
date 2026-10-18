@@ -7,6 +7,19 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A new project is presented by default. "Build to ship" gains "Presented":
+  a new project is a git repository with a `.gitignore`, CI that runs the
+  build, tests and linters, and a README with install and quick start,
+  screenshots of the running product (or real sample output for a program
+  without a screen) and measured numbers with the command behind each. The
+  manager plans CI and the README as tasks of their own, the docs role
+  captures the screenshots and numbers, and the goal judge holds a new
+  product to the same presentation unless the goal asks for something
+  minimal, a prototype, or rules it out. Prompt bytes: the constitution
+  grows by about 165 tokens (solo 4560, swarm 4996), the manager and docs
+  role pins and the judge's system text change; each is written to the
+  cache once.
+
 - A proxy that refuses the CONNECT to the endpoint for good (any status but
   407, which asks for credentials, and the gateway failures 502, 503 and 504,
   which are retried) is reported as "the proxy does not allow HOST", with the
