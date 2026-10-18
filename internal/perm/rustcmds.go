@@ -112,48 +112,26 @@ func analyseRustc(args []string) safeAnalysis {
 	return safeAnalysis{ok: true}
 }
 
-// analyseRustup allows the queries that list what is installed: the version, rustup show (and its active-toolchain, home and
-// profile forms), rustup toolchain list, and rustup target list and rustup component list with --installed. Every other
-// subcommand, a list without --installed (which fetches the release channel's manifest), a +toolchain selector and any other
-// option take the command off the list.
+// analyseRustup allows the version and rustup toolchain list, which reads the toolchains directory. Every subcommand that
+// resolves the active toolchain (rustup show and its forms, target list, component list) stays off the list: since rustup
+// 1.28.1 resolving a toolchain that rust-toolchain.toml pins and that is missing installs it, unless RUSTUP_AUTO_INSTALL=0.
+// A +toolchain selector and any other option take the command off the list too.
 func analyseRustup(args []string) safeAnalysis {
 	if rustVersionQuery(args) {
 		return safeAnalysis{ok: true}
 	}
 	var pos []string
-	installed, toolchain := false, false
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		name, _, hasVal := strings.Cut(a, "=")
+	for _, a := range args {
 		switch {
 		case inList([]string{"-v", "--verbose", "-q", "--quiet"}, a):
-		case a == "--installed":
-			installed = true
-		case name == "--toolchain":
-			if !hasVal {
-				if i+1 >= len(args) {
-					return safeAnalysis{why: "rustup --toolchain without a value"}
-				}
-				i++
-			}
-			toolchain = true
 		case strings.HasPrefix(a, "-") || strings.HasPrefix(a, "+"):
 			return safeAnalysis{why: "rustup with " + quote(a) + ": not on the read-only list"}
 		default:
 			pos = append(pos, a)
 		}
 	}
-	key := strings.Join(pos, " ")
-	switch key {
-	case "show", "show active-toolchain", "show home", "show profile", "toolchain list":
-		if !installed && !toolchain {
-			return safeAnalysis{ok: true}
-		}
-	case "target list", "component list":
-		if installed {
-			return safeAnalysis{ok: true}
-		}
-		return safeAnalysis{why: "rustup " + key + " without --installed fetches the release channel's manifest"}
+	if strings.Join(pos, " ") == "toolchain list" {
+		return safeAnalysis{ok: true}
 	}
 	return safeAnalysis{why: unlisted}
 }

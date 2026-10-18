@@ -3,16 +3,14 @@ package perm
 import "testing"
 
 // The Rust toolchain's own queries read: the versions of cargo, rustc and rustup, cargo metadata --no-deps, rustc --print and
-// rustup's listings of what is installed are allowed without a question in the default and accept-edits modes. The forms that
+// rustup toolchain list are allowed without a question in the default and accept-edits modes. The forms that
 // install, download, resolve dependencies, compile or write a file still ask, and a pipe into a write is judged as before.
 func TestRustToolchainQueriesAreReadOnly(t *testing.T) {
 	f := newFixture(t)
 	reads := []string{
 		"cargo --version", "cargo -V", "cargo -vV", "cargo --version --verbose",
 		"rustc --version", "rustc -V", "rustc -vV", "rustc --print sysroot", "rustc --print cfg --target x86_64-unknown-linux-gnu",
-		"rustc --print=target-list", "rustup --version", "rustup -V", "rustup show", "rustup show active-toolchain", "rustup show home",
-		"rustup toolchain list", "rustup toolchain list -v", "rustup target list --installed",
-		"rustup target list --installed --toolchain stable", "rustup component list --installed",
+		"rustc --print=target-list", "rustup --version", "rustup -V", "rustup toolchain list", "rustup toolchain list -v",
 		"cargo metadata --no-deps --format-version 1", "cargo metadata --no-deps --format-version=1 --offline",
 		"cargo metadata --format-version 1 --no-deps --manifest-path crates/a/Cargo.toml",
 		"cargo --version && rustc --version && rustup toolchain list",
@@ -21,7 +19,8 @@ func TestRustToolchainQueriesAreReadOnly(t *testing.T) {
 	asks := []string{
 		"rustup toolchain install stable", "rustup toolchain uninstall nightly", "rustup update", "rustup default nightly",
 		"rustup target add wasm32-unknown-unknown", "rustup component add clippy", "rustup target list", "rustup component list",
-		"rustup show --installed", "rustup toolchain list --toolchain x", "rustup +nightly show", "rustup run stable cargo build",
+		"rustup show", "rustup show active-toolchain", "rustup show home", "rustup target list --installed",
+		"rustup component list --installed", "rustup toolchain list --toolchain x", "rustup +nightly show", "rustup run stable cargo build",
 		"rustup self update", "rustup override set nightly",
 		"cargo metadata", "cargo metadata --format-version 1", "cargo metadata --offline --format-version 1",
 		"cargo metadata --no-deps --config 'build.rustc-wrapper=\"sh\"'", "cargo metadata --no-deps -Zunstable-options",
