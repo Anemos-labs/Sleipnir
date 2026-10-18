@@ -74,15 +74,17 @@ bpy.ops.export_scene.gltf(
 )
 ```
 
-5. Compress outside Blender, where the tools are better: `npx @gltf-transform/cli optimize in.glb out.glb
-   --compress meshopt --texture-compress webp`. Draco or Meshopt need the matching decoder on the page.
-6. Verify the file, not the intent: load it in the project's page (or `npx @google/model-viewer` locally / a three.js
-   test page), screenshot it in a browser, and read the screenshot. Check scale, orientation, materials and that
+5. Compress outside Blender, where the tools are better: `npx -y @gltf-transform/cli@4.5.1 optimize in.glb
+   out.glb --compress meshopt --texture-compress webp` (pin the version you tested). Draco or Meshopt need the matching decoder on the page.
+6. Verify the file, not the intent: load it in the project's page, or a small local test page that imports `<model-viewer>`
+   or three.js, screenshot it in a browser, and read the screenshot. Check scale, orientation, materials and that
    textures loaded.
 
-On the page, `<model-viewer>` is the simplest viewer:
+On the page, `<model-viewer>` is the simplest viewer. It is a web component: install `@google/model-viewer` and
+import it in the app's entry (`import "@google/model-viewer";`), or load its module script, pinned to a version:
 
 ```html
+<script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@4.4.0/dist/model-viewer.min.js"></script>
 <model-viewer src="models/product.glb" poster="img/product.webp" alt="..." camera-controls auto-rotate loading="lazy"></model-viewer>
 ```
 

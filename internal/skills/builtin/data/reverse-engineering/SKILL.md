@@ -57,7 +57,7 @@ return sources, conclusions and gaps.
 |---|---|
 | Website or web app | `reverse-engineering-ui`: screenshots at breakpoints, DOM and accessibility tree, computed styles, network (HAR), local storage keys |
 | Public or private HTTP API the user can use | record requests from the real client (browser devtools HAR, `mitmproxy` on a device you own), then write an OpenAPI description from the samples; mark fields seen once as uncertain |
-| Electron or other JavaScript desktop app | the app bundle holds `app.asar`; `npx @electron/asar extract app.asar out/`, then read `package.json`, the main and preload scripts, IPC channel names and source maps if shipped |
+| Electron or other JavaScript desktop app | the app bundle holds `app.asar`; `npx -y @electron/asar@4.3.1 extract app.asar out/`, then read `package.json`, the main and preload scripts, IPC channel names and source maps if shipped |
 | Browser extension | unpack the `.crx`/`.xpi` (zip), read `manifest.json` permissions, background and content scripts |
 | Android app | `apktool d app.apk` for the manifest and resources, `jadx` for readable Java/Kotlin |
 | iOS / macOS app | `Info.plist`, entitlements, `strings`, `otool -L` for linked frameworks, the bundle's resources |
@@ -79,7 +79,7 @@ from the route that matches the target, request summaries first, and cite the ev
 it, its CLI works for JavaScript and Electron trees with no setup beyond Node.js:
 
 ```bash
-npx -y rea-agents@latest analyze-javascript-application /absolute/path/to/app --json
+npx -y rea-agents@6.7.0 analyze-javascript-application /absolute/path/to/app --json
 ```
 
 To connect it for a later session, the user adds to `~/.sleipnir/config.json` (the tool list is fixed when a

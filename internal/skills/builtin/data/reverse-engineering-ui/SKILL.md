@@ -20,18 +20,24 @@ folder so it can be read back and cited.
 // capture.mjs: node capture.mjs https://example.com docs/research/example
 import { chromium } from "playwright";
 import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 const [url, out] = process.argv.slice(2);
 await fs.mkdir(out, { recursive: true });
+// Raw HARs can hold cookies, tokens and personal data: keep them outside the repository.
+const raw = await fs.mkdtemp(path.join(os.tmpdir(), "teardown-"));
 const browser = await chromium.launch();
 for (const [name, width] of [["mobile", 375], ["tablet", 768], ["desktop", 1440]]) {
-  const ctx = await browser.newContext({ viewport: { width, height: 900 }, recordHar: { path: `${out}/${name}.har`, content: "omit" } });
+  const ctx = await browser.newContext({ viewport: { width, height: 900 }, recordHar: { path: `${raw}/${name}.har`, content: "omit" } });
   const page = await ctx.newPage();
-  await page.goto(url, { waitUntil: "networkidle" });
+  await page.goto(url, { waitUntil: "domcontentloaded" });
+  await page.locator("main, [role=main], body").first().waitFor(); // wait for what the capture needs
   await page.screenshot({ path: `${out}/${name}.png`, fullPage: true });
   await fs.writeFile(`${out}/${name}.aria.yml`, await page.locator("body").ariaSnapshot());
   await ctx.close(); // writes the HAR
 }
 await browser.close();
+console.log(`raw HARs in ${raw}`);
 ```
 
 Read every screenshot you take: images are returned as images. Text dumps alone miss what a page looks like.
@@ -79,7 +85,8 @@ Pick your own fonts with similar metrics instead of shipping theirs.
 
 ## 4. Network and data
 
-Open the HARs (they are JSON). For each user action list the requests it makes: method, path pattern, query
+Open the raw HARs in the temporary directory (they are JSON) and never commit them; only the sanitized shapes go
+into the teardown folder. For each user action list the requests it makes: method, path pattern, query
 parameters, request and response shapes, status codes, caching headers, polling or WebSocket use. Write the shapes,
 not the values, and strip anything personal. These become the API your rebuild serves; design it cleanly rather
 than copying quirks you did not observe a reason for.
