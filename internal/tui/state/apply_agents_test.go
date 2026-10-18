@@ -621,3 +621,30 @@ func TestTheStateSaysSinceWhenARequestWentUnanswered(t *testing.T) {
 		t.Errorf("ReqSince = %v after the answer, want none", a.ReqSince)
 	}
 }
+
+// The model an agent shows is the one it runs on now: a main request after a switch moves it, a side request (a compaction on another
+// model) does not, and a restore after a restart says the model the agent came back on.
+func TestAnAgentShowsTheModelItRunsOnNow(t *testing.T) {
+	b := newB()
+	st := New()
+	apply(t, st, b.Emit("", events.TypeSessionStart, startPayload(nil)))
+	apply(t, st, b.Request("w-1", "w-1.1", "old", "pk", secShared()))
+	apply(t, st, b.Request("w-1", "w-1.2", "new", "pk", secShared()))
+	if m := agentOf(t, st.Snapshot(), "w-1").Model; m != "new" {
+		t.Errorf("after a main request on another model the agent shows %q", m)
+	}
+	side := statetestSide("w-1", "w-1.c1")
+	side["model"] = "compactor-model"
+	apply(t, st, b.Emit("w-1", events.TypeModelRequest, side))
+	if m := agentOf(t, st.Snapshot(), "w-1").Model; m != "new" {
+		t.Errorf("a side request moved the agent's model to %q", m)
+	}
+	apply(t, st, b.Emit("w-1", events.TypeAgentRestore, map[string]any{"turns": 3, "requests": 2, "model": "restarted"}))
+	if m := agentOf(t, st.Snapshot(), "w-1").Model; m != "restarted" {
+		t.Errorf("after a restore on another model the agent shows %q", m)
+	}
+	apply(t, st, b.Emit("w-1", events.TypeAgentRestore, map[string]any{"turns": 3, "requests": 2}))
+	if m := agentOf(t, st.Snapshot(), "w-1").Model; m != "restarted" {
+		t.Errorf("a restore that names no model changed it to %q", m)
+	}
+}

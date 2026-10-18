@@ -36,6 +36,7 @@ type startSpec struct {
 	note        string   // a row shown once the session has started
 	integration string   // how the previous generation's isolated run ended
 	restart     bool     // a restart: the new generation says so
+	carry       carryOn  // what the previous generation was doing that the next one takes up again
 	first       bool     // the first tab of the server: if it cannot start, it is removed
 	// trusted is the footprint of the project's files that the person confirmed with this start (the New session dialog's trust
 	// step); nil when there was none.
@@ -302,7 +303,49 @@ func (t *webTab) afterStart(s *session.Session, spec startSpec) {
 			t.sys("⚠", "could not start goal: "+err.Error())
 		}
 	}
+	t.carryOn(s, spec.carry)
 }
+
+// carryOn takes up again what the previous generation was doing (a restart for a change of models): the goal that was active is
+// resumed, a turn that was running is followed by one that tells the agent to go on. Nothing waits for the person to resume it.
+func (t *webTab) carryOn(s *session.Session, c carryOn) {
+	switch {
+	case c.goal:
+		if g := t.goals.State(); g == nil || g.Paused == "" {
+			return
+		}
+		if _, err := t.goalAction(t.ctx, s, wire.GoalRequest{Action: "resume"}, false); err != nil {
+			t.sys("⚠", "could not resume the goal: "+err.Error())
+			return
+		}
+		t.sys("↺", "the goal goes on: it was active when the models changed")
+	case c.turn && s.Resumed():
+		text := carryOnText
+		if s.Swarm != nil {
+			text += carryOnTeam
+		}
+		if _, _, _, err := t.enqueue(queued{text: "go on after the restart", prompt: text}); err != nil {
+			return
+		}
+		t.sys("↺", "the team goes on: it was working when the models changed")
+	}
+}
+
+// carryOn is what a restart for a change of settings (a model, a role's model) takes up again in the next generation: the goal that was
+// active, or the turn that was running. Any other restart leaves the goal paused and the team waiting, as a resumed session does.
+type carryOn struct {
+	goal bool // a goal was active: it is resumed
+	turn bool // a turn or a worker was running, with no active goal: the agent is told to go on
+}
+
+// restartCarries are the restart kinds that change only what the agents run on: the work they were doing goes on after them.
+var restartCarries = map[string]bool{"model": true, "roles": true}
+
+// carryOnText is the message that sends the agent on after a restart for a change of models, when no goal does.
+const carryOnText = "The session was started again to change the models the agents run on, and your conversation carried over. Go on with the work you were doing."
+
+// carryOnTeam is what carryOnText adds for a team's manager.
+const carryOnTeam = " The board carried over too: tasks that were in progress are back in todo, so assign them again."
 
 // restartTyped is the restart request as the flags a person would type after /restart, and whether the chat starts empty: /new and
 // /clear always do; /swarm, Run settings Apply and "run it again" carry the conversation unless the request says fresh.
@@ -330,6 +373,9 @@ func restartTyped(req wire.RestartRequest) (typed []string, fresh bool, err erro
 	case "roles":
 		if len(req.RoleModels) == 0 {
 			return nil, false, werr(http.StatusBadRequest, "bad_flags", "a roles restart names a role and its model")
+		}
+		if m := strings.TrimSpace(req.Model); m != "" {
+			typed = append(typed, "--model", m) // the team's model with the roles', in the same restart
 		}
 		roles := make([]string, 0, len(req.RoleModels))
 		for r := range req.RoleModels {
@@ -456,6 +502,12 @@ func (t *webTab) restart(ctx context.Context, kind string, typed []string, fresh
 	if err := authorize(ctx, restartScope(t.id, p), p.reasons()); err != nil {
 		return err
 	}
+	var carry carryOn
+	if restartCarries[kind] && !fresh && s != nil {
+		g := t.goals.State()
+		carry.goal = g != nil && g.Paused == ""
+		carry.turn = !carry.goal && t.busy()
+	}
 	t.mu.Lock()
 	if t.restarting || t.starting || t.closed {
 		t.mu.Unlock()
@@ -470,7 +522,7 @@ func (t *webTab) restart(ctx context.Context, kind string, typed []string, fresh
 	t.queue = nil
 	t.mu.Unlock()
 	webAction(s, "restart", kind+" "+commandLine(args))
-	t.h.track(func() { t.doRestart(s, args) })
+	t.h.track(func() { t.doRestart(s, args, carry) })
 	return nil
 }
 
@@ -511,8 +563,8 @@ func (t *webTab) checkResumeTarget(spec, dir string, s *session.Session) error {
 	return nil
 }
 
-// doRestart ends the current generation and starts the next.
-func (t *webTab) doRestart(old *session.Session, args []string) {
+// doRestart ends the current generation and starts the next, which takes up again what carry says.
+func (t *webTab) doRestart(old *session.Session, args []string, carry carryOn) {
 	t.sys("↺", "restarting: sleipnir chat "+commandLine(args))
 	if old != nil && old.WorktreeIsolation() {
 		t.sys("◇", "closing the run first: its verified work is applied to your checkout (this can take a few minutes)")
@@ -543,7 +595,7 @@ func (t *webTab) doRestart(old *session.Session, args []string) {
 	if oldTr != nil {
 		oldTr.Close()
 	}
-	_ = t.startGen(startSpec{args: args, integration: integrationText(rep), restart: true})
+	_ = t.startGen(startSpec{args: args, integration: integrationText(rep), restart: true, carry: carry})
 	t.mu.Lock()
 	t.restarting = false
 	t.cond.Broadcast()

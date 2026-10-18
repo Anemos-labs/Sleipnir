@@ -161,3 +161,11 @@ test('a hostile project path and a hostile unread entry of the ledger are text o
   const html = S.pages.trust(session(), S.newState({ page: 'trust' }));
   assert.ok(!hasMarkup(html)); assert.deepEqual(plain(scriptAttrs(html)), []); assert.ok(html.includes('&lt;img'));
 });
+
+test('model changes wait to be applied together: only the ones that differ from what runs now, in the order of the roles', () => {
+  const { SL } = setup(), S = session(), pend = SL.toolkit.settings.pendingModels;
+  assert.deepEqual(plain(pend(S, { backend: 'a/big', manager: 'a/m' })), [['backend', 'a/big']], 'the manager already runs on a/m');
+  assert.deepEqual(plain(pend(S, { backend: 'a/big', manager: 'a/cheap' })), [['manager', 'a/cheap'], ['backend', 'a/big']]);
+  assert.deepEqual(plain(pend(S, { backend: 'a/w' })), [], 'the worker model a role runs on without an entry of its own');
+  assert.deepEqual(plain(pend(S, null)), []);
+});

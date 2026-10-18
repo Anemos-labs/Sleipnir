@@ -20,6 +20,17 @@ they do not indicate whether a change has been released.
   role pins and the judge's system text change; each is written to the
   cache once.
 
+- In the browser, model changes on Settings › Roles & effort and Settings ›
+  Models wait in a bar until Apply sends them together: a team starts again
+  once for any number of roles, and editing goes on while it restarts.
+  `POST /api/sessions/{id}/model` takes `roles` (role to model) for that. A
+  restart for a change of models resumes the goal that was active, or, with
+  no goal, tells the manager to go on when the team was working; the goal is
+  no longer left paused for the person to resume. `agent.restore` carries the
+  agent's model, and an agent's model follows its main requests, so the
+  roster shows the model a restored or switched agent runs on now. Prompt
+  bytes: no stable layer changes; the go-on message is a user turn.
+
 - A proxy that refuses the CONNECT to the endpoint for good (any status but
   407, which asks for credentials, and the gateway failures 502, 503 and 504,
   which are retried) is reported as "the proxy does not allow HOST", with the
