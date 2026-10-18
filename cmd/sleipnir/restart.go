@@ -63,14 +63,31 @@ func restartArgs(s *session.Session, typed []string, fresh bool) ([]string, erro
 			return nil, errors.New("only flags go after /restart, like --swarm 8 or --no-mcp (a goal is typed at the prompt)")
 		}
 	}
-	args := append([]string(nil), typed...)
+	typed = splitRoleModels(typed)
+	// A custom team keeps its slots when the line changes a role's model: every slot of that role moves to the typed model, where
+	// replacing them with the one typed entry would leave a single worker of the role.
+	retyped := slotModels(s, typed)
+	args := make([]string, 0, len(typed))
+	for i := 0; i < len(typed); i++ {
+		if typed[i] == "--role-model" && i+1 < len(typed) {
+			if role, _, _ := strings.Cut(typed[i+1], "="); retyped[role] != "" {
+				i++
+				continue
+			}
+		}
+		args = append(args, typed[i])
+	}
 	// What the session was started with stays, unless the line says otherwise: a restart changes one thing and keeps the rest (a team stays a team).
 	flags := s.StartFlags()
 	for i := 0; i < len(flags); i++ {
 		name := strings.SplitN(flags[i], "=", 2)[0]
 		takesValue := !strings.Contains(flags[i], "=") && i+1 < len(flags) && !strings.HasPrefix(flags[i+1], "-")
 		if name == "--role-model" { // repeatable: the line's own role wins over the same role named before
-			if role, _, _ := strings.Cut(flags[i+1], "="); !roleNamed(typed, role) {
+			role, _, _ := strings.Cut(flags[i+1], "=")
+			switch {
+			case retyped[role] != "":
+				args = append(args, flags[i], role+"="+retyped[role])
+			case !roleNamed(typed, role):
 				args = append(args, flags[i], flags[i+1])
 			}
 			i++
@@ -117,6 +134,42 @@ func restartArgs(s *session.Session, typed []string, fresh bool) ([]string, erro
 }
 
 // roleNamed reports whether typed already names a role's model (--role-model role=...).
+// splitRoleModels writes each --role-model=v (or -role-model=v) the line holds as --role-model v, the one form the role handling reads.
+func splitRoleModels(typed []string) []string {
+	out := make([]string, 0, len(typed))
+	for _, a := range typed {
+		if v, ok := strings.CutPrefix(strings.TrimPrefix(a, "-"), "-role-model="); ok {
+			out = append(out, "--role-model", v)
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
+// slotModels are the worker roles the line gives a model (--role-model role=model) that are slots of the session's custom team, with
+// that model.
+func slotModels(s *session.Session, typed []string) map[string]string {
+	team := s.Options().Team
+	if s.Swarm == nil || len(team) == 0 {
+		return nil
+	}
+	out := map[string]string{}
+	for i, a := range typed {
+		if a != "--role-model" || i+1 >= len(typed) {
+			continue
+		}
+		role, model, ok := strings.Cut(typed[i+1], "=")
+		if !ok || model == "" || serviceRole(role) {
+			continue
+		}
+		if slices.ContainsFunc(team, func(t session.TeamSlot) bool { return t.Role == role }) {
+			out[role] = model
+		}
+	}
+	return out
+}
+
 func roleNamed(typed []string, role string) bool {
 	for i, a := range typed {
 		if a == "--role-model" && i+1 < len(typed) && strings.HasPrefix(typed[i+1], role+"=") {
