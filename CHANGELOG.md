@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The `judge` role (`--role-model judge=M`, `models.roles.judge`, `/roles
+  judge=M`) names the model a standing goal is judged on; without it the
+  session's model judges, as before. With a judge model that is not the
+  session's, a "done" is confirmed by a second judgment on the session's
+  model and the goal is met only when both agree; a disagreement continues
+  with what the confirmation found missing. `goal.judge` gains `judge` (the
+  judge's model) and `confirm` (`model`, `verdict`). Prompt bytes: none
+  change.
+
 - A proxy that refuses the CONNECT to the endpoint for good (any status but
   407, which asks for credentials, and the gateway failures 502, 503 and 504,
   which are retried) is reported as "the proxy does not allow HOST", with the

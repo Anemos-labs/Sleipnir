@@ -48,7 +48,10 @@ or request user input. Continuations append to the conversation. Cancellation
 pauses the goal. Progress and continuation limits bound the loop. A goal may
 name a spec file and list milestones; the spec is snapshotted when the goal is
 set, and the judge must confirm each milestone with cited evidence in the same
-verdict before the goal is met.
+verdict before the goal is met. The judge runs on the `judge` role's model when
+one is named; a "done" from a judge model that is not the session's is then
+confirmed by a second judgment on the session's model, and the goal is met only
+when both agree.
 
 The manager creates scoped tasks and activates persistent role pools as needed.
 A multi-member pool agrees on one plan, splits scoped children, then reconciles

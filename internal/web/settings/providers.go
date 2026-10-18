@@ -118,6 +118,8 @@ func usedBy(tc *tabCtx) map[string]string {
 			who = "the manager"
 		case session.CompactorRole:
 			who = "the compactor"
+		case session.JudgeRole:
+			who = "the goal judge"
 		}
 		item := who + " (" + rm.Model + ")"
 		if strings.Contains(out[prov], item) {

@@ -238,6 +238,21 @@ func (g *State) Apply(v Verdict, worked bool) Action {
 	return Resume
 }
 
+// Confirm is the verdict of a goal whose judge said done (v) after a second judgment on another model (c): done when the second
+// agrees, else continue with the second judgment's reason and what it found missing, so that the agent is sent on to the work one of
+// the two did not find shown. Agreement between two models of different biases is what makes a "done" trustworthy; a disagreement is
+// the place to look, never a reason to stop.
+func Confirm(v, c Verdict) Verdict {
+	if v.Kind != Done || c.Kind == Done {
+		return v
+	}
+	reason := "a second judge did not confirm the goal is met"
+	if c.Reason != "" {
+		reason += ": " + c.Reason
+	}
+	return Verdict{Kind: Continue, Reason: oneLine(reason, 300), Left: c.Left, Milestones: c.Milestones}
+}
+
 // oneLine collapses whitespace and caps text at max runes including an ellipsis; max must be
 // positive.
 func oneLine(s string, max int) string {

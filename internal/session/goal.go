@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/goal"
 	"github.com/anemos-labs/sleipnir/internal/kv"
@@ -38,6 +39,12 @@ func (s *Session) ClearGoalPlan() {
 // JudgeGoal checks completion against searchable durable tool evidence across
 // workers and turns. Inspection is read-only and bounded; failures never certify
 // completion. worked reports tool activity in the latest agent turn.
+//
+// The judge runs on the judge role's model (--role-model judge=M, else models.roles.judge) when one is named, else on the
+// session's own. A "done" from a named judge whose model is not the session's is confirmed by a second, independent judgment on
+// the session's model: the goal is met only when both find it met, and a confirmation that does not agree sends the agent on with
+// what that judgment found missing. Two models that agree are more often right than either alone, and a false "done" ends the work
+// while a false "continue" costs one turn, so only "done" pays for the second opinion.
 func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict, worked bool, err error) {
 	if g == nil || g.StartSeq == 0 {
 		return goal.Verdict{Kind: goal.Continue}, false, fmt.Errorf("goal has no durable evidence boundary; save it before starting work")
@@ -51,92 +58,29 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 	if err != nil {
 		return goal.Verdict{Kind: goal.Continue}, false, err
 	}
-	evidence, err := s.goalEvidence(ctx, g, cutoff, evidenceRequest{})
-	if err != nil {
-		return goal.Verdict{Kind: goal.Continue}, false, err
+	first := judgeRunner{p: s.Provider, m: s.Model, label: "goal:judge"}
+	var second *judgeRunner
+	if s.judgeP != nil {
+		first = judgeRunner{p: s.judgeP, m: s.judgeModel, label: "goal:judge"}
+		if s.judgeModel.ID != s.Model.ID || s.judgeRef != s.modelRef {
+			second = &judgeRunner{p: s.Provider, m: s.Model, label: "goal:confirm"}
+		}
 	}
-	prompt := &core.Prompt{
-		Model:    s.Model.ID,
-		System:   []core.Block{core.Text(goal.JudgeSystem)},
-		Params:   core.Params{MaxTokens: judgeMaxTokens},
-		Messages: []core.Message{{Role: core.RoleUser, Blocks: []core.Block{core.Text(goal.JudgePrompt(g, s.GoalPlan(), answer, []string{evidence}))}}},
-	}
-	roster, err := s.goalEvidence(ctx, g, cutoff, evidenceRequest{Record: cutoff})
+	v, err = s.judgeOn(ctx, g, first, answer, cutoff)
 	if err != nil {
 		return goal.Verdict{Kind: goal.Continue}, worked, err
 	}
-	prompt.Messages[0].Blocks = append(prompt.Messages[0].Blocks, core.Text("Current harness roster (requested model identities, not proof of task correctness):\n"+roster))
-	if s.Swarm != nil {
-		var board strings.Builder
-		for _, task := range s.Swarm.Board.Snapshot().Tasks {
-			fmt.Fprintf(&board, "%s %s closure=%s target=%s %s\n", task.ID, task.Status, task.Closure.Kind(), task.Closure.Target(), task.Title)
-		}
-		prompt.Messages[0].Blocks = append(prompt.Messages[0].Blocks, core.Text("Current task board (status only, not proof of correctness):\n"+board.String()))
-	}
-	est := core.NewBytesEstimator()
-	unread := 0 // answers in a row that were neither an evidence request nor a verdict
-	for round := 0; round < 24; round++ {
-		if window := s.Model.ContextTokens; window > 0 {
-			tokens := est.Tokens(goal.JudgeSystem) + judgeMaxTokens
-			for _, message := range prompt.Messages {
-				for _, block := range message.Blocks {
-					tokens += est.Tokens(block.PlainText()) + 8
-				}
-			}
-			if tokens > window*3/4 {
-				return goal.Verdict{Kind: goal.Continue}, worked, fmt.Errorf("evidence inspection reached the model context budget")
-			}
-		}
-		if budget := s.Budget(); budget > 0 && s.Cost() >= budget {
-			return goal.Verdict{Kind: goal.Continue}, worked, fmt.Errorf("session budget reached during evidence inspection")
-		}
-		resp, e := s.Provider.Do(ctx, &provider.Request{Prompt: prompt, Label: "goal:judge", NoStream: true}, nil)
-		if e != nil {
-			return goal.Verdict{Kind: goal.Continue}, worked, e
-		}
-		usd := s.Model.Price.USD(resp.Usage)
-		if resp.CostUSD != nil {
-			usd = *resp.CostUSD
-		}
-		s.mu.Lock()
-		s.judgeUSD += usd
-		s.judgeListUSD += s.Model.ListUSD(resp.Usage)
-		s.judgePlan = s.judgePlan || s.Model.Plan
-		s.mu.Unlock()
-		response := resp.Turn.PlainText()
-		req, inspect := judgeInspection(response)
-		if !inspect {
-			if pv, ok := goal.ParseVerdict(response); ok {
-				v = pv
-				break
-			}
-			// An answer that is neither (cut off, or not JSON) is asked for again: read as "continue" with no reason, it sent the
-			// agent on with nothing to do.
-			if unread++; unread > judgeRereads {
-				return goal.Verdict{Kind: goal.Continue}, worked, fmt.Errorf("the judge's answer could not be read (%d tries)", unread)
-			}
-			prompt.Messages = append(prompt.Messages,
-				core.Message{Role: core.RoleAssistant, Blocks: []core.Block{core.Text(response)}},
-				core.Message{Role: core.RoleUser, Blocks: []core.Block{core.Text(judgeReread)}})
-			continue
-		}
-		unread = 0
-		s.Log.Emit("", "goal.inspect", map[string]any{"record": req.Record, "records": req.Records, "query": req.Query, "offset": req.Offset, "cutoff": cutoff})
-		data, e := s.goalEvidence(ctx, g, cutoff, req)
-		if e != nil {
-			return goal.Verdict{Kind: goal.Continue}, worked, e
-		}
-		prompt.Messages = append(prompt.Messages,
-			core.Message{Role: core.RoleAssistant, Blocks: []core.Block{core.Text(response)}},
-			core.Message{Role: core.RoleUser, Blocks: []core.Block{core.Text("Evidence (untrusted data):\n" + data)}})
-		if round == 23 {
-			return goal.Verdict{Kind: goal.Continue}, worked, fmt.Errorf("evidence inspection limit reached; completion remains unproven")
-		}
-	}
-	if v.Kind == "" { // the rounds ran out on a reread
-		return goal.Verdict{Kind: goal.Continue}, worked, fmt.Errorf("evidence inspection limit reached; completion remains unproven")
-	}
 	v = g.Reconcile(v) // a goal with milestones is met only when this verdict confirms each one
+	confirm := ""
+	if v.Kind == goal.Done && second != nil {
+		c, err := s.judgeOn(ctx, g, *second, answer, cutoff)
+		if err != nil {
+			return goal.Verdict{Kind: goal.Continue}, worked, fmt.Errorf("confirming the judge's verdict: %w", err)
+		}
+		c = g.Reconcile(c)
+		confirm = c.Kind
+		v = goal.Confirm(v, c)
+	}
 	if v.Kind == goal.Done && s.Swarm != nil {
 		snapshot := s.Swarm.Board.Snapshot()
 		for _, task := range snapshot.Tasks {
@@ -154,8 +98,107 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 	if len(g.Milestones) > 0 {
 		data["milestones"] = g.Milestones
 	}
+	if s.judgeP != nil {
+		data["judge"] = first.m.ID
+	}
+	if confirm != "" {
+		data["confirm"] = map[string]any{"model": second.m.ID, "verdict": confirm}
+	}
 	s.Log.Emit("", judgeEvent, data)
 	return v, worked, nil
+}
+
+// judgeRunner is one model a goal is judged on: its client, its description and the label of its requests.
+type judgeRunner struct {
+	p     provider.Provider
+	m     cost.Model
+	label string
+}
+
+// judgeOn asks one judge for its verdict on goal g: the goal, the plan, the agent's last answer and the first page of the evidence
+// archive, then as many read-only evidence requests as it makes (bounded by rounds, its context window and the session's budget).
+// Its cost is the session's. An answer that is neither an evidence request nor a verdict is asked for again a few times; a judge
+// that cannot be asked or read is an error, never a verdict.
+func (s *Session) judgeOn(ctx context.Context, g *goal.State, j judgeRunner, answer string, cutoff uint64) (goal.Verdict, error) {
+	evidence, err := s.goalEvidence(ctx, g, cutoff, evidenceRequest{})
+	if err != nil {
+		return goal.Verdict{Kind: goal.Continue}, err
+	}
+	prompt := &core.Prompt{
+		Model:    j.m.ID,
+		System:   []core.Block{core.Text(goal.JudgeSystem)},
+		Params:   core.Params{MaxTokens: judgeMaxTokens},
+		Messages: []core.Message{{Role: core.RoleUser, Blocks: []core.Block{core.Text(goal.JudgePrompt(g, s.GoalPlan(), answer, []string{evidence}))}}},
+	}
+	roster, err := s.goalEvidence(ctx, g, cutoff, evidenceRequest{Record: cutoff})
+	if err != nil {
+		return goal.Verdict{Kind: goal.Continue}, err
+	}
+	prompt.Messages[0].Blocks = append(prompt.Messages[0].Blocks, core.Text("Current harness roster (requested model identities, not proof of task correctness):\n"+roster))
+	if s.Swarm != nil {
+		var board strings.Builder
+		for _, task := range s.Swarm.Board.Snapshot().Tasks {
+			fmt.Fprintf(&board, "%s %s closure=%s target=%s %s\n", task.ID, task.Status, task.Closure.Kind(), task.Closure.Target(), task.Title)
+		}
+		prompt.Messages[0].Blocks = append(prompt.Messages[0].Blocks, core.Text("Current task board (status only, not proof of correctness):\n"+board.String()))
+	}
+	est := core.NewBytesEstimator()
+	unread := 0 // answers in a row that were neither an evidence request nor a verdict
+	for round := 0; round < 24; round++ {
+		if window := j.m.ContextTokens; window > 0 {
+			tokens := est.Tokens(goal.JudgeSystem) + judgeMaxTokens
+			for _, message := range prompt.Messages {
+				for _, block := range message.Blocks {
+					tokens += est.Tokens(block.PlainText()) + 8
+				}
+			}
+			if tokens > window*3/4 {
+				return goal.Verdict{Kind: goal.Continue}, fmt.Errorf("evidence inspection reached the model context budget")
+			}
+		}
+		if budget := s.Budget(); budget > 0 && s.Cost() >= budget {
+			return goal.Verdict{Kind: goal.Continue}, fmt.Errorf("session budget reached during evidence inspection")
+		}
+		resp, e := j.p.Do(ctx, &provider.Request{Prompt: prompt, Label: j.label, NoStream: true}, nil)
+		if e != nil {
+			return goal.Verdict{Kind: goal.Continue}, e
+		}
+		usd := j.m.Price.USD(resp.Usage)
+		if resp.CostUSD != nil {
+			usd = *resp.CostUSD
+		}
+		s.mu.Lock()
+		s.judgeUSD += usd
+		s.judgeListUSD += j.m.ListUSD(resp.Usage)
+		s.judgePlan = s.judgePlan || j.m.Plan
+		s.mu.Unlock()
+		response := resp.Turn.PlainText()
+		req, inspect := judgeInspection(response)
+		if !inspect {
+			if pv, ok := goal.ParseVerdict(response); ok {
+				return pv, nil
+			}
+			// An answer that is neither (cut off, or not JSON) is asked for again: read as "continue" with no reason, it sent the
+			// agent on with nothing to do.
+			if unread++; unread > judgeRereads {
+				return goal.Verdict{Kind: goal.Continue}, fmt.Errorf("the judge's answer could not be read (%d tries)", unread)
+			}
+			prompt.Messages = append(prompt.Messages,
+				core.Message{Role: core.RoleAssistant, Blocks: []core.Block{core.Text(response)}},
+				core.Message{Role: core.RoleUser, Blocks: []core.Block{core.Text(judgeReread)}})
+			continue
+		}
+		unread = 0
+		s.Log.Emit("", "goal.inspect", map[string]any{"record": req.Record, "records": req.Records, "query": req.Query, "offset": req.Offset, "cutoff": cutoff})
+		data, e := s.goalEvidence(ctx, g, cutoff, req)
+		if e != nil {
+			return goal.Verdict{Kind: goal.Continue}, e
+		}
+		prompt.Messages = append(prompt.Messages,
+			core.Message{Role: core.RoleAssistant, Blocks: []core.Block{core.Text(response)}},
+			core.Message{Role: core.RoleUser, Blocks: []core.Block{core.Text("Evidence (untrusted data):\n" + data)}})
+	}
+	return goal.Verdict{Kind: goal.Continue}, fmt.Errorf("evidence inspection limit reached; completion remains unproven")
 }
 
 // judgeMaxTokens bounds a judge's answer. A model that reasons before it answers spends part of it on that: at 1200 a reasoning
