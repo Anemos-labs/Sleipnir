@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -905,21 +907,21 @@ func (t *Tab) SetMode(_ context.Context, req wire.ModeRequest) error {
 	return nil
 }
 
-// SetModel changes the manager's model or a role's; 422 model for a reference that is not provider/model.
+// SetModel changes the manager's model or a role's, or (Roles) several at once; 422 model for a reference that is not provider/model.
 func (t *Tab) SetModel(_ context.Context, req wire.ModelRequest) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if err := t.record("SetModel", req); err != nil {
 		return err
 	}
-	if p, m, ok := strings.Cut(req.Ref, "/"); !ok || p == "" || m == "" {
-		return werr(422, "model", fmt.Sprintf("unknown model %q: write it as provider/model", req.Ref))
+	changes := req.Roles
+	if len(changes) == 0 {
+		changes = map[string]string{req.Role: req.Ref}
 	}
-	if req.Role == "" || req.Role == "manager" {
-		ref := req.Ref
-		t.patchLocked(wire.MetaPatch{Model: &ref})
-		t.sysLocked("◇", "model: "+req.Ref+" (the conversation carries over; the prompt cache starts over)")
-		return nil
+	for _, ref := range changes {
+		if p, m, ok := strings.Cut(ref, "/"); !ok || p == "" || m == "" {
+			return werr(422, "model", fmt.Sprintf("unknown model %q: write it as provider/model", ref))
+		}
 	}
 	rm := map[string]string{}
 	if t.meta.RoleModels != nil {
@@ -927,9 +929,21 @@ func (t *Tab) SetModel(_ context.Context, req wire.ModelRequest) error {
 			rm[k] = v
 		}
 	}
-	rm[req.Role] = req.Ref
-	t.patchLocked(wire.MetaPatch{RoleModels: &rm})
-	t.sysLocked("◇", "role "+req.Role+": "+req.Ref)
+	roles := 0
+	for _, role := range slices.Sorted(maps.Keys(changes)) {
+		ref := changes[role]
+		if role == "" || role == "manager" {
+			t.patchLocked(wire.MetaPatch{Model: &ref})
+			t.sysLocked("◇", "model: "+ref+" (the conversation carries over; the prompt cache starts over)")
+			continue
+		}
+		rm[role] = ref
+		roles++
+		t.sysLocked("◇", "role "+role+": "+ref)
+	}
+	if roles > 0 {
+		t.patchLocked(wire.MetaPatch{RoleModels: &rm})
+	}
 	return nil
 }
 

@@ -76,6 +76,8 @@
   /** shift+tab: default → accept-edits → plan → default. Never bypass, never yolo; from either of those it returns to default. */
   act('cycleMode', sid => { const S = ses(sid); if (!S) return; const i = CYCLE.indexOf(S.meta.mode), nx = CYCLE[(i + 1) % CYCLE.length]; return ACT.setMode(i < 0 ? 'default' : nx, null, sid); });
   act('setModel', (ref, sid) => { const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); return send(api().post(tab(S) + '/model', { ref })); });
+  /** several models at once (role → model; manager is the team's model): one request, so a team starts again once for them all */
+  act('setModels', (roles, sid) => { const S = ses(sid); if (!S) return { ok: false }; if (!roles || !Object.keys(roles).length) return { ok: false, why: 'no model change to apply' }; if (why(S)) return refuse(S); return send(api().post(tab(S) + '/model', { roles })); });
   act('setRoleModel', (role, ref, sid) => { const S = ses(sid); if (!S) return { ok: false }; if (role === 'manager') return ACT.setModel(ref, sid); if (why(S)) return refuse(S); return send(api().post(tab(S) + '/model', { ref, role })); });
   act('setEffort', (lv, sid) => { const S = ses(sid); if (!S) return { ok: false }; if (why(S)) return refuse(S); return send(api().post(tab(S) + '/effort', { level: lv })); });
   act('setBudget', (usd, sid) => {
