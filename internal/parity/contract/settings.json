@@ -101,6 +101,10 @@
       "reason": "a safety net that is on by default: swarm.push_progress = false in a configuration file turns it off in both interfaces; the notice of the first push names the remote branch in both, and Config layers shows its value"
     },
     {
+      "item": "swarm.push_to",
+      "reason": "where verified work is pushed, a setting of the user's own file only (a project's file cannot send the code elsewhere): it is the default of --push-to in both interfaces, which the New session dialog's push field seeds from and sends, and Config layers shows its value"
+    },
+    {
       "item": "swarm.requests_per_minute",
       "reason": "a request limit of the swarm: a file or SLEIPNIR_SWARM_REQUESTS_PER_MINUTE in both interfaces; the governor line of the HUD shows its effect and Config layers its value"
     },

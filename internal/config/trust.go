@@ -35,6 +35,7 @@ var sensitivePaths = [][]string{
 var userOnlyPaths = [][]string{
 	{"providers", "*", "allow_hosts"},
 	{"providers", "*", "allow_insecure_http"},
+	{"swarm", "push_to"}, // sends the project's code to a repository of the file's choosing
 }
 
 // matchPath reports whether segs is exactly one of the patterns ("*" matches any

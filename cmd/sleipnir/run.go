@@ -18,6 +18,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/checkpoint"
+	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
@@ -78,6 +79,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	budget := fs.Float64("budget-usd", 0, "stop when spend reaches this many US dollars")
 	verify := fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge). {dirs} in it stands for the directories the task may touch (./... without a scope), so that each task is verified on its own work: 'go test {dirs}'")
 	isolation, commit := isolationFlags(fs)
+	pushTo := pushToFlag(fs)
 	mailman := mailmanFlag(fs)
 	asJSON := fs.Bool("json", false, "stream events as JSON lines on stdout")
 	quiet := fs.Bool("quiet", false, "print only the final answer")
@@ -142,6 +144,9 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	if err := checkTeamSize(*swarmN); err != nil {
 		return usageError(fs, name+": "+err.Error())
 	}
+	if err := checkPushTo(*pushTo); err != nil {
+		return usageError(fs, name+": "+err.Error())
+	}
 	interactive := term.IsTerminal(int(os.Stdin.Fd()))
 	team, workers := teamOf(*swarmN)
 	o := session.Options{AutoFix: *autoFix, AutoMerge: *autoMerge,
@@ -149,7 +154,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 		Cwd:        *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: team, Workers: workers,
 		MaxSteps: *maxSteps, FixedSteps: *maxSteps > 0, BudgetUSD: *budget, Verify: *verify, NoRecon: *noRecon, TrustProject: *trust,
 		Dir: *dir, ContextWindow: *ctxWin, CaptureTokens: *capture, NoWeb: *noWeb, RoleModels: roleModels,
-		Resume: spec, NoMCP: *noMCP, Isolation: *isolation, Commit: *commit, Mailman: mailman(), Allow: expandAllow(*allow),
+		Resume: spec, NoMCP: *noMCP, Isolation: *isolation, Commit: *commit, PushTo: *pushTo, Mailman: mailman(), Allow: expandAllow(*allow),
 		AutoDocs: autoDocs(), ManagerApproves: managerApproves(), Team: teamSlots, DefaultTeam: true,
 	}
 	if interactive {
@@ -384,6 +389,20 @@ func isolationFlags(fs *flag.FlagSet) (isolation *string, commit *bool) {
 	isolation = fs.String("isolation", "", "swarm: none | worktree (default: config swarm.isolation). worktree gives every writer a git worktree of its own; finished work is merged and verified through a queue and applied to your checkout at the end")
 	commit = fs.Bool("commit", false, "swarm with --isolation worktree: commit the verified result onto your branch instead of leaving uncommitted edits (needs a clean checkout on a branch)")
 	return isolation, commit
+}
+
+// pushToHelp is the help of --push-to (run, swarm, chat and web share it).
+const pushToHelp = "swarm with --isolation worktree: where verified work is pushed after every merge, REMOTE-OR-URL[#BRANCH][:DIR] (default: config swarm.push_to, else the checkout's push remote and the branch sleipnir/<session>/_integration). With :DIR the project lands in that folder of the target repository, e.g. https://github.com/o/monorepo.git#build/app:web-apps/app"
+
+// pushToFlag registers --push-to.
+func pushToFlag(fs *flag.FlagSet) *string { return fs.String("push-to", "", pushToHelp) }
+
+// checkPushTo refuses a --push-to that config.ParsePushTarget refuses.
+func checkPushTo(s string) error {
+	if _, err := config.ParsePushTarget(s); err != nil {
+		return fmt.Errorf("--push-to: %w", err)
+	}
+	return nil
 }
 
 // triBool is a boolean flag that also knows whether it was given: --mailman turns the

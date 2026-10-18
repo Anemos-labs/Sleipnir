@@ -24,7 +24,7 @@ type chatFlagSet struct {
 	trust, verbose, noMCP    *bool
 	budget                   *float64
 	compactAt                *int
-	isolation                *string
+	isolation, pushTo        *string
 	commit                   *bool
 	mailman, autoDocs        func() *bool
 	managerApproves          func() *bool
@@ -50,6 +50,7 @@ func registerChatFlags(fs *flag.FlagSet) *chatFlagSet {
 	f.noMCP = fs.Bool("no-mcp", false, "start no MCP tool servers")
 	f.verify = fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge). {dirs} in it stands for the directories the task may touch (./... without a scope), so that each task is verified on its own work: 'go test {dirs}'")
 	f.isolation, f.commit = isolationFlags(fs)
+	f.pushTo = pushToFlag(fs)
 	f.mailman = mailmanFlag(fs)
 	f.autoDocs = autoDocsFlag(fs)
 	f.managerApproves = managerApprovesFlag(fs)
@@ -74,8 +75,10 @@ type chatFlags struct {
 	noMCP      bool
 	budget     float64
 	commit     bool
-	mailman    *bool
-	autoDocs   *bool
+	// pushTo is --push-to: where verified work is pushed after every merge ("" for the configuration's).
+	pushTo   string
+	mailman  *bool
+	autoDocs *bool
 	// managerApproves is --manager-approves: nil when the flag was not given.
 	managerApproves *bool
 	roleModels      map[string]string
@@ -96,7 +99,7 @@ func (f *chatFlagSet) values(fs *flag.FlagSet) (chatFlags, error) {
 	}
 	out := chatFlags{autoFix: *f.autoFix, autoMerge: *f.autoMerge,
 		model: *f.model, cwd: *f.cwd, mode: *f.mode, verify: *f.verify, isolation: *f.isolation,
-		workers: *f.swarmN, trust: *f.trust, verbose: *f.verbose, noMCP: *f.noMCP, budget: *f.budget, compactAt: *f.compactAt, commit: *f.commit,
+		workers: *f.swarmN, trust: *f.trust, verbose: *f.verbose, noMCP: *f.noMCP, budget: *f.budget, compactAt: *f.compactAt, commit: *f.commit, pushTo: *f.pushTo,
 		mailman: f.mailman(), autoDocs: f.autoDocs(), managerApproves: f.managerApproves(), resume: spec, allow: append([]string(nil), (*f.allow)...), plain: *f.plain, noAnim: *f.noAnim,
 	}
 	if out.roleModels, out.team, err = f.roleModels.split(); err != nil {
@@ -149,6 +152,9 @@ func parseChatFlags(args []string) (chatFlags, error) {
 			return chatFlags{}, err
 		}
 	}
+	if err := checkPushTo(f.pushTo); err != nil {
+		return chatFlags{}, err
+	}
 	if f.budget < 0 || f.budget != f.budget {
 		return chatFlags{}, errors.New("--budget-usd must not be negative")
 	}
@@ -175,7 +181,7 @@ func (f chatFlags) options() session.Options {
 	return chatOptions(session.Options{AutoFix: f.autoFix, AutoMerge: f.autoMerge,
 		Cwd: f.cwd, Model: f.model, Mode: perm.Mode(f.mode), Swarm: team, Workers: workers,
 		TrustProject: f.trust, BudgetUSD: f.budget, CompactAtPercent: f.compactAt, Resume: f.resume, NoMCP: f.noMCP,
-		Verify: f.verify, Isolation: f.isolation, Commit: f.commit, Mailman: f.mailman, AutoDocs: f.autoDocs, ManagerApproves: f.managerApproves,
+		Verify: f.verify, Isolation: f.isolation, Commit: f.commit, PushTo: f.pushTo, Mailman: f.mailman, AutoDocs: f.autoDocs, ManagerApproves: f.managerApproves,
 		RoleModels: rm,
 		Team:       append([]session.TeamSlot(nil), f.team...), DefaultTeam: true, Allow: expandAllow(f.allow),
 	})
@@ -193,7 +199,7 @@ type newSessionRequest struct {
 }
 
 // argsFor renders the New session dialog's request as chat arguments, in the order the dialog's command line shows them: --cwd,
-// --model, --mode, --swarm, --isolation, --verify, --commit, --mailman, --auto-docs=false, --manager-approves=false, --budget-usd, --compact-at,
+// --model, --mode, --swarm, --isolation, --verify, --commit, --push-to, --mailman, --auto-docs=false, --manager-approves=false, --budget-usd, --compact-at,
 // --allow, --trust-project, --no-mcp, then --role-model: the role models in the order of the roles' names, then the team's slots in team order. The name, the first goal and the effort are not chat flags: the host applies them
 // once the session has started.
 func argsFor(req wire.NewSessionRequest) []string {
@@ -218,6 +224,9 @@ func argsFor(req wire.NewSessionRequest) []string {
 	}
 	if req.Commit {
 		a = append(a, "--commit")
+	}
+	if req.PushTo != "" {
+		a = append(a, "--push-to", req.PushTo)
 	}
 	if req.Mailman {
 		a = append(a, "--mailman")

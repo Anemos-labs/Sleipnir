@@ -151,6 +151,10 @@ type Options struct {
 	// result onto the person's branch (a fast-forward; the checkout must be clean and
 	// on a branch) instead of leaving it as uncommitted edits in the working tree.
 	Commit bool
+	// PushTo, when set, overrides swarm.push_to for this session: where a
+	// worktree-isolated team's verified work is pushed after every merge,
+	// "<remote or URL>[#<branch>][:<dir>]" (config.ParsePushTarget).
+	PushTo string
 	// Mailman, when set, overrides swarm.mailman for this session: true routes worker
 	// mail through a mailman agent that digests bursts (docs/SWARM-PROTOCOL.md section
 	// 5), false delivers it at once. Nil leaves it to the configuration. It applies to

@@ -964,6 +964,18 @@ hooks, and never write any branch but that one. The first push and a push that r
 a failure is announced once (level `warn`) and retried after the next merge; every attempt is logged (`swarm.progress_push`).
 A resumed session pushes its tip at start. Without a push remote nothing is pushed.
 
+**Push targets.** `--push-to` (or `swarm.push_to` in the user's own file) names another target,
+`REMOTE-OR-URL[#BRANCH][:DIR]`: a remote's name or a repository URL (default: the push remote above), a branch (default
+`sleipnir/<session>/_integration`) and a folder of the target repository. A branch the person names only moves forward. With a
+folder, a project built at the root of its checkout lands inside a monorepo: before each push the target branch is fetched into
+`refs/sleipnir/push/<branch>` of the checkout (the repository's default branch when the branch does not exist yet, so the work can
+become a pull request against it), and every first-parent integration commit it does not carry yet is rewritten on top of it, with
+the target's tree and the project's tree in place of the folder's, the original author, dates and message, and a
+`Sleipnir-Source: <integration commit>` trailer. The newest trailer on the branch says where the next push, of this process or of
+a resumed session, goes on from; a commit that changes nothing in the folder is not repeated, and commits others push to the branch
+are kept. The push is never forced: when the branch moved in the meantime it fails, is reported, and the next merge rebuilds on the
+new head. `--push-to` applies to a team with `--isolation worktree`.
+
 **Recovery.** A stopped or killed session keeps its worker trees, including uncommitted
 edits. Startup cleanup skips namespaces with a `sleipnir/<session>/_resume` recovery
 reference, as well as trees whose owners are alive or cannot be verified as stopped.

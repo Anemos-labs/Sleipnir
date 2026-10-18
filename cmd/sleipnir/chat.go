@@ -96,6 +96,9 @@ func cmdChat(ctx context.Context, args []string) error {
 	if err := session.CheckCompactAt(*cf.compactAt); err != nil {
 		return usageError(fs, "chat: "+err.Error())
 	}
+	if err := checkPushTo(*cf.pushTo); err != nil {
+		return usageError(fs, "chat: "+err.Error())
+	}
 	checkForUpdateInBackground()
 	// Nothing says which model to use: ask the provider what it has, once (pick.go).
 	asking := bufio.NewReader(os.Stdin)
@@ -107,7 +110,7 @@ func cmdChat(ctx context.Context, args []string) error {
 		return chatOptions(session.Options{AutoFix: *cf.autoFix, AutoMerge: *cf.autoMerge,
 			Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: team, Workers: workers,
 			TrustProject: *trust, BudgetUSD: *budget, CompactAtPercent: *cf.compactAt, Resume: spec, NoMCP: *noMCP,
-			Verify: *verify, Isolation: *isolation, Commit: *commit, Mailman: mailman(), AutoDocs: autoDocs(), ManagerApproves: managerApproves(),
+			Verify: *verify, Isolation: *isolation, Commit: *commit, PushTo: *cf.pushTo, Mailman: mailman(), AutoDocs: autoDocs(), ManagerApproves: managerApproves(),
 			RoleModels: roleModels,
 			Team:       append([]session.TeamSlot(nil), teamSlots...), DefaultTeam: true, Allow: expandAllow(*allow),
 		})

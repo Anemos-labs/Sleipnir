@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `--push-to REMOTE-OR-URL[#BRANCH][:DIR]` (`chat`, `run`, `swarm`, `web`, the New
+  session dialog) and `swarm.push_to` (user file only) choose where a worktree team
+  pushes its verified work after every merge. With `:DIR` the project lands in that
+  folder of the target repository (a monorepo): integration commits are rewritten
+  onto the target branch with a `Sleipnir-Source` trailer and pushed without force.
+  The log event `swarm.progress_push` gains `dir` and `head`. Prompt bytes: none
+  change.
+
 - A worktree-isolated team pushes its integration branch to the checkout's
   push remote (else `origin`) as `sleipnir/<session>/_integration` after
   every merge, so verified work no longer lives only on the local disk until

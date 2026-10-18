@@ -253,16 +253,19 @@ type OpenQuestion struct {
 // dollars (0 is no limit, not even the cap a team has where nobody chose a budget; absent leaves it to the server's configuration),
 // and RoleModels maps a role to the model it runs on.
 type NewSessionRequest struct {
-	Name         string            `json:"name,omitempty"`
-	Cwd          string            `json:"cwd"`
-	CreateDir    bool              `json:"createDir,omitempty"`
-	GitInit      bool              `json:"gitInit,omitempty"`
-	Model        string            `json:"model,omitempty"`
-	Mode         string            `json:"mode,omitempty"`
-	Swarm        *int              `json:"swarm,omitempty"`
-	Isolation    string            `json:"isolation,omitempty"`
-	Verify       string            `json:"verify,omitempty"`
-	Commit       bool              `json:"commit,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Cwd       string `json:"cwd"`
+	CreateDir bool   `json:"createDir,omitempty"`
+	GitInit   bool   `json:"gitInit,omitempty"`
+	Model     string `json:"model,omitempty"`
+	Mode      string `json:"mode,omitempty"`
+	Swarm     *int   `json:"swarm,omitempty"`
+	Isolation string `json:"isolation,omitempty"`
+	Verify    string `json:"verify,omitempty"`
+	Commit    bool   `json:"commit,omitempty"`
+	// PushTo is where a worktree-isolated team pushes its verified work after every merge (--push-to):
+	// "<remote or URL>[#<branch>][:<dir>]"; "" leaves it to the configuration.
+	PushTo       string            `json:"pushTo,omitempty"`
 	Mailman      bool              `json:"mailman,omitempty"`
 	Budget       *float64          `json:"budget,omitempty"`
 	Rules        []string          `json:"rules,omitempty"`

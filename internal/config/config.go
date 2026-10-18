@@ -269,6 +269,14 @@ type Swarm struct {
 	// true; it does nothing without a push remote. It only ever writes that branch of
 	// the harness's own namespace, never one of the person's.
 	PushProgress *bool `json:"push_progress,omitempty"`
+	// PushTo names where progress is pushed instead of the checkout's push remote:
+	// "<remote or URL>[#<branch>][:<dir>]" (ParsePushTarget), the form docker build
+	// uses for a git context. With a dir the project, built at the root of the
+	// checkout, lands in that folder of the target repository: every integration
+	// commit is rewritten onto the target branch with the project's tree under dir.
+	// It sends the person's code to another repository, so only the user's own file
+	// may set it (trust.go); --push-to sets it for one session.
+	PushTo string `json:"push_to,omitempty"`
 	// BudgetUSD is the most a swarm run may spend, retired agents included; 0 is no
 	// limit. It defaults to DefaultSwarmBudgetUSD, a safety net: a swarm can spend many
 	// times what one agent does, and a budget that is off by default is one nobody

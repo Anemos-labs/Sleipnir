@@ -56,7 +56,7 @@ func TestUserOnlySettingsAreNeverTakenFromAProjectFile(t *testing.T) {
 
 func TestUserOnlyPathsAreDocumented(t *testing.T) {
 	got := UserOnlyPaths()
-	want := []string{"providers.*.allow_hosts", "providers.*.allow_insecure_http"}
+	want := []string{"providers.*.allow_hosts", "providers.*.allow_insecure_http", "swarm.push_to"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("UserOnlyPaths = %v, want %v", got, want)
 	}

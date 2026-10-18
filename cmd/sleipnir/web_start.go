@@ -111,7 +111,7 @@ func mergeOptions(base session.Options, f chatFlags, defaultCwd string) session.
 	out.Mode, out.Swarm, out.Workers, out.TrustProject = o.Mode, o.Swarm, o.Workers, o.TrustProject || base.TrustProject
 	out.BudgetUSD, out.Resume, out.NoMCP = o.BudgetUSD, o.Resume, o.NoMCP || base.NoMCP
 	out.CompactAtPercent = o.CompactAtPercent
-	out.Verify, out.Isolation, out.Commit, out.Mailman = o.Verify, o.Isolation, o.Commit, o.Mailman
+	out.Verify, out.Isolation, out.Commit, out.Mailman, out.PushTo = o.Verify, o.Isolation, o.Commit, o.Mailman, o.PushTo
 	out.RoleModels, out.Allow, out.Interactive = o.RoleModels, o.Allow, true
 	out.Team, out.AutoDocs, out.DefaultTeam, out.ManagerApproves = o.Team, o.AutoDocs, o.DefaultTeam, o.ManagerApproves
 	out.ID, out.Dir = "", ""
@@ -641,6 +641,9 @@ func chatArgsOf(d webDefaults, resume string) []string {
 	}
 	if d.Commit {
 		a = append(a, "--commit")
+	}
+	if d.PushTo != "" {
+		a = append(a, "--push-to", d.PushTo)
 	}
 	if d.Mailman != nil {
 		a = append(a, "--mailman="+strconv.FormatBool(*d.Mailman))

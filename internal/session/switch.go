@@ -190,6 +190,9 @@ func (s *Session) StartFlags() []string {
 	if o.Commit {
 		f = append(f, "--commit")
 	}
+	if o.PushTo != "" {
+		f = append(f, "--push-to", o.PushTo)
+	}
 	if o.Mailman != nil {
 		f = append(f, "--mailman="+strconv.FormatBool(*o.Mailman))
 	}

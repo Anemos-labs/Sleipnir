@@ -101,7 +101,7 @@
     /* with the server's defaults an absent field is the CLI's own default (no verify command); the budget starts at off, which the server honours: a team has no cap unless one is set.
        The compaction share starts at sleipnir web's --compact-at (compactAt), else at the share a session takes without the flag (compactAtDefault: the configuration's, else 25; 0 when its token limits apply) */
     const act = SL.sessions && SL.sessions.active, actModel = act && !act.placeholder && !act.recorded ? act.meta.model : '';
-    return { name: '', cwd, gitInit: true, testsSummary: d.testsPreset || '', unlimitedEnv: d.unlimitedEnv || '', model: d.model || actModel || (D.models[0] ? D.models[0].ref : ''), mode: d.mode || 'default', swarm, isolation: d.isolation || (swarm ? 'worktree' : 'none'), verify: d.verify != null ? d.verify : has ? '' : 'go test {dirs}', commit: !!d.commit, mailman: !!d.mailman, mailmanDefault: !!d.mailman, budget: d.budget ? String(d.budget) : 'off', rules: (d.rules || []).slice(), trustProject: d.trustProject !== false, noMcp: !!d.noMcp, goalText: '', effort: d.effort || 'default', roleModels: Object.assign({}, d.roleModels || {}), maxWorkers: d.maxWorkers || 0, minWorkers: d.minWorkers || 8, counts: tm.counts, slotModels: tm.models, perSlot: tm.per, openRoles: Object.keys(tm.per).reduce((o, r) => { o[r] = true; return o; }, {}), single: swarm === 0, autoDocs: d.autoDocs !== false, managerApproves: d.managerApproves !== false, isoAuto: !d.isolationSet, resume: '', compactAt: d.compactAt ? +d.compactAt : null, compactAtBase: d.compactAtDefault != null ? +d.compactAtDefault : 25 };
+    return { name: '', cwd, gitInit: true, testsSummary: d.testsPreset || '', unlimitedEnv: d.unlimitedEnv || '', model: d.model || actModel || (D.models[0] ? D.models[0].ref : ''), mode: d.mode || 'default', swarm, isolation: d.isolation || (swarm ? 'worktree' : 'none'), verify: d.verify != null ? d.verify : has ? '' : 'go test {dirs}', commit: !!d.commit, pushTo: d.pushTo || '', mailman: !!d.mailman, mailmanDefault: !!d.mailman, budget: d.budget ? String(d.budget) : 'off', rules: (d.rules || []).slice(), trustProject: d.trustProject !== false, noMcp: !!d.noMcp, goalText: '', effort: d.effort || 'default', roleModels: Object.assign({}, d.roleModels || {}), maxWorkers: d.maxWorkers || 0, minWorkers: d.minWorkers || 8, counts: tm.counts, slotModels: tm.models, perSlot: tm.per, openRoles: Object.keys(tm.per).reduce((o, r) => { o[r] = true; return o; }, {}), single: swarm === 0, autoDocs: d.autoDocs !== false, managerApproves: d.managerApproves !== false, isoAuto: !d.isolationSet, resume: '', compactAt: d.compactAt ? +d.compactAt : null, compactAtBase: d.compactAtDefault != null ? +d.compactAtDefault : 25 };
   }
   /** The counts and models of a team the server names (one entry per slot), or the default team: one worker of each role. A role whose
    *  slots all run one model has it in models; a role whose slots run different models has them, slot by slot, in per. */
@@ -150,7 +150,7 @@
   dialogs.cliLine = function (st) {
     const q = shellQuote, off = (!st.budget || st.budget === 'off') && Number(st.swarm) > 0, f = [(off && st.unlimitedEnv ? st.unlimitedEnv + ' ' : '') + 'sleipnir chat'];   // a team of the terminal has a cap of its own unless the environment lifts it
     if (st.resume) f.push('--resume ' + q(st.resume)); if (st.cwd && st.cwd !== '.') f.push('--cwd ' + q(st.cwd)); f.push('--model ' + q(st.model)); f.push('--mode ' + q(st.mode)); const tm = st.counts ? teamOf(st) : { n: st.swarm, slots: [] }; f.push('--swarm ' + q(tm.n)); f.push('--isolation ' + q(st.isolation));
-    if (st.verify) f.push('--verify ' + q(st.verify)); if (st.commit) f.push('--commit'); if (st.mailman) f.push('--mailman'); else if (st.mailmanDefault) f.push('--mailman=false'); if (tm.n > 0 && st.autoDocs === false) f.push('--auto-docs=false'); if (tm.n > 0 && st.managerApproves === false) f.push('--manager-approves=false');
+    if (st.verify) f.push('--verify ' + q(st.verify)); if (st.commit) f.push('--commit'); if (st.pushTo) f.push('--push-to ' + q(st.pushTo)); if (st.mailman) f.push('--mailman'); else if (st.mailmanDefault) f.push('--mailman=false'); if (tm.n > 0 && st.autoDocs === false) f.push('--auto-docs=false'); if (tm.n > 0 && st.managerApproves === false) f.push('--manager-approves=false');
     if (st.budget && st.budget !== 'off') f.push('--budget-usd ' + q(st.budget)); const ca = dialogs.compactAtSent(st); if (ca) f.push('--compact-at ' + q(ca)); if (tm.slots.length) tm.slots.forEach(t => f.push('--role-model ' + q(t.model ? t.role + '=' + t.model : t.role))); else Object.keys(st.roleModels || {}).forEach(r => f.push('--role-model ' + q(r + '=' + st.roleModels[r]))); (st.rules || []).forEach(r => f.push('--allow ' + q(r)));
     if (st.trustProject) f.push('--trust-project'); if (st.noMcp) f.push('--no-mcp');
     const first = st.makeDir || st.makeGit ? '# first, as the page does: ' + [st.makeDir ? 'make the folder' : '', st.makeGit ? 'run git init in it, with an empty first commit' : ''].filter(Boolean).join(', then ') + '\n' : '';
@@ -166,6 +166,7 @@
     workers: 'Who the manager leads. <b>Full team</b>: one worker of each role (8). Change a count to make your own team (at least 8 workers: drop docs and take two backends, say). <b>Single agent</b>: no manager and no team; one agent does everything itself.',
     autoDocs: 'The docs worker keeps README, docs/ and AGENTS.md current by itself after every accepted task, without the manager asking. Off: docs is a role the manager assigns like any other. Needs a docs slot.',
     isolation: '<b>none</b>: workers edit your folder directly.<br><b>worktree</b>: each worker edits a private copy of the project; finished work is checked, merged, and only then applied to your folder. Teams only.',
+    pushTo: 'Where the team’s verified work is pushed after every merge, so it is off this machine long before the run ends: <span class="mono">REMOTE-OR-URL#BRANCH:FOLDER</span>, each part optional. With a folder the project, built at the root of this one, lands in that folder of the target repository (a monorepo), one commit per merged task on top of the branch, never forced. Empty: the push remote of this checkout, on the branch sleipnir/&lt;session&gt;/_integration. Needs isolation <b>worktree</b>; it uses your own git credentials.',
     verify: 'A command that checks a worker’s task before it counts as done: it runs when a worker hands a task in, and a failure sends the task back to the worker. With isolation <b>worktree</b> it also runs before each merge. <span class="mono">{dirs}</span> stands for the folders the task changed. Empty: no automatic check. Teams only. It runs on your machine, so you confirm it when you start.',
     commit: 'When the team’s verified work is applied, commit it to your current branch instead of leaving uncommitted edits. Needs isolation <b>worktree</b> and a clean checkout on a branch. Teams only.',
     managerApproves: 'The manager answers the workers’ routine questions itself (builds, tests and edits inside a worker’s own scope); each of its decisions shows in one collapsed line in the chat. Anything else still asks you. Teams only.',
@@ -201,10 +202,10 @@
    * that nobody chose (st.isoAuto) is worktree where the folder can have it and none elsewhere.
    */
   dialogs.nsGate = function (st, state) {
-    const g = { team: '', worktree: '', commit: '', isolation: st.isolation === 'worktree' ? 'worktree' : 'none', commitOn: !!st.commit, mailman: !!st.mailman, verify: st.verify || '' };
+    const g = { team: '', worktree: '', commit: '', isolation: st.isolation === 'worktree' ? 'worktree' : 'none', commitOn: !!st.commit, mailman: !!st.mailman, verify: st.verify || '', pushTo: (st.pushTo || '').trim() };
     if (!(Number(st.swarm) > 0)) {
       g.team = g.worktree = g.commit = '0 workers: a single agent works in the folder itself, so there is no isolation, verify, commit or mailman.';
-      return Object.assign(g, { isolation: 'none', commitOn: false, mailman: false, verify: '' });
+      return Object.assign(g, { isolation: 'none', commitOn: false, mailman: false, verify: '', pushTo: '' });
     }
     const d = ui.folder.describe(state), r = state && state.repo, made = d.git === 'offer' && !!st.gitInit;
     if (state && d.level !== 'bad' && !made) {
@@ -218,6 +219,7 @@
        worktree for the root of a repository with a commit, or one git init makes, else none */
     if (st.isoAuto) g.isolation = state && d.level !== 'bad' && !g.worktree && (made || (d.git === 'repo' && r && !r.bare && r.hasCommits)) ? 'worktree' : 'none';
     if (g.worktree) g.isolation = 'none';
+    if (g.isolation !== 'worktree') g.pushTo = '';   // only a team in trees of its own pushes as it merges
     if (g.isolation !== 'worktree') g.commit = 'Commit needs isolation worktree' + (g.worktree ? ', which this folder cannot have.' : '.');
     else if (!made && r && r.detached) g.commit = 'Commit moves the checked-out branch, and HEAD is detached: check out a branch first.';
     else if (!made && r && !r.clean) g.commit = 'Commit needs a clean checkout: this one has uncommitted changes. Commit or stash them first.';
@@ -235,7 +237,7 @@
     const quiet = () => st.mode === 'bypass' || st.mode === 'yolo';   // these modes never ask: an allow rule has nothing to answer
     const rulesNow = () => (quiet() ? [] : st.rules);
     const gate = () => dialogs.nsGate(st, fstate());
-    const cli = () => { const s = fstate(), d = folder.describe(s), g = gate(); return dialogs.cliLine(Object.assign({}, st, { isolation: g.isolation, commit: g.commitOn, mailman: g.mailman, verify: g.verify }, { rules: rulesNow(), cwd: s ? s.path : st.cwd, makeDir: !!s && !s.exists && d.level === 'new', makeGit: d.git === 'offer' && !!st.gitInit })); };
+    const cli = () => { const s = fstate(), d = folder.describe(s), g = gate(); return dialogs.cliLine(Object.assign({}, st, { isolation: g.isolation, commit: g.commitOn, mailman: g.mailman, verify: g.verify, pushTo: g.pushTo }, { rules: rulesNow(), cwd: s ? s.path : st.cwd, makeDir: !!s && !s.exists && d.level === 'new', makeGit: d.git === 'offer' && !!st.gitInit })); };
     const help = (key, about) => ui.help(NS_HELP[key], about);
     const opt = (k, flag, about) => '<div class="nsopt"><label class="chk"><input type="checkbox" data-k="' + k + '"' + (st[k] ? ' checked' : '') + '> ' + flag + '</label>' + help(k, about) + '</div>';
     const team = inner => '<div class="nsteam" data-team>' + inner + '</div>';
@@ -249,6 +251,7 @@
       '<h3 class="lab nsh">Team</h3>' + field('model (--model)', '<select id="nsModel" aria-label="Model">' + models().map(r => '<option' + (r === st.model ? ' selected' : '') + '>' + esc(r) + '</option>').join('') + '</select>', '', help('model', 'the model')) +
       field('team (--swarm, --role-model)', '<div class="seg" role="group" aria-label="Team preset"><button type="button" data-tpreset="full">Full team</button><button type="button" data-tpreset="single">Single agent</button></div> <span class="dim" id="nsSw"></span><div id="nsTeamRows" class="nsteamrows"></div><div class="nserr err" id="nsTeamErr" role="alert" hidden></div>', '', help('workers', 'the team')) +
       team(field('isolation', seg('isolation', ['none', 'worktree'], st.isolation), '', help('isolation', 'isolation')) + field('verify tasks with (--verify)', inp('nsVerify', st.verify, 'aria-label="verify command" placeholder="e.g. go test {dirs}" spellcheck="false" autocomplete="off"') + '<div class="chips" id="nsVerifyHints"></div>', '', help('verify', '--verify')) +
+        field('push verified work to (--push-to)', inp('nsPushTo', st.pushTo, 'aria-label="push target" placeholder="e.g. https://github.com/o/monorepo.git#build/app:web-apps/app" spellcheck="false" autocomplete="off"'), '', help('pushTo', '--push-to')) +
         field('team options', opt('commit', '--commit', '--commit') + opt('mailman', '--mailman', '--mailman') + opt('autoDocs', '<span>auto-docs <span class="nowrap">(--auto-docs)</span></span>', '--auto-docs') + opt('managerApproves', '<span>manager answers routine questions <span class="nowrap">(--manager-approves)</span></span>', '--manager-approves'))) +
       '</div><div><h3 class="lab nsh">Permissions and limits</h3>' +
       field('pre-approve actions (--allow)', '<div class="nsd nsquiet" id="nsRuleOff" role="status" hidden>' + NS_HELP.quiet + '</div><fieldset class="nsfs" id="nsRuleSet"><div class="field-row" style="margin:0"><input id="nsRule" type="text" placeholder="tests, Bash(go test:*)" aria-label="Allow rule" spellcheck="false" autocomplete="off"><button class="btn sm" type="button" id="nsAddRule">Add</button></div><div class="nserr err" id="nsRuleErr" role="alert" hidden></div><div id="nsRules" class="tags"></div><div class="chips" id="nsRuleEx">' + ruleEx + '</div></fieldset>', '', help('allow', 'a pre-approved action')) +
@@ -273,6 +276,7 @@
           const mgrBox = $('[data-k="managerApproves"]', b); if (mgrBox) { mgrBox.disabled = team; mgrBox.checked = !team && st.managerApproves !== false; }
           const v = $('#nsVerify', b); if (v) { v.disabled = team; if (team) v.value = ''; else if (document.activeElement !== v && v.value !== st.verify) v.value = st.verify; }
           $$('[data-vh]', b).forEach(c => { c.disabled = team; });
+          const pt = $('#nsPushTo', b); if (pt) pt.disabled = team || g.isolation !== 'worktree';
         }
         const paintVerify = () => {
           const s = fstate(), hs = folder.verifyHints(s), el = $('#nsVerifyHints', b);
@@ -320,7 +324,7 @@
         /* a rule typed or clicked is added once; a typed one that cannot be a rule is said so and kept in its field */
         const addRule = v => { v = String(v).trim(); if (!v || quiet()) return true; const bad = ruleProblem(v); ruleErr(bad); if (bad) return false; if (!st.rules.includes(v)) st.rules.push(v); return true; };
         // Checkbox input precedes change; repainting here would restore the old checked state before change reads it.
-        sc.listen(b, 'input', e => { const t = e.target; if (t.dataset.k) return; if (t.id === 'nsName') st.name = t.value; else if (t.id === 'nsVerify') st.verify = t.value; else if (t.id === 'nsBudget') st.budget = t.value.trim(); else if (t.id === 'nsCompact') st.compactAt = Math.round(Number(t.value)); else if (t.id === 'nsGoal') st.goalText = t.value; else if (t.id === 'nsRule') ruleErr(''); paint(); });
+        sc.listen(b, 'input', e => { const t = e.target; if (t.dataset.k) return; if (t.id === 'nsName') st.name = t.value; else if (t.id === 'nsVerify') st.verify = t.value; else if (t.id === 'nsPushTo') st.pushTo = t.value; else if (t.id === 'nsBudget') st.budget = t.value.trim(); else if (t.id === 'nsCompact') st.compactAt = Math.round(Number(t.value)); else if (t.id === 'nsGoal') st.goalText = t.value; else if (t.id === 'nsRule') ruleErr(''); paint(); });
         sc.listen(b, 'change', e => { const t = e.target; if (t.id === 'nsModel') st.model = t.value; else if (t.dataset.tmodel) { const r = t.dataset.tmodel; st.slotModels = st.slotModels || {}; if (st.perSlot) delete st.perSlot[r]; st.slotModels[r] = t.value; } else if (t.dataset.tslot) setSlotModel(st, t.dataset.tslot, +t.dataset.ti, t.value); else if (t.dataset.k) st[t.dataset.k] = t.checked; paint(); });
         sc.on('models-changed', () => {
           $('#nsModel', b).innerHTML = models().map(r => '<option' + (r === st.model ? ' selected' : '') + '>' + esc(r) + '</option>').join('');
@@ -361,7 +365,7 @@
             if (tm.slots.length) spec.team = tm.slots;
             if (tm.n > 0 && st.autoDocs === false) spec.autoDocs = false;
             if (tm.n > 0 && st.managerApproves === false) spec.managerApproves = false;   // on is the server's default: only an off is sent
-            const g = gate(); Object.assign(spec, { isolation: g.isolation, verify: g.verify, commit: g.commitOn, mailman: g.mailman });   /* nothing that cannot start: dialogs.nsGate */
+            const g = gate(); Object.assign(spec, { isolation: g.isolation, verify: g.verify, commit: g.commitOn, mailman: g.mailman }); if (g.pushTo) spec.pushTo = g.pushTo;   /* nothing that cannot start: dialogs.nsGate */
             spec.budget = bud > 0 ? bud : 0;   // 0 is off: the server does not put its own cap on the session
             const ca = dialogs.compactAtSent(st); if (ca) spec.compactAt = ca;   // the share the session takes anyway is not sent: the configuration keeps it
             if (st.resume) spec.resume = st.resume;

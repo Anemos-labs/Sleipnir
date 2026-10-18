@@ -283,6 +283,8 @@ Usage of chat:
         start no MCP tool servers
   -plain
         plain lines, as when the input or the output is not a terminal: no colour, no status line, no redrawing, approvals answered by the dialog's numbers or by y, a, t or n
+  -push-to string
+        swarm with --isolation worktree: where verified work is pushed after every merge, REMOTE-OR-URL[#BRANCH][:DIR] (default: config swarm.push_to, else the checkout's push remote and the branch sleipnir/<session>/_integration). With :DIR the project lands in that folder of the target repository, e.g. https://github.com/o/monorepo.git#build/app:web-apps/app
   -resume string
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
@@ -428,6 +430,8 @@ flags:
         open the page in the default browser, with a link that works once for 30 seconds (the run token stays out of the opener's arguments)
   -project value
         a directory a new session may also start in, repeatable (the page offers --cwd, the open sessions' and the recorded ones')
+  -push-to string
+        swarm with --isolation worktree: where verified work is pushed after every merge, REMOTE-OR-URL[#BRANCH][:DIR] (default: config swarm.push_to, else the checkout's push remote and the branch sleipnir/<session>/_integration). With :DIR the project lands in that folder of the target repository, e.g. https://github.com/o/monorepo.git#build/app:web-apps/app
   -resume string
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
@@ -524,6 +528,8 @@ flags:
         do not survey the project into the shared prompt layer
   -no-web
         disable the web tools
+  -push-to string
+        swarm with --isolation worktree: where verified work is pushed after every merge, REMOTE-OR-URL[#BRANCH][:DIR] (default: config swarm.push_to, else the checkout's push remote and the branch sleipnir/<session>/_integration). With :DIR the project lands in that folder of the target repository, e.g. https://github.com/o/monorepo.git#build/app:web-apps/app
   -quiet
         print only the final answer
   -resume string

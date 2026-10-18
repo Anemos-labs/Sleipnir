@@ -892,7 +892,7 @@ const unlimitedEnv = "SLEIPNIR_SWARM_BUDGET_USD=0"
 func (h *webHostImpl) defaults() newSessionDefaults {
 	cfg, rep, _ := config.Load(config.LoadOpts{Cwd: h.d.Cwd, UntrustedProject: true})
 	d := newSessionDefaults{NewSessionRequest: wire.NewSessionRequest{
-		Cwd: h.d.Cwd, Model: h.d.Model, Mode: h.d.Mode, Isolation: h.d.Isolation, Verify: h.d.Verify, Commit: h.d.Commit,
+		Cwd: h.d.Cwd, Model: h.d.Model, Mode: h.d.Mode, Isolation: h.d.Isolation, Verify: h.d.Verify, Commit: h.d.Commit, PushTo: h.d.PushTo,
 		TrustProject: h.d.TrustProject, NoMcp: h.d.NoMCP, Effort: "default", Rules: append([]string{}, h.d.Allow...),
 		RoleModels: map[string]string{},
 	}, MaxWorkers: swarmWorkerCeiling, TestsPreset: config.TestsPresetSummary, UnlimitedEnv: unlimitedEnv}
@@ -927,6 +927,9 @@ func (h *webHostImpl) defaults() newSessionDefaults {
 			if rep != nil {
 				_, d.IsolationSet = rep.Origins["swarm.isolation"]
 			}
+		}
+		if d.PushTo == "" {
+			d.PushTo = cfg.Swarm.PushTo // the user's own file: a project's cannot name a target (config.userOnlyPaths)
 		}
 		if cfg.Swarm.MaxWorkers > 0 {
 			d.MaxWorkers = cfg.Swarm.MaxWorkers

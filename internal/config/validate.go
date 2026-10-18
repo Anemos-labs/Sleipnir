@@ -307,6 +307,9 @@ func (v *validator) swarm(s Swarm) {
 	if s.BudgetUSD < 0 || math.IsNaN(s.BudgetUSD) || math.IsInf(s.BudgetUSD, 0) {
 		v.err(seg("swarm", "budget_usd"), "must be zero (no limit) or a positive amount")
 	}
+	if _, err := ParsePushTarget(s.PushTo); err != nil {
+		v.err(seg("swarm", "push_to"), "%v", err)
+	}
 }
 
 // tools validates output and timeout bounds, checks timeout ordering, and diagnoses malformed web

@@ -117,8 +117,14 @@ func (s *Session) planIsolation(ctx context.Context) error {
 		}
 	}
 	repo, realRoot, err := checkIsolation(ctx, isolationCheck{mode: mode, explicit: explicit, swarm: o.Swarm, commit: o.Commit, root: o.Root, home: o.Home, id: s.ID}, sourceDirty)
-	if err != nil || repo == nil {
+	if err != nil {
 		return err
+	}
+	if repo == nil {
+		if o.PushTo != "" && o.Swarm {
+			s.tell("warn", "--push-to applies to a team with --isolation worktree: this team shares one tree, so nothing is pushed")
+		}
+		return nil
 	}
 
 	top := worktreesRoot(o.Home)
@@ -340,6 +346,7 @@ func (s *Session) buildIsolation(ctx context.Context) (*swarm.Isolation, error) 
 		return nil, fmt.Errorf("worktree isolation: %w", err)
 	}
 	p.mgr, p.queue = mgr, q
+	p.push.SetBase(q.Base())
 	if p.resume != nil && q.Tip() != q.Base() {
 		p.push.Kick(q.Tip()) // what the stopped run merged may never have reached the remote
 	}
@@ -466,19 +473,48 @@ func (s *Session) Finish(ctx context.Context) *swarm.IntegrationReport {
 }
 
 // progressPusher is the pusher of the integration branch, nil when swarm.push_progress
-// is off or the checkout has no push remote.
+// is off or there is nowhere to push: no target remote and no push remote of the
+// checkout. The target is --push-to, else swarm.push_to, else the checkout's push
+// remote and the harness's own branch.
 func (s *Session) progressPusher(ctx context.Context, p *isoPlan, branch string) *progressPusher {
 	if s.cfg != nil && s.cfg.Swarm.PushProgress != nil && !*s.cfg.Swarm.PushProgress {
 		return nil
 	}
-	git := commandGit(p.repo.Root())
-	rctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	remote := pushRemote(rctx, git, branch)
-	if remote == "" {
+	target, err := config.ParsePushTarget(s.pushTo())
+	if err != nil {
+		s.tell("warn", "Verified work is not pushed: "+err.Error())
 		return nil
 	}
-	return &progressPusher{git: git, remote: remote, ref: p.prefix + "/_integration", log: s.Log, tell: s.tell}
+	git := commandGit(p.repo.Root())
+	remote := target.Remote
+	if remote == "" {
+		rctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		remote = pushRemote(rctx, git, branch)
+	}
+	if remote == "" {
+		if !target.IsZero() {
+			s.tell("warn", "Verified work is not pushed: the push target "+target.String()+" names no remote and the checkout has none; name one, as in --push-to https://github.com/owner/repo.git"+target.String())
+		}
+		return nil
+	}
+	ref := target.Branch
+	if ref == "" {
+		ref = p.prefix + "/_integration"
+	}
+	return &progressPusher{git: git, remote: remote, ref: ref, force: target.Branch == "" && target.Dir == "", dir: target.Dir,
+		root: p.repo.Root(), log: s.Log, tell: s.tell}
+}
+
+// pushTo is the session's push target as written: --push-to, else swarm.push_to.
+func (s *Session) pushTo() string {
+	if s.opts.PushTo != "" {
+		return s.opts.PushTo
+	}
+	if s.cfg != nil {
+		return s.cfg.Swarm.PushTo
+	}
+	return ""
 }
 
 // releaseIsolation undoes buildIsolation when the session could not be built.

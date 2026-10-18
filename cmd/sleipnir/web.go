@@ -49,6 +49,8 @@ type webDefaults struct {
 	Isolation string
 	// Commit is --commit.
 	Commit bool
+	// PushTo is --push-to.
+	PushTo string
 	// Mailman is --mailman: nil when the flag was not given.
 	Mailman *bool
 	// RoleModels is the --role-model overrides.
@@ -148,6 +150,7 @@ func cmdWeb(ctx context.Context, args []string) error {
 	noMCP := fs.Bool("no-mcp", false, "start no MCP tool servers in new sessions")
 	verify := fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (see sleipnir chat -h); {dirs} stands for the directories the task may touch")
 	isolation, commit := isolationFlags(fs)
+	pushTo := pushToFlag(fs)
 	mailman := mailmanFlag(fs)
 	autoDocs := autoDocsFlag(fs)
 	managerApproves := managerApprovesFlag(fs)
@@ -199,6 +202,9 @@ flags:
 			return usageError(fs, "web: "+err.Error())
 		}
 	}
+	if err := checkPushTo(*pushTo); err != nil {
+		return usageError(fs, "web: "+err.Error())
+	}
 	if *budget < 0 {
 		return usageError(fs, "web: --budget-usd must not be negative")
 	}
@@ -238,7 +244,7 @@ flags:
 	}
 	d := webDefaults{
 		Cwd: dir, Model: *model, Mode: *mode, Workers: defaultTeam(), TrustProject: *trust, BudgetUSD: *budget, CompactAtPercent: *compactAt,
-		NoMCP: *noMCP, Verify: *verify, Isolation: *isolation, Commit: *commit, Mailman: mailman(),
+		NoMCP: *noMCP, Verify: *verify, Isolation: *isolation, Commit: *commit, PushTo: *pushTo, Mailman: mailman(),
 		RoleModels: roleModels, Team: teamSlots, AutoDocs: autoDocs(), ManagerApproves: managerApproves(), Allow: expandAllow(*allow),
 		Resume:     resumeSpec,
 		AskTimeout: *askTimeout, AskGrace: *askGrace, Projects: projects, Fixture: fixture,
