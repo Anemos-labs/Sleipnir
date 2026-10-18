@@ -238,3 +238,40 @@ func TestARevisedQueuedParentIsDropped(t *testing.T) {
 		t.Errorf("the revised parent was started or stays queued: %s/%s, queue %+v", n.Status, n.Owner, r.sw.queuedTasks())
 	}
 }
+
+// A pooled parent that a resume left todo (its leader reserved, nobody running it) keeps only its leader: the other members are free
+// for another parent of the role, which begins at once instead of queueing behind a pool that is not agreeing on anything.
+func TestAPoolLeftTodoByAResumeSparesAllButItsLeader(t *testing.T) {
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 3, Team: []string{"backend", "backend", "backend"}},
+		func(ctx context.Context, _ *rvCall) rvReply { <-ctx.Done(); return rvReply{Text: "stopped"} })
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "tls checks", Files: []string{"checks/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	first := r.sw.Board.Snapshot().Tasks[0]
+	members := slices.Clone(first.Pool.Members)
+	second, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "probe hang", Role: "backend", Files: []string{"tests/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: second.ID, By: "mgr"}); err == nil || !strings.Contains(err.Error(), "still agreeing on "+first.ID) {
+		t.Fatalf("a second parent while the first plans: %v", err)
+	}
+	// the resume: the planning parent goes back to todo, reserved for its leader
+	if err := r.sw.Board.mutate("harness", "test", func(d *draft) error {
+		i := taskIdx(d.Snapshot, first.ID)
+		f := d.Tasks[i]
+		f.Status, f.Line = StatusTodo, resumedLine
+		return d.put(i, f)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: second.ID, By: "mgr"}); err != nil {
+		t.Fatalf("a second parent while the first waits to restart: %v", err)
+	}
+	snap := r.sw.Board.Snapshot()
+	f, _ := snap.Task(first.ID)
+	s, _ := snap.Task(second.ID)
+	if !slices.Equal(f.Pool.Members, members[:1]) || !slices.Equal(s.Pool.Members, members[1:]) || f.Owner != members[0] {
+		t.Errorf("first pool %v (leader %s), second pool %v; want %v, %v", f.Pool.Members, f.Owner, s.Pool.Members, members[:1], members[1:])
+	}
+}
