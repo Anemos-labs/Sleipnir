@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"net/http"
 	"path/filepath"
@@ -1380,6 +1381,9 @@ func (t *webTab) SetModel(ctx context.Context, req wire.ModelRequest) error {
 
 // setModel is SetModel, reporting whether the team starts again.
 func (t *webTab) setModel(ctx context.Context, req wire.ModelRequest) (bool, error) {
+	if len(req.Roles) > 0 {
+		return t.setModels(ctx, req.Roles)
+	}
 	ref := strings.TrimSpace(req.Ref)
 	if ref == "" || len(ref) > 300 {
 		return false, werr(http.StatusUnprocessableEntity, "model", "name a model: provider/model")
@@ -1433,6 +1437,48 @@ func (t *webTab) setModel(ctx context.Context, req wire.ModelRequest) (bool, err
 		return false, werr(http.StatusUnprocessableEntity, "model", "a single agent runs on one model; a team has roles: start a team first (/swarm 8). Only the compactor and the judge can differ here")
 	}
 	return true, t.Restart(ctx, wire.RestartRequest{Kind: "roles", RoleModels: map[string]string{role: ref}})
+}
+
+// maxModelChanges bounds the roles one request may change.
+const maxModelChanges = 64
+
+// setModels changes several models at once (role to model; "manager" is the team's model, a single agent's own): every model is checked
+// first, then one restart carries them all, so a team starts again once however many roles change. A single agent whose own model is
+// all that changes switches it in place, as SetModel does.
+func (t *webTab) setModels(ctx context.Context, roles map[string]string) (bool, error) {
+	if len(roles) > maxModelChanges {
+		return false, werr(http.StatusUnprocessableEntity, "model", fmt.Sprintf("at most %d roles change at once", maxModelChanges))
+	}
+	s := t.session()
+	if s == nil {
+		return false, werr(http.StatusConflict, "busy", "the session is starting: try again in a moment")
+	}
+	names := slices.Sorted(maps.Keys(roles))
+	team, rm := "", map[string]string{}
+	for _, role := range names {
+		ref := strings.TrimSpace(roles[role])
+		if role = strings.TrimSpace(role); len(role) > 64 || strings.ContainsAny(role, "= \t") {
+			return false, werr(http.StatusUnprocessableEntity, "model", "a role is a name: "+clip(role, 64))
+		}
+		if ref == "" || len(ref) > 300 {
+			return false, werr(http.StatusUnprocessableEntity, "model", "name a model for "+firstNonEmpty(role, "manager")+": provider/model")
+		}
+		if _, err := s.CheckModel(ref); err != nil {
+			return false, werr(http.StatusUnprocessableEntity, "model", firstNonEmpty(role, "manager")+": "+clip(err.Error(), 400))
+		}
+		switch {
+		case role == "" || role == "manager":
+			team = ref
+		case s.Swarm == nil && role != session.CompactorRole:
+			return false, werr(http.StatusUnprocessableEntity, "model", "a single agent runs on one model; a team has roles: start a team first (/swarm 8). Only the compactor can differ here")
+		default:
+			rm[role] = ref
+		}
+	}
+	if len(rm) == 0 {
+		return t.setModel(ctx, wire.ModelRequest{Ref: team})
+	}
+	return true, t.Restart(ctx, wire.RestartRequest{Kind: "roles", Model: team, RoleModels: rm})
 }
 
 // effortLevels are the levels of /effort.

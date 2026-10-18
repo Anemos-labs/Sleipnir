@@ -110,6 +110,14 @@ func (s *State) onRestore(e events.Event, t time.Time) {
 	ss := &s.sess
 	ss.Ended, ss.EndedAt, ss.EndReason, ss.EndCostUSD, ss.EndListUSD = false, time.Time{}, "", 0, 0 // its session.start waits for a goal
 	s.idleAgents(e.Agent, t)
+	var p struct {
+		Model string `json:"model"`
+	}
+	if s.decode(e.Data, maxPayload, &p) && p.Model != "" {
+		if a := s.agent(e.Agent, t); a != nil {
+			a.Model = clip(p.Model, textID) // a restart may have put it on another model
+		}
+	}
 }
 
 func (s *State) onUserInput(e events.Event, t time.Time) {

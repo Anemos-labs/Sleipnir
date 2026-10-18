@@ -211,7 +211,7 @@ export const SETTING_MAP = [
   [/^fav\*$/, { scope: 'config', keys: ['models.favorites'] }],
   [/^use\*$/, { scope: 'config', keys: ['models.default', 'models.roles.*'] }],
   // Roles & effort
-  [/^role\*$/, { scope: 'config', keys: ['models.default', 'models.roles.*'] }],
+  [/^role\*$|^do:models-(apply|discard)$/, { scope: 'config', keys: ['models.default', 'models.roles.*'] }],
   [/^seg:effort$/, { scope: 'state', note: 'reasoning effort of the session (/effort); no configuration key' }],
   // Budget
   [/^id:bIn$|^do:budget(-off)?$/, { scope: 'config', keys: ['swarm.budget_usd'] }],

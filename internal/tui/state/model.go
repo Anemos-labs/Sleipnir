@@ -93,7 +93,11 @@ func (s *State) onRequest(e events.Event, t time.Time) {
 		return
 	}
 	model := clip(p.Model, textID)
-	a.Model = firstOf(a.Model, model)
+	if side {
+		a.Model = firstOf(a.Model, model) // a compaction or a judge may run on another model: the agent's stays
+	} else {
+		a.Model = firstOf(model, a.Model) // the model it runs on now, after a switch
+	}
 	a.active(t)
 	a.failed = failure{} // it went on after a failed request: that one was not the end of it
 	if len(a.reqs) >= MaxOpenRequests {
