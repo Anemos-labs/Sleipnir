@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -340,5 +341,81 @@ func TestABatchRunIsHeldUntilTheMergedResultIsReviewed(t *testing.T) {
 	r.sw.noteAccepted(review)
 	if o := h.BeforeStop(context.Background(), "mgr", "manager", "done", false); o.Veto {
 		t.Fatalf("held after the review: %+v", o)
+	}
+}
+
+// The manager's live view agrees with the spawn tool: an idle member a pool keeps (its leader, the owner of an open subtask) is
+// not offered, a truly free idle member is, and a ready task already queued for a free member is said to be queued, not offered
+// again. A view that offered a pool's leader for a queued parent had the manager spawn it every fifteen seconds while each spawn
+// answered that it was already queued.
+func TestTheLiveViewDoesNotOfferPoolHeldMembersOrQueuedTasks(t *testing.T) {
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 3, Team: []string{"backend", "backend", "backend"}},
+		func(ctx context.Context, _ *rvCall) rvReply { return rvReply{Text: "noted"} })
+	r.sw.StartManager()
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "control plane", Files: []string{"server/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	first := r.sw.Board.Snapshot().Tasks[0]
+	members := slices.Clone(first.Pool.Members)
+	if len(members) != 3 || first.Owner != members[0] {
+		t.Fatalf("the pool: %v led by %s", members, first.Owner)
+	}
+	if err := r.sw.Board.poolUpdate("mgr", first.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	holdChild := func(member, title, files string) {
+		t.Helper()
+		c, err := r.sw.Board.CreateTask(first.Owner, TaskSpec{Parent: first.ID, Title: title, Role: "backend", Files: []string{files}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := r.sw.Board.assignTask(assignReq{by: first.Owner, agent: member, id: c.ID}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	holdChild(members[1], "store", "server/store/**")
+	for _, id := range members {
+		rvWait(t, id+" idle", func() bool { return r.idle(id) })
+	}
+	free, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "auth middleware", Role: "backend", Files: []string{"auth/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waiting, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "admin panel", Role: "backend", Files: []string{"admin/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.sw.queueSpawn(SpawnReq{Role: "backend", TaskID: waiting.ID, By: "mgr"}, waiting.Rev)
+
+	got := strings.Join(r.sw.staffingLines(r.sw.Board.Snapshot()), "\n")
+	for _, want := range []string{
+		members[2] + " idle while " + free.ID + " (backend) can start: give it the task now (spawn agent=" + members[2] + " task=" + free.ID + ")",
+		waiting.ID + " queued for the next free backend member: the harness starts them; do not spawn them again (wait)",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("live view lines %q lack %q", got, want)
+		}
+	}
+	for _, held := range members[:2] {
+		if strings.Contains(got, held+" idle") || strings.Contains(got, held+", ") || strings.Contains(got, "agent="+held) {
+			t.Errorf("live view lines %q offer %s, which the pool keeps", got, held)
+		}
+	}
+	if strings.Contains(got, "task="+waiting.ID) || strings.Contains(got, "while "+waiting.ID) || strings.Contains(got, ", "+waiting.ID+" (") {
+		t.Errorf("live view lines %q offer the queued %s", got, waiting.ID)
+	}
+
+	// the last free member takes a subtask too: nobody is offered, and the spawn the view no longer suggests is queued
+	holdChild(members[2], "api", "server/api/**")
+	got = strings.Join(r.sw.staffingLines(r.sw.Board.Snapshot()), "\n")
+	if strings.Contains(got, "idle while") {
+		t.Errorf("live view lines %q offer a member its pool keeps", got)
+	}
+	if res := r.callTool(context.Background(), "spawn", "mgr", "manager", map[string]any{"role": "backend", "task": free.ID}); res.IsError || !strings.Contains(res.Text, free.ID+" is queued") {
+		t.Fatalf("spawn %s with nobody free: %+v", free.ID, res)
+	}
+	got = strings.Join(r.sw.staffingLines(r.sw.Board.Snapshot()), "\n")
+	if want := free.ID + ", " + waiting.ID + " queued for the next free backend member"; !strings.Contains(got, want) {
+		t.Errorf("live view lines %q lack %q", got, want)
 	}
 }

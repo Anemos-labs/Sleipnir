@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -162,8 +163,11 @@ func reviewLine(last string) string {
 		ReviewerRole + " to review the merged result against the agreement (spawn role=" + ReviewerRole + "), and accept its report"
 }
 
-// staffingLines are the manager's live-view lines about unused capacity: free slots while ready tasks have no owner, and idle
-// workers whose role has a ready task. Nil when the team does not limit roles or nothing waits.
+// staffingLines are the manager's live-view lines about unused capacity: free slots while ready tasks have no owner, idle workers
+// whose role has a ready task, and the ready tasks already queued for a free member of their role. It agrees with the spawn tool: a
+// queued task (spawnqueue.go) is not offered again, and an idle member a pool keeps (poolKeeps: its leader, the owner of an open
+// subtask, any member of a pool still agreeing on its plan) is not offered, since a spawn on it would only be queued. Nil when the
+// team does not limit roles or nothing waits.
 func (s *Swarm) staffingLines(snap *Snapshot) []string {
 	if !s.teamLimited() || snap == nil {
 		return nil
@@ -183,19 +187,50 @@ func (s *Swarm) staffingLines(snap *Snapshot) []string {
 		}
 		m.mu.Unlock()
 	}
+	queued := make(map[string]bool, len(s.queued))
+	for id := range s.queued {
+		queued[id] = true
+	}
 	s.mu.Unlock()
+	for r, ids := range idle {
+		idle[r] = slices.DeleteFunc(ids, func(id string) bool { return poolHolder(snap, id) != "" })
+	}
 	var ready []Task
+	waiting := map[string][]string{} // role -> ready tasks already queued for a free member of it
 	for _, t := range snap.Tasks {
 		if t.Status != StatusTodo || t.Owner != "" {
 			continue
 		}
-		if ok, _ := depsDone(snap, t); ok {
-			ready = append(ready, t)
+		if ok, _ := depsDone(snap, t); !ok {
+			continue
 		}
+		if queued[t.ID] {
+			waiting[t.Role] = append(waiting[t.Role], t.ID)
+			continue
+		}
+		ready = append(ready, t)
 	}
-	if len(ready) == 0 {
-		return nil
+	var out []string
+	if len(ready) > 0 {
+		out = offerLines(ready, idle, slots, used, order)
 	}
+	for _, r := range roleKeys(waiting) {
+		if len(out) > maxStaffingLines {
+			break
+		}
+		who := "member"
+		if r != "" {
+			who = r + " member"
+		}
+		out = append(out, fmt.Sprintf("%s queued for the next free %s: the harness starts them; do not spawn them again (wait)",
+			strings.Join(waiting[r], ", "), who))
+	}
+	return out
+}
+
+// offerLines are the live-view lines that offer capacity for the ready tasks no one has and no spawn waits for: the free slots, and
+// per role the idle members free to take one now.
+func offerLines(ready []Task, idle map[string][]string, slots, used map[string]int, order []string) []string {
 	var free []string
 	nfree := 0
 	for _, r := range order {
@@ -215,12 +250,7 @@ func (s *Swarm) staffingLines(snap *Snapshot) []string {
 			byRole[t.Role] = append(byRole[t.Role], t.ID)
 		}
 	}
-	roles := make([]string, 0, len(byRole))
-	for r := range byRole {
-		roles = append(roles, r)
-	}
-	sort.Strings(roles)
-	for _, r := range roles {
+	for _, r := range roleKeys(byRole) {
 		if len(out) > maxStaffingLines {
 			break
 		}
@@ -233,4 +263,14 @@ func (s *Swarm) staffingLines(snap *Snapshot) []string {
 			strings.Join(ids, ", "), strings.Join(byRole[r], ", "), r, ids[0], byRole[r][0]))
 	}
 	return out
+}
+
+// roleKeys returns the keys (roles) of m in order.
+func roleKeys(m map[string][]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
