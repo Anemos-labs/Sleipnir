@@ -284,7 +284,7 @@ func (s *Swarm) spareMembers(req SpawnReq, all []*member) ([]*member, map[string
 			continue
 		}
 		t, _ := snap.Task(parent)
-		if t.Pool.Phase == "executing" && t.Owner != m.id && openChild[m.id+"\x00"+parent] == "" {
+		if !poolKeeps(t, m.id, openChild[m.id+"\x00"+parent] != "") {
 			spare = append(spare, m)
 			release[parent] = append(release[parent], m.id)
 		}
@@ -317,6 +317,26 @@ func (s *Swarm) spareMembers(req SpawnReq, all []*member) ([]*member, map[string
 		}
 	}
 	return spare, release, nil
+}
+
+// poolKeeps reports whether the open pooled parent t keeps its member from another parent of the role: a pool still agreeing on
+// its plan keeps every member, an executing one its leader and the members that own an open subtask of it (ownsChild). It is the
+// rule spareMembers applies, and the one the manager's live view applies before it offers an idle member (staffingLines).
+func poolKeeps(t Task, member string, ownsChild bool) bool {
+	return t.Pool.Phase != "executing" || t.Owner == member || ownsChild
+}
+
+// poolHolder returns the open pooled parent that keeps member from another parent (poolKeeps), or "" when none does.
+func poolHolder(snap *Snapshot, member string) string {
+	for _, t := range snap.Tasks {
+		if t.Pool == nil || t.Status == StatusDone || t.Status == StatusFailed || !slices.Contains(t.Pool.Members, member) {
+			continue
+		}
+		if poolKeeps(t, member, ownsOpenChild(snap, member, t.ID)) {
+			return t.ID
+		}
+	}
+	return ""
 }
 
 // notifyPoolRelease tells the leader of parent which members another parent of its role took, so it does not wait for their
