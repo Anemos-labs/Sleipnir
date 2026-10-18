@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A proxy that refuses the CONNECT to the endpoint for good (any status but
+  407, which asks for credentials, and the gateway failures 502, 503 and 504,
+  which are retried) is reported as "the proxy does not allow HOST", with the
+  proxy's rules, `HTTPS_PROXY` or another endpoint as the remedies, instead of
+  naming "the network policy of this machine". Prompt bytes: none change.
+
 - A worktree-isolated team pushes its integration branch to the checkout's
   push remote (else `origin`) as `sleipnir/<session>/_integration` after
   every merge, so verified work no longer lives only on the local disk until
