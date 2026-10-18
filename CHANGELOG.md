@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Sleipnir ships built-in skills, listed after every skills directory and
+  loaded on demand like any other: `blender`, `blender-web-assets`,
+  `blender-scene`, `reverse-engineering` and `reverse-engineering-ui`. They are
+  written under `<state>/cache/skills/`; a user or project skill of the same
+  name replaces one. Prompt bytes: the skills listing in the shared layer
+  gains one line per built-in skill, and the frontend and scout role prompts
+  gain one line each naming when to load them, so the first session after
+  upgrading re-writes those prefixes once.
+
 - A proxy that refuses the CONNECT to the endpoint for good (any status but
   407, which asks for credentials, and the gateway failures 502, 503 and 504,
   which are retried) is reported as "the proxy does not allow HOST", with the
