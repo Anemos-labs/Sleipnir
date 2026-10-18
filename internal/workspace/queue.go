@@ -79,7 +79,8 @@ type Submission struct {
 	// Task).
 	Message string
 	// Scope, with EnforceScope, refuses a submission that changed files outside it
-	// (see Assert). Scope is checked against what this submission changed relative
+	// (see OutOfScopeForMerge: a regenerated dependency lockfile such as Cargo.lock
+	// does not count). Scope is checked against what this submission changed relative
 	// to the integration tip, so work merged in from other agents does not count.
 	Scope        []string
 	EnforceScope bool
@@ -338,7 +339,7 @@ func (m *Manager) removeStaleIntegration(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	owner := mk.ownerIn(admin)
+	owner := m.ownerOf(mk, admin)
 	if !mk.Integration || owner == ownerAlive {
 		return fmt.Errorf("%w: the integration tree at %s belongs to a running session", ErrExists, dest)
 	}
@@ -643,7 +644,7 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 			}
 		}
 		if s.EnforceScope && len(s.Scope) > 0 {
-			if out := OutOfScope(files, s.Scope); len(out) > 0 {
+			if out := OutOfScopeForMerge(files, s.Scope); len(out) > 0 {
 				res.Files = out
 				return q.reject(res, fmt.Sprintf("changed %d file(s) outside its scope: %s", len(out), strings.Join(firstN(out, 8), ", "))), nil
 			}

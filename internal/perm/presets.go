@@ -44,6 +44,7 @@ var workspaceRefused = map[string][]string{
 	"pyright":      {"--createstub", "--writebaseline"},
 	"tsc --noEmit": {"-b", "--build", "--init", "--generateTrace", "--generateCpuProfile", "--incremental", "--tsBuildInfoFile"},
 	"eslint":       {"--fix", "--init", "--fix-type", "-o", "--output-file", "--suppress-all", "--suppress-rule", "--prune-suppressions"},
+	"cargo clippy": {"--fix", "--allow-dirty", "--allow-staged", "--allow-no-vcs"},
 }
 
 // refusedOption returns the first of names that args give: as the argument itself or with "=value", and, for a one-letter option

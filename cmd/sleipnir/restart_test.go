@@ -12,6 +12,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/checkpoint"
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/goal"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/tui/app"
@@ -371,6 +372,45 @@ func TestGoalCommandSetsPausesResumesAndClears(t *testing.T) {
 	}
 }
 
+// /goal with a spec: a missing file is refused and nothing is set; a spec that is there sets the goal with its milestones, sends the
+// spec's text with the goal, and /goal alone lists the milestones.
+func TestGoalCommandReadsASpecAndListsItsMilestones(t *testing.T) {
+	h := &sessionHost{s: chatSession(t, false, nil)}
+	run := func(line string) (app.CommandResult, string) {
+		var out strings.Builder
+		res, ok := h.programCommand(line, &out)
+		if !ok {
+			t.Fatalf("%s was not handled", line)
+		}
+		return res, out.String()
+	}
+	if res, out := run("/goal ship it, spec: GOAL.md"); res.Send != "" || h.goal != nil || !strings.Contains(out, "goal not set: spec GOAL.md") {
+		t.Fatalf("a missing spec: %+v %q", res, out)
+	}
+	if err := os.WriteFile(filepath.Join(h.s.Cwd(), "GOAL.md"), []byte("Milestones:\n- CLI parses flags\n- release v1 published\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, out := run("/goal ship it, spec: GOAL.md")
+	if h.goal == nil || len(h.goal.Milestones) != 2 || !strings.Contains(out, "2 milestones") || !strings.Contains(res.Send, "release v1 published") {
+		t.Fatalf("a goal with a spec: %+v %q", res, out)
+	}
+	if _, out := run("/goal"); !strings.Contains(out, "milestones 0 of 2 met, from the goal and GOAL.md") || !strings.Contains(out, "M2 [open] release v1 published") {
+		t.Errorf("/goal: %q", out)
+	}
+}
+
+// A copy of a goal shares no milestone with it: the judge's rulings change the milestones of the copy a turn works on while the page
+// reads the published goal.
+func TestCloneGoalCopiesTheMilestones(t *testing.T) {
+	g := goal.New("x")
+	g.Milestones = []goal.Milestone{{ID: "M1", Text: "a"}}
+	c := cloneGoal(g)
+	c.Milestones[0].Met = true
+	if g.Milestones[0].Met {
+		t.Error("the copy's milestones are the original's")
+	}
+}
+
 // A run's last lines say which files it changed, or that it changed none (a run refused its edits ends with a diagnosis and a summary that look alike).
 func TestChangedLineSaysWhatARunChanged(t *testing.T) {
 	cp := func(files ...string) checkpoint.Info { return checkpoint.Info{Files: files} }
@@ -458,5 +498,48 @@ func TestNearCommandOffersTheRealOne(t *testing.T) {
 	}
 	if got := nearCommand("xyzzy"); got != "" {
 		t.Errorf("nearCommand(xyzzy) = %q, want nothing", got)
+	}
+}
+
+// A custom team keeps its number of workers when a role's model changes: each slot of the role moves to the new model.
+func TestRoleChangeKeepsTheSlotsOfACustomTeam(t *testing.T) {
+	t.Setenv("TOGETHER_API_KEY", "test")
+	team := []session.TeamSlot{
+		{Role: "architect"}, {Role: "scout"}, {Role: "backend", Model: "together/a"}, {Role: "backend", Model: "together/b"},
+		{Role: "backend"}, {Role: "frontend"}, {Role: "devops"}, {Role: "tester"}, {Role: "docs"}, {Role: "reviewer"},
+	}
+	s := chatSessionWith(t, false, nil, func(o *session.Options) {
+		o.Swarm, o.Workers, o.Team = true, len(team), team
+	}, nil)
+	for _, line := range [][]string{{"--role-model", "backend=together/c"}, {"--role-model=backend=together/c"}} {
+		args, err := restartArgs(s, line, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		checkBackendSlots(t, args, len(team))
+	}
+}
+
+func checkBackendSlots(t *testing.T, args []string, want int) {
+	t.Helper()
+	f, err := parseChatFlags(args)
+	if err != nil {
+		t.Fatalf("the restart's own arguments do not parse: %v\n%v", err, args)
+	}
+	slots := f.team
+	if len(slots) != want {
+		t.Fatalf("the team has %d slots after the change, want %d: %v", len(slots), want, args)
+	}
+	backends := 0
+	for _, sl := range slots {
+		if sl.Role == "backend" {
+			backends++
+			if sl.Model != "together/c" {
+				t.Errorf("a backend slot kept %q, want together/c", sl.Model)
+			}
+		}
+	}
+	if backends != 3 {
+		t.Errorf("backends = %d, want 3: %v", backends, args)
 	}
 }

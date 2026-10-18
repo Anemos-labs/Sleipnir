@@ -294,7 +294,10 @@ func (s *Session) buildIsolation(ctx context.Context) (*swarm.Isolation, error) 
 		// the result is applied on top of exactly that. With Commit the checkout is clean
 		// (planIsolation checked) and the base is the branch's commit.
 		Snapshot: !p.commit,
-		OnEvent:  workspace.EmitTo(s.Log),
+		// The session directory is locked (New took it), so a tree of this session's
+		// namespace that a reboot left behind is ours to take over.
+		Exclusive: dirLocks,
+		OnEvent:   workspace.EmitTo(s.Log),
 	}
 	if p.resume != nil {
 		mgr.Base, mgr.Snapshot = p.resume.Base, false

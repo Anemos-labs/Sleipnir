@@ -101,11 +101,15 @@ const noOneToAskPhrase = "this run has no one to ask"
 // IsNoOneToAsk says whether text, a tool's refusal, is that of a run with nobody to ask.
 func IsNoOneToAsk(text string) bool { return strings.Contains(text, noOneToAskPhrase) }
 
-// askTimedOut and noAnswerInTime frame the refusal of a question that nobody answered in the time it was given. The sentences are fixed,
-// so they cost the cache nothing, and they say what the model can do: the person is not there.
+// askTimedOut and noAnswerInTime frame the refusal of a question that nobody answered in the time it was given, and unanswered that
+// of a question the prompter gave up on without an answer (no page had the interface open, the input ended). The sentences are
+// fixed, so they cost the cache nothing, and they say what the model can do: the person is not there, and asking again is refused
+// the same way. A manager told only "no answer" asked for the same network probe eight times in eleven minutes.
 const (
 	askTimedOut    = " (nobody answered within "
-	noAnswerInTime = ", so nothing was approved: use an action that is allowed, or finish and say which permission you needed)"
+	noAnswerInTime = ", so nothing was approved: " + noAnswerAdvice
+	unanswered     = " (no answer, so nothing was approved: " + noAnswerAdvice
+	noAnswerAdvice = "do not ask for it again; use an action that is allowed, or finish and say which permission you needed)"
 )
 
 // settledEarlier begins the reason of a question that an answer given while it waited decided, so that it is not asked.
@@ -205,6 +209,9 @@ func (e *Engine) lead(ctx context.Context, key string, p *pending, r Request, v 
 		return Decision{Reason: "approval required: " + v.reason + askTimedOut + e.cfg.AskTimeout.String() + noAnswerInTime}
 	}
 	p.canceled = false
+	if !d.Allow && d.Reason == "no answer" {
+		return Decision{Reason: "approval required: " + v.reason + unanswered}
+	}
 	if d.Reason == "" {
 		if d.Allow {
 			d.Reason = "approved by the user"

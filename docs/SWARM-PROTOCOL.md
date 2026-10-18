@@ -98,7 +98,11 @@ Once all children are accepted, `pool reconcile` assembles the result. Its optio
 `text` replaces the initial plan with the combined contract that all members confirm. In isolated
 runs each member calls `pool inspect` to update its tree, examines the combined
 result, then calls `pool confirm`. Every member must confirm before the parent can
-be submitted and accepted. A newer change that may touch the pool's files invalidates
+be submitted and accepted. When every child of an executing pool is accepted or
+waiting in review and its leader is idle, the harness sends the leader one request:
+accept the children still in review, reconcile, have the members confirm, and submit.
+It is sent again only after a child, the pool's assignment or its revision changes,
+not for each idle turn. A newer change that may touch the pool's files invalidates
 reconciliation: an accepted task or a revised one whose scope overlaps the pool's, a
 direct manager edit of one of its files, or a change whose files are not known. A
 change elsewhere in the tree leaves it current. A restored team reconciles again.
@@ -125,6 +129,9 @@ checkout fast-forwards to the verified integration commits. This operation creat
 no board task. It retains explicit permission rules, refuses unrelated dirty files
 or a changed branch, and rechecks the integration snapshot after authorization.
 Workers cannot invoke it. Push and PR commands remain direct manager operations.
+Between model steps the manager's checkout is submitted to the merge queue only when it
+holds uncommitted changes or commits the integration branch does not contain; a checkout
+that only carries already-integrated work is synced, not submitted.
 
 **Repair.** Configured teams do not expire idle contexts or exhaust a task's total
 repair attempts. Failed assignments return to the same worker with bounded backoff:
@@ -166,7 +173,10 @@ manager is held while a pass is pending. `--auto-docs=false` makes docs an ordin
 
 **Staffing and review.** Under the team's occupancy the manager's hot view says when slots are free while ready tasks
 (todo, no owner, dependencies done) wait (`2 free slot(s) (devops, tester), 3 ready task(s) with no owner: start
-workers`), and which idle worker could take a ready task of its role now. In a team with a reviewer slot a merged change
+workers`), and which idle worker could take a ready task of its role now. While a task is open, idle workers that no pool
+keeps, that own no open task, and whose role has no ready or queued task are named in one line (`idle with nothing planned
+for them: be-2, be-3 (backend); ts-1 (tester): ...`) asking the manager to plan independent work with disjoint file scopes
+for them, or to leave them idle when nothing independent remains. In a team with a reviewer slot a merged change
 is due a review: every accepted implementation task of a writer (not an agreement, not the docs worker's) counts as a
 merge, and a task owned by a reviewer accepted after the last merge covers it. Until then the manager's hot view says so,
 its `wait` is refused once nothing else runs, and the manager's final answer is held. The agent bounds stop vetoes per run; configured
@@ -195,9 +205,9 @@ swarm tools), so the provider caches the schemas once for the whole swarm. Roles
 each call under the session posture *and* the role's profile (read-only roles run under the plan profile: writes and
 mutating commands are denied by the engine that understands shell syntax, not by a command allowlist, and the project's
 tests and static checks stay allowed, `perm.ReadOnlyAllow`: `go test`, `go vet`, `pytest`, `node --test`, `node --check`,
-`cargo test`, `cargo check`, `make test`, and on the tests preset's terms, every file inside the workspace and no option
+`npm test`, `pnpm test`, `yarn test`, `cargo test`, `cargo check`, `make test`, and on the tests preset's terms, every file inside the workspace and no option
 that writes the project's files or installs, `ruff check`, `ruff format --check`, `ruff format --diff`, `mypy`, `pyright`,
-`tsc --noEmit` and `eslint`; the manager
+`tsc --noEmit`, `eslint` and `cargo clippy` (not `--fix`); the manager
 uses the session's permissions and any explicit manager profile), and swarm
 tools check the caller's role, which the harness puts in the call. The manager owns
 assignments, revisions and scope changes. A pool leader can create and accept its
@@ -303,6 +313,11 @@ Statuses: `todo -> doing -> review -> done`, with `blocked` and `failed` as side
   `task fail` without a valid `reason` (and `target` for `blocked_on` and `superseded`; the task must exist and be
   another one) is refused with the list of reasons and changes nothing. `task block` takes an optional `target`, the
   task it waits for. The closure is in `task get`, the task list, the live view and every `board.op` for the task.
+* **A create does not duplicate open work.** A create (by the manager, a pool leader, or a spawn that creates its task)
+  is refused when a task under the same parent (or at the top level, for no parent) that is neither done nor failed has
+  the same title after lowercasing and collapsing whitespace; the match is exact, not fuzzy. The refusal names that
+  task and says to use it (`task get id=…`). The check runs inside the board's critical section, so many identical
+  creates issued in parallel in one model response leave one task.
 * Operations are events (`board.op`, section 11), so state can be rebuilt from the log.
 * Notes are *proposals*: eligible for the bounded hot view. Automatic folding into the shared layer is not implemented
   (section 9); agreements use task dependencies instead.
@@ -892,7 +907,11 @@ checkout by a merge, so a rule that guarded only the checkout would guard nothin
 
 **Leases become advisory.** Nobody can block anybody, so the writer cap and the scope-overlap refusal are lifted. Two writers
 touching the same repository-relative path raise the usual alert, which names the agents and never the file, and warns of a
-merge conflict. A scope still says which files a task may touch, and the merge queue enforces it on the commit.
+merge conflict. A scope still says which files a task may touch, and the merge queue enforces it on the commit. A dependency
+lockfile that a build tool regenerates (`Cargo.lock`, `package-lock.json`, `npm-shrinkwrap.json`, `pnpm-lock.yaml`,
+`yarn.lock`, `bun.lockb`, `go.sum`, `poetry.lock`, `uv.lock`, `Gemfile.lock`, `composer.lock`, at any depth) does not count
+against the scope: a documentation task that ran `cargo` still merges with the `Cargo.lock` the run rewrote. The lockfile is
+merged like any other file, so a conflicting change comes back as a conflict, and a path another role owns is still refused.
 
 **The manager is told** in its private notes (never a shared layer) that writers work in private worktrees, that the checkout does
 not show their work until the run ends, that the harness then applies the result (never something to ask the user to merge), and that

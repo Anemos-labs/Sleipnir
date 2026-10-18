@@ -37,6 +37,9 @@ const (
 	Stuck        = "agent.stuck"        // the repetition guard stepped in
 	Cancelled    = "agent.cancel"       // a run was cancelled
 	Retried      = "request.retry"      // the endpoint did not answer and the request was repeated
+	ReqFailed    = "request.failed"     // a model request that failed for good: no more retries, the turn ended with it
+	AgentFailed  = "agent.failed"       // an agent that ended in the failed state for a reason other than a failed request
+	GoalPaused   = "goal.paused"        // the harness paused a standing goal (a failed turn, no progress, the continuations used up)
 	CacheBreak   = "cache.break"        // a cache anomaly
 	CompactFail  = "compaction.reject"  // a compaction patch was rejected
 	ReRead       = "file.reread"        // the same part of a file (path and range), unchanged in between, read three or more times in one session
@@ -101,6 +104,9 @@ var hints = map[string]string{
 	Stuck:        "the same failing call again and again: what does the model see that does not tell it what to do next?",
 	Cancelled:    "a run was cancelled: by a person (what were they waiting for?) or by a deadline (is the budget right?)",
 	Retried:      "the endpoint did not answer: rate limit, overload or a dropped connection",
+	ReqFailed:    "a request failed for good and took the turn with it: the detail is the endpoint's or the network's own words (a proxy that refuses the host, a key that is not accepted, an endpoint that stayed down)",
+	AgentFailed:  "an agent ended in the failed state without a failed request before it: look at the events just before (a tool, a budget, a crash)",
+	GoalPaused:   "the harness stopped working on the goal: a failed turn (see request.failed), no progress in three turns, or every continuation used",
 	CacheBreak:   "the prompt cache broke: a stable layer changed, or the endpoint's cache is erratic",
 	CompactFail:  "a compaction patch did not validate: the compactor model, or a rule that is too strict",
 	ReRead:       "the same part of a file read again and again: did the answer get lost (truncation, compaction) or never used?",
@@ -377,6 +383,8 @@ func mineLog(path, session string, rep *Report, add func(session, category, key 
 	}
 	var legacyRefusals []legacy
 	sawPerm := false
+	failedReq := map[string]bool{} // agents whose last request failed for good, so their failed state is that failure's
+	goalPaused := ""               // the pause of the standing goal as the last goal.state said it
 	err := events.Scan(path, func(e events.Event) error {
 		rep.Events++
 		ex := func(detail string) Example {
@@ -396,6 +404,7 @@ func mineLog(path, session string, rep *Report, add func(session, category, key 
 			}
 			if json.Unmarshal(e.Data, &d) == nil {
 				lastReq[e.Agent] = d.Req
+				failedReq[e.Agent] = false
 				if d.Stop == "max_tokens" {
 					add(session, OutputLimit, "max_tokens", S2, ex(fmt.Sprintf("%d output tokens in %.0f s", d.Usage.OutputTokens, float64(d.TotalMS)/1000)), d.Req)
 				}
@@ -505,10 +514,42 @@ func mineLog(path, session string, rep *Report, add func(session, category, key 
 				Kind   string
 				Status int
 				Error  string
+				Req    string
 			}
-			if json.Unmarshal(e.Data, &d) == nil && d.Kind != "" { // a retry; a final failure has no kind
+			if json.Unmarshal(e.Data, &d) != nil {
+				return nil
+			}
+			switch {
+			case d.Kind != "": // a retry
 				add(session, Retried, fmt.Sprintf("%s (%d)", d.Kind, d.Status), S1, ex(d.Kind), "")
+			case d.Error != "": // a final failure has no kind, only the error
+				failedReq[e.Agent] = true
+				add(session, ReqFailed, failureKey(d.Error), S3, ex(d.Error), d.Req)
 			}
+		case events.TypeModelRequest:
+			failedReq[e.Agent] = false // a new request (a restarted run reuses the agent's id): its outcome is its own
+		case events.TypeAgentState:
+			var d struct{ State string }
+			if json.Unmarshal(e.Data, &d) == nil && d.State == "failed" {
+				if !failedReq[e.Agent] {
+					add(session, AgentFailed, firstNonEmpty(e.Agent, "?"), S3, ex(e.Agent+" failed"), req)
+				}
+				failedReq[e.Agent] = false // the failed request explained this failure, not the next one
+			}
+		case typeGoalState:
+			var d struct{ Goal *struct{ Paused string } }
+			if json.Unmarshal(e.Data, &d) != nil {
+				return nil
+			}
+			paused := ""
+			if d.Goal != nil {
+				paused = d.Goal.Paused
+			}
+			// A pause is counted when it begins; one a person asked for ("you paused it", "you interrupted it") is not friction.
+			if paused != "" && paused != goalPaused && !strings.HasPrefix(paused, "you ") {
+				add(session, GoalPaused, normalise(paused), S3, ex(paused), "")
+			}
+			goalPaused = paused
 		case events.TypeCacheAnomaly:
 			var d struct{ Kind string }
 			if json.Unmarshal(e.Data, &d) == nil {
@@ -565,6 +606,30 @@ func mineLog(path, session string, rep *Report, add func(session, category, key 
 		}
 	}
 	return nil
+}
+
+// typeGoalState is the event internal/session/goal.go writes when the standing goal changes; its payload is {"goal": goal.State},
+// the struct's Go field names as keys, or a null goal once it is cleared or met.
+const typeGoalState = "goal.state"
+
+// failureKey groups final request failures by what failed: the kind the provider put in front of the message ("provider: network: ...")
+// and the last words of the message, which name the cause ("Forbidden", "connection refused"), with numbers and paths taken out.
+func failureKey(msg string) string {
+	kind := ""
+	if rest, ok := strings.CutPrefix(msg, "provider: "); ok {
+		if k, tail, ok := strings.Cut(rest, ": "); ok && !strings.ContainsAny(k, " /") {
+			kind, msg = k, tail
+		}
+	}
+	// The cause is after the last ": " (Go's errors put the URL first, the reason last).
+	if i := strings.LastIndex(msg, ": "); i >= 0 {
+		msg = msg[i+2:]
+	}
+	key := normalise(clip(msg, 80))
+	if kind != "" {
+		key = kind + ": " + key
+	}
+	return key
 }
 
 // permPayload is the body of perm.ask and perm.decide.

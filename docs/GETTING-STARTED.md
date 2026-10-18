@@ -100,6 +100,37 @@ Use `/goal` to inspect progress, Escape or `/goal pause` to interrupt and pause,
 and `/goal resume` to continue. The goal can also stop for missing user input,
 lack of progress, errors, or its continuation limit.
 
+A large goal can keep its brief in a file and list milestones that the judge
+rules on one by one. Name the file on a line of its own, or at the end of a
+one-line goal, with `Spec: PATH` (relative to the working directory, inside the
+project, at most 64 KiB):
+
+```markdown
+# Spec: CSV viewer
+
+## Milestones
+1. Parses a 1 GB file in constant memory
+   - `go test ./csv` passes
+2. Renders a virtualised table in the web UI
+3. Release v0.1.0 is published with binaries and a website
+```
+
+```text
+/goal Build the CSV viewer. Spec: docs/SPEC.md
+```
+
+Milestones are read from a list under a `## Milestones` heading (or a
+`Milestones:` line), from headings nested under a `## Milestones` heading, or
+from headings that name one (`## Milestone 2: Web UI`, `### M2 - Web UI`). What
+is written under a milestone (indented lines, paragraphs, deeper headings) is
+kept as its acceptance details. Milestones may also be written in the goal
+itself. The spec is read
+once, when the goal is set: the judge holds the work to that copy, not to later
+edits of the file. The goal is met only when one verdict confirms every
+milestone with cited evidence; a "done" that leaves one out continues with the
+unconfirmed milestones as what is missing. `/goal` and the web Goal sheet show
+each milestone, open or met, with the judge's evidence.
+
 ## Review and control
 
 - Ctrl+G or `/agents`: live team view.

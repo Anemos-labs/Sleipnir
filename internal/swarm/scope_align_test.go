@@ -193,7 +193,7 @@ func TestAPoolChildMayNameFilesInsideItsParentsGlob(t *testing.T) {
 	}
 	wide := r.callTool(context.Background(), "task", lead, "backend", map[string]any{"action": "create", "parent": parent.ID, "role": "backend",
 		"title": "everything", "files": []string{"web/**"}})
-	if !wide.IsError || !strings.Contains(wide.Text, "outside the scope of its parent "+parent.ID+" (**/*.md, docs/**)") {
+	if !wide.IsError || !strings.Contains(wide.Text, "outside the scope of its parent "+parent.ID+" (**/*.md, docs/**): widen the parent first (task update id="+parent.ID) {
 		t.Errorf("a child wider than its parent: %q", wide.Text)
 	}
 	child := r.sw.Board.Snapshot().Tasks[1]

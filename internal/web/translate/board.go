@@ -704,7 +704,11 @@ func anomalyWhy(kind string) string { return inspect.AnomalyTitle(kind) }
 
 // goalKey is the identity of a goal event, for sending each state once whichever of the host and the log says it.
 func goalKey(g *wire.Goal) string {
-	return g.S + "\x00" + g.Objective + "\x00" + strconv.Itoa(g.Turns) + "\x00" + strconv.Itoa(g.Max) + "\x00" + g.Paused + "\x00" + g.Reason
+	k := g.S + "\x00" + g.Objective + "\x00" + strconv.Itoa(g.Turns) + "\x00" + strconv.Itoa(g.Max) + "\x00" + g.Paused + "\x00" + g.Reason + "\x00" + g.Spec
+	for _, m := range g.Milestones {
+		k += "\x00" + m.ID + "\x01" + m.Text + "\x01" + strconv.FormatBool(m.Met) + "\x01" + m.Evidence
+	}
+	return k
 }
 
 // verdictKey is the identity of a verdict event.
@@ -722,6 +726,12 @@ func (t *Translator) goalState(e events.Event, ts float64, at int64) {
 			Paused    string
 			Reason    string
 			Done      bool
+			Spec      string
+			// Milestones are goal.Milestone, keyed by its Go field names like the rest.
+			Milestones []struct {
+				ID, Text, Evidence string
+				Met                bool
+			}
 		} `json:"goal"`
 	}
 	if json.Unmarshal(e.Data, &p) != nil {
@@ -743,7 +753,13 @@ func (t *Translator) goalState(e events.Event, ts float64, at int64) {
 			s = "paused"
 		}
 		g = &wire.Goal{S: s, Objective: line(p.Goal.Objective, capReason), Turns: max(p.Goal.Turns, 0), Max: max(p.Goal.Max, 0),
-			Paused: line(p.Goal.Paused, capReason), Reason: line(p.Goal.Reason, capReason)}
+			Paused: line(p.Goal.Paused, capReason), Reason: line(p.Goal.Reason, capReason), Spec: line(p.Goal.Spec, capReason)}
+		for i, m := range p.Goal.Milestones {
+			if i >= capMilestones {
+				break
+			}
+			g.Milestones = append(g.Milestones, wire.GoalMilestone{ID: line(m.ID, 8), Text: line(m.Text, capMilestone), Met: m.Met, Evidence: line(m.Evidence, capReason)})
+		}
 	}
 	if k := goalKey(g); k != t.d.goalKey {
 		t.d.goalKey = k

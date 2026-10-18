@@ -64,8 +64,11 @@
   ui.alertsTag = m => { const n = alertList(m).length; return n ? '<button class="tag warm" type="button" data-alerts title="what the board and the stall detector raised">⚠ ' + n + ' alert' + (n === 1 ? '' : 's') + '</button>' : ''; };
   /** Keep the alerts tag just before `before` (a board head's summary) while there are alerts; nothing otherwise. */
   ui.alertsSlot = (before, m) => { const html = ui.alertsTag(m); let el = before.parentNode.querySelector('.balert'); if (!html) { if (el) el.remove(); return; } if (!el) { el = document.createElement('span'); el.className = 'balert'; before.parentNode.insertBefore(el, before); } if (el._h !== html) { el._h = html; el.innerHTML = html; } };
-  /** The governor note: a plain sentence while nothing throttles, the counts when something does. */
-  ui.govNote = m => (m.r429 || m.retries) ? m.r429 + ' 429' + (m.r429 === 1 ? '' : 's') + ', ' + m.retries + ' retr' + (m.retries === 1 ? 'y' : 'ies') + ': the endpoint is throttling the team' : 'no 429s, no retries: nothing is throttling the team';
+  /** The governor note: a plain sentence while nothing throttles, the counts when something does. Retries with no 429 are requests that
+   * failed (a dropped connection, a server error, a proxy), not throttling, and the note says so. */
+  ui.govNote = m => { const r4 = m.r429 || 0, rt = m.retries || 0, rs = rt + ' retr' + (rt === 1 ? 'y' : 'ies');
+    if (r4) return r4 + ' 429' + (r4 === 1 ? '' : 's') + ', ' + rs + ': the endpoint is throttling the team';
+    return rt ? 'no 429s, ' + rs + ': requests are failing, not throttled (the activity log says why)' : 'no 429s, no retries: nothing is throttling the team'; };
   /** `routed N · dup N · mailman on/off`: the dup term only when the server counts duplicates. */
   ui.mailNote = (m, S) => { const st = m.mailstat; return 'routed ' + calc.counts(m).mail + (st && st.dup != null ? ' · dup ' + st.dup : '') + ' · mailman ' + (S.meta.mailman ? 'on' : 'off'); };
   function miniTl(A, vt, col) {

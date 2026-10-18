@@ -50,3 +50,20 @@ test('the Goal sheet keeps the lines of a brief and shows its code spans as code
   assert.deepEqual(Array.from(big.querySelectorAll('code')).map(c => c.textContent), ['raven', 'raven simulate --hosts 5000']);
   assert.equal(big.querySelectorAll('b').length, 0, 'text from the goal is never markup');
 });
+
+// A goal with milestones shows each one in the Goal sheet, met with the judge's evidence or open, with the spec it came from; the plan
+// box counts the milestones met.
+test('the Goal sheet lists the milestones the judge rules on', async () => {
+  const L = await boot();
+  await L.event('goal', { s: 'active', objective: 'Ship it\nSpec: docs/SPEC.md', turns: 1, max: 20, spec: 'docs/SPEC.md',
+    milestones: [{ id: 'M1', text: 'the API answers', met: true, evidence: 'record 4: curl returned 200' }, { id: 'M2', text: 'the <b>site</b> is up' }] });
+  await L.step(5);
+  L.SL.ui.sheets.goal(); await L.settle();
+  const sheet = L.doc.querySelector('.sheet'), items = sheet.querySelectorAll('.plist.ms li');
+  assert.match(sheet.textContent, /milestones, ruled on one by one · 1\/2 met · spec docs\/SPEC\.md/);
+  assert.equal(items.length, 2);
+  assert.equal(items[0].className, 'done'); assert.match(items[0].textContent, /M1 the API answersevidence: record 4: curl returned 200/);
+  assert.equal(items[1].className, ''); assert.equal(items[1].textContent, '◌M2 the <b>site</b> is up', 'milestone text is never markup');
+  assert.match(sheet.textContent, /1\/2 milestones/);
+  assert.match(L.doc.querySelector('#planBox').textContent, /1\/2 milestones/);
+});

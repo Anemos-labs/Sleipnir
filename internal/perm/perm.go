@@ -94,12 +94,16 @@
 // judged; the whole is allowed only if every part is, and denied if any part is.
 // The read-only allowlist covers ls, cat, head, tail, wc, pwd, echo, which,
 // whoami, date, uname, stat, file, du, df, tree, sort, uniq, cut, tr, diff, cmp,
-// basename, dirname, realpath, rg, grep, find, a few builtins, git (status, diff,
-// log, show, branch without changes, remote -v, rev-parse, ls-files, blame, ...),
-// go (version, env, list, vet, build, doc) and "--version" probes. Options that
-// write or run programs (find -exec/-delete, sort -o, rg --pre, git -c,
-// go build -toolexec, ...) take a command off the list. printenv and env are not
-// on it: they dump secrets.
+// basename, dirname, realpath, rg, grep, egrep, fgrep, find, column, comm, join,
+// od, hexdump, xxd, strings, base64, ps, pgrep, a few builtins, git (status, diff,
+// log, show, branch without changes, remote -v, rev-parse, ls-files, blame, config
+// reads, ...), go (version, env, list, vet, build, doc), npm ls, a bare npm run
+// (the list of scripts), "--version" probes, cargo metadata --no-deps, rustc --print
+// and rustup toolchain list (rustcmds.go); sed, awk and jq when their script
+// only selects and prints (textcmds.go, sed.go). Options that write or run
+// programs (find -exec/-delete, sort -o, rg --pre, git -c, go build -toolexec,
+// awk -f, jq -f, ...) take a command off the list. printenv and env are not on
+// it: they dump secrets, and so do awk's ENVIRON, jq's env and ps e.
 //
 // Never auto-allowed (they ask, or are denied in plan mode) unless the mode is
 // bypass: a command substitution or process substitution, input the parser marks

@@ -261,6 +261,8 @@ var safeSpecs = map[string]*argSpec{
 	"uname":     {noPaths: true},
 	"id":        {noPaths: true},
 	"nproc":     {noPaths: true},
+	"free":      {short: "sc", long: []string{"seconds", "count"}, noPaths: true},
+	"uptime":    {noPaths: true},
 	"echo":      {noPaths: true},
 	"printf":    {noPaths: true},
 	"sleep":     {noPaths: true},
@@ -312,6 +314,34 @@ var safeSpecs = map[string]*argSpec{
 			}
 			return ""
 		}},
+	// Text and byte viewers. Only the options that always take a value are listed as taking one: the value of an option that takes
+	// one only when attached (od -w16) would otherwise be read as the next word, and a file named there would go unjudged.
+	"column":   {short: "cso", long: []string{"columns", "separator", "output-separator", "table-columns", "table-name"}},
+	"comm":     {long: []string{"output-delimiter"}},
+	"join":     {short: "aejotv12"},
+	"expand":   {short: "t", long: []string{"tabs"}},
+	"unexpand": {short: "t", long: []string{"tabs"}},
+	"od":       {short: "AjNt", long: []string{"address-radix", "skip-bytes", "read-bytes", "format"}},
+	"hexdump":  {short: "efns", long: []string{"format", "format-file", "length", "skip"}, pathVals: []string{"-f", "--format-file"}},
+	"xxd":      {short: "cglos", maxPos: 1}, // a second operand is the file it writes
+	"strings": {short: "ntTe", long: []string{"bytes", "radix", "target", "encoding"},
+		check: func(pos []string, s *scanned) string {
+			words := append([]string(nil), pos...) // binutils expands every word that starts with "@", an option's value too
+			for _, vs := range s.flags {
+				words = append(words, vs...)
+			}
+			for _, p := range words {
+				if strings.HasPrefix(p, "@") {
+					return "strings @FILE reads its arguments from FILE" // binutils' response files
+				}
+			}
+			return ""
+		}},
+	// base64 -o FILE writes on macOS (GNU has no -o); a second operand is not taken.
+	"base64": {short: "w", long: []string{"wrap"}, deny: []string{"-o", "--output"}, maxPos: 1},
+	"base32": {short: "w", long: []string{"wrap"}, deny: []string{"-o", "--output"}, maxPos: 1},
+	"pgrep": {short: "dFgGPstuU", long: []string{"delimiter", "pidfile", "pgroup", "group", "parent", "session", "terminal",
+		"euid", "uid", "ns", "nslist", "signal"}, pathVals: []string{"-F", "--pidfile"}, noPaths: true},
 	"rg": {short: "efgtTABCmjdMErs", long: []string{"regexp", "file", "glob", "iglob", "type", "type-not",
 		"type-add", "type-clear", "after-context", "before-context", "context", "max-count", "threads",
 		"max-depth", "maxdepth", "max-filesize", "max-columns", "encoding", "replace", "sort", "sortr", "colors",
@@ -321,4 +351,9 @@ var safeSpecs = map[string]*argSpec{
 		noPatFlags: []string{"--files", "--type-list"}, pathVals: []string{"-f", "--file", "--ignore-file"},
 		deny:       []string{"--pre", "--hostname-bin", "-L", "--follow", "-z", "--search-zip", "--generate"},
 		recDefault: true, content: true},
+}
+
+// egrep and fgrep are grep -E and grep -F.
+func init() {
+	safeSpecs["egrep"], safeSpecs["fgrep"] = safeSpecs["grep"], safeSpecs["grep"]
 }

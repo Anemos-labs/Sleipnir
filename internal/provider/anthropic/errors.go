@@ -258,6 +258,10 @@ func transportError(parent context.Context, err error) *provider.Error {
 	case errors.Is(parent.Err(), context.DeadlineExceeded):
 		return &provider.Error{Kind: provider.ErrTimeout, Message: "deadline exceeded", Err: parent.Err()}
 	}
+	var pe *provider.ProxyRefusedError
+	if errors.As(err, &pe) {
+		return provider.TransportError(parent, err)
+	}
 	var ne net.Error
 	if errors.As(err, &ne) && ne.Timeout() {
 		return &provider.Error{Kind: provider.ErrTimeout, Message: msg, Err: err}

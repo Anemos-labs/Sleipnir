@@ -279,6 +279,11 @@ type Swarm struct {
 	spawnMu  sync.Mutex // serialises admission: spawn, reuse and the limits they enforce
 	sharedMu sync.Mutex // serialises SetShared
 
+	// poolWoken maps a pool task to the state of its children its idle leader was last woken for (poolWakeTick); guarded by
+	// poolWakeMu.
+	poolWakeMu sync.Mutex
+	poolWoken  map[string]string
+
 	mu      sync.Mutex
 	retryAt map[string]time.Time   // supervisor-owned repair backoff
 	queued  map[string]queuedSpawn // parents waiting for a free member of their role (spawnqueue.go), by task id; guarded by mu
@@ -990,8 +995,9 @@ func (r roleRequester) Check(ctx context.Context, req perm.Request) perm.Decisio
 }
 
 // readOnlyRoleChecks are the test and check commands a read-only role's profile allows by default (session.readOnlyRoleAllow).
-const readOnlyRoleChecks = "go test, go vet, pytest, python -m pytest, .venv/bin/python -m pytest, node --test, node --check, npm test, cargo test, " +
-	"make test, tsc --noEmit, eslint (the project's own through npx --no-install), ruff check, ruff format --check, ruff format --diff, mypy, pyright"
+const readOnlyRoleChecks = "go test, go vet, pytest, python -m pytest, .venv/bin/python -m pytest, node --test, node --check, npm test, pnpm test, " +
+	"yarn test, cargo test, cargo clippy, make test, tsc --noEmit, eslint (the project's own through npx --no-install), ruff check, ruff format --check, " +
+	"ruff format --diff, mypy, pyright"
 
 // readOnlyRoleReason rewrites the refusal of a read-only role's plan profile, which tells a planner to "present a plan", into one for
 // a reviewer or a scout: what it does instead. Any other reason is returned as it is.

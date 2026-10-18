@@ -213,3 +213,31 @@ func TestQueueRecoveryPreservesUnknownOwners(t *testing.T) {
 		}
 	}
 }
+
+func TestExclusiveRecoveryAdoptsUnknownOwnersOfItsPrefix(t *testing.T) {
+	for _, identity := range []string{"boot", "namespace"} {
+		t.Run(identity, func(t *testing.T) {
+			e := newQueueEnv(t, QueueOptions{})
+			setUnknownOwner(t, e.q.tree, identity)
+			a := mustCreate(t, e.m, "a")
+			edit(t, a, "README.md", "work in progress\n")
+			setUnknownOwner(t, a, identity)
+
+			fresh := &Manager{Repo: e.repo, Dir: e.m.Dir, Prefix: e.m.Prefix, Clock: testClock(), Exclusive: true}
+			q, err := NewQueue(tctx(t), fresh, QueueOptions{Resume: true})
+			if err != nil {
+				t.Fatalf("an exclusive resume must clear its own stale integration tree: %v", err)
+			}
+			if q.Tip() != e.q.Tip() {
+				t.Errorf("tip %s, want %s", q.Tip(), e.q.Tip())
+			}
+			got, err := fresh.Create(tctx(t), "a", CreateOptions{Reuse: true})
+			if err != nil {
+				t.Fatalf("an exclusive resume must adopt its own worker tree: %v", err)
+			}
+			if body := readFile(t, filepath.Join(got.Path, "README.md")); body != "work in progress\n" {
+				t.Errorf("adoption lost the worker's unfinished work: %q", body)
+			}
+		})
+	}
+}

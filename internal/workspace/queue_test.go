@@ -933,6 +933,48 @@ func TestQueueRefusesTheFilesRefuseNames(t *testing.T) {
 	e.integrationClean()
 }
 
+// A dependency lockfile that a build tool regenerated (cargo writes Cargo.lock) does not take a submission outside its scope:
+// a docs task that ran cargo merges with its Cargo.lock. Another out-of-scope file still rejects it, and the reason does not
+// name the lockfile. A Refuse rule still refuses a lockfile it names.
+func TestQueueLetsRegeneratedLockfilesThroughTheScopeCheck(t *testing.T) {
+	e := newQueueEnv(t, QueueOptions{})
+	docs := e.agent("docs")
+	edit(t, docs, "docs/guide.md", "guide\n")
+	edit(t, docs, "Cargo.lock", "version = 4\n")
+	edit(t, docs, "web/package-lock.json", "{}\n")
+	scope := []string{"**/*.md"}
+	if r := mustSubmit(t, e.q, Submission{Tree: docs, Task: "docs", Scope: scope, EnforceScope: true}); !r.Merged() {
+		t.Fatalf("a regenerated lockfile bounced the docs task: %+v", r)
+	}
+
+	stray := e.agent("stray")
+	if _, err := stray.Update(tctx(t), e.q.Tip()); err != nil {
+		t.Fatal(err)
+	}
+	edit(t, stray, "docs/more.md", "more\n")
+	edit(t, stray, "Cargo.lock", "version = 4\n# regenerated\n")
+	edit(t, stray, "src/main.rs", "fn main() {}\n")
+	r := mustSubmit(t, e.q, Submission{Tree: stray, Task: "stray", Scope: scope, EnforceScope: true})
+	if r.Outcome != OutcomeRejected || r.Reason != "changed 1 file(s) outside its scope: src/main.rs" || strings.Join(r.Files, ",") != "src/main.rs" {
+		t.Fatalf("an out-of-scope source file beside a lockfile: %+v", r)
+	}
+
+	refuse := func(p string) string {
+		if p == "Cargo.lock" {
+			return p + " belongs to the build role"
+		}
+		return ""
+	}
+	if err := os.Remove(filepath.Join(stray.Path, "src", "main.rs")); err != nil {
+		t.Fatal(err)
+	}
+	r = mustSubmit(t, e.q, Submission{Tree: stray, Task: "stray", Scope: scope, EnforceScope: true, Refuse: refuse})
+	if r.Outcome != OutcomeRejected || !strings.Contains(r.Reason, "Cargo.lock belongs to the build role") {
+		t.Fatalf("a refused lockfile: %+v", r)
+	}
+	e.integrationClean()
+}
+
 func TestQueueScopeJudgesOnlyTheSubmissionsOwnChanges(t *testing.T) {
 	e := newQueueEnv(t, QueueOptions{})
 	a, b := e.agent("a"), e.agent("b")

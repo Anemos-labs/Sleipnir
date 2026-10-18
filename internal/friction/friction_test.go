@@ -394,3 +394,54 @@ func TestChangedDoesNotMatchTwoRelativePathsBySuffix(t *testing.T) {
 		t.Errorf("a write to /w/src/b.go did not reset the reads of src/b.go: %d", n)
 	}
 }
+
+// A run that stops before its first answer is all friction: the request that failed for good, and the goal the harness paused
+// because of it, are findings that rank as stops, above the retries before them; the agent's failed state is that request's,
+// so it is not counted again, while a failure with no failed request before it is.
+func TestAFailedRequestAndAPausedGoalAreStops(t *testing.T) {
+	goal := func(paused string) ev {
+		return ev{"", typeGoalState, map[string]any{"goal": map[string]any{"Objective": "build it", "Paused": paused}}}
+	}
+	state := func(agent, s string) ev {
+		return ev{agent, events.TypeAgentState, map[string]any{"id": agent, "state": s}}
+	}
+	dir := log(t, filepath.Join(t.TempDir(), "s1"),
+		goal(""),
+		ev{"mgr", events.TypeModelError, map[string]any{"req": "mgr.1", "kind": "network", "status": 0, "attempt": 1}},
+		ev{"mgr", events.TypeModelError, map[string]any{"req": "mgr.1", "error": `provider: network: Post "https://api.example.test/api/v1/chat/completions": Forbidden`}},
+		state("mgr", "failed"),
+		goal("the turn failed"), goal("the turn failed"), // the same pause written twice is one
+		goal(""), goal("you paused it"), // a pause a person asked for is not friction
+		state("w1", "failed"),
+		// a restarted run reuses the id: its own failure, with no failed request of its own, is counted
+		ev{"mgr", events.TypeModelRequest, map[string]any{"req": "mgr.2"}},
+		state("mgr", "failed"),
+	)
+	rep, err := Mine([]string{dir}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []struct {
+		category, key string
+		count, sev    int
+	}{
+		{ReqFailed, "network: Forbidden", 1, S3}, {GoalPaused, "the turn failed", 1, S3}, {AgentFailed, "w1", 1, S3}, {Retried, "network (0)", 1, S1},
+	} {
+		f := find(rep, want.category, want.key)
+		if f == nil || f.Count != want.count || f.Severity != want.sev {
+			t.Errorf("%s %q: %+v, want count %d severity %d", want.category, want.key, f, want.count, want.sev)
+		}
+	}
+	if f := find(rep, ReqFailed, ""); f == nil || f.Wasted != 1 {
+		t.Errorf("the failed request is not counted as the request it wasted: %+v", f)
+	}
+	if f := find(rep, AgentFailed, "mgr"); f == nil || f.Count != 1 {
+		t.Errorf("the manager's failures: %+v, want the restarted run's alone (the first is its failed request's)", f)
+	}
+	if f := find(rep, GoalPaused, "you paused it"); f != nil {
+		t.Errorf("a pause a person asked for is friction: %+v", f)
+	}
+	if rep.Findings[len(rep.Findings)-1].Category != Retried {
+		t.Errorf("the retries do not rank below the stops: %+v", rep.Findings)
+	}
+}
