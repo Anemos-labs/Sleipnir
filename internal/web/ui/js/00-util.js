@@ -37,6 +37,19 @@
   const planOnly = c => !!(c && c.plan) && !(Number(c.cost) > 0);
   /** How full a budget gauge is, in percent: what was billed against the budget. A plan's usage never fills it. */
   const budgetPct = (c, budget) => budget > 0 ? Math.min(100, (Number(c.cost) || 0) / budget * 100) : 0;
+  /** A line split into words the way a shell would, for the quotes only (cmd/sleipnir splitArgs): words are separated by spaces, "double"
+   *  and 'single' quotes keep theirs together, and there is no other syntax (no variables, no escapes, no operators). */
+  const splitArgs = line => {
+    const out = []; let cur = '', quote = '', started = false;
+    for (const ch of String(line == null ? '' : line)) {
+      if (quote) { if (ch === quote) quote = ''; else cur += ch; }
+      else if (ch === '"' || ch === "'") { quote = ch; started = true; }
+      else if (ch === ' ' || ch === '\t') { if (started) { out.push(cur); cur = ''; started = false; } }
+      else { cur += ch; started = true; }
+    }
+    if (started) out.push(cur);
+    return out;
+  };
   const fmtMs = ms => ms < 1000 ? Math.round(ms) + 'ms' : (ms / 1000).toFixed(1) + 's';
   const pct = (a, b) => b > 0 ? Math.round(100 * a / b) : 0;
   /** m:ss from seconds, rounding up (a countdown shows 0:25 for 24.3 s). */
@@ -86,6 +99,6 @@
   /** Is this key event part of an input method's composition (a CJK candidate being chosen)? Its Enter picks a candidate: it never
    *  sends, submits or runs a shortcut. */
   const composing = e => !!e && (e.isComposing === true || e.keyCode === 229);
-  SL.u = { composing, agCol, okId, safeId, BAD_ID, own, clip1, NSV, $, $$, esc, fmtK, fmtN, fmtUsd, PLAN_HELP, spendOf, fmtSpend, planTag, planOnly, budgetPct, fmtMs, pct, clock, mmss, tod, dur, clamp, hitCls, mk, sv, frag, rng, hash, uid, deepCopy, upperBound, makeBus, copy, ucfirst };
+  SL.u = { composing, agCol, okId, safeId, BAD_ID, own, clip1, NSV, $, $$, esc, fmtK, fmtN, fmtUsd, PLAN_HELP, spendOf, fmtSpend, planTag, planOnly, budgetPct, fmtMs, splitArgs, pct, clock, mmss, tod, dur, clamp, hitCls, mk, sv, frag, rng, hash, uid, deepCopy, upperBound, makeBus, copy, ucfirst };
   SL.bus = makeBus();
 })(SL);
