@@ -511,17 +511,24 @@ func TestRoleChangeKeepsTheSlotsOfACustomTeam(t *testing.T) {
 	s := chatSessionWith(t, false, nil, func(o *session.Options) {
 		o.Swarm, o.Workers, o.Team = true, len(team), team
 	}, nil)
-	args, err := restartArgs(s, []string{"--role-model", "backend=together/c"}, false)
-	if err != nil {
-		t.Fatal(err)
+	for _, line := range [][]string{{"--role-model", "backend=together/c"}, {"--role-model=backend=together/c"}} {
+		args, err := restartArgs(s, line, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		checkBackendSlots(t, args, len(team))
 	}
+}
+
+func checkBackendSlots(t *testing.T, args []string, want int) {
+	t.Helper()
 	f, err := parseChatFlags(args)
 	if err != nil {
 		t.Fatalf("the restart's own arguments do not parse: %v\n%v", err, args)
 	}
 	slots := f.team
-	if len(slots) != len(team) {
-		t.Fatalf("the team has %d slots after the change, want %d: %v", len(slots), len(team), args)
+	if len(slots) != want {
+		t.Fatalf("the team has %d slots after the change, want %d: %v", len(slots), want, args)
 	}
 	backends := 0
 	for _, sl := range slots {

@@ -63,6 +63,7 @@ func restartArgs(s *session.Session, typed []string, fresh bool) ([]string, erro
 			return nil, errors.New("only flags go after /restart, like --swarm 8 or --no-mcp (a goal is typed at the prompt)")
 		}
 	}
+	typed = splitRoleModels(typed)
 	// A custom team keeps its slots when the line changes a role's model: every slot of that role moves to the typed model, where
 	// replacing them with the one typed entry would leave a single worker of the role.
 	retyped := slotModels(s, typed)
@@ -133,6 +134,19 @@ func restartArgs(s *session.Session, typed []string, fresh bool) ([]string, erro
 }
 
 // roleNamed reports whether typed already names a role's model (--role-model role=...).
+// splitRoleModels writes each --role-model=v (or -role-model=v) the line holds as --role-model v, the one form the role handling reads.
+func splitRoleModels(typed []string) []string {
+	out := make([]string, 0, len(typed))
+	for _, a := range typed {
+		if v, ok := strings.CutPrefix(strings.TrimPrefix(a, "-"), "-role-model="); ok {
+			out = append(out, "--role-model", v)
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
 // slotModels are the worker roles the line gives a model (--role-model role=model) that are slots of the session's custom team, with
 // that model.
 func slotModels(s *session.Session, typed []string) map[string]string {
