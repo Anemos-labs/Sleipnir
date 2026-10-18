@@ -133,7 +133,7 @@ func hasMeta(seg string) bool { return strings.ContainsAny(seg, "*?[") }
 
 // segments splits a normalised pattern. A pattern whose last segment has no glob
 // characters names a file or a directory: it also covers everything below it, so
-// a "**" is appended.
+// a "**" is appended; so does one ending in "**" after a name ("crates/api**").
 func segments(p string) (segs []string, abs bool) {
 	abs = strings.HasPrefix(p, "/")
 	p = strings.Trim(p, "/")
@@ -141,7 +141,12 @@ func segments(p string) (segs []string, abs bool) {
 		return []string{"**"}, abs
 	}
 	segs = strings.Split(p, "/")
-	if last := segs[len(segs)-1]; last != "**" && !hasMeta(last) {
+	if last := segs[len(segs)-1]; last != "**" && strings.HasSuffix(last, "**") {
+		// "crates/api**" means the directory and what lies below it; inside one
+		// segment "**" would act as "*" and match no file below it.
+		segs[len(segs)-1] = strings.TrimRight(last, "*") + "*"
+		segs = append(segs, "**")
+	} else if last != "**" && !hasMeta(last) {
 		segs = append(segs, "**")
 	}
 	return segs, abs

@@ -117,6 +117,9 @@ func TestScopeTables(t *testing.T) {
 		{"notes.txt", "notes.txt.bak", false},
 		{"**", "any/thing.go", true},
 		{"Src/**", "src/x.go", false}, // enforcement is exact
+		{"crates/api**", "crates/api/src/auth.rs", true},
+		{"crates/api**", "crates/api", true},
+		{"crates/api**", "crates/web/x.rs", false},
 	}
 	for _, tc := range match {
 		if got := scopeMatch(tc.scope, tc.path); got != tc.want {
