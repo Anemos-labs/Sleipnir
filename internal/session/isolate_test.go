@@ -389,6 +389,10 @@ func eventTypes(t *testing.T, dir string) map[string]int {
 func TestIsolatedSwarmMergesAConflictAndAVerifierFailureAndAppliesTheResult(t *testing.T) {
 	repo := isoRepo(t)
 	head := git(t, repo, "rev-parse", "HEAD")
+	// A push remote: the verified work is pushed there after every merge.
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	git(t, repo, "init", "-q", "--bare", remote)
+	git(t, repo, "remote", "add", "origin", remote)
 	const sid = "s-iso"
 	var sc *isoScript
 	client, model := startMock(t, func(c *mock.Call) mock.Reply { return sc.respond(c) })
@@ -530,6 +534,21 @@ func TestIsolatedSwarmMergesAConflictAndAVerifierFailureAndAppliesTheResult(t *t
 	}
 	if again := s.Finish(context.Background()); again != rep {
 		t.Error("Finish is not idempotent")
+	}
+	// Every merge was pushed as it landed: the remote has the final integration tip,
+	// on the harness's own branch, and none of the person's branches moved there.
+	tip := git(t, repo, "rev-parse", "sleipnir/"+sid+"/_integration")
+	if got := git(t, remote, "rev-parse", "refs/heads/sleipnir/"+sid+"/_integration"); got != tip {
+		t.Errorf("remote integration branch at %s, want the tip %s", got, tip)
+	}
+	if out := git(t, remote, "for-each-ref", "--format=%(refname)"); strings.TrimSpace(out) != "refs/heads/sleipnir/"+sid+"/_integration" {
+		t.Errorf("remote refs:\n%s", out)
+	}
+	if et := eventTypes(t, s.Dir); et[session.TypeProgressPush] == 0 {
+		t.Errorf("no %s events: %v", session.TypeProgressPush, et)
+	}
+	if !sink.has("pushed to origin branch sleipnir/" + sid + "/_integration") {
+		t.Errorf("the person was not told where the work is pushed: %v", sink.logs)
 	}
 	if err := s.Close(); err != nil {
 		t.Fatal(err)

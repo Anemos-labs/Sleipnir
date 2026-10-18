@@ -97,6 +97,10 @@
       "reason": "the ceiling on the team size: a file or SLEIPNIR_SWARM_MAX_WORKERS in both interfaces; the worker steppers of the New session dialog and of Run settings stop at it, and Config layers shows it"
     },
     {
+      "item": "swarm.push_progress",
+      "reason": "a safety net that is on by default: swarm.push_progress = false in a configuration file turns it off in both interfaces; the notice of the first push names the remote branch in both, and Config layers shows its value"
+    },
+    {
       "item": "swarm.requests_per_minute",
       "reason": "a request limit of the swarm: a file or SLEIPNIR_SWARM_REQUESTS_PER_MINUTE in both interfaces; the governor line of the HUD shows its effect and Config layers its value"
     },

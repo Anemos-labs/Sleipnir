@@ -59,6 +59,7 @@ type isoPlan struct {
 	ownsDir bool // the session created dir
 	resume  *isolationRecord
 	applied swarm.IntegrationState
+	push    *progressPusher // nil when progress is not pushed
 }
 
 // isolationMode is the effective mode ("none" or "worktree") and whether the person
@@ -312,7 +313,26 @@ func (s *Session) buildIsolation(ctx context.Context) (*swarm.Isolation, error) 
 		}
 		s.opts.Sink.Notice("", "warn", "--verify has no {dirs} and the workers have trees of their own: a check of the whole repository cannot pass until every task is merged, so tasks that wait on each other may stall; name the directories of the task with {dirs}, as in "+hint)
 	}
-	q, err := workspace.NewQueue(ctx, mgr, workspace.QueueOptions{VerifyCmd: s.opts.Verify, Resume: p.resume != nil})
+	branch, err := p.repo.Branch(ctx)
+	if err != nil {
+		return nil, err
+	}
+	p.push = s.progressPusher(ctx, p, branch)
+	onEvent := mgr.OnEvent
+	if p.push != nil {
+		forward := mgr.OnEvent
+		onEvent = func(e workspace.Event) {
+			if forward != nil {
+				forward(e)
+			}
+			if e.Type == workspace.EventMerged {
+				if after, _ := e.Data["after"].(string); after != "" {
+					p.push.Kick(after)
+				}
+			}
+		}
+	}
+	q, err := workspace.NewQueue(ctx, mgr, workspace.QueueOptions{VerifyCmd: s.opts.Verify, Resume: p.resume != nil, OnEvent: onEvent})
 	if err != nil {
 		if errors.Is(err, workspace.ErrNoCommits) {
 			return nil, errors.New("worktree isolation starts every tree from a commit, and the repository has none yet: commit the project first")
@@ -320,9 +340,8 @@ func (s *Session) buildIsolation(ctx context.Context) (*swarm.Isolation, error) 
 		return nil, fmt.Errorf("worktree isolation: %w", err)
 	}
 	p.mgr, p.queue = mgr, q
-	branch, err := p.repo.Branch(ctx)
-	if err != nil {
-		return nil, err
+	if p.resume != nil && q.Tip() != q.Base() {
+		p.push.Kick(q.Tip()) // what the stopped run merged may never have reached the remote
 	}
 	if p.resume == nil {
 		record := isolationRecord{Version: 1, Root: s.opts.Root, Cwd: s.opts.Cwd, Dir: p.dir, Prefix: p.prefix,
@@ -433,6 +452,7 @@ func (s *Session) Finish(ctx context.Context) *swarm.IntegrationReport {
 	}
 	s.mu.Unlock()
 	rep := s.Swarm.Finish(ctx)
+	s.iso.push.Wait(ctx) // the last merge's push, before the process may exit
 	s.mu.Lock()
 	first := s.finish == nil
 	if first {
@@ -443,6 +463,22 @@ func (s *Session) Finish(ctx context.Context) *swarm.IntegrationReport {
 		s.tell("warn", rep.Message)
 	}
 	return rep
+}
+
+// progressPusher is the pusher of the integration branch, nil when swarm.push_progress
+// is off or the checkout has no push remote.
+func (s *Session) progressPusher(ctx context.Context, p *isoPlan, branch string) *progressPusher {
+	if s.cfg != nil && s.cfg.Swarm.PushProgress != nil && !*s.cfg.Swarm.PushProgress {
+		return nil
+	}
+	git := commandGit(p.repo.Root())
+	rctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	remote := pushRemote(rctx, git, branch)
+	if remote == "" {
+		return nil
+	}
+	return &progressPusher{git: git, remote: remote, ref: p.prefix + "/_integration", log: s.Log, tell: s.tell}
 }
 
 // releaseIsolation undoes buildIsolation when the session could not be built.

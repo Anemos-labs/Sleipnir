@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A worktree-isolated team pushes its integration branch to the checkout's
+  push remote (else `origin`) as `sleipnir/<session>/_integration` after
+  every merge, so verified work no longer lives only on the local disk until
+  the run ends. `swarm.push_progress = false` turns it off. New log event
+  `swarm.progress_push`. Prompt bytes: none change.
+
 - A permission question that ended without an answer (no page had the web
   interface open for `--ask-grace`, the input of a line prompter ended) is
   refused with the same advice as one that passed `--ask-timeout`: the tool
