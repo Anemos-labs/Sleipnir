@@ -10,8 +10,7 @@ import (
 //
 // A pool's leader reconciles the combined result and submits the pool task once every child is accepted. Nothing else moves a
 // pool on: when the last child is accepted while the leader is idle, or the leader's turn ends after that without reconciling,
-// the pool stays executing, its members stay held by it, and work queued for their role waits for ever. A live run's three
-// backend pools sat so for an hour, each leader idle with every child merged, while the manager kept asking for a free member.
+// the pool stays executing, its members stay held by it, and work queued for their role waits indefinitely.
 //
 // The supervisor's poolWakeTick reads the board: an executing pool whose children are all accepted or waiting in review, whose
 // leader is idle, gets one harness request to the leader saying what is left (accept the children in review, reconcile, have the
