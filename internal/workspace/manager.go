@@ -473,6 +473,7 @@ func (m *Manager) register(ctx context.Context, agent, dest, branch, base string
 		}
 		return nil, false, fmt.Errorf("workspace: cannot write marker: %w", err)
 	}
+	holdOwnerLock(repo.GitDir())
 	return &Tree{Path: dest, Branch: branch, Base: base, Agent: agent, Mode: m.st.mode, m: m, repo: repo, integration: spec.integration, ref: spec.ref}, true, nil
 }
 
@@ -494,8 +495,8 @@ func (m *Manager) reclaimStale(ctx context.Context, agent, dest, branch string) 
 		}
 		// A missing directory: ours to clear only if its marker says so and its owner
 		// is gone.
-		mk := m.markerForPath(w.Path)
-		if mk == nil || !m.ownsMarker(mk) || mk.owner() != ownerDead {
+		a := scanAdminDirs(m.st.base.CommonDir()).find(w.Path)
+		if a == nil || a.mk == nil || !m.ownsMarker(a.mk) || a.mk.ownerIn(a.dir) != ownerDead {
 			return fmt.Errorf("%w: %s is registered at %s (missing) and is not ours to clear", ErrExists, nameOr(branch, dest), w.Path)
 		}
 		if err := m.st.base.WorktreeRemove(ctx, w.Path, true); err != nil {
@@ -575,7 +576,7 @@ func (m *Manager) adopt(ctx context.Context, agent, dest, base string) (*Tree, e
 	if mk.Agent != agent || mk.Integration {
 		return nil, ErrExists
 	}
-	owner := mk.owner()
+	owner := mk.ownerIn(admin)
 	if owner == ownerUnknown {
 		return nil, ErrExists
 	}
@@ -602,6 +603,7 @@ func (m *Manager) adopt(ctx context.Context, agent, dest, base string) (*Tree, e
 	if err := writeMarker(admin, *mk); err != nil {
 		return nil, err
 	}
+	holdOwnerLock(admin)
 	t := &Tree{Path: dest, Branch: mk.Branch, Base: mk.Base, Agent: agent, Mode: m.st.mode, m: m, repo: repo}
 	m.mu.Lock()
 	m.trees[agent] = t
@@ -668,7 +670,7 @@ func (m *Manager) List(ctx context.Context) ([]Info, error) {
 	for _, e := range entries {
 		info := Info{Agent: e.mk.Agent, Path: e.wt.Path, Branch: e.mk.Branch, Base: e.mk.Base, Head: e.wt.Head,
 			Integration: e.mk.Integration, Prunable: e.wt.Prunable, Created: e.mk.Created}
-		switch e.mk.owner() {
+		switch e.mk.ownerIn(e.admin) {
 		case ownerAlive:
 			info.Owner = "alive"
 		case ownerDead:
@@ -718,14 +720,6 @@ func (m *Manager) ownedEntries(ctx context.Context) ([]ownedEntry, error) {
 // ownsMarker: the marker's prefix is ours or nested under ours.
 func (m *Manager) ownsMarker(mk *marker) bool {
 	return mk.Prefix == m.st.prefix || strings.HasPrefix(mk.Prefix, m.st.prefix+"/")
-}
-
-// markerForPath finds the marker of the worktree registered at path.
-func (m *Manager) markerForPath(path string) *marker {
-	if a := scanAdminDirs(m.st.base.CommonDir()).find(path); a != nil {
-		return a.mk
-	}
-	return nil
 }
 
 // adminEntry is one .git/worktrees/<id> directory.

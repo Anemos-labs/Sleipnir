@@ -95,7 +95,7 @@ func (m *Manager) prune(ctx context.Context, opts PruneOptions) (*PruneReport, e
 	}
 	if opts.RequireInactive {
 		for _, e := range entries {
-			if !keptPrefix(e.mk.Prefix, opts.KeepPrefixes) && e.mk.owner() != ownerDead {
+			if !keptPrefix(e.mk.Prefix, opts.KeepPrefixes) && e.mk.ownerIn(e.admin) != ownerDead {
 				rep.Live++
 			}
 		}
@@ -122,7 +122,7 @@ func (m *Manager) prune(ctx context.Context, opts PruneOptions) (*PruneReport, e
 		if keptPrefix(mk.Prefix, opts.KeepPrefixes) {
 			continue
 		}
-		if st := mk.owner(); st == ownerAlive || st == ownerUnknown {
+		if st := mk.ownerIn(e.admin); st == ownerAlive || st == ownerUnknown {
 			rep.Live++
 			protected[mk.Prefix+"/"+integrationName] = true
 			protected[mk.Prefix+"/"+baseBranchName] = true
