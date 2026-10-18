@@ -204,6 +204,7 @@ func (m *Manager) removeLocked(ctx context.Context, t *Tree, force bool) error {
 	}
 
 	m.st.lock.Lock()
+	dropOwnerLock(admin)
 	err = m.deleteTree(ctx, t.Path, admin, force || missing)
 	if err != nil {
 		m.st.lock.Unlock()

@@ -332,14 +332,14 @@ func (m *Manager) removeStaleIntegration(ctx context.Context) error {
 	dest := filepath.Join(m.st.dirReal, integrationName)
 	m.st.lock.Lock()
 	defer m.st.lock.Unlock()
-	_, mk, err := m.verifyTreeDir(ctx, dest)
+	admin, mk, err := m.verifyTreeDir(ctx, dest)
 	if errors.Is(err, errMissingDir) {
-		_, mk, err = m.verifyMissing(dest)
+		admin, mk, err = m.verifyMissing(dest)
 	}
 	if err != nil {
 		return err
 	}
-	owner := m.ownerOf(mk)
+	owner := m.ownerOf(mk, admin)
 	if !mk.Integration || owner == ownerAlive {
 		return fmt.Errorf("%w: the integration tree at %s belongs to a running session", ErrExists, dest)
 	}

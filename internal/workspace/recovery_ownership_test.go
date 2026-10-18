@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -28,7 +29,100 @@ func setUnknownOwner(t *testing.T, tree *Tree, identity string) string {
 	if err := writeMarker(admin, *mk); err != nil {
 		t.Fatal(err)
 	}
+	// An owner from a version without owner locks: nothing settles the question.
+	dropOwnerLock(admin)
+	must(t, os.Remove(filepath.Join(admin, ownerLockFile)))
 	return readFile(t, filepath.Join(admin, markerFile))
+}
+
+// rebootedOwner makes tree's marker look written in another boot by an owner
+// whose lock is free, as after the machine or container restarted.
+func rebootedOwner(t *testing.T, tree *Tree) string {
+	t.Helper()
+	admin := tree.repo.GitDir()
+	mk, err := readMarker(admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mk.BootID = bootID() + "-before-restart"
+	if err := writeMarker(admin, *mk); err != nil {
+		t.Fatal(err)
+	}
+	dropOwnerLock(admin)
+	if !exists(filepath.Join(admin, ownerLockFile)) {
+		t.Fatal("fixture must keep the owner lock file")
+	}
+	return admin
+}
+
+func TestOwnerLockSettlesAnotherBoot(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("owner locks are not used on this platform")
+	}
+	repo := openRepo(t, newRepo(t))
+	m := newManager(t, repo)
+	a := mustCreate(t, m, "a")
+	admin := rebootedOwner(t, a)
+	mk, err := readMarker(admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := mk.owner(); got != ownerUnknown {
+		t.Fatalf("marker alone = %v, want unknown", got)
+	}
+	if got := mk.ownerIn(admin); got != ownerDead {
+		t.Errorf("free lock = %v, want dead", got)
+	}
+	held, err := os.OpenFile(filepath.Join(admin, ownerLockFile), os.O_RDWR, 0)
+	must(t, err)
+	defer held.Close()
+	must(t, tryLock(held))
+	if got := mk.ownerIn(admin); got != ownerAlive {
+		t.Errorf("lock held elsewhere = %v, want alive", got)
+	}
+}
+
+func TestRecoveryAfterRestartAdoptsReleasedOwners(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("owner locks are not used on this platform")
+	}
+	t.Run("worker", func(t *testing.T) {
+		repo := openRepo(t, newRepo(t))
+		m := newManager(t, repo)
+		a := mustCreate(t, m, "a")
+		edit(t, a, "README.md", "work in progress\n")
+		rebootedOwner(t, a)
+		livePaths.Delete(a.Path)
+
+		fresh := &Manager{Repo: repo, Dir: m.Dir, Prefix: m.Prefix, Clock: testClock()}
+		got, err := fresh.Create(tctx(t), "a", CreateOptions{Reuse: true})
+		if err != nil {
+			t.Fatalf("recovery after a restart must adopt the tree: %v", err)
+		}
+		if content := readFile(t, filepath.Join(got.Path, "README.md")); content != "work in progress\n" {
+			t.Error("adoption lost the worker's unfinished work")
+		}
+		mk, err := readMarker(got.repo.GitDir())
+		must(t, err)
+		if mk.BootID != bootID() || mk.ownerIn(got.repo.GitDir()) != ownerAlive {
+			t.Error("the adopting process must own the marker and its lock")
+		}
+	})
+	t.Run("queue", func(t *testing.T) {
+		e := newQueueEnv(t, QueueOptions{})
+		tip := e.q.Tip()
+		rebootedOwner(t, e.q.tree)
+		livePaths.Delete(e.q.tree.Path)
+
+		fresh := &Manager{Repo: e.repo, Dir: e.m.Dir, Prefix: e.m.Prefix, Clock: testClock()}
+		q, err := NewQueue(tctx(t), fresh, QueueOptions{Resume: true})
+		if err != nil {
+			t.Fatalf("queue recovery after a restart must replace the integration tree: %v", err)
+		}
+		if q.Tip() != tip {
+			t.Errorf("resumed tip = %s, want %s", q.Tip(), tip)
+		}
+	})
 }
 
 func TestWorkerRecoveryPreservesUnknownOwners(t *testing.T) {

@@ -28,6 +28,7 @@ func (t *Tree) Release(ctx context.Context) error {
 	if err := writeMarker(admin, *mk); err != nil {
 		return err
 	}
+	dropOwnerLock(admin)
 	t.removed.Store(true)
 	livePaths.CompareAndDelete(t.Path, m)
 	m.mu.Lock()

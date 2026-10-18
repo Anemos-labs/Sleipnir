@@ -225,6 +225,9 @@ func TestListLabelsTheOwnerOfEachTree(t *testing.T) {
 	}
 	mk.BootID = "another-boot"
 	must(t, writeMarker(elsewhere.repo.GitDir(), *mk))
+	// Recorded by a version without owner locks: the boot id alone cannot tell.
+	dropOwnerLock(elsewhere.repo.GitDir())
+	must(t, os.Remove(filepath.Join(elsewhere.repo.GitDir(), ownerLockFile)))
 
 	infos, err := m.List(tctx(t))
 	if err != nil {
