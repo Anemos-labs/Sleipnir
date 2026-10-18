@@ -26,7 +26,7 @@ func sawEdit(t *testing.T, r *rvRig, agent, path string) {
 // inReview puts a task of the given role in review, submitted by owner with the harness evidence evid.
 func inReview(t *testing.T, b *Board, role, owner, evid string) Task {
 	t.Helper()
-	task, err := b.CreateTask("mgr", TaskSpec{Title: "alerts and incidents pages", Role: role})
+	task, err := b.CreateTask("mgr", TaskSpec{Title: "alerts and incidents pages (" + owner + ")", Role: role})
 	if err != nil {
 		t.Fatal(err)
 	}

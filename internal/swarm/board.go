@@ -502,6 +502,14 @@ func (b *Board) createLocked(d *draft, spec TaskSpec) (Task, error) {
 	if title == "" {
 		return Task{}, fmt.Errorf(`task needs a title: pass it in the "title" field`)
 	}
+	if dup, ok := openTwin(d.Snapshot, spec.Parent, title); ok {
+		where := "under " + dup.Parent
+		if dup.Parent == "" {
+			where = "at the top level"
+		}
+		return Task{}, fmt.Errorf("%s %q is already open %s with the same title (status %s): use it (task get id=%s) instead of creating another; create a new task only for different work, with a title that says how it differs",
+			dup.ID, dup.Title, where, dup.Status, dup.ID)
+	}
 	if len(d.Tasks) >= b.lim.MaxTasks {
 		return Task{}, fmt.Errorf("the board already holds %d tasks (limit %d): reuse or finish existing tasks instead of creating more", len(d.Tasks), b.lim.MaxTasks)
 	}
@@ -533,6 +541,30 @@ func (b *Board) createLocked(d *draft, spec TaskSpec) (Task, error) {
 	}
 	d.Tasks = append(d.tasks(), t)
 	return t, nil
+}
+
+// normTitle is the key two task titles are compared by when a create is checked for
+// a duplicate: lowercased, with runs of whitespace collapsed to one space and the
+// ends trimmed. It is an exact match after that; nothing fuzzier.
+func normTitle(s string) string {
+	return strings.Join(strings.Fields(strings.ToLower(s)), " ")
+}
+
+// openTwin returns the first task under parent (the empty parent is the top level)
+// whose title equals title after normTitle and that is neither done nor failed. A
+// create that finds one is refused, so parallel identical creates in one model
+// response, which the board serialises, leave a single task.
+func openTwin(s *Snapshot, parent, title string) (Task, bool) {
+	key := normTitle(title)
+	for _, t := range s.Tasks {
+		if t.Parent != parent || t.Status == StatusDone || t.Status == StatusFailed {
+			continue
+		}
+		if normTitle(t.Title) == key {
+			return t, true
+		}
+	}
+	return Task{}, false
 }
 
 // CreateTask adds a todo task. Text fields are made single-line and bounded; the
