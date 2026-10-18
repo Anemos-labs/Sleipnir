@@ -48,7 +48,7 @@ func CheckProxyConnect(_ context.Context, proxyURL *url.URL, req *http.Request, 
 }
 
 // proxyRefusal is the *Error of a refused CONNECT: an auth failure when the proxy wants credentials (407), a network failure
-// otherwise; either way not retried when the refusal is permanent, with words that point at the network policy.
+// otherwise; either way not retried when the refusal is permanent, with words that point at the proxy's rules.
 func proxyRefusal(pe *ProxyRefusedError, err error) *Error {
 	msg := pe.Error()
 	kind := ErrNetwork
@@ -57,7 +57,7 @@ func proxyRefusal(pe *ProxyRefusedError, err error) *Error {
 		kind = ErrAuth
 		msg += "; the proxy wants credentials (HTTPS_PROXY with user:password, or the proxy's own setup)"
 	case pe.Permanent():
-		msg += "; the network policy of this machine does not allow " + strings.TrimSuffix(pe.Target, ":443") + " (allow the host, or use another endpoint)"
+		msg += "; the proxy does not allow " + strings.TrimSuffix(pe.Target, ":443") + " (allow the host in the proxy's rules, unset HTTPS_PROXY if it should not apply, or use another endpoint)"
 	}
 	return &Error{Kind: kind, Message: SanitizeText(msg, 0), Err: err, NoRetry: pe.Permanent()}
 }

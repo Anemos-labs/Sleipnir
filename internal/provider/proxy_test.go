@@ -44,7 +44,7 @@ func postThrough(t *testing.T, proxy *url.URL) *Error {
 	return TransportError(ctx, err)
 }
 
-// A proxy that refuses the host is the network policy saying no: repeating the request cannot change that, so it is not
+// A proxy that refuses the host is the proxy's rules saying no: repeating the request cannot change that, so it is not
 // retried, and the words name the proxy, the host and the status instead of Go's bare "Forbidden".
 func TestAProxyThatRefusesTheHostIsNotRetried(t *testing.T) {
 	e := postThrough(t, proxyAnswering(t, http.StatusForbidden))
@@ -54,7 +54,7 @@ func TestAProxyThatRefusesTheHostIsNotRetried(t *testing.T) {
 	if e.Kind != ErrNetwork {
 		t.Errorf("kind %v, want network", e.Kind)
 	}
-	for _, want := range []string{"refused a connection to api.example.test:443", "403 Forbidden", "network policy", "allow api.example.test "} {
+	for _, want := range []string{"refused a connection to api.example.test:443", "403 Forbidden", "the proxy does not allow api.example.test "} {
 		if !strings.Contains(e.Message, want) {
 			t.Errorf("message %q lacks %q", e.Message, want)
 		}
