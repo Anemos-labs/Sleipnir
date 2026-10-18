@@ -38,7 +38,7 @@
     '/permissions': () => ui.settingsPage('permissions'), '/trust': () => ui.settingsPage('trust'),
     '/roles': a => { const m = /^(\w+)=(\S+)$/.exec(a || ''); if (m) onOk(SL.act.setRoleModel(m[1], m[2]), () => ui.toast(m[1] + ' runs on ' + m[2], 'ok')); else ui.settingsPage('roles'); },
     '/swarm': a => { const n = parseInt(a, 10); if (isNaN(n)) return ui.settingsPage('run'); restart(n); },
-    '/restart': a => { const flags = (a || '').split(/\s+/).filter(Boolean); if (!flags.length) return ui.settingsPage('run'); const S = S_(); ui.confirm({ title: 'Start again', text: 'Restart <b>' + esc(S.name) + '</b> with <span class="mono">' + esc(flags.join(' ')) + '</span>? The current run is closed (its checkpoints stay) and the conversation carries over.', ok: 'Restart', danger: true, run: () => onOk(SL.act.restart(flags), () => ui.toast('started again: ' + flags.join(' '), 'ok')) }); },
+    '/restart': a => { const flags = U.splitArgs(a); if (!flags.length) return ui.settingsPage('run'); const S = S_(); ui.confirm({ title: 'Start again', text: 'Restart <b>' + esc(S.name) + '</b> with <span class="mono">' + esc(flags.map(f => /\s/.test(f) ? '"' + f + '"' : f).join(' ')) + '</span>? The current run is closed (its checkpoints stay) and the conversation carries over.', ok: 'Restart', danger: true, run: () => onOk(SL.act.restart(flags), () => ui.toast('started again: ' + flags.join(' '), 'ok')) }); },
     '/agents': () => SL.views.show('cockpit'),
     /* the lines that wait for the turn are the server's (meta.queued): it lists, drops and clears them as the terminal does */
     '/queue': a => serverLine('/queue' + (a ? ' ' + a : ''), '/queue'),
