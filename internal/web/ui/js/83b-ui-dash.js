@@ -48,19 +48,19 @@
   page('cockpit', { title: 'Cockpit', view: 'cockpit', kind: 'part' }, [
     ['hero', 'The horse', 'the team as a horse: each of the eight legs is one role of the team', 0, 0, 4, 8, 2, 4],
     ['team', 'Manager and stalls', 'the manager\'s card and one stall per worker; a free slot names its role', 4, 0, 8, 8, 3, 4],
-    ['gantt', 'Swarm gantt', 'what each agent did in the last 60 seconds, with the replay controls', 0, 8, 6, 7, 3, 4],
+    ['gantt', 'Timeline', 'what each agent did in the last 60 seconds, with the replay controls', 0, 8, 6, 7, 3, 4],
     ['tasks', 'Task board', 'the tasks by status: todo, running, verify, merged', 6, 8, 6, 7, 3, 4, 'list'],
     ['queue', 'Merge queue', 'what is being verified and merged, conflicts and bounces', 0, 15, 4, 3, 2, 2],
     ['mail', 'Mail, latest', 'the last 30 mails between agents', 4, 15, 5, 3, 2, 2, 'list'],
-    ['gov', 'Governor', 'requests per minute, 429s and retries', 9, 15, 3, 3, 2, 2],
+    ['gov', 'Rate limits', 'requests per minute, refused requests (429) and retries', 9, 15, 3, 3, 2, 2],
   ]);
   page('cache', { title: 'Cache', view: 'cache', wrap: 'cache' }, [
-    ['cache.head', 'Its latest prompt', 'the prompt of the agent answered last, by layer, and what was read from the cache', 0, 0, 12, 5, 4, 3],
-    ['cache.hit', 'Hit ratio per request', 'the share of each request read from the cache, with breaks and compactions', 0, 5, 12, 6, 4, 3],
-    ['cache.fold', 'Compaction', 'the latest fold of the thread: a declared, priced rebase', 0, 11, 6, 6, 3, 3],
-    ['cache.anom', 'Cache anomalies', 'requests that read less than the harness expected, and why', 6, 11, 6, 6, 3, 3, 'list'],
+    ['cache.head', 'The latest prompt, layer by layer', 'the prompt of the agent answered last, by layer, and what was read from the cache', 0, 0, 12, 5, 4, 3],
+    ['cache.hit', 'How much of each request came from the cache', 'the share of each request read from the cache, with breaks and compactions', 0, 5, 12, 6, 4, 3],
+    ['cache.fold', 'Folding the conversation', 'the latest summary of earlier work: when it happened and what it cost', 0, 11, 6, 6, 3, 3],
+    ['cache.anom', 'Unexpected cache misses', 'requests that read less from the cache than expected, and why', 6, 11, 6, 6, 3, 3, 'list'],
     ['cache.table', 'Every agent\'s cache', 'read, uncached and written tokens of every agent, and the savings', 0, 17, 12, 7, 4, 3, 'list'],
-    ['cache.sum', 'The session', 'the session\'s hit ratio, savings, spend, compactions and anomalies', 0, 24, 12, 2, 3, 2],
+    ['cache.sum', 'The whole session', 'the session\'s hit ratio, savings, spend, compactions and anomalies', 0, 24, 12, 2, 3, 2],
   ]);
   page('mail', { title: 'Mail', view: 'mail', wrap: 'mailv' }, [
     ['mail.flow', 'Who writes to whom', 'an arc per mail between the agents of the team', 0, 0, 12, 6, 4, 3, 'fill'],
@@ -85,11 +85,11 @@
   ]);
   page('tools', { title: 'Tools', view: 'tools', wrap: 'toolsv' }, [
     ['tools.find', 'Find a command', 'filter the commands and open the runner', 0, 0, 12, 2, 3, 2],
-    ['tools.run', 'Run and chat', 'start work, in a terminal-like session or headless', 0, 2, 12, 5, 3, 2],
-    ['tools.observe', 'Observe', 'what happened, what it cost, what slowed it down', 0, 7, 12, 5, 3, 2],
-    ['tools.evaluate', 'Evaluate', 'probe an endpoint, simulate a policy, measure a model', 0, 12, 12, 5, 3, 2],
-    ['tools.setup', 'Set up', 'projects, accounts, trust, tool servers, schedules', 0, 17, 12, 6, 3, 2],
-    ['tools.other', 'Other commands', 'the commands of no group', 0, 23, 12, 4, 3, 2],
+    ['tools.run', 'Run work', 'start a session, run a goal without a terminal, or put one on a schedule', 0, 2, 12, 5, 3, 2],
+    ['tools.observe', 'Sessions', 'find, replay, watch and clean up recorded sessions', 0, 7, 12, 5, 3, 2],
+    ['tools.evaluate', 'Models & providers', 'keys, the model catalogue, and what an endpoint really does', 0, 12, 12, 5, 3, 2],
+    ['tools.setup', 'Skills, plugins & maintenance', 'plugins, tool servers, trust, the configuration and updates', 0, 17, 12, 6, 3, 2],
+    ['tools.other', 'Data', 'the RL environment, and any command of no group', 0, 23, 12, 4, 3, 2],
   ]);
   page('runner', { title: 'Run a command', view: 'runner', wrap: 'runv' }, [
     ['runner.list', 'Commands', 'every sleipnir command, filtered', 0, 0, 3, 18, 2, 4, 'fill list'],
