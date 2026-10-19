@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -30,9 +32,13 @@ type sample struct {
 
 // findSamples resolves each path to the rollouts under it: a sample directory
 // (it holds episode.json), a run directory (its <task>/<sample> children), or a
-// directory of run directories. The result is sorted by path, so exports are
-// deterministic whatever order the filesystem lists things in. A rollout reached
-// from two paths is listed once, under the first.
+// directory of run directories. A directory that holds a session's log
+// (events.jsonl) and no episode.json is an ordinary session (chat, run, swarm,
+// web, or a directory of them): its episode is built from the log, with no task,
+// no policy and no verifier verdict, so it is flagged weak_label and every model
+// in it is a teacher. The result is sorted by path, so exports are deterministic
+// whatever order the filesystem lists things in. A rollout reached from two paths
+// is listed once, under the first.
 func findSamples(paths []string) ([]sample, error) {
 	seen := map[string]bool{}
 	var dirs []string
@@ -54,11 +60,11 @@ func findSamples(paths []string) ([]sample, error) {
 		if !st.IsDir() {
 			return nil, fmt.Errorf("%s is not a directory: pass a run directory (the --out of rl rollout) or a sample directory", p)
 		}
-		if fileExists(filepath.Join(p, "episode.json")) {
+		if fileExists(filepath.Join(p, "episode.json")) || isSessionDir(p) {
 			add(p)
 			continue
 		}
-		// <run>/<task>/<sample> and <runs>/<run>/<task>/<sample>
+		// <run>/<task>/<sample>, <runs>/<run>/<task>/<sample> and <sessions>/<session>
 		err = filepath.WalkDir(p, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -69,7 +75,7 @@ func findSamples(paths []string) ([]sample, error) {
 			if d.Name() == "blobs" || d.Name() == "checkpoints" || d.Name() == "savepoints" {
 				return filepath.SkipDir
 			}
-			if fileExists(filepath.Join(path, "episode.json")) {
+			if fileExists(filepath.Join(path, "episode.json")) || isSessionDir(path) {
 				add(path)
 				return filepath.SkipDir
 			}
@@ -83,15 +89,40 @@ func findSamples(paths []string) ([]sample, error) {
 	out := make([]sample, 0, len(dirs))
 	for _, d := range dirs {
 		ep, err := readEpisode(d)
+		if errors.Is(err, fs.ErrNotExist) {
+			ep, err = sessionEpisode(d)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", d, err)
 		}
 		out = append(out, sample{Dir: d, Root: roots[d], Episode: ep})
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("no rollouts found under %v (looking for <task>/<sample>/episode.json)", paths)
+		return nil, fmt.Errorf("no rollouts or sessions found under %v (looking for <task>/<sample>/episode.json, or a session's events.jsonl)", paths)
 	}
 	return out, nil
+}
+
+// isSessionDir reports a directory that holds a session's event log without a
+// rollout's episode.json: an ordinary session's directory.
+func isSessionDir(dir string) bool {
+	return fileExists(filepath.Join(dir, "events.jsonl")) && !fileExists(filepath.Join(dir, "episode.json"))
+}
+
+// sessionEpisode builds the episode of an ordinary session from its log: the
+// task is the session id, the sample is 0, no model is the policy (every step is a
+// teacher's) and, with no verifier verdict, the episode carries weak_label. The
+// exporters' --teacher and --keep-weak then choose what of it is trained on.
+func sessionEpisode(dir string) (*rl.Episode, error) {
+	run, err := traj.Open(dir)
+	if err != nil {
+		return nil, err
+	}
+	ep, err := run.Episode(traj.Options{})
+	if err != nil {
+		return nil, fmt.Errorf("events.jsonl: %w", err)
+	}
+	return ep, nil
 }
 
 // fileExists follows symlinks and reports a stat-able path that is not a directory; it does not

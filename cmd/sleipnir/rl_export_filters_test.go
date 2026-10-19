@@ -216,3 +216,105 @@ func TestRLExportDropRulesThroughTheCLI(t *testing.T) {
 		}
 	}
 }
+
+// writeSessionLog records tr the way an ordinary session leaves its directory:
+// events.jsonl and blobs/, no episode.json and no task.json.
+func writeSessionLog(t *testing.T, dir string, tr *trajtest.Run) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var log bytes.Buffer
+	for _, e := range tr.Events() {
+		b, err := json.Marshal(e)
+		if err != nil {
+			t.Fatal(err)
+		}
+		log.Write(append(b, '\n'))
+	}
+	blobs, err := events.NewDirBlobs(filepath.Join(dir, "blobs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, b := range tr.Blobs.All() {
+		if _, err := blobs.Put(b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "events.jsonl"), log.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRLExportReadsAnOrdinarySession exports a chat session's log, which has no
+// episode.json: its compactor's patches become SFT records once --keep-weak
+// accepts the unverified episode and --teacher names the compactor's model.
+func TestRLExportReadsAnOrdinarySession(t *testing.T) {
+	const compactor = "deepseek/deepseek-v4.1-flash"
+	tr := trajtest.New()
+	a := tr.Agent("main", "worker", "local/student")
+	a.User("fix the shop")
+	a.Step(trajtest.Call{Text: "reading", Tool: "read", Input: `{"path":"shop/h.go"}`, Result: "package shop"})
+	a.Fork(`{"keep":[],"summary":"read shop/h.go: package shop"}`, compactor)
+	a.Step(trajtest.Call{Text: "done"})
+	sessions := t.TempDir()
+	writeSessionLog(t, filepath.Join(sessions, "20261019-120000-abc123"), tr)
+
+	r := rlRun{t}
+	exp := func(dir string, args ...string) (records int, st export.Stats, out string) {
+		t.Helper()
+		dest := filepath.Join(t.TempDir(), "out.jsonl")
+		stats := filepath.Join(t.TempDir(), "stats.json")
+		out = r.must(rlExport, append([]string{dir, "--format", "sft", "-o", dest, "--stats", stats}, args...)...)
+		b, err := os.ReadFile(dest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		records = strings.Count(string(b), "\n")
+		sb, err := os.ReadFile(stats)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(sb, &st); err != nil {
+			t.Fatal(err)
+		}
+		return records, st, out
+	}
+
+	// The session's directory itself, and the directory of sessions above it.
+	for _, dir := range []string{filepath.Join(sessions, "20261019-120000-abc123"), sessions} {
+		n, st, out := exp(dir, "--roles", "compactor", "--teacher", compactor, "--keep-weak")
+		if n != 1 {
+			t.Fatalf("%s: %d records, want the compactor's one patch\n%s\nstats %+v", dir, n, out, st)
+		}
+	}
+	dest := filepath.Join(t.TempDir(), "out.jsonl")
+	r.must(rlExport, filepath.Join(sessions, "20261019-120000-abc123"), "--format", "sft", "--roles", "compactor", "--teacher", compactor, "--keep-weak", "-o", dest)
+	b, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rec struct {
+		Messages []struct {
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
+			Weight  *int            `json:"weight"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(b, &rec); err != nil {
+		t.Fatalf("%v in %s", err, b)
+	}
+	last := rec.Messages[len(rec.Messages)-1]
+	if last.Role != "assistant" || !strings.Contains(string(last.Content), "read shop/h.go") || last.Weight == nil || *last.Weight != 1 {
+		t.Fatalf("the record does not end in the trained patch: %+v", last)
+	}
+
+	// Without --keep-weak the unverified session is left out, and says so.
+	if n, st, _ := exp(sessions, "--roles", "compactor", "--teacher", compactor); n != 0 || st.Drops["episode:weak_label"] != 1 {
+		t.Fatalf("without --keep-weak: %d records, drops %v", n, st.Drops)
+	}
+	// A directory with neither rollouts nor sessions is still an error that says what was looked for.
+	if _, _, err := r.do(rlExport, t.TempDir(), "--format", "sft", "-o", dest); err == nil || !strings.Contains(err.Error(), "events.jsonl") {
+		t.Fatalf("an empty directory: %v", err)
+	}
+}

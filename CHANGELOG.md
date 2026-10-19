@@ -17,6 +17,12 @@ they do not indicate whether a change has been released.
   adds one segment, `research (from web sources, unverified)`, to the shared
   layer, a declared change made once at publication. `sleipnir plugins
   disable research` leaves both out.
+- `rl export`, `rl verify` and `rl reward` read an ordinary session's directory
+  (one that holds `events.jsonl` and no `episode.json`), or a directory of them,
+  as docs/TRAINING-DATA.md has said: the episode's task is the session id, every
+  model in it is a teacher and it is flagged `weak_label`, so the training
+  formats take it with `--keep-weak` and `--teacher MODEL`. Before, such a
+  directory was "no rollouts found".
 - A small top-level task of a role with several members can go to one
   member without the role's pool: `spawn … solo=true` gives it to the
   member named with `agent=`, or to the first free one, and marks the task
