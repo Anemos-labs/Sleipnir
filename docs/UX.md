@@ -177,6 +177,39 @@ The Board view's dependency graph draws every task when they fit its panel; othe
 on are one node (`✓ 118 merged`), a column taller than the panel is wrapped into several, and a graph that still does not fit is
 drawn at full size and scrolls. Two nodes never overlap.
 
+### Every page at a glance
+
+Each page has a title, one sentence of what it is for and one primary action; empty lists say what will appear and
+what starts it; internal names (the cache layers G0 to G5, flags such as `--isolation`) are secondary text. The rail
+groups the pages into Work, Inspect and Manage, and a page whose plugin is off is left out of it (docs/PLUGINS.md).
+Screenshots of each page at 1440 and 390 pixels wide, beside the page as it was before these rules:
+
+| Page | Before | After |
+|---|---|---|
+| Cockpit | [before](media/web/before/cockpit.png) | [1440](media/web/after/cockpit-1440.png) · [390](media/web/after/cockpit-390.png) |
+| Board | [before](media/web/before/board.png) | [1440](media/web/after/board-1440.png) · [390](media/web/after/board-390.png) |
+| Changes | [before](media/web/before/changes.png) | [1440](media/web/after/changes-1440.png) · [390](media/web/after/changes-390.png) |
+| Files | [before](media/web/before/files.png) | [1440](media/web/after/files-1440.png) · [390](media/web/after/files-390.png) |
+| Checkpoints | [before](media/web/before/checkpoints.png) | [1440](media/web/after/checkpoints-1440.png) · [390](media/web/after/checkpoints-390.png) |
+| Merge | [before](media/web/before/merge.png) | [1440](media/web/after/merge-1440.png) · [390](media/web/after/merge-390.png) |
+| Mail | [before](media/web/before/mail.png) | [1440](media/web/after/mail-1440.png) · [390](media/web/after/mail-390.png) |
+| Cache | [before](media/web/before/cache.png) | [1440](media/web/after/cache-1440.png) · [390](media/web/after/cache-390.png) |
+| Replay | [before](media/web/before/replay.png) | [1440](media/web/after/replay-1440.png) · [390](media/web/after/replay-390.png) |
+| Sessions | [before](media/web/before/sessions.png) | [1440](media/web/after/sessions-1440.png) · [390](media/web/after/sessions-390.png) |
+| Plugins | new | [1440](media/web/after/plugins-1440.png) · [390](media/web/after/plugins-390.png) |
+| Tools | [before](media/web/before/tools.png) | [1440](media/web/after/tools-1440.png) · [390](media/web/after/tools-390.png) |
+| Settings › Models & roles | [before](media/web/before/settings-models.png) | [1440](media/web/after/settings-models-1440.png) · [390](media/web/after/settings-models-390.png) |
+| Settings › Team & run | [before](media/web/before/settings-run.png) | [1440](media/web/after/settings-run-1440.png) · [390](media/web/after/settings-run-390.png) |
+| Settings › Budget | [before](media/web/before/settings-budget.png) | [1440](media/web/after/settings-budget-1440.png) · [390](media/web/after/settings-budget-390.png) |
+| Settings › Permissions & trust | [before](media/web/before/settings-permissions.png) | [1440](media/web/after/settings-permissions-1440.png) · [390](media/web/after/settings-permissions-390.png) |
+| Settings › Connections | [before](media/web/before/settings-providers.png) | [1440](media/web/after/settings-providers-1440.png) · [390](media/web/after/settings-providers-390.png) |
+| Settings › Skills & extensions | [before](media/web/before/settings-skills.png) | [1440](media/web/after/settings-skills-1440.png) · [390](media/web/after/settings-skills-390.png) |
+| Settings › Configuration | [before](media/web/before/settings-config.png) | [1440](media/web/after/settings-config-1440.png) · [390](media/web/after/settings-config-390.png) |
+| Settings › Appearance | [before](media/web/before/settings-look.png) | [1440](media/web/after/settings-look-1440.png) · [390](media/web/after/settings-look-390.png) |
+
+Settings › Roles, Trust and MCP servers joined Models & roles, Permissions & trust and Connections; their old names
+still open the page that holds their cards.
+
 ### Cards on every page
 
 Every page is a grid of cards, twelve columns wide: the Cockpit, each tab of the Workspace (Files, Changes, Checkpoints, Merge),
