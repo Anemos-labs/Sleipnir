@@ -31,7 +31,8 @@ with markdown files (`.sleipnir/agents/*.md`).
 **The team.** A session's team is a list of worker slots, one role each (`swarm.Config.Team`). The chat, run and web
 commands give a session the default team, one slot of each worker role, unless `--role-model` names one (a role given
 more than once, or bare, is one slot per value; a slot may name its own model). Configured teams keep persistent role pools. `spawn` reuses the existing worker automatically;
-`agent=…` selects a particular member without bypassing the pool protocol. Idle members
+`agent=…` selects a particular member without bypassing the pool protocol (it leads a pooled parent). `solo=true` is the
+exception for small work (see **Solo tasks** below). Idle members
 retain their slot and context. Only relevant pools are activated. The manager's pin carries a team card, written once per session: each role with its slots, what it may do (edits
 files or not, its shell, the web) and what it is for. Its hot view carries the live occupancy (`team: backend 1/2 ·
 tester 0/1`). A team has at least 8 workers on the command line and in the page; library callers, tests and training
@@ -88,6 +89,23 @@ updates its isolated checkout from integration, just as an explicit assignment d
 Recovery preserves every owned parent and child, along with the agreed plan and
 execution phase. Interrupted reconciliation retains its contract but requires a
 fresh inspection and confirmation cycle.
+
+**Solo tasks.** A pool's rounds (proposal, every member's vote, children, reconciliation,
+every member's confirmation) cost more than a small task is worth, and work that depends on
+the task waits for all of them. `spawn … solo=true` gives a top-level task of a role with
+several members to one member without the pool: the named member (`agent=`), or the first
+free one in leadership order, where a member is free when its run has ended, no open pool
+of the role keeps it, and it owns no other open solo task. The role's members are made
+first, as for a pool, so the choice is among all of them. The task is marked solo on the
+board and runs as an ordinary single-owner task: its member may claim it, and a restart, the
+repair pass or a queued start gives it to one member again, never to a pool. A named member
+that is not free is refused with what holds it; with no member named and none free, the
+manager's spawn of an existing task is queued as for a pool. While a member owns an open solo
+task, no new pool of its role takes it. `solo` is refused for a child (it already has one
+owner) and for a parent that already has a pool. The manager's pin asks for it for small
+work (one owner, a handful of files, no shared decision: a scaffold or foundation, a config,
+a single fix). When a small task reaches a pool anyway, the pool's start tells its members
+not to divide it: the leader proposes one child it does itself, and the others agree at once.
 
 Planning-pool children inherit their parent’s task kind when `kind` is omitted.
 Planning children and their reconciled parent submit agreements for acceptance
@@ -228,7 +246,7 @@ paths outside the project).
 | `task` | create, list, get, claim, update, block, resume, done, accept, reject, reopen, revise, resolve, fail, handover, deliver | Manager: create, accept, reject, reopen, revise, resolve, deliver and scope changes; pool leaders may create and accept the children of the pool they lead while it executes, and set the scope of one nobody has claimed (`update files`) (a refusal names the condition that failed: the leader, the phase or the role). Persistent pools refuse `fail` and fresh-worker `handover`; embedded callers retain them (`fail` needs a typed `reason`). See sections 4 and 6. |
 | `mail` | send | one recipient; typed; section 5 |
 | `note` | propose | a bounded fact in the live view; older proposals can be evicted |
-| `spawn` | role, task, optional `agent=` to reuse an idle worker | Manager or pool leader assigning an existing member to its child; section 6 |
+| `spawn` | role, task, optional `agent=` to reuse an idle worker, optional `solo=true` to give a top-level task to one member without the role's pool | Manager or pool leader assigning an existing member to its child; section 6 |
 | `pool` | propose, agree, execute, reconcile, inspect, confirm, excuse | Leader or manager coordinates phases; every member acknowledges the current agreement and reconciled result; the manager excuses a member that cannot take part. `pool get` is read as `task get`, and so is a member's `pool inspect` before the pool reconciles (with a line saying nothing is combined yet); another unknown action is refused with the list of actions |
 | `approve` | answer a delegated worker permission question | Manager only; explicit policy denials and escalations still apply |
 | `wait` | until tasks change, mail arrives, or a timeout | sleeps at no request cost; reports what changed since the caller last looked |
