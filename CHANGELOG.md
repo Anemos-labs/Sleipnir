@@ -7,6 +7,10 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A role pool's leader is mailed when every other member has agreed to (or
+  confirmed) the current revision and only its own vote is missing, so a
+  leader that proposed and went idle no longer holds the pool in planning.
+  Prompt bytes: none change.
 - When a team worker's run ends, the processes its ordinary shell commands
   left running (`server &`, `nohup server >log 2>&1 &`) are ended, so a
   server a worker started does not hold its port for the rest of the

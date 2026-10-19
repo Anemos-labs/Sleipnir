@@ -548,3 +548,22 @@ func TestAChildOfAResumedPoolSaysHowToStartTheParent(t *testing.T) {
 		t.Errorf("spawning the child: %v, want it to say %q", err, want)
 	}
 }
+
+// A leader that proposed and went idle waits for the others while they wait for its own vote. The vote that leaves only the
+// leader's own to give tells the leader once.
+func TestTheVoteThatLeavesOnlyTheLeadersOwnIsMailedToTheLeader(t *testing.T) {
+	r := newPoolRig(t)
+	id := r.parent.ID
+	r.must(r.pool(r.lead, map[string]any{"action": "propose", "text": "split handlers and tests"}), "propose")
+	before := len(r.mailTo(r.lead))
+	r.must(r.pool(r.second, map[string]any{"action": "agree", "revision": 2}), "agree")
+	if mail := r.mailTo(r.lead)[before:]; len(mail) != 0 {
+		t.Fatalf("the leader was mailed while another member's vote was missing: %q", mail)
+	}
+	r.must(r.pool(r.third, map[string]any{"action": "agree", "revision": 2}), "agree")
+	r.must(r.pool(r.third, map[string]any{"action": "agree", "revision": 2}), "a repeated agree")
+	mail := r.mailTo(r.lead)[before:]
+	if len(mail) != 1 || !strings.Contains(mail[0], "Pool "+id+": every other member has agreed to revision 2; only your own agree is missing (pool agree id="+id+" revision=2)") {
+		t.Fatalf("the leader's mail: %q", mail)
+	}
+}
