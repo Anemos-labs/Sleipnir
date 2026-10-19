@@ -116,6 +116,10 @@
       const cnt = $('[data-col="' + k + '"] .cnt', B.host); cnt.textContent = counts[k]; cnt.removeAttribute('title');
       B.host.style.setProperty('--bw-' + k, !counts[k] ? '.5fr' : k === 'merged' && compact ? '1.6fr' : '1fr');
     });
+    /* a board with no task at all says what will come and what starts it, once, above its columns */
+    const total = COLS.reduce((n, [k]) => n + (counts[k] || 0), 0); let none = Array.from(B.host.children).find(e => e.classList && e.classList.contains('bnone'));
+    if (!total && !none) { none = mk('p', { class: 'bnone' }, B.big ? 'No tasks yet. When the manager has a goal, it splits the work into tasks; each one moves here from to do to merged.' : 'No tasks yet: they appear when the manager splits a goal into work.'); B.host.insertBefore(none, B.host.firstChild); }
+    else if (total && none) none.remove();
     shown.forEach(id => { if (kids[id] && isOpen(id)) { const box = B.nodes[id].querySelector('.subtasks'); if (box) place(box, kids[id]); } });
     B.host.classList.toggle('compact-merged', compact);
     /* no slide in a paused replay: animations follow the view clock there, and a slide would stand still half-way */

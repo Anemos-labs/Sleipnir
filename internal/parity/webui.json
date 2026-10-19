@@ -1019,7 +1019,7 @@
    "kind": "program",
    "live": true,
    "effects": [
-    "runner:plugins"
+    "view:plugins"
    ]
   },
   {
@@ -2343,41 +2343,54 @@
  "runner": {
   "listed": [
    "chat",
-   "demo",
-   "mock",
    "run",
    "swarm",
-   "config",
-   "init",
+   "schedule",
+   "schedule add",
+   "schedule rm",
+   "daemon",
+   "demo",
+   "sessions",
+   "sessions prune",
+   "replay",
+   "watch",
+   "inspect",
+   "friction",
+   "models",
+   "models fav add",
+   "models fav list",
+   "models fav rm",
    "login",
    "logout",
+   "doctor",
+   "mock",
+   "sim",
+   "plugins",
+   "plugins add",
+   "plugins disable",
+   "plugins enable",
+   "plugins info",
+   "plugins list",
+   "plugins profile",
+   "plugins remove",
+   "plugins reset",
+   "plugins set",
    "mcp",
    "mcp approve",
    "mcp list",
    "mcp revoke",
    "mcp test",
-   "sessions",
-   "sessions prune",
    "trust",
    "trust add",
    "trust forget",
    "trust list",
-   "daemon",
-   "doctor",
-   "friction",
-   "inspect",
-   "models",
-   "models fav add",
-   "models fav list",
-   "models fav rm",
+   "init",
    "recon",
-   "replay",
-   "schedule",
-   "schedule add",
-   "schedule rm",
-   "sim",
+   "config",
    "update",
-   "watch",
+   "version",
+   "help",
+   "web",
    "rl",
    "rl branch",
    "rl compare",
@@ -2405,20 +2418,7 @@
    "rl tasks stats",
    "rl tasks update-scorer",
    "rl tasks validate",
-   "rl verify",
-   "help",
-   "plugins",
-   "plugins add",
-   "plugins disable",
-   "plugins enable",
-   "plugins info",
-   "plugins list",
-   "plugins profile",
-   "plugins remove",
-   "plugins reset",
-   "plugins set",
-   "version",
-   "web"
+   "rl verify"
   ],
   "commands": {
    "chat": {
@@ -2450,31 +2450,6 @@
      "verify"
     ],
     "modeWith": {}
-   },
-   "demo": {
-    "mode": "net",
-    "positionals": [],
-    "flags": [
-     "dir",
-     "no-anim",
-     "plain",
-     "scale",
-     "scenario",
-     "topics",
-     "view"
-    ],
-    "modeWith": {}
-   },
-   "mock": {
-    "mode": "server",
-    "positionals": [],
-    "flags": [
-     "addr",
-     "engines"
-    ],
-    "modeWith": {
-     "addr": "priv"
-    }
    },
    "run": {
     "mode": "net",
@@ -2562,25 +2537,194 @@
      "mode": "priv"
     }
    },
-   "config": {
+   "schedule": {
+    "mode": "run",
+    "positionals": [],
+    "flags": [],
+    "modeWith": {}
+   },
+   "schedule add": {
+    "mode": "priv",
+    "positionals": [
+     "GOAL"
+    ],
+    "flags": [
+     "budget-usd",
+     "cron",
+     "cwd",
+     "mode",
+     "model"
+    ],
+    "modeWith": {
+     "mode": "tty_only"
+    }
+   },
+   "schedule rm": {
+    "mode": "priv",
+    "positionals": [
+     "ID"
+    ],
+    "flags": [],
+    "modeWith": {}
+   },
+   "daemon": {
+    "mode": "server",
+    "positionals": [],
+    "flags": [
+     "every",
+     "once"
+    ],
+    "modeWith": {}
+   },
+   "demo": {
+    "mode": "net",
+    "positionals": [],
+    "flags": [
+     "dir",
+     "no-anim",
+     "plain",
+     "scale",
+     "scenario",
+     "topics",
+     "view"
+    ],
+    "modeWith": {}
+   },
+   "sessions": {
     "mode": "run",
     "positionals": [],
     "flags": [
-     "json",
-     "trust-project"
+     "dir",
+     "n"
     ],
-    "modeWith": {
-     "trust-project": "priv"
-    }
+    "modeWith": {}
    },
-   "init": {
-    "mode": "priv",
+   "sessions prune": {
+    "mode": "run",
     "positionals": [],
     "flags": [
-     "local-url",
-     "model",
-     "user"
+     "dir",
+     "keep",
+     "older-than",
+     "yes"
     ],
+    "modeWith": {
+     "yes": "priv"
+    }
+   },
+   "replay": {
+    "mode": "tty_only",
+    "positionals": [
+     "SESSION"
+    ],
+    "flags": [
+     "agent",
+     "cols",
+     "final",
+     "fps",
+     "from",
+     "gallery",
+     "hold",
+     "length",
+     "no-anim",
+     "out",
+     "record",
+     "rows",
+     "speed",
+     "until",
+     "view"
+    ],
+    "modeWith": {
+     "final": "run",
+     "record": "run"
+    }
+   },
+   "watch": {
+    "mode": "tty_only",
+    "positionals": [
+     "SESSION"
+    ],
+    "flags": [
+     "agent",
+     "no-anim",
+     "poll",
+     "view"
+    ],
+    "modeWith": {}
+   },
+   "inspect": {
+    "mode": "tty_only",
+    "positionals": [
+     "SESSION|DIR"
+    ],
+    "flags": [
+     "addr",
+     "interval",
+     "json",
+     "open",
+     "session",
+     "token"
+    ],
+    "modeWith": {
+     "json": "run"
+    }
+   },
+   "friction": {
+    "mode": "run",
+    "positionals": [
+     "PATH"
+    ],
+    "flags": [
+     "category",
+     "examples",
+     "json",
+     "min-count",
+     "top"
+    ],
+    "modeWith": {}
+   },
+   "models": {
+    "mode": "net",
+    "positionals": [
+     "WORDS"
+    ],
+    "flags": [
+     "all",
+     "api-key-env",
+     "base-url",
+     "fav",
+     "filter",
+     "max-price",
+     "min-context",
+     "provider",
+     "reasoning",
+     "tools"
+    ],
+    "modeWith": {
+     "base-url": "priv",
+     "api-key-env": "priv"
+    }
+   },
+   "models fav add": {
+    "mode": "priv",
+    "positionals": [
+     "REF"
+    ],
+    "flags": [],
+    "modeWith": {}
+   },
+   "models fav list": {
+    "mode": "run",
+    "positionals": [],
+    "flags": [],
+    "modeWith": {}
+   },
+   "models fav rm": {
+    "mode": "priv",
+    "positionals": [
+     "REF"
+    ],
+    "flags": [],
     "modeWith": {}
    },
    "login": {
@@ -2598,6 +2742,182 @@
     ],
     "flags": [],
     "modeWith": {}
+   },
+   "doctor": {
+    "mode": "net",
+    "positionals": [],
+    "flags": [
+     "api-key-env",
+     "base-url",
+     "capture",
+     "deep",
+     "json",
+     "model",
+     "no-affinity",
+     "provider",
+     "trust-project"
+    ],
+    "modeWith": {
+     "base-url": "priv",
+     "api-key-env": "priv",
+     "trust-project": "priv"
+    }
+   },
+   "mock": {
+    "mode": "server",
+    "positionals": [],
+    "flags": [
+     "addr",
+     "engines"
+    ],
+    "modeWith": {
+     "addr": "priv"
+    }
+   },
+   "sim": {
+    "mode": "run",
+    "positionals": [],
+    "flags": [
+     "agents",
+     "engines",
+     "json",
+     "mode",
+     "provider",
+     "seed"
+    ],
+    "modeWith": {
+     "mode": "priv"
+    }
+   },
+   "plugins": {
+    "mode": "run",
+    "positionals": [],
+    "flags": [
+     "cwd",
+     "trust-project",
+     "json"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins add": {
+    "mode": "priv",
+    "positionals": [
+     "PATH|GIT-URL"
+    ],
+    "flags": [],
+    "modeWith": {}
+   },
+   "plugins disable": {
+    "mode": "priv",
+    "positionals": [
+     "ID"
+    ],
+    "flags": [
+     "cwd",
+     "project",
+     "local",
+     "trust-project"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins enable": {
+    "mode": "priv",
+    "positionals": [
+     "ID"
+    ],
+    "flags": [
+     "cwd",
+     "project",
+     "local",
+     "trust-project"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins info": {
+    "mode": "run",
+    "positionals": [
+     "ID"
+    ],
+    "flags": [
+     "cwd",
+     "trust-project",
+     "json"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins list": {
+    "mode": "run",
+    "positionals": [],
+    "flags": [
+     "cwd",
+     "trust-project",
+     "json"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins profile": {
+    "mode": "priv",
+    "positionals": [
+     "NAME"
+    ],
+    "flags": [
+     "cwd",
+     "project",
+     "local",
+     "trust-project"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins remove": {
+    "mode": "priv",
+    "positionals": [
+     "ID"
+    ],
+    "flags": [],
+    "modeWith": {}
+   },
+   "plugins reset": {
+    "mode": "priv",
+    "positionals": [
+     "ID"
+    ],
+    "flags": [
+     "cwd",
+     "project",
+     "local",
+     "trust-project"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins set": {
+    "mode": "priv",
+    "positionals": [
+     "ID",
+     "KEY=VALUE"
+    ],
+    "flags": [
+     "cwd",
+     "project",
+     "local",
+     "trust-project"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
    },
    "mcp": {
     "mode": "run",
@@ -2650,28 +2970,6 @@
      "trust-project": "priv"
     }
    },
-   "sessions": {
-    "mode": "run",
-    "positionals": [],
-    "flags": [
-     "dir",
-     "n"
-    ],
-    "modeWith": {}
-   },
-   "sessions prune": {
-    "mode": "run",
-    "positionals": [],
-    "flags": [
-     "dir",
-     "keep",
-     "older-than",
-     "yes"
-    ],
-    "modeWith": {
-     "yes": "priv"
-    }
-   },
    "trust": {
     "mode": "run",
     "positionals": [],
@@ -2704,108 +3002,14 @@
     "flags": [],
     "modeWith": {}
    },
-   "daemon": {
-    "mode": "server",
+   "init": {
+    "mode": "priv",
     "positionals": [],
     "flags": [
-     "every",
-     "once"
-    ],
-    "modeWith": {}
-   },
-   "doctor": {
-    "mode": "net",
-    "positionals": [],
-    "flags": [
-     "api-key-env",
-     "base-url",
-     "capture",
-     "deep",
-     "json",
+     "local-url",
      "model",
-     "no-affinity",
-     "provider",
-     "trust-project"
+     "user"
     ],
-    "modeWith": {
-     "base-url": "priv",
-     "api-key-env": "priv",
-     "trust-project": "priv"
-    }
-   },
-   "friction": {
-    "mode": "run",
-    "positionals": [
-     "PATH"
-    ],
-    "flags": [
-     "category",
-     "examples",
-     "json",
-     "min-count",
-     "top"
-    ],
-    "modeWith": {}
-   },
-   "inspect": {
-    "mode": "tty_only",
-    "positionals": [
-     "SESSION|DIR"
-    ],
-    "flags": [
-     "addr",
-     "interval",
-     "json",
-     "open",
-     "session",
-     "token"
-    ],
-    "modeWith": {
-     "json": "run"
-    }
-   },
-   "models": {
-    "mode": "net",
-    "positionals": [
-     "WORDS"
-    ],
-    "flags": [
-     "all",
-     "api-key-env",
-     "base-url",
-     "fav",
-     "filter",
-     "max-price",
-     "min-context",
-     "provider",
-     "reasoning",
-     "tools"
-    ],
-    "modeWith": {
-     "base-url": "priv",
-     "api-key-env": "priv"
-    }
-   },
-   "models fav add": {
-    "mode": "priv",
-    "positionals": [
-     "REF"
-    ],
-    "flags": [],
-    "modeWith": {}
-   },
-   "models fav list": {
-    "mode": "run",
-    "positionals": [],
-    "flags": [],
-    "modeWith": {}
-   },
-   "models fav rm": {
-    "mode": "priv",
-    "positionals": [
-     "REF"
-    ],
-    "flags": [],
     "modeWith": {}
    },
    "recon": {
@@ -2818,76 +3022,15 @@
     ],
     "modeWith": {}
    },
-   "replay": {
-    "mode": "tty_only",
-    "positionals": [
-     "SESSION"
-    ],
-    "flags": [
-     "agent",
-     "cols",
-     "final",
-     "fps",
-     "from",
-     "gallery",
-     "hold",
-     "length",
-     "no-anim",
-     "out",
-     "record",
-     "rows",
-     "speed",
-     "until",
-     "view"
-    ],
-    "modeWith": {
-     "final": "run",
-     "record": "run"
-    }
-   },
-   "schedule": {
-    "mode": "run",
-    "positionals": [],
-    "flags": [],
-    "modeWith": {}
-   },
-   "schedule add": {
-    "mode": "priv",
-    "positionals": [
-     "GOAL"
-    ],
-    "flags": [
-     "budget-usd",
-     "cron",
-     "cwd",
-     "mode",
-     "model"
-    ],
-    "modeWith": {
-     "mode": "tty_only"
-    }
-   },
-   "schedule rm": {
-    "mode": "priv",
-    "positionals": [
-     "ID"
-    ],
-    "flags": [],
-    "modeWith": {}
-   },
-   "sim": {
+   "config": {
     "mode": "run",
     "positionals": [],
     "flags": [
-     "agents",
-     "engines",
      "json",
-     "mode",
-     "provider",
-     "seed"
+     "trust-project"
     ],
     "modeWith": {
-     "mode": "priv"
+     "trust-project": "priv"
     }
    },
    "update": {
@@ -2900,17 +3043,22 @@
      "check": "net"
     }
    },
-   "watch": {
+   "version": {
+    "mode": "run",
+    "positionals": [],
+    "flags": [],
+    "modeWith": {}
+   },
+   "help": {
+    "mode": "run",
+    "positionals": [],
+    "flags": [],
+    "modeWith": {}
+   },
+   "web": {
     "mode": "tty_only",
-    "positionals": [
-     "SESSION"
-    ],
-    "flags": [
-     "agent",
-     "no-anim",
-     "poll",
-     "view"
-    ],
+    "positionals": [],
+    "flags": [],
     "modeWith": {}
    },
    "rl": {
@@ -3721,154 +3869,6 @@
     "positionals": [
      "RUN_DIR"
     ],
-    "flags": [],
-    "modeWith": {}
-   },
-   "help": {
-    "mode": "run",
-    "positionals": [],
-    "flags": [],
-    "modeWith": {}
-   },
-   "plugins": {
-    "mode": "run",
-    "positionals": [],
-    "flags": [
-     "cwd",
-     "trust-project",
-     "json"
-    ],
-    "modeWith": {
-     "trust-project": "priv"
-    }
-   },
-   "plugins add": {
-    "mode": "priv",
-    "positionals": [
-     "PATH|GIT-URL"
-    ],
-    "flags": [],
-    "modeWith": {}
-   },
-   "plugins disable": {
-    "mode": "priv",
-    "positionals": [
-     "ID"
-    ],
-    "flags": [
-     "cwd",
-     "project",
-     "local",
-     "trust-project"
-    ],
-    "modeWith": {
-     "trust-project": "priv"
-    }
-   },
-   "plugins enable": {
-    "mode": "priv",
-    "positionals": [
-     "ID"
-    ],
-    "flags": [
-     "cwd",
-     "project",
-     "local",
-     "trust-project"
-    ],
-    "modeWith": {
-     "trust-project": "priv"
-    }
-   },
-   "plugins info": {
-    "mode": "run",
-    "positionals": [
-     "ID"
-    ],
-    "flags": [
-     "cwd",
-     "trust-project",
-     "json"
-    ],
-    "modeWith": {
-     "trust-project": "priv"
-    }
-   },
-   "plugins list": {
-    "mode": "run",
-    "positionals": [],
-    "flags": [
-     "cwd",
-     "trust-project",
-     "json"
-    ],
-    "modeWith": {
-     "trust-project": "priv"
-    }
-   },
-   "plugins profile": {
-    "mode": "priv",
-    "positionals": [
-     "NAME"
-    ],
-    "flags": [
-     "cwd",
-     "project",
-     "local",
-     "trust-project"
-    ],
-    "modeWith": {
-     "trust-project": "priv"
-    }
-   },
-   "plugins remove": {
-    "mode": "priv",
-    "positionals": [
-     "ID"
-    ],
-    "flags": [],
-    "modeWith": {}
-   },
-   "plugins reset": {
-    "mode": "priv",
-    "positionals": [
-     "ID"
-    ],
-    "flags": [
-     "cwd",
-     "project",
-     "local",
-     "trust-project"
-    ],
-    "modeWith": {
-     "trust-project": "priv"
-    }
-   },
-   "plugins set": {
-    "mode": "priv",
-    "positionals": [
-     "ID",
-     "KEY=VALUE"
-    ],
-    "flags": [
-     "cwd",
-     "project",
-     "local",
-     "trust-project"
-    ],
-    "modeWith": {
-     "trust-project": "priv"
-    }
-   },
-   "version": {
-    "mode": "run",
-    "positionals": [],
-    "flags": [],
-    "modeWith": {}
-   },
-   "web": {
-    "mode": "tty_only",
-    "positionals": [],
     "flags": [],
     "modeWith": {}
    }

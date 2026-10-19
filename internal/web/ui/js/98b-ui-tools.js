@@ -10,16 +10,10 @@
   const X = () => D.extra || (D.extra = {}), net = TK.net;
   const reg = SL.views.register, arr = x => Array.isArray(x) ? x : [];
   ui.settingsPage = id => { ui.setPage = id; SL.views.show('settings', { page: id }); };
-  const GROUPS = [
-    ['Run and chat', 'start work, in a terminal-like session or headless', ['chat', 'run', 'swarm', 'demo', 'mock']],
-    ['Observe', 'what happened, what it cost, what slowed it down', ['sessions', 'inspect', 'watch', 'replay', 'friction', 'recon']],
-    ['Evaluate', 'probe an endpoint, simulate a policy, measure a model', ['doctor', 'sim', 'models', 'rl']],
-    ['Set up', 'projects, accounts, trust, tool servers, schedules', ['init', 'login', 'logout', 'trust', 'mcp', 'schedule', 'daemon', 'config', 'update', 'version', 'help']],
-  ];
   const BUILT = {
     sessions: ['Sessions', () => SL.views.show('sessions')], doctor: ['Doctor', () => SL.views.show('doctor')], schedule: ['Schedule', () => SL.views.show('schedule')], daemon: ['Schedule', () => SL.views.show('schedule')],
     models: ['Settings › Models', () => ui.settingsPage('models')], trust: ['Settings › Trust', () => ui.settingsPage('trust')], mcp: ['Settings › MCP servers', () => ui.settingsPage('mcp')], config: ['Settings › Config layers', () => ui.settingsPage('config')],
-    login: ['Settings › Providers', () => ui.settingsPage('providers')], logout: ['Settings › Providers', () => ui.settingsPage('providers')], replay: ['Replay', () => SL.views.show('replay')], watch: ['Cockpit', () => SL.views.show('cockpit')], inspect: ['Cache', () => SL.views.show('cache')],
+    plugins: ['Plugins', () => SL.views.show('plugins')], login: ['Settings › Providers', () => ui.settingsPage('providers')], logout: ['Settings › Providers', () => ui.settingsPage('providers')], replay: ['Replay', () => SL.views.show('replay')], watch: ['Cockpit', () => SL.views.show('cockpit')], inspect: ['Cache', () => SL.views.show('cache')],
   };
   /** a command from the palette or the catalogue: its own panel when it has one, the generic runner otherwise */
   ui.openCommand = path => { const b = path.length === 1 ? BUILT[path[0]] : null; if (b) b[1](); else ui.runCli(path); };
@@ -27,36 +21,45 @@
   const top = () => cmdsAll().filter(c => c.path.length === 1), subsOf = n => cmdsAll().filter(c => c.path.length > 1 && c.path[0] === n);
 
   /* ---------------------------------------------------------------- the catalogue */
-  /** The card of each group of the catalogue (83b-ui-dash.js, page tools). */
-  const GROUP_CARD = ['tools.run', 'tools.observe', 'tools.evaluate', 'tools.setup'];
+  /** One command of the catalogue as a row: what it is for in plain words, the command it is, its summary, its subcommands as chips, and
+   *  its one action: its own page where it has one (and the command form beside it, quieter), else the runner's form. `words` are the
+   *  filter's words: a subcommand they name is marked. */
+  function cmdRow(c, subs, words) {
+    const n = c.path[0], b = BUILT[n], R = SL.runner, many = subs.length > 10, hit = s => words.length && words.every(w => (s.path.join(' ') + ' ' + (s.summary || '')).toLowerCase().includes(w));
+    const chips = subs.filter((s, i) => !many || i < 8 || hit(s)).map(s => '<button type="button" class="chip sub' + (hit(s) ? ' hit' : '') + '" data-sub="' + esc(s.path.join(' ')) + '" title="' + esc(s.summary || '') + '">' + esc(s.path.slice(1).join(' ')) + '</button>').join('');
+    const more = many ? subs.filter((s, i) => !(i < 8 || hit(s))).length : 0;
+    return '<li class="trow" data-cmd="' + esc(n) + '"><div class="tr-t"><b>' + esc(R.brief(c)) + '</b><span class="mono">sleipnir ' + esc(n) + '</span></div>' +
+      '<p class="tr-s">' + esc(c.summary || '') + '</p>' + (subs.length ? '<div class="subs" aria-label="subcommands of ' + esc(n) + '">' + chips + (more ? '<button type="button" class="chip sub more" data-cli="' + esc(n) + '" title="every subcommand is in the runner’s list">+' + more + ' more</button>' : '') + '</div>' : '') +
+      '<div class="tr-a">' + (b ? '<button type="button" class="btn sm" data-open="' + esc(n) + '">Open ' + esc(b[0]) + '</button><button type="button" class="lnk" data-cli="' + esc(n) + '" title="the form of sleipnir ' + esc(n) + ', from its flags">or as a command</button>' : '<button type="button" class="btn sm" data-cli="' + esc(n) + '" title="a form from the flags of sleipnir ' + esc(n) + '; the output streams here">Run…</button>') + '</div></li>';
+  }
+  /** The catalogue's cards for a filter: {cards: {card id: markup}, shown, total}. Each group of SL.runner.TASKS is a titled list in its
+   *  card (two groups can share one); a group with nothing that matches is left out, and a card with nothing left says so. */
+  function catalogue(q) {
+    const R = SL.runner, words = String(q || '').toLowerCase().split(/\s+/).filter(Boolean), all = top(), out = {}, groups = R.TASKS.concat([R.OTHER]);
+    const fits = c => !words.length || words.every(w => (c.path.join(' ') + ' ' + R.brief(c) + ' ' + (c.summary || '') + ' ' + R.taskOf(c)[1] + ' ' + subsOf(c.path[0]).map(s => s.path.slice(1).join(' ')).join(' ')).toLowerCase().includes(w));
+    let shown = 0;
+    groups.forEach(([, title, sub, card, names]) => {
+      const list = (names.length ? names.map(n => all.find(c => c.path[0] === n)) : all.filter(c => R.taskOf(c) === R.OTHER)).filter(c => c && fits(c)); shown += list.length;
+      if (!(card in out)) out[card] = '';
+      if (list.length) out[card] += '<section class="tg"><div class="tgh"><h2>' + esc(title) + '</h2><span class="dim">' + esc(sub) + '</span></div><ul class="tlist">' + list.map(c => cmdRow(c, subsOf(c.path[0]), words)).join('') + '</ul></section>';
+    });
+    const none = cmdsAll().length ? (words.length ? 'Nothing here matches “' + esc(q) + '”.' : 'No command in this group.') : 'The command list comes from the server: it appears here once the page has it.';
+    Object.keys(out).forEach(k => { if (!out[k]) out[k] = '<p class="stubnote tnone">' + none + '</p>'; });
+    return { cards: out, shown, total: all.length };
+  }
+  TK.tools = { catalogue, cmdRow };
   reg({ name: 'tools', title: 'Tools', mount(sc, root, params, S0) {
     const st = { q: '' };
-    const P = ui.dash.withHead(sc, root, S0 || SL.sessions.active, 'tools', params, '<header class="sethead"><h1>Tools</h1><p>Every <span class="mono">sleipnir</span> command, ' + cmdsAll().length + ' in all. Open a purpose-built panel where there is one; the runner builds a form from the real flags for the rest, shows the command line and streams the output.</p></header>');
-    P.fill({ 'tools.find': '<div class="toolbar"><input id="tq" type="search" placeholder="filter commands: doctor, prune, rl rollout, trust ..." aria-label="Filter commands" autocomplete="off"><button class="btn" type="button" data-run>Open the runner <span class="dim">· all commands</span></button></div>' });
-    function draw() {
-      const words = st.q.toLowerCase().split(/\s+/).filter(Boolean), all = top(), seen = new Set(), out = {};
-      const fits = c => !words.length || words.every(w => (c.path.join(' ') + ' ' + (c.summary || '') + ' ' + subsOf(c.path[0]).map(s => s.path.slice(1).join(' ')).join(' ')).toLowerCase().includes(w));
-      const none = what => '<p class="stubnote" style="padding:8px 4px;margin:0">' + (cmdsAll().length ? (st.q ? 'No command of ' + what + ' matches “' + esc(st.q) + '”.' : 'No command in ' + what + '.') : 'The command list is not loaded yet.') + '</p>';
-      GROUPS.forEach(([title, sub, names], i) => {
-        const cards = names.map(n => all.find(c => c.path[0] === n)).filter(c => c && fits(c)); names.forEach(n => seen.add(n));
-        out[GROUP_CARD[i]] = '<section class="tg"><div class="tgh"><h2>' + title + '</h2><span class="dim">' + sub + '</span></div>' + (cards.length ? '<div class="tcards">' + cards.map(c => card(c)).join('') + '</div>' : none('this group')) + '</section>';
-      });
-      const rest = all.filter(c => !seen.has(c.path[0]) && fits(c));
-      out['tools.other'] = '<section class="tg"><div class="tgh"><h2>Other</h2><span class="dim">the commands of no group</span></div>' + (rest.length ? '<div class="tcards">' + rest.map(c => card(c)).join('') + '</div>' : none('the other commands')) + '</section>';
-      P.fill(out);
-    }
-    function card(c) {
-      const n = c.path[0], b = BUILT[n], subs = subsOf(n), many = subs.length > 10;
-      return '<article class="tcx" data-cmd="' + esc(n) + '"><header><b class="mono">sleipnir ' + esc(n) + '</b>' + (b ? '<span class="tag fe" title="a purpose-built screen for this command">' + esc(b[0]) + '</span>' : '') + '</header><p>' + esc(c.summary || '') + '</p>' +
-        (subs.length ? '<div class="subs" aria-label="subcommands">' + (many ? subs.slice(0, 8) : subs).map(s => '<button type="button" class="chip sub" data-sub="' + esc(s.path.join(' ')) + '" title="' + esc(s.summary || '') + '">' + esc(s.path.slice(1).join(' ')) + '</button>').join('') + (many ? '<span class="dim">+' + (subs.length - 8) + ' more in the runner</span>' : '') + '</div>' : '') +
-        '<footer>' + (b ? '<button type="button" class="btn sm pri" data-open="' + esc(n) + '">Open ' + esc(b[0]) + '</button><button type="button" class="btn sm" data-cli="' + esc(n) + '">Run as CLI</button>' : '<button type="button" class="btn sm pri" data-cli="' + esc(n) + '">Open in the runner</button>') + '</footer></article>';
-    }
-    sc.listen(P.slot('tools.find').querySelector('#tq'), 'input', e => { st.q = e.target.value; draw(); });
+    const P = ui.pageHead(sc, root, S0 || SL.sessions.active, 'tools', params, { title: 'Tools', purpose: 'Every <span class="mono">sleipnir</span> command, grouped by what it is for. Pick one: its own page opens, or a form built from its flags that runs it here and streams the output.', action: { label: 'Run a command…', title: 'the runner: every command in one list, with its form' }, onAction: () => SL.views.show('runner', {}) });
+    P.fill({ 'tools.find': '<div class="toolbar tfind"><input id="tq" type="search" placeholder="find a command: replay, plugin, schedule, rl rollout …" aria-label="Find a command" autocomplete="off"><span class="dim tcount" aria-live="polite"></span></div>' });
+    function draw() { const c = catalogue(st.q); P.fill(c.cards); const n = $('.tcount', root); if (n) n.textContent = st.q ? c.shown + ' of ' + c.total + ' commands' : c.total + ' commands'; }
+    const box = P.slot('tools.find').querySelector('#tq');
+    sc.listen(box, 'input', e => { st.q = e.target.value; draw(); });
+    sc.listen(box, 'keydown', e => { if (e.key !== 'Enter') return; const f = root.querySelector('.trow [data-open], .trow .btn[data-cli]'); if (f) { e.preventDefault(); f.click(); } });   // Enter: the first command's action
     sc.listen(root, 'click', e => {
-      const o = e.target.closest('[data-open]'); if (o) { BUILT[o.dataset.open][1](); return; }
+      const o = e.target.closest('[data-open]'); if (o && BUILT[o.dataset.open]) { BUILT[o.dataset.open][1](); return; }
       const c = e.target.closest('[data-cli]'); if (c) { ui.runCli([c.dataset.cli]); return; }
       const s = e.target.closest('[data-sub]'); if (s) { ui.runCli(s.dataset.sub.split(' ')); return; }
-      if (e.target.closest('[data-run]')) ui.runCli(['sessions', 'prune']);
     });
     sc.update(() => { const n = cmdsAll().length; if (n !== st.n) { st.n = n; draw(); } });
     draw(); if (SL.data) SL.data.forPage('tools', { loud: true });
@@ -87,8 +90,8 @@
     const presetsOf = eps => eps.map((e, i) => ({ id: 'e' + i, label: e.ref, sub: e.where, flags: { model: e.ref } })).concat([{ id: 'mock', label: 'mock-1 (a loopback test server)', sub: 'sleipnir mock on 127.0.0.1:8089: a real probe', flags: { 'base-url': 'http://127.0.0.1:8089/v1', model: 'mock-1', deep: true } }, { id: 'custom', label: 'another endpoint …', sub: 'a base URL and a model', flags: {} }]);
     let presets = presetsOf(arr(X().doctor && X().doctor.endpoints));
     const st = { p: presets[0], base: '', model: '', deep: true, steps: 0, lastGrp: '' };
-    ui.dash.page(sc, root, S0 || SL.sessions.active, 'doctor', params).fill({ 'doctor.form': '<section class="panel dv-form"><div class="ph"><h2>Probe an endpoint</h2><div class="r"><span class="mono">sleipnir doctor</span></div></div><div class="setcard"><p class="stubnote" style="margin:0 0 8px">Sends a few small requests and reports what the endpoint really does: streaming, tool calls, usage and cost, <b>prefix-cache behaviour</b> and whether it needs warming up. It costs a few cents.</p><div class="fld"><label for="dEp">endpoint</label><div class="fc"><select id="dEp"></select><small class="hint dsub"></small></div></div><div class="fld" data-c hidden><label for="dBase">--base-url</label><div class="fc"><input id="dBase" type="text" placeholder="http://127.0.0.1:8000/v1" autocomplete="off"></div></div><div class="fld" data-c hidden><label for="dModel">--model</label><div class="fc"><input id="dModel" type="text" placeholder="a model name" autocomplete="off"><small class="hint">required with --base-url</small></div></div><div class="fld"><label>--deep</label><div class="fc"><label class="tgl"><input id="dDeep" type="checkbox" checked><span class="trk" aria-hidden="true"></span><span class="sr">--deep</span></label><small class="hint">the longer probe: cache growth, minimum cached prefix, warm-up</small></div></div><pre class="pre cli" id="dCl"></pre><div class="row2"><button class="btn pri" type="button" id="dRun">Run the probe</button><button class="btn" type="button" id="dCli">Open in the runner</button></div></div></section>',
-      'doctor.out': '<section class="panel dv-out"><div class="ph"><h2>Probe</h2><div class="r"><span class="dstat dim">not run yet</span></div></div><div class="dmeter" hidden><i></i></div><div class="dbody"><div class="dsteps" aria-live="polite"><p class="ws-none">Choose an endpoint and run the probe: each step appears as the endpoint answers.</p></div><div class="dres"></div></div></section>' });
+    ui.pageHead(sc, root, S0 || SL.sessions.active, 'doctor', params, { title: 'Doctor', purpose: 'Send a few small, real requests to a model and see what its endpoint actually does: streaming, tool calls, usage and cost, and whether it caches the prompt.' }).fill({ 'doctor.form': '<section class="panel dv-form"><div class="ph"><h2>Probe an endpoint</h2><div class="r"><span class="mono">sleipnir doctor</span></div></div><div class="setcard"><p class="stubnote" style="margin:0 0 8px">Pick the model to test and run the probe. It uses your key and costs a few cents.</p><div class="fld"><label for="dEp">endpoint</label><div class="fc"><select id="dEp"></select><small class="hint dsub"></small></div></div><div class="fld" data-c hidden><label for="dBase" title="--base-url">base URL</label><div class="fc"><input id="dBase" type="text" placeholder="http://127.0.0.1:8000/v1" autocomplete="off"></div></div><div class="fld" data-c hidden><label for="dModel" title="--model">model</label><div class="fc"><input id="dModel" type="text" placeholder="a model name" autocomplete="off"><small class="hint">required with a base URL</small></div></div><div class="fld"><label title="--deep">longer probe</label><div class="fc"><label class="tgl"><input id="dDeep" type="checkbox" checked><span class="trk" aria-hidden="true"></span><span class="sr">longer probe (--deep)</span></label><small class="hint">also measures how the cache grows, the shortest prompt it caches, and warm-up</small></div></div><pre class="pre cli" id="dCl"></pre><div class="row2"><button class="btn pri" type="button" id="dRun">Run the probe</button><button class="btn" type="button" id="dCli">Open in the runner</button></div></div></section>',
+      'doctor.out': '<section class="panel dv-out"><div class="ph"><h2>What the endpoint did</h2><div class="r"><span class="dstat dim">not run yet</span></div></div><div class="dmeter" hidden><i></i></div><div class="dbody"><div class="dsteps" aria-live="polite"><p class="ws-none">Nothing probed yet. Run the probe on the left: each request shows here as the endpoint answers, then a verdict of what it supports.</p></div><div class="dres"></div></div></section>' });
     const q = s => $(s, root), sel = q('#dEp'), cl = q('#dCl');
     const flags = () => st.p.id === 'custom' ? Object.assign({}, st.base ? { 'base-url': st.base } : {}, st.model ? { model: st.model } : {}, st.deep ? { deep: true } : {}) : Object.assign({}, st.p.flags, st.p.id === 'mock' ? {} : (st.deep ? { deep: true } : {}));
     const line = () => 'sleipnir doctor' + Object.keys(flags()).map(k => flags()[k] === true ? ' --' + k : ' --' + k + ' ' + flags()[k]).join('');
@@ -153,8 +156,8 @@
   /** The daemon line: who runs it and the buttons that make sense. */
   function daemonHtml(d, o) {
     const ext = d.running && d.owner === 'external', every = (o && o.every) || '30s';
-    return '<span class="' + (d.running ? 'ok' : 'warm') + '">' + (d.running ? '● running' : '◌ stopped') + '</span>' + (d.running ? '<span class="dim">' + (d.pid ? 'pid ' + esc(d.pid) + ' · ' : '') + 'every ' + esc(d.every) + ' · ' + esc(d.timeout || '1h0m0s per run') + (ext ? ' · another process holds it' : '') + '</span>' : '<label class="mono" for="dmEvery" style="margin-right:4px">every</label><input id="dmEvery" type="text" value="' + esc(every) + '" aria-label="how often the daemon looks for due jobs" style="max-width:70px" autocomplete="off">') +
-      '<button class="btn sm" type="button" data-dm' + (ext ? ' disabled title="a daemon outside this page holds the lock: stop it there"' : '') + '>' + (d.running ? 'Stop the daemon' : 'Start the daemon') + '</button><button class="btn sm" type="button" data-once title="sleipnir daemon --once: start what is due now, wait, exit">Run what is due (--once)</button>';
+    return '<span class="' + (d.running ? 'ok' : 'warm') + '">' + (d.running ? '● running' : '◌ stopped') + '</span>' + (d.running ? '<span class="dim">' + (d.pid ? 'pid ' + esc(d.pid) + ' · ' : '') + 'every ' + esc(d.every) + ' · ' + esc(d.timeout || '1h0m0s per run') + (ext ? ' · another process holds it' : '') + '</span>' : '<label for="dmEvery" style="margin-right:4px">looks every</label><input id="dmEvery" type="text" value="' + esc(every) + '" aria-label="how often the daemon looks for due jobs" style="max-width:70px" autocomplete="off">') +
+      '<button class="btn sm" type="button" data-dm' + (ext ? ' disabled title="a daemon outside this page holds the lock: stop it there"' : '') + '>' + (d.running ? 'Stop the scheduler' : 'Start the scheduler') + '</button><button class="btn sm" type="button" data-once title="sleipnir daemon --once: start what is due now, wait, exit">Run what is due now</button>';
   }
   /** One row of the jobs table. */
   function jobRow(j, o, nextTxt) {
@@ -183,11 +186,11 @@
     const SD = { input: 'sDir', list: 'sDirList', state: 'sDirState', projects: 'sProjects', row: 'sDirRow' }, dirSt = { cwd: '' };
     let fm = null;
     const models = () => arr(D.models).map(m => m.ref);
-    const P = ui.dash.withHead(sc, root, S0 || SL.sessions.active, 'schedule', params, '<header class="sethead"><h1>Schedule</h1><p>Cron jobs the daemon starts as headless runs: nobody can answer, so an action that needs approval is refused. <span class="mono">sleipnir schedule add | rm</span> · <span class="mono">sleipnir daemon</span></p></header>');
-    P.fill({ 'schedule.daemon': '<section class="panel"><div class="ph"><h2>Daemon</h2><div class="r dmn"></div></div></section>',
+    const P = ui.pageHead(sc, root, S0 || SL.sessions.active, 'schedule', params, { title: 'Schedule', purpose: 'Goals that run on their own at set times, as sessions without a terminal (<span class="mono">sleipnir schedule</span>). Nobody is there to answer, so an action that needs approval is refused.' });
+    P.fill({ 'schedule.daemon': '<section class="panel"><div class="ph"><h2 title="sleipnir daemon">Scheduler</h2><div class="r dmn"></div></div></section>',
       'schedule.jobs': '<section class="panel"><div class="ph"><h2>Jobs</h2><div class="r jn"></div></div><div class="setcard jobs"></div></section>',
-      'schedule.add': '<section class="panel"><div class="ph"><h2 class="addh">Add a job</h2><div class="r"><span class="mono addm">schedule add</span></div></div><div class="setcard"><div class="fld"><label for="sCron">cron</label><div class="fc"><input id="sCron" type="text" value="0 9 * * 1-5" autocomplete="off" spellcheck="false"><small class="hint" id="sNext"></small></div></div><div class="fld"><label for="sGoal">goal</label><div class="fc"><textarea id="sGoal" rows="2" placeholder="what the run should do, judged on evidence"></textarea></div></div><div class="fld"><div class="fl"><label for="sDir">--cwd</label>' + ui.help(ui.folder.helpText, 'the folder') + '</div><div class="fc">' + ui.folder.html('', SD) + '</div></div><div class="fld"><label for="sMode">--mode</label><div class="fc"><select id="sMode"><option value="">default</option><option>accept-edits</option><option>plan</option></select><small class="hint">bypass and yolo cannot be scheduled from here</small></div></div><div class="fld"><label for="sModel">--model</label><div class="fc"><select id="sModel"></select></div></div><div class="fld"><label for="sBudget">--budget-usd</label><div class="fc"><input id="sBudget" type="text" value="1" inputmode="decimal"></div></div><div class="row2"><button class="btn pri" type="button" id="sAdd">Add the job</button><button class="btn" type="button" id="sCancel" hidden>Cancel</button></div></div></section>',
-      'schedule.log': '<section class="panel"><div class="ph"><h2>Log</h2><div class="r lgh"></div></div><div class="slog"><div class="term" tabindex="0"><div class="tl dim">Pick a job’s log, or run one now.</div></div></div></section>' });
+      'schedule.add': '<section class="panel"><div class="ph"><h2 class="addh">Add a job</h2><div class="r"><span class="mono addm">schedule add</span></div></div><div class="setcard"><div class="fld"><label for="sCron" title="a cron expression">when</label><div class="fc"><input id="sCron" type="text" value="0 9 * * 1-5" autocomplete="off" spellcheck="false"><small class="hint" id="sNext"></small></div></div><div class="fld"><label for="sGoal">goal</label><div class="fc"><textarea id="sGoal" rows="2" placeholder="what the run should do, judged on evidence"></textarea></div></div><div class="fld"><div class="fl"><label for="sDir" title="--cwd">folder</label>' + ui.help(ui.folder.helpText, 'the folder') + '</div><div class="fc">' + ui.folder.html('', SD) + '</div></div><div class="fld"><label for="sMode" title="--mode">permissions</label><div class="fc"><select id="sMode"><option value="">default</option><option>accept-edits</option><option>plan</option></select><small class="hint">bypass and yolo cannot be scheduled from here</small></div></div><div class="fld"><label for="sModel" title="--model">model</label><div class="fc"><select id="sModel"></select></div></div><div class="fld"><label for="sBudget" title="--budget-usd">budget ($)</label><div class="fc"><input id="sBudget" type="text" value="1" inputmode="decimal"></div></div><div class="row2"><button class="btn pri" type="button" id="sAdd">Add the job</button><button class="btn" type="button" id="sCancel" hidden>Cancel</button></div></div></section>',
+      'schedule.log': '<section class="panel"><div class="ph"><h2>Log</h2><div class="r lgh"></div></div><div class="slog"><div class="term" tabindex="0"><div class="tl dim">A job’s output shows here: press Log on a job, or Run now.</div></div></div></section>' });
     const q = s => $(s, root), S = () => SCH();
     ui.helpMount(root, sc); fm = ui.folder.mount(root, sc, dirSt, { ids: SD, projects: () => arr(X().projects), make: false, onState() {} });
     const nextOf = j => { const n = st.next.get(j.cron); return j.next ? hm(j.next) : n && n.ok ? hm(n.next) : '–'; };
@@ -202,7 +205,7 @@
     function draw() {
       const s = S(); put(q('.dmn'), daemonHtml(s.daemon, { every: st.every }));
       q('.jn').textContent = s.jobs.length + ' job' + (s.jobs.length === 1 ? '' : 's');
-      put(q('.jobs'), s.jobs.length ? '<table class="tbl"><thead><tr><th>id</th><th>cron</th><th>goal</th><th>where</th><th>last run</th><th>next</th><th></th></tr></thead><tbody>' + s.jobs.map(j => jobRow(j, st, nextOf(j))).join('') + '</tbody></table>' : '<p class="stubnote" style="margin:12px 0">No job yet: add one on the left of the log.</p>');
+      put(q('.jobs'), s.jobs.length ? '<table class="tbl"><thead><tr><th>id</th><th>cron</th><th>goal</th><th>where</th><th>last run</th><th>next</th><th></th></tr></thead><tbody>' + s.jobs.map(j => jobRow(j, st, nextOf(j))).join('') + '</tbody></table>' : '<p class="stubnote" style="margin:12px 0">No scheduled jobs yet. Add one below: while the scheduler runs, it starts each job at its time.</p>');
       q('.lgh').innerHTML = st.log ? '<span class="mono">' + esc(st.log) + '</span>' : '';
     }
     function setForm(j) {

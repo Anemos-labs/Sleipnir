@@ -11,7 +11,7 @@
 .ws-ticks .tk{position:absolute;transform:translateX(-50%);font:500 9.5px/1 var(--f-num);color:var(--dim);white-space:nowrap}
 .ws-ticks .tk.on{color:var(--rv);font-weight:700}
 .ws-ticks .tk:first-child{transform:none}
-.ws-at{font:500 11.5px var(--f-num);color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:300px}
+.ws-at{font:500 11.5px/1.3 var(--f-num);color:var(--fg2);overflow-wrap:anywhere;min-width:0;max-width:300px}
 .ws-live{border-color:var(--ok-b);color:var(--ok);white-space:nowrap;flex:none}
 .ws-sum{display:flex;gap:10px;align-items:center;font:500 11.5px var(--f-num);color:var(--fg2);flex:none;white-space:nowrap}
 .ws-left{grid-column:1;grid-row:2}

@@ -52,8 +52,8 @@ test('a 15-hour run: the rail, the Cache view, the Mail view and the cockpit sho
   L.SL.views.show('cache'); await L.step(0.1);
   const cache = L.$('.cache').textContent;
   assert.match(cache, /1,015 so far/, 'compactions: all of them');
-  assert.match(cache, /Cache anomalies6,444the newest 4 shown/, 'anomalies: all of them, and the list says it shows the newest');
-  assert.match(cache, /1,015 compactions/); assert.match(cache, /6,444 anomalies/);
+  assert.match(cache, /Unexpected cache misses6,444the newest 4 shown/, 'anomalies: all of them, and the list says it shows the newest');
+  assert.match(cache, /1,015 compactions/); assert.match(cache, /6,444 unexpected misses/);
 
   L.SL.views.show('mail'); await L.step(0.1);
   assert.match(L.$('.mcount').textContent, /^2730 sent · 2665 delivered/);
@@ -70,7 +70,7 @@ test('a small run says no more than it has: the newest are all of them', async (
   assert.match(L.$('.mcount').textContent, /^1 routed · mailman off$/);
   assert.equal(L.SL.ui.nav.badges(S).mail[0], '1');
   L.SL.views.show('cache'); await L.step(0.1);
-  assert.match(L.$('.cache').textContent, /Compaction1 so far/);
+  assert.match(L.$('.cache').textContent, /Folding the conversation1 so far/);
   assert.doesNotMatch(L.$('.cache').textContent, /newest/);
 });
 
