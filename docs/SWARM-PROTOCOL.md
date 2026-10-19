@@ -274,7 +274,7 @@ Statuses: `todo -> doing -> review -> done`, with `blocked` and `failed` as side
   | block / resume | doing / blocked (owner; the manager may resume) | blocked / doing |
   | submit (the gate, section 4) | doing (owner) | review |
   | handover (section 6) | doing (owner, or the manager) | doing (a fresh worker) |
-  | accept | review (a task already done is answered "nothing to accept", not refused) | done (`verified`, or `agreed` for a planning task) |
+  | accept | review (a task already done is answered "nothing to accept", not refused) | done (`verified`, or `agreed` for a planning task); the owner of each task blocked on it is told by mail to resume, which refreshes an isolated worker's tree |
   | reject (send back) | review | doing (same owner) |
   | fail (with a reason) | todo, doing, blocked, review | failed |
   | reopen | failed | todo (the closure is cleared) |

@@ -523,6 +523,7 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 		if err := s.Board.Accept(me, in.ID, in.Text, taskGateCheck(task), empty, s.noteAcceptedCheck(task)); err != nil {
 			return tools.Errorf("%v", err)
 		}
+		s.wakeBlockedOn(in.ID)
 		if last := s.reviewPending(); last != "" && s.roleOf(task.Owner) != ReviewerRole {
 			return text("%s accepted. The merged result is not reviewed yet: a reviewer task is due before the goal is reported met", in.ID)
 		}

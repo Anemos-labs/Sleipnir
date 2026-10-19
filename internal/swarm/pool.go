@@ -410,6 +410,18 @@ func (s *Swarm) startPool(req SpawnReq, files []string) (string, error) {
 	return task.Owner, nil
 }
 
+// wakeBlockedOn tells the owner of each task blocked on id that id is accepted, so a worker
+// waiting on it resumes instead of waiting for the manager to notice; resuming its own task
+// brings the merged work into an isolated worker's tree (afterResume).
+func (s *Swarm) wakeBlockedOn(id string) {
+	for _, t := range s.Board.Snapshot().Tasks {
+		if t.Status != StatusBlocked || t.BlockedOn != id || t.Owner == "" {
+			continue
+		}
+		s.notify(t.Owner, "info", fmt.Sprintf("%s, which %s waits on, is accepted. Call task resume on %s to continue; it brings the merged work into your tree.", id, t.ID, t.ID))
+	}
+}
+
 // wakePool uses harness mail so idle members retain their existing conversation.
 func (s *Swarm) wakePool(id, message string) {
 	t, ok := s.Board.Snapshot().Task(id)
