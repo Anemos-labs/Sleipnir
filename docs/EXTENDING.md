@@ -189,6 +189,20 @@ directory above (a skill of yours with the same name replaces one, with a warnin
 | `blender-scene` | composition, lighting, materials, animation and game-level blockouts in Blender |
 | `reverse-engineering` | an evidence-backed behavioural spec of a closed-source product, for a clean-room rebuild |
 | `reverse-engineering-ui` | a teardown of a live site or web UI into screenshots, design tokens, components, states and API shapes |
+| `engineering-rigor` | data shapes first, the smallest correct diff, proof by running, root causes |
+| `diagnose` | a feedback loop before any theory, ranked falsifiable hypotheses, a regression test at the right seam |
+| `tdd` | seams, red before green, tests of behaviour rather than internals, mocks only at boundaries |
+| `codebase-design` | deep modules, interfaces and seams |
+| `spec` | the design tree, a specification, vertical slices and milestones a reviewer can check |
+| `code-review` | a spec axis and a standards axis, and the change's one safety fact proved by running code |
+| `prototype` | settling a design question by building variants and looking |
+| `plain-writing` | documentation and messages without filler or machine-generated tells |
+
+The role prompts say when each role loads which, so a team uses them without being asked: the manager and the
+architect load `spec` (the architect also `codebase-design`), the backend, frontend and tester `tdd` and `diagnose`,
+devops `diagnose`, the frontend `prototype`, the reviewer `code-review` and docs `plain-writing`; the constitution
+points every agent at `diagnose` for a hard bug. `tools.builtin_skills = false` leaves every built-in skill out (the
+role prompts still name them, and the `skill` tool answers such a request with the skills that exist).
 
 Only their one-line descriptions are in the listing; a body is read when the model loads the skill. They are written
 once per release under `<state>/cache/skills/<digest>/builtin/` (`<state>` is `$SLEIPNIR_HOME` or `~/.sleipnir`) and

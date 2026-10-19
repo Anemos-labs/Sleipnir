@@ -7,6 +7,20 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Eight more built-in skills, used by default: `engineering-rigor`,
+  `diagnose`, `tdd`, `codebase-design`, `spec`, `code-review`, `prototype`
+  and `plain-writing`, adapted from pstack (Lauren Tan) and Matt Pocock's
+  skills, both MIT. Every role prompt says when that role loads which, and
+  the constitution carries their core rules: a failing command before any
+  theory in debugging, testing the assumption after two fixes built on it
+  failed, the two imagined edits that judge a test, subtract before you add,
+  and trying what running something can answer instead of asking. New key
+  `tools.builtin_skills` (default `true`) leaves all built-in skills out.
+  Prompt bytes: the constitution grows by about 70 tokens (its bound goes
+  from 5,100 to 5,150), seven role pins by about 40 tokens each, and the
+  skills listing in the shared layer by about 330 tokens; each is written to
+  the cache once a session.
+
 - Sleipnir ships built-in skills, listed after every skills directory and
   loaded on demand like any other: `blender`, `blender-web-assets`,
   `blender-scene`, `reverse-engineering` and `reverse-engineering-ui`. They are
