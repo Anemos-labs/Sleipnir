@@ -483,7 +483,18 @@ func (s *Session) progressPusher(ctx context.Context, p *isoPlan, branch string)
 	if remote == "" {
 		return nil
 	}
-	return &progressPusher{git: git, remote: remote, ref: p.prefix + "/_integration", log: s.Log, tell: s.tell}
+	name := func(tip string) string {
+		topic := s.goalObjective()
+		if topic == "" { // no standing goal: the first work merged says what this is
+			sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if out, err := git(sctx, "log", "-1", "--format=%s", tip); err == nil {
+				topic = strings.Trim(strings.TrimPrefix(strings.TrimSpace(string(out)), "Merge "), `"`)
+			}
+		}
+		return progressBranch(p.prefix, topic)
+	}
+	return &progressPusher{git: git, remote: remote, name: name, log: s.Log, tell: s.tell}
 }
 
 // releaseIsolation undoes buildIsolation when the session could not be built.

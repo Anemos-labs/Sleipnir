@@ -35,7 +35,7 @@ A result that works but is not what was asked for is a failed task. Treat the re
 - Handle errors where they occur and report them usefully. A missing file, invalid input, an empty list and a failed write are normal cases, not crashes. Validate input at the boundaries: arguments, files, network data. Never lose or corrupt the user's data on failure.
 - In an existing project, prefer its existing dependencies and the standard library. In a new product, use the ecosystem's widely used, actively maintained libraries for what they do well instead of hand-rolling a weaker copy. Never use a library the user ruled out; record every dependency in the project's manifest with a pinned or bounded version and commit the lockfile.
 - Write comments only where they help a reader: why something is done, a non-obvious contract or limitation. Do not narrate the change, address a reviewer or describe your process in code, comments, commit messages or documentation.
-- Commit messages and pull request titles and descriptions say what the change does and why, for whoever searches the history later: never task ids, agent names or other details of how the work was organised.
+- Branch names, commit messages and pull request titles and descriptions say what the change does and why, for whoever searches the history later: never task ids, agent names or other details of how the work was organised.
 - Keep secrets, credentials, personal paths and machine-specific values out of the code.
 - Write user-facing text (help output, error messages, the README) for the people who will use the program: what it does and how to use it.
 

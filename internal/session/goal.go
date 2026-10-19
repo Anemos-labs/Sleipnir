@@ -354,12 +354,31 @@ func short(s string, n int) string {
 	return s
 }
 
+// noteObjective remembers the objective of g (a cleared goal keeps the last one: the
+// work it named is still what the session's branch holds).
+func (s *Session) noteObjective(g *goal.State) {
+	if g == nil || strings.TrimSpace(g.Objective) == "" {
+		return
+	}
+	s.mu.Lock()
+	s.objective = g.Objective
+	s.mu.Unlock()
+}
+
+// goalObjective is the objective of the session's standing goal, "" when it never had one.
+func (s *Session) goalObjective() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.objective
+}
+
 // goalEvent is the log record of a standing goal; a nil goal says it was cleared or met.
 const goalEvent = "goal.state"
 
 // SaveGoal records a resumable goal. Call it before its first turn to establish
 // the objective boundary; JudgeGoal refuses a goal whose boundary was not saved.
 func (s *Session) SaveGoal(g *goal.State) {
+	s.noteObjective(g)
 	if g != nil && g.StartSeq == 0 {
 		g.StartSeq, _ = s.Log.Emit("", "goal.start", map[string]any{"objective": g.Objective})
 	}
@@ -393,6 +412,7 @@ func (s *Session) LoadGoal() *goal.State {
 		return nil
 	})
 	if last != nil && last.Objective != "" && !last.Done {
+		s.noteObjective(last)
 		if last.Paused == "" {
 			last.Paused = "the chat was restarted"
 		}
