@@ -454,7 +454,7 @@ func managerApprovesFlag(fs *flag.FlagSet) func() *bool {
 }
 
 // roleModelHelp is the help of --role-model.
-const roleModelHelp = "role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)"
+const roleModelHelp = "role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)"
 
 // finishRun ends an isolated run (see session.Session.Finish) even when the run was
 // cancelled: what passed verification is applied, not thrown away. It returns nil for
