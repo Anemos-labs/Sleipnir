@@ -952,7 +952,7 @@ func (s *Swarm) finishRun(m *member, rs *runState, ctx context.Context, res *age
 	}
 	s.Leases.ReleaseAll(m.id)
 	s.Board.ClearAlertKey("stuck", stuckAlertKey(m.id, rs.id))
-	if s.deps.RunEnded != nil {
+	if s.deps.RunEnded != nil && !m.manager { // what the manager starts may be for the person: it ends with the session
 		s.deps.RunEnded(m.id)
 	}
 

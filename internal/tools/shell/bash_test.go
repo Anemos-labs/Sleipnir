@@ -1435,3 +1435,42 @@ func TestEndAgentEndsWhatTheAgentsCommandsLeftRunning(t *testing.T) {
 		t.Errorf("the end of w1's run ended its background job: %q", out)
 	}
 }
+
+// A command whose pipes have just closed is still among the running processes until untrack runs, and only then does its
+// leftover group join lingering: EndAgent, looking in between, must end that group too.
+func TestEndAgentEndsAGroupThatHasNotJoinedLingeringYet(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, Options{DrainGrace: 100 * time.Millisecond, KillGrace: 300 * time.Millisecond})
+	t.Cleanup(h.m.Shutdown)
+	res := h.bash(h.env("w1"), `nohup sleep 600 >/dev/null 2>&1 </dev/null & echo "pid=$!"`)
+	var pid int
+	if _, err := fmt.Sscanf(res.Text, "pid=%d", &pid); err != nil {
+		t.Fatalf("text = %q (%v)", res.Text, err)
+	}
+	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+	pgid, err := syscall.Getpgid(pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// put the group back where it was before untrack: among the running processes, leader reaped and pipes closed
+	waitFor(t, "the group to join lingering", 5*time.Second, func() bool {
+		h.m.mu.Lock()
+		defer h.m.mu.Unlock()
+		_, ok := h.m.lingering[pgid]
+		return ok
+	})
+	done, pumps := make(chan struct{}), make(chan struct{})
+	close(done)
+	close(pumps)
+	h.m.mu.Lock()
+	delete(h.m.lingering, pgid)
+	h.m.procs[&proc{m: h.m, pid: pgid, done: done, pumpsDone: pumps, grace: 300 * time.Millisecond, alive: groupAlive, agent: "w1"}] = struct{}{}
+	h.m.mu.Unlock()
+
+	h.m.EndAgent("w1")
+	for deadline := time.Now().Add(5 * time.Second); pidAlive(pid); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("pid %d outlived the end of w1's run", pid)
+		}
+	}
+}

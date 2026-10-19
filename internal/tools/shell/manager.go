@@ -269,6 +269,10 @@ func (m *Manager) EndAgent(agent string) {
 			defer wg.Done()
 			if !p.pumpsFinished() {
 				p.killTree()
+			} else {
+				// the command's pipes are closed but untrack has not run yet: what it left would join lingering after
+				// the look above
+				m.endGroup(p.pid)
 			}
 			p.closeReaders()
 		}()
