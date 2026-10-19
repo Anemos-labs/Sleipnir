@@ -32,6 +32,7 @@ var notCredentials = map[string]string{
 	"internal/session/providers.go:envBaseURLVar(name)": "<PROVIDER>_BASE_URL, as above",
 	"internal/tools/web/fetch.go:k":                     "HTTPS_PROXY and friends: never moved (LooksSecret exempts them, and net/http reads them itself)",
 	"internal/plugin/needs.go:v":                        "a ${VAR} in a need's declared install location (ProgramFiles, USERPROFILE): only a directory to look in, never sent anywhere",
+	"internal/plugin/needs.go:name":                     "a variable an install method works out (InstallMethod.Env): only whether it is set is checked; the value stays in the commands' inherited environment and is never printed or sent",
 	"internal/perm/expand.go:n":                         "the shell's numeric special parameters (envFragments: BASHPID, RANDOM, ...): only whether one is defined is read, never its value",
 }
 

@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A need's install method (docs/PLUGINS.md) can declare `setup`, commands run
+  in order before `run`, and `env`, variables its commands get from the
+  `NAME=value` line a command prints; `GET /api/needs` and `sleipnir plugins
+  needs` show both. Blender's Flatpak install adds Flathub as a user remote
+  first (it failed with "No remote refs found for 'flathub'" where Flathub was
+  only set up system-wide), and the Blender add-on install asks the located
+  Blender for its add-ons folder (`BLENDERMCP_ADDONS_DIR`), so a Flatpak or
+  Snap Blender, or one never started, no longer fails with "Could not find a
+  Blender user addons directory". Prompt bytes: none.
 - New `research` plugin (on in the standard profile; docs/RESEARCH.md): the
   `research` tool, `/research`, `sleipnir research`, the web page's Research
   view and the `/research/{id}/{slug}/` wiki route, and

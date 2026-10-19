@@ -69,8 +69,8 @@ func (p pluginCLI) needs() error {
 		}
 		for _, m := range st.Methods {
 			line := "    sleipnir plugins setup " + st.ID + " " + m.ID + "   # " + m.Title
-			if len(m.Argv) > 0 {
-				line += ": " + strings.Join(m.Argv, " ")
+			if steps := append(envSteps(m.Env), joinSteps(append(append([][]string{}, m.Setup...), m.Argv))...); len(steps) > 0 {
+				line += ": " + strings.Join(steps, "; ")
 			}
 			if !m.Available {
 				line += " (" + m.Reason + ")"
@@ -156,8 +156,8 @@ func (p pluginCLI) setup(ctx context.Context, id, method string, yes bool, in io
 	case !pick.Available:
 		return fmt.Errorf("plugins: %s: %s", pick.Title, pick.Reason)
 	}
-	if len(pick.Argv) > 0 {
-		fmt.Fprintf(p.out, "This runs, as you:\n  %s\n", strings.Join(pick.Argv, " "))
+	if steps := append(envSteps(pick.Env), joinSteps(append(append([][]string{}, pick.Setup...), pick.Argv))...); len(steps) > 0 {
+		fmt.Fprintf(p.out, "This runs, as you:\n  %s\n", strings.Join(steps, "\n  "))
 	}
 	if pick.Connect != "" {
 		fmt.Fprintf(p.out, "It %s.\n", pick.Connect)
@@ -178,4 +178,24 @@ func (p pluginCLI) setup(ctx context.Context, id, method string, yes bool, in io
 		fmt.Fprintln(p.out, "Next:", pick.Note)
 	}
 	return nil
+}
+
+// joinSteps is each command of steps as one line; an empty command is left out.
+func joinSteps(steps [][]string) []string {
+	var out []string
+	for _, s := range steps {
+		if len(s) > 0 {
+			out = append(out, strings.Join(s, " "))
+		}
+	}
+	return out
+}
+
+// envSteps are a method's environment variables as NAME=$(command) lines, in name order.
+func envSteps(env map[string][]string) []string {
+	var out []string
+	for _, name := range plugin.EnvNames(env) {
+		out = append(out, name+"=$("+strings.Join(env[name], " ")+")")
+	}
+	return out
 }
