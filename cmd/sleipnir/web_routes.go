@@ -640,7 +640,7 @@ func (h *webHostImpl) resume(w http.ResponseWriter, r *http.Request) {
 		d.Verify = last.Verify
 	}
 	if len(last.Team) > 0 {
-		d.Team = last.Team
+		d.Team, d.Workers = last.Team, len(last.Team) // the team's size is its slots, whatever size the server's own flags give
 	}
 	args := chatArgsOf(d, sid)
 	f, err := parseChatFlags(args)

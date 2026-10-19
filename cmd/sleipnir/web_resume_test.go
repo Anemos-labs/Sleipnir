@@ -60,9 +60,12 @@ func TestAResumedSessionKeepsTheVerifierAndTeamItLastRanWith(t *testing.T) {
 		return finals == 2
 	})
 
-	// The server's process ends and a new one starts with the same flags: the session is resumed from its record.
+	// The server's process ends and a new one starts with its default team (a size of its own, no custom slots): the session is
+	// resumed from its record, team and all.
 	r.stop()
-	r2 := newWebRig(t, d, base)
+	d2 := d
+	d2.Workers, d2.Team = len(swarm.WorkerRoleOrder), nil
+	r2 := newWebRig(t, d2, base)
 	r2.ready("")
 	code, body := r2.do("POST", "/api/sessions/resume", wire.ResumeRequest{From: tab.SID})
 	var e struct {
