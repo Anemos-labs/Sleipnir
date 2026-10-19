@@ -61,7 +61,11 @@ set, and the judge must confirm each milestone with cited evidence in the same
 verdict before the goal is met. The judge runs on the `judge` role's model when
 one is named; a "done" from a judge model that is not the session's is then
 confirmed by a second judgment on the session's model, and the goal is met only
-when both agree.
+when both agree. When the `embedder` role names a model, `internal/lessons`
+keeps a store of strategies and pitfalls distilled from ended goals: retrieval
+by embedding similarity weighted by each lesson's win rate (optionally reordered
+by the `reranker` role) feeds a goal's first message, and the outcome credits
+the lessons it used.
 
 The manager creates scoped tasks and activates persistent role pools as needed.
 A multi-member pool agrees on one plan, splits scoped children, then reconciles

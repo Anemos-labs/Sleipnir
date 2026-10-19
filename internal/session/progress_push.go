@@ -19,8 +19,9 @@ import (
 // tasks before that, and a machine that dies in the meantime takes all of it along: a
 // real run had 60 tasks done and nothing anywhere but one local disk. So after every
 // merge the session pushes the integration tip to the checkout's push remote, on a
-// branch of the harness's own namespace (the integration branch's name,
-// sleipnir/<session>/_integration). It never touches the person's branches, and it
+// branch of the harness's own namespace named after the work (progressBranch:
+// sleipnir/<what the goal or first task says>-<session suffix>, which people browsing
+// the remote can read). It never touches the person's branches, and it
 // never blocks the merge queue: one background push at a time, coalesced to the newest
 // tip, with a failure reported once and retried after the next merge.
 
@@ -78,9 +79,11 @@ func pushRemote(ctx context.Context, git gitRunner, branch string) string {
 type progressPusher struct {
 	git    gitRunner
 	remote string
-	ref    string // the remote branch, without refs/heads/
-	log    events.Emitter
-	tell   func(level, msg string)
+	ref    string // the remote branch, without refs/heads/; "" until the first push names it
+	// name gives the remote branch at the first push of tip, when ref is "".
+	name func(tip string) string
+	log  events.Emitter
+	tell func(level, msg string)
 
 	mu      sync.Mutex
 	want    string // the newest tip asked for
@@ -119,7 +122,14 @@ func (p *progressPusher) loop(idle chan struct{}) {
 			p.mu.Unlock()
 			return
 		}
+		named := p.ref != ""
 		p.mu.Unlock()
+		if !named {
+			ref := p.name(tip)
+			p.mu.Lock()
+			p.ref = ref
+			p.mu.Unlock()
+		}
 		err := p.push(tip)
 		p.mu.Lock()
 		if err != nil {
@@ -176,6 +186,59 @@ func (p *progressPusher) Wait(ctx context.Context) {
 	case <-idle:
 	case <-ctx.Done():
 	}
+}
+
+// progressBranch is the remote branch the progress of session prefix
+// ("sleipnir/<session id>") is pushed to: sleipnir/<topic as a slug>-<the session id's
+// last six characters>, so the branch says what the work is and two sessions on the
+// same goal still get branches of their own. Without a usable topic it is the
+// integration branch's own name.
+func progressBranch(prefix, topic string) string {
+	slug := slugWords(topic, 48)
+	if slug == "" {
+		return prefix + "/_integration"
+	}
+	id := strings.TrimPrefix(prefix, "sleipnir/")
+	if len(id) > 6 {
+		id = id[len(id)-6:]
+	}
+	return "sleipnir/" + slug + "-" + id
+}
+
+// slugWords is the first words of s, lower case, as [a-z0-9] runs joined by "-", at
+// most max bytes and cut at a word boundary.
+func slugWords(s string, max int) string {
+	var words []string
+	var w strings.Builder
+	flush := func() {
+		if w.Len() > 0 {
+			words = append(words, w.String())
+			w.Reset()
+		}
+	}
+	for _, r := range strings.ToLower(s) {
+		if r < 128 && (r >= 'a' && r <= 'z' || r >= '0' && r <= '9') {
+			w.WriteRune(r)
+			continue
+		}
+		flush()
+	}
+	flush()
+	out := ""
+	for _, word := range words {
+		next := word
+		if out != "" {
+			next = out + "-" + word
+		}
+		if len(next) > max {
+			if out == "" {
+				out = word[:max]
+			}
+			break
+		}
+		out = next
+	}
+	return out
 }
 
 // shortSHA is the first 12 characters of a commit id.

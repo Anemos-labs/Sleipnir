@@ -22,6 +22,7 @@ type chatFlagSet struct {
 	model, cwd, mode, verify *string
 	swarmN                   *int
 	trust, verbose, noMCP    *bool
+	noMemory                 *bool
 	budget                   *float64
 	compactAt                *int
 	isolation                *string
@@ -48,6 +49,7 @@ func registerChatFlags(fs *flag.FlagSet) *chatFlagSet {
 	f.budget = fs.Float64("budget-usd", 0, "stop when spend reaches this many US dollars")
 	f.compactAt = fs.Int("compact-at", 0, compactAtHelp)
 	f.noMCP = fs.Bool("no-mcp", false, "start no MCP tool servers")
+	f.noMemory = fs.Bool("no-memory", false, noMemoryHelp)
 	f.verify = fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge). {dirs} in it stands for the directories the task may touch (./... without a scope), so that each task is verified on its own work: 'go test {dirs}'")
 	f.isolation, f.commit = isolationFlags(fs)
 	f.mailman = mailmanFlag(fs)
@@ -72,6 +74,7 @@ type chatFlags struct {
 	trust      bool
 	verbose    bool
 	noMCP      bool
+	noMemory   bool
 	budget     float64
 	commit     bool
 	mailman    *bool
@@ -96,7 +99,7 @@ func (f *chatFlagSet) values(fs *flag.FlagSet) (chatFlags, error) {
 	}
 	out := chatFlags{autoFix: *f.autoFix, autoMerge: *f.autoMerge,
 		model: *f.model, cwd: *f.cwd, mode: *f.mode, verify: *f.verify, isolation: *f.isolation,
-		workers: *f.swarmN, trust: *f.trust, verbose: *f.verbose, noMCP: *f.noMCP, budget: *f.budget, compactAt: *f.compactAt, commit: *f.commit,
+		workers: *f.swarmN, trust: *f.trust, verbose: *f.verbose, noMCP: *f.noMCP, noMemory: *f.noMemory, budget: *f.budget, compactAt: *f.compactAt, commit: *f.commit,
 		mailman: f.mailman(), autoDocs: f.autoDocs(), managerApproves: f.managerApproves(), resume: spec, allow: append([]string(nil), (*f.allow)...), plain: *f.plain, noAnim: *f.noAnim,
 	}
 	if out.roleModels, out.team, err = f.roleModels.split(); err != nil {
@@ -174,7 +177,7 @@ func (f chatFlags) options() session.Options {
 	}
 	return chatOptions(session.Options{AutoFix: f.autoFix, AutoMerge: f.autoMerge,
 		Cwd: f.cwd, Model: f.model, Mode: perm.Mode(f.mode), Swarm: team, Workers: workers,
-		TrustProject: f.trust, BudgetUSD: f.budget, CompactAtPercent: f.compactAt, Resume: f.resume, NoMCP: f.noMCP,
+		TrustProject: f.trust, BudgetUSD: f.budget, CompactAtPercent: f.compactAt, Resume: f.resume, NoMCP: f.noMCP, NoMemory: f.noMemory,
 		Verify: f.verify, Isolation: f.isolation, Commit: f.commit, Mailman: f.mailman, AutoDocs: f.autoDocs, ManagerApproves: f.managerApproves,
 		RoleModels: rm,
 		Team:       append([]session.TeamSlot(nil), f.team...), DefaultTeam: true, Allow: expandAllow(f.allow),
@@ -194,7 +197,7 @@ type newSessionRequest struct {
 
 // argsFor renders the New session dialog's request as chat arguments, in the order the dialog's command line shows them: --cwd,
 // --model, --mode, --swarm, --isolation, --verify, --commit, --mailman, --auto-docs=false, --manager-approves=false, --budget-usd, --compact-at,
-// --allow, --trust-project, --no-mcp, then --role-model: the role models in the order of the roles' names, then the team's slots in team order. The name, the first goal and the effort are not chat flags: the host applies them
+// --allow, --trust-project, --no-mcp, --no-memory, then --role-model: the role models in the order of the roles' names, then the team's slots in team order. The name, the first goal and the effort are not chat flags: the host applies them
 // once the session has started.
 func argsFor(req wire.NewSessionRequest) []string {
 	var a []string
@@ -244,6 +247,9 @@ func argsFor(req wire.NewSessionRequest) []string {
 	}
 	if req.NoMcp {
 		a = append(a, "--no-mcp")
+	}
+	if req.NoMemory {
+		a = append(a, "--no-memory")
 	}
 	roles := make([]string, 0, len(req.RoleModels))
 	for role := range req.RoleModels {

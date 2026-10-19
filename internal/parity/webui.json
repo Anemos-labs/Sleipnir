@@ -2187,7 +2187,7 @@
    "verify tasks with (--verify)",
    "team options",
    "pre-approve actions (--allow)",
-   "trust and tools",
+   "trust, tools and memory",
    "budget (--budget-usd)",
    "compaction at (--compact-at)",
    "first goal (optional)",
@@ -2199,7 +2199,8 @@
    "autoDocs auto-docs (--auto-docs)",
    "managerApproves manager answers routine questions (--manager-approves)",
    "trustProject --trust-project",
-   "noMcp --no-mcp"
+   "noMcp --no-mcp",
+   "noMemory --no-memory"
   ],
   "controlFlags": [
    "allow",
@@ -2214,6 +2215,7 @@
    "mode",
    "model",
    "no-mcp",
+   "no-memory",
    "role-model",
    "swarm",
    "trust-project",
@@ -2251,7 +2253,7 @@
    "nsVerifyHints",
    "nsWarn"
   ],
-  "commandLine": "sleipnir chat --resume 20260101-000000-abcdef --cwd /p --model a/m --mode plan --swarm 8 --isolation worktree --verify v --commit --mailman --auto-docs=false --manager-approves=false --budget-usd 5 --compact-at 40 --role-model backend=a/w --allow tests --trust-project --no-mcp",
+  "commandLine": "sleipnir chat --resume 20260101-000000-abcdef --cwd /p --model a/m --mode plan --swarm 8 --isolation worktree --verify v --commit --mailman --auto-docs=false --manager-approves=false --budget-usd 5 --compact-at 40 --role-model backend=a/w --allow tests --trust-project --no-mcp --no-memory",
   "flags": [
    "allow",
    "auto-docs",
@@ -2265,6 +2267,7 @@
    "mode",
    "model",
    "no-mcp",
+   "no-memory",
    "resume",
    "role-model",
    "swarm",
@@ -2284,6 +2287,7 @@
    "mode",
    "model",
    "no-mcp",
+   "no-memory",
    "resume",
    "role-model",
    "swarm",
@@ -2302,6 +2306,7 @@
    "mode",
    "model",
    "no-mcp",
+   "no-memory",
    "role-model",
    "swarm",
    "trust-project",
@@ -2326,7 +2331,7 @@
   "settingsButton": true
  },
  "runLine": {
-  "line": "sleipnir chat --model a/m --mode plan --swarm 8 --isolation worktree --verify \"v\" --budget-usd 5 --commit --mailman --no-mcp --trust-project",
+  "line": "sleipnir chat --model a/m --mode plan --swarm 8 --isolation worktree --verify \"v\" --budget-usd 5 --commit --mailman --no-mcp --no-memory --trust-project",
   "flags": [
    "budget-usd",
    "commit",
@@ -2335,6 +2340,7 @@
    "mode",
    "model",
    "no-mcp",
+   "no-memory",
    "swarm",
    "trust-project",
    "verify"
@@ -2441,6 +2447,7 @@
      "model",
      "no-anim",
      "no-mcp",
+     "no-memory",
      "plain",
      "resume",
      "role-model",
@@ -2476,6 +2483,7 @@
      "mode",
      "model",
      "no-mcp",
+     "no-memory",
      "no-recon",
      "no-web",
      "quiet",
@@ -2520,6 +2528,7 @@
      "mode",
      "model",
      "no-mcp",
+     "no-memory",
      "no-recon",
      "no-web",
      "quiet",

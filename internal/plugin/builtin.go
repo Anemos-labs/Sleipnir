@@ -22,6 +22,7 @@ const (
 	ManagerApproves = "manager-approves"
 	PushProgress    = "push-progress"
 	Goal            = "goal"
+	Lessons         = "lessons"
 	Delivery        = "delivery"
 	Checkpoints     = "checkpoints"
 	Recon           = "recon"
@@ -93,6 +94,8 @@ func Builtin() []Manifest {
 			Requires: []string{Swarm}},
 		{ID: Goal, Title: "Standing goals", Description: "/goal: work until a goal is met, judged on evidence", Category: CatTeam,
 			Contributes: []Contribution{{KindSlash, "goal"}, {KindEvent, "goal"}}},
+		{ID: Lessons, Title: "Lesson memory", Description: "what earlier goals taught, recalled at a goal's start (needs an embedder model: --role-model embedder=M)", Category: CatTeam,
+			Requires: []string{Goal}, Contributes: []Contribution{{KindPrompt, "lessons"}}},
 		{ID: Delivery, Title: "GitHub delivery", Description: "Auto-fix CI & reviews and Auto-merge for each objective (needs gh)", Category: CatTeam,
 			Contributes: []Contribution{{KindSlash, "delivery"}}},
 		{ID: Checkpoints, Title: "Checkpoints", Description: "snapshots of the files before each change, for /rewind", Category: CatCore,

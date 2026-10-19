@@ -88,3 +88,37 @@ func TestPushRemoteIgnoresTheRepositoryItself(t *testing.T) {
 		t.Fatalf("remote %q, want origin", got)
 	}
 }
+
+// The pushed branch is named after the work, once, at the first push.
+func TestProgressBranchNamesTheWork(t *testing.T) {
+	for _, c := range []struct{ topic, want string }{
+		{"Build Ravenwatch: a self-hosted uptime monitor with alerts", "sleipnir/build-ravenwatch-a-self-hosted-uptime-monitor-a1b2c3"},
+		{"Add CSV export", "sleipnir/add-csv-export-a1b2c3"},
+		{"   ¿?  ", "sleipnir/20261019-015656-a1b2c3/_integration"},
+		{strings.Repeat("x", 80), "sleipnir/" + strings.Repeat("x", 48) + "-a1b2c3"},
+	} {
+		if got := progressBranch("sleipnir/20261019-015656-a1b2c3", c.topic); got != c.want {
+			t.Errorf("progressBranch(%q) = %q, want %q", c.topic, got, c.want)
+		}
+	}
+
+	var refs []string
+	var mu sync.Mutex
+	git := func(ctx context.Context, args ...string) ([]byte, error) {
+		mu.Lock()
+		refs = append(refs, args[len(args)-1])
+		mu.Unlock()
+		return nil, nil
+	}
+	names := 0
+	p := &progressPusher{git: git, remote: "origin", name: func(tip string) string { names++; return "sleipnir/add-csv-export-a1b2c3" }}
+	for _, tip := range []string{"aaa", "bbb"} {
+		p.Kick(tip)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		p.Wait(ctx)
+		cancel()
+	}
+	if names != 1 || len(refs) != 2 || refs[1] != "+bbb:refs/heads/sleipnir/add-csv-export-a1b2c3" {
+		t.Fatalf("named %d times, pushed %q", names, refs)
+	}
+}

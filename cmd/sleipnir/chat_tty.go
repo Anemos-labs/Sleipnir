@@ -453,8 +453,8 @@ func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandRes
 				fmt.Fprintln(out, "usage: /roles [role=provider/model ...]: show the table, or change roles (e.g. /roles manager=anthropic/claude-opus-5-5 compactor=ollama/qwen3:8b)")
 				return app.CommandResult{}, true
 			}
-			if h.s.Swarm == nil && role != session.CompactorRole && role != session.JudgeRole {
-				fmt.Fprintf(out, "roles: a single agent runs on one model (/model); a team has roles: /swarm 8 first. Only the compactor and the judge can differ here: /roles compactor=%s\n", ref)
+			if h.s.Swarm == nil && !session.ServiceRole(role) {
+				fmt.Fprintf(out, "roles: a single agent runs on one model (/model); a team has roles: /swarm 8 first. Only the compactor, the judge, the embedder and the reranker can differ here: /roles compactor=%s\n", ref)
 				return app.CommandResult{}, true
 			}
 			if _, err := h.s.CheckModel(ref); err != nil {

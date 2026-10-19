@@ -30,6 +30,9 @@ func resolvePlugins(cfg *config.Config, rep *config.Report, o Options) (*plugin.
 	if o.NoRecon {
 		flag(plugin.Recon, false)
 	}
+	if o.NoMemory {
+		flag(plugin.Lessons, false) // the memory tool stays in the list and refuses (see build)
+	}
 	if o.Mailman != nil {
 		flag(plugin.Mailman, *o.Mailman)
 	}

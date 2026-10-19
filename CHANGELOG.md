@@ -17,8 +17,8 @@ they do not indicate whether a change has been released.
   `/plugins`, a Plugins view on the web page, and the profiles `standard`,
   `minimal`, `team` and `headless`. `swarm.mailman`, `swarm.auto_docs`,
   `swarm.push_progress`, `permissions.manager_approves`,
-  `tools.builtin_skills`, `--no-web`, `--no-mcp`, `--no-recon`, `--mailman`
-  and `--auto-docs` keep working as layers of the plugin that owns them.
+  `tools.builtin_skills`, `--no-web`, `--no-mcp`, `--no-recon`, `--mailman`,
+  `--auto-docs` and `--no-memory` (for the new `lessons` plugin) keep working as layers of the plugin that owns them.
   External plugins (a directory with `plugin.json` and any of skills,
   commands, agents, hooks and MCP servers, in the Claude Code layout too)
   install with `sleipnir plugins add` and are off until turned on. Switching
@@ -29,6 +29,31 @@ they do not indicate whether a change has been released.
   turning a tool plugin off removes its tools from the tool list, and turning
   `skills`, `instructions` or `recon` off removes their part of the shared
   layer, each costing one cache write when the team starts again.
+
+- The branch that progress pushing writes on the remote is named after the
+  work, not the session id: `sleipnir/<topic>-<session suffix>`, where the
+  topic is a slug of the standing goal's objective, or else of the first merged
+  commit's subject (for example `sleipnir/add-csv-export-a1b2c3`). Before this it
+  was `sleipnir/<session>/_integration`, which is still the local integration
+  branch and the remote name when there is no topic. A session resumed from
+  before this change pushes to the new name. Prompt bytes: the constitution's
+  line on commit messages also covers branch names, and so does the manager's
+  isolation card (a few tokens each), written to the cache once.
+
+- The `embedder` and `reranker` roles (`models.roles`, `--role-model`) turn
+  on a lesson memory for standing goals: lessons from earlier goals, stored in
+  `~/.sleipnir/lessons.json`, are appended to a goal's first message, and new
+  ones are distilled when a goal ends. Without an `embedder` nothing changes.
+  `goal.State` gains `Lessons` and `Verdicts`; the log gains `lessons.retrieve`
+  and `lessons.learn`. Prompt bytes: a goal's first message gains the lessons
+  block when there are lessons to show; nothing else changes.
+
+- `--no-memory` (`chat`, `run`, and `web` for its new sessions; a checkbox of
+  the New session dialog) starts a session without the global memory: the
+  notes in `~/.sleipnir/MEMORY.md` are not loaded into the shared layer, and
+  the `memory` tool, still in the tool list, answers that the memory is off.
+  Session metadata gains `noMemory`. Prompt bytes: none change for a session
+  with the memory; one without it lacks the notes in its shared layer.
 
 - Commits the harness records describe the change instead of the run that
   made it. A worker's commit has the task's title as its subject (without a

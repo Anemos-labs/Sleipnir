@@ -893,7 +893,7 @@ func (h *webHostImpl) defaults() newSessionDefaults {
 	cfg, rep, _ := config.Load(config.LoadOpts{Cwd: h.d.Cwd, UntrustedProject: true})
 	d := newSessionDefaults{NewSessionRequest: wire.NewSessionRequest{
 		Cwd: h.d.Cwd, Model: h.d.Model, Mode: h.d.Mode, Isolation: h.d.Isolation, Verify: h.d.Verify, Commit: h.d.Commit,
-		TrustProject: h.d.TrustProject, NoMcp: h.d.NoMCP, Effort: "default", Rules: append([]string{}, h.d.Allow...),
+		TrustProject: h.d.TrustProject, NoMcp: h.d.NoMCP, NoMemory: h.d.NoMemory, Effort: "default", Rules: append([]string{}, h.d.Allow...),
 		RoleModels: map[string]string{},
 	}, MaxWorkers: swarmWorkerCeiling, TestsPreset: config.TestsPresetSummary, UnlimitedEnv: unlimitedEnv}
 	workers := h.d.Workers

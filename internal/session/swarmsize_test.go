@@ -125,6 +125,20 @@ func TestRoleModelWithoutASwarmWarns(t *testing.T) {
 	if !sink.has("--role-model has no effect without --swarm") {
 		t.Fatalf("no warning about the ignored --role-model; notices: %v", sink.logs)
 	}
+	// A role that serves a single agent too (the judge) is applied, so it is not called ignored.
+	o.Config = config.Defaults()
+	o.Config.Providers = map[string]config.Provider{"gw": {BaseURL: "http://127.0.0.1:1"}}
+	o.Offline, o.RoleModels = true, map[string]string{session.JudgeRole: "gw/acme/judge"}
+	quiet := &notices{}
+	o.Sink, o.Dir = quiet, t.TempDir()
+	s2, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	if quiet.has("has no effect") {
+		t.Errorf("the judge role was called ignored: %v", quiet.logs)
+	}
 }
 
 // A team of eight workers can have all its workers writing at once: the cap of four concurrent writers left a manager unable to start the fifth

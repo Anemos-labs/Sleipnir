@@ -43,6 +43,13 @@ type Tool struct{ path string }
 // New returns the tool for the notes file at path (the directory is created on the first note).
 func New(path string) *Tool { return &Tool{path: path} }
 
+// Off returns the tool of a session started without the global memory: the same spec, so the tool list does not change, and every
+// call answers that the memory is off, reading and writing nothing.
+func Off() *Tool { return &Tool{} }
+
+// offText is what every call of the tool says in a session without the global memory.
+const offText = "the global memory is off in this session (it was started with --no-memory): notes are neither shown nor saved"
+
 const schema = `{"type":"object","properties":{` +
 	`"action":{"type":"string","enum":["add","remove","list"]},` +
 	`"text":{"type":"string","description":"add: the note, one fact in one sentence. remove: a few words that only that note contains"}},"required":["action"]}`
@@ -69,6 +76,9 @@ func (t *Tool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	var in input
 	if err := json.Unmarshal(c.Input, &in); err != nil {
 		return tools.Errorf("invalid arguments: %v", err), nil
+	}
+	if t.path == "" {
+		return &tools.Result{Text: offText}, nil
 	}
 	notes, err := t.read()
 	if err != nil {

@@ -56,6 +56,7 @@ plugin that now owns them:
 | `--no-web` | `web` |
 | `--no-mcp` | `mcp` |
 | `--no-recon` | `recon` |
+| `--no-memory` | `lessons` (the `memory` tool stays in the list and answers that the memory is off) |
 
 Writing a plugin's row removes the older setting from the same file, so the file holds one answer.
 
@@ -90,7 +91,7 @@ A slash command that belongs to a plugin that is off answers with the plugin and
 |---|---|
 | Tools | `fs`, `shell`, `web`, `recall`, `skill`, `memory`, `plan`, `mcp` |
 | Extensions | `skills`, `builtin-skills`, `commands`, `agents`, `hooks`, `instructions` |
-| Team | `swarm`, `mailman`, `auto-docs`, `manager-approves`, `push-progress`, `goal`, `delivery`, `recon`, `update-check`, and `role:architect` … `role:reviewer` (one per worker role) |
+| Team | `swarm`, `mailman`, `auto-docs`, `manager-approves`, `push-progress`, `goal`, `lessons`, `delivery`, `recon`, `update-check`, and `role:architect` … `role:reviewer` (one per worker role) |
 | Interface | `view:cockpit`, `view:workspace`, `view:cache`, `view:mail`, `view:board`, `view:replay`, `view:sessions`, `view:tools`, `view:plugins` |
 | Core | `core:kernel`, `core:config`, `core:session-log`, `core:agent-loop`, `core:providers`, `core:web-shell`, `checkpoints` |
 

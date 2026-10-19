@@ -320,7 +320,7 @@ func TestParityChatFlagsAreTheCodes(t *testing.T) {
 	// field of its own in the request) and --mailman=false (the route adds it against a default of on)
 	zero, usd, off, share := 8, 5.0, false, 40
 	args := argsFor(wire.NewSessionRequest{Cwd: "/p", Model: "a/m", Mode: "plan", Swarm: &zero, Isolation: "worktree", Verify: "go test {dirs}", Commit: true,
-		Mailman: true, AutoDocs: &off, ManagerApproves: &off, Budget: &usd, CompactAt: &share, Rules: []string{"tests"}, TrustProject: true, NoMcp: true, RoleModels: map[string]string{"backend": "a/w"}})
+		Mailman: true, AutoDocs: &off, ManagerApproves: &off, Budget: &usd, CompactAt: &share, Rules: []string{"tests"}, TrustProject: true, NoMcp: true, NoMemory: true, RoleModels: map[string]string{"backend": "a/w"}})
 	var made []string
 	for _, a := range args {
 		if strings.HasPrefix(a, "--") {
