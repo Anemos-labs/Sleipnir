@@ -18,6 +18,21 @@ they do not indicate whether a change has been released.
   from what is known, citing the URLs it would have read as unverified.
   Prompt bytes: the scout role pin changes, so the first session after
   upgrading re-writes that prefix once; the refusal texts are fixed.
+- `accept-edits` mode reads public websites without asking: `web_fetch` of a
+  URL on a public internet host, and `web_search`, are allowed with the
+  reason "accept-edits mode: reading a public website". A host on this
+  machine, a private, link-local, unique-local, multicast, unspecified or
+  reserved network, a cloud metadata address, `localhost`/`*.localhost`, a
+  single-label name and names under `.local`, `.internal`, `.lan` and
+  `.home.arpa` still ask; the host is judged by its text, without DNS. MCP
+  tools, other network tools and shell commands such as `curl` still ask,
+  `default` mode still asks, `plan` mode still refuses, and `deny` and `ask`
+  rules still win. A fetched URL can carry data out without a question: use
+  `default` or `plan` mode or a `deny` rule (`WebFetch`,
+  `WebFetch(domain:...)`) to prevent it (docs/SECURITY.md). New
+  `weburl.LocalHost`, `weburl.BlockedAddr`, `weburl.LiteralIP` and
+  `weburl.ErrBadIP`, shared with the `web_fetch` address guard. Prompt bytes:
+  none change.
 - The harness's commit of a worker's tree (at `done`, at a handover, and
   when `sessions prune` salvages edits) leaves out untracked files inside a
   dependency store (`node_modules`, `bower_components`, `.next`, `.turbo`,

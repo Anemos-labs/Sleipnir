@@ -74,14 +74,15 @@ func TestAnApprovalKeepsTheRememberBehavior(t *testing.T) {
 	}
 }
 
-// Changing the mode or the rules lets an unanswered question be asked again: the answer may now be another.
+// Changing the mode or the rules lets an unanswered question be asked again: the answer may now be another. The host is a local
+// one, which every mode that asks still asks about.
 func TestAChangeOfModeOrRulesAsksAgain(t *testing.T) {
 	f := newFixture(t)
 	rec := &promptRecorder{answer: func(int, Request) Decision { return Decision{Reason: "no answer"} }}
 	e := askEngine(t, f, Config{}, rec.prompt)
-	e.Check(bg, fetchOf("https://soulver.io/"))
+	e.Check(bg, fetchOf("http://nas.lan/"))
 	e.SetMode(e.Mode()) // no change
-	e.Check(bg, fetchOf("https://soulver.io/"))
+	e.Check(bg, fetchOf("http://nas.lan/"))
 	if rec.count() != 1 {
 		t.Fatalf("asked again without a change: prompts %d", rec.count())
 	}
@@ -90,19 +91,19 @@ func TestAChangeOfModeOrRulesAsksAgain(t *testing.T) {
 		other = ModeDefault
 	}
 	e.SetMode(other)
-	e.Check(bg, fetchOf("https://soulver.io/"))
+	e.Check(bg, fetchOf("http://nas.lan/"))
 	if rec.count() != 2 {
 		t.Fatalf("not asked again after the mode changed: prompts %d", rec.count())
 	}
 	e.AddRule(ScopeSession, Rule{Action: Allow, Tool: "Read"})
-	e.Check(bg, fetchOf("https://soulver.io/"))
+	e.Check(bg, fetchOf("http://nas.lan/"))
 	if rec.count() != 3 {
 		t.Fatalf("not asked again after a rule was added: prompts %d", rec.count())
 	}
 	if !e.RemoveRule("Read") {
 		t.Fatal("the rule was not removed")
 	}
-	e.Check(bg, fetchOf("https://soulver.io/"))
+	e.Check(bg, fetchOf("http://nas.lan/"))
 	if rec.count() != 4 {
 		t.Fatalf("not asked again after a rule was removed: prompts %d", rec.count())
 	}
@@ -122,7 +123,7 @@ func TestAResetDuringAQuestionKeepsTheRecordCleared(t *testing.T) {
 	}}
 	e := askEngine(t, f, Config{}, rec.prompt)
 	done := make(chan Decision)
-	go func() { done <- e.Check(bg, fetchOf("https://soulver.io/")) }()
+	go func() { done <- e.Check(bg, fetchOf("http://nas.lan/")) }()
 	<-shown
 	other := ModeAcceptEdits
 	if e.Mode() == ModeAcceptEdits {
@@ -133,7 +134,7 @@ func TestAResetDuringAQuestionKeepsTheRecordCleared(t *testing.T) {
 	if d := <-done; d.Allow {
 		t.Fatalf("the unanswered question was allowed: %+v", d)
 	}
-	if d := e.Check(bg, fetchOf("https://soulver.io/page")); d.Allow || strings.HasPrefix(d.Reason, askedEarlier) || rec.count() != 2 {
+	if d := e.Check(bg, fetchOf("http://nas.lan/page")); d.Allow || strings.HasPrefix(d.Reason, askedEarlier) || rec.count() != 2 {
 		t.Fatalf("after a reset during the question: %+v; prompts %d, want 2", d, rec.count())
 	}
 }

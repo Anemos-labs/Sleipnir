@@ -76,7 +76,10 @@
 //   - ModeAcceptEdits: also writes inside the workspace, including redirections
 //     and mkdir, touch, cp, mv, rm, rmdir, tee on workspace paths, and the
 //     commands of the tests preset (TestsAllow), a Python virtual environment of
-//     the workspace among them (venv.go).
+//     the workspace among them (venv.go), and reads of public websites with the
+//     web_fetch and web_search tools: a URL whose host is this machine, the local
+//     network or a cloud metadata service (weburl.LocalHost, judged without DNS)
+//     still asks, as does every other way to reach the network.
 //   - ModePlan: read-only. Anything that writes, reaches the network or is not a
 //     provably read-only command is denied with a message that says so. Allow
 //     rules still carve exceptions (say, Edit(docs/plan.md)).
@@ -191,7 +194,8 @@ type Mode string
 const (
 	// ModeDefault allows reads inside the workspace and asks for the rest.
 	ModeDefault Mode = "default"
-	// ModeAcceptEdits also allows file edits inside the workspace and the commands that build and test a project (TestsAllow).
+	// ModeAcceptEdits also allows file edits inside the workspace, the commands that build and test a project (TestsAllow), and reads of
+	// public websites with web_fetch and web_search (publicWebRead).
 	ModeAcceptEdits Mode = "accept-edits"
 	// ModePlan is read-only: anything that writes or executes is denied.
 	ModePlan Mode = "plan"
