@@ -13,6 +13,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/skills"
+	"github.com/anemos-labs/sleipnir/internal/skills/builtin"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
@@ -35,6 +36,20 @@ type extensions struct {
 // layer: every request of every agent reads it.
 const skillListingTokens = skills.DefaultListingTokens
 
+// builtinSkills is the skills directory of the skills shipped in the binary, written under the state directory of home. When it
+// cannot be written the session goes on without them and a warning says why. With on false (tools.builtin_skills) there are none.
+func builtinSkills(home string, on bool, warnings *[]string) []skills.Extra {
+	if !on {
+		return nil
+	}
+	e, err := builtin.Extra(StateRoot(home))
+	if err != nil {
+		*warnings = append(*warnings, "skills: built-in skills unavailable: "+err.Error())
+		return nil
+	}
+	return []skills.Extra{e}
+}
+
 // loadExtensions discovers skills and role definitions. Repository-supplied ones
 // are read only when the project is trusted.
 func (s *Session) loadExtensions() {
@@ -42,7 +57,7 @@ func (s *Session) loadExtensions() {
 	ext := &extensions{profiles: map[string]perm.RoleProfile{}}
 	s.ext = ext
 
-	cat, warns := skills.Discover(skills.Opts{Root: o.Root, Home: o.Home, TrustProject: o.TrustProject})
+	cat, warns := skills.Discover(skills.Opts{Root: o.Root, Home: o.Home, TrustProject: o.TrustProject, Extra: builtinSkills(o.Home, s.cfg.Tools.BuiltinSkills, &ext.warnings)})
 	ext.skills = cat
 	for _, w := range warns {
 		ext.warnings = append(ext.warnings, "skills: "+w.String())
