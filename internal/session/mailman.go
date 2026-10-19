@@ -1,5 +1,7 @@
 package session
 
+import "github.com/anemos-labs/sleipnir/internal/plugin"
+
 // Mailman mode (swarm.mailman, Options.Mailman): worker mail is digested by a mailman
 // agent instead of being delivered message by message (docs/SWARM-PROTOCOL.md section 5).
 // The swarm does the work (internal/swarm/mailman.go); the session's part is to decide
@@ -13,6 +15,9 @@ package session
 func (s *Session) mailmanOn() bool {
 	if !s.opts.Swarm {
 		return false
+	}
+	if s.plugins != nil {
+		return s.plugins.On(plugin.Mailman) // --mailman and swarm.mailman are layers of the plugin's state
 	}
 	if s.opts.Mailman != nil {
 		return *s.opts.Mailman

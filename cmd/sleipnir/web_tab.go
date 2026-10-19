@@ -881,6 +881,10 @@ func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string
 		res.Output = prefix + err.Error()
 		return res, nil
 	}
+	if msg, off := s.SlashOff(f[0]); off {
+		res.Output = msg
+		return res, nil
+	}
 	switch f[0] {
 	case "/delivery":
 		res.Output = s.DeliveryCommand(strings.TrimSpace(strings.TrimPrefix(line, "/delivery")))
@@ -1248,6 +1252,9 @@ func (t *webTab) goalState() string {
 // goalAction does a goal request (set, pause, resume or clear; wire.GoalRequest) and reports whether it waits to run. pause and clear
 // interrupt the running turn first and take effect when it has stopped; set and resume start a turn as the tab's next item.
 func (t *webTab) goalAction(ctx context.Context, s *session.Session, req wire.GoalRequest, fromRoute bool) (waits bool, err error) {
+	if msg, off := s.SlashOff("/goal"); off && req.Action == "set" {
+		return false, werr(http.StatusConflict, "plugin_off", msg)
+	}
 	switch req.Action {
 	case "set":
 		text := strings.TrimSpace(req.Text)

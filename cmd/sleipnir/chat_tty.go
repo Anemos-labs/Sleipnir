@@ -402,6 +402,10 @@ func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandRes
 		fmt.Fprintf(out, "usage: %s [on|off]\n", name)
 		return "", false
 	}
+	if msg, off := h.s.SlashOff(f[0]); off {
+		fmt.Fprintln(out, msg)
+		return app.CommandResult{}, true
+	}
 	switch f[0] {
 	case "/delivery":
 		fmt.Fprintln(out, h.s.DeliveryCommand(strings.TrimSpace(strings.TrimPrefix(line, "/delivery"))))
