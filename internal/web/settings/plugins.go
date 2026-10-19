@@ -2,6 +2,7 @@ package settings
 
 import (
 	"net/http"
+	"os/exec"
 	"regexp"
 	"strings"
 
@@ -45,7 +46,15 @@ type pluginRow struct {
 	Contributes  []plugin.Contribution `json:"contributes"`
 	ConfigSchema *plugin.Schema        `json:"config_schema,omitempty"`
 	Config       map[string]any        `json:"config"`
+	// Unavailable says why a plugin that is on cannot work on this machine (a command it needs is missing).
+	Unavailable string `json:"unavailable,omitempty"`
 }
+
+// needsCommand are the plugins that run a command of this machine, and that command.
+var needsCommand = map[string]string{plugin.Delivery: "gh"}
+
+// lookPath finds a command on PATH (tests replace it).
+var lookPath = exec.LookPath
 
 // pluginWrite is the body of POST /api/plugins/{id}; every field is optional.
 type pluginWrite struct {
@@ -142,7 +151,13 @@ func (s *service) pluginsView(set *plugin.Set, restart bool, warns []string) plu
 		v.Profile = plugin.DefaultProfile
 	}
 	for _, st := range set.List() {
-		v.Plugins = append(v.Plugins, rowOf(st))
+		row := rowOf(st)
+		if cmd, ok := needsCommand[st.ID]; ok && row.Enabled {
+			if _, err := lookPath(cmd); err != nil {
+				row.Unavailable = "needs the " + cmd + " command, which is not installed here"
+			}
+		}
+		v.Plugins = append(v.Plugins, row)
 	}
 	for _, w := range warns {
 		v.Warnings = append(v.Warnings, provider.SanitizeText(w, 400))

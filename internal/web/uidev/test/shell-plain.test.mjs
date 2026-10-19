@@ -8,8 +8,8 @@ import { boot, FakeEvent } from './pagedom.mjs';
 import { pluginsApi } from '../mockapi.mjs';
 
 /** A page whose server has the reference plugin catalogue with delivery on or off. */
-async function page(deliveryOn) {
-  const c = pluginsApi().catalogue; Object.assign(c.plugins.find(p => p.id === 'delivery'), { enabled: deliveryOn, state: deliveryOn ? 'on' : 'off' });
+async function page(deliveryOn, extra) {
+  const c = pluginsApi().catalogue; Object.assign(c.plugins.find(p => p.id === 'delivery'), { enabled: deliveryOn, state: deliveryOn ? 'on' : 'off' }, extra || {});
   const L = await boot({ route(method, p) { if (method === 'GET' && (p === '/api/plugins' || /^\/api\/sessions\/[^/]+\/plugins$/.test(p))) return c; return undefined; } });
   await L.step(3); await L.settle(); return L;
 }
@@ -61,4 +61,10 @@ test('the GitHub switches explain themselves, and are off with the reason while 
   await L.type('ship it'); L.press('enter'); await L.settle();
   const sent = L.posts.filter(p => p.path.endsWith('/messages')).at(-1);
   assert.equal(sent.body.autoFix, undefined, 'a switch that is off sends nothing');
+});
+
+test('the GitHub switches are off with the reason when the server has no gh command', async () => {
+  const L = await page(true, { unavailable: 'needs the gh command, which is not installed here' });
+  assert.equal(L.$('#autoFixCI').disabled, true); assert.equal(L.$('#autoMergePR').disabled, true);
+  assert.match(L.$('#deliveryWhy').textContent, /gh auth login/); assert.match(L.$('#autoFixLab').getAttribute('title'), /^Off: GitHub delivery needs the gh command/);
 });

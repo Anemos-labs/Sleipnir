@@ -174,7 +174,7 @@
     const adds = addsText(p.contributes), by = p.layer && !p.core ? 'set by ' + (LAYER[p.layer] || p.layer) + (p.layer === 'profile' && prof ? ' (' + prof.title + ')' : '') : '', needs = arr(p.requires).length ? 'needs ' + arr(p.requires).join(', ') : '';
     const meta = [adds, needs, by].filter(Boolean).map(esc).join(' <span class="sep">·</span> ');
     /* the badge says on, off, pending (with what it waits for) and restart; an error's message and a core plugin's reason need a line */
-    const why = p.core ? ['', 'always on: ' + b[2]] : p.state === 'error' ? ['err', p.reason || 'it failed to load'] : null;
+    const why = p.core ? ['', 'always on: ' + b[2]] : p.state === 'error' ? ['err', p.reason || 'it failed to load'] : p.unavailable ? ['warm', p.unavailable] : null;
     const acts = (fs.length ? '<button class="btn sm" type="button" data-open="' + esc(id) + '" aria-expanded="' + open + '" aria-controls="pform-' + k + '">Settings</button>' : '') + (!p.core && (p.layer === 'user' || p.layer === 'project') ? '<button class="btn sm" type="button" data-reset="' + esc(id) + '" title="back to the profile\'s default">Reset</button>' : '');
     return '<li class="plg' + (on ? '' : ' off') + (p.core ? ' core' : '') + '" data-plg="' + esc(id) + '"><div class="plg-c">' + sw + '</div><div class="plg-main"><div class="plg-h"><b>' + esc(title) + '</b><span class="pid">' + esc(id) + '</span>' + tags + '</div>' +
       '<p class="plg-d" id="pd-' + k + '">' + esc(p.description || '') + '</p>' + (meta ? '<p class="plg-m">' + meta + '</p>' : '') + (why ? '<p class="plg-why ' + why[0] + '">' + esc(why[1]) + '</p>' : '') + '</div>' +

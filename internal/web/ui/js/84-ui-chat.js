@@ -264,6 +264,7 @@
     function deliveryBlock(S) {
       if (SL.plugins && !SL.plugins.on('delivery')) return 'plugin';
       if (S.readOnly) return 'ro';
+      const dp = SL.plugins && SL.plugins.find && SL.plugins.find('delivery'); if (dp && dp.unavailable) return 'gh';   // the server found no gh command
       return '';
     }
     const DLV = { sig: '' };
@@ -272,10 +273,11 @@
       const fx = $('#autoFixCI'), mg = $('#autoMergePR'), line = $('#deliveryWhy'), box = $('#deliveryCtl'); if (!fx || !mg || !line) return;
       fx.disabled = mg.disabled = !!why; if (box) box.classList.toggle('off', !!why);
       if (why) { fx.checked = mg.checked = false; if (S.ui.delivery && (S.ui.delivery.autoFix || S.ui.delivery.autoMerge)) S.ui.delivery = {}; }
-      const reason = why === 'plugin' ? 'Off: the Delivery plugin is turned off. ' : why === 'ro' ? 'Off: a read-only session starts no GitHub work. ' : '';
+      const reason = why === 'plugin' ? 'Off: the Delivery plugin is turned off. ' : why === 'ro' ? 'Off: a read-only session starts no GitHub work. ' : why === 'gh' ? 'Off: GitHub delivery needs the gh command, which is not installed. ' : '';
       [['autoFixLab', 'autoFixCI'], ['autoMergeLab', 'autoMergePR']].forEach(([l, id]) => { const el = $('#' + l); if (el) el.title = reason + DLV_TIP[id]; });
       line.innerHTML = why === 'plugin' ? 'Off: turn on the Delivery plugin to let Sleipnir open, fix and merge pull requests (needs gh signed in to GitHub). <button type="button" class="linkbtn" data-dlv="plugins">Open Plugins</button>'
-        : why === 'ro' ? 'Off: a read-only session starts no GitHub work.' : esc(DLV_ON);
+        : why === 'ro' ? 'Off: a read-only session starts no GitHub work.'
+        : why === 'gh' ? 'Off: GitHub delivery needs the <span class="mono">gh</span> command, which is not installed on the machine running Sleipnir. Install it and run <span class="mono">gh auth login</span>.' : esc(DLV_ON);
     }
     sc.listen(form, 'click', e => { if (e.target.closest('[data-dlv="plugins"]')) { e.preventDefault(); if (ui.nav) { $('#app').dataset.pv = 'main'; ui.nav.go('plugins'); } else SL.views.show('plugins'); } });
     sc.on('plugins-changed', () => { DLV.sig = ''; const S = SL.sessions.active; if (S) paintDelivery(S); });

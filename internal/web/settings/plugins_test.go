@@ -124,3 +124,21 @@ func TestPluginProfileIsSavedAndChangesTheDefaults(t *testing.T) {
 
 // ptr returns a pointer to v.
 func ptr[T any](v T) *T { return &v }
+
+func TestDeliveryRowSaysWhenGhIsMissing(t *testing.T) {
+	e := newEnv(t, nil)
+	was := lookPath
+	t.Cleanup(func() { lookPath = was })
+	lookPath = func(string) (string, error) { return "", os.ErrNotExist }
+	var v pluginsView
+	e.ok("GET", "/api/plugins", nil, nil, &v)
+	if r := rowByID(t, v, "delivery"); !strings.Contains(r.Unavailable, "gh") {
+		t.Errorf("delivery without gh = %+v", r)
+	}
+	lookPath = func(string) (string, error) { return "/usr/bin/gh", nil }
+	var with pluginsView
+	e.ok("GET", "/api/plugins", nil, nil, &with)
+	if r := rowByID(t, with, "delivery"); r.Unavailable != "" {
+		t.Errorf("delivery with gh = %q", r.Unavailable)
+	}
+}
