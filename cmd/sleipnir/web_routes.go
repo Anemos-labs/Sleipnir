@@ -633,6 +633,15 @@ func (h *webHostImpl) resume(w http.ResponseWriter, r *http.Request) {
 	}
 	d := h.d
 	d.Cwd = cwd
+	// What the session last ran with comes back with it: its verify command (raised below, and confirmed, when the server's own flags
+	// do not run it) and its team as its last start left it.
+	last := session.LatestStart(dir)
+	if last.Verify != "" {
+		d.Verify = last.Verify
+	}
+	if len(last.Team) > 0 {
+		d.Team, d.Workers = last.Team, len(last.Team) // the team's size is its slots, whatever size the server's own flags give
+	}
 	args := chatArgsOf(d, sid)
 	f, err := parseChatFlags(args)
 	if err != nil {

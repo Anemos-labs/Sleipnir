@@ -66,6 +66,9 @@ func RemoveStoredSession(ctx context.Context, dir string) (*workspace.PruneRepor
 			return nil, err
 		}
 		m := &workspace.Manager{Repo: repo, Dir: record.Dir, Prefix: record.Prefix, Base: record.Base}
+		if owner, ok, err := repo.UserIdentity(ctx); err == nil && ok {
+			m.Owner = owner
+		}
 		// Preserve recovery refs until all trees have been released. In particular,
 		// a worker that outlived its session lock must prevent any pruning.
 		refs := []string{pin, record.Prefix + "/_base", record.Prefix + "/_integration", record.Prefix + "/_apply"}

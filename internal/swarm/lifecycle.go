@@ -1097,7 +1097,7 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 			}
 			// Isolated run: the harness commits the tree and merges it on the worker's
 			// behalf, exactly as for a worker that calls done.
-			out := s.integrate(ctx, m, t)
+			out := s.integrate(ctx, m, t, taskCommitMessage(t, summary))
 			if s.checkTaskGate(t) != nil {
 				s.retryChangedScope(m, t)
 				continue

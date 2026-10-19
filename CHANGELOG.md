@@ -30,6 +30,24 @@ they do not indicate whether a change has been released.
   `skills`, `instructions` or `recon` off removes their part of the shared
   layer, each costing one cache write when the team starts again.
 
+- Commits the harness records describe the change instead of the run that
+  made it. A worker's commit has the task's title as its subject (without a
+  leading board id such as `T12:`), what the worker reported as its body, and
+  the id as a `Sleipnir-Task:` trailer; a merge commit is
+  `Merge "<subject>"` rather than `Merge worker-3: T12: ...`; a handover is
+  `Work in progress: <title>`; the manager's own edits are named by the files
+  they touch; and the default delivery commit lists the landed tasks by title.
+  The commits are authored by the person whose repository it is: when
+  `user.name` and `user.email` are configured, every commit of the trees and
+  the merge queue carries that identity and names its agent in a
+  `Sleipnir-Agent:` trailer (the web blame reads the trailers, and still
+  understands older history); without one, agents author their own commits
+  as `<agent>@sleipnir.invalid`, as before.
+  Prompt bytes: "Write good code" gains one line asking for commit messages and
+  pull request titles and descriptions that say what the change does, never
+  task ids or agent names (constitution about +50 tokens), and the manager's
+  isolation card gains one sentence; each is written to the cache once.
+
 - The `judge` role (`--role-model judge=M`, `models.roles.judge`, `/roles
   judge=M`) names the model a standing goal is judged on; without it the
   session's model judges, as before. With a judge model that is not the

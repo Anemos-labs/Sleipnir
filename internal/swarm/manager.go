@@ -31,7 +31,7 @@ func (s *Swarm) flushManager(ctx context.Context, m *member) error {
 	if vr := s.verify(ctx, m.dir, files); !vr.ok {
 		return fmt.Errorf("manager changes need repair: %s", vr.out)
 	}
-	result := s.integrate(ctx, m, Task{ID: "manager", Title: "direct manager changes", Owner: m.id, Role: "manager", Files: files})
+	result := s.integrate(ctx, m, Task{ID: "manager", Title: "direct manager changes", Owner: m.id, Role: "manager", Files: files}, filesCommitSubject(files))
 	if !result.ok {
 		return fmt.Errorf("manager changes were not integrated: %s %v", result.bounce, result.infra)
 	}

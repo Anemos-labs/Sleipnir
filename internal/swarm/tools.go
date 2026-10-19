@@ -422,7 +422,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		}
 		// Isolated run: the work is committed and goes through the merge queue, which
 		// verifies it merged with everything that landed before it.
-		out := s.integrate(ctx, m, task)
+		out := s.integrate(ctx, m, task, taskCommitMessage(task, in.Text))
 		if err := s.checkTaskGate(task); err != nil {
 			return tools.Errorf("%v", err)
 		}

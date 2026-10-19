@@ -2,7 +2,7 @@
 # (Session.build: kv.NewLayer("const", kv.KindConst, 1, one frozen segment holding the text); the layer trims trailing newlines)
 # columns: variant, what, byte count, tokens at 4 bytes per token, sha256
 # regenerate: go test ./internal/agent -run TestGoldenConstitution -update   (read docs/BUILDING.md, "Changing prompt bytes", first)
-solo	text	18574	4644	6a8085408445207f211ef89d0ce1f3d045509edcc140a3b28e5437a2d2f40a58
-solo	layer	18573	4644	1633a7ef053d358eb2346f1bb3d42c834cd9e2cff5e0bd7c5d764095143af6f9
-swarm	text	20318	5080	eb2bd83f23a2decd9ea40e44337258454525303b292bf9bb753bfc29c0ee0b7f
-swarm	layer	20317	5080	3331a11f491a41edcf06b2f4a4e455a36b3a0d09443ef44aabffaa0777cf3234
+solo	text	18783	4696	6580f24419d22d940ffa5c10db2e1807ae5d24f93a22ead0cd3b43d1043521a3
+solo	layer	18782	4696	2e233881539fe7ae1aced849a30fcac79518972871f315515e71956a4d4fa083
+swarm	text	20527	5132	06ecc80d0b775a9c5544eb02cbf2a2759f2cb39d929e9387045b2c193e775c12
+swarm	layer	20526	5132	35ba6403e4fd0a0c74ea2cc0c9488996dd44a3af1f75800a487694ae80d2f6c5

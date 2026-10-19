@@ -301,6 +301,11 @@ func (s *Session) buildIsolation(ctx context.Context) (*swarm.Isolation, error) 
 		Exclusive: dirLocks,
 		OnEvent:   workspace.EmitTo(s.Log),
 	}
+	// The commits are the person's: they publish this history. An unset identity
+	// leaves each agent authoring its own.
+	if owner, ok, err := p.repo.UserIdentity(ctx); err == nil && ok {
+		mgr.Owner = owner
+	}
 	if p.resume != nil {
 		mgr.Base, mgr.Snapshot = p.resume.Base, false
 	}
