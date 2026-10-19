@@ -134,6 +134,8 @@ func (m *Manager) startJob(env *tools.Env, sh shellInfo, command, dir string, ti
 		env:   m.env(env.Agent, dir),
 		sink:  buf,
 		merge: m.opts.MergeStreams,
+		agent: env.Agent,
+		job:   true,
 	})
 	if err != nil {
 		m.end()

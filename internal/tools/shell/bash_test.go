@@ -1397,3 +1397,41 @@ func TestADetachedBackgroundProcessEndsAtShutdown(t *testing.T) {
 		}
 	}
 }
+
+// A team worker that starts a server with "server &" inside an ordinary command leaves it holding a port long after its task is
+// done, and the next command that needs the port fails. EndAgent, called when the worker's run ends, ends what that worker's
+// commands left, held pipes or not, and leaves another agent's leftovers and every background job running.
+func TestEndAgentEndsWhatTheAgentsCommandsLeftRunning(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, Options{DrainGrace: 100 * time.Millisecond, KillGrace: 300 * time.Millisecond})
+	t.Cleanup(h.m.Shutdown)
+	start := func(agent, command string) int {
+		t.Helper()
+		res := h.bash(h.env(agent), command+` & echo "pid=$!"`)
+		var pid int
+		if _, err := fmt.Sscanf(res.Text, "pid=%d", &pid); err != nil {
+			t.Fatalf("text = %q (%v)", res.Text, err)
+		}
+		t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+		return pid
+	}
+	detached := start("w1", "nohup sleep 600 >/dev/null 2>&1 </dev/null")
+	holding := start("w1", "sleep 600")
+	other := start("w2", "nohup sleep 600 >/dev/null 2>&1 </dev/null")
+	job := h.startJob(h.env("w1"), "sleep 600")
+
+	h.m.EndAgent("w1")
+	for _, pid := range []int{detached, holding} {
+		for deadline := time.Now().Add(5 * time.Second); pidAlive(pid); time.Sleep(10 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatalf("pid %d, left by w1, outlived the end of w1's run", pid)
+			}
+		}
+	}
+	if !pidAlive(other) {
+		t.Error("the end of w1's run ended a process w2 left")
+	}
+	if out := h.output(h.env("w1"), job).Text; !strings.Contains(out, "running") {
+		t.Errorf("the end of w1's run ended its background job: %q", out)
+	}
+}

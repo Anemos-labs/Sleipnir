@@ -952,6 +952,9 @@ func (s *Swarm) finishRun(m *member, rs *runState, ctx context.Context, res *age
 	}
 	s.Leases.ReleaseAll(m.id)
 	s.Board.ClearAlertKey("stuck", stuckAlertKey(m.id, rs.id))
+	if s.deps.RunEnded != nil {
+		s.deps.RunEnded(m.id)
+	}
 
 	state, stateLine := "idle", ""
 	if failed {

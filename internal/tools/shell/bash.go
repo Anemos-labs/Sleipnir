@@ -289,6 +289,7 @@ func (m *Manager) runForeground(ctx context.Context, env *tools.Env, sh shellInf
 		sink:   sk,
 		maxOut: m.opts.MaxOutputBytes,
 		merge:  m.opts.MergeStreams,
+		agent:  env.Agent,
 	})
 	if err != nil {
 		return fail(env, "bash: could not start the command: %v", err)
@@ -297,7 +298,7 @@ func (m *Manager) runForeground(ctx context.Context, env *tools.Env, sh shellInf
 	reason := p.supervise(ctx, timeout)
 	p.waitPumps(m.opts.DrainGrace)
 	// Whatever is still writing now is a leftover background process; it keeps
-	// running (Shutdown will end it) but must not touch this result or the UI.
+	// running (EndAgent or Shutdown will end it) but must not touch this result or the UI.
 	sk.detach()
 	body := sk.snapshot()
 	st, exited := p.status()

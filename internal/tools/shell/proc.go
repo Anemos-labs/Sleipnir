@@ -39,8 +39,10 @@ type procSpec struct {
 	dir    string
 	env    []string
 	sink   sink
-	maxOut int64 // kill the command past this many raw output bytes; 0 = unlimited
-	merge  bool  // give stdout and stderr one shared pipe (exact ordering, no labels)
+	maxOut int64  // kill the command past this many raw output bytes; 0 = unlimited
+	merge  bool   // give stdout and stderr one shared pipe (exact ordering, no labels)
+	agent  string // the agent that ran it (Manager.EndAgent)
+	job    bool   // a background job (run_in_background), which outlives its agent's run
 }
 
 // proc is one running shell process and the pumps draining its output.
@@ -69,6 +71,8 @@ type proc struct {
 	// alive says whether a live process remains in a process group (groupAlive): a field so that a test can say how long the
 	// group takes to go once it has been killed.
 	alive func(pgid int) bool
+	agent string // procSpec.agent
+	job   bool   // procSpec.job
 }
 
 // startProc launches the process and its pumps. The caller must have called
@@ -130,6 +134,8 @@ func (m *Manager) startProc(sp procSpec) (*proc, error) {
 		maxOut:    sp.maxOut,
 		grace:     m.opts.KillGrace,
 		alive:     groupAlive,
+		agent:     sp.agent,
+		job:       sp.job,
 	}
 	m.track(p)
 
