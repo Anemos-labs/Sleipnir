@@ -25,6 +25,17 @@ var sensitivePaths = [][]string{
 	{"tools", "web_allow_private"}, // reaches internal networks
 	{"tools", "web_allow_hosts"},
 	{"swarm", "budget_usd"}, // a repository could lift the built-in cap on what a swarm may spend
+	{"plugins", "enabled", "*"}, // turning a plugin on (an installed one runs code); turning one off is not risky (harmlessValue)
+}
+
+// harmlessValue reports whether the value v at a sensitive path segs is in fact
+// harmless: a project file may always turn a plugin off.
+func harmlessValue(segs []string, v any) bool {
+	if len(segs) == 3 && segs[0] == "plugins" && segs[1] == "enabled" {
+		b, ok := v.(bool)
+		return ok && !b
+	}
+	return false
 }
 
 // userOnlyPaths are settings that only the user's own file may make. A project
@@ -114,7 +125,7 @@ func (l *layer) collectRisks(drop bool) []Issue {
 	walk = func(m map[string]any, segs []string) {
 		for _, k := range sortedKeys(m) {
 			p := cloneSegs(segs, k)
-			if isSensitive(p) {
+			if isSensitive(p) && !harmlessValue(p, m[k]) {
 				is := Issue{Severity: SeverityWarning, Source: l.source, Path: fmtPath(p), segs: p}
 				is.Message = "is security-sensitive and comes from a project file; project files can be untrusted"
 				if drop {

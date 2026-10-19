@@ -129,3 +129,8 @@ func cloneSegs(segs []string, more ...string) []string {
 	out = append(out, segs...)
 	return append(out, more...)
 }
+
+// Path formats field-path segments the way Report.Origins and issues name them:
+// "plugins.enabled.mailman", or `plugins.enabled["view:cache"]` for a segment
+// that is not a plain name.
+func Path(segs ...string) string { return fmtPath(segs) }
