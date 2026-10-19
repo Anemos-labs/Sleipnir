@@ -36,13 +36,17 @@ type needRow struct {
 
 // methodRow is an install method with the exact command it runs.
 type methodRow struct {
-	ID        string   `json:"id"`
-	Title     string   `json:"title"`
-	Argv      []string `json:"argv,omitempty"`
-	Connect   string   `json:"connect,omitempty"`
-	Note      string   `json:"note,omitempty"`
-	Available bool     `json:"available"`
-	Reason    string   `json:"reason,omitempty"`
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	// Env are the variables the commands get, with the command each is read from.
+	Env map[string][]string `json:"env,omitempty"`
+	// Setup are the commands run before Argv, in order.
+	Setup     [][]string `json:"setup,omitempty"`
+	Argv      []string   `json:"argv,omitempty"`
+	Connect   string     `json:"connect,omitempty"`
+	Note      string     `json:"note,omitempty"`
+	Available bool       `json:"available"`
+	Reason    string     `json:"reason,omitempty"`
 	// Scope is the confirmation scope of running exactly this method (docs/WEB-API.md, Confirmations).
 	Scope string `json:"scope"`
 }
@@ -157,6 +161,21 @@ func (s *service) needRowOf(st plugin.NeedStatus) needRow {
 	for _, m := range st.Methods {
 		mr := methodRow{ID: m.ID, Title: provider.SanitizeText(m.Title, 120), Connect: provider.SanitizeText(m.Connect, 400),
 			Note: provider.SanitizeText(m.Note, 400), Available: m.Available, Reason: provider.SanitizeText(m.Reason, 200)}
+		for name, argv := range m.Env {
+			if mr.Env == nil {
+				mr.Env = map[string][]string{}
+			}
+			for _, a := range argv {
+				mr.Env[name] = append(mr.Env[name], provider.SanitizeText(a, 200))
+			}
+		}
+		for _, step := range m.Setup {
+			var clean []string
+			for _, a := range step {
+				clean = append(clean, provider.SanitizeText(a, 200))
+			}
+			mr.Setup = append(mr.Setup, clean)
+		}
 		for _, a := range m.Argv {
 			mr.Argv = append(mr.Argv, provider.SanitizeText(a, 200))
 		}
@@ -196,9 +215,20 @@ func (s *service) startJob(id, method string) *needJob {
 	return j
 }
 
-// installScope is the confirmation scope of running method m of need id: it covers the command and the server entry it adds.
+// installScope is the confirmation scope of running method m of need id: it covers the commands and the server entry it adds.
 func installScope(id string, m plugin.MethodStatus) string {
-	return "need.install:" + d16(map[string]string{"need": id, "method": m.ID, "argv": strings.Join(m.Argv, "\x00"), "connect": m.Connect})
+	fields := map[string]string{"need": id, "method": m.ID, "argv": strings.Join(m.Argv, "\x00"), "connect": m.Connect}
+	if len(m.Setup) > 0 {
+		steps := make([]string, len(m.Setup))
+		for i, step := range m.Setup {
+			steps[i] = strings.Join(step, "\x00")
+		}
+		fields["setup"] = strings.Join(steps, "\x01")
+	}
+	for _, name := range plugin.EnvNames(m.Env) {
+		fields["env:"+name] = strings.Join(m.Env[name], "\x00")
+	}
+	return "need.install:" + d16(fields)
 }
 
 // confirmNeed checks the confirmation of a need's action; without one it answers 428 with the scope and what it does.
@@ -307,6 +337,12 @@ func (s *service) handleNeedInstall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reasons := []string{}
+	for _, name := range plugin.EnvNames(method.Env) {
+		reasons = append(reasons, "runs, as you, to set "+name+": "+strings.Join(method.Env[name], " "))
+	}
+	for _, step := range method.Setup {
+		reasons = append(reasons, "runs, as you: "+strings.Join(step, " "))
+	}
 	if len(method.Argv) > 0 {
 		reasons = append(reasons, "runs, as you: "+strings.Join(method.Argv, " "))
 	}

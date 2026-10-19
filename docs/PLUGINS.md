@@ -181,7 +181,7 @@ hello/
   choice). `sleipnir plugins set hello greeting=Hi` writes one from the terminal.
 - `needs`: the programs and tool servers the plugin uses ([above](#programs-a-plugin-needs)), each
   `{"id", "title", "description", "homepage", "required", "commands": ["prog", "sibling"], "paths": {"darwin"|"linux"|"windows"|"unix": ["~/bin/prog", "/opt/prog-*/prog"]},
-  "version_args": ["--version"], "mcp": {"name", "command", "args"}, "install": [{"id", "title", "os": ["darwin"], "run": ["brew", "install", "prog"], "connect": bool, "note"}]}`.
+  "version_args": ["--version"], "mcp": {"name", "command", "args"}, "install": [{"id", "title", "os": ["darwin"], "env": {"NAME": ["cmd", "arg"]}, "setup": [["cmd", "arg"]], "run": ["brew", "install", "prog"], "connect": bool, "note"}]}`. `setup` are commands run in order before `run`, such as adding the package source it installs from; each must be safe to run again (`flatpak remote-add --if-not-exists`). `env` gives the method's commands environment variables, each read from the last `NAME=value` line its command prints; one already set in the environment is kept and its command not run.
   A need has `commands` (a program) or `mcp` (a tool server); `paths` expand `~` and `${VAR}` and match `*`; a method
   with `connect` adds the need's `mcp` entry to the user's configuration after its `run` (which may be empty). Pin versions
   in `run` and `args`.

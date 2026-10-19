@@ -74,6 +74,15 @@ type InstallMethod struct {
 	Title string `json:"title"`
 	// OS limits the method to these operating systems ("unix" for darwin and linux).
 	OS []string `json:"os,omitempty"`
+	// Env are environment variables the method's commands get, each read from
+	// the output of a command (argv): the last line it prints of the form
+	// NAME=value. A variable already set in the environment is kept as it is,
+	// and its command is not run.
+	Env map[string][]string `json:"env,omitempty"`
+	// Setup are commands, as argv, run in order before Run, such as adding the
+	// package source Run installs from. Each must be safe to run again (an
+	// add with --if-not-exists), since a retried install repeats them.
+	Setup [][]string `json:"setup,omitempty"`
 	// Run is the command, as argv; its first word is looked up on PATH.
 	Run []string `json:"run,omitempty"`
 	// Connect adds the need's tool server to the user's configuration after Run.
@@ -110,6 +119,19 @@ func validNeed(n Need) error {
 		}
 		if len(m.Run) == 0 && !m.Connect {
 			return fmt.Errorf("need %s: install method %s runs nothing", n.ID, m.ID)
+		}
+		for _, step := range m.Setup {
+			if len(step) == 0 || step[0] == "" {
+				return fmt.Errorf("need %s: install method %s has an empty setup command", n.ID, m.ID)
+			}
+		}
+		for name, argv := range m.Env {
+			if !validEnvName(name) {
+				return fmt.Errorf("need %s: install method %s: %q is not an environment variable name", n.ID, m.ID, name)
+			}
+			if len(argv) == 0 || argv[0] == "" {
+				return fmt.Errorf("need %s: install method %s has an empty command for %s", n.ID, m.ID, name)
+			}
 		}
 		if m.Connect && n.MCP == nil {
 			return fmt.Errorf("need %s: install method %s connects, but the need has no mcp server", n.ID, m.ID)
@@ -192,13 +214,17 @@ type NeedStatus struct {
 
 // MethodStatus is an install method as it can run here.
 type MethodStatus struct {
-	ID        string   `json:"id"`
-	Title     string   `json:"title"`
-	Argv      []string `json:"argv,omitempty"`
-	Connect   string   `json:"connect,omitempty"` // the server entry it adds, in words
-	Note      string   `json:"note,omitempty"`
-	Available bool     `json:"available"`
-	Reason    string   `json:"reason,omitempty"`
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	// Env are the variables the commands get, with the command each is read from.
+	Env map[string][]string `json:"env,omitempty"`
+	// Setup are the commands run before Argv, in order.
+	Setup     [][]string `json:"setup,omitempty"`
+	Argv      []string   `json:"argv,omitempty"`
+	Connect   string     `json:"connect,omitempty"` // the server entry it adds, in words
+	Note      string     `json:"note,omitempty"`
+	Available bool       `json:"available"`
+	Reason    string     `json:"reason,omitempty"`
 }
 
 // located is <state>/needs.json.
@@ -401,6 +427,15 @@ func methodStatus(env NeedEnv, n OwnedNeed, m InstallMethod, all []OwnedNeed) (M
 		return MethodStatus{}, false
 	}
 	ms := MethodStatus{ID: m.ID, Title: m.Title, Argv: append([]string{}, m.Run...), Note: m.Note, Available: true}
+	for _, step := range m.Setup {
+		ms.Setup = append(ms.Setup, append([]string{}, step...))
+	}
+	for name, argv := range m.Env {
+		if ms.Env == nil {
+			ms.Env = map[string][]string{}
+		}
+		ms.Env[name] = append([]string{}, argv...)
+	}
 	if m.Connect {
 		ms.Connect = fmt.Sprintf("adds the %q tool server (%s) to your configuration", n.MCP.Name, strings.Join(append([]string{n.MCP.Command}, n.MCP.Args...), " "))
 	}
@@ -418,10 +453,20 @@ func methodStatus(env NeedEnv, n OwnedNeed, m InstallMethod, all []OwnedNeed) (M
 	return ms, true
 }
 
-// runsFirst are the programs a method needs on PATH: its own command and, when it connects, the server's.
+// runsFirst are the programs a method needs on PATH: its setup and own commands and, when it connects, the server's.
 func runsFirst(n Need, m InstallMethod) []string {
 	var out []string
-	if len(m.Run) > 0 {
+	for _, name := range EnvNames(m.Env) {
+		if argv := m.Env[name]; !contains(out, argv[0]) {
+			out = append(out, argv[0])
+		}
+	}
+	for _, step := range m.Setup {
+		if len(step) > 0 && !contains(out, step[0]) {
+			out = append(out, step[0])
+		}
+	}
+	if len(m.Run) > 0 && !contains(out, m.Run[0]) {
 		out = append(out, m.Run[0])
 	}
 	if m.Connect && !filepath.IsAbs(n.MCP.Command) {
@@ -644,14 +689,18 @@ func InstallNeed(ctx context.Context, env NeedEnv, n Need, methodID string, out 
 	if !ms.Available {
 		return NeedStatus{}, errors.New(ms.Reason)
 	}
+	vars, err := methodEnv(ctx, env, m.Env, out)
+	if err != nil {
+		return NeedStatus{}, err
+	}
+	for _, step := range m.Setup {
+		if err := runStep(ctx, env, step, vars, out); err != nil {
+			return NeedStatus{}, err
+		}
+	}
 	if len(m.Run) > 0 {
-		prog := lookIn(env.goos(), m.Run[0], env.path())
-		fmt.Fprintf(out, "$ %s\n", strings.Join(m.Run, " "))
-		cmd := exec.CommandContext(ctx, prog, m.Run[1:]...)
-		cmd.Env = append(os.Environ(), "PATH="+env.path())
-		cmd.Stdout, cmd.Stderr = out, out
-		if err := cmd.Run(); err != nil {
-			return NeedStatus{}, fmt.Errorf("%s failed: %v", strings.Join(m.Run, " "), err)
+		if err := runStep(ctx, env, m.Run, vars, out); err != nil {
+			return NeedStatus{}, err
 		}
 	}
 	if m.Connect {
@@ -678,6 +727,74 @@ func InstallNeed(ctx context.Context, env NeedEnv, n Need, methodID string, out 
 		needMu.Unlock()
 	}
 	return st, nil
+}
+
+// runStep runs one command of an install with vars (NAME=value) added to its
+// environment, echoing it and writing what it prints to out.
+func runStep(ctx context.Context, env NeedEnv, argv, vars []string, out io.Writer) error {
+	prog := lookIn(env.goos(), argv[0], env.path())
+	if prog == "" {
+		return fmt.Errorf("%s is not installed", argv[0])
+	}
+	fmt.Fprintf(out, "$ %s\n", strings.Join(argv, " "))
+	cmd := exec.CommandContext(ctx, prog, argv[1:]...)
+	cmd.Env = append(append(os.Environ(), "PATH="+env.path()), vars...)
+	cmd.Stdout, cmd.Stderr = out, out
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%s failed: %v", strings.Join(argv, " "), err)
+	}
+	return nil
+}
+
+// methodEnv works out a method's environment variables (InstallMethod.Env) as
+// NAME=value, in name order; one already set in the environment is kept.
+func methodEnv(ctx context.Context, env NeedEnv, decl map[string][]string, out io.Writer) ([]string, error) {
+	var vars []string
+	for _, name := range EnvNames(decl) {
+		if v, ok := os.LookupEnv(name); ok && v != "" {
+			fmt.Fprintf(out, "using %s=%s from the environment\n", name, v)
+			continue
+		}
+		var got bytes.Buffer
+		if err := runStep(ctx, env, decl[name], nil, io.MultiWriter(out, &got)); err != nil {
+			return nil, fmt.Errorf("working out %s: %w", name, err)
+		}
+		value := ""
+		for _, line := range strings.Split(got.String(), "\n") {
+			if v, ok := strings.CutPrefix(strings.TrimRight(line, "\r"), name+"="); ok {
+				value = v
+			}
+		}
+		if value == "" {
+			return nil, fmt.Errorf("working out %s: %s printed no %s= line; set %s yourself and try again", name, strings.Join(decl[name], " "), name, name)
+		}
+		fmt.Fprintf(out, "using %s=%s\n", name, value)
+		vars = append(vars, name+"="+value)
+	}
+	return vars, nil
+}
+
+// EnvNames are the names of a method's environment variables, sorted.
+func EnvNames(decl map[string][]string) []string {
+	names := make([]string, 0, len(decl))
+	for name := range decl {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// validEnvName reports whether name is a portable environment variable name.
+func validEnvName(name string) bool {
+	if name == "" || (name[0] >= '0' && name[0] <= '9') {
+		return false
+	}
+	for _, c := range name {
+		if !(c == '_' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
+			return false
+		}
+	}
+	return true
 }
 
 // FindNeed is the need of id among needs.

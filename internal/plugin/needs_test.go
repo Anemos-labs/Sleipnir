@@ -162,6 +162,97 @@ func TestInstallNeedRunsTheDeclaredArgvAndChecksTheResult(t *testing.T) {
 	}
 }
 
+func TestInstallNeedRunsSetupFirstAndStopsAtAFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake programs are shell scripts")
+	}
+	bin, setupRan, pmRan := t.TempDir(), filepath.Join(t.TempDir(), "setup"), filepath.Join(t.TempDir(), "pm")
+	program(t, bin, "remote", setupRan)
+	program(t, bin, "pm", pmRan)
+	if err := os.WriteFile(filepath.Join(bin, "broken"), []byte("#!/bin/sh\necho no remote\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	n := Need{ID: "tool", Title: "Tool", Commands: []string{"tool"}, Install: []InstallMethod{
+		{ID: "pm", Title: "pm", Setup: [][]string{{"remote", "add", "--if-not-exists", "src"}}, Run: []string{"pm", "install", "tool"}},
+		{ID: "bad", Title: "bad", Setup: [][]string{{"broken"}}, Run: []string{"pm", "install", "tool"}},
+		{ID: "gone", Title: "gone", Setup: [][]string{{"absent"}}, Run: []string{"pm", "install", "tool"}},
+	}}
+	if err := validNeed(n); err != nil {
+		t.Fatal(err)
+	}
+	env := NeedEnv{State: t.TempDir(), Home: t.TempDir(), PATH: bin, SkipDefaults: true}
+	st := CheckNeeds(env, []OwnedNeed{{Need: n}})[0]
+	if len(st.Methods) != 3 || len(st.Methods[0].Setup) != 1 || st.Methods[0].Setup[0][0] != "remote" {
+		t.Fatalf("the setup commands are not reported: %+v", st.Methods)
+	}
+	if st.Methods[2].Available || !strings.Contains(st.Methods[2].Reason, "absent") {
+		t.Errorf("a method whose setup program is missing: %+v", st.Methods[2])
+	}
+	var out bytes.Buffer
+	_, _ = InstallNeed(context.Background(), env, n, "pm", &out)
+	if i, j := strings.Index(out.String(), "$ remote add"), strings.Index(out.String(), "$ pm install"); i < 0 || j < i {
+		t.Errorf("setup must run before the install: %q", out.String())
+	}
+	for _, m := range []string{setupRan, pmRan} {
+		if _, err := os.Stat(m); err != nil {
+			t.Errorf("%s did not run", filepath.Base(m))
+		}
+	}
+	_ = os.Remove(pmRan)
+	out.Reset()
+	if _, err := InstallNeed(context.Background(), env, n, "bad", &out); err == nil || !strings.Contains(err.Error(), "broken failed") {
+		t.Errorf("a failed setup: %v", err)
+	}
+	if _, err := os.Stat(pmRan); err == nil {
+		t.Error("the install ran after its setup failed")
+	}
+	if err := validNeed(Need{ID: "x", Commands: []string{"x"}, Install: []InstallMethod{{ID: "m", Setup: [][]string{{}}, Run: []string{"pm"}}}}); err == nil {
+		t.Error("an empty setup command was accepted")
+	}
+}
+
+func TestInstallNeedWorksOutTheMethodsEnvironment(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake programs are shell scripts")
+	}
+	bin, seen := t.TempDir(), filepath.Join(t.TempDir(), "seen")
+	write := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"+body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("probe", "echo banner\necho SLEIPNIR_TEST_DIR=/first\necho SLEIPNIR_TEST_DIR=/addons\necho done\n")
+	write("silent", "echo nothing here\n")
+	write("pm", "echo \"$SLEIPNIR_TEST_DIR\" > '"+seen+"'\n")
+	n := Need{ID: "tool", Title: "Tool", Commands: []string{"tool"}, Install: []InstallMethod{
+		{ID: "pm", Title: "pm", Env: map[string][]string{"SLEIPNIR_TEST_DIR": {"probe", "--where"}}, Run: []string{"pm"}},
+		{ID: "quiet", Title: "quiet", Env: map[string][]string{"SLEIPNIR_TEST_DIR": {"silent"}}, Run: []string{"pm"}},
+	}}
+	if err := validNeed(n); err != nil {
+		t.Fatal(err)
+	}
+	env := NeedEnv{State: t.TempDir(), Home: t.TempDir(), PATH: bin, SkipDefaults: true}
+	if st := CheckNeeds(env, []OwnedNeed{{Need: n}})[0]; st.Methods[0].Env["SLEIPNIR_TEST_DIR"][0] != "probe" {
+		t.Fatalf("the environment's commands are not reported: %+v", st.Methods[0])
+	}
+	var out bytes.Buffer
+	_, _ = InstallNeed(context.Background(), env, n, "pm", &out)
+	if b, err := os.ReadFile(seen); err != nil || strings.TrimSpace(string(b)) != "/addons" {
+		t.Errorf("the command got %q (%v), not the last NAME=value line\n%s", b, err, out.String())
+	}
+	if _, err := InstallNeed(context.Background(), env, n, "quiet", &out); err == nil || !strings.Contains(err.Error(), "printed no SLEIPNIR_TEST_DIR= line") {
+		t.Errorf("a command that prints no value: %v", err)
+	}
+	t.Setenv("SLEIPNIR_TEST_DIR", "/mine")
+	_, _ = InstallNeed(context.Background(), env, n, "quiet", &out)
+	if b, _ := os.ReadFile(seen); strings.TrimSpace(string(b)) != "/mine" {
+		t.Errorf("a variable already set was replaced: %q", b)
+	}
+	if err := validNeed(Need{ID: "x", Commands: []string{"x"}, Install: []InstallMethod{{ID: "m", Env: map[string][]string{"A B": {"probe"}}, Run: []string{"pm"}}}}); err == nil {
+		t.Error("a bad variable name was accepted")
+	}
+}
+
 func TestLocateFollowsAnAppBundleAndChecksTheVersion(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("application bundles are macOS's")

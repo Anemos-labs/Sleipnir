@@ -192,8 +192,10 @@
   }
   /** How a found need was found, in words. */
   const VIA = { located: 'located by you', path: 'on PATH', default: 'in its usual place', config: 'in your tool servers' };
-  /** A method's command as one line. */
-  const argvText = m => arr(m.argv).map(a => /[\s"'$`\\]/.test(a) ? "'" + String(a).replace(/'/g, "'\\''") + "'" : String(a)).join(' ');
+  /** One command as one line, quoted as a shell would need it. */
+  const cmdText = argv => arr(argv).map(a => /[\s"'$`\\]/.test(a) ? "'" + String(a).replace(/'/g, "'\\''") + "'" : String(a)).join(' ');
+  /** A method's commands, one line each: the variables it works out (NAME=$(command)), its setup steps, then its own. */
+  const argvText = m => Object.keys(m.env || {}).sort().map(k => k + '=$(' + cmdText(m.env[k]) + ')').concat(arr(m.setup).concat([m.argv]).map(cmdText)).filter(Boolean).join('\n');
   /** "Programs it uses": one line per need of a plugin that is on, with Locate and Install for a missing one ('' when it has none). */
   function needsHtml(p, st) {
     const ns = P.needsOf(p.id); if (!ns.length || !(p.enabled || p.core)) return '';
