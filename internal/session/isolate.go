@@ -483,7 +483,43 @@ func (s *Session) progressPusher(ctx context.Context, p *isoPlan, branch string)
 	if remote == "" {
 		return nil
 	}
-	return &progressPusher{git: git, remote: remote, ref: p.prefix + "/_integration", log: s.Log, tell: s.tell}
+	name := func(tip string) string {
+		// A resumed session keeps pushing where it did before, whatever has merged since.
+		if b := s.lastProgressBranch(); b != "" {
+			return b
+		}
+		topic := s.goalObjective()
+		if topic == "" && p.queue != nil { // no standing goal: the first work merged says what this is
+			sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if out, err := git(sctx, "log", "--reverse", "--format=%s", p.queue.Base()+".."+tip); err == nil {
+				first, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
+				topic = strings.Trim(strings.TrimPrefix(first, "Merge "), `"`)
+			}
+		}
+		return progressBranch(p.prefix, topic)
+	}
+	return &progressPusher{git: git, remote: remote, name: name, log: s.Log, tell: s.tell}
+}
+
+// lastProgressBranch is the remote branch this session's log last recorded a progress
+// push to ("" when there is none).
+func (s *Session) lastProgressBranch() string {
+	_ = s.Log.Flush()
+	branch := ""
+	_ = events.Scan(filepath.Join(s.Dir, "events.jsonl"), func(e events.Event) error {
+		if e.Type != TypeProgressPush {
+			return nil
+		}
+		var d struct {
+			Branch string `json:"branch"`
+		}
+		if json.Unmarshal(e.Data, &d) == nil && d.Branch != "" {
+			branch = d.Branch
+		}
+		return nil
+	})
+	return branch
 }
 
 // releaseIsolation undoes buildIsolation when the session could not be built.

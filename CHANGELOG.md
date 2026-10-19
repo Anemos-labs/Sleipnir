@@ -7,6 +7,16 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The branch that progress pushing writes on the remote is named after the
+  work, not the session id: `sleipnir/<topic>-<session suffix>`, where the
+  topic is a slug of the standing goal's objective, or else of the first merged
+  commit's subject (for example `sleipnir/add-csv-export-a1b2c3`). Before this it
+  was `sleipnir/<session>/_integration`, which is still the local integration
+  branch and the remote name when there is no topic. A session resumed from
+  before this change pushes to the new name. Prompt bytes: the constitution's
+  line on commit messages also covers branch names, and so does the manager's
+  isolation card (a few tokens each), written to the cache once.
+
 - The `embedder` and `reranker` roles (`models.roles`, `--role-model`) turn
   on a lesson memory for standing goals: lessons from earlier goals, stored in
   `~/.sleipnir/lessons.json`, are appended to a goal's first message, and new

@@ -958,7 +958,9 @@ and integration references remain available for `--resume`. The CLI prints the r
 
 **Pushing progress.** With `swarm.push_progress` (default true) every move of the integration branch is pushed, in the
 background, to the checkout's push remote (the branch's push remote, else `origin`) as the branch
-`sleipnir/<session>/_integration`, so verified work survives the loss of the machine long before the run ends. Pushes run
+`sleipnir/<topic>-<session suffix>`, named at the first push after what the work is (a slug of the standing goal's
+objective, else of the first merged commit's subject; `sleipnir/<session>/_integration` when neither gives one) and
+the last six characters of the session id, so verified work survives the loss of the machine long before the run ends. Pushes run
 one at a time and coalesce to the newest tip; they use the person's own git credentials, never prompt, skip `pre-push`
 hooks, and never write any branch but that one. The first push and a push that recovers are announced at level `delivery`;
 a failure is announced once (level `warn`) and retried after the next merge; every attempt is logged (`swarm.progress_push`).

@@ -536,18 +536,21 @@ func TestIsolatedSwarmMergesAConflictAndAVerifierFailureAndAppliesTheResult(t *t
 		t.Error("Finish is not idempotent")
 	}
 	// Every merge was pushed as it landed: the remote has the final integration tip,
-	// on the harness's own branch, and none of the person's branches moved there.
+	// on a branch of the harness's own named after the first work merged (there is no
+	// goal), and none of the person's branches moved there.
 	tip := git(t, repo, "rev-parse", "sleipnir/"+sid+"/_integration")
-	if got := git(t, remote, "rev-parse", "refs/heads/sleipnir/"+sid+"/_integration"); got != tip {
-		t.Errorf("remote integration branch at %s, want the tip %s", got, tip)
+	ref := strings.TrimSpace(git(t, remote, "for-each-ref", "--format=%(refname)"))
+	branch := strings.TrimPrefix(ref, "refs/heads/")
+	if strings.Contains(ref, "\n") || !strings.HasPrefix(branch, "sleipnir/") || !strings.HasSuffix(branch, "-"+sid) || strings.HasSuffix(branch, "/_integration") {
+		t.Errorf("remote refs:\n%s", ref)
 	}
-	if out := git(t, remote, "for-each-ref", "--format=%(refname)"); strings.TrimSpace(out) != "refs/heads/sleipnir/"+sid+"/_integration" {
-		t.Errorf("remote refs:\n%s", out)
+	if got := git(t, remote, "rev-parse", ref); got != tip {
+		t.Errorf("remote branch at %s, want the tip %s", got, tip)
 	}
 	if et := eventTypes(t, s.Dir); et[session.TypeProgressPush] == 0 {
 		t.Errorf("no %s events: %v", session.TypeProgressPush, et)
 	}
-	if !sink.has("pushed to origin branch sleipnir/" + sid + "/_integration") {
+	if !sink.has("pushed to origin branch " + branch) {
 		t.Errorf("the person was not told where the work is pushed: %v", sink.logs)
 	}
 	if err := s.Close(); err != nil {

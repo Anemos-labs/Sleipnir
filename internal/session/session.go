@@ -293,10 +293,12 @@ type Session struct {
 	refusedMu sync.Mutex
 	refused   []refusedCommand
 
-	mu      sync.Mutex
-	effort  provider.EffortSetting
-	started bool
-	closed  bool
+	mu     sync.Mutex
+	effort provider.EffortSetting
+	// objective is the standing goal's objective as last saved or loaded (goal.go), under mu.
+	objective string
+	started   bool
+	closed    bool
 	// endReason is why the session ended (SetEndReason), for the SessionEnd hooks.
 	endReason string
 	// budget is the most the session may spend (0: no limit): the swarm's cap, or the
