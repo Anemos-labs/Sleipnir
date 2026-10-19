@@ -197,6 +197,7 @@ func (s *service) gitBlame(ctx context.Context, sess *session.Session, rel strin
 	}
 	exact := true
 	var out []wire.BlameRun
+	tasks := map[string]string{}
 	for _, l := range lines {
 		ag, id, task := "-", "", ""
 		if l.Commit == gitx.ZeroCommit {
@@ -204,10 +205,7 @@ func (s *service) gitBlame(ctx context.Context, sess *session.Session, rel strin
 		} else if strings.HasSuffix(l.Email, "@sleipnir.invalid") && !strings.HasPrefix(l.Email, "queue@") {
 			ag = strings.TrimSuffix(l.Email, "@sleipnir.invalid")
 			id = shortSHA(l.Commit)
-			task = taskID(l.Summary)
-			if task == l.Summary {
-				task = ""
-			}
+			task = commitTask(ctx, m.Repo, l.Commit, l.Summary, tasks)
 		}
 		if n := len(out); n > 0 && out[n-1].Ag == ag && out[n-1].ID == id && out[n-1].Line+out[n-1].Count == l.Line {
 			out[n-1].Count++
@@ -219,6 +217,30 @@ func (s *service) gitBlame(ctx context.Context, sess *session.Session, rel strin
 		out = []wire.BlameRun{}
 	}
 	return out, exact, true
+}
+
+// commitTask is the board task a harness commit records: its Sleipnir-Task trailer, or
+// the "T3: " its subject started with in history written before the trailer. tasks
+// caches the answer by commit, so a file blamed to a few commits reads each once.
+func commitTask(ctx context.Context, repo *gitx.Repo, commit, subject string, tasks map[string]string) string {
+	if t, ok := tasks[commit]; ok {
+		return t
+	}
+	task := ""
+	if c, err := repo.CommitInfo(ctx, commit); err == nil {
+		for _, line := range strings.Split(c.Body, "\n") {
+			if v, ok := strings.CutPrefix(strings.TrimSpace(line), "Sleipnir-Task:"); ok {
+				task = strings.TrimSpace(v)
+			}
+		}
+	}
+	if task == "" {
+		if t := taskID(subject); t != subject {
+			task = t
+		}
+	}
+	tasks[commit] = task
+	return task
 }
 
 // subdirOf is the session's root relative to its repository ("" at the top).
