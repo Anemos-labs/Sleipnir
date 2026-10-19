@@ -24,7 +24,7 @@ var sensitivePaths = [][]string{
 	{"mcp"},                        // starts servers
 	{"tools", "web_allow_private"}, // reaches internal networks
 	{"tools", "web_allow_hosts"},
-	{"swarm", "budget_usd"}, // a repository could lift the built-in cap on what a swarm may spend
+	{"swarm", "budget_usd"},     // a repository could lift the built-in cap on what a swarm may spend
 	{"plugins", "enabled", "*"}, // turning a plugin on (an installed one runs code); turning one off is not risky (harmlessValue)
 }
 
