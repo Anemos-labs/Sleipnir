@@ -79,6 +79,31 @@ func ResumedAsTeam(home, root, spec string) (team, known bool) {
 	return inspectLog(dir).swarm, true
 }
 
+// LastStart is what the latest session.start of the session in dir says it ran with: the verify command (--verify) and the custom
+// team (nil: the default team, or a single agent). A /restart that changes them starts the session again in the same log, so the
+// latest record, not the first, is what a resume continues.
+type LastStart struct {
+	Verify string
+	Team   []TeamSlot
+}
+
+// LatestStart reads the latest session.start of the session log in dir (the zero LastStart when there is none).
+func LatestStart(dir string) LastStart {
+	var ls LastStart
+	scanHead(dir, func(e events.Event) bool {
+		if e.Type == events.TypeSessionStart {
+			var d struct {
+				Verify string     `json:"verify"`
+				Team   []TeamSlot `json:"team"`
+			}
+			_ = json.Unmarshal(e.Data, &d)
+			ls = LastStart{Verify: d.Verify, Team: d.Team}
+		}
+		return true
+	})
+	return ls
+}
+
 // checkResumable refuses a session that cannot be continued, in words that say why.
 func checkResumable(dir string) (string, error) {
 	li := inspectLog(dir)
@@ -132,7 +157,6 @@ type logInfo struct {
 	isolated bool            // the team worked in git worktrees
 	recovery bool            // the log fixes the original isolation base and mode
 	snaps    map[string]bool // the agents that saved a snapshot
-	team     []TeamSlot      // the custom team composition the session was started with (nil: the default)
 }
 
 // resumable requires a primary snapshot and any necessary isolation metadata.
@@ -154,13 +178,12 @@ func inspectLog(dir string) logInfo {
 			if !started {
 				started = true
 				var d struct {
-					Root      string     `json:"root"`
-					Swarm     bool       `json:"swarm"`
-					Isolation string     `json:"isolation"`
-					Team      []TeamSlot `json:"team"`
+					Root      string `json:"root"`
+					Swarm     bool   `json:"swarm"`
+					Isolation string `json:"isolation"`
 				}
 				_ = json.Unmarshal(e.Data, &d)
-				li.root, li.swarm, li.isolated, li.team = d.Root, d.Swarm, d.Isolation != "", d.Team
+				li.root, li.swarm, li.isolated = d.Root, d.Swarm, d.Isolation != ""
 			}
 		case events.TypeAgentSnapshot:
 			li.snaps[e.Agent] = true

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -638,5 +639,29 @@ func TestResumeKeepsThePermissionsTheSessionHad(t *testing.T) {
 	defer s3.Close()
 	if s3.Perm.Mode() != perm.ModePlan {
 		t.Errorf("a mode on the new command line: %v", s3.Perm.Mode())
+	}
+}
+
+// A /restart starts the session again in the same log: what the latest session.start records (the verify command, the team's slots)
+// is what a resume continues, not what the first one recorded.
+func TestLatestStartIsTheLastRecordedStart(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "20260101-000000-aaaaaa")
+	l, err := events.Open(dir, filepath.Base(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.Emit("", events.TypeSessionStart, map[string]any{"swarm": true, "team": []session.TeamSlot{{Role: "backend"}, {Role: "tester"}}})
+	l.Emit("mgr", events.TypeAgentSnapshot, map[string]any{"blob": "x"})
+	l.Emit("", events.TypeSessionStart, map[string]any{"swarm": true, "verify": "sh gate.sh", "resumed": true,
+		"team": []session.TeamSlot{{Role: "backend", Model: "p/x"}, {Role: "tester"}}})
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	got := session.LatestStart(dir)
+	if want := []session.TeamSlot{{Role: "backend", Model: "p/x"}, {Role: "tester"}}; got.Verify != "sh gate.sh" || !slices.Equal(got.Team, want) {
+		t.Errorf("LatestStart = %+v, want the second start's verify command and team", got)
+	}
+	if got := session.LatestStart(t.TempDir()); got.Verify != "" || got.Team != nil {
+		t.Errorf("LatestStart of a directory with no log = %+v", got)
 	}
 }
