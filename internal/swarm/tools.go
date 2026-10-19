@@ -490,6 +490,7 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 			if err := s.Board.Accept(me, task.ID, in.Text, taskGateCheck(task), poolComplete, s.poolCurrent, s.noteAcceptedCheck(task)); err != nil {
 				return tools.Errorf("%v", err)
 			}
+			s.wakeBlockedOn(task.ID)
 			return text("%s pool result accepted", task.ID)
 		}
 		if task.Kind == TaskKindPlan {
@@ -499,6 +500,7 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 			if err := s.Board.Accept(me, task.ID, in.Text, taskGateCheck(task), s.noteAcceptedCheck(task)); err != nil {
 				return tools.Errorf("%v", err)
 			}
+			s.wakeBlockedOn(task.ID)
 			return text("%s agreement accepted; dependent work may start", task.ID)
 		}
 		empty := s.emptyWorkCheck(task, in.Text)

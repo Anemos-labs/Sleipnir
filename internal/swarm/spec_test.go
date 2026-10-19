@@ -1029,3 +1029,39 @@ func TestAcceptWakesTheWorkersBlockedOnIt(t *testing.T) {
 		t.Fatalf("the blocked worker got %d wake-ups, want 1", n)
 	}
 }
+
+// Accepting a planning agreement wakes the workers blocked on it too.
+func TestAcceptingAnAgreementWakesTheWorkersBlockedOnIt(t *testing.T) {
+	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply {
+		if c.Agent == "be-1" && c.Assistants == 0 {
+			return rvReply{Tools: []rvToolCall{{"task", map[string]any{"action": "block", "id": "T2", "target": "T1", "text": "waits for the plan"}}}}
+		}
+		return rvReply{Text: "summary"}
+	})
+	r.sw.StartManager()
+	r.sw.Board.Restore(&Snapshot{Tasks: []Task{
+		{ID: "T1", Title: "plan the api", Role: "architect", Kind: TaskKindPlan, Status: StatusTodo},
+		{ID: "T2", Title: "users api", Role: "backend", Status: StatusTodo},
+	}})
+	if err := r.sw.Board.Claim("ar-1", "T1"); err != nil {
+		t.Fatal(err)
+	}
+	plan, _ := r.sw.Board.Snapshot().Task("T1")
+	if err := r.sw.Board.submitAgreementAt("ar-1", "T1", plan.Rev, "planned", "read-only planning", "routes: /users"); err != nil {
+		t.Fatal(err)
+	}
+	worker, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: "T2", By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, "T2 blocked on T1", func() bool {
+		t2, _ := r.sw.Board.Snapshot().Task("T2")
+		return t2.Status == StatusBlocked && t2.BlockedOn == "T1" && r.idle(worker)
+	})
+	if res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "accept", "id": "T1", "text": "agreed"}); res.IsError {
+		t.Fatalf("accept: %s", res.Text)
+	}
+	if n := mailSent(r, "T1, which T2 waits on, is accepted"); n != 1 {
+		t.Fatalf("the blocked worker got %d wake-ups, want 1", n)
+	}
+}
