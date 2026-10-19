@@ -2087,6 +2087,7 @@ func (t *webTab) meta() wire.MetaPatch {
 	m.Team = &team
 	m.TrustProject = ptr(o.TrustProject)
 	m.NoMcp = ptr(o.NoMCP)
+	m.NoMemory = ptr(o.NoMemory)
 	rm := map[string]string{}
 	for k, v := range o.RoleModels {
 		rm[k] = v

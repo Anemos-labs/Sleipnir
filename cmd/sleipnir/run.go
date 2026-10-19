@@ -89,6 +89,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	capture := fs.Bool("capture", false, "ask the endpoint for token ids and logprobs (self-hosted policy servers; RL data)")
 	noWeb := fs.Bool("no-web", false, "disable the web tools")
 	noMCP := fs.Bool("no-mcp", false, "start no MCP tool servers")
+	noMemory := fs.Bool("no-memory", false, noMemoryHelp)
 	resume := resumeFlags(fs)
 	roleFlag := &roleModelFlag{}
 	fs.Var(roleFlag, "role-model", roleModelHelp)
@@ -149,7 +150,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 		Cwd:        *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: team, Workers: workers,
 		MaxSteps: *maxSteps, FixedSteps: *maxSteps > 0, BudgetUSD: *budget, Verify: *verify, NoRecon: *noRecon, TrustProject: *trust,
 		Dir: *dir, ContextWindow: *ctxWin, CaptureTokens: *capture, NoWeb: *noWeb, RoleModels: roleModels,
-		Resume: spec, NoMCP: *noMCP, Isolation: *isolation, Commit: *commit, Mailman: mailman(), Allow: expandAllow(*allow),
+		Resume: spec, NoMCP: *noMCP, NoMemory: *noMemory, Isolation: *isolation, Commit: *commit, Mailman: mailman(), Allow: expandAllow(*allow),
 		AutoDocs: autoDocs(), ManagerApproves: managerApproves(), Team: teamSlots, DefaultTeam: true,
 	}
 	if interactive {
@@ -454,6 +455,9 @@ func managerApprovesFlag(fs *flag.FlagSet) func() *bool {
 }
 
 // roleModelHelp is the help of --role-model.
+// noMemoryHelp is the help of --no-memory.
+const noMemoryHelp = "start without the global memory: the notes in ~/.sleipnir/MEMORY.md are neither shown to the agents nor saved"
+
 const roleModelHelp = "role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)"
 
 // finishRun ends an isolated run (see session.Session.Finish) even when the run was

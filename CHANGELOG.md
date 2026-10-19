@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `--no-memory` (`chat`, `run`, and `web` for its new sessions; a checkbox of
+  the New session dialog) starts a session without the global memory: the
+  notes in `~/.sleipnir/MEMORY.md` are not loaded into the shared layer, and
+  the `memory` tool, still in the tool list, answers that the memory is off.
+  Session metadata gains `noMemory`. Prompt bytes: none change for a session
+  with the memory; one without it lacks the notes in its shared layer.
+
 - The `judge` role (`--role-model judge=M`, `models.roles.judge`, `/roles
   judge=M`) names the model a standing goal is judged on; without it the
   session's model judges, as before. With a judge model that is not the

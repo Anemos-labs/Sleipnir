@@ -281,6 +281,8 @@ Usage of chat:
         no animation: the spinner stands still, and nothing sweeps, folds or flashes (also SLEIPNIR_ANIM=0, REDUCE_MOTION=1 and NO_COLOR)
   -no-mcp
         start no MCP tool servers
+  -no-memory
+        start without the global memory: the notes in ~/.sleipnir/MEMORY.md are neither shown to the agents nor saved
   -plain
         plain lines, as when the input or the output is not a terminal: no colour, no status line, no redrawing, approvals answered by the dialog's numbers or by y, a, t or n
   -resume string
@@ -424,6 +426,8 @@ flags:
         default model of new sessions: provider/model or a bare id for the default provider
   -no-mcp
         start no MCP tool servers in new sessions
+  -no-memory
+        new sessions start without the global memory: the notes in ~/.sleipnir/MEMORY.md are neither shown to the agents nor saved
   -open
         open the page in the default browser, with a link that works once for 30 seconds (the run token stays out of the opener's arguments)
   -project value
@@ -520,6 +524,8 @@ flags:
         model: provider/model or a bare id for the default provider (default: config models.default)
   -no-mcp
         start no MCP tool servers
+  -no-memory
+        start without the global memory: the notes in ~/.sleipnir/MEMORY.md are neither shown to the agents nor saved
   -no-recon
         do not survey the project into the shared prompt layer
   -no-web

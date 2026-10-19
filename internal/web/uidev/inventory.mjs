@@ -293,7 +293,7 @@ function dialogInventory(SL, chatFlags) {
   /* a checkbox's text may hold markup of its own (a span that keeps a flag on one line): its text is what counts */
   const checks = [...ns.body.matchAll(/<label class="chk"><input type="checkbox" data-k="([A-Za-z]+)"[^>]*> ([\s\S]*?)<\/label>/g)].map(m => m[1] + ' ' + m[2].replace(/<[^>]*>/g, '').trim());
   const full = { resume: '20260101-000000-abcdef', cwd: '/p', model: 'a/m', mode: 'plan', swarm: 8, autoDocs: false, managerApproves: false, isolation: 'worktree', verify: 'v', commit: true, mailman: true, mailmanDefault: false,
-    budget: '5', compactAt: 40, compactAtBase: 25, roleModels: { backend: 'a/w' }, rules: ['tests'], trustProject: true, noMcp: true, goalText: '' };
+    budget: '5', compactAt: 40, compactAtBase: 25, roleModels: { backend: 'a/w' }, rules: ['tests'], trustProject: true, noMcp: true, noMemory: true, goalText: '' };
   const line = ui.dialogs.cliLine(full), lineOff = ui.dialogs.cliLine(Object.assign({}, full, { mailman: false, mailmanDefault: true }));
   /* the flags a control of the dialog sets: those its labels and checkboxes name, and a segmented control named after a flag (isolation) */
   const labelFlags = flagsIn(labels.join(' ') + ' ' + checks.join(' '));
@@ -322,7 +322,7 @@ function dialogInventory(SL, chatFlags) {
 }
 
 function runLineInventory(SL) {
-  const M = { model: 'a/m', mode: 'plan', swarm: 8, isolation: 'worktree', verify: 'v', budget: 5, commit: true, mailman: true, noMcp: true, trustProject: true };
+  const M = { model: 'a/m', mode: 'plan', swarm: 8, isolation: 'worktree', verify: 'v', budget: 5, commit: true, mailman: true, noMcp: true, noMemory: true, trustProject: true };
   const line = SL.toolkit.settings.runLine(M, {});
   return { line, flags: flagsIn(line) };
 }

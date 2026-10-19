@@ -210,6 +210,9 @@ func (s *Session) StartFlags() []string {
 	if o.NoMCP {
 		f = append(f, "--no-mcp")
 	}
+	if o.NoMemory {
+		f = append(f, "--no-memory")
+	}
 	if o.TrustProject {
 		f = append(f, "--trust-project")
 	}

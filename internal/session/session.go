@@ -203,6 +203,9 @@ type Options struct {
 	NoMCP bool
 	// Offline skips network lookups made for convenience (model catalogue).
 	Offline bool
+	// NoMemory starts the session without the global memory: the notes in ~/.sleipnir/MEMORY.md are not read, and the memory tool
+	// (still in the tool list, which never depends on the session) neither reads nor writes them (--no-memory).
+	NoMemory bool
 }
 
 // Session is a running assembly. Run may be called repeatedly; the agent (or
@@ -691,7 +694,7 @@ func (s *Session) buildShared(ctx context.Context) error {
 			segs = append(segs, rc.Segments...)
 		}
 	}
-	srcs, err := memory.Load(memory.Opts{Root: s.opts.Root, Cwd: s.opts.Cwd, Home: s.opts.Home})
+	srcs, err := memory.Load(memory.Opts{Root: s.opts.Root, Cwd: s.opts.Cwd, Home: s.opts.Home, NoNotes: s.opts.NoMemory})
 	if err != nil {
 		// Unreadable instruction files are reported, never fatal.
 		s.Log.Emit("", "notice", map[string]any{"level": "warn", "msg": "instruction files: " + err.Error()})
@@ -788,7 +791,11 @@ func (s *Session) build(ctx context.Context) error {
 	reg.Register(recall.New(archive))
 	// Always registered: the tool list must not depend on the project.
 	reg.Register(skilltool.New(s.Skills))
-	reg.Register(memtool.New(filepath.Join(o.Home, ".sleipnir", "MEMORY.md")))
+	if o.NoMemory {
+		reg.Register(memtool.Off())
+	} else {
+		reg.Register(memtool.New(filepath.Join(o.Home, ".sleipnir", "MEMORY.md")))
+	}
 	plans := plan.NewStore() // each agent's plan: the plan tool sets it, the hot tail shows it back (internal/plan)
 	s.plans = plans
 	reg.Register(plantool.New(plans))
