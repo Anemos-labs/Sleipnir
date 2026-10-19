@@ -163,14 +163,6 @@
       "reason": "resets the Radio rail's width; the layout of this browser's page"
     },
     {
-      "item": "browser:look.do:dash-edit",
-      "reason": "unlocks the Cockpit's cards to move, resize, add and remove them; the Cockpit is a dashboard of this browser's page, kept in localStorage, and the terminal's chat program lays out its panels itself"
-    },
-    {
-      "item": "browser:look.do:dash-reset",
-      "reason": "puts back the Cockpit's default layout of cards; the layout of this browser's page, kept in localStorage"
-    },
-    {
       "item": "state:roles.seg:effort",
       "reason": "the reasoning effort of the session; the terminal has /effort, and no configuration key holds it"
     },
@@ -185,6 +177,34 @@
     {
       "item": "state:providers.prov*",
       "reason": "sign a stored provider key out, or show the command that signs one in: the key store (auth.json), which `sleipnir login` and `logout` edit; it is not configuration"
+    },
+    {
+      "item": "state:look.do:dash-edit",
+      "reason": "unlocks the Cockpit's cards to move, resize, add and hide them (every page of the web page has the same Customise button); the card layout of the web page, a file of its own (~/.sleipnir/web-layout.json, GET/PUT/DELETE /api/layout) that only the web page reads; the terminal's chat program lays out its panels itself"
+    },
+    {
+      "item": "state:look.do:dash-reset",
+      "reason": "puts back the Cockpit's default layout of cards; the card layout of the web page, a file of its own (~/.sleipnir/web-layout.json, GET/PUT/DELETE /api/layout) that only the web page reads; the terminal's chat program lays out its panels itself"
+    },
+    {
+      "item": "state:look.do:layout-export",
+      "reason": "saves the layout of every page as a JSON file, to move it to another machine; the card layout of the web page, a file of its own (~/.sleipnir/web-layout.json, GET/PUT/DELETE /api/layout) that only the web page reads; the terminal's chat program lays out its panels itself"
+    },
+    {
+      "item": "state:look.do:layout-import",
+      "reason": "replaces the layout of every page with one exported before; the card layout of the web page, a file of its own (~/.sleipnir/web-layout.json, GET/PUT/DELETE /api/layout) that only the web page reads; the terminal's chat program lays out its panels itself"
+    },
+    {
+      "item": "state:look.id:layoutFile",
+      "reason": "the file chooser of Import layout; the card layout of the web page, a file of its own (~/.sleipnir/web-layout.json, GET/PUT/DELETE /api/layout) that only the web page reads; the terminal's chat program lays out its panels itself"
+    },
+    {
+      "item": "state:look.do:layout-reset-all",
+      "reason": "puts back the default layout of every page, the header and the Radio rail; the card layout of the web page, a file of its own (~/.sleipnir/web-layout.json, GET/PUT/DELETE /api/layout) that only the web page reads; the terminal's chat program lays out its panels itself"
+    },
+    {
+      "item": "state:look.do:chrome-menu",
+      "reason": "hides widgets of the header and the status bar and collapses or hides the parts of the Radio rail; the terminal's header and footer are drawn by the chat program, and the layout is the card layout of the web page, a file of its own"
     }
   ],
   "gaps": []

@@ -131,10 +131,10 @@ test('the page: the Cockpit is a grid of its panels; unlocked, a focused card mo
   const cards = () => doc.querySelectorAll('.dcard').map(c => c.dataset.card);
   assert.deepEqual(cards(), ['hero', 'team', 'gantt', 'tasks', 'queue', 'mail', 'gov']);
   assert.ok($('.dcard[data-card="team"] .stall'), 'the stalls are in the team card');
-  assert.equal($('.dash').dataset.edit, '0'); assert.equal($('.dash-lock').getAttribute('aria-pressed'), 'false');
+  assert.equal($('.dash').dataset.arrange, '0'); assert.equal($('.dash-lock').getAttribute('aria-pressed'), 'false');
   assert.equal($('.dcard[data-card="gov"]').getAttribute('tabindex'), null, 'locked: the cards are not focus stops');
   $('.dash-lock').click(); await L.settle();
-  assert.equal($('.dash').dataset.edit, '1'); assert.equal($('.dash-lock').getAttribute('aria-pressed'), 'true'); assert.equal(SL.ui.dash.locked(), false);
+  assert.equal($('.dash').dataset.arrange, '1'); assert.equal($('.dash-lock').getAttribute('aria-pressed'), 'true'); assert.equal(SL.ui.dash.locked(), false);
   assert.equal($('.dash-add').hidden, false);
   const gov = L.focus('.dcard[data-card="gov"]');
   const e = L.press('left'); await L.settle(); assert.ok(e.defaultPrevented);
@@ -146,7 +146,7 @@ test('the page: the Cockpit is a grid of its panels; unlocked, a focused card mo
   L.focus('.dcard[data-card="gov"]'); L.press('delete'); await L.settle();
   assert.ok(!cards().includes('gov')); assert.ok(!JSON.parse(L.store.get(SL.dash.KEY)).cards.some(c => c.id === 'gov'));
   assert.equal(L.posts.length, 0, 'arranging cards sends nothing to the server');
-  $('.dash-lock').click(); await L.settle(); assert.equal($('.dash').dataset.edit, '0');
+  $('.dash-lock').click(); await L.settle(); assert.equal($('.dash').dataset.arrange, '0');
   /* the next page load reads the layout back */
   const L2 = await boot({ storage: { [SL.dash.KEY]: L.store.get(SL.dash.KEY) } });
   assert.deepEqual(L2.doc.querySelectorAll('.dcard').map(c => c.dataset.card), ['hero', 'team', 'gantt', 'tasks', 'queue', 'mail']);

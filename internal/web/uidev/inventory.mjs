@@ -246,7 +246,7 @@ export const SETTING_MAP = [
   [/^seg:(hover|motion|density|cache|title|notify|navmode|radiomode)$/, { scope: 'browser' }],
   [/^id:notifySec$/, { scope: 'browser', note: 'after how many seconds a waiting question is notified, kept in this browser' }],
   [/^do:railreset$/, { scope: 'browser' }],
-  [/^do:dash-(edit|reset)$/, { scope: 'browser', note: 'the layout of the Cockpit\'s cards, kept in this browser' }],
+  [/^do:(dash-(edit|reset)|layout-(export|import|reset-all)|chrome-menu)$|^id:layoutFile$/, { scope: 'state', note: 'the card layout of every page (~/.sleipnir/web-layout.json through /api/layout, cached in this browser), not configuration' }],
   [/^do:tour$/, { scope: 'view' }],
 ];
 

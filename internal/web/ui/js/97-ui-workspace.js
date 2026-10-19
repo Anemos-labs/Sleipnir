@@ -139,14 +139,16 @@
   /* ================================================================ the view ======================================================== */
 
   function mount(sc, root, params, S0) {
-    const W = wsOf(S0); if (params && params.tab) W.tab = params.tab; if (params && params.file) { W.file = params.file; W.view = 'diff'; }
-    root.innerHTML = '<div class="wsv" data-tab="' + esc(W.tab) + '">' +
+    const W = wsOf(S0); if (params && params.tab && !params.__only) W.tab = params.tab; if (params && params.file) { W.file = params.file; W.view = 'diff'; }
+    /* the cards of the tab's page (83b-ui-dash.js): the four panels, laid out for each tab of its own */
+    const tabKey = t => (SL.dash.PAGES[t] ? t : 'files'), DP = ui.dash.page(sc, root, S0, tabKey(W.tab), params); root.querySelector('.wsv').dataset.tab = W.tab;
+    DP.fill({ 'ws.bar':
       '<section class="panel ws-bar" aria-label="Workspace controls"><div class="ws-tabs seg" role="tablist" aria-label="Workspace"><button type="button" role="tab" data-tab="files">Files</button><button type="button" role="tab" data-tab="changes">Changes</button><button type="button" role="tab" data-tab="checkpoints">Checkpoints</button><button type="button" role="tab" data-tab="merge">Merge</button></div>' +
       '<div class="ws-tt" style="flex-basis:200px"><label class="lab" for="wsScrub">time travel</label><div class="ws-scr"><input id="wsScrub" class="scrub" type="range" min="0" max="1" step="1" value="1" aria-label="Time travel across checkpoints: the project as it was at one of them"><div class="ws-ticks" aria-hidden="true"></div></div><span class="ws-at num"></span><button class="btn sm ws-live" type="button">● live</button></div>' +
-      '<div class="ws-sum"></div></section>' +
-      '<section class="panel ws-left" aria-label="Files, changes and checkpoints"><div class="ph"><h2 class="ws-lh">Files</h2><div class="r ws-lr"></div></div><div class="ws-ctl"></div><div class="ws-list" role="group"></div></section>' +
-      '<section class="panel ws-main" aria-label="The selected file"><div class="ws-fh"></div><div class="ws-note" hidden></div><div class="ws-body" tabindex="0"></div></section>' +
-      '<section class="panel ws-strip" aria-label="Verify and merge"></section></div>';
+      '<div class="ws-sum"></div></section>',
+      'ws.left': '<section class="panel ws-left" aria-label="Files, changes and checkpoints"><div class="ph"><h2 class="ws-lh">Files</h2><div class="r ws-lr"></div></div><div class="ws-ctl"></div><div class="ws-list" role="group"></div></section>',
+      'ws.main': '<section class="panel ws-main" aria-label="The selected file"><div class="ws-fh"></div><div class="ws-note" hidden></div><div class="ws-body" tabindex="0"></div></section>',
+      'ws.strip': '<section class="panel ws-strip" aria-label="Verify and merge"></section>' });
     const q = s => $(s, root), left = q('.ws-list'), ctl = q('.ws-ctl'), fh = q('.ws-fh'), note = q('.ws-note'), body = q('.ws-body'), strip = q('.ws-strip'), scrub = q('#wsScrub'), ticks = q('.ws-ticks'), at = q('.ws-at'), live = q('.ws-live'), sum = q('.ws-sum');
     const H = { typed: false, sig: {} };
 
@@ -452,7 +454,7 @@
       return [c.S.id, c.I && c.I.key, W2.tab, c.k, W2.cp, W2.mode, W2.view, W2.group, W2.q, W2.changed, W2.unreviewed, W2.task, W2.file, W2.mview, W2.mtask, W2.mattempt, W2.wt, W2.cpMore, W2.tab === 'merge' ? Math.floor(c.S.vt) : '', JSON.stringify(W2.closed), c.mk && c.mk.stamp, tk, c.pends && c.pends.map(p => p.path + p.text.length).join(','), SL.G ? SL.G.ver : 0, extra].join('|');
     }
     function paint() {
-      const c = ctx(), S = c.S, W2 = c.W; const wsv = q('.wsv'); wsv.dataset.tab = W2.tab;
+      const c = ctx(), S = c.S, W2 = c.W; DP.setPage(tabKey(W2.tab)); const wsv = q('.wsv'); wsv.dataset.tab = W2.tab;
       $$('.ws-tabs [data-tab]', root).forEach(b => { b.setAttribute('aria-selected', String(b.dataset.tab === W2.tab)); b.setAttribute('aria-pressed', String(b.dataset.tab === W2.tab)); });
       if (!c.I) return paintDerived(c);
       const sg = sigOf(c, c.m.qHead ? c.m.qHead.task + c.m.qHead.step : '') + '|' + c.m.merged.length + c.m.conflicts + c.m.bounced + '|' + c.m.qs.filter(x => !x.answered).length + '|' + S.meta.verify + '|' + (S._wsd.merge.queue ? S._wsd.merge.queue.at : 0) + '|' + (S._wsd.merge.worktrees ? S._wsd.merge.worktrees.at : 0) + '|' + Object.keys(S._wsd.merge).map(k => S._wsd.merge[k].at).join(',');
