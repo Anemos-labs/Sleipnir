@@ -248,12 +248,11 @@
   /** The order a single column shows the cards in: by row, then column. */
   const order = L => visible(L).slice().sort((a, b) => a.y - b.y || a.x - b.x);
   /** The layout with card id one place earlier (d = -1) or later (d = 1) in the order of a single column: it trades places with its
-   *  neighbour. */
+   *  neighbour, and the one of the two that goes up keeps its new place (the other is pushed under it when they are of different sizes). */
   function swap(L, id, d) {
     const o = order(L), i = o.findIndex(c => c.id === id), j = i + d; if (i < 0 || j < 0 || j >= o.length) return copy(L);
-    const a = o[i], b = o[j], A = { x: b.x, y: b.y }, B = { x: a.x, y: a.y };
-    if (d > 0) { B.y = A.y + Math.max(0, b.h - a.h); }   /* the card going down lands under its neighbour's new place */
-    return resolve(L.map(k => (k.id === a.id ? clampCard(Object.assign({}, k, A)) : k.id === b.id ? clampCard(Object.assign({}, k, d > 0 ? { x: B.x, y: Math.min(A.y, B.y) } : B)) : copy1(k))), a.id);
+    const a = o[i], b = o[j], up = d > 0 ? b : a;
+    return resolve(L.map(k => (k.id === a.id ? clampCard(Object.assign({}, k, { x: b.x, y: b.y })) : k.id === b.id ? clampCard(Object.assign({}, k, { x: a.x, y: a.y })) : copy1(k))), up.id);
   }
   /** The layout with card id h rows tall because its content is (the person did not size it): taller pushes what is under it down,
    *  shorter lets what was under it come up as far as it can, by the same amount. */
@@ -629,7 +628,9 @@
       sc.listen(grid, 'keydown', e => {
         if (D.locked) return; const el = e.target; if (!el.classList || !el.classList.contains('dcard')) return; const id = el.dataset.card;
         if (e.key === 'Delete') { e.preventDefault(); hideCard(id); return; }
-        const next = keyOp(inst.L, id, e.key, e.shiftKey, stacked()); if (!next) return; e.preventDefault(); e.stopPropagation();
+        const next = keyOp(inst.L, id, e.key, e.shiftKey, stacked());
+        if (!next) { if (/^Arrow/.test(e.key)) { e.preventDefault(); e.stopPropagation(); } return; }   /* an arrow on a card is the card's, also where it does nothing (a single column) */
+        e.preventDefault(); e.stopPropagation();
         if (!same(next, inst.L)) { const was = inst.L.find(k => k.id === id); commit(was && auto(was) && e.shiftKey && e.key.match(/Up|Down/) ? setOpt(next, id, 'size', 'fixed') : next); const c = inst.L.find(k => k.id === id); say(title(id) + ': column ' + (c.x + 1) + ', row ' + (c.y + 1) + ', ' + c.w + ' by ' + c.h); if (stacked()) focusCard(id); }
       });
       /* pointer: drag to move, the edges to resize; the grid follows while the pointer moves */

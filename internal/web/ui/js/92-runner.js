@@ -151,7 +151,8 @@
   function mount(sc, root, params, S0) {
     const P = SL.ui.dash.page(sc, root, S0 || SL.sessions.active, 'runner', params);
     if (!cmds().length) {   // the command list comes with the server's spec: until it is here there is nothing to build a form from
-      P.fill({ 'runner.list': '<section class="panel rv-list"><div class="ph"><h2>Commands</h2></div><p class="stubnote" style="padding:10px 12px;margin:0">The command list is not loaded yet.</p></section>' });
+      const wait = (cls, h) => '<section class="panel ' + cls + '"><div class="ph"><h2>' + h + '</h2></div><p class="stubnote" style="padding:10px 12px;margin:0">The command list is not loaded yet.</p></section>';
+      P.fill({ 'runner.list': wait('rv-list', 'Commands'), 'runner.form': wait('rv-form', 'Run'), 'runner.out': wait('rv-out', 'Output') });
       sc.update(() => { if (cmds().length && P.home) SL.views.show('runner', params); }); return;
     }
     const st = { c: find(params.path || ['sessions', 'prune']) || cmds()[0], pos: {}, flags: {}, q: '', keep: false, out: null, t0: 0 };
