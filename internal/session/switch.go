@@ -117,8 +117,8 @@ type RoleModel struct {
 }
 
 // RoleModels says which model each role runs on, in the order the precedence reads: the session's own, then each swarm role (flags beat an agent
-// definition, which beats models.roles), then the compactor and the judge. In a single-agent session only the default, the compactor and the
-// judge apply.
+// definition, which beats models.roles), then the compactor, the judge and the lesson memory's models. In a single-agent session only the default and these
+// apply.
 func (s *Session) RoleModels() []RoleModel {
 	def := s.modelRef
 	if def == "" {
@@ -172,7 +172,20 @@ func (s *Session) RoleModels() []RoleModel {
 	case s.cfg.Models.Roles[JudgeRole] != "":
 		judge.Model, judge.From = s.cfg.Models.Roles[JudgeRole], "models.roles"
 	}
-	return append(out, comp, judge)
+	out = append(out, comp, judge)
+	for _, role := range []string{EmbedderRole, RerankerRole} {
+		if ref := s.roleRef(role); ref != "" {
+			from := "models.roles"
+			if s.opts.RoleModels[role] != "" {
+				from = "--role-model"
+			}
+			if s.opts.NoMemory {
+				from += "; unused, the session has no global memory"
+			}
+			out = append(out, RoleModel{role, ref, from})
+		}
+	}
+	return out
 }
 
 // StartFlags are the `sleipnir chat` flags that reproduce this session's shape (a team and its size, the verifier, isolation, tool servers, trust,

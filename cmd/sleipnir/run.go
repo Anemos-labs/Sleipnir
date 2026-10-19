@@ -454,11 +454,11 @@ func managerApprovesFlag(fs *flag.FlagSet) func() *bool {
 	}
 }
 
-// roleModelHelp is the help of --role-model.
 // noMemoryHelp is the help of --no-memory.
-const noMemoryHelp = "start without the global memory: the notes in ~/.sleipnir/MEMORY.md are neither shown to the agents nor saved"
+const noMemoryHelp = "start without the global memory: the notes in ~/.sleipnir/MEMORY.md and the lesson memory are neither shown to the agents nor saved"
 
-const roleModelHelp = "role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)"
+// roleModelHelp is the help of --role-model.
+const roleModelHelp = "role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… turns the lesson memory on, reranker=… orders what it finds). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)"
 
 // finishRun ends an isolated run (see session.Session.Finish) even when the run was
 // cancelled: what passed verification is applied, not thrown away. It returns nil for

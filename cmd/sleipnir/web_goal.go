@@ -88,7 +88,7 @@ func goalCommandTo(s *session.Session, gp **goal.State, arg string, out io.Write
 	if len(ng.Milestones) > 0 {
 		fmt.Fprintf(out, "%d milestones, each ruled on by the judge%s\n", len(ng.Milestones), specNote(ng))
 	}
-	return goal.Start(*gp)
+	return s.GoalStart(context.Background(), *gp)
 }
 
 // specNote is ", from the goal and SPEC" for a goal with a spec file, "" otherwise.
@@ -166,6 +166,7 @@ func cloneGoal(g *goal.State) *goal.State {
 	}
 	c := *g
 	c.Milestones = slices.Clone(g.Milestones) // the judge's rulings change them in place (goal.State.Reconcile)
+	c.Lessons, c.Verdicts = slices.Clone(g.Lessons), slices.Clone(g.Verdicts)
 	return &c
 }
 
@@ -195,13 +196,15 @@ func (g *goalLoop) Load(s *session.Session) {
 }
 
 // Set starts a goal prepared by goal.Prepare and returns the message of its first turn; its plan starts empty.
-func (g *goalLoop) Set(s *session.Session, st *goal.State) (string, error) {
+// The lesson memory, when the session has one, is asked first, so the lessons it shows are saved with the goal.
+func (g *goalLoop) Set(ctx context.Context, s *session.Session, st *goal.State) (string, error) {
 	if st == nil || st.Objective == "" {
 		return "", errEmptyGoal
 	}
 	s.ClearGoalPlan()
+	start := s.GoalStart(ctx, st)
 	g.set(s, st)
-	return goal.Start(st), nil
+	return start, nil
 }
 
 // Pause pauses the active goal, saying why.

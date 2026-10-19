@@ -566,3 +566,55 @@ func TestHTTPEmbedder(t *testing.T) {
 		t.Error("a key was sent over plain http to a remote host")
 	}
 }
+
+// fixedReranker scores a document by how many of the query's words it contains.
+type fixedReranker struct{ calls int }
+
+func (f *fixedReranker) Rerank(_ context.Context, query string, docs []string) ([]float64, error) {
+	f.calls++
+	out := make([]float64, len(docs))
+	for i, d := range docs {
+		for _, w := range strings.Fields(query) {
+			if strings.Contains(d, w) {
+				out[i]++
+			}
+		}
+	}
+	return out, nil
+}
+
+// A reranker reorders the candidates and keeps k; without one the candidates keep their order.
+func TestRerankOrdersCandidatesAndKeepsK(t *testing.T) {
+	c := []Lesson{{ID: "a", Kind: Pitfall, Text: "unrelated"}, {ID: "b", Kind: Strategy, Text: "run the frontend build"}, {ID: "c", Kind: Strategy, Text: "frontend"}}
+	got, err := Rerank(context.Background(), &fixedReranker{}, "frontend build", c, 2)
+	if err != nil || len(got) != 2 || got[0].ID != "b" || got[1].ID != "c" {
+		t.Errorf("reranked %v %v", got, err)
+	}
+	if got, _ := Rerank(context.Background(), nil, "x", c, 2); len(got) != 2 || got[0].ID != "a" {
+		t.Errorf("without a reranker %v", got)
+	}
+}
+
+// The HTTP reranker sends the query and documents and reads the scores by index, with the reported cost.
+func TestHTTPRerankerReadsScoresByIndex(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Model, Query string
+			Documents    []string
+		}
+		if r.URL.Path != "/v1/rerank" || json.NewDecoder(r.Body).Decode(&in) != nil || in.Model != "rr" || in.Query != "q" || len(in.Documents) != 2 {
+			http.Error(w, "bad request", 400)
+			return
+		}
+		fmt.Fprint(w, `{"results":[{"index":1,"relevance_score":0.9},{"index":0,"relevance_score":0.1}],"usage":{"total_tokens":7,"cost":0.001}}`)
+	}))
+	defer srv.Close()
+	rr := NewHTTPReranker(srv.URL+"/v1", "", "rr", nil, srv.Client())
+	got, err := rr.Rerank(context.Background(), "q", []string{"x", "y"})
+	if err != nil || len(got) != 2 || got[0] != 0.1 || got[1] != 0.9 {
+		t.Fatalf("scores %v %v", got, err)
+	}
+	if u := rr.TakeUsage(); u.Requests != 1 || u.Cost != 0.001 {
+		t.Errorf("usage %+v", u)
+	}
+}

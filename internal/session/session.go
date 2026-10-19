@@ -228,6 +228,8 @@ type Session struct {
 	judgeP     provider.Provider
 	judgeModel cost.Model
 	judgeRef   string
+	// lessons is the lesson memory (buildLessons), nil when no embedder model is named or the session has no global memory.
+	lessons *lessonMemory
 
 	// team is the team the swarm was built with (Team).
 	team []TeamSlot
@@ -492,6 +494,10 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		s.Model.ContextTokens, s.Model.WindowGuessed = o.ContextWindow, false
 	}
 	if err := s.buildJudge(ctx); err != nil {
+		s.Log.Close()
+		return nil, err
+	}
+	if err := s.buildLessons(); err != nil {
 		s.Log.Close()
 		return nil, err
 	}
@@ -948,7 +954,7 @@ func (s *Session) build(ctx context.Context) error {
 		}
 		deps.RoleModels = map[string]swarm.RoleModel{}
 		for role, ref := range o.RoleModels {
-			if role == CompactorRole || role == JudgeRole {
+			if ServiceRole(role) {
 				continue
 			}
 			mr, err := ResolveModel(s.cfg, ref)
@@ -994,7 +1000,7 @@ func (s *Session) build(ctx context.Context) error {
 		sort.Strings(names)
 		for _, role := range names {
 			ref := s.cfg.Models.Roles[role]
-			if _, set := deps.RoleModels[role]; set || ref == "" || role == CompactorRole || role == JudgeRole {
+			if _, set := deps.RoleModels[role]; set || ref == "" || ServiceRole(role) {
 				continue
 			}
 			mr, err := ResolveModel(s.cfg, ref)
@@ -1105,6 +1111,16 @@ func (s *Session) buildCompactor(ctx context.Context, o Options) (provider.Provi
 // compactor it is not a swarm role: no agent has it. Without one the session's own model judges.
 const JudgeRole = "judge"
 
+// ServiceRole reports whether role names a model that serves the session rather than an agent of a team (the compactor, the judge
+// and the lesson memory's embedder and reranker): one a single-agent session can set too, and one no team role takes.
+func ServiceRole(role string) bool {
+	switch role {
+	case CompactorRole, JudgeRole, EmbedderRole, RerankerRole:
+		return true
+	}
+	return false
+}
+
 // buildJudge builds the model named for the judge (--role-model judge=M, else models.roles.judge), or nothing when none is named.
 func (s *Session) buildJudge(ctx context.Context) error {
 	ref := s.opts.RoleModels[JudgeRole]
@@ -1131,7 +1147,7 @@ func (s *Session) buildJudge(ctx context.Context) error {
 // named. (models.roles in the configuration is not checked this way: a file may serve
 // projects whose roles differ.)
 func (s *Session) checkRoleModels(overrides map[string]string) error {
-	known := map[string]bool{CompactorRole: true, JudgeRole: true}
+	known := map[string]bool{CompactorRole: true, JudgeRole: true, EmbedderRole: true, RerankerRole: true}
 	for name := range s.ext.roles {
 		known[name] = true
 	}

@@ -27,7 +27,7 @@ type roleEntry struct{ role, model string }
 // serviceRole reports whether role takes a model but is never a team slot: the manager, which leads the team, and the harness's
 // compactor, judge and mailman.
 func serviceRole(role string) bool {
-	return role == "manager" || role == session.CompactorRole || role == session.JudgeRole || role == swarm.MailmanRoleName
+	return role == "manager" || session.ServiceRole(role) || role == swarm.MailmanRoleName
 }
 
 // String renders the values as they were given.

@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The `embedder` and `reranker` roles (`models.roles`, `--role-model`) turn
+  on a lesson memory for standing goals: lessons from earlier goals, stored in
+  `~/.sleipnir/lessons.json`, are appended to a goal's first message, and new
+  ones are distilled when a goal ends. Without an `embedder` nothing changes.
+  `goal.State` gains `Lessons` and `Verdicts`; the log gains `lessons.retrieve`
+  and `lessons.learn`. Prompt bytes: a goal's first message gains the lessons
+  block when there are lessons to show; nothing else changes.
+
 - `--no-memory` (`chat`, `run`, and `web` for its new sessions; a checkbox of
   the New session dialog) starts a session without the global memory: the
   notes in `~/.sleipnir/MEMORY.md` are not loaded into the shared layer, and
