@@ -13,14 +13,32 @@ import (
 	"time"
 )
 
-// Author is the identity recorded on commits we create. Commits never depend on
-// the user's user.name/user.email (which may be unset in a container, or be the
-// human's, which agent commits must not impersonate).
+// Author is the identity recorded on commits we create. Commits never pick up
+// user.name/user.email implicitly (they may be unset in a container): a caller that
+// wants the person's identity reads it with UserIdentity and passes it.
 type Author struct {
 	Name  string
 	Email string
 	// When is the commit time; zero means now (the repository's clock).
 	When time.Time
+}
+
+// UserIdentity is the user.name and user.email the repository's configuration
+// gives (local, global or system), and whether both are set.
+func (r *Repo) UserIdentity(ctx context.Context) (Author, bool, error) {
+	var vals [2]string
+	for i, key := range []string{"user.name", "user.email"} {
+		out, err := r.run(ctx, call{args: []string{"config", "--get", key}, okExit: []int{1}})
+		if err != nil {
+			return Author{}, false, err
+		}
+		vals[i] = out.trimmed()
+	}
+	a := Author{Name: vals[0], Email: vals[1]}
+	if a.Name == "" || a.Email == "" || strings.ContainsAny(a.Name+a.Email, "\x00\n\r<>") {
+		return Author{}, false, nil
+	}
+	return a, true, nil
 }
 
 // DefaultAuthor identifies harness commits that name no agent.
