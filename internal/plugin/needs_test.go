@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // program writes a program named name into dir that prints "name 1.0" (and, given a marker, creates it) and returns its path.
@@ -293,5 +295,41 @@ func TestLocateFollowsAnAppBundleAndChecksTheVersion(t *testing.T) {
 	}
 	if st := CheckNeeds(env, []OwnedNeed{{Need: n}})[0]; st.Path != inner || st.Version != "Blender 1.0" {
 		t.Errorf("a refused file replaced the earlier record: %+v", st)
+	}
+}
+
+func TestCappedMarksOnlyOutputPastItsLimit(t *testing.T) {
+	exact := &capped{max: 4}
+	_, _ = exact.Write([]byte("ab"))
+	_, _ = exact.Write([]byte("cd"))
+	if exact.over || exact.buf.String() != "abcd" {
+		t.Errorf("output exactly at the limit: over=%v %q", exact.over, exact.buf.String())
+	}
+	_, _ = exact.Write([]byte("e"))
+	if !exact.over || exact.buf.String() != "abcd" {
+		t.Errorf("output past the limit: over=%v %q", exact.over, exact.buf.String())
+	}
+}
+
+func TestInstallStepDoesNotWaitForABackgroundChild(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake program is a shell script")
+	}
+	sleep, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Skip("no sleep program")
+	}
+	bin := t.TempDir() // the step's PATH: the script names sleep by its full path
+	if err := os.WriteFile(filepath.Join(bin, "spawner"), []byte("#!/bin/sh\n'"+sleep+"' 60 &\necho started\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	var out bytes.Buffer
+	err = runStep(context.Background(), NeedEnv{PATH: bin}, []string{"spawner"}, nil, &out)
+	if d := time.Since(start); d < stepWaitDelay/2 || d > stepWaitDelay+10*time.Second {
+		t.Errorf("the step waited %v for a background child holding its output", d)
+	}
+	if err != nil || !strings.Contains(out.String(), "started") {
+		t.Errorf("a command that exited 0 with a child still running: %v %q", err, out.String())
 	}
 }

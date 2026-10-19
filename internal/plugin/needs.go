@@ -750,7 +750,10 @@ func execStep(ctx context.Context, env NeedEnv, argv, vars []string, out io.Writ
 	cmd := exec.CommandContext(ctx, prog, argv[1:]...)
 	cmd.Env = append(append(os.Environ(), "PATH="+env.path()), vars...)
 	cmd.Stdout, cmd.Stderr = out, out
-	if err := cmd.Run(); err != nil {
+	// A program it started in the background can hold the output open after it
+	// exits or is cancelled; stop waiting for that output instead of hanging.
+	cmd.WaitDelay = stepWaitDelay
+	if err := cmd.Run(); err != nil && !(errors.Is(err, exec.ErrWaitDelay) && cmd.ProcessState.Success()) {
 		return fmt.Errorf("%s failed: %v", strings.Join(argv, " "), err)
 	}
 	return nil
@@ -774,6 +777,9 @@ func methodEnv(ctx context.Context, env NeedEnv, decl map[string][]string, out i
 		if err := execStep(ctx, env, argv, nil, got, false); err != nil {
 			return nil, fmt.Errorf("working out %s: %w (its output is not shown, as it can hold a credential: run it in a terminal to see why)", name, err)
 		}
+		if got.over {
+			return nil, fmt.Errorf("working out %s: %s printed more than %d bytes; set %s yourself and try again", name, strings.Join(argv, " "), envOutputMax, name)
+		}
 		value := ""
 		for _, line := range strings.Split(got.buf.String(), "\n") {
 			if v, ok := strings.CutPrefix(strings.TrimRight(line, "\r"), name+"="); ok {
@@ -789,19 +795,29 @@ func methodEnv(ctx context.Context, env NeedEnv, decl map[string][]string, out i
 	return vars, nil
 }
 
+// stepWaitDelay is how long an install command's output is waited for once
+// the command has exited or been cancelled.
+const stepWaitDelay = 5 * time.Second
+
 // envOutputMax is how much of a value command's output methodEnv reads.
 const envOutputMax = 64 << 10
 
 // capped keeps the first max bytes written to it and discards the rest, so a
-// command that prints without end neither fails nor grows memory.
+// command that prints without end neither fails nor grows memory; over
+// records that something was discarded.
 type capped struct {
-	buf bytes.Buffer
-	max int
+	buf  bytes.Buffer
+	max  int
+	over bool
 }
 
 // Write keeps what fits under the cap and reports every byte as written.
 func (c *capped) Write(p []byte) (int, error) {
-	if room := c.max - c.buf.Len(); room > 0 {
+	room := c.max - c.buf.Len()
+	if len(p) > room {
+		c.over = true
+	}
+	if room > 0 {
 		c.buf.Write(p[:min(len(p), room)])
 	}
 	return len(p), nil
