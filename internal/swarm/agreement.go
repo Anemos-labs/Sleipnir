@@ -109,10 +109,10 @@ func claimedCards(s *Snapshot, agent string, candidate *Task) string {
 func (s *Swarm) claimCheck(agent string, readOnly bool) TaskCheck {
 	check := s.scopeCheck(readOnly)
 	return func(snap *Snapshot, t Task) error {
-		if s.cfg.PersistentPools && t.Parent == "" && t.Pool == nil {
+		if s.cfg.PersistentPools && t.Parent == "" && t.Pool == nil && !t.Solo {
 			counts, _ := TeamCounts(s.cfg.Team)
 			if counts[t.Role] > 1 {
-				return fmt.Errorf("assign this parent with spawn so every pool member plans together")
+				return fmt.Errorf("assign this parent with spawn so every pool member plans together, or with spawn solo=true to give it to one member without the pool")
 			}
 		}
 		if check != nil {
