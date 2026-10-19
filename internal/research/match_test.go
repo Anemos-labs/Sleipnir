@@ -44,6 +44,12 @@ func TestMatchQuote(t *testing.T) {
 	if near == "" {
 		t.Fatal("a miss gave no nearby passage to copy from")
 	}
+	if ok, _ := matchQuote("It is unsafe for all production workloads today.", "safe for all production workloads"); ok {
+		t.Error("a quote matched inside a word of the page")
+	}
+	if ok, _ := matchQuote("It is safe for all production workloads today.", "safe for all production workloads"); !ok {
+		t.Error("a quote of whole words did not match")
+	}
 	for _, q := range []string{strings.Repeat("-", 25), "the ---------------------", "STORM … sources"} {
 		if ok, _ := matchQuote(page, q); ok {
 			t.Errorf("%q matched: too few letters and digits to be evidence", q)

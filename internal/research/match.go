@@ -116,10 +116,11 @@ func ellipsis(q string) []string {
 	return parts
 }
 
-// matchQuote reports whether quote appears in page, its elided parts in order, with at least minQuoteRunes letters and digits. On a miss, near is the passage of the page that
+// matchQuote reports whether quote appears in page as whole words, its elided parts in order, with at least minQuoteRunes letters and digits. On a miss, near is the passage of the page that
 // shares the longest run of the quote's first words, for the model to copy from.
 func matchQuote(page, quote string) (ok bool, near string) {
 	fp := foldText(page)
+	padded := " " + fp + " " // a part matches whole words: "safe for ..." is not found in "unsafe for ..."
 	parts := ellipsis(quote)
 	if len(parts) == 0 {
 		return false, ""
@@ -130,11 +131,11 @@ func matchQuote(page, quote string) (ok bool, near string) {
 		if fq == "" {
 			continue
 		}
-		i := strings.Index(fp[at:], fq)
+		i := strings.Index(padded[at:], " "+fq+" ")
 		if i < 0 {
 			return false, nearPassage(page, fp, fq)
 		}
-		at += i + len(fq)
+		at += i + len(fq) + 1 // the space after the part is the next part's leading one
 		matched += runes(fq)
 	}
 	// the letters and digits matched must be evidence themselves: punctuation or one common word proves nothing

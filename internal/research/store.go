@@ -418,6 +418,10 @@ func (s *Store) Update(slug string, fn func(r *Run) error) (*Run, error) {
 	}
 	r.Version++
 	if err := s.saveLocked(r); err != nil {
+		// nothing was written: the cached run must not keep a change the caller was told failed
+		var back Run
+		_ = json.Unmarshal(before, &back)
+		*r = back
 		return nil, err
 	}
 	return cloneRun(r), nil
