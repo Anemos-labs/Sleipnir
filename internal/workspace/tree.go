@@ -52,7 +52,7 @@ func (t *Tree) check() error {
 
 // author is the identity of commits made on behalf of this tree's agent.
 func (t *Tree) author() gitx.Author {
-	return gitx.Author{Name: t.Agent, Email: t.Agent + "@sleipnir.invalid", When: t.m.now()}
+	return t.m.agentAuthor(t.Agent)
 }
 
 // Head returns the commit the tree is on.
@@ -156,7 +156,7 @@ func (t *Tree) commitLocked(ctx context.Context, msg string) (string, error) {
 	if err := t.checkFileSizes(ctx); err != nil {
 		return "", err
 	}
-	sha, err := t.repo.CommitAll(ctx, msg, t.author())
+	sha, err := t.repo.CommitAll(ctx, t.m.withAgentTrailer(msg, t.Agent), t.author())
 	if err != nil {
 		return "", err
 	}
@@ -228,7 +228,7 @@ func (t *Tree) Update(ctx context.Context, ref string) (*Conflict, error) {
 			return nil, err
 		}
 	}
-	res, err := t.repo.Merge(ctx, gitx.MergeOptions{Ref: ref, Message: "Merge " + shortRef(ref) + " into " + t.Agent, Author: t.author()})
+	res, err := t.repo.Merge(ctx, gitx.MergeOptions{Ref: ref, Message: t.m.withAgentTrailer("Merge the work integrated so far ("+shortRef(ref)+")", t.Agent), Author: t.author()})
 	if err != nil {
 		return nil, err
 	}

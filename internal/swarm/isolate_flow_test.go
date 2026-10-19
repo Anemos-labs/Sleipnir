@@ -460,7 +460,7 @@ func TestCommitModeFastForwardsACleanCheckoutAndRefusesADirtyOne(t *testing.T) {
 		if st := gitOut(t, r.repo, "status", "--porcelain"); st != "" {
 			t.Fatalf("commit mode must leave a clean checkout, got:\n%s", st)
 		}
-		if log := gitOut(t, r.repo, "log", "--format=%an: %s", "-3"); !strings.Contains(log, "be-1: T1: edit a") {
+		if log := gitOut(t, r.repo, "log", "--format=%an: %s", "-3"); !strings.Contains(log, "be-1: Edit a") {
 			t.Fatalf("the agent's commit is not in history:\n%s", log)
 		}
 		if b := gitOut(t, r.repo, "branch", "--list", "sleipnir/*"); b != "" {
