@@ -28,6 +28,7 @@ var legacy = []struct {
 		}
 		return *c.Swarm.PushProgress, true
 	}},
+	{"tools.builtin_skills", BuiltinSkills, func(c *config.Config) (bool, bool) { return c.Tools.BuiltinSkills, true }},
 	{"permissions.manager_approves", ManagerApproves, func(c *config.Config) (bool, bool) {
 		if c.Permissions.ManagerApproves == nil {
 			return false, false

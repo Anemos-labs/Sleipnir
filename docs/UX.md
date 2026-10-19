@@ -24,6 +24,14 @@ inspection limit pauses the goal without certifying completion. A judge answer
 that is neither an evidence request nor a verdict is asked for again, twice at
 most; a third pauses the goal. `/goal` shows its state and plan.
 
+The judge runs on the session's model unless the `judge` role names one
+(`--role-model judge=provider/model`, `models.roles.judge`, or `/roles
+judge=provider/model`). With a judge model of its own, a "done" is checked a
+second time on the session's model before the goal is met: when that judgment
+disagrees, the agent is sent on with what it found missing. Only "done" is
+checked twice, so the second judgment costs a request at most once per claimed
+completion.
+
 Escape or Ctrl+C during a turn cancels it. `/goal pause` and `/goal clear`
 interrupt first, then update goal state after the running turn has stopped.
 `/goal resume` continues a paused goal. `/exit` cancels active work and exits.

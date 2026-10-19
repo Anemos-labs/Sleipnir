@@ -221,6 +221,11 @@ type Session struct {
 	// judge used one, under mu.
 	judgeListUSD float64
 	judgePlan    bool
+	// judgeP and judgeModel are the model a standing goal is judged on when the judge role names one (buildJudge), judgeRef its
+	// provider/model; judgeP is nil when none is named and the session's own model judges.
+	judgeP     provider.Provider
+	judgeModel cost.Model
+	judgeRef   string
 
 	// team is the team the swarm was built with (Team).
 	team []TeamSlot
@@ -501,6 +506,10 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	}
 	if o.ContextWindow > 0 {
 		s.Model.ContextTokens, s.Model.WindowGuessed = o.ContextWindow, false
+	}
+	if err := s.buildJudge(ctx); err != nil {
+		s.Log.Close()
+		return nil, err
 	}
 
 	// Hooks, then skills and role definitions, then permissions (which need the
@@ -980,7 +989,7 @@ func (s *Session) build(ctx context.Context) error {
 		}
 		deps.RoleModels = map[string]swarm.RoleModel{}
 		for role, ref := range o.RoleModels {
-			if role == CompactorRole {
+			if role == CompactorRole || role == JudgeRole {
 				continue
 			}
 			mr, err := ResolveModel(s.cfg, ref)
@@ -1026,7 +1035,7 @@ func (s *Session) build(ctx context.Context) error {
 		sort.Strings(names)
 		for _, role := range names {
 			ref := s.cfg.Models.Roles[role]
-			if _, set := deps.RoleModels[role]; set || ref == "" || role == CompactorRole {
+			if _, set := deps.RoleModels[role]; set || ref == "" || role == CompactorRole || role == JudgeRole {
 				continue
 			}
 			mr, err := ResolveModel(s.cfg, ref)
@@ -1133,12 +1142,37 @@ func (s *Session) buildCompactor(ctx context.Context, o Options) (provider.Provi
 	return p, s.describe(ctx, p, m), nil
 }
 
+// JudgeRole is the name under which models.roles and --role-model give the model a standing goal is judged on. Like the
+// compactor it is not a swarm role: no agent has it. Without one the session's own model judges.
+const JudgeRole = "judge"
+
+// buildJudge builds the model named for the judge (--role-model judge=M, else models.roles.judge), or nothing when none is named.
+func (s *Session) buildJudge(ctx context.Context) error {
+	ref := s.opts.RoleModels[JudgeRole]
+	if ref == "" {
+		ref = s.cfg.Models.Roles[JudgeRole]
+	}
+	if ref == "" {
+		return nil
+	}
+	mr, err := ResolveModel(s.cfg, ref)
+	if err != nil {
+		return fmt.Errorf("judge model %s: %w", ref, err)
+	}
+	p, m, err := s.clientFor(mr)
+	if err != nil {
+		return fmt.Errorf("judge model %s: %w", ref, err)
+	}
+	s.judgeP, s.judgeModel, s.judgeRef = p, s.describe(ctx, p, m), mr.String()
+	return nil
+}
+
 // checkRoleModels refuses a role model override for a role the session does not have:
 // it would never apply, and the person would believe a worker ran on the model they
 // named. (models.roles in the configuration is not checked this way: a file may serve
 // projects whose roles differ.)
 func (s *Session) checkRoleModels(overrides map[string]string) error {
-	known := map[string]bool{CompactorRole: true}
+	known := map[string]bool{CompactorRole: true, JudgeRole: true}
 	for name := range s.ext.roles {
 		known[name] = true
 	}

@@ -9,6 +9,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/hooks"
+	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/skills"
@@ -35,8 +36,14 @@ func (s *service) handleSkills(w http.ResponseWriter, r *http.Request) {
 		cat = tc.sess.Skills
 	} else {
 		var extra []skills.Extra
-		if e, err := builtin.Extra(session.StateRoot(home)); err == nil {
-			extra = append(extra, e)
+		on := true // the builtin-skills plugin (tools.builtin_skills is one of its layers)
+		if set, _, _, err := plugin.LoadSet(tc.cwd, tc.root, home, tc.trusted); err == nil {
+			on = set.On(plugin.BuiltinSkills) && set.On(plugin.Skills)
+		}
+		if on {
+			if e, err := builtin.Extra(session.StateRoot(home)); err == nil {
+				extra = append(extra, e)
+			}
 		}
 		cat, _ = skills.Discover(skills.Opts{Root: tc.root, Home: home, TrustProject: tc.trusted, Extra: extra})
 	}

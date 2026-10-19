@@ -320,6 +320,9 @@ type Tools struct {
 	WebAllowPrivate bool `json:"web_allow_private"`
 	// WebAllowHosts are hosts the web tools may always reach.
 	WebAllowHosts []string `json:"web_allow_hosts,omitempty"`
+	// BuiltinSkills offers the skills that ship with Sleipnir to the skill tool
+	// (skills.BuiltinNames). A skill of the same name elsewhere replaces one.
+	BuiltinSkills bool `json:"builtin_skills"`
 }
 
 // DefaultTimeout is DefaultTimeoutSec as a duration.
@@ -345,6 +348,7 @@ func Defaults() *Config {
 			MaxOutputChars:    24_000, // tools.DefaultLimits
 			DefaultTimeoutSec: 120,
 			MaxTimeoutSec:     600,
+			BuiltinSkills:     true,
 		},
 	}
 }

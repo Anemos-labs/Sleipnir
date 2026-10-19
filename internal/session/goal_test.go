@@ -9,9 +9,11 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/goal"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/session"
 )
@@ -329,5 +331,70 @@ func TestAGoalWithMilestonesIsMetOnlyWhenEachIsConfirmed(t *testing.T) {
 	}
 	if note, next := s2.GoalTurn(context.Background(), back, nil); !back.Done || next != "" || !strings.Contains(note, "goal met") {
 		t.Errorf("every milestone confirmed: note %q next %q done=%v", note, next, back.Done)
+	}
+}
+
+// A judge role runs the goal's judge on a model of its own, and its "done" is confirmed by a second judgment on the session's model:
+// while the two disagree the agent is sent on with what the confirmation found missing, and the goal is met when both find it met.
+func TestAJudgeModelsDoneIsConfirmedOnTheSessionsModel(t *testing.T) {
+	repo := newRepo(t)
+	var mu sync.Mutex
+	judgedBy := map[string]int{} // judgments per model
+	confirmations := 0
+	srv := mock.New(mock.Config{Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}}, func(c *mock.Call) mock.Reply {
+		if !strings.Contains(c.System, "You judge whether a coding agent") {
+			return mock.Reply{Text: "it builds"}
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		judgedBy[c.Model]++
+		if c.Model == "acme/judge" {
+			return mock.Reply{Text: `{"verdict":"done","reason":"the build passed (record 3)","left":[]}`}
+		}
+		if confirmations++; confirmations == 1 {
+			return mock.Reply{Text: `{"verdict":"continue","reason":"no test ran","left":["run go test"]}`}
+		}
+		return mock.Reply{Text: `{"verdict":"done","reason":"build and tests passed","left":[]}`}
+	})
+	ts := srv.Start()
+	t.Cleanup(ts.Close)
+	cfg := config.Defaults()
+	cfg.Providers = map[string]config.Provider{"gw": {BaseURL: ts.URL}}
+	o := session.Options{
+		Cwd: repo, Root: repo, Home: t.TempDir(), Dir: t.TempDir(), Config: cfg, Offline: true,
+		Model: "gw/acme/main", Mode: perm.ModeBypass, NoWeb: true, TrustProject: true,
+		RoleModels: map[string]string{session.JudgeRole: "gw/acme/judge"},
+	}
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var judge session.RoleModel
+	for _, r := range s.RoleModels() {
+		if r.Role == session.JudgeRole {
+			judge = r
+		}
+	}
+	if judge.Model != "gw/acme/judge" || judge.From != "--role-model" {
+		t.Errorf("the roles table says the judge runs on %+v", judge)
+	}
+	g := goal.New("make sure the project builds and its tests pass")
+	s.SaveGoal(g)
+	if _, err := s.Run(context.Background(), goal.Start(g)); err != nil {
+		t.Fatal(err)
+	}
+	note, next := s.GoalTurn(context.Background(), g, nil)
+	if g.Done || !strings.Contains(note, "a second judge did not confirm the goal is met: no test ran") || !strings.Contains(next, "missing: run go test") {
+		t.Fatalf("a disputed done: note %q next %q done=%v", note, next, g.Done)
+	}
+	if _, err := s.Run(context.Background(), next); err != nil {
+		t.Fatal(err)
+	}
+	if note, _ := s.GoalTurn(context.Background(), g, nil); !g.Done || note != "goal met: the build passed (record 3)" {
+		t.Errorf("an agreed done: note %q done=%v", note, g.Done)
+	}
+	if judgedBy["acme/judge"] != 2 || judgedBy["acme/main"] != 2 {
+		t.Errorf("judgments per model: %v", judgedBy)
 	}
 }

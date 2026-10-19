@@ -106,7 +106,7 @@ func TestSectionsMatchTheSpecifiedFields(t *testing.T) {
 	want := map[string][]string{
 		"Cache":       {"instruction_max_tokens", "shared_ttl", "min_layer_for_breakpoint", "compact_at_percent", "compact_threshold_tokens", "thread_soft_limit_tokens", "compaction_mode", "hot_max_tokens", "affinity_shards"},
 		"Swarm":       {"max_workers", "requests_per_minute", "max_concurrent_requests", "isolation", "mailman", "auto_docs", "push_progress", "budget_usd"},
-		"Tools":       {"max_output_chars", "default_timeout_sec", "max_timeout_sec", "web_allow_private", "web_allow_hosts"},
+		"Tools":       {"max_output_chars", "default_timeout_sec", "max_timeout_sec", "web_allow_private", "web_allow_hosts", "builtin_skills"},
 		"Models":      {"default", "roles", "favorites"},
 		"Permissions": {"mode", "allow", "ask", "deny", "roles", "manager_approves"},
 		"Provider":    {"dialect", "base_url", "api_key_env", "auth", "headers", "options", "allow_hosts", "allow_insecure_http"},

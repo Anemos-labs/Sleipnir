@@ -38,8 +38,11 @@ type extensions struct {
 const skillListingTokens = skills.DefaultListingTokens
 
 // builtinSkills is the skills directory of the skills shipped in the binary, written under the state directory of home. When it
-// cannot be written the session goes on without them and a warning says why.
-func builtinSkills(home string, warnings *[]string) []skills.Extra {
+// cannot be written the session goes on without them and a warning says why. With on false (the builtin-skills plugin off) there are none.
+func builtinSkills(home string, on bool, warnings *[]string) []skills.Extra {
+	if !on {
+		return nil
+	}
 	e, err := builtin.Extra(StateRoot(home))
 	if err != nil {
 		*warnings = append(*warnings, "skills: built-in skills unavailable: "+err.Error())
@@ -60,7 +63,7 @@ func (s *Session) loadExtensions() {
 	// nothing to load.
 	var extra []skills.Extra
 	if s.pluginOn(plugin.BuiltinSkills) {
-		extra = append(extra, builtinSkills(o.Home, &ext.warnings)...)
+		extra = append(extra, builtinSkills(o.Home, true, &ext.warnings)...)
 	}
 	for _, d := range s.externalDirs("skills") {
 		extra = append(extra, d)
