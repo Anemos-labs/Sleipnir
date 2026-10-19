@@ -17,6 +17,21 @@ they do not indicate whether a change has been released.
   line on commit messages also covers branch names, and so does the manager's
   isolation card (a few tokens each), written to the cache once.
 
+- The `embedder` and `reranker` roles (`models.roles`, `--role-model`) turn
+  on a lesson memory for standing goals: lessons from earlier goals, stored in
+  `~/.sleipnir/lessons.json`, are appended to a goal's first message, and new
+  ones are distilled when a goal ends. Without an `embedder` nothing changes.
+  `goal.State` gains `Lessons` and `Verdicts`; the log gains `lessons.retrieve`
+  and `lessons.learn`. Prompt bytes: a goal's first message gains the lessons
+  block when there are lessons to show; nothing else changes.
+
+- `--no-memory` (`chat`, `run`, and `web` for its new sessions; a checkbox of
+  the New session dialog) starts a session without the global memory: the
+  notes in `~/.sleipnir/MEMORY.md` are not loaded into the shared layer, and
+  the `memory` tool, still in the tool list, answers that the memory is off.
+  Session metadata gains `noMemory`. Prompt bytes: none change for a session
+  with the memory; one without it lacks the notes in its shared layer.
+
 - Commits the harness records describe the change instead of the run that
   made it. A worker's commit has the task's title as its subject (without a
   leading board id such as `T12:`), what the worker reported as its body, and

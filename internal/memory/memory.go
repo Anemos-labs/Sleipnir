@@ -142,6 +142,8 @@ type Opts struct {
 	// Home is the user's home directory. Empty means the current user's home
 	// directory (os.UserHomeDir); tests always set it.
 	Home string
+	// NoNotes leaves out ~/.sleipnir/MEMORY.md, the notes of the memory tool: a session started without the global memory.
+	NoNotes bool
 }
 
 // domain is a place instruction files may be read from. A file and everything it
@@ -204,7 +206,9 @@ func Load(opts Opts) ([]Source, error) {
 	defer ld.close()
 	if ld.user != nil {
 		ld.file(ld.user, "SLEIPNIR.md", ScopeUser, 0)
-		ld.file(ld.user, "MEMORY.md", ScopeUser, 0) // the notes the model saved with its memory tool (internal/tools/memtool)
+		if !opts.NoNotes {
+			ld.file(ld.user, "MEMORY.md", ScopeUser, 0) // the notes the model saved with its memory tool (internal/tools/memtool)
+		}
 	}
 	if ld.proj != nil {
 		for i, d := range ld.dirs {

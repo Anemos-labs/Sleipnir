@@ -322,7 +322,12 @@ func (s *Session) GoalJudged(ctx context.Context, g *goal.State, turnErr error) 
 	}
 	j.Judged, j.Verdict = true, v
 	reason := tools.SanitizeForTerminal(v.Reason)
-	switch g.Apply(v, worked) {
+	g.NoteVerdict(v)
+	action := g.Apply(v, worked)
+	if won, outcome, ok := goalOutcome(g, action); ok {
+		s.goalEnded(ctx, g, won, outcome)
+	}
+	switch action {
 	case goal.Stop:
 		return "goal met: " + reason, "", j
 	case goal.Pause:

@@ -120,6 +120,10 @@ func usedBy(tc *tabCtx) map[string]string {
 			who = "the compactor"
 		case session.JudgeRole:
 			who = "the goal judge"
+		case session.EmbedderRole:
+			who = "the lesson memory's embeddings"
+		case session.RerankerRole:
+			who = "the lesson memory's reranker"
 		}
 		item := who + " (" + rm.Model + ")"
 		if strings.Contains(out[prov], item) {
