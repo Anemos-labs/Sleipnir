@@ -283,7 +283,9 @@
   /** The Cockpit: a dashboard (ui.dash) of the panels above and of any view of the rail, with the mail arcs over it. */
   function mount(sc, root, params, S) {
     const workers = S.roster.filter(r => r.id !== 'mgr'), cx = { workers, rows: Math.max(2, Math.ceil(Math.max(workers.length, 8) / 4)), ST: {}, RC: null };
-    ui.dash.mount(sc, root, S, { hero: partHero(cx), team: partTeam(cx), gantt: partGantt(cx), tasks: partTasks(cx), queue: partQueue(cx), mail: partMail(cx), gov: partGov(cx) });
+    const parts = { hero: partHero(cx), team: partTeam(cx), gantt: partGantt(cx), tasks: partTasks(cx), queue: partQueue(cx), mail: partMail(cx), gov: partGov(cx) };
+    /* the page of cards (or, in a card of another page, the one panel asked for): each panel mounts in its card's own scope */
+    ui.dash.page(sc, root, S, 'cockpit', params).onCard((id, cs, body) => { if (parts[id]) parts[id](cs, body, S); });
     /* ---- mail arcs: transient, in this view's own layer, advanced by the view clock; they fly between the stalls of the team card ---- */
     const arcLayer = sc.layer('arcs'), arcSvg = sv('svg', { class: 'arcs', 'aria-hidden': 'true' }, arcLayer), arcs = [];
     function launchArc(from, to) {

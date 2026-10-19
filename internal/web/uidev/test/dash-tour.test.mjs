@@ -66,9 +66,16 @@ test('the default layout is the Cockpit: its seven panels, no overlap, inside 12
 test('a stored layout: read back as saved; another version, broken JSON, no storage or a throwing storage give the default', () => {
   const D = dash(), s = memStore();
   assert.deepEqual(plain(D.load(s)), plain(D.DEFAULT), 'nothing stored');
-  const mine = [{ id: 'gantt', x: 0, y: 0, w: 12, h: 5 }, { id: 'v:cache', x: 0, y: 5, w: 6, h: 9 }];
+  const mine = D.hide(D.add(D.move(D.DEFAULT, 'gov', 0, 0), 'v:cache'), 'mail');
   assert.equal(D.save(s, mine), true);
-  assert.deepEqual(plain(D.load(s)), mine);
+  assert.deepEqual(plain(D.load(s)), plain(mine));
+  assert.equal(JSON.parse(s.getItem(D.KEY)).version, D.VERSION, 'one document for every page');
+  assert.equal(D.save(s, D.defaults('cache'), 'cache'), true); assert.deepEqual(plain(D.load(s)), plain(mine), 'a page of its own does not touch the Cockpit');
+  assert.deepEqual(plain(D.load(s, 'cache')), plain(D.defaults('cache')));
+  assert.equal(D.save(s, mine.filter(c => c.id !== 'tasks')), true);
+  const back = D.load(s), t = back.find(c => c.id === 'tasks');
+  assert.ok(t && !t.hidden && t.w === 6 && t.h === 7 && noOverlap(D, D.visible(back)), 'a card of the page the list does not name (new in this version) comes where it fits');
+  s.setItem(D.KEY, JSON.stringify({ version: 1, pages: { cockpit: mine } })); assert.deepEqual(plain(D.load(s)), plain(D.DEFAULT), 'another version');
   s.setItem(D.KEY, JSON.stringify({ v: 0, cards: mine })); assert.deepEqual(plain(D.load(s)), plain(D.DEFAULT), 'an older version');
   s.setItem(D.KEY, '{not json'); assert.deepEqual(plain(D.load(s)), plain(D.DEFAULT), 'unreadable');
   assert.deepEqual(plain(D.load(null)), plain(D.DEFAULT), 'no storage');
@@ -131,10 +138,10 @@ test('the page: the Cockpit is a grid of its panels; unlocked, a focused card mo
   const cards = () => doc.querySelectorAll('.dcard').map(c => c.dataset.card);
   assert.deepEqual(cards(), ['hero', 'team', 'gantt', 'tasks', 'queue', 'mail', 'gov']);
   assert.ok($('.dcard[data-card="team"] .stall'), 'the stalls are in the team card');
-  assert.equal($('.dash').dataset.edit, '0'); assert.equal($('.dash-lock').getAttribute('aria-pressed'), 'false');
+  assert.equal($('.dash').dataset.arrange, '0'); assert.equal($('.dash-lock').getAttribute('aria-pressed'), 'false');
   assert.equal($('.dcard[data-card="gov"]').getAttribute('tabindex'), null, 'locked: the cards are not focus stops');
   $('.dash-lock').click(); await L.settle();
-  assert.equal($('.dash').dataset.edit, '1'); assert.equal($('.dash-lock').getAttribute('aria-pressed'), 'true'); assert.equal(SL.ui.dash.locked(), false);
+  assert.equal($('.dash').dataset.arrange, '1'); assert.equal($('.dash-lock').getAttribute('aria-pressed'), 'true'); assert.equal(SL.ui.dash.locked(), false);
   assert.equal($('.dash-add').hidden, false);
   const gov = L.focus('.dcard[data-card="gov"]');
   const e = L.press('left'); await L.settle(); assert.ok(e.defaultPrevented);
@@ -142,11 +149,16 @@ test('the page: the Cockpit is a grid of its panels; unlocked, a focused card mo
   assert.match(gov.style.gridColumn, /^9 \/ span 3$/);
   L.press('shift+down'); await L.settle();
   assert.equal(SL.ui.dash.layout().find(c => c.id === 'gov').h, 4);
-  const stored = JSON.parse(L.store.get(SL.dash.KEY)); assert.equal(stored.v, 1); assert.deepEqual(plain(stored.cards.find(c => c.id === 'gov')), { id: 'gov', x: 8, y: 15, w: 3, h: 4 });
+  const stored = JSON.parse(L.store.get(SL.dash.KEY)); assert.equal(stored.version, 2); assert.deepEqual(plain(stored.pages.cockpit.find(c => c.id === 'gov')), { id: 'gov', x: 8, y: 15, w: 3, h: 4 });
   L.focus('.dcard[data-card="gov"]'); L.press('delete'); await L.settle();
-  assert.ok(!cards().includes('gov')); assert.ok(!JSON.parse(L.store.get(SL.dash.KEY)).cards.some(c => c.id === 'gov'));
-  assert.equal(L.posts.length, 0, 'arranging cards sends nothing to the server');
-  $('.dash-lock').click(); await L.settle(); assert.equal($('.dash').dataset.edit, '0');
+  assert.ok(!cards().includes('gov')); assert.equal(JSON.parse(L.store.get(SL.dash.KEY)).pages.cockpit.find(c => c.id === 'gov').hidden, true, 'Delete hides: the card keeps its place');
+  assert.equal($('.dash-tray').hidden, false); assert.match($('.dash-tray').textContent, /Hidden 1/);
+  assert.equal(L.posts.filter(p => p.path === '/api/layout').length, 0, 'the server copy is sent once the person stops');
+  L.advance(800); await L.settle();
+  const puts = L.posts.filter(p => p.path === '/api/layout');
+  assert.equal(puts.length, 1, 'one request for the burst of changes'); assert.equal(puts[0].method, 'PUT');
+  assert.deepEqual(plain(puts[0].body), JSON.parse(L.store.get(SL.dash.KEY)), 'the server keeps what this browser keeps');
+  $('.dash-lock').click(); await L.settle(); assert.equal($('.dash').dataset.arrange, '0');
   /* the next page load reads the layout back */
   const L2 = await boot({ storage: { [SL.dash.KEY]: L.store.get(SL.dash.KEY) } });
   assert.deepEqual(L2.doc.querySelectorAll('.dcard').map(c => c.dataset.card), ['hero', 'team', 'gantt', 'tasks', 'queue', 'mail']);

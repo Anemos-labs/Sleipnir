@@ -177,30 +177,47 @@ The Board view's dependency graph draws every task when they fit its panel; othe
 on are one node (`✓ 118 merged`), a column taller than the panel is wrapped into several, and a graph that still does not fit is
 drawn at full size and scrolls. Two nodes never overlap.
 
-### The Cockpit's cards
+### Cards on every page
 
-The Cockpit is a grid of cards, twelve columns wide, whose rows fill the height of the view. Its default layout is the horse, the
-manager's card and the stalls on top, the gantt and the task board under them, and the merge queue, the latest mail and the
-governor in a short band. Every panel is a card, and so is every view of the left rail (the Workspace with its four tabs, Cache, Mail,
-Board, Replay, Sessions, Tools, Doctor, Schedule and Settings): a view in a card is drawn by the view's own code, has an `open ↗` to
-show it full size, and lays out for the card's width as it does for a narrow window.
+Every page is a grid of cards, twelve columns wide: the Cockpit, each tab of the Workspace (Files, Changes, Checkpoints, Merge),
+Cache, Mail, Board, Replay, Sessions, Tools, the command runner, Doctor, Schedule and each page of Settings. Every panel of a page is
+a card with a stable id (`cache.hit`, `settings.budget.cost`, `ws.main` ...), and its default layout is the arrangement the page had
+before it was customised. The Cockpit's rows fill the height of the view: the horse, the manager's card and the stalls on top, the
+gantt and the task board under them, and the merge queue, the latest mail and the governor in a short band. On the other pages a
+card is as tall as what it holds until it is sized by hand, and the cards under it close up when it gets shorter; the panes that
+fill a view (the mail list and its message, the runner, the file and its diff) keep the rows they are given.
 
-`Customise`, at the top right of the Cockpit, unlocks it; `Done` locks it again, and every page load starts locked. Unlocked, a
-card is moved by dragging it, resized from its right edge, its bottom edge or its corner, and removed with its `×`; `Add card` lists
-the cards that are not on the grid, and `Reset layout` puts back the default one. A card that lands on others pushes them down;
-nothing else moves. Each card keeps a minimum size, and lays out for any width and height: the stalls take two, four or eight
-columns by the card's shape, the gantt fits its rows to the card's height, the board's columns wrap, and lists scroll. While the
-Cockpit is unlocked the cards' contents do not take clicks, so that a press arranges and never acts. With the keyboard, a card is a
-focus stop while unlocked: the arrows move it one cell, the arrows with shift held resize it, and `Delete` removes it; a
-screen reader hears its new place and size. Below a width of 620 pixels the cards stack in one column, in their order on the grid,
-each as tall as its rows (the team's card as tall as its stalls, so that the page scrolls rather than a box inside it), and are
-rearranged with the keyboard. At that width a wide diagram (the dependencies, the mail between agents, the replay tape) keeps the
-size it is drawn at and scrolls sideways. In the phone layout (a window up to 900 pixels wide) every small control takes a touch
-of at least 32 pixels square.
+`Customise`, at the top right of each page, unlocks that page; `Done` locks it again, and every page load starts locked. Unlocked, a
+card is moved by dragging it, resized from its right edge, its bottom edge or its corner, and hidden with its `×`; a hidden card
+keeps its place and waits in the `Hidden` tray of the toolbar, which restores it. `+ Add card` lists the page's hidden cards, the
+cards of every other page (each drawn on this page by its own view, apart from the rest of its page) and every view of the left rail
+whole, with an `open ↗` to show it full size. A card of another page leaves with its `×` and is offered again by `+ Add card`.
+`Reset layout` puts back the page's default. Each card's `⋯` menu has `Hide`, `Reset size`, whether its height follows its content,
+and, for a list, its density (`Comfortable` or `Compact`). A card that lands on others pushes them down. Each card keeps a minimum
+size, and lays out for any width and height: the stalls take two, four or eight columns by the card's shape, the gantt fits its rows
+to the card's height, the board's columns wrap, and lists scroll. While a page is unlocked the cards' contents do not take clicks, so
+that a press arranges and never acts. With the keyboard, a card is a focus stop while unlocked: the arrows move it one cell, the
+arrows with shift held resize it, and `Delete` hides it; a screen reader hears its new place and size.
 
-The layout is kept in the browser (localStorage), not on the server, so another browser has its own; a stored layout that does not
-read, or that a later version of the page cannot use, gives the default layout. Settings › Appearance has `Customise the Cockpit`
-and `Reset the layout`, and the command palette has `Customise the Cockpit`.
+On a screen up to 900 pixels wide (and in a view narrower than 620 pixels) the cards stack in one column, in their order on the
+grid, and customising there hides, restores and reorders only: the up and down arrows, or `Move up` and `Move down` in the card's
+menu, trade places with the neighbour. At that width a wide diagram (the dependencies, the mail between agents, the replay tape)
+keeps the size it is drawn at and scrolls sideways. In the phone layout every small control takes a touch of at least 32 pixels
+square.
+
+The header and the Radio rail stay where they are, but their parts can be hidden: `Header & rail` in the toolbar of a page being
+customised, `Customise header & rail` in Settings › Appearance and the rail's own `⋯` list the header's widgets (goal, budget, cache
+hit, prefix warmth, team) and the status bar's line and model, each ticked while it shows, and the rail's manager pane and team
+activity, which collapse to a line that opens them again or hide, and its composer, which hides.
+
+The layout of every page is one document, kept for the person by the server in `~/.sleipnir/web-layout.json` (`/api/layout`,
+docs/WEB-API.md) so that it follows them from one browser to another, and cached in the browser so that the page has it at once and
+works without the server. Every change is kept in the browser at once and sent to the server a moment after the last one; at boot
+the server's copy wins over the browser's unless the person changed something before it arrived. A stored layout that does not read,
+or that a later version of the page cannot use, gives the default layout; the Cockpit layout of the first version (browser storage
+only) is carried over, with the panels it had taken off hidden. Settings › Appearance has `Customise the Cockpit` and `Reset the
+layout` for the Cockpit, `Export layout` (the document as a JSON file), `Import layout` (a file exported before, checked as a stored
+one, after a confirmation) and `Reset all pages`; the command palette has `Customise the Cockpit`.
 
 ### The guided tour
 

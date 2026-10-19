@@ -53,7 +53,7 @@ message holds no path outside the project, no secret and no body content; match 
 
 | Status | Codes |
 |---|---|
-| 400 | `bad_json`, `bad_request`, `bad_path`, `bad_flags`, `bad_mode`, `bad_rule`, `bad_level`, `bad_budget`, `bad_cron`, `bad_age`, `bad_choice`, `bad_tool`, `bad_name`, `bad_key`, `bad_isolation`, `not_a_dir`, `empty` |
+| 400 | `bad_json`, `bad_request`, `bad_path`, `bad_flags`, `bad_mode`, `bad_rule`, `bad_level`, `bad_budget`, `bad_cron`, `bad_age`, `bad_choice`, `bad_tool`, `bad_name`, `bad_key`, `bad_isolation`, `bad_layout`, `not_a_dir`, `empty` |
 | 401 | `unauthenticated` |
 | 403 | `bad_host`, `forbidden_site`, `forbidden_origin`, `csrf`, `forbidden`, `confirm_invalid`, `not_a_project`, `denied`, `tty_only`, `dangerous_mode`, `unreadable` |
 | 404 | `not_found`, `no_session`, `no_question`, `no_file`, `no_checkpoint`, `no_rule`, `no_dir`, `unknown_command` |
@@ -385,6 +385,20 @@ session read the tab of `?session=`, else the page's active tab, else the user's
 
 A plugin id may hold a colon (`view:mail`); the page sends it URL-encoded. A running session keeps its plugin set: the change
 applies when its team starts again (`POST /api/sessions/{id}/restart`).
+
+### Card layout
+
+| Method | Path | Does | Confirmation |
+|---|---|---|---|
+| `GET` | `/api/layout` | The person's card layout: `{"version", "pages": {page: [{"id", "x", "y", "w", "h", "hidden", "opts"}]}}`, read from `~/.sleipnir/web-layout.json`; nothing stored (or a file that does not read) is `{"version": 0, "pages": {}}` | - |
+| `PUT` | `/api/layout` | Replaces the whole layout (`204`). Ids are words of letters, digits and `.:_-`; places and sizes are grid units within 0..1000; `opts` hold strings, numbers and booleans. Anything else is `400 bad_layout`. The file is written through a temporary file and a rename, mode 0600 | - |
+| `DELETE` | `/api/layout` | `?page=ID` forgets one page's cards, no `page` forgets every page (`204`, also when nothing was stored) | - |
+
+A page is a view (`cockpit`, `cache`, `mail`, `board`, `replay`, `sessions`, `tools`, `runner`, `doctor`, `schedule`), a tab of the
+Workspace (`files`, `changes`, `checkpoints`, `merge`), a page of Settings (`settings.models`, `settings.look`, ...), the Radio rail
+(`rail`) or the header (`hud`). A card is listed under the page that shows it, with its place even while it is hidden; a card of one
+page may be shown on another. The page keeps the same document in the browser's storage and works from it when the server cannot be
+reached; `version` is the page's format (2: cards on every page), and an older Cockpit layout kept in the browser is carried over.
 
 ### Recorded sessions
 
