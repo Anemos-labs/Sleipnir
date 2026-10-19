@@ -925,6 +925,13 @@ sleipnir rl expand EXPORT [--table T]                 expand a deduplicated cano
 sleipnir inspect SESSION_DIR                          the cache inspector (any recorded session, also each rollout's)
 ```
 
-Data from ordinary interactive sessions can be exported the same way (`sleipnir rl export SESSION_DIR`): outcome
-events, verifier runs the user triggered, accepted/rejected diffs and steering messages become weaker reward
-signals, and exporters mark such episodes `weak_label` so they are opt-in for RL.
+Data from ordinary interactive sessions can be exported the same way (`sleipnir rl export SESSION_DIR`, or the
+directory of sessions, `~/.sleipnir/sessions`): a directory that holds a session's `events.jsonl` and no `episode.json`
+is read as one episode whose task is the session id. It has no policy, so every model in it is a teacher
+(`--teacher MODEL` names the ones to learn from, `--roles compactor` keeps only the compactor's calls), and no verifier
+verdict, so exporters mark it `weak_label` and the training formats take it only with `--keep-weak`: outcome events,
+verifier runs the user triggered, accepted/rejected diffs and steering messages are weaker signals than a rollout's
+verifier. A session that is still running, or that ended without a `session.end` record, is `truncated` as a cut-off
+rollout is, and needs `--keep-flagged` as well (a trainer that learns from a live session's compactions while they
+happen passes both). `rl verify` and `rl reward` read a session the same way; `rl reward` writes the session's
+`episode.json`, which the inspector then shows.
