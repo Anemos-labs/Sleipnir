@@ -25,21 +25,21 @@
   };
   /** id, view, tab (Workspace), label, chord letter, group */
   const ITEMS = [
-    { id: 'cockpit', view: 'cockpit', label: 'Cockpit', key: 'c', grp: 'team' },
-    { id: 'radio', label: 'Radio', key: 'r', radio: true },
-    { id: 'files', view: 'workspace', tab: 'files', label: 'Files', key: 'f', grp: 'workspace' },
-    { id: 'changes', view: 'workspace', tab: 'changes', label: 'Changes', key: 'h' },
-    { id: 'checkpoints', view: 'workspace', tab: 'checkpoints', label: 'Checkpoints', key: 'k', short: 'Points' },
-    { id: 'cache', view: 'cache', label: 'Cache', key: 'a', grp: 'observe' },
-    { id: 'mail', view: 'mail', label: 'Mail', key: 'm' },
+    { id: 'radio', label: 'Talk to manager', short: 'Talk', key: 'r', radio: true },
+    { id: 'cockpit', view: 'cockpit', label: 'Cockpit', key: 'c', grp: 'work' },
     { id: 'board', view: 'board', label: 'Board', key: 'b' },
+    { id: 'changes', view: 'workspace', tab: 'changes', label: 'Changes', key: 'h' },
+    { id: 'files', view: 'workspace', tab: 'files', label: 'Files', key: 'f' },
+    { id: 'checkpoints', view: 'workspace', tab: 'checkpoints', label: 'Checkpoints', key: 'k', grp: 'inspect' },
+    { id: 'mail', view: 'mail', label: 'Mail', key: 'm' },
+    { id: 'cache', view: 'cache', label: 'Cache', key: 'a' },
     { id: 'replay', view: 'replay', label: 'Replay', key: 'p' },
     { id: 'sessions', view: 'sessions', label: 'Sessions', key: 's', grp: 'manage' },
     { id: 'plugins', view: 'plugins', label: 'Plugins', key: 'u' },
-    { id: 'tools', view: 'tools', label: 'Tools', key: 't' },
     { id: 'settings', view: 'settings', label: 'Settings', key: 'e' },
+    { id: 'tools', view: 'tools', label: 'Tools', key: 't' },
   ];
-  const GRP = { team: 'team', workspace: 'workspace', observe: 'observe', manage: 'manage' };
+  const GRP = { work: 'Work', inspect: 'Inspect', manage: 'Manage' };
   const OWN = { runner: 'tools', doctor: 'tools', schedule: 'tools', kit: '' };    // views that belong to a rail item
   const PREF_KEY = 'sleipnir.web.dock';
   const pref = { nav: null, rail: 'open', railW: 344 };
@@ -81,10 +81,10 @@
       const sig = [cur, w, railOpen, SL.settings.cache, Object.keys(bd).map(k => k + (bd[k] && bd[k][0])).join(','), S && S.id].join('|'); if (N.sig === sig) return; N.sig = sig;
       app.dataset.navmode = w ? 'wide' : 'rail'; let g = null;
       const items = ITEMS.map(it => {
-        const b = bd[it.id], isCur = !it.radio && it.id === cur, head = it.grp && it.grp !== g ? (g = it.grp, (g !== 'team' ? '<span class="nvh" aria-hidden="true">' + GRP[g] + '</span>' : '')) : '';
+        const b = bd[it.id], isCur = !it.radio && it.id === cur, head = it.grp && it.grp !== g ? (g = it.grp, '<span class="nvh" aria-hidden="true">' + GRP[g] + '</span>') : '';
         return head + '<button class="nvi" type="button" data-nav="' + it.id + '"' + (isCur ? ' aria-current="page"' : '') + (it.radio ? ' aria-pressed="' + railOpen + '" aria-controls="rail"' : '') + (b ? ' aria-label="' + esc(it.label + ', ' + b[2]) + '"' : '') + ' title="' + esc(it.label + (it.radio ? ' · opens the Radio rail' : '') + ' (g ' + it.key + ')') + '">' + ICONS[it.id] + '<span class="nl">' + esc(w || !it.short ? it.label : it.short) + '</span><kbd class="nk">g ' + it.key + '</kbd>' + (b ? '<span class="nbd ' + (b[1] || '') + '" aria-hidden="true">' + esc(b[0]) + '</span>' : '') + '</button>';
       }).join('');
-      nav.innerHTML = '<div class="nv-list">' + items + '</div><button class="nvt" type="button" id="nvTog" aria-expanded="' + w + '" title="' + (w ? 'Narrow the rail' : 'Widen the rail: labels and chord keys') + '"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="' + (w ? 'M10 3L5 8l5 5' : 'M6 3l5 5-5 5') + '" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="nl">' + (w ? 'Narrow' : 'Widen') + '</span></button><div class="chordhint" id="chordHint" hidden></div>';
+      nav.innerHTML = '<div class="nv-list">' + items + '</div><button class="nvt" type="button" id="nvTog" aria-expanded="' + w + '" title="' + (w ? 'Collapse the menu to icons and short labels' : 'Expand the menu: whole labels, groups and the g keys') + '"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="' + (w ? 'M10 3L5 8l5 5' : 'M6 3l5 5-5 5') + '" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="nl">' + (w ? 'Collapse' : 'Expand') + '</span></button><div class="chordhint" id="chordHint" hidden></div>';
       N.hint = $('#chordHint', nav);
       paintPhone(S, cur);
     }
@@ -118,7 +118,7 @@
     /* ---------- phone: a bottom bar of five ---------- */
     const mnav = $('#mnav');
     function paintPhone(S, cur) {
-      const pv = app.dataset.pv, nd = SL.sessions.needs().length, items = [['cockpit', 'Cockpit'], ['radio', 'Radio'], ['changes', 'Changes'], ['sessions', 'Sessions'], ['more', 'More']];
+      const pv = app.dataset.pv, nd = SL.sessions.needs().length, items = [['cockpit', 'Cockpit'], ['radio', 'Talk'], ['changes', 'Changes'], ['sessions', 'Sessions'], ['more', 'More']];
       mnav.innerHTML = items.map(([k, t]) => { const on = k === 'radio' ? pv === 'radio' : (pv !== 'radio' && k === cur); return '<button type="button" data-n="' + k + '"' + (on ? ' aria-current="page"' : '') + '><span class="g">' + ICONS[k === 'more' ? 'more' : k] + '</span>' + t + (k === 'radio' && nd ? '<span class="ping"></span>' : '') + '</button>'; }).join('');
     }
     sc.listen(mnav, 'click', e => {

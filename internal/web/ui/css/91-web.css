@@ -87,21 +87,8 @@ body.cq .mgr-card{grid-template-columns:auto minmax(0,1fr) auto;grid-template-ar
 .s-meta .brk .bx{display:inline}
 body.cq .s-meta .brk{border:0;padding:0 2px;font-size:13px;color:var(--warm);animation:none;margin-left:auto}
 body.cq .s-meta .brk .bx{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-/* the HUD: the hit ring becomes a small dim chip, the warm clock shrinks */
-.hitchip{display:none}
-body.cq #ringHit{padding:0;gap:0;align-self:center}
-body.cq #ringHit>svg,body.cq #ringHit>.rt{display:none}
-body.cq .hitchip{display:inline-flex;gap:4px;align-items:baseline;font:500 11px/1 var(--f-num);color:var(--dim);padding:3px 7px;border:1px solid var(--line);border-radius:10px;white-space:nowrap}
-body.cq .hitchip b{font-weight:600;color:var(--fg2)}
-body.cq #warmSvg{width:44px;height:44px}
-body.cq #warmTicks{display:none}
-body.cq #ringWarm .ring-arc{stroke:var(--dim)}
-body.cq #ringWarm.low .ring-arc{stroke:var(--err)}
-body.cq #ringWarm .rt small{font-size:10px;letter-spacing:.08em}
-body.cq #ringWarm .note{display:none}
-body.cq #ringWarm.low .note,body.cq #ringWarm.cold .note{display:block}
-/* a phone: the ring says cold itself; the note would wrap the top bar onto a third line */
-@media (max-width:900px){body.cq #ringWarm.low .note,body.cq #ringWarm.cold .note{display:none}}
+/* the HUD: with the quiet cache detail (the default) the cache rings leave the header: the Cache view's cards hold that detail */
+body.cq #ringHit,body.cq #ringWarm{display:none}
 body.cq #ringWarm:not(.low):not(.cold) .rv{fill:var(--fg2)}
 body.cq #ringWarm.pulse .ring-flash{animation:none}
 body.cq #ringWarm.pulse.low .ring-flash,body.cq #ringWarm.pulse.cold .ring-flash{animation:ringflash .7s ease-out}

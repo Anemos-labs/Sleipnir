@@ -70,6 +70,14 @@
  ],
  "nav": [
   {
+   "id": "radio",
+   "view": null,
+   "tab": null,
+   "label": "Talk to manager",
+   "key": "r",
+   "radio": true
+  },
+  {
    "id": "cockpit",
    "view": "cockpit",
    "tab": null,
@@ -78,19 +86,11 @@
    "radio": false
   },
   {
-   "id": "radio",
-   "view": null,
+   "id": "board",
+   "view": "board",
    "tab": null,
-   "label": "Radio",
-   "key": "r",
-   "radio": true
-  },
-  {
-   "id": "files",
-   "view": "workspace",
-   "tab": "files",
-   "label": "Files",
-   "key": "f",
+   "label": "Board",
+   "key": "b",
    "radio": false
   },
   {
@@ -99,6 +99,14 @@
    "tab": "changes",
    "label": "Changes",
    "key": "h",
+   "radio": false
+  },
+  {
+   "id": "files",
+   "view": "workspace",
+   "tab": "files",
+   "label": "Files",
+   "key": "f",
    "radio": false
   },
   {
@@ -118,14 +126,6 @@
    "radio": false
   },
   {
-   "id": "cache",
-   "view": "cache",
-   "tab": null,
-   "label": "Cache",
-   "key": "a",
-   "radio": false
-  },
-  {
    "id": "mail",
    "view": "mail",
    "tab": null,
@@ -134,11 +134,11 @@
    "radio": false
   },
   {
-   "id": "board",
-   "view": "board",
+   "id": "cache",
+   "view": "cache",
    "tab": null,
-   "label": "Board",
-   "key": "b",
+   "label": "Cache",
+   "key": "a",
    "radio": false
   },
   {
@@ -166,19 +166,19 @@
    "radio": false
   },
   {
-   "id": "tools",
-   "view": "tools",
-   "tab": null,
-   "label": "Tools",
-   "key": "t",
-   "radio": false
-  },
-  {
    "id": "settings",
    "view": "settings",
    "tab": null,
    "label": "Settings",
    "key": "e",
+   "radio": false
+  },
+  {
+   "id": "tools",
+   "view": "tools",
+   "tab": null,
+   "label": "Tools",
+   "key": "t",
    "radio": false
   }
  ],
