@@ -18,7 +18,9 @@ func TestDemoWiki(t *testing.T) {
 	if dir == "" {
 		t.Skip("RESEARCH_DEMO_DIR is not set")
 	}
-	_ = os.RemoveAll(dir)
+	if ents, err := os.ReadDir(dir); err == nil && len(ents) > 0 {
+		t.Fatalf("RESEARCH_DEMO_DIR %s is not empty: name a new directory", dir)
+	}
 	st := NewStore(dir)
 	r, err := st.Create("Which sync engine should a local-first note app use in 2026?", "quick", ModeKickoff, "a local-first notes app with realtime sync")
 	if err != nil {

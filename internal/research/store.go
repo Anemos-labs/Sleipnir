@@ -299,10 +299,10 @@ func (s *Store) Create(question, depth, mode, project string) (*Run, error) {
 	}
 	s.runs[slug] = r
 	s.active = slug
-	return r, nil
+	return cloneRun(r), nil
 }
 
-// Open loads a run and makes it the active one.
+// Open loads a run and makes it the active one. It returns a copy, like Create and Update: the store keeps its own.
 func (s *Store) Open(slug string) (*Run, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -311,7 +311,7 @@ func (s *Store) Open(slug string) (*Run, error) {
 		return nil, err
 	}
 	s.active = slug
-	return r, nil
+	return cloneRun(r), nil
 }
 
 // Snapshot is a copy of a run as it is now; unlike Open it leaves the active run as it was.
@@ -420,7 +420,7 @@ func (s *Store) Update(slug string, fn func(r *Run) error) (*Run, error) {
 	if err := s.saveLocked(r); err != nil {
 		return nil, err
 	}
-	return r, nil
+	return cloneRun(r), nil
 }
 
 // View runs fn on the run under the store's lock, changing nothing. slug "" means the active run.

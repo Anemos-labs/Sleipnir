@@ -116,7 +116,7 @@ func ellipsis(q string) []string {
 	return parts
 }
 
-// matchQuote reports whether quote appears in page, its elided parts in order. On a miss, near is the passage of the page that
+// matchQuote reports whether quote appears in page, its elided parts in order, with at least minQuoteRunes letters and digits. On a miss, near is the passage of the page that
 // shares the longest run of the quote's first words, for the model to copy from.
 func matchQuote(page, quote string) (ok bool, near string) {
 	fp := foldText(page)
@@ -124,7 +124,7 @@ func matchQuote(page, quote string) (ok bool, near string) {
 	if len(parts) == 0 {
 		return false, ""
 	}
-	at := 0
+	at, matched := 0, 0
 	for _, part := range parts {
 		fq := foldText(part)
 		if fq == "" {
@@ -135,8 +135,10 @@ func matchQuote(page, quote string) (ok bool, near string) {
 			return false, nearPassage(page, fp, fq)
 		}
 		at += i + len(fq)
+		matched += runes(fq)
 	}
-	return true, ""
+	// the letters and digits matched must be evidence themselves: punctuation or one common word proves nothing
+	return matched >= minQuoteRunes, ""
 }
 
 // matchCode reports whether code appears on page, white space aside.

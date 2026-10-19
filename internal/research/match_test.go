@@ -1,6 +1,9 @@
 package research
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestCanonical(t *testing.T) {
 	cases := map[string]string{
@@ -40,6 +43,11 @@ func TestMatchQuote(t *testing.T) {
 	}
 	if near == "" {
 		t.Fatal("a miss gave no nearby passage to copy from")
+	}
+	for _, q := range []string{strings.Repeat("-", 25), "the ---------------------", "STORM … sources"} {
+		if ok, _ := matchQuote(page, q); ok {
+			t.Errorf("%q matched: too few letters and digits to be evidence", q)
+		}
 	}
 }
 

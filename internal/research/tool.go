@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 
@@ -426,6 +425,9 @@ func (t *Tool) search(ctx context.Context, env *tools.Env, in input) (string, er
 			continue
 		}
 		hits = append(hits, hs...)
+	}
+	if len(notes) == len(idx) {
+		return "", fmt.Errorf("no index answered, so the search was not recorded and can be made again:\n- %s", strings.Join(notes, "\n- "))
 	}
 	r, err := t.store.Update(in.Run, func(r *Run) error {
 		r.Queries = append(r.Queries, Query{Text: q, In: strings.Join(idx, ","), By: env.Agent, Count: len(hits)})
@@ -1131,7 +1133,6 @@ func Runs(root string) []string {
 	for _, r := range List(root) {
 		out = append(out, r.Slug)
 	}
-	sort.Strings(out)
 	return out
 }
 
