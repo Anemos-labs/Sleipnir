@@ -7,6 +7,17 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A permission question the person refused, or that nobody answered, is
+  not put to the person again in the same session: a repeat is refused at
+  once with the earlier refusal, after the fixed prefix `asked earlier in
+  this session: `. A question about network access to a host covers every
+  URL of that host. Changing the mode or adding or removing a rule lets
+  those questions be asked again; approvals are remembered as before
+  (docs/SECURITY.md). The scout role prompt gains one line: plan web
+  research before fetching, and after a refused or unanswered fetch go on
+  from what is known, citing the URLs it would have read as unverified.
+  Prompt bytes: the scout role pin changes, so the first session after
+  upgrading re-writes that prefix once; the refusal texts are fixed.
 - The harness's commit of a worker's tree (at `done`, at a handover, and
   when `sessions prune` salvages edits) leaves out untracked files inside a
   dependency store (`node_modules`, `bower_components`, `.next`, `.turbo`,

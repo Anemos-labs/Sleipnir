@@ -314,26 +314,35 @@ func (e *Engine) Mode() Mode {
 	return e.mode
 }
 
-// SetMode changes the session mode. An unknown mode is ignored.
+// SetMode changes the session mode. An unknown mode is ignored. A change of mode
+// lets the questions refused or left unanswered earlier be asked again.
 func (e *Engine) SetMode(m Mode) {
 	if !validMode(m) {
 		return
 	}
 	e.mu.Lock()
+	changed := e.mode != m
 	e.mode = m
 	e.mu.Unlock()
+	if changed {
+		e.pr.forget()
+	}
 }
 
 // AddRule adds a rule for the rest of the session (ScopeSession) or, for
 // ScopeProject, also hands it to Config.Persist (once per distinct rule, outside
 // the engine's locks). ScopeOnce adds nothing. A rule that does not compile is
-// ignored.
+// ignored. A rule added this way lets the questions refused or left unanswered
+// earlier be asked again.
 func (e *Engine) AddRule(scope Scope, rule Rule) {
 	origin := OriginSession
 	if scope == ScopeProject {
 		origin = OriginProject
 	}
 	e.addRule(scope, rule, origin)
+	if scope != ScopeOnce {
+		e.pr.forget()
+	}
 }
 
 // addRule is AddRule with the origin Classify reports for the rule.
@@ -464,7 +473,7 @@ func (e *Engine) Check(ctx context.Context, r Request) Decision {
 	d := e.resolveAsk(ctx, r, v, judge)
 	by := "user"
 	switch {
-	case strings.HasPrefix(d.Reason, settledEarlier):
+	case strings.HasPrefix(d.Reason, settledEarlier), strings.HasPrefix(d.Reason, askedEarlier):
 		by = "policy"
 	case e.cfg.Prompter == nil, !d.Allow && strings.Contains(d.Reason, askTimedOut):
 		by = "no one"
