@@ -179,6 +179,25 @@ placeholder and arguments were given, they are appended as `ARGUMENTS: ...`. Sub
 `SKILL.md` and a stray file are skipped. A `SKILL.md` or supporting file whose real path leaves the skill directory
 (a symlink to `~/.ssh/...`) is refused, and so is a project skills directory that resolves outside the project.
 
+**Built-in skills.** Sleipnir ships a few skills of its own, listed and loaded exactly like yours, after every
+directory above (a skill of yours with the same name replaces one, with a warning naming both files):
+
+| Skill | For |
+|---|---|
+| `blender` | driving Blender from code, headless (`blender --background --python`) or through a connected Blender MCP server |
+| `blender-web-assets` | hero renders, transparent product shots, turntable loops and compressed GLB models for a website or app |
+| `blender-scene` | composition, lighting, materials, animation and game-level blockouts in Blender |
+| `reverse-engineering` | an evidence-backed behavioural spec of a closed-source product, for a clean-room rebuild |
+| `reverse-engineering-ui` | a teardown of a live site or web UI into screenshots, design tokens, components, states and API shapes |
+
+Only their one-line descriptions are in the listing; a body is read when the model loads the skill. They are written
+once per release under `<state>/cache/skills/<digest>/builtin/` (`<state>` is `$SLEIPNIR_HOME` or `~/.sleipnir`) and
+shown as `builtin/<name>/SKILL.md`; a file there that differs from the release, or one added beside them, is replaced
+when the next session starts. Text adapted from MIT-licensed projects is credited in
+`internal/skills/builtin/data/NOTICE.md`. The Blender and reverse-engineering skills name optional MCP servers
+([MCP for Blender](https://github.com/ahujasid/mcp-for-blender), [REA](https://github.com/morluto/rea)) and work
+without them.
+
 **How the listing enters the shared layer.** After the instructions, inside `<shared-context>`:
 
 ```text

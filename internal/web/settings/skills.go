@@ -10,7 +10,9 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/hooks"
 	"github.com/anemos-labs/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/skills"
+	"github.com/anemos-labs/sleipnir/internal/skills/builtin"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
@@ -32,7 +34,11 @@ func (s *service) handleSkills(w http.ResponseWriter, r *http.Request) {
 	if tc.sess != nil && tc.sess.Skills != nil {
 		cat = tc.sess.Skills
 	} else {
-		cat, _ = skills.Discover(skills.Opts{Root: tc.root, Home: home, TrustProject: tc.trusted})
+		var extra []skills.Extra
+		if e, err := builtin.Extra(session.StateRoot(home)); err == nil {
+			extra = append(extra, e)
+		}
+		cat, _ = skills.Discover(skills.Opts{Root: tc.root, Home: home, TrustProject: tc.trusted, Extra: extra})
 	}
 	for _, sk := range cat.Skills() {
 		row := wire.Skill{

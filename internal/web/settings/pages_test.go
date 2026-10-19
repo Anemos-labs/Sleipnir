@@ -17,6 +17,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/provider/gateway"
 	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/skills/builtin"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
@@ -501,8 +502,20 @@ func TestSkillsPage(t *testing.T) {
 	})
 	var v wire.SkillsView
 	body := e.ok("GET", "/api/sessions/t1/skills", nil, nil, &v)
-	if len(v.Skills) != 2 || v.Skills[0].Name != "deploy" || v.Skills[0].Scope != "user" || v.Skills[0].Source != "~/.sleipnir/skills/deploy/SKILL.md" || !v.Skills[1].YouOnly {
-		t.Errorf("skills: %+v", v.Skills)
+	var own []wire.Skill
+	builtins := 0
+	for _, sk := range v.Skills {
+		if strings.HasPrefix(sk.Source, builtin.Label+"/") {
+			builtins++
+			continue
+		}
+		own = append(own, sk)
+	}
+	if builtins != len(builtin.Names()) {
+		t.Errorf("built-in skills listed: %d, want %d: %+v", builtins, len(builtin.Names()), v.Skills)
+	}
+	if len(own) != 2 || own[0].Name != "deploy" || own[0].Scope != "user" || own[0].Source != "~/.sleipnir/skills/deploy/SKILL.md" || !own[1].YouOnly {
+		t.Errorf("skills: %+v", own)
 	}
 	if v.SkillsBudget == nil || v.SkillsBudget.Used <= 0 || v.SkillsBudget.Tokens <= v.SkillsBudget.Used {
 		t.Errorf("budget: %+v", v.SkillsBudget)
