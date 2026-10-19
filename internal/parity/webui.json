@@ -415,6 +415,15 @@
   },
   {
    "group": "a team, and the program",
+   "name": "/plugins",
+   "kind": "slash",
+   "live": false,
+   "effects": [
+    "act:command"
+   ]
+  },
+  {
+   "group": "a team, and the program",
    "name": "/agents",
    "kind": "slash",
    "live": true,
@@ -1011,6 +1020,96 @@
   },
   {
    "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:plugins"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins add",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:plugins add"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins disable",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:plugins disable"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins enable",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:plugins enable"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins info",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:plugins info"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins list",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:plugins list"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins profile",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:plugins profile"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins remove",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:plugins remove"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins reset",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:plugins reset"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins set",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:plugins set"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
    "name": "sleipnir recon",
    "kind": "program",
    "live": true,
@@ -1578,6 +1677,7 @@
    "/new",
    "/permissions",
    "/plan",
+   "/plugins",
    "/queue",
    "/recon",
    "/restart",
@@ -2303,6 +2403,16 @@
    "rl tasks validate",
    "rl verify",
    "help",
+   "plugins",
+   "plugins add",
+   "plugins disable",
+   "plugins enable",
+   "plugins info",
+   "plugins list",
+   "plugins profile",
+   "plugins remove",
+   "plugins reset",
+   "plugins set",
    "version",
    "web"
   ],
@@ -3615,6 +3725,136 @@
     "positionals": [],
     "flags": [],
     "modeWith": {}
+   },
+   "plugins": {
+    "mode": "run",
+    "positionals": [],
+    "flags": [
+     "cwd",
+     "trust-project",
+     "json"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins add": {
+    "mode": "priv",
+    "positionals": [
+     "PATH|GIT-URL"
+    ],
+    "flags": [],
+    "modeWith": {}
+   },
+   "plugins disable": {
+    "mode": "priv",
+    "positionals": [
+     "ID"
+    ],
+    "flags": [
+     "cwd",
+     "project",
+     "local",
+     "trust-project"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins enable": {
+    "mode": "priv",
+    "positionals": [
+     "ID"
+    ],
+    "flags": [
+     "cwd",
+     "project",
+     "local",
+     "trust-project"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins info": {
+    "mode": "run",
+    "positionals": [
+     "ID"
+    ],
+    "flags": [
+     "cwd",
+     "trust-project",
+     "json"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins list": {
+    "mode": "run",
+    "positionals": [],
+    "flags": [
+     "cwd",
+     "trust-project",
+     "json"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins profile": {
+    "mode": "priv",
+    "positionals": [
+     "NAME"
+    ],
+    "flags": [
+     "cwd",
+     "project",
+     "local",
+     "trust-project"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins remove": {
+    "mode": "priv",
+    "positionals": [
+     "ID"
+    ],
+    "flags": [],
+    "modeWith": {}
+   },
+   "plugins reset": {
+    "mode": "priv",
+    "positionals": [
+     "ID"
+    ],
+    "flags": [
+     "cwd",
+     "project",
+     "local",
+     "trust-project"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins set": {
+    "mode": "priv",
+    "positionals": [
+     "ID",
+     "KEY=VALUE"
+    ],
+    "flags": [
+     "cwd",
+     "project",
+     "local",
+     "trust-project"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
    },
    "version": {
     "mode": "run",

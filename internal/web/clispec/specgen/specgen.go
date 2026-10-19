@@ -241,6 +241,14 @@ var positionals = map[string][]wire.CLIPositional{
 	"mcp revoke":  {pos("NAME", true, "the approval to forget")},
 	"mcp test":    {many("NAME", false, "servers to start (default: all)")},
 	"trust":       {}, "trust add": {}, "trust forget": {}, "trust list": {},
+	"plugins": {}, "plugins list": {}, "plugins info": {pos("ID", true, "the plugin's id, as `sleipnir plugins` lists it")},
+	"plugins enable":  {many("ID", true, "plugins to turn on")},
+	"plugins disable": {many("ID", true, "plugins to turn off")},
+	"plugins reset":   {many("ID", true, "plugins to put back to what the profile says")},
+	"plugins profile": {pos("NAME", false, "standard, minimal, team or headless (none: list them)")},
+	"plugins set":     {pos("ID", true, "the plugin"), many("KEY=VALUE", true, "settings to write (KEY= removes one)")},
+	"plugins add":     {pos("PATH|GIT-URL", true, "a plugin directory or a git repository")},
+	"plugins remove":  {pos("ID", true, "the installed plugin to remove")},
 	"models fav list": {}, "models fav add": {many("REF", true, "provider/model")}, "models fav rm": {many("REF", true, "provider/model")},
 	"rl taskgen git": {}, "rl taskgen mutate": {}, "rl taskgen recall": {}, "rl taskgen fixture": {}, "rl rollout": {}, "rl branch": {}, "rl eval": {}, "rl serve": {},
 	"rl taskgen composite":   {pos("TASKS", true, "the tasks file to combine")},
@@ -383,9 +391,17 @@ var modes = map[string]modeOf{
 	"replay": {mode: ModeTTYOnly, why: "replay plays in a terminal: use the Replay view here, or --final or --record",
 		when: []wire.CLIModeRule{{Flag: "final", Mode: ModeRun}, {Flag: "record", Mode: ModeRun}}},
 	"trust": {mode: ModeRun}, "trust list": {mode: ModeRun},
-	"trust add":    {mode: ModePriv, why: "it trusts this project's files: it asks for a confirmation first (--yes is implied)"},
-	"trust forget": {mode: ModePriv, why: "it forgets a trust decision: it asks for a confirmation first"},
-	"mcp":          {mode: ModeRun}, "mcp list": {mode: ModeRun},
+	"plugins": {mode: ModeRun}, "plugins list": {mode: ModeRun}, "plugins info": {mode: ModeRun},
+	"plugins enable":  {mode: ModePriv, why: "it changes your configuration: it asks for a confirmation first"},
+	"plugins disable": {mode: ModePriv, why: "it changes your configuration: it asks for a confirmation first"},
+	"plugins reset":   {mode: ModePriv, why: "it changes your configuration: it asks for a confirmation first"},
+	"plugins profile": {mode: ModePriv, why: "with a name it changes your configuration: it asks for a confirmation first"},
+	"plugins set":     {mode: ModePriv, why: "it changes your configuration: it asks for a confirmation first"},
+	"plugins add":     {mode: ModePriv, why: "it installs code from a directory or the network: it asks for a confirmation first"},
+	"plugins remove":  {mode: ModePriv, why: "it deletes an installed plugin: it asks for a confirmation first"},
+	"trust add":       {mode: ModePriv, why: "it trusts this project's files: it asks for a confirmation first (--yes is implied)"},
+	"trust forget":    {mode: ModePriv, why: "it forgets a trust decision: it asks for a confirmation first"},
+	"mcp":             {mode: ModeRun}, "mcp list": {mode: ModeRun},
 	"mcp approve": {mode: ModePriv, why: "it lets a project's tool server start: it asks for a confirmation first (--yes is implied)"},
 	"mcp revoke":  {mode: ModePriv, why: "it forgets an approval: it asks for a confirmation first"},
 	"mcp test":    {mode: ModeNet},
@@ -614,6 +630,8 @@ func Generate(in Inputs) (*wire.CLISpec, error) {
 			err = s.mcp(sec, b)
 		case "trust":
 			err = s.trust(sec, b)
+		case "plugins":
+			err = s.plugins(sec, b)
 		case "run":
 			fl := parseFlagLines(b.text)
 			if err = s.finish([]string{"run"}, usageLine(b.text), "Runs one goal and exits: the remaining words, or what is piped in, or both.", fl, sec, wire.CLICommand{}); err != nil {
@@ -825,6 +843,75 @@ func (s *spec) trust(sec *section, b block) error {
 		{[]string{"trust", "list"}, "sleipnir trust list", "The directories you said yes to, and whether the files in each still are the ones you saw.", nil},
 	} {
 		if err := s.finish(c.path, c.usage, c.sum, c.flags, sec, wire.CLICommand{Parent: "trust"}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// pluginsFlagRE is a flag line of the plugins listing: "  --name ARG    text", the name may hold dashes.
+var pluginsFlagRE = regexp.MustCompile(`^ {2}--([a-z-]+)(?: ([A-Z]+))?\s{2,}(.+)$`)
+
+// plugins adds `sleipnir plugins` and its subcommands from the section's flag listing.
+func (s *spec) plugins(sec *section, b block) error {
+	flags := map[string]wire.CLIFlag{}
+	in := false
+	for _, l := range b.text {
+		if strings.TrimSpace(l) == "flags:" {
+			in = true
+			continue
+		}
+		if !in {
+			continue
+		}
+		if m := pluginsFlagRE.FindStringSubmatch(l); m != nil {
+			arg := "bool"
+			if m[2] != "" {
+				arg = "string"
+			}
+			flags[m[1]] = wire.CLIFlag{Name: m[1], Arg: arg, Desc: strings.TrimSpace(m[3])}
+		}
+	}
+	need := func(names ...string) ([]wire.CLIFlag, error) {
+		var out []wire.CLIFlag
+		for _, n := range names {
+			f, ok := flags[n]
+			if !ok {
+				return nil, fmt.Errorf("plugins: --%s is not in the listing of docs/CLI.md", n)
+			}
+			out = append(out, f)
+		}
+		return out, nil
+	}
+	read, err := need("cwd", "trust-project", "json")
+	if err != nil {
+		return err
+	}
+	write, err := need("cwd", "project", "local", "trust-project")
+	if err != nil {
+		return err
+	}
+	for _, c := range []struct {
+		path       []string
+		usage, sum string
+		flags      []wire.CLIFlag
+	}{
+		{[]string{"plugins"}, "sleipnir plugins [flags]", "Lists every plugin: its state, its category, the layer that decided it and what it adds.", read},
+		{[]string{"plugins", "list"}, "sleipnir plugins list [flags]", "Lists every plugin (the same as sleipnir plugins).", read},
+		{[]string{"plugins", "info"}, "sleipnir plugins info ID [flags]", "One plugin in full: state, why, what it needs and adds, its settings.", read},
+		{[]string{"plugins", "enable"}, "sleipnir plugins enable ID... [flags]", "Turns plugins on (in your configuration, or the project's with --project).", write},
+		{[]string{"plugins", "disable"}, "sleipnir plugins disable ID... [flags]", "Turns plugins off.", write},
+		{[]string{"plugins", "reset"}, "sleipnir plugins reset ID... [flags]", "Puts plugins back to what the profile says.", write},
+		{[]string{"plugins", "profile"}, "sleipnir plugins profile [NAME] [flags]", "Lists the profiles, or chooses one: standard, minimal, team, headless.", write},
+		{[]string{"plugins", "set"}, "sleipnir plugins set ID KEY=VALUE... [flags]", "Changes a plugin's settings.", write},
+		{[]string{"plugins", "add"}, "sleipnir plugins add PATH|GIT-URL", "Installs a plugin directory or git repository into ~/.sleipnir/plugins; it stays off until enabled.", nil},
+		{[]string{"plugins", "remove"}, "sleipnir plugins remove ID", "Uninstalls a plugin from ~/.sleipnir/plugins.", nil},
+	} {
+		parent := wire.CLICommand{Parent: "plugins"}
+		if len(c.path) == 1 {
+			parent = wire.CLICommand{}
+		}
+		if err := s.finish(c.path, c.usage, c.sum, c.flags, sec, parent); err != nil {
 			return err
 		}
 	}

@@ -187,5 +187,18 @@
       "reason": "sign a stored provider key out, or show the command that signs one in: the key store (auth.json), which `sleipnir login` and `logout` edit; it is not configuration"
     }
   ],
-  "gaps": []
+  "gaps": [
+    {
+      "item": "plugins.enabled.*",
+      "reason": "the Plugins page switches each plugin; until it is part of the inventory the page's switches are not counted"
+    },
+    {
+      "item": "plugins.profile",
+      "reason": "the Plugins page's profile picker; until it is part of the inventory it is not counted"
+    },
+    {
+      "item": "plugins.settings.*",
+      "reason": "the Plugins page's settings forms; until they are part of the inventory they are not counted"
+    }
+  ]
 }

@@ -119,6 +119,7 @@ func (s *service) register() {
 	srv.HandleFunc("POST /api/providers/recheck", s.handleRecheck, web.RouteOpts{NoBody: true})
 	srv.HandleFunc("POST /api/providers/{name}/signout", s.handleSignOut, web.RouteOpts{NoBody: true})
 	srv.HandleFunc("GET /api/sessions/{id}/config", s.handleConfig, web.RouteOpts{})
+	s.registerPlugins()
 	if KeyRoutes {
 		s.registerKeyRoute()
 	}

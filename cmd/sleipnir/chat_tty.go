@@ -407,6 +407,9 @@ func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandRes
 		return app.CommandResult{}, true
 	}
 	switch f[0] {
+	case "/plugins":
+		fmt.Fprintln(out, pluginsSlash(h.s, strings.TrimSpace(strings.TrimPrefix(line, "/plugins"))))
+		return app.CommandResult{}, true
 	case "/delivery":
 		fmt.Fprintln(out, h.s.DeliveryCommand(strings.TrimSpace(strings.TrimPrefix(line, "/delivery"))))
 		return app.CommandResult{}, true
@@ -569,6 +572,7 @@ var chatCommands = []chatCommand{
 	{"help", "", "this text (and your custom commands and skills)"},
 	{"delivery", "[fix|merge|both|off|resume]", "GitHub automation for one objective"},
 	{"goal", "[text|pause|resume|clear]", "keep working until a goal is met, judged on evidence"},
+	{"plugins", "[enable|disable|reset ID]", "the plugins of this session: list them, or switch one on or off (it applies when the team starts again)"},
 	{"status", "", "model, mode, session, budget and cost at a glance"},
 	{"permissions", "", "the mode and the rules in force, among them what you allowed this session"},
 	{"trust", "", "this project's own instructions and settings: what they are, and whether you trusted them"},

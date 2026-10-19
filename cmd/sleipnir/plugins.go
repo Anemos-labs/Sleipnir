@@ -16,6 +16,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/plugin"
+	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
 // init registers plugin management with the CLI dispatcher.
@@ -376,4 +377,64 @@ func writeJSON(w io.Writer, v any) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(v)
+}
+
+// pluginsSlash answers /plugins in a chat (the terminal's and the page's): with no argument the plugins of this session and
+// what changed since it started; "enable ID", "disable ID" and "reset ID" write the user's configuration, which the session
+// takes when its team starts again (/restart).
+func pluginsSlash(s *session.Session, arg string) string {
+	f := strings.Fields(arg)
+	home, cwd, root := s.Home(), s.Cwd(), s.Root()
+	trust := s.TrustProject()
+	var b strings.Builder
+	if len(f) >= 2 {
+		verb := strings.ToLower(f[0])
+		p := pluginCLI{out: &b, home: home, cwd: cwd, root: root, trust: trust, target: config.UserConfigPath(home)}
+		switch verb {
+		case "enable", "on", "disable", "off", "reset":
+			if err := p.toggle(verb, f[1:]); err != nil {
+				return err.Error()
+			}
+			b.WriteString("/restart starts the team again with it\n")
+			return b.String()
+		}
+		return "usage: /plugins [enable|disable|reset ID...]"
+	}
+	if len(f) == 1 {
+		return "usage: /plugins [enable|disable|reset ID...]"
+	}
+	next, _, warns, err := plugin.LoadSet(cwd, root, home, trust)
+	if err != nil {
+		return "plugins: " + err.Error()
+	}
+	marked, changed := plugin.MarkRestart(s.Plugins(), next)
+	fmt.Fprintf(&b, "profile %s. Off in this session: ", marked.Profile)
+	var off, pending, restart []string
+	for _, st := range marked.List() {
+		switch st.State {
+		case plugin.StateOff:
+			off = append(off, st.ID)
+		case plugin.StatePending, plugin.StateError:
+			pending = append(pending, st.ID+" ("+st.Reason+")")
+		case plugin.StateRestart:
+			restart = append(restart, st.ID+": "+st.Reason)
+		}
+	}
+	if len(off) == 0 {
+		b.WriteString("none")
+	} else {
+		b.WriteString(strings.Join(off, ", "))
+	}
+	b.WriteString(".\n")
+	if len(pending) > 0 {
+		fmt.Fprintf(&b, "Waiting on another plugin: %s.\n", strings.Join(pending, "; "))
+	}
+	if changed {
+		fmt.Fprintf(&b, "Changed since this session started (/restart applies them): %s.\n", strings.Join(restart, "; "))
+	}
+	for _, w := range warns {
+		fmt.Fprintf(&b, "warning: %s\n", w)
+	}
+	b.WriteString("/plugins enable ID or /plugins disable ID switches one; `sleipnir plugins` lists them all.")
+	return b.String()
 }

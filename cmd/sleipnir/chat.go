@@ -319,6 +319,7 @@ a team, and the program
 /roles [role=m]    which model each role runs on; change one (restarts)
 /swarm <n> [flags] start again as a manager and n workers
 /restart [flags]   start again with other flags: --no-mcp, --cwd DIR, ...
+/plugins [on|off]  the plugins: list them, or switch one (/plugins off web)
 /agents            the team's agents and tasks (ctrl+g: cockpit)
 /steer TEXT        tell the running turn something, without stopping it
 /queue [drop N]    what waits for the turn: list, drop one, or clear all
@@ -343,7 +344,14 @@ func slash(ctx context.Context, s *session.Session, line string) (quit bool, sen
 // terminal gives both the same buffer, because nothing but its program may write to the terminal.
 func slashTo(ctx context.Context, s *session.Session, line string, stdout, stderr io.Writer) (quit bool, send string) {
 	f := strings.Fields(line)
+	if msg, off := s.SlashOff(f[0]); off {
+		fmt.Fprintln(stderr, msg)
+		return false, ""
+	}
 	switch f[0] {
+	case "/plugins":
+		fmt.Fprintln(stderr, pluginsSlash(s, strings.TrimSpace(strings.TrimPrefix(line, "/plugins"))))
+		return false, ""
 	case "/exit", "/quit":
 		return true, ""
 	case "/help", "/?":

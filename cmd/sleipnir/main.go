@@ -259,6 +259,7 @@ Set up a project:
   init      write a starter config and AGENTS.md for this project
   config    show the effective configuration and where each value came from
   trust     a project's own instructions and settings: show, remember your yes
+  plugins   switch plugins on and off: tools, skills, the team, the views
   mcp       tool servers (Model Context Protocol): list, approve, revoke, test
   schedule  goals to run on a schedule (cron): add, list, rm
   daemon    run the scheduled goals that are due (--once for a cron job)

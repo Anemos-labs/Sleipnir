@@ -370,6 +370,22 @@ path the permission engine refuses agents to read. A change (revert, restore, ac
 
 The page never holds a provider key: signing in is `sleipnir login` in a terminal.
 
+### Plugins
+
+Everything Sleipnir does beyond its core is a plugin that can be switched on and off (docs/PLUGINS.md). The routes without a
+session read the tab of `?session=`, else the page's active tab, else the user's configuration alone.
+
+| Method | Path | Does | Confirmation |
+|---|---|---|---|
+| `GET` | `/api/plugins` | The catalogue: `profile`, `profiles`, `restart` (a saved change waits for the team to start again) and `plugins`, one row per plugin with `id`, `title`, `description`, `category`, `core` (and `core_reason`), `experimental`, `external`, `default` (on in the profile), `enabled`, `state` (`on`, `off`, `pending`, `error`, `restart`), `reason`, `layer` (who decided), `requires`, `contributes`, `config_schema` and `config` (values whose names look secret are withheld) | - |
+| `GET` | `/api/sessions/{id}/plugins` | The same, with each row compared with the running session: a row that differs is in state `restart` | - |
+| `POST` | `/api/plugins/{id}` | `{"enabled": bool, "config": {...}, "scope": "user"\|"project"}` (each optional; scope `user` by default): writes a minimal difference to that file, so a choice equal to the profile's default removes the row. Answers `{"plugin": row, "restart": bool}`. `409 core` for a core plugin, `404 no_plugin` for an unknown id | - |
+| `POST` | `/api/plugins/profile` | `{"profile": id, "scope": ...}`: picks the profile (`standard` removes the key); answers the catalogue | - |
+| `DELETE` | `/api/plugins/{id}` | `?scope=`: the row goes back to the profile's default | - |
+
+A plugin id may hold a colon (`view:mail`); the page sends it URL-encoded. A running session keeps its plugin set: the change
+applies when its team starts again (`POST /api/sessions/{id}/restart`).
+
 ### Recorded sessions
 
 | Method | Path | Does | Confirmation |

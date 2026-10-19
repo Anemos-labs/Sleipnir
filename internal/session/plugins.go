@@ -143,6 +143,9 @@ func appendJSONArray(a, b json.RawMessage) json.RawMessage {
 // SlashOff reports, for a chat command such as "/goal", whether the plugin that
 // provides it is off in this session, and if so the line to show instead.
 func (s *Session) SlashOff(cmd string) (string, bool) {
+	if s == nil {
+		return "", false
+	}
 	name := strings.TrimPrefix(strings.ToLower(cmd), "/")
 	for _, st := range s.plugins.List() {
 		if st.State == plugin.StateOn {

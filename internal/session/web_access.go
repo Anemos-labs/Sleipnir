@@ -13,6 +13,9 @@ import (
 // Root is the project root the session works in.
 func (s *Session) Root() string { return s.opts.Root }
 
+// TrustProject reports whether the session reads the project's own files and settings.
+func (s *Session) TrustProject() bool { return s.opts.TrustProject }
+
 // Turn reports how many turns the session has run (Run calls, the goal's continuations included).
 func (s *Session) Turn() int {
 	s.mu.Lock()

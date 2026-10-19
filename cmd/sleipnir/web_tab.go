@@ -886,6 +886,9 @@ func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string
 		return res, nil
 	}
 	switch f[0] {
+	case "/plugins":
+		res.Output = pluginsSlash(s, strings.TrimSpace(strings.TrimPrefix(line, "/plugins")))
+		return res, nil
 	case "/delivery":
 		res.Output = s.DeliveryCommand(strings.TrimSpace(strings.TrimPrefix(line, "/delivery")))
 		return res, nil
