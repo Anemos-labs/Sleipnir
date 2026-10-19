@@ -28,6 +28,16 @@ func embeddedUI() fs.FS {
 	return sub
 }
 
+// Fonts are the page's fonts with their stylesheet (fonts.css) and licenses, for other pages Sleipnir writes that should read
+// like it (the research wiki).
+func Fonts() fs.FS {
+	sub, err := fs.Sub(uiFS, "ui/fonts")
+	if err != nil {
+		panic("web: embedded fonts: " + err.Error())
+	}
+	return sub
+}
+
 // maxAssetBytes bounds the UI held in memory.
 const maxAssetBytes = 64 << 20
 

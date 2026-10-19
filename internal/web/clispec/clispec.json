@@ -200,6 +200,12 @@
   {"name":"until","arg":"uint","default":null,"repeatable":false,"desc":"stop after the event with this seq (0: the whole log)"},
   {"name":"view","arg":"string","default":"cockpit","repeatable":false,"desc":"the screen to start on: cockpit, cache, mail or board (the keys o c m b change it)","choices":["cockpit","cache","mail","board"]}
  ]},
+{"path":["research"],"usage":"sleipnir research [RUN] [flags]","summary":"sleipnir research [RUN] lists the project's deep research runs with their depth, phase and evidence, or shows where one run stands: its numbers against its depth's bars and what it needs next.","positional":[{"name":"RUN","required":false,"desc":"a run's name, as `sleipnir research` lists it; none: list the runs"}],"source":"docs/CLI.md § sleipnir research","mode":"run","why":"with --export it writes the wiki into the project: it asks for a confirmation first","when":[{"flag":"export","mode":"priv"}],"flags":[
+  {"name":"build","arg":"bool","default":null,"repeatable":false,"desc":"build RUN's wiki from its ledger into .sleipnir/research/RUN/site"},
+  {"name":"cwd","arg":"string","default":null,"defaultNote":"the current directory","repeatable":false,"desc":"the project (default: the current directory)"},
+  {"name":"export","arg":"string","default":null,"repeatable":false,"desc":"copy RUN's built wiki into this directory of the project (an earlier export there is replaced)"},
+  {"name":"json","arg":"bool","default":null,"repeatable":false,"desc":"machine-readable output"}
+ ]},
 {"path":["rl"],"usage":"sleipnir rl <command> [flags]","summary":"The RL environment: generate tasks, roll a policy out on them, score, export.","positional":[],"source":"docs/CLI.md § sleipnir rl","mode":"run","index":true,"flags":[]},
 {"path":["rl","branch"],"usage":"sleipnir rl branch --tasks tasks.jsonl --from RUN/TASK/SAMPLE --at sp:N[,M] --k 4 --model MODEL --out RUN_DIR [flags]","summary":"Continues a finished rollout that took savepoints (--savepoint-every) from some of them, --k times each, into a new run directory: --at sp:N[,M] names savepoints, every:K takes every K-th, last the newest, compaction...","positional":[],"source":"docs/CLI.md § sleipnir rl branch","mode":"net","when":[{"flag":"base-url","mode":"priv","noKeys":true},{"flag":"api-key-env","mode":"priv","noKeys":true},{"flag":"allow-insecure-http","mode":"priv","noKeys":true},{"flag":"allow","mode":"priv"},{"flag":"no-net-isolation","mode":"priv"},{"flag":"pass-env","mode":"priv"},{"flag":"set-env","mode":"priv"},{"flag":"mode","values":["bypass","yolo"],"mode":"priv"},{"flag":"perm-mode","values":["bypass","yolo"],"mode":"priv"}],"flags":[
   {"name":"allow","arg":"string","default":null,"repeatable":false,"desc":"permission allow rules replacing the built-in set (comma-separated, e.g. 'Bash(go:*),Bash(git status:*)'; none for no rules)"},
@@ -889,7 +895,8 @@
 ],
 "chatSlash":[
 {"cmd":"/delivery","args":"[mode]","desc":"next objective: fix | merge | both | off | resume","group":"conversation","paletteArgs":"[fix|merge|both|off|resume]","paletteDesc":"GitHub automation for one objective"},
-{"cmd":"/goal","args":"TEXT","desc":"work until it is met, judged on evidence (/goal: status)","group":"conversation","paletteArgs":"[text|pause|resume|clear]","paletteDesc":"keep working until a goal is met, judged on evidence"},
+{"cmd":"/goal","args":"TEXT","desc":"work until it is met, judged on evidence (/goal: status)","group":"conversation","paletteArgs":"[text|pause|resume|clear]","paletteDesc":"keep working until a goal is met, judged on evidence (--research=DEPTH researches first)"},
+{"cmd":"/research","args":"[d] Q","desc":"research Q on the web into a wiki (/research: the runs)","group":"conversation","paletteArgs":"[quick|standard|deep] QUESTION","paletteDesc":"a team researches the question on the web and publishes a wiki; alone, the runs; status|build|open|export RUN"},
 {"cmd":"/new","args":"","desc":"start again, empty (same model and mode)","group":"conversation","paletteDesc":"start the conversation again, empty (the same model and mode)"},
 {"cmd":"/clear","args":"","desc":"the same as /new","group":"conversation","paletteDesc":"the same as /new"},
 {"cmd":"/resume","args":"[id]","desc":"pick an earlier session from a menu, and continue it","group":"conversation","paletteArgs":"[id]","paletteDesc":"continue an earlier session: the newest of this project, or one of the earlier ones listed as you type"},

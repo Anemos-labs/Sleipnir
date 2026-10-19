@@ -415,6 +415,15 @@ func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandRes
 		return app.CommandResult{}, true
 	case "/goal":
 		return h.goalCommand(f, line, out), true
+	case "/research":
+		goalText, msg := h.s.ResearchCommand(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "/research")))
+		if msg != "" {
+			fmt.Fprintln(out, msg)
+		}
+		if goalText == "" {
+			return app.CommandResult{}, true
+		}
+		return app.CommandResult{Send: goalCommandTo(h.s, &h.goal, goalText, out)}, true
 	case "/verbose":
 		if v, ok := onOff("/verbose"); ok {
 			fmt.Fprintf(out, "verbose: %s (notices and tool errors %s)\n", v, map[string]string{"on": "are shown", "off": "show only warnings"}[v])
@@ -571,7 +580,8 @@ type chatCommand struct{ name, args, desc string }
 var chatCommands = []chatCommand{
 	{"help", "", "this text (and your custom commands and skills)"},
 	{"delivery", "[fix|merge|both|off|resume]", "GitHub automation for one objective"},
-	{"goal", "[text|pause|resume|clear]", "keep working until a goal is met, judged on evidence"},
+	{"goal", "[text|pause|resume|clear]", "keep working until a goal is met, judged on evidence (--research=DEPTH researches first)"},
+	{"research", "[quick|standard|deep] QUESTION", "a team researches the question on the web and publishes a wiki; alone, the runs; status|build|open|export RUN"},
 	{"plugins", "[enable|disable|reset ID]", "the plugins of this session: list them, or switch one on or off (it applies when the team starts again)"},
 	{"status", "", "model, mode, session, budget and cost at a glance"},
 	{"permissions", "", "the mode and the rules in force, among them what you allowed this session"},

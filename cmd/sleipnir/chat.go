@@ -288,6 +288,7 @@ func runTurn(parent context.Context, intr *interrupts, s *session.Session, goal 
 const chatHelp = `conversation
 /delivery [mode]   next objective: fix | merge | both | off | resume
 /goal TEXT         work until it is met, judged on evidence (/goal: status)
+/research [d] Q    research Q on the web into a wiki (/research: the runs)
 /new               start again, empty (same model and mode)
 /clear             the same as /new
 /resume [id]       pick an earlier session from a menu, and continue it

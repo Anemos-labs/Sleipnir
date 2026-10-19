@@ -53,12 +53,12 @@ message holds no path outside the project, no secret and no body content; match 
 
 | Status | Codes |
 |---|---|
-| 400 | `bad_json`, `bad_request`, `bad_path`, `bad_flags`, `bad_mode`, `bad_rule`, `bad_level`, `bad_budget`, `bad_cron`, `bad_age`, `bad_choice`, `bad_tool`, `bad_name`, `bad_key`, `bad_isolation`, `bad_layout`, `not_a_dir`, `empty` |
+| 400 | `bad_json`, `bad_request`, `bad_research`, `bad_export`, `bad_path`, `bad_flags`, `bad_mode`, `bad_rule`, `bad_level`, `bad_budget`, `bad_cron`, `bad_age`, `bad_choice`, `bad_tool`, `bad_name`, `bad_key`, `bad_isolation`, `bad_layout`, `not_a_dir`, `empty` |
 | 401 | `unauthenticated` |
 | 403 | `bad_host`, `forbidden_site`, `forbidden_origin`, `csrf`, `forbidden`, `confirm_invalid`, `not_a_project`, `denied`, `tty_only`, `dangerous_mode`, `unreadable` |
 | 404 | `not_found`, `no_session`, `no_question`, `no_file`, `no_checkpoint`, `no_rule`, `no_dir`, `unknown_command` |
 | 405, 413, 415 | `method_not_allowed`, `body_too_large`, `unsupported_media_type` |
-| 409 | `answered`, `too_soon`, `busy`, `idle`, `last`, `limit`, `locked`, `hosted`, `not_resumable`, `budget_configured`, `trust_required`, `changed`, `conflict`, `nothing`, `fixed`, `not_isolated`, `needs_approval`, `external`, `running`, `env`, `dirty`, `moved`, `no_goal`, `not_paused`, `not_active`, `none`, `git_init`, `mkdir` |
+| 409 | `answered`, `plugin_off`, `too_soon`, `busy`, `idle`, `last`, `limit`, `locked`, `hosted`, `not_resumable`, `budget_configured`, `trust_required`, `changed`, `conflict`, `nothing`, `fixed`, `not_isolated`, `needs_approval`, `external`, `running`, `env`, `dirty`, `moved`, `no_goal`, `not_paused`, `not_active`, `none`, `git_init`, `mkdir` |
 | 422 | `model`, `rejected`, `conflict` |
 | 428 | `confirm_required` |
 | 429, 500, 502, 503, 504 | `rate_limited`; `internal`; `network`; `busy`, `too_many_streams`, `shutting_down`; `slow` |
@@ -318,6 +318,9 @@ request raises something says so. Bodies and answers are the `wire` types named;
 | Method | Path | Does | Confirmation |
 |---|---|---|---|
 | `POST` | `/api/sessions/{id}/goal` | `wire.GoalRequest` (`autoFix` and `autoMerge` apply only to `set`, for that objective): `action` is `set` (with `text`), `pause`, `resume` or `clear`; answers `{ok, state, queued}`: `queued` says that the action waits to run (`set` and `resume` run as the tab's next item; `pause` and `clear` while a turn stops), and `state` is then the goal's state before it | - |
+| `GET` | `/api/sessions/{id}/research` | The project's deep research runs, newest first (`wire.ResearchRun`: its phase, evidence counts, whether a build matches the ledger, whether a goal drives it now), the depths a run can have (`wire.ResearchDepth`) and `on`, whether the research plugin is on for the session | - |
+| `POST` | `/api/sessions/{id}/research` | `wire.ResearchRequest`: `action` `start` (with `question` and `depth`: the run's goal is set as `/research` sets it, answering `{ok, queued}`) or `export` (with `slug` and `dir`, a directory inside the project: the built wiki is copied there, answering `{ok, dir}`); `400 bad_research`, `400 bad_export`, `409 plugin_off` | - |
+| `GET` | `/research/{id}/{slug}/{file...}` | A file of a run's wiki (`index.html` when none is named), rendered by the server from the run's ledger as it is now: pages, the stylesheet, the script, the search index and the fonts. Nothing is read from the project as it is, so the page's origin serves only what the renderer escaped; `404 not_found` for another file | - |
 | `POST` | `/api/sessions/{id}/mode` | `wire.ModeRequest`: `default`, `accept-edits`, `plan`, `bypass`, `yolo` | `mode:<mode>:<tab>` for `bypass` and `yolo` |
 | `POST` | `/api/sessions/{id}/model` | `wire.ModelRequest`: the manager's model, or a role's; a team starts again on it. `roles` (role to model, `manager` for the team's model) changes several at once: every model is checked first and one restart carries them all. A restart for a change of models takes up what the team was doing: a goal that was active is resumed, and a turn that was running is followed by one that tells the agent to go on. Answers `{ok, restarted}`; `422 model` for a model that cannot be used | Through the restart, when it raises |
 | `POST` | `/api/sessions/{id}/effort` | `wire.EffortRequest`; `wire.EffortResult` has the level the model applies | - |

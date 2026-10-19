@@ -62,6 +62,7 @@
     "g s": ["chord"],
     "g t": ["chord"],
     "g u": ["chord"],
+    "g w": ["chord"],
     "home": ["page","question","replay","cache","session-tab","views-rail","mode-menu","rail-handle","view-mail","view-board","view-replay","view-sessions","view-tools","view-doctor","view-schedule","view-settings","view-workspace","view-runner"],
     "left": ["page","question","replay","cache","session-tab","rail-handle","cockpit-card","tour","view-mail","view-board","view-replay","view-sessions","view-tools","view-doctor","view-schedule","view-settings","view-workspace","view-runner"],
     "m": ["page","question","replay","cache","view-mail","view-board","view-replay","view-sessions","view-tools","view-doctor","view-schedule","view-settings","view-workspace","view-runner"],

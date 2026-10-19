@@ -36,7 +36,7 @@
   /** The card of each category (83b-ui-dash.js, page plugins). */
   const cardOf = cat => 'plugins.' + cat;
   /** The plugin of a view that is not view:<its name> ('' for one no plugin owns). */
-  const VIEW_PLUGIN = { workspace: 'view:workspace', runner: 'view:tools', doctor: 'view:tools', schedule: 'view:tools', kit: '' };
+  const VIEW_PLUGIN = { research: 'research', workspace: 'view:workspace', runner: 'view:tools', doctor: 'view:tools', schedule: 'view:tools', kit: '' };
   /** What a contribution kind is called on the page: [one, many]. */
   const KIND = {
     tool: ['tool', 'tools'], slash: ['command', 'commands'], cli: ['CLI command', 'CLI commands'], skill: ['skill', 'skills'], role: ['role', 'roles'],

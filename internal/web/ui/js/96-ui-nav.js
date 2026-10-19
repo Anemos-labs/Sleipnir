@@ -1,7 +1,7 @@
 /* 96-ui-nav.js: the Dock's workspace shell: the left navigation rail (SL.ui.nav), the persistent Radio rail's collapse and resize (SL.ui.rail),
  * the `g` then letter chords, and the phone's bottom bar. Mounted once under the shell scope; it renders from the active session.
  *
- * The rail items are views of the same page, in three groups: Work (Cockpit, Board, Changes, Files), Inspect (Checkpoints, Merge,
+ * The rail items are views of the same page, in three groups: Work (Cockpit, Board, Changes, Files, Research), Inspect (Checkpoints, Merge,
  * Mail, Cache, Replay) and Manage (Sessions, Plugins, Settings, Tools); Files, Changes, Checkpoints and Merge are four tabs of ONE
  * Workspace view. Every label is a whole word, in the narrow rail too. `Talk to manager` (the Radio rail, `g r`) is not a view: it
  * opens the Radio rail on the right and focuses its composer. The ids and the `g` chords of the items do not change with their order. */
@@ -22,6 +22,7 @@
     replay: svg('<circle cx="10" cy="10" r="7.2"/><path d="M8.2 6.9l5 3.1-5 3.1z" fill="currentColor"/>'),
     sessions: svg('<rect x="2.6" y="7" width="11" height="9.4" rx="1.3"/><path d="M5.6 7V5.3c0-.7.5-1.3 1.3-1.3h8c.7 0 1.3.6 1.3 1.3v6.4c0 .7-.6 1.3-1.3 1.3H13.6"/>'),
     plugins: svg('<path d="M3.4 7.2h3.3a1.9 1.9 0 1 1 3.6 0h3.3v3.3a1.9 1.9 0 1 1 0 3.6v2.5H3.4z"/>'),
+    research: svg('<circle cx="8.6" cy="8.6" r="5.2"/><path d="M12.4 12.4l4.6 4.6"/><path d="M6.4 8.6h4.4M8.6 6.4v4.4" stroke-width="1.3"/>'),
     tools: svg('<rect x="2.6" y="3.6" width="14.8" height="12.8" rx="1.6"/><path d="M6 8l3 2.2L6 12.4M10.8 13h3.6"/>'),
     settings: svg('<path d="M3 6h14M3 10h14M3 14h14"/><circle cx="7" cy="6" r="1.9" fill="var(--panel)"/><circle cx="13" cy="10" r="1.9" fill="var(--panel)"/><circle cx="8.6" cy="14" r="1.9" fill="var(--panel)"/>'),
     more: svg('<circle cx="4.5" cy="10" r="1.3" fill="currentColor" stroke="none"/><circle cx="10" cy="10" r="1.3" fill="currentColor" stroke="none"/><circle cx="15.5" cy="10" r="1.3" fill="currentColor" stroke="none"/>'),
@@ -33,6 +34,7 @@
     { id: 'board', view: 'board', label: 'Board', key: 'b', about: 'the tasks and what each waits for' },
     { id: 'changes', view: 'workspace', tab: 'changes', label: 'Changes', key: 'h', about: 'the files the team changed, with their diffs' },
     { id: 'files', view: 'workspace', tab: 'files', label: 'Files', key: 'f', about: 'the project\'s files, as of any checkpoint' },
+    { id: 'research', view: 'research', label: 'Research', key: 'w', about: 'deep research runs and the wikis they publish' },
     { id: 'checkpoints', view: 'workspace', tab: 'checkpoints', label: 'Checkpoints', key: 'k', grp: 'inspect', about: 'the saved states of the files, to compare or roll back' },
     { id: 'merge', view: 'workspace', tab: 'merge', label: 'Merge', key: 'q', about: 'what is verified and merged, and applying it' },
     { id: 'mail', view: 'mail', label: 'Mail', key: 'm', about: 'the messages the agents send each other' },
