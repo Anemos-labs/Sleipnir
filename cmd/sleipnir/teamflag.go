@@ -18,16 +18,16 @@ import (
 //     roles not listed have no slot: --role-model backend --role-model backend
 //     --role-model frontend=x … is a team of two backends and a frontend on x.
 //
-// The manager, the compactor and the mailman are never workers: they only take a model, once, in either use.
+// The manager, the compactor, the judge and the mailman are never workers: they only take a model, once, in either use.
 type roleModelFlag struct{ entries []roleEntry }
 
 // roleEntry is one --role-model value; model is "" for a bare role.
 type roleEntry struct{ role, model string }
 
 // serviceRole reports whether role takes a model but is never a team slot: the manager, which leads the team, and the harness's
-// compactor and mailman.
+// compactor, judge and mailman.
 func serviceRole(role string) bool {
-	return role == "manager" || role == session.CompactorRole || role == swarm.MailmanRoleName
+	return role == "manager" || role == session.CompactorRole || role == session.JudgeRole || role == swarm.MailmanRoleName
 }
 
 // String renders the values as they were given.

@@ -111,13 +111,14 @@ func (s *Session) ModelRef() string { return s.modelRef }
 
 // RoleModel is one line of the table of who runs on which model.
 type RoleModel struct {
-	Role  string // "default", a swarm role, or "compactor"
+	Role  string // "default", a swarm role, "compactor" or "judge"
 	Model string // provider/model, or what stands in when none is named
 	From  string // where it came from: "--role-model", "an agent definition", "models.roles", "the session's model", "the agent's own model"
 }
 
 // RoleModels says which model each role runs on, in the order the precedence reads: the session's own, then each swarm role (flags beat an agent
-// definition, which beats models.roles), then the compactor. In a single-agent session only the default and the compactor apply.
+// definition, which beats models.roles), then the compactor and the judge. In a single-agent session only the default, the compactor and the
+// judge apply.
 func (s *Session) RoleModels() []RoleModel {
 	def := s.modelRef
 	if def == "" {
@@ -164,7 +165,14 @@ func (s *Session) RoleModels() []RoleModel {
 	default:
 		comp.Model, comp.From = "(each agent's own)", "no compactor model is set"
 	}
-	return append(out, comp)
+	judge := RoleModel{JudgeRole, def, "the session's model"}
+	switch {
+	case s.opts.RoleModels[JudgeRole] != "":
+		judge.Model, judge.From = s.opts.RoleModels[JudgeRole], "--role-model"
+	case s.cfg.Models.Roles[JudgeRole] != "":
+		judge.Model, judge.From = s.cfg.Models.Roles[JudgeRole], "models.roles"
+	}
+	return append(out, comp, judge)
 }
 
 // StartFlags are the `sleipnir chat` flags that reproduce this session's shape (a team and its size, the verifier, isolation, tool servers, trust,

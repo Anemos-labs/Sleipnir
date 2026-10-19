@@ -951,8 +951,8 @@ func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string
 					res.Output = "usage: /roles [role=provider/model ...]: show the table, or change roles (e.g. /roles manager=provider/model compactor=provider/model)"
 					return res, nil
 				}
-				if s.Swarm == nil && role != session.CompactorRole {
-					res.Output = "roles: a single agent runs on one model (/model); a team has roles: /swarm 8 first. Only the compactor can differ here: /roles compactor=" + ref
+				if s.Swarm == nil && role != session.CompactorRole && role != session.JudgeRole {
+					res.Output = "roles: a single agent runs on one model (/model); a team has roles: /swarm 8 first. Only the compactor and the judge can differ here: /roles compactor=" + ref
 					return res, nil
 				}
 				if _, err := s.CheckModel(ref); err != nil {
@@ -1433,8 +1433,8 @@ func (t *webTab) setModel(ctx context.Context, req wire.ModelRequest) (bool, err
 		return false, err
 	case role == "":
 		return true, t.Restart(ctx, wire.RestartRequest{Kind: "model", Model: ref}) // the team's model: every role without its own
-	case s.Swarm == nil && role != session.CompactorRole:
-		return false, werr(http.StatusUnprocessableEntity, "model", "a single agent runs on one model; a team has roles: start a team first (/swarm 8). Only the compactor can differ here")
+	case s.Swarm == nil && role != session.CompactorRole && role != session.JudgeRole:
+		return false, werr(http.StatusUnprocessableEntity, "model", "a single agent runs on one model; a team has roles: start a team first (/swarm 8). Only the compactor and the judge can differ here")
 	}
 	return true, t.Restart(ctx, wire.RestartRequest{Kind: "roles", RoleModels: map[string]string{role: ref}})
 }
