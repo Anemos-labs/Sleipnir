@@ -144,9 +144,9 @@
   page('hud', { title: 'Header', view: null, kind: 'chrome' }, [
     ['hud.goal', 'Goal', 'the goal, its state and the elapsed time', 0, 0, 1, 1, 1, 1],
     ['hud.budget', 'Budget', 'what was spent and the budget', 0, 0, 1, 1, 1, 1],
-    ['hud.hit', 'Cache hit', 'the share of the prompt read from the cache', 0, 0, 1, 1, 1, 1],
-    ['hud.warm', 'Prefix warm', 'how long the shared prefix stays in the cache', 0, 0, 1, 1, 1, 1],
-    ['hud.team', 'Team', 'active agents, rate and retries', 0, 0, 1, 1, 1, 1],
+    ['hud.hit', 'Cache reuse', 'the share of the prompt read from the cache (shown with full cache detail)', 0, 0, 1, 1, 1, 1],
+    ['hud.warm', 'Cache stays warm', 'how long the shared instructions stay in the cache (shown with full cache detail)', 0, 0, 1, 1, 1, 1],
+    ['hud.team', 'Team', 'the team and how many are working', 0, 0, 1, 1, 1, 1],
     ['hud.status', 'Status line', 'the status line at the foot of the page', 0, 0, 1, 1, 1, 1],
     ['hud.model', 'Model', 'the model at the foot of the page', 0, 0, 1, 1, 1, 1],
   ]);

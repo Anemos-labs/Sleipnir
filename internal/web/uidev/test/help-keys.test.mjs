@@ -211,8 +211,8 @@ test('the keys that are not advertised on purpose are keys of the views that the
 
 test('the guard fails when a key of a view is left out of a sheet', async () => {
   const { chords, singles } = await viewKeys(), bound = [...chords, ...singles];
-  /* the row of the chords that holds the Merge view's in each sheet, and the same row without it (the Help sheet groups the chords) */
-  const chordRows = { '87-ui-sheets.js': ['g then k q m a p', 'g then k m a p'], '98-ui-settings.js': ['g then c r f h k q a m b p s u t e', 'g then c r f h k a m b p s u t e'] };
+  /* the row of the chords that holds the Merge view's in each sheet, and the same row without it (both sheets group the chords) */
+  const chordRows = { '87-ui-sheets.js': ['g then k q m a p', 'g then k m a p'], '98-ui-settings.js': ['g then k q m a p', 'g then k m a p'] };
   // the chord to the Merge view out of the Help sheet and of the card
   for (const file of ['87-ui-sheets.js', '98-ui-settings.js']) {
     const [chordRow, without] = chordRows[file];
