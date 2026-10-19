@@ -379,9 +379,9 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		if o.ID == "" {
 			o.ID = filepath.Base(dir)
 		}
-		if prior := inspectLog(dir); len(o.Team) == 0 && len(prior.team) > 0 && o.Swarm {
-			// a continued team keeps the composition it was started with, unless one is given now
-			o.Team = append([]TeamSlot(nil), prior.team...)
+		if prior := LatestStart(dir); len(o.Team) == 0 && len(prior.Team) > 0 && o.Swarm {
+			// a continued team keeps the composition it last started with (a /restart may have moved its slots), unless one is given now
+			o.Team = append([]TeamSlot(nil), prior.Team...)
 			o.Workers = max(o.Workers, len(o.Team))
 		}
 		if prior := inspectLog(dir); prior.isolated && prior.recovery {
@@ -1262,6 +1262,9 @@ func (s *Session) runTurn(ctx context.Context, goal string) (*Result, error) {
 		}
 		if len(s.opts.Team) > 0 && s.opts.Swarm {
 			start["team"] = s.opts.Team // a custom composition: a resume keeps it
+		}
+		if s.opts.Verify != "" {
+			start["verify"] = s.opts.Verify // a resume keeps it (asking first where it raises what the session may do)
 		}
 		if s.opts.Resume != "" {
 			start["resumed"] = true
