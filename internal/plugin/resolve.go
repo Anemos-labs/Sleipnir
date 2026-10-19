@@ -336,7 +336,10 @@ func (s *Set) Off() []string {
 
 // MarkRestart marks every plugin whose enabled state differs between the
 // running set and next (what the configuration now says) as waiting for a
-// restart, on a copy of next. It reports whether any did.
+// restart, on a copy of next. It reports whether any did. A plugin that a
+// flag of the running session decided (--mailman, --no-web) keeps the running
+// row: a restart parses the same flags again, so the configuration files alone
+// do not say what it will be.
 func MarkRestart(running, next *Set) (*Set, bool) {
 	if running == nil || next == nil {
 		return next, false
@@ -345,7 +348,10 @@ func MarkRestart(running, next *Set) (*Set, bool) {
 	any := false
 	for _, st := range next.list {
 		c := *st
-		if r, ok := running.byID[st.ID]; ok && (r.State == StateOn) != (st.State == StateOn) && !st.Live {
+		r, ok := running.byID[st.ID]
+		if ok && r.Layer == LayerFlag {
+			c = *r
+		} else if ok && (r.State == StateOn) != (st.State == StateOn) && !st.Live {
 			c.Reason = fmt.Sprintf("turns %s when the team starts again", map[bool]string{true: "on", false: "off"}[st.State == StateOn])
 			c.State = StateRestart
 			any = true

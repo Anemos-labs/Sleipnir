@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Shell commands always have `~/.sleipnir/bin` at the front of their `PATH`
+  (before, only when it held a launcher at session start), so a program
+  located or installed on the Plugins page reaches a running team at once.
+  Prompt bytes: none change; the toolchain line lists only commands that
+  exist. Blender gains a `snap` install method and the `~/blender*/blender`
+  and `~/.local/opt/blender*/blender` default locations on Linux.
 - Plugins declare the programs and tool servers they use (`needs` in
   `plugin.json`; docs/PLUGINS.md): the built-in skills need Blender, uv,
   Node.js, REA and the Blender and REA tool servers, and GitHub delivery the

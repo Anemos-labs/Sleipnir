@@ -246,6 +246,20 @@ func TestMarkRestart(t *testing.T) {
 	}
 }
 
+func TestMarkRestartKeepsFlagDecisions(t *testing.T) {
+	in := Input{}
+	in.Add(Mailman, true, LayerFlag)
+	run, _ := Resolve(Builtin(), in)
+	next, _ := Resolve(Builtin(), Input{}) // the files alone: the mailman is off in the standard profile
+	m, any := MarkRestart(run, next)
+	if any {
+		t.Error("a plugin a flag turned on does not wait for a restart")
+	}
+	if st, _ := m.Get(Mailman); st.State != StateOn || st.Layer != LayerFlag {
+		t.Errorf("mailman = %+v, want on by flag", st)
+	}
+}
+
 func TestFromConfigReadsRowsLegacyAndLayers(t *testing.T) {
 	home, root := t.TempDir(), t.TempDir()
 	write := func(p, s string) {
