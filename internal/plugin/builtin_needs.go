@@ -16,13 +16,14 @@ var (
 		Commands:    []string{"blender"}, VersionArgs: []string{"--version"},
 		Paths: map[string][]string{
 			"darwin":  {"/Applications/Blender.app/Contents/MacOS/Blender", "~/Applications/Blender.app/Contents/MacOS/Blender"},
-			"linux":   {"/snap/bin/blender", "/opt/blender*/blender", "~/.local/share/flatpak/exports/bin/org.blender.Blender", "/var/lib/flatpak/exports/bin/org.blender.Blender"},
+			"linux":   {"/snap/bin/blender", "/opt/blender*/blender", "~/blender*/blender", "~/.local/opt/blender*/blender", "~/.local/share/flatpak/exports/bin/org.blender.Blender", "/var/lib/flatpak/exports/bin/org.blender.Blender"},
 			"windows": {"${ProgramFiles}/Blender Foundation/Blender*/blender.exe"},
 		},
 		Install: []InstallMethod{
 			{ID: "brew", Title: "Homebrew", OS: []string{"darwin"}, Run: []string{"brew", "install", "--cask", "blender"}},
 			{ID: "winget", Title: "winget", OS: []string{"windows"}, Run: []string{"winget", "install", "--id", "BlenderFoundation.Blender", "-e"}},
 			{ID: "flatpak", Title: "Flatpak (Flathub)", OS: []string{"linux"}, Run: []string{"flatpak", "install", "--user", "-y", "flathub", "org.blender.Blender"}},
+			{ID: "snap", Title: "Snap", OS: []string{"linux"}, Run: []string{"snap", "install", "blender", "--classic"}},
 		}}
 	needUV = Need{ID: "uv", Title: "uv", Homepage: "https://docs.astral.sh/uv/",
 		Description: "the Python tool runner that starts the Blender tool server (uvx)",

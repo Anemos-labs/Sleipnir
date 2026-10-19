@@ -126,6 +126,14 @@ func TestCheckNeedsFindsDefaultLocationsAndPrepareLinksThem(t *testing.T) {
 	}
 }
 
+func TestPrepareNeedsReturnsTheBinBeforeAnythingIsLocated(t *testing.T) {
+	state := filepath.Join(t.TempDir(), "state")
+	set, _ := Resolve([]Manifest{{ID: "p", Category: CatTools}}, Input{})
+	if bin := PrepareNeeds(state, set); bin != NeedBin(state) {
+		t.Fatalf("bin %q: a program located after the session starts must still be on its PATH", bin)
+	}
+}
+
 func TestInstallNeedRunsTheDeclaredArgvAndChecksTheResult(t *testing.T) {
 	bin, marker := t.TempDir(), filepath.Join(t.TempDir(), "ran")
 	program(t, bin, "pm", marker)

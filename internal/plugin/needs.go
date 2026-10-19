@@ -553,8 +553,10 @@ func runVersion(ctx context.Context, p string, args []string) (string, error) {
 }
 
 // PrepareNeeds links each program need of set that was found outside PATH into
-// <state>/bin and returns that directory when it holds anything; a session puts
-// it in front of its commands' PATH, so agents call `blender` by name.
+// <state>/bin and returns that directory; a session puts it in front of its
+// commands' PATH, so agents call `blender` by name. The directory is returned
+// even while it is empty or missing, so a program located or installed while
+// the session runs is on its agents' PATH at once, without a restart.
 func PrepareNeeds(state string, set *Set) string {
 	if state == "" {
 		return ""
@@ -572,11 +574,7 @@ func PrepareNeeds(state string, set *Set) string {
 		}
 	}
 	needMu.Unlock()
-	bin := NeedBin(state)
-	if ents, err := os.ReadDir(bin); err == nil && len(ents) > 0 {
-		return bin
-	}
-	return ""
+	return NeedBin(state)
 }
 
 // shimPath is the link of one command in <state>/bin.

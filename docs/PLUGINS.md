@@ -127,14 +127,18 @@ sleipnir plugins forget blender
 - **Locate** takes a program you installed yourself. The file must be an executable (on macOS an `.app` bundle is
   followed to its program) and its version command must succeed. It is remembered in `~/.sleipnir/needs.json`.
 - **Install** runs one of the need's declared install methods for this operating system (`brew`, `winget`, `flatpak`,
-  `npm`, `uvx` ...), as the exact command shown, never through a shell, and only when you ask for that method: the page
+  `snap`, `npm`, `uvx` ...), as the exact command shown, never through a shell, and only when you ask for that method: the page
   shows the command and needs a confirmation, the terminal asks unless you pass `--yes`. A method whose own program is
   missing says which (`needs Node.js first`). A tool server's method then adds the server to `mcp` in your
   `~/.sleipnir/config.json`, pinned to the version it installed; it starts with your next session.
 
 A program found outside `PATH` (located, or in its usual place) gets a small launcher in `~/.sleipnir/bin`, which every
-shell command of a session has at the front of its `PATH`, so agents call it by name (`blender --background ...`). A
+shell command of a session has at the front of its `PATH`, so agents call it by name (`blender --background ...`); a
+program located or installed while a session runs is on that session's `PATH` at once. A
 plugin whose *required* need is missing says so on its row; optional ones only limit what it can do.
+
+A plugin that a flag of the running session decided (`--mailman`, `--no-web`) shows the session's state and the `flag`
+layer on the Plugins page: a restart parses the same flags again, so a file's row alone does not change it.
 
 ## Writing a plugin
 
