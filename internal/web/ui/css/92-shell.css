@@ -1,0 +1,58 @@
+/* 92-shell.css: the shell said plainly (80-ui-shell.js, 84-ui-chat.js, 96-ui-nav.js): the header's team line, the status bar's phone-only
+   time, the Notices line of the Radio rail, the GitHub switches of the composer, and the grouped menu with whole-word labels. */
+
+/* ---------- header ---------- */
+.hm.team .govtxt{color:var(--warm);font:500 11px/1.2 var(--f-ui);white-space:nowrap}
+.hm.team b em{font:400 11px var(--f-ui);font-style:normal;color:var(--dim)}
+.hm.budget b em{font:400 11px var(--f-ui)}
+.goalbtn .lab .el{font-family:var(--f-ui)}
+@media (max-width:900px){.goal-t{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.3}}
+
+/* ---------- status bar: the time only where the header has no room for it ---------- */
+.ph-only{display:none}
+@media (max-width:900px){.ph-only{display:inline}}
+
+/* ---------- the Radio rail ---------- */
+.rail-h .rm{font:400 12px var(--f-ui);color:var(--dim)}
+.railmin .rmv{letter-spacing:.18em}
+.chhead[hidden]{display:none}
+.chhead kbd{margin-left:4px;font-size:9.5px}
+.noticebar{flex:none;border-bottom:1px solid var(--line);font:400 12px/1.4 var(--f-ui);color:var(--dim)}
+.noticebar[hidden]{display:none}
+.noticebar .nb-tog{display:flex;align-items:center;gap:8px;width:100%;padding:5px 12px;text-align:left;color:var(--dim)}
+.noticebar .nb-tog:hover{color:var(--fg);background:var(--panel2)}
+.noticebar .nb-g{flex:none;width:14px;text-align:center}
+.noticebar.warn .nb-g{color:var(--warm)}
+.noticebar .nb-t{flex:none;font:600 11px/1 var(--f-lab);letter-spacing:.1em;text-transform:uppercase;color:var(--fg2)}
+.noticebar .nb-s{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.noticebar .nb-c{flex:none}
+.noticebar .nb-list{list-style:none;margin:0;padding:2px 12px 8px 34px;max-height:30vh;overflow:auto}
+.noticebar .nb-list li{display:flex;gap:8px;padding:2px 0;overflow-wrap:anywhere}
+.noticebar .nb-list li .lg{flex:none;margin-left:-22px;width:14px;text-align:center}
+.noticebar .nb-list li.warm .lg{color:var(--warm)}
+
+/* ---------- the composer's GitHub switches ---------- */
+.delivery-controls{align-items:center;row-gap:3px;column-gap:14px;padding:6px 10px 4px}
+.delivery-controls label{cursor:pointer;color:var(--fg2)}
+.delivery-controls .dlv-why{flex:1 1 100%;font:400 11px/1.35 var(--f-ui);color:var(--dim)}
+.delivery-controls.off label{cursor:not-allowed;color:var(--faint)}
+.delivery-controls.off .dlv-why{color:var(--fg2)}
+.linkbtn{display:inline;padding:0;border:0;background:none;color:var(--fe);font:inherit;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.linkbtn:hover{color:var(--bright)}
+
+/* ---------- the menu: groups, and whole words in the narrow rail ---------- */
+#app{--navw:72px}
+#app[data-navmode="wide"]{--navw:200px}
+.nvi .nl{font:600 10.5px/1.1 var(--f-ui);letter-spacing:0;text-transform:none}
+.nvh{height:auto;border-top:1px solid var(--line2);margin:6px 8px 2px;padding-top:5px;font:700 8.5px/1 var(--f-lab);letter-spacing:.12em;text-transform:uppercase;color:var(--faint);text-align:center;overflow:visible}
+#app[data-navmode="wide"] .nvh{text-align:left;border-top:0;padding-top:0}
+#app[data-navmode="wide"] .nvi .nl{font:600 13px/1 var(--f-ui);letter-spacing:0;text-transform:none}
+.nvt .nl{font:600 10px/1 var(--f-ui);letter-spacing:0;text-transform:none}
+.nvi.nvradio{margin-bottom:2px}
+.moreh{margin:12px 0 6px}
+.moreh:first-child{margin-top:0}
+/* fourteen items and three group titles fit a 900 px high window without scrolling */
+.nvi{padding:5px 2px 4px;gap:2px}
+.nvh{margin:4px 8px 1px;padding-top:4px}
+.nvt{padding:6px 2px}
+@media (max-height:820px) and (min-width:901px){.nvi{padding:3px 2px}.nvi .nvg{width:18px;height:18px}}

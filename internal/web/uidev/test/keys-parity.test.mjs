@@ -222,7 +222,7 @@ test('a key bound on the message box is found by the sweep', async () => {
 test('a key bound in a view, and a chord, are found by the sweep', async () => {
   const view = await unbound('view-sessions', ['x', 'z', 'v', 'y', 'w']), chord = await unbound('chord', ['w', 'x', 'y', 'z', 'v'], 'g ');
   PATCH['91-views-b.js'] = src => { assert.ok(src.includes("reg({ name: 'sessions', title: 'Sessions', mount(sc, root, params, S0) {"), 'the view this test edits has moved'); return src.replace("reg({ name: 'sessions', title: 'Sessions', mount(sc, root, params, S0) {", "reg({ name: 'sessions', title: 'Sessions', mount(sc, root, params, S0) { sc.listen(document, 'keydown', e => { if (e.key === '" + view.key + "') SL.ui.toast('bound'); });"); };
-  PATCH['96-ui-nav.js'] = src => { assert.ok(src.includes("{ id: 'tools', view: 'tools', label: 'Tools', key: 't' }"), 'the rail this test edits has moved'); return src.replace("{ id: 'tools', view: 'tools', label: 'Tools', key: 't' }", "{ id: 'tools', view: 'tools', label: 'Tools', key: '" + chord.key + "' }"); };
+  PATCH['96-ui-nav.js'] = src => { assert.ok(src.includes("{ id: 'tools', view: 'tools', label: 'Tools', key: 't'"), 'the rail this test edits has moved'); return src.replace("{ id: 'tools', view: 'tools', label: 'Tools', key: 't'", "{ id: 'tools', view: 'tools', label: 'Tools', key: '" + chord.key + "'"); };
   try {
     const r = await sweep(['view-sessions', 'chord']);
     assert.deepEqual(r.seen[view.key], ['view-sessions']);

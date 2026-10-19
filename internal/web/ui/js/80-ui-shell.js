@@ -1,7 +1,13 @@
 /* 80-ui-shell.js: the persistent chrome (SL.ui.shell): HUD, session strip, view tabs, replay banner, footer, phone nav.
  * It is mounted once, under the shell scope, and re-renders from the active session. Nothing here is view-specific.
- * The warm ring's 25 ticks are a fraction of the prefix's real cache lifetime (m.ttl); the connection chip shows the server's
- * address and the stream's state (connected, reconnecting, disconnected). */
+ *
+ * Each fact is said once. The header holds the goal and how long the session has run, what it spent against its budget, and the
+ * team (how many workers are busy, and a warning only while rate limits slow it down). The cache rings (reuse, and how long the
+ * cache stays warm) show only with the full cache detail (Settings › Appearance); otherwise that detail is the Cache view's cards
+ * (cache.sum, cache.hit, cache.head) and the rate detail is the Cockpit's Governor card (gov). The session strip names the sessions,
+ * and the spend of all of them only when there are several; the status bar says what the session is doing and its tokens, and the
+ * model and session id. The warm ring's 25 ticks are a fraction of the prefix's real cache lifetime (m.ttl); the connection chip
+ * says connected or reconnecting, with the server's address in its tooltip. */
 (function (SL) {
   'use strict';
   const U = SL.u, { $, $$, esc, mk, fmtUsd, fmtSpend, planTag, spendOf, mmss, clock, pct, hitCls } = U, calc = SL.calc;
@@ -24,21 +30,22 @@
     sc.update((S, m) => {
       if (!S || !m) return; const c = calc.totals(m), meta = S.meta, nW = Math.max(S.roster.length - 1, meta.swarm || 0);   // a team's size is its slots, not the workers started so far
       const goalText = meta.goalText || (m.goal.state !== 'cleared' && m.goal.objective) || '';   /* the server's goal events name it too */
-      $('#goalLab').textContent = goalText ? 'Goal' : 'Session'; const gs = $('#goalState'); gs.hidden = !goalText; const gst = m.goal.state; gs.textContent = gst === 'met' ? 'met ✓' : gst === 'paused' ? 'paused' : gst === 'cleared' ? 'cleared' : 'active'; gs.style.color = gst === 'met' ? 'var(--ok)' : gst === 'paused' ? 'var(--warm)' : '';
-      txt('goalT', $('#goalT'), goalText || 'no goal: a chat with the manager (type /goal TEXT to set one)');
+      $('#goalLab').textContent = 'Goal'; const gs = $('#goalState'); gs.hidden = !goalText; const gst = m.goal.state; gs.textContent = gst === 'met' ? 'met ✓' : gst === 'paused' ? 'paused' : gst === 'cleared' ? 'cleared' : 'active'; gs.style.color = gst === 'met' ? 'var(--ok)' : gst === 'paused' ? 'var(--warm)' : '';
+      txt('goalT', $('#goalT'), goalText || 'No goal yet: talk with the manager, or type /goal to give the team one');
       txt('cost', $('#vCost'), fmtSpend(c, 2)); $('#vCost').title = c.plan ? fmtSpend(c, 4) + ' ' + U.PLAN_HELP : fmtUsd(c.cost, 4) + ' (list prices)' + unpricedNote(c.unpriced);
       /* a plan's usage fills no budget: the budget counts what is billed per token, and the plan bills nothing per token. A session that
          mixes the two fills its gauge with the billed part; one that is all the plan's says the budget is not touched */
-      { const only = U.planOnly(c); txt('budget', $('#vBudget'), only ? 'plan' : (c.plan ? 'plan · ' : '') + (meta.budget ? 'of ' + fmtUsd(meta.budget, 2) : 'no budget')); $('#vBudget').className = c.plan ? 'plantag' : '';
+      { const only = U.planOnly(c); txt('budget', $('#vBudget'), only ? 'on your plan' : (c.plan ? 'plan · ' : '') + (meta.budget ? 'of ' + fmtUsd(meta.budget, 2) + ' budget' : 'no budget limit')); $('#vBudget').className = c.plan ? 'plantag' : '';
         const gf = $('#gaugeFill'), gw = gf.parentNode, hb = gw.parentNode; gw.classList.toggle('plan', !!c.plan); gw.setAttribute('aria-label', only ? 'budget not used: the plan bills nothing per token' : !meta.budget ? 'no budget set' : 'budget used: ' + Math.round(U.budgetPct(c, meta.budget)) + '% billed, ' + fmtUsd(c.cost, 2) + ' of ' + fmtUsd(meta.budget, 2));
         hb.title = c.plan ? U.PLAN_HELP + ': the budget (--budget-usd) counts only what is billed per token' + (meta.budget ? ', ' + fmtUsd(c.cost, 2) + ' of ' + fmtUsd(meta.budget, 2) + ' so far' : '') : 'the budget of this session (--budget-usd)';
         gf.style.width = (meta.budget && !only ? Math.max(1.6, U.budgetPct(c, meta.budget)) : 0) + '%'; }
-      $('#hitArc').style.strokeDashoffset = HIT_C * (1 - c.pct / 100); txt('hit', $('#hitTxt'), String(c.pct)); txt('hitc', $('#hitChipN'), String(c.pct)); $('#ringHit').title = 'read ' + U.fmtN(c.read) + ' / prompt ' + U.fmtN(c.prompt) + ' = ' + c.hit1 + '%';
+      $('#hitArc').style.strokeDashoffset = HIT_C * (1 - c.pct / 100); txt('hit', $('#hitTxt'), String(c.pct)); $('#ringHit').title = 'cache hit ratio: ' + U.fmtN(c.read) + ' of ' + U.fmtN(c.prompt) + ' prompt tokens were read from the cache (' + c.hit1 + '%). The Cache view has the detail.';
       $('#ringHit').classList.toggle('dip', c.pct < 80);
       txt('teamLab', $('#teamLab'), nW ? 'manager + ' + nW + ' worker' + (nW === 1 ? '' : 's') : 'single agent');
-      txt('act', $('#vActN'), String(calc.active(m))); txt('actOf', $('#vActOf'), nW ? 'of ' + nW + ' worker' + (nW === 1 ? '' : 's') : 'workers: the manager works alone');
-      { const d = meta.mode === 'bypass' || meta.mode === 'yolo', gh = '<span class="hmode ' + (d ? 'dng' : meta.mode === 'default' ? '' : 'on') + '" title="permission mode: shift+tab cycles default, accept-edits, plan">' + (d ? '⚠ ' : '') + esc(meta.mode) + '</span> · rpm ' + (m.rpm || 0) + ' · 429s ' + (m.r429 || 0) + ' · retries ' + (m.retries || 0); const ge = $('#govTxt'); if (H.txt.gov !== gh) { H.txt.gov = gh; ge.innerHTML = gh; } }
-      $('#vAct').parentNode.title = nW ? 'capacity ' + nW + ' workers · ' + calc.started(m) + ' started · ' + calc.active(m) + ' active (not idle, not done)' : 'swarm 0: one agent, no workers';
+      { const solo = !nW; $('#vAct').hidden = solo; if (!solo) { txt('act', $('#vActN'), String(calc.active(m))); txt('actOf', $('#vActOf'), 'of ' + nW); } }
+      /* rate limits are said only while they slow the team down; the rates themselves are the Cockpit's Governor card */
+      { const r4 = m.r429 || 0, rt = m.retries || 0, slow = r4 + rt > 0, ge = $('#govTxt'), gt = slow ? 'slowed by rate limits: ' + (r4 ? r4 + ' refused (429) · ' : '') + rt + ' retr' + (rt === 1 ? 'y' : 'ies') : ''; ge.hidden = !slow; txt('gov', ge, gt); ge.title = slow ? 'the provider refused or delayed requests; the Governor card of the Cockpit shows requests per minute, 429s and retries' : ''; }
+      $('#vAct').parentNode.title = nW ? 'the team: ' + nW + ' worker slots · ' + calc.started(m) + ' started · ' + calc.active(m) + ' working now (not idle, not done)' : 'one agent: the manager works alone (no workers)';
       const cut = S.truncated ? '<span class="warm">showing the first ' + U.fmtN(S.truncated) + ' events: the log has more</span>' : '';
       const b = $('#banner'); if (S.loading) { const sec = Math.max(0, Math.ceil((S.loading.next - Date.now()) / 1000)); b.hidden = false; b.innerHTML = '<b>Not loaded</b><span class="warm">could not load ' + esc(S.name) + ': ' + (sec ? 'retrying in ' + sec + ' s' : 'retrying') + '</span><span class="dim">' + esc(S.loading.why) + '</span><span class="sp"></span>'; }
       else if (S.replay) { b.hidden = false; b.innerHTML = '<b>Replay</b><span>' + mmss(S.vt) + ' of ' + mmss(S.wt) + '</span><span>' + (S.replay.playing ? 'playing ' + S.replay.speed + 'x' : 'paused') + '</span><span class="dim">' + (S.recorded ? (S.follow ? 'watching ' + esc(S.sid) + ' · read-only · the run belongs to another process' : esc(S.sid) + ' · a recorded session, read-only') : 'the whole cockpit follows the log; actions act on the live session') + '</span>' + cut + '<span class="sp"></span><button type="button" data-act="live">go live</button>'; }
@@ -55,7 +62,7 @@
       rw.classList.toggle('low', low); rw.classList.toggle('cold', cold); $('#warmArc').style.strokeDashoffset = RING_C * (1 - H.disp);
       const lit = Math.ceil(H.disp * WARM_LIFE - 1e-6); for (let i = 0; i < H.ticks.length; i++) { const on = i < lit; if (H.ticks[i]._on !== on) { H.ticks[i]._on = on; H.ticks[i].classList.toggle('on', on); } }
       txt('warm', $('#warmTxt'), cold ? 'cold' : clock(left)); const wt = $('#warmTxt'); wt.style.fill = cold || low ? 'var(--err)' : ''; wt.style.fontSize = cold ? '12px' : '15px';
-      txt('wnote', $('#warmNote'), cold ? 'cold: the next request pays full price (est.)' : low ? 'goes cold in ' + clock(left) + ' unless a request lands' : 'cache lifetime, refills on each request');
+      txt('wnote', $('#warmNote'), cold ? 'expired: the next request pays full price' : low ? 'expires in ' + clock(left) + ' unless a request lands' : 'refills on each request');
       if (H.lastReq !== m.lastReq) { const fresh = m.lastReq > H.lastReq && Math.abs(vt - m.lastReq) < 1.5; H.lastReq = m.lastReq; if (fresh && !ui.still() && !S.replay) { rw.classList.remove('pulse'); void rw.offsetWidth; rw.classList.add('pulse'); const last = m.reqLog[m.reqLog.length - 1]; $('#warmFlash').style.stroke = last && last.ratio === 0 ? 'var(--err)' : 'var(--ok)'; } }
       if ((SL.loop.frameNo & 7) === 0) { renderFooter(S, m); stripCosts(); }
     });
@@ -76,7 +83,7 @@
       SL.sessions.list.forEach(S => { const t = calc.totals(S.wm); spent += spendOf(t); if (t.plan) plans = true; cap += S.meta.budget || 0; });
       let h = '<div class="stabs" role="tablist" aria-label="Sessions">' + SL.sessions.list.map(S => {
         const st = S.state(), q = nd.filter(x => x.S === S).length, sel = S === act, gl = (S.meta.headless || S.follow) && st === 'run' ? '⟳' : SESS_ICON[st];
-        return '<div class="stabw' + (sel ? ' sel' : '') + '" role="presentation" data-state="' + st + '"><button class="stab' + (sel ? ' sel' : '') + '" role="tab" type="button" data-sid="' + esc(S.id) + '" aria-selected="' + sel + '" data-state="' + st + '" title="' + esc(S.name + ' · ' + S.meta.cwd + ' · ' + ST_WORD[st] + (S.meta.headless ? ' · headless job: nobody can answer' : '') + ' (double-click to rename, middle-click to close)') + '"><i class="sg" aria-hidden="true">' + gl + '</i><span class="sn">' + esc(S.name) + '</span><span class="sc num" data-cost="' + esc(S.id) + '"></span>' + (S.meta.mode === 'bypass' || S.meta.mode === 'yolo' ? '<span class="dgm" title="' + esc(S.meta.mode) + ' mode: this session does not ask before it acts">⚠<span class="sr"> ' + esc(S.meta.mode) + ' mode</span></span>' : '') + (q ? '<span class="nb" title="a question waits for you">? ' + q + '</span>' : '') + '<span class="sr">' + ST_WORD[st] + (q ? ', ' + q + ' question' + (q > 1 ? 's' : '') + ' waiting' : '') + '</span></button><button class="stx" type="button" data-close="' + esc(S.id) + '" aria-label="Close ' + esc(S.name) + '" title="Close this session…">×</button></div>';
+        return '<div class="stabw' + (sel ? ' sel' : '') + '" role="presentation" data-state="' + st + '"><button class="stab' + (sel ? ' sel' : '') + '" role="tab" type="button" data-sid="' + esc(S.id) + '" aria-selected="' + sel + '" data-state="' + st + '" title="' + esc(S.name + ' · ' + S.meta.cwd + ' · ' + ST_WORD[st] + (S.meta.headless ? ' · headless job: nobody can answer' : '') + ' (double-click to rename, middle-click to close)') + '"><i class="sg" aria-hidden="true">' + gl + '</i><span class="sn">' + esc(S.name) + '</span>' + (S.meta.mode === 'bypass' || S.meta.mode === 'yolo' ? '<span class="dgm" title="' + esc(S.meta.mode) + ' mode: this session does not ask before it acts">⚠<span class="sr"> ' + esc(S.meta.mode) + ' mode</span></span>' : '') + (q ? '<span class="nb" title="a question waits for you">? ' + q + '</span>' : '') + '<span class="sr">' + ST_WORD[st] + (q ? ', ' + q + ' question' + (q > 1 ? 's' : '') + ' waiting' : '') + '</span></button><button class="stx" type="button" data-close="' + esc(S.id) + '" aria-label="Close ' + esc(S.name) + '" title="Close this session…">×</button></div>';
       }).join('') + '</div>';
       h += '<button class="sact" type="button" id="sNew" title="start another session (all the chat flags)"><span aria-hidden="true">+</span> New</button><button class="sact" type="button" id="sRes" title="resume a recorded session (↺)"><span aria-hidden="true">↺</span> Resume</button><button class="sact" type="button" id="sOpt" aria-haspopup="menu" title="rename, restart, stop or close the active session" aria-label="Session menu">⋯</button><span class="sp"></span>';
       /* Needs you: with a question open anywhere, a loud badge (how many, how long the oldest has waited) that opens the oldest one, and
@@ -84,16 +91,18 @@
       const nq = nd.reduce((n, x) => n + (x.waiting || 1), 0);
       h += nd.length ? '<button class="sact inbox has inboxbtn" type="button" id="sInbox" data-needgo title="open the question that has waited longest (switches to its session)" aria-label="' + nq + ' question' + (nq === 1 ? '' : 's') + ' wait for you: open the oldest"><i class="nyq" aria-hidden="true">?</i>Needs you <b class="num">' + nq + '</b><span class="nyage num" data-needage></span></button><button class="sact inboxall inboxbtn" type="button" id="sInboxAll" aria-haspopup="dialog" aria-expanded="false" title="every open question, in every session" aria-label="Every open question">▾</button>'
         : '<button class="sact inbox inboxbtn" type="button" id="sInbox" aria-haspopup="dialog" aria-expanded="false" title="open questions in every session">Needs you <b class="num">0</b></button>';
-      h += '<button class="sact gbud" type="button" id="sBud" aria-haspopup="dialog" title="spent by every session this page runs (list prices' + (plans ? '; ≈: ' + U.PLAN_HELP : '') + ')"><span class="dim">all ' + n + '</span> <b class="num" data-gbud>' + fmtSpend({ cost: spent, plan: plans }, 2) + '</b>' + (cap ? ' <span class="dim">of ' + fmtUsd(cap, 2) + '</span>' : '') + '</button>';
+      /* the spend of every session: one session's spend is the header's, so the sum shows only beside a second session */
+      if (n > 1) h += '<button class="sact gbud" type="button" id="sBud" aria-haspopup="dialog" title="spent by every session this page runs, each against its own budget (list prices' + (plans ? '; ≈: ' + U.PLAN_HELP : '') + ')"><span class="dim">' + n + ' sessions spent</span> <b class="num" data-gbud>' + fmtSpend({ cost: spent, plan: plans }, 2) + '</b>' + (cap ? ' <span class="dim">of ' + fmtUsd(cap, 2) + '</span>' : '') + '</button>';
       const upd = SL.live.hello && SL.live.hello.update; if (upd && upd.latest && upd.latest !== upd.current) h += '<button class="tag ok" type="button" id="sUpd" title="' + esc(upd.notice || 'a newer release is out: sleipnir update installs it') + '">↑ ' + esc(upd.latest) + '</button>';
       h += connHtml();
       return h;
     }
-    /** The connection chip: the server's address; `· loopback · token ✓` while the stream is up, `○ … · reconnecting` (warm) while not. */
+    /** The connection chip: `● connected` while the stream is up (the address, loopback and the token in its tooltip), `○ reconnecting`
+     *  or `○ disconnected` (warm) while not. */
     function connHtml() {
       const L = SL.live, addr = esc(L.addr), st = L.state;
-      if (st === 'open' || st === 'connecting') return '<span class="conn" id="conn" title="the page is served from loopback and carries a launch token; the token is held in this tab"><span class="on">●</span> ' + addr + ' <span class="cx">· loopback · token <span class="tk">✓</span></span></span>';
-      return '<span class="conn" id="conn" role="status" tabindex="0" style="color:var(--warm)" title="' + esc(st === 'down' ? 'the server is gone: ' + (L.why || 'it stopped') + '; the page tries again every 2 s' : 'the stream is down; the page reconnects by itself') + '"><span class="on" style="color:var(--warm)">○</span> ' + addr + ' <span class="cx" style="color:var(--warm)">· ' + (st === 'down' ? (L.stopped ? 'the server stopped' : 'disconnected') : 'reconnecting') + '</span></span>';
+      if (st === 'open' || st === 'connecting') return '<span class="conn" id="conn" title="connected to the Sleipnir server at ' + addr + ': served from loopback, with a launch token held in this tab"><span class="on">●</span> <span class="cx">connected</span></span>';
+      return '<span class="conn" id="conn" role="status" tabindex="0" style="color:var(--warm)" title="' + esc(st === 'down' ? 'the server at ' + L.addr + ' is gone: ' + (L.why || 'it stopped') + '; the page tries again every 2 s' : 'the stream from ' + L.addr + ' is down; the page reconnects by itself') + '"><span class="on" style="color:var(--warm)">○</span> <span class="cx" style="color:var(--warm)">' + (st === 'down' ? (L.stopped ? 'the server stopped' : 'disconnected') : 'reconnecting') + '</span></span>';
     }
     sc.on('conn', () => { strip._sig = ''; renderStrip(); });
     /** The version beside the logo: the short label (v0.2.28), the full build in its tooltip (hello.server). */
@@ -103,14 +112,14 @@
     }
     function renderStrip() {
       paintVer();
-      const sig = SL.sessions.list.map(S => S.id + S.name + S.state() + (S.meta.headless ? 'h' : '') + S.meta.mode).join('|') + '|' + (SL.sessions.active && SL.sessions.active.id) + '|' + SL.sessions.needs().map(x => x.S.id + x.q.id + ':' + x.waiting).join(',') + '|' + SL.live.state;
+      const sig = SL.sessions.list.length + '#' + SL.sessions.list.map(S => S.id + S.name + S.state() + (S.meta.headless ? 'h' : '') + S.meta.mode).join('|') + '|' + (SL.sessions.active && SL.sessions.active.id) + '|' + SL.sessions.needs().map(x => x.S.id + x.q.id + ':' + x.waiting).join(',') + '|' + SL.live.state;
       if (strip._sig !== sig) { strip._sig = sig; const fx = document.activeElement && document.activeElement.dataset ? (document.activeElement.dataset.sid || document.activeElement.id) : null; const tb = strip.querySelector('.stabs'), keep = tb ? tb.scrollLeft : 0; strip.innerHTML = stripHtml(); if (ui.approvals && ui.approvals.paintAges) ui.approvals.paintAges(); const tb2 = strip.querySelector('.stabs'); if (tb2) tb2.scrollLeft = keep; if (fx && !strip.contains(document.activeElement)) { const b = strip.querySelector('[data-sid="' + fx + '"]') || (fx && strip.querySelector('#' + CSS.escape(fx))); if (b) b.focus({ preventScroll: true }); } const sel = strip.querySelector('.stab.sel'); if (sel && tb2 && tb2.scrollWidth > tb2.clientWidth) { const r = sel.closest('.stabw'); if (r.offsetLeft < tb2.scrollLeft || r.offsetLeft + r.offsetWidth > tb2.scrollLeft + tb2.clientWidth) tb2.scrollLeft = r.offsetLeft - 8; } }
       stripCosts();
     }
     function stripCosts() {
+      const g = $('[data-gbud]', strip); if (!g) return;
       let spent = 0, plans = false; SL.sessions.list.forEach(S => { const t = calc.totals(S.wm); spent += spendOf(t); if (t.plan) plans = true; });
-      $$('[data-cost]', strip).forEach(el => { const S = SL.sessions.get(el.dataset.cost); if (S) { const c = calc.totals(S.wm), t = fmtSpend(c, 2); if (el.textContent !== t) { el.textContent = t; el.title = c.plan ? U.PLAN_HELP : ''; } } });
-      const g = $('[data-gbud]', strip); if (g) { const t = fmtSpend({ cost: spent, plan: plans }, 2); if (g.textContent !== t) g.textContent = t; }
+      const t = fmtSpend({ cost: spent, plan: plans }, 2); if (g.textContent !== t) g.textContent = t;
     }
     sc.update(renderStrip); sc.on('sessions-changed', () => { strip._sig = ''; renderStrip(); }); sc.on('needs-changed', () => { strip._sig = ''; renderStrip(); }); sc.on('activated', () => { strip._sig = ''; renderStrip(); });
     /** The Close confirm. An isolated team's verified work is applied first: the confirm says how, and the result toast is the
@@ -151,10 +160,11 @@
     function renderFooter(S, m) {
       const mg = m.ag.mgr, c = calc.totals(m), q = calc.openQuestion(S.wm), slow = ui.waitingFor(mg, S.vt), word = m.goal.state === 'met' ? 'goal met' : q ? q.agent + ' waits for your answer' : mg.state === 'wait' ? 'manager waiting for the team' : S.replay ? 'replay' : slow ? 'manager ' + slow : 'manager ' + (mg.doing || mg.state);
       const col = m.goal.state === 'met' ? 'var(--ok)' : q ? 'var(--warm)' : 'var(--mgr)', sl = $('#statusLine');
-      const h = '<span class="dot" style="--c:' + col + '">●</span><span>' + esc(word) + '</span><span class="dim">·</span><span class="num">' + mmss(S.vt) + '</span><span class="dim">·</span><span class="num" title="tokens of every agent of the session: ↑ input, ↓ output">↑' + U.fmtK(c.prompt) + ' ↓' + U.fmtK(c.out) + '</span><span class="dim">·</span><span class="num"' + (c.plan ? ' title="' + U.PLAN_HELP + '"' : '') + '>' + fmtSpend(c, 2) + planTag(c) + '</span><span class="dim">·</span><span><kbd>esc</kbd> to interrupt</span>' + (m.goal.state === 'met' ? '<button class="btn sm" type="button" data-act="again">↺ run it again</button>' : '');
+      /* the status bar says what the session does and its tokens; the time and the spend are the header's (on a phone, whose header
+         has no room for the time, the time is said here instead); Esc is named by the rail's Interrupt turn while a turn runs */
+      const h = '<span class="dot" style="--c:' + col + '">●</span><span>' + esc(word) + '</span><span class="dim ph-only">·</span><span class="num ph-only">' + mmss(S.vt) + '</span><span class="dim">·</span><span class="num" title="tokens of every agent of the session: ↑ sent to the model (input), ↓ written by it (output)">tokens ↑' + U.fmtK(c.prompt) + ' ↓' + U.fmtK(c.out) + '</span>' + (m.goal.state === 'met' ? '<button class="btn sm" type="button" data-act="again">↺ run it again</button>' : '');
       if (sl._h !== h) { sl._h = h; sl.innerHTML = h; }
       txt('fm', $('#footModel'), S.placeholder ? '' : S.meta.model + ' · ' + S.sid);
-      txt('rm', $('#railModel'), S.meta.model);
     }
     sc.listen($('#statusLine'), 'click', e => { if (e.target.closest('[data-act="again"]')) SL.act.restartTeam({ swarm: SL.sessions.active.meta.swarm, force: true }); });
 
