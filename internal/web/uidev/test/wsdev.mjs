@@ -30,7 +30,7 @@ export function makeHybrid(dir) {
   fs.cpSync(src, dir, { recursive: true });
   const html = fs.readFileSync(path.join(dir, 'index-mock.html'), 'utf8').replaceAll('../../ui/', '');
   fs.writeFileSync(path.join(dir, 'index.html'), html); fs.rmSync(path.join(dir, 'index-mock.html'));
-  for (const f of ['96b-ws-data.js', '97-ui-workspace.js', 'api.js']) fs.copyFileSync(path.join(ui, 'js', f), path.join(dir, 'js', f));
+  for (const f of ['96b-ws-data.js', '97-ui-workspace.js', 'api.js', '98c-ui-plugins.js']) fs.copyFileSync(path.join(ui, 'js', f), path.join(dir, 'js', f));
   try {
     fs.writeFileSync(path.join(dir, 'js', 'wsacts.js'), wsActs(path.join(ui, 'js', '60-actions.js')));
     fs.writeFileSync(path.join(dir, 'index.html'), fs.readFileSync(path.join(dir, 'index.html'), 'utf8').replace('<script src="js/99-app.js"></script>', '<script src="js/wsacts.js"></script>\n<script src="js/99-app.js"></script>'));

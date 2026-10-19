@@ -19,6 +19,7 @@ page. `js-inventory.md` describes every module of the shipped page.
 | `js/11-data-adapter.js` | `SL.D`, the one object the renderers read data from; adopts pieces of `SLDATA` over `SL.FX` when their shape matches. | `js/11-data-live.js`: `SL.D`, `SL.G` and `SL.data`, caches filled from the API under the same field names. |
 | `js/40-scripts.js` | `SL.scripts`: the deterministic timelines of the sample sessions, the generic new-run script, scripted chat and steer replies, the director that schedules verification and the end of the goal. | The event stream of each session, applied by `js/live.js`. |
 | `js/95-kit.js` | The `?kit` component catalogue view: a design reference, not part of the product. | Not shipped. |
+| `js/plugins.js` | The plugin catalogue of the reference page (`window.SLPLUGINS`, the shape of `GET /api/plugins`) and, since the reference page has no `SL.api`, in-memory answers to the plugin routes, so that the shipped Plugins view (`../../ui/js/98c-ui-plugins.js`, which the reference page loads) runs on it. `mockapi.mjs` and the node tests read the same catalogue. | `GET /api/plugins` and `POST /api/plugins/{id}` of the server. |
 | `js/zz-test-hooks.js` | Test hooks of the reference page: a time warp, counters of timers and listeners, a signature of a model. | `internal/web/uidev/hooks-real.js`, injected by a test driver and never loaded by `index.html`. |
 
 The shipped page also has files the reference page lacks: `js/api.js` (`SL.api`, the only door to the server: requests,
@@ -47,5 +48,5 @@ modules in the numeric order of their names (`96-ui-nav.js` before `96b-ws-data.
 
 The shipped page loads `00-namespace.js`, `00-util.js`, `api.js`, `11-data-live.js`, `20-clock.js`, `30-model.js`,
 `50-sessions.js`, `60-actions.js` and `live.js`, then the views in the numeric order of their names (`96-ui-nav.js` before
-`96b-ws-data.js`, `98-ui-settings.js` before `98b-ui-tools.js`), and `99-app.js` last. A module reads another module's namespace
+`96b-ws-data.js`, `98-ui-settings.js` before `98b-ui-tools.js` before `98c-ui-plugins.js`), and `99-app.js` last. A module reads another module's namespace
 when it is evaluated (`const D = SL.D`), so a file loads after the files whose namespaces it reads.

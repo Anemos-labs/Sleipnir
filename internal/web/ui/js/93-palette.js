@@ -68,18 +68,20 @@
 
   /* ---------- the registry ---------- */
   let items = [];
+  /** whether a view's plugin is on (SL.plugins, 98c-ui-plugins.js): a view that is turned off leaves the palette */
+  const viewOn = v => !SL.plugins || SL.plugins.viewOn(v);
   function build() {
     items = [];
     D.slash.forEach(c => items.push({ g: c.group || 'commands', name: c.cmd, args: c.args, d: c.desc, slash: true, live: !!H[c.cmd] || !!c.custom, custom: !!c.custom }));
-    const GO = { cockpit: 'the horse, the nine stalls, the gantt, the board', cache: SL.settings.cache === 'full' ? 'cost, cache, savings, the six layers' : 'the prompt by layer, requests, anomalies', mail: 'worker mail: data, not instructions', board: 'the task board and its dependencies', replay: 'the session as a recording: scrub, speed', sessions: 'live and recorded sessions, prune', tools: 'every sleipnir command', settings: 'models, roles, budget, permissions, trust, MCP ...', doctor: 'probe an endpoint', schedule: 'cron jobs and the daemon', runner: 'a form from the real flags, the command line, the output' };
-    SL.views.V.order.concat(['runner']).forEach(n => { const def = SL.views.V.reg[n]; if (!def || n === 'workspace') return; items.push({ g: 'go to', name: n === 'runner' ? 'Run a command' : def.title, d: GO[n] || 'open the ' + def.title + ' view', view: n, live: true }); });
-    [['files', 'Files', 'the tree: ownership, leases, protected paths'], ['changes', 'Changes', 'by task or by agent, with the diff and its attribution gutter'], ['checkpoints', 'Checkpoints', '/rewind: diff and restore, with a preview'], ['merge', 'Merge', 'the merge queue, the verification of each task and the worktrees']].forEach(([id, t, d]) => items.push({ g: 'go to', name: t, d, fn: () => ui.nav.go(id), live: true }));
+    const GO = { cockpit: 'the horse, the nine stalls, the gantt, the board', cache: SL.settings.cache === 'full' ? 'cost, cache, savings, the six layers' : 'the prompt by layer, requests, anomalies', mail: 'worker mail: data, not instructions', board: 'the task board and its dependencies', replay: 'the session as a recording: scrub, speed', sessions: 'live and recorded sessions, prune', plugins: 'turn parts of Sleipnir on and off, and their settings', tools: 'every sleipnir command', settings: 'models, roles, budget, permissions, trust, MCP ...', doctor: 'probe an endpoint', schedule: 'cron jobs and the daemon', runner: 'a form from the real flags, the command line, the output' };
+    SL.views.V.order.concat(['runner']).forEach(n => { const def = SL.views.V.reg[n]; if (!def || n === 'workspace' || !viewOn(n)) return; items.push({ g: 'go to', name: n === 'runner' ? 'Run a command' : def.title, d: GO[n] || 'open the ' + def.title + ' view', view: n, live: true }); });
+    [['files', 'Files', 'the tree: ownership, leases, protected paths'], ['changes', 'Changes', 'by task or by agent, with the diff and its attribution gutter'], ['checkpoints', 'Checkpoints', '/rewind: diff and restore, with a preview'], ['merge', 'Merge', 'the merge queue, the verification of each task and the worktrees']].filter(() => viewOn('workspace')).forEach(([id, t, d]) => items.push({ g: 'go to', name: t, d, fn: () => ui.nav.go(id), live: true }));
     [['models', 'Models'], ['roles', 'Roles & effort'], ['budget', 'Budget'], ['permissions', 'Permissions'], ['trust', 'Trust'], ['run', 'Run settings'], ['mcp', 'MCP servers'], ['skills', 'Skills, commands & hooks'], ['providers', 'Providers & login'], ['config', 'Config layers'], ['look', 'Appearance & motion']].forEach(([id, t]) => items.push({ g: 'settings', name: 'Settings › ' + t, d: 'a real page, not a help text', fn: () => ui.settingsPage(id), live: true }));
     items.push({ g: 'go to', name: 'Radio', d: 'open the Radio rail and focus the composer', fn: () => ui.rail.focus(), live: true });
     items.push({ g: 'sessions', name: 'New session…', d: 'start another sleipnir session (all the chat flags)', fn: () => ui.dialogs.newSession(), live: true }, { g: 'sessions', name: 'Resume a session…', d: 'a recorded session, with ↺', fn: () => ui.dialogs.resume(), live: true }, { g: 'sessions', name: 'Needs you (inbox)', d: 'open questions in every session', fn: () => ui.inbox.toggle(), live: true }, { g: 'sessions', name: 'Rename this session…', d: 'a name for the tab', fn: () => ui.dialogs.rename(S_()), live: true }, { g: 'sessions', name: 'Close this session…', d: 'stops its team; the log stays on disk', fn: () => ui.closeSessionAsk(S_()), live: true }, { g: 'sessions', name: 'Team…', d: 'workers, role models, isolation, verify', fn: () => ui.settingsPage('run'), live: true });
     SL.sessions.list.forEach(S => items.push({ g: 'sessions', name: 'Switch to ' + S.name, d: S.meta.cwd + ' · ' + S.state(), fn: () => SL.act.switchSession(S.id), live: true, dyn: true }));
     if (!SL.sessions.list.length) items.push({ g: 'sessions', name: 'Switch to', d: '', fn: () => {}, live: false, dyn: true, hidden: true });
-    items.push({ g: 'help', name: 'Take the tour', d: 'the guided tour: each part of the page and how it works', fn: () => ui.tour.start(), live: true }, { g: 'help', name: 'Customise the Cockpit', d: 'move, resize, add and remove its cards; any view can be a card', fn: () => { SL.views.show('cockpit'); ui.dash.setLocked(false); }, live: true });
+    items.push({ g: 'help', name: 'Take the tour', d: 'the guided tour: each part of the page and how it works', fn: () => ui.tour.start(), live: true }, { g: 'help', name: 'Customise the Cockpit', d: 'move, resize, add and remove its cards; any view can be a card', fn: () => { SL.views.show('cockpit'); ui.dash.setLocked(false); }, live: true, hidden: !viewOn('cockpit') });
     D.spec.commands.forEach(c => items.push({ g: 'the program (sleipnir ...)', name: 'sleipnir ' + c.path.join(' '), d: c.summary || '', cli: c.path, live: true }));
   }
   function filter(q, slashOnly) {
@@ -124,6 +126,7 @@
     const near = Object.keys(done).filter(x => x.indexOf(S.id + '|') === 0 && prefix.indexOf(x.slice(S.id.length + 1)) === 0).sort((a, b) => b.length - a.length)[0];
     return near ? done[near].paths : [];
   }
+  SL.bus.on('plugins-changed', () => { if (items.length) build(); });
   SL.bus.on('ws-changed', S => { const p = (S && S.id ? S.id : '') + '|'; Object.keys(done).forEach(x => { if (!S || x.indexOf(p) === 0) delete done[x]; }); });
 
   /* ---------- the dialog (ctrl+k) ---------- */

@@ -87,8 +87,8 @@
     },
     {
       "side": "web_only",
-      "items": ["g r", "g f", "g h", "g k", "g q", "g p", "g s", "g t", "g e"],
-      "reason": "chords to views of the page's left rail that the terminal chat has no screen for: Radio, Files, Changes, Checkpoints, Merge, Replay, Sessions, Tools and Settings (see the views dimension)"
+      "items": ["g r", "g f", "g h", "g k", "g q", "g p", "g s", "g u", "g t", "g e"],
+      "reason": "chords to views of the page's left rail that the terminal chat has no screen for: Radio, Files, Changes, Checkpoints, Merge, Replay, Sessions, Plugins, Tools and Settings (see the views dimension)"
     }
   ],
   "equivalent": [

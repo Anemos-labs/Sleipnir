@@ -211,10 +211,10 @@ test('the keys that are not advertised on purpose are keys of the views that the
 
 test('the guard fails when a key of a view is left out of a sheet', async () => {
   const { chords, singles } = await viewKeys(), bound = [...chords, ...singles];
-  const chordRow = 'g then c r f h k q a m b p s t e';
+  const chordRow = 'g then c r f h k q a m b p s u t e';
   // the chord to the Merge view out of the Help sheet and of the card
   for (const file of ['87-ui-sheets.js', '98-ui-settings.js']) {
-    PATCH[file] = src => { assert.ok(src.includes(chordRow), 'the row this test takes a key out of has moved in ' + file); return src.replace(chordRow, 'g then c r f h k a m b p s t e'); };
+    PATCH[file] = src => { assert.ok(src.includes(chordRow), 'the row this test takes a key out of has moved in ' + file); return src.replace(chordRow, 'g then c r f h k a m b p s u t e'); };
     try {
       const { help, settings } = await sheets();
       const got = file === '87-ui-sheets.js' ? unnamed(help, bound, 'the Help sheet') : unnamed(settings, bound, 'Settings › Keys');

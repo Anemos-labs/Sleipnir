@@ -1,0 +1,48 @@
+/* Plugins: the catalogue of plugins (98c-ui-plugins.js) and the note a view whose plugin is off shows in its place */
+.plugv{display:flex;flex-direction:column;gap:var(--gap);min-height:100%;max-width:1180px}
+.plugv .pendbar{margin:0}
+.plg-tools{padding:10px 12px;gap:10px}
+.plg-row{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;min-width:0}
+.plg-row input[type=search]{flex:1 1 260px;min-width:160px;background:var(--bg);border:1px solid var(--line2);padding:6px 9px;font:500 12.5px var(--f-num);color:var(--bright);border-radius:2px}
+.plg-row input:focus,.plg-row select:focus{border-color:var(--c-mgr)}
+.plg-ctl{display:inline-flex;align-items:center;gap:8px;flex:none}
+.plg-ctl .lab{font:600 11px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.plg-ctl select{background:var(--bg);border:1px solid var(--line2);padding:5px 9px;font:500 12.5px var(--f-num);color:var(--bright);border-radius:2px}
+.plg-pd{flex:1 1 200px;min-width:0;font-size:12.5px}
+.plg-groups{display:flex;flex-direction:column;gap:var(--gap)}
+.plg-grp .ph{flex-wrap:wrap;row-gap:4px}
+.plg-grp .ph .r{white-space:normal;flex-wrap:wrap;justify-content:flex-end;gap:4px 12px}
+.plg-gd{font:400 12px var(--f-ui);color:var(--dim)}
+.plg-list{list-style:none;margin:0;padding:0}
+.plg{display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:2px 12px;align-items:start;padding:9px 12px;border-top:1px solid var(--line)}
+.plg:hover{background:var(--panel2-a)}
+.plg-c{padding-top:1px}
+.plg-h{display:flex;flex-wrap:wrap;align-items:center;gap:3px 8px}
+.plg-h b{font:600 14px/1.2 var(--f-ui);color:var(--bright)}
+.plg-h .pid{font:500 11px var(--f-num);color:var(--faint)}
+.plg-h .tag{margin:0}
+.plg.off .plg-h b{color:var(--fg2)}
+.plg-d{margin:3px 0 0;font:400 13px/1.4 var(--f-ui);color:var(--fg2)}
+.plg-m{margin:3px 0 0;font:500 11.5px/1.5 var(--f-num);color:var(--dim);overflow-wrap:anywhere}
+.plg-m .sep{color:var(--faint)}
+.plg-why{margin:3px 0 0;font:500 12.5px/1.4 var(--f-ui);color:var(--dim)}
+.plg-why.warm{color:var(--warm)}.plg-why.err{color:var(--err)}
+.plg-a{display:flex;gap:6px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+.plg-form{grid-column:2 / -1;margin:8px 0 2px;padding:4px 12px 10px;border:1px solid var(--line2);background:var(--panel2);border-radius:2px}
+.plg-form .fld{grid-template-columns:170px minmax(0,1fr);margin:7px 0}
+.plg-form .fld .fc input[type=text]{flex:1 1 240px;max-width:520px}
+.plg-form .fld .fc input[type=number]{flex:none;width:120px}
+.plg-form .hint{flex-basis:100%;color:var(--dim);font-size:12px}
+.tgl input:disabled{cursor:not-allowed}.tgl input:disabled+.trk{opacity:.55}
+.plg-none,.plg-empty .stubnote{padding:12px 4px;margin:0}
+.plgoff{display:flex;justify-content:center;padding:48px 12px}
+.plgoff .panel{width:100%;max-width:520px}
+.plgoff-t{margin:2px 0 8px;font:500 14px var(--f-ui);color:var(--bright)}
+@container main (max-width:640px){
+  .plg{grid-template-columns:36px minmax(0,1fr);padding:9px 10px}
+  .plg-a{grid-column:2;justify-content:flex-start;margin-top:6px}
+  .plg-form{grid-column:1 / -1}
+  .plg-form .fld{grid-template-columns:minmax(0,1fr)}
+  .plg-form .fld>label{padding-top:0}
+  .plg-gd{display:none}
+}

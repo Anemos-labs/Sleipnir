@@ -9,6 +9,10 @@
       "reason": "lists live and recorded sessions, prunes and deletes them; the terminal has `sleipnir sessions`, `sessions prune` and /sessions, each a command with its own output"
     },
     {
+      "item": "plugins",
+      "reason": "lists every plugin by category with a switch, its state, what it adds and a form for its settings, and picks the profile; the terminal has `sleipnir plugins` (list, enable, disable, profile) and /plugins in the chat, which list and toggle the same plugins as text"
+    },
+    {
       "item": "settings",
       "reason": "eleven pages for the model, roles, budget, permissions, trust, run flags, tool servers, skills, providers and the configuration layers; the terminal has /model, /roles, /budget, /permissions, /trust, /mcp, /skills and `sleipnir config`"
     },
