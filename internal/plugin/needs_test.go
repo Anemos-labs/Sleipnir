@@ -240,8 +240,21 @@ func TestInstallNeedWorksOutTheMethodsEnvironment(t *testing.T) {
 	if b, err := os.ReadFile(seen); err != nil || strings.TrimSpace(string(b)) != "/addons" {
 		t.Errorf("the command got %q (%v), not the last NAME=value line\n%s", b, err, out.String())
 	}
+	if o := out.String(); strings.Contains(o, "/addons") || strings.Contains(o, "banner") || !strings.Contains(o, "set SLEIPNIR_TEST_DIR") {
+		t.Errorf("a worked-out value or its command's output reached the install's output: %q", o)
+	}
 	if _, err := InstallNeed(context.Background(), env, n, "quiet", &out); err == nil || !strings.Contains(err.Error(), "printed no SLEIPNIR_TEST_DIR= line") {
 		t.Errorf("a command that prints no value: %v", err)
+	}
+	t.Setenv("SLEIPNIR_TEST_DIR", "")
+	_, _ = InstallNeed(context.Background(), env, n, "quiet", &out)
+	if b, _ := os.ReadFile(seen); strings.TrimSpace(string(b)) != "" {
+		t.Errorf("a variable set to empty was replaced: %q", b)
+	}
+	noProbe := NeedEnv{State: t.TempDir(), Home: t.TempDir(), PATH: t.TempDir(), SkipDefaults: true}
+	program(t, noProbe.PATH, "pm", "")
+	if st := CheckNeeds(noProbe, []OwnedNeed{{Need: n}})[0]; !st.Methods[0].Available {
+		t.Errorf("a method whose variable is already set needs its command: %+v", st.Methods[0])
 	}
 	t.Setenv("SLEIPNIR_TEST_DIR", "/mine")
 	_, _ = InstallNeed(context.Background(), env, n, "quiet", &out)

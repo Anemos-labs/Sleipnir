@@ -457,6 +457,9 @@ func methodStatus(env NeedEnv, n OwnedNeed, m InstallMethod, all []OwnedNeed) (M
 func runsFirst(n Need, m InstallMethod) []string {
 	var out []string
 	for _, name := range EnvNames(m.Env) {
+		if _, set := os.LookupEnv(name); set {
+			continue // methodEnv keeps it and does not run its command
+		}
 		if argv := m.Env[name]; !contains(out, argv[0]) {
 			out = append(out, argv[0])
 		}
@@ -732,11 +735,18 @@ func InstallNeed(ctx context.Context, env NeedEnv, n Need, methodID string, out 
 // runStep runs one command of an install with vars (NAME=value) added to its
 // environment, echoing it and writing what it prints to out.
 func runStep(ctx context.Context, env NeedEnv, argv, vars []string, out io.Writer) error {
+	return execStep(ctx, env, argv, vars, out, true)
+}
+
+// execStep is runStep, echoing the command to out only when echo is set.
+func execStep(ctx context.Context, env NeedEnv, argv, vars []string, out io.Writer, echo bool) error {
 	prog := lookIn(env.goos(), argv[0], env.path())
 	if prog == "" {
 		return fmt.Errorf("%s is not installed", argv[0])
 	}
-	fmt.Fprintf(out, "$ %s\n", strings.Join(argv, " "))
+	if echo {
+		fmt.Fprintf(out, "$ %s\n", strings.Join(argv, " "))
+	}
 	cmd := exec.CommandContext(ctx, prog, argv[1:]...)
 	cmd.Env = append(append(os.Environ(), "PATH="+env.path()), vars...)
 	cmd.Stdout, cmd.Stderr = out, out
@@ -747,31 +757,55 @@ func runStep(ctx context.Context, env NeedEnv, argv, vars []string, out io.Write
 }
 
 // methodEnv works out a method's environment variables (InstallMethod.Env) as
-// NAME=value, in name order; one already set in the environment is kept.
+// NAME=value, in name order; one already in the environment, even empty, is
+// kept and its command not run. What a value's command prints, and the value,
+// stay out of out (a value can be a credential); out sees the command, and the
+// start of its output only when it fails.
 func methodEnv(ctx context.Context, env NeedEnv, decl map[string][]string, out io.Writer) ([]string, error) {
 	var vars []string
 	for _, name := range EnvNames(decl) {
-		if os.Getenv(name) != "" { // the commands inherit it; its value is not printed
+		if _, set := os.LookupEnv(name); set { // the commands inherit it
 			fmt.Fprintf(out, "using %s from the environment\n", name)
 			continue
 		}
-		var got bytes.Buffer
-		if err := runStep(ctx, env, decl[name], nil, io.MultiWriter(out, &got)); err != nil {
+		argv := decl[name]
+		fmt.Fprintf(out, "$ %s  # sets %s\n", strings.Join(argv, " "), name)
+		got := &capped{max: envOutputMax}
+		if err := execStep(ctx, env, argv, nil, got, false); err != nil {
+			out.Write(got.buf.Bytes())
 			return nil, fmt.Errorf("working out %s: %w", name, err)
 		}
 		value := ""
-		for _, line := range strings.Split(got.String(), "\n") {
+		for _, line := range strings.Split(got.buf.String(), "\n") {
 			if v, ok := strings.CutPrefix(strings.TrimRight(line, "\r"), name+"="); ok {
 				value = v
 			}
 		}
 		if value == "" {
-			return nil, fmt.Errorf("working out %s: %s printed no %s= line; set %s yourself and try again", name, strings.Join(decl[name], " "), name, name)
+			return nil, fmt.Errorf("working out %s: %s printed no %s= line; set %s yourself and try again", name, strings.Join(argv, " "), name, name)
 		}
-		fmt.Fprintf(out, "using %s=%s\n", name, value)
+		fmt.Fprintf(out, "set %s\n", name)
 		vars = append(vars, name+"="+value)
 	}
 	return vars, nil
+}
+
+// envOutputMax is how much of a value command's output methodEnv reads.
+const envOutputMax = 64 << 10
+
+// capped keeps the first max bytes written to it and discards the rest, so a
+// command that prints without end neither fails nor grows memory.
+type capped struct {
+	buf bytes.Buffer
+	max int
+}
+
+// Write keeps what fits under the cap and reports every byte as written.
+func (c *capped) Write(p []byte) (int, error) {
+	if room := c.max - c.buf.Len(); room > 0 {
+		c.buf.Write(p[:min(len(p), room)])
+	}
+	return len(p), nil
 }
 
 // EnvNames are the names of a method's environment variables, sorted.
