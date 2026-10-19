@@ -64,6 +64,12 @@ type Manager struct {
 	Base string
 	// Mode selects worktrees or copies (see the constants).
 	Mode Mode
+	// Owner, when its name and email are set, is the identity every commit of the
+	// trees and the queue is authored under: the person the work is done for, so
+	// the history they publish is theirs. The agent that made a commit is then named
+	// by its Sleipnir-Agent trailer. Without it each agent authors its own commits
+	// as <agent>@sleipnir.invalid and the queue its merges.
+	Owner gitx.Author
 	// Source is the directory ModeCopy snapshots (default: Repo's work tree).
 	Source string
 	// Snapshot makes the base include the user's uncommitted changes (tracked
@@ -170,6 +176,33 @@ func (m *Manager) TreesDir() string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.st.dirReal
+}
+
+// agentAuthor is the identity of a commit made for agent: the owner when there is
+// one, the agent's own placeholder identity otherwise.
+func (m *Manager) agentAuthor(agent string) gitx.Author {
+	if m.hasOwner() {
+		return gitx.Author{Name: m.Owner.Name, Email: m.Owner.Email, When: m.now()}
+	}
+	return gitx.Author{Name: agent, Email: agent + "@sleipnir.invalid", When: m.now()}
+}
+
+// hasOwner reports whether commits are authored by Owner.
+func (m *Manager) hasOwner() bool { return m.Owner.Name != "" && m.Owner.Email != "" }
+
+// withAgentTrailer adds the Sleipnir-Agent trailer that names agent when the commit
+// is authored by the owner, joining a trailer block msg already ends with.
+func (m *Manager) withAgentTrailer(msg, agent string) string {
+	if !m.hasOwner() || agent == "" {
+		return msg
+	}
+	msg = strings.TrimRight(msg, "\n")
+	paras := strings.Split(msg, "\n\n")
+	last := paras[len(paras)-1]
+	if len(paras) > 1 && strings.HasPrefix(last, "Sleipnir-") {
+		return msg + "\nSleipnir-Agent: " + agent
+	}
+	return msg + "\n\nSleipnir-Agent: " + agent
 }
 
 // now uses the workspace manager's injected clock or the system clock.

@@ -197,17 +197,13 @@ func (s *service) gitBlame(ctx context.Context, sess *session.Session, rel strin
 	}
 	exact := true
 	var out []wire.BlameRun
+	origins := map[string]origin{}
 	for _, l := range lines {
 		ag, id, task := "-", "", ""
 		if l.Commit == gitx.ZeroCommit {
 			exact = false
-		} else if strings.HasSuffix(l.Email, "@sleipnir.invalid") && !strings.HasPrefix(l.Email, "queue@") {
-			ag = strings.TrimSuffix(l.Email, "@sleipnir.invalid")
-			id = shortSHA(l.Commit)
-			task = taskID(l.Summary)
-			if task == l.Summary {
-				task = ""
-			}
+		} else if who := commitOrigin(ctx, m.Repo, l, origins); who.agent != "" {
+			ag, id, task = who.agent, shortSHA(l.Commit), who.task
 		}
 		if n := len(out); n > 0 && out[n-1].Ag == ag && out[n-1].ID == id && out[n-1].Line+out[n-1].Count == l.Line {
 			out[n-1].Count++
@@ -219,6 +215,43 @@ func (s *service) gitBlame(ctx context.Context, sess *session.Session, rel strin
 		out = []wire.BlameRun{}
 	}
 	return out, exact, true
+}
+
+// origin is the agent and board task a harness commit records.
+type origin struct{ agent, task string }
+
+// commitOrigin reads which agent made a blamed line's commit, and on which task: the
+// Sleipnir-Agent and Sleipnir-Task trailers of a commit authored by the person, or,
+// in history written before them, an <agent>@sleipnir.invalid author and a subject
+// that starts with "T3: ". Merges of the queue name no agent. origins caches the
+// answer by commit, so a file blamed to a few commits reads each once.
+func commitOrigin(ctx context.Context, repo *gitx.Repo, l gitx.BlameLine, origins map[string]origin) origin {
+	if o, ok := origins[l.Commit]; ok {
+		return o
+	}
+	var o origin
+	if c, err := repo.CommitInfo(ctx, l.Commit); err == nil {
+		for _, line := range strings.Split(c.Body, "\n") {
+			line = strings.TrimSpace(line)
+			if v, ok := strings.CutPrefix(line, "Sleipnir-Agent:"); ok {
+				o.agent = strings.TrimSpace(v)
+			} else if v, ok := strings.CutPrefix(line, "Sleipnir-Task:"); ok {
+				o.task = strings.TrimSpace(v)
+			}
+		}
+	}
+	if o.agent == "" && strings.HasSuffix(l.Email, "@sleipnir.invalid") && !strings.HasPrefix(l.Email, "queue@") {
+		o.agent = strings.TrimSuffix(l.Email, "@sleipnir.invalid")
+	}
+	if o.agent == "" {
+		o.task = ""
+	} else if o.task == "" {
+		if t := taskID(l.Summary); t != l.Summary {
+			o.task = t
+		}
+	}
+	origins[l.Commit] = o
+	return o
 }
 
 // subdirOf is the session's root relative to its repository ("" at the top).

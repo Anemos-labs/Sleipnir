@@ -336,8 +336,8 @@ func (m *Manager) salvage(ctx context.Context, repo *gitx.Repo, mk *marker) erro
 	if err := m.checkCommittable(ctx, repo, repo.Root()); err != nil {
 		return err
 	}
-	_, err := repo.CommitAll(ctx, "sleipnir: salvage of "+mk.Agent+" (its session ended before the work was committed)",
-		gitx.Author{Name: mk.Agent, Email: mk.Agent + "@sleipnir.invalid", When: m.now()})
+	msg := m.withAgentTrailer("Unfinished work of "+mk.Agent+", salvaged after its session ended", mk.Agent)
+	_, err := repo.CommitAll(ctx, msg, m.agentAuthor(mk.Agent))
 	return err
 }
 

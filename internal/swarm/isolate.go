@@ -130,7 +130,7 @@ func (s *Swarm) integrationRef() string {
 const managerIsolationCard = "Isolation: every writer works in a private git worktree. Their work is merged, one task at a time, into a shared " +
 	"integration branch and verified there; the user's checkout does not show it while the run is going. When the run ends the harness applies the " +
 	"integrated result to the checkout (as uncommitted changes, or as commits when the user asked for that): never tell the user to merge anything. " +
-	"Use task deliver with text set to a commit message to commit the verified result directly to the original checkout; no board task is needed. You also have a writable worktree. Direct edits are verified and integrated by the harness before completion or PR publication; sync the assembled result before inspecting it. The evidence of a task in review names its merge."
+	"Use task deliver with text set to a commit message to commit the verified result directly to the original checkout; no board task is needed. Write that message, and any pull request title and description, about what the change does, never task ids or agent names. You also have a writable worktree. Direct edits are verified and integrated by the harness before completion or PR publication; sync the assembled result before inspecting it. The evidence of a task in review names its merge."
 
 // mergeRec is the harness's record that a task's work is in the integration branch.
 type mergeRec struct {
@@ -289,8 +289,8 @@ type integration struct {
 	interrupted bool   // the swarm is stopping
 }
 
-// integrate commits an agent's tree and submits it to the merge queue.
-func (s *Swarm) integrate(ctx context.Context, m *member, t Task) integration {
+// integrate commits an agent's tree with message and submits it to the merge queue.
+func (s *Swarm) integrate(ctx context.Context, m *member, t Task, message string) integration {
 	iso := s.deps.Isolation
 	subject := t.ID + ": " + cleanText(t.Title, 100)
 
@@ -311,11 +311,11 @@ func (s *Swarm) integrate(ctx context.Context, m *member, t Task) integration {
 		}
 	}()
 
-	if _, err := m.tree.Commit(ctx, subject); err != nil {
+	if _, err := m.tree.Commit(ctx, message); err != nil {
 		return s.notCommitted(ctx, err)
 	}
 	res, err := iso.Queue.Submit(ctx, workspace.Submission{
-		Agent: m.id, Tree: m.tree, Task: subject, VerifyCmd: ExpandVerify(s.cfg.VerifyCmd, m.dir, t.Files), Message: subject,
+		Agent: m.id, Tree: m.tree, Task: subject, VerifyCmd: ExpandVerify(s.cfg.VerifyCmd, m.dir, t.Files), Message: message,
 		Scope: t.Files, EnforceScope: len(t.Files) > 0, Refuse: s.submitRefusal(m.role, t),
 	})
 	if err != nil {
@@ -1194,10 +1194,17 @@ func (s *Swarm) Accept(ctx context.Context, o AcceptOptions) (*AcceptReport, err
 	if msg == "" {
 		msg = "Apply the verified work of the team"
 		if len(rep.Tasks) > 0 {
-			msg += " (" + strings.Join(firstN(rep.Tasks, 12), ", ") + ")"
+			msg += "\n"
+			for _, t := range firstN(rep.Tasks, 30) {
+				msg += "\n- " + stripTaskID(t)
+			}
 		}
 	}
-	commit, err := repo.CommitPaths(ctx, msg, gitx.DefaultAuthor, rep.Files)
+	author := gitx.DefaultAuthor
+	if o := s.deps.Isolation.Manager.Owner; o.Name != "" && o.Email != "" {
+		author = o
+	}
+	commit, err := repo.CommitPaths(ctx, msg, author, rep.Files)
 	if err != nil {
 		return rep, err
 	}
