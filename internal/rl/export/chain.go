@@ -78,9 +78,9 @@ func (x *exporter) renderChain(steps []stepCtx, objectArgs bool) (*chainView, er
 
 // sameTurn reports whether two rendered assistant messages are the same turn: the
 // same content and tool calls, whatever reasoning either carries. A completion is
-// rendered with its reasoning, but the prompts that replay the turn carry none (the
-// renderer sends reasoning back only where the provider's replay binding asks for
-// it), so reasoning cannot tell the turns apart and must not keep them apart.
+// rendered with its reasoning; the prompts that replay the turn carry it only where
+// the provider's replay binding asks for it, so reasoning cannot tell the turns
+// apart and must not keep them apart.
 func sameTurn(a, b json.RawMessage) bool {
 	if sameJSON(a, b) {
 		return true

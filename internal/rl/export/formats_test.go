@@ -433,13 +433,16 @@ func TestSchemasAndStatsShape(t *testing.T) {
 }
 
 // TestSFTPackedLocatesTurnsThatCarriedReasoning packs a chain whose every turn
-// came with reasoning. A completion is rendered with its reasoning, the prompts
-// that replay the turn carry none, and the packer must still see them as the
-// same turn: every assistant turn is a target and nothing is misaligned.
+// came with reasoning that the thread replays without it (a provider with no
+// replay binding, as a recorded swarm session had). A completion is rendered
+// with its reasoning, the replayed turn has none, and the packer must still see
+// them as the same turn: every assistant turn is a target and nothing is
+// misaligned.
 func TestSFTPackedLocatesTurnsThatCarriedReasoning(t *testing.T) {
 	src := chainRun(t, 5, func(i int, c *trajtest.Call) {
 		c.Thinking = fmt.Sprintf("thinking about step %d", i)
 		c.ReasoningWire = fmt.Sprintf(`[{"type":"reasoning.text","text":"thinking about step %d","index":0}]`, i)
+		c.ReplayWithoutReasoning = true
 	})
 	o := export.Options{Format: export.FormatSFT, DropFlagged: true, PackSegments: true}
 	out, st := run(t, []export.Source{src}, o)

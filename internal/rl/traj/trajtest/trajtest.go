@@ -213,6 +213,11 @@ type Call struct {
 	// its provider-native JSON (what the wire replays as reasoning_details).
 	Thinking      string
 	ReasoningWire string
+	// ReplayWithoutReasoning appends the turn to the thread with its reasoning
+	// wire stripped: later prompts replay the turn without reasoning_details,
+	// as the renderer does for a provider whose replay binding does not ask for
+	// it, while the recorded completion keeps it.
+	ReplayWithoutReasoning bool
 }
 
 // Step performs one call and returns the request id.
@@ -299,7 +304,17 @@ func (a *Agent) Step(c Call) string {
 		a.stream = append(a.stream, ids...)
 	}
 	r.Emit(a.ID, events.TypeModelResponse, a.response(req, model, usage, stop, a.putJSON(compl), extra, false))
-	a.push(withUsage(turn, usage))
+	kept := turn
+	if c.ReplayWithoutReasoning {
+		kept.Blocks = append([]core.Block(nil), turn.Blocks...)
+		for i, b := range kept.Blocks {
+			if b.Kind == core.BlockThinking {
+				b.Wire, b.WireFormat = nil, ""
+				kept.Blocks[i] = b
+			}
+		}
+	}
+	a.push(withUsage(kept, usage))
 
 	if c.Tool != "" {
 		id := blocks[len(blocks)-1].ToolID
