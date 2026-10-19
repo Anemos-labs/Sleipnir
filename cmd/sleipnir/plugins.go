@@ -43,13 +43,18 @@ commands:
   set ID KEY=VALUE...  change a plugin's settings (KEY= removes a setting)
   add PATH|GIT-URL     install a plugin directory into ~/.sleipnir/plugins (it stays off until enabled)
   remove ID            uninstall a plugin from ~/.sleipnir/plugins
+  needs                the programs and tool servers the plugins that are on use, and whether each is found
+  locate NEED PATH     use this file for a program a plugin needs (when it is not found by itself)
+  forget NEED          drop a located file
+  setup NEED [METHOD]  install a need with one of its install methods: shows the command and asks first
 
 flags:
   --cwd DIR            the project to look at (default: the current directory)
   --project            write to the project's configuration instead of yours
   --local              write to the project's git-ignored local configuration
   --trust-project      also read the project's own plugins and settings
-  --json               list and info: machine-readable output
+  --json               list, info and needs: machine-readable output
+  --yes                setup: run without asking (scripts: you have read the command in "needs")
 `
 
 // cmdPlugins lists, switches, configures, installs and removes plugins (internal/plugin).
@@ -69,6 +74,7 @@ func cmdPlugins(ctx context.Context, args []string) error {
 	local := fs.Bool("local", false, "write to the project's local configuration")
 	trustProject := fs.Bool("trust-project", false, "also read the project's own plugins and settings")
 	asJSON := fs.Bool("json", false, "machine-readable output")
+	yes := fs.Bool("yes", false, "setup: run without asking")
 	pos, err := parseInterspersed(fs, rest)
 	if err != nil {
 		return err
@@ -138,6 +144,27 @@ func cmdPlugins(ctx context.Context, args []string) error {
 		}
 		fmt.Fprintf(p.out, "removed %s (%s)\n", pos[0], dir)
 		return nil
+	case "needs":
+		return p.needs()
+	case "locate":
+		if len(pos) != 2 {
+			return errors.New("usage: sleipnir plugins locate NEED PATH")
+		}
+		return p.locate(ctx, pos[0], pos[1])
+	case "forget":
+		if len(pos) != 1 {
+			return errors.New("usage: sleipnir plugins forget NEED")
+		}
+		return p.forget(pos[0])
+	case "setup":
+		if len(pos) < 1 || len(pos) > 2 {
+			return errors.New("usage: sleipnir plugins setup NEED [METHOD]")
+		}
+		method := ""
+		if len(pos) == 2 {
+			method = pos[1]
+		}
+		return p.setup(ctx, pos[0], method, *yes, os.Stdin)
 	}
 	printHelp(os.Stderr, pluginsUsage)
 	return fmt.Errorf("plugins: unknown command %q", sub)

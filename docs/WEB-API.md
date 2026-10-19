@@ -76,7 +76,7 @@ id, `[a-z0-9-]{1,40}`; `{sid}` a recorded session, `YYYYMMDD-HHMMSS-xxxxxx`; `{q
 
 An action that raises privilege needs a second step. A bypass or yolo mode, trusting a project's own files, an allow rule the
 session does not have, a `--verify` command, taking back a deny or ask rule, approving a tool server, adding or editing a
-schedule job, installing an update, deleting recorded sessions, restoring or reverting files, applying a team's verified work, and
+schedule job, installing an update, locating or installing a program a plugin needs, deleting recorded sessions, restoring or reverting files, applying a team's verified work, and
 a command run from the page whose flags widen its own privileges each need an id for a scope.
 
 1. The request is sent without `X-Confirm`. The server answers `428 confirm_required` with the scope in the header
@@ -105,6 +105,7 @@ from the answer that names it and does not compute it.
 | Approve a project's tool server | `mcp.approve:<d16 of root, name and fingerprint>` |
 | Add a schedule job; edit one | `job.add`; `job.edit:<job>` |
 | Install an update | `update:<version>` |
+| Locate a program a plugin needs; run one of its install methods | `need.locate:<d16 of the need and path>`; `need.install:<d16 of the need, method, command and server entry>` |
 | Prune with `apply`; delete recorded sessions | `prune:<d16 of the sorted ids>`; `delete:<d16 of the sorted ids>` |
 | Restore a checkpoint; undo the restore | `restore:<tab>:<checkpoint>:<d16 of the plan>`; `restore.undo:<tab>` |
 | Revert a hunk | `revert:<tab>:<d16 of file, hunk and range>` |
@@ -377,11 +378,15 @@ session read the tab of `?session=`, else the page's active tab, else the user's
 
 | Method | Path | Does | Confirmation |
 |---|---|---|---|
-| `GET` | `/api/plugins` | The catalogue: `profile`, `profiles`, `restart` (a saved change waits for the team to start again) and `plugins`, one row per plugin with `id`, `title`, `description`, `category`, `core` (and `core_reason`), `experimental`, `external`, `default` (on in the profile), `enabled`, `state` (`on`, `off`, `pending`, `error`, `restart`), `reason`, `layer` (who decided), `requires`, `contributes`, `config_schema`, `config` (values whose names look secret are withheld) and `unavailable` (why a plugin that is on cannot work here, such as `delivery` without the `gh` command) | - |
+| `GET` | `/api/plugins` | The catalogue: `profile`, `profiles`, `restart` (a saved change waits for the team to start again) and `plugins`, one row per plugin with `id`, `title`, `description`, `category`, `core` (and `core_reason`), `experimental`, `external`, `default` (on in the profile), `enabled`, `state` (`on`, `off`, `pending`, `error`, `restart`), `reason`, `layer` (who decided), `requires`, `contributes`, `config_schema`, `config` (values whose names look secret are withheld) and `unavailable` (why a plugin that is on cannot work here: a required need is missing, such as `delivery` without the GitHub CLI), and `needs`, the rows of `GET /api/needs` | - |
 | `GET` | `/api/sessions/{id}/plugins` | The same, with each row compared with the running session: a row that differs is in state `restart` | - |
 | `POST` | `/api/plugins/{id}` | `{"enabled": bool, "config": {...}, "scope": "user"\|"project"}` (each optional; scope `user` by default): writes a minimal difference to that file, so a choice equal to the profile's default removes the row. Answers `{"plugin": row, "restart": bool}`. `409 core` for a core plugin, `404 no_plugin` for an unknown id | - |
 | `POST` | `/api/plugins/profile` | `{"profile": id, "scope": ...}`: picks the profile (`standard` removes the key); answers the catalogue | - |
 | `DELETE` | `/api/plugins/{id}` | `?scope=`: the row goes back to the profile's default | - |
+| `GET` | `/api/needs` | The programs and tool servers the plugins that are on use (docs/PLUGINS.md): one row per need with `id`, `plugin`, `title`, `description`, `homepage`, `required`, `server` (a tool server), `found`, `path`, `via` (`located`, `path`, `default`, `config`), `version`, `methods` (this machine's install methods: `id`, `title`, `argv`, `connect`, `note`, `available`, `reason`, `scope`) and `install` (the last install since the server started: `method`, `running`, `output`, `error`). The catalogue carries the same rows as `needs`, and a plugin whose required need is missing has `unavailable` | - |
+| `POST` | `/api/needs/{id}/locate` | `{"path": "/abs/path"}`: checks the file (an executable; its version command succeeds), remembers it and links it into `~/.sleipnir/bin`; answers the row. `422 not_located` with why the file was not taken, `404 no_need` when no plugin that is on needs it | `need.locate:<d16>` |
+| `DELETE` | `/api/needs/{id}/locate` | Forgets the located file and its link; answers the row | - |
+| `POST` | `/api/needs/{id}/install` | `{"method": id}`: runs that declared method's `argv` in the background (no shell), then for a tool server adds it to the user's `mcp`; answers the row with `install.running`, and `GET /api/needs` reports the output until it ends. `400` for a method that is not declared for this machine, `409 unavailable` when its program is missing, `409 running` while one runs | the method's `scope` |
 
 A plugin id may hold a colon (`view:mail`); the page sends it URL-encoded. A running session keeps its plugin set: the change
 applies when its team starts again (`POST /api/sessions/{id}/restart`).

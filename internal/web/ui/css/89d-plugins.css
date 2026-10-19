@@ -52,3 +52,23 @@
   .plg-form .fld>label{padding-top:0}
   .plg-gd{display:none}
 }
+/* "Programs it uses" under a plugin: each need found (where) or missing (Locate, Install), and an install's output */
+.plg-needs{margin:6px 0 0;padding:6px 10px;border:1px solid var(--line);background:var(--panel2);border-radius:2px}
+.plg-nh{margin:0 0 2px;font:600 11px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.plg-needs ul{list-style:none;margin:0;padding:0}
+.plg-need{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:start;padding:6px 0;border-top:1px solid var(--line)}
+.plg-need:first-child{border-top:0}
+.plg-need b{font:600 13px var(--f-ui);color:var(--bright)}
+.plg-need .mono{overflow-wrap:anywhere}
+.plg-need .tag{margin:0 0 0 4px}
+.plg-nd{margin:2px 0 0;font:400 12.5px/1.4 var(--f-ui);color:var(--fg2)}
+.plg-need .hint{display:block;margin-top:2px;color:var(--dim);font-size:12px}
+.plg-loc{grid-column:1 / -1;display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center}
+.plg-loc label{font:500 12px var(--f-ui);color:var(--dim)}
+.plg-loc input{flex:1 1 260px;min-width:160px;background:var(--bg);border:1px solid var(--line2);padding:5px 8px;font:500 12.5px var(--f-num);color:var(--bright);border-radius:2px}
+.plg-out{grid-column:1 / -1;margin:0;max-height:220px;overflow:auto;padding:6px 8px;background:var(--bg);border:1px solid var(--line2);font:500 11.5px/1.45 var(--f-num);color:var(--fg2);white-space:pre-wrap;overflow-wrap:anywhere}
+.plg-cmd{margin:6px 0;padding:6px 8px;background:var(--bg);border:1px solid var(--line2);white-space:pre-wrap;overflow-wrap:anywhere}
+@container main (max-width:640px){
+  .plg-need{grid-template-columns:minmax(0,1fr)}
+  .plg-need .plg-a{grid-column:1;justify-content:flex-start}
+}

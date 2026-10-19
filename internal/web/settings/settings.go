@@ -35,6 +35,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/catalog"
 	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/trust"
 	"github.com/anemos-labs/sleipnir/internal/web"
@@ -77,6 +78,9 @@ type service struct {
 	challenges *challenges
 	storedMu   sync.Mutex
 	stored     map[string][32]byte // auth.json as last seen: variable name -> SHA-256 of the stored key (never the key)
+
+	jobs    needJobs                            // installs of plugin needs (needs.go)
+	needEnv func(plugin.NeedEnv) plugin.NeedEnv // tests change where needs are looked for
 }
 
 // Register adds the settings routes to srv, resolving tabs through h.
@@ -120,6 +124,7 @@ func (s *service) register() {
 	srv.HandleFunc("POST /api/providers/{name}/signout", s.handleSignOut, web.RouteOpts{NoBody: true})
 	srv.HandleFunc("GET /api/sessions/{id}/config", s.handleConfig, web.RouteOpts{})
 	s.registerPlugins()
+	s.registerNeeds()
 	if KeyRoutes {
 		s.registerKeyRoute()
 	}

@@ -106,6 +106,36 @@ show as pending.
 the shared prompt layer. Both are part of the cache key, so switching one costs one cache write on the next turn; that
 is why a change waits for the team to start again rather than landing mid-conversation.
 
+## Programs a plugin needs
+
+Some plugins use programs or tool servers that are not part of Sleipnir: the built-in skills use Blender, uv, Node.js,
+REA and the Blender and REA tool servers, and GitHub delivery uses the GitHub CLI. A plugin declares each one (a *need*)
+with the program's name, where its installers usually put it, and the commands that install it. A need is found, in this
+order, at a file you located, on `PATH`, or in one of its usual places; a tool server is found when your configuration
+lists it. Nothing is run to find one.
+
+For a need that is not found there are two ways out, on the Plugins page (under the plugin, *Programs it uses*) and in a
+terminal:
+
+```
+sleipnir plugins needs                     # every need of the plugins that are on, found or not, with its install commands
+sleipnir plugins locate blender /opt/blender-4.5/blender
+sleipnir plugins setup blender-mcp addon   # shows the command and asks before it runs
+sleipnir plugins forget blender
+```
+
+- **Locate** takes a program you installed yourself. The file must be an executable (on macOS an `.app` bundle is
+  followed to its program) and its version command must succeed. It is remembered in `~/.sleipnir/needs.json`.
+- **Install** runs one of the need's declared install methods for this operating system (`brew`, `winget`, `flatpak`,
+  `npm`, `uvx` ...), as the exact command shown, never through a shell, and only when you ask for that method: the page
+  shows the command and needs a confirmation, the terminal asks unless you pass `--yes`. A method whose own program is
+  missing says which (`needs Node.js first`). A tool server's method then adds the server to `mcp` in your
+  `~/.sleipnir/config.json`, pinned to the version it installed; it starts with your next session.
+
+A program found outside `PATH` (located, or in its usual place) gets a small launcher in `~/.sleipnir/bin`, which every
+shell command of a session has at the front of its `PATH`, so agents call it by name (`blender --background ...`). A
+plugin whose *required* need is missing says so on its row; optional ones only limit what it can do.
+
 ## Writing a plugin
 
 An external plugin is a directory. Install one with `sleipnir plugins add <dir or git URL>` (it goes to
@@ -145,6 +175,12 @@ hello/
 - `requires`: plugin ids that must be on; otherwise the plugin is pending.
 - `config`: the settings the Plugins page shows a form for (`string`, `number`, `integer`, `boolean`, and `enum` for a
   choice). `sleipnir plugins set hello greeting=Hi` writes one from the terminal.
+- `needs`: the programs and tool servers the plugin uses ([above](#programs-a-plugin-needs)), each
+  `{"id", "title", "description", "homepage", "required", "commands": ["prog", "sibling"], "paths": {"darwin"|"linux"|"windows"|"unix": ["~/bin/prog", "/opt/prog-*/prog"]},
+  "version_args": ["--version"], "mcp": {"name", "command", "args"}, "install": [{"id", "title", "os": ["darwin"], "run": ["brew", "install", "prog"], "connect": bool, "note"}]}`.
+  A need has `commands` (a program) or `mcp` (a tool server); `paths` expand `~` and `${VAR}` and match `*`; a method
+  with `connect` adds the need's `mcp` entry to the user's configuration after its `run` (which may be empty). Pin versions
+  in `run` and `args`.
 
 In `hooks.json` and `mcp.json`, `${SLEIPNIR_PLUGIN_ROOT}` (or `${CLAUDE_PLUGIN_ROOT}`) is the plugin's directory and
 `${setting:NAME}` is the value of the setting (or its default). A plugin's MCP servers are named `<id>-<server>`, and

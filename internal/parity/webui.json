@@ -1051,6 +1051,15 @@
   },
   {
    "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins forget",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:plugins forget"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
    "name": "sleipnir plugins info",
    "kind": "program",
    "live": true,
@@ -1065,6 +1074,24 @@
    "live": true,
    "effects": [
     "runner:plugins list"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins locate",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:plugins locate"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins needs",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:plugins needs"
    ]
   },
   {
@@ -1101,6 +1128,15 @@
    "live": true,
    "effects": [
     "runner:plugins set"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins setup",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:plugins setup"
    ]
   },
   {
@@ -2375,12 +2411,16 @@
    "plugins add",
    "plugins disable",
    "plugins enable",
+   "plugins forget",
    "plugins info",
    "plugins list",
+   "plugins locate",
+   "plugins needs",
    "plugins profile",
    "plugins remove",
    "plugins reset",
    "plugins set",
+   "plugins setup",
    "mcp",
    "mcp approve",
    "mcp list",
@@ -2848,6 +2888,19 @@
      "trust-project": "priv"
     }
    },
+   "plugins forget": {
+    "mode": "priv",
+    "positionals": [
+     "NEED"
+    ],
+    "flags": [
+     "cwd",
+     "trust-project"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
    "plugins info": {
     "mode": "run",
     "positionals": [
@@ -2863,6 +2916,32 @@
     }
    },
    "plugins list": {
+    "mode": "run",
+    "positionals": [],
+    "flags": [
+     "cwd",
+     "trust-project",
+     "json"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins locate": {
+    "mode": "priv",
+    "positionals": [
+     "NEED",
+     "PATH"
+    ],
+    "flags": [
+     "cwd",
+     "trust-project"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins needs": {
     "mode": "run",
     "positionals": [],
     "flags": [
@@ -2923,6 +3002,21 @@
      "project",
      "local",
      "trust-project"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins setup": {
+    "mode": "priv",
+    "positionals": [
+     "NEED",
+     "METHOD"
+    ],
+    "flags": [
+     "cwd",
+     "trust-project",
+     "yes"
     ],
     "modeWith": {
      "trust-project": "priv"

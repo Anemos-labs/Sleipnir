@@ -558,7 +558,14 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	s.logCheckpoints() // web_access.go: each checkpoint that begins or changes is a "checkpoint" log event
 
 	// Detect the command shell for shared runtime guidance before building agents.
-	s.shell = shell.NewManager(shell.Options{BaseEnv: o.ShellEnv, Wrap: o.ShellWrap, Tmp: s.tmp})
+	shOpts := shell.Options{BaseEnv: o.ShellEnv, Wrap: o.ShellWrap, Tmp: s.tmp}
+	if o.ShellEnv == nil {
+		// Programs a plugin needs that were located or found outside PATH (plugin.PrepareNeeds).
+		if bin := plugin.PrepareNeeds(stateRoot(o.Home), plugs); bin != "" {
+			shOpts.Path = []string{bin}
+		}
+	}
+	s.shell = shell.NewManager(shOpts)
 	// Prompt layers, then tools, then the agent or swarm.
 	if err := s.buildShared(ctx); err != nil {
 		s.Log.Close()

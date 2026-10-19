@@ -197,3 +197,46 @@ test('the Plugins view is a page of cards: a heading that says what plugins are,
   assert.ok(L.$('[data-plg="mailman"]').classList.contains('plg-hl'), 'the row asked for is marked');
   assert.deepEqual(L.errors, []);
 });
+
+test('a plugin that is on lists the programs it uses: Locate sends the typed path, Install shows the exact command and runs only on Run', async () => {
+  const c = catalogue(), sent = [];
+  const L = await page(c, { route(method, p, init) {
+    if (method === 'GET' && (p === '/api/plugins' || /^\/api\/sessions\/[^/]+\/plugins$/.test(p))) return c;
+    if (method === 'POST' && p === '/api/confirm') { const b = JSON.parse(init.body || '{}'); sent.push(['confirm', b.scope]); return { id: 'cf1', scope: b.scope, expires_in: 60 }; }
+    const m = /^\/api\/needs\/([^/]+)\/(locate|install)$/.exec(p); if (!m) return undefined;
+    const n = c.needs.find(x => x.id === m[1]), b = JSON.parse(init.body || '{}'); sent.push([method, p, b]);
+    if (m[2] === 'locate') return Object.assign(n, { found: true, via: 'located', path: b.path });
+    return Object.assign(n, { install: { method: b.method, running: false, output: 'installed\n' } });
+  } });
+  await show(L, 'plugins');
+  const row = L.$('[data-plg="builtin-skills"]');
+  assert.match(row.textContent, /Programs it uses/);
+  assert.match(L.$('[data-need="blender"]').textContent, /found located by you: \/opt\/blender-4\.5\/blender \(Blender 4\.5\.3 LTS\)/);
+  assert.ok(L.$('[data-need="blender"] [data-nforget]'), 'a located program can be forgotten');
+  assert.ok(L.$('[data-need="rea"] [data-ninst]').disabled, 'a method whose program is missing cannot run');
+  assert.equal(L.$('[data-need="blender-mcp"] [data-nloc]'), null, 'a tool server is connected, not located');
+  assert.equal(L.$('[data-plg="delivery"] .plg-needs'), null, 'a plugin that is off lists nothing');
+  /* Install: the dialog shows the command; nothing is sent before Run */
+  L.$('[data-need="blender-mcp"] [data-ninst][data-m="addon"]').click(); await L.settle();
+  assert.match(L.$('#overlayHost').textContent, /uvx mcp-for-blender@2\.2\.0 install-addon/);
+  assert.match(L.$('#overlayHost').textContent, /adds the "blender" tool server/);
+  assert.deepEqual(sent, [], 'the dialog alone sends nothing');
+  L.$('#overlayHost [data-ok]').click(); await L.settle();
+  assert.deepEqual(plain(sent), [['confirm', 'need.install:0123456789abcdef'], ['POST', '/api/needs/blender-mcp/install', { method: 'addon' }]], 'the confirmation covers the method the dialog showed');
+  assert.match(L.$('[data-need="blender-mcp"] .plg-out').textContent, /installed/);
+  /* Locate: the typed path is sent */
+  L.$('[data-need="rea"] [data-nloc]').click(); await L.settle(); sent.length = 0;
+  const f = L.$('#nl-rea'); f.value = '/usr/local/bin/rea';
+  L.$('[data-nlocf="rea"]').dispatchEvent(new FakeEvent('submit', { bubbles: true, cancelable: true })); await L.settle();
+  assert.deepEqual(plain(sent), [['POST', '/api/needs/rea/locate', { path: '/usr/local/bin/rea' }]]);
+  assert.match(L.$('[data-need="rea"]').textContent, /found/);
+  assert.deepEqual(L.errors, []);
+});
+
+test('a need\'s text from the server is text', async () => {
+  const EVIL = '<img src=x onerror="window.__pwn=1">"\'&', c = catalogue();
+  c.needs = [{ id: 'x', plugin: 'skills', title: EVIL, description: EVIL, homepage: EVIL, found: false, methods: [{ id: 'm', title: EVIL, argv: [EVIL], available: false, reason: EVIL }], install: { method: 'm', running: false, output: EVIL, error: EVIL } }];
+  const L = await page(c); await show(L, 'plugins');
+  assert.equal(L.doc.querySelectorAll('.v-plugins img').length, 0);
+  assert.ok(L.$('[data-need="x"] b').textContent === EVIL);
+});

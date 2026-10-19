@@ -10,7 +10,11 @@
  * row with a switch, its state, one line of what it does, what it adds, which layer decided it and a settings form generated from its
  * config schema. A change is sent at once (POST /api/plugins/{id}); what waits for the team to start again is said by the Apply bar
  * above the cards, whose button restarts the session once. SL.views.show('plugins', {focus: id}) brings a plugin's row into view (the
- * Settings switches that are plugins lead here). Text from the server is data: it goes through esc(). */
+ * Settings switches that are plugins lead here). Under a plugin that is on, "Programs it uses" lists its needs (Blender, gh, a tool
+ * server): each found one with where, each missing one with Locate (type the program's path; POST /api/needs/{id}/locate) and one
+ * Install button per method for this machine, which shows the exact command in a confirm dialog and runs it only on Run (POST
+ * /api/needs/{id}/install); the output shows under the need until it ends (GET /api/needs, polled while one runs). Text from the
+ * server is data: it goes through esc(). */
 (function (SL) {
   'use strict';
   const U = SL.u, { $, $$, esc } = U, ui = SL.ui = SL.ui || {};
@@ -96,6 +100,28 @@
     const r = await SL.api.resetPlugin(id, scope); if (r.ok) { merge(r.data); P.load(); } return r;
   };
 
+  /** The needs of a plugin, from the catalogue. */
+  P.needsOf = id => (P.cat ? arr(P.cat.needs).filter(n => n && n.plugin === id) : []);
+  let pollT = 0;
+  /** Read the needs again while an install runs, then the whole catalogue once it ends (a required need found changes a row). */
+  P.pollNeeds = function () {
+    if (pollT || !P.cat || !arr(P.cat.needs).some(n => n.install && n.install.running)) return;
+    pollT = setTimeout(async () => {
+      pollT = 0; const r = await SL.api.needs(); if (!r.ok || !r.data || !P.cat) return;
+      const was = arr(P.cat.needs).filter(n => n.install && n.install.running).map(n => n.id);
+      P.cat.needs = arr(r.data.needs); changed();
+      const ended = P.cat.needs.filter(n => was.includes(n.id) && n.install && !n.install.running);
+      ended.forEach(n => ui.toast(n.install.error ? (n.title || n.id) + ': ' + n.install.error : (n.title || n.id) + (n.found ? ' is ready' : ': the install ended'), n.install.error ? 'err' : 'ok'));
+      if (ended.length) P.load(); P.pollNeeds();
+    }, 1500);
+  };
+  /** Put a need's new row in the catalogue. */
+  function mergeNeed(row) { if (!P.cat || !row || !row.id) return; const l = P.cat.needs = arr(P.cat.needs), i = l.findIndex(n => n.id === row.id); if (i >= 0) l[i] = row; else l.push(row); changed(); P.pollNeeds(); }
+  P.locateNeed = async (id, path) => { const r = await SL.api.locateNeed(id, path); if (r.ok) { mergeNeed(r.data); P.load(); } return r; };
+  P.forgetNeed = async id => { const r = await SL.api.forgetNeed(id); if (r.ok) { mergeNeed(r.data); P.load(); } return r; };
+  P.installNeed = async (id, method, scope) => { const r = await SL.api.installNeed(id, method, scope); if (r.ok) mergeNeed(r.data); else if (r.code === 'scope_changed') P.load(); return r; };
+  SL.bus.on('plugins-changed', () => P.pollNeeds());
+
   /** The note a view whose plugin is off shows in its place: what is off, a button that turns it on, and the way to the Plugins page. */
   P.placeholder = function (sc, root, name) {
     const id = P.viewPlugin(name), p = P.find(id), def = SL.views.V.reg[name], title = (p && p.title) || (def && def.title) || name;
@@ -164,6 +190,26 @@
       return '<div class="fld"><label for="' + id + '">' + esc(f.title) + '</label><div class="fc">' + c + hint + '</div></div>';
     }).join('') + '<div class="row2"><button class="btn sm pri" type="submit">Save settings</button><span class="dim">saved for ' + where + '</span></div></form>';
   }
+  /** How a found need was found, in words. */
+  const VIA = { located: 'located by you', path: 'on PATH', default: 'in its usual place', config: 'in your tool servers' };
+  /** A method's command as one line. */
+  const argvText = m => arr(m.argv).map(a => /[\s"'$`\\]/.test(a) ? "'" + String(a).replace(/'/g, "'\\''") + "'" : String(a)).join(' ');
+  /** "Programs it uses": one line per need of a plugin that is on, with Locate and Install for a missing one ('' when it has none). */
+  function needsHtml(p, st) {
+    const ns = P.needsOf(p.id); if (!ns.length || !(p.enabled || p.core)) return '';
+    return '<div class="plg-needs"><p class="plg-nh">Programs it uses</p><ul>' + ns.map(n => {
+      const k = key(n.id), job = n.install, run = !!(job && job.running), loc = !!(st.locate || {})[n.id];
+      const what = n.found ? '<span class="tag ok">found</span> <span class="dim">' + esc(VIA[n.via] || n.via || '') + (n.path ? ': </span><span class="mono">' + esc(n.path) + '</span>' : '</span>') + (n.version ? ' <span class="dim">(' + esc(n.version) + ')</span>' : '')
+        : '<span class="tag ' + (n.required ? 'warm' : '') + '">' + (n.required ? 'missing: needed' : 'not found') + '</span>';
+      const acts = run ? '<span class="dim">installing…</span>' : (n.found ? (n.via === 'located' ? '<button class="btn sm" type="button" data-nforget="' + esc(n.id) + '">Forget</button>' : '')
+        : (n.server ? '' : '<button class="btn sm" type="button" data-nloc="' + esc(n.id) + '" aria-expanded="' + loc + '">Locate…</button>') +
+          arr(n.methods).map(m => '<button class="btn sm' + (m.available ? ' pri' : '') + '" type="button" data-ninst="' + esc(n.id) + '" data-m="' + esc(m.id) + '"' + (m.available ? '' : ' disabled title="' + esc(m.reason || '') + '"') + '>' + esc(n.server ? m.title : 'Install with ' + m.title) + '</button>').join(''));
+      const form = loc && !n.found && !n.server ? '<form class="plg-loc" data-nlocf="' + esc(n.id) + '"><label for="nl-' + k + '">Full path of ' + esc(n.title || n.id) + '</label><input id="nl-' + k + '" type="text" autocomplete="off" spellcheck="false" placeholder="' + esc(n.id === 'blender' ? '/Applications/Blender.app' : '/usr/local/bin/' + n.id) + '"><button class="btn sm pri" type="submit">Use this file</button></form>' : '';
+      const out = job && (job.output || job.error) ? '<pre class="plg-out" aria-live="polite">' + esc(String(job.output || '').slice(-4000)) + (job.error ? '\n' + esc(job.error) : '') + '</pre>' : '';
+      const help = !n.found && arr(n.methods).every(m => !m.available) && !run ? '<small class="hint">' + (arr(n.methods).length ? esc(arr(n.methods).map(m => m.reason).filter(Boolean)[0] || '') + '. ' : '') + (n.homepage ? 'Get it from <span class="mono">' + esc(n.homepage) + '</span>' + (n.server ? '' : ', then Locate it') + '.' : '') + '</small>' : '';
+      return '<li class="plg-need" data-need="' + esc(n.id) + '"><div><b>' + esc(n.title || n.id) + '</b> ' + what + '<p class="plg-nd">' + esc(n.description || '') + '</p>' + help + '</div><div class="plg-a">' + acts + '</div>' + form + out + '</li>';
+    }).join('') + '</ul></div>';
+  }
   /** One plugin's row. */
   function rowHtml(p, st) {
     const id = String(p.id), k = key(id), title = p.title || id, b = badge(p), busy = !!(st.busy || {})[id], fs = fields(p), open = !!(st.open || {})[id];
@@ -177,7 +223,7 @@
     const why = p.core ? ['', 'always on: ' + b[2]] : p.state === 'error' ? ['err', p.reason || 'it failed to load'] : p.unavailable ? ['warm', p.unavailable] : null;
     const acts = (fs.length ? '<button class="btn sm" type="button" data-open="' + esc(id) + '" aria-expanded="' + open + '" aria-controls="pform-' + k + '">Settings</button>' : '') + (!p.core && (p.layer === 'user' || p.layer === 'project') ? '<button class="btn sm" type="button" data-reset="' + esc(id) + '" title="back to the profile\'s default">Reset</button>' : '');
     return '<li class="plg' + (on ? '' : ' off') + (p.core ? ' core' : '') + '" data-plg="' + esc(id) + '"><div class="plg-c">' + sw + '</div><div class="plg-main"><div class="plg-h"><b>' + esc(title) + '</b><span class="pid">' + esc(id) + '</span>' + tags + '</div>' +
-      '<p class="plg-d" id="pd-' + k + '">' + esc(p.description || '') + '</p>' + (meta ? '<p class="plg-m">' + meta + '</p>' : '') + (why ? '<p class="plg-why ' + why[0] + '">' + esc(why[1]) + '</p>' : '') + '</div>' +
+      '<p class="plg-d" id="pd-' + k + '">' + esc(p.description || '') + '</p>' + (meta ? '<p class="plg-m">' + meta + '</p>' : '') + (why ? '<p class="plg-why ' + why[0] + '">' + esc(why[1]) + '</p>' : '') + needsHtml(p, st) + '</div>' +
       (acts ? '<div class="plg-a">' + acts + '</div>' : '') + (fs.length && open ? formHtml(p, st) : '') + '</li>';
   }
   /** What the page says while there is no catalogue: it is loading, or the server has none. */
@@ -210,9 +256,9 @@
       '<span class="pb-a">' + (S ? '<button class="btn sm pri" type="button" data-do="apply">Apply: start the team again</button>' : '<span class="dim">the next session you start has them</span>') + '</span></div>';
   }
   /** The view's state, kept while the page is open: search, filter chip, scope, open forms, values being typed, requests in flight. */
-  const ST = { q: '', f: 'all', scope: 'user', open: {}, draft: {}, busy: {} };
+  const ST = { q: '', f: 'all', scope: 'user', open: {}, draft: {}, busy: {}, locate: {} };
   const fail = (r, what) => { if (r && r.declined) return; ui.toast((r && r.message) || what, 'err'); };
-  Object.assign(P, { addsText, badge, fits, groups, fields, rowHtml, formHtml, listHtml, groupHtml, cardsHtml, applyHtml, CATS, CAT_EMPTY, LAYER, KIND, state: ST });
+  Object.assign(P, { addsText, badge, fits, groups, fields, needsHtml, argvText, rowHtml, formHtml, listHtml, groupHtml, cardsHtml, applyHtml, CATS, CAT_EMPTY, LAYER, KIND, state: ST });
 
   /* ---------------------------------------------------------------- the view */
   /** The profile-and-filter card: the profile (what it means in a line), where a change is saved, the search and the filter chips. */
@@ -257,11 +303,18 @@
       const fb = t.closest('[data-f]'); if (fb) { st.f = fb.dataset.f; paint(); return; }
       const op = t.closest('[data-open]'); if (op) { const id = op.dataset.open; st.open[id] = !st.open[id]; paint(); if (st.open[id]) { const f = root.querySelector('#pform-' + key(id) + ' [data-fk]'); if (f) f.focus(); } return; }
       const rs = t.closest('[data-reset]'); if (rs) { const id = rs.dataset.reset, p = P.find(id); resetIt(id, p && p.layer === 'project' ? 'project' : 'user'); return; }
+      const nl = t.closest('[data-nloc]'); if (nl) { const id = nl.dataset.nloc; st.locate[id] = !st.locate[id]; paint(); const f = root.querySelector('#nl-' + key(id)); if (f) f.focus(); return; }
+      const nf = t.closest('[data-nforget]'); if (nf) { const id = nf.dataset.nforget; P.forgetNeed(id).then(r => { if (!r.ok) fail(r, 'it was not forgotten'); }); return; }
+      const ni = t.closest('[data-ninst]'); if (ni) { install(ni.dataset.ninst, ni.dataset.m); return; }
       if (t.closest('[data-do="apply"]')) apply();
     });
     sc.listen(root, 'change', e => { const t = e.target; if (t.dataset && t.dataset.sw) toggle(t.dataset.sw, !!t.checked); });
     sc.listen(root, 'input', e => { const t = e.target, f = t.closest && t.closest('[data-form]'); if (f && t.dataset.fk) { const d = st.draft[f.dataset.form] = st.draft[f.dataset.form] || {}; d[t.dataset.fk] = t.type === 'checkbox' ? !!t.checked : t.value; } });
-    sc.listen(root, 'submit', e => { const f = e.target.closest && e.target.closest('[data-form]'); if (!f) return; e.preventDefault(); save(f.dataset.form, f); });
+    sc.listen(root, 'submit', e => {
+      const lf = e.target.closest && e.target.closest('[data-nlocf]');
+      if (lf) { e.preventDefault(); const id = lf.dataset.nlocf, v = String(($('input', lf) || {}).value || '').trim(); if (!v) return; P.locateNeed(id, v).then(r => { if (!r.ok) { fail(r, 'that file was not taken'); return; } delete st.locate[id]; ui.toast(((r.data && r.data.title) || id) + ' found', 'ok'); }); return; }
+      const f = e.target.closest && e.target.closest('[data-form]'); if (!f) return; e.preventDefault(); save(f.dataset.form, f);
+    });
 
     /** Turn a plugin on or off in the chosen scope. */
     function toggle(id, on) {
@@ -274,6 +327,13 @@
         ui.toast((p.title || id) + ': ' + (on ? 'on' : 'off') + (st.scope === 'project' ? ' for this project' : ' for you') + (wait ? '. It applies when the team starts again' : ''), on ? 'ok' : 'warm');
         paint();
       });
+    }
+    /** Install a need with one of its methods, after the person has read the exact command and pressed Run. */
+    function install(id, mid) {
+      const n = arr(P.cat && P.cat.needs).find(x => x.id === id), m = n && arr(n.methods).find(x => x.id === mid); if (!m || !m.available) return;
+      const cmd = argvText(m), detail = (cmd ? '<pre class="mono plg-cmd">' + esc(cmd) + '</pre>' : '') + (m.connect ? '<p>It then ' + esc(m.connect) + '; tool servers start with the next session.</p>' : '') + (m.note ? '<p class="dim">' + esc(m.note) + '</p>' : '');
+      ui.confirm({ title: (n.server ? '' : 'Install ') + (n.title || id), kicker: 'runs on this machine', text: cmd ? 'Sleipnir will run this command on this machine, as you:' : 'Sleipnir will change your configuration:', detail, ok: cmd ? 'Run it' : 'Connect',
+        run: () => P.installNeed(id, mid, m.scope).then(r => { if (!r.ok) fail(r, 'the install did not start'); }) });
     }
     /** Send a plugin's settings form. */
     function save(id, form) {

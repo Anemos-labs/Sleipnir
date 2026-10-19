@@ -38,6 +38,7 @@ type externalDoc struct {
 	Version     string   `json:"version"`
 	Requires    []string `json:"requires"`
 	Config      *Schema  `json:"config"`
+	Needs       []Need   `json:"needs"`
 }
 
 // Dirs returns the directories external plugins are read from, user first.
@@ -80,7 +81,12 @@ func LoadDir(dir string) (Manifest, error) {
 		return Manifest{}, fmt.Errorf("%s: id %q uses a namespace reserved for built-in plugins", ManifestFile, id)
 	}
 	m := Manifest{ID: id, Title: d.Title, Description: d.Description, Version: d.Version, Category: CatExternal,
-		External: true, Dir: dir, Requires: d.Requires, Config: d.Config}
+		External: true, Dir: dir, Requires: d.Requires, Config: d.Config, Needs: d.Needs}
+	for _, n := range d.Needs {
+		if err := validNeed(n); err != nil {
+			return Manifest{}, fmt.Errorf("%s: %w", ManifestFile, err)
+		}
+	}
 	if m.Title == "" {
 		m.Title = id
 	}

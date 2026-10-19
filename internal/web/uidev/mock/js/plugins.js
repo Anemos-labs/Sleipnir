@@ -68,6 +68,15 @@
     ],
     restart: true,
     plugins,
+    /* the programs and tool servers the plugins that are on use (GET /api/needs): Blender located, uv on PATH, the Blender tool server not yet connected */
+    needs: [
+      { id: 'blender', plugin: 'builtin-skills', title: 'Blender', description: 'the 3D suite the Blender skills drive (renders, models, GLB exports)', homepage: 'https://www.blender.org', required: false, server: false, found: true, path: '/opt/blender-4.5/blender', via: 'located', version: 'Blender 4.5.3 LTS', methods: [{ id: 'flatpak', title: 'Flatpak (Flathub)', argv: ['flatpak', 'install', '--user', '-y', 'flathub', 'org.blender.Blender'], available: true }] },
+      { id: 'blender-mcp', plugin: 'builtin-skills', title: 'Blender tool server', description: 'lets agents drive a running Blender through tools (MCP)', homepage: 'https://github.com/ahujasid/mcp-for-blender', required: false, server: true, found: false, methods: [
+        { id: 'addon', scope: 'need.install:0123456789abcdef', title: 'Install the Blender add-on and connect', argv: ['uvx', 'mcp-for-blender@2.2.0', 'install-addon'], connect: 'adds the "blender" tool server (uvx mcp-for-blender@2.2.0) to your configuration', note: 'then in Blender enable the add-on and click Connect in the BlenderMCP tab', available: true },
+        { id: 'connect', title: 'Connect only (the add-on is already installed)', connect: 'adds the "blender" tool server (uvx mcp-for-blender@2.2.0) to your configuration', available: true }] },
+      { id: 'rea', plugin: 'builtin-skills', title: 'REA', description: 'the reverse-engineering workbench\'s command line (rea)', homepage: 'https://github.com/morluto/rea', required: false, server: false, found: false, methods: [{ id: 'npm', title: 'npm (global)', argv: ['npm', 'install', '-g', 'rea-agents@6.7.0'], available: false, reason: 'needs Node.js first' }] },
+      { id: 'uv', plugin: 'builtin-skills', title: 'uv', description: 'the Python tool runner that starts the Blender tool server (uvx)', required: false, server: false, found: true, path: '/home/me/.local/bin/uv', via: 'path', methods: [] },
+    ],
   };
   G.SLPLUGINS = catalogue;
 
@@ -90,6 +99,10 @@
       return ok({ plugin: p, restart: db.restart });
     },
     setProfile(profile) { if (!db.profiles.some(x => x.id === profile)) return none(); db.profile = profile; return ok(db); },
+    needs: () => ok({ needs: db.needs }),
+    locateNeed(id, path) { const n = db.needs.find(x => x.id === id); if (!n || n.server) return none(); Object.assign(n, { found: true, path: String(path), via: 'located' }); return ok(n); },
+    forgetNeed(id) { const n = db.needs.find(x => x.id === id); if (!n) return none(); Object.assign(n, { found: false, path: '', via: '', version: '' }); return ok(n); },
+    installNeed(id, method) { const n = db.needs.find(x => x.id === id); if (!n) return none(); Object.assign(n, { found: true, via: n.server ? 'config' : 'path', install: { method, running: false, output: 'done\n' } }); return ok(n); },
     resetPlugin(id) { const p = entry(id); if (!p) return none(); decide(p, p.default, 'profile'); return ok({ plugin: p, restart: db.restart }); },
   };
 })(window);
