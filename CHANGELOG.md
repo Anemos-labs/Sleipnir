@@ -17,7 +17,7 @@ they do not indicate whether a change has been released.
   and trying what running something can answer instead of asking. New key
   `tools.builtin_skills` (default `true`) leaves all built-in skills out.
   Prompt bytes: the constitution grows by about 70 tokens (its bound goes
-  from 4,900 to 4,950), seven role pins by about 40 tokens each, and the
+  from 5,100 to 5,150), seven role pins by about 40 tokens each, and the
   skills listing in the shared layer by about 330 tokens; each is written to
   the cache once a session.
 
