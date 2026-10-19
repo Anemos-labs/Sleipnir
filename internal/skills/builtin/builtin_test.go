@@ -48,6 +48,10 @@ func TestEverySkillLoadsCleanly(t *testing.T) {
 		}
 	}
 	listing := cat.Listing(skills.DefaultListingTokens, core.NewBytesEstimator())
+	// Every request of every agent reads the listing: the built-ins leave most of its budget to the user's skills.
+	if n := core.NewBytesEstimator().Tokens(listing); n > skills.DefaultListingTokens/2 {
+		t.Errorf("the built-in skills take %d tokens of the %d-token listing; shorten their descriptions", n, skills.DefaultListingTokens)
+	}
 	for _, n := range names {
 		if !strings.Contains(listing, n+": ") {
 			t.Errorf("listing lacks %s with its description:\n%s", n, listing)
