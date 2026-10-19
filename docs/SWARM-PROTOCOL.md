@@ -63,8 +63,10 @@ not kept across a restart. Otherwise a refusal names its one cause (no
 revision, a stale or unknown one, nothing proposed yet, the pool already executing,
 the wrong phase for the action) with the current revision and phase and the exact
 call. Single votes are not mailed to the leader: the vote that completes a round
-tells it once what follows (`pool execute`, or `task done` with the result), and a
-refused `pool execute` names the members still to agree. The leader creates children
+tells it once what follows (`pool execute`, or `task done` with the result), the
+vote that leaves only the leader's own to give tells it so once (a leader that
+proposed and went idle is woken), and a refused `pool execute` names the members
+still to agree. The leader creates children
 with `task create parent=…` (a child takes the parent's role and kind unless it names
 them), assigns existing peers with `spawn`, and claims its own child with `task
 claim`. A member that is still in a turn (waiting for its share, or finishing one)

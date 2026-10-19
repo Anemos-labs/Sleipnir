@@ -631,7 +631,8 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			}
 			missing := missingVotes(*p)
 			vote = poolVote{rev: p.Revision, implicit: implicit, voted: len(p.Members) - len(missing), members: len(p.Members),
-				missing: missing, completes: !again && len(missing) == 0, leader: task.Owner}
+				missing: missing, completes: !again && len(missing) == 0, leader: task.Owner,
+				leaderLast: !again && len(missing) == 1 && missing[0] == task.Owner}
 		case "execute":
 			if err := executeRefusal(*task, *p, by, manager); err != nil {
 				return err
@@ -741,17 +742,24 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 type poolVote struct {
 	rev, voted, members int
 	implicit, completes bool
-	missing             []string
-	leader              string
+	// leaderLast: this vote left only the leader's own to give
+	leaderLast bool
+	missing    []string
+	leader     string
 }
 
 // voteRecorded answers a member whose agree or confirm counted: the revision, who has yet to vote, and, once every member has, what
-// follows. The leader is told once, by the vote that completes the round when another member cast it; single votes are not mailed
-// to it (the leader's refused execute names the members still to agree).
+// follows. The leader is told once, by the vote that completes the round when another member cast it, or by the vote that leaves
+// only the leader's own to give: a leader that proposed and went idle waited for the others while they waited for it. Other single
+// votes are not mailed to it (the leader's refused execute names the members still to agree).
 func (s *Swarm) voteRecorded(by, id, action string, v poolVote) *tools.Result {
 	head := fmt.Sprintf("%s: %s recorded for revision %d", id, action, v.rev)
 	if v.implicit {
 		head += " (the revision you last read)"
+	}
+	if v.leaderLast && v.leader != by {
+		s.notify(v.leader, "request", fmt.Sprintf("Pool %s: every other member has %s revision %d; only your own %s is missing (pool %s id=%s revision=%d).",
+			id, pastTense(action), v.rev, action, action, id, v.rev))
 	}
 	if len(v.missing) > 0 {
 		return text("%s; %d of %d members, waiting for %s.", head, v.voted, v.members, strings.Join(v.missing, ", "))
@@ -951,4 +959,12 @@ func (s *Swarm) excused(by, id, member, why string) *tools.Result {
 	}
 	s.wakePool(id, fmt.Sprintf("Pool updated: %s excused (%s). Members: %s; leader %s.%s", member, why, strings.Join(task.Pool.Members, ", "), task.Owner, note))
 	return text("%s: %s excused; members %s; leader %s.%s", id, member, strings.Join(task.Pool.Members, ", "), task.Owner, note)
+}
+
+// pastTense is a pool vote's action as done: agreed to, confirmed.
+func pastTense(action string) string {
+	if action == "agree" {
+		return "agreed to"
+	}
+	return "confirmed"
 }
