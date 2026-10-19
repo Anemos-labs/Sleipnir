@@ -14,7 +14,7 @@ same problems before the team builds, and the research's build-context page beco
 |---|---|
 | Terminal chat | `/research [quick\|standard\|deep] QUESTION` (default depth: standard) |
 | Web page | the Research view (`g` then `w`): a question and a depth; or `/research ...` in the composer |
-| Research before building | `/goal --research=DEPTH GOAL` in either interface, or *Research first* in the web page's Goal sheet |
+| Research before building | `/goal --research=DEPTH GOAL` in either interface, or *research first* beside the first goal in the web page's New session dialog, or *Research first* in its Goal sheet |
 
 A run is a standing goal (it needs the `goal` plugin). Its spec is the run's brief, `.sleipnir/research/RUN/BRIEF.md`:
 the protocol below, the source policy, the wiki's style and the milestones the judge rules on. The judge accepts a
