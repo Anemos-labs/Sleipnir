@@ -54,7 +54,7 @@
       if (ui.nav && ui.nav.chord(k)) { e.preventDefault(); return; }
       if (k === '/') { e.preventDefault(); if (window.innerWidth <= 900 || getComputedStyle($('#rail')).display === 'none') SL.palette.open(''); else { ui.rail.expand(); const i = $('#input'); i.focus(); i.value = '/'; i.dispatchEvent(new Event('input')); } return; }
       if (k === '?') { e.preventDefault(); ui.sheets.help(); return; }
-      if (VIEW_KEYS[k]) { e.preventDefault(); if (window.innerWidth <= 900) $('#app').dataset.pv = 'main'; SL.views.show(VIEW_KEYS[k]); return; }
+      if (VIEW_KEYS[k] && (!SL.plugins || SL.plugins.viewOn(VIEW_KEYS[k]))) { e.preventDefault();   /* a view whose plugin is off has no key */ if (window.innerWidth <= 900) $('#app').dataset.pv = 'main'; SL.views.show(VIEW_KEYS[k]); return; }
       if (k === ' ' && !(t && (t.tagName === 'BUTTON' || t.tagName === 'A' || t.getAttribute('role') === 'button'))) {
         e.preventDefault(); if (!S.replay) S.seek(S.vt, false); else S.replay.playing = !S.replay.playing; S.touch(); return;
       }

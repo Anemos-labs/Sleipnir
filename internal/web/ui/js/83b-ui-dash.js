@@ -40,6 +40,7 @@
     ['tools', 'Tools', 'every sleipnir command, with a form'],
     ['doctor', 'Doctor', 'probe an endpoint'],
     ['schedule', 'Schedule', 'cron jobs and the daemon'],
+    ['plugins', 'Plugins', 'turn parts of Sleipnir on and off'],
     ['settings', 'Settings', 'models, roles, budget, permissions and the rest'],
   ];
   const CATALOG = PARTS.map(p => Object.assign({ kind: 'part' }, p)).concat(VIEWS.map(([v, t, d]) => ({ id: 'v:' + v, kind: 'view', view: v, title: t, desc: d, minW: 3, minH: 4, w: 6, h: 9 })));
@@ -157,7 +158,8 @@
         if (d.kind === 'part') { if (parts[c.id]) parts[c.id](cs, body, S); }
         else {
           const def = SL.views.V.reg[d.view], inner = U.mk('section', { class: 'cview v-' + d.view, 'data-view': d.view, 'aria-label': d.title }); body.appendChild(inner);
-          if (def) def.mount(cs, inner, {}, S); else inner.innerHTML = '<p class="stubnote">this view is not available here</p>';
+          if (def && SL.plugins && !SL.plugins.viewOn(d.view)) SL.plugins.placeholder(cs, inner, d.view);   // its plugin is off: the note, not the view
+          else if (def) def.mount(cs, inner, {}, S); else inner.innerHTML = '<p class="stubnote">this view is not available here</p>';
           if (SL.data && SL.data.PAGES && SL.data.PAGES[d.view]) SL.data.forPage(d.view);
         }
       } catch (e) { console.error(e); }
@@ -186,7 +188,7 @@
     function addCard(id) { const next = add(L, id); if (next.length === L.length) return; const c = next.find(k => k.id === id); commit(next); mountCard(c); const k = cards[id]; if (k) { k.el.focus({ preventScroll: true }); if (k.el.scrollIntoView) k.el.scrollIntoView({ block: 'nearest' }); } ui.toast('added ' + BY_ID[id].title, 'ok'); }
     function removeCard(id) { const i = L.findIndex(c => c.id === id); if (i < 0) return; unmountCard(id); commit(remove(L, id)); const nx = L[Math.min(i, L.length - 1)]; if (nx && cards[nx.id]) cards[nx.id].el.focus({ preventScroll: true }); else lockB.focus(); ui.toast('removed ' + BY_ID[id].title + ': Add card brings it back'); }
     function openPicker() {
-      const free = CATALOG.filter(c => !L.some(k => k.id === c.id)), row = c => '<li><button class="btn more dpick" type="button" data-add="' + esc(c.id) + '"><b>' + esc(c.title) + '</b><span>' + esc(c.desc) + '</span></button></li>';
+      const free = CATALOG.filter(c => !L.some(k => k.id === c.id) && (c.kind !== 'view' || !SL.plugins || SL.plugins.viewOn(c.view))), row = c => '<li><button class="btn more dpick" type="button" data-add="' + esc(c.id) + '"><b>' + esc(c.title) + '</b><span>' + esc(c.desc) + '</span></button></li>';
       const group = (t, list) => list.length ? '<h3 class="lab">' + t + '</h3><ul class="dpicks">' + list.map(row).join('') + '</ul>' : '';
       ui.modal({ title: 'Add a card', kicker: 'Cockpit', desc: 'every panel of the Cockpit and every view of the rail', color: 'var(--fe)', cls: 'dashpick', focus: '.dpick',
         body: (free.length ? group('Cockpit panels', free.filter(c => c.kind === 'part')) + group('Views', free.filter(c => c.kind === 'view')) : '<p class="stubnote">Every card is on the Cockpit.</p>') +

@@ -18,6 +18,7 @@
     board: svg('<rect x="3" y="3.4" width="3.8" height="13.2" rx=".9"/><rect x="8.1" y="3.4" width="3.8" height="9" rx=".9"/><rect x="13.2" y="3.4" width="3.8" height="11" rx=".9"/>'),
     replay: svg('<circle cx="10" cy="10" r="7.2"/><path d="M8.2 6.9l5 3.1-5 3.1z" fill="currentColor"/>'),
     sessions: svg('<rect x="2.6" y="7" width="11" height="9.4" rx="1.3"/><path d="M5.6 7V5.3c0-.7.5-1.3 1.3-1.3h8c.7 0 1.3.6 1.3 1.3v6.4c0 .7-.6 1.3-1.3 1.3H13.6"/>'),
+    plugins: svg('<path d="M3.4 7.2h3.3a1.9 1.9 0 1 1 3.6 0h3.3v3.3a1.9 1.9 0 1 1 0 3.6v2.5H3.4z"/>'),
     tools: svg('<rect x="2.6" y="3.6" width="14.8" height="12.8" rx="1.6"/><path d="M6 8l3 2.2L6 12.4M10.8 13h3.6"/>'),
     settings: svg('<path d="M3 6h14M3 10h14M3 14h14"/><circle cx="7" cy="6" r="1.9" fill="var(--panel)"/><circle cx="13" cy="10" r="1.9" fill="var(--panel)"/><circle cx="8.6" cy="14" r="1.9" fill="var(--panel)"/>'),
     more: svg('<circle cx="4.5" cy="10" r="1.3" fill="currentColor" stroke="none"/><circle cx="10" cy="10" r="1.3" fill="currentColor" stroke="none"/><circle cx="15.5" cy="10" r="1.3" fill="currentColor" stroke="none"/>'),
@@ -34,6 +35,7 @@
     { id: 'board', view: 'board', label: 'Board', key: 'b' },
     { id: 'replay', view: 'replay', label: 'Replay', key: 'p' },
     { id: 'sessions', view: 'sessions', label: 'Sessions', key: 's', grp: 'manage' },
+    { id: 'plugins', view: 'plugins', label: 'Plugins', key: 'u' },
     { id: 'tools', view: 'tools', label: 'Tools', key: 't' },
     { id: 'settings', view: 'settings', label: 'Settings', key: 'e' },
   ];

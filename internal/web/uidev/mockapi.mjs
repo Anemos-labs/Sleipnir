@@ -9,7 +9,7 @@
 // (shop at 00:38), so that the page's clock reaches each event when the reference page's would. What the reference page computed itself and the real
 // server sends as events is added: the plan's steps, every agent's prompt layers, and each agent's reported cost after a request (the
 // reference page's sample prices), so that the two pages show the same numbers. Catalogues (models, roles, providers, projects, recorded
-// sessions, the CLI spec, the slash commands, the settings views and the schedule) come from the same pack. The stream stays open with heartbeats; an answer to a question
+// sessions, the CLI spec, the slash commands, the settings views, the schedule and the plugin catalogue) come from the same pack; plugin changes are kept in memory. The stream stays open with heartbeats; an answer to a question
 // is accepted and published as its `answer` event. Anything else under /api/ is 404 (or 501 for a mutation). Nothing here ships.
 import http from 'node:http';
 import fs from 'node:fs';
@@ -30,6 +30,14 @@ export function oracle(dir = path.join(here, 'mock', 'js')) {
   for (const f of MOCK) vm.runInContext(fs.readFileSync(path.join(dir, f), 'utf8'), sb, { filename: f });
   sb.SL.sessions.init();
   return sb.SL;
+}
+
+/** The plugin catalogue of the reference page (mock/js/plugins.js) and its in-memory routes: {catalogue, api} where api has the
+ *  plugins, setPlugin, setProfile and resetPlugin of SL.api, each resolving {ok, status, data}. Each call gives a fresh copy. */
+export function pluginsApi(dir = path.join(here, 'mock', 'js')) {
+  const sb = { SL: {} }; sb.window = sb; vm.createContext(sb);
+  vm.runInContext(fs.readFileSync(path.join(dir, 'plugins.js'), 'utf8'), sb, { filename: 'plugins.js' });
+  return { catalogue: JSON.parse(JSON.stringify(sb.SLPLUGINS)), api: sb.SL.api };
 }
 
 /** epoch ms of a time of day (seconds since midnight) on 2026-01-02 in UTC: the page derives the same t0 from it when its time zone is
@@ -86,7 +94,8 @@ export function catalogues(SL) {
 export function start(o = {}) {
   const SL = oracle(), ui = path.resolve(o.ui || path.join(REPO, 'internal/web/ui'));
   const snaps = {}; SL.sessions.list.forEach((S, i) => { snaps[S.id] = snapshotOf(SL, S, i); });
-  const cat = catalogues(SL), streams = new Set(); let frameId = 0;
+  const cat = catalogues(SL), streams = new Set(), plg = pluginsApi().api; let frameId = 0;
+  const answer = (res, p) => p.then(r => json(res, r.ok ? 200 : r.status, r.ok ? r.data : { error: r.message, code: r.code }));
   const hello = () => ({ boot: 'mockapi', now: Date.now(), version: 'mock', streamAfter: 0, server: { addr: '127.0.0.1:6969', loopback: true, version: 'mock' }, limits: { maxBody: 65536, maxMessage: 262144, maxQuestions: 64 }, ui: { version: 'mock' }, active: 'shop', tabs: Object.values(snaps).map(s => s.tab), defaults: cat.defaults });
   const publish = (type, data) => { const msg = 'id: ' + (++frameId) + '\nevent: ' + type + '\ndata: ' + JSON.stringify(data) + '\n\n'; streams.forEach(r => r.write(msg)); };
   const json = (res, code, body) => { res.writeHead(code, { 'Content-Type': TYPES['.json'], 'Content-Security-Policy': CSP, 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body)); };
@@ -100,6 +109,7 @@ export function start(o = {}) {
         if (m && snaps[m[1]]) { const v = m[2] === 'snapshot' ? snaps[m[1]] : m[2] === 'slash' ? { slash: cat.slash } : cat[m[2]]; if (v) return json(res, 200, v); }
         const g = { '/api/cli': cat.cli, '/api/models': cat.models, '/api/providers': cat.providers, '/api/projects': cat.projects, '/api/recorded': cat.recorded, '/api/schedule': cat.schedule, '/api/recorded/watching': { tabs: [] }, '/api/runs': { runs: [] }, '/api/doctor/endpoints': { endpoints: [] } }[p];
         if (g) return json(res, 200, g);
+        if (p === '/api/plugins' || /^\/api\/sessions\/[^/]+\/plugins$/.test(p)) return answer(res, plg.plugins());
         if (/^\/api\/sessions\/[^/]+\/ws\/index$/.test(p)) return json(res, 200, { root: '/x', isolation: 'none', base: { id: 'base', label: 'before the session', time: '' }, cps: [], tree: [], version: 'v0' });   /* the Workspace's own parity runs on internal/web/uidev/test/packserver.mjs */
         if (/^\/api\/sessions\/[^/]+\/complete$/.test(p)) return json(res, 200, { paths: [] });
         return json(res, 404, { error: 'not served by this development server', code: 'not_found' });
@@ -108,6 +118,13 @@ export function start(o = {}) {
         const m = /^\/api\/questions\/([^/]+)\/answer$/.exec(p);
         if (m) { let a = {}; try { a = JSON.parse(body || '{}'); } catch { /* empty */ } const tab = Object.values(snaps).find(s => s.events.some(e => e.k === 'ask' && e.q.id === m[1])); if (!tab) return json(res, 404, { error: 'no such question', code: 'no_question' }); tab.seq++; publish('ev', { tab: tab.tab.id, ev: { t: 0, k: 'answer', seq: tab.seq, qid: m[1], choice: a.choice, note: a.note || '', by: 'you' } }); return json(res, 200, { ok: true }); }
         if (p === '/api/confirm') return json(res, 200, { id: 'mock', scope: '', expires_in: 60 });
+        if (p.startsWith('/api/plugins/')) {
+          let b = {}; try { b = JSON.parse(body || '{}'); } catch { /* empty */ }
+          if (req.method === 'POST' && p === '/api/plugins/profile') return answer(res, plg.setProfile(b.profile, b.scope));
+          const id = decodeURIComponent(p.slice('/api/plugins/'.length));
+          if (req.method === 'POST') return answer(res, plg.setPlugin(id, b));
+          if (req.method === 'DELETE') return answer(res, plg.resetPlugin(id, u.searchParams.get('scope') || 'user'));
+        }
         return json(res, 501, { error: 'this development server does not do that', code: 'not_implemented' });
       });
       return;
