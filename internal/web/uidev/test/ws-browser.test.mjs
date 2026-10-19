@@ -189,7 +189,7 @@ test('Merge: worktrees, the queue in order and the verify output; not isolated: 
   assert.equal(await ev(p, 'document.querySelector("[data-vtask=T2]").getAttribute("aria-pressed")'), 'true'); await close(p);
   // the single agent of the reference page: no worktrees
   const p2 = await open(srv); await ev(p2, 'SL.act.switchSession("orders-api")'); await p2.wait(300); await tab(p2, 'files'); await click(p2, '.ws-tabs [data-tab=merge]');
-  await until(p2, '.ws-body .ws-none'); assert.equal(await text(p2, '.ws-body .ws-none'), 'no worktree isolation in this run: work is written to the checkout directly'); assert.equal(await count(p2, '[data-accept]'), 0); await close(p2);
+  await until(p2, '.ws-body .ws-none'); assert.equal(await text(p2, '.ws-body .ws-none'), 'Nothing queues in this run: workers write straight to your files. Start a team with each worker in its own copy (--isolation worktree) to have its work verified here before it is applied.'); assert.equal(await count(p2, '[data-accept]'), 0); await close(p2);
 });
 
 test('Apply verified work: disabled until something landed, a dry run, commits or edits (each asked about), its scope confirmed and sent back, a changed result shown again', T, async () => {
