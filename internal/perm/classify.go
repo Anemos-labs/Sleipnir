@@ -84,7 +84,8 @@ func (e *Engine) Classify(r Request) Classification {
 // RemoveRule removes a session-scope rule; it reports whether one was removed. Rules
 // from configuration cannot be removed: only rules added while the session ran (AddRule,
 // a remembered answer, the tests preset) are. rule is the rule's text ("Bash(go test:*)");
-// a rule of that text is removed from every action it was added to.
+// a rule of that text is removed from every action it was added to. Removing one lets
+// the questions refused or left unanswered earlier be asked again.
 func (e *Engine) RemoveRule(rule string) bool {
 	rule = strings.TrimSpace(rule)
 	if rule == "" {
@@ -127,6 +128,7 @@ func (e *Engine) RemoveRule(rule string) bool {
 				delete(e.persisted, r)
 			}
 		}
+		e.pr.forget() // lock order: e.mu, then e.pr.mu
 	}
 	return removed
 }

@@ -19,12 +19,17 @@ import (
 //     serialised, and a waiting caller can still be cancelled through its ctx);
 //   - identical requests that arrive while one is pending are answered once:
 //     they wait for the first call and share its Decision instead of asking
-//     again.
+//     again;
+//   - a question the person refused, or that nobody answered, is not asked
+//     again in the session: a repeat is answered at once with that outcome
+//     (refused), until the person changes the mode or the rules (forget).
 type prompts struct {
 	sem chan struct{}
 
 	mu       sync.Mutex
 	inflight map[string]*pending
+	refused  map[string]Decision // by settledKey: the refusals and the unanswered questions of the session
+	gen      uint64              // bumped by forget: a question put before a reset does not record its refusal after it
 }
 
 type pending struct {
@@ -38,6 +43,57 @@ type pending struct {
 func (p *prompts) init() {
 	p.sem = make(chan struct{}, 1)
 	p.inflight = map[string]*pending{}
+	p.refused = map[string]Decision{}
+}
+
+// earlier returns the outcome of a question refused or left unanswered earlier in the session under key, prefixed with
+// askedEarlier; ok is false when there is none.
+func (p *prompts) earlier(key string) (d Decision, ok bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if d, ok = p.refused[key]; ok {
+		d.Reason = askedEarlier + d.Reason
+	}
+	return d, ok
+}
+
+// generation is the current reset generation (forget), taken when a question is put to the person.
+func (p *prompts) generation() uint64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.gen
+}
+
+// refuse records d, a refusal by the person or a question nobody answered, as the answer to every later question under key. gen is
+// the generation the question was put under: a question the mode or the rules changed under while it was on screen records nothing,
+// as it was answered for what no longer holds.
+func (p *prompts) refuse(key string, d Decision, gen uint64) {
+	if d.Allow {
+		return
+	}
+	p.mu.Lock()
+	if gen == p.gen {
+		p.refused[key] = Decision{Reason: d.Reason}
+	}
+	p.mu.Unlock()
+}
+
+// forget drops the recorded refusals, so that each of those questions is put to the person again: the person changed the mode or
+// the rules, and the answer may now be another.
+func (p *prompts) forget() {
+	p.mu.Lock()
+	clear(p.refused)
+	p.gen++
+	p.mu.Unlock()
+}
+
+// settledKey identifies the questions that one refusal answers: a question only about network access to a host (verdict.host) is
+// the same question for every URL of that host, as the person refused the host, and any other is promptKey's request.
+func settledKey(r Request, v verdict) string {
+	if v.host != "" {
+		return "host\x00" + v.host
+	}
+	return promptKey(r)
 }
 
 // promptKey identifies "the same request" for coalescing; the asking agent is
@@ -115,17 +171,24 @@ const (
 // settledEarlier begins the reason of a question that an answer given while it waited decided, so that it is not asked.
 const settledEarlier = "settled by an earlier answer: "
 
+// askedEarlier begins the reason of a question that was refused, or that nobody answered, earlier in the session (settledKey): it is
+// not put to the person again, and the earlier refusal, fixed text, follows. A scout that nobody answered asked about the same three
+// hosts twice each in a few minutes.
+const askedEarlier = "asked earlier in this session: "
+
 // declinedAdvice ends the refusal that a person gave. A model told only "denied by user" made the same change a moment later with
 // another tool (the first real chat session: an edit that was refused came back as an apply_patch, and the person was asked a
 // second time). The sentence is fixed, so it costs the cache nothing, and it is said only of a refusal by a person: not of a
 // question that nobody answered, and not of a policy.
 const declinedAdvice = " (the person said no to this: do not make it another way, with another tool or command; say what you wanted and ask what they want instead)"
 
-// resolveAsk turns an "ask" outcome into a Decision by consulting the human.
+// resolveAsk turns an "ask" outcome into a Decision by consulting the human. Check has already answered a question refused earlier
+// (prompts.earlier); one refused while this one waited is answered in lead.
 func (e *Engine) resolveAsk(ctx context.Context, r Request, v verdict, again func() verdict) Decision {
 	if e.cfg.Prompter == nil {
 		return Decision{Reason: "approval required: " + v.reason + NoOneToAsk}
 	}
+	skey := settledKey(r, v)
 	key := promptKey(r)
 	for {
 		if ctx.Err() != nil {
@@ -148,12 +211,13 @@ func (e *Engine) resolveAsk(ctx context.Context, r Request, v verdict, again fun
 		p := &pending{done: make(chan struct{})}
 		e.pr.inflight[key] = p
 		e.pr.mu.Unlock()
-		return e.lead(ctx, key, p, r, v, again)
+		return e.lead(ctx, key, skey, p, r, v, again)
 	}
 }
 
-// lead runs the prompt on behalf of every caller waiting on p.
-func (e *Engine) lead(ctx context.Context, key string, p *pending, r Request, v verdict, again func() verdict) (d Decision) {
+// lead runs the prompt on behalf of every caller waiting on p. key is the request's promptKey, skey its settledKey: a refusal or a
+// question nobody answered is recorded under skey.
+func (e *Engine) lead(ctx context.Context, key, skey string, p *pending, r Request, v verdict, again func() verdict) (d Decision) {
 	p.canceled = true // stays true if the prompter panics
 	defer func() {
 		p.d = d
@@ -178,6 +242,11 @@ func (e *Engine) lead(ctx context.Context, key string, p *pending, r Request, v 
 		}
 		return Decision{Reason: settledEarlier + nv.reason}
 	}
+	// Or the person refused, or did not answer, a question it is the same as (another URL of one host) while it waited.
+	if ed, ok := e.pr.earlier(skey); ok {
+		p.canceled = false
+		return ed
+	}
 	// The human sees Summary and nothing else; tell them why they are asked.
 	shown := r
 	shown.Summary = withWhy(r.Summary, v.reason)
@@ -193,6 +262,7 @@ func (e *Engine) lead(ctx context.Context, key string, p *pending, r Request, v 
 		shown.RememberRules = e.rememberRules(v.rem)
 	}
 	shown.OffersTests = !v.askRule && (v.tests || e.offersTests(v.rem))
+	gen := e.pr.generation()
 	pctx := ctx
 	if e.cfg.AskTimeout > 0 {
 		var cancel context.CancelFunc
@@ -206,11 +276,15 @@ func (e *Engine) lead(ctx context.Context, key string, p *pending, r Request, v 
 	if pctx.Err() != nil && !d.Allow && d.Reason == "no answer" {
 		// the time ran out and the prompter gave up on it (an answer that arrived as it did stands: it is not "no answer")
 		p.canceled = false
-		return Decision{Reason: "approval required: " + v.reason + askTimedOut + e.cfg.AskTimeout.String() + noAnswerInTime}
+		d = Decision{Reason: "approval required: " + v.reason + askTimedOut + e.cfg.AskTimeout.String() + noAnswerInTime}
+		e.pr.refuse(skey, d, gen)
+		return d
 	}
 	p.canceled = false
 	if !d.Allow && d.Reason == "no answer" {
-		return Decision{Reason: "approval required: " + v.reason + unanswered}
+		d = Decision{Reason: "approval required: " + v.reason + unanswered}
+		e.pr.refuse(skey, d, gen)
+		return d
 	}
 	if d.Reason == "" {
 		if d.Allow {
@@ -222,6 +296,7 @@ func (e *Engine) lead(ctx context.Context, key string, p *pending, r Request, v 
 	if !d.Allow && (d.Reason == "denied by user" || d.Reason == "declined by the user") {
 		d.Reason += declinedAdvice
 	}
+	e.pr.refuse(skey, d, gen)
 	e.remember(d, v)
 	return d
 }

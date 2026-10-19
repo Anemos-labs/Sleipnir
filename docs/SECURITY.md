@@ -161,6 +161,17 @@ from standard input (`python3 - <<'PY'`) would allow any code; a path only known
 role whose stricter mode leaves out the session's rules would ask again anyway. None of these is offered, in the chat's dialog, the line
 prompter or the web page, and an answer that offered nothing remembers nothing.
 
+### A refused question is not asked again
+
+A question the person refused, or that nobody answered (no page had the interface open, the input ended, `--ask-timeout` ran out), is
+not put to the person again in the same session: a repeat is refused at once with the earlier refusal's text after the fixed prefix
+`asked earlier in this session: ` (`internal/perm/ask.go`). A question that is only about network access to a host (`network access to
+soulver.io needs approval`) is the same question for every URL of that host; any other question is the same when its request is, as
+coalesced questions are. A yes is not recorded this way: a yes for the session becomes a rule, and a yes for once is asked for again.
+Changing the mode, or adding or removing a rule (`/allow`, the web interface's rules), forgets the recorded refusals, so those
+questions are asked again. In a team, the scout's role prompt tells it to plan its web research and, after a refused fetch, to go on
+from what it knows rather than try another host or tool for the same purpose.
+
 ### The manager's answers
 
 In a team, a worker's question that the engine marks routine is put to the manager before the person (`permissions.manager_approves`,

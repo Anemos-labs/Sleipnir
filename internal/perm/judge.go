@@ -40,6 +40,9 @@ type verdict struct {
 	// tests marks a question about a command the tests preset covers that its exact rule does not name (a venv install): the
 	// question offers the preset as an answer.
 	tests bool
+	// host is the host of a question that is only about network access to it (a fetch tool's URL): a refusal of it, or a question
+	// nobody answered, is remembered for that host rather than for the exact request (settledKey).
+	host string
 }
 
 // by marks a verdict as decided by a rule.
@@ -84,6 +87,9 @@ func combine(a, b verdict) verdict {
 		a.rem = mergeRules(a.rem, b.rem)
 		a.askRule = a.askRule || b.askRule
 		a.tests = a.tests || b.tests
+		if a.host != b.host { // a question about more than one host's network access is not one host's question
+			a.host = ""
+		}
 	}
 	return a
 }
@@ -388,6 +394,7 @@ func (ev *evaluator) decideTool(u *unit) verdict {
 			res = deny(planReason(what + " is not allowed"))
 		default:
 			res = ask(what+" needs approval", ev.remember(u))
+			res.host = urlHost(r)
 		}
 	case len(u.accesses) == 0 && r.Writes:
 		switch mode {
