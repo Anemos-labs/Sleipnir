@@ -23,6 +23,9 @@ type SpawnReq struct {
 	// Agent reuses an idle worker (its context and cache are already warm).
 	Agent string
 	By    string
+	// Solo gives a top-level task of a role with several members to one member (Agent, or the first free one) without the role's
+	// pool, and marks the task so (Task.Solo): it is for small work with one owner and no shared decision.
+	Solo bool
 }
 
 // alive reports why the swarm cannot take new work, if it cannot.
@@ -107,6 +110,15 @@ func (s *Swarm) spawn(req SpawnReq) (SpawnResult, error) {
 		}
 		counts, _ := TeamCounts(s.cfg.Team)
 		task, _ := s.Board.Snapshot().Task(req.TaskID)
+		if task.Solo {
+			req.Solo = true // restarted, repaired or queued again: it stays with one member
+		}
+		if req.Solo && counts[req.Role] > 1 && task.Parent == "" && task.Pool == nil {
+			if err := s.soloMember(&req); err != nil {
+				return SpawnResult{}, err
+			}
+			return s.spawnReuse(req, files)
+		}
 		if counts[req.Role] > 1 && task.Parent == "" {
 			if task.Status != StatusDoing || task.Pool == nil {
 				return started(s.startPool(req, files))
@@ -147,9 +159,56 @@ func (s *Swarm) spawn(req SpawnReq) (SpawnResult, error) {
 	return started(s.spawnNew(req, files))
 }
 
+// soloMember chooses the member of req.Role that takes a solo task (SpawnReq.Solo) and sets req.Agent to it: the named member when
+// it is free, else the first free member in leadership order. A member is free when its run has ended, no open pool of the role
+// keeps it (poolHolder) and it owns no other open solo task (soloTaskOf). The role's members are made first, idle, as for a pool, so the choice is among all of them. When none is
+// free the answer is noSpareMember, which the spawn tool queues for an existing task. Caller holds spawnMu.
+func (s *Swarm) soloMember(req *SpawnReq) error {
+	members, err := s.ensurePool(req.Role)
+	if err != nil {
+		return err
+	}
+	snap := s.Board.Snapshot()
+	busy := func(m *member) string { // what keeps m from the task, "" when it is free
+		m.mu.Lock()
+		idle, on := m.life == lifeIdle, m.task
+		m.mu.Unlock()
+		switch h := poolHolder(snap, m.id); {
+		case h != "":
+			return m.id + " is in " + h + "'s pool"
+		case soloTaskOf(snap, m.id, req.TaskID) != "":
+			return m.id + " works on " + soloTaskOf(snap, m.id, req.TaskID) + " alone"
+		case idle:
+			return ""
+		case on != "":
+			return m.id + " works on " + on
+		}
+		return m.id + " is in a run"
+	}
+	var held []string
+	for _, m := range members {
+		why := busy(m)
+		switch {
+		case req.Agent != "" && m.id == req.Agent && why != "":
+			return fmt.Errorf("%s: give the task to a free %s member, or leave out agent= so it starts on the first free one", why, req.Role)
+		case req.Agent != "" && m.id == req.Agent:
+			return nil
+		case req.Agent == "" && why == "":
+			req.Agent = m.id
+			return nil
+		}
+		held = append(held, why)
+	}
+	if req.Agent != "" {
+		return nil // not a member of the role: spawnReuse answers for it
+	}
+	return &noSpareMember{role: req.Role, held: strings.Join(held, ", "),
+		msg: fmt.Sprintf("no %s member is free for a solo task (%s); wait and reuse an existing member", req.Role, strings.Join(held, ", "))}
+}
+
 // assignFor builds the board operation that gives a task to an agent.
 func (s *Swarm) assignFor(req SpawnReq, agentID string, role Role, files []string) assignReq {
-	r := assignReq{by: req.By, agent: agentID, check: s.claimCheck(agentID, role.ReadOnly)}
+	r := assignReq{by: req.By, agent: agentID, check: s.claimCheck(agentID, role.ReadOnly), solo: req.Solo}
 	if req.TaskID != "" {
 		r.id = strings.TrimSpace(req.TaskID)
 		if len(files) > 0 {

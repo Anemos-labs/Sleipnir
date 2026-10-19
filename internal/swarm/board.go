@@ -95,6 +95,10 @@ type Task struct {
 	// BlockedOn is the task a blocked task waits for, when its owner named one. It is
 	// kept only while the task is blocked.
 	BlockedOn string `json:"blocked_on,omitempty"`
+	// Solo marks a top-level task the manager gave to one member of a role that has
+	// several (spawn solo=true): it runs as an ordinary single-owner task, without the
+	// role's pool, also when it is restarted, repaired or queued again.
+	Solo bool `json:"solo,omitempty"`
 }
 
 // AgentInfo is an agent's public status.
@@ -471,6 +475,8 @@ func taskIdx(s *Snapshot, id string) int {
 type TaskSpec struct {
 	Title, Desc, Role, Kind, Parent string
 	Deps, Files                     []string
+	// Solo creates the task as a single-owner task (Task.Solo); only a top-level task can be one.
+	Solo bool
 }
 
 // TaskCheck is evaluated inside the board's critical section on the task an
@@ -534,7 +540,11 @@ func (b *Board) createLocked(d *draft, spec TaskSpec) (Task, error) {
 	}
 	b.next++
 	t := Task{ID: "T" + strconv.Itoa(b.next), Title: title, Desc: cleanBlock(spec.Desc, maxDescRunes), Status: StatusTodo,
-		Role: cleanText(spec.Role, maxRoleRunes), Kind: spec.Kind, Deps: deps, Files: files, Parent: spec.Parent}
+		Role: cleanText(spec.Role, maxRoleRunes), Kind: spec.Kind, Deps: deps, Files: files, Parent: spec.Parent, Solo: spec.Solo}
+	if t.Solo && t.Parent != "" {
+		b.next--
+		return Task{}, errors.New("solo gives a top-level task to one member; a child of a pool already has one owner")
+	}
 	if err := poolAssignment(d.Snapshot, t); err != nil {
 		b.next--
 		return Task{}, err
@@ -661,6 +671,9 @@ type assignReq struct {
 	// transfer lets the assigner give away a task it owns itself (a pool leader that
 	// claimed a child of its pool it meant for a member).
 	transfer bool
+	// solo marks the task single-owner (Task.Solo) as it is assigned; only a top-level
+	// task without a pool can become one.
+	solo bool
 }
 
 // assignTask creates (optionally) and assigns a task in one operation: a refused
@@ -715,6 +728,15 @@ func (b *Board) assignTask(r assignReq) (Task, error) {
 				}
 				t.Files = files
 			}
+		}
+		if r.solo {
+			switch {
+			case t.Parent != "":
+				return fmt.Errorf("solo gives a top-level task to one member; %s is a child of %s, which already has one owner", t.ID, t.Parent)
+			case t.Pool != nil:
+				return fmt.Errorf("%s already has a %s pool (phase %s) and stays with it; create a separate task to give work to one member", t.ID, t.Role, t.Pool.Phase)
+			}
+			t.Solo = true
 		}
 		if ok, dep := depsDone(d.Snapshot, t); !ok {
 			return depsError(t.ID, dep)

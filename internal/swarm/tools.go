@@ -694,9 +694,10 @@ func (t *spawnTool) Spec() core.ToolSpec {
 		NoTreeWrites: true, // tree mutations use the verified integration bridge
 		Description: "Manager only. Start a worker on a task: role (a role of your team: the team card lists them, their free slots and what each can do), " +
 			"task (an id like T3, or a title to create one), brief (acceptance criteria), files (scope globs). " +
-			"Pass agent=<id> to give an idle worker new work: its context is already warm. Writers are limited; readers are not.",
+			"Pass agent=<id> to give an idle worker new work: its context is already warm. Writers are limited; readers are not. " +
+			"solo=true gives a top-level task of a role with several members to one member (agent=, or the first free one) without the role's pool: for small work with one owner and no shared decision.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"role":{"type":"string"},"task":{"type":"string"},` +
-			`"brief":{"type":"string"},"files":{"type":"array","items":{"type":"string"}},"agent":{"type":"string"}},"required":["task"]}`),
+			`"brief":{"type":"string"},"files":{"type":"array","items":{"type":"string"}},"agent":{"type":"string"},"solo":{"type":"boolean"}},"required":["task"]}`),
 	}
 }
 
@@ -708,11 +709,12 @@ func (t *spawnTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error)
 	var in struct {
 		Role, Task, Brief, Agent string
 		Files                    []string
+		Solo                     bool
 	}
 	if r := decode(c.Input, &in); r != nil {
 		return r, nil
 	}
-	req := SpawnReq{Role: in.Role, Brief: in.Brief, Files: in.Files, Agent: in.Agent, By: c.Env.Agent}
+	req := SpawnReq{Role: in.Role, Brief: in.Brief, Files: in.Files, Agent: in.Agent, By: c.Env.Agent, Solo: in.Solo}
 	if taskID.MatchString(strings.TrimSpace(in.Task)) {
 		req.TaskID = strings.TrimSpace(in.Task)
 	} else {

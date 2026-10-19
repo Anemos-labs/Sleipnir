@@ -255,6 +255,22 @@ func (e *noSpareMember) Error() string { return e.msg }
 // among them.
 func (s *Swarm) spareMembers(req SpawnReq, all []*member) ([]*member, map[string][]string, error) {
 	snap := s.Board.Snapshot()
+	// A member that owns an open solo task of the role works on it alone: it joins no pool until that task is closed.
+	var free, alone []string
+	for _, m := range all {
+		if id := soloTaskOf(snap, m.id, req.TaskID); id != "" {
+			alone = append(alone, m.id+" works on "+id+" alone")
+			continue
+		}
+		free = append(free, m.id)
+	}
+	if len(free) == 0 {
+		return nil, nil, &noSpareMember{role: req.Role, held: strings.Join(alone, ", "), msg: fmt.Sprintf("every %s member works on a task of its own (%s); assign this parent again when one is free (call wait)",
+			req.Role, strings.Join(alone, ", "))}
+	}
+	if len(alone) > 0 {
+		all = slices.DeleteFunc(slices.Clone(all), func(m *member) bool { return !slices.Contains(free, m.id) })
+	}
 	inPool := map[string]string{} // member -> the open parent whose pool holds it
 	var busy []Task
 	for _, t := range snap.Tasks {
@@ -331,6 +347,16 @@ func poolKeeps(t Task, member string, ownsChild bool) bool {
 	return t.Pool.Phase != "executing" || t.Owner == member || ownsChild
 }
 
+// soloTaskOf returns the open solo task (Task.Solo) member owns, other than skip, or "" when it owns none.
+func soloTaskOf(snap *Snapshot, member, skip string) string {
+	for _, t := range snap.Tasks {
+		if t.Solo && t.Owner == member && t.ID != skip && t.Status != StatusDone && t.Status != StatusFailed {
+			return t.ID
+		}
+	}
+	return ""
+}
+
 // poolHolder returns the open pooled parent that keeps member from another parent (poolKeeps), or "" when none does.
 func poolHolder(snap *Snapshot, member string) string {
 	for _, t := range snap.Tasks {
@@ -405,7 +431,7 @@ func (s *Swarm) startPool(req SpawnReq, files []string) (string, error) {
 	if task.Pool.Phase == "executing" {
 		s.wakePool(id, "Continue the accepted plan and existing child tasks; do not recreate them. Reconcile, inspect and confirm the combined result when the children are complete.")
 	} else {
-		s.wakePool(id, "Plan together. The first member leads. Use pool propose, agree, execute, reconcile and confirm. The leader creates scoped child tasks with task create parent="+id+" and assigns them with spawn (use task claim for its own child). All members contribute before execution, and inspect the combined result before confirming reconciliation.")
+		s.wakePool(id, "Plan together. The first member leads. Use pool propose, agree, execute, reconcile and confirm. The leader creates scoped child tasks with task create parent="+id+" and assigns them with spawn (use task claim for its own child). All members contribute before execution, and inspect the combined result before confirming reconciliation. When the work is small (one owner, a handful of files, no shared decision), do not divide it: the leader proposes one child that it does itself, and the others agree at once.")
 	}
 	return task.Owner, nil
 }

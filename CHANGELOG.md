@@ -17,6 +17,23 @@ they do not indicate whether a change has been released.
   adds one segment, `research (from web sources, unverified)`, to the shared
   layer, a declared change made once at publication. `sleipnir plugins
   disable research` leaves both out.
+- A small top-level task of a role with several members can go to one
+  member without the role's pool: `spawn … solo=true` gives it to the
+  member named with `agent=`, or to the first free one, and marks the task
+  solo (`Task.Solo`, JSON `solo`), so a restart, the repair pass or a
+  queued start gives it to one member again and its member may claim it.
+  While a member owns an open solo task, no new pool of its role takes it.
+  `solo` is refused for a pool's child and for a parent that already has a
+  pool. Before, `agent=` on such a task only chose the pool's leader, and
+  every member voted on it (docs/SWARM-PROTOCOL.md, **Solo tasks**). New
+  `SpawnReq.Solo` and `TaskSpec.Solo`. Prompt bytes: the `spawn` tool's
+  description and schema change (the tools layer of every swarm agent), and
+  the manager pin gains a sentence (small work, such as a scaffold, goes
+  to one member with `solo=true`; the pool is for a task big enough to
+  split), so the first swarm session after upgrading re-writes those
+  prefixes once. The mail that starts a pool gains one sentence (a small
+  task is not divided: the leader proposes one child it does itself);
+  mail is not part of a stable layer.
 - A permission question the person refused, or that nobody answered, is
   not put to the person again in the same session: a repeat is refused at
   once with the earlier refusal, after the fixed prefix `asked earlier in
