@@ -789,3 +789,19 @@ func TestDomainOpenRefusesAPathThatLeavesIt(t *testing.T) {
 		}
 	}
 }
+
+// A session without the global memory loads the user's instructions but not the memory tool's notes.
+func TestNoNotesLeavesOutTheMemoryToolsNotes(t *testing.T) {
+	w := newWorld(t)
+	tree(t, w.home, map[string]string{".sleipnir/SLEIPNIR.md": "user prefs", ".sleipnir/MEMORY.md": "- a note"})
+	if got := paths(w.mustLoad("")); !reflect.DeepEqual(got, []string{"~/.sleipnir/SLEIPNIR.md|user", "~/.sleipnir/MEMORY.md|user"}) {
+		t.Errorf("with the memory: %v", got)
+	}
+	srcs, err := Load(Opts{Root: w.root, Cwd: w.root, Home: w.home, NoNotes: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := paths(srcs); !reflect.DeepEqual(got, []string{"~/.sleipnir/SLEIPNIR.md|user"}) {
+		t.Errorf("without it: %v", got)
+	}
+}

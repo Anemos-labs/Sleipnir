@@ -203,6 +203,9 @@ type Options struct {
 	NoMCP bool
 	// Offline skips network lookups made for convenience (model catalogue).
 	Offline bool
+	// NoMemory starts the session without the global memory: the notes in ~/.sleipnir/MEMORY.md are not read, and the memory tool
+	// (still in the tool list, which never depends on the session) neither reads nor writes them (--no-memory).
+	NoMemory bool
 }
 
 // Session is a running assembly. Run may be called repeatedly; the agent (or
@@ -225,6 +228,8 @@ type Session struct {
 	judgeP     provider.Provider
 	judgeModel cost.Model
 	judgeRef   string
+	// lessons is the lesson memory (buildLessons), nil when no embedder model is named or the session has no global memory.
+	lessons *lessonMemory
 
 	// team is the team the swarm was built with (Team).
 	team []TeamSlot
@@ -492,6 +497,10 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		s.Log.Close()
 		return nil, err
 	}
+	if err := s.buildLessons(); err != nil {
+		s.Log.Close()
+		return nil, err
+	}
 
 	// Hooks, then skills and role definitions, then permissions (which need the
 	// roles' profiles and put PermissionRequest hooks in front of the prompter).
@@ -691,7 +700,7 @@ func (s *Session) buildShared(ctx context.Context) error {
 			segs = append(segs, rc.Segments...)
 		}
 	}
-	srcs, err := memory.Load(memory.Opts{Root: s.opts.Root, Cwd: s.opts.Cwd, Home: s.opts.Home})
+	srcs, err := memory.Load(memory.Opts{Root: s.opts.Root, Cwd: s.opts.Cwd, Home: s.opts.Home, NoNotes: s.opts.NoMemory})
 	if err != nil {
 		// Unreadable instruction files are reported, never fatal.
 		s.Log.Emit("", "notice", map[string]any{"level": "warn", "msg": "instruction files: " + err.Error()})
@@ -788,7 +797,11 @@ func (s *Session) build(ctx context.Context) error {
 	reg.Register(recall.New(archive))
 	// Always registered: the tool list must not depend on the project.
 	reg.Register(skilltool.New(s.Skills))
-	reg.Register(memtool.New(filepath.Join(o.Home, ".sleipnir", "MEMORY.md")))
+	if o.NoMemory {
+		reg.Register(memtool.Off())
+	} else {
+		reg.Register(memtool.New(filepath.Join(o.Home, ".sleipnir", "MEMORY.md")))
+	}
 	plans := plan.NewStore() // each agent's plan: the plan tool sets it, the hot tail shows it back (internal/plan)
 	s.plans = plans
 	reg.Register(plantool.New(plans))
@@ -819,8 +832,13 @@ func (s *Session) build(ctx context.Context) error {
 	est := core.NewBytesEstimator()
 
 	if !o.Swarm {
-		if len(o.RoleModels) > 0 && o.Sink != nil {
-			o.Sink.Notice("", "warn", "--role-model has no effect without --swarm: this session has a single agent (use --model)")
+		if o.Sink != nil {
+			for role := range o.RoleModels {
+				if !ServiceRole(role) {
+					o.Sink.Notice("", "warn", "--role-model has no effect without --swarm for "+role+": this session has a single agent (use --model); only the compactor, judge, embedder and reranker roles apply to it")
+					break
+				}
+			}
 		}
 		specs, err := reg.Specs()
 		if err != nil {
@@ -941,7 +959,7 @@ func (s *Session) build(ctx context.Context) error {
 		}
 		deps.RoleModels = map[string]swarm.RoleModel{}
 		for role, ref := range o.RoleModels {
-			if role == CompactorRole || role == JudgeRole {
+			if ServiceRole(role) {
 				continue
 			}
 			mr, err := ResolveModel(s.cfg, ref)
@@ -987,7 +1005,7 @@ func (s *Session) build(ctx context.Context) error {
 		sort.Strings(names)
 		for _, role := range names {
 			ref := s.cfg.Models.Roles[role]
-			if _, set := deps.RoleModels[role]; set || ref == "" || role == CompactorRole || role == JudgeRole {
+			if _, set := deps.RoleModels[role]; set || ref == "" || ServiceRole(role) {
 				continue
 			}
 			mr, err := ResolveModel(s.cfg, ref)
@@ -1098,6 +1116,16 @@ func (s *Session) buildCompactor(ctx context.Context, o Options) (provider.Provi
 // compactor it is not a swarm role: no agent has it. Without one the session's own model judges.
 const JudgeRole = "judge"
 
+// ServiceRole reports whether role names a model that serves the session rather than an agent of a team (the compactor, the judge
+// and the lesson memory's embedder and reranker): one a single-agent session can set too, and one no team role takes.
+func ServiceRole(role string) bool {
+	switch role {
+	case CompactorRole, JudgeRole, EmbedderRole, RerankerRole:
+		return true
+	}
+	return false
+}
+
 // buildJudge builds the model named for the judge (--role-model judge=M, else models.roles.judge), or nothing when none is named.
 func (s *Session) buildJudge(ctx context.Context) error {
 	ref := s.opts.RoleModels[JudgeRole]
@@ -1124,7 +1152,7 @@ func (s *Session) buildJudge(ctx context.Context) error {
 // named. (models.roles in the configuration is not checked this way: a file may serve
 // projects whose roles differ.)
 func (s *Session) checkRoleModels(overrides map[string]string) error {
-	known := map[string]bool{CompactorRole: true, JudgeRole: true}
+	known := map[string]bool{CompactorRole: true, JudgeRole: true, EmbedderRole: true, RerankerRole: true}
 	for name := range s.ext.roles {
 		known[name] = true
 	}

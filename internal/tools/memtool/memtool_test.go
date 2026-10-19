@@ -111,3 +111,20 @@ func TestLimitsAreInBandAndNeverSilent(t *testing.T) {
 		t.Errorf("a precise remove: %+v", r)
 	}
 }
+
+// A session without the global memory keeps the tool (the tool list never depends on the session) but reads and writes nothing:
+// every action says the memory is off and asks no permission question.
+func TestTheToolOfASessionWithoutMemoryTouchesNothing(t *testing.T) {
+	ask := &recording{allow: true}
+	for _, in := range []map[string]any{{"action": "list"}, {"action": "add", "text": "a note"}, {"action": "remove", "text": "note"}} {
+		if r := run(t, Off(), ask, in); r.IsError || !strings.Contains(r.Text, "--no-memory") {
+			t.Errorf("%v: %+v", in, r)
+		}
+	}
+	if len(ask.seen) != 0 {
+		t.Errorf("asked %d permission questions", len(ask.seen))
+	}
+	if Off().Spec().Name != New("x").Spec().Name || string(Off().Spec().InputSchema) != string(New("x").Spec().InputSchema) {
+		t.Error("the tool's spec differs when the memory is off")
+	}
+}

@@ -40,6 +40,24 @@ type State struct {
 	Spec, SpecText string
 	// Milestones are the checkpoints the judge rules on one by one (ParseMilestones, Reconcile).
 	Milestones []Milestone
+	// Lessons are the ids of the lessons from earlier sessions the goal's first message carried (internal/lessons): they are
+	// credited or debited when the goal is met or given up on.
+	Lessons []string `json:",omitempty"`
+	// Verdicts are the reasons of the judge's verdicts so far, oldest first, at most MaxVerdicts: what a lesson is distilled from.
+	Verdicts []string `json:",omitempty"`
+}
+
+// MaxVerdicts is how many of the judge's reasons a goal keeps.
+const MaxVerdicts = 12
+
+// NoteVerdict keeps the reason of a verdict among the goal's last MaxVerdicts.
+func (g *State) NoteVerdict(v Verdict) {
+	if r := strings.TrimSpace(v.Kind + ": " + v.Reason); v.Reason != "" {
+		g.Verdicts = append(g.Verdicts, oneLine(r, 300))
+		if n := len(g.Verdicts); n > MaxVerdicts {
+			g.Verdicts = append([]string(nil), g.Verdicts[n-MaxVerdicts:]...)
+		}
+	}
 }
 
 // New is a goal with the usual limit.

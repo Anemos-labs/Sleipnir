@@ -202,21 +202,23 @@ type MetaPatch struct {
 	Mailman   *bool    `json:"mailman,omitempty"`
 	AutoDocs  *bool    `json:"autoDocs,omitempty"`
 	// ManagerApproves says whether the team's manager answers its workers' routine permission questions first (--manager-approves).
-	ManagerApproves *bool              `json:"managerApproves,omitempty"`
-	Team            *[]TeamSlot        `json:"team,omitempty"`
-	TrustProject    *bool              `json:"trustProject,omitempty"`
-	NoMcp           *bool              `json:"noMcp,omitempty"`
-	RoleModels      *map[string]string `json:"roleModels,omitempty"`
-	Rules           *[]Rule            `json:"rules,omitempty"`
-	GoalText        *string            `json:"goalText,omitempty"`
-	Launch          *string            `json:"launch,omitempty"`
-	StartedAt       *int64             `json:"startedAt,omitempty"`
-	Headless        *bool              `json:"headless,omitempty"`
-	SessionDir      *string            `json:"sessionDir,omitempty"`
-	AskTimeout      *string            `json:"askTimeout,omitempty"`
-	ResumedFrom     *RecordedSession   `json:"resumedFrom,omitempty"`
-	Queued          *[]QueuedLine      `json:"queued,omitempty"`
-	Running         *bool              `json:"running,omitempty"`
+	ManagerApproves *bool       `json:"managerApproves,omitempty"`
+	Team            *[]TeamSlot `json:"team,omitempty"`
+	TrustProject    *bool       `json:"trustProject,omitempty"`
+	NoMcp           *bool       `json:"noMcp,omitempty"`
+	// NoMemory says the session was started without the global memory (--no-memory).
+	NoMemory    *bool              `json:"noMemory,omitempty"`
+	RoleModels  *map[string]string `json:"roleModels,omitempty"`
+	Rules       *[]Rule            `json:"rules,omitempty"`
+	GoalText    *string            `json:"goalText,omitempty"`
+	Launch      *string            `json:"launch,omitempty"`
+	StartedAt   *int64             `json:"startedAt,omitempty"`
+	Headless    *bool              `json:"headless,omitempty"`
+	SessionDir  *string            `json:"sessionDir,omitempty"`
+	AskTimeout  *string            `json:"askTimeout,omitempty"`
+	ResumedFrom *RecordedSession   `json:"resumedFrom,omitempty"`
+	Queued      *[]QueuedLine      `json:"queued,omitempty"`
+	Running     *bool              `json:"running,omitempty"`
 }
 
 // TabSnapshot is the full state of a tab for a late joiner. Gen is the tab's generation, Seq the sequence number of the last event
@@ -253,24 +255,26 @@ type OpenQuestion struct {
 // dollars (0 is no limit, not even the cap a team has where nobody chose a budget; absent leaves it to the server's configuration),
 // and RoleModels maps a role to the model it runs on.
 type NewSessionRequest struct {
-	Name         string            `json:"name,omitempty"`
-	Cwd          string            `json:"cwd"`
-	CreateDir    bool              `json:"createDir,omitempty"`
-	GitInit      bool              `json:"gitInit,omitempty"`
-	Model        string            `json:"model,omitempty"`
-	Mode         string            `json:"mode,omitempty"`
-	Swarm        *int              `json:"swarm,omitempty"`
-	Isolation    string            `json:"isolation,omitempty"`
-	Verify       string            `json:"verify,omitempty"`
-	Commit       bool              `json:"commit,omitempty"`
-	Mailman      bool              `json:"mailman,omitempty"`
-	Budget       *float64          `json:"budget,omitempty"`
-	Rules        []string          `json:"rules,omitempty"`
-	TrustProject bool              `json:"trustProject"`
-	NoMcp        bool              `json:"noMcp,omitempty"`
-	GoalText     string            `json:"goalText,omitempty"`
-	Effort       string            `json:"effort,omitempty"`
-	RoleModels   map[string]string `json:"roleModels,omitempty"`
+	Name         string   `json:"name,omitempty"`
+	Cwd          string   `json:"cwd"`
+	CreateDir    bool     `json:"createDir,omitempty"`
+	GitInit      bool     `json:"gitInit,omitempty"`
+	Model        string   `json:"model,omitempty"`
+	Mode         string   `json:"mode,omitempty"`
+	Swarm        *int     `json:"swarm,omitempty"`
+	Isolation    string   `json:"isolation,omitempty"`
+	Verify       string   `json:"verify,omitempty"`
+	Commit       bool     `json:"commit,omitempty"`
+	Mailman      bool     `json:"mailman,omitempty"`
+	Budget       *float64 `json:"budget,omitempty"`
+	Rules        []string `json:"rules,omitempty"`
+	TrustProject bool     `json:"trustProject"`
+	NoMcp        bool     `json:"noMcp,omitempty"`
+	// NoMemory starts the session without the global memory (--no-memory).
+	NoMemory   bool              `json:"noMemory,omitempty"`
+	GoalText   string            `json:"goalText,omitempty"`
+	Effort     string            `json:"effort,omitempty"`
+	RoleModels map[string]string `json:"roleModels,omitempty"`
 	// Team is the team's composition, one entry per worker slot (--role-model given per slot); empty is the default team of
 	// one worker per role. Swarm then equals its length.
 	Team []TeamSlot `json:"team,omitempty"`
