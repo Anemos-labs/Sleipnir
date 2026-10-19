@@ -672,7 +672,7 @@
   },
   {
    "group": "settings",
-   "name": "Settings › Models",
+   "name": "Settings › Models & roles",
    "kind": "action",
    "live": true,
    "effects": [
@@ -681,11 +681,11 @@
   },
   {
    "group": "settings",
-   "name": "Settings › Roles & effort",
+   "name": "Settings › Team & run",
    "kind": "action",
    "live": true,
    "effects": [
-    "settings:models"
+    "settings:run"
    ]
   },
   {
@@ -699,7 +699,7 @@
   },
   {
    "group": "settings",
-   "name": "Settings › Permissions",
+   "name": "Settings › Permissions & trust",
    "kind": "action",
    "live": true,
    "effects": [
@@ -708,25 +708,7 @@
   },
   {
    "group": "settings",
-   "name": "Settings › Trust",
-   "kind": "action",
-   "live": true,
-   "effects": [
-    "settings:permissions"
-   ]
-  },
-  {
-   "group": "settings",
-   "name": "Settings › Run settings",
-   "kind": "action",
-   "live": true,
-   "effects": [
-    "settings:run"
-   ]
-  },
-  {
-   "group": "settings",
-   "name": "Settings › MCP servers",
+   "name": "Settings › Connections",
    "kind": "action",
    "live": true,
    "effects": [
@@ -735,7 +717,7 @@
   },
   {
    "group": "settings",
-   "name": "Settings › Skills, commands & hooks",
+   "name": "Settings › Skills & extensions",
    "kind": "action",
    "live": true,
    "effects": [
@@ -744,16 +726,7 @@
   },
   {
    "group": "settings",
-   "name": "Settings › Providers & login",
-   "kind": "action",
-   "live": true,
-   "effects": [
-    "settings:providers"
-   ]
-  },
-  {
-   "group": "settings",
-   "name": "Settings › Config layers",
+   "name": "Settings › Configuration",
    "kind": "action",
    "live": true,
    "effects": [
@@ -762,7 +735,7 @@
   },
   {
    "group": "settings",
-   "name": "Settings › Appearance & motion",
+   "name": "Settings › Appearance",
    "kind": "action",
    "live": true,
    "effects": [

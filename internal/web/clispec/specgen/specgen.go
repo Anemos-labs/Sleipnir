@@ -436,7 +436,7 @@ var modes = map[string]modeOf{
 	"daemon":         {mode: ModeServer, why: "it runs until it is stopped; the Schedule view starts and stops the daemon of this page"},
 	"chat":           {mode: ModeTTYOnly, why: "chat needs a terminal: + New session starts the same session here"},
 	"watch":          {mode: ModeTTYOnly, why: "watch needs a terminal: the Cockpit shows it live"},
-	"login":          {mode: ModeTTYOnly, why: "login needs a terminal: Settings › Providers & login shows the command to run"},
+	"login":          {mode: ModeTTYOnly, why: "login needs a terminal: Settings › Connections shows the command to run"},
 	"web":            {mode: ModeTTYOnly, why: "you are in it: sleipnir web serves this page"},
 }
 

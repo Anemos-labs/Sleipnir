@@ -239,12 +239,12 @@ var flagMirrors = []flagMirror{
 	}},
 	{"chat --continue", "the Resume dialog's --continue button", func(ui *uiInventory) bool { return ui.Resume.LatestButton && inList(ui.Resume.Flags, "continue") }},
 	{"chat --verbose", "the /verbose handler of the composer", needHandler("/verbose")},
-	{"chat --no-anim", "Settings > Appearance & motion and /anim", allOf(needHandler("/anim"), needControl("look", "seg:motion"))},
-	{"watch --no-anim", "Settings > Appearance & motion and /anim", allOf(needHandler("/anim"), needControl("look", "seg:motion"))},
+	{"chat --no-anim", "Settings > Appearance and /anim", allOf(needHandler("/anim"), needControl("look", "seg:motion"))},
+	{"watch --no-anim", "Settings > Appearance and /anim", allOf(needHandler("/anim"), needControl("look", "seg:motion"))},
 	{"watch --view", "the Cockpit, Cache, Mail and Board views of the rail", needViews("cockpit", "cache", "mail", "board")},
 	{"watch --agent", "the agent rows of the Cache view", needViews("cache")},
 	{"watch SESSION", "the Sessions view, which opens a recorded session or follows one another process writes", needViews("sessions")},
-	{"login PROVIDER", "the Sign in button of each provider in Settings > Providers & login, which shows the command for that provider", needControl("providers", "prov*")},
+	{"login PROVIDER", "the Sign in button of each provider in Settings > Connections, which shows the command for that provider", needControl("providers", "prov*")},
 }
 
 // runnable reports whether the page's runner can run the command: in its mode with no flag set, or with a flag that changes it.

@@ -520,7 +520,7 @@ func (t *webTab) runEnded(s *session.Session, res *session.Result, err error) {
 		t.sys("⚠", "budget reached: "+t.budgetStopped(s, res))
 	default:
 		msg := "error: " + err.Error()
-		if hint := providerHint(err, "Settings › Providers & login"); hint != "" {
+		if hint := providerHint(err, "Settings › Connections"); hint != "" {
 			msg += "\n" + hint
 		}
 		t.emit(hintRow(msg, err))
@@ -990,10 +990,10 @@ func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string
 			return res, nil
 		}
 	case "/verbose", "/anim":
-		res.Output = f[0] + " is a setting of this page: Settings › Appearance & motion"
+		res.Output = f[0] + " is a setting of this page: Settings › Appearance"
 		return res, nil
 	case "/login":
-		res.Output = "sign in from Settings › Providers & login, or run `sleipnir login` in a terminal"
+		res.Output = "sign in from Settings › Connections, or run `sleipnir login` in a terminal"
 		return res, nil
 	case "/exit", "/quit":
 		res.Output = "close this session with × on its tab, or from the session menu"
