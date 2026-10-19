@@ -385,7 +385,7 @@ tool list or permission rules.
 | `max_timeout_sec` | integer | `600` | yes | The longest timeout a shell command may ask for. A command's `timeout` is in seconds; one of 10000 or more is read as milliseconds, and the result says so |
 | `web_allow_private` | boolean | `false` | yes | Turns the private-address guard of `web_fetch` off: loopback, private, link-local and cloud-metadata addresses become reachable |
 | `web_allow_hosts` | list of strings | `[]` | yes | Hosts `web_fetch` may reach even though the guard would block them: a name (`docs.internal`), an IP, `host:port`, `[::1]:8080`, or `*.corp.example` (subdomains only, not the apex) |
-| `builtin_skills` | boolean | `true` | at start | Offers the skills that ship with Sleipnir to the `skill` tool; see [Skills](EXTENDING.md#2-skills) |
+| `builtin_skills` | boolean | `true` | at start | Offers the skills that ship with Sleipnir to the `skill` tool; see [Skills](EXTENDING.md#2-skills). Older name of the `builtin-skills` plugin ([Plugins](PLUGINS.md)) |
 
 `web_allow_hosts` is an exemption from the private-network guard, not a list of the only hosts the agent may fetch:
 public hosts are reachable, subject to permissions. Whether a fetch is allowed at all is decided by `permissions`:
@@ -416,6 +416,16 @@ warning.
 `docs/EXTENDING.md`. Hooks from a project file run only with `--trust-project`. `mcp` is an object of named tool
 servers (`docs/MCP.md`): entries in your own file are trusted, a project's arrive only with `--trust-project` and each
 one still needs your approval (`sleipnir mcp approve`); the key is on the gated list of section 4.
+
+### `plugins`
+
+| Key | Type | Default | Applies | Meaning |
+|---|---|---|---|---|
+| `profile` | string | `standard` | at start | the starting set: `standard`, `minimal`, `team` or `headless` |
+| `enabled` | object of booleans | `{}` | at start | a plugin id to on or off, over the profile; `true` from a project file needs `--trust-project` |
+| `settings` | object of objects | `{}` | at start | a plugin id to its settings, as its schema declares them |
+
+Plugins, their layers and the older keys that are layers of them are in `docs/PLUGINS.md`.
 
 ## 7. Provider options
 

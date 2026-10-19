@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"os"
 	"path/filepath"
 	"sort"
@@ -132,6 +133,24 @@ func (s *Session) mcpServers() (map[string]mcp.ServerConfig, []mcp.Issue) {
 			project[name] = raw // project, local: it arrived with the repository
 		} else {
 			user[name] = raw
+		}
+	}
+	// The MCP servers of the external plugins that are on: the person installed and turned on each plugin, so its
+	// servers count as theirs. A server is named <plugin>-<server>, and a name the configuration has is not replaced.
+	for _, st := range s.plugins.List() {
+		if !st.External || st.State != plugin.StateOn {
+			continue
+		}
+		servers, err := plugin.MCPServers(st.Manifest, st.Config)
+		if err != nil {
+			s.notice("", "plugins: "+st.ID+": "+err.Error())
+			continue
+		}
+		for name, raw := range servers {
+			full := st.ID + "-" + name
+			if _, dup := s.cfg.MCP[full]; !dup {
+				user[full] = raw
+			}
 		}
 	}
 	// A .mcp.json at the project root is the shared convention of other clients.

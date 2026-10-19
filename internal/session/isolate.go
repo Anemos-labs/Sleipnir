@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -471,9 +472,12 @@ func (s *Session) Finish(ctx context.Context) *swarm.IntegrationReport {
 }
 
 // progressPusher is the pusher of the integration branch, nil when swarm.push_progress
-// is off or the checkout has no push remote.
+// (the push-progress plugin) is off or the checkout has no push remote.
 func (s *Session) progressPusher(ctx context.Context, p *isoPlan, branch string) *progressPusher {
-	if s.cfg != nil && s.cfg.Swarm.PushProgress != nil && !*s.cfg.Swarm.PushProgress {
+	if s.plugins != nil && !s.plugins.On(plugin.PushProgress) { // swarm.push_progress is a layer of the plugin's state
+		return nil
+	}
+	if s.plugins == nil && s.cfg != nil && s.cfg.Swarm.PushProgress != nil && !*s.cfg.Swarm.PushProgress {
 		return nil
 	}
 	git := commandGit(p.repo.Root())

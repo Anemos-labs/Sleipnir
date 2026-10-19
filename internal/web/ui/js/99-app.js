@@ -49,7 +49,13 @@
     /* first of all the page's key handlers: a key of an input method's composition reaches none of them (no Enter sends half a word) */
     sh.listen(document, 'keydown', e => { if (U.composing(e)) e.stopImmediatePropagation(); }, true);
     ui.shell.mount(sh); ui.navMount(sh); SL.chat.mount(sh); ui.approvals.mount(sh); SL.link.bind(sh); SL.keys.mount(sh);
-    sh.on('activated', S => { SL.views.show(S.ui.view || 'cockpit'); });
+    /* the card layout of every page: the header's and the rail's hidden parts now, the server's copy of the layout when it answers (it
+       follows the person across browsers), and what is still waiting to be saved when the page goes away */
+    ui.chrome.mount(sh); SL.dash.sync();
+    sh.listen(window, 'pagehide', () => { SL.dash.docs.flush(); });
+    sh.on('activated', S => { SL.views.show(S.ui.view || 'cockpit'); if (SL.plugins) SL.plugins.load(); });
+    /* the plugin catalogue: which views, rail items, palette entries and cards are on (an older server has none: everything is) */
+    if (SL.plugins) SL.plugins.load();
     /* a question the person cannot see is said in a toast, a moment later and only while it is still open (the manager answers the
        workers' routine questions itself, at once) */
     sh.on('ask-arrived', ({ S, q }) => {

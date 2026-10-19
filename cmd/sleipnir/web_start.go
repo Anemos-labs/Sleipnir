@@ -149,7 +149,7 @@ func (t *webTab) prompter(root string) perm.Prompter {
 	return func(ctx context.Context, r perm.Request) perm.Decision {
 		d := p(ctx, r)
 		if r.Tool == perm.ToolMCPServer && !d.Allow && starting() {
-			t.sys("⚠", "a tool server of this project was not started: it needs your approval (Settings › MCP servers); it starts when the team starts again")
+			t.sys("⚠", "a tool server of this project was not started: it needs your approval (Settings › Connections); it starts when the team starts again")
 		}
 		return d
 	}

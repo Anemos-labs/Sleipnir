@@ -189,6 +189,50 @@ not covered, and running it (go test, make, a hook's script) is what every appro
 ```
 <!-- /flags -->
 
+### `sleipnir plugins`
+
+Lists and switches the plugins (`docs/PLUGINS.md`). Every capability is a plugin: the tools, the skills, commands, agent
+definitions and hooks, the team and each of its roles, standing goals, GitHub delivery and every view of the web page. A
+few core pieces are always on. `list` shows each plugin's state (on, off, pending: waiting for a plugin it needs, error)
+and the layer that decided it; `enable`, `disable` and `reset` write a minimal difference from the profile to your user
+configuration (`--project` or `--local` for the project's); `profile` chooses a starting point (standard, minimal, team,
+headless); `set` changes a plugin's settings; `add` installs a plugin directory or git repository into
+`~/.sleipnir/plugins` (it stays off until enabled) and `remove` uninstalls it. A running session takes a change when its
+team starts again; `/plugins` in the chat and the Plugins page of `sleipnir web` do the same.
+
+<!-- flags: plugins -->
+```text
+usage: sleipnir plugins [command] [flags]
+
+Everything Sleipnir does is a plugin that can be switched on and off: the tools, skills, commands,
+hooks, the team and its roles, standing goals, GitHub delivery and every view of the web page. A
+plugin that is on but needs one that is off is "pending". A few core pieces are always on.
+
+Choices are written to your user configuration (~/.sleipnir/config.json), or with --project to the
+project's (.sleipnir/config.json) or with --local to .sleipnir/config.local.json, as a minimal
+difference from the profile. They take effect when a session starts (in a running chat or page:
+when its team starts again).
+
+commands:
+  (none), list         every plugin: state, category, which layer decided, what it adds
+  info ID              one plugin in full
+  enable ID...         turn plugins on
+  disable ID...        turn plugins off
+  reset ID...          back to what the profile says
+  profile [NAME]       show the profiles, or choose one (standard, minimal, team, headless)
+  set ID KEY=VALUE...  change a plugin's settings (KEY= removes a setting)
+  add PATH|GIT-URL     install a plugin directory into ~/.sleipnir/plugins (it stays off until enabled)
+  remove ID            uninstall a plugin from ~/.sleipnir/plugins
+
+flags:
+  --cwd DIR            the project to look at (default: the current directory)
+  --project            write to the project's configuration instead of yours
+  --local              write to the project's git-ignored local configuration
+  --trust-project      also read the project's own plugins and settings
+  --json               list and info: machine-readable output
+```
+<!-- /flags -->
+
 ### `sleipnir chat`
 
 Interactive session. On a terminal chat without `--swarm` is a team of a manager and eight workers, one of each role (kept under `swarm.max_workers`); the manager plans, delegates and reviews, and handles small direct requests itself. `--swarm N` sets the number of workers (at least 8), `--role-model` given once per worker names a team of your own (`--role-model backend --role-model backend ...`), `--swarm 0` is a single agent, and the line chat (a pipe, `--plain`) is a single agent too. On a terminal that can be drawn on (stdin and stdout are terminals and `TERM` is not `dumb`) the chat is a

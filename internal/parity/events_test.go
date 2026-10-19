@@ -417,6 +417,8 @@ var eventProbes = map[string][]probeCase{
 	"log.open":           {{ev: pev{"", "log.open", map[string]any{"schema": 1}}}},
 	"merge.fast_forward": {{ev: pev{"swarm", "merge.fast_forward", map[string]any{"branch": "main", "to": "abcdef0123456789"}}}},
 	"perm.ask":           {{ev: probeAsk}},
+	"plugins":            {{ev: pev{"", "plugins", map[string]any{"profile": "minimal", "off": []string{"web", "swarm"}}}}},
+	"plugin.state":       {{ev: pev{"", "plugin.state", map[string]any{"id": "mailman", "state": "pending", "reason": "needs swarm, which is off"}}}},
 	"perm.decide": {
 		{setup: []pev{probeAsk}, ev: pev{"be-1", "perm.decide", map[string]any{"tool": "bash", "command": "npm i", "role": "backend", "allow": true, "by": "user"}}},
 		{ev: pev{"be-1", "perm.decide", map[string]any{"tool": "bash", "command": "rm -rf /", "role": "backend", "allow": false, "by": "policy", "reason": "denied by a rule"}}},

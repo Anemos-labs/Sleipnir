@@ -37,6 +37,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/memory"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/plan"
+	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/skills"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
@@ -278,6 +279,9 @@ type Session struct {
 	Roles  swarm.Roles
 
 	cfgRep      *config.Report // where each configuration value came from (nil when Options.Config was given)
+	plugins     *plugin.Set    // the plugins on when the session started (plugins.go)
+	kernel      *plugin.Kernel // activates the plugins that register tools (build)
+	asked       askedShape     // the team the options asked for, before the plugins had their say
 	trust       *trustInfo     // how the project's own files came to be used, or why not (nil when it has none)
 	mcp         *mcpState
 	archive     *kv.Archive    // folded turns, for recall
@@ -413,6 +417,14 @@ func New(ctx context.Context, o Options) (*Session, error) {
 			o.Sink.Notice("", "warn", "ignored security-sensitive settings from the project's config ("+strings.Join(names, ", ")+"); "+trustHint("apply"))
 		}
 	}
+	// Plugins: what is on in this session. A team asked for while the team plugin is off runs as one agent; what was asked is
+	// kept for the restart flags (StartFlags), so turning the plugin back on brings the team back.
+	plugs, plugWarns := resolvePlugins(cfg, rep, o)
+	asked := askedShape{swarm: o.Swarm, workers: o.Workers, team: o.Team, defaultTeam: o.DefaultTeam}
+	if o.Swarm && !plugs.On(plugin.Swarm) {
+		o.Swarm, o.Workers, o.Team, o.DefaultTeam = false, 0, nil, false
+		plugWarns = append(plugWarns, "plugins: the team plugin is off, so this session is a single agent")
+	}
 	if err := checkSwarmSize(cfg, o); err != nil {
 		return nil, err
 	}
@@ -423,7 +435,10 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	if err := CheckCompactAt(o.CompactAtPercent); err != nil {
 		return nil, err
 	}
-	s := &Session{opts: o, cfg: cfg, cfgRep: rep, trust: tinfo, deliveryOptions: delivery.Options{AutoFix: o.AutoFix, AutoMerge: o.AutoMerge}}
+	if !plugs.On(plugin.Delivery) {
+		o.AutoFix, o.AutoMerge = false, false
+	}
+	s := &Session{opts: o, cfg: cfg, cfgRep: rep, trust: tinfo, plugins: plugs, asked: asked, deliveryOptions: delivery.Options{AutoFix: o.AutoFix, AutoMerge: o.AutoMerge}}
 	if o.Savepoints {
 		s.barrier = agent.NewSavepointBarrier()
 	}
@@ -467,6 +482,10 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	if s.Log, err = events.Open(s.Dir, s.ID); err != nil {
 		return nil, err
 	}
+	s.emitPlugins()
+	for _, w := range plugWarns {
+		s.notice("", w)
+	}
 	s.effort.Set(o.Params.Effort)
 	if o.Resume != "" {
 		s.restoreEffort()
@@ -507,11 +526,16 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	// Hooks, then skills and role definitions, then permissions (which need the
 	// roles' profiles and put PermissionRequest hooks in front of the prompter).
 	var hookWarns []string
-	if s.hooks, hookWarns = newHookRunner(cfg, s.ID, o.Root); s.hooks != nil {
+	hookCfg, extWarns := s.externalHooks(cfg)
+	if !s.pluginOn(plugin.Hooks) {
+		hookCfg = &config.Config{}
+	}
+	if s.hooks, hookWarns = newHookRunner(hookCfg, s.ID, o.Root); s.hooks != nil {
 		s.hookAdapter = &hookAdapter{s: s, run: s.hooks}
 	}
 	s.loadExtensions()
 	s.ext.warnings = append(s.ext.warnings, hookWarns...)
+	s.ext.warnings = append(s.ext.warnings, extWarns...)
 	s.Skills, s.Roles = s.ext.skills, s.ext.roles
 	for _, w := range s.ext.warnings {
 		s.Log.Emit("", "notice", map[string]any{"level": "warn", "msg": w})
@@ -692,7 +716,7 @@ var readOnlyRoleDeny = []string{"bash_output", "bash_kill"}
 func (s *Session) buildShared(ctx context.Context) error {
 	segs := []kv.Segment{{Key: "runtime", Text: s.shell.RuntimeContext(), Vol: kv.VolFrozen}}
 	est := core.NewBytesEstimator()
-	if !s.opts.NoRecon {
+	if !s.opts.NoRecon && s.pluginOn(plugin.Recon) {
 		// The machine's half of the survey: which build and test commands exist, so an agent knows before it writes a test whether it
 		// can run it. Frozen like the runtime: an install during the session does not change the cached prefix.
 		segs = append(segs, kv.Segment{Key: "toolchains", Text: s.shell.ToolchainContext(), Vol: kv.VolFrozen})
@@ -702,7 +726,12 @@ func (s *Session) buildShared(ctx context.Context) error {
 			segs = append(segs, rc.Segments...)
 		}
 	}
-	srcs, err := memory.Load(memory.Opts{Root: s.opts.Root, Cwd: s.opts.Cwd, Home: s.opts.Home, NoNotes: s.opts.NoMemory})
+	var srcs []memory.Source
+	var err error
+	if s.pluginOn(plugin.Instructions) {
+		// The notes of ~/.sleipnir/MEMORY.md are the memory plugin's: --no-memory or the plugin off leaves them out.
+		srcs, err = memory.Load(memory.Opts{Root: s.opts.Root, Cwd: s.opts.Cwd, Home: s.opts.Home, NoNotes: s.opts.NoMemory || !s.pluginOn(plugin.MemoryTool)})
+	}
 	if err != nil {
 		// Unreadable instruction files are reported, never fatal.
 		s.Log.Emit("", "notice", map[string]any{"level": "warn", "msg": "instruction files: " + err.Error()})
@@ -783,33 +812,53 @@ func (s *Session) build(ctx context.Context) error {
 	}
 
 	reg := tools.NewRegistry()
-	fs.Register(reg)
-	shell.Register(reg, s.shell)
-	if !o.NoWeb {
-		// ConfigFromEnv routes through HTTPS_PROXY when one is set (sandboxed and
-		// corporate networks resolve names at the proxy) and enables web_search when
-		// a search backend key is configured in the environment.
-		wc := web.ConfigFromEnv()
-		wc.AllowPrivate = s.cfg.Tools.WebAllowPrivate
-		wc.AllowHosts = s.cfg.Tools.WebAllowHosts
-		web.Register(reg, wc)
-	}
 	archive := kv.NewArchive(s.Blobs)
 	s.archive = archive
-	reg.Register(recall.New(archive))
-	// Always registered: the tool list must not depend on the project.
-	reg.Register(skilltool.New(s.Skills))
-	if o.NoMemory {
-		reg.Register(memtool.Off())
-	} else {
-		reg.Register(memtool.New(filepath.Join(o.Home, ".sleipnir", "MEMORY.md")))
-	}
 	plans := plan.NewStore() // each agent's plan: the plan tool sets it, the hot tail shows it back (internal/plan)
 	s.plans = plans
-	reg.Register(plantool.New(plans))
-	// MCP servers add their tools here, before the list is frozen: every agent of
-	// the session then sends the same tools array, byte for byte.
-	s.startMCP(ctx, reg)
+	// Each tool plugin registers its tools through the plugin kernel, in the set's order. A plugin that is off adds
+	// nothing, for every agent alike: the tool list never depends on the project or the role (docs/CACHE-DESIGN.md).
+	s.kernel = plugin.NewKernel(map[string]plugin.Activator{
+		plugin.FS:    func(*plugin.Scope) error { fs.Register(reg); return nil },
+		plugin.Shell: func(*plugin.Scope) error { shell.Register(reg, s.shell); return nil },
+		plugin.Web: func(*plugin.Scope) error {
+			if o.NoWeb {
+				return nil
+			}
+			// ConfigFromEnv routes through HTTPS_PROXY when one is set (sandboxed and
+			// corporate networks resolve names at the proxy) and enables web_search when
+			// a search backend key is configured in the environment.
+			wc := web.ConfigFromEnv()
+			wc.AllowPrivate = s.cfg.Tools.WebAllowPrivate
+			wc.AllowHosts = s.cfg.Tools.WebAllowHosts
+			web.Register(reg, wc)
+			return nil
+		},
+		plugin.Recall: func(*plugin.Scope) error { reg.Register(recall.New(archive)); return nil },
+		// Registered whenever its plugin is on, whatever the project holds: the tool list must not depend on the project.
+		plugin.SkillTool: func(*plugin.Scope) error { reg.Register(skilltool.New(s.Skills)); return nil },
+		plugin.MemoryTool: func(*plugin.Scope) error {
+			if o.NoMemory { // --no-memory keeps the tool in the list (the cache key) and has it refuse
+				reg.Register(memtool.Off())
+				return nil
+			}
+			reg.Register(memtool.New(filepath.Join(o.Home, ".sleipnir", "MEMORY.md")))
+			return nil
+		},
+		plugin.PlanTool: func(*plugin.Scope) error { reg.Register(plantool.New(plans)); return nil },
+		// MCP servers add their tools here, before the list is frozen: every agent of
+		// the session then sends the same tools array, byte for byte.
+		plugin.MCP: func(*plugin.Scope) error { s.startMCP(ctx, reg); return nil },
+	})
+	s.kernel.OnState = func(id, state, reason string) {
+		if state == plugin.StateError {
+			s.Log.Emit("", "plugin.state", map[string]any{"id": id, "state": state, "reason": reason})
+			s.notice("", "plugin "+id+" could not start: "+reason)
+		}
+	}
+	if err := s.kernel.Start(s.plugins); err != nil {
+		return err
+	}
 
 	constText := agent.Constitution(agent.ConstitutionOpts{Swarm: o.Swarm})
 	constLayer := kv.NewLayer("const", kv.KindConst, 1, []kv.Segment{{Text: constText, Vol: kv.VolFrozen}})

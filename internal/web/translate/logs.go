@@ -528,6 +528,28 @@ func (t *Translator) derive(e events.Event, ts float64, at int64) {
 		}
 	case events.TypeCompactCommit:
 		t.compact(e, ts, at)
+	case state.TypePlugins:
+		var p struct {
+			Profile string   `json:"profile"`
+			Off     []string `json:"off"`
+		}
+		if json.Unmarshal(e.Data, &p) == nil && (len(p.Off) > 0 || p.Profile != "standard") {
+			off := "none"
+			if len(p.Off) > 0 {
+				off = strings.Join(p.Off[:min(len(p.Off), 24)], ", ")
+				if len(p.Off) > 24 {
+					off += fmt.Sprintf(" and %d more", len(p.Off)-24)
+				}
+			}
+			t.sysRow("mgr", "◇", line("plugins: profile "+firstNonEmpty(p.Profile, "standard")+"; off: "+off, capWhy), "", "", ts, at)
+		}
+	case state.TypePluginState:
+		var p struct {
+			ID, State, Reason string
+		}
+		if json.Unmarshal(e.Data, &p) == nil && p.ID != "" {
+			t.sysRow("mgr", "⚠", line("plugin "+p.ID+" is "+p.State+": "+p.Reason, capWhy), "", "", ts, at)
+		}
 	case state.TypeGoalState:
 		t.goalState(e, ts, at)
 	case state.TypeGoalJudge:

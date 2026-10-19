@@ -17,7 +17,10 @@ they do not guarantee it.
 | G6 | Task board and relevant team updates | Route-dependent |
 
 Stable layers come first. All agents send the same tool list; permissions apply
-at execution time. Every stable layer is sent on every request and, once
+at execution time. The tool list is fixed for a session by its plugin set
+(docs/PLUGINS.md): a tool plugin that is off leaves its tools out for every
+agent alike, and a change waits for the team to start again, so the list never
+changes under a running cache. Every stable layer is sent on every request and, once
 cached, read at the cached-input price: the constitution carries the full
 working guidance once for every agent, while shared and role context stay
 focused on what differs by project and by role.

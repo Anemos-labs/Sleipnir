@@ -192,6 +192,10 @@ func (s *Session) RoleModels() []RoleModel {
 // the budget, the compaction share, the roles named by flags), for a restart that changes one thing and keeps the rest.
 func (s *Session) StartFlags() []string {
 	o := s.opts
+	if s.asked.swarm && !o.Swarm {
+		// the team plugin made this team a single agent: a restart asks for the team again, and the plugins decide again
+		o.Swarm, o.Workers, o.Team, o.DefaultTeam = true, s.asked.workers, s.asked.team, s.asked.defaultTeam
+	}
 	var f []string
 	if o.Swarm {
 		n := o.Workers
@@ -243,7 +247,7 @@ func (s *Session) StartFlags() []string {
 	for _, role := range roles {
 		f = append(f, "--role-model", role+"="+o.RoleModels[role])
 	}
-	if s.Swarm != nil {
+	if s.Swarm != nil || (s.asked.swarm && len(o.Team) > 0) {
 		// a custom team is its slots, in order (a bare role is a slot on its role's model)
 		for _, t := range o.Team {
 			v := t.Role

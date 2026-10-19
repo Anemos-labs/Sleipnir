@@ -1,5 +1,5 @@
-// wsdev.mjs: builds the reference page (internal/web/uidev/mock) with the live Workspace modules (96b-ws-data.js, 97-ui-workspace.js) and
-// api.js swapped in, and serves it with the workspace answers of packserver.mjs.
+// wsdev.mjs: builds the reference page (internal/web/uidev/mock) with the live Workspace modules (96b-ws-data.js, 97-ui-workspace.js), the
+// pages of cards they are drawn as (83b-ui-dash.js and the head of a page) and api.js swapped in, and serves it with the workspace answers of packserver.mjs.
 //
 //   node internal/web/uidev/test/wsdev.mjs [--mode pack|big|hostile] [--port 0] [--dir DIR]
 //
@@ -23,6 +23,15 @@ export function wsActs(file) {
   if (a < 0 || b < 0) throw new Error('60-actions.js: the workspace section moved');
   return "(function (SL) {\n  'use strict';\n  const ACT = SL.act;\n" + helpers + '\n' + src.slice(a, b) + '})(SL);\n';
 }
+/**
+ * The head of a page (ui.pageHead), cut verbatim out of the live 90-views-a.js: the live Workspace draws its tabs as pages of cards
+ * (83b-ui-dash.js) under that head, and the reference page has neither.
+ */
+export function pageHead(file) {
+  const src = fs.readFileSync(file, 'utf8'), a = src.indexOf('  function headHtml('), b = src.indexOf('  /** Write to the manager');
+  if (a < 0 || b < 0) throw new Error('90-views-a.js: the head of a page moved');
+  return "(function (SL) {\n  'use strict';\n  const { esc } = SL.u, ui = SL.ui = SL.ui || {};\n" + src.slice(a, b) + '})(SL);\n';
+}
 /** Copy the reference page into `dir` and lay the live Workspace modules over it. Returns dir. */
 export function makeHybrid(dir) {
   const src = path.join(REPO, 'internal/web/uidev/mock'), ui = path.join(REPO, 'internal/web/ui');
@@ -30,7 +39,10 @@ export function makeHybrid(dir) {
   fs.cpSync(src, dir, { recursive: true });
   const html = fs.readFileSync(path.join(dir, 'index-mock.html'), 'utf8').replaceAll('../../ui/', '');
   fs.writeFileSync(path.join(dir, 'index.html'), html); fs.rmSync(path.join(dir, 'index-mock.html'));
-  for (const f of ['96b-ws-data.js', '97-ui-workspace.js', 'api.js']) fs.copyFileSync(path.join(ui, 'js', f), path.join(dir, 'js', f));
+  for (const f of ['83b-ui-dash.js', '96b-ws-data.js', '97-ui-workspace.js', 'api.js', '98c-ui-plugins.js']) fs.copyFileSync(path.join(ui, 'js', f), path.join(dir, 'js', f));
+  fs.writeFileSync(path.join(dir, 'js', 'wshead.js'), pageHead(path.join(ui, 'js', '90-views-a.js')));
+  fs.writeFileSync(path.join(dir, 'index.html'), fs.readFileSync(path.join(dir, 'index.html'), 'utf8').replace('<script src="js/96b-ws-data.js"></script>', '<script src="js/83b-ui-dash.js"></script>\n<script src="js/wshead.js"></script>\n<script src="js/96b-ws-data.js"></script>')
+    .replace('<link rel="stylesheet" href="css/52-cockpit.css">', '<link rel="stylesheet" href="css/52-cockpit.css">\n<link rel="stylesheet" href="css/53-dash.css">'));
   try {
     fs.writeFileSync(path.join(dir, 'js', 'wsacts.js'), wsActs(path.join(ui, 'js', '60-actions.js')));
     fs.writeFileSync(path.join(dir, 'index.html'), fs.readFileSync(path.join(dir, 'index.html'), 'utf8').replace('<script src="js/99-app.js"></script>', '<script src="js/wsacts.js"></script>\n<script src="js/99-app.js"></script>'));

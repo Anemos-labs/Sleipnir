@@ -12,6 +12,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/commands"
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"github.com/anemos-labs/sleipnir/internal/skills"
 	"github.com/anemos-labs/sleipnir/internal/skills/builtin"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
@@ -37,7 +38,7 @@ type extensions struct {
 const skillListingTokens = skills.DefaultListingTokens
 
 // builtinSkills is the skills directory of the skills shipped in the binary, written under the state directory of home. When it
-// cannot be written the session goes on without them and a warning says why. With on false (tools.builtin_skills) there are none.
+// cannot be written the session goes on without them and a warning says why. With on false (the builtin-skills plugin off) there are none.
 func builtinSkills(home string, on bool, warnings *[]string) []skills.Extra {
 	if !on {
 		return nil
@@ -57,7 +58,21 @@ func (s *Session) loadExtensions() {
 	ext := &extensions{profiles: map[string]perm.RoleProfile{}}
 	s.ext = ext
 
-	cat, warns := skills.Discover(skills.Opts{Root: o.Root, Home: o.Home, TrustProject: o.TrustProject, Extra: builtinSkills(o.Home, s.cfg.Tools.BuiltinSkills, &ext.warnings)})
+	// Skills: the user's and the project's (the skills plugin), the built-in ones (builtin-skills) and those of the external
+	// plugins that are on. With the skills plugin off the catalogue is empty; the skill tool (its own plugin) then has
+	// nothing to load.
+	var extra []skills.Extra
+	if s.pluginOn(plugin.BuiltinSkills) {
+		extra = append(extra, builtinSkills(o.Home, true, &ext.warnings)...)
+	}
+	for _, d := range s.externalDirs("skills") {
+		extra = append(extra, d)
+	}
+	skillOpts := skills.Opts{Root: o.Root, Home: o.Home, TrustProject: o.TrustProject, Extra: extra}
+	if !s.pluginOn(plugin.Skills) {
+		skillOpts = skills.Opts{Home: emptyDir(s), Extra: nil}
+	}
+	cat, warns := skills.Discover(skillOpts)
 	ext.skills = cat
 	for _, w := range warns {
 		ext.warnings = append(ext.warnings, "skills: "+w.String())
@@ -65,8 +80,12 @@ func (s *Session) loadExtensions() {
 
 	// Custom slash commands: markdown templates. Their !`shell` and @file parts
 	// run through the permission engine like anything else.
+	cmdOpts := commands.Opts{Root: o.Root, Home: o.Home, TrustProject: o.TrustProject, Extra: s.externalDirs("commands")}
+	if !s.pluginOn(plugin.Commands) {
+		cmdOpts = commands.Opts{Home: emptyDir(s)}
+	}
 	reg, cwarns := commands.Load(commands.Opts{
-		Root: o.Root, Home: o.Home, TrustProject: o.TrustProject,
+		Root: cmdOpts.Root, Home: cmdOpts.Home, TrustProject: cmdOpts.TrustProject, Extra: cmdOpts.Extra,
 		Builtins: append(commands.DefaultBuiltins(), "mode", "diff", "recon", "skill"),
 		Exec:     s.userShell, AllowRead: s.allowRead,
 	})
@@ -81,6 +100,11 @@ func (s *Session) loadExtensions() {
 	}
 	if o.Roles == nil {
 		roles = swarm.BuiltinRoles()
+		for _, r := range plugin.WorkerRoles { // a built-in worker role whose plugin is off is not in the team
+			if !s.pluginOn(plugin.RolePrefix + r) {
+				delete(roles, r)
+			}
+		}
 	}
 	if !o.Swarm {
 		ext.roles = roles
@@ -98,10 +122,14 @@ func (s *Session) loadExtensions() {
 		shorts = append(shorts, swarm.MailmanRole().Short)
 	}
 	sort.Strings(shorts)
-	defs, dwarns := agentdefs.Load(agentdefs.Opts{
-		Root: o.Root, Home: o.Home, TrustProject: o.TrustProject,
+	defOpts := agentdefs.Opts{
+		Root: o.Root, Home: o.Home, TrustProject: o.TrustProject, Extra: s.externalDirs("agents"),
 		Reserved: reserved, ReservedShorts: shorts,
-	})
+	}
+	if !s.pluginOn(plugin.Agents) {
+		defOpts.Root, defOpts.Home, defOpts.Extra = "", emptyDir(s), nil
+	}
+	defs, dwarns := agentdefs.Load(defOpts)
 	for _, w := range dwarns {
 		ext.warnings = append(ext.warnings, "agents: "+w.String())
 	}

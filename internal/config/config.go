@@ -89,6 +89,9 @@ type Config struct {
 	Cache       Cache               `json:"cache"`
 	Swarm       Swarm               `json:"swarm"`
 	Tools       Tools               `json:"tools"`
+	// Plugins switches the harness's plugins on and off (internal/plugin,
+	// docs/PLUGINS.md).
+	Plugins Plugins `json:"plugins"`
 
 	// Hooks and MCP are placeholders the integrator will give real types; their
 	// entries are kept as raw JSON.
@@ -293,6 +296,19 @@ func (s Swarm) IsolationMode() string {
 		return IsolationWorktree
 	}
 	return IsolationNone
+}
+
+// Plugins chooses which plugins are on. Profile names a starting point
+// ("standard" when empty; `sleipnir plugins profiles` lists them); Enabled turns
+// single plugins on or off by id over it; Settings holds each plugin's own
+// settings by id. Every layer may add to Enabled and Settings key by key. A
+// repository's file may turn plugins off, but turning one on from a project
+// file needs the project to be trusted (trust.go), like the other settings that
+// can run code.
+type Plugins struct {
+	Profile  string                    `json:"profile,omitempty"`
+	Enabled  map[string]bool           `json:"enabled,omitempty"`
+	Settings map[string]map[string]any `json:"settings,omitempty"`
 }
 
 // Tools bounds tool output and work (mirrors tools.Limits).

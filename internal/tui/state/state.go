@@ -29,6 +29,8 @@ type State struct {
 	prices *cost.Table
 	ttl    time.Duration
 
+	plugins *Plugins // the session's plugin set, from its plugins events (plugins.go)
+
 	clock   time.Time // the latest event time seen
 	first   time.Time // the first
 	lastSeq uint64
@@ -277,6 +279,10 @@ func (s *State) apply(e events.Event) {
 		s.onGoalJudge(e, t)
 	case TypeCheckpoint, TypeCheckpointRestore:
 		s.onCheckpoint(e, t)
+	case TypePlugins:
+		s.onPlugins(e, t)
+	case TypePluginState:
+		s.onPluginState(e, t)
 
 	case events.TypeWorkspaceCreate, events.TypeWorkspaceRemove, events.TypeWorkspacePrune, events.TypeWorkspaceCommit, events.TypeWorkspaceReset,
 		events.TypeMergeQueued, events.TypeMergeMerged, events.TypeMergeConflict, events.TypeMergeVerifyFail, events.TypeMergeRolledBack,

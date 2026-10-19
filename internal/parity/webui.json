@@ -28,6 +28,11 @@
    "nav": true
   },
   {
+   "name": "plugins",
+   "title": "Plugins",
+   "nav": true
+  },
+  {
    "name": "replay",
    "title": "Replay",
    "nav": true
@@ -65,6 +70,14 @@
  ],
  "nav": [
   {
+   "id": "radio",
+   "view": null,
+   "tab": null,
+   "label": "Talk to manager",
+   "key": "r",
+   "radio": true
+  },
+  {
    "id": "cockpit",
    "view": "cockpit",
    "tab": null,
@@ -73,19 +86,11 @@
    "radio": false
   },
   {
-   "id": "radio",
-   "view": null,
+   "id": "board",
+   "view": "board",
    "tab": null,
-   "label": "Radio",
-   "key": "r",
-   "radio": true
-  },
-  {
-   "id": "files",
-   "view": "workspace",
-   "tab": "files",
-   "label": "Files",
-   "key": "f",
+   "label": "Board",
+   "key": "b",
    "radio": false
   },
   {
@@ -94,6 +99,14 @@
    "tab": "changes",
    "label": "Changes",
    "key": "h",
+   "radio": false
+  },
+  {
+   "id": "files",
+   "view": "workspace",
+   "tab": "files",
+   "label": "Files",
+   "key": "f",
    "radio": false
   },
   {
@@ -113,14 +126,6 @@
    "radio": false
   },
   {
-   "id": "cache",
-   "view": "cache",
-   "tab": null,
-   "label": "Cache",
-   "key": "a",
-   "radio": false
-  },
-  {
    "id": "mail",
    "view": "mail",
    "tab": null,
@@ -129,11 +134,11 @@
    "radio": false
   },
   {
-   "id": "board",
-   "view": "board",
+   "id": "cache",
+   "view": "cache",
    "tab": null,
-   "label": "Board",
-   "key": "b",
+   "label": "Cache",
+   "key": "a",
    "radio": false
   },
   {
@@ -153,11 +158,11 @@
    "radio": false
   },
   {
-   "id": "tools",
-   "view": "tools",
+   "id": "plugins",
+   "view": "plugins",
    "tab": null,
-   "label": "Tools",
-   "key": "t",
+   "label": "Plugins",
+   "key": "u",
    "radio": false
   },
   {
@@ -166,6 +171,14 @@
    "tab": null,
    "label": "Settings",
    "key": "e",
+   "radio": false
+  },
+  {
+   "id": "tools",
+   "view": "tools",
+   "tab": null,
+   "label": "Tools",
+   "key": "t",
    "radio": false
   }
  ],
@@ -275,7 +288,7 @@
    "kind": "slash",
    "live": true,
    "effects": [
-    "settings:roles"
+    "settings:models"
    ]
   },
   {
@@ -383,7 +396,7 @@
    "kind": "slash",
    "live": true,
    "effects": [
-    "settings:trust"
+    "settings:permissions"
    ]
   },
   {
@@ -392,7 +405,7 @@
    "kind": "slash",
    "live": true,
    "effects": [
-    "settings:roles"
+    "settings:models"
    ]
   },
   {
@@ -411,6 +424,15 @@
    "live": true,
    "effects": [
     "settings:run"
+   ]
+  },
+  {
+   "group": "a team, and the program",
+   "name": "/plugins",
+   "kind": "slash",
+   "live": true,
+   "effects": [
+    "view:plugins"
    ]
   },
   {
@@ -492,7 +514,7 @@
    "kind": "slash",
    "live": true,
    "effects": [
-    "settings:mcp"
+    "settings:providers"
    ]
   },
   {
@@ -596,6 +618,15 @@
   },
   {
    "group": "go to",
+   "name": "Plugins",
+   "kind": "view",
+   "live": true,
+   "effects": [
+    "view:plugins"
+   ]
+  },
+  {
+   "group": "go to",
    "name": "Run a command",
    "kind": "view",
    "live": true,
@@ -641,7 +672,7 @@
   },
   {
    "group": "settings",
-   "name": "Settings › Models",
+   "name": "Settings › Models & roles",
    "kind": "action",
    "live": true,
    "effects": [
@@ -650,11 +681,11 @@
   },
   {
    "group": "settings",
-   "name": "Settings › Roles & effort",
+   "name": "Settings › Team & run",
    "kind": "action",
    "live": true,
    "effects": [
-    "settings:roles"
+    "settings:run"
    ]
   },
   {
@@ -668,7 +699,7 @@
   },
   {
    "group": "settings",
-   "name": "Settings › Permissions",
+   "name": "Settings › Permissions & trust",
    "kind": "action",
    "live": true,
    "effects": [
@@ -677,43 +708,7 @@
   },
   {
    "group": "settings",
-   "name": "Settings › Trust",
-   "kind": "action",
-   "live": true,
-   "effects": [
-    "settings:trust"
-   ]
-  },
-  {
-   "group": "settings",
-   "name": "Settings › Run settings",
-   "kind": "action",
-   "live": true,
-   "effects": [
-    "settings:run"
-   ]
-  },
-  {
-   "group": "settings",
-   "name": "Settings › MCP servers",
-   "kind": "action",
-   "live": true,
-   "effects": [
-    "settings:mcp"
-   ]
-  },
-  {
-   "group": "settings",
-   "name": "Settings › Skills, commands & hooks",
-   "kind": "action",
-   "live": true,
-   "effects": [
-    "settings:skills"
-   ]
-  },
-  {
-   "group": "settings",
-   "name": "Settings › Providers & login",
+   "name": "Settings › Connections",
    "kind": "action",
    "live": true,
    "effects": [
@@ -722,7 +717,16 @@
   },
   {
    "group": "settings",
-   "name": "Settings › Config layers",
+   "name": "Settings › Skills & extensions",
+   "kind": "action",
+   "live": true,
+   "effects": [
+    "settings:skills"
+   ]
+  },
+  {
+   "group": "settings",
+   "name": "Settings › Configuration",
    "kind": "action",
    "live": true,
    "effects": [
@@ -731,7 +735,7 @@
   },
   {
    "group": "settings",
-   "name": "Settings › Appearance & motion",
+   "name": "Settings › Appearance",
    "kind": "action",
    "live": true,
    "effects": [
@@ -925,7 +929,7 @@
    "kind": "program",
    "live": true,
    "effects": [
-    "settings:mcp"
+    "settings:providers"
    ]
   },
   {
@@ -1007,6 +1011,96 @@
    "live": true,
    "effects": [
     "runner:models fav rm"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "view:plugins"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins add",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:plugins add"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins disable",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:plugins disable"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins enable",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:plugins enable"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins info",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:plugins info"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins list",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:plugins list"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins profile",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:plugins profile"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins remove",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:plugins remove"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins reset",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:plugins reset"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir plugins set",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:plugins set"
    ]
   },
   {
@@ -1357,7 +1451,7 @@
    "kind": "program",
    "live": true,
    "effects": [
-    "settings:trust"
+    "settings:permissions"
    ]
   },
   {
@@ -1461,7 +1555,7 @@
    ],
    "/effort": [
     "act:setEffort",
-    "settings:roles"
+    "settings:models"
    ],
    "/exit": [
     "closeSession"
@@ -1483,7 +1577,7 @@
    ],
    "/mcp": [
     "act:command",
-    "settings:mcp"
+    "settings:providers"
    ],
    "/mode": [
     "act:setMode",
@@ -1502,6 +1596,10 @@
    "/plan": [
     "act:send",
     "act:setMode"
+   ],
+   "/plugins": [
+    "act:command",
+    "view:plugins"
    ],
    "/queue": [
     "act:command"
@@ -1525,7 +1623,7 @@
    ],
    "/roles": [
     "act:setRoleModel",
-    "settings:roles"
+    "settings:models"
    ],
    "/sessions": [
     "view:sessions"
@@ -1548,7 +1646,7 @@
     "settings:run"
    ],
    "/trust": [
-    "settings:trust"
+    "settings:permissions"
    ],
    "/verbose": [
     "page-state"
@@ -1578,6 +1676,7 @@
    "/new",
    "/permissions",
    "/plan",
+   "/plugins",
    "/queue",
    "/recon",
    "/restart",
@@ -1597,12 +1696,16 @@
  "settings": [
   {
    "id": "models",
-   "title": "Models",
+   "title": "Models & roles",
    "group": "session",
-   "summary": "the catalogue: filter, star, choose for the manager or a role",
+   "summary": "Choose the model the manager and each role run on, and how hard they think.",
    "controls": [
     {
      "id": "cli*",
+     "scope": "view"
+    },
+    {
+     "id": "do:open-plugins",
      "scope": "view"
     },
     {
@@ -1637,6 +1740,19 @@
      "scope": "view"
     },
     {
+     "id": "role*",
+     "scope": "config",
+     "keys": [
+      "models.default",
+      "models.roles.*"
+     ]
+    },
+    {
+     "id": "seg:effort",
+     "scope": "state",
+     "note": "reasoning effort of the session (/effort); no configuration key"
+    },
+    {
      "id": "sel:maxo",
      "scope": "view"
     },
@@ -1663,27 +1779,94 @@
    ]
   },
   {
-   "id": "roles",
-   "title": "Roles & effort",
+   "id": "run",
+   "title": "Team & run",
    "group": "session",
-   "summary": "which model each role runs on, and how hard it thinks",
+   "summary": "How many workers the team has and how they work: separate checkouts, the check before a merge, the helpers.",
    "controls": [
     {
      "id": "cli*",
      "scope": "view"
     },
     {
-     "id": "role*",
-     "scope": "config",
-     "keys": [
-      "models.default",
-      "models.roles.*"
-     ]
+     "id": "do:apply",
+     "scope": "flag",
+     "flag": "swarm"
     },
     {
-     "id": "seg:effort",
-     "scope": "state",
-     "note": "reasoning effort of the session (/effort); no configuration key"
+     "id": "do:copycli",
+     "scope": "view"
+    },
+    {
+     "id": "do:open-plugins",
+     "scope": "view"
+    },
+    {
+     "id": "do:verify",
+     "scope": "flag",
+     "flag": "verify"
+    },
+    {
+     "id": "flag:autoDocs",
+     "scope": "config",
+     "keys": [
+      "swarm.auto_docs"
+     ],
+     "flag": "auto-docs"
+    },
+    {
+     "id": "flag:commit",
+     "scope": "flag",
+     "flag": "commit"
+    },
+    {
+     "id": "flag:mailman",
+     "scope": "config",
+     "keys": [
+      "swarm.mailman"
+     ],
+     "flag": "mailman"
+    },
+    {
+     "id": "flag:managerApproves",
+     "scope": "config",
+     "keys": [
+      "permissions.manager_approves"
+     ],
+     "flag": "manager-approves"
+    },
+    {
+     "id": "flag:noMcp",
+     "scope": "flag",
+     "flag": "no-mcp"
+    },
+    {
+     "id": "flag:trustProject",
+     "scope": "flag",
+     "flag": "trust-project"
+    },
+    {
+     "id": "id:rn",
+     "scope": "flag",
+     "flag": "swarm"
+    },
+    {
+     "id": "id:rv",
+     "scope": "flag",
+     "flag": "verify"
+    },
+    {
+     "id": "seg:isolation",
+     "scope": "config",
+     "keys": [
+      "swarm.isolation"
+     ],
+     "flag": "isolation"
+    },
+    {
+     "id": "step*",
+     "scope": "flag",
+     "flag": "swarm"
     }
    ]
   },
@@ -1691,7 +1874,7 @@
    "id": "budget",
    "title": "Budget",
    "group": "session",
-   "summary": "dollars for the turns from now on",
+   "summary": "What this session has spent, by agent, and the most it may spend.",
    "controls": [
     {
      "id": "do:budget",
@@ -1718,10 +1901,14 @@
   },
   {
    "id": "permissions",
-   "title": "Permissions",
+   "title": "Permissions & trust",
    "group": "session",
-   "summary": "the mode and the rules in force",
+   "summary": "What the agents may do without asking you, and whether this project’s own files are used.",
    "controls": [
+    {
+     "id": "cli*",
+     "scope": "view"
+    },
     {
      "id": "danger:bypass",
      "scope": "config",
@@ -1735,6 +1922,11 @@
      "keys": [
       "permissions.mode"
      ]
+    },
+    {
+     "id": "do:forget-all",
+     "scope": "state",
+     "note": "the trust ledger (a file of its own), not configuration"
     },
     {
      "id": "do:rule-add",
@@ -1813,23 +2005,6 @@
       "permissions.ask",
       "permissions.deny"
      ]
-    }
-   ]
-  },
-  {
-   "id": "trust",
-   "title": "Trust",
-   "group": "session",
-   "summary": "what this project’s own files may say to the harness",
-   "controls": [
-    {
-     "id": "cli*",
-     "scope": "view"
-    },
-    {
-     "id": "do:forget-all",
-     "scope": "state",
-     "note": "the trust ledger (a file of its own), not configuration"
     },
     {
      "id": "trust*",
@@ -1839,98 +2014,10 @@
    ]
   },
   {
-   "id": "run",
-   "title": "Run settings",
-   "group": "session",
-   "summary": "workers, isolation, verify, flags",
-   "controls": [
-    {
-     "id": "cli*",
-     "scope": "view"
-    },
-    {
-     "id": "do:apply",
-     "scope": "flag",
-     "flag": "swarm"
-    },
-    {
-     "id": "do:copycli",
-     "scope": "view"
-    },
-    {
-     "id": "do:verify",
-     "scope": "flag",
-     "flag": "verify"
-    },
-    {
-     "id": "flag:autoDocs",
-     "scope": "config",
-     "keys": [
-      "swarm.auto_docs"
-     ],
-     "flag": "auto-docs"
-    },
-    {
-     "id": "flag:commit",
-     "scope": "flag",
-     "flag": "commit"
-    },
-    {
-     "id": "flag:mailman",
-     "scope": "config",
-     "keys": [
-      "swarm.mailman"
-     ],
-     "flag": "mailman"
-    },
-    {
-     "id": "flag:managerApproves",
-     "scope": "config",
-     "keys": [
-      "permissions.manager_approves"
-     ],
-     "flag": "manager-approves"
-    },
-    {
-     "id": "flag:noMcp",
-     "scope": "flag",
-     "flag": "no-mcp"
-    },
-    {
-     "id": "flag:trustProject",
-     "scope": "flag",
-     "flag": "trust-project"
-    },
-    {
-     "id": "id:rn",
-     "scope": "flag",
-     "flag": "swarm"
-    },
-    {
-     "id": "id:rv",
-     "scope": "flag",
-     "flag": "verify"
-    },
-    {
-     "id": "seg:isolation",
-     "scope": "config",
-     "keys": [
-      "swarm.isolation"
-     ],
-     "flag": "isolation"
-    },
-    {
-     "id": "step*",
-     "scope": "flag",
-     "flag": "swarm"
-    }
-   ]
-  },
-  {
-   "id": "mcp",
-   "title": "MCP servers",
+   "id": "providers",
+   "title": "Connections",
    "group": "shared",
-   "summary": "tool servers: state, tools, approval",
+   "summary": "Where the models are reached and whether you are signed in, and the tool servers (MCP) the agents can call.",
    "controls": [
     {
      "id": "cli*",
@@ -1963,30 +2050,6 @@
     {
      "id": "pcmd*",
      "scope": "view"
-    }
-   ]
-  },
-  {
-   "id": "skills",
-   "title": "Skills, commands & hooks",
-   "group": "shared",
-   "summary": "what the model can load and what runs around its tools",
-   "controls": [
-    {
-     "id": "cmd*",
-     "scope": "view"
-    }
-   ]
-  },
-  {
-   "id": "providers",
-   "title": "Providers & login",
-   "group": "shared",
-   "summary": "where each model is reached, and whether a key is there",
-   "controls": [
-    {
-     "id": "cli*",
-     "scope": "view"
     },
     {
      "id": "prov*",
@@ -1996,10 +2059,26 @@
    ]
   },
   {
-   "id": "config",
-   "title": "Config layers",
+   "id": "skills",
+   "title": "Skills & extensions",
    "group": "shared",
-   "summary": "which file supplied each value",
+   "summary": "The skills the model can load, your own commands and the hooks around the tools, read from files.",
+   "controls": [
+    {
+     "id": "cmd*",
+     "scope": "view"
+    },
+    {
+     "id": "do:open-plugins",
+     "scope": "view"
+    }
+   ]
+  },
+  {
+   "id": "config",
+   "title": "Configuration",
+   "group": "shared",
+   "summary": "Which configuration file set each value, and what the configuration warns about.",
    "controls": [
     {
      "id": "cli*",
@@ -2013,19 +2092,39 @@
   },
   {
    "id": "look",
-   "title": "Appearance & motion",
+   "title": "Appearance",
    "group": "browser",
-   "summary": "motion, density, notifications and the keys",
+   "summary": "How this page moves and is laid out, its notifications and its keys.",
    "controls": [
     {
+     "id": "do:chrome-menu",
+     "scope": "state",
+     "note": "the card layout of every page (~/.sleipnir/web-layout.json through /api/layout, cached in this browser), not configuration"
+    },
+    {
      "id": "do:dash-edit",
-     "scope": "browser",
-     "note": "the layout of the Cockpit's cards, kept in this browser"
+     "scope": "state",
+     "note": "the card layout of every page (~/.sleipnir/web-layout.json through /api/layout, cached in this browser), not configuration"
     },
     {
      "id": "do:dash-reset",
-     "scope": "browser",
-     "note": "the layout of the Cockpit's cards, kept in this browser"
+     "scope": "state",
+     "note": "the card layout of every page (~/.sleipnir/web-layout.json through /api/layout, cached in this browser), not configuration"
+    },
+    {
+     "id": "do:layout-export",
+     "scope": "state",
+     "note": "the card layout of every page (~/.sleipnir/web-layout.json through /api/layout, cached in this browser), not configuration"
+    },
+    {
+     "id": "do:layout-import",
+     "scope": "state",
+     "note": "the card layout of every page (~/.sleipnir/web-layout.json through /api/layout, cached in this browser), not configuration"
+    },
+    {
+     "id": "do:layout-reset-all",
+     "scope": "state",
+     "note": "the card layout of every page (~/.sleipnir/web-layout.json through /api/layout, cached in this browser), not configuration"
     },
     {
      "id": "do:railreset",
@@ -2034,6 +2133,11 @@
     {
      "id": "do:tour",
      "scope": "view"
+    },
+    {
+     "id": "id:layoutFile",
+     "scope": "state",
+     "note": "the card layout of every page (~/.sleipnir/web-layout.json through /api/layout, cached in this browser), not configuration"
     },
     {
      "id": "id:notifySec",
@@ -2245,41 +2349,54 @@
  "runner": {
   "listed": [
    "chat",
-   "demo",
-   "mock",
    "run",
    "swarm",
-   "config",
-   "init",
+   "schedule",
+   "schedule add",
+   "schedule rm",
+   "daemon",
+   "demo",
+   "sessions",
+   "sessions prune",
+   "replay",
+   "watch",
+   "inspect",
+   "friction",
+   "models",
+   "models fav add",
+   "models fav list",
+   "models fav rm",
    "login",
    "logout",
+   "doctor",
+   "mock",
+   "sim",
+   "plugins",
+   "plugins add",
+   "plugins disable",
+   "plugins enable",
+   "plugins info",
+   "plugins list",
+   "plugins profile",
+   "plugins remove",
+   "plugins reset",
+   "plugins set",
    "mcp",
    "mcp approve",
    "mcp list",
    "mcp revoke",
    "mcp test",
-   "sessions",
-   "sessions prune",
    "trust",
    "trust add",
    "trust forget",
    "trust list",
-   "daemon",
-   "doctor",
-   "friction",
-   "inspect",
-   "models",
-   "models fav add",
-   "models fav list",
-   "models fav rm",
+   "init",
    "recon",
-   "replay",
-   "schedule",
-   "schedule add",
-   "schedule rm",
-   "sim",
+   "config",
    "update",
-   "watch",
+   "version",
+   "help",
+   "web",
    "rl",
    "rl branch",
    "rl compare",
@@ -2307,10 +2424,7 @@
    "rl tasks stats",
    "rl tasks update-scorer",
    "rl tasks validate",
-   "rl verify",
-   "help",
-   "version",
-   "web"
+   "rl verify"
   ],
   "commands": {
    "chat": {
@@ -2343,31 +2457,6 @@
      "verify"
     ],
     "modeWith": {}
-   },
-   "demo": {
-    "mode": "net",
-    "positionals": [],
-    "flags": [
-     "dir",
-     "no-anim",
-     "plain",
-     "scale",
-     "scenario",
-     "topics",
-     "view"
-    ],
-    "modeWith": {}
-   },
-   "mock": {
-    "mode": "server",
-    "positionals": [],
-    "flags": [
-     "addr",
-     "engines"
-    ],
-    "modeWith": {
-     "addr": "priv"
-    }
    },
    "run": {
     "mode": "net",
@@ -2457,25 +2546,194 @@
      "mode": "priv"
     }
    },
-   "config": {
+   "schedule": {
+    "mode": "run",
+    "positionals": [],
+    "flags": [],
+    "modeWith": {}
+   },
+   "schedule add": {
+    "mode": "priv",
+    "positionals": [
+     "GOAL"
+    ],
+    "flags": [
+     "budget-usd",
+     "cron",
+     "cwd",
+     "mode",
+     "model"
+    ],
+    "modeWith": {
+     "mode": "tty_only"
+    }
+   },
+   "schedule rm": {
+    "mode": "priv",
+    "positionals": [
+     "ID"
+    ],
+    "flags": [],
+    "modeWith": {}
+   },
+   "daemon": {
+    "mode": "server",
+    "positionals": [],
+    "flags": [
+     "every",
+     "once"
+    ],
+    "modeWith": {}
+   },
+   "demo": {
+    "mode": "net",
+    "positionals": [],
+    "flags": [
+     "dir",
+     "no-anim",
+     "plain",
+     "scale",
+     "scenario",
+     "topics",
+     "view"
+    ],
+    "modeWith": {}
+   },
+   "sessions": {
     "mode": "run",
     "positionals": [],
     "flags": [
-     "json",
-     "trust-project"
+     "dir",
+     "n"
     ],
-    "modeWith": {
-     "trust-project": "priv"
-    }
+    "modeWith": {}
    },
-   "init": {
-    "mode": "priv",
+   "sessions prune": {
+    "mode": "run",
     "positionals": [],
     "flags": [
-     "local-url",
-     "model",
-     "user"
+     "dir",
+     "keep",
+     "older-than",
+     "yes"
     ],
+    "modeWith": {
+     "yes": "priv"
+    }
+   },
+   "replay": {
+    "mode": "tty_only",
+    "positionals": [
+     "SESSION"
+    ],
+    "flags": [
+     "agent",
+     "cols",
+     "final",
+     "fps",
+     "from",
+     "gallery",
+     "hold",
+     "length",
+     "no-anim",
+     "out",
+     "record",
+     "rows",
+     "speed",
+     "until",
+     "view"
+    ],
+    "modeWith": {
+     "final": "run",
+     "record": "run"
+    }
+   },
+   "watch": {
+    "mode": "tty_only",
+    "positionals": [
+     "SESSION"
+    ],
+    "flags": [
+     "agent",
+     "no-anim",
+     "poll",
+     "view"
+    ],
+    "modeWith": {}
+   },
+   "inspect": {
+    "mode": "tty_only",
+    "positionals": [
+     "SESSION|DIR"
+    ],
+    "flags": [
+     "addr",
+     "interval",
+     "json",
+     "open",
+     "session",
+     "token"
+    ],
+    "modeWith": {
+     "json": "run"
+    }
+   },
+   "friction": {
+    "mode": "run",
+    "positionals": [
+     "PATH"
+    ],
+    "flags": [
+     "category",
+     "examples",
+     "json",
+     "min-count",
+     "top"
+    ],
+    "modeWith": {}
+   },
+   "models": {
+    "mode": "net",
+    "positionals": [
+     "WORDS"
+    ],
+    "flags": [
+     "all",
+     "api-key-env",
+     "base-url",
+     "fav",
+     "filter",
+     "max-price",
+     "min-context",
+     "provider",
+     "reasoning",
+     "tools"
+    ],
+    "modeWith": {
+     "base-url": "priv",
+     "api-key-env": "priv"
+    }
+   },
+   "models fav add": {
+    "mode": "priv",
+    "positionals": [
+     "REF"
+    ],
+    "flags": [],
+    "modeWith": {}
+   },
+   "models fav list": {
+    "mode": "run",
+    "positionals": [],
+    "flags": [],
+    "modeWith": {}
+   },
+   "models fav rm": {
+    "mode": "priv",
+    "positionals": [
+     "REF"
+    ],
+    "flags": [],
     "modeWith": {}
    },
    "login": {
@@ -2493,6 +2751,182 @@
     ],
     "flags": [],
     "modeWith": {}
+   },
+   "doctor": {
+    "mode": "net",
+    "positionals": [],
+    "flags": [
+     "api-key-env",
+     "base-url",
+     "capture",
+     "deep",
+     "json",
+     "model",
+     "no-affinity",
+     "provider",
+     "trust-project"
+    ],
+    "modeWith": {
+     "base-url": "priv",
+     "api-key-env": "priv",
+     "trust-project": "priv"
+    }
+   },
+   "mock": {
+    "mode": "server",
+    "positionals": [],
+    "flags": [
+     "addr",
+     "engines"
+    ],
+    "modeWith": {
+     "addr": "priv"
+    }
+   },
+   "sim": {
+    "mode": "run",
+    "positionals": [],
+    "flags": [
+     "agents",
+     "engines",
+     "json",
+     "mode",
+     "provider",
+     "seed"
+    ],
+    "modeWith": {
+     "mode": "priv"
+    }
+   },
+   "plugins": {
+    "mode": "run",
+    "positionals": [],
+    "flags": [
+     "cwd",
+     "trust-project",
+     "json"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins add": {
+    "mode": "priv",
+    "positionals": [
+     "PATH|GIT-URL"
+    ],
+    "flags": [],
+    "modeWith": {}
+   },
+   "plugins disable": {
+    "mode": "priv",
+    "positionals": [
+     "ID"
+    ],
+    "flags": [
+     "cwd",
+     "project",
+     "local",
+     "trust-project"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins enable": {
+    "mode": "priv",
+    "positionals": [
+     "ID"
+    ],
+    "flags": [
+     "cwd",
+     "project",
+     "local",
+     "trust-project"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins info": {
+    "mode": "run",
+    "positionals": [
+     "ID"
+    ],
+    "flags": [
+     "cwd",
+     "trust-project",
+     "json"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins list": {
+    "mode": "run",
+    "positionals": [],
+    "flags": [
+     "cwd",
+     "trust-project",
+     "json"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins profile": {
+    "mode": "priv",
+    "positionals": [
+     "NAME"
+    ],
+    "flags": [
+     "cwd",
+     "project",
+     "local",
+     "trust-project"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins remove": {
+    "mode": "priv",
+    "positionals": [
+     "ID"
+    ],
+    "flags": [],
+    "modeWith": {}
+   },
+   "plugins reset": {
+    "mode": "priv",
+    "positionals": [
+     "ID"
+    ],
+    "flags": [
+     "cwd",
+     "project",
+     "local",
+     "trust-project"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "plugins set": {
+    "mode": "priv",
+    "positionals": [
+     "ID",
+     "KEY=VALUE"
+    ],
+    "flags": [
+     "cwd",
+     "project",
+     "local",
+     "trust-project"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
    },
    "mcp": {
     "mode": "run",
@@ -2545,28 +2979,6 @@
      "trust-project": "priv"
     }
    },
-   "sessions": {
-    "mode": "run",
-    "positionals": [],
-    "flags": [
-     "dir",
-     "n"
-    ],
-    "modeWith": {}
-   },
-   "sessions prune": {
-    "mode": "run",
-    "positionals": [],
-    "flags": [
-     "dir",
-     "keep",
-     "older-than",
-     "yes"
-    ],
-    "modeWith": {
-     "yes": "priv"
-    }
-   },
    "trust": {
     "mode": "run",
     "positionals": [],
@@ -2599,108 +3011,14 @@
     "flags": [],
     "modeWith": {}
    },
-   "daemon": {
-    "mode": "server",
+   "init": {
+    "mode": "priv",
     "positionals": [],
     "flags": [
-     "every",
-     "once"
-    ],
-    "modeWith": {}
-   },
-   "doctor": {
-    "mode": "net",
-    "positionals": [],
-    "flags": [
-     "api-key-env",
-     "base-url",
-     "capture",
-     "deep",
-     "json",
+     "local-url",
      "model",
-     "no-affinity",
-     "provider",
-     "trust-project"
+     "user"
     ],
-    "modeWith": {
-     "base-url": "priv",
-     "api-key-env": "priv",
-     "trust-project": "priv"
-    }
-   },
-   "friction": {
-    "mode": "run",
-    "positionals": [
-     "PATH"
-    ],
-    "flags": [
-     "category",
-     "examples",
-     "json",
-     "min-count",
-     "top"
-    ],
-    "modeWith": {}
-   },
-   "inspect": {
-    "mode": "tty_only",
-    "positionals": [
-     "SESSION|DIR"
-    ],
-    "flags": [
-     "addr",
-     "interval",
-     "json",
-     "open",
-     "session",
-     "token"
-    ],
-    "modeWith": {
-     "json": "run"
-    }
-   },
-   "models": {
-    "mode": "net",
-    "positionals": [
-     "WORDS"
-    ],
-    "flags": [
-     "all",
-     "api-key-env",
-     "base-url",
-     "fav",
-     "filter",
-     "max-price",
-     "min-context",
-     "provider",
-     "reasoning",
-     "tools"
-    ],
-    "modeWith": {
-     "base-url": "priv",
-     "api-key-env": "priv"
-    }
-   },
-   "models fav add": {
-    "mode": "priv",
-    "positionals": [
-     "REF"
-    ],
-    "flags": [],
-    "modeWith": {}
-   },
-   "models fav list": {
-    "mode": "run",
-    "positionals": [],
-    "flags": [],
-    "modeWith": {}
-   },
-   "models fav rm": {
-    "mode": "priv",
-    "positionals": [
-     "REF"
-    ],
-    "flags": [],
     "modeWith": {}
    },
    "recon": {
@@ -2713,76 +3031,15 @@
     ],
     "modeWith": {}
    },
-   "replay": {
-    "mode": "tty_only",
-    "positionals": [
-     "SESSION"
-    ],
-    "flags": [
-     "agent",
-     "cols",
-     "final",
-     "fps",
-     "from",
-     "gallery",
-     "hold",
-     "length",
-     "no-anim",
-     "out",
-     "record",
-     "rows",
-     "speed",
-     "until",
-     "view"
-    ],
-    "modeWith": {
-     "final": "run",
-     "record": "run"
-    }
-   },
-   "schedule": {
-    "mode": "run",
-    "positionals": [],
-    "flags": [],
-    "modeWith": {}
-   },
-   "schedule add": {
-    "mode": "priv",
-    "positionals": [
-     "GOAL"
-    ],
-    "flags": [
-     "budget-usd",
-     "cron",
-     "cwd",
-     "mode",
-     "model"
-    ],
-    "modeWith": {
-     "mode": "tty_only"
-    }
-   },
-   "schedule rm": {
-    "mode": "priv",
-    "positionals": [
-     "ID"
-    ],
-    "flags": [],
-    "modeWith": {}
-   },
-   "sim": {
+   "config": {
     "mode": "run",
     "positionals": [],
     "flags": [
-     "agents",
-     "engines",
      "json",
-     "mode",
-     "provider",
-     "seed"
+     "trust-project"
     ],
     "modeWith": {
-     "mode": "priv"
+     "trust-project": "priv"
     }
    },
    "update": {
@@ -2795,17 +3052,22 @@
      "check": "net"
     }
    },
-   "watch": {
+   "version": {
+    "mode": "run",
+    "positionals": [],
+    "flags": [],
+    "modeWith": {}
+   },
+   "help": {
+    "mode": "run",
+    "positionals": [],
+    "flags": [],
+    "modeWith": {}
+   },
+   "web": {
     "mode": "tty_only",
-    "positionals": [
-     "SESSION"
-    ],
-    "flags": [
-     "agent",
-     "no-anim",
-     "poll",
-     "view"
-    ],
+    "positionals": [],
+    "flags": [],
     "modeWith": {}
    },
    "rl": {
@@ -3616,24 +3878,6 @@
     "positionals": [
      "RUN_DIR"
     ],
-    "flags": [],
-    "modeWith": {}
-   },
-   "help": {
-    "mode": "run",
-    "positionals": [],
-    "flags": [],
-    "modeWith": {}
-   },
-   "version": {
-    "mode": "run",
-    "positionals": [],
-    "flags": [],
-    "modeWith": {}
-   },
-   "web": {
-    "mode": "tty_only",
-    "positionals": [],
     "flags": [],
     "modeWith": {}
    }

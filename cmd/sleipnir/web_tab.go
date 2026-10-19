@@ -520,7 +520,7 @@ func (t *webTab) runEnded(s *session.Session, res *session.Result, err error) {
 		t.sys("⚠", "budget reached: "+t.budgetStopped(s, res))
 	default:
 		msg := "error: " + err.Error()
-		if hint := providerHint(err, "Settings › Providers & login"); hint != "" {
+		if hint := providerHint(err, "Settings › Connections"); hint != "" {
 			msg += "\n" + hint
 		}
 		t.emit(hintRow(msg, err))
@@ -881,7 +881,14 @@ func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string
 		res.Output = prefix + err.Error()
 		return res, nil
 	}
+	if msg, off := s.SlashOff(f[0]); off {
+		res.Output = msg
+		return res, nil
+	}
 	switch f[0] {
+	case "/plugins":
+		res.Output = pluginsSlash(s, strings.TrimSpace(strings.TrimPrefix(line, "/plugins")))
+		return res, nil
 	case "/delivery":
 		res.Output = s.DeliveryCommand(strings.TrimSpace(strings.TrimPrefix(line, "/delivery")))
 		return res, nil
@@ -983,10 +990,10 @@ func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string
 			return res, nil
 		}
 	case "/verbose", "/anim":
-		res.Output = f[0] + " is a setting of this page: Settings › Appearance & motion"
+		res.Output = f[0] + " is a setting of this page: Settings › Appearance"
 		return res, nil
 	case "/login":
-		res.Output = "sign in from Settings › Providers & login, or run `sleipnir login` in a terminal"
+		res.Output = "sign in from Settings › Connections, or run `sleipnir login` in a terminal"
 		return res, nil
 	case "/exit", "/quit":
 		res.Output = "close this session with × on its tab, or from the session menu"
@@ -1248,6 +1255,9 @@ func (t *webTab) goalState() string {
 // goalAction does a goal request (set, pause, resume or clear; wire.GoalRequest) and reports whether it waits to run. pause and clear
 // interrupt the running turn first and take effect when it has stopped; set and resume start a turn as the tab's next item.
 func (t *webTab) goalAction(ctx context.Context, s *session.Session, req wire.GoalRequest, fromRoute bool) (waits bool, err error) {
+	if msg, off := s.SlashOff("/goal"); off && req.Action == "set" {
+		return false, werr(http.StatusConflict, "plugin_off", msg)
+	}
 	switch req.Action {
 	case "set":
 		text := strings.TrimSpace(req.Text)

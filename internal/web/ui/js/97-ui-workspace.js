@@ -26,7 +26,7 @@
   const TASK_ST = { merged: ['✓ merged', 'ok'], verify: ['▸ verifying', 'warm'], running: ['● running', 'fe'], todo: ['◌ todo', ''] };
   const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
   const LOADING = 'Loading the workspace…';
-  const NO_ISOLATION = 'no worktree isolation in this run: work is written to the checkout directly';
+  const NO_ISOLATION = 'Nothing queues in this run: workers write straight to your files. Start a team with each worker in its own copy (--isolation worktree) to have its work verified here before it is applied.';
 
   const W0 = () => ({ tab: 'files', file: null, cp: null, mode: 'since', view: 'diff', group: 'task', q: '', changed: false, closed: dict(), unreviewed: false, task: null, mview: 'queue', mtask: null, mattempt: null, wt: null, cpMore: 0 });
   const wsOf = S => (S.ui.ws = Object.assign(W0(), S.ui.ws || {}));
@@ -138,15 +138,29 @@
 
   /* ================================================================ the view ======================================================== */
 
+  /** The head of a tab (ui.pageHead): its title, what it is for, and its one primary action. c is the view of the world at the scrubber
+   *  (null before the first paint), W the tab's state, S the session. */
+  function headOf(c, W, S) {
+    const isol = ((c && c.I && c.I.isolation) || (S && S.meta && S.meta.isolation)) === 'worktree', newest = c && c.I && c.n ? c.I.pos[c.n - 1] : null;
+    switch (W.tab) {
+      case 'changes': return { title: 'Changes', purpose: 'What the team changed, file by file, by task or by agent: mark a file reviewed, or undo a part you do not want.', action: { label: W.unreviewed ? 'Show every change' : 'Show only unreviewed', title: W.unreviewed ? 'list the reviewed files too' : 'hide the files you marked reviewed' } };
+      case 'checkpoints': return { title: 'Checkpoints', purpose: 'A snapshot is taken before every turn that writes files: compare the project with one, or put its files back as they were.', action: { label: 'Undo the last edits…', off: newest ? '' : 'nothing to undo: no turn has written a file yet', title: newest ? 'put back every file the newest checkpoint (' + newest.id + ') touched; you see the plan first, and the restore itself can be undone' : '' } };
+      case 'merge': return { title: 'Merge', action: null, purpose: isol ? 'Each worker works in its own copy. A task it hands in is rebased, verified, then queued here; Apply verified work puts the result in your files.' : 'In this run workers write straight to your files, so nothing queues here. A team started with each worker in its own copy (--isolation worktree) has its work verified here first.' };
+      default: return { title: 'Files', purpose: 'Every file of the project, as it is now or as it was at any checkpoint, with the agent who wrote each line.', action: { label: 'Review the changes', title: 'Changes: what the team changed, file by file' } };
+    }
+  }
+
   function mount(sc, root, params, S0) {
-    const W = wsOf(S0); if (params && params.tab) W.tab = params.tab; if (params && params.file) { W.file = params.file; W.view = 'diff'; }
-    root.innerHTML = '<div class="wsv" data-tab="' + esc(W.tab) + '">' +
+    const W = wsOf(S0); if (params && params.tab && !params.__only) W.tab = params.tab; if (params && params.file) { W.file = params.file; W.view = 'diff'; }
+    /* the cards of the tab's page (83b-ui-dash.js): the four panels, laid out for each tab of its own */
+    const tabKey = t => (SL.dash.PAGES[t] ? t : 'files'), DP = ui.pageHead(sc, root, S0, tabKey(W.tab), params, Object.assign(headOf(null, W, S0), { onAction: () => headAct() })); root.querySelector('.wsv').dataset.tab = W.tab;
+    DP.fill({ 'ws.bar':
       '<section class="panel ws-bar" aria-label="Workspace controls"><div class="ws-tabs seg" role="tablist" aria-label="Workspace"><button type="button" role="tab" data-tab="files">Files</button><button type="button" role="tab" data-tab="changes">Changes</button><button type="button" role="tab" data-tab="checkpoints">Checkpoints</button><button type="button" role="tab" data-tab="merge">Merge</button></div>' +
       '<div class="ws-tt" style="flex-basis:200px"><label class="lab" for="wsScrub">time travel</label><div class="ws-scr"><input id="wsScrub" class="scrub" type="range" min="0" max="1" step="1" value="1" aria-label="Time travel across checkpoints: the project as it was at one of them"><div class="ws-ticks" aria-hidden="true"></div></div><span class="ws-at num"></span><button class="btn sm ws-live" type="button">● live</button></div>' +
-      '<div class="ws-sum"></div></section>' +
-      '<section class="panel ws-left" aria-label="Files, changes and checkpoints"><div class="ph"><h2 class="ws-lh">Files</h2><div class="r ws-lr"></div></div><div class="ws-ctl"></div><div class="ws-list" role="group"></div></section>' +
-      '<section class="panel ws-main" aria-label="The selected file"><div class="ws-fh"></div><div class="ws-note" hidden></div><div class="ws-body" tabindex="0"></div></section>' +
-      '<section class="panel ws-strip" aria-label="Verify and merge"></section></div>';
+      '<div class="ws-sum"></div></section>',
+      'ws.left': '<section class="panel ws-left" aria-label="Files, changes and checkpoints"><div class="ph"><h2 class="ws-lh">Files</h2><div class="r ws-lr"></div></div><div class="ws-ctl"></div><div class="ws-list" role="group"></div></section>',
+      'ws.main': '<section class="panel ws-main" aria-label="The selected file"><div class="ws-fh"></div><div class="ws-note" hidden></div><div class="ws-body" tabindex="0"></div></section>',
+      'ws.strip': '<section class="panel ws-strip" aria-label="Verify and merge"></section>' });
     const q = s => $(s, root), left = q('.ws-list'), ctl = q('.ws-ctl'), fh = q('.ws-fh'), note = q('.ws-note'), body = q('.ws-body'), strip = q('.ws-strip'), scrub = q('#wsScrub'), ticks = q('.ws-ticks'), at = q('.ws-at'), live = q('.ws-live'), sum = q('.ws-sum');
     const H = { typed: false, sig: {} };
 
@@ -286,7 +300,7 @@
     function worktreesHtml(c, e) {
       const note = stateNote(e, 'worktrees'); if (note) return note;
       const list = arr(e.data && e.data.worktrees || e.data);
-      if (!list.length) return '<p class="ws-none">No worker has a worktree yet.</p>';
+      if (!list.length) return '<p class="ws-none">No worker has its own copy yet: one is made when the manager starts a worker on a task.</p>';
       const S = c.S, m = c.m;
       return list.map(t => {
         const ag = String(t.agent || ''), sel = c.W.wt === ag, A = own(m.ag, ag), T = A && A.task ? own(m.tasks, A.task) : null, merged = T && T.st === 'merged', tag = t.dirty ? ['dirty', 'warm'] : merged ? ['merged', 'ok'] : ['clean', ''];
@@ -408,7 +422,7 @@
         const tasks = m.torder, cur = W2.mtask && own(m.tasks, W2.mtask) ? W2.mtask : (m.qHead && m.qHead.task !== 'goal' ? m.qHead.task : tasks[0]);
         const chips = tasks.map(t => { const T = own(m.tasks, t), st = own(TASK_ST, T.st) || ['', '']; return '<button type="button" class="wtk" data-vtask="' + esc(t) + '" data-task="' + esc(t) + '" style="--c:' + aCol(S, T.owner) + '" aria-pressed="' + (cur === t) + '" title="' + esc(t + ' ' + T.title) + '"><b>' + vt(t) + '</b><span class="' + st[1] + '" aria-hidden="true">' + st[0].split(' ')[0] + '</span></button>'; }).join('');
         let out = '';
-        if (!cur) out = noneP('No task has been submitted yet.');
+        if (!cur) out = noneP('No task has been handed in yet. When a worker finishes one, its verification output shows here.');
         else {
           const ve = ws.merge.verify(S, cur), v = ve.data;
           if (ve.state === 'loading') out = noneP('Loading the verify output…');
@@ -421,7 +435,7 @@
       let body;
       if (qe.state === 'loading') body = noneP('Loading the merge queue…');
       else if (qe.state === 'error') body = noneP(esc(F.vis(qe.message || 'the merge queue could not be read')), retryBtn);
-      else { const rows = queueRows(c, d); body = rows ? '<table class="tbl"><thead><tr><th>task</th><th>step</th><th>agent</th><th>commit</th><th class="r">files</th><th class="r">elapsed</th></tr></thead><tbody>' + rows + '</tbody></table>' : noneP('The queue is empty: the next submission is rebased, then verified.'); }
+      else { const rows = queueRows(c, d); body = rows ? '<table class="tbl"><thead><tr><th>task</th><th>step</th><th>agent</th><th>commit</th><th class="r">files</th><th class="r">elapsed</th></tr></thead><tbody>' + rows + '</tbody></table>' : noneP('Nothing is waiting to merge. When a worker hands in a task, it is rebased on the latest work, verified, and listed here.'); }
       return { left, head, body, note: '' };
     }
     /** the gate runs of a task (one row per attempt) and the output of the one chosen, in the log pane of Schedule */
@@ -441,7 +455,7 @@
       let accept = '';
       if (isol) { ws.merge.queue(S); accept = '<button type="button" class="btn sm pri" data-accept' + (ws.acceptWaiting(S) ? '' : ' disabled title="nothing verified is waiting"') + '>Apply verified work…</button>'; }
       return '<div class="ws-sh"><h2>Verify and merge</h2><span class="mono dim">--verify "' + esc(F.vis(S.meta.verify || '(none)')) + '"</span>' + accept + '</div>' +
-        '<div class="ws-sb"><div class="wq">' + (qh ? '<div class="wqh"><span class="tri">▸</span><b style="color:' + (isGoal ? 'var(--mgr)' : aCol(S, (own(m.tasks, qh.task) || {}).owner)) + '">' + (isGoal ? '◇ goal' : vt(qh.task)) + '</b>' + (isGoal ? '<span>all merged</span>' : '<span>rebase <span class="ok">✓</span></span>') + '<span class="dim">·</span><span>' + (qh.step === 'verified' ? 'verified' : 'verifying') + '</span><span class="mono cmd">' + vt(qh.cmd) + '</span></div><div class="qbar" aria-hidden="true">' + (qh.step === 'verified' ? '<i style="width:100%;left:0;animation:none;background:var(--ok)"></i>' : '<i></i>') + '</div>' : '<div class="wqh dim"><span>▹ queue empty</span><span>·</span><span>the next submission is rebased, then verified</span></div><div class="qbar" aria-hidden="true"></div>') +
+        '<div class="ws-sb"><div class="wq">' + (qh ? '<div class="wqh"><span class="tri">▸</span><b style="color:' + (isGoal ? 'var(--mgr)' : aCol(S, (own(m.tasks, qh.task) || {}).owner)) + '">' + (isGoal ? '◇ goal' : vt(qh.task)) + '</b>' + (isGoal ? '<span>all merged</span>' : '<span>rebase <span class="ok">✓</span></span>') + '<span class="dim">·</span><span>' + (qh.step === 'verified' ? 'verified' : 'verifying') + '</span><span class="mono cmd">' + vt(qh.cmd) + '</span></div><div class="qbar" aria-hidden="true">' + (qh.step === 'verified' ? '<i style="width:100%;left:0;animation:none;background:var(--ok)"></i>' : '<i></i>') + '</div>' : '<div class="wqh dim"><span title="the next task handed in is rebased, then verified">▹ nothing waiting to merge</span></div><div class="qbar" aria-hidden="true"></div>') +
         '</div><div class="wtks" role="group" aria-label="Tasks: click to show only its changes">' + chips + '</div><div class="wmeta"><span>merged <b>' + merged.length + '</b>/' + m.torder.length + '</span><span>conflicts <b>' + m.conflicts + '</b></span><span>bounced <b>' + m.bounced + '</b>' + (gate ? ' of <b>' + gate + '</b> gate runs' : '') + '</span><span>reviewed <b>' + rvd + '</b>/' + chg.length + '</span></div></div>';
     }
 
@@ -452,7 +466,7 @@
       return [c.S.id, c.I && c.I.key, W2.tab, c.k, W2.cp, W2.mode, W2.view, W2.group, W2.q, W2.changed, W2.unreviewed, W2.task, W2.file, W2.mview, W2.mtask, W2.mattempt, W2.wt, W2.cpMore, W2.tab === 'merge' ? Math.floor(c.S.vt) : '', JSON.stringify(W2.closed), c.mk && c.mk.stamp, tk, c.pends && c.pends.map(p => p.path + p.text.length).join(','), SL.G ? SL.G.ver : 0, extra].join('|');
     }
     function paint() {
-      const c = ctx(), S = c.S, W2 = c.W; const wsv = q('.wsv'); wsv.dataset.tab = W2.tab;
+      const c = ctx(), S = c.S, W2 = c.W; DP.setPage(tabKey(W2.tab)); DP.head(headOf(c, W2, S)); const wsv = q('.wsv'); wsv.dataset.tab = W2.tab;
       $$('.ws-tabs [data-tab]', root).forEach(b => { b.setAttribute('aria-selected', String(b.dataset.tab === W2.tab)); b.setAttribute('aria-pressed', String(b.dataset.tab === W2.tab)); });
       if (!c.I) return paintDerived(c);
       const sg = sigOf(c, c.m.qHead ? c.m.qHead.task + c.m.qHead.step : '') + '|' + c.m.merged.length + c.m.conflicts + c.m.bounced + '|' + c.m.qs.filter(x => !x.answered).length + '|' + S.meta.verify + '|' + (S._wsd.merge.queue ? S._wsd.merge.queue.at : 0) + '|' + (S._wsd.merge.worktrees ? S._wsd.merge.worktrees.at : 0) + '|' + Object.keys(S._wsd.merge).map(k => S._wsd.merge[k].at).join(',');
@@ -472,11 +486,11 @@
         ch = '<input class="wq-in" type="search" placeholder="filter paths" aria-label="Filter paths" autocomplete="off"><label class="chk"><input type="checkbox" data-opt="changed"' + (W2.changed ? ' checked' : '') + '> changed only</label>';
         rcount = '<span>' + c.rows.length + ' files</span>';
         const items = treeItems(c); put(ctl, ch); const fi = $('.wq-in', ctl); if (fi && fi.value !== W2.q) fi.value = W2.q;   // the typed text is the input's own: it keeps its focus and caret
-        paintList(c, items, it => treeItemHtml(c, it), it => it.k, false, '<p class="ws-none">No file matches.</p>');
+        paintList(c, items, it => treeItemHtml(c, it), it => it.k, false, '<p class="ws-none">' + (W2.q || W2.changed ? 'No file matches the filter.' : 'No file to show yet: the project\u2019s files are listed here once the session has read its folder.') + '</p>');
       } else if (W2.tab === 'changes') {
         ch = '<div class="seg" role="group" aria-label="Group by"><button type="button" data-grp="task" aria-pressed="' + (W2.group === 'task') + '">by task</button><button type="button" data-grp="agent" aria-pressed="' + (W2.group === 'agent') + '">by agent</button></div><div class="seg" role="group" aria-label="Range"><button type="button" data-mode="since" aria-pressed="' + (W2.mode === 'since') + '" title="everything since the base, up to the point in time">since start</button><button type="button" data-mode="step" aria-pressed="' + (W2.mode === 'step') + '" title="only the checkpoint at the point in time"' + (c.cur ? '' : ' disabled') + '>only ' + vt(c.cur ? c.cur.id : '·') + '</button><button type="button" data-mode="from" aria-pressed="' + (W2.mode === 'from') + '" title="/diff ID: from the start of that checkpoint to now"' + (c.cur ? '' : ' disabled') + '>' + vt(c.cur ? c.cur.id : '·') + ' to now</button></div><label class="chk"><input type="checkbox" data-opt="unreviewed"' + (W2.unreviewed ? ' checked' : '') + '> unreviewed</label>';
         const items = changeItems(c), nChg = c._changes.length; rcount = '<span>' + plural(nChg, 'file') + '</span>'; put(ctl, ch);
-        paintList(c, items, it => changeItemHtml(c, it), it => it.k === 'g' ? 'g' : 'r', true, '<p class="ws-none">' + (W2.unreviewed ? 'Everything here is reviewed.' : 'No file changed in this view.') + '</p>');
+        paintList(c, items, it => changeItemHtml(c, it), it => it.k === 'g' ? 'g' : 'r', true, '<p class="ws-none">' + (W2.unreviewed ? 'Everything here is reviewed.' : 'No file changed in this view. What the team writes shows here, grouped by task or by agent.') + '</p>');
       } else if (W2.tab === 'checkpoints') { put(ctl, ''); VL.off(); put(left, cpsHtml(c)); rcount = '<span>' + c.I.cps.length + ' · ' + c.I.pos.length + ' with files</span>'; }
       else { mergeV = mergeView(c); put(ctl, ''); VL.off(); put(left, mergeV.left); rcount = '<span>' + arr(ws.merge.worktrees(S).data && ws.merge.worktrees(S).data.worktrees || ws.merge.worktrees(S).data).length + '</span>'; }
       q('.ws-lr').innerHTML = rcount;
@@ -517,6 +531,13 @@
     }
 
     /* ---------------- input ---------------- */
+    /** the head's primary action, for the tab that shows */
+    function headAct() {
+      const c = ctx(), W2 = c.W, S = c.S;
+      if (W2.tab === 'files') ui.ws.setTab('changes');
+      else if (W2.tab === 'changes') setW({ unreviewed: !W2.unreviewed });
+      else if (W2.tab === 'checkpoints' && c.I && c.n) restoreDialog(S, c.I.pos[c.n - 1].id);
+    }
     const setW = (patch, scroll) => { const S = SL.sessions.active, W2 = wsOf(S); Object.assign(W2, patch); S.touch(); H.sig.all = null; paint(); if (scroll) body.scrollTop = 0; };
     const retry = () => { const S = SL.sessions.active, I = ws.info(S); if (I) { const D = ws.dataOf(S); D.lru.forEach((e, k) => { if (e.state === 'error') D.lru.delete(k); }); D.merge = {}; } ws.refresh(S); H.sig.all = null; SL.loop.dirty = true; };
     sc.listen(root, 'click', e => {

@@ -121,14 +121,39 @@
   }
 
   /* ---------- the command list and the form: pure builders of markup ---------- */
-  const GROUPS = c => c.path[0] === 'rl' ? 'rl lab' : ['chat', 'run', 'swarm', 'demo', 'mock'].includes(c.path[0]) ? 'sessions and runs' : ['sessions', 'config', 'init', 'trust', 'mcp', 'login', 'logout'].includes(c.path[0]) ? 'project and account' : ['inspect', 'watch', 'replay', 'doctor', 'models', 'recon', 'sim', 'friction', 'update', 'schedule', 'daemon'].includes(c.path[0]) ? 'tools' : 'other';
-  const ORDER = ['sessions and runs', 'project and account', 'tools', 'rl lab', 'other'];
-  /** the commands the filter keeps, grouped, spec order inside a group */
-  function shownCmds(st) { const words = st.q.toLowerCase().trim().split(/\s+/).filter(Boolean); return cmds().filter(c => words.every(w => (key(c) + ' ' + (c.summary || '')).toLowerCase().includes(w))).map((c, i) => ({ c, i, g: ORDER.indexOf(GROUPS(c)) })).sort((x, y) => x.g - y.g || x.i - y.i).map(x => x.c); }
+  /** The commands grouped by what a person does with them, for the Tools page and the runner's list: [id, title, what the group is for,
+   *  the card of the Tools page that holds it (83b-ui-dash.js), its top-level commands in the order they are listed]. A command of no
+   *  group is listed under Other. */
+  const TASKS = [
+    ['run', 'Run work', 'start a session, run a goal without a terminal, or put one on a schedule', 'tools.run', ['chat', 'run', 'swarm', 'schedule', 'daemon', 'demo']],
+    ['sessions', 'Sessions', 'find, replay, watch and clean up recorded sessions', 'tools.observe', ['sessions', 'replay', 'watch', 'inspect', 'friction']],
+    ['models', 'Models & providers', 'keys, the model catalogue, and what an endpoint really does', 'tools.evaluate', ['models', 'login', 'logout', 'doctor', 'mock', 'sim']],
+    ['ext', 'Skills & plugins', 'plugins, tool servers and what a project may configure', 'tools.setup', ['plugins', 'mcp', 'trust']],
+    ['maint', 'Maintenance', 'set up a project, read the configuration, update Sleipnir', 'tools.setup', ['init', 'recon', 'config', 'update', 'version', 'help', 'web']],
+    ['data', 'Data', 'the RL environment: make tasks, roll a policy out, score and export', 'tools.other', ['rl']],
+  ];
+  const OTHER = ['other', 'Other', 'commands of no group', 'tools.other', []];
+  /** What each top-level command is for, in a few plain words (its summary in the spec says how). */
+  const PLAIN = {
+    chat: 'Start a chat with the team', run: 'Run one goal and exit', swarm: 'Run a goal with a whole team', schedule: 'Schedule a goal', daemon: 'Run the scheduled goals', demo: 'Watch a scripted demo team',
+    sessions: 'List and prune recorded sessions', replay: 'Replay a recorded session', watch: 'Watch a session as it runs', inspect: 'Serve the dashboard of a session', friction: 'Find what slowed sessions down',
+    models: 'Browse the model catalogue', login: 'Add a provider key', logout: 'Remove a provider key', doctor: 'Test what an endpoint does', mock: 'Serve the built-in test model', sim: 'Estimate what caching saves',
+    plugins: 'Turn plugins on and off', mcp: 'Approve and test tool servers', trust: 'Trust a project\u2019s own settings',
+    init: 'Set up a project', recon: 'Survey a project', config: 'Show the configuration in force', update: 'Update Sleipnir', version: 'Show the version', help: 'List every command', web: 'Serve this page in a browser',
+    rl: 'Make tasks, roll out, score, export',
+  };
+  /** A short line for a command: the plain words of a top-level command, else the first clause of its summary. */
+  const brief = c => (c.path.length === 1 && U.own(PLAIN, c.path[0])) || String(c.summary || '').replace(/\s*\([^)]*\)/g, '').split(/(?<=[a-z])[.;:] /)[0].replace(/\.$/, '');
+  /** The group of a command (its top-level word decides). */
+  const taskOf = c => TASKS.find(t => t[4].includes(c.path[0])) || OTHER;
+  /** Where a command is listed: its group, then its place in the group, then the spec's order. */
+  const rankOf = (c, i) => { const t = taskOf(c), g = t === OTHER ? TASKS.length : TASKS.indexOf(t), k = t[4].indexOf(c.path[0]); return [g, k < 0 ? 99 : k, i]; };
+  /** the commands the filter keeps, grouped by task */
+  function shownCmds(st) { const words = st.q.toLowerCase().trim().split(/\s+/).filter(Boolean); return cmds().map((c, i) => ({ c, r: rankOf(c, i) })).filter(x => words.every(w => (key(x.c) + ' ' + (x.c.summary || '') + ' ' + taskOf(x.c)[1]).toLowerCase().includes(w))).sort((x, y) => x.r[0] - y.r[0] || x.r[1] - y.r[1] || x.r[2] - y.r[2]).map(x => x.c); }
   function listHtml(st) {
     let g = null, h = '';
-    shownCmds(st).forEach(c => { const gr = GROUPS(c); if (gr !== g) { g = gr; h += '<div class="cgrp">' + gr + '</div>'; } h += '<button type="button" role="option" class="rcmd' + (c === st.c ? ' sel' : '') + '" data-k="' + esc(key(c)) + '" aria-selected="' + (c === st.c) + '"><span class="mono">' + esc(key(c)) + '</span><small>' + esc((c.summary || '').slice(0, 70)) + '</small></button>'; });
-    return h || '<div class="dim" style="padding:10px">no command matches</div>';
+    shownCmds(st).forEach(c => { const gr = taskOf(c)[1]; if (gr !== g) { g = gr; h += '<div class="cgrp">' + esc(gr) + '</div>'; } h += '<button type="button" role="option" class="rcmd' + (c === st.c ? ' sel' : '') + '" data-k="' + esc(key(c)) + '" aria-selected="' + (c === st.c) + '" title="' + esc(c.summary || '') + '"><span class="mono">' + esc(key(c)) + '</span><small>' + esc(brief(c)) + '</small></button>'; });
+    return h || '<div class="dim" style="padding:10px">No command matches. Try a word of what it does: session, model, plugin, schedule.</div>';
   }
   function inputFor(f, st) {
     const v = st.flags[f.name], idn = esc('rf-' + f.name), ph = f.default != null ? 'default ' + esc(f.default) : (f.defaultNote ? esc(f.defaultNote).slice(0, 40) : '');
@@ -148,15 +173,19 @@
   /** the recent runs, newest first, as the data layer keeps them in G.runs: {id, cmd, exit, ms, path, flags, running} */
   const loadRuns = () => SL.data ? SL.data.load('runs', { force: true }) : Promise.resolve(false);
 
-  function mount(sc, root, params) {
+  function mount(sc, root, params, S0) {
+    const P = ui.pageHead(sc, root, S0 || SL.sessions.active, 'runner', params, { title: 'Run a command', purpose: 'Pick a command: its form is built from its real flags, the command line it makes is shown under it, and Run runs it on this machine with the output streaming on the right.' });
     if (!cmds().length) {   // the command list comes with the server's spec: until it is here there is nothing to build a form from
-      root.innerHTML = '<div class="runv"><section class="panel rv-list"><div class="ph"><h2>Commands</h2></div><p class="stubnote" style="padding:10px 12px;margin:0">The command list is not loaded yet.</p></section></div>';
-      sc.update(() => { if (cmds().length) SL.views.show('runner', params); }); return;
+      const wait = (cls, h) => '<section class="panel ' + cls + '"><div class="ph"><h2>' + h + '</h2></div><p class="stubnote" style="padding:10px 12px;margin:0">The command list is not loaded yet.</p></section>';
+      P.fill({ 'runner.list': wait('rv-list', 'Commands'), 'runner.form': wait('rv-form', 'Run'), 'runner.out': wait('rv-out', 'Output') });
+      sc.update(() => { if (cmds().length && P.home) SL.views.show('runner', params); }); return;
     }
     const st = { c: find(params.path || ['sessions', 'prune']) || cmds()[0], pos: {}, flags: {}, q: '', keep: false, out: null, t0: 0 };
     if (params.flags) Object.assign(st.flags, params.flags);
     if (params.pos) Object.assign(st.pos, params.pos);
-    root.innerHTML = '<div class="runv"><section class="panel rv-list"><div class="ph"><h2>Commands</h2><div class="r"><span class="rcnt"></span><button class="btn sm" type="button" data-tools>‹ Tools</button></div></div><div class="pb"><input type="search" class="rq" placeholder="filter: sessions, trust, rl rollout ..." aria-label="Filter commands"><div class="rcmds" role="listbox" aria-label="sleipnir commands"></div></div></section><section class="panel rv-form"><div class="ph"><h2 class="rtitle">Run</h2><div class="r"><span class="rsrc"></span></div></div><div class="rform"></div><div class="rcl"><pre class="clpre cli"></pre><div class="row2"><button class="btn pri rrun" type="button">Run</button><button class="btn rcopy" type="button">Copy</button><button class="btn rreset" type="button">Reset</button><label class="chk rkeep" hidden title="the process keeps going on the server when you leave this view; it stays in the recent runs"><input type="checkbox" class="rkeepin"> Keep running when I leave</label></div></div></section><section class="panel rv-out"><div class="ph"><h2>Output</h2><div class="r rstat"></div></div><div class="term" role="log" aria-label="Command output" tabindex="0"><div class="tl dim">Nothing run yet. The form on the left builds the command line; Run runs it here.</div></div><div class="rcard"></div><div class="rhist"></div></section></div>';
+    P.fill({ 'runner.list': '<section class="panel rv-list"><div class="ph"><h2>Commands</h2><div class="r"><span class="rcnt"></span><button class="btn sm" type="button" data-tools>‹ Tools</button></div></div><div class="pb"><input type="search" class="rq" placeholder="filter: sessions, trust, rl rollout ..." aria-label="Filter commands"><div class="rcmds" role="listbox" aria-label="sleipnir commands"></div></div></section>',
+      'runner.form': '<section class="panel rv-form"><div class="ph"><h2 class="rtitle">Run</h2><div class="r"><span class="rsrc"></span></div></div><div class="rform"></div><div class="rcl"><pre class="clpre cli"></pre><div class="row2"><button class="btn pri rrun" type="button">Run</button><button class="btn rcopy" type="button">Copy</button><button class="btn rreset" type="button">Reset</button><label class="chk rkeep" hidden title="the process keeps going on the server when you leave this view; it stays in the recent runs"><input type="checkbox" class="rkeepin"> Keep running when I leave</label></div></div></section>',
+      'runner.out': '<section class="panel rv-out"><div class="ph"><h2>Output</h2><div class="r rstat"></div></div><div class="term" role="log" aria-label="Command output" tabindex="0"><div class="tl dim">Nothing run yet. The form on the left builds the command line; Run runs it here.</div></div><div class="rcard"></div><div class="rhist"></div></section>' });
     const list = $('.rcmds', root), form = $('.rform', root), clp = $('.clpre', root), term = $('.term', root), card = $('.rcard', root), stat = $('.rstat', root), runBtn = $('.rrun', root);
     function drawList() { list.innerHTML = listHtml(st); $('.rcnt', root).textContent = shownCmds(st).length + ' of ' + cmds().length; }
     function drawForm() { const c = st.c; $('.rtitle', root).textContent = 'sleipnir ' + key(c); $('.rsrc', root).textContent = (spec() && spec().generatedFrom) || ''; form.innerHTML = formHtml(c, st); drawCl(); }
@@ -263,7 +292,7 @@
     drawList(); drawForm(); hist(); if (SL.data) SL.data.forPage('runner', { loud: true }); if (params.run) run();
   }
   SL.views.register({ name: 'runner', title: 'Run a command', nav: false, mount });
-  SL.runner = { find, cmdline, flagValues, buildRequest, validate, modeOf, createRun, spec, loadRuns, formHtml, listHtml, shownCmds };
+  SL.runner = { find, cmdline, flagValues, buildRequest, validate, modeOf, createRun, spec, loadRuns, formHtml, listHtml, shownCmds, TASKS, OTHER, taskOf, PLAIN, brief };
   TK.loadRuns = loadRuns;
   ui.runCli = (path, flags, run, pos) => SL.views.show('runner', { path, flags, run, pos });
 })(SL);

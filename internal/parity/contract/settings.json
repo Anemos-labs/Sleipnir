@@ -2,131 +2,131 @@
   "terminal_only": [
     {
       "item": "cache.affinity_shards",
-      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only, as `sleipnir config` does"
+      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
     },
     {
       "item": "cache.compact_at_percent",
-      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only, as `sleipnir config` does"
+      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
     },
     {
       "item": "cache.compact_threshold_tokens",
-      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only, as `sleipnir config` does"
+      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
     },
     {
       "item": "cache.compaction_mode",
-      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only, as `sleipnir config` does"
+      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
     },
     {
       "item": "cache.hot_max_tokens",
-      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only, as `sleipnir config` does"
+      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
     },
     {
       "item": "cache.instruction_max_tokens",
-      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only, as `sleipnir config` does"
+      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
     },
     {
       "item": "cache.min_layer_for_breakpoint",
-      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only, as `sleipnir config` does"
+      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
     },
     {
       "item": "cache.shared_ttl",
-      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only, as `sleipnir config` does"
+      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
     },
     {
       "item": "cache.thread_soft_limit_tokens",
-      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only, as `sleipnir config` does"
+      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
     },
     {
       "item": "hooks.*",
-      "reason": "hooks are defined in configuration files in both interfaces; Settings > Skills, commands & hooks lists the configured hooks and their events read-only"
+      "reason": "hooks are defined in configuration files in both interfaces; Settings > Skills & extensions lists the configured hooks and their events read-only"
     },
     {
       "item": "permissions.roles.*.allow",
-      "reason": "the permission profile of one role is read from a configuration file in both interfaces; Settings > Permissions shows the rules in force with the file each came from, and the mode and session rules it can change are the session's"
+      "reason": "the permission profile of one role is read from a configuration file in both interfaces; Settings > Permissions & trust shows the rules in force with the file each came from, and the mode and session rules it can change are the session's"
     },
     {
       "item": "permissions.roles.*.ask",
-      "reason": "the permission profile of one role is read from a configuration file in both interfaces; Settings > Permissions shows the rules in force with the file each came from, and the mode and session rules it can change are the session's"
+      "reason": "the permission profile of one role is read from a configuration file in both interfaces; Settings > Permissions & trust shows the rules in force with the file each came from, and the mode and session rules it can change are the session's"
     },
     {
       "item": "permissions.roles.*.deny",
-      "reason": "the permission profile of one role is read from a configuration file in both interfaces; Settings > Permissions shows the rules in force with the file each came from, and the mode and session rules it can change are the session's"
+      "reason": "the permission profile of one role is read from a configuration file in both interfaces; Settings > Permissions & trust shows the rules in force with the file each came from, and the mode and session rules it can change are the session's"
     },
     {
       "item": "permissions.roles.*.mode",
-      "reason": "the permission profile of one role is read from a configuration file in both interfaces; Settings > Permissions shows the rules in force with the file each came from, and the mode and session rules it can change are the session's"
+      "reason": "the permission profile of one role is read from a configuration file in both interfaces; Settings > Permissions & trust shows the rules in force with the file each came from, and the mode and session rules it can change are the session's"
     },
     {
       "item": "providers.*.allow_hosts",
-      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Providers & login shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
     },
     {
       "item": "providers.*.allow_insecure_http",
-      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Providers & login shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
     },
     {
       "item": "providers.*.api_key_env",
-      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Providers & login shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
     },
     {
       "item": "providers.*.auth",
-      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Providers & login shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
     },
     {
       "item": "providers.*.base_url",
-      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Providers & login shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
     },
     {
       "item": "providers.*.dialect",
-      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Providers & login shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
     },
     {
       "item": "providers.*.headers.*",
-      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Providers & login shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
     },
     {
       "item": "providers.*.options.*",
-      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Providers & login shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
     },
     {
       "item": "swarm.max_concurrent_requests",
-      "reason": "a request limit of the swarm: a file or SLEIPNIR_SWARM_MAX_CONCURRENT_REQUESTS in both interfaces; the governor line of the HUD shows its effect and Config layers its value"
+      "reason": "a request limit of the swarm: a file or SLEIPNIR_SWARM_MAX_CONCURRENT_REQUESTS in both interfaces; the governor line of the HUD shows its effect and Configuration its value"
     },
     {
       "item": "swarm.max_workers",
-      "reason": "the ceiling on the team size: a file or SLEIPNIR_SWARM_MAX_WORKERS in both interfaces; the worker steppers of the New session dialog and of Run settings stop at it, and Config layers shows it"
+      "reason": "the ceiling on the team size: a file or SLEIPNIR_SWARM_MAX_WORKERS in both interfaces; the worker steppers of the New session dialog and of Team & run stop at it, and Configuration shows it"
     },
     {
       "item": "swarm.push_progress",
-      "reason": "a safety net that is on by default: swarm.push_progress = false in a configuration file turns it off in both interfaces; the notice of the first push names the remote branch in both, and Config layers shows its value"
+      "reason": "a safety net that is on by default: swarm.push_progress = false in a configuration file turns it off in both interfaces; the notice of the first push names the remote branch in both, and Configuration shows its value"
     },
     {
       "item": "swarm.requests_per_minute",
-      "reason": "a request limit of the swarm: a file or SLEIPNIR_SWARM_REQUESTS_PER_MINUTE in both interfaces; the governor line of the HUD shows its effect and Config layers its value"
+      "reason": "a request limit of the swarm: a file or SLEIPNIR_SWARM_REQUESTS_PER_MINUTE in both interfaces; the governor line of the HUD shows its effect and Configuration its value"
     },
     {
       "item": "tools.builtin_skills",
-      "reason": "a default of the skills catalogue: set in a configuration file or SLEIPNIR_TOOLS_BUILTIN_SKILLS in both interfaces; both list the built-in skills (/skills, Settings > Skills) and Config layers shows its value"
+      "reason": "a default of the skills catalogue: set in a configuration file or SLEIPNIR_TOOLS_BUILTIN_SKILLS in both interfaces; both list the built-in skills (/skills, Settings > Skills) and Configuration shows its value"
     },
     {
       "item": "tools.default_timeout_sec",
-      "reason": "limit of the tools: set in a configuration file or a SLEIPNIR_TOOLS_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only"
+      "reason": "limit of the tools: set in a configuration file or a SLEIPNIR_TOOLS_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only"
     },
     {
       "item": "tools.max_output_chars",
-      "reason": "limit of the tools: set in a configuration file or a SLEIPNIR_TOOLS_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only"
+      "reason": "limit of the tools: set in a configuration file or a SLEIPNIR_TOOLS_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only"
     },
     {
       "item": "tools.max_timeout_sec",
-      "reason": "limit of the tools: set in a configuration file or a SLEIPNIR_TOOLS_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only"
+      "reason": "limit of the tools: set in a configuration file or a SLEIPNIR_TOOLS_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only"
     },
     {
       "item": "tools.web_allow_hosts",
-      "reason": "limit of the tools: set in a configuration file or a SLEIPNIR_TOOLS_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only"
+      "reason": "limit of the tools: set in a configuration file or a SLEIPNIR_TOOLS_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only"
     },
     {
       "item": "tools.web_allow_private",
-      "reason": "limit of the tools: set in a configuration file or a SLEIPNIR_TOOLS_* variable in both interfaces; Settings > Config layers shows the effective value and its file read-only"
+      "reason": "limit of the tools: set in a configuration file or a SLEIPNIR_TOOLS_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only"
     }
   ],
   "web_only": [
@@ -167,29 +167,62 @@
       "reason": "resets the Radio rail's width; the layout of this browser's page"
     },
     {
-      "item": "browser:look.do:dash-edit",
-      "reason": "unlocks the Cockpit's cards to move, resize, add and remove them; the Cockpit is a dashboard of this browser's page, kept in localStorage, and the terminal's chat program lays out its panels itself"
-    },
-    {
-      "item": "browser:look.do:dash-reset",
-      "reason": "puts back the Cockpit's default layout of cards; the layout of this browser's page, kept in localStorage"
-    },
-    {
-      "item": "state:roles.seg:effort",
+      "item": "state:models.seg:effort",
       "reason": "the reasoning effort of the session; the terminal has /effort, and no configuration key holds it"
     },
     {
-      "item": "state:trust.trust*",
+      "item": "state:permissions.trust*",
       "reason": "trust a project's files or forget a directory: the trust ledger, a file of its own that `sleipnir trust add|forget|list` also edits"
     },
     {
-      "item": "state:trust.do:forget-all",
+      "item": "state:permissions.do:forget-all",
       "reason": "forget every directory of the trust ledger; `sleipnir trust forget --all` does the same"
     },
     {
       "item": "state:providers.prov*",
       "reason": "sign a stored provider key out, or show the command that signs one in: the key store (auth.json), which `sleipnir login` and `logout` edit; it is not configuration"
+    },
+    {
+      "item": "state:look.do:dash-edit",
+      "reason": "unlocks the Cockpit's cards to move, resize, add and hide them (every page of the web page has the same Customise button); the card layout of the web page, a file of its own (~/.sleipnir/web-layout.json, GET/PUT/DELETE /api/layout) that only the web page reads; the terminal's chat program lays out its panels itself"
+    },
+    {
+      "item": "state:look.do:dash-reset",
+      "reason": "puts back the Cockpit's default layout of cards; the card layout of the web page, a file of its own (~/.sleipnir/web-layout.json, GET/PUT/DELETE /api/layout) that only the web page reads; the terminal's chat program lays out its panels itself"
+    },
+    {
+      "item": "state:look.do:layout-export",
+      "reason": "saves the layout of every page as a JSON file, to move it to another machine; the card layout of the web page, a file of its own (~/.sleipnir/web-layout.json, GET/PUT/DELETE /api/layout) that only the web page reads; the terminal's chat program lays out its panels itself"
+    },
+    {
+      "item": "state:look.do:layout-import",
+      "reason": "replaces the layout of every page with one exported before; the card layout of the web page, a file of its own (~/.sleipnir/web-layout.json, GET/PUT/DELETE /api/layout) that only the web page reads; the terminal's chat program lays out its panels itself"
+    },
+    {
+      "item": "state:look.id:layoutFile",
+      "reason": "the file chooser of Import layout; the card layout of the web page, a file of its own (~/.sleipnir/web-layout.json, GET/PUT/DELETE /api/layout) that only the web page reads; the terminal's chat program lays out its panels itself"
+    },
+    {
+      "item": "state:look.do:layout-reset-all",
+      "reason": "puts back the default layout of every page, the header and the Radio rail; the card layout of the web page, a file of its own (~/.sleipnir/web-layout.json, GET/PUT/DELETE /api/layout) that only the web page reads; the terminal's chat program lays out its panels itself"
+    },
+    {
+      "item": "state:look.do:chrome-menu",
+      "reason": "hides widgets of the header and the status bar and collapses or hides the parts of the Radio rail; the terminal's header and footer are drawn by the chat program, and the layout is the card layout of the web page, a file of its own"
     }
   ],
-  "gaps": []
+  "gaps": [
+    {
+      "item": "plugins.enabled.*",
+      "reason": "switched on the Plugins page (a view, tested in plugins.test.mjs), which the Settings inventory does not read"
+    },
+    {
+      "item": "plugins.profile",
+      "reason": "picked on the Plugins page (a view, tested in plugins.test.mjs), which the Settings inventory does not read"
+    },
+    {
+      "item": "plugins.settings.*",
+      "reason": "edited in the Plugins page's settings forms (a view, tested in plugins.test.mjs), which the Settings inventory does not read"
+    }
+  ]
 }

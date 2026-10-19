@@ -43,7 +43,7 @@ func modeOf(path []string) (mode, why string) {
 	case "chat":
 		return "tty_only", "+ New session starts the same session here"
 	case "login":
-		return "tty_only", "Settings > Providers & login"
+		return "tty_only", "Settings > Connections"
 	case "watch":
 		return "tty_only", "the Cockpit shows it live"
 	case "mock", "rl serve", "daemon":

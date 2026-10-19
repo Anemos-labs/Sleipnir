@@ -1,0 +1,12 @@
+{
+  "id": "hello",
+  "title": "Hello",
+  "description": "an example plugin: a skill, a command and a hook",
+  "version": "1.0.0",
+  "config": {
+    "type": "object",
+    "properties": {
+      "greeting": {"type": "string", "title": "Greeting", "description": "what the session-start hook says", "default": "Hello"}
+    }
+  }
+}

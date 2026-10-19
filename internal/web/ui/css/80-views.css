@@ -142,3 +142,17 @@
 
 .c-hit .ph { flex-wrap:wrap; gap:6px; }
 .c-hit .ph .r { flex-wrap:wrap; }
+/* the Cache view: the explanation under each card's title, and the layer names in plain words (the internal name under each) */
+.c-why{margin:0;padding:0 10px 8px;font:400 12.5px/1.45 var(--f-ui);color:var(--dim);max-width:130ch}
+.layer-labels.c-layers{height:auto;min-height:30px;align-items:flex-start}
+.c-layers span{white-space:normal;overflow:visible;font:600 11.5px/1.2 var(--f-ui);padding:3px 6px 0 0}
+@container main (max-width:620px){.layer-labels.c-layers{display:none}}
+.c-layers span small{white-space:nowrap;font:400 10px var(--f-num);margin-top:2px}
+.c-key{display:flex;flex-wrap:wrap;gap:4px 14px;padding:4px 0 2px;font:500 12px var(--f-ui);color:var(--fg2)}
+.c-key span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.c-key i{width:10px;height:10px;border-radius:2px;background:var(--lc);flex:none}
+.c-key small{font:400 10.5px var(--f-num);color:var(--dim)}
+/* a board with no task yet: one line above its columns says what will come (82-ui-board.js) */
+.bnone{grid-column:1/-1;margin:0;padding:6px 4px 2px;font:400 12.5px/1.4 var(--f-ui);color:var(--fg2)}
+.kan:has(>.bnone),.bcols:has(>.bnone){grid-template-rows:auto minmax(0,1fr)}
+.mnote.mnone{white-space:normal;overflow:visible}

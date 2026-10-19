@@ -235,6 +235,15 @@
     /** Encodes a path segment (ids are server-made, but every string is data). */
     seg: s => encodeURIComponent(String(s == null ? '' : s)),
     /** The tab's route prefix. */
-    tab: id => '/api/sessions/' + encodeURIComponent(String(id))
+    tab: id => '/api/sessions/' + encodeURIComponent(String(id)),
+    /** The plugin catalogue (docs/WEB-API.md): the live session's states when a tab id is given, else the one built from the
+     *  configuration alone. A server older than the catalogue answers 404. */
+    plugins: sid => request('GET', sid ? '/api/sessions/' + encodeURIComponent(String(sid)) + '/plugins' : '/api/plugins'),
+    /** Turn a plugin on or off and/or change its settings: body {enabled?, config?, scope?: 'user' | 'project'}; answers {plugin, restart}. */
+    setPlugin: (id, body) => request('POST', '/api/plugins/' + encodeURIComponent(String(id)), body || {}),
+    /** Choose the profile for a scope; answers the whole catalogue. */
+    setProfile: (profile, scope) => request('POST', '/api/plugins/profile', { profile: String(profile), scope: scope || 'user' }),
+    /** Take a plugin back to its profile's default in a scope. */
+    resetPlugin: (id, scope) => request('DELETE', '/api/plugins/' + encodeURIComponent(String(id)) + '?scope=' + encodeURIComponent(scope || 'user'))
   };
 })(SL);

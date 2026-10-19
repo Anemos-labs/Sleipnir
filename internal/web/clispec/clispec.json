@@ -78,7 +78,7 @@
   {"name":"session","arg":"string","default":null,"repeatable":false,"desc":"with --json on a directory of sessions: the session to summarise (its id from the list)"},
   {"name":"token","arg":"string","default":null,"repeatable":false,"desc":"access token (also read from $SLEIPNIR_INSPECT_TOKEN, which keeps it out of process listings); required for a non-loopback --addr"}
  ]},
-{"path":["login"],"usage":"sleipnir login [provider]","summary":"Asks which provider you have a key for and for the key, which it does not echo, and keeps it in ~/.sleipnir/auth.json (mode 0600).","positional":[{"name":"PROVIDER","required":false,"desc":"heimdallm, openrouter, openai, anthropic, chatgpt, ..."}],"source":"docs/CLI.md § sleipnir login","mode":"tty_only","why":"login needs a terminal: Settings › Providers & login shows the command to run","flags":[]},
+{"path":["login"],"usage":"sleipnir login [provider]","summary":"Asks which provider you have a key for and for the key, which it does not echo, and keeps it in ~/.sleipnir/auth.json (mode 0600).","positional":[{"name":"PROVIDER","required":false,"desc":"heimdallm, openrouter, openai, anthropic, chatgpt, ..."}],"source":"docs/CLI.md § sleipnir login","mode":"tty_only","why":"login needs a terminal: Settings › Connections shows the command to run","flags":[]},
 {"path":["logout"],"usage":"sleipnir logout <provider>","summary":"Removes a stored key, or revokes the ChatGPT sign-in.","positional":[{"name":"PROVIDER","required":true,"desc":"the provider whose key (or ChatGPT sign-in) to remove"}],"source":"docs/CLI.md § sleipnir login","mode":"priv","why":"it removes a stored key or a sign-in: it asks for a confirmation first","parent":"login","flags":[]},
 {"path":["mcp"],"usage":"sleipnir mcp <command> [flags]","summary":"Tool servers (the Model Context Protocol): list, approve, revoke, test, without starting a session.","positional":[],"source":"docs/CLI.md § sleipnir mcp","mode":"run","index":true,"flags":[]},
 {"path":["mcp","approve"],"usage":"sleipnir mcp approve NAME [--yes]","summary":"Remember a project entry for this project (shows what it would run and asks first).","positional":[{"name":"NAME","required":true,"desc":"the project server to approve"}],"source":"docs/CLI.md § sleipnir mcp","mode":"priv","why":"it lets a project's tool server start: it asks for a confirmation first (--yes is implied)","parent":"mcp","flags":[
@@ -115,6 +115,53 @@
 {"path":["models","fav","add"],"usage":"sleipnir models fav add provider/model...","summary":"Star one or more models.","positional":[{"name":"REF","required":true,"desc":"provider/model","variadic":true}],"source":"docs/CLI.md § sleipnir models","mode":"priv","why":"it changes your configuration: it asks for a confirmation first","parent":"models","flags":[]},
 {"path":["models","fav","list"],"usage":"sleipnir models fav list","summary":"Lists the favourite models kept as models.favorites in your user configuration.","positional":[],"source":"docs/CLI.md § sleipnir models","mode":"run","parent":"models","flags":[]},
 {"path":["models","fav","rm"],"usage":"sleipnir models fav rm provider/model...","summary":"Unstar one or more models.","positional":[{"name":"REF","required":true,"desc":"provider/model","variadic":true}],"source":"docs/CLI.md § sleipnir models","mode":"priv","why":"it changes your configuration: it asks for a confirmation first","parent":"models","flags":[]},
+{"path":["plugins"],"usage":"sleipnir plugins [flags]","summary":"Lists every plugin: its state, its category, the layer that decided it and what it adds.","positional":[],"source":"docs/CLI.md § sleipnir plugins","mode":"run","when":[{"flag":"trust-project","mode":"priv"}],"flags":[
+  {"name":"cwd","arg":"string","default":null,"repeatable":false,"desc":"the project to look at (default: the current directory)"},
+  {"name":"trust-project","arg":"bool","default":null,"repeatable":false,"desc":"also read the project's own plugins and settings"},
+  {"name":"json","arg":"bool","default":null,"repeatable":false,"desc":"list and info: machine-readable output"}
+ ]},
+{"path":["plugins","add"],"usage":"sleipnir plugins add PATH|GIT-URL","summary":"Installs a plugin directory or git repository into ~/.sleipnir/plugins; it stays off until enabled.","positional":[{"name":"PATH|GIT-URL","required":true,"desc":"a plugin directory or a git repository"}],"source":"docs/CLI.md § sleipnir plugins","mode":"priv","why":"it installs code from a directory or the network: it asks for a confirmation first","parent":"plugins","flags":[]},
+{"path":["plugins","disable"],"usage":"sleipnir plugins disable ID... [flags]","summary":"Turns plugins off.","positional":[{"name":"ID","required":true,"desc":"plugins to turn off","variadic":true}],"source":"docs/CLI.md § sleipnir plugins","mode":"priv","why":"it changes your configuration: it asks for a confirmation first","when":[{"flag":"trust-project","mode":"priv"}],"parent":"plugins","flags":[
+  {"name":"cwd","arg":"string","default":null,"repeatable":false,"desc":"the project to look at (default: the current directory)"},
+  {"name":"project","arg":"bool","default":null,"repeatable":false,"desc":"write to the project's configuration instead of yours"},
+  {"name":"local","arg":"bool","default":null,"repeatable":false,"desc":"write to the project's git-ignored local configuration"},
+  {"name":"trust-project","arg":"bool","default":null,"repeatable":false,"desc":"also read the project's own plugins and settings"}
+ ]},
+{"path":["plugins","enable"],"usage":"sleipnir plugins enable ID... [flags]","summary":"Turns plugins on (in your configuration, or the project's with --project).","positional":[{"name":"ID","required":true,"desc":"plugins to turn on","variadic":true}],"source":"docs/CLI.md § sleipnir plugins","mode":"priv","why":"it changes your configuration: it asks for a confirmation first","when":[{"flag":"trust-project","mode":"priv"}],"parent":"plugins","flags":[
+  {"name":"cwd","arg":"string","default":null,"repeatable":false,"desc":"the project to look at (default: the current directory)"},
+  {"name":"project","arg":"bool","default":null,"repeatable":false,"desc":"write to the project's configuration instead of yours"},
+  {"name":"local","arg":"bool","default":null,"repeatable":false,"desc":"write to the project's git-ignored local configuration"},
+  {"name":"trust-project","arg":"bool","default":null,"repeatable":false,"desc":"also read the project's own plugins and settings"}
+ ]},
+{"path":["plugins","info"],"usage":"sleipnir plugins info ID [flags]","summary":"One plugin in full: state, why, what it needs and adds, its settings.","positional":[{"name":"ID","required":true,"desc":"the plugin's id, as `sleipnir plugins` lists it"}],"source":"docs/CLI.md § sleipnir plugins","mode":"run","when":[{"flag":"trust-project","mode":"priv"}],"parent":"plugins","flags":[
+  {"name":"cwd","arg":"string","default":null,"repeatable":false,"desc":"the project to look at (default: the current directory)"},
+  {"name":"trust-project","arg":"bool","default":null,"repeatable":false,"desc":"also read the project's own plugins and settings"},
+  {"name":"json","arg":"bool","default":null,"repeatable":false,"desc":"list and info: machine-readable output"}
+ ]},
+{"path":["plugins","list"],"usage":"sleipnir plugins list [flags]","summary":"Lists every plugin (the same as sleipnir plugins).","positional":[],"source":"docs/CLI.md § sleipnir plugins","mode":"run","when":[{"flag":"trust-project","mode":"priv"}],"parent":"plugins","flags":[
+  {"name":"cwd","arg":"string","default":null,"repeatable":false,"desc":"the project to look at (default: the current directory)"},
+  {"name":"trust-project","arg":"bool","default":null,"repeatable":false,"desc":"also read the project's own plugins and settings"},
+  {"name":"json","arg":"bool","default":null,"repeatable":false,"desc":"list and info: machine-readable output"}
+ ]},
+{"path":["plugins","profile"],"usage":"sleipnir plugins profile [NAME] [flags]","summary":"Lists the profiles, or chooses one: standard, minimal, team, headless.","positional":[{"name":"NAME","required":false,"desc":"standard, minimal, team or headless (none: list them)"}],"source":"docs/CLI.md § sleipnir plugins","mode":"priv","why":"with a name it changes your configuration: it asks for a confirmation first","when":[{"flag":"trust-project","mode":"priv"}],"parent":"plugins","flags":[
+  {"name":"cwd","arg":"string","default":null,"repeatable":false,"desc":"the project to look at (default: the current directory)"},
+  {"name":"project","arg":"bool","default":null,"repeatable":false,"desc":"write to the project's configuration instead of yours"},
+  {"name":"local","arg":"bool","default":null,"repeatable":false,"desc":"write to the project's git-ignored local configuration"},
+  {"name":"trust-project","arg":"bool","default":null,"repeatable":false,"desc":"also read the project's own plugins and settings"}
+ ]},
+{"path":["plugins","remove"],"usage":"sleipnir plugins remove ID","summary":"Uninstalls a plugin from ~/.sleipnir/plugins.","positional":[{"name":"ID","required":true,"desc":"the installed plugin to remove"}],"source":"docs/CLI.md § sleipnir plugins","mode":"priv","why":"it deletes an installed plugin: it asks for a confirmation first","parent":"plugins","flags":[]},
+{"path":["plugins","reset"],"usage":"sleipnir plugins reset ID... [flags]","summary":"Puts plugins back to what the profile says.","positional":[{"name":"ID","required":true,"desc":"plugins to put back to what the profile says","variadic":true}],"source":"docs/CLI.md § sleipnir plugins","mode":"priv","why":"it changes your configuration: it asks for a confirmation first","when":[{"flag":"trust-project","mode":"priv"}],"parent":"plugins","flags":[
+  {"name":"cwd","arg":"string","default":null,"repeatable":false,"desc":"the project to look at (default: the current directory)"},
+  {"name":"project","arg":"bool","default":null,"repeatable":false,"desc":"write to the project's configuration instead of yours"},
+  {"name":"local","arg":"bool","default":null,"repeatable":false,"desc":"write to the project's git-ignored local configuration"},
+  {"name":"trust-project","arg":"bool","default":null,"repeatable":false,"desc":"also read the project's own plugins and settings"}
+ ]},
+{"path":["plugins","set"],"usage":"sleipnir plugins set ID KEY=VALUE... [flags]","summary":"Changes a plugin's settings.","positional":[{"name":"ID","required":true,"desc":"the plugin"},{"name":"KEY=VALUE","required":true,"desc":"settings to write (KEY= removes one)","variadic":true}],"source":"docs/CLI.md § sleipnir plugins","mode":"priv","why":"it changes your configuration: it asks for a confirmation first","when":[{"flag":"trust-project","mode":"priv"}],"parent":"plugins","flags":[
+  {"name":"cwd","arg":"string","default":null,"repeatable":false,"desc":"the project to look at (default: the current directory)"},
+  {"name":"project","arg":"bool","default":null,"repeatable":false,"desc":"write to the project's configuration instead of yours"},
+  {"name":"local","arg":"bool","default":null,"repeatable":false,"desc":"write to the project's git-ignored local configuration"},
+  {"name":"trust-project","arg":"bool","default":null,"repeatable":false,"desc":"also read the project's own plugins and settings"}
+ ]},
 {"path":["recon"],"usage":"sleipnir recon [flags]","summary":"sleipnir recon [--budget N] [DIR] prints the deterministic project survey (layout, build and test commands, package docs, ranked declarations) that seeds the shared prompt layer, then [N tokens, M files considered]...","positional":[{"name":"DIR","required":false,"desc":"project directory (default: the current one)"}],"source":"docs/CLI.md § sleipnir recon","mode":"run","flags":[
   {"name":"budget","arg":"int","default":5000,"repeatable":false,"desc":"token budget for the survey"}
  ]},
@@ -850,6 +897,7 @@
 {"cmd":"/roles","args":"[role=m]","desc":"which model each role runs on; change one (restarts)","group":"a team, and the program","paletteArgs":"[role=model]","paletteDesc":"which model each role runs on; change one (the chat restarts with it)"},
 {"cmd":"/swarm","args":"<n> [flags]","desc":"start again as a manager and n workers","group":"a team, and the program","paletteArgs":"<n> [flags]","paletteDesc":"start again as a manager and n workers: /swarm 8 --verify \"go test {dirs}\" --isolation worktree"},
 {"cmd":"/restart","args":"[flags]","desc":"start again with other flags: --no-mcp, --cwd DIR, ...","group":"a team, and the program","paletteArgs":"[flags]","paletteDesc":"start the chat again with other flags: --no-mcp, --trust-project, --cwd DIR, ... (the conversation comes along when it can)"},
+{"cmd":"/plugins","args":"[on|off]","desc":"the plugins: list them, or switch one (/plugins off web)","group":"a team, and the program","paletteArgs":"[enable|disable|reset ID]","paletteDesc":"the plugins of this session: list them, or switch one on or off (it applies when the team starts again)"},
 {"cmd":"/agents","args":"","desc":"the team's agents and tasks (ctrl+g: cockpit)","group":"a team, and the program","paletteDesc":"the team's agents and tasks (ctrl+g: the cockpit)"},
 {"cmd":"/steer","args":"TEXT","desc":"tell the running turn something, without stopping it","group":"a team, and the program","paletteArgs":"TEXT","paletteDesc":"tell the running turn something without stopping it: the agent reads it with its next step"},
 {"cmd":"/queue","args":"[drop N]","desc":"what waits for the turn: list, drop one, or clear all","group":"a team, and the program","paletteArgs":"[drop N|clear]","paletteDesc":"the lines typed while a turn runs, sent when it is over: list them, drop one, or clear them"},

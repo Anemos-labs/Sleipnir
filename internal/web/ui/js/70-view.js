@@ -58,9 +58,11 @@
     unmount();
     const S = SL.sessions.active, root = mk('section', { class: 'view v-' + name, 'data-view': name, 'aria-label': def.title });
     V.host.appendChild(root);
-    const scope = makeScope(root, 'view:' + name); V.cur = { name, def, root, scope, params };
+    /* a view whose plugin is turned off (SL.plugins, 98c-ui-plugins.js) shows a short note in its place, with the way back */
+    const off = !!(SL.plugins && !SL.plugins.viewOn(name));
+    const scope = makeScope(root, 'view:' + name); V.cur = { name, def, root, scope, params, off };
     if (S) S.ui.view = name;
-    try { def.mount(scope, root, params || {}, S); } catch (e) { console.error(e); }
+    try { if (off) SL.plugins.placeholder(scope, root, name); else def.mount(scope, root, params || {}, S); } catch (e) { console.error(e); }
     V.mounts++; SL.bus.emit('view-mounted', name); SL.loop.dirty = true;
     return true;
   }

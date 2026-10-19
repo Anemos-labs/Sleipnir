@@ -11,6 +11,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/goal"
 	"github.com/anemos-labs/sleipnir/internal/lessons"
+	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"github.com/anemos-labs/sleipnir/internal/provider"
 )
 
@@ -46,10 +47,11 @@ func (s *Session) roleRef(role string) string {
 	return s.cfg.Models.Roles[role]
 }
 
-// buildLessons turns the lesson memory on when the embedder role names a model and the session has the global memory.
+// buildLessons turns the lesson memory on when the embedder role names a model, the session has the global memory and the lessons
+// plugin is on.
 func (s *Session) buildLessons() error {
 	ref := s.roleRef(EmbedderRole)
-	if ref == "" || s.opts.NoMemory {
+	if ref == "" || s.opts.NoMemory || !s.pluginOn(plugin.Lessons) {
 		return nil
 	}
 	base, key, headers, model, err := s.rawEndpoint(ref)

@@ -155,7 +155,8 @@ function instrument(SL) {
   wrapAll(SL.act, 'act:');
   Object.keys(SL.act).forEach(k => { const f = SL.act[k]; SL.act[k] = function () { f(); return { ok: true, done: Promise.resolve({ ok: true, data: {} }) }; }; });
   SL.views.show = name => { rec('view:' + name); return true; };
-  ui.settingsPage = id => rec('settings:' + id);
+  /* an id of an earlier version opens the page that has its cards now (98-ui-settings.js, ALIAS): the page it opens is what counts */
+  ui.settingsPage = id => rec('settings:' + (SL.toolkit.settings && SL.toolkit.settings.pageOf ? SL.toolkit.settings.pageOf(id) : id));
   ui.runCli = path_ => rec('runner:' + path_.join(' '));
   ui.nav.go = id => { rec('nav:' + id); return true; };
   ui.rail.focus = () => rec('rail:focus');
@@ -206,22 +207,22 @@ export function controlsOf(html) {
  * Entries are tried in order; the first whose pattern matches the control id of the page wins.
  */
 export const SETTING_MAP = [
-  // Models
+  // Models & roles
   [/^id:mq$|^flt:|^sel:|^do:refresh-models$|^cli\*$/, { scope: 'view' }],
+  // a switch that is also a plugin leads to it on the Plugins page
+  [/^do:open-plugins$/, { scope: 'view' }],
   [/^fav\*$/, { scope: 'config', keys: ['models.favorites'] }],
   [/^use\*$/, { scope: 'config', keys: ['models.default', 'models.roles.*'] }],
-  // Roles & effort
   [/^role\*$|^do:models-(apply|discard)$/, { scope: 'config', keys: ['models.default', 'models.roles.*'] }],
   [/^seg:effort$/, { scope: 'state', note: 'reasoning effort of the session (/effort); no configuration key' }],
   // Budget
   [/^id:bIn$|^do:budget(-off)?$/, { scope: 'config', keys: ['swarm.budget_usd'] }],
-  // Permissions
+  // Permissions & trust
   [/^mode:|^danger:/, { scope: 'config', keys: ['permissions.mode'] }],
   [/^do:rule-(add|tests)$|^id:rule(In|Eff)$|^rm\*$/, { scope: 'config', keys: ['permissions.allow', 'permissions.ask', 'permissions.deny'] }],
   [/^do:(try|mgr-refused)$|^id:try(Tool|Arg)$|^id:cf(In|Go)$|^do:danger-no$/, { scope: 'view' }],
-  // Trust
   [/^trust\*$|^do:forget-all$/, { scope: 'state', note: 'the trust ledger (a file of its own), not configuration' }],
-  // Run settings
+  // Team & run
   [/^step\*$|^id:rn$|^do:apply$/, { scope: 'flag', flag: 'swarm' }],
   [/^seg:isolation$/, { scope: 'config', keys: ['swarm.isolation'], flag: 'isolation' }],
   [/^id:rv$|^do:verify$/, { scope: 'flag', flag: 'verify' }],
@@ -232,21 +233,20 @@ export const SETTING_MAP = [
   [/^flag:noMcp$/, { scope: 'flag', flag: 'no-mcp' }],
   [/^flag:trustProject$/, { scope: 'flag', flag: 'trust-project' }],
   [/^do:copycli$/, { scope: 'view' }],
-  // MCP servers
+  // Connections: tool servers (MCP) and providers
   [/^mcp:(approve|revoke)$/, { scope: 'config', keys: ['mcp.*'], note: 'the approval of a project entry (a ledger), not the entry itself' }],
   [/^mcp:(test|reconnect)$/, { scope: 'view' }],
   [/^do:mcp-restart$/, { scope: 'view' }],
-  // Skills, commands and hooks
+  // Skills & extensions
   [/^cmd\*$|^pcmd\*$/, { scope: 'view' }],
-  // Providers
   [/^prov\*$/, { scope: 'state', note: 'the stored provider keys (auth.json), not configuration' }],
-  // Config layers
+  // Configuration
   [/^id:cq$/, { scope: 'view' }],
-  // Appearance and motion
+  // Appearance
   [/^seg:(hover|motion|density|cache|title|notify|navmode|radiomode)$/, { scope: 'browser' }],
   [/^id:notifySec$/, { scope: 'browser', note: 'after how many seconds a waiting question is notified, kept in this browser' }],
   [/^do:railreset$/, { scope: 'browser' }],
-  [/^do:dash-(edit|reset)$/, { scope: 'browser', note: 'the layout of the Cockpit\'s cards, kept in this browser' }],
+  [/^do:(dash-(edit|reset)|layout-(export|import|reset-all)|chrome-menu)$|^id:layoutFile$/, { scope: 'state', note: 'the card layout of every page (~/.sleipnir/web-layout.json through /api/layout, cached in this browser), not configuration' }],
   [/^do:tour$/, { scope: 'view' }],
 ];
 

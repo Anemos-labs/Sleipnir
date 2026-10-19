@@ -56,12 +56,18 @@
   /** An entry of the manager's log that is team activity (a worker's tool call, mail, a cache break, a compaction): it is shown
    * read-only in the Team activity feed. Everything else is the conversation with the manager. */
   function isFeed(e) { return e.k === 'feed' || e.k === 'break' || e.k === 'compact' || (e.k === 'stream' && e.ag !== 'mgr'); }
+  /** What the harness says about itself rather than about the work: the start-up lines (starting…, ready: model · mode · session) and
+   *  the warnings of loading the configuration and the extensions (a skill whose name differs from its directory, a hook, a command,
+   *  an agent definition, settings of the project that were ignored, a flag that has no effect). They go to the Notices line above the
+   *  conversation, collapsed, never into the conversation itself. */
+  const NOTICE_RE = /^(skills?|hooks?|commands?|agents?|roles?|mcp|config|plugins?|settings|output[- ]styles?|rules|permissions|trust)\b[^:]{0,240}:|^ignored security-sensitive settings|^--[a-z][a-z-]* (has no effect|is ignored)/i;
+  function isNotice(e) { return e.k === 'sys' && !e.ag && !e.open && !e.plan && typeof e.text === 'string' && (e.text === 'starting…' || /^ready: /.test(e.text) || NOTICE_RE.test(e.text)); }
 
   function mount(sc) {
     const talk = $('#talk'), feed = $('#feed'), pill = $('#newPill');
     /** a log view over the manager's channel: its own rows, scroll position and typing state (the chat and the Team activity feed are two of them) */
     const mkLog = (el, want, cap, none) => ({ el, want, cap, none, pos: 0, m: null, sid: null, mode: null, rows: [], stream: [], stick: true, newCount: 0, foldEl: null, nfold: 0, programmatic: false });
-    const TR = mkLog(talk, e => !isFeed(e), ROW_CAP, 'Nothing yet. Type a message, or / for commands.'), FD = mkLog(feed, isFeed, 90, 'The team has not done anything yet.');
+    const TR = mkLog(talk, e => !isFeed(e) && !isNotice(e), ROW_CAP, 'Your conversation with the manager appears here. Write below what you want done and press Enter; / lists the commands.'), FD = mkLog(feed, isFeed, 90, 'What the workers do (their tool calls, edits, mail and merges) appears here once the manager hands them work.');
 
     /* ---------- the logs ---------- */
     const atEdge = L => L.el.scrollHeight - L.el.scrollTop - L.el.clientHeight < 40;
@@ -106,8 +112,22 @@
     }
     function sync(force) {
       const S = SL.sessions.active; if (!S || !S.m) return; const m = S.m;
-      chHead(S, m); syncLog(TR, S, m, force); syncLog(FD, S, m, force); feedHead(S);
+      chHead(S, m); syncNotices(S, m, force); syncLog(TR, S, m, force); syncLog(FD, S, m, force); feedHead(S);
     }
+    /* ---------- the Notices line: the harness's own start-up lines and warnings, one collapsed line above the conversation ---------- */
+    const nBar = $('#noticeBar'), NT = { pos: 0, m: null, sid: null, list: [], sig: '' };
+    function syncNotices(S, m, force) {
+      if (!nBar) return; const list = m.chan.mgr || [];
+      if (force || NT.m !== m || NT.sid !== S.id || list.length < NT.pos) { NT.m = m; NT.sid = S.id; NT.pos = 0; NT.list = []; }
+      while (NT.pos < list.length) { const e = list[NT.pos++]; if (isNotice(e)) NT.list.push(e); }
+      const open = !!S.ui.noticesOpen, warn = NT.list.filter(e => e.glyph === '⚠').length, sig = S.id + '|' + NT.list.length + '|' + open; if (NT.sig === sig) return; NT.sig = sig;
+      nBar.hidden = !NT.list.length; if (!NT.list.length) { nBar.innerHTML = ''; return; }
+      const sum = warn ? warn + ' warning' + (warn === 1 ? '' : 's') + ' from loading the configuration' : 'start-up messages, nothing to fix';
+      nBar.classList.toggle('warn', !!warn);
+      nBar.innerHTML = '<button type="button" class="nb-tog" data-ntog aria-expanded="' + open + '" aria-controls="noticeList" title="' + (open ? 'Hide' : 'Show') + ' what Sleipnir said while it started this session"><span class="nb-g" aria-hidden="true">' + (warn ? '⚠' : 'ⓘ') + '</span><span class="nb-t">Notices</span><span class="nb-s">' + esc(sum) + '</span><span class="nb-c" aria-hidden="true">' + (open ? '▾' : '▸') + '</span></button>' +
+        (open ? '<ul class="nb-list" id="noticeList">' + NT.list.map(e => '<li class="' + (e.glyph === '⚠' ? 'warm' : '') + '"><span class="lg" aria-hidden="true">' + esc(e.glyph || '◇') + '</span><span>' + esc(e.text) + '</span></li>').join('') + '</ul>' : '');
+    }
+    if (nBar) sc.listen(nBar, 'click', e => { if (!e.target.closest('[data-ntog]')) return; const S = SL.sessions.active; if (!S) return; S.ui.noticesOpen = !S.ui.noticesOpen; NT.sig = ''; syncNotices(S, S.m, false); });
     /** the task thread of an agent as a stepper: lease, work, submit, verify, merge (drawn in the read-only Details drawer) */
     function thread(m, A) {
       const T = A.task && m.tasks[A.task]; if (!T) return '<div class="tsteps off">no task: ' + esc(A.doing || '') + '</div>';
@@ -116,11 +136,11 @@
       return '<div class="tsteps" role="img" aria-label="' + esc(T.id + ' ' + T.title + ': ' + (T.st === 'merged' ? 'merged' : T.st === 'todo' ? 'waits' + (deps.length ? ' for ' + deps.join(' ') : '') : asks ? 'asks you' : names[Math.min(4, idx - 1)])) + '"><span class="tt" data-task="' + esc(T.id) + '"><b>' + esc(T.id) + '</b> ' + esc(T.title) + '</span><ol>' + names.map((n, i) => { const done = i + 1 < idx || idx === 5, cur = i + 1 === idx && idx < 5; return '<li class="' + (done ? 'done' : cur ? 'cur' + (asks ? ' ask' : '') : '') + '"><i aria-hidden="true">' + (done ? '✓' : cur ? (asks ? '?' : '●') : '·') + '</i>' + n + '</li>'; }).join('') + '</ol>' + (T.st === 'todo' && deps.length ? '<span class="dim tw">waits for ' + esc(deps.join(' ')) + '</span>' : '') + '</div>';
     }
     ui.thread = thread;
-    /** the manager's header: the person talks to the manager only; the one button interrupts the running turn */
+    /** the line that interrupts the running turn: shown only while a turn runs (what the manager does is the status bar's) */
     function chHead(S, m) {
       let hd = $('#chHead'); if (!hd) { hd = mk('div', { id: 'chHead', class: 'chhead' }); talk.parentNode.parentNode.insertBefore(hd, $('#qSlot')); }
-      const A = m.ag.mgr, st = A.spawned ? A.state : 'idle', g = ui.SG[st] ? ui.SG[st][0] : '·';
-      const h = '<span class="agid" style="color:var(--c-mgr)">mgr</span><span class="st-' + st + ' mst" title="' + esc(A.doing || '') + '">' + g + ' ' + esc(A.doing || st) + '</span><span class="sp"></span><button class="btn sm" type="button" data-ch="turn" title="Esc: interrupt the turn and pause the goal">Interrupt turn</button>';
+      const run = !S.readOnly && turnBusy(S); hd.hidden = !run;
+      const h = run ? '<span class="dim">the manager is working on your message</span><span class="sp"></span><button class="btn sm" type="button" data-ch="turn" title="Esc: interrupt the turn and pause the goal">Interrupt turn <kbd>esc</kbd></button>' : '';
       if (hd._h !== h) { hd._h = h; hd.innerHTML = h; }
     }
     /** the Team activity section: read-only, collapsible; it never takes an input */
@@ -195,6 +215,7 @@
     function composerUpdate(S) {
       feed.classList.toggle('quiet', S.ui.verbose === false); feed.classList.toggle('verbose', S.ui.verbose === true); const qh = S.ui.queued.map(queuedHtml).join(''), ql = $('#queuedLines'); if (ql._h !== qh) { ql._h = qh; ql.innerHTML = qh; }
       const hint = $('#cHint'), ht = !S.readOnly && turnBusy(S) ? HINT_BUSY : HINT_IDLE; if (hint && hint.textContent !== ht) { hint.textContent = ht; hint.title = ht === HINT_BUSY ? HINT_BUSY_T : ''; }
+      paintDelivery(S);
       const ro = !!S.readOnly, t = S.placeholder ? 'start a session first: + New' : S.follow ? 'watching ' + S.sid + ' · read-only · the run belongs to another process' : S.recorded ? 'a recorded session is read-only: ↺ Resume continues it' : '';
       if (inp.disabled !== ro) { inp.disabled = ro; $('.send', form).disabled = ro; } if (inp.title !== t) inp.title = t;
     }
@@ -226,7 +247,7 @@
       if (v.charAt(0) === '/') { const r = SL.palette.runLine(v); if (r && r.ok === false) restore(S, v, pasted); else if (r && r.done) r.done.then(res => { if (res && res.ok === false && res.code !== 'aborted' && !restore(S, v, pasted)) ui.toast('not sent: ' + clip1(v, 60) + ' (↑ brings it back)', 'warm'); }); return; }
       /* the agent gets the pasted text; the transcript keeps the chips */
       const full = v.replace(/\[pasted text #(\d+) \+\d+ lines\]/g, (m0, n) => pasted[+n - 1] != null ? pasted[+n - 1] : m0);
-      const delivery = { autoFix: !!$('#autoFixCI').checked, autoMerge: !!$('#autoMergePR').checked };
+      const off = !!deliveryBlock(S), delivery = { autoFix: !off && !!$('#autoFixCI').checked, autoMerge: !off && !!$('#autoMergePR').checked };
       const r = SL.act.send(v, undefined, Object.assign({ text: full }, delivery));
       if (r && r.ok !== false) { S.ui.delivery = {}; $('#autoFixCI').checked = false; $('#autoMergePR').checked = false; }
       /* until the server took it, the line is not gone: refused, it comes back into the composer */
@@ -235,6 +256,31 @@
       composerUpdate(S);
     }
     ['autoFixCI','autoMergePR'].forEach(id => sc.listen($('#'+id), 'change', () => { const S = SL.sessions.active; if (S) S.ui.delivery = { autoFix: !!$('#autoFixCI').checked, autoMerge: !!$('#autoMergePR').checked }; }));
+    /* ---------- the GitHub switches: what they do, and why they are off when they cannot work ---------- */
+    const DLV_ON = 'GitHub, for your next message only: open a pull request, fix CI and reviews, merge when green.';
+    const DLV_TIP = { autoFixCI: 'Sleipnir opens a pull request for the work of your next message, then fixes failing CI checks and review comments until they pass (needs the gh command signed in to GitHub)', autoMergePR: 'Sleipnir merges that pull request on GitHub once its checks and the repository\'s rules pass (needs the gh command signed in to GitHub)' };
+    /** Why the switches cannot be used now ('' when they can): the Delivery plugin is off, or the session is read-only. Whether the gh
+     *  command is signed in is not known to the page (no route or field reports it); a send whose GitHub step fails says so in the chat. */
+    function deliveryBlock(S) {
+      if (SL.plugins && !SL.plugins.on('delivery')) return 'plugin';
+      if (S.readOnly) return 'ro';
+      const dp = SL.plugins && SL.plugins.find && SL.plugins.find('delivery'); if (dp && dp.unavailable) return 'gh';   // the server found no gh command
+      return '';
+    }
+    const DLV = { sig: '' };
+    function paintDelivery(S) {
+      const why = deliveryBlock(S), sig = S.id + '|' + why; if (DLV.sig === sig) return; DLV.sig = sig;
+      const fx = $('#autoFixCI'), mg = $('#autoMergePR'), line = $('#deliveryWhy'), box = $('#deliveryCtl'); if (!fx || !mg || !line) return;
+      fx.disabled = mg.disabled = !!why; if (box) box.classList.toggle('off', !!why);
+      if (why) { fx.checked = mg.checked = false; if (S.ui.delivery && (S.ui.delivery.autoFix || S.ui.delivery.autoMerge)) S.ui.delivery = {}; }
+      const reason = why === 'plugin' ? 'Off: the Delivery plugin is turned off. ' : why === 'ro' ? 'Off: a read-only session starts no GitHub work. ' : why === 'gh' ? 'Off: GitHub delivery needs the gh command, which is not installed. ' : '';
+      [['autoFixLab', 'autoFixCI'], ['autoMergeLab', 'autoMergePR']].forEach(([l, id]) => { const el = $('#' + l); if (el) el.title = reason + DLV_TIP[id]; });
+      line.innerHTML = why === 'plugin' ? 'Off: turn on the Delivery plugin to let Sleipnir open, fix and merge pull requests (needs gh signed in to GitHub). <button type="button" class="linkbtn" data-dlv="plugins">Open Plugins</button>'
+        : why === 'ro' ? 'Off: a read-only session starts no GitHub work.'
+        : why === 'gh' ? 'Off: GitHub delivery needs the <span class="mono">gh</span> command, which is not installed on the machine running Sleipnir. Install it and run <span class="mono">gh auth login</span>.' : esc(DLV_ON);
+    }
+    sc.listen(form, 'click', e => { if (e.target.closest('[data-dlv="plugins"]')) { e.preventDefault(); if (ui.nav) { $('#app').dataset.pv = 'main'; ui.nav.go('plugins'); } else SL.views.show('plugins'); } });
+    sc.on('plugins-changed', () => { DLV.sig = ''; const S = SL.sessions.active; if (S) paintDelivery(S); });
     sc.listen(inp, 'input', () => { autosize(); SL.time.noteKey(); updateSlash(); const S = SL.sessions.active; if (S) S.ui.draft = inp.value; });
     sc.listen(inp, 'keydown', e => {
       SL.time.noteKey();
@@ -280,5 +326,5 @@
     sc.on('files-ready', () => { if (SLASH.mode === 'file' && document.activeElement === inp) updateSlash(); });
     ui.chat = { sync, TR, FD };
   }
-  SL.chat = { mount, rowHtml, ROW_CAP };
+  SL.chat = { mount, rowHtml, ROW_CAP, isNotice };
 })(SL);

@@ -36,6 +36,11 @@ func settingsRoutes(repo string) []route {
 		{method: "POST", path: "/api/providers/recheck", noBody: true},
 		{method: "POST", path: "/api/providers/heimdallm/signout", noBody: true},
 		{method: "GET", path: "/api/sessions/t1/config"},
+		{method: "GET", path: "/api/plugins"},
+		{method: "GET", path: "/api/sessions/t1/plugins"},
+		{method: "POST", path: "/api/plugins/mailman", body: pluginWrite{Config: map[string]any{}}},
+		{method: "POST", path: "/api/plugins/profile", body: profileWrite{Profile: "standard"}},
+		{method: "DELETE", path: "/api/plugins/mailman", noBody: true},
 	}
 }
 

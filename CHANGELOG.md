@@ -7,6 +7,29 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Everything beyond a small core is a plugin you can switch on and off
+  (docs/PLUGINS.md): the tool families, skills, built-in skills, custom
+  commands, agent definitions, hooks, instruction files, the team and each
+  worker role, the mailman, docs on autopilot, manager approvals, push
+  progress, standing goals, GitHub delivery, the project survey, the update
+  check, and each view of the web page. New key `plugins` (`profile`,
+  `enabled`, `settings`), new command `sleipnir plugins`, new slash command
+  `/plugins`, a Plugins view on the web page, and the profiles `standard`,
+  `minimal`, `team` and `headless`. `swarm.mailman`, `swarm.auto_docs`,
+  `swarm.push_progress`, `permissions.manager_approves`,
+  `tools.builtin_skills`, `--no-web`, `--no-mcp`, `--no-recon`, `--mailman`,
+  `--auto-docs` and `--no-memory` (for the new `lessons` plugin) keep working as layers of the plugin that owns them.
+  External plugins (a directory with `plugin.json` and any of skills,
+  commands, agents, hooks and MCP servers, in the Claude Code layout too)
+  install with `sleipnir plugins add` and are off until turned on. Switching
+  a plugin on in a project's file needs the project to be trusted. Every card
+  on every page of the web UI can now be moved, resized, hidden and added
+  back, as the Cockpit's could. The session log gains the events `plugins`
+  and `plugin.state`. Prompt bytes: none change with the default plugins;
+  turning a tool plugin off removes its tools from the tool list, and turning
+  `skills`, `instructions` or `recon` off removes their part of the shared
+  layer, each costing one cache write when the team starts again.
+
 - The branch that progress pushing writes on the remote is named after the
   work, not the session id: `sleipnir/<topic>-<session suffix>`, where the
   topic is a slug of the standing goal's objective, or else of the first merged

@@ -7,14 +7,27 @@
 .tgh{display:flex;gap:12px;align-items:baseline;border-bottom:1px solid var(--line);padding:0 2px 5px;margin-bottom:8px}
 .tgh h2{margin:0;font:700 13px var(--f-lab);letter-spacing:.18em;text-transform:uppercase;color:var(--fg2)}
 .tcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:var(--gap)}
-.tcx{display:flex;flex-direction:column;gap:7px;background:var(--panel);border:1px solid var(--line);padding:10px 12px 10px;position:relative}
-.tcx:hover{border-color:var(--line2);background:var(--panel2)}
-.tcx header{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.tcx header b{font:700 13.5px var(--f-num);color:var(--bright)}
-.tcx p{margin:0;font-size:12.5px;line-height:1.4;color:var(--fg2);flex:1;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
-.tcx .subs{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
-.chip.sub{cursor:pointer}.chip.sub:hover{border-color:var(--c-mgr);color:var(--bright)}
-.tcx footer{display:flex;gap:6px;flex-wrap:wrap}
+.tg{background:var(--panel);border:1px solid var(--line);padding:9px 12px 4px}
+.tg+.tg{margin-top:var(--gap)}
+.tgh .dim{font:400 12.5px var(--f-ui)}
+.tlist{list-style:none;margin:0;padding:0}
+.trow{display:grid;grid-template-columns:minmax(200px,260px) minmax(0,1fr) auto;grid-template-areas:"t s a" "t c a";column-gap:16px;row-gap:5px;align-items:start;padding:9px 2px;border-top:1px solid var(--line)}
+.tlist .trow:first-child{border-top:0}
+.trow:hover{background:var(--panel2)}
+.tr-t{grid-area:t;display:flex;flex-direction:column;gap:3px;min-width:0;align-items:flex-start}
+.tr-t b{font:600 14px/1.25 var(--f-ui);color:var(--bright)}
+.tr-t .mono{font-size:12px;color:var(--dim)}
+.tr-s{grid-area:s;margin:0;font:400 12.5px/1.45 var(--f-ui);color:var(--fg2);min-width:0}
+.trow .subs{grid-area:c;display:flex;flex-wrap:wrap;gap:4px;align-items:center;min-width:0}
+.chip.sub.hit{border-color:var(--fe);color:var(--fe)}
+.chip.sub.more{color:var(--dim)}
+.tr-a{grid-area:a;display:flex;flex-direction:column;align-items:flex-end;gap:4px;padding-top:1px}
+.tr-a .btn{min-width:92px;justify-content:center}
+.tr-a .lnk{font-size:11px;color:var(--dim)}
+.tnone{margin:0;padding:10px 4px}
+.tfind{padding:2px 0}
+.tfind .tcount{font:500 12px var(--f-num)}
+@container main (max-width:760px){.trow{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"t a" "s s" "c c"}.tr-t b{font-size:13.5px}}
 /* doctor */
 .docv{display:grid;grid-template-columns:minmax(300px,380px) minmax(0,1fr);gap:var(--gap);align-items:stretch;height:100%;min-height:0}
 .dv-out{height:100%;min-height:360px}

@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"fmt"
+	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"sort"
 	"strings"
 
@@ -18,6 +19,9 @@ const MinTeamWorkers = 8
 // autoDocsOn reports whether the session asks for auto-docs: Options.AutoDocs, else
 // swarm.auto_docs, else true.
 func (s *Session) autoDocsOn() bool {
+	if s.plugins != nil {
+		return s.plugins.On(plugin.AutoDocs) // --auto-docs and swarm.auto_docs are layers of the plugin's state
+	}
 	if s.opts.AutoDocs != nil {
 		return *s.opts.AutoDocs
 	}
@@ -181,6 +185,9 @@ func (s *Session) ManagerApproves() bool { return len(s.team) > 0 && s.managerAp
 // managerApprovesOn reports whether the manager answers its workers' routine permission questions: Options.ManagerApproves, else
 // permissions.manager_approves, else true.
 func (s *Session) managerApprovesOn() bool {
+	if s.plugins != nil {
+		return s.plugins.On(plugin.ManagerApproves) // --manager-approves and permissions.manager_approves are layers of it
+	}
 	if s.opts.ManagerApproves != nil {
 		return *s.opts.ManagerApproves
 	}

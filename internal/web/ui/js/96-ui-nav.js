@@ -1,8 +1,10 @@
 /* 96-ui-nav.js: the Dock's workspace shell: the left navigation rail (SL.ui.nav), the persistent Radio rail's collapse and resize (SL.ui.rail),
  * the `g` then letter chords, and the phone's bottom bar. Mounted once under the shell scope; it renders from the active session.
  *
- * The rail items are views of the same page: Cockpit, Files / Changes / Checkpoints (three tabs of ONE Workspace view), Cache, Mail, Board,
- * Replay, Sessions, Tools, Settings; `Radio` is not a view: it opens the Radio rail on the right and focuses its composer. */
+ * The rail items are views of the same page, in three groups: Work (Cockpit, Board, Changes, Files), Inspect (Checkpoints, Merge,
+ * Mail, Cache, Replay) and Manage (Sessions, Plugins, Settings, Tools); Files, Changes, Checkpoints and Merge are four tabs of ONE
+ * Workspace view. Every label is a whole word, in the narrow rail too. `Talk to manager` (the Radio rail, `g r`) is not a view: it
+ * opens the Radio rail on the right and focuses its composer. The ids and the `g` chords of the items do not change with their order. */
 (function (SL) {
   'use strict';
   const U = SL.u, { $, $$, esc, mk } = U, calc = SL.calc, ui = SL.ui = SL.ui || {};
@@ -19,33 +21,39 @@
     board: svg('<rect x="3" y="3.4" width="3.8" height="13.2" rx=".9"/><rect x="8.1" y="3.4" width="3.8" height="9" rx=".9"/><rect x="13.2" y="3.4" width="3.8" height="11" rx=".9"/>'),
     replay: svg('<circle cx="10" cy="10" r="7.2"/><path d="M8.2 6.9l5 3.1-5 3.1z" fill="currentColor"/>'),
     sessions: svg('<rect x="2.6" y="7" width="11" height="9.4" rx="1.3"/><path d="M5.6 7V5.3c0-.7.5-1.3 1.3-1.3h8c.7 0 1.3.6 1.3 1.3v6.4c0 .7-.6 1.3-1.3 1.3H13.6"/>'),
+    plugins: svg('<path d="M3.4 7.2h3.3a1.9 1.9 0 1 1 3.6 0h3.3v3.3a1.9 1.9 0 1 1 0 3.6v2.5H3.4z"/>'),
     tools: svg('<rect x="2.6" y="3.6" width="14.8" height="12.8" rx="1.6"/><path d="M6 8l3 2.2L6 12.4M10.8 13h3.6"/>'),
     settings: svg('<path d="M3 6h14M3 10h14M3 14h14"/><circle cx="7" cy="6" r="1.9" fill="var(--panel)"/><circle cx="13" cy="10" r="1.9" fill="var(--panel)"/><circle cx="8.6" cy="14" r="1.9" fill="var(--panel)"/>'),
     more: svg('<circle cx="4.5" cy="10" r="1.3" fill="currentColor" stroke="none"/><circle cx="10" cy="10" r="1.3" fill="currentColor" stroke="none"/><circle cx="15.5" cy="10" r="1.3" fill="currentColor" stroke="none"/>'),
   };
-  /** id, view, tab (Workspace), label, chord letter, group */
+  /** id, view, tab (Workspace), label, short (the narrow rail's label, a whole word), chord letter, group, what it is (its tooltip) */
   const ITEMS = [
-    { id: 'cockpit', view: 'cockpit', label: 'Cockpit', key: 'c', grp: 'team' },
-    { id: 'radio', label: 'Radio', key: 'r', radio: true },
-    { id: 'files', view: 'workspace', tab: 'files', label: 'Files', key: 'f', grp: 'workspace' },
-    { id: 'changes', view: 'workspace', tab: 'changes', label: 'Changes', key: 'h' },
-    { id: 'checkpoints', view: 'workspace', tab: 'checkpoints', label: 'Checkpoints', key: 'k', short: 'Points' },
-    { id: 'merge', view: 'workspace', tab: 'merge', label: 'Merge', key: 'q' },
-    { id: 'cache', view: 'cache', label: 'Cache', key: 'a', grp: 'observe' },
-    { id: 'mail', view: 'mail', label: 'Mail', key: 'm' },
-    { id: 'board', view: 'board', label: 'Board', key: 'b' },
-    { id: 'replay', view: 'replay', label: 'Replay', key: 'p' },
-    { id: 'sessions', view: 'sessions', label: 'Sessions', key: 's', grp: 'manage' },
-    { id: 'tools', view: 'tools', label: 'Tools', key: 't' },
-    { id: 'settings', view: 'settings', label: 'Settings', key: 'e' },
+    { id: 'radio', label: 'Talk to manager', short: 'Talk', key: 'r', radio: true, about: 'the Radio rail on the right: your conversation with the manager' },
+    { id: 'cockpit', view: 'cockpit', label: 'Cockpit', key: 'c', grp: 'work', about: 'the team at a glance' },
+    { id: 'board', view: 'board', label: 'Board', key: 'b', about: 'the tasks and what each waits for' },
+    { id: 'changes', view: 'workspace', tab: 'changes', label: 'Changes', key: 'h', about: 'the files the team changed, with their diffs' },
+    { id: 'files', view: 'workspace', tab: 'files', label: 'Files', key: 'f', about: 'the project\'s files, as of any checkpoint' },
+    { id: 'checkpoints', view: 'workspace', tab: 'checkpoints', label: 'Checkpoints', key: 'k', grp: 'inspect', about: 'the saved states of the files, to compare or roll back' },
+    { id: 'merge', view: 'workspace', tab: 'merge', label: 'Merge', key: 'q', about: 'what is verified and merged, and applying it' },
+    { id: 'mail', view: 'mail', label: 'Mail', key: 'm', about: 'the messages the agents send each other' },
+    { id: 'cache', view: 'cache', label: 'Cache', key: 'a', about: 'how much of each prompt was read from the cache, and why not' },
+    { id: 'replay', view: 'replay', label: 'Replay', key: 'p', about: 'the session as a recording' },
+    { id: 'sessions', view: 'sessions', label: 'Sessions', key: 's', grp: 'manage', about: 'live and recorded sessions' },
+    { id: 'plugins', view: 'plugins', label: 'Plugins', key: 'u', about: 'turn parts of Sleipnir on and off' },
+    { id: 'settings', view: 'settings', label: 'Settings', key: 'e', about: 'models, budget, permissions and the rest' },
+    { id: 'tools', view: 'tools', label: 'Tools', key: 't', about: 'every sleipnir command, with a form' },
   ];
-  const GRP = { team: 'team', workspace: 'workspace', observe: 'observe', manage: 'manage' };
+  const GRP = { work: 'Work', inspect: 'Inspect', manage: 'Manage' };
   const OWN = { runner: 'tools', doctor: 'tools', schedule: 'tools', kit: '' };    // views that belong to a rail item
   const PREF_KEY = 'sleipnir.web.dock';
   const pref = { nav: null, rail: 'open', railW: 344 };
   try { const o = JSON.parse(localStorage.getItem(PREF_KEY) || '{}'); if (o.nav === 'rail' || o.nav === 'wide') pref.nav = o.nav; if (o.rail === 'min' || o.rail === 'open') pref.rail = o.rail; if (o.railW >= 280 && o.railW <= 640) pref.railW = o.railW; } catch (e) { /* no storage: defaults */ }
   const save = () => { try { localStorage.setItem(PREF_KEY, JSON.stringify(pref)); } catch (e) { /* ignore */ } };
   const isPhone = () => window.innerWidth <= 900;
+  /** whether a view's plugin is on (SL.plugins, 98c-ui-plugins.js; everything is on while there is no catalogue) */
+  const viewOn = v => !v || !SL.plugins || SL.plugins.viewOn(v);
+  /** the rail items whose view is on: an item of a view that is turned off leaves the rail, the chords and the phone's bars */
+  const shown = () => ITEMS.filter(it => it.radio || viewOn(it.view));
 
   /** where the view currently shown sits in the rail */
   function currentId(S) {
@@ -80,15 +88,15 @@
     const wide = () => (pref.nav || (window.innerWidth >= 1700 ? 'wide' : 'rail')) === 'wide';
     function paintNav(S) {
       const cur = currentId(S), bd = badges(S), w = wide(), railOpen = app.dataset.rail === 'open';
-      const nd = SL.sessions.needs().reduce((n, x) => n + (x.waiting || 1), 0), sig = [cur, w, railOpen, SL.settings.cache, Object.keys(bd).map(k => k + (bd[k] && bd[k][0])).join(','), S && S.id, nd].join('|'); if (N.sig === sig) return; N.sig = sig;
+      const nd = SL.sessions.needs().reduce((n, x) => n + (x.waiting || 1), 0), sig = [cur, w, railOpen, SL.settings.cache, SL.plugins ? SL.plugins.ver : 0, Object.keys(bd).map(k => k + (bd[k] && bd[k][0])).join(','), S && S.id, nd].join('|'); if (N.sig === sig) return; N.sig = sig;
       app.dataset.navmode = w ? 'wide' : 'rail'; let g = null;
-      const items = ITEMS.map(it => {
-        const b = bd[it.id], isCur = !it.radio && it.id === cur, head = it.grp && it.grp !== g ? (g = it.grp, (g !== 'team' ? '<span class="nvh" aria-hidden="true">' + GRP[g] + '</span>' : '')) : '';
-        return head + '<button class="nvi" type="button" data-nav="' + it.id + '"' + (isCur ? ' aria-current="page"' : '') + (it.radio ? ' aria-pressed="' + railOpen + '" aria-controls="rail"' : '') + (b ? ' aria-label="' + esc(it.label + ', ' + b[2]) + '"' : '') + ' title="' + esc(it.label + (it.radio ? ' · opens the Radio rail' : '') + ' (g ' + it.key + ')') + '">' + ICONS[it.id] + '<span class="nl">' + esc(w || !it.short ? it.label : it.short) + '</span><kbd class="nk">g ' + it.key + '</kbd>' + (b ? '<span class="nbd ' + (b[1] || '') + '" aria-hidden="true">' + esc(b[0]) + '</span>' : '') + '</button>';
+      const items = shown().map(it => {
+        const b = bd[it.id], isCur = !it.radio && it.id === cur, head = it.grp && it.grp !== g ? (g = it.grp, '<span class="nvh" aria-hidden="true">' + GRP[g] + '</span>') : '';
+        return head + '<button class="nvi' + (it.radio ? ' nvradio' : '') + '" type="button" data-nav="' + it.id + '"' + (isCur ? ' aria-current="page"' : '') + (it.radio ? ' aria-pressed="' + railOpen + '" aria-controls="rail"' : '') + ' aria-label="' + esc(it.label + (b ? ', ' + b[2] : '')) + '" title="' + esc(it.label + ': ' + it.about + ' (g ' + it.key + ')') + '">' + ICONS[it.id] + '<span class="nl">' + esc(w || !it.short ? it.label : it.short) + '</span><kbd class="nk">g ' + it.key + '</kbd>' + (b ? '<span class="nbd ' + (b[1] || '') + '" aria-hidden="true">' + esc(b[0]) + '</span>' : '') + '</button>';
       }).join('');
       /* Needs you, on top of every view: how many questions wait in every session and how long the oldest has; it opens that one */
       const need = nd ? '<button class="nvi nvneed" type="button" data-needgo aria-label="' + nd + ' question' + (nd === 1 ? '' : 's') + ' wait for you: open the oldest" title="open the question that has waited longest"><span class="nvg nyq" aria-hidden="true">?</span><span class="nl">Needs you</span><span class="nbd warm" aria-hidden="true">' + nd + '</span><span class="nyage num" data-needage></span></button>' : '';
-      nav.innerHTML = '<div class="nv-list">' + need + items + '</div><button class="nvt" type="button" id="nvTog" aria-expanded="' + w + '" title="' + (w ? 'Narrow the rail' : 'Widen the rail: labels and chord keys') + '"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="' + (w ? 'M10 3L5 8l5 5' : 'M6 3l5 5-5 5') + '" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="nl">' + (w ? 'Narrow' : 'Widen') + '</span></button><div class="chordhint" id="chordHint" hidden></div>';
+      nav.innerHTML = '<div class="nv-list">' + need + items + '</div><button class="nvt" type="button" id="nvTog" aria-expanded="' + w + '" title="' + (w ? 'Collapse the menu to icons and short labels' : 'Expand the menu: whole labels, groups and the g keys') + '"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="' + (w ? 'M10 3L5 8l5 5' : 'M6 3l5 5-5 5') + '" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="nl">' + (w ? 'Collapse' : 'Expand') + '</span></button><div class="chordhint" id="chordHint" hidden></div>';
       N.hint = $('#chordHint', nav); if (nd && ui.approvals && ui.approvals.paintAges) ui.approvals.paintAges();
       paintPhone(S, cur);
     }
@@ -106,16 +114,17 @@
     sc.on('view-mounted', () => { N.sig = ''; paintNav(SL.sessions.active); });
     sc.on('activated', () => { N.sig = ''; });
     sc.on('needs-changed', () => { N.sig = ''; });
+    sc.on('plugins-changed', () => { N.sig = ''; paintNav(SL.sessions.active); });
     sc.update(S => { if (S) paintNav(S); });
     sc.listen(window, 'resize', () => { N.sig = ''; });
 
     /* ---------- chords: g then a letter ---------- */
     const CH = { until: 0 };
-    function chordShow(on) { if (!N.hint) return; N.hint.hidden = !on; if (on) N.hint.innerHTML = '<b>g</b> then ' + ITEMS.map(it => '<span><kbd>' + it.key + '</kbd> ' + esc(it.label.toLowerCase()) + '</span>').join(''); }
+    function chordShow(on) { if (!N.hint) return; N.hint.hidden = !on; if (on) N.hint.innerHTML = '<b>g</b> then ' + shown().map(it => '<span><kbd>' + it.key + '</kbd> ' + esc(it.label.toLowerCase()) + '</span>').join(''); }
     /** the keyboard handler calls this for a plain key press outside fields; returns true when it consumed the key */
     function chord(key) {
       const now = SL.time.T.wall;
-      if (CH.until > now) { CH.until = 0; chordShow(false); const it = ITEMS.find(x => x.key === key.toLowerCase()); if (it) { go(it.id); return true; } return key === 'g'; }
+      if (CH.until > now) { CH.until = 0; chordShow(false); const it = shown().find(x => x.key === key.toLowerCase()); if (it) { go(it.id); return true; } return key === 'g'; }
       if (key === 'g') { CH.until = now + 1500; chordShow(true); sc.timeout(() => { if (CH.until && SL.time.T.wall >= CH.until - 1) { CH.until = 0; chordShow(false); } }, 1600); return true; }
       return false;
     }
@@ -123,7 +132,7 @@
     /* ---------- phone: a bottom bar of five ---------- */
     const mnav = $('#mnav');
     function paintPhone(S, cur) {
-      const pv = app.dataset.pv, nd = SL.sessions.needs().length, items = [['cockpit', 'Cockpit'], ['radio', 'Radio'], ['changes', 'Changes'], ['sessions', 'Sessions'], ['more', 'More']];
+      const pv = app.dataset.pv, nd = SL.sessions.needs().length, items = [['cockpit', 'Cockpit'], ['radio', 'Talk'], ['changes', 'Changes'], ['sessions', 'Sessions'], ['more', 'More']].filter(([k]) => k === 'more' || shown().some(it => it.id === k));
       mnav.innerHTML = items.map(([k, t]) => { const on = k === 'radio' ? pv === 'radio' : (pv !== 'radio' && k === cur); return '<button type="button" data-n="' + k + '"' + (on ? ' aria-current="page"' : '') + '><span class="g">' + ICONS[k === 'more' ? 'more' : k] + '</span>' + t + (k === 'radio' && nd ? '<span class="ping"></span>' : '') + '</button>'; }).join('');
     }
     sc.listen(mnav, 'click', e => {
@@ -132,11 +141,12 @@
       else if (k === 'more') moreSheet(); else { app.dataset.pv = 'main'; go(k); }
     });
     function moreSheet() {
-      ui.modal({ title: 'Views', kicker: 'g then a letter', desc: 'every screen', color: 'var(--fe)', body: '<div class="moregrid">' + ITEMS.filter(it => !it.radio).map(it => '<button class="btn more" type="button" data-nav="' + it.id + '">' + ICONS[it.id] + '<span>' + esc(it.label) + '</span></button>').join('') + '<button class="btn more" type="button" data-pal>' + ICONS.tools + '<span>Command palette</span></button></div>',
+      const grp = Object.keys(GRP).map(k => { const its = []; let in1 = false; shown().forEach(it => { if (it.grp) in1 = it.grp === k; if (in1 && !it.radio) its.push(it); }); return its.length ? '<h3 class="lab moreh">' + GRP[k] + '</h3><div class="moregrid">' + its.map(it => '<button class="btn more" type="button" data-nav="' + it.id + '">' + ICONS[it.id] + '<span>' + esc(it.label) + '</span></button>').join('') + '</div>' : ''; }).join('');
+      ui.modal({ title: 'Views', kicker: 'g then a letter', desc: 'every screen of the page, by what it is for', color: 'var(--fe)', body: grp + '<h3 class="lab moreh">Anything else</h3><div class="moregrid"><button class="btn more" type="button" data-pal>' + ICONS.tools + '<span>Command palette</span></button></div>',
         onMount(b, scm, close) { scm.listen(b, 'click', e => { const x = e.target.closest('[data-nav]'); if (x) { close(); app.dataset.pv = 'main'; go(x.dataset.nav); } else if (e.target.closest('[data-pal]')) { close(); SL.palette.open(''); } }); } });
     }
 
-    ui.nav = { render, go, chord, items: ITEMS, currentId, badges, moreSheet, get wide() { return wide(); }, setWide(on) { pref.nav = on ? 'wide' : 'rail'; save(); N.sig = ''; paintNav(SL.sessions.active); } };
+    ui.nav = { render, go, chord, items: ITEMS, shown, currentId, badges, moreSheet, get wide() { return wide(); }, setWide(on) { pref.nav = on ? 'wide' : 'rail'; save(); N.sig = ''; paintNav(SL.sessions.active); } };
     Object.defineProperty(ui.nav, 'sig', { get() { return N.sig; }, set(v) { N.sig = v; } });
 
     /* ---------- the Radio rail: collapse and resize ---------- */
