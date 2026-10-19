@@ -927,7 +927,8 @@ The harness's commit of a worker's tree (at `done`, at a handover, and when `ses
 change except untracked files inside a dependency store: a directory named `node_modules`, `bower_components`, `.next`,
 `.turbo`, `.parcel-cache`, `.venv`, `venv`, `__pycache__`, `.pytest_cache`, `.mypy_cache` or `.gradle`, at any depth
 (`gitx.DependencyStores`). An `npm install` or a virtual environment in a project whose `.gitignore` does not cover it stays in
-the worker's tree and never reaches the integration branch; those files are not held to the size and nested-repository checks
+the worker's tree while that tree exists and never reaches the integration branch (`sessions prune` deletes the tree after
+salvaging, so the store goes with it); those files are not held to the size and nested-repository checks
 either. Files the project already tracks inside such a directory are committed as usual, and generic names a project may use
 for its own output (`build`, `dist`, `target`, `bin`, `vendor`) are not treated as stores. A commit a worker makes itself with
 `git commit` records what it staged.
