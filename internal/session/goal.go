@@ -383,11 +383,12 @@ const goalEvent = "goal.state"
 // SaveGoal records a resumable goal. Call it before its first turn to establish
 // the objective boundary; JudgeGoal refuses a goal whose boundary was not saved.
 func (s *Session) SaveGoal(g *goal.State) {
-	s.noteObjective(g)
 	if g != nil && g.StartSeq == 0 {
 		g.StartSeq, _ = s.Log.Emit("", "goal.start", map[string]any{"objective": g.Objective})
 	}
-	s.Log.Emit("", goalEvent, map[string]any{"goal": g})
+	if _, err := s.Log.Emit("", goalEvent, map[string]any{"goal": g}); err == nil {
+		s.noteObjective(g)
+	}
 }
 
 // LoadGoal is the goal this session had when its log last said so, made paused ("the chat was restarted"): nothing runs until the person
