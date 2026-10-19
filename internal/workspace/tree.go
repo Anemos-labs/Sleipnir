@@ -135,7 +135,9 @@ func (e *TooLargeError) Error() string {
 func (e *TooLargeError) Is(target error) bool { return target == ErrTooLarge }
 
 // Commit records everything the agent changed on the tree's branch and returns
-// the new commit, or "" with a nil error when there was nothing to commit. The
+// the new commit, or "" with a nil error when there was nothing to commit.
+// Untracked files inside a dependency store (node_modules, .venv and the other
+// gitx.DependencyStores) are left out even when no ignore rule covers them. The
 // commit is attributed to the agent, is unsigned, and runs no hooks. Files larger
 // than Manager.MaxFileBytes are refused (TooLargeError), and so are directories
 // that are git repositories of their own (NestedRepoError) and unresolved conflict
@@ -156,7 +158,7 @@ func (t *Tree) commitLocked(ctx context.Context, msg string) (string, error) {
 	if err := t.checkFileSizes(ctx); err != nil {
 		return "", err
 	}
-	sha, err := t.repo.CommitAll(ctx, t.m.withAgentTrailer(msg, t.Agent), t.author())
+	sha, err := t.repo.CommitAllWith(ctx, t.m.withAgentTrailer(msg, t.Agent), t.author(), workCommit)
 	if err != nil {
 		return "", err
 	}

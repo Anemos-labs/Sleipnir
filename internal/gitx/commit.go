@@ -193,6 +193,64 @@ func (r *Repo) commitInputs(msg string, author Author) (string, []string, error)
 	return msg, idEnv, err
 }
 
+// dependencyStores are directory names that package managers and language tools
+// fill with installed dependencies or caches. Each is specific to one ecosystem
+// and never a source directory by convention; generic names a project may use
+// for its own files (build, dist, target, bin, vendor) are deliberately absent.
+var dependencyStores = []string{
+	"node_modules", "bower_components", ".next", ".turbo", ".parcel-cache",
+	".venv", "venv", "__pycache__", ".pytest_cache", ".mypy_cache",
+	".gradle",
+}
+
+// DependencyStores returns the directory names CommitOptions.LeaveUntrackedStores
+// leaves out of a commit when what is inside them is untracked: package-manager
+// stores and tool caches such as node_modules, .venv and __pycache__. The
+// result is a fresh copy, sorted.
+func DependencyStores() []string {
+	out := append([]string(nil), dependencyStores...)
+	sort.Strings(out)
+	return out
+}
+
+// isDependencyStore reports whether name is one of DependencyStores.
+func isDependencyStore(name string) bool {
+	for _, s := range dependencyStores {
+		if name == s {
+			return true
+		}
+	}
+	return false
+}
+
+// InDependencyStore reports whether the repository-relative, slash-separated
+// path p lies inside a directory named in DependencyStores, at any depth
+// ("node_modules/x", "web/node_modules/y/z.js"). A directory entry with a
+// trailing slash ("node_modules/", as git lists an untracked directory) is
+// inside the store it names; a file that is itself named like a store ("venv")
+// is not.
+func InDependencyStore(p string) bool {
+	dir := strings.HasSuffix(p, "/")
+	parts := strings.Split(strings.TrimSuffix(p, "/"), "/")
+	for i, part := range parts {
+		if (i < len(parts)-1 || dir) && isDependencyStore(part) {
+			return true
+		}
+	}
+	return false
+}
+
+// CommitOptions adjusts what CommitAllWith stages.
+type CommitOptions struct {
+	// LeaveUntrackedStores leaves untracked files inside a dependency store
+	// (DependencyStores, at any depth) out of the commit even when the
+	// repository's ignore rules do not exclude them, so an `npm install` or a
+	// virtual environment in a project without a .gitignore does not become
+	// history. Tracked files inside such a directory are staged as usual
+	// (modifications and deletions), and so is anything already in the index.
+	LeaveUntrackedStores bool
+}
+
 // CommitAll stages every change (`add -A`: modifications, deletions, new
 // non-ignored files) and commits it with the given message and identity. It
 // returns the new commit, or "" with a nil error when there was nothing to
@@ -201,6 +259,12 @@ func (r *Repo) commitInputs(msg string, author Author) (string, []string, error)
 // It refuses to commit while unmerged paths still contain conflict markers:
 // `add -A` would happily record them as the resolution.
 func (r *Repo) CommitAll(ctx context.Context, msg string, author Author) (string, error) {
+	return r.CommitAllWith(ctx, msg, author, CommitOptions{})
+}
+
+// CommitAllWith is CommitAll with options that narrow what is staged (see
+// CommitOptions); the zero options stage exactly what CommitAll does.
+func (r *Repo) CommitAllWith(ctx context.Context, msg string, author Author, opts CommitOptions) (string, error) {
 	if r.bare {
 		return "", &Error{Kind: KindNotARepo, Op: "commit", ExitCode: -1, Detail: "bare repository has no work tree"}
 	}
@@ -215,7 +279,7 @@ func (r *Repo) CommitAll(ctx context.Context, msg string, author Author) (string
 	if err := r.checkNoMarkers(ctx); err != nil {
 		return "", err
 	}
-	if _, err := b.run(ctx, call{args: []string{"add", "-A"}, mutating: true, timeout: 5 * r.s.timeout}); err != nil {
+	if err := stageAll(ctx, b, opts, 5*r.s.timeout); err != nil {
 		return "", err
 	}
 	merging := r.InProgress() == "merge"
@@ -237,6 +301,41 @@ func (r *Repo) CommitAll(ctx context.Context, msg string, author Author) (string
 		return "", err
 	}
 	return r.Head(ctx)
+}
+
+// stageAll stages the work tree for CommitAllWith. Without LeaveUntrackedStores
+// it is `add -A`. With it, two passes: `add -A` of the whole tree except
+// everything under a dependency store, then `add -u` of what is tracked under
+// one, so only untracked files there stay out. The store names hold no glob
+// characters, so the patterns match those names literally.
+func stageAll(ctx context.Context, b *batch, opts CommitOptions, timeout time.Duration) error {
+	if !opts.LeaveUntrackedStores {
+		_, err := b.run(ctx, call{args: []string{"add", "-A"}, mutating: true, timeout: timeout})
+		return err
+	}
+	all := []string{"add", "-A", "--", ":(top)"}
+	inStores := []string{"ls-files", "-z", "--"}
+	for _, name := range dependencyStores {
+		all = append(all, ":(top,exclude,glob)**/"+name+"/**")
+		inStores = append(inStores, ":(top,glob)**/"+name+"/**")
+	}
+	if _, err := b.run(ctx, call{args: all, magicPathspecs: true, mutating: true, timeout: timeout}); err != nil {
+		return err
+	}
+	// `add -u` refuses a pathspec that matches nothing, so it is given the
+	// index entries under a store by name (literal pathspecs), when there are any.
+	out, err := b.run(ctx, call{args: inStores, magicPathspecs: true})
+	if err != nil {
+		return err
+	}
+	if strings.Trim(out.text(), "\x00") == "" {
+		return nil
+	}
+	_, err = b.run(ctx, call{
+		args:  []string{"add", "-u", "--pathspec-from-file=-", "--pathspec-file-nul"},
+		stdin: strings.NewReader(out.text()), mutating: true, timeout: timeout,
+	})
+	return err
 }
 
 // CommitEmpty records a commit that changes nothing: the first commit of a repository that has none yet, which a work tree needs to

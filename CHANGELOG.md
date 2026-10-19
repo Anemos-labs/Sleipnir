@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The harness's commit of a worker's tree (at `done`, at a handover, and
+  when `sessions prune` salvages edits) leaves out untracked files inside a
+  dependency store (`node_modules`, `bower_components`, `.next`, `.turbo`,
+  `.parcel-cache`, `.venv`, `venv`, `__pycache__`, `.pytest_cache`,
+  `.mypy_cache`, `.gradle`, at any depth), so an install in a project
+  without a `.gitignore` for it no longer reaches the integration branch.
+  Files already tracked there are committed as before. New
+  `gitx.Repo.CommitAllWith` and `gitx.CommitOptions`; `CommitAll` is
+  unchanged. Prompt bytes: none change.
 - A role pool's leader is mailed when every other member has agreed to (or
   confirmed) the current revision and only its own vote is missing, so a
   leader that proposed and went idle no longer holds the pool in planning.

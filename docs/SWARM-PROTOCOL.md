@@ -923,6 +923,15 @@ had to be merged by hand.
 **`done` continues into the queue** (section 4). The harness commits the tree and submits it; the queue is serial, merges onto
 the integration tip and runs the verifier (`--verify`) on the merged result, and moves the integration branch only if it passes.
 
+The harness's commit of a worker's tree (at `done`, at a handover, and when `sessions prune` salvages edits) records every
+change except untracked files inside a dependency store: a directory named `node_modules`, `bower_components`, `.next`,
+`.turbo`, `.parcel-cache`, `.venv`, `venv`, `__pycache__`, `.pytest_cache`, `.mypy_cache` or `.gradle`, at any depth
+(`gitx.DependencyStores`). An `npm install` or a virtual environment in a project whose `.gitignore` does not cover it stays in
+the worker's tree and never reaches the integration branch; those files are not held to the size and nested-repository checks
+either. Files the project already tracks inside such a directory are committed as usual, and generic names a project may use
+for its own output (`build`, `dist`, `target`, `bin`, `vendor`) are not treated as stores. A commit a worker makes itself with
+`git commit` records what it staged.
+
 | Outcome | What happens |
 |---|---|
 | `merged` | the task proceeds to review (its evidence names the integration commit) |
