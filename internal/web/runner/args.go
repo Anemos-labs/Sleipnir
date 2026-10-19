@@ -36,7 +36,7 @@ type Plan struct {
 const maxValue = 4096
 
 // forcedYes are the commands that would ask on a terminal: the confirmation in the page is the person's yes, so --yes is passed.
-var forcedYes = map[string]bool{"trust add": true, "mcp approve": true}
+var forcedYes = map[string]bool{"trust add": true, "mcp approve": true, "plugins setup": true}
 
 // textPositionals take the remaining words as one text (a goal): the others that take several values split them at white space.
 var textPositionals = map[string]bool{"PROMPT": true, "GOAL": true}

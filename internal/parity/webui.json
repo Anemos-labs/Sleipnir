@@ -3008,7 +3008,7 @@
     }
    },
    "plugins setup": {
-    "mode": "tty_only",
+    "mode": "priv",
     "positionals": [
      "NEED",
      "METHOD"
@@ -3018,7 +3018,9 @@
      "trust-project",
      "yes"
     ],
-    "modeWith": {}
+    "modeWith": {
+     "trust-project": "priv"
+    }
    },
    "mcp": {
     "mode": "run",

@@ -406,7 +406,7 @@ var modes = map[string]modeOf{
 	"plugins needs":   {mode: ModeRun},
 	"plugins locate":  {mode: ModePriv, why: "it runs the file's version command and puts it on the PATH of your sessions' commands: it asks for a confirmation first"},
 	"plugins forget":  {mode: ModePriv, why: "it changes which programs your sessions' commands find: it asks for a confirmation first"},
-	"plugins setup":   {mode: ModeTTYOnly, why: "it installs software and asks before it runs: use Install under the plugin on the Plugins view here"},
+	"plugins setup":   {mode: ModePriv, why: "it installs software on this machine: it asks for a confirmation first (--yes is implied)"},
 	"trust add":       {mode: ModePriv, why: "it trusts this project's files: it asks for a confirmation first (--yes is implied)"},
 	"trust forget":    {mode: ModePriv, why: "it forgets a trust decision: it asks for a confirmation first"},
 	"mcp":             {mode: ModeRun}, "mcp list": {mode: ModeRun},
