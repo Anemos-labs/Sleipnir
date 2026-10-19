@@ -273,6 +273,9 @@ type call struct {
 	overrides []kv
 	// config are extra -c settings for this command only (merge.conflictStyle).
 	config []string
+	// magicPathspecs drops --literal-pathspecs for a command whose pathspecs
+	// are written by this package with explicit magic (":(exclude,glob)...").
+	magicPathspecs bool
 }
 
 // output is what a finished command produced.
@@ -343,8 +346,10 @@ func (s *settings) argv(c call) []string {
 		// Replacement refs let a repository silently substitute objects: results
 		// must describe the real history.
 		"--no-replace-objects",
+	}
+	if !c.magicPathspecs {
 		// Pathspecs we pass are file names, never patterns.
-		"--literal-pathspecs",
+		args = append(args, "--literal-pathspecs")
 	}
 	if c.workTree != "" {
 		args = append(args, "--work-tree="+c.workTree)

@@ -337,7 +337,7 @@ func (m *Manager) salvage(ctx context.Context, repo *gitx.Repo, mk *marker) erro
 		return err
 	}
 	msg := m.withAgentTrailer("Unfinished work of "+mk.Agent+", salvaged after its session ended", mk.Agent)
-	_, err := repo.CommitAll(ctx, msg, m.agentAuthor(mk.Agent))
+	_, err := repo.CommitAllWith(ctx, msg, m.agentAuthor(mk.Agent), workCommit)
 	return err
 }
 
@@ -426,6 +426,12 @@ func (m *Manager) checkCommitted(ctx context.Context, repo *gitx.Repo, base, to 
 	return nil
 }
 
+// workCommit is how the harness stages an agent's work when it commits it
+// (Tree.Commit, salvage): every change except untracked files inside dependency
+// stores (gitx.DependencyStores), which an install in a repository without
+// ignore rules for them would otherwise turn into history.
+var workCommit = gitx.CommitOptions{LeaveUntrackedStores: true}
+
 // checkCommittable is the guard every commit of an agent's work passes: nothing in
 // what would be recorded may be a nested repository or exceed the size limit (once
 // in history a file stays in the repository for good). It works on any repository
@@ -436,6 +442,15 @@ func (m *Manager) checkCommittable(ctx context.Context, repo *gitx.Repo, root st
 	if err != nil {
 		return err
 	}
+	// Untracked files in a dependency store are not recorded (workCommit), so
+	// they are not examined either.
+	kept := st.Untracked[:0:0]
+	for _, p := range st.Untracked {
+		if !gitx.InDependencyStore(p) {
+			kept = append(kept, p)
+		}
+	}
+	st.Untracked = kept
 	// With every untracked file listed individually, an untracked entry that still
 	// ends in a slash is a directory git will not look into: a repository.
 	var nested []string
