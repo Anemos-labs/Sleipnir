@@ -140,7 +140,7 @@
       }
       function update(S2, m) {
         if (!m) return; const mg = m.ag.mgr; fillCard(RC, mg, calc.agent(mg), true, m);
-        if (!nW) { const log = (m.chan.mgr || []).filter(e => e.k === 'tool').slice(-6).reverse(); $('.sololog', body).innerHTML = log.map(e => '<li><b>' + esc(e.name) + '</b> ' + esc(e.arg || '') + (e.out ? ' <span class="dim">' + esc(e.out) + '</span>' : '') + '</li>').join('') || '<li class="dim">nothing yet</li>'; }
+        if (!nW) { const log = (m.chan.mgr || []).filter(e => e.k === 'tool').slice(-6).reverse(); $('.sololog', body).innerHTML = log.map(e => '<li><b>' + esc(e.name) + '</b> ' + esc(e.arg || '') + (e.out ? ' <span class="dim">' + esc(e.out) + '</span>' : '') + '</li>').join('') || '<li class="dim">The manager\u2019s first steps show here once it has something to do: give it a goal in the composer.</li>'; }
         workers.forEach(w => { const A = m.ag[w.id]; fillCard(ST[w.id], A, calc.agent(A), A.spawned, m); });
       }
       function frame(dt, vt, S2) {
@@ -157,7 +157,7 @@
   }
   function partGantt() {
     return (sc, body, S) => {
-      body.innerHTML = '<section class="panel p-gantt" aria-label="Swarm gantt"><div class="ph"><h2>Swarm gantt</h2><div class="r"><span>last 60 s</span><span class="legend"><span><i>◇</i> think</span><span><i>▬</i> tool</span><span><i>█</i> edit</span><span><i>▭</i> wait</span><span><i>✓</i> done</span></span></div></div><div class="gwrap"><svg class="gsvg" role="img" aria-label="Swarm gantt, last 60 seconds"></svg></div>' +
+      body.innerHTML = '<section class="panel p-gantt" aria-label="Timeline: what each agent did in the last minute"><div class="ph"><h2 title="swarm gantt">Timeline</h2><div class="r"><span>last 60 s</span><span class="legend"><span><i>◇</i> think</span><span><i>▬</i> tool</span><span><i>█</i> edit</span><span><i>▭</i> wait</span><span><i>✓</i> done</span></span></div></div><div class="gwrap"><svg class="gsvg" role="img" aria-label="Swarm gantt, last 60 seconds"></svg></div>' +
         '<div class="g-ctl"><button class="btn gplay" type="button" aria-label="Pause"></button><button class="btn" type="button" data-sp="1" aria-pressed="true">1x</button><button class="btn" type="button" data-sp="2" aria-pressed="false">2x</button><button class="btn" type="button" data-sp="4" aria-pressed="false">4x</button><input class="scrub" type="range" min="0" max="38" step="0.1" value="38" aria-label="Scrub the session: replay"><span class="num dim scrubT">00:38</span><button class="btn live glive" type="button" aria-pressed="true">● live</button></div></section>';
       const q = s => $(s, body);
       /* ---- gantt (rows: manager + workers) ---- */
@@ -243,7 +243,7 @@
       function renderQueue(m) {
         const h = m.qHead, merged = ui.board.newestMerged(m), shown = merged.slice(0, QUEUE_IDS), isGoal = h && h.task === 'goal'; let html = '';
         if (h) html += '<div class="qhead"><div class="qline"><span class="tri">▸</span><b style="color:' + (isGoal ? 'var(--mgr)' : agCol((m.tasks[h.task] || {}).owner || 'mgr')) + '">' + (isGoal ? '◇ goal' : esc(h.task)) + '</b>' + (isGoal ? '<span>all merged</span>' : '<span>rebase <span class="ok">✓</span></span>') + '<span class="dim">·</span><span>' + (h.step === 'verified' ? 'verified' : 'verifying') + '</span></div><div class="qline"><span class="dim">$</span><span class="cmd">' + esc(h.cmd) + '</span></div><div class="qbar" aria-hidden="true">' + (h.step === 'verified' ? '<i style="width:100%;left:0;animation:none;background:var(--ok)"></i>' : '<i></i>') + '</div><div class="qline dim"><span class="qel num">0.0s elapsed</span></div></div>';
-        else html += '<div class="qhead"><div class="qline dim"><span>▹ queue empty</span><span>·</span><span>the next submission is rebased, then verified' + (S.meta.verify ? ' with <span class="mono">' + esc(S.meta.verify) + '</span>' : '') + '</span></div></div>';
+        else html += '<div class="qhead"><div class="qline dim qnone"><span>Nothing is waiting to merge. When a worker hands in a task, it is checked here' + (S.meta.verify ? ' with <span class="mono">' + esc(S.meta.verify) + '</span>' : '') + ' before it reaches your files.</span></div></div>';
         html += '<div class="qmeta"><span title="newest first">merged ' + (shown.map(id => { const t = m.tasks[id] || {}; return '<b style="color:' + agCol(t.owner || 'mgr') + '" title="' + esc(id + (t.title ? ' · ' + t.title : '') + (t.owner ? ' · ' + t.owner : '') + (t.t != null ? ' · merged ' + ui.todAt(S, t) : '')) + '">' + esc(id) + '</b>'; }).join(' ') || '–') + (merged.length > shown.length ? ' <span class="dim">and ' + (merged.length - shown.length) + ' earlier</span>' : '') + '</span><span>conflicts <b>' + esc(m.conflicts) + '</b></span><span>bounced <b>' + esc(m.bounced) + '</b></span></div>';
         if (qbody._h !== html) { qbody._h = html; qbody.innerHTML = html; } qsum.textContent = merged.length + ' merged';
       }
@@ -258,7 +258,7 @@
       const mlist = $('.mlist', body), mnote = $('.mnote', body);
       function renderMail(m) {
         const list = m.mail.slice(-30).reverse();
-        const h = list.map(x => '<li><button class="mrow" type="button" data-ag="' + esc(x.from) + ' ' + esc(x.to) + '" data-mail="' + esc(x.t) + '"><span class="mt">' + ui.todAt(S, x) + '</span><span class="mi">✉</span><span class="mf"><span style="color:' + agCol(x.from) + '">' + esc(x.from) + '</span> <span class="dim">→</span> <span style="color:' + agCol(x.to) + '">' + esc(x.to) + '</span></span><span class="mx">“' + esc(x.text) + '”</span></button></li>').join('') || '<li class="mnote">no mail yet</li>';
+        const h = list.map(x => '<li><button class="mrow" type="button" data-ag="' + esc(x.from) + ' ' + esc(x.to) + '" data-mail="' + esc(x.t) + '"><span class="mt">' + ui.todAt(S, x) + '</span><span class="mi">✉</span><span class="mf"><span style="color:' + agCol(x.from) + '">' + esc(x.from) + '</span> <span class="dim">→</span> <span style="color:' + agCol(x.to) + '">' + esc(x.to) + '</span></span><span class="mx">“' + esc(x.text) + '”</span></button></li>').join('') || '<li class="mnote mnone">No mail yet: what agents write to each other shows here.</li>';
         if (mlist._h !== h) { mlist._h = h; mlist.innerHTML = h; } mnote.textContent = ui.mailNote(m, S);
       }
       sc.listen(mlist, 'click', e => { const r = e.target.closest('[data-mail]'); if (r) { ui.mailSel = +r.dataset.mail; SL.views.show('mail'); } });
@@ -267,13 +267,13 @@
   }
   function partGov() {
     return (sc, body, S) => {
-      body.innerHTML = '<section class="panel p-gov" aria-label="Governor"><div class="ph"><h2>Governor</h2><div class="r"><span>rate and retries</span></div></div><div class="gov"></div><div class="gnote">no 429s, no retries: nothing is throttling the team</div></section>';
+      body.innerHTML = '<section class="panel p-gov" aria-label="Rate limits"><div class="ph"><h2 title="the governor">Rate limits</h2></div><div class="gov"></div><div class="gnote">no 429s, no retries: nothing is throttling the team</div></section>';
       const g = $('.gov', body), gn = $('.gnote', body);
       function renderGov(m) {
         const rs = m.rpmHist.slice(-14), mx = Math.max(60, ...rs.map(r => r.rpm)); let spk = ''; rs.forEach((r, i) => { const h = Math.max(2, r.rpm / mx * 30); spk += '<rect x="' + i * 7 + '" y="' + (34 - h) + '" width="5" height="' + h + '" fill="var(--fe)" opacity=".75"/>'; });
         const line = '<line x1="0" x2="98" y1="33" y2="33" stroke="var(--ok)" stroke-width="2"/>';
         const bad = '<line x1="0" x2="98" y1="33" y2="33" stroke="var(--warm)" stroke-width="2"/>', r4 = m.r429 || 0, rt = m.retries || 0;
-        const h = '<div class="gauge2"><svg viewBox="0 0 98 34" preserveAspectRatio="none" aria-hidden="true">' + spk + '</svg><b class="num">' + (m.rpm || 0) + '</b><span>rpm</span></div><div class="gauge2"><svg viewBox="0 0 98 34" aria-hidden="true">' + (r4 ? bad : line) + '</svg><b class="num ' + (r4 ? 'warm' : 'ok') + '">' + r4 + '</b><span>429s</span></div><div class="gauge2"><svg viewBox="0 0 98 34" aria-hidden="true">' + (rt ? bad : line) + '</svg><b class="num ' + (rt ? 'warm' : 'ok') + '">' + rt + '</b><span>retries</span></div>';
+        const h = '<div class="gauge2"><svg viewBox="0 0 98 34" preserveAspectRatio="none" aria-hidden="true">' + spk + '</svg><b class="num">' + (m.rpm || 0) + '</b><span title="rpm: requests a minute">per minute</span></div><div class="gauge2"><svg viewBox="0 0 98 34" aria-hidden="true">' + (r4 ? bad : line) + '</svg><b class="num ' + (r4 ? 'warm' : 'ok') + '">' + r4 + '</b><span title="429s: the endpoint said too many requests">throttled</span></div><div class="gauge2"><svg viewBox="0 0 98 34" aria-hidden="true">' + (rt ? bad : line) + '</svg><b class="num ' + (rt ? 'warm' : 'ok') + '">' + rt + '</b><span>retries</span></div>';
         if (g._h !== h) { g._h = h; g.innerHTML = h; } const gt = ui.govNote(m); if (gn.textContent !== gt) gn.textContent = gt;
       }
       sc.update((S2, m) => { if (m) renderGov(m); }); if (S.m) renderGov(S.m);
@@ -285,7 +285,9 @@
     const workers = S.roster.filter(r => r.id !== 'mgr'), cx = { workers, rows: Math.max(2, Math.ceil(Math.max(workers.length, 8) / 4)), ST: {}, RC: null };
     const parts = { hero: partHero(cx), team: partTeam(cx), gantt: partGantt(cx), tasks: partTasks(cx), queue: partQueue(cx), mail: partMail(cx), gov: partGov(cx) };
     /* the page of cards (or, in a card of another page, the one panel asked for): each panel mounts in its card's own scope */
-    ui.dash.page(sc, root, S, 'cockpit', params).onCard((id, cs, body) => { if (parts[id]) parts[id](cs, body, S); });
+    const P = ui.pageHead(sc, root, S, 'cockpit', params, { title: 'Cockpit', purpose: 'The team at work, live: what each agent is doing, the tasks, what is being merged and the mail between them.', action: ui.managerAction(S), onAction: () => ui.managerGo(SL.sessions.active) });
+    P.onCard((id, cs, body) => { if (parts[id]) parts[id](cs, body, S); });
+    sc.update(S2 => P.head({ action: ui.managerAction(S2) }));
     /* ---- mail arcs: transient, in this view's own layer, advanced by the view clock; they fly between the stalls of the team card ---- */
     const arcLayer = sc.layer('arcs'), arcSvg = sv('svg', { class: 'arcs', 'aria-hidden': 'true' }, arcLayer), arcs = [];
     function launchArc(from, to) {
