@@ -671,8 +671,12 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 	case StrategyRebase:
 		out, err = repo.Rebase(ctx, gitx.RebaseOptions{Onto: prev, Upstream: mb, Branch: theirs, Author: q.author()})
 	default:
+		// The merge commit stays in the project's history: name the work it brings
+		// in by its own commit message when there is one, not only by who did it.
 		msg := "Merge " + s.Agent
-		if t := oneLine(s.Task, 100); t != "" {
+		if subject, _, _ := strings.Cut(strings.TrimSpace(s.Message), "\n"); strings.TrimSpace(subject) != "" {
+			msg = "Merge \"" + oneLine(subject, 100) + "\""
+		} else if t := oneLine(s.Task, 100); t != "" {
 			msg += ": " + t
 		}
 		out, err = repo.Merge(ctx, gitx.MergeOptions{Ref: theirs, Message: msg, NoFF: q.opts.NoFF, Author: q.author()})

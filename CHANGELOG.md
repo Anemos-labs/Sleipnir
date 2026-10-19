@@ -7,6 +7,18 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Commits the harness records describe the change instead of the run that
+  made it. A worker's commit has the task's title as its subject (without a
+  leading board id such as `T12:`), what the worker reported as its body, and
+  the id as a `Sleipnir-Task:` trailer; a merge commit is
+  `Merge "<subject>"` rather than `Merge worker-3: T12: ...`; a handover is
+  `Work in progress: <title>`; the manager's own edits are named by the files
+  they touch; and the default delivery commit lists the landed tasks by title.
+  Prompt bytes: "Write good code" gains one line asking for commit messages and
+  pull request titles and descriptions that say what the change does, never
+  task ids or agent names (constitution about +64 tokens), and the manager's
+  isolation card gains one sentence; each is written to the cache once.
+
 - Sleipnir ships built-in skills, listed after every skills directory and
   loaded on demand like any other: `blender`, `blender-web-assets`,
   `blender-scene`, `reverse-engineering` and `reverse-engineering-ui`. They are
