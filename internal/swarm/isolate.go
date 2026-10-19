@@ -1200,7 +1200,11 @@ func (s *Swarm) Accept(ctx context.Context, o AcceptOptions) (*AcceptReport, err
 			}
 		}
 	}
-	commit, err := repo.CommitPaths(ctx, msg, gitx.DefaultAuthor, rep.Files)
+	author := gitx.DefaultAuthor
+	if o := s.deps.Isolation.Manager.Owner; o.Name != "" && o.Email != "" {
+		author = o
+	}
+	commit, err := repo.CommitPaths(ctx, msg, author, rep.Files)
 	if err != nil {
 		return rep, err
 	}

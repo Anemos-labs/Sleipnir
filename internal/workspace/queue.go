@@ -404,6 +404,9 @@ func (q *Queue) emit(typ, agent, task string, data map[string]any) {
 
 // author returns the merge queue's Git author identity stamped with the manager clock.
 func (q *Queue) author() gitx.Author {
+	if q.m.hasOwner() {
+		return q.m.agentAuthor("")
+	}
 	return gitx.Author{Name: "Sleipnir merge queue", Email: "queue@sleipnir.invalid", When: q.m.now()}
 }
 
@@ -679,7 +682,7 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 		} else if t := oneLine(s.Task, 100); t != "" {
 			msg += ": " + t
 		}
-		out, err = repo.Merge(ctx, gitx.MergeOptions{Ref: theirs, Message: msg, NoFF: q.opts.NoFF, Author: q.author()})
+		out, err = repo.Merge(ctx, gitx.MergeOptions{Ref: theirs, Message: q.m.withAgentTrailer(msg, s.Agent), NoFF: q.opts.NoFF, Author: q.author()})
 	}
 	if err != nil {
 		if rerr := q.rollbackTo(ctx, prev); rerr != nil {

@@ -14,6 +14,12 @@ they do not indicate whether a change has been released.
   `Merge "<subject>"` rather than `Merge worker-3: T12: ...`; a handover is
   `Work in progress: <title>`; the manager's own edits are named by the files
   they touch; and the default delivery commit lists the landed tasks by title.
+  The commits are authored by the person whose repository it is: when
+  `user.name` and `user.email` are configured, every commit of the trees and
+  the merge queue carries that identity and names its agent in a
+  `Sleipnir-Agent:` trailer (the web blame reads the trailers, and still
+  understands older history); without one, agents author their own commits
+  as `<agent>@sleipnir.invalid`, as before.
   Prompt bytes: "Write good code" gains one line asking for commit messages and
   pull request titles and descriptions that say what the change does, never
   task ids or agent names (constitution about +50 tokens), and the manager's
