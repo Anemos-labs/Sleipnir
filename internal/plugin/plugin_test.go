@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -343,7 +344,8 @@ func TestPluginFilesExpandTheDirectoryAndSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := string(h["SessionStart"])
-	if !strings.Contains(got, `echo Hello a \"quoted\" name from `+dir) {
+	q, _ := json.Marshal(dir) // the directory as JSON string text (backslashes escaped on Windows)
+	if !strings.Contains(got, `echo Hello a \"quoted\" name from `+string(q[1:len(q)-1])) {
 		t.Errorf("expanded = %s", got)
 	}
 }
