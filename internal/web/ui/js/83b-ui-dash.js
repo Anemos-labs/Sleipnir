@@ -115,21 +115,31 @@
   ]);
   ['changes', 'checkpoints', 'merge'].forEach(t => page(t, { title: t[0].toUpperCase() + t.slice(1), group: 'Workspace', view: 'workspace', params: { tab: t }, wrap: 'wsv' },
     PAGES.files.layout.map(c => [c.id, c.x, c.y, c.w, c.h])));
-  /* Settings: a page of cards for each page of Settings (98-ui-settings.js draws them) */
+  /* Settings: a page of cards for each page of Settings (98-ui-settings.js draws them). A card keeps the id it had when its page was a
+   * page of its own (`roles.roles` is settings.roles.roles, now on Models & roles); MOVED says where such a page went. */
   const SET = [
-    ['models', 'Models', [['catalogue', 'The model catalogue', 'filter, star, and choose a model for the manager or a role', 14, 'list']]],
-    ['roles', 'Roles & effort', [['roles', 'Which model each role runs on', 'the model of each role, waiting to be applied', 8, 'list'], ['effort', 'Reasoning effort', 'how hard the models think', 4]]],
+    ['models', 'Models & roles', [['catalogue', 'The model catalogue', 'filter, star, and choose a model for the manager or a role', 14, 'list'], ['roles.roles', 'Which model each role runs on', 'the model of each role, waiting to be applied', 8, 'list'], ['roles.effort', 'Reasoning effort', 'how hard the models think', 4]]],
+    ['run', 'Team & run', [['team', 'The team', 'workers and starting the team again', 5], ['how', 'How the workers run', 'isolation, the check command and the team\'s helpers', 7], ['cli', 'The same command line', 'this session as a command line', 3]]],
     ['budget', 'Budget', [['budget', 'This session\'s budget', 'what was spent and the limit', 6], ['cost', 'Cost by agent', 'tokens and cost of every agent', 6, 'list']]],
-    ['permissions', 'Permissions', [['mode', 'Mode', 'the permission mode', 5], ['danger', 'Dangerous modes', 'bypass and yolo: they ask nothing', 4], ['manager', 'The manager', 'what the manager may write', 3], ['rules', 'Rules in force', 'the allow, ask and deny rules and their origin', 7, 'list'], ['try', 'Would it ask?', 'test a tool call against the rules', 4]]],
-    ['trust', 'Trust', [['project', 'This project', 'what this project\'s own files may say to the harness', 6], ['dirs', 'Every directory you decided about', 'the trust ledger', 5, 'list']]],
-    ['run', 'Run settings', [['team', 'The team', 'workers and starting the team again', 5], ['how', 'How the workers run', 'isolation, verify and the flags', 7], ['cli', 'The same command line', 'this session as a command line', 3]]],
-    ['mcp', 'MCP servers', [['servers', 'Tool servers', 'state, tools and approval of each server', 8, 'list']]],
-    ['skills', 'Skills, commands & hooks', [['skills', 'Skills the model can load', 'the skills and where each came from', 6, 'list'], ['commands', 'Your commands', 'custom slash commands', 4, 'list'], ['hooks', 'Hooks', 'what runs around the tools', 4, 'list']]],
-    ['providers', 'Providers & login', [['providers', 'Providers', 'where each model is reached, and whether a key is there', 6, 'list']]],
-    ['config', 'Config layers', [['layers', 'Layers, lowest to highest', 'the configuration files, in order', 5], ['warnings', 'Warnings', 'what sleipnir config warns about', 3, 'list'], ['values', 'Effective values and where each came from', 'every key with the layer that set it', 10, 'list']]],
-    ['look', 'Appearance & motion', [['motion', 'Motion and display', 'motion, density, tab title and notifications', 7], ['layout', 'Layout', 'the rails, and the layout of the cards', 7], ['tour', 'Cards and tour', 'customise every page, export and import the layout, the guided tour', 6], ['security', 'Security semantics', 'how questions and approvals are kept safe', 5], ['keys', 'Keys', 'the keys of the page', 6, 'list']]],
+    ['permissions', 'Permissions & trust', [['mode', 'Mode', 'the permission mode', 5], ['danger', 'Dangerous modes', 'bypass and yolo: they ask nothing', 4], ['manager', 'The manager', 'what the manager may write', 3], ['rules', 'Rules in force', 'the allow, ask and deny rules and their origin', 7, 'list'], ['try', 'Would it ask?', 'test a tool call against the rules', 4], ['trust.project', 'This project\'s own files', 'whether the harness reads this project\'s instructions, skills and hooks', 6], ['trust.dirs', 'Every directory you decided about', 'the trust ledger', 5, 'list']]],
+    ['providers', 'Connections', [['providers', 'Providers', 'where each model is reached, and whether a key is there', 6, 'list'], ['mcp.servers', 'Tool servers (MCP)', 'state, tools and approval of each server', 8, 'list']]],
+    ['skills', 'Skills & extensions', [['skills', 'Skills the model can load', 'the skills and where each came from', 6, 'list'], ['commands', 'Your commands', 'custom slash commands', 4, 'list'], ['hooks', 'Hooks', 'what runs around the tools', 4, 'list']]],
+    ['config', 'Configuration', [['layers', 'Layers, lowest to highest', 'the configuration files, in order', 5], ['warnings', 'Warnings', 'what sleipnir config warns about', 3, 'list'], ['values', 'Effective values and where each came from', 'every key with the layer that set it', 10, 'list']]],
+    ['look', 'Appearance', [['motion', 'Motion and display', 'motion, density, tab title and notifications', 7], ['layout', 'Layout', 'the rails, and the layout of the cards', 7], ['tour', 'Cards and tour', 'customise every page, export and import the layout, the guided tour', 6], ['security', 'Security semantics', 'how questions and approvals are kept safe', 5], ['keys', 'Keys', 'the keys of the page', 6, 'list']]],
   ];
-  SET.forEach(([p, title, cards]) => { let y = 0; page('settings.' + p, { title, group: 'Settings', view: 'settings', params: { page: p }, wrap: 'setbody2' }, cards.map(([id, t, d, h, f]) => { const r = ['settings.' + p + '.' + id, t, d, 0, y, 12, h, 4, 2, f]; y += h; return r; })); });
+  SET.forEach(([p, title, cards]) => { let y = 0; page('settings.' + p, { title, group: 'Settings', view: 'settings', params: { page: p }, wrap: 'setbody2' }, cards.map(([id, t, d, h, f]) => { const r = ['settings.' + (id.includes('.') ? id : p + '.' + id), t, d, 0, y, 12, h, 4, 2, f]; y += h; return r; })); });
+  /** Pages of an earlier version merged into another page: old key -> the page that has its cards now. */
+  const MOVED = { 'settings.roles': 'settings.models', 'settings.trust': 'settings.permissions', 'settings.mcp': 'settings.providers' };
+  /* Plugins: the profile and the filter, then one card for each category of plugins (98c-ui-plugins.js draws them) */
+  page('plugins', { title: 'Plugins', view: 'plugins', wrap: 'plugv' }, [
+    ['plugins.profile', 'Profile and filter', 'the profile, where a change is saved, and the filter of the list', 0, 0, 12, 3, 4, 2],
+    ['plugins.tools', 'Tools', 'what the agents can call', 0, 3, 12, 8, 4, 2, 'list'],
+    ['plugins.extensions', 'Extensions', 'skills, commands, agents, hooks and instructions read from files', 0, 11, 12, 6, 4, 2, 'list'],
+    ['plugins.team', 'Team', 'how a team of agents works together', 0, 17, 12, 6, 4, 2, 'list'],
+    ['plugins.interface', 'Interface', 'the views of this page', 0, 23, 12, 6, 4, 2, 'list'],
+    ['plugins.external', 'External', 'plugins installed from outside Sleipnir', 0, 29, 12, 3, 4, 2, 'list'],
+    ['plugins.core', 'Core', 'always on: Sleipnir needs them to run', 0, 32, 12, 4, 4, 2, 'list'],
+  ]);
   /* the header and status bar, and the Radio rail: parts that stay in place and can be hidden (and, in the rail, collapsed) */
   page('hud', { title: 'Header', view: null, kind: 'chrome' }, [
     ['hud.goal', 'Goal', 'the goal, its state and the elapsed time', 0, 0, 1, 1, 1, 1],
@@ -299,8 +309,21 @@
    *  as they are (another version of the page may know them); a page's cards are read again when it is shown. */
   function normalizeDoc(raw) {
     if (!raw || typeof raw !== 'object' || raw.version !== VERSION || !raw.pages || typeof raw.pages !== 'object' || Array.isArray(raw.pages)) return null;
+    raw = { version: VERSION, pages: mergeMoved(raw.pages) };
     const pages = {}; Object.keys(raw.pages).forEach(k => { const l = raw.pages[k]; if (/^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$/.test(k) && Array.isArray(l)) pages[k] = PAGES[k] ? copy(PAGES[k].view ? cleanList(l) : cleanChrome(l, k)) : l.filter(c => c && typeof c.id === 'string').slice(0, 200); });
     return { version: VERSION, pages };
+  }
+  /** Pages with the layouts of merged pages (MOVED) carried over: the cards of the old page go under those of the page it joined (its
+   *  stored layout, else its default without them), each where it was on its own page; the old key is dropped. */
+  function mergeMoved(pages) {
+    const out = Object.assign({}, pages);
+    Object.keys(MOVED).forEach(old => {
+      const L = out[old], to = MOVED[old]; delete out[old]; if (!Array.isArray(L)) return;
+      const mine = L.filter(c => c && typeof c.id === 'string'), ids = new Set(mine.map(c => c.id));
+      const base = (Array.isArray(out[to]) ? out[to] : defaults(to)).filter(c => c && !ids.has(c.id)), off = base.reduce((m, c) => Math.max(m, (+c.y || 0) + (+c.h || 0)), 0);
+      out[to] = base.concat(mine.map(c => Object.assign({}, c, { y: (+c.y || 0) + off })));
+    });
+    return out;
   }
   /** The parts of the header or the rail as stored: only their own ids, each with hidden and opts. */
   function cleanChrome(list, key) { const seen = new Set(); return list.filter(c => c && PAGES[key].cards.includes(c.id) && !seen.has(c.id) && seen.add(c.id)).map(c => clampCard({ id: c.id, x: 0, y: 0, w: 1, h: 1, hidden: c.hidden, opts: c.opts })); }
@@ -334,7 +357,7 @@
     if (raw && raw.version !== VERSION) return new Error(raw.version == null ? 'the file is not a layout of Sleipnir' : 'the file is a layout of version ' + raw.version + '; this page reads version ' + VERSION);
     const d = normalizeDoc(raw); return d || new Error('the file is not a layout of Sleipnir');
   }
-  SL.dash = { COLS, ROWS_FIT, ROW_MIN, MAX_H, FIT_MAX, VERSION, KEY, OLD_KEY, PAGES, BY_ID, VIEWS, CATALOG, DEFAULT, CHROME_EL, clampCard, overlaps, resolve, normalize, normalizeList, defaults, load, save, forget, move, resize, add, remove, hide, resetSize, setOpt, swap, fitHeight, order, rows, keyOp, firstFit, same, rowHeight, visible, isHome, addable, normalizeDoc, readDoc, writeDoc, migrate, exportDoc, importDoc };
+  SL.dash = { COLS, ROWS_FIT, ROW_MIN, MAX_H, FIT_MAX, VERSION, KEY, OLD_KEY, PAGES, BY_ID, VIEWS, CATALOG, DEFAULT, CHROME_EL, clampCard, overlaps, resolve, normalize, normalizeList, defaults, load, save, forget, move, resize, add, remove, hide, resetSize, setOpt, swap, fitHeight, order, rows, keyOp, firstFit, same, rowHeight, visible, isHome, addable, normalizeDoc, readDoc, writeDoc, migrate, exportDoc, importDoc, MOVED, mergeMoved };
 
   /* ------------------------------------------------------------------------------------------------------------ keeping it: browser and server */
   const store = () => { try { return window.localStorage; } catch (e) { return null; } };
