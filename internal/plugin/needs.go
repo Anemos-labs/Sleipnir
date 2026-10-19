@@ -751,8 +751,8 @@ func runStep(ctx context.Context, env NeedEnv, argv, vars []string, out io.Write
 func methodEnv(ctx context.Context, env NeedEnv, decl map[string][]string, out io.Writer) ([]string, error) {
 	var vars []string
 	for _, name := range EnvNames(decl) {
-		if v, ok := os.LookupEnv(name); ok && v != "" {
-			fmt.Fprintf(out, "using %s=%s from the environment\n", name, v)
+		if os.Getenv(name) != "" { // the commands inherit it; its value is not printed
+			fmt.Fprintf(out, "using %s from the environment\n", name)
 			continue
 		}
 		var got bytes.Buffer
