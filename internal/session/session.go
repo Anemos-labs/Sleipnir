@@ -1004,7 +1004,7 @@ func (s *Session) build(ctx context.Context) error {
 		Events: s.Log, Blobs: s.Blobs, Archive: archive, Files: files, Perm: s.Perm,
 		Snap: s.Ckpt, Handles: handles,
 		Workdir: o.Cwd, Root: o.Root, Tmp: s.tmp, Params: params, Effort: &s.effort, Planner: planner, KVPolicy: kvPol, Est: est, Limits: limits, Now: o.Now,
-		NewSink: o.NewSink, CaptureTokens: o.CaptureTokens, OnWrite: s.Ckpt.After, Hooks: s.agentHooks(),
+		NewSink: o.NewSink, CaptureTokens: o.CaptureTokens, OnWrite: s.Ckpt.After, RunEnded: s.shell.EndAgent, Hooks: s.agentHooks(),
 		OutagePatience:     outagePatience(o.OutagePatience),
 		WaitUnreachable:    o.WaitUnreachable,
 		BlockingCompaction: s.cfg.Cache.CompactionMode == "blocking",

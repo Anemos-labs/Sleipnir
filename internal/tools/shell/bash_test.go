@@ -1397,3 +1397,80 @@ func TestADetachedBackgroundProcessEndsAtShutdown(t *testing.T) {
 		}
 	}
 }
+
+// A team worker that starts a server with "server &" inside an ordinary command leaves it holding a port long after its task is
+// done, and the next command that needs the port fails. EndAgent, called when the worker's run ends, ends what that worker's
+// commands left, held pipes or not, and leaves another agent's leftovers and every background job running.
+func TestEndAgentEndsWhatTheAgentsCommandsLeftRunning(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, Options{DrainGrace: 100 * time.Millisecond, KillGrace: 300 * time.Millisecond})
+	t.Cleanup(h.m.Shutdown)
+	start := func(agent, command string) int {
+		t.Helper()
+		res := h.bash(h.env(agent), command+` & echo "pid=$!"`)
+		var pid int
+		if _, err := fmt.Sscanf(res.Text, "pid=%d", &pid); err != nil {
+			t.Fatalf("text = %q (%v)", res.Text, err)
+		}
+		t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+		return pid
+	}
+	detached := start("w1", "nohup sleep 600 >/dev/null 2>&1 </dev/null")
+	holding := start("w1", "sleep 600")
+	other := start("w2", "nohup sleep 600 >/dev/null 2>&1 </dev/null")
+	job := h.startJob(h.env("w1"), "sleep 600")
+
+	h.m.EndAgent("w1")
+	for _, pid := range []int{detached, holding} {
+		for deadline := time.Now().Add(5 * time.Second); pidAlive(pid); time.Sleep(10 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatalf("pid %d, left by w1, outlived the end of w1's run", pid)
+			}
+		}
+	}
+	if !pidAlive(other) {
+		t.Error("the end of w1's run ended a process w2 left")
+	}
+	if out := h.output(h.env("w1"), job).Text; !strings.Contains(out, "running") {
+		t.Errorf("the end of w1's run ended its background job: %q", out)
+	}
+}
+
+// A command whose pipes have just closed is still among the running processes until untrack runs, and only then does its
+// leftover group join lingering: EndAgent, looking in between, must end that group too.
+func TestEndAgentEndsAGroupThatHasNotJoinedLingeringYet(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, Options{DrainGrace: 100 * time.Millisecond, KillGrace: 300 * time.Millisecond})
+	t.Cleanup(h.m.Shutdown)
+	res := h.bash(h.env("w1"), `nohup sleep 600 >/dev/null 2>&1 </dev/null & echo "pid=$!"`)
+	var pid int
+	if _, err := fmt.Sscanf(res.Text, "pid=%d", &pid); err != nil {
+		t.Fatalf("text = %q (%v)", res.Text, err)
+	}
+	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+	pgid, err := syscall.Getpgid(pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// put the group back where it was before untrack: among the running processes, leader reaped and pipes closed
+	waitFor(t, "the group to join lingering", 5*time.Second, func() bool {
+		h.m.mu.Lock()
+		defer h.m.mu.Unlock()
+		_, ok := h.m.lingering[pgid]
+		return ok
+	})
+	done, pumps := make(chan struct{}), make(chan struct{})
+	close(done)
+	close(pumps)
+	h.m.mu.Lock()
+	delete(h.m.lingering, pgid)
+	h.m.procs[&proc{m: h.m, pid: pgid, done: done, pumpsDone: pumps, grace: 300 * time.Millisecond, alive: groupAlive, agent: "w1"}] = struct{}{}
+	h.m.mu.Unlock()
+
+	h.m.EndAgent("w1")
+	for deadline := time.Now().Add(5 * time.Second); pidAlive(pid); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("pid %d outlived the end of w1's run", pid)
+		}
+	}
+}

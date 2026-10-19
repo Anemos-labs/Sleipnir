@@ -104,8 +104,8 @@ type Manager struct {
 	procs  map[*proc]struct{}
 	// lingering are the process groups of finished commands that still had a live member when the command ended: a server a
 	// command started with "nohup … &" and its output sent to a file holds no pipe of the harness, so nothing else keeps it in
-	// view. Shutdown ends them.
-	lingering map[int]struct{}
+	// view. Shutdown ends them, and EndAgent the ones its agent's foreground commands left.
+	lingering map[int]lingerer
 	wg        sync.WaitGroup // processes being supervised
 }
 
@@ -157,7 +157,7 @@ func NewManager(opts ...Options) *Manager {
 		stop:  make(chan struct{}),
 		jobs:  map[string]*job{},
 		cwds:  map[string]cwdState{},
-		procs: map[*proc]struct{}{}, lingering: map[int]struct{}{},
+		procs: map[*proc]struct{}{}, lingering: map[int]lingerer{},
 	}
 }
 
@@ -226,9 +226,65 @@ func (m *Manager) untrack(p *proc) {
 		delete(m.lingering, g)
 	}
 	if lingers && !m.closed {
-		m.lingering[p.pid] = struct{}{}
+		m.lingering[p.pid] = lingerer{agent: p.agent, job: p.job}
 	}
 	m.mu.Unlock()
+}
+
+// lingerer says who left a lingering process group: the agent whose command started it, and whether that command was a
+// background job.
+type lingerer struct {
+	agent string
+	job   bool
+}
+
+// EndAgent ends what agent's finished foreground commands left running: a server started with "server &" or
+// "nohup server >log 2>&1 &" inside an ordinary command, whether it still holds that command's output pipes or not. The host
+// calls it when the agent's run ends (a team worker's run, internal/swarm Config.RunEnded), so a port such a server holds is
+// free for the next command that needs it. Background jobs (run_in_background) and their processes are session-wide and are
+// left alone: bash_kill and Shutdown end them. A command of the agent's that is still running is left alone too.
+func (m *Manager) EndAgent(agent string) {
+	if agent == "" {
+		return
+	}
+	m.mu.Lock()
+	var strays []*proc
+	for p := range m.procs {
+		if p.agent == agent && !p.job && p.leaderDone() {
+			strays = append(strays, p)
+		}
+	}
+	var groups []int
+	for g, l := range m.lingering {
+		if l.agent == agent && !l.job {
+			groups = append(groups, g)
+			delete(m.lingering, g)
+		}
+	}
+	m.mu.Unlock()
+	var wg sync.WaitGroup
+	for _, p := range strays {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if !p.pumpsFinished() {
+				p.killTree()
+			} else {
+				// the command's pipes are closed but untrack has not run yet: what it left would join lingering after
+				// the look above
+				m.endGroup(p.pid)
+			}
+			p.closeReaders()
+		}()
+	}
+	for _, g := range groups {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			m.endGroup(g)
+		}()
+	}
+	wg.Wait()
 }
 
 // Shutdown kills every background job and every command still running, then
@@ -268,7 +324,7 @@ func (m *Manager) Shutdown() {
 	for g := range m.lingering {
 		groups = append(groups, g)
 	}
-	m.lingering = map[int]struct{}{}
+	m.lingering = map[int]lingerer{}
 	m.mu.Unlock()
 	for _, g := range groups {
 		wg.Add(1)

@@ -7,6 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- When a team worker's run ends, the processes its ordinary shell commands
+  left running (`server &`, `nohup server >log 2>&1 &`) are ended, so a
+  server a worker started does not hold its port for the rest of the
+  session. Background jobs (`run_in_background`) stay session-wide and end
+  with `bash_kill` or the session. Prompt bytes: none change.
 - Shell commands always have `~/.sleipnir/bin` at the front of their `PATH`
   (before, only when it held a launcher at session start), so a program
   located or installed on the Plugins page reaches a running team at once.

@@ -233,6 +233,10 @@ type Deps struct {
 	// OnWrite is told after every successful write (the checkpoint store uses it
 	// to tell an agent's last write from a human's later edit).
 	OnWrite func(agent, path string)
+	// RunEnded is told when a worker's run has ended and been settled (its gate run, its leases released), with the worker's
+	// id; the session ends the processes the worker's commands left running (internal/tools/shell Manager.EndAgent). Nil:
+	// nothing is told.
+	RunEnded func(agent string)
 	// Hooks runs user-configured commands around every agent's tool calls and
 	// stops (nil: none).
 	Hooks agent.Hooks
