@@ -615,7 +615,7 @@ Usage of recon:
 
 `sleipnir research [RUN]` lists the project's deep research runs with their depth, phase and evidence, or shows where
 one run stands: its numbers against its depth's bars and what it needs next. `--build` renders the run's wiki from its
-ledger into `.sleipnir/research/RUN/site`, and `--export DIR` copies the built wiki into a directory of the project.
+ledger into `.sleipnir/research/RUN/site`, and `--export DIR` renders the wiki into a directory of the project.
 Runs are started in the chat or the web page with `/research` and `/goal --research=DEPTH` (`docs/RESEARCH.md`).
 
 <!-- flags: research -->
@@ -635,7 +635,7 @@ flags:
   -cwd string
         the project (default: the current directory)
   -export string
-        copy RUN's built wiki into this directory of the project (an earlier export there is replaced)
+        render RUN's wiki into this directory of the project (an earlier export there is replaced)
   -json
         machine-readable output
 ```

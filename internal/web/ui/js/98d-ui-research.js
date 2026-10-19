@@ -30,9 +30,9 @@
       '<span class="mono dim">' + esc(r.slug) + '</span></span></div>' +
       '<div class="rs-act"><a class="btn sm" href="' + esc(wikiURL(S, r.slug)) + '" target="_blank" rel="noopener" title="the wiki as the run stands now, in a new tab">Open wiki ↗</a>' +
       '<button class="btn sm" type="button" data-rs-status title="/research status: what the run has against its bars, and what is next">Status</button>' +
-      '<button class="btn sm" type="button" data-rs-export title="/research export: copy the built wiki into a folder of the project">Export…</button></div></div>' +
+      '<button class="btn sm" type="button" data-rs-export title="/research export: render the wiki into a folder of the project">Export…</button></div></div>' +
       '<ol class="rs-steps">' + steps + '</ol><div class="rs-nums">' + nums.join(' · ') + (r.problems && !done ? ' · <span class="dim">' + plural(r.problems, 'check') + ' to pass</span>' : '') + '</div>' +
-      '<form class="rs-exp" data-rs-expf hidden><label class="lab" for="rsx-' + esc(r.slug) + '">Copy the built wiki into</label><input id="rsx-' + esc(r.slug) + '" class="mono" value="docs/research" spellcheck="false"><button class="btn sm pri" type="submit">Export</button><span class="dim">a folder of the project; an earlier export there is replaced</span></form>' +
+      '<form class="rs-exp" data-rs-expf hidden><label class="lab" for="rsx-' + esc(r.slug) + '">Render the wiki into</label><input id="rsx-' + esc(r.slug) + '" class="mono" value="docs/research" spellcheck="false"><button class="btn sm pri" type="submit">Export</button><span class="dim">a folder of the project; an earlier export there is replaced</span></form>' +
       '<pre class="pre rs-out" hidden></pre></article>';
   }
 

@@ -117,7 +117,7 @@ func (s *Session) ResearchCommand(arg string) (goalText, out string) {
 		return "", "the wiki of " + slug + ": " + index + " (in the web interface: the Research view)"
 	case "export":
 		if len(f) != 3 {
-			return "", "usage: /research export RUN DIR: copy the built wiki into DIR inside the project"
+			return "", "usage: /research export RUN DIR: render the wiki into DIR inside the project"
 		}
 		dst, err := s.researchExport(f[1], f[2])
 		if err != nil {
@@ -241,21 +241,27 @@ func (s *Session) researchBuild(slug string) string {
 	return msg
 }
 
-// researchExport copies a run's built wiki to dir, a directory inside the project (created, and emptied of an earlier export).
+// researchExport renders a run's wiki from its ledger as it is now and writes it to dir, a directory inside the project (created,
+// and emptied of an earlier export).
 func (s *Session) researchExport(slug, dir string) (string, error) {
-	src := research.SiteDir(s.opts.Root, slug)
-	if _, err := os.Stat(filepath.Join(src, "index.html")); err != nil {
-		return "", fmt.Errorf("the wiki of %s is not built: /research build %s", slug, slug)
-	}
 	dst := dir
 	if !filepath.IsAbs(dst) {
 		dst = filepath.Join(s.opts.Cwd, dst)
 	}
 	dst = filepath.Clean(dst)
-	if rel, err := filepath.Rel(s.opts.Root, dst); err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+	rel, err := filepath.Rel(s.opts.Root, dst)
+	if err != nil || !filepath.IsLocal(rel) {
 		return "", fmt.Errorf("%s is not a directory inside the project", dir)
 	}
-	return dst, research.Export(src, dst)
+	r, err := s.research.Snapshot(slug)
+	if err != nil {
+		return "", err
+	}
+	site, err := research.Render(s.opts.Root, r, research.BuildOptions{Fonts: s.researchFonts})
+	if err != nil {
+		return "", err
+	}
+	return dst, research.Export(s.opts.Root, rel, site.Files)
 }
 
 // ResearchRuns lists the project's research runs, newest first, with where each stands (the Research view's list).
@@ -304,7 +310,7 @@ func (s *Session) ResearchStart(question, depth string) (string, error) {
 	return s.StartResearch(question, depth, research.ModeReport, "")
 }
 
-// ResearchExport copies a run's built wiki into dir, a directory inside the project, and says where it went.
+// ResearchExport renders a run's wiki into dir, a directory inside the project, and says where it went.
 func (s *Session) ResearchExport(slug, dir string) (string, error) {
 	if s.research == nil {
 		return "", fmt.Errorf("the research plugin is off: /plugins enable research")

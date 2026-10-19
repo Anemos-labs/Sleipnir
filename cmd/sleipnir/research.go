@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"text/tabwriter"
 
 	"github.com/anemos-labs/sleipnir/internal/config"
@@ -42,7 +41,7 @@ func cmdResearch(ctx context.Context, args []string) error {
 	}
 	cwd := fs.String("cwd", "", "the project (default: the current directory)")
 	build := fs.Bool("build", false, "build RUN's wiki from its ledger into .sleipnir/research/RUN/site")
-	export := fs.String("export", "", "copy RUN's built wiki into this directory of the project (an earlier export there is replaced)")
+	export := fs.String("export", "", "render RUN's wiki into this directory of the project (an earlier export there is replaced)")
 	asJSON := fs.Bool("json", false, "machine-readable output")
 	pos, err := parseInterspersed(fs, args)
 	if err != nil {
@@ -90,14 +89,15 @@ func cmdResearch(ctx context.Context, args []string) error {
 			dst = filepath.Join(dir, dst)
 		}
 		dst = filepath.Clean(dst)
-		if rel, err := filepath.Rel(project, dst); err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+		rel, err := filepath.Rel(project, dst)
+		if err != nil || !filepath.IsLocal(rel) {
 			return fmt.Errorf("research: %s is not a directory inside the project", *export)
 		}
-		src := research.SiteDir(root, slug)
-		if _, err := os.Stat(filepath.Join(src, "index.html")); err != nil {
-			return fmt.Errorf("research: the wiki of %s is not built: sleipnir research %s --build", slug, slug)
+		site, err := research.Render(root, r, research.BuildOptions{Fonts: webui.Fonts()})
+		if err != nil {
+			return fmt.Errorf("research: export: %w", err)
 		}
-		if err := research.Export(src, dst); err != nil {
+		if err := research.Export(project, rel, site.Files); err != nil {
 			return fmt.Errorf("research: export: %w", err)
 		}
 		fmt.Printf("exported the wiki of %s to %s\n", slug, dst)

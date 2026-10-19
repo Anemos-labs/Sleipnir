@@ -22,7 +22,7 @@ milestone on the research tool's own reports (`research status`, `research check
 work.
 
 `/research` alone lists the runs; `/research status [RUN]` reports one, `/research build [RUN]` renders its wiki,
-`/research open [RUN]` gives the path of its `index.html`, and `/research export RUN DIR` copies the built wiki into a
+`/research open [RUN]` gives the path of its `index.html`, and `/research export RUN DIR` renders the wiki into a
 directory of the project. `sleipnir research [RUN] [--build] [--export DIR] [--json]` does the same from a shell
 (`docs/CLI.md`).
 
@@ -114,7 +114,7 @@ the shared prompt layer that every agent reads, marked as unverified web content
 shared layer, made once at publication (`docs/CACHE-DESIGN.md`); a session started later in the project gets the newest
 published research-first run in its shared layer from its first request.
 
-The docs worker keeps writing the project's own documentation. It copies the built wiki into `docs/research/`
+The docs worker keeps writing the project's own documentation. It renders the wiki into `docs/research/`
 (`sleipnir research RUN --export docs/research`, which also finds the runs of the main checkout from a worker's tree),
 links it from the README and cites its pages where a design choice rests on it.
 
