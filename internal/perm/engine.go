@@ -458,6 +458,12 @@ func (e *Engine) Check(ctx context.Context, r Request) Decision {
 	if refusalsOnly(ctx) {
 		return Decision{Allow: true, Reason: "not asked (only a refusal applies): " + v.reason}
 	}
+	// A question the person refused, or that nobody answered, earlier in the session is answered with that, before the manager could
+	// approve it: the person's no wins, and nobody is asked.
+	if d, ok := e.pr.earlier(settledKey(r, v)); ok {
+		e.audit(Audit{Kind: "decide", Request: r, Reason: d.Reason, Decision: d, By: "policy"})
+		return d
+	}
 	e.audit(Audit{Kind: "ask", Request: r, Reason: v.reason})
 	if v.routine && e.cfg.Delegate != nil {
 		shown := r

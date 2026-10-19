@@ -1,6 +1,9 @@
 package perm
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -102,5 +105,71 @@ func TestAChangeOfModeOrRulesAsksAgain(t *testing.T) {
 	e.Check(bg, fetchOf("https://soulver.io/"))
 	if rec.count() != 4 {
 		t.Fatalf("not asked again after a rule was removed: prompts %d", rec.count())
+	}
+}
+
+// A question that was on screen while the mode changed records nothing when it ends unanswered: the reset holds, and the next
+// matching request is asked about again.
+func TestAResetDuringAQuestionKeepsTheRecordCleared(t *testing.T) {
+	f := newFixture(t)
+	shown, release := make(chan struct{}), make(chan struct{})
+	rec := &promptRecorder{answer: func(n int, _ Request) Decision {
+		if n == 1 {
+			close(shown)
+			<-release
+		}
+		return Decision{Reason: "no answer"}
+	}}
+	e := askEngine(t, f, Config{}, rec.prompt)
+	done := make(chan Decision)
+	go func() { done <- e.Check(bg, fetchOf("https://soulver.io/")) }()
+	<-shown
+	other := ModeAcceptEdits
+	if e.Mode() == ModeAcceptEdits {
+		other = ModeDefault
+	}
+	e.SetMode(other)
+	close(release)
+	if d := <-done; d.Allow {
+		t.Fatalf("the unanswered question was allowed: %+v", d)
+	}
+	if d := e.Check(bg, fetchOf("https://soulver.io/page")); d.Allow || strings.HasPrefix(d.Reason, askedEarlier) || rec.count() != 2 {
+		t.Fatalf("after a reset during the question: %+v; prompts %d, want 2", d, rec.count())
+	}
+}
+
+// The person's refusal wins over the manager: a routine question the person refused is not handed to the delegate again, and the
+// repeat is recorded as one decision, with no question.
+func TestARefusalByThePersonIsNotDelegatedAgain(t *testing.T) {
+	f := newFixture(t)
+	trees := filepath.Join(f.base, "cache", "wt", "s1")
+	wt := filepath.Join(trees, "be-1")
+	if err := os.MkdirAll(filepath.Join(wt, "tools"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	delegated := 0
+	l := &auditLog{}
+	rec := &promptRecorder{answer: func(int, Request) Decision { return Decision{Reason: "denied by user"} }}
+	e := f.engine(t, Config{Mode: ModeAcceptEdits, TreeParents: []string{trees}, Audit: l.add, Prompter: rec.prompt,
+		Delegate: func(context.Context, Request) (Decision, string) {
+			delegated++
+			if delegated == 1 {
+				return Decision{}, "" // passed on to the person
+			}
+			return Decision{Allow: true, Reason: "approved by the manager"}, "manager"
+		},
+	})
+	e.Confine("be-1", wt)
+	req := Request{Agent: "be-1", Role: "backend", Tool: "Bash", Command: "python3 tools/gen.py", Cwd: wt, Summary: "bash"}
+	if d := e.Check(bg, req); d.Allow || delegated != 1 || rec.count() != 1 {
+		t.Fatalf("first question: %+v; delegated %d, prompts %d", d, delegated, rec.count())
+	}
+	before := len(l.kinds())
+	d := e.Check(bg, req)
+	if d.Allow || !strings.HasPrefix(d.Reason, askedEarlier) || delegated != 1 || rec.count() != 1 {
+		t.Fatalf("repeat: %+v; delegated %d, prompts %d", d, delegated, rec.count())
+	}
+	if got := l.kinds()[before:]; !sameStrings(got, []string{"decide:policy"}) {
+		t.Errorf("the repeat's audit trail is %v, want one decision by policy", got)
 	}
 }

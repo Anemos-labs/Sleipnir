@@ -29,6 +29,7 @@ type prompts struct {
 	mu       sync.Mutex
 	inflight map[string]*pending
 	refused  map[string]Decision // by settledKey: the refusals and the unanswered questions of the session
+	gen      uint64              // bumped by forget: a question put before a reset does not record its refusal after it
 }
 
 type pending struct {
@@ -56,13 +57,24 @@ func (p *prompts) earlier(key string) (d Decision, ok bool) {
 	return d, ok
 }
 
-// refuse records d, a refusal by the person or a question nobody answered, as the answer to every later question under key.
-func (p *prompts) refuse(key string, d Decision) {
+// generation is the current reset generation (forget), taken when a question is put to the person.
+func (p *prompts) generation() uint64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.gen
+}
+
+// refuse records d, a refusal by the person or a question nobody answered, as the answer to every later question under key. gen is
+// the generation the question was put under: a question the mode or the rules changed under while it was on screen records nothing,
+// as it was answered for what no longer holds.
+func (p *prompts) refuse(key string, d Decision, gen uint64) {
 	if d.Allow {
 		return
 	}
 	p.mu.Lock()
-	p.refused[key] = Decision{Reason: d.Reason}
+	if gen == p.gen {
+		p.refused[key] = Decision{Reason: d.Reason}
+	}
 	p.mu.Unlock()
 }
 
@@ -71,6 +83,7 @@ func (p *prompts) refuse(key string, d Decision) {
 func (p *prompts) forget() {
 	p.mu.Lock()
 	clear(p.refused)
+	p.gen++
 	p.mu.Unlock()
 }
 
@@ -169,15 +182,13 @@ const askedEarlier = "asked earlier in this session: "
 // question that nobody answered, and not of a policy.
 const declinedAdvice = " (the person said no to this: do not make it another way, with another tool or command; say what you wanted and ask what they want instead)"
 
-// resolveAsk turns an "ask" outcome into a Decision by consulting the human.
+// resolveAsk turns an "ask" outcome into a Decision by consulting the human. Check has already answered a question refused earlier
+// (prompts.earlier); one refused while this one waited is answered in lead.
 func (e *Engine) resolveAsk(ctx context.Context, r Request, v verdict, again func() verdict) Decision {
 	if e.cfg.Prompter == nil {
 		return Decision{Reason: "approval required: " + v.reason + NoOneToAsk}
 	}
 	skey := settledKey(r, v)
-	if d, ok := e.pr.earlier(skey); ok {
-		return d
-	}
 	key := promptKey(r)
 	for {
 		if ctx.Err() != nil {
@@ -251,6 +262,7 @@ func (e *Engine) lead(ctx context.Context, key, skey string, p *pending, r Reque
 		shown.RememberRules = e.rememberRules(v.rem)
 	}
 	shown.OffersTests = !v.askRule && (v.tests || e.offersTests(v.rem))
+	gen := e.pr.generation()
 	pctx := ctx
 	if e.cfg.AskTimeout > 0 {
 		var cancel context.CancelFunc
@@ -265,13 +277,13 @@ func (e *Engine) lead(ctx context.Context, key, skey string, p *pending, r Reque
 		// the time ran out and the prompter gave up on it (an answer that arrived as it did stands: it is not "no answer")
 		p.canceled = false
 		d = Decision{Reason: "approval required: " + v.reason + askTimedOut + e.cfg.AskTimeout.String() + noAnswerInTime}
-		e.pr.refuse(skey, d)
+		e.pr.refuse(skey, d, gen)
 		return d
 	}
 	p.canceled = false
 	if !d.Allow && d.Reason == "no answer" {
 		d = Decision{Reason: "approval required: " + v.reason + unanswered}
-		e.pr.refuse(skey, d)
+		e.pr.refuse(skey, d, gen)
 		return d
 	}
 	if d.Reason == "" {
@@ -284,7 +296,7 @@ func (e *Engine) lead(ctx context.Context, key, skey string, p *pending, r Reque
 	if !d.Allow && (d.Reason == "denied by user" || d.Reason == "declined by the user") {
 		d.Reason += declinedAdvice
 	}
-	e.pr.refuse(skey, d)
+	e.pr.refuse(skey, d, gen)
 	e.remember(d, v)
 	return d
 }
