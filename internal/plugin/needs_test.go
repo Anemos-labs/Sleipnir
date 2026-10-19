@@ -223,10 +223,12 @@ func TestInstallNeedWorksOutTheMethodsEnvironment(t *testing.T) {
 	}
 	write("probe", "echo banner\necho SLEIPNIR_TEST_DIR=/first\necho SLEIPNIR_TEST_DIR=/addons\necho done\n")
 	write("silent", "echo nothing here\n")
+	write("leaky", "echo SLEIPNIR_TEST_DIR=hunter2\nexit 3\n")
 	write("pm", "echo \"$SLEIPNIR_TEST_DIR\" > '"+seen+"'\n")
 	n := Need{ID: "tool", Title: "Tool", Commands: []string{"tool"}, Install: []InstallMethod{
 		{ID: "pm", Title: "pm", Env: map[string][]string{"SLEIPNIR_TEST_DIR": {"probe", "--where"}}, Run: []string{"pm"}},
 		{ID: "quiet", Title: "quiet", Env: map[string][]string{"SLEIPNIR_TEST_DIR": {"silent"}}, Run: []string{"pm"}},
+		{ID: "leaky", Title: "leaky", Env: map[string][]string{"SLEIPNIR_TEST_DIR": {"leaky"}}, Run: []string{"pm"}},
 	}}
 	if err := validNeed(n); err != nil {
 		t.Fatal(err)
@@ -245,6 +247,10 @@ func TestInstallNeedWorksOutTheMethodsEnvironment(t *testing.T) {
 	}
 	if _, err := InstallNeed(context.Background(), env, n, "quiet", &out); err == nil || !strings.Contains(err.Error(), "printed no SLEIPNIR_TEST_DIR= line") {
 		t.Errorf("a command that prints no value: %v", err)
+	}
+	out.Reset()
+	if _, err := InstallNeed(context.Background(), env, n, "leaky", &out); err == nil || strings.Contains(err.Error()+out.String(), "hunter2") {
+		t.Errorf("a failed value command's output reached the install's output: %v %q", err, out.String())
 	}
 	t.Setenv("SLEIPNIR_TEST_DIR", "")
 	_, _ = InstallNeed(context.Background(), env, n, "quiet", &out)

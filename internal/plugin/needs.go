@@ -759,8 +759,8 @@ func execStep(ctx context.Context, env NeedEnv, argv, vars []string, out io.Writ
 // methodEnv works out a method's environment variables (InstallMethod.Env) as
 // NAME=value, in name order; one already in the environment, even empty, is
 // kept and its command not run. What a value's command prints, and the value,
-// stay out of out (a value can be a credential); out sees the command, and the
-// start of its output only when it fails.
+// stay out of out, even when it fails (a value can be a credential); out sees
+// the command and the name it set.
 func methodEnv(ctx context.Context, env NeedEnv, decl map[string][]string, out io.Writer) ([]string, error) {
 	var vars []string
 	for _, name := range EnvNames(decl) {
@@ -772,8 +772,7 @@ func methodEnv(ctx context.Context, env NeedEnv, decl map[string][]string, out i
 		fmt.Fprintf(out, "$ %s  # sets %s\n", strings.Join(argv, " "), name)
 		got := &capped{max: envOutputMax}
 		if err := execStep(ctx, env, argv, nil, got, false); err != nil {
-			out.Write(got.buf.Bytes())
-			return nil, fmt.Errorf("working out %s: %w", name, err)
+			return nil, fmt.Errorf("working out %s: %w (its output is not shown, as it can hold a credential: run it in a terminal to see why)", name, err)
 		}
 		value := ""
 		for _, line := range strings.Split(got.buf.String(), "\n") {
