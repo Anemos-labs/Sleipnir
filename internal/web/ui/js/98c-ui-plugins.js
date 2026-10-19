@@ -6,9 +6,11 @@
  * four tabs are view:workspace; the runner, Doctor and Schedule are view:tools) leaves the rail, the palette, the `g` chords and the
  * Cockpit's card picker, and SL.views.show of it draws a short note with the way back (SL.plugins.placeholder).
  *
- * The view lists every plugin by category with a switch, its state, one line of what it does, what it adds, which layer decided it and a
- * settings form generated from its config schema. A change is sent at once (POST /api/plugins/{id}); what waits for the team to start
- * again is said by the Apply bar, whose button restarts the session once. Text from the server is data: it goes through esc(). */
+ * The view is a page of cards (83b-ui-dash.js, page plugins): the profile and the filter, then one card for each category, each plugin a
+ * row with a switch, its state, one line of what it does, what it adds, which layer decided it and a settings form generated from its
+ * config schema. A change is sent at once (POST /api/plugins/{id}); what waits for the team to start again is said by the Apply bar
+ * above the cards, whose button restarts the session once. SL.views.show('plugins', {focus: id}) brings a plugin's row into view (the
+ * Settings switches that are plugins lead here). Text from the server is data: it goes through esc(). */
 (function (SL) {
   'use strict';
   const U = SL.u, { $, $$, esc } = U, ui = SL.ui = SL.ui || {};
@@ -23,6 +25,12 @@
     ['external', 'External', 'installed from outside Sleipnir: off until you turn them on'],
     ['core', 'Core', 'always on: Sleipnir needs them to run'],
   ];
+  /** What a category with no plugin at all says: what would appear there and what puts it there. */
+  const CAT_EMPTY = {
+    external: 'Plugins installed from outside Sleipnir appear here, off until you turn them on: <span class="mono">sleipnir plugins add DIR</span> installs one into ~/.sleipnir/plugins.',
+  };
+  /** The card of each category (83b-ui-dash.js, page plugins). */
+  const cardOf = cat => 'plugins.' + cat;
   /** The plugin of a view that is not view:<its name> ('' for one no plugin owns). */
   const VIEW_PLUGIN = { workspace: 'view:workspace', runner: 'view:tools', doctor: 'view:tools', schedule: 'view:tools', kit: '' };
   /** What a contribution kind is called on the page: [one, many]. */
@@ -132,9 +140,9 @@
     return words.every(w => hay.includes(w));
   }
   /** The groups the page draws: [{id, title, desc, rows, on, all}] for each category that has a row after the filters. */
-  function groups(cat, st) {
+  function groups(cat, st, every) {
     const all = arr(cat && cat.plugins).filter(p => p && p.id);
-    return CATS.map(([id, title, desc]) => { const mine = all.filter(p => catOf(p) === id); return { id, title, desc, rows: mine.filter(p => fits(p, st)), on: mine.filter(p => p.enabled || p.core).length, all: mine.length }; }).filter(g => g.rows.length);
+    return CATS.map(([id, title, desc]) => { const mine = all.filter(p => catOf(p) === id); return { id, title, desc, rows: mine.filter(p => fits(p, st)), on: mine.filter(p => p.enabled || p.core).length, all: mine.length }; }).filter(g => every || g.rows.length);
   }
   /** An id as a part of an element id. */
   const key = id => String(id).replace(/[^A-Za-z0-9_-]/g, '_');
@@ -172,55 +180,74 @@
       '<p class="plg-d" id="pd-' + k + '">' + esc(p.description || '') + '</p>' + (meta ? '<p class="plg-m">' + meta + '</p>' : '') + (why ? '<p class="plg-why ' + why[0] + '">' + esc(why[1]) + '</p>' : '') + '</div>' +
       (acts ? '<div class="plg-a">' + acts + '</div>' : '') + (fs.length && open ? formHtml(p, st) : '') + '</li>';
   }
-  /** Every group, or what to say when there is nothing to list. */
+  /** What the page says while there is no catalogue: it is loading, or the server has none. */
+  const noCatalogue = () => '<p class="stubnote">' + (P.absent ? 'This server has no plugin list: it is older than Sleipnir 0.3, and every part of it is on.' : 'Loading the plugins… Each one appears here with a switch, grouped by what it is for.') + '</p>';
+  /** One category's card: its plugins after the filter, or what will appear there. */
+  function groupHtml(g, st) {
+    const body = g.rows.length ? '<ul class="plg-list">' + g.rows.map(p => rowHtml(p, st)).join('') + '</ul>'
+      : '<p class="stubnote plg-none">' + (g.all ? 'No plugin of this group matches' + (st.q ? ' “' + esc(st.q) + '”' : ' this filter') + ': ' + g.all + ' hidden by the filter above.' : CAT_EMPTY[g.id] || 'No plugin in this group.') + '</p>';
+    return '<section class="panel plg-grp" data-cat="' + g.id + '" aria-labelledby="pg-' + g.id + '"><div class="ph"><h2 id="pg-' + g.id + '">' + esc(g.title) + '</h2><div class="r"><span class="plg-gd">' + esc(g.desc) + '</span>' + (g.all ? '<span><b>' + g.on + '</b> of ' + g.all + ' on</span>' : '') + '</div></div>' + body + '</section>';
+  }
+  /** The markup of each category's card, by card id. */
+  function cardsHtml(cat, st) {
+    const out = {};
+    if (!cat) { CATS.forEach(([id, title]) => { out[cardOf(id)] = '<section class="panel plg-grp plg-empty" data-cat="' + id + '"><div class="ph"><h2>' + esc(title) + '</h2></div>' + (id === CATS[0][0] ? noCatalogue() : '<p class="stubnote plg-none">' + (P.absent ? 'No plugin list on this server.' : 'Loading…') + '</p>') + '</section>'; }); return out; }
+    groups(cat, st, true).forEach(g => { out[cardOf(g.id)] = groupHtml(g, st); });
+    return out;
+  }
+  /** Every group that has a row after the filter, or what to say when there is nothing to list (one string; the tests read it). */
   function listHtml(cat, st) {
-    if (!cat) return '<section class="panel"><div class="setcard plg-empty"><p class="stubnote">' + (P.absent ? 'This server has no plugin list: it is older than Sleipnir 0.3, and every part of it is on.' : 'Loading the plugins…') + '</p></div></section>';
+    if (!cat) return '<section class="panel"><div class="setcard plg-empty">' + noCatalogue() + '</div></section>';
     const gs = groups(cat, st);
     if (!gs.length) return '<p class="stubnote plg-none">No plugin matches' + (st.q ? ' “' + esc(st.q) + '”' : ' this filter') + '.</p>';
-    return gs.map(g => '<section class="panel plg-grp" data-cat="' + g.id + '" aria-labelledby="pg-' + g.id + '"><div class="ph"><h2 id="pg-' + g.id + '">' + esc(g.title) + '</h2><div class="r"><span class="plg-gd">' + esc(g.desc) + '</span><span><b>' + g.on + '</b> of ' + g.all + ' on</span></div></div><ul class="plg-list">' + g.rows.map(p => rowHtml(p, st)).join('') + '</ul></section>').join('');
+    return gs.map(g => groupHtml(g, st)).join('');
   }
   /** The Apply bar: how many changes wait for the team to start again, and the button that starts it again ('' when none wait). */
   function applyHtml(cat, S) {
     const w = P.waiting(); if (!cat || (!cat.restart && !w.length)) return '';
     const n = Math.max(1, w.length), names = w.map(p => esc(p.title || p.id)).join(', ');
-    return '<div class="pendbar" role="status"><span class="pb-t"><b>' + n + ' change' + (n === 1 ? '' : 's') + '</b> ' + (n === 1 ? 'applies' : 'apply') + ' when the team starts again' + (names ? ': ' + names : '') + '</span>' +
-      '<span class="pb-a">' + (S ? '<button class="btn sm pri" type="button" data-do="apply">Apply: start the team again</button>' : '<span class="dim">the next session starts with them</span>') + '</span></div>';
+    return '<div class="pendbar" role="status"><span class="pb-t"><b>' + n + ' plugin change' + (n === 1 ? '' : 's') + '</b> ' + (n === 1 ? 'waits' : 'wait') + ' for the team to start again' + (names ? ': ' + names : '') + '.' + (S ? ' The conversation carries over.' : '') + '</span>' +
+      '<span class="pb-a">' + (S ? '<button class="btn sm pri" type="button" data-do="apply">Apply: start the team again</button>' : '<span class="dim">the next session you start has them</span>') + '</span></div>';
   }
   /** The view's state, kept while the page is open: search, filter chip, scope, open forms, values being typed, requests in flight. */
   const ST = { q: '', f: 'all', scope: 'user', open: {}, draft: {}, busy: {} };
   const fail = (r, what) => { if (r && r.declined) return; ui.toast((r && r.message) || what, 'err'); };
-  Object.assign(P, { addsText, badge, fits, groups, fields, rowHtml, formHtml, listHtml, applyHtml, CATS, LAYER, KIND, state: ST });
+  Object.assign(P, { addsText, badge, fits, groups, fields, rowHtml, formHtml, listHtml, groupHtml, cardsHtml, applyHtml, CATS, CAT_EMPTY, LAYER, KIND, state: ST });
 
   /* ---------------------------------------------------------------- the view */
-  function mount(sc, root) {
+  /** The profile-and-filter card: the profile (what it means in a line), where a change is saved, the search and the filter chips. */
+  const toolsHtml = () => '<section class="panel plg-tools" aria-label="Profile and where changes are saved"><div class="ph"><h2>Profile and filter</h2></div>' +
+    '<div class="plg-row"><label class="plg-ctl" for="pprof"><span class="lab">Profile</span><select id="pprof"></select></label><span class="plg-pd"></span></div>' +
+    '<p class="plg-help">A profile is a starting set of plugins (standard, minimal, team, headless); a switch below changes one plugin on top of it.</p>' +
+    '<div class="plg-row"><span class="plg-ctl"><span class="lab" id="pscl">Save changes for</span><span class="seg" role="group" aria-labelledby="pscl">' + SCOPES.map(([v, t]) => '<button type="button" data-scope="' + v + '" aria-pressed="false">' + t + '</button>').join('') + '</span></span>' +
+    '<input id="pq" type="search" placeholder="filter: a name or what it adds" aria-label="Filter plugins" autocomplete="off"><span class="seg" role="group" aria-label="Show">' + FILTERS.map(([v, t]) => '<button type="button" data-f="' + v + '" aria-pressed="false">' + t + '</button>').join('') + '</span></div></section>';
+  function mount(sc, root, params, S0) {
     const st = ST;
-    root.innerHTML = '<div class="plugv"><header class="sethead"><h1>Plugins</h1><p>Turn parts of Sleipnir on and off and change their settings. A change is saved at once; what the running team uses changes when it starts again. The terminal has the same list: <span class="mono">sleipnir plugins</span> and <span class="mono">/plugins</span>.</p></header>' +
-      '<div class="plg-apply"></div>' +
-      '<section class="panel plg-tools" aria-label="Profile and where changes are saved"><div class="plg-row"><label class="plg-ctl" for="pprof"><span class="lab">Profile</span><select id="pprof"></select></label><span class="plg-pd dim"></span>' +
-      '<span class="plg-ctl"><span class="lab" id="pscl">Save changes for</span><span class="seg" role="group" aria-labelledby="pscl">' + SCOPES.map(([v, t]) => '<button type="button" data-scope="' + v + '" aria-pressed="false">' + t + '</button>').join('') + '</span></span></div>' +
-      '<div class="plg-row"><input id="pq" type="search" placeholder="filter: a name or what it adds" aria-label="Filter plugins" autocomplete="off"><span class="seg" role="group" aria-label="Show">' + FILTERS.map(([v, t]) => '<button type="button" data-f="' + v + '" aria-pressed="false">' + t + '</button>').join('') + '</span></div></section>' +
-      '<div class="plg-groups"></div></div>';
-    const bar = $('.plg-apply', root), groupsEl = $('.plg-groups', root), sel = $('#pprof', root), pd = $('.plg-pd', root), q = $('#pq', root);
-    q.value = st.q;
+    /* a page of cards: the heading and the Apply bar above them; drawn as one card of another page (params.__only), only that card */
+    const DP = ui.dash.withHead(sc, root, S0 || (SL.sessions && SL.sessions.active), 'plugins', params, '<div class="plghead"><header class="sethead"><h1>Plugins</h1><p>Sleipnir is made of plugins: its tools, the team’s helpers and the views of this page. Turn one on or off, or change its settings: a change is saved at once, and a running team takes it when it starts again. <span class="dim">In a terminal: <span class="mono">sleipnir plugins</span> or <span class="mono">/plugins</span>.</span></p></header><div class="plg-apply"></div></div>');
+    DP.fill({ 'plugins.profile': toolsHtml() });
+    const bar = $('.plg-apply', root), groupsEl = root, sel = $('#pprof', root), pd = $('.plg-pd', root), q = $('#pq', root);
+    if (q) q.value = st.q;
     function paint() {
       const cat = P.cat, S = liveTab();
-      const bh = applyHtml(cat, S); if (bar._h !== bh) { bar._h = bh; bar.innerHTML = bh; }
-      const profs = arr(cat && cat.profiles), oh = profs.length ? profs.map(p => '<option value="' + esc(p.id) + '"' + (p.id === cat.profile ? ' selected' : '') + '>' + esc(p.title || p.id) + '</option>').join('') : '<option value="">' + (cat ? esc(cat.profile || 'standard') : '(none)') + '</option>';
-      if (sel._h !== oh) { sel._h = oh; sel.innerHTML = oh; } sel.disabled = !profs.length; if (cat && cat.profile) sel.value = cat.profile;
-      const cur = profs.find(p => p.id === (cat && cat.profile)); pd.textContent = cur && cur.description ? cur.description : '';
+      if (bar) { const bh = applyHtml(cat, S); if (bar._h !== bh) { bar._h = bh; bar.innerHTML = bh; } }
+      if (sel) {
+        const profs = arr(cat && cat.profiles), oh = profs.length ? profs.map(p => '<option value="' + esc(p.id) + '"' + (p.id === cat.profile ? ' selected' : '') + '>' + esc(p.title || p.id) + '</option>').join('') : '<option value="">' + (cat ? esc(cat.profile || 'standard') : '(none)') + '</option>';
+        if (sel._h !== oh) { sel._h = oh; sel.innerHTML = oh; } sel.disabled = !profs.length; if (cat && cat.profile) sel.value = cat.profile;
+        const cur = profs.find(p => p.id === (cat && cat.profile)); pd.textContent = cur && cur.description ? cur.description : '';
+      }
       $$('[data-scope]', root).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.scope === st.scope)));
       $$('[data-f]', root).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.f === st.f)));
-      const gh = listHtml(cat, st);
-      if (groupsEl._h !== gh) {
-        const a = document.activeElement, fid = a && groupsEl.contains(a) && a.id ? a.id : (a && a.dataset && groupsEl.contains(a) ? (a.dataset.open ? '[data-open="' + a.dataset.open + '"]' : a.dataset.reset ? '[data-reset="' + a.dataset.reset + '"]' : '') : '');
-        groupsEl._h = gh; groupsEl.innerHTML = gh;
-        if (fid) { const n = fid.charAt(0) === '[' ? groupsEl.querySelector(fid) : groupsEl.querySelector('#' + CSS.escape(fid)); if (n) n.focus({ preventScroll: true }); }
-      }
+      const map = cardsHtml(cat, st), a = document.activeElement, inCard = a && root.contains(a) && a.closest && a.closest('.plg-grp');
+      const fid = inCard ? (a.id ? '#' + CSS.escape(a.id) : a.dataset && a.dataset.open ? '[data-open="' + CSS.escape(a.dataset.open) + '"]' : a.dataset && a.dataset.reset ? '[data-reset="' + CSS.escape(a.dataset.reset) + '"]' : '') : '';
+      DP.fill(map);
+      if (fid && !root.contains(a)) { const n = root.querySelector(fid); if (n) n.focus({ preventScroll: true }); }
+      if (st.focus && cat) { const id = st.focus; st.focus = ''; setTimeout(() => { if (!sc.alive) return; const r = root.querySelector('[data-plg="' + CSS.escape(id) + '"]'); if (r) { r.classList.add('plg-hl'); if (r.scrollIntoView) r.scrollIntoView({ block: 'center' }); const sw = r.querySelector('[data-sw]'); if (sw) sw.focus({ preventScroll: true }); } }, 0); }
     }
     sc.on('plugins-changed', paint);
     sc.on('activated', paint);
-    sc.listen(q, 'input', () => { st.q = q.value; paint(); });
-    sc.listen(sel, 'change', () => {
+    if (q) sc.listen(q, 'input', () => { st.q = q.value; paint(); });
+    if (sel) sc.listen(sel, 'change', () => {
       const v = sel.value; if (!v || (P.cat && v === P.cat.profile)) return;
       P.setProfile(v, st.scope).then(r => { if (!r.ok) { fail(r, 'the profile was not changed'); paint(); return; } const pr = arr(P.cat && P.cat.profiles).find(x => x.id === v); ui.toast('profile: ' + ((pr && pr.title) || v) + (st.scope === 'project' ? ' for this project' : ' for you'), 'ok'); });
     });
@@ -228,7 +255,7 @@
       const t = e.target;
       const sp = t.closest('[data-scope]'); if (sp) { st.scope = sp.dataset.scope; paint(); return; }
       const fb = t.closest('[data-f]'); if (fb) { st.f = fb.dataset.f; paint(); return; }
-      const op = t.closest('[data-open]'); if (op) { const id = op.dataset.open; st.open[id] = !st.open[id]; paint(); if (st.open[id]) { const f = groupsEl.querySelector('#pform-' + key(id) + ' [data-fk]'); if (f) f.focus(); } return; }
+      const op = t.closest('[data-open]'); if (op) { const id = op.dataset.open; st.open[id] = !st.open[id]; paint(); if (st.open[id]) { const f = root.querySelector('#pform-' + key(id) + ' [data-fk]'); if (f) f.focus(); } return; }
       const rs = t.closest('[data-reset]'); if (rs) { const id = rs.dataset.reset, p = P.find(id); resetIt(id, p && p.layer === 'project' ? 'project' : 'user'); return; }
       if (t.closest('[data-do="apply"]')) apply();
     });
@@ -242,7 +269,7 @@
       st.busy[id] = true; paint();
       P.set(id, { enabled: on, scope: st.scope }).then(r => {
         delete st.busy[id];
-        if (!r.ok) { fail(r, (p.title || id) + ' was not changed'); groupsEl._h = ''; paint(); return; }
+        if (!r.ok) { fail(r, (p.title || id) + ' was not changed'); const c = DP.slot(cardOf(catOf(p))); if (c) c._h = ''; paint(); return; }
         const now = (r.data && r.data.plugin) || {}, wait = now.state === 'restart' || (r.data && r.data.restart);
         ui.toast((p.title || id) + ': ' + (on ? 'on' : 'off') + (st.scope === 'project' ? ' for this project' : ' for you') + (wait ? '. It applies when the team starts again' : ''), on ? 'ok' : 'warm');
         paint();
@@ -274,6 +301,7 @@
           (r && r.done ? r.done : Promise.resolve({ ok: true })).then(x => { if (x && x.ok) { ui.toast('the team starts again with the plugins as they are now', 'ok'); P.load(); } });
         } });
     }
+    st.focus = (params && params.focus) || '';
     paint(); P.load();
   }
   SL.views.register({ name: 'plugins', title: 'Plugins', mount });

@@ -288,7 +288,7 @@
    "kind": "slash",
    "live": true,
    "effects": [
-    "settings:roles"
+    "settings:models"
    ]
   },
   {
@@ -396,7 +396,7 @@
    "kind": "slash",
    "live": true,
    "effects": [
-    "settings:trust"
+    "settings:permissions"
    ]
   },
   {
@@ -405,7 +405,7 @@
    "kind": "slash",
    "live": true,
    "effects": [
-    "settings:roles"
+    "settings:models"
    ]
   },
   {
@@ -514,7 +514,7 @@
    "kind": "slash",
    "live": true,
    "effects": [
-    "settings:mcp"
+    "settings:providers"
    ]
   },
   {
@@ -685,7 +685,7 @@
    "kind": "action",
    "live": true,
    "effects": [
-    "settings:roles"
+    "settings:models"
    ]
   },
   {
@@ -712,7 +712,7 @@
    "kind": "action",
    "live": true,
    "effects": [
-    "settings:trust"
+    "settings:permissions"
    ]
   },
   {
@@ -730,7 +730,7 @@
    "kind": "action",
    "live": true,
    "effects": [
-    "settings:mcp"
+    "settings:providers"
    ]
   },
   {
@@ -956,7 +956,7 @@
    "kind": "program",
    "live": true,
    "effects": [
-    "settings:mcp"
+    "settings:providers"
    ]
   },
   {
@@ -1478,7 +1478,7 @@
    "kind": "program",
    "live": true,
    "effects": [
-    "settings:trust"
+    "settings:permissions"
    ]
   },
   {
@@ -1582,7 +1582,7 @@
    ],
    "/effort": [
     "act:setEffort",
-    "settings:roles"
+    "settings:models"
    ],
    "/exit": [
     "closeSession"
@@ -1604,7 +1604,7 @@
    ],
    "/mcp": [
     "act:command",
-    "settings:mcp"
+    "settings:providers"
    ],
    "/mode": [
     "act:setMode",
@@ -1650,7 +1650,7 @@
    ],
    "/roles": [
     "act:setRoleModel",
-    "settings:roles"
+    "settings:models"
    ],
    "/sessions": [
     "view:sessions"
@@ -1673,7 +1673,7 @@
     "settings:run"
    ],
    "/trust": [
-    "settings:trust"
+    "settings:permissions"
    ],
    "/verbose": [
     "page-state"
@@ -1723,12 +1723,16 @@
  "settings": [
   {
    "id": "models",
-   "title": "Models",
+   "title": "Models & roles",
    "group": "session",
-   "summary": "the catalogue: filter, star, choose for the manager or a role",
+   "summary": "Choose the model the manager and each role run on, and how hard they think.",
    "controls": [
     {
      "id": "cli*",
+     "scope": "view"
+    },
+    {
+     "id": "do:open-plugins",
      "scope": "view"
     },
     {
@@ -1763,6 +1767,19 @@
      "scope": "view"
     },
     {
+     "id": "role*",
+     "scope": "config",
+     "keys": [
+      "models.default",
+      "models.roles.*"
+     ]
+    },
+    {
+     "id": "seg:effort",
+     "scope": "state",
+     "note": "reasoning effort of the session (/effort); no configuration key"
+    },
+    {
      "id": "sel:maxo",
      "scope": "view"
     },
@@ -1789,27 +1806,94 @@
    ]
   },
   {
-   "id": "roles",
-   "title": "Roles & effort",
+   "id": "run",
+   "title": "Team & run",
    "group": "session",
-   "summary": "which model each role runs on, and how hard it thinks",
+   "summary": "How many workers the team has and how they work: separate checkouts, the check before a merge, the helpers.",
    "controls": [
     {
      "id": "cli*",
      "scope": "view"
     },
     {
-     "id": "role*",
-     "scope": "config",
-     "keys": [
-      "models.default",
-      "models.roles.*"
-     ]
+     "id": "do:apply",
+     "scope": "flag",
+     "flag": "swarm"
     },
     {
-     "id": "seg:effort",
-     "scope": "state",
-     "note": "reasoning effort of the session (/effort); no configuration key"
+     "id": "do:copycli",
+     "scope": "view"
+    },
+    {
+     "id": "do:open-plugins",
+     "scope": "view"
+    },
+    {
+     "id": "do:verify",
+     "scope": "flag",
+     "flag": "verify"
+    },
+    {
+     "id": "flag:autoDocs",
+     "scope": "config",
+     "keys": [
+      "swarm.auto_docs"
+     ],
+     "flag": "auto-docs"
+    },
+    {
+     "id": "flag:commit",
+     "scope": "flag",
+     "flag": "commit"
+    },
+    {
+     "id": "flag:mailman",
+     "scope": "config",
+     "keys": [
+      "swarm.mailman"
+     ],
+     "flag": "mailman"
+    },
+    {
+     "id": "flag:managerApproves",
+     "scope": "config",
+     "keys": [
+      "permissions.manager_approves"
+     ],
+     "flag": "manager-approves"
+    },
+    {
+     "id": "flag:noMcp",
+     "scope": "flag",
+     "flag": "no-mcp"
+    },
+    {
+     "id": "flag:trustProject",
+     "scope": "flag",
+     "flag": "trust-project"
+    },
+    {
+     "id": "id:rn",
+     "scope": "flag",
+     "flag": "swarm"
+    },
+    {
+     "id": "id:rv",
+     "scope": "flag",
+     "flag": "verify"
+    },
+    {
+     "id": "seg:isolation",
+     "scope": "config",
+     "keys": [
+      "swarm.isolation"
+     ],
+     "flag": "isolation"
+    },
+    {
+     "id": "step*",
+     "scope": "flag",
+     "flag": "swarm"
     }
    ]
   },
@@ -1817,7 +1901,7 @@
    "id": "budget",
    "title": "Budget",
    "group": "session",
-   "summary": "dollars for the turns from now on",
+   "summary": "What this session has spent, by agent, and the most it may spend.",
    "controls": [
     {
      "id": "do:budget",
@@ -1844,10 +1928,14 @@
   },
   {
    "id": "permissions",
-   "title": "Permissions",
+   "title": "Permissions & trust",
    "group": "session",
-   "summary": "the mode and the rules in force",
+   "summary": "What the agents may do without asking you, and whether this project’s own files are used.",
    "controls": [
+    {
+     "id": "cli*",
+     "scope": "view"
+    },
     {
      "id": "danger:bypass",
      "scope": "config",
@@ -1861,6 +1949,11 @@
      "keys": [
       "permissions.mode"
      ]
+    },
+    {
+     "id": "do:forget-all",
+     "scope": "state",
+     "note": "the trust ledger (a file of its own), not configuration"
     },
     {
      "id": "do:rule-add",
@@ -1939,23 +2032,6 @@
       "permissions.ask",
       "permissions.deny"
      ]
-    }
-   ]
-  },
-  {
-   "id": "trust",
-   "title": "Trust",
-   "group": "session",
-   "summary": "what this project’s own files may say to the harness",
-   "controls": [
-    {
-     "id": "cli*",
-     "scope": "view"
-    },
-    {
-     "id": "do:forget-all",
-     "scope": "state",
-     "note": "the trust ledger (a file of its own), not configuration"
     },
     {
      "id": "trust*",
@@ -1965,98 +2041,10 @@
    ]
   },
   {
-   "id": "run",
-   "title": "Run settings",
-   "group": "session",
-   "summary": "workers, isolation, verify, flags",
-   "controls": [
-    {
-     "id": "cli*",
-     "scope": "view"
-    },
-    {
-     "id": "do:apply",
-     "scope": "flag",
-     "flag": "swarm"
-    },
-    {
-     "id": "do:copycli",
-     "scope": "view"
-    },
-    {
-     "id": "do:verify",
-     "scope": "flag",
-     "flag": "verify"
-    },
-    {
-     "id": "flag:autoDocs",
-     "scope": "config",
-     "keys": [
-      "swarm.auto_docs"
-     ],
-     "flag": "auto-docs"
-    },
-    {
-     "id": "flag:commit",
-     "scope": "flag",
-     "flag": "commit"
-    },
-    {
-     "id": "flag:mailman",
-     "scope": "config",
-     "keys": [
-      "swarm.mailman"
-     ],
-     "flag": "mailman"
-    },
-    {
-     "id": "flag:managerApproves",
-     "scope": "config",
-     "keys": [
-      "permissions.manager_approves"
-     ],
-     "flag": "manager-approves"
-    },
-    {
-     "id": "flag:noMcp",
-     "scope": "flag",
-     "flag": "no-mcp"
-    },
-    {
-     "id": "flag:trustProject",
-     "scope": "flag",
-     "flag": "trust-project"
-    },
-    {
-     "id": "id:rn",
-     "scope": "flag",
-     "flag": "swarm"
-    },
-    {
-     "id": "id:rv",
-     "scope": "flag",
-     "flag": "verify"
-    },
-    {
-     "id": "seg:isolation",
-     "scope": "config",
-     "keys": [
-      "swarm.isolation"
-     ],
-     "flag": "isolation"
-    },
-    {
-     "id": "step*",
-     "scope": "flag",
-     "flag": "swarm"
-    }
-   ]
-  },
-  {
-   "id": "mcp",
-   "title": "MCP servers",
+   "id": "providers",
+   "title": "Connections",
    "group": "shared",
-   "summary": "tool servers: state, tools, approval",
+   "summary": "Where the models are reached and whether you are signed in, and the tool servers (MCP) the agents can call.",
    "controls": [
     {
      "id": "cli*",
@@ -2089,30 +2077,6 @@
     {
      "id": "pcmd*",
      "scope": "view"
-    }
-   ]
-  },
-  {
-   "id": "skills",
-   "title": "Skills, commands & hooks",
-   "group": "shared",
-   "summary": "what the model can load and what runs around its tools",
-   "controls": [
-    {
-     "id": "cmd*",
-     "scope": "view"
-    }
-   ]
-  },
-  {
-   "id": "providers",
-   "title": "Providers & login",
-   "group": "shared",
-   "summary": "where each model is reached, and whether a key is there",
-   "controls": [
-    {
-     "id": "cli*",
-     "scope": "view"
     },
     {
      "id": "prov*",
@@ -2122,10 +2086,26 @@
    ]
   },
   {
-   "id": "config",
-   "title": "Config layers",
+   "id": "skills",
+   "title": "Skills & extensions",
    "group": "shared",
-   "summary": "which file supplied each value",
+   "summary": "The skills the model can load, your own commands and the hooks around the tools, read from files.",
+   "controls": [
+    {
+     "id": "cmd*",
+     "scope": "view"
+    },
+    {
+     "id": "do:open-plugins",
+     "scope": "view"
+    }
+   ]
+  },
+  {
+   "id": "config",
+   "title": "Configuration",
+   "group": "shared",
+   "summary": "Which configuration file set each value, and what the configuration warns about.",
    "controls": [
     {
      "id": "cli*",
@@ -2139,9 +2119,9 @@
   },
   {
    "id": "look",
-   "title": "Appearance & motion",
+   "title": "Appearance",
    "group": "browser",
-   "summary": "motion, density, notifications and the keys",
+   "summary": "How this page moves and is laid out, its notifications and its keys.",
    "controls": [
     {
      "id": "do:chrome-menu",

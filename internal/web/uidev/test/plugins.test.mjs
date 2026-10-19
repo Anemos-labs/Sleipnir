@@ -1,4 +1,5 @@
-// plugins.test.mjs: the Plugins view and the gating of the page by the plugin catalogue (98c-ui-plugins.js): the groups, the filters and
+// plugins.test.mjs: the Plugins view and the gating of the page by the plugin catalogue (98c-ui-plugins.js): a page of cards (the profile
+// and the filter, one card for each category, empty ones saying what will appear there), the groups, the filters and
 // the search, the requests a switch, the scope and a settings form send, the core rows, the Apply bar, a view turned off leaving the rail,
 // the palette, the chords and the Cockpit's card picker, and a server older than the catalogue (404) leaving everything on. The page is
 // the shipped one booted on the fake DOM of pagedom.mjs; the catalogue is the reference page's (mock/js/plugins.js).
@@ -67,7 +68,8 @@ test('the filters and the search: on, off, experimental, external, and every wor
   assert.deepEqual(L.doc.querySelectorAll('.plg').map(r => r.dataset.plg), ['acme-review']);
   assert.equal(L.$('[data-f="external"]').getAttribute('aria-pressed'), 'true');
   L.$('[data-f="all"]').click(); const q = L.$('#pq'); q.value = 'nothing like this'; q.dispatchEvent(new FakeEvent('input', { bubbles: true })); await L.settle();
-  assert.match(L.$('.plg-groups').textContent, /No plugin matches “nothing like this”/);
+  assert.match(L.$('.plg-grp[data-cat="tools"]').textContent, /No plugin of this group matches “nothing like this”: \d+ hidden by the filter above/);
+  assert.match(L.SL.plugins.listHtml(L.SL.plugins.cat, { q: 'nothing like this', f: 'all' }), /No plugin matches “nothing like this”/);
   q.value = ''; q.dispatchEvent(new FakeEvent('input', { bubbles: true })); await L.settle();
 });
 
@@ -111,7 +113,7 @@ test('the Apply bar counts the changes that wait for the team and its button res
   const L = await page(catalogue());
   await show(L, 'plugins');
   const bar = L.$('.plg-apply .pendbar'); assert.ok(bar, 'the bar is shown while a change waits');
-  assert.match(bar.textContent, /1 change applies when the team starts again: Team/);
+  assert.match(bar.textContent, /1 plugin change waits for the team to start again: Team\. The conversation carries over\./);
   L.$('[data-do="apply"]').click(); await L.settle(); L.posts.length = 0;
   L.$('#overlayHost [data-ok]').click(); await L.settle();
   assert.deepEqual(plain(L.posts.map(p => [p.path, p.body])), [['/api/sessions/a/restart', { kind: 'restart', fresh: false, flags: [] }]]);
@@ -151,7 +153,7 @@ test('a server older than the catalogue (404 on /api/plugins) leaves every view,
   const nav = navIds(L); for (const id of ['cockpit', 'files', 'changes', 'checkpoints', 'merge', 'cache', 'mail', 'board', 'replay', 'sessions', 'plugins', 'tools', 'settings']) assert.ok(nav.includes(id), id);
   const pal = paletteViews(L); for (const n of ['Mail', 'Replay', 'Files', 'Plugins']) assert.ok(pal.includes(n), n);
   await show(L, 'mail'); assert.ok(!/turned off/.test(L.$('.v-mail').textContent));
-  await show(L, 'plugins'); assert.match(L.$('.plg-groups').textContent, /older than Sleipnir 0\.3, and every part of it is on/);
+  await show(L, 'plugins'); assert.match(L.$('.plg-grp[data-cat="tools"]').textContent, /older than Sleipnir 0\.3, and every part of it is on/);
 });
 
 test('the catalogue is asked of the session first and of the configuration when the session route is missing', async () => {
@@ -174,10 +176,24 @@ test('text from the server is text: a hostile title, description, reason, contri
   c.profiles[0].title = EVIL; c.profiles[0].description = EVIL;
   const L = await page(c);
   await show(L, 'plugins'); L.$('[data-open="mailman"]').click(); await L.settle();
-  assert.equal(L.doc.querySelectorAll('.plugv img').length + L.doc.querySelectorAll('.plugv script').length, 0);
+  assert.equal(L.doc.querySelectorAll('.v-plugins img').length + L.doc.querySelectorAll('.v-plugins script').length, 0);
   assert.ok(L.$('[data-plg="mailman"] .plg-h b').textContent === EVIL, 'the title shows as typed');
   assert.ok(L.$('[data-form="mailman"] [data-fk="model"]').getAttribute('value') === EVIL, 'the setting shows as typed');
   await show(L, 'mail');
   assert.equal(L.doc.querySelectorAll('.v-mail img').length + L.doc.querySelectorAll('.v-mail script').length, 0);
   assert.ok(L.$('.v-mail h2').textContent === EVIL, 'the note names the plugin as typed');
+});
+
+test('the Plugins view is a page of cards: a heading that says what plugins are, the profile card, one card per category; an empty one says what will appear', async () => {
+  const c = catalogue(); c.plugins = c.plugins.filter(p => !p.external);
+  const L = await page(c); await show(L, 'plugins');
+  assert.equal(L.SL.ui.dash.key, 'plugins');
+  assert.deepEqual(L.doc.querySelectorAll('.v-plugins .dcard').map(d => d.dataset.card), ['plugins.profile', 'plugins.tools', 'plugins.extensions', 'plugins.team', 'plugins.interface', 'plugins.external', 'plugins.core']);
+  assert.match(L.$('.v-plugins .sethead p').textContent, /^Sleipnir is made of plugins/);
+  assert.match(L.$('[data-card="plugins.profile"]').textContent, /A profile is a starting set of plugins/);
+  assert.match(L.$('.plg-grp[data-cat="external"]').textContent, /Plugins installed from outside Sleipnir appear here, off until you turn them on: sleipnir plugins add DIR/);
+  /* a Settings switch that is a plugin opens this page on its row */
+  L.SL.views.show('plugins', { focus: 'mailman' }); await L.settle(); await L.step(0.05);
+  assert.ok(L.$('[data-plg="mailman"]').classList.contains('plg-hl'), 'the row asked for is marked');
+  assert.deepEqual(L.errors, []);
 });

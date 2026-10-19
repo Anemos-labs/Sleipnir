@@ -83,3 +83,15 @@
 .pendbar .pb-a{display:inline-flex;gap:6px;flex:none}
 tr.pend td:first-child{box-shadow:inset 2px 0 0 var(--warm)}
 tr.pend select{border-color:var(--warm-b)}
+/* M6: the list of pages wraps its few words (nothing is cut off); a row is its label, the flag it stands for as secondary text, and a line
+ * of what it does; a switch a plugin also owns says so and leads to the Plugins page; an empty state says what will appear */
+.snb small{white-space:normal;text-overflow:clip}
+.snb-ext{margin-top:6px;border-left-style:dashed}.snb-ext b{color:var(--fe)}
+.setrow{grid-template-columns:minmax(220px,38%) minmax(0,1fr)}
+.setrow .setflag{display:inline-block;margin-left:8px;font:500 11px var(--f-num);color:var(--faint);vertical-align:1px}
+.setrow .sl small .plgref{display:inline-flex;flex-wrap:wrap;align-items:center;gap:2px 6px;margin-top:3px}
+.plgref .tag{margin:0}
+.btn.lnk{border-color:transparent;background:none;color:var(--fe);padding-left:2px;padding-right:2px}.btn.lnk:hover{text-decoration:underline;color:var(--bright)}
+.setempty{margin:0 0 6px;color:var(--fg2)}.setempty .dim{display:block;margin-top:2px}
+@container main (max-width:900px){.setrow{grid-template-columns:minmax(150px,40%) minmax(0,1fr)}}
+@container main (max-width:620px){.setrow{grid-template-columns:minmax(0,1fr)}.snb-ext{margin:0;border-bottom-style:dashed}}

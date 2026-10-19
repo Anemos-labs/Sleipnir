@@ -20,8 +20,8 @@ test('every page of every registered view is cards: each panel is in a card, and
   const L = await boot(), { SL } = L, D = SL.dash;
   const pages = Object.keys(D.PAGES).filter(k => D.PAGES[k].view);
   const views = new Set(pages.map(k => D.PAGES[k].view));
-  /* every view of the page that is not the plugin list of another release is a page of cards */
-  for (const v of Object.keys(SL.views.V.reg)) if (v !== 'plugins') assert.ok(views.has(v), 'the ' + v + ' view has a page of cards');
+  /* every view of the page is a page of cards, the Plugins view too */
+  for (const v of Object.keys(SL.views.V.reg)) assert.ok(views.has(v), 'the ' + v + ' view has a page of cards');
   for (const key of pages) {
     await open(L, key);
     assert.equal(SL.ui.dash.key, key, key + ' is the page on screen');

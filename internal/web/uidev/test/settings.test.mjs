@@ -1,5 +1,6 @@
-// settings.test.mjs: the eleven Settings pages (98-ui-settings.js): the filters, the Run settings line, the rules in force, the ledger and
-// the key tags, and the markup of every page with hostile text in every field the server fills.
+// settings.test.mjs: the eight Settings pages (98-ui-settings.js): the pages of an earlier version and where they went, the cards each page
+// draws, the stored layout of a merged page carried over, the switches that are plugins, the empty states, the filters, the Team & run
+// line, the rules in force, the ledger and the key tags, and the markup of every page with hostile text in every field the server fills.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { page, EVIL, hasMarkup, scriptAttrs } from './pages-harness.mjs';
@@ -97,14 +98,15 @@ test('every page shows hostile text of the server as text', () => {
   SL.live.hello = { server: { addr: EVIL }, defaults: { maxWorkers: 10, swarm: EVIL }, ui: {} }; SL.live.addr = EVIL;
   SL.settings.title = EVIL;
   const ST = SL.toolkit.settings.newState({ page: 'models' }); ST.models.q = EVIL; ST.cfg.q = EVIL; ST.perm.arg = EVIL; ST.perm.res = { d: EVIL, why: EVIL, cls: EVIL }; ST.perm.danger = EVIL;
-  const seen = [];
-  Object.keys(SL.toolkit.settings.pages).forEach(name => {
-    const html = SL.toolkit.settings.pages[name](S, ST);
-    assert.ok(!hasMarkup(html), 'the ' + name + ' page holds an element made of hostile text');
-    assert.deepEqual(plain(scriptAttrs(html)), [], 'the ' + name + ' page has an attribute that runs script');
-    if (html.includes('&lt;img')) seen.push(name);
+  const seen = [], T = SL.toolkit.settings;
+  for (const [what, fns] of [['page', T.pages], ['part', T.parts]]) Object.keys(fns).forEach(name => {
+    const html = fns[name](S, ST);
+    assert.ok(!hasMarkup(html), 'the ' + name + ' ' + what + ' holds an element made of hostile text');
+    assert.deepEqual(plain(scriptAttrs(html)), [], 'the ' + name + ' ' + what + ' has an attribute that runs script');
+    if (html.includes('&lt;img')) seen.push(what + ':' + name);
   });
-  ['models', 'roles', 'permissions', 'trust', 'run', 'mcp', 'skills', 'providers', 'config'].forEach(n => assert.ok(seen.includes(n), 'the hostile text reaches the ' + n + ' page, as text'));
+  ['models', 'run', 'permissions', 'providers', 'skills', 'config'].forEach(n => assert.ok(seen.includes('page:' + n), 'the hostile text reaches the ' + n + ' page, as text'));
+  ['roles', 'trust', 'mcp'].forEach(n => assert.ok(seen.includes('part:' + n), 'the hostile text reaches the ' + n + ' part, as text'));
 });
 
 test('the Permissions tester keeps its previous result while a check is on its way, and shows what the server said as text', () => {
@@ -121,7 +123,7 @@ test('the projects nobody trusted, or that could not be read, are rows of the le
   const rows = S.ledgerRows({ project: { dir: '/a', state: 'trusted' }, files: [] }, [{ dir: '/led', files: 2, state: 'trusted (Oct 8)' }], projects);
   assert.deepEqual(plain(rows.map(r => r.dir + ':' + r.state)), ['/led:trusted (Oct 8)', '/b:not trusted', '/c:partial', '/d:unreadable', '/e:changed since your yes', '/g:partial'], 'trusted and nothing-to-trust projects are not listed; a project in the ledger once');
   SL.D.extra.projects = projects; SL.D.extra.trust = { project: { dir: '/a', state: 'trusted' }, files: [], covers: '', ledger: [], question: { options: [] } }; SL.G.trustDirs = [];
-  const page = S.pages.trust(session(), S.newState({ page: 'trust' }));
+  const page = S.parts.trust(session(), S.newState({ page: 'trust' }));
   const row = d => page.split('<tr><td class="bright mono">').find(p => p.startsWith(d + '</td>'));
   for (const [dir, word] of [['/c', 'partial'], ['/d', 'unreadable']]) {
     assert.match(row(dir), new RegExp('<span class="tag warm" title="[^"]*session only[^"]*">' + word + '</span>'), dir + ' shows the word in the tag style, with what it means');
@@ -158,7 +160,7 @@ test('a hostile project path and a hostile unread entry of the ledger are text o
   const { SL } = setup(), S = SL.toolkit.settings;
   SL.D.extra.projects = [{ dir: '/p/' + EVIL, trust: 'partial', files: EVIL }, { dir: '/q/' + EVIL, trust: 'unreadable' }];
   SL.D.extra.trust = { project: { dir: '/p/' + EVIL, state: 'partial' }, files: [{ path: EVIL, kind: 'unread', bytes: EVIL, hash: EVIL }], covers: EVIL, ledger: [], question: { options: [EVIL] } };
-  const html = S.pages.trust(session(), S.newState({ page: 'trust' }));
+  const html = S.parts.trust(session(), S.newState({ page: 'trust' }));
   assert.ok(!hasMarkup(html)); assert.deepEqual(plain(scriptAttrs(html)), []); assert.ok(html.includes('&lt;img'));
 });
 
@@ -168,4 +170,74 @@ test('model changes wait to be applied together: only the ones that differ from 
   assert.deepEqual(plain(pend(S, { backend: 'a/big', manager: 'a/cheap' })), [['manager', 'a/cheap'], ['backend', 'a/big']]);
   assert.deepEqual(plain(pend(S, { backend: 'a/w' })), [], 'the worker model a role runs on without an entry of its own');
   assert.deepEqual(plain(pend(S, null)), []);
+});
+
+test('eight pages with plain names; every id of the eleven pages before still opens the page that has its cards', () => {
+  const { SL } = page({ modules: ['83b-ui-dash.js', '91-views-b.js', '98-ui-settings.js'] }), T = SL.toolkit.settings;
+  assert.deepEqual(plain(T.PAGES.map(p => p[1])), ['Models & roles', 'Team & run', 'Budget', 'Permissions & trust', 'Connections', 'Skills & extensions', 'Configuration', 'Appearance']);
+  const opens = { models: 'models', roles: 'models', run: 'run', budget: 'budget', permissions: 'permissions', trust: 'permissions', providers: 'providers', mcp: 'providers', skills: 'skills', config: 'config', look: 'look' };
+  for (const [old, now] of Object.entries(opens)) assert.equal(T.pageOf(old), now, 'ui.settingsPage(\'' + old + '\') opens ' + now);
+  for (const p of T.PAGES) {
+    assert.ok(p[3].length > 20 && /\.$/.test(p[3]), p[0] + ': one sentence of what the page is for');
+    assert.ok(p[5].length <= 28, p[0] + ': the few words under its name in the list fit');
+    assert.ok(SL.dash.PAGES['settings.' + p[0]], p[0] + ' is a page of cards');
+  }
+  assert.equal(SL.dash.BY_ID['settings.trust.dirs'].page, 'settings.permissions', 'a card keeps its id on the page it joined');
+  /* each page draws exactly the cards its page of cards has */
+  const S = session(), ST = T.newState({ page: 'models' });
+  SL.D.extra.permissions = { modes: [], order: ['deny'], managerWrites: { text: 't', note: 'n' }, testsPreset: { summary: '', rules: [] }, rules: { allow: [], deny: [], ask: [] } };
+  for (const p of T.PAGES) {
+    const html = T.pages[p[0]](Object.assign(S, { wm: { order: [], ag: {} } }), ST), slots = [...html.matchAll(/<section class="panel[^"]*" data-slot="([^"]+)"/g)].map(m => m[1]);
+    assert.deepEqual(plain(slots), plain(SL.dash.PAGES['settings.' + p[0]].cards), p[0] + ': one section for each of its cards, in order');
+  }
+});
+
+test('the stored layout of a page that was merged is carried over under the page it joined, and the old page is dropped', () => {
+  const { SL } = page({ modules: ['83b-ui-dash.js'] }), D = SL.dash;
+  const doc = { version: D.VERSION, pages: {
+    'settings.roles': [{ id: 'settings.roles.effort', x: 0, y: 0, w: 6, h: 4 }, { id: 'settings.roles.roles', x: 6, y: 0, w: 6, h: 8, hidden: true }, { id: 'gov', x: 0, y: 4, w: 4, h: 3 }],
+    'settings.mcp': [{ id: 'settings.mcp.servers', x: 0, y: 0, w: 12, h: 8 }],
+    'settings.providers': [{ id: 'settings.providers.providers', x: 0, y: 0, w: 8, h: 5 }],
+  } };
+  const d = D.normalizeDoc(JSON.parse(JSON.stringify(doc)));
+  assert.equal(d.pages['settings.roles'], undefined); assert.equal(d.pages['settings.mcp'], undefined);
+  const m = d.pages['settings.models'], at = (L, id) => L.find(c => c.id === id);
+  assert.deepEqual(plain(at(m, 'settings.models.catalogue')), { id: 'settings.models.catalogue', x: 0, y: 0, w: 12, h: 14 }, 'the page it joined keeps its default when nothing was stored for it');
+  assert.deepEqual(plain(at(m, 'settings.roles.effort')), { id: 'settings.roles.effort', x: 0, y: 14, w: 6, h: 4 }, 'under it, where it was');
+  assert.equal(at(m, 'settings.roles.roles').hidden, true, 'a hidden card stays hidden');
+  assert.ok(at(m, 'gov'), 'a card of another page added to the old page comes along');
+  const c = d.pages['settings.providers'];
+  assert.deepEqual(plain(at(c, 'settings.providers.providers')), { id: 'settings.providers.providers', x: 0, y: 0, w: 8, h: 5 }, 'what was stored for the page it joined stays');
+  assert.deepEqual(plain(at(c, 'settings.mcp.servers')), { id: 'settings.mcp.servers', x: 0, y: 5, w: 12, h: 8 });
+  const s = new Map([[D.KEY, JSON.stringify(doc)]]), store = { getItem: k => (s.has(k) ? s.get(k) : null), setItem: (k, v) => s.set(k, v), removeItem: k => s.delete(k) };
+  assert.ok(D.load(store, 'settings.permissions').some(x => x.id === 'settings.trust.dirs'), 'the merged page shows the cards of both');
+  assert.deepEqual(plain(D.load(store, 'settings.models').filter(x => x.id.startsWith('settings.roles')).map(x => x.y)), [14, 14], 'read from the browser\'s copy, it is migrated');
+});
+
+test('a switch of Team & run that is also a plugin says so and leads to the Plugins page; every flag is secondary text under a plain label', () => {
+  const { SL } = setup(), T = SL.toolkit.settings, S = session({ meta: Object.assign(session().meta, { mailman: true, managerApproves: false }) });
+  SL.plugins = { find: id => ({ mailman: { id, title: 'Mailman', enabled: false }, 'auto-docs': { id, title: 'Docs on autopilot', enabled: true } })[id] || null };
+  const html = T.parts.run(S, T.newState({ page: 'run' }));
+  for (const fl of ['--commit', '--mailman', '--auto-docs', '--manager-approves', '--no-mcp', '--trust-project', '--isolation', '--verify', '--swarm N']) assert.ok(html.includes('<span class="setflag mono">' + fl + '</span>'), fl + ' is secondary text');
+  for (const l of ['Commit each merged task', 'Mailman', 'Docs on autopilot', 'Manager approves', 'Start without tool servers', 'Use this project’s own files', 'Separate checkouts', 'Check before merging']) assert.ok(html.includes('>' + l + '</label>'), l + ' is a label');
+  for (const id of ['mailman', 'auto-docs', 'manager-approves', 'push-progress']) assert.match(html, new RegExp('data-do="open-plugins" data-plg="' + id + '"'), id + ' leads to the Plugins page');
+  assert.match(html, /the <b>Mailman<\/b> plugin, off by default/); assert.match(html, /the <b>Docs on autopilot<\/b> plugin, on by default/);
+  assert.ok(!/data-flag="pushProgress"/.test(html), 'push progress has no second switch here: it is the plugin\'s');
+  assert.match(html, /data-flag="mailman" checked/); assert.ok(!/data-flag="managerApproves" checked/.test(html));
+  assert.match(T.parts.skills(S, T.newState({ page: 'skills' })), /data-plg="builtin-skills"/, 'the built-in skills say they are a plugin');
+});
+
+test('an empty list says what will appear there and what puts it there', () => {
+  const { SL } = setup(), T = SL.toolkit.settings, S = session(), ST = T.newState({ page: 'models' });
+  SL.G.mcp = []; SL.G.providers = []; SL.D.extra.skills = []; SL.D.extra.commands = []; SL.D.extra.hooks = { events: [], configured: [] }; SL.D.extra.config = null;
+  SL.D.extra.trust = { project: { dir: '/p', state: 'trusted' }, files: [], covers: '', ledger: [], question: { options: [] } }; SL.G.trustDirs = []; SL.D.extra.projects = [];
+  const text = h => h.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
+  assert.match(text(T.parts.mcp(S, ST)), /No tool server is configured\. A server you add under "mcp" in your configuration file/);
+  assert.match(text(T.parts.providers(S, ST)), /No provider yet\. The providers of your configuration appear here/);
+  const sk = text(T.parts.skills(S, ST));
+  assert.match(sk, /No skill yet\. A folder with a SKILL\.md/); assert.match(sk, /No command of your own yet\. A markdown file/); assert.match(sk, /No hook is configured\. A hook you add/);
+  assert.match(text(T.parts.config(S, ST)), /The configuration has not arrived yet\./);
+  const tr = text(T.parts.trust(S, ST));
+  assert.match(tr, /No directory yet\. A project appears here when you trust its files/); assert.match(tr, /no file of its own that the harness reads/);
+  SL.D.models = []; assert.match(text(T.parts.models(S, ST)), /The catalogue is empty: the models of every provider you are signed in to appear here/);
 });

@@ -1,14 +1,20 @@
 /* Plugins: the catalogue of plugins (98c-ui-plugins.js) and the note a view whose plugin is off shows in its place */
-.plugv{display:flex;flex-direction:column;gap:var(--gap);min-height:100%;max-width:1180px}
-.plugv .pendbar{margin:0}
-.plg-tools{padding:10px 12px;gap:10px}
+/* the view: the heading and the Apply bar above a page of cards (wrap plugv: the profile card, then one card per category) */
+.plghead{display:flex;flex-direction:column;gap:var(--gap);margin-bottom:var(--gap)}
+.plghead .sethead p{max-width:980px;line-height:1.45}
+.plghead .pendbar{margin:0}
+.plg-apply:empty{display:none}
+.plg-tools{padding:0 12px 12px;display:flex;flex-direction:column;gap:8px}
+.plg-tools .ph{margin:0 -12px}
+.plg-help{margin:0;font:400 12.5px/1.4 var(--f-ui);color:var(--dim)}
+.plg.plg-hl{box-shadow:inset 3px 0 0 var(--c-mgr);background:var(--panel2-a)}
 .plg-row{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;min-width:0}
 .plg-row input[type=search]{flex:1 1 260px;min-width:160px;background:var(--bg);border:1px solid var(--line2);padding:6px 9px;font:500 12.5px var(--f-num);color:var(--bright);border-radius:2px}
 .plg-row input:focus,.plg-row select:focus{border-color:var(--c-mgr)}
 .plg-ctl{display:inline-flex;align-items:center;gap:8px;flex:none}
 .plg-ctl .lab{font:600 11px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
 .plg-ctl select{background:var(--bg);border:1px solid var(--line2);padding:5px 9px;font:500 12.5px var(--f-num);color:var(--bright);border-radius:2px}
-.plg-pd{flex:1 1 200px;min-width:0;font-size:12.5px}
+.plg-pd{flex:1 1 200px;min-width:0;font:400 12.5px/1.4 var(--f-ui);color:var(--fg2)}
 .plg-groups{display:flex;flex-direction:column;gap:var(--gap)}
 .plg-grp .ph{flex-wrap:wrap;row-gap:4px}
 .plg-grp .ph .r{white-space:normal;flex-wrap:wrap;justify-content:flex-end;gap:4px 12px}
