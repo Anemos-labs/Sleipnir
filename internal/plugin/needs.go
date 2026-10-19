@@ -449,10 +449,38 @@ func LocateNeed(ctx context.Context, env NeedEnv, n Need, p string) (NeedStatus,
 	if n.MCP != nil {
 		return NeedStatus{}, errors.New(n.Title + " is a tool server: install or connect it instead")
 	}
-	p = filepath.Clean(p)
 	if !filepath.IsAbs(p) {
 		return NeedStatus{}, errors.New("give the full path of the program")
 	}
+	// The path is recorded first and the record is what is checked, run and linked: a file that fails the check
+	// leaves the earlier record as it was.
+	needMu.Lock()
+	defer needMu.Unlock()
+	l := readLocated(env.State)
+	prev, had := l.Located[n.ID]
+	l.Located[n.ID] = locatedEntry{Path: filepath.Clean(p)}
+	if err := writeLocated(env.State, l); err != nil {
+		return NeedStatus{}, err
+	}
+	st, err := verifyLocated(ctx, env, n)
+	if err != nil {
+		l = readLocated(env.State)
+		if had {
+			l.Located[n.ID] = prev
+		} else {
+			delete(l.Located, n.ID)
+		}
+		_ = writeLocated(env.State, l)
+	}
+	return st, err
+}
+
+// verifyLocated checks the recorded file of n (an executable, not one of Sleipnir's launchers; on macOS an .app bundle
+// is followed to its program; its version command succeeds), records what it found and links it into <state>/bin.
+// The caller holds needMu.
+func verifyLocated(ctx context.Context, env NeedEnv, n Need) (NeedStatus, error) {
+	l := readLocated(env.State)
+	p := l.Located[n.ID].Path
 	if fi, err := os.Stat(p); err == nil && fi.IsDir() && strings.HasSuffix(p, ".app") {
 		if inner := appProgram(p); inner != "" {
 			p = inner
@@ -472,9 +500,6 @@ func LocateNeed(ctx context.Context, env NeedEnv, n Need, p string) (NeedStatus,
 		}
 		version = v
 	}
-	needMu.Lock()
-	defer needMu.Unlock()
-	l := readLocated(env.State)
 	l.Located[n.ID] = locatedEntry{Path: p, Version: version}
 	if err := writeLocated(env.State, l); err != nil {
 		return NeedStatus{}, err

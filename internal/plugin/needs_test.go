@@ -173,4 +173,7 @@ func TestLocateFollowsAnAppBundleAndChecksTheVersion(t *testing.T) {
 	if _, err := LocateNeed(context.Background(), env, n, failing); err == nil {
 		t.Error("a program whose version command fails was taken")
 	}
+	if st := CheckNeeds(env, []OwnedNeed{{Need: n}})[0]; st.Path != inner || st.Version != "Blender 1.0" {
+		t.Errorf("a refused file replaced the earlier record: %+v", st)
+	}
 }
