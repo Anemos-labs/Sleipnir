@@ -26,6 +26,9 @@ type Options struct {
 	// Tmp, when set, is the directory commands get as TMPDIR: a scratch place of the
 	// session's own, so that a build or test run does not write to the shared /tmp.
 	Tmp string
+	// Path lists directories put in front of the PATH commands run with (the
+	// programs a person located for a plugin, <state>/bin).
+	Path []string
 	// Wrap is an argv prefix every command runs under: the shell is started as
 	// Wrap[0] Wrap[1:]... <shell> <flags> <script>. It is how a rollout is given a
 	// network-less namespace (see internal/rl/env NetPrefix) without the shell
@@ -120,6 +123,9 @@ func NewManager(opts ...Options) *Manager {
 		}
 		if x.Shell != "" {
 			o.Shell = x.Shell
+		}
+		if len(x.Path) > 0 {
+			o.Path = x.Path
 		}
 		if x.Tmp != "" {
 			o.Tmp = x.Tmp
@@ -381,6 +387,9 @@ func detectShell(override string) (shellInfo, error) {
 // env is the environment of a command of agent in dir.
 func (m *Manager) env(agent, dir string) []string {
 	env := commandEnv(m.baseEnv(), agent, dir, m.opts.PassEnv)
+	if len(m.opts.Path) > 0 {
+		env = withPath(env, m.opts.Path)
+	}
 	if m.opts.Tmp == "" {
 		return env
 	}
@@ -391,4 +400,27 @@ func (m *Manager) env(agent, dir string) []string {
 		}
 	}
 	return append(out, "TMPDIR="+m.opts.Tmp)
+}
+
+// withPath puts dirs in front of env's PATH (whatever its case, for Windows' Path).
+func withPath(env, dirs []string) []string {
+	front := strings.Join(dirs, string(os.PathListSeparator))
+	out := make([]string, 0, len(env)+1)
+	done := false
+	for _, kv := range env {
+		name, val, _ := strings.Cut(kv, "=")
+		if !done && strings.EqualFold(name, "PATH") {
+			if val != "" {
+				val = front + string(os.PathListSeparator) + val
+			} else {
+				val = front
+			}
+			kv, done = name+"="+val, true
+		}
+		out = append(out, kv)
+	}
+	if !done {
+		out = append(out, "PATH="+front)
+	}
+	return out
 }

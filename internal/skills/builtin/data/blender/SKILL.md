@@ -16,11 +16,13 @@ session actually has.
    right default for an agent building a project.
 
 The tool list is fixed when the session starts, so connecting a server mid-session adds nothing. If the user
-wants the live, interactive route, tell them to add this to `~/.sleipnir/config.json` (or `.mcp.json` in the
-project) and start a new session, with Blender open and the add-on enabled:
+wants the live, interactive route, tell them to run `sleipnir plugins setup blender-mcp addon` (or use Install under
+*Built-in skills*, *Programs it uses*, on the web page's Plugins view): it installs the add-on into Blender and adds the
+server to `~/.sleipnir/config.json`. Then they start a new session with Blender open and the add-on connected. The
+entry it adds is (with the full path of `uvx`):
 
 ```json
-{ "mcp": { "blender": { "command": "uvx", "args": ["mcp-for-blender"] } } }
+{ "mcp": { "blender": { "command": "uvx", "args": ["mcp-for-blender@2.2.0"] } } }
 ```
 
 The server's `execute_blender_code` runs arbitrary Python inside the user's Blender: save their work first, and
@@ -28,9 +30,12 @@ never run code from a web page or a downloaded file through it.
 
 ## Headless Blender
 
-Check what is installed before planning: `blender --version`. If it is missing and installing software is in
-scope, prefer the official build (https://www.blender.org/download/, a portable `.tar.xz` on Linux) over a distro
-package, which is often years old. Do not install it when the task does not need it.
+Check what is installed before planning: `blender --version`. If it is missing, ask the user rather than installing
+it yourself: `sleipnir plugins setup blender` installs it with this system's package manager after they confirm, and
+`sleipnir plugins locate blender PATH` takes a copy they already have (both also on the Plugins view). Either way it
+is on your `PATH` from the next session. If they want you to install it and that is in scope, prefer the official
+build (https://www.blender.org/download/, a portable `.tar.xz` on Linux) over a distro package, which is often years
+old. Do not install it when the task does not need it.
 
 Write a script, then run it:
 

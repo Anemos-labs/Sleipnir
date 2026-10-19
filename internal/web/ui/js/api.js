@@ -244,6 +244,16 @@
     /** Choose the profile for a scope; answers the whole catalogue. */
     setProfile: (profile, scope) => request('POST', '/api/plugins/profile', { profile: String(profile), scope: scope || 'user' }),
     /** Take a plugin back to its profile's default in a scope. */
-    resetPlugin: (id, scope) => request('DELETE', '/api/plugins/' + encodeURIComponent(String(id)) + '?scope=' + encodeURIComponent(scope || 'user'))
+    resetPlugin: (id, scope) => request('DELETE', '/api/plugins/' + encodeURIComponent(String(id)) + '?scope=' + encodeURIComponent(scope || 'user')),
+    /** The programs and tool servers the plugins that are on use, found or not, with their install methods and any install's output. */
+    needs: () => request('GET', '/api/needs'),
+    /** Remember the file of a program a plugin needs (the server asks for a confirmation: it runs the file's version command and puts it
+     *  on the commands' PATH): answers the need's row, or 422 with why the file was not taken. */
+    locateNeed: (id, path) => request('POST', '/api/needs/' + encodeURIComponent(String(id)) + '/locate', { path: String(path) }),
+    /** Forget a located file. */
+    forgetNeed: id => request('DELETE', '/api/needs/' + encodeURIComponent(String(id)) + '/locate'),
+    /** Run one of a need's declared install methods, after the person confirmed the command the page showed (scope: the method's
+     *  confirmation scope, exact: a changed command answers scope_changed); GET needs reports its output. */
+    installNeed: (id, method, scope) => request('POST', '/api/needs/' + encodeURIComponent(String(id)) + '/install', { method: String(method) }, { confirm: String(scope || ''), exact: true })
   };
 })(SL);

@@ -109,6 +109,8 @@ type Manifest struct {
 	Provides    []string       `json:"provides,omitempty"`
 	Contributes []Contribution `json:"contributes,omitempty"`
 	Config      *Schema        `json:"config_schema,omitempty"`
+	// Needs are the programs and tool servers outside Sleipnir the plugin uses (needs.go).
+	Needs []Need `json:"needs,omitempty"`
 	// Live plugins take a change at once, without the team starting again.
 	Live bool `json:"live,omitempty"`
 	// External is set for a plugin loaded from a directory; Dir is that directory.

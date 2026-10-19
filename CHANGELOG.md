@@ -7,6 +7,19 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Plugins declare the programs and tool servers they use (`needs` in
+  `plugin.json`; docs/PLUGINS.md): the built-in skills need Blender, uv,
+  Node.js, REA and the Blender and REA tool servers, and GitHub delivery the
+  GitHub CLI. `sleipnir plugins needs` and the Plugins page show each one,
+  found or not; a missing one can be located (`sleipnir plugins locate`) or
+  installed with one of its declared commands, only when asked
+  (`sleipnir plugins setup`, or the page after a confirmation). New routes
+  `GET /api/needs`, `POST /api/needs/{id}/locate`, `DELETE
+  /api/needs/{id}/locate` and `POST /api/needs/{id}/install`; new state
+  `~/.sleipnir/needs.json` and `~/.sleipnir/bin`, which shell commands now
+  have at the front of their `PATH` when it holds a launcher. Prompt bytes:
+  none change unless a launcher is there; then the toolchain line of the
+  shared prompt lists the commands it makes available.
 - Everything beyond a small core is a plugin you can switch on and off
   (docs/PLUGINS.md): the tool families, skills, built-in skills, custom
   commands, agent definitions, hooks, instruction files, the team and each

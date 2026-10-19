@@ -110,6 +110,7 @@ export function start(o = {}) {
         const g = { '/api/cli': cat.cli, '/api/models': cat.models, '/api/providers': cat.providers, '/api/projects': cat.projects, '/api/recorded': cat.recorded, '/api/schedule': cat.schedule, '/api/recorded/watching': { tabs: [] }, '/api/runs': { runs: [] }, '/api/doctor/endpoints': { endpoints: [] } }[p];
         if (g) return json(res, 200, g);
         if (p === '/api/plugins' || /^\/api\/sessions\/[^/]+\/plugins$/.test(p)) return answer(res, plg.plugins());
+        if (p === '/api/needs') return answer(res, plg.needs());
         if (/^\/api\/sessions\/[^/]+\/ws\/index$/.test(p)) return json(res, 200, { root: '/x', isolation: 'none', base: { id: 'base', label: 'before the session', time: '' }, cps: [], tree: [], version: 'v0' });   /* the Workspace's own parity runs on internal/web/uidev/test/packserver.mjs */
         if (/^\/api\/sessions\/[^/]+\/complete$/.test(p)) return json(res, 200, { paths: [] });
         return json(res, 404, { error: 'not served by this development server', code: 'not_found' });

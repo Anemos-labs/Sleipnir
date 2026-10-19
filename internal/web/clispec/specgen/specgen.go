@@ -249,6 +249,10 @@ var positionals = map[string][]wire.CLIPositional{
 	"plugins set":     {pos("ID", true, "the plugin"), many("KEY=VALUE", true, "settings to write (KEY= removes one)")},
 	"plugins add":     {pos("PATH|GIT-URL", true, "a plugin directory or a git repository")},
 	"plugins remove":  {pos("ID", true, "the installed plugin to remove")},
+	"plugins needs":   {},
+	"plugins locate":  {pos("NEED", true, "the need, as `sleipnir plugins needs` lists it"), pos("PATH", true, "the program's file (on macOS an .app bundle)")},
+	"plugins forget":  {pos("NEED", true, "the need whose located file to drop")},
+	"plugins setup":   {pos("NEED", true, "the need to install"), pos("METHOD", false, "one of its install methods (none: the only one that can run here)")},
 	"models fav list": {}, "models fav add": {many("REF", true, "provider/model")}, "models fav rm": {many("REF", true, "provider/model")},
 	"rl taskgen git": {}, "rl taskgen mutate": {}, "rl taskgen recall": {}, "rl taskgen fixture": {}, "rl rollout": {}, "rl branch": {}, "rl eval": {}, "rl serve": {},
 	"rl taskgen composite":   {pos("TASKS", true, "the tasks file to combine")},
@@ -399,6 +403,10 @@ var modes = map[string]modeOf{
 	"plugins set":     {mode: ModePriv, why: "it changes your configuration: it asks for a confirmation first"},
 	"plugins add":     {mode: ModePriv, why: "it installs code from a directory or the network: it asks for a confirmation first"},
 	"plugins remove":  {mode: ModePriv, why: "it deletes an installed plugin: it asks for a confirmation first"},
+	"plugins needs":   {mode: ModeRun},
+	"plugins locate":  {mode: ModePriv, why: "it runs the file's version command and puts it on the PATH of your sessions' commands: it asks for a confirmation first"},
+	"plugins forget":  {mode: ModePriv, why: "it changes which programs your sessions' commands find: it asks for a confirmation first"},
+	"plugins setup":   {mode: ModeTTYOnly, why: "it installs software and asks before it runs: use Install under the plugin on the Plugins view here"},
 	"trust add":       {mode: ModePriv, why: "it trusts this project's files: it asks for a confirmation first (--yes is implied)"},
 	"trust forget":    {mode: ModePriv, why: "it forgets a trust decision: it asks for a confirmation first"},
 	"mcp":             {mode: ModeRun}, "mcp list": {mode: ModeRun},
@@ -891,6 +899,14 @@ func (s *spec) plugins(sec *section, b block) error {
 	if err != nil {
 		return err
 	}
+	where, err := need("cwd", "trust-project")
+	if err != nil {
+		return err
+	}
+	setup, err := need("cwd", "trust-project", "yes")
+	if err != nil {
+		return err
+	}
 	for _, c := range []struct {
 		path       []string
 		usage, sum string
@@ -906,6 +922,10 @@ func (s *spec) plugins(sec *section, b block) error {
 		{[]string{"plugins", "set"}, "sleipnir plugins set ID KEY=VALUE... [flags]", "Changes a plugin's settings.", write},
 		{[]string{"plugins", "add"}, "sleipnir plugins add PATH|GIT-URL", "Installs a plugin directory or git repository into ~/.sleipnir/plugins; it stays off until enabled.", nil},
 		{[]string{"plugins", "remove"}, "sleipnir plugins remove ID", "Uninstalls a plugin from ~/.sleipnir/plugins.", nil},
+		{[]string{"plugins", "needs"}, "sleipnir plugins needs [flags]", "Lists the programs and tool servers the plugins that are on use, whether each is found, and how to install it.", read},
+		{[]string{"plugins", "locate"}, "sleipnir plugins locate NEED PATH [flags]", "Uses this file for a program a plugin needs; sessions find it on their PATH.", where},
+		{[]string{"plugins", "forget"}, "sleipnir plugins forget NEED [flags]", "Drops a located file.", where},
+		{[]string{"plugins", "setup"}, "sleipnir plugins setup NEED [METHOD] [flags]", "Installs a need with one of its declared methods, after showing the command and asking.", setup},
 	} {
 		parent := wire.CLICommand{Parent: "plugins"}
 		if len(c.path) == 1 {

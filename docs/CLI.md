@@ -223,13 +223,18 @@ commands:
   set ID KEY=VALUE...  change a plugin's settings (KEY= removes a setting)
   add PATH|GIT-URL     install a plugin directory into ~/.sleipnir/plugins (it stays off until enabled)
   remove ID            uninstall a plugin from ~/.sleipnir/plugins
+  needs                the programs and tool servers the plugins that are on use, and whether each is found
+  locate NEED PATH     use this file for a program a plugin needs (when it is not found by itself)
+  forget NEED          drop a located file
+  setup NEED [METHOD]  install a need with one of its install methods: shows the command and asks first
 
 flags:
   --cwd DIR            the project to look at (default: the current directory)
   --project            write to the project's configuration instead of yours
   --local              write to the project's git-ignored local configuration
   --trust-project      also read the project's own plugins and settings
-  --json               list and info: machine-readable output
+  --json               list, info and needs: machine-readable output
+  --yes                setup: run without asking (scripts: you have read the command in "needs")
 ```
 <!-- /flags -->
 

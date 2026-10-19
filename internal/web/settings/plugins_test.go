@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/plugin"
 )
 
 // rowByID finds a plugin row in a catalogue.
@@ -127,15 +128,17 @@ func ptr[T any](v T) *T { return &v }
 
 func TestDeliveryRowSaysWhenGhIsMissing(t *testing.T) {
 	e := newEnv(t, nil)
-	was := lookPath
-	t.Cleanup(func() { lookPath = was })
-	lookPath = func(string) (string, error) { return "", os.ErrNotExist }
+	bin := t.TempDir()
+	e.svc.needEnv = func(env plugin.NeedEnv) plugin.NeedEnv {
+		env.PATH, env.SkipDefaults = bin, true
+		return env
+	}
 	var v pluginsView
 	e.ok("GET", "/api/plugins", nil, nil, &v)
-	if r := rowByID(t, v, "delivery"); !strings.Contains(r.Unavailable, "gh") {
+	if r := rowByID(t, v, "delivery"); !strings.Contains(r.Unavailable, "GitHub CLI") {
 		t.Errorf("delivery without gh = %+v", r)
 	}
-	lookPath = func(string) (string, error) { return "/usr/bin/gh", nil }
+	fakeProgram(t, bin, "gh")
 	var with pluginsView
 	e.ok("GET", "/api/plugins", nil, nil, &with)
 	if r := rowByID(t, with, "delivery"); r.Unavailable != "" {

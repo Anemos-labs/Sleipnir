@@ -2,7 +2,6 @@ package settings
 
 import (
 	"net/http"
-	"os/exec"
 	"regexp"
 	"strings"
 
@@ -23,7 +22,9 @@ type pluginsView struct {
 	Profiles []plugin.Profile `json:"profiles"`
 	Restart  bool             `json:"restart"`
 	Plugins  []pluginRow      `json:"plugins"`
-	Warnings []string         `json:"warnings,omitempty"`
+	// Needs are the programs and tool servers the plugins that are on use (needs.go).
+	Needs    []needRow `json:"needs"`
+	Warnings []string  `json:"warnings,omitempty"`
 }
 
 // pluginRow is one plugin as the page sees it: an allow-list of the resolved status (never the plugin's directory).
@@ -49,12 +50,6 @@ type pluginRow struct {
 	// Unavailable says why a plugin that is on cannot work on this machine (a command it needs is missing).
 	Unavailable string `json:"unavailable,omitempty"`
 }
-
-// needsCommand are the plugins that run a command of this machine, and that command.
-var needsCommand = map[string]string{plugin.Delivery: "gh"}
-
-// lookPath finds a command on PATH (tests replace it).
-var lookPath = exec.LookPath
 
 // pluginWrite is the body of POST /api/plugins/{id}; every field is optional.
 type pluginWrite struct {
@@ -141,21 +136,27 @@ func (s *service) handlePlugins(w http.ResponseWriter, r *http.Request) {
 		reply(w, nil, err)
 		return
 	}
-	reply(w, s.pluginsView(set, restart, warns), nil)
+	reply(w, s.pluginsView(tc, set, restart, warns), nil)
 }
 
 // pluginsView builds the catalogue body of a set.
-func (s *service) pluginsView(set *plugin.Set, restart bool, warns []string) pluginsView {
+func (s *service) pluginsView(tc *tabCtx, set *plugin.Set, restart bool, warns []string) pluginsView {
 	v := pluginsView{Profile: set.Profile, Profiles: plugin.Profiles(), Restart: restart, Plugins: []pluginRow{}}
 	if v.Profile == "" {
 		v.Profile = plugin.DefaultProfile
 	}
+	missing := map[string][]string{} // plugin id -> the required needs that are not found
+	v.Needs = []needRow{}
+	for _, st := range plugin.CheckNeeds(s.needEnvOf(tc), plugin.Needs(set)) {
+		v.Needs = append(v.Needs, s.needRowOf(st))
+		if st.Required && !st.Found {
+			missing[st.Plugin] = append(missing[st.Plugin], provider.SanitizeText(st.Title, 120))
+		}
+	}
 	for _, st := range set.List() {
 		row := rowOf(st)
-		if cmd, ok := needsCommand[st.ID]; ok && row.Enabled {
-			if _, err := lookPath(cmd); err != nil {
-				row.Unavailable = "needs the " + cmd + " command, which is not installed here"
-			}
+		if m := missing[st.ID]; len(m) > 0 {
+			row.Unavailable = "needs " + strings.Join(m, ", ") + ", which is not installed here: see Programs it uses"
 		}
 		v.Plugins = append(v.Plugins, row)
 	}
@@ -304,5 +305,5 @@ func (s *service) handlePluginProfile(w http.ResponseWriter, r *http.Request) {
 		reply(w, nil, err)
 		return
 	}
-	reply(w, s.pluginsView(set, restart, warns), nil)
+	reply(w, s.pluginsView(tc, set, restart, warns), nil)
 }

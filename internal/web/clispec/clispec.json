@@ -118,7 +118,7 @@
 {"path":["plugins"],"usage":"sleipnir plugins [flags]","summary":"Lists every plugin: its state, its category, the layer that decided it and what it adds.","positional":[],"source":"docs/CLI.md § sleipnir plugins","mode":"run","when":[{"flag":"trust-project","mode":"priv"}],"flags":[
   {"name":"cwd","arg":"string","default":null,"repeatable":false,"desc":"the project to look at (default: the current directory)"},
   {"name":"trust-project","arg":"bool","default":null,"repeatable":false,"desc":"also read the project's own plugins and settings"},
-  {"name":"json","arg":"bool","default":null,"repeatable":false,"desc":"list and info: machine-readable output"}
+  {"name":"json","arg":"bool","default":null,"repeatable":false,"desc":"list, info and needs: machine-readable output"}
  ]},
 {"path":["plugins","add"],"usage":"sleipnir plugins add PATH|GIT-URL","summary":"Installs a plugin directory or git repository into ~/.sleipnir/plugins; it stays off until enabled.","positional":[{"name":"PATH|GIT-URL","required":true,"desc":"a plugin directory or a git repository"}],"source":"docs/CLI.md § sleipnir plugins","mode":"priv","why":"it installs code from a directory or the network: it asks for a confirmation first","parent":"plugins","flags":[]},
 {"path":["plugins","disable"],"usage":"sleipnir plugins disable ID... [flags]","summary":"Turns plugins off.","positional":[{"name":"ID","required":true,"desc":"plugins to turn off","variadic":true}],"source":"docs/CLI.md § sleipnir plugins","mode":"priv","why":"it changes your configuration: it asks for a confirmation first","when":[{"flag":"trust-project","mode":"priv"}],"parent":"plugins","flags":[
@@ -133,15 +133,28 @@
   {"name":"local","arg":"bool","default":null,"repeatable":false,"desc":"write to the project's git-ignored local configuration"},
   {"name":"trust-project","arg":"bool","default":null,"repeatable":false,"desc":"also read the project's own plugins and settings"}
  ]},
+{"path":["plugins","forget"],"usage":"sleipnir plugins forget NEED [flags]","summary":"Drops a located file.","positional":[{"name":"NEED","required":true,"desc":"the need whose located file to drop"}],"source":"docs/CLI.md § sleipnir plugins","mode":"priv","why":"it changes which programs your sessions' commands find: it asks for a confirmation first","when":[{"flag":"trust-project","mode":"priv"}],"parent":"plugins","flags":[
+  {"name":"cwd","arg":"string","default":null,"repeatable":false,"desc":"the project to look at (default: the current directory)"},
+  {"name":"trust-project","arg":"bool","default":null,"repeatable":false,"desc":"also read the project's own plugins and settings"}
+ ]},
 {"path":["plugins","info"],"usage":"sleipnir plugins info ID [flags]","summary":"One plugin in full: state, why, what it needs and adds, its settings.","positional":[{"name":"ID","required":true,"desc":"the plugin's id, as `sleipnir plugins` lists it"}],"source":"docs/CLI.md § sleipnir plugins","mode":"run","when":[{"flag":"trust-project","mode":"priv"}],"parent":"plugins","flags":[
   {"name":"cwd","arg":"string","default":null,"repeatable":false,"desc":"the project to look at (default: the current directory)"},
   {"name":"trust-project","arg":"bool","default":null,"repeatable":false,"desc":"also read the project's own plugins and settings"},
-  {"name":"json","arg":"bool","default":null,"repeatable":false,"desc":"list and info: machine-readable output"}
+  {"name":"json","arg":"bool","default":null,"repeatable":false,"desc":"list, info and needs: machine-readable output"}
  ]},
 {"path":["plugins","list"],"usage":"sleipnir plugins list [flags]","summary":"Lists every plugin (the same as sleipnir plugins).","positional":[],"source":"docs/CLI.md § sleipnir plugins","mode":"run","when":[{"flag":"trust-project","mode":"priv"}],"parent":"plugins","flags":[
   {"name":"cwd","arg":"string","default":null,"repeatable":false,"desc":"the project to look at (default: the current directory)"},
   {"name":"trust-project","arg":"bool","default":null,"repeatable":false,"desc":"also read the project's own plugins and settings"},
-  {"name":"json","arg":"bool","default":null,"repeatable":false,"desc":"list and info: machine-readable output"}
+  {"name":"json","arg":"bool","default":null,"repeatable":false,"desc":"list, info and needs: machine-readable output"}
+ ]},
+{"path":["plugins","locate"],"usage":"sleipnir plugins locate NEED PATH [flags]","summary":"Uses this file for a program a plugin needs; sessions find it on their PATH.","positional":[{"name":"NEED","required":true,"desc":"the need, as `sleipnir plugins needs` lists it"},{"name":"PATH","required":true,"desc":"the program's file (on macOS an .app bundle)"}],"source":"docs/CLI.md § sleipnir plugins","mode":"priv","why":"it runs the file's version command and puts it on the PATH of your sessions' commands: it asks for a confirmation first","when":[{"flag":"trust-project","mode":"priv"}],"parent":"plugins","flags":[
+  {"name":"cwd","arg":"string","default":null,"repeatable":false,"desc":"the project to look at (default: the current directory)"},
+  {"name":"trust-project","arg":"bool","default":null,"repeatable":false,"desc":"also read the project's own plugins and settings"}
+ ]},
+{"path":["plugins","needs"],"usage":"sleipnir plugins needs [flags]","summary":"Lists the programs and tool servers the plugins that are on use, whether each is found, and how to install it.","positional":[],"source":"docs/CLI.md § sleipnir plugins","mode":"run","when":[{"flag":"trust-project","mode":"priv"}],"parent":"plugins","flags":[
+  {"name":"cwd","arg":"string","default":null,"repeatable":false,"desc":"the project to look at (default: the current directory)"},
+  {"name":"trust-project","arg":"bool","default":null,"repeatable":false,"desc":"also read the project's own plugins and settings"},
+  {"name":"json","arg":"bool","default":null,"repeatable":false,"desc":"list, info and needs: machine-readable output"}
  ]},
 {"path":["plugins","profile"],"usage":"sleipnir plugins profile [NAME] [flags]","summary":"Lists the profiles, or chooses one: standard, minimal, team, headless.","positional":[{"name":"NAME","required":false,"desc":"standard, minimal, team or headless (none: list them)"}],"source":"docs/CLI.md § sleipnir plugins","mode":"priv","why":"with a name it changes your configuration: it asks for a confirmation first","when":[{"flag":"trust-project","mode":"priv"}],"parent":"plugins","flags":[
   {"name":"cwd","arg":"string","default":null,"repeatable":false,"desc":"the project to look at (default: the current directory)"},
@@ -161,6 +174,11 @@
   {"name":"project","arg":"bool","default":null,"repeatable":false,"desc":"write to the project's configuration instead of yours"},
   {"name":"local","arg":"bool","default":null,"repeatable":false,"desc":"write to the project's git-ignored local configuration"},
   {"name":"trust-project","arg":"bool","default":null,"repeatable":false,"desc":"also read the project's own plugins and settings"}
+ ]},
+{"path":["plugins","setup"],"usage":"sleipnir plugins setup NEED [METHOD] [flags]","summary":"Installs a need with one of its declared methods, after showing the command and asking.","positional":[{"name":"NEED","required":true,"desc":"the need to install"},{"name":"METHOD","required":false,"desc":"one of its install methods (none: the only one that can run here)"}],"source":"docs/CLI.md § sleipnir plugins","mode":"tty_only","why":"it installs software and asks before it runs: use Install under the plugin on the Plugins view here","parent":"plugins","flags":[
+  {"name":"cwd","arg":"string","default":null,"repeatable":false,"desc":"the project to look at (default: the current directory)"},
+  {"name":"trust-project","arg":"bool","default":null,"repeatable":false,"desc":"also read the project's own plugins and settings"},
+  {"name":"yes","arg":"bool","default":null,"repeatable":false,"desc":"setup: run without asking (scripts: you have read the command in \"needs\")"}
  ]},
 {"path":["recon"],"usage":"sleipnir recon [flags]","summary":"sleipnir recon [--budget N] [DIR] prints the deterministic project survey (layout, build and test commands, package docs, ranked declarations) that seeds the shared prompt layer, then [N tokens, M files considered]...","positional":[{"name":"DIR","required":false,"desc":"project directory (default: the current one)"}],"source":"docs/CLI.md § sleipnir recon","mode":"run","flags":[
   {"name":"budget","arg":"int","default":5000,"repeatable":false,"desc":"token budget for the survey"}

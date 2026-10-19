@@ -132,6 +132,9 @@ func Builtin() []Manifest {
 		Manifest{ID: "core:web-shell", Title: "Web shell", Description: "the page's header, rail, chat and Settings", Category: CatCore, Core: true,
 			CoreReason: "the Plugins page lives in it", Contributes: []Contribution{{KindView, "settings"}}},
 	)
+	for i := range ms {
+		ms[i].Needs = append([]Need(nil), builtinNeeds[ms[i].ID]...)
+	}
 	sortManifests(ms)
 	return ms
 }

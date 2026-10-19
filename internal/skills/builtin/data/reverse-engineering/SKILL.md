@@ -82,15 +82,16 @@ it, its CLI works for JavaScript and Electron trees with no setup beyond Node.js
 npx -y rea-agents@6.7.0 analyze-javascript-application /absolute/path/to/app --json
 ```
 
-To connect it for a later session, the user adds to `~/.sleipnir/config.json` (the tool list is fixed when a
-session starts):
+To connect it for a later session (the tool list is fixed when a session starts), the user runs
+`sleipnir plugins setup rea-mcp` (or Install under *Built-in skills*, *Programs it uses*, on the Plugins view), which
+adds a pinned entry like this one to `~/.sleipnir/config.json` (with the full path of `npx`):
 
 ```json
-{ "mcp": { "rea": { "command": "npx", "args": ["-y", "rea-agents@VERSION", "mcp"] } } }
+{ "mcp": { "rea": { "command": "npx", "args": ["-y", "rea-agents@6.7.0", "mcp"] } } }
 ```
 
-Pin `VERSION` to one exact release (`npm view rea-agents version`), as REA's installation docs recommend for a
-persistent registration.
+Keep a hand-written entry pinned to one exact release, as REA's installation docs recommend for a persistent
+registration.
 
 ## Report
 

@@ -30,6 +30,9 @@ func (m *Manager) ToolchainContext() string {
 	if m.opts.BaseEnv != nil {
 		pathList, pathExt = envValue(m.opts.BaseEnv, "PATH"), envValue(m.opts.BaseEnv, "PATHEXT")
 	}
+	if len(m.opts.Path) > 0 {
+		pathList = strings.Join(append(append([]string{}, m.opts.Path...), pathList), string(os.PathListSeparator))
+	}
 	return toolchainText(runtime.GOOS, func(name string) bool { return onPath(runtime.GOOS, name, pathList, pathExt) })
 }
 
