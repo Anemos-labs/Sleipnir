@@ -1469,8 +1469,8 @@ func (t *webTab) setModels(ctx context.Context, roles map[string]string) (bool, 
 		switch {
 		case role == "" || role == "manager":
 			team = ref
-		case s.Swarm == nil && role != session.CompactorRole:
-			return false, werr(http.StatusUnprocessableEntity, "model", "a single agent runs on one model; a team has roles: start a team first (/swarm 8). Only the compactor can differ here")
+		case s.Swarm == nil && !session.ServiceRole(role):
+			return false, werr(http.StatusUnprocessableEntity, "model", "a single agent runs on one model; a team has roles: start a team first (/swarm 8). Only the compactor, the judge, the embedder and the reranker can differ here")
 		default:
 			rm[role] = ref
 		}

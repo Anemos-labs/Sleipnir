@@ -832,8 +832,13 @@ func (s *Session) build(ctx context.Context) error {
 	est := core.NewBytesEstimator()
 
 	if !o.Swarm {
-		if len(o.RoleModels) > 0 && o.Sink != nil {
-			o.Sink.Notice("", "warn", "--role-model has no effect without --swarm: this session has a single agent (use --model)")
+		if o.Sink != nil {
+			for role := range o.RoleModels {
+				if !ServiceRole(role) {
+					o.Sink.Notice("", "warn", "--role-model has no effect without --swarm for "+role+": this session has a single agent (use --model); only the compactor, judge, embedder and reranker roles apply to it")
+					break
+				}
+			}
 		}
 		specs, err := reg.Specs()
 		if err != nil {
