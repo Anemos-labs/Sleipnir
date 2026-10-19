@@ -711,7 +711,9 @@ dropped by default), `--keep-flat`, `--keep-weak`, `--no-redact` (redaction is o
 `--teacher MODEL,...` (provider-terms filter), `--licenses`, `--max-prompt-tokens`, `--max-sample-tokens`,
 `--max-drop-rate`, `--drop`, `--role-teacher`, `--exclude`, `--tasks` (section 7.2), `--max-samples`,
 `--split train:0.9,val:0.1` (by repository), `--seed`, `--pack` (pack a segment into one token sequence when its traces
-chain), `--reasoning drop|field|keep`, `--stats FILE`. Output files are 0600. Start from these defaults: an exporter that
+chain; each step's completion is located in the segment's last prompt by its content and tool calls, since a prompt
+replays a turn without the reasoning the completion carried, and a step that cannot be located stays context:
+`step:choice_misaligned`), `--reasoning drop|field|keep`, `--stats FILE`. Output files are 0600. Start from these defaults: an exporter that
 keeps everything exports infra failures, truncated runs and reward-hacked episodes.
 
 `--inline` writes full prompts per sample (simple; large: shared layers repeat). The default writes a segment table once

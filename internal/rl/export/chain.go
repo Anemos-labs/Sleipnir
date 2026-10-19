@@ -66,7 +66,7 @@ func (x *exporter) renderChain(steps []stepCtx, objectArgs bool) (*chainView, er
 		switch {
 		case j == last:
 			cv.at[j] = len(cv.msgs) - 1
-		case counts[j] < len(cv.msgs) && sameJSON(cv.msgs[counts[j]], raws[j]):
+		case counts[j] < len(cv.msgs) && sameTurn(cv.msgs[counts[j]], raws[j]):
 			cv.at[j] = counts[j]
 			cv.msgs[counts[j]] = comps[j] // the trained turn follows the Reasoning option
 		default:
@@ -74,6 +74,35 @@ func (x *exporter) renderChain(steps []stepCtx, objectArgs bool) (*chainView, er
 		}
 	}
 	return cv, nil
+}
+
+// sameTurn reports whether two rendered assistant messages are the same turn: the
+// same content and tool calls, whatever reasoning either carries. A completion is
+// rendered with its reasoning, but the prompts that replay the turn carry none (the
+// renderer sends reasoning back only where the provider's replay binding asks for
+// it), so reasoning cannot tell the turns apart and must not keep them apart.
+func sameTurn(a, b json.RawMessage) bool {
+	if sameJSON(a, b) {
+		return true
+	}
+	var ma, mb map[string]json.RawMessage
+	if json.Unmarshal(a, &ma) != nil || json.Unmarshal(b, &mb) != nil {
+		return false
+	}
+	for _, k := range []string{"reasoning_details", "reasoning_content", "reasoning"} {
+		delete(ma, k)
+		delete(mb, k)
+	}
+	if len(ma) != len(mb) {
+		return false
+	}
+	for k, va := range ma {
+		vb, ok := mb[k]
+		if !ok || !sameJSON(va, vb) {
+			return false
+		}
+	}
+	return true
 }
 
 // sameJSON ignores insignificant JSON whitespace but preserves key order and numeric spelling;

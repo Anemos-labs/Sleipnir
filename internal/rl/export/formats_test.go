@@ -8,6 +8,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/rl"
 	"github.com/anemos-labs/sleipnir/internal/rl/export"
+	"github.com/anemos-labs/sleipnir/internal/rl/traj/trajtest"
 )
 
 func asMap(v any) map[string]any { m, _ := v.(map[string]any); return m }
@@ -428,5 +429,32 @@ func TestSchemasAndStatsShape(t *testing.T) {
 				t.Errorf("%s: schema %v want %s", f, r["schema"], schema)
 			}
 		}
+	}
+}
+
+// TestSFTPackedLocatesTurnsThatCarriedReasoning packs a chain whose every turn
+// came with reasoning. A completion is rendered with its reasoning, the prompts
+// that replay the turn carry none, and the packer must still see them as the
+// same turn: every assistant turn is a target and nothing is misaligned.
+func TestSFTPackedLocatesTurnsThatCarriedReasoning(t *testing.T) {
+	src := chainRun(t, 5, func(i int, c *trajtest.Call) {
+		c.Thinking = fmt.Sprintf("thinking about step %d", i)
+		c.ReasoningWire = fmt.Sprintf(`[{"type":"reasoning.text","text":"thinking about step %d","index":0}]`, i)
+	})
+	o := export.Options{Format: export.FormatSFT, DropFlagged: true, PackSegments: true}
+	out, st := run(t, []export.Source{src}, o)
+	recs := decode(t, out)
+	if len(recs) != 1 {
+		t.Fatalf("%d records, want the one packed segment; drops %v", len(recs), st.Drops)
+	}
+	w := ints(recs[0]["weights"])
+	var assistants []int
+	for i, m := range recs[0]["messages"].([]any) {
+		if asMap(m)["role"] == "assistant" {
+			assistants = append(assistants, w[i])
+		}
+	}
+	if fmt.Sprint(assistants) != "[1 1 1 1 1]" || st.Drops["step:choice_misaligned"] != 0 {
+		t.Fatalf("assistant weights %v drops %v: a turn's reasoning kept it from being located", assistants, st.Drops)
 	}
 }
