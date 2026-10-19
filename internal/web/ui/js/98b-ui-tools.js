@@ -13,7 +13,7 @@
   const BUILT = {
     sessions: ['Sessions', () => SL.views.show('sessions')], doctor: ['Doctor', () => SL.views.show('doctor')], schedule: ['Schedule', () => SL.views.show('schedule')], daemon: ['Schedule', () => SL.views.show('schedule')],
     models: ['Settings › Models', () => ui.settingsPage('models')], trust: ['Settings › Trust', () => ui.settingsPage('trust')], mcp: ['Settings › MCP servers', () => ui.settingsPage('mcp')], config: ['Settings › Config layers', () => ui.settingsPage('config')],
-    plugins: ['Plugins', () => SL.views.show('plugins')], login: ['Settings › Providers', () => ui.settingsPage('providers')], logout: ['Settings › Providers', () => ui.settingsPage('providers')], replay: ['Replay', () => SL.views.show('replay')], watch: ['Cockpit', () => SL.views.show('cockpit')], inspect: ['Cache', () => SL.views.show('cache')],
+    plugins: ['Plugins', () => SL.views.show('plugins')], login: ['Settings › Providers', () => ui.settingsPage('providers')], logout: ['Settings › Providers', () => ui.settingsPage('providers')], replay: ['Replay', () => SL.views.show('replay')], research: ['Research', () => SL.views.show('research')], watch: ['Cockpit', () => SL.views.show('cockpit')], inspect: ['Cache', () => SL.views.show('cache')],
   };
   /** a command from the palette or the catalogue: its own panel when it has one, the generic runner otherwise */
   ui.openCommand = path => { const b = path.length === 1 ? BUILT[path[0]] : null; if (b) b[1](); else ui.runCli(path); };

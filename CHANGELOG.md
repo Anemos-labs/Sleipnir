@@ -7,6 +7,16 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- New `research` plugin (on in the standard profile; docs/RESEARCH.md): the
+  `research` tool, `/research`, `sleipnir research`, the web page's Research
+  view and the `/research/{id}/{slug}/` wiki route, and
+  `/goal --research=DEPTH GOAL`. Runs live under `.sleipnir/research/`.
+  `web.RegisterReader` and `web.Reader` expose the guarded fetcher to other
+  tools. Prompt bytes: the tool list gains `research`, so the first request
+  after upgrading writes that prefix once; a published research-first run
+  adds one segment, `research (from web sources, unverified)`, to the shared
+  layer, a declared change made once at publication. `sleipnir plugins
+  disable research` leaves both out.
 - `rl export`, `rl verify` and `rl reward` read an ordinary session's directory
   (one that holds `events.jsonl` and no `episode.json`), or a directory of them,
   as docs/TRAINING-DATA.md has said: the episode's task is the session id, every

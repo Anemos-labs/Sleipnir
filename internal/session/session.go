@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	iofs "io/fs"
 	"math"
 	"os"
 	"path/filepath"
@@ -39,6 +40,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/plan"
 	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"github.com/anemos-labs/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/research"
 	"github.com/anemos-labs/sleipnir/internal/skills"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
@@ -49,6 +51,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/tools/shell"
 	"github.com/anemos-labs/sleipnir/internal/tools/skilltool"
 	"github.com/anemos-labs/sleipnir/internal/tools/web"
+	webui "github.com/anemos-labs/sleipnir/internal/web"
 )
 
 // Version is stamped into session.start; the CLI overrides it at build time.
@@ -268,6 +271,14 @@ type Session struct {
 
 	Agent *agent.Agent
 	Swarm *swarm.Swarm
+	// research is the project's research runs and researchTool the tool over them (nil when the research plugin is off);
+	// researchPinned and researchText are the published kickoff run whose context is in the shared layer.
+	research       *research.Store
+	webReader      *web.Reader
+	researchFonts  iofs.FS
+	researchPinned string
+	researchText   string
+	researchSite   *researchRender
 	// barrier is shared by the agents and the swarm's done check when Options.Savepoints is set (Savepoint).
 	barrier *agent.SavepointBarrier
 	// savepoints counts the savepoints written (Savepoint), under mu.
@@ -762,6 +773,14 @@ func (s *Session) buildShared(ctx context.Context) error {
 	if txt := s.ext.skillsSegment(); txt != "" {
 		segs = append(segs, kv.Segment{Key: "skills", Text: txt, Vol: kv.VolEpoch})
 	}
+	if s.pluginOn(plugin.Research) {
+		s.research = research.NewStore(s.opts.Root)
+		s.researchFonts = webui.Fonts()
+		if seg, ok := s.researchShared(); ok {
+			s.researchText = seg.Text
+			segs = append(segs, seg)
+		}
+	}
 	if len(segs) > 0 {
 		s.Shared = kv.NewLayer("shared", kv.KindShared, 1, segs)
 	}
@@ -838,7 +857,20 @@ func (s *Session) build(ctx context.Context) error {
 			wc := web.ConfigFromEnv()
 			wc.AllowPrivate = s.cfg.Tools.WebAllowPrivate
 			wc.AllowHosts = s.cfg.Tools.WebAllowHosts
-			web.Register(reg, wc)
+			s.webReader = web.RegisterReader(reg, wc)
+			return nil
+		},
+		plugin.Research: func(*plugin.Scope) error {
+			if s.research == nil {
+				s.research = research.NewStore(o.Root)
+			}
+			var rd research.Reader
+			if s.webReader != nil {
+				rd = s.webReader
+			}
+			t := research.NewTool(s.research, rd)
+			t.Fonts, t.OnBuild = s.researchFonts, s.researchBuilt
+			reg.Register(t)
 			return nil
 		},
 		plugin.Recall: func(*plugin.Scope) error { reg.Register(recall.New(archive)); return nil },

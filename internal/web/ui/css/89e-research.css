@@ -1,0 +1,39 @@
+/* Research: the runs of the project and the form that starts one (98d-ui-research.js) */
+.rs-list{display:flex;flex-direction:column}
+.rs-run{padding:12px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+.rs-run:first-child{border-top:0}
+.rs-top{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:flex-start;justify-content:space-between}
+.rs-q{display:flex;flex-direction:column;gap:6px;min-width:0;flex:1 1 320px}
+.rs-q b{font:600 14.5px/1.35 var(--f-ui);color:var(--bright);overflow-wrap:anywhere}
+.rs-meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.rs-meta .mono{font-size:11px}
+.chip.rs-ok{color:var(--ok);border-color:var(--ok-b)}
+.chip.rs-live{color:var(--warm);border-color:var(--warm-b)}
+.rs-act{display:flex;flex-wrap:wrap;gap:6px;flex:none}
+.rs-act a.btn{text-decoration:none}
+.rs-steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px}
+.rs-steps li{display:flex;flex-direction:column;gap:5px;font:600 10.5px/1 var(--f-lab);letter-spacing:.08em;text-transform:uppercase;color:var(--faint);min-width:0}
+.rs-steps li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rs-steps li i{display:block;height:4px;border-radius:2px;background:var(--line2)}
+.rs-steps li.done{color:var(--fg2)}
+.rs-steps li.done i{background:var(--ok)}
+.rs-steps li.cur{color:var(--warm)}
+.rs-steps li.cur i{background:linear-gradient(90deg,var(--warm) 50%,var(--line2) 50%)}
+.rs-nums{font:500 12px/1.4 var(--f-num);color:var(--fg2)}
+.rs-out{margin:0;max-height:320px;overflow:auto;white-space:pre-wrap}
+.rs-exp{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.rs-exp input{flex:1 1 220px;min-width:0;background:var(--bg);border:1px solid var(--line2);padding:5px 8px;font:500 12.5px var(--f-num);color:var(--bright);border-radius:2px}
+.rs-exp .dim{font-size:12px}
+.rs-new{padding:12px;display:flex;flex-direction:column;gap:10px}
+.rs-new textarea{width:100%;box-sizing:border-box;resize:vertical;background:var(--bg);border:1px solid var(--line2);padding:8px 10px;font:400 13.5px/1.45 var(--f-ui);color:var(--bright);border-radius:2px}
+.rs-new textarea:focus,.rs-exp input:focus{border-color:var(--c-mgr);outline:none}
+.rs-depths{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.rs-depth{position:relative;display:flex;flex-direction:column;gap:5px;padding:10px 10px 9px;border:1px solid var(--line2);border-radius:3px;background:var(--panel2);cursor:pointer}
+.rs-depth input{position:absolute;opacity:0;pointer-events:none}
+.rs-depth b{font:600 13px var(--f-ui);color:var(--bright)}
+.rs-depth span{font:400 12px/1.4 var(--f-ui);color:var(--fg2)}
+.rs-depth small{font-size:10.5px;color:var(--dim)}
+.rs-depth.sel{border-color:var(--c-mgr);box-shadow:inset 0 0 0 1px var(--c-mgr)}
+.rs-depth:focus-within{outline:2px solid var(--c-mgr);outline-offset:1px}
+.rs-new .stubnote{margin:0;line-height:1.45}
+@media (max-width:900px){.rs-steps li span{font-size:9px;letter-spacing:.02em}}

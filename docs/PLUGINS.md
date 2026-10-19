@@ -91,7 +91,7 @@ A slash command that belongs to a plugin that is off answers with the plugin and
 |---|---|
 | Tools | `fs`, `shell`, `web`, `recall`, `skill`, `memory`, `plan`, `mcp` |
 | Extensions | `skills`, `builtin-skills`, `commands`, `agents`, `hooks`, `instructions` |
-| Team | `swarm`, `mailman`, `auto-docs`, `manager-approves`, `push-progress`, `goal`, `lessons`, `delivery`, `recon`, `update-check`, and `role:architect` … `role:reviewer` (one per worker role) |
+| Team | `swarm`, `mailman`, `auto-docs`, `manager-approves`, `push-progress`, `goal`, `lessons`, `delivery`, `recon`, `research`, `update-check`, and `role:architect` … `role:reviewer` (one per worker role) |
 | Interface | `view:cockpit`, `view:workspace`, `view:cache`, `view:mail`, `view:board`, `view:replay`, `view:sessions`, `view:tools`, `view:plugins` |
 | Core | `core:kernel`, `core:config`, `core:session-log`, `core:agent-loop`, `core:providers`, `core:web-shell`, `checkpoints` |
 
@@ -102,8 +102,8 @@ Turning `view:plugins` off hides the view from the rail, but a view that is off 
 the page cannot lock you out. Turning `swarm` off makes every session a single agent; the roles and team plugins then
 show as pending.
 
-**Prompt bytes.** Tool plugins change the tool list sent to the model, and `skills`, `instructions` and `recon` change
-the shared prompt layer. Both are part of the cache key, so switching one costs one cache write on the next turn; that
+**Prompt bytes.** Tool plugins change the tool list sent to the model, and `skills`, `instructions`, `recon` and
+`research` change the shared prompt layer. Both are part of the cache key, so switching one costs one cache write on the next turn; that
 is why a change waits for the team to start again rather than landing mid-conversation.
 
 ## Programs a plugin needs

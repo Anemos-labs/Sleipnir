@@ -77,6 +77,11 @@ func goalCommandTo(s *session.Session, gp **goal.State, arg string, out io.Write
 		}
 		return resumeGoal(s, g)
 	}
+	arg, err := s.ResearchGoal(arg)
+	if err != nil {
+		fmt.Fprintln(out, "goal not set: "+tools.SanitizeForTerminal(err.Error()))
+		return ""
+	}
 	ng, err := goal.Prepare(arg, s.Cwd(), s.Root())
 	if err != nil {
 		fmt.Fprintln(out, "goal not set: "+tools.SanitizeForTerminal(err.Error()))
