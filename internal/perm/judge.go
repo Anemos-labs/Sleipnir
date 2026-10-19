@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/shellparse"
+	"github.com/anemos-labs/sleipnir/internal/weburl"
 )
 
 // vkind orders outcomes by severity: when several things are judged together
@@ -392,6 +393,12 @@ func (ev *evaluator) decideTool(u *unit) verdict {
 			res = allow(string(mode) + " mode")
 		case ModePlan:
 			res = deny(planReason(what + " is not allowed"))
+		case ModeAcceptEdits:
+			if why := publicWebRead(r); why != "" {
+				res = ask(what+" needs approval: "+why, ev.remember(u))
+			} else {
+				res = allow(ev.modeReason("reading a public website"))
+			}
 		default:
 			res = ask(what+" needs approval", ev.remember(u))
 			res.host = urlHost(r)
@@ -431,6 +438,32 @@ func (ev *evaluator) decideTool(u *unit) verdict {
 		}
 	}
 	return res
+}
+
+// publicWebRead returns "" when accept-edits mode lets a network request through without asking: a read of the built-in web
+// tools (web_fetch, or web_search, which names no host) whose URL names a public internet host, judged lexically by
+// weburl.LocalHost with no DNS lookup. Otherwise it returns why the request still asks: a tool that writes, any other tool that
+// reaches the network (an MCP tool, a generic HTTP tool), a URL that names no host the tool would fetch, or a host on this
+// machine, the local network or a cloud metadata service.
+func publicWebRead(r Request) string {
+	if r.Writes {
+		return "the request changes state"
+	}
+	switch normTool(r.Tool) {
+	case "websearch":
+		return ""
+	case "webfetch":
+	default:
+		return "accept-edits mode reads public websites only with the web fetch and web search tools"
+	}
+	h := urlHost(r)
+	if h == "" {
+		return "no host the tool would fetch"
+	}
+	if why := weburl.LocalHost(h); why != "" {
+		return h + " is " + why + "; accept-edits mode reads public websites only"
+	}
+	return ""
 }
 
 // denyMayCover is a deny rule of the view that may cover an access whose file is only known when the command runs: any Read rule for

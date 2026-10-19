@@ -129,7 +129,8 @@ func TestToolRequests(t *testing.T) {
 
 		// --- network ---
 		{name: "fetch asks in default", req: fetch("https://example.com/x"), want: "ask", why: "example.com"},
-		{name: "fetch asks in accept-edits", mode: ModeAcceptEdits, req: fetch("https://example.com/x"), want: "ask"},
+		{name: "fetch of a public host allowed in accept-edits", mode: ModeAcceptEdits, req: fetch("https://example.com/x"), want: "allow", why: "accept-edits mode: reading a public website"},
+		{name: "fetch of a loopback host asks in accept-edits", mode: ModeAcceptEdits, req: fetch("http://127.0.0.1:8080/x"), want: "ask", why: "127.0.0.1"},
 		{name: "fetch denied in plan", mode: ModePlan, req: fetch("https://example.com/x"), want: "deny", why: "plan mode"},
 		{name: "fetch allowed in bypass", mode: ModeBypass, req: fetch("https://example.com/x"), want: "allow"},
 		{name: "network flag on other tool", req: rq{tool: "Download", network: true}, want: "ask"},

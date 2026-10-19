@@ -326,7 +326,7 @@ func TestList(t *testing.T) {
   /* ---- permissions: modes (REAL names) and the rules in force with their origin ---- */
   const MODES = [
     { id: 'default', desc: 'reads and read-only commands go through; everything else asks', danger: 0 },
-    { id: 'accept-edits', desc: 'also edits inside the project and build and test commands; ask and deny rules still win', danger: 0 },
+    { id: 'accept-edits', desc: 'also edits inside the project, build and test commands, and reads of public websites; ask and deny rules still win', danger: 0 },
     { id: 'plan', desc: 'read-only: writes, network and commands that are not provably read-only are refused', danger: 0 },
     { id: 'bypass', desc: 'no questions, except about the very dangerous (sudo, deleting the workspace, a forced push, disk tools, shutdown); deny rules still apply', danger: 1 },
     { id: 'yolo', desc: 'asks nothing at all, the very dangerous included; deny rules and guarded paths still refuse. For sandboxes only', danger: 2 },

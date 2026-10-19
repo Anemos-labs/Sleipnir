@@ -142,7 +142,8 @@ make a project's tool servers start without asking: each entry of a `.mcp.json` 
   credential helpers, agent sockets by path. `/proc/<pid>/cmdline` is world-readable on every OS: never pass a key as a flag.
 * **The provider sees everything you send it**, including secrets in files the model was allowed to read; the log holds it too.
 * **Egress is not filtered.** `web_fetch` is guarded; `curl` in `bash` is subject to permission rules only. Prompt injection can
-  exfiltrate what a command can read.
+  exfiltrate what a command can read, and in `accept-edits` mode what the model has read can leave in the URL of a fetch nobody is
+  asked about (next section).
 * **The environment scrub is a heuristic** (names and value shapes), not a boundary; a credential with an unremarkable name
   and shape reaches commands.
 * **Worktree isolation is not a boundary either.** With `swarm.isolation: worktree` each writer edits a git worktree of its own and its work
@@ -150,6 +151,34 @@ make a project's tool servers start without asking: each entry of a `.mcp.json` 
   workspace (the shared checkout, other agents' trees), in every mode, on resolved paths, for shell commands as well as file tools. That
   keeps cooperating agents apart and every merge accounted for. A path a shell computes at run time cannot be resolved before it runs
   and is left to the mode, as everywhere else, so a worker that is hostile and in `bypass` mode is not stopped by it: use a container.
+
+### Reading public websites in accept-edits mode
+
+In `accept-edits` mode the built-in read-only web tools reach public websites without a question: `web_fetch` of a URL whose host is a
+public internet host, and `web_search`. The engine's reason is `accept-edits mode: reading a public website`. The host is judged by its
+text (`internal/weburl`, `LocalHost`), with no DNS lookup, and these still ask:
+
+* a host on this machine or a local or reserved network: an IP literal (in any spelling a C resolver accepts, such as `2130706433` or
+  `0x7f.1`) that is loopback, private, carrier-grade NAT, link-local, unique-local, multicast, unspecified, reserved or a cloud metadata
+  address (`169.254.169.254`, `fd00:ec2::254`, `168.63.129.16`), and the IPv6 forms that carry such an IPv4 address;
+* a local name: `localhost` and `*.localhost`, a single-label name (`intranet`, which a resolver completes with a local search domain),
+  and names under `.local`, `.internal` (`metadata.google.internal`), `.lan` and `.home.arpa`;
+* a fetch whose URL the tool would not fetch, and a request of a web tool that says it writes;
+* every other way to reach the network: MCP tools, other tools that set the network flag, and shell commands (`curl`, `wget`), which
+  are judged as in every other mode.
+
+`default` mode asks about every network request and `plan` mode refuses them. Rules come first: a `deny` rule
+(`WebFetch(domain:example.com)`, `WebSearch`) refuses and an `ask` rule asks, in this mode too.
+
+The check reads the name and does not resolve it, so a public name whose DNS answer is a private address reads as public to the
+permission engine. The `web_fetch` dialer (`internal/tools/web`, the SSRF guard) resolves the name itself and refuses to connect to a
+blocked address, so such a request fails instead of reaching the private address, unless `web_fetch` is configured to allow private
+addresses.
+
+The trade-off is exfiltration. A fetched URL carries data out: a model steered by text it read (a README, an issue, a fetched page) can
+put what it has read, a file of the workspace or a key, into the path or query of a URL on a host the attacker controls, and in this mode
+nobody is asked first. Where that matters, use `default` or `plan` mode, or a `deny` rule (`WebFetch` for every fetch,
+`WebFetch(domain:...)` for the hosts to keep out).
 
 ### "Don't ask again" for a runner command, and for edits in the project
 
