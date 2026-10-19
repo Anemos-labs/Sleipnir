@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"io"
 	"os"
 	"path/filepath"
@@ -23,7 +24,21 @@ func updateOptions() update.Options {
 // updateChecks reports whether this build looks for newer releases by itself: a release (releaseBuild), not one built from source, and not when
 // SLEIPNIR_NO_UPDATE_CHECK is set (the only thing it sends is the request for the latest release of the repository to api.github.com).
 func updateChecks() bool {
-	return releaseBuild(version) && os.Getenv("SLEIPNIR_NO_UPDATE_CHECK") == ""
+	return releaseBuild(version) && os.Getenv("SLEIPNIR_NO_UPDATE_CHECK") == "" && updatePluginOn()
+}
+
+// updatePluginOn reports whether the update-check plugin is on for the current directory's configuration.
+func updatePluginOn() bool {
+	home, _ := os.UserHomeDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		return true
+	}
+	set, _, _, err := plugin.LoadSet(cwd, "", home, false)
+	if err != nil {
+		return true
+	}
+	return set.On(plugin.UpdateCheck)
 }
 
 // updateNotice is the line the chat says at its start when a newer release is out, from the last check and nothing else: it never waits.

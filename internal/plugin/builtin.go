@@ -95,7 +95,8 @@ func Builtin() []Manifest {
 			Contributes: []Contribution{{KindSlash, "goal"}, {KindEvent, "goal"}}},
 		{ID: Delivery, Title: "GitHub delivery", Description: "Auto-fix CI & reviews and Auto-merge for each objective (needs gh)", Category: CatTeam,
 			Contributes: []Contribution{{KindSlash, "delivery"}}},
-		{ID: Checkpoints, Title: "Checkpoints", Description: "snapshots of the files before each change, for /rewind", Category: CatTeam,
+		{ID: Checkpoints, Title: "Checkpoints", Description: "snapshots of the files before each change, for /rewind", Category: CatCore,
+			Core: true, CoreReason: "every edit is recorded through it: the write guard, worktree merges and the Workspace views read it",
 			Contributes: []Contribution{{KindSlash, "rewind"}}},
 		{ID: Recon, Title: "Project survey", Description: "a short survey of the project (layout, build and test commands) in the shared prompt", Category: CatTeam,
 			Contributes: []Contribution{{KindPrompt, "recon"}, {KindSlash, "recon"}}},
@@ -164,7 +165,7 @@ func Profiles() []Profile {
 	return []Profile{
 		{ID: "standard", Title: "Standard", Description: "everything Sleipnir does by default"},
 		{ID: "minimal", Title: "Minimal", Description: "one agent with the file and shell tools: nothing else in the prompt",
-			Only: []string{FS, Shell, PlanTool, Checkpoints, ViewPrefix + "workspace", ViewPrefix + "sessions", ViewPrefix + "tools", ViewPrefix + "plugins"}},
+			Only: []string{FS, Shell, PlanTool, ViewPrefix + "workspace", ViewPrefix + "sessions", ViewPrefix + "tools", ViewPrefix + "plugins"}},
 		{ID: "team", Title: "Team", Description: "standard, with the mailman digesting worker mail", On: []string{Mailman}},
 		{ID: "headless", Title: "Headless", Description: "standard without the web views, for scripts and CI",
 			Off: viewIDs()},

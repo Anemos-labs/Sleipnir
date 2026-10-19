@@ -160,3 +160,34 @@ func cut(p string) (string, string, bool) {
 	}
 	return p, "", false
 }
+
+// LoadSet loads the configuration for a directory and resolves the plugin set
+// it gives, with the external plugins found for it: what a session started
+// there now would have. It returns the set, the configuration report and the
+// warnings of discovery and resolution.
+func LoadSet(cwd, root, home string, trustProject bool) (*Set, *config.Report, []string, error) {
+	if root == "" {
+		root, _ = config.FindRoot(cwd)
+	}
+	cfg, rep, err := config.Load(config.LoadOpts{Cwd: cwd, Root: root, Home: home, UntrustedProject: !trustProject})
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	ext, warns := Discover(Dirs(home, root, trustProject))
+	cat := append(Builtin(), ext...)
+	sortManifests(cat)
+	set, rwarns := Resolve(cat, FromConfig(cfg, rep))
+	return set, rep, append(warns, rwarns...), nil
+}
+
+// ConfiguredProfile is the profile a configuration names ("" for the default).
+func ConfiguredProfile(cwd, root, home string) string {
+	if root == "" {
+		root, _ = config.FindRoot(cwd)
+	}
+	cfg, _, err := config.Load(config.LoadOpts{Cwd: cwd, Root: root, Home: home, UntrustedProject: true})
+	if err != nil {
+		return ""
+	}
+	return cfg.Plugins.Profile
+}
