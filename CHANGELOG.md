@@ -17,6 +17,12 @@ they do not indicate whether a change has been released.
   adds one segment, `research (from web sources, unverified)`, to the shared
   layer, a declared change made once at publication. `sleipnir plugins
   disable research` leaves both out.
+- `rl export --pack` (sft, tokens, groups) locates a step's completion in the
+  later prompts by its content and tool calls, whatever reasoning the completion
+  or the replayed turn carries: a prompt replays a turn's reasoning only where
+  the provider's replay binding asks for it, so every turn of a reasoning model
+  on another provider was `step:choice_misaligned` and left untrained (4,040 of
+  4,747 steps of one swarm session). Those turns are now targets.
 - `rl export`, `rl verify` and `rl reward` read an ordinary session's directory
   (one that holds `events.jsonl` and no `episode.json`), or a directory of them,
   as docs/TRAINING-DATA.md has said: the episode's task is the session id, every
