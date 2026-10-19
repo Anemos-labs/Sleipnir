@@ -103,7 +103,7 @@
     /* with the server's defaults an absent field is the CLI's own default (no verify command); the budget starts at off, which the server honours: a team has no cap unless one is set.
        The compaction share starts at sleipnir web's --compact-at (compactAt), else at the share a session takes without the flag (compactAtDefault: the configuration's, else 25; 0 when its token limits apply) */
     const act = SL.sessions && SL.sessions.active, actModel = act && !act.placeholder && !act.recorded ? act.meta.model : '';
-    return { name: '', cwd, gitInit: true, testsSummary: d.testsPreset || '', unlimitedEnv: d.unlimitedEnv || '', model: d.model || actModel || (D.models[0] ? D.models[0].ref : ''), mode: d.mode || 'default', swarm, isolation: d.isolation || (swarm ? 'worktree' : 'none'), verify: d.verify != null ? d.verify : has ? '' : 'go test {dirs}', commit: !!d.commit, mailman: !!d.mailman, mailmanDefault: !!d.mailman, budget: d.budget ? String(d.budget) : 'off', rules: (d.rules || []).slice(), trustProject: d.trustProject !== false, noMcp: !!d.noMcp, noMemory: !!d.noMemory, goalText: '', effort: d.effort || 'default', roleModels: Object.assign({}, d.roleModels || {}), maxWorkers: d.maxWorkers || 0, minWorkers: d.minWorkers || 8, counts: tm.counts, slotModels: tm.models, perSlot: tm.per, openRoles: Object.keys(tm.per).reduce((o, r) => { o[r] = true; return o; }, {}), single: swarm === 0, autoDocs: d.autoDocs !== false, managerApproves: d.managerApproves !== false, isoAuto: !d.isolationSet, resume: '', compactAt: d.compactAt ? +d.compactAt : null, compactAtBase: d.compactAtDefault != null ? +d.compactAtDefault : 25 };
+    return { name: '', cwd, gitInit: true, testsSummary: d.testsPreset || '', unlimitedEnv: d.unlimitedEnv || '', model: d.model || actModel || (D.models[0] ? D.models[0].ref : ''), mode: d.mode || 'default', swarm, isolation: d.isolation || (swarm ? 'worktree' : 'none'), verify: d.verify != null ? d.verify : has ? '' : 'go test {dirs}', commit: !!d.commit, mailman: !!d.mailman, mailmanDefault: !!d.mailman, budget: d.budget ? String(d.budget) : 'off', rules: (d.rules || []).slice(), trustProject: d.trustProject !== false, noMcp: !!d.noMcp, noMemory: !!d.noMemory, goalText: '', research: 'off', effort: d.effort || 'default', roleModels: Object.assign({}, d.roleModels || {}), maxWorkers: d.maxWorkers || 0, minWorkers: d.minWorkers || 8, counts: tm.counts, slotModels: tm.models, perSlot: tm.per, openRoles: Object.keys(tm.per).reduce((o, r) => { o[r] = true; return o; }, {}), single: swarm === 0, autoDocs: d.autoDocs !== false, managerApproves: d.managerApproves !== false, isoAuto: !d.isolationSet, resume: '', compactAt: d.compactAt ? +d.compactAt : null, compactAtBase: d.compactAtDefault != null ? +d.compactAtDefault : 25 };
   }
   /** The counts and models of a team the server names (one entry per slot), or the default team: one worker of each role. A role whose
    *  slots all run one model has it in models; a role whose slots run different models has them, slot by slot, in per. */
@@ -156,8 +156,14 @@
     if (st.budget && st.budget !== 'off') f.push('--budget-usd ' + q(st.budget)); const ca = dialogs.compactAtSent(st); if (ca) f.push('--compact-at ' + q(ca)); if (tm.slots.length) tm.slots.forEach(t => f.push('--role-model ' + q(t.model ? t.role + '=' + t.model : t.role))); else Object.keys(st.roleModels || {}).forEach(r => f.push('--role-model ' + q(r + '=' + st.roleModels[r]))); (st.rules || []).forEach(r => f.push('--allow ' + q(r)));
     if (st.trustProject) f.push('--trust-project'); if (st.noMcp) f.push('--no-mcp'); if (st.noMemory) f.push('--no-memory');
     const first = st.makeDir || st.makeGit ? '# first, as the page does: ' + [st.makeDir ? 'make the folder' : '', st.makeGit ? 'run git init in it, with an empty first commit' : ''].filter(Boolean).join(', then ') + '\n' : '';
-    return first + f.join(' ') + (st.goalText ? '\n  # then: /goal ' + String(st.goalText).replace(/[\r\n]+/g, ' ') : '');
+    const goal = dialogs.goalSent(st);
+    return first + f.join(' ') + (goal ? '\n  # then: /goal ' + goal.replace(/[\r\n]+/g, ' ') : '');
   };
+  /** The research depths a first goal can be researched at (/goal --research=DEPTH), each with what it runs before the build. */
+  const RESEARCH_FIRST = { quick: '3 researchers in one round', standard: '6 researchers over two rounds, every page fact-checked', deep: '10 researchers over three rounds, two fact-checks per page' };
+  /** The first goal a New session state sends: the goal, behind --research=DEPTH when a depth was chosen and the research plugin is on;
+   *  '' without a goal (a depth alone researches nothing). */
+  dialogs.goalSent = st => { const g = String(st.goalText || '').trim(); return g && RESEARCH_FIRST[st.research] && researchOn() ? '--research=' + st.research + ' ' + g : g; };
 
   /* ---------- the New session dialog: what each control does, in a ? beside the control (hover, focus or a tap) ---------- */
   const NS_HELP = {
@@ -181,6 +187,7 @@
     budget: 'The session stops when it has spent this many US dollars. <span class="mono">off</span>: no limit, which is how it starts here (the terminal caps a team at $50 unless the configuration says otherwise).',
     roles: 'A role left on <i>worker model</i> runs on the model above.',
     goal: 'The first thing to work on. Empty: a plain chat. With a goal, the manager works until a judge finds the evidence that it is met.',
+    research: 'Before anyone writes code, a team researches the first goal on the web: mature projects, ideas and code snippets, every quote checked on its page. The findings go into every agent’s shared prompt, and the build starts once the research is done. <b>quick</b>: 3 researchers, one round. <b>standard</b>: 6 researchers, two rounds, every page fact-checked. <b>deep</b>: 10 researchers, three rounds, two fact-checks per page. Needs a first goal. Later in a session: Research first in the Goal sheet.',
     mode: 'What the session may do without asking. Each mode says what it allows; bypass and yolo are for work where a mistake is cheap.',
   };
   /** Examples of allow rules, each with what it lets through; the first is the server's own preset (its summary comes with the defaults). */
@@ -258,7 +265,8 @@
       field('trust, tools and memory', opt('trustProject', '--trust-project', '--trust-project') + opt('noMcp', '--no-mcp', '--no-mcp') + opt('noMemory', '--no-memory', '--no-memory')) +
       field('budget (--budget-usd)', inp('nsBudget', st.budget, 'inputmode="decimal" aria-label="Budget in dollars"'), '', help('budget', 'the budget')) +
       field('compaction at (--compact-at)', '<div class="nscompact"><input id="nsCompact" type="range" min="10" max="90" step="1" value="' + (st.compactAt != null ? st.compactAt : st.compactAtBase || 25) + '" aria-label="Compaction share, percent of each model’s context window"><span class="nscv"><output id="nsCompactOut" for="nsCompact"></output><button type="button" class="btn sm" id="nsCompactReset" hidden>default</button></span></div>', '', help('compactAt', 'the compaction share')) +
-      field('first goal (optional)', '<textarea id="nsGoal" rows="3" placeholder="e.g. add pagination to the orders endpoint, with tests" aria-label="Goal">' + esc(st.goalText) + '</textarea>', '', help('goal', 'the first goal')) + '</div></div><div class="nsmodefld">' + field('mode (--mode)', modePick(st.mode), '', help('mode', 'a mode')) + '</div>' +
+      field('first goal (optional)', '<textarea id="nsGoal" rows="3" placeholder="e.g. add pagination to the orders endpoint, with tests" aria-label="Goal">' + esc(st.goalText) + '</textarea>', '', help('goal', 'the first goal')) +
+      (researchOn() ? field('research first (--research)', seg('research', ['off', 'quick', 'standard', 'deep'], st.research) + '<small class="hint" id="nsResWhy" role="status"></small>', '', help('research', 'research first')) : '') + '</div></div><div class="nsmodefld">' + field('mode (--mode)', modePick(st.mode), '', help('mode', 'a mode')) + '</div>' +
       '<h3 class="lab" style="margin:12px 0 4px">the same command line</h3><pre class="pre cli" id="nsCli"></pre><div class="row2"><button class="btn pri" type="button" id="nsStart">Start the session</button><button class="btn" type="button" id="nsCopy">Copy the command</button><button class="btn" type="button" data-close>Cancel</button></div>',
       onMount(b, sc, close) {
         /* the reasons of the team controls that cannot be used (dialogs.nsGate), each under its control */
@@ -315,6 +323,7 @@
           /* the compaction share: the slider at the share (the default's place when none was chosen), what it means beside it, and a way back to the default */
           const cs = $('#nsCompact', b), cpos = String(st.compactAt != null ? st.compactAt : st.compactAtBase || 25), ctext = dialogs.compactAtText(st);
           if (cs.value !== cpos) cs.value = cpos; cs.setAttribute('aria-valuetext', ctext); $('#nsCompactOut', b).textContent = ctext; $('#nsCompactReset', b).hidden = st.compactAt == null;
+          const rw = $('#nsResWhy', b); if (rw) { const on = !!RESEARCH_FIRST[st.research]; rw.hidden = !on; rw.className = 'hint' + (on && !st.goalText.trim() ? ' warm' : ''); rw.textContent = !on ? '' : st.goalText.trim() ? RESEARCH_FIRST[st.research] + ', then the team builds' : 'needs a first goal: there is nothing to research without one'; }
           paintGate();
         };
         ui.helpMount(b, sc);
@@ -348,7 +357,7 @@
         let starting = false;
         sc.listen($('#nsStart', b), 'click', () => {
           if (starting) return;
-          if (Array.from(st.goalText.trim()).length > SL.goalMax()) { ui.toast('The goal is longer than ' + SL.goalMax().toLocaleString('en') + ' characters. Shorten it before starting.', 'err'); return; }
+          if (Array.from(dialogs.goalSent(st)).length > SL.goalMax()) { ui.toast('The goal is longer than ' + SL.goalMax().toLocaleString('en') + ' characters. Shorten it before starting.', 'err'); return; }
           const bud = st.budget === 'off' || st.budget === '' ? 0 : parseFloat(st.budget); if (st.budget !== 'off' && st.budget !== '' && !(bud > 0)) { ui.toast('the budget is a number of dollars, or off', 'err'); return; }
           /* what was typed or chosen but not added yet is part of what starts (an allow rule in its field, a role and model picked) */
           const pending = $('#nsRule', b); if (!quiet() && !addRule(pending.value)) return; if (!quiet()) pending.value = '';
@@ -360,7 +369,7 @@
             if (d.level === 'bad') { starting = false; ui.toast(d.lead, 'err'); return; }
             if (!state && !FOLDER_START.test(typed)) { starting = false; ui.toast('The server could not check that folder: write its full path.', 'err'); return; }
             const roleModels = Object.assign({}, st.roleModels); if (tm.dflt) Object.keys(st.slotModels || {}).forEach(r => { if (st.slotModels[r]) roleModels[r] = st.slotModels[r]; });
-            const spec = { name: st.name.trim() || undefined, cwd: state ? state.path : typed, model: st.model, mode: st.mode, swarm: tm.n, isolation: st.isolation, verify: st.verify, commit: st.commit, mailman: st.mailman, rules: rulesNow(), trustProject: st.trustProject, noMcp: st.noMcp, noMemory: st.noMemory, goalText: st.goalText.trim() || undefined, effort: st.effort, roleModels: tm.slots.length ? {} : roleModels };
+            const spec = { name: st.name.trim() || undefined, cwd: state ? state.path : typed, model: st.model, mode: st.mode, swarm: tm.n, isolation: st.isolation, verify: st.verify, commit: st.commit, mailman: st.mailman, rules: rulesNow(), trustProject: st.trustProject, noMcp: st.noMcp, noMemory: st.noMemory, goalText: dialogs.goalSent(st) || undefined, effort: st.effort, roleModels: tm.slots.length ? {} : roleModels };
             if (tm.slots.length) spec.team = tm.slots;
             if (tm.n > 0 && st.autoDocs === false) spec.autoDocs = false;
             if (tm.n > 0 && st.managerApproves === false) spec.managerApproves = false;   // on is the server's default: only an off is sent
