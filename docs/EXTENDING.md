@@ -7,6 +7,9 @@ command line. This page describes each as the binary implements it today. Settin
 
 MCP servers (external tool servers) have a page of their own: `docs/MCP.md`.
 
+Each of these is also a plugin that can be switched off (`sleipnir plugins disable hooks`), and a set of them can be
+packaged as one installable plugin: `docs/PLUGINS.md`.
+
 ## 0. The rules every extension follows
 
 **Where files live.** Skills, commands and agent definitions are looked for in four directories, in this order; the

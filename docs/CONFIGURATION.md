@@ -417,6 +417,16 @@ warning.
 servers (`docs/MCP.md`): entries in your own file are trusted, a project's arrive only with `--trust-project` and each
 one still needs your approval (`sleipnir mcp approve`); the key is on the gated list of section 4.
 
+### `plugins`
+
+| Key | Type | Default | Applies | Meaning |
+|---|---|---|---|---|
+| `profile` | string | `standard` | at start | the starting set: `standard`, `minimal`, `team` or `headless` |
+| `enabled` | object of booleans | `{}` | at start | a plugin id to on or off, over the profile; `true` from a project file needs `--trust-project` |
+| `settings` | object of objects | `{}` | at start | a plugin id to its settings, as its schema declares them |
+
+Plugins, their layers and the older keys that are layers of them are in `docs/PLUGINS.md`.
+
 ## 7. Provider options
 
 `providers.<name>.options` passes dialect-specific switches to the adapter. Booleans must be JSON `true`/`false`,

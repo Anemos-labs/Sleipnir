@@ -113,7 +113,7 @@ func scanContributions(dir string) []Contribution {
 	if HooksFile(dir) != "" {
 		out = append(out, Contribution{KindHook, "hooks.json"})
 	}
-	if servers, _ := MCPServers(dir); len(servers) > 0 {
+	if servers, _ := MCPServers(Manifest{Dir: dir}, nil); len(servers) > 0 {
 		names := make([]string, 0, len(servers))
 		for n := range servers {
 			names = append(names, n)
@@ -145,11 +145,40 @@ func HooksFile(dir string) string {
 	return ""
 }
 
+// expand replaces, in a plugin file's JSON text, ${CLAUDE_PLUGIN_ROOT} and
+// ${SLEIPNIR_PLUGIN_ROOT} with the plugin's directory and ${setting:NAME}
+// with the value of the plugin's setting NAME (plugins.settings.<id>.NAME, or
+// the schema's default; "" when neither), each escaped as JSON string text.
+func expand(text, dir string, schema *Schema, settings map[string]any) string {
+	esc := func(v string) string {
+		q, _ := json.Marshal(v)
+		return string(q[1 : len(q)-1])
+	}
+	pairs := []string{"${CLAUDE_PLUGIN_ROOT}", esc(dir), "${SLEIPNIR_PLUGIN_ROOT}", esc(dir)}
+	names := map[string]any{}
+	if schema != nil {
+		for k, f := range schema.Properties {
+			names[k] = f.Default
+		}
+	}
+	for k, v := range settings {
+		names[k] = v
+	}
+	for k, v := range names {
+		str := ""
+		if v != nil {
+			str = fmt.Sprint(v)
+		}
+		pairs = append(pairs, "${setting:"+k+"}", esc(str))
+	}
+	return strings.NewReplacer(pairs...).Replace(text)
+}
+
 // HookEntries reads the plugin's hooks file as the "hooks" configuration key's
-// entries (event -> matchers), with ${CLAUDE_PLUGIN_ROOT} and
-// ${SLEIPNIR_PLUGIN_ROOT} replaced by the plugin's directory. A file with a
+// entries (event -> matchers), expanded as expand says. A file with a
 // top-level "hooks" object (the Claude Code layout) is read from inside it.
-func HookEntries(dir string) (map[string]json.RawMessage, error) {
+func HookEntries(m Manifest, settings map[string]any) (map[string]json.RawMessage, error) {
+	dir := m.Dir
 	p := HooksFile(dir)
 	if p == "" {
 		return nil, nil
@@ -158,9 +187,7 @@ func HookEntries(dir string) (map[string]json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	quoted, _ := json.Marshal(dir)
-	inner := string(quoted[1 : len(quoted)-1])
-	s := strings.NewReplacer("${CLAUDE_PLUGIN_ROOT}", inner, "${SLEIPNIR_PLUGIN_ROOT}", inner).Replace(string(b))
+	s := expand(string(b), dir, m.Config, settings)
 	var doc map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(s), &doc); err != nil {
 		return nil, fmt.Errorf("%s: %w", filepath.Base(p), err)
@@ -176,8 +203,10 @@ func HookEntries(dir string) (map[string]json.RawMessage, error) {
 }
 
 // MCPServers reads the plugin's MCP servers (mcp.json or .mcp.json; either
-// {"mcpServers": {...}} or the servers directly), by server name.
-func MCPServers(dir string) (map[string]json.RawMessage, error) {
+// {"mcpServers": {...}} or the servers directly), by server name, expanded as
+// expand says.
+func MCPServers(m Manifest, settings map[string]any) (map[string]json.RawMessage, error) {
+	dir := m.Dir
 	for _, name := range []string{"mcp.json", ".mcp.json"} {
 		b, err := os.ReadFile(filepath.Join(dir, name))
 		if errors.Is(err, os.ErrNotExist) {

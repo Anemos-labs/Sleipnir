@@ -102,7 +102,7 @@ Simulation results are not measured savings. [Cache design](docs/CACHE-DESIGN.md
 ## Documentation
 
 - [Getting started](docs/GETTING-STARTED.md), [CLI reference](docs/CLI.md), [configuration](docs/CONFIGURATION.md)
-- [Providers](docs/PROVIDERS.md), [extensions](docs/EXTENDING.md), [MCP](docs/MCP.md)
+- [Providers](docs/PROVIDERS.md), [plugins](docs/PLUGINS.md), [extensions](docs/EXTENDING.md), [MCP](docs/MCP.md)
 - [Architecture](docs/ARCHITECTURE.md), [team coordination](docs/SWARM-PROTOCOL.md), [terminal and browser interfaces](docs/UX.md)
 - [Web API](docs/WEB-API.md), [building](docs/BUILDING.md), [testing](docs/TESTING.md), [maintenance](docs/MAINTENANCE.md), [contributing](CONTRIBUTING.md)
 - [Limitations](docs/STATUS.md), [roadmap](docs/ROADMAP.md), [training data](docs/TRAINING-DATA.md)

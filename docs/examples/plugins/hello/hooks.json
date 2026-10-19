@@ -1,0 +1,5 @@
+{
+  "SessionStart": [
+    {"hooks": [{"type": "command", "command": "echo '${setting:greeting} from the hello plugin in ${SLEIPNIR_PLUGIN_ROOT}'"}]}
+  ]
+}

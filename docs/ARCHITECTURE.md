@@ -38,7 +38,17 @@ with workers.
 | `internal/web/wsvc`, `settings`, `tools`, `runner`, `clispec` | Routes of the workspace, the settings, the recorded sessions, schedule and doctor, and the command runner with the specification of the command line generated from `docs/CLI.md` |
 | `internal/config`, `internal/memory` | Settings and instruction files |
 | `internal/skills`, `internal/hooks`, `internal/mcp` | Extensions |
+| `internal/plugin` | The plugin catalogue, profiles, layered resolution and the kernel that turns plugins on and off ([PLUGINS.md](PLUGINS.md)) |
 | `internal/rl` | Rollouts, verification, rewards and trajectory exports |
+
+## Plugins
+
+A session resolves its plugin set before anything else (`plugin.Resolve` over the catalogue, the profile and every
+configuration layer), and every feature asks the set whether it is on: the tool registry is built by kernel activators
+(one per tool plugin), skills, commands, agents, hooks and instruction files are loaded only for plugins that are on, and
+the team, its roles and its optional behaviours read the same set. The web page reads the set too (`GET /api/plugins`)
+and leaves out each view whose plugin is off. A change waits for the team to start again, because tool lists and the
+shared layer are part of the prompt cache key.
 
 ## Goals and teams
 

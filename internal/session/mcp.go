@@ -141,7 +141,7 @@ func (s *Session) mcpServers() (map[string]mcp.ServerConfig, []mcp.Issue) {
 		if !st.External || st.State != plugin.StateOn {
 			continue
 		}
-		servers, err := plugin.MCPServers(st.Dir)
+		servers, err := plugin.MCPServers(st.Manifest, st.Config)
 		if err != nil {
 			s.notice("", "plugins: "+st.ID+": "+err.Error())
 			continue

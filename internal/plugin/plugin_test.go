@@ -330,3 +330,20 @@ func TestSummary(t *testing.T) {
 		t.Errorf("Summary = %q", got)
 	}
 }
+
+func TestPluginFilesExpandTheDirectoryAndSettings(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "hooks.json"), []byte(`{"SessionStart":[{"hooks":[{"type":"command","command":"echo ${setting:greeting} ${setting:who} from ${SLEIPNIR_PLUGIN_ROOT}"}]}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := Manifest{ID: "hello", Dir: dir, Config: &Schema{Type: "object", Properties: map[string]Field{
+		"greeting": {Type: "string", Default: "Hello"}, "who": {Type: "string"}}}}
+	h, err := HookEntries(m, map[string]any{"who": `a "quoted" name`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(h["SessionStart"])
+	if !strings.Contains(got, `echo Hello a \"quoted\" name from `+dir) {
+		t.Errorf("expanded = %s", got)
+	}
+}

@@ -103,7 +103,7 @@ func (s *Session) externalHooks(cfg *config.Config) (*config.Config, []string) {
 		if !st.External || st.State != plugin.StateOn {
 			continue
 		}
-		h, err := plugin.HookEntries(st.Dir)
+		h, err := plugin.HookEntries(st.Manifest, st.Config)
 		if err != nil {
 			warns = append(warns, "plugins: "+st.ID+": hooks: "+err.Error())
 			continue
