@@ -83,6 +83,10 @@
     ['sessions.prune', 'Prune', 'delete old recorded sessions, with a preview', 8, 0, 4, 9, 3, 3],
     ['sessions.inbox', 'Cross-session inbox', 'the questions waiting in any session', 8, 9, 4, 4, 3, 2, 'list'],
   ]);
+  page('research', { title: 'Research', view: 'research', wrap: 'resv' }, [
+    ['research.runs', 'Research runs', 'every run of the project: its phase, its evidence, its wiki and the export', 0, 0, 7, 12, 3, 3, 'list'],
+    ['research.new', 'New research', 'a question and a depth: the team researches it into a wiki', 7, 0, 5, 12, 3, 3],
+  ]);
   page('tools', { title: 'Tools', view: 'tools', wrap: 'toolsv' }, [
     ['tools.find', 'Find a command', 'filter the commands and open the runner', 0, 0, 12, 2, 3, 2],
     ['tools.run', 'Run work', 'start a session, run a goal without a terminal, or put one on a schedule', 0, 2, 12, 5, 3, 2],
@@ -166,6 +170,7 @@
     ['board', 'Board', 'the task board with its dependencies'],
     ['replay', 'Replay', 'the session as a recording: scrub and speed'],
     ['sessions', 'Sessions', 'live and recorded sessions'],
+    ['research', 'Research', 'deep research runs and their wikis'],
     ['tools', 'Tools', 'every sleipnir command, with a form'],
     ['doctor', 'Doctor', 'probe an endpoint'],
     ['schedule', 'Schedule', 'cron jobs and the daemon'],

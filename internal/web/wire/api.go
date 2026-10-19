@@ -361,6 +361,45 @@ type GoalRequest struct {
 	Text      string `json:"text,omitempty"`
 }
 
+// ResearchRun is one deep research run of the project, for the Research view.
+type ResearchRun struct {
+	Slug     string `json:"slug"`
+	Question string `json:"question"`
+	Depth    string `json:"depth"`
+	Mode     string `json:"mode"` // report, or kickoff: research before a goal
+	Phase    string `json:"phase"`
+	Created  string `json:"created"` // RFC 3339
+	Built    bool   `json:"built"`   // a wiki of the run's current state was built
+	Problems int    `json:"problems"`
+	Sources  int    `json:"sources"`
+	Domains  int    `json:"domains"`
+	Findings int    `json:"findings"`
+	Snippets int    `json:"snippets"`
+	Pages    int    `json:"pages"`
+	Planned  int    `json:"planned"`
+	OpenGaps int    `json:"openGaps"`
+	Active   bool   `json:"active"` // the run a goal drives now
+}
+
+// ResearchDepth is a depth a run can have, with what it asks for.
+type ResearchDepth struct {
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	About   string `json:"about"`
+	Tracks  int    `json:"tracks"`
+	Sources int    `json:"sources"`
+	Pages   string `json:"pages"`
+}
+
+// ResearchRequest starts a research run (/research DEPTH QUESTION) or exports a run's wiki into a directory of the project.
+type ResearchRequest struct {
+	Action   string `json:"action"` // start or export
+	Question string `json:"question,omitempty"`
+	Depth    string `json:"depth,omitempty"`
+	Slug     string `json:"slug,omitempty"`
+	Dir      string `json:"dir,omitempty"`
+}
+
 // ModeRequest sets the permission mode (default, accept-edits, plan, bypass or yolo); bypass and yolo need an X-Confirm id.
 type ModeRequest struct {
 	Mode string `json:"mode"`

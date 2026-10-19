@@ -17,6 +17,10 @@
       "reason": "eleven pages for the model, roles, budget, permissions, trust, run flags, tool servers, skills, providers and the configuration layers; the terminal has /model, /roles, /budget, /permissions, /trust, /mcp, /skills and `sleipnir config`"
     },
     {
+      "item": "research",
+      "reason": "lists the project's research runs with their phases and evidence, opens a run's wiki in a browser tab, exports it and starts a run from a form; the terminal has /research and `sleipnir research`, which list, report, build and export the same runs as text, and the wiki opens from its index.html"
+    },
+    {
       "item": "tools",
       "reason": "the catalogue of `sleipnir` commands with a form for each; the terminal types the command and reads `sleipnir --help`"
     },

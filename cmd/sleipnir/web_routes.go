@@ -261,6 +261,30 @@ func (h *webHostImpl) routes(srv *web.Server) {
 		ok(w, map[string]any{"ok": true, "state": t.goalState(), "queued": queued})
 	})
 
+	// 10b. Research: the runs, starting one or exporting its wiki, and the wiki itself.
+	h.tabRoute(srv, "GET /api/sessions/{id}/research", web.RouteOpts{}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
+		runs, plugin := []wire.ResearchRun{}, false
+		if s := t.session(); s != nil && s.ResearchStore() != nil {
+			runs, plugin = s.ResearchRuns(), true
+		}
+		ok(w, map[string]any{"runs": runs, "depths": session.ResearchDepths(), "on": plugin})
+	})
+	h.tabRoute(srv, "POST /api/sessions/{id}/research", web.RouteOpts{MaxBody: goalBodyMax}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
+		var body wire.ResearchRequest
+		if !web.DecodeJSON(w, r, &body) {
+			return
+		}
+		res, err := t.researchAction(r.Context(), body)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		ok(w, res)
+	})
+	h.tabRoute(srv, "GET /research/{id}/{slug}/{file...}", web.RouteOpts{}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
+		t.serveResearch(w, r)
+	})
+
 	// 11. Session settings.
 	h.tabRoute(srv, "POST /api/sessions/{id}/mode", web.RouteOpts{}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
 		var body wire.ModeRequest

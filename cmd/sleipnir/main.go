@@ -273,6 +273,7 @@ Look at a session, or measure:
   demo      a scripted team on a mock endpoint: the shared cache and the bill
   sim       simulate cache policies: what layering buys, and where it stops
   recon     print the project survey that seeds the shared prompt layer
+  research  deep research runs: list, status, build the wiki, export it
   rl        the RL environment: rollout, eval, report, export (rl help)
   mock      the built-in mock provider, for demos and tests
   version   print version

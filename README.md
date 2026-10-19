@@ -59,6 +59,7 @@ missing. Escape interrupts the turn and pauses the goal. `/goal resume` continue
 | `/model`, `/roles` | Choose models |
 | `/goal` | View the goal and its plan |
 | `/goal pause` | Interrupt and pause the goal |
+| `/research [depth] QUESTION` | Research a question on the web into a cited wiki ([deep research](docs/RESEARCH.md)) |
 | Ctrl+G or `/agents` | Open the live team view |
 | Ctrl+T or `/stats` | Open live usage and cache statistics |
 | `/diff`, `/rewind` | Inspect or restore a checkpoint |
@@ -103,7 +104,7 @@ Simulation results are not measured savings. [Cache design](docs/CACHE-DESIGN.md
 
 - [Getting started](docs/GETTING-STARTED.md), [CLI reference](docs/CLI.md), [configuration](docs/CONFIGURATION.md)
 - [Providers](docs/PROVIDERS.md), [plugins](docs/PLUGINS.md), [extensions](docs/EXTENDING.md), [MCP](docs/MCP.md)
-- [Architecture](docs/ARCHITECTURE.md), [team coordination](docs/SWARM-PROTOCOL.md), [terminal and browser interfaces](docs/UX.md)
+- [Architecture](docs/ARCHITECTURE.md), [team coordination](docs/SWARM-PROTOCOL.md), [deep research](docs/RESEARCH.md), [terminal and browser interfaces](docs/UX.md)
 - [Web API](docs/WEB-API.md), [building](docs/BUILDING.md), [testing](docs/TESTING.md), [maintenance](docs/MAINTENANCE.md), [contributing](CONTRIBUTING.md)
 - [Limitations](docs/STATUS.md), [roadmap](docs/ROADMAP.md), [training data](docs/TRAINING-DATA.md)
 

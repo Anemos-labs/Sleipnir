@@ -38,6 +38,11 @@
    "nav": true
   },
   {
+   "name": "research",
+   "title": "Research",
+   "nav": true
+  },
+  {
    "name": "runner",
    "title": "Run a command",
    "nav": false
@@ -107,6 +112,14 @@
    "tab": "files",
    "label": "Files",
    "key": "f",
+   "radio": false
+  },
+  {
+   "id": "research",
+   "view": "research",
+   "tab": null,
+   "label": "Research",
+   "key": "w",
    "radio": false
   },
   {
@@ -199,6 +212,15 @@
    "live": true,
    "effects": [
     "sheet:goal"
+   ]
+  },
+  {
+   "group": "conversation",
+   "name": "/research",
+   "kind": "slash",
+   "live": false,
+   "effects": [
+    "act:command"
    ]
   },
   {
@@ -623,6 +645,15 @@
    "live": true,
    "effects": [
     "view:plugins"
+   ]
+  },
+  {
+   "group": "go to",
+   "name": "Research",
+   "kind": "view",
+   "live": true,
+   "effects": [
+    "view:research"
    ]
   },
   {
@@ -1155,6 +1186,15 @@
    "live": true,
    "effects": [
     "view:replay"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir research",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "view:research"
    ]
   },
   {
@@ -1715,6 +1755,7 @@
    "/plugins",
    "/queue",
    "/recon",
+   "/research",
    "/restart",
    "/resume",
    "/rewind",
@@ -2387,6 +2428,7 @@
    "chat",
    "run",
    "swarm",
+   "research",
    "schedule",
    "schedule add",
    "schedule rm",
@@ -2584,6 +2626,21 @@
      "trust-project": "priv",
      "verify": "priv",
      "mode": "priv"
+    }
+   },
+   "research": {
+    "mode": "run",
+    "positionals": [
+     "RUN"
+    ],
+    "flags": [
+     "build",
+     "cwd",
+     "export",
+     "json"
+    ],
+    "modeWith": {
+     "export": "priv"
     }
    },
    "schedule": {

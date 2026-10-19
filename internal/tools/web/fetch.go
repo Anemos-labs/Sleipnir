@@ -90,11 +90,105 @@ const (
 )
 
 // Register adds web_fetch, and web_search when cfg.Backend is set, to r.
-func Register(r *tools.Registry, cfg Config) {
-	r.Register(&fetchTool{f: newFetcher(cfg)})
+func Register(r *tools.Registry, cfg Config) { RegisterReader(r, cfg) }
+
+// RegisterReader is Register, returning a Reader over the same fetcher: pages it reads and pages web_fetch reads share one cache,
+// so a tool that checks what a page says (internal/research) reads the copy an agent just fetched instead of fetching it again.
+func RegisterReader(r *tools.Registry, cfg Config) *Reader {
+	f := newFetcher(cfg)
+	r.Register(&fetchTool{f: f})
 	if cfg.Backend != nil {
 		r.Register(&searchTool{b: cfg.Backend})
 	}
+	return &Reader{f: f, backend: cfg.Backend}
+}
+
+// Reader reads whole pages for other tools, under the same guard, permissions and cache as web_fetch.
+type Reader struct {
+	f       *fetcher
+	backend Backend
+}
+
+// Page is a page a Reader read: its final URL, its title and its whole text as web_fetch converts it.
+type Page struct {
+	URL   string
+	Title string
+	Text  string
+	// Type is the media type ("text/html").
+	Type string
+}
+
+// Read fetches raw (or takes it from the cache) after asking the permission engine as a web_fetch of that URL would, so rules about
+// hosts apply to it unchanged. Errors read well to a model.
+func (r *Reader) Read(ctx context.Context, env *tools.Env, raw string) (*Page, error) {
+	u, err := parseFetchURL(raw)
+	if err != nil {
+		return nil, err
+	}
+	input, _ := json.Marshal(map[string]string{"url": u.String()})
+	summary := u.String()
+	if len(summary) > 300 {
+		summary = summary[:300] + "…"
+	}
+	dec := env.Perm.Check(ctx, perm.Request{Agent: env.Agent, Role: env.Role, Tool: "web_fetch", Input: input, Summary: "fetch " + summary, Network: true})
+	if !dec.Allow {
+		if dec.Reason != "" {
+			return nil, fmt.Errorf("permission denied: %s", dec.Reason)
+		}
+		return nil, errors.New("permission denied")
+	}
+	key := cacheKey(u)
+	doc, cached := r.f.cache.get(key, env.Now())
+	if cached {
+		if err := recheckVia(ctx, env, u, doc.via); err != nil {
+			return nil, err
+		}
+	} else {
+		var herr *httpStatusError
+		var rerr *redirectRefusedError
+		doc, err = r.f.fetch(ctx, u, hopCheck(env))
+		switch {
+		case errors.As(err, &rerr), errors.As(err, &herr):
+			return nil, err
+		case err != nil:
+			return nil, errors.New(r.f.describeError(err))
+		}
+		if !doc.hopped {
+			r.f.cache.put(key, doc, env.Now())
+		}
+	}
+	return &Page{URL: doc.url, Title: doc.title, Text: doc.text, Type: doc.ctype}, nil
+}
+
+// Search runs the configured search backend; ok is false when there is none. The permission engine is asked as for web_search.
+func (r *Reader) Search(ctx context.Context, env *tools.Env, query string, max int) (results []SearchResult, ok bool, err error) {
+	if r.backend == nil {
+		return nil, false, nil
+	}
+	input, _ := json.Marshal(map[string]any{"query": query, "max_results": max})
+	dec := env.Perm.Check(ctx, perm.Request{Agent: env.Agent, Role: env.Role, Tool: "web_search", Input: input,
+		Summary: "search the web for " + strconv.Quote(clipRunesPlain(query, 120)), Network: true})
+	if !dec.Allow {
+		if dec.Reason != "" {
+			return nil, true, fmt.Errorf("permission denied: %s", dec.Reason)
+		}
+		return nil, true, errors.New("permission denied")
+	}
+	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
+	defer cancel()
+	rs, err := r.backend.Search(ctx, clipRunesPlain(oneLine(query), maxQueryChars), max)
+	if err != nil {
+		return nil, true, err
+	}
+	return cleanResults(rs, max), true, nil
+}
+
+// Backend names the configured search backend, or "" when there is none.
+func (r *Reader) Backend() string {
+	if r.backend == nil {
+		return ""
+	}
+	return backendName(r.backend)
 }
 
 // document is a fetched page after conversion to text. It is immutable once

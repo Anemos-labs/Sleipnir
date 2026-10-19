@@ -611,6 +611,36 @@ Usage of recon:
 ```
 <!-- /flags -->
 
+### `sleipnir research`
+
+`sleipnir research [RUN]` lists the project's deep research runs with their depth, phase and evidence, or shows where
+one run stands: its numbers against its depth's bars and what it needs next. `--build` renders the run's wiki from its
+ledger into `.sleipnir/research/RUN/site`, and `--export DIR` renders the wiki into a directory of the project.
+Runs are started in the chat or the web page with `/research` and `/goal --research=DEPTH` (`docs/RESEARCH.md`).
+
+<!-- flags: research -->
+```text
+usage: sleipnir research [RUN] [flags]
+
+The deep research runs of a project (docs/RESEARCH.md). A run is started in the chat or the web page:
+/research [quick|standard|deep] QUESTION researches a question into a wiki, and /goal --research=DEPTH GOAL
+researches before building. Each run keeps its ledger (plan, sources with their checked quotes, findings,
+pages, reviews) under .sleipnir/research/RUN.
+
+Without RUN it lists the runs, newest first; with RUN it shows where the run stands.
+
+flags:
+  -build
+        build RUN's wiki from its ledger into .sleipnir/research/RUN/site
+  -cwd string
+        the project (default: the current directory)
+  -export string
+        render RUN's wiki into this directory of the project (an earlier export there is replaced)
+  -json
+        machine-readable output
+```
+<!-- /flags -->
+
 ### `sleipnir inspect`
 
 `sleipnir inspect DIR` serves the dashboard and prints its URL on stdout (with `--token`, the URL carries the token, which
@@ -2527,6 +2557,7 @@ flags:
 | `/rewind [id]` | list checkpoints; with an id, restore files to how they were before that turn |
 | `/diff <id>` | show what changed since a checkpoint |
 | `/recon` | print the project map, instruction files and skills listing pinned in the shared layer |
+| `/research [quick\|standard\|deep] QUESTION` | a team researches the question on the web and publishes a wiki of cited, fact-checked pages (`docs/RESEARCH.md`); alone, the project's runs; `status`, `build` and `open [RUN]`, `export RUN DIR`. `/goal --research=DEPTH GOAL` researches before it builds |
 | `/skills` | list the skills the model can load (`(you only)` marks those only you can invoke) |
 | `/exit` (also `/quit`) | quit; Ctrl-D does the same, and so does Ctrl-C twice at the prompt |
 | `/<name> [args]` | a custom command from `commands/`, or a skill; `docs/EXTENDING.md` sections 2 and 3 |

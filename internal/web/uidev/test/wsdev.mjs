@@ -39,7 +39,7 @@ export function makeHybrid(dir) {
   fs.cpSync(src, dir, { recursive: true });
   const html = fs.readFileSync(path.join(dir, 'index-mock.html'), 'utf8').replaceAll('../../ui/', '');
   fs.writeFileSync(path.join(dir, 'index.html'), html); fs.rmSync(path.join(dir, 'index-mock.html'));
-  for (const f of ['83b-ui-dash.js', '96b-ws-data.js', '97-ui-workspace.js', 'api.js', '98c-ui-plugins.js']) fs.copyFileSync(path.join(ui, 'js', f), path.join(dir, 'js', f));
+  for (const f of ['83b-ui-dash.js', '96b-ws-data.js', '97-ui-workspace.js', 'api.js', '98c-ui-plugins.js', '98d-ui-research.js']) fs.copyFileSync(path.join(ui, 'js', f), path.join(dir, 'js', f));
   fs.writeFileSync(path.join(dir, 'js', 'wshead.js'), pageHead(path.join(ui, 'js', '90-views-a.js')));
   fs.writeFileSync(path.join(dir, 'index.html'), fs.readFileSync(path.join(dir, 'index.html'), 'utf8').replace('<script src="js/96b-ws-data.js"></script>', '<script src="js/83b-ui-dash.js"></script>\n<script src="js/wshead.js"></script>\n<script src="js/96b-ws-data.js"></script>')
     .replace('<link rel="stylesheet" href="css/52-cockpit.css">', '<link rel="stylesheet" href="css/52-cockpit.css">\n<link rel="stylesheet" href="css/53-dash.css">'));

@@ -24,6 +24,7 @@ with workers.
 | `internal/session` | Configuration and component assembly |
 | `internal/agent` | Model/tool loop, retry, budgets, compaction, snapshots |
 | `internal/goal` | Standing-goal state and completion evaluation |
+| `internal/research` | Deep research runs: depths, the evidence ledger, quote checks, phase checks and the wiki renderer ([Research](RESEARCH.md)) |
 | `internal/kv` | Prompt layers, rendering, cache guard, compaction and archive |
 | `internal/provider` | Chat Completions, Responses, Messages, probes and mocks |
 | `internal/cost` | Token categories, provider cache models and pricing |
