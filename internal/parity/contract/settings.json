@@ -190,15 +190,15 @@
   "gaps": [
     {
       "item": "plugins.enabled.*",
-      "reason": "the Plugins page switches each plugin; until it is part of the inventory the page's switches are not counted"
+      "reason": "switched on the Plugins page (a view, tested in plugins.test.mjs), which the Settings inventory does not read"
     },
     {
       "item": "plugins.profile",
-      "reason": "the Plugins page's profile picker; until it is part of the inventory it is not counted"
+      "reason": "picked on the Plugins page (a view, tested in plugins.test.mjs), which the Settings inventory does not read"
     },
     {
       "item": "plugins.settings.*",
-      "reason": "the Plugins page's settings forms; until they are part of the inventory they are not counted"
+      "reason": "edited in the Plugins page's settings forms (a view, tested in plugins.test.mjs), which the Settings inventory does not read"
     }
   ]
 }

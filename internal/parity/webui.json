@@ -430,9 +430,9 @@
    "group": "a team, and the program",
    "name": "/plugins",
    "kind": "slash",
-   "live": false,
+   "live": true,
    "effects": [
-    "act:command"
+    "view:plugins"
    ]
   },
   {
@@ -1623,6 +1623,10 @@
    "/plan": [
     "act:send",
     "act:setMode"
+   ],
+   "/plugins": [
+    "act:command",
+    "view:plugins"
    ],
    "/queue": [
     "act:command"

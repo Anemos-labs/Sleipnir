@@ -48,6 +48,7 @@
     '/cwd': () => { const S = S_(); local('/cwd', '<code>' + esc(S.meta.cwd) + '</code><br><span class="dim">--isolation ' + esc(S.meta.isolation) + (S.meta.isolation === 'worktree' ? ': each worker has its own checkout' : '') + '</span>'); },
     /* the session's own project map (the pinned shared layer), with a way to run a fresh survey */
     '/recon': a => serverLine('/recon' + (a ? ' ' + a : ''), '/recon', '<div class="row2" style="margin:6px 0 0"><button class="btn sm" type="button" data-cli="recon">Run a fresh survey</button></div>'),
+    '/plugins': a => { if (a) serverLine('/plugins ' + a, '/plugins ' + a); else SL.views.show('plugins'); },
     '/skills': () => ui.settingsPage('skills'), '/mcp': a => { if (a) serverLine('/mcp ' + a, '/mcp ' + a); else ui.settingsPage('mcp'); }, '/help': () => ui.sheets.help(),
   };
   function newChat() { const S = S_(); ui.confirm({ title: 'Start again, empty', text: 'Clear <b>' + esc(S.name) + '</b>: the chat and the team start again with the same model and mode. Checkpoints stay.', ok: 'Start again', danger: true, run: () => onOk(SL.act.newChat(), () => ui.toast('started again, empty', 'ok')) }); }
