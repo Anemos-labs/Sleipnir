@@ -124,6 +124,17 @@ test('the New session dialog\'s command line is shell-safe: sh -c reads back eve
   assert.deepEqual(argv, ['--cwd', '/home/me/my project', '--model', 'ollama/m', '--mode', 'default', '--swarm', '8', '--isolation', 'worktree', '--verify', 'go test -run "TestA|TestB" ./...', '--budget-usd', '5', '--role-model', 'tester=m x', '--allow', 'Bash(go test:*)', '--trust-project']);
 });
 
+test('the New session dialog keeps a saved team\'s judge and mailman models: on the command line and in what it sends', () => {
+  const { ctx, SL } = page();
+  SL.ui = SL.ui || {}; load(ctx, ['87b-ui-folder.js', '87-ui-sheets.js']);
+  const d = SL.ui.dialogs, counts = {}; SL.D.roleOrder.forEach(r => { counts[r] = 0; }); counts.backend = 4; counts.frontend = 2; counts.reviewer = 2;
+  const st = { cwd: '/p', model: 'h/muse', mode: 'default', swarm: 8, isolation: 'worktree', rules: [], counts, slotModels: { backend: 'h/ds', frontend: 'h/qn', reviewer: 'h/glm' }, perSlot: {}, roleModels: { manager: 'h/muse', judge: 'h/glm', mailman: 'h/mimo', backend: 'h/other' }, resume: '' };
+  assert.deepEqual(plain(d.serviceModels(st, st.roleModels)), { manager: 'h/muse', judge: 'h/glm', mailman: 'h/mimo' }, 'a worker role\'s model is its slots\', not a service role\'s');
+  const line = d.cliLine(st);
+  for (const want of ['--role-model judge=h/glm', '--role-model mailman=h/mimo', '--role-model backend=h/ds']) assert.ok(line.includes(want), want + ' in ' + line);
+  assert.ok(!line.includes('backend=h/other'), 'the role default a slot overrides is not sent');
+});
+
 test('the `@` completion asks again after 5 s and after the workspace changed', async () => {
   let n = 0; const { ctx, SL } = page({ route: (method, p) => /\/complete\?prefix=/.test(p) ? { status: 200, body: { paths: ['a' + (++n) + '.go'] } } : null });
   await SL.live.start(); SL.act.switchSession('a'); SL.views = { V: { reg: {}, order: [] }, register() {}, show() {} }; load(ctx, ['93-palette.js']);

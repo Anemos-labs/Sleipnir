@@ -50,9 +50,14 @@
   const cli = (path, label, attr) => '<button class="btn sm" type="button" data-cli="' + esc(path) + '"' + (attr || '') + ' title="run it in the command runner">Run as CLI <span class="mono">' + esc(label || path) + '</span></button>';
   const roleCol = r => esc('var(--c-' + (D.roles[r] ? D.roles[r].code : 'sc') + ')');
   const agColor = id => esc(agCol(id));
+  /** an agent's model as the catalogue names it: the roster names a model without its provider (deepseek/v4 for heimdallm/deepseek/v4),
+   *  so a model that is no catalogue ref takes the one ref that ends with it; anything else is kept as it is */
+  const refOf = m => { m = String(m || ''); if (!m || D.models.some(mm => mm.ref === m)) return m; const hit = D.models.filter(mm => mm.ref.endsWith('/' + m)); return hit.length === 1 ? hit[0].ref : m; };
   /** the model a worker of the team runs on (a role without an entry of its own runs on it) */
-  const workerModel = S => { const w = arr(S.roster).find(x => x.id !== 'mgr' && x.model); return w ? w.model : S.meta.model; };
+  const workerModel = S => { const w = arr(S.roster).find(x => x.id !== 'mgr' && x.model); return w ? refOf(w.model) : S.meta.model; };
   const curModel = (S, role) => role === 'manager' ? S.meta.model : ((S.meta.roleModels || {})[role] || D.roleModels[role] || workerModel(S));
+  /** the model the mailman runs on when one is named for it (this session's, else the configuration's), else '' (the worker model) */
+  const mailmanModel = S => (S.meta.roleModels || {}).mailman || D.roleModels.mailman || '';
   const ALL_ROLES = () => ['manager'].concat(D.roleOrder);
   /** the model changes chosen and not yet applied, by session id (role → model): Apply sends them in one request, so a team starts
    *  again once however many roles change, and editing goes on while it does */
@@ -82,7 +87,7 @@
   /** the model a slot without one of its own runs on: the role's (this session's, else the configuration's), else the team's */
   const roleModelOf = (S, role) => (S.meta.roleModels || {})[role] || D.roleModels[role] || S.meta.model;
   /** the model the k-th slot of role runs on now: its agent's when it has started, else the slot's own, else the role's */
-  const slotNow = (S, role, k) => { const a = agentsOf(S, role)[k], t = teamNow(S).filter(x => x.role === role)[k]; return (a && a.model) || (t && t.model) || roleModelOf(S, role); };
+  const slotNow = (S, role, k) => { const a = agentsOf(S, role)[k], t = teamNow(S).filter(x => x.role === role)[k]; return (a && refOf(a.model)) || (t && t.model) || roleModelOf(S, role); };
   /** the model the k-th slot of role shows: the one chosen for it, else the one it runs on now */
   const slotShown = (S, role, k) => { const t = teamShown(S).filter(x => x.role === role)[k]; return (t && t.model) || slotNow(S, role, k); };
   /** keep team as the team chosen for S, or drop the choice when it is the team S runs (same roles, no slot on another model) */
@@ -246,7 +251,7 @@
    *  counts against no budget. A session that mixes the two is measured by its bill, as its budget is. */
   const budNote = (c, budget) => U.planOnly(c) ? (budget ? fmtUsd(0, 2) + ' billed: the plan counts against no budget' : 'no limit; the plan counts against no budget')
     : budget ? Math.round(U.budgetPct(c, budget)) + '% used' + (c.plan ? ' (billed; the plan\'s part is not counted)' : '') : 'no limit';
-  TK.settings = { trustFlow, trustPost, forgetSpec, projectState, TRUST_WHY, budLabel, budNote, modelRows, modelsCli, rulesIn, dayTxt, keyInfo, runLine, clampWorkers, teamWord, ledgerRows, warningRow, issueRow, configWarnings, promptCmds, curModel, pendingModels, PAGES, ALIAS, pageOf, PLUGIN_OF, teamNow, teamShown, agentsOf, slotNow, slotShown, stageSlot, stepRole, teamChanges, teamSent, tdrafts, drafts, targetsOf, targetModel, stageTarget };
+  TK.settings = { trustFlow, trustPost, forgetSpec, projectState, TRUST_WHY, budLabel, budNote, modelRows, modelsCli, rulesIn, dayTxt, keyInfo, runLine, clampWorkers, teamWord, ledgerRows, warningRow, issueRow, configWarnings, promptCmds, curModel, pendingModels, PAGES, ALIAS, pageOf, PLUGIN_OF, teamNow, teamShown, agentsOf, slotNow, slotShown, refOf, stageSlot, stepRole, teamChanges, teamSent, tdrafts, drafts, targetsOf, targetModel, stageTarget };
 
   /* ---------------- the pages: pure builders of markup from the session S and the page state ST ---------------- */
   /** The parts of the pages, by the id each had as a page of its own: B.trust(S, ST) is the markup of the trust cards. */
@@ -276,7 +281,7 @@
       const st = ST.models, favs = G.favs || new Set(), all = st.view ? st.view.models : D.models, tgs = targetsOf(S); if (!tgs.some(t => t[0] === st.role)) st.role = 'manager';
       const tm = targetModel(S, st.role), cur = tm.cur, shown = tm.shown, rows = modelRows(all, st, favs), tgName = (tgs.find(t => t[0] === st.role) || [0, st.role])[1].trim();
       /* who runs on a model now: on a team each agent at work (and the manager), else each role */
-      const users = ref => isTeam(S) ? arr(S.roster).filter(x => x.model === ref).map(x => [x.id, agColor(x.id)]).concat(ALL_ROLES().filter(r => r !== 'manager' && !teamNow(S).some(t => t.role === r) && curModel(S, r) === ref).map(r => [r, roleCol(r)])) : ALL_ROLES().filter(r => curModel(S, r) === ref).map(r => [r, roleCol(r)]);
+      const users = ref => isTeam(S) ? arr(S.roster).filter(x => refOf(x.model) === ref).map(x => [x.id, agColor(x.id)]).concat(ALL_ROLES().filter(r => r !== 'manager' && !teamNow(S).some(t => t.role === r) && curModel(S, r) === ref).map(r => [r, roleCol(r)])) : ALL_ROLES().filter(r => curModel(S, r) === ref).map(r => [r, roleCol(r)]);
       const errs = arr(st.view ? st.view.errors : D.modelErrors), cl = modelsCli(st);
       const opt = (list, v) => list.map(o => '<option value="' + o[0] + '"' + (v === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('');
       return card('settings.models.catalogue', 'The model catalogue', '', pendingBar(S) + '<div class="setfilter"><input id="mq" type="search" placeholder="filter: every word must appear, any case" aria-label="Filter models" value="' + esc(st.q) + '" autocomplete="off"><div class="seg" role="group" aria-label="Filters"><button type="button" data-flt="tools" aria-pressed="' + st.tools + '">tools</button><button type="button" data-flt="reasoning" aria-pressed="' + st.reasoning + '">reasoning</button><button type="button" data-flt="favs" aria-pressed="' + st.favs + '">★ favourites</button><button type="button" data-flt="all" aria-pressed="' + st.all + '" title="include models that do not chat (--all)">all</button></div>' +
@@ -290,7 +295,7 @@
     B.roles = (S, ST) => {
       const m = S.m || S.wm, ef = ST.eff[S.id] || {}, rowsH = ALL_ROLES().map(r => { const ws = S.roster.filter(x => x.role === r && x.id !== 'mgr' || (r === 'manager' && x.id === 'mgr')), now = curModel(S, r), cur = shownModel(S, r), pend = cur !== now, unk = (D.model(cur) || {}).in == null;
         return '<tr' + (pend ? ' class="pend"' : '') + '><td style="color:' + roleCol(r) + ';font-weight:700;width:120px">' + esc(r) + '</td><td class="dim" style="width:150px">' + (ws.length ? ws.map(w => '<span style="color:' + agColor(w.id) + '">' + esc(w.id) + '</span>').join(' ') : '<span class="faint">none on the team</span>') + '</td><td><select data-role="' + esc(r) + '" aria-label="model for ' + esc(r) + '">' + (D.models.some(mm => mm.ref === cur) ? '' : '<option selected>' + esc(cur) + '</option>') + D.models.map(mm => '<option' + (mm.ref === cur ? ' selected' : '') + '>' + esc(mm.ref) + '</option>').join('') + '</select>' + (pend ? ' ' + tag('now ' + now, 'warm', 'runs on ' + now + ' until the changes are applied') : '') + (unk ? ' ' + tag('price unknown', 'warm') : '') + '</td></tr>'; }).join('');
-      const mailman = '<tr><td style="color:var(--warm);font-weight:700">mailman</td><td class="dim">a helper, not a worker</td><td><span class="dim">' + (S.meta.mailman ? 'runs on the worker model and turns worker mail into short digests' : 'off in this session: worker mail is delivered at once') + '</span> ' + pluginNote('mailman') + '</td></tr>';
+      const mailman = '<tr><td style="color:var(--warm);font-weight:700">mailman</td><td class="dim">a helper, not a worker</td><td><span class="dim">' + (S.meta.mailman ? (mailmanModel(S) ? 'runs on <span class="mono">' + esc(mailmanModel(S)) + '</span>' : 'runs on the worker model') + ' and turns worker mail into short digests' : 'off in this session: worker mail is delivered at once') + '</span> ' + pluginNote('mailman') + '</td></tr>';
       const applied = ef.applied && ef.applied !== S.meta.effort ? ' · this model: <b>' + esc(ef.applied) + '</b>' : '';
       const mgrRow = () => { const now = curModel(S, 'manager'), cur = shownModel(S, 'manager'), pend = cur !== now; return '<div class="nstrow setmgr' + (pend ? ' pend' : '') + '"><span class="nstname" style="color:' + roleCol('manager') + '">manager</span><span class="mono dim" style="color:' + agColor('mgr') + '">mgr</span><span></span><span><select data-role="manager" aria-label="model for manager">' + modelOpts(cur) + '</select>' + (pend ? ' ' + tag('now ' + now, 'warm', 'runs on ' + now + ' until the changes are applied') : '') + '</span></div>'; };
       const teamCard = () => card('settings.roles.roles', 'Who runs on which model', '<span class="dim">' + teamWord(teamShown(S).length) + '</span> ' + cli('models', 'models'), pendingBar(S) + mgrRow() + teamEditor(S) + '<table class="tbl" style="margin-top:8px"><tbody>' + mailman + '</tbody></table><p class="stubnote" style="margin:10px 0 0">Each agent is listed under its role with the model it runs on: choose a model for one agent, or for all the slots of a role, and change how many workers a role has. Changes wait until you apply them; the team then starts again once and keeps the conversation, the board and every agent’s work. <span class="dim mono">--role-model ROLE=MODEL</span>, given once per slot</p>');

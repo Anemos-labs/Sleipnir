@@ -242,6 +242,20 @@ test('an empty list says what will appear there and what puts it there', () => {
   SL.D.models = []; assert.match(text(T.parts.models(S, ST)), /The catalogue is empty: the models of every provider you are signed in to appear here/);
 });
 
+test('the team of a running session matches its agents to the catalogue: the roster names a model without its provider', () => {
+  const { SL } = setup(), T = SL.toolkit.settings;
+  SL.D.models = [{ ref: 'gw/a/cheap', ctx: 8000, in: 0.1, out: 0.4, tools: true }, { ref: 'gw/a/big', ctx: 8000, in: 1, out: 2, tools: true }, { ref: 'x/dup', ctx: 1 }, { ref: 'y/dup', ctx: 1 }];
+  SL.D.roleModels = { mailman: 'gw/a/cheap' }; SL.D.roleOrder = ['backend', 'tester'];
+  const S = session({ id: 'team2', roster: [{ id: 'mgr', role: 'manager', model: 'a/big' }, { id: 'be-1', role: 'backend', model: 'a/cheap' }],
+    meta: Object.assign(session().meta, { model: 'gw/a/big', mailman: true, team: [{ role: 'backend', model: 'gw/a/cheap' }, { role: 'tester' }] }) });
+  assert.equal(T.refOf('a/cheap'), 'gw/a/cheap'); assert.equal(T.refOf('gw/a/big'), 'gw/a/big', 'a ref stays'); assert.equal(T.refOf('dup'), 'dup', 'two refs end with it: kept');
+  assert.equal(T.slotNow(S, 'backend', 0), 'gw/a/cheap', 'the agent\'s model as the catalogue names it');
+  T.stageSlot(S, 'backend', 0, 'gw/a/cheap'); assert.equal(T.teamChanges(S).length, 0, 'choosing what the agent runs on is no change');
+  assert.match(T.parts.models(S, T.newState({ page: 'models' })), /gw\/a\/cheap<\/td>(?:(?!<\/tr>).)*be-1/s, 'the catalogue says be-1 runs on it');
+  assert.match(T.parts.roles(S, T.newState({ page: 'models' })), /runs on <span class="mono">gw\/a\/cheap<\/span>/, 'the mailman row names its model');
+  delete T.tdrafts[S.id];
+});
+
 test('the team of a running session: each agent under its role with the model it runs on, a change per slot or per role, and what Apply sends', () => {
   const { SL } = setup(), T = SL.toolkit.settings;
   SL.D.models = MODELS; SL.D.roleModels = {}; SL.D.roleOrder = ['scout', 'backend', 'tester'];
