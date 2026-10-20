@@ -3,6 +3,7 @@ package memtool
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -126,5 +127,23 @@ func TestTheToolOfASessionWithoutMemoryTouchesNothing(t *testing.T) {
 	}
 	if Off().Spec().Name != New("x").Spec().Name || string(Off().Spec().InputSchema) != string(New("x").Spec().InputSchema) {
 		t.Error("the tool's spec differs when the memory is off")
+	}
+}
+
+// CheckNotes keeps notes as the tool would: one line each, repeats once, and names the limit a list passes.
+func TestCheckNotesCleansAndHoldsTheLimits(t *testing.T) {
+	got, err := CheckNotes([]string{" a  b\tc ", "", "A B C", "x\x07y"})
+	if err != nil || strings.Join(got, "|") != "a b c|xy" {
+		t.Fatalf("CheckNotes = %q, %v", got, err)
+	}
+	if _, err := CheckNotes([]string{strings.Repeat("n", MaxNoteRunes+1)}); err == nil || !strings.Contains(err.Error(), "limit") {
+		t.Errorf("a long note: %v", err)
+	}
+	many := make([]string, MaxNotes+1)
+	for i := range many {
+		many[i] = fmt.Sprintf("note %d", i)
+	}
+	if _, err := CheckNotes(many); err == nil || !strings.Contains(err.Error(), "at most") {
+		t.Errorf("too many notes: %v", err)
 	}
 }

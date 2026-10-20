@@ -180,9 +180,20 @@ func size(notes []string) int {
 	return n
 }
 
-// read returns the notes of the file: its lines that start with "- ". A missing file holds none.
-func (t *Tool) read() ([]string, error) {
-	b, err := os.ReadFile(t.path)
+// read returns the notes of the tool's file.
+func (t *Tool) read() ([]string, error) { return ReadNotes(t.path) }
+
+// write replaces the tool's file with notes and answers msg with the count.
+func (t *Tool) write(notes []string, msg string) (*tools.Result, error) {
+	if err := WriteNotes(t.path, notes); err != nil {
+		return tools.Errorf("%v", err), nil
+	}
+	return &tools.Result{Text: fmt.Sprintf("%s (%d notes)", msg, len(notes))}, nil
+}
+
+// ReadNotes returns the notes of the file at path: its lines that start with "- ". A missing file holds none.
+func ReadNotes(path string) ([]string, error) {
+	b, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -198,32 +209,60 @@ func (t *Tool) read() ([]string, error) {
 	return notes, nil
 }
 
-func (t *Tool) write(notes []string, msg string) (*tools.Result, error) {
+// CheckNotes returns notes as the tool would keep them, for an editor that replaces the whole list: each note made one line of
+// single-spaced words without control characters, empty ones dropped and repeats (ignoring case) kept once. A note over
+// MaxNoteRunes, more than MaxNotes notes or more than MaxBytes in all is an error that says which limit was passed.
+func CheckNotes(notes []string) ([]string, error) {
+	out := make([]string, 0, len(notes))
+	seen := map[string]bool{}
+	for i, n := range notes {
+		n = clean(n)
+		if n == "" || seen[strings.ToLower(n)] {
+			continue
+		}
+		if c := utf8.RuneCountInString(n); c > MaxNoteRunes {
+			return nil, fmt.Errorf("note %d is %d characters; the limit is %d", i+1, c, MaxNoteRunes)
+		}
+		seen[strings.ToLower(n)] = true
+		out = append(out, n)
+	}
+	if len(out) > MaxNotes {
+		return nil, fmt.Errorf("%d notes; the memory holds at most %d", len(out), MaxNotes)
+	}
+	if size(out) > MaxBytes {
+		return nil, fmt.Errorf("the notes come to %d bytes; the memory holds at most %d", size(out), MaxBytes)
+	}
+	return out, nil
+}
+
+// WriteNotes replaces the file at path with the header and notes, one "- " line each, atomically and readable by the user only;
+// the directory is created when it is missing.
+func WriteNotes(path string, notes []string) error {
 	var b strings.Builder
 	b.WriteString(header + "\n")
 	for _, n := range notes {
 		b.WriteString("- " + n + "\n")
 	}
-	if err := os.MkdirAll(filepath.Dir(t.path), 0o700); err != nil {
-		return tools.Errorf("memory: %v", err), nil
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("memory: %w", err)
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(t.path), ".memory-*")
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".memory-*")
 	if err != nil {
-		return tools.Errorf("memory: %v", err), nil
+		return fmt.Errorf("memory: %w", err)
 	}
 	defer os.Remove(tmp.Name())
 	if _, err := tmp.WriteString(b.String()); err != nil {
 		tmp.Close()
-		return tools.Errorf("memory: %v", err), nil
+		return fmt.Errorf("memory: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		return tools.Errorf("memory: %v", err), nil
+		return fmt.Errorf("memory: %w", err)
 	}
 	if err := os.Chmod(tmp.Name(), 0o600); err != nil {
-		return tools.Errorf("memory: %v", err), nil
+		return fmt.Errorf("memory: %w", err)
 	}
-	if err := os.Rename(tmp.Name(), t.path); err != nil {
-		return tools.Errorf("memory: %v", err), nil
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		return fmt.Errorf("memory: %w", err)
 	}
-	return &tools.Result{Text: fmt.Sprintf("%s (%d notes)", msg, len(notes))}, nil
+	return nil
 }
