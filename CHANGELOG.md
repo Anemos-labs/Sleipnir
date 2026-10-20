@@ -15,7 +15,12 @@ they do not indicate whether a change has been released.
   a model, a role given twice, or as many worker entries as its `--swarm`)
   now replaces the team the session started with instead of adding to its
   slots. No prompt bytes change.
-
+- The `read` tool takes `section`: a Markdown heading's text or anchor slug
+  (`path#heading` works too, unless a file of that literal name exists). Only
+  that heading and the lines under it, up to the next heading of the same or a
+  higher level, are returned, with their real line numbers; an unknown heading
+  is refused with a list of the file's headings. Prompt bytes: the tool list's
+  `read` description and schema change.
 - In a team with worktree isolation, an agent may now read the files git
   ignores in the person's checkout (data sets, assets, local inputs kept beside
   the project), which no worktree has a copy of; writing them is still refused.

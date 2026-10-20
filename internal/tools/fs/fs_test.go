@@ -95,7 +95,7 @@ func toStrings(v any) []string {
 func TestParameterContract(t *testing.T) {
 	// Names and parameters are a contract: models are prompted with them.
 	want := map[string][]string{
-		"read":        {"path", "offset", "limit"},
+		"read":        {"path", "offset", "limit", "section"},
 		"write":       {"path", "content"},
 		"edit":        {"path", "old_string", "new_string", "replace_all", "edits"},
 		"apply_patch": {"patch"},
