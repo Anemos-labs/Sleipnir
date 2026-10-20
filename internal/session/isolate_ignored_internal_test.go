@@ -22,6 +22,8 @@ func TestIgnoredCheckerAnswersForWhatGitDoesNotTrack(t *testing.T) {
 		"game-data/DTR/a.bin": "x",
 		"run.log":             "x",
 		"notes/untracked.txt": "x",
+		"report1.txt":         "x",
+		"report[1].txt":       "x",
 	} {
 		p := filepath.Join(dir, name)
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -31,7 +33,7 @@ func TestIgnoredCheckerAnswersForWhatGitDoesNotTrack(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, args := range [][]string{{"init", "-q"}, {"add", ".gitignore", "main.go"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init"}} {
+	for _, args := range [][]string{{"init", "-q"}, {"add", ".gitignore", "main.go", "report1.txt"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init"}} {
 		c := exec.Command("git", args...)
 		c.Dir = dir
 		if out, err := c.CombinedOutput(); err != nil {
@@ -52,6 +54,8 @@ func TestIgnoredCheckerAnswersForWhatGitDoesNotTrack(t *testing.T) {
 		"main.go":               false,
 		"notes/untracked.txt":   true, // untracked: a tree made from the commits has no copy (a research brief, a note written during the run)
 		"notes":                 true,
+		"report1.txt":           false,
+		"report[1].txt":         true, // a name, not a pattern that matches the tracked report1.txt
 		".git/config":           false,
 		".":                     false,
 	} {

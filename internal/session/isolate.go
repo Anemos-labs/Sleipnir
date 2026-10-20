@@ -562,7 +562,7 @@ func (p *isoPlan) ignoredChecker() func(string) bool {
 		defer cancel()
 		// Exit 0: git tracks the path (or a file below it); 1: it does not; anything else (a path through a link, a broken
 		// repository): not known, so refused.
-		_, err = git(ctx, "ls-files", "--error-unmatch", "--", rel)
+		_, err = git(ctx, "ls-files", "--error-unmatch", "--", ":(literal)"+rel) // a name with [, ? or * is that name, not a pattern
 		var ee *exec.ExitError
 		v := errors.As(err, &ee) && ee.ExitCode() == 1
 		mu.Lock()

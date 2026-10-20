@@ -19,7 +19,7 @@ func TestBriefSpecNamesAPathTheAgentsCanRead(t *testing.T) {
 		want string
 	}{
 		{"checkout", root, nil, ".sleipnir/research/booking-pages/BRIEF.md"},
-		{"subdirectory", filepath.Join(root, "web"), nil, ".sleipnir/research/booking-pages/BRIEF.md"},
+		{"subdirectory", filepath.Join(root, "web"), nil, "/work/app/.sleipnir/research/booking-pages/BRIEF.md"},
 		{"trees", root, &isoPlan{}, "/work/app/.sleipnir/research/booking-pages/BRIEF.md"},
 	} {
 		s := &Session{opts: Options{Root: root, Cwd: c.cwd}, iso: c.iso}

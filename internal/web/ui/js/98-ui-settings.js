@@ -51,8 +51,8 @@
   const roleCol = r => esc('var(--c-' + (D.roles[r] ? D.roles[r].code : 'sc') + ')');
   const agColor = id => esc(agCol(id));
   /** an agent's model as the catalogue names it: the roster names a model without its provider (deepseek/v4 for heimdallm/deepseek/v4),
-   *  so a model that is no catalogue ref takes the one ref that ends with it; anything else is kept as it is */
-  const refOf = m => { m = String(m || ''); if (!m || D.models.some(mm => mm.ref === m)) return m; const hit = D.models.filter(mm => mm.ref.endsWith('/' + m)); return hit.length === 1 ? hit[0].ref : m; };
+   *  so a model that is no ref of models (default: the catalogue) takes the one ref that ends with it; anything else is kept as it is */
+  const refOf = (m, models) => { m = String(m || ''); const list = arr(models || D.models); if (!m || list.some(mm => mm.ref === m)) return m; const hit = list.filter(mm => mm.ref.endsWith('/' + m)); return hit.length === 1 ? hit[0].ref : m; };
   /** the model a worker of the team runs on (a role without an entry of its own runs on it) */
   const workerModel = S => { const w = arr(S.roster).find(x => x.id !== 'mgr' && x.model); return w ? refOf(w.model) : S.meta.model; };
   const curModel = (S, role) => role === 'manager' ? S.meta.model : ((S.meta.roleModels || {})[role] || D.roleModels[role] || workerModel(S));
@@ -281,7 +281,7 @@
       const st = ST.models, favs = G.favs || new Set(), all = st.view ? st.view.models : D.models, tgs = targetsOf(S); if (!tgs.some(t => t[0] === st.role)) st.role = 'manager';
       const tm = targetModel(S, st.role), cur = tm.cur, shown = tm.shown, rows = modelRows(all, st, favs), tgName = (tgs.find(t => t[0] === st.role) || [0, st.role])[1].trim();
       /* who runs on a model now: on a team each agent at work (and the manager), else each role */
-      const users = ref => isTeam(S) ? arr(S.roster).filter(x => refOf(x.model) === ref).map(x => [x.id, agColor(x.id)]).concat(ALL_ROLES().filter(r => r !== 'manager' && !teamNow(S).some(t => t.role === r) && curModel(S, r) === ref).map(r => [r, roleCol(r)])) : ALL_ROLES().filter(r => curModel(S, r) === ref).map(r => [r, roleCol(r)]);
+      const users = ref => isTeam(S) ? arr(S.roster).filter(x => refOf(x.model, all) === ref).map(x => [x.id, agColor(x.id)]).concat(ALL_ROLES().filter(r => r !== 'manager' && !teamNow(S).some(t => t.role === r) && curModel(S, r) === ref).map(r => [r, roleCol(r)])) : ALL_ROLES().filter(r => curModel(S, r) === ref).map(r => [r, roleCol(r)]);
       const errs = arr(st.view ? st.view.errors : D.modelErrors), cl = modelsCli(st);
       const opt = (list, v) => list.map(o => '<option value="' + o[0] + '"' + (v === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('');
       return card('settings.models.catalogue', 'The model catalogue', '', pendingBar(S) + '<div class="setfilter"><input id="mq" type="search" placeholder="filter: every word must appear, any case" aria-label="Filter models" value="' + esc(st.q) + '" autocomplete="off"><div class="seg" role="group" aria-label="Filters"><button type="button" data-flt="tools" aria-pressed="' + st.tools + '">tools</button><button type="button" data-flt="reasoning" aria-pressed="' + st.reasoning + '">reasoning</button><button type="button" data-flt="favs" aria-pressed="' + st.favs + '">★ favourites</button><button type="button" data-flt="all" aria-pressed="' + st.all + '" title="include models that do not chat (--all)">all</button></div>' +
