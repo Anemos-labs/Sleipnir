@@ -28,6 +28,12 @@ sleipnir
 Requires Go 1.25 or newer. Without Go, download an archive from
 [Releases](https://github.com/Anemos-labs/Sleipnir/releases).
 
+Or let your coding agent do it: ask Claude Code, Codex or another agent to
+"install Sleipnir following
+https://github.com/Anemos-labs/Sleipnir/blob/main/skills/install-sleipnir/SKILL.md".
+The skill installs the binary, finds the provider you already have, has you
+enter your key yourself, and checks the model with `sleipnir doctor`.
+
 <details>
 <summary><code>sleipnir: command not found</code></summary>
 

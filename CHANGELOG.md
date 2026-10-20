@@ -7,6 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A diagnosis owner for named stalls. A stall finding that still holds ten
+  minutes after its nudge is escalated once to the manager with a
+  diagnosis (the task's and agent's state, how long it held, who was told,
+  and what ends it), logged as `swarm.stall` with `action: escalate`. No
+  prompt bytes change.
 - No false greens from linked dependencies. In an isolated team, the
   verification gate fails without running the verifier when a dependency
   store in the worker's tree (`node_modules`, `.venv`, …) is a symlink to
