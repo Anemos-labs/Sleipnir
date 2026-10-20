@@ -220,6 +220,14 @@ func (s *Session) notice(agentID, msg string) {
 	}
 }
 
+// noticeInfo is notice for what is worth knowing but is not a problem.
+func (s *Session) noticeInfo(agentID, msg string) {
+	s.Log.Emit(agentID, "notice", map[string]any{"level": "info", "msg": msg})
+	if s.opts.Sink != nil {
+		s.opts.Sink.Notice(agentID, "info", msg)
+	}
+}
+
 // firstNonEmpty returns the first nonblank argument unchanged or empty when none exists.
 func firstNonEmpty(ss ...string) string {
 	for _, s := range ss {

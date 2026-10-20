@@ -7,6 +7,19 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- MCP tools that do not fit the tool list (more than 128 per server or 256 in
+  all, a schema over 8 KiB or nested past 24 levels, or past the 64 KiB byte
+  budget) are no longer dropped: they load on demand through two new tools,
+  `mcp__search` (finds tools and returns their full schemas) and `mcp__call`
+  (runs one, asking the same permission under the tool's own name). A schema
+  over the 64 KiB on-demand limit is compacted (repeated subschemas move to
+  `$defs`, `examples` go) before it is refused. A new server entry option,
+  `defer_tools`, loads all of a server's tools that way. The per-tool warnings
+  become one info notice per server. `SnapshotOptions.NoDefer` keeps the old
+  behaviour. Prompt bytes: none for sessions whose servers fit; otherwise the
+  list holds what fits plus `mcp__search` and `mcp__call` (their bytes come out
+  of the same 64 KiB budget), a change made once at session start.
+
 - A need's install method (docs/PLUGINS.md) can declare `setup`, commands run
   in order before `run`, and `env`, variables its commands get from the
   `NAME=value` line a command prints; `GET /api/needs` and `sleipnir plugins

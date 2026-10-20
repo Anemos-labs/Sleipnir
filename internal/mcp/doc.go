@@ -32,9 +32,10 @@
 // cached prefix of every agent. So the model-visible part of a server's tools is
 // never live. Manager.Snapshot takes an immutable snapshot (names sorted,
 // descriptions sanitised and capped with a marker, schemas canonical JSON, the
-// whole under a byte budget shared fairly between servers, oversized or
-// suspicious tools excluded with a warning) and a hash of it; the session freezes
-// that. Servers keep changing: tools/list_changed, a restart into a newer
+// whole under a byte budget shared fairly between servers, suspicious tools
+// excluded with a warning) and a hash of it; the session freezes that. What does
+// not fit the list (too many tools, too large or deep a schema, past the byte
+// budget) loads on demand through mcp__search and mcp__call (see deferred.go). Servers keep changing: tools/list_changed, a restart into a newer
 // version. The manager follows them and tells the owner (Options.OnChange), but
 // only when what the model would see actually differs from the last adopted
 // snapshot, because that is what an epoch costs. A crash and restart into the

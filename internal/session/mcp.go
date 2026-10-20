@@ -108,6 +108,9 @@ func (s *Session) startMCP(ctx context.Context, reg *tools.Registry) {
 	for _, w := range st.snap.Warnings() {
 		s.notice("", "mcp: "+w)
 	}
+	for _, n := range st.snap.Notes() {
+		s.noticeInfo("", "mcp: "+n)
+	}
 }
 
 // mcpEnv is what ${VAR} references in MCP entries resolve against: the process
@@ -277,12 +280,27 @@ func (s *Session) MCPStatus() []mcp.ServerStatus {
 	return s.mcp.mgr.Status()
 }
 
-// MCPToolNames lists the frozen tool names the model was offered.
+// MCPToolNames lists the frozen tool names the model was offered: those in its
+// tool list and those it loads on demand, sorted.
 func (s *Session) MCPToolNames() []string {
 	if s.mcp == nil || s.mcp.snap == nil {
 		return nil
 	}
-	return s.mcp.snap.Names()
+	return snapshotToolNames(s.mcp.snap)
+}
+
+// snapshotToolNames is the name of every server tool of a snapshot, in its
+// tool list or loaded on demand, sorted (mcp__search and mcp__call are no
+// server's).
+func snapshotToolNames(snap *mcp.Snapshot) []string {
+	var names []string
+	for _, n := range append(snap.Names(), snap.Deferred()...) {
+		if _, _, ok := mcp.ParseName(n); ok {
+			names = append(names, n)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 // MCPReconnect asks a server that gave up (or is misbehaving) to start again. It
@@ -505,7 +523,7 @@ type MCPTestResult struct {
 	// Servers is the state of every server that was considered, by name.
 	Servers []mcp.ServerStatus
 	// Tools are the tool names the started servers offered (the names the model
-	// would be sent, mcp__server__tool), sorted.
+	// would be sent or would load on demand, mcp__server__tool), sorted.
 	Tools []string
 	// Refused are the project entries that were not started because they are not
 	// approved for the project (nothing asks: approve them first).
@@ -577,8 +595,7 @@ func MCPTest(ctx context.Context, home, dir string, names []string, trustProject
 	_ = mgr.Start(sctx) // a server that failed is in Status with its error
 	res.Elapsed = time.Since(start)
 	res.Servers = mgr.Status()
-	res.Tools = mgr.Snapshot().Names()
-	sort.Strings(res.Tools)
+	res.Tools = snapshotToolNames(mgr.Snapshot())
 	sort.Strings(res.Refused)
 	return res, nil
 }

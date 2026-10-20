@@ -31,11 +31,18 @@ import (
 // The top level must describe an object (that is what MCP requires and what
 // providers accept for function parameters); missing "type" and "properties"
 // are supplied.
+//
+// A tool that is loaded on demand (see deferred.go) reaches the model only in
+// a tool result, never in the shared prefix, so its schema may be larger and
+// deeper; every other rule is the same.
 const (
 	maxSchemaDepth  = 24
 	maxSchemaNodes  = 4000
 	maxSchemaDesc   = 300
 	maxSchemaString = 500
+
+	maxDeferredSchemaDepth = 64
+	maxDeferredSchemaNodes = 20000
 )
 
 var emptyObjectSchema = json.RawMessage(`{"properties":{},"type":"object"}`)
@@ -43,11 +50,55 @@ var emptyObjectSchema = json.RawMessage(`{"properties":{},"type":"object"}`)
 type schemaWalker struct {
 	nodes     int
 	injection string
+	maxDepth  int // the limits of this walk
+	maxNodes  int
+	deepest   int // the deepest level seen
+	compact   bool
+	compacted bool
 }
 
 // normalizeSchema returns the canonical, sanitised form of raw, and why it
 // looks like an injection attempt if any of its strings do ("" otherwise).
 func normalizeSchema(raw json.RawMessage, maxBytes int) (schema json.RawMessage, injection string, err error) {
+	n, err := normalizeSchemaWithin(raw, schemaLimits{bytes: maxBytes, depth: maxSchemaDepth, nodes: maxSchemaNodes})
+	return n.schema, n.injection, err
+}
+
+// schemaLimits bound one normalisation; a zero bytes means no byte limit.
+// compact lets a schema over the byte limit be compacted (see compactSchema)
+// before it is refused.
+type schemaLimits struct {
+	bytes, depth, nodes int
+	compact             bool
+}
+
+// normalized is a schema normalizeSchemaWithin accepted, with what it measured.
+type normalized struct {
+	schema    json.RawMessage
+	injection string
+	depth     int // nesting depth, as maxSchemaDepth counts it
+	nodes     int
+	compacted bool // shared subschemas were moved to $defs
+}
+
+// inline reports whether the schema fits the limits of a tool sent in the
+// shared prefix.
+func (n normalized) inline(maxBytes int) bool {
+	return !n.compacted && n.depth <= maxSchemaDepth && n.nodes <= maxSchemaNodes && (maxBytes <= 0 || len(n.schema) <= maxBytes)
+}
+
+// normalizeSchemaWithin is normalizeSchema under explicit limits.
+func normalizeSchemaWithin(raw json.RawMessage, lim schemaLimits) (normalized, error) {
+	w := &schemaWalker{maxDepth: lim.depth, maxNodes: lim.nodes, compact: lim.compact}
+	schema, injection, err := w.normalize(raw, lim.bytes)
+	if err != nil {
+		return normalized{}, err
+	}
+	return normalized{schema: schema, injection: injection, depth: w.deepest, nodes: w.nodes, compacted: w.compacted}, nil
+}
+
+// normalize is the body of normalizeSchema for one walker.
+func (w *schemaWalker) normalize(raw json.RawMessage, maxBytes int) (schema json.RawMessage, injection string, err error) {
 	raw = bytes.TrimSpace(raw)
 	if len(raw) == 0 || string(raw) == "null" {
 		return append(json.RawMessage(nil), emptyObjectSchema...), "", nil
@@ -65,7 +116,6 @@ func normalizeSchema(raw json.RawMessage, maxBytes int) (schema json.RawMessage,
 	if !ok {
 		return nil, "", errors.New("input schema is not a JSON object")
 	}
-	w := &schemaWalker{}
 	cleaned, err := w.clean(obj, 0, "")
 	if err != nil {
 		return nil, "", err
@@ -93,6 +143,16 @@ func normalizeSchema(raw json.RawMessage, maxBytes int) (schema json.RawMessage,
 	if err != nil {
 		return nil, "", errors.New("input schema cannot be canonicalised")
 	}
+	if maxBytes > 0 && len(canon) > maxBytes && w.compact {
+		if small, ok := compactSchema(obj); ok {
+			if out, err := core.MarshalStable(small); err == nil {
+				if c, err := core.Canonical(out); err == nil && len(c) <= maxBytes {
+					w.compacted = true
+					return c, w.injection, nil
+				}
+			}
+		}
+	}
 	if maxBytes > 0 && len(canon) > maxBytes {
 		return nil, "", fmt.Errorf("input schema is %d bytes, over the %d byte limit", len(canon), maxBytes)
 	}
@@ -103,12 +163,13 @@ func normalizeSchema(raw json.RawMessage, maxBytes int) (schema json.RawMessage,
 var descriptionKeys = map[string]bool{"description": true, "title": true, "$comment": true, "markdownDescription": true}
 
 func (w *schemaWalker) clean(v any, depth int, parentKey string) (any, error) {
-	if w.nodes++; w.nodes > maxSchemaNodes {
-		return nil, fmt.Errorf("input schema has more than %d nodes", maxSchemaNodes)
+	if w.nodes++; w.nodes > w.maxNodes {
+		return nil, fmt.Errorf("input schema has more than %d nodes", w.maxNodes)
 	}
-	if depth > maxSchemaDepth {
-		return nil, fmt.Errorf("input schema is nested deeper than %d levels", maxSchemaDepth)
+	if depth > w.maxDepth {
+		return nil, fmt.Errorf("input schema is nested deeper than %d levels", w.maxDepth)
 	}
+	w.deepest = max(w.deepest, depth)
 	switch x := v.(type) {
 	case map[string]any:
 		out := make(map[string]any, len(x))
