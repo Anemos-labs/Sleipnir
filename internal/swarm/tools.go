@@ -80,7 +80,7 @@ func (t *taskTool) Spec() core.ToolSpec {
 		Description: "Shared task board. Manager: deliver (text=commit message) verifies direct changes and commits the integrated result to the original checkout without creating a task; then use bash for push and PR commands. Manager: revise (id, text=reason, optional title, description, kind, files, deps) repairs a task in place; resolve (id, text=explanation) completes work no longer needed. Pool leaders: create with parent=id (inherits the parent's kind unless specified) and accept their child tasks. Actions: list, get (id: full task and agreement), claim (id), update (id, text = one-line status), " +
 			"done (id, text = one-line result, optional agreement = full shared contract, at most 6000 bytes/40 lines: the harness verifies the work before review). Accepted agreements are inherited by dependent tasks and preserved through compaction. " +
 			"block (id, text = reason, optional target = the id of the task it waits for), resume (id), " +
-			"handover (id, text = a short summary for your successor: what is done, what is left, what you learned; the harness gives your task, your work and the summary to a fresh worker of your role; the manager may hand over a worker's task). Manager only: create (title, description, role, deps, files = scope, kind = work or plan; plans require a read-only role and an agreement, not code verification), " +
+			"handover (id, text = a short summary for your successor: what is done, what is left, what you learned; the harness gives your task, your work and the summary to a fresh worker of your role; the manager may hand over a worker's task). Manager only: create (title, description, role, deps, files = scope, kind = work or plan; plans require a read-only role and an agreement, not code verification; rigor = plan adds a read-only plan task the work waits for and inherits, rigor = reviewed also a reviewer's check of that plan, for work that is risky or hard to undo), " +
 			"update files (amend the scope), accept (id: the task is done only after the harness's check), reject (id, text = feedback) or reopen, " +
 			"fail (id, reason = blocked_on, superseded, canceled, denied or verifier; target = the task id for blocked_on and superseded; text = one-line note).",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{
@@ -88,6 +88,7 @@ func (t *taskTool) Spec() core.ToolSpec {
 "id":{"type":"string"},"title":{"type":"string"},"description":{"type":"string"},"role":{"type":"string"},
 "parent":{"type":"string"},
 "kind":{"type":"string","enum":["work","plan"]},
+"rigor":{"type":"string","enum":["plan","reviewed"]},
 "deps":{"type":"array","items":{"type":"string"}},"files":{"type":"array","items":{"type":"string"}},
 "text":{"type":"string"},"agreement":{"type":"string"},
 "reason":{"type":"string","enum":["blocked_on","superseded","canceled","denied","verifier"]},"target":{"type":"string"}},"required":["action"]}`),
@@ -95,9 +96,9 @@ func (t *taskTool) Spec() core.ToolSpec {
 }
 
 type taskIn struct {
-	Action, ID, Title, Description, Role, Kind, Text, Agreement, Reason, Target, Parent string
-	Deps                                                                                idList
-	Files                                                                               []string
+	Action, ID, Title, Description, Role, Kind, Text, Agreement, Reason, Target, Parent, Rigor string
+	Deps                                                                                       idList
+	Files                                                                                      []string
 }
 
 // readTask is task get, and pool get, which models reach for to read a pool's state: the whole task as JSON. A pool task's revision
@@ -205,9 +206,13 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		if err != nil {
 			return tools.Errorf("%v", err), nil
 		}
-		task, err := s.Board.CreateTask(me, TaskSpec{Title: in.Title, Desc: in.Description, Role: in.Role, Kind: in.Kind, Deps: in.Deps, Files: files, Parent: in.Parent})
+		made, err := s.createRigorous(me, TaskSpec{Title: in.Title, Desc: in.Description, Role: in.Role, Kind: in.Kind, Deps: in.Deps, Files: files, Parent: in.Parent}, in.Rigor)
 		if err != nil {
 			return tools.Errorf("%v", err), nil
+		}
+		task := made[len(made)-1]
+		if len(made) > 1 {
+			return text("created %s %q, waiting for %s; start with %s", task.ID, task.Title, rigorChain(made[:len(made)-1]), made[0].ID), nil
 		}
 		if strings.TrimSpace(in.Description) == "" {
 			// Not refused: a title can say it all. But a worker sees only what the task holds, and a weak manager forgets.

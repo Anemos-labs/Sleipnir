@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Rigor per task. `task create` takes `rigor`: `plan` creates a read-only
+  plan task for the architect (or scout) that the work waits for and
+  inherits; `reviewed` adds a reviewer's check of that plan, whose
+  amendments the work follows as acceptance criteria. Prompt bytes: the
+  `task` tool's description and schema change, so the tool prefix is
+  written once, and the manager's pin gains a sentence.
 - Review by two models. When a team's reviewer slots run on two or more
   different models, the review gate holds the goal until reviewers on two
   different models have each covered the last merge; the gate's line says

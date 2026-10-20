@@ -492,6 +492,24 @@ semantic quality of an agreement. Small independent tasks can proceed directly.
 Final review checks the assembled result against the agreement, including
 integration tests and rendered inspection where relevant.
 
+### Rigor per task
+
+`task create` takes `rigor` for a top-level work task, so the manager asks for
+planning in one word instead of building the chain by hand:
+
+| `rigor` | Tasks the harness creates | The work task |
+|---|---|---|
+| (none) | the work task | as before |
+| `plan` | `Plan: <title>` (kind plan) for the architect, else the scout, else another read-only role the team can staff | depends on the plan and inherits its agreement |
+| `reviewed` | the plan, then `Review plan: <title>` (kind plan) for the reviewer, which depends on the plan | depends on both; the review's agreement is the verdict and the amendments, which the work follows as acceptance criteria |
+
+The work task's description starts with a line that says which plan to follow
+and to block rather than improvise when it turns out wrong. The usual gates then
+do the enforcing: the work cannot be spawned or claimed before its prerequisites
+are accepted, and each plan task needs an agreement. `rigor` is refused, with
+nothing created, when the team has no role to plan or (for `reviewed`) no
+reviewer slot, for a child or plan task, and for a title already open.
+
 ## 5. Mail
 
 Mail exists for what cannot simply be in the cached prefix: an interface changed, a blocker, a question. It is
