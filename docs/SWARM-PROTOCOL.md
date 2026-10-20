@@ -839,7 +839,9 @@ The manager is the team's diagnosis owner. A finding that still holds ten minute
 told and nothing changed) is escalated to the manager once: a `swarm.stall` event (`action: escalate`, with `held_s`)
 and a "Stall diagnosis" message that carries what the harness knows about it: the task's status, owner, attempts,
 failed verifications and `blocked_on`, its last progress line quoted as the agent's words, the agent's state, who was
-told, and the decisions that end that kind of stall. A finding that clears and is raised again starts its clock again.
+told, and the decisions that end that kind of stall (in a team of persistent pools, without a handover). A finding that
+clears and is raised again starts its clock again. Before the manager is running nothing is escalated: a finding that is
+due waits, and the first sweep after the manager starts escalates it.
 
 Workers receive mail queued during a failed run when they restart, before their
 next model request. New mail received during the failed run can trigger one

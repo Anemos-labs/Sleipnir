@@ -17,10 +17,13 @@ Check first: `sleipnir --help` succeeds means it is installed; go to step 2.
 
 Pick one way:
 
-- **Release script** (Linux, macOS; no Go needed). Read it before running it, then:
-  `curl -fsSL https://raw.githubusercontent.com/anemos-labs/sleipnir/main/scripts/install.sh | sh`.
-  It checks the archive's checksum and installs to `~/.local/bin` (set
-  `SLEIPNIR_BIN_DIR` for another directory, `SLEIPNIR_VERSION` for another release).
+- **Release script** (Linux, macOS; no Go needed). Take it from a release tag, not from
+  `main`, save it, read it, and only then run the saved file; never pipe it into a shell:
+  find the newest tag on https://github.com/Anemos-labs/Sleipnir/releases (say `v1.2.3`), then
+  `curl -fsSL -o /tmp/sleipnir-install.sh https://raw.githubusercontent.com/anemos-labs/sleipnir/v1.2.3/scripts/install.sh`,
+  read `/tmp/sleipnir-install.sh`, and run `SLEIPNIR_VERSION=v1.2.3 sh /tmp/sleipnir-install.sh`.
+  It checks the archive against the release's checksums and installs to `~/.local/bin`
+  (set `SLEIPNIR_BIN_DIR` for another directory).
 - **Go 1.25 or newer** (`go version`):
   `go install github.com/anemos-labs/sleipnir/cmd/sleipnir@latest`. The binary goes to
   `go env GOBIN`, or `$(go env GOPATH)/bin` when that is empty.

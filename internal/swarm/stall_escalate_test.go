@@ -25,12 +25,8 @@ func diagnoses(r *rvRig) []string {
 // A stall that still holds stallEscalateAfter after it was raised is escalated once to the manager, with the task's state and
 // what would end it; one that clears first is not, and a later raise of the same finding starts its clock again.
 func TestAStallThatOutlivesItsNudgeIsEscalatedOnce(t *testing.T) {
-	now := time.Unix(1_800_000_000, 0)
-	old := stallClock
-	stallClock = func() time.Time { return now }
-	t.Cleanup(func() { stallClock = old })
-
-	r := newRVRig(t, stallCfg(), gatedWorkers(nil))
+	clock := newFakeClock()
+	r := newRVRigWith(t, stallCfg(), gatedWorkers(nil), func(d *Deps) { d.Now = clock.Now })
 	r.sw.StartManager()
 	_, a := spawnWorker(t, r, "api", 1)
 	_, c := spawnWorker(t, r, "client", 1)
@@ -42,14 +38,14 @@ func TestAStallThatOutlivesItsNudgeIsEscalatedOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.sw.sweepStalls()
-	now = now.Add(stallEscalateAfter - time.Second)
+	clock.Advance(stallEscalateAfter - time.Second)
 	r.sw.sweepStalls()
 	if d := diagnoses(r); len(d) != 0 {
 		t.Fatalf("escalated early: %q", d)
 	}
-	now = now.Add(2 * time.Second)
+	clock.Advance(2 * time.Second)
 	r.sw.sweepStalls()
-	now = now.Add(stallEscalateAfter)
+	clock.Advance(stallEscalateAfter)
 	r.sw.sweepStalls()
 	d := diagnoses(r)
 	if len(d) != 1 {
@@ -78,9 +74,50 @@ func TestAStallThatOutlivesItsNudgeIsEscalatedOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.sw.sweepStalls()
-	now = now.Add(time.Minute)
+	clock.Advance(time.Minute)
 	r.sw.sweepStalls()
 	if d := diagnoses(r); len(d) != 1 {
 		t.Fatalf("a fresh raise was escalated at once: %q", d)
+	}
+}
+
+// Without a manager a finding is not escalated (nobody would receive it): it stays due, and the first sweep after the manager
+// starts escalates it.
+func TestAStallIsEscalatedOnlyOnceAManagerCanReceiveIt(t *testing.T) {
+	clock := newFakeClock()
+	r := newRVRigWith(t, stallCfg(), gatedWorkers(nil), func(d *Deps) { d.Now = clock.Now })
+	_, a := spawnWorker(t, r, "api", 1)
+	_, c := spawnWorker(t, r, "client", 1)
+	b := r.sw.Board
+	if err := b.BlockOn(a.Owner, a.ID, c.ID, "needs the client"); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.BlockOn(c.Owner, c.ID, a.ID, "needs the api"); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.sweepStalls()
+	clock.Advance(stallEscalateAfter + time.Minute)
+	r.sw.sweepStalls()
+	for _, e := range stallEvents(r) {
+		if e.Action == "escalate" {
+			t.Fatal("escalated with no manager")
+		}
+	}
+	if _, err := r.sw.StartManager(); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.sweepStalls()
+	if d := diagnoses(r); len(d) != 1 {
+		t.Fatalf("diagnoses after the manager started = %q", d)
+	}
+}
+
+// The remedy of a worker without progress matches its nudge: a persistent pool refuses a handover, so it is not offered there.
+func TestTheNoProgressRemedyOfAPoolOffersNoHandover(t *testing.T) {
+	if r := stallRemedy(StallClaimedNoProgress, false); !strings.Contains(r, "task handover") {
+		t.Errorf("without pools: %q", r)
+	}
+	if r := stallRemedy(StallClaimedNoProgress, true); strings.Contains(r, "task handover") || !strings.Contains(r, "refuses a handover") {
+		t.Errorf("with pools: %q", r)
 	}
 }

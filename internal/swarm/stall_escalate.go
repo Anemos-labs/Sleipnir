@@ -17,14 +17,13 @@ import (
 // stallEscalateAfter is how long a finding holds before it is escalated.
 var stallEscalateAfter = 10 * time.Minute
 
-// stallClock is the sweep's clock (tests move it).
-var stallClock = time.Now
-
 // escalateStalls escalates the active findings that have held long enough and were not escalated yet. It is called by
-// sweepStalls with st.sweepMu held, after raising and clearing; raised and cleared findings have updated since.
+// sweepStalls with st.sweepMu held, after raising and clearing; raised and cleared findings have updated since. Without a
+// manager nothing is escalated: a finding stays due until one can receive it.
 func (s *Swarm) escalateStalls() {
 	st := &s.stalls
-	now := stallClock()
+	now := s.deps.Now()
+	mgr := s.ManagerID()
 	var due []Stall
 	var held []time.Duration
 	st.mu.Lock()
@@ -34,7 +33,7 @@ func (s *Swarm) escalateStalls() {
 			st.since[k] = now
 			continue
 		}
-		if st.escalated[k] || now.Sub(at) < stallEscalateAfter {
+		if mgr == "" || st.escalated[k] || now.Sub(at) < stallEscalateAfter {
 			continue
 		}
 		st.escalated[k] = true
@@ -51,14 +50,11 @@ func (s *Swarm) escalateStalls() {
 		held = append(held, now.Sub(st.since[f.key()]))
 	}
 	st.mu.Unlock()
-	mgr := s.ManagerID()
 	for i, f := range due {
 		ev := stallEvent("escalate", f)
 		ev["held_s"] = int(held[i].Seconds())
 		s.emit(events.TypeSwarmStall, ev)
-		if mgr != "" {
-			s.notify(mgr, "request", s.stallPacket(f, held[i]))
-		}
+		s.notify(mgr, "request", s.stallPacket(f, held[i]))
 	}
 }
 
@@ -88,14 +84,18 @@ func (s *Swarm) stallPacket(f Stall, held time.Duration) string {
 			}
 		}
 	}
-	b.WriteString("\n" + stallRemedy(f.Kind))
+	b.WriteString("\n" + stallRemedy(f.Kind, s.cfg.PersistentPools))
 	return b.String()
 }
 
-// stallRemedy is what the manager can decide about a finding of kind k.
-func stallRemedy(k StallKind) string {
+// stallRemedy is what the manager can decide about a finding of kind k. pools says the swarm keeps persistent pools, which refuse
+// a handover (as in stallNudge).
+func stallRemedy(k StallKind, pools bool) string {
 	switch k {
 	case StallClaimedNoProgress:
+		if pools {
+			return "Decide: mail the worker what it is missing, or revise the task smaller (a persistent pool refuses a handover)."
+		}
 		return "Decide: mail the worker what it is missing, hand the task over to a fresh worker (task handover), or revise the task smaller."
 	case StallOrphanedTask:
 		return "Decide: fail the task with a reason, and reopen it if the work is still needed."
