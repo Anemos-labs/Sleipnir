@@ -1,0 +1,17 @@
+{
+  "description": "Eight workers: planners, builders, a frontend and a reviewer, each group on the model that suits it",
+  "slots": [
+    "architect=provider/planner-model",
+    "scout=provider/planner-model",
+    "backend=provider/builder-model",
+    "backend=provider/builder-model",
+    "frontend=provider/frontend-model",
+    "tester=provider/builder-model",
+    "docs=provider/planner-model",
+    "reviewer=provider/reviewer-model"
+  ],
+  "models": {
+    "manager": "provider/reviewer-model",
+    "judge": "provider/planner-model"
+  }
+}

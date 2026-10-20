@@ -21,8 +21,12 @@ import (
 // The manager, the compactor, the judge and the mailman are never workers: they only take a model, once, in either use.
 type roleModelFlag struct{ entries []roleEntry }
 
-// roleEntry is one --role-model value; model is "" for a bare role.
-type roleEntry struct{ role, model string }
+// roleEntry is one --role-model value; model is "" for a bare role. slot marks a value from a team file (--team), which is
+// always a slot of the team.
+type roleEntry struct {
+	role, model string
+	slot        bool
+}
 
 // serviceRole reports whether role takes a model but is never a team slot: the manager, which leads the team, and the harness's
 // compactor, judge and mailman.
@@ -75,7 +79,7 @@ func (r *roleModelFlag) split() (map[string]string, []session.TeamSlot, error) {
 			}
 			continue
 		}
-		if e.model == "" || seen[e.role] > 1 {
+		if e.model == "" || seen[e.role] > 1 || e.slot {
 			team = true
 		}
 	}

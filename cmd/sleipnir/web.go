@@ -156,6 +156,7 @@ func cmdWeb(ctx context.Context, args []string) error {
 	managerApproves := managerApprovesFlag(fs)
 	roleFlag := &roleModelFlag{}
 	fs.Var(roleFlag, "role-model", "for new sessions: "+roleModelHelp)
+	fs.Var(&teamFlag{roles: roleFlag}, "team", "for new sessions: "+teamHelp)
 	resume := resumeFlags(fs)
 	allow := allowFlags(fs)
 	askTimeout := fs.Duration("ask-timeout", 0, "refuse a question that nobody answered in this long, as a run with nobody to ask would (0 waits for an answer)")

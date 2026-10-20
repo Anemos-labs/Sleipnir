@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `--team NAME` (chat, run, swarm, and web for new sessions) starts the
+  team saved in `.sleipnir/teams/NAME.json` or `~/.sleipnir/teams/NAME.json`:
+  its `slots` are the workers in order, each on its own model or its role's,
+  and `models` names the manager's, compactor's, judge's and the other
+  service roles' models. It is the same team as the `--role-model` values it
+  stands for; no prompt bytes change.
 - Memory in two scopes. The `memory` tool takes `scope`: `user` (the
   default, `~/.sleipnir/MEMORY.md`, shown in every project) or `project`
   (`.sleipnir/MEMORY.local.md` at the project root, shown only there and only
