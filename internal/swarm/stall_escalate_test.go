@@ -121,3 +121,15 @@ func TestTheNoProgressRemedyOfAPoolOffersNoHandover(t *testing.T) {
 		t.Errorf("with pools: %q", r)
 	}
 }
+
+// A finding that concerns the manager itself carries the manager's state too.
+func TestAManagersOwnStallDiagnosisNamesItsState(t *testing.T) {
+	r := newRVRig(t, stallCfg(), gatedWorkers(nil))
+	if _, err := r.sw.StartManager(); err != nil {
+		t.Fatal(err)
+	}
+	p := r.sw.stallPacket(Stall{Kind: StallManagerWaitingOnIdle, Agent: "mgr", Notify: "mgr", Detail: "the manager waits"}, 10*time.Minute)
+	if !strings.Contains(p, "\nAgent mgr (manager): ") {
+		t.Fatalf("no manager state in:\n%s", p)
+	}
+}

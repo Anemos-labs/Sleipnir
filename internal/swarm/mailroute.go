@@ -179,11 +179,11 @@ func (s *Swarm) deliver(msg Message) error {
 }
 
 // notify sends mail the harness itself wrote (a worker stopped, a verification
-// failed): it skips the router's limits, and is framed like any other mail.
-func (s *Swarm) notify(to, kind, text string) {
+// failed): it skips the router's limits, and is framed like any other mail. It reports whether the mail was delivered.
+func (s *Swarm) notify(to, kind, text string) bool {
 	m := s.get(to)
 	if m == nil {
-		return
+		return false
 	}
 	msg := Message{ID: s.nextHarnessID(), From: harnessSender, To: to, Kind: kind, Text: text}
 	s.emitAs(harnessSender, events.TypeMailSend, msg)
@@ -193,7 +193,9 @@ func (s *Swarm) notify(to, kind, text string) {
 		if m.manager {
 			s.managerEvent()
 		}
+		return true
 	}
+	return false
 }
 
 // notifyManager tells the manager one line about the run.

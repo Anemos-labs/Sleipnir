@@ -835,13 +835,13 @@ condition and the agent that can act (by handing a task over, failing it with a 
 cycle, or reviewing). `Swarm.Stalls` lists the findings that hold, `Swarm.StallCounts` how many of each kind were
 raised; `sleipnir friction` reports them under `swarm.stall`.
 
-The manager is the team's diagnosis owner. A finding that still holds ten minutes after it was raised (its agent was
-told and nothing changed) is escalated to the manager once: a `swarm.stall` event (`action: escalate`, with `held_s`)
+The manager is the team's diagnosis owner. Every finding in the table that still holds ten minutes after it was raised
+(whoever it was first sent to was told, and nothing changed) is escalated to the manager once: a `swarm.stall` event (`action: escalate`, with `held_s`)
 and a "Stall diagnosis" message that carries what the harness knows about it: the task's status, owner, attempts,
 failed verifications and `blocked_on`, its last progress line quoted as the agent's words, the agent's state, who was
 told, and the decisions that end that kind of stall (in a team of persistent pools, without a handover). A finding that
-clears and is raised again starts its clock again. Before the manager is running nothing is escalated: a finding that is
-due waits, and the first sweep after the manager starts escalates it.
+clears and is raised later starts a new clock. Until a diagnosis reaches a running manager nothing counts as escalated:
+a finding that is due waits, and the first sweep after the manager starts (or after a failed delivery) sends it.
 
 Workers receive mail queued during a failed run when they restart, before their
 next model request. New mail received during the failed run can trigger one

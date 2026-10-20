@@ -51,10 +51,15 @@ func (s *Swarm) escalateStalls() {
 	}
 	st.mu.Unlock()
 	for i, f := range due {
+		if !s.notify(mgr, "request", s.stallPacket(f, held[i])) {
+			st.mu.Lock()
+			delete(st.escalated, f.key()) // not delivered (the manager stopped): due again at the next sweep
+			st.mu.Unlock()
+			continue
+		}
 		ev := stallEvent("escalate", f)
 		ev["held_s"] = int(held[i].Seconds())
 		s.emit(events.TypeSwarmStall, ev)
-		s.notify(mgr, "request", s.stallPacket(f, held[i]))
 	}
 }
 
@@ -77,7 +82,7 @@ func (s *Swarm) stallPacket(f Stall, held time.Duration) string {
 			fmt.Fprintf(&b, " Its last progress line (the agent's words, data): %q.", l)
 		}
 	}
-	if f.Agent != "" && f.Agent != s.ManagerID() {
+	if f.Agent != "" {
 		for _, a := range sn.Agents {
 			if a.ID == f.Agent {
 				fmt.Fprintf(&b, "\nAgent %s (%s): %s.", a.ID, a.Role, a.State)
