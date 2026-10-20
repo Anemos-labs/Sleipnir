@@ -9,8 +9,9 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/gitx"
 )
 
-// The checkout's ignored files are the ones a worktree has no copy of: the permission engine may let a confined agent read them there.
-func TestIgnoredCheckerFollowsTheCheckoutsGitignore(t *testing.T) {
+// The files git does not track in the checkout (ignored, untracked, or made after the trees) are the ones a worktree may have no copy
+// of: the permission engine may let a confined agent read them there.
+func TestIgnoredCheckerAnswersForWhatGitDoesNotTrack(t *testing.T) {
 	dir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -46,20 +47,21 @@ func TestIgnoredCheckerFollowsTheCheckoutsGitignore(t *testing.T) {
 	for rel, want := range map[string]bool{
 		"game-data":             true,
 		"game-data/DTR/a.bin":   true,
-		"game-data/DTR/new.bin": true, // not there yet: still ignored, so a read of it finds nothing rather than being refused
+		"game-data/DTR/new.bin": true, // not there yet: a read of it finds nothing rather than being refused
 		"run.log":               true,
 		"main.go":               false,
-		"notes/untracked.txt":   false, // untracked but not ignored: the trees have a copy
+		"notes/untracked.txt":   true, // untracked: a tree made from the commits has no copy (a research brief, a note written during the run)
+		"notes":                 true,
 		".git/config":           false,
 		".":                     false,
 	} {
 		for range 2 { // the second answer is the remembered one
 			if got := ignored(slash(rel)); got != want {
-				t.Errorf("ignored(%s) = %v, want %v", rel, got, want)
+				t.Errorf("untracked(%s) = %v, want %v", rel, got, want)
 			}
 		}
 	}
 	if ignored(filepath.ToSlash(filepath.Dir(dir))) {
-		t.Error("a path outside the checkout counted as ignored")
+		t.Error("a path outside the checkout counted as untracked")
 	}
 }

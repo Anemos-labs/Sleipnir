@@ -157,11 +157,22 @@ func (s *Session) StartResearch(question, depth, mode, projectGoal string) (stri
 	if err := research.WriteBrief(s.opts.Root, r); err != nil {
 		return "", err
 	}
+	return research.Objective(r, projectGoal, s.briefSpec(r)), nil
+}
+
+// briefSpec is the run's brief as its goal names it: relative to the session's directory, or, when the team works in trees of its
+// own, by its absolute path in the checkout. A tree is made from the commits and the brief is written after it, so a relative path
+// would lead every agent to a file its tree does not have.
+func (s *Session) briefSpec(r *research.Run) string {
 	spec := filepath.ToSlash(filepath.Join(".sleipnir", "research", r.Slug, "BRIEF.md"))
-	if rel, err := filepath.Rel(s.opts.Cwd, filepath.Join(s.opts.Root, filepath.FromSlash(spec))); err == nil && !strings.HasPrefix(rel, "..") {
+	abs := filepath.Join(s.opts.Root, filepath.FromSlash(spec))
+	if s.iso != nil {
+		return filepath.ToSlash(abs)
+	}
+	if rel, err := filepath.Rel(s.opts.Cwd, abs); err == nil && !strings.HasPrefix(rel, "..") {
 		spec = filepath.ToSlash(rel)
 	}
-	return research.Objective(r, projectGoal, spec), nil
+	return spec
 }
 
 // ResearchGoal turns a goal into one that researches first: "--research=DEPTH GOAL" (or "--research DEPTH GOAL") starts a kickoff

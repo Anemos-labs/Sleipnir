@@ -37,8 +37,8 @@ type Config struct {
 	// rules, not to none. (Its work reaches the person's checkout by a merge, and a rule
 	// that only guarded the checkout would guard nothing.)
 	TreeParents []string
-	// Ignored, when set, says whether a resolved path inside Root is one the project's version control ignores (git check-ignore):
-	// per-agent trees are made from what git tracks, so such a file has no copy in them, and an agent confined to its tree
+	// Ignored, when set, says whether a resolved path inside Root is one the project's version control does not track (ignored or
+	// untracked): per-agent trees are made from the commits, so such a file may have no copy in them, and an agent confined to its tree
 	// (Engine.Confine) may still read it in Root. It is asked only about a read that confinement would otherwise refuse, and must be
 	// safe for concurrent use.
 	Ignored func(path string) bool
