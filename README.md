@@ -49,7 +49,7 @@ More in [Getting started](docs/GETTING-STARTED.md#install).
 Sleipnir asks for a provider and model the first time. The recommended provider is
 **Heimdallm**, an OpenAI-compatible marketplace of open models (Qwen, GLM, DeepSeek,
 MiniMax, MiMo and more). Sleipnir pins each conversation to one Heimdallm engine,
-so long sessions stay cached:
+so a long session can keep reusing that engine's cache:
 
 ```sh
 sleipnir login heimdallm      # paste your key; or set HEIMDALLM_API_KEY
