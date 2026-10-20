@@ -91,7 +91,7 @@
 
   SL.views.register({ name: 'memory', title: 'Memory', mount(sc, root, params, S0) {
     const P = ui.pageHead(sc, root, S0 || SL.sessions.active, 'memory', params, { title: 'Memory', purpose: 'What the agents remember from one session to the next: the notes they saved, the instruction files they read and the lessons of earlier goals. Read it, correct it, remove what is wrong.' });
-    const st = { v: null, seq: 0, sig: '', open: {}, edit: {}, noteEdit: -1, noteDraft: '', showAll: false, busy: false };
+    const st = { v: null, seq: 0, sig: '', open: {}, edit: {}, noteEdit: -1, noteDraft: '', noteBase: null, base: {}, showAll: false, busy: false };
     const S = () => SL.sessions.active;
     /** The routes of the active tab, or the server's own (the user's files only) while there is no tab. */
     const api = sfx => { const s = S(); return (s && s.id ? net.tab(s, '/memory') : '/api/memory') + (sfx || ''); };
@@ -111,24 +111,25 @@
     /** Take the answer of a write: the whole view as it is now, or a refusal (a file that changed meanwhile is read again). */
     function took(r, done, what) {
       st.busy = false; if (!sc.alive) return false;
-      if (!r.ok) { if (r.status === 409 || r.code === 'changed') { ui.toast('it changed meanwhile: here it is as it is now', 'warm'); load(true); } else net.fail(r, what); return false; }
+      if (!r.ok) { if (r.status === 409 || r.code === 'changed') { ui.toast('it changed meanwhile and was not saved: Cancel your edit to see it as it is now, then edit again', 'warm'); load(true); } else net.fail(r, what); return false; }
       if (r.data) st.v = r.data; ui.toast(done, 'ok'); return true;
     }
-    async function putNotes(notes, done) {
+    /** Send the whole list of notes with the version it was made from (base: the list and version an edit or a removal started from). */
+    async function putNotes(notes, done, version) {
       if (st.busy || !st.v) return false; st.busy = true;
-      const r = await net.put(api('/notes'), { notes, version: st.v.notes.version });
+      const r = await net.put(api('/notes'), { notes, version: version != null ? version : st.v.notes.version });
       const ok = took(r, done, 'the notes were not saved'); paint(true); return ok;
     }
     const file = p => arr(st.v && st.v.files).find(f => f.path === p);
     sc.listen(root, 'click', e => {
       const t = e.target, notes = st.v ? arr(st.v.notes.notes) : [];
       let b;
-      if ((b = t.closest('[data-note-edit]'))) { st.noteEdit = +b.dataset.noteEdit; st.noteDraft = notes[st.noteEdit] || ''; paint(); const x = $('[data-note-save] textarea', root); if (x) { x.focus(); x.setSelectionRange(x.value.length, x.value.length); } return; }
+      if ((b = t.closest('[data-note-edit]'))) { st.noteEdit = +b.dataset.noteEdit; st.noteDraft = notes[st.noteEdit] || ''; st.noteBase = { notes: notes.slice(), version: st.v.notes.version }; paint(); const x = $('[data-note-save] textarea', root); if (x) { x.focus(); x.setSelectionRange(x.value.length, x.value.length); } return; }
       if (t.closest('[data-note-cancel]')) { st.noteEdit = -1; paint(); return; }
-      if ((b = t.closest('[data-note-del]'))) { const i = +b.dataset.noteDel, n = notes[i]; if (n == null) return;
-        ui.confirm({ title: 'Remove this note', text: 'The agents will no longer start their sessions with it:', detail: '<p>' + esc(n) + '</p>', ok: 'Remove', danger: true, run: () => putNotes(notes.filter((_, j) => j !== i), 'note removed') }); return; }
+      if ((b = t.closest('[data-note-del]'))) { const i = +b.dataset.noteDel, n = notes[i], ver = st.v.notes.version; if (n == null) return;
+        ui.confirm({ title: 'Remove this note', text: 'The agents will no longer start their sessions with it:', detail: '<p>' + esc(n) + '</p>', ok: 'Remove', danger: true, run: () => putNotes(notes.filter((_, j) => j !== i), 'note removed', ver) }); return; }
       if ((b = t.closest('[data-file-open]'))) { const p = b.dataset.fileOpen; st.open[p] = !st.open[p]; paint(); return; }
-      if ((b = t.closest('[data-file-edit]'))) { const p = b.dataset.fileEdit, f = file(p); if (!f) return; st.edit[p] = f.exists ? f.text : ''; paint(); const x = root.querySelector('[data-file-save="' + CSS.escape(p) + '"] textarea'); if (x) x.focus(); return; }
+      if ((b = t.closest('[data-file-edit]'))) { const p = b.dataset.fileEdit, f = file(p); if (!f) return; st.edit[p] = f.exists ? f.text : ''; st.base[p] = f.version || ''; paint(); const x = root.querySelector('[data-file-save="' + CSS.escape(p) + '"] textarea'); if (x) x.focus(); return; }
       if ((b = t.closest('[data-file-cancel]'))) { delete st.edit[b.dataset.fileCancel]; paint(); return; }
       if (t.closest('[data-files-all]')) { st.showAll = !st.showAll; paint(); return; }
       if ((b = t.closest('[data-lesson-del]'))) { const id = b.dataset.lessonDel, l = arr(st.v && st.v.lessons.lessons).find(x => x.id === id); if (!l) return;
@@ -145,11 +146,11 @@
       const f = e.target; e.preventDefault(); if (!st.v) return;
       const notes = arr(st.v.notes.notes);
       if (f.matches('[data-note-add]')) { const inp = $('#memNew', root), v = inp.value.trim(); if (!v) { inp.focus(); return; } if (await putNotes(notes.concat([v]), 'note saved: the next session starts with it')) { const n = $('#memNew', root); if (n) { n.value = ''; n.focus(); } } return; }
-      if (f.matches('[data-note-save]')) { const i = +f.dataset.noteSave, v = st.noteDraft.trim(), next = v ? notes.map((n, j) => (j === i ? v : n)) : notes.filter((_, j) => j !== i); if (await putNotes(next, v ? 'note saved' : 'note removed')) { st.noteEdit = -1; paint(true); } return; }
+      if (f.matches('[data-note-save]')) { const base = st.noteBase || { notes, version: st.v.notes.version }, i = +f.dataset.noteSave, v = st.noteDraft.trim(), all = base.notes, next = v ? all.map((n, j) => (j === i ? v : n)) : all.filter((_, j) => j !== i); if (await putNotes(next, v ? 'note saved' : 'note removed', base.version)) { st.noteEdit = -1; paint(true); } return; }
       if (f.matches('[data-file-save]')) {
         const p = f.dataset.fileSave, cur = file(p); if (!cur || st.busy) return; st.busy = true;
-        const r = await net.put(api('/file'), { path: p, text: st.edit[p], version: cur.version || '' });
-        if (took(r, (cur.exists ? 'saved ' : 'created ') + p, 'the file was not saved')) { delete st.edit[p]; st.open[p] = true; } paint(true);
+        const r = await net.put(api('/file'), { path: p, text: st.edit[p], version: st.base[p] != null ? st.base[p] : cur.version || '' });
+        if (took(r, (cur.exists ? 'saved ' : 'created ') + p, 'the file was not saved')) { delete st.edit[p]; delete st.base[p]; st.open[p] = true; } paint(true);
       }
     });
     sc.interval(() => { if (!editing() && !st.busy) load(); }, 8000);

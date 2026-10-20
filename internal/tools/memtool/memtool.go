@@ -20,10 +20,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
@@ -109,7 +111,7 @@ func (t *Tool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 		if r := t.authorize(ctx, c, "remember: "+note); r != nil {
 			return r, nil
 		}
-		return t.write(append(notes, note), "saved; it will be in front of you from the next session on")
+		return t.write(notes, append(slices.Clone(notes), note), "saved; it will be in front of you from the next session on")
 	case "remove":
 		key := strings.ToLower(clean(in.Text))
 		if utf8.RuneCountInString(key) < 3 {
@@ -132,7 +134,7 @@ func (t *Tool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 		if r := t.authorize(ctx, c, "forget: "+strings.Join(gone, " | ")); r != nil {
 			return r, nil
 		}
-		return t.write(keep, fmt.Sprintf("removed %d note(s)", len(gone)))
+		return t.write(notes, keep, fmt.Sprintf("removed %d note(s)", len(gone)))
 	}
 	return tools.Errorf(`action is "add", "remove" or "list"`), nil
 }
@@ -183,8 +185,15 @@ func size(notes []string) int {
 // read returns the notes of the tool's file.
 func (t *Tool) read() ([]string, error) { return ReadNotes(t.path) }
 
-// write replaces the tool's file with notes and answers msg with the count.
-func (t *Tool) write(notes []string, msg string) (*tools.Result, error) {
+// write replaces the tool's file with notes, made from was, and answers msg with the count. The file is read again under its lock
+// first (the Memory page of the web interface replaces the same file): when it no longer holds was, nothing is written and the
+// model is told to look again. The lock is not held while the person is asked, so a page's write never waits on an answer.
+func (t *Tool) write(was, notes []string, msg string) (*tools.Result, error) {
+	unlock := config.WriteLock(t.path)
+	defer unlock()
+	if cur, err := ReadNotes(t.path); err != nil || !slices.Equal(cur, was) {
+		return tools.Errorf("the notes changed meanwhile (the person edited them); nothing was saved: list them and try again"), nil
+	}
 	if err := WriteNotes(t.path, notes); err != nil {
 		return tools.Errorf("%v", err), nil
 	}

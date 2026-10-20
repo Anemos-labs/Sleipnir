@@ -82,7 +82,12 @@ func (s *service) handleMemoryNotes(w http.ResponseWriter, r *http.Request) {
 	p := notesPath(s.homeOf(tc))
 	unlock := config.WriteLock(p)
 	defer unlock()
-	if v, _ := fileVersion(os.ReadFile(p)); v != body.Version {
+	v, ok := fileVersion(os.ReadFile(p))
+	if !ok {
+		reply(w, nil, fail(http.StatusInternalServerError, "internal", "the notes file cannot be read"))
+		return
+	}
+	if v != body.Version {
 		reply(w, nil, fail(http.StatusConflict, "changed", "the notes changed since the page read them: read them again"))
 		return
 	}
