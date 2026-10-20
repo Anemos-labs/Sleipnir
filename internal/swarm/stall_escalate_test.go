@@ -1,6 +1,7 @@
 package swarm
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -139,7 +140,16 @@ func TestADiagnosisWaitsForRoomInTheManagersInbox(t *testing.T) {
 	clock := newFakeClock()
 	cfg := stallCfg()
 	cfg.InboxSoftCap = 1
-	r := newRVRigWith(t, cfg, gatedWorkers(nil), func(d *Deps) { d.Now = clock.Now })
+	gated := gatedWorkers(nil)
+	r := newRVRigWith(t, cfg, func(ctx context.Context, c *rvCall) rvReply {
+		if c.Role == "manager" {
+			if c.Assistants == 0 {
+				return rvReply{Tools: []rvToolCall{{"task", map[string]any{"action": "list"}}}} // a tool round drains the inbox
+			}
+			return rvReply{Text: "ok"}
+		}
+		return gated(ctx, c)
+	}, func(d *Deps) { d.Now = clock.Now })
 	if _, err := r.sw.StartManager(); err != nil {
 		t.Fatal(err)
 	}
@@ -173,5 +183,26 @@ func TestADiagnosisWaitsForRoomInTheManagersInbox(t *testing.T) {
 	r.sw.stalls.mu.Unlock()
 	if n != 0 {
 		t.Fatalf("%d findings marked escalated", n)
+	}
+	// Once the manager has read its mail (and the digest of the filler), a later sweep delivers the diagnosis whole.
+	for i := 0; i < 5 && !m.hasRoom(r.sw); i++ {
+		if _, err := r.sw.RunManager(context.Background(), "go"); err != nil {
+			t.Fatal(err)
+		}
+		m.pump(r.sw)
+	}
+	r.sw.sweepStalls()
+	d := diagnoses(r)
+	if len(d) != 1 || !strings.Contains(d[0], a.ID) && !strings.Contains(d[0], c.ID) {
+		t.Fatalf("the diagnosis was not delivered whole once the inbox had room: %q", d)
+	}
+	var esc int
+	for _, e := range stallEvents(r) {
+		if e.Action == "escalate" {
+			esc++
+		}
+	}
+	if esc != 1 {
+		t.Fatalf("%d escalate events after delivery, want 1", esc)
 	}
 }
