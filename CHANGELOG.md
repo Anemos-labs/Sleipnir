@@ -64,6 +64,14 @@ they do not indicate whether a change has been released.
   by about 40 tokens (the bound is raised from 5150 to 5200), and the
   manager, worker, docs and reviewer pins change, so the first request of each
   role after upgrading writes its prefix once.
+- `POST /api/sessions/{id}/model` takes `team`, the whole team to go on with
+  (one `{role, model}` per worker slot), and `wire.RestartRequest` of kind
+  `roles` carries it: one restart changes how many workers each role has and
+  the model of each slot, with the role models of the same request. A
+  `/restart` line that names a whole team with `--role-model` (a role without
+  a model, a role given twice, or as many worker entries as its `--swarm`)
+  now replaces the team the session started with instead of adding to its
+  slots. No prompt bytes change.
 - The `read` tool takes `section`: a Markdown heading's text or anchor slug
   (`path#heading` works too, unless a file of that literal name exists). Only
   that heading and the lines under it, up to the next heading of the same or a

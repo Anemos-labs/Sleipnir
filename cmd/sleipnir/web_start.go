@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -372,8 +373,8 @@ func restartTyped(req wire.RestartRequest) (typed []string, fresh bool, err erro
 		}
 		return append([]string{"--model", req.Model}, req.Flags...), req.Fresh, nil
 	case "roles":
-		if len(req.RoleModels) == 0 {
-			return nil, false, werr(http.StatusBadRequest, "bad_flags", "a roles restart names a role and its model")
+		if len(req.RoleModels) == 0 && len(req.Team) == 0 {
+			return nil, false, werr(http.StatusBadRequest, "bad_flags", "a roles restart names a role and its model, or a team")
 		}
 		if m := strings.TrimSpace(req.Model); m != "" {
 			typed = append(typed, "--model", m) // the team's model with the roles', in the same restart
@@ -387,7 +388,23 @@ func restartTyped(req wire.RestartRequest) (typed []string, fresh bool, err erro
 			if r == "" || req.RoleModels[r] == "" {
 				return nil, false, werr(http.StatusBadRequest, "bad_flags", "a role and its model are both needed")
 			}
+			if len(req.Team) > 0 && !serviceRole(r) {
+				continue // the team carries the worker roles' models: an entry of its own would be read as one more slot
+			}
 			typed = append(typed, "--role-model", r+"="+req.RoleModels[r])
+		}
+		if len(req.Team) > 0 { // the whole team, slot by slot: its size, and each slot's model when it has one of its own
+			typed = append(typed, "--swarm", strconv.Itoa(len(req.Team)))
+			for _, ts := range req.Team {
+				if ts.Role == "" || strings.ContainsAny(ts.Role, "= \t") {
+					return nil, false, werr(http.StatusBadRequest, "bad_flags", "a slot of the team names a role")
+				}
+				if ts.Model != "" {
+					typed = append(typed, "--role-model", ts.Role+"="+ts.Model)
+				} else {
+					typed = append(typed, "--role-model", ts.Role)
+				}
+			}
 		}
 		return append(typed, req.Flags...), req.Fresh, nil
 	}
@@ -395,8 +412,20 @@ func restartTyped(req wire.RestartRequest) (typed []string, fresh bool, err erro
 }
 
 // Restart is the restart family (/new, /clear, /swarm, /restart, a team's model or role change): it answers at once and the tab
-// starts its next generation in the background.
+// starts its next generation in the background. A team (a roles restart's Team) is checked as the model route checks it (teamSlots).
 func (t *webTab) Restart(ctx context.Context, req wire.RestartRequest) error {
+	if s := t.session(); s != nil && req.Kind == "roles" && len(req.Team) > 0 {
+		// the team is checked against the session before anything closes: an unknown role would otherwise end the session for good
+		roles := maps.Clone(req.RoleModels)
+		if roles == nil {
+			roles = map[string]string{}
+		}
+		team, err := teamSlots(s, req.Team, roles)
+		if err != nil {
+			return err
+		}
+		req.Team, req.RoleModels = team, roles
+	}
 	typed, fresh, err := restartTyped(req)
 	if err != nil {
 		return err
