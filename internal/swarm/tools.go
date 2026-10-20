@@ -491,6 +491,7 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 				return tools.Errorf("%v", err)
 			}
 			s.wakeBlockedOn(task.ID)
+			s.flushLearned(task)
 			return text("%s pool result accepted", task.ID)
 		}
 		if task.Kind == TaskKindPlan {
@@ -501,6 +502,7 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 				return tools.Errorf("%v", err)
 			}
 			s.wakeBlockedOn(task.ID)
+			s.flushLearned(task)
 			return text("%s agreement accepted; dependent work may start", task.ID)
 		}
 		empty := s.emptyWorkCheck(task, in.Text)
@@ -526,6 +528,7 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 			return tools.Errorf("%v", err)
 		}
 		s.wakeBlockedOn(in.ID)
+		s.flushLearned(task)
 		if last := s.reviewPending(); last != "" && s.roleOf(task.Owner) != ReviewerRole {
 			return text("%s accepted. The merged result is not reviewed yet: a reviewer task is due before the goal is reported met", in.ID)
 		}
@@ -658,7 +661,8 @@ func (t *noteTool) Spec() core.ToolSpec {
 		Name:         "note",
 		NoTreeWrites: true, // tree mutations use the verified integration bridge
 		Description: "Record one true, durable fact for the team (a command, convention or gotcha). It shows up on every agent's " +
-			"live board while it fits; older notes can be evicted. For a durable shared contract use task done agreement and dependent tasks. scope: shared (default) or role.",
+			"live board while it fits; older notes can be evicted. For a durable shared contract use task done agreement and dependent tasks. scope: shared (default) or role; " +
+			"a role note is also kept, when your task is accepted, for the agents of your role in later sessions of this project (a command, a trap, where a thing lives).",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"},"scope":{"type":"string","enum":["shared","role"]}},"required":["text"]}`),
 	}
 }
@@ -677,6 +681,10 @@ func (t *noteTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error) 
 	id, err := t.s.Board.AddNote(c.Env.Agent, in.Scope, c.Env.Role, in.Text)
 	if err != nil {
 		return tools.Errorf("%v", err), nil
+	}
+	if in.Scope == "role" && t.s.cfg.OnLearned != nil {
+		t.s.recordLearned(c.Env.Agent, cleanText(in.Text, maxNoteRunes))
+		return text("noted (#%d); kept for the next agents of your role in this project once your task is accepted", id), nil
 	}
 	return text("noted (#%d)", id), nil
 }

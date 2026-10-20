@@ -7,6 +7,16 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Project memory by role: in a team session, a worker's `note` with
+  `scope: role` is kept for the agents of its role in later sessions of the
+  same project once a task of that worker is accepted, in
+  `~/.sleipnir/lore/<project>-<hash>/<role>.md` (an insight, confirmed again
+  each time a later session saves it; a person may mark a line `[canon]`).
+  Each worker role's pin carries its file's items in a `<role-lore>` block,
+  read once at session start, so the role layer is stable within a session.
+  `--no-memory` turns it off. Prompt bytes: the `note` tool's description
+  grows by one sentence, and a role whose file has items gets a longer pin
+  (at most about 1,500 tokens), written once when the session starts.
 - A capability map: the constitution asks an agent to check the instruction
   files' Capabilities section, and to search by what a thing does, before it
   adds a subsystem, and to extend what exists rather than build a second one.

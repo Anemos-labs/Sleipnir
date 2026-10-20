@@ -59,7 +59,8 @@ Plain Markdown that tells the agent how your project works: build and test comma
 
 1. `~/.sleipnir/SLEIPNIR.md` and `~/.sleipnir/MEMORY.md` (scope `user`; the second holds the notes the model saved with its `memory`
    tool: at most 40 notes of 300 characters, each saved only after you approve the exact text; edit or delete the file freely. A session started with `--no-memory`, or
-   with `--no-memory` checked in the New session dialog, neither reads nor writes it, nor the lesson memory of `/goal`, docs/UX.md)
+   with `--no-memory` checked in the New session dialog, neither reads nor writes it, nor the lesson memory of `/goal`, docs/UX.md, nor a team's project memory by role,
+   docs/SWARM-PROTOCOL.md section 9)
 2. for each directory from the project root down to the working directory: `AGENTS.md`, `CLAUDE.md`, `SLEIPNIR.md`,
    `.sleipnir/SLEIPNIR.md` (scope `project` at the root, `dir` below it)
 3. for each of those directories: `SLEIPNIR.local.md`, `.sleipnir/SLEIPNIR.local.md` (scope `local`, for personal notes;

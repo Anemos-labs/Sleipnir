@@ -1147,7 +1147,12 @@ func (s *Session) build(ctx context.Context) error {
 		return err
 	}
 	deps.Isolation = iso
-	sw := swarm.New(sc, deps, s.teamRoles(s.ext.roles, team, autoDocs))
+	roles := s.teamRoles(s.ext.roles, team, autoDocs)
+	if st := s.buildLore(team); st != nil {
+		roles = s.loreRoles(st, roles)
+		sc.OnLearned = s.saveLore(st)
+	}
+	sw := swarm.New(sc, deps, roles)
 	for _, t := range sw.Tools() {
 		reg.Register(t)
 	}

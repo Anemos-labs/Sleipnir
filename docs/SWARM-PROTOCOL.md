@@ -703,10 +703,31 @@ and additively on success; one burst of simultaneous 429s counts as one rate-lim
 
 Each agent compacts privately (thread -> spine, notes, masking). Promotion
 proposals enter the bounded live note buffer as unverified facts. Automatic
-folding of these proposals into shared (G1) or role (G2) context is not implemented.
+folding of these proposals into shared (G1) context is not implemented; role notes reach later sessions' role
+(G2) context through the project memory below.
 The embedding API can explicitly replace shared context through `SetShared`;
 these updates are serialized and invalidate the affected prefix for every agent.
 A worker built during an update receives the newest layer before running.
+
+### Project memory by role
+
+A team session keeps what each worker role learned in a project for the agents of that role in its later sessions
+(`internal/lore`). Knowledge climbs a ladder of maturity, and its stage is in the file:
+
+| Stage | How it gets there | Where it lives |
+|---|---|---|
+| field note | an agent calls `note` with `scope: role` | the live board, for this session only |
+| insight | the manager accepts a task of the note's author (or of a member of its pool); the same text saved again in a later session counts one more confirmation (`[insight ×N]`) | `~/.sleipnir/lore/<project>-<hash>/<role>.md` |
+| canon | a person marks the line `[canon]` in that file; the harness never promotes to canon | the same file |
+
+At the start of a team session each worker role's file is read once and appended to its role pin (G2) inside a
+`<role-lore>` block: canon first, then insights by confirmations, within about 1,500 tokens, framed as data saved by
+the harness that may be wrong and that the user's instructions and the code override. Writes during the session do
+not change any pin, so the role layer keeps its bytes for the session. A file holds at most 40 items; when it is full
+the least confirmed insight, the oldest first, is dropped, and canon is never dropped. Items are single lines of at most
+300 characters with control, format and bidirectional characters removed and angle brackets replaced. The file is
+plain Markdown: delete a wrong line, reorder lines, or mark one `[canon]` by hand. `--no-memory` neither reads nor
+writes it. Each read and save is logged (`lore.load`, `lore.save`).
 
 Compactor patches cannot rewrite harness-owned `instructions` or `assignment`
 notes. Accepted prerequisite agreements travel with the assignment. A newly
