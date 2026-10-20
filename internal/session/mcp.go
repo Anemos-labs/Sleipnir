@@ -289,10 +289,16 @@ func (s *Session) MCPToolNames() []string {
 	return snapshotToolNames(s.mcp.snap)
 }
 
-// snapshotToolNames is every tool name of a snapshot, in its tool list or
-// loaded on demand, sorted.
+// snapshotToolNames is the name of every server tool of a snapshot, in its
+// tool list or loaded on demand, sorted (mcp__search and mcp__call are no
+// server's).
 func snapshotToolNames(snap *mcp.Snapshot) []string {
-	names := append(snap.Names(), snap.Deferred()...)
+	var names []string
+	for _, n := range append(snap.Names(), snap.Deferred()...) {
+		if _, _, ok := mcp.ParseName(n); ok {
+			names = append(names, n)
+		}
+	}
 	sort.Strings(names)
 	return names
 }
