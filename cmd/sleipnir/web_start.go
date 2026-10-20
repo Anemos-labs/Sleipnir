@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -411,8 +412,20 @@ func restartTyped(req wire.RestartRequest) (typed []string, fresh bool, err erro
 }
 
 // Restart is the restart family (/new, /clear, /swarm, /restart, a team's model or role change): it answers at once and the tab
-// starts its next generation in the background.
+// starts its next generation in the background. A team (a roles restart's Team) is checked as the model route checks it (teamSlots).
 func (t *webTab) Restart(ctx context.Context, req wire.RestartRequest) error {
+	if s := t.session(); s != nil && req.Kind == "roles" && len(req.Team) > 0 {
+		// the team is checked against the session before anything closes: an unknown role would otherwise end the session for good
+		roles := maps.Clone(req.RoleModels)
+		if roles == nil {
+			roles = map[string]string{}
+		}
+		team, err := teamSlots(s, req.Team, roles)
+		if err != nil {
+			return err
+		}
+		req.Team, req.RoleModels = team, roles
+	}
 	typed, fresh, err := restartTyped(req)
 	if err != nil {
 		return err
