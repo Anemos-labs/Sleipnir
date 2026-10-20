@@ -2,7 +2,7 @@
  * the `g` then letter chords, and the phone's bottom bar. Mounted once under the shell scope; it renders from the active session.
  *
  * The rail items are views of the same page, in three groups: Work (Cockpit, Board, Changes, Files, Research), Inspect (Checkpoints, Merge,
- * Mail, Cache, Replay) and Manage (Sessions, Memory, Plugins, Settings, Tools); Files, Changes, Checkpoints and Merge are four tabs of ONE
+ * Mail, Cache, Replay) and Manage (Sessions, Schedule, Memory, Plugins, Settings, Tools); Files, Changes, Checkpoints and Merge are four tabs of ONE
  * Workspace view. Every label is a whole word, in the narrow rail too. `Talk to manager` (the Radio rail, `g r`) is not a view: it
  * opens the Radio rail on the right and focuses its composer. The ids and the `g` chords of the items do not change with their order. */
 (function (SL) {
@@ -24,6 +24,7 @@
     plugins: svg('<path d="M3.4 7.2h3.3a1.9 1.9 0 1 1 3.6 0h3.3v3.3a1.9 1.9 0 1 1 0 3.6v2.5H3.4z"/>'),
     memory: svg('<path d="M10 3.2c-2.9 0-4.9 2-4.9 4.6 0 1.6.7 2.7 1.7 3.6.6.6.9 1.3.9 2.1v.9h4.6v-.9c0-.8.3-1.5.9-2.1 1-.9 1.7-2 1.7-3.6 0-2.6-2-4.6-4.9-4.6z"/><path d="M7.9 16.6h4.2M8.6 6.6c.5-.4 1-.6 1.6-.6" stroke-width="1.3"/>'),
     research: svg('<circle cx="8.6" cy="8.6" r="5.2"/><path d="M12.4 12.4l4.6 4.6"/><path d="M6.4 8.6h4.4M8.6 6.4v4.4" stroke-width="1.3"/>'),
+    schedule: svg('<circle cx="10" cy="10" r="7.2"/><path d="M10 5.8V10l2.9 1.9"/>'),
     tools: svg('<rect x="2.6" y="3.6" width="14.8" height="12.8" rx="1.6"/><path d="M6 8l3 2.2L6 12.4M10.8 13h3.6"/>'),
     settings: svg('<path d="M3 6h14M3 10h14M3 14h14"/><circle cx="7" cy="6" r="1.9" fill="var(--panel)"/><circle cx="13" cy="10" r="1.9" fill="var(--panel)"/><circle cx="8.6" cy="14" r="1.9" fill="var(--panel)"/>'),
     more: svg('<circle cx="4.5" cy="10" r="1.3" fill="currentColor" stroke="none"/><circle cx="10" cy="10" r="1.3" fill="currentColor" stroke="none"/><circle cx="15.5" cy="10" r="1.3" fill="currentColor" stroke="none"/>'),
@@ -42,13 +43,14 @@
     { id: 'cache', view: 'cache', label: 'Cache', key: 'a', about: 'how much of each prompt was read from the cache, and why not' },
     { id: 'replay', view: 'replay', label: 'Replay', key: 'p', about: 'the session as a recording' },
     { id: 'sessions', view: 'sessions', label: 'Sessions', key: 's', grp: 'manage', about: 'live and recorded sessions' },
+    { id: 'schedule', view: 'schedule', label: 'Schedule', key: 'j', about: 'goals that run on their own at set times (cron jobs and the scheduler)' },
     { id: 'memory', view: 'memory', label: 'Memory', key: 'y', about: 'what the agents remember between sessions, to read and edit' },
     { id: 'plugins', view: 'plugins', label: 'Plugins', key: 'u', about: 'turn parts of Sleipnir on and off' },
     { id: 'settings', view: 'settings', label: 'Settings', key: 'e', about: 'models, budget, permissions and the rest' },
     { id: 'tools', view: 'tools', label: 'Tools', key: 't', about: 'every sleipnir command, with a form' },
   ];
   const GRP = { work: 'Work', inspect: 'Inspect', manage: 'Manage' };
-  const OWN = { runner: 'tools', doctor: 'tools', schedule: 'tools', kit: '' };    // views that belong to a rail item
+  const OWN = { runner: 'tools', doctor: 'tools', kit: '' };    // views that belong to a rail item
   const PREF_KEY = 'sleipnir.web.dock';
   const pref = { nav: null, rail: 'open', railW: 344 };
   try { const o = JSON.parse(localStorage.getItem(PREF_KEY) || '{}'); if (o.nav === 'rail' || o.nav === 'wide') pref.nav = o.nav; if (o.rail === 'min' || o.rail === 'open') pref.rail = o.rail; if (o.railW >= 280 && o.railW <= 640) pref.railW = o.railW; } catch (e) { /* no storage: defaults */ }

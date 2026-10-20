@@ -34,7 +34,7 @@ test('the menu: three groups, whole words, the same ids and chords', async () =>
   assert.ok(!labels.some(t => /^(RADIO|POINTS|WIDEN|Points|Widen)$/.test(t)), labels.join(','));
   assert.equal(L.$('#nvTog .nl').textContent, 'Expand');
   const ids = [...L.SL.ui.nav.items.map(i => i.id + ':' + i.key)].sort();
-  assert.deepEqual(ids, ['board:b', 'cache:a', 'changes:h', 'checkpoints:k', 'cockpit:c', 'files:f', 'mail:m', 'memory:y', 'merge:q', 'plugins:u', 'radio:r', 'replay:p', 'research:w', 'sessions:s', 'settings:e', 'tools:t']);
+  assert.deepEqual(ids, ['board:b', 'cache:a', 'changes:h', 'checkpoints:k', 'cockpit:c', 'files:f', 'mail:m', 'memory:y', 'merge:q', 'plugins:u', 'radio:r', 'replay:p', 'research:w', 'schedule:j', 'sessions:s', 'settings:e', 'tools:t']);
   assert.match(L.$('#nav [data-nav="radio"]').getAttribute('title'), /Radio rail/);
 });
 

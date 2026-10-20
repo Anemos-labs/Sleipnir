@@ -176,6 +176,14 @@
    "radio": false
   },
   {
+   "id": "schedule",
+   "view": "schedule",
+   "tab": null,
+   "label": "Schedule",
+   "key": "j",
+   "radio": false
+  },
+  {
    "id": "memory",
    "view": "memory",
    "tab": null,
