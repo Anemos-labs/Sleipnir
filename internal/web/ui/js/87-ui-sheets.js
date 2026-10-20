@@ -240,6 +240,9 @@
     if (seed && seed.swarm != null && seed.single == null) st.single = +seed.swarm === 0;   // a seed that names a size: 0 is a single agent
     if (seed && seed.isolation != null && seed.isoAuto == null) st.isoAuto = false;          // ... and one that names the isolation chose it
     const models = () => { const l = D.models.map(m => m.ref); if (st.model && l.indexOf(st.model) < 0) l.unshift(st.model); return l; };
+    /* the list shows its first model when none is chosen: that model is the one that starts (the catalogue may come after the seed, which would otherwise leave the model empty) */
+    const adopt = () => { if (!st.model && D.models[0]) st.model = D.models[0].ref; };
+    adopt();
     let fm = null;
     const fstate = () => (fm ? fm.state() : null);
     const quiet = () => st.mode === 'bypass' || st.mode === 'yolo';   // these modes never ask: an allow rule has nothing to answer
@@ -335,6 +338,7 @@
         sc.listen(b, 'input', e => { const t = e.target; if (t.dataset.k) return; if (t.id === 'nsName') st.name = t.value; else if (t.id === 'nsVerify') st.verify = t.value; else if (t.id === 'nsBudget') st.budget = t.value.trim(); else if (t.id === 'nsCompact') st.compactAt = Math.round(Number(t.value)); else if (t.id === 'nsGoal') st.goalText = t.value; else if (t.id === 'nsRule') ruleErr(''); paint(); });
         sc.listen(b, 'change', e => { const t = e.target; if (t.id === 'nsModel') st.model = t.value; else if (t.dataset.tmodel) { const r = t.dataset.tmodel; st.slotModels = st.slotModels || {}; if (st.perSlot) delete st.perSlot[r]; st.slotModels[r] = t.value; } else if (t.dataset.tslot) setSlotModel(st, t.dataset.tslot, +t.dataset.ti, t.value); else if (t.dataset.k) st[t.dataset.k] = t.checked; paint(); });
         sc.on('models-changed', () => {
+          adopt();
           $('#nsModel', b).innerHTML = models().map(r => '<option' + (r === st.model ? ' selected' : '') + '>' + esc(r) + '</option>').join('');
           $('#nsTeamRows', b)._k = null;
           paint();

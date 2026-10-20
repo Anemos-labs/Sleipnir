@@ -92,6 +92,7 @@ type webTab struct {
 	detach     func()
 	startedAt  time.Time
 	starting   bool
+	startErr   string // why the last start failed ("" while a start runs and once one succeeded)
 	restarting bool
 	closed     bool
 	args       []string // the chat arguments of the current generation
@@ -601,6 +602,9 @@ func (t *webTab) Send(ctx context.Context, req wire.MessageRequest) (wire.SendRe
 	display := req.Display
 	if strings.TrimSpace(display) == "" {
 		display = req.Text
+	}
+	if t.startFailed() {
+		return wire.SendResult{}, t.noSession() // nothing would ever run it: the tab has no session until it starts again
 	}
 	it := queued{autoFix: req.AutoFix, autoMerge: req.AutoMerge, text: oneLineCLI(display, 200), prompt: req.Text, display: display, echo: true}
 	id, pos, now, err := t.enqueue(it)
@@ -1155,6 +1159,51 @@ func (t *webTab) Interrupt(ctx context.Context, target string) error {
 // say why.
 var errNoSession = werr(http.StatusConflict, "no_session", "the session did not start: its rows say why")
 
+// startFailed says whether the tab's last start failed: it has no session and none is starting.
+func (t *webTab) startFailed() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.s == nil && !t.starting && !t.restarting && !t.closed
+}
+
+// noSession is errNoSession with the reason the last start failed, when the tab has one.
+func (t *webTab) noSession() error {
+	t.mu.Lock()
+	why := t.startErr
+	t.mu.Unlock()
+	if why == "" {
+		return errNoSession
+	}
+	return werr(http.StatusConflict, "no_session", clip("the session did not start: "+why, 600))
+}
+
+// restartFailed starts again, on the models named (role to model; "" or "manager" is the team's model, a single agent's own), a tab
+// whose last start failed: a session that could not start for want of a model, or on one it could not use, is given one this way
+// instead of being refused as "starting" for good. The models are checked by the start itself, which says in a row why it fails.
+func (t *webTab) restartFailed(ctx context.Context, roles map[string]string, slots []wire.TeamSlot) (bool, error) {
+	if !t.startFailed() {
+		return false, werr(http.StatusConflict, "busy", "the session is starting: try again in a moment")
+	}
+	req := wire.RestartRequest{Kind: "model", RoleModels: map[string]string{}, Team: slots}
+	for role, ref := range roles {
+		role, ref = strings.TrimSpace(role), strings.TrimSpace(ref)
+		if ref == "" || len(ref) > 300 {
+			return false, werr(http.StatusUnprocessableEntity, "model", "name a model for "+firstNonEmpty(role, "manager")+": provider/model")
+		}
+		if role == "" || role == "manager" {
+			req.Model = ref
+		} else {
+			req.RoleModels[role] = ref
+		}
+	}
+	if len(req.RoleModels) > 0 || len(slots) > 0 {
+		req.Kind = "roles"
+	} else if req.Model == "" {
+		return false, werr(http.StatusUnprocessableEntity, "model", "name a model: provider/model")
+	}
+	return true, t.Restart(ctx, req)
+}
+
 // errTabBusy is the refusal of an exclusive section while a turn runs.
 var errTabBusy = werr(http.StatusConflict, "busy", "a turn is running: try again when it is over")
 
@@ -1414,7 +1463,7 @@ func (t *webTab) setModel(ctx context.Context, req wire.ModelRequest) (bool, err
 	}
 	s := t.session()
 	if s == nil {
-		return false, werr(http.StatusConflict, "busy", "the session is starting: try again in a moment")
+		return t.restartFailed(ctx, map[string]string{req.Role: ref}, nil)
 	}
 	role := req.Role
 	if role == "manager" && s.Swarm == nil {
@@ -1475,7 +1524,7 @@ func (t *webTab) setModels(ctx context.Context, roles map[string]string, slots [
 	}
 	s := t.session()
 	if s == nil {
-		return false, werr(http.StatusConflict, "busy", "the session is starting: try again in a moment")
+		return t.restartFailed(ctx, roles, slots)
 	}
 	names := slices.Sorted(maps.Keys(roles))
 	team, rm := "", map[string]string{}
