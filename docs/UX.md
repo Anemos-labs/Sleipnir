@@ -341,7 +341,7 @@ server also refuses an answer given within 350 ms. The `Needs you` inbox answers
 | `ctrl+K` | the command palette |
 | `ctrl+T` `alt+T`, `ctrl+G` `alt+G` | Cache, Cockpit; a browser may keep ctrl+T and ctrl+G, the alt keys reach the page |
 | `ctrl+O` | expand or collapse the output of the tools in the conversation |
-| `g` then `c` `r` `f` `h` `k` `q` `a` `m` `b` `p` `w` `s` `u` `t` `e` | a view: Cockpit, Radio, Files, Changes, Checkpoints, Merge, Cache, Mail, Board, Replay, Research, Sessions, Plugins, Tools, Settings (a view whose plugin is turned off is left out) |
+| `g` then `c` `r` `f` `h` `k` `q` `a` `m` `b` `p` `w` `s` `j` `u` `t` `e` | a view: Cockpit, Radio, Files, Changes, Checkpoints, Merge, Cache, Mail, Board, Replay, Research, Sessions, Schedule, Plugins, Tools, Settings (a view whose plugin is turned off is left out) |
 | `o` `c` `m` `b` `r` `s` `,` `.` | a view: Cockpit, Cache, Mail, Board, Replay, Sessions, Settings, Tools |
 | `alt+1` to `alt+9` | the nth session |
 | `Space`, `←` `→`, `shift+←` `shift+→`, `Home`, `End`, `+` `=` `-` | pause, seek (a minute with shift), start, live, replay speed |
