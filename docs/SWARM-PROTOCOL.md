@@ -1075,5 +1075,10 @@ refusal are gone, and a shared tree's races cannot happen.
 * Trees are made with `git worktree`: submodules are not initialised in them and ignored files (build output, `node_modules`,
   `.env`) are absent, so a verifier that needs them fails in the tree until the worker makes them; a project that cannot be
   built from a clean checkout is a poor fit.
+* A worker that links a dependency store into its tree instead of installing it (`ln -s ../app/node_modules`) would test
+  against the code the link reaches: a workspace package or an editable install in the main checkout, not its own edits. The
+  gate therefore does not run the verifier in a tree where a dependency store (`gitx.DependencyStores`, up to four levels
+  deep) is a symlink resolving outside the tree; it fails the run with the links it found and asks for an install inside the
+  checkout (`workspace.EscapingStores`).
 * Symlink-heavy or very large repositories pay the checkout cost per writer; there is no sparse checkout by scope yet.
 * The inspector does not show trees or the queue yet (the events are in the log).

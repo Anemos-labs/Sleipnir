@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/anemos-labs/sleipnir/internal/workspace"
 )
 
 // verifyResult is the outcome of the harness's verification gate.
@@ -227,6 +229,11 @@ func (s *Swarm) runVerify(ctx context.Context, dir string, files []string) verif
 		files = changedFiles(vctx, dir)
 	}
 	cmd := ExpandVerify(s.cfg.VerifyCmd, dir, files)
+	if s.isolated() {
+		if esc := workspace.EscapingStores(dir); len(esc) > 0 {
+			return falseGreen(esc)
+		}
+	}
 	if s.cfg.Verify == nil {
 		return verifyResult{infra: true, err: errors.New("no verification runner is installed")}
 	}
@@ -269,6 +276,17 @@ func (s *Swarm) runVerify(ctx context.Context, dir string, files []string) verif
 	case <-vctx.Done():
 		return s.interruptedVerification(ctx)
 	}
+}
+
+// falseGreen is the verdict on a tree whose dependency stores link outside it (workspace.EscapingStores): the verifier is not
+// run, since a pass there could test the code the links reach instead of the tree's edits.
+func falseGreen(esc []string) verifyResult {
+	if len(esc) > 5 {
+		esc = append(esc[:5:5], fmt.Sprintf("and %d more", len(esc)-5))
+	}
+	return verifyResult{ran: true, code: -1, out: "Not verified: in this checkout " + strings.Join(esc, ", ") +
+		" is a link outside it, so tests could pass against the code it reaches instead of your edits (a false green). " +
+		"Remove the link and install the dependencies inside this checkout (npm ci, uv sync, …), then call task done again."}
 }
 
 // interruptedVerification preserves caller cancellation or reports the verifier's

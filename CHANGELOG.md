@@ -7,6 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- No false greens from linked dependencies. In an isolated team, the
+  verification gate fails without running the verifier when a dependency
+  store in the worker's tree (`node_modules`, `.venv`, …) is a symlink to
+  somewhere outside it, since tests there could pass against the main
+  checkout's code. No prompt bytes change.
 - Ask a past agent. `recall` takes `agent` (a teammate in this session) and
   `session` (`last` or an id: an earlier session of the same project, read
   from its log without writing to it), so an agent can search or page what
