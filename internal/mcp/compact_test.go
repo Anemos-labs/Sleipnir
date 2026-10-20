@@ -85,6 +85,10 @@ func TestCompactSchemaLeavesWhatItCannotSafelyRewrite(t *testing.T) {
 	if _, ok := compactSchema(decodeMap(t, pointer)); ok {
 		t.Error("a pointer outside $defs must stop compaction")
 	}
+	inside := `{"type":"object","$defs":{"outer":{"type":"object","properties":{"inner":` + capture + `}}},"properties":{"a":` + capture + `,"c":{"$ref":"#/$defs/outer/properties/inner"}}}`
+	if _, ok := compactSchema(decodeMap(t, inside)); ok {
+		t.Error("a pointer into a definition must stop compaction")
+	}
 	// A dangling reference never comes to point at a new definition.
 	dangling := `{"type":"object","properties":{"a":` + capture + `,"b":` + capture + `,"c":{"$ref":"#/$defs/shared_1"}}}`
 	if out, ok := compactSchema(decodeMap(t, dangling)); !ok {

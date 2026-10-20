@@ -155,8 +155,8 @@ func (c *compactor) newID() string {
 	}
 }
 
-// refsAreLocalDefs reports whether every $ref in v points into $defs or
-// definitions (a "$ref" inside literal data is data), and records in refs the
+// refsAreLocalDefs reports whether every $ref in v names a whole definition
+// in $defs or definitions (a "$ref" inside literal data is data), and records in refs the
 // $defs names they point to; names as in count.
 func refsAreLocalDefs(v any, names bool, refs map[string]bool) bool {
 	switch x := v.(type) {
@@ -166,11 +166,16 @@ func refsAreLocalDefs(v any, names bool, refs map[string]bool) bool {
 				continue
 			}
 			if s, ok := e.(string); ok && k == "$ref" {
-				if name, ok := strings.CutPrefix(s, "#/$defs/"); ok {
-					refs[strings.SplitN(name, "/", 2)[0]] = true
-				} else if !strings.HasPrefix(s, "#/definitions/") {
+				// Only a whole definition: a pointer into one (#/$defs/a/properties/b)
+				// would break when what is inside it is shared.
+				name, ok := strings.CutPrefix(s, "#/$defs/")
+				if !ok {
+					name, ok = strings.CutPrefix(s, "#/definitions/")
+				}
+				if !ok || name == "" || strings.Contains(name, "/") {
 					return false
 				}
+				refs[name] = true
 			}
 			if !refsAreLocalDefs(e, !names && nameMaps[k], refs) {
 				return false
