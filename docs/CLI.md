@@ -339,7 +339,7 @@ Usage of chat:
   -role-model value
         role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… turns the lesson memory on, reranker=… orders what it finds). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
   -swarm int
-        chat as a team of a manager and N workers (config swarm.max_workers is the ceiling); on a terminal the default is 8 workers, --swarm 0 is a single agent
+        chat as a team of a manager and N workers (config swarm.max_workers is the ceiling); on a terminal the default is 8 workers (a --team brings its own), --swarm 0 is a single agent
   -team NAME
         a saved team: NAME (.sleipnir/teams/NAME.json in the project, else ~/.sleipnir/teams/NAME.json) or a path to such a file: {"slots": ["backend=provider/model", "backend", "frontend", ...], "models": {"manager": "provider/model"}}; its slots are the team (at least 8), and --role-model values given with it add to them
   -trust-project
@@ -488,7 +488,7 @@ flags:
   -role-model value
         for new sessions: role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… turns the lesson memory on, reranker=… orders what it finds). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
   -swarm int
-        new sessions are a team of a manager and N workers (config swarm.max_workers is the ceiling); the default is 8 workers, --swarm 0 is a single agent
+        new sessions are a team of a manager and N workers (config swarm.max_workers is the ceiling); the default is 8 workers (a --team brings its own), --swarm 0 is a single agent
   -team NAME
         for new sessions: a saved team: NAME (.sleipnir/teams/NAME.json in the project, else ~/.sleipnir/teams/NAME.json) or a path to such a file: {"slots": ["backend=provider/model", "backend", "frontend", ...], "models": {"manager": "provider/model"}}; its slots are the team (at least 8), and --role-model values given with it add to them
   -trust-project

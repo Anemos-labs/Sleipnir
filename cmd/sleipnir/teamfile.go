@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -96,7 +97,7 @@ func loadTeamFile(p string) (*teamFile, error) {
 	if err := dec.Decode(&t); err != nil {
 		return nil, fmt.Errorf("--team: %s: %v (want {\"slots\": [\"role=model\", \"role\", ...], \"models\": {\"manager\": \"model\"}})", p, err)
 	}
-	if dec.More() {
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("--team: %s holds more than one JSON value", p)
 	}
 	if len(t.Slots) == 0 {

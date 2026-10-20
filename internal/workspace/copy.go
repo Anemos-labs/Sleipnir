@@ -310,7 +310,11 @@ func (m *Manager) copyExtras(ctx context.Context, t *Tree, paths []string) error
 			if err != nil {
 				return err
 			}
-			if err := os.Symlink(rewriteLink(srcRoot, rel, target), to); err != nil {
+			lt := rewriteLink(srcRoot, rel, target)
+			if filepath.IsAbs(lt) && isStoreName(path.Base(rel)) {
+				continue // a store linked outside the tree would make its tests a false green (EscapingStores)
+			}
+			if err := os.Symlink(lt, to); err != nil {
 				return err
 			}
 		}

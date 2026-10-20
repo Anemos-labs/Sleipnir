@@ -79,3 +79,20 @@ func TestCloneTreeLeavesOutStoresLinkedOutside(t *testing.T) {
 		t.Fatalf("the copy has escaping stores: %v", esc)
 	}
 }
+
+// A store named by CreateOptions.Copy that links outside the source is left out too: the worker installs its own.
+func TestCopyExtrasLeavesOutStoresLinkedOutside(t *testing.T) {
+	src := newPlainDir(t)
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(src, ".venv")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	m := newCopyManager(t, src)
+	a := mustCreate(t, m, "a", CreateOptions{Copy: []string{".venv"}})
+	if _, err := os.Lstat(filepath.Join(a.Path, ".venv")); !os.IsNotExist(err) {
+		t.Fatalf(".venv linked outside was copied: %v", err)
+	}
+	if esc := EscapingStores(a.Path); len(esc) != 0 {
+		t.Fatalf("escaping stores: %v", esc)
+	}
+}

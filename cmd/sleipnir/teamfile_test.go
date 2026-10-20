@@ -49,10 +49,9 @@ func TestTeamFileIsFoundByName(t *testing.T) {
 	writeTeam(t, filepath.Join(root, ".sleipnir", "teams"), "duo.json", `{"slots":["backend","backend","frontend","frontend","tester","tester","reviewer","docs"]}`)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
 	writeTeam(t, filepath.Join(home, ".sleipnir", "teams"), "mine.json", `{"slots":["backend"]}`)
-	wd, _ := os.Getwd()
-	defer os.Chdir(wd)
-	os.Chdir(root)
+	t.Chdir(root)
 	rf := &roleModelFlag{}
 	if err := (&teamFlag{roles: rf}).Set("duo"); err != nil {
 		t.Fatal(err)
@@ -83,6 +82,8 @@ func TestTeamFileRefusals(t *testing.T) {
 		{`{"slots":["backend"],"extra":1}`, "unknown field"},
 		{`not json`, "want {"},
 		{`{"slots":["backend"]} {"slots":["frontend"]}`, "more than one JSON value"},
+		{`{"slots":["backend"]}}`, "more than one JSON value"},
+		{`{"slots":["backend"]}]`, "more than one JSON value"},
 	} {
 		p := writeTeam(t, dir, "t.json", tc.body)
 		err := (&teamFlag{roles: &roleModelFlag{}}).Set(p)

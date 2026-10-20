@@ -43,7 +43,7 @@ func registerChatFlags(fs *flag.FlagSet) *chatFlagSet {
 	f.model = fs.String("model", "", "model: provider/model or a bare id for the default provider")
 	f.cwd = fs.String("cwd", "", "working directory")
 	f.mode = fs.String("mode", "", "permissions: default | accept-edits | plan | bypass | yolo")
-	f.swarmN = fs.Int("swarm", 0, "chat as a team of a manager and N workers (config swarm.max_workers is the ceiling); on a terminal the default is "+strconv.Itoa(defaultWorkers)+" workers, --swarm 0 is a single agent")
+	f.swarmN = fs.Int("swarm", 0, "chat as a team of a manager and N workers (config swarm.max_workers is the ceiling); on a terminal the default is "+strconv.Itoa(defaultWorkers)+" workers (a --team brings its own), --swarm 0 is a single agent")
 	f.trust = fs.Bool("trust-project", false, trustProjectHelp)
 	f.verbose = fs.Bool("verbose", false, "print notices and tool errors")
 	f.budget = fs.Float64("budget-usd", 0, "stop when spend reaches this many US dollars")
