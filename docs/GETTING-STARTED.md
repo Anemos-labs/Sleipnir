@@ -30,25 +30,20 @@ directly with `.\sleipnir.exe --help`.
 
 ### With Go
 
-Go 1.25 or newer is required. On Linux or macOS, install to an explicit directory
-and add it to the current shell's PATH:
+Go 1.25 or newer is required:
 
 ```sh
-GOBIN="$HOME/.local/bin" go install github.com/anemos-labs/sleipnir/cmd/sleipnir@latest
-export PATH="$HOME/.local/bin:$PATH"
+go install github.com/anemos-labs/sleipnir/cmd/sleipnir@latest
 sleipnir --help
 ```
 
-Keep the `export PATH` line in your shell's startup file as described above.
-On Windows, run `go install github.com/anemos-labs/sleipnir/cmd/sleipnir@latest`,
-then add Go's binary directory to your user `Path` and open a new terminal.
-Go uses `go env GOBIN` when set; otherwise it uses the `bin` directory under
-`go env GOPATH` (normally `%USERPROFILE%\go\bin` on Windows).
+Go puts the binary in `go env GOBIN` when that is set, otherwise in the `bin`
+directory under `go env GOPATH` (normally `~/go/bin`, or `%USERPROFILE%\go\bin`
+on Windows). That directory must be on your PATH.
 
 ### Command not found
 
-An installed binary must be in a directory listed in PATH. If an earlier
-`go install` used the default location, on Linux or macOS run:
+An installed binary must be in a directory listed in PATH. On Linux or macOS, run:
 
 ```sh
 export PATH="$(go env GOPATH)/bin:$PATH"
@@ -56,21 +51,27 @@ sleipnir --help
 ```
 
 If `go env GOBIN` prints a custom directory, add that directory instead.
-Keep the matching PATH setting in your shell's startup file. If the binary is
-absent, rerun the install command and check its error output before continuing.
+Keep the matching PATH setting in your shell's startup file as described above.
+On Windows, add Go's binary directory to your user `Path` and open a new terminal.
+If the binary is absent, rerun the install command and check its error output
+before continuing.
 
 ## Connect a model
 
 Run `sleipnir` from the project directory. The setup menu selects a provider,
 authenticates it, and lists available models.
 
-For a ChatGPT subscription:
+The recommended provider is Heimdallm, a marketplace of open models. Store its
+key with:
 
 ```sh
-sleipnir login chatgpt
+sleipnir login heimdallm
 ```
 
-For an API key, use `sleipnir login`. Credentials are stored under
+`sleipnir models` lists its catalogue without a key. For a ChatGPT subscription,
+sign in with `sleipnir login chatgpt` instead.
+
+For another provider's API key, use `sleipnir login`. Credentials are stored under
 `~/.sleipnir/`; do not put them in project files. [Providers](PROVIDERS.md)
 describes local servers and custom endpoints.
 
