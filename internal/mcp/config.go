@@ -87,6 +87,12 @@ type ServerConfig struct {
 	// below the harness's global tool output limit (it can never raise it).
 	MaxOutputChars int `json:"max_output_chars,omitempty"`
 
+	// DeferTools keeps this server's tools out of the tool list every request
+	// carries: they load on demand through mcp__search and mcp__call. Worth it
+	// for a large server whose tools are needed now and then. Tools that do not
+	// fit the list load on demand anyway.
+	DeferTools bool `json:"defer_tools,omitempty"`
+
 	// Scope is set by the parser from ParseOptions, never read from JSON.
 	Scope Scope `json:"-"`
 }
@@ -308,6 +314,7 @@ var fieldAliases = map[string]string{
 	"allowtools":   "allow_tools", "includetools": "allow_tools",
 	"denytools": "deny_tools", "excludetools": "deny_tools", "disabledtools": "deny_tools",
 	"maxoutputchars": "max_output_chars",
+	"defertools":     "defer_tools", "deferloading": "defer_tools",
 }
 
 // ignoredFields are options of other clients that have no equivalent here.
@@ -445,6 +452,7 @@ func parseEntry(name string, raw json.RawMessage, scope Scope) (ServerConfig, []
 	flag("disabled", &cfg.Disabled, nil)
 	flag("trust", &cfg.Trust, &trustSet)
 	flag("allow_private", &cfg.AllowPrivate, nil)
+	flag("defer_tools", &cfg.DeferTools, nil)
 	if v, ok := canon["enabled"]; ok && !isNull(v) {
 		var enabled bool
 		if err := json.Unmarshal(v, &enabled); err != nil {

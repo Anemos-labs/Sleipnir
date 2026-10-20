@@ -219,6 +219,9 @@ func MCPEntry(c mcp.ServerConfig) map[string]any {
 	if c.MaxOutputChars > 0 {
 		e["max_output_chars"] = c.MaxOutputChars
 	}
+	if c.DeferTools {
+		e["defer_tools"] = true
+	}
 	return e
 }
 

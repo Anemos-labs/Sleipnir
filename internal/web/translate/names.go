@@ -65,6 +65,10 @@ func displayName(tool string) string {
 		return "Recall"
 	case "skill":
 		return "Skill"
+	case "mcp__search":
+		return "MCP search"
+	case "mcp__call":
+		return "MCP call"
 	}
 	if srv, name, ok := mcpName(tool); ok {
 		return srv + "." + name
@@ -112,6 +116,7 @@ type callInput struct {
 	Items    json.RawMessage `json:"items"`
 	Patch    string          `json:"patch"`
 	Input    string          `json:"input"`
+	Tool     string          `json:"tool"`
 }
 
 // maxDecodedInput bounds the arguments the translator decodes: a call with more is shown by its name.
@@ -206,6 +211,13 @@ func argOf(root, tool string, in *callInput, spawned string) string {
 		return firstNonEmpty(in.Handle, in.ID)
 	case "skill":
 		return in.Name
+	case "mcp__search":
+		return in.Query
+	case "mcp__call": // a tool server's tool that loads on demand: shown as its own name would be
+		if srv, name, ok := mcpName(in.Tool); ok {
+			return srv + "." + name
+		}
+		return in.Tool
 	}
 	if _, _, ok := mcpName(tool); ok {
 		return firstNonEmpty(in.Command, in.Path, in.Query, in.URL, in.Text, in.Name, in.ID)
