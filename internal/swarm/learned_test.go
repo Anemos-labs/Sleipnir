@@ -52,10 +52,10 @@ func TestRoleNotesAreNotKeptWithoutTheMemory(t *testing.T) {
 func TestRoleNotesPerAgentAreBounded(t *testing.T) {
 	s := New(Config{SessionID: "sec", OnLearned: func(string, []string) {}}, Deps{}, nil)
 	for i := 0; i < maxLearned+5; i++ {
-		s.recordLearned("be-1", fmt.Sprint("fact ", i))
+		s.recordLearned("be-1", "backend", fmt.Sprint("fact ", i))
 	}
-	s.recordLearned("be-1", "fact 0")
-	if n := len(s.learned["be-1"]); n != maxLearned {
+	s.recordLearned("be-1", "backend", "fact 0")
+	if n := len(s.learned["be-1"].texts); n != maxLearned {
 		t.Errorf("kept %d", n)
 	}
 }

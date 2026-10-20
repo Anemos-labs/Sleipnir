@@ -58,7 +58,9 @@ func workerRolesSorted(roles Roles) []string {
 }
 
 // createRigorous creates spec with the prerequisites its rigor asks for and returns every task it created, the work
-// task last. Nothing is left on the board when it fails: a prerequisite already created is closed as canceled.
+// task last. Everything that can refuse the chain (its staffing, a twin title, the board's task limit) is checked before
+// the first task is created; should a create still fail, the prerequisites already created are failed as canceled, so
+// that nothing waits on them.
 func (s *Swarm) createRigorous(by string, spec TaskSpec, rigor string) ([]Task, error) {
 	rigor = strings.ToLower(strings.TrimSpace(rigor))
 	if rigor == "" {
@@ -84,6 +86,13 @@ func (s *Swarm) createRigorous(by string, spec TaskSpec, rigor string) ([]Task, 
 	}
 	if dup, ok := openTwin(s.Board.Snapshot(), "", title); ok {
 		return nil, fmt.Errorf("%s %q is already open with the same title (status %s): use it (task get id=%s) instead of creating another", dup.ID, dup.Title, dup.Status, dup.ID)
+	}
+	need := 2
+	if rigor == RigorReviewed {
+		need = 3
+	}
+	if n, max := len(s.Board.Snapshot().Tasks), s.Board.lim.MaxTasks; n+need > max {
+		return nil, fmt.Errorf("the board holds %d tasks (limit %d), and rigor=%s needs %d more: reuse or finish existing tasks, or create the task without rigor", n, max, rigor, need)
 	}
 	var made []Task
 	undo := func(err error) ([]Task, error) {

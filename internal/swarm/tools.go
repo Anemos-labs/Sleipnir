@@ -688,7 +688,7 @@ func (t *noteTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error) 
 		return tools.Errorf("%v", err), nil
 	}
 	if in.Scope == "role" && t.s.cfg.OnLearned != nil {
-		t.s.recordLearned(c.Env.Agent, cleanText(in.Text, maxNoteRunes))
+		t.s.recordLearned(c.Env.Agent, c.Env.Role, cleanText(in.Text, maxNoteRunes))
 		return text("noted (#%d); kept for the next agents of your role in this project once your task is accepted", id), nil
 	}
 	return text("noted (#%d)", id), nil

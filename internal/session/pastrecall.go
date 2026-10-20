@@ -113,8 +113,7 @@ func (p *pastArchives) open(dir, id string) (*kv.Archive, error) {
 	if len(p.order) >= maxPastArchives {
 		old := p.order[0]
 		p.order = p.order[1:]
-		p.byKey[old].Close()
-		delete(p.byKey, old)
+		delete(p.byKey, old) // not closed: a recall that already holds it may still read it
 	}
 	p.order = append(p.order, key)
 	p.byKey[key] = ar

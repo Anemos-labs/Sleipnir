@@ -889,7 +889,11 @@ func (s *Session) build(ctx context.Context) error {
 				reg.Register(memtool.Off())
 				return nil
 			}
-			reg.Register(memtool.NewScoped(filepath.Join(o.Home, ".sleipnir", "MEMORY.md"), filepath.Join(o.Root, filepath.FromSlash(memory.ProjectNotes))))
+			proj := "" // an untrusted project's notes file is the repository's text, not the agent's memory
+			if o.TrustProject {
+				proj = filepath.Join(o.Root, filepath.FromSlash(memory.ProjectNotes))
+			}
+			reg.Register(memtool.NewScoped(filepath.Join(o.Home, ".sleipnir", "MEMORY.md"), proj))
 			return nil
 		},
 		plugin.PlanTool: func(*plugin.Scope) error { reg.Register(plantool.New(plans)); return nil },

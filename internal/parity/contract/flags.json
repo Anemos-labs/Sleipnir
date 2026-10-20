@@ -13,14 +13,6 @@
     {
       "item": "chat --team",
       "reason": "the New session dialog starts from the team `sleipnir web --team NAME` names, and edits it slot by slot, but has no picker among the saved teams of .sleipnir/teams and ~/.sleipnir/teams yet"
-    },
-    {
-      "item": "run --team",
-      "reason": "the New session dialog starts from the team `sleipnir web --team NAME` names, and edits it slot by slot, but has no picker among the saved teams of .sleipnir/teams and ~/.sleipnir/teams yet"
-    },
-    {
-      "item": "swarm --team",
-      "reason": "the New session dialog starts from the team `sleipnir web --team NAME` names, and edits it slot by slot, but has no picker among the saved teams of .sleipnir/teams and ~/.sleipnir/teams yet"
     }
   ]
 }

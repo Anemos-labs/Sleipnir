@@ -109,7 +109,14 @@ func cloneTree(ctx context.Context, src, dst string, o cloneOpts) error {
 				if err != nil {
 					return err
 				}
-				if err := os.Symlink(rewriteLink(src, childRel, target), to); err != nil {
+				t := rewriteLink(src, childRel, target)
+				if filepath.IsAbs(t) && isStoreName(fi.Name()) {
+					// A dependency store linked out of the project (a shared .venv) is left out, as an ignored
+					// store is absent from a worktree: tests through it would run against the code it reaches
+					// (EscapingStores), so the agent installs one in its tree instead.
+					continue
+				}
+				if err := os.Symlink(t, to); err != nil {
 					return err
 				}
 				chownLike(to, fi)

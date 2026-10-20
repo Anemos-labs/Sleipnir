@@ -100,7 +100,7 @@ func (t *Tool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	case "", "user":
 	case "project":
 		if t.project == "" {
-			return tools.Errorf("this session has no project, so there are no project notes: use scope user"), nil
+			return tools.Errorf("this session keeps no project notes (it has no project, or the project is not trusted): use scope user"), nil
 		}
 		file = t.project
 	default:

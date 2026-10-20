@@ -96,6 +96,9 @@ func loadTeamFile(p string) (*teamFile, error) {
 	if err := dec.Decode(&t); err != nil {
 		return nil, fmt.Errorf("--team: %s: %v (want {\"slots\": [\"role=model\", \"role\", ...], \"models\": {\"manager\": \"model\"}})", p, err)
 	}
+	if dec.More() {
+		return nil, fmt.Errorf("--team: %s holds more than one JSON value", p)
+	}
 	if len(t.Slots) == 0 {
 		return nil, fmt.Errorf("--team: %s has no slots", p)
 	}
@@ -159,6 +162,6 @@ func (t *teamFlag) Set(v string) error {
 }
 
 // teamHelp is the help of --team.
-const teamHelp = "a saved team: NAME (.sleipnir/teams/NAME.json in the project, else ~/.sleipnir/teams/NAME.json) or a path to such a file: " +
+const teamHelp = "a saved team: `NAME` (.sleipnir/teams/NAME.json in the project, else ~/.sleipnir/teams/NAME.json) or a path to such a file: " +
 	`{"slots": ["backend=provider/model", "backend", "frontend", ...], "models": {"manager": "provider/model"}}; ` +
 	"its slots are the team (at least 8), and --role-model values given with it add to them"

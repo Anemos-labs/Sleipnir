@@ -47,3 +47,35 @@ func TestEscapingStores(t *testing.T) {
 		t.Fatalf("%d reported, want 2:\n%s", n, got)
 	}
 }
+
+// Copy mode leaves out a dependency store that links outside the project, and keeps one that stays inside and any other
+// link out, so a copied tree never starts with a link EscapingStores refuses.
+func TestCloneTreeLeavesOutStoresLinkedOutside(t *testing.T) {
+	src, outside, dst := t.TempDir(), t.TempDir(), t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(src, ".venv")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(src, "shared"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("shared", filepath.Join(src, "venv")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(src, "docs-link")); err != nil {
+		t.Fatal(err)
+	}
+	if err := cloneTree(tctx(t), src, dst, cloneOpts{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(dst, ".venv")); !os.IsNotExist(err) {
+		t.Fatalf(".venv linked outside was copied: %v", err)
+	}
+	for _, kept := range []string{"venv", "docs-link"} {
+		if _, err := os.Lstat(filepath.Join(dst, kept)); err != nil {
+			t.Fatalf("%s was not copied: %v", kept, err)
+		}
+	}
+	if esc := EscapingStores(dst); len(esc) != 0 {
+		t.Fatalf("the copy has escaping stores: %v", esc)
+	}
+}

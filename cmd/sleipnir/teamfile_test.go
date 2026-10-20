@@ -82,6 +82,7 @@ func TestTeamFileRefusals(t *testing.T) {
 		{`{"slots":["manager=p/x"]}`, "not a worker"},
 		{`{"slots":["backend"],"extra":1}`, "unknown field"},
 		{`not json`, "want {"},
+		{`{"slots":["backend"]} {"slots":["frontend"]}`, "more than one JSON value"},
 	} {
 		p := writeTeam(t, dir, "t.json", tc.body)
 		err := (&teamFlag{roles: &roleModelFlag{}}).Set(p)

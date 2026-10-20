@@ -46,10 +46,10 @@ func EscapingStores(root string) []string {
 				r = rel + "/" + name
 			}
 			switch {
-			case stores[name] && e.Type()&os.ModeSymlink != 0:
-				target, err := filepath.EvalSymlinks(p)
-				if err != nil {
-					continue // a dangling link reaches no code
+			case stores[name] && e.Type()&(os.ModeSymlink|os.ModeIrregular) != 0:
+				target, ok := linkTarget(dir, p)
+				if !ok {
+					continue // a dangling link reaches no code, and an irregular file that is no link none at all
 				}
 				if inside, err := filepath.Rel(real, target); err != nil || inside == ".." || strings.HasPrefix(inside, ".."+string(filepath.Separator)) || filepath.IsAbs(inside) {
 					out = append(out, r+" -> "+target)
@@ -61,4 +61,37 @@ func EscapingStores(root string) []string {
 	}
 	walk(real, "", 1)
 	return out
+}
+
+// linkTarget is where the link at p (in dir) leads, resolved, and whether it leads anywhere that exists. A symbolic link
+// is resolved by EvalSymlinks; a Windows junction, which Lstat reports as irregular and EvalSymlinks does not follow, by
+// its Readlink target (relative ones from dir).
+func linkTarget(dir, p string) (string, bool) {
+	if t, err := filepath.EvalSymlinks(p); err == nil && t != p {
+		return t, true
+	}
+	t, err := os.Readlink(p)
+	if err != nil {
+		return "", false
+	}
+	if !filepath.IsAbs(t) {
+		t = filepath.Join(dir, t)
+	}
+	if _, err := os.Stat(t); err != nil {
+		return "", false
+	}
+	if r, err := filepath.EvalSymlinks(t); err == nil {
+		t = r
+	}
+	return filepath.Clean(t), true
+}
+
+// isStoreName reports whether name is one of gitx.DependencyStores.
+func isStoreName(name string) bool {
+	for _, n := range gitx.DependencyStores() {
+		if n == name {
+			return true
+		}
+	}
+	return false
 }
