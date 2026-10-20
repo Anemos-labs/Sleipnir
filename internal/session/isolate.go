@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/checkpoint"
@@ -524,6 +525,45 @@ func (s *Session) lastProgressBranch() string {
 		return nil
 	})
 	return branch
+}
+
+// ignoredChecker says whether a path of the checkout is one git ignores there (perm.Config.Ignored): the trees are made from what git
+// tracks (and, without Commit, the untracked files it does not ignore), so an ignored file, often a data set or other large local input
+// the person keeps beside the project, is in the checkout and in no tree. Answers are remembered: the engine asks about every read of
+// such a file, and the files git ignores do not change during a run as often as a model reads them.
+func (p *isoPlan) ignoredChecker() func(string) bool {
+	root := evalLoose(p.repo.Root())
+	git := commandGit(root)
+	var mu sync.Mutex
+	seen := map[string]bool{}
+	return func(path string) bool {
+		rel, err := filepath.Rel(root, filepath.FromSlash(path))
+		if err != nil || rel == "." || !filepath.IsLocal(rel) {
+			return false
+		}
+		rel = filepath.ToSlash(rel)
+		if rel == ".git" || strings.HasPrefix(rel, ".git/") {
+			return false
+		}
+		mu.Lock()
+		v, ok := seen[rel]
+		mu.Unlock()
+		if ok {
+			return v
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		// Exit 0: ignored; 1: not ignored; anything else (a path through a link, a broken repository): not known to be, so refused.
+		_, err = git(ctx, "check-ignore", "-q", "--", rel)
+		v = err == nil
+		mu.Lock()
+		if len(seen) >= 4096 {
+			clear(seen)
+		}
+		seen[rel] = v
+		mu.Unlock()
+		return v
+	}
 }
 
 // releaseIsolation undoes buildIsolation when the session could not be built.

@@ -42,6 +42,12 @@ const (
 	refusalStop  = 10
 )
 
+// Refusals by a fixed policy (perm.IsPolicyRefusal: confinement to the agent's tree, a built-in protection, a deny rule) count the same way
+// in every run, attended or not: nobody can approve them, so a person being there changes nothing. A manager refused sixteen times in
+// three minutes, each time the same directory spelled another way, was never told to stop, since no call was repeated exactly and its
+// run had a person to ask. Three of twenty is told so, once per burst; ten of twenty ends the run.
+const policyNudge = 3
+
 // durationRe finds the durations a command prints ("0.004s", "12ms", "1m3s" as its 1m and 3s).
 var durationRe = regexp.MustCompile(`\b\d+(?:\.\d+)?(?:ns|µs|μs|us|ms|s|m|h)\b`)
 
@@ -54,6 +60,8 @@ type repeatGuard struct {
 	nudged        map[string]bool
 	refused       []bool // for the last repeatWindow calls: was it refused by a run with nobody to ask?
 	refusalNudged bool
+	policy        []bool // for the last repeatWindow calls: was it refused by a fixed policy?
+	policyNudged  bool
 }
 
 // reset clears the repeated-call guard's accumulated state.
@@ -94,6 +102,28 @@ func (g *repeatGuard) observeExits(agentID string, calls, results []core.Block, 
 				"(a script, another command, a program that runs it) will be refused too. Finish with what you could check, and say which permission you needed.", refusals, len(g.refused))
 		case refusals < refusalNudge:
 			g.refusalNudged = false // a new burst may be told again
+		}
+		g.policy = append(g.policy, results[i].IsError && perm.IsPolicyRefusal(results[i].PlainText()))
+		if len(g.policy) > repeatWindow {
+			g.policy = g.policy[len(g.policy)-repeatWindow:]
+		}
+		policy := 0
+		for _, r := range g.policy {
+			if r {
+				policy++
+			}
+		}
+		switch {
+		case policy >= refusalStop && stop == nil:
+			stop = fmt.Errorf("agent %s: %w: %d of its last %d actions were refused by the permission policy", agentID, ErrStuck, policy, len(g.policy))
+		case policy >= policyNudge && !g.policyNudged && note == "":
+			g.policyNudged = true
+			note = fmt.Sprintf("[harness] %d of your last %d actions were refused by a fixed rule of the harness (worktree isolation, a built-in "+
+				"protection or a deny rule). No one can approve these, and another spelling of the same path ($HOME, ~, a cd first, a script, "+
+				"another tool) is refused the same way. Stop retrying it: read the reason in the refusal, which says what you can do instead, "+
+				"and carry on without that path or say what you needed.", policy, len(g.policy))
+		case policy < policyNudge:
+			g.policyNudged = false // a new burst may be told again
 		}
 		key := ""
 		byExit := i < len(exitFailed) && exitFailed[i] && !results[i].IsError

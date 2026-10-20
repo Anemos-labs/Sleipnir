@@ -355,13 +355,25 @@ func TestSnapshotRejectsBadSchemasWithAWarning(t *testing.T) {
 		mkTool("noschema", "d", ``),
 	))
 	got := s.Names()
-	if strings.Join(got, ",") != "mcp__s__noschema,mcp__s__ok" {
+	if strings.Join(got, ",") != "mcp__call,mcp__s__noschema,mcp__s__ok,mcp__search" {
 		t.Errorf("names = %v", got)
 	}
-	for _, sub := range []string{`"huge" excluded: input schema is`, `"array" excluded`, `"remote" excluded`, `"garbage" excluded`} {
+	// Too large for the tool list is not unusable: it loads on demand.
+	if d := s.Deferred(); strings.Join(d, ",") != "mcp__s__huge" {
+		t.Errorf("deferred = %v", d)
+	}
+	for _, sub := range []string{`"array" excluded`, `"remote" excluded`, `"garbage" excluded`} {
 		if !hasWarning(s, sub) {
 			t.Errorf("no warning containing %q in %v", sub, s.Warnings())
 		}
+	}
+	if hasWarning(s, `"huge"`) {
+		t.Errorf("a deferred tool is not a warning: %v", s.Warnings())
+	}
+	// Without deferral it is excluded, as before.
+	strict := snapOf(SnapshotOptions{NoDefer: true}, st("s", mkTool("huge", "d", huge), mkTool("ok", "d", `{"type":"object"}`)))
+	if strings.Join(strict.Names(), ",") != "mcp__s__ok" || !hasWarning(strict, `"huge" excluded: input schema is`) {
+		t.Errorf("names = %v, warnings = %v", strict.Names(), strict.Warnings())
 	}
 	// A tool with no schema still gets a valid object schema: Registry.Specs
 	// canonicalises every schema and a provider needs a type.
@@ -412,7 +424,7 @@ func TestSnapshotBudgetsAreFairAcrossServers(t *testing.T) {
 		big = append(big, mkTool(fmt.Sprintf("t%02d", i), strings.Repeat("d", 300), `{"type":"object","properties":{"a":{"type":"string"}}}`))
 	}
 	small1, small2 := simple("a", "b", "c"), simple("x", "y")
-	o := SnapshotOptions{MaxTotalBytes: 6000}
+	o := SnapshotOptions{MaxTotalBytes: 6000, NoDefer: true}
 	s := snapOf(o, st("big", big...), st("small1", small1...), st("small2", small2...))
 	count := map[string]int{}
 	for _, n := range s.Names() {
@@ -461,7 +473,7 @@ func TestSnapshotCountLimits(t *testing.T) {
 		many = append(many, mkTool(fmt.Sprintf("t%03d", i), "d", `{"type":"object"}`))
 	}
 	t.Run("per server", func(t *testing.T) {
-		s := snapOf(SnapshotOptions{MaxToolsPerServer: 10, MaxTools: 1000}, st("s", many...))
+		s := snapOf(SnapshotOptions{MaxToolsPerServer: 10, MaxTools: 1000, NoDefer: true}, st("s", many...))
 		if s.Len() != 10 || !hasWarning(s, "more than 10 usable tools; only the first 10") {
 			t.Errorf("len=%d warnings=%v", s.Len(), s.Warnings())
 		}
@@ -470,7 +482,7 @@ func TestSnapshotCountLimits(t *testing.T) {
 		}
 	})
 	t.Run("in total, shared fairly", func(t *testing.T) {
-		s := snapOf(SnapshotOptions{MaxToolsPerServer: 500, MaxTools: 30}, st("a", many...), st("b", many[:5]...))
+		s := snapOf(SnapshotOptions{MaxToolsPerServer: 500, MaxTools: 30, NoDefer: true}, st("a", many...), st("b", many[:5]...))
 		count := map[string]int{}
 		for _, n := range s.Names() {
 			srv, _, _ := ParseName(n)

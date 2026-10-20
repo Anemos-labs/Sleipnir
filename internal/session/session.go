@@ -690,7 +690,9 @@ func (s *Session) buildPerm() error {
 	}
 	// The manager uses the session policy, just like a solo agent.
 	var extra []string
+	var ignored func(string) bool
 	if s.iso != nil {
+		ignored = s.iso.ignoredChecker()
 		// The session's worktrees are part of the workspace, and the project's relative
 		// rules hold inside each of them: writers work there, each confined to its own
 		// (swarm.bindTree).
@@ -705,7 +707,7 @@ func (s *Session) buildPerm() error {
 	}
 	ask := append(append([]string(nil), protectedConfigDirs...), s.cfg.Permissions.Ask...)
 	e, err := perm.NewEngine(perm.Config{
-		Mode: mode, Root: o.Root, Home: o.Home, StateDir: stateRoot(o.Home), Tmp: s.tmp, TreeParents: extra,
+		Mode: mode, Root: o.Root, Home: o.Home, StateDir: stateRoot(o.Home), Tmp: s.tmp, TreeParents: extra, Ignored: ignored,
 		Allow: append(append([]string(nil), s.cfg.Permissions.Allow...), o.Allow...), Ask: ask, Deny: s.cfg.Permissions.Deny,
 		Roles: roles, Prompter: s.trackAsks(s.hookPrompter(o.Prompter)), AskTimeout: o.AskTimeout, Audit: s.auditPermission,
 		Delegate: s.delegateApproval,

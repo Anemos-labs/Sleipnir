@@ -219,6 +219,7 @@ test('a plugin that is on lists the programs it uses: Locate sends the typed pat
   /* Install: the dialog shows the command; nothing is sent before Run */
   L.$('[data-need="blender-mcp"] [data-ninst][data-m="addon"]').click(); await L.settle();
   assert.match(L.$('#overlayHost').textContent, /uvx mcp-for-blender@2\.2\.0 install-addon/);
+  assert.match(L.$('#overlayHost .plg-cmd').textContent, /^BLENDERMCP_ADDONS_DIR=\$\(blender --background .*\)\nuvx mcp-for-blender/, 'the variables it works out come first, one command a line');
   assert.match(L.$('#overlayHost').textContent, /adds the "blender" tool server/);
   assert.deepEqual(sent, [], 'the dialog alone sends nothing');
   L.$('#overlayHost [data-ok]').click(); await L.settle();
