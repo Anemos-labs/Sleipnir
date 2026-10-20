@@ -12,8 +12,7 @@ they do not indicate whether a change has been released.
   that heading and the lines under it, up to the next heading of the same or a
   higher level, are returned, with their real line numbers; an unknown heading
   is refused with a list of the file's headings. Prompt bytes: the tool list's
-  `read` description and schema change, so the first request after upgrading
-  writes the tool prefix once.
+  `read` description and schema change.
 - In a team with worktree isolation, an agent may now read the files git
   ignores in the person's checkout (data sets, assets, local inputs kept beside
   the project), which no worktree has a copy of; writing them is still refused.

@@ -148,6 +148,9 @@ func (Read) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 
 	_, body := splitBOM(data)
 	if len(body) == 0 {
+		if a.Section != "" {
+			return k.fail("%s is empty: it has no Markdown headings", disp), nil
+		}
 		return k.ok("(file is empty)"), nil
 	}
 	total := countLines(body)

@@ -50,6 +50,10 @@ func TestReadSectionRefusals(t *testing.T) {
 	msg = mustErr(t, run(t, Read{}, env, map[string]any{"path": "plain.txt", "section": "x"}))
 	contains(t, msg, "no Markdown headings")
 
+	writeFile(t, filepath.Join(env.Cwd, "empty.md"), "")
+	msg = mustErr(t, run(t, Read{}, env, map[string]any{"path": "empty.md", "section": "x"}))
+	contains(t, msg, "is empty", "no Markdown headings")
+
 	msg = mustErr(t, run(t, Read{}, env, map[string]any{"path": "doc.md", "section": "Usage", "offset": 2}))
 	contains(t, msg, "outside section", "lines 17-19")
 }
@@ -72,6 +76,19 @@ func TestHeadingSlug(t *testing.T) {
 		if got := headingSlug(in); got != want {
 			t.Errorf("headingSlug(%q) = %q, want %q", in, got, want)
 		}
+	}
+	if got := headingSlug("Install [SDK](guide.md) ![logo](l.png)"); got != "install-sdk-logo" {
+		t.Errorf("linked heading slug = %q", got)
+	}
+	dup := mdHeadings([]byte("## Setup\na\n## Setup\nb\n## Install [SDK](guide.md)\nc\n"))
+	if f, l, ok := findSection(dup, "setup-1", 6); !ok || f != 3 || l != 4 {
+		t.Errorf("suffixed anchor = %d %d %v", f, l, ok)
+	}
+	if f, _, ok := findSection(dup, "#setup", 6); !ok || f != 1 {
+		t.Errorf("first of repeated anchors = %d %v", f, ok)
+	}
+	if f, _, ok := findSection(dup, "install-sdk", 6); !ok || f != 5 {
+		t.Errorf("linked heading anchor = %d %v", f, ok)
 	}
 	hs := mdHeadings([]byte("# What's new? (v2)\ntext\n"))
 	if f, l, ok := findSection(hs, "whats-new-v2", 2); !ok || f != 1 || l != 2 {

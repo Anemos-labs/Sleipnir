@@ -3,6 +3,7 @@ package fs
 import (
 	"bytes"
 	"fmt"
+	"regexp"
 	"strings"
 	"unicode"
 )
@@ -68,9 +69,15 @@ func mdHeadings(body []byte) []mdHeading {
 	return out
 }
 
-// headingSlug is a heading's anchor as GitHub writes it: lower case, punctuation
-// other than '-' and '_' removed, spaces turned into '-'.
+// inlineLink matches a Markdown link or image, [text](target) or ![alt](target),
+// whose rendered text is what an anchor is made from.
+var inlineLink = regexp.MustCompile(`!?\[([^\]]*)\]\([^)]*\)`)
+
+// headingSlug is a heading's anchor as GitHub writes it: links reduced to their
+// text, lower case, punctuation other than '-' and '_' removed, spaces turned
+// into '-'.
 func headingSlug(s string) string {
+	s = inlineLink.ReplaceAllString(s, "$1")
 	var b strings.Builder
 	for _, r := range strings.ToLower(strings.TrimSpace(s)) {
 		switch {
@@ -105,9 +112,18 @@ func findSection(hs []mdHeading, want string, total int) (first, last int, ok bo
 		}
 	}
 	if idx < 0 {
+		// GitHub suffixes repeated anchors in document order: setup, setup-1, setup-2.
 		slug := headingSlug(want)
+		seen := map[string]int{}
 		for i, h := range hs {
-			if slug != "" && headingSlug(h.text) == slug {
+			a := headingSlug(h.text)
+			if n := seen[a]; n > 0 {
+				seen[a] = n + 1
+				a = fmt.Sprintf("%s-%d", a, n)
+			} else {
+				seen[a] = 1
+			}
+			if slug != "" && a == slug {
 				idx = i
 				break
 			}
