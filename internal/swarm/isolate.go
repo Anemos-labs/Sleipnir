@@ -93,7 +93,8 @@ const isolationCardText = "\nIsolation: your working directory is a private git 
 	"if that conflicts, fails, or leaves your scope, the task comes back to you with the details and your tree is brought up to date. " +
 	"Do not run git fetch, pull, merge, rebase, cherry-pick or commit, and do not check out other branches. " +
 	"Work the manager accepted from your teammates is in your tree when you are given your next task. " +
-	"If you need work another agent has not merged yet, block your task and say what you need: when the manager resumes it your tree is brought up to date."
+	"If you need work another agent has not merged yet, block your task and say what you need: when the manager resumes it your tree is brought up to date. " +
+	ignoredFilesNote
 
 // isolationCard is appended to the assignment in the private notes of a worker that has a tree of its own (never to a shared layer:
 // it names the session's integration branch, ref, which is the same for every worker of the session and which a read of git needs).
@@ -123,6 +124,12 @@ func (s *Swarm) integrationRef() string {
 	return s.deps.Isolation.Queue.Branch()
 }
 
+// ignoredFilesNote ends both isolation cards. A worktree holds what git tracks, so the files a project ignores (data sets, assets, local
+// settings the person keeps beside the code) are not in it; a manager that was not told so looked for them in its tree, then retried the
+// checkout's path for minutes, spelled every way, against the refusal.
+const ignoredFilesNote = "Files git ignores in the user's checkout are not in any agent's tree: read them by their absolute path in the checkout " +
+	"(that is allowed), and write what you produce inside your own tree."
+
 // managerIsolationCard is what the manager of an isolated run has in its private notes (never in a
 // shared layer, and it names no path). Without it a manager that looks at the checkout mid-run finds the
 // original files, and its answer to the user says the work still has to be merged by hand, when the
@@ -130,7 +137,7 @@ func (s *Swarm) integrationRef() string {
 const managerIsolationCard = "Isolation: every writer works in a private git worktree. Their work is merged, one task at a time, into a shared " +
 	"integration branch and verified there; the user's checkout does not show it while the run is going. When the run ends the harness applies the " +
 	"integrated result to the checkout (as uncommitted changes, or as commits when the user asked for that): never tell the user to merge anything. " +
-	"Use task deliver with text set to a commit message to commit the verified result directly to the original checkout; no board task is needed. Write that message, and any branch name, pull request title and description, about what the change does, never task ids or agent names. You also have a writable worktree. Direct edits are verified and integrated by the harness before completion or PR publication; sync the assembled result before inspecting it. The evidence of a task in review names its merge."
+	"Use task deliver with text set to a commit message to commit the verified result directly to the original checkout; no board task is needed. Write that message, and any branch name, pull request title and description, about what the change does, never task ids or agent names. You also have a writable worktree. Direct edits are verified and integrated by the harness before completion or PR publication; sync the assembled result before inspecting it. The evidence of a task in review names its merge. " + ignoredFilesNote
 
 // mergeRec is the harness's record that a task's work is in the integration branch.
 type mergeRec struct {
