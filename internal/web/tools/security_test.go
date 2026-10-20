@@ -88,6 +88,7 @@ func TestToolsRoutesSecurityMatrix(t *testing.T) {
 // A key the server holds, planted in a session's log, a job's goal and output, and a doctor's output, never reaches a response,
 // a frame or the log.
 func TestNoSecretInAnyResponse(t *testing.T) {
+	t.Setenv("SLEIPNIR_MODEL", "mock/mock-1") // the configured model of a job that names none
 	const name, key = "TOOLSTEST_API_KEY", "sk-test-planted-0123456789abcdefghij"
 	t.Setenv(name, "")
 	harden.Provide(name, key)

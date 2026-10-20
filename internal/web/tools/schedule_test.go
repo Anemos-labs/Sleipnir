@@ -116,6 +116,7 @@ func TestCronCheck(t *testing.T) {
 
 // Run now runs the job as the daemon would (its flags, the held keys, its log), records how it ended, and refuses a second start.
 func TestRunNowStreamsAndRecords(t *testing.T) {
+	t.Setenv("SLEIPNIR_MODEL", "mock/mock-1") // the configured model of a job that names none
 	const name, key = "TOOLSTEST_API_KEY", "sk-test-tools-0123456789abcdefghijk"
 	t.Setenv(name, "")
 	harden.Provide(name, key)
@@ -212,6 +213,7 @@ func TestDaemonStartStopAndTheLock(t *testing.T) {
 
 // "Run what is due" starts the due jobs once, as `sleipnir daemon --once` does, and lets the lock go.
 func TestDaemonOnceRunsWhatIsDue(t *testing.T) {
+	t.Setenv("SLEIPNIR_MODEL", "mock/mock-1") // the configured model of a job that names none
 	var later atomic.Int64
 	rg := newRig(t, func(o *Options) { o.Now = func() time.Time { return time.Now().Add(time.Duration(later.Load())) } })
 	rg.addJob(wire.JobRequest{Cron: "@hourly", Goal: "due", Dir: rg.project})
@@ -260,6 +262,7 @@ func TestRunNowRefusesADangerousJob(t *testing.T) {
 // A budget left out is the CLI's US$1 for a new job and the job's own for an edit; an explicit 0 is no limit, and a job with no
 // limit can be edited without giving one.
 func TestJobBudgetDefaultsLikeTheCLI(t *testing.T) {
+	t.Setenv("SLEIPNIR_MODEL", "mock/mock-1") // the configured model of a job that names none
 	rg := newRig(t, nil)
 	add := func(body string) wire.ScheduleJob {
 		w := rg.do(req{method: "POST", path: "/api/schedule/jobs", raw: body, header: map[string]string{"X-Confirm": rg.confirm("job.add")}})
@@ -285,6 +288,7 @@ func TestJobBudgetDefaultsLikeTheCLI(t *testing.T) {
 // A job may run in any folder that exists, not only in a project of the page: adding it (and editing it) needs the confirmation of its
 // own scope either way.
 func TestAJobMayRunInAnyFolderThatExists(t *testing.T) {
+	t.Setenv("SLEIPNIR_MODEL", "mock/mock-1") // the configured model of a job that names none
 	rg := newRig(t, nil)
 	elsewhere := t.TempDir()
 	j := rg.addJob(wire.JobRequest{Cron: "@daily", Goal: "tidy", Dir: elsewhere, Mode: "plan", BudgetUSD: 1})
@@ -307,5 +311,21 @@ func TestAJobFolderThatCannotBeLookedAtIsNotSaidToBeMissing(t *testing.T) {
 	w := rg.do(req{method: "POST", path: "/api/schedule/jobs", body: wire.JobRequest{Cron: "@daily", Goal: "tidy", Dir: loop, Mode: "plan", BudgetUSD: 1}, header: map[string]string{"X-Confirm": rg.confirm("job.add")}})
 	if w.Code != http.StatusForbidden || errCode(w) != "unreadable" {
 		t.Errorf("a link that loops as a job's folder: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// A job that names no model, where nothing configures one, is refused when it is added: every run of it would fail. Naming a model adds it.
+func TestAJobWithoutAnyModelIsRefused(t *testing.T) {
+	rg := newRig(t, nil)
+	t.Setenv("SLEIPNIR_MODEL", "")
+	body := `{"cron":"@daily","goal":"g","dir":"` + rg.project + `"}`
+	w := rg.do(req{method: "POST", path: "/api/schedule/jobs", raw: body, header: map[string]string{"X-Confirm": rg.confirm("job.add")}})
+	if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), `"code":"model"`) {
+		t.Fatalf("a job without a model = %d %s, want 422 model", w.Code, w.Body.String())
+	}
+	body = `{"cron":"@daily","goal":"g","dir":"` + rg.project + `","model":"mock/mock-1"}`
+	w = rg.do(req{method: "POST", path: "/api/schedule/jobs", raw: body, header: map[string]string{"X-Confirm": rg.confirm("job.add")}})
+	if w.Code != http.StatusCreated {
+		t.Errorf("a job with a model = %d %s", w.Code, w.Body.String())
 	}
 }
