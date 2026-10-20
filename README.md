@@ -5,67 +5,112 @@
   </picture>
 </h1>
 
-A terminal coding agent for local and hosted models. Work with one agent or let a
-manager divide a task among workers, review their results, and verify changes.
-
 [![CI](https://github.com/Anemos-labs/Sleipnir/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Anemos-labs/Sleipnir/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/Anemos-labs/Sleipnir/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/Anemos-labs/Sleipnir/actions/workflows/codeql.yml)
 [![Release](https://img.shields.io/github/v/release/Anemos-labs/Sleipnir?sort=semver)](https://github.com/Anemos-labs/Sleipnir/releases)
-[Releases](https://github.com/Anemos-labs/Sleipnir/releases) ·
-[Getting started](docs/GETTING-STARTED.md) · [Configuration](docs/CONFIGURATION.md)
+
+Sleipnir is a terminal and browser coding agent for local and hosted models. It
+runs as a single agent, or as a team where a manager divides a task among
+specialist workers, reviews what they produce, and verifies it before calling it done.
+
+**Contents:** [Install](#install) · [First run](#first-run) · [How the team works](#how-the-team-works) ·
+[Goals](#goals) · [Browser interface](#browser-interface) · [Automation](#automation) ·
+[Safety](#safety) · [Documentation](#documentation) · [Development](#development)
 
 ## Install
 
-Download the archive for your platform from [Releases](https://github.com/Anemos-labs/Sleipnir/releases),
-then follow the [installation steps](docs/GETTING-STARTED.md#install).
-Or, with Go 1.25 or newer on Linux or macOS:
-
 ```sh
-GOBIN="$HOME/.local/bin" go install github.com/anemos-labs/sleipnir/cmd/sleipnir@latest
-export PATH="$HOME/.local/bin:$PATH"
-sleipnir --help
+go install github.com/anemos-labs/sleipnir/cmd/sleipnir@latest
 cd your-project
 sleipnir
 ```
 
-Save the PATH setting in your [shell startup file](docs/GETTING-STARTED.md#release-archive)
-to keep it available in new terminals. [Windows and troubleshooting](docs/GETTING-STARTED.md#install)
+Requires Go 1.25 or newer. Without Go, download an archive from
+[Releases](https://github.com/Anemos-labs/Sleipnir/releases).
 
-The first run asks for a provider and model. Use `sleipnir login chatgpt` for a
-ChatGPT subscription, or `sleipnir login` for a provider API key. Local model
-servers are supported too. See [Providers](docs/PROVIDERS.md).
+<details>
+<summary><code>sleipnir: command not found</code></summary>
 
-## Work
+`go install` puts the binary in `go env GOBIN` when that is set, otherwise in
+`$(go env GOPATH)/bin` (usually `~/go/bin`). Add that directory to PATH and save
+the line in the shell's startup file:
 
-Type a task in chat. The default team is one manager and eight workers, one of
-each role (architect, scout, backend, frontend, devops, tester, docs, reviewer);
-workers start when the manager needs them. The manager plans, delegates and
-reviews, and handles small direct requests itself; the docs worker keeps the documentation
-current by itself. `--swarm N` sets the number of workers (at least 8),
-`--role-model` repeated per worker names a team of your own, and
-`sleipnir --swarm 0` is a single agent.
+```sh
+export PATH="$(go env GOPATH)/bin:$PATH"
+```
 
-For work that needs several passes, enter:
+With a custom `GOBIN`, add that directory instead. On Windows, add Go's binary
+directory (normally `%USERPROFILE%\go\bin`) to the user `Path` and open a new terminal.
+More in [Getting started](docs/GETTING-STARTED.md#install).
+</details>
+
+## First run
+
+Sleipnir asks for a provider and model the first time. The recommended provider is
+**Heimdallm**, an OpenAI-compatible marketplace of open models (Qwen, GLM, DeepSeek,
+MiniMax, MiMo and more). Sleipnir pins each conversation to one Heimdallm engine,
+so a long session can keep reusing that engine's cache:
+
+```sh
+sleipnir login heimdallm      # paste your key; or set HEIMDALLM_API_KEY
+sleipnir models               # browse the catalogue, no key needed
+```
+
+Other ways in:
+
+| With | Run |
+|---|---|
+| A ChatGPT subscription | `sleipnir login chatgpt` (browser sign-in, billed to your plan) |
+| Another API key (OpenAI, Anthropic, OpenRouter, Gemini, DeepSeek, Groq, …) | `sleipnir login` |
+| A local server (Ollama, LM Studio, llama.cpp, vLLM, …) | Start it, then `sleipnir` |
+
+Full list and options: [Providers](docs/PROVIDERS.md).
+
+## How the team works
+
+The default team is one manager and eight workers, one per role: architect, scout,
+backend, frontend, devops, tester, docs and reviewer. The manager plans, delegates
+and reviews, and handles small requests itself. Workers start only when needed.
+
+| Flag | Effect |
+|---|---|
+| `--swarm 0` | A single agent, no team |
+| `--swarm N` | N workers (at least 8) |
+| `--role-model ROLE=MODEL` | A model per role, repeatable |
+
+`Ctrl+G` (or `/agents`) opens the live team view. Details: [Team protocol](docs/SWARM-PROTOCOL.md).
+
+## Goals
+
+For work that needs several passes, set a goal:
 
 ```text
 /goal Implement pagination, add tests, and verify the examples in the README.
 ```
 
-The harness checks the result after each turn and continues when evidence is
-missing. Escape interrupts the turn and pauses the goal. `/goal resume` continues it.
+After each turn the harness checks the result and continues while evidence is
+missing. Escape interrupts and pauses the goal; `/goal resume` continues it.
 
-| Control | Action |
+| Command | Action |
 |---|---|
-| `/model`, `/roles` | Choose models |
-| `/goal` | View the goal and its plan |
-| `/goal pause` | Interrupt and pause the goal |
-| `/research [depth] QUESTION` | Research a question on the web into a cited wiki ([deep research](docs/RESEARCH.md)) |
-| Ctrl+G or `/agents` | Open the live team view |
-| Ctrl+T or `/stats` | Open live usage and cache statistics |
+| `/goal`, `/goal pause` | View or pause the goal |
+| `/model`, `/roles`, `/effort` | Choose models and reasoning effort |
+| `/research [depth] QUESTION` | Research the web into a cited wiki ([details](docs/RESEARCH.md)) |
 | `/diff`, `/rewind` | Inspect or restore a checkpoint |
-| `/help` | List commands |
+| Ctrl+T or `/stats` | Live usage and cache statistics |
+| `/help` | Every command |
 
-Headless commands:
+## Browser interface
+
+```sh
+sleipnir web --open
+```
+
+The same sessions in a browser: the team at work, permission questions, files,
+changes, checkpoints, settings and tools. It listens on loopback only, with a
+per-run token. [Interface](docs/UX.md#web-interface) · [HTTP API](docs/WEB-API.md)
+
+## Automation
 
 ```sh
 sleipnir run "fix the failing test"
@@ -73,50 +118,35 @@ sleipnir swarm 8 "implement the API and client" --verify "go test {dirs}"
 sleipnir --continue
 ```
 
-Permissions control edits and commands. Review each project's trust settings
-before allowing its hooks, configuration, or tool servers. [Security](docs/SECURITY.md)
+See the [CLI reference](docs/CLI.md).
 
-## Browser interface
+## Safety
 
-`sleipnir web` serves the same sessions in a browser on this machine:
+Permissions control edits and commands, checkpoints make changes reversible, and a
+project's hooks, configuration and tool servers must be trusted before they run.
+[Security](docs/SECURITY.md)
 
-```sh
-sleipnir web --open
-```
-
-The page shows the team at work, asks the permission questions, and has the workspace (files, changes and
-checkpoints), the settings and the tools of the command line. It listens on loopback only and prints an address whose
-token is valid for that run. [Browser interface](docs/UX.md#web-interface) · [Command](docs/CLI.md#sleipnir-web) ·
-[Security](docs/SECURITY.md#5-the-web-interface-sleipnir-web) · [HTTP API](docs/WEB-API.md)
-
-## Cache behavior
-
-Sleipnir keeps shared instructions stable and manages long conversations through
-compaction. Cache reuse still depends on the provider, model, request boundaries,
-and workload. A team does not guarantee shared cache hits or lower cost.
-
-The statistics panel uses provider-reported token usage. Cache expectations are
-estimates; a stable internal prefix does not prove that the API cached it.
-Simulation results are not measured savings. [Cache design](docs/CACHE-DESIGN.md) ·
-[Validation](docs/VALIDATION.md)
+Cache reuse depends on the provider, model and workload; the stats panel reports
+provider-measured usage, and a team does not guarantee lower cost.
+[Cache design](docs/CACHE-DESIGN.md) · [Validation](docs/VALIDATION.md)
 
 ## Documentation
 
-- [Getting started](docs/GETTING-STARTED.md), [CLI reference](docs/CLI.md), [configuration](docs/CONFIGURATION.md)
-- [Providers](docs/PROVIDERS.md), [plugins](docs/PLUGINS.md), [extensions](docs/EXTENDING.md), [MCP](docs/MCP.md)
-- [Architecture](docs/ARCHITECTURE.md), [team coordination](docs/SWARM-PROTOCOL.md), [deep research](docs/RESEARCH.md), [terminal and browser interfaces](docs/UX.md)
-- [Web API](docs/WEB-API.md), [building](docs/BUILDING.md), [testing](docs/TESTING.md), [maintenance](docs/MAINTENANCE.md), [contributing](CONTRIBUTING.md)
-- [Limitations](docs/STATUS.md), [roadmap](docs/ROADMAP.md), [training data](docs/TRAINING-DATA.md)
+- **Use:** [Getting started](docs/GETTING-STARTED.md), [CLI](docs/CLI.md), [configuration](docs/CONFIGURATION.md), [providers](docs/PROVIDERS.md)
+- **Extend:** [plugins](docs/PLUGINS.md), [extensions](docs/EXTENDING.md), [MCP](docs/MCP.md), [web API](docs/WEB-API.md)
+- **Understand:** [architecture](docs/ARCHITECTURE.md), [team protocol](docs/SWARM-PROTOCOL.md), [interfaces](docs/UX.md), [limitations](docs/STATUS.md), [roadmap](docs/ROADMAP.md)
 
 ## Development
 
-Go 1.25 or newer. Dependencies are limited to `golang.org/x/net`, `x/sys`, and `x/term`.
+Go 1.25 or newer. Dependencies are limited to `golang.org/x/net`, `x/sys` and `x/term`.
 
 ```sh
 go build ./...
 go test -race -count=1 ./...
 go vet ./...
 ```
+
+[Building](docs/BUILDING.md) · [Testing](docs/TESTING.md) · [Contributing](CONTRIBUTING.md)
 
 ## License
 
