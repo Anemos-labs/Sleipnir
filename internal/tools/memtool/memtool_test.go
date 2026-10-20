@@ -3,6 +3,7 @@ package memtool
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -185,5 +186,23 @@ func TestIgnoreBesideKeepsAnExistingGitignore(t *testing.T) {
 	b, _ := os.ReadFile(filepath.Join(dir, ".gitignore"))
 	if string(b) != "config.local.json\nMEMORY.local.md\n" {
 		t.Errorf(".gitignore = %q", b)
+	}
+}
+
+// CheckNotes keeps notes as the tool would: one line each, repeats once, and names the limit a list passes.
+func TestCheckNotesCleansAndHoldsTheLimits(t *testing.T) {
+	got, err := CheckNotes([]string{" a  b\tc ", "", "A B C", "x\x07y"})
+	if err != nil || strings.Join(got, "|") != "a b c|xy" {
+		t.Fatalf("CheckNotes = %q, %v", got, err)
+	}
+	if _, err := CheckNotes([]string{strings.Repeat("n", MaxNoteRunes+1)}); err == nil || !strings.Contains(err.Error(), "limit") {
+		t.Errorf("a long note: %v", err)
+	}
+	many := make([]string, MaxNotes+1)
+	for i := range many {
+		many[i] = fmt.Sprintf("note %d", i)
+	}
+	if _, err := CheckNotes(many); err == nil || !strings.Contains(err.Error(), "at most") {
+		t.Errorf("too many notes: %v", err)
 	}
 }

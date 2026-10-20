@@ -28,6 +28,11 @@
    "nav": true
   },
   {
+   "name": "memory",
+   "title": "Memory",
+   "nav": true
+  },
+  {
    "name": "plugins",
    "title": "Plugins",
    "nav": true
@@ -176,6 +181,14 @@
    "tab": null,
    "label": "Schedule",
    "key": "j",
+   "radio": false
+  },
+  {
+   "id": "memory",
+   "view": "memory",
+   "tab": null,
+   "label": "Memory",
+   "key": "y",
    "radio": false
   },
   {
@@ -662,6 +675,15 @@
    "live": true,
    "effects": [
     "view:research"
+   ]
+  },
+  {
+   "group": "go to",
+   "name": "Memory",
+   "kind": "view",
+   "live": true,
+   "effects": [
+    "view:memory"
    ]
   },
   {
