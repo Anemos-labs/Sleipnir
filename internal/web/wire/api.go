@@ -301,12 +301,14 @@ type ResumeRequest struct {
 	Cwd  string `json:"cwd,omitempty"`
 }
 
-// RestartRequest is the restart family: Kind new, clear, swarm, restart, model, roles; Fresh starts the chat empty.
+// RestartRequest is the restart family: Kind new, clear, swarm, restart, model, roles; Fresh starts the chat empty. A roles restart
+// takes Team, the whole team to start again with (one entry per worker slot), with or instead of RoleModels.
 type RestartRequest struct {
 	Kind       string            `json:"kind"`
 	Swarm      *int              `json:"swarm,omitempty"`
 	Model      string            `json:"model,omitempty"`
 	RoleModels map[string]string `json:"roleModels,omitempty"`
+	Team       []TeamSlot        `json:"team,omitempty"`
 	Fresh      bool              `json:"fresh"`
 	Flags      []string          `json:"flags,omitempty"`
 }
@@ -406,11 +408,14 @@ type ModeRequest struct {
 }
 
 // ModelRequest sets the manager's model (Role empty or "manager") or a role's (a team restarts that role). Roles, when it names any,
-// changes several at once instead of Ref and Role: role to model, "manager" for the team's model, all applied by one restart.
+// changes several at once instead of Ref and Role: role to model, "manager" for the team's model, all applied by one restart. Team,
+// when it names any slot, is the whole team the session goes on with, one entry per worker slot in team order: it sets how many
+// workers each role has and the model of each slot ("" is the role's), in the same restart as Roles.
 type ModelRequest struct {
 	Ref   string            `json:"ref,omitempty"`
 	Role  string            `json:"role,omitempty"`
 	Roles map[string]string `json:"roles,omitempty"`
+	Team  []TeamSlot        `json:"team,omitempty"`
 }
 
 // EffortRequest sets the reasoning effort.

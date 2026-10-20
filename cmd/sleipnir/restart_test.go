@@ -16,6 +16,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/tui/app"
+	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
 func TestSplitArgsHonoursQuotesAndNothingElse(t *testing.T) {
@@ -541,5 +542,84 @@ func checkBackendSlots(t *testing.T, args []string, want int) {
 	}
 	if backends != 3 {
 		t.Errorf("backends = %d, want 3: %v", backends, args)
+	}
+}
+
+func TestATeamRequestReplacesTheTeamSlotBySlot(t *testing.T) {
+	t.Setenv("TOGETHER_API_KEY", "test")
+	team := []session.TeamSlot{
+		{Role: "architect"}, {Role: "scout"}, {Role: "backend", Model: "together/a"}, {Role: "backend", Model: "together/b"},
+		{Role: "backend"}, {Role: "frontend"}, {Role: "devops"}, {Role: "tester"}, {Role: "docs"}, {Role: "reviewer"},
+	}
+	s := chatSessionWith(t, false, nil, func(o *session.Options) {
+		o.Swarm, o.Workers, o.Team = true, len(team), team
+	}, nil)
+	want := []wire.TeamSlot{
+		{Role: "architect"}, {Role: "scout"}, {Role: "backend", Model: "together/c"}, {Role: "frontend"}, {Role: "frontend", Model: "together/d"},
+		{Role: "devops"}, {Role: "tester"}, {Role: "tester"}, {Role: "docs"}, {Role: "reviewer"}, {Role: "reviewer", Model: "together/a"},
+	}
+	typed, fresh, err := restartTyped(wire.RestartRequest{Kind: "roles", Team: want})
+	if err != nil || fresh {
+		t.Fatalf("restartTyped: %v (fresh %v)", err, fresh)
+	}
+	args, err := restartArgs(s, typed, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := parseChatFlags(args)
+	if err != nil {
+		t.Fatalf("the restart's own arguments do not parse: %v\n%v", err, args)
+	}
+	if len(f.team) != len(want) {
+		t.Fatalf("the team has %d slots, want %d: %v", len(f.team), len(want), args)
+	}
+	for i, sl := range f.team {
+		if sl.Role != want[i].Role || sl.Model != want[i].Model {
+			t.Errorf("slot %d = %s=%s, want %s=%s", i, sl.Role, sl.Model, want[i].Role, want[i].Model)
+		}
+	}
+}
+
+func TestNamesTeam(t *testing.T) {
+	for _, c := range []struct {
+		line []string
+		want bool
+	}{
+		{[]string{"--role-model", "backend=a/x"}, false},
+		{[]string{"--role-model", "backend"}, true},
+		{[]string{"--role-model", "backend=a/x", "--role-model", "backend=a/y"}, true},
+		{[]string{"--role-model", "compactor=a/x", "--role-model", "compactor=a/y"}, false},
+		{[]string{"--swarm", "2", "--role-model", "backend=a/x", "--role-model", "tester=a/y"}, true},
+		{[]string{"--swarm", "9", "--role-model", "backend=a/x", "--role-model", "tester=a/y"}, false},
+	} {
+		if got := namesTeam(c.line); got != c.want {
+			t.Errorf("namesTeam(%v) = %v, want %v", c.line, got, c.want)
+		}
+	}
+}
+
+func TestTeamSlotsChecksTheTeamAndKeepsTheRolesModels(t *testing.T) {
+	t.Setenv("TOGETHER_API_KEY", "test")
+	s := chatSessionWith(t, false, nil, func(o *session.Options) {
+		o.Swarm, o.Workers, o.DefaultTeam = true, 8, true
+		o.RoleModels = map[string]string{"tester": "together/t"}
+	}, nil)
+	slots := []wire.TeamSlot{{Role: "architect"}, {Role: "scout"}, {Role: "backend"}, {Role: "backend", Model: "together/b"},
+		{Role: "frontend"}, {Role: "devops"}, {Role: "tester"}, {Role: "docs"}, {Role: "reviewer"}}
+	roles := map[string]string{"backend": "together/a", "compactor": "together/c"}
+	got, err := teamSlots(s, slots, roles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[2].Model != "together/a" || got[3].Model != "together/b" || got[6].Model != "together/t" || got[0].Model != "" {
+		t.Errorf("slot models = %v: a slot without a model takes its role's from the request, else from the start", got)
+	}
+	if !reflect.DeepEqual(roles, map[string]string{"compactor": "together/c"}) {
+		t.Errorf("roles = %v, want only the service role left", roles)
+	}
+	for _, bad := range [][]wire.TeamSlot{slots[:7], append([]wire.TeamSlot{{Role: "manager"}}, slots...), append([]wire.TeamSlot{{Role: "a=b"}}, slots...)} {
+		if _, err := teamSlots(s, bad, map[string]string{}); err == nil {
+			t.Errorf("teamSlots(%v) took a team it should refuse", bad)
+		}
 	}
 }

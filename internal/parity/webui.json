@@ -1846,6 +1846,23 @@
      "scope": "view"
     },
     {
+     "id": "tall*",
+     "scope": "flag",
+     "flag": "role-model",
+     "note": "the team, slot by slot (--role-model given once per slot)"
+    },
+    {
+     "id": "tcount*",
+     "scope": "flag",
+     "flag": "swarm"
+    },
+    {
+     "id": "tslot*",
+     "scope": "flag",
+     "flag": "role-model",
+     "note": "the team, slot by slot (--role-model given once per slot)"
+    },
+    {
      "id": "use*",
      "scope": "config",
      "keys": [
@@ -1923,11 +1940,6 @@
      "flag": "trust-project"
     },
     {
-     "id": "id:rn",
-     "scope": "flag",
-     "flag": "swarm"
-    },
-    {
      "id": "id:rv",
      "scope": "flag",
      "flag": "verify"
@@ -1941,9 +1953,21 @@
      "flag": "isolation"
     },
     {
-     "id": "step*",
+     "id": "tall*",
+     "scope": "flag",
+     "flag": "role-model",
+     "note": "the team, slot by slot (--role-model given once per slot)"
+    },
+    {
+     "id": "tcount*",
      "scope": "flag",
      "flag": "swarm"
+    },
+    {
+     "id": "tslot*",
+     "scope": "flag",
+     "flag": "role-model",
+     "note": "the team, slot by slot (--role-model given once per slot)"
     }
    ]
   },

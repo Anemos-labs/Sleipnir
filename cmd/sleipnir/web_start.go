@@ -372,8 +372,8 @@ func restartTyped(req wire.RestartRequest) (typed []string, fresh bool, err erro
 		}
 		return append([]string{"--model", req.Model}, req.Flags...), req.Fresh, nil
 	case "roles":
-		if len(req.RoleModels) == 0 {
-			return nil, false, werr(http.StatusBadRequest, "bad_flags", "a roles restart names a role and its model")
+		if len(req.RoleModels) == 0 && len(req.Team) == 0 {
+			return nil, false, werr(http.StatusBadRequest, "bad_flags", "a roles restart names a role and its model, or a team")
 		}
 		if m := strings.TrimSpace(req.Model); m != "" {
 			typed = append(typed, "--model", m) // the team's model with the roles', in the same restart
@@ -388,6 +388,19 @@ func restartTyped(req wire.RestartRequest) (typed []string, fresh bool, err erro
 				return nil, false, werr(http.StatusBadRequest, "bad_flags", "a role and its model are both needed")
 			}
 			typed = append(typed, "--role-model", r+"="+req.RoleModels[r])
+		}
+		if len(req.Team) > 0 { // the whole team, slot by slot: its size, and each slot's model when it has one of its own
+			typed = append(typed, "--swarm", strconv.Itoa(len(req.Team)))
+			for _, ts := range req.Team {
+				if ts.Role == "" || strings.ContainsAny(ts.Role, "= \t") {
+					return nil, false, werr(http.StatusBadRequest, "bad_flags", "a slot of the team names a role")
+				}
+				if ts.Model != "" {
+					typed = append(typed, "--role-model", ts.Role+"="+ts.Model)
+				} else {
+					typed = append(typed, "--role-model", ts.Role)
+				}
+			}
 		}
 		return append(typed, req.Flags...), req.Fresh, nil
 	}

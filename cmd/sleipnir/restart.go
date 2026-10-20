@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/session"
@@ -64,9 +65,15 @@ func restartArgs(s *session.Session, typed []string, fresh bool) ([]string, erro
 		}
 	}
 	typed = splitRoleModels(typed)
+	// A line that names a whole team replaces the team the session started with: none of its worker slots or worker roles' models
+	// comes along (an entry kept would be read as one more slot).
+	wholeTeam := namesTeam(typed)
 	// A custom team keeps its slots when the line changes a role's model: every slot of that role moves to the typed model, where
 	// replacing them with the one typed entry would leave a single worker of the role.
-	retyped := slotModels(s, typed)
+	var retyped map[string]string
+	if !wholeTeam {
+		retyped = slotModels(s, typed)
+	}
 	args := make([]string, 0, len(typed))
 	for i := 0; i < len(typed); i++ {
 		if typed[i] == "--role-model" && i+1 < len(typed) {
@@ -85,6 +92,7 @@ func restartArgs(s *session.Session, typed []string, fresh bool) ([]string, erro
 		if name == "--role-model" { // repeatable: the line's own role wins over the same role named before
 			role, _, _ := strings.Cut(flags[i+1], "=")
 			switch {
+			case wholeTeam && !serviceRole(role):
 			case retyped[role] != "":
 				args = append(args, flags[i], role+"="+retyped[role])
 			case !roleNamed(typed, role):
@@ -131,6 +139,28 @@ func restartArgs(s *session.Session, typed []string, fresh bool) ([]string, erro
 		args = append(args, "--resume", s.ID)
 	}
 	return args, nil
+}
+
+// namesTeam reports whether typed (after splitRoleModels) names a whole team with --role-model: a worker role given without a model or
+// more than once (the team form of the flag), or as many worker entries as a --swarm the line also gives.
+func namesTeam(typed []string) bool {
+	seen, n := map[string]bool{}, 0
+	for i, a := range typed {
+		if a != "--role-model" || i+1 >= len(typed) {
+			continue
+		}
+		role, model, _ := strings.Cut(typed[i+1], "=")
+		if serviceRole(role) {
+			continue
+		}
+		if model == "" || seen[role] {
+			return true
+		}
+		seen[role] = true
+		n++
+	}
+	sw, err := strconv.Atoi(typedFlag(typed, "--swarm"))
+	return err == nil && n > 0 && n == sw
 }
 
 // roleNamed reports whether typed already names a role's model (--role-model role=...).

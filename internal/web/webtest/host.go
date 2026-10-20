@@ -907,7 +907,8 @@ func (t *Tab) SetMode(_ context.Context, req wire.ModeRequest) error {
 	return nil
 }
 
-// SetModel changes the manager's model or a role's, or (Roles) several at once; 422 model for a reference that is not provider/model.
+// SetModel changes the manager's model or a role's, or (Roles) several at once, and (Team) the team slot by slot; 422 model for a
+// reference that is not provider/model.
 func (t *Tab) SetModel(_ context.Context, req wire.ModelRequest) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -915,8 +916,16 @@ func (t *Tab) SetModel(_ context.Context, req wire.ModelRequest) error {
 		return err
 	}
 	changes := req.Roles
-	if len(changes) == 0 {
+	if len(changes) == 0 && len(req.Team) == 0 {
 		changes = map[string]string{req.Role: req.Ref}
+	}
+	for _, ts := range req.Team {
+		if ts.Role == "" || ts.Role == "manager" {
+			return werr(422, "team", "a slot of the team names a worker role")
+		}
+		if p, m, ok := strings.Cut(ts.Model, "/"); ts.Model != "" && (!ok || p == "" || m == "") {
+			return werr(422, "model", fmt.Sprintf("unknown model %q: write it as provider/model", ts.Model))
+		}
 	}
 	for _, ref := range changes {
 		if p, m, ok := strings.Cut(ref, "/"); !ok || p == "" || m == "" {
@@ -943,6 +952,11 @@ func (t *Tab) SetModel(_ context.Context, req wire.ModelRequest) error {
 	}
 	if roles > 0 {
 		t.patchLocked(wire.MetaPatch{RoleModels: &rm})
+	}
+	if len(req.Team) > 0 {
+		team, n := append([]wire.TeamSlot(nil), req.Team...), len(req.Team)
+		t.patchLocked(wire.MetaPatch{Team: &team, Swarm: &n})
+		t.sysLocked("◇", fmt.Sprintf("team: %d workers", n))
 	}
 	return nil
 }

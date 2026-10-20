@@ -1405,8 +1405,8 @@ func (t *webTab) SetModel(ctx context.Context, req wire.ModelRequest) error {
 
 // setModel is SetModel, reporting whether the team starts again.
 func (t *webTab) setModel(ctx context.Context, req wire.ModelRequest) (bool, error) {
-	if len(req.Roles) > 0 {
-		return t.setModels(ctx, req.Roles)
+	if len(req.Roles) > 0 || len(req.Team) > 0 {
+		return t.setModels(ctx, req.Roles, req.Team)
 	}
 	ref := strings.TrimSpace(req.Ref)
 	if ref == "" || len(ref) > 300 {
@@ -1468,8 +1468,8 @@ const maxModelChanges = 64
 
 // setModels changes several models at once (role to model; "manager" is the team's model, a single agent's own): every model is checked
 // first, then one restart carries them all, so a team starts again once however many roles change. A single agent whose own model is
-// all that changes switches it in place, as SetModel does.
-func (t *webTab) setModels(ctx context.Context, roles map[string]string) (bool, error) {
+// all that changes switches it in place, as SetModel does. slots, when there are any, is the whole team to go on with (teamSlots).
+func (t *webTab) setModels(ctx context.Context, roles map[string]string, slots []wire.TeamSlot) (bool, error) {
 	if len(roles) > maxModelChanges {
 		return false, werr(http.StatusUnprocessableEntity, "model", fmt.Sprintf("at most %d roles change at once", maxModelChanges))
 	}
@@ -1499,10 +1499,59 @@ func (t *webTab) setModels(ctx context.Context, roles map[string]string) (bool, 
 			rm[role] = ref
 		}
 	}
+	if len(slots) > 0 {
+		next, err := teamSlots(s, slots, rm)
+		if err != nil {
+			return false, err
+		}
+		return true, t.Restart(ctx, wire.RestartRequest{Kind: "roles", Model: team, RoleModels: rm, Team: next})
+	}
 	if len(rm) == 0 {
 		return t.setModel(ctx, wire.ModelRequest{Ref: team})
 	}
 	return true, t.Restart(ctx, wire.RestartRequest{Kind: "roles", Model: team, RoleModels: rm})
+}
+
+// maxTeamSlots bounds the slots of a team one model request may name (swarm.max_workers, checked when the team starts, may be lower).
+const maxTeamSlots = 256
+
+// teamSlots checks the team a model request names and returns it as the restart takes it: every slot a worker role of the session,
+// between session.MinTeamWorkers and maxTeamSlots slots, and every model one the session can use. A slot without a model takes
+// the one roles gives its role in the same request, else the one the session gave the role when it started (--role-model role=model),
+// since the restart replaces those with the team. The worker roles are then taken out of roles; service roles (the compactor, the
+// mailman ...) stay in it.
+func teamSlots(s *session.Session, slots []wire.TeamSlot, roles map[string]string) ([]wire.TeamSlot, error) {
+	if len(slots) < session.MinTeamWorkers || len(slots) > maxTeamSlots {
+		return nil, werr(http.StatusUnprocessableEntity, "team", fmt.Sprintf("a team has %d to %d workers; this one has %d", session.MinTeamWorkers, maxTeamSlots, len(slots)))
+	}
+	started := s.Options().RoleModels
+	out := make([]wire.TeamSlot, 0, len(slots))
+	for _, ts := range slots {
+		role, ref := strings.TrimSpace(ts.Role), strings.TrimSpace(ts.Model)
+		switch {
+		case role == "" || len(role) > 64 || strings.ContainsAny(role, "= \t"):
+			return nil, werr(http.StatusUnprocessableEntity, "team", "a role is a name: "+clip(role, 64))
+		case serviceRole(role):
+			return nil, werr(http.StatusUnprocessableEntity, "team", role+" is not a worker of the team")
+		case len(ref) > 300:
+			return nil, werr(http.StatusUnprocessableEntity, "model", "a model is provider/model")
+		}
+		if ref == "" {
+			ref = firstNonEmpty(roles[role], started[role])
+		}
+		if ref != "" {
+			if _, err := s.CheckModel(ref); err != nil {
+				return nil, werr(http.StatusUnprocessableEntity, "model", role+": "+clip(err.Error(), 400))
+			}
+		}
+		out = append(out, wire.TeamSlot{Role: role, Model: ref})
+	}
+	for role := range roles {
+		if !serviceRole(role) {
+			delete(roles, role) // the team carries the worker roles' models: an entry of its own would be read as one more slot
+		}
+	}
+	return out, nil
 }
 
 // effortLevels are the levels of /effort.

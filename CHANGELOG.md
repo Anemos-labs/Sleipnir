@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `POST /api/sessions/{id}/model` takes `team`, the whole team to go on with
+  (one `{role, model}` per worker slot), and `wire.RestartRequest` of kind
+  `roles` carries it: one restart changes how many workers each role has and
+  the model of each slot, with the role models of the same request. A
+  `/restart` line that names a whole team with `--role-model` (a role without
+  a model, a role given twice, or as many worker entries as its `--swarm`)
+  now replaces the team the session started with instead of adding to its
+  slots. No prompt bytes change.
+
 - In a team with worktree isolation, an agent may now read the files git
   ignores in the person's checkout (data sets, assets, local inputs kept beside
   the project), which no worktree has a copy of; writing them is still refused.

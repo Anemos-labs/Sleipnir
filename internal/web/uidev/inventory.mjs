@@ -181,7 +181,7 @@ function instrument(SL) {
 /** The control a start tag stands for, as one id (null for an element that is not one). Rows of data (a model, a rule, a server) are one id with a star. */
 const ATTRS = [['data-seg', 'seg'], ['data-do', 'do'], ['data-flag', 'flag'], ['data-mode', 'mode'], ['data-danger', 'danger'], ['data-role', 'role*'], ['data-fav', 'fav*'],
   ['data-use', 'use*'], ['data-rm', 'rm*'], ['data-trust', 'trust*'], ['data-step', 'step*'], ['data-mcp', 'mcp'], ['data-prov', 'prov*'], ['data-cmd', 'cmd*'],
-  ['data-pcmd', 'pcmd*'], ['data-cli', 'cli*'], ['data-flt', 'flt'], ['data-sel', 'sel'], ['id', 'id']];
+  ['data-pcmd', 'pcmd*'], ['data-cli', 'cli*'], ['data-flt', 'flt'], ['data-sel', 'sel'], ['data-tcount', 'tcount*'], ['data-tall', 'tall*'], ['data-tslot', 'tslot*'], ['id', 'id']];
 export function controlsOf(html) {
   const out = [];
   for (const m of String(html).matchAll(/<(button|input|select|textarea)\b([^>]*)>/g)) {
@@ -223,7 +223,8 @@ export const SETTING_MAP = [
   [/^do:(try|mgr-refused)$|^id:try(Tool|Arg)$|^id:cf(In|Go)$|^do:danger-no$/, { scope: 'view' }],
   [/^trust\*$|^do:forget-all$/, { scope: 'state', note: 'the trust ledger (a file of its own), not configuration' }],
   // Team & run
-  [/^step\*$|^id:rn$|^do:apply$/, { scope: 'flag', flag: 'swarm' }],
+  [/^step\*$|^id:rn$|^do:apply$|^tcount\*$/, { scope: 'flag', flag: 'swarm' }],
+  [/^tall\*$|^tslot\*$/, { scope: 'flag', flag: 'role-model', note: 'the team, slot by slot (--role-model given once per slot)' }],
   [/^seg:isolation$/, { scope: 'config', keys: ['swarm.isolation'], flag: 'isolation' }],
   [/^id:rv$|^do:verify$/, { scope: 'flag', flag: 'verify' }],
   [/^flag:commit$/, { scope: 'flag', flag: 'commit' }],
