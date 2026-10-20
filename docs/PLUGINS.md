@@ -92,7 +92,7 @@ A slash command that belongs to a plugin that is off answers with the plugin and
 | Tools | `fs`, `shell`, `web`, `recall`, `skill`, `memory`, `plan`, `mcp` |
 | Extensions | `skills`, `builtin-skills`, `commands`, `agents`, `hooks`, `instructions` |
 | Team | `swarm`, `mailman`, `auto-docs`, `manager-approves`, `push-progress`, `goal`, `lessons`, `delivery`, `recon`, `research`, `update-check`, and `role:architect` … `role:reviewer` (one per worker role) |
-| Interface | `view:cockpit`, `view:workspace`, `view:cache`, `view:mail`, `view:board`, `view:replay`, `view:sessions`, `view:tools`, `view:plugins` |
+| Interface | `view:cockpit`, `view:workspace`, `view:cache`, `view:mail`, `view:board`, `view:replay`, `view:sessions`, `view:tools`, `view:plugins`, `view:memory` |
 | Core | `core:kernel`, `core:config`, `core:session-log`, `core:agent-loop`, `core:providers`, `core:web-shell`, `checkpoints` |
 
 `sleipnir plugins list` prints each with its one-line description; `--json` gives the full catalogue (the same rows

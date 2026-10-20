@@ -87,6 +87,11 @@
     ['research.runs', 'Research runs', 'every run of the project: its phase, its evidence, its wiki and the export', 0, 0, 7, 12, 3, 3, 'list'],
     ['research.new', 'New research', 'a question and a depth: the team researches it into a wiki', 7, 0, 5, 12, 3, 3],
   ]);
+  page('memory', { title: 'Memory', view: 'memory', wrap: 'memv' }, [
+    ['memory.notes', 'Agent notes', 'the notes the agents saved for later sessions: edit, remove, add', 0, 0, 6, 9, 3, 3, 'list'],
+    ['memory.lessons', 'Lessons', 'what earlier goals taught, with their record', 6, 0, 6, 9, 3, 3, 'list'],
+    ['memory.files', 'Instruction files', 'yours, the project\'s and the local ones: what each session reads, to view and edit', 0, 9, 12, 12, 4, 3, 'list'],
+  ]);
   page('tools', { title: 'Tools', view: 'tools', wrap: 'toolsv' }, [
     ['tools.find', 'Find a command', 'filter the commands and open the runner', 0, 0, 12, 2, 3, 2],
     ['tools.run', 'Run work', 'start a session, run a goal without a terminal, or put one on a schedule', 0, 2, 12, 5, 3, 2],
@@ -175,6 +180,7 @@
     ['doctor', 'Doctor', 'probe an endpoint'],
     ['schedule', 'Schedule', 'cron jobs and the daemon'],
     ['plugins', 'Plugins', 'turn parts of Sleipnir on and off'],
+    ['memory', 'Memory', 'the agents\' notes, the instruction files and the lessons'],
     ['settings', 'Settings', 'models, roles, budget, permissions and the rest'],
   ];
   VIEWS.forEach(([v, t, d]) => { BY_ID['v:' + v] = { id: 'v:' + v, page: null, kind: 'view', view: v, title: t, desc: d, minW: 3, minH: 4, w: 6, h: 9, fit: false, list: false }; });

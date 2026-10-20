@@ -339,3 +339,74 @@ type UpdateStatus struct {
 	Available bool   `json:"available"`
 	Notes     string `json:"notes,omitempty"`
 }
+
+// MemoryView is what the Memory page shows: the agent's notes, the instruction files a session of the tab's project reads, and
+// the lesson memory. Text is the files' own, sent as JSON for the page to escape.
+type MemoryView struct {
+	Notes   MemoryNotes   `json:"notes"`
+	Files   []MemoryFile  `json:"files"`
+	Lessons MemoryLessons `json:"lessons"`
+	// Root is the project root (~/... under the home directory); "" when there is no tab, and so only the user's files.
+	Root string `json:"root,omitempty"`
+	// Trusted says whether the project's own files are read by its sessions (a project that is not trusted has them listed, unread).
+	Trusted bool `json:"trusted"`
+}
+
+// MemoryNotes are the notes the agents saved with the memory tool (~/.sleipnir/MEMORY.md), shown at the start of every session.
+type MemoryNotes struct {
+	Path    string   `json:"path"`
+	Notes   []string `json:"notes"`
+	Version string   `json:"version"` // of the file as read; a write names it and is refused when the file changed since
+	On      bool     `json:"on"`      // the memory plugin is on, so sessions read and write the notes
+	Max     int      `json:"max"`     // notes the file holds
+	MaxLen  int      `json:"maxLen"`  // characters of one note
+}
+
+// MemoryFile is one place an instruction file is read from, whether a file is there or not.
+type MemoryFile struct {
+	Path      string `json:"path"`  // as the prompt shows it: relative to the project root, or ~/.sleipnir/...
+	Scope     string `json:"scope"` // user, project, dir, local or import
+	Exists    bool   `json:"exists"`
+	Loaded    bool   `json:"loaded"`              // a session started now has its text in its shared prompt
+	Text      string `json:"text"`                // the file as it is on disk (an import: as the prompt has it)
+	Version   string `json:"version"`             // "" for a file that is not there yet
+	Editable  bool   `json:"editable"`            // the page may write it (PUT .../memory/file)
+	Why       string `json:"why,omitempty"`       // why it is not loaded or not editable
+	Truncated bool   `json:"truncated,omitempty"` // the prompt has only the start of it
+}
+
+// MemoryLessons are the lessons distilled from earlier goals (~/.sleipnir/lessons.json).
+type MemoryLessons struct {
+	Path    string         `json:"path"`
+	On      bool           `json:"on"` // the lessons plugin is on (recall also needs an embedder model)
+	Lessons []MemoryLesson `json:"lessons"`
+	Error   string         `json:"error,omitempty"`
+}
+
+// MemoryLesson is one lesson, with the record of the goals it was shown to.
+type MemoryLesson struct {
+	ID      string  `json:"id"`
+	Kind    string  `json:"kind"` // strategy or pitfall
+	Text    string  `json:"text"`
+	Task    string  `json:"task,omitempty"`
+	Uses    int     `json:"uses"`
+	Wins    int     `json:"wins"`
+	Losses  int     `json:"losses"`
+	Utility float64 `json:"utility"`
+	Created string  `json:"created,omitempty"` // RFC 3339
+	Last    string  `json:"last,omitempty"`
+}
+
+// MemoryNotesWrite replaces the agent's notes: the whole list, and the version it was edited from.
+type MemoryNotesWrite struct {
+	Notes   []string `json:"notes"`
+	Version string   `json:"version"`
+}
+
+// MemoryFileWrite replaces or creates one instruction file: its path as MemoryFile shows it, the new text, and the version it was
+// edited from ("" for a file that is not there yet).
+type MemoryFileWrite struct {
+	Path    string `json:"path"`
+	Text    string `json:"text"`
+	Version string `json:"version"`
+}

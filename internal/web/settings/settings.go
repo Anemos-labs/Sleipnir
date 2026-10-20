@@ -1,6 +1,7 @@
 // Package settings serves the Settings pages of `sleipnir web`: the model catalogue and the
 // favourites, the permission rules in force with the origin of each, trust in a project's own files, the MCP servers, skills,
-// commands and hooks, providers and their sign-in state, and the configuration layers with the provenance of every value.
+// commands and hooks, providers and their sign-in state, the configuration layers with the provenance of every value, and the
+// Memory page (memory.go): the agents' notes, the instruction files and the lessons, to read and edit.
 //
 // What it reads is the person's own configuration and state, and what it returns goes to a browser page, so every DTO is an
 // allow-list: provider keys, stored or held credentials and ChatGPT tokens are never read into a response (only whether a key is
@@ -124,6 +125,7 @@ func (s *service) register() {
 	srv.HandleFunc("POST /api/providers/{name}/signout", s.handleSignOut, web.RouteOpts{NoBody: true})
 	srv.HandleFunc("GET /api/sessions/{id}/config", s.handleConfig, web.RouteOpts{})
 	s.registerPlugins()
+	s.registerMemory()
 	s.registerNeeds()
 	if KeyRoutes {
 		s.registerKeyRoute()
