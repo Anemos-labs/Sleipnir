@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Isolated agents read what git does not track. A confined agent may read a
+  file of the checkout that git does not track (untracked, or ignored as
+  before), since its tree, made from the commits, may have no copy: with
+  `--commit` the untracked files are not copied, and files written during
+  the run (a research run's brief) never are. A research-first goal names
+  its brief by its absolute path in the checkout when the team works in
+  trees, so the manager can read it. No prompt bytes change.
 - A diagnosis owner for named stalls. A stall finding that still holds ten
   minutes after its nudge is escalated once to the manager with a
   diagnosis (the task's and agent's state, how long it held, who was told,

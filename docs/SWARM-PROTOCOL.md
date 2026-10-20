@@ -974,9 +974,9 @@ own is a hard deny that no rule and no mode (bypass included) lifts, judged on r
 well as the file tools. And every rule that is relative to the workspace (`Edit(./.sleipnir/**)`, `Deny(Read(./secrets/**))`,
 a floating `Allow`) applies inside each tree as it does in the checkout (`perm.Config.TreeParents`): the work reaches the
 checkout by a merge, so a rule that guarded only the checkout would guard nothing. The lease guard still enforces task scopes.
-The one exception is a read of a file git ignores in the checkout (`perm.Config.Ignored`, answered by `git check-ignore`): a tree
-is made from what git tracks, so such a file (a data set, assets, a local input) exists nowhere else, and reading it is allowed;
-writing it is not. A refusal names the path's place (the checkout, another agent's tree), says why, and for a project file names
+The one exception is a read of a file git does not track in the checkout (`perm.Config.Ignored`, answered by
+`git ls-files --error-unmatch`): a tree is made from the commits, so such a file (a data set, assets, a local input, a research
+run's brief written after the trees) may exist nowhere else, and reading it is allowed; writing it is not. A refusal names the path's place (the checkout, another agent's tree), says why, and for a project file names
 the same file in the agent's own tree. Policy refusals count toward the repetition guard in every run, so an agent that respells a
 refused path is told to stop at the third and stopped at the tenth.
 

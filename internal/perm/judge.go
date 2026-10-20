@@ -234,9 +234,9 @@ func quote(s string) string { return strconv.Quote(s) }
 // but not in the agent's own directory. Accesses that cannot be pinned down, and
 // accesses outside every workspace root, are not this check's business.
 //
-// A read of a file the checkout's version control ignores (ignored, Config.Ignored) is not a breach: the tree is made from what git
-// tracks, so such a file (a data set, a game's assets, a local configuration) has no copy in the tree, and its place in the checkout is
-// the only place it is. Writing it still is: nothing written outside the tree reaches the person's checkout by the merge.
+// A read of a file the checkout's version control does not track (ignored, Config.Ignored) is not a breach: the tree is made from
+// the commits, so such a file (a data set, a game's assets, a local configuration, a file written into the checkout during the run)
+// may have no copy in the tree, and its place in the checkout is the only place it is. Writing it still is: nothing written outside the tree reaches the person's checkout by the merge.
 //
 // The reason is what the model reads, and a model told only "use relative paths" retried the same directory sixteen times, spelled
 // with $HOME, ~ and a cd first. So it says where the path is, why it is out of reach, and what to do instead: for a file of the
@@ -255,7 +255,7 @@ func (rs *resolver) leavesConfinement(c rootPair, a access, agent string, ignore
 			if !a.write {
 				return ""
 			}
-			return head + " is ignored by git in the person's checkout (" + checkout + "), so your tree has no copy of it. " +
+			return head + " is not tracked by git in the person's checkout (" + checkout + "), so your tree may have no copy of it. " +
 				"You may read it where it is, but not change it: a change outside your tree never reaches the checkout. " +
 				"Write what you produce inside your tree, and do not retry this write another way"
 		}
