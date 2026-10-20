@@ -21,7 +21,7 @@ type File struct {
 }
 
 // Files lists, in Load's order, every place Load reads an instruction file from for opts: ~/.sleipnir's SLEIPNIR.md (and MEMORY.md
-// unless NoNotes), then the project's files of each directory from the root down to cwd, then the local files. Nothing is read; a
+// unless NoNotes), then the project's files of each directory from the root down to cwd, then the local files (and the project's MEMORY.local.md at the root unless NoNotes). Nothing is read; a
 // project root that cannot be opened has no project entries. Imports are not listed: they are wherever a file names them.
 func Files(opts Opts) ([]File, error) {
 	ld, err := newLoader(opts)
@@ -49,9 +49,12 @@ func Files(opts Opts) ([]File, error) {
 				add(ld.proj, path.Join(d, name), scope)
 			}
 		}
-		for _, d := range ld.dirs {
+		for i, d := range ld.dirs {
 			for _, name := range localNames {
 				add(ld.proj, path.Join(d, name), ScopeLocal)
+			}
+			if i == 0 && !opts.NoNotes {
+				add(ld.proj, path.Join(d, ProjectNotes), ScopeLocal) // the memory tool's notes of scope project
 			}
 		}
 	}

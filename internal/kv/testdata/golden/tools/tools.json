@@ -291,7 +291,7 @@
   },
   {
     "name": "note",
-    "description": "Record one true, durable fact for the team (a command, convention or gotcha). It shows up on every agent's live board while it fits; older notes can be evicted. For a durable shared contract use task done agreement and dependent tasks. scope: shared (default) or role.",
+    "description": "Record one true, durable fact for the team (a command, convention or gotcha). It shows up on every agent's live board while it fits; older notes can be evicted. For a durable shared contract use task done agreement and dependent tasks. scope: shared (default) or role; a role note is also kept, when your task is accepted, for the agents of your role in later sessions of this project (a command, a trap, where a thing lives).",
     "input_schema": {
       "properties": {
         "scope": {
@@ -378,9 +378,13 @@
   },
   {
     "name": "recall",
-    "description": "Retrieve context that was folded out of your prompt. Use turns=\"t12-t19\" to reopen a range listed in <history>; handle=\"out_…\" to page through truncated tool output; query=\"words\" to search your archived turns. Output is capped; narrow the range or page with offset/limit.",
+    "description": "Retrieve context that was folded out of your prompt. Use turns=\"t12-t19\" to reopen a range listed in <history>; handle=\"out_…\" to page through truncated tool output; query=\"words\" to search your archived turns. Output is capped; narrow the range or page with offset/limit. To ask what another agent found or decided, add agent=\"bk-2\" (a teammate in this session) or session=\"last\" (an earlier session of this project; agent defaults to the one the person talked to) to turns or query.",
     "input_schema": {
       "properties": {
+        "agent": {
+          "description": "another agent's id, to read its turns instead of yours (e.g. bk-2)",
+          "type": "string"
+        },
         "handle": {
           "description": "handle of truncated output, e.g. out_ab12cd34",
           "type": "string"
@@ -395,6 +399,10 @@
         },
         "query": {
           "description": "search words in your archived turns",
+          "type": "string"
+        },
+        "session": {
+          "description": "an earlier session of this project: last, or its id",
           "type": "string"
         },
         "turns": {
@@ -460,7 +468,7 @@
   },
   {
     "name": "task",
-    "description": "Shared task board. Manager: deliver (text=commit message) verifies direct changes and commits the integrated result to the original checkout without creating a task; then use bash for push and PR commands. Manager: revise (id, text=reason, optional title, description, kind, files, deps) repairs a task in place; resolve (id, text=explanation) completes work no longer needed. Pool leaders: create with parent=id (inherits the parent's kind unless specified) and accept their child tasks. Actions: list, get (id: full task and agreement), claim (id), update (id, text = one-line status), done (id, text = one-line result, optional agreement = full shared contract, at most 6000 bytes/40 lines: the harness verifies the work before review). Accepted agreements are inherited by dependent tasks and preserved through compaction. block (id, text = reason, optional target = the id of the task it waits for), resume (id), handover (id, text = a short summary for your successor: what is done, what is left, what you learned; the harness gives your task, your work and the summary to a fresh worker of your role; the manager may hand over a worker's task). Manager only: create (title, description, role, deps, files = scope, kind = work or plan; plans require a read-only role and an agreement, not code verification), update files (amend the scope), accept (id: the task is done only after the harness's check), reject (id, text = feedback) or reopen, fail (id, reason = blocked_on, superseded, canceled, denied or verifier; target = the task id for blocked_on and superseded; text = one-line note).",
+    "description": "Shared task board. Manager: deliver (text=commit message) verifies direct changes and commits the integrated result to the original checkout without creating a task; then use bash for push and PR commands. Manager: revise (id, text=reason, optional title, description, kind, files, deps) repairs a task in place; resolve (id, text=explanation) completes work no longer needed. Pool leaders: create with parent=id (inherits the parent's kind unless specified) and accept their child tasks. Actions: list, get (id: full task and agreement), claim (id), update (id, text = one-line status), done (id, text = one-line result, optional agreement = full shared contract, at most 6000 bytes/40 lines: the harness verifies the work before review). Accepted agreements are inherited by dependent tasks and preserved through compaction. block (id, text = reason, optional target = the id of the task it waits for), resume (id), handover (id, text = a short summary for your successor: what is done, what is left, what you learned; the harness gives your task, your work and the summary to a fresh worker of your role; the manager may hand over a worker's task). Manager only: create (title, description, role, deps, files = scope, kind = work or plan; plans require a read-only role and an agreement, not code verification; rigor = plan adds a read-only plan task the work waits for and inherits, rigor = reviewed also a reviewer's check of that plan, for work that is risky or hard to undo), update files (amend the scope), accept (id: the task is done only after the harness's check), reject (id, text = feedback) or reopen, fail (id, reason = blocked_on, superseded, canceled, denied or verifier; target = the task id for blocked_on and superseded; text = one-line note).",
     "input_schema": {
       "properties": {
         "action": {
@@ -522,6 +530,13 @@
             "canceled",
             "denied",
             "verifier"
+          ],
+          "type": "string"
+        },
+        "rigor": {
+          "enum": [
+            "plan",
+            "reviewed"
           ],
           "type": "string"
         },

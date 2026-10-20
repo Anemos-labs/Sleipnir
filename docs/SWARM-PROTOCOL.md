@@ -198,7 +198,10 @@ keeps, that own no open task, and whose role has no ready or queued task are nam
 for them: be-2, be-3 (backend); ts-1 (tester): ...`) asking the manager to plan independent work with disjoint file scopes
 for them, or to leave them idle when nothing independent remains. In a team with a reviewer slot a merged change
 is due a review: every accepted implementation task of a writer (not an agreement, not the docs worker's) counts as a
-merge, and a task owned by a reviewer accepted after the last merge covers it. Until then the manager's hot view says so,
+merge, and a task owned by a reviewer accepted after the last merge covers it. When the team's reviewer slots run on two or
+more different models, a merge is covered only once reviewers on two different models have each had a review accepted that
+covers it (independent vantages: one model's blind spots are another's findings); a second review by the same model does not
+count twice, and the gate's line asks for a review from the slot on the model that has not covered it yet. Until then the manager's hot view says so,
 its `wait` is refused once nothing else runs, and the manager's final answer is held. The agent bounds stop vetoes per run; configured
 persistent teams continue the same manager context until the board and review gate settle. The manager's pin asks for a scout when the code or an outside source is unknown, devops and the tester to start from
 the accepted agreement in parallel with the implementation, and the reviewer pass before the goal is reported met.
@@ -489,6 +492,24 @@ semantic quality of an agreement. Small independent tasks can proceed directly.
 Final review checks the assembled result against the agreement, including
 integration tests and rendered inspection where relevant.
 
+### Rigor per task
+
+`task create` takes `rigor` for a top-level work task, so the manager asks for
+planning in one word instead of building the chain by hand:
+
+| `rigor` | Tasks the harness creates | The work task |
+|---|---|---|
+| (none) | the work task | as before |
+| `plan` | `Plan: <title>` (kind plan) for the architect, else the scout, else another read-only role the team can staff | depends on the plan and inherits its agreement |
+| `reviewed` | the plan, then `Review plan: <title>` (kind plan) for the reviewer, which depends on the plan | depends on both; the review's agreement is the verdict and the amendments, which the work follows as acceptance criteria |
+
+The work task's description starts with a line that says which plan to follow
+and to block rather than improvise when it turns out wrong. The usual gates then
+do the enforcing: the work cannot be spawned or claimed before its prerequisites
+are accepted, and each plan task needs an agreement. `rigor` is refused, with
+nothing created, when the team has no role to plan or (for `reviewed`) no
+reviewer slot, for a child or plan task, and for a title already open.
+
 ## 5. Mail
 
 Mail exists for what cannot simply be in the cached prefix: an interface changed, a blocker, a question. It is
@@ -703,10 +724,31 @@ and additively on success; one burst of simultaneous 429s counts as one rate-lim
 
 Each agent compacts privately (thread -> spine, notes, masking). Promotion
 proposals enter the bounded live note buffer as unverified facts. Automatic
-folding of these proposals into shared (G1) or role (G2) context is not implemented.
+folding of these proposals into shared (G1) context is not implemented; role notes reach later sessions' role
+(G2) context through the project memory below.
 The embedding API can explicitly replace shared context through `SetShared`;
 these updates are serialized and invalidate the affected prefix for every agent.
 A worker built during an update receives the newest layer before running.
+
+### Project memory by role
+
+A team session keeps what each worker role learned in a project for the agents of that role in its later sessions
+(`internal/lore`). Knowledge climbs a ladder of maturity, and its stage is in the file:
+
+| Stage | How it gets there | Where it lives |
+|---|---|---|
+| field note | an agent calls `note` with `scope: role` | the live board, for this session only |
+| insight | the manager accepts a task of the note's author (or of a member of its pool); the same text saved again in a later session counts one more confirmation (`[insight ×N]`) | `~/.sleipnir/lore/<project>-<hash>/<role>.md` |
+| canon | a person marks the line `[canon]` in that file; the harness never promotes to canon | the same file |
+
+At the start of a team session each worker role's file is read once and appended to its role pin (G2) inside a
+`<role-lore>` block: canon first, then insights by confirmations, within about 1,500 tokens, framed as data saved by
+the harness that may be wrong and that the user's instructions and the code override. Writes during the session do
+not change any pin, so the role layer keeps its bytes for the session. A file holds at most 40 items; when it is full
+the least confirmed insight, the oldest first, is dropped, and canon is never dropped. Items are single lines of at most
+300 characters with control, format and bidirectional characters removed and angle brackets replaced. The file is
+plain Markdown: delete a wrong line, reorder lines, or mark one `[canon]` by hand. `--no-memory` neither reads nor
+writes it. Each read and save is logged (`lore.load`, `lore.save`).
 
 Compactor patches cannot rewrite harness-owned `instructions` or `assignment`
 notes. Accepted prerequisite agreements travel with the assignment. A newly
@@ -1033,5 +1075,10 @@ refusal are gone, and a shared tree's races cannot happen.
 * Trees are made with `git worktree`: submodules are not initialised in them and ignored files (build output, `node_modules`,
   `.env`) are absent, so a verifier that needs them fails in the tree until the worker makes them; a project that cannot be
   built from a clean checkout is a poor fit.
+* A worker that links a dependency store into its tree instead of installing it (`ln -s ../app/node_modules`) would test
+  against the code the link reaches: a workspace package or an editable install in the main checkout, not its own edits. The
+  gate therefore does not run the verifier in a tree where a dependency store (`gitx.DependencyStores`, up to four levels
+  deep) is a symlink resolving outside the tree; it fails the run with the links it found and asks for an install inside the
+  checkout (`workspace.EscapingStores`).
 * Symlink-heavy or very large repositories pay the checkout cost per writer; there is no sparse checkout by scope yet.
 * The inspector does not show trees or the queue yet (the events are in the log).

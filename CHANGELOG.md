@@ -7,6 +7,63 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- No false greens from linked dependencies. In an isolated team, the
+  verification gate fails without running the verifier when a dependency
+  store in the worker's tree (`node_modules`, `.venv`, …) is a symlink to
+  somewhere outside it, since tests there could pass against the main
+  checkout's code. No prompt bytes change.
+- Ask a past agent. `recall` takes `agent` (a teammate in this session) and
+  `session` (`last` or an id: an earlier session of the same project, read
+  from its log without writing to it), so an agent can search or page what
+  another agent found or decided. Prompt bytes: the `recall` tool's
+  description and schema change, so the tool prefix is written once.
+- Rigor per task. `task create` takes `rigor`: `plan` creates a read-only
+  plan task for the architect (or scout) that the work waits for and
+  inherits; `reviewed` adds a reviewer's check of that plan, whose
+  amendments the work follows as acceptance criteria. Prompt bytes: the
+  `task` tool's description and schema change, so the tool prefix is
+  written once, and the manager's pin gains a sentence.
+- Review by two models. When a team's reviewer slots run on two or more
+  different models, the review gate holds the goal until reviewers on two
+  different models have each covered the last merge; the gate's line says
+  so. A team whose reviewers share one model keeps the single review.
+  Prompt bytes: the manager's pin gains a few words.
+- `--team NAME` (chat, run, swarm, and web for new sessions) starts the
+  team saved in `.sleipnir/teams/NAME.json` or `~/.sleipnir/teams/NAME.json`:
+  its `slots` are the workers in order, each on its own model or its role's,
+  and `models` names the manager's, compactor's, judge's and the other
+  service roles' models. It is the same team as the `--role-model` values it
+  stands for; no prompt bytes change.
+- Memory in two scopes. The `memory` tool takes `scope`: `user` (the
+  default, `~/.sleipnir/MEMORY.md`, shown in every project) or `project`
+  (`.sleipnir/MEMORY.local.md` at the project root, shown only there and only
+  when the project is trusted; the first project note writes a
+  `.sleipnir/.gitignore` that lists it). `list` without a scope shows both.
+  Lessons of `/goal` record the project they were learned in, and retrieval
+  multiplies the score of a lesson from the same project by 1.25; a lesson
+  learned again in another project becomes general. Prompt bytes: the memory
+  tool's description and schema change, so the tool prefix is written once.
+- Project memory by role: in a team session, a worker's `note` with
+  `scope: role` is kept for the agents of its role in later sessions of the
+  same project once a task of that worker is accepted, in
+  `~/.sleipnir/lore/<project>-<hash>/<role>.md` (an insight, confirmed again
+  each time a later session saves it; a person may mark a line `[canon]`).
+  Each worker role's pin carries its file's items in a `<role-lore>` block,
+  read once at session start, so the role layer is stable within a session.
+  `--no-memory` turns it off. Prompt bytes: the `note` tool's description
+  grows by one sentence, and a role whose file has items gets a longer pin
+  (at most about 1,500 tokens), written once when the session starts.
+- A capability map: the constitution asks an agent to check the instruction
+  files' Capabilities section, and to search by what a thing does, before it
+  adds a subsystem, and to extend what exists rather than build a second one.
+  Under auto-docs the docs worker keeps a `## Capabilities` section in
+  AGENTS.md (one line per existing system: what it does, where it lives, its
+  doc as `path#heading`), workers check it and mail new capabilities, and the
+  reviewer reports a module that duplicates an existing one. `sleipnir init`
+  writes the section into a new AGENTS.md. Prompt bytes: the constitution grows
+  by about 40 tokens (the bound is raised from 5150 to 5200), and the
+  manager, worker, docs and reviewer pins change, so the first request of each
+  role after upgrading writes its prefix once.
 - `POST /api/sessions/{id}/model` takes `team`, the whole team to go on with
   (one `{role, model}` per worker slot), and `wire.RestartRequest` of kind
   `roles` carries it: one restart changes how many workers each role has and

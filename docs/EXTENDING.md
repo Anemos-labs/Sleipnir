@@ -59,11 +59,14 @@ Plain Markdown that tells the agent how your project works: build and test comma
 
 1. `~/.sleipnir/SLEIPNIR.md` and `~/.sleipnir/MEMORY.md` (scope `user`; the second holds the notes the model saved with its `memory`
    tool: at most 40 notes of 300 characters, each saved only after you approve the exact text; edit or delete the file freely. A session started with `--no-memory`, or
-   with `--no-memory` checked in the New session dialog, neither reads nor writes it, nor the lesson memory of `/goal`, docs/UX.md)
+   with `--no-memory` checked in the New session dialog, neither reads nor writes it, nor the lesson memory of `/goal`, docs/UX.md, nor a team's project memory by role,
+   docs/SWARM-PROTOCOL.md section 9)
 2. for each directory from the project root down to the working directory: `AGENTS.md`, `CLAUDE.md`, `SLEIPNIR.md`,
    `.sleipnir/SLEIPNIR.md` (scope `project` at the root, `dir` below it)
 3. for each of those directories: `SLEIPNIR.local.md`, `.sleipnir/SLEIPNIR.local.md` (scope `local`, for personal notes;
-   keep them out of git)
+   keep them out of git), and at the root `.sleipnir/MEMORY.local.md`: the notes the model saved with its `memory` tool
+   with `scope: project` (each approved like a user note; the tool writes a `.sleipnir/.gitignore` that keeps the file
+   out of git; read only when the project is trusted, like the other project files; `--no-memory` leaves it out)
 
 `AGENTS.md` and `CLAUDE.md` are both read; if one is a symlink to the other it is read once. `~/.claude/CLAUDE.md` and a
 `~/AGENTS.md` are not read.
@@ -734,6 +737,9 @@ chat it compacts the manager.
 * The result is validated and committed by the harness. If the model's answer is unusable, a deterministic "mechanical"
   patch is used instead; if only one unit is foldable, bulky tool results are masked. Nothing is lost: folded turns stay
   in the archive and the model can page them back with `recall`.
+  `recall` also reads other agents' turns: `agent="bk-2"` is a teammate in this session, and `session="last"` (or a
+  session id from `sleipnir sessions`) an earlier session of the same project, its manager or single agent unless `agent`
+  names another. An earlier session is read from its log into memory; its folder is not written.
 * It is a declared, priced rebase: the next request re-writes the cached prefix once. Chat prints the outcome, for
   example (a thread of nine 1,600-token replies, with a stand-in model that could not produce a patch):
 

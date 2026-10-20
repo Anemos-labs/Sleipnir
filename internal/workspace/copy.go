@@ -109,7 +109,14 @@ func cloneTree(ctx context.Context, src, dst string, o cloneOpts) error {
 				if err != nil {
 					return err
 				}
-				if err := os.Symlink(rewriteLink(src, childRel, target), to); err != nil {
+				t := rewriteLink(src, childRel, target)
+				if isStoreName(fi.Name()) && (filepath.IsAbs(t) || storeLinkEscapes(src, from)) {
+					// A dependency store linked out of the project (a shared .venv) is left out, as an ignored
+					// store is absent from a worktree: tests through it would run against the code it reaches
+					// (EscapingStores), so the agent installs one in its tree instead.
+					continue
+				}
+				if err := os.Symlink(t, to); err != nil {
 					return err
 				}
 				chownLike(to, fi)
@@ -303,7 +310,11 @@ func (m *Manager) copyExtras(ctx context.Context, t *Tree, paths []string) error
 			if err != nil {
 				return err
 			}
-			if err := os.Symlink(rewriteLink(srcRoot, rel, target), to); err != nil {
+			lt := rewriteLink(srcRoot, rel, target)
+			if isStoreName(path.Base(rel)) && (filepath.IsAbs(lt) || storeLinkEscapes(srcRoot, from)) {
+				continue // a store linked outside the tree would make its tests a false green (EscapingStores)
+			}
+			if err := os.Symlink(lt, to); err != nil {
 				return err
 			}
 		}

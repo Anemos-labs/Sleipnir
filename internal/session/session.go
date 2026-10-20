@@ -296,6 +296,7 @@ type Session struct {
 	trust       *trustInfo     // how the project's own files came to be used, or why not (nil when it has none)
 	mcp         *mcpState
 	archive     *kv.Archive    // folded turns, for recall
+	past        pastArchives   // earlier sessions' turns, for recall session=…
 	handles     *tools.Handles // recall handles of truncated output
 	unlock      func()         // releases the lock on the session directory
 	ckptLog     *checkpointLog // writes the "checkpoint" events (web_access.go)
@@ -875,7 +876,12 @@ func (s *Session) build(ctx context.Context) error {
 			reg.Register(t)
 			return nil
 		},
-		plugin.Recall: func(*plugin.Scope) error { reg.Register(recall.New(archive)); return nil },
+		plugin.Recall: func(*plugin.Scope) error {
+			rt := recall.New(archive)
+			rt.Past = s.pastArchive
+			reg.Register(rt)
+			return nil
+		},
 		// Registered whenever its plugin is on, whatever the project holds: the tool list must not depend on the project.
 		plugin.SkillTool: func(*plugin.Scope) error { reg.Register(skilltool.New(s.Skills)); return nil },
 		plugin.MemoryTool: func(*plugin.Scope) error {
@@ -883,7 +889,11 @@ func (s *Session) build(ctx context.Context) error {
 				reg.Register(memtool.Off())
 				return nil
 			}
-			reg.Register(memtool.New(filepath.Join(o.Home, ".sleipnir", "MEMORY.md")))
+			proj := "" // an untrusted project's notes file is the repository's text, not the agent's memory
+			if o.TrustProject {
+				proj = filepath.Join(o.Root, filepath.FromSlash(memory.ProjectNotes))
+			}
+			reg.Register(memtool.NewScoped(filepath.Join(o.Home, ".sleipnir", "MEMORY.md"), proj))
 			return nil
 		},
 		plugin.PlanTool: func(*plugin.Scope) error { reg.Register(plantool.New(plans)); return nil },
@@ -1147,7 +1157,12 @@ func (s *Session) build(ctx context.Context) error {
 		return err
 	}
 	deps.Isolation = iso
-	sw := swarm.New(sc, deps, s.teamRoles(s.ext.roles, team, autoDocs))
+	roles := s.teamRoles(s.ext.roles, team, autoDocs)
+	if st := s.buildLore(team); st != nil {
+		roles = s.loreRoles(st, roles)
+		sc.OnLearned = s.saveLore(st)
+	}
+	sw := swarm.New(sc, deps, roles)
 	for _, t := range sw.Tools() {
 		reg.Register(t)
 	}

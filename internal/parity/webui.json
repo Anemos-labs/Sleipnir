@@ -2588,6 +2588,7 @@
      "resume",
      "role-model",
      "swarm",
+     "team",
      "trust-project",
      "verbose",
      "verify"
@@ -2627,6 +2628,7 @@
      "role-model",
      "session-dir",
      "swarm",
+     "team",
      "trust-project",
      "verbose",
      "verify"
@@ -2671,6 +2673,7 @@
      "resume",
      "role-model",
      "session-dir",
+     "team",
      "trust-project",
      "verbose",
      "verify"

@@ -143,7 +143,7 @@ func cmdWeb(ctx context.Context, args []string) error {
 	cwd := fs.String("cwd", "", "working directory of the sessions started in the page (default: the current directory)")
 	model := fs.String("model", "", "default model of new sessions: provider/model or a bare id for the default provider")
 	mode := fs.String("mode", "", "default permissions of new sessions: default | accept-edits | plan | bypass | yolo")
-	swarmN := fs.Int("swarm", 0, "new sessions are a team of a manager and N workers (config swarm.max_workers is the ceiling); the default is "+strconv.Itoa(defaultWorkers)+" workers, --swarm 0 is a single agent")
+	swarmN := fs.Int("swarm", 0, "new sessions are a team of a manager and N workers (config swarm.max_workers is the ceiling); the default is "+strconv.Itoa(defaultWorkers)+" workers (a --team brings its own), --swarm 0 is a single agent")
 	trust := fs.Bool("trust-project", false, trustProjectHelp)
 	budget := fs.Float64("budget-usd", 0, "default spending limit of new sessions, in US dollars")
 	compactAt := fs.Int("compact-at", 0, "default compaction share of new sessions: an agent's conversation is compacted when it fills this percentage of its model's context window, from 10 to 90 (default: config cache.compact_at_percent, else 25)")
@@ -156,6 +156,7 @@ func cmdWeb(ctx context.Context, args []string) error {
 	managerApproves := managerApprovesFlag(fs)
 	roleFlag := &roleModelFlag{}
 	fs.Var(roleFlag, "role-model", "for new sessions: "+roleModelHelp)
+	fs.Var(&teamFlag{roles: roleFlag}, "team", "for new sessions: "+teamHelp)
 	resume := resumeFlags(fs)
 	allow := allowFlags(fs)
 	askTimeout := fs.Duration("ask-timeout", 0, "refuse a question that nobody answered in this long, as a run with nobody to ask would (0 waits for an answer)")

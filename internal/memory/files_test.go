@@ -23,7 +23,7 @@ func TestFilesListsThePlacesLoadReadsInItsOrder(t *testing.T) {
 	}
 	want := "~/.sleipnir/SLEIPNIR.md|user ~/.sleipnir/MEMORY.md|user AGENTS.md|project CLAUDE.md|project SLEIPNIR.md|project .sleipnir/SLEIPNIR.md|project " +
 		"sub/AGENTS.md|dir sub/CLAUDE.md|dir sub/SLEIPNIR.md|dir sub/.sleipnir/SLEIPNIR.md|dir " +
-		"SLEIPNIR.local.md|local .sleipnir/SLEIPNIR.local.md|local sub/SLEIPNIR.local.md|local sub/.sleipnir/SLEIPNIR.local.md|local"
+		"SLEIPNIR.local.md|local .sleipnir/SLEIPNIR.local.md|local .sleipnir/MEMORY.local.md|local sub/SLEIPNIR.local.md|local sub/.sleipnir/SLEIPNIR.local.md|local"
 	if strings.Join(got, " ") != want {
 		t.Fatalf("Files =\n%s\nwant\n%s", strings.Join(got, " "), want)
 	}

@@ -16,7 +16,8 @@
 //     CLAUDE.md, SLEIPNIR.md and .sleipnir/SLEIPNIR.md (scope "project" at the
 //     root, "dir" below it)
 //  3. for each directory from the root down to cwd, SLEIPNIR.local.md and
-//     .sleipnir/SLEIPNIR.local.md (scope "local")
+//     .sleipnir/SLEIPNIR.local.md (scope "local"), and at the root
+//     .sleipnir/MEMORY.local.md, the memory tool's notes for this project (scope "local")
 //
 // A line consisting of "@path" imports another file (relative to the importing
 // file, or "~/" for the home directory). Imports are followed to a depth of
@@ -86,6 +87,11 @@ const (
 	ScopeLocal   = "local"
 	ScopeImport  = "import"
 )
+
+// ProjectNotes is where the memory tool keeps a project's notes, relative to the project root. It is git-ignored by the
+// .sleipnir/.gitignore the tool writes beside it, and read like the project's other local files: only when the project
+// is trusted.
+const ProjectNotes = ".sleipnir/MEMORY.local.md"
 
 const (
 	// MaxFileBytes caps one file; longer files are cut and say so.
@@ -222,9 +228,12 @@ func Load(opts Opts) ([]Source, error) {
 				ld.file(ld.proj, path.Join(d, name), scope, 0)
 			}
 		}
-		for _, d := range ld.dirs {
+		for i, d := range ld.dirs {
 			for _, name := range localNames {
 				ld.file(ld.proj, path.Join(d, name), ScopeLocal, 0)
+			}
+			if i == 0 && !opts.NoNotes {
+				ld.file(ld.proj, path.Join(d, ProjectNotes), ScopeLocal, 0) // the project's notes of the memory tool (scope project)
 			}
 		}
 	}
