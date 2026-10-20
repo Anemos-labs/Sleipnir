@@ -25,13 +25,15 @@ func (Read) Spec() core.ToolSpec {
 		Name: "read",
 		Description: "Read a file (absolute path, or relative to the working directory). Output is line-numbered; " +
 			"by default up to 2000 lines starting at `offset` (1-based), so page large files with offset/limit. " +
+			"For Markdown, `section` (a heading's text or anchor, or path#heading) reads just that heading and what is under it. " +
 			"Very long lines are cut. Images (png, jpg, gif, webp) are returned as images. " +
 			"Binary files and directories give an error (use ls for directories). " +
 			"Read a file before you edit or overwrite it.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{` +
 			`"path":{"type":"string","description":"File to read"},` +
 			`"offset":{"type":"integer","description":"First line to read (1-based)"},` +
-			`"limit":{"type":"integer","description":"Maximum number of lines"}},` +
+			`"limit":{"type":"integer","description":"Maximum number of lines"},` +
+			`"section":{"type":"string","description":"Markdown heading to read: only that section is returned"}},` +
 			`"required":["path"]}`),
 		ReadOnly: true,
 	}
@@ -62,6 +64,8 @@ func (Read) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 		Path   string `json:"path"`
 		Offset intArg `json:"offset"`
 		Limit  intArg `json:"limit"`
+		// Section names a Markdown heading; only that section is read.
+		Section string `json:"section"`
 		// FilePath is what other harnesses call the parameter; accepting it saves
 		// a model that learned that spelling a failed round trip.
 		FilePath string `json:"file_path"`
@@ -82,6 +86,16 @@ func (Read) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	if msg != "" {
 		return k.fail("%s", msg), nil
 	}
+	// path#heading addresses a section, unless a file of that literal name exists.
+	if i := strings.LastIndexByte(a.Path, '#'); i > 0 && a.Section == "" {
+		if _, err := os.Stat(canon); err != nil {
+			if c2, d2, m2 := k.resolveArg(a.Path[:i]); m2 == "" {
+				if _, err := os.Stat(c2); err == nil {
+					canon, disp, a.Section = c2, d2, a.Path[i+1:]
+				}
+			}
+		}
+	}
 	if r := k.authorize("read "+disp, false, perm.RiskLow, canon); r != nil {
 		return r, nil
 	}
@@ -96,7 +110,7 @@ func (Read) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	if !fi.Mode().IsRegular() {
 		return k.fail("%s is not a regular file (%s)", disp, fileKind(fi.Mode())), nil
 	}
-	ranged := a.Offset.Set || a.Limit.Set
+	ranged := a.Offset.Set || a.Limit.Set || a.Section != ""
 	maxRead := k.env.Limits.MaxReadBytes
 	if fi.Size() > maxFileBytes {
 		return k.fail("%s is %s; read handles files up to %s. Use grep to find what you need, or the shell (head, tail, sed -n) for a slice",
@@ -148,13 +162,37 @@ func (Read) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	if limit < 1 {
 		limit = defaultReadLines
 	}
+	end := total
+	if a.Section != "" {
+		hs := mdHeadings(body)
+		first, last, ok := findSection(hs, a.Section, total)
+		if !ok {
+			if len(hs) == 0 {
+				return k.fail("%s has no Markdown headings; read it without section", disp), nil
+			}
+			return k.fail("%s has no heading %q. Its headings:\n%s", disp, displayLine([]byte(a.Section)), headingList(hs)), nil
+		}
+		if !a.Offset.Set {
+			offset = first
+		}
+		if offset < first || offset > last {
+			return k.fail("offset %d is outside section %q of %s (lines %d-%d)", offset, displayLine([]byte(a.Section)), disp, first, last), nil
+		}
+		end = last
+		if n := end - offset + 1; limit > n {
+			limit = n
+		}
+	}
 	out := renderLines(body, offset, limit, k.outputBudget())
 	text := out.text
-	if out.last < total {
-		text += fmt.Sprintf("\n[showing lines %d-%d of %d; continue with offset=%d]", out.first, out.last, total, out.last+1)
+	if out.last < end {
+		text += fmt.Sprintf("\n[showing lines %d-%d of %d; continue with offset=%d]", out.first, out.last, end, out.last+1)
 	}
 	res2 := k.ok(text)
 	res2.Meta = map[string]any{"path": disp, "lines": total, "from": out.first, "to": out.last}
+	if a.Section != "" {
+		res2.Meta["section"] = a.Section
+	}
 	return res2, nil
 }
 
