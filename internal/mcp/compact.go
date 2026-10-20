@@ -21,7 +21,7 @@ import (
 // in sorted order and definitions are numbered in the order they are met.
 // ok is false when nothing was shared.
 func compactSchema(root map[string]any) (out map[string]any, ok bool) {
-	if !refsAreLocalDefs(root) {
+	if !refsAreLocalDefs(root, false) {
 		return nil, false
 	}
 	root = dropExamples(root, false).(map[string]any)
@@ -154,21 +154,24 @@ func (c *compactor) newID() string {
 }
 
 // refsAreLocalDefs reports whether every $ref in v points into $defs or
-// definitions.
-func refsAreLocalDefs(v any) bool {
+// definitions (a "$ref" inside literal data is data); names as in count.
+func refsAreLocalDefs(v any, names bool) bool {
 	switch x := v.(type) {
 	case map[string]any:
 		for k, e := range x {
+			if !names && literals[k] {
+				continue
+			}
 			if s, ok := e.(string); ok && k == "$ref" && !strings.HasPrefix(s, "#/$defs/") && !strings.HasPrefix(s, "#/definitions/") {
 				return false
 			}
-			if !refsAreLocalDefs(e) {
+			if !refsAreLocalDefs(e, !names && nameMaps[k]) {
 				return false
 			}
 		}
 	case []any:
 		for _, e := range x {
-			if !refsAreLocalDefs(e) {
+			if !refsAreLocalDefs(e, false) {
 				return false
 			}
 		}

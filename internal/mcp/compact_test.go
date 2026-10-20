@@ -85,6 +85,13 @@ func TestCompactSchemaLeavesWhatItCannotSafelyRewrite(t *testing.T) {
 	if _, ok := compactSchema(decodeMap(t, pointer)); ok {
 		t.Error("a pointer outside $defs must stop compaction")
 	}
+	// A "$ref" inside literal data is data, and a property named const is a schema.
+	if _, ok := compactSchema(decodeMap(t, `{"type":"object","properties":{"a":`+capture+`,"b":`+capture+`,"c":{"default":{"$ref":"#/properties/a"}}}}`)); !ok {
+		t.Error("a $ref-shaped default must not stop compaction")
+	}
+	if _, ok := compactSchema(decodeMap(t, `{"type":"object","properties":{"a":`+capture+`,"b":`+capture+`,"const":{"$ref":"#/properties/a"}}}`)); ok {
+		t.Error("a pointer in a property named const must stop compaction")
+	}
 	if _, ok := compactSchema(decodeMap(t, `{"type":"object","properties":{"a":{"type":"string"},"b":{"type":"string"}}}`)); ok {
 		t.Error("small repeats are not worth a definition")
 	}
