@@ -231,3 +231,63 @@ func TestVerifiedIntegrationRetainsRulesAndWorkerIsolation(t *testing.T) {
 		}
 	}
 }
+
+// Files the checkout's version control ignores have no copy in an agent's tree, so a confined agent may read them where they are,
+// in every mode, while a write to them, and a read of a file the tree does hold, is still refused, with a reason that says where the
+// path is and what to use instead.
+func TestConfinedAgentReadsIgnoredFilesOfTheCheckout(t *testing.T) {
+	f := newFixture(t)
+	trees := filepath.Join(f.base, "trees")
+	mine, other := filepath.Join(trees, "mgr"), filepath.Join(trees, "be-2")
+	data := filepath.Join(f.root, "game-data")
+	for _, d := range []string{filepath.Join(mine, "src"), filepath.Join(other, "src"), filepath.Join(data, "DTR")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(data, "DTR", "track.bin"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ignored := func(p string) bool { return inside(data, p) }
+	for _, mode := range []Mode{ModeBypass, ModeAcceptEdits} {
+		t.Run(string(mode), func(t *testing.T) {
+			e, err := NewEngine(Config{Root: f.root, Home: f.home, TreeParents: []string{trees}, Mode: mode, Ignored: ignored})
+			if err != nil {
+				t.Fatal(err)
+			}
+			e.Confine("mgr", mine)
+			as := func(q rq) Decision {
+				r := f.request(q)
+				r.Agent, r.Cwd = "mgr", mine
+				return e.Check(bg, r)
+			}
+			for _, q := range []rq{
+				read(filepath.Join(data, "DTR", "track.bin")),
+				read(data),
+				bash("ls -la " + data),
+				bash("find " + data + " -maxdepth 3"),
+				bash("cat $HOME/proj/game-data/DTR/track.bin"),
+			} {
+				if d := as(q); !d.Allow {
+					t.Errorf("%v: refused a read of an ignored file: %s", q, d.Reason)
+				}
+			}
+			if d := as(write(filepath.Join(data, "DTR", "track.bin"))); d.Allow || !strings.Contains(d.Reason, "ignored by git") ||
+				!strings.Contains(d.Reason, "inside your tree") {
+				t.Errorf("a write to an ignored file of the checkout: %v %q", d.Allow, d.Reason)
+			}
+			d := as(read(filepath.Join(f.root, "src", "a.go")))
+			if d.Allow || !strings.Contains(d.Reason, "person's checkout") || !strings.Contains(d.Reason, filepath.ToSlash(filepath.Join(mine, "src", "a.go"))) {
+				t.Errorf("a read of a tracked file of the checkout should be refused and name the tree's copy: %v %q", d.Allow, d.Reason)
+			}
+			d = as(read(filepath.Join(other, "src")))
+			if d.Allow || !strings.Contains(d.Reason, "another agent's worktree") {
+				t.Errorf("a read of another agent's tree: %v %q", d.Allow, d.Reason)
+			}
+			// The whole checkout is not ignored, so a walk of it is refused.
+			if d := as(bash("find " + f.root)); d.Allow {
+				t.Error("a walk of the whole checkout was allowed")
+			}
+		})
+	}
+}

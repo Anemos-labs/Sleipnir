@@ -7,6 +7,19 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- In a team with worktree isolation, an agent may now read the files git
+  ignores in the person's checkout (data sets, assets, local inputs kept beside
+  the project), which no worktree has a copy of; writing them is still refused.
+  `perm.Config.Ignored` is the new hook that says which paths those are. An
+  isolation refusal now says where the path is (the checkout, another agent's
+  worktree), why it is out of reach and what to use instead (for a project
+  file, the same file in the agent's own tree, named in full). Refusals by a
+  fixed policy (isolation, a built-in protection, a deny rule) now count
+  toward the repetition guard in every run, attended or not: the third in
+  twenty calls is told to stop retrying, the tenth ends the run.
+  `perm.IsPolicyRefusal` tells them apart. Prompt bytes: both isolation cards
+  (worker and manager) end with one more sentence about ignored files.
+
 - MCP tools that do not fit the tool list (more than 128 per server or 256 in
   all, a schema over 8 KiB or nested past 24 levels, or past the 64 KiB byte
   budget) are no longer dropped: they load on demand through two new tools,
