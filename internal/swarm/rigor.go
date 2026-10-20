@@ -84,14 +84,22 @@ func (s *Swarm) createRigorous(by string, spec TaskSpec, rigor string) ([]Task, 
 	if title == "" {
 		return nil, fmt.Errorf(`task needs a title: pass it in the "title" field`)
 	}
-	if dup, ok := openTwin(s.Board.Snapshot(), "", title); ok {
-		return nil, fmt.Errorf("%s %q is already open with the same title (status %s): use it (task get id=%s) instead of creating another", dup.ID, dup.Title, dup.Status, dup.ID)
+	// every title of the chain, so that a twin of a prerequisite refuses the task before anything is created
+	titles := []string{title, "Plan: " + title}
+	if rigor == RigorReviewed {
+		titles = append(titles, "Review plan: "+title)
+	}
+	snap := s.Board.Snapshot()
+	for _, tt := range titles {
+		if dup, ok := openTwin(snap, "", tt); ok {
+			return nil, fmt.Errorf("%s %q is already open with the same title (status %s): use it (task get id=%s) instead of creating another", dup.ID, dup.Title, dup.Status, dup.ID)
+		}
 	}
 	need := 2
 	if rigor == RigorReviewed {
 		need = 3
 	}
-	if n, max := len(s.Board.Snapshot().Tasks), s.Board.lim.MaxTasks; n+need > max {
+	if n, max := len(snap.Tasks), s.Board.lim.MaxTasks; n+need > max {
 		return nil, fmt.Errorf("the board holds %d tasks (limit %d), and rigor=%s needs %d more: reuse or finish existing tasks, or create the task without rigor", n, max, rigor, need)
 	}
 	var made []Task

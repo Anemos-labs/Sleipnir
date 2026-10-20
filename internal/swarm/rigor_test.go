@@ -72,6 +72,17 @@ func TestRigorRefusals(t *testing.T) {
 	if n := len(r.sw.Board.Snapshot().Tasks); n != 1 {
 		t.Fatalf("twin left %d tasks", n)
 	}
+	// a twin of a prerequisite's title refuses the chain before any of it is created
+	rv := newRVRigWith(t, Config{MaxWorkers: 8, Team: []string{"architect", "backend", "reviewer"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "ok"} }, nil)
+	if res := rigorCreate(rv, map[string]any{"title": "Review plan: z", "role": "backend"}); res.IsError {
+		t.Fatal(res.Text)
+	}
+	if res := rigorCreate(rv, map[string]any{"title": "z", "role": "backend", "rigor": "reviewed"}); !res.IsError || !strings.Contains(res.Text, "already open") {
+		t.Fatalf("prerequisite twin: %+v", res)
+	}
+	if n := len(rv.sw.Board.Snapshot().Tasks); n != 1 {
+		t.Fatalf("prerequisite twin left %d tasks", n)
+	}
 	b := newRVRigWith(t, Config{MaxWorkers: 8, Team: []string{"backend", "reviewer"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "ok"} }, nil)
 	if res := rigorCreate(b, map[string]any{"title": "y", "role": "backend", "rigor": "plan"}); !res.IsError || !strings.Contains(res.Text, "read-only role to plan") {
 		t.Fatalf("no planner: %+v", res)
