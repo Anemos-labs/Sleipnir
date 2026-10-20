@@ -149,7 +149,7 @@ says when the log has more. With no session hosted, the page opens the New sessi
 
 The left rail switches views: the Cockpit (the team as a horse whose eight legs are the eight roles of the team, the stalls, the
 gantt, the task board, the merge queue, mail and the governor), the Workspace (Files, Changes, Checkpoints), Cache, Mail,
-Board, Replay, Sessions, Tools and Settings. The Radio rail on the right is the conversation with the manager, which is the
+Board, Replay, Sessions, Schedule, Tools and Settings. The Radio rail on the right is the conversation with the manager, which is the
 only agent the person talks to, and a read-only feed of what the team does. Agent drawers, opened from a stall or a gantt row,
 are read-only.
 
@@ -341,7 +341,7 @@ server also refuses an answer given within 350 ms. The `Needs you` inbox answers
 | `ctrl+K` | the command palette |
 | `ctrl+T` `alt+T`, `ctrl+G` `alt+G` | Cache, Cockpit; a browser may keep ctrl+T and ctrl+G, the alt keys reach the page |
 | `ctrl+O` | expand or collapse the output of the tools in the conversation |
-| `g` then `c` `r` `f` `h` `k` `q` `a` `m` `b` `p` `w` `s` `u` `t` `e` | a view: Cockpit, Radio, Files, Changes, Checkpoints, Merge, Cache, Mail, Board, Replay, Research, Sessions, Plugins, Tools, Settings (a view whose plugin is turned off is left out) |
+| `g` then `c` `r` `f` `h` `k` `q` `a` `m` `b` `p` `w` `s` `j` `u` `t` `e` | a view: Cockpit, Radio, Files, Changes, Checkpoints, Merge, Cache, Mail, Board, Replay, Research, Sessions, Schedule, Plugins, Tools, Settings (a view whose plugin is turned off is left out) |
 | `o` `c` `m` `b` `r` `s` `,` `.` | a view: Cockpit, Cache, Mail, Board, Replay, Sessions, Settings, Tools |
 | `alt+1` to `alt+9` | the nth session |
 | `Space`, `←` `→`, `shift+←` `shift+→`, `Home`, `End`, `+` `=` `-` | pause, seek (a minute with shift), start, live, replay speed |
