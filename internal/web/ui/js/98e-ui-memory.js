@@ -36,7 +36,7 @@
     return '<section class="panel mem-notes">' + head('Agent notes', onChip(n.on, 'the Memory notes plugin is off: sessions neither read nor save these notes') + '<span class="mono dim">' + esc(n.path) + '</span>') +
       '<p class="mem-about">What the agents chose to remember about you and your setup, with the memory tool. Every session starts with them, in any project. You approve each note an agent saves; here you change them yourself.</p>' +
       (notes.length ? '<ol class="mem-nl">' + rows + '</ol>' : '<p class="stubnote mem-pad">No notes yet. An agent adds one when it learns something lasting, or add one below.</p>') +
-      '<form class="mem-add" data-note-add><input id="memNew" maxlength="' + (n.maxLen * 2) + '" placeholder="one fact in one sentence, e.g. I prefer pnpm over npm" aria-label="a new note" autocomplete="off"><button class="btn sm pri" type="submit"' + (notes.length >= n.max ? ' disabled title="the memory is full: remove or merge notes first"' : '') + '>Add note</button></form>' +
+      '<form class="mem-add" data-note-add><input id="memNew" maxlength="' + (n.maxLen * 2) + '" value="' + esc(st.newDraft) + '" placeholder="one fact in one sentence, e.g. I prefer pnpm over npm" aria-label="a new note" autocomplete="off"><button class="btn sm pri" type="submit"' + (notes.length >= n.max ? ' disabled title="the memory is full: remove or merge notes first"' : '') + '>Add note</button></form>' +
       '<p class="mem-foot dim">' + notes.length + ' of ' + n.max + ' notes · at most ' + n.maxLen + ' characters each</p></section>';
   }
 
@@ -91,16 +91,17 @@
 
   SL.views.register({ name: 'memory', title: 'Memory', mount(sc, root, params, S0) {
     const P = ui.pageHead(sc, root, S0 || SL.sessions.active, 'memory', params, { title: 'Memory', purpose: 'What the agents remember from one session to the next: the notes they saved, the instruction files they read and the lessons of earlier goals. Read it, correct it, remove what is wrong.' });
-    const st = { v: null, seq: 0, sig: '', open: {}, edit: {}, noteEdit: -1, noteDraft: '', noteBase: null, base: {}, showAll: false, busy: false };
+    const st = { v: null, seq: 0, sig: '', open: {}, edit: {}, noteEdit: -1, noteDraft: '', newDraft: '', noteBase: null, base: {}, showAll: false, busy: false };
     const S = () => SL.sessions.active;
     /** The routes of the active tab, or the server's own (the user's files only) while there is no tab. */
     const api = sfx => { const s = S(); return (s && s.id ? net.tab(s, '/memory') : '/api/memory') + (sfx || ''); };
     const editing = () => st.noteEdit >= 0 || Object.keys(st.edit).length > 0;
     function paint(force) {
       const sig = JSON.stringify([st.v, st.open, st.edit, st.noteEdit, st.showAll]); if (!force && sig === st.sig) return; st.sig = sig;
-      const a = document.activeElement, keep = a && root.contains(a) && a.tagName === 'TEXTAREA' ? a.closest('[data-file-save],[data-note-save]') : null;
+      const a = document.activeElement, keep = a && root.contains(a) && a.tagName === 'TEXTAREA' ? a.closest('[data-file-save],[data-note-save]') : null, inNew = a && a.id === 'memNew' && root.contains(a);
       P.fill({ 'memory.notes': notesHtml(st), 'memory.files': filesHtml(st), 'memory.lessons': lessonsHtml(st) });
       if (keep) { const k = keep.dataset.fileSave != null ? '[data-file-save="' + CSS.escape(keep.dataset.fileSave) + '"] textarea' : '[data-note-save] textarea', n = root.querySelector(k); if (n) n.focus({ preventScroll: true }); }
+      if (inNew) { const n = $('#memNew', root); if (n) { n.focus({ preventScroll: true }); n.setSelectionRange(n.value.length, n.value.length); } }
     }
     async function load(force) {
       if (!net) return; const mine = ++st.seq;
@@ -137,7 +138,7 @@
           run: async () => { const r = await net.del(api('/lessons/' + encodeURIComponent(id))); took(r, 'lesson removed', 'the lesson was not removed'); paint(true); } }); }
     });
     sc.listen(root, 'input', e => {
-      const t = e.target; if (t.tagName !== 'TEXTAREA') return;
+      const t = e.target; if (t.id === 'memNew') { st.newDraft = t.value; return; } if (t.tagName !== 'TEXTAREA') return;
       const ff = t.closest('[data-file-save]'); if (ff) { st.edit[ff.dataset.fileSave] = t.value; st.sig = JSON.stringify([st.v, st.open, st.edit, st.noteEdit, st.showAll]); return; }
       if (t.closest('[data-note-save]')) st.noteDraft = t.value;
     });
@@ -145,7 +146,7 @@
     sc.listen(root, 'submit', async e => {
       const f = e.target; e.preventDefault(); if (!st.v) return;
       const notes = arr(st.v.notes.notes);
-      if (f.matches('[data-note-add]')) { const inp = $('#memNew', root), v = inp.value.trim(); if (!v) { inp.focus(); return; } if (await putNotes(notes.concat([v]), 'note saved: the next session starts with it')) { const n = $('#memNew', root); if (n) { n.value = ''; n.focus(); } } return; }
+      if (f.matches('[data-note-add]')) { const inp = $('#memNew', root), v = inp.value.trim(); if (!v) { inp.focus(); return; } if (await putNotes(notes.concat([v]), 'note saved: the next session starts with it')) { st.newDraft = ''; const n = $('#memNew', root); if (n) { n.value = ''; n.focus(); } } return; }
       if (f.matches('[data-note-save]')) { const base = st.noteBase || { notes, version: st.v.notes.version }, i = +f.dataset.noteSave, v = st.noteDraft.trim(), all = base.notes, next = v ? all.map((n, j) => (j === i ? v : n)) : all.filter((_, j) => j !== i); if (await putNotes(next, v ? 'note saved' : 'note removed', base.version)) { st.noteEdit = -1; paint(true); } return; }
       if (f.matches('[data-file-save]')) {
         const p = f.dataset.fileSave, cur = file(p); if (!cur || st.busy) return; st.busy = true;
