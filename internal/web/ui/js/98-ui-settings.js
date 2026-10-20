@@ -63,12 +63,91 @@
   const shownModel = (S, role) => (drafts[S.id] || {})[role] || curModel(S, role);
   /** choose a model for a role, to be applied with the others; choosing what it runs on now takes the change back */
   const stageModel = (S, role, ref) => { const d = drafts[S.id] = drafts[S.id] || {}; if (!ref || ref === curModel(S, role)) delete d[role]; else d[role] = ref; };
-  /** the bar of the changes waiting to be applied, on Models and on Roles & effort ('' when there is none) */
+  /* The team, slot by slot. A team has one slot per worker ({role, model}, model '' for the role's model); the agents of a role take its
+   * slots in the order of their numbers when the team starts again, so the k-th slot of a role is the k-th agent of it on the roster. */
+  /** the teams chosen and not yet applied, by session id (one {role, model} per slot, in team order; model '' keeps what the slot runs
+   *  on now, a model is one chosen for it): Apply
+   *  sends one with the models chosen for roles, in one request */
+  const tdrafts = {};
+  /** the team S runs now: the server's, else for a team that names none the default team (one worker of each role); [] for a single agent */
+  const teamNow = S => { const t = arr(S.meta.team); if (t.length) return t.map(x => ({ role: String(x.role), model: x.model || '' })); return arr(S.roster).length > 1 || S.meta.swarm > 0 ? D.roleOrder.map(r => ({ role: r, model: '' })) : []; };
+  /** whether S is a team whose slots can be edited (a single agent has none) */
+  const isTeam = S => teamNow(S).length > 0;
+  /** the team the pages show for S: the one chosen, else the one it runs with every slot kept as it is */
+  const teamShown = S => tdrafts[S.id] || teamNow(S).map(t => ({ role: t.role, model: '' }));
+  /** the roles of team in the order they first appear */
+  const teamRoles = team => team.reduce((o, t) => { if (o.indexOf(t.role) < 0) o.push(t.role); return o; }, []);
+  /** the agents of role on the roster in the order they take the role's slots (by their number: be-2 before be-10) */
+  const agentsOf = (S, role) => arr(S.roster).filter(x => x.id !== 'mgr' && x.role === role).sort((a, b) => String(a.id).length - String(b.id).length || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  /** the model a slot without one of its own runs on: the role's (this session's, else the configuration's), else the team's */
+  const roleModelOf = (S, role) => (S.meta.roleModels || {})[role] || D.roleModels[role] || S.meta.model;
+  /** the model the k-th slot of role runs on now: its agent's when it has started, else the slot's own, else the role's */
+  const slotNow = (S, role, k) => { const a = agentsOf(S, role)[k], t = teamNow(S).filter(x => x.role === role)[k]; return (a && a.model) || (t && t.model) || roleModelOf(S, role); };
+  /** the model the k-th slot of role shows: the one chosen for it, else the one it runs on now */
+  const slotShown = (S, role, k) => { const t = teamShown(S).filter(x => x.role === role)[k]; return (t && t.model) || slotNow(S, role, k); };
+  /** keep team as the team chosen for S, or drop the choice when it is the team S runs (same roles, no slot on another model) */
+  function setTeam(S, team) {
+    tdrafts[S.id] = team;
+    if (!teamChanges(S).length) delete tdrafts[S.id];
+  }
+  /** choose ref for the k-th slot of role (k < 0: every slot of the role) */
+  function stageSlot(S, role, k, ref) {
+    let i = -1; const now = teamNow(S).filter(x => x.role === role);
+    setTeam(S, teamShown(S).map(t => { if (t.role !== role) return t; i++; if (k >= 0 && i !== k) return t; return { role, model: ref === slotNow(S, role, i) && i < now.length ? '' : ref }; }));
+  }
+  /** one worker more (d > 0) or less of role: a slot is added after the role's last, and the last is taken away; a role keeps a slot
+   *  for each of its agents that has started (they come back when the team starts again). Returns why it cannot, or '' */
+  function stepRole(S, role, d, max) {
+    const t = teamShown(S).slice(), idx = t.map((x, i) => x.role === role ? i : -1).filter(i => i >= 0);
+    if (d > 0) { if (max && t.length >= max) return 'a team has at most ' + max + ' workers here (swarm.max_workers)'; t.splice(idx.length ? idx[idx.length - 1] + 1 : t.length, 0, { role, model: '' }); }
+    else { const held = agentsOf(S, role).length; if (!idx.length) return ''; if (idx.length <= held) return role + ' has ' + held + ' agent' + (held === 1 ? '' : 's') + ' at work: each keeps its slot'; t.splice(idx[idx.length - 1], 1); }
+    setTeam(S, t); return '';
+  }
+  /** what the team chosen for S changes, in team order: {role, from, to} for a number of workers, {role, k, id, from, to} for a slot's model */
+  function teamChanges(S) {
+    const d = tdrafts[S.id]; if (!d) return [];
+    const now = teamNow(S), out = [];
+    teamRoles(now.concat(d)).forEach(r => {
+      const a = now.filter(t => t.role === r), b = d.filter(t => t.role === r), ags = agentsOf(S, r);
+      if (a.length !== b.length) out.push({ role: r, from: a.length, to: b.length });
+      b.forEach((t, k) => { if (k < a.length && t.model && t.model !== slotNow(S, r, k)) out.push({ role: r, k, id: ags[k] ? ags[k].id : '', from: slotNow(S, r, k), to: t.model }); });
+    });
+    return out;
+  }
+  /** the team Apply sends: the chosen slots, each with its model ('' where neither the choice nor the team names one) */
+  const teamSent = S => { const now = teamNow(S), seen = {}; return teamShown(S).map(t => { const k = seen[t.role] = (seen[t.role] || 0) + 1, n = now.filter(x => x.role === t.role)[k - 1]; return { role: t.role, model: t.model || (n ? n.model : '') }; }); };
+  /** what "choose for" of the catalogue offers: the manager and the roles, and on a team each slot by the agent that holds it
+   *  ("backend#1" is the second backend slot) */
+  const targetsOf = S => {
+    if (!isTeam(S)) return ALL_ROLES().map(r => [r, r]);
+    const team = teamShown(S), out = [['manager', 'manager']];
+    teamRoles(team).forEach(r => { const n = team.filter(t => t.role === r).length, ags = agentsOf(S, r); out.push([r, n > 1 ? r + ' (all ' + n + ')' : r]); if (n > 1) for (let k = 0; k < n; k++) out.push([r + '#' + k, '  ' + (ags[k] ? ags[k].id : r + ' slot ' + (k + 1))]); });
+    return out;
+  };
+  /** the model a target of the catalogue runs on now (cur) and shows (the one chosen for it); a role whose slots differ has none */
+  function targetModel(S, tg) {
+    const m = /^(.+)#(\d+)$/.exec(tg);
+    if (m) return { cur: slotNow(S, m[1], +m[2]), shown: slotShown(S, m[1], +m[2]) };
+    if (tg === 'manager' || !isTeam(S) || D.roleOrder.indexOf(tg) < 0 && !teamShown(S).some(t => t.role === tg)) return { cur: curModel(S, tg), shown: shownModel(S, tg) };
+    const n = teamShown(S).filter(t => t.role === tg).length, one = f => { const v = Array.from({ length: Math.max(1, n) }, (x, k) => f(S, tg, k)); return v.every(x => x === v[0]) ? v[0] : ''; };
+    return { cur: one(slotNow), shown: one(slotShown) };
+  }
+  /** choose ref for a target of the catalogue: a slot, every slot of a role of the team, or a role (the manager's is the team's model) */
+  function stageTarget(S, tg, ref) {
+    const m = /^(.+)#(\d+)$/.exec(tg);
+    if (m) stageSlot(S, m[1], +m[2], ref);
+    else if (tg !== 'manager' && isTeam(S) && teamShown(S).some(t => t.role === tg)) stageSlot(S, tg, -1, ref);
+    else stageModel(S, tg, ref);
+  }
+  /** a change of the team as the bar says it (markup) */
+  const changeTxt = c => c.k == null ? '<span class="rrc" style="color:' + roleCol(c.role) + '">' + esc(c.role) + '</span> ' + c.from + ' → ' + c.to + ' worker' + (c.to === 1 ? '' : 's')
+    : '<span class="rrc" style="color:' + (c.id ? agColor(c.id) : roleCol(c.role)) + '">' + esc(c.id || c.role + ' slot ' + (c.k + 1)) + '</span> → <span class="mono">' + esc(c.to) + '</span>';
+  /** the bar of the changes waiting to be applied, on Models & roles and on Team & run ('' when there is none) */
   const pendingBar = S => {
-    const p = pendingModels(S, drafts[S.id]); if (!p.length) return '';
-    const team = arr(S.roster).length > 1;
-    return '<div class="pendbar" role="status"><span class="pb-t"><b>' + p.length + ' model change' + (p.length === 1 ? '' : 's') + '</b> to apply: ' + p.map(([r, m]) => '<span class="rrc" style="color:' + roleCol(r) + '">' + esc(r) + '</span> → <span class="mono">' + esc(m) + '</span>').join(' · ') + '</span>' +
-      '<span class="pb-a"><button class="btn sm" type="button" data-do="models-discard">Discard</button> <button class="btn sm pri" type="button" data-do="models-apply">' + (team ? 'Apply: the team restarts once' : 'Apply') + '</button></span></div>';
+    const p = pendingModels(S, drafts[S.id]), tc = teamChanges(S), n = p.length + tc.length; if (!n) return '';
+    const team = arr(S.roster).length > 1 || isTeam(S), size = teamShown(S).length, min = minWorkers(), short = tc.length && size < min;
+    return '<div class="pendbar" role="status"><span class="pb-t"><b>' + n + ' change' + (n === 1 ? '' : 's') + '</b> to apply: ' + p.map(([r, m]) => '<span class="rrc" style="color:' + roleCol(r) + '">' + esc(r) + '</span> → <span class="mono">' + esc(m) + '</span>').concat(tc.map(changeTxt)).join(' · ') + (short ? '<br><span class="warm">A team has at least ' + min + ' workers: this one has ' + size + '.</span>' : '') + '</span>' +
+      '<span class="pb-a"><button class="btn sm" type="button" data-do="models-discard">Discard</button> <button class="btn sm pri" type="button" data-do="models-apply"' + (short ? ' disabled' : '') + '>' + (team ? 'Apply: the team restarts once' : 'Apply') + '</button></span></div>';
   };
   const hello = () => TK.hello() || {};
   /** the server's defaults for a new session (hello.defaults), or {} */
@@ -77,6 +156,8 @@
   const defaults = () => { const d = (SL.live && typeof SL.live.defaults === 'function' && SL.live.defaults()) || hello().defaults; return d || {}; };
   /** the most workers a team may have: the server's ceiling (config swarm.max_workers) when it says one, else 0 (none) */
   const maxWorkers = () => Math.max(0, parseInt(defaults().maxWorkers, 10) || 0);
+  /** the fewest workers a team may have (one of each built-in role) */
+  const minWorkers = () => Math.max(1, parseInt(defaults().minWorkers, 10) || 8);
 
   /* ---------------------------------------------------------------- pure parts (also read by the tests) */
   /** the models a filter keeps, favourites first: words (all must appear), tools, reasoning, favourites, max input and output price, min context */
@@ -165,22 +246,45 @@
    *  counts against no budget. A session that mixes the two is measured by its bill, as its budget is. */
   const budNote = (c, budget) => U.planOnly(c) ? (budget ? fmtUsd(0, 2) + ' billed: the plan counts against no budget' : 'no limit; the plan counts against no budget')
     : budget ? Math.round(U.budgetPct(c, budget)) + '% used' + (c.plan ? ' (billed; the plan\'s part is not counted)' : '') : 'no limit';
-  TK.settings = { trustFlow, trustPost, forgetSpec, projectState, TRUST_WHY, budLabel, budNote, modelRows, modelsCli, rulesIn, dayTxt, keyInfo, runLine, clampWorkers, teamWord, ledgerRows, warningRow, issueRow, configWarnings, promptCmds, curModel, pendingModels, PAGES, ALIAS, pageOf, PLUGIN_OF };
+  TK.settings = { trustFlow, trustPost, forgetSpec, projectState, TRUST_WHY, budLabel, budNote, modelRows, modelsCli, rulesIn, dayTxt, keyInfo, runLine, clampWorkers, teamWord, ledgerRows, warningRow, issueRow, configWarnings, promptCmds, curModel, pendingModels, PAGES, ALIAS, pageOf, PLUGIN_OF, teamNow, teamShown, agentsOf, slotNow, slotShown, stageSlot, stepRole, teamChanges, teamSent, tdrafts, drafts, targetsOf, targetModel, stageTarget };
 
   /* ---------------- the pages: pure builders of markup from the session S and the page state ST ---------------- */
   /** The parts of the pages, by the id each had as a page of its own: B.trust(S, ST) is the markup of the trust cards. */
   const B = {};
 
+    /** the options of a model select: every model of the catalogue, with cur first when the catalogue does not have it */
+    const modelOpts = cur => (cur && !D.models.some(mm => mm.ref === cur) ? '<option selected>' + esc(cur) + '</option>' : '') + D.models.map(mm => '<option' + (mm.ref === cur ? ' selected' : '') + '>' + esc(mm.ref) + '</option>').join('');
+    /**
+     * The team, role by role: how many workers each has (a stepper), the model of all its slots, and each slot with the agent that holds
+     * it and the model it runs on. A change waits in the bar with the other changes; a slot whose agent has not started says so.
+     */
+    const teamEditor = S => {
+      const team = teamShown(S), now = teamNow(S), mx = maxWorkers(), roles = teamRoles(team).concat(D.roleOrder.filter(r => !team.some(t => t.role === r)));
+      return '<div class="setteam">' + roles.map(r => {
+        const R = D.roles[r] || { code: 'sc', desc: '' }, n = team.filter(t => t.role === r).length, had = now.filter(t => t.role === r).length, ags = agentsOf(S, r), held = ags.length;
+        const shown = Array.from({ length: n }, (x, k) => slotShown(S, r, k)), mixed = shown.filter((m, i, a) => a.indexOf(m) === i).length > 1;
+        const all = '<select data-tall="' + esc(r) + '" aria-label="model for ' + (n > 1 ? 'all ' + n + ' ' + esc(r) + ' slots' : esc(r)) + '"' + (n ? '' : ' disabled') + '>' + (mixed ? '<option value="" disabled selected>' + shown.filter((m, i, a) => a.indexOf(m) === i).length + ' models: set all ' + n + '</option>' + modelOpts(null) : modelOpts(shown[0] || roleModelOf(S, r))) + '</select>';
+        const step = '<span class="nststep"><button type="button" class="btn sm" data-tcount="' + esc(r) + '" data-d="-1" aria-label="one ' + esc(r) + ' less"' + (n > held ? '' : ' disabled title="' + (held ? 'each of its ' + held + ' agents at work keeps its slot' : 'no slot') + '"') + '>−</button><span class="nstn mono" aria-label="' + esc(r) + ' workers">' + n + '</span><button type="button" class="btn sm" data-tcount="' + esc(r) + '" data-d="1" aria-label="one more ' + esc(r) + '"' + (mx && team.length >= mx ? ' disabled' : '') + '>+</button></span>';
+        const slots = n > 1 || held ? '<div class="nstslots" role="group" aria-label="' + esc(r) + ' slots, one model each">' + Array.from({ length: n }, (x, k) => {
+          const a = ags[k], was = k < had ? slotNow(S, r, k) : '', pend = was && shown[k] !== was;
+          return '<label class="nstslot' + (pend ? ' pend' : '') + '"><span class="mono' + (a ? '' : ' dim') + '"' + (a ? ' style="color:' + agColor(a.id) + '"' : '') + ' title="' + (a ? 'the agent that holds this slot' : k < had ? 'no agent has started in this slot yet' : 'a slot added here, filled when the manager gives the role work') + '">' + (a ? esc(a.id) : k < had ? 'open' : 'new') + '</span><select data-tslot="' + esc(r) + '" data-ti="' + k + '" aria-label="model for ' + esc(a ? a.id : r + ' slot ' + (k + 1)) + '">' + modelOpts(shown[k]) + '</select>' + (pend ? tag('now ' + was, 'warm', 'runs on ' + was + ' until the changes are applied') : '') + '</label>';
+        }).join('') + '</div>' : '';
+        return '<div class="nstrow' + (n ? '' : ' zero') + '" data-trole="' + esc(r) + '"><span class="nstname" style="color:' + roleCol(r) + '">' + esc(r) + '</span>' + (ui.help ? ui.help(esc(R.desc || '') + '.' + (R.ro ? ' <b>Read-only.</b>' : ''), r) : '') + step + all + '</div>' + slots;
+      }).join('') + '</div>';
+    };
     B.models = (S, ST) => {
-      const st = ST.models, favs = G.favs || new Set(), all = st.view ? st.view.models : D.models, cur = curModel(S, st.role), shown = shownModel(S, st.role), rows = modelRows(all, st, favs);
-      const users = ref => ALL_ROLES().filter(r => curModel(S, r) === ref), errs = arr(st.view ? st.view.errors : D.modelErrors), cl = modelsCli(st);
+      const st = ST.models, favs = G.favs || new Set(), all = st.view ? st.view.models : D.models, tgs = targetsOf(S); if (!tgs.some(t => t[0] === st.role)) st.role = 'manager';
+      const tm = targetModel(S, st.role), cur = tm.cur, shown = tm.shown, rows = modelRows(all, st, favs), tgName = (tgs.find(t => t[0] === st.role) || [0, st.role])[1].trim();
+      /* who runs on a model now: on a team each agent at work (and the manager), else each role */
+      const users = ref => isTeam(S) ? arr(S.roster).filter(x => x.model === ref).map(x => [x.id, agColor(x.id)]).concat(ALL_ROLES().filter(r => r !== 'manager' && !teamNow(S).some(t => t.role === r) && curModel(S, r) === ref).map(r => [r, roleCol(r)])) : ALL_ROLES().filter(r => curModel(S, r) === ref).map(r => [r, roleCol(r)]);
+      const errs = arr(st.view ? st.view.errors : D.modelErrors), cl = modelsCli(st);
       const opt = (list, v) => list.map(o => '<option value="' + o[0] + '"' + (v === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('');
       return card('settings.models.catalogue', 'The model catalogue', '', pendingBar(S) + '<div class="setfilter"><input id="mq" type="search" placeholder="filter: every word must appear, any case" aria-label="Filter models" value="' + esc(st.q) + '" autocomplete="off"><div class="seg" role="group" aria-label="Filters"><button type="button" data-flt="tools" aria-pressed="' + st.tools + '">tools</button><button type="button" data-flt="reasoning" aria-pressed="' + st.reasoning + '">reasoning</button><button type="button" data-flt="favs" aria-pressed="' + st.favs + '">★ favourites</button><button type="button" data-flt="all" aria-pressed="' + st.all + '" title="include models that do not chat (--all)">all</button></div>' +
         '<button class="btn sm" type="button" data-do="refresh-models"' + (st.busy ? ' disabled' : '') + ' title="asks every provider again; the list is kept 6 h">' + (st.busy ? 'Fetching…' : 'Refresh the catalogue') + '</button>' +
         '<span style="display:inline-flex;align-items:center;gap:8px;white-space:nowrap"><label class="lab" for="mxp">max input $/M</label><select id="mxp" data-sel="maxp">' + opt([['', 'any'], ['0.5', '0.5'], ['1', '1'], ['3', '3'], ['5', '5']], st.maxp) + '</select></span><span style="display:inline-flex;align-items:center;gap:8px;white-space:nowrap"><label class="lab" for="mxo">max output $/M</label><select id="mxo" data-sel="maxo" title="--max-price: the price of the output">' + opt([['', 'any'], ['2', '2'], ['5', '5'], ['10', '10'], ['25', '25']], st.maxo) + '</select></span><span style="display:inline-flex;align-items:center;gap:8px;white-space:nowrap"><label class="lab" for="mnc">min context</label><select id="mnc" data-sel="minc">' + opt([['', 'any'], ['64000', '64k'], ['128000', '128k'], ['400000', '400k']], st.minc) + '</select></span>' +
-        '<span style="display:inline-flex;align-items:center;gap:8px;white-space:nowrap"><label class="lab" for="mrl">choose for</label><select id="mrl" data-sel="role">' + ALL_ROLES().map(r => '<option' + (st.role === r ? ' selected' : '') + '>' + esc(r) + '</option>').join('') + '</select></span></div>' +
+        '<span style="display:inline-flex;align-items:center;gap:8px;white-space:nowrap"><label class="lab" for="mrl">choose for</label><select id="mrl" data-sel="role">' + tgs.map(t => '<option value="' + esc(t[0]) + '"' + (st.role === t[0] ? ' selected' : '') + '>' + esc(t[1]).replace(/^ +/, '&nbsp;&nbsp;') + '</option>').join('') + '</select></span></div>' +
         (D.modelsNote ? '<p class="stubnote warm" style="margin:0 0 8px">' + esc(D.modelsNote) + '</p>' : '') + (errs.length ? '<p class="stubnote warm" style="margin:0 0 8px">' + errs.length + ' source' + (errs.length === 1 ? '' : 's') + ' of the catalogue could not be read: ' + esc(errs.join(' · ')) + '</p>' : '') +
-        '<div class="settable"><table class="tbl"><thead><tr><th></th><th>model</th><th class="r">context</th><th class="r">in $/M</th><th class="r">out $/M</th><th>tags</th><th>runs</th><th></th></tr></thead><tbody>' + rows.map(mm => '<tr class="' + (mm.ref === shown ? 'sel' : '') + (mm.ref === shown && shown !== cur ? ' pend' : '') + '"><td><button type="button" class="star' + (favs.has(mm.ref) ? ' on' : '') + '" data-fav="' + esc(mm.ref) + '" aria-pressed="' + favs.has(mm.ref) + '" aria-label="' + (favs.has(mm.ref) ? 'unstar ' : 'star ') + esc(mm.ref) + '">' + (favs.has(mm.ref) ? '★' : '☆') + '</button></td><td class="bright">' + esc(mm.ref) + '</td><td class="r">' + fmtK(mm.ctx) + '</td><td class="r">' + (mm.in == null ? '<span class="dim">price unknown</span>' : mm.in.toFixed(2)) + '</td><td class="r">' + (mm.out == null ? '' : mm.out.toFixed(2)) + '</td><td>' + (mm.plan ? tag('plan', 'ok', 'a ChatGPT plan covers its use: the prices are the API list prices of the same model, which the plan does not bill') : '') + (mm.tools ? tag('tools', 'fe') : '') + (mm.reasoning ? tag('reasoning', 'fe') : '') + '</td><td>' + users(mm.ref).map(r => '<span class="rrc" style="color:' + roleCol(r) + '">' + esc(r) + '</span>').join(' ') + '</td><td class="r"><button type="button" class="btn sm' + (mm.ref === shown ? '' : ' pri') + '" data-use="' + esc(mm.ref) + '"' + (mm.ref === shown ? ' disabled' : '') + '>' + (mm.ref === shown ? (shown === cur ? 'current' : 'chosen') : (mm.ref === cur ? 'Keep for ' : 'Use for ') + esc(st.role)) + '</button></td></tr>').join('') + (rows.length ? '' : '<tr><td colspan="8" class="dim">' + (arr(all).length ? 'No model matches these filters: clear the filter words or a chip.' : 'The catalogue is empty: the models of every provider you are signed in to appear here. Refresh the catalogue asks them again.') + '</td></tr>') + '</tbody></table></div>' +
+        '<div class="settable"><table class="tbl"><thead><tr><th></th><th>model</th><th class="r">context</th><th class="r">in $/M</th><th class="r">out $/M</th><th>tags</th><th>runs</th><th></th></tr></thead><tbody>' + rows.map(mm => '<tr class="' + (mm.ref === shown ? 'sel' : '') + (mm.ref === shown && shown !== cur ? ' pend' : '') + '"><td><button type="button" class="star' + (favs.has(mm.ref) ? ' on' : '') + '" data-fav="' + esc(mm.ref) + '" aria-pressed="' + favs.has(mm.ref) + '" aria-label="' + (favs.has(mm.ref) ? 'unstar ' : 'star ') + esc(mm.ref) + '">' + (favs.has(mm.ref) ? '★' : '☆') + '</button></td><td class="bright">' + esc(mm.ref) + '</td><td class="r">' + fmtK(mm.ctx) + '</td><td class="r">' + (mm.in == null ? '<span class="dim">price unknown</span>' : mm.in.toFixed(2)) + '</td><td class="r">' + (mm.out == null ? '' : mm.out.toFixed(2)) + '</td><td>' + (mm.plan ? tag('plan', 'ok', 'a ChatGPT plan covers its use: the prices are the API list prices of the same model, which the plan does not bill') : '') + (mm.tools ? tag('tools', 'fe') : '') + (mm.reasoning ? tag('reasoning', 'fe') : '') + '</td><td>' + users(mm.ref).map(([r, c]) => '<span class="rrc" style="color:' + c + '">' + esc(r) + '</span>').join(' ') + '</td><td class="r"><button type="button" class="btn sm' + (mm.ref === shown ? '' : ' pri') + '" data-use="' + esc(mm.ref) + '"' + (mm.ref === shown ? ' disabled' : '') + '>' + (mm.ref === shown ? (shown === cur ? 'current' : 'chosen') : (mm.ref === cur ? 'Keep for ' : 'Use for ') + esc(tgName)) + '</button></td></tr>').join('') + (rows.length ? '' : '<tr><td colspan="8" class="dim">' + (arr(all).length ? 'No model matches these filters: clear the filter words or a chip.' : 'The catalogue is empty: the models of every provider you are signed in to appear here. Refresh the catalogue asks them again.') + '</td></tr>') + '</tbody></table></div>' +
         '<p class="stubnote">' + rows.length + ' of ' + arr(all).length + ' models, prices in dollars per million tokens. A model you choose waits with the other changes until you apply them; the team then starts again once. <b>plan</b>: covered by your ChatGPT plan, shown at the API list price. ' + cli('models', cl.label, ' data-cli-models') + '</p>');
     };
     B.roles = (S, ST) => {
@@ -188,7 +292,9 @@
         return '<tr' + (pend ? ' class="pend"' : '') + '><td style="color:' + roleCol(r) + ';font-weight:700;width:120px">' + esc(r) + '</td><td class="dim" style="width:150px">' + (ws.length ? ws.map(w => '<span style="color:' + agColor(w.id) + '">' + esc(w.id) + '</span>').join(' ') : '<span class="faint">none on the team</span>') + '</td><td><select data-role="' + esc(r) + '" aria-label="model for ' + esc(r) + '">' + (D.models.some(mm => mm.ref === cur) ? '' : '<option selected>' + esc(cur) + '</option>') + D.models.map(mm => '<option' + (mm.ref === cur ? ' selected' : '') + '>' + esc(mm.ref) + '</option>').join('') + '</select>' + (pend ? ' ' + tag('now ' + now, 'warm', 'runs on ' + now + ' until the changes are applied') : '') + (unk ? ' ' + tag('price unknown', 'warm') : '') + '</td></tr>'; }).join('');
       const mailman = '<tr><td style="color:var(--warm);font-weight:700">mailman</td><td class="dim">a helper, not a worker</td><td><span class="dim">' + (S.meta.mailman ? 'runs on the worker model and turns worker mail into short digests' : 'off in this session: worker mail is delivered at once') + '</span> ' + pluginNote('mailman') + '</td></tr>';
       const applied = ef.applied && ef.applied !== S.meta.effort ? ' · this model: <b>' + esc(ef.applied) + '</b>' : '';
-      return card('settings.roles.roles', 'Which model each role runs on', cli('models', 'models'), pendingBar(S) + '<table class="tbl"><tbody>' + rowsH + mailman + '</tbody></table><p class="stubnote" style="margin:10px 0 0">A role without a model of its own runs on the worker model. Changes wait until you apply them; the team then starts again once and keeps the conversation and the board. <span class="dim mono">--role-model ROLE=MODEL</span></p>') +
+      const mgrRow = () => { const now = curModel(S, 'manager'), cur = shownModel(S, 'manager'), pend = cur !== now; return '<div class="nstrow setmgr' + (pend ? ' pend' : '') + '"><span class="nstname" style="color:' + roleCol('manager') + '">manager</span><span class="mono dim" style="color:' + agColor('mgr') + '">mgr</span><span></span><span><select data-role="manager" aria-label="model for manager">' + modelOpts(cur) + '</select>' + (pend ? ' ' + tag('now ' + now, 'warm', 'runs on ' + now + ' until the changes are applied') : '') + '</span></div>'; };
+      const teamCard = () => card('settings.roles.roles', 'Who runs on which model', '<span class="dim">' + teamWord(teamShown(S).length) + '</span> ' + cli('models', 'models'), pendingBar(S) + mgrRow() + teamEditor(S) + '<table class="tbl" style="margin-top:8px"><tbody>' + mailman + '</tbody></table><p class="stubnote" style="margin:10px 0 0">Each agent is listed under its role with the model it runs on: choose a model for one agent, or for all the slots of a role, and change how many workers a role has. Changes wait until you apply them; the team then starts again once and keeps the conversation, the board and every agent’s work. <span class="dim mono">--role-model ROLE=MODEL</span>, given once per slot</p>');
+      return (isTeam(S) ? teamCard() : card('settings.roles.roles', 'Which model each role runs on', cli('models', 'models'), pendingBar(S) + '<table class="tbl"><tbody>' + rowsH + mailman + '</tbody></table><p class="stubnote" style="margin:10px 0 0">A role without a model of its own runs on the worker model. Changes wait until you apply them; the team then starts again once and keeps the conversation and the board. <span class="dim mono">--role-model ROLE=MODEL</span></p>')) +
         card('settings.roles.effort', 'Reasoning effort', '', row('Effort', seg('effort', efforts(), S.meta.effort, 'Reasoning effort'), 'how long the models think before they answer; each model takes the closest level it supports', '', '/effort') + '<p class="stubnote" style="margin:0">Current: <b id="effNow">' + esc(S.meta.effort) + '</b>' + applied + '. Effort applies to the turns from now on; it never changes the cached prefix.</p>');
     };
     B.budget = (S, ST) => {
@@ -229,12 +335,16 @@
       const line = runLine(M, defs);
       const sw = (k, on) => '<label class="tgl" title="applies when the team starts again"><input type="checkbox" role="switch" id="rf-' + k + '" data-flag="' + k + '"' + (on ? ' checked' : '') + '><span class="trk"></span></label>';
       const flags = RUN_FLAGS.map(([k, l, fl, d]) => { const on = k === 'managerApproves' ? M[k] !== false : M[k]; return row(l, sw(k, on), esc(d) + (PLUGIN_OF[k] ? '<br>' + pluginNote(k) : ''), 'rf-' + k, fl); }).join('');
+      const running = row('Running now', '<span class="num">' + (nW ? 'manager + ' + nW + ' worker' + (nW === 1 ? '' : 's') : 'a single agent') + '</span><span class="dim">' + (nW ? calc.active(m) + ' active of ' + nW + ' workers' : '') + '</span>', 'the team of this session as it runs');
+      const applyRow = '<div class="row2" style="margin:12px 0 0"><button class="btn pri" type="button" data-do="apply">Apply: start the team again</button><span class="dim">the run is closed (its checkpoints stay) and the conversation carries over</span></div>';
+      const teamCard = () => card('settings.run.team', 'The team', '<span class="dim">' + teamWord(teamShown(S).length) + '</span> <span class="dim mono">/swarm · /restart</span>', pendingBar(S) + row('Workers', '<span class="num">' + esc(teamWord(teamShown(S).length)) + '</span>', 'role by role below, with the model of each slot; at least ' + minWorkers() + (mx ? ', at most ' + mx : '') + '. An agent at work keeps its slot', '', '--swarm N') + teamEditor(S) + running + '<div class="row2" style="margin:12px 0 0"><button class="btn" type="button" data-do="apply">Start the team again</button><span class="dim">with the switches below; a change of the team is applied from the bar above</span></div>');
+      if (isTeam(S)) return teamCard() + howCards();
       return card('settings.run.team', 'The team', '<span class="dim mono">/swarm · /restart</span>', row('Workers', '<div class="stepper"><button class="btn sm" type="button" data-step="-1" aria-label="fewer workers">−</button><input id="rn" type="number" min="0"' + (mx ? ' max="' + mx + '"' : '') + ' value="' + n + '" aria-label="worker count"><button class="btn sm" type="button" data-step="1" aria-label="more workers">+</button></div><span class="dim" id="rnt">' + teamWord(n) + '</span>', 'how many workers the manager leads: 0 is a single agent; a team has at least 8, one for each role' + (mx ? ', and at most ' + mx : ''), 'rn', '--swarm N') +
-        row('Running now', '<span class="num">' + (nW ? 'manager + ' + nW + ' worker' + (nW === 1 ? '' : 's') : 'a single agent') + '</span><span class="dim">' + (nW ? calc.active(m) + ' active of ' + nW + ' workers' : '') + '</span>', 'the team of this session as it runs') + '<div class="row2" style="margin:12px 0 0"><button class="btn pri" type="button" data-do="apply">Apply: start the team again</button><span class="dim">the run is closed (its checkpoints stay) and the conversation carries over</span></div>') +
-        card('settings.run.how', 'How the workers run', '<span class="dim">each change applies when the team starts again</span>', row('Separate checkouts', seg('isolation', [['none', 'one shared checkout'], ['worktree', 'a checkout per worker']], M.isolation, 'Separate checkouts'), 'with a checkout per worker, finished work is checked and merged, then applied to yours at the end', '', '--isolation') +
+        running + applyRow) + howCards();
+      function howCards() { return card('settings.run.how', 'How the workers run', '<span class="dim">each change applies when the team starts again</span>', row('Separate checkouts', seg('isolation', [['none', 'one shared checkout'], ['worktree', 'a checkout per worker']], M.isolation, 'Separate checkouts'), 'with a checkout per worker, finished work is checked and merged, then applied to yours at the end', '', '--isolation') +
         row('Check before merging', '<input id="rv" type="text" value="' + esc(M.verify || '') + '" placeholder="go test {dirs}" aria-label="Check command" style="min-width:220px"> <button class="btn" type="button" data-do="verify">Set</button>', 'a command run on every finished task before it is merged; {dirs} is the folders the change touched', 'rv', '--verify') +
         flags + row('Push progress', pluginNote('pushProgress'), 'with a checkout per worker, the integration branch is pushed after every merge; a plugin only, switched on the Plugins page')) +
-        card('settings.run.cli', 'The same command line', '', '<p class="stubnote" style="margin:0 0 8px">What starting the team again would run, as the terminal command.</p><pre class="pre cli">' + esc(line) + '</pre><div class="row2" style="margin:0"><button class="btn" type="button" data-do="copycli">Copy the command</button>' + cli('chat', 'chat') + '</div>');
+        card('settings.run.cli', 'The same command line', '', '<p class="stubnote" style="margin:0 0 8px">What starting the team again would run, as the terminal command.</p><pre class="pre cli">' + esc(line) + '</pre><div class="row2" style="margin:0"><button class="btn" type="button" data-do="copycli">Copy the command</button>' + cli('chat', 'chat') + '</div>'); }
     };
     B.mcp = (S, ST) => {
       const det = n => (X.mcp && arr(X.mcp.servers).find(s => s.name === n)) || {};
@@ -366,7 +476,8 @@
         else if (k === 'isolation') { ST.run.dirty[S.id] = true; acted(A.setIsolation(v)); } else if (k === 'motion') { A.setMotion(v); ui.applyMotion(); } else if (k === 'density') A.setDensity(v); else if (k === 'cache') A.setCache(v); else if (k === 'title') A.setTitleBadge(v); else if (k === 'notify') { ui.approvals.setNotify(v === 'on').then(() => paint(true)); } else if (k === 'navmode') { ui.nav.setWide(v === 'wide'); } else if (k === 'radiomode') { v === 'open' ? ui.rail.expand() : ui.rail.collapse(); } paint(true); return; }
       const fl = t.closest('[data-flt]'); if (fl) { const k = fl.dataset.flt; ST.models[k] = !ST.models[k]; if (k === 'all') loadModels({ all: ST.models.all, refresh: false }); paint(true); return; }
       const fv = t.closest('[data-fav]'); if (fv) { acted(A.favModel(fv.dataset.fav), d => { if (d && d.note) toast(String(d.note), 'warm'); }); paint(true); return; }
-      const us = t.closest('[data-use]'); if (us) { stageModel(S, ST.models.role, us.dataset.use); paint(true); return; }
+      const us = t.closest('[data-use]'); if (us) { stageTarget(S, ST.models.role, us.dataset.use); paint(true); return; }
+      const tc = t.closest('[data-tcount]'); if (tc) { const why = stepRole(S, tc.dataset.tcount, +tc.dataset.d, maxWorkers()); if (why) toast(why, 'warm'); paint(true); return; }
       const md = t.closest('[data-mode]'); if (md) { acted(A.setMode(md.dataset.mode), () => toast('mode: ' + md.dataset.mode)); return; }
       const dg = t.closest('[data-danger]'); if (dg) { ST.perm.danger = dg.dataset.danger; paint(true); const i = $('#cfIn', page); if (i) i.focus(); return; }
       const rm = t.closest('[data-rm]'); if (rm) { acted(A.removeRule(rm.dataset.rm), () => toast('rule removed: ' + rm.dataset.rm)); return; }
@@ -382,6 +493,7 @@
     sc.listen(page, 'change', e => {
       const t = e.target, S = SL.sessions.active, A = SL.act;
       if (t.dataset.sel) { ST.models[t.dataset.sel] = t.value; paint(true); } else if (t.dataset.role) { stageModel(S, t.dataset.role, t.value); paint(true); }
+      else if (t.dataset.tall) { if (t.value) stageSlot(S, t.dataset.tall, -1, t.value); paint(true); } else if (t.dataset.tslot) { stageSlot(S, t.dataset.tslot, +t.dataset.ti, t.value); paint(true); }
       else if (t.dataset.flag) { ST.run.dirty[S.id] = true; acted(A.setFlag(t.dataset.flag, t.checked)); } else if (t.id === 'tryTool') ST.perm.tool = t.value;
       else if (t.id === 'notifySec') { A.setNotify(SL.settings.notify, t.value); t.value = SL.settings.notifyAfter; paint(true); }
       else if (t.id === 'layoutFile' && t.files && t.files[0]) importLayout(t.files[0]);
@@ -411,12 +523,12 @@
 
     /** apply the changes chosen for S in one request: what the server did (a team that restarts once, or a switch in place) is what the toast says */
     function applyModels(S) {
-      const p = pendingModels(S, drafts[S.id]); if (!p.length) { delete drafts[S.id]; toast('no model change to apply', 'warm'); paint(true); return; }
-      const roles = {}; p.forEach(([r, m]) => { roles[r] = m; }); const n = p.length, team = arr(S.roster).length > 1;
-      acted(SL.act.setModels(roles), d => {
-        const d0 = drafts[S.id] || {}; p.forEach(([r, m]) => { if (d0[r] === m) delete d0[r]; });
-        const restarted = d ? !!d.restarted : team;
-        toast(restarted ? 'the team starts again once with ' + n + ' model change' + (n === 1 ? '' : 's') + ', and goes on with its work' : n === 1 ? p[0][0] + ' runs on ' + p[0][1] : n + ' models changed', 'ok'); paint(true);
+      const p = pendingModels(S, drafts[S.id]), tc = teamChanges(S); if (!p.length && !tc.length) { delete drafts[S.id]; delete tdrafts[S.id]; toast('no change to apply', 'warm'); paint(true); return; }
+      const roles = {}; p.forEach(([r, m]) => { roles[r] = m; }); const n = p.length + tc.length, team = arr(S.roster).length > 1, sent = tc.length ? teamSent(S) : null, td = tdrafts[S.id];
+      acted(SL.act.setModels(roles, undefined, sent), d => {
+        const d0 = drafts[S.id] || {}; p.forEach(([r, m]) => { if (d0[r] === m) delete d0[r]; }); if (tdrafts[S.id] === td) delete tdrafts[S.id];
+        const restarted = d ? !!d.restarted : team || !!sent;
+        toast(restarted ? 'the team starts again once with ' + n + ' change' + (n === 1 ? '' : 's') + ', and goes on with its work' : n === 1 ? p[0][0] + ' runs on ' + p[0][1] : n + ' models changed', 'ok'); paint(true);
       });
     }
     /** fetch the catalogue again: all = include models that do not chat, refresh = ask every provider (network); the answer is this page's list */
@@ -439,7 +551,7 @@
       else if (k === 'try') await checkPerm(S);
       else if (k === 'verify') { const v = $('#rv', page).value.trim(); ST.run.dirty[S.id] = true; acted(A.setVerify(v), () => toast('verify: ' + (v || '(none)'), 'ok')); paint(true); }
       else if (k === 'models-apply') applyModels(S);
-      else if (k === 'models-discard') { delete drafts[S.id]; paint(true); }
+      else if (k === 'models-discard') { delete drafts[S.id]; delete tdrafts[S.id]; paint(true); }
       else if (k === 'apply') { const nn = ST.run.n == null ? S.meta.swarm : ST.run.n; if (nn === S.meta.swarm && !ST.run.dirty[S.id]) { toast('already ' + teamWord(nn), 'warm'); return; } ui.confirm({ title: 'Start the team again', text: 'Restart <b>' + esc(S.name) + '</b> as ' + (nn ? 'a manager and <b>' + nn + '</b> worker' + (nn === 1 ? '' : 's') : 'a single agent') + '? The current run is closed (its checkpoints stay) and the conversation carries over.', ok: 'Restart', danger: true, run: () => { const r = A.restartTeam({ swarm: nn, force: true }); acted(r, () => { ST.run.n = null; delete ST.run.dirty[S.id]; toast('the team starts again: ' + teamWord(nn), 'ok'); }); } }); }
       else if (k === 'copycli') U.copy($('.pre.cli', page).textContent).then(ok => toast(ok ? 'command copied' : 'copy is not available here', ok ? 'ok' : 'warm'));
       else if (k === 'railreset') { ui.rail.setWidth(344); }

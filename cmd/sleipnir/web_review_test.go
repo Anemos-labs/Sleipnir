@@ -672,3 +672,44 @@ func TestOtherRestartsDoNotCarryTheGoal(t *testing.T) {
 		t.Errorf("restartCarries = %v", restartCarries)
 	}
 }
+
+// A team sent slot by slot restarts the team once with exactly those slots; a team with a role the session does not have is refused
+// by the model route and by the restart route before anything closes.
+func TestATeamChangeRestartsWithItsSlots(t *testing.T) {
+	project := webWorld(t)
+	_, base := newWebModel(t, sayScript("ok"))
+	r := newWebRig(t, teamDefaults(project), base)
+	tab := r.ready("")
+	wt := r.h.tab(tab.ID)
+	if wt.session().Swarm == nil {
+		t.Fatal("the tab is not a team")
+	}
+	team := []wire.TeamSlot{{Role: "architect"}, {Role: "scout"}, {Role: "backend", Model: "mock/mock-1"}, {Role: "backend"},
+		{Role: "frontend"}, {Role: "devops"}, {Role: "tester"}, {Role: "docs"}, {Role: "reviewer"}}
+	bad := append([]wire.TeamSlot{{Role: "nosuchrole"}}, team...)
+	if code, _ := r.do("POST", "/api/sessions/"+tab.ID+"/model", wire.ModelRequest{Team: bad}); code != 422 {
+		t.Errorf("a team with an unknown role on the model route = %d, want 422", code)
+	}
+	if code, _ := r.do("POST", "/api/sessions/"+tab.ID+"/restart", wire.RestartRequest{Kind: "roles", Team: bad}); code != 422 {
+		t.Errorf("a team with an unknown role on the restart route = %d, want 422", code)
+	}
+	var res struct{ Restarted bool }
+	r.json("POST", "/api/sessions/"+tab.ID+"/model", wire.ModelRequest{Team: team}, 200, &res)
+	if !res.Restarted {
+		t.Error("a team change did not restart the team")
+	}
+	r.waitForSID(tab.ID, 2)
+	wt.mu.Lock()
+	got, gen := append([]string(nil), wt.args...), wt.gen
+	wt.mu.Unlock()
+	if gen != 2 {
+		t.Errorf("the requests made %d generations, want 2 (the refused ones none)", gen)
+	}
+	f, err := parseChatFlags(got)
+	if err != nil {
+		t.Fatalf("the restart's arguments do not parse: %v\n%q", err, got)
+	}
+	if len(f.team) != len(team) || f.team[2].Model != "mock/mock-1" || f.team[3].Role != "backend" {
+		t.Errorf("the restart's team = %v, want %v", f.team, team)
+	}
+}
