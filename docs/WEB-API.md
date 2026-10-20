@@ -58,7 +58,7 @@ message holds no path outside the project, no secret and no body content; match 
 | 403 | `bad_host`, `forbidden_site`, `forbidden_origin`, `csrf`, `forbidden`, `confirm_invalid`, `not_a_project`, `denied`, `tty_only`, `dangerous_mode`, `unreadable` |
 | 404 | `not_found`, `no_session`, `no_question`, `no_file`, `no_checkpoint`, `no_rule`, `no_dir`, `unknown_command` |
 | 405, 413, 415 | `method_not_allowed`, `body_too_large`, `unsupported_media_type` |
-| 409 | `answered`, `plugin_off`, `too_soon`, `busy`, `idle`, `last`, `limit`, `locked`, `hosted`, `not_resumable`, `budget_configured`, `trust_required`, `changed`, `conflict`, `nothing`, `fixed`, `not_isolated`, `needs_approval`, `external`, `running`, `env`, `dirty`, `moved`, `no_goal`, `not_paused`, `not_active`, `none`, `git_init`, `mkdir` |
+| 409 | `answered`, `no_session`, `plugin_off`, `too_soon`, `busy`, `idle`, `last`, `limit`, `locked`, `hosted`, `not_resumable`, `budget_configured`, `trust_required`, `changed`, `conflict`, `nothing`, `fixed`, `not_isolated`, `needs_approval`, `external`, `running`, `env`, `dirty`, `moved`, `no_goal`, `not_paused`, `not_active`, `none`, `git_init`, `mkdir` |
 | 422 | `model`, `rejected`, `conflict` |
 | 428 | `confirm_required` |
 | 429, 500, 502, 503, 504 | `rate_limited`; `internal`; `network`; `busy`, `too_many_streams`, `shutting_down`; `slow` |
