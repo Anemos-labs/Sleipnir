@@ -149,7 +149,7 @@ says when the log has more. With no session hosted, the page opens the New sessi
 
 The left rail switches views: the Cockpit (the team as a horse whose eight legs are the eight roles of the team, the stalls, the
 gantt, the task board, the merge queue, mail and the governor), the Workspace (Files, Changes, Checkpoints), Cache, Mail,
-Board, Replay, Sessions, Tools and Settings. The Radio rail on the right is the conversation with the manager, which is the
+Board, Replay, Sessions, Schedule, Tools and Settings. The Radio rail on the right is the conversation with the manager, which is the
 only agent the person talks to, and a read-only feed of what the team does. Agent drawers, opened from a stall or a gantt row,
 are read-only.
 
