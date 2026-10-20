@@ -51,9 +51,9 @@ func (s *Swarm) escalateStalls() {
 	}
 	st.mu.Unlock()
 	for i, f := range due {
-		if !s.notify(mgr, "request", s.stallPacket(f, held[i])) {
+		if !s.notifyWhole(mgr, "request", s.stallPacket(f, held[i])) {
 			st.mu.Lock()
-			delete(st.escalated, f.key()) // not delivered (the manager stopped): due again at the next sweep
+			delete(st.escalated, f.key()) // not delivered (the manager stopped, or its inbox is full): due again at the next sweep
 			st.mu.Unlock()
 			continue
 		}

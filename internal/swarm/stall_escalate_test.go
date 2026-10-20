@@ -133,3 +133,45 @@ func TestAManagersOwnStallDiagnosisNamesItsState(t *testing.T) {
 		t.Fatalf("no manager state in:\n%s", p)
 	}
 }
+
+// A diagnosis is of no use as an excerpt: while the manager's inbox would coalesce it, it is not sent and stays due.
+func TestADiagnosisWaitsForRoomInTheManagersInbox(t *testing.T) {
+	clock := newFakeClock()
+	cfg := stallCfg()
+	cfg.InboxSoftCap = 1
+	r := newRVRigWith(t, cfg, gatedWorkers(nil), func(d *Deps) { d.Now = clock.Now })
+	if _, err := r.sw.StartManager(); err != nil {
+		t.Fatal(err)
+	}
+	_, a := spawnWorker(t, r, "api", 1)
+	_, c := spawnWorker(t, r, "client", 1)
+	b := r.sw.Board
+	if err := b.BlockOn(a.Owner, a.ID, c.ID, "needs the client"); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.BlockOn(c.Owner, c.ID, a.ID, "needs the api"); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.sweepStalls()
+	m := r.sw.get("mgr")
+	rvWait(t, "the manager's inbox to fill", func() bool {
+		r.sw.notify("mgr", "info", "filler")
+		return !m.hasRoom(r.sw)
+	})
+	clock.Advance(stallEscalateAfter + time.Minute)
+	r.sw.sweepStalls()
+	if d := diagnoses(r); len(d) != 0 {
+		t.Fatalf("a diagnosis was sent into a full inbox: %q", d)
+	}
+	for _, e := range stallEvents(r) {
+		if e.Action == "escalate" {
+			t.Fatal("counted as escalated while the inbox was full")
+		}
+	}
+	r.sw.stalls.mu.Lock()
+	n := len(r.sw.stalls.escalated)
+	r.sw.stalls.mu.Unlock()
+	if n != 0 {
+		t.Fatalf("%d findings marked escalated", n)
+	}
+}

@@ -840,7 +840,7 @@ The manager is the team's diagnosis owner. Every finding in the table that still
 and a "Stall diagnosis" message that carries what the harness knows about it: the task's status, owner, attempts,
 failed verifications and `blocked_on`, its last progress line quoted as the agent's words, the agent's state, who was
 told, and the decisions that end that kind of stall (in a team of persistent pools, without a handover). A finding that
-clears and is raised later starts a new clock. Until a diagnosis reaches a running manager nothing counts as escalated:
+clears and is raised later starts a new clock. Until a diagnosis reaches a running manager whole (not coalesced into a full inbox) nothing counts as escalated:
 a finding that is due waits, and the first sweep after the manager starts (or after a failed delivery) sends it.
 
 Workers receive mail queued during a failed run when they restart, before their
