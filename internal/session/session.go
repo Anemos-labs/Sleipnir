@@ -296,6 +296,7 @@ type Session struct {
 	trust       *trustInfo     // how the project's own files came to be used, or why not (nil when it has none)
 	mcp         *mcpState
 	archive     *kv.Archive    // folded turns, for recall
+	past        pastArchives   // earlier sessions' turns, for recall session=…
 	handles     *tools.Handles // recall handles of truncated output
 	unlock      func()         // releases the lock on the session directory
 	ckptLog     *checkpointLog // writes the "checkpoint" events (web_access.go)
@@ -875,7 +876,12 @@ func (s *Session) build(ctx context.Context) error {
 			reg.Register(t)
 			return nil
 		},
-		plugin.Recall: func(*plugin.Scope) error { reg.Register(recall.New(archive)); return nil },
+		plugin.Recall: func(*plugin.Scope) error {
+			rt := recall.New(archive)
+			rt.Past = s.pastArchive
+			reg.Register(rt)
+			return nil
+		},
 		// Registered whenever its plugin is on, whatever the project holds: the tool list must not depend on the project.
 		plugin.SkillTool: func(*plugin.Scope) error { reg.Register(skilltool.New(s.Skills)); return nil },
 		plugin.MemoryTool: func(*plugin.Scope) error {

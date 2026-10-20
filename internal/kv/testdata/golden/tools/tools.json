@@ -378,9 +378,13 @@
   },
   {
     "name": "recall",
-    "description": "Retrieve context that was folded out of your prompt. Use turns=\"t12-t19\" to reopen a range listed in <history>; handle=\"out_…\" to page through truncated tool output; query=\"words\" to search your archived turns. Output is capped; narrow the range or page with offset/limit.",
+    "description": "Retrieve context that was folded out of your prompt. Use turns=\"t12-t19\" to reopen a range listed in <history>; handle=\"out_…\" to page through truncated tool output; query=\"words\" to search your archived turns. Output is capped; narrow the range or page with offset/limit. To ask what another agent found or decided, add agent=\"bk-2\" (a teammate in this session) or session=\"last\" (an earlier session of this project; agent defaults to the one the person talked to) to turns or query.",
     "input_schema": {
       "properties": {
+        "agent": {
+          "description": "another agent's id, to read its turns instead of yours (e.g. bk-2)",
+          "type": "string"
+        },
         "handle": {
           "description": "handle of truncated output, e.g. out_ab12cd34",
           "type": "string"
@@ -395,6 +399,10 @@
         },
         "query": {
           "description": "search words in your archived turns",
+          "type": "string"
+        },
+        "session": {
+          "description": "an earlier session of this project: last, or its id",
           "type": "string"
         },
         "turns": {

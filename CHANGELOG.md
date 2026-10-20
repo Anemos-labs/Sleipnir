@@ -7,6 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Ask a past agent. `recall` takes `agent` (a teammate in this session) and
+  `session` (`last` or an id: an earlier session of the same project, read
+  from its log without writing to it), so an agent can search or page what
+  another agent found or decided. Prompt bytes: the `recall` tool's
+  description and schema change, so the tool prefix is written once.
 - Rigor per task. `task create` takes `rigor`: `plan` creates a read-only
   plan task for the architect (or scout) that the work waits for and
   inherits; `reviewed` adds a reviewer's check of that plan, whose
