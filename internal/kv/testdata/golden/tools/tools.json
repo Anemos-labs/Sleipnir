@@ -350,7 +350,7 @@
   },
   {
     "name": "read",
-    "description": "Read a file (absolute path, or relative to the working directory). Output is line-numbered; by default up to 2000 lines starting at `offset` (1-based), so page large files with offset/limit. Very long lines are cut. Images (png, jpg, gif, webp) are returned as images. Binary files and directories give an error (use ls for directories). Read a file before you edit or overwrite it.",
+    "description": "Read a file (absolute path, or relative to the working directory). Output is line-numbered; by default up to 2000 lines starting at `offset` (1-based), so page large files with offset/limit. For Markdown, `section` (a heading's text or anchor, or path#heading) reads just that heading and what is under it. Very long lines are cut. Images (png, jpg, gif, webp) are returned as images. Binary files and directories give an error (use ls for directories). Read a file before you edit or overwrite it.",
     "input_schema": {
       "properties": {
         "limit": {
@@ -363,6 +363,10 @@
         },
         "path": {
           "description": "File to read",
+          "type": "string"
+        },
+        "section": {
+          "description": "Markdown heading to read: only that section is returned",
           "type": "string"
         }
       },
