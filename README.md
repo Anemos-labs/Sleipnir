@@ -9,9 +9,9 @@
 [![CodeQL](https://github.com/Anemos-labs/Sleipnir/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/Anemos-labs/Sleipnir/actions/workflows/codeql.yml)
 [![Release](https://img.shields.io/github/v/release/Anemos-labs/Sleipnir?sort=semver)](https://github.com/Anemos-labs/Sleipnir/releases)
 
-Sleipnir is a terminal and browser coding agent for local and hosted models. You
-can work with a single agent, or let a manager divide a task among specialist
-workers, review what they produce, and verify it before calling it done.
+Sleipnir is a terminal and browser coding agent for local and hosted models. It
+runs as a single agent, or as a team where a manager divides a task among
+specialist workers, reviews what they produce, and verifies it before calling it done.
 
 **Contents:** [Install](#install) · [First run](#first-run) · [How the team works](#how-the-team-works) ·
 [Goals](#goals) · [Browser interface](#browser-interface) · [Automation](#automation) ·
@@ -31,14 +31,16 @@ Requires Go 1.25 or newer. Without Go, download an archive from
 <details>
 <summary><code>sleipnir: command not found</code></summary>
 
-`go install` puts the binary in `$(go env GOPATH)/bin` (usually `~/go/bin`).
-Add it to your PATH and save the line in your shell's startup file:
+`go install` puts the binary in `go env GOBIN` when that is set, otherwise in
+`$(go env GOPATH)/bin` (usually `~/go/bin`). Add that directory to PATH and save
+the line in the shell's startup file:
 
 ```sh
 export PATH="$(go env GOPATH)/bin:$PATH"
 ```
 
-On Windows, add `%USERPROFILE%\go\bin` to your user `Path` and open a new terminal.
+With a custom `GOBIN`, add that directory instead. On Windows, add Go's binary
+directory (normally `%USERPROFILE%\go\bin`) to the user `Path` and open a new terminal.
 More in [Getting started](docs/GETTING-STARTED.md#install).
 </details>
 
@@ -46,8 +48,8 @@ More in [Getting started](docs/GETTING-STARTED.md#install).
 
 Sleipnir asks for a provider and model the first time. The recommended provider is
 **Heimdallm**, an OpenAI-compatible marketplace of open models (Qwen, GLM, DeepSeek,
-MiniMax, MiMo and more) that Sleipnir keeps one conversation pinned to one engine on, so
-long sessions stay cached:
+MiniMax, MiMo and more). Sleipnir pins each conversation to one Heimdallm engine,
+so long sessions stay cached:
 
 ```sh
 sleipnir login heimdallm      # paste your key; or set HEIMDALLM_API_KEY
@@ -56,7 +58,7 @@ sleipnir models               # browse the catalogue, no key needed
 
 Other ways in:
 
-| You have | Run |
+| With | Run |
 |---|---|
 | A ChatGPT subscription | `sleipnir login chatgpt` (browser sign-in, billed to your plan) |
 | Another API key (OpenAI, Anthropic, OpenRouter, Gemini, DeepSeek, Groq, …) | `sleipnir login` |
@@ -121,7 +123,7 @@ See the [CLI reference](docs/CLI.md).
 ## Safety
 
 Permissions control edits and commands, checkpoints make changes reversible, and a
-project's hooks, configuration and tool servers need your trust before they run.
+project's hooks, configuration and tool servers must be trusted before they run.
 [Security](docs/SECURITY.md)
 
 Cache reuse depends on the provider, model and workload; the stats panel reports

@@ -34,12 +34,11 @@ Go 1.25 or newer is required:
 
 ```sh
 go install github.com/anemos-labs/sleipnir/cmd/sleipnir@latest
-sleipnir --help
 ```
 
 Go puts the binary in `go env GOBIN` when that is set, otherwise in the `bin`
 directory under `go env GOPATH` (normally `~/go/bin`, or `%USERPROFILE%\go\bin`
-on Windows). That directory must be on your PATH.
+on Windows). That directory must be on PATH; run `sleipnir --help` to verify.
 
 ### Command not found
 
