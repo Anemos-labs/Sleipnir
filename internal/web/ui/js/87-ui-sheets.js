@@ -463,7 +463,7 @@
   function start(spec, opt) {
     const r = SL.act.newSession(spec, opt);
     if (!r || r.ok === false) return Promise.resolve({ ok: false, why: r && r.why });
-    return r.done.then(res => { if (res.ok) ui.toast('started ' + ((res.data && res.data.tab && res.data.tab.name) || r.name) + ': it runs in the background too', 'ok'); return res; });
+    return r.done.then(res => { if (res.ok) ui.toast('starting ' + ((res.data && res.data.tab && res.data.tab.name) || r.name) + ': it runs in the background too', 'ok'); return res; });
   }
 
   /* ---------- the trust step: the server's challenge, whole ---------- */

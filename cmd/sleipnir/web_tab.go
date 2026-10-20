@@ -568,7 +568,7 @@ func settingsFor(err error) string {
 	switch {
 	case errors.Is(err, session.ErrNoModel):
 		return "models"
-	case strings.Contains(msg, "has no key") || strings.Contains(msg, "is not signed in") || strings.Contains(msg, "unknown provider"):
+	case strings.Contains(msg, "has no key") || strings.Contains(msg, " to be set (`sleipnir login") || strings.Contains(msg, "is not signed in") || strings.Contains(msg, "unknown provider"):
 		return "providers"
 	}
 	return ""

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -73,4 +74,16 @@ func TestWebFailedStartTakesAModel(t *testing.T) {
 	}
 	r.json("POST", "/api/sessions/dead/messages", wire.MessageRequest{Text: "hello"}, 200, nil)
 	r.waitEv("dead", "final", nil)
+}
+
+// An error that a key would fix links to the providers' settings, whichever way the session words the missing key.
+func TestSettingsForAMissingKey(t *testing.T) {
+	for _, msg := range []string{
+		"provider \"heimdallm\" needs HEIMDALLM_API_KEY to be set (`sleipnir login heimdallm` keeps a key; in the chat, /login heimdallm)",
+		"provider \"groq\" has no key: /login groq, or set GROQ_API_KEY",
+	} {
+		if got := settingsFor(errors.New(msg)); got != "providers" {
+			t.Errorf("settingsFor(%q) = %q, want providers", msg, got)
+		}
+	}
 }
