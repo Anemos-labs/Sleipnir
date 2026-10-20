@@ -7,6 +7,17 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A capability map: the constitution asks an agent to check the instruction
+  files' Capabilities section, and to search by what a thing does, before it
+  adds a subsystem, and to extend what exists rather than build a second one.
+  Under auto-docs the docs worker keeps a `## Capabilities` section in
+  AGENTS.md (one line per existing system: what it does, where it lives, its
+  doc as `path#heading`), workers check it and mail new capabilities, and the
+  reviewer reports a module that duplicates an existing one. `sleipnir init`
+  writes the section into a new AGENTS.md. Prompt bytes: the constitution grows
+  by about 40 tokens (the bound is raised from 5150 to 5200), and the
+  manager, worker, docs and reviewer pins change, so the first request of each
+  role after upgrading writes its prefix once.
 - The `read` tool takes `section`: a Markdown heading's text or anchor slug
   (`path#heading` works too, unless a file of that literal name exists). Only
   that heading and the lines under it, up to the next heading of the same or a
