@@ -23,6 +23,12 @@ func TestWebNewSessionWithoutAnyModelIsRefused(t *testing.T) {
 	if n := len(r.h.Tabs()); n != 0 {
 		t.Errorf("the refusal left %d tabs", n)
 	}
+	// the configuration the sessions are handed is the one that decides: a default there is a model
+	r.h.base.Config = config.Defaults()
+	r.h.base.Config.Models.Default = "mock/mock-1"
+	if code, body := r.do("POST", "/api/sessions", map[string]any{"cwd": project, "swarm": 0}); code == 422 {
+		t.Errorf("a session whose configuration names a default model = %d %s", code, body)
+	}
 }
 
 // A tab whose start failed (here: a provider with no key) refuses a message with the reason instead of queueing it for good, and a
