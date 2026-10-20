@@ -51,7 +51,7 @@ func EscapingStores(root string) []string {
 				if !ok {
 					continue // a dangling link reaches no code, and an irregular file that is no link none at all
 				}
-				if inside, err := filepath.Rel(real, target); err != nil || inside == ".." || strings.HasPrefix(inside, ".."+string(filepath.Separator)) || filepath.IsAbs(inside) {
+				if outside(real, target) {
 					out = append(out, r+" -> "+target)
 				}
 			case e.IsDir() && !stores[name] && name != ".git" && depth < maxStoreDepth:
@@ -84,6 +84,23 @@ func linkTarget(dir, p string) (string, bool) {
 		t = r
 	}
 	return filepath.Clean(t), true
+}
+
+// outside reports whether target is not root or a path under it (both resolved).
+func outside(root, target string) bool {
+	inside, err := filepath.Rel(root, target)
+	return err != nil || inside == ".." || strings.HasPrefix(inside, ".."+string(filepath.Separator)) || filepath.IsAbs(inside)
+}
+
+// storeLinkEscapes reports whether the link p, inside root, resolves outside root, also through a chain of links
+// (.venv -> deps/env with deps linking out). A dangling link escapes nothing.
+func storeLinkEscapes(root, p string) bool {
+	real, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return false
+	}
+	target, ok := linkTarget(filepath.Dir(p), p)
+	return ok && outside(real, target)
 }
 
 // isStoreName reports whether name is one of gitx.DependencyStores.

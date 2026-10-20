@@ -96,3 +96,26 @@ func TestCopyExtrasLeavesOutStoresLinkedOutside(t *testing.T) {
 		t.Fatalf("escaping stores: %v", esc)
 	}
 }
+
+// A store that leaves the tree through another link (.venv -> deps/env, deps -> outside) is left out as well.
+func TestCloneTreeLeavesOutStoresLinkedOutThroughAChain(t *testing.T) {
+	src, outside, dst := t.TempDir(), t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(filepath.Join(outside, "env"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(src, "deps")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := os.Symlink(filepath.Join("deps", "env"), filepath.Join(src, ".venv")); err != nil {
+		t.Fatal(err)
+	}
+	if err := cloneTree(tctx(t), src, dst, cloneOpts{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(dst, ".venv")); !os.IsNotExist(err) {
+		t.Fatalf(".venv linked out through deps was cloned: %v", err)
+	}
+	if esc := EscapingStores(dst); len(esc) != 0 {
+		t.Fatalf("escaping stores: %v", esc)
+	}
+}
