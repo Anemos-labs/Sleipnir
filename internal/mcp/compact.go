@@ -21,11 +21,12 @@ import (
 // in sorted order and definitions are numbered in the order they are met.
 // ok is false when nothing was shared.
 func compactSchema(root map[string]any) (out map[string]any, ok bool) {
-	if !refsAreLocalDefs(root, false) {
+	refs := map[string]bool{}
+	if !refsAreLocalDefs(root, false, refs) {
 		return nil, false
 	}
 	root = dropExamples(root, false).(map[string]any)
-	c := &compactor{counts: map[string]int{}, ids: map[string]string{}}
+	c := &compactor{counts: map[string]int{}, ids: map[string]string{}, refs: refs}
 	c.count(root, false)
 	c.done = true
 	defs, _ := root["$defs"].(map[string]any)
@@ -57,7 +58,8 @@ type compactor struct {
 	ids    map[string]string // canonical text -> its $defs name
 	defs   map[string]any
 	next   int
-	done   bool // counting is over: count only computes the text
+	done   bool            // counting is over: count only computes the text
+	refs   map[string]bool // $defs names the schema refers to, defined or not: never reused
 }
 
 // count records how often each subschema occurs (until done) and returns v's
@@ -147,31 +149,36 @@ func (c *compactor) newID() string {
 	for {
 		c.next++
 		id := fmt.Sprintf("shared_%d", c.next)
-		if _, taken := c.defs[id]; !taken {
+		if _, taken := c.defs[id]; !taken && !c.refs[id] {
 			return id
 		}
 	}
 }
 
 // refsAreLocalDefs reports whether every $ref in v points into $defs or
-// definitions (a "$ref" inside literal data is data); names as in count.
-func refsAreLocalDefs(v any, names bool) bool {
+// definitions (a "$ref" inside literal data is data), and records in refs the
+// $defs names they point to; names as in count.
+func refsAreLocalDefs(v any, names bool, refs map[string]bool) bool {
 	switch x := v.(type) {
 	case map[string]any:
 		for k, e := range x {
 			if !names && literals[k] {
 				continue
 			}
-			if s, ok := e.(string); ok && k == "$ref" && !strings.HasPrefix(s, "#/$defs/") && !strings.HasPrefix(s, "#/definitions/") {
-				return false
+			if s, ok := e.(string); ok && k == "$ref" {
+				if name, ok := strings.CutPrefix(s, "#/$defs/"); ok {
+					refs[strings.SplitN(name, "/", 2)[0]] = true
+				} else if !strings.HasPrefix(s, "#/definitions/") {
+					return false
+				}
 			}
-			if !refsAreLocalDefs(e, !names && nameMaps[k]) {
+			if !refsAreLocalDefs(e, !names && nameMaps[k], refs) {
 				return false
 			}
 		}
 	case []any:
 		for _, e := range x {
-			if !refsAreLocalDefs(e, false) {
+			if !refsAreLocalDefs(e, false, refs) {
 				return false
 			}
 		}

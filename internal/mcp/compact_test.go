@@ -85,6 +85,13 @@ func TestCompactSchemaLeavesWhatItCannotSafelyRewrite(t *testing.T) {
 	if _, ok := compactSchema(decodeMap(t, pointer)); ok {
 		t.Error("a pointer outside $defs must stop compaction")
 	}
+	// A dangling reference never comes to point at a new definition.
+	dangling := `{"type":"object","properties":{"a":` + capture + `,"b":` + capture + `,"c":{"$ref":"#/$defs/shared_1"}}}`
+	if out, ok := compactSchema(decodeMap(t, dangling)); !ok {
+		t.Error("nothing shared")
+	} else if _, taken := out["$defs"].(map[string]any)["shared_1"]; taken {
+		t.Error("a new definition took the name a dangling $ref points to")
+	}
 	// A "$ref" inside literal data is data, and a property named const is a schema.
 	if _, ok := compactSchema(decodeMap(t, `{"type":"object","properties":{"a":`+capture+`,"b":`+capture+`,"c":{"default":{"$ref":"#/properties/a"}}}}`)); !ok {
 		t.Error("a $ref-shaped default must not stop compaction")
