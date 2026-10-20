@@ -187,7 +187,17 @@ func TestALeaderGivesAwayAChildItClaimed(t *testing.T) {
 	if c, _ := r.sw.Board.Snapshot().Task("T2"); c.Status != StatusTodo || c.Owner != r.second {
 		t.Fatalf("T2 is %s, owned by %q: want todo, reserved for %s", c.Status, c.Owner, r.second)
 	}
-	rvWait(t, r.third+" idle", func() bool { return r.idle(r.third) })
+	// Idle after a turn, with no mail to start another: a member is idle before its first turn starts too (on a loaded runner
+	// that turn began after this check, and T3 was reserved instead of assigned).
+	rvWait(t, r.third+" idle after its first turn", func() bool {
+		m := r.sw.get(r.third)
+		if m == nil {
+			return false
+		}
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		return m.life == lifeIdle && m.runSeq > 0 && m.a.PendingInbox() == 0 && m.box.empty()
+	})
 	// Held in the turn the spawn starts: a member whose turn ends at once submits its child before the test looks (on a loaded
 	// runner T3 was already in review).
 	h.hold(r.third)
