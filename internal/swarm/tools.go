@@ -909,7 +909,7 @@ func (s *Swarm) stalledWaitReason(agentID string) string {
 	u := s.unfinishedWork()
 	if u.empty() {
 		if last := s.reviewPending(); last != "" {
-			return "Cannot wait: nothing is running, and " + reviewLine(last) + "."
+			return "Cannot wait: nothing is running, and " + s.reviewLine(last) + "."
 		}
 		if snap := s.Board.Snapshot(); len(snap.Tasks) > 0 && !s.docsWillStart(snap) && s.MailmanStats().Pending == 0 && !s.inboxPending(agentID) {
 			return "Cannot wait: no worker is running and every task is settled, so nothing on the board will change. " +

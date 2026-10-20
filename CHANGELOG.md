@@ -7,6 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Review by two models. When a team's reviewer slots run on two or more
+  different models, the review gate holds the goal until reviewers on two
+  different models have each covered the last merge; the gate's line says
+  so. A team whose reviewers share one model keeps the single review.
+  Prompt bytes: the manager's pin gains a few words.
 - `--team NAME` (chat, run, swarm, and web for new sessions) starts the
   team saved in `.sleipnir/teams/NAME.json` or `~/.sleipnir/teams/NAME.json`:
   its `slots` are the workers in order, each on its own model or its role's,

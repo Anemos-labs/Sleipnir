@@ -198,7 +198,10 @@ keeps, that own no open task, and whose role has no ready or queued task are nam
 for them: be-2, be-3 (backend); ts-1 (tester): ...`) asking the manager to plan independent work with disjoint file scopes
 for them, or to leave them idle when nothing independent remains. In a team with a reviewer slot a merged change
 is due a review: every accepted implementation task of a writer (not an agreement, not the docs worker's) counts as a
-merge, and a task owned by a reviewer accepted after the last merge covers it. Until then the manager's hot view says so,
+merge, and a task owned by a reviewer accepted after the last merge covers it. When the team's reviewer slots run on two or
+more different models, a merge is covered only once reviewers on two different models have each had a review accepted that
+covers it (independent vantages: one model's blind spots are another's findings); a second review by the same model does not
+count twice, and the gate's line asks for a review from the slot on the model that has not covered it yet. Until then the manager's hot view says so,
 its `wait` is refused once nothing else runs, and the manager's final answer is held. The agent bounds stop vetoes per run; configured
 persistent teams continue the same manager context until the board and review gate settle. The manager's pin asks for a scout when the code or an outside source is unknown, devops and the tester to start from
 the accepted agreement in parallel with the implementation, and the reviewer pass before the goal is reported met.
