@@ -132,6 +132,10 @@
     return { n, dflt, slots, short: !st.single && n < (st.minWorkers || 8) };
   };
   dialogs.teamOf = teamOf;
+  /** The models of the roles that are no worker slot (manager, mailman, judge, compactor, …) in role models rm: a team sent slot by slot
+   *  still names them, or a saved team's judge and mailman would run on the manager's model. */
+  const serviceModels = (st, rm) => Object.keys(rm || {}).reduce((o, r) => { if (rm[r] && !Object.prototype.hasOwnProperty.call(st.counts || {}, r)) o[r] = rm[r]; return o; }, {});
+  dialogs.serviceModels = serviceModels;
   /** One argument for a POSIX shell: as it is when it holds only characters a shell leaves alone, else in single quotes (a single quote
    *  inside becomes '\''). */
   const shellQuote = a => { a = String(a == null ? '' : a); return /^[A-Za-z0-9_@%+=:,./-]+$/.test(a) ? a : "'" + a.replace(/'/g, "'\\''") + "'"; };
@@ -153,7 +157,7 @@
     const q = shellQuote, off = (!st.budget || st.budget === 'off') && Number(st.swarm) > 0, f = [(off && st.unlimitedEnv ? st.unlimitedEnv + ' ' : '') + 'sleipnir chat'];   // a team of the terminal has a cap of its own unless the environment lifts it
     if (st.resume) f.push('--resume ' + q(st.resume)); if (st.cwd && st.cwd !== '.') f.push('--cwd ' + q(st.cwd)); f.push('--model ' + q(st.model)); f.push('--mode ' + q(st.mode)); const tm = st.counts ? teamOf(st) : { n: st.swarm, slots: [] }; f.push('--swarm ' + q(tm.n)); f.push('--isolation ' + q(st.isolation));
     if (st.verify) f.push('--verify ' + q(st.verify)); if (st.commit) f.push('--commit'); if (st.mailman) f.push('--mailman'); else if (st.mailmanDefault) f.push('--mailman=false'); if (tm.n > 0 && st.autoDocs === false) f.push('--auto-docs=false'); if (tm.n > 0 && st.managerApproves === false) f.push('--manager-approves=false');
-    if (st.budget && st.budget !== 'off') f.push('--budget-usd ' + q(st.budget)); const ca = dialogs.compactAtSent(st); if (ca) f.push('--compact-at ' + q(ca)); if (tm.slots.length) tm.slots.forEach(t => f.push('--role-model ' + q(t.model ? t.role + '=' + t.model : t.role))); else Object.keys(st.roleModels || {}).forEach(r => f.push('--role-model ' + q(r + '=' + st.roleModels[r]))); (st.rules || []).forEach(r => f.push('--allow ' + q(r)));
+    if (st.budget && st.budget !== 'off') f.push('--budget-usd ' + q(st.budget)); const ca = dialogs.compactAtSent(st); if (ca) f.push('--compact-at ' + q(ca)); if (tm.slots.length) { const sv = serviceModels(st, st.roleModels); Object.keys(sv).forEach(r => f.push('--role-model ' + q(r + '=' + sv[r]))); tm.slots.forEach(t => f.push('--role-model ' + q(t.model ? t.role + '=' + t.model : t.role))); } else Object.keys(st.roleModels || {}).forEach(r => f.push('--role-model ' + q(r + '=' + st.roleModels[r]))); (st.rules || []).forEach(r => f.push('--allow ' + q(r)));
     if (st.trustProject) f.push('--trust-project'); if (st.noMcp) f.push('--no-mcp'); if (st.noMemory) f.push('--no-memory');
     const first = st.makeDir || st.makeGit ? '# first, as the page does: ' + [st.makeDir ? 'make the folder' : '', st.makeGit ? 'run git init in it, with an empty first commit' : ''].filter(Boolean).join(', then ') + '\n' : '';
     const goal = dialogs.goalSent(st);
@@ -373,7 +377,7 @@
             if (d.level === 'bad') { starting = false; ui.toast(d.lead, 'err'); return; }
             if (!state && !FOLDER_START.test(typed)) { starting = false; ui.toast('The server could not check that folder: write its full path.', 'err'); return; }
             const roleModels = Object.assign({}, st.roleModels); if (tm.dflt) Object.keys(st.slotModels || {}).forEach(r => { if (st.slotModels[r]) roleModels[r] = st.slotModels[r]; });
-            const spec = { name: st.name.trim() || undefined, cwd: state ? state.path : typed, model: st.model, mode: st.mode, swarm: tm.n, isolation: st.isolation, verify: st.verify, commit: st.commit, mailman: st.mailman, rules: rulesNow(), trustProject: st.trustProject, noMcp: st.noMcp, noMemory: st.noMemory, goalText: dialogs.goalSent(st) || undefined, effort: st.effort, roleModels: tm.slots.length ? {} : roleModels };
+            const spec = { name: st.name.trim() || undefined, cwd: state ? state.path : typed, model: st.model, mode: st.mode, swarm: tm.n, isolation: st.isolation, verify: st.verify, commit: st.commit, mailman: st.mailman, rules: rulesNow(), trustProject: st.trustProject, noMcp: st.noMcp, noMemory: st.noMemory, goalText: dialogs.goalSent(st) || undefined, effort: st.effort, roleModels: tm.slots.length ? serviceModels(st, roleModels) : roleModels };
             if (tm.slots.length) spec.team = tm.slots;
             if (tm.n > 0 && st.autoDocs === false) spec.autoDocs = false;
             if (tm.n > 0 && st.managerApproves === false) spec.managerApproves = false;   // on is the server's default: only an off is sent

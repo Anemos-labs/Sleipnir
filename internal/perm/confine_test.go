@@ -272,7 +272,7 @@ func TestConfinedAgentReadsIgnoredFilesOfTheCheckout(t *testing.T) {
 					t.Errorf("%v: refused a read of an ignored file: %s", q, d.Reason)
 				}
 			}
-			if d := as(write(filepath.Join(data, "DTR", "track.bin"))); d.Allow || !strings.Contains(d.Reason, "ignored by git") ||
+			if d := as(write(filepath.Join(data, "DTR", "track.bin"))); d.Allow || !strings.Contains(d.Reason, "not tracked by git") ||
 				!strings.Contains(d.Reason, "inside your tree") {
 				t.Errorf("a write to an ignored file of the checkout: %v %q", d.Allow, d.Reason)
 			}
