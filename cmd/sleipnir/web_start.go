@@ -387,6 +387,9 @@ func restartTyped(req wire.RestartRequest) (typed []string, fresh bool, err erro
 			if r == "" || req.RoleModels[r] == "" {
 				return nil, false, werr(http.StatusBadRequest, "bad_flags", "a role and its model are both needed")
 			}
+			if len(req.Team) > 0 && !serviceRole(r) {
+				continue // the team carries the worker roles' models: an entry of its own would be read as one more slot
+			}
 			typed = append(typed, "--role-model", r+"="+req.RoleModels[r])
 		}
 		if len(req.Team) > 0 { // the whole team, slot by slot: its size, and each slot's model when it has one of its own

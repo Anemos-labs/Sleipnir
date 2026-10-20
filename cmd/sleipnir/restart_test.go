@@ -558,7 +558,7 @@ func TestATeamRequestReplacesTheTeamSlotBySlot(t *testing.T) {
 		{Role: "architect"}, {Role: "scout"}, {Role: "backend", Model: "together/c"}, {Role: "frontend"}, {Role: "frontend", Model: "together/d"},
 		{Role: "devops"}, {Role: "tester"}, {Role: "tester"}, {Role: "docs"}, {Role: "reviewer"}, {Role: "reviewer", Model: "together/a"},
 	}
-	typed, fresh, err := restartTyped(wire.RestartRequest{Kind: "roles", Team: want})
+	typed, fresh, err := restartTyped(wire.RestartRequest{Kind: "roles", Team: want, RoleModels: map[string]string{"backend": "together/x", "compactor": "together/c"}})
 	if err != nil || fresh {
 		t.Fatalf("restartTyped: %v (fresh %v)", err, fresh)
 	}
@@ -617,7 +617,7 @@ func TestTeamSlotsChecksTheTeamAndKeepsTheRolesModels(t *testing.T) {
 	if !reflect.DeepEqual(roles, map[string]string{"compactor": "together/c"}) {
 		t.Errorf("roles = %v, want only the service role left", roles)
 	}
-	for _, bad := range [][]wire.TeamSlot{slots[:7], append([]wire.TeamSlot{{Role: "manager"}}, slots...), append([]wire.TeamSlot{{Role: "a=b"}}, slots...)} {
+	for _, bad := range [][]wire.TeamSlot{slots[:7], append([]wire.TeamSlot{{Role: "manager"}}, slots...), append([]wire.TeamSlot{{Role: "a=b"}}, slots...), append([]wire.TeamSlot{{Role: "nosuchrole"}}, slots...)} {
 		if _, err := teamSlots(s, bad, map[string]string{}); err == nil {
 			t.Errorf("teamSlots(%v) took a team it should refuse", bad)
 		}

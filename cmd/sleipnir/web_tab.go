@@ -1512,11 +1512,17 @@ func (t *webTab) setModels(ctx context.Context, roles map[string]string, slots [
 	return true, t.Restart(ctx, wire.RestartRequest{Kind: "roles", Model: team, RoleModels: rm})
 }
 
+// hasRole reports whether roles has one named name.
+func hasRole(roles swarm.Roles, name string) bool {
+	_, ok := roles[name]
+	return ok
+}
+
 // maxTeamSlots bounds the slots of a team one model request may name (swarm.max_workers, checked when the team starts, may be lower).
 const maxTeamSlots = 256
 
 // teamSlots checks the team a model request names and returns it as the restart takes it: every slot a worker role of the session,
-// between session.MinTeamWorkers and maxTeamSlots slots, and every model one the session can use. A slot without a model takes
+// between session.MinTeamWorkers and maxTeamSlots slots, every role one the session has, and every model one the session can use. A slot without a model takes
 // the one roles gives its role in the same request, else the one the session gave the role when it started (--role-model role=model),
 // since the restart replaces those with the team. The worker roles are then taken out of roles; service roles (the compactor, the
 // mailman ...) stay in it.
@@ -1533,6 +1539,8 @@ func teamSlots(s *session.Session, slots []wire.TeamSlot, roles map[string]strin
 			return nil, werr(http.StatusUnprocessableEntity, "team", "a role is a name: "+clip(role, 64))
 		case serviceRole(role):
 			return nil, werr(http.StatusUnprocessableEntity, "team", role+" is not a worker of the team")
+		case len(s.Roles) > 0 && !hasRole(s.Roles, role):
+			return nil, werr(http.StatusUnprocessableEntity, "team", "no worker role named "+clip(role, 64)+" in this session")
 		case len(ref) > 300:
 			return nil, werr(http.StatusUnprocessableEntity, "model", "a model is provider/model")
 		}
