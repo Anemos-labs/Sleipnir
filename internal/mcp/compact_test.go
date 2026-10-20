@@ -119,3 +119,33 @@ func TestNormalizeCompactsOnlyWhenAllowedAndOverTheLimit(t *testing.T) {
 		t.Errorf("err=%v compacted=%v %d bytes", err, n.compacted, len(n.schema))
 	}
 }
+
+func TestCompactSchemaLeavesLiteralsAlone(t *testing.T) {
+	capture := wideSchema(8)
+	var big map[string]any
+	_ = json.Unmarshal([]byte(capture), &big) // a large object used as data
+	lit, _ := json.Marshal(big)
+	in := `{"type":"object","properties":{"a":{"type":"object","description":"A","default":` + string(lit) + `,"examples":[1]},` +
+		`"b":{"type":"object","default":` + string(lit) + `},"c":{"const":{"examples":[1],"x":` + string(lit) + `}},"d":` + capture + `,"e":` + capture + `}}`
+	out, ok := compactSchema(decodeMap(t, in))
+	if !ok {
+		t.Fatal("nothing shared")
+	}
+	props := out["properties"].(map[string]any)
+	for _, p := range []string{"a", "b"} {
+		got, _ := json.Marshal(props[p].(map[string]any)["default"])
+		if string(got) != string(lit) {
+			t.Errorf("%s default changed: %s", p, got)
+		}
+	}
+	c := props["c"].(map[string]any)["const"].(map[string]any)
+	if _, kept := c["examples"]; !kept {
+		t.Error("data inside const was edited")
+	}
+	if got, _ := json.Marshal(c["x"]); string(got) != string(lit) {
+		t.Errorf("const changed: %s", got)
+	}
+	if _, ok := props["d"].(map[string]any)["$ref"]; !ok {
+		t.Error("the repeated subschema was not shared")
+	}
+}

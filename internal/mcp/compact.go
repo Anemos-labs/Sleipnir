@@ -48,6 +48,10 @@ const minSharedBytes = 200
 // nameMaps are the keywords whose value maps names (not keywords) to schemas.
 var nameMaps = map[string]bool{"properties": true, "patternProperties": true, "$defs": true, "definitions": true, "dependentSchemas": true}
 
+// literals are the keywords whose value is JSON data, not a schema: it is never
+// shared and never edited.
+var literals = map[string]bool{"const": true, "enum": true, "default": true}
+
 type compactor struct {
 	counts map[string]int    // canonical text of a subschema -> occurrences
 	ids    map[string]string // canonical text -> its $defs name
@@ -71,6 +75,11 @@ func (c *compactor) count(v any, names bool) string {
 			kb, _ := json.Marshal(k)
 			b.Write(kb)
 			b.WriteByte(':')
+			if !names && literals[k] {
+				lb, _ := json.Marshal(x[k]) // sorted keys: deterministic
+				b.Write(lb)
+				continue
+			}
 			b.WriteString(c.count(x[k], !names && nameMaps[k]))
 		}
 		b.WriteByte('}')
@@ -114,6 +123,10 @@ func (c *compactor) rewrite(v any, top, names bool) any {
 		}
 		out := make(map[string]any, len(x))
 		for _, k := range sortedKeys(x) {
+			if !names && literals[k] {
+				out[k] = x[k]
+				continue
+			}
 			// A definition is the target of references: it stays put, though what
 			// is inside it may be shared.
 			out[k] = c.rewrite(x[k], names && top, !names && nameMaps[k])
@@ -171,6 +184,10 @@ func dropExamples(v any, names bool) any {
 		out := make(map[string]any, len(x))
 		for k, e := range x {
 			if k == "examples" && !names {
+				continue
+			}
+			if !names && literals[k] {
+				out[k] = e
 				continue
 			}
 			out[k] = dropExamples(e, !names && nameMaps[k])

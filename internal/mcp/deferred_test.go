@@ -178,6 +178,9 @@ func TestDeferredSearchAndCall(t *testing.T) {
 	if strings.Count(res.Text, "input schema:") != 2 || !strings.Contains(res.Text, "mcp__srv__nope: no such on-demand tool") {
 		t.Errorf("select = %s", res.Text)
 	}
+	if res = runTool(t, search, env, `{"query":"echo","limit":1e300}`); res.IsError || !strings.HasPrefix(res.Text, "mcp__srv__echo\n") {
+		t.Errorf("huge limit = %+v", res)
+	}
 	if res = runTool(t, search, env, `{"query":"zzzz qqqq"}`); !res.IsError || !strings.Contains(res.Text, "No on-demand tool matches") {
 		t.Errorf("no match = %+v", res)
 	}

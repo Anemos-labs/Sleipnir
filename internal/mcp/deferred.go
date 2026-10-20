@@ -130,7 +130,7 @@ func (t *searchTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error
 		if err := json.Unmarshal(bytes.Trim(in.Limit, `"`), &n); err != nil || n < 1 {
 			return tools.Errorf("limit must be a positive integer"), nil
 		}
-		limit = min(int(n), searchMax)
+		limit = int(min(n, searchMax)) // clamped first: a huge float does not fit an int
 	}
 	query := strings.TrimSpace(in.Query)
 	if query == "" {
