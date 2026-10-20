@@ -1,6 +1,9 @@
-// Package memtool is the model's long-term memory: a short list of notes in ~/.sleipnir/MEMORY.md that memory.Load puts in the
-// shared layer of every later session. The model adds a note when it learns something worth keeping (how the user likes
-// things done, a fact about their setup, a lesson that cost time) and removes one that is stale.
+// Package memtool is the model's long-term memory: short lists of notes that memory.Load puts in the shared layer of every
+// later session, in two scopes. User notes (~/.sleipnir/MEMORY.md) are shown in every project: how the user likes things
+// done, a fact about their machine or accounts. Project notes (.sleipnir/MEMORY.local.md under the project root, git-ignored
+// by a .sleipnir/.gitignore the tool writes beside it) are shown only in that project, and only when it is trusted: a fact
+// about this code base, a lesson that cost time here. The model adds a note when it learns something worth keeping and
+// removes one that is stale.
 //
 // What keeps it safe and small:
 //   - a note is one line of at most MaxNoteRunes, with control characters removed; the file holds at most MaxNotes notes and
@@ -37,11 +40,17 @@ const (
 	header = "Notes the agent saved with its memory tool. They may be wrong or out of date; the user's own instructions win."
 )
 
-// Tool is the memory tool over one file.
-type Tool struct{ path string }
+// Tool is the memory tool over the user's notes file and, when a project is known, the project's.
+type Tool struct{ path, project string }
 
-// New returns the tool for the notes file at path (the directory is created on the first note).
+// New returns the tool for the user's notes file at path (the directory is created on the first note), without project notes.
 func New(path string) *Tool { return &Tool{path: path} }
+
+// NewScoped returns the tool over the user's notes at userPath and the project's at projectPath ("" for none: scope project is
+// then refused with the reason).
+func NewScoped(userPath, projectPath string) *Tool {
+	return &Tool{path: userPath, project: projectPath}
+}
 
 // Off returns the tool of a session started without the global memory: the same spec, so the tool list does not change, and every
 // call answers that the memory is off, reading and writing nothing.
@@ -52,14 +61,16 @@ const offText = "the global memory is off in this session (it was started with -
 
 const schema = `{"type":"object","properties":{` +
 	`"action":{"type":"string","enum":["add","remove","list"]},` +
+	`"scope":{"type":"string","enum":["user","project"],"description":"user (default): shown in every project. project: shown only in this project"},` +
 	`"text":{"type":"string","description":"add: the note, one fact in one sentence. remove: a few words that only that note contains"}},"required":["action"]}`
 
 // Spec implements tools.Tool.
 func (*Tool) Spec() core.ToolSpec {
 	return core.ToolSpec{
 		Name: perm.ToolMemory,
-		Description: "Your long-term memory: short notes shown to you at the start of every future session, in any project. " +
-			"add one when you learn something lasting: how the user wants things done, a fact about their setup, a mistake not to repeat. " +
+		Description: "Your long-term memory: short notes shown to you at the start of every future session. " +
+			"add one when you learn something lasting. scope user (the default) is for every project: how the user wants things done, a fact about their setup. " +
+			"scope project is for this project only: a fact about this code base, a mistake not to repeat here. " +
 			"One fact per note, under 300 characters. Never save task progress, anything the code or the project files already say, or secrets. " +
 			"remove a note that is wrong or stale; list shows them all. The user is asked to approve each change.",
 		InputSchema: json.RawMessage(schema),
@@ -68,6 +79,7 @@ func (*Tool) Spec() core.ToolSpec {
 
 type input struct {
 	Action string `json:"action"`
+	Scope  string `json:"scope"`
 	Text   string `json:"text"`
 }
 
@@ -80,10 +92,66 @@ func (t *Tool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	if t.path == "" {
 		return &tools.Result{Text: offText}, nil
 	}
-	notes, err := t.read()
+	if in.Action == "list" && in.Scope == "" {
+		return t.listAll()
+	}
+	file := t.path
+	switch in.Scope {
+	case "", "user":
+	case "project":
+		if t.project == "" {
+			return tools.Errorf("this session has no project, so there are no project notes: use scope user"), nil
+		}
+		file = t.project
+	default:
+		return tools.Errorf(`scope is "user" or "project"`), nil
+	}
+	f := &Tool{path: file}
+	notes, err := f.read()
 	if err != nil {
 		return tools.Errorf("memory: %v", err), nil
 	}
+	return f.run(ctx, c, in, notes, file != t.path)
+}
+
+// listAll lists the notes of both scopes, user first.
+func (t *Tool) listAll() (*tools.Result, error) {
+	user, err := t.read()
+	if err != nil {
+		return tools.Errorf("memory: %v", err), nil
+	}
+	if t.project == "" {
+		if len(user) == 0 {
+			return &tools.Result{Text: "no notes yet"}, nil
+		}
+		return &tools.Result{Text: numbered(user)}, nil
+	}
+	proj, err := (&Tool{path: t.project}).read()
+	if err != nil {
+		return tools.Errorf("memory: %v", err), nil
+	}
+	if len(user) == 0 && len(proj) == 0 {
+		return &tools.Result{Text: "no notes yet"}, nil
+	}
+	var b strings.Builder
+	b.WriteString("user notes (every project):\n")
+	if len(user) == 0 {
+		b.WriteString("(none)")
+	} else {
+		b.WriteString(numbered(user))
+	}
+	b.WriteString("\n\nproject notes (this project):\n")
+	if len(proj) == 0 {
+		b.WriteString("(none)")
+	} else {
+		b.WriteString(numbered(proj))
+	}
+	return &tools.Result{Text: b.String()}, nil
+}
+
+// run carries out one action on the notes of t's one file; project says it is a project's file, which the first note
+// git-ignores.
+func (t *Tool) run(ctx context.Context, c *tools.Call, in input, notes []string, project bool) (*tools.Result, error) {
 	switch in.Action {
 	case "list":
 		if len(notes) == 0 {
@@ -106,8 +174,18 @@ func (t *Tool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 		if len(notes) >= MaxNotes || size(append(notes, note)) > MaxBytes {
 			return tools.Errorf("memory is full (%d notes). Remove or merge notes that are stale or say the same thing (action remove), then add again:\n%s", len(notes), numbered(notes)), nil
 		}
-		if r := t.authorize(ctx, c, "remember: "+note); r != nil {
+		what := "remember: "
+		if project {
+			what = "remember for this project: "
+		}
+		if r := t.authorize(ctx, c, what+note); r != nil {
 			return r, nil
+		}
+		if project {
+			if err := ignoreBeside(t.path); err != nil {
+				return tools.Errorf("memory: %v", err), nil
+			}
+			return t.write(append(notes, note), "saved for this project; it will be in front of you from the next session on, when the project is trusted")
 		}
 		return t.write(append(notes, note), "saved; it will be in front of you from the next session on")
 	case "remove":
@@ -226,4 +304,36 @@ func (t *Tool) write(notes []string, msg string) (*tools.Result, error) {
 		return tools.Errorf("memory: %v", err), nil
 	}
 	return &tools.Result{Text: fmt.Sprintf("%s (%d notes)", msg, len(notes))}, nil
+}
+
+// ignoreBeside makes git ignore the notes file at p with a .gitignore in its directory: created when missing, and given the
+// file's name when it does not list it yet. The file's name is matched exactly (a line of its own).
+func ignoreBeside(p string) error {
+	dir, name := filepath.Dir(p), filepath.Base(p)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	gi := filepath.Join(dir, ".gitignore")
+	b, err := os.ReadFile(gi)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	for _, l := range strings.Split(string(b), "\n") {
+		if strings.TrimSpace(l) == name || strings.TrimSpace(l) == "/"+name {
+			return nil
+		}
+	}
+	f, err := os.OpenFile(gi, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	line := name + "\n"
+	if len(b) > 0 && !strings.HasSuffix(string(b), "\n") {
+		line = "\n" + line
+	}
+	if _, err := f.WriteString(line); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
 }

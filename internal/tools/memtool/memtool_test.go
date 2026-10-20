@@ -128,3 +128,62 @@ func TestTheToolOfASessionWithoutMemoryTouchesNothing(t *testing.T) {
 		t.Error("the tool's spec differs when the memory is off")
 	}
 }
+
+// Project notes live in the project, are git-ignored beside it, say so when asked, and are listed apart from the user's.
+func TestProjectNotesAreKeptApartAndIgnoredByGit(t *testing.T) {
+	dir := t.TempDir()
+	user := filepath.Join(dir, "home", "MEMORY.md")
+	proj := filepath.Join(dir, "repo", ".sleipnir", "MEMORY.local.md")
+	tool := NewScoped(user, proj)
+	allow := &recording{allow: true}
+	if r := run(t, tool, allow, map[string]any{"action": "add", "text": "Prefers short answers."}); r.IsError {
+		t.Fatal(r.Text)
+	}
+	r := run(t, tool, allow, map[string]any{"action": "add", "scope": "project", "text": "make gen regenerates the client."})
+	if r.IsError || !strings.Contains(r.Text, "for this project") {
+		t.Fatalf("project add: %+v", r)
+	}
+	if q := allow.seen[len(allow.seen)-1]; !strings.HasPrefix(q.Summary, "remember for this project: ") || q.Paths[0] != proj {
+		t.Errorf("approval asked for %+v", q)
+	}
+	b, _ := os.ReadFile(proj)
+	if !strings.Contains(string(b), "- make gen regenerates the client.") {
+		t.Errorf("project file:\n%s", b)
+	}
+	if b, _ := os.ReadFile(user); strings.Contains(string(b), "make gen") {
+		t.Error("a project note reached the user's file")
+	}
+	gi, _ := os.ReadFile(filepath.Join(dir, "repo", ".sleipnir", ".gitignore"))
+	if string(gi) != "MEMORY.local.md\n" {
+		t.Errorf(".gitignore = %q", gi)
+	}
+	run(t, tool, allow, map[string]any{"action": "add", "scope": "project", "text": "Second fact."})
+	if gi2, _ := os.ReadFile(filepath.Join(dir, "repo", ".sleipnir", ".gitignore")); string(gi2) != string(gi) {
+		t.Errorf("the .gitignore line was repeated: %q", gi2)
+	}
+	all := run(t, tool, allow, map[string]any{"action": "list"}).Text
+	if !strings.Contains(all, "user notes (every project):\n1. Prefers short answers.") || !strings.Contains(all, "project notes (this project):\n1. make gen") {
+		t.Errorf("list:\n%s", all)
+	}
+	if r := run(t, tool, allow, map[string]any{"action": "remove", "scope": "project", "text": "second"}); r.IsError {
+		t.Errorf("project remove: %s", r.Text)
+	}
+	if r := run(t, New(user), allow, map[string]any{"action": "add", "scope": "project", "text": "x"}); !r.IsError || !strings.Contains(r.Text, "no project") {
+		t.Errorf("project scope without a project: %+v", r)
+	}
+	if r := run(t, tool, allow, map[string]any{"action": "add", "scope": "team", "text": "x"}); !r.IsError {
+		t.Errorf("unknown scope accepted: %+v", r)
+	}
+}
+
+func TestIgnoreBesideKeepsAnExistingGitignore(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("config.local.json"), 0o644)
+	if err := ignoreBeside(filepath.Join(dir, "MEMORY.local.md")); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	if string(b) != "config.local.json\nMEMORY.local.md\n" {
+		t.Errorf(".gitignore = %q", b)
+	}
+}

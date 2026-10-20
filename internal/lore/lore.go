@@ -71,6 +71,12 @@ type Store struct {
 // ProjectDir is where the lore of the project at root lives under state (such as ~/.sleipnir): lore/<name>-<hash>, the
 // project folder's name for a person to find it, and a hash of its absolute path so two projects of the same name differ.
 func ProjectDir(state, root string) string {
+	return filepath.Join(state, "lore", Key(root))
+}
+
+// Key names the project at root for the harness's memories: the folder's name, for a person to recognise it, and the first
+// 12 hex digits of the SHA-256 of its absolute path, so that two projects of the same name differ.
+func Key(root string) string {
 	abs, err := filepath.Abs(root)
 	if err != nil {
 		abs = root
@@ -80,7 +86,7 @@ func ProjectDir(state, root string) string {
 	if name == "" {
 		name = "project"
 	}
-	return filepath.Join(state, "lore", name+"-"+hex.EncodeToString(sum[:])[:12])
+	return name + "-" + hex.EncodeToString(sum[:])[:12]
 }
 
 // New returns the store in dir; nothing is created until the first Save.

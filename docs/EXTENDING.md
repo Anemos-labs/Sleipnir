@@ -64,7 +64,9 @@ Plain Markdown that tells the agent how your project works: build and test comma
 2. for each directory from the project root down to the working directory: `AGENTS.md`, `CLAUDE.md`, `SLEIPNIR.md`,
    `.sleipnir/SLEIPNIR.md` (scope `project` at the root, `dir` below it)
 3. for each of those directories: `SLEIPNIR.local.md`, `.sleipnir/SLEIPNIR.local.md` (scope `local`, for personal notes;
-   keep them out of git)
+   keep them out of git), and at the root `.sleipnir/MEMORY.local.md`: the notes the model saved with its `memory` tool
+   with `scope: project` (each approved like a user note; the tool writes a `.sleipnir/.gitignore` that keeps the file
+   out of git; read only when the project is trusted, like the other project files; `--no-memory` leaves it out)
 
 `AGENTS.md` and `CLAUDE.md` are both read; if one is a symlink to the other it is read once. `~/.claude/CLAUDE.md` and a
 `~/AGENTS.md` are not read.

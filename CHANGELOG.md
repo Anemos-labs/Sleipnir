@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Memory in two scopes. The `memory` tool takes `scope`: `user` (the
+  default, `~/.sleipnir/MEMORY.md`, shown in every project) or `project`
+  (`.sleipnir/MEMORY.local.md` at the project root, shown only there and only
+  when the project is trusted; the first project note writes a
+  `.sleipnir/.gitignore` that lists it). `list` without a scope shows both.
+  Lessons of `/goal` record the project they were learned in, and retrieval
+  multiplies the score of a lesson from the same project by 1.25; a lesson
+  learned again in another project becomes general. Prompt bytes: the memory
+  tool's description and schema change, so the tool prefix is written once.
 - Project memory by role: in a team session, a worker's `note` with
   `scope: role` is kept for the agents of its role in later sessions of the
   same project once a task of that worker is accepted, in
