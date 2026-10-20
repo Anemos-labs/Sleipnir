@@ -1182,16 +1182,33 @@ type TeamSlot struct {
 	Model string `json:"model,omitempty"`
 }
 
-// checkSwarmSize refuses a swarm larger than swarm.max_workers allows. The setting is
-// a ceiling that the user's file or the environment puts on every session; a request
-// for more (--swarm N asks for a manager and N workers) would otherwise override it
-// without a word.
+// checkSwarmSize refuses a swarm larger than swarm.max_workers allows (DefaultMaxTeamWorkers
+// when it is not set), and a negative one. The setting is a ceiling that the user's file or
+// the environment puts on every session; a request for more (--swarm N asks for a manager
+// and N workers) would otherwise override it without a word.
 func checkSwarmSize(cfg *config.Config, o Options) error {
-	ceil := cfg.Swarm.MaxWorkers
-	if !o.Swarm || ceil <= 0 || o.Workers <= ceil {
+	if !o.Swarm {
 		return nil
 	}
+	if o.Workers < 0 {
+		return fmt.Errorf("swarm: %d workers requested; a team has %d workers or more (0 is a single agent)", o.Workers, MinTeamWorkers)
+	}
+	ceil := TeamCeiling(cfg)
+	if o.Workers <= ceil {
+		return nil
+	}
+	if cfg.Swarm.MaxWorkers <= 0 {
+		return fmt.Errorf("swarm: %d workers requested (and the manager) but a session has at most %d workers unless swarm.max_workers allows more; ask for fewer workers or raise swarm.max_workers", o.Workers, ceil)
+	}
 	return fmt.Errorf("swarm: %d workers requested (and the manager) but swarm.max_workers caps a session at %d workers; raise swarm.max_workers or ask for fewer workers", o.Workers, ceil)
+}
+
+// TeamCeiling is the most workers a session may have: swarm.max_workers when it is set, else DefaultMaxTeamWorkers.
+func TeamCeiling(cfg *config.Config) int {
+	if cfg != nil && cfg.Swarm.MaxWorkers > 0 {
+		return cfg.Swarm.MaxWorkers
+	}
+	return DefaultMaxTeamWorkers
 }
 
 // CompactorRole is the name under which models.roles and --role-model give the model that writes the

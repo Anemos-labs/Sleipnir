@@ -116,6 +116,8 @@
       if (r.data) st.v = r.data; ui.toast(done, 'ok'); return true;
     }
     /** Send the whole list of notes with the version it was made from (base: the list and version an edit or a removal started from). */
+    /** the index of the note of notes, other than skip, that says v (the server keeps one of notes that differ only in case or spacing), or -1 */
+    const sameAs = (notes, v, skip) => { const k = s => String(s).trim().replace(/\s+/g, ' ').toLowerCase(), want = k(v); return notes.findIndex((n, j) => j !== skip && k(n) === want); };
     async function putNotes(notes, done, version) {
       if (st.busy || !st.v) return false; st.busy = true;
       const r = await net.put(api('/notes'), { notes, version: version != null ? version : st.v.notes.version });
@@ -146,8 +148,8 @@
     sc.listen(root, 'submit', async e => {
       const f = e.target; e.preventDefault(); if (!st.v) return;
       const notes = arr(st.v.notes.notes);
-      if (f.matches('[data-note-add]')) { const inp = $('#memNew', root), v = inp.value.trim(); if (!v) { inp.focus(); return; } if (await putNotes(notes.concat([v]), 'note saved: the next session starts with it')) { st.newDraft = ''; const n = $('#memNew', root); if (n) { n.value = ''; n.focus(); } } return; }
-      if (f.matches('[data-note-save]')) { const base = st.noteBase || { notes, version: st.v.notes.version }, i = +f.dataset.noteSave, v = st.noteDraft.trim(), all = base.notes, next = v ? all.map((n, j) => (j === i ? v : n)) : all.filter((_, j) => j !== i); if (await putNotes(next, v ? 'note saved' : 'note removed', base.version)) { st.noteEdit = -1; paint(true); } return; }
+      if (f.matches('[data-note-add]')) { const inp = $('#memNew', root), v = inp.value.trim(); if (!v) { inp.focus(); return; } if (sameAs(notes, v, -1) >= 0) { ui.toast('that note is saved already (note ' + (sameAs(notes, v, -1) + 1) + ')', 'warm'); inp.focus(); return; } if (await putNotes(notes.concat([v]), 'note saved: the next session starts with it')) { st.newDraft = ''; const n = $('#memNew', root); if (n) { n.value = ''; n.focus(); } } return; }
+      if (f.matches('[data-note-save]')) { const base = st.noteBase || { notes, version: st.v.notes.version }, i = +f.dataset.noteSave, v = st.noteDraft.trim(), all = base.notes, next = v ? all.map((n, j) => (j === i ? v : n)) : all.filter((_, j) => j !== i); if (v && sameAs(all, v, i) >= 0) { ui.toast('note ' + (sameAs(all, v, i) + 1) + ' says that already: change it there, or remove this one', 'warm'); return; } if (await putNotes(next, v ? 'note saved' : 'note removed', base.version)) { st.noteEdit = -1; paint(true); } return; }
       if (f.matches('[data-file-save]')) {
         const p = f.dataset.fileSave, cur = file(p); if (!cur || st.busy) return; st.busy = true;
         const r = await net.put(api('/file'), { path: p, text: st.edit[p], version: st.base[p] != null ? st.base[p] : cur.version || '' });

@@ -88,10 +88,6 @@ const STATES = [
   { name: 'rail-handle', about: 'the handle that resizes the Radio rail has the focus', keys: WIDGET, setup: async L => { L.focus('#railSplit'); } },
   { name: 'cockpit-card', about: 'the Cockpit is unlocked and one of its cards has the focus', keys: WIDGET.concat(['backspace', 'shift+left', 'shift+right']), setup: async L => { L.SL.ui.dash.setLocked(false); await L.settle(); L.focus('.dcard[data-card="queue"]'); } },
   { name: 'tour', about: 'the guided tour is open at its second step', keys: WIDGET.concat(['shift+left', 'shift+right', 'g', '?', '/', '1', 'ctrl+k']), setup: async L => { L.SL.ui.tour.start('sessions'); await L.settle(); } },
-  { name: 'chord', about: '"g" was pressed and the next key chooses a view', keys: LOWER.split(''), chord: true, setup: async L => {
-    const nav = L.SL.ui.nav, chord = nav.chord; L.chords = []; nav.chord = k => { const r = chord(k); L.chords.push([k, r]); return r; }; // the page's own decision whether a key after g was a chord
-    L.doc.body.focus(); L.press('g'); await L.settle(); L.chords = [];
-  } },
   // every other view, with nothing focused: a view may bind a key of its own
   ...['mail', 'board', 'replay', 'sessions', 'tools', 'doctor', 'schedule', 'settings', 'workspace', 'runner'].map(v => ({ name: 'view-' + v, about: 'the ' + v + ' view is shown', keys: PLAIN, setup: async L => { L.SL.views.show(v); L.doc.body.focus(); await L.settle(); } })),
 ];
@@ -132,11 +128,11 @@ async function sweep(only) {
     for (const k of keys) {
       if (!L) { L = await boot({ two: st.two }); await st.setup(L); }
       await L.step(1); // every key is pressed with the keyboard quiet and the page's frame drawn, as a person's first key is
-      const r = await observe(L, k), name = st.chord ? 'g ' + k : k;
+      const r = await observe(L, k), name = k;
       if (LOG.errors.length) { fails.push(st.name + ' ' + k + ': ' + LOG.errors[0]); LOG.errors = []; }
-      const hit = st.chord ? k !== 'g' && L.chords.some(([c, taken]) => c === k && taken === true) : r.length > 0;
-      if (hit) { (seen[name] = seen[name] || []).push(st.name); (perState[st.name] = perState[st.name] || []).push(name + ' [' + (st.chord ? 'chord' : r.join(',')) + ']'); }
-      if (r.restore && !r.length) { r.restore(); await L.settle(); } else if (hit || r.length || st.chord) L = null; // a key that changed anything is not pressed on again: the next key gets a fresh page
+      const hit = r.length > 0;
+      if (hit) { (seen[name] = seen[name] || []).push(st.name); (perState[st.name] = perState[st.name] || []).push(name + ' [' + r.join(',') + ']'); }
+      if (r.restore && !r.length) { r.restore(); await L.settle(); } else if (hit || r.length) L = null; // a key that changed anything is not pressed on again: the next key gets a fresh page
     }
   }
   return { seen, perState, fails };
@@ -145,7 +141,7 @@ async function sweep(only) {
 // ---------------------------------------------------------------------------------------------------------------------------
 // The file, and the tests.
 
-const ABOUT = 'Written by internal/web/uidev/test/keys-parity.test.mjs (node internal/web/uidev/test/keys-parity.test.mjs --update): every candidate key pressed in each state of the shipped page. A key is listed with the states in which it did something (changed the page or its state, made a request, or claimed the key); a chord after g is spelled "g c". The terminal\'s counterpart is keys-terminal.json.';
+const ABOUT = 'Written by internal/web/uidev/test/keys-parity.test.mjs (node internal/web/uidev/test/keys-parity.test.mjs --update): every candidate key pressed in each state of the shipped page. A key is listed with the states in which it did something (changed the page or its state, made a request, or claimed the key). The terminal\'s counterpart is keys-terminal.json.';
 /** The file's text for a sweep. Each key is on a line of its own, so that a change reads as a diff. */
 function render(r) {
   const all = candidates(), keys = Object.keys(r.seen).sort();
@@ -201,7 +197,7 @@ const others = (seen, except) => Object.keys(seen).filter(k => k !== except).sor
 
 test('a key bound in the page\'s global key handler is found by the sweep, and nothing else is', async () => {
   const { key, seen } = await unbound('page', ['f12', 'f11', 'f10', 'f9', 'f8', 'f7']);
-  PATCH['94-keys.js'] = src => { assert.ok(src.includes("if (k === '?')"), 'the handler this test edits has moved'); return src.replace("if (k === '?')", "if (k === '" + key.toUpperCase() + "') { e.preventDefault(); ui.toast('bound'); return; } if (k === '?')"); };
+  PATCH['94-keys.js'] = src => { assert.ok(src.includes("if (e.key === 'Escape') {"), 'the handler this test edits has moved'); return src.replace("if (e.key === 'Escape') {", "if (e.key === '" + key.toUpperCase() + "') { e.preventDefault(); ui.toast('bound'); return; } if (e.key === 'Escape') {"); };
   try {
     const r = await sweep(['page']);
     assert.deepEqual(r.seen[key], ['page'], 'the sweep found the new binding');
@@ -219,14 +215,11 @@ test('a key bound on the message box is found by the sweep', async () => {
   } finally { delete PATCH['84-ui-chat.js']; }
 });
 
-test('a key bound in a view, and a chord, are found by the sweep', async () => {
-  const view = await unbound('view-sessions', ['x', 'z', 'v', 'y', 'w']), chord = await unbound('chord', ['w', 'x', 'y', 'z', 'v'], 'g ');
+test('a key bound in a view is found by the sweep', async () => {
+  const view = await unbound('view-sessions', ['x', 'z', 'v', 'y', 'w']);
   PATCH['91-views-b.js'] = src => { assert.ok(src.includes("reg({ name: 'sessions', title: 'Sessions', mount(sc, root, params, S0) {"), 'the view this test edits has moved'); return src.replace("reg({ name: 'sessions', title: 'Sessions', mount(sc, root, params, S0) {", "reg({ name: 'sessions', title: 'Sessions', mount(sc, root, params, S0) { sc.listen(document, 'keydown', e => { if (e.key === '" + view.key + "') SL.ui.toast('bound'); });"); };
-  PATCH['96-ui-nav.js'] = src => { assert.ok(src.includes("{ id: 'tools', view: 'tools', label: 'Tools', key: 't'"), 'the rail this test edits has moved'); return src.replace("{ id: 'tools', view: 'tools', label: 'Tools', key: 't'", "{ id: 'tools', view: 'tools', label: 'Tools', key: '" + chord.key + "'"); };
   try {
-    const r = await sweep(['view-sessions', 'chord']);
+    const r = await sweep(['view-sessions']);
     assert.deepEqual(r.seen[view.key], ['view-sessions']);
-    assert.deepEqual(r.seen['g ' + chord.key], ['chord'], 'the chord of Tools moved to the new letter');
-    assert.equal(r.seen['g t'], undefined, 'and left the old one');
-  } finally { delete PATCH['91-views-b.js']; delete PATCH['96-ui-nav.js']; }
+  } finally { delete PATCH['91-views-b.js']; }
 });

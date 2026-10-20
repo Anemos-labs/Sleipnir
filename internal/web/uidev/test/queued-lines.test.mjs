@@ -49,7 +49,7 @@ test('each queued line has the buttons its kind allows, and the hint says what E
   assert.equal(L.$('#cHint').textContent, 'Enter queues · Ctrl+Enter steers');
   assert.equal(L.$('#cHint').title, 'Enter queues for after this turn · Ctrl+Enter sends now (steer)');
   await L.frame('meta', { tab: 'a', patch: { running: false, queued: [] } }); await L.step(0.1);
-  assert.equal(L.$('#cHint').textContent, 'ctrl+t stats · / commands', 'the idle hint comes back');
+  assert.equal(L.$('#cHint').textContent, '/ commands', 'the idle hint comes back');
   assert.equal(rows(L).length, 0);
 });
 

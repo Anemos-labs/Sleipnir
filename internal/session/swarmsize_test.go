@@ -16,7 +16,7 @@ import (
 
 // swarm.max_workers is the ceiling on a session's workers. --swarm N asks for a manager
 // and N workers: a request over the ceiling is refused before anything is created,
-// a request at or under it is honoured, and with no ceiling any size goes.
+// a request at or under it is honoured, and with no ceiling DefaultMaxTeamWorkers is the ceiling.
 func TestSwarmSizeIsBoundedBySwarmMaxWorkers(t *testing.T) {
 	repo := newRepo(t)
 	client, model := startMock(t, func(*mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
@@ -43,10 +43,21 @@ func TestSwarmSizeIsBoundedBySwarmMaxWorkers(t *testing.T) {
 		t.Error("a refused swarm still opened its event log")
 	}
 
+	// Without swarm.max_workers a session still has a ceiling, so that a typo (--swarm 1000) is not a thousand agents; a negative
+	// size is refused too.
+	for _, workers := range []int{session.DefaultMaxTeamWorkers + 1, 1000, -3} {
+		if _, _, err := build(0, workers); err == nil {
+			t.Errorf("--swarm %d was started", workers)
+		}
+	}
+	if _, _, err := build(0, 1000); err == nil || !strings.Contains(err.Error(), "swarm.max_workers") {
+		t.Errorf("the refusal does not say how to allow more: %v", err)
+	}
+
 	for _, tc := range []struct {
 		name             string
 		ceiling, workers int
-	}{{"at the ceiling", 4, 4}, {"under it", 8, 3}, {"no ceiling", 0, 40}} {
+	}{{"at the ceiling", 4, 4}, {"under it", 8, 3}, {"no ceiling", 0, 40}, {"a raised ceiling", 100, 100}} {
 		s, _, err := build(tc.ceiling, tc.workers)
 		if err != nil {
 			t.Fatalf("%s: %v", tc.name, err)
