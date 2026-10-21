@@ -281,20 +281,30 @@ func (s *Swarm) runVerify(ctx context.Context, dir string, files []string) verif
 // falseGreen is the verdict on a tree whose dependency stores link outside it (workspace.EscapingStores): the verifier is not
 // run, since a pass there could test the code the links reach instead of the tree's edits.
 func falseGreen(esc []string) verifyResult {
+	hint := unlinkHints(esc)
 	if len(esc) > 5 {
 		esc = append(esc[:5:5], fmt.Sprintf("and %d more", len(esc)-5))
 	}
 	return verifyResult{ran: true, code: -1, out: "Not verified: in this checkout " + strings.Join(esc, ", ") +
 		" is a link outside it, so tests could pass against the code it reaches instead of your edits (a false green). " +
-		"Remove the link in a command of its own first (" + unlinkHint(esc[0]) + "): the link is in your tree though what it reaches is not, " +
+		"Remove each link in a command of its own first (" + hint + "): the link is in your tree though what it reaches is not, " +
 		"and a command that also writes through the link is refused while it is there. Then install the dependencies inside this " +
 		"checkout (npm ci, uv sync, …) and call task done again."}
 }
 
-// unlinkHint is the command that removes the link an escaping store names ("node_modules -> /elsewhere").
-func unlinkHint(esc string) string {
-	name, _, _ := strings.Cut(esc, " -> ")
-	return "rm " + name
+// unlinkHints are the commands that remove the links escaping stores name ("node_modules -> /elsewhere"), one per link.
+func unlinkHints(esc []string) string {
+	cmds := make([]string, len(esc))
+	for i, e := range esc {
+		name, _, _ := strings.Cut(e, " -> ")
+		if strings.ContainsFunc(name, func(r rune) bool {
+			return !strings.ContainsRune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/+@", r)
+		}) {
+			name = "'" + strings.ReplaceAll(name, "'", `'\''`) + "'"
+		}
+		cmds[i] = "rm " + name
+	}
+	return strings.Join(cmds, ", then ")
 }
 
 // interruptedVerification preserves caller cancellation or reports the verifier's

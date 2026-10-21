@@ -12,7 +12,7 @@ they do not indicate whether a change has been released.
   any command that both removed the link and reinstalled through it were
   refused, since the link resolved outside the tree. `unlink` now removes the
   link itself, as `rm` does, and the refusal names the command to run on its
-  own first (`rm .venv`).
+  own first (`rm .venv`), one for each link.
 
 - A research call that names no run reaches the project's only unfinished
   run after a session resumes. The run a call means was kept only in memory,
