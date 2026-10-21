@@ -16,6 +16,14 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/tui/state"
 )
 
+// scheduledOf reports whether a restart of the worker waits and its scheduled event is logged, so a supervisor pass may start it.
+func scheduledOf(r *rvRig, id string) bool {
+	m := r.sw.get(id)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.restart != nil && m.restart.logged
+}
+
 // pendingOf is the automatic restart waiting for a member, nil when there is none.
 func pendingOf(r *rvRig, id string) *pendingRestart {
 	m := r.sw.get(id)
@@ -179,7 +187,7 @@ func TestAutomaticRestartsStopAtTheirBoundAndTheManagerIsTold(t *testing.T) {
 		t.Fatal(err)
 	}
 	for n := 1; n <= maxAutoRestarts; n++ {
-		rvWait(t, fmt.Sprintf("failed run %d", n), func() bool { e, _ := ends(r, id); return e == n && r.idle(id) && pendingOf(r, id) != nil })
+		rvWait(t, fmt.Sprintf("failed run %d", n), func() bool { e, _ := ends(r, id); return e == n && r.idle(id) && scheduledOf(r, id) })
 		p := pendingOf(r, id)
 		if p.n != n {
 			t.Fatalf("restart %d is counted as %d", n, p.n)
@@ -297,7 +305,7 @@ func TestNoAutomaticRestartAfterABudgetStopOrAnInterrupt(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		rvWait(t, "the step limit to end the run", func() bool { return r.idle(id) && pendingOf(r, id) != nil })
+		rvWait(t, "the step limit to end the run", func() bool { return r.idle(id) && scheduledOf(r, id) })
 		r.sw.stopWorkers("interrupted", false)
 		if pendingOf(r, id) != nil {
 			t.Fatal("the interrupt left the restart waiting")
@@ -411,7 +419,7 @@ func TestAFailedPoolLeaderIsRestartedBeforeTheManagerIsAsked(t *testing.T) {
 		t.Fatalf("leader %s", lead)
 	}
 	for n := 1; n <= maxAutoRestarts; n++ {
-		rvWait(t, fmt.Sprintf("failed run %d", n), func() bool { _, f := ends(r, lead); return f == n && r.idle(lead) && pendingOf(r, lead) != nil })
+		rvWait(t, fmt.Sprintf("failed run %d", n), func() bool { _, f := ends(r, lead); return f == n && r.idle(lead) && scheduledOf(r, lead) })
 		if p := pendingOf(r, lead); p.n != n || strings.Join(p.tasks, ",") != parent.ID {
 			t.Fatalf("pending restart = %+v, want restart %d on %s", p, n, parent.ID)
 		}
@@ -486,7 +494,7 @@ func restartWaiting(t *testing.T, cfg Config) (*rvRig, *fakeClock, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rvWait(t, "the step limit to end the run", func() bool { return r.idle(id) && pendingOf(r, id) != nil })
+	rvWait(t, "the step limit to end the run", func() bool { return r.idle(id) && scheduledOf(r, id) })
 	return r, clock, id
 }
 

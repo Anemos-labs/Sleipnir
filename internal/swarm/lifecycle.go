@@ -1008,18 +1008,18 @@ func (s *Swarm) finishRun(m *member, rs *runState, ctx context.Context, res *age
 	m.mu.Unlock()
 	if again != nil {
 		s.emitAs(m.id, eventRestart, scheduled)
-		if s.alive() != nil {
+		stopped := s.alive() != nil
+		m.mu.Lock()
+		again.logged = true
+		own := stopped && m.restart == again
+		if own {
+			m.restart = nil
+		}
+		m.mu.Unlock()
+		if own {
 			// The swarm stopped while the run was settled, after Shutdown called off the restarts it found: this one would never
 			// start, so it is called off here.
-			m.mu.Lock()
-			own := m.restart == again
-			if own {
-				m.restart = nil
-			}
-			m.mu.Unlock()
-			if own {
-				s.dropRestart(m, again, "the swarm stopped")
-			}
+			s.dropRestart(m, again, "the swarm stopped")
 		}
 	}
 	if line == "" && failed {
