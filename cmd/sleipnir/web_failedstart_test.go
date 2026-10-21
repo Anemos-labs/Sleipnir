@@ -17,6 +17,10 @@ func TestWebNewSessionWithoutAnyModelIsRefused(t *testing.T) {
 	t.Setenv("SLEIPNIR_MODEL", "")
 	base := session.Options{Config: config.Defaults(), NoWeb: true, Offline: true, NoMCP: true, TrustProject: true}
 	r := newWebRig(t, soloDefaults(project), base)
+	deadline := time.Now().Add(webGuard)
+	for len(r.h.Tabs()) > 0 && time.Now().Before(deadline) { // the server's own first tab fails the same way, and is removed
+		time.Sleep(20 * time.Millisecond)
+	}
 	code, body := r.do("POST", "/api/sessions", map[string]any{"cwd": project, "swarm": 0})
 	if code != 422 || !strings.Contains(string(body), `"code":"model"`) || !strings.Contains(string(body), "choose a model") {
 		t.Fatalf("a session without a model = %d %s, want 422 model", code, body)
