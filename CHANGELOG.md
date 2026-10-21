@@ -49,6 +49,15 @@ they do not indicate whether a change has been released.
   copy of each per restart (a skills warning reached 6 copies). A start-up
   warning already in the session's log is now not logged or shown again.
 
+- An agent waits out a flaky endpoint that has answered it before. A failure
+  in which nothing answered (a dropped or reset connection, a gateway that
+  timed out) got only the six attempts, about half a minute, unless the
+  session said `WaitUnreachable`; a gateway that dropped connections for a
+  minute cost a worker its turn. Once the endpoint has answered the agent it
+  is known to exist, and such failures are waited out under the outage
+  patience (five minutes by default), like a 502 or 503. Before any answer a
+  misspelt URL still fails after the six attempts.
+
 - Questions wait for their answer. `sleipnir web` no longer refuses the open
   questions after a minute without a page (`--ask-grace` now defaults to 0,
   never); `--ask-grace` and `--ask-timeout` still set a limit when given.
