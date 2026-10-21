@@ -43,6 +43,12 @@ they do not indicate whether a change has been released.
   the fact-check phase out of a quick run's progress (`wire.ResearchRun`
   gains `noFactCheck`).
 
+- Notices no longer pile up after restarts. A resumed session found the same
+  skills, hooks, plugins and instruction files as its earlier start and
+  logged the same warnings again, so a page replaying the log showed one more
+  copy of each per restart (a skills warning reached 6 copies). A start-up
+  warning already in the session's log is now not logged or shown again.
+
 - Questions wait for their answer. `sleipnir web` no longer refuses the open
   questions after a minute without a page (`--ask-grace` now defaults to 0,
   never); `--ask-grace` and `--ask-timeout` still set a limit when given.

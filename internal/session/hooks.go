@@ -2,12 +2,15 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/hooks"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
@@ -217,6 +220,34 @@ func (s *Session) notice(agentID, msg string) {
 	s.Log.Emit(agentID, "notice", map[string]any{"level": "warn", "msg": msg})
 	if s.opts.Sink != nil {
 		s.opts.Sink.Notice(agentID, "warn", msg)
+	}
+}
+
+// loggedStartNotices are the session's own warnings (agent "") already in the log of the session in dir. A resumed session's start
+// finds the same skills, hooks and plugins as the start before it and would warn about them again: one more copy of each warning
+// per restart, every one of them shown by a page that replays the log. They were said once; the start skips them.
+func loggedStartNotices(dir string) map[string]bool {
+	seen := map[string]bool{}
+	_ = events.Scan(filepath.Join(dir, "events.jsonl"), func(e events.Event) error {
+		if e.Type != "notice" || e.Agent != "" {
+			return nil
+		}
+		var n struct {
+			Level string `json:"level"`
+			Msg   string `json:"msg"`
+		}
+		if json.Unmarshal(e.Data, &n) == nil && n.Level == "warn" && n.Msg != "" {
+			seen[n.Msg] = true
+		}
+		return nil
+	})
+	return seen
+}
+
+// startNotice is notice for a warning of the session's start, said once over all the starts of a resumed session.
+func (s *Session) startNotice(msg string) {
+	if !s.shownAtStart[msg] {
+		s.notice("", msg)
 	}
 }
 
