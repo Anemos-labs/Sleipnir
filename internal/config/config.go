@@ -275,6 +275,10 @@ type Swarm struct {
 	// (docs/SWARM-PROTOCOL.md). Nil is true; it applies only to a team with a docs
 	// slot. --auto-docs=false turns it off for one session.
 	AutoDocs *bool `json:"auto_docs,omitempty"`
+	// PoolMax caps the members of one role that plan and work one parent task
+	// together; the role's other members stay free for its next parent. 0 is the
+	// swarm's default (4); a negative value sets no cap.
+	PoolMax int `json:"pool_max"`
 	// PushProgress pushes a worktree-isolated team's integration branch to the
 	// checkout's push remote after every merge (branch sleipnir/<session>/_integration),
 	// so verified work survives the loss of the machine before the run ends. Nil is

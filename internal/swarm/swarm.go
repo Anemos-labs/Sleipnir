@@ -28,6 +28,10 @@ import (
 type Config struct {
 	// PersistentPools retains configured workers and repairs tasks without exhausting attempts.
 	PersistentPools bool
+	// PoolMax caps the members that form one parent's pool; the role's other members stay free for its next parent, so a large
+	// team works several parents of a role side by side instead of planning one together. 0 is DefaultPoolMax; a negative value
+	// sets no cap (every free member joins).
+	PoolMax int
 
 	SessionID string
 	// MaxWorkers bounds the registered workers (running or idle). The manager and
