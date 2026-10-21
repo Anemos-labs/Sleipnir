@@ -462,6 +462,13 @@
   },
   {
    "group": "a team, and the program",
+   "name": "/team",
+   "kind": "slash",
+   "live": true,
+   "effects": []
+  },
+  {
+   "group": "a team, and the program",
    "name": "/restart",
    "kind": "slash",
    "live": true,
@@ -1751,6 +1758,9 @@
     "confirm",
     "settings:run"
    ],
+   "/team": [
+    "act:command"
+   ],
    "/trust": [
     "settings:permissions"
    ],
@@ -1796,6 +1806,7 @@
    "/status",
    "/steer",
    "/swarm",
+   "/team",
    "/trust",
    "/verbose"
   ]
@@ -1924,6 +1935,11 @@
     {
      "id": "do:open-plugins",
      "scope": "view"
+    },
+    {
+     "id": "do:teams",
+     "scope": "state",
+     "note": "the saved teams (.sleipnir/teams and ~/.sleipnir/teams through /api/teams), not configuration"
     },
     {
      "id": "do:verify",
@@ -2313,7 +2329,7 @@
    "name",
    "folder (--cwd)",
    "model (--model)",
-   "team (--swarm, --role-model)",
+   "team (--swarm, --role-model, --team)",
    "isolation",
    "verify tasks with (--verify)",
    "team options",
@@ -2349,6 +2365,7 @@
    "no-memory",
    "role-model",
    "swarm",
+   "team",
    "trust-project",
    "verify"
   ],
@@ -2381,6 +2398,7 @@
    "nsSw",
    "nsTeamErr",
    "nsTeamRows",
+   "nsTeams",
    "nsVerify",
    "nsVerifyHints",
    "nsWarn"
@@ -2403,9 +2421,11 @@
    "resume",
    "role-model",
    "swarm",
+   "team",
    "trust-project",
    "verify"
   ],
+  "commandLineNamed": "sleipnir chat --resume 20260101-000000-abcdef --cwd /p --model a/m --mode plan --swarm 8 --team crew --isolation worktree --verify v --commit --mailman --auto-docs=false --manager-approves=false --budget-usd 5 --compact-at 40 --allow tests --trust-project --no-mcp --no-memory",
   "flagsMailmanOff": [
    "allow",
    "auto-docs",
@@ -2441,6 +2461,7 @@
    "no-memory",
    "role-model",
    "swarm",
+   "team",
    "trust-project",
    "verify"
   ],

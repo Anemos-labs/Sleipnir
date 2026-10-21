@@ -318,17 +318,29 @@ func TestParityChatFlagsAreTheCodes(t *testing.T) {
 
 	// the arguments the host makes of a request that sets every field are the flags of the dialog's command line, less --resume (a
 	// field of its own in the request) and --mailman=false (the route adds it against a default of on)
+	// --team crew names a saved team of the person's: the flags parse when it exists
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	writeTeam(t, filepath.Join(home, ".sleipnir", "teams"), "crew.json", `{"slots":["architect","scout","backend","frontend","devops","tester","docs","reviewer"]}`)
 	zero, usd, off, share := 8, 5.0, false, 40
 	args := argsFor(wire.NewSessionRequest{Cwd: "/p", Model: "a/m", Mode: "plan", Swarm: &zero, Isolation: "worktree", Verify: "go test {dirs}", Commit: true,
 		Mailman: true, AutoDocs: &off, ManagerApproves: &off, Budget: &usd, CompactAt: &share, Rules: []string{"tests"}, TrustProject: true, NoMcp: true, NoMemory: true, RoleModels: map[string]string{"backend": "a/w"}})
+	// the same request with a team loaded from the saved teams, as it came: --team in place of the --role-model values
+	named := argsFor(wire.NewSessionRequest{Cwd: "/p", Model: "a/m", Swarm: &zero, Team: []wire.TeamSlot{{Role: "backend", Model: "a/w"}}, RoleModels: map[string]string{"judge": "a/j"}, TeamName: "crew"})
 	var made []string
-	for _, a := range args {
+	for _, a := range slices.Concat(args, named) {
 		if strings.HasPrefix(a, "--") {
 			name, _, _ := strings.Cut(strings.TrimPrefix(a, "--"), "=")
-			made = append(made, name)
+			if !slices.Contains(made, name) {
+				made = append(made, name)
+			}
 		}
 	}
 	sort.Strings(made)
+	if slices.Contains(named, "--role-model") {
+		t.Errorf("a request with a saved team's name still names --role-model values, which the team brings: %v", named)
+	}
 	var page []string
 	for _, f := range ui.NewSession.Flags {
 		if f != "resume" {
@@ -341,6 +353,9 @@ func TestParityChatFlagsAreTheCodes(t *testing.T) {
 	}
 	if _, err := parseChatFlags(args); err != nil {
 		t.Errorf("`sleipnir chat` does not accept what the host makes of a New session request: %v", err)
+	}
+	if _, err := parseChatFlags(named); err != nil {
+		t.Errorf("`sleipnir chat` does not accept what the host makes of a New session request with a saved team: %v", err)
 	}
 
 	// Run settings: a control that sets a flag is a field the host stages for the next start (wire.LaunchPatch), or the team size and

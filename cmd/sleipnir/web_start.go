@@ -340,8 +340,9 @@ type carryOn struct {
 	turn bool // a turn or a worker was running, with no active goal: the agent is told to go on
 }
 
-// restartCarries are the restart kinds that change only what the agents run on: the work they were doing goes on after them.
-var restartCarries = map[string]bool{"model": true, "roles": true}
+// restartCarries are the restart kinds that change only who works and what the agents run on (a saved team loaded is one): the
+// work they were doing goes on after them.
+var restartCarries = map[string]bool{"model": true, "roles": true, "team": true}
 
 // carryOnText is the message that sends the agent on after a restart for a change of models, when no goal does.
 const carryOnText = "The session was started again to change the models the agents run on, and your conversation carried over. Go on with the work you were doing."

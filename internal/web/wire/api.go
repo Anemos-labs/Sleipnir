@@ -278,6 +278,9 @@ type NewSessionRequest struct {
 	// Team is the team's composition, one entry per worker slot (--role-model given per slot); empty is the default team of
 	// one worker per role. Swarm then equals its length.
 	Team []TeamSlot `json:"team,omitempty"`
+	// TeamName is the saved team (--team NAME) Team was loaded from and still is: the session starts with --team NAME in place of
+	// the slots and of the models of the roles that are no slot, which the file brings.
+	TeamName string `json:"teamName,omitempty"`
 	// AutoDocs false makes docs a role the manager assigns (--auto-docs=false); nil or true keeps the docs worker at work by itself.
 	AutoDocs *bool `json:"autoDocs,omitempty"`
 	// ManagerApproves false puts every worker's permission question to the person (--manager-approves=false); nil or true lets the

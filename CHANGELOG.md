@@ -7,6 +7,18 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Saved teams (loadouts) in both interfaces. The chat's `/team` lists the
+  saved teams, saves the running team (`/team save NAME [--project]`), starts
+  again as one (`/team load NAME`, keeping the conversation; `--fresh` for an
+  empty one), prints one to share (`/team show NAME`) and removes one. The web
+  interface has a team library, opened from the New session dialog (Saved
+  teams…), Settings › Team & run and `/team`: save, use, copy, download,
+  import and remove a team; a team used in the dialog starts as
+  `--team NAME`. The files are those `--team` reads. New routes: `GET
+  /api/teams`, `POST /api/teams/check`, `PUT` and `DELETE /api/teams/{name}`,
+  `GET /api/sessions/{id}/team`; `wire.NewSessionRequest` has `teamName`. No
+  prompt bytes change.
+
 - A research call that names no run reaches the project's only unfinished
   run after a session resumes. The run a call means was kept only in memory,
   so after a resume every `research` call without `run` was refused with "no

@@ -479,6 +479,18 @@ func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandRes
 		}
 		fmt.Fprintf(out, "restarting: sleipnir chat %s\n", strings.Join(args, " "))
 		return app.CommandResult{Restart: args}, true
+	case "/team":
+		ld := teamSlash(h.s.Cwd(), h.s.Home(), h.s.Loadout, h.s.WorkersAtWork, strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "/team")), out)
+		if ld == nil {
+			return app.CommandResult{}, true
+		}
+		args, err := restartArgs(h.s, ld.typed, ld.fresh)
+		if err != nil {
+			fmt.Fprintln(out, "team:", err)
+			return app.CommandResult{}, true
+		}
+		fmt.Fprintf(out, "restarting: sleipnir chat %s\n", strings.Join(args, " "))
+		return app.CommandResult{Restart: args}, true
 	case "/login":
 		// The terminal is the program's while it runs, and a key is typed hidden or a browser sign-in prints its address: so the chat is
 		// left, `sleipnir login` runs on the terminal, and the chat comes back (a single agent with its conversation, a team starts again).
@@ -607,6 +619,7 @@ var chatCommands = []chatCommand{
 	{"resume", "[id]", "continue an earlier session: the newest of this project, or one of the earlier ones listed as you type"},
 	{"restart", "[flags]", "start the chat again with other flags: --no-mcp, --trust-project, --cwd DIR, ... (the conversation comes along when it can)"},
 	{"swarm", "<n> [flags]", "start again as a manager and n workers: /swarm 8 --verify \"go test {dirs}\" --isolation worktree"},
+	{"team", "[list|save NAME|load NAME|show NAME|rm NAME]", "saved teams (loadouts): save this team, start again as a saved one, or print one to share"},
 	{"sessions", "", "the newest sessions; resume one with sleipnir --resume <id>"},
 	{"cwd", "", "the directory this session works in"},
 	{"mode", "<m>", "default | accept-edits | plan | bypass | yolo"},

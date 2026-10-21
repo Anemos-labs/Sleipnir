@@ -244,3 +244,49 @@ func (s *Session) teamRoles(roles swarm.Roles, team []TeamSlot, autoDocs bool) s
 	}
 	return out
 }
+
+// Loadout is the session's team as a saved team keeps it: every slot, in team order, with the model it runs on (its own, else
+// its role's, else the session's), and the models of the manager and of the other roles that are not workers when one is named
+// for them (by a flag or models.roles; the mailman's while it is on). Both are nil for a single agent or a team without slots.
+func (s *Session) Loadout() ([]TeamSlot, map[string]string) {
+	if s.Swarm == nil || len(s.team) == 0 {
+		return nil, nil
+	}
+	by := map[string]RoleModel{}
+	for _, r := range s.RoleModels() {
+		by[r.Role] = r
+	}
+	def := by["default"].Model
+	slots := make([]TeamSlot, len(s.team))
+	for i, t := range s.team {
+		m := t.Model
+		if m == "" {
+			m = by[t.Role].Model
+		}
+		if m == "" {
+			m = def
+		}
+		slots[i] = TeamSlot{Role: t.Role, Model: m}
+	}
+	models := map[string]string{}
+	if m := by["manager"].Model; m != "" {
+		models["manager"] = m
+	} else if def != "" {
+		models["manager"] = def
+	}
+	for _, role := range []string{swarm.MailmanRoleName, CompactorRole, JudgeRole, EmbedderRole, RerankerRole} {
+		if r, ok := by[role]; ok && (strings.HasPrefix(r.From, "--role-model") || strings.HasPrefix(r.From, "models.roles") || role == swarm.MailmanRoleName) && r.Model != "" {
+			models[role] = r.Model
+		}
+	}
+	return slots, models
+}
+
+// WorkersAtWork counts the team's workers that have started, by role: the ones a restart that carries the conversation over
+// recovers, each into a slot of its role. nil for a single agent.
+func (s *Session) WorkersAtWork() map[string]int {
+	if s.Swarm == nil {
+		return nil
+	}
+	return s.Swarm.WorkerRoles()
+}

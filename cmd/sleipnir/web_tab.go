@@ -798,7 +798,7 @@ func isGoalStop(line string) bool {
 }
 
 // isImmediateLine reports whether a slash line acts at once, beside a running turn, instead of waiting for it: a mode it names (as the
-// mode menu does) and the restart family (which ends the running turn, as Run settings do). These are the lines that can raise
+// mode menu does) and the restart family (which ends the running turn, as Run settings do; /team load is one). These are the lines that can raise
 // privilege, so they are confirmed by the request that sent them and never run later on its behalf.
 func isImmediateLine(line string) bool {
 	f := strings.Fields(line)
@@ -810,6 +810,8 @@ func isImmediateLine(line string) bool {
 		return true
 	case "/mode":
 		return len(f) > 1
+	case "/team":
+		return len(f) > 1 && (strings.EqualFold(f[1], "load") || strings.EqualFold(f[1], "use"))
 	}
 	return false
 }
@@ -958,6 +960,20 @@ func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string
 			return res, nil
 		}
 		if err := t.Restart(ctx, wire.RestartRequest{Kind: "restart", Flags: rest}); err != nil {
+			return failed(err, "")
+		}
+		return res, nil
+	case "/team":
+		ld := teamSlash(s.Cwd(), s.Home(), func() ([]session.TeamSlot, map[string]string) {
+			t.sessMu.Lock()
+			defer t.sessMu.Unlock()
+			return s.Loadout()
+		}, s.WorkersAtWork, arg, &out)
+		res.Output = out.String()
+		if ld == nil {
+			return res, nil
+		}
+		if err := t.restart(ctx, "team", ld.typed, ld.fresh); err != nil {
 			return failed(err, "")
 		}
 		return res, nil

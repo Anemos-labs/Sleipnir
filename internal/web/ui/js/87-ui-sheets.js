@@ -138,6 +138,37 @@
    *  still names them, or a saved team's judge and mailman would run on the manager's model. */
   const serviceModels = (st, rm) => Object.keys(rm || {}).reduce((o, r) => { if (rm[r] && !Object.prototype.hasOwnProperty.call(st.counts || {}, r)) o[r] = rm[r]; return o; }, {});
   dialogs.serviceModels = serviceModels;
+  /** A copy of a New session state that edits of the copy leave alone (the dialog opens again from it). */
+  const cloneState = st => Object.assign({}, st, { rules: st.rules.slice(), roleModels: Object.assign({}, st.roleModels), counts: Object.assign({}, st.counts), slotModels: Object.assign({}, st.slotModels), perSlot: JSON.parse(JSON.stringify(st.perSlot || {})), openRoles: Object.assign({}, st.openRoles) });
+  dialogs.cloneState = cloneState;
+  /** The team of a New session state as a saved team keeps it (ui.teams.fileOf): every slot on the model it would run on (a slot on
+   *  the worker model names the dialog's model), the manager on the dialog's model unless a model of its own is named, and the other
+   *  roles that are no slot with the models named for them; null for a single agent. */
+  dialogs.teamFileOf = st => {
+    if (st.single) return null;
+    const slots = [], rm = st.roleModels || {};
+    Object.keys(st.counts || {}).forEach(r => { for (let i = 0; i < (st.counts[r] || 0); i++) slots.push({ role: r, model: slotModel(st, r, i) || st.model || '' }); });
+    if (!slots.length) return null;
+    const models = Object.assign(serviceModels(st, rm), { manager: rm.manager || st.model });
+    return ui.teams.fileOf(slots, models, '');
+  };
+  /** Make a saved team file the team of New session state st: its slots (teamSeed), the manager's model as the dialog's model, and
+   *  the models of the other roles that are no slot in place of those named before. name, the saved team's, makes the command line
+   *  say --team NAME for as long as the team is left as it came (dialogs.teamNamed). */
+  dialogs.useTeamFile = (st, f, name) => {
+    const t = ui.teams.teamOf(f), tm = teamSeed(t.slots);
+    Object.keys(st.counts || {}).forEach(r => { if (!(r in tm.counts)) tm.counts[r] = 0; });
+    st.single = false; st.counts = tm.counts; st.slotModels = tm.models; st.perSlot = tm.per;
+    st.openRoles = Object.keys(tm.per).reduce((o, r) => { o[r] = true; return o; }, {});
+    const rm = Object.assign({}, st.roleModels || {}); Object.keys(rm).forEach(r => { if (ui.teams.service(r)) delete rm[r]; });
+    Object.keys(t.models).forEach(r => { if (r !== 'manager') rm[r] = t.models[r]; });
+    if (t.models.manager) st.model = t.models.manager;
+    st.roleModels = rm;
+    st.teamName = name || ''; st.teamSig = st.teamName ? JSON.stringify(dialogs.teamFileOf(st)) : '';
+    return st;
+  };
+  /** Forget the saved team's name once the team of st is no longer the one it came as (a count, a model or the manager's changed). */
+  dialogs.teamNamed = st => { if (st.teamName && JSON.stringify(dialogs.teamFileOf(st)) !== st.teamSig) st.teamName = ''; return st.teamName || ''; };
   /** One argument for a POSIX shell: as it is when it holds only characters a shell leaves alone, else in single quotes (a single quote
    *  inside becomes '\''). */
   const shellQuote = a => { a = String(a == null ? '' : a); return /^[A-Za-z0-9_@%+=:,./-]+$/.test(a) ? a : "'" + a.replace(/'/g, "'\\''") + "'"; };
@@ -157,9 +188,9 @@
    *  for that), and the first goal follows as a comment, on one line. */
   dialogs.cliLine = function (st) {
     const q = shellQuote, off = (!st.budget || st.budget === 'off') && Number(st.swarm) > 0, f = [(off && st.unlimitedEnv ? st.unlimitedEnv + ' ' : '') + 'sleipnir chat'];   // a team of the terminal has a cap of its own unless the environment lifts it
-    if (st.resume) f.push('--resume ' + q(st.resume)); if (st.cwd && st.cwd !== '.') f.push('--cwd ' + q(st.cwd)); f.push('--model ' + q(st.model)); f.push('--mode ' + q(st.mode)); const tm = st.counts ? teamOf(st) : { n: st.swarm, slots: [] }; f.push('--swarm ' + q(tm.n)); f.push('--isolation ' + q(st.isolation));
+    if (st.resume) f.push('--resume ' + q(st.resume)); if (st.cwd && st.cwd !== '.') f.push('--cwd ' + q(st.cwd)); f.push('--model ' + q(st.model)); f.push('--mode ' + q(st.mode)); const tm = st.counts ? teamOf(st) : { n: st.swarm, slots: [] }; f.push('--swarm ' + q(tm.n)); const named = !!st.teamName && tm.n > 0; if (named) f.push('--team ' + q(st.teamName)); f.push('--isolation ' + q(st.isolation));
     if (st.verify) f.push('--verify ' + q(st.verify)); if (st.commit) f.push('--commit'); if (st.mailman) f.push('--mailman'); else if (st.mailmanDefault) f.push('--mailman=false'); if (tm.n > 0 && st.autoDocs === false) f.push('--auto-docs=false'); if (tm.n > 0 && st.managerApproves === false) f.push('--manager-approves=false');
-    if (st.budget && st.budget !== 'off') f.push('--budget-usd ' + q(st.budget)); const ca = dialogs.compactAtSent(st); if (ca) f.push('--compact-at ' + q(ca)); if (tm.slots.length) { const sv = serviceModels(st, st.roleModels); Object.keys(sv).forEach(r => f.push('--role-model ' + q(r + '=' + sv[r]))); tm.slots.forEach(t => f.push('--role-model ' + q(t.model ? t.role + '=' + t.model : t.role))); } else Object.keys(st.roleModels || {}).forEach(r => f.push('--role-model ' + q(r + '=' + st.roleModels[r]))); (st.rules || []).forEach(r => f.push('--allow ' + q(r)));
+    if (st.budget && st.budget !== 'off') f.push('--budget-usd ' + q(st.budget)); const ca = dialogs.compactAtSent(st); if (ca) f.push('--compact-at ' + q(ca)); if (named) { /* the saved team brings its slots and the models of its other roles */ } else if (tm.slots.length) { const sv = serviceModels(st, st.roleModels); Object.keys(sv).forEach(r => f.push('--role-model ' + q(r + '=' + sv[r]))); tm.slots.forEach(t => f.push('--role-model ' + q(t.model ? t.role + '=' + t.model : t.role))); } else if (!named) Object.keys(st.roleModels || {}).forEach(r => f.push('--role-model ' + q(r + '=' + st.roleModels[r]))); (st.rules || []).forEach(r => f.push('--allow ' + q(r)));
     if (st.trustProject) f.push('--trust-project'); if (st.noMcp) f.push('--no-mcp'); if (st.noMemory) f.push('--no-memory');
     const first = st.makeDir || st.makeGit ? '# first, as the page does: ' + [st.makeDir ? 'make the folder' : '', st.makeGit ? 'run git init in it, with an empty first commit' : ''].filter(Boolean).join(', then ') + '\n' : '';
     const goal = dialogs.goalSent(st);
@@ -268,7 +299,7 @@
       '<div class="g2 ns"><div><h3 class="lab nsh">Project</h3>' + field('name', inp('nsName', st.name, 'placeholder="shop-2" aria-label="Session name"'), '', help('name', 'the name')) +
       field('folder (--cwd)', folder.html(st.cwd), '', help('folder', 'the folder')) + '<div class="nsgit" id="nsGitRow" hidden><label class="chk"><input type="checkbox" id="nsGit" data-k="gitInit"' + (st.gitInit ? ' checked' : '') + '> git init</label>' + help('git', 'git init') + '</div>' +
       '<h3 class="lab nsh">Team</h3>' + field('model (--model)', '<select id="nsModel" aria-label="Model">' + models().map(r => '<option' + (r === st.model ? ' selected' : '') + '>' + esc(r) + '</option>').join('') + '</select><div class="nsd" id="nsModelHint" role="status">' + noModelHint() + '</div>', '', help('model', 'the model')) +
-      field('team (--swarm, --role-model)', '<div class="seg" role="group" aria-label="Team preset"><button type="button" data-tpreset="full">Full team</button><button type="button" data-tpreset="single">Single agent</button></div> <span class="dim" id="nsSw"></span><div id="nsTeamRows" class="nsteamrows"></div><div class="nserr err" id="nsTeamErr" role="alert" hidden></div>', '', help('workers', 'the team')) +
+      field('team (--swarm, --role-model, --team)', '<div class="seg" role="group" aria-label="Team preset"><button type="button" data-tpreset="full">Full team</button><button type="button" data-tpreset="single">Single agent</button></div> <button type="button" class="btn sm" id="nsTeams" title="the teams you saved (--team NAME): use one here, save this one, or share one as a file">Saved teams…</button> <span class="dim" id="nsSw"></span><div id="nsTeamRows" class="nsteamrows"></div><div class="nserr err" id="nsTeamErr" role="alert" hidden></div>', '', help('workers', 'the team')) +
       team(field('isolation', seg('isolation', ['none', 'worktree'], st.isolation), '', help('isolation', 'isolation')) + field('verify tasks with (--verify)', inp('nsVerify', st.verify, 'aria-label="verify command" placeholder="e.g. go test {dirs}" spellcheck="false" autocomplete="off"') + '<div class="chips" id="nsVerifyHints"></div>', '', help('verify', '--verify')) +
         field('team options', opt('commit', '--commit', '--commit') + opt('mailman', '--mailman', '--mailman') + opt('autoDocs', '<span>auto-docs <span class="nowrap">(--auto-docs)</span></span>', '--auto-docs') + opt('managerApproves', '<span>manager answers routine questions <span class="nowrap">(--manager-approves)</span></span>', '--manager-approves'))) +
       '</div><div><h3 class="lab nsh">Permissions and limits</h3>' +
@@ -321,6 +352,7 @@
         };
         const paint = () => {
           const tm = teamOf(st); st.swarm = tm.n;   // the team decides the size before the gate and the command line read it
+          dialogs.teamNamed(st);
           $('#nsCli', b).innerHTML = esc(cli()).replace(/--mode (bypass|yolo)/, '<span class="cli-danger">--mode $1</span>'); paintMode(b, st.mode);
           $('#nsSw', b).textContent = st.single ? 'single agent' : 'manager + ' + tm.n + ' worker' + (tm.n === 1 ? '' : 's') + (tm.dflt ? ' · full team' : ' · your team');
           $$('[data-tpreset]', b).forEach(x => x.setAttribute('aria-pressed', String(x.dataset.tpreset === 'single' ? st.single : tm.dflt)));
@@ -354,6 +386,13 @@
         });
         sc.listen(b, 'click', e => {
           if (e.target.closest('[data-ns-providers]')) { close(); ui.settingsPage('providers'); return; }
+          if (e.target.closest('#nsTeams')) {
+            /* the library takes the dialog's place, and the dialog opens again as it was when the library closes, with the team loaded there */
+            const s0 = fstate(), keep = cloneState(st); keep.cwd = s0 ? s0.path : st.cwd; keep.error = '';
+            close();
+            ui.teams.open({ dir: s0 && s0.exists ? s0.path : '', currentWhat: 'the team of this dialog', current: () => dialogs.teamFileOf(keep), noCurrent: 'A single agent has no team to save: choose Full team, or make a team of your own, first.', applyLabel: 'Use it', apply: (f, name) => dialogs.useTeamFile(keep, f, name), onClose: () => dialogs.newSession(keep) });
+            return;
+          }
           const mr = e.target.closest('[data-nsmode]'); if (mr) { st.mode = mr.dataset.nsmode; paint(); return; }
           if (e.target.closest('#nsCompactReset')) { st.compactAt = null; paint(); $('#nsCompact', b).focus(); return; }
           const x = e.target.closest('[data-seg]'); if (x) { if (x.disabled) return; st[x.dataset.seg] = x.dataset.v; if (x.dataset.seg === 'isolation') st.isoAuto = false; $$('[data-seg="' + x.dataset.seg + '"]', b).forEach(y => y.setAttribute('aria-pressed', y === x)); paint(); return; }
@@ -385,6 +424,7 @@
             const roleModels = Object.assign({}, st.roleModels); if (tm.dflt) Object.keys(st.slotModels || {}).forEach(r => { if (st.slotModels[r]) roleModels[r] = st.slotModels[r]; });
             const spec = { name: st.name.trim() || undefined, cwd: state ? state.path : typed, model: st.model, mode: st.mode, swarm: tm.n, isolation: st.isolation, verify: st.verify, commit: st.commit, mailman: st.mailman, rules: rulesNow(), trustProject: st.trustProject, noMcp: st.noMcp, noMemory: st.noMemory, goalText: dialogs.goalSent(st) || undefined, effort: st.effort, roleModels: tm.slots.length ? serviceModels(st, roleModels) : roleModels };
             if (tm.slots.length) spec.team = tm.slots;
+            const tn = dialogs.teamNamed(st); if (tn && tm.n > 0) spec.teamName = tn;   // the saved team, as it came: --team NAME
             if (tm.n > 0 && st.autoDocs === false) spec.autoDocs = false;
             if (tm.n > 0 && st.managerApproves === false) spec.managerApproves = false;   // on is the server's default: only an off is sent
             const g = gate(); Object.assign(spec, { isolation: g.isolation, verify: g.verify, commit: g.commitOn, mailman: g.mailman });   /* nothing that cannot start: dialogs.nsGate */
@@ -396,7 +436,7 @@
             if (d.git === 'offer' && st.gitInit) { spec.gitInit = true; raises.push('make ' + spec.cwd + ' a git repository'); }
             /* the dialog gives way to the trust step and the confirmation; when the server does not start the session it opens again as it
                was, with why under its title */
-            const again = Object.assign({}, st, { rules: st.rules.slice(), roleModels: Object.assign({}, st.roleModels), counts: Object.assign({}, st.counts), slotModels: Object.assign({}, st.slotModels), perSlot: JSON.parse(JSON.stringify(st.perSlot || {})), openRoles: Object.assign({}, st.openRoles) });
+            const again = cloneState(st);
             close(); start(spec, { raises }).then(res => { if (res && !res.ok) dialogs.newSession(Object.assign(again, { error: res.declined ? 'not started: the trust step or the confirmation was declined' : 'not started: ' + (res.message || res.why || 'the server refused it') })); });
           });
         });

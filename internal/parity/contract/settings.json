@@ -171,6 +171,10 @@
       "reason": "resets the Radio rail's width; the layout of this browser's page"
     },
     {
+      "item": "state:run.do:teams",
+      "reason": "opens the saved teams of Team & run: save the running team under a name, start again as a saved one, copy or download one, import one; the files of .sleipnir/teams and ~/.sleipnir/teams, which the terminal reads with --team NAME and edits with /team, not configuration"
+    },
+    {
       "item": "state:models.seg:effort",
       "reason": "the reasoning effort of the session; the terminal has /effort, and no configuration key holds it"
     },
