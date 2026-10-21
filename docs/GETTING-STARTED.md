@@ -30,7 +30,7 @@ directly with `.\sleipnir.exe --help`.
 
 ### With Go
 
-Go 1.25 or newer is required:
+Go 1.26 or newer is required:
 
 ```sh
 go install github.com/anemos-labs/sleipnir/cmd/sleipnir@latest

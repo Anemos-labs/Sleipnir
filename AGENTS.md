@@ -1,6 +1,6 @@
 # Sleipnir: instructions for coding agents (and humans)
 
-Sleipnir is a Go 1.25 coding-agent harness: a layered, cache-aware prompt engine (`internal/kv`), a swarm runtime
+Sleipnir is a Go 1.26 coding-agent harness: a layered, cache-aware prompt engine (`internal/kv`), a swarm runtime
 (`internal/swarm`), and an RL environment/data pipeline (`internal/rl`). Read `docs/ARCHITECTURE.md` first and
 `docs/BUILDING.md` before changing code; `docs/TESTING.md` says what each kind of test guards and what runs it, and
 `docs/REPO-SETUP.md` covers CI, review automation, releases, and repository protections.
