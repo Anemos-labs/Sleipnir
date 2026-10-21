@@ -92,3 +92,18 @@ func TestExcusedMembersDoNotCountAgainstPoolMax(t *testing.T) {
 		t.Fatalf("the restarted pool has %v, want the four members that were not excused", got.Pool.Members)
 	}
 }
+
+// The member a request names leads the pool, so the cap keeps it even when it comes after the first PoolMax members, as it does
+// for the first pool, where no other pool spares members.
+func TestPoolMaxKeepsTheRequestedMember(t *testing.T) {
+	team := []string{"backend", "backend", "backend", "backend", "backend", "backend"}
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 6, Team: team},
+		func(ctx context.Context, _ *rvCall) rvReply { <-ctx.Done(); return rvReply{Text: "stopped"} })
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Agent: "be-6", Title: "tsdb", Files: []string{"tsdb/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	p := r.sw.Board.Snapshot().Tasks[0].Pool
+	if len(p.Members) != DefaultPoolMax || !slices.Contains(p.Members, "be-6") {
+		t.Fatalf("the pool has %v, want %d members including be-6", p.Members, DefaultPoolMax)
+	}
+}

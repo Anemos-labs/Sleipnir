@@ -447,6 +447,11 @@ func (s *Swarm) startPool(req SpawnReq, files []string) (string, error) {
 			members = slices.DeleteFunc(slices.Clone(members), func(m *member) bool { return slices.Contains(t.Pool.Excused, m.id) })
 		}
 	}
+	// The member the request names leads, so the cap must keep it: spareMembers puts it first only when another pool spares members.
+	if i := slices.IndexFunc(members, func(m *member) bool { return m.id == req.Agent }); i > 0 {
+		members = slices.Clone(members)
+		members[0], members[i] = members[i], members[0]
+	}
 	members, release = capPool(members, release, s.cfg.PoolMax)
 	id := req.TaskID
 	if id == "" {
