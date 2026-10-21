@@ -49,6 +49,18 @@ func (s *Swarm) DelegateApproval(ctx context.Context, r perm.Request) (perm.Deci
 	if !s.cfg.ManagerApproves {
 		return perm.Decision{}, ""
 	}
+	return s.askManager(ctx, r, approvalText)
+}
+
+// FallbackApproval puts to the manager a worker's question that the person has left unanswered (perm.Config.Fallback, after
+// perm.Config.FallbackAfter, for the kinds of question perm.Config.FallbackUpTo names). It returns by "" as DelegateApproval does:
+// the question then goes on waiting for the person.
+func (s *Swarm) FallbackApproval(ctx context.Context, r perm.Request) (perm.Decision, string) {
+	return s.askManager(ctx, r, fallbackText)
+}
+
+// askManager puts a worker's question to the manager, worded by text, and waits for its answer (DelegateApproval).
+func (s *Swarm) askManager(ctx context.Context, r perm.Request, text func(id string, r perm.Request, task string, ownTree bool, timeout time.Duration) string) (perm.Decision, string) {
 	mgr := s.ManagerID()
 	m := s.get(r.Agent)
 	if mgr == "" || m == nil || m.manager || m.service || s.get(mgr) == nil {
@@ -74,7 +86,7 @@ func (s *Swarm) DelegateApproval(ctx context.Context, r perm.Request) (perm.Deci
 	if timeout <= 0 {
 		timeout = DefaultManagerApproveTimeout
 	}
-	s.notify(mgr, "request", approvalText(q.id, r, currentTask(s.Board.Snapshot(), r.Agent), m.tree != nil, timeout))
+	s.notify(mgr, "request", text(q.id, r, currentTask(s.Board.Snapshot(), r.Agent), m.tree != nil, timeout))
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	select {
@@ -123,6 +135,32 @@ func approvalText(id string, r perm.Request, task string, ownTree bool, timeout 
 		"Answer with approve id=%s decision=yes, decision=no with text= saying what to do instead, or decision=escalate to put it to the person. "+
 		"With no answer within %s it goes to the person.",
 		id, who, cleanText(what, 400), where, cleanText(r.Why, 300), reach, id, timeout)
+}
+
+// fallbackText is the message that puts to the manager a question the person left unanswered. Unlike a routine question it may
+// reach beyond the workspace, so it says so, and that a no is the safe answer when in doubt.
+func fallbackText(id string, r perm.Request, task string, ownTree bool, timeout time.Duration) string {
+	what := r.Command
+	if what == "" {
+		what = r.Summary
+		if what == "" {
+			what = r.Tool
+		}
+	}
+	where := "in the project"
+	if ownTree {
+		where = "in its own tree"
+	}
+	who := r.Agent
+	if task != "" {
+		who += " (task " + task + ")"
+	}
+	return fmt.Sprintf("Approval %s: the person has not answered a question for a while, so it is yours to decide for them. %s asks to "+
+		"run %q %s. The permission engine asks because: %s. This is not a routine question: it may reach outside the workspace or the "+
+		"network, so approve only what the goal needs and nothing you would not defend to the person; when in doubt, say no and say "+
+		"what to do instead. Answer with approve id=%s decision=yes, decision=no with text=, or decision=escalate to leave it with the "+
+		"person. With no answer within %s it stays with the person.",
+		id, who, cleanText(what, 400), where, cleanText(r.Why, 300), id, timeout)
 }
 
 // answerApproval delivers the manager's answer to a waiting question.

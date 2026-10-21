@@ -130,8 +130,8 @@ func TestRelativeRulesApplyInsideEveryTree(t *testing.T) {
 				switch {
 				case d.Allow:
 					return "allow"
-				case strings.Contains(d.Reason, "approval required"):
-					return "ask"
+				case strings.Contains(d.Reason, "approval required"), strings.HasPrefix(d.Reason, BypassRefusal):
+					return "ask" // bypass refuses what it would have asked
 				}
 				return "deny: " + d.Reason
 			}

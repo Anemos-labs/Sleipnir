@@ -92,6 +92,11 @@ type Options struct {
 	Prompter perm.Prompter
 	// AskTimeout is how long a question to the person waits for its answer before it is refused (perm.Config.AskTimeout); zero waits.
 	AskTimeout time.Duration
+	// ManagerAnswersAfter, when positive, overrides permissions.manager_answers_after: in a team, how long a worker's question waits
+	// for the person before the manager answers it for them (perm.Config.Fallback). ManagerAnswersUpTo, when set, overrides
+	// permissions.manager_answers_up_to: the most dangerous kind of question it may answer.
+	ManagerAnswersAfter time.Duration
+	ManagerAnswersUpTo  perm.Danger
 	// Allow are rules that need no question in this run, on top of the configuration's (sleipnir run --allow): what the person
 	// who started the run pre-approved on the command line, which is the one place a run with nobody to ask can get an answer.
 	Allow []string
@@ -710,11 +715,15 @@ func (s *Session) buildPerm() error {
 		}
 	}
 	ask := append(append([]string(nil), protectedConfigDirs...), s.cfg.Permissions.Ask...)
+	after, upTo, err := s.managerAnswers()
+	if err != nil {
+		return fmt.Errorf("permissions: %w", err)
+	}
 	e, err := perm.NewEngine(perm.Config{
 		Mode: mode, Root: o.Root, Home: o.Home, StateDir: stateRoot(o.Home), Tmp: s.tmp, TreeParents: extra, Ignored: ignored,
 		Allow: append(append([]string(nil), s.cfg.Permissions.Allow...), o.Allow...), Ask: ask, Deny: s.cfg.Permissions.Deny,
 		Roles: roles, Prompter: s.trackAsks(s.hookPrompter(o.Prompter)), AskTimeout: o.AskTimeout, Audit: s.auditPermission,
-		Delegate: s.delegateApproval,
+		Delegate: s.delegateApproval, Fallback: s.fallbackApproval, FallbackAfter: after, FallbackUpTo: upTo,
 	})
 	if err != nil {
 		return fmt.Errorf("permissions: %w", err)

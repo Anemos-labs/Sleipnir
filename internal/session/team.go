@@ -6,6 +6,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
@@ -180,6 +181,45 @@ func (s *Session) delegateApproval(ctx context.Context, r perm.Request) (perm.De
 		return perm.Decision{}, ""
 	}
 	return s.Swarm.DelegateApproval(ctx, r)
+}
+
+// fallbackApproval is the permission engine's fallback (perm.Config.Fallback): in a team, the manager answers a worker's question
+// that the person has left unanswered; otherwise it settles nothing.
+func (s *Session) fallbackApproval(ctx context.Context, r perm.Request) (perm.Decision, string) {
+	if s.Swarm == nil {
+		return perm.Decision{}, ""
+	}
+	return s.Swarm.FallbackApproval(ctx, r)
+}
+
+// managerAnswers is how long a team worker's question waits for the person before the manager answers it, and the most dangerous
+// kind it may answer: Options.ManagerAnswersAfter and ManagerAnswersUpTo, else permissions.manager_answers_after and
+// manager_answers_up_to (medium when only the wait is set). Zero is never.
+func (s *Session) managerAnswers() (time.Duration, perm.Danger, error) {
+	after, upTo := s.opts.ManagerAnswersAfter, s.opts.ManagerAnswersUpTo
+	if s.cfg != nil {
+		if after == 0 && s.cfg.Permissions.ManagerAnswersAfter != "" {
+			d, err := time.ParseDuration(s.cfg.Permissions.ManagerAnswersAfter)
+			if err != nil || d < 0 {
+				return 0, "", fmt.Errorf("permissions.manager_answers_after: not a duration such as \"10m\"")
+			}
+			after = d
+		}
+		if upTo == "" {
+			d, err := perm.ParseDanger(s.cfg.Permissions.ManagerAnswersUpTo)
+			if err != nil {
+				return 0, "", fmt.Errorf("permissions.manager_answers_up_to: %w", err)
+			}
+			upTo = d
+		}
+	}
+	if after <= 0 || !s.opts.Swarm { // a single agent has no manager to answer for the person
+		return 0, "", nil
+	}
+	if upTo == "" {
+		upTo = perm.DangerMedium
+	}
+	return after, upTo, nil
 }
 
 // ManagerApproves reports whether this session's manager answers its workers' routine permission questions first: a team, with

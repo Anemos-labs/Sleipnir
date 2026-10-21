@@ -538,9 +538,9 @@ func TestPermissionsCheck(t *testing.T) {
 	}{
 		{"Read", ".env", "refused", "err", "built-in protection"},
 		{"Read", "secrets/token.txt", "refused", "err", "a deny rule: Read(./secrets/**)"},
-		{"Edit", ".sleipnir/config.json", "ask", "warm", "an ask rule: Edit(./.sleipnir/**) (built-in protection)"},
+		{"Edit", ".sleipnir/config.json", "refused", "err", "an ask rule: Edit(./.sleipnir/**) (built-in protection), and bypass mode asks nothing"},
 		{"Edit", "main.go", "allowed", "err", "bypass"},
-		{"Bash", "sudo ls", "ask", "warm", "high risk"},
+		{"Bash", "sudo ls", "refused", "err", "bypass mode asks nothing, so it is refused: high risk"},
 		{"Bash", "rm -rf ~/.ssh", "refused", "err", "built-in protection (hard)"},
 	}
 	for _, c := range cases {
