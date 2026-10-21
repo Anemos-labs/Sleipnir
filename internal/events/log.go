@@ -55,10 +55,14 @@ type Log struct {
 	session string
 	now     func() time.Time
 
-	mu     sync.Mutex
-	seq    uint64
-	f      *os.File
-	w      *bufio.Writer
+	mu  sync.Mutex
+	seq uint64
+	f   *os.File
+	out io.Writer // f; a test swaps in a writer that fails
+	// pend holds encoded events not yet written to f, and size is where they go:
+	// the length of what is safely in the file. See flushBufferLocked.
+	pend   []byte
+	size   int64
 	subs   map[int]*sub
 	nextID int
 	closed bool
@@ -79,6 +83,19 @@ type Log struct {
 // agent waiting on a model call, the manager parked in wait) loses at most the
 // last few milliseconds of events, not everything since the last flush.
 const groupCommitWindow = 5 * time.Millisecond
+
+// writeBufferBytes is how much a burst may buffer before it is written out
+// without waiting for the group commit window.
+const writeBufferBytes = 64 << 10
+
+// maxPendingBytes bounds the events kept in memory while the file refuses
+// writes (a full disk, a quota). Past it Emit fails instead of growing without
+// limit; below it nothing is lost, and the events reach the file once a write
+// succeeds again.
+const maxPendingBytes = 64 << 20
+
+// writeRetryDelay is how soon the timer tries again after a failed write.
+var writeRetryDelay = time.Second
 
 type sub struct {
 	ch      chan Event
@@ -168,12 +185,13 @@ func Open(dir, session string) (*Log, error) {
 		now:     time.Now,
 		seq:     sc.last,
 		f:       f,
-		w:       bufio.NewWriterSize(f, 64<<10),
+		out:     f,
+		size:    sc.size,
 		subs:    map[int]*sub{},
 		rec:     sc.Recovery,
 	}
 	if sc.needNewline {
-		l.w.WriteByte('\n') // a whole event that only lost its newline in the crash
+		l.pend = append(l.pend, '\n') // a whole event that only lost its newline in the crash
 	}
 	if sc.last == 0 {
 		l.emitLocked("", "log.open", map[string]any{"schema": SchemaVersion}, nil)
@@ -404,13 +422,17 @@ func (l *Log) emitLocked(agent, typ string, data any, opts []Opt) (uint64, error
 		l.seq--
 		return 0, fmt.Errorf("events: %s event is %d bytes, over the %d byte limit; store large payloads as blobs", typ, len(line)+1, maxLineBytes)
 	}
-	line = append(line, '\n')
-	if _, err := l.w.Write(line); err != nil {
-		return 0, err
+	if len(l.pend)+len(line)+1 > maxPendingBytes {
+		if err := l.flushBufferLocked(); err != nil || len(l.pend)+len(line)+1 > maxPendingBytes {
+			l.seq--
+			return 0, fmt.Errorf("events: %d bytes of events are waiting for the log file to accept writes: %w", len(l.pend), err)
+		}
 	}
-	if err := l.commitLocked(); err != nil {
-		return 0, err
-	}
+	l.pend = append(append(l.pend, line...), '\n')
+	// A failed write keeps the event pending for the next flush (see
+	// flushBufferLocked), so it is still emitted: subscribers get it now and the
+	// file gets it once writes succeed again. Flush and Close report the error.
+	_ = l.commitLocked()
 	for _, s := range l.subs {
 		select {
 		case s.ch <- e:
@@ -428,40 +450,66 @@ func (l *Log) emitLocked(agent, typ string, data any, opts []Opt) (uint64, error
 // event that may not come. (A write that overflowed the 64 KiB buffer has already
 // gone out on its own.)
 func (l *Log) commitLocked() error {
-	if l.w.Buffered() == 0 {
+	if len(l.pend) == 0 {
 		return nil
 	}
 	since := time.Since(l.lastFl)
-	if l.lastFl.IsZero() || since >= groupCommitWindow {
+	if l.lastFl.IsZero() || since >= groupCommitWindow || len(l.pend) >= writeBufferBytes {
 		return l.flushBufferLocked()
 	}
-	if !l.timerArmed {
-		l.timerArmed = true
-		if d := groupCommitWindow - since; l.timer == nil {
-			l.timer = time.AfterFunc(d, l.flushTail)
-		} else {
-			l.timer.Reset(d)
-		}
-	}
+	l.armLocked(groupCommitWindow - since)
 	return nil
 }
 
-// flushBufferLocked flushes buffered events and updates the last-flush time even on failure; the
-// caller must hold the log lock.
+// flushBufferLocked writes pending events to the file and updates the last-flush
+// time even on failure; the caller must hold the log lock. A failed write keeps
+// every pending event and puts the file back to the end of the last complete
+// write, so the file never holds a torn line and the next flush tries again. A
+// disk that fills up and is freed later costs no event and does not stop the log
+// for good (a bufio.Writer's error is sticky: one failed write would refuse every
+// later one until a restart).
 func (l *Log) flushBufferLocked() error {
-	err := l.w.Flush()
 	l.lastFl = time.Now()
+	if len(l.pend) == 0 {
+		return nil
+	}
+	n, err := l.out.Write(l.pend)
+	if err == nil {
+		l.size += int64(n)
+		l.pend = l.pend[:0]
+		return nil
+	}
+	if n > 0 {
+		_ = l.f.Truncate(l.size) // best effort: the next write starts at size anyway
+	}
+	if _, serr := l.f.Seek(l.size, io.SeekStart); serr != nil {
+		err = errors.Join(err, serr)
+	}
+	l.armLocked(writeRetryDelay) // a quiet log still gets its events out once writes succeed
 	return err
 }
 
+// armLocked makes sure the flush timer will run within d.
+func (l *Log) armLocked(d time.Duration) {
+	if l.closed || l.timerArmed {
+		return
+	}
+	l.timerArmed = true
+	if l.timer == nil {
+		l.timer = time.AfterFunc(d, l.flushTail)
+	} else {
+		l.timer.Reset(d)
+	}
+}
+
 // flushTail is the timer's callback: it writes out whatever a burst left in the
-// buffer. A write error is not lost: bufio's error is sticky, so the next Emit,
-// Flush or Close returns it.
+// buffer. A write error is not lost: the events stay pending, and the next
+// commit, Flush or Close writes them or returns the error.
 func (l *Log) flushTail() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.timerArmed = false
-	if l.closed || l.w.Buffered() == 0 {
+	if l.closed || len(l.pend) == 0 {
 		return
 	}
 	_ = l.flushBufferLocked()
@@ -549,7 +597,7 @@ func (l *Log) Close() error {
 		close(s.ch)
 		delete(l.subs, id)
 	}
-	if err := l.w.Flush(); err != nil {
+	if err := l.flushBufferLocked(); err != nil {
 		l.f.Close()
 		return err
 	}

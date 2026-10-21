@@ -8,12 +8,12 @@ package events
 // ordinary regression tests now, together with the edge cases the fix creates.
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -62,17 +62,17 @@ func (c *countingWriter) Write(p []byte) (int, error) {
 	return c.f.Write(p)
 }
 
-// instrument swaps the log's buffered writer for one over a countingWriter. Same
-// package: a test may reach the log's internals, production code has no hook.
+// instrument swaps the log's file writer for a countingWriter. Same package: a
+// test may reach the log's internals, production code has no hook.
 func instrument(t *testing.T, l *Log) *countingWriter {
 	t.Helper()
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if err := l.w.Flush(); err != nil {
+	if err := l.flushBufferLocked(); err != nil {
 		t.Fatal(err)
 	}
 	cw := &countingWriter{f: l.f}
-	l.w = bufio.NewWriterSize(cw, 64<<10)
+	l.out = cw
 	return cw
 }
 
@@ -238,10 +238,14 @@ func TestCloseStopsTheBackgroundFlush(t *testing.T) {
 	}
 }
 
-// A failed flush by the timer is not lost: the next Emit, Flush and Close report it (bufio's error
-// is sticky), so a caller learns that the log stopped being durable.
-func TestATimerFlushFailureIsReportedByTheNextCall(t *testing.T) {
-	l, err := Open(t.TempDir(), "s")
+// A failed write does not stop the log. The disk that filled up on a long swarm
+// run made a bufio.Writer's sticky error refuse every later event until a
+// restart, so the session silently stopped being recorded. Now the events wait
+// in memory, Flush and Close report the failure while it lasts, and once writes
+// succeed again every event reaches the file in order.
+func TestAFailedWriteKeepsEventsAndRecovers(t *testing.T) {
+	dir := t.TempDir()
+	l, err := Open(dir, "s")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,19 +254,158 @@ func TestATimerFlushFailureIsReportedByTheNextCall(t *testing.T) {
 	if _, err := l.Emit("a", "x", 1); err != nil { // flushed at once: window passed
 		t.Fatal(err)
 	}
+	ch, cancel := l.Subscribe(8)
+	defer cancel()
 	cw.fail.Store(true)
-	if _, err := l.Emit("a", "x", 2); err != nil { // buffered, the timer will try to write it
-		t.Fatalf("a buffered event must not fail: %v", err)
+	for i := 2; i <= 3; i++ {
+		if _, err := l.Emit("a", "x", i); err != nil {
+			t.Fatalf("Emit while the disk refuses writes: %v", err)
+		}
 	}
 	time.Sleep(6 * groupCommitWindow) // the timer fires and fails
-	if _, err := l.Emit("a", "x", 3); err == nil {
-		t.Fatal("Emit after a failed timer flush reported no error")
-	}
 	if err := l.Flush(); err == nil {
-		t.Fatal("Flush after a failed timer flush reported no error")
+		t.Fatal("Flush while the disk refuses writes reported no error")
 	}
-	if err := l.Close(); err == nil {
-		t.Fatal("Close after a failed timer flush reported no error")
+	for i := 0; i < 2; i++ {
+		select {
+		case <-ch:
+		case <-time.After(time.Second):
+			t.Fatal("a subscriber missed an event emitted while the disk refused writes")
+		}
+	}
+	cw.fail.Store(false)
+	if err := l.Flush(); err != nil {
+		t.Fatalf("Flush after the disk recovered: %v", err)
+	}
+	if _, err := l.Emit("a", "x", 4); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	if err := Scan(filepath.Join(dir, "events.jsonl"), func(e Event) error {
+		if e.Type == "x" {
+			got = append(got, string(e.Data))
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(got, ",") != "1,2,3,4" {
+		t.Fatalf("events in the file = %v, want 1,2,3,4", got)
+	}
+}
+
+// The timer retries a failed write on its own, so a log that goes quiet while the
+// disk is full still gets its events out once space comes back.
+func TestAFailedWriteIsRetriedByTheTimer(t *testing.T) {
+	old := writeRetryDelay
+	writeRetryDelay = 10 * time.Millisecond
+	defer func() { writeRetryDelay = old }()
+	dir := t.TempDir()
+	l, err := Open(dir, "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	cw := instrument(t, l)
+	cw.fail.Store(true)
+	time.Sleep(3 * groupCommitWindow)
+	l.Emit("a", "x", 1) // written at once, and refused
+	cw.fail.Store(false)
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		l.mu.Lock()
+		left := len(l.pend)
+		l.mu.Unlock()
+		if left == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the timer never retried the failed write")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// halfWriter writes the first half of what it is given and then fails, as a write
+// that runs out of space part way does.
+type halfWriter struct{ f *os.File }
+
+func (h halfWriter) Write(p []byte) (int, error) {
+	n, _ := h.f.Write(p[:len(p)/2])
+	return n, errors.New("no space left on device (test)")
+}
+
+// A write that fails part way leaves no torn line behind: the file is cut back to
+// the last complete event, and the retry writes the whole batch after it.
+func TestAPartialWriteLeavesNoTornLine(t *testing.T) {
+	dir := t.TempDir()
+	l, err := Open(dir, "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	instrument(t, l)
+	l.mu.Lock()
+	l.out = halfWriter{l.f}
+	l.mu.Unlock()
+	time.Sleep(3 * groupCommitWindow)
+	l.Emit("a", "x", "first")
+	l.mu.Lock()
+	l.out = l.f
+	l.mu.Unlock()
+	l.Emit("a", "x", "second")
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	if err := Scan(filepath.Join(dir, "events.jsonl"), func(e Event) error {
+		if e.Type == "x" {
+			got = append(got, string(e.Data))
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("the log is damaged after a partial write: %v", err)
+	}
+	if strings.Join(got, ",") != `"first","second"` {
+		t.Fatalf("events in the file = %v", got)
+	}
+}
+
+// Events wait in memory only up to maxPendingBytes; past it Emit fails rather
+// than growing without bound, and the sequence number is not used up.
+func TestPendingEventsAreBounded(t *testing.T) {
+	l, err := Open(t.TempDir(), "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cw := instrument(t, l)
+	cw.fail.Store(true)
+	big := strings.Repeat("x", 1<<20)
+	var refused bool
+	var last uint64
+	for i := 0; i < maxPendingBytes>>20+2; i++ {
+		seq, err := l.Emit("a", "x", big)
+		if err != nil {
+			refused = true
+			break
+		}
+		last = seq
+	}
+	if !refused {
+		t.Fatal("Emit kept buffering past maxPendingBytes")
+	}
+	cw.fail.Store(false)
+	seq, err := l.Emit("a", "x", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seq != last+1 {
+		t.Fatalf("seq after a refused Emit = %d, want %d", seq, last+1)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
