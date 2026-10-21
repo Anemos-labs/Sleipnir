@@ -109,7 +109,7 @@ func TestSectionsMatchTheSpecifiedFields(t *testing.T) {
 		"Tools":       {"max_output_chars", "default_timeout_sec", "max_timeout_sec", "web_allow_private", "web_allow_hosts", "builtin_skills"},
 		"Models":      {"default", "roles", "favorites"},
 		"Permissions": {"mode", "allow", "ask", "deny", "roles", "manager_approves"},
-		"Provider":    {"dialect", "base_url", "api_key_env", "auth", "headers", "options", "allow_hosts", "allow_insecure_http"},
+		"Provider":    {"dialect", "base_url", "api_key_env", "auth", "headers", "options", "allow_hosts", "allow_insecure_http", "suggested_model"},
 		"Config":      {"providers", "models", "permissions", "cache", "swarm", "tools", "plugins", "hooks", "mcp"},
 		"Plugins":     {"profile", "enabled", "settings"},
 	}

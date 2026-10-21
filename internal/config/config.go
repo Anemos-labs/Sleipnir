@@ -133,6 +133,10 @@ type Provider struct {
 	// over https, or over http to a loopback address. User configuration only, like
 	// AllowHosts.
 	AllowInsecureHTTP bool `json:"allow_insecure_http,omitempty"`
+	// SuggestedModel is the model a picker offers first when nothing chose one yet (no models.default): a model id of this provider,
+	// or the start of one ("vendor/family" matches "vendor/family-v2"), so that a new version of the model is still found. A model
+	// the provider does not list is not offered.
+	SuggestedModel string `json:"suggested_model,omitempty"`
 
 	// BaseURLFromProject records that a project-level file (trusted, or Load would
 	// have dropped it) supplied BaseURL. Load fills it in; it is not part of the file

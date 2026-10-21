@@ -16,6 +16,10 @@ import (
 // (no team) is the other choice.
 const MinTeamWorkers = 8
 
+// DefaultMaxTeamWorkers is the most workers a session may have when swarm.max_workers sets no ceiling: a typo such as
+// --swarm 1000 is refused rather than run with a thousand agents on one budget.
+const DefaultMaxTeamWorkers = 64
+
 // autoDocsOn reports whether the session asks for auto-docs: Options.AutoDocs, else
 // swarm.auto_docs, else true.
 func (s *Session) autoDocsOn() bool {

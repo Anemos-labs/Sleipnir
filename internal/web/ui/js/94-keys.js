@@ -1,23 +1,18 @@
-/* 94-keys.js: SL.keys, the global keyboard handling (shell scope).
- * Esc precedence, in this order: (1) close an overlay (modal, inbox, session menu, drawer, slash menu), (2) answer a question with
- * choice 3 when the keyboard has been quiet, (3) leave a field, (4) leave a replay, (5) interrupt the running turn (pauses the goal).
- * Answer keys 1/2/3 count only after the quiet period and only for a question on screen (see 85-ui-approvals.js: with the rail folded
- * away the key opens it instead of answering); every other key press resets that period. */
+/* 94-keys.js: SL.keys, the page's keyboard handling (shell scope).
+ * The page has no keyboard shortcuts: a key pressed where it lands does what the browser does with it (a button, a list, a field), and
+ * the message box's own keys (Enter sends, Up recalls, shift+tab steps the mode, / and @ complete) are the message box's. A shortcut that
+ * acts on a key typed without the focus in a field was a trap: text typed before clicking the message box paused the view, changed the
+ * view or answered a question. Here
+ * Esc closes what is open (a dialog, the inbox, a menu, the drawer), and in a field it leaves the field. */
 (function (SL) {
   'use strict';
-  const U = SL.u, { $ } = U, ui = SL.ui = SL.ui || {}, calc = SL.calc;
-  const VIEW_KEYS = { o: 'cockpit', c: 'cache', m: 'mail', b: 'board', r: 'replay', s: 'sessions', ',': 'settings', '.': 'tools' };
+  const U = SL.u, { $ } = U, ui = SL.ui = SL.ui || {};
   const typing = t => t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-  /** Widgets that move with the arrows and Home/End themselves (data-owns-keys: the Cockpit's cards while it is unlocked). */
-  const OWNS_KEYS = '[data-owns-keys],[role=tablist],[role=tab],[role=menu],[role=menubar],[role=listbox],[role=radiogroup],[role=tree],[role=grid],[role=slider],nav,select,input,textarea,[contenteditable]';
 
   function mount(sc) {
     sc.listen(document, 'keydown', e => {
       if (U.composing(e)) return;
       const t = e.target, inField = typing(t), mod = e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta';
-      if (ui.modeMenu && ui.modeMenu.isOpen() && !e.ctrlKey && !e.metaKey && !e.altKey && /^(Arrow(Up|Down|Left|Right)|Home|End|Enter| |Tab)$/.test(e.key)) return;   /* the open mode menu owns its keys */
-      /* an approval takes a key only when the keyboard has been quiet; text typed ahead goes to the prompt */
-      if (!mod && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === '1' || e.key === '2' || e.key === '3') && !ui.hasModal() && (!inField || (t.id === 'input' && t.value === ''))) { if (ui.approvals.tryKey(e.key)) { e.preventDefault(); return; } }
       if (!mod) SL.time.noteKey();
       if (e.key === 'Escape') {
         /* a field with a list open (a folder field) takes the key first: it closes the list, and the next one closes the dialog */
@@ -27,46 +22,10 @@
         if ($('.sessmenu') || $('.budpop') || $('.modemenu')) return;
         if (ui.drawerOpen && ui.drawerOpen()) { e.preventDefault(); ui.closeDrawer(); return; }
         if (inField && t.id === 'input' && !$('#slash').hidden) return;
-        if (!inField && ui.approvals.tryKey('Escape')) { e.preventDefault(); return; }
-        if (inField) { t.blur(); return; }
-        const S = SL.sessions.active; if (S && S.replay) { S.goLive(); S.touch(); return; }
-        const r = SL.act.interrupt('turn'); ui.toast(r.ok ? SL.interruptText(S) : 'nothing is running to interrupt', r.ok ? 'warm' : 'quiet'); return;
-      }
-      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && /^Digit[1-9]$/.test(e.code)) { const S2 = SL.sessions.list[+e.code.slice(5) - 1]; e.preventDefault(); if (S2) SL.act.switchSession(S2.id); return; }   // alt+1..9: the nth session tab
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); SL.palette.open(''); return; }
-      if ((e.ctrlKey || e.altKey) && !e.shiftKey && !e.metaKey && e.key.toLowerCase() === 't') { e.preventDefault(); SL.views.show('cache'); return; }
-      if ((e.ctrlKey || e.altKey) && !e.shiftKey && !e.metaKey && e.key.toLowerCase() === 'g') { e.preventDefault(); SL.views.show('cockpit'); return; }
-      if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'o') { e.preventDefault(); const tk = $('#talk'); tk.classList.toggle('xo'); ui.toast(tk.classList.contains('xo') ? 'tool output expanded (ctrl+o)' : 'tool output collapsed'); return; }
-      /* ctrl+d quits the terminal's chat at an empty prompt; quitting a page's session is closing it, so the key asks what the tab's × asks
-         (the team stops, an open question is named, and nothing closes without the answer, whether or not a turn runs). It acts in an
-         empty message box and with nothing focused. It claims the key there, so that the browser does not bookmark the page, and also
-         while a dialog is open (that one is not opened twice); with text in the box, or in any other field, the key is the browser's. */
-      if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'd') {
-        const S = SL.sessions.active, open = ui.hasModal();
-        if (S && !S.placeholder && (open ? !inField : (!t || t === document.body || t === document.documentElement || (t.id === 'input' && t.value === '')))) { e.preventDefault(); if (!open) ui.closeSessionAsk(S); }
+        if (inField) t.blur();
         return;
       }
-      if (inField || ui.hasModal() || e.ctrlKey || e.metaKey || e.altKey) return;
-      const k = e.key, S = SL.sessions.active;
-      /* the arrows, Home, End, Space, + and - belong to a widget that takes them (the session tabs, the views rail, a menu, a list, a
-         slider): the view's clock and the agent selection never take them from it */
-      if (/^(Arrow(Up|Down|Left|Right)|Home|End| |\+|=|-)$/.test(k) && t && t.closest && t.closest(OWNS_KEYS)) return;
-      if (ui.nav && ui.nav.chord(k)) { e.preventDefault(); return; }
-      if (k === '/') { e.preventDefault(); if (window.innerWidth <= 900 || getComputedStyle($('#rail')).display === 'none') SL.palette.open(''); else { ui.rail.expand(); const i = $('#input'); i.focus(); i.value = '/'; i.dispatchEvent(new Event('input')); } return; }
-      if (k === '?') { e.preventDefault(); ui.sheets.help(); return; }
-      if (VIEW_KEYS[k] && (!SL.plugins || SL.plugins.viewOn(VIEW_KEYS[k]))) { e.preventDefault();   /* a view whose plugin is off has no key */ if (window.innerWidth <= 900) $('#app').dataset.pv = 'main'; SL.views.show(VIEW_KEYS[k]); return; }
-      if (k === ' ' && !(t && (t.tagName === 'BUTTON' || t.tagName === 'A' || t.getAttribute('role') === 'button'))) {
-        e.preventDefault(); if (!S.replay) S.seek(S.vt, false); else S.replay.playing = !S.replay.playing; S.touch(); return;
-      }
-      if (k === 'ArrowLeft' || k === 'ArrowRight') { if (t && t.matches && t.matches('input[type=range]')) return; e.preventDefault(); const d = (e.shiftKey ? 60 : 10) * (k === 'ArrowLeft' ? -1 : 1); S.seek(S.vt + d, S.replay ? S.replay.playing : false); S.touch(); return; }
-      if (k === 'Home') { S.seek(0, false); S.touch(); return; } if (k === 'End') { S.goLive(); S.touch(); return; }
-      if (k === '+' || k === '=') { if (!S.replay) S.seek(S.vt, true); S.replay.speed = Math.min(4, S.replay.speed * 2); S.touch(); return; } if (k === '-') { if (S.replay) { S.replay.speed = Math.max(1, S.replay.speed / 2); S.touch(); } return; }
-      if ((k === 'ArrowDown' || k === 'ArrowUp') && !(t && t.closest && t.closest('.ctable,.cmds,.sheet,.stalls'))) {
-        e.preventDefault(); const ids = S.roster.map(r => r.id), i = ids.indexOf(SL.link.sel), nx = ids[i < 0 ? (k === 'ArrowDown' ? 0 : ids.length - 1) : (i + (k === 'ArrowDown' ? 1 : ids.length - 1)) % ids.length]; SL.link.select(nx); return;
-      }
-      if (k === 'Enter' && SL.link.sel && document.activeElement === document.body) { ui.focusAgent(SL.link.sel, e); return; }
     }, true);
-    sc.listen(document, 'keyup', () => { /* reserved */ });
   }
   SL.keys = { mount };
 })(SL);

@@ -334,13 +334,39 @@ func CheckEdit(prev, notes []string) ([]string, error) {
 	return out, nil
 }
 
-// WriteNotes replaces the file at path with the header and notes, one "- " line each, atomically and readable by the user only;
-// the directory is created when it is missing.
+// WriteNotes replaces the notes of the file at path with notes, one "- " line each, atomically and readable by the user only; the
+// directory is created when it is missing. The other lines of the file (its header, headings and text written by hand) are kept
+// where they are: the notes take the place of the first note line, or follow the text when it has none. A new file starts with the
+// header.
 func WriteNotes(path string, notes []string) error {
+	old, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("memory: %w", err)
+	}
 	var b strings.Builder
-	b.WriteString(header + "\n")
-	for _, n := range notes {
-		b.WriteString("- " + n + "\n")
+	put := func() {
+		for _, n := range notes {
+			b.WriteString("- " + n + "\n")
+		}
+	}
+	if strings.TrimSpace(string(old)) == "" {
+		b.WriteString(header + "\n")
+		put()
+	} else {
+		placed := false
+		for _, l := range strings.Split(strings.TrimRight(string(old), "\n"), "\n") {
+			if n, ok := strings.CutPrefix(l, "- "); ok && strings.TrimSpace(n) != "" {
+				if !placed {
+					put()
+					placed = true
+				}
+				continue
+			}
+			b.WriteString(l + "\n")
+		}
+		if !placed {
+			put()
+		}
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("memory: %w", err)

@@ -861,8 +861,8 @@ func (h *webHostImpl) isProject(ctx context.Context, dir string) (wire.Project, 
 
 // ---- defaults of a new session ---------------------------------------------------------------------------------
 
-// swarmWorkerCeiling is the most workers the page offers when swarm.max_workers sets no ceiling: 0, none.
-const swarmWorkerCeiling = 0
+// swarmWorkerCeiling is the most workers the page offers when swarm.max_workers sets no ceiling: the session's own default ceiling.
+const swarmWorkerCeiling = session.DefaultMaxTeamWorkers
 
 // newSessionDefaults are the server's defaults as the New session dialog seeds its fields from them.
 type newSessionDefaults struct {

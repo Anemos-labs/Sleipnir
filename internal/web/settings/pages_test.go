@@ -465,10 +465,10 @@ func TestProvidersPage(t *testing.T) {
 // jsonInt is n as JSON.
 func jsonInt(n int64) string { b, _ := json.Marshal(n); return string(b) }
 
-// The key route's handler (served only when KeyRoutes is on): a confirmation, a small body, the key kept and never sent back.
+// The key route: a confirmation, a small body, the key kept, taken up by this process at once, and never sent back.
 func TestKeyRouteHandler(t *testing.T) {
 	e := newEnv(t, nil)
-	e.svc.registerKeyRoute()
+	t.Setenv("OPENAI_API_KEY", "")
 	t.Cleanup(func() { catalog.ForgetKey(e.home, "OPENAI_API_KEY") }) //nolint:errcheck // cleanup of a held key
 	const key = "sk-browserTypedKey0123456789abcdef"
 	if rec := e.do("POST", "/api/providers/openai/key", wire.KeySaveRequest{Key: key}, nil); rec.Code != http.StatusPreconditionRequired {
@@ -486,6 +486,13 @@ func TestKeyRouteHandler(t *testing.T) {
 	}
 	if m, _ := config.StoredKeys(e.home); m["OPENAI_API_KEY"] != key {
 		t.Error("the key is not in auth.json")
+	}
+	if st := catalog.StatusOf(e.home, catalog.KeyProvider{Name: "openai", Env: "OPENAI_API_KEY"}); !st.Present || st.Source != catalog.SourceStored {
+		t.Errorf("this process did not take the key up: %+v", st)
+	}
+	var row wire.ProviderRow
+	if err := json.Unmarshal(rec.Body.Bytes(), &row); err != nil || row.Key != keyStored {
+		t.Errorf("the row after the key: %s", rec.Body)
 	}
 	if strings.Contains(e.logText(), key) {
 		t.Error("the key is in the log")
@@ -576,5 +583,46 @@ func TestConfigPage(t *testing.T) {
 	e.ok("GET", "/api/sessions/t1/config", nil, nil, &v)
 	if v.OK || !strings.HasPrefix(v.Valid, "configuration is not valid") || strings.Contains(v.Valid, e.repo) {
 		t.Errorf("a broken file: %q", v.Valid)
+	}
+}
+
+// A provider that takes a key and has none offers no models: its public catalogue lists them all the same, and a session on one of them
+// could not start. The page says why they are missing.
+func TestModelsOfAProviderWithoutAKeyAreNotOffered(t *testing.T) {
+	e := newEnv(t, nil)
+	e.svc.fetch = func(_ context.Context, o catalog.Options) catalog.Result {
+		res := fakeCatalogue(time.Unix(1_700_000_000, 0))
+		for _, id := range []string{"vendor/model", "meta-models/muse-spark-open-1"} {
+			en := catalog.Entry{Ref: "heimdallm/" + id, Entry: gateway.Entry{Model: cost.Model{ID: id, ContextTokens: 1000}, Modality: "text->text", Supported: []string{"tools"}}}
+			res.Entries = append(res.Entries, en)
+			res.Rows = append(res.Rows, catalog.RowOf(en))
+		}
+		return res
+	}
+	read := func() wire.ModelsView {
+		var v wire.ModelsView
+		e.ok("GET", "/api/models?refresh=1", nil, nil, &v)
+		return v
+	}
+	has := func(v wire.ModelsView, ref string) bool {
+		return slices.ContainsFunc(v.Models, func(m wire.ModelRow) bool { return m.Ref == ref })
+	}
+	t.Setenv("HEIMDALLM_API_KEY", "")
+	v := read()
+	if has(v, "heimdallm/vendor/model") || !has(v, "acme/big") || v.Suggested != "" {
+		t.Errorf("without a key: %+v", v.Models)
+	}
+	if !slices.ContainsFunc(v.Errors, func(s string) bool {
+		return strings.HasPrefix(s, "heimdallm: no key") && strings.Contains(s, "Providers")
+	}) {
+		t.Errorf("the page is not told why: %q", v.Errors)
+	}
+	t.Setenv("HEIMDALLM_API_KEY", "hm-test-0123456789")
+	v = read()
+	if !has(v, "heimdallm/vendor/model") {
+		t.Errorf("with a key: %+v", v.Models)
+	}
+	if v.Suggested != "heimdallm/meta-models/muse-spark-open-1" {
+		t.Errorf("the suggested model: %q", v.Suggested)
 	}
 }
