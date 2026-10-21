@@ -579,6 +579,8 @@ flags:
         swarm: a worker's routine permission question (a command inside its own tree that no rule covers, nothing protected, no network but this machine, or an install into a virtual environment of the workspace from the package index) goes to the manager before you; unanswered in a minute it comes to you (default: config permissions.manager_approves, true; --manager-approves=false asks you directly)
   -max-steps int
         step cap of a single agent's run, which also keeps team roles at theirs (unset: windows of 200 steps that go on while the agent keeps editing)
+  -mcp-config value
+        a JSON file of MCP servers this run starts beside the configured ones, repeatable: {"mcpServers": {"name": {...}}} as .mcp.json writes it, or the configuration's mcp section; trusted like your user configuration, and an entry replaces a configured server of the same name
   -mode string
         permissions: default | accept-edits | plan | bypass | yolo (default: config, then default)
   -model string
