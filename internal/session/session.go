@@ -322,7 +322,7 @@ type Session struct {
 	budget float64
 	turn   int
 	// interrupted says that the last turn was cancelled by the person (an interrupt), under mu: the next turn's message is then
-	// headed by interruptNote, so that it is what the model answers instead of the work that was cut short.
+	// headed by InterruptNote, so that it is what the model answers instead of the work that was cut short.
 	interrupted bool
 	// swarmCtx is the context an interactive session's swarm runs on: it lives until
 	// Close, not until the end of one turn (see swarmContext).
@@ -1345,9 +1345,9 @@ func (writeGuard) BeforeWrite(string, string) error { return nil }
 // AfterWrite records the agent and path in the checkpoint store after a write completes.
 func (g writeGuard) AfterWrite(agent, path string) { g.store.After(agent, path) }
 
-// interruptNote heads the first message after a turn the person interrupted: the conversation still ends with the work that was cut
+// InterruptNote heads the first message after a turn the person interrupted: the conversation still ends with the work that was cut
 // short, and a model reading it tends to carry that on instead of answering what the person says now.
-const interruptNote = "[The person interrupted your previous turn. Answer the message below first; go back to the interrupted work only if it asks you to.]\n\n"
+const InterruptNote = "[The person interrupted your previous turn. Answer the message below first; go back to the interrupted work only if it asks you to.]\n\n"
 
 // runTurn gives the session one model turn without starting a GitHub controller.
 func (s *Session) runTurn(ctx context.Context, goal string) (*Result, error) {
@@ -1377,7 +1377,7 @@ func (s *Session) runTurn(ctx context.Context, goal string) (*Result, error) {
 		return nil, err
 	}
 	if after {
-		goal = interruptNote + goal
+		goal = InterruptNote + goal
 	}
 
 	if first {

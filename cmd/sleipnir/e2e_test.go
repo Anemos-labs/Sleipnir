@@ -30,6 +30,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/ptytest"
+	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
 // e2eChildEnv tells a re-executed test binary to be the sleipnir command.
@@ -368,8 +369,10 @@ func (m *scriptedModel) respond(c *mock.Call) mock.Reply {
 	for name := range m.turns {
 		front = strings.ReplaceAll(front, name, "")
 	}
-	// the goal that follows an unanswered one is set off from it by a blank line (sleipnir-kv/3)
+	// the goal that follows an unanswered one is set off from it by a blank line (sleipnir-kv/3), and the goal after an
+	// interrupted turn is headed by the note that says so
 	front = strings.TrimRight(front, "\n")
+	front = strings.TrimRight(strings.TrimSuffix(front, strings.TrimSpace(session.InterruptNote)), "\n")
 	after := text[at+len(goal):]
 	if (front != "" && !strings.HasSuffix(front, "</role-context>") && !strings.HasSuffix(front, "</my-notes>")) || (after != "" && !strings.HasPrefix(after, "<live board=")) {
 		m.stray = append(m.stray, "…"+front[max(0, len(front)-60):]+"⟦"+goal+"⟧"+oneLineCLI(after, 60))
