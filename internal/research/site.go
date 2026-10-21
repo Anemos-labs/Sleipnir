@@ -404,6 +404,9 @@ func (w *wiki) article(bp *builtPage) string {
 		}
 	}
 	state := "not yet fact-checked"
+	if d := r.DepthInfo(); d.Reviewers == 0 && reviewed == 0 {
+		state = "quotes verified; no fact-check round at " + d.ID + " depth"
+	}
 	if reviewed > 0 {
 		state = fmt.Sprintf("fact-checked by %d %s", reviewed, plural(reviewed, "reviewer", "reviewers"))
 	}

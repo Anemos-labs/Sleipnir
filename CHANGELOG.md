@@ -22,6 +22,25 @@ they do not indicate whether a change has been released.
   to edit, remove and add like the user's (`PUT .../memory/notes` takes
   `scope: project`), and the team's lore by role, read-only
   (`wire.MemoryView` gains `project` and `lore`).
+
+- The research tool no longer makes agents think about `run`. Its
+  description, schema and the run's brief say to leave `run` out (every
+  call goes to the run the session works on), and a call that names a run
+  that does not exist goes to that run with a note instead of being
+  refused. Agents had spent turns working out whether `research cite`
+  needs `run`. The tool's description changed, so the tools layer of the
+  prompt cache is rebuilt once.
+
+- Quick research is quick. The quick depth asked for 15 sources from 8
+  sites, 24 findings and 4 to 7 pages, each fact-checked by another agent, so
+  a quick run (or Research first at quick depth in New session) took hours.
+  It now asks for 8 sources from 4 sites, 12 findings, 1 to 3 pages and 2
+  snippets from 2 projects, and has no fact-check round (`Depth.Reviewers` 0):
+  the harness still verifies every quote and citation, and a review that
+  finds issues still holds the page. The brief and goal of a run at quick
+  depth change accordingly. A plan that leaves out the overview page (`index`) gets
+  it, instead of sending the run back to planning.
+
 - Questions wait for their answer. `sleipnir web` no longer refuses the open
   questions after a minute without a page (`--ask-grace` now defaults to 0,
   never); `--ask-grace` and `--ask-timeout` still set a limit when given.

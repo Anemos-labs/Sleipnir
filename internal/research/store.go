@@ -358,6 +358,27 @@ func (s *Store) slugLocked(slug string) (string, error) {
 	return "", fmt.Errorf("no research run is open and %d are unfinished: name one with run (%s)", len(open), strings.Join(open, ", "))
 }
 
+// Resolve is the run a call means, for a call that may name a run wrongly. A call that names no run gets slugLocked's run. A call
+// that names a run that does not exist (an agent that took the question, the project or a page for the run's name) gets the run a
+// call naming none would, with a note that says so, instead of a refusal it would retry; it is refused only when there is no such
+// run to fall back on.
+func (s *Store) Resolve(slug string) (used, note string, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if slug == "" {
+		used, err = s.slugLocked("")
+		return used, "", err
+	}
+	if _, lerr := s.loadLocked(slug); lerr == nil {
+		return slug, "", nil
+	}
+	used, err = s.slugLocked("")
+	if err != nil {
+		return "", "", fmt.Errorf("no research run %q, and %w", slug, err)
+	}
+	return used, fmt.Sprintf("(there is no run %q: this went to %s, the run this session works on; leave run out)", slug, used), nil
+}
+
 // loadLocked returns the run, reading it from disk the first time (s.mu held).
 func (s *Store) loadLocked(slug string) (*Run, error) {
 	if !ValidSlug(slug) {

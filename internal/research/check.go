@@ -272,7 +272,7 @@ func Check(root string, r *Run) Report {
 		for _, f := range failed {
 			add(PhaseVerify, pg.ID, "%s found issues in page %s (revision %d): %s", f.By, pg.ID, f.Rev, strings.Join(clipList(f.Issues, 4), "; "))
 		}
-		if len(failed) == 0 && len(passed) < d.Reviewers {
+		if len(failed) == 0 && len(passed) < d.Reviewers { // never with 0 reviewers: no fact-check round
 			add(PhaseVerify, pg.ID, "page %s revision %d is fact-checked by %d of %d reviewers (each claim against the quotes of the sources it cites; the writer cannot review their own page)",
 				pg.ID, pg.Rev, len(passed), d.Reviewers)
 		}
