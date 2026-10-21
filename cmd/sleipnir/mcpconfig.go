@@ -35,8 +35,9 @@ func mcpConfigFlags(fs *flag.FlagSet) *mcpConfigFlag {
 }
 
 // servers reads the named files in order into server entries keyed by name; a later file's entry replaces an earlier one of the
-// same name. A file that cannot be read, is not a JSON object or holds an entry the configuration would refuse is an error, so a
-// run whose caller meant to give it a tool server never starts without that server.
+// same name. A file that cannot be read, is not a JSON object (JSON null included) or holds an entry the configuration would
+// refuse is an error, and so are files whose entries together exceed what the configuration reads, so a run whose caller meant
+// to give it a tool server never starts without that server.
 func (m mcpConfigFlag) servers() (map[string]json.RawMessage, error) {
 	if len(m) == 0 {
 		return nil, nil
@@ -51,6 +52,9 @@ func (m mcpConfigFlag) servers() (map[string]json.RawMessage, error) {
 		if err := json.Unmarshal(b, &doc); err != nil {
 			return nil, fmt.Errorf("--mcp-config %s: not a JSON object: %w", path, err)
 		}
+		if doc == nil {
+			return nil, fmt.Errorf("--mcp-config %s: not a JSON object: null", path)
+		}
 		_, issues := mcp.ParseWith(doc, mcp.ParseOptions{Scope: mcp.ScopeUser})
 		for _, is := range issues {
 			if is.Fatal {
@@ -60,12 +64,19 @@ func (m mcpConfigFlag) servers() (map[string]json.RawMessage, error) {
 		entries := doc
 		if inner, ok := doc["mcpServers"]; ok {
 			entries = map[string]json.RawMessage{}
-			if err := json.Unmarshal(inner, &entries); err != nil {
+			if err := json.Unmarshal(inner, &entries); err != nil || entries == nil {
 				return nil, fmt.Errorf("--mcp-config %s: mcpServers must be an object mapping server names to definitions", path)
 			}
 		}
 		for name, raw := range entries {
 			out[name] = raw
+		}
+	}
+	// Each file passed on its own; together they can still name more servers than the configuration reads.
+	_, issues := mcp.ParseWith(out, mcp.ParseOptions{Scope: mcp.ScopeUser})
+	for _, is := range issues {
+		if is.Fatal {
+			return nil, fmt.Errorf("--mcp-config: %w", is)
 		}
 	}
 	return out, nil

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,6 +45,8 @@ func TestMCPConfigFlagRefusesWhatWouldStartWithoutTheServer(t *testing.T) {
 		"not json":      `{"mcpServers": `,
 		"no command":    `{"mcpServers": {"studio": {"args": ["x"]}}}`,
 		"bad servers":   `{"mcpServers": ["studio"]}`,
+		"null":          `null`,
+		"null servers":  `{"mcpServers": null}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			path := writeMCPConfig(t, body)
@@ -54,6 +57,32 @@ func TestMCPConfigFlagRefusesWhatWouldStartWithoutTheServer(t *testing.T) {
 	}
 	if _, err := (mcpConfigFlag{filepath.Join(t.TempDir(), "absent.json")}).servers(); err == nil {
 		t.Error("a missing file was accepted")
+	}
+}
+
+// Files that each stay within the configuration's server limit can exceed it together; the run is refused rather than started
+// with only the servers that sort first.
+func TestMCPConfigFlagRefusesFilesThatTogetherExceedTheServerLimit(t *testing.T) {
+	half := func(prefix string) string {
+		var b strings.Builder
+		b.WriteString(`{"mcpServers": {`)
+		for i := 0; i < 200; i++ {
+			if i > 0 {
+				b.WriteString(",")
+			}
+			fmt.Fprintf(&b, `"%s%03d": {"command": "srv"}`, prefix, i)
+		}
+		b.WriteString(`}}`)
+		return b.String()
+	}
+	first, second := writeMCPConfig(t, half("a")), writeMCPConfig(t, half("b"))
+	for _, path := range []string{first, second} {
+		if _, err := (mcpConfigFlag{path}).servers(); err != nil {
+			t.Fatalf("200 servers in one file were refused: %v", err)
+		}
+	}
+	if _, err := (mcpConfigFlag{first, second}).servers(); err == nil || !strings.Contains(err.Error(), "servers configured") {
+		t.Errorf("400 servers across two files were accepted: %v", err)
 	}
 }
 
