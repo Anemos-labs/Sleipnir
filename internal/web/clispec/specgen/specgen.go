@@ -347,7 +347,7 @@ var (
 	// keyRouteFlags name an endpoint or a key variable of the run's own: the run gets none of the held keys.
 	keyRouteFlags = []string{"base-url", "api-key-env", "policy-host", "policy-key-env", "allow-insecure-http"}
 	// wideningFlags let a run do more than its mode.
-	wideningFlags = []string{"allow", "trust-project", "no-net-isolation", "pass-env", "set-env", "verify"}
+	wideningFlags = []string{"allow", "trust-project", "no-net-isolation", "pass-env", "set-env", "verify", "mcp-config"}
 	// modeFlags are permission modes.
 	modeFlags = []string{"mode", "perm-mode"}
 )

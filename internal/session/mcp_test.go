@@ -12,6 +12,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/mcp"
 	"github.com/anemos-labs/sleipnir/internal/mcp/mcptest"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
@@ -232,6 +233,116 @@ func TestMCPProjectServersNeedApprovalThatIsRememberedPerEntry(t *testing.T) {
 	// The approvals live in the user's state directory, not in the repository.
 	if _, err := os.Stat(filepath.Join(home, "state", "mcp-approvals.json")); err != nil {
 		t.Errorf("approvals file: %v", err)
+	}
+}
+
+// A server the command line names (run --mcp-config) is the person's own word: it starts with nobody
+// there to ask, under the user scope, and it is the entry used when the configuration names a server
+// of the same name, so the program that started the run decides what that server runs.
+func TestMCPServersOfTheCommandLineStartUnaskedAndReplaceAConfiguredOne(t *testing.T) {
+	repo := newRepo(t)
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	o := opts(t, repo, client, model)
+	writeConfig(t, config.UserConfigPath(o.Home), map[string]any{"mcp": map[string]any{
+		"ref": map[string]any{"command": filepath.Join(t.TempDir(), "absent-server")},
+	}})
+	entry, err := json.Marshal(refServer(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.MCPServers = map[string]json.RawMessage{"ref": entry}
+	o.Prompter = nil
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if !hasSpec(s, "mcp__ref__echo") {
+		t.Fatalf("the command line's server was not started: %v", s.MCPToolNames())
+	}
+	st := s.MCPStatus()
+	if len(st) != 1 || st[0].State != "ready" || st[0].Scope != "user" {
+		t.Fatalf("status: %+v", st)
+	}
+}
+
+// The command line's servers start when the settings turn the MCP plugin off: naming them on the command line is
+// the person's own word for this run, which outranks the plugin's setting the way --no-mcp does.
+func TestMCPCommandLineServerStartsWhenTheSettingsTurnMCPOff(t *testing.T) {
+	repo := newRepo(t)
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	o := opts(t, repo, client, model)
+	writeConfig(t, config.UserConfigPath(o.Home), map[string]any{"plugins": map[string]any{"enabled": map[string]any{"mcp": false}}})
+	entry, err := json.Marshal(refServer(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.MCPServers = map[string]json.RawMessage{"ref": entry}
+	o.Prompter = nil
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if !hasSpec(s, "mcp__ref__echo") {
+		t.Fatalf("the command line's server did not start with MCP off in the settings: %v", s.MCPToolNames())
+	}
+}
+
+// A server the command line names is never left out for the configuration's server limit: when the configured
+// servers push it past the first mcp.MaxServers by name, the session refuses to start rather than run without it.
+func TestMCPCommandLineServerPastTheServerLimitRefusesTheSession(t *testing.T) {
+	repo := newRepo(t)
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	o := opts(t, repo, client, model)
+	configured := map[string]any{}
+	for i := 0; i < mcp.MaxServers; i++ {
+		configured[fmt.Sprintf("a%03d", i)] = map[string]any{"command": filepath.Join(t.TempDir(), "absent-server")}
+	}
+	writeConfig(t, config.UserConfigPath(o.Home), map[string]any{"mcp": configured})
+	entry, err := json.Marshal(refServer(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.MCPServers = map[string]json.RawMessage{"zz": entry}
+	o.Prompter = nil
+	s, err := session.New(context.Background(), o)
+	if err == nil {
+		s.Close()
+		t.Fatal("the session started without the command line's server")
+	}
+	if !strings.Contains(err.Error(), "zz would not start") {
+		t.Errorf("the refusal does not name the server: %v", err)
+	}
+}
+
+// A project's .mcp.json cannot replace a server the command line names, even in a trusted project.
+func TestMCPDotMcpJSONDoesNotReplaceACommandLineServer(t *testing.T) {
+	repo := newRepo(t)
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	writeFile(t, filepath.Join(repo, ".mcp.json"), `{"mcpServers":{"ref":{"command":"/nonexistent/server"}}}`)
+	o := opts(t, repo, client, model)
+	entry, err := json.Marshal(refServer(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.MCPServers = map[string]json.RawMessage{"ref": entry}
+	o.Prompter = func(context.Context, perm.Request) perm.Decision {
+		t.Error("nothing should be asked: the project's entry is not considered")
+		return perm.Decision{}
+	}
+	notes := &noticeSink{}
+	o.Sink = notes
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if !hasSpec(s, "mcp__ref__echo") {
+		t.Fatalf("the command line's server was not started: %v", s.MCPToolNames())
+	}
+	if !strings.Contains(notes.all(), "--mcp-config already names a server of that name") {
+		t.Errorf("the ignored .mcp.json entry was not reported: %q", notes.all())
 	}
 }
 

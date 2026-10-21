@@ -89,6 +89,17 @@ they do not indicate whether a change has been released.
   link itself, as `rm` does, and the refusal names the command to run on its
   own first (`rm .venv`), one for each link.
 
+- `sleipnir run --mcp-config FILE` (and `sleipnir swarm`) starts the MCP servers
+  a file names for that run only, beside the configured ones. The file is
+  `{"mcpServers": {...}}` as `.mcp.json` writes it, or the `mcp` section's own
+  shape; the flag repeats. An entry is trusted as the user configuration is,
+  replaces a configured server of the same name for the run, and cannot be
+  replaced by a project's `.mcp.json`. A program that drives the harness one
+  session per conversation hands a session its tool servers this way. Started
+  from the web interface's command runner, a run with the flag asks for a
+  confirmation first, as `--trust-project` does. No prompt bytes change for a
+  run without the flag.
+
 - A research call that names no run reaches the project's only unfinished
   run after a session resumes. The run a call means was kept only in memory,
   so after a resume every `research` call without `run` was refused with "no

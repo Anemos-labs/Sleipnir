@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	iofs "io/fs"
@@ -210,6 +211,10 @@ type Options struct {
 	// NoMCP starts no MCP servers (RL rollouts, tests): the tool list is then the
 	// built-in one whatever the configuration says.
 	NoMCP bool
+	// MCPServers are MCP server entries the command line names (run --mcp-config), by server name, in
+	// the shape of the configuration's mcp section. They are the person's own word, trusted as the user
+	// configuration is, and an entry replaces a configured server of the same name for this session.
+	MCPServers map[string]json.RawMessage
 	// Offline skips network lookups made for convenience (model catalogue).
 	Offline bool
 	// NoMemory starts the session without the global memory: the notes in ~/.sleipnir/MEMORY.md are not read, and the memory tool
@@ -220,6 +225,9 @@ type Options struct {
 // Session is a running assembly. Run may be called repeatedly; the agent (or
 // manager) keeps its thread between calls.
 type Session struct {
+	// mcpRefused is set when a server the command line names (run --mcp-config) cannot start because the
+	// configuration's server limit leaves it out; the session then fails to build rather than run without it.
+	mcpRefused error
 	// shownAtStart are the warnings of the session itself an earlier start of this resumed session logged (startNotice).
 	shownAtStart    map[string]bool
 	delivery        *delivery.Controller
@@ -929,6 +937,9 @@ func (s *Session) build(ctx context.Context) error {
 	if err := s.kernel.Start(s.plugins); err != nil {
 		return err
 	}
+	if s.mcpRefused != nil {
+		return s.mcpRefused
+	}
 
 	constText := agent.Constitution(agent.ConstitutionOpts{Swarm: o.Swarm})
 	constLayer := kv.NewLayer("const", kv.KindConst, 1, []kv.Segment{{Text: constText, Vol: kv.VolFrozen}})
@@ -1551,6 +1562,13 @@ func (s *Session) Options() Options {
 			rm[k] = v
 		}
 		o.RoleModels = rm
+	}
+	if o.MCPServers != nil {
+		servers := make(map[string]json.RawMessage, len(o.MCPServers))
+		for name, entry := range o.MCPServers {
+			servers[name] = append(json.RawMessage(nil), entry...)
+		}
+		o.MCPServers = servers
 	}
 	if o.Meta != nil {
 		meta := make(map[string]any, len(o.Meta))
