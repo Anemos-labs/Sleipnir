@@ -411,7 +411,7 @@ func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus s
 	var resp *provider.Response
 	var err error
 	for attempt := 0; ; attempt++ {
-		resp, err = a.callOn(ctx, prov, &provider.Request{Prompt: p, Label: label, Capture: a.cfg.CaptureTokens}, PrioBackground, nil)
+		resp, err = a.callOn(ctx, prov, &provider.Request{Prompt: p, Label: label, Capture: a.cfg.CaptureTokens}, PrioBackground, nil, nil)
 		if err == nil || a.cfg.Effort == nil || attempt >= 2 || !a.cfg.Effort.Recover(prov, model.ID, p.Params.Effort, err) {
 			break
 		}

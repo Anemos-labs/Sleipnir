@@ -186,6 +186,11 @@ type Permissions struct {
 	// guards) to the manager before the person (internal/swarm approvals.go). Unset is true; --manager-approves=false turns it off
 	// for one session.
 	ManagerApproves *bool `json:"manager_approves,omitempty"`
+	// ManagerAnswersAfter is how long a team worker's question may wait for the person before the manager answers it for them
+	// ("10m"; unset or "0" never: the question waits for the person). ManagerAnswersUpTo is the most dangerous kind of question the
+	// manager may answer then (perm.Danger: "low", "medium" or "high"; unset is "medium").
+	ManagerAnswersAfter string `json:"manager_answers_after,omitempty"`
+	ManagerAnswersUpTo  string `json:"manager_answers_up_to,omitempty"`
 }
 
 // RolePermissions is the per-role permission override.

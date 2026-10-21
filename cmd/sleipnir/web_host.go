@@ -54,7 +54,6 @@ const (
 	maxProjects   = 200
 	idemWindow    = 60 * time.Second
 	pingEvery     = 15 * time.Second
-	defaultGrace  = 60 * time.Second
 	snapshotWrite = 60 * time.Second
 )
 
@@ -155,13 +154,7 @@ func newWebHost(ctx context.Context, d webDefaults, logf func(string, ...any)) (
 	h := &webHostImpl{ctx: hctx, cancel: cancel, cmdCtx: ctx, d: d, logf: logf, boot: hex.EncodeToString(b), askTimeout: d.AskTimeout,
 		used: map[string]bool{}, idem: map[string]*idemEntry{}, qagent: map[string]string{}, trustIDs: map[string]trustIssued{},
 		closing: map[*webTab]bool{}}
-	grace := d.AskGrace
-	if grace == 0 {
-		grace = defaultGrace
-	}
-	if grace < 0 {
-		grace = 0
-	}
+	grace := max(d.AskGrace, 0) // zero: a question waits for its answer however long no page is open
 	h.bridge = h.newBridge(0, grace)
 	session.Version = version
 	if d.Fixture != "" {

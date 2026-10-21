@@ -63,6 +63,13 @@ type Config struct {
 	// there is no Prompter, and the refusal says so: a worker held at a question for hours, with the person away, is held for nothing.
 	// Zero waits for ever, which is right where the person is at the keys.
 	AskTimeout time.Duration
+	// Fallback, when set with a positive FallbackAfter, answers a question the person has left unanswered for FallbackAfter, if
+	// its danger is at most FallbackUpTo (Danger): in a team, the manager decides for the person who is away. It returns the
+	// decision and who made it, or by "" when it does not settle the question, which then waits for the person as before. Its
+	// answer withdraws the person's question and is never remembered as a rule.
+	Fallback      func(ctx context.Context, r Request) (d Decision, by string)
+	FallbackAfter time.Duration
+	FallbackUpTo  Danger
 	// Persist is called (outside any engine lock) when a project-scope rule is
 	// added, so the caller can write it to the project's settings.
 	Persist func(Scope, Rule)
@@ -460,6 +467,12 @@ func (e *Engine) Check(ctx context.Context, r Request) Decision {
 		e.audit(Audit{Kind: "decide", Request: r, Reason: v.reason, Decision: d, By: "policy"})
 		return d
 	}
+	if e.Mode() == ModeBypass {
+		// bypass asks nothing: what would have been a question is refused, with what flagged it, so the agent finds a safer way
+		d := Decision{Reason: bypassRefusal(v.reason)}
+		e.audit(Audit{Kind: "decide", Request: r, Reason: d.Reason, Decision: d, By: "policy"})
+		return d
+	}
 	if refusalsOnly(ctx) {
 		return Decision{Allow: true, Reason: "not asked (only a refusal applies): " + v.reason}
 	}
@@ -490,7 +503,10 @@ func (e *Engine) Check(ctx context.Context, r Request) Decision {
 		by = "no one"
 	case !d.Allow && strings.HasPrefix(d.Reason, "approval canceled"):
 		by = "canceled"
+	case d.by != "":
+		by = d.by
 	}
+	d.by = ""
 	e.audit(Audit{Kind: "decide", Request: r, Reason: d.Reason, Decision: d, By: by})
 	return d
 }

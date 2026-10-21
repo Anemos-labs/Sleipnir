@@ -180,3 +180,26 @@ func TestPatienceCountsTheTimeTheEndpointWasSilent(t *testing.T) {
 		t.Errorf("the run took %v to give up on a patience of 250ms", d)
 	}
 }
+
+// An endpoint that has answered the agent is known to exist: when it later drops connections for a while (a flaky gateway), the
+// agent waits that out under its patience instead of failing its turn after six attempts, without being told WaitUnreachable.
+func TestAnEndpointThatAnsweredBeforeIsWaitedOut(t *testing.T) {
+	const drops = 9 // more than the six attempts every failure gets
+	plan := chaos.PlanFunc(func(i int, _ *http.Request) chaos.Fault {
+		if i >= 2 && i < 2+drops {
+			return chaos.Fault{Kind: chaos.Reset}
+		}
+		return chaos.Fault{}
+	})
+	r, h := unreachableRig(t, plan, func(cfg *agent.Config) { cfg.OutagePatience = time.Minute })
+	if res, err := r.agent.Run(context.Background(), "hi"); err != nil || res.Text != "back" {
+		t.Fatalf("first turn: %+v %v", res, err)
+	}
+	res, err := r.agent.Run(context.Background(), "again")
+	if err != nil || res.Text != "back" {
+		t.Fatalf("res=%+v err=%v: the drops of an endpoint that answered before are waited out", res, err)
+	}
+	if got := len(h.Events()); got != drops+2 {
+		t.Errorf("%d requests, want %d", got, drops+2)
+	}
+}

@@ -138,12 +138,13 @@ func fetch(url string) rq {
 	return rq{tool: "WebFetch", network: true, input: `{"url":"` + url + `"}`}
 }
 
-// outcome classifies a Decision made without a Prompter.
+// outcome classifies a Decision made without a Prompter. What bypass mode refuses instead of asking is "ask": the verdict it
+// would have put to a person (TestBypassRefusesWhatWouldHaveAsked checks the refusal itself).
 func outcome(d Decision) string {
 	switch {
 	case d.Allow:
 		return "allow"
-	case strings.HasPrefix(d.Reason, "approval required"):
+	case strings.HasPrefix(d.Reason, "approval required"), strings.HasPrefix(d.Reason, BypassRefusal):
 		return "ask"
 	}
 	return "deny"

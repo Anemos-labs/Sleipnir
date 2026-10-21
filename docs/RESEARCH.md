@@ -2,7 +2,7 @@
 
 The `research` plugin turns a question into a researched, cited wiki. A team plans the question from several points of
 view, researches it on the web in parallel, keeps only quotes the harness found on their pages, writes pages in which
-every factual paragraph cites its sources, fact-checks each page with an agent that did not write it, and publishes a
+every factual paragraph cites its sources, fact-checks each page with an agent that did not write it (above quick depth), and publishes a
 static site with cross-links, a search box, a page of sources, a page of evidence and a page that describes the method.
 
 The same machinery can start a coding project: `/goal --research=DEPTH GOAL` researches how mature projects solve the
@@ -30,13 +30,17 @@ directory of the project. `sleipnir research [RUN] [--build] [--export DIR] [--j
 
 | Depth | Tracks | Gather rounds | Perspectives | Questions | Sources (sites) | Findings | Pages | Sources per page | Fact-checks per page |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| quick | 3 | 1 | 3 | 9 | 15 (8) | 24 | 5–8 | 4 | 1 |
+| quick | 3 | 1 | 2 | 6 | 8 (4) | 12 | 2–4 | 3 | 0 |
 | standard | 6 | 2 | 5 | 20 | 45 (18) | 70 | 10–16 | 6 | 1 |
 | deep | 10 | 3 | 7 | 36 | 110 (40) | 170 | 19–33 | 8 | 2 |
 
 The numbers are minimums the run must reach before its next phase opens (pages count the overview). A research-first run
-also needs code snippets from mature projects: 4 from 3 projects at quick depth, 10 from 6 at standard, 20 from 10 at
-deep. Pages aim at 400–900 words at quick depth, 700–1,500 at standard and 1,000–2,500 at deep.
+also needs code snippets from mature projects: 2 from 2 projects at quick depth, 10 from 6 at standard, 20 from 10 at
+deep. Pages aim at 300–700 words at quick depth, 700–1,500 at standard and 1,000–2,500 at deep.
+
+Quick depth is meant to take minutes: it has no fact-check round. The harness still verifies every quote on its page and
+every page's citations, and a review that finds issues still holds a page until it is fixed; nobody is required to review.
+Research first from New session at quick depth gives the build its `context` page soon after the gather round.
 
 ## The protocol
 

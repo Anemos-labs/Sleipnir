@@ -18,6 +18,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/lessons"
+	"github.com/anemos-labs/sleipnir/internal/lore"
 	"github.com/anemos-labs/sleipnir/internal/memory"
 	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"github.com/anemos-labs/sleipnir/internal/provider"
@@ -74,7 +75,20 @@ func (s *service) handleMemoryNotes(w http.ResponseWriter, r *http.Request) {
 	if !web.DecodeJSON(w, r, &body) {
 		return
 	}
-	p := notesPath(s.homeOf(tc))
+	p, write := notesPath(s.homeOf(tc)), memtool.WriteNotes
+	switch body.Scope {
+	case "", "user":
+	case "project":
+		pp, why := projectNotesPath(tc)
+		if why != "" {
+			reply(w, nil, fail(http.StatusBadRequest, "bad_path", why))
+			return
+		}
+		p, write = pp, memtool.WriteProjectNotes
+	default:
+		reply(w, nil, fail(http.StatusBadRequest, "bad_request", `scope is "user" or "project"`))
+		return
+	}
 	unlock := config.WriteLock(p)
 	defer unlock()
 	v, ok := fileVersion(os.ReadFile(p))
@@ -92,7 +106,7 @@ func (s *service) handleMemoryNotes(w http.ResponseWriter, r *http.Request) {
 		reply(w, nil, fail(http.StatusBadRequest, "bad_request", err.Error()))
 		return
 	}
-	if err := memtool.WriteNotes(p, notes); err != nil {
+	if err := write(p, notes); err != nil {
 		reply(w, nil, fail(http.StatusInternalServerError, "internal", "the notes were not saved"))
 		return
 	}
@@ -181,6 +195,19 @@ func (s *service) memOpts(tc *tabCtx) memory.Opts {
 // notesPath is the memory tool's file under home, as the session gives it to the tool.
 func notesPath(home string) string { return filepath.Join(home, ".sleipnir", "MEMORY.md") }
 
+// projectNotesPath is the memory tool's file of the tab's project (memory.ProjectNotes under its root), or why the page does not
+// write it: there is no project, or .sleipnir, the file or the .gitignore beside it is a link (memtool.CheckProjectPath).
+func projectNotesPath(tc *tabCtx) (string, string) {
+	if tc.root == "" {
+		return "", "this page has no project: only your own notes are here"
+	}
+	p := filepath.Join(tc.root, filepath.FromSlash(memory.ProjectNotes))
+	if err := memtool.CheckProjectPath(p); err != nil {
+		return "", "the project's notes are not edited here: " + err.Error()
+	}
+	return p, ""
+}
+
 // lessonsPath is the lesson memory's file of home, as the session opens it.
 func lessonsPath(home string) string { return filepath.Join(session.StateRoot(home), "lessons.json") }
 
@@ -202,6 +229,19 @@ func (s *service) memoryView(tc *tabCtx) wire.MemoryView {
 		v.Notes.Notes = append(v.Notes.Notes, provider.SanitizeText(n, memtool.MaxNoteRunes*4))
 	}
 
+	if tc.root != "" {
+		pp := filepath.Join(tc.root, filepath.FromSlash(memory.ProjectNotes))
+		raw, rerr := os.ReadFile(pp)
+		notes, _ := memtool.ReadNotes(pp)
+		pn := &wire.MemoryNotes{Path: filepath.ToSlash(memory.ProjectNotes), Notes: []string{}, On: on(plugin.MemoryTool), Max: memtool.MaxNotes, MaxLen: memtool.MaxNoteRunes}
+		pn.Version, _ = fileVersion(raw, rerr)
+		for _, n := range notes {
+			pn.Notes = append(pn.Notes, provider.SanitizeText(n, memtool.MaxNoteRunes*4))
+		}
+		v.Project = pn
+		v.Lore = s.memoryLore(home, tc.root, on(plugin.MemoryTool))
+	}
+
 	v.Files = s.memoryFiles(tc, on(plugin.Instructions))
 
 	lp := lessonsPath(home)
@@ -217,6 +257,36 @@ func (s *service) memoryView(tc *tabCtx) wire.MemoryView {
 		})
 	}
 	return v
+}
+
+// memoryLore reads the project's lore by role (internal/lore), each role's file in name order.
+func (s *service) memoryLore(home, root string, on bool) *wire.MemoryLore {
+	dir := lore.ProjectDir(session.StateRoot(home), root)
+	l := &wire.MemoryLore{Dir: s.display(dir), On: on, Roles: []wire.MemoryLoreRole{}}
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			l.Error = "the lore folder could not be read"
+		}
+		return l
+	}
+	st := lore.New(dir)
+	for _, e := range ents { // ReadDir sorts by name
+		role, ok := strings.CutSuffix(e.Name(), ".md")
+		if !ok || !e.Type().IsRegular() {
+			continue
+		}
+		items, err := st.Load(role)
+		r := wire.MemoryLoreRole{Role: role, Path: s.display(filepath.Join(dir, e.Name())), Items: []wire.MemoryLoreItem{}}
+		if err != nil {
+			r.Error = "the file could not be read"
+		}
+		for _, it := range items {
+			r.Items = append(r.Items, wire.MemoryLoreItem{Stage: it.Stage, Confirmed: it.Confirmed, Text: provider.SanitizeText(it.Text, lore.MaxTextRunes*4)})
+		}
+		l.Roles = append(l.Roles, r)
+	}
+	return l
 }
 
 // memoryFiles lists the places instruction files are read from for the tab, each with its text and whether a session started now

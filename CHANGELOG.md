@@ -7,6 +7,74 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Agents save memory notes without asking. A change to the agents' notes
+  (`~/.sleipnir/MEMORY.md`, or the project's `.sleipnir/MEMORY.local.md`) no
+  longer waits for the person's approval; the protection of `~/.sleipnir` and
+  `.sleipnir` is for files an agent writes there itself, not for the memory
+  tool's own file. Instead the Memory item of the web interface's left bar
+  counts the session's new memory changes until the Memory view is opened
+  (`wire.Tool` gains `mem`: added or removed). A `memory` ask rule puts each
+  change to the person again, and a `memory` deny rule refuses it. The memory
+  tool's description changed, so the tools layer of the prompt cache is
+  rebuilt once.
+
+- The Memory page shows the project's own notes (`.sleipnir/MEMORY.local.md`),
+  to edit, remove and add like the user's (`PUT .../memory/notes` takes
+  `scope: project`), and the team's lore by role, read-only
+  (`wire.MemoryView` gains `project` and `lore`).
+
+- The research tool no longer makes agents think about `run`. Its
+  description, schema and the run's brief say to leave `run` out (every
+  call goes to the run the session works on), and a call that names a run
+  that does not exist goes to the active run with a note instead of being
+  refused. Agents had spent turns working out whether `research cite`
+  needs `run`. The tool's description changed, so the tools layer of the
+  prompt cache is rebuilt once.
+
+- Quick research is quick. The quick depth asked for 15 sources from 8
+  sites, 24 findings and 4 to 7 pages, each fact-checked by another agent, so
+  a quick run (or Research first at quick depth in New session) took hours.
+  It now asks for 8 sources from 4 sites, 12 findings, 1 to 3 pages and 2
+  snippets from 2 projects, and has no fact-check round (`Depth.Reviewers` 0):
+  the harness still verifies every quote and citation, and a review that
+  finds issues still holds the page. The brief and goal of a run at quick
+  depth change accordingly. A plan that leaves out the overview page (`index`) gets
+  it, instead of sending the run back to planning. The Research view leaves
+  the fact-check phase out of a quick run's progress (`wire.ResearchRun`
+  gains `noFactCheck`).
+
+- Notices no longer pile up after restarts. A resumed session found the same
+  skills, hooks, plugins and instruction files as its earlier start and
+  logged the same warnings again, so a page replaying the log showed one more
+  copy of each per restart. A start-up warning already in the session's log
+  is now not logged or shown again.
+
+- An agent waits out a flaky endpoint that has answered it before. A failure
+  in which nothing answered (a dropped or reset connection, a gateway that
+  timed out) got only the six attempts, about half a minute, unless the
+  session said `WaitUnreachable`; a gateway that dropped connections for a
+  minute cost a worker its turn. Once the endpoint has answered the agent it
+  is known to exist, and such failures are waited out under the outage
+  patience (five minutes by default), like a 502 or 503. Before any answer a
+  misspelt URL still fails after the six attempts.
+
+- Questions wait for their answer. `sleipnir web` no longer refuses the open
+  questions after a minute without a page (`--ask-grace` now defaults to 0,
+  never); `--ask-grace` and `--ask-timeout` still set a limit when given.
+
+- Bypass mode never asks. What it used to ask about (the high-risk class,
+  the paths an `ask` rule names, such as `.sleipnir/`) is refused at once,
+  and the refusal says what flagged it and asks the agent for a safer way.
+  The Permissions page's tester shows it as refused.
+
+- The manager can answer for a person who is away. With
+  `permissions.manager_answers_after` (`--manager-answers-after`, or "when
+  you are away" in New session), a worker's question left unanswered that
+  long goes to the manager, if it is no more dangerous than
+  `permissions.manager_answers_up_to` (`low`, `medium` by default, or
+  `high`). Its answer withdraws the person's question, which shows who
+  answered and how. Off unless set; both keys are security-sensitive.
+
 - A worker can clear a false-green refusal. The refusal said to replace a
   dependency store that links outside the tree, but `unlink` on the link and
   any command that both removed the link and reinstalled through it were

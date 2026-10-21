@@ -46,12 +46,15 @@ type Classification struct {
 	// NoOneToAsk says the request would be put to a person, and the verdict is Deny only
 	// because the engine has no Prompter.
 	NoOneToAsk bool
+	// Bypass says the request would be put to a person, and the verdict is Deny only because
+	// bypass mode asks nothing.
+	Bypass bool
 }
 
 // Classify judges a request in the engine's order (hard denies, ask rules, high-risk
 // shell, allow rules, the mode) and never prompts: the verdict is the one Check would
 // reach before asking anyone. A request Check would put to a person is Ask, or Deny
-// when the engine has no Prompter (Check refuses it then). Nothing is audited and no
+// when the engine has no Prompter or is in bypass mode (Check refuses it then). Nothing is audited and no
 // rule is added.
 func (e *Engine) Classify(r Request) Classification {
 	sess, prof := e.snapshot(r.Role)
@@ -73,7 +76,9 @@ func (e *Engine) Classify(r Request) Classification {
 		c.Verdict = Deny
 	default:
 		c.Verdict = Ask
-		if e.cfg.Prompter == nil {
+		if e.Mode() == ModeBypass {
+			c.Verdict, c.Why, c.Bypass = Deny, bypassRefusal(v.reason), true
+		} else if e.cfg.Prompter == nil {
 			c.Verdict, c.NoOneToAsk = Deny, true
 			c.Why = "approval required: " + v.reason + NoOneToAsk
 		}

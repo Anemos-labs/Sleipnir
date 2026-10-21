@@ -241,8 +241,8 @@ type Config struct {
 	// failure gets six attempts; this is what lets such a failure get more. The endpoint answered, so it is there and the
 	// request is not wrong: waiting is what a person would do, and a worker that gives up after forty seconds takes its task
 	// with it. Zero (the default) is the six attempts only. A failure with no status (nothing answered: a refused or reset
-	// connection, no response in time; provider.OutageUnanswered) gets it only with WaitUnreachable, so a misspelt URL fails
-	// as fast as ever.
+	// connection, no response in time; provider.OutageUnanswered) gets it only with WaitUnreachable or once the endpoint has
+	// answered the agent (it exists: Agent.reached), so a misspelt URL fails as fast as ever.
 	OutagePatience time.Duration
 	// WaitUnreachable makes a failure in which nothing answered an outage too, waited out under OutagePatience: for an
 	// endpoint known to exist, such as the gateway a rollout runner has been using, whose outages are timeouts and refused
@@ -346,6 +346,11 @@ var ErrOutputLimit = errors.New("the response was cut off by the output limit")
 type Agent struct {
 	cfg Config
 	est core.Estimator
+	// reached is set once the agent's endpoint has answered it. From then on the endpoint is known to exist, and a failure in which
+	// nothing answered (a dropped connection, a gateway that timed out) is an outage waited out under OutagePatience, as with
+	// WaitUnreachable: a flaky gateway that drops connections for a minute must not cost a worker its task. Before any answer a
+	// misspelt URL still fails fast.
+	reached atomic.Bool
 
 	mu                sync.Mutex
 	stack             kv.Stack

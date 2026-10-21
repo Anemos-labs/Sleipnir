@@ -78,7 +78,8 @@ const (
 	ByClosed   = "closed"
 	ByNobody   = "nobody"
 	// ByManager is the team's manager: a worker's routine question it answered never reaches the bridge, and the translator sends
-	// its ask and answer together from the log's perm.decide.
+	// its ask and answer together from the log's perm.decide; a question the person left unanswered that it answered after the
+	// wait (perm.Config.Fallback) ends with this.
 	ByManager = "manager"
 )
 
@@ -250,11 +251,18 @@ func (b *Bridge) Prompter(tab, root string, describe func(agent string) (task, s
 		case d := <-q.ans:
 			return d
 		case <-ctx.Done():
-			by := ByCanceled
-			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			by, choice := ByCanceled, 3
+			var settled *perm.Settled
+			switch {
+			case errors.As(context.Cause(ctx), &settled):
+				by = settled.By // the manager answered it for the person who was away
+				if settled.Allow {
+					choice = 1
+				}
+			case errors.Is(ctx.Err(), context.DeadlineExceeded):
 				by = ByTimeout
 			}
-			if b.resolve(q, noAnswer, wire.Answer{QID: id, Choice: 3, By: by}) {
+			if b.resolve(q, noAnswer, wire.Answer{QID: id, Choice: choice, By: by}) {
 				return noAnswer
 			}
 			return <-q.ans // answered in the same instant: the answer stands (the engine discards it if the turn is over)

@@ -93,6 +93,11 @@ type Options struct {
 	Prompter perm.Prompter
 	// AskTimeout is how long a question to the person waits for its answer before it is refused (perm.Config.AskTimeout); zero waits.
 	AskTimeout time.Duration
+	// ManagerAnswersAfter, when positive, overrides permissions.manager_answers_after: in a team, how long a worker's question waits
+	// for the person before the manager answers it for them (perm.Config.Fallback). ManagerAnswersUpTo, when set, overrides
+	// permissions.manager_answers_up_to: the most dangerous kind of question it may answer.
+	ManagerAnswersAfter time.Duration
+	ManagerAnswersUpTo  perm.Danger
 	// Allow are rules that need no question in this run, on top of the configuration's (sleipnir run --allow): what the person
 	// who started the run pre-approved on the command line, which is the one place a run with nobody to ask can get an answer.
 	Allow []string
@@ -222,7 +227,9 @@ type Options struct {
 type Session struct {
 	// mcpRefused is set when a server the command line names (run --mcp-config) cannot start because the
 	// configuration's server limit leaves it out; the session then fails to build rather than run without it.
-	mcpRefused      error
+	mcpRefused error
+	// shownAtStart are the warnings of the session itself an earlier start of this resumed session logged (startNotice).
+	shownAtStart    map[string]bool
 	delivery        *delivery.Controller
 	deliveryOptions delivery.Options
 	opts            Options
@@ -502,12 +509,16 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	if o.Resume != "" && !hasLog(s.Dir) {
 		return nil, errors.New("this session was removed before it could be resumed")
 	}
+	if o.Resume != "" {
+		s.shownAtStart = loggedStartNotices(s.Dir)
+	}
+	shown := s.shownAtStart
 	if s.Log, err = events.Open(s.Dir, s.ID); err != nil {
 		return nil, err
 	}
 	s.emitPlugins()
 	for _, w := range plugWarns {
-		s.notice("", w)
+		s.startNotice(w)
 	}
 	s.effort.Set(o.Params.Effort)
 	if o.Resume != "" {
@@ -560,11 +571,12 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	s.ext.warnings = append(s.ext.warnings, hookWarns...)
 	s.ext.warnings = append(s.ext.warnings, extWarns...)
 	s.Skills, s.Roles = s.ext.skills, s.ext.roles
-	for _, w := range s.ext.warnings {
+	fresh := slices.DeleteFunc(slices.Clone(s.ext.warnings), func(w string) bool { return shown[w] })
+	for _, w := range fresh {
 		s.Log.Emit("", "notice", map[string]any{"level": "warn", "msg": w})
 	}
 	if o.Sink != nil {
-		for _, w := range shownWarnings(s.ext.warnings) {
+		for _, w := range shownWarnings(fresh) {
 			o.Sink.Notice("", "warn", w)
 		}
 	}
@@ -718,11 +730,15 @@ func (s *Session) buildPerm() error {
 		}
 	}
 	ask := append(append([]string(nil), protectedConfigDirs...), s.cfg.Permissions.Ask...)
+	after, upTo, err := s.managerAnswers()
+	if err != nil {
+		return fmt.Errorf("permissions: %w", err)
+	}
 	e, err := perm.NewEngine(perm.Config{
 		Mode: mode, Root: o.Root, Home: o.Home, StateDir: stateRoot(o.Home), Tmp: s.tmp, TreeParents: extra, Ignored: ignored,
 		Allow: append(append([]string(nil), s.cfg.Permissions.Allow...), o.Allow...), Ask: ask, Deny: s.cfg.Permissions.Deny,
 		Roles: roles, Prompter: s.trackAsks(s.hookPrompter(o.Prompter)), AskTimeout: o.AskTimeout, Audit: s.auditPermission,
-		Delegate: s.delegateApproval,
+		Delegate: s.delegateApproval, Fallback: s.fallbackApproval, FallbackAfter: after, FallbackUpTo: upTo,
 	})
 	if err != nil {
 		return fmt.Errorf("permissions: %w", err)
@@ -766,12 +782,12 @@ func (s *Session) buildShared(ctx context.Context) error {
 	}
 	if err != nil {
 		// Unreadable instruction files are reported, never fatal.
-		s.Log.Emit("", "notice", map[string]any{"level": "warn", "msg": "instruction files: " + err.Error()})
+		s.startNotice("instruction files: " + err.Error())
 	}
 	if !s.opts.TrustProject {
 		kept := userScopeOnly(srcs)
 		if skipped := skippedSources(srcs, kept); len(skipped) > 0 {
-			s.notice("", fmt.Sprintf("instruction files of this project were not loaded because the project is not trusted (%s); %s", strings.Join(skipped, ", "), trustHint("load")))
+			s.startNotice(fmt.Sprintf("instruction files of this project were not loaded because the project is not trusted (%s); %s", strings.Join(skipped, ", "), trustHint("load")))
 		}
 		srcs = kept
 	}
@@ -780,7 +796,7 @@ func (s *Session) buildShared(ctx context.Context) error {
 		budget := instructionTokenBudget(s.cfg.Cache.InstructionMaxTokens, s.Model.ContextTokens)
 		fitted, cut := fitInstructions(srcs, budget, est)
 		if len(cut) > 0 {
-			s.notice("", fmt.Sprintf("instruction files need about %d tokens; the limit is %d. Truncated or omitted: %s. Later, more specific files take precedence. Increase cache.instruction_max_tokens (SLEIPNIR_CACHE_INSTRUCTION_MAX_TOKENS) and restart, or shorten the files; /recon shows the loaded text", est.Tokens(txt), budget, strings.Join(cut, ", ")))
+			s.startNotice(fmt.Sprintf("instruction files need about %d tokens; the limit is %d. Truncated or omitted: %s. Later, more specific files take precedence. Increase cache.instruction_max_tokens (SLEIPNIR_CACHE_INSTRUCTION_MAX_TOKENS) and restart, or shorten the files; /recon shows the loaded text", est.Tokens(txt), budget, strings.Join(cut, ", ")))
 		}
 		segs = append(segs, kv.Segment{Key: "instructions", Text: fitted, Vol: kv.VolEpoch})
 	}
