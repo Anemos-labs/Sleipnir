@@ -440,6 +440,13 @@ func (s *Swarm) startPool(req SpawnReq, files []string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// A requeued parent keeps the members its manager excused, and beginPoolIn leaves them out: they must not take a place under
+	// the cap that an eligible member would have had.
+	if req.TaskID != "" {
+		if t, ok := s.Board.Snapshot().Task(req.TaskID); ok && t.Pool != nil && len(t.Pool.Excused) > 0 {
+			members = slices.DeleteFunc(slices.Clone(members), func(m *member) bool { return slices.Contains(t.Pool.Excused, m.id) })
+		}
+	}
 	members, release = capPool(members, release, s.cfg.PoolMax)
 	id := req.TaskID
 	if id == "" {

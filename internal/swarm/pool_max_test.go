@@ -61,3 +61,34 @@ func TestCapPoolKeepsReleaseToTheMembersThatMove(t *testing.T) {
 		t.Fatalf("members %d, release %v", len(got), rel)
 	}
 }
+
+// A requeued parent keeps the members its manager excused, and they never rejoin it: they do not take a place under the cap
+// that an eligible member would have had.
+func TestExcusedMembersDoNotCountAgainstPoolMax(t *testing.T) {
+	team := []string{"backend", "backend", "backend", "backend", "backend", "backend"}
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 6, Team: team},
+		func(ctx context.Context, _ *rvCall) rvReply { <-ctx.Done(); return rvReply{Text: "stopped"} })
+	task, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "tsdb", Role: "backend", Files: []string{"tsdb/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.sw.ensurePool("backend"); err != nil {
+		t.Fatal(err)
+	}
+	// the parent as a resume leaves it: todo, its pool kept, be-1 and be-2 excused
+	if err := r.sw.Board.mutate("mgr", "update", func(d *draft) error {
+		i := taskIdx(d.Snapshot, task.ID)
+		tk := d.Tasks[i]
+		tk.Pool = &PoolState{Members: []string{"be-3", "be-4"}, Phase: "planning", Revision: 1, Excused: []string{"be-1", "be-2"}}
+		return d.put(i, tk)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: task.ID, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := r.sw.Board.Snapshot().Task(task.ID)
+	if !slices.Equal(got.Pool.Members, []string{"be-3", "be-4", "be-5", "be-6"}) {
+		t.Fatalf("the restarted pool has %v, want the four members that were not excused", got.Pool.Members)
+	}
+}
