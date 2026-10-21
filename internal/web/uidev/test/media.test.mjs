@@ -53,6 +53,11 @@ test('a relative link opens a project file; a picture of the project is served a
   assert.equal(M.resolve('a/b.md', '/c/d.png'), 'c/d.png');
 });
 
+test('no held piece of markup ends up inside an attribute', () => {
+  const h = md('[x](a`"b`.md) ![`"q`](img/a.png) [y](https://e.com/`x`) <https://e.com/\\*>');
+  for (const m of h.matchAll(/\s(?:href|src|alt|title|data-file)="([^"]*)"/g)) assert.doesNotMatch(m[1], /<|\u0000/, m[0]);
+});
+
 test('invisible and bidirectional characters stay visible in rendered text', () => {
   assert.match(md('safe‮evil'), /⟨U\+202E⟩/);
 });

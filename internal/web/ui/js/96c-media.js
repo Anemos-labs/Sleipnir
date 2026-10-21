@@ -93,14 +93,15 @@
     return { u, scheme: m ? m[1].toLowerCase() : '' };
   }
   /** The inline markup of one escaped line run: code spans, images, links, emphasis, strike-through, hard breaks. */
+  // a held piece (\u0000n\u0000) never enters an address or an alt text: those are written into attributes
   function inline(text, o) {
     const keep = []; const hold = h => '\u0000' + (keep.push(h) - 1) + '\u0000';
     let s = vis(text).replace(/(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/g, (m, f, c) => hold('<code>' + esc(c.trim()) + '</code>'));
     s = esc(s.replace(/\\([\\`*_{}[\]()#+\-.!~|<>])/g, (m, c) => hold(esc(c))));
-    s = s.replace(/!\[([^\]]*)\]\(\s*([^)\s]+)(?:\s+&quot;[^&]*&quot;)?\s*\)/g, (m, alt, src) => hold(imageHtml(alt, src, o)));
-    s = s.replace(/\[([^\]]+)\]\(\s*([^)\s]+)(?:\s+&quot;[^&]*&quot;)?\s*\)/g, (m, lab, href) => hold(linkHtml(lab, href, o)));
-    s = s.replace(/&lt;((?:https?:\/\/|mailto:)[^\s&]+)&gt;/g, (m, u) => hold(linkHtml(u, u, o)));
-    s = s.replace(/(^|[\s(])(https?:\/\/[^\s<]+[^\s<.,;:!?)'"])/g, (m, pre, u) => pre + hold(linkHtml(u, u, o)));
+    s = s.replace(/!\[([^\]\u0000]*)\]\(\s*([^)\s\u0000]+)(?:\s+&quot;[^&]*&quot;)?\s*\)/g, (m, alt, src) => hold(imageHtml(alt, src, o)));
+    s = s.replace(/\[([^\]]+)\]\(\s*([^)\s\u0000]+)(?:\s+&quot;[^&]*&quot;)?\s*\)/g, (m, lab, href) => hold(linkHtml(lab, href, o)));
+    s = s.replace(/&lt;((?:https?:\/\/|mailto:)[^\s&\u0000]+)&gt;/g, (m, u) => hold(linkHtml(u, u, o)));
+    s = s.replace(/(^|[\s(])(https?:\/\/[^\s<\u0000]+[^\s<.,;:!?)'"\u0000])/g, (m, pre, u) => pre + hold(linkHtml(u, u, o)));
     s = s.replace(/(\*\*|__)(?=\S)([\s\S]*?\S)\1/g, '<strong>$2</strong>').replace(/(^|[^*\w])\*(?=\S)([^*]*?\S)\*(?!\*)/g, '$1<em>$2</em>').replace(/(^|[^_\w])_(?=\S)([^_]*?\S)_(?!\w)/g, '$1<em>$2</em>').replace(/~~(?=\S)([\s\S]*?\S)~~/g, '<del>$1</del>');
     s = s.replace(/( {2,}|\\)\n/g, '<br>');
     return s.replace(/\u0000(\d+)\u0000/g, (m, i) => keep[+i]).replace(/\u0000(\d+)\u0000/g, (m, i) => keep[+i]);
