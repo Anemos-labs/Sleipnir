@@ -39,7 +39,9 @@ they do not indicate whether a change has been released.
   the harness still verifies every quote and citation, and a review that
   finds issues still holds the page. The brief and goal of a run at quick
   depth change accordingly. A plan that leaves out the overview page (`index`) gets
-  it, instead of sending the run back to planning.
+  it, instead of sending the run back to planning. The Research view leaves
+  the fact-check phase out of a quick run's progress (`wire.ResearchRun`
+  gains `noFactCheck`).
 
 - Questions wait for their answer. `sleipnir web` no longer refuses the open
   questions after a minute without a page (`--ask-grace` now defaults to 0,

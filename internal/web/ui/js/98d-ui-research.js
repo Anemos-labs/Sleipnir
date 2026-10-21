@@ -20,7 +20,7 @@
 
   function runHtml(S, r) {
     const at = phaseAt(r.phase), done = r.phase === 'done';
-    const steps = PHASES.map(([id, label, about], i) => '<li class="' + (i < at || done ? 'done' : i === at ? 'cur' : '') + '" title="' + esc(about) + '"><i></i><span>' + esc(label) + '</span></li>').join('');
+    const steps = PHASES.map(([id, label, about], i) => r.noFactCheck && id === 'verify' ? '' : '<li class="' + (i < at || done ? 'done' : i === at ? 'cur' : '') + '" title="' + esc(about) + '"><i></i><span>' + esc(label) + '</span></li>').join('');
     const nums = [plural(r.sources, 'source') + ' on ' + plural(r.domains, 'site'), plural(r.findings, 'finding'), r.pages + ' of ' + Math.max(r.planned, r.pages) + ' pages']
       .concat(r.snippets ? [plural(r.snippets, 'snippet')] : []).concat(r.openGaps ? ['<span class="warm">' + plural(r.openGaps, 'open gap') + '</span>'] : []);
     const state = done ? '<span class="chip rs-ok">published</span>' : r.active ? '<span class="chip rs-live">running</span>' : r.built ? '<span class="chip">built</span>' : '';
