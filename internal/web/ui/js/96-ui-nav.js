@@ -1,10 +1,10 @@
 /* 96-ui-nav.js: the Dock's workspace shell: the left navigation rail (SL.ui.nav), the persistent Radio rail's collapse and resize (SL.ui.rail),
- * the `g` then letter chords, and the phone's bottom bar. Mounted once under the shell scope; it renders from the active session.
+ * and the phone's bottom bar. Mounted once under the shell scope; it renders from the active session.
  *
  * The rail items are views of the same page, in three groups: Work (Cockpit, Board, Changes, Files, Research), Inspect (Checkpoints, Merge,
  * Mail, Cache, Replay) and Manage (Sessions, Schedule, Memory, Plugins, Settings, Tools); Files, Changes, Checkpoints and Merge are four tabs of ONE
  * Workspace view. Every label is a whole word, in the narrow rail too. `Talk to manager` (the Radio rail, `g r`) is not a view: it
- * opens the Radio rail on the right and focuses its composer. The ids and the `g` chords of the items do not change with their order. */
+ * opens the Radio rail on the right and focuses its composer. The ids of the items do not change with their order. */
 (function (SL) {
   'use strict';
   const U = SL.u, { $, $$, esc, mk } = U, calc = SL.calc, ui = SL.ui = SL.ui || {};
@@ -58,7 +58,7 @@
   const isPhone = () => window.innerWidth <= 900;
   /** whether a view's plugin is on (SL.plugins, 98c-ui-plugins.js; everything is on while there is no catalogue) */
   const viewOn = v => !v || !SL.plugins || SL.plugins.viewOn(v);
-  /** the rail items whose view is on: an item of a view that is turned off leaves the rail, the chords and the phone's bars */
+  /** the rail items whose view is on: an item of a view that is turned off leaves the rail and the phone's bars */
   const shown = () => ITEMS.filter(it => it.radio || viewOn(it.view));
 
   /** where the view currently shown sits in the rail */
@@ -103,7 +103,7 @@
       /* Needs you, on top of every view: how many questions wait in every session and how long the oldest has; it opens that one */
       const need = nd ? '<button class="nvi nvneed" type="button" data-needgo aria-label="' + nd + ' question' + (nd === 1 ? '' : 's') + ' wait for you: open the oldest" title="open the question that has waited longest"><span class="nvg nyq" aria-hidden="true">?</span><span class="nl">Needs you</span><span class="nbd warm" aria-hidden="true">' + nd + '</span><span class="nyage num" data-needage></span></button>' : '';
       nav.innerHTML = '<div class="nv-list">' + need + items + '</div><button class="nvt" type="button" id="nvTog" aria-expanded="' + w + '" title="' + (w ? 'Collapse the menu to icons and short labels' : 'Expand the menu: whole labels, groups and the g keys') + '"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="' + (w ? 'M10 3L5 8l5 5' : 'M6 3l5 5-5 5') + '" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="nl">' + (w ? 'Collapse' : 'Expand') + '</span></button><div class="chordhint" id="chordHint" hidden></div>';
-      N.hint = $('#chordHint', nav); if (nd && ui.approvals && ui.approvals.paintAges) ui.approvals.paintAges();
+      if (nd && ui.approvals && ui.approvals.paintAges) ui.approvals.paintAges();
       paintPhone(S, cur);
     }
     function render(S) { paintNav(S); }
@@ -124,16 +124,6 @@
     sc.update(S => { if (S) paintNav(S); });
     sc.listen(window, 'resize', () => { N.sig = ''; });
 
-    /* ---------- chords: g then a letter ---------- */
-    const CH = { until: 0 };
-    function chordShow(on) { if (!N.hint) return; N.hint.hidden = !on; if (on) N.hint.innerHTML = '<b>g</b> then ' + shown().map(it => '<span><kbd>' + it.key + '</kbd> ' + esc(it.label.toLowerCase()) + '</span>').join(''); }
-    /** the keyboard handler calls this for a plain key press outside fields; returns true when it consumed the key */
-    function chord(key) {
-      const now = SL.time.T.wall;
-      if (CH.until > now) { CH.until = 0; chordShow(false); const it = shown().find(x => x.key === key.toLowerCase()); if (it) { go(it.id); return true; } return key === 'g'; }
-      if (key === 'g') { CH.until = now + 1500; chordShow(true); sc.timeout(() => { if (CH.until && SL.time.T.wall >= CH.until - 1) { CH.until = 0; chordShow(false); } }, 1600); return true; }
-      return false;
-    }
 
     /* ---------- phone: a bottom bar of five ---------- */
     const mnav = $('#mnav');
@@ -148,11 +138,11 @@
     });
     function moreSheet() {
       const grp = Object.keys(GRP).map(k => { const its = []; let in1 = false; shown().forEach(it => { if (it.grp) in1 = it.grp === k; if (in1 && !it.radio) its.push(it); }); return its.length ? '<h3 class="lab moreh">' + GRP[k] + '</h3><div class="moregrid">' + its.map(it => '<button class="btn more" type="button" data-nav="' + it.id + '">' + ICONS[it.id] + '<span>' + esc(it.label) + '</span></button>').join('') + '</div>' : ''; }).join('');
-      ui.modal({ title: 'Views', kicker: 'g then a letter', desc: 'every screen of the page, by what it is for', color: 'var(--fe)', body: grp + '<h3 class="lab moreh">Anything else</h3><div class="moregrid"><button class="btn more" type="button" data-pal>' + ICONS.tools + '<span>Command palette</span></button></div>',
+      ui.modal({ title: 'Views', kicker: 'views', desc: 'every screen of the page, by what it is for', color: 'var(--fe)', body: grp + '<h3 class="lab moreh">Anything else</h3><div class="moregrid"><button class="btn more" type="button" data-pal>' + ICONS.tools + '<span>Command palette</span></button></div>',
         onMount(b, scm, close) { scm.listen(b, 'click', e => { const x = e.target.closest('[data-nav]'); if (x) { close(); app.dataset.pv = 'main'; go(x.dataset.nav); } else if (e.target.closest('[data-pal]')) { close(); SL.palette.open(''); } }); } });
     }
 
-    ui.nav = { render, go, chord, items: ITEMS, shown, currentId, badges, moreSheet, get wide() { return wide(); }, setWide(on) { pref.nav = on ? 'wide' : 'rail'; save(); N.sig = ''; paintNav(SL.sessions.active); } };
+    ui.nav = { render, go, items: ITEMS, shown, currentId, badges, moreSheet, get wide() { return wide(); }, setWide(on) { pref.nav = on ? 'wide' : 'rail'; save(); N.sig = ''; paintNav(SL.sessions.active); } };
     Object.defineProperty(ui.nav, 'sig', { get() { return N.sig; }, set(v) { N.sig = v; } });
 
     /* ---------- the Radio rail: collapse and resize ---------- */

@@ -99,8 +99,11 @@
       rc.innerHTML = '<span class="rc-top"><b class="s-id">mgr</b><span class="s-role">manager</span><span class="s-st"><i class="g">◌</i><span class="sw">idle</span></span></span><span class="s-doing"></span><span class="rc-meta"><span class="chip task">' + (nW || S.meta.swarm > 0 ? 'goal' : 'single agent') + '</span><span class="rc-note">' + (nW || S.meta.swarm > 0 ? 'coordinates pools and handles direct work' : 'works alone: edits, runs, answers') + '</span></span><span class="s-nums"><span class="n-tok"></span><span class="n-cost"></span><span class="hit n-hit"></span></span><svg class="s-spark" viewBox="0 0 150 40" preserveAspectRatio="xMinYMax meet" aria-hidden="true"></svg>';
       rc.style.setProperty('--c', agCol('mgr')); const RC = { el: rc, doing: $('.s-doing', rc), sw: $('.sw', rc), g: $('.s-st .g', rc), tok: $('.n-tok', rc), cost: $('.n-cost', rc), hit: $('.n-hit', rc), spark: $('.s-spark', rc), n: -1 };
       sc.listen(rc, 'click', e => ui.focusAgent('mgr', e));
-      if (!nW && S.meta.swarm > 0) stallsEl.innerHTML = '<div class="solo"><b>The team is ready</b><p>A manager and ' + S.meta.swarm + ' worker slots. Workers start when the manager splits the work; workers of the same role share a leg.</p><ol class="sololog"></ol></div>';
-      else if (!nW) stallsEl.innerHTML = '<div class="solo"><b>The manager works alone</b><p>--swarm 0: one agent, no workers and no leases. The eight legs stand; the manager edits, runs and answers itself.</p><ol class="sololog"></ol></div>';
+      /* no worker has started: the card says what the session's meta says the team is (a team that waits for its first worker, or one
+         agent), and says it again when the meta changes (it arrives after the card is drawn, and a restart may change it) */
+      const soloHtml = n => n > 0 ? '<div class="solo" data-slots="' + n + '"><b>The team is ready</b><p>A manager and ' + n + ' worker slots. Workers start when the manager splits the work; workers of the same role share a leg.</p><ol class="sololog"></ol></div>'
+        : '<div class="solo" data-slots="0"><b>The manager works alone</b><p>--swarm 0: one agent, no workers and no leases. The eight legs stand; the manager edits, runs and answers itself.</p><ol class="sololog"></ol></div>';
+      if (!nW) stallsEl.innerHTML = soloHtml(S.meta.swarm || 0);
       else {
         /* a large team (more than DENSE workers): one band per role, its count and its models in the band's head, one line per worker */
         const dense = nW > DENSE, groups = {};
@@ -140,6 +143,7 @@
       }
       function update(S2, m) {
         if (!m) return; const mg = m.ag.mgr; fillCard(RC, mg, calc.agent(mg), true, m);
+        if (!nW) { const n = (S2 || S).meta.swarm || 0, solo = $('.solo', stallsEl); if (solo && solo.dataset.slots !== String(n)) stallsEl.innerHTML = soloHtml(n); }
         if (!nW) { const log = (m.chan.mgr || []).filter(e => e.k === 'tool').slice(-6).reverse(); $('.sololog', body).innerHTML = log.map(e => '<li><b>' + esc(e.name) + '</b> ' + esc(e.arg || '') + (e.out ? ' <span class="dim">' + esc(e.out) + '</span>' : '') + '</li>').join('') || '<li class="dim">The manager\u2019s first steps show here once it has something to do: give it a goal in the composer.</li>'; }
         workers.forEach(w => { const A = m.ag[w.id]; fillCard(ST[w.id], A, calc.agent(A), A.spawned, m); });
       }

@@ -62,47 +62,17 @@
     },
     {
       "side": "web_only",
-      "items": ["alt+1", "alt+2", "alt+3", "alt+4", "alt+5", "alt+6", "alt+7", "alt+8", "alt+9"],
-      "reason": "switch to the nth session tab; a terminal program shows one session and has no tabs"
-    },
-    {
-      "side": "web_only",
       "items": ["f2"],
       "reason": "renames the focused session tab; the terminal has no tabs, and its session is renamed with a command"
     },
     {
-      "side": "web_only",
-      "items": [",", "."],
-      "reason": "open the Settings and Tools views, which have no screen in the terminal chat; the terminal reaches them with slash commands and sleipnir subcommands (see the views dimension)"
-    },
-    {
-      "side": "web_only",
-      "items": ["r", "s"],
-      "reason": "open the Replay and Sessions views; in the terminal, replay is a program of its own (sleipnir replay) and sessions are listed by /resume"
-    },
-    {
-      "side": "web_only",
-      "items": ["g"],
-      "reason": "the prefix of the chords to the views of the left rail"
-    },
-    {
-      "side": "web_only",
-      "items": ["g r", "g f", "g h", "g k", "g q", "g p", "g w", "g s", "g j", "g y", "g u", "g t", "g e"],
-      "reason": "chords to views of the page's left rail that the terminal chat has no screen for: Radio, Files, Changes, Checkpoints, Merge, Replay, Research, Sessions, Schedule, Memory, Plugins, Tools and Settings (see the views dimension)"
+      "side": "terminal_only",
+      "items": ["+", "-", "1", "2", "3", "4", "=", "?", "b", "c", "ctrl+c", "ctrl+d", "ctrl+g", "ctrl+k", "ctrl+o", "ctrl+t", "f", "m", "o"],
+      "reason": "the page has no keyboard shortcuts: in a browser a key typed without the focus in the message box must not change the view, answer a question, interrupt a turn or close the session (text typed before clicking the message box did all of these); the page's views, questions and commands are buttons, and the message box keeps its own keys (Enter, Up, shift+tab, / and @)"
     }
   ],
-  "equivalent": [
-    {"terminal": "ctrl+g", "web": "alt+g", "reason": "browsers keep ctrl+g on some platforms, so the page binds alt+g to the same cockpit"},
-    {"terminal": "ctrl+t", "web": "alt+t", "reason": "browsers keep ctrl+t (a new tab), so the page binds alt+t to the same statistics, which are its Cache view"},
-    {"terminal": "ctrl+g", "web": "g c", "reason": "the cockpit: the terminal's page of the team and the page's chord to its Cockpit view"},
-    {"terminal": "ctrl+t", "web": "g a", "reason": "the cache and cost statistics: the terminal's stats page and the page's chord to its Cache view"},
-    {"terminal": "m", "web": "g m", "reason": "the Mail view: the page's chord for the key that sleipnir watch has on m"},
-    {"terminal": "b", "web": "g b", "reason": "the Board view: the page's chord for the key that sleipnir watch has on b"}
-  ],
+  "equivalent": [],
   "different_meaning": [
-    {"item": "ctrl+k", "terminal": "kills the text from the cursor to the end of the line, in the prompt's editor", "web": "opens the command palette"},
-    {"item": "delete", "terminal": "deletes the character after the cursor in the prompt", "web": "on a focused session tab, asks whether to close it (the text box deletes by itself)"},
-    {"item": "ctrl+d", "terminal": "quits the chat at an empty prompt (after the turn that runs, if one does), refuses a question in front, and deletes the character after the cursor when the prompt has text", "web": "in an empty message box, or with nothing focused, asks whether to close the session, as the tab's close does (the team stops, and an open question is named); with text in the box it is the browser's"},
-    {"item": "1", "terminal": "answers a question in the chat; in sleipnir watch and replay it chooses the cockpit view, 2 3 and 4 the others", "web": "answers the question in front, as 2 3 and 4 do"}
+    {"item": "delete", "terminal": "deletes the character after the cursor in the prompt", "web": "on a focused session tab, asks whether to close it (the text box deletes by itself)"}
   ]
 }

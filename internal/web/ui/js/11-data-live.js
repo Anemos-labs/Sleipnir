@@ -39,31 +39,19 @@
     { id: 'G4', name: 'spine', note: 'the summary spine: what compactions folded away', col: 'var(--warm)' },
     { id: 'G5', name: 'thread', note: 'the conversation and tool results, verbatim, append-only between rebases', col: 'var(--rv)' },
   ];
-  /** The keys the Help sheet and Settings › Keys list, after the rows those two draw themselves. The first column holds keys and nothing
+  /** The keys the Help sheet and Settings › Keys list: the page has no shortcuts, only the message box's own keys and Esc. The first column holds keys and nothing
    *  else: `·` between alternatives, a space between keys that are pressed one after another, the key's name as people write it (Enter,
    *  Esc, ctrl+k, shift+Left); what a key does goes in the second column. help-keys.test.mjs fails when a key named here is one the page
    *  does nothing with (internal/parity/testdata/keys-web.json). */
   const SHORTCUTS = [
-    ['Enter', 'send the message'],
+    ['Enter', 'send the message (while a turn runs, it waits for the turn to end)'],
     ['\\ at end of line · alt+enter · ctrl+j', 'a newline in the message'],
     ['Up / Down', 'in the message box: recall the lines sent before'],
-    ['ctrl+r', 'search the lines sent before'],
-    ['/ · ctrl+k', 'the commands of the session; the command palette'],
-    ['@', 'complete a path from the project tree'],
-    ['shift+tab', 'step the permission mode default → accept-edits → plan (never bypass or yolo)'],
-    ['ctrl+t · alt+t', 'the stats page (the same as /stats); the browser keeps ctrl+t'],
-    ['ctrl+g · alt+g', 'the team cockpit (the same as /agents)'],
-    ['ctrl+o', 'expand or collapse the output of the tools in the conversation'],
-    ['Esc', 'interrupt the running turn (and pause a goal); closes overlays and leaves a replay first'],
-    ['ctrl+c', 'at the prompt: discard the line; twice within 1.5 s: close the session (it asks first); during a turn: cancel the turn; with text selected: copy'],
-    ['ctrl+d', 'on an empty line: quit, which closes the session (it asks first)'],
-    ['1 2 3 4', 'answer a question (2 only where it would remember something, 4 only for a build or test command); esc is no; letters never answer; keys are taken only after the keyboard has been quiet for 0.8 s'],
-    ['o c m b r s , .', 'a view: Cockpit, Cache, Mail, Board, Replay, Sessions, Settings, Tools'],
-    ['Up / Down', 'outside the message box: choose the agent the views are about'],
-    ['space', 'pause or resume the view (a paused view is a replay; End or Esc goes live)'],
-    ['Left Right · shift+Left shift+Right', 'replay: seek 10 s (shift: a minute)'],
-    ['+ - · Home End', 'replay: speed (+ -), start (Home), live (End)'],
-    ['?', 'list the keys and the commands'],
+    ['ctrl+r', 'in the message box: search the lines sent before'],
+    ['/', 'in the message box: the commands of the session'],
+    ['@', 'in the message box: complete a path from the project tree'],
+    ['shift+tab', 'in the message box: step the permission mode default → accept-edits → plan (never bypass or yolo)'],
+    ['Esc', 'close a dialog, a menu or the drawer; leave a field'],
   ];
   const ZERO6 = [0, 0, 0, 0, 0, 0];
 
@@ -133,7 +121,7 @@
       if (Array.isArray(v.roles) && v.roles.length) { const r = {}; v.roles.forEach(x => { r[x.name] = { code: x.code, ro: !!x.ro, desc: x.desc || '' }; }); if (!r.manager) r.manager = ROLES.manager; D.roles = r; }
       if (Array.isArray(v.roleOrder) && v.roleOrder.length) D.roleOrder = v.roleOrder.slice();
       D.roleModels = Object.assign({}, v.roleModels || {}); G.roleModels = Object.assign({}, D.roleModels);
-      D.efforts = (v.efforts || []).slice(); D.modelErrors = (v.errors || []).slice(); D.modelsNote = v.configNote || '';
+      D.efforts = (v.efforts || []).slice(); D.modelErrors = (v.errors || []).slice(); D.suggested = typeof v.suggested === 'string' ? v.suggested : ''; D.modelsNote = v.configNote || '';
       SL.bus.emit('models-changed');
     },
     providers(v) {

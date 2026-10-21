@@ -225,3 +225,30 @@ func TestCheckEditLetsAnOverfullFileShrink(t *testing.T) {
 		t.Error("a new note over the limit was taken")
 	}
 }
+
+// A file edited by hand keeps its other lines when the notes are written: headings and text stay where they were, the notes take the
+// place of the old ones.
+func TestWriteNotesKeepsTheLinesWrittenByHand(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "MEMORY.md")
+	hand := "# My notes\n\nKeep this paragraph.\n- old one\n- old two\n\n## Later\nmore text\n"
+	if err := os.WriteFile(p, []byte(hand), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteNotes(p, []string{"new one"}); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(p)
+	if want := "# My notes\n\nKeep this paragraph.\n- new one\n\n## Later\nmore text\n"; string(b) != want {
+		t.Errorf("file = %q, want %q", b, want)
+	}
+	if err := WriteNotes(p, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteNotes(p, []string{"back"}); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = os.ReadFile(p)
+	if want := "# My notes\n\nKeep this paragraph.\n\n## Later\nmore text\n- back\n"; string(b) != want {
+		t.Errorf("after removing every note and adding one: %q, want %q", b, want)
+	}
+}

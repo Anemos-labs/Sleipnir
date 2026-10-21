@@ -325,8 +325,6 @@
     const slot = $('#qSlot'); if (slot) sc.listen(slot, 'click', endClick);
     sc.on('needs-changed', () => { if (pop) { const nd = SL.sessions.needs().length; draw(); if (!nd) { /* keep open: shows the empty state */ } } });
     sc.listen(document, 'pointerdown', e => { if (pop && !pop.contains(e.target) && !e.target.closest('.inboxbtn')) close(); });
-    /* key 4: the fourth answer's No (94-keys.js routes 1, 2 and 3); the same rule as the other keys */
-    sc.listen(document, 'keydown', e => { if (e.key !== '4' || e.ctrlKey || e.metaKey || e.altKey || ui.hasModal()) return; const t = e.target, inField = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable); if (inField && !(t.id === 'input' && t.value === '')) return; const q = ui.approvals.pending(); if (q && q.offersTests && ui.approvals.tryKey('4')) { e.preventDefault(); e.stopPropagation(); } }, true);
     sc.frame(() => { const SA = SL.sessions.active; if (SA && SA.wm) render(SA, SA.wm); if (pop) paintMeters(pop); paintMeters($('#qSlot')); const q = ui.approvals.pending(); const w = $('#qSlot .qw'); if (q && w) { const S = SL.sessions.active, s = Math.max(0, Math.floor(S.wt - q.t0)) + 1, t = 'waiting for you: ' + (s < 60 ? s + 's' : Math.floor(s / 60) + 'm ' + (s % 60) + 's'); if (w.textContent !== t) w.textContent = t; } });
     ui.inbox = { toggle, close, isOpen: () => !!pop };
     /* the replay banner's Go live, and the manager's collapsed decisions (in the rail and in the chat) open and close in place */

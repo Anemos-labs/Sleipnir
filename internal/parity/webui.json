@@ -2367,6 +2367,7 @@
    "nsGitRow",
    "nsGoal",
    "nsModel",
+   "nsModelHint",
    "nsModes",
    "nsName",
    "nsProjects",

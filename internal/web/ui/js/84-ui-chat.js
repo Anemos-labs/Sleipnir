@@ -147,7 +147,7 @@
     function chHead(S, m) {
       let hd = $('#chHead'); if (!hd) { hd = mk('div', { id: 'chHead', class: 'chhead' }); talk.parentNode.parentNode.insertBefore(hd, $('#qSlot')); }
       const run = !S.readOnly && turnBusy(S); hd.hidden = !run;
-      const h = run ? '<span class="dim">the manager is working on your message</span><span class="sp"></span><button class="btn sm" type="button" data-ch="turn" title="Esc: interrupt the turn and pause the goal">Interrupt turn <kbd>esc</kbd></button>' : '';
+      const h = run ? '<span class="dim">the manager is working on your message</span><span class="sp"></span><button class="btn sm" type="button" data-ch="turn" title="interrupt the turn and pause the goal">Interrupt turn <kbd>esc</kbd></button>' : '';
       if (hd._h !== h) { hd._h = h; hd.innerHTML = h; }
     }
     /** the Team activity section: read-only, collapsible; it never takes an input */
@@ -182,7 +182,7 @@
     sc.listen(planBox, 'click', e => { if (e.target.closest('#planTgl')) { const S = SL.sessions.active; S.ui.planOpen = !S.ui.planOpen; planBox._h = ''; renderPlan(S, S.m); } });
 
     /* ---------- composer ---------- */
-    const inp = $('#input'), form = $('#composer'), SLASH = { open: false, items: [], idx: 0, mode: 'cmd' }, slashEl = $('#slash'), RS = { pasted: [], hi: -1, cc: 0 };
+    const inp = $('#input'), form = $('#composer'), SLASH = { open: false, items: [], idx: 0, mode: 'cmd' }, slashEl = $('#slash'), RS = { pasted: [], hi: -1 };
     const autosize = () => { inp.style.height = 'auto'; inp.style.height = Math.min(120, inp.scrollHeight) + 'px'; };
     /** A queued line: its text and, once the server has it, Send now (a message only: it steers the running turn), Edit (takes it out and
      *  puts it back in the composer) and × (takes it out). An action of the session (a goal change) has no buttons: it stays. */
@@ -218,7 +218,7 @@
       r.done.then(res => { if (res && res.ok === false) restore(S, v, pasted); });
     }
     /* while a turn runs the hint says what Enter and Ctrl+Enter do: short in the bar, the whole sentence in its title */
-    const HINT_IDLE = 'ctrl+t stats · / commands', HINT_BUSY = 'Enter queues · Ctrl+Enter steers', HINT_BUSY_T = 'Enter queues for after this turn · Ctrl+Enter sends now (steer)';
+    const HINT_IDLE = '/ commands', HINT_BUSY = 'Enter queues · Ctrl+Enter steers', HINT_BUSY_T = 'Enter queues for after this turn · Ctrl+Enter sends now (steer)';
     function composerUpdate(S) {
       feed.classList.toggle('quiet', S.ui.verbose === false); feed.classList.toggle('verbose', S.ui.verbose === true); const qh = S.ui.queued.map(queuedHtml).join(''), ql = $('#queuedLines'); if (ql._h !== qh) { ql._h = qh; ql.innerHTML = qh; }
       const hint = $('#cHint'), ht = !S.readOnly && turnBusy(S) ? HINT_BUSY : HINT_IDLE; if (hint && hint.textContent !== ht) { hint.textContent = ht; hint.title = ht === HINT_BUSY ? HINT_BUSY_T : ''; }
@@ -302,11 +302,6 @@
       if (e.key === 'Enter' && !e.shiftKey && !e.altKey) { const v = inp.value; if (v.endsWith('\\')) { e.preventDefault(); inp.value = v.slice(0, -1) + '\n'; autosize(); return; } e.preventDefault(); submit(); return; }
       if (e.key === 'Enter' && e.altKey) { e.preventDefault(); inp.setRangeText('\n', inp.selectionStart, inp.selectionEnd, 'end'); autosize(); return; }
       if (e.key === 'j' && e.ctrlKey) { e.preventDefault(); inp.setRangeText('\n', inp.selectionStart, inp.selectionEnd, 'end'); autosize(); return; }
-      if (e.key === 'c' && e.ctrlKey && inp.selectionStart === inp.selectionEnd) { e.preventDefault(); const S = SL.sessions.active;
-        if (inp.value) { inp.value = ''; autosize(); closeSlash(); ui.toast('line discarded (ctrl+c again at an empty prompt quits)'); }
-        else if (S && !S.readOnly && (SL.calc.turnRunning(S.wm) || S.meta.running)) { RS.cc = 0; const r = SL.act.interrupt('turn'); ui.toast(r.ok ? SL.interruptText(S) : (r.why || 'nothing is running to interrupt'), r.ok ? 'warm' : 'quiet'); }   /* as Esc does, and as the TUI does */
-        else if (RS.cc && SL.time.wall - RS.cc < 1500) { RS.cc = 0; if (S) ui.closeSessionAsk(S); }   /* ctrl+c twice at an empty prompt closes the session (quitting a page's session is closing it) */
-        else { RS.cc = SL.time.wall; ui.toast('ctrl+c again to quit'); } return; }
       if (e.key === 'r' && e.ctrlKey) { e.preventDefault(); ui.sheets.history(); return; }
       if (e.key === 'ArrowUp' && !e.shiftKey && !inp.value && SL.sessions.active) {
         /* as in the terminal: Up on an empty composer takes the last queued line back to edit it, before the history */

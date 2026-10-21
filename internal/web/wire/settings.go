@@ -22,9 +22,11 @@ type ModelRow struct {
 
 // ModelsView is the catalogue with the favourites and the sources that could not be read.
 type ModelsView struct {
-	Models     []ModelRow        `json:"models"`
-	Favs       []string          `json:"favs"`
-	Errors     []string          `json:"errors,omitempty"`
+	Models []ModelRow `json:"models"`
+	Favs   []string   `json:"favs"`
+	Errors []string   `json:"errors,omitempty"`
+	// Suggested is the model a picker starts on when nothing chose one (its provider's suggested_model), "" when no listed model is.
+	Suggested  string            `json:"suggested,omitempty"`
 	Roles      []RoleInfo        `json:"roles"`
 	RoleOrder  []string          `json:"roleOrder"`
 	RoleModels map[string]string `json:"roleModels"`
