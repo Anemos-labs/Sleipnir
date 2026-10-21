@@ -7,6 +7,16 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Previews of files in the web interface. The Workspace shows images (SVG
+  included), video, audio and PDF files, rendered Markdown (with mermaid
+  blocks), mermaid diagrams and CSV/TSV tables in a Preview view instead of
+  "a binary file"; a changed picture is shown before and after. A picture an
+  agent read or wrote is shown under its tool row in the chat and the agent
+  drawer. New routes: `GET /api/sessions/{id}/ws/raw` and
+  `GET /api/preview/mermaid` (a sandboxed frame with the vendored
+  `@mermaid-js/tiny` build). The page's policy adds `media-src 'self'` and
+  `frame-src 'self'`. No prompt bytes change.
+
 - A research-first goal keeps the free workers building. The goal and the
   brief of a `/goal --research` run now say that the workers the research
   leaves free lay the groundwork no finding can change (what the project

@@ -1,0 +1,57 @@
+/* previews of files (SL.media, 96c-media.js): pictures on a checkerboard, video, audio, PDF, rendered Markdown, diagrams, tables */
+.pv{display:flex;flex-direction:column;min-height:100%}
+.pv-bar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);font-size:12px;position:sticky;top:0;background:var(--panel);z-index:1}
+.pv-bar .pv-sp{flex:1}
+.pv-bar a.btn{text-decoration:none}
+.pv-stage{flex:1;display:flex;align-items:center;justify-content:center;padding:16px;min-height:200px;overflow:auto}
+.pv-img{background-color:var(--panel2);background-image:linear-gradient(45deg,var(--raise) 25%,transparent 25%,transparent 75%,var(--raise) 75%),linear-gradient(45deg,var(--raise) 25%,transparent 25%,transparent 75%,var(--raise) 75%);background-size:16px 16px;background-position:0 0,8px 8px;cursor:zoom-in}
+.pv-img img{max-width:100%;max-height:calc(100vh - 320px);object-fit:contain;image-rendering:auto;box-shadow:0 0 0 1px var(--line2)}
+.pv-img.actual{align-items:flex-start;justify-content:flex-start;cursor:zoom-out}
+.pv-img.actual img{max-width:none;max-height:none}
+.pv-stage video{max-width:100%;max-height:calc(100vh - 320px);background:var(--well);border-radius:6px}
+.pv-aud audio{width:min(560px,100%)}
+.pv-pdfs{padding:0;align-items:stretch}
+.pv-pdf{flex:1;width:100%;min-height:calc(100vh - 300px);border:0;background:var(--panel2)}
+.pv-cmp{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;padding:12px;flex:1}
+.pv-side{margin:0;display:flex;flex-direction:column;gap:6px;min-width:0}
+.pv-side .pv-stage{border-radius:6px;min-height:160px}
+.pv-side .pv-dim{font-size:11px}
+/* Markdown */
+.pv-md{padding:18px 26px 40px;max-width:900px;font:400 14px/1.6 var(--f-ui);color:var(--fg);overflow-wrap:anywhere}
+.pv-md h1,.pv-md h2,.pv-md h3,.pv-md h4,.pv-md h5,.pv-md h6{color:var(--bright);font-family:var(--f-lab);letter-spacing:.02em;line-height:1.25;margin:1.4em 0 .5em}
+.pv-md h1{font-size:28px;border-bottom:1px solid var(--line);padding-bottom:.3em;margin-top:.4em}
+.pv-md h2{font-size:22px;border-bottom:1px solid var(--line);padding-bottom:.25em}
+.pv-md h3{font-size:18px}.pv-md h4{font-size:15px}.pv-md h5,.pv-md h6{font-size:14px;color:var(--fg2)}
+.pv-md p,.pv-md ul,.pv-md ol,.pv-md blockquote,.pv-md pre,.pv-md .pv-scroll,.pv-md .pv-mmd{margin:0 0 .9em}
+.pv-md ul,.pv-md ol{padding-left:1.6em}
+.pv-md li{margin:.2em 0}.pv-md li>ul,.pv-md li>ol,.pv-md li>p{margin:.2em 0}
+.pv-md li.task{list-style:none;margin-left:-1.3em}
+.pv-md a{color:var(--info)}
+.pv-md .pv-ln[data-file]{color:var(--info)}
+.pv-md code{font:500 12.5px var(--f-num);background:var(--raise);border-radius:4px;padding:.1em .35em;color:var(--bright)}
+.pv-md pre code{background:none;padding:0;color:inherit}
+.pv-code{font:500 12.5px/1.5 var(--f-num);background:var(--well);border:1px solid var(--line);border-radius:6px;padding:10px 12px;overflow:auto;color:var(--fg);white-space:pre}
+.pv-code em{font-style:normal}.pv-code em.c{color:var(--faint)}.pv-code em.s{color:var(--ok)}.pv-code em.k{color:var(--mgr)}
+.pv-md blockquote{border-left:3px solid var(--line2);padding:.1em 0 .1em 1em;color:var(--fg2)}
+.pv-md hr{border:0;border-top:1px solid var(--line2);margin:1.4em 0}
+.pv-md img.pv-inl{max-width:100%}
+.pv-md .pv-noimg{color:var(--dim);font-style:italic}
+.pv-md strong{color:var(--bright)}
+.pv-md del{color:var(--dim)}
+.pv-md table th.r,.pv-md table td.r{text-align:right}.pv-md table th.c,.pv-md table td.c{text-align:center}
+.pv-front{color:var(--dim)}
+.pv-scroll{overflow:auto;max-width:100%}
+.pv-tbl .pv-scroll{padding:0 12px 12px}
+.pv-tbl table td,.pv-tbl table th{white-space:nowrap}
+/* diagrams */
+.pv-mmd{padding:12px;display:flex;justify-content:center;overflow:auto}
+.pv>.pv-mmd{flex:1;align-items:flex-start;padding:20px}
+.pv-dg{max-width:100%;height:auto}
+.pv-merr{font-size:12.5px;margin-bottom:6px}
+.pv-mmd .pv-code{width:100%}
+.pv-mmd:has(.pv-merr){flex-direction:column}
+.pv-frame{position:fixed;left:-10000px;top:0;width:1600px;height:1200px;border:0;visibility:hidden;pointer-events:none}
+/* a picture under a tool row of the chat */
+.pv-thumb{display:block;margin-top:4px}
+.pv-thumb img{display:block;max-width:min(220px,100%);max-height:140px;border-radius:4px;box-shadow:0 0 0 1px var(--line2);background:var(--panel2)}
+.pv-md li.task>ul,.pv-md li.task>ol{margin-left:1.3em}
