@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A role's pool takes at most four members for one parent task
+  (`swarm.pool_max`, new; `0` is the default of 4, a negative value sets no
+  cap). A larger role used to put every free member into the first parent's
+  pool, which held all of them while it agreed on its plan; now the others
+  form the pool of the role's next parent at once. Teams with four or fewer
+  slots of a role behave as before.
+
 - Agents save memory notes without asking. A change to the agents' notes
   (`~/.sleipnir/MEMORY.md`, or the project's `.sleipnir/MEMORY.local.md`) no
   longer waits for the person's approval; the protection of `~/.sleipnir` and

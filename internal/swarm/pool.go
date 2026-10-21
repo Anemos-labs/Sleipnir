@@ -335,6 +335,40 @@ func (s *Swarm) spareMembers(req SpawnReq, all []*member) ([]*member, map[string
 	return spare, release, nil
 }
 
+// DefaultPoolMax is how many members form one parent's pool when Config.PoolMax is 0. Every member of a pool that is still agreeing
+// on its plan is held by it, and each vote waits for all of them: in a 32-worker run the ten backend members all joined the first
+// backend parent and planned it together while the other backend parents waited. Four members can divide one parent's work; the
+// role's remaining members form the pool of its next parent.
+const DefaultPoolMax = 4
+
+// capPool keeps at most max of the spare members (spareMembers puts the requested leader first) and drops the members left out
+// from release, so a pool spares only the members that actually move. max 0 is DefaultPoolMax; a negative max keeps them all.
+func capPool(members []*member, release map[string][]string, max int) ([]*member, map[string][]string) {
+	if max == 0 {
+		max = DefaultPoolMax
+	}
+	if max < 0 || len(members) <= max {
+		return members, release
+	}
+	members = members[:max]
+	if len(release) == 0 {
+		return members, release
+	}
+	kept := make(map[string]bool, len(members))
+	for _, m := range members {
+		kept[m.id] = true
+	}
+	out := make(map[string][]string, len(release))
+	for parent, ids := range release {
+		for _, id := range ids {
+			if kept[id] {
+				out[parent] = append(out[parent], id)
+			}
+		}
+	}
+	return members, out
+}
+
 // poolKeeps reports whether the open pooled parent t keeps its member from another parent of the role: a pool still agreeing on
 // its plan keeps every member, an executing one its leader and the members that own an open subtask of it (ownsChild). It is the
 // rule spareMembers applies, and the one the manager's live view applies before it offers an idle member (staffingLines). A parent
@@ -406,6 +440,7 @@ func (s *Swarm) startPool(req SpawnReq, files []string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	members, release = capPool(members, release, s.cfg.PoolMax)
 	id := req.TaskID
 	if id == "" {
 		t, e := s.Board.CreateTask(req.By, TaskSpec{Title: req.Title, Desc: req.Brief, Files: files, Role: req.Role})

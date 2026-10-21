@@ -1152,6 +1152,7 @@ func (s *Session) build(ctx context.Context) error {
 	s.team = team
 	autoDocs := s.autoDocsOn() && slices.Contains(sc.Team, swarm.DocsRole)
 	sc.AutoDocs = autoDocs
+	sc.PoolMax = s.cfg.Swarm.PoolMax
 	sc.JudgeManagerShell = true
 	sc.ManagerApproves = s.managerApprovesOn()
 	for i, t := range team {
