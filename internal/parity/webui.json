@@ -2650,6 +2650,7 @@
      "allow": "priv",
      "trust-project": "priv",
      "verify": "priv",
+     "mcp-config": "priv",
      "mode": "priv"
     }
    },
@@ -2696,6 +2697,7 @@
      "allow": "priv",
      "trust-project": "priv",
      "verify": "priv",
+     "mcp-config": "priv",
      "mode": "priv"
     }
    },

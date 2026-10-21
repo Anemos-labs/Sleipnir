@@ -61,7 +61,8 @@ An entry given on the command line is your own word, so it is trusted as your us
 a question, even when the settings turn the MCP plugin off; a project's `.mcp.json` cannot replace it. A file that cannot be read, is not a JSON object, or holds an
 entry the configuration would refuse stops the run before it starts, and so does a named server that would fall past
 the 256 servers a session starts (counted by name, beside the configured and plugin servers). `--mcp-config` with
-`--no-mcp` is refused.
+`--no-mcp` is refused. A command the web interface's runner starts with `--mcp-config` asks for a confirmation first, as
+one with `--trust-project` does.
 Calls to the tools still go through the permission rules: an unattended run needs a mode or an `--allow` rule that
 lets them through, such as `--allow 'mcp__studio__*'`.
 

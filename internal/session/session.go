@@ -1562,6 +1562,13 @@ func (s *Session) Options() Options {
 		}
 		o.RoleModels = rm
 	}
+	if o.MCPServers != nil {
+		servers := make(map[string]json.RawMessage, len(o.MCPServers))
+		for name, entry := range o.MCPServers {
+			servers[name] = append(json.RawMessage(nil), entry...)
+		}
+		o.MCPServers = servers
+	}
 	if o.Meta != nil {
 		meta := make(map[string]any, len(o.Meta))
 		for k, v := range o.Meta {
