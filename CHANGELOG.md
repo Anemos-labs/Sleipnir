@@ -46,8 +46,8 @@ they do not indicate whether a change has been released.
 - Notices no longer pile up after restarts. A resumed session found the same
   skills, hooks, plugins and instruction files as its earlier start and
   logged the same warnings again, so a page replaying the log showed one more
-  copy of each per restart (a skills warning reached 6 copies). A start-up
-  warning already in the session's log is now not logged or shown again.
+  copy of each per restart. A start-up warning already in the session's log
+  is now not logged or shown again.
 
 - An agent waits out a flaky endpoint that has answered it before. A failure
   in which nothing answered (a dropped or reset connection, a gateway that

@@ -774,7 +774,7 @@ func (s *Session) buildShared(ctx context.Context) error {
 	}
 	if err != nil {
 		// Unreadable instruction files are reported, never fatal.
-		s.Log.Emit("", "notice", map[string]any{"level": "warn", "msg": "instruction files: " + err.Error()})
+		s.startNotice("instruction files: " + err.Error())
 	}
 	if !s.opts.TrustProject {
 		kept := userScopeOnly(srcs)
