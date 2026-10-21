@@ -66,6 +66,21 @@ func TestSavedTeamRoutes(t *testing.T) {
 		t.Errorf("the directories = %q, %q", list.Project, list.User)
 	}
 
+	stranger := filepath.Join(t.TempDir(), "elsewhere")
+	if err := os.MkdirAll(filepath.Join(stranger, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if code, b := r.do("PUT", "/api/teams/eight", map[string]any{"team": live.Team, "scope": "project", "dir": stranger}); code != 422 || !strings.Contains(string(b), "not a project this server knows") {
+		t.Errorf("a save into a folder the server does not know = %d %s, want 422", code, b)
+	}
+	r.json("GET", "/api/teams?dir="+stranger, nil, 200, &list)
+	if len(list.Teams) != 0 || list.Project != "" {
+		t.Errorf("a folder the server does not know is looked at: %+v in %q", list.Teams, list.Project)
+	}
+	if _, err := os.Stat(filepath.Join(stranger, ".sleipnir")); !os.IsNotExist(err) {
+		t.Errorf("the unknown folder was written to: %v", err)
+	}
+
 	var checked struct{ Team teamfile.File }
 	r.json("POST", "/api/teams/check", map[string]string{"text": `{"slots":["backend=p/b","backend","tester"],"models":{"judge":"p/j"}}`}, 200, &checked)
 	if len(checked.Team.Slots) != 3 || checked.Team.Models["judge"] != "p/j" {

@@ -437,7 +437,9 @@ reached; `version` is the page's format (2: cards on every page), and an older C
 
 A saved team (a loadout) is the file `--team NAME` reads: `.sleipnir/teams/NAME.json` in a project, or `~/.sleipnir/teams/NAME.json`
 for the person alone (`internal/teamfile`). The page's team library (Saved teams in the New session dialog and in Team & run) and the
-chat's `/team` work on the same files.
+chat's `/team` work on the same files. A `dir` the server does not know as a project (its own folder, the configured projects, and
+those of its sessions and recorded sessions, as `GET /api/projects` lists them) is never looked at: the request sees only the person's
+teams, and a project scope there is `422 team`.
 
 | Method | Path | Does | Confirmation |
 |---|---|---|---|

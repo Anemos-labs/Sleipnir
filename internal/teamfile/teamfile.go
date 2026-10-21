@@ -62,15 +62,19 @@ func ServiceRole(role string) bool {
 	return role == "manager" || session.ServiceRole(role) || role == swarm.MailmanRoleName
 }
 
+// NoProject is the dir of a caller that has no project to look in (the web page's folder is one the server does not know): Dirs,
+// List, Find, Save and Remove then see only the user's teams.
+const NoProject = "\x00"
+
 // Dirs are the directories saved teams are kept in: the project's .sleipnir/teams (the project found from dir, else from the
 // working directory; "" outside a project) and the user's (home/.sleipnir/teams; home "" is the user's home directory, and
-// "" when there is none).
+// "" when there is none). NoProject as dir has no project: only the user's teams.
 func Dirs(dir, home string) (project, user string) {
 	wd, err := filepath.Abs(dir)
 	if dir == "" {
 		wd, err = os.Getwd()
 	}
-	if err == nil {
+	if err == nil && dir != NoProject {
 		if root, ok := config.FindRoot(wd); ok {
 			project = filepath.Join(root, ".sleipnir", "teams")
 		}
@@ -89,6 +93,9 @@ func dirOf(dir, home, scope string) (string, error) {
 	project, user := Dirs(dir, home)
 	switch scope {
 	case ScopeProject:
+		if dir == NoProject {
+			return "", errors.New("the folder is not a project this server knows: start a session there first, or save the team for yourself")
+		}
 		if project == "" {
 			return "", errors.New("the folder is not in a project (no .git or .sleipnir above it): save the team for yourself instead")
 		}

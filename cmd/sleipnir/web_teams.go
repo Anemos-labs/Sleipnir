@@ -5,6 +5,7 @@ package main
 // (internal/teamfile); the chat's /team works on the same files.
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -24,18 +25,27 @@ type teamsList struct {
 	User    string           `json:"user"`
 }
 
-// teamsDir is the folder a teams request is about: ?dir= (or the body's dir), else the folder the server was started in.
-func (h *webHostImpl) teamsDir(dir string) string {
+// teamsDir is the folder a teams request is about: ?dir= (or the body's dir), else the folder the server was started in. A folder
+// the server does not know as a project (Projects: its own, the configured ones, those of its sessions and recorded sessions) is
+// never looked at: its request sees only the user's teams (teamfile.NoProject), and the page reads or writes no team file in a
+// folder it merely names.
+func (h *webHostImpl) teamsDir(ctx context.Context, dir string) string {
 	if strings.TrimSpace(dir) == "" {
 		return h.d.Cwd
 	}
-	return cleanDir(dir)
+	want := cleanDir(dir)
+	for _, d := range h.projectDirs(ctx) {
+		if d == want {
+			return d
+		}
+	}
+	return teamfile.NoProject
 }
 
 // teamsRoutes registers the saved-team routes on srv.
 func (h *webHostImpl) teamsRoutes(srv *web.Server) {
 	srv.HandleFunc("GET /api/teams", func(w http.ResponseWriter, r *http.Request) {
-		dir := h.teamsDir(r.URL.Query().Get("dir"))
+		dir := h.teamsDir(r.Context(), r.URL.Query().Get("dir"))
 		project, user := teamfile.Dirs(dir, h.base.Home)
 		list := teamfile.List(dir, h.base.Home)
 		if list == nil {
@@ -72,7 +82,7 @@ func (h *webHostImpl) teamsRoutes(srv *web.Server) {
 			return
 		}
 		name := r.PathValue("name")
-		dir := h.teamsDir(body.Dir)
+		dir := h.teamsDir(r.Context(), body.Dir)
 		p, err := teamfile.Save(dir, h.base.Home, body.Scope, name, body.Team, body.Overwrite)
 		switch {
 		case errors.Is(err, teamfile.ErrExists):
@@ -90,7 +100,7 @@ func (h *webHostImpl) teamsRoutes(srv *web.Server) {
 	}, web.RouteOpts{MaxBody: teamsBodyMax})
 	srv.HandleFunc("DELETE /api/teams/{name}", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
-		if err := teamfile.Remove(h.teamsDir(q.Get("dir")), h.base.Home, q.Get("scope"), r.PathValue("name")); err != nil {
+		if err := teamfile.Remove(h.teamsDir(r.Context(), q.Get("dir")), h.base.Home, q.Get("scope"), r.PathValue("name")); err != nil {
 			writeErr(w, werr(http.StatusNotFound, "no_team", clip(err.Error(), 400)))
 			return
 		}
