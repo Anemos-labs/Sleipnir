@@ -63,7 +63,7 @@ jobs:
         run: sh scripts/fuzz.sh "$FUZZTIME" "$PACKAGE"
       - name: keep the inputs that failed
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fuzz-crashers-${{ strategy.job-index }}
           path: "**/testdata/fuzz/**"
@@ -127,7 +127,7 @@ jobs:
           echo '' >> "$GITHUB_STEP_SUMMARY"
           echo 'Lowest-covered packages:' >> "$GITHUB_STEP_SUMMARY"
           go tool cover -func=cover.out | awk '$1 !~ /total/ { split($1, a, ":"); f=a[1]; sub(/\/[^\/]*$/, "", f); s[f]+=substr($3, 1, length($3)-1); n[f]++ } END { for (f in s) printf "%6.1f%%  %s\n", s[f]/n[f], f }' | sort -n | head -15 | tee -a "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage
           path: cover.out
