@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/anemos-labs/sleipnir/internal/lore"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
@@ -168,7 +169,7 @@ func TestMemoryWithoutATabShowsOnlyTheUsersFiles(t *testing.T) {
 	e := memEnv(t)
 	var v wire.MemoryView
 	e.ok(http.MethodGet, "/api/memory", nil, nil, &v)
-	if len(v.Files) != 1 || v.Files[0].Path != "~/.sleipnir/SLEIPNIR.md" || v.Root != "" || len(v.Notes.Notes) != 2 {
+	if len(v.Files) != 1 || v.Files[0].Path != "~/.sleipnir/SLEIPNIR.md" || v.Root != "" || len(v.Notes.Notes) != 2 || v.Project != nil || v.Lore != nil {
 		t.Errorf("the view without a tab = %+v", v)
 	}
 	if rec := e.do(http.MethodPut, "/api/memory/file", wire.MemoryFileWrite{Path: "AGENTS.md", Text: "x"}, nil); rec.Code != http.StatusBadRequest {
@@ -176,5 +177,39 @@ func TestMemoryWithoutATabShowsOnlyTheUsersFiles(t *testing.T) {
 	}
 	if rec := e.do(http.MethodGet, "/api/sessions/nope/memory", nil, nil); rec.Code != http.StatusNotFound {
 		t.Errorf("an unknown tab: %d", rec.Code)
+	}
+}
+
+// The project's own notes and its team's lore by role are on the page: the notes are edited like the user's (scope project), with the
+// .gitignore that keeps them out of git; the lore is read from the state directory, each role in name order.
+func TestMemoryViewShowsTheProjectsNotesAndLore(t *testing.T) {
+	e := memEnv(t)
+	write(t, filepath.Join(e.repo, ".sleipnir", "MEMORY.local.md"), "- make gen regenerates the client.\n")
+	dir := lore.ProjectDir(session.StateRoot(e.home), e.repo)
+	write(t, filepath.Join(dir, "reviewer.md"), "# What the reviewer role learned in this project\n\n- [canon] Money is integer cents.\n- [insight ×2] Run make check before approving.\n")
+	write(t, filepath.Join(dir, "backend.md"), "- [insight] The API client is generated.\n")
+	var v wire.MemoryView
+	e.ok(http.MethodGet, "/api/sessions/t1/memory", nil, nil, &v)
+	if v.Project == nil || strings.Join(v.Project.Notes, "|") != "make gen regenerates the client." || v.Project.Path != ".sleipnir/MEMORY.local.md" || v.Project.Version == "" {
+		t.Fatalf("project notes = %+v", v.Project)
+	}
+	if v.Lore == nil || len(v.Lore.Roles) != 2 || v.Lore.Roles[0].Role != "backend" || v.Lore.Roles[1].Role != "reviewer" {
+		t.Fatalf("lore = %+v", v.Lore)
+	}
+	if it := v.Lore.Roles[1].Items; len(it) != 2 || it[0].Stage != "canon" || it[1].Confirmed != 2 || it[1].Text != "Run make check before approving." {
+		t.Errorf("reviewer lore = %+v", it)
+	}
+	e.ok(http.MethodPut, "/api/sessions/t1/memory/notes", wire.MemoryNotesWrite{Scope: "project", Notes: []string{"make gen regenerates the client.", "Tests need Docker."}, Version: v.Project.Version}, nil, &v)
+	if strings.Join(v.Project.Notes, "|") != "make gen regenerates the client.|Tests need Docker." || len(v.Notes.Notes) != 2 {
+		t.Errorf("after the edit: project %+v, user %+v", v.Project, v.Notes)
+	}
+	if b, err := os.ReadFile(filepath.Join(e.repo, ".sleipnir", ".gitignore")); err != nil || !strings.Contains(string(b), "MEMORY.local.md") {
+		t.Errorf(".gitignore: %q %v", b, err)
+	}
+	if rec := e.do(http.MethodPut, "/api/sessions/t1/memory/notes", wire.MemoryNotesWrite{Scope: "team", Notes: []string{"x"}}, nil); rec.Code != http.StatusBadRequest {
+		t.Errorf("an unknown scope: %d", rec.Code)
+	}
+	if rec := e.do(http.MethodPut, "/api/memory/notes", wire.MemoryNotesWrite{Scope: "project", Notes: []string{"x"}}, nil); rec.Code != http.StatusBadRequest {
+		t.Errorf("project notes without a tab: %d", rec.Code)
 	}
 }

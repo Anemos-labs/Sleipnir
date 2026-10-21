@@ -69,7 +69,7 @@
   function newModel(S, opts) {
     const m = { sid: S.id, t: 0, ver: 0, nid: 0, chat: !(opts && opts.noChat), ag: {}, order: [], tasks: {}, torder: [], q: null, merged: [], conflicts: 0, bounced: 0,
       mail: [], marks: [], plan: [], planText: null, verdict: '', verdictKind: '', left: [], goal: { state: S.meta.goalText ? 'active' : 'none' }, qs: [], anomalies: [], compactions: [], ncompactions: 0, nanom: 0, nloud: 0, nmail: 0, nMgrDec: 0, nMgrDen: 0, decMark: { n: 0, d: 0 }, ckpts: [],
-      reqLog: [], flash: { t: -999, id: null }, lastReq: -9999, lastBreakT: -9999, streams: {}, diff: {}, rpm: 0, rpmHist: [], final: null, chan: { mgr: [], mail: [] }, folded: {}, steps: 0, refused: 0,
+      reqLog: [], flash: { t: -999, id: null }, lastReq: -9999, lastBreakT: -9999, streams: {}, diff: {}, rpm: 0, rpmHist: [], final: null, chan: { mgr: [], mail: [] }, folded: {}, steps: 0, refused: 0, mem: 0,
       mids: {}, midOrder: [], stalls: {}, handovers: [], alerts: {}, mailstat: null, svc: null, mgrDec: [], ttl: 0, r429: 0, retries: 0, inflight: 0, queued: 0, turn: false };
     (S.roster || []).forEach(r => addAgent(m, r));
     return m;
@@ -123,6 +123,7 @@
         if (A) A.calls++; m.steps++;
         const e = { k: 'tool', ag: ev.id, name: ev.name, arg: ev.arg, out: ev.out, ok: ev.ok !== false, refused: !!ev.refused, reason: ev.reason, file: ev.file, add: ev.add, del: ev.del, task: ev.task || (A && A.task), t: ev.t };
         if (ev.refused) { m.refused++; e.ok = false; }
+        if (ev.mem) m.mem++;   // the memory tool saved or removed a note: the Memory item of the rail counts it until the view is opened
         push(m, chOf(ev.id), e, ev);
         if (ev.id !== 'mgr') push(m, 'mgr', { k: 'feed', ag: ev.id, g: ev.refused ? 'x' : /^(Write|Edit)/.test(ev.name) ? 'edit' : ev.name === 'Bash' ? 'tool' : 'tool', text: ev.name + ' ' + (ev.arg || '') + (ev.add ? ' +' + ev.add : ''), task: e.task, t: ev.t }, ev);
         break;

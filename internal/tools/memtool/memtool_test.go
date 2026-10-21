@@ -65,8 +65,9 @@ func TestAddListRemoveRoundTripThroughTheFile(t *testing.T) {
 	if r := run(t, tool, allow, map[string]any{"action": "list"}); r.Text != "1. The user prefers table-driven tests." {
 		t.Errorf("list: %q", r.Text)
 	}
-	// Every change asked the permission engine, with the note itself in the summary and the file as its path.
-	if len(allow.seen) != 3 || !strings.Contains(allow.seen[0].Summary, "table-driven") || !allow.seen[0].Writes || allow.seen[0].Paths[0] != path ||
+	// Every change went to the permission engine with the note itself in the summary, as the memory tool's own change: no path, so
+	// the protection of ~/.sleipnir does not put it to the person; only rules for the memory tool decide.
+	if len(allow.seen) != 3 || !strings.Contains(allow.seen[0].Summary, "table-driven") || allow.seen[0].Writes || len(allow.seen[0].Paths) != 0 ||
 		!strings.HasPrefix(allow.seen[2].Summary, "forget: ") {
 		t.Errorf("permission requests: %+v", allow.seen)
 	}
@@ -144,7 +145,10 @@ func TestProjectNotesAreKeptApartAndIgnoredByGit(t *testing.T) {
 	if r.IsError || !strings.Contains(r.Text, "for this project") {
 		t.Fatalf("project add: %+v", r)
 	}
-	if q := allow.seen[len(allow.seen)-1]; !strings.HasPrefix(q.Summary, "remember for this project: ") || q.Paths[0] != proj {
+	if r.Meta[MetaChange] != "added" {
+		t.Errorf("project add meta: %v", r.Meta)
+	}
+	if q := allow.seen[len(allow.seen)-1]; !strings.HasPrefix(q.Summary, "remember for this project: ") || len(q.Paths) != 0 {
 		t.Errorf("approval asked for %+v", q)
 	}
 	b, _ := os.ReadFile(proj)

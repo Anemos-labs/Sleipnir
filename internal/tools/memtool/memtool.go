@@ -9,8 +9,11 @@
 //   - a note is one line of at most MaxNoteRunes, with control characters removed; the file holds at most MaxNotes notes and
 //     MaxBytes bytes. A full memory is not a silent loss and not a dead end: the answer lists the notes by number and asks the
 //     model to remove or merge before it adds;
-//   - every change is a write the permission engine is asked about, with the exact note in the summary, so a note that text
-//     read from a web page or a file talked the model into writing is seen by the person before it is kept;
+//   - a change is not put to the person: the file is the harness's own, never a path the model chose, so it is not judged as a write
+//     to ~/.sleipnir. The permission engine still sees the change with the exact note in its summary, so a deny rule (memory) refuses
+//     it and an ask rule (memory) puts each one to the person again. Instead the change is announced: the result's Meta says what
+//     changed (MetaChange), the web interface counts it on the Memory item of the left bar, and the Memory page shows the note to
+//     keep, edit or remove;
 //   - the file says that its notes are the model's own and may be wrong; the user's instructions win.
 //
 // The prompt of the running session does not change when a note is saved (the shared layer is built at the start), so saving
@@ -41,6 +44,9 @@ const (
 	// header is plain text, not an HTML comment: the instruction loader removes comments, and this line must reach the model.
 	header = "Notes the agent saved with its memory tool. They may be wrong or out of date; the user's own instructions win."
 )
+
+// MetaChange is the key of a result's Meta that says the call changed the notes: "added" or "removed". A UI counts it as news.
+const MetaChange = "memory_change"
 
 // Tool is the memory tool over the user's notes file and, when a project is known, the project's.
 type Tool struct{ path, project string }
@@ -74,7 +80,7 @@ func (*Tool) Spec() core.ToolSpec {
 			"add one when you learn something lasting. scope user (the default) is for every project: how the user wants things done, a fact about their setup. " +
 			"scope project is for this project only: a fact about this code base, a mistake not to repeat here. " +
 			"One fact per note, under 300 characters. Never save task progress, anything the code or the project files already say, or secrets. " +
-			"remove a note that is wrong or stale; list shows them all. The user is asked to approve each change.",
+			"remove a note that is wrong or stale; list shows them all. The user sees each change and can edit or remove it.",
 		InputSchema: json.RawMessage(schema),
 	}
 }
@@ -187,9 +193,9 @@ func (t *Tool) run(ctx context.Context, c *tools.Call, in input, notes []string,
 			if err := ignoreBeside(t.path); err != nil {
 				return tools.Errorf("memory: %v", err), nil
 			}
-			return t.write(notes, append(slices.Clone(notes), note), "saved for this project; it will be in front of you from the next session on, when the project is trusted")
+			return t.write(notes, append(slices.Clone(notes), note), "saved for this project; it will be in front of you from the next session on, when the project is trusted", "added")
 		}
-		return t.write(notes, append(slices.Clone(notes), note), "saved; it will be in front of you from the next session on")
+		return t.write(notes, append(slices.Clone(notes), note), "saved; it will be in front of you from the next session on", "added")
 	case "remove":
 		key := strings.ToLower(clean(in.Text))
 		if utf8.RuneCountInString(key) < 3 {
@@ -212,15 +218,17 @@ func (t *Tool) run(ctx context.Context, c *tools.Call, in input, notes []string,
 		if r := t.authorize(ctx, c, "forget: "+strings.Join(gone, " | ")); r != nil {
 			return r, nil
 		}
-		return t.write(notes, keep, fmt.Sprintf("removed %d note(s)", len(gone)))
+		return t.write(notes, keep, fmt.Sprintf("removed %d note(s)", len(gone)), "removed")
 	}
 	return tools.Errorf(`action is "add", "remove" or "list"`), nil
 }
 
+// authorize asks the permission engine about one change. The request names no path: the file is the tool's own, so the
+// protection of ~/.sleipnir and .sleipnir (which guards what an agent could write there to steer later sessions) does not ask about
+// it, and only the person's rules for the memory tool decide.
 func (t *Tool) authorize(ctx context.Context, c *tools.Call, summary string) *tools.Result {
 	d := c.Env.Perm.Check(ctx, perm.Request{
 		Agent: c.Env.Agent, Role: c.Env.Role, Tool: perm.ToolMemory, Summary: summary, Input: c.Input,
-		Paths: []string{t.path}, Writes: true, Risk: perm.RiskMedium,
 	})
 	if d.Allow {
 		return nil
@@ -263,10 +271,11 @@ func size(notes []string) int {
 // read returns the notes of the tool's file.
 func (t *Tool) read() ([]string, error) { return ReadNotes(t.path) }
 
-// write replaces the tool's file with notes, made from was, and answers msg with the count. The file is read again under its lock
+// write replaces the tool's file with notes, made from was, and answers msg with the count; the answer's Meta[MetaChange] is change
+// (added or removed). The file is read again under its lock
 // first (the Memory page of the web interface replaces the same file): when it no longer holds was, nothing is written and the
 // model is told to look again. The lock is not held while the person is asked, so a page's write never waits on an answer.
-func (t *Tool) write(was, notes []string, msg string) (*tools.Result, error) {
+func (t *Tool) write(was, notes []string, msg, change string) (*tools.Result, error) {
 	unlock := config.WriteLock(t.path)
 	defer unlock()
 	if cur, err := ReadNotes(t.path); err != nil || !slices.Equal(cur, was) {
@@ -275,7 +284,7 @@ func (t *Tool) write(was, notes []string, msg string) (*tools.Result, error) {
 	if err := WriteNotes(t.path, notes); err != nil {
 		return tools.Errorf("%v", err), nil
 	}
-	return &tools.Result{Text: fmt.Sprintf("%s (%d notes)", msg, len(notes))}, nil
+	return &tools.Result{Text: fmt.Sprintf("%s (%d notes)", msg, len(notes)), Meta: map[string]any{MetaChange: change}}, nil
 }
 
 // ReadNotes returns the notes of the file at path: its lines that start with "- ". A missing file holds none.
@@ -390,6 +399,14 @@ func WriteNotes(path string, notes []string) error {
 		return fmt.Errorf("memory: %w", err)
 	}
 	return nil
+}
+
+// WriteProjectNotes is WriteNotes for a project's notes file: the .gitignore beside it keeps the file out of git first.
+func WriteProjectNotes(path string, notes []string) error {
+	if err := ignoreBeside(path); err != nil {
+		return fmt.Errorf("memory: %w", err)
+	}
+	return WriteNotes(path, notes)
 }
 
 // ignoreBeside makes git ignore the notes file at p with a .gitignore in its directory: created when missing, and given the
