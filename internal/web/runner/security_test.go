@@ -101,6 +101,8 @@ func TestRequestsThatWidenARunNeedAConfirmation(t *testing.T) {
 		"allow and trust":            {"path": []string{"run"}, "flags": map[string]any{"allow": "Bash(*)", "trust-project": true}, "pos": map[string]string{"PROMPT": "x"}},
 		"trust spelled TRUE":         {"path": []string{"run"}, "flags": map[string]any{"trust-project": "TRUE"}, "pos": map[string]string{"PROMPT": "x"}},
 		"verify":                     {"path": []string{"swarm"}, "flags": map[string]any{"verify": "make"}, "pos": map[string]string{"N": "2", "GOAL": "x"}},
+		"tool servers of a file":     {"path": []string{"run"}, "flags": map[string]any{"mcp-config": "servers.json"}, "pos": map[string]string{"PROMPT": "x"}},
+		"tool servers of a swarm":    {"path": []string{"swarm"}, "flags": map[string]any{"mcp-config": []any{"a.json", "b.json"}}, "pos": map[string]string{"N": "2", "GOAL": "x"}},
 		"yolo in capitals":           {"path": []string{"run"}, "flags": map[string]any{"mode": "YOLO"}, "pos": map[string]string{"PROMPT": "x"}},
 		"perm-mode bypass":           {"path": []string{"rl", "rollout"}, "flags": map[string]any{"perm-mode": "bypass"}},
 		"pass-env":                   {"path": []string{"rl", "eval"}, "flags": map[string]any{"pass-env": "HOME"}},

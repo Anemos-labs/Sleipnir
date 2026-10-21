@@ -182,8 +182,8 @@ var (
 	// person's word, and would send the key there) and needs a confirmation.
 	keyRouteFlags = []string{"base-url", "api-key-env", "policy-host", "policy-key-env", "allow-insecure-http"}
 	// wideningFlags let a run do more than its mode: run commands without asking, use a project's own settings, reach the network
-	// from a sandbox, pass the server's environment on, run a verification command.
-	wideningFlags = []string{"allow", "trust-project", "no-net-isolation", "pass-env", "set-env", "verify"}
+	// from a sandbox, pass the server's environment on, run a verification command, start the tool servers a file names.
+	wideningFlags = []string{"allow", "trust-project", "no-net-isolation", "pass-env", "set-env", "verify", "mcp-config"}
 	// modeFlags are permission modes; bypass and yolo are dangerous ones.
 	modeFlags      = []string{"mode", "perm-mode"}
 	dangerousModes = []string{"bypass", "yolo"}

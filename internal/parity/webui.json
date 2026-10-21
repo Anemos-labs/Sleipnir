@@ -2629,6 +2629,7 @@
      "mailman",
      "manager-approves",
      "max-steps",
+     "mcp-config",
      "mode",
      "model",
      "no-mcp",
@@ -2649,6 +2650,7 @@
      "allow": "priv",
      "trust-project": "priv",
      "verify": "priv",
+     "mcp-config": "priv",
      "mode": "priv"
     }
    },
@@ -2675,6 +2677,7 @@
      "mailman",
      "manager-approves",
      "max-steps",
+     "mcp-config",
      "mode",
      "model",
      "no-mcp",
@@ -2694,6 +2697,7 @@
      "allow": "priv",
      "trust-project": "priv",
      "verify": "priv",
+     "mcp-config": "priv",
      "mode": "priv"
     }
    },

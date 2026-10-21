@@ -97,6 +97,10 @@ type ServerConfig struct {
 	Scope Scope `json:"-"`
 }
 
+// MaxServers is how many servers a session starts: the parser reads the first
+// MaxServers entries of a scope by name, and the manager fails the rest.
+const MaxServers = maxServers
+
 // Configuration limits: a hostile file must not be able to make the parser or
 // the manager allocate without bound.
 const (

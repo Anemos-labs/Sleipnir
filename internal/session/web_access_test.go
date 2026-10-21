@@ -27,6 +27,7 @@ func TestOptionsIsACopyWithoutTheHooksOfTheHost(t *testing.T) {
 	o.Mailman = &on
 	o.RoleModels = map[string]string{"backend": "mock/mock-1"}
 	o.Allow = []string{"Bash(go test:*)"}
+	o.MCPServers = map[string]json.RawMessage{"studio": json.RawMessage(`{"command": "studio-mcp", "disabled": true}`)}
 	o.Sink = agent.NopSink{}
 	o.NewSink = func(string) agent.Sink { return agent.NopSink{} }
 	o.Prompter = func(context.Context, perm.Request) perm.Decision { return perm.Decision{} }
@@ -45,9 +46,12 @@ func TestOptionsIsACopyWithoutTheHooksOfTheHost(t *testing.T) {
 	}
 	got.RoleModels["backend"] = "other/x"
 	got.Allow[0] = "Bash(rm:*)"
+	got.MCPServers["studio"][2] = 'X'
+	got.MCPServers["other"] = json.RawMessage(`{"command": "other"}`)
 	*got.Mailman = false
 	again := s.Options()
-	if again.RoleModels["backend"] != "mock/mock-1" || again.Allow[0] != "Bash(go test:*)" || !*again.Mailman {
+	if again.RoleModels["backend"] != "mock/mock-1" || again.Allow[0] != "Bash(go test:*)" || !*again.Mailman ||
+		len(again.MCPServers) != 1 || string(again.MCPServers["studio"]) != `{"command": "studio-mcp", "disabled": true}` {
 		t.Errorf("changing the copy changed the session: %+v", again)
 	}
 	if again.ShellEnv != nil {

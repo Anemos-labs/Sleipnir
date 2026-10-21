@@ -49,12 +49,30 @@ here is decided per call by permission rules, never by the server entry. OAuth f
 
 A file in Claude Code's shape also works as a project file: `.mcp.json` at the repository root, `{"mcpServers": {...}}`.
 
+### Servers for one run
+
+`sleipnir run --mcp-config FILE` (and `sleipnir swarm`) starts the servers a file names for that run only, beside the
+configured ones. The file is either shape above: `{"mcpServers": {...}}` or the `mcp` section's own `{"name": {...}}`.
+The flag repeats, a later file's entry replaces an earlier one of the same name, and an entry replaces a server of the
+same name in your configuration for that run. This is how a program that drives the harness (an editor, a coding app
+that runs one session per conversation) gives a session a tool server that the rest of your sessions do not start.
+
+An entry given on the command line is your own word, so it is trusted as your user configuration is and starts without
+a question, even when the settings turn the MCP plugin off; a project's `.mcp.json` cannot replace it. A file that cannot be read, is not a JSON object, or holds an
+entry the configuration would refuse stops the run before it starts, and so does a named server that would fall past
+the 256 servers a session starts (counted by name, beside the configured and plugin servers). `--mcp-config` with
+`--no-mcp` is refused. A command the web interface's runner starts with `--mcp-config` asks for a confirmation first, as
+one with `--trust-project` does.
+Calls to the tools still go through the permission rules: an unattended run needs a mode or an `--allow` rule that
+lets them through, such as `--allow 'mcp__studio__*'`.
+
 ## Who is allowed to start what
 
 A server is a program that runs as you, or a host that receives your prompts and returns text that goes into every
 agent's prompt. So where an entry came from decides whether it may start without asking:
 
-* **Your own configuration** (`~/.sleipnir/config.json`) is trusted.
+* **Your own configuration** (`~/.sleipnir/config.json`) is trusted, and so are the files a run's `--mcp-config`
+  names.
 * **A repository's entries** (its `.sleipnir/config.json`, the local override, or `.mcp.json`) are read only when the
   project is trusted (`--trust-project`; without it they are not even looked at), and then **each one needs your
   approval** before it starts. The question shows what would run (the command line with its arguments, or the host),
