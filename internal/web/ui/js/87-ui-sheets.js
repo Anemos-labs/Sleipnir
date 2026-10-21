@@ -166,7 +166,7 @@
     return first + f.join(' ') + (goal ? '\n  # then: /goal ' + goal.replace(/[\r\n]+/g, ' ') : '');
   };
   /** The research depths a first goal can be researched at (/goal --research=DEPTH), each with what it runs before the build. */
-  const RESEARCH_FIRST = { quick: '3 researchers in one round', standard: '6 researchers over two rounds, every page fact-checked', deep: '10 researchers over three rounds, two fact-checks per page' };
+  const RESEARCH_FIRST = { quick: '3 researchers, one short round, 1 to 3 pages, no fact-check round: minutes', standard: '6 researchers over two rounds, every page fact-checked', deep: '10 researchers over three rounds, two fact-checks per page' };
   /** The first goal a New session state sends: the goal, behind --research=DEPTH when a depth was chosen and the research plugin is on;
    *  '' without a goal (a depth alone researches nothing). */
   dialogs.goalSent = st => { const g = String(st.goalText || '').trim(); return g && RESEARCH_FIRST[st.research] && researchOn() ? '--research=' + st.research + ' ' + g : g; };

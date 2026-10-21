@@ -386,6 +386,8 @@ type ResearchRun struct {
 	Planned  int    `json:"planned"`
 	OpenGaps int    `json:"openGaps"`
 	Active   bool   `json:"active"` // the run a goal drives now
+	// NoFactCheck: the run's depth has no fact-check round (quick), so the view leaves that phase out.
+	NoFactCheck bool `json:"noFactCheck,omitempty"`
 }
 
 // ResearchDepth is a depth a run can have, with what it asks for.
