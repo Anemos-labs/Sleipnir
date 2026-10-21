@@ -39,7 +39,8 @@ tester 0/1`). A team has at least 8 workers on the command line and in the page;
 rollouts may build any team, or none (roles then limited by `MaxWorkers` alone).
 
 **Cooperating pools.** Multiple slots of a role activate together for one parent task, at most
-`swarm.pool_max` of them (4 by default); a larger role's other members stay free for its next parent.
+`swarm.pool_max` of them (4 by default; a negative value sets no cap); a larger role's other members stay free for
+its next parent.
 A role works several parents side by side: when the manager assigns a role a parent
 while another of its parents is open, the members that one can spare (it is executing
 its plan, and they neither lead it nor hold an open subtask of it) leave its pool,
