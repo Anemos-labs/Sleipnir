@@ -207,3 +207,10 @@ body.cq .anom .a b{color:var(--warm)}
 
 /* ---------- the New session team builder: the model of a role keeps room for its name ---------- */
 .nstrow{grid-template-columns:minmax(70px,auto) auto auto minmax(132px,1fr)}
+/* the team library (87c-ui-teams.js) */
+.teamlib .tl-tbl td{vertical-align:top}.teamlib .tl-desc{font-size:11px;margin-top:2px}.teamlib .tl-models{font-size:11px;margin-top:3px;overflow-wrap:anywhere}
+.teamlib .tl-role{font:700 11px var(--f-num);white-space:nowrap}.teamlib .tl-empty{margin:4px 0 10px}
+.teamlib .tl-forms{margin-top:14px;gap:18px}.teamlib .tl-forms section{min-width:0}.teamlib .tl-forms input[type=text],.teamlib textarea{width:100%;min-width:0}
+.teamlib .tl-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}.teamlib .tl-row input[type=text]{flex:1 1 140px;width:auto}
+.teamlib .tl-cur{margin:0 0 6px}.teamlib .tl-imp{margin-top:8px}.teamlib .tl-imp p{margin:0 0 4px}.teamlib .tl-file{cursor:pointer}
+#nsTeams{margin-left:4px}

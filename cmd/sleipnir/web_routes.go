@@ -68,6 +68,7 @@ func (h *webHostImpl) routes(srv *web.Server) {
 	srv.HandleFunc("GET /api/fs/dirs", h.fsDirs, web.RouteOpts{})
 	srv.HandleFunc("POST /api/sessions", h.newSession, web.RouteOpts{MaxBody: goalBodyMax})
 	srv.HandleFunc("POST /api/sessions/resume", h.resume, web.RouteOpts{})
+	h.teamsRoutes(srv) // the saved teams (web_teams.go)
 	h.tabRoute(srv, "GET /api/sessions/{id}/snapshot", web.RouteOpts{WriteTimeout: snapshotWrite}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
 		snap, err := t.snapshot(r.Context())
 		if err != nil {

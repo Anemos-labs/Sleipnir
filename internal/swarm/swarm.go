@@ -1216,3 +1216,17 @@ func (s *Swarm) flushLearned(task Task) {
 		s.cfg.OnLearned(r, byRole[r])
 	}
 }
+
+// WorkerRoles counts the swarm's current workers by role (the manager and the harness's service agents are not workers): the
+// agents a restart that carries the team over recovers, each into a slot of its role.
+func (s *Swarm) WorkerRoles() map[string]int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := map[string]int{}
+	for _, m := range s.members {
+		if m != nil && !m.manager && !m.service {
+			out[m.role]++
+		}
+	}
+	return out
+}

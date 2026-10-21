@@ -210,8 +210,9 @@ type newSessionRequest struct {
 }
 
 // argsFor renders the New session dialog's request as chat arguments, in the order the dialog's command line shows them: --cwd,
-// --model, --mode, --swarm, --isolation, --verify, --commit, --mailman, --auto-docs=false, --manager-approves=false, --manager-answers-after, --manager-answers-up-to, --budget-usd, --compact-at,
-// --allow, --trust-project, --no-mcp, --no-memory, then --role-model: the role models in the order of the roles' names, then the team's slots in team order. The name, the first goal and the effort are not chat flags: the host applies them
+// --model, --mode, --swarm, --team, --isolation, --verify, --commit, --mailman, --auto-docs=false, --manager-approves=false, --manager-answers-after, --manager-answers-up-to, --budget-usd, --compact-at,
+// --allow, --trust-project, --no-mcp, --no-memory, then --role-model: the role models in the order of the roles' names, then the team's slots in team order (with --team, none: the
+// saved team brings its slots and the models of its other roles). The name, the first goal and the effort are not chat flags: the host applies them
 // once the session has started.
 func argsFor(req wire.NewSessionRequest) []string {
 	var a []string
@@ -226,6 +227,9 @@ func argsFor(req wire.NewSessionRequest) []string {
 	}
 	if req.Swarm != nil {
 		a = append(a, "--swarm", strconv.Itoa(*req.Swarm))
+	}
+	if req.TeamName != "" {
+		a = append(a, "--team", req.TeamName)
 	}
 	if req.Isolation != "" {
 		a = append(a, "--isolation", req.Isolation)
@@ -274,7 +278,7 @@ func argsFor(req wire.NewSessionRequest) []string {
 	roles := make([]string, 0, len(req.RoleModels))
 	for role := range req.RoleModels {
 		// with a team, a worker role's model is its slots' (below); only the harness's own roles keep one here
-		if len(req.Team) == 0 || serviceRole(role) {
+		if (len(req.Team) == 0 || serviceRole(role)) && req.TeamName == "" { // a saved team brings its own
 			roles = append(roles, role)
 		}
 	}
@@ -283,6 +287,9 @@ func argsFor(req wire.NewSessionRequest) []string {
 		a = append(a, "--role-model", role+"="+req.RoleModels[role])
 	}
 	for _, t := range req.Team {
+		if req.TeamName != "" {
+			break // the saved team's slots
+		}
 		v := t.Role
 		if t.Model != "" {
 			v += "=" + t.Model
