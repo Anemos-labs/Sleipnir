@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A research call that names no run reaches the project's only unfinished
+  run after a session resumes. The run a call means was kept only in memory,
+  so after a resume every `research` call without `run` was refused with "no
+  research run is open" until one named it. With several unfinished runs,
+  the refusal now lists them.
+
 - Previews of files in the web interface. The Workspace shows images (SVG
   included), video, audio and PDF files, rendered Markdown (with mermaid
   blocks), mermaid diagrams and CSV/TSV tables in a Preview view instead of
