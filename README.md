@@ -25,7 +25,7 @@ cd your-project
 sleipnir
 ```
 
-Requires Go 1.25 or newer. Without Go, download an archive from
+Requires Go 1.26 or newer. Without Go, download an archive from
 [Releases](https://github.com/Anemos-labs/Sleipnir/releases).
 
 Or let your coding agent do it: ask Claude Code, Codex or another agent to
@@ -144,7 +144,7 @@ provider-measured usage, and a team does not guarantee lower cost.
 
 ## Development
 
-Go 1.25 or newer. Dependencies are limited to `golang.org/x/net`, `x/sys` and `x/term`.
+Go 1.26 or newer. Dependencies are limited to `golang.org/x/net`, `x/sys` and `x/term`.
 
 ```sh
 go build ./...
