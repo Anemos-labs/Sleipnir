@@ -12,10 +12,10 @@ they do not indicate whether a change has been released.
   leaves free lay the groundwork no finding can change (what the project
   fixes outright: stack, layout, tooling, stated requirements) while it runs,
   and that any free worker writes a wiki page, one writer per page. Before,
-  "research first, then build" held the whole team: in a quick run with a
-  team of 14, one docs worker wrote the pages while 13 workers waited for
-  over two hours. Only the goal text of new runs changes; the shared prompt
-  layer does not.
+  "research first, then build" held the whole team for the research, and
+  the docs role alone wrote the pages. The generated goal text of new
+  research-first runs and the generated brief of new runs change; the shared
+  prompt layer does not.
 
 - `--team NAME` looks in the project of `--cwd`. A team named by NAME is
   found in `.sleipnir/teams` of the project `--cwd` names, wherever `--cwd`
