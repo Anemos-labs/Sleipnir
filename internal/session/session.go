@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	iofs "io/fs"
@@ -205,6 +206,10 @@ type Options struct {
 	// NoMCP starts no MCP servers (RL rollouts, tests): the tool list is then the
 	// built-in one whatever the configuration says.
 	NoMCP bool
+	// MCPServers are MCP server entries the command line names (run --mcp-config), by server name, in
+	// the shape of the configuration's mcp section. They are the person's own word, trusted as the user
+	// configuration is, and an entry replaces a configured server of the same name for this session.
+	MCPServers map[string]json.RawMessage
 	// Offline skips network lookups made for convenience (model catalogue).
 	Offline bool
 	// NoMemory starts the session without the global memory: the notes in ~/.sleipnir/MEMORY.md are not read, and the memory tool

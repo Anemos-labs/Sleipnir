@@ -235,6 +235,66 @@ func TestMCPProjectServersNeedApprovalThatIsRememberedPerEntry(t *testing.T) {
 	}
 }
 
+// A server the command line names (run --mcp-config) is the person's own word: it starts with nobody
+// there to ask, under the user scope, and it is the entry used when the configuration names a server
+// of the same name, so the program that started the run decides what that server runs.
+func TestMCPServersOfTheCommandLineStartUnaskedAndReplaceAConfiguredOne(t *testing.T) {
+	repo := newRepo(t)
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	o := opts(t, repo, client, model)
+	writeConfig(t, config.UserConfigPath(o.Home), map[string]any{"mcp": map[string]any{
+		"ref": map[string]any{"command": filepath.Join(t.TempDir(), "absent-server")},
+	}})
+	entry, err := json.Marshal(refServer(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.MCPServers = map[string]json.RawMessage{"ref": entry}
+	o.Prompter = nil
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if !hasSpec(s, "mcp__ref__echo") {
+		t.Fatalf("the command line's server was not started: %v", s.MCPToolNames())
+	}
+	st := s.MCPStatus()
+	if len(st) != 1 || st[0].State != "ready" || st[0].Scope != "user" {
+		t.Fatalf("status: %+v", st)
+	}
+}
+
+// A project's .mcp.json cannot replace a server the command line names, even in a trusted project.
+func TestMCPDotMcpJSONDoesNotReplaceACommandLineServer(t *testing.T) {
+	repo := newRepo(t)
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	writeFile(t, filepath.Join(repo, ".mcp.json"), `{"mcpServers":{"ref":{"command":"/nonexistent/server"}}}`)
+	o := opts(t, repo, client, model)
+	entry, err := json.Marshal(refServer(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.MCPServers = map[string]json.RawMessage{"ref": entry}
+	o.Prompter = func(context.Context, perm.Request) perm.Decision {
+		t.Error("nothing should be asked: the project's entry is not considered")
+		return perm.Decision{}
+	}
+	notes := &noticeSink{}
+	o.Sink = notes
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if !hasSpec(s, "mcp__ref__echo") {
+		t.Fatalf("the command line's server was not started: %v", s.MCPToolNames())
+	}
+	if !strings.Contains(notes.all(), "--mcp-config already names a server of that name") {
+		t.Errorf("the ignored .mcp.json entry was not reported: %q", notes.all())
+	}
+}
+
 // A project that is not trusted contributes no MCP servers at all (the config
 // keys are ignored), whatever its .mcp.json says.
 func TestMCPUntrustedProjectContributesNothing(t *testing.T) {

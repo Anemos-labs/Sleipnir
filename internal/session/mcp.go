@@ -156,6 +156,12 @@ func (s *Session) mcpServers() (map[string]mcp.ServerConfig, []mcp.Issue) {
 			}
 		}
 	}
+	// The servers the command line names (run --mcp-config) are the person's own word for this session,
+	// so they join the user's entries and replace a configured server of the same name.
+	for name, raw := range s.opts.MCPServers {
+		user[name] = raw
+		delete(project, name)
+	}
 	// A .mcp.json at the project root is the shared convention of other clients.
 	// It is a repository file like any other: read only for a trusted project,
 	// and its entries need approval like the project's own.
@@ -168,6 +174,10 @@ func (s *Session) mcpServers() (map[string]mcp.ServerConfig, []mcp.Issue) {
 					var m map[string]json.RawMessage
 					if json.Unmarshal(inner, &m) == nil {
 						for name, raw := range m {
+							if _, given := s.opts.MCPServers[name]; given {
+								issues = append(issues, mcp.Issue{Server: name, Message: ".mcp.json entry ignored: --mcp-config already names a server of that name"})
+								continue
+							}
 							if _, dup := s.cfg.MCP[name]; dup {
 								issues = append(issues, mcp.Issue{Server: name, Message: ".mcp.json entry ignored: the configuration already defines a server of that name"})
 								continue
