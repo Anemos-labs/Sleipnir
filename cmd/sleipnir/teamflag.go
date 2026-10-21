@@ -19,7 +19,10 @@ import (
 //     --role-model frontend=x … is a team of two backends and a frontend on x.
 //
 // The manager, the compactor, the judge and the mailman are never workers: they only take a model, once, in either use.
-type roleModelFlag struct{ entries []roleEntry }
+type roleModelFlag struct {
+	entries []roleEntry
+	load    func() error // --team's values, added by split (teamFlag.Set)
+}
 
 // roleEntry is one --role-model value; model is "" for a bare role. slot marks a value from a team file (--team), which is
 // always a slot of the team.
@@ -66,6 +69,13 @@ func (r *roleModelFlag) Set(v string) error {
 // split reads the values: the models of roles (the first use, and the service roles
 // always) and the team (the second use; nil when the values define none).
 func (r *roleModelFlag) split() (map[string]string, []session.TeamSlot, error) {
+	if r != nil && r.load != nil {
+		load := r.load
+		r.load = nil
+		if err := load(); err != nil {
+			return nil, nil, err
+		}
+	}
 	if r == nil || len(r.entries) == 0 {
 		return nil, nil, nil
 	}

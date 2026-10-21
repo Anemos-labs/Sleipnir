@@ -16,6 +16,13 @@ they do not indicate whether a change has been released.
   `GET /api/preview/mermaid` (a sandboxed frame with the vendored
   `@mermaid-js/tiny` build). The page's policy adds `media-src 'self'` and
   `frame-src 'self'`. No prompt bytes change.
+- `--team NAME` looks in the project of `--cwd`. A team named by NAME is
+  found in `.sleipnir/teams` of the project `--cwd` names, wherever `--cwd`
+  stands on the command line, not only in the project of the directory the
+  command runs from (`sleipnir web --cwd ~/app --team build` from another
+  directory said there was no such team). The file is now read once the
+  whole command line is parsed, so an unreadable team is reported then.
+
 - Isolated agents read what git does not track. A confined agent may read a
   file of the checkout that git does not track (untracked, or ignored as
   before), since its tree, made from the commits, may have no copy: with
