@@ -321,6 +321,9 @@ type Session struct {
 	// single agent's --budget-usd.
 	budget float64
 	turn   int
+	// interrupted says that the last turn was cancelled by the person (an interrupt), under mu: the next turn's message is then
+	// headed by InterruptNote, so that it is what the model answers instead of the work that was cut short.
+	interrupted bool
 	// swarmCtx is the context an interactive session's swarm runs on: it lives until
 	// Close, not until the end of one turn (see swarmContext).
 	swarmCtx  context.Context
@@ -1182,16 +1185,33 @@ type TeamSlot struct {
 	Model string `json:"model,omitempty"`
 }
 
-// checkSwarmSize refuses a swarm larger than swarm.max_workers allows. The setting is
-// a ceiling that the user's file or the environment puts on every session; a request
-// for more (--swarm N asks for a manager and N workers) would otherwise override it
-// without a word.
+// checkSwarmSize refuses a swarm larger than swarm.max_workers allows (DefaultMaxTeamWorkers
+// when it is not set), and a negative one. The setting is a ceiling that the user's file or
+// the environment puts on every session; a request for more (--swarm N asks for a manager
+// and N workers) would otherwise override it without a word.
 func checkSwarmSize(cfg *config.Config, o Options) error {
-	ceil := cfg.Swarm.MaxWorkers
-	if !o.Swarm || ceil <= 0 || o.Workers <= ceil {
+	if !o.Swarm {
 		return nil
 	}
+	if o.Workers < 0 {
+		return fmt.Errorf("swarm: %d workers requested; a team has %d workers or more (0 is a single agent)", o.Workers, MinTeamWorkers)
+	}
+	ceil := TeamCeiling(cfg)
+	if o.Workers <= ceil {
+		return nil
+	}
+	if cfg.Swarm.MaxWorkers <= 0 {
+		return fmt.Errorf("swarm: %d workers requested (and the manager) but a session has at most %d workers unless swarm.max_workers allows more; ask for fewer workers or raise swarm.max_workers", o.Workers, ceil)
+	}
 	return fmt.Errorf("swarm: %d workers requested (and the manager) but swarm.max_workers caps a session at %d workers; raise swarm.max_workers or ask for fewer workers", o.Workers, ceil)
+}
+
+// TeamCeiling is the most workers a session may have: swarm.max_workers when it is set, else DefaultMaxTeamWorkers.
+func TeamCeiling(cfg *config.Config) int {
+	if cfg != nil && cfg.Swarm.MaxWorkers > 0 {
+		return cfg.Swarm.MaxWorkers
+	}
+	return DefaultMaxTeamWorkers
 }
 
 // CompactorRole is the name under which models.roles and --role-model give the model that writes the
@@ -1325,6 +1345,10 @@ func (writeGuard) BeforeWrite(string, string) error { return nil }
 // AfterWrite records the agent and path in the checkpoint store after a write completes.
 func (g writeGuard) AfterWrite(agent, path string) { g.store.After(agent, path) }
 
+// InterruptNote heads the first message after a turn the person interrupted: the conversation still ends with the work that was cut
+// short, and a model reading it tends to carry that on instead of answering what the person says now.
+const InterruptNote = "[The person interrupted your previous turn. Answer the message below first; go back to the interrupted work only if it asks you to.]\n\n"
+
 // runTurn gives the session one model turn without starting a GitHub controller.
 func (s *Session) runTurn(ctx context.Context, goal string) (*Result, error) {
 	s.mu.Lock()
@@ -1336,12 +1360,24 @@ func (s *Session) runTurn(ctx context.Context, goal string) (*Result, error) {
 	s.started = true
 	s.turn++
 	turn := s.turn
+	after := s.interrupted
+	s.interrupted = false
 	s.mu.Unlock()
 	defer s.flushCheckpoints()
+	defer func() {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			s.mu.Lock()
+			s.interrupted = true
+			s.mu.Unlock()
+		}
+	}()
 
 	goal, err := s.promptHook(ctx, first, goal)
 	if err != nil {
 		return nil, err
+	}
+	if after {
+		goal = InterruptNote + goal
 	}
 
 	if first {

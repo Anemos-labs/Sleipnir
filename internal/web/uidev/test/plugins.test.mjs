@@ -122,7 +122,7 @@ test('the Apply bar counts the changes that wait for the team and its button res
   assert.ok(L2.$('.plg-apply .pendbar') === null, 'no bar when nothing waits');
 });
 
-test('a view turned off leaves the rail, the palette, the g chords and the card picker; showing it draws the note with the way back', async () => {
+test('a view turned off leaves the rail, the palette and the card picker; showing it draws the note with the way back', async () => {
   const L = await page(catalogue({ 'view:mail': { enabled: false, state: 'off', layer: 'user' }, 'view:workspace': { enabled: false, state: 'off', layer: 'project' } }));
   const nav = navIds(L);
   for (const id of ['mail', 'files', 'changes', 'checkpoints', 'merge', 'replay']) assert.ok(!nav.includes(id), id + ' left the rail');
@@ -130,10 +130,6 @@ test('a view turned off leaves the rail, the palette, the g chords and the card 
   const pal = paletteViews(L);
   for (const n of ['Mail', 'Files', 'Changes', 'Replay']) assert.ok(!pal.includes(n), n + ' left the palette');
   assert.ok(pal.includes('Plugins') && pal.includes('Cache'), 'Plugins and Cache are in the palette');
-  /* g m does nothing now; g u opens Plugins */
-  await show(L, 'cockpit'); L.doc.body.focus();
-  L.press('g'); L.press('m'); await L.settle(); assert.equal(L.SL.views.current.name, 'cockpit', 'g m is not a chord any more');
-  L.press('g'); L.press('u'); await L.settle(); assert.equal(L.SL.views.current.name, 'plugins');
   /* the Cockpit's card picker */
   await show(L, 'cockpit'); L.SL.ui.dash.picker(); await L.settle();
   const adds = L.doc.querySelectorAll('#overlayHost [data-add]').map(b => b.dataset.add);

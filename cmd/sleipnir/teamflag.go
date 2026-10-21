@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
 )
@@ -127,9 +128,21 @@ func teamWorkers(team []session.TeamSlot, n int, given bool) (int, error) {
 	return len(team), nil
 }
 
-// checkTeamSize refuses a team smaller than the minimum: --swarm is 0 (a single
-// agent) or at least session.MinTeamWorkers.
+// checkTeamSize refuses a team size a session would not take, before anything else is asked (a model, a key): --swarm is 0 (a
+// single agent) or from session.MinTeamWorkers up to the ceiling (swarm.max_workers, else session.DefaultMaxTeamWorkers).
 func checkTeamSize(n int) error {
+	if n < 0 {
+		return fmt.Errorf("--swarm %d: the number of workers is 0 (a single agent) or at least %d", n, session.MinTeamWorkers)
+	}
+	if n > session.DefaultMaxTeamWorkers {
+		cfg, _, err := config.Load(config.LoadOpts{UntrustedProject: true})
+		if err != nil {
+			cfg = nil
+		}
+		if ceil := session.TeamCeiling(cfg); n > ceil {
+			return fmt.Errorf("--swarm %d: a session has at most %d workers; ask for fewer, or raise swarm.max_workers in your configuration", n, ceil)
+		}
+	}
 	if n > 0 && n < session.MinTeamWorkers {
 		return fmt.Errorf("--swarm %d: a team has at least %d workers, one of each role (--swarm 0 is a single agent); to leave a role out, name the team with --role-model", n, session.MinTeamWorkers)
 	}

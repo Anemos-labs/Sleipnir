@@ -58,35 +58,39 @@
     },
     {
       "item": "providers.*.allow_hosts",
-      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state, adds a key and signs a stored key out, as `sleipnir login` and `sleipnir logout` do"
     },
     {
       "item": "providers.*.allow_insecure_http",
-      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state, adds a key and signs a stored key out, as `sleipnir login` and `sleipnir logout` do"
     },
     {
       "item": "providers.*.api_key_env",
-      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state, adds a key and signs a stored key out, as `sleipnir login` and `sleipnir logout` do"
     },
     {
       "item": "providers.*.auth",
-      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state, adds a key and signs a stored key out, as `sleipnir login` and `sleipnir logout` do"
     },
     {
       "item": "providers.*.base_url",
-      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state, adds a key and signs a stored key out, as `sleipnir login` and `sleipnir logout` do"
     },
     {
       "item": "providers.*.dialect",
-      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state, adds a key and signs a stored key out, as `sleipnir login` and `sleipnir logout` do"
     },
     {
       "item": "providers.*.headers.*",
-      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state, adds a key and signs a stored key out, as `sleipnir login` and `sleipnir logout` do"
     },
     {
       "item": "providers.*.options.*",
-      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state and signs a stored key out, and the terminal flow `sleipnir login` signs one in"
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; Settings > Connections shows each provider's endpoint and key state, adds a key and signs a stored key out, as `sleipnir login` and `sleipnir logout` do"
+    },
+    {
+      "item": "providers.*.suggested_model",
+      "reason": "a provider entry is written in the user's configuration file in both interfaces; its effect is in both: the first-run model picker of the terminal and the New session dialog of the page start on the model it names"
     },
     {
       "item": "swarm.max_concurrent_requests",
