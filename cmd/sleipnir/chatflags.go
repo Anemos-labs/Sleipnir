@@ -57,7 +57,7 @@ func registerChatFlags(fs *flag.FlagSet) *chatFlagSet {
 	f.managerApproves = managerApprovesFlag(fs)
 	f.roleModels = &roleModelFlag{}
 	fs.Var(f.roleModels, "role-model", roleModelHelp)
-	fs.Var(&teamFlag{roles: f.roleModels}, "team", teamHelp)
+	fs.Var(&teamFlag{roles: f.roleModels, cwd: f.cwd}, "team", teamHelp)
 	f.resume = resumeFlags(fs)
 	f.allow = allowFlags(fs)
 	f.plain = fs.Bool("plain", false, "plain lines, as when the input or the output is not a terminal: no colour, no status line, no redrawing, approvals answered by the dialog's numbers or by y, a, t or n")
