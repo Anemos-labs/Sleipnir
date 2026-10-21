@@ -31,8 +31,11 @@ func TestWebNewSessionWithoutAnyModelIsRefused(t *testing.T) {
 	// the configuration the sessions are handed is the one that decides: a default there is a model
 	r.h.base.Config = config.Defaults()
 	r.h.base.Config.Models.Default = "mock/mock-1"
-	if code, body := r.do("POST", "/api/sessions", map[string]any{"cwd": project, "swarm": 0}); code == 422 {
+	if code, body := r.do("POST", "/api/sessions", map[string]any{"cwd": project, "swarm": 0}); code < 200 || code >= 300 {
 		t.Errorf("a session whose configuration names a default model = %d %s", code, body)
+	}
+	if n := len(r.h.Tabs()); n != 1 {
+		t.Errorf("a session whose configuration names a default model opened %d tabs, want 1", n)
 	}
 }
 
