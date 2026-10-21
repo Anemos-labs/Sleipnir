@@ -371,13 +371,14 @@ starts:
 // fsWriteSpecs are the file-manipulating programs accept-edits mode may run
 // when every path they touch is inside the workspace.
 var fsWriteSpecs = map[string]*argSpec{
-	"mkdir": {short: "m", long: []string{"mode"}},
-	"touch": {short: "dtr", long: []string{"date", "reference", "time"}, pathVals: []string{"-r", "--reference"}},
-	"rmdir": {},
-	"rm":    {},
-	"cp":    {short: "St", long: []string{"suffix", "target-directory"}},
-	"mv":    {short: "St", long: []string{"suffix", "target-directory"}},
-	"tee":   {},
+	"mkdir":  {short: "m", long: []string{"mode"}},
+	"touch":  {short: "dtr", long: []string{"date", "reference", "time"}, pathVals: []string{"-r", "--reference"}},
+	"rmdir":  {},
+	"rm":     {},
+	"unlink": {},
+	"cp":     {short: "St", long: []string{"suffix", "target-directory"}},
+	"mv":     {short: "St", long: []string{"suffix", "target-directory"}},
+	"tee":    {},
 }
 
 // analyseFSWrite returns the paths a file-manipulating command writes.
@@ -395,7 +396,7 @@ func analyseFSWrite(prog string, args []string) ([]pathUse, bool) {
 		if p == "-" {
 			continue
 		}
-		uses = append(uses, pathUse{raw: p, write: true, tree: prog != "tee", noFollow: prog == "rm" || prog == "rmdir"})
+		uses = append(uses, pathUse{raw: p, write: true, tree: prog != "tee" && prog != "unlink", noFollow: prog == "rm" || prog == "rmdir" || prog == "unlink"})
 	}
 	for _, v := range append(s.values("-t"), s.values("--target-directory")...) {
 		uses = append(uses, pathUse{raw: v, write: true, tree: true})
