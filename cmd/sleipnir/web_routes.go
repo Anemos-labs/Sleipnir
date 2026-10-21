@@ -486,6 +486,11 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if body.Model == "" && body.Resume == "" && h.base.Model == "" && h.base.Provider == nil && noModelFor(h.base.Config, dir, h.base.Home, body.TrustProject) {
+		// the session would fail as it starts and leave a tab that can do nothing: say so before one opens
+		writeErr(w, werr(http.StatusUnprocessableEntity, "model", "choose a model: none is configured (sleipnir login stores a provider's key, and the Model list names what it serves)"))
+		return
+	}
 	if body.Resume == "" {
 		// a combination the session would refuse as it starts (commit without worktree isolation, isolation for a single agent, a
 		// folder that is not a repository's root with a commit, a checkout that commit cannot move) is refused now, before a tab opens
@@ -699,6 +704,23 @@ func (h *webHostImpl) serverBaseline() baseline {
 
 // checkModel says whether a model can be used, as CheckModel of a live session says it (422 model); with no live session it is
 // left to the start, which says why in the tab.
+// noModelFor reports whether a session in dir that names no model would have none, resolving it as session.New does: from cfg, the
+// configuration the session is handed, when there is one; else from the configuration loaded for dir with home (the project's own
+// counts only when it is trusted), SLEIPNIR_MODEL included. A configuration that does not load is not this refusal's to report.
+func noModelFor(cfg *config.Config, dir, home string, trustProject bool) bool {
+	if cfg == nil {
+		if home == "" {
+			home, _ = os.UserHomeDir()
+		}
+		var err error
+		if cfg, _, err = config.Load(config.LoadOpts{Cwd: dir, Home: home, UntrustedProject: !trustProject}); err != nil {
+			return false
+		}
+	}
+	_, err := session.ResolveModel(cfg, "")
+	return errors.Is(err, session.ErrNoModel)
+}
+
 func (h *webHostImpl) checkModel(ref string) error {
 	if len(ref) > 300 {
 		return werr(http.StatusUnprocessableEntity, "model", "the model name is too long")

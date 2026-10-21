@@ -70,3 +70,24 @@ func TestAJobsEnvironmentCarriesTheKeysTheProcessHolds(t *testing.T) {
 		t.Error("the job would start without its key")
 	}
 }
+
+// `schedule add` without --cron says that --cron is missing (and that the first word looks like one, when it does) rather than that
+// an empty expression is not valid; and a job that names no model, where nothing configures one, is refused: every run would fail.
+func TestScheduleAddExplainsAMissingCronAndModel(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("HOME", root)
+	t.Setenv("SLEIPNIR_HOME", filepath.Join(root, "state"))
+	t.Setenv("SLEIPNIR_MODEL", "")
+	t.Chdir(root)
+	err := cmdSchedule(context.Background(), []string{"add", "0 9 * * *", "say hi"})
+	if err == nil || !strings.Contains(err.Error(), "--cron is required") || !strings.Contains(err.Error(), `"0 9 * * *" looks like one`) {
+		t.Errorf("a cron without --cron: %v", err)
+	}
+	err = cmdSchedule(context.Background(), []string{"add", "--cron", "0 9 * * *", "say hi"})
+	if err == nil || !strings.Contains(err.Error(), "no model is configured") {
+		t.Errorf("a job without a model: %v", err)
+	}
+	if err := cmdSchedule(context.Background(), []string{"add", "--cron", "0 9 * * *", "--model", "mock/mock-1", "say hi"}); err != nil {
+		t.Errorf("a job with a model: %v", err)
+	}
+}
