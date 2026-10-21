@@ -193,3 +193,12 @@ test('past COMPACT_AT, a resolved task\'s row says resolved, and the graph\'s fo
   assert.match(L.$('.dg .nd.fold').textContent, new RegExp('✓ ' + n + ' merged · 1 resolved'));
   assert.match(L.$('.dgsum').textContent, new RegExp(n + ' merged · 1 resolved tasks folded into one'));
 });
+
+test('a fold of resolved tasks only is not drawn as merged work', async () => {
+  const L = await boot(), m = model(125, 15, {});
+  Object.values(m.tasks).forEach(t => { if (t.st === 'merged') t.closure = 'unneeded'; });
+  const S = L.SL.sessions.active; S.m.tasks = m.tasks; S.m.torder = m.torder; S.m.merged = [];
+  await L.step(10); L.SL.views.show('board'); await L.settle();
+  const fold = L.$('.dg .nd.fold');
+  assert.equal(fold.dataset.st, 'resolved'); assert.match(fold.textContent, /– 125 resolved/); assert.doesNotMatch(fold.textContent, /✓/);
+});
