@@ -82,7 +82,7 @@ func RedactAt(segs []string, v any) any {
 // providerFields are the fields of a provider entry that are shown, each by the rule of RedactAt.
 var providerFields = map[string]bool{
 	"dialect": true, "base_url": true, "api_key_env": true, "auth": true, "headers": true, "options": true,
-	"allow_hosts": true, "allow_insecure_http": true,
+	"allow_hosts": true, "allow_insecure_http": true, "suggested_model": true,
 }
 
 // redactProviders applies the provider allow-list at any depth of the providers section.

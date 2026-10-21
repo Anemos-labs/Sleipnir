@@ -7,8 +7,8 @@
  * The pages of an earlier version (roles, trust, mcp) are parts of these: ui.settingsPage(<old id>) opens the page that has them and
  * brings their first card into view (ALIAS). A switch here that a plugin also owns (the mailman, docs on autopilot, manager approves,
  * push progress, built-in skills) says that it is the plugin and leads to it on the Plugins page.
- * Text from files, servers, mail and models is data: it goes through esc(). The browser never holds an API key: signing in is the
- * terminal's flow, and this page only learns which providers are connected. Nothing a page shows or keeps is a secret. */
+ * Text from files, servers, mail and models is data: it goes through esc(). A provider key typed in the Providers page is sent
+ * once and never comes back: the page only learns which providers are connected. Nothing a page shows or keeps is a secret. */
 (function (SL) {
   'use strict';
   const U = SL.u, { $, $$, esc, mk, fmtK, fmtUsd, fmtN, agCol } = U, D = SL.D, G = SL.G, X = D.extra, calc = SL.calc, ui = SL.ui = SL.ui || {}, TK = SL.toolkit = SL.toolkit || {};
@@ -370,7 +370,7 @@
     B.providers = (S, ST) => {
       const provs = arr(G.providers);
       return card('settings.providers.providers', 'Providers', cli('login', 'login') + ' ' + cli('models', 'models'), (provs.length ? '' : empty('No provider yet.', 'The providers of your configuration appear here, each with whether a key is there; <span class="mono">sleipnir login</span> signs in to one.')) + '<table class="tbl"' + (provs.length ? '' : ' hidden') + '><thead><tr><th>provider</th><th>key</th><th>base URL</th><th>used by</th><th></th></tr></thead><tbody>' + provs.map(p => { const ki = keyInfo(p), st = tag(ki.txt, ki.cls);
-        return '<tr><td class="bright">' + esc(p.name) + (p.recommended ? ' ' + tag('default', 'fe') : '') + '</td><td>' + st + '<small class="rn">' + esc(p.keyWhere || (p.key === 'env' ? 'the environment variable ' + p.env : p.state)) + (p.who ? ' · ' + esc(p.who) : '') + '</small></td><td class="mono dim">' + esc(p.base) + '<small class="rn">' + esc(p.dialect || '') + '</small></td><td>' + esc(p.usedBy || '') + '</td><td class="r nowrap">' + (ki.btn === 'in' ? '<button class="btn sm pri" type="button" data-prov="' + esc(p.id) + '">Sign in…</button>' : ki.btn === 'out' ? '<button class="btn sm" type="button" data-prov="' + esc(p.id) + '"' + (ki.env ? ' disabled title="the key comes from the environment variable ' + esc(p.env) + ': unset it there"' : '') + '>Sign out</button>' : '') + '</td></tr>'; }).join('') + '</tbody></table><p class="stubnote" style="margin:10px 0 0">The browser never sees an API key. Signing in is the terminal’s flow (<span class="mono">sleipnir login PROVIDER</span>: a key prompt, or the ChatGPT sign-in); this page only learns which providers are connected. Keys are kept in <span class="mono">~/.sleipnir/auth.json</span> (mode 0600) or read from the environment. ' + esc(X.providerNote || '') + '</p>');
+        return '<tr><td class="bright">' + esc(p.name) + (p.recommended ? ' ' + tag('default', 'fe') : '') + '</td><td>' + st + '<small class="rn">' + esc(p.keyWhere || (p.key === 'env' ? 'the environment variable ' + p.env : p.state)) + (p.who ? ' · ' + esc(p.who) : '') + '</small></td><td class="mono dim">' + esc(p.base) + '<small class="rn">' + esc(p.dialect || '') + '</small></td><td>' + esc(p.usedBy || '') + '</td><td class="r nowrap">' + (ki.btn === 'in' ? '<button class="btn sm pri" type="button" data-prov="' + esc(p.id) + '">Sign in…</button>' : ki.btn === 'out' ? '<button class="btn sm" type="button" data-prov="' + esc(p.id) + '"' + (ki.env ? ' disabled title="the key comes from the environment variable ' + esc(p.env) + ': unset it there"' : '') + '>Sign out</button>' : '') + '</td></tr>'; }).join('') + '</tbody></table><p class="stubnote" style="margin:10px 0 0">Add a key with <b>Sign in…</b>, or <span class="mono">sleipnir login PROVIDER</span> in a terminal; a key is never shown again, and the ChatGPT plan signs in from a terminal. ' + esc(X.providerNote || '') + '</p>');
     };
     B.config = (S, ST) => {
       const C = X.config, eff = C ? arr(C.effective) : [], q = ST.cfg.q.trim().toLowerCase(), M = S.meta, warns = C ? configWarnings(C) : [];
@@ -587,9 +587,33 @@
       ui.confirm(Object.assign({}, forgetSpec(dirs), { run: async () => { const r = await net.post('/api/trust', { all: true, on: false }); if (!r.ok) { net.fail(r, 'the directories were not forgotten'); return; } if (SL.data) { SL.data.load('trust', { force: true }); SL.data.load('projects', { force: true }); } const n = r.data && r.data.forgot != null ? r.data.forgot : dirs.length; toast('forgot ' + n + ' director' + (n === 1 ? 'y' : 'ies'), 'warm'); } }));
     }
     function signOut(p) { acted(SL.act.setProvider(p.id, { key: 'none' }), () => toast('signed out of ' + p.name, 'ok')); }
-    /** Sign in: the page shows the command for the terminal and, when it was run, asks the server again which providers are connected */
+    /** Sign in. A provider that takes a key: the key is typed here, sent once (with a confirmation) and kept in auth.json as `sleipnir
+     *  login` keeps it; the server tries it first and keeps it only when the provider accepts it; it is never shown again. The ChatGPT
+     *  plan signs in in a browser window that the terminal opens: the page shows the command and, when it was run, asks again. */
     function signIn(p) {
-      ui.modal({ title: 'Sign in to ' + p.name, kicker: 'terminal flow', desc: 'the browser never sees an API key', color: 'var(--ok)', body: '<p class="stubnote">Run this in a terminal; it asks for the key (or opens the ChatGPT sign-in) and stores it in <span class="mono">~/.sleipnir/auth.json</span> with mode 0600. This page then shows the provider as connected.</p><pre class="pre cli">sleipnir login ' + esc(p.id) + '</pre><div class="row2"><button class="btn" type="button" data-copy>Copy the command</button><button class="btn pri" type="button" data-done>I ran it: check again</button><button class="btn" type="button" data-close>Cancel</button></div>',
+      if (!p.env) return signInTerminal(p);
+      ui.modal({ title: 'Add a key for ' + p.name, kicker: 'provider key', desc: 'kept in ~/.sleipnir/auth.json, never shown again', color: 'var(--ok)', focus: '#pkIn',
+        body: '<form class="pkf" autocomplete="off"><div class="field"><label for="pkIn">' + esc(p.name) + ' API key <span class="dim mono">(' + esc(p.env) + ')</span></label><input id="pkIn" type="password" autocomplete="off" spellcheck="false" aria-label="' + esc(p.name) + ' API key"></div>' +
+          '<p class="stubnote">The key goes to this machine\'s Sleipnir once and is kept in <span class="mono">~/.sleipnir/auth.json</span> (mode 0600), as <span class="mono">sleipnir login ' + esc(p.id) + '</span> keeps it. ' + esc(p.name) + ' is asked first whether it takes the key; a key it refuses is not kept. A variable ' + esc(p.env) + ' set in the environment still wins.</p>' +
+          '<div class="row2"><button class="btn pri" type="submit" data-pk-save>Save the key</button><button class="btn" type="button" data-close>Cancel</button></div><p class="pk-out" aria-live="polite"></p></form>',
+        onMount(b, scm, close) {
+          const f = $('form', b), inp = $('#pkIn', b), out = $('.pk-out', b), btn = $('[data-pk-save]', b);
+          scm.listen(f, 'submit', async e => {
+            e.preventDefault(); const key = inp.value.trim(); if (!key) { inp.focus(); return; }
+            if (/\s/.test(key)) { out.textContent = 'a key is one word, as the provider shows it'; out.className = 'pk-out err'; return; }
+            btn.disabled = true; out.textContent = 'asking ' + p.name + ' whether it takes the key…'; out.className = 'pk-out dim';
+            const r = await net.post('/api/providers/' + encodeURIComponent(p.id) + '/key', { provider: p.id, key, check: true }, { confirm: 'key:' + p.id, timeout: 60000 });
+            btn.disabled = false;
+            if (!r.ok) { out.textContent = r.message || 'the key was not saved'; out.className = 'pk-out err'; inp.select(); return; }
+            inp.value = ''; close();
+            if (SL.data) { SL.data.load('providers', { force: true }); SL.data.load('models', { force: true }); }
+            toast(p.name + ' is connected: its models are in the list now', 'ok');
+          });
+        } });
+    }
+    /** The ChatGPT plan's sign-in, which the terminal does: the command, and a check when it was run */
+    function signInTerminal(p) {
+      ui.modal({ title: 'Sign in to ' + p.name, kicker: 'terminal flow', desc: 'the ChatGPT plan signs in in a browser window', color: 'var(--ok)', body: '<p class="stubnote">Run this in a terminal; it asks for the key (or opens the ChatGPT sign-in) and stores it in <span class="mono">~/.sleipnir/auth.json</span> with mode 0600. This page then shows the provider as connected.</p><pre class="pre cli">sleipnir login ' + esc(p.id) + '</pre><div class="row2"><button class="btn" type="button" data-copy>Copy the command</button><button class="btn pri" type="button" data-done>I ran it: check again</button><button class="btn" type="button" data-close>Cancel</button></div>',
         onMount(b, scm, close) {
           scm.listen($('[data-copy]', b), 'click', () => U.copy('sleipnir login ' + p.id).then(ok => toast(ok ? 'command copied' : 'copy is not available here', ok ? 'ok' : 'warm')));
           scm.listen($('[data-done]', b), 'click', () => { close(); acted(SL.act.setProvider(p.id, {}), () => { const now = arr(G.providers).find(x => x.id === p.id); if (now && keyInfo(now).btn !== 'in') toast(p.name + ' now shows as connected', 'ok'); else toast(p.name + ' still has no key: run the command in a terminal first', 'warm'); }); });

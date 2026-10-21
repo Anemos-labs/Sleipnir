@@ -11,6 +11,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/catalog"
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
 	"github.com/anemos-labs/sleipnir/internal/web"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
@@ -108,11 +109,15 @@ func (s *service) modelsView(res catalog.Result, f catalog.Filter, cfg *config.C
 	if cfg != nil {
 		v.Favs = append(v.Favs, cfg.Models.Favorites...)
 	}
+	keyless := map[string]bool{}
 	for i, e := range res.Entries {
+		row := res.Rows[i]
+		if s.needsKey(cfg, row.Provider, keyless) {
+			continue
+		}
 		if !f.Keep(e, fav) {
 			continue
 		}
-		row := res.Rows[i]
 		v.Models = append(v.Models, wire.ModelRow{
 			Ref: row.Ref, Provider: row.Provider, Ctx: row.Context, In: row.In, Out: row.Out, Cached: row.Cached,
 			Tools: row.Tools, Reasoning: row.Reasoning, Fav: fav[row.Ref], PriceKnown: row.PriceKnown(), Plan: row.Plan,
@@ -124,8 +129,18 @@ func (s *service) modelsView(res catalog.Result, f catalog.Filter, cfg *config.C
 		}
 		return v.Models[i].Ref < v.Models[j].Ref
 	})
+	refs := make([]string, 0, len(v.Models))
+	for _, m := range v.Models {
+		refs = append(refs, m.Ref)
+	}
+	v.Suggested = session.SuggestedModel(cfg, refs)
 	for _, err := range res.Errors {
 		v.Errors = append(v.Errors, cleanError(err))
+	}
+	for _, name := range sortedKeys(keyless) {
+		if keyless[name] {
+			v.Errors = append(v.Errors, name+": no key, so its models are not offered; add one in Settings › Providers")
+		}
 	}
 	roles := swarm.BuiltinRoles()
 	if tc != nil && tc.sess != nil && len(tc.sess.Roles) > 0 {
@@ -153,6 +168,34 @@ func (s *service) modelsView(res catalog.Result, f catalog.Filter, cfg *config.C
 	}
 	v.Efforts = effortsFor(model)
 	return v
+}
+
+// needsKey reports whether provider takes a key and none is held, so that its models (a public catalogue lists them all the same)
+// are not offered for a session that could not use them. seen caches the answer per provider; a provider left out is marked true.
+func (s *service) needsKey(cfg *config.Config, provider string, seen map[string]bool) bool {
+	if v, ok := seen[provider]; ok {
+		return v
+	}
+	missing := false
+	if cfg != nil && provider != "" {
+		if p, ok := session.LookupProvider(cfg, provider); ok && p.Auth != config.AuthChatGPTPlan {
+			if _, env, _ := session.ProviderInfo(cfg, provider); env != "" {
+				missing = !catalog.StatusOf(s.o.Home, catalog.KeyProvider{Name: provider, Env: env}).Present
+			}
+		}
+	}
+	seen[provider] = missing
+	return missing
+}
+
+// sortedKeys returns the keys of m in order.
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // firstNonEmpty returns a when it is not empty, else b.

@@ -97,13 +97,15 @@
   const MODE_WARN = { bypass: 'This session will not ask before it edits files or runs commands, except for the very dangerous ones. Use it only where a mistake is cheap. Nothing to type: choosing it here is the confirmation.', yolo: 'This session will never ask, dangerous commands included. Deny rules and guarded paths still refuse. Use it only inside a sandbox. Nothing to type: choosing it here is the confirmation.' };
   function paintMode(b, mode) { $$('[data-nsmode]', b).forEach(r => { const on = r.dataset.nsmode === mode; r.setAttribute('aria-checked', String(on)); r.tabIndex = on ? 0 : -1; }); const w = $('#nsWarn', b); if (w) { w.hidden = !MODE_WARN[mode]; w.textContent = MODE_WARN[mode] ? '⚠ ' + mode + ': ' + MODE_WARN[mode] : ''; w.dataset.mode = mode; } }
   /** The seed of the New session dialog: the server's defaults (its flags over the configuration), else the page's own values. */
+  /** the model a picker starts on when nothing chose one: the one the catalogue suggests (a provider's suggested_model), else the first listed */
+  const firstModel = () => D.suggested && D.models.some(m => m.ref === D.suggested) ? D.suggested : D.models[0] ? D.models[0].ref : '';
   function seedOf() {
     const has = !!(SL.live && SL.live.defaults()), d = has ? SL.live.defaults() : {}, projects = (D.extra.projects || []), def = projects.find(p => p.default) || projects[0];
     const swarm = d.swarm != null ? d.swarm : 8, cwd = (def && def.dir) || d.cwd || '', tm = teamSeed(d.team);
     /* with the server's defaults an absent field is the CLI's own default (no verify command); the budget starts at off, which the server honours: a team has no cap unless one is set.
        The compaction share starts at sleipnir web's --compact-at (compactAt), else at the share a session takes without the flag (compactAtDefault: the configuration's, else 25; 0 when its token limits apply) */
     const act = SL.sessions && SL.sessions.active, actModel = act && !act.placeholder && !act.recorded ? act.meta.model : '';
-    return { name: '', cwd, gitInit: true, testsSummary: d.testsPreset || '', unlimitedEnv: d.unlimitedEnv || '', model: d.model || actModel || (D.models[0] ? D.models[0].ref : ''), mode: d.mode || 'default', swarm, isolation: d.isolation || (swarm ? 'worktree' : 'none'), verify: d.verify != null ? d.verify : has ? '' : 'go test {dirs}', commit: !!d.commit, mailman: !!d.mailman, mailmanDefault: !!d.mailman, budget: d.budget ? String(d.budget) : 'off', rules: (d.rules || []).slice(), trustProject: d.trustProject !== false, noMcp: !!d.noMcp, noMemory: !!d.noMemory, goalText: '', research: 'off', effort: d.effort || 'default', roleModels: Object.assign({}, d.roleModels || {}), maxWorkers: d.maxWorkers || 0, minWorkers: d.minWorkers || 8, counts: tm.counts, slotModels: tm.models, perSlot: tm.per, openRoles: Object.keys(tm.per).reduce((o, r) => { o[r] = true; return o; }, {}), single: swarm === 0, autoDocs: d.autoDocs !== false, managerApproves: d.managerApproves !== false, isoAuto: !d.isolationSet, resume: '', compactAt: d.compactAt ? +d.compactAt : null, compactAtBase: d.compactAtDefault != null ? +d.compactAtDefault : 25 };
+    return { name: '', cwd, gitInit: true, testsSummary: d.testsPreset || '', unlimitedEnv: d.unlimitedEnv || '', model: d.model || actModel || firstModel(), mode: d.mode || 'default', swarm, isolation: d.isolation || (swarm ? 'worktree' : 'none'), verify: d.verify != null ? d.verify : has ? '' : 'go test {dirs}', commit: !!d.commit, mailman: !!d.mailman, mailmanDefault: !!d.mailman, budget: d.budget ? String(d.budget) : 'off', rules: (d.rules || []).slice(), trustProject: d.trustProject !== false, noMcp: !!d.noMcp, noMemory: !!d.noMemory, goalText: '', research: 'off', effort: d.effort || 'default', roleModels: Object.assign({}, d.roleModels || {}), maxWorkers: d.maxWorkers || 0, minWorkers: d.minWorkers || 8, counts: tm.counts, slotModels: tm.models, perSlot: tm.per, openRoles: Object.keys(tm.per).reduce((o, r) => { o[r] = true; return o; }, {}), single: swarm === 0, autoDocs: d.autoDocs !== false, managerApproves: d.managerApproves !== false, isoAuto: !d.isolationSet, resume: '', compactAt: d.compactAt ? +d.compactAt : null, compactAtBase: d.compactAtDefault != null ? +d.compactAtDefault : 25 };
   }
   /** The counts and models of a team the server names (one entry per slot), or the default team: one worker of each role. A role whose
    *  slots all run one model has it in models; a role whose slots run different models has them, slot by slot, in per. */
@@ -244,8 +246,10 @@
     if (seed && seed.swarm != null && seed.single == null) st.single = +seed.swarm === 0;   // a seed that names a size: 0 is a single agent
     if (seed && seed.isolation != null && seed.isoAuto == null) st.isoAuto = false;          // ... and one that names the isolation chose it
     const models = () => { const l = D.models.map(m => m.ref); if (st.model && l.indexOf(st.model) < 0) l.unshift(st.model); return l; };
+    /** under the model list when it is empty: no provider has a key yet (the server lists only the models a key can use), and where to add one */
+    const noModelHint = () => models().length ? '' : 'No model to choose: no provider has a key yet. <button class="lnk" type="button" data-ns-providers>Add one in Settings › Providers</button>';
     /* the list shows its first model when none is chosen: that model is the one that starts (the catalogue may come after the seed, which would otherwise leave the model empty) */
-    const adopt = () => { if (!st.model && D.models[0]) st.model = D.models[0].ref; };
+    const adopt = () => { if (!st.model) st.model = firstModel(); };
     adopt();
     let fm = null;
     const fstate = () => (fm ? fm.state() : null);
@@ -263,7 +267,7 @@
       (st.error ? '<p class="nserr err" role="alert">' + esc(st.error) + '</p>' : '') + (st.resume ? '<p class="stubnote mono" style="margin:0 0 8px">resume ' + esc(st.resume) + '</p>' : '') +
       '<div class="g2 ns"><div><h3 class="lab nsh">Project</h3>' + field('name', inp('nsName', st.name, 'placeholder="shop-2" aria-label="Session name"'), '', help('name', 'the name')) +
       field('folder (--cwd)', folder.html(st.cwd), '', help('folder', 'the folder')) + '<div class="nsgit" id="nsGitRow" hidden><label class="chk"><input type="checkbox" id="nsGit" data-k="gitInit"' + (st.gitInit ? ' checked' : '') + '> git init</label>' + help('git', 'git init') + '</div>' +
-      '<h3 class="lab nsh">Team</h3>' + field('model (--model)', '<select id="nsModel" aria-label="Model">' + models().map(r => '<option' + (r === st.model ? ' selected' : '') + '>' + esc(r) + '</option>').join('') + '</select>', '', help('model', 'the model')) +
+      '<h3 class="lab nsh">Team</h3>' + field('model (--model)', '<select id="nsModel" aria-label="Model">' + models().map(r => '<option' + (r === st.model ? ' selected' : '') + '>' + esc(r) + '</option>').join('') + '</select><small class="hint" id="nsModelHint">' + noModelHint() + '</small>', '', help('model', 'the model')) +
       field('team (--swarm, --role-model)', '<div class="seg" role="group" aria-label="Team preset"><button type="button" data-tpreset="full">Full team</button><button type="button" data-tpreset="single">Single agent</button></div> <span class="dim" id="nsSw"></span><div id="nsTeamRows" class="nsteamrows"></div><div class="nserr err" id="nsTeamErr" role="alert" hidden></div>', '', help('workers', 'the team')) +
       team(field('isolation', seg('isolation', ['none', 'worktree'], st.isolation), '', help('isolation', 'isolation')) + field('verify tasks with (--verify)', inp('nsVerify', st.verify, 'aria-label="verify command" placeholder="e.g. go test {dirs}" spellcheck="false" autocomplete="off"') + '<div class="chips" id="nsVerifyHints"></div>', '', help('verify', '--verify')) +
         field('team options', opt('commit', '--commit', '--commit') + opt('mailman', '--mailman', '--mailman') + opt('autoDocs', '<span>auto-docs <span class="nowrap">(--auto-docs)</span></span>', '--auto-docs') + opt('managerApproves', '<span>manager answers routine questions <span class="nowrap">(--manager-approves)</span></span>', '--manager-approves'))) +
@@ -344,10 +348,12 @@
         sc.on('models-changed', () => {
           adopt();
           $('#nsModel', b).innerHTML = models().map(r => '<option' + (r === st.model ? ' selected' : '') + '>' + esc(r) + '</option>').join('');
+          $('#nsModelHint', b).innerHTML = noModelHint();
           $('#nsTeamRows', b)._k = null;
           paint();
         });
         sc.listen(b, 'click', e => {
+          if (e.target.closest('[data-ns-providers]')) { close(); ui.settingsPage('providers'); return; }
           const mr = e.target.closest('[data-nsmode]'); if (mr) { st.mode = mr.dataset.nsmode; paint(); return; }
           if (e.target.closest('#nsCompactReset')) { st.compactAt = null; paint(); $('#nsCompact', b).focus(); return; }
           const x = e.target.closest('[data-seg]'); if (x) { if (x.disabled) return; st[x.dataset.seg] = x.dataset.v; if (x.dataset.seg === 'isolation') st.isoAuto = false; $$('[data-seg="' + x.dataset.seg + '"]', b).forEach(y => y.setAttribute('aria-pressed', y === x)); paint(); return; }

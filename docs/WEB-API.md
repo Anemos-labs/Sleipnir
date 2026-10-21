@@ -369,10 +369,11 @@ path the permission engine refuses agents to read. A change (revert, restore, ac
 | `GET` | `/api/sessions/{id}/skills` | `wire.SkillsView`: skills, custom commands and hooks with the layer each came from | - |
 | `GET` | `/api/providers` | `wire.ProvidersView`: providers and whether a key is there; a key is never returned | - |
 | `POST` | `/api/providers/recheck` | Takes up keys that `sleipnir login` or `logout` changed in a terminal, and lists the providers again | - |
+| `POST` | `/api/providers/{name}/key` | `wire.KeySaveRequest` (body at most 8 KiB): stores the provider's key in `auth.json` as `sleipnir login` does, and this process takes it up at once; with `check` one small request tries it first and a key the provider refuses is not kept (`422 rejected`). The key is never returned or logged; `400 bad_key` for a key with spaces, `404 not_found` for a provider that takes none. Answers the provider's `wire.ProviderRow` | `key:<name>` |
 | `POST` | `/api/providers/{name}/signout` | Removes the stored key; a key from the environment is `409 env` | - |
 | `GET` | `/api/sessions/{id}/config` | `wire.ConfigView`: the configuration layers, every effective value (redacted) with the layer that supplied it, and the warnings of `sleipnir config` | - |
 
-The page never holds a provider key: signing in is `sleipnir login` in a terminal.
+A provider key can be typed in the page once (`POST /api/providers/{name}/key`); it is never sent back. The ChatGPT plan signs in with `sleipnir login chatgpt` in a terminal.
 
 ### Memory
 

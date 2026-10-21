@@ -235,9 +235,9 @@ func (s *service) handleSignOut(w http.ResponseWriter, r *http.Request) {
 	reply(w, s.providerRow(cfg, name, ""), nil)
 }
 
-// handleKey is POST /api/providers/{name}/key (served only when KeyRoutes is true, which it is not): store a provider's
-// key typed in the browser, with the confirmation key:<name>; with check, one small request tries it and a refused key is not kept
-// (422 rejected). The key is read from the body only, never logged, never returned.
+// handleKey is POST /api/providers/{name}/key (KeyRoutes): store a provider's key typed in the browser, with the confirmation
+// key:<name>; with check, one small request tries it and a refused key is not kept (422 rejected). The key is read from the body
+// only, never logged, never returned; this process takes it up at once (a variable of the same name in the environment still wins).
 func (s *service) handleKey(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if !nameRe.MatchString(name) {
@@ -267,14 +267,14 @@ func (s *service) handleKey(w http.ResponseWriter, r *http.Request) {
 		web.WriteError(w, fail(http.StatusInternalServerError, "internal", "the key could not be stored"))
 		return
 	}
-	s.rememberStored()
+	s.reloadStored()
 	if req.Check {
 		ref := firstToolModel(r, cfg, name, s)
 		if ref != "" {
 			if kc := catalog.CheckKey(r.Context(), cfg, ref); kc.Refused {
 				if catalog.StatusOf(s.o.Home, catalog.KeyProvider{Name: name, Env: env}).Source == catalog.SourceStored {
 					_ = catalog.ForgetKey(s.o.Home, env)
-					s.rememberStored()
+					s.reloadStored()
 				}
 				web.WriteError(w, fail(http.StatusUnprocessableEntity, "rejected", name+" did not accept that key ("+kc.Reason+"); it was not kept"))
 				return

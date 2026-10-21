@@ -15,9 +15,8 @@
 // per file within the process and read the file again before they write it (config.WriteLock); config.Save writes canonical JSON,
 // so the comments of a configuration file that a page changes are not kept.
 //
-// The routes that take a provider key from the browser or start a ChatGPT sign-in are not served: sign-in stays in the terminal
-// (`sleipnir login`) and the page never holds a provider key, so KeyRoutes is false. The service they would call is built and
-// tested (catalog.StoreKey, catalog.CheckKey, the handler of POST /api/providers/{name}/key).
+// A provider key can be typed in the page (POST /api/providers/{name}/key, KeyRoutes): it is sent once, with a confirmation, kept
+// in auth.json as `sleipnir login` keeps it, and never sent back, logged or put in argv. The ChatGPT sign-in stays in the terminal.
 package settings
 
 import (
@@ -51,9 +50,9 @@ type Options struct {
 	Self    string
 }
 
-// KeyRoutes says whether POST /api/providers/{name}/key (a provider key typed in the browser) is served. It is false: sign-in stays
-// in the terminal and the page never holds a provider key. The handler and its tests remain, so that serving it is one constant.
-const KeyRoutes = false
+// KeyRoutes says whether POST /api/providers/{name}/key (a provider key typed in the browser) is served: a person who uses only the
+// page can add a key without a terminal.
+const KeyRoutes = true
 
 // keyMaxBody is the body cap of the key route.
 const keyMaxBody = 8 << 10
