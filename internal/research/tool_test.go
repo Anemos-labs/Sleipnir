@@ -143,10 +143,9 @@ func TestFullRun(t *testing.T) {
 		"pages": []map[string]any{{"id": "index", "title": "Deep research", "summary": "How harnesses research"},
 			{"id": "architectures", "title": "Architectures", "summary": "a", "category": "Design"},
 			{"id": "citations", "title": "Citations", "summary": "b", "category": "Design"},
-			{"id": "costs", "title": "Costs", "summary": "c", "category": "Practice"},
 			{"id": "failures", "title": "Failure modes", "summary": "d", "category": "Practice"}}})
 	// sources across sites and tracks
-	for i := 0; i < d.MinSources; i++ {
+	for i := 0; i < max(d.MinSources, 15); i++ { // the pages below cite S1 to S15
 		u := "https://site" + string(rune('a'+i%10)) + ".example/p" + string(rune('a'+i))
 		text := "Finding number " + string(rune('a'+i)) + " says research agents run searches in parallel and compress what they read into findings."
 		fr.pages[u] = &webtool.Page{Title: "Page " + string(rune('A'+i)), Text: text}
@@ -174,17 +173,18 @@ func TestFullRun(t *testing.T) {
 		return b.String()
 	}
 	pages := map[string]string{
-		"index":         "Deep research harnesses plan, fan out and verify. See [[architectures]], [[citations]], [[costs]] and [[failures|failure modes]].\n\n" + cites("S1", "S2", "S3"),
-		"architectures": "## Orchestrator and workers\n\n" + cites("S1", "S2", "S3") + "\n\n## Outlines\n\n" + cites("S4") + "\n\nSee [[citations]] and [[costs]].",
+		"index":         "Deep research harnesses plan, fan out and verify. See [[architectures]], [[citations]] and [[failures|failure modes]].\n\n" + cites("S1", "S2", "S3"),
+		"architectures": "## Orchestrator and workers\n\n" + cites("S1", "S2", "S3") + "\n\n## Outlines\n\n" + cites("S4") + "\n\n## Tokens\n\n" + cites("S9", "S10", "S11", "S12") + "\n\n| Tier | Agents |\n|---|---:|\n| quick | 3 |\n| deep | 10 |\n\nSee [[citations]] and [[failures]].",
 		"citations":     "## Verified quotes\n\n" + cites("S5", "S6", "S7", "S8") + "\n\nSee [[architectures]] and [[failures]]. A finding: [F2].",
-		"costs":         "## Tokens\n\n" + cites("S9", "S10", "S11", "S12") + "\n\n| Tier | Agents |\n|---|---:|\n| quick | 3 |\n| deep | 10 |\n\nSee [[architectures]] and [[failures]].",
-		"failures":      "## Hallucinated citations\n\n" + cites("S13", "S14", "S15", "S1") + "\n\n```go\nfmt.Println(\"<script>alert(1)</script>\")\n```\n\nSee [[citations]] and [[costs]].",
+		"failures":      "## Hallucinated citations\n\n" + cites("S13", "S14", "S15", "S1") + "\n\n```go\nfmt.Println(\"<script>alert(1)</script>\")\n```\n\nSee [[citations]] and [[architectures]].",
 	}
 	for id, body := range pages {
 		must(t, tool, "dc-1", map[string]any{"action": "write_page", "page": id, "body": body})
 	}
 	for id := range pages {
-		must(t, tool, "rv-1", map[string]any{"action": "review_page", "page": id, "ok": true})
+		if id != "failures" { // quick research has no fact-check round: a page nobody reviewed is published as written
+			must(t, tool, "rv-1", map[string]any{"action": "review_page", "page": id, "ok": true})
+		}
 	}
 	out = must(t, tool, "mgr", map[string]any{"action": "build"})
 	if !strings.Contains(out, "No problems") {
@@ -193,6 +193,9 @@ func TestFullRun(t *testing.T) {
 	out = must(t, tool, "mgr", map[string]any{"action": "status"})
 	if !strings.Contains(out, "Phase: done") {
 		t.Fatalf("after build: %s", out)
+	}
+	if !strings.Contains(out, "fact-checked 3 ") { // failures was not reviewed: it is published, but not counted as fact-checked
+		t.Errorf("status counts a page nobody reviewed as fact-checked: %s", out)
 	}
 	site := SiteDir(root, r.Slug)
 	for _, f := range []string{"index.html", "architectures.html", "sources.html", "evidence.html", "method.html", "gaps.html", "assets/wiki.css", "assets/wiki.js", "assets/search-index.js"} {
@@ -249,5 +252,75 @@ func TestRenderHoldsOnlyRenderedFiles(t *testing.T) {
 	}
 	if strings.Contains(string(site.Files["index.html"]), "<script>alert") {
 		t.Fatal("a page's HTML was not escaped")
+	}
+}
+
+// A resumed session's store has no active run: a call that names none still reaches the project's only unfinished run, and
+// names the runs to choose from when there are several.
+func TestAResumedStoreFindsTheOnlyUnfinishedRun(t *testing.T) {
+	_, fr, r, root := newTestTool(t, "quick", ModeKickoff)
+	resumed := NewTool(NewStore(root), fr)
+	if out := must(t, resumed, "dc-1", map[string]any{"action": "status"}); !strings.Contains(out, r.Slug) {
+		t.Fatalf("status after a resume: %s", out)
+	}
+	if _, err := NewStore(root).Create("Another question entirely", "quick", ModeReport, ""); err != nil {
+		t.Fatal(err)
+	}
+	out, isErr := call(t, NewTool(NewStore(root), fr), "dc-1", map[string]any{"action": "status"})
+	if !isErr || !strings.Contains(out, "2 are unfinished") || !strings.Contains(out, r.Slug) {
+		t.Fatalf("two unfinished runs: %s", out)
+	}
+}
+
+// run is never a reason to refuse: a call that leaves it out goes to the session's run, and one that names a run that does not exist
+// (the question, the project, a page) goes there too, with a note to leave it out, instead of a refusal the agent retries.
+func TestACallThatMisnamesTheRunStillLands(t *testing.T) {
+	tool, fr, r, root := newTestTool(t, "quick", ModeReport)
+	u := "https://example.org/a"
+	fr.pages[u] = &webtool.Page{Text: "Agents use about four times more tokens than chat interactions, and multi-agent systems about fifteen times more."}
+	out := must(t, tool, "sc-1", map[string]any{"action": "cite", "run": "How do agent harnesses do deep research?", "url": u, "quotes": []string{"Agents use about four times more tokens than chat interactions"}})
+	if !strings.Contains(out, "there is no run") || !strings.Contains(out, r.Slug) || !strings.Contains(out, "S1") {
+		t.Errorf("misnamed run: %s", out)
+	}
+	if out := must(t, tool, "sc-1", map[string]any{"action": "sources", "run": r.Slug}); strings.Contains(out, "there is no run") || !strings.Contains(out, "S1") {
+		t.Errorf("named run: %s", out)
+	}
+	// a run that is there but cannot be read is an error, not a reason to write to another run's ledger
+	bad := filepath.Join(RunDir(root, "damaged-run"), "run.json")
+	if err := os.MkdirAll(filepath.Dir(bad), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bad, []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, isErr := call(t, tool, "sc-1", map[string]any{"action": "sources", "run": "damaged-run"}); !isErr || strings.Contains(out, "S1") {
+		t.Errorf("damaged run: %v %s", isErr, out)
+	}
+	empty := NewTool(NewStore(t.TempDir()), fr)
+	if out, isErr := call(t, empty, "sc-1", map[string]any{"action": "status", "run": "nope"}); !isErr || !strings.Contains(out, "no research run") {
+		t.Errorf("no run at all: %v %s", isErr, out)
+	}
+}
+
+// A plan that leaves out the overview gets it: a quick run whose manager trimmed its pages to the bounds and dropped index went
+// back from gathering to planning.
+func TestAPlanWithoutTheOverviewGetsIt(t *testing.T) {
+	tool, _, r, root := newTestTool(t, "quick", ModeReport)
+	out := must(t, tool, "mgr", map[string]any{"action": "plan", "scope": "s",
+		"perspectives": []map[string]string{{"name": "a", "concerns": "x"}, {"name": "b", "concerns": "y"}},
+		"tracks":       []map[string]any{{"title": "One", "questions": []string{"q1", "q2"}}, {"title": "Two", "questions": []string{"q3", "q4"}}, {"title": "Three", "questions": []string{"q5", "q6"}}},
+		"pages":        []map[string]any{{"id": "stores", "title": "Stores", "summary": "s"}}})
+	if !strings.Contains(out, "index was added") {
+		t.Errorf("plan: %s", out)
+	}
+	run, err := Load(root, r.Slug)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(run.Plan.Pages) != 2 || run.Plan.Pages[0].ID != "index" || run.Plan.Pages[0].Title != r.Question {
+		t.Errorf("pages: %+v", run.Plan.Pages)
+	}
+	if strings.Contains(must(t, tool, "mgr", map[string]any{"action": "status"}), "Phase: plan") {
+		t.Error("the run is still in the plan phase")
 	}
 }

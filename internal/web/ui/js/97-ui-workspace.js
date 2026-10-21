@@ -323,7 +323,9 @@
       const row = c.I.byPath.get(path) || {}, prot = row.protected, tch = ws.touches(c.I, path, c.all), last = tch[tch.length - 1], owner = r && r.owner, status = pend ? 'A' : ws.statusOf(c.I, path, b);
       const rv = c.reviewed(path), lastCp = ws.lastId(c.I, path);
       const vtask = c.m && own(c.m.tasks, (last || {}).task), tstate = vtask ? own(TASK_ST, vtask.st) || ['', ''] : null, tag = ST_TAG[status];
-      const wantDiff = !(W2.view === 'file' || (status === '-' && !pend));
+      const pk = SL.media ? SL.media.kind(path) : '', view = W2.view === 'preview' && !pk ? 'file' : W2.view === 'file' && pk && SL.media.opaque(pk) ? 'preview' : W2.view;
+      const wantDiff = !(view === 'file' || view === 'preview' || (status === '-' && !pend));
+      const opaqueNow = !wantDiff && !!pk && SL.media.opaque(pk);   // an unchanged picture, video, sound or PDF is shown as its preview
       let eNow = null, eDiff = null;
       if (!prot && !pend) { eNow = ws.fileEntry(c.I, path, to); if (wantDiff) eDiff = ws.diffEntry(c.I, path, from, to); }
       const cn = pend ? { added: F.lines(pend.text).length, removed: 0 } : eDiff && eDiff.state === 'ready' ? { added: eDiff.c.added, removed: eDiff.c.removed } : ws.counts(c.I, path, a, b);
@@ -331,7 +333,7 @@
       const head = '<div class="ws-ph"><div class="wtop"><h2 class="wpath" title="' + esc(F.vis(path)) + '"><span class="dim">' + vt(path.indexOf('/') >= 0 ? path.slice(0, path.lastIndexOf('/') + 1) : '') + '</span>' + vt(path.slice(path.lastIndexOf('/') + 1)) + '</h2>' + (tag ? '<span class="tag ' + tag[1] + '" title="' + tag[2] + ' against the start of the session">' + tag[0] + '</span>' : '') +
         (owner || pend ? '<span class="chip task" style="--c:' + aCol(S, pend ? pend.ag : owner) + '" data-ag="' + esc(pend ? pend.ag : owner) + '">' + vt(pend ? pend.ag : owner) + '</span>' : '') + ((last && last.task) || (pend && pend.task) ? '<span class="chip" data-task="' + esc(pend ? pend.task : last.task) + '">' + vt(pend ? pend.task : last.task) + '</span>' : '') + (tstate && !pend ? '<span class="tag ' + tstate[1] + '">' + tstate[0] + '</span>' : '') +
         (last ? '<span class="chip" title="the checkpoint of the last change">' + vt(last.id) + '</span>' : '') + '<span class="num wcounts"' + (approx ? ' title="the counts are the real ones; who wrote each line is approximate here: part of this file was changed outside the agents’ tools"' : '') + '><b class="ok">+' + cn.added + '</b> <b class="err">−' + cn.removed + '</b></span></div>' +
-        '<div class="wtool"><div class="seg" role="group" aria-label="Show"><button type="button" data-vw="diff" aria-pressed="' + (W2.view === 'diff') + '">Diff</button><button type="button" data-vw="file" aria-pressed="' + (W2.view === 'file') + '">Whole file</button></div>' +
+        '<div class="wtool"><div class="seg" role="group" aria-label="Show"><button type="button" data-vw="diff" aria-pressed="' + (view === 'diff' && !opaqueNow) + '">Diff</button>' + (pk && SL.media.opaque(pk) ? '' : '<button type="button" data-vw="file" aria-pressed="' + (view === 'file') + '">Whole file</button>') + (pk ? '<button type="button" data-vw="preview" aria-pressed="' + (view === 'preview' || opaqueNow) + '" title="show the ' + SL.media.noun(pk) + ' as it looks">Preview</button>' : '') + '</div>' +
         (lastCp && !pend ? '<button type="button" class="btn sm' + (rv ? ' on' : '') + '" data-review="' + esc(path) + '" data-cpid="' + esc(lastCp) + '" aria-pressed="' + rv + '">' + (rv ? '✓ Reviewed' : '○ Mark reviewed') + '</button>' : '') + '<button type="button" class="btn sm" data-copy="' + esc(path) + '" title="copy the path">Copy path</button><span class="dim wnote">' + (W2.mode === 'step' ? 'this checkpoint only' : W2.mode === 'from' ? 'from the start of ' + vt(c.cur ? c.cur.id : '') + ' to now' : 'since the start of the session') + '</span></div></div>';
       if (prot) return { head, html: '<div class="ws-lock"><div class="lockbig">' + LOCK + '</div><b>Denied path</b><p>Agents cannot read <code>' + vt(path) + '</code>: the rule <code>' + esc(prot.rule) + '</code> (' + esc(prot.origin) + ', ' + esc(prot.tier) + ') applies. ' + esc(prot.why) + '.</p><p class="dim">This page does not show it either: file contents are data from the project, and a denied path has none in this session.</p></div>', pend: null };
       if (row.kind === 'symlink' && !pend) return { head, html: noneP('A symbolic link: this page does not follow it.') };
@@ -343,12 +345,15 @@
         if (eNow.status === 404 || eNow.code === 'no_file') return { head, html: noneP('This file does not exist at this point in time.') };
         return { head, html: noneP(esc(F.vis(eNow.message || 'the file could not be read')), retryBtn) };
       }
-      const cNow = eNow.c;
-      if (cNow.binary) return { head, html: noneP('A binary file (' + cNow.size + ' bytes): there is no text to show.') };
+      const cNow = eNow.c, served = pk && SL.media.served(pk);
+      if (pk && cNow.exists && (view === 'preview' || (cNow.binary && !wantDiff))) return { head, html: previewHtml(c, pk, path, to, cNow, lastCp) };
+      if (cNow.binary && !served) return { head, html: noneP('A binary file (' + cNow.size + ' bytes): there is no text to show.') };
       if (wantDiff) {
         if (eDiff.state === 'loading' && !eDiff.c) return { head, html: noneP('Loading the difference…') };
         if (eDiff.state === 'error') return { head, html: noneP(esc(F.vis(eDiff.message || 'the difference could not be read')), retryBtn) };
         const dd = eDiff.c;
+        if (dd.binary && (pk === 'image' || pk === 'svg')) return { head, html: SL.media.compareHtml({ kind: pk, path, from: SL.media.rawUrl(c.I.tab, path, from), to: cNow.exists ? SL.media.rawUrl(c.I.tab, path, to, rawVer(cNow, lastCp)) : '', fromLab: 'before · ' + pointLab(from), toLab: 'after · ' + pointLab(to), note: 'a picture has no line difference: the two versions side by side' }) };
+        if (dd.binary && served && cNow.exists) return { head, html: noneP('A binary file has no line difference: it is shown as it is at the end of the range.') + previewHtml(c, pk, path, to, cNow, lastCp) };
         if (dd.binary) return { head, html: noneP('A binary file: there is no line difference to show.') };
         if (!cNow.exists && !arr(dd.hunks).length) return { head, html: noneP('This file does not exist at this point in time.') };
         const revs = isLiveEnd ? (own(c.mk.revs, path) || []).filter(v => !arr(dd.hunks).some(h => h.oldStart + ':' + h.newStart === v.key)).map(v => Object.assign({ rid: v.id, key: v.key }, F.keyParts(v.key))) : [];
@@ -358,6 +363,19 @@
       }
       if (!cNow.exists) return { head, html: noneP('This file does not exist at this point in time.') };
       return { head, mode: 'file', ls: ws.linesOf(eNow), bl: ws.blameOf(eNow), caret: ws.editing(c.m, ws.liveFile(S, c.I), path) && c.k === c.n ? 1 : 0, truncated: !!cNow.truncated, path };
+    }
+    /** what the address of a file's bytes changes with: its last checkpoint and its size, so that a picture that changed is fetched again */
+    const rawVer = (cNow, lastCp) => (lastCp || '') + '.' + cNow.size;
+    const pointLab = p => (p === 'live' ? 'now' : p === 'base' ? 'before the session' : p);
+    /** the Preview of a file at a point: the picture, video, sound or PDF the browser draws from its bytes; Markdown, a diagram or a table
+     *  drawn from its text (SL.media) */
+    function previewHtml(c, pk, path, at, cNow, lastCp) {
+      const M = SL.media, v = rawVer(cNow, lastCp);
+      if (M.served(pk)) return M.servedHtml({ kind: pk, url: M.rawUrl(c.I.tab, path, at, v), path, size: cNow.size, label: at === 'live' || at === 'base' ? '' : 'as at checkpoint ' + at });
+      const text = typeof cNow.text === 'string' ? cNow.text : '', cut = cNow.truncated ? noneP('The file is longer than the page reads: the preview shows its first part.') : '';
+      if (pk === 'markdown') return cut + M.mdHtml(text, { path, tab: c.I.tab, at, v });
+      if (pk === 'mermaid') return cut + '<div class="pv">' + M.mermaidHtml(text) + '</div>';
+      return cut + M.tableHtml(text, pk === 'tsv' ? '\t' : ',');
     }
     /** one row of a diff (see F.flatDiff): the hunk head, a context, added, deleted or elided line */
     function diffRowHtml(c, o, i) {

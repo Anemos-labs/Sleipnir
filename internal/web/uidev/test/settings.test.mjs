@@ -241,3 +241,41 @@ test('an empty list says what will appear there and what puts it there', () => {
   assert.match(tr, /No directory yet\. A project appears here when you trust its files/); assert.match(tr, /no file of its own that the harness reads/);
   SL.D.models = []; assert.match(text(T.parts.models(S, ST)), /The catalogue is empty: the models of every provider you are signed in to appear here/);
 });
+
+test('the team of a running session matches its agents to the catalogue: the roster names a model without its provider', () => {
+  const { SL } = setup(), T = SL.toolkit.settings;
+  SL.D.models = [{ ref: 'gw/a/cheap', ctx: 8000, in: 0.1, out: 0.4, tools: true }, { ref: 'gw/a/big', ctx: 8000, in: 1, out: 2, tools: true }, { ref: 'x/dup', ctx: 1 }, { ref: 'y/dup', ctx: 1 }];
+  SL.D.roleModels = { mailman: 'gw/a/cheap' }; SL.D.roleOrder = ['backend', 'tester'];
+  const S = session({ id: 'team2', roster: [{ id: 'mgr', role: 'manager', model: 'a/big' }, { id: 'be-1', role: 'backend', model: 'a/cheap' }],
+    meta: Object.assign(session().meta, { model: 'gw/a/big', mailman: true, team: [{ role: 'backend', model: 'gw/a/cheap' }, { role: 'tester' }] }) });
+  assert.equal(T.refOf('a/cheap'), 'gw/a/cheap'); assert.equal(T.refOf('gw/a/big'), 'gw/a/big', 'a ref stays'); assert.equal(T.refOf('dup'), 'dup', 'two refs end with it: kept');
+  assert.equal(T.slotNow(S, 'backend', 0), 'gw/a/cheap', 'the agent\'s model as the catalogue names it');
+  T.stageSlot(S, 'backend', 0, 'gw/a/cheap'); assert.equal(T.teamChanges(S).length, 0, 'choosing what the agent runs on is no change');
+  assert.match(T.parts.models(S, T.newState({ page: 'models' })), /gw\/a\/cheap<\/td>(?:(?!<\/tr>).)*be-1/s, 'the catalogue says be-1 runs on it');
+  assert.match(T.parts.roles(S, T.newState({ page: 'models' })), /runs on <span class="mono">gw\/a\/cheap<\/span>/, 'the mailman row names its model');
+  delete T.tdrafts[S.id];
+});
+
+test('the team of a running session: each agent under its role with the model it runs on, a change per slot or per role, and what Apply sends', () => {
+  const { SL } = setup(), T = SL.toolkit.settings;
+  SL.D.models = MODELS; SL.D.roleModels = {}; SL.D.roleOrder = ['scout', 'backend', 'tester'];
+  const S = session({ id: 'team1', roster: [{ id: 'mgr', role: 'manager', model: 'a/m' }, { id: 'be-10', role: 'backend', model: 'a/big' }, { id: 'be-2', role: 'backend', model: 'a/cheap' }, { id: 'sc-1', role: 'scout', model: 'a/m' }],
+    meta: Object.assign(session().meta, { team: [{ role: 'scout' }, { role: 'backend', model: 'a/cheap' }, { role: 'backend', model: 'a/big' }, { role: 'backend' }, { role: 'tester' }] }) });
+  assert.deepEqual(plain(T.agentsOf(S, 'backend').map(a => a.id)), ['be-2', 'be-10'], 'agents take the slots of their role in the order of their numbers');
+  assert.deepEqual(plain([0, 1, 2].map(k => T.slotNow(S, 'backend', k))), ['a/cheap', 'a/big', 'a/m'], 'a slot runs on its agent\'s model, else its own, else the role\'s');
+  assert.equal(T.teamChanges(S).length, 0);
+  T.stageSlot(S, 'backend', 1, 'b/fav');
+  assert.deepEqual(plain(T.teamChanges(S)), [{ role: 'backend', k: 1, id: 'be-10', from: 'a/big', to: 'b/fav' }]);
+  T.stageSlot(S, 'backend', 1, 'a/big');
+  assert.equal(T.teamChanges(S).length, 0, 'choosing what a slot runs on now takes the change back');
+  assert.equal(T.stepRole(S, 'backend', -1), '', 'an open slot can go');
+  assert.match(T.stepRole(S, 'backend', -1), /2 agents at work/, 'a slot held by an agent at work stays');
+  T.stepRole(S, 'tester', 1); T.stageSlot(S, 'scout', -1, 'b/fav');
+  assert.deepEqual(plain(T.teamChanges(S).map(c => c.role + (c.k == null ? ' ' + c.from + '→' + c.to : ' #' + c.k + ' ' + c.to))), ['scout #0 b/fav', 'backend 3→2', 'tester 1→2']);
+  assert.deepEqual(plain(T.teamSent(S)), [{ role: 'scout', model: 'b/fav' }, { role: 'backend', model: 'a/cheap' }, { role: 'backend', model: 'a/big' }, { role: 'tester', model: '' }, { role: 'tester', model: '' }], 'the kept slots keep their own models, new slots take the role\'s');
+  const html = T.parts.roles(S, T.newState({ page: 'models' }));
+  assert.match(html, /data-tslot="backend" data-ti="1"/); assert.match(html, />be-10</); assert.match(html, /3 changes<\/b> to apply/);
+  assert.ok(T.targetsOf(S).some(t => t[0] === 'backend#1' && /be-10/.test(t[1])), 'the catalogue can choose for one agent');
+  T.stageTarget(S, 'backend#0', 'b/fav'); assert.equal(T.targetModel(S, 'backend#0').shown, 'b/fav'); assert.equal(T.targetModel(S, 'backend').shown, '', 'a role whose slots differ shows no one model');
+  delete T.tdrafts[S.id];
+});

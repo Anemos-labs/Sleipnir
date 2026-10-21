@@ -84,6 +84,8 @@ mark.nca{unicode-bidi:isolate-override;direction:ltr;background:var(--warm-a);co
 .msg.sys .sg{font-family:var(--f-num);color:var(--mgr);flex:none;width:14px;text-align:center}
 .msg.tool{font:500 11.5px/1.3 var(--f-num);color:var(--fg2);display:flex;gap:6px}
 .msg.tool .tg{color:var(--ok)}
+.msg.tool .tb{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+.msg.tool .ts{flex:none;margin-left:auto}
 .msg.tool b{color:var(--fe);font-weight:700}
 .msg.scouts{border:1px solid var(--line);background:var(--panel2);padding:5px 8px;font:500 11.5px/1.35 var(--f-num)}
 .msg.scouts div{display:flex;gap:7px}.msg.scouts b{flex:none}

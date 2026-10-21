@@ -9,5 +9,10 @@
       "reason": "the interval at which watch re-reads the session file of another process; the page follows the server's event stream and has nothing to poll"
     }
   ],
-  "gaps": []
+  "gaps": [
+    {
+      "item": "chat --team",
+      "reason": "the New session dialog starts from the team `sleipnir web --team NAME` names, and edits it slot by slot, but has no picker among the saved teams of .sleipnir/teams and ~/.sleipnir/teams yet"
+    }
+  ]
 }

@@ -42,7 +42,7 @@
       '<p class="goal-big">' + (goalText ? goalHtml(goalText) : '<span class="dim">No goal set. <kbd>/goal TEXT</kbd> sets one: the manager works until the judge finds the evidence.</span>') + '</p>' +
       (goalText ? '<div class="g2"><div><h3 class="lab">plan, from the planner</h3><ul class="plist">' + plan.map((p, i) => '<li class="' + m.plan[i] + '"><span class="pg">' + ({ done: '✓', verify: '▸', act: '✎', edit: '✎', ask: '?', queued: '◌', pending: '◌' }[m.plan[i]] || '◌') + '</span><span class="pt">' + (i + 1) + '. ' + esc(p) + '</span></li>').join('') + '</ul></div><div><h3 class="lab">the judge, on evidence</h3><div class="verdict ' + (gs === 'met' ? 'met' : '') + ' boxed"><b>verdict</b>' + esc((m.verdict || 'no verdict yet: the judge rules on the evidence when the team says the goal is met').replace(/`/g, '')) + '</div><ul class="plist">' + ev.map(([t, ok]) => '<li class="' + (ok ? 'done' : '') + '"><span class="pg">' + (ok ? '✓' : '◌') + '</span><span class="pt">' + esc(t) + '</span></li>').join('') + '</ul></div></div>' + msHtml +
         '<p class="stubnote">State <b class="st-' + gs + '">' + gs + '</b> · ' + done + '/' + plan.length + ' steps · ' + (ms.length ? msMet + '/' + ms.length + ' milestones · ' : '') + m.merged.length + '/' + m.torder.length + ' tasks merged · judged on evidence at every turn boundary' + (max ? ' · continuation limit ' + max + ' turns, used ' + used : '') + (m.goal.paused && gs === 'paused' ? ' · paused: ' + esc(m.goal.paused) : '') + '</p>' +
-        '<div class="row2"><button class="btn" type="button" data-g="pause"' + (gs !== 'active' ? ' disabled' : '') + '>Pause the goal <kbd>esc</kbd></button><button class="btn" type="button" data-g="resume"' + (gs !== 'paused' ? ' disabled' : '') + '>Resume</button><button class="btn danger" type="button" data-g="clear">Clear the goal</button></div>' : '<div class="field-row"><input id="goalIn" type="text" placeholder="e.g. add pagination to /orders; go test ./... must pass" aria-label="Goal text">' + (researchOn() ? '<select id="goalRs" aria-label="Research first" title="--research: a team researches the goal on the web first (mature projects, ideas, code snippets) and its findings go into every agent\u2019s shared prompt"><option value="">No research first</option><option value="quick">Research first: quick</option><option value="standard">Research first: standard</option><option value="deep">Research first: deep</option></select>' : '') + '<button class="btn pri" type="button" data-g="set">Set the goal</button></div>'),
+        '<div class="row2"><button class="btn" type="button" data-g="pause"' + (gs !== 'active' ? ' disabled' : '') + '>Pause the goal</button><button class="btn" type="button" data-g="resume"' + (gs !== 'paused' ? ' disabled' : '') + '>Resume</button><button class="btn danger" type="button" data-g="clear">Clear the goal</button></div>' : '<div class="field-row"><input id="goalIn" type="text" placeholder="e.g. add pagination to /orders; go test ./... must pass" aria-label="Goal text">' + (researchOn() ? '<select id="goalRs" aria-label="Research first" title="--research: a team researches the goal on the web first (mature projects, ideas, code snippets) and its findings go into every agent\u2019s shared prompt"><option value="">No research first</option><option value="quick">Research first: quick</option><option value="standard">Research first: standard</option><option value="deep">Research first: deep</option></select>' : '') + '<button class="btn pri" type="button" data-g="set">Set the goal</button></div>'),
       onMount(b, sc, close) { sc.listen(b, 'click', e => { const x = e.target.closest('[data-g]'); if (!x) return; const k = x.dataset.g; let r; if (k === 'pause') r = SL.act.pauseGoal(); else if (k === 'resume') r = SL.act.resumeGoal(); else if (k === 'clear') r = SL.act.clearGoal(); else if (k === 'set') { const rs = $('#goalRs', b), v = $('#goalIn', b).value; r = SL.act.setGoal(rs && rs.value && v.trim() ? '--research=' + rs.value + ' ' + v : v); } refused(r); close(); }); } });
   };
 
@@ -70,7 +70,7 @@
 
   /* ---------- help, history ---------- */
   sheets.help = function () {
-    ui.modal({ title: 'Help', kicker: '/help', desc: 'this text, and your custom commands and skills', wide: true, color: 'var(--fe)', onMount(b, sc) { sc.listen(b, 'click', e => { if (e.target.closest('[data-tour]')) ui.tour.start(); }); }, body: '<div class="row2 helptour"><button class="btn sm pri" type="button" data-tour>Take the tour</button><span class="dim">each part of the page and how it works, one at a time</span></div><div class="g2"><div><h3 class="lab">keys</h3><dl class="kv keys2">' + [['g then r', 'Talk to manager: open the Radio rail and its message box'], ['g then c b h f w', 'Work: Cockpit, Board, Changes, Files, Research'], ['g then k q m a p', 'Inspect: Checkpoints, Merge, Mail, Cache, Replay'], ['g then s u e t', 'Manage: Sessions, Plugins, Settings, Tools'], ['alt+t · alt+g', 'Cache · Cockpit (browsers reserve ctrl+t and ctrl+g)'], ['alt+1 … alt+9', 'the nth session tab']].concat(D.shortcuts).map(([k, d]) => '<dt>' + esc(k) + '</dt><dd>' + esc(d) + '</dd>').join('') + '</dl><p class="stubnote" style="margin-top:10px">Browsers reserve ctrl+t and ctrl+g; alt+t and alt+g do the same here.</p></div><div><h3 class="lab">commands</h3>' + SL.palette.listHtml(SL.palette.filter('', true), -1).replace(/<button class="cmd"/g, '<div class="cmd"').replace(/<\/button>/g, '</div>') + '</div></div>' });
+    ui.modal({ title: 'Help', kicker: '/help', desc: 'this text, and your custom commands and skills', wide: true, color: 'var(--fe)', onMount(b, sc) { sc.listen(b, 'click', e => { if (e.target.closest('[data-tour]')) ui.tour.start(); }); }, body: '<div class="row2 helptour"><button class="btn sm pri" type="button" data-tour>Take the tour</button><span class="dim">each part of the page and how it works, one at a time</span></div><div class="g2"><div><h3 class="lab">keys</h3><dl class="kv keys2">' + D.shortcuts.map(([k, d]) => '<dt>' + esc(k) + '</dt><dd>' + esc(d) + '</dd>').join('') + '</dl><p class="stubnote" style="margin-top:10px">The page has no other shortcuts: what you type with nothing selected goes to the message box.</p></div><div><h3 class="lab">commands</h3>' + SL.palette.listHtml(SL.palette.filter('', true), -1).replace(/<button class="cmd"/g, '<div class="cmd"').replace(/<\/button>/g, '</div>') + '</div></div>' });
   };
   sheets.history = function () {
     const S = S_(), h = S.hist.slice().reverse();
@@ -97,13 +97,15 @@
   const MODE_WARN = { bypass: 'This session will not ask before it edits files or runs commands, except for the very dangerous ones. Use it only where a mistake is cheap. Nothing to type: choosing it here is the confirmation.', yolo: 'This session will never ask, dangerous commands included. Deny rules and guarded paths still refuse. Use it only inside a sandbox. Nothing to type: choosing it here is the confirmation.' };
   function paintMode(b, mode) { $$('[data-nsmode]', b).forEach(r => { const on = r.dataset.nsmode === mode; r.setAttribute('aria-checked', String(on)); r.tabIndex = on ? 0 : -1; }); const w = $('#nsWarn', b); if (w) { w.hidden = !MODE_WARN[mode]; w.textContent = MODE_WARN[mode] ? '⚠ ' + mode + ': ' + MODE_WARN[mode] : ''; w.dataset.mode = mode; } }
   /** The seed of the New session dialog: the server's defaults (its flags over the configuration), else the page's own values. */
+  /** the model a picker starts on when nothing chose one: the one the catalogue suggests (a provider's suggested_model), else the first listed */
+  const firstModel = () => D.suggested && D.models.some(m => m.ref === D.suggested) ? D.suggested : D.models[0] ? D.models[0].ref : '';
   function seedOf() {
     const has = !!(SL.live && SL.live.defaults()), d = has ? SL.live.defaults() : {}, projects = (D.extra.projects || []), def = projects.find(p => p.default) || projects[0];
     const swarm = d.swarm != null ? d.swarm : 8, cwd = (def && def.dir) || d.cwd || '', tm = teamSeed(d.team);
     /* with the server's defaults an absent field is the CLI's own default (no verify command); the budget starts at off, which the server honours: a team has no cap unless one is set.
        The compaction share starts at sleipnir web's --compact-at (compactAt), else at the share a session takes without the flag (compactAtDefault: the configuration's, else 25; 0 when its token limits apply) */
     const act = SL.sessions && SL.sessions.active, actModel = act && !act.placeholder && !act.recorded ? act.meta.model : '';
-    return { name: '', cwd, gitInit: true, testsSummary: d.testsPreset || '', unlimitedEnv: d.unlimitedEnv || '', model: d.model || actModel || (D.models[0] ? D.models[0].ref : ''), mode: d.mode || 'default', swarm, isolation: d.isolation || (swarm ? 'worktree' : 'none'), verify: d.verify != null ? d.verify : has ? '' : 'go test {dirs}', commit: !!d.commit, mailman: !!d.mailman, mailmanDefault: !!d.mailman, budget: d.budget ? String(d.budget) : 'off', rules: (d.rules || []).slice(), trustProject: d.trustProject !== false, noMcp: !!d.noMcp, noMemory: !!d.noMemory, goalText: '', effort: d.effort || 'default', roleModels: Object.assign({}, d.roleModels || {}), maxWorkers: d.maxWorkers || 0, minWorkers: d.minWorkers || 8, counts: tm.counts, slotModels: tm.models, perSlot: tm.per, openRoles: Object.keys(tm.per).reduce((o, r) => { o[r] = true; return o; }, {}), single: swarm === 0, autoDocs: d.autoDocs !== false, managerApproves: d.managerApproves !== false, isoAuto: !d.isolationSet, resume: '', compactAt: d.compactAt ? +d.compactAt : null, compactAtBase: d.compactAtDefault != null ? +d.compactAtDefault : 25 };
+    return { name: '', cwd, gitInit: true, testsSummary: d.testsPreset || '', unlimitedEnv: d.unlimitedEnv || '', model: d.model || actModel || firstModel(), mode: d.mode || 'default', swarm, isolation: d.isolation || (swarm ? 'worktree' : 'none'), verify: d.verify != null ? d.verify : has ? '' : 'go test {dirs}', commit: !!d.commit, mailman: !!d.mailman, mailmanDefault: !!d.mailman, budget: d.budget ? String(d.budget) : 'off', rules: (d.rules || []).slice(), trustProject: d.trustProject !== false, noMcp: !!d.noMcp, noMemory: !!d.noMemory, goalText: '', research: 'off', effort: d.effort || 'default', roleModels: Object.assign({}, d.roleModels || {}), maxWorkers: d.maxWorkers || 0, minWorkers: d.minWorkers || 8, counts: tm.counts, slotModels: tm.models, perSlot: tm.per, openRoles: Object.keys(tm.per).reduce((o, r) => { o[r] = true; return o; }, {}), single: swarm === 0, autoDocs: d.autoDocs !== false, managerApproves: d.managerApproves !== false, mgrAfter: 'off', mgrUpTo: 'medium', isoAuto: !d.isolationSet, resume: '', compactAt: d.compactAt ? +d.compactAt : null, compactAtBase: d.compactAtDefault != null ? +d.compactAtDefault : 25 };
   }
   /** The counts and models of a team the server names (one entry per slot), or the default team: one worker of each role. A role whose
    *  slots all run one model has it in models; a role whose slots run different models has them, slot by slot, in per. */
@@ -132,6 +134,10 @@
     return { n, dflt, slots, short: !st.single && n < (st.minWorkers || 8) };
   };
   dialogs.teamOf = teamOf;
+  /** The models of the roles that are no worker slot (manager, mailman, judge, compactor, …) in role models rm: a team sent slot by slot
+   *  still names them, or a saved team's judge and mailman would run on the manager's model. */
+  const serviceModels = (st, rm) => Object.keys(rm || {}).reduce((o, r) => { if (rm[r] && !Object.prototype.hasOwnProperty.call(st.counts || {}, r)) o[r] = rm[r]; return o; }, {});
+  dialogs.serviceModels = serviceModels;
   /** One argument for a POSIX shell: as it is when it holds only characters a shell leaves alone, else in single quotes (a single quote
    *  inside becomes '\''). */
   const shellQuote = a => { a = String(a == null ? '' : a); return /^[A-Za-z0-9_@%+=:,./-]+$/.test(a) ? a : "'" + a.replace(/'/g, "'\\''") + "'"; };
@@ -152,12 +158,18 @@
   dialogs.cliLine = function (st) {
     const q = shellQuote, off = (!st.budget || st.budget === 'off') && Number(st.swarm) > 0, f = [(off && st.unlimitedEnv ? st.unlimitedEnv + ' ' : '') + 'sleipnir chat'];   // a team of the terminal has a cap of its own unless the environment lifts it
     if (st.resume) f.push('--resume ' + q(st.resume)); if (st.cwd && st.cwd !== '.') f.push('--cwd ' + q(st.cwd)); f.push('--model ' + q(st.model)); f.push('--mode ' + q(st.mode)); const tm = st.counts ? teamOf(st) : { n: st.swarm, slots: [] }; f.push('--swarm ' + q(tm.n)); f.push('--isolation ' + q(st.isolation));
-    if (st.verify) f.push('--verify ' + q(st.verify)); if (st.commit) f.push('--commit'); if (st.mailman) f.push('--mailman'); else if (st.mailmanDefault) f.push('--mailman=false'); if (tm.n > 0 && st.autoDocs === false) f.push('--auto-docs=false'); if (tm.n > 0 && st.managerApproves === false) f.push('--manager-approves=false');
-    if (st.budget && st.budget !== 'off') f.push('--budget-usd ' + q(st.budget)); const ca = dialogs.compactAtSent(st); if (ca) f.push('--compact-at ' + q(ca)); if (tm.slots.length) tm.slots.forEach(t => f.push('--role-model ' + q(t.model ? t.role + '=' + t.model : t.role))); else Object.keys(st.roleModels || {}).forEach(r => f.push('--role-model ' + q(r + '=' + st.roleModels[r]))); (st.rules || []).forEach(r => f.push('--allow ' + q(r)));
+    if (st.verify) f.push('--verify ' + q(st.verify)); if (st.commit) f.push('--commit'); if (st.mailman) f.push('--mailman'); else if (st.mailmanDefault) f.push('--mailman=false'); if (tm.n > 0 && st.autoDocs === false) f.push('--auto-docs=false'); if (tm.n > 0 && st.managerApproves === false) f.push('--manager-approves=false'); if (tm.n > 0 && st.mgrAfter && st.mgrAfter !== 'off') { f.push('--manager-answers-after ' + q(st.mgrAfter)); f.push('--manager-answers-up-to ' + q(st.mgrUpTo || 'medium')); }
+    if (st.budget && st.budget !== 'off') f.push('--budget-usd ' + q(st.budget)); const ca = dialogs.compactAtSent(st); if (ca) f.push('--compact-at ' + q(ca)); if (tm.slots.length) { const sv = serviceModels(st, st.roleModels); Object.keys(sv).forEach(r => f.push('--role-model ' + q(r + '=' + sv[r]))); tm.slots.forEach(t => f.push('--role-model ' + q(t.model ? t.role + '=' + t.model : t.role))); } else Object.keys(st.roleModels || {}).forEach(r => f.push('--role-model ' + q(r + '=' + st.roleModels[r]))); (st.rules || []).forEach(r => f.push('--allow ' + q(r)));
     if (st.trustProject) f.push('--trust-project'); if (st.noMcp) f.push('--no-mcp'); if (st.noMemory) f.push('--no-memory');
     const first = st.makeDir || st.makeGit ? '# first, as the page does: ' + [st.makeDir ? 'make the folder' : '', st.makeGit ? 'run git init in it, with an empty first commit' : ''].filter(Boolean).join(', then ') + '\n' : '';
-    return first + f.join(' ') + (st.goalText ? '\n  # then: /goal ' + String(st.goalText).replace(/[\r\n]+/g, ' ') : '');
+    const goal = dialogs.goalSent(st);
+    return first + f.join(' ') + (goal ? '\n  # then: /goal ' + goal.replace(/[\r\n]+/g, ' ') : '');
   };
+  /** The research depths a first goal can be researched at (/goal --research=DEPTH), each with what it runs before the build. */
+  const RESEARCH_FIRST = { quick: '3 researchers, one short round, 1 to 3 pages, no fact-check round: minutes', standard: '6 researchers over two rounds, every page fact-checked', deep: '10 researchers over three rounds, two fact-checks per page' };
+  /** The first goal a New session state sends: the goal, behind --research=DEPTH when a depth was chosen and the research plugin is on;
+   *  '' without a goal (a depth alone researches nothing). */
+  dialogs.goalSent = st => { const g = String(st.goalText || '').trim(); return g && RESEARCH_FIRST[st.research] && researchOn() ? '--research=' + st.research + ' ' + g : g; };
 
   /* ---------- the New session dialog: what each control does, in a ? beside the control (hover, focus or a tap) ---------- */
   const NS_HELP = {
@@ -170,6 +182,7 @@
     isolation: '<b>none</b>: workers edit your folder directly.<br><b>worktree</b>: each worker edits a private copy of the project; finished work is checked, merged, and only then applied to your folder. Teams only.',
     verify: 'A command that checks a worker’s task before it counts as done: it runs when a worker hands a task in, and a failure sends the task back to the worker. With isolation <b>worktree</b> it also runs before each merge. <span class="mono">{dirs}</span> stands for the folders the task changed. Empty: no automatic check. Teams only. It runs on your machine, so you confirm it when you start.',
     commit: 'When the team’s verified work is applied, commit it to your current branch instead of leaving uncommitted edits. Needs isolation <b>worktree</b> and a clean checkout on a branch. Teams only.',
+    mgrAfter: 'A question you have not answered in this long is answered by the manager for you, if it is no more dangerous than the level after it: low is routine work inside the workspace; medium also the network, files outside the workspace and commands that cannot be checked beforehand; high also sudo, forced pushes, guarded paths and your ask rules. Your question is withdrawn and says how the manager answered. Off waits for you. Teams only.',
     managerApproves: 'The manager answers the workers’ routine questions itself (builds, tests and edits inside a worker’s own scope); each of its decisions shows in one collapsed line in the chat. Anything else still asks you. Teams only.',
     mailman: 'A small extra agent boils bursts of worker messages down to a digest, so the manager is not flooded. It runs on the <span class="mono">mailman</span> role model. Teams only.',
     trustProject: 'Use this project’s own instructions (AGENTS.md), skills, hooks, allow rules and tool servers. Only for code you trust: you are shown the files first.',
@@ -181,6 +194,7 @@
     budget: 'The session stops when it has spent this many US dollars. <span class="mono">off</span>: no limit, which is how it starts here (the terminal caps a team at $50 unless the configuration says otherwise).',
     roles: 'A role left on <i>worker model</i> runs on the model above.',
     goal: 'The first thing to work on. Empty: a plain chat. With a goal, the manager works until a judge finds the evidence that it is met.',
+    research: 'First, part of the team researches the first goal on the web: mature projects, ideas and code snippets, every quote checked on its page. The findings go into every agent’s shared prompt. The rest of the team lays the groundwork the research cannot change meanwhile, and the build proper starts once the research is done. <b>quick</b>: 3 researchers, one round. <b>standard</b>: 6 researchers, two rounds, every page fact-checked. <b>deep</b>: 10 researchers, three rounds, two fact-checks per page. Needs a first goal. Later in a session: Research first in the Goal sheet.',
     mode: 'What the session may do without asking. Each mode says what it allows; bypass and yolo are for work where a mistake is cheap.',
   };
   /** Examples of allow rules, each with what it lets through; the first is the server's own preset (its summary comes with the defaults). */
@@ -233,6 +247,11 @@
     if (seed && seed.swarm != null && seed.single == null) st.single = +seed.swarm === 0;   // a seed that names a size: 0 is a single agent
     if (seed && seed.isolation != null && seed.isoAuto == null) st.isoAuto = false;          // ... and one that names the isolation chose it
     const models = () => { const l = D.models.map(m => m.ref); if (st.model && l.indexOf(st.model) < 0) l.unshift(st.model); return l; };
+    /** under the model list when it is empty: no provider has a key yet (the server lists only the models a key can use), and where to add one */
+    const noModelHint = () => models().length ? '' : 'No model to choose: no provider has a key yet. <button class="lnk" type="button" data-ns-providers>Add one in Settings › Providers</button>';
+    /* the list shows its first model when none is chosen: that model is the one that starts (the catalogue may come after the seed, which would otherwise leave the model empty) */
+    const adopt = () => { if (!st.model) st.model = firstModel(); };
+    adopt();
     let fm = null;
     const fstate = () => (fm ? fm.state() : null);
     const quiet = () => st.mode === 'bypass' || st.mode === 'yolo';   // these modes never ask: an allow rule has nothing to answer
@@ -249,16 +268,18 @@
       (st.error ? '<p class="nserr err" role="alert">' + esc(st.error) + '</p>' : '') + (st.resume ? '<p class="stubnote mono" style="margin:0 0 8px">resume ' + esc(st.resume) + '</p>' : '') +
       '<div class="g2 ns"><div><h3 class="lab nsh">Project</h3>' + field('name', inp('nsName', st.name, 'placeholder="shop-2" aria-label="Session name"'), '', help('name', 'the name')) +
       field('folder (--cwd)', folder.html(st.cwd), '', help('folder', 'the folder')) + '<div class="nsgit" id="nsGitRow" hidden><label class="chk"><input type="checkbox" id="nsGit" data-k="gitInit"' + (st.gitInit ? ' checked' : '') + '> git init</label>' + help('git', 'git init') + '</div>' +
-      '<h3 class="lab nsh">Team</h3>' + field('model (--model)', '<select id="nsModel" aria-label="Model">' + models().map(r => '<option' + (r === st.model ? ' selected' : '') + '>' + esc(r) + '</option>').join('') + '</select>', '', help('model', 'the model')) +
+      '<h3 class="lab nsh">Team</h3>' + field('model (--model)', '<select id="nsModel" aria-label="Model">' + models().map(r => '<option' + (r === st.model ? ' selected' : '') + '>' + esc(r) + '</option>').join('') + '</select><div class="nsd" id="nsModelHint" role="status">' + noModelHint() + '</div>', '', help('model', 'the model')) +
       field('team (--swarm, --role-model)', '<div class="seg" role="group" aria-label="Team preset"><button type="button" data-tpreset="full">Full team</button><button type="button" data-tpreset="single">Single agent</button></div> <span class="dim" id="nsSw"></span><div id="nsTeamRows" class="nsteamrows"></div><div class="nserr err" id="nsTeamErr" role="alert" hidden></div>', '', help('workers', 'the team')) +
       team(field('isolation', seg('isolation', ['none', 'worktree'], st.isolation), '', help('isolation', 'isolation')) + field('verify tasks with (--verify)', inp('nsVerify', st.verify, 'aria-label="verify command" placeholder="e.g. go test {dirs}" spellcheck="false" autocomplete="off"') + '<div class="chips" id="nsVerifyHints"></div>', '', help('verify', '--verify')) +
-        field('team options', opt('commit', '--commit', '--commit') + opt('mailman', '--mailman', '--mailman') + opt('autoDocs', '<span>auto-docs <span class="nowrap">(--auto-docs)</span></span>', '--auto-docs') + opt('managerApproves', '<span>manager answers routine questions <span class="nowrap">(--manager-approves)</span></span>', '--manager-approves'))) +
+        field('team options', opt('commit', '--commit', '--commit') + opt('mailman', '--mailman', '--mailman') + opt('autoDocs', '<span>auto-docs <span class="nowrap">(--auto-docs)</span></span>', '--auto-docs') + opt('managerApproves', '<span>manager answers routine questions <span class="nowrap">(--manager-approves)</span></span>', '--manager-approves')) +
+        field('when you are away (--manager-answers-after, --manager-answers-up-to)', seg('mgrAfter', ['off', '5m', '10m', '30m'], st.mgrAfter) + ' <span class="dim">up to</span> ' + seg('mgrUpTo', ['low', 'medium', 'high'], st.mgrUpTo), '', help('mgrAfter', 'the manager answering for you'))) +
       '</div><div><h3 class="lab nsh">Permissions and limits</h3>' +
       field('pre-approve actions (--allow)', '<div class="nsd nsquiet" id="nsRuleOff" role="status" hidden>' + NS_HELP.quiet + '</div><fieldset class="nsfs" id="nsRuleSet"><div class="field-row" style="margin:0"><input id="nsRule" type="text" placeholder="tests, Bash(go test:*)" aria-label="Allow rule" spellcheck="false" autocomplete="off"><button class="btn sm" type="button" id="nsAddRule">Add</button></div><div class="nserr err" id="nsRuleErr" role="alert" hidden></div><div id="nsRules" class="tags"></div><div class="chips" id="nsRuleEx">' + ruleEx + '</div></fieldset>', '', help('allow', 'a pre-approved action')) +
       field('trust, tools and memory', opt('trustProject', '--trust-project', '--trust-project') + opt('noMcp', '--no-mcp', '--no-mcp') + opt('noMemory', '--no-memory', '--no-memory')) +
       field('budget (--budget-usd)', inp('nsBudget', st.budget, 'inputmode="decimal" aria-label="Budget in dollars"'), '', help('budget', 'the budget')) +
       field('compaction at (--compact-at)', '<div class="nscompact"><input id="nsCompact" type="range" min="10" max="90" step="1" value="' + (st.compactAt != null ? st.compactAt : st.compactAtBase || 25) + '" aria-label="Compaction share, percent of each model’s context window"><span class="nscv"><output id="nsCompactOut" for="nsCompact"></output><button type="button" class="btn sm" id="nsCompactReset" hidden>default</button></span></div>', '', help('compactAt', 'the compaction share')) +
-      field('first goal (optional)', '<textarea id="nsGoal" rows="3" placeholder="e.g. add pagination to the orders endpoint, with tests" aria-label="Goal">' + esc(st.goalText) + '</textarea>', '', help('goal', 'the first goal')) + '</div></div><div class="nsmodefld">' + field('mode (--mode)', modePick(st.mode), '', help('mode', 'a mode')) + '</div>' +
+      field('first goal (optional)', '<textarea id="nsGoal" rows="3" placeholder="e.g. add pagination to the orders endpoint, with tests" aria-label="Goal">' + esc(st.goalText) + '</textarea>', '', help('goal', 'the first goal')) +
+      (researchOn() ? field('research first (--research)', seg('research', ['off', 'quick', 'standard', 'deep'], st.research) + '<small class="hint" id="nsResWhy" role="status"></small>', '', help('research', 'research first')) : '') + '</div></div><div class="nsmodefld">' + field('mode (--mode)', modePick(st.mode), '', help('mode', 'a mode')) + '</div>' +
       '<h3 class="lab" style="margin:12px 0 4px">the same command line</h3><pre class="pre cli" id="nsCli"></pre><div class="row2"><button class="btn pri" type="button" id="nsStart">Start the session</button><button class="btn" type="button" id="nsCopy">Copy the command</button><button class="btn" type="button" data-close>Cancel</button></div>',
       onMount(b, sc, close) {
         /* the reasons of the team controls that cannot be used (dialogs.nsGate), each under its control */
@@ -274,6 +295,7 @@
           if (commitBox) { commitBox.disabled = !!g.commit; commitBox.checked = g.commitOn; }
           if (mailBox) { mailBox.disabled = team; mailBox.checked = g.mailman; }
           const mgrBox = $('[data-k="managerApproves"]', b); if (mgrBox) { mgrBox.disabled = team; mgrBox.checked = !team && st.managerApproves !== false; }
+          $$('[data-seg="mgrAfter"], [data-seg="mgrUpTo"]', b).forEach(x => { x.disabled = team; });
           const v = $('#nsVerify', b); if (v) { v.disabled = team; if (team) v.value = ''; else if (document.activeElement !== v && v.value !== st.verify) v.value = st.verify; }
           $$('[data-vh]', b).forEach(c => { c.disabled = team; });
         }
@@ -315,6 +337,7 @@
           /* the compaction share: the slider at the share (the default's place when none was chosen), what it means beside it, and a way back to the default */
           const cs = $('#nsCompact', b), cpos = String(st.compactAt != null ? st.compactAt : st.compactAtBase || 25), ctext = dialogs.compactAtText(st);
           if (cs.value !== cpos) cs.value = cpos; cs.setAttribute('aria-valuetext', ctext); $('#nsCompactOut', b).textContent = ctext; $('#nsCompactReset', b).hidden = st.compactAt == null;
+          const rw = $('#nsResWhy', b); if (rw) { const on = !!RESEARCH_FIRST[st.research]; rw.hidden = !on; rw.className = 'hint' + (on && !st.goalText.trim() ? ' warm' : ''); rw.textContent = !on ? '' : st.goalText.trim() ? RESEARCH_FIRST[st.research] + ', then the team builds' : 'needs a first goal: there is nothing to research without one'; }
           paintGate();
         };
         ui.helpMount(b, sc);
@@ -326,11 +349,14 @@
         sc.listen(b, 'input', e => { const t = e.target; if (t.dataset.k) return; if (t.id === 'nsName') st.name = t.value; else if (t.id === 'nsVerify') st.verify = t.value; else if (t.id === 'nsBudget') st.budget = t.value.trim(); else if (t.id === 'nsCompact') st.compactAt = Math.round(Number(t.value)); else if (t.id === 'nsGoal') st.goalText = t.value; else if (t.id === 'nsRule') ruleErr(''); paint(); });
         sc.listen(b, 'change', e => { const t = e.target; if (t.id === 'nsModel') st.model = t.value; else if (t.dataset.tmodel) { const r = t.dataset.tmodel; st.slotModels = st.slotModels || {}; if (st.perSlot) delete st.perSlot[r]; st.slotModels[r] = t.value; } else if (t.dataset.tslot) setSlotModel(st, t.dataset.tslot, +t.dataset.ti, t.value); else if (t.dataset.k) st[t.dataset.k] = t.checked; paint(); });
         sc.on('models-changed', () => {
+          adopt();
           $('#nsModel', b).innerHTML = models().map(r => '<option' + (r === st.model ? ' selected' : '') + '>' + esc(r) + '</option>').join('');
+          $('#nsModelHint', b).innerHTML = noModelHint();
           $('#nsTeamRows', b)._k = null;
           paint();
         });
         sc.listen(b, 'click', e => {
+          if (e.target.closest('[data-ns-providers]')) { close(); ui.settingsPage('providers'); return; }
           const mr = e.target.closest('[data-nsmode]'); if (mr) { st.mode = mr.dataset.nsmode; paint(); return; }
           if (e.target.closest('#nsCompactReset')) { st.compactAt = null; paint(); $('#nsCompact', b).focus(); return; }
           const x = e.target.closest('[data-seg]'); if (x) { if (x.disabled) return; st[x.dataset.seg] = x.dataset.v; if (x.dataset.seg === 'isolation') st.isoAuto = false; $$('[data-seg="' + x.dataset.seg + '"]', b).forEach(y => y.setAttribute('aria-pressed', y === x)); paint(); return; }
@@ -348,7 +374,7 @@
         let starting = false;
         sc.listen($('#nsStart', b), 'click', () => {
           if (starting) return;
-          if (Array.from(st.goalText.trim()).length > SL.goalMax()) { ui.toast('The goal is longer than ' + SL.goalMax().toLocaleString('en') + ' characters. Shorten it before starting.', 'err'); return; }
+          if (Array.from(dialogs.goalSent(st)).length > SL.goalMax()) { ui.toast('The goal is longer than ' + SL.goalMax().toLocaleString('en') + ' characters. Shorten it before starting.', 'err'); return; }
           const bud = st.budget === 'off' || st.budget === '' ? 0 : parseFloat(st.budget); if (st.budget !== 'off' && st.budget !== '' && !(bud > 0)) { ui.toast('the budget is a number of dollars, or off', 'err'); return; }
           /* what was typed or chosen but not added yet is part of what starts (an allow rule in its field, a role and model picked) */
           const pending = $('#nsRule', b); if (!quiet() && !addRule(pending.value)) return; if (!quiet()) pending.value = '';
@@ -360,10 +386,11 @@
             if (d.level === 'bad') { starting = false; ui.toast(d.lead, 'err'); return; }
             if (!state && !FOLDER_START.test(typed)) { starting = false; ui.toast('The server could not check that folder: write its full path.', 'err'); return; }
             const roleModels = Object.assign({}, st.roleModels); if (tm.dflt) Object.keys(st.slotModels || {}).forEach(r => { if (st.slotModels[r]) roleModels[r] = st.slotModels[r]; });
-            const spec = { name: st.name.trim() || undefined, cwd: state ? state.path : typed, model: st.model, mode: st.mode, swarm: tm.n, isolation: st.isolation, verify: st.verify, commit: st.commit, mailman: st.mailman, rules: rulesNow(), trustProject: st.trustProject, noMcp: st.noMcp, noMemory: st.noMemory, goalText: st.goalText.trim() || undefined, effort: st.effort, roleModels: tm.slots.length ? {} : roleModels };
+            const spec = { name: st.name.trim() || undefined, cwd: state ? state.path : typed, model: st.model, mode: st.mode, swarm: tm.n, isolation: st.isolation, verify: st.verify, commit: st.commit, mailman: st.mailman, rules: rulesNow(), trustProject: st.trustProject, noMcp: st.noMcp, noMemory: st.noMemory, goalText: dialogs.goalSent(st) || undefined, effort: st.effort, roleModels: tm.slots.length ? serviceModels(st, roleModels) : roleModels };
             if (tm.slots.length) spec.team = tm.slots;
             if (tm.n > 0 && st.autoDocs === false) spec.autoDocs = false;
             if (tm.n > 0 && st.managerApproves === false) spec.managerApproves = false;   // on is the server's default: only an off is sent
+            if (tm.n > 0 && st.mgrAfter && st.mgrAfter !== 'off') { spec.managerAnswersAfter = st.mgrAfter; spec.managerAnswersUpTo = st.mgrUpTo || 'medium'; }   // off leaves it to the configuration
             const g = gate(); Object.assign(spec, { isolation: g.isolation, verify: g.verify, commit: g.commitOn, mailman: g.mailman });   /* nothing that cannot start: dialogs.nsGate */
             spec.budget = bud > 0 ? bud : 0;   // 0 is off: the server does not put its own cap on the session
             const ca = dialogs.compactAtSent(st); if (ca) spec.compactAt = ca;   // the share the session takes anyway is not sent: the configuration keeps it
@@ -450,7 +477,7 @@
   function start(spec, opt) {
     const r = SL.act.newSession(spec, opt);
     if (!r || r.ok === false) return Promise.resolve({ ok: false, why: r && r.why });
-    return r.done.then(res => { if (res.ok) ui.toast('started ' + ((res.data && res.data.tab && res.data.tab.name) || r.name) + ': it runs in the background too', 'ok'); return res; });
+    return r.done.then(res => { if (res.ok) ui.toast('starting ' + ((res.data && res.data.tab && res.data.tab.name) || r.name) + ': it runs in the background too', 'ok'); return res; });
   }
 
   /* ---------- the trust step: the server's challenge, whole ---------- */

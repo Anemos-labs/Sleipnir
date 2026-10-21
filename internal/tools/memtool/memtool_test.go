@@ -3,6 +3,7 @@ package memtool
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -64,8 +65,9 @@ func TestAddListRemoveRoundTripThroughTheFile(t *testing.T) {
 	if r := run(t, tool, allow, map[string]any{"action": "list"}); r.Text != "1. The user prefers table-driven tests." {
 		t.Errorf("list: %q", r.Text)
 	}
-	// Every change asked the permission engine, with the note itself in the summary and the file as its path.
-	if len(allow.seen) != 3 || !strings.Contains(allow.seen[0].Summary, "table-driven") || !allow.seen[0].Writes || allow.seen[0].Paths[0] != path ||
+	// Every change went to the permission engine with the note itself in the summary, as the memory tool's own change: no path, so
+	// the protection of ~/.sleipnir does not put it to the person; only rules for the memory tool decide.
+	if len(allow.seen) != 3 || !strings.Contains(allow.seen[0].Summary, "table-driven") || allow.seen[0].Writes || len(allow.seen[0].Paths) != 0 ||
 		!strings.HasPrefix(allow.seen[2].Summary, "forget: ") {
 		t.Errorf("permission requests: %+v", allow.seen)
 	}
@@ -126,5 +128,167 @@ func TestTheToolOfASessionWithoutMemoryTouchesNothing(t *testing.T) {
 	}
 	if Off().Spec().Name != New("x").Spec().Name || string(Off().Spec().InputSchema) != string(New("x").Spec().InputSchema) {
 		t.Error("the tool's spec differs when the memory is off")
+	}
+}
+
+// Project notes live in the project, are git-ignored beside it, say so when asked, and are listed apart from the user's.
+func TestProjectNotesAreKeptApartAndIgnoredByGit(t *testing.T) {
+	dir := t.TempDir()
+	user := filepath.Join(dir, "home", "MEMORY.md")
+	proj := filepath.Join(dir, "repo", ".sleipnir", "MEMORY.local.md")
+	tool := NewScoped(user, proj)
+	allow := &recording{allow: true}
+	if r := run(t, tool, allow, map[string]any{"action": "add", "text": "Prefers short answers."}); r.IsError {
+		t.Fatal(r.Text)
+	}
+	r := run(t, tool, allow, map[string]any{"action": "add", "scope": "project", "text": "make gen regenerates the client."})
+	if r.IsError || !strings.Contains(r.Text, "for this project") {
+		t.Fatalf("project add: %+v", r)
+	}
+	if r.Meta[MetaChange] != "added" {
+		t.Errorf("project add meta: %v", r.Meta)
+	}
+	if q := allow.seen[len(allow.seen)-1]; !strings.HasPrefix(q.Summary, "remember for this project: ") || len(q.Paths) != 0 {
+		t.Errorf("approval asked for %+v", q)
+	}
+	b, _ := os.ReadFile(proj)
+	if !strings.Contains(string(b), "- make gen regenerates the client.") {
+		t.Errorf("project file:\n%s", b)
+	}
+	if b, _ := os.ReadFile(user); strings.Contains(string(b), "make gen") {
+		t.Error("a project note reached the user's file")
+	}
+	gi, _ := os.ReadFile(filepath.Join(dir, "repo", ".sleipnir", ".gitignore"))
+	if string(gi) != "MEMORY.local.md\n" {
+		t.Errorf(".gitignore = %q", gi)
+	}
+	run(t, tool, allow, map[string]any{"action": "add", "scope": "project", "text": "Second fact."})
+	if gi2, _ := os.ReadFile(filepath.Join(dir, "repo", ".sleipnir", ".gitignore")); string(gi2) != string(gi) {
+		t.Errorf("the .gitignore line was repeated: %q", gi2)
+	}
+	all := run(t, tool, allow, map[string]any{"action": "list"}).Text
+	if !strings.Contains(all, "user notes (every project):\n1. Prefers short answers.") || !strings.Contains(all, "project notes (this project):\n1. make gen") {
+		t.Errorf("list:\n%s", all)
+	}
+	if r := run(t, tool, allow, map[string]any{"action": "remove", "scope": "project", "text": "second"}); r.IsError {
+		t.Errorf("project remove: %s", r.Text)
+	}
+	if r := run(t, New(user), allow, map[string]any{"action": "add", "scope": "project", "text": "x"}); !r.IsError || !strings.Contains(r.Text, "no project") {
+		t.Errorf("project scope without a project: %+v", r)
+	}
+	if r := run(t, tool, allow, map[string]any{"action": "add", "scope": "team", "text": "x"}); !r.IsError {
+		t.Errorf("unknown scope accepted: %+v", r)
+	}
+}
+
+func TestIgnoreBesideKeepsAnExistingGitignore(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("config.local.json"), 0o644)
+	if err := ignoreBeside(filepath.Join(dir, "MEMORY.local.md")); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	if string(b) != "config.local.json\nMEMORY.local.md\n" {
+		t.Errorf(".gitignore = %q", b)
+	}
+}
+
+// CheckNotes keeps notes as the tool would: one line each, repeats once, and names the limit a list passes.
+func TestCheckNotesCleansAndHoldsTheLimits(t *testing.T) {
+	got, err := CheckNotes([]string{" a  b\tc ", "", "A B C", "x\x07y"})
+	if err != nil || strings.Join(got, "|") != "a b c|xy" {
+		t.Fatalf("CheckNotes = %q, %v", got, err)
+	}
+	if _, err := CheckNotes([]string{strings.Repeat("n", MaxNoteRunes+1)}); err == nil || !strings.Contains(err.Error(), "limit") {
+		t.Errorf("a long note: %v", err)
+	}
+	many := make([]string, MaxNotes+1)
+	for i := range many {
+		many[i] = fmt.Sprintf("note %d", i)
+	}
+	if _, err := CheckNotes(many); err == nil || !strings.Contains(err.Error(), "at most") {
+		t.Errorf("too many notes: %v", err)
+	}
+}
+
+// An edit of a file that is already past the limits (written by hand) may remove or correct notes: only what the edit adds or grows is
+// held to them.
+func TestCheckEditLetsAnOverfullFileShrink(t *testing.T) {
+	long := strings.Repeat("l", MaxNoteRunes+50)
+	prev := []string{long}
+	for i := 0; i < MaxNotes+10; i++ {
+		prev = append(prev, fmt.Sprintf("note %d", i))
+	}
+	if _, err := CheckEdit(prev, prev[:len(prev)-1]); err != nil {
+		t.Errorf("removing one note of an overfull file: %v", err)
+	}
+	if _, err := CheckEdit(prev, append(append([]string(nil), prev...), "one more")); err == nil {
+		t.Error("an overfull file took one more note")
+	}
+	if _, err := CheckEdit(prev, []string{long + "x"}); err == nil {
+		t.Error("a new note over the limit was taken")
+	}
+}
+
+// A file edited by hand keeps its other lines when the notes are written: headings and text stay where they were, the notes take the
+// place of the old ones.
+func TestWriteNotesKeepsTheLinesWrittenByHand(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "MEMORY.md")
+	hand := "# My notes\n\nKeep this paragraph.\n- old one\n- old two\n\n## Later\nmore text\n"
+	if err := os.WriteFile(p, []byte(hand), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteNotes(p, []string{"new one"}); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(p)
+	if want := "# My notes\n\nKeep this paragraph.\n- new one\n\n## Later\nmore text\n"; string(b) != want {
+		t.Errorf("file = %q, want %q", b, want)
+	}
+	if err := WriteNotes(p, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteNotes(p, []string{"back"}); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = os.ReadFile(p)
+	if want := "# My notes\n\nKeep this paragraph.\n\n## Later\nmore text\n- back\n"; string(b) != want {
+		t.Errorf("after removing every note and adding one: %q, want %q", b, want)
+	}
+}
+
+// A project's notes are saved without a question, so they are written only where they appear to be: a .sleipnir directory, a notes
+// file or a .gitignore that is a link is refused, and nothing is written through it.
+func TestProjectNotesAreNotWrittenThroughALink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symbolic links need privileges on Windows")
+	}
+	for _, link := range []string{".sleipnir", ".sleipnir/MEMORY.local.md", ".sleipnir/.gitignore"} {
+		t.Run(link, func(t *testing.T) {
+			dir := t.TempDir()
+			repo, elsewhere := filepath.Join(dir, "repo"), filepath.Join(dir, "elsewhere")
+			if err := os.MkdirAll(filepath.Join(repo, ".sleipnir"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(elsewhere, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			target := filepath.Join(elsewhere, filepath.Base(link))
+			if link == ".sleipnir" {
+				os.Remove(filepath.Join(repo, ".sleipnir"))
+				target = elsewhere
+			}
+			if err := os.Symlink(target, filepath.Join(repo, link)); err != nil {
+				t.Fatal(err)
+			}
+			tool := NewScoped(filepath.Join(dir, "home", "MEMORY.md"), filepath.Join(repo, ".sleipnir", "MEMORY.local.md"))
+			r := run(t, tool, &recording{allow: true}, map[string]any{"action": "add", "scope": "project", "text": "a note"})
+			if !r.IsError || !strings.Contains(r.Text, "is a link") {
+				t.Errorf("%+v", r)
+			}
+			if ents, _ := os.ReadDir(elsewhere); len(ents) != 0 {
+				t.Errorf("written through the link: %v", ents)
+			}
+		})
 	}
 }

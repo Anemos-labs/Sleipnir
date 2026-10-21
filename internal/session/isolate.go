@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/checkpoint"
@@ -525,6 +527,56 @@ func (s *Session) lastProgressBranch() string {
 	})
 	return branch
 }
+
+// ignoredChecker says whether a path of the checkout is one git does not track there (perm.Config.Ignored): the trees are made from
+// the commits, so a file git ignores (often a data set or other large local input the person keeps beside the project), a file
+// created in the checkout after the trees were made (a research run's brief, a note the person added) and, with Commit, every
+// untracked file are in the checkout and in no tree. Reading the checkout's copy of an untracked file a tree does have is harmless.
+// Answers are remembered for a short while: the engine asks about every read of such a file, and a model reads the same file often.
+func (p *isoPlan) ignoredChecker() func(string) bool {
+	root := evalLoose(p.repo.Root())
+	git := commandGit(root)
+	var mu sync.Mutex
+	type answer struct {
+		v  bool
+		at time.Time
+	}
+	seen := map[string]answer{}
+	return func(path string) bool {
+		rel, err := filepath.Rel(root, filepath.FromSlash(path))
+		if err != nil || rel == "." || !filepath.IsLocal(rel) {
+			return false
+		}
+		rel = filepath.ToSlash(rel)
+		if rel == ".git" || strings.HasPrefix(rel, ".git/") {
+			return false
+		}
+		now := time.Now()
+		mu.Lock()
+		a, ok := seen[rel]
+		mu.Unlock()
+		if ok && now.Sub(a.at) < untrackedMemo {
+			return a.v
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		// Exit 0: git tracks the path (or a file below it); 1: it does not; anything else (a path through a link, a broken
+		// repository): not known, so refused.
+		_, err = git(ctx, "ls-files", "--error-unmatch", "--", ":(literal)"+rel) // a name with [, ? or * is that name, not a pattern
+		var ee *exec.ExitError
+		v := errors.As(err, &ee) && ee.ExitCode() == 1
+		mu.Lock()
+		if len(seen) >= 4096 {
+			clear(seen)
+		}
+		seen[rel] = answer{v, now}
+		mu.Unlock()
+		return v
+	}
+}
+
+// untrackedMemo is how long ignoredChecker trusts an answer: a merge with Commit makes an untracked path tracked during a run.
+const untrackedMemo = 30 * time.Second
 
 // releaseIsolation undoes buildIsolation when the session could not be built.
 func (s *Session) releaseIsolation() {

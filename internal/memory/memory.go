@@ -16,7 +16,8 @@
 //     CLAUDE.md, SLEIPNIR.md and .sleipnir/SLEIPNIR.md (scope "project" at the
 //     root, "dir" below it)
 //  3. for each directory from the root down to cwd, SLEIPNIR.local.md and
-//     .sleipnir/SLEIPNIR.local.md (scope "local")
+//     .sleipnir/SLEIPNIR.local.md (scope "local"), and at the root
+//     .sleipnir/MEMORY.local.md, the memory tool's notes for this project (scope "local")
 //
 // A line consisting of "@path" imports another file (relative to the importing
 // file, or "~/" for the home directory). Imports are followed to a depth of
@@ -87,6 +88,11 @@ const (
 	ScopeImport  = "import"
 )
 
+// ProjectNotes is where the memory tool keeps a project's notes, relative to the project root. It is git-ignored by the
+// .sleipnir/.gitignore the tool writes beside it, and read like the project's other local files: only when the project
+// is trusted.
+const ProjectNotes = ".sleipnir/MEMORY.local.md"
+
 const (
 	// MaxFileBytes caps one file; longer files are cut and say so.
 	MaxFileBytes = 64 << 10
@@ -144,6 +150,8 @@ type Opts struct {
 	Home string
 	// NoNotes leaves out ~/.sleipnir/MEMORY.md, the notes of the memory tool: a session started without the global memory.
 	NoNotes bool
+	// NoProject reads the user's files only: there is no project (Root and Cwd are ignored).
+	NoProject bool
 }
 
 // domain is a place instruction files may be read from. A file and everything it
@@ -216,13 +224,16 @@ func Load(opts Opts) ([]Source, error) {
 			if i == 0 {
 				scope = ScopeProject
 			}
-			for _, name := range []string{"AGENTS.md", "CLAUDE.md", "SLEIPNIR.md", ".sleipnir/SLEIPNIR.md"} {
+			for _, name := range projectNames {
 				ld.file(ld.proj, path.Join(d, name), scope, 0)
 			}
 		}
-		for _, d := range ld.dirs {
-			for _, name := range []string{"SLEIPNIR.local.md", ".sleipnir/SLEIPNIR.local.md"} {
+		for i, d := range ld.dirs {
+			for _, name := range localNames {
 				ld.file(ld.proj, path.Join(d, name), ScopeLocal, 0)
+			}
+			if i == 0 && !opts.NoNotes {
+				ld.file(ld.proj, path.Join(d, ProjectNotes), ScopeLocal, 0) // the project's notes of the memory tool (scope project)
 			}
 		}
 	}
@@ -235,6 +246,9 @@ func Load(opts Opts) ([]Source, error) {
 
 func newLoader(o Opts) (*loader, error) {
 	root, cwd := o.Root, o.Cwd
+	if o.NoProject {
+		return newUserLoader(o.Home)
+	}
 	if root == "" && cwd == "" {
 		wd, err := os.Getwd()
 		if err != nil {
@@ -284,6 +298,22 @@ func newLoader(o Opts) (*loader, error) {
 			cur = path.Join(cur, part)
 			ld.dirs = append(ld.dirs, cur)
 		}
+	}
+	return ld, nil
+}
+
+// newUserLoader is the loader of the user's files alone, with no project domain.
+func newUserLoader(home string) (*loader, error) {
+	if home == "" {
+		home, _ = os.UserHomeDir()
+	}
+	ld := &loader{}
+	if home != "" {
+		var err error
+		if ld.home, err = canonical(home); err != nil {
+			return nil, fmt.Errorf("memory: %w", err)
+		}
+		ld.user = &domain{dir: filepath.Join(ld.home, ".sleipnir"), user: true}
 	}
 	return ld, nil
 }

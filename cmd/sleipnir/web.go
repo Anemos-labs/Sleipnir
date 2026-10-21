@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/web"
 )
@@ -69,8 +70,12 @@ type webDefaults struct {
 	// AskTimeout is --ask-timeout: a question nobody answered in this long is refused (0 waits).
 	AskTimeout time.Duration
 	// AskGrace is --ask-grace: open questions are refused when no page has had the stream open for
-	// this long (negative: never).
+	// this long (zero or negative: never).
 	AskGrace time.Duration
+	// ManagerAnswersAfter and ManagerAnswersUpTo are --manager-answers-after and --manager-answers-up-to, for the sessions that do
+	// not give their own.
+	ManagerAnswersAfter time.Duration
+	ManagerAnswersUpTo  perm.Danger
 	// Projects are the --project directories a new session may also start in.
 	Projects []string
 	// Fixture is the hidden --fixture: deterministic sessions on the mock provider, for tests.
@@ -143,7 +148,7 @@ func cmdWeb(ctx context.Context, args []string) error {
 	cwd := fs.String("cwd", "", "working directory of the sessions started in the page (default: the current directory)")
 	model := fs.String("model", "", "default model of new sessions: provider/model or a bare id for the default provider")
 	mode := fs.String("mode", "", "default permissions of new sessions: default | accept-edits | plan | bypass | yolo")
-	swarmN := fs.Int("swarm", 0, "new sessions are a team of a manager and N workers (config swarm.max_workers is the ceiling); the default is "+strconv.Itoa(defaultWorkers)+" workers, --swarm 0 is a single agent")
+	swarmN := fs.Int("swarm", 0, "new sessions are a team of a manager and N workers (config swarm.max_workers is the ceiling); the default is "+strconv.Itoa(defaultWorkers)+" workers (a --team brings its own), --swarm 0 is a single agent")
 	trust := fs.Bool("trust-project", false, trustProjectHelp)
 	budget := fs.Float64("budget-usd", 0, "default spending limit of new sessions, in US dollars")
 	compactAt := fs.Int("compact-at", 0, "default compaction share of new sessions: an agent's conversation is compacted when it fills this percentage of its model's context window, from 10 to 90 (default: config cache.compact_at_percent, else 25)")
@@ -156,10 +161,12 @@ func cmdWeb(ctx context.Context, args []string) error {
 	managerApproves := managerApprovesFlag(fs)
 	roleFlag := &roleModelFlag{}
 	fs.Var(roleFlag, "role-model", "for new sessions: "+roleModelHelp)
+	fs.Var(&teamFlag{roles: roleFlag, cwd: cwd}, "team", "for new sessions: "+teamHelp)
 	resume := resumeFlags(fs)
 	allow := allowFlags(fs)
 	askTimeout := fs.Duration("ask-timeout", 0, "refuse a question that nobody answered in this long, as a run with nobody to ask would (0 waits for an answer)")
-	askGrace := fs.Duration("ask-grace", defaultGrace, "refuse the open questions when no page has had the interface open for this long (0 never refuses for that)")
+	askGrace := fs.Duration("ask-grace", 0, "refuse the open questions when no page has had the interface open for this long (0, the default, never refuses for that: a question waits for its answer)")
+	managerAfter, managerUpTo := managerAnswersFlags(fs)
 	var projects projectsFlag
 	fs.Var(&projects, "project", "a directory a new session may also start in, repeatable (the page offers --cwd, the open sessions' and the recorded ones')")
 	fs.Usage = func() {
@@ -223,8 +230,8 @@ flags:
 	if err := checkTeamSize(*swarmN); err != nil {
 		return usageError(fs, "web: "+err.Error())
 	}
-	if *askTimeout < 0 || *askGrace < 0 {
-		return usageError(fs, "web: --ask-timeout and --ask-grace must not be negative")
+	if *askTimeout < 0 || *askGrace < 0 || *managerAfter < 0 {
+		return usageError(fs, "web: --ask-timeout, --ask-grace and --manager-answers-after must not be negative")
 	}
 	if fixture != "" {
 		if err := fixtureAllowed(fixture, *addr); err != nil {
@@ -244,10 +251,10 @@ flags:
 		NoMCP: *noMCP, NoMemory: *noMemory, Verify: *verify, Isolation: *isolation, Commit: *commit, Mailman: mailman(),
 		RoleModels: roleModels, Team: teamSlots, AutoDocs: autoDocs(), ManagerApproves: managerApproves(), Allow: expandAllow(*allow),
 		Resume:     resumeSpec,
-		AskTimeout: *askTimeout, AskGrace: *askGrace, Projects: projects, Fixture: fixture,
+		AskTimeout: *askTimeout, AskGrace: *askGrace, Projects: projects, Fixture: fixture, ManagerAnswersAfter: *managerAfter,
 	}
-	if *askGrace == 0 {
-		d.AskGrace = -1 // 0 on the command line: never refuse for want of a page
+	if d.ManagerAnswersUpTo, err = perm.ParseDanger(*managerUpTo); err != nil {
+		return usageError(fs, "web: --manager-answers-up-to: "+err.Error())
 	}
 	if swarmGiven || len(teamSlots) > 0 {
 		d.Workers, d.WorkersGiven = *swarmN, true

@@ -6,6 +6,7 @@ import (
 	"hash/fnv"
 	"math/rand"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
@@ -514,7 +515,8 @@ const CacheMissNoticePrefix = "cache miss: expected"
 
 // outage says whether a failure is the endpoint being down or overloaded, which OutagePatience waits out: it answered with a
 // status of 500 or more, or with 429. A failure in which nothing answered (provider.OutageUnanswered) is one only when unreachable
-// (Config.WaitUnreachable) says the endpoint is known to exist: otherwise it may be an endpoint that is not there.
+// (Config.WaitUnreachable, or the endpoint has answered the agent before: Agent.reached) says the endpoint is known to exist: otherwise it may
+// be an endpoint that is not there.
 func outage(pe *provider.Error, unreachable bool) bool {
 	switch pe.Outage() {
 	case provider.OutageAnswered:
@@ -560,11 +562,12 @@ func sayRetry(attempt int, waited time.Duration, announced int) (say bool, half 
 
 // call performs a provider request with retry and rate-limit gating.
 func (a *Agent) call(ctx context.Context, req *provider.Request, prio int, on func(provider.Event)) (*provider.Response, error) {
-	return a.callOn(ctx, a.cfg.Provider, req, prio, on)
+	return a.callOn(ctx, a.cfg.Provider, req, prio, on, &a.reached)
 }
 
 // callOn is call on a named provider: the compactor's, when the session gives it a model of its own.
-func (a *Agent) callOn(ctx context.Context, prov provider.Provider, req *provider.Request, prio int, on func(provider.Event)) (*provider.Response, error) {
+// reached is the endpoint's flag of having answered (Agent.reached): nil for another endpoint than the agent's own.
+func (a *Agent) callOn(ctx context.Context, prov provider.Provider, req *provider.Request, prio int, on func(provider.Event), reached *atomic.Bool) (*provider.Response, error) {
 	var last error
 	var failed time.Time // when the request first failed: OutagePatience counts from there
 	announced := -1      // the half-minute of waiting that the last notice of the patient phase was made in
@@ -580,6 +583,9 @@ func (a *Agent) callOn(ctx context.Context, prov provider.Provider, req *provide
 			rel(nil, err)
 		}
 		if err == nil {
+			if reached != nil {
+				reached.Store(true)
+			}
 			return resp, nil
 		}
 		pe, ok := provider.AsError(err)
@@ -592,7 +598,7 @@ func (a *Agent) callOn(ctx context.Context, prov provider.Provider, req *provide
 		// The time an outage lasts, not the sum of the waits: an endpoint that answers nothing takes the whole of each attempt's
 		// timeout to say so.
 		waited := time.Since(failed)
-		down := outage(pe, a.cfg.WaitUnreachable)
+		down := outage(pe, a.cfg.WaitUnreachable || reached != nil && reached.Load())
 		// What repeating does not cure ends here, except a silence (an endpoint that swallowed the request again) that the agent is
 		// still waiting out as an outage.
 		if !pe.Retryable() && !(down && a.cfg.OutagePatience > 0 && waited < a.cfg.OutagePatience) {

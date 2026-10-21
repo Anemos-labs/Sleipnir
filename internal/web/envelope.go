@@ -12,12 +12,14 @@ import (
 	"time"
 )
 
-// contentSecurityPolicy is what the page may do. Scripts, styles, fonts, images and connections
-// come from this origin only. Inline style attributes are allowed (style-src-attr) because the
-// UI builds markup with style attributes; inline scripts, inline style elements, framing, forms
-// and <base> stay forbidden. data: images are allowed for small inline icons.
+// contentSecurityPolicy is what the page may do. Scripts, styles, fonts, images, media, frames and
+// connections come from this origin only. Inline style attributes are allowed (style-src-attr)
+// because the UI builds markup with style attributes; inline scripts, inline style elements, being
+// framed, forms and <base> stay forbidden. data: images are allowed for small inline icons and for
+// drawn diagrams. The page frames only this server's own documents: a PDF of the project and the
+// sandboxed diagram frame (internal/web/preview); media are the project's video and audio files.
 const contentSecurityPolicy = "default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; " +
-	"font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'"
+	"font-src 'self'; img-src 'self' data:; media-src 'self'; frame-src 'self'; connect-src 'self'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'"
 
 // setSecurityHeaders sets the headers that every response carries, errors and streams included.
 func setSecurityHeaders(h http.Header) {

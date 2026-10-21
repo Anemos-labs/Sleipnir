@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -116,6 +117,12 @@ func mergeOptions(base session.Options, f chatFlags, defaultCwd string) session.
 	out.Verify, out.Isolation, out.Commit, out.Mailman = o.Verify, o.Isolation, o.Commit, o.Mailman
 	out.RoleModels, out.Allow, out.Interactive = o.RoleModels, o.Allow, true
 	out.Team, out.AutoDocs, out.DefaultTeam, out.ManagerApproves = o.Team, o.AutoDocs, o.DefaultTeam, o.ManagerApproves
+	if o.ManagerAnswersAfter > 0 { // otherwise sleipnir web's own flags (base), else the configuration
+		out.ManagerAnswersAfter = o.ManagerAnswersAfter
+	}
+	if o.ManagerAnswersUpTo != "" {
+		out.ManagerAnswersUpTo = o.ManagerAnswersUpTo
+	}
 	out.ID, out.Dir = "", ""
 	out.Sink, out.NewSink, out.Prompter = nil, nil, nil
 	return out
@@ -179,7 +186,7 @@ func (t *webTab) startGen(spec startSpec) error {
 			return "", false
 		},
 	})
-	t.tr, t.startedAt, t.starting, t.args, t.resumed = tr, started, true, append([]string(nil), spec.args...), nil
+	t.tr, t.startedAt, t.starting, t.startErr, t.args, t.resumed = tr, started, true, "", append([]string(nil), spec.args...), nil
 	t.lastRoster = nil
 	sum := t.summaryLocked()
 	t.mu.Unlock()
@@ -208,6 +215,12 @@ func (t *webTab) startGen(spec startSpec) error {
 		if o.AskTimeout == 0 {
 			o.AskTimeout = t.h.askTimeout
 		}
+		if o.ManagerAnswersAfter == 0 {
+			o.ManagerAnswersAfter = t.h.d.ManagerAnswersAfter
+		}
+		if o.ManagerAnswersUpTo == "" {
+			o.ManagerAnswersUpTo = t.h.d.ManagerAnswersUpTo
+		}
 		s, err = session.New(t.ctx, o)
 	}
 	if err == nil {
@@ -225,7 +238,7 @@ func (t *webTab) startGen(spec startSpec) error {
 		return context.Canceled
 	}
 	if err != nil {
-		t.starting = false
+		t.starting, t.startErr = false, err.Error()
 		t.cond.Broadcast()
 		t.mu.Unlock()
 		tr.Emit(hintRow("the session did not start: "+err.Error(), err))
@@ -372,8 +385,8 @@ func restartTyped(req wire.RestartRequest) (typed []string, fresh bool, err erro
 		}
 		return append([]string{"--model", req.Model}, req.Flags...), req.Fresh, nil
 	case "roles":
-		if len(req.RoleModels) == 0 {
-			return nil, false, werr(http.StatusBadRequest, "bad_flags", "a roles restart names a role and its model")
+		if len(req.RoleModels) == 0 && len(req.Team) == 0 {
+			return nil, false, werr(http.StatusBadRequest, "bad_flags", "a roles restart names a role and its model, or a team")
 		}
 		if m := strings.TrimSpace(req.Model); m != "" {
 			typed = append(typed, "--model", m) // the team's model with the roles', in the same restart
@@ -387,7 +400,23 @@ func restartTyped(req wire.RestartRequest) (typed []string, fresh bool, err erro
 			if r == "" || req.RoleModels[r] == "" {
 				return nil, false, werr(http.StatusBadRequest, "bad_flags", "a role and its model are both needed")
 			}
+			if len(req.Team) > 0 && !serviceRole(r) {
+				continue // the team carries the worker roles' models: an entry of its own would be read as one more slot
+			}
 			typed = append(typed, "--role-model", r+"="+req.RoleModels[r])
+		}
+		if len(req.Team) > 0 { // the whole team, slot by slot: its size, and each slot's model when it has one of its own
+			typed = append(typed, "--swarm", strconv.Itoa(len(req.Team)))
+			for _, ts := range req.Team {
+				if ts.Role == "" || strings.ContainsAny(ts.Role, "= \t") {
+					return nil, false, werr(http.StatusBadRequest, "bad_flags", "a slot of the team names a role")
+				}
+				if ts.Model != "" {
+					typed = append(typed, "--role-model", ts.Role+"="+ts.Model)
+				} else {
+					typed = append(typed, "--role-model", ts.Role)
+				}
+			}
 		}
 		return append(typed, req.Flags...), req.Fresh, nil
 	}
@@ -395,8 +424,20 @@ func restartTyped(req wire.RestartRequest) (typed []string, fresh bool, err erro
 }
 
 // Restart is the restart family (/new, /clear, /swarm, /restart, a team's model or role change): it answers at once and the tab
-// starts its next generation in the background.
+// starts its next generation in the background. A team (a roles restart's Team) is checked as the model route checks it (teamSlots).
 func (t *webTab) Restart(ctx context.Context, req wire.RestartRequest) error {
+	if s := t.session(); s != nil && req.Kind == "roles" && len(req.Team) > 0 {
+		// the team is checked against the session before anything closes: an unknown role would otherwise end the session for good
+		roles := maps.Clone(req.RoleModels)
+		if roles == nil {
+			roles = map[string]string{}
+		}
+		team, err := teamSlots(s, req.Team, roles)
+		if err != nil {
+			return err
+		}
+		req.Team, req.RoleModels = team, roles
+	}
 	typed, fresh, err := restartTyped(req)
 	if err != nil {
 		return err
@@ -412,6 +453,21 @@ func namesFlag(typed []string, name string) bool {
 		}
 	}
 	return false
+}
+
+// withoutFlag is args without the flag name and its value, in any of the spellings namesFlag reads.
+func withoutFlag(args []string, name string) []string {
+	var out []string
+	for i := 0; i < len(args); i++ {
+		switch a := args[i]; {
+		case a == name || a == "-"+name:
+			i++ // its value
+		case strings.HasPrefix(a, name+"=") || strings.HasPrefix(a, "-"+name+"="):
+		default:
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // typedFlag returns the value of a flag in a typed argument list ("" when it is not there).
@@ -454,7 +510,11 @@ func (t *webTab) restart(ctx context.Context, kind string, typed []string, fresh
 		args, err = restartArgs(s, typed, fresh)
 		t.sessMu.Unlock()
 	default:
-		args = append(launchArgs(prev, nil), typed...)
+		args = launchArgs(prev, nil)
+		if namesFlag(typed, "--model") {
+			args = withoutFlag(args, "--model") // the model typed replaces the one the failed start had, rather than following it
+		}
+		args = append(args, typed...)
 	}
 	if err != nil {
 		return werr(http.StatusBadRequest, "bad_flags", clip(err.Error(), 400))

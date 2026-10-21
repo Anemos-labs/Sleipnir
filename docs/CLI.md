@@ -320,6 +320,10 @@ Usage of chat:
         swarm: none | worktree (default: config swarm.isolation). worktree gives every writer a git worktree of its own; finished work is merged and verified through a queue and applied to your checkout at the end
   -mailman
         swarm: route worker mail through a mailman agent that digests bursts (default: config swarm.mailman; --mailman=false turns it off for this run). Its model: --role-model mailman=<model>
+  -manager-answers-after duration
+        swarm: a worker's question the person has not answered in this long is answered by the manager for them, if it is no more dangerous than --manager-answers-up-to; the person's question is withdrawn and says who answered (default: config permissions.manager_answers_after; 0 waits for the person)
+  -manager-answers-up-to string
+        swarm: the most dangerous question the manager answers after --manager-answers-after: low (routine: inside the workspace, nothing guarded), medium (also the network, files outside the workspace, commands that cannot be checked beforehand) or high (also the high-risk class, guarded paths and your ask rules) (default: config permissions.manager_answers_up_to, else medium)
   -manager-approves
         swarm: a worker's routine permission question (a command inside its own tree that no rule covers, nothing protected, no network but this machine, or an install into a virtual environment of the workspace from the package index) goes to the manager before you; unanswered in a minute it comes to you (default: config permissions.manager_approves, true; --manager-approves=false asks you directly)
   -mode string
@@ -339,7 +343,9 @@ Usage of chat:
   -role-model value
         role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… turns the lesson memory on, reranker=… orders what it finds). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
   -swarm int
-        chat as a team of a manager and N workers (config swarm.max_workers is the ceiling); on a terminal the default is 8 workers, --swarm 0 is a single agent
+        chat as a team of a manager and N workers (config swarm.max_workers is the ceiling); on a terminal the default is 8 workers (a --team brings its own), --swarm 0 is a single agent
+  -team NAME
+        a saved team: NAME (.sleipnir/teams/NAME.json in the project of --cwd, else ~/.sleipnir/teams/NAME.json) or a path to such a file: {"slots": ["backend=provider/model", "backend", "frontend", ...], "models": {"manager": "provider/model"}}; its slots are the team (at least 8), and --role-model values given with it add to them
   -trust-project
         trust this project: apply its security-sensitive config (hooks, allow rules, providers, MCP servers) and read its AGENTS.md, skills, commands and agent definitions; only for repositories you trust
   -verbose
@@ -421,7 +427,7 @@ covers every call of that tool, whatever the arguments), a patch as the `apply_p
 through a link is drawn against the file the link leads to. An answer earlier than 350 ms after the question appeared, or after the session's
 previous answer, is refused, whatever the page does. A question nobody answered within `--ask-timeout` is
 refused (`0`, the default, waits), and so is every open question once no page has had the interface open for `--ask-grace`
-(one minute by default; `0` never refuses for that). Questions about a project's own files and its tool servers are not asked
+(`0`, the default, never refuses for that: a question waits for its answer). Questions about a project's own files and its tool servers are not asked
 while a session starts: the New session dialog decides them before, and a tool server that needs approval stays off until it is
 approved and the session starts again.
 
@@ -448,7 +454,7 @@ flags:
   -allow value
         a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, node, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint, format and vet, go mod init and tidy; ruff, mypy, pyright, tsc and eslint checks of the workspace; a Python virtual environment in the workspace (create it, install into it from the package index, test with it); curl or wget to this machine only (127.0.0.1, localhost, [::1]); no other install or download); more in docs/CONFIGURATION.md
   -ask-grace duration
-        refuse the open questions when no page has had the interface open for this long (0 never refuses for that) (default 1m0s)
+        refuse the open questions when no page has had the interface open for this long (0, the default, never refuses for that: a question waits for its answer)
   -ask-timeout duration
         refuse a question that nobody answered in this long, as a run with nobody to ask would (0 waits for an answer)
   -auto-docs
@@ -467,6 +473,10 @@ flags:
         swarm: none | worktree (default: config swarm.isolation). worktree gives every writer a git worktree of its own; finished work is merged and verified through a queue and applied to your checkout at the end
   -mailman
         swarm: route worker mail through a mailman agent that digests bursts (default: config swarm.mailman; --mailman=false turns it off for this run). Its model: --role-model mailman=<model>
+  -manager-answers-after duration
+        swarm: a worker's question the person has not answered in this long is answered by the manager for them, if it is no more dangerous than --manager-answers-up-to; the person's question is withdrawn and says who answered (default: config permissions.manager_answers_after; 0 waits for the person)
+  -manager-answers-up-to string
+        swarm: the most dangerous question the manager answers after --manager-answers-after: low (routine: inside the workspace, nothing guarded), medium (also the network, files outside the workspace, commands that cannot be checked beforehand) or high (also the high-risk class, guarded paths and your ask rules) (default: config permissions.manager_answers_up_to, else medium)
   -manager-approves
         swarm: a worker's routine permission question (a command inside its own tree that no rule covers, nothing protected, no network but this machine, or an install into a virtual environment of the workspace from the package index) goes to the manager before you; unanswered in a minute it comes to you (default: config permissions.manager_approves, true; --manager-approves=false asks you directly)
   -mode string
@@ -486,7 +496,9 @@ flags:
   -role-model value
         for new sessions: role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… turns the lesson memory on, reranker=… orders what it finds). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
   -swarm int
-        new sessions are a team of a manager and N workers (config swarm.max_workers is the ceiling); the default is 8 workers, --swarm 0 is a single agent
+        new sessions are a team of a manager and N workers (config swarm.max_workers is the ceiling); the default is 8 workers (a --team brings its own), --swarm 0 is a single agent
+  -team NAME
+        for new sessions: a saved team: NAME (.sleipnir/teams/NAME.json in the project of --cwd, else ~/.sleipnir/teams/NAME.json) or a path to such a file: {"slots": ["backend=provider/model", "backend", "frontend", ...], "models": {"manager": "provider/model"}}; its slots are the team (at least 8), and --role-model values given with it add to them
   -trust-project
         trust this project: apply its security-sensitive config (hooks, allow rules, providers, MCP servers) and read its AGENTS.md, skills, commands and agent definitions; only for repositories you trust
   -verify string
@@ -589,6 +601,8 @@ flags:
         directory for this run's recording (events.jsonl, blobs/, checkpoints/); default <state>/sessions/<id>, <state> being $SLEIPNIR_HOME or ~/.sleipnir
   -swarm int
         run a manager and N workers instead of a single agent (config swarm.max_workers is the ceiling)
+  -team NAME
+        a saved team: NAME (.sleipnir/teams/NAME.json in the project of --cwd, else ~/.sleipnir/teams/NAME.json) or a path to such a file: {"slots": ["backend=provider/model", "backend", "frontend", ...], "models": {"manager": "provider/model"}}; its slots are the team (at least 8), and --role-model values given with it add to them
   -trust-project
         trust this project: apply its security-sensitive config (hooks, allow rules, providers, MCP servers) and read its AGENTS.md, skills, commands and agent definitions; only for repositories you trust
   -verbose

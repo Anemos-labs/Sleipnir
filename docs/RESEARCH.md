@@ -2,7 +2,7 @@
 
 The `research` plugin turns a question into a researched, cited wiki. A team plans the question from several points of
 view, researches it on the web in parallel, keeps only quotes the harness found on their pages, writes pages in which
-every factual paragraph cites its sources, fact-checks each page with an agent that did not write it, and publishes a
+every factual paragraph cites its sources, fact-checks each page with an agent that did not write it (above quick depth), and publishes a
 static site with cross-links, a search box, a page of sources, a page of evidence and a page that describes the method.
 
 The same machinery can start a coding project: `/goal --research=DEPTH GOAL` researches how mature projects solve the
@@ -14,7 +14,7 @@ same problems before the team builds, and the research's build-context page beco
 |---|---|
 | Terminal chat | `/research [quick\|standard\|deep] QUESTION` (default depth: standard) |
 | Web page | the Research view (`g` then `w`): a question and a depth; or `/research ...` in the composer |
-| Research before building | `/goal --research=DEPTH GOAL` in either interface, or *Research first* in the web page's Goal sheet |
+| Research before building | `/goal --research=DEPTH GOAL` in either interface, or *research first* beside the first goal in the web page's New session dialog, or *Research first* in its Goal sheet |
 
 A run is a standing goal (it needs the `goal` plugin). Its spec is the run's brief, `.sleipnir/research/RUN/BRIEF.md`:
 the protocol below, the source policy, the wiki's style and the milestones the judge rules on. The judge accepts a
@@ -30,13 +30,17 @@ directory of the project. `sleipnir research [RUN] [--build] [--export DIR] [--j
 
 | Depth | Tracks | Gather rounds | Perspectives | Questions | Sources (sites) | Findings | Pages | Sources per page | Fact-checks per page |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| quick | 3 | 1 | 3 | 9 | 15 (8) | 24 | 5–8 | 4 | 1 |
+| quick | 3 | 1 | 2 | 6 | 8 (4) | 12 | 2–4 | 3 | 0 |
 | standard | 6 | 2 | 5 | 20 | 45 (18) | 70 | 10–16 | 6 | 1 |
 | deep | 10 | 3 | 7 | 36 | 110 (40) | 170 | 19–33 | 8 | 2 |
 
 The numbers are minimums the run must reach before its next phase opens (pages count the overview). A research-first run
-also needs code snippets from mature projects: 4 from 3 projects at quick depth, 10 from 6 at standard, 20 from 10 at
-deep. Pages aim at 400–900 words at quick depth, 700–1,500 at standard and 1,000–2,500 at deep.
+also needs code snippets from mature projects: 2 from 2 projects at quick depth, 10 from 6 at standard, 20 from 10 at
+deep. Pages aim at 300–700 words at quick depth, 700–1,500 at standard and 1,000–2,500 at deep.
+
+Quick depth is meant to take minutes: it has no fact-check round. The harness still verifies every quote on its page and
+every page's citations, and a review that finds issues still holds a page until it is fixed; nobody is required to review.
+Research first from New session at quick depth gives the build its `context` page soon after the gather round.
 
 ## The protocol
 
@@ -107,7 +111,9 @@ origin serves only what the renderer made.
 
 `/goal --research=DEPTH GOAL` starts a research-first run for GOAL. The goal the team works on is the research milestones
 followed by the project's own goal, so the judge holds the build to both: the manager runs the research as the first
-part of the goal, and its plan cites the `context` page.
+part of the goal, and its plan cites the `context` page. The research does not hold the whole team: the workers it leaves
+free lay the groundwork no finding can change (what the project fixes outright: its stack, layout, tooling and stated
+requirements) while it runs, and the wiki's pages are written in parallel by any free worker, one page each.
 
 When the run is published, its `context` page (with the snippets it embeds, clipped to a fixed size) becomes a segment of
 the shared prompt layer that every agent reads, marked as unverified web content. This is one declared change of the

@@ -49,7 +49,7 @@ A result that works but is not what was asked for is a failed task. Treat the re
 # Understand before you change
 - Find out how the project is built, tested and laid out: its instruction files, manifest (go.mod, package.json, pyproject.toml, Cargo.toml, ...), README, test directory and CI configuration. <shared-context> may already say; verify what matters.
 - Read the code you will change and the code that calls it. Prefer targeted reads (grep, glob, read with offset and limit) over dumping whole files. Do not re-read files your notes already describe unless they may have changed.
-- Look for the existing way of doing a thing before inventing one: an error type, a helper, a configuration loader, a test fixture. Reuse it.
+- Look for the existing way of doing a thing before inventing one: an error type, a helper, a configuration loader, a test fixture. Reuse it. Before adding a subsystem, check the instruction files' Capabilities section and search by what it does: extend what exists, never build a second one.
 - An empty or nearly empty repository is a new project: choose the conventional layout and a current, well-maintained stack for its kind of product, and say what you chose.
 
 # Plan

@@ -47,6 +47,7 @@ var WebViews = []struct{ Name, Title, Description string }{
 	{"sessions", "Sessions", "recorded sessions: resume, inspect, prune"},
 	{"tools", "Tools", "every sleipnir command, with a form and its output; doctor and schedule"},
 	{"plugins", "Plugins", "switch plugins on and off and change their settings"},
+	{"memory", "Memory", "the agents' notes, the instruction files and the lessons, to read and edit"},
 }
 
 // Builtin returns the manifests of the plugins compiled into Sleipnir, in

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
@@ -29,6 +30,8 @@ type chatFlagSet struct {
 	commit                   *bool
 	mailman, autoDocs        func() *bool
 	managerApproves          func() *bool
+	managerAnswersAfter      *time.Duration
+	managerAnswersUpTo       *string
 	roleModels               *roleModelFlag
 	resume                   func() (string, error)
 	allow                    *allowFlag
@@ -43,7 +46,7 @@ func registerChatFlags(fs *flag.FlagSet) *chatFlagSet {
 	f.model = fs.String("model", "", "model: provider/model or a bare id for the default provider")
 	f.cwd = fs.String("cwd", "", "working directory")
 	f.mode = fs.String("mode", "", "permissions: default | accept-edits | plan | bypass | yolo")
-	f.swarmN = fs.Int("swarm", 0, "chat as a team of a manager and N workers (config swarm.max_workers is the ceiling); on a terminal the default is "+strconv.Itoa(defaultWorkers)+" workers, --swarm 0 is a single agent")
+	f.swarmN = fs.Int("swarm", 0, "chat as a team of a manager and N workers (config swarm.max_workers is the ceiling); on a terminal the default is "+strconv.Itoa(defaultWorkers)+" workers (a --team brings its own), --swarm 0 is a single agent")
 	f.trust = fs.Bool("trust-project", false, trustProjectHelp)
 	f.verbose = fs.Bool("verbose", false, "print notices and tool errors")
 	f.budget = fs.Float64("budget-usd", 0, "stop when spend reaches this many US dollars")
@@ -55,8 +58,10 @@ func registerChatFlags(fs *flag.FlagSet) *chatFlagSet {
 	f.mailman = mailmanFlag(fs)
 	f.autoDocs = autoDocsFlag(fs)
 	f.managerApproves = managerApprovesFlag(fs)
+	f.managerAnswersAfter, f.managerAnswersUpTo = managerAnswersFlags(fs)
 	f.roleModels = &roleModelFlag{}
 	fs.Var(f.roleModels, "role-model", roleModelHelp)
+	fs.Var(&teamFlag{roles: f.roleModels, cwd: f.cwd}, "team", teamHelp)
 	f.resume = resumeFlags(fs)
 	f.allow = allowFlags(fs)
 	f.plain = fs.Bool("plain", false, "plain lines, as when the input or the output is not a terminal: no colour, no status line, no redrawing, approvals answered by the dialog's numbers or by y, a, t or n")
@@ -81,12 +86,15 @@ type chatFlags struct {
 	autoDocs   *bool
 	// managerApproves is --manager-approves: nil when the flag was not given.
 	managerApproves *bool
-	roleModels      map[string]string
-	team            []session.TeamSlot
-	resume          string
-	allow           []string // as typed: the name tests is not expanded
-	plain           bool
-	noAnim          bool
+	// managerAnswersAfter and managerAnswersUpTo are --manager-answers-after and --manager-answers-up-to (zero: not given).
+	managerAnswersAfter time.Duration
+	managerAnswersUpTo  perm.Danger
+	roleModels          map[string]string
+	team                []session.TeamSlot
+	resume              string
+	allow               []string // as typed: the name tests is not expanded
+	plain               bool
+	noAnim              bool
 	// compactAt is --compact-at: a percentage of each model's context window, 0 for the configuration's.
 	compactAt int
 }
@@ -104,6 +112,12 @@ func (f *chatFlagSet) values(fs *flag.FlagSet) (chatFlags, error) {
 	}
 	if out.roleModels, out.team, err = f.roleModels.split(); err != nil {
 		return chatFlags{}, err
+	}
+	if out.managerAnswersAfter = *f.managerAnswersAfter; out.managerAnswersAfter < 0 {
+		return chatFlags{}, fmt.Errorf("--manager-answers-after must not be negative")
+	}
+	if out.managerAnswersUpTo, err = perm.ParseDanger(*f.managerAnswersUpTo); err != nil {
+		return chatFlags{}, fmt.Errorf("--manager-answers-up-to: %w", err)
 	}
 	fs.Visit(func(fl *flag.Flag) { out.swarmGiven = out.swarmGiven || fl.Name == "swarm" })
 	if out.workers, err = teamWorkers(out.team, out.workers, out.swarmGiven); err != nil {
@@ -179,8 +193,8 @@ func (f chatFlags) options() session.Options {
 		Cwd: f.cwd, Model: f.model, Mode: perm.Mode(f.mode), Swarm: team, Workers: workers,
 		TrustProject: f.trust, BudgetUSD: f.budget, CompactAtPercent: f.compactAt, Resume: f.resume, NoMCP: f.noMCP, NoMemory: f.noMemory,
 		Verify: f.verify, Isolation: f.isolation, Commit: f.commit, Mailman: f.mailman, AutoDocs: f.autoDocs, ManagerApproves: f.managerApproves,
-		RoleModels: rm,
-		Team:       append([]session.TeamSlot(nil), f.team...), DefaultTeam: true, Allow: expandAllow(f.allow),
+		ManagerAnswersAfter: f.managerAnswersAfter, ManagerAnswersUpTo: f.managerAnswersUpTo, RoleModels: rm,
+		Team: append([]session.TeamSlot(nil), f.team...), DefaultTeam: true, Allow: expandAllow(f.allow),
 	})
 }
 
@@ -196,7 +210,7 @@ type newSessionRequest struct {
 }
 
 // argsFor renders the New session dialog's request as chat arguments, in the order the dialog's command line shows them: --cwd,
-// --model, --mode, --swarm, --isolation, --verify, --commit, --mailman, --auto-docs=false, --manager-approves=false, --budget-usd, --compact-at,
+// --model, --mode, --swarm, --isolation, --verify, --commit, --mailman, --auto-docs=false, --manager-approves=false, --manager-answers-after, --manager-answers-up-to, --budget-usd, --compact-at,
 // --allow, --trust-project, --no-mcp, --no-memory, then --role-model: the role models in the order of the roles' names, then the team's slots in team order. The name, the first goal and the effort are not chat flags: the host applies them
 // once the session has started.
 func argsFor(req wire.NewSessionRequest) []string {
@@ -230,6 +244,12 @@ func argsFor(req wire.NewSessionRequest) []string {
 	}
 	if req.ManagerApproves != nil && !*req.ManagerApproves {
 		a = append(a, "--manager-approves=false")
+	}
+	if req.ManagerAnswersAfter != "" {
+		a = append(a, "--manager-answers-after", req.ManagerAnswersAfter)
+	}
+	if req.ManagerAnswersUpTo != "" {
+		a = append(a, "--manager-answers-up-to", req.ManagerAnswersUpTo)
 	}
 	if req.Budget != nil && *req.Budget != 0 {
 		a = append(a, "--budget-usd", strconv.FormatFloat(*req.Budget, 'f', -1, 64))

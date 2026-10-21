@@ -20,7 +20,7 @@ func Brief(r *Run) string {
 	}
 	w("Run `%s` · %s depth: %s.\n\n", r.Slug, d.Title, d.Summary)
 	w("The `research` tool keeps this run's ledger (plan, sources with their verified quotes, findings, snippets, gaps, page reviews) and its wiki. ")
-	w("Pass run=%q, or leave it out while it is the only run open. `research status` says, from the ledger alone, which phase the run is in and what is missing: every agent starts there, and the manager reads it after every round of work.\n\n", r.Slug)
+	w("Leave `run` out of every call: the tool sends it to this run (`%s`). `research status` says, from the ledger alone, which phase the run is in and what is missing: every agent starts there, and the manager reads it after every round of work.\n\n", r.Slug)
 	if kick {
 		w("## The project\n\n%s\n\nThis research prepares that project: it finds how mature projects solve the same problems, which libraries and designs to choose and why, which pitfalls to avoid, and which code is worth learning from (with its license). The build starts from its results.\n\n",
 			firstNonEmpty(r.Project, r.Question))
@@ -29,7 +29,12 @@ func Brief(r *Run) string {
 	w("- **Manager**: runs the protocol below and does not research alone. Delegates each phase as tasks, %d research tracks in parallel, and reads `research status` between phases.\n", d.Tracks)
 	w("- **Researchers** (scouts, or any role with free slots): one track each. The research tool needs no write permission, so read-only roles research and cite.\n")
 	w("- **Writers** (the docs role, or any writer): write pages from the findings. One of them is the editor who makes terms, tone and links consistent across pages at the end.\n")
-	w("- **Fact-checkers** (reviewers): check each page against the quotes of the sources it cites. A page is reviewed by %d %s who did not write it.\n", d.Reviewers, plural(d.Reviewers, "agent", "agents"))
+	if d.Reviewers > 0 {
+		w("- **Fact-checkers** (reviewers): check each page against the quotes of the sources it cites. A page is reviewed by %d %s who did not write it.\n", d.Reviewers, plural(d.Reviewers, "agent", "agents"))
+	}
+	if kick {
+		w("- **Builders** (every worker the phases above leave free): the research does not hold the whole team. From the start, they lay the groundwork no finding can change: what the project fixes outright (its stack, layout, tooling, build and test commands, the requirements it states). Work that rests on a choice the research makes waits for the `context` page.\n")
+	}
 	w("- Without a team, one agent does the phases in order, one track at a time; the bars are the same.\n\n")
 
 	w("## Protocol\n\n")
@@ -57,13 +62,19 @@ func Brief(r *Run) string {
 		w("Each gap is researchable. The next round researches the gaps (assign them to the researchers whose tracks they fall in) and closes each with `research gap` and the findings that answer it, or as unanswerable with the reason. %s research runs %d rounds.\n\n", d.Title, d.Rounds)
 	}
 	w("### %d. Write\n\n", 3+boolInt(d.Rounds > 1))
-	w("Writers write pages with `research write_page` from the findings (`research findings` with a track or query) and the sources' quotes. Pages are written in parallel; then the editor reads them all and makes them one wiki (terms, tone, links, no repetition). ")
+	w("Writers write pages with `research write_page` from the findings (`research findings` with a track or query) and the sources' quotes. Pages are written in parallel, one writer per page: any free worker can write one, not only the docs role, so a wiki of %d pages takes about as long as its longest page. Then the editor reads them all and makes them one wiki (terms, tone, links, no repetition). ", d.MinPages+1)
 	w("Each page: %s words, every paragraph that states facts cites them ([S12] after the sentence), at least %d distinct sources, links to the pages it relates to ([[page-id]]), and is linked from at least one page. ", d.Words, d.MinCites)
 	w("The overview (`index`) answers the question directly in its first paragraph, then summarizes the main findings with links to the pages that develop them.\n\n")
-	w("### %d. Fact-check\n\n", 4+boolInt(d.Rounds > 1))
-	w("Each page is reviewed by %d %s who did not write it, with `research read_page` then `research sources id=S#` for each cited source: every claim must be supported by the quotes of the sources it cites. ", d.Reviewers, plural(d.Reviewers, "agent", "agents"))
-	w("`research review_page ok=false` lists each unsupported or wrong claim and what the sources say; the writer fixes the page and it is reviewed again (a new revision needs a new review).\n\n")
-	w("### %d. Publish\n\n", 5+boolInt(d.Rounds > 1))
+	step := 4 + boolInt(d.Rounds > 1)
+	if d.Reviewers > 0 {
+		w("### %d. Fact-check\n\n", step)
+		w("Each page is reviewed by %d %s who did not write it, with `research read_page` then `research sources id=S#` for each cited source: every claim must be supported by the quotes of the sources it cites. ", d.Reviewers, plural(d.Reviewers, "agent", "agents"))
+		w("`research review_page ok=false` lists each unsupported or wrong claim and what the sources say; the writer fixes the page and it is reviewed again (a new revision needs a new review).\n\n")
+		step++
+	} else {
+		w("%s research has no fact-check round: the writer checks each claim against the quotes of the sources it cites before writing, and the page is published once `research check` lists no write problem. Speed matters more than polish here: do not add rounds, pages or reviews the bars do not ask for.\n\n", d.Title)
+	}
+	w("### %d. Publish\n\n", step)
 	w("`research build` renders the wiki (overview, pages, sources, evidence, open questions, method, search) and lists what is still missing. The run is finished when `research status` says Done.")
 	if kick {
 		w(" The `context` page is then given to every agent of the build, and the full wiki stays available through the research tool.")
@@ -97,7 +108,9 @@ func Brief(r *Run) string {
 	}
 	w(".\n")
 	w("- Write: every planned page is written, cites at least %d sources, has no unknown reference and is linked from another page (`research check` lists no write problem).\n", d.MinCites)
-	w("- Fact-check: every page's latest revision passed %d %s by agents that did not write it.\n", d.Reviewers, plural(d.Reviewers, "review", "reviews"))
+	if d.Reviewers > 0 {
+		w("- Fact-check: every page's latest revision passed %d %s by agents that did not write it.\n", d.Reviewers, plural(d.Reviewers, "review", "reviews"))
+	}
 	w("- Publish: `research build` reports no problems and `research status` says Done.\n")
 	return b.String()
 }
@@ -114,12 +127,17 @@ func Objective(r *Run, projectGoal, spec string) string {
 	}
 	d := r.DepthInfo()
 	var b strings.Builder
-	fmt.Fprintf(&b, "Research first (%s, run %s), then build. The research protocol is in %s: read it before planning.\n\n", d.ID, r.Slug, spec)
+	fmt.Fprintf(&b, "Research first (%s, run %s), then build. The research protocol is in %s: read it before planning. ", d.ID, r.Slug, spec)
+	b.WriteString("The workers the research leaves free start at once on what the project fixes outright (stack, layout, tooling, the requirements it states); what rests on a choice the research makes waits for its `context` page.\n\n")
 	b.WriteString("## Research milestones\n\n")
 	fmt.Fprintf(&b, "- Research plan: `research status` reports the plan phase done (%d perspectives, %d tracks, index and context pages planned).\n", d.Perspectives, d.Tracks)
 	fmt.Fprintf(&b, "- Research gathered: `research status` reports at least %d verified sources from %d sites, %d findings, %d snippets from %d projects, and no open gap.\n",
 		d.MinSources, d.MinDomains, d.MinFindings, d.MinSnippets, d.MinProjects)
-	fmt.Fprintf(&b, "- Research published: every page fact-checked, `research build` reports no problems and `research status` says Done; the build's plan cites the context page.\n\n")
+	checked := "every page fact-checked, "
+	if d.Reviewers == 0 {
+		checked = ""
+	}
+	fmt.Fprintf(&b, "- Research published: %s`research build` reports no problems and `research status` says Done; the build's plan cites the context page.\n\n", checked)
 	b.WriteString("The docs keep describing this project's own code; the research is their background: the docs worker copies the built wiki into docs/research/ (`sleipnir research " + r.Slug + " --export docs/research`), links it from the README, and cites its pages where a design choice rests on it.\n\n")
 	b.WriteString("## The project\n\n")
 	b.WriteString(strings.TrimSpace(projectGoal))

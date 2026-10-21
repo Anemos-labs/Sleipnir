@@ -247,6 +247,7 @@ func (s *Store) Add(ctx context.Context, emb Embedder, drafts []Draft) (added, m
 		d.Kind = strings.ToLower(strings.TrimSpace(d.Kind))
 		d.Text = Clean(d.Text, MaxTextRunes)
 		d.Task = Clean(d.Task, MaxTaskRunes)
+		d.Project = Clean(d.Project, MaxTaskRunes)
 		key := d.Kind + "\x00" + strings.ToLower(d.Text)
 		if !validKind(d.Kind) || d.Text == "" || seen[key] {
 			continue
@@ -299,10 +300,13 @@ func (s *Store) Add(ctx context.Context, emb Embedder, drafts []Draft) (added, m
 			}
 			if best >= 0 && bestSim >= MergeSimilarity {
 				ls[best].Last = now
+				if ls[best].Project != d.Project {
+					ls[best].Project = "" // learned in two projects: general
+				}
 				merged++
 				continue
 			}
-			ls = append(ls, Lesson{ID: id, Kind: d.Kind, Text: d.Text, Task: d.Task, Vec: vecs[i], Created: now, Last: now})
+			ls = append(ls, Lesson{ID: id, Kind: d.Kind, Text: d.Text, Task: d.Task, Project: d.Project, Vec: vecs[i], Created: now, Last: now})
 			fresh[id] = true
 			added++
 		}
@@ -314,11 +318,18 @@ func (s *Store) Add(ctx context.Context, emb Embedder, drafts []Draft) (added, m
 	return added, merged, nil
 }
 
-// Retrieve returns at most k lessons that bear on task, best first. A lesson's score is its cosine similarity to the task
-// times (0.5 + Utility()), so a lesson with a record of wins outranks an equally similar untried one; lessons below
-// MinSimilarity are left out whatever their utility, and equal scores are ordered by ID. Nothing is marked: what was shown is
-// reported later with Record. No lessons, k <= 0 or an empty task is no embedding call.
+// Retrieve is RetrieveIn without a project.
 func (s *Store) Retrieve(ctx context.Context, emb Embedder, task string, k int) ([]Lesson, error) {
+	return s.RetrieveIn(ctx, emb, task, "", k)
+}
+
+// RetrieveIn returns at most k lessons that bear on task, best first. A lesson's score is its cosine similarity to the task
+// times (0.5 + Utility()), so a lesson with a record of wins outranks an equally similar untried one, and times SameProject
+// when it was learned in project (a non-empty key), so what was learned here comes before what was learned elsewhere,
+// which still takes part. Lessons below MinSimilarity are left out whatever their utility or project, and equal scores are
+// ordered by ID. Nothing is marked: what was shown is reported later with Record. No lessons, k <= 0 or an empty task is
+// no embedding call.
+func (s *Store) RetrieveIn(ctx context.Context, emb Embedder, task, project string, k int) ([]Lesson, error) {
 	task = Clean(task, maxQueryRunes)
 	if k <= 0 || task == "" {
 		return nil, nil
@@ -345,7 +356,11 @@ func (s *Store) Retrieve(ctx context.Context, emb Embedder, task string, k int) 
 	var hits []scored
 	for _, l := range ls {
 		if c := cosine(q, l.Vec); c >= MinSimilarity {
-			hits = append(hits, scored{l, c * (0.5 + l.Utility())})
+			sc := c * (0.5 + l.Utility())
+			if project != "" && l.Project == project {
+				sc *= SameProject
+			}
+			hits = append(hits, scored{l, sc})
 		}
 	}
 	sort.Slice(hits, func(i, j int) bool {

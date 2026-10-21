@@ -1,6 +1,7 @@
 package swarm
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -87,12 +88,21 @@ func (o *overflow) digest(id string) string {
 
 // receive queues a message for the member, or coalesces it when the inbox is full.
 // It fails if the member has been retired.
-func (m *member) receive(s *Swarm, msg Message) error {
+func (m *member) receive(s *Swarm, msg Message) error { return m.receiveAs(s, msg, false) }
+
+// errInboxFull is receiveAs's refusal of mail that must arrive whole while the inbox would only coalesce it.
+var errInboxFull = errors.New("the inbox is full")
+
+// receiveAs is receive; whole refuses (errInboxFull) to coalesce the message, which keeps only an excerpt of it.
+func (m *member) receiveAs(s *Swarm, msg Message, whole bool) error {
 	peer := s.isPeer(msg.From) // before the lock: it takes the swarm's
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.life == lifeRetired {
 		return fmt.Errorf("%s has been retired", m.id)
+	}
+	if whole && !(m.box.empty() && m.a.PendingInbox() < s.cfg.InboxSoftCap) {
+		return errInboxFull
 	}
 	m.mailSeq++
 	m.autoRuns = 0
@@ -107,6 +117,13 @@ func (m *member) receive(s *Swarm, msg Message) error {
 	default:
 	}
 	return nil
+}
+
+// hasRoom reports whether a message for the member would reach its inbox now instead of being coalesced.
+func (m *member) hasRoom(s *Swarm) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.box.empty() && m.a.PendingInbox() < s.cfg.InboxSoftCap
 }
 
 // pump moves coalesced mail into the inbox once there is room for it, and reports
@@ -179,21 +196,32 @@ func (s *Swarm) deliver(msg Message) error {
 }
 
 // notify sends mail the harness itself wrote (a worker stopped, a verification
-// failed): it skips the router's limits, and is framed like any other mail.
-func (s *Swarm) notify(to, kind, text string) {
+// failed): it skips the router's limits, and is framed like any other mail. It reports whether the mail was delivered.
+func (s *Swarm) notify(to, kind, text string) bool { return s.notifyAs(to, kind, text, false) }
+
+// notifyWhole is notify for mail that is no use as an excerpt (a stall diagnosis): it is not sent while the inbox would
+// coalesce it, and reports false then.
+func (s *Swarm) notifyWhole(to, kind, text string) bool { return s.notifyAs(to, kind, text, true) }
+
+func (s *Swarm) notifyAs(to, kind, text string, whole bool) bool {
 	m := s.get(to)
 	if m == nil {
-		return
+		return false
 	}
 	msg := Message{ID: s.nextHarnessID(), From: harnessSender, To: to, Kind: kind, Text: text}
+	if whole && !m.hasRoom(s) {
+		return false
+	}
 	s.emitAs(harnessSender, events.TypeMailSend, msg)
-	if err := m.receive(s, msg); err == nil {
+	if err := m.receiveAs(s, msg, whole); err == nil {
 		s.emitAs(to, events.TypeMailDeliver, map[string]any{"id": msg.ID, "from": harnessSender})
 		s.wake(m)
 		if m.manager {
 			s.managerEvent()
 		}
+		return true
 	}
+	return false
 }
 
 // notifyManager tells the manager one line about the run.

@@ -110,7 +110,7 @@ func cmdInit(ctx context.Context, args []string) error {
 	if !*user {
 		agents := filepath.Join(root, "AGENTS.md")
 		if _, err := os.Stat(agents); os.IsNotExist(err) {
-			body := "# Project instructions\n\nSleipnir reads this file into the prompt that every agent shares, when it is run with --trust-project.\nKeep it short: the commands and conventions an agent cannot work out from the code.\n\n- Build: \n- Test: \n- Lint: \n- Conventions and things to avoid: \n"
+			body := "# Project instructions\n\nSleipnir reads this file into the prompt that every agent shares, when it is run with --trust-project.\nKeep it short: the commands and conventions an agent cannot work out from the code.\n\n- Build: \n- Test: \n- Lint: \n- Conventions and things to avoid: \n\n## Capabilities\n\nOne line per system the project already has: what it does, where it lives, and the doc that explains it (path#heading).\nAgents check this list before they build something new.\n\n- \n"
 			if err := os.WriteFile(agents, []byte(body), 0o644); err == nil {
 				fmt.Fprintf(os.Stderr, "wrote %s\n", agents)
 			}

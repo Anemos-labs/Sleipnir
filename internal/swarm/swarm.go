@@ -133,9 +133,13 @@ type Config struct {
 	// run starts, WakeMax the longest a burst may postpone it, MaxWakes the bound on
 	// automatic runs between two human inputs (defaults 1.5s, 10s, 8).
 	WakeManager bool
-	WakeQuiet   time.Duration
-	WakeMax     time.Duration
-	MaxWakes    int
+	// OnLearned, when set, receives the role-scoped notes (note scope=role) of a task's workers when the manager accepts
+	// it: the field notes that earned their place, for the role's project memory (internal/lore). It is called with
+	// the role and the notes' texts, outside the swarm's locks; a slow callee delays only the accept that called it.
+	OnLearned func(role string, texts []string)
+	WakeQuiet time.Duration
+	WakeMax   time.Duration
+	MaxWakes  int
 
 	// Mailman routes worker mail through a mailman agent instead of delivering each
 	// message at once (mailman.go). The router still validates and rate-limits every
@@ -288,7 +292,10 @@ type Swarm struct {
 	poolWakeMu sync.Mutex
 	poolWoken  map[string]string
 
-	mu      sync.Mutex
+	mu sync.Mutex
+	// learned holds each agent's role-scoped notes of this session (at most maxLearned each), with the role it had when it
+	// wrote them, until a task of theirs is accepted and they go to Config.OnLearned. Guarded by mu.
+	learned map[string]learnedNotes
 	retryAt map[string]time.Time   // supervisor-owned repair backoff
 	queued  map[string]queuedSpawn // parents waiting for a free member of their role (spawnqueue.go), by task id; guarded by mu
 	members map[string]*member
@@ -1141,4 +1148,71 @@ func (s *Swarm) SetShared(l *kv.Layer, reason string) {
 // specs, then call SetToolset before Start.
 func (s *Swarm) SetToolset(reg *tools.Registry, specs []core.ToolSpec) {
 	s.deps.Registry, s.deps.ToolSpecs = reg, specs
+}
+
+// maxLearned bounds the role notes one agent holds for its project memory between two accepted tasks.
+const maxLearned = 12
+
+// learnedNotes are one agent's role notes and the role they are for. The role is kept with them, since the agent may have
+// left the team by the time its task is accepted.
+type learnedNotes struct {
+	role  string
+	texts []string
+}
+
+// recordLearned keeps a role-scoped note of agent, of role, for the role's project memory, once per text.
+func (s *Swarm) recordLearned(agent, role, text string) {
+	if s.cfg.OnLearned == nil || text == "" || role == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.learned == nil {
+		s.learned = map[string]learnedNotes{}
+	}
+	n := s.learned[agent]
+	if n.role == "" {
+		n.role = role
+	}
+	for _, t := range n.texts {
+		if t == text {
+			return
+		}
+	}
+	if len(n.texts) < maxLearned {
+		n.texts = append(n.texts, text)
+	}
+	s.learned[agent] = n
+}
+
+// flushLearned hands the role notes of the workers of an accepted task (its owner, and the members of its pool) to
+// Config.OnLearned, by role, and forgets them.
+func (s *Swarm) flushLearned(task Task) {
+	if s.cfg.OnLearned == nil {
+		return
+	}
+	who := []string{task.Owner}
+	if task.Pool != nil {
+		who = append(who, task.Pool.Members...)
+	}
+	byRole := map[string][]string{}
+	var roles []string
+	s.mu.Lock()
+	for _, a := range who {
+		n := s.learned[a]
+		if len(n.texts) == 0 {
+			continue
+		}
+		delete(s.learned, a)
+		r, ts := n.role, n.texts
+		if _, ok := byRole[r]; !ok {
+			roles = append(roles, r)
+		}
+		byRole[r] = append(byRole[r], ts...)
+	}
+	s.mu.Unlock()
+	sortStrings(roles)
+	for _, r := range roles {
+		s.cfg.OnLearned(r, byRole[r])
+	}
 }

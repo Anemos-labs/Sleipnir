@@ -210,8 +210,8 @@ func newWebRig(t *testing.T, d webDefaults, base session.Options) *webRig {
 		t.Fatal(err)
 	}
 	h.base = base
-	h.base.NoBudget = h.unlimitedByDefault()        // as newWebHost leaves it
-	h.bridge = h.newBridge(testFloor, defaultGrace) // a floor that a loaded machine cannot outrun between seeing a question and answering it
+	h.base.NoBudget = h.unlimitedByDefault()       // as newWebHost leaves it
+	h.bridge = h.newBridge(testFloor, time.Minute) // a floor that a loaded machine cannot outrun between seeing a question and answering it
 	srv, err := web.New(web.Config{Addr: "127.0.0.1:0", Routes: h.register, Hub: webHubConfig})
 	if err != nil {
 		t.Fatal(err)

@@ -22,9 +22,11 @@ type ModelRow struct {
 
 // ModelsView is the catalogue with the favourites and the sources that could not be read.
 type ModelsView struct {
-	Models     []ModelRow        `json:"models"`
-	Favs       []string          `json:"favs"`
-	Errors     []string          `json:"errors,omitempty"`
+	Models []ModelRow `json:"models"`
+	Favs   []string   `json:"favs"`
+	Errors []string   `json:"errors,omitempty"`
+	// Suggested is the model a picker starts on when nothing chose one (its provider's suggested_model), "" when no listed model is.
+	Suggested  string            `json:"suggested,omitempty"`
 	Roles      []RoleInfo        `json:"roles"`
 	RoleOrder  []string          `json:"roleOrder"`
 	RoleModels map[string]string `json:"roleModels"`
@@ -338,4 +340,105 @@ type UpdateStatus struct {
 	Latest    string `json:"latest,omitempty"`
 	Available bool   `json:"available"`
 	Notes     string `json:"notes,omitempty"`
+}
+
+// MemoryView is what the Memory page shows: the agent's notes, the instruction files a session of the tab's project reads, and
+// the lesson memory. Text is the files' own, sent as JSON for the page to escape.
+type MemoryView struct {
+	Notes MemoryNotes `json:"notes"`
+	// Project are the notes the agents saved for this project (.sleipnir/MEMORY.local.md, scope project); absent with no project.
+	Project *MemoryNotes `json:"project,omitempty"`
+	// Lore is what each role of a team learned in this project; absent with no project.
+	Lore    *MemoryLore   `json:"lore,omitempty"`
+	Files   []MemoryFile  `json:"files"`
+	Lessons MemoryLessons `json:"lessons"`
+	// Root is the project root (~/... under the home directory); "" when there is no tab, and so only the user's files.
+	Root string `json:"root,omitempty"`
+	// Trusted says whether the project's own files are read by its sessions (a project that is not trusted has them listed, unread).
+	Trusted bool `json:"trusted"`
+}
+
+// MemoryNotes are the notes the agents saved with the memory tool (~/.sleipnir/MEMORY.md), shown at the start of every session.
+type MemoryNotes struct {
+	Path    string   `json:"path"`
+	Notes   []string `json:"notes"`
+	Version string   `json:"version"` // of the file as read; a write names it and is refused when the file changed since
+	On      bool     `json:"on"`      // the memory plugin is on, so sessions read and write the notes
+	Max     int      `json:"max"`     // notes the file holds
+	MaxLen  int      `json:"maxLen"`  // characters of one note
+}
+
+// MemoryFile is one place an instruction file is read from, whether a file is there or not.
+type MemoryFile struct {
+	Path      string `json:"path"`  // as the prompt shows it: relative to the project root, or ~/.sleipnir/...
+	Scope     string `json:"scope"` // user, project, dir, local or import
+	Exists    bool   `json:"exists"`
+	Loaded    bool   `json:"loaded"`              // a session started now has its text in its shared prompt
+	Text      string `json:"text"`                // the file as it is on disk (an import: as the prompt has it)
+	Version   string `json:"version"`             // "" for a file that is not there yet
+	Editable  bool   `json:"editable"`            // the page may write it (PUT .../memory/file)
+	Why       string `json:"why,omitempty"`       // why it is not loaded or not editable
+	Truncated bool   `json:"truncated,omitempty"` // the prompt has only the start of it
+}
+
+// MemoryLessons are the lessons distilled from earlier goals (~/.sleipnir/lessons.json).
+type MemoryLessons struct {
+	Path    string         `json:"path"`
+	On      bool           `json:"on"` // the lessons plugin is on (recall also needs an embedder model)
+	Lessons []MemoryLesson `json:"lessons"`
+	Error   string         `json:"error,omitempty"`
+}
+
+// MemoryLesson is one lesson, with the record of the goals it was shown to.
+type MemoryLesson struct {
+	ID      string  `json:"id"`
+	Kind    string  `json:"kind"` // strategy or pitfall
+	Text    string  `json:"text"`
+	Task    string  `json:"task,omitempty"`
+	Uses    int     `json:"uses"`
+	Wins    int     `json:"wins"`
+	Losses  int     `json:"losses"`
+	Utility float64 `json:"utility"`
+	Created string  `json:"created,omitempty"` // RFC 3339
+	Last    string  `json:"last,omitempty"`
+}
+
+// MemoryNotesWrite replaces the agent's notes: the whole list, and the version it was edited from. Scope is "" or "user" for the
+// user's notes, "project" for the project's.
+type MemoryNotesWrite struct {
+	Notes   []string `json:"notes"`
+	Version string   `json:"version"`
+	Scope   string   `json:"scope,omitempty"`
+}
+
+// MemoryLore is the project's memory by role (internal/lore): one file per role under the state directory, saved from the role
+// notes of the workers whose task the manager accepted, and put in that role's prompt in later team sessions of the project.
+type MemoryLore struct {
+	Dir   string           `json:"dir"`
+	On    bool             `json:"on"` // the memory plugin is on, so team sessions read and save it
+	Roles []MemoryLoreRole `json:"roles"`
+	Error string           `json:"error,omitempty"`
+}
+
+// MemoryLoreRole is the lore of one role: its file and its items in file order.
+type MemoryLoreRole struct {
+	Role  string           `json:"role"`
+	Path  string           `json:"path"`
+	Items []MemoryLoreItem `json:"items"`
+	Error string           `json:"error,omitempty"`
+}
+
+// MemoryLoreItem is one thing a role learned: its stage (insight, or canon when a person marked it so) and how many times it was saved.
+type MemoryLoreItem struct {
+	Stage     string `json:"stage"`
+	Confirmed int    `json:"confirmed"`
+	Text      string `json:"text"`
+}
+
+// MemoryFileWrite replaces or creates one instruction file: its path as MemoryFile shows it, the new text, and the version it was
+// edited from ("" for a file that is not there yet).
+type MemoryFileWrite struct {
+	Path    string `json:"path"`
+	Text    string `json:"text"`
+	Version string `json:"version"`
 }

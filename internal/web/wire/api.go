@@ -283,6 +283,11 @@ type NewSessionRequest struct {
 	// ManagerApproves false puts every worker's permission question to the person (--manager-approves=false); nil or true lets the
 	// manager answer the routine ones first.
 	ManagerApproves *bool `json:"managerApproves,omitempty"`
+	// ManagerAnswersAfter ("10m") is how long a worker's question waits for the person before the manager answers it for them
+	// (--manager-answers-after); "" leaves it to the configuration. ManagerAnswersUpTo is the most dangerous kind it may answer
+	// then: low, medium or high (--manager-answers-up-to).
+	ManagerAnswersAfter string `json:"managerAnswersAfter,omitempty"`
+	ManagerAnswersUpTo  string `json:"managerAnswersUpTo,omitempty"`
 	// CompactAt is the percentage of each model's context window at which agents' compaction starts, 10 to 90 (--compact-at);
 	// nil or 0 leaves it to the configuration (cache.compact_at_percent, else 25).
 	CompactAt *int `json:"compactAt,omitempty"`
@@ -301,12 +306,14 @@ type ResumeRequest struct {
 	Cwd  string `json:"cwd,omitempty"`
 }
 
-// RestartRequest is the restart family: Kind new, clear, swarm, restart, model, roles; Fresh starts the chat empty.
+// RestartRequest is the restart family: Kind new, clear, swarm, restart, model, roles; Fresh starts the chat empty. A roles restart
+// takes Team, the whole team to start again with (one entry per worker slot), with or instead of RoleModels.
 type RestartRequest struct {
 	Kind       string            `json:"kind"`
 	Swarm      *int              `json:"swarm,omitempty"`
 	Model      string            `json:"model,omitempty"`
 	RoleModels map[string]string `json:"roleModels,omitempty"`
+	Team       []TeamSlot        `json:"team,omitempty"`
 	Fresh      bool              `json:"fresh"`
 	Flags      []string          `json:"flags,omitempty"`
 }
@@ -379,6 +386,8 @@ type ResearchRun struct {
 	Planned  int    `json:"planned"`
 	OpenGaps int    `json:"openGaps"`
 	Active   bool   `json:"active"` // the run a goal drives now
+	// NoFactCheck: the run's depth has no fact-check round (quick), so the view leaves that phase out.
+	NoFactCheck bool `json:"noFactCheck,omitempty"`
 }
 
 // ResearchDepth is a depth a run can have, with what it asks for.
@@ -406,11 +415,14 @@ type ModeRequest struct {
 }
 
 // ModelRequest sets the manager's model (Role empty or "manager") or a role's (a team restarts that role). Roles, when it names any,
-// changes several at once instead of Ref and Role: role to model, "manager" for the team's model, all applied by one restart.
+// changes several at once instead of Ref and Role: role to model, "manager" for the team's model, all applied by one restart. Team,
+// when it names any slot, is the whole team the session goes on with, one entry per worker slot in team order: it sets how many
+// workers each role has and the model of each slot ("" is the role's), in the same restart as Roles.
 type ModelRequest struct {
 	Ref   string            `json:"ref,omitempty"`
 	Role  string            `json:"role,omitempty"`
 	Roles map[string]string `json:"roles,omitempty"`
+	Team  []TeamSlot        `json:"team,omitempty"`
 }
 
 // EffortRequest sets the reasoning effort.

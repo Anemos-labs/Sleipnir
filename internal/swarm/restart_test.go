@@ -16,6 +16,14 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/tui/state"
 )
 
+// scheduledOf reports whether a restart of the worker waits and its scheduled event is logged, so a supervisor pass may start it.
+func scheduledOf(r *rvRig, id string) bool {
+	m := r.sw.get(id)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.restart != nil && m.restart.logged
+}
+
 // pendingOf is the automatic restart waiting for a member, nil when there is none.
 func pendingOf(r *rvRig, id string) *pendingRestart {
 	m := r.sw.get(id)
@@ -179,7 +187,7 @@ func TestAutomaticRestartsStopAtTheirBoundAndTheManagerIsTold(t *testing.T) {
 		t.Fatal(err)
 	}
 	for n := 1; n <= maxAutoRestarts; n++ {
-		rvWait(t, fmt.Sprintf("failed run %d", n), func() bool { e, _ := ends(r, id); return e == n && r.idle(id) && pendingOf(r, id) != nil })
+		rvWait(t, fmt.Sprintf("failed run %d", n), func() bool { e, _ := ends(r, id); return e == n && r.idle(id) && scheduledOf(r, id) })
 		p := pendingOf(r, id)
 		if p.n != n {
 			t.Fatalf("restart %d is counted as %d", n, p.n)
@@ -219,6 +227,43 @@ func TestAutomaticRestartsStopAtTheirBoundAndTheManagerIsTold(t *testing.T) {
 	r.sw.superviseOnce(clock.Now())
 	if e, _ := ends(r, id); e != maxAutoRestarts+1 || r.running(id) {
 		t.Fatal("the worker was started again past the bound")
+	}
+}
+
+// A restart whose scheduled event is not yet in the log does not start, however due: the supervisor leaves it to a later pass,
+// so the log never shows a restart starting before it was scheduled.
+func TestARestartDoesNotStartBeforeItsScheduledEventIsLogged(t *testing.T) {
+	clock := newFakeClock()
+	r := newClockRig(t, Config{MaxWriters: 4, MaxAttempts: 10}, clock, func(_ context.Context, c *rvCall) rvReply {
+		if c.Role != "backend" {
+			return rvReply{Text: "ok"}
+		}
+		return readReply
+	})
+	stepLimitedBackend(r)
+	r.sw.StartManager()
+	id, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "build the API", Files: []string{"api/**"}, By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, "the failed run", func() bool { e, _ := ends(r, id); return e == 1 && r.idle(id) && scheduledOf(r, id) })
+	m := r.sw.get(id)
+	setLogged := func(v bool) {
+		m.mu.Lock()
+		m.restart.logged = v
+		m.mu.Unlock()
+	}
+	setLogged(false) // as between the run publishing the restart and logging its event
+	clock.Advance(restartBackoff)
+	r.sw.superviseOnce(clock.Now())
+	if pendingOf(r, id) == nil {
+		t.Fatal("a restart started before its scheduled event was logged")
+	}
+	setLogged(true)
+	r.sw.superviseOnce(clock.Now())
+	rvWait(t, "the restarted run", func() bool { e, _ := ends(r, id); return e == 2 })
+	if got := strings.Join(restartPhases(r, id), ","); !strings.HasPrefix(got, "scheduled,start") {
+		t.Errorf("swarm.restart phases = %s", got)
 	}
 }
 
@@ -297,7 +342,7 @@ func TestNoAutomaticRestartAfterABudgetStopOrAnInterrupt(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		rvWait(t, "the step limit to end the run", func() bool { return r.idle(id) && pendingOf(r, id) != nil })
+		rvWait(t, "the step limit to end the run", func() bool { return r.idle(id) && scheduledOf(r, id) })
 		r.sw.stopWorkers("interrupted", false)
 		if pendingOf(r, id) != nil {
 			t.Fatal("the interrupt left the restart waiting")
@@ -411,7 +456,7 @@ func TestAFailedPoolLeaderIsRestartedBeforeTheManagerIsAsked(t *testing.T) {
 		t.Fatalf("leader %s", lead)
 	}
 	for n := 1; n <= maxAutoRestarts; n++ {
-		rvWait(t, fmt.Sprintf("failed run %d", n), func() bool { _, f := ends(r, lead); return f == n && r.idle(lead) && pendingOf(r, lead) != nil })
+		rvWait(t, fmt.Sprintf("failed run %d", n), func() bool { _, f := ends(r, lead); return f == n && r.idle(lead) && scheduledOf(r, lead) })
 		if p := pendingOf(r, lead); p.n != n || strings.Join(p.tasks, ",") != parent.ID {
 			t.Fatalf("pending restart = %+v, want restart %d on %s", p, n, parent.ID)
 		}
@@ -486,7 +531,7 @@ func restartWaiting(t *testing.T, cfg Config) (*rvRig, *fakeClock, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rvWait(t, "the step limit to end the run", func() bool { return r.idle(id) && pendingOf(r, id) != nil })
+	rvWait(t, "the step limit to end the run", func() bool { return r.idle(id) && scheduledOf(r, id) })
 	return r, clock, id
 }
 

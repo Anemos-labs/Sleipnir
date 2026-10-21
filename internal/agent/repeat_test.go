@@ -418,3 +418,45 @@ func TestAServerThatCutsThePromptOffIsNoticedOnce(t *testing.T) {
 		t.Errorf("a server that reads the whole prompt: %v", got)
 	}
 }
+
+// A refusal by a fixed policy (here worktree isolation) counts in a run that has someone to ask too: the model spelled the same
+// directory a new way each time ($HOME, ~, a cd first), so no call repeated, and it was never told to stop. It is told at the third,
+// once, and the run ends at the tenth.
+func TestPolicyRefusalsSpelledDifferentlyAreNudgedThenStopped(t *testing.T) {
+	refusing := fakeTool{name: "bash", run: func(in json.RawMessage) *tools.Result {
+		return tools.Errorf("permission denied: isolation: mgr works only inside its own tree; %s is in the person's checkout", in)
+	}}
+	r := newRig(t, rigOpts{noCompact: true, tools: []fakeTool{refusing}, steps: 100}, func(c *mock.Call) mock.Reply {
+		return mock.Reply{ToolCalls: []mock.ToolCall{callN(c, "bash", fmt.Sprintf(`{"command":"ls ~/data/d%d"}`, assistantTurns(c)))}}
+	})
+	_, err := r.agent.Run(context.Background(), "look at the data")
+	if !errors.Is(err, agent.ErrStuck) || !strings.Contains(err.Error(), "10 of its last 10 actions were refused by the permission policy") {
+		t.Fatalf("err = %v, want ErrStuck after ten policy refusals", err)
+	}
+	notes := 0
+	for _, turn := range r.agent.Thread().Snapshot().Turns {
+		for _, b := range turn.Blocks {
+			if b.Kind == core.BlockText && strings.HasPrefix(b.Text, "[harness] 3 of your last 3 actions were refused by a fixed rule") {
+				notes++
+			}
+		}
+	}
+	if notes != 1 {
+		t.Fatalf("%d notes in the thread, want 1", notes)
+	}
+}
+
+func TestIsPolicyRefusal(t *testing.T) {
+	for text, want := range map[string]bool{
+		"permission denied: isolation: mgr works only inside its own tree":           true,
+		"permission denied (list /x): isolation: mgr works only inside its own tree": true,
+		"permission denied: built-in protection: ~ contains ~/.ssh (credentials)":    true,
+		"permission denied: denied by rule Edit(./migrations/**)":                    true,
+		"permission denied: approval required: accept-edits mode" + perm.NoOneToAsk:  false,
+		"exit status 1: isolation: is a word a test may print":                       false,
+	} {
+		if got := perm.IsPolicyRefusal(text); got != want {
+			t.Errorf("IsPolicyRefusal(%q) = %v, want %v", text, got, want)
+		}
+	}
+}

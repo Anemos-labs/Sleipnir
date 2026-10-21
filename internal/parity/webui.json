@@ -28,6 +28,11 @@
    "nav": true
   },
   {
+   "name": "memory",
+   "title": "Memory",
+   "nav": true
+  },
+  {
    "name": "plugins",
    "title": "Plugins",
    "nav": true
@@ -168,6 +173,22 @@
    "tab": null,
    "label": "Sessions",
    "key": "s",
+   "radio": false
+  },
+  {
+   "id": "schedule",
+   "view": "schedule",
+   "tab": null,
+   "label": "Schedule",
+   "key": "j",
+   "radio": false
+  },
+  {
+   "id": "memory",
+   "view": "memory",
+   "tab": null,
+   "label": "Memory",
+   "key": "y",
    "radio": false
   },
   {
@@ -654,6 +675,15 @@
    "live": true,
    "effects": [
     "view:research"
+   ]
+  },
+  {
+   "group": "go to",
+   "name": "Memory",
+   "kind": "view",
+   "live": true,
+   "effects": [
+    "view:memory"
    ]
   },
   {
@@ -1846,6 +1876,23 @@
      "scope": "view"
     },
     {
+     "id": "tall*",
+     "scope": "flag",
+     "flag": "role-model",
+     "note": "the team, slot by slot (--role-model given once per slot)"
+    },
+    {
+     "id": "tcount*",
+     "scope": "flag",
+     "flag": "swarm"
+    },
+    {
+     "id": "tslot*",
+     "scope": "flag",
+     "flag": "role-model",
+     "note": "the team, slot by slot (--role-model given once per slot)"
+    },
+    {
      "id": "use*",
      "scope": "config",
      "keys": [
@@ -1923,11 +1970,6 @@
      "flag": "trust-project"
     },
     {
-     "id": "id:rn",
-     "scope": "flag",
-     "flag": "swarm"
-    },
-    {
      "id": "id:rv",
      "scope": "flag",
      "flag": "verify"
@@ -1941,9 +1983,21 @@
      "flag": "isolation"
     },
     {
-     "id": "step*",
+     "id": "tall*",
+     "scope": "flag",
+     "flag": "role-model",
+     "note": "the team, slot by slot (--role-model given once per slot)"
+    },
+    {
+     "id": "tcount*",
      "scope": "flag",
      "flag": "swarm"
+    },
+    {
+     "id": "tslot*",
+     "scope": "flag",
+     "flag": "role-model",
+     "note": "the team, slot by slot (--role-model given once per slot)"
     }
    ]
   },
@@ -2263,6 +2317,7 @@
    "isolation",
    "verify tasks with (--verify)",
    "team options",
+   "when you are away (--manager-answers-after, --manager-answers-up-to)",
    "pre-approve actions (--allow)",
    "trust, tools and memory",
    "budget (--budget-usd)",
@@ -2288,6 +2343,8 @@
    "cwd",
    "isolation",
    "mailman",
+   "manager-answers-after",
+   "manager-answers-up-to",
    "manager-approves",
    "mode",
    "model",
@@ -2313,6 +2370,7 @@
    "nsGitRow",
    "nsGoal",
    "nsModel",
+   "nsModelHint",
    "nsModes",
    "nsName",
    "nsProjects",
@@ -2330,7 +2388,7 @@
    "nsVerifyHints",
    "nsWarn"
   ],
-  "commandLine": "sleipnir chat --resume 20260101-000000-abcdef --cwd /p --model a/m --mode plan --swarm 8 --isolation worktree --verify v --commit --mailman --auto-docs=false --manager-approves=false --budget-usd 5 --compact-at 40 --role-model backend=a/w --allow tests --trust-project --no-mcp --no-memory",
+  "commandLine": "sleipnir chat --resume 20260101-000000-abcdef --cwd /p --model a/m --mode plan --swarm 8 --isolation worktree --verify v --commit --mailman --auto-docs=false --manager-approves=false --manager-answers-after 10m --manager-answers-up-to high --budget-usd 5 --compact-at 40 --role-model backend=a/w --allow tests --trust-project --no-mcp --no-memory",
   "flags": [
    "allow",
    "auto-docs",
@@ -2340,6 +2398,8 @@
    "cwd",
    "isolation",
    "mailman",
+   "manager-answers-after",
+   "manager-answers-up-to",
    "manager-approves",
    "mode",
    "model",
@@ -2360,6 +2420,8 @@
    "cwd",
    "isolation",
    "mailman",
+   "manager-answers-after",
+   "manager-answers-up-to",
    "manager-approves",
    "mode",
    "model",
@@ -2379,6 +2441,8 @@
    "compact-at",
    "cwd",
    "mailman",
+   "manager-answers-after",
+   "manager-answers-up-to",
    "manager-approves",
    "mode",
    "model",
@@ -2524,6 +2588,8 @@
      "cwd",
      "isolation",
      "mailman",
+     "manager-answers-after",
+     "manager-answers-up-to",
      "manager-approves",
      "mode",
      "model",
@@ -2534,6 +2600,7 @@
      "resume",
      "role-model",
      "swarm",
+     "team",
      "trust-project",
      "verbose",
      "verify"
@@ -2573,6 +2640,7 @@
      "role-model",
      "session-dir",
      "swarm",
+     "team",
      "trust-project",
      "verbose",
      "verify"
@@ -2617,6 +2685,7 @@
      "resume",
      "role-model",
      "session-dir",
+     "team",
      "trust-project",
      "verbose",
      "verify"

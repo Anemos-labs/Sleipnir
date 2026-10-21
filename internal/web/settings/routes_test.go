@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/anemos-labs/sleipnir/internal/catalog"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
@@ -17,7 +18,7 @@ type route struct {
 	noBody       bool // the route refuses any body
 }
 
-// settingsRoutes are every route Register adds (KeyRoutes is false).
+// settingsRoutes are every route Register adds but the key route, which takes a confirmation first (TestKeyRouteHandler).
 func settingsRoutes(repo string) []route {
 	return []route{
 		{method: "GET", path: "/api/models"},
@@ -112,18 +113,16 @@ func TestTabIdsAreCheckedBeforeAnyLookup(t *testing.T) {
 	}
 }
 
-// The key route is not served (sign-in stays in the terminal): the catch-all answers it.
-func TestTheKeyRouteIsNotServed(t *testing.T) {
+// The key route is served: a person who uses only the page can add a provider's key.
+func TestTheKeyRouteIsServed(t *testing.T) {
+	if !KeyRoutes {
+		t.Fatal("KeyRoutes is off: a key can only be added in a terminal")
+	}
 	e := newEnv(t, nil)
-	if KeyRoutes {
-		t.Fatal("KeyRoutes is on: sign-in stays in the terminal")
-	}
+	t.Cleanup(func() { catalog.ForgetKey(e.home, "OPENAI_API_KEY") }) //nolint:errcheck // cleanup of a held key
 	rec := e.do("POST", "/api/providers/openai/key", wire.KeySaveRequest{Key: "sk-whatever-0123456789abcdef"}, map[string]string{"X-Confirm": e.confirm("key:openai")})
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("the key route answered %d", rec.Code)
-	}
-	if _, err := os.Stat(filepath.Join(e.home, ".sleipnir", "auth.json")); !os.IsNotExist(err) {
-		t.Error("a key was stored through a route that is off")
+	if rec.Code != http.StatusOK {
+		t.Errorf("the key route answered %d %s", rec.Code, rec.Body)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
 )
@@ -19,10 +20,17 @@ import (
 //     --role-model frontend=x … is a team of two backends and a frontend on x.
 //
 // The manager, the compactor, the judge and the mailman are never workers: they only take a model, once, in either use.
-type roleModelFlag struct{ entries []roleEntry }
+type roleModelFlag struct {
+	entries []roleEntry
+	load    func() error // --team's values, added by split (teamFlag.Set)
+}
 
-// roleEntry is one --role-model value; model is "" for a bare role.
-type roleEntry struct{ role, model string }
+// roleEntry is one --role-model value; model is "" for a bare role. slot marks a value from a team file (--team), which is
+// always a slot of the team.
+type roleEntry struct {
+	role, model string
+	slot        bool
+}
 
 // serviceRole reports whether role takes a model but is never a team slot: the manager, which leads the team, and the harness's
 // compactor, judge and mailman.
@@ -62,6 +70,13 @@ func (r *roleModelFlag) Set(v string) error {
 // split reads the values: the models of roles (the first use, and the service roles
 // always) and the team (the second use; nil when the values define none).
 func (r *roleModelFlag) split() (map[string]string, []session.TeamSlot, error) {
+	if r != nil && r.load != nil {
+		load := r.load
+		r.load = nil
+		if err := load(); err != nil {
+			return nil, nil, err
+		}
+	}
 	if r == nil || len(r.entries) == 0 {
 		return nil, nil, nil
 	}
@@ -75,7 +90,7 @@ func (r *roleModelFlag) split() (map[string]string, []session.TeamSlot, error) {
 			}
 			continue
 		}
-		if e.model == "" || seen[e.role] > 1 {
+		if e.model == "" || seen[e.role] > 1 || e.slot {
 			team = true
 		}
 	}
@@ -113,9 +128,21 @@ func teamWorkers(team []session.TeamSlot, n int, given bool) (int, error) {
 	return len(team), nil
 }
 
-// checkTeamSize refuses a team smaller than the minimum: --swarm is 0 (a single
-// agent) or at least session.MinTeamWorkers.
+// checkTeamSize refuses a team size a session would not take, before anything else is asked (a model, a key): --swarm is 0 (a
+// single agent) or from session.MinTeamWorkers up to the ceiling (swarm.max_workers, else session.DefaultMaxTeamWorkers).
 func checkTeamSize(n int) error {
+	if n < 0 {
+		return fmt.Errorf("--swarm %d: the number of workers is 0 (a single agent) or at least %d", n, session.MinTeamWorkers)
+	}
+	if n > session.DefaultMaxTeamWorkers {
+		cfg, _, err := config.Load(config.LoadOpts{UntrustedProject: true})
+		if err != nil {
+			cfg = nil
+		}
+		if ceil := session.TeamCeiling(cfg); n > ceil {
+			return fmt.Errorf("--swarm %d: a session has at most %d workers; ask for fewer, or raise swarm.max_workers in your configuration", n, ceil)
+		}
+	}
 	if n > 0 && n < session.MinTeamWorkers {
 		return fmt.Errorf("--swarm %d: a team has at least %d workers, one of each role (--swarm 0 is a single agent); to leave a role out, name the team with --role-model", n, session.MinTeamWorkers)
 	}

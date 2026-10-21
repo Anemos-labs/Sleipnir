@@ -320,7 +320,7 @@ func TestParityChatFlagsAreTheCodes(t *testing.T) {
 	// field of its own in the request) and --mailman=false (the route adds it against a default of on)
 	zero, usd, off, share := 8, 5.0, false, 40
 	args := argsFor(wire.NewSessionRequest{Cwd: "/p", Model: "a/m", Mode: "plan", Swarm: &zero, Isolation: "worktree", Verify: "go test {dirs}", Commit: true,
-		Mailman: true, AutoDocs: &off, ManagerApproves: &off, Budget: &usd, CompactAt: &share, Rules: []string{"tests"}, TrustProject: true, NoMcp: true, NoMemory: true, RoleModels: map[string]string{"backend": "a/w"}})
+		Mailman: true, AutoDocs: &off, ManagerApproves: &off, ManagerAnswersAfter: "10m", ManagerAnswersUpTo: "high", Budget: &usd, CompactAt: &share, Rules: []string{"tests"}, TrustProject: true, NoMcp: true, NoMemory: true, RoleModels: map[string]string{"backend": "a/w"}})
 	var made []string
 	for _, a := range args {
 		if strings.HasPrefix(a, "--") {
@@ -343,7 +343,8 @@ func TestParityChatFlagsAreTheCodes(t *testing.T) {
 		t.Errorf("`sleipnir chat` does not accept what the host makes of a New session request: %v", err)
 	}
 
-	// Run settings: a control that sets a flag is a field the host stages for the next start (wire.LaunchPatch), or the team size
+	// Run settings: a control that sets a flag is a field the host stages for the next start (wire.LaunchPatch), or the team size and
+	// its slots (--swarm, --role-model per slot), which the restart of the model route applies at once
 	staged := map[string]bool{"isolation": true, "verify": true, "commit": true, "mailman": true, "auto-docs": true, "manager-approves": true, "no-mcp": true, "trust-project": true}
 	var patch map[string]json.RawMessage
 	b, _ := json.Marshal(wire.LaunchPatch{Isolation: new(string), Verify: new(string), Commit: new(bool), Mailman: new(bool), AutoDocs: new(bool), ManagerApproves: new(bool), NoMcp: new(bool), TrustProject: new(bool)})
@@ -357,7 +358,7 @@ func TestParityChatFlagsAreTheCodes(t *testing.T) {
 	}
 	for _, p := range ui.Settings {
 		for _, c := range p.Controls {
-			if c.Flag == "" || c.Flag == "swarm" {
+			if c.Flag == "" || c.Flag == "swarm" || c.Flag == "role-model" {
 				continue
 			}
 			if _, ok := patch[camel(c.Flag)]; !ok || !staged[c.Flag] {
