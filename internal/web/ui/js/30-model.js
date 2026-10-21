@@ -257,7 +257,7 @@
       }
       case 'reply': push(m, chOf(ev.id), { k: 'say', ag: ev.id, text: ev.text, stream: true, rate: 80, t: ev.t }, ev); break;
       case 'interrupt': {
-        push(m, 'mgr', { k: 'sys', glyph: '⏹', text: ev.id === 'turn' ? 'you interrupted the turn; the goal is paused' : 'you interrupted ' + ev.id, ag: ev.id === 'turn' ? null : ev.id, t: ev.t }, ev);
+        push(m, 'mgr', { k: 'sys', glyph: '⏹', text: ev.id === 'turn' ? 'you interrupted the turn' + (m.goal && m.goal.state === 'active' ? '; the goal is paused' : '') : 'you interrupted ' + ev.id, ag: ev.id === 'turn' ? null : ev.id, t: ev.t }, ev);
         if (ev.id !== 'turn' && ev.id !== 'mgr') push(m, chOf(ev.id), { k: 'sys', glyph: '⏹', text: 'interrupted by you', ag: ev.id, t: ev.t }, ev);
         break;
       }

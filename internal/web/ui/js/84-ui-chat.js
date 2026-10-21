@@ -159,7 +159,7 @@
     sc.listen(feedTog, 'click', () => { const S = SL.sessions.active; S.ui.feedOpen = S.ui.feedOpen === false; feedHead(S); if (S.ui.feedOpen !== false) { FD.stick = true; toEdge(FD); } });
     sc.listen(talk, 'click', e => { const c = e.target.closest('[data-cli]'); if (c) { ui.runCli([c.dataset.cli], null, true); return; } const r = e.target.closest('.msg.tool[data-file]'); if (r && !window.getSelection().toString()) { ui.ws.open(r.dataset.file, 'changes'); } });
     sc.listen(feed, 'click', e => { const r = e.target.closest('.msg[data-ag]'); if (!r || window.getSelection().toString()) return; const id = (r.dataset.ag || '').split(' ')[0], S = SL.sessions.active; if (S && S.m && S.m.ag[id]) ui.openDrawer(id); });
-    sc.listen(document.getElementById('rail'), 'click', e => { const b = e.target.closest('#chHead [data-ch]'); if (!b) return; const r = SL.act.interrupt('turn'); ui.toast(r.ok ? 'interrupted: the goal is paused' : (r.why || 'nothing to interrupt'), r.ok ? 'warm' : ''); });
+    sc.listen(document.getElementById('rail'), 'click', e => { const b = e.target.closest('#chHead [data-ch]'); if (!b) return; const S = SL.sessions.active, r = SL.act.interrupt('turn'); ui.toast(r.ok ? SL.interruptText(S) : (r.why || 'nothing to interrupt'), r.ok ? 'warm' : ''); });
 
     /* ---------- per-frame: streaming text ---------- */
     function frameFn(dt, vt, S) {
@@ -304,7 +304,7 @@
       if (e.key === 'j' && e.ctrlKey) { e.preventDefault(); inp.setRangeText('\n', inp.selectionStart, inp.selectionEnd, 'end'); autosize(); return; }
       if (e.key === 'c' && e.ctrlKey && inp.selectionStart === inp.selectionEnd) { e.preventDefault(); const S = SL.sessions.active;
         if (inp.value) { inp.value = ''; autosize(); closeSlash(); ui.toast('line discarded (ctrl+c again at an empty prompt quits)'); }
-        else if (S && !S.readOnly && (SL.calc.turnRunning(S.wm) || S.meta.running)) { RS.cc = 0; const r = SL.act.interrupt('turn'); ui.toast(r.ok ? 'interrupted: the turn is stopped and the goal is paused (/goal resume)' : (r.why || 'nothing is running to interrupt'), r.ok ? 'warm' : 'quiet'); }   /* as Esc does, and as the TUI does */
+        else if (S && !S.readOnly && (SL.calc.turnRunning(S.wm) || S.meta.running)) { RS.cc = 0; const r = SL.act.interrupt('turn'); ui.toast(r.ok ? SL.interruptText(S) : (r.why || 'nothing is running to interrupt'), r.ok ? 'warm' : 'quiet'); }   /* as Esc does, and as the TUI does */
         else if (RS.cc && SL.time.wall - RS.cc < 1500) { RS.cc = 0; if (S) ui.closeSessionAsk(S); }   /* ctrl+c twice at an empty prompt closes the session (quitting a page's session is closing it) */
         else { RS.cc = SL.time.wall; ui.toast('ctrl+c again to quit'); } return; }
       if (e.key === 'r' && e.ctrlKey) { e.preventDefault(); ui.sheets.history(); return; }
