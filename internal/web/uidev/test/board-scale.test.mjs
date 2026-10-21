@@ -180,3 +180,16 @@ test('a task resolved as no longer needed is not counted or listed as merged, an
   const q = L.$('.p-queue .qmeta').textContent;
   assert.match(q, /merged T1/); assert.doesNotMatch(q, /T2/, 'the merge queue lists only what was merged');
 });
+
+test('past COMPACT_AT, a resolved task\'s row says resolved, and the graph\'s fold counts it apart from the merged ones', async () => {
+  const L = await boot(), n = L.SL.ui.board.COMPACT_AT + 2;
+  for (let i = 1; i <= n; i++) await L.event('task', { id: 'T' + i, title: 'task ' + i, owner: 'be-1', s: 'merged', closure: 'verified' });
+  await L.event('task', { id: 'T99', title: 'superseded', s: 'merged', closure: 'unneeded' });
+  await L.step(10); L.SL.views.show('board'); await L.settle();
+  const row = L.$('.tcard[data-task="T99"]');
+  assert.ok(row.classList.contains('trow'), 'a compact row');
+  assert.match(row.textContent, /resolved/); assert.match(row.getAttribute('title'), /resolved: no longer needed, nothing merged/);
+  assert.doesNotMatch(row.getAttribute('title'), / merged \d/, 'no merge time');
+  assert.match(L.$('.dg .nd.fold').textContent, new RegExp('✓ ' + n + ' merged · 1 resolved'));
+  assert.match(L.$('.dgsum').textContent, new RegExp(n + ' merged · 1 resolved tasks folded into one'));
+});

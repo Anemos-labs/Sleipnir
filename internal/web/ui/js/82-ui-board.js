@@ -97,8 +97,8 @@
       const ownerHtml = '<span style="color:' + agCol(owner || 'mgr') + '">' + esc(owner) + '</span>';
       let html, title = id + ' · ' + t.title + (owner ? ' · ' + owner : '');
       if (row) {
-        const when = at(t.t); title += (when ? ' · merged ' + when : '') + (t.ms ? ' · verified in ' + fmtMs(t.ms) : '') + (away[id] ? ' · subtasks: ' + COLS.filter(([c]) => away[id][c]).map(([c]) => AWAY[c](away[id][c])).join(', ') : '');
-        html = '<div class="tcr"><span class="tid">' + esc(id) + '</span><span class="tow">' + ownerHtml + '</span><span class="tti">' + esc(t.title) + '</span>' + (t.parent && !nested ? '<span class="dim tpar">↳ ' + esc(t.parent) + '</span>' : '') + subLine(id, nk, open, null, true) + (when ? '<time class="tat">' + when.slice(0, 5) + '</time>' : '') + '</div>' + (open ? '<div class="subtasks"></div>' : '');
+        const when = at(t.t), rz = resolved(t); title += rz ? ' · resolved: no longer needed, nothing merged' : (when ? ' · merged ' + when : '') + (t.ms ? ' · verified in ' + fmtMs(t.ms) : '') + (away[id] ? ' · subtasks: ' + COLS.filter(([c]) => away[id][c]).map(([c]) => AWAY[c](away[id][c])).join(', ') : '');
+        html = '<div class="tcr"><span class="tid">' + esc(id) + '</span><span class="tow">' + ownerHtml + '</span><span class="tti">' + esc(t.title) + '</span>' + (t.parent && !nested ? '<span class="dim tpar">↳ ' + esc(t.parent) + '</span>' : '') + subLine(id, nk, open, null, true) + (rz ? '<span class="dim">resolved</span>' : when ? '<time class="tat">' + when.slice(0, 5) + '</time>' : '') + '</div>' + (open ? '<div class="subtasks"></div>' : '');
       } else {
         const need = (B.big && t.deps.length && t.st !== 'merged') ? '<span class="dep">after ' + t.deps.map(esc).join(' ') + '</span>' : '';
         /* the members by name in their colours; a model is on the member's card and in the tooltip, not here, where three long ids wrapped a card to five lines */
