@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A worker can clear a false-green refusal. The refusal said to replace a
+  dependency store that links outside the tree, but `unlink` on the link and
+  any command that both removed the link and reinstalled through it were
+  refused, since the link resolved outside the tree. `unlink` now removes the
+  link itself, as `rm` does, and the refusal names the command to run on its
+  own first (`rm .venv`), one for each link.
+
 - A research call that names no run reaches the project's only unfinished
   run after a session resumes. The run a call means was kept only in memory,
   so after a resume every `research` call without `run` was refused with "no
