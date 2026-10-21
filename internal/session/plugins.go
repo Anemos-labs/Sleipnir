@@ -26,6 +26,10 @@ func resolvePlugins(cfg *config.Config, rep *config.Report, o Options) (*plugin.
 	}
 	if o.NoMCP {
 		flag(plugin.MCP, false)
+	} else if len(o.MCPServers) > 0 {
+		// Servers the command line names (run --mcp-config) start whatever the settings say of the MCP plugin: the
+		// caller asked for them for this run, and a run that cannot start them is refused rather than run without.
+		flag(plugin.MCP, true)
 	}
 	if o.NoRecon {
 		flag(plugin.Recon, false)

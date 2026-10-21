@@ -89,6 +89,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	capture := fs.Bool("capture", false, "ask the endpoint for token ids and logprobs (self-hosted policy servers; RL data)")
 	noWeb := fs.Bool("no-web", false, "disable the web tools")
 	noMCP := fs.Bool("no-mcp", false, "start no MCP tool servers")
+	mcpConfigs := mcpConfigFlags(fs)
 	noMemory := fs.Bool("no-memory", false, noMemoryHelp)
 	resume := resumeFlags(fs)
 	roleFlag := &roleModelFlag{}
@@ -132,6 +133,13 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	if *askTimeout < 0 {
 		return fmt.Errorf("%s: --ask-timeout must not be negative", name)
 	}
+	if *noMCP && len(*mcpConfigs) > 0 {
+		return usageError(fs, name+": --mcp-config names servers that --no-mcp would not start; give one of them")
+	}
+	mcpServers, err := mcpConfigs.servers()
+	if err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
 	roleModels, teamSlots, err := roleFlag.split()
 	if err != nil {
 		return usageError(fs, name+": "+err.Error())
@@ -151,7 +159,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 		Cwd:        *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: team, Workers: workers,
 		MaxSteps: *maxSteps, FixedSteps: *maxSteps > 0, BudgetUSD: *budget, Verify: *verify, NoRecon: *noRecon, TrustProject: *trust,
 		Dir: *dir, ContextWindow: *ctxWin, CaptureTokens: *capture, NoWeb: *noWeb, RoleModels: roleModels,
-		Resume: spec, NoMCP: *noMCP, NoMemory: *noMemory, Isolation: *isolation, Commit: *commit, Mailman: mailman(), Allow: expandAllow(*allow),
+		Resume: spec, NoMCP: *noMCP, MCPServers: mcpServers, NoMemory: *noMemory, Isolation: *isolation, Commit: *commit, Mailman: mailman(), Allow: expandAllow(*allow),
 		AutoDocs: autoDocs(), ManagerApproves: managerApproves(), Team: teamSlots, DefaultTeam: true,
 	}
 	if interactive {

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -62,6 +63,10 @@ func (s *Session) startMCP(ctx context.Context, reg *tools.Registry) {
 	for _, is := range issues {
 		s.notice("", is.Error())
 	}
+	if err := commandLineServersKept(o.MCPServers, servers); err != nil {
+		s.mcpRefused = err
+		return
+	}
 	if len(servers) == 0 {
 		return
 	}
@@ -113,6 +118,37 @@ func (s *Session) startMCP(ctx context.Context, reg *tools.Registry) {
 	}
 }
 
+// commandLineServersKept reports a server the command line names that the session would leave out: the parser
+// reads the first mcp.MaxServers entries of a scope by name and the manager fails any server past mcp.MaxServers
+// overall, so beside a large configuration a named server can fall past the limit. The caller of
+// run --mcp-config named it for this run, which must not start without it.
+func commandLineServersKept(named map[string]json.RawMessage, servers map[string]mcp.ServerConfig) error {
+	if len(named) == 0 {
+		return nil
+	}
+	order := make([]string, 0, len(servers))
+	for name := range servers {
+		order = append(order, name)
+	}
+	sort.Strings(order)
+	started := map[string]bool{}
+	for i, name := range order {
+		started[name] = i < mcp.MaxServers
+	}
+	missing := []string{}
+	for name := range named {
+		if !started[name] {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	sort.Strings(missing)
+	return fmt.Errorf("--mcp-config: %s would not start: the configuration and plugins name more than %d MCP servers, and a session starts only the first %d by name",
+		strings.Join(missing, ", "), mcp.MaxServers, mcp.MaxServers)
+}
+
 // mcpEnv is what ${VAR} references in MCP entries resolve against: the process
 // environment, and the keys the harness holds itself (harden.MoveKeys took them out
 // of the environment, and an entry that names ${SOME_API_KEY} must resolve as it
@@ -156,6 +192,12 @@ func (s *Session) mcpServers() (map[string]mcp.ServerConfig, []mcp.Issue) {
 			}
 		}
 	}
+	// The servers the command line names (run --mcp-config) are the person's own word for this session,
+	// so they join the user's entries and replace a configured server of the same name.
+	for name, raw := range s.opts.MCPServers {
+		user[name] = raw
+		delete(project, name)
+	}
 	// A .mcp.json at the project root is the shared convention of other clients.
 	// It is a repository file like any other: read only for a trusted project,
 	// and its entries need approval like the project's own.
@@ -168,6 +210,10 @@ func (s *Session) mcpServers() (map[string]mcp.ServerConfig, []mcp.Issue) {
 					var m map[string]json.RawMessage
 					if json.Unmarshal(inner, &m) == nil {
 						for name, raw := range m {
+							if _, given := s.opts.MCPServers[name]; given {
+								issues = append(issues, mcp.Issue{Server: name, Message: ".mcp.json entry ignored: --mcp-config already names a server of that name"})
+								continue
+							}
 							if _, dup := s.cfg.MCP[name]; dup {
 								issues = append(issues, mcp.Issue{Server: name, Message: ".mcp.json entry ignored: the configuration already defines a server of that name"})
 								continue
