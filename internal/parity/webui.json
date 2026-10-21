@@ -2430,7 +2430,7 @@
    "trust-project",
    "verify"
   ],
-  "commandLineNamed": "sleipnir chat --resume 20260101-000000-abcdef --cwd /p --model a/m --mode plan --swarm 8 --team crew --isolation worktree --verify v --commit --mailman --auto-docs=false --manager-approves=false --budget-usd 5 --compact-at 40 --allow tests --trust-project --no-mcp --no-memory",
+  "commandLineNamed": "sleipnir chat --resume 20260101-000000-abcdef --cwd /p --model a/m --mode plan --swarm 8 --team crew --isolation worktree --verify v --commit --mailman --auto-docs=false --manager-approves=false --manager-answers-after 10m --manager-answers-up-to high --budget-usd 5 --compact-at 40 --allow tests --trust-project --no-mcp --no-memory",
   "flagsMailmanOff": [
    "allow",
    "auto-docs",
