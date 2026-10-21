@@ -105,15 +105,17 @@
     s = s.replace(/( {2,}|\\)\n/g, '<br>');
     return s.replace(/\u0000(\d+)\u0000/g, (m, i) => keep[+i]).replace(/\u0000(\d+)\u0000/g, (m, i) => keep[+i]);
   }
+  /** A percent-encoded project path decoded (my%20shot.png names my shot.png); text that does not decode stays as it is. */
+  const dec = s => { try { return decodeURIComponent(s); } catch (e) { return s; } };
   function linkHtml(lab, raw, o) {
     const t = target(raw), body = lab;
     if (t.scheme === 'http' || t.scheme === 'https' || t.scheme === 'mailto') return '<a href="' + attr(t.u) + '" target="_blank" rel="noopener noreferrer">' + body + '</a>';
     if (t.scheme || t.u.charAt(0) === '#' || !o.path) return '<span class="pv-ln" title="' + attr(t.u) + '">' + body + '</span>';
-    const p = media.resolve(o.path, t.u.split('#')[0].split('?')[0]);
-    return p ? '<a class="pv-ln" role="link" tabindex="0" data-file="' + attr(p) + '" title="open ' + attr(vis(p)) + ' in the Workspace">' + body + '</a>' : '<span class="pv-ln">' + body + '</span>';
+    const p = media.resolve(o.path, dec(t.u.split('#')[0].split('?')[0]));
+    return p ? '<button type="button" class="pv-ln linkbtn" data-file="' + attr(p) + '" title="open ' + attr(vis(p)) + ' in the Workspace">' + body + '</button>' : '<span class="pv-ln">' + body + '</span>';
   }
   function imageHtml(alt, raw, o) {
-    const t = target(raw), p = !t.scheme && o.path && o.tab ? media.resolve(o.path, t.u.split('#')[0].split('?')[0]) : '', k = media.kind(p);
+    const t = target(raw), p = !t.scheme && o.path && o.tab ? media.resolve(o.path, dec(t.u.split('#')[0].split('?')[0])) : '', k = media.kind(p);
     if (p && (k === 'image' || k === 'svg')) return '<img class="pv-m pv-inl" src="' + attr(media.rawUrl(o.tab, p, o.at, o.v)) + '" alt="' + alt + '" loading="lazy" decoding="async">';
     // a picture from elsewhere is not fetched (the page loads nothing from another origin): its address is a link
     return t.scheme === 'http' || t.scheme === 'https' ? '<a class="pv-noimg" href="' + attr(t.u) + '" target="_blank" rel="noopener noreferrer">🖼 ' + (alt || attr(t.u)) + '</a>' : '<span class="pv-noimg">🖼 ' + (alt || attr(t.u)) + '</span>';

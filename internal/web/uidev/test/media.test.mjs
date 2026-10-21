@@ -44,6 +44,11 @@ test('a relative link opens a project file; a picture of the project is served a
   assert.match(h, /data-file="README\.md"/);
   assert.match(h, /src="\/api\/sessions\/t1\/ws\/raw\?path=docs%2Fimg%2Fa\.png&amp;at=c03&amp;v=k"/);
   assert.doesNotMatch(h, /data-file="x\.md"/, 'a path that leaves the project opens nothing');
+  assert.match(h, /<button type="button" class="pv-ln linkbtn" data-file="README\.md"/, 'a project link is a button: it opens from the keyboard');
+  const sp = md('![s](img/my%20shot.png) [n](notes%20v2.md) [bad](%E0%A4%A.md)', { path: 'docs/a.md', tab: 't1', at: 'live' });
+  assert.match(sp, /path=docs%2Fimg%2Fmy%20shot\.png/, 'a percent-encoded picture path is decoded once');
+  assert.match(sp, /data-file="docs\/notes v2\.md"/);
+  assert.match(sp, /data-file="docs\/%E0%A4%A\.md"/, 'a path that does not decode stays as written');
   assert.equal(M.resolve('a/b.md', '../../c'), '');
   assert.equal(M.resolve('a/b.md', '/c/d.png'), 'c/d.png');
 });
