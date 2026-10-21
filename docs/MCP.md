@@ -58,7 +58,7 @@ same name in your configuration for that run. This is how a program that drives 
 that runs one session per conversation) gives a session a tool server that the rest of your sessions do not start.
 
 An entry given on the command line is your own word, so it is trusted as your user configuration is and starts without
-a question; a project's `.mcp.json` cannot replace it. A file that cannot be read, is not a JSON object, or holds an
+a question, even when the settings turn the MCP plugin off; a project's `.mcp.json` cannot replace it. A file that cannot be read, is not a JSON object, or holds an
 entry the configuration would refuse stops the run before it starts, and so does a named server that would fall past
 the 256 servers a session starts (counted by name, beside the configured and plugin servers). `--mcp-config` with
 `--no-mcp` is refused.

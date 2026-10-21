@@ -266,6 +266,29 @@ func TestMCPServersOfTheCommandLineStartUnaskedAndReplaceAConfiguredOne(t *testi
 	}
 }
 
+// The command line's servers start when the settings turn the MCP plugin off: naming them on the command line is
+// the person's own word for this run, which outranks the plugin's setting the way --no-mcp does.
+func TestMCPCommandLineServerStartsWhenTheSettingsTurnMCPOff(t *testing.T) {
+	repo := newRepo(t)
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	o := opts(t, repo, client, model)
+	writeConfig(t, config.UserConfigPath(o.Home), map[string]any{"plugins": map[string]any{"enabled": map[string]any{"mcp": false}}})
+	entry, err := json.Marshal(refServer(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.MCPServers = map[string]json.RawMessage{"ref": entry}
+	o.Prompter = nil
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if !hasSpec(s, "mcp__ref__echo") {
+		t.Fatalf("the command line's server did not start with MCP off in the settings: %v", s.MCPToolNames())
+	}
+}
+
 // A server the command line names is never left out for the configuration's server limit: when the configured
 // servers push it past the first mcp.MaxServers by name, the session refuses to start rather than run without it.
 func TestMCPCommandLineServerPastTheServerLimitRefusesTheSession(t *testing.T) {
