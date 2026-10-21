@@ -7,6 +7,21 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Agents save memory notes without asking. A change to the agents' notes
+  (`~/.sleipnir/MEMORY.md`, or the project's `.sleipnir/MEMORY.local.md`) no
+  longer waits for the person's approval; the protection of `~/.sleipnir` and
+  `.sleipnir` is for files an agent writes there itself, not for the memory
+  tool's own file. Instead the Memory item of the web interface's left bar
+  counts the session's new memory changes until the Memory view is opened
+  (`wire.Tool` gains `mem`: added or removed). A `memory` ask rule puts each
+  change to the person again, and a `memory` deny rule refuses it. The memory
+  tool's description changed, so the tools layer of the prompt cache is
+  rebuilt once.
+
+- The Memory page shows the project's own notes (`.sleipnir/MEMORY.local.md`),
+  to edit, remove and add like the user's (`PUT .../memory/notes` takes
+  `scope: project`), and the team's lore by role, read-only
+  (`wire.MemoryView` gains `project` and `lore`).
 - Questions wait for their answer. `sleipnir web` no longer refuses the open
   questions after a minute without a page (`--ask-grace` now defaults to 0,
   never); `--ask-grace` and `--ask-timeout` still set a limit when given.

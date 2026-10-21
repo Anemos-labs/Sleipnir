@@ -147,7 +147,8 @@ type Sys struct {
 // Arg is a one-line argument (the command, the path, the pattern; at most 160 characters) and Out a one-line result (at most 200).
 // OK is false for a call that failed; Refused, with Reason (at most 300 characters), marks a call that the permission engine
 // refused. File, Add and Del describe a write, an edit or a patch: the project-relative path (the first file of a patch) and the
-// lines added and removed. Task is the agent's current task and TID the harness's own id of the call (opaque).
+// lines added and removed. Task is the agent's current task and TID the harness's own id of the call (opaque). Mem is set when the
+// call changed the agents' notes (the memory tool saved or removed one): "added" or "removed"; the Memory item of the left bar counts it.
 type Tool struct {
 	Base
 	ID      string `json:"id"`
@@ -162,6 +163,7 @@ type Tool struct {
 	Del     int    `json:"del,omitempty"`
 	Task    string `json:"task,omitempty"`
 	TID     string `json:"tid,omitempty"`
+	Mem     string `json:"mem,omitempty"`
 }
 
 // Note is a one-line note of an agent (a submission, its evidence). G is the mark of the feed row: done, tool, edit, mail, ask,

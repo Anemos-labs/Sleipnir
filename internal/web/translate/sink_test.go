@@ -2,6 +2,7 @@ package translate
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -11,6 +12,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/tools/memtool"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
@@ -334,5 +336,35 @@ func TestSinkQueueBounds(t *testing.T) {
 	}
 	if tools < len(items)/2 {
 		t.Fatalf("text was not dropped first: %d tool items of %d", tools, len(items))
+	}
+}
+
+// A call of the memory tool that saved or removed a note marks its row (mem), which the Memory item of the rail counts; a list, a
+// refusal and any other tool's row carry no mark.
+func TestAMemoryChangeIsMarked(t *testing.T) {
+	h := newHarness(t, Config{Root: "/work", StartedAt: t0})
+	s := h.tr.Sink()
+	for i, c := range []struct {
+		input map[string]any
+		res   *tools.Result
+	}{
+		{map[string]any{"action": "add", "text": "uses pnpm"}, &tools.Result{Text: "saved (1 notes)", Meta: map[string]any{memtool.MetaChange: "added"}}},
+		{map[string]any{"action": "list"}, &tools.Result{Text: "1. uses pnpm"}},
+		{map[string]any{"action": "remove", "text": "pnpm"}, &tools.Result{Text: "removed 1 note(s) (0 notes)", Meta: map[string]any{memtool.MetaChange: "removed"}}},
+		{map[string]any{"action": "add", "text": "x"}, &tools.Result{Text: "permission denied (remember: x): denied by rule memory", IsError: true, Meta: map[string]any{memtool.MetaChange: "added"}}},
+	} {
+		cl := call("m"+jsNum(float64(i)), perm.ToolMemory, c.input)
+		h.set(h.now().Add(10 * time.Millisecond))
+		s.ToolStart("be-1", cl)
+		s.ToolEnd("be-1", cl, c.res, time.Millisecond)
+	}
+	h.drain()
+	rows := ofKind(h.decoded(), "tool")
+	var got []any
+	for _, r := range rows {
+		got = append(got, r["mem"])
+	}
+	if want := []any{"added", nil, "removed", nil}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("mem marks %v, want %v", got, want)
 	}
 }

@@ -345,7 +345,11 @@ type UpdateStatus struct {
 // MemoryView is what the Memory page shows: the agent's notes, the instruction files a session of the tab's project reads, and
 // the lesson memory. Text is the files' own, sent as JSON for the page to escape.
 type MemoryView struct {
-	Notes   MemoryNotes   `json:"notes"`
+	Notes MemoryNotes `json:"notes"`
+	// Project are the notes the agents saved for this project (.sleipnir/MEMORY.local.md, scope project); absent with no project.
+	Project *MemoryNotes `json:"project,omitempty"`
+	// Lore is what each role of a team learned in this project; absent with no project.
+	Lore    *MemoryLore   `json:"lore,omitempty"`
 	Files   []MemoryFile  `json:"files"`
 	Lessons MemoryLessons `json:"lessons"`
 	// Root is the project root (~/... under the home directory); "" when there is no tab, and so only the user's files.
@@ -399,10 +403,36 @@ type MemoryLesson struct {
 	Last    string  `json:"last,omitempty"`
 }
 
-// MemoryNotesWrite replaces the agent's notes: the whole list, and the version it was edited from.
+// MemoryNotesWrite replaces the agent's notes: the whole list, and the version it was edited from. Scope is "" or "user" for the
+// user's notes, "project" for the project's.
 type MemoryNotesWrite struct {
 	Notes   []string `json:"notes"`
 	Version string   `json:"version"`
+	Scope   string   `json:"scope,omitempty"`
+}
+
+// MemoryLore is the project's memory by role (internal/lore): one file per role under the state directory, saved from the role
+// notes of the workers whose task the manager accepted, and put in that role's prompt in later team sessions of the project.
+type MemoryLore struct {
+	Dir   string           `json:"dir"`
+	On    bool             `json:"on"` // the memory plugin is on, so team sessions read and save it
+	Roles []MemoryLoreRole `json:"roles"`
+	Error string           `json:"error,omitempty"`
+}
+
+// MemoryLoreRole is the lore of one role: its file and its items in file order.
+type MemoryLoreRole struct {
+	Role  string           `json:"role"`
+	Path  string           `json:"path"`
+	Items []MemoryLoreItem `json:"items"`
+	Error string           `json:"error,omitempty"`
+}
+
+// MemoryLoreItem is one thing a role learned: its stage (insight, or canon when a person marked it so) and how many times it was saved.
+type MemoryLoreItem struct {
+	Stage     string `json:"stage"`
+	Confirmed int    `json:"confirmed"`
+	Text      string `json:"text"`
 }
 
 // MemoryFileWrite replaces or creates one instruction file: its path as MemoryFile shows it, the new text, and the version it was

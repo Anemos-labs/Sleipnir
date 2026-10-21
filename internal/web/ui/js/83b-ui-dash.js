@@ -90,7 +90,9 @@
   page('memory', { title: 'Memory', view: 'memory', wrap: 'memv' }, [
     ['memory.notes', 'Agent notes', 'the notes the agents saved for later sessions: edit, remove, add', 0, 0, 6, 9, 3, 3, 'list'],
     ['memory.lessons', 'Lessons', 'what earlier goals taught, with their record', 6, 0, 6, 9, 3, 3, 'list'],
-    ['memory.files', 'Instruction files', 'yours, the project\'s and the local ones: what each session reads, to view and edit', 0, 9, 12, 12, 4, 3, 'list'],
+    ['memory.project', 'Project notes', 'the notes the agents saved for this project only: edit, remove, add', 0, 9, 6, 9, 3, 3, 'list'],
+    ['memory.lore', 'Team lore', 'what each team role learned in this project', 6, 9, 6, 9, 3, 3, 'list'],
+    ['memory.files', 'Instruction files', 'yours, the project\'s and the local ones: what each session reads, to view and edit', 0, 18, 12, 12, 4, 3, 'list'],
   ]);
   page('tools', { title: 'Tools', view: 'tools', wrap: 'toolsv' }, [
     ['tools.find', 'Find a command', 'filter the commands and open the runner', 0, 0, 12, 2, 3, 2],
