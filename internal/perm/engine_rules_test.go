@@ -131,6 +131,7 @@ func TestBashRulesAndModes(t *testing.T) {
 		{name: "accept-edits rm -rf star still high risk", mode: ModeAcceptEdits, req: bash("rm -rf *"), want: "ask"},
 		{name: "accept-edits rm of symlink removes the link only", mode: ModeAcceptEdits, req: bash("rm link-out"), want: "allow"},
 		{name: "accept-edits rm of dangling link", mode: ModeAcceptEdits, req: bash("rm dangling"), want: "allow"},
+		{name: "accept-edits unlink of symlink removes the link only", mode: ModeAcceptEdits, req: bash("unlink link-out"), want: "allow"},
 		{name: "accept-edits rm through symlink dir denied", mode: ModeAcceptEdits, req: bash("rm link-ssh/id_rsa"), want: "deny"},
 		{name: "accept-edits cp into symlinked outside asks", mode: ModeAcceptEdits, req: bash("cp main.go link-outdir/x"), want: "ask"},
 		{name: "accept-edits tee", mode: ModeAcceptEdits, req: bash("echo x | tee out.txt"), want: "allow"},

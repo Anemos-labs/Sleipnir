@@ -286,7 +286,15 @@ func falseGreen(esc []string) verifyResult {
 	}
 	return verifyResult{ran: true, code: -1, out: "Not verified: in this checkout " + strings.Join(esc, ", ") +
 		" is a link outside it, so tests could pass against the code it reaches instead of your edits (a false green). " +
-		"Remove the link and install the dependencies inside this checkout (npm ci, uv sync, …), then call task done again."}
+		"Remove the link in a command of its own first (" + unlinkHint(esc[0]) + "): the link is in your tree though what it reaches is not, " +
+		"and a command that also writes through the link is refused while it is there. Then install the dependencies inside this " +
+		"checkout (npm ci, uv sync, …) and call task done again."}
+}
+
+// unlinkHint is the command that removes the link an escaping store names ("node_modules -> /elsewhere").
+func unlinkHint(esc string) string {
+	name, _, _ := strings.Cut(esc, " -> ")
+	return "rm " + name
 }
 
 // interruptedVerification preserves caller cancellation or reports the verifier's
