@@ -7,6 +7,16 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A research-first goal keeps the free workers building. The goal and the
+  brief of a `/goal --research` run now say that the workers the research
+  leaves free lay the groundwork no finding can change (what the project
+  fixes outright: stack, layout, tooling, stated requirements) while it runs,
+  and that any free worker writes a wiki page, one writer per page. Before,
+  "research first, then build" held the whole team: in a quick run with a
+  team of 14, one docs worker wrote the pages while 13 workers waited for
+  over two hours. Only the goal text of new runs changes; the shared prompt
+  layer does not.
+
 - `--team NAME` looks in the project of `--cwd`. A team named by NAME is
   found in `.sleipnir/teams` of the project `--cwd` names, wherever `--cwd`
   stands on the command line, not only in the project of the directory the

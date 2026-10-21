@@ -107,7 +107,9 @@ origin serves only what the renderer made.
 
 `/goal --research=DEPTH GOAL` starts a research-first run for GOAL. The goal the team works on is the research milestones
 followed by the project's own goal, so the judge holds the build to both: the manager runs the research as the first
-part of the goal, and its plan cites the `context` page.
+part of the goal, and its plan cites the `context` page. The research does not hold the whole team: the workers it leaves
+free lay the groundwork no finding can change (what the project fixes outright: its stack, layout, tooling and stated
+requirements) while it runs, and the wiki's pages are written in parallel by any free worker, one page each.
 
 When the run is published, its `context` page (with the snippets it embeds, clipped to a fixed size) becomes a segment of
 the shared prompt layer that every agent reads, marked as unverified web content. This is one declared change of the

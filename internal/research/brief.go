@@ -30,6 +30,9 @@ func Brief(r *Run) string {
 	w("- **Researchers** (scouts, or any role with free slots): one track each. The research tool needs no write permission, so read-only roles research and cite.\n")
 	w("- **Writers** (the docs role, or any writer): write pages from the findings. One of them is the editor who makes terms, tone and links consistent across pages at the end.\n")
 	w("- **Fact-checkers** (reviewers): check each page against the quotes of the sources it cites. A page is reviewed by %d %s who did not write it.\n", d.Reviewers, plural(d.Reviewers, "agent", "agents"))
+	if kick {
+		w("- **Builders** (every worker the phases above leave free): the research does not hold the whole team. From the start, they lay the groundwork no finding can change: what the project fixes outright (its stack, layout, tooling, build and test commands, the requirements it states). Work that rests on a choice the research makes waits for the `context` page.\n")
+	}
 	w("- Without a team, one agent does the phases in order, one track at a time; the bars are the same.\n\n")
 
 	w("## Protocol\n\n")
@@ -57,7 +60,7 @@ func Brief(r *Run) string {
 		w("Each gap is researchable. The next round researches the gaps (assign them to the researchers whose tracks they fall in) and closes each with `research gap` and the findings that answer it, or as unanswerable with the reason. %s research runs %d rounds.\n\n", d.Title, d.Rounds)
 	}
 	w("### %d. Write\n\n", 3+boolInt(d.Rounds > 1))
-	w("Writers write pages with `research write_page` from the findings (`research findings` with a track or query) and the sources' quotes. Pages are written in parallel; then the editor reads them all and makes them one wiki (terms, tone, links, no repetition). ")
+	w("Writers write pages with `research write_page` from the findings (`research findings` with a track or query) and the sources' quotes. Pages are written in parallel, one writer per page: any free worker can write one, not only the docs role, so a wiki of %d pages takes about as long as its longest page. Then the editor reads them all and makes them one wiki (terms, tone, links, no repetition). ", d.MinPages+1)
 	w("Each page: %s words, every paragraph that states facts cites them ([S12] after the sentence), at least %d distinct sources, links to the pages it relates to ([[page-id]]), and is linked from at least one page. ", d.Words, d.MinCites)
 	w("The overview (`index`) answers the question directly in its first paragraph, then summarizes the main findings with links to the pages that develop them.\n\n")
 	w("### %d. Fact-check\n\n", 4+boolInt(d.Rounds > 1))
@@ -114,7 +117,8 @@ func Objective(r *Run, projectGoal, spec string) string {
 	}
 	d := r.DepthInfo()
 	var b strings.Builder
-	fmt.Fprintf(&b, "Research first (%s, run %s), then build. The research protocol is in %s: read it before planning.\n\n", d.ID, r.Slug, spec)
+	fmt.Fprintf(&b, "Research first (%s, run %s), then build. The research protocol is in %s: read it before planning. ", d.ID, r.Slug, spec)
+	b.WriteString("The workers the research leaves free start at once on what the project fixes outright (stack, layout, tooling, the requirements it states); what rests on a choice the research makes waits for its `context` page.\n\n")
 	b.WriteString("## Research milestones\n\n")
 	fmt.Fprintf(&b, "- Research plan: `research status` reports the plan phase done (%d perspectives, %d tracks, index and context pages planned).\n", d.Perspectives, d.Tracks)
 	fmt.Fprintf(&b, "- Research gathered: `research status` reports at least %d verified sources from %d sites, %d findings, %d snippets from %d projects, and no open gap.\n",
