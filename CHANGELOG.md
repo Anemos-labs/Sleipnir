@@ -43,6 +43,21 @@ they do not indicate whether a change has been released.
   the fact-check phase out of a quick run's progress (`wire.ResearchRun`
   gains `noFactCheck`).
 
+- Notices no longer pile up after restarts. A resumed session found the same
+  skills, hooks, plugins and instruction files as its earlier start and
+  logged the same warnings again, so a page replaying the log showed one more
+  copy of each per restart. A start-up warning already in the session's log
+  is now not logged or shown again.
+
+- An agent waits out a flaky endpoint that has answered it before. A failure
+  in which nothing answered (a dropped or reset connection, a gateway that
+  timed out) got only the six attempts, about half a minute, unless the
+  session said `WaitUnreachable`; a gateway that dropped connections for a
+  minute cost a worker its turn. Once the endpoint has answered the agent it
+  is known to exist, and such failures are waited out under the outage
+  patience (five minutes by default), like a 502 or 503. Before any answer a
+  misspelt URL still fails after the six attempts.
+
 - Questions wait for their answer. `sleipnir web` no longer refuses the open
   questions after a minute without a page (`--ask-grace` now defaults to 0,
   never); `--ask-grace` and `--ask-timeout` still set a limit when given.

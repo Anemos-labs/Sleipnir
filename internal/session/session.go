@@ -220,6 +220,8 @@ type Options struct {
 // Session is a running assembly. Run may be called repeatedly; the agent (or
 // manager) keeps its thread between calls.
 type Session struct {
+	// shownAtStart are the warnings of the session itself an earlier start of this resumed session logged (startNotice).
+	shownAtStart    map[string]bool
 	delivery        *delivery.Controller
 	deliveryOptions delivery.Options
 	opts            Options
@@ -499,12 +501,16 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	if o.Resume != "" && !hasLog(s.Dir) {
 		return nil, errors.New("this session was removed before it could be resumed")
 	}
+	if o.Resume != "" {
+		s.shownAtStart = loggedStartNotices(s.Dir)
+	}
+	shown := s.shownAtStart
 	if s.Log, err = events.Open(s.Dir, s.ID); err != nil {
 		return nil, err
 	}
 	s.emitPlugins()
 	for _, w := range plugWarns {
-		s.notice("", w)
+		s.startNotice(w)
 	}
 	s.effort.Set(o.Params.Effort)
 	if o.Resume != "" {
@@ -557,11 +563,12 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	s.ext.warnings = append(s.ext.warnings, hookWarns...)
 	s.ext.warnings = append(s.ext.warnings, extWarns...)
 	s.Skills, s.Roles = s.ext.skills, s.ext.roles
-	for _, w := range s.ext.warnings {
+	fresh := slices.DeleteFunc(slices.Clone(s.ext.warnings), func(w string) bool { return shown[w] })
+	for _, w := range fresh {
 		s.Log.Emit("", "notice", map[string]any{"level": "warn", "msg": w})
 	}
 	if o.Sink != nil {
-		for _, w := range shownWarnings(s.ext.warnings) {
+		for _, w := range shownWarnings(fresh) {
 			o.Sink.Notice("", "warn", w)
 		}
 	}
@@ -767,12 +774,12 @@ func (s *Session) buildShared(ctx context.Context) error {
 	}
 	if err != nil {
 		// Unreadable instruction files are reported, never fatal.
-		s.Log.Emit("", "notice", map[string]any{"level": "warn", "msg": "instruction files: " + err.Error()})
+		s.startNotice("instruction files: " + err.Error())
 	}
 	if !s.opts.TrustProject {
 		kept := userScopeOnly(srcs)
 		if skipped := skippedSources(srcs, kept); len(skipped) > 0 {
-			s.notice("", fmt.Sprintf("instruction files of this project were not loaded because the project is not trusted (%s); %s", strings.Join(skipped, ", "), trustHint("load")))
+			s.startNotice(fmt.Sprintf("instruction files of this project were not loaded because the project is not trusted (%s); %s", strings.Join(skipped, ", "), trustHint("load")))
 		}
 		srcs = kept
 	}
@@ -781,7 +788,7 @@ func (s *Session) buildShared(ctx context.Context) error {
 		budget := instructionTokenBudget(s.cfg.Cache.InstructionMaxTokens, s.Model.ContextTokens)
 		fitted, cut := fitInstructions(srcs, budget, est)
 		if len(cut) > 0 {
-			s.notice("", fmt.Sprintf("instruction files need about %d tokens; the limit is %d. Truncated or omitted: %s. Later, more specific files take precedence. Increase cache.instruction_max_tokens (SLEIPNIR_CACHE_INSTRUCTION_MAX_TOKENS) and restart, or shorten the files; /recon shows the loaded text", est.Tokens(txt), budget, strings.Join(cut, ", ")))
+			s.startNotice(fmt.Sprintf("instruction files need about %d tokens; the limit is %d. Truncated or omitted: %s. Later, more specific files take precedence. Increase cache.instruction_max_tokens (SLEIPNIR_CACHE_INSTRUCTION_MAX_TOKENS) and restart, or shorten the files; /recon shows the loaded text", est.Tokens(txt), budget, strings.Join(cut, ", ")))
 		}
 		segs = append(segs, kv.Segment{Key: "instructions", Text: fitted, Vol: kv.VolEpoch})
 	}
