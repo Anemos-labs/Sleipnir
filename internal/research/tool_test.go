@@ -251,3 +251,20 @@ func TestRenderHoldsOnlyRenderedFiles(t *testing.T) {
 		t.Fatal("a page's HTML was not escaped")
 	}
 }
+
+// A resumed session's store has no active run: a call that names none still reaches the project's only unfinished run, and
+// names the runs to choose from when there are several.
+func TestAResumedStoreFindsTheOnlyUnfinishedRun(t *testing.T) {
+	_, fr, r, root := newTestTool(t, "quick", ModeKickoff)
+	resumed := NewTool(NewStore(root), fr)
+	if out := must(t, resumed, "dc-1", map[string]any{"action": "status"}); !strings.Contains(out, r.Slug) {
+		t.Fatalf("status after a resume: %s", out)
+	}
+	if _, err := NewStore(root).Create("Another question entirely", "quick", ModeReport, ""); err != nil {
+		t.Fatal(err)
+	}
+	out, isErr := call(t, NewTool(NewStore(root), fr), "dc-1", map[string]any{"action": "status"})
+	if !isErr || !strings.Contains(out, "2 are unfinished") || !strings.Contains(out, r.Slug) {
+		t.Fatalf("two unfinished runs: %s", out)
+	}
+}

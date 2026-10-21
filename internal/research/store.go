@@ -332,6 +332,32 @@ func (s *Store) Active() string {
 	return s.active
 }
 
+// slugLocked is the run a call means: the one it names, else the active run, else the project's only unfinished run, which
+// becomes the active one. A store starts with no active run when its session resumes, and calls that name none must then still
+// reach the run they worked on (s.mu held).
+func (s *Store) slugLocked(slug string) (string, error) {
+	if slug != "" {
+		return slug, nil
+	}
+	if s.active != "" {
+		return s.active, nil
+	}
+	var open []string
+	for _, r := range List(s.root) {
+		if Check(s.root, r).Phase != PhaseDone {
+			open = append(open, r.Slug)
+		}
+	}
+	switch len(open) {
+	case 0:
+		return "", errors.New("no research run is open: name one with run, or start one with /research")
+	case 1:
+		s.active = open[0]
+		return open[0], nil
+	}
+	return "", fmt.Errorf("no research run is open and %d are unfinished: name one with run (%s)", len(open), strings.Join(open, ", "))
+}
+
 // loadLocked returns the run, reading it from disk the first time (s.mu held).
 func (s *Store) loadLocked(slug string) (*Run, error) {
 	if !ValidSlug(slug) {
@@ -398,11 +424,9 @@ func List(root string) []*Run {
 func (s *Store) Update(slug string, fn func(r *Run) error) (*Run, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if slug == "" {
-		slug = s.active
-	}
-	if slug == "" {
-		return nil, errors.New("no research run is open: name one with run, or start one with /research")
+	slug, err := s.slugLocked(slug)
+	if err != nil {
+		return nil, err
 	}
 	r, err := s.loadLocked(slug)
 	if err != nil {
@@ -431,11 +455,9 @@ func (s *Store) Update(slug string, fn func(r *Run) error) (*Run, error) {
 func (s *Store) View(slug string, fn func(r *Run) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if slug == "" {
-		slug = s.active
-	}
-	if slug == "" {
-		return errors.New("no research run is open: name one with run, or start one with /research")
+	slug, err := s.slugLocked(slug)
+	if err != nil {
+		return err
 	}
 	r, err := s.loadLocked(slug)
 	if err != nil {
