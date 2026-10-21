@@ -353,8 +353,16 @@ func TestAPartialWriteLeavesNoTornLine(t *testing.T) {
 	time.Sleep(3 * groupCommitWindow)
 	l.Emit("a", "x", "first")
 	l.mu.Lock()
+	fi, serr := l.f.Stat()
+	size := l.size
 	l.out = l.f
 	l.mu.Unlock()
+	if serr != nil {
+		t.Fatal(serr)
+	}
+	if fi.Size() != size {
+		t.Fatalf("file size after a partial write = %d, want %d: torn bytes were left behind", fi.Size(), size)
+	}
 	l.Emit("a", "x", "second")
 	if err := l.Close(); err != nil {
 		t.Fatal(err)

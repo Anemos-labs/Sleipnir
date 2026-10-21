@@ -74,6 +74,7 @@ type Log struct {
 	lastFl     time.Time
 	timer      *time.Timer // flushes the tail of a burst; created on first use
 	timerArmed bool
+	failing    bool // the last write failed; the next successful one clears it
 }
 
 // groupCommitWindow bounds how long an event may wait in the write buffer.
@@ -454,6 +455,9 @@ func (l *Log) commitLocked() error {
 		return nil
 	}
 	since := time.Since(l.lastFl)
+	if l.failing && since < writeRetryDelay {
+		return nil // the retry timer is armed: do not rewrite the whole backlog on every Emit
+	}
 	if l.lastFl.IsZero() || since >= groupCommitWindow || len(l.pend) >= writeBufferBytes {
 		return l.flushBufferLocked()
 	}
@@ -475,10 +479,12 @@ func (l *Log) flushBufferLocked() error {
 	}
 	n, err := l.out.Write(l.pend)
 	if err == nil {
+		l.failing = false
 		l.size += int64(n)
 		l.pend = l.pend[:0]
 		return nil
 	}
+	l.failing = true
 	if n > 0 {
 		_ = l.f.Truncate(l.size) // best effort: the next write starts at size anyway
 	}
