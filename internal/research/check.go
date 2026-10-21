@@ -265,7 +265,7 @@ func Check(root string, r *Run) Report {
 			}
 		}
 		pr.Passed = len(passed)
-		pr.Reviewed = len(passed) >= d.Reviewers && len(failed) == 0
+		pr.Reviewed = len(passed) > 0 && len(passed) >= d.Reviewers && len(failed) == 0 // a page nobody reviewed is not fact-checked
 		if pr.Reviewed {
 			c.Reviewed++
 		}

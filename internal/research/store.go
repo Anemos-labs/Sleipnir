@@ -371,12 +371,26 @@ func (s *Store) Resolve(slug string) (used, note string, err error) {
 	}
 	if _, lerr := s.loadLocked(slug); lerr == nil {
 		return slug, "", nil
+	} else if !s.missingLocked(slug) {
+		return "", "", lerr // the run is there but cannot be read: its error, not another run's ledger
 	}
 	used, err = s.slugLocked("")
 	if err != nil {
 		return "", "", fmt.Errorf("no research run %q, and %w", slug, err)
 	}
 	return used, fmt.Sprintf("(there is no run %q: this went to %s, the run this session works on; leave run out)", slug, used), nil
+}
+
+// missingLocked reports whether there is no run slug: a name that is not a slug, or no run.json under it (s.mu held).
+func (s *Store) missingLocked(slug string) bool {
+	if !ValidSlug(slug) {
+		return true
+	}
+	if _, ok := s.runs[slug]; ok {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(RunDir(s.root, slug), "run.json"))
+	return errors.Is(err, os.ErrNotExist)
 }
 
 // loadLocked returns the run, reading it from disk the first time (s.mu held).

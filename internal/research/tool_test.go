@@ -194,6 +194,9 @@ func TestFullRun(t *testing.T) {
 	if !strings.Contains(out, "Phase: done") {
 		t.Fatalf("after build: %s", out)
 	}
+	if !strings.Contains(out, "fact-checked 3 ") { // failures was not reviewed: it is published, but not counted as fact-checked
+		t.Errorf("status counts a page nobody reviewed as fact-checked: %s", out)
+	}
 	site := SiteDir(root, r.Slug)
 	for _, f := range []string{"index.html", "architectures.html", "sources.html", "evidence.html", "method.html", "gaps.html", "assets/wiki.css", "assets/wiki.js", "assets/search-index.js"} {
 		if _, err := os.Stat(filepath.Join(site, f)); err != nil {
@@ -272,7 +275,7 @@ func TestAResumedStoreFindsTheOnlyUnfinishedRun(t *testing.T) {
 // run is never a reason to refuse: a call that leaves it out goes to the session's run, and one that names a run that does not exist
 // (the question, the project, a page) goes there too, with a note to leave it out, instead of a refusal the agent retries.
 func TestACallThatMisnamesTheRunStillLands(t *testing.T) {
-	tool, fr, r, _ := newTestTool(t, "quick", ModeReport)
+	tool, fr, r, root := newTestTool(t, "quick", ModeReport)
 	u := "https://example.org/a"
 	fr.pages[u] = &webtool.Page{Text: "Agents use about four times more tokens than chat interactions, and multi-agent systems about fifteen times more."}
 	out := must(t, tool, "sc-1", map[string]any{"action": "cite", "run": "How do agent harnesses do deep research?", "url": u, "quotes": []string{"Agents use about four times more tokens than chat interactions"}})
@@ -281,6 +284,17 @@ func TestACallThatMisnamesTheRunStillLands(t *testing.T) {
 	}
 	if out := must(t, tool, "sc-1", map[string]any{"action": "sources", "run": r.Slug}); strings.Contains(out, "there is no run") || !strings.Contains(out, "S1") {
 		t.Errorf("named run: %s", out)
+	}
+	// a run that is there but cannot be read is an error, not a reason to write to another run's ledger
+	bad := filepath.Join(RunDir(root, "damaged-run"), "run.json")
+	if err := os.MkdirAll(filepath.Dir(bad), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bad, []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, isErr := call(t, tool, "sc-1", map[string]any{"action": "sources", "run": "damaged-run"}); !isErr || strings.Contains(out, "S1") {
+		t.Errorf("damaged run: %v %s", isErr, out)
 	}
 	empty := NewTool(NewStore(t.TempDir()), fr)
 	if out, isErr := call(t, empty, "sc-1", map[string]any{"action": "status", "run": "nope"}); !isErr || !strings.Contains(out, "no research run") {

@@ -230,6 +230,43 @@ func TestAutomaticRestartsStopAtTheirBoundAndTheManagerIsTold(t *testing.T) {
 	}
 }
 
+// A restart whose scheduled event is not yet in the log does not start, however due: the supervisor leaves it to a later pass,
+// so the log never shows a restart starting before it was scheduled.
+func TestARestartDoesNotStartBeforeItsScheduledEventIsLogged(t *testing.T) {
+	clock := newFakeClock()
+	r := newClockRig(t, Config{MaxWriters: 4, MaxAttempts: 10}, clock, func(_ context.Context, c *rvCall) rvReply {
+		if c.Role != "backend" {
+			return rvReply{Text: "ok"}
+		}
+		return readReply
+	})
+	stepLimitedBackend(r)
+	r.sw.StartManager()
+	id, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "build the API", Files: []string{"api/**"}, By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, "the failed run", func() bool { e, _ := ends(r, id); return e == 1 && r.idle(id) && scheduledOf(r, id) })
+	m := r.sw.get(id)
+	setLogged := func(v bool) {
+		m.mu.Lock()
+		m.restart.logged = v
+		m.mu.Unlock()
+	}
+	setLogged(false) // as between the run publishing the restart and logging its event
+	clock.Advance(restartBackoff)
+	r.sw.superviseOnce(clock.Now())
+	if pendingOf(r, id) == nil {
+		t.Fatal("a restart started before its scheduled event was logged")
+	}
+	setLogged(true)
+	r.sw.superviseOnce(clock.Now())
+	rvWait(t, "the restarted run", func() bool { e, _ := ends(r, id); return e == 2 })
+	if got := strings.Join(restartPhases(r, id), ","); !strings.HasPrefix(got, "scheduled,start") {
+		t.Errorf("swarm.restart phases = %s", got)
+	}
+}
+
 // What the harness does not restart: a run that spent the agent's budget, one that was interrupted, and a worker whose restart
 // was waiting when the person interrupted the team (the restart is called off and its task returns to the board). A step-limit
 // stop under the same configuration is restarted, so each case differs from it only by how the run ended.

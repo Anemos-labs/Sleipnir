@@ -26,7 +26,7 @@ they do not indicate whether a change has been released.
 - The research tool no longer makes agents think about `run`. Its
   description, schema and the run's brief say to leave `run` out (every
   call goes to the run the session works on), and a call that names a run
-  that does not exist goes to that run with a note instead of being
+  that does not exist goes to the active run with a note instead of being
   refused. Agents had spent turns working out whether `research cite`
   needs `run`. The tool's description changed, so the tools layer of the
   prompt cache is rebuilt once.
