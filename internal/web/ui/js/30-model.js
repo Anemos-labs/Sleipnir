@@ -147,7 +147,10 @@
       case 'task': {   /* each task event is the whole task (the server's TaskX): a field it omits is empty, never "as before" */
         let T = m.tasks[ev.id];
         if (!T) { T = m.tasks[ev.id] = { id: ev.id, title: ev.title || ev.id, owner: null, deps: [], scope: '', st: 'todo', t: ev.t, ms: 0 }; m.torder.push(ev.id); }
-        if (ev.s) { T.st = ev.s; T.t = ev.t; if (ev.s === 'merged' && !m.merged.includes(ev.id)) m.merged.push(ev.id); }
+        if (ev.s) { T.st = ev.s; T.t = ev.t; }
+        /* a task resolved as no longer needed is done but merged nothing: the merge queue does not list it */
+        if (ev.s === 'merged' && !/^unneeded/.test(ev.closure || '')) { if (!m.merged.includes(ev.id)) m.merged.push(ev.id); }
+        else if (ev.s && m.merged.includes(ev.id) && /^unneeded/.test(ev.closure || '')) m.merged.splice(m.merged.indexOf(ev.id), 1);
         T.parent = ev.parent || ''; T.poolPhase = ev.poolPhase || ''; T.poolMembers = Array.isArray(ev.poolMembers) ? ev.poolMembers.slice() : []; T.owner = ev.owner || null;   /* a handover moves the card's owner; a released task has none */
         if (ev.title) T.title = ev.title; T.deps = Array.isArray(ev.deps) ? ev.deps.slice() : []; T.scope = ev.scope || '';
         T.closure = ev.closure || ''; T.failed = !!ev.failed; T.attempts = typeof ev.attempts === 'number' ? ev.attempts : 0;

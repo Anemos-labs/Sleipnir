@@ -234,7 +234,7 @@
       body.innerHTML = '<section class="panel p-board" aria-label="Task board"><div class="ph"><h2>Task board</h2><div class="r"><span class="bsum"></span><span>drag disabled</span></div></div><div class="bcols"></div></section>';
       const B = ui.board.make(sc, $('.bcols', body), false), bsum = $('.bsum', body);
       sc.listen(body, 'click', e => { const a = e.target.closest('[data-alerts]'); if (a) { const S2 = SL.sessions.active; ui.alertsPop(a, S2, S2.m); } });
-      const update = (S2, m) => { if (!m) return; const cnt = ui.board.update(B, m, S2), bx = ui.boardMarks(B, m); bsum.textContent = (cnt.merged || 0) + ' merged · ' + (cnt.verify || 0) + ' verify · ' + (cnt.running || 0) + ' running' + ui.boardExtra(bx); ui.alertsSlot(bsum, m); };
+      const update = (S2, m) => { if (!m) return; const cnt = ui.board.update(B, m, S2), bx = ui.boardMarks(B, m); bsum.textContent = ((cnt.merged || 0) - (cnt.resolved || 0)) + ' merged · ' + (cnt.verify || 0) + ' verify · ' + (cnt.running || 0) + ' running' + (cnt.resolved ? ' · ' + cnt.resolved + ' resolved' : '') + ui.boardExtra(bx); ui.alertsSlot(bsum, m); };
       sc.update(update); update(S, S.m);
     };
   }
