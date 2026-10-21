@@ -319,6 +319,7 @@ permissions
 a team, and the program
 /roles [role=m]    which model each role runs on; change one (restarts)
 /swarm <n> [flags] start again as a manager and n workers
+/team [save|load]  saved teams: save this one, start again as one, share one
 /restart [flags]   start again with other flags: --no-mcp, --cwd DIR, ...
 /plugins [on|off]  the plugins: list them, or switch one (/plugins off web)
 /agents            the team's agents and tasks (ctrl+g: cockpit)

@@ -13,6 +13,17 @@ they do not indicate whether a change has been released.
   pool, which held all of them while it agreed on its plan; now the others
   form the pool of the role's next parent at once. Teams with four or fewer
   slots of a role behave as before.
+- Saved teams (loadouts) in both interfaces. The chat's `/team` lists the
+  saved teams, saves the running team (`/team save NAME [--project]`), starts
+  again as one (`/team load NAME`, keeping the conversation; `--fresh` for an
+  empty one), prints one to share (`/team show NAME`) and removes one. The web
+  interface has a team library, opened from the New session dialog (Saved
+  teams…), Settings › Team & run and `/team`: save, use, copy, download,
+  import and remove a team; a team used in the dialog starts as
+  `--team NAME`. The files are those `--team` reads. New routes: `GET
+  /api/teams`, `POST /api/teams/check`, `PUT` and `DELETE /api/teams/{name}`,
+  `GET /api/sessions/{id}/team`; `wire.NewSessionRequest` has `teamName`. No
+  prompt bytes change.
 
 - Agents save memory notes without asking. A change to the agents' notes
   (`~/.sleipnir/MEMORY.md`, or the project's `.sleipnir/MEMORY.local.md`) no

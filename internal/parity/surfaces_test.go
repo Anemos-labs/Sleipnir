@@ -75,16 +75,19 @@ type uiInventory struct {
 	} `json:"settings"`
 	UnclassifiedSettings []string `json:"unclassifiedSettings"`
 	NewSession           struct {
-		Title           string   `json:"title"`
-		Labels          []string `json:"labels"`
-		Checkboxes      []string `json:"checkboxes"`
-		ControlIDs      []string `json:"controlIds"`
-		CommandLine     string   `json:"commandLine"`
-		Flags           []string `json:"flags"`
-		FlagsMailmanOff []string `json:"flagsMailmanOff"`
-		LabelFlags      []string `json:"labelFlags"`
-		ControlFlags    []string `json:"controlFlags"`
-		Modes           []string `json:"modes"`
+		Title       string   `json:"title"`
+		Labels      []string `json:"labels"`
+		Checkboxes  []string `json:"checkboxes"`
+		ControlIDs  []string `json:"controlIds"`
+		CommandLine string   `json:"commandLine"`
+		// CommandLineNamed is the command line of a team loaded from the saved teams and left as it came (--team NAME); Flags are
+		// the flags of both lines.
+		CommandLineNamed string   `json:"commandLineNamed"`
+		Flags            []string `json:"flags"`
+		FlagsMailmanOff  []string `json:"flagsMailmanOff"`
+		LabelFlags       []string `json:"labelFlags"`
+		ControlFlags     []string `json:"controlFlags"`
+		Modes            []string `json:"modes"`
 	} `json:"newSession"`
 	Resume struct {
 		Title          string   `json:"title"`

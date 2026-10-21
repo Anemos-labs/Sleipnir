@@ -342,7 +342,7 @@
       const flags = RUN_FLAGS.map(([k, l, fl, d]) => { const on = k === 'managerApproves' ? M[k] !== false : M[k]; return row(l, sw(k, on), esc(d) + (PLUGIN_OF[k] ? '<br>' + pluginNote(k) : ''), 'rf-' + k, fl); }).join('');
       const running = row('Running now', '<span class="num">' + (nW ? 'manager + ' + nW + ' worker' + (nW === 1 ? '' : 's') : 'a single agent') + '</span><span class="dim">' + (nW ? calc.active(m) + ' active of ' + nW + ' workers' : '') + '</span>', 'the team of this session as it runs');
       const applyRow = '<div class="row2" style="margin:12px 0 0"><button class="btn pri" type="button" data-do="apply">Apply: start the team again</button><span class="dim">the run is closed (its checkpoints stay) and the conversation carries over</span></div>';
-      const teamCard = () => card('settings.run.team', 'The team', '<span class="dim">' + teamWord(teamShown(S).length) + '</span> <span class="dim mono">/swarm · /restart</span>', pendingBar(S) + row('Workers', '<span class="num">' + esc(teamWord(teamShown(S).length)) + '</span>', 'role by role below, with the model of each slot; at least ' + minWorkers() + (mx ? ', at most ' + mx : '') + '. An agent at work keeps its slot', '', '--swarm N') + teamEditor(S) + running + '<div class="row2" style="margin:12px 0 0"><button class="btn" type="button" data-do="apply">Start the team again</button><span class="dim">with the switches below; a change of the team is applied from the bar above</span></div>');
+      const teamCard = () => card('settings.run.team', 'The team', '<span class="dim">' + teamWord(teamShown(S).length) + '</span> <span class="dim mono">/swarm · /restart</span>', pendingBar(S) + row('Workers', '<span class="num">' + esc(teamWord(teamShown(S).length)) + '</span>', 'role by role below, with the model of each slot; at least ' + minWorkers() + (mx ? ', at most ' + mx : '') + '. An agent at work keeps its slot', '', '--swarm N') + teamEditor(S) + running + '<div class="row2" style="margin:12px 0 0"><button class="btn" type="button" data-do="apply">Start the team again</button><button class="btn" type="button" data-do="teams" title="save this team under a name, start again as a saved one, or share one as a file (/team, --team NAME)">Saved teams…</button><span class="dim">with the switches below; a change of the team is applied from the bar above</span></div>');
       if (isTeam(S)) return teamCard() + howCards();
       return card('settings.run.team', 'The team', '<span class="dim mono">/swarm · /restart</span>', row('Workers', '<div class="stepper"><button class="btn sm" type="button" data-step="-1" aria-label="fewer workers">−</button><input id="rn" type="number" min="0"' + (mx ? ' max="' + mx + '"' : '') + ' value="' + n + '" aria-label="worker count"><button class="btn sm" type="button" data-step="1" aria-label="more workers">+</button></div><span class="dim" id="rnt">' + teamWord(n) + '</span>', 'how many workers the manager leads: 0 is a single agent; a team has at least 8, one for each role' + (mx ? ', and at most ' + mx : ''), 'rn', '--swarm N') +
         running + applyRow) + howCards();
@@ -526,6 +526,16 @@
     sc.listen(page, 'keydown', e => { const t = e.target; SL.time.noteKey(); if (e.key === 'Enter') { if (t.id === 'bIn') { e.preventDefault(); doIt('budget', SL.sessions.active); } else if (t.id === 'ruleIn') { e.preventDefault(); doIt('rule-add', SL.sessions.active); } else if (t.id === 'tryArg') { e.preventDefault(); doIt('try', SL.sessions.active); } else if (t.id === 'rv') { e.preventDefault(); doIt('verify', SL.sessions.active); } else if (t.id === 'cfIn' && !$('#cfGo', page).disabled) { e.preventDefault(); $('#cfGo', page).click(); } } });
     sc.listen(page, 'click', e => { if (e.target.id === 'cfGo') { const m = ST.perm.danger; ST.perm.danger = null; acted(SL.act.setMode(m, { confirm: m }), () => toast('mode: ' + m + ' (shift+tab will not leave it unasked)', 'err')); paint(true); } });
 
+    /** the team library for S: it saves the team S runs now (GET /api/sessions/{id}/team); a saved team loaded starts the team again
+     *  as that one, with every model it names (/team load NAME, as in a terminal), after a yes; an imported one becomes the team chosen
+     *  for S, slot by slot with the manager's model, to apply from the bar like any other change */
+    function openTeams(S) {
+      ui.teams.forSession(S, { stageImported: f => {
+        const t = ui.teams.teamOf(f); setTeam(S, t.slots.map(x => ({ role: x.role, model: x.model })));
+        if (t.models.manager) stageModel(S, 'manager', t.models.manager);
+        toast('the imported team is chosen: apply it from the bar above' + (Object.keys(t.models).some(x => x !== 'manager') ? ' (the models it names for its judge, compactor and the like come with it once it is saved and loaded)' : ''), 'ok'); paint(true);
+      } });
+    }
     /** apply the changes chosen for S in one request: what the server did (a team that restarts once, or a switch in place) is what the toast says */
     function applyModels(S) {
       const p = pendingModels(S, drafts[S.id]), tc = teamChanges(S); if (!p.length && !tc.length) { delete drafts[S.id]; delete tdrafts[S.id]; toast('no change to apply', 'warm'); paint(true); return; }
@@ -556,6 +566,7 @@
       else if (k === 'try') await checkPerm(S);
       else if (k === 'verify') { const v = $('#rv', page).value.trim(); ST.run.dirty[S.id] = true; acted(A.setVerify(v), () => toast('verify: ' + (v || '(none)'), 'ok')); paint(true); }
       else if (k === 'models-apply') applyModels(S);
+      else if (k === 'teams') openTeams(S);
       else if (k === 'models-discard') { delete drafts[S.id]; delete tdrafts[S.id]; paint(true); }
       else if (k === 'apply') { const nn = ST.run.n == null ? S.meta.swarm : ST.run.n; if (nn === S.meta.swarm && !ST.run.dirty[S.id]) { toast('already ' + teamWord(nn), 'warm'); return; } ui.confirm({ title: 'Start the team again', text: 'Restart <b>' + esc(S.name) + '</b> as ' + (nn ? 'a manager and <b>' + nn + '</b> worker' + (nn === 1 ? '' : 's') : 'a single agent') + '? The current run is closed (its checkpoints stay) and the conversation carries over.', ok: 'Restart', danger: true, run: () => { const r = A.restartTeam({ swarm: nn, force: true }); acted(r, () => { ST.run.n = null; delete ST.run.dirty[S.id]; toast('the team starts again: ' + teamWord(nn), 'ok'); }); } }); }
       else if (k === 'copycli') U.copy($('.pre.cli', page).textContent).then(ok => toast(ok ? 'command copied' : 'copy is not available here', ok ? 'ok' : 'warm'));

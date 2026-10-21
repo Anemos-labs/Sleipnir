@@ -234,6 +234,7 @@ export const SETTING_MAP = [
   [/^flag:noMcp$/, { scope: 'flag', flag: 'no-mcp' }],
   [/^flag:trustProject$/, { scope: 'flag', flag: 'trust-project' }],
   [/^do:copycli$/, { scope: 'view' }],
+  [/^do:teams$/, { scope: 'state', note: 'the saved teams (.sleipnir/teams and ~/.sleipnir/teams through /api/teams), not configuration' }],
   // Connections: tool servers (MCP) and providers
   [/^mcp:(approve|revoke)$/, { scope: 'config', keys: ['mcp.*'], note: 'the approval of a project entry (a ledger), not the entry itself' }],
   [/^mcp:(test|reconnect)$/, { scope: 'view' }],
@@ -296,6 +297,8 @@ function dialogInventory(SL, chatFlags) {
   const full = { resume: '20260101-000000-abcdef', cwd: '/p', model: 'a/m', mode: 'plan', swarm: 8, autoDocs: false, managerApproves: false, mgrAfter: '10m', mgrUpTo: 'high', isolation: 'worktree', verify: 'v', commit: true, mailman: true, mailmanDefault: false,
     budget: '5', compactAt: 40, compactAtBase: 25, roleModels: { backend: 'a/w' }, rules: ['tests'], trustProject: true, noMcp: true, noMemory: true, goalText: '' };
   const line = ui.dialogs.cliLine(full), lineOff = ui.dialogs.cliLine(Object.assign({}, full, { mailman: false, mailmanDefault: true }));
+  /* a team loaded from the saved teams, and left as it came, is --team NAME in place of its --role-model values */
+  const lineNamed = ui.dialogs.cliLine(Object.assign({}, full, { teamName: 'crew' }));
   /* the flags a control of the dialog sets: those its labels and checkboxes name, and a segmented control named after a flag (isolation) */
   const labelFlags = flagsIn(labels.join(' ') + ' ' + checks.join(' '));
   const segFlags = [...ns.body.matchAll(/data-seg="([a-z-]+)"/g)].map(m => m[1]).filter(f => chatFlags.includes(f));
@@ -307,7 +310,8 @@ function dialogInventory(SL, chatFlags) {
       controlFlags: sortedUniq(labelFlags.concat(segFlags)),
       controlIds: sortedUniq([...ns.body.matchAll(/\bid="(ns[A-Za-z]+)"/g)].map(m => m[1])),
       commandLine: line,
-      flags: flagsIn(line),
+      flags: sortedUniq(flagsIn(line).concat(flagsIn(lineNamed))),
+      commandLineNamed: lineNamed,
       flagsMailmanOff: flagsIn(lineOff),
       labelFlags,
       modes: sortedUniq([...ns.body.matchAll(/data-nsmode="([a-z-]+)"/g)].map(m => m[1])),

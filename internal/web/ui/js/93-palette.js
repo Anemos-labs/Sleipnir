@@ -37,6 +37,7 @@
     '/allow': a => { if (!a) return ui.toast('/allow needs a rule, e.g. tests or Bash(go test:*)', 'warm'); onOk(SL.act.allowRule(a, '/allow'), () => ui.toast('allowed this session: ' + a, 'ok')); },
     '/permissions': () => ui.settingsPage('permissions'), '/trust': () => ui.settingsPage('trust'),
     '/roles': a => { const m = /^(\w+)=(\S+)$/.exec(a || ''); if (m) onOk(SL.act.setRoleModel(m[1], m[2]), () => ui.toast(m[1] + ' runs on ' + m[2], 'ok')); else ui.settingsPage('roles'); },
+    '/team': a => { if (a) serverLine('/team ' + a, '/team'); else ui.teams.forSession(S_()); },
     '/swarm': a => { const n = parseInt(a, 10); if (isNaN(n)) return ui.settingsPage('run'); restart(n); },
     '/restart': a => { const flags = U.splitArgs(a); if (!flags.length) return ui.settingsPage('run'); const S = S_(); ui.confirm({ title: 'Start again', text: 'Restart <b>' + esc(S.name) + '</b> with <span class="mono">' + esc(flags.map(f => /\s/.test(f) ? '"' + f + '"' : f).join(' ')) + '</span>? The current run is closed (its checkpoints stay) and the conversation carries over.', ok: 'Restart', danger: true, run: () => onOk(SL.act.restart(flags), () => ui.toast('started again: ' + flags.join(' '), 'ok')) }); },
     '/agents': () => SL.views.show('cockpit'),
