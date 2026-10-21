@@ -12,6 +12,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/mcp"
 	"github.com/anemos-labs/sleipnir/internal/mcp/mcptest"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
@@ -262,6 +263,33 @@ func TestMCPServersOfTheCommandLineStartUnaskedAndReplaceAConfiguredOne(t *testi
 	st := s.MCPStatus()
 	if len(st) != 1 || st[0].State != "ready" || st[0].Scope != "user" {
 		t.Fatalf("status: %+v", st)
+	}
+}
+
+// A server the command line names is never left out for the configuration's server limit: when the configured
+// servers push it past the first mcp.MaxServers by name, the session refuses to start rather than run without it.
+func TestMCPCommandLineServerPastTheServerLimitRefusesTheSession(t *testing.T) {
+	repo := newRepo(t)
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	o := opts(t, repo, client, model)
+	configured := map[string]any{}
+	for i := 0; i < mcp.MaxServers; i++ {
+		configured[fmt.Sprintf("a%03d", i)] = map[string]any{"command": filepath.Join(t.TempDir(), "absent-server")}
+	}
+	writeConfig(t, config.UserConfigPath(o.Home), map[string]any{"mcp": configured})
+	entry, err := json.Marshal(refServer(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.MCPServers = map[string]json.RawMessage{"zz": entry}
+	o.Prompter = nil
+	s, err := session.New(context.Background(), o)
+	if err == nil {
+		s.Close()
+		t.Fatal("the session started without the command line's server")
+	}
+	if !strings.Contains(err.Error(), "zz would not start") {
+		t.Errorf("the refusal does not name the server: %v", err)
 	}
 }
 

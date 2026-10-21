@@ -220,6 +220,9 @@ type Options struct {
 // Session is a running assembly. Run may be called repeatedly; the agent (or
 // manager) keeps its thread between calls.
 type Session struct {
+	// mcpRefused is set when a server the command line names (run --mcp-config) cannot start because the
+	// configuration's server limit leaves it out; the session then fails to build rather than run without it.
+	mcpRefused      error
 	delivery        *delivery.Controller
 	deliveryOptions delivery.Options
 	opts            Options
@@ -917,6 +920,9 @@ func (s *Session) build(ctx context.Context) error {
 	}
 	if err := s.kernel.Start(s.plugins); err != nil {
 		return err
+	}
+	if s.mcpRefused != nil {
+		return s.mcpRefused
 	}
 
 	constText := agent.Constitution(agent.ConstitutionOpts{Swarm: o.Swarm})
