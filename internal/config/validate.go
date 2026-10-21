@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/perm"
 )
@@ -245,6 +246,14 @@ func (v *validator) permissions(p Permissions) {
 	v.rules(seg("permissions", "ask"), perm.Ask, p.Ask)
 	v.rules(seg("permissions", "deny"), perm.Deny, p.Deny)
 	v.overlap(seg("permissions"), p.Allow, p.Deny)
+	if p.ManagerAnswersAfter != "" {
+		if d, err := time.ParseDuration(p.ManagerAnswersAfter); err != nil || d < 0 {
+			v.err(seg("permissions", "manager_answers_after"), "not a duration such as \"10m\" or \"0\"")
+		}
+	}
+	if _, err := perm.ParseDanger(p.ManagerAnswersUpTo); err != nil {
+		v.err(seg("permissions", "manager_answers_up_to"), "%s", err)
+	}
 	for _, role := range sortedKeys(p.Roles) {
 		r := p.Roles[role]
 		base := seg("permissions", "roles", role)

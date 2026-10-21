@@ -149,7 +149,7 @@ says when the log has more. With no session hosted, the page opens the New sessi
 
 The left rail switches views: the Cockpit (the team as a horse whose eight legs are the eight roles of the team, the stalls, the
 gantt, the task board, the merge queue, mail and the governor), the Workspace (Files, Changes, Checkpoints), Cache, Mail,
-Board, Replay, Sessions, Tools and Settings. The Radio rail on the right is the conversation with the manager, which is the
+Board, Replay, Sessions, Schedule, Tools and Settings. The Radio rail on the right is the conversation with the manager, which is the
 only agent the person talks to, and a read-only feed of what the team does. Agent drawers, opened from a stall or a gantt row,
 are read-only.
 
@@ -276,8 +276,8 @@ open.
 
 `Next` or `→` steps, `Back` or `←` goes back, and `Skip tour` or `Esc` closes it. Finishing the tour, or skipping it with `Don't
 show this again` ticked, keeps it from starting by itself again in that browser; a skip without the tick leaves it to start the next
-time the page opens. It starts again on demand from the `Take the tour` button of the Help sheet (`?`), `Take the tour` in the
-command palette (`ctrl+K`), and Settings › Appearance. It never starts by itself in a browser driven by automation
+time the page opens. It starts again on demand from the `Take the tour` button of the Help sheet (`/help`), `Take the tour` in the
+command palette, and Settings › Appearance. It never starts by itself in a browser driven by automation
 (`navigator.webdriver`). The terminal has no tour: its chat program shows `/help`.
 
 ### The live view and questions
@@ -312,16 +312,15 @@ and the reason are drawn left to right in the order they are written, so a right
 character outside printable ASCII is marked, with its code point in the mark's title and a count under the command; a
 directional formatting character acts on nothing beyond its own mark. Copying the text copies it as written. The answers are 1 yes, 2 yes and do not ask
 again for that kind of request in this session (the exact rules it adds are listed under it; offered only when it would remember
-something, else the option is absent and the key 2 does nothing), and 3 no with an instruction for the agent; a build or test
-command also offers allowing builds and tests for the session, which takes key 3 and moves no to 4. A question that closes without
+something, else the option is absent), and 3 no with an instruction for the agent; a build or test
+command also offers allowing builds and tests for the session, which takes place 3 and moves no to 4. A question that closes without
 an answer (canceled, timed out, the session closed) leaves a row that says so. A question the manager answers for a team
 (`--manager-approves`) is never a question for the person: its decision joins one collapsed line in the conversation and above it in
 the rail (`the manager approved N actions ▸`, or how many it approved and denied), which opens to the agent, the command and the
 decision of each.
-Esc is no. The buttons and the keys work only after the keyboard has been quiet for 0.8 seconds since the question appeared on
-screen or since the last key; text typed meanwhile goes to the message box and never answers. A question that arrives while
-the rail is collapsed opens it; an answer key pressed while the question is not on screen opens it and answers nothing. The
-server also refuses an answer given within 350 ms. The `Needs you` inbox answers questions of every session under the same rule.
+A question is answered with its buttons only, never with a key. The buttons work only after the keyboard has been quiet for 0.8
+seconds since the question appeared on screen or since the last key; text typed meanwhile goes to the message box and never
+answers. A question that arrives while the rail is collapsed opens it. The server also refuses an answer given within 350 ms. The `Needs you` inbox answers questions of every session under the same rule.
 
 ### Keys
 
@@ -329,27 +328,21 @@ server also refuses an answer given within 350 ms. The `Needs you` inbox answers
 |---|---|
 | `Enter` | send; while a turn runs, queue the line for after it (Ctrl+Enter, or Cmd+Enter, sends it to the running turn as a steer instead; each queued line has Send now, Edit and ×, and Up in an empty message box takes the last one back to edit) |
 | `alt+Enter`, `ctrl+J`, or a backslash at the end of the line before `Enter` | a new line |
-| `↑` `↓` | the lines sent before; outside the message box, the agent the views are about |
-| `ctrl+R` | search the lines sent before |
-| `/`, `@` | commands of the session; a path of the project |
+| `↑` `↓` | in the message box: the lines sent before |
+| `ctrl+R` | in the message box: search the lines sent before |
+| `/`, `@` | in the message box: commands of the session; a path of the project |
 | `Tab`, `Enter`, `↑` `↓`, `Esc` in a menu | complete, choose, close (commands, paths, permission mode, palette) |
-| `shift+Tab` | mode default → accept-edits → plan (never bypass or yolo) |
-| `Esc` | close what is open, answer no, leave a field or a replay, then interrupt the turn |
-| `ctrl+C` | discard the line; during a turn, interrupt it; twice at an empty prompt, close the session |
-| `ctrl+D` | in an empty message box, or with nothing focused, close the session, asking first as its tab's close does; with text in the box, the browser's own |
-| `1` `2` `3` `4` | answer the question in front, once the keyboard is quiet; 2 only where it would remember something, 4 only for a build or test command |
-| `ctrl+K` | the command palette |
-| `ctrl+T` `alt+T`, `ctrl+G` `alt+G` | Cache, Cockpit; a browser may keep ctrl+T and ctrl+G, the alt keys reach the page |
-| `ctrl+O` | expand or collapse the output of the tools in the conversation |
-| `g` then `c` `r` `f` `h` `k` `q` `a` `m` `b` `p` `w` `s` `u` `t` `e` | a view: Cockpit, Radio, Files, Changes, Checkpoints, Merge, Cache, Mail, Board, Replay, Research, Sessions, Plugins, Tools, Settings (a view whose plugin is turned off is left out) |
-| `o` `c` `m` `b` `r` `s` `,` `.` | a view: Cockpit, Cache, Mail, Board, Replay, Sessions, Settings, Tools |
-| `alt+1` to `alt+9` | the nth session |
-| `Space`, `←` `→`, `shift+←` `shift+→`, `Home`, `End`, `+` `=` `-` | pause, seek (a minute with shift), start, live, replay speed |
-| `f` | in the Cache view, follow the agent that was answered last |
-| `F2`, `Delete` | on a focused session tab: rename, close |
-| `?` | the keys and the commands |
-| `←` `→` `↑` `↓`, `Delete` | on a card of the unlocked Cockpit: move it one cell (with shift held, resize it), remove it |
+| `shift+Tab` | in the message box: mode default → accept-edits → plan (never bypass or yolo) |
+| `Esc` | close what is open (a dialog, the inbox, a menu, the drawer); in a field, leave it |
+| `←` `→`, `Home`, `End`, `Space`, `Enter`, `F2`, `Delete` | on a focused session tab: move between tabs, open, rename, close |
+| `↑` `↓`, `Home`, `End` | on the focused views rail or the rail's handle: move along it |
+| `←` `→` `↑` `↓`, `shift+←` `shift+→`, `Delete` | on a card of the unlocked Cockpit: move it one cell (with shift held, resize it), remove it |
 | `→` `←`, `Esc` | in the guided tour: the next or the previous step; skip the tour |
+
+The page has no keyboard shortcuts: a key typed without the focus in the message box does nothing of the page's (it once changed
+the view, answered a question, paused the timeline or closed the session, which a person typing before clicking the message box
+did not mean). Views, questions and commands are buttons, and the keys are those of the message box and of the widget that has
+the focus.
 
 Changes to the page are checked in a real browser at narrow and wide sizes, with the screenshots opened and read, as terminal
 changes are. See [Building](BUILDING.md).

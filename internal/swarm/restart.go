@@ -60,6 +60,9 @@ type pendingRestart struct {
 	pool  string // the open pool it is a member of, when it keeps no task
 	why   string // why the run stopped
 	cause restartCause
+	// logged: its scheduled event is in the log. The supervisor does not start it before, so the log never shows a restart
+	// starting before it was scheduled.
+	logged bool
 }
 
 // event is the payload of a swarm.restart event of the restart.
@@ -229,7 +232,7 @@ func (s *Swarm) restartTick(now time.Time) {
 		m.mu.Lock()
 		p := m.restart
 		retired := m.life == lifeRetired
-		if p == nil || (!retired && now.Before(p.due)) {
+		if p == nil || (!retired && (now.Before(p.due) || !p.logged)) {
 			m.mu.Unlock()
 			continue
 		}

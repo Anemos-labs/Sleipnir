@@ -6,6 +6,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
@@ -15,6 +16,10 @@ import (
 // built-in role. A smaller team misses a role the work may need; a single agent
 // (no team) is the other choice.
 const MinTeamWorkers = 8
+
+// DefaultMaxTeamWorkers is the most workers a session may have when swarm.max_workers sets no ceiling: a typo such as
+// --swarm 1000 is refused rather than run with a thousand agents on one budget.
+const DefaultMaxTeamWorkers = 64
 
 // autoDocsOn reports whether the session asks for auto-docs: Options.AutoDocs, else
 // swarm.auto_docs, else true.
@@ -178,6 +183,45 @@ func (s *Session) delegateApproval(ctx context.Context, r perm.Request) (perm.De
 	return s.Swarm.DelegateApproval(ctx, r)
 }
 
+// fallbackApproval is the permission engine's fallback (perm.Config.Fallback): in a team, the manager answers a worker's question
+// that the person has left unanswered; otherwise it settles nothing.
+func (s *Session) fallbackApproval(ctx context.Context, r perm.Request) (perm.Decision, string) {
+	if s.Swarm == nil {
+		return perm.Decision{}, ""
+	}
+	return s.Swarm.FallbackApproval(ctx, r)
+}
+
+// managerAnswers is how long a team worker's question waits for the person before the manager answers it, and the most dangerous
+// kind it may answer: Options.ManagerAnswersAfter and ManagerAnswersUpTo, else permissions.manager_answers_after and
+// manager_answers_up_to (medium when only the wait is set). Zero is never.
+func (s *Session) managerAnswers() (time.Duration, perm.Danger, error) {
+	after, upTo := s.opts.ManagerAnswersAfter, s.opts.ManagerAnswersUpTo
+	if s.cfg != nil {
+		if after == 0 && s.cfg.Permissions.ManagerAnswersAfter != "" {
+			d, err := time.ParseDuration(s.cfg.Permissions.ManagerAnswersAfter)
+			if err != nil || d < 0 {
+				return 0, "", fmt.Errorf("permissions.manager_answers_after: not a duration such as \"10m\"")
+			}
+			after = d
+		}
+		if upTo == "" {
+			d, err := perm.ParseDanger(s.cfg.Permissions.ManagerAnswersUpTo)
+			if err != nil {
+				return 0, "", fmt.Errorf("permissions.manager_answers_up_to: %w", err)
+			}
+			upTo = d
+		}
+	}
+	if after <= 0 || !s.opts.Swarm { // a single agent has no manager to answer for the person
+		return 0, "", nil
+	}
+	if upTo == "" {
+		upTo = perm.DangerMedium
+	}
+	return after, upTo, nil
+}
+
 // ManagerApproves reports whether this session's manager answers its workers' routine permission questions first: a team, with
 // --manager-approves and permissions.manager_approves not turning it off.
 func (s *Session) ManagerApproves() bool { return len(s.team) > 0 && s.managerApprovesOn() }
@@ -198,17 +242,17 @@ func (s *Session) managerApprovesOn() bool {
 }
 
 // managerDocsNote tells the manager how auto-docs works.
-const managerDocsNote = `Documentation is automatic. After the tasks and agreements you accept, the harness gives the docs worker a "docs: catch up" task with the changes (the first once an implementation task is accepted); it keeps README, docs/ and AGENTS.md current (AGENTS.md is also the team's map of the project: commands, layout, conventions, decisions). Do not assign it routine catch-up and do not count its slot as free capacity; give it a task only for documentation nobody has asked for yet (a new guide). Accept its passes after a look. Before you report the goal met, let its last pass finish, and say in your report what it changed.`
+const managerDocsNote = `Documentation is automatic. After the tasks and agreements you accept, the harness gives the docs worker a "docs: catch up" task with the changes (the first once an implementation task is accepted); it keeps README, docs/ and AGENTS.md current (AGENTS.md is also the team's map of the project: commands, layout, conventions, decisions, and a Capabilities section that lists the systems that already exist). Do not assign it routine catch-up and do not count its slot as free capacity; give it a task only for documentation nobody has asked for yet (a new guide). Accept its passes after a look. Before you report the goal met, let its last pass finish, and say in your report what it changed.`
 
 // workerDocsNote tells every other worker how documentation is kept.
 const workerDocsNote = `
 
-Documentation is kept by the team's docs worker, which runs by itself after every accepted task. Do not edit README or docs/ unless your task says so. AGENTS.md is the team's map of the project (commands, layout, conventions, decisions): read it before you start. When you learn something it should record (a new command, a changed contract, a decision), mail it to a docs worker (dc-N) in one line.`
+Documentation is kept by the team's docs worker, which runs by itself after every accepted task. Do not edit README or docs/ unless your task says so. AGENTS.md is the team's map of the project (commands, layout, conventions, decisions, and Capabilities: the systems that already exist): read it before you start, and before you add a module or subsystem check that Capabilities does not already have one. When you learn something it should record (a new command, a changed contract, a decision, a new capability), mail it to a docs worker (dc-N) in one line.`
 
 // docsStandingNote is the docs worker's standing duty under auto-docs.
 const docsStandingNote = `
 
-You are the team's standing documentation keeper. The harness gives you a "docs: catch up" task after tasks and agreements are accepted; it lists the changes. For each, read the task (task get) and the code it touched, then keep three readers current: people (README, docs/, examples), agents of later sessions (AGENTS.md: build and test commands, layout, conventions, decisions from the agreements), and this team (AGENTS.md is its map). Record only what is merged or accepted, keep each pass small and factual, and change nothing outside Markdown files and docs/. Teammates may mail you facts to record: fold them into the next pass. Finish each pass with task done and a one-line summary, and mail the manager that line.`
+You are the team's standing documentation keeper. The harness gives you a "docs: catch up" task after tasks and agreements are accepted; it lists the changes. For each, read the task (task get) and the code it touched, then keep three readers current: people (README, docs/, examples), agents of later sessions (AGENTS.md: build and test commands, layout, conventions, decisions from the agreements), and this team (AGENTS.md is its map). Keep a "## Capabilities" section in AGENTS.md: one line per system the project already has (what it does, where it lives, the doc or heading that explains it, as path#heading), so that an agent learns it exists before it builds another. Record only what is merged or accepted, keep each pass small and factual, and change nothing outside Markdown files and docs/. Teammates may mail you facts to record: fold them into the next pass. Finish each pass with task done and a one-line summary, and mail the manager that line.`
 
 // teamRoles returns roles with the pins of a team session: the team card in the
 // manager's, and, under auto-docs, how documentation is kept in every worker's. The

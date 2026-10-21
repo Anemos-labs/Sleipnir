@@ -17,7 +17,7 @@ var permModes = []wire.PermMode{
 	{ID: string(perm.ModeDefault), Cycle: true, Text: "Reads inside the workspace and read-only shell commands are allowed; everything else asks"},
 	{ID: string(perm.ModeAcceptEdits), Cycle: true, Text: "Also writes inside the workspace (file tools, redirections, mkdir, touch, cp, mv, rm, rmdir, tee on workspace paths) and the commands that build and test a project (go test, npm test, cargo build, pytest, make test… the --allow tests list), and reads public websites with web_fetch and web_search (not this machine, the local network or a cloud metadata address); ask and deny rules still win"},
 	{ID: string(perm.ModePlan), Cycle: true, Text: "Read-only. Writes, network access and commands that are not provably read-only are refused with a message that says to present a plan. An allow rule still carves an exception (say Edit(docs/plan.md))"},
-	{ID: string(perm.ModeBypass), Danger: true, Text: "Full control without asking, except about the very dangerous: the high-risk class (sudo, a recursive delete of the workspace, home or /, a forced push to a shared branch, disk tools, shutdown) still asks. Hard denies, deny rules, guarded paths without an allow rule and ask rules still apply"},
+	{ID: string(perm.ModeBypass), Danger: true, Text: "Full control, and it never asks: the very dangerous (sudo, a recursive delete of the workspace, home or /, a forced push to a shared branch, disk tools, shutdown) and what an ask rule names are refused with the reason, so the agent finds a safer way. Hard denies, deny rules and guarded paths without an allow rule still refuse"},
 	{ID: string(perm.ModeYolo), Danger: true, Text: "Never asks anything, for runs with nobody there: what bypass allows, and the high-risk class too. Hard denies, deny rules and guarded paths still refuse, and so does a rule that would have asked. For sandboxes. --continue never brings bypass or yolo back"},
 }
 
@@ -40,7 +40,7 @@ var layerOrigin = map[string]string{
 const (
 	noteProjectAllow = "applied because the project's files are trusted (a security-sensitive key)"
 	noteProjectDeny  = "a project can add to your deny and ask lists, never remove from them"
-	noteBuiltin      = "a write into a config directory always asks, in every mode (bypass included); an unattended run refuses it"
+	noteBuiltin      = "a write into a config directory always asks, in every mode but bypass and yolo, which refuse it; so does an unattended run"
 	noteFlag         = "given when the session started (--allow)"
 )
 

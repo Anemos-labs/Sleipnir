@@ -26,8 +26,9 @@ import (
 const pickRows = 12
 
 // pickModel asks which of rows to use. Words narrow the list (all must appear in the reference), a number chooses one of the rows shown,
-// q gives up. Favorites come first, then references in alphabetical order. It returns the reference chosen.
-func pickModel(in *bufio.Reader, out io.Writer, rows []modelRow, fav map[string]bool) (string, error) {
+// q gives up. Favorites come first, then the model the provider suggests (suggested, "" for none), then references in alphabetical
+// order. It returns the reference chosen.
+func pickModel(in *bufio.Reader, out io.Writer, rows []modelRow, fav map[string]bool, suggested string) (string, error) {
 	f := modelFilter{}
 	var chat []modelRow
 	for _, r := range rows {
@@ -38,6 +39,9 @@ func pickModel(in *bufio.Reader, out io.Writer, rows []modelRow, fav map[string]
 	sort.SliceStable(chat, func(i, j int) bool {
 		if fi, fj := fav[chat[i].Ref], fav[chat[j].Ref]; fi != fj {
 			return fi
+		}
+		if si, sj := chat[i].Ref == suggested, chat[j].Ref == suggested; si != sj {
+			return si
 		}
 		return chat[i].Ref < chat[j].Ref
 	})
@@ -161,7 +165,12 @@ func ensureModel(ctx context.Context, model *string, in *bufio.Reader, out io.Wr
 			}
 			return nil
 		}
-		if ref, err = pickModel(in, out, rows, favoriteSet(cfg)); err != nil {
+		refs := make([]string, 0, len(rows))
+		for _, r := range rows {
+			refs = append(refs, r.Ref)
+		}
+		sort.Strings(refs)
+		if ref, err = pickModel(in, out, rows, favoriteSet(cfg), session.SuggestedModel(cfg, refs)); err != nil {
 			return err
 		}
 	}

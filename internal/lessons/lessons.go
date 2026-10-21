@@ -43,18 +43,22 @@ const (
 	MergeSimilarity = 0.92     // cosine at or above which a new lesson says what an existing one of its kind says
 	PruneUses       = 4        // reports a lesson needs before it can be pruned
 	PruneUtility    = 0.3      // utility below which a lesson with PruneUses reports is pruned
+	SameProject     = 1.25     // score factor of a lesson learned in the project being worked on
 	MaxDrafts       = 3        // lessons ParseDrafts keeps from one answer
 	maxQueryRunes   = 4000     // runes of a task that are embedded for retrieval
 )
 
 // Lesson is one saved lesson.
 type Lesson struct {
-	ID      string    `json:"id"`   // first 12 hex digits of SHA-256 over kind and text; stable across saves
-	Kind    string    `json:"kind"` // Strategy or Pitfall
-	Text    string    `json:"text"`
-	Task    string    `json:"task,omitempty"` // the objective of the goal it came from
-	Vec     []float32 `json:"vec"`            // the embedding of Text, unit length
-	Uses    int       `json:"uses"`           // outcome reports from sessions that were shown it
+	ID   string `json:"id"`   // first 12 hex digits of SHA-256 over kind and text; stable across saves
+	Kind string `json:"kind"` // Strategy or Pitfall
+	Text string `json:"text"`
+	Task string `json:"task,omitempty"` // the objective of the goal it came from
+	// Project is the key of the project it came from ("" for none, or once the same lesson was learned in two projects:
+	// then it is general). Retrieval in the same project ranks it higher.
+	Project string    `json:"project,omitempty"`
+	Vec     []float32 `json:"vec"`  // the embedding of Text, unit length
+	Uses    int       `json:"uses"` // outcome reports from sessions that were shown it
 	Wins    int       `json:"wins"`
 	Losses  int       `json:"losses"`
 	Created time.Time `json:"created"`
@@ -68,9 +72,10 @@ func (l Lesson) Utility() float64 {
 
 // Draft is a lesson before it is embedded and saved.
 type Draft struct {
-	Kind string `json:"kind"`
-	Text string `json:"text"`
-	Task string `json:"task,omitempty"`
+	Kind    string `json:"kind"`
+	Text    string `json:"text"`
+	Task    string `json:"task,omitempty"`
+	Project string `json:"project,omitempty"` // the key of the project the goal ran in
 }
 
 // validKind reports whether k is one of the lesson kinds.

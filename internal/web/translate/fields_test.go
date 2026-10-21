@@ -151,7 +151,7 @@ var absent = map[string]string{
 	"say.glyph": "optional (◇ by default)", "say.plan": "optional", "say.task": "optional", "say.stream": "the manager's live say only", "say.rate": "streamed says only",
 	"sys.ag": "optional", "sys.task": "optional",
 	"tool.refused": "refusals only", "tool.reason": "refusals only", "tool.file": "file tools only", "tool.add": "file tools only",
-	"tool.del": "file tools only", "tool.task": "an agent with a task only", "tool.ok": "",
+	"tool.del": "file tools only", "tool.mem": "changes of the agents' notes only (TestAMemoryChangeIsMarked)", "tool.task": "an agent with a task only", "tool.ok": "",
 	"note.task": "optional", "task.title": "the creating event", "task.parent": "pool children (TestPoolTaskMapping)", "task.poolPhase": "pool parents (TestPoolTaskMapping)", "task.poolMembers": "pool parents (TestPoolTaskMapping)", "task.owner": "an owned task", "task.deps": "a task with deps",
 	"task.scope": "", "task.s": "", "plan.n": "the single-index form is not produced", "plan.s": "the single-index form is not produced",
 	"req.p": "live requests only", "req.o": "live requests only", "req.hist": "keyframes and history only",

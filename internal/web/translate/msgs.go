@@ -317,6 +317,7 @@ func (t *Translator) toolEnd(uid string, it *sinkItem, ts float64, at int64) {
 	if it.refused {
 		row.Refused, row.Reason, row.Out = true, line(it.reason, capReason), ""
 	}
+	row.Mem = it.memory
 	if !it.isErr && it.file != "" {
 		row.File, row.Add, row.Del = line(it.file, capPath), it.add, it.del
 		if it.tool == "write" && !it.created {

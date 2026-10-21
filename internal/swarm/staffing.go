@@ -33,6 +33,9 @@ type reviewGate struct {
 	reviewed  int            // merges counted when a reviewer's task was last accepted
 	last      string         // the last of them
 	submitted map[string]int // merge generation covered by each submitted review
+	// byModel is the newest merge generation an accepted review covered, by the model of the reviewer that wrote it: with a
+	// quorum of two (reviewQuorum), merges count as reviewed only up to the generation two different models both covered.
+	byModel map[string]int
 	// landed are the scopes each merge (by its number) may have touched, for the pools whose reconciled result it supersedes
 	// (poolCurrent). A merge with no entry, or with no scopes, may have touched any file.
 	landed map[int][]string
@@ -89,14 +92,25 @@ func (s *Swarm) noteAcceptedCheck(t Task) TaskCheck {
 		}
 	}
 	implementation := t.Pool == nil && t.Kind != TaskKindPlan && !s.isDocsTask(t) && !s.roles[role].ReadOnly
+	model, quorum := "", 1
+	if role == ReviewerRole {
+		model, quorum = s.memberModel(t.Owner), s.reviewQuorum()
+	}
 	return func(_ *Snapshot, t Task) error {
 		g := &s.review
 		g.mu.Lock()
 		defer g.mu.Unlock()
 		switch {
 		case role == ReviewerRole && t.Parent == "":
-			if generation := g.submitted[t.ID]; generation > g.reviewed {
-				g.reviewed = generation
+			generation := g.submitted[t.ID]
+			if g.byModel == nil {
+				g.byModel = map[string]int{}
+			}
+			if generation > g.byModel[model] {
+				g.byModel[model] = generation
+			}
+			if covered := quorumCovered(g.byModel, quorum); covered > g.reviewed {
+				g.reviewed = covered
 			}
 		case implementation:
 			g.landLocked(t.ID, t.Files)
@@ -158,9 +172,50 @@ func (s *Swarm) reviewPending() string {
 }
 
 // reviewLine is the review gate's sentence for the manager: what is unreviewed and what to do.
-func reviewLine(last string) string {
+func (s *Swarm) reviewLine(last string) string {
+	if s.reviewQuorum() > 1 {
+		return "review: " + last + " and the work merged before it have not been reviewed by two reviewers on different models: before you report the goal met, " +
+			"give a review of the merged result against the agreement to each " + ReviewerRole + " slot that runs on a model the reviews so far did not (spawn role=" + ReviewerRole + " agent=<id>), and accept both reports"
+	}
 	return "review: " + last + " and the work merged before it have not been reviewed: before you report the goal met, create a task for the " +
 		ReviewerRole + " to review the merged result against the agreement (spawn role=" + ReviewerRole + "), and accept its report"
+}
+
+// reviewQuorum is how many reviewers on different models must cover a merge before the goal may be reported met: two when the
+// team's reviewer slots run on two or more different models (independent vantages catch what one model misses), else one.
+func (s *Swarm) reviewQuorum() int {
+	models := map[string]bool{}
+	for i, r := range s.cfg.Team {
+		if r == ReviewerRole {
+			models[s.modelFor(ReviewerRole, i).Model.ID] = true
+		}
+	}
+	if len(models) >= 2 {
+		return 2
+	}
+	return 1
+}
+
+// memberModel is the model id agent runs on, "" when it is not a member.
+func (s *Swarm) memberModel(agent string) string {
+	if m := s.get(agent); m != nil {
+		return m.model.ID
+	}
+	return ""
+}
+
+// quorumCovered is the newest merge generation that at least quorum of the models in byModel covered: the quorum-th largest
+// value, 0 when fewer models have reviewed.
+func quorumCovered(byModel map[string]int, quorum int) int {
+	if len(byModel) < quorum {
+		return 0
+	}
+	vs := make([]int, 0, len(byModel))
+	for _, v := range byModel {
+		vs = append(vs, v)
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(vs)))
+	return vs[quorum-1]
 }
 
 // staffingLines are the manager's live-view lines about unused capacity: free slots while ready tasks have no owner, idle workers

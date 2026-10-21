@@ -11,6 +11,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/goal"
 	"github.com/anemos-labs/sleipnir/internal/lessons"
+	"github.com/anemos-labs/sleipnir/internal/lore"
 	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"github.com/anemos-labs/sleipnir/internal/provider"
 )
@@ -112,7 +113,7 @@ func (s *Session) GoalStart(ctx context.Context, g *goal.State) string {
 	if m.rr != nil {
 		k = lessonsCandidates
 	}
-	found, err := m.store.Retrieve(ctx, m.emb, g.Objective, k)
+	found, err := m.store.RetrieveIn(ctx, m.emb, g.Objective, lore.Key(s.opts.Root), k)
 	if err == nil && m.rr != nil {
 		found, err = lessons.Rerank(ctx, m.rr, g.Objective, found, lessonsShown)
 	}
@@ -149,6 +150,9 @@ func (s *Session) goalEnded(ctx context.Context, g *goal.State, won bool, outcom
 	if err == nil {
 		var drafts []lessons.Draft
 		if drafts, err = s.distill(ctx, g, outcome); err == nil && len(drafts) > 0 {
+			for i := range drafts {
+				drafts[i].Project = lore.Key(s.opts.Root)
+			}
 			added, merged, err = m.store.Add(ctx, m.emb, drafts)
 		}
 	}

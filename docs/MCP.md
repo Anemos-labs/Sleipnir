@@ -37,6 +37,7 @@ Servers live under `"mcp"` in your **user** configuration, `~/.sleipnir/config.j
 | `allow_tools`, `deny_tools` | globs (`*`, `?`) on the server's own tool names or on the exposed `mcp__server__tool` names; deny beats allow. |
 | `timeout`, `startup_timeout` | seconds (a number) or a Go duration (`"90s"`): per call, and for connect + handshake + first listing. |
 | `max_output_chars` | lowers how much of a result the model sees (never raises the global limit). |
+| `defer_tools` | keep this server's tools out of the tool list; they load on demand (see [Large servers](#large-servers)). |
 | `allow_private` | lets a remote server live on a private or loopback address and permits plain `http://`. Ignored in project files. |
 | `disabled` | keep the entry, do not start it. |
 
@@ -70,7 +71,8 @@ agent's prompt. So where an entry came from decides whether it may start without
 Tools are named `mcp__<server>__<tool>` (adjusted to the providers' `[a-zA-Z0-9_-]{1,64}` rule, with a short hash
 when a name had to change, so two names can never collapse into one). Descriptions and schemas are cleaned of control
 characters, terminal escapes and invisible Unicode, capped, and the whole set is held to a size budget shared between
-servers; a tool whose description looks like an injection attempt is left out with a warning. A server's `instructions`
+servers (what does not fit loads on demand, see [Large servers](#large-servers)); a tool whose description looks like
+an injection attempt is left out with a warning. A server's `instructions`
 and any text in results are **data**, not instructions.
 
 **The tool list is frozen for the session.** Every agent sends the same tools array, byte for byte, so the provider
@@ -79,6 +81,28 @@ servers (waiting up to 20 seconds), takes a snapshot and registers exactly those
 tools, or comes back from a crash with different ones, you are told once and the session keeps its list; a tool the
 server no longer offers fails with a visible error instead of running something else. Start a new session to pick
 changes up. `session.start` in the event log records how many tools MCP contributed and the hash of the list.
+
+## Large servers
+
+Some servers offer more than the tool list can carry: hundreds of tools, or input schemas of tens of kilobytes. Every
+byte of the list is paid on every request of every agent, so it has limits: 8 KiB and 24 levels of nesting for one
+schema, 128 tools per server, 256 in all, and 64 KiB for names, descriptions and schemas together, shared fairly
+between servers. A tool past them is not dropped: it **loads on demand**. Two fixed tools then join the list:
+
+* `mcp__search` finds tools by words (`"compare captures"`) or exact names (`"select:mcp__rea__compare_artifacts"`) and
+  returns each one's name, description and full input schema. Its description lists the names that load on demand
+  (up to 4 KiB of them), so the model knows what is there.
+* `mcp__call` runs one of them: `{"tool": "mcp__rea__compare_artifacts", "arguments": {...}}`.
+
+These tools are vetted like the others (sanitised, injection tripwire, no remote `$ref`) under larger limits (64 KiB
+and 64 levels for a schema, 1024 tools in all), and they are frozen in the same snapshot, so a search never changes
+under a session. A schema over 64 KiB is compacted before it is refused: subschemas it repeats move to `$defs`, and
+`examples` are dropped. A call through `mcp__call` asks the same permission as a direct call, under the tool's own name,
+so `mcp__rea__*` rules apply to it; hooks see it as `mcp__call` with the tool's name in its input.
+
+The session's notices say, in one line per server, how many of its tools load on demand and why. Set `defer_tools` on
+an entry to load all of a server's tools that way: worth it for a large server that is needed now and then, since its
+tools then cost the tool list almost nothing.
 
 ## Permissions
 

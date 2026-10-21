@@ -12,6 +12,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/sched"
 	"github.com/anemos-labs/sleipnir/internal/session"
 )
@@ -47,9 +48,23 @@ func cmdSchedule(_ context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
+		if strings.TrimSpace(o.cron) == "" {
+			hint := ""
+			if len(words) > 0 {
+				if _, err := sched.ParseCron(words[0]); err == nil {
+					hint = fmt.Sprintf(" (%q looks like one: write --cron before it)", words[0])
+				}
+			}
+			return fmt.Errorf("schedule add: --cron is required%s, as in: sleipnir schedule add --cron \"0 9 * * 1-5\" \"summarize yesterday's commits\"", hint)
+		}
 		goal := strings.Join(words, " ")
 		if o.dir == "" {
 			o.dir, _ = os.Getwd()
+		}
+		if o.model == "" {
+			if cfg, _, err := config.Load(config.LoadOpts{Cwd: o.dir}); err == nil && strings.TrimSpace(cfg.Models.Default) == "" {
+				return errors.New("schedule add: no model is configured, so every run would fail: pass --model provider/model, or set models.default (sleipnir init --user --model provider/model)")
+			}
 		}
 		j, err := st.Add(sched.Job{Cron: o.cron, Goal: goal, Model: o.model, Dir: o.dir, Mode: o.mode, BudgetUSD: o.budget}, time.Now())
 		if err != nil {

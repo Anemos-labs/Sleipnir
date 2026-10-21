@@ -95,3 +95,9 @@ tr.pend select{border-color:var(--warm-b)}
 .setempty{margin:0 0 6px;color:var(--fg2)}.setempty .dim{display:block;margin-top:2px}
 @container main (max-width:900px){.setrow{grid-template-columns:minmax(150px,40%) minmax(0,1fr)}}
 @container main (max-width:620px){.setrow{grid-template-columns:minmax(0,1fr)}.snb-ext{margin:0;border-bottom-style:dashed}}
+/* the team of Models & roles and of Team & run: each role with its stepper and models, each slot with its agent */
+.setteam{display:flex;flex-direction:column;gap:6px;margin:0 0 8px}
+.setmgr{margin:0 0 8px}.setmgr select{min-width:0;max-width:100%}
+.nstslot.pend select{border-color:var(--warm)}.nstslot .tag{flex:none}
+.setteam .nstslots{grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}.setteam .nstslot{flex-wrap:wrap}
+.setteam .nstslot .mono{min-width:6ch}.setteam .nstslot select{flex:1 1 180px}

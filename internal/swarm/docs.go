@@ -234,7 +234,7 @@ func docsBrief(b []docsChange) string {
 		}
 		sb.WriteString("\n")
 	}
-	sb.WriteString("Keep three readers current: people (README, docs/), agents of later sessions (AGENTS.md: commands, layout, conventions, decisions), and this team (AGENTS.md is also its map). Change only what these changes made wrong or missing; keep it short and factual. Finish with task done and a one-line summary of what you changed.")
+	sb.WriteString("Keep three readers current: people (README, docs/), agents of later sessions (AGENTS.md: commands, layout, conventions, decisions), and this team (AGENTS.md is also its map, with a Capabilities section: one line per existing system, what it does, where it lives, its doc as path#heading). Change only what these changes made wrong or missing; keep it short and factual. Finish with task done and a one-line summary of what you changed.")
 	return sb.String()
 }
 

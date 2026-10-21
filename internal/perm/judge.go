@@ -166,7 +166,7 @@ func (ev *evaluator) judge(u *unit) verdict {
 	}
 	if c, ok := ev.e.confinement(ev.r.Agent); ok && !(ev.r.VerifiedIntegration && ev.r.Role == "manager") {
 		for _, a := range all {
-			if why := ev.rs.leavesConfinement(c, a, ev.r.Agent); why != "" {
+			if why := ev.rs.leavesConfinement(c, a, ev.r.Agent, ev.e.cfg.Ignored); why != "" {
 				v := deny("isolation: " + why)
 				v.origin, v.tier = OriginIsolation, TierHard
 				return v
@@ -233,15 +233,59 @@ func quote(s string) string { return strconv.Quote(s) }
 // tree: it lands in a workspace root (the shared checkout, another agent's tree)
 // but not in the agent's own directory. Accesses that cannot be pinned down, and
 // accesses outside every workspace root, are not this check's business.
-func (rs *resolver) leavesConfinement(c rootPair, a access, agent string) string {
+//
+// A read of a file the checkout's version control does not track (ignored, Config.Ignored) is not a breach: the tree is made from
+// the commits, so such a file (a data set, a game's assets, a local configuration, a file written into the checkout during the run)
+// may have no copy in the tree, and its place in the checkout is the only place it is. Writing it still is: nothing written outside the tree reaches the person's checkout by the merge.
+//
+// The reason is what the model reads, and a model told only "use relative paths" retried the same directory sixteen times, spelled
+// with $HOME, ~ and a cd first. So it says where the path is, why it is out of reach, and what to do instead: for a file of the
+// project, the same file in the agent's own tree.
+func (rs *resolver) leavesConfinement(c rootPair, a access, agent string, ignored func(string) bool) string {
 	if a.dynamic || a.real == "" {
 		return ""
 	}
 	if inside(c.real, a.real) || !rs.inWorkspace(a.real) || rs.inTmp(a.real) {
 		return "" // the session's scratch directory ($TMPDIR) is every agent's, as /tmp would be
 	}
-	return agent + " works only inside its own tree; " + clipText(a.raw, 80) +
-		" is elsewhere in the workspace (the shared checkout or another agent's tree). Use paths relative to your working directory"
+	head := agent + " works only inside its own tree (" + c.lex + "); " + clipText(a.raw, 80)
+	if len(rs.roots) > 0 && inside(rs.roots[0].real, a.real) {
+		checkout := rs.roots[0].real
+		if ignored != nil && ignored(a.real) {
+			if !a.write {
+				return ""
+			}
+			return head + " is not tracked by git in the person's checkout (" + checkout + "), so your tree may have no copy of it. " +
+				"You may read it where it is, but not change it: a change outside your tree never reaches the checkout. " +
+				"Write what you produce inside your tree, and do not retry this write another way"
+		}
+		mirror := c.lex
+		if rel, ok := relUnder(checkout, a.real); ok && rel != "" {
+			mirror = c.lex + "/" + rel
+		}
+		return head + " is in the person's checkout (" + checkout + "), which you do not work in: your tree is your copy of the project, " +
+			"with the same files at the same relative paths, and your work reaches the checkout when it is merged. Use " + clipText(mirror, 160) +
+			" (or the relative path) instead; the checkout path is refused however it is spelled ($HOME, ~, a cd first, a script)"
+	}
+	for _, p := range rs.treeParents {
+		if inside(p, a.real) {
+			return head + " is in another agent's worktree, which only that agent may touch. Its work reaches your tree once it is merged; " +
+				"if you need it sooner, block your task and say what you need, or ask the manager (mail). Do not retry this path another way"
+		}
+	}
+	return head + " is elsewhere in the workspace, outside your tree. Use paths inside your working directory; this path is refused however it is spelled"
+}
+
+// relUnder is p relative to dir in slash form when p lies at or below it ("" for dir itself).
+func relUnder(dir, p string) (string, bool) {
+	if p == dir {
+		return "", true
+	}
+	pre := strings.TrimSuffix(dir, "/") + "/"
+	if !strings.HasPrefix(p, pre) {
+		return "", false
+	}
+	return p[len(pre):], true
 }
 
 // outsideTmp drops the accesses inside the session's scratch directory, for the Ask rules: $TMPDIR is made for the session's commands,

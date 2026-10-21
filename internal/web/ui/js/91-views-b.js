@@ -177,9 +177,9 @@
     /** Stop the run of a session: the server answers 409 idle when nothing was running, and that is said as it is. */
     async function stopRun(S) {
       const r = await net.post('/api/sessions/' + encodeURIComponent(S.id) + '/stop');
-      if (r.ok) ui.toast('stopped: the goal is paused', 'warm');
+      if (r.ok) ui.toast(SL.stopText(S), 'warm');
       else if (r.code === 'idle') ui.toast(r.message || 'nothing was running', 'warm');
-      else if (r.code === 'no_api') { const x = SL.act.interrupt('turn', S.id); ui.toast(x.ok ? 'stopped: the goal is paused' : (x.why || 'nothing was running'), 'warm'); }
+      else if (r.code === 'no_api') { const x = SL.act.interrupt('turn', S.id); ui.toast(x.ok ? SL.stopText(S) : (x.why || 'nothing was running'), 'warm'); }
       else net.fail(r, 'the run could not be stopped');
     }
     function closeAsk(S) {
@@ -205,7 +205,7 @@
       if (t.closest('[data-new]')) ui.dialogs.newSession(); else if (t.closest('[data-cont]')) { const r = SL.act.resumeSession('latest'); if (r && r.ok === false) ui.toast(r.why, 'warm'); }
       else if (t.closest('[data-del]')) deleteSelected();
       else if (S && t.closest('[data-open]')) { SL.act.switchSession(S.id); } else if (S && t.closest('[data-ren]')) ui.dialogs.rename(S);
-      else if (S && t.closest('[data-stop]')) { SL.act.switchSession(S.id); ui.confirm({ title: 'Stop the run', text: 'Stop <b>' + esc(S.name) + '</b>? Every agent is interrupted and the goal is paused.', ok: 'Stop the run', danger: true, run: () => stopRun(S) }); }
+      else if (S && t.closest('[data-stop]')) { SL.act.switchSession(S.id); ui.confirm({ title: 'Stop the run', text: 'Stop <b>' + esc(S.name) + '</b>? ' + SL.stopAsk(S), ok: 'Stop the run', danger: true, run: () => stopRun(S) }); }
       else if (S && t.closest('[data-close]')) closeAsk(S);
       else if (t.closest('[data-res]')) { const id = t.closest('[data-res]').dataset.res, r = SL.act.resumeSession(id); if (r && r.ok === false) ui.toast(r.why, 'warm'); else ui.toast('resuming ' + id, 'quiet'); }
       else if (t.closest('[data-rep]')) openRecorded(t.closest('[data-rep]').dataset.rep, false);

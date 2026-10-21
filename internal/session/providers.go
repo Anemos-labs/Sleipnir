@@ -46,6 +46,8 @@ var builtinProviders = map[string]config.Provider{
 		// the conversation id; prompt_cache_key carries the same id.
 		Options: map[string]any{"session_header": true, "cache_key_body": true},
 		Headers: map[string]string{"X-Title": "Sleipnir"},
+		// the model a new user's picker starts on (the provider's catalogue decides whether it is offered at all)
+		SuggestedModel: "meta-models/muse-spark",
 	},
 	"openrouter": {
 		Dialect: config.DialectOpenAIChat, BaseURL: "https://openrouter.ai/api/v1", APIKeyEnv: "OPENROUTER_API_KEY",
@@ -174,6 +176,9 @@ func extendBuiltin(b, p config.Provider) config.Provider {
 	if p.Auth == "" {
 		p.Auth = b.Auth
 	}
+	if p.SuggestedModel == "" {
+		p.SuggestedModel = b.SuggestedModel
+	}
 	p.Headers = mergeMaps(b.Headers, p.Headers)
 	p.Options = mergeMaps(b.Options, p.Options)
 	return p
@@ -224,6 +229,21 @@ func ResolveModel(cfg *config.Config, ref string) (ModelRef, error) {
 		return ModelRef{}, err
 	}
 	return ModelRef{Provider: p, Model: ref}, nil
+}
+
+// SuggestedModel is the first of refs (provider/model references, in the order a picker shows them) that its provider suggests
+// (config.Provider.SuggestedModel: the model id, or its start), or "" when none is.
+func SuggestedModel(cfg *config.Config, refs []string) string {
+	for _, ref := range refs {
+		prov, id, ok := config.SplitModelRef(ref)
+		if !ok {
+			continue
+		}
+		if p, ok := lookupProvider(cfg, prov); ok && p.SuggestedModel != "" && strings.HasPrefix(id, p.SuggestedModel) {
+			return ref
+		}
+	}
+	return ""
 }
 
 // LookupProvider returns a configured or built-in provider by name.

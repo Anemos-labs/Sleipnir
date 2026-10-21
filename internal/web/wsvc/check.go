@@ -132,6 +132,10 @@ func verdictOf(c perm.Classification, mode perm.Mode) wire.PermVerdict {
 	}
 	why := c.Why
 	switch {
+	case c.Bypass && c.Rule != "":
+		why = "an ask rule: " + by() + ", and bypass mode asks nothing, so it is refused"
+	case c.Bypass:
+		why = "bypass mode asks nothing, so it is refused: " + strings.TrimPrefix(c.Why, perm.BypassRefusal)
 	case c.NoOneToAsk && c.Rule != "":
 		why = "an ask rule: " + by() + ", and this session has nobody to answer, so it is refused"
 	case c.NoOneToAsk:

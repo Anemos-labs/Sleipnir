@@ -181,7 +181,7 @@ function instrument(SL) {
 /** The control a start tag stands for, as one id (null for an element that is not one). Rows of data (a model, a rule, a server) are one id with a star. */
 const ATTRS = [['data-seg', 'seg'], ['data-do', 'do'], ['data-flag', 'flag'], ['data-mode', 'mode'], ['data-danger', 'danger'], ['data-role', 'role*'], ['data-fav', 'fav*'],
   ['data-use', 'use*'], ['data-rm', 'rm*'], ['data-trust', 'trust*'], ['data-step', 'step*'], ['data-mcp', 'mcp'], ['data-prov', 'prov*'], ['data-cmd', 'cmd*'],
-  ['data-pcmd', 'pcmd*'], ['data-cli', 'cli*'], ['data-flt', 'flt'], ['data-sel', 'sel'], ['id', 'id']];
+  ['data-pcmd', 'pcmd*'], ['data-cli', 'cli*'], ['data-flt', 'flt'], ['data-sel', 'sel'], ['data-tcount', 'tcount*'], ['data-tall', 'tall*'], ['data-tslot', 'tslot*'], ['id', 'id']];
 export function controlsOf(html) {
   const out = [];
   for (const m of String(html).matchAll(/<(button|input|select|textarea)\b([^>]*)>/g)) {
@@ -223,7 +223,8 @@ export const SETTING_MAP = [
   [/^do:(try|mgr-refused)$|^id:try(Tool|Arg)$|^id:cf(In|Go)$|^do:danger-no$/, { scope: 'view' }],
   [/^trust\*$|^do:forget-all$/, { scope: 'state', note: 'the trust ledger (a file of its own), not configuration' }],
   // Team & run
-  [/^step\*$|^id:rn$|^do:apply$/, { scope: 'flag', flag: 'swarm' }],
+  [/^step\*$|^id:rn$|^do:apply$|^tcount\*$/, { scope: 'flag', flag: 'swarm' }],
+  [/^tall\*$|^tslot\*$/, { scope: 'flag', flag: 'role-model', note: 'the team, slot by slot (--role-model given once per slot)' }],
   [/^seg:isolation$/, { scope: 'config', keys: ['swarm.isolation'], flag: 'isolation' }],
   [/^id:rv$|^do:verify$/, { scope: 'flag', flag: 'verify' }],
   [/^flag:commit$/, { scope: 'flag', flag: 'commit' }],
@@ -292,7 +293,7 @@ function dialogInventory(SL, chatFlags) {
   const labels = [...ns.body.matchAll(/<label>([\s\S]*?)<\/label>/g)].map(m => m[1].replace(/<[^>]*>/g, ''));   // a flag name is in a span that keeps it whole
   /* a checkbox's text may hold markup of its own (a span that keeps a flag on one line): its text is what counts */
   const checks = [...ns.body.matchAll(/<label class="chk"><input type="checkbox" data-k="([A-Za-z]+)"[^>]*> ([\s\S]*?)<\/label>/g)].map(m => m[1] + ' ' + m[2].replace(/<[^>]*>/g, '').trim());
-  const full = { resume: '20260101-000000-abcdef', cwd: '/p', model: 'a/m', mode: 'plan', swarm: 8, autoDocs: false, managerApproves: false, isolation: 'worktree', verify: 'v', commit: true, mailman: true, mailmanDefault: false,
+  const full = { resume: '20260101-000000-abcdef', cwd: '/p', model: 'a/m', mode: 'plan', swarm: 8, autoDocs: false, managerApproves: false, mgrAfter: '10m', mgrUpTo: 'high', isolation: 'worktree', verify: 'v', commit: true, mailman: true, mailmanDefault: false,
     budget: '5', compactAt: 40, compactAtBase: 25, roleModels: { backend: 'a/w' }, rules: ['tests'], trustProject: true, noMcp: true, noMemory: true, goalText: '' };
   const line = ui.dialogs.cliLine(full), lineOff = ui.dialogs.cliLine(Object.assign({}, full, { mailman: false, mailmanDefault: true }));
   /* the flags a control of the dialog sets: those its labels and checkboxes name, and a segmented control named after a flag (isolation) */

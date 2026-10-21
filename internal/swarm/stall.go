@@ -99,11 +99,15 @@ type stallState struct {
 	review  map[string]int64 // "T3#rev": the manager's turn count when the review clock (re)started
 	waiting bool             // the manager's latest coordination call is wait
 	refused bool             // a manager wait was just refused (see waitRefused)
+	// since is when each active finding was first seen by escalateStalls, and escalated the findings it escalated.
+	since     map[string]time.Time
+	escalated map[string]bool
 }
 
 // init makes the maps; the zero value is not ready for use.
 func (st *stallState) init() {
 	st.active, st.raised, st.orphans, st.review = map[string]Stall{}, map[StallKind]int{}, map[string]bool{}, map[string]int64{}
+	st.since, st.escalated = map[string]time.Time{}, map[string]bool{}
 }
 
 // stallTurns is the turn bound of the turn-based kinds (0: they are off).
@@ -480,6 +484,7 @@ func (s *Swarm) sweepStalls() {
 			s.notify(f.Notify, "request", stallNudge(f, s.stallTurns(), s.cfg.PersistentPools))
 		}
 	}
+	s.escalateStalls()
 }
 
 // stallEvent is the payload of a swarm.stall event.

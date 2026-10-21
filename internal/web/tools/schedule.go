@@ -16,6 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/sched"
 	"github.com/anemos-labs/sleipnir/internal/web"
 	"github.com/anemos-labs/sleipnir/internal/web/runner"
@@ -245,7 +246,17 @@ func (s *service) checkJob(ctx context.Context, req jobRequest, prev *sched.Job)
 	if err := jobDir(j.Dir); err != nil {
 		return j, err
 	}
+	if j.Model == "" && noDefaultModel(j.Dir) {
+		return j, werr(http.StatusUnprocessableEntity, "model", "choose a model: none is configured (models.default, SLEIPNIR_MODEL), so every run would fail")
+	}
 	return j, nil
+}
+
+// noDefaultModel reports whether a run in dir that names no model would have none: the configuration it loads there (the project's
+// own included) names no models.default and SLEIPNIR_MODEL is not set. A configuration that does not load is the run's to report.
+func noDefaultModel(dir string) bool {
+	cfg, _, err := config.Load(config.LoadOpts{Cwd: dir})
+	return err == nil && strings.TrimSpace(cfg.Models.Default) == ""
 }
 
 // handleAddJob is POST /api/schedule/jobs (confirmed for job.add).

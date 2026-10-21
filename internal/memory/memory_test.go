@@ -805,3 +805,28 @@ func TestNoNotesLeavesOutTheMemoryToolsNotes(t *testing.T) {
 		t.Errorf("without it: %v", got)
 	}
 }
+
+func TestProjectNotesAreLoadedAtTheRootUnlessNoNotes(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, ".sleipnir"), 0o700)
+	os.WriteFile(filepath.Join(root, ".sleipnir", "MEMORY.local.md"), []byte("- make gen regenerates the client\n"), 0o600)
+	srcs, err := Load(Opts{Root: root, Cwd: root, Home: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, s := range srcs {
+		if strings.Contains(s.Text, "make gen") {
+			found = s.Scope == ScopeLocal
+		}
+	}
+	if !found {
+		t.Errorf("project notes not loaded as local: %+v", srcs)
+	}
+	srcs, _ = Load(Opts{Root: root, Cwd: root, Home: t.TempDir(), NoNotes: true})
+	for _, s := range srcs {
+		if strings.Contains(s.Text, "make gen") {
+			t.Error("NoNotes loaded the project notes")
+		}
+	}
+}

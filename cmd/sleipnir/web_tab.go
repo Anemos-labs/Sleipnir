@@ -92,6 +92,7 @@ type webTab struct {
 	detach     func()
 	startedAt  time.Time
 	starting   bool
+	startErr   string // why the last start failed ("" while a start runs and once one succeeded)
 	restarting bool
 	closed     bool
 	args       []string // the chat arguments of the current generation
@@ -567,7 +568,7 @@ func settingsFor(err error) string {
 	switch {
 	case errors.Is(err, session.ErrNoModel):
 		return "models"
-	case strings.Contains(msg, "has no key") || strings.Contains(msg, "is not signed in") || strings.Contains(msg, "unknown provider"):
+	case strings.Contains(msg, "has no key") || strings.Contains(msg, " to be set (`sleipnir login") || strings.Contains(msg, "is not signed in") || strings.Contains(msg, "unknown provider"):
 		return "providers"
 	}
 	return ""
@@ -601,6 +602,9 @@ func (t *webTab) Send(ctx context.Context, req wire.MessageRequest) (wire.SendRe
 	display := req.Display
 	if strings.TrimSpace(display) == "" {
 		display = req.Text
+	}
+	if t.startFailed() {
+		return wire.SendResult{}, t.noSession() // nothing would ever run it: the tab has no session until it starts again
 	}
 	it := queued{autoFix: req.AutoFix, autoMerge: req.AutoMerge, text: oneLineCLI(display, 200), prompt: req.Text, display: display, echo: true}
 	id, pos, now, err := t.enqueue(it)
@@ -1155,6 +1159,51 @@ func (t *webTab) Interrupt(ctx context.Context, target string) error {
 // say why.
 var errNoSession = werr(http.StatusConflict, "no_session", "the session did not start: its rows say why")
 
+// startFailed says whether the tab's last start failed: it has no session and none is starting.
+func (t *webTab) startFailed() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.s == nil && !t.starting && !t.restarting && !t.closed
+}
+
+// noSession is errNoSession with the reason the last start failed, when the tab has one.
+func (t *webTab) noSession() error {
+	t.mu.Lock()
+	why := t.startErr
+	t.mu.Unlock()
+	if why == "" {
+		return errNoSession
+	}
+	return werr(http.StatusConflict, "no_session", clip("the session did not start: "+why, 600))
+}
+
+// restartFailed starts again, on the models named (role to model; "" or "manager" is the team's model, a single agent's own), a tab
+// whose last start failed: a session that could not start for want of a model, or on one it could not use, is given one this way
+// instead of being refused as "starting" for good. The models are checked by the start itself, which says in a row why it fails.
+func (t *webTab) restartFailed(ctx context.Context, roles map[string]string, slots []wire.TeamSlot) (bool, error) {
+	if !t.startFailed() {
+		return false, werr(http.StatusConflict, "busy", "the session is starting: try again in a moment")
+	}
+	req := wire.RestartRequest{Kind: "model", RoleModels: map[string]string{}, Team: slots}
+	for role, ref := range roles {
+		role, ref = strings.TrimSpace(role), strings.TrimSpace(ref)
+		if ref == "" || len(ref) > 300 {
+			return false, werr(http.StatusUnprocessableEntity, "model", "name a model for "+firstNonEmpty(role, "manager")+": provider/model")
+		}
+		if role == "" || role == "manager" {
+			req.Model = ref
+		} else {
+			req.RoleModels[role] = ref
+		}
+	}
+	if len(req.RoleModels) > 0 || len(slots) > 0 {
+		req.Kind = "roles"
+	} else if req.Model == "" {
+		return false, werr(http.StatusUnprocessableEntity, "model", "name a model: provider/model")
+	}
+	return true, t.Restart(ctx, req)
+}
+
 // errTabBusy is the refusal of an exclusive section while a turn runs.
 var errTabBusy = werr(http.StatusConflict, "busy", "a turn is running: try again when it is over")
 
@@ -1405,8 +1454,8 @@ func (t *webTab) SetModel(ctx context.Context, req wire.ModelRequest) error {
 
 // setModel is SetModel, reporting whether the team starts again.
 func (t *webTab) setModel(ctx context.Context, req wire.ModelRequest) (bool, error) {
-	if len(req.Roles) > 0 {
-		return t.setModels(ctx, req.Roles)
+	if len(req.Roles) > 0 || len(req.Team) > 0 {
+		return t.setModels(ctx, req.Roles, req.Team)
 	}
 	ref := strings.TrimSpace(req.Ref)
 	if ref == "" || len(ref) > 300 {
@@ -1414,7 +1463,7 @@ func (t *webTab) setModel(ctx context.Context, req wire.ModelRequest) (bool, err
 	}
 	s := t.session()
 	if s == nil {
-		return false, werr(http.StatusConflict, "busy", "the session is starting: try again in a moment")
+		return t.restartFailed(ctx, map[string]string{req.Role: ref}, nil)
 	}
 	role := req.Role
 	if role == "manager" && s.Swarm == nil {
@@ -1468,14 +1517,14 @@ const maxModelChanges = 64
 
 // setModels changes several models at once (role to model; "manager" is the team's model, a single agent's own): every model is checked
 // first, then one restart carries them all, so a team starts again once however many roles change. A single agent whose own model is
-// all that changes switches it in place, as SetModel does.
-func (t *webTab) setModels(ctx context.Context, roles map[string]string) (bool, error) {
+// all that changes switches it in place, as SetModel does. slots, when there are any, is the whole team to go on with (teamSlots).
+func (t *webTab) setModels(ctx context.Context, roles map[string]string, slots []wire.TeamSlot) (bool, error) {
 	if len(roles) > maxModelChanges {
 		return false, werr(http.StatusUnprocessableEntity, "model", fmt.Sprintf("at most %d roles change at once", maxModelChanges))
 	}
 	s := t.session()
 	if s == nil {
-		return false, werr(http.StatusConflict, "busy", "the session is starting: try again in a moment")
+		return t.restartFailed(ctx, roles, slots)
 	}
 	names := slices.Sorted(maps.Keys(roles))
 	team, rm := "", map[string]string{}
@@ -1499,10 +1548,67 @@ func (t *webTab) setModels(ctx context.Context, roles map[string]string) (bool, 
 			rm[role] = ref
 		}
 	}
+	if len(slots) > 0 {
+		next, err := teamSlots(s, slots, rm)
+		if err != nil {
+			return false, err
+		}
+		return true, t.Restart(ctx, wire.RestartRequest{Kind: "roles", Model: team, RoleModels: rm, Team: next})
+	}
 	if len(rm) == 0 {
 		return t.setModel(ctx, wire.ModelRequest{Ref: team})
 	}
 	return true, t.Restart(ctx, wire.RestartRequest{Kind: "roles", Model: team, RoleModels: rm})
+}
+
+// hasRole reports whether roles has one named name.
+func hasRole(roles swarm.Roles, name string) bool {
+	_, ok := roles[name]
+	return ok
+}
+
+// maxTeamSlots bounds the slots of a team one model request may name (swarm.max_workers, checked when the team starts, may be lower).
+const maxTeamSlots = 256
+
+// teamSlots checks the team a model request names and returns it as the restart takes it: every slot a worker role of the session,
+// between session.MinTeamWorkers and maxTeamSlots slots, every role one the session has, and every model one the session can use. A slot without a model takes
+// the one roles gives its role in the same request, else the one the session gave the role when it started (--role-model role=model),
+// since the restart replaces those with the team. The worker roles are then taken out of roles; service roles (the compactor, the
+// mailman ...) stay in it.
+func teamSlots(s *session.Session, slots []wire.TeamSlot, roles map[string]string) ([]wire.TeamSlot, error) {
+	if len(slots) < session.MinTeamWorkers || len(slots) > maxTeamSlots {
+		return nil, werr(http.StatusUnprocessableEntity, "team", fmt.Sprintf("a team has %d to %d workers; this one has %d", session.MinTeamWorkers, maxTeamSlots, len(slots)))
+	}
+	started := s.Options().RoleModels
+	out := make([]wire.TeamSlot, 0, len(slots))
+	for _, ts := range slots {
+		role, ref := strings.TrimSpace(ts.Role), strings.TrimSpace(ts.Model)
+		switch {
+		case role == "" || len(role) > 64 || strings.ContainsAny(role, "= \t"):
+			return nil, werr(http.StatusUnprocessableEntity, "team", "a role is a name: "+clip(role, 64))
+		case serviceRole(role):
+			return nil, werr(http.StatusUnprocessableEntity, "team", role+" is not a worker of the team")
+		case len(s.Roles) > 0 && !hasRole(s.Roles, role):
+			return nil, werr(http.StatusUnprocessableEntity, "team", "no worker role named "+clip(role, 64)+" in this session")
+		case len(ref) > 300:
+			return nil, werr(http.StatusUnprocessableEntity, "model", "a model is provider/model")
+		}
+		if ref == "" {
+			ref = firstNonEmpty(roles[role], started[role])
+		}
+		if ref != "" {
+			if _, err := s.CheckModel(ref); err != nil {
+				return nil, werr(http.StatusUnprocessableEntity, "model", role+": "+clip(err.Error(), 400))
+			}
+		}
+		out = append(out, wire.TeamSlot{Role: role, Model: ref})
+	}
+	for role := range roles {
+		if !serviceRole(role) {
+			delete(roles, role) // the team carries the worker roles' models: an entry of its own would be read as one more slot
+		}
+	}
+	return out, nil
 }
 
 // effortLevels are the levels of /effort.

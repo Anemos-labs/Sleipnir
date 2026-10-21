@@ -12,6 +12,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/tools/memtool"
 	"github.com/anemos-labs/sleipnir/internal/tui/state"
 )
 
@@ -53,6 +54,7 @@ type sinkItem struct {
 	reason         string // the start of an error's text
 	refused        bool   // a refusal (permission, lease, scope, hook, too many calls)
 	nobody         bool   // a refusal for want of anyone to answer
+	memory         string // the memory tool changed the agents' notes: added or removed (memtool.MetaChange)
 	add, del       int
 	created, plain bool // write: the file was new; the result carried counts
 	took           time.Duration
@@ -266,6 +268,9 @@ func resultDetails(it *sinkItem, root, tool string, in *callInput, txt string, m
 		it.out = itoa(n) + " lines"
 	default:
 		it.out = cutBytes(firstLine(txt), 2*capOut+64)
+	}
+	if tool == perm.ToolMemory && !it.isErr {
+		it.memory = line(str(meta[memtool.MetaChange]), 16)
 	}
 	switch tool {
 	case "edit":

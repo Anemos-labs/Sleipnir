@@ -245,7 +245,9 @@
     }
     /* the cron hint: the server parses it (debounced), the answer is kept per expression */
     let hintT = 0;
-    function hintHtml(c) { return c && c.ok ? '<span class="ok">✓ next run ' + esc(hm(c.next)) + '</span>' : '<span class="err">✗ ' + (c && c.error ? esc(c.error) + ': ' : 'not a cron expression: ') + 'five fields (minute hour day month weekday) or @hourly @daily @weekly</span>'; }
+    /** the line under the cron field: the next run, or what is wrong (the format is added when the server's error does not already say it) */
+    function hintHtml(c) { const fmt = 'five fields (minute hour day month weekday) or @hourly @daily @weekly', e = c && c.error ? String(c.error) : '';
+      return c && c.ok ? '<span class="ok">✓ next run ' + esc(hm(c.next)) + '</span>' : '<span class="err">✗ ' + (!e ? 'not a cron expression: ' + fmt : /five fields/i.test(e) ? esc(e) : esc(e) + ': ' + fmt) + '</span>'; }
     function nextHint() {
       const v = $('#sCron', root).value.trim(), hint = $('#sNext', root), have = st.next.get(v);
       if (have) { hint.innerHTML = hintHtml(have); return Promise.resolve(have.ok); }

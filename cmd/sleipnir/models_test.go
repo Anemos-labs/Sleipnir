@@ -117,7 +117,7 @@ func TestPickModelSearchesAndChoosesFromWhatTheProviderLists(t *testing.T) {
 	}
 	ask := func(input string, fav map[string]bool) (string, string, error) {
 		var out bytes.Buffer
-		ref, err := pickModel(bufio.NewReader(strings.NewReader(input)), &out, rows, fav)
+		ref, err := pickModel(bufio.NewReader(strings.NewReader(input)), &out, rows, fav, "")
 		return ref, out.String(), err
 	}
 	// Alphabetical, numbered, no embedder; a number chooses.
@@ -143,8 +143,15 @@ func TestPickModelSearchesAndChoosesFromWhatTheProviderLists(t *testing.T) {
 	if _, _, err := ask("", nil); err == nil {
 		t.Error("end of input must not choose")
 	}
-	if _, err := pickModel(bufio.NewReader(strings.NewReader("1\n")), &bytes.Buffer{}, nil, nil); err == nil {
+	if _, err := pickModel(bufio.NewReader(strings.NewReader("1\n")), &bytes.Buffer{}, nil, nil, ""); err == nil {
 		t.Error("no models: an error, not a hang")
+	}
+	// The provider's suggested model comes first, after the favorites.
+	if ref, err := pickModel(bufio.NewReader(strings.NewReader("1\n")), &bytes.Buffer{}, rows, nil, "heimdallm/zeta/z-1"); err != nil || ref != "heimdallm/zeta/z-1" {
+		t.Errorf("the suggestion leads: %q %v", ref, err)
+	}
+	if ref, err := pickModel(bufio.NewReader(strings.NewReader("1\n")), &bytes.Buffer{}, rows, map[string]bool{"heimdallm/alpha/a-2": true}, "heimdallm/zeta/z-1"); err != nil || ref != "heimdallm/alpha/a-2" {
+		t.Errorf("a favorite still leads: %q %v", ref, err)
 	}
 }
 

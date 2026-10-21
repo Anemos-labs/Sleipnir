@@ -133,6 +133,10 @@ type Provider struct {
 	// over https, or over http to a loopback address. User configuration only, like
 	// AllowHosts.
 	AllowInsecureHTTP bool `json:"allow_insecure_http,omitempty"`
+	// SuggestedModel is the model a picker offers first when nothing chose one yet (no models.default): a model id of this provider,
+	// or the start of one ("vendor/family" matches "vendor/family-v2"), so that a new version of the model is still found. A model
+	// the provider does not list is not offered.
+	SuggestedModel string `json:"suggested_model,omitempty"`
 
 	// BaseURLFromProject records that a project-level file (trusted, or Load would
 	// have dropped it) supplied BaseURL. Load fills it in; it is not part of the file
@@ -182,6 +186,11 @@ type Permissions struct {
 	// guards) to the manager before the person (internal/swarm approvals.go). Unset is true; --manager-approves=false turns it off
 	// for one session.
 	ManagerApproves *bool `json:"manager_approves,omitempty"`
+	// ManagerAnswersAfter is how long a team worker's question may wait for the person before the manager answers it for them
+	// ("10m"; unset or "0" never: the question waits for the person). ManagerAnswersUpTo is the most dangerous kind of question the
+	// manager may answer then (perm.Danger: "low", "medium" or "high"; unset is "medium").
+	ManagerAnswersAfter string `json:"manager_answers_after,omitempty"`
+	ManagerAnswersUpTo  string `json:"manager_answers_up_to,omitempty"`
 }
 
 // RolePermissions is the per-role permission override.

@@ -92,6 +92,11 @@ type Options struct {
 	Prompter perm.Prompter
 	// AskTimeout is how long a question to the person waits for its answer before it is refused (perm.Config.AskTimeout); zero waits.
 	AskTimeout time.Duration
+	// ManagerAnswersAfter, when positive, overrides permissions.manager_answers_after: in a team, how long a worker's question waits
+	// for the person before the manager answers it for them (perm.Config.Fallback). ManagerAnswersUpTo, when set, overrides
+	// permissions.manager_answers_up_to: the most dangerous kind of question it may answer.
+	ManagerAnswersAfter time.Duration
+	ManagerAnswersUpTo  perm.Danger
 	// Allow are rules that need no question in this run, on top of the configuration's (sleipnir run --allow): what the person
 	// who started the run pre-approved on the command line, which is the one place a run with nobody to ask can get an answer.
 	Allow []string
@@ -215,6 +220,8 @@ type Options struct {
 // Session is a running assembly. Run may be called repeatedly; the agent (or
 // manager) keeps its thread between calls.
 type Session struct {
+	// shownAtStart are the warnings of the session itself an earlier start of this resumed session logged (startNotice).
+	shownAtStart    map[string]bool
 	delivery        *delivery.Controller
 	deliveryOptions delivery.Options
 	opts            Options
@@ -296,6 +303,7 @@ type Session struct {
 	trust       *trustInfo     // how the project's own files came to be used, or why not (nil when it has none)
 	mcp         *mcpState
 	archive     *kv.Archive    // folded turns, for recall
+	past        pastArchives   // earlier sessions' turns, for recall session=…
 	handles     *tools.Handles // recall handles of truncated output
 	unlock      func()         // releases the lock on the session directory
 	ckptLog     *checkpointLog // writes the "checkpoint" events (web_access.go)
@@ -320,6 +328,9 @@ type Session struct {
 	// single agent's --budget-usd.
 	budget float64
 	turn   int
+	// interrupted says that the last turn was cancelled by the person (an interrupt), under mu: the next turn's message is then
+	// headed by InterruptNote, so that it is what the model answers instead of the work that was cut short.
+	interrupted bool
 	// swarmCtx is the context an interactive session's swarm runs on: it lives until
 	// Close, not until the end of one turn (see swarmContext).
 	swarmCtx  context.Context
@@ -490,12 +501,16 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	if o.Resume != "" && !hasLog(s.Dir) {
 		return nil, errors.New("this session was removed before it could be resumed")
 	}
+	if o.Resume != "" {
+		s.shownAtStart = loggedStartNotices(s.Dir)
+	}
+	shown := s.shownAtStart
 	if s.Log, err = events.Open(s.Dir, s.ID); err != nil {
 		return nil, err
 	}
 	s.emitPlugins()
 	for _, w := range plugWarns {
-		s.notice("", w)
+		s.startNotice(w)
 	}
 	s.effort.Set(o.Params.Effort)
 	if o.Resume != "" {
@@ -548,11 +563,12 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	s.ext.warnings = append(s.ext.warnings, hookWarns...)
 	s.ext.warnings = append(s.ext.warnings, extWarns...)
 	s.Skills, s.Roles = s.ext.skills, s.ext.roles
-	for _, w := range s.ext.warnings {
+	fresh := slices.DeleteFunc(slices.Clone(s.ext.warnings), func(w string) bool { return shown[w] })
+	for _, w := range fresh {
 		s.Log.Emit("", "notice", map[string]any{"level": "warn", "msg": w})
 	}
 	if o.Sink != nil {
-		for _, w := range shownWarnings(s.ext.warnings) {
+		for _, w := range shownWarnings(fresh) {
 			o.Sink.Notice("", "warn", w)
 		}
 	}
@@ -690,7 +706,9 @@ func (s *Session) buildPerm() error {
 	}
 	// The manager uses the session policy, just like a solo agent.
 	var extra []string
+	var ignored func(string) bool
 	if s.iso != nil {
+		ignored = s.iso.ignoredChecker()
 		// The session's worktrees are part of the workspace, and the project's relative
 		// rules hold inside each of them: writers work there, each confined to its own
 		// (swarm.bindTree).
@@ -704,11 +722,15 @@ func (s *Session) buildPerm() error {
 		}
 	}
 	ask := append(append([]string(nil), protectedConfigDirs...), s.cfg.Permissions.Ask...)
+	after, upTo, err := s.managerAnswers()
+	if err != nil {
+		return fmt.Errorf("permissions: %w", err)
+	}
 	e, err := perm.NewEngine(perm.Config{
-		Mode: mode, Root: o.Root, Home: o.Home, StateDir: stateRoot(o.Home), Tmp: s.tmp, TreeParents: extra,
+		Mode: mode, Root: o.Root, Home: o.Home, StateDir: stateRoot(o.Home), Tmp: s.tmp, TreeParents: extra, Ignored: ignored,
 		Allow: append(append([]string(nil), s.cfg.Permissions.Allow...), o.Allow...), Ask: ask, Deny: s.cfg.Permissions.Deny,
 		Roles: roles, Prompter: s.trackAsks(s.hookPrompter(o.Prompter)), AskTimeout: o.AskTimeout, Audit: s.auditPermission,
-		Delegate: s.delegateApproval,
+		Delegate: s.delegateApproval, Fallback: s.fallbackApproval, FallbackAfter: after, FallbackUpTo: upTo,
 	})
 	if err != nil {
 		return fmt.Errorf("permissions: %w", err)
@@ -752,12 +774,12 @@ func (s *Session) buildShared(ctx context.Context) error {
 	}
 	if err != nil {
 		// Unreadable instruction files are reported, never fatal.
-		s.Log.Emit("", "notice", map[string]any{"level": "warn", "msg": "instruction files: " + err.Error()})
+		s.startNotice("instruction files: " + err.Error())
 	}
 	if !s.opts.TrustProject {
 		kept := userScopeOnly(srcs)
 		if skipped := skippedSources(srcs, kept); len(skipped) > 0 {
-			s.notice("", fmt.Sprintf("instruction files of this project were not loaded because the project is not trusted (%s); %s", strings.Join(skipped, ", "), trustHint("load")))
+			s.startNotice(fmt.Sprintf("instruction files of this project were not loaded because the project is not trusted (%s); %s", strings.Join(skipped, ", "), trustHint("load")))
 		}
 		srcs = kept
 	}
@@ -766,7 +788,7 @@ func (s *Session) buildShared(ctx context.Context) error {
 		budget := instructionTokenBudget(s.cfg.Cache.InstructionMaxTokens, s.Model.ContextTokens)
 		fitted, cut := fitInstructions(srcs, budget, est)
 		if len(cut) > 0 {
-			s.notice("", fmt.Sprintf("instruction files need about %d tokens; the limit is %d. Truncated or omitted: %s. Later, more specific files take precedence. Increase cache.instruction_max_tokens (SLEIPNIR_CACHE_INSTRUCTION_MAX_TOKENS) and restart, or shorten the files; /recon shows the loaded text", est.Tokens(txt), budget, strings.Join(cut, ", ")))
+			s.startNotice(fmt.Sprintf("instruction files need about %d tokens; the limit is %d. Truncated or omitted: %s. Later, more specific files take precedence. Increase cache.instruction_max_tokens (SLEIPNIR_CACHE_INSTRUCTION_MAX_TOKENS) and restart, or shorten the files; /recon shows the loaded text", est.Tokens(txt), budget, strings.Join(cut, ", ")))
 		}
 		segs = append(segs, kv.Segment{Key: "instructions", Text: fitted, Vol: kv.VolEpoch})
 	}
@@ -873,7 +895,12 @@ func (s *Session) build(ctx context.Context) error {
 			reg.Register(t)
 			return nil
 		},
-		plugin.Recall: func(*plugin.Scope) error { reg.Register(recall.New(archive)); return nil },
+		plugin.Recall: func(*plugin.Scope) error {
+			rt := recall.New(archive)
+			rt.Past = s.pastArchive
+			reg.Register(rt)
+			return nil
+		},
 		// Registered whenever its plugin is on, whatever the project holds: the tool list must not depend on the project.
 		plugin.SkillTool: func(*plugin.Scope) error { reg.Register(skilltool.New(s.Skills)); return nil },
 		plugin.MemoryTool: func(*plugin.Scope) error {
@@ -881,7 +908,11 @@ func (s *Session) build(ctx context.Context) error {
 				reg.Register(memtool.Off())
 				return nil
 			}
-			reg.Register(memtool.New(filepath.Join(o.Home, ".sleipnir", "MEMORY.md")))
+			proj := "" // an untrusted project's notes file is the repository's text, not the agent's memory
+			if o.TrustProject {
+				proj = filepath.Join(o.Root, filepath.FromSlash(memory.ProjectNotes))
+			}
+			reg.Register(memtool.NewScoped(filepath.Join(o.Home, ".sleipnir", "MEMORY.md"), proj))
 			return nil
 		},
 		plugin.PlanTool: func(*plugin.Scope) error { reg.Register(plantool.New(plans)); return nil },
@@ -1145,7 +1176,12 @@ func (s *Session) build(ctx context.Context) error {
 		return err
 	}
 	deps.Isolation = iso
-	sw := swarm.New(sc, deps, s.teamRoles(s.ext.roles, team, autoDocs))
+	roles := s.teamRoles(s.ext.roles, team, autoDocs)
+	if st := s.buildLore(team); st != nil {
+		roles = s.loreRoles(st, roles)
+		sc.OnLearned = s.saveLore(st)
+	}
+	sw := swarm.New(sc, deps, roles)
 	for _, t := range sw.Tools() {
 		reg.Register(t)
 	}
@@ -1165,16 +1201,33 @@ type TeamSlot struct {
 	Model string `json:"model,omitempty"`
 }
 
-// checkSwarmSize refuses a swarm larger than swarm.max_workers allows. The setting is
-// a ceiling that the user's file or the environment puts on every session; a request
-// for more (--swarm N asks for a manager and N workers) would otherwise override it
-// without a word.
+// checkSwarmSize refuses a swarm larger than swarm.max_workers allows (DefaultMaxTeamWorkers
+// when it is not set), and a negative one. The setting is a ceiling that the user's file or
+// the environment puts on every session; a request for more (--swarm N asks for a manager
+// and N workers) would otherwise override it without a word.
 func checkSwarmSize(cfg *config.Config, o Options) error {
-	ceil := cfg.Swarm.MaxWorkers
-	if !o.Swarm || ceil <= 0 || o.Workers <= ceil {
+	if !o.Swarm {
 		return nil
 	}
+	if o.Workers < 0 {
+		return fmt.Errorf("swarm: %d workers requested; a team has %d workers or more (0 is a single agent)", o.Workers, MinTeamWorkers)
+	}
+	ceil := TeamCeiling(cfg)
+	if o.Workers <= ceil {
+		return nil
+	}
+	if cfg.Swarm.MaxWorkers <= 0 {
+		return fmt.Errorf("swarm: %d workers requested (and the manager) but a session has at most %d workers unless swarm.max_workers allows more; ask for fewer workers or raise swarm.max_workers", o.Workers, ceil)
+	}
 	return fmt.Errorf("swarm: %d workers requested (and the manager) but swarm.max_workers caps a session at %d workers; raise swarm.max_workers or ask for fewer workers", o.Workers, ceil)
+}
+
+// TeamCeiling is the most workers a session may have: swarm.max_workers when it is set, else DefaultMaxTeamWorkers.
+func TeamCeiling(cfg *config.Config) int {
+	if cfg != nil && cfg.Swarm.MaxWorkers > 0 {
+		return cfg.Swarm.MaxWorkers
+	}
+	return DefaultMaxTeamWorkers
 }
 
 // CompactorRole is the name under which models.roles and --role-model give the model that writes the
@@ -1308,6 +1361,10 @@ func (writeGuard) BeforeWrite(string, string) error { return nil }
 // AfterWrite records the agent and path in the checkpoint store after a write completes.
 func (g writeGuard) AfterWrite(agent, path string) { g.store.After(agent, path) }
 
+// InterruptNote heads the first message after a turn the person interrupted: the conversation still ends with the work that was cut
+// short, and a model reading it tends to carry that on instead of answering what the person says now.
+const InterruptNote = "[The person interrupted your previous turn. Answer the message below first; go back to the interrupted work only if it asks you to.]\n\n"
+
 // runTurn gives the session one model turn without starting a GitHub controller.
 func (s *Session) runTurn(ctx context.Context, goal string) (*Result, error) {
 	s.mu.Lock()
@@ -1319,12 +1376,24 @@ func (s *Session) runTurn(ctx context.Context, goal string) (*Result, error) {
 	s.started = true
 	s.turn++
 	turn := s.turn
+	after := s.interrupted
+	s.interrupted = false
 	s.mu.Unlock()
 	defer s.flushCheckpoints()
+	defer func() {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			s.mu.Lock()
+			s.interrupted = true
+			s.mu.Unlock()
+		}
+	}()
 
 	goal, err := s.promptHook(ctx, first, goal)
 	if err != nil {
 		return nil, err
+	}
+	if after {
+		goal = InterruptNote + goal
 	}
 
 	if first {

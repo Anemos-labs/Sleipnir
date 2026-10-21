@@ -89,7 +89,7 @@ test('following again returns to the latest cache page even for the same agent',
   for (let i = 1; i <= 100; i++) L.SL.model.reduce(S.m, { k: 'req', id: 'mgr', t: i, ratio: .95 }, S);
   L.SL.views.show('cache'); await L.settle();
   L.$('[data-cache-page="prev"]').click(); await L.settle();
-  L.doc.body.dispatchEvent(new FakeEvent('keydown', { key: 'f', bubbles: true })); await L.settle();
+  L.$('[data-cache-follow]').click(); await L.settle();
   assert.equal(L.SL.ui.cacheFollow, true);
   assert.equal(L.doc.querySelectorAll('.hbar .nn').at(-1).textContent, '100');
 });

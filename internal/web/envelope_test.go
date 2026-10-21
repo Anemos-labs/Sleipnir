@@ -27,7 +27,7 @@ func checkEnvelopeHeaders(t testing.TB, label string, rec *httptest.ResponseReco
 	csp := h.Get("Content-Security-Policy")
 	for _, want := range []string{
 		"default-src 'none'", "script-src 'self'", "style-src 'self'", "style-src-attr 'unsafe-inline'", "font-src 'self'",
-		"img-src 'self' data:", "connect-src 'self'", "frame-ancestors 'none'", "form-action 'none'", "base-uri 'none'",
+		"img-src 'self' data:", "media-src 'self'", "frame-src 'self'", "connect-src 'self'", "frame-ancestors 'none'", "form-action 'none'", "base-uri 'none'",
 	} {
 		if !strings.Contains(csp, want) {
 			t.Errorf("%s (%d): CSP %q lacks %q", label, rec.Code, csp, want)

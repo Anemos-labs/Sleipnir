@@ -21,6 +21,10 @@ import (
 // Tool is the recall tool.
 type Tool struct {
 	Archive *kv.Archive
+	// Past opens the archive of an agent of an earlier session of this project: session is "last" or a session id, agent an agent
+	// id or "" for the agent the person talked to. It returns the archive and the agent key its turns are under. Nil: recall reads
+	// this session only.
+	Past func(session, agent string) (*kv.Archive, string, error)
 }
 
 // New returns a recall tool over an archive.
@@ -30,6 +34,8 @@ const schema = `{"type":"object","properties":{
 "turns":{"type":"string","description":"turn range from a history line, e.g. t12-t19"},
 "handle":{"type":"string","description":"handle of truncated output, e.g. out_ab12cd34"},
 "query":{"type":"string","description":"search words in your archived turns"},
+"agent":{"type":"string","description":"another agent's id, to read its turns instead of yours (e.g. bk-2)"},
+"session":{"type":"string","description":"an earlier session of this project: last, or its id"},
 "offset":{"type":"integer","description":"character offset when paging a handle"},
 "limit":{"type":"integer","description":"max characters to return"}}}`
 
@@ -39,18 +45,29 @@ func (t *Tool) Spec() core.ToolSpec {
 		Name: "recall",
 		Description: "Retrieve context that was folded out of your prompt. Use turns=\"t12-t19\" to reopen a range " +
 			"listed in <history>; handle=\"out_…\" to page through truncated tool output; query=\"words\" to search " +
-			"your archived turns. Output is capped; narrow the range or page with offset/limit.",
+			"your archived turns. Output is capped; narrow the range or page with offset/limit. " +
+			"To ask what another agent found or decided, add agent=\"bk-2\" (a teammate in this session) or session=\"last\" " +
+			"(an earlier session of this project; agent defaults to the one the person talked to) to turns or query.",
 		InputSchema: json.RawMessage(schema),
 		ReadOnly:    true,
 	}
 }
 
 type input struct {
-	Turns  string `json:"turns"`
-	Handle string `json:"handle"`
-	Query  string `json:"query"`
-	Offset int    `json:"offset"`
-	Limit  int    `json:"limit"`
+	Turns   string `json:"turns"`
+	Handle  string `json:"handle"`
+	Query   string `json:"query"`
+	Offset  int    `json:"offset"`
+	Limit   int    `json:"limit"`
+	Agent   string `json:"agent"`
+	Session string `json:"session"`
+}
+
+// source is whose turns a call reads: an archive, the agent key in it, and the arguments that name it again in a hint.
+type source struct {
+	ar    *kv.Archive
+	agent string
+	args  string
 }
 
 // Run implements tools.Tool.
@@ -64,15 +81,56 @@ func (t *Tool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	if limit <= 0 || limit > env.Limits.MaxOutputChars {
 		limit = env.Limits.MaxOutputChars
 	}
+	src, bad := t.source(env, in)
+	if bad != nil {
+		return bad, nil
+	}
 	switch {
 	case in.Handle != "":
+		if src.args != "" {
+			return tools.Errorf("a handle is your own: page it without agent or session"), nil
+		}
 		return t.handle(env, in, limit), nil
 	case in.Turns != "":
-		return t.turns(env, in, limit), nil
+		return t.turns(src, in, limit), nil
 	case in.Query != "":
-		return t.search(env, in), nil
+		return t.search(src, in), nil
 	}
 	return tools.Errorf("give one of: turns, handle, query"), nil
+}
+
+// source resolves agent and session to the turns a call reads: the caller's own by default.
+func (t *Tool) source(env *tools.Env, in input) (source, *tools.Result) {
+	agent, session := strings.TrimSpace(in.Agent), strings.TrimSpace(in.Session)
+	if session != "" {
+		if t.Past == nil {
+			return source{}, tools.Errorf("earlier sessions cannot be read here")
+		}
+		ar, key, err := t.Past(session, agent)
+		if err != nil {
+			return source{}, tools.Errorf("%v", err)
+		}
+		args := fmt.Sprintf(", session=%q", session)
+		if agent != "" {
+			args += fmt.Sprintf(", agent=%q", agent)
+		}
+		return source{ar: ar, agent: key, args: args}, nil
+	}
+	if agent == "" || agent == env.Agent {
+		return source{ar: t.Archive, agent: env.Agent}, nil
+	}
+	if t.Archive.Len(agent) == 0 {
+		return source{}, tools.Errorf("no archived turns of an agent %q in this session: use a teammate's id as the board or live view shows it", cleanID(agent))
+	}
+	return source{ar: t.Archive, agent: agent, args: fmt.Sprintf(", agent=%q", agent)}, nil
+}
+
+// cleanID is an agent id as given, cut short, for a refusal.
+func cleanID(s string) string {
+	if r := []rune(s); len(r) > 40 {
+		return string(r[:40]) + "…"
+	}
+	return s
 }
 
 func (t *Tool) handle(env *tools.Env, in input, limit int) *tools.Result {
@@ -110,16 +168,16 @@ var resultRef = regexp.MustCompile(`(?i)^\s*t?(\d+)\s*[.#]\s*(\d+)\s*$`)
 // memory (S47). The budget in bytes follows the output limit.
 const maxRangeTurns = 64
 
-func (t *Tool) turns(env *tools.Env, in input, limit int) *tools.Result {
+func (t *Tool) turns(src source, in input, limit int) *tools.Result {
 	spec := strings.TrimSpace(in.Turns)
 	if m := resultRef.FindStringSubmatch(spec); m != nil {
-		return t.result(env, m, spec, limit)
+		return t.result(src, m, spec, limit)
 	}
 	from, to, err := parseRange(spec)
 	if err != nil {
 		return tools.Errorf("bad turn range %q (use e.g. t12-t19, or t13.7 for one tool result)", spec)
 	}
-	got, more, err := t.Archive.RangeLimit(env.Agent, from, to, maxRangeTurns, 4*limit)
+	got, more, err := src.ar.RangeLimit(src.agent, from, to, maxRangeTurns, 4*limit)
 	if err != nil {
 		return tools.Errorf("archive read failed: %v", err)
 	}
@@ -128,19 +186,19 @@ func (t *Tool) turns(env *tools.Env, in input, limit int) *tools.Result {
 	}
 	out := kv.FormatTurns(got, limit)
 	if more {
-		out += fmt.Sprintf("\n[the range holds more turns: call again with turns=\"t%d-t%d\"]", got[len(got)-1].ID+1, to)
+		out += fmt.Sprintf("\n[the range holds more turns: call again with turns=\"t%d-t%d\"%s]", got[len(got)-1].ID+1, to, src.args)
 	}
 	return &tools.Result{Text: out}
 }
 
 // result serves "t13.7": one tool result of one archived turn, in full up to the limit.
-func (t *Tool) result(env *tools.Env, m []string, spec string, limit int) *tools.Result {
+func (t *Tool) result(src source, m []string, spec string, limit int) *tools.Result {
 	id, err1 := strconv.ParseInt(m[1], 10, 64)
 	idx, err2 := strconv.Atoi(m[2])
 	if err1 != nil || err2 != nil {
 		return tools.Errorf("bad tool result reference %q (use e.g. t13.7)", spec)
 	}
-	got, err := t.Archive.Range(env.Agent, core.TurnID(id), core.TurnID(id))
+	got, err := src.ar.Range(src.agent, core.TurnID(id), core.TurnID(id))
 	if err != nil {
 		return tools.Errorf("archive read failed: %v", err)
 	}
@@ -154,16 +212,19 @@ func (t *Tool) result(env *tools.Env, m []string, spec string, limit int) *tools
 	return &tools.Result{Text: text}
 }
 
-func (t *Tool) search(env *tools.Env, in input) *tools.Result {
-	hits := t.Archive.Search(env.Agent, in.Query, 8)
+func (t *Tool) search(src source, in input) *tools.Result {
+	hits := src.ar.Search(src.agent, in.Query, 8)
 	if len(hits) == 0 {
+		if src.args != "" {
+			return &tools.Result{Text: "no matches in " + src.agent + "'s archived turns"}
+		}
 		return &tools.Result{Text: "no matches in your archived turns"}
 	}
 	var sb strings.Builder
 	for _, h := range hits {
 		fmt.Fprintf(&sb, "t%d (%d match): …%s…\n", h.Turn, h.Score, h.Snippet)
 	}
-	sb.WriteString("Use recall(turns=\"tN\") to read a hit in full.")
+	fmt.Fprintf(&sb, "Use recall(turns=\"tN\"%s) to read a hit in full.", src.args)
 	return &tools.Result{Text: sb.String()}
 }
 

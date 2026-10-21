@@ -7,6 +7,223 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Agents save memory notes without asking. A change to the agents' notes
+  (`~/.sleipnir/MEMORY.md`, or the project's `.sleipnir/MEMORY.local.md`) no
+  longer waits for the person's approval; the protection of `~/.sleipnir` and
+  `.sleipnir` is for files an agent writes there itself, not for the memory
+  tool's own file. Instead the Memory item of the web interface's left bar
+  counts the session's new memory changes until the Memory view is opened
+  (`wire.Tool` gains `mem`: added or removed). A `memory` ask rule puts each
+  change to the person again, and a `memory` deny rule refuses it. The memory
+  tool's description changed, so the tools layer of the prompt cache is
+  rebuilt once.
+
+- The Memory page shows the project's own notes (`.sleipnir/MEMORY.local.md`),
+  to edit, remove and add like the user's (`PUT .../memory/notes` takes
+  `scope: project`), and the team's lore by role, read-only
+  (`wire.MemoryView` gains `project` and `lore`).
+
+- The research tool no longer makes agents think about `run`. Its
+  description, schema and the run's brief say to leave `run` out (every
+  call goes to the run the session works on), and a call that names a run
+  that does not exist goes to the active run with a note instead of being
+  refused. Agents had spent turns working out whether `research cite`
+  needs `run`. The tool's description changed, so the tools layer of the
+  prompt cache is rebuilt once.
+
+- Quick research is quick. The quick depth asked for 15 sources from 8
+  sites, 24 findings and 4 to 7 pages, each fact-checked by another agent, so
+  a quick run (or Research first at quick depth in New session) took hours.
+  It now asks for 8 sources from 4 sites, 12 findings, 1 to 3 pages and 2
+  snippets from 2 projects, and has no fact-check round (`Depth.Reviewers` 0):
+  the harness still verifies every quote and citation, and a review that
+  finds issues still holds the page. The brief and goal of a run at quick
+  depth change accordingly. A plan that leaves out the overview page (`index`) gets
+  it, instead of sending the run back to planning. The Research view leaves
+  the fact-check phase out of a quick run's progress (`wire.ResearchRun`
+  gains `noFactCheck`).
+
+- Notices no longer pile up after restarts. A resumed session found the same
+  skills, hooks, plugins and instruction files as its earlier start and
+  logged the same warnings again, so a page replaying the log showed one more
+  copy of each per restart. A start-up warning already in the session's log
+  is now not logged or shown again.
+
+- An agent waits out a flaky endpoint that has answered it before. A failure
+  in which nothing answered (a dropped or reset connection, a gateway that
+  timed out) got only the six attempts, about half a minute, unless the
+  session said `WaitUnreachable`; a gateway that dropped connections for a
+  minute cost a worker its turn. Once the endpoint has answered the agent it
+  is known to exist, and such failures are waited out under the outage
+  patience (five minutes by default), like a 502 or 503. Before any answer a
+  misspelt URL still fails after the six attempts.
+
+- Questions wait for their answer. `sleipnir web` no longer refuses the open
+  questions after a minute without a page (`--ask-grace` now defaults to 0,
+  never); `--ask-grace` and `--ask-timeout` still set a limit when given.
+
+- Bypass mode never asks. What it used to ask about (the high-risk class,
+  the paths an `ask` rule names, such as `.sleipnir/`) is refused at once,
+  and the refusal says what flagged it and asks the agent for a safer way.
+  The Permissions page's tester shows it as refused.
+
+- The manager can answer for a person who is away. With
+  `permissions.manager_answers_after` (`--manager-answers-after`, or "when
+  you are away" in New session), a worker's question left unanswered that
+  long goes to the manager, if it is no more dangerous than
+  `permissions.manager_answers_up_to` (`low`, `medium` by default, or
+  `high`). Its answer withdraws the person's question, which shows who
+  answered and how. Off unless set; both keys are security-sensitive.
+
+- A worker can clear a false-green refusal. The refusal said to replace a
+  dependency store that links outside the tree, but `unlink` on the link and
+  any command that both removed the link and reinstalled through it were
+  refused, since the link resolved outside the tree. `unlink` now removes the
+  link itself, as `rm` does, and the refusal names the command to run on its
+  own first (`rm .venv`), one for each link.
+
+- A research call that names no run reaches the project's only unfinished
+  run after a session resumes. The run a call means was kept only in memory,
+  so after a resume every `research` call without `run` was refused with "no
+  research run is open" until one named it. With several unfinished runs,
+  the refusal now lists them.
+
+- Previews of files in the web interface. The Workspace shows images (SVG
+  included), video, audio and PDF files, rendered Markdown (with mermaid
+  blocks), mermaid diagrams and CSV/TSV tables in a Preview view instead of
+  "a binary file"; a changed picture is shown before and after. A picture an
+  agent read or wrote is shown under its tool row in the chat and the agent
+  drawer. New routes: `GET /api/sessions/{id}/ws/raw` and
+  `GET /api/preview/mermaid` (a sandboxed frame with the vendored
+  `@mermaid-js/tiny` build). The page's policy adds `media-src 'self'` and
+  `frame-src 'self'`. No prompt bytes change.
+
+- A research-first goal keeps the free workers building. The goal and the
+  brief of a `/goal --research` run now say that the workers the research
+  leaves free lay the groundwork no finding can change (what the project
+  fixes outright: stack, layout, tooling, stated requirements) while it runs,
+  and that any free worker writes a wiki page, one writer per page. Before,
+  "research first, then build" held the whole team for the research, and
+  the docs role alone wrote the pages. The generated goal text of new
+  research-first runs and the generated brief of new runs change; the shared
+  prompt layer does not.
+
+- `--team NAME` looks in the project of `--cwd`. A team named by NAME is
+  found in `.sleipnir/teams` of the project `--cwd` names, wherever `--cwd`
+  stands on the command line, not only in the project of the directory the
+  command runs from (`sleipnir web --cwd ~/app --team build` from another
+  directory said there was no such team). The file is now read once the
+  whole command line is parsed, so an unreadable team is reported then.
+
+- Isolated agents read what git does not track. A confined agent may read a
+  file of the checkout that git does not track (untracked, or ignored as
+  before), since its tree, made from the commits, may have no copy: with
+  `--commit` the untracked files are not copied, and files written during
+  the run (a research run's brief) never are. A research-first goal names
+  its brief by its absolute path in the checkout when the team works in
+  trees, so the manager can read it. No prompt bytes change.
+- A diagnosis owner for named stalls. A stall finding that still holds ten
+  minutes after its nudge is escalated once to the manager with a
+  diagnosis (the task's and agent's state, how long it held, who was told,
+  and what ends it), logged as `swarm.stall` with `action: escalate`. No
+  prompt bytes change.
+- No false greens from linked dependencies. In an isolated team, the
+  verification gate fails without running the verifier when a dependency
+  store in the worker's tree (`node_modules`, `.venv`, …) is a symlink to
+  somewhere outside it, since tests there could pass against the main
+  checkout's code. No prompt bytes change.
+- Ask a past agent. `recall` takes `agent` (a teammate in this session) and
+  `session` (`last` or an id: an earlier session of the same project, read
+  from its log without writing to it), so an agent can search or page what
+  another agent found or decided. Prompt bytes: the `recall` tool's
+  description and schema change, so the tool prefix is written once.
+- Rigor per task. `task create` takes `rigor`: `plan` creates a read-only
+  plan task for the architect (or scout) that the work waits for and
+  inherits; `reviewed` adds a reviewer's check of that plan, whose
+  amendments the work follows as acceptance criteria. Prompt bytes: the
+  `task` tool's description and schema change, so the tool prefix is
+  written once, and the manager's pin gains a sentence.
+- Review by two models. When a team's reviewer slots run on two or more
+  different models, the review gate holds the goal until reviewers on two
+  different models have each covered the last merge; the gate's line says
+  so. A team whose reviewers share one model keeps the single review.
+  Prompt bytes: the manager's pin gains a few words.
+- `--team NAME` (chat, run, swarm, and web for new sessions) starts the
+  team saved in `.sleipnir/teams/NAME.json` or `~/.sleipnir/teams/NAME.json`:
+  its `slots` are the workers in order, each on its own model or its role's,
+  and `models` names the manager's, compactor's, judge's and the other
+  service roles' models. It is the same team as the `--role-model` values it
+  stands for; no prompt bytes change.
+- Memory in two scopes. The `memory` tool takes `scope`: `user` (the
+  default, `~/.sleipnir/MEMORY.md`, shown in every project) or `project`
+  (`.sleipnir/MEMORY.local.md` at the project root, shown only there and only
+  when the project is trusted; the first project note writes a
+  `.sleipnir/.gitignore` that lists it). `list` without a scope shows both.
+  Lessons of `/goal` record the project they were learned in, and retrieval
+  multiplies the score of a lesson from the same project by 1.25; a lesson
+  learned again in another project becomes general. Prompt bytes: the memory
+  tool's description and schema change, so the tool prefix is written once.
+- Project memory by role: in a team session, a worker's `note` with
+  `scope: role` is kept for the agents of its role in later sessions of the
+  same project once a task of that worker is accepted, in
+  `~/.sleipnir/lore/<project>-<hash>/<role>.md` (an insight, confirmed again
+  each time a later session saves it; a person may mark a line `[canon]`).
+  Each worker role's pin carries its file's items in a `<role-lore>` block,
+  read once at session start, so the role layer is stable within a session.
+  `--no-memory` turns it off. Prompt bytes: the `note` tool's description
+  grows by one sentence, and a role whose file has items gets a longer pin
+  (at most about 1,500 tokens), written once when the session starts.
+- A capability map: the constitution asks an agent to check the instruction
+  files' Capabilities section, and to search by what a thing does, before it
+  adds a subsystem, and to extend what exists rather than build a second one.
+  Under auto-docs the docs worker keeps a `## Capabilities` section in
+  AGENTS.md (one line per existing system: what it does, where it lives, its
+  doc as `path#heading`), workers check it and mail new capabilities, and the
+  reviewer reports a module that duplicates an existing one. `sleipnir init`
+  writes the section into a new AGENTS.md. Prompt bytes: the constitution grows
+  by about 40 tokens (the bound is raised from 5150 to 5200), and the
+  manager, worker, docs and reviewer pins change, so the first request of each
+  role after upgrading writes its prefix once.
+- `POST /api/sessions/{id}/model` takes `team`, the whole team to go on with
+  (one `{role, model}` per worker slot), and `wire.RestartRequest` of kind
+  `roles` carries it: one restart changes how many workers each role has and
+  the model of each slot, with the role models of the same request. A
+  `/restart` line that names a whole team with `--role-model` (a role without
+  a model, a role given twice, or as many worker entries as its `--swarm`)
+  now replaces the team the session started with instead of adding to its
+  slots. No prompt bytes change.
+- The `read` tool takes `section`: a Markdown heading's text or anchor slug
+  (`path#heading` works too, unless a file of that literal name exists). Only
+  that heading and the lines under it, up to the next heading of the same or a
+  higher level, are returned, with their real line numbers; an unknown heading
+  is refused with a list of the file's headings. Prompt bytes: the tool list's
+  `read` description and schema change.
+- In a team with worktree isolation, an agent may now read the files git
+  ignores in the person's checkout (data sets, assets, local inputs kept beside
+  the project), which no worktree has a copy of; writing them is still refused.
+  `perm.Config.Ignored` is the new hook that says which paths those are. An
+  isolation refusal now says where the path is (the checkout, another agent's
+  worktree), why it is out of reach and what to use instead (for a project
+  file, the same file in the agent's own tree, named in full). Refusals by a
+  fixed policy (isolation, a built-in protection, a deny rule) now count
+  toward the repetition guard in every run, attended or not: the third in
+  twenty calls is told to stop retrying, the tenth ends the run.
+  `perm.IsPolicyRefusal` tells them apart. Prompt bytes: both isolation cards
+  (worker and manager) end with one more sentence about ignored files.
+
+- MCP tools that do not fit the tool list (more than 128 per server or 256 in
+  all, a schema over 8 KiB or nested past 24 levels, or past the 64 KiB byte
+  budget) are no longer dropped: they load on demand through two new tools,
+  `mcp__search` (finds tools and returns their full schemas) and `mcp__call`
+  (runs one, asking the same permission under the tool's own name). A schema
+  over the 64 KiB on-demand limit is compacted (repeated subschemas move to
+  `$defs`, `examples` go) before it is refused. A new server entry option,
+  `defer_tools`, loads all of a server's tools that way. The per-tool warnings
+  become one info notice per server. `SnapshotOptions.NoDefer` keeps the old
+  behaviour. Prompt bytes: none for sessions whose servers fit; otherwise the
+  list holds what fits plus `mcp__search` and `mcp__call` (their bytes come out
+  of the same 64 KiB budget), a change made once at session start.
+
 - A need's install method (docs/PLUGINS.md) can declare `setup`, commands run
   in order before `run`, and `env`, variables its commands get from the
   `NAME=value` line a command prints; `GET /api/needs` and `sleipnir plugins

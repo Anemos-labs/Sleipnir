@@ -429,13 +429,13 @@ func TestParseDrafts(t *testing.T) {
 		in   string
 		want []Draft
 	}{
-		{"plain", `{"lessons":[{"kind":"strategy","text":"Read the failing test first."}]}`, []Draft{{Strategy, "Read the failing test first.", ""}}},
-		{"fenced", "Here you go:\n```json\n{\"lessons\":[{\"kind\":\"Pitfall\",\"text\":\" Do not  guess\\nflags. \"}]}\n```\nDone.", []Draft{{Pitfall, "Do not guess flags.", ""}}},
-		{"after another object", `{"note":"x"} then {"lessons":[{"kind":"pitfall","text":"a"}]}`, []Draft{{Pitfall, "a", ""}}},
+		{"plain", `{"lessons":[{"kind":"strategy","text":"Read the failing test first."}]}`, []Draft{{Kind: Strategy, Text: "Read the failing test first."}}},
+		{"fenced", "Here you go:\n```json\n{\"lessons\":[{\"kind\":\"Pitfall\",\"text\":\" Do not  guess\\nflags. \"}]}\n```\nDone.", []Draft{{Kind: Pitfall, Text: "Do not guess flags."}}},
+		{"after another object", `{"note":"x"} then {"lessons":[{"kind":"pitfall","text":"a"}]}`, []Draft{{Kind: Pitfall, Text: "a"}}},
 		{"empty list", `{"lessons":[]}`, nil},
 		{"capped and validated", `{"lessons":[{"kind":"rule","text":"x"},{"kind":"strategy","text":""},{"kind":"strategy","text":"1"},{"kind":"strategy","text":"1"},{"kind":"pitfall","text":"2"},{"kind":"strategy","text":"3"},{"kind":"strategy","text":"4"}]}`,
-			[]Draft{{Strategy, "1", ""}, {Pitfall, "2", ""}, {Strategy, "3", ""}}},
-		{"hidden characters", "{\"lessons\":[{\"kind\":\"strategy\",\"text\":\"ok\u202e\u200b\\u001b[2Jdone\"}]}", []Draft{{Strategy, "okdone", ""}}},
+			[]Draft{{Kind: Strategy, Text: "1"}, {Kind: Pitfall, Text: "2"}, {Kind: Strategy, Text: "3"}}},
+		{"hidden characters", "{\"lessons\":[{\"kind\":\"strategy\",\"text\":\"ok\u202e\u200b\\u001b[2Jdone\"}]}", []Draft{{Kind: Strategy, Text: "okdone"}}},
 		{"no json", "nothing worth keeping", nil},
 		{"truncated", `{"lessons":[{"kind":"strategy","text":"cut`, nil},
 		{"wrong shape", `{"lessons":"none"}`, nil},
@@ -616,5 +616,37 @@ func TestHTTPRerankerReadsScoresByIndex(t *testing.T) {
 	}
 	if u := rr.TakeUsage(); u.Requests != 1 || u.Cost != 0.001 {
 		t.Errorf("usage %+v", u)
+	}
+}
+
+// A lesson learned in the project being worked on outranks an equally close one learned elsewhere, which is still shown;
+// a lesson learned again in another project becomes general.
+func TestRetrieveRanksTheSameProjectFirst(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	emb := &bagEmbedder{}
+	if _, _, err := s.Add(ctx, emb, []Draft{
+		{Kind: Strategy, Text: "database migration tests rollback first", Project: "shop-1"},
+		{Kind: Pitfall, Text: "database migration tests skipped locks", Project: "blog-2"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	task := "write a database migration with tests"
+	for _, proj := range []string{"shop-1", "blog-2"} {
+		got, err := s.RetrieveIn(ctx, emb, task, proj, 5)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 2 || got[0].Project != proj {
+			t.Errorf("in %s: %+v", proj, got)
+		}
+	}
+	if _, merged, err := s.Add(ctx, emb, []Draft{{Kind: Strategy, Text: "database migration tests rollback first", Project: "blog-2"}}); err != nil || merged != 1 {
+		t.Fatalf("merge: %d %v", merged, err)
+	}
+	for _, l := range mustLoad(t, s) {
+		if l.Kind == Strategy && l.Project != "" {
+			t.Errorf("a lesson learned in two projects kept project %q", l.Project)
+		}
 	}
 }
