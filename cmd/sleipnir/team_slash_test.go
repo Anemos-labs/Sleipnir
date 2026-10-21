@@ -54,6 +54,9 @@ func TestTeamSlash(t *testing.T) {
 	if out, _ := run(team, "list"); !strings.Contains(out, "web-crew") || !strings.Contains(out, "project") || !strings.Contains(out, "8 workers") {
 		t.Errorf("list: %q", out)
 	}
+	if out, _ := run(team, "ls"); !strings.Contains(out, "web-crew") {
+		t.Errorf("ls: %q", out)
+	}
 	if out, _ := run(team, "show web-crew"); !strings.Contains(out, `"backend=p/b"`) || !strings.Contains(out, `"judge": "p/j"`) {
 		t.Errorf("show: %q", out)
 	}

@@ -55,7 +55,7 @@ func teamSlash(dir, home string, loadout func() ([]session.TeamSlot, map[string]
 			name = a
 		}
 	}
-	if sub != "list" && name == "" {
+	if sub != "list" && sub != "ls" && name == "" {
 		fmt.Fprintln(out, teamUsage)
 		return nil
 	}
