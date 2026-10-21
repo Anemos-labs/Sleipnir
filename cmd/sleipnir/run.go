@@ -93,7 +93,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	resume := resumeFlags(fs)
 	roleFlag := &roleModelFlag{}
 	fs.Var(roleFlag, "role-model", roleModelHelp)
-	fs.Var(&teamFlag{roles: roleFlag}, "team", teamHelp)
+	fs.Var(&teamFlag{roles: roleFlag, cwd: cwd}, "team", teamHelp)
 	autoDocs := autoDocsFlag(fs)
 	managerApproves := managerApprovesFlag(fs)
 	allow := allowFlags(fs)

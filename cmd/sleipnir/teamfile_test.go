@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,6 +19,16 @@ func writeTeam(t *testing.T, dir, name, body string) string {
 		t.Fatal(err)
 	}
 	return p
+}
+
+// setTeam gives --team v and splits the values, where the team file is read.
+func setTeam(v string) error {
+	rf := &roleModelFlag{}
+	if err := (&teamFlag{roles: rf}).Set(v); err != nil {
+		return err
+	}
+	_, _, err := rf.split()
+	return err
 }
 
 // A team file's slots are the team even when no role repeats, and its models are those of the roles that are not workers;
@@ -59,7 +70,7 @@ func TestTeamFileIsFoundByName(t *testing.T) {
 	if _, slots, err := rf.split(); err != nil || len(slots) != 8 {
 		t.Errorf("duo: %v %v", slots, err)
 	}
-	err := (&teamFlag{roles: &roleModelFlag{}}).Set("nope")
+	err := setTeam("nope")
 	if err == nil || !strings.Contains(err.Error(), "teams there: duo, mine") {
 		t.Errorf("a missing team: %v", err)
 	}
@@ -86,12 +97,12 @@ func TestTeamFileRefusals(t *testing.T) {
 		{`{"slots":["backend"]}]`, "more than one JSON value"},
 	} {
 		p := writeTeam(t, dir, "t.json", tc.body)
-		err := (&teamFlag{roles: &roleModelFlag{}}).Set(p)
+		err := setTeam(p)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: %v, want %q", tc.body, err, tc.want)
 		}
 	}
-	if err := (&teamFlag{roles: &roleModelFlag{}}).Set("../x"); err == nil {
+	if err := setTeam("../x"); err == nil {
 		t.Error("a path-like name with no .json passed as a name")
 	}
 }
@@ -103,5 +114,37 @@ func TestTheExampleTeamFileLoads(t *testing.T) {
 	}
 	if _, slots, err := rf.split(); err != nil || len(slots) != 8 {
 		t.Errorf("example: %v %v", slots, err)
+	}
+}
+
+// A team named by NAME is looked for in the project of --cwd, wherever --cwd stands on the command line, and its values keep
+// the place of --team among the --role-model values.
+func TestTeamFileIsFoundInTheCwdProject(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, ".git"), 0o700)
+	writeTeam(t, filepath.Join(root, ".sleipnir", "teams"), "duo.json", `{"slots":["backend","backend","frontend","frontend","tester","tester","reviewer","docs"]}`)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Chdir(t.TempDir()) // the command runs outside the project
+	for _, args := range [][]string{
+		{"--cwd", root, "--role-model", "scout", "--team", "duo", "--role-model", "docs"},
+		{"--role-model", "scout", "--team", "duo", "--role-model", "docs", "--cwd", root},
+	} {
+		fs := flag.NewFlagSet("t", flag.ContinueOnError)
+		cwd := fs.String("cwd", "", "")
+		rf := &roleModelFlag{}
+		fs.Var(rf, "role-model", "")
+		fs.Var(&teamFlag{roles: rf, cwd: cwd}, "team", "")
+		if err := fs.Parse(args); err != nil {
+			t.Fatal(err)
+		}
+		_, slots, err := rf.split()
+		if err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
+		if len(slots) != 10 || slots[0].Role != "scout" || slots[1].Role != "backend" || slots[8].Role != "docs" || slots[9].Role != "docs" {
+			t.Errorf("%v: slots = %+v", args, slots)
+		}
 	}
 }

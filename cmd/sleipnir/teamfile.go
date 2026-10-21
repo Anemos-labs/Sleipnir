@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -31,11 +32,15 @@ const maxTeamFileBytes = 64 << 10
 
 var teamName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
 
-// teamDirs are where a team named NAME is looked for, in order: the project's .sleipnir/teams (the project found from the
-// working directory), then the user's ~/.sleipnir/teams.
-func teamDirs() []string {
+// teamDirs are where a team named NAME is looked for, in order: the project's .sleipnir/teams (the project found from dir,
+// the --cwd of the command, else from the working directory), then the user's ~/.sleipnir/teams.
+func teamDirs(dir string) []string {
 	var dirs []string
-	if wd, err := os.Getwd(); err == nil {
+	wd, err := filepath.Abs(dir)
+	if dir == "" {
+		wd, err = os.Getwd()
+	}
+	if err == nil {
 		if root, ok := config.FindRoot(wd); ok {
 			dirs = append(dirs, filepath.Join(root, ".sleipnir", "teams"))
 		}
@@ -46,15 +51,15 @@ func teamDirs() []string {
 	return dirs
 }
 
-// findTeamFile resolves --team v: a path (it has a separator or ends in .json) as it is, otherwise NAME.json in teamDirs.
-func findTeamFile(v string) (string, error) {
+// findTeamFile resolves --team v: a path (it has a separator or ends in .json) as it is, otherwise NAME.json in teamDirs(dir).
+func findTeamFile(v, dir string) (string, error) {
 	if strings.ContainsRune(v, os.PathSeparator) || strings.Contains(v, "/") || strings.HasSuffix(v, ".json") {
 		return v, nil
 	}
 	if !teamName.MatchString(v) {
 		return "", fmt.Errorf("--team %q: a team is a name (letters, digits, '-', '_', '.') or a path to a .json file", v)
 	}
-	dirs := teamDirs()
+	dirs := teamDirs(dir)
 	for _, d := range dirs {
 		p := filepath.Join(d, v+".json")
 		if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() {
@@ -112,9 +117,11 @@ func loadTeamFile(p string) (*teamFile, error) {
 }
 
 // teamFlag is --team NAME or PATH: a saved team, whose slots and models join the --role-model values as if they had been
-// given there, the slots always as the team.
+// given there, the slots always as the team. The file is read when the values are split, after the whole command line is
+// parsed, so that a NAME is looked for in the project of --cwd wherever --cwd stands on the line.
 type teamFlag struct {
 	roles *roleModelFlag
+	cwd   *string // the command's --cwd; nil or "" is the working directory
 	name  string
 }
 
@@ -126,12 +133,24 @@ func (t *teamFlag) String() string {
 	return t.name
 }
 
-// Set loads the team and adds its values.
+// Set takes the team; its values are added, at the place --team stands among the --role-model values, when they are split.
 func (t *teamFlag) Set(v string) error {
 	if t.name != "" {
 		return errors.New("--team is given once")
 	}
-	p, err := findTeamFile(strings.TrimSpace(v))
+	t.name = v
+	at := len(t.roles.entries)
+	t.roles.load = func() error { return t.add(strings.TrimSpace(v), at) }
+	return nil
+}
+
+// add reads the team v and puts its values among the --role-model values, before the at-th one.
+func (t *teamFlag) add(v string, at int) error {
+	dir := ""
+	if t.cwd != nil {
+		dir = *t.cwd
+	}
+	p, err := findTeamFile(v, dir)
 	if err != nil {
 		return err
 	}
@@ -139,14 +158,14 @@ func (t *teamFlag) Set(v string) error {
 	if err != nil {
 		return err
 	}
-	t.name = v
+	team := &roleModelFlag{}
 	roles := make([]string, 0, len(tf.Models))
 	for r := range tf.Models {
 		roles = append(roles, r)
 	}
 	sort.Strings(roles)
 	for _, r := range roles {
-		if err := t.roles.Set(r + "=" + tf.Models[r]); err != nil {
+		if err := team.Set(r + "=" + tf.Models[r]); err != nil {
 			return fmt.Errorf("--team %s: models.%s: %v", v, r, err)
 		}
 	}
@@ -154,15 +173,16 @@ func (t *teamFlag) Set(v string) error {
 		if name, _, _ := strings.Cut(s, "="); serviceRole(strings.TrimSpace(name)) {
 			return fmt.Errorf("--team %s: slot %q: %s is not a worker; give its model under models", v, s, strings.TrimSpace(name))
 		}
-		if err := t.roles.Set(s); err != nil {
+		if err := team.Set(s); err != nil {
 			return fmt.Errorf("--team %s: slot %q: %v", v, s, err)
 		}
-		t.roles.entries[len(t.roles.entries)-1].slot = true
+		team.entries[len(team.entries)-1].slot = true
 	}
+	t.roles.entries = slices.Concat(t.roles.entries[:at:at], team.entries, t.roles.entries[at:])
 	return nil
 }
 
 // teamHelp is the help of --team.
-const teamHelp = "a saved team: `NAME` (.sleipnir/teams/NAME.json in the project, else ~/.sleipnir/teams/NAME.json) or a path to such a file: " +
+const teamHelp = "a saved team: `NAME` (.sleipnir/teams/NAME.json in the project of --cwd, else ~/.sleipnir/teams/NAME.json) or a path to such a file: " +
 	`{"slots": ["backend=provider/model", "backend", "frontend", ...], "models": {"manager": "provider/model"}}; ` +
 	"its slots are the team (at least 8), and --role-model values given with it add to them"

@@ -341,7 +341,7 @@ Usage of chat:
   -swarm int
         chat as a team of a manager and N workers (config swarm.max_workers is the ceiling); on a terminal the default is 8 workers (a --team brings its own), --swarm 0 is a single agent
   -team NAME
-        a saved team: NAME (.sleipnir/teams/NAME.json in the project, else ~/.sleipnir/teams/NAME.json) or a path to such a file: {"slots": ["backend=provider/model", "backend", "frontend", ...], "models": {"manager": "provider/model"}}; its slots are the team (at least 8), and --role-model values given with it add to them
+        a saved team: NAME (.sleipnir/teams/NAME.json in the project of --cwd, else ~/.sleipnir/teams/NAME.json) or a path to such a file: {"slots": ["backend=provider/model", "backend", "frontend", ...], "models": {"manager": "provider/model"}}; its slots are the team (at least 8), and --role-model values given with it add to them
   -trust-project
         trust this project: apply its security-sensitive config (hooks, allow rules, providers, MCP servers) and read its AGENTS.md, skills, commands and agent definitions; only for repositories you trust
   -verbose
@@ -490,7 +490,7 @@ flags:
   -swarm int
         new sessions are a team of a manager and N workers (config swarm.max_workers is the ceiling); the default is 8 workers (a --team brings its own), --swarm 0 is a single agent
   -team NAME
-        for new sessions: a saved team: NAME (.sleipnir/teams/NAME.json in the project, else ~/.sleipnir/teams/NAME.json) or a path to such a file: {"slots": ["backend=provider/model", "backend", "frontend", ...], "models": {"manager": "provider/model"}}; its slots are the team (at least 8), and --role-model values given with it add to them
+        for new sessions: a saved team: NAME (.sleipnir/teams/NAME.json in the project of --cwd, else ~/.sleipnir/teams/NAME.json) or a path to such a file: {"slots": ["backend=provider/model", "backend", "frontend", ...], "models": {"manager": "provider/model"}}; its slots are the team (at least 8), and --role-model values given with it add to them
   -trust-project
         trust this project: apply its security-sensitive config (hooks, allow rules, providers, MCP servers) and read its AGENTS.md, skills, commands and agent definitions; only for repositories you trust
   -verify string
@@ -594,7 +594,7 @@ flags:
   -swarm int
         run a manager and N workers instead of a single agent (config swarm.max_workers is the ceiling)
   -team NAME
-        a saved team: NAME (.sleipnir/teams/NAME.json in the project, else ~/.sleipnir/teams/NAME.json) or a path to such a file: {"slots": ["backend=provider/model", "backend", "frontend", ...], "models": {"manager": "provider/model"}}; its slots are the team (at least 8), and --role-model values given with it add to them
+        a saved team: NAME (.sleipnir/teams/NAME.json in the project of --cwd, else ~/.sleipnir/teams/NAME.json) or a path to such a file: {"slots": ["backend=provider/model", "backend", "frontend", ...], "models": {"manager": "provider/model"}}; its slots are the team (at least 8), and --role-model values given with it add to them
   -trust-project
         trust this project: apply its security-sensitive config (hooks, allow rules, providers, MCP servers) and read its AGENTS.md, skills, commands and agent definitions; only for repositories you trust
   -verbose
