@@ -24,7 +24,7 @@ Pick one way:
   read `/tmp/sleipnir-install.sh`, and run `SLEIPNIR_VERSION=v1.2.3 sh /tmp/sleipnir-install.sh`.
   It checks the archive against the release's checksums and installs to `~/.local/bin`
   (set `SLEIPNIR_BIN_DIR` for another directory).
-- **Go 1.25 or newer** (`go version`):
+- **Go 1.26 or newer** (`go version`):
   `go install github.com/anemos-labs/sleipnir/cmd/sleipnir@latest`. The binary goes to
   `go env GOBIN`, or `$(go env GOPATH)/bin` when that is empty.
 - **Windows**: download the archive from

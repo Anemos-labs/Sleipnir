@@ -1,6 +1,6 @@
 # Contributing
 
-Use Go 1.25 or newer. See [building](docs/BUILDING.md) for dependencies and code
+Use Go 1.26 or newer. See [building](docs/BUILDING.md) for dependencies and code
 conventions, [testing](docs/TESTING.md) for test coverage, and
 [repository setup](docs/REPO-SETUP.md) for CI and release configuration.
 
