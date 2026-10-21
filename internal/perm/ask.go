@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // prompts coordinates the questions put to a human. Two guarantees matter for
@@ -279,9 +280,44 @@ func (e *Engine) lead(ctx context.Context, key, skey string, p *pending, r Reque
 		pctx, cancel = context.WithTimeout(ctx, e.cfg.AskTimeout)
 		defer cancel()
 	}
+	var fell chan Decision // the fallback's answer, when it settled the question before the person did
+	if e.fallbackFor(r, v) {
+		var withdrawCause context.CancelCauseFunc
+		pctx, withdrawCause = context.WithCancelCause(pctx)
+		withdraw := func() { withdrawCause(nil) }
+		defer withdraw()
+		fell = make(chan Decision, 1)
+		go func() {
+			t := time.NewTimer(e.cfg.FallbackAfter)
+			defer t.Stop()
+			select {
+			case <-t.C:
+			case <-pctx.Done():
+				return
+			}
+			asked := shown
+			asked.Remembers, asked.RememberRules, asked.OffersTests = "", nil, false
+			if fd, by := e.cfg.Fallback(pctx, asked); by != "" && pctx.Err() == nil {
+				fd.by, fd.Remember, fd.Preset = by, "", ""
+				fell <- fd
+				withdrawCause(&Settled{Allow: fd.Allow, By: by}) // the person's question is answered: take it off their screen
+			}
+		}()
+	}
 	d = e.cfg.Prompter(pctx, shown)
 	if ctx.Err() != nil {
 		return canceledDecision(ctx)
+	}
+	if !d.Allow && d.Reason == "no answer" { // the person did not answer: the fallback may have, and withdrawn the question
+		select {
+		case fd := <-fell: // nil when there is no fallback: never ready
+			p.canceled = false
+			if !fd.Allow {
+				e.pr.refuse(skey, fd, gen)
+			}
+			return fd
+		default:
+		}
 	}
 	if pctx.Err() != nil && !d.Allow && d.Reason == "no answer" {
 		// the time ran out and the prompter gave up on it (an answer that arrived as it did stands: it is not "no answer")
@@ -410,3 +446,64 @@ func clipRunes(s string, n int) string {
 	}
 	return s
 }
+
+// BypassRefusal opens the refusal of what bypass mode would otherwise have asked about; bypassAdvice ends it.
+const (
+	BypassRefusal = "bypass mode asks nothing, so this is refused: it was flagged because "
+	bypassAdvice  = " (do what you need a safer way: a narrower command, a path inside the workspace, no sudo or forced push; or finish and say which permission you needed)"
+)
+
+// bypassRefusal is the refusal of a question bypass mode does not ask, flagged for why.
+func bypassRefusal(why string) string { return BypassRefusal + why + bypassAdvice }
+
+// Danger is how far Config.Fallback may answer for the person: the most dangerous kind of question it settles.
+type Danger string
+
+// The kinds of question, from the least dangerous.
+const (
+	// DangerLow is a routine question (routine.go): inside the workspace, nothing guarded, no network but this machine.
+	DangerLow Danger = "low"
+	// DangerMedium is any question but the high-risk class, a guarded path and an ask rule of the person's: the network, a file
+	// outside the workspace, a command that cannot be checked beforehand.
+	DangerMedium Danger = "medium"
+	// DangerHigh is any question: the high-risk class, guarded paths and ask rules too.
+	DangerHigh Danger = "high"
+)
+
+// ParseDanger reads a Danger; "" is no fallback.
+func ParseDanger(s string) (Danger, error) {
+	switch d := Danger(strings.ToLower(strings.TrimSpace(s))); d {
+	case "", DangerLow, DangerMedium, DangerHigh:
+		return d, nil
+	}
+	return "", fmt.Errorf("unknown danger level %q (low, medium or high)", s)
+}
+
+// danger is the kind of question a verdict that asks is.
+func (v verdict) danger(r Request) Danger {
+	switch {
+	case v.routine:
+		return DangerLow
+	case v.askRule || v.tier == TierGuarded || v.tier == TierHard || r.Risk == RiskHigh:
+		return DangerHigh
+	}
+	return DangerMedium
+}
+
+// fallbackFor says whether Config.Fallback may answer a question of verdict v.
+func (e *Engine) fallbackFor(r Request, v verdict) bool {
+	if e.cfg.Fallback == nil || e.cfg.FallbackAfter <= 0 {
+		return false
+	}
+	rank := map[Danger]int{DangerLow: 1, DangerMedium: 2, DangerHigh: 3}
+	return rank[v.danger(r)] <= rank[e.cfg.FallbackUpTo]
+}
+
+// Settled is the cause of the end of a question the person was asked that Config.Fallback answered first (context.Cause of the
+// Prompter's context): the prompter shows who answered it, and how, instead of a cancellation.
+type Settled struct {
+	Allow bool
+	By    string
+}
+
+func (s *Settled) Error() string { return "answered by the " + s.By }

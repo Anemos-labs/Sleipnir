@@ -45,7 +45,7 @@ func TestPlanOnlyDropsTheAllowRulesAndStaysInPlanMode(t *testing.T) {
 func TestPlanOnlyAsksNoOneAndRecordsNothing(t *testing.T) {
 	home := t.TempDir()
 	var audits, delegated, prompted, persisted int
-	e, err := NewEngine(Config{Root: t.TempDir(), Home: home, Mode: ModeBypass, Ask: []string{"Edit(~/.sleipnir/**)"},
+	e, err := NewEngine(Config{Root: t.TempDir(), Home: home, Mode: ModeAcceptEdits, Ask: []string{"Edit(~/.sleipnir/**)"},
 		Audit:    func(Audit) { audits++ },
 		Delegate: func(context.Context, Request) (Decision, string) { delegated++; return Decision{}, "" },
 		Prompter: func(context.Context, Request) Decision { prompted++; return Decision{Allow: true} },

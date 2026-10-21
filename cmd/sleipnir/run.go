@@ -455,6 +455,15 @@ func managerApprovesFlag(fs *flag.FlagSet) func() *bool {
 	}
 }
 
+// managerAnswersFlags registers --manager-answers-after and --manager-answers-up-to: how long a team worker's question waits for the
+// person before the manager answers it for them, and the most dangerous kind it may answer (perm.Config.Fallback). Unset leaves
+// permissions.manager_answers_after and manager_answers_up_to.
+func managerAnswersFlags(fs *flag.FlagSet) (after *time.Duration, upTo *string) {
+	after = fs.Duration("manager-answers-after", 0, "swarm: a worker's question the person has not answered in this long is answered by the manager for them, if it is no more dangerous than --manager-answers-up-to; the person's question is withdrawn and says who answered (default: config permissions.manager_answers_after; 0 waits for the person)")
+	upTo = fs.String("manager-answers-up-to", "", "swarm: the most dangerous question the manager answers after --manager-answers-after: low (routine: inside the workspace, nothing guarded), medium (also the network, files outside the workspace, commands that cannot be checked beforehand) or high (also the high-risk class, guarded paths and your ask rules) (default: config permissions.manager_answers_up_to, else medium)")
+	return after, upTo
+}
+
 // noMemoryHelp is the help of --no-memory.
 const noMemoryHelp = "start without the global memory: the notes in ~/.sleipnir/MEMORY.md and the lesson memory are neither shown to the agents nor saved"
 

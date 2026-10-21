@@ -7,6 +7,23 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Questions wait for their answer. `sleipnir web` no longer refuses the open
+  questions after a minute without a page (`--ask-grace` now defaults to 0,
+  never); `--ask-grace` and `--ask-timeout` still set a limit when given.
+
+- Bypass mode never asks. What it used to ask about (the high-risk class,
+  the paths an `ask` rule names, such as `.sleipnir/`) is refused at once,
+  and the refusal says what flagged it and asks the agent for a safer way.
+  The Permissions page's tester shows it as refused.
+
+- The manager can answer for a person who is away. With
+  `permissions.manager_answers_after` (`--manager-answers-after`, or "when
+  you are away" in New session), a worker's question left unanswered that
+  long goes to the manager, if it is no more dangerous than
+  `permissions.manager_answers_up_to` (`low`, `medium` by default, or
+  `high`). Its answer withdraws the person's question, which shows who
+  answered and how. Off unless set; both keys are security-sensitive.
+
 - A worker can clear a false-green refusal. The refusal said to replace a
   dependency store that links outside the tree, but `unlink` on the link and
   any command that both removed the link and reinstalled through it were

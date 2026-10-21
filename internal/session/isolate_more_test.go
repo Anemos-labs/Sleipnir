@@ -19,6 +19,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/gitx"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
@@ -516,7 +517,7 @@ func TestProjectPermissionRulesHoldInsideTheTrees(t *testing.T) {
 	sc.mu.Lock()
 	got := sc.extras["be-1"]
 	sc.mu.Unlock()
-	if len(got) != 3 || !strings.Contains(got[0], "denied by rule Edit(./migrations/**)") || !strings.Contains(got[1], "approval required") || !strings.Contains(got[2], "denied by rule Edit(./migrations/**)") {
+	if len(got) != 3 || !strings.Contains(got[0], "denied by rule Edit(./migrations/**)") || !strings.Contains(got[1], perm.BypassRefusal) || !strings.Contains(got[2], "denied by rule Edit(./migrations/**)") {
 		t.Fatalf("what the worker got back: %q", got)
 	}
 	for _, f := range []string{"migrations", ".sleipnir"} {

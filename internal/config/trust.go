@@ -12,12 +12,14 @@ import "strings"
 // sensitivePaths are the field paths ("*" matches any one segment) treated as
 // dangerous when they come from a project-level file.
 var sensitivePaths = [][]string{
-	{"providers", "*", "base_url"},    // redirects requests, and the key that signs them
-	{"providers", "*", "api_key_env"}, // chooses which environment variable is sent
-	{"providers", "*", "headers"},     // can add credentials or route requests
-	{"providers", "*", "options"},     // provider-specific behaviour, may hold URLs
-	{"permissions", "mode"},           // "bypass" and "yolo" turn off the prompts
-	{"permissions", "allow"},          // pre-approves actions
+	{"providers", "*", "base_url"},           // redirects requests, and the key that signs them
+	{"providers", "*", "api_key_env"},        // chooses which environment variable is sent
+	{"providers", "*", "headers"},            // can add credentials or route requests
+	{"providers", "*", "options"},            // provider-specific behaviour, may hold URLs
+	{"permissions", "mode"},                  // "bypass" and "yolo" turn off the prompts
+	{"permissions", "allow"},                 // pre-approves actions
+	{"permissions", "manager_answers_after"}, // lets the manager answer questions the person was meant to
+	{"permissions", "manager_answers_up_to"},
 	{"permissions", "roles", "*", "mode"},
 	{"permissions", "roles", "*", "allow"},
 	{"hooks"},                      // runs commands
