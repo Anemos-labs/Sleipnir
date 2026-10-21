@@ -34,6 +34,8 @@
   }
   /** The tasks of m.merged, newest merge first. */
   const newestMerged = m => m.merged.slice().sort(byNewestMerge(m));
+  /** A task the manager resolved as no longer needed: done, in the merged column, but nothing of it was merged. */
+  const resolved = t => !!t && t.st === 'merged' && /^unneeded/.test(t.closure || '');
 
   /** Create the board in `host`. big = the roomy variant (Board view). */
   function make(scope, host, big) {
@@ -52,11 +54,11 @@
    *  p's card; away[p][k]: how many of p's subtasks are in column k when p is not. counts[k]: every task whose status is k. */
   function layout(m) {
     const T = m.tasks, colOf = id => COLS.some(c => c[0] === T[id].st) ? T[id].st : 'todo';
-    const counts = { todo: 0, running: 0, verify: 0, merged: 0 }, top = { todo: [], running: [], verify: [], merged: [] }, kids = Object.create(null), away = Object.create(null);
+    const counts = { todo: 0, running: 0, verify: 0, merged: 0, resolved: 0 }, top = { todo: [], running: [], verify: [], merged: [] }, kids = Object.create(null), away = Object.create(null);
     /* a subtask nests when its parents up the chain share its column; a loop of parents is drawn flat */
     const nests = id => { const k = colOf(id), seen = new Set([id]); let p = T[id].parent; if (!p || !T[p] || colOf(p) !== k) return false; while (p && T[p] && colOf(p) === k) { if (seen.has(p)) return false; seen.add(p); p = T[p].parent; } return true; };
     m.torder.forEach(id => {
-      if (!T[id]) return; const k = colOf(id), p = T[id].parent; counts[k]++;
+      if (!T[id]) return; const k = colOf(id), p = T[id].parent; counts[k]++; if (resolved(T[id])) counts.resolved++;
       if (nests(id)) (kids[p] || (kids[p] = [])).push(id);
       else { top[k].push(id); if (p && T[p]) { const a = away[p] || (away[p] = {}); a[k] = (a[k] || 0) + 1; } }
     });
@@ -101,7 +103,7 @@
         const need = (B.big && t.deps.length && t.st !== 'merged') ? '<span class="dep">after ' + t.deps.map(esc).join(' ') + '</span>' : '';
         /* the members by name in their colours; a model is on the member's card and in the tooltip, not here, where three long ids wrapped a card to five lines */
         const pool = t.poolPhase ? '<div class="dim">' + esc(t.poolPhase) + ' · ' + (t.poolMembers || []).map(x => '<span style="color:' + agCol(x) + '" title="' + esc(x + (m.ag[x] && m.ag[x].model ? ' · ' + m.ag[x].model : '')) + '">' + esc(x) + '</span>').join(', ') + '</div>' : '';
-        html = pool + subLine(id, nk, open, away[id], false) + '<div class="tcr"><span class="tid">' + esc(id) + '</span>' + (t.parent ? '<span class="dim tpar">↳ ' + esc(t.parent) + '</span>' : '') + (!B.big && t.st !== 'merged' && unmet.length ? '<span class="dep" title="waits on ' + esc(unmet.join(' ')) + '">← ' + esc(unmet.join(' ')) + '</span>' : '') + '<span class="tow">' + ownerHtml + (blocked ? '<span class="ask" title="waiting for your answer">?</span>' : '') + (t.st === 'merged' ? '<span class="ok">✓' + (t.ms ? ' ' + fmtMs(t.ms) : '') + '</span>' : '') + '</span></div><span class="tti">' + esc(t.title) + '</span>' + (B.big ? '<span class="tow">' + need + (t.st === 'verify' ? '<span class="warm">▸ verifying</span>' : '') + (blocked ? '<span class="warm">waiting for your answer</span>' : '') + (t.scope && t.scope !== '-' ? '<span class="dim">' + esc(t.scope) + '</span>' : '') + '</span>' : '') + (open ? '<div class="subtasks"></div>' : '');
+        html = pool + subLine(id, nk, open, away[id], false) + '<div class="tcr"><span class="tid">' + esc(id) + '</span>' + (t.parent ? '<span class="dim tpar">↳ ' + esc(t.parent) + '</span>' : '') + (!B.big && t.st !== 'merged' && unmet.length ? '<span class="dep" title="waits on ' + esc(unmet.join(' ')) + '">← ' + esc(unmet.join(' ')) + '</span>' : '') + '<span class="tow">' + ownerHtml + (blocked ? '<span class="ask" title="waiting for your answer">?</span>' : '') + (resolved(t) ? '<span class="dim" title="resolved: no longer needed, nothing merged">resolved</span>' : t.st === 'merged' ? '<span class="ok">✓' + (t.ms ? ' ' + fmtMs(t.ms) : '') + '</span>' : '') + '</span></div><span class="tti">' + esc(t.title) + '</span>' + (B.big ? '<span class="tow">' + need + (t.st === 'verify' ? '<span class="warm">▸ verifying</span>' : '') + (blocked ? '<span class="warm">waiting for your answer</span>' : '') + (t.scope && t.scope !== '-' ? '<span class="dim">' + esc(t.scope) + '</span>' : '') + '</span>' : '') + (open ? '<div class="subtasks"></div>' : '');
       }
       if (n._h !== html) { n._h = html; n.innerHTML = html; }
       n.classList.toggle('blocked', !!blocked); n.title = title;
@@ -126,5 +128,5 @@
     if (vis && !ui.still() && !(S && S.replay && !S.replay.playing)) moved.forEach(id => { const n = B.nodes[id], a = before[id]; if (!n || !n.isConnected) return; const b = n.getBoundingClientRect(), dx = a.left - b.left, dy = a.top - b.top; if (Math.abs(dx) + Math.abs(dy) > 2) B.scope.animate(n, [{ transform: 'translate(' + dx + 'px,' + dy + 'px)', background: 'var(--warm-b)' }, { transform: 'none', background: 'var(--panel)' }], { duration: 620, easing: 'cubic-bezier(.2,.7,.2,1)' }); });
     return counts;
   }
-  ui.board = { make, update, layout, COLS, COMPACT_AT, idCmp, newestMerged };
+  ui.board = { make, update, layout, COLS, COMPACT_AT, idCmp, newestMerged, resolved };
 })(SL);

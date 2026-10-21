@@ -166,3 +166,17 @@ test('the Dependencies graph never overlaps: too much open work makes the drawin
   const cyc = model(0, 4, { T1: ['T2'], T2: ['T1'] });   /* a loop of dependencies is drawn, not followed for ever */
   assertApart(lay(cyc, 900, 260), DG);
 });
+
+test('a task resolved as no longer needed is not counted or listed as merged, and its card says resolved', async () => {
+  const L = await boot();
+  await L.event('task', { id: 'T1', title: 'wired', owner: 'be-1', s: 'merged', closure: 'verified' });
+  await L.event('task', { id: 'T2', title: 'superseded wiring', s: 'merged', closure: 'unneeded' });
+  await L.step(10); L.SL.views.show('board'); await L.settle();
+  assert.match(L.$('.bbsum').textContent, /^1 merged · .* · 1 resolved\b/, 'the summary counts merged work only');
+  const card = L.$('.tcard[data-task="T2"]').textContent;
+  assert.match(card, /resolved/); assert.doesNotMatch(card, /✓/, 'nothing of it was merged');
+  assert.match(L.$('.tcard[data-task="T1"]').textContent, /✓/);
+  L.SL.views.show('cockpit'); await L.settle();
+  const q = L.$('.p-queue .qmeta').textContent;
+  assert.match(q, /merged T1/); assert.doesNotMatch(q, /T2/, 'the merge queue lists only what was merged');
+});
