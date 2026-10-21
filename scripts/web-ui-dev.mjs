@@ -27,6 +27,8 @@ export const CSP = [
   "style-src-attr 'unsafe-inline'",
   "font-src 'self'",
   "img-src 'self' data:",
+  "media-src 'self'",
+  "frame-src 'self'",
   "connect-src 'self'",
   "frame-ancestors 'none'",
   "form-action 'none'",

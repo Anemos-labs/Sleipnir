@@ -340,6 +340,7 @@ path the permission engine refuses agents to read. A change (revert, restore, ac
 |---|---|---|---|
 | `GET` | `/api/sessions/{id}/ws/index` | `wire.WsIndex`: the checkpoints with their change sets, the tree at the live edge, the latest restore, reverts and reviewed marks. The `ETag` is its version; `If-None-Match` gets `304` | - |
 | `GET` | `/api/sessions/{id}/ws/file` | `?path=&at=`: `wire.WsContent`, the file's text at a checkpoint (live by default) with who wrote each line; 2 MiB of text at most | - |
+| `GET` | `/api/sessions/{id}/ws/raw` | `?path=&at=`: the bytes of an image (SVG included), a video, an audio file or a PDF at a point (live by default), with its type, for the page's previews; byte ranges are honoured. Served with a policy of its own: sandboxed, nothing loaded, a PDF framed by the page only. Another kind of file is `415 not_media` | - |
 | `GET` | `/api/sessions/{id}/ws/diff` | `?path=&from=&to=`: `wire.WsDiff` in hunks (from `base` to `live` by default); each hunk carries the `scope` of reverting it | - |
 | `POST` | `/api/sessions/{id}/ws/revert` | `wire.RevertRequest`: puts a hunk's old lines back, records it as the person's write and tells the agent that wrote the file. `409 changed` with the new diff when the hunk or file changed | `revert:<tab>:<d16>` |
 | `POST` | `/api/sessions/{id}/ws/revert/{rid}/undo` | Brings the reverted lines back while the file has not changed since | - |
@@ -430,6 +431,12 @@ Workspace (`files`, `changes`, `checkpoints`, `merge`), a page of Settings (`set
 (`rail`) or the header (`hud`). A card is listed under the page that shows it, with its place even while it is hidden; a card of one
 page may be shown on another. The page keeps the same document in the browser's storage and works from it when the server cannot be
 reached; `version` is the page's format (2: cards on every page), and an older Cockpit layout kept in the browser is carried over.
+
+### Previews
+
+| Method | Path | Does | Confirmation |
+|---|---|---|---|
+| `GET` | `/api/preview/mermaid` | The diagram frame of the file previews: a document that draws mermaid diagrams (the vendored `@mermaid-js/tiny` build, `internal/web/preview`). It is served sandboxed with scripts and no origin, its two inline scripts named by their hashes, framed by this server's page only, gzip-compressed when accepted. The page posts it `{sl: "mermaid", id, src, theme}` and gets `{sl: "mermaid", id, svg, w, h}` or `{..., error}` back, and shows the SVG as an image | - |
 
 ### Recorded sessions
 

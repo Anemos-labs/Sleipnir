@@ -22,6 +22,13 @@
   const OPEN = { providers: 'Open Providers', models: 'Open Models' };
 
   /* ---------- rows ---------- */
+  /** The picture under a tool row that read or wrote an image of the project (as the file is now), in a session that has a workspace. A
+   *  read names its file in its argument (the row's file is the file a tool changed). */
+  function thumb(e, S) {
+    const M = SL.media, f = e.file || (/^read$/i.test(String(e.name)) && typeof e.arg === 'string' ? e.arg : ''), k = f && M ? M.kind(f) : '';
+    if ((k !== 'image' && k !== 'svg') || !S || S.id == null || S.id === '' || S.placeholder || S.recorded || S.follow || S.readOnly || !SL.api) return '';
+    return M.thumbHtml(M.rawUrl(S.id, f, 'live', String(nm(e.t))), f);
+  }
   function rowHtml(e, S, m) {
     const T = todAt(S, e), at = ' data-ag="' + esc(e.ag || '') + '"' + (e.task ? ' data-task="' + esc(e.task) + '"' : '');
     switch (e.k) {
@@ -31,7 +38,7 @@
       case 'tool': {
         if (e.refused) return '<div class="msg tool refused"' + at + '><span class="tg bad">⊘</span><span class="tb"><b>' + esc(e.name) + '</b> ' + esc(e.arg || '') + ' <span class="bad">refused</span><span class="rsn">' + esc(e.reason || '') + '</span></span></div>';
         const fl = e.file ? ' data-file="' + esc(e.file) + '"' : '';
-        return '<div class="msg tool' + (e.file ? ' openable' : '') + '"' + at + fl + (e.file ? ' title="open ' + esc(e.file) + ' in the Workspace"' : '') + '><span class="tg">' + TOOL_GLYPH(e.name) + '</span><span class="tb"><b>' + esc(e.name) + '</b> ' + esc(e.arg || '') + (nm(e.add) ? ' <span class="ok">+' + nm(e.add) + '</span>' + (nm(e.del) ? ' <span class="err">−' + nm(e.del) + '</span>' : '') : '') + (e.out ? '<span class="out">' + esc(e.out) + '</span>' : '') + '</span><span class="ts ok">✓</span></div>';
+        return '<div class="msg tool' + (e.file ? ' openable' : '') + '"' + at + fl + (e.file ? ' title="open ' + esc(e.file) + ' in the Workspace"' : '') + '><span class="tg">' + TOOL_GLYPH(e.name) + '</span><span class="tb"><b>' + esc(e.name) + '</b> ' + esc(e.arg || '') + (nm(e.add) ? ' <span class="ok">+' + nm(e.add) + '</span>' + (nm(e.del) ? ' <span class="err">−' + nm(e.del) + '</span>' : '') : '') + (e.out ? '<span class="out">' + esc(e.out) + '</span>' : '') + thumb(e, S) + '</span><span class="ts ok">✓</span></div>';
       }
       case 'feed': return '<div class="msg live" data-g="' + esc(e.g || '') + '"' + at + (e.to ? ' data-to="' + esc(e.to) + '"' : '') + ' style="--c:' + agCol(e.ag) + '"><span class="lid">' + esc(e.ag) + '</span><span class="lg ' + (e.g === 'ask' ? 'warm' : e.g === 'done' ? 'ok' : e.g === 'x' ? 'bad' : '') + '">' + (own(FEED_G, e.g) || '·') + '</span><span>' + esc(e.text) + '</span></div>';
       case 'note': return '<div class="msg note"' + at + '><span class="lg ' + (e.g === 'done' ? 'ok' : '') + '">' + (own(FEED_G, e.g) || '·') + '</span><span>' + esc(e.text) + '</span></div>';

@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Previews of files in the web interface. The Workspace shows images (SVG
+  included), video, audio and PDF files, rendered Markdown (with mermaid
+  blocks), mermaid diagrams and CSV/TSV tables in a Preview view instead of
+  "a binary file"; a changed picture is shown before and after. A picture an
+  agent read or wrote is shown under its tool row in the chat and the agent
+  drawer. New routes: `GET /api/sessions/{id}/ws/raw` and
+  `GET /api/preview/mermaid` (a sandboxed frame with the vendored
+  `@mermaid-js/tiny` build). The page's policy adds `media-src 'self'` and
+  `frame-src 'self'`. No prompt bytes change.
 - Isolated agents read what git does not track. A confined agent may read a
   file of the checkout that git does not track (untracked, or ignored as
   before), since its tree, made from the commits, may have no copy: with

@@ -43,6 +43,7 @@ func Register(srv *web.Server, h seam.Host) {
 	srv.HandleFunc("GET /api/sessions/{id}/ws/index", s.handleIndex, long)
 	srv.HandleFunc("GET /api/sessions/{id}/ws/file", s.handleFile, long)
 	srv.HandleFunc("GET /api/sessions/{id}/ws/diff", s.handleDiff, long)
+	srv.HandleFunc("GET /api/sessions/{id}/ws/raw", s.handleRaw, long)
 	srv.HandleFunc("POST /api/sessions/{id}/ws/revert", s.handleRevert, long)
 	srv.HandleFunc("POST /api/sessions/{id}/ws/revert/{rid}/undo", s.handleRevertUndo, web.RouteOpts{NoBody: true, WriteTimeout: 60 * time.Second})
 	srv.HandleFunc("POST /api/sessions/{id}/ws/restore", s.handleRestore, long)
