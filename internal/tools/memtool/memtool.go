@@ -300,6 +300,18 @@ func ReadNotes(path string) ([]string, error) {
 // single-spaced words without control characters, empty ones dropped and repeats (ignoring case) kept once. A note over
 // MaxNoteRunes, more than MaxNotes notes or more than MaxBytes in all is an error that says which limit was passed.
 func CheckNotes(notes []string) ([]string, error) {
+	return CheckEdit(nil, notes)
+}
+
+// CheckEdit is CheckNotes for an edit of the notes prev the file holds now: what the file already breaks is no reason to refuse
+// an edit that does not make it worse. A note over MaxNoteRunes that prev already has is kept as it is, and more than MaxNotes notes
+// or MaxBytes in all is refused only when the edit grows past what prev has, so a file written by hand past the limits can still
+// have a note removed or corrected.
+func CheckEdit(prev, notes []string) ([]string, error) {
+	had := map[string]bool{}
+	for _, n := range prev {
+		had[strings.ToLower(clean(n))] = true
+	}
 	out := make([]string, 0, len(notes))
 	seen := map[string]bool{}
 	for i, n := range notes {
@@ -307,16 +319,16 @@ func CheckNotes(notes []string) ([]string, error) {
 		if n == "" || seen[strings.ToLower(n)] {
 			continue
 		}
-		if c := utf8.RuneCountInString(n); c > MaxNoteRunes {
+		if c := utf8.RuneCountInString(n); c > MaxNoteRunes && !had[strings.ToLower(n)] {
 			return nil, fmt.Errorf("note %d is %d characters; the limit is %d", i+1, c, MaxNoteRunes)
 		}
 		seen[strings.ToLower(n)] = true
 		out = append(out, n)
 	}
-	if len(out) > MaxNotes {
+	if len(out) > MaxNotes && len(out) > len(had) {
 		return nil, fmt.Errorf("%d notes; the memory holds at most %d", len(out), MaxNotes)
 	}
-	if size(out) > MaxBytes {
+	if size(out) > MaxBytes && size(out) > size(prev) {
 		return nil, fmt.Errorf("the notes come to %d bytes; the memory holds at most %d", size(out), MaxBytes)
 	}
 	return out, nil

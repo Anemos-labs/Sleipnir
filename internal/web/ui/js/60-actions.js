@@ -134,6 +134,11 @@
       return false;
     });
   });
+  /** What an interrupt of S's turn did, as a toast says it: the goal is named only when there is one to pause. */
+  const goalRuns = S => !!(S && S.m && S.m.goal && S.m.goal.state === 'active');
+  SL.interruptText = S => 'interrupted: the turn is stopped' + (goalRuns(S) ? ' and the goal is paused (/goal resume)' : '');
+  /** What Stop the run says: the goal is named only when one was running. */
+  SL.stopText = S => 'stopped' + (goalRuns(S) ? ': the goal is paused' : '');
   /** Interrupt the running turn (Esc): the manager's turn stops, the workers with it, and the goal is paused. The person talks to the manager only, so no single worker can be interrupted. */
   act('interrupt', (target, sid) => {
     const S = ses(sid); if (!S) return { ok: false };

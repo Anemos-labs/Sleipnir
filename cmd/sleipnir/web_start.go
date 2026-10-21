@@ -180,7 +180,7 @@ func (t *webTab) startGen(spec startSpec) error {
 			return "", false
 		},
 	})
-	t.tr, t.startedAt, t.starting, t.args, t.resumed = tr, started, true, append([]string(nil), spec.args...), nil
+	t.tr, t.startedAt, t.starting, t.startErr, t.args, t.resumed = tr, started, true, "", append([]string(nil), spec.args...), nil
 	t.lastRoster = nil
 	sum := t.summaryLocked()
 	t.mu.Unlock()
@@ -226,7 +226,7 @@ func (t *webTab) startGen(spec startSpec) error {
 		return context.Canceled
 	}
 	if err != nil {
-		t.starting = false
+		t.starting, t.startErr = false, err.Error()
 		t.cond.Broadcast()
 		t.mu.Unlock()
 		tr.Emit(hintRow("the session did not start: "+err.Error(), err))
@@ -443,6 +443,21 @@ func namesFlag(typed []string, name string) bool {
 	return false
 }
 
+// withoutFlag is args without the flag name and its value, in any of the spellings namesFlag reads.
+func withoutFlag(args []string, name string) []string {
+	var out []string
+	for i := 0; i < len(args); i++ {
+		switch a := args[i]; {
+		case a == name || a == "-"+name:
+			i++ // its value
+		case strings.HasPrefix(a, name+"=") || strings.HasPrefix(a, "-"+name+"="):
+		default:
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
 // typedFlag returns the value of a flag in a typed argument list ("" when it is not there).
 func typedFlag(typed []string, name string) string {
 	for i, a := range typed {
@@ -483,7 +498,11 @@ func (t *webTab) restart(ctx context.Context, kind string, typed []string, fresh
 		args, err = restartArgs(s, typed, fresh)
 		t.sessMu.Unlock()
 	default:
-		args = append(launchArgs(prev, nil), typed...)
+		args = launchArgs(prev, nil)
+		if namesFlag(typed, "--model") {
+			args = withoutFlag(args, "--model") // the model typed replaces the one the failed start had, rather than following it
+		}
+		args = append(args, typed...)
 	}
 	if err != nil {
 		return werr(http.StatusBadRequest, "bad_flags", clip(err.Error(), 400))

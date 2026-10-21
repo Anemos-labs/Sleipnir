@@ -74,11 +74,6 @@ func (s *service) handleMemoryNotes(w http.ResponseWriter, r *http.Request) {
 	if !web.DecodeJSON(w, r, &body) {
 		return
 	}
-	notes, err := memtool.CheckNotes(body.Notes)
-	if err != nil {
-		reply(w, nil, fail(http.StatusBadRequest, "bad_request", err.Error()))
-		return
-	}
 	p := notesPath(s.homeOf(tc))
 	unlock := config.WriteLock(p)
 	defer unlock()
@@ -89,6 +84,12 @@ func (s *service) handleMemoryNotes(w http.ResponseWriter, r *http.Request) {
 	}
 	if v != body.Version {
 		reply(w, nil, fail(http.StatusConflict, "changed", "the notes changed since the page read them: read them again"))
+		return
+	}
+	prev, _ := memtool.ReadNotes(p) // what the file breaks already does not stop an edit that leaves it no worse
+	notes, err := memtool.CheckEdit(prev, body.Notes)
+	if err != nil {
+		reply(w, nil, fail(http.StatusBadRequest, "bad_request", err.Error()))
 		return
 	}
 	if err := memtool.WriteNotes(p, notes); err != nil {

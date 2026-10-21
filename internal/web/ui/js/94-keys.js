@@ -30,7 +30,7 @@
         if (!inField && ui.approvals.tryKey('Escape')) { e.preventDefault(); return; }
         if (inField) { t.blur(); return; }
         const S = SL.sessions.active; if (S && S.replay) { S.goLive(); S.touch(); return; }
-        const r = SL.act.interrupt('turn'); ui.toast(r.ok ? 'interrupted: the turn is stopped and the goal is paused (/goal resume)' : 'nothing is running to interrupt', r.ok ? 'warm' : 'quiet'); return;
+        const r = SL.act.interrupt('turn'); ui.toast(r.ok ? SL.interruptText(S) : 'nothing is running to interrupt', r.ok ? 'warm' : 'quiet'); return;
       }
       if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && /^Digit[1-9]$/.test(e.code)) { const S2 = SL.sessions.list[+e.code.slice(5) - 1]; e.preventDefault(); if (S2) SL.act.switchSession(S2.id); return; }   // alt+1..9: the nth session tab
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); SL.palette.open(''); return; }

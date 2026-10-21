@@ -206,3 +206,22 @@ func TestCheckNotesCleansAndHoldsTheLimits(t *testing.T) {
 		t.Errorf("too many notes: %v", err)
 	}
 }
+
+// An edit of a file that is already past the limits (written by hand) may remove or correct notes: only what the edit adds or grows is
+// held to them.
+func TestCheckEditLetsAnOverfullFileShrink(t *testing.T) {
+	long := strings.Repeat("l", MaxNoteRunes+50)
+	prev := []string{long}
+	for i := 0; i < MaxNotes+10; i++ {
+		prev = append(prev, fmt.Sprintf("note %d", i))
+	}
+	if _, err := CheckEdit(prev, prev[:len(prev)-1]); err != nil {
+		t.Errorf("removing one note of an overfull file: %v", err)
+	}
+	if _, err := CheckEdit(prev, append(append([]string(nil), prev...), "one more")); err == nil {
+		t.Error("an overfull file took one more note")
+	}
+	if _, err := CheckEdit(prev, []string{long + "x"}); err == nil {
+		t.Error("a new note over the limit was taken")
+	}
+}
