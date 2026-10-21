@@ -58,14 +58,14 @@ Plain Markdown that tells the agent how your project works: build and test comma
 **Which files.** All that exist are included, in this order (later text is more specific and is read last):
 
 1. `~/.sleipnir/SLEIPNIR.md` and `~/.sleipnir/MEMORY.md` (scope `user`; the second holds the notes the model saved with its `memory`
-   tool: at most 40 notes of 300 characters, each saved only after you approve the exact text; edit or delete the file freely. A session started with `--no-memory`, or
+   tool: at most 40 notes of 300 characters, saved without a question: the Memory item of the web interface's left bar counts the new ones, and the Memory page shows them to keep, edit or remove (a `memory` ask rule puts each change to you instead, a `memory` deny rule turns saving off); edit or delete the file freely. A session started with `--no-memory`, or
    with `--no-memory` checked in the New session dialog, neither reads nor writes it, nor the lesson memory of `/goal`, docs/UX.md, nor a team's project memory by role,
    docs/SWARM-PROTOCOL.md section 9)
 2. for each directory from the project root down to the working directory: `AGENTS.md`, `CLAUDE.md`, `SLEIPNIR.md`,
    `.sleipnir/SLEIPNIR.md` (scope `project` at the root, `dir` below it)
 3. for each of those directories: `SLEIPNIR.local.md`, `.sleipnir/SLEIPNIR.local.md` (scope `local`, for personal notes;
    keep them out of git), and at the root `.sleipnir/MEMORY.local.md`: the notes the model saved with its `memory` tool
-   with `scope: project` (each approved like a user note; the tool writes a `.sleipnir/.gitignore` that keeps the file
+   with `scope: project` (saved like a user note; the tool writes a `.sleipnir/.gitignore` that keeps the file
    out of git; read only when the project is trusted, like the other project files; `--no-memory` leaves it out)
 
 `AGENTS.md` and `CLAUDE.md` are both read; if one is a symlink to the other it is read once. `~/.claude/CLAUDE.md` and a

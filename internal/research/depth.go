@@ -24,7 +24,8 @@ type Depth struct {
 	MinPages int `json:"min_pages"`
 	MaxPages int `json:"max_pages"`
 	MinCites int `json:"min_cites"`
-	// Reviewers is how many agents, none of them the page's writer, must pass each page.
+	// Reviewers is how many agents, none of them the page's writer, must pass each page; 0 is no fact-check round (a review that
+	// finds issues still holds the page until it is fixed).
 	Reviewers int `json:"reviewers"`
 	// MinSnippets and MinProjects apply to a kickoff run: code snippets from mature projects, and projects studied.
 	MinSnippets int `json:"min_snippets"`
@@ -35,9 +36,11 @@ type Depth struct {
 
 // Depths are the built-in depths, lightest first.
 var Depths = []Depth{
-	{ID: "quick", Title: "Quick", Summary: "three researchers in one round, a compact wiki: for a focused question",
-		Tracks: 3, Rounds: 1, Perspectives: 3, Questions: 9, MinSources: 15, MinDomains: 8, MinFindings: 24,
-		MinPages: 4, MaxPages: 7, MinCites: 4, Reviewers: 1, MinSnippets: 4, MinProjects: 3, Words: "400 to 900"},
+	// Quick is minutes, not hours: one short round, one to three pages, and no fact-check round (the harness still verifies every
+	// quote on its page and every page's citations; a page written from verified quotes is published as written).
+	{ID: "quick", Title: "Quick", Summary: "three researchers in one short round, one to three pages, no fact-check round: for a focused question",
+		Tracks: 3, Rounds: 1, Perspectives: 2, Questions: 6, MinSources: 8, MinDomains: 4, MinFindings: 12,
+		MinPages: 1, MaxPages: 3, MinCites: 3, Reviewers: 0, MinSnippets: 2, MinProjects: 2, Words: "300 to 700"},
 	{ID: "standard", Title: "Standard", Summary: "six researchers over two rounds with a gap review, every page fact-checked",
 		Tracks: 6, Rounds: 2, Perspectives: 5, Questions: 20, MinSources: 45, MinDomains: 18, MinFindings: 70,
 		MinPages: 9, MaxPages: 15, MinCites: 6, Reviewers: 1, MinSnippets: 10, MinProjects: 6, Words: "700 to 1,500"},

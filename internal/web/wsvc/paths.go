@@ -382,7 +382,7 @@ func (s *service) classOf(sess *session.Session, rel string) class {
 	if rc, err := sess.Classify("Read", rel); err == nil && rc.Verdict == perm.Deny {
 		c.protected = &wire.WsProtect{Rule: rc.Rule, Origin: rc.Origin, Tier: tierName(rc), Why: rc.Why}
 	}
-	if wc, err := sess.Classify("Edit", rel); err == nil && (wc.Verdict == perm.Ask || wc.NoOneToAsk) && (wc.Rule != "" || wc.Origin == perm.OriginBuiltIn) {
+	if wc, err := sess.Classify("Edit", rel); err == nil && (wc.Verdict == perm.Ask || wc.NoOneToAsk || wc.Bypass) && (wc.Rule != "" || wc.Origin == perm.OriginBuiltIn) {
 		c.ask = &wire.WsAsk{Rule: wc.Rule, Why: wc.Why}
 	}
 	s.mu.Lock()

@@ -83,9 +83,10 @@
 //   - ModePlan: read-only. Anything that writes, reaches the network or is not a
 //     provably read-only command is denied with a message that says so. Allow
 //     rules still carve exceptions (say, Edit(docs/plan.md)).
-//   - ModeBypass: allows everything except hard denies, Deny rules, guarded
-//     paths without an Allow rule, Ask rules, and the high-risk class below,
-//     which still asks.
+//   - ModeBypass: never asks. Allows everything except hard denies, Deny
+//     rules, guarded paths without an Allow rule, Ask rules, and the
+//     high-risk class below, which it refuses with the reason they were
+//     flagged and a request to do it a safer way.
 //   - ModeYolo: never asks. Allows what bypass allows and the high-risk class
 //     too; hard denies, Deny rules, guarded paths and Ask rules are refused
 //     (with the reason) instead of asked about. For runs with nobody there.
@@ -199,9 +200,10 @@ const (
 	ModeAcceptEdits Mode = "accept-edits"
 	// ModePlan is read-only: anything that writes or executes is denied.
 	ModePlan Mode = "plan"
-	// ModeBypass gives full control without asking, except about the very dangerous: the high-risk class (sudo, a recursive delete of the
-	// workspace, home or "/" or of a path only known when the command runs, a forced push to a shared branch, disk tools, shutdown) still
-	// asks. Hard denies and Deny rules still refuse.
+	// ModeBypass gives full control and never asks: the very dangerous (the high-risk class: sudo, a recursive delete of the workspace,
+	// home or "/" or of a path only known when the command runs, a forced push to a shared branch, disk tools, shutdown) and whatever
+	// else would have asked are refused with the reason they were flagged and a request to do it a safer way. Hard denies and Deny
+	// rules still refuse.
 	ModeBypass Mode = "bypass"
 	// ModeYolo never asks anything: what bypass allows, and the dangerous too. Hard denies and Deny rules still refuse (a refusal is not a
 	// question), and so does a rule that would have asked (an Ask rule, a guarded path without an Allow rule). For a run with nobody there,
@@ -287,6 +289,8 @@ type Decision struct {
 	// Preset names a set of allow rules the answer adds for the rest of the session (PresetTests: the build and test commands of most
 	// projects), so that one yes covers every worker's go test, go build and the like.
 	Preset string `json:"preset,omitempty"`
+	// by is who decided, when Config.Fallback did (Audit.By); Check clears it.
+	by string
 }
 
 // Requester is what tools call before acting.

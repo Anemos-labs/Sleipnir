@@ -24,3 +24,22 @@ func TestKickoffKeepsTheFreeWorkersBuilding(t *testing.T) {
 		t.Error("a report run has builders")
 	}
 }
+
+// Quick research is quick: one short round, one to three pages, and no fact-check round in its brief, its milestones or its goal;
+// standard research keeps its fact-checkers.
+func TestQuickResearchHasNoFactCheckRound(t *testing.T) {
+	r := &Run{Slug: "app", Question: "An app", Project: "Build an app.", Mode: ModeKickoff, Depth: "quick"}
+	brief, goal := Brief(r), Objective(r, "Build an app.", "")
+	for _, no := range []string{"Fact-check", "Fact-checkers", "every page fact-checked"} {
+		if strings.Contains(brief, no) || strings.Contains(goal, no) {
+			t.Errorf("quick research mentions %q", no)
+		}
+	}
+	if !strings.Contains(brief, "no fact-check round") || !strings.Contains(brief, "### 4. Publish") {
+		t.Errorf("quick brief:\n%s", brief)
+	}
+	r.Depth = "standard"
+	if b := Brief(r); !strings.Contains(b, "Fact-checkers") || !strings.Contains(b, "### 5. Fact-check") {
+		t.Errorf("standard brief lost its fact-check:\n%s", b)
+	}
+}

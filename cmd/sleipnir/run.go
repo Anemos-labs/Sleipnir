@@ -89,6 +89,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	capture := fs.Bool("capture", false, "ask the endpoint for token ids and logprobs (self-hosted policy servers; RL data)")
 	noWeb := fs.Bool("no-web", false, "disable the web tools")
 	noMCP := fs.Bool("no-mcp", false, "start no MCP tool servers")
+	mcpConfigs := mcpConfigFlags(fs)
 	noMemory := fs.Bool("no-memory", false, noMemoryHelp)
 	resume := resumeFlags(fs)
 	roleFlag := &roleModelFlag{}
@@ -132,6 +133,13 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	if *askTimeout < 0 {
 		return fmt.Errorf("%s: --ask-timeout must not be negative", name)
 	}
+	if *noMCP && len(*mcpConfigs) > 0 {
+		return usageError(fs, name+": --mcp-config names servers that --no-mcp would not start; give one of them")
+	}
+	mcpServers, err := mcpConfigs.servers()
+	if err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
 	roleModels, teamSlots, err := roleFlag.split()
 	if err != nil {
 		return usageError(fs, name+": "+err.Error())
@@ -151,7 +159,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 		Cwd:        *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: team, Workers: workers,
 		MaxSteps: *maxSteps, FixedSteps: *maxSteps > 0, BudgetUSD: *budget, Verify: *verify, NoRecon: *noRecon, TrustProject: *trust,
 		Dir: *dir, ContextWindow: *ctxWin, CaptureTokens: *capture, NoWeb: *noWeb, RoleModels: roleModels,
-		Resume: spec, NoMCP: *noMCP, NoMemory: *noMemory, Isolation: *isolation, Commit: *commit, Mailman: mailman(), Allow: expandAllow(*allow),
+		Resume: spec, NoMCP: *noMCP, MCPServers: mcpServers, NoMemory: *noMemory, Isolation: *isolation, Commit: *commit, Mailman: mailman(), Allow: expandAllow(*allow),
 		AutoDocs: autoDocs(), ManagerApproves: managerApproves(), Team: teamSlots, DefaultTeam: true,
 	}
 	if interactive {
@@ -453,6 +461,15 @@ func managerApprovesFlag(fs *flag.FlagSet) func() *bool {
 		v := t.val
 		return &v
 	}
+}
+
+// managerAnswersFlags registers --manager-answers-after and --manager-answers-up-to: how long a team worker's question waits for the
+// person before the manager answers it for them, and the most dangerous kind it may answer (perm.Config.Fallback). Unset leaves
+// permissions.manager_answers_after and manager_answers_up_to.
+func managerAnswersFlags(fs *flag.FlagSet) (after *time.Duration, upTo *string) {
+	after = fs.Duration("manager-answers-after", 0, "swarm: a worker's question the person has not answered in this long is answered by the manager for them, if it is no more dangerous than --manager-answers-up-to; the person's question is withdrawn and says who answered (default: config permissions.manager_answers_after; 0 waits for the person)")
+	upTo = fs.String("manager-answers-up-to", "", "swarm: the most dangerous question the manager answers after --manager-answers-after: low (routine: inside the workspace, nothing guarded), medium (also the network, files outside the workspace, commands that cannot be checked beforehand) or high (also the high-risk class, guarded paths and your ask rules) (default: config permissions.manager_answers_up_to, else medium)")
+	return after, upTo
 }
 
 // noMemoryHelp is the help of --no-memory.

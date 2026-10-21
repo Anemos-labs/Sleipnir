@@ -112,7 +112,7 @@ func TestAPoolMemberMayKeepANote(t *testing.T) {
 	member := parent.Pool.Members[1]
 	home := t.TempDir()
 	var asked []perm.Request
-	e, err := perm.NewEngine(perm.Config{Root: t.TempDir(), Home: home, Mode: perm.ModeBypass, Ask: []string{"Edit(~/.sleipnir/**)"},
+	e, err := perm.NewEngine(perm.Config{Root: t.TempDir(), Home: home, Mode: perm.ModeAcceptEdits, Ask: []string{"Edit(~/.sleipnir/**)"},
 		Prompter: func(_ context.Context, r perm.Request) perm.Decision {
 			asked = append(asked, r)
 			return perm.Decision{Allow: true}

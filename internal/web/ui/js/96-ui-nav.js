@@ -83,6 +83,8 @@
     if (ui.ws && ui.ws.counts) { const c = ui.ws.counts(S); if (c && c.changed) b.changes = [String(c.changed), '', c.changed + ' changed file' + (c.changed > 1 ? 's' : '')]; if (c && c.ckpts) b.checkpoints = [String(c.ckpts), '', c.ckpts + ' checkpoint' + (c.ckpts > 1 ? 's' : '')]; }   // the Workspace index may not be here yet: no badge until it is
     const n = calc.counts(m), nAn = n.loud;   /* the endpoint's own small misses are the Cache view's, not a badge's (wire.Break.Quiet); counts, never a bounded list's length */
     if (nAn) b.cache = SL.settings.cache === 'full' ? ['⚠ ' + nAn, 'err', nAn + ' cache anomal' + (nAn > 1 ? 'ies' : 'y')] : ['⚠', '', nAn + ' cache anomal' + (nAn > 1 ? 'ies' : 'y')];
+    const nm = (m.mem || 0) - ((S.ui && S.ui.memSeen) || 0);   // the agents' notes this session changed since the person last looked at the Memory view
+    if (nm > 0) b.memory = ['+' + nm, 'warm', nm + ' new memory change' + (nm > 1 ? 's' : '') + ': open to see them'];
     if (n.mail) b.mail = [String(n.mail), '', n.mail + ' mail' + (n.mail > 1 ? 's' : '') + ' routed'];
     const live = SL.sessions.list.filter(x => !x.recorded && !x.placeholder).length;   // read-only tabs and the empty placeholder are not running sessions
     b.sessions = [String(live), '', live + ' sessions live'];
@@ -93,7 +95,8 @@
     const app = $('#app'), nav = $('#nav'), N = { sig: '' };
     const wide = () => (pref.nav || (window.innerWidth >= 1700 ? 'wide' : 'rail')) === 'wide';
     function paintNav(S) {
-      const cur = currentId(S), bd = badges(S), w = wide(), railOpen = app.dataset.rail === 'open';
+      const cur = currentId(S); if (cur === 'memory' && !(isPhone() && app.dataset.pv === 'radio') && S && S.m && S.ui) S.ui.memSeen = S.m.mem || 0;   // seen while the view is shown (on a phone, not behind Talk): the badge goes
+      const bd = badges(S), w = wide(), railOpen = app.dataset.rail === 'open';
       const nd = SL.sessions.needs().reduce((n, x) => n + (x.waiting || 1), 0), sig = [cur, w, railOpen, SL.settings.cache, SL.plugins ? SL.plugins.ver : 0, Object.keys(bd).map(k => k + (bd[k] && bd[k][0])).join(','), S && S.id, nd].join('|'); if (N.sig === sig) return; N.sig = sig;
       app.dataset.navmode = w ? 'wide' : 'rail'; let g = null;
       const items = shown().map(it => {
@@ -104,7 +107,7 @@
       const need = nd ? '<button class="nvi nvneed" type="button" data-needgo aria-label="' + nd + ' question' + (nd === 1 ? '' : 's') + ' wait for you: open the oldest" title="open the question that has waited longest"><span class="nvg nyq" aria-hidden="true">?</span><span class="nl">Needs you</span><span class="nbd warm" aria-hidden="true">' + nd + '</span><span class="nyage num" data-needage></span></button>' : '';
       nav.innerHTML = '<div class="nv-list">' + need + items + '</div><button class="nvt" type="button" id="nvTog" aria-expanded="' + w + '" title="' + (w ? 'Collapse the menu to icons and short labels' : 'Expand the menu: whole labels, groups and the g keys') + '"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="' + (w ? 'M10 3L5 8l5 5' : 'M6 3l5 5-5 5') + '" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="nl">' + (w ? 'Collapse' : 'Expand') + '</span></button><div class="chordhint" id="chordHint" hidden></div>';
       if (nd && ui.approvals && ui.approvals.paintAges) ui.approvals.paintAges();
-      paintPhone(S, cur);
+      paintPhone(S, cur, bd);
     }
     function render(S) { paintNav(S); }
     sc.on('cache-detail', () => { N.sig = ''; paintNav(SL.sessions.active); });
@@ -127,9 +130,9 @@
 
     /* ---------- phone: a bottom bar of five ---------- */
     const mnav = $('#mnav');
-    function paintPhone(S, cur) {
+    function paintPhone(S, cur, bd) {
       const pv = app.dataset.pv, nd = SL.sessions.needs().length, items = [['cockpit', 'Cockpit'], ['radio', 'Talk'], ['changes', 'Changes'], ['sessions', 'Sessions'], ['more', 'More']].filter(([k]) => k === 'more' || shown().some(it => it.id === k));
-      mnav.innerHTML = items.map(([k, t]) => { const on = k === 'radio' ? pv === 'radio' : (pv !== 'radio' && k === cur); return '<button type="button" data-n="' + k + '"' + (on ? ' aria-current="page"' : '') + '><span class="g">' + ICONS[k === 'more' ? 'more' : k] + '</span>' + t + (k === 'radio' && nd ? '<span class="ping"></span>' : '') + '</button>'; }).join('');
+      mnav.innerHTML = items.map(([k, t]) => { const on = k === 'radio' ? pv === 'radio' : (pv !== 'radio' && k === cur); return '<button type="button" data-n="' + k + '"' + (on ? ' aria-current="page"' : '') + '><span class="g">' + ICONS[k === 'more' ? 'more' : k] + '</span>' + t + (k === 'radio' && nd || k === 'more' && bd && bd.memory ? '<span class="ping"></span>' : '') + '</button>'; }).join('');   // More pings for what only its sheet shows: new memory changes
     }
     sc.listen(mnav, 'click', e => {
       const b = e.target.closest('[data-n]'); if (!b) return; const k = b.dataset.n;
@@ -137,7 +140,7 @@
       else if (k === 'more') moreSheet(); else { app.dataset.pv = 'main'; go(k); }
     });
     function moreSheet() {
-      const grp = Object.keys(GRP).map(k => { const its = []; let in1 = false; shown().forEach(it => { if (it.grp) in1 = it.grp === k; if (in1 && !it.radio) its.push(it); }); return its.length ? '<h3 class="lab moreh">' + GRP[k] + '</h3><div class="moregrid">' + its.map(it => '<button class="btn more" type="button" data-nav="' + it.id + '">' + ICONS[it.id] + '<span>' + esc(it.label) + '</span></button>').join('') + '</div>' : ''; }).join('');
+      const bd = badges(SL.sessions.active), grp = Object.keys(GRP).map(k => { const its = []; let in1 = false; shown().forEach(it => { if (it.grp) in1 = it.grp === k; if (in1 && !it.radio) its.push(it); }); return its.length ? '<h3 class="lab moreh">' + GRP[k] + '</h3><div class="moregrid">' + its.map(it => { const b = bd[it.id]; return '<button class="btn more" type="button" data-nav="' + it.id + '"' + (b ? ' aria-label="' + esc(it.label + ', ' + b[2]) + '"' : '') + '>' + ICONS[it.id] + '<span>' + esc(it.label) + '</span>' + (b ? '<span class="nbd ' + (b[1] || '') + '" aria-hidden="true">' + esc(b[0]) + '</span>' : '') + '</button>'; }).join('') + '</div>' : ''; }).join('');
       ui.modal({ title: 'Views', kicker: 'views', desc: 'every screen of the page, by what it is for', color: 'var(--fe)', body: grp + '<h3 class="lab moreh">Anything else</h3><div class="moregrid"><button class="btn more" type="button" data-pal>' + ICONS.tools + '<span>Command palette</span></button></div>',
         onMount(b, scm, close) { scm.listen(b, 'click', e => { const x = e.target.closest('[data-nav]'); if (x) { close(); app.dataset.pv = 'main'; go(x.dataset.nav); } else if (e.target.closest('[data-pal]')) { close(); SL.palette.open(''); } }); } });
     }

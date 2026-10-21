@@ -289,6 +289,9 @@ func (s *Session) ResearchRuns() []wire.ResearchRun {
 			Created: r.Created, Built: r.Built != nil && r.Built.Version == r.Version, Problems: rep.Blocking(),
 			Sources: c.Sources, Domains: c.Domains, Findings: c.Findings, Snippets: c.Snippets, Pages: c.Pages, Planned: c.Planned,
 			OpenGaps: c.OpenGaps, Active: r.Slug == active})
+		if d, ok := research.DepthByID(r.Depth); ok && d.Reviewers == 0 {
+			out[len(out)-1].NoFactCheck = true
+		}
 	}
 	return out
 }

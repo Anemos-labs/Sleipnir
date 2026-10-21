@@ -221,6 +221,14 @@
   ],
   "gaps": [
     {
+      "item": "permissions.manager_answers_after",
+      "reason": "set for each session by the New session dialog's \"when you are away\" control (--manager-answers-after, --manager-answers-up-to); Settings has no control for the configuration's default yet"
+    },
+    {
+      "item": "permissions.manager_answers_up_to",
+      "reason": "set for each session by the New session dialog's \"when you are away\" control (--manager-answers-after, --manager-answers-up-to); Settings has no control for the configuration's default yet"
+    },
+    {
       "item": "plugins.enabled.*",
       "reason": "switched on the Plugins page (a view, tested in plugins.test.mjs), which the Settings inventory does not read"
     },

@@ -286,6 +286,11 @@ type NewSessionRequest struct {
 	// ManagerApproves false puts every worker's permission question to the person (--manager-approves=false); nil or true lets the
 	// manager answer the routine ones first.
 	ManagerApproves *bool `json:"managerApproves,omitempty"`
+	// ManagerAnswersAfter ("10m") is how long a worker's question waits for the person before the manager answers it for them
+	// (--manager-answers-after); "" leaves it to the configuration. ManagerAnswersUpTo is the most dangerous kind it may answer
+	// then: low, medium or high (--manager-answers-up-to).
+	ManagerAnswersAfter string `json:"managerAnswersAfter,omitempty"`
+	ManagerAnswersUpTo  string `json:"managerAnswersUpTo,omitempty"`
 	// CompactAt is the percentage of each model's context window at which agents' compaction starts, 10 to 90 (--compact-at);
 	// nil or 0 leaves it to the configuration (cache.compact_at_percent, else 25).
 	CompactAt *int `json:"compactAt,omitempty"`
@@ -384,6 +389,8 @@ type ResearchRun struct {
 	Planned  int    `json:"planned"`
 	OpenGaps int    `json:"openGaps"`
 	Active   bool   `json:"active"` // the run a goal drives now
+	// NoFactCheck: the run's depth has no fact-check round (quick), so the view leaves that phase out.
+	NoFactCheck bool `json:"noFactCheck,omitempty"`
 }
 
 // ResearchDepth is a depth a run can have, with what it asks for.
