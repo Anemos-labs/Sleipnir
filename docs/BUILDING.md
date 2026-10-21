@@ -2,7 +2,7 @@
 
 ## Toolchain
 
-Use Go 1.25 or newer. The minimum version is declared in `go.mod`.
+Use Go 1.26 or newer. The minimum version is declared in `go.mod`.
 Dependencies are deliberately limited to the standard library and
 `golang.org/x/{net,sys,term}`. Change module files only when needed.
 
