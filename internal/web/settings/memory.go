@@ -196,16 +196,14 @@ func (s *service) memOpts(tc *tabCtx) memory.Opts {
 func notesPath(home string) string { return filepath.Join(home, ".sleipnir", "MEMORY.md") }
 
 // projectNotesPath is the memory tool's file of the tab's project (memory.ProjectNotes under its root), or why the page does not
-// write it: there is no project, or .sleipnir or the file is a link (it would be written somewhere else than the project).
+// write it: there is no project, or .sleipnir, the file or the .gitignore beside it is a link (memtool.CheckProjectPath).
 func projectNotesPath(tc *tabCtx) (string, string) {
 	if tc.root == "" {
 		return "", "this page has no project: only your own notes are here"
 	}
 	p := filepath.Join(tc.root, filepath.FromSlash(memory.ProjectNotes))
-	for _, q := range []string{filepath.Dir(p), p} {
-		if fi, err := os.Lstat(q); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
-			return "", "the project's notes are not edited here: " + filepath.ToSlash(memory.ProjectNotes) + " is reached through a link"
-		}
+	if err := memtool.CheckProjectPath(p); err != nil {
+		return "", "the project's notes are not edited here: " + err.Error()
 	}
 	return p, ""
 }

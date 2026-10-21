@@ -256,3 +256,39 @@ func TestWriteNotesKeepsTheLinesWrittenByHand(t *testing.T) {
 		t.Errorf("after removing every note and adding one: %q, want %q", b, want)
 	}
 }
+
+// A project's notes are saved without a question, so they are written only where they appear to be: a .sleipnir directory, a notes
+// file or a .gitignore that is a link is refused, and nothing is written through it.
+func TestProjectNotesAreNotWrittenThroughALink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symbolic links need privileges on Windows")
+	}
+	for _, link := range []string{".sleipnir", ".sleipnir/MEMORY.local.md", ".sleipnir/.gitignore"} {
+		t.Run(link, func(t *testing.T) {
+			dir := t.TempDir()
+			repo, elsewhere := filepath.Join(dir, "repo"), filepath.Join(dir, "elsewhere")
+			if err := os.MkdirAll(filepath.Join(repo, ".sleipnir"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(elsewhere, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			target := filepath.Join(elsewhere, filepath.Base(link))
+			if link == ".sleipnir" {
+				os.Remove(filepath.Join(repo, ".sleipnir"))
+				target = elsewhere
+			}
+			if err := os.Symlink(target, filepath.Join(repo, link)); err != nil {
+				t.Fatal(err)
+			}
+			tool := NewScoped(filepath.Join(dir, "home", "MEMORY.md"), filepath.Join(repo, ".sleipnir", "MEMORY.local.md"))
+			r := run(t, tool, &recording{allow: true}, map[string]any{"action": "add", "scope": "project", "text": "a note"})
+			if !r.IsError || !strings.Contains(r.Text, "is a link") {
+				t.Errorf("%+v", r)
+			}
+			if ents, _ := os.ReadDir(elsewhere); len(ents) != 0 {
+				t.Errorf("written through the link: %v", ents)
+			}
+		})
+	}
+}

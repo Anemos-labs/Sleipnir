@@ -146,7 +146,8 @@
     const listOf = scope => (st.v && (scope === 'project' ? st.v.project : st.v.notes)) || { notes: [], version: '' };
     async function putNotes(scope, notes, done, version) {
       if (st.busy || !st.v) return false; st.busy = true;
-      const r = await net.put(api('/notes'), { notes, version: version != null ? version : listOf(scope).version, scope });
+      const was = S() && S().id, r = await net.put(api('/notes'), { notes, version: version != null ? version : listOf(scope).version, scope });
+      if ((S() && S().id) !== was) { st.busy = false; load(true); return false; }   // another session's project is shown now: its answer is not this view's
       const ok = took(r, done, 'the notes were not saved'); paint(true); return ok;
     }
     const file = p => arr(st.v && st.v.files).find(f => f.path === p);
@@ -183,7 +184,7 @@
       }
     });
     sc.interval(() => { if (!editing() && !st.busy) load(); }, 8000);
-    sc.on('activated', () => { st.v = null; st.open = {}; st.edit = {}; st.noteEdit = -1; paint(); load(); });
+    sc.on('activated', () => { st.v = null; st.open = {}; st.edit = {}; st.noteEdit = -1; st.newDraft.project = ''; paint(); load(); });   // a project note not sent is that project's, not the next one's
     paint(); load();
   } });
 })(SL);

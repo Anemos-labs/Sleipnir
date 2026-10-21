@@ -190,6 +190,9 @@ func (t *Tool) run(ctx context.Context, c *tools.Call, in input, notes []string,
 			return r, nil
 		}
 		if project {
+			if err := CheckProjectPath(t.path); err != nil {
+				return tools.Errorf("memory: %v", err), nil
+			}
 			if err := ignoreBeside(t.path); err != nil {
 				return tools.Errorf("memory: %v", err), nil
 			}
@@ -401,8 +404,25 @@ func WriteNotes(path string, notes []string) error {
 	return nil
 }
 
-// WriteProjectNotes is WriteNotes for a project's notes file: the .gitignore beside it keeps the file out of git first.
+// CheckProjectPath refuses a project's notes file at path that a link would send elsewhere: its directory (.sleipnir), the file
+// or the .gitignore beside it being a symbolic link. The project is the repository's to shape, and its notes are written without
+// a question, so they are written only where they appear to be.
+func CheckProjectPath(path string) error {
+	dir := filepath.Dir(path)
+	for _, q := range []string{dir, path, filepath.Join(dir, ".gitignore")} {
+		if fi, err := os.Lstat(q); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("%s is a link: the project's notes are not written through it", filepath.Base(q))
+		}
+	}
+	return nil
+}
+
+// WriteProjectNotes is WriteNotes for a project's notes file: the .gitignore beside it keeps the file out of git first. A path a
+// link would send elsewhere is refused (CheckProjectPath).
 func WriteProjectNotes(path string, notes []string) error {
+	if err := CheckProjectPath(path); err != nil {
+		return fmt.Errorf("memory: %w", err)
+	}
 	if err := ignoreBeside(path); err != nil {
 		return fmt.Errorf("memory: %w", err)
 	}
