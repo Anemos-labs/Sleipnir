@@ -2,7 +2,7 @@
 
 The `research` plugin turns a question into a researched, cited wiki. A team plans the question from several points of
 view, researches it on the web in parallel, keeps only quotes the harness found on their pages, writes pages in which
-every factual paragraph cites its sources, fact-checks each page with an agent that did not write it, and publishes a
+every factual paragraph cites its sources, fact-checks each page with an agent that did not write it (above quick depth), and publishes a
 static site with cross-links, a search box, a page of sources, a page of evidence and a page that describes the method.
 
 The same machinery can start a coding project: `/goal --research=DEPTH GOAL` researches how mature projects solve the
