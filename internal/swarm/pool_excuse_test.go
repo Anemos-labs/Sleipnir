@@ -163,3 +163,45 @@ func TestAnExcusedMemberDoesNotWriteInItsChild(t *testing.T) {
 		t.Fatalf("an excused member writes in its child: handled=%v %+v", handled, d)
 	}
 }
+
+// A member excused from an open pool, or one still in it, does the work the manager gave it apart from the pool: a run kept an
+// excused frontend worker read-only for its solo task until the pool would close. Inside the pool's own work it still writes nothing.
+func TestAPoolMemberWritesInItsOwnTaskOutsideThePool(t *testing.T) {
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"frontend", "frontend"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "waiting"} })
+	if _, err := r.sw.Spawn(SpawnReq{Role: "frontend", Title: "build the UI", Files: []string{"web/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	parent := r.sw.Board.Snapshot().Tasks[0]
+	lead, other := parent.Pool.Members[0], parent.Pool.Members[1]
+	write := perm.Request{Tool: "write", Paths: []string{"web/incidents.js"}, Writes: true}
+	if d, handled := r.sw.poolPermission(context.Background(), other, perm.AllowAll{}, write); !handled || d.Allow {
+		t.Fatalf("a planning member writes without work of its own: handled=%v %+v", handled, d)
+	}
+	solo, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "incident detail", Role: "frontend", Files: []string{"web/incidents.js"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.sw.Board.assignTask(assignReq{by: "mgr", agent: other, id: solo.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := r.sw.Board.Snapshot().Task(solo.ID); c.Owner != other || c.Status != StatusDoing {
+		t.Fatalf("setup: %+v", c)
+	}
+	for _, excused := range []bool{false, true} {
+		if excused {
+			if err := r.sw.Board.poolUpdate("mgr", parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error {
+				p.Members, p.Excused = []string{lead}, []string{other}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, handled := r.sw.poolPermission(context.Background(), other, perm.AllowAll{}, write); handled {
+			t.Errorf("excused=%v: the pool decided for the member's own task", excused)
+		}
+	}
+	// The lead's work stays the pool's: it has no task outside it.
+	if d, handled := r.sw.poolPermission(context.Background(), lead, perm.AllowAll{}, write); !handled || d.Allow {
+		t.Fatalf("the planning leader writes: handled=%v %+v", handled, d)
+	}
+}

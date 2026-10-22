@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A pool member, or one the manager excused, that is doing a task of its own
+  outside its open pools now writes in it under the session and the task's
+  scope. Before, every write was refused as a pool member's until the pool's
+  task closed, so excusing a member to free it for other work left it unable
+  to change anything. Inside the pool's own work nothing changes. No prompt
+  bytes change.
 - A task scope segment spelled exactly like a path segment now matches it as
   that name, so a scope naming a Next.js dynamic route
   (`web/app/entities/[id]/page.tsx`) covers that file for the write check and

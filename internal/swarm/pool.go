@@ -516,12 +516,16 @@ func (s *Swarm) poolPermission(ctx context.Context, id string, inner perm.Reques
 		// person (a long run lost twelve lessons about pool procedure that members tried to keep while their pool planned).
 		return perm.Decision{}, false
 	}
-	for _, t := range s.Board.Snapshot().Tasks {
+	sn := s.Board.Snapshot()
+	if ownsWorkOutsidePools(sn, id) {
+		return perm.Decision{}, false
+	}
+	for _, t := range sn.Tasks {
 		if t.Pool == nil || t.Status == StatusDone || t.Status == StatusFailed || !slices.Contains(t.Pool.Members, id) && !slices.Contains(t.Pool.Excused, id) {
 			continue
 		}
 		if t.Pool.Phase == "executing" && slices.Contains(t.Pool.Members, id) { // an excused member writes nothing, its children included
-			for _, child := range s.Board.Snapshot().Tasks {
+			for _, child := range sn.Tasks {
 				if child.Parent == t.ID && child.Owner == id && child.Status == StatusDoing {
 					return perm.Decision{}, false
 				}
@@ -545,6 +549,44 @@ func (s *Swarm) poolPermission(ctx context.Context, id string, inner perm.Reques
 		}
 	}
 	return perm.Decision{}, false
+}
+
+// ownsWorkOutsidePools reports whether the agent id has a task in doing that belongs to none of the open pools it is in or was
+// excused from: neither the task nor any of its ancestors is such a pool's task. That task is the agent's own work, which the
+// manager gave it apart from the pool, and the session and the task's scope decide what it may change. A run kept a frontend
+// worker that had been excused from a pool read-only for its solo P0 task: every edit was refused as a pool member's, and the
+// excuse could not lift it while the pool stayed open.
+func ownsWorkOutsidePools(sn *Snapshot, id string) bool {
+	pools := map[string]bool{}
+	for _, t := range sn.Tasks {
+		if t.Pool != nil && t.Status != StatusDone && t.Status != StatusFailed && (slices.Contains(t.Pool.Members, id) || slices.Contains(t.Pool.Excused, id)) {
+			pools[t.ID] = true
+		}
+	}
+	if len(pools) == 0 {
+		return false
+	}
+	byID := make(map[string]Task, len(sn.Tasks))
+	for _, t := range sn.Tasks {
+		byID[t.ID] = t
+	}
+	for _, t := range sn.Tasks {
+		if t.Owner != id || t.Status != StatusDoing {
+			continue
+		}
+		inPool, seen := false, map[string]bool{}
+		for cur, ok := t, true; ok && !seen[cur.ID]; cur, ok = byID[cur.Parent] {
+			seen[cur.ID] = true
+			if pools[cur.ID] {
+				inPool = true
+				break
+			}
+		}
+		if !inPool {
+			return true
+		}
+	}
+	return false
 }
 
 // poolReadOnly says why a member of the pool task t may not change anything now, and what lets it: agreement and execution while the

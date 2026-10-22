@@ -133,8 +133,10 @@ the existing task. A member that cannot take part (its model keeps failing or do
 not answer) is excused by the manager with `pool excuse` (`member`, `text` = why):
 it leaves the pool and its votes stop counting, so the others' agreement and
 confirmation suffice; its open subtasks of the parent return to the board
-unassigned; the next member leads if it led; and it stays read-only while the
-parent is open. A resumed pool keeps it out. The last member cannot be excused, and
+unassigned; the next member leads if it led; and it stays read-only in the
+pool's work while the parent is open. A member, excused or not, that is doing a task
+of its own outside its open pools (neither the task nor an ancestor is one of them)
+writes under the session and that task's scope as any writer does. A resumed pool keeps it out. The last member cannot be excused, and
 neither can one that is running and made progress (an edit, a test, a task update)
 within the stall check's bound of model turns: being out of the manager's view or
 quiet in mail is not a sign that a member stopped. One that has stopped, made no
