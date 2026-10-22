@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A writer confined to its own tree may no longer move the person's checkout's
+  branch or a branch of the run (`sleipnir/...`) with `git update-ref`,
+  `git symbolic-ref`, `git branch -f/-C/-d/-D/-m/-M`, `git push .` or a
+  `git fetch` refspec into a local branch: the command is refused with an
+  `isolation:` reason. A manager that ran `git update-ref` on the checkout's
+  branch moved it to the integration tip while the person's files stayed
+  behind. No prompt bytes change.
 - Background jobs name what they serve. When the output of a job an agent
   started with `run_in_background` names a local address
   (`http://localhost:5173/`, `http://0.0.0.0:8080`, shown as localhost), the

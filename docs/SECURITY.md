@@ -259,6 +259,13 @@ file a `file:` URL names, which an upload also writes. What it cannot name keeps
 not on its list, a config file (`-K`, whose options are not read), a file name the server picks (`-J`), a URL whose scheme or `file:`
 path is only known when the command runs, and an output name filled from a URL glob (`#1`).
 
+A writer confined to its own tree shares the repository's refs with the person's checkout, so moving a branch is not a file access the
+tree check sees. Git commands that would move the checkout's branch or a branch of the run (`sleipnir/...`: the integration branch and
+the agents' trees) are refused with an `isolation:` reason: `git update-ref` (and `--stdin`), `git symbolic-ref`, `git branch -f`, `-C`,
+`-d`/`-D` and `-m`/`-M`, `git push .` and a `git fetch` refspec whose destination is a local branch. Only the merge queue moves those;
+a branch moved without its files makes merged work look undone. The agent's own branch may still be moved (not renamed or deleted),
+and branches outside the run are the ordinary rules' business.
+
 The session's scratch directory (`$TMPDIR`) is every agent's: a writer confined to its own tree writes there, and an `ask` rule about the
 state directory (where the scratch directory lives) does not ask about it; `deny` rules and the built-in protections still apply. A name
 in it whose rest is only known when the command runs (`"$TMPDIR/$X"`) could leave it with a `../`, so the rule asks, and the question says
