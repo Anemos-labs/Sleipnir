@@ -283,7 +283,7 @@ with status 0. The other commands (`run`, `swarm`, `inspect`, ...) keep one mean
 
 **Typing ahead.** A line typed while a turn runs is kept, with the ones after it, for the next prompt, where it is a goal (the
 program shows the first of them under the status line as `⏎ queued: ...`; the program answers the slash commands that only look, `/cost`,
-`/context`, `/agents`, `/help`, `/skills`, `/recon`, `/status`, `/permissions`, `/trust`, and `/mode` and `/mcp` without an argument, at once, beside the turn). The attached TUI also handles `/effort [level]` immediately: it changes subsequent requests while the current request finishes. Other typed lines remain queued. A queued line is never the answer to an approval question: in the
+`/context`, `/agents`, `/help`, `/skills`, `/recon`, `/status`, `/permissions`, `/trust`, `/jobs`, and `/mode` and `/mcp` without an argument, at once, beside the turn). The attached TUI also handles `/effort [level]` immediately: it changes subsequent requests while the current request finishes. Other typed lines remain queued. A queued line is never the answer to an approval question: in the
 program a question takes only keys pressed after it has been quiet for a moment, as above; in the line chat it takes the first
 line typed after it was shown, so a `y` that was typed for something else cannot approve an action, and a line typed ahead is not
 lost to a question either. A question that Ctrl-C cancels takes nothing; what is typed next goes to the prompt. A line that is
@@ -2562,6 +2562,7 @@ flags:
 | `/budget [usd\|off]` | show or set the dollar budget for the turns from now on |
 | `/allow <rule>` | allow for the rest of the session what would otherwise ask: `tests`, `Bash(go test:*)`, `Edit(src/**)` |
 | `/verbose [on\|off]` · `/anim [on\|off]` | show or hide notices and tool errors · turn the motion on or off |
+| `/jobs [stop ID]` | the background jobs the agents started (`bash` with `run_in_background`: a dev server, a watcher, a long test run), running ones first, each with the local addresses its output named (`http://localhost:5173/`; a wildcard host is shown as `localhost`, at most four per job); `/jobs stop ID` ends one and everything it started. It answers at once, beside a running turn |
 | `/sessions` · `/cwd` | the newest sessions (resume one with `sleipnir --resume <id>`) · the directory the session works in |
 | `/new` · `/resume [id]` | start the conversation again, empty · continue an earlier session (the newest of this project, or the id `/sessions` shows) |
 | `/restart [flags]` | start the chat again with other flags; the model, mode and the flags the session started with (a team stays a team) stay, and the conversation comes along (a single agent's, or a team's manager and its board; not into git worktrees) |

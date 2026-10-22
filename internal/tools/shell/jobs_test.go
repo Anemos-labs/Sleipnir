@@ -608,3 +608,37 @@ func TestKilledJobOutputPattern(t *testing.T) {
 		}
 	}
 }
+
+func TestBackgroundJobServingAndStop(t *testing.T) {
+	h := newHarness(t, Options{KillGrace: 500 * time.Millisecond})
+	env := h.env("fe-1")
+	if res := h.bash(env, "echo '  Local:   http://localhost:5173/'; echo 'Network: http://10.0.0.2:5173/'; sleep 30", map[string]any{"run_in_background": true}); res.IsError {
+		t.Fatalf("start: %+v", res)
+	}
+	waitFor(t, "the serving event", 10*time.Second, func() bool {
+		for _, e := range jobEvents(h) {
+			if e.Status == "serving" {
+				return true
+			}
+		}
+		return false
+	})
+	evs := jobEvents(h)
+	if evs[0].Status != "started" || evs[1].Status != "serving" || len(evs[1].URLs) != 1 || evs[1].URLs[0] != "http://localhost:5173/" || evs[1].ID != "job_1" || evs[1].Agent != "fe-1" {
+		t.Fatalf("events = %+v", evs)
+	}
+	js := h.m.Jobs()
+	if len(js) != 1 || js[0].Status != "running" || js[0].Exit != nil || len(js[0].URLs) != 1 || js[0].Agent != "fe-1" {
+		t.Fatalf("jobs = %+v", js)
+	}
+	if err := h.m.StopJob("job_1"); err != nil {
+		t.Fatalf("stop: %v", err)
+	}
+	js = h.m.Jobs()
+	if js[0].Status != "killed" || js[0].Exit == nil {
+		t.Fatalf("after stop: %+v", js[0])
+	}
+	if err := h.m.StopJob("job_1"); err != nil {
+		t.Fatalf("stopping an ended job: %v", err)
+	}
+}

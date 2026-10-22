@@ -327,6 +327,7 @@ a team, and the program
 /queue [drop N]    what waits for the turn: list, drop one, or clear all
 /verbose [on|off]  notices and tool errors
 /anim [on|off]     motion
+/jobs [stop ID]    background jobs (dev servers) and their local addresses
 /cwd               the directory this session works in
 
 what the model knows
@@ -492,6 +493,8 @@ func slashTo(ctx context.Context, s *session.Session, line string, stdout, stder
 		case len(done) > 0:
 			fmt.Fprintf(stderr, "allowed for this session: %s\n", strings.Join(done, ", "))
 		}
+	case "/jobs":
+		jobsSlash(stderr, s, f[1:])
 	case "/cwd":
 		fmt.Fprintf(stderr, "cwd: %s (a session works in one directory: start sleipnir there, or /restart --cwd DIR)\n", tildePath(s.Cwd()))
 	case "/sessions":

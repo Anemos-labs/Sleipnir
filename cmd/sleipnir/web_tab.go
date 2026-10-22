@@ -745,7 +745,7 @@ func isLookLine(line string) bool {
 		return false
 	}
 	switch f[0] {
-	case "/cost", "/stats", "/context", "/agents", "/help", "/?", "/skills", "/recon", "/status", "/permissions", "/trust", "/allow", "/steer", "/effort", "/queue":
+	case "/cost", "/stats", "/context", "/agents", "/help", "/?", "/skills", "/recon", "/status", "/permissions", "/trust", "/allow", "/steer", "/jobs", "/effort", "/queue":
 		return true
 	case "/mode", "/mcp":
 		return len(f) == 1
@@ -2205,6 +2205,7 @@ func (t *webTab) meta() wire.MetaPatch {
 		}
 		m.Isolation = ptr(iso)
 		m.Rules = ptr(t.rulesOf(s))
+		m.Jobs = ptr(webJobs(s))
 	} else {
 		m.Model, m.Mode = ptr(o.Model), ptr(string(o.Mode))
 		m.Swarm = ptr(o.Workers)

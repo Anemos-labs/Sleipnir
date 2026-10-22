@@ -46,6 +46,7 @@
     '/steer': a => { if (!a) return ui.toast('/steer needs text: tell the running turn something', 'warm'); onOk(SL.act.steer('mgr', a), () => ui.toast('steer sent to the manager')); },
     '/verbose': a => { const S = S_(), on = a ? a !== 'off' : S.ui.verbose === false; S.ui.verbose = on; S.touch(); ui.toast(on ? 'notices on: Team activity shows every tool call and every cache miss of the endpoint' : 'notices off: Team activity keeps questions, mail, merges and cache breaks, and hides tool calls', on ? 'ok' : 'quiet'); },
     '/anim': a => { const on = a ? a === 'on' : ui.still(); SL.act.setMotion(on ? 'full' : 'reduce'); ui.applyMotion(); ui.toast('motion ' + (on ? 'on' : 'off') + (on ? '' : ': the horse stands')); },
+    '/jobs': a => { if (a) serverLine('/jobs ' + a, '/jobs'); else ui.jobs.open(); },
     '/cwd': () => { const S = S_(); local('/cwd', '<code>' + esc(S.meta.cwd) + '</code><br><span class="dim">--isolation ' + esc(S.meta.isolation) + (S.meta.isolation === 'worktree' ? ': each worker has its own checkout' : '') + '</span>'); },
     /* the session's own project map (the pinned shared layer), with a way to run a fresh survey */
     '/recon': a => serverLine('/recon' + (a ? ' ' + a : ''), '/recon', '<div class="row2" style="margin:6px 0 0"><button class="btn sm" type="button" data-cli="recon">Run a fresh survey</button></div>'),

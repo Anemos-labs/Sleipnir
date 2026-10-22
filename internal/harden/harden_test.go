@@ -282,9 +282,16 @@ func TestMoveKeysTakesProviderKeysOutOfTheEnvironment(t *testing.T) {
 			t.Errorf("Secret(%s) = %q, want %q", name, got, want)
 		}
 	}
-	// Held is sorted and lists names only.
+	// Held is sorted and lists names only. The keys of the machine running the test (a HEIMDALLM_API_KEY of the developer) are moved
+	// too and are not this test's to judge.
 	want := []string{"HARDEN_T_APIKEY", "HARDEN_T_CUSTOM", "HARDEN_T_HEIMDALLM_API_KEY", "HARDEN_T_other-api-key"}
-	if got := Held(); !reflect.DeepEqual(got, want) {
+	var got []string
+	for _, n := range Held() {
+		if strings.HasPrefix(n, "HARDEN_T_") {
+			got = append(got, n)
+		}
+	}
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Held = %v, want %v", got, want)
 	}
 }

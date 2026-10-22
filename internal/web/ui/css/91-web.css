@@ -214,3 +214,8 @@ body.cq .anom .a b{color:var(--warm)}
 .teamlib .tl-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}.teamlib .tl-row input[type=text]{flex:1 1 140px;width:auto}
 .teamlib .tl-cur{margin:0 0 6px}.teamlib .tl-imp{margin-top:8px}.teamlib .tl-imp p{margin:0 0 4px}.teamlib .tl-file{cursor:pointer}
 #nsTeams{margin-left:4px}
+
+/* ---------- background jobs: the status bar's chip and the dialog (ui.jobs, 80-ui-shell.js) ---------- */
+#statusLine .jobchip{flex:0 0 auto;color:var(--ok)}
+.tbl.jobs td{vertical-align:top}.tbl.jobs td.mono{overflow-wrap:anywhere}
+.tbl.jobs tr.jurls td{border-top:0;padding-top:0}.tbl.jobs tr.jurls a{color:var(--fe);overflow-wrap:anywhere}
