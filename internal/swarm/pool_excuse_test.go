@@ -199,6 +199,45 @@ func TestAPoolMemberWritesInItsOwnTaskOutsideThePool(t *testing.T) {
 		if _, handled := r.sw.poolPermission(context.Background(), other, perm.AllowAll{}, write); handled {
 			t.Errorf("excused=%v: the pool decided for the member's own task", excused)
 		}
+		if _, handled := r.sw.poolPermission(context.Background(), other, perm.AllowAll{}, perm.Request{Tool: "bash", Command: "go test ./..."}); handled {
+			t.Errorf("excused=%v: the pool decided a shell command of a member with only its own task", excused)
+		}
+		// The pool's work stays the pool's: a path outside the member's own task is still refused.
+		pooled := perm.Request{Tool: "write", Paths: []string{"web/app.js"}, Writes: true}
+		if d, handled := r.sw.poolPermission(context.Background(), other, perm.AllowAll{}, pooled); !handled || d.Allow {
+			t.Errorf("excused=%v: the member writes the pool's work: handled=%v %+v", excused, handled, d)
+		}
+	}
+	// A child of the pool it still holds in doing keeps the pool's rule for its files and for shell commands.
+	if err := r.sw.Board.poolUpdate("mgr", parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error {
+		p.Members, p.Excused, p.Phase = []string{lead, other}, nil, "executing"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	child, err := r.sw.Board.CreateTask(lead, TaskSpec{Parent: parent.ID, Title: "charts", Role: "frontend", Files: []string{"web/charts.js"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.sw.Board.assignTask(assignReq{by: lead, agent: other, id: child.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.poolUpdate("mgr", parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error {
+		p.Members, p.Excused = []string{lead}, []string{other}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, req := range []perm.Request{
+		{Tool: "write", Paths: []string{"web/charts.js"}, Writes: true},
+		{Tool: "bash", Command: "rm web/charts.js"},
+	} {
+		if d, handled := r.sw.poolPermission(context.Background(), other, perm.AllowAll{}, req); !handled || d.Allow {
+			t.Errorf("an excused member with its own task acts in its pool child (%s): handled=%v %+v", req.Tool, handled, d)
+		}
+	}
+	if _, handled := r.sw.poolPermission(context.Background(), other, perm.AllowAll{}, write); handled {
+		t.Error("the pool decided for the member's own task while it held a pool child")
 	}
 	// The lead's work stays the pool's: it has no task outside it.
 	if d, handled := r.sw.poolPermission(context.Background(), lead, perm.AllowAll{}, write); !handled || d.Allow {

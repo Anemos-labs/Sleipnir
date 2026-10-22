@@ -517,7 +517,7 @@ func (s *Swarm) poolPermission(ctx context.Context, id string, inner perm.Reques
 		return perm.Decision{}, false
 	}
 	sn := s.Board.Snapshot()
-	if ownsWorkOutsidePools(sn, id) {
+	if s.forOwnWork(sn, id, req) {
 		return perm.Decision{}, false
 	}
 	for _, t := range sn.Tasks {
@@ -551,16 +551,17 @@ func (s *Swarm) poolPermission(ctx context.Context, id string, inner perm.Reques
 	return perm.Decision{}, false
 }
 
-// ownsWorkOutsidePools reports whether the agent id has a task in doing that belongs to none of the open pools it is in or was
-// excused from: neither the task nor any of its ancestors is such a pool's task. That task is the agent's own work, which the
-// manager gave it apart from the pool, and the session and the task's scope decide what it may change. A run kept a frontend
-// worker that had been excused from a pool read-only for its solo P0 task: every edit was refused as a pool member's, and the
-// excuse could not lift it while the pool stayed open.
-func ownsWorkOutsidePools(sn *Snapshot, id string) bool {
-	pools := map[string]bool{}
+// forOwnWork reports whether req is for a task the agent id is doing apart from its open pools: one the manager gave it outside the
+// pools it is in or was excused from (neither the task nor an ancestor is such a pool's task). The session and the task's scope then
+// decide, as for any writer. A run kept a frontend worker excused from a pool read-only for its solo P0 task: every edit was refused
+// as a pool member's, and the excuse could not lift it while the pool stayed open. The pool's own work stays the pool's: every path
+// of the request lies in the scope of such a task (or, for an unscoped one, outside the pools' scopes), and a request that names no
+// path (a shell command) is the agent's own only while it holds no task in doing inside its pools.
+func (s *Swarm) forOwnWork(sn *Snapshot, id string, req perm.Request) bool {
+	pools := map[string]Task{}
 	for _, t := range sn.Tasks {
 		if t.Pool != nil && t.Status != StatusDone && t.Status != StatusFailed && (slices.Contains(t.Pool.Members, id) || slices.Contains(t.Pool.Excused, id)) {
-			pools[t.ID] = true
+			pools[t.ID] = t
 		}
 	}
 	if len(pools) == 0 {
@@ -570,6 +571,8 @@ func ownsWorkOutsidePools(sn *Snapshot, id string) bool {
 	for _, t := range sn.Tasks {
 		byID[t.ID] = t
 	}
+	var own []Task
+	inPools := false
 	for _, t := range sn.Tasks {
 		if t.Owner != id || t.Status != StatusDoing {
 			continue
@@ -577,16 +580,52 @@ func ownsWorkOutsidePools(sn *Snapshot, id string) bool {
 		inPool, seen := false, map[string]bool{}
 		for cur, ok := t, true; ok && !seen[cur.ID]; cur, ok = byID[cur.Parent] {
 			seen[cur.ID] = true
-			if pools[cur.ID] {
+			if _, ok := pools[cur.ID]; ok {
 				inPool = true
 				break
 			}
 		}
-		if !inPool {
-			return true
+		if inPool {
+			inPools = true
+		} else {
+			own = append(own, t)
 		}
 	}
-	return false
+	if len(own) == 0 {
+		return false
+	}
+	if len(req.Paths) == 0 {
+		return !inPools
+	}
+	for _, p := range req.Paths {
+		rel, ok := s.Leases.relFor(id, p)
+		if !ok {
+			return false
+		}
+		covered := false
+		for _, t := range own {
+			if len(t.Files) > 0 && inScope(t.Files, rel) {
+				covered = true
+				break
+			}
+			if len(t.Files) == 0 {
+				covered = true
+				for _, pt := range pools {
+					if len(pt.Files) == 0 || inScope(pt.Files, rel) {
+						covered = false
+						break
+					}
+				}
+				if covered {
+					break
+				}
+			}
+		}
+		if !covered {
+			return false
+		}
+	}
+	return true
 }
 
 // poolReadOnly says why a member of the pool task t may not change anything now, and what lets it: agreement and execution while the
