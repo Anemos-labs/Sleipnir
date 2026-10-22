@@ -122,6 +122,9 @@ func TestScopeTables(t *testing.T) {
 		{"crates/api**", "crates/web/x.rs", false},
 		{"src/***", "src/private/secret", false}, // only a plain name before "**" widens
 		{"src/a*b**", "src/a1b/x.go", false},
+		{"web/app/entities/[id]/page.tsx", "web/app/entities/[id]/page.tsx", true}, // Next.js's [id] is a directory
+		{"web/app/entities/[id]/**", "web/app/entities/[id]/vm/page.tsx", true},
+		{"web/app/entities/[id]/page.tsx", "web/app/entities/[key]/page.tsx", false},
 	}
 	for _, tc := range match {
 		if got := scopeMatch(tc.scope, tc.path); got != tc.want {

@@ -127,6 +127,7 @@ type token struct {
 type segment struct {
 	dstar bool // the whole segment is "**"
 	toks  []token
+	raw   string // the segment as written: a name spelled exactly so is matched as itself (Next.js's [id] directory)
 }
 
 // scopePattern is a compiled pattern: alternatives (from {a,b}), each a list of
@@ -373,6 +374,7 @@ func compileScope(pattern string) (*scopePattern, error) {
 				return nil, errBadScope
 			}
 			seg := parseSegment(s)
+			seg.raw = s
 			if seg.dstar && len(segs) > 0 && segs[len(segs)-1].dstar {
 				continue
 			}
@@ -454,7 +456,7 @@ func matchSegs(pat []segment, segs []string) bool {
 		if pat[pi].dstar {
 			ok = rec(pi+1, si) || (si < ns && rec(pi, si+1))
 		} else {
-			ok = si < ns && matchTokens(pat[pi].toks, segs[si]) && rec(pi+1, si+1)
+			ok = si < ns && (segs[si] == pat[pi].raw || matchTokens(pat[pi].toks, segs[si])) && rec(pi+1, si+1)
 		}
 		if ok {
 			memo[k] = 2

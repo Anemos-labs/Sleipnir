@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A task scope segment spelled exactly like a path segment now matches it as
+  that name, so a scope naming a Next.js dynamic route
+  (`web/app/entities/[id]/page.tsx`) covers that file for the write check and
+  the merge queue alike. Before, `[id]` was read only as a character class
+  (one of `i`, `d`), so the scope covered `web/app/entities/i/page.tsx` but
+  not the file it named, and writers were refused their own files. No prompt
+  bytes change.
 - A writer confined to its own tree may no longer move the person's checkout's
   branch or a branch of the run (`sleipnir/...`) with `git update-ref`,
   `git symbolic-ref`, `git branch -f/-C/-d/-D/-m/-M`, `git push .` or a
