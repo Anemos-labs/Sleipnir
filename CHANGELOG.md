@@ -24,7 +24,12 @@ they do not indicate whether a change has been released.
 - The question notification of the web interface (Settings › Appearance)
   also tells when a session finishes a turn while the page is out of sight,
   unless the turn ended on a question or the team still works.
-
+- The session event log survives a failed write. A full disk used to stop it
+  for good: the first failed write made every later event fail until a
+  restart, so a long run silently stopped being recorded. Events now wait in
+  memory (up to 64 MiB) and reach the file once writes succeed again, with
+  no torn line left behind; `Emit` keeps succeeding meanwhile, and `Flush`
+  and `Close` report the failure while it lasts.
 - A role's pool takes at most four members for one parent task
   (`swarm.pool_max`, new; `0` is the default of 4, a negative value sets no
   cap). A larger role used to put every free member into the first parent's
