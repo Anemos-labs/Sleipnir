@@ -172,6 +172,11 @@ func (ev *evaluator) judge(u *unit) verdict {
 				return v
 			}
 		}
+		if why := ev.movesQueuedBranch(u); why != "" {
+			v := deny("isolation: " + why)
+			v.origin, v.tier = OriginIsolation, TierHard
+			return v
+		}
 	}
 	if r := ev.restrictMatch(ev.v.deny, u, all); r != nil {
 		return deny("denied by rule " + r.String()).by(r)
