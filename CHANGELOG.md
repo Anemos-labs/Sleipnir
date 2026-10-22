@@ -7,6 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A child task that an executing pool gives one of its members is no longer
+  refused by another pool the member is in or was excused from, even where
+  the two pools' scopes overlap. Before, a member excused from one pool and
+  given a one-member pool of its own for the same files could change nothing
+  in its child. No prompt bytes change.
 - A pool member, or one the manager excused, that is doing a task of its own
   outside its open pools now writes in it under the session and the task's
   scope. Before, every write was refused as a pool member's until the pool's

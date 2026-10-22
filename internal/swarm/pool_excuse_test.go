@@ -244,3 +244,52 @@ func TestAPoolMemberWritesInItsOwnTaskOutsideThePool(t *testing.T) {
 		t.Fatalf("the planning leader writes: handled=%v %+v", handled, d)
 	}
 }
+
+// A member excused from one pool works in the child of another pool that executes and gives it that child, though the two pools'
+// scopes overlap: in a run the manager made a one-member pool for a P0 task of a worker excused from the frontend pool, and every
+// edit of the child was refused by the pool it had left.
+func TestAnExcusedMemberWorksInAChildOfAnotherPool(t *testing.T) {
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"frontend", "frontend"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "waiting"} })
+	if _, err := r.sw.Spawn(SpawnReq{Role: "frontend", Title: "incidents", Files: []string{"web/incidents/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	left := r.sw.Board.Snapshot().Tasks[0]
+	lead, other := left.Pool.Members[0], left.Pool.Members[1]
+	if err := r.sw.Board.poolUpdate("mgr", left.ID, func(_ *Snapshot, _ *Task, p *PoolState) error {
+		p.Members, p.Excused, p.Phase = []string{lead}, []string{other}, "reconciling"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// The second pool: its task is the member's, and it has the member alone.
+	solo, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "incident detail", Role: "frontend", Files: []string{"web/incidents/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.beginPool("mgr", solo.ID, []string{other}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.poolUpdate("mgr", solo.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := r.sw.Board.Snapshot().Task(solo.ID); s.Owner != other || s.Status != StatusDoing {
+		t.Fatalf("setup: %+v", s)
+	}
+	write := perm.Request{Tool: "write", Paths: []string{"web/incidents/[id]/page.tsx"}, Writes: true}
+	// Without a child the member writes nothing: the pool's own task is no work of its own.
+	if d, handled := r.sw.poolPermission(context.Background(), other, perm.AllowAll{}, write); !handled || d.Allow {
+		t.Fatalf("the member writes without a child: handled=%v %+v", handled, d)
+	}
+	child, err := r.sw.Board.CreateTask(other, TaskSpec{Parent: solo.ID, Title: "usePathname", Role: "frontend", Files: []string{"web/incidents/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.sw.Board.assignTask(assignReq{by: other, agent: other, id: child.ID}); err != nil {
+		t.Fatal(err)
+	}
+	for _, req := range []perm.Request{write, {Tool: "bash", Command: "pnpm build"}} {
+		if _, handled := r.sw.poolPermission(context.Background(), other, perm.AllowAll{}, req); handled {
+			t.Errorf("the pool the member left decided its child's %s", req.Tool)
+		}
+	}
+}
