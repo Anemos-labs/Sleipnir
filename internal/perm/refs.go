@@ -57,6 +57,9 @@ sub:
 	}
 	sub, rest := args[i], args[i+1:]
 	ops := operands(rest)
+	if sub == "update-ref" || sub == "symbolic-ref" {
+		ops = operands(withoutValue(rest, "-m"))
+	}
 	switch sub {
 	case "update-ref":
 		if hasLong(rest, "--stdin") {
@@ -101,12 +104,22 @@ sub:
 		if len(ops) < 2 || (sub == "push" && ops[0] != ".") {
 			return ""
 		}
+		if sub == "push" && (hasLong(rest, "--delete") || hasShort(rest, "d")) {
+			for _, b := range ops[1:] {
+				if queued(b, true) {
+					return refuse("git push . --delete "+b, b)
+				}
+			}
+		}
 		for _, spec := range ops[1:] {
 			j := strings.LastIndexByte(spec, ':')
 			if j < 0 || j == len(spec)-1 {
 				continue
 			}
 			dst := strings.TrimPrefix(spec[j+1:], "+")
+			if sub == "push" && j == 0 && queued(dst, true) { // push . :branch deletes it
+				return refuse("git push . "+spec, dst)
+			}
 			if strings.HasPrefix(dst, "refs/") && !strings.HasPrefix(dst, "refs/heads/") {
 				continue
 			}
@@ -128,6 +141,22 @@ func operands(args []string) []string {
 		if !strings.HasPrefix(a, "-") {
 			out = append(out, a)
 		}
+	}
+	return out
+}
+
+// withoutValue drops each opt and the separate value that follows it (git update-ref -m <reason>), up to a bare --.
+func withoutValue(args []string, opt string) []string {
+	out := make([]string, 0, len(args))
+	for k := 0; k < len(args); k++ {
+		if args[k] == "--" {
+			return append(out, args[k:]...)
+		}
+		if args[k] == opt {
+			k++
+			continue
+		}
+		out = append(out, args[k])
 	}
 	return out
 }
