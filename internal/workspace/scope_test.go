@@ -83,6 +83,11 @@ func TestScopeMatch(t *testing.T) {
 		{"**", "any/thing/at/all.txt", true},
 		{".", "x.txt", true},
 		{"/", "x.txt", true},
+		// a segment spelled exactly like the name is that name: Next.js's dynamic route directories
+		{"web/app/entities/[id]/page.tsx", "web/app/entities/[id]/page.tsx", true},
+		{"web/app/entities/[id]/**", "web/app/entities/[id]/vm/page.tsx", true},
+		{"web/app/[...slug]/page.tsx", "web/app/[...slug]/page.tsx", true},
+		{"web/app/entities/[id]/page.tsx", "web/app/entities/[key]/page.tsx", false},
 	}
 	for _, c := range cases {
 		if got := Match(c.pattern, c.file); got != c.want {

@@ -174,9 +174,11 @@ func matchSegs(p, s []string) bool {
 		if len(s) == 0 {
 			return false
 		}
-		ok, err := path.Match(p[0], s[0])
-		if err != nil || !ok {
-			return false
+		if p[0] != s[0] { // a segment spelled exactly like the name is that name: Next.js's [id] is a directory, not a class
+			ok, err := path.Match(p[0], s[0])
+			if err != nil || !ok {
+				return false
+			}
 		}
 		p, s = p[1:], s[1:]
 	}
