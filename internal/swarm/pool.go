@@ -551,12 +551,14 @@ func (s *Swarm) poolPermission(ctx context.Context, id string, inner perm.Reques
 	return perm.Decision{}, false
 }
 
-// forOwnWork reports whether req is for a task the agent id is doing apart from its open pools: one the manager gave it outside the
-// pools it is in or was excused from (neither the task nor an ancestor is such a pool's task). The session and the task's scope then
-// decide, as for any writer. A run kept a frontend worker excused from a pool read-only for its solo P0 task: every edit was refused
-// as a pool member's, and the excuse could not lift it while the pool stayed open. The pool's own work stays the pool's: every path
-// of the request lies in the scope of such a task (or, for an unscoped one, outside the pools' scopes), and a request that names no
-// path (a shell command) is the agent's own only while it holds no task in doing inside its pools.
+// forOwnWork reports whether req is for work the agent id may do whatever its other pools say: a task it is doing that no open
+// pool it is in or was excused from holds back. Such a task lies outside those pools (neither it nor an ancestor is one of them), or
+// is a child of the nearest such pool where the agent is a member and the pool executes, which is the work that pool gives it. The
+// session and the task's scope then decide, as for any writer. A run kept a frontend worker excused from a pool read-only for its solo
+// P0 task, first outside every pool and then as the child of a one-member pool the manager made for it: each edit was refused by the
+// pool it had been excused from. Work that a pool holds back stays its own: every path of the request lies in the scope of a task
+// the agent may do (or, for an unscoped one, outside the pools' scopes), and a request that names no path (a shell command) is the
+// agent's own only while it holds no task in doing that a pool holds back. A pool's own task is neither: its owner works in children.
 func (s *Swarm) forOwnWork(sn *Snapshot, id string, req perm.Request) bool {
 	pools := map[string]Task{}
 	for _, t := range sn.Tasks {
@@ -572,30 +574,35 @@ func (s *Swarm) forOwnWork(sn *Snapshot, id string, req perm.Request) bool {
 		byID[t.ID] = t
 	}
 	var own []Task
-	inPools := false
+	heldBack := false
 	for _, t := range sn.Tasks {
 		if t.Owner != id || t.Status != StatusDoing {
 			continue
 		}
-		inPool, seen := false, map[string]bool{}
-		for cur, ok := t, true; ok && !seen[cur.ID]; cur, ok = byID[cur.Parent] {
+		if _, ok := pools[t.ID]; ok {
+			continue
+		}
+		var pool *Task
+		seen := map[string]bool{t.ID: true}
+		for cur, ok := byID[t.Parent]; ok && !seen[cur.ID]; cur, ok = byID[cur.Parent] {
 			seen[cur.ID] = true
-			if _, ok := pools[cur.ID]; ok {
-				inPool = true
+			if p, ok := pools[cur.ID]; ok {
+				pool = &p
 				break
 			}
 		}
-		if inPool {
-			inPools = true
-		} else {
+		switch {
+		case pool == nil, t.Parent == pool.ID && pool.Pool.Phase == "executing" && slices.Contains(pool.Pool.Members, id):
 			own = append(own, t)
+		default:
+			heldBack = true
 		}
 	}
 	if len(own) == 0 {
 		return false
 	}
 	if len(req.Paths) == 0 {
-		return !inPools
+		return !heldBack
 	}
 	for _, p := range req.Paths {
 		rel, ok := s.Leases.relFor(id, p)
