@@ -20,6 +20,36 @@
   /** A turn's model request without an answer for 45 s or more: "waiting for the model (1m 05s)". */
   ui.waitingFor = (A, vt) => { if (!A || A.reqSince == null || !['think', 'tool', 'edit', 'wait'].includes(A.state)) return ''; const s = vt - A.reqSince; if (s < 45) return ''; const n = Math.floor(s); return 'waiting for the model (' + (n < 60 ? n + 's' : Math.floor(n / 60) + 'm ' + String(n % 60).padStart(2, '0') + 's') + ')'; };
 
+  /** The background jobs of a session (meta.jobs: the server's list, oldest first). */
+  const jobsOf = S => (S && S.meta && Array.isArray(S.meta.jobs) ? S.meta.jobs : []);
+  /** A local address a job named, as a link that opens it in a new tab; anything that is not an http(s) address stays text. */
+  const jobLink = u => (/^https?:\/\//.test(String(u)) ? '<a class="mono" href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + esc(u) + '</a>' : '<span class="mono">' + esc(u) + '</span>');
+  /** The rows of the jobs dialog: running jobs first, each with its addresses under it and a Stop button. */
+  function jobsHtml(S) {
+    const js = jobsOf(S); if (!js.length) return '<p class="stubnote">No background jobs. An agent starts one with <span class="mono">bash</span> and <span class="mono">run_in_background</span>: a dev server, a watcher, a long test run. When its output names a local address (<span class="mono">http://localhost:5173/</span>), the address shows here to open.</p>';
+    const order = js.filter(j => j.status === 'running').concat(js.filter(j => j.status !== 'running'));
+    const st = j => j.status === 'running' ? '<span class="tag ok">running</span>' : j.status === 'killed' ? '<span class="tag warm">killed</span>' : '<span class="tag' + (j.exit ? ' err' : '') + '">exited ' + esc(String(j.exit == null ? '' : j.exit)) + '</span>';
+    return '<table class="tbl jobs"><thead><tr><th>job</th><th>agent</th><th>command</th><th>state</th><th></th></tr></thead><tbody>' + order.map(j => '<tr><td class="mono bright">' + esc(j.id) + '</td><td style="color:' + U.agCol(String(j.agent).replace(/[^A-Za-z0-9_-]/g, '_')) + ';font-weight:700">' + esc(j.agent) + '</td><td class="mono">' + esc(j.command) + '</td><td>' + st(j) + '</td><td class="r">' + (j.status === 'running' ? '<button class="btn sm" type="button" data-stopjob="' + esc(j.id) + '">Stop</button>' : '') + '</td></tr>' +
+      (j.urls && j.urls.length ? '<tr class="jurls"><td></td><td colspan="4">' + j.urls.map(jobLink).join(' · ') + '</td></tr>' : '')).join('') + '</tbody></table>';
+  }
+  /** The jobs dialog (the status bar's chip, /jobs): the session's background jobs, live, with their addresses to open and Stop. */
+  ui.jobs = {
+    html: jobsHtml,
+    open() {
+      const S0 = SL.sessions.active; if (!S0) return;
+      ui.modal({ title: 'Background jobs', kicker: '/jobs', desc: 'what the agents left running', wide: true, body: '<div class="jobsb">' + jobsHtml(S0) + '</div>',
+        onMount(b, scm) {
+          const box = $('.jobsb', b); let last = box.innerHTML;
+          scm.update(S => { if (!S) return; const h = jobsHtml(S); if (h !== last) { last = h; box.innerHTML = h; } });
+          scm.listen(b, 'click', e => {
+            const btn = e.target.closest('[data-stopjob]'); if (!btn) return; const id = btn.dataset.stopjob; btn.disabled = true;
+            const r = SL.act.command('/jobs stop ' + id); if (r && r.ok === false) { btn.disabled = false; if (r.why) ui.toast(r.why, 'warm'); return; }
+            r.done.then(x => { if (!x.ok) { btn.disabled = false; ui.toast(x.message || 'the job could not be stopped', 'warm'); return; } const out = String((x.data && x.data.output) || '').trim(); ui.toast(out || 'stopped ' + id, /^stopped/.test(out) ? 'ok' : 'warm'); });
+          });
+        } });
+    }
+  };
+
   function mount(sc) {
     const H = { disp: 1, txt: {}, ticks: [], lastReq: -9999, pulseT: -1 };
     const txt = (key, el, v) => { if (H.txt[key] !== v) { H.txt[key] = v; el.textContent = v; } };
@@ -162,11 +192,17 @@
       const col = m.goal.state === 'met' ? 'var(--ok)' : q ? 'var(--warm)' : 'var(--mgr)', sl = $('#statusLine');
       /* the status bar says what the session does and its tokens; the time and the spend are the header's (on a phone, whose header
          has no room for the time, the time is said here instead); Esc is named by the rail's Interrupt turn while a turn runs */
-      const h = '<span class="dot" style="--c:' + col + '">●</span><span>' + esc(word) + '</span><span class="dim ph-only">·</span><span class="num ph-only">' + mmss(S.vt) + '</span><span class="dim">·</span><span class="num" title="tokens of every agent of the session: ↑ sent to the model (input), ↓ written by it (output)">tokens ↑' + U.fmtK(c.prompt) + ' ↓' + U.fmtK(c.out) + '</span>' + (m.goal.state === 'met' ? '<button class="btn sm" type="button" data-act="again">↺ run it again</button>' : '');
+      const h = '<span class="dot" style="--c:' + col + '">●</span><span>' + esc(word) + '</span><span class="dim ph-only">·</span><span class="num ph-only">' + mmss(S.vt) + '</span><span class="dim">·</span><span class="num" title="tokens of every agent of the session: ↑ sent to the model (input), ↓ written by it (output)">tokens ↑' + U.fmtK(c.prompt) + ' ↓' + U.fmtK(c.out) + '</span>' + (m.goal.state === 'met' ? '<button class="btn sm" type="button" data-act="again">↺ run it again</button>' : '') + jobsChip(S);
       if (sl._h !== h) { sl._h = h; sl.innerHTML = h; }
       txt('fm', $('#footModel'), S.placeholder ? '' : S.meta.model + ' · ' + S.sid);
     }
-    sc.listen($('#statusLine'), 'click', e => { if (e.target.closest('[data-act="again"]')) SL.act.restartTeam({ swarm: SL.sessions.active.meta.swarm, force: true }); });
+    sc.listen($('#statusLine'), 'click', e => { if (e.target.closest('[data-act="again"]')) SL.act.restartTeam({ swarm: SL.sessions.active.meta.swarm, force: true }); else if (e.target.closest('[data-act="jobs"]')) ui.jobs.open(); });
+    /** The status bar's chip of the background jobs that run (a dev server, a watcher): how many, and how many serve a local address. */
+    function jobsChip(S) {
+      const run = jobsOf(S).filter(j => j.status === 'running'); if (!run.length) return '';
+      const srv = run.filter(j => j.urls && j.urls.length).length;
+      return '<button class="btn sm jobchip" type="button" data-act="jobs" title="the background jobs the agents started: open them, or stop one (/jobs)">' + (srv ? '▶ ' + srv + ' serving' + (run.length > srv ? ' · ' + run.length + ' jobs' : '') : '◷ ' + run.length + ' job' + (run.length === 1 ? '' : 's')) + '</button>';
+    }
 
     /* ---- the mode chip (composer) ---- */
     /* the permission mode of the chat box: a dropdown. The button only opens the menu; a mode changes when an item is picked (or by shift+tab in the message box, which cycles default, accept-edits, plan) */

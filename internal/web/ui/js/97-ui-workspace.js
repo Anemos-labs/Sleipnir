@@ -28,7 +28,7 @@
   const LOADING = 'Loading the workspace…';
   const NO_ISOLATION = 'Nothing queues in this run: workers write straight to your files. Start a team with each worker in its own copy (--isolation worktree) to have its work verified here before it is applied.';
 
-  const W0 = () => ({ tab: 'files', file: null, cp: null, mode: 'since', view: 'diff', group: 'task', q: '', changed: false, closed: dict(), unreviewed: false, task: null, mview: 'queue', mtask: null, mattempt: null, wt: null, cpMore: 0 });
+  const W0 = () => ({ tab: 'files', file: null, cp: null, mode: 'since', view: 'diff', group: 'task', q: '', changed: false, closed: dict(), unreviewed: false, task: null, mview: 'queue', mtask: null, mattempt: null, wt: null, cpMore: 0, notes: [] });
   const wsOf = S => (S.ui.ws = Object.assign(W0(), S.ui.ws || {}));
   const hasOpenAsk = (m, t) => m.qs.some(q => !q.answered && q.task === t);
 
@@ -334,7 +334,7 @@
         (owner || pend ? '<span class="chip task" style="--c:' + aCol(S, pend ? pend.ag : owner) + '" data-ag="' + esc(pend ? pend.ag : owner) + '">' + vt(pend ? pend.ag : owner) + '</span>' : '') + ((last && last.task) || (pend && pend.task) ? '<span class="chip" data-task="' + esc(pend ? pend.task : last.task) + '">' + vt(pend ? pend.task : last.task) + '</span>' : '') + (tstate && !pend ? '<span class="tag ' + tstate[1] + '">' + tstate[0] + '</span>' : '') +
         (last ? '<span class="chip" title="the checkpoint of the last change">' + vt(last.id) + '</span>' : '') + '<span class="num wcounts"' + (approx ? ' title="the counts are the real ones; who wrote each line is approximate here: part of this file was changed outside the agents’ tools"' : '') + '><b class="ok">+' + cn.added + '</b> <b class="err">−' + cn.removed + '</b></span></div>' +
         '<div class="wtool"><div class="seg" role="group" aria-label="Show"><button type="button" data-vw="diff" aria-pressed="' + (view === 'diff' && !opaqueNow) + '">Diff</button>' + (pk && SL.media.opaque(pk) ? '' : '<button type="button" data-vw="file" aria-pressed="' + (view === 'file') + '">Whole file</button>') + (pk ? '<button type="button" data-vw="preview" aria-pressed="' + (view === 'preview' || opaqueNow) + '" title="show the ' + SL.media.noun(pk) + ' as it looks">Preview</button>' : '') + '</div>' +
-        (lastCp && !pend ? '<button type="button" class="btn sm' + (rv ? ' on' : '') + '" data-review="' + esc(path) + '" data-cpid="' + esc(lastCp) + '" aria-pressed="' + rv + '">' + (rv ? '✓ Reviewed' : '○ Mark reviewed') + '</button>' : '') + '<button type="button" class="btn sm" data-copy="' + esc(path) + '" title="copy the path">Copy path</button><span class="dim wnote">' + (W2.mode === 'step' ? 'this checkpoint only' : W2.mode === 'from' ? 'from the start of ' + vt(c.cur ? c.cur.id : '') + ' to now' : 'since the start of the session') + '</span></div></div>';
+        (lastCp && !pend ? '<button type="button" class="btn sm' + (rv ? ' on' : '') + '" data-review="' + esc(path) + '" data-cpid="' + esc(lastCp) + '" aria-pressed="' + rv + '">' + (rv ? '✓ Reviewed' : '○ Mark reviewed') + '</button>' : '') + '<button type="button" class="btn sm" data-copy="' + esc(path) + '" title="copy the path">Copy path</button>' + notesBtns(W2) + '<span class="dim wnote">' + (W2.mode === 'step' ? 'this checkpoint only' : W2.mode === 'from' ? 'from the start of ' + vt(c.cur ? c.cur.id : '') + ' to now' : 'since the start of the session') + '</span></div></div>';
       if (prot) return { head, html: '<div class="ws-lock"><div class="lockbig">' + LOCK + '</div><b>Denied path</b><p>Agents cannot read <code>' + vt(path) + '</code>: the rule <code>' + esc(prot.rule) + '</code> (' + esc(prot.origin) + ', ' + esc(prot.tier) + ') applies. ' + esc(prot.why) + '.</p><p class="dim">This page does not show it either: file contents are data from the project, and a denied path has none in this session.</p></div>', pend: null };
       if (row.kind === 'symlink' && !pend) return { head, html: noneP('A symbolic link: this page does not follow it.') };
       if (pend) return { head, pend, mode: wantDiff ? 'diff' : 'file', flat: wantDiff ? F.flatDiff({ hunks: [{ oldStart: 0, oldLines: 0, newStart: 1, newLines: F.lines(pend.text).length, section: '', lines: F.lines(pend.text).map(s => ({ t: '+', s })) }] }, []) : null, ls: F.lines(pend.text), bl: [], ag: pend.ag, caret: pend.done ? -1 : 1, path };
@@ -364,6 +364,8 @@
       if (!cNow.exists) return { head, html: noneP('This file does not exist at this point in time.') };
       return { head, mode: 'file', ls: ws.linesOf(eNow), bl: ws.blameOf(eNow), caret: ws.editing(c.m, ws.liveFile(S, c.I), path) && c.k === c.n ? 1 : 0, truncated: !!cNow.truncated, path };
     }
+    /** the head's Send comments button (and Clear) while comments wait */
+    const notesBtns = W2 => { const k = arr(W2.notes).length; return k ? '<button type="button" class="btn sm pri" data-sendnotes title="put every comment in the message box, with its file, line and code">Send ' + plural(k, 'comment') + '</button><button type="button" class="btn sm" data-clearnotes title="drop the comments">Clear</button>' : ''; };
     /** what the address of a file's bytes changes with: its last checkpoint and its size, so that a picture that changed is fetched again */
     const rawVer = (cNow, lastCp) => (lastCp || '') + '.' + cNow.size;
     const pointLab = p => (p === 'live' ? 'now' : p === 'base' ? 'before the session' : p);
@@ -377,6 +379,45 @@
       if (pk === 'mermaid') return cut + '<div class="pv">' + M.mermaidHtml(text) + '</div>';
       return cut + M.tableHtml(text, pk === 'tsv' ? '\t' : ',');
     }
+    /* ---------------- review comments: a click on a line number comments that line; Send puts them all in the message box ---------------- */
+    /** the comments of the session on the file the pane shows, by side and line ("new:12"), drawn once per paint */
+    function notedOf(c, path) { if (c._noted && c._noted.path === path) return c._noted.keys; const keys = new Set(); arr(c.W.notes).forEach(x => { if (x.path === path) keys.add(x.side + ':' + x.n); }); c._noted = { path, keys }; return keys; }
+    /** the line-number cell of a row: a button-like cell that comments the line (side: new, or old for a deleted line); marked when commented */
+    function lnCell(c, o, side, n) { const on = o.path && notedOf(c, o.path).has(side + ':' + n); return '<i class="lnc' + (on ? ' noted' : '') + '" role="button" tabindex="0" data-ln="' + n + '" data-sd="' + side + '" title="' + (on ? 'your comment on this line: click to edit it' : 'comment on this line') + '">' + n + '</i>'; }
+    /** the comment dialog of one line: what the line says, the comment (an existing one to edit or remove) */
+    /** change the session's comments: f(notes) returns the new list (the view state object is made again on every read: wsOf) */
+    function setNotes(S, f) { const W3 = wsOf(S); W3.notes = f(arr(W3.notes)); S.touch(); H.sig.all = null; paint(); }
+    function noteDialog(S, path, side, n, code) {
+      const W2 = wsOf(S), cur = arr(W2.notes).find(x => x.path === path && x.side === side && x.n === n);
+      ui.modal({ title: 'Comment on line ' + n, kicker: F.vis(path).slice(-60), desc: side === 'old' ? 'a removed line' : '', color: 'var(--fe)', focus: '#noteIn',
+        body: '<div class="diff wdiff" style="margin:0 0 10px"><div class="ln ' + (side === 'old' ? 'del' : 'ctx') + '"><b class="who"></b><i>' + n + '</i><s>' + (side === 'old' ? '−' : '') + '</s><span>' + vt(code) + '</span></div></div>' +
+          '<textarea id="noteIn" rows="4" style="width:100%" placeholder="what should change here" aria-label="Your comment">' + esc(cur ? cur.text : '') + '</textarea>' +
+          '<p class="stubnote">Comments wait on their lines until you send them: <b>Send comments</b> puts them all in the message box, each with its file, line and code, for the ' + (S.meta.swarm ? 'manager' : 'agent') + ' to act on.</p>' +
+          '<div class="row2"><button class="btn pri" type="button" data-ok>' + (cur ? 'Save' : 'Add comment') + '</button>' + (cur ? '<button class="btn danger" type="button" data-del>Remove</button>' : '') + '<button class="btn" type="button" data-no>Cancel</button></div>',
+        onMount(b, scm, close) {
+          const inp = $('#noteIn', b), save = () => { const t = inp.value.trim(); close(); setNotes(S, ns => ns.filter(x => x !== cur).concat(t ? [{ path, side, n, code: String(code).slice(0, 300), text: t.slice(0, 4000) }] : [])); };
+          scm.listen($('[data-ok]', b), 'click', save);
+          scm.listen(inp, 'keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); } });
+          const del = $('[data-del]', b); if (del) scm.listen(del, 'click', () => { close(); setNotes(S, ns => ns.filter(x => x !== cur)); });
+          scm.listen($('[data-no]', b), 'click', close);
+        } });
+    }
+    /** the message of the comments: file:line, the line as it reads, the comment; files in the order they were first commented, lines in order */
+    function notesText(notes) {
+      const files = []; notes.forEach(x => { if (files.indexOf(x.path) < 0) files.push(x.path); });
+      const parts = files.map(p => notes.filter(x => x.path === p).sort((a, b) => a.n - b.n || (a.side === 'old' ? -1 : 1)).map(x => p + ':' + x.n + (x.side === 'old' ? ' (a removed line)' : '') + '\n  > ' + String(x.code).trim().slice(0, 200) + '\n  ' + x.text.replace(/\n/g, '\n  ')).join('\n\n'));
+      return 'Review comments on the changes (file:line, the line as it reads, then my comment). Address each one:\n\n' + parts.join('\n\n');
+    }
+    /** Send comments: they leave their lines and wait in the message box, to be read and sent */
+    function sendNotes(S) {
+      const W2 = wsOf(S), notes = arr(W2.notes); if (!notes.length) return;
+      const text = notesText(notes), had = String(S.ui.draft || '').trim();
+      if (had.startsWith('/')) { ui.toast('The message box holds a command: send or clear it first, then send the comments', 'warm'); return; }   // a command line would take the comments with it
+      const v = had ? had + '\n\n' + text : text; S.ui.draft = v; if (ui.setDraft) ui.setDraft(v);
+      setNotes(S, () => []);
+      if (ui.rail) { if (ui.rail.open) ui.rail.open(); else if (ui.rail.expand) ui.rail.expand(); } ui.toast(plural(notes.length, 'comment') + ' in the message box: read them and press Enter to send', 'ok');
+    }
+
     /** one row of a diff (see F.flatDiff): the hunk head, a context, added, deleted or elided line */
     function diffRowHtml(c, o, i) {
       const R = o.flat, k = R.kind[i], S = c.S;
@@ -387,18 +428,18 @@
       }
       const l = R.hunks[R.hunk[i]].lines[R.line[i]];
       if (k === 4) return '<div class="ln hunk"><b class="who"></b><i></i><s></s><span>… ' + vt(l.s) + '</span></div>';
-      if (k === 3) return '<div class="ln del"><b class="who"></b><i>' + R.oldNo[i] + '</i><s>−</s><span>' + hl(l.s) + '</span></div>';
+      if (k === 3) return '<div class="ln del"><b class="who"></b>' + lnCell(c, o, 'old', R.oldNo[i]) + '<s>−</s><span>' + hl(l.s) + '</span></div>';
       const nn = R.newNo[i], bi = o.bl && o.bl[nn - 1];
       if (k === 2) {
         const ag = o.pend ? o.ag : (bi && bi.ag !== '-' && bi.ag) || o.owner || '-', lastAdd = R.lastAdd, car = o.caret === 1 && i === lastAdd;
-        return '<div class="ln add' + (car ? ' caretline' : '') + '" style="--ag:' + aCol(S, ag) + ';--ag-a:' + aTint(S, ag) + '"><b class="who" data-ag="' + esc(ag === '-' ? '' : ag) + '" title="written by ' + esc(ag === '-' ? '' : ag) + (bi && bi.task ? ' · ' + esc(bi.task) : '') + (bi && bi.id ? ' · ' + esc(bi.id) : '') + '">' + vt(ag === '-' ? '' : ag) + '</b><i>' + nn + '</i><s>+</s><span>' + hl(l.s) + '</span></div>';
+        return '<div class="ln add' + (car ? ' caretline' : '') + '" style="--ag:' + aCol(S, ag) + ';--ag-a:' + aTint(S, ag) + '"><b class="who" data-ag="' + esc(ag === '-' ? '' : ag) + '" title="written by ' + esc(ag === '-' ? '' : ag) + (bi && bi.task ? ' · ' + esc(bi.task) : '') + (bi && bi.id ? ' · ' + esc(bi.id) : '') + '">' + vt(ag === '-' ? '' : ag) + '</b>' + lnCell(c, o, 'new', nn) + '<s>+</s><span>' + hl(l.s) + '</span></div>';
       }
       const ob = bi || {};
-      return '<div class="ln ctx" style="--ag:' + aCol(S, ob.ag) + '"><b class="who dimw">' + (ob.ag && ob.ag !== '-' ? vt(ob.ag) : '') + '</b><i>' + nn + '</i><s></s><span>' + hl(l.s) + '</span></div>';
+      return '<div class="ln ctx" style="--ag:' + aCol(S, ob.ag) + '"><b class="who dimw">' + (ob.ag && ob.ag !== '-' ? vt(ob.ag) : '') + '</b>' + lnCell(c, o, 'new', nn) + '<s></s><span>' + hl(l.s) + '</span></div>';
     }
     function fileRowHtml(c, o, i) {
       const bl = o.bl, b = bl[i] || {}, prev = i ? bl[i - 1] : null, first = i === 0 || !prev || prev.ag !== b.ag, mine = b.ag && b.ag !== '-', last = i === o.ls.length - 1;
-      return '<div class="ln' + (mine ? ' add own' : '') + (o.caret === 1 && last ? ' caretline' : '') + '" style="--ag:' + aCol(c.S, b.ag) + ';--ag-a:' + aTint(c.S, b.ag) + '"><b class="who" ' + (mine ? 'data-ag="' + esc(b.ag) + '" title="written by ' + esc(b.ag) + (b.task ? ' · ' + esc(b.task) : '') + (b.id ? ' · ' + esc(b.id) : '') + '"' : '') + '>' + (first && mine ? vt(b.ag) : '') + '</b><i>' + (i + 1) + '</i><s></s><span>' + hl(o.ls[i]) + '</span></div>';
+      return '<div class="ln' + (mine ? ' add own' : '') + (o.caret === 1 && last ? ' caretline' : '') + '" style="--ag:' + aCol(c.S, b.ag) + ';--ag-a:' + aTint(c.S, b.ag) + '"><b class="who" ' + (mine ? 'data-ag="' + esc(b.ag) + '" title="written by ' + esc(b.ag) + (b.task ? ' · ' + esc(b.task) : '') + (b.id ? ' · ' + esc(b.id) : '') + '"' : '') + '>' + (first && mine ? vt(b.ag) : '') + '</b>' + lnCell(c, o, 'new', i + 1) + '<s></s><span>' + hl(o.ls[i]) + '</span></div>';
     }
     const TRUNC = '<div class="ln hunk"><b class="who"></b><i></i><s></s><span>… truncated: the page shows the first part of this file</span></div>';
     const TRUNC_D = '<div class="ln hunk"><b class="who"></b><i></i><s></s><span>… the difference is truncated: the page shows its first part</span></div>';
@@ -481,7 +522,7 @@
     /** a short string that changes when anything the section draws changed: the section is drawn only then */
     function sigOf(c, extra) {
       const m = c.m, W2 = c.W, tk = m ? m.torder.map(t => t + own(m.tasks, t).st).join(',') : '';
-      return [c.S.id, c.I && c.I.key, W2.tab, c.k, W2.cp, W2.mode, W2.view, W2.group, W2.q, W2.changed, W2.unreviewed, W2.task, W2.file, W2.mview, W2.mtask, W2.mattempt, W2.wt, W2.cpMore, W2.tab === 'merge' ? Math.floor(c.S.vt) : '', JSON.stringify(W2.closed), c.mk && c.mk.stamp, tk, c.pends && c.pends.map(p => p.path + p.text.length).join(','), SL.G ? SL.G.ver : 0, extra].join('|');
+      return [c.S.id, c.I && c.I.key, W2.tab, c.k, W2.cp, W2.mode, W2.view, W2.group, W2.q, W2.changed, W2.unreviewed, W2.task, W2.file, W2.mview, W2.mtask, W2.mattempt, W2.wt, W2.cpMore, arr(W2.notes).length + ':' + arr(W2.notes).map(x => x.text.length).join(','), W2.tab === 'merge' ? Math.floor(c.S.vt) : '', JSON.stringify(W2.closed), c.mk && c.mk.stamp, tk, c.pends && c.pends.map(p => p.path + p.text.length).join(','), SL.G ? SL.G.ver : 0, extra].join('|');
     }
     function paint() {
       const c = ctx(), S = c.S, W2 = c.W; DP.setPage(tabKey(W2.tab)); DP.head(headOf(c, W2, S)); const wsv = q('.wsv'); wsv.dataset.tab = W2.tab;
@@ -562,6 +603,9 @@
       const t = e.target, S = SL.sessions.active, c = ctx(), W2 = c.W;
       const tab = t.closest('.ws-tabs [data-tab]'); if (tab) { ui.ws.setTab(tab.dataset.tab); return; }
       if (t.closest('[data-retry]')) { retry(); return; }
+      const lnc = t.closest('[data-ln]'); if (lnc && W2.file) { const row = lnc.closest('.ln'), code = row && row.lastElementChild ? row.lastElementChild.textContent : ''; noteDialog(S, W2.file, lnc.dataset.sd === 'old' ? 'old' : 'new', +lnc.dataset.ln, code); return; }
+      if (t.closest('[data-sendnotes]')) { sendNotes(S); return; }
+      if (t.closest('[data-clearnotes]')) { const k = arr(W2.notes).length; ui.confirm({ title: 'Clear the comments', text: 'Drop ' + plural(k, 'comment') + ' without sending ' + (k === 1 ? 'it' : 'them') + '?', ok: 'Clear', danger: true, run: () => setNotes(S, () => []) }); return; }
       const d = t.closest('[data-dir]'); if (d) { W2.closed[d.dataset.dir] = d.getAttribute('aria-expanded') === 'true'; S.touch(); H.sig.all = null; paint(); return; }
       const rev = t.closest('[data-review]'); if (rev) { if (c.I) SL.act.markReviewed(rev.dataset.review, rev.dataset.cpid, rev.getAttribute('aria-pressed') !== 'true'); return; }
       const acc = t.closest('[data-accept]'); if (acc) { if (!acc.disabled) acceptDialog(S); return; }
@@ -587,7 +631,8 @@
     sc.listen(root, 'input', e => { const t = e.target; if (t.id === 'wsScrub') { const c = ctx(), k = +t.value; if (!c.I) return; setW({ cp: k >= c.n ? null : k === 0 ? 'base' : c.I.pos[k - 1].id }); } else if (t.classList.contains('wq-in')) { const S = SL.sessions.active; wsOf(S).q = t.value; H.sig.all = null; paint(); } });
     sc.listen(root, 'change', e => { const t = e.target; if (t.dataset && t.dataset.opt) { setW({ [t.dataset.opt]: t.checked }); } });
     sc.listen(root, 'keydown', e => {
-      const t = e.target; if (!t.closest || !t.closest('.ws-left')) return;
+      const t = e.target; if ((e.key === 'Enter' || e.key === ' ') && t.matches && t.matches('[data-ln]')) { e.preventDefault(); t.click(); return; }   // a line number comments its line from the keyboard too
+      if (!t.closest || !t.closest('.ws-left')) return;
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         const step = e.key === 'ArrowDown' ? 1 : -1;
         const row = VL.on && t.closest ? t.closest('[data-vi]') : null;

@@ -7,6 +7,23 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Background jobs name what they serve. When the output of a job an agent
+  started with `run_in_background` names a local address
+  (`http://localhost:5173/`, `http://0.0.0.0:8080`, shown as localhost), the
+  job keeps it (at most four) and a `tool.job` event with status `serving`
+  and `urls` announces it; the activity feed says `background job job_1
+  serves http://localhost:5173/`. `/jobs` lists the jobs with their
+  addresses and `/jobs stop ID` ends one. The web interface's status bar
+  shows a chip while jobs run (`▶ 1 serving`) that opens them, with links to
+  the addresses and a Stop button; `wire.MetaPatch` has `jobs`. No prompt
+  bytes change.
+- Review comments in the web interface's Workspace: a click on a line number
+  of a diff or a whole file comments that line; Send comments puts every
+  comment, with its file, line and code, in the message box for the agent
+  (or the manager) to act on.
+- The question notification of the web interface (Settings › Appearance)
+  also tells when a session finishes a turn while the page is out of sight,
+  unless the turn ended on a question or the team still works.
 - The session event log survives a failed write. A full disk used to stop it
   for good: the first failed write made every later event fail until a
   restart, so a long run silently stopped being recorded. Events now wait in

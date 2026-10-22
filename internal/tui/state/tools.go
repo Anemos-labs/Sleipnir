@@ -163,17 +163,24 @@ func (s *State) onToolResult(e events.Event, t time.Time) {
 
 func (s *State) onToolJob(e events.Event, t time.Time) {
 	var p struct {
-		ID         string `json:"id"`
-		Agent      string `json:"agent"`
-		Command    string `json:"command"`
-		Status     string `json:"status"`
-		Exit       *int   `json:"exit"`
-		DurationMS int64  `json:"duration_ms"`
+		ID         string   `json:"id"`
+		Agent      string   `json:"agent"`
+		Command    string   `json:"command"`
+		Status     string   `json:"status"`
+		Exit       *int     `json:"exit"`
+		DurationMS int64    `json:"duration_ms"`
+		URLs       []string `json:"urls"`
 	}
 	if !s.decode(e.Data, maxPayload, &p) {
 		return
 	}
 	if p.Status == "started" {
+		return
+	}
+	if p.Status == "serving" { // the newest address is the last: the earlier ones were told before
+		if len(p.URLs) > 0 {
+			s.line(e.Seq, t, firstOf(p.Agent, e.Agent), FeedJob, GlyphOK, "background job "+clip(p.ID, textID)+" serves "+clean(p.URLs[len(p.URLs)-1], textShort)+": "+clean(p.Command, textShort), "")
+		}
 		return
 	}
 	glyph, what := GlyphOK, "finished"

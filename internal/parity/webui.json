@@ -530,6 +530,13 @@
   },
   {
    "group": "a team, and the program",
+   "name": "/jobs",
+   "kind": "slash",
+   "live": true,
+   "effects": []
+  },
+  {
+   "group": "a team, and the program",
    "name": "/cwd",
    "kind": "slash",
    "live": true,
@@ -1685,6 +1692,9 @@
    "/help": [
     "sheet:help"
    ],
+   "/jobs": [
+    "act:command"
+   ],
    "/login": [
     "settings:providers"
    ],
@@ -1785,6 +1795,7 @@
    "/fav",
    "/goal",
    "/help",
+   "/jobs",
    "/login",
    "/mcp",
    "/mode",

@@ -178,7 +178,7 @@ Nothing dropped is lost: the journal of the session holds it and a snapshot brin
 | Frame | Data | Meaning |
 |---|---|---|
 | `ev` | `wire.EvFrame`: `{tab, ev}` | one event of a session (below) |
-| `meta` | `wire.MetaFrame` and its version: `{tab, patch, v}` | a change to the tab's settings and state (`wire.MetaPatch`: only the fields that changed); `v` counts the tab's `meta` frames, which reach a page in its order |
+| `meta` | `wire.MetaFrame` and its version: `{tab, patch, v}` | a change to the tab's settings and state (`wire.MetaPatch`: only the fields that changed; `jobs` lists the background jobs, `wire.Job`, with the local addresses they serve, and `/jobs stop ID` through `POST .../command` ends one); `v` counts the tab's `meta` frames, which reach a page in its order |
 | `roster` | `wire.RosterFrame` and its version: `{tab, roster, v}` | the agents of the tab, replacing the list; `v` counts the tab's `roster` frames |
 | `tab` | `wire.TabFrame`: `{op, tab}` | a session was added, renamed or updated, or removed (`op` is `add`, `update`, `remove`) |
 | `reset` | `wire.ResetFrame`: `{tab, gen}` | the tab started a new generation (restart, `/new`, `/clear`): fetch its snapshot |

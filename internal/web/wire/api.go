@@ -219,6 +219,22 @@ type MetaPatch struct {
 	ResumedFrom *RecordedSession   `json:"resumedFrom,omitempty"`
 	Queued      *[]QueuedLine      `json:"queued,omitempty"`
 	Running     *bool              `json:"running,omitempty"`
+	// Jobs are the background jobs the session's agents started (dev servers, watchers), oldest first, with the local addresses
+	// their output named: what /jobs lists.
+	Jobs *[]Job `json:"jobs,omitempty"`
+}
+
+// Job is a background job of a session: its id (job_1), the agent that started it, its command (the first line, clipped), its
+// state (running, exited or killed) with the exit status once it has ended, the epoch milliseconds it started at, and the local
+// addresses (http://localhost:5173/) its output named, at most four.
+type Job struct {
+	ID      string   `json:"id"`
+	Agent   string   `json:"agent"`
+	Command string   `json:"command"`
+	Status  string   `json:"status"`
+	Exit    *int     `json:"exit,omitempty"`
+	Started int64    `json:"started"`
+	URLs    []string `json:"urls,omitempty"`
 }
 
 // TabSnapshot is the full state of a tab for a late joiner. Gen is the tab's generation, Seq the sequence number of the last event

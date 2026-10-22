@@ -27,10 +27,13 @@ type JobEvent struct {
 	ID         string `json:"id"`
 	Agent      string `json:"agent"`
 	Command    string `json:"command"`
-	Status     string `json:"status"` // "started", "exited" or "killed"
+	Status     string `json:"status"` // "started", "serving", "exited" or "killed"
 	Exit       *int   `json:"exit,omitempty"`
 	Duration   string `json:"duration,omitempty"`
 	DurationMS int64  `json:"duration_ms,omitempty"`
+	// URLs are the local addresses the job's output has named so far (http://localhost:5173/), set on "serving" events: one is
+	// sent each time the job names a new one, at most four per job.
+	URLs []string `json:"urls,omitempty"`
 }
 
 type jobState int
@@ -61,6 +64,7 @@ type job struct {
 	reason  killReason
 	exit    int
 	cursors map[string]int64 // agent -> offset already read
+	urls    []string         // the local addresses its output named (urlSniffer), at most maxJobURLs
 }
 
 // snapshot reads job state, termination reason, and exit code together under the job lock.
@@ -114,6 +118,18 @@ func (j *job) emitEvent(status string, exit *int, dur time.Duration) {
 	_, _ = j.emit.Emit(j.agent, EventJob, ev)
 }
 
+// emitServing announces the local addresses the running job's output has named, the newest last.
+func (j *job) emitServing(urls []string) {
+	if j.emit == nil {
+		return
+	}
+	cmd := j.command
+	if len(cmd) > 512 {
+		cmd = strings.ToValidUTF8(cmd[:512], "") + "…"
+	}
+	_, _ = j.emit.Emit(j.agent, EventJob, JobEvent{ID: j.id, Agent: j.agent, Command: cmd, Status: "serving", URLs: urls})
+}
+
 // startJob launches command as a background job. It consumes the caller's
 // Manager wait-group slot: released here on failure, by the supervisor on
 // success.
@@ -127,12 +143,19 @@ func (m *Manager) startJob(env *tools.Env, sh shellInfo, command, dir string, ti
 	}
 
 	buf := newRolling(m.opts.JobBuffer)
+	// The addresses the output names reach the job once it is registered (ready): output can arrive before that.
+	var j *job
+	ready := make(chan struct{})
+	sniff := newURLSniffer(buf, func(u string) {
+		<-ready
+		j.addURL(u)
+	})
 	p, err := m.startProc(procSpec{
 		path:  sh.path,
 		args:  append(append([]string(nil), sh.flags...), command),
 		dir:   dir,
 		env:   m.env(env.Agent, dir),
-		sink:  buf,
+		sink:  sniff,
 		merge: m.opts.MergeStreams,
 		agent: env.Agent,
 		job:   true,
@@ -142,7 +165,7 @@ func (m *Manager) startJob(env *tools.Env, sh shellInfo, command, dir string, ti
 		return fail(env, "bash: could not start the command: %v", err)
 	}
 
-	j := &job{
+	j = &job{
 		agent:    env.Agent,
 		command:  command,
 		started:  env.Now(),
@@ -163,6 +186,7 @@ func (m *Manager) startJob(env *tools.Env, sh shellInfo, command, dir string, ti
 	m.mu.Unlock()
 
 	j.emitEvent("started", nil, 0)
+	close(ready) // after "started": an address is announced after the job is
 	go m.superviseJob(j, timeout)
 
 	res := env.Finish("job "+j.id+" started", false)

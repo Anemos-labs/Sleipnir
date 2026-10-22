@@ -336,7 +336,7 @@
       const slot = $('#qSlot'); if (slot && slot.contains(mt)) slot._mgrOpen = open;
     });
     /* how long the oldest question has waited, on every Needs-you badge, and the browser notification of one that waits too long */
-    sc.interval(() => { paintAges(); notifyDue(); }, 1000);
+    sc.interval(() => { paintAges(); notifyDue(); notifyDone(); }, 1000);
     sc.on('needs-changed', () => { paintAges(); closeAnswered(); });
   }
   /** Seconds as the badges say them: 42s, 3m 05s, 1h 02m. */
@@ -381,6 +381,24 @@
       n.onclick = () => { try { window.focus(); } catch (e) { /* the browser decides */ } goto(sid, qid); try { n.close(); } catch (e) { /* gone */ } delete NOTE.open[qid]; };
     });
   }
+  /** Whether a worker of the session's team is still at work: the manager's turn ended, the team's work did not. */
+  const teamBusy = S => { const ag = S.wm && S.wm.ag; return !!ag && Object.keys(ag).some(k => k !== 'mgr' && ag[k] && ['think', 'tool', 'edit', 'wait'].includes(ag[k].state)); };
+  /** Whether each session ran a turn at the last look (meta.running), so that the end of one is seen once. */
+  const RAN = Object.create(null);
+  /** One notification when a session's turn ends (its goal met, or it waits for the next message) while the page is out of sight; a
+   *  click on it brings the page and that session forward. A session whose turn ended on a question is told by the question's own. */
+  function notifyDone() {
+    const N = notifier(), st = SL.settings, on = !!N && st.notify === 'on' && N.permission === 'granted' && away(), asking = new Set(SL.sessions.needs().map(x => x.S));
+    SL.sessions.list.forEach(S => {
+      const run = S.meta.running === true, was = RAN[S.id];
+      if (!on || !was || run || S.meta.headless || S.replay || S.placeholder || asking.has(S)) { RAN[S.id] = run; return; }
+      if (teamBusy(S)) return;   // the lead is done but the team works: told once the team is idle too
+      RAN[S.id] = false;
+      const g = S.wm && S.wm.goal ? S.wm.goal.state : '', body = g === 'met' ? 'the goal is met' : g === 'paused' ? 'the goal is paused' : 'the turn is over: it waits for your next message';
+      let n; try { n = new N('Sleipnir · ' + S.name + ' finished', { body, tag: 'sleipnir-done-' + S.id }); } catch (e) { return; }
+      const sid = S.id; n.onclick = () => { try { window.focus(); } catch (e) { /* the browser decides */ } if (SL.sessions.get(sid)) SL.act.switchSession(sid); try { n.close(); } catch (e) { /* gone */ } };
+    });
+  }
   /** Close the notifications of questions that are no longer open. */
   function closeAnswered() { const open = new Set(SL.sessions.needs().map(x => x.q.id)); Object.keys(NOTE.open).forEach(id => { if (open.has(id)) return; try { NOTE.open[id].close(); } catch (e) { /* gone */ } delete NOTE.open[id]; }); }
   /** Turn the notification on or off from a click (the browser asks for its permission only from one). Resolves the setting's value. */
@@ -394,6 +412,6 @@
     let got = false; const once = p => { if (got) return SL.settings.notify; got = true; return ok(p); };   /* an old browser answers through the callback, a new one through the promise */
     try { const r = N.requestPermission(once); return r && typeof r.then === 'function' ? r.then(once) : Promise.resolve(SL.settings.notify); } catch (e) { return Promise.resolve(once('default')); }
   };
-  ui.approvals.notifyDue = notifyDue; ui.approvals.notes = NOTE;
+  ui.approvals.notifyDue = notifyDue; ui.approvals.notifyDone = notifyDone; ui.approvals.notes = NOTE;
   ui.approvals.mount = mount;
 })(SL);

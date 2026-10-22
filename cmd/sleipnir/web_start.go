@@ -747,13 +747,15 @@ func chatArgsOf(d webDefaults, resume string) []string {
 	if d.CompactAtPercent > 0 {
 		a = append(a, "--compact-at", strconv.Itoa(d.CompactAtPercent))
 	}
-	if d.Isolation != "" {
+	// A single agent continued from a server that starts teams takes none of their isolation: the session would refuse it.
+	soloResume := workers == 0 && d.Workers > 0
+	if d.Isolation != "" && !soloResume {
 		a = append(a, "--isolation", d.Isolation)
 	}
 	if d.Verify != "" {
 		a = append(a, "--verify", d.Verify)
 	}
-	if d.Commit {
+	if d.Commit && !soloResume {
 		a = append(a, "--commit")
 	}
 	if d.Mailman != nil {

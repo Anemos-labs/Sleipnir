@@ -153,6 +153,15 @@ Board, Replay, Sessions, Schedule, Tools and Settings. The Radio rail on the rig
 only agent the person talks to, and a read-only feed of what the team does. Agent drawers, opened from a stall or a gantt row,
 are read-only.
 
+In the Workspace, a click on a line number of a diff or of a whole file comments that line (a removed line too); the number of
+a commented line is marked, and a click on it edits or removes the comment. While comments wait, the file's header has
+`Send N comments`, which puts them all in the message box, each as `path:line`, the line as it reads and the comment, for the
+person to read and send; the comments then leave their lines (`Clear` drops them unsent).
+
+While background jobs run (a dev server, a watcher: `bash` with `run_in_background`), the status bar has a chip (`▶ 1 serving`,
+or `◷ 2 jobs` when none names an address) that opens them: each job's agent, command and state, the local addresses its output
+named as links, and a Stop button. `/jobs` opens the same; `/jobs stop ID` ends one.
+
 The connection chip in the session strip shows the server's address. While the stream is down it reads `reconnecting` (the
 browser reconnects by itself), `the server stopped` after the server said it is stopping, or `disconnected`; a new server run
 requires the new address. A tab whose state could not be loaded says so in its banner and is fetched again (after 1, 2, 4 and
@@ -297,6 +306,9 @@ opens the Radio rail and puts the focus on the question; the `▾` beside it lis
 Settings › Appearance › Question notification (off by default, kept in the browser) sends one browser notification per question
 that has waited the set number of seconds (30 unless changed) while the page is hidden or in the background; turning it on asks
 the browser for permission, a click on the notification opens the question, and an answered question's notification closes.
+The same setting sends one notification when a session's turn ends while the page is out of sight (`finished`: the goal is met,
+paused, or the session waits for the next message), unless the turn ended on a question, which has its own; a click on it makes
+that session the active one.
 
 A replay never stops answering silently: while the view is a replay, the question box carries a `Replay: answers are paused` banner
 with `Go live`. A plain click on the Cockpit's gantt chart opens the agent's details and never starts a replay; its buttons, its
