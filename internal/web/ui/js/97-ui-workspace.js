@@ -383,7 +383,7 @@
     /** the comments of the session on the file the pane shows, by side and line ("new:12"), drawn once per paint */
     function notedOf(c, path) { if (c._noted && c._noted.path === path) return c._noted.keys; const keys = new Set(); arr(c.W.notes).forEach(x => { if (x.path === path) keys.add(x.side + ':' + x.n); }); c._noted = { path, keys }; return keys; }
     /** the line-number cell of a row: a button-like cell that comments the line (side: new, or old for a deleted line); marked when commented */
-    function lnCell(c, o, side, n) { const on = o.path && notedOf(c, o.path).has(side + ':' + n); return '<i class="lnc' + (on ? ' noted' : '') + '" data-ln="' + n + '" data-sd="' + side + '" title="' + (on ? 'your comment on this line: click to edit it' : 'comment on this line') + '">' + n + '</i>'; }
+    function lnCell(c, o, side, n) { const on = o.path && notedOf(c, o.path).has(side + ':' + n); return '<i class="lnc' + (on ? ' noted' : '') + '" role="button" tabindex="0" data-ln="' + n + '" data-sd="' + side + '" title="' + (on ? 'your comment on this line: click to edit it' : 'comment on this line') + '">' + n + '</i>'; }
     /** the comment dialog of one line: what the line says, the comment (an existing one to edit or remove) */
     /** change the session's comments: f(notes) returns the new list (the view state object is made again on every read: wsOf) */
     function setNotes(S, f) { const W3 = wsOf(S); W3.notes = f(arr(W3.notes)); S.touch(); H.sig.all = null; paint(); }
@@ -412,6 +412,7 @@
     function sendNotes(S) {
       const W2 = wsOf(S), notes = arr(W2.notes); if (!notes.length) return;
       const text = notesText(notes), had = String(S.ui.draft || '').trim();
+      if (had.startsWith('/')) { ui.toast('The message box holds a command: send or clear it first, then send the comments', 'warm'); return; }   // a command line would take the comments with it
       const v = had ? had + '\n\n' + text : text; S.ui.draft = v; if (ui.setDraft) ui.setDraft(v);
       setNotes(S, () => []);
       if (ui.rail) { if (ui.rail.open) ui.rail.open(); else if (ui.rail.expand) ui.rail.expand(); } ui.toast(plural(notes.length, 'comment') + ' in the message box: read them and press Enter to send', 'ok');
@@ -630,7 +631,8 @@
     sc.listen(root, 'input', e => { const t = e.target; if (t.id === 'wsScrub') { const c = ctx(), k = +t.value; if (!c.I) return; setW({ cp: k >= c.n ? null : k === 0 ? 'base' : c.I.pos[k - 1].id }); } else if (t.classList.contains('wq-in')) { const S = SL.sessions.active; wsOf(S).q = t.value; H.sig.all = null; paint(); } });
     sc.listen(root, 'change', e => { const t = e.target; if (t.dataset && t.dataset.opt) { setW({ [t.dataset.opt]: t.checked }); } });
     sc.listen(root, 'keydown', e => {
-      const t = e.target; if (!t.closest || !t.closest('.ws-left')) return;
+      const t = e.target; if ((e.key === 'Enter' || e.key === ' ') && t.matches && t.matches('[data-ln]')) { e.preventDefault(); t.click(); return; }   // a line number comments its line from the keyboard too
+      if (!t.closest || !t.closest('.ws-left')) return;
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         const step = e.key === 'ArrowDown' ? 1 : -1;
         const row = VL.on && t.closest ? t.closest('[data-vi]') : null;

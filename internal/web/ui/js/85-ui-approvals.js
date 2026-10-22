@@ -390,8 +390,10 @@
   function notifyDone() {
     const N = notifier(), st = SL.settings, on = !!N && st.notify === 'on' && N.permission === 'granted' && away(), asking = new Set(SL.sessions.needs().map(x => x.S));
     SL.sessions.list.forEach(S => {
-      const run = S.meta.running === true, was = RAN[S.id]; RAN[S.id] = run;
-      if (!on || !was || run || S.meta.headless || S.replay || S.placeholder || asking.has(S) || teamBusy(S)) return;
+      const run = S.meta.running === true, was = RAN[S.id];
+      if (!on || !was || run || S.meta.headless || S.replay || S.placeholder || asking.has(S)) { RAN[S.id] = run; return; }
+      if (teamBusy(S)) return;   // the lead is done but the team works: told once the team is idle too
+      RAN[S.id] = false;
       const g = S.wm && S.wm.goal ? S.wm.goal.state : '', body = g === 'met' ? 'the goal is met' : g === 'paused' ? 'the goal is paused' : 'the turn is over: it waits for your next message';
       let n; try { n = new N('Sleipnir · ' + S.name + ' finished', { body, tag: 'sleipnir-done-' + S.id }); } catch (e) { return; }
       const sid = S.id; n.onclick = () => { try { window.focus(); } catch (e) { /* the browser decides */ } if (SL.sessions.get(sid)) SL.act.switchSession(sid); try { n.close(); } catch (e) { /* gone */ } };

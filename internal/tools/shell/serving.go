@@ -167,8 +167,8 @@ func (m *Manager) StopJob(id string) error {
 		return errNoJob(id)
 	}
 	if state, _, _ := j.snapshot(); state != jobRunning {
-		if !j.p.pumpsFinished() {
-			j.p.killTree()
+		if !j.p.pumpsFinished() || probesGroup && j.p.alive(j.p.pid) {
+			j.p.killTree() // something the job started outlived it, holding its pipes or not
 		}
 		return nil
 	}
