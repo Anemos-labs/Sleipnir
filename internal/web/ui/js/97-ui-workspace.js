@@ -385,6 +385,8 @@
     /** the line-number cell of a row: a button-like cell that comments the line (side: new, or old for a deleted line); marked when commented */
     function lnCell(c, o, side, n) { const on = o.path && notedOf(c, o.path).has(side + ':' + n); return '<i class="lnc' + (on ? ' noted' : '') + '" data-ln="' + n + '" data-sd="' + side + '" title="' + (on ? 'your comment on this line: click to edit it' : 'comment on this line') + '">' + n + '</i>'; }
     /** the comment dialog of one line: what the line says, the comment (an existing one to edit or remove) */
+    /** change the session's comments: f(notes) returns the new list (the view state object is made again on every read: wsOf) */
+    function setNotes(S, f) { const W3 = wsOf(S); W3.notes = f(arr(W3.notes)); S.touch(); H.sig.all = null; paint(); }
     function noteDialog(S, path, side, n, code) {
       const W2 = wsOf(S), cur = arr(W2.notes).find(x => x.path === path && x.side === side && x.n === n);
       ui.modal({ title: 'Comment on line ' + n, kicker: F.vis(path).slice(-60), desc: side === 'old' ? 'a removed line' : '', color: 'var(--fe)', focus: '#noteIn',
@@ -393,10 +395,10 @@
           '<p class="stubnote">Comments wait on their lines until you send them: <b>Send comments</b> puts them all in the message box, each with its file, line and code, for the ' + (S.meta.swarm ? 'manager' : 'agent') + ' to act on.</p>' +
           '<div class="row2"><button class="btn pri" type="button" data-ok>' + (cur ? 'Save' : 'Add comment') + '</button>' + (cur ? '<button class="btn danger" type="button" data-del>Remove</button>' : '') + '<button class="btn" type="button" data-no>Cancel</button></div>',
         onMount(b, scm, close) {
-          const inp = $('#noteIn', b), save = () => { const t = inp.value.trim(); W2.notes = arr(W2.notes).filter(x => x !== cur); if (t) W2.notes.push({ path, side, n, code: String(code).slice(0, 300), text: t.slice(0, 4000) }); S.touch(); H.sig.all = null; close(); paint(); };
+          const inp = $('#noteIn', b), save = () => { const t = inp.value.trim(); close(); setNotes(S, ns => ns.filter(x => x !== cur).concat(t ? [{ path, side, n, code: String(code).slice(0, 300), text: t.slice(0, 4000) }] : [])); };
           scm.listen($('[data-ok]', b), 'click', save);
           scm.listen(inp, 'keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); } });
-          const del = $('[data-del]', b); if (del) scm.listen(del, 'click', () => { W2.notes = arr(W2.notes).filter(x => x !== cur); S.touch(); H.sig.all = null; close(); paint(); });
+          const del = $('[data-del]', b); if (del) scm.listen(del, 'click', () => { close(); setNotes(S, ns => ns.filter(x => x !== cur)); });
           scm.listen($('[data-no]', b), 'click', close);
         } });
     }
@@ -411,7 +413,7 @@
       const W2 = wsOf(S), notes = arr(W2.notes); if (!notes.length) return;
       const text = notesText(notes), had = String(S.ui.draft || '').trim();
       const v = had ? had + '\n\n' + text : text; S.ui.draft = v; if (ui.setDraft) ui.setDraft(v);
-      W2.notes = []; S.touch(); H.sig.all = null; paint();
+      setNotes(S, () => []);
       if (ui.rail) { if (ui.rail.open) ui.rail.open(); else if (ui.rail.expand) ui.rail.expand(); } ui.toast(plural(notes.length, 'comment') + ' in the message box: read them and press Enter to send', 'ok');
     }
 
@@ -602,7 +604,7 @@
       if (t.closest('[data-retry]')) { retry(); return; }
       const lnc = t.closest('[data-ln]'); if (lnc && W2.file) { const row = lnc.closest('.ln'), code = row && row.lastElementChild ? row.lastElementChild.textContent : ''; noteDialog(S, W2.file, lnc.dataset.sd === 'old' ? 'old' : 'new', +lnc.dataset.ln, code); return; }
       if (t.closest('[data-sendnotes]')) { sendNotes(S); return; }
-      if (t.closest('[data-clearnotes]')) { const k = arr(W2.notes).length; ui.confirm({ title: 'Clear the comments', text: 'Drop ' + plural(k, 'comment') + ' without sending ' + (k === 1 ? 'it' : 'them') + '?', ok: 'Clear', danger: true, run: () => { W2.notes = []; S.touch(); H.sig.all = null; paint(); } }); return; }
+      if (t.closest('[data-clearnotes]')) { const k = arr(W2.notes).length; ui.confirm({ title: 'Clear the comments', text: 'Drop ' + plural(k, 'comment') + ' without sending ' + (k === 1 ? 'it' : 'them') + '?', ok: 'Clear', danger: true, run: () => setNotes(S, () => []) }); return; }
       const d = t.closest('[data-dir]'); if (d) { W2.closed[d.dataset.dir] = d.getAttribute('aria-expanded') === 'true'; S.touch(); H.sig.all = null; paint(); return; }
       const rev = t.closest('[data-review]'); if (rev) { if (c.I) SL.act.markReviewed(rev.dataset.review, rev.dataset.cpid, rev.getAttribute('aria-pressed') !== 'true'); return; }
       const acc = t.closest('[data-accept]'); if (acc) { if (!acc.disabled) acceptDialog(S); return; }
