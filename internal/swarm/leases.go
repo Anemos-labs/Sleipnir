@@ -247,6 +247,19 @@ func article(word string) string {
 	return "a"
 }
 
+// relFor returns path relative to the agent's own working tree when it has one (isolated mode), else to the repository root.
+func (l *Leases) relFor(agent, path string) (string, bool) {
+	l.mu.Lock()
+	dir, has := l.trees[agent]
+	l.mu.Unlock()
+	if has {
+		if rel, ok := relTo(dir, path); ok {
+			return rel, true
+		}
+	}
+	return l.rel(path)
+}
+
 // rel returns path relative to the repository root, as a slash path.
 func (l *Leases) rel(path string) (string, bool) {
 	if !filepath.IsAbs(path) {
