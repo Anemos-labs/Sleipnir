@@ -254,6 +254,15 @@ type noSpareMember struct {
 // Error is the refusal, with what to do instead.
 func (e *noSpareMember) Error() string { return e.msg }
 
+// onePoolMember is startPool's answer when the only member free for a new pool is id, which no other pool spares: Spawn gives the
+// task to that member alone (solo) instead. Reviews ran as pools of one while the other reviewer worked alone, and each spent a
+// round proposing and agreeing with itself, then made a child task with its parent's scope and worked that.
+type onePoolMember struct{ id string }
+
+func (e *onePoolMember) Error() string {
+	return e.id + " is the only free member: it takes the task alone"
+}
+
 // spareMembers is the members of req.Role that can form the pool of a new parent: those in no open pool of the role, and those an
 // executing pool can spare (not its leader, no open subtask of it), with release, the members each such pool is to let go once the
 // new pool has begun (they are not excused: they owe it nothing more). Nothing changes here. It says why when there are none: a pool
@@ -459,6 +468,11 @@ func (s *Swarm) startPool(req SpawnReq, files []string) (string, error) {
 		members[0], members[i] = members[i], members[0]
 	}
 	members, release = capPool(members, release, s.cfg.PoolMax)
+	if len(members) == 1 && len(release) == 0 {
+		if t, ok := s.Board.Snapshot().Task(req.TaskID); !ok || t.Pool == nil {
+			return "", &onePoolMember{id: members[0].id}
+		}
+	}
 	id := req.TaskID
 	if id == "" {
 		t, e := s.Board.CreateTask(req.By, TaskSpec{Title: req.Title, Desc: req.Brief, Files: files, Role: req.Role})

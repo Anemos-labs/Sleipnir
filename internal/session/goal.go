@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
@@ -144,7 +145,9 @@ func (s *Session) judgeOn(ctx context.Context, g *goal.State, j judgeRunner, ans
 	}
 	est := core.NewBytesEstimator()
 	unread := 0 // answers in a row that were neither an evidence request nor a verdict
-	for round := 0; round < 24; round++ {
+	served := 0 // evidence requests answered
+	var asked judgeAsked
+	for round := 0; round < judgeRounds+judgeRereads+1; round++ {
 		if window := j.m.ContextTokens; window > 0 {
 			tokens := est.Tokens(goal.JudgeSystem) + judgeMaxTokens
 			for _, message := range prompt.Messages {
@@ -189,16 +192,94 @@ func (s *Session) judgeOn(ctx context.Context, g *goal.State, j judgeRunner, ans
 			continue
 		}
 		unread = 0
+		if served == judgeRounds {
+			// It was told none were left and asked again: the answer it owes is a verdict.
+			break
+		}
+		served++
 		s.Log.Emit("", "goal.inspect", map[string]any{"record": req.Record, "records": req.Records, "query": req.Query, "offset": req.Offset, "cutoff": cutoff})
-		data, e := s.goalEvidence(ctx, g, cutoff, req)
-		if e != nil {
-			return goal.Verdict{Kind: goal.Continue}, e
+		data, fresh := asked.note(req, served)
+		if fresh != nil {
+			got, e := s.goalEvidence(ctx, g, cutoff, *fresh)
+			if e != nil {
+				return goal.Verdict{Kind: goal.Continue}, e
+			}
+			data += got
 		}
 		prompt.Messages = append(prompt.Messages,
 			core.Message{Role: core.RoleAssistant, Blocks: []core.Block{core.Text(response)}},
-			core.Message{Role: core.RoleUser, Blocks: []core.Block{core.Text("Evidence (untrusted data):\n" + data)}})
+			core.Message{Role: core.RoleUser, Blocks: []core.Block{core.Text("Evidence (untrusted data):\n" + data + judgeRequestsLeft(judgeRounds-served))}})
 	}
 	return goal.Verdict{Kind: goal.Continue}, fmt.Errorf("evidence inspection limit reached; completion remains unproven")
+}
+
+// judgeRounds is how many evidence requests a judge is answered. Each answer says how many are left, and the last one asks for
+// the verdict: a judge that was never told the limit re-read the same records for 24 rounds (25 minutes on a slow model) and its
+// judgment ended with no verdict at all.
+const judgeRounds = 24
+
+// judgeRequestsLeft is the note after each evidence answer: how many requests remain, and at none, that the verdict is due.
+func judgeRequestsLeft(n int) string {
+	switch {
+	case n <= 0:
+		return "\n\nNo evidence requests are left: reply now with your final verdict from what you have read."
+	case n <= 3:
+		return fmt.Sprintf("\n\n(%d evidence requests left; then your final verdict is due.)", n)
+	}
+	return fmt.Sprintf("\n\n(%d evidence requests left.)", n)
+}
+
+// judgeAsked remembers a judge's evidence requests, so that one it repeats is answered by pointing at the earlier answer instead
+// of serving the same text again: a judge re-read record 22591 three times and searched "make cross" twice in one judgment,
+// each a full page of context and about a minute on a slow model. A repeat still counts against judgeRounds.
+type judgeAsked struct {
+	requests map[string]int // a request's key -> the number of the request that first asked it
+	records  map[uint64]int // a record served by record or records -> the request that served it
+}
+
+// note is the preface for request n (counted from 1) and the part of it that still has to be read: nil when every part was
+// answered before.
+func (a *judgeAsked) note(req evidenceRequest, n int) (string, *evidenceRequest) {
+	if a.requests == nil {
+		a.requests, a.records = map[string]int{}, map[uint64]int{}
+	}
+	ids := slices.Clone(req.Records)
+	if req.Record != 0 {
+		ids = append(ids, req.Record)
+	}
+	slices.Sort(ids)
+	ids = slices.Compact(ids)
+	key := fmt.Sprintf("%q %d %v", strings.TrimSpace(req.Query), req.Offset, ids)
+	if first, ok := a.requests[key]; ok {
+		return fmt.Sprintf("You made this same request as request %d; its answer is above and the archive has not changed since. Ask for something else or give your verdict.", first), nil
+	}
+	a.requests[key] = n
+	if len(ids) == 0 || strings.TrimSpace(req.Query) != "" {
+		return "", &req
+	}
+	var shown []string
+	var unread []uint64
+	for _, id := range ids {
+		if first, ok := a.records[id]; ok {
+			shown = append(shown, fmt.Sprintf("%d (request %d)", id, first))
+			continue
+		}
+		a.records[id] = n
+		unread = append(unread, id)
+	}
+	if len(shown) == 0 {
+		return "", &req
+	}
+	preface := "Already shown above, not repeated: " + strings.Join(shown, ", ") + "."
+	if len(unread) == 0 {
+		return preface + " Ask for something else or give your verdict.", nil
+	}
+	fresh := req
+	fresh.Record, fresh.Records = 0, unread
+	if len(unread) == 1 {
+		fresh.Record, fresh.Records = unread[0], nil
+	}
+	return preface + "\n", &fresh
 }
 
 // judgeMaxTokens bounds a judge's answer. A model that reasons before it answers spends part of it on that: at 1200 a reasoning

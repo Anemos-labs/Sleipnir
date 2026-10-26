@@ -512,7 +512,18 @@ func (s *Swarm) verifyBounce(ctx context.Context, m *member, vr *workspace.Verif
 	} else if upd != nil {
 		state = "The integration branch is now merged into your tree and conflicts with your changes: " + conflictHunks(upd)
 	}
+	if diskFull(out) {
+		state += " The output says the disk is full (no space left on device): that is the machine, not the code, so there is nothing in the code to fix for it. " +
+			"Remove build outputs you made that are not tracked (binaries, dist/, coverage files) and call task done again; if the disk stays full, block the task and say so."
+	}
 	return fmt.Sprintf("Not done: your work merged cleanly with what other agents landed, but verification `%s` failed on the merged result (exit %d). %s\n%s", cmd, code, state, tailText(out, 2000))
+}
+
+// diskFull reports whether a command's output says the disk ran out of space. Three workers whose verification failed so, on a
+// linker that could not map its output file, were told to reproduce the failure and fix it.
+func diskFull(out string) bool {
+	low := strings.ToLower(out)
+	return strings.Contains(low, "no space left on device") || strings.Contains(low, "disk quota exceeded")
 }
 
 // recordMerge retains evidence for the current assignment and scope. Delayed

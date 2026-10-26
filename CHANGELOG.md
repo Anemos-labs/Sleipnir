@@ -7,6 +7,59 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A parent whose pool would have one member (the other members of the role
+  work alone, or sit in pools that spare nobody) goes to that member as a
+  solo task. A pool of one proposed a plan to itself, agreed with itself and
+  made one child with its parent's scope: three reviews in one local run did
+  this while the other reviewer worked alone. A parent that already has a
+  pool keeps it. Tool results and mail only; no prompt bytes change.
+- The merge queue's refusal of files outside a task's scope (or of files it
+  may not change) still names the first eight, and now says where the rest
+  are, by directory: "; and 9 more: docs/screenshots/ (9)". A worker whose
+  e2e run rewrote 17 screenshots in two directories was shown eight from
+  one, reverted those and had to guess the other. Tool results only; no
+  prompt bytes change.
+- A child task can no longer depend on its parent or another ancestor:
+  the create (or revise) is refused with what to do instead, and such a dep
+  on a board saved before neither holds the child back nor blocks its
+  assignment. A reviewer pool's leader
+  created a child of T66 with deps=[T66]; the child waited for its parent,
+  the parent waited for the child, and the review stood still. Tool results
+  only; no prompt bytes change.
+- A worker whose work merged but whose verification failed with "no space
+  left on device" (or "disk quota exceeded") is told that the disk is full,
+  that this is the machine and not the code, to remove untracked build
+  outputs it made and submit again, and to block the task if the disk stays
+  full. Three workers whose linker could not map its output file were told
+  to reproduce the failure and fix it. Tool results only; no prompt bytes
+  change.
+- A worker's `wait` without `until` now returns only for its own work: a
+  task it owns or last owned, a pool it belongs to (the parent and its
+  children), a task its open work depends on or is blocked on, and mail.
+  Changes elsewhere on the board no longer wake it; they still come in its
+  report when it does wake. In a local team run three pool members waiting on
+  their leader's one child were woken by every review on the board, about
+  twenty requests each in fifteen minutes. The manager's wait is unchanged.
+  Tool results only; no prompt bytes change.
+- In a goal judge's evidence, a tool's output now names the call that
+  produced it (the tool and the start of its input, the command for a
+  shell), so a search for a command finds its output; and a tool call, in a
+  search or a read, names the record of its result. A judge that searched
+  for `make cross` found only the calls, read one of them three times
+  looking for the output, and ruled that no command output proved anything.
+  No agent prompt bytes change.
+- A goal judge's repeated evidence request is answered by naming the
+  earlier request whose answer it repeats, and a record it already read by
+  record or records is not served again (the others in the request are).
+  One judgment re-read one record three times and ran one search twice, a
+  page of context and about a minute each on a slow model. A repeat still
+  counts against the 24 requests. No agent prompt bytes change.
+- A goal's judge is told after each evidence answer how many requests it
+  has left (24 in all), and the last answer asks for its verdict. A judge
+  never told the limit spent all 24 re-reading records (22 minutes on a slow
+  model), and the judgment ended with no verdict, pausing a goal whose 41
+  tasks were done. A request after the last is not answered. Only the
+  judge's evidence messages change; no agent prompt bytes change.
 - The constitution's "Verify your work" adds one sentence: when an
   agent-authored check fails, the agent re-reads the requirement the check
   encodes once, then fixes the code or the check, and does not debug a

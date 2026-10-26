@@ -126,7 +126,14 @@ func (s *Swarm) spawn(req SpawnReq) (SpawnResult, error) {
 		}
 		if counts[req.Role] > 1 && task.Parent == "" {
 			if task.Status != StatusDoing || task.Pool == nil {
-				return started(s.startPool(req, files))
+				id, err := s.startPool(req, files)
+				var one *onePoolMember
+				if errors.As(err, &one) {
+					// A pool of one plans with nobody: it would propose, agree with itself and make one child that repeats its parent.
+					req.Solo, req.Agent = true, one.id
+					return s.spawnReuse(req, files)
+				}
+				return started(id, err)
 			}
 		}
 		if req.Agent == "" {
