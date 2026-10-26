@@ -24,7 +24,7 @@ func TestLogRecordsExactPromptsCompletionsAndTokens(t *testing.T) {
 	pl := tokenPlanner()
 	pl.SoftThreadTokens = 6500
 	pl.MinThreadTokens = 2000
-	r := newRig(t, rigOpts{planner: pl, blobs: blobs, capture: true,
+	r := newRig(t, rigOpts{planner: pl, blobs: blobs, capture: true, training: true,
 		mock: mock.Config{Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}}},
 		scriptedWork(22, func(c *mock.Call) string { return compactorPatch(6)(c) }))
 	if _, err := r.agent.Run(context.Background(), "please build the whole thing"); err != nil {

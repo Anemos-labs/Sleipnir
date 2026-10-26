@@ -526,3 +526,96 @@ func TestACompactorWhosePatchesFailIsBenchedForEveryAgent(t *testing.T) {
 		}
 	}
 }
+
+// A team that snapshots every step wrote a full snapshot per step and kept them all: 13 GB in one run, of which a resume reads
+// each agent's newest. By default a new snapshot replaces the previous one in the blob store, and the request and response
+// payloads only a trajectory export reads are not stored; training logs keep all of it.
+func TestOnlyTrainingLogsKeepEverySnapshotAndPayload(t *testing.T) {
+	for _, training := range []bool{false, true} {
+		blobs := events.NewMemBlobs()
+		r := newRig(t, rigOpts{noCompact: true, snapSteps: true, blobs: blobs, training: training}, workLoop(3))
+		if _, err := r.agent.Run(context.Background(), "record each step"); err != nil {
+			t.Fatal(err)
+		}
+		snapshots := r.log.OfType(events.TypeAgentSnapshot)
+		if len(snapshots) < 3 {
+			t.Fatalf("training=%v: %d snapshots", training, len(snapshots))
+		}
+		kept := 0
+		var last core.Hash
+		for _, e := range snapshots {
+			var d struct {
+				Blob core.Hash `json:"blob"`
+			}
+			if err := json.Unmarshal(e.Data, &d); err != nil {
+				t.Fatal(err)
+			}
+			if blobs.Has(d.Blob) {
+				kept++
+			}
+			last = d.Blob
+		}
+		if !blobs.Has(last) {
+			t.Fatalf("training=%v: the newest snapshot's blob is gone", training)
+		}
+		if want := map[bool]int{false: 1, true: len(snapshots)}[training]; kept != want {
+			t.Errorf("training=%v: %d of %d snapshot blobs kept, want %d", training, kept, len(snapshots), want)
+		}
+		var completions int
+		for _, e := range r.log.OfType(events.TypeModelResponse) {
+			var d struct {
+				Completion core.Hash `json:"completion"`
+			}
+			if err := json.Unmarshal(e.Data, &d); err != nil {
+				t.Fatal(err)
+			}
+			if d.Completion != "" && blobs.Has(d.Completion) {
+				completions++
+			}
+		}
+		if training && completions == 0 || !training && completions != 0 {
+			t.Errorf("training=%v: %d completion blobs stored", training, completions)
+		}
+	}
+}
+
+func TestAResumedAgentDropsTheSnapshotItWasRestoredFrom(t *testing.T) {
+	dir := t.TempDir()
+	blobs, err := events.NewDirBlobs(filepath.Join(dir, "blobs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := newRig(t, rigOpts{noCompact: true, snapSteps: true, blobs: blobs}, workLoop(2))
+	if _, err := first.agent.Run(context.Background(), "record each step"); err != nil {
+		t.Fatal(err)
+	}
+	snaps := first.log.OfType(events.TypeAgentSnapshot)
+	var d struct {
+		Blob core.Hash `json:"blob"`
+	}
+	if err := json.Unmarshal(snaps[len(snaps)-1].Data, &d); err != nil {
+		t.Fatal(err)
+	}
+	log, err := events.Open(dir, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = log.Emit("be-1", events.TypeAgentSnapshot, map[string]any{"blob": d.Blob})
+	if err := log.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err := agent.LatestSnapshot(dir, "be-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resumed := newRig(t, rigOpts{noCompact: true, snapSteps: true, blobs: blobs}, workLoop(2))
+	if err := resumed.agent.Restore(*s); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resumed.agent.Run(context.Background(), "go on"); err != nil {
+		t.Fatal(err)
+	}
+	if blobs.Has(d.Blob) {
+		t.Error("the snapshot the agent was restored from is kept after a newer one replaced it")
+	}
+}

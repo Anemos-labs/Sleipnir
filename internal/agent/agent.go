@@ -218,6 +218,11 @@ type Config struct {
 	// (RL rollouts against a self-hosted policy). Ignored by endpoints that
 	// cannot provide them.
 	CaptureTokens bool
+	// TrainingLogs keeps what a trajectory export reads: each request's prompt manifest blobs, each response's completion
+	// blob, the stable layer texts, and every snapshot. Off (the default), the manifest is still logged (its hashes) but its
+	// blobs are not stored, and a new snapshot replaces the agent's previous one in the blob store, unless savepoints keep
+	// recoverable snapshots (Barrier).
+	TrainingLogs bool
 	// NoCompaction disables automatic compaction.
 	NoCompaction bool
 	// BlockingCompaction finishes automatic model compaction before this agent's

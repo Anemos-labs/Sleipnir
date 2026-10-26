@@ -238,6 +238,8 @@ type Deps struct {
 	SlotModels []RoleModel
 	// CaptureTokens asks endpoints for token ids and logprobs on every call.
 	CaptureTokens bool
+	// TrainingLogs is agent.Config's, for every agent.
+	TrainingLogs bool
 	// OnWrite is told after every successful write (the checkpoint store uses it
 	// to tell an agent's last write from a human's later edit).
 	OnWrite func(agent, path string)

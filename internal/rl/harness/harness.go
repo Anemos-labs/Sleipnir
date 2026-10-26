@@ -242,6 +242,7 @@ func (h *Harness) options(spec env.RunSpec, cfg *config.Config, p provider.Provi
 		Cwd: spec.Workspace, Root: spec.Workspace, Home: homeOf(spec.Env, spec.RunDir),
 		Config: cfg, Model: spec.Policy.Model, Provider: p, ModelInfo: &model,
 		CaptureTokens: spec.Capture,
+		TrainingLogs:  true, // a rollout is exported as a trajectory
 		ID:            sessionID(spec), Dir: spec.RunDir,
 		Savepoints: spec.Savepoints != nil,
 		Mode:       h.mode(), // no Prompter: nobody answers, and the engine then refuses with the reason and what to do instead

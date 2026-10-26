@@ -86,11 +86,12 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	trust := fs.Bool("trust-project", false, trustProjectHelp)
 	dir := fs.String("session-dir", "", "directory for this run's recording (events.jsonl, blobs/, checkpoints/); default <state>/sessions/<id>, <state> being $SLEIPNIR_HOME or ~/.sleipnir")
 	ctxWin := fs.Int("context-window", 0, "override the model's context window (small values force frequent compaction)")
-	capture := fs.Bool("capture", false, "ask the endpoint for token ids and logprobs (self-hosted policy servers; RL data)")
+	capture := fs.Bool("capture", false, "ask the endpoint for token ids and logprobs (self-hosted policy servers; RL data); keeps training logs, as --training-logs does")
 	noWeb := fs.Bool("no-web", false, "disable the web tools")
 	noMCP := fs.Bool("no-mcp", false, "start no MCP tool servers")
 	mcpConfigs := mcpConfigFlags(fs)
 	noMemory := fs.Bool("no-memory", false, noMemoryHelp)
+	trainingLogs := fs.Bool("training-logs", false, trainingLogsHelp)
 	resume := resumeFlags(fs)
 	roleFlag := &roleModelFlag{}
 	fs.Var(roleFlag, "role-model", roleModelHelp)
@@ -159,7 +160,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 		Cwd:        *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: team, Workers: workers,
 		MaxSteps: *maxSteps, FixedSteps: *maxSteps > 0, BudgetUSD: *budget, Verify: *verify, NoRecon: *noRecon, TrustProject: *trust,
 		Dir: *dir, ContextWindow: *ctxWin, CaptureTokens: *capture, NoWeb: *noWeb, RoleModels: roleModels,
-		Resume: spec, NoMCP: *noMCP, MCPServers: mcpServers, NoMemory: *noMemory, Isolation: *isolation, Commit: *commit, Mailman: mailman(), Allow: expandAllow(*allow),
+		Resume: spec, NoMCP: *noMCP, MCPServers: mcpServers, NoMemory: *noMemory, TrainingLogs: *trainingLogs || *capture, Isolation: *isolation, Commit: *commit, Mailman: mailman(), Allow: expandAllow(*allow),
 		AutoDocs: autoDocs(), ManagerApproves: managerApproves(), Team: teamSlots, DefaultTeam: true,
 	}
 	if interactive {
@@ -471,6 +472,9 @@ func managerAnswersFlags(fs *flag.FlagSet) (after *time.Duration, upTo *string) 
 	upTo = fs.String("manager-answers-up-to", "", "swarm: the most dangerous question the manager answers after --manager-answers-after: low (routine: inside the workspace, nothing guarded), medium (also the network, files outside the workspace, commands that cannot be checked beforehand) or high (also the high-risk class, guarded paths and your ask rules) (default: config permissions.manager_answers_up_to, else medium)")
 	return after, upTo
 }
+
+// trainingLogsHelp is the help of --training-logs.
+const trainingLogsHelp = "keep the full record a trajectory export reads (every prompt manifest and completion, the layer texts, every snapshot); off, the session keeps what a resume needs, each agent's newest snapshot among it"
 
 // noMemoryHelp is the help of --no-memory.
 const noMemoryHelp = "start without the global memory: the notes in ~/.sleipnir/MEMORY.md and the lesson memory are neither shown to the agents nor saved"

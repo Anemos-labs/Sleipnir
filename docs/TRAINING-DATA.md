@@ -17,7 +17,10 @@ outcomes, so the harness is packaged as an RL environment:
 ```
 
 Every stage is a subcommand (`sleipnir rl ...`), every artefact is plain JSONL plus content-addressed blobs, and
-every record is derivable from the event log, so data can also be produced from ordinary (non-RL) sessions.
+every record is derivable from the event log, so data can also be produced from ordinary (non-RL) sessions started
+with `--training-logs`. Rollouts keep training logs always. Without the flag a session keeps what a resume reads:
+the event log, tool outputs and each agent's newest snapshot. It does not store the prompt manifest blobs, completion
+blobs, layer texts or superseded snapshots a trajectory export needs, so such a session cannot be exported.
 
 ## 1. Principles
 

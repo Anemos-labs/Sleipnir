@@ -378,14 +378,14 @@ func (a *Agent) recordRequest(reqID string, r *kv.Rendered, hot []core.Block, c 
 		for _, b := range hot {
 			txt += b.Text + "\n"
 		}
-		hotHash, _ = a.cfg.Blobs.Put([]byte(txt))
+		hotHash, _ = a.trainingPut([]byte(txt))
 	}
 	a.storeLayerTexts(r)
 
 	a.mu.Lock()
 	prev := a.man
 	a.mu.Unlock()
-	man, next, err := core.BuildManifest(r.Prompt, prev, reqID, a.cfg.Blobs.Put)
+	man, next, err := core.BuildManifest(r.Prompt, prev, reqID, a.trainingPut)
 	if err != nil {
 		// Logging must never stop the agent; the recipe below is still recorded.
 		a.cfg.Sink.Notice(a.cfg.ID, "warn", "could not record prompt manifest: "+err.Error())
@@ -417,9 +417,11 @@ func (a *Agent) recordRequest(reqID string, r *kv.Rendered, hot []core.Block, c 
 // as a blob (provider-native blocks intact) and, when the endpoint returned
 // them, the token ids and logprobs.
 func (a *Agent) responsePayload(p map[string]any, resp *provider.Response) map[string]any {
-	if b, err := core.MarshalStable(resp.Turn); err == nil {
-		if h, err := a.cfg.Blobs.Put(b); err == nil {
-			p["completion"] = h
+	if a.cfg.TrainingLogs {
+		if b, err := core.MarshalStable(resp.Turn); err == nil {
+			if h, err := a.cfg.Blobs.Put(b); err == nil {
+				p["completion"] = h
+			}
 		}
 	}
 	if resp.Tokens != nil {
@@ -444,14 +446,26 @@ func withList(p map[string]any, m cost.Model, list float64) map[string]any {
 }
 
 // storeLayerTexts persists nonempty stable layer text from the current stack to blob storage,
-// ignoring storage errors.
+// ignoring storage errors. Only training logs keep it: nothing a resume reads refers to it.
 func (a *Agent) storeLayerTexts(r *kv.Rendered) {
+	if !a.cfg.TrainingLogs {
+		return
+	}
 	s := a.Stack()
 	for _, l := range []*kv.Layer{s.Const, s.Shared, s.RoleL, s.Notes, s.Spine} {
 		if !l.Empty() {
 			_, _ = a.cfg.Blobs.Put([]byte(l.Text()))
 		}
 	}
+}
+
+// trainingPut is the blob store's Put for what only a trajectory export reads (prompt manifests, the hot frame): with training
+// logs off it returns the hash the content would have, and stores nothing.
+func (a *Agent) trainingPut(data []byte) (core.Hash, error) {
+	if a.cfg.TrainingLogs {
+		return a.cfg.Blobs.Put(data)
+	}
+	return core.HashBytes(data), nil
 }
 
 // shard is this agent's routing shard.

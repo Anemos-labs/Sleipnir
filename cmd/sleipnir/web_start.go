@@ -113,6 +113,7 @@ func mergeOptions(base session.Options, f chatFlags, defaultCwd string) session.
 	out.Mode, out.Swarm, out.Workers, out.TrustProject = o.Mode, o.Swarm, o.Workers, o.TrustProject || base.TrustProject
 	out.BudgetUSD, out.Resume, out.NoMCP = o.BudgetUSD, o.Resume, o.NoMCP || base.NoMCP
 	out.NoMemory = o.NoMemory || base.NoMemory
+	out.TrainingLogs = o.TrainingLogs || base.TrainingLogs
 	out.CompactAtPercent = o.CompactAtPercent
 	out.Verify, out.Isolation, out.Commit, out.Mailman = o.Verify, o.Isolation, o.Commit, o.Mailman
 	out.RoleModels, out.Allow, out.Interactive = o.RoleModels, o.Allow, true
@@ -795,6 +796,9 @@ func chatArgsOf(d webDefaults, resume string) []string {
 	}
 	if d.NoMemory {
 		a = append(a, "--no-memory")
+	}
+	if d.TrainingLogs {
+		a = append(a, "--training-logs")
 	}
 	if resume != "" {
 		a = append(a, "--resume", resume)

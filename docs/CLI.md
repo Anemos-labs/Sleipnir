@@ -346,6 +346,8 @@ Usage of chat:
         chat as a team of a manager and N workers (config swarm.max_workers is the ceiling); on a terminal the default is 8 workers (a --team brings its own), --swarm 0 is a single agent
   -team NAME
         a saved team: NAME (.sleipnir/teams/NAME.json in the project of --cwd, else ~/.sleipnir/teams/NAME.json) or a path to such a file: {"slots": ["backend=provider/model", "backend", "frontend", ...], "models": {"manager": "provider/model"}}; its slots are the team (at least 8), and --role-model values given with it add to them
+  -training-logs
+        keep the full record a trajectory export reads (every prompt manifest and completion, the layer texts, every snapshot); off, the session keeps what a resume needs, each agent's newest snapshot among it
   -trust-project
         trust this project: apply its security-sensitive config (hooks, allow rules, providers, MCP servers) and read its AGENTS.md, skills, commands and agent definitions; only for repositories you trust
   -verbose
@@ -499,6 +501,8 @@ flags:
         new sessions are a team of a manager and N workers (config swarm.max_workers is the ceiling); the default is 8 workers (a --team brings its own), --swarm 0 is a single agent
   -team NAME
         for new sessions: a saved team: NAME (.sleipnir/teams/NAME.json in the project of --cwd, else ~/.sleipnir/teams/NAME.json) or a path to such a file: {"slots": ["backend=provider/model", "backend", "frontend", ...], "models": {"manager": "provider/model"}}; its slots are the team (at least 8), and --role-model values given with it add to them
+  -training-logs
+        new sessions keep training logs: keep the full record a trajectory export reads (every prompt manifest and completion, the layer texts, every snapshot); off, the session keeps what a resume needs, each agent's newest snapshot among it
   -trust-project
         trust this project: apply its security-sensitive config (hooks, allow rules, providers, MCP servers) and read its AGENTS.md, skills, commands and agent definitions; only for repositories you trust
   -verify string
@@ -560,7 +564,7 @@ flags:
   -budget-usd float
         stop when spend reaches this many US dollars
   -capture
-        ask the endpoint for token ids and logprobs (self-hosted policy servers; RL data)
+        ask the endpoint for token ids and logprobs (self-hosted policy servers; RL data); keeps training logs, as --training-logs does
   -commit
         swarm with --isolation worktree: commit the verified result onto your branch instead of leaving uncommitted edits (needs a clean checkout on a branch)
   -context-window int
@@ -605,6 +609,8 @@ flags:
         run a manager and N workers instead of a single agent (config swarm.max_workers is the ceiling)
   -team NAME
         a saved team: NAME (.sleipnir/teams/NAME.json in the project of --cwd, else ~/.sleipnir/teams/NAME.json) or a path to such a file: {"slots": ["backend=provider/model", "backend", "frontend", ...], "models": {"manager": "provider/model"}}; its slots are the team (at least 8), and --role-model values given with it add to them
+  -training-logs
+        keep the full record a trajectory export reads (every prompt manifest and completion, the layer texts, every snapshot); off, the session keeps what a resume needs, each agent's newest snapshot among it
   -trust-project
         trust this project: apply its security-sensitive config (hooks, allow rules, providers, MCP servers) and read its AGENTS.md, skills, commands and agent definitions; only for repositories you trust
   -verbose
