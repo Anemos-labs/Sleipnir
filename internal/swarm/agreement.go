@@ -44,7 +44,8 @@ func inheritedAgreements(s *Snapshot, t Task) ([]TaskAgreement, error) {
 	}
 	for _, id := range t.Deps {
 		dep, ok := s.Task(id)
-		if !ok || dep.Status != StatusDone {
+		// A task the child is part of finishes after it: a board saved before such a dep was refused still lets the child start.
+		if !ok || dep.Status != StatusDone && !ancestorOf(s, id, t.Parent) {
 			return nil, fmt.Errorf("%s needs accepted dependency %s", t.ID, id)
 		}
 		for _, a := range dep.Agreements {

@@ -529,6 +529,9 @@ func (b *Board) createLocked(d *draft, spec TaskSpec) (Task, error) {
 		if taskIdx(d.Snapshot, dep) < 0 {
 			return Task{}, fmt.Errorf("dependency %s does not exist", cleanText(dep, 20))
 		}
+		if ancestorOf(d.Snapshot, dep, spec.Parent) {
+			return Task{}, fmt.Errorf("a child cannot depend on %s, which it is part of: %s finishes only after its children, so the child would never start. Leave %s out of deps (parent=%s already places the task under it)", dep, dep, dep, spec.Parent)
+		}
 		if !seen[dep] {
 			seen[dep] = true
 			deps = append(deps, dep)
@@ -551,6 +554,24 @@ func (b *Board) createLocked(d *draft, spec TaskSpec) (Task, error) {
 	}
 	d.Tasks = append(d.tasks(), t)
 	return t, nil
+}
+
+// ancestorOf reports whether id is parent or one of parent's ancestors. A reviewer pool's leader created a child of T66 with
+// deps=[T66]: the child waited for its parent, the parent could not reconcile until the child was done, and the review stood still.
+func ancestorOf(s *Snapshot, id, parent string) bool {
+	seen := map[string]bool{}
+	for parent != "" && !seen[parent] {
+		if parent == id {
+			return true
+		}
+		seen[parent] = true
+		t, ok := s.Task(parent)
+		if !ok {
+			return false
+		}
+		parent = t.Parent
+	}
+	return false
 }
 
 // normTitle is the key two task titles are compared by when a create is checked for
@@ -593,9 +614,13 @@ func (b *Board) CreateTask(by string, spec TaskSpec) (Task, error) {
 	return out, err
 }
 
-// depsDone reports whether every dependency of t is done, and the first that is not.
+// depsDone reports whether every dependency of t is done, and the first that is not. A dependency on a task t is part of (a board
+// saved before such deps were refused) is no wait: that task finishes only after t.
 func depsDone(s *Snapshot, t Task) (bool, Task) {
 	for _, d := range t.Deps {
+		if ancestorOf(s, d, t.Parent) {
+			continue
+		}
 		if i := taskIdx(s, d); i >= 0 && s.Tasks[i].Status != StatusDone {
 			return false, s.Tasks[i]
 		}
