@@ -96,7 +96,7 @@ func (b *Board) revise(by, id string, spec TaskSpec, reason string) error {
 				return fmt.Errorf("too many dependencies")
 			}
 			for _, dep := range spec.Deps {
-				if dep == id || taskIdx(d.Snapshot, dep) < 0 || dependsOn(d.Snapshot, dep, id, map[string]bool{}) {
+				if dep == id || taskIdx(d.Snapshot, dep) < 0 || dependsOn(d.Snapshot, dep, id, map[string]bool{}) || ancestorOf(d.Snapshot, dep, t.Parent) {
 					return fmt.Errorf("invalid dependency %s", dep)
 				}
 			}

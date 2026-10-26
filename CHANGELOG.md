@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A child task can no longer depend on its parent or another ancestor:
+  the create (or revise) is refused with what to do instead, and such a dep
+  on a board saved before is not waited for. A reviewer pool's leader
+  created a child of T66 with deps=[T66]; the child waited for its parent,
+  the parent waited for the child, and the review stood still. Tool results
+  only; no prompt bytes change.
 - A worker whose work merged but whose verification failed with "no space
   left on device" (or "disk quota exceeded") is told that the disk is full,
   that this is the machine and not the code, to remove untracked build
