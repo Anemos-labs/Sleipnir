@@ -1303,7 +1303,9 @@ func TestAWorkersWaitSleepsThroughOtherWorkersTasks(t *testing.T) {
 
 	out := make(chan string, 1)
 	start := time.Now()
-	go func() { out <- r.callTool(context.Background(), "wait", "be-2", "backend", map[string]any{"timeout_sec": 3}).Text }()
+	go func() {
+		out <- r.callTool(context.Background(), "wait", "be-2", "backend", map[string]any{"timeout_sec": 3}).Text
+	}()
 	time.Sleep(100 * time.Millisecond)
 	if err := b.Submit("be-1", "T1", "their result", "edited 1"); err != nil {
 		t.Error(err)
@@ -1319,7 +1321,9 @@ func TestAWorkersWaitSleepsThroughOtherWorkersTasks(t *testing.T) {
 	if err := b.Submit("be-2", "T2", "my result", "edited 1"); err != nil {
 		t.Fatal(err)
 	}
-	go func() { out <- r.callTool(context.Background(), "wait", "be-2", "backend", map[string]any{"timeout_sec": 10}).Text }()
+	go func() {
+		out <- r.callTool(context.Background(), "wait", "be-2", "backend", map[string]any{"timeout_sec": 10}).Text
+	}()
 	time.Sleep(100 * time.Millisecond)
 	start = time.Now()
 	if err := b.Accept("mgr", "T2", "good"); err != nil {
