@@ -593,3 +593,27 @@ func TestAResumedTeamStillOwesTheReviewOfWorkMergedBeforeTheStop(t *testing.T) {
 		}
 	})
 }
+
+// A writer's task that the merge queue found nothing to merge for (a tester's check that left no test behind) changed nothing a
+// review has to cover: accepting it does not reopen the gate, so a review that ran beside it still stands.
+func TestAnEmptyMergeIsNotDueAReview(t *testing.T) {
+	r := newRVRigWith(t, Config{MaxWorkers: 8, Team: []string{"backend", "tester", "reviewer"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	r.sw.noteAccepted(Task{ID: "T1", Role: "backend"})
+	review := Task{ID: "T2", Role: ReviewerRole}
+	if err := r.sw.reviewSubmission(review)(nil, review); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.noteAccepted(review)
+	check := Task{ID: "T3", Role: "tester", Rev: 4, Files: []string{"lru/"}}
+	r.sw.merged[check.ID] = mergeRec{rev: check.Rev, files: check.Files, empty: true}
+	r.sw.noteAccepted(check)
+	if got := r.sw.reviewPending(); got != "" {
+		t.Fatalf("an empty merge reopened the review gate: %q", got)
+	}
+	changed := Task{ID: "T4", Role: "tester", Rev: 2, Files: []string{"lru/"}}
+	r.sw.merged[changed.ID] = mergeRec{rev: changed.Rev, files: changed.Files, commit: "abc"}
+	r.sw.noteAccepted(changed)
+	if got := r.sw.reviewPending(); got != "T4" {
+		t.Fatalf("a merge that changed the tree is not due a review: %q", got)
+	}
+}

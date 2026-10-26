@@ -3,6 +3,7 @@ package swarm
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -480,4 +481,135 @@ func TestAHealthyRunHasNoStalls(t *testing.T) {
 	if evs := stallEvents(r); len(evs) != 0 {
 		t.Fatalf("a healthy run named stalls: %+v", evs)
 	}
+}
+
+// A reviewer whose run outlasts the work it reviews is told to write its report: in one run a reviewer spent twenty requests
+// of two to three minutes each re-walking four small modules that took fifteen minutes to build, and the run hit its time
+// limit without a report. The bound follows the work (the unreviewed merges' durations summed, at least ten minutes), so a
+// review within it is not a finding, and the finding clears when the review ends.
+func TestStallReviewOverrun(t *testing.T) {
+	cfg := stallCfg()
+	cfg.StallTurns, cfg.Team, cfg.MaxWorkers = 100, []string{"backend", "reviewer"}, 8
+	r := newRVRig(t, cfg, gatedWorkers(map[string][]rvReply{"rv-1": repeat(2, readReply)}))
+	r.sw.StartManager()
+	now := r.sw.deps.Now()
+	work := Task{ID: "T1", Role: "backend", Rev: 1}
+	r.sw.review.noteBegan(work.ID, work.Rev, now.Add(-19*time.Minute))
+	r.sw.noteAccepted(work)
+	beside := Task{ID: "T2", Role: "backend", Rev: 1} // built side by side: the bound is the longest, not the sum
+	r.sw.review.noteBegan(beside.ID, beside.Rev, now.Add(-15*time.Minute))
+	r.sw.noteAccepted(beside)
+	if took, ids := r.sw.review.unreviewedWork(); took.Round(time.Minute) != 19*time.Minute || len(ids) != 2 || ids[0] != "T1" || ids[1] != "T2" {
+		t.Fatalf("unreviewed work = %v %v", took, ids)
+	}
+	id, err := r.sw.Spawn(SpawnReq{Role: ReviewerRole, Title: "review T1", By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, id+" to reach its blocked request", func() bool { return r.prov.callsFor(id) >= 3 })
+	task := currentTask(r.sw.Board.Snapshot(), id)
+	rev, _ := r.sw.Board.Snapshot().Task(task)
+	backdate := func(d time.Duration) { // the assignment began d ago
+		r.sw.review.mu.Lock()
+		r.sw.review.began[task+"#"+strconv.FormatUint(rev.Rev, 10)] = r.sw.deps.Now().Add(-d)
+		r.sw.review.mu.Unlock()
+	}
+	backdate(12 * time.Minute)
+	r.sw.sweepStalls()
+	if _, ok := active(r, StallReviewOverrun); ok {
+		t.Fatal("a review within the work's own duration was found overrun")
+	}
+	// the run is older than the review: a reviewer that claimed the task mid-run is measured from the claim, not the run
+	m := r.sw.get(id)
+	m.mu.Lock()
+	m.run.started = r.sw.deps.Now().Add(-40 * time.Minute)
+	m.mu.Unlock()
+	r.sw.sweepStalls()
+	if _, ok := active(r, StallReviewOverrun); ok {
+		t.Fatal("a review claimed twelve minutes ago was measured from a forty-minute-old run")
+	}
+	backdate(25 * time.Minute)
+	r.sw.sweepStalls()
+	r.sw.sweepStalls()
+	f, ok := active(r, StallReviewOverrun)
+	if !ok || f.Task != task || f.Agent != id || f.Notify != id {
+		t.Fatalf("finding = %+v, %v; stalls %+v", f, ok, r.sw.Stalls())
+	}
+	if want := id + " has reviewed " + task + " for 25 minutes; the work it reviews (T1, T2) took 19 minutes to build"; f.Detail != want {
+		t.Errorf("detail = %q, want %q", f.Detail, want)
+	}
+	if n := raised(r, StallReviewOverrun); n != 1 {
+		t.Errorf("raised %d times", n)
+	}
+	if !nudged(r, id) {
+		t.Error("the reviewer was not told")
+	}
+	r.sw.stopRun(r.sw.get(id), "test over", false)
+	rvWait(t, "the reviewer to stop", func() bool { return r.idle(id) })
+	r.sw.sweepStalls()
+	if _, ok := active(r, StallReviewOverrun); ok {
+		t.Fatal("the finding outlived the review")
+	}
+}
+
+// With nothing unreviewed, the floor bounds a review: ten minutes.
+func TestStallReviewOverrunFloor(t *testing.T) {
+	cfg := stallCfg()
+	cfg.StallTurns, cfg.Team, cfg.MaxWorkers = 100, []string{"backend", "reviewer"}, 8
+	r := newRVRig(t, cfg, gatedWorkers(map[string][]rvReply{"rv-1": repeat(2, readReply)}))
+	r.sw.StartManager()
+	id, err := r.sw.Spawn(SpawnReq{Role: ReviewerRole, Title: "review the tree", By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, id+" to reach its blocked request", func() bool { return r.prov.callsFor(id) >= 3 })
+	task := currentTask(r.sw.Board.Snapshot(), id)
+	cur, _ := r.sw.Board.Snapshot().Task(task)
+	key := task + "#" + strconv.FormatUint(cur.Rev, 10)
+	m := r.sw.get(id)
+	r.sw.review.mu.Lock()
+	r.sw.review.began[key] = r.sw.deps.Now().Add(-9 * time.Minute)
+	r.sw.review.mu.Unlock()
+	r.sw.sweepStalls()
+	if _, ok := active(r, StallReviewOverrun); ok {
+		t.Fatal("a nine-minute review was found overrun")
+	}
+	r.sw.review.mu.Lock()
+	r.sw.review.began[key] = r.sw.deps.Now().Add(-11 * time.Minute)
+	r.sw.review.mu.Unlock()
+	r.sw.sweepStalls()
+	f, ok := active(r, StallReviewOverrun)
+	if !ok || !strings.HasSuffix(f.Detail, "the work it reviews (no merge) took 0 minutes to build") {
+		t.Fatalf("finding = %+v, %v", f, ok)
+	}
+	r.sw.stopRun(m, "test over", false)
+	rvWait(t, "the reviewer to stop", func() bool { return r.idle(id) })
+}
+
+// A reviewer's planning task (a team without an architect gives the agreement to a read-only role) is not a review: however long
+// it runs, it is not found overrun.
+func TestStallReviewOverrunSparesAPlanningTask(t *testing.T) {
+	cfg := stallCfg()
+	cfg.StallTurns, cfg.Team, cfg.MaxWorkers = 100, []string{"backend", "reviewer"}, 8
+	r := newRVRig(t, cfg, gatedWorkers(map[string][]rvReply{"rv-1": repeat(2, readReply)}))
+	r.sw.StartManager()
+	plan, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "agree the interfaces", Kind: TaskKindPlan})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := r.sw.Spawn(SpawnReq{Role: ReviewerRole, TaskID: plan.ID, By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, id+" to reach its blocked request", func() bool { return r.prov.callsFor(id) >= 3 })
+	cur, _ := r.sw.Board.Snapshot().Task(plan.ID)
+	r.sw.review.mu.Lock()
+	r.sw.review.began[plan.ID+"#"+strconv.FormatUint(cur.Rev, 10)] = r.sw.deps.Now().Add(-30 * time.Minute)
+	r.sw.review.mu.Unlock()
+	r.sw.sweepStalls()
+	if f, ok := active(r, StallReviewOverrun); ok {
+		t.Fatalf("a planning task was found overrun: %+v", f)
+	}
+	r.sw.stopRun(r.sw.get(id), "test over", false)
+	rvWait(t, "the reviewer to stop", func() bool { return r.idle(id) })
 }

@@ -7,6 +7,37 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The manager is told to accept a task from its evidence (the merge, the
+  last test run, the worker's command and result) and to leave probing
+  the result to the reviewer, in parallel with the next work, instead of
+  verifying accepted work with tests of its own: one manager spent eleven
+  minutes writing and running probe tests in four finished modules before
+  accepting them, while the tasks sat in review and the team sat idle.
+  About 50 tokens more in the manager's role pin.
+- A reviewer whose run outlasts the work it reviews is told to write its
+  report: the stall sweep's new `review_overrun` finding holds when a
+  running reviewer's task has run longer than the merges no review covers
+  took to build (the longest of them, at least ten minutes), and the
+  reviewer's pin says a review takes less time than the work did. In one
+  run a reviewer spent twenty requests re-walking four small modules that
+  took fifteen minutes to build and never reported. The review gate now
+  records when each assignment first ran. About 60 tokens more in the
+  reviewer's role pin.
+- A writer's accepted task that the merge queue had nothing to merge for
+  (a tester's check whose throwaway tests were deleted again) is no longer
+  a merge for the review gate, so a review accepted beside it still covers
+  the result. The manager is told that a tester's check of the merged
+  result and the review run side by side: a review chained after an
+  independent check waited out the whole check. About 45 tokens more in
+  the manager's role pin.
+- Read-only roles are told plainly that they write no file, $TMPDIR
+  included, and run no program of their own: the reviewer's pin, its
+  refusals and the manager's line on picking a role say so, and the
+  reviewer proves the change's safety fact with the project's own tests or
+  by walking the failure case, naming the missing test as a finding. A
+  reviewer asked to write throwaway tests in $TMPDIR tried five spellings
+  of the same write. About 40 tokens more in the reviewer's and the
+  manager's role pins.
 - A resumed parent whose pool had accepted its plan starts again with that
   pool and that plan. The free members of its saved pool form it again, in
   their order, and are told to continue the accepted plan and its child

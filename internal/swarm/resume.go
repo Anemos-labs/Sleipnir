@@ -89,7 +89,7 @@ func (s *Swarm) RestoreReviewGate(prev *Snapshot, ops []ReviewOp) {
 	for _, op := range ops {
 		if op.Land {
 			s.review.mu.Lock()
-			s.review.landLocked(op.Task, op.Files)
+			s.review.landLocked(op.Task, op.Files, 0)
 			s.review.mu.Unlock()
 			continue
 		}

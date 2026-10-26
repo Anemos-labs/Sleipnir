@@ -39,7 +39,7 @@ func (s *Swarm) flushManager(ctx context.Context, m *member) error {
 		return s.syncManager(ctx, m)
 	}
 	s.review.mu.Lock()
-	s.review.landLocked("manager changes", files)
+	s.review.landLocked("manager changes", files, 0)
 	s.review.mu.Unlock()
 	return s.syncManager(ctx, m)
 }

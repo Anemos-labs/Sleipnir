@@ -205,7 +205,7 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 		rr.denyWrites = fmt.Sprintf("the %s only delivers mail: its one tool is mail", r.Name)
 		rr.only = map[string]bool{"mail": true}
 	case r.ReadOnly:
-		rr.denyWrites = fmt.Sprintf("the %s role is read-only: report findings instead of changing files", r.Name)
+		rr.denyWrites = fmt.Sprintf("the %s role is read-only: it writes no file, $TMPDIR included; report findings instead of changing files", r.Name)
 
 	}
 	requester = rr
@@ -256,7 +256,7 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 				path = filepath.ToSlash(rel)
 			}
 			s.review.mu.Lock()
-			s.review.landLocked("manager changes", []string{path})
+			s.review.landLocked("manager changes", []string{path}, 0)
 			s.review.mu.Unlock()
 		}
 	}
@@ -627,6 +627,7 @@ func (s *Swarm) adopt(m *member, rs *runState) {
 	for _, t := range snap.Tasks {
 		if t.Owner == m.id && t.Status == StatusDoing {
 			rs.tasks[t.ID] = t.Rev
+			s.review.noteBegan(t.ID, t.Rev, rs.started)
 			if m.task == "" || m.task != t.ID {
 				m.task = t.ID
 			}
@@ -673,6 +674,7 @@ func (s *Swarm) trackClaim(agentID, taskID string) {
 	m.mu.Lock()
 	if m.run != nil {
 		m.run.tasks[taskID] = t.Rev
+		s.review.noteBegan(taskID, t.Rev, s.deps.Now())
 	}
 	m.task = taskID
 	m.gateTries = 0

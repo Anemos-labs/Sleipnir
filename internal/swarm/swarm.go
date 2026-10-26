@@ -1025,7 +1025,7 @@ func readOnlyRoleReason(role, reason string) string {
 		return reason
 	}
 	what := strings.TrimSuffix(strings.TrimPrefix(reason, prefix), tail)
-	out := fmt.Sprintf("the %s role is read-only: %s. It runs the project's tests and checks (%s) and reports what should change instead of changing it",
+	out := fmt.Sprintf("the %s role is read-only: %s. It runs the project's tests and checks (%s) and reports what should change instead of changing it; it writes no file, $TMPDIR included, and runs no program of its own",
 		role, what, readOnlyRoleChecks)
 	if strings.HasPrefix(what, "npx ") {
 		// npx installs a package it does not find, so it is not read-only; with --no-install it runs the project's own program or nothing

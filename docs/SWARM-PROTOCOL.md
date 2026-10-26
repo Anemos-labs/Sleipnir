@@ -829,7 +829,7 @@ the pool task it leads, or, when it holds no task, its place in an open pool (a 
 The watchdog catches a worker that shows no sign of life; the repetition guard catches a model repeating one failing
 call. The stall sweep, on every supervisor tick, catches a team that is busy but not advancing. It reads the board,
 the roster and per-agent turn counters (a turn is one model response), never model text, so the same state gives the
-same findings; `idle_capacity` alone also reads how long workers have been idle:
+same findings; `idle_capacity` and `review_overrun` alone also read the clock (how long workers have been idle, how long a review and the work it reviews ran):
 
 | Kind | Holds when | Told |
 |---|---|---|
@@ -838,6 +838,7 @@ same findings; `idle_capacity` alone also reads how long workers have been idle:
 | `orphaned_task` | a doing or blocked task, or a todo task reserved for an agent, is owned by an agent that is not on the team, on two consecutive sweeps (a spawn in progress is not one) | the manager |
 | `blocked_cycle` | blocked tasks' `blocked_on` targets lead back to themselves; one finding per cycle, named by its lowest task id | the manager |
 | `review_starved` | a task has waited in review for `StallTurns` manager turns without the manager naming it in a task call | the manager |
+| `review_overrun` | a running reviewer's task (not a planning task) has run, since its assignment began, longer than the work it reviews took to build: the longest of the merges no accepted review covers yet (each from the first run that held its task to its acceptance), and at least 10 minutes. The bound follows the work, so a review of a day's work may take hours and a review of a fix may not | the reviewer (write the report with what it has: findings so far, what was checked and found fine, what was not reached) |
 | `idle_capacity` | in a configured team, the manager waits while at least one worker runs, a task is still open, and at least half of the workers, and two or more, have been idle for 15 minutes owning no open task (none reserved, in progress, blocked or in review); once raised it holds while that is so, whether or not the manager is still waiting | the manager (who is free, once; it decides whether the objective needs more than the open tasks) |
 
 `StallTurns` is `swarm.Config.StallTurns` (default 12; negative turns the two turn-based kinds off). A finding is

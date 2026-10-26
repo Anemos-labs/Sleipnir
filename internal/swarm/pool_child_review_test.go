@@ -213,7 +213,7 @@ func TestOnlyAMergeInThePoolsFilesSupersedesItsReconciliation(t *testing.T) {
 	}
 	land := func(id string, files ...string) {
 		r.sw.review.mu.Lock()
-		r.sw.review.landLocked(id, files)
+		r.sw.review.landLocked(id, files, 0)
 		r.sw.review.mu.Unlock()
 	}
 	if res := pool(lead, map[string]any{"action": "reconcile", "text": "combined"}); res.IsError {
