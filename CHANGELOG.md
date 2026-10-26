@@ -7,12 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
-- The constitution's "Verify your work" adds one sentence: when a check of
-  the agent's own fails, it re-reads the requirement the check encodes
-  once, then fixes the code or the check, and does not debug a throwaway
-  check for a second round. About 35 tokens more in the system prompt
-  (the cached prefix of every agent changes once); models spent many
-  requests rewriting their own scratch checks.
+- The constitution's "Verify your work" adds one sentence: when an
+  agent-authored check fails, the agent re-reads the requirement the check
+  encodes once, then fixes the code or the check, and does not debug a
+  throwaway check for a second round. About 35 tokens more in the system
+  prompt (the cached prefix of every agent changes once).
 - `run` and `swarm` without a terminal, with no `--mode` and no `--allow`
   rule, now run in `bypass` mode where they would have run in `default`
   (another mode in the configuration still holds): nobody can answer a question,
