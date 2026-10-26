@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Refusals by plan mode and by a read-only role's profile (a reviewer, a
+  scout) now count as refusals by a fixed rule: at the third of the last
+  twenty actions the agent is told, once, that no one can approve them and
+  another spelling is refused the same way, and at the tenth its run ends.
+  These refuse and never ask, so the guard for runs with nobody to ask never
+  saw them, and a reviewer asked to run the program it reviewed spent half
+  an hour on other ways to run it. The note now names plan mode and
+  read-only roles among the fixed rules. Tool results only; no prompt bytes
+  change.
 - The system prompt scales planning and verification to the task. A focused
   fix no longer calls plan first (before: any task of three steps or more),
   the program is run as a user would only when the change alters what its

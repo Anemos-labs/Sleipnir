@@ -159,14 +159,27 @@ const noOneToAskPhrase = "this run has no one to ask"
 func IsNoOneToAsk(text string) bool { return strings.Contains(text, noOneToAskPhrase) }
 
 // IsPolicyRefusal says whether text, a tool's refusal, is one a fixed policy made: an agent's confinement to its own tree, a built-in
-// protection or a deny rule. No approval changes such a refusal, and neither does another spelling of the same access ($HOME for ~, a cd
-// first, a script), so whoever counts refusals may count these whether or not the run has someone to ask.
+// protection, a deny rule, or plan mode and the read-only profile of a role (a reviewer, a scout), which refuse and never ask. No approval
+// changes such a refusal, and neither does another spelling of the same access ($HOME for ~, a cd first, a script), so whoever counts
+// refusals may count these whether or not the run has someone to ask.
 func IsPolicyRefusal(text string) bool {
 	if !strings.Contains(text, "permission denied") {
 		return false
 	}
-	return strings.Contains(text, "isolation: ") || strings.Contains(text, "built-in protection: ") || strings.Contains(text, "denied by rule ")
+	for _, s := range []string{"isolation: ", "built-in protection: ", "denied by rule ", planModeRefusal, readOnlyRoleRefusal} {
+		if strings.Contains(text, s) {
+			return true
+		}
+	}
+	return false
 }
+
+// planModeRefusal and readOnlyRoleRefusal are how the refusals of plan mode (planReason) and of a read-only role (the swarm's wording of
+// it) say so.
+const (
+	planModeRefusal     = "plan mode (read-only): "
+	readOnlyRoleRefusal = " role is read-only: "
+)
 
 // askTimedOut and noAnswerInTime frame the refusal of a question that nobody answered in the time it was given, and unanswered that
 // of a question the prompter gave up on without an answer (no page had the interface open, the input ended). The sentences are

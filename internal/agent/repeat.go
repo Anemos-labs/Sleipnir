@@ -42,10 +42,11 @@ const (
 	refusalStop  = 10
 )
 
-// Refusals by a fixed policy (perm.IsPolicyRefusal: confinement to the agent's tree, a built-in protection, a deny rule) count the same way
-// in every run, attended or not: nobody can approve them, so a person being there changes nothing. A manager refused sixteen times in
-// three minutes, each time the same directory spelled another way, was never told to stop, since no call was repeated exactly and its
-// run had a person to ask. Three of twenty is told so, once per burst; ten of twenty ends the run.
+// Refusals by a fixed policy (perm.IsPolicyRefusal: confinement to the agent's tree, a built-in protection, a deny rule, plan mode or a
+// read-only role) count the same way in every run, attended or not: nobody can approve them, so a person being there changes nothing. A
+// manager refused sixteen times in three minutes, each time the same directory spelled another way, was never told to stop, since no
+// call was repeated exactly and its run had a person to ask; a reviewer asked to run the program it reviewed tried twenty-eight ways
+// to run it in half an hour. Three of twenty is told so, once per burst; ten of twenty ends the run.
 const policyNudge = 3
 
 // durationRe finds the durations a command prints ("0.004s", "12ms", "1m3s" as its 1m and 3s).
@@ -119,7 +120,7 @@ func (g *repeatGuard) observeExits(agentID string, calls, results []core.Block, 
 		case policy >= policyNudge && !g.policyNudged && note == "":
 			g.policyNudged = true
 			note = fmt.Sprintf("[harness] %d of your last %d actions were refused by a fixed rule of the harness (worktree isolation, a built-in "+
-				"protection or a deny rule). No one can approve these, and another spelling of the same path ($HOME, ~, a cd first, a script, "+
+				"protection, a deny rule, plan mode or a read-only role). No one can approve these, and another spelling of the same action ($HOME, ~, a cd first, a script, "+
 				"another tool) is refused the same way. Stop retrying it: read the reason in the refusal, which says what you can do instead, "+
 				"and carry on without that path or say what you needed.", policy, len(g.policy))
 		case policy < policyNudge:

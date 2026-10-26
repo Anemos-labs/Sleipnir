@@ -71,7 +71,7 @@ func ask(reason string, rem []Rule) verdict {
 
 // planReason is what a model is told when plan mode refuses something.
 func planReason(detail string) string {
-	return "plan mode (read-only): " + detail + ". Present a plan instead of acting"
+	return planModeRefusal + detail + ". Present a plan instead of acting"
 }
 
 // combine merges two verdicts on the same request: the more severe wins, the
