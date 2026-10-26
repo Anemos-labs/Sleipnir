@@ -430,7 +430,9 @@ func WriteProjectNotes(path string, notes []string) error {
 }
 
 // ignoreBeside makes git ignore the notes file at p with a .gitignore in its directory: created when missing, and given the
-// file's name when it does not list it yet. The file's name is matched exactly (a line of its own).
+// file's name when it does not list it yet. The file's name is matched exactly (a line of its own). A .gitignore the tool
+// creates lists itself too, so the directory leaves no untracked file behind: a run with --commit needs a clean checkout, and
+// a resumed one was refused for it.
 func ignoreBeside(p string) error {
 	dir, name := filepath.Dir(p), filepath.Base(p)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -440,6 +442,9 @@ func ignoreBeside(p string) error {
 	b, err := os.ReadFile(gi)
 	if err != nil && !os.IsNotExist(err) {
 		return err
+	}
+	if os.IsNotExist(err) {
+		return os.WriteFile(gi, []byte(".gitignore\n"+name+"\n"), 0o644)
 	}
 	for _, l := range strings.Split(string(b), "\n") {
 		if strings.TrimSpace(l) == name || strings.TrimSpace(l) == "/"+name {
