@@ -62,6 +62,14 @@ func (g *reviewGate) noteBegan(id string, rev uint64, at time.Time) {
 	}
 }
 
+// beganAt is when a run first held the assignment of task id at rev, false when none has.
+func (g *reviewGate) beganAt(id string, rev uint64) (time.Time, bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	at, ok := g.began[id+"#"+strconv.FormatUint(rev, 10)]
+	return at, ok
+}
+
 // tookLocked is how long the work of task t ran: from the first run that held its current assignment to now, 0 when no run did.
 // g.mu is held.
 func (g *reviewGate) tookLocked(t Task, now time.Time) time.Duration {
