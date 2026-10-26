@@ -192,7 +192,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	defer s.Close()
 	unattended := ""
 	if !interactive {
-		unattended = noOneToAskNote(perm.Mode(*mode), *allow)
+		unattended = noOneToAskNote(s.Perm.Mode(), *allow) // the effective mode: a configured one when --mode is not given
 	}
 	if !*quiet && !*asJSON {
 		fmt.Fprintln(os.Stderr, wrapFor(os.Stderr, fmt.Sprintf("sleipnir %s · %s%s · session %s", version, s.Model.ID, budgetLabel(s), s.ID)))
