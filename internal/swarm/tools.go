@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -871,7 +872,7 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			s.setSeen(me, cur)
 			return c.Env.Finish(waitReport(cur, digest, strings.Join(newReviews(cur, in.Until, inReview), ", ")+
 				" reached review while "+s.freeWorker(cur)+" is free: accept or reject it, give free workers the next work, then wait again for the rest"), false), nil
-		case len(in.Until) == 0 && len(digest) > 0:
+		case len(in.Until) == 0 && len(digest) > 0 && (c.Env.Role == "manager" || concernsWorker(me, base, cur)):
 			s.setSeen(me, cur)
 			return c.Env.Finish(waitReport(cur, digest, ""), false), nil
 		case pending:
@@ -1079,6 +1080,57 @@ func allSettled(s *Snapshot, ids []string) bool {
 		}
 	}
 	return true
+}
+
+// concernsWorker reports whether a change between a and b touches a worker's own work: a task it owns or last owned, a pool it
+// belongs to (the parent and its children), or a task its open work depends on or is blocked on. A worker's untargeted wait
+// returns only for those, and for mail: in a 16-worker run three pool members that waited for their leader's one child were woken
+// by every review elsewhere on the board, about twenty requests each in fifteen minutes, to read news that was not theirs.
+// The rest of the board's changes still come in the report when something of its own does.
+func concernsWorker(me string, a, b *Snapshot) bool {
+	mine := map[string]bool{}
+	for _, t := range b.Tasks {
+		if t.Owner == me || t.LastOwner == me || (t.Pool != nil && slices.Contains(t.Pool.Members, me)) {
+			mine[t.ID] = true
+		}
+	}
+	for _, t := range b.Tasks {
+		if mine[t.Parent] {
+			mine[t.ID] = true
+		}
+	}
+	for _, t := range b.Tasks {
+		if !mine[t.ID] || t.Status == StatusDone || t.Status == StatusFailed {
+			continue
+		}
+		if t.Parent != "" {
+			mine[t.Parent] = true
+		}
+		for _, d := range t.Deps {
+			mine[d] = true
+		}
+		if t.BlockedOn != "" {
+			mine[t.BlockedOn] = true
+		}
+	}
+	was := map[string]Task{}
+	for _, t := range a.Tasks {
+		was[t.ID] = t
+	}
+	for _, t := range b.Tasks {
+		old, existed := was[t.ID]
+		if mine[t.ID] && (!existed || old.Status != t.Status || old.Rev != t.Rev) {
+			return true
+		}
+	}
+	for _, t := range a.Tasks {
+		if t.Owner == me || t.LastOwner == me {
+			if _, ok := b.Task(t.ID); !ok {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // diffSnapshots lists the task, agent and alert changes of interest between two

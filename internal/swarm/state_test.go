@@ -1285,3 +1285,52 @@ func TestAManagerStartedForAResumeIsDoneAndNotRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A worker's wait without until= sleeps through changes elsewhere on the board and wakes for its own work: in a 16-worker run
+// three pool members waiting for their leader were woken by every review on the board, about twenty requests each in fifteen
+// minutes. What changed elsewhere still comes in the report.
+func TestAWorkersWaitSleepsThroughOtherWorkersTasks(t *testing.T) {
+	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
+	r.sw.StartManager()
+	b := r.sw.Board
+	b.CreateTask("mgr", TaskSpec{Title: "theirs"})
+	b.CreateTask("mgr", TaskSpec{Title: "mine"})
+	for _, a := range [][2]string{{"be-1", "T1"}, {"be-2", "T2"}} {
+		if err := b.Assign("mgr", a[0], a[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	out := make(chan string, 1)
+	start := time.Now()
+	go func() { out <- r.callTool(context.Background(), "wait", "be-2", "backend", map[string]any{"timeout_sec": 3}).Text }()
+	time.Sleep(100 * time.Millisecond)
+	if err := b.Submit("be-1", "T1", "their result", "edited 1"); err != nil {
+		t.Error(err)
+	}
+	res := <-out
+	if d := time.Since(start); d < 2500*time.Millisecond {
+		t.Fatalf("be-2's wait returned after %v for another worker's task: %q", d.Round(time.Millisecond), res)
+	}
+	if !strings.Contains(res, "T1 → review") {
+		t.Fatalf("the timed-out wait left out what changed elsewhere: %q", res)
+	}
+
+	if err := b.Submit("be-2", "T2", "my result", "edited 1"); err != nil {
+		t.Fatal(err)
+	}
+	go func() { out <- r.callTool(context.Background(), "wait", "be-2", "backend", map[string]any{"timeout_sec": 10}).Text }()
+	time.Sleep(100 * time.Millisecond)
+	start = time.Now()
+	if err := b.Accept("mgr", "T2", "good"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case res := <-out:
+		if d := time.Since(start); d > 2*time.Second || !strings.Contains(res, "T2") {
+			t.Fatalf("be-2's wait took %v for its own task and reported %q", d.Round(time.Millisecond), res)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("be-2's wait slept through a change to its own task")
+	}
+}

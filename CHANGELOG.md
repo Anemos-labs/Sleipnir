@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A worker's `wait` without `until` now returns only for its own work: a
+  task it owns or last owned, a pool it belongs to (the parent and its
+  children), a task its open work depends on or is blocked on, and mail.
+  Changes elsewhere on the board no longer wake it; they still come in its
+  report when it does wake. In a local team run three pool members waiting on
+  their leader's one child were woken by every review on the board, about
+  twenty requests each in fifteen minutes. The manager's wait is unchanged.
+  Tool results only; no prompt bytes change.
 - In a goal judge's evidence, a tool's output now names the call that
   produced it (the tool and the start of its input, the command for a
   shell), so a search for a command finds its output; and a tool call, in a
