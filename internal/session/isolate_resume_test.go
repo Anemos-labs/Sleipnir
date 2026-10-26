@@ -531,3 +531,71 @@ func TestResumeCorruptionPolicyPreservesIsolatedRecoveryState(t *testing.T) {
 		})
 	}
 }
+
+func TestIsolatedTeamResumeKeepsMergedWorkInReview(t *testing.T) {
+	repo := isoRepo(t)
+	second, managerStep, workerRuns := false, 0, 0
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		_, role, _ := whoIs(c)
+		if role == "manager" {
+			step := managerStep
+			managerStep++
+			switch {
+			case !second && step == 0:
+				return mock.Reply{ToolCalls: []mock.ToolCall{
+					call("spawn", "spawn", map[string]any{"role": "backend", "task": "Write the merged file", "files": []string{"merged.txt"}}),
+					call("wait", "wait", map[string]any{"until": []string{"T1"}, "timeout_sec": 120}),
+				}}
+			case second && step == 0:
+				return mock.Reply{ToolCalls: []mock.ToolCall{call("accept", "task", map[string]any{"action": "accept", "id": "T1"})}}
+			default:
+				return mock.Reply{Text: "stopping here"}
+			}
+		}
+		switch assistantTurns(c) {
+		case 0:
+			workerRuns++
+			return mock.Reply{ToolCalls: []mock.ToolCall{call("write", "write", map[string]any{"path": "merged.txt", "content": "MERGED\n"})}}
+		case 1:
+			return mock.Reply{ToolCalls: []mock.ToolCall{call("done", "task", map[string]any{"action": "done", "id": "T1", "text": "wrote it"})}}
+		default:
+			return mock.Reply{Text: "worker finished"}
+		}
+	})
+	o := isoOptions(t, repo, client, model, "merged-review")
+	s1, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s1.Run(context.Background(), "write the file"); err != nil {
+		t.Fatal(err)
+	}
+	if task, _ := s1.Swarm.Board.Snapshot().Task("T1"); task.Status != swarm.StatusReview {
+		t.Fatalf("first run did not leave T1 in review: %+v", task)
+	}
+	if err := s1.Close(); err != nil {
+		t.Fatal(err)
+	}
+	second, managerStep = true, 0
+	o.Resume, o.Isolation = s1.Dir, ""
+	s2, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	if task, _ := s2.Swarm.Board.Snapshot().Task("T1"); task.Status != swarm.StatusReview || task.Owner != "be-1" {
+		t.Fatalf("merged work was put back to do again: %+v", task)
+	}
+	if info, ok := s2.Swarm.Board.Snapshot().Agent("be-1"); ok && strings.Contains(info.Line, "restart") {
+		t.Fatalf("worker of merged work waits for a restart: %+v", info)
+	}
+	if _, err := s2.Run(context.Background(), "accept it"); err != nil {
+		t.Fatal(err)
+	}
+	if task, _ := s2.Swarm.Board.Snapshot().Task("T1"); task.Status != swarm.StatusDone {
+		t.Fatalf("merged work could not be accepted after the resume: %+v", task)
+	}
+	if workerRuns != 1 {
+		t.Fatalf("the worker ran %d times", workerRuns)
+	}
+}
