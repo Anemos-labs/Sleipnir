@@ -26,6 +26,11 @@ they do not indicate whether a change has been released.
   model), and the judgment ended with no verdict, pausing a goal whose 41
   tasks were done. A request after the last is not answered. Only the
   judge's evidence messages change; no agent prompt bytes change.
+- The constitution's "Verify your work" adds one sentence: when an
+  agent-authored check fails, the agent re-reads the requirement the check
+  encodes once, then fixes the code or the check, and does not debug a
+  throwaway check for a second round. About 35 tokens more in the system
+  prompt (the cached prefix of every agent changes once).
 - `run` and `swarm` without a terminal, with no `--mode` and no `--allow`
   rule, now run in `bypass` mode where they would have run in `default`
   (another mode in the configuration still holds): nobody can answer a question,
