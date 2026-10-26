@@ -2,10 +2,13 @@ package main
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
 )
@@ -109,5 +112,25 @@ func TestARunSaysUpFrontThatItCannotAsk(t *testing.T) {
 		if n != "" {
 			t.Errorf("%s, yet the run says %q", name, n)
 		}
+	}
+}
+
+func TestAStuckUnattendedRunNamesTheRemedyInItsError(t *testing.T) {
+	note := noOneToAskNote(perm.ModeDefault, nil)
+	stuck := fmt.Errorf("agent main: %w: 10 of its last 20 actions were refused and this run has no one to ask", agent.ErrStuck)
+	got := withRemedy(stuck, note)
+	if !errors.Is(got, agent.ErrStuck) || !strings.Contains(got.Error(), "--mode accept-edits") {
+		t.Errorf("the stuck run ends with %q", got)
+	}
+	for name, err := range map[string]error{
+		"a policy refusal is not one an answer would lift": fmt.Errorf("agent main: %w: 10 of its last 20 actions were refused by the permission policy", agent.ErrStuck),
+		"a failure that is not the guard's":                errors.New("provider: 500"),
+	} {
+		if got := withRemedy(err, note); got != err {
+			t.Errorf("%s, yet the error became %q", name, got)
+		}
+	}
+	if got := withRemedy(stuck, ""); got != stuck {
+		t.Errorf("a run with a way to approve (or a mode that needs none) got %q", got)
 	}
 }

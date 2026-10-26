@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `run --json` without a terminal, in the default mode and with no
+  `--allow` rule, now starts its stream with a `notice` (level `warn`) that
+  says nothing can be approved and that `--mode accept-edits` lets edits and
+  the usual build and test commands through; the text mode already printed
+  it on stderr. A run that the guard ends because its actions kept being
+  refused with no one to ask names the same remedy in its error (and in the
+  result's `error`). No prompt bytes change.
 - Refusals by plan mode and by a read-only role's profile (a reviewer, a
   scout) now count as refusals by a fixed rule: at the third of the last
   twenty actions the agent is told, once, that no one can approve them and
