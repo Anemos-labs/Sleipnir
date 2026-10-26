@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The merge queue's refusal of files outside a task's scope (or of files it
+  may not change) still names the first eight, and now says where the rest
+  are, by directory: "; and 9 more: docs/screenshots/ (9)". A worker whose
+  e2e run rewrote 17 screenshots in two directories was shown eight from
+  one, reverted those and had to guess the other. Tool results only; no
+  prompt bytes change.
 - A child task can no longer depend on its parent or another ancestor:
   the create (or revise) is refused with what to do instead, and such a dep
   on a board saved before neither holds the child back nor blocks its

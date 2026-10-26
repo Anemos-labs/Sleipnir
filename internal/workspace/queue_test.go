@@ -1609,3 +1609,36 @@ func TestQueueScopeIgnoresChangesTheTipAlreadyHolds(t *testing.T) {
 	}
 	e.integrationClean()
 }
+
+// A scope refusal lists eight files and says where the rest are: a worker whose e2e run rewrote 17 screenshots under two
+// directories saw eight names from one of them, reverted those and had to guess the other directory.
+func TestAScopeRefusalSaysWhereTheUnlistedFilesAre(t *testing.T) {
+	e := newQueueEnv(t, QueueOptions{})
+	a := e.agent("a")
+	edit(t, a, "api/server.rs", "fn serve() {}\n")
+	for i := 1; i <= 8; i++ {
+		edit(t, a, fmt.Sprintf("docs/demo/%d.png", i), "png\n")
+	}
+	edit(t, a, "docs/screenshots/a.png", "png\n")
+	edit(t, a, "docs/screenshots/b.png", "png\n")
+	edit(t, a, "web/x.ts", "x\n")
+	r := mustSubmit(t, e.q, Submission{Tree: a, Task: "a", Scope: []string{"api/**"}, EnforceScope: true})
+	want := "changed 11 file(s) outside its scope: docs/demo/1.png, docs/demo/2.png, docs/demo/3.png, docs/demo/4.png, " +
+		"docs/demo/5.png, docs/demo/6.png, docs/demo/7.png, docs/demo/8.png; and 3 more: docs/screenshots/ (2), web/ (1)"
+	if r.Outcome != OutcomeRejected || r.Reason != want {
+		t.Fatalf("refusal = %q, want %q", r.Reason, want)
+	}
+	if len(r.Files) != 11 {
+		t.Errorf("files = %v, want all 11", r.Files)
+	}
+}
+
+func TestMoreFilesGroupsTheRestByDirectory(t *testing.T) {
+	if got := moreFiles([]string{"a", "b"}, 8); got != "" {
+		t.Errorf("no more files: %q", got)
+	}
+	files := []string{"x/1", "go.mod", "README.md", "a/1", "b/1", "c/1", "d/1", "e/1", "e/2"}
+	if got, want := moreFiles(files, 1), "; and 8 more: e/ (2), the root (2), a/ (1), b/ (1), c/ (1), 1 other directory"; got != want {
+		t.Errorf("moreFiles = %q, want %q", got, want)
+	}
+}

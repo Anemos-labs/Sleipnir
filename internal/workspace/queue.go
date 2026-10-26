@@ -647,7 +647,7 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 			}
 			if len(out) > 0 {
 				res.Files = out
-				return q.reject(res, fmt.Sprintf("changed %d file(s) it may not change: %s", len(out), strings.Join(firstN(why, 8), "; "))), nil
+				return q.reject(res, fmt.Sprintf("changed %d file(s) it may not change: %s%s", len(out), strings.Join(firstN(why, 8), "; "), moreFiles(out, 8))), nil
 			}
 		}
 		if s.EnforceScope && len(s.Scope) > 0 {
@@ -657,7 +657,7 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 			}
 			if len(out) > 0 {
 				res.Files = out
-				return q.reject(res, fmt.Sprintf("changed %d file(s) outside its scope: %s", len(out), strings.Join(firstN(out, 8), ", "))), nil
+				return q.reject(res, fmt.Sprintf("changed %d file(s) outside its scope: %s%s", len(out), strings.Join(firstN(out, 8), ", "), moreFiles(out, 8))), nil
 			}
 		}
 	}
@@ -884,6 +884,47 @@ func firstN(s []string, n int) []string {
 		return s[:n]
 	}
 	return s
+}
+
+// moreFiles names, by directory, the files a refusal does not list after its first n: "; and 9 more: docs/demo/ (7), web/ (2)".
+// A worker that reverts only the files it was shown is refused again for the rest, so it needs to know where they are.
+func moreFiles(files []string, n int) string {
+	if len(files) <= n {
+		return ""
+	}
+	count := map[string]int{}
+	for _, f := range files[n:] {
+		dir := filepath.ToSlash(filepath.Dir(f))
+		if dir == "." {
+			dir = "the root"
+		} else {
+			dir += "/"
+		}
+		count[dir]++
+	}
+	dirs := make([]string, 0, len(count))
+	for d := range count {
+		dirs = append(dirs, d)
+	}
+	sort.Slice(dirs, func(i, j int) bool {
+		if count[dirs[i]] != count[dirs[j]] {
+			return count[dirs[i]] > count[dirs[j]]
+		}
+		return dirs[i] < dirs[j]
+	})
+	parts := make([]string, 0, 6)
+	for i, d := range dirs {
+		if i == 5 {
+			if rest := len(dirs) - 5; rest == 1 {
+				parts = append(parts, "1 other directory")
+			} else {
+				parts = append(parts, fmt.Sprintf("%d other directories", rest))
+			}
+			break
+		}
+		parts = append(parts, fmt.Sprintf("%s (%d)", d, count[d]))
+	}
+	return fmt.Sprintf("; and %d more: %s", len(files)-n, strings.Join(parts, ", "))
 }
 
 // tailOf retains the last n bytes with a leading truncation marker when needed; n must be
