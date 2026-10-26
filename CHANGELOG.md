@@ -7,6 +7,19 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A single agent that changed code and then ran the tests with the
+  command a project script wraps (`node --test`, `mvn -q test`,
+  `./gradlew test`, `npm run test:unit`, `bun test`, `dotnet test`, ...) is
+  no longer told it has not run the tests. The check knew a short fixed list
+  of spellings, so a Node project whose `test` script is
+  `node --test test/*.test.js` drew the "[harness] You changed code and have
+  not run the tests since" note after a passing run, costing a request and
+  a second run of the suite. A test tool's subcommand now counts
+  after its flags (for mvn, gradle, make, rake and sbt after other tasks
+  too), and so does a command that starts with the words of the project's
+  own test command from the survey. The command line is parsed: a runner
+  that only appears as an argument (`grep 'go test' Makefile`) does not
+  count. No prompt bytes change.
 - Sessions now keep only what a resume reads, unless `--training-logs` is
   given (chat, run, web). That covers the event log, tool outputs and each
   agent's newest snapshot. Off by default: each request's prompt manifest
