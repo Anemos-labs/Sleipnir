@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -283,6 +284,8 @@ func (s *Session) restoreWorkers(prev *swarm.Snapshot, evs []events.Event) error
 	published := map[string]bool{}
 	// A task's last merge counts only when it came after the task was last started.
 	merges := map[string]swarm.RestoredMerge{}
+	var reviewOps []swarm.ReviewOp
+	scopes := map[string][]string{} // each task's files as the log last gave them
 	for _, a := range prev.Agents {
 		if a.ID != managerAgent && a.Role != "mailman" {
 			selected[a.ID] = true
@@ -291,19 +294,42 @@ func (s *Session) restoreWorkers(prev *swarm.Snapshot, evs []events.Event) error
 	for _, e := range evs {
 		switch e.Type {
 		case events.TypeBoardOp:
-			var op struct{ Op, Agent, Task, Status string }
+			var op struct {
+				Op, Agent, Task, Status, Title string
+				Files                          []string
+				Closure                        swarm.Closure
+			}
 			if err := json.Unmarshal(e.Data, &op); err != nil {
 				return err
+			}
+			if op.Op == "requeue" && op.Task != "" && op.Title != "" {
+				// A revision (a requeue that restates the task) lands what the task covered and what it covers now.
+				reviewOps = append(reviewOps, swarm.ReviewOp{Task: op.Task, Land: true, Files: append(slices.Clone(scopes[op.Task]), op.Files...)})
+			}
+			if op.Task != "" && op.Files != nil {
+				scopes[op.Task] = op.Files
 			}
 			if op.Op == "agent" || op.Op == "agent-remove" {
 				published[op.Agent] = true
 			} else if op.Task != "" && op.Status == string(swarm.StatusDoing) {
 				delete(merges, op.Task)
+			} else if op.Op == "finish" && (op.Status == string(swarm.StatusReview) || op.Status == string(swarm.StatusDone)) {
+				reviewOps = append(reviewOps, swarm.ReviewOp{Task: op.Task, Status: swarm.TaskStatus(op.Status), Closure: op.Closure.Kind(), Files: op.Files})
 			}
 		case events.TypeTaskMerge:
-			var m struct{ Task, Outcome, Commit string }
+			var m struct {
+				Task, Outcome, Commit string
+				Files                 []string
+			}
 			if err := json.Unmarshal(e.Data, &m); err != nil {
 				return err
+			}
+			if m.Task == "manager" && m.Outcome == "merged" {
+				files := m.Files
+				if len(files) >= 30 { // the record lists at most 30: the rest is not known
+					files = nil
+				}
+				reviewOps = append(reviewOps, swarm.ReviewOp{Task: "manager changes", Land: true, Files: files})
 			}
 			if m.Outcome == "merged" || m.Outcome == "empty" {
 				merges[m.Task] = swarm.RestoredMerge{Commit: m.Commit, Empty: m.Outcome == "empty"}
@@ -369,6 +395,7 @@ func (s *Session) restoreWorkers(prev *swarm.Snapshot, evs []events.Event) error
 	if err := s.Swarm.RestoreTeam(context.Background(), prev, restored, ids, retiredCost); err != nil {
 		return err
 	}
+	s.Swarm.RestoreReviewGate(prev, reviewOps)
 	s.Swarm.AddRetiredListCost(retiredList, retiredPlan)
 	for _, w := range restored {
 		if _, err := agent.RebuildArchiveFrom(s.Dir, w.ID, w.ID, s.archive); err != nil {

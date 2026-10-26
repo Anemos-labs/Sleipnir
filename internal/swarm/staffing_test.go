@@ -540,3 +540,56 @@ func TestTheStaffingLinesStayWithinTheirBound(t *testing.T) {
 		t.Errorf("queuedLines with room for one = %q", q)
 	}
 }
+
+func TestAResumedTeamStillOwesTheReviewOfWorkMergedBeforeTheStop(t *testing.T) {
+	cfg := Config{MaxWorkers: 8, VerifyCmd: "true", Team: []string{"backend", "reviewer"}}
+	idle := func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }
+	prev := &Snapshot{Version: 9, Tasks: []Task{
+		{ID: "T1", Title: "implement", Role: "backend", Owner: "be-1", Status: StatusDone, Closure: closeAs(CloseVerified), Files: []string{"a.go"}},
+		{ID: "T2", Title: "review", Role: ReviewerRole, Owner: "rv-1", Status: StatusDone, Closure: closeAs(CloseVerified)},
+		{ID: "T3", Title: "implement more", Role: "backend", Owner: "be-1", Status: StatusDone, Closure: closeAs(CloseVerified), Files: []string{"b.go"}},
+		{ID: "T4", Title: "not needed", Role: "backend", Status: StatusDone, Closure: closeAs(CloseUnneeded), Files: []string{"c.go"}},
+		{ID: "T5", Title: "reopened after its acceptance", Role: "backend", Owner: "be-1", Status: StatusTodo, Files: []string{"d.go"}},
+	}}
+	review := func(id string) ReviewOp { return ReviewOp{Task: id, Status: StatusReview} }
+	done := func(id string, k ClosureKind) ReviewOp { return ReviewOp{Task: id, Status: StatusDone, Closure: k} }
+	land := func(id string) ReviewOp { return ReviewOp{Task: id, Land: true, Files: []string{"e.go"}} }
+	cases := []struct {
+		name string
+		ops  []ReviewOp
+		want string
+	}{
+		{"merged after the review", []ReviewOp{review("T1"), done("T1", CloseVerified), review("T2"), done("T2", CloseVerified), review("T3"), done("T3", CloseVerified)}, "T3"},
+		{"reviewed last", []ReviewOp{done("T1", CloseVerified), done("T3", CloseVerified), review("T2"), done("T2", CloseVerified), done("T4", CloseUnneeded)}, ""},
+		{"review written before the last merge", []ReviewOp{done("T1", CloseVerified), review("T2"), done("T3", CloseVerified), done("T2", CloseVerified)}, "T3"},
+		{"accepted, then reopened", []ReviewOp{review("T2"), done("T2", CloseVerified), done("T5", CloseVerified)}, "T5"},
+		{"manager changes after the review", []ReviewOp{done("T1", CloseVerified), review("T2"), done("T2", CloseVerified), land("manager changes")}, "manager changes"},
+		{"a revision before the review", []ReviewOp{land("T1"), review("T2"), done("T2", CloseVerified)}, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := newRVRigWith(t, cfg, idle, nil)
+			if err := r.sw.RestoreTeam(context.Background(), prev, nil, map[string]string{"be-1": "backend", "rv-1": ReviewerRole}, 0); err != nil {
+				t.Fatal(err)
+			}
+			if got := r.sw.reviewPending(); got != "" {
+				t.Fatalf("pending before the replay: %q", got)
+			}
+			r.sw.RestoreReviewGate(prev, c.ops)
+			if got := r.sw.reviewPending(); got != c.want {
+				t.Fatalf("review pending after the resume: %q, want %q", got, c.want)
+			}
+		})
+	}
+	t.Run("accepted with the scope of its acceptance", func(t *testing.T) {
+		r := newRVRigWith(t, cfg, idle, nil)
+		if err := r.sw.RestoreTeam(context.Background(), prev, nil, map[string]string{"be-1": "backend", "rv-1": ReviewerRole}, 0); err != nil {
+			t.Fatal(err)
+		}
+		// T5 was accepted while it covered old.go; a revision gave it d.go afterwards.
+		r.sw.RestoreReviewGate(prev, []ReviewOp{{Task: "T5", Status: StatusDone, Closure: CloseVerified, Files: []string{"old.go"}}})
+		if got := r.sw.review.landed[1]; len(got) != 1 || got[0] != "old.go" {
+			t.Fatalf("the acceptance landed %v, want [old.go]", got)
+		}
+	})
+}
