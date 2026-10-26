@@ -16,6 +16,14 @@ func TestAChildCannotDependOnItsParent(t *testing.T) {
 	created := r.must(r.task(r.lead, map[string]any{"action": "create", "parent": r.parent.ID, "title": "verify the gates", "files": []string{"app/a.go"}}), "create")
 	id := strings.Fields(created)[1]
 
+	// Nor on a task further up, and a revision cannot add one either.
+	if _, err := r.sw.Board.CreateTask(r.lead, TaskSpec{Parent: id, Deps: []string{r.parent.ID}, Title: "a grandchild", Files: []string{"app/a.go"}}); err == nil || !strings.Contains(err.Error(), "cannot depend on "+r.parent.ID) {
+		t.Errorf("a grandchild that depends on its grandparent: %v", err)
+	}
+	if err := r.sw.Board.revise(r.lead, id, TaskSpec{Deps: []string{r.parent.ID}}, "add a dep"); err == nil || !strings.Contains(err.Error(), "leave "+r.parent.ID+" out of deps") {
+		t.Errorf("a revision that makes the child depend on its parent: %v", err)
+	}
+
 	// The same dep on a board saved before: the child starts all the same.
 	if err := r.sw.Board.mutate("test", "assign", func(d *draft) error {
 		i := taskIdx(d.Snapshot, id)
@@ -27,5 +35,8 @@ func TestAChildCannotDependOnItsParent(t *testing.T) {
 	}
 	if ok, dep := depsDone(r.sw.Board.Snapshot(), func() Task { t, _ := r.sw.Board.Snapshot().Task(id); return t }()); !ok {
 		t.Fatalf("%s waits for %s, which it is part of", id, dep.ID)
+	}
+	if _, err := r.sw.Board.assignTask(assignReq{by: r.lead, agent: r.second, id: id}); err != nil {
+		t.Fatalf("%s, with its parent in deps on a saved board, cannot be assigned: %v", id, err)
 	}
 }

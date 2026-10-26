@@ -9,7 +9,8 @@ they do not indicate whether a change has been released.
 
 - A child task can no longer depend on its parent or another ancestor:
   the create (or revise) is refused with what to do instead, and such a dep
-  on a board saved before is not waited for. A reviewer pool's leader
+  on a board saved before neither holds the child back nor blocks its
+  assignment. A reviewer pool's leader
   created a child of T66 with deps=[T66]; the child waited for its parent,
   the parent waited for the child, and the review stood still. Tool results
   only; no prompt bytes change.
