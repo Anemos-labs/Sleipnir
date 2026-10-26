@@ -149,6 +149,13 @@ func (m *member) touch(s *Swarm) { m.progress.Store(s.deps.Now().UnixNano()) }
 // madeProgress restarts the stall sweep's count of turns without progress.
 func (m *member) madeProgress() { m.quietFrom.Store(m.turns.Load()) }
 
+// currentTask is the task the member last took (claimed, was given or resumed).
+func (m *member) currentTask() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.task
+}
+
 // panicError is what a run that panicked returns to finishRun.
 type panicError struct {
 	val   any

@@ -796,3 +796,35 @@ func TestOutsideTreeRefusalDoesNotNameTheAgentsOwnTree(t *testing.T) {
 		t.Fatalf("the refusal names the agent's own tree: %v", err)
 	}
 }
+
+// A claim of the task a worker is already on, with nothing merged since, changes nothing: the worker is not told to re-read its files
+// and its assignment is not queued again. A worker on a perf task claimed its tasks three times in 45 minutes and re-read the same
+// file after each.
+func TestClaimingTheTaskYouAreOnChangesNothing(t *testing.T) {
+	sc := script{
+		"be-1": {
+			act(writeCall("a.txt", "draft\n")),
+			act(rvToolCall{"task", map[string]any{"action": "claim", "id": "T1"}}),
+			act(doneCall("T1", "edited a")),
+		},
+	}
+	r := newIsoRig(t, isoOpts{verify: true}, sc.fn())
+	r.sw.StartManager()
+	r.mustSpawn("backend", "edit a", "a.txt")
+	r.waitStatus("T1", StatusReview)
+	if !r.prov.sawEver("already yours and the task you are on") {
+		t.Fatal("the worker's claim of its own task was not answered as a no-op")
+	}
+	if r.prov.sawEver("Re-read the relevant files") {
+		t.Fatal("the worker was told to re-read its files though nothing had merged")
+	}
+	n := 0
+	for _, e := range r.log.OfType(events.TypeUserInput) {
+		if e.Agent == "be-1" && strings.Contains(string(e.Data), `"origin":"task"`) {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("be-1 was handed its assignment %d times, want 1", n)
+	}
+}
