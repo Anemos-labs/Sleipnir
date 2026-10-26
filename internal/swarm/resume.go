@@ -64,24 +64,35 @@ func (s *Swarm) RestoreMerges(prev *Snapshot, merges map[string]RestoredMerge) {
 	}
 }
 
-// ReviewOp is a board operation of the log that the review gate counts: a task
-// entering review or done.
+// ReviewOp is a change of the log that the review gate counts: a task entering
+// review or done (with the closure it was done with), or, with Land, a change that
+// reached the shared tree without an acceptance (the manager's integrated edits, a
+// revision) and the files it may have touched, none when that is not known.
 type ReviewOp struct {
-	Task   string
-	Status TaskStatus
+	Task    string
+	Status  TaskStatus
+	Closure ClosureKind
+	Land    bool
+	Files   []string
 }
 
-// RestoreReviewGate replays, in log order, the submissions and acceptances that
-// fed the review gate (which merges a reviewer has covered): without it a resumed
-// team counts from zero, and work merged before the stop could be reported met
-// without the review it was due. Changes the gate counts that are not tasks (the
-// manager's own edits, revisions) are not in the replay. It must run after
-// RestoreTeam, so the restored workers' roles and models are known.
+// RestoreReviewGate replays, in log order, the changes that fed the review gate
+// (which merges a reviewer has covered): without it a resumed team counts from
+// zero, and work merged before the stop could be reported met without the review
+// it was due. A manager's direct edits in a shared tree leave no record to replay.
+// It must run after RestoreTeam, so the restored workers' roles and models are
+// known.
 func (s *Swarm) RestoreReviewGate(prev *Snapshot, ops []ReviewOp) {
 	if prev == nil {
 		return
 	}
 	for _, op := range ops {
+		if op.Land {
+			s.review.mu.Lock()
+			s.review.landLocked(op.Task, op.Files)
+			s.review.mu.Unlock()
+			continue
+		}
 		t, ok := prev.Task(op.Task)
 		if !ok {
 			continue
@@ -90,7 +101,7 @@ func (s *Swarm) RestoreReviewGate(prev *Snapshot, ops []ReviewOp) {
 		case StatusReview:
 			_ = s.reviewSubmission(t)(nil, t)
 		case StatusDone:
-			if t.Status == StatusDone && (t.Closure.kind == CloseVerified || t.Closure.kind == CloseAgreed) { // accepted, not resolved as unneeded
+			if op.Closure == CloseVerified || op.Closure == CloseAgreed { // accepted, not resolved as unneeded
 				s.noteAccepted(t)
 			}
 		}

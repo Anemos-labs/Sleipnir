@@ -549,15 +549,22 @@ func TestAResumedTeamStillOwesTheReviewOfWorkMergedBeforeTheStop(t *testing.T) {
 		{ID: "T2", Title: "review", Role: ReviewerRole, Owner: "rv-1", Status: StatusDone, Closure: closeAs(CloseVerified)},
 		{ID: "T3", Title: "implement more", Role: "backend", Owner: "be-1", Status: StatusDone, Closure: closeAs(CloseVerified), Files: []string{"b.go"}},
 		{ID: "T4", Title: "not needed", Role: "backend", Status: StatusDone, Closure: closeAs(CloseUnneeded), Files: []string{"c.go"}},
+		{ID: "T5", Title: "reopened after its acceptance", Role: "backend", Owner: "be-1", Status: StatusTodo, Files: []string{"d.go"}},
 	}}
+	review := func(id string) ReviewOp { return ReviewOp{Task: id, Status: StatusReview} }
+	done := func(id string, k ClosureKind) ReviewOp { return ReviewOp{Task: id, Status: StatusDone, Closure: k} }
+	land := func(id string) ReviewOp { return ReviewOp{Task: id, Land: true, Files: []string{"e.go"}} }
 	cases := []struct {
 		name string
 		ops  []ReviewOp
 		want string
 	}{
-		{"merged after the review", []ReviewOp{{"T1", StatusReview}, {"T1", StatusDone}, {"T2", StatusReview}, {"T2", StatusDone}, {"T3", StatusReview}, {"T3", StatusDone}}, "T3"},
-		{"reviewed last", []ReviewOp{{"T1", StatusDone}, {"T3", StatusDone}, {"T2", StatusReview}, {"T2", StatusDone}, {"T4", StatusDone}}, ""},
-		{"review written before the last merge", []ReviewOp{{"T1", StatusDone}, {"T2", StatusReview}, {"T3", StatusDone}, {"T2", StatusDone}}, "T3"},
+		{"merged after the review", []ReviewOp{review("T1"), done("T1", CloseVerified), review("T2"), done("T2", CloseVerified), review("T3"), done("T3", CloseVerified)}, "T3"},
+		{"reviewed last", []ReviewOp{done("T1", CloseVerified), done("T3", CloseVerified), review("T2"), done("T2", CloseVerified), done("T4", CloseUnneeded)}, ""},
+		{"review written before the last merge", []ReviewOp{done("T1", CloseVerified), review("T2"), done("T3", CloseVerified), done("T2", CloseVerified)}, "T3"},
+		{"accepted, then reopened", []ReviewOp{review("T2"), done("T2", CloseVerified), done("T5", CloseVerified)}, "T5"},
+		{"manager changes after the review", []ReviewOp{done("T1", CloseVerified), review("T2"), done("T2", CloseVerified), land("manager changes")}, "manager changes"},
+		{"a revision before the review", []ReviewOp{land("T1"), review("T2"), done("T2", CloseVerified)}, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
