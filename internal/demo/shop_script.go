@@ -106,6 +106,9 @@ func (s *shopScript) respond(c *mock.Call) mock.Reply {
 	if id == "" {
 		return mock.Reply{Text: "nothing to do"}
 	}
+	if r, ok := mock.Rewait(c); ok && role == "manager" {
+		return r
+	}
 	s.mu.Lock()
 	n := s.step[id]
 	s.step[id]++

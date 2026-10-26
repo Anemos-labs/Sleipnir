@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -174,5 +175,71 @@ func TestRestoredWorkersSayWaitingOnlyForAnUnfinishedTask(t *testing.T) {
 	}
 	if got := line("be-2"); got != "" {
 		t.Errorf("be-2, whose task is merged: %q", got)
+	}
+}
+
+// While a worker sits free, the manager's wait for several tasks returns as soon as one of them newly reaches review: its verdict
+// is due then, not once the longest of the others settles. A live run slept ten minutes beside two reviews while one task ran on.
+// With every worker busy the wait goes on for all of them.
+func TestManagersWaitReturnsWhenAnAwaitedTaskReachesReview(t *testing.T) {
+	for _, free := range []bool{true, false} {
+		t.Run(fmt.Sprintf("free worker %v", free), func(t *testing.T) {
+			release := make(chan struct{})
+			r := newRVRig(t, Config{MaxWorkers: 2, Team: []string{"backend", "backend"}}, func(ctx context.Context, c *rvCall) rvReply {
+				if c.Role == "backend" {
+					select { // the worker on the long task keeps running
+					case <-release:
+					case <-ctx.Done():
+					}
+				}
+				return rvReply{Text: "ok"}
+			})
+			defer close(release)
+			if _, err := r.sw.StartManager(); err != nil {
+				t.Fatal(err)
+			}
+			if res := r.callTool(context.Background(), "spawn", "mgr", "manager", map[string]any{"role": "backend", "task": "the long task", "solo": true}); res.IsError {
+				t.Fatal(res.Text)
+			}
+			plan := agreementTask(t, r.sw.Board, "Shared contract")
+			if err := r.sw.Board.Assign("mgr", "sc-1", plan.ID); err != nil {
+				t.Fatal(err)
+			}
+			long := r.sw.Board.Snapshot().Tasks[0].ID
+			if free {
+				r.sw.Board.SetAgent(AgentInfo{ID: "be-2", Role: "backend", State: "idle"}) // a worker with nothing to do
+			}
+			done := make(chan string, 1)
+			go func() {
+				res := r.callTool(context.Background(), "wait", "mgr", "manager", map[string]any{"until": []string{long, plan.ID}, "timeout_sec": 60})
+				done <- res.Text
+			}()
+			time.Sleep(200 * time.Millisecond)
+			select {
+			case got := <-done:
+				t.Fatalf("the wait returned before anything reached review: %s", got)
+			default:
+			}
+			if err := r.sw.Board.submitAgreementAt("sc-1", plan.ID, 0, "proposal", "", "Use the shared interface."); err != nil {
+				t.Fatal(err)
+			}
+			wait := 10 * time.Second
+			if !free {
+				wait = time.Second
+			}
+			select {
+			case got := <-done:
+				if !free {
+					t.Fatalf("the wait returned with every worker busy: %s", got)
+				}
+				if !strings.Contains(got, plan.ID+" reached review while be-2 is free") {
+					t.Fatalf("the wait did not say what reached review: %s", got)
+				}
+			case <-time.After(wait):
+				if free {
+					t.Fatal("the wait slept on beside a task in review and a free worker")
+				}
+			}
+		})
 	}
 }

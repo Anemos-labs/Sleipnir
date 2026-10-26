@@ -561,7 +561,7 @@
   },
   {
     "name": "wait",
-    "description": "Sleep until a task changes state, mail arrives, or the timeout passes (default 120s, max 600s); costs no requests while asleep. until: task ids to wait for (returns when all reach review/done/failed). Returns what changed since you last looked.",
+    "description": "Sleep until a task changes state, mail arrives, or the timeout passes (default 120s, max 600s); costs no requests while asleep. until: task ids to wait for (returns when all reach review/done/failed, or, for the manager, when one newly reaches review while a worker sits free). Returns what changed since you last looked.",
     "input_schema": {
       "properties": {
         "timeout_sec": {
