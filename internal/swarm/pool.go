@@ -162,8 +162,14 @@ func beginPoolIn(d *draft, id string, members []string) error {
 
 // poolReady says why the task t cannot begin a pool now, or nil: it must be an unassigned parent task whose dependencies are done.
 func poolReady(sn *Snapshot, t Task) error {
-	if t.Status != StatusTodo || t.Parent != "" {
-		return fmt.Errorf("%s is not an unassigned parent task", t.ID)
+	// The refusal names what is wrong: a resumed manager re-spawned a done review task and read "not an unassigned parent task".
+	switch {
+	case t.Parent != "":
+		return fmt.Errorf("%s is a child of %s: a pool starts on a top-level task", t.ID, t.Parent)
+	case t.Status == StatusDone || t.Status == StatusFailed:
+		return fmt.Errorf("%s is %s: a pool starts only on a todo task (create a new task for more work)", t.ID, t.Status)
+	case t.Status != StatusTodo:
+		return fmt.Errorf("%s is %s, owned by %s: a pool starts only on a todo task", t.ID, t.Status, ownerOrUnassigned(t.Owner))
 	}
 	if ok, why := depsDone(sn, t); !ok {
 		return fmt.Errorf("dependency %s is not complete", why.ID)
