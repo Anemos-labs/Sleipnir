@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -34,6 +35,31 @@ func (s *Swarm) ReserveIDs(ids map[string]string) {
 					s.seq[role] = max(s.seq[role], n)
 				}
 			}
+		}
+	}
+}
+
+// RestoredMerge is a task.merge record of the log: the integration commit, and
+// whether there was nothing to merge.
+type RestoredMerge struct {
+	Commit string
+	Empty  bool
+}
+
+// RestoreMerges brings back the harness's record of merged work (task id -> its
+// last merge since it was last started, from the log): a task in review whose
+// assignment the merge queue took before the process stopped stays in review, and
+// the manager can accept it, instead of being done again. Only an isolated run
+// has such records; it must run before RestoreTeam.
+func (s *Swarm) RestoreMerges(prev *Snapshot, merges map[string]RestoredMerge) {
+	if prev == nil || !s.isolated() {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, t := range prev.Tasks {
+		if r, ok := merges[t.ID]; ok && t.Status == StatusReview {
+			s.merged[t.ID] = mergeRec{rev: t.Rev, files: slices.Clone(t.Files), commit: r.Commit, empty: r.Empty}
 		}
 	}
 }
@@ -73,6 +99,12 @@ func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []Recov
 		}
 	}
 	s.ReserveIDs(ids)
+	keep := map[string]bool{}
+	for _, t := range prev.Tasks {
+		if _, ok := s.mergedFor(t); ok && t.Status == StatusReview {
+			keep[t.ID] = true
+		}
+	}
 	owners := map[string]string{}
 	var restored []*member
 	for _, w := range workers {
@@ -80,7 +112,7 @@ func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []Recov
 		var tree *workspace.Tree
 		var err error
 		task, hasTask := prev.Task(w.Task)
-		unfinished := hasTask && task.Status != StatusDone && task.Status != StatusFailed
+		unfinished := hasTask && task.Status != StatusDone && task.Status != StatusFailed && !keep[task.ID]
 		if s.isolated() && !role.ReadOnly {
 			path := filepath.Join(s.deps.Isolation.Manager.Dir, w.ID)
 			if _, err := os.Lstat(path); os.IsNotExist(err) && unfinished && w.Snapshot != nil {
@@ -124,7 +156,7 @@ func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []Recov
 	// A pool leader can own its parent and a child simultaneously. Recover all
 	// still-owned assignments, not only the worker's most recent task card.
 	for _, task := range prev.Tasks {
-		if task.Status == StatusDone || task.Status == StatusFailed || task.Owner == "" {
+		if task.Status == StatusDone || task.Status == StatusFailed || task.Owner == "" || keep[task.ID] {
 			continue
 		}
 		for _, m := range restored {
@@ -134,7 +166,7 @@ func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []Recov
 			}
 		}
 	}
-	s.Board.RestoreOwners(prev, owners)
+	s.Board.RestoreKeeping(prev, owners, keep)
 	// Only a worker that holds an unfinished task waits for it to restart; one whose last task is settled is plain idle, free for new
 	// work (a line saying it waits would tell the manager it is taken).
 	held := map[string][]string{}
