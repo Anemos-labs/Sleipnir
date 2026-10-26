@@ -625,3 +625,21 @@ func TestTheManagersWaitAfterAResumeSaysWhatToStartAgain(t *testing.T) {
 		t.Errorf("resuming the reserved parent: %v, want it to name %q", err, want)
 	}
 }
+
+// Starting a pool on a task that cannot begin one says what is wrong with it: a resumed manager re-spawned a done review task and
+// was told only that it was "not an unassigned parent task".
+func TestAPoolStartOnAFinishedTaskSaysItIsFinished(t *testing.T) {
+	r := newPoolRig(t)
+	if err := r.sw.Board.mutate("mgr", "finish", func(d *draft) error {
+		i := taskIdx(d.Snapshot, r.parent.ID)
+		p := d.Tasks[i]
+		p.Status, p.Closure = StatusDone, closeAs(CloseVerified)
+		return d.put(i, p)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	want := r.parent.ID + " is done: a pool starts only on a todo task"
+	if _, err := r.sw.Spawn(SpawnReq{Agent: r.lead, TaskID: r.parent.ID, By: "mgr"}); err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("spawning a done pool task: %v, want it to say %q", err, want)
+	}
+}
