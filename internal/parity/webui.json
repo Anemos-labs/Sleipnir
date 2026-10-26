@@ -2633,6 +2633,7 @@
      "role-model",
      "swarm",
      "team",
+     "training-logs",
      "trust-project",
      "verbose",
      "verify"
@@ -2674,6 +2675,7 @@
      "session-dir",
      "swarm",
      "team",
+     "training-logs",
      "trust-project",
      "verbose",
      "verify"
@@ -2721,6 +2723,7 @@
      "role-model",
      "session-dir",
      "team",
+     "training-logs",
      "trust-project",
      "verbose",
      "verify"
