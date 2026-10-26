@@ -226,20 +226,39 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		return s.readTask(c, in.ID, "task get"), nil
 	case "claim":
 		ro := s.roles[c.Env.Role].ReadOnly
+		m := s.get(me)
+		// A claim of the task the worker is already on changes nothing on the board: it neither counts as progress nor queues the
+		// assignment again. A worker on a 5k-entity perf task claimed its two tasks three times in 45 minutes, each time told to
+		// re-read its files, and each claim cleared the harness's no-progress alarm.
+		t0, _ := s.Board.Snapshot().Task(in.ID)
+		current := t0.Owner == me && t0.Status == StatusDoing && m != nil && m.currentTask() == in.ID
 		if err := s.Board.claim(me, in.ID, s.claimCheck(me, ro)); err != nil {
 			return tools.Errorf("%v", err), nil
 		}
-		s.trackClaim(me, in.ID)
+		if !current {
+			s.trackClaim(me, in.ID)
+		}
 		// A self-claim is the same handoff as spawn reuse: dependencies may have
 		// landed while this persistent worker was planning in an older checkout.
 		// Repeated claims also refresh: peers can merge while this task stays doing.
-		if m := s.get(me); m != nil && m.tree != nil {
+		if m != nil && m.tree != nil {
+			// Work the checkout already has: the queue's tip is in its history (a dirty tree's sync still commits the draft).
+			had, _ := m.tree.Repo().IsAncestor(ctx, s.deps.Isolation.Queue.Tip(), "HEAD")
 			if note, err := s.syncTree(ctx, m); err != nil {
 				return text("%s is yours, but the checkout could not receive integrated work: %s. Repair the checkout or ask the manager before implementing.", in.ID, cleanText(err.Error(), 200)), nil
 			} else if note != "" {
 				return text("%s is yours. %s Resolve these conflicts before implementing.", in.ID, note), nil
 			}
+			if had {
+				if current {
+					return text("%s is already yours and the task you are on; your checkout already had all integrated work, so nothing changed. Carry on with it.", in.ID), nil
+				}
+				return text("%s is yours; your checkout already had all integrated work.", in.ID), nil
+			}
 			return text("%s is yours; your checkout now includes integrated work. Re-read the relevant files before implementing.", in.ID), nil
+		}
+		if current {
+			return text("%s is already yours and the task you are on; nothing changed. Carry on with it.", in.ID), nil
 		}
 		return text("%s is yours", in.ID), nil
 	case "revise", "resolve":

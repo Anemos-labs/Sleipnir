@@ -382,6 +382,7 @@ type Agent struct {
 	// Cache state (see warm.go).
 	lastStart         time.Time
 	mainReqs          int  // completed main-thread requests
+	promptTokens      int  // the input of the latest answered main request: how full the context is
 	reportsCache      bool // the provider has reported cache reads or writes at least once
 	lastMiss          bool // the previous request read far less than the guard expected
 	lastEstAll        int  // estimated and reported size of the previous main prompt,
@@ -582,6 +583,14 @@ func (a *Agent) Usage() (core.Usage, float64) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.usage, a.costUSD
+}
+
+// PromptTokens is the input of the agent's latest answered main request, cached or not: the size of its context now, as the provider
+// counted it. Zero before the first answer.
+func (a *Agent) PromptTokens() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.promptTokens
 }
 
 // ListUSD returns the cumulative API list-price value of the agent's usage that a subscription plan covered (its model's and its

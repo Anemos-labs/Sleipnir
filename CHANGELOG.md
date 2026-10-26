@@ -38,6 +38,32 @@ they do not indicate whether a change has been released.
   reviewer asked to write throwaway tests in $TMPDIR tried five spellings
   of the same write. About 40 tokens more in the reviewer's and the
   manager's role pins.
+- A resumed parent whose pool had accepted its plan starts again with that
+  pool and that plan. The free members of its saved pool form it again, in
+  their order, and are told to continue the accepted plan and its child
+  tasks; a saved member that is away (on a task of its own, or beyond the
+  cap) is left out and the pool goes on without it. It used to be rebuilt
+  from the role's first free members under the cap, and when they differed
+  from the saved pool it went back to planning with no agreement: after a
+  container restart a two-member backend pool, executing with a child task
+  half done in its leader's tree, was planned again by the leader and three
+  idle members. A pool still planning starts over unless its members are
+  the same, as before.
+- A worker that claims the task it is already on, with nothing merged since
+  its last sync, is told nothing changed and to carry on. It was told its
+  checkout "now includes integrated work" and to re-read its files, its
+  assignment was queued again, and the claim reset the no-progress alarm. A
+  worker on a perf task claimed its two tasks three times in 45 minutes and
+  re-read the same file after each. When work has merged, the claim still
+  syncs and says so. Only that tool result changes, and the repeated
+  assignment card is no longer sent.
+- The board's `ctx_tokens` for an agent is now the input of its latest
+  answered request, cached or not. It was 0 for every agent because the
+  member never wrote it, so the status line a worker sees each turn never
+  showed its context size. That line now reads, for example,
+  `you: be-6 (backend) · T87 · ctx 167k`: the only prompt bytes that change
+  are in that live status line, which is outside the cached prefix.
+  `Agent.PromptTokens` reports the figure.
 - A parent whose pool would have one member (the other members of the role
   work alone, or sit in pools that spare nobody) goes to that member as a
   solo task. A pool of one proposed a plan to itself, agreed with itself and

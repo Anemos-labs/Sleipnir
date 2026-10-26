@@ -239,6 +239,7 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 	delete(a.pendingRequests, reqID)
 	a.lastStart = start
 	a.mainReqs++
+	a.promptTokens = totalIn
 	a.reportsCache = a.reportsCache || u.CacheReadTokens > 0 || u.CacheWriteTokens() > 0
 	reports := a.reportsCache
 	a.lastReqEpoch, a.lastReqLen = epoch, len(stack.Thread.Turns)
