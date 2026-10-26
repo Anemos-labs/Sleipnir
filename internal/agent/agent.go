@@ -780,7 +780,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 		}
 	}
 	a.rep.reset()
-	a.tests.reset()
+	a.tests.reset(a.cfg.VerifyHint)
 	phase := "between" // what a cancellation interrupted, for agent.cancel
 	defer func() {
 		if err := ctx.Err(); err != nil {

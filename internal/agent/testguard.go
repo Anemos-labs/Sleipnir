@@ -16,7 +16,11 @@ import (
 // contradicted requirement or an implementation fix rather than forbidding edits.
 
 var (
-	testCmdRe  = regexp.MustCompile(`\b(go test|pytest|py\.test|unittest|npm (run )?test|yarn test|pnpm test|jest|vitest|cargo test|make test|mvn test|gradle test|rspec|phpunit|mix test)\b`)
+	// testCmdRe matches a command that runs tests: a test runner by name, a build tool's test subcommand after any flags
+	// (mvn -q test, ./gradlew --offline test, npm run test:unit), or Node's built-in runner (node --test).
+	testCmdRe = regexp.MustCompile(`\b(pytest|py\.test|unittest|jest|vitest|mocha|rspec|phpunit|ctest|tox|nox)\b|` +
+		`\b(go|cargo|dotnet|swift|deno|bun|mix|stack|cabal|dune|bazel|mvnw?|gradlew?|npm|yarn|pnpm|make|rake)(\s+[-+][\w.:=/+-]+)*\s+(run\s+)?tests?\b|` +
+		`\bnode(\s+-[\w.:=/+-]+)*\s+--test\b`)
 	testPathRe = regexp.MustCompile(`(?i)(_test\.go|_test\.py|\.(test|spec)\.[a-z]+|_spec\.rb|Test\.java)$|(^|/)test_[^/]*\.py$|(^|/)(tests?|__tests__)/`)
 	patchFile  = regexp.MustCompile(`(?m)^\*\*\* (?:Update|Add|Delete) File: (.+)$`)
 )
@@ -27,10 +31,17 @@ type testGuard struct {
 
 	edited   bool // code was changed in this run
 	ranSince bool // and a test command has run since the last such change
+
+	hint string // the project's own test command (Config.VerifyHint), which counts as a test run however it is spelled
 }
 
-// reset clears the test guard's accumulated verification state.
-func (g *testGuard) reset() { *g = testGuard{} }
+// reset clears the test guard's accumulated verification state and sets the project's test command.
+func (g *testGuard) reset(hint string) { *g = testGuard{hint: strings.TrimSpace(hint)} }
+
+// isTestCommand reports whether a shell command runs tests: a known runner, or the project's own test command.
+func (g *testGuard) isTestCommand(cmd string) bool {
+	return testCmdRe.MatchString(cmd) || (g.hint != "" && strings.Contains(cmd, g.hint))
+}
 
 // editedPaths are the files a write, edit or patch call names.
 func editedPaths(call core.Block) []string {
@@ -76,7 +87,7 @@ func (g *testGuard) observe(calls, results []core.Block, exitFailed []bool) stri
 			var in struct {
 				Command string `json:"command"`
 			}
-			if json.Unmarshal(call.Input, &in) == nil && testCmdRe.MatchString(in.Command) {
+			if json.Unmarshal(call.Input, &in) == nil && g.isTestCommand(in.Command) {
 				g.ranSince = true
 				failed := i < len(exitFailed) && exitFailed[i]
 				if failed != g.failed {
