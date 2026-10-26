@@ -23,8 +23,10 @@ type evidenceRequest struct {
 }
 
 // evidenceText extracts canonical tool evidence; it never relies on compacted
-// agent context. Claims in assistant prose are deliberately excluded.
-func evidenceText(e events.Event) string {
+// agent context. Claims in assistant prose are deliberately excluded. calls names
+// the tool call each result answers (callLabel), so that a result is found by the
+// command that produced it.
+func evidenceText(e events.Event, calls map[string]string) string {
 	switch e.Type {
 	case "goal.evidence", "delivery.evidence", events.TypeToolCall, events.TypeToolResult, events.TypeAgentSpawn, events.TypeAgentRestore, events.TypeTaskMerge, events.TypeMergeMerged, events.TypeMergeVerifyFail, events.TypeToolJob:
 		return string(e.Data)
@@ -36,13 +38,47 @@ func evidenceText(e events.Event) string {
 		var out []string
 		for _, b := range t.Blocks {
 			if b.Kind == core.BlockToolResult {
-				out = append(out, fmt.Sprintf("tool result %s error=%v\n%s", b.ToolID, b.IsError, b.PlainText()))
+				of := ""
+				if c := calls[b.ToolID]; c != "" {
+					of = " of " + c
+				}
+				out = append(out, fmt.Sprintf("tool result %s%s error=%v\n%s", b.ToolID, of, b.IsError, b.PlainText()))
 			}
 		}
 		return strings.Join(out, "\n")
 	}
 	return ""
 }
+
+// callLabel is how a tool call is named beside its result: the tool and the start of its input, the command for a shell. A judge
+// that searched for "make cross" found the calls that ran it but never their output, which is in another record, and read one
+// call three times looking for it.
+func callLabel(data []byte) (id, label string) {
+	var c struct {
+		ID    string          `json:"id"`
+		Name  string          `json:"name"`
+		Input json.RawMessage `json:"input"`
+	}
+	if json.Unmarshal(data, &c) != nil || c.ID == "" {
+		return "", ""
+	}
+	in := string(c.Input)
+	var shell struct {
+		Command string `json:"command"`
+	}
+	if json.Unmarshal(c.Input, &shell) == nil && shell.Command != "" {
+		in = shell.Command
+	}
+	in = strings.Join(strings.Fields(in), " ")
+	if r := []rune(in); len(r) > 200 {
+		in = string(r[:200]) + "…"
+	}
+	return c.ID, strings.TrimSpace(c.Name + " " + in)
+}
+
+// resultMark stands in a shown tool call's line for the record of its result, which the log holds later; goalEvidence fills it
+// in once the scan has passed it.
+const resultMark = "\x00result:"
 
 // goalEvidence pages or searches the durable log through a fixed cutoff. A search
 // (an empty query pages every record) lists the newest matches first, so the last
@@ -82,16 +118,47 @@ func (s *Session) goalEvidence(ctx context.Context, g *goal.State, cutoff uint64
 	// A search lists the newest matches first: the last offset+20 matches are kept as the log is read, in a ring.
 	keep := req.Offset + 20
 	var ring []string
+	calls := map[string]string{}   // tool call id -> callLabel
+	pending := map[string]bool{}   // the calls shown, whose result records are still to be found
+	results := map[string]uint64{} // a shown call's id -> the record of its result
 	err := events.Scan(filepath.Join(s.Dir, "events.jsonl"), func(e events.Event) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if e.Seq <= g.StartSeq || e.Seq > cutoff || (reading && !wanted[e.Seq]) {
+		if e.Seq > cutoff {
 			return nil
 		}
-		body := evidenceText(e)
+		callID := ""
+		switch e.Type {
+		case events.TypeToolCall:
+			var label string
+			if callID, label = callLabel(e.Data); callID != "" {
+				calls[callID] = label
+			}
+		case events.TypeTurnAppend:
+			if len(pending) > 0 {
+				var t core.Turn
+				if json.Unmarshal(e.Data, &t) == nil {
+					for _, b := range t.Blocks {
+						if b.Kind == core.BlockToolResult && pending[b.ToolID] {
+							delete(pending, b.ToolID)
+							results[b.ToolID] = e.Seq
+						}
+					}
+				}
+			}
+		}
+		if e.Seq <= g.StartSeq || (reading && !wanted[e.Seq]) {
+			return nil
+		}
+		body := evidenceText(e, calls)
 		if body == "" {
 			return nil
+		}
+		mark := ""
+		if callID != "" {
+			pending[callID] = true
+			mark = resultMark + callID + "\x00"
 		}
 		{
 			// A spilled result retains its full content-addressed output alongside the
@@ -127,7 +194,7 @@ func (s *Session) goalEvidence(ctx context.Context, g *goal.State, cutoff uint64
 				return nil
 			}
 			readRunes += end - req.Offset
-			fmt.Fprintf(&out, "record=%d agent=%s type=%s runes=%d:%d/%d\n%s\n", e.Seq, e.Agent, e.Type, req.Offset, end, len(r), string(r[req.Offset:end]))
+			fmt.Fprintf(&out, "record=%d agent=%s type=%s%s runes=%d:%d/%d\n%s\n", e.Seq, e.Agent, e.Type, mark, req.Offset, end, len(r), string(r[req.Offset:end]))
 			shown++
 			return nil
 		}
@@ -144,7 +211,7 @@ func (s *Session) goalEvidence(ctx context.Context, g *goal.State, cutoff uint64
 		start := max(0, len([]rune(folded[:at]))-80)
 		r := []rune(body)
 		snippet := string(r[start:min(start+300, len(r))])
-		line := fmt.Sprintf("record=%d agent=%s type=%s %s\n", e.Seq, e.Agent, e.Type, strings.Join(strings.Fields(snippet), " "))
+		line := fmt.Sprintf("record=%d agent=%s type=%s%s %s\n", e.Seq, e.Agent, e.Type, mark, strings.Join(strings.Fields(snippet), " "))
 		if i := (matched - 1) % keep; i == len(ring) {
 			ring = append(ring, line)
 		} else {
@@ -170,7 +237,30 @@ func (s *Session) goalEvidence(ctx context.Context, g *goal.State, cutoff uint64
 	if shown == 0 {
 		out.WriteString("No matching evidence.\n")
 	}
-	return out.String(), nil
+	return fillResultMarks(out.String(), results), nil
+}
+
+// fillResultMarks replaces each resultMark with the record of that call's result, or says the result is not in the archive.
+func fillResultMarks(text string, results map[string]uint64) string {
+	var b strings.Builder
+	for {
+		i := strings.Index(text, resultMark)
+		if i < 0 {
+			return b.String() + text
+		}
+		b.WriteString(text[:i])
+		rest := text[i+len(resultMark):]
+		j := strings.IndexByte(rest, 0)
+		if j < 0 {
+			return b.String() + rest
+		}
+		if seq, ok := results[rest[:j]]; ok {
+			fmt.Fprintf(&b, " (its result: record=%d)", seq)
+		} else {
+			b.WriteString(" (no result within the cutoff)")
+		}
+		text = rest[j+1:]
+	}
 }
 
 // goalEvidenceCutoff flushes pending results before establishing an immutable
