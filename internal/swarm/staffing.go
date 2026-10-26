@@ -15,7 +15,7 @@ import (
 // and the roster alone, without clocks, so the same board reads the same.
 //
 // The review gate: in a team with a reviewer slot, the goal is not reported met until a reviewer has looked at the merged result.
-// Every accepted implementation task of a writer (not an agreement, not the docs worker's catch-up) is a code merge; a task owned by
+// Every accepted implementation task of a writer (not an agreement, not the docs worker's catch-up) that changed the tree is a code merge; a task owned by
 // a reviewer and accepted after the last code merge is the review of it. Until there is one, the manager's live view says so, its
 // wait is refused once there is nothing else to wait for, and completion is vetoed (hold.go). Configured pools continue the same
 // manager context beyond the per-run veto limit until the review settles, cancellation or budget exhaustion.
@@ -77,7 +77,7 @@ func (g *reviewGate) touchedSince(generation int, scopes []string) int {
 }
 
 // noteAccepted records an accepted task for the review gate: a reviewer's task covers every merge before it, any other implementation
-// task that is not documentation is a merge. An agreement is neither.
+// task that is not documentation is a merge, unless the merge queue found nothing to merge. An agreement is neither.
 func (s *Swarm) noteAccepted(t Task) {
 	_ = s.noteAcceptedCheck(t)(nil, t)
 }
@@ -92,6 +92,11 @@ func (s *Swarm) noteAcceptedCheck(t Task) TaskCheck {
 		}
 	}
 	implementation := t.Pool == nil && t.Kind != TaskKindPlan && !s.isDocsTask(t) && !s.roles[role].ReadOnly
+	if r, ok := s.mergedFor(t); implementation && ok && r.empty {
+		// Nothing reached the shared tree (a tester's check that left no test behind): no merge, so a review running beside it
+		// still covers the result it reads.
+		implementation = false
+	}
 	model, quorum := "", 1
 	if role == ReviewerRole {
 		model, quorum = s.memberModel(t.Owner), s.reviewQuorum()

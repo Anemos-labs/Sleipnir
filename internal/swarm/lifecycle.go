@@ -198,7 +198,7 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 		rr.denyWrites = fmt.Sprintf("the %s only delivers mail: its one tool is mail", r.Name)
 		rr.only = map[string]bool{"mail": true}
 	case r.ReadOnly:
-		rr.denyWrites = fmt.Sprintf("the %s role is read-only: report findings instead of changing files", r.Name)
+		rr.denyWrites = fmt.Sprintf("the %s role is read-only: it writes no file, $TMPDIR included; report findings instead of changing files", r.Name)
 
 	}
 	requester = rr

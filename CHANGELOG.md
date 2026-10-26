@@ -7,6 +7,21 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A writer's accepted task that the merge queue had nothing to merge for
+  (a tester's check whose throwaway tests were deleted again) is no longer
+  a merge for the review gate, so a review accepted beside it still covers
+  the result. The manager is told that a tester's check of the merged
+  result and the review run side by side: a review chained after an
+  independent check waited out the whole check. About 45 tokens more in
+  the manager's role pin.
+- Read-only roles are told plainly that they write no file, $TMPDIR
+  included, and run no program of their own: the reviewer's pin, its
+  refusals and the manager's line on picking a role say so, and the
+  reviewer proves the change's safety fact with the project's own tests or
+  by walking the failure case, naming the missing test as a finding. A
+  reviewer asked to write throwaway tests in $TMPDIR tried five spellings
+  of the same write. About 40 tokens more in the reviewer's and the
+  manager's role pins.
 - A parent whose pool would have one member (the other members of the role
   work alone, or sit in pools that spare nobody) goes to that member as a
   solo task. A pool of one proposed a plan to itself, agreed with itself and
