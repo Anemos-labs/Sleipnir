@@ -682,6 +682,8 @@ Layered, cheapest first:
 3. **Content-hash staleness** on every edit: an edit is accepted only if the file is what the agent last read, whichever
    agent changed it since. Correct even if a lease were stolen. A refused edit of a text file of up to 48 KiB carries the
    file's current content, line-numbered, and counts as the read, so the agent makes the change again against it at once.
+   A shell command whose output shows a text file of up to 48 KiB whole, byte for byte as it is now (`cat a.go b.go`), counts
+   as the read of it too, and so does `cat -n`; a part of it (`head`, clipped output) does not.
 4. **Checkpoints** before every write; `/rewind` restores per file, per agent, or everything.
 5. **Isolation (optional)**: `swarm.isolation: "worktree"` gives each writer its own git worktree and integrates finished
    trees through a serial, verifying **merge queue**: three-way merge onto the integration tip, structured conflict

@@ -7,6 +7,36 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A `sed` that edits (`sed -i 's/a, 5,/b, 6,/' x.go`) is judged by the
+  files it touches: its file operands, a script it reads, and the files its
+  script names (`r`, `R`, `w`, `W`, the `w` flag of `s`). The script's own
+  words were taken for file names and split at commas and colons, so
+  `s/a, 5,/b, 6,/` named the root and the credentials protection refused
+  the edit in every mode. A script that runs a program (`e`) or is not
+  understood is judged as before.
+- A shell command whose output shows a file whole, as it is now (`cat a.go
+  b.go`), counts as the read of that file: an edit or an overwrite after it
+  is no longer refused for want of a read tool call. Only the output's
+  bytes decide (a text file of 16 bytes to 48 KiB, from the start of a
+  line, as `cat` or `cat -n` prints it), so a part of a file, clipped
+  output or a file changed since is not a read. The refusal of an unread file says so. Tool
+  results only; no prompt bytes change.
+- `run --json` without a terminal, in the default mode and with no
+  `--allow` rule, now starts its stream with a `notice` (level `warn`) that
+  says nothing can be approved and that `--mode accept-edits` lets edits and
+  the usual build and test commands through; the text mode already printed
+  it on stderr. A run that the guard ends because its actions kept being
+  refused with no one to ask names the same remedy in its error (and in the
+  result's `error`). No prompt bytes change.
+- Refusals by plan mode and by a read-only role's profile (a reviewer, a
+  scout) now count as refusals by a fixed rule: at the third of the last
+  twenty actions the agent is told, once, that no one can approve them and
+  another spelling is refused the same way, and at the tenth its run ends.
+  These refuse and never ask, so the guard for runs with nobody to ask never
+  saw them, and a reviewer asked to run the program it reviewed spent half
+  an hour on other ways to run it. The note now names plan mode and
+  read-only roles among the fixed rules. Tool results only; no prompt bytes
+  change.
 - The system prompt scales planning and verification to the task. A focused
   fix no longer calls plan first (before: any task of three steps or more),
   the program is run as a user would only when the change alters what its

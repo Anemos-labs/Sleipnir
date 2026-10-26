@@ -357,5 +357,8 @@ func (m *Manager) runForeground(ctx context.Context, env *tools.Env, sh shellInf
 	if st.signal != 0 {
 		res.Meta["signal"] = st.signal
 	}
+	if reason != killCancel && reason != killShutdown {
+		recordShown(env, dir, command, res.Text)
+	}
 	return res
 }

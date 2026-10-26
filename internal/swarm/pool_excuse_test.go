@@ -133,7 +133,7 @@ func TestTheManagerExcusesAPoolMemberThatCannotTakePart(t *testing.T) {
 // An excused member writes nothing while the pool is open, not even in a child task it still owned when it was excused (the excuse
 // and the release of its children are two board operations).
 func TestAnExcusedMemberDoesNotWriteInItsChild(t *testing.T) {
-	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"frontend", "frontend"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "waiting"} })
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"frontend", "frontend"}}, silentMembers)
 	if _, err := r.sw.Spawn(SpawnReq{Role: "frontend", Title: "build the UI", Files: []string{"web/**"}, By: "mgr"}); err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestAnExcusedMemberDoesNotWriteInItsChild(t *testing.T) {
 // A member excused from an open pool, or one still in it, does the work the manager gave it apart from the pool: a run kept an
 // excused frontend worker read-only for its solo task until the pool would close. Inside the pool's own work it still writes nothing.
 func TestAPoolMemberWritesInItsOwnTaskOutsideThePool(t *testing.T) {
-	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"frontend", "frontend"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "waiting"} })
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"frontend", "frontend"}}, silentMembers)
 	if _, err := r.sw.Spawn(SpawnReq{Role: "frontend", Title: "build the UI", Files: []string{"web/**"}, By: "mgr"}); err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +249,7 @@ func TestAPoolMemberWritesInItsOwnTaskOutsideThePool(t *testing.T) {
 // scopes overlap: in a run the manager made a one-member pool for a P0 task of a worker excused from the frontend pool, and every
 // edit of the child was refused by the pool it had left.
 func TestAnExcusedMemberWorksInAChildOfAnotherPool(t *testing.T) {
-	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"frontend", "frontend"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "waiting"} })
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"frontend", "frontend"}}, silentMembers)
 	if _, err := r.sw.Spawn(SpawnReq{Role: "frontend", Title: "incidents", Files: []string{"web/incidents/**"}, By: "mgr"}); err != nil {
 		t.Fatal(err)
 	}
@@ -292,4 +292,12 @@ func TestAnExcusedMemberWorksInAChildOfAnotherPool(t *testing.T) {
 			t.Errorf("the pool the member left decided its child's %s", req.Tool)
 		}
 	}
+}
+
+// silentMembers is a model that never answers until the swarm shuts down. An answer would end the member's turn, and a worker that ends
+// its turn without its task done sends that task to review: on a loaded machine that happened before the test read the task as the
+// member's own work in doing, and the pool then decided for it.
+func silentMembers(ctx context.Context, _ *rvCall) rvReply {
+	<-ctx.Done()
+	return rvReply{Text: "waiting"}
 }
