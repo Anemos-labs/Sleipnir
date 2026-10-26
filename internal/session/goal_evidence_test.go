@@ -74,7 +74,7 @@ func TestGoalEvidenceSurvivesNoiseAndKeepsObjectiveBoundaries(t *testing.T) {
 	if err != nil || !strings.Contains(got, "UNIQUE PASS 37 tests") {
 		t.Fatal("restore lost evidence")
 	}
-	if got := evidenceText(events.Event{Type: events.TypeTurnAppend, Data: []byte(`{"role":"assistant","blocks":[{"kind":"text","text":"everything passed"}]}`)}); got != "" {
+	if got := evidenceText(events.Event{Type: events.TypeTurnAppend, Data: []byte(`{"role":"assistant","blocks":[{"kind":"text","text":"everything passed"}]}`)}, nil); got != "" {
 		t.Fatal("assistant claim became proof")
 	}
 }
@@ -209,5 +209,43 @@ func TestGoalEvidenceListsTheNewestFirst(t *testing.T) {
 	got, err = s.goalEvidence(context.Background(), g, cutoff, evidenceRequest{})
 	if err != nil || !strings.HasPrefix(first(got), fmt.Sprintf("record=%d ", runs[2])) || strings.Contains(got, "goal.evidence") {
 		t.Fatalf("the first page: %s %v", got, err)
+	}
+}
+
+// A shell call and its output are separate records: the output names the command that produced it, so a search for the command
+// finds it, and the call names the record of its output. A judge that searched for "make cross" found only the calls, and read one
+// of them three times looking for the output.
+func TestAToolCallAndItsResultPointAtEachOther(t *testing.T) {
+	dir := t.TempDir()
+	log, err := events.Open(dir, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer log.Close()
+	s := &Session{Dir: dir, Log: log, Blobs: events.NewMemBlobs()}
+	g := goal.New("cross-build")
+	s.SaveGoal(g)
+	call, _ := log.Emit("be-1", events.TypeToolCall, map[string]any{"id": "c1", "name": "bash", "input": map[string]any{"command": "make cross", "description": "build"}})
+	log.Emit("be-1", events.TypeToolCall, map[string]any{"id": "c2", "name": "bash", "input": map[string]any{"command": "make lint"}})
+	result, _ := log.Emit("be-1", events.TypeTurnAppend, map[string]any{"role": "user", "blocks": []map[string]any{
+		{"kind": "tool_result", "tool_id": "c1", "result": []map[string]any{{"kind": "text", "text": "built 16 of 16 targets"}}},
+	}})
+	cutoff, err := s.goalEvidenceCutoff()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.goalEvidence(context.Background(), g, cutoff, evidenceRequest{Query: "make cross"})
+	if err != nil || !strings.Contains(got, fmt.Sprintf("record=%d agent=be-1 type=turn.append tool result c1 of bash make cross error=false built 16 of 16 targets", result)) {
+		t.Fatalf("the output was not found by its command: %s %v", got, err)
+	}
+	if !strings.Contains(got, fmt.Sprintf("record=%d agent=be-1 type=tool.call (its result: record=%d)", call, result)) {
+		t.Fatalf("the call did not name its result: %s", got)
+	}
+	got, err = s.goalEvidence(context.Background(), g, cutoff, evidenceRequest{Records: []uint64{call, call + 1}})
+	if err != nil || !strings.Contains(got, fmt.Sprintf("type=tool.call (its result: record=%d) runes=", result)) || !strings.Contains(got, "type=tool.call (no result within the cutoff) runes=") {
+		t.Fatalf("reading the calls: %s %v", got, err)
+	}
+	if strings.Contains(got, "\x00") {
+		t.Fatalf("a mark was left in the evidence: %q", got)
 	}
 }

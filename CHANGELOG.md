@@ -44,6 +44,13 @@ they do not indicate whether a change has been released.
   an hour on other ways to run it. The note now names plan mode and
   read-only roles among the fixed rules. Tool results only; no prompt bytes
   change.
+- In a goal judge's evidence, a tool's output now names the call that
+  produced it (the tool and the start of its input, the command for a
+  shell), so a search for a command finds its output; and a tool call, in a
+  search or a read, names the record of its result. A judge that searched
+  for `make cross` found only the calls, read one of them three times
+  looking for the output, and ruled that no command output proved anything.
+  No agent prompt bytes change.
 - A goal judge's repeated evidence request is answered by naming the
   earlier request whose answer it repeats, and a record it already read by
   record or records is not served again (the others in the request are).
