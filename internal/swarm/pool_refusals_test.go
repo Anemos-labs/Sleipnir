@@ -642,4 +642,17 @@ func TestAPoolStartOnAFinishedTaskSaysItIsFinished(t *testing.T) {
 	if _, err := r.sw.Spawn(SpawnReq{Agent: r.lead, TaskID: r.parent.ID, By: "mgr"}); err == nil || !strings.Contains(err.Error(), want) {
 		t.Errorf("spawning a done pool task: %v, want it to say %q", err, want)
 	}
+	// The other refusals, straight from poolReady: spawn routes neither a child nor a task in doing to a pool start.
+	sn := r.sw.Board.Snapshot()
+	for _, c := range []struct {
+		task Task
+		want string
+	}{
+		{Task{ID: "T9", Parent: "T4", Status: StatusTodo}, "T9 is a child of T4: a pool starts on a top-level task"},
+		{Task{ID: "T7", Status: StatusDoing, Owner: "be-2"}, "T7 is doing, owned by be-2: a pool starts only on a todo task"},
+	} {
+		if err := poolReady(sn, c.task); err == nil || err.Error() != c.want {
+			t.Errorf("poolReady(%s) = %v, want %q", c.task.ID, err, c.want)
+		}
+	}
 }
