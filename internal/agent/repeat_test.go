@@ -446,14 +446,46 @@ func TestPolicyRefusalsSpelledDifferentlyAreNudgedThenStopped(t *testing.T) {
 	}
 }
 
+// A read-only role is refused every way it tries to run what its profile does not allow: a reviewer asked to run the program it
+// reviewed tried go run, the built binary, a shell around it and a probe module, twenty-eight refusals in half an hour, none of them
+// the same call twice. It is told at the third, as for any fixed rule.
+func TestReadOnlyRoleRefusalsAreNudged(t *testing.T) {
+	refusing := fakeTool{name: "bash", run: func(in json.RawMessage) *tools.Result {
+		return tools.Errorf("permission denied: the reviewer role is read-only: %s is not a read-only command. It runs the project's tests and checks", in)
+	}}
+	r := newRig(t, rigOpts{noCompact: true, tools: []fakeTool{refusing}, steps: 4}, func(c *mock.Call) mock.Reply {
+		if assistantTurns(c) >= 3 {
+			return mock.Reply{Text: "could not run it"}
+		}
+		return mock.Reply{ToolCalls: []mock.ToolCall{callN(c, "bash", fmt.Sprintf(`{"command":"./mdlite < in%d.md"}`, assistantTurns(c)))}}
+	})
+	if _, err := r.agent.Run(context.Background(), "review mdlite"); err != nil {
+		t.Fatal(err)
+	}
+	notes := 0
+	for _, turn := range r.agent.Thread().Snapshot().Turns {
+		for _, b := range turn.Blocks {
+			if b.Kind == core.BlockText && strings.HasPrefix(b.Text, "[harness] 3 of your last 3 actions were refused by a fixed rule") {
+				notes++
+			}
+		}
+	}
+	if notes != 1 {
+		t.Fatalf("%d notes in the thread, want 1", notes)
+	}
+}
+
 func TestIsPolicyRefusal(t *testing.T) {
 	for text, want := range map[string]bool{
-		"permission denied: isolation: mgr works only inside its own tree":           true,
-		"permission denied (list /x): isolation: mgr works only inside its own tree": true,
-		"permission denied: built-in protection: ~ contains ~/.ssh (credentials)":    true,
-		"permission denied: denied by rule Edit(./migrations/**)":                    true,
-		"permission denied: approval required: accept-edits mode" + perm.NoOneToAsk:  false,
-		"exit status 1: isolation: is a word a test may print":                       false,
+		"permission denied: isolation: mgr works only inside its own tree":                                                           true,
+		"permission denied (list /x): isolation: mgr works only inside its own tree":                                                 true,
+		"permission denied: built-in protection: ~ contains ~/.ssh (credentials)":                                                    true,
+		"permission denied: denied by rule Edit(./migrations/**)":                                                                    true,
+		"permission denied: the reviewer role is read-only: go run ./cmd/x is not a read-only command. It runs the project's tests":  true,
+		"permission denied: role scout: plan mode (read-only): touch x is not a read-only command. Present a plan instead of acting": true,
+		"permission denied: plan mode (read-only): edits are not allowed. Present a plan instead of acting":                          true,
+		"permission denied: approval required: accept-edits mode" + perm.NoOneToAsk:                                                  false,
+		"exit status 1: isolation: is a word a test may print":                                                                       false,
 	} {
 		if got := perm.IsPolicyRefusal(text); got != want {
 			t.Errorf("IsPolicyRefusal(%q) = %v, want %v", text, got, want)
