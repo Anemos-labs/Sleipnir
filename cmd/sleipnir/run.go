@@ -190,16 +190,23 @@ func runCommand(ctx context.Context, name string, args []string) error {
 		return err
 	}
 	defer s.Close()
+	unattended := ""
+	if !interactive {
+		unattended = noOneToAskNote(perm.Mode(*mode), *allow)
+	}
 	if !*quiet && !*asJSON {
 		fmt.Fprintln(os.Stderr, wrapFor(os.Stderr, fmt.Sprintf("sleipnir %s · %s%s · session %s", version, s.Model.ID, budgetLabel(s), s.ID)))
-		if !interactive {
-			if n := noOneToAskNote(perm.Mode(*mode), *allow); n != "" {
-				fmt.Fprintln(os.Stderr, wrapFor(os.Stderr, n))
-			}
+		if unattended != "" {
+			fmt.Fprintln(os.Stderr, wrapFor(os.Stderr, unattended))
 		}
+	}
+	if *asJSON && unattended != "" {
+		// a script reads the stream, not stderr: the note is its first event
+		sink.Notice(mainAgent, "warn", unattended)
 	}
 	start := time.Now()
 	res, err := s.Run(ctx, prompt)
+	err = withRemedy(err, unattended)
 	s.SetEndReason(endReasonOf(ctx, err))
 	// An isolated run ends here: the verified result goes into the checkout and the
 	// trees are removed (a no-op, and nil, for a shared-tree run). Ctrl-C does not

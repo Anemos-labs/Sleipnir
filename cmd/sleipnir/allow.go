@@ -1,12 +1,14 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"path/filepath"
 	"strings"
 
+	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
@@ -103,6 +105,15 @@ func suggestAllow(command string) []string {
 
 // noOneToAskNote is what a run says first when nobody is there to answer and nothing lets the usual work through: in the default mode every edit
 // and every command that is not read-only is refused, and the model found that out by being refused, a step at a time, with the way out at the end.
+// withRemedy adds the note to a run that the repetition guard ended because its actions kept being refused with no one to ask:
+// the error is the last thing an unattended run prints, and the flag that would have let the work through belongs in it.
+func withRemedy(err error, note string) error {
+	if err == nil || note == "" || !errors.Is(err, agent.ErrStuck) || !perm.IsNoOneToAsk(err.Error()) {
+		return err
+	}
+	return fmt.Errorf("%w; %s", err, note)
+}
+
 func noOneToAskNote(mode perm.Mode, allow []string) string {
 	if len(allow) > 0 {
 		return ""
