@@ -2,6 +2,8 @@ package swarm
 
 import (
 	"fmt"
+	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -25,13 +27,65 @@ const DocsRole = "docs"
 // DocsTaskTitle starts the title of every catch-up task the harness creates.
 const DocsTaskTitle = "docs: catch up"
 
-// docsScope is the scope of a catch-up task: the Markdown at the root and the docs
+// docsScope is the scope every catch-up task has: the Markdown at the root and the docs
 // directory. Code stays with the roles that own it, and so does Markdown inside a
 // code directory: "**/*.md" would overlap every directory a task holds or will claim
 // (internal/api/** may hold a README; web/index.html, not there yet, may become a
 // directory), so a pass scoped so waited for every code task to close, and while it
-// ran no task scoped to a directory could be claimed.
+// ran no task scoped to a directory could be claimed. The Markdown files that exist
+// beside the changed code are added by name (docsScopeFor).
 var docsScope = []string{"*.md", "docs/**"}
+
+// docsScopeFor is docsScope plus the Markdown files that exist beside the changed code: for each file or directory a change's
+// scope names, the *.md files of its directory (a module's README is what its change made stale). Named files, never globs, so a
+// later code task on that directory collides with those files alone and only while the pass runs. Entries whose directory cannot
+// be told (a glob with no literal directory) add nothing.
+func (s *Swarm) docsScopeFor(b []docsChange) []string {
+	out := append([]string(nil), docsScope...)
+	root := s.deps.Root
+	if root == "" {
+		return out
+	}
+	seen := map[string]bool{}
+	for _, c := range b {
+		for _, f := range c.files {
+			dir := docsDirOf(f)
+			if dir == "" || dir == "." || dir == "docs" || seen[dir] {
+				continue
+			}
+			seen[dir] = true
+			matches, _ := filepath.Glob(filepath.Join(root, filepath.FromSlash(dir), "*.md"))
+			sort.Strings(matches)
+			for _, m := range matches {
+				if rel, err := filepath.Rel(root, m); err == nil && filepath.IsLocal(rel) {
+					out = append(out, filepath.ToSlash(rel))
+				}
+			}
+		}
+	}
+	return out
+}
+
+// docsDirOf is the literal directory a scope entry names: the entry itself for a directory ("svc/ratelimit/", "web"), its
+// directory for a file ("lru/lru.go" is lru), the part before the first glob character ("internal/api/**" is internal/api), and ""
+// when nothing literal is left or the entry is absolute.
+func docsDirOf(entry string) string {
+	e := strings.TrimSpace(entry)
+	if e == "" || strings.HasPrefix(e, "/") || strings.HasPrefix(e, "~") {
+		return ""
+	}
+	if i := strings.IndexAny(e, "*?[{"); i >= 0 {
+		e = e[:i]
+		if j := strings.LastIndex(e, "/"); j >= 0 {
+			return path.Clean(e[:j])
+		}
+		return ""
+	}
+	if strings.HasSuffix(e, "/") || path.Ext(e) == "" {
+		return path.Clean(e)
+	}
+	return path.Dir(e)
+}
 
 // docsRetry is how long the keeper waits before it tries again to start a catch-up
 // task that could not be started (no free slot, a scope overlap, the budget).
@@ -149,7 +203,7 @@ func (s *Swarm) docsTick(now time.Time) {
 	// The pass is put on the board first and then assigned by id: a start that fails
 	// leaves this one task in todo, which the next tick hands out again (above),
 	// never a second task for the same changes.
-	task, err := s.Board.CreateTask("harness", TaskSpec{Title: DocsTaskTitle + " (" + docsSummary(batch) + ")", Desc: docsBrief(batch), Role: DocsRole, Files: docsScope})
+	task, err := s.Board.CreateTask("harness", TaskSpec{Title: DocsTaskTitle + " (" + docsSummary(batch) + ")", Desc: docsBrief(batch), Role: DocsRole, Files: s.docsScopeFor(batch)})
 	k.mu.Lock()
 	if err != nil {
 		k.retryAt, k.waiting = now.Add(docsRetry), cleanText(err.Error(), 160)
@@ -234,7 +288,7 @@ func docsBrief(b []docsChange) string {
 		}
 		sb.WriteString("\n")
 	}
-	sb.WriteString("Keep three readers current: people (README, docs/), agents of later sessions (AGENTS.md: commands, layout, conventions, decisions), and this team (AGENTS.md is also its map, with a Capabilities section: one line per existing system, what it does, where it lives, its doc as path#heading). Change only what these changes made wrong or missing; keep it short and factual. Finish with task done and a one-line summary of what you changed.")
+	sb.WriteString("Keep three readers current: people (README, docs/), agents of later sessions (AGENTS.md: commands, layout, conventions, decisions), and this team (AGENTS.md is also its map, with a Capabilities section: one line per existing system, what it does, where it lives, its doc as path#heading). Change only what these changes made wrong or missing, in the documents that exist (your scope names the Markdown beside the changed code); a catch-up adds no README or AGENTS.md to a project that has none, which is a task of its own for the manager to create. Keep the pass short: read the change, fix the lines it made wrong, run only the commands you document, and finish with task done and a one-line summary of what you changed.")
 	return sb.String()
 }
 

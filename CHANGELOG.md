@@ -7,6 +7,22 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The stall sweep does not raise `idle_capacity` while every worker at work
+  is a read-only role or on a docs task: the team then waits for a verdict
+  on finished work, and idle writers are expected. Told of idle capacity
+  during the review, a manager created an adversarial-test task and the
+  run waited on it after the review had passed. Harness mail only; no
+  prompt bytes change.
+- A docs catch-up task's scope names the Markdown files that exist beside
+  the changed code (a module's README), besides the root Markdown and
+  docs/: named files, so a later task on that directory collides with
+  those files alone. Its brief says to edit the documents that exist, to
+  add no README or AGENTS.md to a project that has none, and to keep the
+  pass short. A docs worker scoped to the root alone mailed the manager to
+  widen its scope in every run that changed a module with a README, and
+  one wrote a README and an AGENTS.md into a fixture that had neither.
+  Task descriptions only; no prompt bytes change.
+- The `review_overrun` finding names each merged task once.
 - The manager is told to accept a task from its evidence (the merge, the
   last test run, the worker's command and result) and to leave probing
   the result to the reviewer, in parallel with the next work, instead of
