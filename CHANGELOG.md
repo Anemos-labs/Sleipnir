@@ -44,6 +44,12 @@ they do not indicate whether a change has been released.
   an hour on other ways to run it. The note now names plan mode and
   read-only roles among the fixed rules. Tool results only; no prompt bytes
   change.
+- A goal judge's repeated evidence request is answered by naming the
+  earlier request whose answer it repeats, and a record it already read by
+  record or records is not served again (the others in the request are).
+  One judgment re-read one record three times and ran one search twice, a
+  page of context and about a minute each on a slow model. A repeat still
+  counts against the 24 requests. No agent prompt bytes change.
 - A goal's judge is told after each evidence answer how many requests it
   has left (24 in all), and the last answer asks for its verdict. A judge
   never told the limit spent all 24 re-reading records (22 minutes on a slow

@@ -308,6 +308,61 @@ func TestAJudgeIsToldHowManyEvidenceRequestsAreLeft(t *testing.T) {
 	}
 }
 
+// A request the judge already made is answered by pointing at the earlier answer, and a record it already read is not served again:
+// a judge re-read one record three times and ran one search twice in a judgment.
+func TestAJudgesRepeatedRequestsPointAtTheEarlierAnswer(t *testing.T) {
+	repo := newRepo(t)
+	var mu sync.Mutex
+	var answers, asked []string
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if strings.Contains(c.System, "You judge whether a coding agent") {
+			mu.Lock()
+			defer mu.Unlock()
+			asked = append(asked, c.LastUser())
+			a := answers[0]
+			answers = answers[1:]
+			return mock.Reply{Text: a}
+		}
+		return mock.Reply{Text: "done"}
+	})
+	s, err := session.New(context.Background(), opts(t, repo, client, model))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	g := goal.New("make the tests pass")
+	s.SaveGoal(g)
+	if _, err := s.Run(context.Background(), goal.Start(g)); err != nil {
+		t.Fatal(err)
+	}
+	answers = []string{
+		`{"verdict":"inspect","query":"go test"}`,
+		`{"verdict":"inspect","query":" go test ","offset":0}`,
+		`{"verdict":"inspect","records":[1,2]}`,
+		`{"verdict":"inspect","records":[2,3]}`,
+		`{"verdict":"inspect","record":3}`,
+		`{"verdict":"continue","reason":"no test ran","left":["run go test"]}`,
+	}
+	if _, _, j := s.GoalJudged(context.Background(), g, nil); !j.Judged || j.Verdict.Reason != "no test ran" {
+		t.Fatalf("judgment %+v", j)
+	}
+	if len(asked) != 6 {
+		t.Fatalf("the judge was asked %d times", len(asked))
+	}
+	if !strings.Contains(asked[2], "You made this same request as request 1") || !strings.Contains(asked[2], "(22 evidence requests left.)") {
+		t.Errorf("a repeated search was answered %q", asked[2])
+	}
+	if strings.Contains(asked[3], "Already shown") {
+		t.Errorf("records read for the first time were called repeats: %q", asked[3])
+	}
+	if !strings.Contains(asked[4], "Already shown above, not repeated: 2 (request 3).") || strings.Contains(asked[4], "Ask for something else") {
+		t.Errorf("a request with one new record and one read before was answered %q", asked[4])
+	}
+	if !strings.Contains(asked[5], "Already shown above, not repeated: 3 (request 4). Ask for something else or give your verdict.") {
+		t.Errorf("a record read before was answered %q", asked[5])
+	}
+}
+
 func tail(s []string, i int) string {
 	if i >= len(s) {
 		return ""
