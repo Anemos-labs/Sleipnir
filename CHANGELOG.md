@@ -7,6 +7,25 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- In a goal judge's evidence, a tool's output now names the call that
+  produced it (the tool and the start of its input, the command for a
+  shell), so a search for a command finds its output; and a tool call, in a
+  search or a read, names the record of its result. A judge that searched
+  for `make cross` found only the calls, read one of them three times
+  looking for the output, and ruled that no command output proved anything.
+  No agent prompt bytes change.
+- A goal judge's repeated evidence request is answered by naming the
+  earlier request whose answer it repeats, and a record it already read by
+  record or records is not served again (the others in the request are).
+  One judgment re-read one record three times and ran one search twice, a
+  page of context and about a minute each on a slow model. A repeat still
+  counts against the 24 requests. No agent prompt bytes change.
+- A goal's judge is told after each evidence answer how many requests it
+  has left (24 in all), and the last answer asks for its verdict. A judge
+  never told the limit spent all 24 re-reading records (22 minutes on a slow
+  model), and the judgment ended with no verdict, pausing a goal whose 41
+  tasks were done. A request after the last is not answered. Only the
+  judge's evidence messages change; no agent prompt bytes change.
 - Building Sleipnir now needs Go 1.26.10 or newer (go.mod said 1.26.0).
   Go 1.26.0 to 1.26.4 race-instrument the darwin syscall path that runs in
   a forked child before exec (golang/go#79804, fixed in 1.26.5), so under
@@ -44,25 +63,6 @@ they do not indicate whether a change has been released.
   an hour on other ways to run it. The note now names plan mode and
   read-only roles among the fixed rules. Tool results only; no prompt bytes
   change.
-- In a goal judge's evidence, a tool's output now names the call that
-  produced it (the tool and the start of its input, the command for a
-  shell), so a search for a command finds its output; and a tool call, in a
-  search or a read, names the record of its result. A judge that searched
-  for `make cross` found only the calls, read one of them three times
-  looking for the output, and ruled that no command output proved anything.
-  No agent prompt bytes change.
-- A goal judge's repeated evidence request is answered by naming the
-  earlier request whose answer it repeats, and a record it already read by
-  record or records is not served again (the others in the request are).
-  One judgment re-read one record three times and ran one search twice, a
-  page of context and about a minute each on a slow model. A repeat still
-  counts against the 24 requests. No agent prompt bytes change.
-- A goal's judge is told after each evidence answer how many requests it
-  has left (24 in all), and the last answer asks for its verdict. A judge
-  never told the limit spent all 24 re-reading records (22 minutes on a slow
-  model), and the judgment ended with no verdict, pausing a goal whose 41
-  tasks were done. A request after the last is not answered. Only the
-  judge's evidence messages change; no agent prompt bytes change.
 - The system prompt scales planning and verification to the task. A focused
   fix no longer calls plan first (before: any task of three steps or more),
   the program is run as a user would only when the change alters what its
