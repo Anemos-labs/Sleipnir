@@ -29,16 +29,16 @@ func TestACatThatShowsTheWholeFileCountsAsItsRead(t *testing.T) {
 	a := write("src/a.go", "package src\n\nfunc A() int { return 1 }\n")
 	b := write("README.md", "# readme\n\nwhat the project is\n")
 	c := write("c.txt", long)
-	d := write("d.txt", long)
+	d := write("d.txt", "first line\n\nthird line, after a blank one\n")
 	tiny := write("t.txt", "x\n")
 
 	h.bash(env, "ls -la; echo ---; cat src/a.go README.md && head -n 3 c.txt; cat -n d.txt; cat t.txt")
-	for _, p := range []string{a, b} {
+	for _, p := range []string{a, b, d} {
 		if !env.Files.HasRead("main", p) {
 			t.Errorf("%s was shown whole and is not counted as read", p)
 		}
 	}
-	for p, why := range map[string]string{c: "head showed part of it", d: "cat -n showed it numbered", tiny: "it is too short to tell from chance"} {
+	for p, why := range map[string]string{c: "head showed part of it", tiny: "it is too short to tell from chance"} {
 		if env.Files.HasRead("main", p) {
 			t.Errorf("%s counts as read, yet %s", p, why)
 		}
@@ -53,6 +53,15 @@ func TestACatThatShowsTheWholeFileCountsAsItsRead(t *testing.T) {
 	for _, p := range []string{g1, g2} {
 		if !env.Files.HasRead("main", p) {
 			t.Errorf("%s, shown whole by a glob, is not counted as read", p)
+		}
+	}
+
+	n1 := write("num/one.txt", "alpha line one\nalpha line two\n")
+	n2 := write("num/two.txt", "beta line one\n\nbeta line three\n")
+	h.bash(env, "cat -n num/one.txt num/two.txt")
+	for _, p := range []string{n1, n2} {
+		if !env.Files.HasRead("main", p) {
+			t.Errorf("%s, shown whole by cat -n (numbered on from the file before it), is not counted as read", p)
 		}
 	}
 
