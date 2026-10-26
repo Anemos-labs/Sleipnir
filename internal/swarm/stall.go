@@ -59,14 +59,21 @@ const (
 	// told who is free, once, and decides. It clears when they are at work again, when no
 	// worker runs or no task is open; the manager's calls between two waits do not clear it.
 	StallIdleCapacity StallKind = "idle_capacity"
+	// StallReviewOverrun: a running reviewer's task has run longer than the work it reviews took to build (the merges no
+	// accepted review covers, their durations summed), and at least reviewOverrunFloor. A review that walks the same code
+	// over and over finds what its first pass found; the reviewer is told to write the report with what it has.
+	StallReviewOverrun StallKind = "review_overrun"
 )
+
+// reviewOverrunFloor is the least a review may run before StallReviewOverrun can hold, whatever the work took.
+var reviewOverrunFloor = 10 * time.Minute
 
 // idleCapacityAfter is how long a worker of a configured team has been idle before it
 // counts toward StallIdleCapacity.
 var idleCapacityAfter = 15 * time.Minute
 
 // StallKinds lists every stall kind in a fixed order.
-var StallKinds = []StallKind{StallClaimedNoProgress, StallManagerWaitingOnIdle, StallOrphanedTask, StallBlockedCycle, StallReviewStarved, StallIdleCapacity}
+var StallKinds = []StallKind{StallClaimedNoProgress, StallManagerWaitingOnIdle, StallOrphanedTask, StallBlockedCycle, StallReviewStarved, StallIdleCapacity, StallReviewOverrun}
 
 // Stall is one finding of the sweep. Every field is harness-written: ids, kinds and
 // counts, never text an agent wrote.
@@ -251,6 +258,8 @@ type memberView struct {
 	quiet                     int64 // model turns since its last progress call
 	turns                     int64
 	idleSince                 time.Time // when its last run ended (zero: it has not run, or runs now)
+	runSince                  time.Time // when its current run started (zero: it runs now)
+	role                      string
 }
 
 // stallFindings computes what holds now. It reads the board, the roster and the turn
@@ -266,9 +275,12 @@ func (s *Swarm) stallFindings() []Stall {
 	}
 	for id, m := range s.members {
 		m.mu.Lock()
-		v := memberView{running: m.life == lifeRunning, manager: m.manager, service: m.service}
+		v := memberView{running: m.life == lifeRunning, manager: m.manager, service: m.service, role: m.role}
 		if m.life == lifeIdle {
 			v.idleSince = m.idleAt
+		}
+		if m.run != nil {
+			v.runSince = m.run.started
 		}
 		m.mu.Unlock()
 		v.turns = m.turns.Load()
@@ -299,6 +311,32 @@ func (s *Swarm) stallFindings() []Stall {
 				}
 			}
 		}
+	}
+
+	// review_overrun: a reviewer's run has outlasted the work it reviews. The bound is the work's own duration (the merges no
+	// review covers yet, summed, with a floor), so a review of a day's work may take hours and a review of a fix may not.
+	for id, v := range views {
+		if !v.running || v.manager || v.service || v.role != ReviewerRole || v.runSince.IsZero() {
+			continue
+		}
+		task := currentTask(snap, id)
+		t, ok := snap.Task(task)
+		if !ok || t.Status != StatusDoing {
+			continue
+		}
+		ran := s.deps.Now().Sub(v.runSince)
+		work, ids := s.review.unreviewedWork()
+		bound := max(work, reviewOverrunFloor)
+		if ran <= bound {
+			continue
+		}
+		covers := "no merge"
+		if len(ids) > 0 {
+			covers = strings.Join(ids, ", ")
+		}
+		out = append(out, Stall{Kind: StallReviewOverrun, Task: task, Agent: id, Notify: id,
+			Detail: fmt.Sprintf("%s has reviewed %s for %d minutes; the work it reviews (%s) took %d minutes to build",
+				id, task, int(ran/time.Minute), covers, int(work/time.Minute))})
 	}
 
 	s.stalls.mu.Lock()
@@ -515,6 +553,9 @@ func stallNudge(f Stall, k int64, pools bool) string {
 	case StallIdleCapacity:
 		return "Stall check: " + f.Detail + ". If the objective needs more than the open tasks (a requirement nobody has started, a gap you found), " +
 			"create that work and assign it now: an idle worker starts at once. If the open tasks are all that is left, keep waiting."
+	case StallReviewOverrun:
+		return "Stall check: " + f.Detail + ". A second walk over the same code finds what the first did. Write the report now with what you have: " +
+			"the findings so far in priority order, what you checked and found fine, and what you did not reach, named as unverified; then task done."
 	}
 	return "Stall check: " + f.Detail
 }

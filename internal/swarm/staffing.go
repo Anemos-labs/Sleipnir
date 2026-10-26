@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Staffing and review: what the manager's live view says about capacity it leaves unused, and the review gate.
@@ -38,18 +40,64 @@ type reviewGate struct {
 	byModel map[string]int
 	// landed are the scopes each merge (by its number) may have touched, for the pools whose reconciled result it supersedes
 	// (poolCurrent). A merge with no entry, or with no scopes, may have touched any file.
-	landed map[int][]string
+	landed   map[int][]string
+	landedID map[int]string // the task of each merge, by its number
+	// began is when a run first held each assignment ("T3#rev"), and took how long the work of each merge (by its number) ran
+	// from then to its acceptance: what a review of it is measured against (reviewOverrun).
+	began map[string]time.Time
+	took  map[int]time.Duration
+}
+
+// noteBegan records when a run first took on an assignment, for the duration of the work (took). Later runs of the same
+// assignment (a restart, a handover) keep the first time: the work ran since then.
+func (g *reviewGate) noteBegan(id string, rev uint64, at time.Time) {
+	key := id + "#" + strconv.FormatUint(rev, 10)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.began == nil {
+		g.began = map[string]time.Time{}
+	}
+	if _, ok := g.began[key]; !ok {
+		g.began[key] = at
+	}
+}
+
+// tookLocked is how long the work of task t ran: from the first run that held its current assignment to now, 0 when no run did.
+// g.mu is held.
+func (g *reviewGate) tookLocked(t Task, now time.Time) time.Duration {
+	at, ok := g.began[t.ID+"#"+strconv.FormatUint(t.Rev, 10)]
+	if !ok || now.Before(at) {
+		return 0
+	}
+	return now.Sub(at)
+}
+
+// unreviewedWork is the sum of the durations of the merges no accepted review covers, and their ids in merge order.
+func (g *reviewGate) unreviewedWork() (time.Duration, []string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	var sum time.Duration
+	var ids []string
+	for n := g.reviewed + 1; n <= g.merges; n++ {
+		sum += g.took[n]
+		if id := g.landedID[n]; id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return sum, ids
 }
 
 // landLocked counts a change that reached the shared tree as the next merge: id names it, scopes are the files (or globs) it may
-// have touched, none when that is not known. g.mu is held.
-func (g *reviewGate) landLocked(id string, scopes []string) {
+// have touched, none when that is not known, and took is how long its work ran. g.mu is held.
+func (g *reviewGate) landLocked(id string, scopes []string, took time.Duration) {
 	g.merges++
 	g.last = id
 	if g.landed == nil {
-		g.landed = map[int][]string{}
+		g.landed, g.landedID, g.took = map[int][]string{}, map[int]string{}, map[int]time.Duration{}
 	}
 	g.landed[g.merges] = append([]string(nil), scopes...)
+	g.landedID[g.merges] = id
+	g.took[g.merges] = took
 }
 
 // touchedSince returns the first merge after generation that may have touched a file of scopes, or 0 when none did. A count
@@ -101,6 +149,7 @@ func (s *Swarm) noteAcceptedCheck(t Task) TaskCheck {
 	if role == ReviewerRole {
 		model, quorum = s.memberModel(t.Owner), s.reviewQuorum()
 	}
+	now := s.deps.Now()
 	return func(_ *Snapshot, t Task) error {
 		g := &s.review
 		g.mu.Lock()
@@ -118,7 +167,7 @@ func (s *Swarm) noteAcceptedCheck(t Task) TaskCheck {
 				g.reviewed = covered
 			}
 		case implementation:
-			g.landLocked(t.ID, t.Files)
+			g.landLocked(t.ID, t.Files, g.tookLocked(t, now))
 		}
 		return nil
 	}

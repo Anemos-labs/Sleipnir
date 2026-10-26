@@ -30,7 +30,7 @@ const (
 
 // Stall is a supervision finding of the swarm (swarm.stall), open until cleared.
 type Stall struct {
-	// Kind is the finding: claimed_no_progress, manager_waiting_on_idle, orphaned_task, blocked_cycle, review_starved or idle_capacity.
+	// Kind is the finding: claimed_no_progress, manager_waiting_on_idle, orphaned_task, blocked_cycle, review_starved, idle_capacity or review_overrun.
 	Kind   string    `json:"kind"`
 	Agent  string    `json:"agent,omitempty"`
 	Task   string    `json:"task,omitempty"`

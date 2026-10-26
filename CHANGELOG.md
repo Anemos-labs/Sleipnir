@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A reviewer whose run outlasts the work it reviews is told to write its
+  report: the stall sweep's new `review_overrun` finding holds when a
+  running reviewer's task has run longer than the merges no review covers
+  took to build (their durations summed, at least ten minutes), and the
+  reviewer's pin says a review takes less time than the work did. In one
+  run a reviewer spent twenty requests re-walking four small modules that
+  took fifteen minutes to build and never reported. The review gate now
+  records when each assignment first ran. About 60 tokens more in the
+  reviewer's role pin.
 - A writer's accepted task that the merge queue had nothing to merge for
   (a tester's check whose throwaway tests were deleted again) is no longer
   a merge for the review gate, so a review accepted beside it still covers

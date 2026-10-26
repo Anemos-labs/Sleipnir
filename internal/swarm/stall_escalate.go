@@ -112,6 +112,8 @@ func stallRemedy(k StallKind, pools bool) string {
 		return "Decide: give the idle workers the work the objective still needs, or let them stay idle if nothing is left."
 	case StallManagerWaitingOnIdle:
 		return "Decide: start a worker on the open work, or close the tasks nobody needs."
+	case StallReviewOverrun:
+		return "Decide: mail the reviewer to report what it has now, or stop it (retire) and give the review to another reviewer with a narrower brief."
 	}
 	return "Decide what ends it, or close the task it concerns."
 }
