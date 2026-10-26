@@ -145,8 +145,12 @@ func beginPoolIn(d *draft, id string, members []string) error {
 		return err
 	}
 	t.Owner, t.Status, t.Rev = members[0], StatusDoing, d.Version
-	if t.Pool != nil && slices.Equal(t.Pool.Members, members) {
+	// A pool with an accepted plan goes on with it when every member that starts it was in it: after a resume a member of the saved
+	// pool may be away (on a task of its own, or past the cap), and the plan and the child tasks it made stand without it. A pool
+	// still planning starts over unless its members are the same, as its votes were theirs.
+	if t.Pool != nil && (slices.Equal(t.Pool.Members, members) || t.Pool.Phase != "planning" && subsetOf(members, t.Pool.Members)) {
 		p := *t.Pool
+		p.Members = slices.Clone(members)
 		if p.Phase == "reconciling" {
 			// The resumed checkout must be inspected again before acceptance.
 			p.Phase = "executing"
@@ -158,6 +162,39 @@ func beginPoolIn(d *draft, id string, members []string) error {
 		t.Pool = &PoolState{Members: slices.Clone(members), Phase: "planning", Revision: 1, Excused: slices.Clone(excused)}
 	}
 	return d.put(i, t)
+}
+
+// subsetOf reports whether every id in ids is in of.
+func subsetOf(ids, of []string) bool {
+	for _, id := range ids {
+		if !slices.Contains(of, id) {
+			return false
+		}
+	}
+	return true
+}
+
+// keepPool keeps, of the spare members, those of a requeued parent's saved pool, in the saved order (its leader first), with release
+// cut to them. It keeps them all when none of the saved members is spare: the parent then forms a new pool and plans again.
+func keepPool(members []*member, release map[string][]string, saved []string) ([]*member, map[string][]string) {
+	var kept []*member
+	for _, id := range saved {
+		if i := slices.IndexFunc(members, func(m *member) bool { return m.id == id }); i >= 0 {
+			kept = append(kept, members[i])
+		}
+	}
+	if len(kept) == 0 {
+		return members, release
+	}
+	out := make(map[string][]string, len(release))
+	for parent, ids := range release {
+		for _, id := range ids {
+			if slices.Contains(saved, id) {
+				out[parent] = append(out[parent], id)
+			}
+		}
+	}
+	return kept, out
 }
 
 // poolReady says why the task t cannot begin a pool now, or nil: it must be an unassigned parent task whose dependencies are done.
@@ -455,11 +492,19 @@ func (s *Swarm) startPool(req SpawnReq, files []string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// A requeued parent keeps the members its manager excused, and beginPoolIn leaves them out: they must not take a place under
-	// the cap that an eligible member would have had.
 	if req.TaskID != "" {
-		if t, ok := s.Board.Snapshot().Task(req.TaskID); ok && t.Pool != nil && len(t.Pool.Excused) > 0 {
-			members = slices.DeleteFunc(slices.Clone(members), func(m *member) bool { return slices.Contains(t.Pool.Excused, m.id) })
+		if t, ok := s.Board.Snapshot().Task(req.TaskID); ok && t.Pool != nil {
+			// A requeued parent keeps the members its manager excused, and beginPoolIn leaves them out: they must not take a place
+			// under the cap that an eligible member would have had.
+			if len(t.Pool.Excused) > 0 {
+				members = slices.DeleteFunc(slices.Clone(members), func(m *member) bool { return slices.Contains(t.Pool.Excused, m.id) })
+			}
+			// A requeued parent whose pool has an accepted plan keeps that pool's members (those free now), and beginPoolIn keeps
+			// its plan: a resumed executing pool of two was rebuilt from the role's first four free members, under the cap, which
+			// sent three idle members back to planning it with the leader, while the plan and the child task the leader was on waited.
+			if t.Pool.Phase != "planning" {
+				members, release = keepPool(members, release, t.Pool.Members)
+			}
 		}
 	}
 	// The member the request names leads, so the cap must keep it: spareMembers puts it first only when another pool spares members.
