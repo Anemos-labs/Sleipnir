@@ -103,6 +103,10 @@ func suggestAllow(command string) []string {
 	return out
 }
 
+// unattendedBypassNote is what a run says first when nobody is there to answer and nothing chose a mode, so that it runs in bypass
+// (session.Options.Unattended): what changed, what still holds, and how to choose otherwise.
+const unattendedBypassNote = "no terminal to ask on and no --mode given: running in bypass mode, so nothing waits for an answer (built-in protections and deny rules still hold). --mode default refuses what would have been asked instead."
+
 // noOneToAskNote is what a run says first when nobody is there to answer and nothing lets the usual work through: in the default mode every edit
 // and every command that is not read-only is refused, and the model found that out by being refused, a step at a time, with the way out at the end.
 // withRemedy adds the note to a run that the repetition guard ended because its actions kept being refused with no one to ask:

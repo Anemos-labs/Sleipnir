@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `run` and `swarm` without a terminal, with no `--mode` and no `--allow`
+  rule, now run in `bypass` mode where they would have run in `default`
+  (another mode in the configuration still holds): nobody can answer a question,
+  and the default mode refused every edit and every command that is not
+  read-only. Built-in protections, `deny` rules and guarded paths hold as
+  always. The run says so first (stderr, or a `notice` of level `info` with
+  `--json`). A run that chose a mode, `--mode default` included, behaves as
+  before. No prompt bytes change.
 - A `sed` that edits (`sed -i 's/a, 5,/b, 6,/' x.go`) is judged by the
   files it touches: its file operands, a script it reads, and the files its
   script names (`r`, `R`, `w`, `W`, the `w` flag of `s`). The script's own
