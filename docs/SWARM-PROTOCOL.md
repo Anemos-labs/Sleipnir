@@ -107,7 +107,10 @@ task, no new pool of its role takes it. `solo` is refused for a child (it alread
 owner) and for a parent that already has a pool. The manager's pin asks for it for small
 work (one owner, a handful of files, no shared decision: a scaffold or foundation, a config,
 a single fix). When a small task reaches a pool anyway, the pool's start tells its members
-not to divide it: the leader proposes one child it does itself, and the others agree at once.
+not to divide it: the leader proposes one child it does itself, and the others agree at once. A
+parent whose pool would have one member (the others work alone or are held by pools that
+spare nobody) is given to that member as a solo task instead: a pool of one would only propose
+to itself, agree with itself and make one child repeating its parent.
 
 Planning-pool children inherit their parent’s task kind when `kind` is omitted.
 Planning children and their reconciled parent submit agreements for acceptance

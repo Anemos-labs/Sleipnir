@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A parent whose pool would have one member (the other members of the role
+  work alone, or sit in pools that spare nobody) goes to that member as a
+  solo task. A pool of one proposed a plan to itself, agreed with itself and
+  made one child with its parent's scope: three reviews in one local run did
+  this while the other reviewer worked alone. A parent that already has a
+  pool keeps it. Tool results and mail only; no prompt bytes change.
 - The merge queue's refusal of files outside a task's scope (or of files it
   may not change) still names the first eight, and now says where the rest
   are, by directory: "; and 9 more: docs/screenshots/ (9)". A worker whose
