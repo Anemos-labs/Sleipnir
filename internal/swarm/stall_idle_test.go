@@ -152,3 +152,40 @@ func TestStallIdleCapacity(t *testing.T) {
 		}
 	})
 }
+
+// While the only workers at work are a reviewer and the docs catch-up, the team waits for a verdict on finished work, not for work:
+// idle writers are expected and the manager is not told of them. Told, a manager invented an adversarial-test task after the
+// review had started and the run waited on that too.
+func TestStallIdleCapacitySparesTheVerdictPhase(t *testing.T) {
+	cfg := stallCfg()
+	cfg.PersistentPools, cfg.MaxWorkers, cfg.Team = true, 4, []string{"backend", "backend", "backend", "reviewer"}
+	r := newRVRig(t, cfg, gatedWorkers(map[string][]rvReply{"rv-1": repeat(2, readReply)}))
+	if _, err := r.sw.StartManager(); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.spawnMu.Lock()
+	if _, err := r.sw.ensurePool("backend"); err != nil {
+		r.sw.spawnMu.Unlock()
+		t.Fatal(err)
+	}
+	r.sw.spawnMu.Unlock()
+	id, err := r.sw.Spawn(SpawnReq{Role: ReviewerRole, Title: "review the merged result", By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, id+" to reach its blocked request", func() bool { return r.prov.callsFor(id) >= 3 })
+	now := r.sw.deps.Now()
+	for _, w := range []string{"be-1", "be-2", "be-3"} {
+		m := r.sw.get(w)
+		m.mu.Lock()
+		m.idleAt = now.Add(-20 * time.Minute)
+		m.mu.Unlock()
+	}
+	r.sw.noteCoordination("mgr", "wait", "")
+	r.sw.sweepStalls()
+	if f, ok := active(r, StallIdleCapacity); ok {
+		t.Fatalf("idle capacity raised while the team waited on the review: %+v", f)
+	}
+	r.sw.stopRun(r.sw.get(id), "test over", false)
+	rvWait(t, "the reviewer to stop", func() bool { return r.idle(id) })
+}

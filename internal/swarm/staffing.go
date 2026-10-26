@@ -89,7 +89,7 @@ func (g *reviewGate) unreviewedWork() (time.Duration, []string) {
 	var ids []string
 	for n := g.reviewed + 1; n <= g.merges; n++ {
 		longest = max(longest, g.took[n])
-		if id := g.landedID[n]; id != "" {
+		if id := g.landedID[n]; id != "" && !slices.Contains(ids, id) {
 			ids = append(ids, id)
 		}
 	}

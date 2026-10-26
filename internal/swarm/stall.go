@@ -54,7 +54,8 @@ const (
 	StallReviewStarved StallKind = "review_starved"
 	// StallIdleCapacity: the manager of a configured team waits on the few workers
 	// still at work while at least half of the team, and two workers or more, have been
-	// idle for idleCapacityAfter owning no open task. Waiting is right when the open tasks are all the
+	// idle for idleCapacityAfter owning no open task, and the workers at work are not all
+	// read-only roles or on docs tasks (verdictPhase: then the wait is for a verdict). Waiting is right when the open tasks are all the
 	// objective needs, and costs the idle workers' time when more remains: the manager is
 	// told who is free, once, and decides. It clears when they are at work again, when no
 	// worker runs or no task is open; the manager's calls between two waits do not clear it.
@@ -362,7 +363,7 @@ func (s *Swarm) stallFindings() []Stall {
 	// hours of a 12-worker run).
 	idleKey := Stall{Kind: StallIdleCapacity, Agent: mgr}.key()
 	_, idleActive := s.stalls.active[idleKey]
-	if mgr != "" && (s.stalls.waiting || idleActive) && anyWorker && openTask(snap) && s.teamLimited() {
+	if mgr != "" && (s.stalls.waiting || idleActive) && anyWorker && openTask(snap) && s.teamLimited() && !s.verdictPhase(snap, views) {
 		at := s.deps.Now()
 		var idle []string
 		workers := 0
@@ -562,6 +563,25 @@ func stallNudge(f Stall, k int64, pools bool) string {
 			"the findings so far in priority order, what you checked and found fine, and what you did not reach, named as unverified; then task done."
 	}
 	return "Stall check: " + f.Detail
+}
+
+// verdictPhase reports whether every running worker is a read-only role or on a docs task: the team waits for a verdict on finished
+// work (a review, an agreement, the docs catch-up), not for work, and idle writers are expected. Told of idle capacity then, a
+// manager invented work to fill it (an adversarial test task after the review had started) and the run waited on that too.
+func (s *Swarm) verdictPhase(snap *Snapshot, views map[string]memberView) bool {
+	for id, v := range views {
+		if !v.running || v.manager || v.service {
+			continue
+		}
+		if s.roles[v.role].ReadOnly {
+			continue
+		}
+		if t, ok := snap.Task(currentTask(snap, id)); ok && s.isDocsTask(t) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 // ownsOpenTask reports whether agent owns a task that is not closed: one reserved for it, in progress, blocked or in review (a pool
