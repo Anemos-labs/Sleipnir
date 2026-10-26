@@ -581,4 +581,15 @@ func TestAResumedTeamStillOwesTheReviewOfWorkMergedBeforeTheStop(t *testing.T) {
 			}
 		})
 	}
+	t.Run("accepted with the scope of its acceptance", func(t *testing.T) {
+		r := newRVRigWith(t, cfg, idle, nil)
+		if err := r.sw.RestoreTeam(context.Background(), prev, nil, map[string]string{"be-1": "backend", "rv-1": ReviewerRole}, 0); err != nil {
+			t.Fatal(err)
+		}
+		// T5 was accepted while it covered old.go; a revision gave it d.go afterwards.
+		r.sw.RestoreReviewGate(prev, []ReviewOp{{Task: "T5", Status: StatusDone, Closure: CloseVerified, Files: []string{"old.go"}}})
+		if got := r.sw.review.landed[1]; len(got) != 1 || got[0] != "old.go" {
+			t.Fatalf("the acceptance landed %v, want [old.go]", got)
+		}
+	})
 }

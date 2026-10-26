@@ -65,7 +65,7 @@ func (s *Swarm) RestoreMerges(prev *Snapshot, merges map[string]RestoredMerge) {
 }
 
 // ReviewOp is a change of the log that the review gate counts: a task entering
-// review or done (with the closure it was done with), or, with Land, a change that
+// review or done (with the closure and files it was done with), or, with Land, a change that
 // reached the shared tree without an acceptance (the manager's integrated edits, a
 // revision) and the files it may have touched, none when that is not known.
 type ReviewOp struct {
@@ -102,6 +102,9 @@ func (s *Swarm) RestoreReviewGate(prev *Snapshot, ops []ReviewOp) {
 			_ = s.reviewSubmission(t)(nil, t)
 		case StatusDone:
 			if op.Closure == CloseVerified || op.Closure == CloseAgreed { // accepted, not resolved as unneeded
+				if op.Files != nil {
+					t.Files = op.Files // the scope it was accepted with, not one a later revision gave it
+				}
 				s.noteAccepted(t)
 			}
 		}

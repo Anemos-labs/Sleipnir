@@ -314,7 +314,7 @@ func (s *Session) restoreWorkers(prev *swarm.Snapshot, evs []events.Event) error
 			} else if op.Task != "" && op.Status == string(swarm.StatusDoing) {
 				delete(merges, op.Task)
 			} else if op.Op == "finish" && (op.Status == string(swarm.StatusReview) || op.Status == string(swarm.StatusDone)) {
-				reviewOps = append(reviewOps, swarm.ReviewOp{Task: op.Task, Status: swarm.TaskStatus(op.Status), Closure: op.Closure.Kind()})
+				reviewOps = append(reviewOps, swarm.ReviewOp{Task: op.Task, Status: swarm.TaskStatus(op.Status), Closure: op.Closure.Kind(), Files: op.Files})
 			}
 		case events.TypeTaskMerge:
 			var m struct {
