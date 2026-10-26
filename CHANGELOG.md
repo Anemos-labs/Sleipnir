@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A worker whose work merged but whose verification failed with "no space
+  left on device" (or "disk quota exceeded") is told that the disk is full,
+  that this is the machine and not the code, to remove untracked build
+  outputs it made and submit again, and to block the task if the disk stays
+  full. Three workers whose linker could not map its output file were told
+  to reproduce the failure and fix it. Tool results only; no prompt bytes
+  change.
 - A worker's `wait` without `until` now returns only for its own work: a
   task it owns or last owned, a pool it belongs to (the parent and its
   children), a task its open work depends on or is blocked on, and mail.

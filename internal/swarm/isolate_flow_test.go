@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -225,6 +226,35 @@ func TestBouncesAreBoundedAndTheTaskReturnsToThePool(t *testing.T) {
 	// request follows it.
 	if n := r.prov.callsFor("be-1"); n != 3 {
 		t.Fatalf("the worker made %d requests, want 3 (write, done, done)", n)
+	}
+}
+
+// A verification that failed because the disk is full says so: the worker is not sent to find a bug in its code. Three workers
+// whose verification failed on a linker that could not map its output file were told to reproduce the failure and fix it.
+func TestAVerificationThatRanOutOfDiskSaysItIsTheMachine(t *testing.T) {
+	sc := script{
+		"be-1": {
+			act(writeCall("a.txt", "alpha edited\n")),
+			act(doneCall("T1", "try 1")),
+			act(doneCall("T1", "try 2")),
+		},
+	}
+	tries := 0
+	var mu sync.Mutex
+	full := func(dir string) (string, int) {
+		mu.Lock()
+		defer mu.Unlock()
+		if tries++; tries == 1 {
+			return "# example/cmd/raven\nlink: mapping output file failed: no space left on device", 1
+		}
+		return "ok", 0
+	}
+	r := newIsoRig(t, isoOpts{cfg: Config{MaxWriters: 4, MaxAttempts: 3}, queueVerify: full}, sc.fn())
+	r.sw.StartManager()
+	r.mustSpawn("backend", "edit a", "a.txt")
+	r.waitStatus("T1", StatusReview)
+	if !r.prov.sawEver("the disk is full (no space left on device): that is the machine, not the code") {
+		t.Fatal("the worker was not told that the failure was a full disk")
 	}
 }
 
