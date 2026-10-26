@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A shell command whose output shows a file whole, as it is now (`cat a.go
+  b.go`), counts as the read of that file: an edit or an overwrite after it
+  is no longer refused for want of a read tool call. Only the output's
+  bytes decide (a text file of 16 bytes to 48 KiB, from the start of a
+  line), so a part of a file, a numbered listing, clipped output or a file
+  changed since is not a read. The refusal of an unread file says so. Tool
+  results only; no prompt bytes change.
 - `run --json` without a terminal, in the default mode and with no
   `--allow` rule, now starts its stream with a `notice` (level `warn`) that
   says nothing can be approved and that `--mode accept-edits` lets edits and
