@@ -29,16 +29,16 @@ func TestACatThatShowsTheWholeFileCountsAsItsRead(t *testing.T) {
 	a := write("src/a.go", "package src\n\nfunc A() int { return 1 }\n")
 	b := write("README.md", "# readme\n\nwhat the project is\n")
 	c := write("c.txt", long)
-	d := write("d.txt", long)
+	d := write("d.txt", "first line\n\nthird line, after a blank one\n")
 	tiny := write("t.txt", "x\n")
 
 	h.bash(env, "ls -la; echo ---; cat src/a.go README.md && head -n 3 c.txt; cat -n d.txt; cat t.txt")
-	for _, p := range []string{a, b} {
+	for _, p := range []string{a, b, d} {
 		if !env.Files.HasRead("main", p) {
 			t.Errorf("%s was shown whole and is not counted as read", p)
 		}
 	}
-	for p, why := range map[string]string{c: "head showed part of it", d: "cat -n showed it numbered", tiny: "it is too short to tell from chance"} {
+	for p, why := range map[string]string{c: "head showed part of it", tiny: "it is too short to tell from chance"} {
 		if env.Files.HasRead("main", p) {
 			t.Errorf("%s counts as read, yet %s", p, why)
 		}
