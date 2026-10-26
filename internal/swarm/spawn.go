@@ -113,6 +113,11 @@ func (s *Swarm) spawn(req SpawnReq) (SpawnResult, error) {
 		if task.Solo {
 			req.Solo = true // restarted, repaired or queued again: it stays with one member
 		}
+		// A pool agreeing on one parent's plan holds every member of the role, so the other tasks of that role wait behind it. While
+		// such tasks are ready, the parent goes to one member and the rest of the role stays free for them: they run side by side.
+		if !req.Solo && counts[req.Role] > 1 && task.Parent == "" && task.Pool == nil && len(readyBeside(s.Board.Snapshot(), req.Role, task.ID)) > 0 {
+			req.Solo = true
+		}
 		if req.Solo && counts[req.Role] > 1 && task.Parent == "" && task.Pool == nil {
 			if err := s.soloMember(&req); err != nil {
 				return SpawnResult{}, err
@@ -157,6 +162,21 @@ func (s *Swarm) spawn(req SpawnReq) (SpawnResult, error) {
 		return s.spawnReuse(req, files)
 	}
 	return started(s.spawnNew(req, files))
+}
+
+// readyBeside lists the top-level tasks of role, other than id, that could start now: unassigned, outside any pool, their
+// dependencies done.
+func readyBeside(sn *Snapshot, role, id string) []string {
+	var out []string
+	for _, t := range sn.Tasks {
+		if t.ID == id || t.Role != role || t.Parent != "" || t.Status != StatusTodo || t.Owner != "" || t.Pool != nil {
+			continue
+		}
+		if ok, _ := depsDone(sn, t); ok {
+			out = append(out, t.ID)
+		}
+	}
+	return out
 }
 
 // soloMember chooses the member of req.Role that takes a solo task (SpawnReq.Solo) and sets req.Agent to it: the named member when
