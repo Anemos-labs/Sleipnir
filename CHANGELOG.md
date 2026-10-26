@@ -15,6 +15,13 @@ they do not indicate whether a change has been released.
   always. The run says so first (stderr, or a `notice` of level `info` with
   `--json`). A run that chose a mode, `--mode default` included, behaves as
   before. No prompt bytes change.
+- Building Sleipnir now needs Go 1.26.10 or newer (go.mod said 1.26.0).
+  Go 1.26.0 to 1.26.4 race-instrument the darwin syscall path that runs in
+  a forked child before exec (golang/go#79804, fixed in 1.26.5), so under
+  `-race` on macOS a child could crash or spin, and the test that started it
+  waited until the 25-minute timeout. 1.26.10 carries that fix and the
+  1.26.x security fixes. A go command of 1.21 or newer with GOTOOLCHAIN=auto
+  (the default) fetches it.
 - A `sed` that edits (`sed -i 's/a, 5,/b, 6,/' x.go`) is judged by the
   files it touches: its file operands, a script it reads, and the files its
   script names (`r`, `R`, `w`, `W`, the `w` flag of `s`). The script's own
