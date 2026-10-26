@@ -56,6 +56,15 @@ func TestACatThatShowsTheWholeFileCountsAsItsRead(t *testing.T) {
 		}
 	}
 
+	n1 := write("num/one.txt", "alpha line one\nalpha line two\n")
+	n2 := write("num/two.txt", "beta line one\n\nbeta line three\n")
+	h.bash(env, "cat -n num/one.txt num/two.txt")
+	for _, p := range []string{n1, n2} {
+		if !env.Files.HasRead("main", p) {
+			t.Errorf("%s, shown whole by cat -n (numbered on from the file before it), is not counted as read", p)
+		}
+	}
+
 	write("e.txt", long)
 	h.bash(env, "cat e.txt; echo changed >> e.txt")
 	if env.Files.HasRead("main", filepath.Join(h.root, "e.txt")) {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/tools"
@@ -35,7 +36,7 @@ func RecordShown(env *tools.Env, dir string, words []string, output string) int 
 			continue
 		}
 		data, err := os.ReadFile(canon)
-		if err != nil || bytes.IndexByte(data, 0) >= 0 || !showsWhole(output, string(data)) && !showsWhole(output, catNumbered(data)) {
+		if err != nil || bytes.IndexByte(data, 0) >= 0 || !showsWhole(output, string(data)) && !showsNumbered(output, data) {
 			continue
 		}
 		env.Files.RecordRead(env.Agent, canon, data)
@@ -47,14 +48,38 @@ func RecordShown(env *tools.Env, dir string, words []string, output string) int 
 // minShown is the smallest file RecordShown counts: a few bytes can turn up in any output by chance.
 const minShown = 16
 
-// catNumbered is data as cat -n prints it: every line, blank ones too, after its number right-aligned in six columns and a tab.
-func catNumbered(data []byte) string {
+// showsNumbered says whether output shows data whole as cat -n prints it: every line, blank ones too, after its number
+// right-aligned in six columns and a tab, the numbers counting on from wherever they start (cat -n a b numbers b's lines after
+// a's).
+func showsNumbered(output string, data []byte) bool {
+	first, _, _ := strings.Cut(string(data), "\n")
+	for from, tries := 0, 0; tries < maxNumberedTries; tries++ {
+		i := strings.Index(output[from:], "\t"+first)
+		if i < 0 {
+			return false
+		}
+		i += from
+		from = i + 1
+		start := strings.LastIndexByte(output[:i], '\n') + 1
+		n, err := strconv.Atoi(strings.TrimLeft(output[start:i], " "))
+		if err == nil && n > 0 && strings.HasPrefix(output[start:], catNumbered(data, n)) {
+			return true
+		}
+	}
+	return false
+}
+
+// maxNumberedTries bounds the places showsNumbered looks at for a file's first line.
+const maxNumberedTries = 16
+
+// catNumbered is data as cat -n prints it, its first line numbered first.
+func catNumbered(data []byte, first int) string {
 	var b strings.Builder
 	for i, line := range strings.SplitAfter(string(data), "\n") {
 		if line == "" {
 			break // after the final newline
 		}
-		fmt.Fprintf(&b, "%6d\t%s", i+1, line)
+		fmt.Fprintf(&b, "%6d\t%s", first+i, line)
 	}
 	return b.String()
 }
