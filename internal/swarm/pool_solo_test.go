@@ -136,3 +136,29 @@ func TestSoloRefusesChildrenAndPooledParents(t *testing.T) {
 		t.Fatalf("a solo child was created: %v", err)
 	}
 }
+
+// A pool agreeing on its plan holds every member of the role. While other tasks of the role are ready, a parent goes to one member
+// instead, and the next ready task starts on the next member: the tasks run side by side, not one after another.
+func TestReadyTasksOfARoleRunSideBySideInsteadOfPooling(t *testing.T) {
+	r, _ := newSoloRig(t)
+	var ids []string
+	for _, title := range []string{"cross-compile the agent", "mock totals test", "notifier receivers"} {
+		tk, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: title, Role: "backend", Files: []string{strings.ReplaceAll(title, " ", "-") + "/**"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, tk.ID)
+	}
+	for i, id := range ids[:2] {
+		if res := r.callTool(context.Background(), "spawn", "mgr", "manager", map[string]any{"task": id}); res.IsError {
+			t.Fatalf("spawn %s: %s", id, res.Text)
+		}
+		got, _ := r.sw.Board.Snapshot().Task(id)
+		if want := []string{"be-1", "be-2"}[i]; got.Pool != nil || got.Owner != want || got.Status != StatusDoing {
+			t.Fatalf("%s: want it started on %s alone, got %+v", id, want, got)
+		}
+	}
+	if poolWoken(t, r) {
+		t.Fatal("a pool was started while other tasks of the role were ready")
+	}
+}
