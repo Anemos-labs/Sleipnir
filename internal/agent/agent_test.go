@@ -657,3 +657,20 @@ func TestBudgetStopsTheAgent(t *testing.T) {
 		t.Fatalf("budget did not stop the loop early (%d requests)", got)
 	}
 }
+
+// The board and an agent's own status line show how full its context is: the input of its latest answered request, as the provider
+// counted it, cached or not. The harness published 0 there for every agent.
+func TestPromptTokensIsTheLatestRequestsInput(t *testing.T) {
+	r := newRig(t, rigOpts{noCompact: true, mock: mock.Config{Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}}}, scriptedWork(4, nil))
+	if n := r.agent.PromptTokens(); n != 0 {
+		t.Fatalf("before any request PromptTokens = %d", n)
+	}
+	if _, err := r.agent.Run(context.Background(), "build it"); err != nil {
+		t.Fatal(err)
+	}
+	st := r.srv.Stats()
+	last := st[len(st)-1]
+	if n := r.agent.PromptTokens(); n != last.PromptTokens || n <= st[0].PromptTokens {
+		t.Fatalf("PromptTokens = %d, want the last request's %d (the first was %d)", n, last.PromptTokens, st[0].PromptTokens)
+	}
+}
