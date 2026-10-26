@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A `sed` that edits (`sed -i 's/a, 5,/b, 6,/' x.go`) is judged by the
+  files it touches: its file operands, a script it reads, and the files its
+  script names (`r`, `R`, `w`, `W`, the `w` flag of `s`). The script's own
+  words were taken for file names and split at commas and colons, so
+  `s/a, 5,/b, 6,/` named the root and the credentials protection refused
+  the edit in every mode. A script that runs a program (`e`) or is not
+  understood is judged as before.
 - A shell command whose output shows a file whole, as it is now (`cat a.go
   b.go`), counts as the read of that file: an edit or an overwrite after it
   is no longer refused for want of a read tool call. Only the output's
