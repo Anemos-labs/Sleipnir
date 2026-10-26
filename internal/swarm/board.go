@@ -1265,6 +1265,10 @@ func (b *Board) Unblock(by, id string) error {
 			return fmt.Errorf("no task %s", id)
 		}
 		t := d.Tasks[i]
+		if t.Status == StatusTodo && t.Owner != "" && t.Line == resumedLine {
+			// a manager in a resumed team run took "waiting to restart" for a block and tried this
+			return fmt.Errorf("%s is todo, not blocked: the resume reserved it for %s, and a spawn starts it again (spawn task=%s agent=%s)", id, t.Owner, id, t.Owner)
+		}
 		if t.Status != StatusBlocked {
 			return fmt.Errorf("%s is %s, not blocked", id, t.Status)
 		}
