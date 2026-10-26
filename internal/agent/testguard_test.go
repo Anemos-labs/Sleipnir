@@ -85,13 +85,15 @@ func TestTestGuardRecognisesTestCommands(t *testing.T) {
 		"node --test test/*.test.js", "node --experimental-vm-modules --test", "npm test", "npm run test:unit", "npm -s test", "pnpm -r test",
 		"yarn test", "bun test", "deno test -A", "npx vitest run", "npx jest", "cargo test --offline --quiet", "cargo +nightly test",
 		"mvn -q test", "./mvnw test", "./gradlew --offline test", "gradle test", "dotnet test", "swift test", "make test", "make tests",
-		"ctest --output-on-failure", "mix test", "bundle exec rspec", "tox -e py312",
+		"ctest --output-on-failure", "mix test", "bundle exec rspec", "tox -e py312", "mvn clean test", "./gradlew clean build test",
+		".venv/bin/python -m pytest -x", "timeout 120 go test ./...", "CI=1 npm test", "go vet ./... && go test ./... 2>&1 | tail -5",
 	} {
 		if !(&testGuard{}).isTestCommand(cmd) {
 			t.Errorf("%q runs tests", cmd)
 		}
 	}
-	for _, cmd := range []string{"ls test", "cat test/a.test.js", "npm install", "go build ./...", "git log -- test", "node script.js", "echo test", "make build"} {
+	for _, cmd := range []string{"ls test", "cat test/a.test.js", "npm install", "go build ./...", "git log -- test", "node script.js", "echo test", "make build",
+		"rg -n 'node --test' package.json", `grep "go test" Makefile`, `echo "run npm test next"`, "go run ./cmd/x test"} {
 		if (&testGuard{}).isTestCommand(cmd) {
 			t.Errorf("%q does not run tests", cmd)
 		}
@@ -100,6 +102,13 @@ func TestTestGuardRecognisesTestCommands(t *testing.T) {
 	g.reset("  ./scripts/check.sh --fast ")
 	if !g.isTestCommand("./scripts/check.sh --fast 2>&1 | tail") {
 		t.Error("the project's own test command counts as a test run")
+	}
+	if g.isTestCommand("echo './scripts/check.sh --fast'") || g.isTestCommand("cat ./scripts/check.sh") {
+		t.Error("a command that only names the project's test command does not run it")
+	}
+	g.reset("mvn test")
+	if !g.isTestCommand("mvn clean test") {
+		t.Error("mvn clean test runs the tests the survey's mvn test names")
 	}
 }
 

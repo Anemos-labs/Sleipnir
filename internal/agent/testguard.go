@@ -2,10 +2,12 @@ package agent
 
 import (
 	"encoding/json"
+	"path"
 	"regexp"
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/shellparse"
 )
 
 // The test-weakening guard.
@@ -16,11 +18,15 @@ import (
 // contradicted requirement or an implementation fix rather than forbidding edits.
 
 var (
-	// testCmdRe matches a command that runs tests: a test runner by name, a build tool's test subcommand after any flags
-	// (mvn -q test, ./gradlew --offline test, npm run test:unit), or Node's built-in runner (node --test).
-	testCmdRe = regexp.MustCompile(`\b(pytest|py\.test|unittest|jest|vitest|mocha|rspec|phpunit|ctest|tox|nox)\b|` +
-		`\b(go|cargo|dotnet|swift|deno|bun|mix|stack|cabal|dune|bazel|mvnw?|gradlew?|npm|yarn|pnpm|make|rake)(\s+[-+][\w.:=/+-]+)*\s+(run\s+)?tests?\b|` +
-		`\bnode(\s+-[\w.:=/+-]+)*\s+--test\b`)
+	// testCmdRe matches one simple command, its program's base name and its words, that runs tests: a test runner (optionally
+	// through npx, bundle exec, uv run and the like, or python -m), a build tool's test subcommand after its flags (mvn and gradle
+	// after their other tasks too: mvn -q clean test), npm run test:unit, or Node's built-in runner (node --test).
+	testCmdRe = regexp.MustCompile(`^(?:(?:npx|pnpx|bunx|bundle exec|uv run|poetry run|pipenv run|hatch run)\s+)?(?:` +
+		`(?:pytest|py\.test|jest|vitest|mocha|rspec|phpunit|ctest|tox|nox)\b|` +
+		`python[0-9.]*(?:\s+-\S+)*\s+-m\s+(?:pytest|unittest)\b|` +
+		`(?:go|cargo|dotnet|swift|deno|bun|mix|stack|cabal|dune|bazel|npm|yarn|pnpm)(?:\s+[-+]\S+)*\s+(?:run\s+)?tests?\b|` +
+		`(?:mvnw?|gradlew?|make|rake|sbt)(?:\s+\S+)*?\s+tests?\b|` +
+		`node(?:\s+-\S+)*\s+--test\b)`)
 	testPathRe = regexp.MustCompile(`(?i)(_test\.go|_test\.py|\.(test|spec)\.[a-z]+|_spec\.rb|Test\.java)$|(^|/)test_[^/]*\.py$|(^|/)(tests?|__tests__)/`)
 	patchFile  = regexp.MustCompile(`(?m)^\*\*\* (?:Update|Add|Delete) File: (.+)$`)
 )
@@ -38,9 +44,42 @@ type testGuard struct {
 // reset clears the test guard's accumulated verification state and sets the project's test command.
 func (g *testGuard) reset(hint string) { *g = testGuard{hint: strings.TrimSpace(hint)} }
 
-// isTestCommand reports whether a shell command runs tests: a known runner, or the project's own test command.
+// isTestCommand reports whether a shell command runs tests: one of its simple commands is a known runner, or starts with the words
+// of the project's own test command. Text that only mentions a runner (grep 'go test' Makefile, echo "npm test") is an argument of
+// another program and does not count. A line the parser cannot read is not counted either.
 func (g *testGuard) isTestCommand(cmd string) bool {
-	return testCmdRe.MatchString(cmd) || (g.hint != "" && strings.Contains(cmd, g.hint))
+	an := shellparse.Parse(cmd)
+	if !an.Parsed {
+		return false
+	}
+	var hint []string
+	if g.hint != "" {
+		hint, _ = shellparse.Fields(g.hint)
+	}
+	for _, c := range an.Commands {
+		words := append([]string{c.Program}, c.Args...)
+		if hasWordPrefix(words, hint) {
+			return true
+		}
+		words[0] = path.Base(c.Program)
+		if testCmdRe.MatchString(strings.Join(words, " ")) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasWordPrefix reports whether words begins with every word of prefix (an empty prefix is no match).
+func hasWordPrefix(words, prefix []string) bool {
+	if len(prefix) == 0 || len(words) < len(prefix) {
+		return false
+	}
+	for i, w := range prefix {
+		if words[i] != w {
+			return false
+		}
+	}
+	return true
 }
 
 // editedPaths are the files a write, edit or patch call names.
