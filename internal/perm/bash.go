@@ -1031,6 +1031,11 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 				uses = g // writes only into the repository: its operands are read
 			}
 		}
+		if u.name == "sed" {
+			if su, ok := sedUses(s.Args); ok {
+				uses = su // the script is no file; the files it names are (sedfiles.go)
+			}
+		}
 		if tr, ok := testRunnerUses(u.name, s.Args); ok {
 			uses = tr // a test runner reads the tests below its operands (testrunners.go)
 		}
