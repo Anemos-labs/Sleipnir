@@ -36,6 +36,9 @@ func sedUses(args []string) (uses []pathUse, ok bool) {
 			for j := 1; j < len(a); j++ {
 				switch c := a[j]; {
 				case c == 'i':
+					if j == len(a)-1 && i+1 < len(args) && args[i+1] == "" {
+						i++ // -i '': BSD sed's empty backup suffix; the script follows
+					}
 					j = len(a) // -i, -i.bak: the rest is the backup suffix
 				case c == 'e':
 					script := a[j+1:]
@@ -111,7 +114,9 @@ func sedScriptFiles(s string) (reads, writes []string, ok bool) {
 		}
 		if p.s[p.i] == ':' {
 			p.i++
-			toEOL()
+			if !p.label() {
+				return nil, nil, false
+			}
 			continue
 		}
 		had, why := p.address()
@@ -148,8 +153,8 @@ func sedScriptFiles(s string) (reads, writes []string, ok bool) {
 			p.skip(" \t")
 			p.number()
 		case 'b', 't', 'T':
-			for !p.done() && p.s[p.i] != ';' && p.s[p.i] != '\n' {
-				p.i++
+			if !p.label() {
+				return nil, nil, false
 			}
 		case 'a', 'i', 'c':
 			toEOL() // text
@@ -210,4 +215,18 @@ func sedScriptFiles(s string) (reads, writes []string, ok bool) {
 			return nil, nil, false // e runs a program; anything else is not understood
 		}
 	}
+}
+
+// label skips the label of :, b, t or T, which ends at a semicolon, a newline or a closing brace. A label with a blank inside
+// it is refused: sed versions disagree on where it ends, and a command read as part of it (:a;w out) would go unchecked.
+func (p *sedParser) label() bool {
+	p.skip(" \t")
+	for !p.done() && p.s[p.i] != ';' && p.s[p.i] != '\n' && p.s[p.i] != '}' {
+		if p.s[p.i] == ' ' || p.s[p.i] == '\t' {
+			p.skip(" \t")
+			return p.done() || p.s[p.i] == ';' || p.s[p.i] == '\n' || p.s[p.i] == '}'
+		}
+		p.i++
+	}
+	return true
 }

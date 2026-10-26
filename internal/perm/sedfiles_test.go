@@ -16,6 +16,9 @@ func TestASedScriptIsNotAFileButTheFilesItNamesAre(t *testing.T) {
 		{name: "a w flag naming credentials", mode: ModeBypass, req: bash(`sed -i 's/a/b/w {home}/.ssh/x' main.go`), want: "deny"},
 		{name: "an r command naming credentials", mode: ModeBypass, req: bash(`sed -n '1r {home}/.ssh/id_rsa' main.go`), want: "deny"},
 		{name: "a w command into a system directory", mode: ModeBypass, req: bash(`sed -n '1w /etc/x' main.go`), want: "deny"},
+		{name: "a label before a w command naming credentials", mode: ModeBypass, req: bash(`sed -n ':a;w {home}/.ssh/authorized_keys' main.go`), want: "deny"},
+		{name: "BSD -i '' before a w flag naming credentials", mode: ModeBypass, req: bash(`sed -i '' 's/a/b/w {home}/.ssh/x' main.go`), want: "deny"},
+		{name: "BSD -i '' edit", mode: ModeBypass, req: bash(`sed -i '' 's/a, 5,/b, 6,/' main.go`), want: "allow"},
 		{name: "editing credentials", mode: ModeBypass, req: bash(`sed -i s/a/b/ {home}/.ssh/config`), want: "deny"},
 		{name: "the default mode still asks", req: bash(`sed -i 's/a, 5,/b, 6,/' main.go`), want: "ask"},
 	})
@@ -35,6 +38,12 @@ func TestSedScriptFiles(t *testing.T) {
 		{"s/a/b/w out.txt", nil, []string{"out.txt"}, true},
 		{"1W o.txt", nil, []string{"o.txt"}, true},
 		{":top\ns/a/b/\nt top", nil, nil, true},
+		{":a;s/a/b/w out.txt", nil, []string{"out.txt"}, true},
+		{":a;w out.txt", nil, []string{"out.txt"}, true},
+		{"b end;s/a/b/w o1\nt x;W o2\nT y;r in\n:end", []string{"in"}, []string{"o1", "o2"}, true},
+		{"1w o1;p", nil, []string{"o1;p"}, true}, // a file name runs to the end of the line
+		{"/x/{b skip};p", nil, nil, true},
+		{"b a w out.txt", nil, nil, false},
 		{"1e date", nil, nil, false},
 		{"s/a/b/e", nil, nil, false},
 		{"s/a/b", nil, nil, false},
