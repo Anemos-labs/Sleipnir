@@ -147,6 +147,19 @@ func (d *DirBlobs) intact(p string, h core.Hash, size int) bool {
 	return true
 }
 
+// Remove deletes blob h. A blob that is not there is no error. Callers remove only what nothing else refers to: the store is
+// content-addressed, so the same bytes stored for another reason share the file.
+func (d *DirBlobs) Remove(h core.Hash) error {
+	if !ValidHash(h) {
+		return fmt.Errorf("%w: %.64q", ErrInvalidHash, string(h))
+	}
+	d.forget(h)
+	if err := os.Remove(d.path(h)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 // forget invalidates the cached verification result for a blob hash under the store lock.
 func (d *DirBlobs) forget(h core.Hash) {
 	d.mu.Lock()
@@ -276,6 +289,14 @@ func (m *MemBlobs) GetMax(h core.Hash, max int64) ([]byte, error) {
 		return nil, fmt.Errorf("%w: %d bytes, limit %d", ErrBlobTooLarge, len(b), max)
 	}
 	return append([]byte(nil), b...), nil
+}
+
+// Remove deletes blob h, as DirBlobs.Remove does.
+func (m *MemBlobs) Remove(h core.Hash) error {
+	m.mu.Lock()
+	delete(m.m, h)
+	m.mu.Unlock()
+	return nil
 }
 
 // Has implements Blobs.

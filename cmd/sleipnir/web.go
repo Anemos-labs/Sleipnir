@@ -46,6 +46,8 @@ type webDefaults struct {
 	NoMCP bool
 	// NoMemory is --no-memory.
 	NoMemory bool
+	// TrainingLogs is --training-logs.
+	TrainingLogs bool
 	// Verify is --verify.
 	Verify string
 	// Isolation is --isolation, "none", "worktree" or "" (the configuration decides).
@@ -153,6 +155,7 @@ func cmdWeb(ctx context.Context, args []string) error {
 	budget := fs.Float64("budget-usd", 0, "default spending limit of new sessions, in US dollars")
 	compactAt := fs.Int("compact-at", 0, "default compaction share of new sessions: an agent's conversation is compacted when it fills this percentage of its model's context window, from 10 to 90 (default: config cache.compact_at_percent, else 25)")
 	noMCP := fs.Bool("no-mcp", false, "start no MCP tool servers in new sessions")
+	trainingLogs := fs.Bool("training-logs", false, "new sessions keep training logs: "+trainingLogsHelp)
 	noMemory := fs.Bool("no-memory", false, "new sessions start without the global memory: the notes in ~/.sleipnir/MEMORY.md are neither shown to the agents nor saved")
 	verify := fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (see sleipnir chat -h); {dirs} stands for the directories the task may touch")
 	isolation, commit := isolationFlags(fs)
@@ -248,7 +251,7 @@ flags:
 	}
 	d := webDefaults{
 		Cwd: dir, Model: *model, Mode: *mode, Workers: defaultTeam(), TrustProject: *trust, BudgetUSD: *budget, CompactAtPercent: *compactAt,
-		NoMCP: *noMCP, NoMemory: *noMemory, Verify: *verify, Isolation: *isolation, Commit: *commit, Mailman: mailman(),
+		NoMCP: *noMCP, NoMemory: *noMemory, TrainingLogs: *trainingLogs, Verify: *verify, Isolation: *isolation, Commit: *commit, Mailman: mailman(),
 		RoleModels: roleModels, Team: teamSlots, AutoDocs: autoDocs(), ManagerApproves: managerApproves(), Allow: expandAllow(*allow),
 		Resume:     resumeSpec,
 		AskTimeout: *askTimeout, AskGrace: *askGrace, Projects: projects, Fixture: fixture, ManagerAnswersAfter: *managerAfter,

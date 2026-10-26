@@ -7,6 +7,16 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Sessions now keep only what a resume reads, unless `--training-logs` is
+  given (chat, run, web). That covers the event log, tool outputs and each
+  agent's newest snapshot. Off by default: each request's prompt manifest
+  blobs, each response's completion blob, the stable layer texts, and every
+  superseded snapshot. A new snapshot replaces the agent's previous one in the
+  blob store once the log holds it; savepoints still keep every recoverable
+  snapshot. A 32-agent run had written 13 GB of superseded snapshots.
+  Rollouts (`sleipnir rl`) keep training logs as before. A session recorded
+  without the flag cannot be exported as trajectories. No prompt bytes
+  change.
 - A child task that an executing pool gives one of its members is no longer
   refused by another pool the member is in or was excused from, even where
   the two pools' scopes overlap. Before, a member excused from one pool and

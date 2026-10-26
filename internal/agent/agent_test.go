@@ -77,6 +77,7 @@ type rigOpts struct {
 	budget    float64
 	blobs     events.Blobs
 	capture   bool // ask the (mock) endpoint for token ids and logprobs
+	training  bool // keep training logs (agent.Config.TrainingLogs)
 	hooks     agent.Hooks
 	notes     *kv.Layer  // the agent's notes at the start (a swarm worker's assignment)
 	sink      agent.Sink // what the person is told; nil means nothing
@@ -135,7 +136,7 @@ func newRig(t *testing.T, opts rigOpts, r mock.Responder) *rig {
 		Params: core.Params{MaxTokens: 512}, Effort: opts.effort,
 		Events: log, Planner: opts.planner, NoCompaction: opts.noCompact, Notes: opts.notes,
 		SessionID: "testsession", MaxSteps: opts.steps, BudgetUSD: opts.budget,
-		Now: time.Now, Blobs: opts.blobs, CaptureTokens: opts.capture, Hooks: opts.hooks,
+		Now: time.Now, Blobs: opts.blobs, CaptureTokens: opts.capture, TrainingLogs: opts.training, Hooks: opts.hooks,
 		Compactor: opts.compactor, CompactorModel: opts.compactorModel, CompactorHealth: opts.compactorHealth, PlanOpen: opts.planOpen, VerifyHint: opts.verifyHint, Sink: opts.sink,
 	})
 	if err != nil {

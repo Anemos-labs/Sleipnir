@@ -76,6 +76,10 @@ type Options struct {
 	ModelInfo *cost.Model
 	// CaptureTokens asks the endpoint for token ids and logprobs (RL rollouts).
 	CaptureTokens bool
+	// TrainingLogs keeps the full record a trajectory export needs: every request's prompt manifest blobs, every response's
+	// completion blob, the stable layer texts and every snapshot an agent writes. Off, the session keeps what a resume reads:
+	// the event log, tool outputs and each agent's newest snapshot (a run of 32 agents wrote 13 GB of superseded snapshots).
+	TrainingLogs bool
 
 	// ID names the session; Dir is where events.jsonl and blobs/ live (default
 	// <state>/sessions/<id>). With Resume, ID is the resumed directory's name
@@ -1008,7 +1012,7 @@ func (s *Session) build(ctx context.Context) error {
 				Sink: o.Sink, Workdir: o.Cwd, Root: o.Root, Tmp: s.tmp, Limits: limits,
 				Planner: planner, KVPolicy: kvPol, SessionID: s.ID, Est: est, Now: o.Now,
 				BlockingCompaction: s.cfg.Cache.CompactionMode == "blocking",
-				MaxSteps:           orDefault(o.MaxSteps, 200), ExtendSteps: !o.FixedSteps, BudgetUSD: o.BudgetUSD, CaptureTokens: o.CaptureTokens,
+				MaxSteps:           orDefault(o.MaxSteps, 200), ExtendSteps: !o.FixedSteps, BudgetUSD: o.BudgetUSD, CaptureTokens: o.CaptureTokens, TrainingLogs: o.TrainingLogs,
 				Hooks: s.agentHooks(), OutagePatience: outagePatience(o.OutagePatience), WaitUnreachable: o.WaitUnreachable,
 				Barrier: s.agentBarrier(),
 			})
@@ -1078,7 +1082,7 @@ func (s *Session) build(ctx context.Context) error {
 		Events: s.Log, Blobs: s.Blobs, Archive: archive, Files: files, Perm: s.Perm,
 		Snap: s.Ckpt, Handles: handles,
 		Workdir: o.Cwd, Root: o.Root, Tmp: s.tmp, Params: params, Effort: &s.effort, Planner: planner, KVPolicy: kvPol, Est: est, Limits: limits, Now: o.Now,
-		NewSink: o.NewSink, CaptureTokens: o.CaptureTokens, OnWrite: s.Ckpt.After, RunEnded: s.shell.EndAgent, Hooks: s.agentHooks(),
+		NewSink: o.NewSink, CaptureTokens: o.CaptureTokens, TrainingLogs: o.TrainingLogs, OnWrite: s.Ckpt.After, RunEnded: s.shell.EndAgent, Hooks: s.agentHooks(),
 		OutagePatience:     outagePatience(o.OutagePatience),
 		WaitUnreachable:    o.WaitUnreachable,
 		BlockingCompaction: s.cfg.Cache.CompactionMode == "blocking",

@@ -24,6 +24,7 @@ type chatFlagSet struct {
 	swarmN                   *int
 	trust, verbose, noMCP    *bool
 	noMemory                 *bool
+	trainingLogs             *bool
 	budget                   *float64
 	compactAt                *int
 	isolation                *string
@@ -53,6 +54,7 @@ func registerChatFlags(fs *flag.FlagSet) *chatFlagSet {
 	f.compactAt = fs.Int("compact-at", 0, compactAtHelp)
 	f.noMCP = fs.Bool("no-mcp", false, "start no MCP tool servers")
 	f.noMemory = fs.Bool("no-memory", false, noMemoryHelp)
+	f.trainingLogs = fs.Bool("training-logs", false, trainingLogsHelp)
 	f.verify = fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge). {dirs} in it stands for the directories the task may touch (./... without a scope), so that each task is verified on its own work: 'go test {dirs}'")
 	f.isolation, f.commit = isolationFlags(fs)
 	f.mailman = mailmanFlag(fs)
@@ -80,6 +82,7 @@ type chatFlags struct {
 	verbose    bool
 	noMCP      bool
 	noMemory   bool
+	training   bool
 	budget     float64
 	commit     bool
 	mailman    *bool
@@ -107,7 +110,7 @@ func (f *chatFlagSet) values(fs *flag.FlagSet) (chatFlags, error) {
 	}
 	out := chatFlags{autoFix: *f.autoFix, autoMerge: *f.autoMerge,
 		model: *f.model, cwd: *f.cwd, mode: *f.mode, verify: *f.verify, isolation: *f.isolation,
-		workers: *f.swarmN, trust: *f.trust, verbose: *f.verbose, noMCP: *f.noMCP, noMemory: *f.noMemory, budget: *f.budget, compactAt: *f.compactAt, commit: *f.commit,
+		workers: *f.swarmN, trust: *f.trust, verbose: *f.verbose, noMCP: *f.noMCP, noMemory: *f.noMemory, training: *f.trainingLogs, budget: *f.budget, compactAt: *f.compactAt, commit: *f.commit,
 		mailman: f.mailman(), autoDocs: f.autoDocs(), managerApproves: f.managerApproves(), resume: spec, allow: append([]string(nil), (*f.allow)...), plain: *f.plain, noAnim: *f.noAnim,
 	}
 	if out.roleModels, out.team, err = f.roleModels.split(); err != nil {
@@ -191,7 +194,7 @@ func (f chatFlags) options() session.Options {
 	}
 	return chatOptions(session.Options{AutoFix: f.autoFix, AutoMerge: f.autoMerge,
 		Cwd: f.cwd, Model: f.model, Mode: perm.Mode(f.mode), Swarm: team, Workers: workers,
-		TrustProject: f.trust, BudgetUSD: f.budget, CompactAtPercent: f.compactAt, Resume: f.resume, NoMCP: f.noMCP, NoMemory: f.noMemory,
+		TrustProject: f.trust, BudgetUSD: f.budget, CompactAtPercent: f.compactAt, Resume: f.resume, NoMCP: f.noMCP, NoMemory: f.noMemory, TrainingLogs: f.training,
 		Verify: f.verify, Isolation: f.isolation, Commit: f.commit, Mailman: f.mailman, AutoDocs: f.autoDocs, ManagerApproves: f.managerApproves,
 		ManagerAnswersAfter: f.managerAnswersAfter, ManagerAnswersUpTo: f.managerAnswersUpTo, RoleModels: rm,
 		Team: append([]session.TeamSlot(nil), f.team...), DefaultTeam: true, Allow: expandAllow(f.allow),

@@ -614,7 +614,7 @@ func (a *Agent) applyCommit(rp *readyPatch, why string) error {
 	})
 	for _, l := range []*kv.Layer{res.Spine, res.Notes} {
 		if !l.Empty() {
-			_, _ = a.cfg.Blobs.Put([]byte(l.Text()))
+			_, _ = a.trainingPut([]byte(l.Text()))
 		}
 	}
 	if len(res.Proposals) > 0 && a.cfg.OnPromote != nil {

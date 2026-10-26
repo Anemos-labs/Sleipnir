@@ -108,7 +108,9 @@ func TestSingleAgentEditsARepoThroughRealTools(t *testing.T) {
 		}
 		return mock.Reply{Text: "done: created hello.txt"}
 	})
-	s, err := session.New(context.Background(), opts(t, repo, client, model))
+	o := opts(t, repo, client, model)
+	o.TrainingLogs = true // the test reads every request back from the log
+	s, err := session.New(context.Background(), o)
 	if err != nil {
 		t.Fatal(err)
 	}

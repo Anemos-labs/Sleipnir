@@ -220,6 +220,26 @@ func (a *Agent) WriteRecoverable() (core.Hash, error) {
 	return h, nil
 }
 
+// dropSnapshot removes the agent's superseded snapshot blob prev once the log holds the snapshot that replaces it. A resume
+// reads only an agent's newest snapshot, and a team that snapshots every step wrote gigabytes of old ones. Training logs keep
+// every snapshot, and so do savepoints (Barrier), whose resume may go back to an earlier one. The log is flushed first, so a
+// crash never leaves it naming a snapshot whose blob is gone. A failure costs disk, never the run.
+func (a *Agent) dropSnapshot(prev core.Hash) {
+	if prev == "" || a.cfg.TrainingLogs || a.cfg.Barrier != nil {
+		return
+	}
+	rm, ok := a.cfg.Blobs.(interface{ Remove(core.Hash) error })
+	if !ok {
+		return
+	}
+	if log, ok := a.cfg.Events.(interface{ Flush() error }); ok {
+		if err := log.Flush(); err != nil {
+			return
+		}
+	}
+	_ = rm.Remove(prev)
+}
+
 // ErrNotEmpty is returned by Restore for an agent that has already run.
 var ErrNotEmpty = errors.New("agent: only a fresh agent can be restored")
 
@@ -286,15 +306,16 @@ func (a *Agent) writeSnapshot(flush bool) error {
 		return err
 	}
 	a.mu.Lock()
-	same := a.lastSnap == h
+	prev := a.lastSnap
 	a.mu.Unlock()
-	if !same {
+	if prev != h {
 		if _, err := a.cfg.Events.Emit(a.cfg.ID, events.TypeAgentSnapshot, map[string]any{"blob": h, "turns": len(snap.Turns), "bytes": len(b), "requests": snap.Requests}); err != nil {
 			return err
 		}
 		a.mu.Lock()
 		a.lastSnap = h
 		a.mu.Unlock()
+		a.dropSnapshot(prev)
 	}
 	if flush {
 		if log, ok := a.cfg.Events.(interface{ Flush() error }); ok {
