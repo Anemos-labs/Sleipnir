@@ -283,6 +283,7 @@ func (s *Session) restoreWorkers(prev *swarm.Snapshot, evs []events.Event) error
 	published := map[string]bool{}
 	// A task's last merge counts only when it came after the task was last started.
 	merges := map[string]swarm.RestoredMerge{}
+	var reviewOps []swarm.ReviewOp
 	for _, a := range prev.Agents {
 		if a.ID != managerAgent && a.Role != "mailman" {
 			selected[a.ID] = true
@@ -299,6 +300,8 @@ func (s *Session) restoreWorkers(prev *swarm.Snapshot, evs []events.Event) error
 				published[op.Agent] = true
 			} else if op.Task != "" && op.Status == string(swarm.StatusDoing) {
 				delete(merges, op.Task)
+			} else if op.Op == "finish" && (op.Status == string(swarm.StatusReview) || op.Status == string(swarm.StatusDone)) {
+				reviewOps = append(reviewOps, swarm.ReviewOp{Task: op.Task, Status: swarm.TaskStatus(op.Status)})
 			}
 		case events.TypeTaskMerge:
 			var m struct{ Task, Outcome, Commit string }
@@ -369,6 +372,7 @@ func (s *Session) restoreWorkers(prev *swarm.Snapshot, evs []events.Event) error
 	if err := s.Swarm.RestoreTeam(context.Background(), prev, restored, ids, retiredCost); err != nil {
 		return err
 	}
+	s.Swarm.RestoreReviewGate(prev, reviewOps)
 	s.Swarm.AddRetiredListCost(retiredList, retiredPlan)
 	for _, w := range restored {
 		if _, err := agent.RebuildArchiveFrom(s.Dir, w.ID, w.ID, s.archive); err != nil {

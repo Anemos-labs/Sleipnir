@@ -540,3 +540,38 @@ func TestTheStaffingLinesStayWithinTheirBound(t *testing.T) {
 		t.Errorf("queuedLines with room for one = %q", q)
 	}
 }
+
+func TestAResumedTeamStillOwesTheReviewOfWorkMergedBeforeTheStop(t *testing.T) {
+	cfg := Config{MaxWorkers: 8, VerifyCmd: "true", Team: []string{"backend", "reviewer"}}
+	idle := func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }
+	prev := &Snapshot{Version: 9, Tasks: []Task{
+		{ID: "T1", Title: "implement", Role: "backend", Owner: "be-1", Status: StatusDone, Closure: closeAs(CloseVerified), Files: []string{"a.go"}},
+		{ID: "T2", Title: "review", Role: ReviewerRole, Owner: "rv-1", Status: StatusDone, Closure: closeAs(CloseVerified)},
+		{ID: "T3", Title: "implement more", Role: "backend", Owner: "be-1", Status: StatusDone, Closure: closeAs(CloseVerified), Files: []string{"b.go"}},
+		{ID: "T4", Title: "not needed", Role: "backend", Status: StatusDone, Closure: closeAs(CloseUnneeded), Files: []string{"c.go"}},
+	}}
+	cases := []struct {
+		name string
+		ops  []ReviewOp
+		want string
+	}{
+		{"merged after the review", []ReviewOp{{"T1", StatusReview}, {"T1", StatusDone}, {"T2", StatusReview}, {"T2", StatusDone}, {"T3", StatusReview}, {"T3", StatusDone}}, "T3"},
+		{"reviewed last", []ReviewOp{{"T1", StatusDone}, {"T3", StatusDone}, {"T2", StatusReview}, {"T2", StatusDone}, {"T4", StatusDone}}, ""},
+		{"review written before the last merge", []ReviewOp{{"T1", StatusDone}, {"T2", StatusReview}, {"T3", StatusDone}, {"T2", StatusDone}}, "T3"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := newRVRigWith(t, cfg, idle, nil)
+			if err := r.sw.RestoreTeam(context.Background(), prev, nil, map[string]string{"be-1": "backend", "rv-1": ReviewerRole}, 0); err != nil {
+				t.Fatal(err)
+			}
+			if got := r.sw.reviewPending(); got != "" {
+				t.Fatalf("pending before the replay: %q", got)
+			}
+			r.sw.RestoreReviewGate(prev, c.ops)
+			if got := r.sw.reviewPending(); got != c.want {
+				t.Fatalf("review pending after the resume: %q, want %q", got, c.want)
+			}
+		})
+	}
+}

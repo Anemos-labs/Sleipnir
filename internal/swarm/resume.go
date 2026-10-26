@@ -64,6 +64,39 @@ func (s *Swarm) RestoreMerges(prev *Snapshot, merges map[string]RestoredMerge) {
 	}
 }
 
+// ReviewOp is a board operation of the log that the review gate counts: a task
+// entering review or done.
+type ReviewOp struct {
+	Task   string
+	Status TaskStatus
+}
+
+// RestoreReviewGate replays, in log order, the submissions and acceptances that
+// fed the review gate (which merges a reviewer has covered): without it a resumed
+// team counts from zero, and work merged before the stop could be reported met
+// without the review it was due. Changes the gate counts that are not tasks (the
+// manager's own edits, revisions) are not in the replay. It must run after
+// RestoreTeam, so the restored workers' roles and models are known.
+func (s *Swarm) RestoreReviewGate(prev *Snapshot, ops []ReviewOp) {
+	if prev == nil {
+		return
+	}
+	for _, op := range ops {
+		t, ok := prev.Task(op.Task)
+		if !ok {
+			continue
+		}
+		switch op.Status {
+		case StatusReview:
+			_ = s.reviewSubmission(t)(nil, t)
+		case StatusDone:
+			if t.Status == StatusDone && (t.Closure.kind == CloseVerified || t.Closure.kind == CloseAgreed) { // accepted, not resolved as unneeded
+				s.noteAccepted(t)
+			}
+		}
+	}
+}
+
 // RestoreTeam reconnects idle workers to their private trees and reserves their
 // unfinished tasks. It must run before Start, against an empty task board. IDs
 // includes retired workers so a new spawn cannot collide with their branches.
