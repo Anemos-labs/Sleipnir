@@ -661,8 +661,9 @@ func TestSec_S22b_ConstitutionIsDeterministicAndStaysTight(t *testing.T) {
 		// 4900 to 5100 for "Presented", a new project's repository, CI and README: about 165 tokens; CHANGELOG.md, "Compatibility changes".
 		// Raised from 5100 to 5150 for the built-in skills: the core of their debugging, testing and design rules, about 70 tokens;
 		// CHANGELOG.md, "Compatibility changes". Raised from 5150 to 5200 for the Capabilities check before adding a subsystem:
-		// about 40 tokens; CHANGELOG.md, "Compatibility changes".)
-		if n := core.NewBytesEstimator().WithRatio(4).Tokens(a); n > 5200 {
+		// about 40 tokens; CHANGELOG.md, "Compatibility changes". Raised from 5200 to 5350 for planning and verification scaled
+		// to the task, which saves requests: about 120 tokens; CHANGELOG.md, "Compatibility changes".)
+		if n := core.NewBytesEstimator().WithRatio(4).Tokens(a); n > 5350 {
 			t.Errorf("the constitution (swarm=%v) is %d tokens; keep the wording tight or raise this bound on purpose", swarm, n)
 		}
 		lower := strings.ToLower(a)

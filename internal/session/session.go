@@ -1365,7 +1365,7 @@ func soloRole() swarm.Role {
 	return swarm.Role{Name: "worker", Short: "w", Priority: agent.PrioInteractive, MaxSteps: 200, Pin: soloPin}
 }
 
-const soloPin = `You are working alone on the user's task, with no team to delegate to. Understand it, list its requirements, make the change with the smallest correct diff, and check your work by running the project's own build and tests, and the program itself, before you report. When a test tool is missing, set it up inside the project (for Python, a virtual environment in .venv) rather than skipping the run. Say plainly what you did, what you verified and what remains.`
+const soloPin = `You are working alone on the user's task, with no team to delegate to. Understand it, list its requirements, make the change with the smallest correct diff, and check your work by running the project's own build and tests (and the program itself when your change alters what its users see) before you report. When a test tool is missing, set it up inside the project (for Python, a virtual environment in .venv) rather than skipping the run. Say plainly what you did, what you verified and what remains.`
 
 // writeGuard routes post-write notifications to the checkpoint store so a rewind
 // can tell an agent's last write from a human's later edit.
