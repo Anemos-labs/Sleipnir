@@ -781,7 +781,7 @@ func (t *waitTool) Spec() core.ToolSpec {
 	return core.ToolSpec{
 		Name: "wait",
 		Description: "Sleep until a task changes state, mail arrives, or the timeout passes (default 120s, max 600s); costs no requests while " +
-			"asleep. until: task ids to wait for (returns when all reach review/done/failed). Returns what changed since you last looked.",
+			"asleep. until: task ids to wait for (returns when all reach review/done/failed, or, for the manager, when one newly reaches review while a worker sits free). Returns what changed since you last looked.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"timeout_sec":{"type":"integer"},"until":{"type":"array","items":{"type":"string"}}}}`),
 		ReadOnly:    true,
 	}
@@ -826,6 +826,13 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			return tools.Errorf("cannot wait for %s: no such task (tasks: %s)", strings.Join(unknown, ", "), taskIDs(snap)), nil
 		}
 	}
+	// While a worker sits free, the manager's verdict is due as soon as an awaited top-level task reaches review: sleeping on
+	// until every other one settles left reviews unread and workers idle for the rest of a long task (a real run waited ten
+	// minutes so, four of its five workers idle). With every worker busy, waiting for all of them costs nothing.
+	var inReview map[string]bool
+	if c.Env.Role == "manager" && len(in.Until) > 0 {
+		inReview = reviewsAmong(s.Board.Snapshot(), in.Until)
+	}
 	m := s.get(me)
 	base := s.baseFor(me)
 	timer := time.NewTimer(timeout)
@@ -860,6 +867,10 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		case len(in.Until) > 0 && allSettled(cur, in.Until):
 			s.setSeen(me, cur)
 			return c.Env.Finish(waitReport(cur, digest, "all awaited tasks settled"), false), nil
+		case inReview != nil && len(newReviews(cur, in.Until, inReview)) > 0 && s.freeWorker(cur) != "":
+			s.setSeen(me, cur)
+			return c.Env.Finish(waitReport(cur, digest, strings.Join(newReviews(cur, in.Until, inReview), ", ")+
+				" reached review while "+s.freeWorker(cur)+" is free: accept or reject it, give free workers the next work, then wait again for the rest"), false), nil
 		case len(in.Until) == 0 && len(digest) > 0:
 			s.setSeen(me, cur)
 			return c.Env.Finish(waitReport(cur, digest, ""), false), nil
@@ -1014,6 +1025,45 @@ func (s *Swarm) setSeen(agentID string, snap *Snapshot) {
 		s.lastSeen[agentID] = snap
 	}
 	s.mu.Unlock()
+}
+
+// freeWorker is an idle worker that holds no unfinished task (its last one is done or failed, or it has none), "" when every
+// worker is busy or holds work. The manager and the harness's services are not workers.
+func (s *Swarm) freeWorker(sn *Snapshot) string {
+	for _, a := range sn.Agents {
+		if a.State != "idle" || a.Role == "manager" || s.isService(a.Role) {
+			continue
+		}
+		if t, ok := sn.Task(a.Task); ok && t.Owner == a.ID && t.Status != StatusDone && t.Status != StatusFailed {
+			continue
+		}
+		return a.ID
+	}
+	return ""
+}
+
+// reviewsAmong is the set of the top-level tasks of ids that are in review.
+func reviewsAmong(s *Snapshot, ids []string) map[string]bool {
+	in := map[string]bool{}
+	for _, id := range ids {
+		if t, ok := s.Task(strings.TrimSpace(id)); ok && t.Status == StatusReview && t.Parent == "" {
+			in[t.ID] = true
+		}
+	}
+	return in
+}
+
+// newReviews lists the top-level tasks of ids in review that were not in before (a pool's children are its leader's to
+// accept, so they are left out).
+func newReviews(s *Snapshot, ids []string, before map[string]bool) []string {
+	var out []string
+	for id := range reviewsAmong(s, ids) {
+		if !before[id] {
+			out = append(out, id)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func allSettled(s *Snapshot, ids []string) bool {

@@ -31,6 +31,14 @@ they do not indicate whether a change has been released.
   on a `read` first. Nothing is changed unseen. A file over 48 KiB,
   or one that is not text, keeps the bare refusal. Tool results only; no
   prompt bytes change.
+- The manager's `wait` with `until` now also returns when one of the awaited
+  top-level tasks newly reaches review while a worker sits free (idle, with
+  no unfinished task of its own). It used to return only once every awaited
+  task settled. A live team run slept ten minutes beside two tasks in review
+  while one long task ran on, with four of its five workers idle. With every
+  worker busy, the wait still goes on for all of them. The `wait` tool's
+  description changes (66 bytes), so the tool block's cached prefix is
+  rebuilt once.
 - A single agent that changed code and then ran the tests with the
   command a project script wraps (`node --test`, `mvn -q test`,
   `./gradlew test`, `npm run test:unit`, `bun test`, `dotnet test`, ...) is
