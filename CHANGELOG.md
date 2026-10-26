@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The board's `ctx_tokens` for an agent is now the input of its latest
+  answered request, cached or not. It was 0 for every agent because the
+  member never wrote it, so the status line a worker sees each turn never
+  showed its context size. That line now reads, for example,
+  `you: be-6 (backend) · T87 · ctx 167k`: the only prompt bytes that change
+  are in that live status line, which is outside the cached prefix.
+  `Agent.PromptTokens` reports the figure.
 - A parent whose pool would have one member (the other members of the role
   work alone, or sit in pools that spare nobody) goes to that member as a
   solo task. A pool of one proposed a plan to itself, agreed with itself and

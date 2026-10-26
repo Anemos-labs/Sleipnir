@@ -136,9 +136,9 @@ type Agent struct {
 	// UnpricedReadTokens are the cache-read tokens of this agent's responses whose model price is unknown: SavedUSD does not count
 	// them, so it is a lower bound when this is not zero.
 	UnpricedReadTokens int64 `json:"unpriced_read_tokens,omitempty"`
-	// CtxTokens is the context size the board last showed for it (board.op agent). The harness writes 0 there today
-	// (internal/swarm/lifecycle.go publish does not set it), so a gauge of how full a context is comes from Snapshot.ContextFill:
-	// the prompt of the agent's latest answered request over the window of its model.
+	// CtxTokens is the context size the board last showed for it (board.op agent): the input of its latest answered main request,
+	// written when the member publishes its status. A gauge of how full a context is comes from Snapshot.ContextFill, which has the
+	// model's window too.
 	CtxTokens int `json:"ctx_tokens,omitempty"`
 
 	Requests     int `json:"requests"`                // main requests that were answered: the length of the hit-ratio history

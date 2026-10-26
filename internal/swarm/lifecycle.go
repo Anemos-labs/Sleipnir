@@ -473,6 +473,7 @@ func (m *member) publish(s *Swarm) {
 		return
 	}
 	_, info.CostUSD = m.a.Usage()
+	info.CtxTokens = m.a.PromptTokens()
 	if !m.service { // the harness's own agents are not on the board: nobody's teammate
 		s.Board.SetAgent(info)
 	}

@@ -1117,3 +1117,21 @@ func TestShutdownIsBoundedByAToolThatIgnoresItsContext(t *testing.T) {
 		t.Fatal("Shutdown is still blocked 3s after cancellation: it waits for every agent goroutine with no deadline")
 	}
 }
+
+// A worker's status on the board carries how full its context is: the input of its latest answered request. The harness wrote 0 there
+// for every agent, so the worker's own status line never showed "ctx".
+func TestTheBoardShowsAWorkersContextSize(t *testing.T) {
+	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply {
+		return rvReply{Text: "ok", Usage: core.Usage{InputTokens: 1_200, CacheReadTokens: 20_000}}
+	})
+	r.sw.StartManager()
+	id, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "A", By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, "worker idle", func() bool { return r.idle(id) })
+	a, _ := r.sw.Board.Snapshot().Agent(id)
+	if a.CtxTokens != 21_200 {
+		t.Fatalf("the board shows %s with ctx_tokens=%d, want 21200", id, a.CtxTokens)
+	}
+}
