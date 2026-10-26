@@ -530,7 +530,10 @@ the prompt for read-only planning; bare `/plan` only changes the mode. Switch to
 `/mode accept-edits` and send an implementation request when the plan is ready.
 
 **When no human is available** (`run`/`swarm` with stdin not a terminal, or any unattended run) a question cannot be
-asked, so the action is refused with `approval required: <why>` and a message explaining that approval is unavailable.
+asked. In the default mode with no `--mode` and no `--allow` rule (`permissions.mode: "default"`, as `init` writes it, does not
+count as a choice) such a run uses `bypass`, and its first line (or, with `--json`, its first `notice`) says so: nothing waits for an answer, and the
+built-in protections, `deny` rules and guarded paths hold as always. In a mode that was chosen, a question is refused
+with `approval required: <why>` and a message explaining that approval is unavailable.
 A run that was refused something says so at its end, with the commands and the edits and what would let them through (`--mode accept-edits` for edits, a rule for a command). Give the
 run what it needs with `--allow` (repeatable, for this run only: `--allow 'Bash(go test:*)'`, or `--allow tests` for the build and
 test commands of most projects), `permissions.allow` in the configuration, or `--mode`. `tests` stands for `go test|build|vet|fmt`,

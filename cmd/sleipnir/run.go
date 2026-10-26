@@ -162,6 +162,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 		Dir: *dir, ContextWindow: *ctxWin, CaptureTokens: *capture, NoWeb: *noWeb, RoleModels: roleModels,
 		Resume: spec, NoMCP: *noMCP, MCPServers: mcpServers, NoMemory: *noMemory, TrainingLogs: *trainingLogs || *capture, Isolation: *isolation, Commit: *commit, Mailman: mailman(), Allow: expandAllow(*allow),
 		AutoDocs: autoDocs(), ManagerApproves: managerApproves(), Team: teamSlots, DefaultTeam: true,
+		Unattended: !interactive,
 	}
 	if interactive {
 		o.Prompter = session.TerminalPrompter(os.Stdin, os.Stderr)
@@ -190,19 +191,29 @@ func runCommand(ctx context.Context, name string, args []string) error {
 		return err
 	}
 	defer s.Close()
-	unattended := ""
+	unattended, bypassed := "", ""
 	if !interactive {
 		unattended = noOneToAskNote(s.Perm.Mode(), *allow) // the effective mode: a configured one when --mode is not given
 	}
+	if s.UnattendedBypass() {
+		bypassed = unattendedBypassNote
+	}
 	if !*quiet && !*asJSON {
 		fmt.Fprintln(os.Stderr, wrapFor(os.Stderr, fmt.Sprintf("sleipnir %s · %s%s · session %s", version, s.Model.ID, budgetLabel(s), s.ID)))
-		if unattended != "" {
-			fmt.Fprintln(os.Stderr, wrapFor(os.Stderr, unattended))
+		for _, n := range []string{unattended, bypassed} {
+			if n != "" {
+				fmt.Fprintln(os.Stderr, wrapFor(os.Stderr, n))
+			}
 		}
 	}
-	if *asJSON && unattended != "" {
+	if *asJSON {
 		// a script reads the stream, not stderr: the note is its first event
-		sink.Notice(mainAgent, "warn", unattended)
+		if unattended != "" {
+			sink.Notice(mainAgent, "warn", unattended)
+		}
+		if bypassed != "" {
+			sink.Notice(mainAgent, "info", bypassed)
+		}
 	}
 	start := time.Now()
 	res, err := s.Run(ctx, prompt)

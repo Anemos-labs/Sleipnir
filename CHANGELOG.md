@@ -26,6 +26,14 @@ they do not indicate whether a change has been released.
   model), and the judgment ended with no verdict, pausing a goal whose 41
   tasks were done. A request after the last is not answered. Only the
   judge's evidence messages change; no agent prompt bytes change.
+- `run` and `swarm` without a terminal, with no `--mode` and no `--allow`
+  rule, now run in `bypass` mode where they would have run in `default`
+  (another mode in the configuration still holds): nobody can answer a question,
+  and the default mode refused every edit and every command that is not
+  read-only. Built-in protections, `deny` rules and guarded paths hold as
+  always. The run says so first (stderr, or a `notice` of level `info` with
+  `--json`). A run that chose a mode, `--mode default` included, behaves as
+  before. No prompt bytes change.
 - Building Sleipnir now needs Go 1.26.10 or newer (go.mod said 1.26.0).
   Go 1.26.0 to 1.26.4 race-instrument the darwin syscall path that runs in
   a forked child before exec (golang/go#79804, fixed in 1.26.5), so under

@@ -95,6 +95,12 @@ type Options struct {
 	// Permissions.
 	Mode     perm.Mode
 	Prompter perm.Prompter
+	// Unattended says that nobody is there to answer a question (sleipnir run with stdin not a terminal). When the session would
+	// run in the default mode and neither Mode nor an Allow rule chose the policy, it runs in bypass mode instead: a question it
+	// could not ask would only be refused, and a run that may not edit what it was asked to change does nothing useful. The
+	// configuration's permissions.mode counts only when it is another mode (sleipnir init writes "default" for every user). Built-in
+	// protections, deny rules and guarded paths hold in bypass as always.
+	Unattended bool
 	// AskTimeout is how long a question to the person waits for its answer before it is refused (perm.Config.AskTimeout); zero waits.
 	AskTimeout time.Duration
 	// ManagerAnswersAfter, when positive, overrides permissions.manager_answers_after: in a team, how long a worker's question waits
@@ -257,9 +263,10 @@ type Session struct {
 	// team is the team the swarm was built with (Team).
 	team []TeamSlot
 
-	lastPerm      string // the permission state last written to the log (keepPermissions)
-	restoredMode  string // what a resumed session got back (restorePermissions)
-	restoredRules int
+	lastPerm         string // the permission state last written to the log (keepPermissions)
+	restoredMode     string // what a resumed session got back (restorePermissions)
+	unattendedBypass bool   // bypass was chosen because nobody can answer (Options.Unattended)
+	restoredRules    int
 	// modelRef is the provider/model the session runs on (empty when the provider was given as a value).
 	modelRef string
 	cfg      *config.Config
@@ -691,11 +698,18 @@ func (s *Session) clientFor(ref ModelRef) (provider.Provider, cost.Model, error)
 	return p, m, err
 }
 
+// UnattendedBypass says whether the session runs in bypass mode because nobody can answer a question and nothing else chose a
+// mode (Options.Unattended).
+func (s *Session) UnattendedBypass() bool { return s.unattendedBypass }
+
 func (s *Session) buildPerm() error {
 	o := s.opts
 	mode := o.Mode
 	if mode == "" {
 		mode = perm.Mode(s.cfg.Permissions.Mode)
+		if o.Unattended && len(o.Allow) == 0 && (mode == perm.ModeDefault || mode == "") {
+			mode, s.unattendedBypass = perm.ModeBypass, true
+		}
 	}
 	roles := map[string]perm.RoleProfile{}
 	for name, rp := range s.cfg.Permissions.Roles {
