@@ -72,7 +72,7 @@ func isolatedTeamResumeAfterProcessDeath(t *testing.T, editAgain bool) {
 	// The child is killed, so its own t.TempDir cleanup never runs: its temporary directories go under one of ours.
 	tmp := t.TempDir()
 	child.Env = append(os.Environ(), "SLEIPNIR_ISOLATED_CRASH_HELPER=1", "SLEIPNIR_CRASH_REPO="+repo, "SLEIPNIR_CRASH_HOME="+home,
-		"TMPDIR="+tmp, "TMP="+tmp, "TEMP="+tmp)
+		"TMPDIR="+tmp, "TMP="+tmp, "TEMP="+tmp, "GOTMPDIR="+tmp)
 	output, err := child.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
