@@ -564,7 +564,7 @@ flags:
   -budget-usd float
         stop when spend reaches this many US dollars
   -capture
-        ask the endpoint for token ids and logprobs (self-hosted policy servers; RL data)
+        ask the endpoint for token ids and logprobs (self-hosted policy servers; RL data); keeps training logs, as --training-logs does
   -commit
         swarm with --isolation worktree: commit the verified result onto your branch instead of leaving uncommitted edits (needs a clean checkout on a branch)
   -context-window int

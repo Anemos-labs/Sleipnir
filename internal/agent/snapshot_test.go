@@ -578,3 +578,44 @@ func TestOnlyTrainingLogsKeepEverySnapshotAndPayload(t *testing.T) {
 		}
 	}
 }
+
+func TestAResumedAgentDropsTheSnapshotItWasRestoredFrom(t *testing.T) {
+	dir := t.TempDir()
+	blobs, err := events.NewDirBlobs(filepath.Join(dir, "blobs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := newRig(t, rigOpts{noCompact: true, snapSteps: true, blobs: blobs}, workLoop(2))
+	if _, err := first.agent.Run(context.Background(), "record each step"); err != nil {
+		t.Fatal(err)
+	}
+	snaps := first.log.OfType(events.TypeAgentSnapshot)
+	var d struct {
+		Blob core.Hash `json:"blob"`
+	}
+	if err := json.Unmarshal(snaps[len(snaps)-1].Data, &d); err != nil {
+		t.Fatal(err)
+	}
+	log, err := events.Open(dir, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = log.Emit("be-1", events.TypeAgentSnapshot, map[string]any{"blob": d.Blob})
+	if err := log.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err := agent.LatestSnapshot(dir, "be-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resumed := newRig(t, rigOpts{noCompact: true, snapSteps: true, blobs: blobs}, workLoop(2))
+	if err := resumed.agent.Restore(*s); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resumed.agent.Run(context.Background(), "go on"); err != nil {
+		t.Fatal(err)
+	}
+	if blobs.Has(d.Blob) {
+		t.Error("the snapshot the agent was restored from is kept after a newer one replaced it")
+	}
+}

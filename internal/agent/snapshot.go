@@ -58,6 +58,8 @@ type Snapshot struct {
 	// PendingRequests have reserved IDs but their usage is not included above.
 	PendingRequests   []string `json:"pending_requests,omitempty"`
 	PendingAssignment string   `json:"pending_assignment,omitempty"`
+	// blob is the blob LatestSnapshot read it from: the agent restored from it drops it once a newer snapshot replaces it.
+	blob core.Hash
 }
 
 // LayerState is a layer's content, enough to rebuild it.
@@ -273,6 +275,7 @@ func (a *Agent) Restore(s Snapshot) error {
 	a.reqN, a.forkN, a.comp.count = s.Requests, s.Forks, s.Compactions
 	a.usage, a.costUSD, a.listUSD, a.planUsed = s.Usage, s.CostUSD, s.ListUSD, s.PlanUsed
 	a.pendingAssignment = s.PendingAssignment
+	a.lastSnap = s.blob
 	a.man = core.ManifestState{} // the next request is encoded in full: a new segment of the log
 	if a.cfg.Provider.Profile().ReplayThinking && a.cfg.ApplyPolicy.StripThinking {
 		a.thread.Rewrite(func(t core.Turn) (core.Turn, bool) { return kv.StripThinkingTurn(t) })
@@ -396,7 +399,7 @@ func LatestSnapshot(dir, agentID string) (*Snapshot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("snapshot %s: %w", last.Short(), err)
 	}
-	var s Snapshot
+	s := Snapshot{blob: last}
 	if err := json.Unmarshal(raw, &s); err != nil {
 		return nil, fmt.Errorf("snapshot %s: %w", last.Short(), err)
 	}

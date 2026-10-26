@@ -86,7 +86,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	trust := fs.Bool("trust-project", false, trustProjectHelp)
 	dir := fs.String("session-dir", "", "directory for this run's recording (events.jsonl, blobs/, checkpoints/); default <state>/sessions/<id>, <state> being $SLEIPNIR_HOME or ~/.sleipnir")
 	ctxWin := fs.Int("context-window", 0, "override the model's context window (small values force frequent compaction)")
-	capture := fs.Bool("capture", false, "ask the endpoint for token ids and logprobs (self-hosted policy servers; RL data)")
+	capture := fs.Bool("capture", false, "ask the endpoint for token ids and logprobs (self-hosted policy servers; RL data); keeps training logs, as --training-logs does")
 	noWeb := fs.Bool("no-web", false, "disable the web tools")
 	noMCP := fs.Bool("no-mcp", false, "start no MCP tool servers")
 	mcpConfigs := mcpConfigFlags(fs)
@@ -160,7 +160,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 		Cwd:        *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: team, Workers: workers,
 		MaxSteps: *maxSteps, FixedSteps: *maxSteps > 0, BudgetUSD: *budget, Verify: *verify, NoRecon: *noRecon, TrustProject: *trust,
 		Dir: *dir, ContextWindow: *ctxWin, CaptureTokens: *capture, NoWeb: *noWeb, RoleModels: roleModels,
-		Resume: spec, NoMCP: *noMCP, MCPServers: mcpServers, NoMemory: *noMemory, TrainingLogs: *trainingLogs, Isolation: *isolation, Commit: *commit, Mailman: mailman(), Allow: expandAllow(*allow),
+		Resume: spec, NoMCP: *noMCP, MCPServers: mcpServers, NoMemory: *noMemory, TrainingLogs: *trainingLogs || *capture, Isolation: *isolation, Commit: *commit, Mailman: mailman(), Allow: expandAllow(*allow),
 		AutoDocs: autoDocs(), ManagerApproves: managerApproves(), Team: teamSlots, DefaultTeam: true,
 	}
 	if interactive {
