@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A worker that claims the task it is already on, with nothing merged since
+  its last sync, is told nothing changed and to carry on. It was told its
+  checkout "now includes integrated work" and to re-read its files, its
+  assignment was queued again, and the claim reset the no-progress alarm. A
+  worker on a perf task claimed its two tasks three times in 45 minutes and
+  re-read the same file after each. When work has merged, the claim still
+  syncs and says so. Only that tool result changes, and the repeated
+  assignment card is no longer sent.
 - The board's `ctx_tokens` for an agent is now the input of its latest
   answered request, cached or not. It was 0 for every agent because the
   member never wrote it, so the status line a worker sees each turn never
