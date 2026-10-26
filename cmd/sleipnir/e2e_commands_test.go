@@ -316,12 +316,24 @@ func TestRunOutput(t *testing.T) {
 	})
 }
 
-// With no one to ask, a run refuses what needs approval and tells the model.
-func TestRunUnattendedRefusesWhatNeedsApproval(t *testing.T) {
+// With no one to ask and no --mode given, a run does not ask: it runs in bypass, says so first, and its edits are done.
+func TestRunUnattendedWithNoModeGivenDoesNotAsk(t *testing.T) {
 	m := startModel(t)
 	m.on("@write", writes("approved.txt"))
 	w := newWorld(t, m.url())
 	r := w.run("", "run", "@write")
+	assertRun(t, r, 0, nil, []string{"running in bypass mode", "✓ write approved.txt"})
+	if !exists(filepath.Join(w.project, "approved.txt")) {
+		t.Error("the write was not done")
+	}
+}
+
+// With no one to ask, a run in the default mode it was given refuses what needs approval and tells the model.
+func TestRunUnattendedRefusesWhatNeedsApproval(t *testing.T) {
+	m := startModel(t)
+	m.on("@write", writes("approved.txt"))
+	w := newWorld(t, m.url())
+	r := w.run("", "run", "--mode", "default", "@write")
 	assertRun(t, r, 0, nil, []string{"✗ write approved.txt", "!" + linePrompt})
 	if exists(filepath.Join(w.project, "approved.txt")) {
 		t.Error("the write was done")
@@ -337,7 +349,7 @@ func TestRunUnattendedSaysWhatItRefusedAndAllowAnswersIt(t *testing.T) {
 	m := startModel(t)
 	m.on("@touch", runs("touch ran.marker"))
 	w := newWorld(t, m.url())
-	r := w.run("", "run", "@touch")
+	r := w.run("", "run", "--mode", "default", "@touch")
 	assertRun(t, r, 0, nil, []string{"refused, because this run had no one to ask:", "touch ran.marker", "--allow 'Bash(touch:*)'", "--allow tests"})
 	if exists(filepath.Join(w.project, "ran.marker")) {
 		t.Fatal("the command ran although nothing could approve it")

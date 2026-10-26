@@ -527,9 +527,10 @@ command), `response`, `notice`, and a final `{"type":"result", ...}` with `text`
 `compactions`, `stop`, `session`, `dir`, `elapsed_ms`, `error` and, for a swarm that stopped with work left, `unfinished`
 (and the status is 3); a session on a ChatGPT plan adds `list_usd` (its usage at the API list price, which the plan does not
 bill) and `"plan": true`, and its summary line shows that figure as `≈$0.0123 plan`. `--cwd` must name a directory that exists. Unattended (stdin not a terminal) nothing can be
-approved: an action that needs approval is refused. In the default mode with no `--allow` rule the run says so before it starts
-(on stderr, or as the stream's first `notice` with `--json`), and a run that the refusals end says in its error which flag lets
-the work through. Slash commands are not expanded in `run`. `swarm` and `run --swarm`
+approved, so a run with no `--mode` and no `--allow` rule whose mode would be `default` uses
+`bypass` and says so before it starts (on stderr, or as the stream's first `notice` with `--json`). In a mode that was chosen an
+action that needs approval is refused; in the default mode the run says so before it starts, and a run that the refusals end
+says in its error which flag lets the work through. Slash commands are not expanded in `run`. `swarm` and `run --swarm`
 are the same command.
 
 Ctrl-C (or SIGTERM) ends a run: it prints `sleipnir: interrupted` and exits with 130 (143 for SIGTERM); work that passed
