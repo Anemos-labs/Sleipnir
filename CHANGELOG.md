@@ -44,6 +44,12 @@ they do not indicate whether a change has been released.
   an hour on other ways to run it. The note now names plan mode and
   read-only roles among the fixed rules. Tool results only; no prompt bytes
   change.
+- A goal's judge is told after each evidence answer how many requests it
+  has left (24 in all), and the last answer asks for its verdict. A judge
+  never told the limit spent all 24 re-reading records (22 minutes on a slow
+  model), and the judgment ended with no verdict, pausing a goal whose 41
+  tasks were done. A request after the last is not answered. Only the
+  judge's evidence messages change; no agent prompt bytes change.
 - The system prompt scales planning and verification to the task. A focused
   fix no longer calls plan first (before: any task of three steps or more),
   the program is run as a user would only when the change alters what its

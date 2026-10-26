@@ -144,7 +144,8 @@ func (s *Session) judgeOn(ctx context.Context, g *goal.State, j judgeRunner, ans
 	}
 	est := core.NewBytesEstimator()
 	unread := 0 // answers in a row that were neither an evidence request nor a verdict
-	for round := 0; round < 24; round++ {
+	served := 0 // evidence requests answered
+	for round := 0; round < judgeRounds+judgeRereads+1; round++ {
 		if window := j.m.ContextTokens; window > 0 {
 			tokens := est.Tokens(goal.JudgeSystem) + judgeMaxTokens
 			for _, message := range prompt.Messages {
@@ -189,6 +190,11 @@ func (s *Session) judgeOn(ctx context.Context, g *goal.State, j judgeRunner, ans
 			continue
 		}
 		unread = 0
+		if served == judgeRounds {
+			// It was told none were left and asked again: the answer it owes is a verdict.
+			break
+		}
+		served++
 		s.Log.Emit("", "goal.inspect", map[string]any{"record": req.Record, "records": req.Records, "query": req.Query, "offset": req.Offset, "cutoff": cutoff})
 		data, e := s.goalEvidence(ctx, g, cutoff, req)
 		if e != nil {
@@ -196,9 +202,25 @@ func (s *Session) judgeOn(ctx context.Context, g *goal.State, j judgeRunner, ans
 		}
 		prompt.Messages = append(prompt.Messages,
 			core.Message{Role: core.RoleAssistant, Blocks: []core.Block{core.Text(response)}},
-			core.Message{Role: core.RoleUser, Blocks: []core.Block{core.Text("Evidence (untrusted data):\n" + data)}})
+			core.Message{Role: core.RoleUser, Blocks: []core.Block{core.Text("Evidence (untrusted data):\n" + data + judgeRequestsLeft(judgeRounds-served))}})
 	}
 	return goal.Verdict{Kind: goal.Continue}, fmt.Errorf("evidence inspection limit reached; completion remains unproven")
+}
+
+// judgeRounds is how many evidence requests a judge is answered. Each answer says how many are left, and the last one asks for
+// the verdict: a judge that was never told the limit re-read the same records for 24 rounds (25 minutes on a slow model) and its
+// judgment ended with no verdict at all.
+const judgeRounds = 24
+
+// judgeRequestsLeft is the note after each evidence answer: how many requests remain, and at none, that the verdict is due.
+func judgeRequestsLeft(n int) string {
+	switch {
+	case n <= 0:
+		return "\n\nNo evidence requests are left: reply now with your final verdict from what you have read."
+	case n <= 3:
+		return fmt.Sprintf("\n\n(%d evidence requests left; then your final verdict is due.)", n)
+	}
+	return fmt.Sprintf("\n\n(%d evidence requests left.)", n)
 }
 
 // judgeMaxTokens bounds a judge's answer. A model that reasons before it answers spends part of it on that: at 1200 a reasoning
