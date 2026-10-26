@@ -359,6 +359,9 @@ func (f *shopFixture) respond(c *mock.Call) mock.Reply {
 	if id == "" {
 		return mock.Reply{Text: "nothing to do"}
 	}
+	if r, ok := mock.Rewait(c); ok && role == "manager" {
+		return r
+	}
 	n := f.next(id)
 	switch role {
 	case "manager":
@@ -615,6 +618,9 @@ func (fx *webFixture) docs() (fixtureScenario, error) {
 			return judgeDone
 		}
 		id, role := whoIs(c)
+		if r, ok := mock.Rewait(c); ok && role == "manager" {
+			return r
+		}
 		n := st.next(id)
 		switch role {
 		case "manager":

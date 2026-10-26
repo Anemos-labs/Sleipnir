@@ -287,6 +287,10 @@ func (s *script) writers() int { return min(maxWriters, s.topics/2) }
 
 func (s *script) manager(c *mock.Call, n int) mock.Reply {
 	writers := s.writers()
+	if r, ok := mock.Rewait(c); ok {
+		return r
+	}
+	n -= mock.Rewaits(c)
 	switch n {
 	case 0: // survey every topic in parallel: scouts are read-only, so there is no writer cap to hit
 		var calls []mock.ToolCall
