@@ -59,8 +59,8 @@ const (
 	// told who is free, once, and decides. It clears when they are at work again, when no
 	// worker runs or no task is open; the manager's calls between two waits do not clear it.
 	StallIdleCapacity StallKind = "idle_capacity"
-	// StallReviewOverrun: a running reviewer's task has run longer than the work it reviews took to build (the merges no
-	// accepted review covers, their durations summed), and at least reviewOverrunFloor. A review that walks the same code
+	// StallReviewOverrun: a running reviewer's task has run longer than the work it reviews took to build (the longest of the merges
+	// no accepted review covers), and at least reviewOverrunFloor. A review that walks the same code
 	// over and over finds what its first pass found; the reviewer is told to write the report with what it has.
 	StallReviewOverrun StallKind = "review_overrun"
 )
@@ -313,8 +313,8 @@ func (s *Swarm) stallFindings() []Stall {
 		}
 	}
 
-	// review_overrun: a reviewer's run has outlasted the work it reviews. The bound is the work's own duration (the merges no
-	// review covers yet, summed, with a floor), so a review of a day's work may take hours and a review of a fix may not.
+	// review_overrun: a reviewer's run has outlasted the work it reviews. The bound is the work's own duration (the longest of the merges
+	// no review covers yet, with a floor), so a review of a day's work may take hours and a review of a fix may not.
 	for id, v := range views {
 		if !v.running || v.manager || v.service || v.role != ReviewerRole || v.runSince.IsZero() {
 			continue

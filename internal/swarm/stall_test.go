@@ -495,7 +495,10 @@ func TestStallReviewOverrun(t *testing.T) {
 	work := Task{ID: "T1", Role: "backend", Rev: 1}
 	r.sw.review.noteBegan(work.ID, work.Rev, now.Add(-19*time.Minute))
 	r.sw.noteAccepted(work)
-	if took, ids := r.sw.review.unreviewedWork(); took.Round(time.Minute) != 19*time.Minute || len(ids) != 1 || ids[0] != "T1" {
+	beside := Task{ID: "T2", Role: "backend", Rev: 1} // built side by side: the bound is the longest, not the sum
+	r.sw.review.noteBegan(beside.ID, beside.Rev, now.Add(-15*time.Minute))
+	r.sw.noteAccepted(beside)
+	if took, ids := r.sw.review.unreviewedWork(); took.Round(time.Minute) != 19*time.Minute || len(ids) != 2 || ids[0] != "T1" || ids[1] != "T2" {
 		t.Fatalf("unreviewed work = %v %v", took, ids)
 	}
 	id, err := r.sw.Spawn(SpawnReq{Role: ReviewerRole, Title: "review T1", By: "mgr"})
@@ -522,7 +525,7 @@ func TestStallReviewOverrun(t *testing.T) {
 	if !ok || f.Task != task || f.Agent != id || f.Notify != id {
 		t.Fatalf("finding = %+v, %v; stalls %+v", f, ok, r.sw.Stalls())
 	}
-	if want := id + " has reviewed " + task + " for 25 minutes; the work it reviews (T1) took 19 minutes to build"; f.Detail != want {
+	if want := id + " has reviewed " + task + " for 25 minutes; the work it reviews (T1, T2) took 19 minutes to build"; f.Detail != want {
 		t.Errorf("detail = %q, want %q", f.Detail, want)
 	}
 	if n := raised(r, StallReviewOverrun); n != 1 {

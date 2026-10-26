@@ -72,19 +72,20 @@ func (g *reviewGate) tookLocked(t Task, now time.Time) time.Duration {
 	return now.Sub(at)
 }
 
-// unreviewedWork is the sum of the durations of the merges no accepted review covers, and their ids in merge order.
+// unreviewedWork is the longest duration among the merges no accepted review covers (parts built side by side are read side
+// by side: the critical path of the work, not its sum), and their ids in merge order.
 func (g *reviewGate) unreviewedWork() (time.Duration, []string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	var sum time.Duration
+	var longest time.Duration
 	var ids []string
 	for n := g.reviewed + 1; n <= g.merges; n++ {
-		sum += g.took[n]
+		longest = max(longest, g.took[n])
 		if id := g.landedID[n]; id != "" {
 			ids = append(ids, id)
 		}
 	}
-	return sum, ids
+	return longest, ids
 }
 
 // landLocked counts a change that reached the shared tree as the next merge: id names it, scopes are the files (or globs) it may

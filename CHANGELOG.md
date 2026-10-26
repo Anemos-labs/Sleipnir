@@ -7,10 +7,17 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The manager is told to accept a task from its evidence (the merge, the
+  last test run, the worker's command and result) and to leave probing
+  the result to the reviewer, in parallel with the next work, instead of
+  verifying accepted work with tests of its own: one manager spent eleven
+  minutes writing and running probe tests in four finished modules before
+  accepting them, while the tasks sat in review and the team sat idle.
+  About 50 tokens more in the manager's role pin.
 - A reviewer whose run outlasts the work it reviews is told to write its
   report: the stall sweep's new `review_overrun` finding holds when a
   running reviewer's task has run longer than the merges no review covers
-  took to build (their durations summed, at least ten minutes), and the
+  took to build (the longest of them, at least ten minutes), and the
   reviewer's pin says a review takes less time than the work did. In one
   run a reviewer spent twenty requests re-walking four small modules that
   took fifteen minutes to build and never reported. The review gate now
