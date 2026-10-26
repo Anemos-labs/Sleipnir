@@ -60,13 +60,17 @@ func TestSoloTaskSkipsThePool(t *testing.T) {
 		t.Fatalf("agent= on a solo task: %+v", got)
 	}
 
-	// A pooled parent of the role takes only the member that holds no solo task.
+	// A parent of the role goes to the one member that holds no solo task, and as a pool of one would plan with nobody, it takes
+	// the parent alone: no pool, no votes, no child repeating its parent.
 	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "build the API", Files: []string{"api/**"}, By: "mgr"}); err != nil {
 		t.Fatal(err)
 	}
 	parent, _ := r.sw.Board.Snapshot().Task("T3")
-	if parent.Pool == nil || len(parent.Pool.Members) != 1 || parent.Pool.Members[0] != "be-2" {
-		t.Fatalf("pool of a parent beside solo tasks: %+v", parent.Pool)
+	if parent.Pool != nil || !parent.Solo || parent.Owner != "be-2" || parent.Status != StatusDoing {
+		t.Fatalf("a parent with one free member: %+v", parent)
+	}
+	if poolWoken(t, r) {
+		t.Fatal("a parent with one free member woke a pool")
 	}
 
 	// Nobody is free for a third solo task: an existing task is queued, not given to a busy member.
