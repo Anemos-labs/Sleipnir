@@ -7,6 +7,21 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The system prompt scales planning and verification to the task. A focused
+  fix no longer calls plan first (before: any task of three steps or more),
+  the program is run as a user would only when the change alters what its
+  users see, and verification is asked to happen in few requests: one
+  command for every check, one check for a changed requirement that no test
+  covers, no re-runs of passing checks. The constitution grows by about 120
+  tokens and its bytes change, so every session's cached prefix is written
+  once anew.
+- An edit, write or patch refused because the agent has not read the file,
+  or because the file changed since it did, now carries the file's current
+  content, line-numbered as `read` shows it, and the file counts as read:
+  the agent makes the change again at once instead of spending a request
+  on a `read` first. Nothing is changed unseen. A file over 48 KiB,
+  or one that is not text, keeps the bare refusal. Tool results only; no
+  prompt bytes change.
 - A single agent that changed code and then ran the tests with the
   command a project script wraps (`node --test`, `mvn -q test`,
   `./gradlew test`, `npm run test:unit`, `bun test`, `dotnet test`, ...) is

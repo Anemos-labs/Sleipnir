@@ -423,17 +423,17 @@ func TestAChangeToAnUnreadFileIsRefusedBeforeThePersonIsAsked(t *testing.T) {
 	env := testEnv(t)
 	asks := &askCounter{}
 	env.Perm = asks
-	p := filepath.Join(env.Cwd, "f.txt")
-	writeFile(t, p, "original\n")
 	for name, in := range map[string]struct {
 		tool  tools.Tool
 		input map[string]any
 	}{
-		"write": {Write{}, map[string]any{"path": "f.txt", "content": "new\n"}},
-		"edit":  {Edit{}, map[string]any{"path": "f.txt", "old_string": "original", "new_string": "new"}},
+		"write": {Write{}, map[string]any{"path": "w.txt", "content": "new\n"}},
+		"edit":  {Edit{}, map[string]any{"path": "e.txt", "old_string": "original", "new_string": "new"}},
 	} {
+		file := in.input["path"].(string)
+		writeFile(t, filepath.Join(env.Cwd, file), "original\n")
 		text := mustErr(t, run(t, in.tool, env, in.input))
-		contains(t, text, "f.txt has not been read by you yet")
+		contains(t, text, file+" has not been read by you yet")
 		if n := atomic.LoadInt32(&asks.n); n != 0 {
 			t.Errorf("%s: the person was asked %d times about a change that could not be made", name, n)
 		}
@@ -443,4 +443,35 @@ func TestAChangeToAnUnreadFileIsRefusedBeforeThePersonIsAsked(t *testing.T) {
 	if n := atomic.LoadInt32(&asks.n); n != 1 {
 		t.Errorf("creating a file asked %d times, want 1", n)
 	}
+}
+
+func TestARefusedChangeShowsTheFileSoTheRetryNeedsNoRead(t *testing.T) {
+	a := testEnv(t)
+	b := agentEnv(a, "b")
+	p := filepath.Join(a.Cwd, "f.txt")
+	writeFile(t, p, "alpha\nbeta\n")
+
+	// Never read: refused, the file is shown, and the same edit then succeeds without a read call.
+	text := mustErr(t, run(t, Edit{}, a, map[string]any{"path": "f.txt", "old_string": "alpha", "new_string": "ALPHA"}))
+	contains(t, text, "f.txt has not been read by you yet", "now counts as read", "1\talpha", "2\tbeta")
+	mustOK(t, run(t, Edit{}, a, map[string]any{"path": "f.txt", "old_string": "alpha", "new_string": "ALPHA"}))
+
+	// Changed by someone else since: refused with the new content, then the retry succeeds.
+	mustOK(t, run(t, Read{}, b, map[string]any{"path": "f.txt"}))
+	mustOK(t, run(t, Edit{}, b, map[string]any{"path": "f.txt", "old_string": "beta", "new_string": "BETA"}))
+	text = mustErr(t, run(t, Edit{}, a, map[string]any{"path": "f.txt", "old_string": "ALPHA", "new_string": "alpha"}))
+	contains(t, text, "changed since you last read it", "modified by agent b", "2\tBETA")
+	mustOK(t, run(t, Edit{}, a, map[string]any{"path": "f.txt", "old_string": "ALPHA", "new_string": "alpha"}))
+	if got := readFileT(t, p); got != "alpha\nBETA\n" {
+		t.Errorf("file = %q", got)
+	}
+
+	// A file too long to show whole keeps the bare refusal, and still needs a read.
+	big := filepath.Join(a.Cwd, "big.txt")
+	writeFile(t, big, strings.Repeat("0123456789abcdef\n", maxShownOnRefusal/16))
+	text = mustErr(t, run(t, Edit{}, a, map[string]any{"path": "big.txt", "old_string": "0123", "new_string": "x", "replace_all": true}))
+	if strings.Contains(text, "now counts as read") {
+		t.Errorf("a long file was shown on refusal: %.200q", text)
+	}
+	mustErr(t, run(t, Edit{}, a, map[string]any{"path": "big.txt", "old_string": "0123", "new_string": "x", "replace_all": true}))
 }

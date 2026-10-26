@@ -684,8 +684,9 @@ What it does not restore, or does differently:
   take effect.
 * **The model and the permission mode** are whatever you pass now (`--model`, `--mode`, config), not what the session
   had. The `SessionStart` hook runs again with `source` `startup`.
-* **File-read state.** After a resume an edit needs a fresh `read` of the file first, which is what the staleness check
-  exists to guarantee.
+* **File-read state.** After a resume the agent has to see a file again before it edits it, which is what the staleness check
+  exists to guarantee: the first edit is refused with the file's current content (a text file up to 48 KiB), or a `read`
+  is needed first (a longer one).
 
 **A shared-tree team** restores the manager's conversation and task board. Interrupted
 tasks return to todo without an owner; completed tasks keep their results. It can
