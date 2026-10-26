@@ -524,7 +524,8 @@ func TestAPoolLeaderNarrowsAnUnclaimedChild(t *testing.T) {
 }
 
 // After a resume a pool's parent is todo, reserved for its leader, until it is started again; a child of it cannot be assigned before. The
-// refusal says how to start the parent: in a resumed team run the manager tried to spawn the child five times.
+// refusal says how to start the parent and that the manager does it: in a resumed team run the manager tried to spawn the child five
+// times, and a resumed leader tried to spawn the parent itself.
 func TestAChildOfAResumedPoolSaysHowToStartTheParent(t *testing.T) {
 	r := newPoolRig(t)
 	if err := r.sw.Board.poolUpdate("mgr", r.parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil }); err != nil {
@@ -542,8 +543,10 @@ func TestAChildOfAResumedPoolSaysHowToStartTheParent(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	want := "start " + r.parent.ID + " first (spawn task=" + r.parent.ID + " agent=" + r.lead + "), then its children"
+	want := "the manager starts " + r.parent.ID + " first (spawn task=" + r.parent.ID + " agent=" + r.lead + "), then its children"
 	r.refused(r.task("mgr", map[string]any{"action": "claim", "id": child.ID}), "a child of a parent waiting to restart", want)
+	// The resumed leader is told the same: only the manager starts the parent (a leader told to start it tried spawn, refused again).
+	r.refused(r.task(r.lead, map[string]any{"action": "claim", "id": child.ID}), "the leader claiming a child of its parent waiting to restart", want)
 	if _, err := r.sw.Spawn(SpawnReq{Agent: r.second, TaskID: child.ID, By: "mgr"}); err == nil || !strings.Contains(err.Error(), want) {
 		t.Errorf("spawning the child: %v, want it to say %q", err, want)
 	}
