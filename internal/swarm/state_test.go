@@ -1318,6 +1318,7 @@ func TestAWorkersWaitSleepsThroughOtherWorkersTasks(t *testing.T) {
 		t.Fatalf("the timed-out wait left out what changed elsewhere: %q", res)
 	}
 
+	// The next wait starts from the board as it is, submission included, so only the acceptance can wake it.
 	if err := b.Submit("be-2", "T2", "my result", "edited 1"); err != nil {
 		t.Fatal(err)
 	}
@@ -1331,7 +1332,7 @@ func TestAWorkersWaitSleepsThroughOtherWorkersTasks(t *testing.T) {
 	}
 	select {
 	case res := <-out:
-		if d := time.Since(start); d > 2*time.Second || !strings.Contains(res, "T2") {
+		if d := time.Since(start); d > 2*time.Second || !strings.Contains(res, "T2 → done") {
 			t.Fatalf("be-2's wait took %v for its own task and reported %q", d.Round(time.Millisecond), res)
 		}
 	case <-time.After(5 * time.Second):

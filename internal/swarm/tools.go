@@ -1084,7 +1084,7 @@ func allSettled(s *Snapshot, ids []string) bool {
 
 // concernsWorker reports whether a change between a and b touches a worker's own work: a task it owns or last owned, a pool it
 // belongs to (the parent and its children), or a task its open work depends on or is blocked on. A worker's untargeted wait
-// returns only for those, and for mail: in a 16-worker run three pool members that waited for their leader's one child were woken
+// returns only for those, and for mail: in a local team run three pool members that waited for their leader's one child were woken
 // by every review elsewhere on the board, about twenty requests each in fifteen minutes, to read news that was not theirs.
 // The rest of the board's changes still come in the report when something of its own does.
 func concernsWorker(me string, a, b *Snapshot) bool {
