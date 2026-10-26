@@ -1404,6 +1404,13 @@ func (b *Board) Restore(prev *Snapshot) []string {
 // workers whose private worktrees were recovered. Reserved tasks are todo, so no
 // worker is reported as running until explicitly started again.
 func (b *Board) RestoreOwners(prev *Snapshot, owners map[string]string) []string {
+	return b.RestoreKeeping(prev, owners, nil)
+}
+
+// RestoreKeeping is RestoreOwners that leaves the tasks in keep as they were: a
+// task in review whose work the merge queue already took is finished work waiting
+// for the manager, not interrupted work to do again.
+func (b *Board) RestoreKeeping(prev *Snapshot, owners map[string]string, keep map[string]bool) []string {
 	if prev == nil {
 		return nil
 	}
@@ -1417,7 +1424,7 @@ func (b *Board) RestoreOwners(prev *Snapshot, owners map[string]string) []string
 		for i, t := range tasks {
 			switch t.Status {
 			case StatusDoing, StatusReview, StatusBlocked, StatusTodo:
-				if t.Status == StatusTodo && t.Owner == "" && owners[t.ID] == "" {
+				if t.Status == StatusTodo && t.Owner == "" && owners[t.ID] == "" || keep[t.ID] {
 					break
 				}
 				t.Status, t.Owner, t.Line, t.Rev = StatusTodo, owners[t.ID], resumedLine, d.Version
