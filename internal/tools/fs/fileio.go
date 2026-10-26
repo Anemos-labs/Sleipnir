@@ -262,17 +262,42 @@ func (k *call) unread(canon, disp string) *tools.Result {
 	if fi, err := os.Lstat(canon); err != nil || !fi.Mode().IsRegular() || fi.Size() > maxFileBytes {
 		return nil // not there, not a file, or too big to read: the tool says which, as it always did
 	}
-	return k.fail("%s", tools.NotReadMessage(disp))
+	current, err := os.ReadFile(canon)
+	if err != nil {
+		return k.fail("%s", tools.NotReadMessage(disp))
+	}
+	return k.refuseWithContent(canon, disp, tools.NotReadMessage(disp), current)
 }
 
 // freshness runs FileState's staleness check for a file whose current bytes are
 // current, and rewrites the path in its message to the display spelling.
 func (k *call) freshness(path, disp string, current []byte, requireRead bool) *tools.Result {
 	if err := k.env.Files.CheckFresh(k.env.Agent, path, current, requireRead); err != nil {
-		return k.fail("%s", strings.Replace(err.Error(), path, disp, 1))
+		return k.refuseWithContent(path, disp, strings.Replace(err.Error(), path, disp, 1), current)
 	}
 	return nil
 }
+
+// refuseWithContent refuses a change to a file the agent has not seen as it is now, and shows it the file instead of sending it
+// back for a read: the result carries the current content, line-numbered as read shows it, and the file counts as read, so the
+// change can be made again at once against what is really there. That saves the request a read would cost and keeps the rule
+// (nothing is changed unseen). A file too long to show whole, or one that is not text, gets the bare refusal: read it.
+func (k *call) refuseWithContent(canon, disp, msg string, current []byte) *tools.Result {
+	_, body := splitBOM(current)
+	if len(body) == 0 || len(current) > maxShownOnRefusal || bytes.IndexByte(current, 0) >= 0 {
+		return k.fail("%s", msg)
+	}
+	total := countLines(body)
+	out := renderLines(body, 1, total, k.outputBudget())
+	if out.last < total {
+		return k.fail("%s", msg)
+	}
+	k.env.Files.RecordRead(k.env.Agent, canon, current)
+	return k.fail("%s.\nIt now counts as read; its current content follows. Make the change again against it, without reading it first.\n%s", msg, out.text)
+}
+
+// maxShownOnRefusal is the largest file whose content a refused change shows (see refuseWithContent).
+const maxShownOnRefusal = 48 << 10
 
 // commit runs the guarded write sequence for one file:
 // Guard.BeforeWrite -> Snapshotter.Before -> atomic write -> FileState.RecordWrite

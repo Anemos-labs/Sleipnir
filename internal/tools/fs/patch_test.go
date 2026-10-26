@@ -674,11 +674,14 @@ func TestApplyPatchStaleness(t *testing.T) {
 	// a read the file before b changed it: rejected, even though the hunk would apply.
 	text := mustErr(t, run(t, ApplyPatch{}, a, map[string]any{"patch": patchText("*** Update File: f.txt", "@@", "-3", "+three")}))
 	contains(t, text, "f.txt changed since you last read it", "modified by agent b")
+	// The refusal showed a the file as it is now, which counts as a read; b changes it again so that a's view is stale once more.
+	mustOK(t, run(t, ApplyPatch{}, b, map[string]any{"patch": patchText("*** Update File: f.txt", "@@", "-2", "+two")}))
 	// Deleting a stale file is refused as well.
 	contains(t, mustErr(t, run(t, ApplyPatch{}, a, map[string]any{"patch": patchText("*** Delete File: f.txt")})), "changed since you last read it")
-	if readFileT(t, p) != "one\n2\n3\n" {
+	if readFileT(t, p) != "one\ntwo\n3\n" {
 		t.Errorf("file = %q", readFileT(t, p))
 	}
+	mustOK(t, run(t, ApplyPatch{}, b, map[string]any{"patch": patchText("*** Update File: f.txt", "@@", "-two", "+2")}))
 	// A patch is all-or-nothing across files even for staleness.
 	writeFile(t, filepath.Join(a.Cwd, "h.txt"), "h\n")
 	contains(t, mustErr(t, run(t, ApplyPatch{}, a, map[string]any{"patch": patchText(
