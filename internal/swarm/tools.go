@@ -867,6 +867,10 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			s.setSeen(me, cur)
 			return c.Env.Finish(waitReport(cur, digest, "mail arrived (delivered with this result)"), false), nil
 		}
+		if reason := s.restartWaitReason(c.Env.Role); reason != "" {
+			s.setSeen(me, cur)
+			return tools.Errorf("%s", reason), nil
+		}
 		if reason := s.stalledWaitReason(me); reason != "" {
 			select {
 			case <-ch:
@@ -927,6 +931,45 @@ func (s *Swarm) stalledWaitReason(agentID string) string {
 	return "Cannot wait: no workers are running and work needs manager action (" + u.summary(holdListCap) + "). " +
 		"Use spawn to start or reuse a worker on an unstarted task; planning tasks need the architect, a scout, a reviewer, or a custom read-only role. " +
 		"Review submissions with task get and accept or reject them; resolve blocked tasks or fail abandoned work."
+}
+
+// restartWaitReason refuses the manager's wait while a task that a resume reserved for its recovered worker (resumedLine) has not
+// been started again and that worker is idle: nothing starts it but a spawn, so the wait would only sleep beside it. In a resumed
+// team run the manager read "waiting for T1, T5 to restart" as the harness's job and waited while the two tasks sat still. A child
+// of a reserved parent is left out: the parent starts first.
+func (s *Swarm) restartWaitReason(role string) string {
+	if role != "manager" {
+		return ""
+	}
+	snap := s.Board.Snapshot()
+	reserved := map[string]bool{}
+	for _, t := range snap.Tasks {
+		if t.Status == StatusTodo && t.Owner != "" && t.Line == resumedLine {
+			reserved[t.ID] = true
+		}
+	}
+	var starts []string
+	for _, t := range snap.Tasks {
+		if !reserved[t.ID] || reserved[t.Parent] {
+			continue
+		}
+		m := s.get(t.Owner)
+		if m == nil {
+			continue
+		}
+		m.mu.Lock()
+		idle := m.life == lifeIdle
+		m.mu.Unlock()
+		if idle {
+			starts = append(starts, "spawn task="+t.ID+" agent="+t.Owner)
+		}
+	}
+	if len(starts) == 0 {
+		return ""
+	}
+	return "Cannot wait: the session was resumed and its interrupted work starts only when you start it again; the harness does not. " +
+		"Start it on the worker that holds its tree: " + strings.Join(starts, "; ") + " (a pool's parent first: its children follow once it executes). " +
+		"Use task resolve for work that is no longer needed."
 }
 
 // inboxPending moves the agent's coalesced mail into its inbox and reports whether any waits there. Read after the mailman's count,

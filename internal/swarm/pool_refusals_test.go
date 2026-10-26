@@ -582,3 +582,43 @@ func TestTheVoteThatLeavesOnlyTheLeadersOwnIsMailedToTheLeader(t *testing.T) {
 		t.Fatalf("the leader's mail during reconciliation: %q", mail)
 	}
 }
+
+// After a resume nothing but a spawn starts the interrupted work again. In a resumed team run the manager read "waiting for T1, T5 to
+// restart" as the harness's job and waited beside it; its wait now says what to start, the parent and not the parent's child.
+func TestTheManagersWaitAfterAResumeSaysWhatToStartAgain(t *testing.T) {
+	r := newPoolRig(t)
+	r.executing()
+	child, err := r.sw.Board.CreateTask(r.lead, TaskSpec{Parent: r.parent.ID, Title: "handlers", Role: "backend", Files: []string{"app/handlers/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.mutate("harness", "requeue", func(d *draft) error { // what Board.RestoreOwners leaves after a resume
+		for _, id := range []string{r.parent.ID, child.ID} {
+			i := taskIdx(d.Snapshot, id)
+			p := d.Tasks[i]
+			p.Status, p.Owner, p.Line = StatusTodo, r.lead, resumedLine
+			if err := d.put(i, p); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	m := r.sw.get(r.lead) // a recovered worker is idle until its task starts again
+	m.mu.Lock()
+	rs := m.run
+	m.mu.Unlock()
+	if rs != nil {
+		rs.cancel()
+	}
+	rvWait(t, r.lead+" idle", func() bool { return r.idle(r.lead) })
+	res := r.callTool(context.Background(), "wait", "mgr", "manager", map[string]any{"timeout_sec": 3})
+	want := "spawn task=" + r.parent.ID + " agent=" + r.lead
+	if !res.IsError || !strings.Contains(res.Text, want) || strings.Contains(res.Text, "task="+child.ID) {
+		t.Fatalf("the manager's wait after a resume: %q, want a refusal naming %q and not the child", res.Text, want)
+	}
+	if err := r.sw.Board.Unblock("mgr", r.parent.ID); err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("resuming the reserved parent: %v, want it to name %q", err, want)
+	}
+}
