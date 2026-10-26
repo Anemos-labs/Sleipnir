@@ -159,7 +159,7 @@ func TestProjectNotesAreKeptApartAndIgnoredByGit(t *testing.T) {
 		t.Error("a project note reached the user's file")
 	}
 	gi, _ := os.ReadFile(filepath.Join(dir, "repo", ".sleipnir", ".gitignore"))
-	if string(gi) != "MEMORY.local.md\n" {
+	if string(gi) != ".gitignore\nMEMORY.local.md\n" {
 		t.Errorf(".gitignore = %q", gi)
 	}
 	run(t, tool, allow, map[string]any{"action": "add", "scope": "project", "text": "Second fact."})
