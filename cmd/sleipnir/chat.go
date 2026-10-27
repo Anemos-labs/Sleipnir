@@ -525,7 +525,7 @@ func slashTo(ctx context.Context, s *session.Session, line string, stdout, stder
 		args := strings.TrimSpace(strings.TrimPrefix(line, f[0]))
 		prompt, notices, ok, err := expandSlash(ctx, s, strings.TrimPrefix(f[0], "/"), args)
 		for _, n := range notices {
-			fmt.Fprintln(stderr, "note:", n)
+			fmt.Fprintln(stderr, "note:", tools.SanitizeForTerminal(n))
 		}
 		switch {
 		case err != nil:

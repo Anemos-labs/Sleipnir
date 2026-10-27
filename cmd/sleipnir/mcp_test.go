@@ -136,9 +136,11 @@ func TestMCPTestStartsTheServersAndListsTheirTools(t *testing.T) {
 	}
 }
 
-// `config --json` output is pasted into bug reports: an MCP entry's credentials must not be in it.
+// `config --json` output is pasted into bug reports: an MCP entry's credentials, and a provider's headers, must not be in it.
 func TestConfigJSONRedactsMCPCredentials(t *testing.T) {
-	cfg := &config.Config{MCP: map[string]json.RawMessage{
+	cfg := &config.Config{Providers: map[string]config.Provider{
+		"gw": {BaseURL: "https://gw.example.com/v1", Headers: map[string]string{"X-Gateway-Token": "gwtok_private_abcdef123456"}},
+	}, MCP: map[string]json.RawMessage{
 		"remote": json.RawMessage(`{"url":"https://mcp.example.com/v1/tok_abcdefgh12345678","headers":{"Authorization":"Bearer sk_secret_value_123456"}}`),
 		"local":  json.RawMessage(`{"command":"srv","args":["--token","tok_abcdefgh12345678"],"env":{"API_KEY":"key_value_abcdefgh"}}`),
 		"broken": json.RawMessage(`{"command":42}`),
@@ -148,12 +150,12 @@ func TestConfigJSONRedactsMCPCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := string(b)
-	for _, leak := range []string{"tok_abcdefgh", "sk_secret_value", "key_value_abcdefgh", "Bearer"} {
+	for _, leak := range []string{"tok_abcdefgh", "sk_secret_value", "key_value_abcdefgh", "Bearer", "gwtok_private"} {
 		if strings.Contains(got, leak) {
 			t.Errorf("the redacted config still contains %q:\n%s", leak, got)
 		}
 	}
-	for _, want := range []string{"https://mcp.example.com/...", "Authorization", "API_KEY", "2 arguments", "not a valid entry"} {
+	for _, want := range []string{"https://mcp.example.com/...", "Authorization", "API_KEY", "--token", "not a valid entry", "X-Gateway-Token"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the redacted config lacks %q:\n%s", want, got)
 		}

@@ -84,10 +84,11 @@ func (x *exporter) writeGroups(work []*workEpisode) error {
 	var order []*bucket
 	byGroup := map[string]*bucket{}
 	for _, we := range work {
-		b, ok := byGroup[we.ep.Group]
+		g := x.rawGroupOf(we.ep) // the group before redaction: two groups whose ids redact alike stay two
+		b, ok := byGroup[g]
 		if !ok {
 			b = &bucket{group: we.ep.Group, task: we.ep.TaskID, split: x.splitOf(we.ep)}
-			byGroup[we.ep.Group] = b
+			byGroup[g] = b
 			order = append(order, b)
 		}
 		for ai := range we.ep.Agents {

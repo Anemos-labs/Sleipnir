@@ -730,13 +730,15 @@ func (s *Session) buildPerm() error {
 	}
 	// Read-only roles are read-only in the engine, not merely by a command
 	// allowlist in the swarm: the engine understands shell syntax. A role that has
-	// a profile already keeps it and is held to this one besides.
+	// a profile already keeps it and is held to the read-only one besides (its plan
+	// mode with the research and check exceptions): a profile of its own can narrow a
+	// read-only role, never make it write.
 	for name, role := range s.ext.roles {
 		if role.ReadOnly {
 			if _, ok := roles[name]; !ok {
 				roles[name] = perm.RoleProfile{Mode: perm.ModePlan, Allow: readOnlyRoleAllow, Deny: readOnlyRoleDeny}
 			} else {
-				also(name, perm.RoleProfile{Deny: readOnlyRoleDeny})
+				also(name, perm.RoleProfile{Mode: perm.ModePlan, Allow: readOnlyRoleAllow, Deny: readOnlyRoleDeny})
 			}
 		}
 	}

@@ -190,9 +190,10 @@ func (l *Leases) checkOwner(agent, rel string, relOK bool) error {
 
 // foreignOwners returns the roles that own the repository-relative path rel, made
 // safe to show, when role is not among them. It returns nil when owners is nil, when
-// nobody owns rel, when role owns it, or for the manager; an empty role owns nothing.
+// nobody owns rel, or when role owns it; an empty role owns nothing. The manager is
+// held to it as every other agent is (PathOwners): it hands the work to the owner.
 func foreignOwners(owners PathOwners, role, rel string) []string {
-	if owners == nil || role == "manager" {
+	if owners == nil {
 		return nil
 	}
 	own := owners.OwnersOf(rel)

@@ -55,7 +55,7 @@ import (
 
 // PolicyProvider is the name the policy endpoint has inside a rollout's
 // configuration. A bare model id (in RoleModels, say) resolves to it.
-const PolicyProvider = "rl-policy"
+const PolicyProvider = env.PolicyProvider
 
 // DefaultAllow are the permission rules rollouts add to accept-edits mode: the
 // build, test and version-control tooling a working agent needs, with every
@@ -126,11 +126,14 @@ func (h *Harness) Run(ctx context.Context, spec env.RunSpec) (env.RunResult, err
 	}
 	// Every model of the rollout, the policy's and the roles', reports its outages to the runner's clock.
 	watch := &outageWatch{clock: spec.Clock}
-	prov = watch.wrap(prov)
-	if h.RateLimit != nil {
-		prov = &paced{Provider: prov, limit: h.RateLimit}
+	wrap := func(p provider.Provider) provider.Provider {
+		p = watch.wrap(p)
+		if h.RateLimit != nil {
+			p = &paced{Provider: p, limit: h.RateLimit}
+		}
+		return p
 	}
-	lim := &limited{Provider: prov, max: int64(spec.Budget.Requests)}
+	lim := &limited{Provider: wrap(prov), max: int64(spec.Budget.Requests)}
 	cfg, err := h.config(spec)
 	if err != nil {
 		return env.RunResult{}, env.Infra("config", err)
@@ -139,7 +142,8 @@ func (h *Harness) Run(ctx context.Context, spec env.RunSpec) (env.RunResult, err
 	if err != nil {
 		return env.RunResult{}, env.Infra("task", err)
 	}
-	opts.WrapProvider = watch.wrap
+	// The roles' models are the policy's too (env routes them to it): they share its pacing and its request budget.
+	opts.WrapProvider = func(p provider.Provider) provider.Provider { return &budgeted{Provider: wrap(p), l: lim} }
 	sess, err := session.New(ctx, opts)
 	if err != nil {
 		return env.RunResult{}, env.Infra("session", err)
@@ -609,17 +613,33 @@ type limited struct {
 
 // Do implements provider.Provider.
 func (l *limited) Do(ctx context.Context, req *provider.Request, on func(provider.Event)) (*provider.Response, error) {
+	return l.do(ctx, l.Provider, req, on)
+}
+
+// do sends req through p, counted against l's budget.
+func (l *limited) do(ctx context.Context, p provider.Provider, req *provider.Request, on func(provider.Event)) (*provider.Response, error) {
 	if n := l.n.Add(1); l.max > 0 && n > l.max {
 		l.n.Add(-1)
 		l.hit.Store(true)
 		return nil, &provider.Error{Kind: provider.ErrPayment, Message: fmt.Sprintf("request budget of %d exhausted", l.max)}
 	}
-	resp, err := l.Provider.Do(ctx, req, on)
+	resp, err := p.Do(ctx, req, on)
 	if err != nil && unanswered(err) {
 		l.n.Add(-1)
 		l.retried.Add(1)
 	}
 	return resp, err
+}
+
+// budgeted is another client of the rollout (a role's model), counted against the budget of the policy's client l.
+type budgeted struct {
+	provider.Provider
+	l *limited
+}
+
+// Do implements provider.Provider.
+func (b *budgeted) Do(ctx context.Context, req *provider.Request, on func(provider.Event)) (*provider.Response, error) {
+	return b.l.do(ctx, b.Provider, req, on)
 }
 
 // unanswered reports whether a request failed in a way the agent repeats it for: the endpoint could not be

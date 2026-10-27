@@ -266,6 +266,9 @@ type exporter struct {
 	licenses  map[string]bool
 	roles     []string
 	splits    []splitBin
+	// ident is each working episode's identity before it was redacted: what it is split, selected and paired by, so that
+	// redaction (which can map two ids to one) never moves an episode to another split or merges two tasks or groups.
+	ident map[*rl.Episode]identity
 
 	// noted and candidate remember the steps already counted in DroppedByRole and
 	// CandidatesByRole: some formats test a step more than once.
@@ -468,6 +471,7 @@ func (x *exporter) run(srcs []Source) error {
 
 	x.work = work
 	rankWork(work)
+	x.redactIdentity(work)
 	switch x.o.Format {
 	case FormatSteps:
 		return x.writeSteps(work)
@@ -487,6 +491,54 @@ func (x *exporter) run(srcs []Source) error {
 		return x.writeCanonical(work)
 	}
 	return nil
+}
+
+// redactIdentity redacts the identifiers of the working episodes (the episode, its task and its group), which every record
+// carries: they are strings that leave the exporter like any other, and can hold what the redactor removes (a person's email
+// address in a task id). The redactor's replacements are stable, so episodes of one task or group still share it.
+func (x *exporter) redactIdentity(work []*workEpisode) {
+	if x.red == nil {
+		return
+	}
+	x.ident = make(map[*rl.Episode]identity, len(work))
+	for _, we := range work {
+		x.ident[we.ep] = identity{split: splitKeyOf(we.ep), task: we.ep.TaskID, group: we.ep.Group}
+		we.ep.ID, _ = x.redactText(we.ep.ID)
+		we.ep.TaskID, _ = x.redactText(we.ep.TaskID)
+		we.ep.Group, _ = x.redactText(we.ep.Group)
+		if f := we.ep.Fork; f != nil {
+			c := *f // the clone shares the source's fork
+			c.Parent, _ = x.redactText(c.Parent)
+			we.ep.Fork = &c
+		}
+	}
+}
+
+// identity is an episode's split key, task id and group before redaction.
+type identity struct{ split, task, group string }
+
+// taskOf is the task an episode is selected and paired by: its task id before redaction.
+func (x *exporter) taskOf(ep *rl.Episode) string {
+	if id, ok := x.ident[ep]; ok {
+		return id.task
+	}
+	return ep.TaskID
+}
+
+// groupOf is the rollout group an episode is ranked and paired by: its rl.GroupKey before redaction.
+func (x *exporter) groupOf(ep *rl.Episode) string {
+	if g := x.rawGroupOf(ep); g != "" {
+		return g
+	}
+	return x.taskOf(ep)
+}
+
+// rawGroupOf is an episode's Group before redaction.
+func (x *exporter) rawGroupOf(ep *rl.Episode) string {
+	if id, ok := x.ident[ep]; ok {
+		return id.group
+	}
+	return ep.Group
 }
 
 // workEpisode is an episode being exported: the caller's source and the clone the

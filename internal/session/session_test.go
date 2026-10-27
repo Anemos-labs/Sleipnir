@@ -535,7 +535,15 @@ func TestReconIgnoresTestdataAndListsOnlyRealBinaries(t *testing.T) {
 // TestReadOnlyRoleIsEnforcedByTheEngine: a reviewer cannot write files or run
 // mutating commands (including ones hidden behind a permitted prefix), but can
 // still run the project's checks.
-func TestReadOnlyRoleIsEnforcedByTheEngine(t *testing.T) {
+func TestReadOnlyRoleIsEnforcedByTheEngine(t *testing.T) { readOnlyRoleIsEnforced(t, nil) }
+
+// A profile the configuration gives the read-only role (here one that would let it
+// write) does not take the role's own read-only profile away: both hold.
+func TestAConfiguredProfileKeepsAReadOnlyRoleReadOnly(t *testing.T) {
+	readOnlyRoleIsEnforced(t, map[string]config.RolePermissions{"reviewer": {Mode: "accept-edits", Allow: []string{"Bash(touch *)", "Bash(go vet *)"}}})
+}
+
+func readOnlyRoleIsEnforced(t *testing.T, roles map[string]config.RolePermissions) {
 	repo := newRepo(t)
 	whoRe := regexp.MustCompile(`you: (\S+) \((\w+)\)`)
 	taskRe := regexp.MustCompile(`task (T\d+)`)
@@ -585,6 +593,11 @@ func TestReadOnlyRoleIsEnforcedByTheEngine(t *testing.T) {
 	o := opts(t, repo, client, model)
 	o.Swarm = true
 	o.Mode = perm.ModeAcceptEdits // the session may edit; the reviewer role may not
+	if roles != nil {
+		cfg := config.Defaults()
+		cfg.Permissions.Roles = roles
+		o.Config = cfg
+	}
 	s, err := session.New(context.Background(), o)
 	if err != nil {
 		t.Fatal(err)

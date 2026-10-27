@@ -374,6 +374,13 @@ func (m *Manager) shell() (shellInfo, error) {
 	return m.sh, m.shErr
 }
 
+// POSIX reports whether commands run in a POSIX shell, the syntax the permission engine reads them in and the quoting
+// mdfile.ShellQuote produces. A shell that cannot be found is not one.
+func (m *Manager) POSIX() bool {
+	sh, err := m.shell()
+	return err == nil && sh.posix
+}
+
 // RuntimeContext describes the host and the shell cached for command execution.
 // It resolves the executable without running it and omits machine-specific paths.
 // The result is stable for the lifetime of the manager and shared by all agents.

@@ -71,7 +71,7 @@ func (x *exporter) dpoSteps(work []*workEpisode) error {
 		}
 		h := c.st.Prompt.WireHash
 		if x.o.Pair == PairBestWorst {
-			h += core.Hash("\x00" + rl.GroupKey(c.we.ep)) // compare within one rollout group only
+			h += core.Hash("\x00" + x.groupOf(c.we.ep)) // compare within one rollout group only
 		}
 		if _, ok := byHash[h]; !ok {
 			hashes = append(hashes, h)
@@ -263,9 +263,9 @@ func (x *exporter) dpoEpisodes(work []*workEpisode) error {
 			continue
 		}
 		v := &epView{we: we, cv: cv, first: first, reward: we.ep.Reward.Total}
-		bucket := we.ep.TaskID
+		bucket := x.taskOf(we.ep)
 		if x.o.Pair == PairBestWorst {
-			bucket = rl.GroupKey(we.ep)
+			bucket = x.groupOf(we.ep)
 		}
 		if _, ok := byTask[bucket]; !ok {
 			tasks = append(tasks, bucket)
