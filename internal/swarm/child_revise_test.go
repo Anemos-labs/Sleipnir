@@ -152,7 +152,7 @@ func TestAPoolReviseDoesNotAskTheManagerToResumeIt(t *testing.T) {
 		t.Fatalf("the manager was asked %d times to resume the pool its revise stopped", n)
 	}
 	m := r.sw.get(parent.Owner)
-	r.sw.settleStopped(m, map[string]uint64{parent.ID: 0}, stopFailed, "step limit reached", true)
+	r.sw.settleStopped(m, map[string]uint64{parent.ID: 0}, stopFailed, "step limit reached", true, false)
 	if n := harnessMail(r, "Pool leader stopped on "+parent.ID+": step limit reached")["mgr"]; n != 1 {
 		t.Fatalf("a leader that failed on its own was reported %d times", n)
 	}

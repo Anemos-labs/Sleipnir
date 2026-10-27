@@ -1217,8 +1217,9 @@ func (s *Swarm) resumeReturnedWork(ctx context.Context, m *member, rs *runState,
 // leader's stop is the manager's to resume, and is worth a line only when the manager
 // could not have caused it, as for any other stop: not when the leader's run was
 // cancelled from outside (the manager's revise of the pool, a shutdown) or stopped by
-// the harness for a stated reason that is not a failure.
-func (s *Swarm) settleStopped(m *member, tasks map[string]uint64, kind stopKind, why string, count bool) string {
+// the harness for a stated reason that is not a failure. exhausted says the worker's automatic restarts on this work ran out:
+// a task it returns is then the manager's to assign, not the repair's to start on the same worker again.
+func (s *Swarm) settleStopped(m *member, tasks map[string]uint64, kind stopKind, why string, count, exhausted bool) string {
 	var notes []string
 	quiet := kind == stopInterrupted || (kind == stopHarness && !count)
 	for _, id := range sortedKeys(tasks) {
@@ -1229,7 +1230,17 @@ func (s *Swarm) settleStopped(m *member, tasks map[string]uint64, kind stopKind,
 			continue
 		}
 		nt, applied := s.Board.Requeue(m.id, id, tasks[id], why, count, s.cfg.MaxAttempts)
-		if applied {
+		switch {
+		case !applied:
+		case exhausted && s.cfg.PersistentPools && nt.Status == StatusTodo:
+			s.mu.Lock()
+			if s.handedBack == nil {
+				s.handedBack = map[string]uint64{}
+			}
+			s.handedBack[nt.ID] = nt.Rev
+			s.mu.Unlock()
+			notes = append(notes, fmt.Sprintf("%s returned to todo after attempt %d: %s stopped (%s); assign it with spawn, to another worker if the failure is %s's own (its model or provider)", nt.ID, nt.Attempts, m.id, why, m.id))
+		default:
 			notes = append(notes, s.requeueLine(m.id, nt, why))
 		}
 	}
