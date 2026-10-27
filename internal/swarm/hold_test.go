@@ -8,6 +8,8 @@ package swarm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -639,5 +641,99 @@ func TestACancelledManagerRunLeavesTheManagerIdleNotFailed(t *testing.T) {
 	}
 	if last != "idle" {
 		t.Errorf("the manager's state after a cancelled run is %q, want idle", last)
+	}
+}
+
+// A manager's file edit, while submissions wait for its decision, carries a line naming them with their waits, longest
+// first: a submission comes before the manager's own work. Each submission is named once; a later edit names them all
+// again only when a new one has joined them; a submission the manager decided drops out. A manager that wrote
+// verification tests of its own between acceptances kept four submissions waiting six to seven minutes each.
+func TestAManagersEditNamesTheSubmissionsWaitingOnIt(t *testing.T) {
+	r := newRVRig(t, stallCfg(), gatedWorkers(nil))
+	if _, err := r.sw.StartManager(); err != nil {
+		t.Fatal(err)
+	}
+	h := &holdHooks{s: r.sw, m: r.sw.get("mgr")}
+	edit := func(tool string) string {
+		in, _ := json.Marshal(map[string]string{"path": "svc/clock_test.go", "content": "package svc"})
+		o := h.BeforeTool(context.Background(), agent.ToolHookCall{Agent: "mgr", Role: "manager", Tool: tool, Input: in})
+		if o.Veto {
+			t.Fatalf("%s was vetoed: %s", tool, o.Reason)
+		}
+		return o.Context
+	}
+	if got := edit("write"); got != "" {
+		t.Fatalf("an edit with nothing in review carried %q", got)
+	}
+	b := r.sw.Board
+	submit := func(title, owner string, ago time.Duration) Task {
+		task, _ := b.CreateTask("mgr", TaskSpec{Title: title, Role: "backend"})
+		if err := b.Assign("mgr", owner, task.ID); err != nil {
+			t.Fatal(err)
+		}
+		cur, _ := b.Snapshot().Task(task.ID)
+		if err := b.SubmitAt(owner, task.ID, cur.Rev, "done", "go test ./... ok", r.sw.reviewSubmission(cur)); err != nil {
+			t.Fatal(err)
+		}
+		g := &r.sw.review
+		g.mu.Lock()
+		g.ended[task.ID+"#"+strconv.FormatUint(cur.Rev, 10)] = r.sw.deps.Now().Add(-ago)
+		g.mu.Unlock()
+		return task
+	}
+	t3 := submit("ratelimit clock", "be-1", 6*time.Minute)
+	t2 := submit("wordfreq TopN", "be-2", 2*time.Minute)
+	want := t3.ID + " (6 min) and " + t2.ID + " (2 min) wait in review. A submission comes before edits of your own: decide it, then go on; a worker's next task waits on it."
+	if got := edit("write"); got != want {
+		t.Fatalf("edit line:\n got %q\nwant %q", got, want)
+	}
+	if got := edit("apply_patch"); got != "" {
+		t.Fatalf("the next edit named the same submissions again: %q", got)
+	}
+	if err := b.Accept("mgr", t3.ID, "ok"); err != nil {
+		t.Fatal(err)
+	}
+	t4 := submit("jsonpath Eval", "be-3", 0)
+	want = t2.ID + " (2 min) and " + t4.ID + " wait in review. A submission comes before edits of your own: decide it, then go on; a worker's next task waits on it."
+	if got := edit("edit"); got != want {
+		t.Fatalf("edit line after an acceptance and a new submission:\n got %q\nwant %q", got, want)
+	}
+	// The manager's own task in review is nobody's wait, and a shell command is not an edit.
+	own, _ := b.CreateTask("mgr", TaskSpec{Title: "verification tests", Role: "tester"})
+	if err := b.Assign("mgr", "mgr", own.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Submit("mgr", own.ID, "done", "go test ok"); err != nil {
+		t.Fatal(err)
+	}
+	if got := edit("write"); got != "" {
+		t.Fatalf("the manager's own submission was named: %q", got)
+	}
+	in, _ := json.Marshal(map[string]string{"command": "go test ./..."})
+	t5 := submit("lru eviction", "be-4", time.Minute)
+	if o := h.BeforeTool(context.Background(), agent.ToolHookCall{Agent: "mgr", Role: "manager", Tool: "bash", Input: in}); o.Context != "" {
+		t.Fatalf("a shell command carried the edit line: %q", o.Context)
+	}
+	if got := edit("write"); !strings.Contains(got, t5.ID+" (1 min)") || !strings.HasPrefix(got, t2.ID) {
+		t.Fatalf("edit line after a shell command: %q", got)
+	}
+	// Past holdListCap the line counts the rest; those are not noted, so once the named ones are decided the next
+	// edit names them.
+	var more []Task
+	for i := 0; i < holdListCap+1; i++ {
+		more = append(more, submit(fmt.Sprintf("module %d", i), "be-5", time.Duration(10+i)*time.Minute))
+	}
+	got := edit("write")
+	if !strings.HasSuffix(strings.SplitN(got, " wait in review", 2)[0], "and 4 more") {
+		t.Fatalf("edit line with %d waiting: %q", holdListCap+4, got)
+	}
+	for _, task := range more[1:] { // the six longest waits, which the line named
+		if err := b.Accept("mgr", task.ID, "ok"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	last := more[0]
+	if got := edit("write"); !strings.HasPrefix(got, last.ID+" (10 min), "+t2.ID+" (2 min)") {
+		t.Fatalf("the submission past the cap was not named once the ones before it were decided: %q", got)
 	}
 }

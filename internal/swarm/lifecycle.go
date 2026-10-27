@@ -638,6 +638,13 @@ func (s *Swarm) adopt(m *member, rs *runState) {
 	if t, ok := snap.Task(task); ok && t.Owner == m.id && t.Status == StatusDoing {
 		m.ev.Begin(task)
 	}
+	if s.roleOf(m.id) == ReviewerRole {
+		for _, t := range snap.Tasks {
+			if t.Owner == m.id && t.Status == StatusDoing {
+				go s.noteReviewBegan(t) // it reads the work tree; a spawn holds the spawn lock here
+			}
+		}
+	}
 }
 
 // editTask names the task an edit of path by agent belongs to: the one task it is doing whose scope holds the path, or "" (its
@@ -682,6 +689,9 @@ func (s *Swarm) trackClaim(agentID, taskID string) {
 	m.mu.Unlock()
 	m.madeProgress()
 	m.ev.Begin(taskID)
+	if s.roleOf(agentID) == ReviewerRole {
+		s.noteReviewBegan(t)
+	}
 	card := claimedCards(s.Board.Snapshot(), agentID, nil)
 	if m.tree != nil {
 		card += isolationCard(integrationRefOf(m.tree))
