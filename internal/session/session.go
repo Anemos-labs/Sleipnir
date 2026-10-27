@@ -258,6 +258,11 @@ type Session struct {
 	judgeP     provider.Provider
 	judgeModel cost.Model
 	judgeRef   string
+	// fallbackP is the model every other model of the session falls back to while its endpoint is out (buildFallback),
+	// fallbackRef its provider/model; nil when none is named.
+	fallbackP     provider.Provider
+	fallbackModel string
+	fallbackRef   string
 	// lessons is the lesson memory (buildLessons), nil when no embedder model is named or the session has no global memory.
 	lessons *lessonMemory
 
@@ -686,11 +691,44 @@ func (s *Session) buildProvider(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := s.buildFallback(); err != nil {
+		return err
+	}
 	p, m, err := s.clientFor(ref)
 	if err != nil {
 		return err
 	}
 	s.Provider, s.Model, s.modelRef = p, s.describe(ctx, p, m), ref.String()
+	return nil
+}
+
+// FallbackRole is the name under which models.roles and --role-model give the model that the session's other models fall back to
+// while their endpoint is out. Like the compactor it is not a swarm role.
+const FallbackRole = "fallback"
+
+// FallbackAfter is how long a model's endpoint stays in an outage before its requests go to the fallback model, and
+// FallbackRetry how long they stay there before the model's own endpoint is tried again.
+var (
+	FallbackAfter = 60 * time.Second
+	FallbackRetry = 10 * time.Minute
+)
+
+// buildFallback builds the model named for the fallback (--role-model fallback=M, else models.roles.fallback), which clientFor
+// puts behind every other model of the session (provider.Failover); nothing when none is named.
+func (s *Session) buildFallback() error {
+	ref := s.roleRef(FallbackRole)
+	if ref == "" {
+		return nil
+	}
+	mr, err := ResolveModel(s.cfg, ref)
+	if err != nil {
+		return fmt.Errorf("fallback model %s: %w", ref, err)
+	}
+	p, m, err := s.clientFor(mr)
+	if err != nil {
+		return fmt.Errorf("fallback model %s: %w", ref, err)
+	}
+	s.fallbackP, s.fallbackModel, s.fallbackRef = p, m.ID, mr.String()
 	return nil
 }
 
@@ -700,6 +738,17 @@ func (s *Session) clientFor(ref ModelRef) (provider.Provider, cost.Model, error)
 	p, m, err := BuildProvider(s.cfg, ref, ProviderOptions{CaptureTokens: s.opts.CaptureTokens})
 	if err == nil && s.opts.WrapProvider != nil {
 		p = s.opts.WrapProvider(p)
+	}
+	if err == nil && s.fallbackP != nil && ref.String() != s.fallbackRef {
+		name, to := ref.String(), s.fallbackRef
+		p = &provider.Failover{Primary: p, Secondary: s.fallbackP, SecondaryModel: s.fallbackModel, After: FallbackAfter, Retry: FallbackRetry,
+			OnSwitch: func(toFallback bool, cause error) {
+				if toFallback {
+					s.notice("", fmt.Sprintf("%s has been out for %s (%v): its requests go to the fallback model %s, and %s is tried again in %s", name, FallbackAfter, cause, to, name, FallbackRetry))
+					return
+				}
+				s.noticeInfo("", name+" answers again: its requests are back on it")
+			}}
 	}
 	return p, m, err
 }
@@ -1323,7 +1372,7 @@ const JudgeRole = "judge"
 // and the lesson memory's embedder and reranker): one a single-agent session can set too, and one no team role takes.
 func ServiceRole(role string) bool {
 	switch role {
-	case CompactorRole, JudgeRole, EmbedderRole, RerankerRole:
+	case CompactorRole, JudgeRole, EmbedderRole, RerankerRole, FallbackRole:
 		return true
 	}
 	return false
@@ -1355,7 +1404,7 @@ func (s *Session) buildJudge(ctx context.Context) error {
 // named. (models.roles in the configuration is not checked this way: a file may serve
 // projects whose roles differ.)
 func (s *Session) checkRoleModels(overrides map[string]string) error {
-	known := map[string]bool{CompactorRole: true, JudgeRole: true, EmbedderRole: true, RerankerRole: true}
+	known := map[string]bool{CompactorRole: true, JudgeRole: true, EmbedderRole: true, RerankerRole: true, FallbackRole: true}
 	for name := range s.ext.roles {
 		known[name] = true
 	}

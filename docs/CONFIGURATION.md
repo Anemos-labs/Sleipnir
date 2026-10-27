@@ -294,6 +294,14 @@ the event log records what each was described with: the numbers, where the price
 its dollar figures for a marketplace model are the gateway's, not the fallback's. `sleipnir models` prints a marketplace
 catalogue with prices.
 
+**Fallback model.** `--role-model fallback=provider/model` (or `models.roles.fallback`) names a model that takes over the
+requests of any other model of the session, a team's included, whose endpoint has been out (a status of 500 or more, a
+429, no answer) for a minute. The session says so in a notice. For ten minutes the requests go to the fallback; the next
+request after that tries the model's own endpoint first, and goes on to the fallback while the endpoint is still out.
+A shorter outage, and a failure that is not an outage (a bad request, a refused key), is the model's own answer, as
+without a fallback. The fallback answers prompts shaped for the model it stands in for, with no prompt cache of theirs, and the run's
+cost is counted at that model's prices: pick one with at least its context window.
+
 The built-in table (`internal/cost/defaults.go`) holds Anthropic's Claude models and OpenAI's `gpt-6-astra`, `gpt-6.1-sol`,
 `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra` and `gpt-5.6-luna`. The OpenAI prices are the API's standard tier
 for short context (at most 272k input tokens), per million tokens, from <https://developers.openai.com/api/docs/pricing>:

@@ -173,6 +173,13 @@ func (s *Session) RoleModels() []RoleModel {
 		judge.Model, judge.From = s.cfg.Models.Roles[JudgeRole], "models.roles"
 	}
 	out = append(out, comp, judge)
+	if ref := s.roleRef(FallbackRole); ref != "" {
+		from := "models.roles"
+		if s.opts.RoleModels[FallbackRole] != "" {
+			from = "--role-model"
+		}
+		out = append(out, RoleModel{FallbackRole, ref, from})
+	}
 	for _, role := range []string{EmbedderRole, RerankerRole} {
 		if ref := s.roleRef(role); ref != "" {
 			from := "models.roles"
