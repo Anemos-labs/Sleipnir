@@ -48,10 +48,11 @@ type Config struct {
 	// Profile overrides the default automatic-caching profile.
 	Profile *provider.Profile
 	// FirstByteTimeout, StreamIdleTimeout, RequestTimeout and Limits are those of the other adapters (openaichat.Config).
-	FirstByteTimeout  time.Duration
-	StreamIdleTimeout time.Duration
-	RequestTimeout    time.Duration
-	Limits            provider.StreamLimits
+	FirstByteTimeout     time.Duration
+	StreamIdleTimeout    time.Duration
+	StreamContentTimeout time.Duration
+	RequestTimeout       time.Duration
+	Limits               provider.StreamLimits
 	// AllowInsecureHTTP lets the token travel over plain http to a host that is not this machine.
 	AllowInsecureHTTP bool
 	// OnHeaders receives every response's headers (rate-limit accounting).
@@ -82,6 +83,9 @@ func New(cfg Config) *Client {
 	}
 	if cfg.RequestTimeout <= 0 {
 		cfg.RequestTimeout = provider.DefaultRequestTimeout
+	}
+	if cfg.StreamContentTimeout == 0 {
+		cfg.StreamContentTimeout = provider.DefaultStreamContentTimeout
 	}
 	cfg.Limits = cfg.Limits.Normalized()
 	cfg.BaseURL = strings.TrimRight(cfg.BaseURL, "/")
@@ -168,7 +172,7 @@ func (c *Client) Do(ctx context.Context, req *provider.Request, on func(provider
 
 	// One watchdog for the whole exchange, armed before the request is sent: it covers a server that accepts the connection and never
 	// answers, as well as one that stalls mid-stream.
-	wd := provider.NewWatchdog(cancel, c.cfg.FirstByteTimeout, c.cfg.StreamIdleTimeout, c.cfg.Limits.MaxDuration, req)
+	wd := provider.NewWatchdog(cancel, c.cfg.FirstByteTimeout, c.cfg.StreamIdleTimeout, c.cfg.Limits.MaxDuration, req).WithContent(c.cfg.StreamContentTimeout)
 	wd.Start()
 	defer wd.Stop()
 

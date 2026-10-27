@@ -245,3 +245,127 @@ func (slowReader) Read(p []byte) (int, error) {
 	time.Sleep(2 * time.Millisecond)
 	return 1, nil
 }
+
+// keepAliveReader is a stream that sends a keep-alive comment every tick, and the lines of content in between when told to.
+type keepAliveReader struct {
+	mu      sync.Mutex
+	content []string
+	tick    time.Duration
+}
+
+func (k *keepAliveReader) Read(p []byte) (int, error) {
+	time.Sleep(k.tick)
+	k.mu.Lock()
+	line := ": keep-alive\n"
+	if len(k.content) > 0 {
+		line, k.content = k.content[0], k.content[1:]
+	}
+	k.mu.Unlock()
+	return copy(p, line), nil
+}
+
+func (k *keepAliveReader) say(lines ...string) {
+	k.mu.Lock()
+	k.content = append(k.content, lines...)
+	k.mu.Unlock()
+}
+
+// drain reads the stream until ctx ends.
+func drain(ctx context.Context, r io.Reader) {
+	buf := make([]byte, 64)
+	for ctx.Err() == nil {
+		if _, err := r.Read(buf); err != nil {
+			return
+		}
+	}
+}
+
+// A stream that carries nothing but keep-alive comments outlives the first-byte and idle deadlines (the connection is alive) and
+// is ended by the content deadline: a gateway whose upstream hung sent ": keep-alive" for twenty minutes, and the request was
+// cut only by the swarm's stuck-worker watchdog.
+func TestWatchdogContentDeadlineEndsAStreamOfKeepAlives(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wd := NewWatchdog(cancel, time.Hour, time.Hour, 0, nil).WithContent(150 * time.Millisecond)
+	start := time.Now()
+	wd.Start()
+	defer wd.Stop()
+	go drain(ctx, wd.Reader(&keepAliveReader{tick: 10 * time.Millisecond}))
+	waitDone(t, ctx, 3*time.Second)
+	if d := time.Since(start); d < 140*time.Millisecond {
+		t.Errorf("fired after %v, before its deadline", d)
+	}
+	if wd.Why() != WatchContent || !wd.Received() {
+		t.Fatalf("why = %v, received = %v", wd.Why(), wd.Received())
+	}
+	e := wd.Failure(context.Canceled)
+	if e == nil || e.Kind != ErrTimeout || !e.Retryable() || !strings.Contains(e.Message, "nothing but keep-alives from the server for 150ms") {
+		t.Fatalf("failure = %v", e)
+	}
+}
+
+// A content line restarts the content deadline, wherever it falls in a read, and a line that spans two reads counts once it
+// begins; blank lines and comments do not.
+func TestWatchdogContentLinesRestartTheContentDeadline(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wd := NewWatchdog(cancel, time.Hour, time.Hour, 0, nil).WithContent(150 * time.Millisecond)
+	wd.Start()
+	defer wd.Stop()
+	k := &keepAliveReader{tick: 10 * time.Millisecond}
+	go drain(ctx, wd.Reader(k))
+	for i := 0; i < 4; i++ {
+		time.Sleep(100 * time.Millisecond)
+		switch i % 2 {
+		case 0:
+			k.say("data: {\"delta\":\"x\"}\n")
+		default:
+			k.say("data: {\"del", "ta\":\"y\"}\n\n") // one line over two reads, then a blank line
+		}
+	}
+	if wd.Why() != WatchNone {
+		t.Fatalf("the content deadline fired although content kept coming: %v", wd.Why())
+	}
+	waitDone(t, ctx, 3*time.Second) // nothing more is said: the deadline fires now
+	if wd.Why() != WatchContent {
+		t.Fatalf("why = %v", wd.Why())
+	}
+}
+
+// Without WithContent (a non-streaming call) keep-alives are never cut by a content deadline.
+func TestWatchdogWithoutContentDeadlineLeavesKeepAlivesAlone(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wd := NewWatchdog(cancel, time.Hour, time.Hour, 0, nil)
+	wd.Start()
+	defer wd.Stop()
+	go drain(ctx, wd.Reader(&keepAliveReader{tick: 10 * time.Millisecond}))
+	time.Sleep(200 * time.Millisecond)
+	if wd.Why() != WatchNone {
+		t.Fatalf("fired: %v", wd.Why())
+	}
+}
+
+func TestWatchReaderTellsContentFromComments(t *testing.T) {
+	cases := []struct {
+		in   []string
+		want bool
+	}{
+		{[]string{": keep-alive\n", ": ping\n\n"}, false},
+		{[]string{"\n\r\n"}, false},
+		{[]string{"data: x\n"}, true},
+		{[]string{": a comment\n", "d"}, true},                 // a line begins with content
+		{[]string{": a long comment that ", "spans\n"}, false}, // a comment that spans two reads
+		{[]string{"event: ping\n"}, true},                      // an SSE event is content to this reader; the clients decide what it means
+	}
+	for _, c := range cases {
+		a := &watchReader{lineStart: true}
+		got := false
+		for _, s := range c.in {
+			got = a.sawContent([]byte(s)) || got
+		}
+		if got != c.want {
+			t.Errorf("sawContent(%q) = %v, want %v", c.in, got, c.want)
+		}
+	}
+}
