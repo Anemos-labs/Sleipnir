@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A manager's `task update` with files and a text on a task another
+  agent owns sets the scope and answers that it did, noting that the text
+  was not recorded. It used to answer with an error after the scope had
+  changed. A `task revise` with only files, on a task under way, that
+  repeats the scope it already has now changes nothing and stops nobody;
+  it used to stop the task's workers and put a pool back to planning.
 - For ten minutes after a worker's run ends on an outage of its model's
   endpoint (a status of 500 or more, a 429, or no answer), the manager's
   spawn naming that worker is refused when a member of its role on another
