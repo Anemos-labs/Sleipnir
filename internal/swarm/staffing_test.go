@@ -643,3 +643,33 @@ func TestReviewLineNamesTheMergesSinceTheAcceptedReview(t *testing.T) {
 		}
 	}
 }
+
+// The duration a review is measured against ends at the work's submission: the wait in review for the manager's decision is
+// not build time.
+func TestWorkDurationEndsAtSubmission(t *testing.T) {
+	r := newRVRigWith(t, Config{MaxWorkers: 8, Team: []string{"backend", "reviewer"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	g := &r.sw.review
+	now := r.sw.deps.Now()
+	task := Task{ID: "T1", Rev: 2, Role: "backend"}
+	g.noteBegan(task.ID, task.Rev, now.Add(-20*time.Minute))
+	g.mu.Lock()
+	open := g.tookLocked(task, now)
+	g.mu.Unlock()
+	if open < 19*time.Minute || open > 21*time.Minute {
+		t.Fatalf("unsubmitted work ran %v, want about 20m", open)
+	}
+	if err := r.sw.reviewSubmission(task)(nil, task); err != nil {
+		t.Fatal(err)
+	}
+	g.mu.Lock()
+	g.ended[task.ID+"#2"] = now.Add(-6 * time.Minute) // submitted six minutes ago, waiting on the manager since
+	took := g.tookLocked(task, now)
+	g.mu.Unlock()
+	if took < 13*time.Minute || took > 15*time.Minute {
+		t.Fatalf("submitted work took %v, want about 14m", took)
+	}
+	r.sw.noteAccepted(task)
+	if work, ids := g.unreviewedWork(); work < 13*time.Minute || work > 15*time.Minute || len(ids) != 1 || ids[0] != "T1" {
+		t.Fatalf("unreviewed work = %v %v", work, ids)
+	}
+}

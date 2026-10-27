@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The duration a review is measured against (`review_overrun`) ends at
+  the work's submission, not its acceptance: the wait in review for the
+  manager's decision is the manager's time, not the work's. Two
+  submissions waited seven and six minutes for a manager that was
+  running tests of its own, and the review's bound grew from ten minutes
+  to sixteen. Harness mail only; no prompt bytes change.
 - The review gate's line to the manager names the merges since the accepted
   review (`review: the merges since the accepted review (T3, T4) have not
   been reviewed ... review that work (the accepted review stands for the

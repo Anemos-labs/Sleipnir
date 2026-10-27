@@ -42,9 +42,11 @@ type reviewGate struct {
 	// (poolCurrent). A merge with no entry, or with no scopes, may have touched any file.
 	landed   map[int][]string
 	landedID map[int]string // the task of each merge, by its number
-	// began is when a run first held each assignment ("T3#rev"), and took how long the work of each merge (by its number) ran
-	// from then to its acceptance: what a review of it is measured against (reviewOverrun).
+	// began is when a run first held each assignment ("T3#rev"), ended when its work was last submitted, and took how long the
+	// work of each merge (by its number) ran from the one to the other: what a review of it is measured against (reviewOverrun).
+	// The wait in review for the manager's decision is the manager's time, not the work's.
 	began map[string]time.Time
+	ended map[string]time.Time
 	took  map[int]time.Duration
 }
 
@@ -70,14 +72,22 @@ func (g *reviewGate) beganAt(id string, rev uint64) (time.Time, bool) {
 	return at, ok
 }
 
-// tookLocked is how long the work of task t ran: from the first run that held its current assignment to now, 0 when no run did.
-// g.mu is held.
+// tookLocked is how long the work of task t ran: from the first run that held its current assignment to its last submission
+// (to now when none is recorded), 0 when no run did. g.mu is held.
 func (g *reviewGate) tookLocked(t Task, now time.Time) time.Duration {
-	at, ok := g.began[t.ID+"#"+strconv.FormatUint(t.Rev, 10)]
-	if !ok || now.Before(at) {
+	key := t.ID + "#" + strconv.FormatUint(t.Rev, 10)
+	at, ok := g.began[key]
+	if !ok {
 		return 0
 	}
-	return now.Sub(at)
+	end := now
+	if e, ok := g.ended[key]; ok && e.After(at) && e.Before(now) {
+		end = e
+	}
+	if end.Before(at) {
+		return 0
+	}
+	return end.Sub(at)
 }
 
 // unreviewedWork is the longest duration among the merges no accepted review covers (parts built side by side are read side
@@ -182,18 +192,23 @@ func (s *Swarm) noteAcceptedCheck(t Task) TaskCheck {
 	}
 }
 
-// reviewSubmission records the merge generation before a review enters review status.
-// A later acceptance cannot turn an older report into a review of newer work.
+// reviewSubmission records the merge generation before a review enters review status (a later acceptance cannot turn an
+// older report into a review of newer work), and when any task's work was submitted, where its duration ends (tookLocked).
 func (s *Swarm) reviewSubmission(t Task) TaskCheck {
 	role := t.Role
 	if r := s.roleOf(t.Owner); r != "" {
 		role = r
 	}
+	now := s.deps.Now()
 	return func(_ *Snapshot, _ Task) error {
+		g := &s.review
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		if g.ended == nil {
+			g.ended = map[string]time.Time{}
+		}
+		g.ended[t.ID+"#"+strconv.FormatUint(t.Rev, 10)] = now
 		if role == ReviewerRole {
-			g := &s.review
-			g.mu.Lock()
-			defer g.mu.Unlock()
 			if g.submitted == nil {
 				g.submitted = map[string]int{}
 			}
