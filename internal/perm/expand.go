@@ -289,10 +289,52 @@ func (rs *resolver) expandWordVars(w, cwd string, x expansion) (out, partial str
 		}
 		i = j
 	}
-	if frag && !partsNameEntries(b.String(), e.String()) {
+	if frag && (!partsNameEntries(b.String(), e.String()) || fragmentMeetsLink(b.String(), cwd)) {
 		return "", "", true
 	}
 	return b.String(), "", false
+}
+
+// fragmentMeetsLink reports whether a name part of w that holds a special
+// parameter (written "$$", "$RANDOM", ...) could, for some value of it, name a
+// symbolic link that is there now: the access is judged with the parameter as
+// written, which no link has as its name, so a link the number would select
+// (x-1234.json -> ~/.ssh/id_rsa) would go unseen. It also reports true when the
+// directory to look in is not known.
+func fragmentMeetsLink(w, cwd string) bool {
+	parts := strings.Split(w, "/")
+	dir := ""
+	if !strings.HasPrefix(w, "/") {
+		if cwd == "" {
+			return true
+		}
+		dir = cwd
+	}
+	for _, part := range parts {
+		if strings.Contains(part, "$") {
+			pat := part
+			for name := range fragmentParams {
+				pat = strings.ReplaceAll(pat, "$"+name, "*")
+			}
+			ms, err := filepath.Glob(filepath.Join(dir, pat))
+			if err != nil || len(ms) > 4096 {
+				return true
+			}
+			for _, m := range ms {
+				if fi, err := os.Lstat(m); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+					return true
+				}
+			}
+		}
+		if part == "" {
+			if dir == "" {
+				dir = "/"
+			}
+			continue
+		}
+		dir = filepath.Join(dir, part)
+	}
+	return false
 }
 
 // knownSubstitution is the output of a command substitution whose value is fixed by where the command runs: $(pwd) is the directory,

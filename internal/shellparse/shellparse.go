@@ -49,6 +49,11 @@ const (
 	maxDepth      = 12      // nesting of substitutions, eval and sh -c
 	maxBraceWords = 256     // words one brace expression may expand into
 	stepBudget    = 64      // lexer steps allowed per input byte (plus slack)
+	// maxBraceTotal and maxBraceBytes bound what brace expansion may produce over
+	// the whole input, nested parses included: the per-expression bound alone
+	// lets every word of a long line expand on its own.
+	maxBraceTotal = 8192
+	maxBraceBytes = 4 << 20
 )
 
 // Redirect is one redirection attached to a command. Op includes any file
@@ -184,6 +189,8 @@ type state struct {
 	arith int // the arithmetic expansions read, across nested parses
 	// arithOn counts those given to a command (Simple.Arith)
 	arithOn int
+	// braceWords and braceBytes are what brace expansion produced so far.
+	braceWords, braceBytes int
 }
 
 // problem records only the first parse problem and marks the analysis incomplete.

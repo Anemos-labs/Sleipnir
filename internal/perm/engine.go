@@ -451,10 +451,7 @@ func (e *Engine) Check(ctx context.Context, r Request) Decision {
 		sess, prof := e.snapshot(r.Role)
 		v := e.evaluate(sess, r)
 		if prof != nil {
-			if pv := e.evaluate(prof, r); pv.kind > v.kind {
-				pv.reason = "role " + r.Role + ": " + pv.reason
-				v = pv
-			}
+			v = withRole(v, e.evaluate(prof, r), r.Role)
 		}
 		return v
 	}

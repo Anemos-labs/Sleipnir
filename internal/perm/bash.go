@@ -52,6 +52,7 @@ type unit struct {
 	high     *riskInfo
 	dyn      string   // reason the command word itself cannot be judged
 	envBad   string   // env assignment that changes what the command runs
+	tooMany  string   // operands beyond what is checked: refused in every mode (judge)
 	envAcc   []access // the files the values of its environment assignments name (read)
 	network  bool
 	venv     *venvUse // a command that creates or installs into a Python virtual environment (venv.go)
@@ -84,6 +85,8 @@ type evaluator struct {
 	off, childOff map[string]bool
 	// gitEnv: the line names a GIT_ variable, so $(git rev-parse --show-toplevel) is not taken as the repository around the directory.
 	gitEnv bool
+	// riskCwd is the working-directory set of the unit highRisk is judging.
+	riskCwd *cwdSet
 	// index is set when a unit of the request installs packages into a virtual environment of the workspace (venv.go): the one
 	// routine question that reaches beyond this machine, to the package index.
 	index bool
@@ -984,6 +987,20 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 	for _, env := range s.Env {
 		assign(env)
 	}
+	// Builtins that assign a variable named by an argument (printf -v PATH, read
+	// PATH, for PATH in ...) steer the commands after them as an assignment would.
+	names, _ := assignedNames(s)
+	if s.Program == "for" || s.Program == "select" {
+		names = append(names, s.LoopVar)
+	}
+	for _, n := range names {
+		if i := strings.IndexByte(n, '['); i >= 0 {
+			n = n[:i] // an element of the array
+		}
+		if !strings.HasPrefix(n, "-") && envDangerous(n+"=") && u.envBad == "" {
+			u.envBad = envName(n + "=")
+		}
+	}
 	u.redirs = ev.redirAccesses(s.Redirects, cw)
 	if s.Program == "" {
 		u.class = cmdNoop
@@ -1011,7 +1028,10 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 
 	var uses []pathUse
 	chdir := ""
-	if u.dyn == "" && u.name != "" {
+	// npx --no runs the project's own node_modules/.bin/<name> when there is one: the
+	// name is the project's to choose, so it is never the system utility of the
+	// allowlist.
+	if u.dyn == "" && u.name != "" && !slices.Contains(s.Wrappers, "npx") {
 		if sa := analyseSafe(u.name, s.Args); sa.ok {
 			u.class, uses, chdir = cmdSafe, sa.uses, sa.chdir
 		} else {
@@ -1071,8 +1091,9 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 		// Beyond this the operands are not looked at one by one; the command is
 		// simply never auto-allowed. Protections still see the first ones.
 		uses = uses[:maxOperands]
+		u.tooMany = fmt.Sprintf("it has more than %d operands, too many to check one by one; split it into smaller commands", maxOperands)
 		if u.dyn == "" {
-			u.dyn = fmt.Sprintf("it has more than %d operands, too many to check", maxOperands)
+			u.dyn = u.tooMany
 		}
 	}
 	for i, use := range uses {
@@ -1094,7 +1115,9 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 		}
 		u.accesses = kept
 	}
+	ev.riskCwd = cw
 	u.high = ev.highRisk(u)
+	ev.riskCwd = nil
 	ev.trackCwd(u, cw)
 	return u
 }
@@ -1105,7 +1128,11 @@ func (ev *evaluator) trackCwd(u *unit, cw *cwdSet) {
 	case "cd":
 		target := "~"
 		var operand []string
+		physical := false
 		for _, a := range u.simple.Args {
+			if a == "-P" {
+				physical = true
+			}
 			if a != "--" && a != "-P" && a != "-L" && a != "-e" && a != "-@" {
 				operand = append(operand, a)
 			}
@@ -1116,7 +1143,7 @@ func (ev *evaluator) trackCwd(u *unit, cw *cwdSet) {
 			cw.unknown = true
 			return
 		}
-		next := ev.cdTo(cw, target)
+		next := ev.cdToMode(cw, target, physical)
 		for _, d := range next.dirs {
 			cw.add(d)
 		}
@@ -1260,10 +1287,18 @@ func (ev *evaluator) bareStar(p string) bool {
 
 func (ev *evaluator) gitRisk(args []string) *riskInfo {
 	i := 0
+	elsewhere := false // the repository is chosen on the command line, not by the directory
 	for i < len(args) {
 		switch {
 		case args[i] == "-C" || args[i] == "-c":
+			elsewhere = elsewhere || args[i] == "-C"
 			i += 2
+		case args[i] == "--git-dir" || args[i] == "--work-tree":
+			elsewhere = true
+			i += 2
+		case strings.HasPrefix(args[i], "--git-dir=") || strings.HasPrefix(args[i], "--work-tree="):
+			elsewhere = true
+			i++
 		case strings.HasPrefix(args[i], "-"):
 			i++
 		default:
@@ -1319,14 +1354,19 @@ sub:
 		}
 		for _, t := range targets {
 			if strings.HasPrefix(t, ":") && sharedBranch(strings.TrimPrefix(strings.TrimPrefix(t, ":"), "refs/heads/")) {
-				return &riskInfo{why: "deleting remote branch " + t[1:]}
+				// the ":" of the refspec is the marker: git push:* does not speak for it
+				return &riskInfo{why: "deleting remote branch " + t[1:], markers: []string{":"}}
 			}
 		}
 	case "reset":
 		if !hasLong(rest, "--hard") {
 			return nil
 		}
-		for _, d := range ev.startDirs() {
+		dirs := ev.riskDirs()
+		if elsewhere || len(dirs) == 0 {
+			return &riskInfo{why: "git reset --hard (current branch unknown)", markers: []string{"--hard"}}
+		}
+		for _, d := range dirs {
 			b, ok := gitBranch(d)
 			if !ok {
 				return &riskInfo{why: "git reset --hard (current branch unknown)", markers: []string{"--hard"}}
@@ -1339,8 +1379,18 @@ sub:
 	return nil
 }
 
-// startDirs wraps the evaluator's initial working directory as a single-candidate path set.
-func (ev *evaluator) startDirs() []string { return []string{ev.startDir()} }
+// riskDirs are the directories the command being judged for risk may run in:
+// where earlier cd commands of the line led (nil when one could not be
+// followed), or the request's own directory.
+func (ev *evaluator) riskDirs() []string {
+	if ev.riskCwd == nil {
+		return []string{ev.startDir()}
+	}
+	if ev.riskCwd.unknown {
+		return nil
+	}
+	return ev.riskCwd.dirs
+}
 
 // isForkBomb recognises the classic  :(){ :|:& };:  and its renamed variants.
 func isForkBomb(cmd string) bool {

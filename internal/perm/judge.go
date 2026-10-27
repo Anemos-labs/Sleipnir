@@ -88,11 +88,51 @@ func combine(a, b verdict) verdict {
 		a.rem = mergeRules(a.rem, b.rem)
 		a.askRule = a.askRule || b.askRule
 		a.tests = a.tests || b.tests
+		a.index = a.index || b.index
+		// The question is as grave as its gravest part, whichever came first: a
+		// delegate may settle it only when every part is routine.
+		a.routine = a.routine && b.routine
+		if tierRank(b.tier) > tierRank(a.tier) {
+			a.tier, a.origin, a.rule = b.tier, b.origin, b.rule
+		}
 		if a.host != b.host { // a question about more than one host's network access is not one host's question
 			a.host = ""
 		}
 	}
 	return a
+}
+
+// tierRank orders verdict tiers by how much authority settling them takes.
+func tierRank(t string) int {
+	switch t {
+	case TierHard:
+		return 3
+	case TierGuarded:
+		return 2
+	case TierRule:
+		return 1
+	}
+	return 0
+}
+
+// withRole merges the verdict of a role's view (pv) into the session's (v): the
+// more severe wins, and when both ask, the question keeps the restrictions of
+// both (an ask rule of either, the higher tier, routine only when both are).
+func withRole(v, pv verdict, role string) verdict {
+	switch {
+	case pv.kind > v.kind:
+		pv.reason = "role " + role + ": " + pv.reason
+		return pv
+	case pv.kind == vAsk && v.kind == vAsk:
+		if pv.askRule && !v.askRule {
+			v.reason = "role " + role + ": " + pv.reason
+		}
+		rem := v.rem
+		v = combine(v, pv)
+		v.rem = rem // the session's own remember rules; settles checks they answer both views
+		return v
+	}
+	return v
 }
 
 // mergeRules appends the rules of b that a does not already hold. Many
@@ -139,6 +179,11 @@ func (u *unit) allAccesses() []access {
 // then user ask rules, then allow rules and the mode's defaults.
 func (ev *evaluator) judge(u *unit) verdict {
 	ev.noteRoutine(u)
+	// The operands past the bound were never resolved, so no protection, rule or
+	// confinement saw them: no mode may run the command.
+	if u.tooMany != "" {
+		return deny(u.tooMany).protected(TierHard)
+	}
 	all := u.allAccesses()
 	for _, a := range all {
 		if a.invalid != "" {
@@ -249,6 +294,23 @@ func quote(s string) string { return strconv.Quote(s) }
 func (rs *resolver) leavesConfinement(c rootPair, a access, agent string, ignored func(string) bool) string {
 	if a.dynamic || a.real == "" {
 		return ""
+	}
+	// A recursive access (grep -r, cp -r) of a directory outside the workspace
+	// roots still reaches every root below it: the ancestor is judged by what its
+	// tree holds, not by where it starts.
+	if a.tree && !inside(c.real, a.real) && !rs.inWorkspace(a.real) && !rs.inTmp(a.real) {
+		covered := func(p string) bool { return inside(a.real, p) && !inside(c.real, p) }
+		reaches := false
+		for _, r := range rs.roots {
+			reaches = reaches || covered(r.real)
+		}
+		for _, p := range rs.treeParents {
+			reaches = reaches || covered(p)
+		}
+		if reaches {
+			return agent + " works only inside its own tree (" + c.lex + "); " + clipText(a.raw, 80) +
+				" is a directory whose tree holds the person's checkout or other agents' trees. Search or copy inside your working directory instead"
+		}
 	}
 	if inside(c.real, a.real) || !rs.inWorkspace(a.real) || rs.inTmp(a.real) {
 		return "" // the session's scratch directory ($TMPDIR) is every agent's, as /tmp would be
@@ -866,12 +928,16 @@ func (ev *evaluator) overridesRisk(u *unit) bool {
 		if r.class != classBash || r.blanket || r.venv || r.workspace || !r.matchCommand(*u.simple, false) {
 			continue
 		}
+		// An exact rule names the very command, and a risk without markers is the
+		// program's own (sudo:*). Otherwise a prefix rule (git push:*) speaks for
+		// the risk only when one of its own words is the risky option: a word that
+		// begins with a marker (of=/dev/sda for of=/dev), not one that merely holds it.
 		if !r.anyArgs || len(u.high.markers) == 0 {
 			return true
 		}
 		for _, m := range u.high.markers {
-			for _, t := range r.argv {
-				if strings.Contains(t, m) {
+			for _, t := range r.argv[1:] {
+				if strings.HasPrefix(t, m) {
 					return true
 				}
 			}

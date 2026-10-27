@@ -131,6 +131,11 @@ func (rs *resolver) protectForm(f string, a access) protection {
 			if f == h+g {
 				return protection{tierGuarded, shown + " holds access tokens (add an allow rule to use it)"}
 			}
+			// A search of the contents of a directory above a token file reads it
+			// (grep -r token ~/.sleipnir).
+			if a.tree && (a.write || a.content) && inside(f, h+g) {
+				return protection{tierGuarded, shown + " contains ~" + g + ", which holds access tokens; name a narrower path or add an allow rule"}
+			}
 		}
 	}
 

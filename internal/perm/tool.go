@@ -19,7 +19,7 @@ func (ev *evaluator) tool() verdict {
 		u.dyn = "too many paths to check"
 	}
 	for _, p := range paths {
-		u.accesses = append(u.accesses, ev.resolve(pathUse{raw: p, write: r.Writes, tree: tree && !r.Writes, content: content && !r.Writes}, cw)...)
+		u.accesses = append(u.accesses, ev.resolve(pathUse{raw: p, write: r.Writes, tree: tree && !r.Writes, content: content && !r.Writes, literal: true}, cw)...)
 	}
 	u.network = r.Network || classOf(r.Tool) == classWeb
 	return ev.judge(u)
