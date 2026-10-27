@@ -47,6 +47,7 @@ func TestTestOnlyChangesStartNoDocsPass(t *testing.T) {
 		"lru/lru_test.go": true, "tests/api_test.py": true, "src/__tests__/app.test.tsx": true, "web/app.spec.ts": true,
 		"spec/models/user_spec.rb": true, "test_api.py": true, "testdata/golden.json": true,
 		"lru/lru.go": false, "lru/": false, "lru": false, "**/*_test.go": false, "README.md": false, "": false,
+		"tests/.env": false, "tests/**": false, "tests/": false, "tests": false, "docs/api_spec.md": false, "fixtures/x_test.json": false,
 	} {
 		if got := testFile(in); got != want {
 			t.Errorf("testFile(%q) = %v, want %v", in, got, want)
@@ -73,7 +74,18 @@ func TestTestOnlyChangesStartNoDocsPass(t *testing.T) {
 	}
 	r.sw.docs.mu.Lock()
 	r.sw.docs.primed = true
+	cur, _ := b.Snapshot().Task(code.ID)
+	r.sw.docs.seen[code.ID] = cur.Rev // the code change is known already: only the test-only one is new
 	r.sw.docs.mu.Unlock()
+	if r.sw.docsWillStart(b.Snapshot()) {
+		t.Fatal("a test-only change made the pre-tick check say a docs pass is due")
+	}
+	r.sw.docs.mu.Lock()
+	delete(r.sw.docs.seen, code.ID)
+	r.sw.docs.mu.Unlock()
+	if !r.sw.docsWillStart(b.Snapshot()) {
+		t.Fatal("the code change does not start a docs pass")
+	}
 	r.sw.docsTick(r.sw.deps.Now())
 	r.sw.docs.mu.Lock()
 	defer r.sw.docs.mu.Unlock()

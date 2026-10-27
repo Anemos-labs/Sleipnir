@@ -342,7 +342,7 @@ func (s *Swarm) docsWillStart(snap *Snapshot) bool {
 		return false // what was done before the keeper first looks is not news to it (docsTick)
 	}
 	for _, t := range snap.Tasks {
-		if rev, seen := k.seen[t.ID]; t.Status != StatusDone || (seen && rev == t.Rev) || s.isDocsTask(t) {
+		if rev, seen := k.seen[t.ID]; t.Status != StatusDone || (seen && rev == t.Rev) || s.isDocsTask(t) || testsOnly(t.Files) {
 			continue
 		}
 		if s.implementationTask(t) || t.Kind == TaskKindPlan && k.coded {
@@ -383,25 +383,36 @@ func testsOnly(files []string) bool {
 
 func testFile(f string) bool {
 	f = filepath.ToSlash(strings.TrimSpace(f))
+	if f == "" || strings.HasSuffix(f, "/") || strings.ContainsAny(f, "*?[") {
+		return false // a directory or a glob names more than test files
+	}
+	base := path.Base(f)
+	if strings.HasPrefix(base, ".") || !strings.Contains(base, ".") {
+		return false
+	}
 	for _, dir := range strings.Split(path.Dir(f), "/") {
 		switch dir {
 		case "test", "tests", "__tests__", "spec", "testdata":
 			return true
 		}
 	}
-	base := path.Base(f)
-	if strings.ContainsAny(base, "*?[") || strings.HasPrefix(base, ".") || !strings.Contains(base, ".") {
-		return false
-	}
 	ext := path.Ext(base)
 	stem := strings.TrimSuffix(base, ext)
 	switch {
-	case ext == ".go" && strings.HasSuffix(stem, "_test"):
-		return true
-	case ext == ".py" && (strings.HasPrefix(stem, "test_") || strings.HasSuffix(stem, "_test")):
-		return true
-	case strings.HasSuffix(stem, ".test") || strings.HasSuffix(stem, ".spec") || strings.HasSuffix(stem, "_spec") || strings.HasSuffix(stem, "_test"):
-		return true
+	case ext == ".go":
+		return strings.HasSuffix(stem, "_test")
+	case ext == ".py":
+		return strings.HasPrefix(stem, "test_") || strings.HasSuffix(stem, "_test")
+	case codeExt[ext]:
+		return strings.HasSuffix(stem, ".test") || strings.HasSuffix(stem, ".spec") || strings.HasSuffix(stem, "_spec") || strings.HasSuffix(stem, "_test")
 	}
 	return false
+}
+
+// codeExt are the source extensions whose test files are told apart by a .test, .spec, _spec or _test suffix; a document
+// or a data file with such a suffix (api_spec.md) is not a test.
+var codeExt = map[string]bool{
+	".js": true, ".jsx": true, ".mjs": true, ".cjs": true, ".ts": true, ".tsx": true, ".mts": true, ".cts": true,
+	".rb": true, ".rs": true, ".java": true, ".kt": true, ".kts": true, ".scala": true, ".cs": true, ".php": true,
+	".ex": true, ".exs": true, ".swift": true, ".dart": true, ".c": true, ".cc": true, ".cpp": true, ".m": true, ".zig": true,
 }
