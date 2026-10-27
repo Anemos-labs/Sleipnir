@@ -50,7 +50,10 @@ members are all busy spares none. A `spawn` of an existing task by the manager i
 queued: the answer names what holds the members (`be-1 leads T2, be-2 leads T3`), and the
 harness starts the task on the first member of the role that is free, on the supervisor's
 pass, and tells the manager; a queued task that is assigned, revised or closed meanwhile is
-dropped from the queue, and a resumed session starts with none. Any other caller is refused
+dropped from the queue, and a resumed session starts with none. When other roles that write code
+(not a read-only role, docs or the tester) have a slot or an idle member free, the answer and the live view's queued line
+name them (`free now: frontend, devops: one of them can take T2 at once if it needs nothing only backend knows (spawn
+role=frontend task=T2)`); a spawn of the task on one of them starts it there. Any other caller is refused
 with what to do (wait, or have the busy parent's leader take the work as a child).
 The first configured member leads, including after resume. `pool propose` records a
 shared agreement covering conventions, interfaces, work division and acceptance.
