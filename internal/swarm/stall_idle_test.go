@@ -186,6 +186,20 @@ func TestStallIdleCapacitySparesTheVerdictPhase(t *testing.T) {
 	if f, ok := active(r, StallIdleCapacity); ok {
 		t.Fatalf("idle capacity raised while the team waited on the review: %+v", f)
 	}
+	// a writer still running after its task was accepted (finishing its turn, owning nothing open) is not work the team waits on
+	be1 := r.sw.get("be-1")
+	be1.mu.Lock()
+	be1.life = lifeRunning
+	be1.mu.Unlock()
+	t.Cleanup(func() {
+		be1.mu.Lock()
+		be1.life = lifeIdle
+		be1.mu.Unlock()
+	})
+	r.sw.sweepStalls()
+	if f, ok := active(r, StallIdleCapacity); ok {
+		t.Fatalf("idle capacity raised for a writer finishing its turn beside the review: %+v", f)
+	}
 	r.sw.stopRun(r.sw.get(id), "test over", false)
 	rvWait(t, "the reviewer to stop", func() bool { return r.idle(id) })
 }
