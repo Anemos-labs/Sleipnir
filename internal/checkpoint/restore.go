@@ -170,7 +170,7 @@ type task struct {
 // leads outside the project root (through a symlink that appeared after the
 // checkpoint, or that an earlier step of the same rewind created) is refused as
 // OutcomeUnrestorable; content is verified against its checksum and a rewind
-// writes at most maxRestoreBytes in total.
+// reads (and so writes) at most maxRestoreBytes of content in total, verified or not.
 //
 // Files that were rewound are forgotten by the checkpoints; files that failed
 // or were refused keep their records so the rewind can be retried. When every
@@ -248,9 +248,9 @@ func (s *Store) restore(id string, opts RestoreOpts, hook restoreHook) (RestoreR
 		}
 	}
 	if !opts.DryRun {
-		budget := maxRestoreBytes
+		w := newRestoreWork()
 		for _, t := range append(dels, puts...) {
-			if err := s.apply(t, &budget); err != nil {
+			if err := s.apply(t, w); err != nil {
 				t.res.Outcome, t.res.Detail = OutcomeFailed, err.Error()
 			} else {
 				t.res.Outcome = OutcomeDone
@@ -435,7 +435,8 @@ func (s *Store) conflict(it *planned, cur state, action Action, opts RestoreOpts
 // apply performs one task's action on disk. The path is resolved again here, at
 // the moment of writing: what the key led to when the rewind was planned may not
 // be what it leads to now.
-func (s *Store) apply(t *task, budget *int64) error {
+func (s *Store) apply(t *task, w *restoreWork) error {
+	budget := &w.budget
 	it := t.it
 	abs, err := s.resolveKey(it.key)
 	if err != nil {
@@ -474,22 +475,26 @@ func (s *Store) apply(t *task, budget *int64) error {
 		if it.want.Size > *budget {
 			return errors.New(budgetSpent)
 		}
+		// A blob that failed once in this rewind fails again without being read: records naming one blob for many paths cost
+		// one read of it, not one each.
+		if err := w.failed[it.want.Blob]; err != nil {
+			return err
+		}
 		data, err := s.readBlob(it.want.Blob, min(s.maxBytes, *budget))
+		// What is read and hashed is spent whatever follows, so failing records cannot repeat the work without bound.
+		*budget -= int64(len(data))
 		switch {
 		case errors.Is(err, events.ErrBlobTooLarge) && *budget < s.maxBytes:
-			return errors.New(budgetSpent)
+			return w.fail(it.want.Blob, errors.New(budgetSpent)) // the budget only shrinks: the blob will not fit later either
 		case errors.Is(err, events.ErrBlobTooLarge):
-			return fmt.Errorf("the saved content is larger than the %s cap", humanBytes(s.maxBytes))
+			return w.fail(it.want.Blob, fmt.Errorf("the saved content is larger than the %s cap", humanBytes(s.maxBytes)))
 		case errors.Is(err, events.ErrBlobCorrupt):
-			return fmt.Errorf("the saved content is corrupt: %w", err)
+			return w.fail(it.want.Blob, fmt.Errorf("the saved content is corrupt: %w", err))
 		case err != nil:
-			return fmt.Errorf("the saved content is missing from the blob store: %w", err)
+			return w.fail(it.want.Blob, fmt.Errorf("the saved content is missing from the blob store: %w", err))
 		}
-		if it.want.Sum == "" || core.HashBytes(data) != it.want.Sum {
+		if it.want.Sum == "" || w.sum(it.want.Blob, data) != it.want.Sum {
 			return errors.New("the saved content is corrupt (checksum mismatch)")
-		}
-		if int64(len(data)) > *budget {
-			return errors.New(budgetSpent)
 		}
 		if err := s.prepare(c, t.cur); err != nil {
 			return err
@@ -497,7 +502,6 @@ func (s *Store) apply(t *task, budget *int64) error {
 		if err := c.writeFile(data, goMode(it.want.Mode), it.want.Owner); err != nil {
 			return fmt.Errorf("cannot write: %s", reason(err))
 		}
-		*budget -= int64(len(data))
 		return nil
 	case ActionRelink:
 		if err := s.prepare(c, t.cur); err != nil {
@@ -532,6 +536,35 @@ type maxGetter interface {
 }
 
 // readBlob reads a blob of at most max bytes.
+// restoreWork is what one rewind may still do: budget is the content it may still read (and so write), and failed and sums keep
+// what it learned of each blob, so that a blob is fetched and hashed for verification at most once whatever the records name.
+type restoreWork struct {
+	budget int64
+	failed map[core.Hash]error
+	sums   map[core.Hash]core.Hash
+}
+
+// newRestoreWork starts a rewind with the full budget.
+func newRestoreWork() *restoreWork {
+	return &restoreWork{budget: maxRestoreBytes, failed: map[core.Hash]error{}, sums: map[core.Hash]core.Hash{}}
+}
+
+// fail records that blob cannot be restored from, and returns err.
+func (w *restoreWork) fail(blob core.Hash, err error) error {
+	w.failed[blob] = err
+	return err
+}
+
+// sum is the checksum of data, the content of blob, hashed once per rewind.
+func (w *restoreWork) sum(blob core.Hash, data []byte) core.Hash {
+	if h, ok := w.sums[blob]; ok {
+		return h
+	}
+	h := core.HashBytes(data)
+	w.sums[blob] = h
+	return h
+}
+
 func (s *Store) readBlob(h core.Hash, max int64) ([]byte, error) {
 	if g, ok := s.blobs.(maxGetter); ok {
 		return g.GetMax(h, max)

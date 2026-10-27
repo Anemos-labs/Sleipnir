@@ -633,6 +633,11 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 		if err != nil {
 			return nil, err
 		}
+		// A file list cut at its cap would judge only the files that fit; what it
+		// left out would merge unchecked.
+		if d.Truncated {
+			return q.reject(res, "changed more files than the queue can check against its scope; split the work into smaller submissions"), nil
+		}
 		var files []string
 		for _, f := range d.Files {
 			files = append(files, f.Path)
@@ -717,7 +722,14 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 	if files, err := q.changedBetween(ctx, prev, after); err == nil {
 		res.Files = files
 	} else {
-		_ = q.rollbackTo(ctx, prev)
+		q.setPhase(entry, "rolling back")
+		if rerr := q.rollbackTo(ctx, prev); rerr != nil {
+			return nil, errors.Join(err, rerr)
+		}
+		if errors.Is(err, gitx.ErrTooLarge) {
+			res.After = prev
+			return q.reject(res, "the merge changed more files than the queue can check against its scope; split the work into smaller submissions"), nil
+		}
 		return nil, err
 	}
 	res.Commits, _ = hist.CountCommits(ctx, mb, theirs)
@@ -870,6 +882,10 @@ func changedFromTip(ctx context.Context, hist *gitx.Repo, tip, theirs string, fi
 	d, err := hist.Diff(ctx, tip, gitx.DiffOptions{To: theirs, Paths: files, NoPatch: true, MaxFiles: 1 << 20})
 	if err != nil {
 		return nil, nil, err
+	}
+	if d.Truncated {
+		// An incomplete list cannot show a file to be unchanged: keep them all.
+		return files, why, nil
 	}
 	differ := map[string]bool{}
 	for _, f := range d.Files {
@@ -1066,23 +1082,10 @@ func (q *Queue) landedBy(ctx context.Context, mb, tip string) func(string) []str
 	}
 }
 
+// changedBetween lists, sorted, every path that differs between a and b; it fails
+// with gitx.ErrTooLarge rather than return a list cut at its cap.
 func (q *Queue) changedBetween(ctx context.Context, a, b string) ([]string, error) {
-	d, err := q.m.st.base.Diff(ctx, a, gitx.DiffOptions{To: b, NoPatch: true, MaxFiles: 1 << 20})
-	if err != nil {
-		return nil, err
-	}
-	seen := map[string]bool{}
-	var files []string
-	for _, f := range d.Files {
-		for _, p := range []string{f.OldPath, f.Path} {
-			if p != "" && !seen[p] {
-				seen[p] = true
-				files = append(files, p)
-			}
-		}
-	}
-	sort.Strings(files)
-	return files, nil
+	return q.m.st.base.ChangedPaths(ctx, a, b)
 }
 
 // clearStaleLocks removes the lock files a stopped git command left in the

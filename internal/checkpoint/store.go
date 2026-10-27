@@ -87,7 +87,7 @@ const (
 
 // Limits that tests shrink. maxManifestBytes bounds one manifest file (a real one
 // is a few hundred bytes per touched file); maxRestoreBytes bounds the content one
-// Restore may write.
+// Restore may read and write, verification that fails included.
 var (
 	maxManifestBytes int64 = 64 << 20
 	maxRestoreBytes  int64 = 1 << 30

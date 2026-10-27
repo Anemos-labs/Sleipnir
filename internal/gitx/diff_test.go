@@ -472,3 +472,24 @@ func TestPathsThatLookLikeOptionsPathspecsAndControlCharacters(t *testing.T) {
 		t.Fatalf("rename ends: %q, %v", paths, err)
 	}
 }
+
+// A file list cut at its cap is not a complete answer: ChangedPaths fails rather
+// than return the part that fit, since its callers decide on what a change touched.
+func TestChangedPathsFailsWhenTheListIsCut(t *testing.T) {
+	dir := newRepo(t)
+	r := openRepo(t, dir)
+	ctx := ctxT(t)
+	for i := 0; i < 20; i++ {
+		writeFile(t, filepath.Join(dir, "file-"+strconv.Itoa(i)+".txt"), "x\n")
+	}
+	old := nameStatusCap
+	nameStatusCap = 64
+	t.Cleanup(func() { nameStatusCap = old })
+	d, err := r.Diff(ctx, "HEAD", DiffOptions{NoPatch: true})
+	if err != nil || !d.Truncated {
+		t.Fatalf("Diff over the cap: truncated=%v err=%v", d != nil && d.Truncated, err)
+	}
+	if paths, err := r.ChangedPaths(ctx, "HEAD", ""); !errors.Is(err, ErrTooLarge) {
+		t.Fatalf("ChangedPaths over the cap = %v, %v; want ErrTooLarge", paths, err)
+	}
+}
