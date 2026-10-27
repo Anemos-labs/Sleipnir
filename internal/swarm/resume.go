@@ -146,9 +146,17 @@ func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []Recov
 		}
 	}
 	s.ReserveIDs(ids)
+	// A task in review whose acceptance needs nothing the stop lost stays in review: merged work (its merge record is restored), a
+	// pool's parent (its members confirmed the reconciliation, and accept checks it against the restored review gate), and the result
+	// of a read-only role (accept needs no merge). Put back to todo, a reviewer redid a finished review and a pool its confirmed
+	// reconciliation: a resumed team had three such tasks waiting to restart while their results sat on the board.
 	keep := map[string]bool{}
 	for _, t := range prev.Tasks {
-		if _, ok := s.mergedFor(t); ok && t.Status == StatusReview {
+		if t.Status != StatusReview {
+			continue
+		}
+		_, merged := s.mergedFor(t)
+		if merged || t.Pool != nil || t.Owner != "" && s.roles[ids[t.Owner]].ReadOnly {
 			keep[t.ID] = true
 		}
 	}
