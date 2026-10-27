@@ -392,7 +392,7 @@ func TestTheLiveViewDoesNotOfferPoolHeldMembersOrQueuedTasks(t *testing.T) {
 	got := strings.Join(r.sw.staffingLines(r.sw.Board.Snapshot()), "\n")
 	for _, want := range []string{
 		members[2] + " idle while " + free.ID + " (backend) can start: give it the task now (spawn agent=" + members[2] + " task=" + free.ID + ")",
-		waiting.ID + " queued for the next free backend member: the harness starts them; do not spawn them again (wait)",
+		waiting.ID + " queued for the next free backend member: the harness starts them; do not spawn them on backend again (wait)",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("live view lines %q lack %q", got, want)
