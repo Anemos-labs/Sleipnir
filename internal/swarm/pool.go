@@ -3,6 +3,7 @@ package swarm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/gitx"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 	"github.com/anemos-labs/sleipnir/internal/workspace"
@@ -584,7 +586,7 @@ func (s *Swarm) poolPermission(ctx context.Context, id string, inner perm.Reques
 		return perm.Decision{}, false
 	}
 	sn := s.Board.Snapshot()
-	if s.forOwnWork(sn, id, req) {
+	if s.forOwnWork(sn, id, req) || s.forRepair(ctx, id, req) {
 		return perm.Decision{}, false
 	}
 	for _, t := range sn.Tasks {
@@ -616,6 +618,35 @@ func (s *Swarm) poolPermission(ctx context.Context, id string, inner perm.Reques
 		}
 	}
 	return perm.Decision{}, false
+}
+
+// repairAdvice follows an inspect refused for a checkout the merge left in conflict: the member's own files are its to repair, whatever
+// phase its pool is in (forRepair).
+const repairAdvice = "Resolve the conflict markers in the files named (you may edit those files while the pool reconciles: a member repairs its own checkout), then call pool inspect again."
+
+// forRepair reports whether req is the agent's repair of its own checkout: a merge the harness ran into its tree (pool inspect,
+// task claim) is still in progress, and every path the request names is a file that merge left unmerged. The pool's read-only
+// phases hold back the project's files, not that repair: a member whose inspect was refused for conflict markers, and whose every
+// edit resolving them was refused by the pool, went round in circles until the repeat guard stopped it and the pool went on without it.
+func (s *Swarm) forRepair(ctx context.Context, id string, req perm.Request) bool {
+	if len(req.Paths) == 0 {
+		return false
+	}
+	m := s.get(id)
+	if m == nil || m.tree == nil || m.tree.Repo().InProgress() != "merge" {
+		return false
+	}
+	unmerged, err := m.tree.Repo().Unmerged(ctx)
+	if err != nil || len(unmerged) == 0 {
+		return false
+	}
+	for _, p := range req.Paths {
+		rel, ok := s.Leases.relFor(id, p)
+		if !ok || !slices.ContainsFunc(unmerged, func(u gitx.Unmerged) bool { return u.Path == rel }) {
+			return false
+		}
+	}
+	return true
 }
 
 // forOwnWork reports whether req is for work the agent id may do whatever its other pools say: a task it is doing that no open
@@ -787,8 +818,13 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		}
 		if m := s.get(by); m != nil {
 			note, err := s.syncTree(ctx, m)
-			if err != nil || note != "" {
-				return tools.Errorf("repair checkout before confirming: %s %v", note, err), nil
+			switch {
+			case note != "":
+				return tools.Errorf("repair checkout before confirming: %s %s", strings.TrimSpace(note), repairAdvice), nil
+			case errors.Is(err, gitx.ErrConflict):
+				return tools.Errorf("repair checkout before confirming: %v. %s", err, repairAdvice), nil
+			case err != nil:
+				return tools.Errorf("repair checkout before confirming: %v", err), nil
 			}
 		}
 	}
