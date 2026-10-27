@@ -87,3 +87,40 @@ func TestQuorumCovered(t *testing.T) {
 		}
 	}
 }
+
+// A team whose reviewers share the writers' model while another model is on the team is told, once, that a reviewer on another model
+// would help; a team on one model is not (not everyone has two), nor one whose reviewers already run on a model no writer uses.
+func TestAReviewerOnTheWritersModelIsGivenAHintOnlyWhenAnotherModelIsThere(t *testing.T) {
+	other := func(d *Deps, id string) RoleModel {
+		return RoleModel{Provider: d.Provider, Model: cost.Model{ID: id, ContextTokens: 1_000_000, Cache: cost.OpenAICacheModel()}}
+	}
+	reply := func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }
+	for _, c := range []struct {
+		name  string
+		team  []string
+		slots func(d *Deps) []RoleModel
+		want  string
+	}{
+		{name: "one model", team: []string{"backend", "reviewer"}, want: ""},
+		{name: "writers on two models, the reviewer on one of theirs", team: []string{"backend", "frontend", "reviewer"},
+			slots: func(d *Deps) []RoleModel { return []RoleModel{{}, other(d, "front-model"), {}} }, want: "reviewer=front-model"},
+		{name: "the reviewer on a model no writer uses", team: []string{"backend", "reviewer"},
+			slots: func(d *Deps) []RoleModel { return []RoleModel{{}, other(d, "review-model")} }, want: ""},
+		{name: "reviewers on two models", team: []string{"backend", "frontend", "reviewer", "reviewer"},
+			slots: func(d *Deps) []RoleModel {
+				return []RoleModel{{}, other(d, "front-model"), {}, other(d, "front-model")}
+			}, want: ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := newRVRigWith(t, Config{MaxWorkers: 8, Team: c.team}, reply, func(d *Deps) {
+				if c.slots != nil {
+					d.SlotModels = c.slots(d)
+				}
+			})
+			got := r.sw.reviewerModelHint()
+			if c.want == "" && got != "" || c.want != "" && !strings.Contains(got, c.want) {
+				t.Errorf("hint = %q, want %q", got, c.want)
+			}
+		})
+	}
+}

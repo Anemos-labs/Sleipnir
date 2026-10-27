@@ -215,7 +215,9 @@ is due a review: every accepted implementation task of a writer (not an agreemen
 merge, and a task owned by a reviewer accepted after the last merge covers it. When the team's reviewer slots run on two or
 more different models, a merge is covered only once reviewers on two different models have each had a review accepted that
 covers it (independent vantages: one model's blind spots are another's findings); a second review by the same model does not
-count twice, and the gate's line asks for a review from the slot on the model that has not covered it yet. After an accepted review the
+count twice, and the gate's line asks for a review from the slot on the model that has not covered it yet. When the reviewers all
+run on a model a writer uses and the team has another model, the manager's start shows a one-line tip (an info notice, nothing
+in a prompt) that a reviewer on another model would catch what the writers' model misses; a team on one model gets none. After an accepted review the
 gate's line names the merges since it, and the next review covers that work alone (the accepted review stands for the rest).
 With one reviewer model, a merge after an accepted review whose work tree, compared with the tree that review began on, has
 changed in test files and docs alone (`*_test.go`, `test_*.py`, a `.test` or `.spec` suffix, a `test/`, `tests/`,
