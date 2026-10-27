@@ -21,6 +21,8 @@ const (
 	maxFileScan = 2000
 	// maxFileDepth bounds how deep below the skill directory files are listed.
 	maxFileDepth = 4
+	// maxRenderedGrowth is how much a skill's text may grow when its directory and arguments are put in.
+	maxRenderedGrowth = 256 << 10
 )
 
 // Loaded is a skill ready to be put in front of the model.
@@ -128,8 +130,17 @@ func (c *Catalog) load(name, args string, allow func(*Skill) error) (Loaded, err
 	}
 	// The base directory goes in first, and the arguments after: an argument that
 	// happens to spell a variable name must stay text.
+	// Both steps are bounded: the skill's text and its arguments are each limited, but a placeholder repeated many times would
+	// multiply them.
+	budget := len(sk.body) + maxRenderedGrowth
+	if n := strings.Count(sk.body, "${SLEIPNIR_SKILL_DIR}") + strings.Count(sk.body, "${CLAUDE_SKILL_DIR}"); len(sk.body)+n*len(sk.Dir) > budget {
+		return Loaded{}, fmt.Errorf("skill %q: with its directory put in, the text grows past %d bytes", sk.Name, budget)
+	}
 	body := strings.NewReplacer("${SLEIPNIR_SKILL_DIR}", sk.Dir, "${CLAUDE_SKILL_DIR}", sk.Dir).Replace(sk.body)
-	body, used := mdfile.Substitute(body, args, mdfile.ArgsText)
+	body, used, err := mdfile.SubstituteMax(body, args, mdfile.ArgsText, budget)
+	if err != nil {
+		return Loaded{}, fmt.Errorf("skill %q: %v", sk.Name, err)
+	}
 	if !used && args != "" {
 		body += "\n\nARGUMENTS: " + args
 	}

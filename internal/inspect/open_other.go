@@ -9,15 +9,16 @@ import (
 
 var errNotRegular = errors.New("inspect: not a regular file")
 
-// openRegular opens p for reading only if it is a regular file (see open_unix.go;
-// there is no portable O_NOFOLLOW, so a symlink is refused by Lstat first).
-func openRegular(p string) (*os.File, error) {
-	if fi, err := os.Lstat(p); err != nil {
+// openRegularIn opens name below r for reading only if it is a regular file (see
+// open_unix.go; there is no portable O_NOFOLLOW, so a symlink is refused by Lstat
+// first).
+func openRegularIn(r *os.Root, name string) (*os.File, error) {
+	if fi, err := r.Lstat(name); err != nil {
 		return nil, err
 	} else if !fi.Mode().IsRegular() {
 		return nil, errNotRegular
 	}
-	f, err := os.Open(p)
+	f, err := r.Open(name)
 	if err != nil {
 		return nil, err
 	}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -53,14 +54,50 @@ func Dirs(home, root string, trustProject bool) []string {
 	return out
 }
 
+// maxDocBytes bounds a plugin's manifest, hooks file and MCP servers file.
+const maxDocBytes = 1 << 20
+
+// readDoc reads a plugin's document rel inside dir: through dir as a root, so a link in the plugin cannot lead out of it; only
+// a regular file (never a device or a pipe, whose read would not end), and at most maxDocBytes of it.
+func readDoc(dir, rel string) ([]byte, error) {
+	r, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	fi, err := r.Stat(rel)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", rel)
+	}
+	f, err := r.Open(rel)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", rel)
+	}
+	b, err := io.ReadAll(io.LimitReader(f, maxDocBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > maxDocBytes {
+		return nil, fmt.Errorf("%s is larger than %d bytes", rel, maxDocBytes)
+	}
+	return b, nil
+}
+
 // UserDir is where `sleipnir plugins add` installs plugins.
 func UserDir(home string) string { return filepath.Join(home, ".sleipnir", "plugins") }
 
 // LoadDir reads one external plugin directory.
 func LoadDir(dir string) (Manifest, error) {
-	b, err := os.ReadFile(filepath.Join(dir, ManifestFile))
+	b, err := readDoc(dir, ManifestFile)
 	if errors.Is(err, os.ErrNotExist) {
-		b, err = os.ReadFile(filepath.Join(dir, ".claude-plugin", ManifestFile))
+		b, err = readDoc(dir, filepath.Join(".claude-plugin", ManifestFile))
 	}
 	if err != nil {
 		return Manifest{}, err
@@ -189,7 +226,11 @@ func HookEntries(m Manifest, settings map[string]any) (map[string]json.RawMessag
 	if p == "" {
 		return nil, nil
 	}
-	b, err := os.ReadFile(p)
+	rel, err := filepath.Rel(dir, p)
+	if err != nil {
+		return nil, err
+	}
+	b, err := readDoc(dir, rel)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +255,7 @@ func HookEntries(m Manifest, settings map[string]any) (map[string]json.RawMessag
 func MCPServers(m Manifest, settings map[string]any) (map[string]json.RawMessage, error) {
 	dir := m.Dir
 	for _, name := range []string{"mcp.json", ".mcp.json"} {
-		b, err := os.ReadFile(filepath.Join(dir, name))
+		b, err := readDoc(dir, name)
 		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}

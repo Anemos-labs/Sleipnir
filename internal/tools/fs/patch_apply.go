@@ -275,14 +275,47 @@ func findSeq(lines []docLine, tr []string, seq []string, from int, eof bool) int
 		}
 		return -1
 	}
-	for i := from; i <= limit; i++ {
-		if matchExact(lines, seq, i) {
-			return i
-		}
+	if i := indexSeq(len(lines), func(i int) string { return lines[i].text }, seq, from); i >= 0 {
+		return i
 	}
-	for i := from; i <= limit; i++ {
-		if matchTrimmed(tr, seq, i) {
-			return i
+	want := make([]string, n)
+	for i, s := range seq {
+		want[i] = trimRightWS(s)
+	}
+	return indexSeq(len(tr), func(i int) string { return tr[i] }, want, from)
+}
+
+// indexSeq returns the first offset at or after from where the n-line text
+// given by at holds seq, or -1. It is Knuth-Morris-Pratt over lines, so
+// repetitive content cannot make a search cost lines times hunk length.
+func indexSeq(n int, at func(int) string, seq []string, from int) int {
+	m := len(seq)
+	if m == 0 {
+		if from <= n {
+			return from
+		}
+		return -1
+	}
+	fail := make([]int, m)
+	for i, k := 1, 0; i < m; i++ {
+		for k > 0 && seq[i] != seq[k] {
+			k = fail[k-1]
+		}
+		if seq[i] == seq[k] {
+			k++
+		}
+		fail[i] = k
+	}
+	for i, k := from, 0; i < n; i++ {
+		t := at(i)
+		for k > 0 && t != seq[k] {
+			k = fail[k-1]
+		}
+		if t == seq[k] {
+			k++
+		}
+		if k == m {
+			return i - m + 1
 		}
 	}
 	return -1
@@ -355,11 +388,14 @@ func hunkMismatch(disp string, hunkNo int, h patchHunk, old []string, lines []do
 	}
 	best, bestScore := -1, 0
 	positions := len(lines) - n + 1
-	full := positions*n <= 8_000_000
-	for s := 0; s < positions; s++ {
+	const budget = 8_000_000 // line comparisons; the search for a hint stops there
+	full := positions*n <= budget
+	work := 0
+	for s := 0; s < positions && work < budget; s++ {
 		if !full && tr[s] != oldTr[0] && tr[s+n-1] != oldTr[n-1] && tr[s+n/2] != oldTr[n/2] {
 			continue
 		}
+		work += n
 		score := 0
 		for i := 0; i < n; i++ {
 			if tr[s+i] == oldTr[i] {

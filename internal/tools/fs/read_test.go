@@ -412,8 +412,15 @@ func TestFilePathAliasIsAccepted(t *testing.T) {
 	if readFileT(t, filepath.Join(env.Cwd, "f.txt")) != "1\ntwo\n" || readFileT(t, filepath.Join(env.Cwd, "g.txt")) != "x" {
 		t.Errorf("alias not honoured")
 	}
-	// path wins when both are given.
-	contains(t, mustOK(t, run(t, Read{}, env, `{"path":"g.txt","file_path":"f.txt"}`)), "x")
+	// Both may be given when they agree; two different files are refused, so nothing that judged one acts on the other.
+	contains(t, mustOK(t, run(t, Read{}, env, `{"path":"g.txt","file_path":"g.txt"}`)), "x")
+	for _, tool := range []tools.Tool{Read{}, Write{}, Edit{}} {
+		contains(t, mustErr(t, run(t, tool, env, `{"path":"g.txt","file_path":"f.txt","content":"y","old_string":"x","new_string":"y"}`)),
+			"name different files")
+	}
+	if readFileT(t, filepath.Join(env.Cwd, "g.txt")) != "x" {
+		t.Errorf("a call with conflicting paths changed a file")
+	}
 }
 
 func TestPatternAsPathGetsAHint(t *testing.T) {

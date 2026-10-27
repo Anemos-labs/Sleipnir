@@ -167,3 +167,20 @@ func TestNotificationHookRunsWhenAPersonIsAsked(t *testing.T) {
 		t.Error("a Notification hook ran although nobody was asked")
 	}
 }
+
+// A PermissionRequest condition is judged on the paths the tool resolved, not on another spelling in its input.
+func TestPrompterConditionUsesTheRequestsPaths(t *testing.T) {
+	allow := heredoc(`{"hookSpecificOutput":{"decision":{"behavior":"allow"}}}`)
+	r := newRunner(t, settings(t, PermissionRequest, group{hooks: []hookSpec{cmdHook(allow).when("Edit(src/**)")}}))
+	ask := r.Prompter(nil)
+	req := perm.Request{Tool: "edit", Cwd: r.Dir, Writes: true,
+		Input: json.RawMessage(`{"path": "docs/a.md", "file_path": "src/a.go"}`),
+		Paths: []string{filepath.Join(r.Dir, "docs", "a.md")}}
+	if d := ask(context.Background(), req); d.Allow {
+		t.Errorf("a hook for src/** allowed a change to docs/a.md: %+v", d)
+	}
+	req.Paths = []string{filepath.Join(r.Dir, "src", "a.go")}
+	if d := ask(context.Background(), req); !d.Allow {
+		t.Errorf("the hook did not answer for src/a.go: %+v", d)
+	}
+}

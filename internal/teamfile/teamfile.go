@@ -194,13 +194,15 @@ func Find(v, dir, home string) (string, error) {
 	}
 	project, user := Dirs(dir, home)
 	var dirs []string
-	for _, d := range []string{project, user} {
-		if d != "" {
-			dirs = append(dirs, d)
+	for _, sd := range []struct{ scope, dir string }{{ScopeProject, project}, {ScopeUser, user}} {
+		if sd.dir == "" {
+			continue
 		}
-	}
-	for _, d := range dirs {
-		p := filepath.Join(d, v+".json")
+		dirs = append(dirs, sd.dir)
+		p := filepath.Join(sd.dir, v+".json")
+		if inProject(sd.scope, sd.dir, p) != nil {
+			continue // a project's team is its own file, not one a link points to
+		}
 		if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() {
 			return p, nil
 		}
@@ -250,6 +252,9 @@ func List(dir, home string) []Entry {
 		if sd.dir == "" {
 			continue
 		}
+		if inProject(sd.scope, sd.dir, sd.dir) != nil {
+			continue // a project's teams are its own files, not ones a link points to
+		}
 		ents, _ := os.ReadDir(sd.dir)
 		for _, e := range ents {
 			name, ok := strings.CutSuffix(e.Name(), ".json")
@@ -257,6 +262,9 @@ func List(dir, home string) []Entry {
 				continue
 			}
 			en := Entry{Name: name, Scope: sd.scope, Path: filepath.Join(sd.dir, e.Name()), Shadowed: seen[name]}
+			if inProject(sd.scope, sd.dir, en.Path) != nil {
+				continue
+			}
 			seen[name] = true
 			if f, err := Load(en.Path); err != nil {
 				en.Err = strings.TrimPrefix(err.Error(), en.Path+": ")
@@ -293,6 +301,9 @@ func Save(dir, home, scope, name string, f *File, overwrite bool) (string, error
 		return "", err
 	}
 	p := filepath.Join(d, name+".json")
+	if err := inProject(scope, d, p); err != nil {
+		return "", err
+	}
 	if fi, err := os.Lstat(p); err == nil {
 		if !fi.Mode().IsRegular() {
 			return "", fmt.Errorf("%s is not a regular file", p)
@@ -338,6 +349,9 @@ func Remove(dir, home, scope, name string) error {
 		return err
 	}
 	p := filepath.Join(d, name+".json")
+	if err := inProject(scope, d, p); err != nil {
+		return err
+	}
 	fi, err := os.Lstat(p)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -349,6 +363,19 @@ func Remove(dir, home, scope, name string) error {
 		return fmt.Errorf("%s is not a regular file", p)
 	}
 	return os.Remove(p)
+}
+
+// inProject refuses a project team's path p in the teams directory d that a link in the repository (.sleipnir or
+// .sleipnir/teams a link) takes outside the project: what is saved or removed for a project stays in it. The user's own
+// directory may be a link (a dotfiles checkout).
+func inProject(scope, d, p string) error {
+	if scope != ScopeProject {
+		return nil
+	}
+	if err := config.CheckProjectTarget(filepath.Dir(filepath.Dir(d)), p); err != nil {
+		return fmt.Errorf("%s: the project's teams directory leads outside the project", p)
+	}
+	return nil
 }
 
 // orUser is scope, with "" read as ScopeUser.

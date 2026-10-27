@@ -53,12 +53,37 @@ export const TYPES = {
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 /**
+ * Read `file` only if, with every symlink resolved, it is a regular file inside `realRoot` (itself already resolved): the lexical
+ * check on the request path alone would let a symlink in the served tree hand out any file the server can read. The resolved path
+ * is opened without following a final symlink, so swapping the file for one after the check does not help either.
+ * @param {string} realRoot
+ * @param {string} file
+ * @param {(err: Error|null, buf?: Buffer) => void} cb
+ */
+export function readInside(realRoot, file, cb) {
+  fs.realpath(file, (err, real) => {
+    if (err) return cb(err);
+    if (real !== realRoot && !real.startsWith(realRoot + path.sep)) return cb(new Error('outside the root'));
+    fs.open(real, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0) | (fs.constants.O_NONBLOCK || 0), (e2, fd) => {
+      if (e2) return cb(e2);
+      const done = (e, buf) => fs.close(fd, () => cb(e, buf));
+      fs.fstat(fd, (e3, st) => {
+        if (e3) return done(e3);
+        if (!st.isFile()) return done(new Error('not a regular file'));
+        fs.readFile(fd, done);
+      });
+    });
+  });
+}
+
+/**
  * Create the server for `root`. Resolves a request path to a file inside root and answers with the CSP and the content type.
  * @param {string} root directory to serve
  * @param {{quiet?: boolean}} [o]
  */
 export function createServer(root, o = {}) {
   root = path.resolve(root);
+  const realRoot = fs.realpathSync(root);
   return http.createServer((req, res) => {
     const send = (code, type, body, extra = {}) => {
       res.writeHead(code, {
@@ -80,12 +105,9 @@ export function createServer(root, o = {}) {
     if (rel.endsWith('/')) rel += 'index.html';
     const file = path.resolve(root, '.' + rel);
     if (file !== root && !file.startsWith(root + path.sep)) return send(404, 'text/plain; charset=utf-8', 'not found\n');
-    fs.stat(file, (err, st) => {
-      if (err || !st.isFile()) return send(404, 'text/plain; charset=utf-8', 'not found\n');
-      fs.readFile(file, (e2, buf) => {
-        if (e2) return send(500, 'text/plain; charset=utf-8', 'error\n');
-        send(200, TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream', buf);
-      });
+    readInside(realRoot, file, (err, buf) => {
+      if (err) return send(404, 'text/plain; charset=utf-8', 'not found\n');
+      send(200, TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream', buf);
     });
   });
 }

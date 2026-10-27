@@ -93,12 +93,38 @@ func (s *service) readable(sess *session.Session, p string) (string, error) {
 	if leavesRoot(sess.Root(), rel) {
 		return "", errBadPath
 	}
-	if c := s.classOf(sess, rel); c.protected != nil {
-		return "", &wire.Error{Status: http.StatusForbidden, Code: "denied",
-			Msg:    "agents may not read this path, so it is not shown either",
-			Detail: c.protected}
+	// The path is judged as asked and as what it resolves to now: a directory link inside the project could otherwise name a
+	// hidden or refused file under an allowed spelling (and the class cache, kept by spelling, cannot see a link change).
+	real := resolvedRel(sess.Root(), rel)
+	if real != "" && real != rel && hiddenPath(sess, real) {
+		return "", werr(http.StatusForbidden, "denied", "this path is not shown: it belongs to git or to the harness")
+	}
+	paths := []string{rel}
+	if real != "" && real != rel {
+		paths = append(paths, real)
+	}
+	for _, p := range paths {
+		if c := s.classOf(sess, p); c.protected != nil {
+			return "", &wire.Error{Status: http.StatusForbidden, Code: "denied",
+				Msg:    "agents may not read this path, so it is not shown either",
+				Detail: c.protected}
+		}
 	}
 	return rel, nil
+}
+
+// resolvedRel is the project path rel resolves to with every symlink followed, or "" when it does not resolve inside the
+// project (missing, dangling, or outside: leavesRoot answers for those).
+func resolvedRel(root, rel string) string {
+	real, err := filepath.EvalSymlinks(filepath.Join(root, filepath.FromSlash(rel)))
+	if err != nil {
+		return ""
+	}
+	r, err := filepath.Rel(resolved(root), real)
+	if err != nil || !filepath.IsLocal(r) {
+		return ""
+	}
+	return filepath.ToSlash(r)
 }
 
 // leavesRoot reports whether a project path is a symlink (or passes through one) that

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -980,7 +979,7 @@ func (t *Tool) writePage(env *tools.Env, in input) (string, error) {
 		pm.Rev++
 		pm.Writers = append(removeString(pm.Writers, env.Agent), firstNonEmpty(env.Agent, "agent"))
 		meta = *pm
-		return os.WriteFile(PagePath(t.store.root, r.Slug, id), []byte(body+"\n"), 0o644)
+		return writePageFile(t.store.root, r.Slug, id, []byte(body+"\n"))
 	})
 	if err != nil {
 		return "", err

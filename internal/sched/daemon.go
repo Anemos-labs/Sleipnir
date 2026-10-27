@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/harden"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // JobTimeout bounds one run: a stuck run must not hold the daemon, and so every job after it, for ever.
@@ -32,7 +33,7 @@ func Tick(ctx context.Context, st Store, now time.Time, launch func(context.Cont
 		if err := record(st, j.ID, func(x *Job) { x.LastRun, x.LastExit = now, "running" }); err != nil {
 			return err
 		}
-		fmt.Fprintf(logw, "sleipnir daemon: %s starts: %s\n", j.ID, strings.Join(strings.Fields(j.Goal), " "))
+		fmt.Fprintf(logw, "sleipnir daemon: %s starts: %s\n", j.ID, tools.SanitizeForTerminal(strings.Join(strings.Fields(j.Goal), " ")))
 		exit, log := launch(ctx, j, now)
 		if err := record(st, j.ID, func(x *Job) { x.LastExit, x.Log = exit, log }); err != nil {
 			return err
@@ -75,9 +76,13 @@ func Args(j Job) []string {
 	if j.Dir != "" {
 		args = append(args, "--cwd", j.Dir)
 	}
-	if j.Mode != "" {
-		args = append(args, "--mode", j.Mode)
+	// The mode is always given: a run with none and nobody to answer it would choose bypass for itself, and a job is scheduled
+	// under the policy it says (empty is the default mode).
+	mode := j.Mode
+	if mode == "" {
+		mode = "default"
 	}
+	args = append(args, "--mode", mode)
 	if j.BudgetUSD > 0 {
 		args = append(args, "--budget-usd", fmt.Sprint(j.BudgetUSD))
 	}

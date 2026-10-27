@@ -99,7 +99,8 @@ project" below).
 ### Trusting a project
 
 What a repository brings that the harness reads as text or settings (its instruction files and what they import, `.sleipnir/config.json`
-and `config.local.json`, `.mcp.json`, and the skills, commands and agents under `.sleipnir` and `.claude`) is used only when the project is
+and `config.local.json`, `.mcp.json`, the skills, commands and agents under `.sleipnir` and `.claude` (through the in-project directory links the loaders
+follow), and the project's own plugins under `.sleipnir/plugins`) is used only when the project is
 trusted. There are two ways to say so: `--trust-project` for one run, and a remembered yes, which a `chat` asks for at its start (`sleipnir
 trust add` does it without a session). The remembered yes is kept in `trust.json` in the state directory, for one working directory, as a
 SHA-256 over every one of those files (their kind, path and content as the loader reads it): `internal/trust` scans them, and a session

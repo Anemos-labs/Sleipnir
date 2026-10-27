@@ -90,6 +90,10 @@ type Opts struct {
 	// apply the command's allowed-tools. nil means such commands are refused: an
 	// expansion that contains one fails.
 	Exec func(ctx context.Context, cmd string) (string, error)
+	// ExecPOSIX reports whether Exec runs its commands in a POSIX shell. Arguments are single-quoted the POSIX way, so a shell
+	// command that has arguments put into it is refused when it reports false: cmd.exe or PowerShell would read the quoted
+	// text otherwise, and an argument could become a command. nil is a POSIX shell.
+	ExecPOSIX func() bool
 	// AllowRead is asked before an @path file is included, with the file's real
 	// path; a non-nil error refuses it and is reported as a notice. nil means only
 	// the built-in guard applies.

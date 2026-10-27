@@ -505,3 +505,47 @@ func TestNoProjectRootMeansNoIncludes(t *testing.T) {
 		t.Fatalf("%+v %v", e, err)
 	}
 }
+
+// A placeholder repeated many times stops at the prompt's limit while it is being expanded, in literal text, a fence and a shell
+// command alike.
+func TestRepeatedPlaceholdersStopAtThePromptLimit(t *testing.T) {
+	w := newWorld(t)
+	rep := strings.Repeat("$ARGUMENTS ", 5000)
+	w.proj(".claude", "lit.md", rep)
+	w.proj(".claude", "fence.md", "```\n"+rep+"\n```\n")
+	w.proj(".claude", "sh.md", "!`echo "+rep+"`")
+	o := w.opts()
+	o.Exec = func(_ context.Context, cmd string) (string, error) { return "", nil }
+	r, _ := Load(o)
+	for _, name := range []string{"lit", "fence", "sh"} {
+		if _, err := r.Expand(context.Background(), name, strings.Repeat("x", 30000)); err == nil || !strings.Contains(err.Error(), "bytes") {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+// Arguments are quoted for a POSIX shell, so a shell command that takes them is refused when the shell is another; one without
+// arguments still runs.
+func TestArgumentsAreNotPutIntoANonPOSIXShell(t *testing.T) {
+	w := newWorld(t)
+	w.proj(".claude", "args.md", "!`echo $1`")
+	w.proj(".claude", "none.md", "!`echo hi`")
+	var ran []string
+	o := w.opts()
+	o.Exec = func(_ context.Context, cmd string) (string, error) { ran = append(ran, cmd); return "OUT", nil }
+	o.ExecPOSIX = func() bool { return false }
+	r, _ := Load(o)
+	if _, err := r.Expand(context.Background(), "args", `x" & calc & "`); err == nil || !strings.Contains(err.Error(), "POSIX") {
+		t.Errorf("args: %v", err)
+	}
+	if _, err := r.Expand(context.Background(), "none", ""); err != nil {
+		t.Errorf("none: %v", err)
+	}
+	// Empty arguments insert nothing, so there is nothing to quote.
+	if _, err := r.Expand(context.Background(), "args", "  "); err != nil {
+		t.Errorf("args without words: %v", err)
+	}
+	if len(ran) != 2 || ran[0] != "echo hi" || ran[1] != "echo" {
+		t.Errorf("ran %q", ran)
+	}
+}

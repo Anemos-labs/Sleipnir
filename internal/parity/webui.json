@@ -2877,6 +2877,8 @@
      "json",
      "open",
      "session",
+     "tls-cert",
+     "tls-key",
      "token"
     ],
     "modeWith": {

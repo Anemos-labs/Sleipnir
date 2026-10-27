@@ -73,8 +73,8 @@ func (Read) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	if r := k.decode(&a); r != nil {
 		return r, nil
 	}
-	if a.Path == "" {
-		a.Path = a.FilePath
+	if r := k.oneOf(&a.Path, a.FilePath); r != nil {
+		return r, nil
 	}
 	if a.Offset.Set && a.Offset.V < 0 {
 		return k.fail("offset must be 1 or more (lines are numbered from 1)"), nil

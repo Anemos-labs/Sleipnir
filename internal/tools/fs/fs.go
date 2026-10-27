@@ -106,6 +106,18 @@ func (k *call) fail(format string, args ...any) *tools.Result {
 // ok completes a filesystem call through its environment with a successful result.
 func (k *call) ok(text string) *tools.Result { return k.env.Finish(text, false) }
 
+// oneOf settles the file a call names when it may spell it path or file_path: path, else file_path. Two spellings that name
+// different files are refused, so a hook or rule that looked at one of them cannot have been looking at another file.
+func (k *call) oneOf(path *string, alias string) *tools.Result {
+	switch {
+	case *path == "":
+		*path = alias
+	case alias != "" && alias != *path:
+		return k.fail("path and file_path name different files (%s, %s); give one of them", safeName(*path), safeName(alias))
+	}
+	return nil
+}
+
 // decode parses the tool input into dst. Unknown fields are tolerated (models
 // invent parameters); wrong types produce a message naming the field.
 func (k *call) decode(dst any) *tools.Result {
@@ -124,6 +136,9 @@ func (k *call) decode(dst any) *tools.Result {
 	}
 	if err := json.Unmarshal(raw, dst); err != nil {
 		return k.fail("%s", describeArgError(err, raw, dst))
+	}
+	if err := checkArgKeys(raw, dst); err != nil {
+		return k.fail("%s", err.Error())
 	}
 	return nil
 }

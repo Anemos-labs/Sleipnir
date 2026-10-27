@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
@@ -262,11 +264,35 @@ func (k *call) unread(canon, disp string) *tools.Result {
 	if fi, err := os.Lstat(canon); err != nil || !fi.Mode().IsRegular() || fi.Size() > maxFileBytes {
 		return nil // not there, not a file, or too big to read: the tool says which, as it always did
 	}
+	if !k.mayPreview(canon, disp) {
+		return k.fail("%s", tools.NotReadMessage(disp)) // content-free: reading it may be refused or need a question
+	}
 	current, err := os.ReadFile(canon)
 	if err != nil {
 		return k.fail("%s", tools.NotReadMessage(disp))
 	}
 	return k.refuseWithContent(canon, disp, tools.NotReadMessage(disp), current)
+}
+
+// classifier is a permission requester that can say what it would decide without asking anyone.
+type classifier interface {
+	Classify(perm.Request) perm.Classification
+}
+
+// mayPreview reports whether a read of canon would be allowed outright, so that showing the file in a refusal
+// discloses nothing a read would not. A requester that cannot answer without asking gets no preview.
+func (k *call) mayPreview(canon, disp string) bool {
+	switch p := k.env.Perm.(type) {
+	case perm.AllowAll:
+		return true
+	case classifier:
+		in, _ := json.Marshal(map[string]string{"path": disp})
+		return p.Classify(perm.Request{
+			Agent: k.env.Agent, Role: k.env.Role, Tool: "read", Input: in,
+			Summary: "read " + disp, Paths: []string{canon}, Risk: perm.RiskLow,
+		}).Verdict == perm.Allow
+	}
+	return false
 }
 
 // freshness runs FileState's staleness check for a file whose current bytes are

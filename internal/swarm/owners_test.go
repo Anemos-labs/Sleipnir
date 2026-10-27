@@ -113,8 +113,8 @@ func TestOnlyTheOwningRoleWritesAnOwnedPath(t *testing.T) {
 	// The manager is refused by the guard too, with what it can do instead; so is an id
 	// that is no member (no role owns anything for it).
 	err = r.sw.Leases.BeforeWrite(r.sw.ManagerID(), "web/app.css")
-	if err != nil {
-		t.Errorf("manager should honor active leases without role-only rejection: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "Create a task for a frontend worker") {
+		t.Errorf("the manager wrote an owned path, or was not told what to do instead: %v", err)
 	}
 	if err := r.sw.Leases.BeforeWrite("ghost", "web/x.html"); err == nil {
 		t.Error("an agent of no role wrote an owned path")
@@ -181,5 +181,18 @@ func TestAPathSeveralRolesOwn(t *testing.T) {
 	err := l.BeforeWrite("be-1", "site/index.md")
 	if err == nil || !strings.HasPrefix(err.Error(), "site/index.md belongs to the docs and frontend roles: only a docs or frontend worker may change it.") {
 		t.Errorf("backend: %v", err)
+	}
+}
+
+// The manager is refused an owned path like any other agent, and is told to hand the work over.
+func TestTheManagerIsHeldToPathOwners(t *testing.T) {
+	roles := map[string]string{"mgr": "manager", "fe-1": "frontend"}
+	l := NewLeases(0, nil)
+	l.SetOwners(prefixOwners{"web/": {"frontend"}}, func(a string) string { return roles[a] })
+	if err := l.BeforeWrite("mgr", "web/app.css"); err == nil || !strings.Contains(err.Error(), "belongs to the frontend role") {
+		t.Errorf("manager: %v", err)
+	}
+	if err := l.BeforeWrite("mgr", "README.md"); err != nil {
+		t.Errorf("an unowned path: %v", err)
 	}
 }

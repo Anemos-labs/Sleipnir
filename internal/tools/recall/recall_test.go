@@ -10,6 +10,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/kv"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
@@ -39,7 +40,7 @@ func newTool(t *testing.T, turns int, body func(i int) []core.Block) (*Tool, *to
 			t.Fatal(err)
 		}
 	}
-	env := (&tools.Env{Agent: "be-1", Blobs: cb, Handles: tools.NewHandles()}).Defaults()
+	env := (&tools.Env{Agent: "be-1", Blobs: cb, Handles: tools.NewHandles(), Perm: perm.AllowAll{}}).Defaults()
 	return New(a), env, cb
 }
 
@@ -188,5 +189,18 @@ func TestRecallIsPerAgent(t *testing.T) {
 	}
 	if res := call(t, tool, env, map[string]any{"turns": "t1.0"}); !res.IsError {
 		t.Fatalf("another agent's result was readable: %q", res.Text)
+	}
+}
+
+// A rule that denies recall holds before anything is read.
+func TestRecallAsksThePolicy(t *testing.T) {
+	e, err := perm.NewEngine(perm.Config{Mode: perm.ModeBypass, Root: t.TempDir(), Home: t.TempDir(), Deny: []string{"recall"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := (&tools.Env{Agent: "be-1", Handles: tools.NewHandles(), Perm: e}).Defaults()
+	res, err := New(kv.NewArchive(nil)).Run(context.Background(), &tools.Call{Env: env, Input: json.RawMessage(`{"query":"secret"}`)})
+	if err != nil || !res.IsError || !strings.Contains(res.Text, "permission denied") {
+		t.Fatalf("%+v %v", res, err)
 	}
 }

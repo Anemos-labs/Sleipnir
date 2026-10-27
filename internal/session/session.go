@@ -34,6 +34,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/delivery"
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/harden"
 	"github.com/anemos-labs/sleipnir/internal/hooks"
 	"github.com/anemos-labs/sleipnir/internal/kv"
 	"github.com/anemos-labs/sleipnir/internal/memory"
@@ -479,6 +480,11 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	if !plugs.On(plugin.Delivery) {
 		o.AutoFix, o.AutoMerge = false, false
 	}
+	// The variables the configuration names as provider keys are credentials whatever they are called: they leave the
+	// environment before any command could inherit them.
+	for _, p := range cfg.Providers {
+		harden.Register(p.APIKeyEnv)
+	}
 	s := &Session{opts: o, cfg: cfg, cfgRep: rep, trust: tinfo, plugins: plugs, asked: asked, deliveryOptions: delivery.Options{AutoFix: o.AutoFix, AutoMerge: o.AutoMerge}}
 	if o.Savepoints {
 		s.barrier = agent.NewSavepointBarrier()
@@ -715,18 +721,30 @@ func (s *Session) buildPerm() error {
 	for name, rp := range s.cfg.Permissions.Roles {
 		roles[name] = perm.RoleProfile{Mode: perm.Mode(rp.Mode), Allow: rp.Allow, Ask: rp.Ask, Deny: rp.Deny}
 	}
-	// A role definition can only tighten what its role may do.
-	for name, p := range s.ext.profiles {
-		if _, ok := roles[name]; !ok {
+	// A role definition can only tighten what its role may do: with a configuration entry of the same name as well, each is
+	// judged on its own and the stricter answer stands (perm.RoleProfile.Also), so neither one's denials or mode are lost.
+	also := func(name string, p perm.RoleProfile) {
+		if have, ok := roles[name]; ok {
+			have.Also = append(have.Also, p)
+			roles[name] = have
+		} else {
 			roles[name] = p
 		}
 	}
+	for name, p := range s.ext.profiles {
+		also(name, p)
+	}
 	// Read-only roles are read-only in the engine, not merely by a command
-	// allowlist in the swarm: the engine understands shell syntax.
+	// allowlist in the swarm: the engine understands shell syntax. A role that has
+	// a profile already keeps it and is held to the read-only one besides (its plan
+	// mode with the research and check exceptions): a profile of its own can narrow a
+	// read-only role, never make it write.
 	for name, role := range s.ext.roles {
 		if role.ReadOnly {
 			if _, ok := roles[name]; !ok {
 				roles[name] = perm.RoleProfile{Mode: perm.ModePlan, Allow: readOnlyRoleAllow, Deny: readOnlyRoleDeny}
+			} else {
+				also(name, perm.RoleProfile{Mode: perm.ModePlan, Allow: readOnlyRoleAllow, Deny: readOnlyRoleDeny})
 			}
 		}
 	}
@@ -753,7 +771,7 @@ func (s *Session) buildPerm() error {
 		return fmt.Errorf("permissions: %w", err)
 	}
 	e, err := perm.NewEngine(perm.Config{
-		Mode: mode, Root: o.Root, Home: o.Home, StateDir: stateRoot(o.Home), Tmp: s.tmp, TreeParents: extra, Ignored: ignored,
+		Mode: mode, Root: o.Root, Home: o.Home, StateDir: stateRoot(o.Home), RecordDirs: s.recordDirs(), Tmp: s.tmp, TreeParents: extra, Ignored: ignored,
 		Allow: append(append([]string(nil), s.cfg.Permissions.Allow...), o.Allow...), Ask: ask, Deny: s.cfg.Permissions.Deny,
 		Roles: roles, Prompter: s.trackAsks(s.hookPrompter(o.Prompter)), AskTimeout: o.AskTimeout, Audit: s.auditPermission,
 		Delegate: s.delegateApproval, Fallback: s.fallbackApproval, FallbackAfter: after, FallbackUpTo: upTo,
@@ -763,6 +781,18 @@ func (s *Session) buildPerm() error {
 	}
 	s.Perm = e
 	return nil
+}
+
+// recordDirs is where the session keeps its record, when that is not under the state root the engine guards already: a resume
+// takes the approvals recorded there for the person's, so the agents may not write it unasked.
+func (s *Session) recordDirs() []string {
+	if s.Dir == "" {
+		return nil
+	}
+	if rel, err := filepath.Rel(stateRoot(s.opts.Home), s.Dir); err == nil && filepath.IsLocal(rel) {
+		return nil
+	}
+	return []string{s.Dir}
 }
 
 // readOnlyRoleAllow lets read-only roles (reviewers, scouts, architects) verify

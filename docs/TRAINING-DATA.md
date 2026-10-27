@@ -527,6 +527,11 @@ its `api_key_env` may name (default: none, so a client cannot choose which of th
 where to send it; a refused request gets a 403 that names the flag). A key to a plain-`http` host that is not this
 machine also needs `--allow-insecure-http`, on `rl serve` as on `rl rollout` and `rl eval`.
 
+Without a token (loopback only) the server serves this machine's programs, not web pages: a request that carries an
+`Origin` (or a cross-site `Sec-Fetch-Site`) is refused, and a request body must be sent as `application/json`. Inline
+tasks confined by repository roots have a relative `repo.path` read against the workspaces' base, the directory they
+are copied from.
+
 ## 4. Canonical trajectory (`sleipnir.rl/1`)
 
 `episode.json` (types in `internal/rl/types.go`):

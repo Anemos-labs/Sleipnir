@@ -40,32 +40,42 @@ func newSSEReader(r io.Reader, maxEvent int) *sseReader {
 	sc := bufio.NewScanner(r)
 	// A line is "data: " plus payload, so allow a little over the event limit.
 	sc.Buffer(make([]byte, 0, 32<<10), maxEvent+64)
-	sc.Split(scanSSELines)
+	sc.Split((&lineSplitter{}).split)
 	return &sseReader{sc: sc, max: maxEvent, retry: -1}
 }
 
-// scanSSELines is bufio.ScanLines that also accepts a lone CR as a terminator.
-func scanSSELines(data []byte, atEOF bool) (advance int, token []byte, err error) {
-	for i := 0; i < len(data); i++ {
+// lineSplitter is bufio.ScanLines that also accepts a lone CR as a terminator. It remembers how much of an unfinished line it
+// has looked at, so a line that arrives in many small reads is scanned once, not once per read.
+type lineSplitter struct{ seen int }
+
+// split implements bufio.SplitFunc. The scanner hands it the unconsumed data from the start of the current line each time.
+func (l *lineSplitter) split(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	for i := min(l.seen, len(data)); i < len(data); i++ {
 		switch data[i] {
 		case '\n':
+			l.seen = 0
 			return i + 1, data[:i], nil
 		case '\r':
 			if i+1 < len(data) {
+				l.seen = 0
 				if data[i+1] == '\n' {
 					return i + 2, data[:i], nil
 				}
 				return i + 1, data[:i], nil
 			}
 			if atEOF {
+				l.seen = 0
 				return i + 1, data[:i], nil
 			}
+			l.seen = i
 			return 0, nil, nil // a CR at the end of the buffer: is an LF next?
 		}
 	}
 	if atEOF && len(data) > 0 {
+		l.seen = 0
 		return len(data), data, nil
 	}
+	l.seen = len(data)
 	return 0, nil, nil
 }
 

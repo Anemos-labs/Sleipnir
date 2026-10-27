@@ -179,7 +179,7 @@ func (s *service) needRowOf(st plugin.NeedStatus) needRow {
 		for _, a := range m.Argv {
 			mr.Argv = append(mr.Argv, provider.SanitizeText(a, 200))
 		}
-		mr.Scope = installScope(st.ID, m)
+		mr.Scope = installScope(st.Need, m)
 		row.Methods = append(row.Methods, mr)
 	}
 	if j := s.job(st.ID); j != nil {
@@ -215,9 +215,13 @@ func (s *service) startJob(id, method string) *needJob {
 	return j
 }
 
-// installScope is the confirmation scope of running method m of need id: it covers the commands and the server entry it adds.
-func installScope(id string, m plugin.MethodStatus) string {
-	fields := map[string]string{"need": id, "method": m.ID, "argv": strings.Join(m.Argv, "\x00"), "connect": m.Connect}
+// installScope is the confirmation scope of running method m of need n: it covers the commands and the server entry it adds, the
+// entry as the structured name, command and arguments that are saved (the words shown lose where one argument ends).
+func installScope(n plugin.Need, m plugin.MethodStatus) string {
+	fields := map[string]string{"need": n.ID, "method": m.ID, "argv": strings.Join(m.Argv, "\x00"), "connect": m.Connect}
+	if m.Connect != "" && n.MCP != nil {
+		fields["mcp"] = strings.Join(append([]string{n.MCP.Name, n.MCP.Command}, n.MCP.Args...), "\x00")
+	}
 	if len(m.Setup) > 0 {
 		steps := make([]string, len(m.Setup))
 		for i, step := range m.Setup {
@@ -283,7 +287,7 @@ func (s *service) handleNeedLocate(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimSpace(req.Path)
 	reasons := []string{"runs " + path + versionArgs(n.Need) + " to check it is " + n.Title,
 		"puts it on the PATH of the commands every session runs, as " + strings.Join(n.Commands, ", ")}
-	if !s.confirmNeed(w, r, "need.locate:"+d16(map[string]string{"need": n.ID, "path": path}), reasons) {
+	if !s.confirmNeed(w, r, locateScope(n.Need, path), reasons) {
 		return
 	}
 	st, err := plugin.LocateNeed(r.Context(), env, n.Need, path)
@@ -293,6 +297,13 @@ func (s *service) handleNeedLocate(w http.ResponseWriter, r *http.Request) {
 	}
 	st.Plugin = n.Plugin
 	reply(w, s.needRowOf(st), nil)
+}
+
+// locateScope is the confirmation scope of locating need n at path: it covers the check that runs (the path and its version
+// arguments) and the commands whose launchers it puts on the PATH, so a manifest changed after the confirmation needs another.
+func locateScope(n plugin.Need, path string) string {
+	return "need.locate:" + d16(map[string]string{"need": n.ID, "path": path,
+		"version": strings.Join(n.VersionArgs, "\x00"), "commands": strings.Join(n.Commands, "\x00")})
 }
 
 // handleNeedForget is DELETE /api/needs/{id}/locate: forget a located file.
@@ -349,7 +360,7 @@ func (s *service) handleNeedInstall(w http.ResponseWriter, r *http.Request) {
 	if method.Connect != "" {
 		reasons = append(reasons, method.Connect)
 	}
-	if !s.confirmNeed(w, r, installScope(n.ID, *method), reasons) {
+	if !s.confirmNeed(w, r, installScope(n.Need, *method), reasons) {
 		return
 	}
 	j := s.startJob(n.ID, req.Method)

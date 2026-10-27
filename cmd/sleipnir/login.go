@@ -17,6 +17,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/harden"
 	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // init registers the login and logout authentication commands.
@@ -209,6 +210,19 @@ func savedNotice(env string) string {
 func signInChatGPT(ctx context.Context, in *bufio.Reader, out io.Writer) error {
 	st, err := chatgptauth.Login(ctx, chatgptauth.Options{Path: chatgptauth.Path(userHome())}, chatgptauth.LoginIO{
 		Out: out, Open: chatgptauth.OpenBrowser, Paste: func() (string, error) { return in.ReadString('\n') },
+		Confirm: func(email, name string) (bool, error) {
+			who := tools.SanitizeForTerminal(email)
+			if name != "" {
+				who += " (" + tools.SanitizeForTerminal(name) + ")"
+			}
+			fmt.Fprintf(out, "The sign-in is for %s. Keep this account? [Y/n] ", who)
+			line, err := in.ReadString('\n')
+			if err != nil && strings.TrimSpace(line) == "" {
+				return false, errors.New("login: no answer to keep the account")
+			}
+			a := strings.ToLower(strings.TrimSpace(line))
+			return a == "" || a == "y" || a == "yes", nil
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("login: %w", err)

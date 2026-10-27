@@ -45,6 +45,7 @@ type Run struct {
 
 	mu       sync.Mutex
 	msgMemo  map[string][]core.Hash // request id -> full message hash list
+	memoRefs int                    // message references held in msgMemo, bounded by maxMemoRefs
 	msgErr   map[string]error
 	toolsMem map[core.Hash][]core.ToolSpec
 	sysMem   map[core.Hash]core.Block
@@ -378,12 +379,24 @@ func (r *Run) WorkspaceRoots() []string {
 	return roots
 }
 
+// maxBlobBytes bounds one blob a trajectory reads (a message, a completion, token ids): the log names the blob, and the file is
+// read whole before its hash can be checked, so a sparse file of a huge size would otherwise be allocated in full.
+const maxBlobBytes = 256 << 20
+
 // blob returns the bytes stored under h after checking they hash to h.
 func (r *Run) blob(h core.Hash) ([]byte, error) {
 	if h == "" {
 		return nil, errors.New("empty blob hash")
 	}
-	b, err := r.blobs.Get(h)
+	var b []byte
+	var err error
+	if g, ok := r.blobs.(interface {
+		GetMax(core.Hash, int64) ([]byte, error)
+	}); ok {
+		b, err = g.GetMax(h, maxBlobBytes)
+	} else {
+		b, err = r.blobs.Get(h)
+	}
 	if err != nil {
 		if errors.Is(err, events.ErrBlobNotFound) {
 			return nil, fmt.Errorf("blob %s is missing", h.Short())

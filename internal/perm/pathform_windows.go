@@ -1,6 +1,7 @@
 package perm
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,4 +45,16 @@ func pathProblem(p string) string {
 		}
 	}
 	return ""
+}
+
+var errNotAbs = errors.New("not an absolute path")
+
+// lstatAbs describes the entry an absolute path names, without following a final
+// link. A relative path is refused, so a caller cannot look outside the tree it
+// meant to search.
+func lstatAbs(p string) (os.FileInfo, error) {
+	if !filepath.IsAbs(p) {
+		return nil, errNotAbs
+	}
+	return os.Lstat(p)
 }

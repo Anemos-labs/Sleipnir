@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/perm"
 )
 
 // Origin says who vouches for a hook.
@@ -222,6 +224,10 @@ type Event struct {
 	// Notification, PreCompact and PostCompact hooks are matched on "source",
 	// "reason", "notification_type" and "trigger".
 	Extra map[string]any
+
+	// req is the permission request a PermissionRequest event asks about: its conditions are judged on the paths and command
+	// the tool itself resolved, not on a second reading of the input.
+	req *perm.Request
 }
 
 // Decision is a hook's answer to a permission question.

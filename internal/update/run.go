@@ -33,6 +33,9 @@ func Run(ctx context.Context, out io.Writer, o Options, version, commit, exe str
 	if st.Behind > 0 {
 		ahead = fmt.Sprintf(", %d commits ahead", st.Behind)
 	}
+	if o.Want != "" && rel.Tag != o.Want {
+		return fmt.Errorf("update: the latest release is now %s, not the %s that was confirmed: confirm it again", rel.Tag, o.Want)
+	}
 	fmt.Fprintf(out, "sleipnir %s -> %s%s\n", version, rel.Tag, ahead)
 	if checkOnly {
 		fmt.Fprintln(out, "Run `sleipnir update` to install it.")

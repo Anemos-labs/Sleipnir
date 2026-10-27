@@ -23,6 +23,9 @@ type Config struct {
 	// steer a later session): what the person trusted, their settings and skills and the record of every session are in it. A write
 	// there asks, in every mode, as a write to ~/.sleipnir does; an unattended session refuses it.
 	StateDir string
+	// RecordDirs are further directories the harness keeps its own record in (a session recorded outside StateDir): a later
+	// resume reads what was approved from them, so a write there asks as one to StateDir does.
+	RecordDirs []string
 	// Tmp is the session's private scratch directory: a workspace root, and what $TMPDIR and ${TMPDIR} stand for in a command
 	// (the shell tool sets TMPDIR to it).
 	Tmp string
@@ -117,11 +120,15 @@ func (e *Engine) audit(a Audit) {
 type RoleProfile struct {
 	Mode             Mode
 	Allow, Ask, Deny []string
+	// Also are further restrictions of the same role from other sources (a role's configuration entry and its definition), each
+	// judged on its own beside this one: the most severe answer stands, so no source's denials or mode are lost to another's.
+	Also []RoleProfile
 }
 
 type profile struct {
 	mode             Mode
 	allow, ask, deny []*crule
+	also             []*profile
 }
 
 // Engine decides permission requests. It is safe for concurrent use.
@@ -288,8 +295,11 @@ func NewEngine(cfg Config) (*Engine, error) {
 	if e.ask, err = compileList(Ask, cfg.Ask, rs, configured(Ask)); err != nil {
 		return nil, err
 	}
-	if cfg.StateDir != "" {
-		state, err := compileList(Ask, []string{"Edit(" + escapeGlob(cleanAbs(cfg.StateDir)) + "/**)"}, rs, fixedOrigin(OriginBuiltIn))
+	for _, dir := range append([]string{cfg.StateDir}, cfg.RecordDirs...) {
+		if dir == "" {
+			continue
+		}
+		state, err := compileList(Ask, []string{"Edit(" + escapeGlob(cleanAbs(dir)) + "/**)"}, rs, fixedOrigin(OriginBuiltIn))
 		if err != nil {
 			return nil, err
 		}
@@ -299,24 +309,41 @@ func NewEngine(cfg Config) (*Engine, error) {
 		return nil, err
 	}
 	for name, rp := range cfg.Roles {
-		if rp.Mode != "" && !validMode(rp.Mode) {
-			return nil, fmt.Errorf("perm: role %q: unknown mode %q", name, rp.Mode)
-		}
-		p := &profile{mode: rp.Mode}
-		roleOrigin := fixedOrigin("role " + name)
-		if p.allow, err = compileList(Allow, rp.Allow, rs, roleOrigin); err != nil {
-			return nil, fmt.Errorf("role %q: %w", name, err)
-		}
-		if p.ask, err = compileList(Ask, rp.Ask, rs, roleOrigin); err != nil {
-			return nil, fmt.Errorf("role %q: %w", name, err)
-		}
-		if p.deny, err = compileList(Deny, rp.Deny, rs, roleOrigin); err != nil {
-			return nil, fmt.Errorf("role %q: %w", name, err)
+		p, err := compileProfile(name, rp, rs)
+		if err != nil {
+			return nil, err
 		}
 		e.roles[name] = p
 	}
 	e.pr.init()
 	return e, nil
+}
+
+// compileProfile compiles the restriction rp of role name and the ones it carries in Also.
+func compileProfile(name string, rp RoleProfile, rs *resolver) (*profile, error) {
+	if rp.Mode != "" && !validMode(rp.Mode) {
+		return nil, fmt.Errorf("perm: role %q: unknown mode %q", name, rp.Mode)
+	}
+	p := &profile{mode: rp.Mode}
+	roleOrigin := fixedOrigin("role " + name)
+	var err error
+	if p.allow, err = compileList(Allow, rp.Allow, rs, roleOrigin); err != nil {
+		return nil, fmt.Errorf("role %q: %w", name, err)
+	}
+	if p.ask, err = compileList(Ask, rp.Ask, rs, roleOrigin); err != nil {
+		return nil, fmt.Errorf("role %q: %w", name, err)
+	}
+	if p.deny, err = compileList(Deny, rp.Deny, rs, roleOrigin); err != nil {
+		return nil, fmt.Errorf("role %q: %w", name, err)
+	}
+	for _, a := range rp.Also {
+		ap, err := compileProfile(name, a, rs)
+		if err != nil {
+			return nil, err
+		}
+		p.also = append(p.also, ap)
+	}
+	return p, nil
 }
 
 // Mode returns the session mode.
@@ -405,11 +432,11 @@ func (e *Engine) addRule(scope Scope, rule Rule, origin string) {
 }
 
 // snapshot captures the session view and, for a configured role, the role's
-// stricter overlay.
-func (e *Engine) snapshot(role string) (sess, prof *view) { return e.snapshotWith(role, nil) }
+// stricter overlays (its profile and the profiles in its Also).
+func (e *Engine) snapshot(role string) (sess *view, profs []*view) { return e.snapshotWith(role, nil) }
 
 // snapshotWith is snapshot with extra allow rules added to the session's, as if they had been added for the session (settles).
-func (e *Engine) snapshotWith(role string, extra []*crule) (sess, prof *view) {
+func (e *Engine) snapshotWith(role string, extra []*crule) (sess *view, profs []*view) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	allow, allowEdits := e.allow, e.allowEdits
@@ -421,11 +448,19 @@ func (e *Engine) snapshotWith(role string, extra []*crule) (sess, prof *view) {
 	if e.mode == ModeAcceptEdits { // accept-edits lets the builds and tests of the project through, as it does the edits: Deny and Ask rules still win
 		sess.allow = allowEdits
 	}
-	if p, ok := e.roles[role]; ok && role != "" {
+	top, ok := e.roles[role]
+	if !ok || role == "" {
+		return sess, nil
+	}
+	all := []*profile{top}
+	for i := 0; i < len(all); i++ {
+		all = append(all, all[i].also...)
+	}
+	for _, p := range all {
 		cat := func(a, b []*crule) []*crule {
 			return append(append(make([]*crule, 0, len(a)+len(b)), a...), b...)
 		}
-		prof = &view{
+		prof := &view{
 			mode: stricter(e.mode, p.mode), role: role,
 			deny: cat(e.deny, p.deny), ask: cat(e.ask, p.ask), allow: cat(allow, p.allow),
 			// A read-only role in a session that reads anywhere: its profile keeps it from writing, not from reading a toolchain's
@@ -441,20 +476,18 @@ func (e *Engine) snapshotWith(role string, extra []*crule) (sess, prof *view) {
 		if prof.mode == ModeAcceptEdits {
 			prof.allow = withTests(prof.allow, e.tests)
 		}
+		profs = append(profs, prof)
 	}
-	return sess, prof
+	return sess, profs
 }
 
 // Check implements Requester.
 func (e *Engine) Check(ctx context.Context, r Request) Decision {
 	judge := func() verdict {
-		sess, prof := e.snapshot(r.Role)
+		sess, profs := e.snapshot(r.Role)
 		v := e.evaluate(sess, r)
-		if prof != nil {
-			if pv := e.evaluate(prof, r); pv.kind > v.kind {
-				pv.reason = "role " + r.Role + ": " + pv.reason
-				v = pv
-			}
+		for _, prof := range profs {
+			v = withRole(v, e.evaluate(prof, r), r.Role)
 		}
 		return v
 	}

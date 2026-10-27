@@ -564,6 +564,21 @@ func codeSpan(s string) string {
 	return "`` " + s + " ``"
 }
 
+// longestRun is the length of the longest run of c in s, found in one pass: a fence must be longer than any run of backticks in
+// the code it holds.
+func longestRun(s string, c byte) int {
+	best, cur := 0, 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == c {
+			cur++
+			best = max(best, cur)
+		} else {
+			cur = 0
+		}
+	}
+	return best
+}
+
 var langRe = regexp.MustCompile(`(?:^|\s)(?:language|lang)-([A-Za-z0-9_+#.-]+)`)
 
 func (c *conv) pre(n *html.Node, w *mdWriter) {
@@ -579,10 +594,7 @@ func (c *conv) pre(n *html.Node, w *mdWriter) {
 	if m := langRe.FindStringSubmatch(classes); m != nil {
 		lang = m[1]
 	}
-	fence := "```"
-	for strings.Contains(code, fence) {
-		fence += "`"
-	}
+	fence := strings.Repeat("`", max(3, longestRun(code, '`')+1))
 	if w.inline {
 		w.word(codeSpan(oneLine(code)))
 		return

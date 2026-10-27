@@ -221,7 +221,7 @@ func TestDifferentialGenerated(t *testing.T) {
 var argSnippets = []string{
 	`a b c`, `"a b" 'c d' e\ f`, `""`, `'' ""`, `"" x ''`, `a""b`, `a''b`, `""x''y`, `"a"'b'c`, `'a'"b"'c'`,
 	`"a\"b"`, `"a\\b"`, `"a\$b"`, "\"a\\`b\"", `"a\b"`, `"a\nb"`, `'a\nb'`, `'a\b'`, `a\ b`, `a\\b`, `a\"b`, `a\'b`, `\a\b\c`, `\$HOME`, `\~`, `"\~"`,
-	`$'a'`, `$'\x41'`, `$'\101'`, `$'\u00e9'`, `$'\U0001F600'`, `$'a\tb'`, `$'a\nb'`, `$'\''`, `$'\\'`, `$'\"'`, `$'\e[0m'`, `$'\cA'`, `$'\7'`, `$'\x2f\x65tc'`,
+	`$'a'`, `$'\x41'`, `$'\101'`, `$'\u00e9'`, `$'\U0001F600'`, `$'a\tb'`, `$'a\nb'`, `$'\''`, `$'\\'`, `$'\"'`, `$'\e[0m'`, `$'\cA'`, `$'\c?'`, `$'\c\\x'`, `$'\7'`, `$'\x2f\x65tc'`,
 	`$'a\0b'`, `$'\xZ'`, `$'\u'`, `$'\q'`, `$'a'$'b'`, `$'a''b'`, `$'\n'x`, `x$'\n'`, `$"a b"`, `$'\141\142\143'`, `$'\x7e/x'`,
 	"a\\\nb", "\"a\\\nb\"", "'a\\\nb'", "a \\\n b", `a\ `, `\ a`,
 	`{a,b}`, `{1..3}`, `{a,b}{c,d}`, `x{,y}`, `{a}`, `{}`, `\{a,b\}`, `"{a,b}"`, `'{a,b}'`, `a{b,c}d`, `{01..03}`, `{a..c}`, `{3..1}`, `{1..10..3}`,
@@ -232,9 +232,10 @@ var argSnippets = []string{
 }
 
 // bash4Only are snippets whose expansion bash 3.2 (what macOS ships) does not do:
-// zero-padded and stepped brace sequences arrived in bash 4.0. Parse follows the
-// current bash, so these are only compared against a bash that has them.
-var bash4Only = map[string]bool{`{01..03}`: true, `{1..10..3}`: true}
+// zero-padded and stepped brace sequences arrived in bash 4.0, and bash 3.2 reads
+// $'\c?' as 0x1f rather than DEL and keeps the backslash after $'\c\\'. Parse
+// follows the current bash, so these are only compared against a bash that has them.
+var bash4Only = map[string]bool{`{01..03}`: true, `{1..10..3}`: true, `$'\c?'`: true, `$'\c\\x'`: true}
 
 // bashMajor is the major version of the bash at path, or 0 when it cannot be told.
 func bashMajor(bash string) int {

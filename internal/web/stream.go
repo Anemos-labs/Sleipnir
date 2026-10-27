@@ -740,6 +740,16 @@ func (sh *sseHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if ok {
+			// A backlog never waits in the select below, so the credential is checked before each event too: an expired or
+			// revoked one receives nothing more.
+			select {
+			case <-revoked:
+				return
+			default:
+			}
+			if !valid() {
+				return
+			}
 			buf = appendEvent(buf[:0], ev)
 			if h.write(w, rc, buf) != nil {
 				return

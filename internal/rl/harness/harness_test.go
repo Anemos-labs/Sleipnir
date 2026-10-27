@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -789,4 +790,28 @@ func modelsOf(bodies [][]byte) string {
 	}
 	sort.Strings(ids)
 	return strings.Join(ids, ",")
+}
+
+// A role model routed to the policy endpoint is the policy's: its requests spend the rollout's request budget with the rest.
+func TestARoleModelOnThePolicySpendsTheRequestBudget(t *testing.T) {
+	repo := newRepo(t)
+	policy := startPolicy(t, func(c *mock.Call) mock.Reply {
+		return mock.Reply{Text: "again", ToolCalls: []mock.ToolCall{call("c"+strconv.Itoa(turns(c)), "no_such_tool", map[string]any{})}}
+	})
+	t.Setenv("RL_TEST_POLICY_KEY", "policy-key-for-test")
+	h := &harness.Harness{PolicyAllowInsecureHTTP: true}
+	sp := spec(t, repo, "coordinate the fix")
+	sp.Policy = env.PolicySpec{Model: "worker-model", BaseURL: policy.url, APIKeyEnv: "RL_TEST_POLICY_KEY"}
+	sp.Task.Kind = rl.TaskSwarm
+	sp.Task.Team = rl.Team{Mode: "swarm", Agents: 3, Roles: []string{"backend", "tester"}}
+	sp.Swarm, sp.Agents = true, 3
+	sp.RoleModels = map[string]string{"manager": harness.PolicyProvider + "/manager-model"}
+	sp.Budget.Steps, sp.Budget.Requests = 1000, 3
+	res, err := h.Run(context.Background(), sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(policy.bodies()); n > 3 {
+		t.Fatalf("the policy endpoint got %d requests (models %s) on a budget of 3: %+v", n, modelsOf(policy.bodies()), res)
+	}
 }

@@ -213,7 +213,10 @@ func (e *Engine) resolveAsk(ctx context.Context, r Request, v verdict, again fun
 		return Decision{Reason: "approval required: " + v.reason + NoOneToAsk}
 	}
 	skey := settledKey(r, v)
-	key := promptKey(r)
+	// Waiters share the leader's answer, so they share a question only when the
+	// same answerers may settle it: an ask rule, or a stricter danger, in one
+	// waiter's policy keeps the fallback from answering for it.
+	key := fmt.Sprintf("%s\x00%s\x00%t\x00%t", promptKey(r), v.danger(r), v.askRule, e.fallbackFor(r, v))
 	for {
 		if ctx.Err() != nil {
 			return canceledDecision(ctx)
@@ -259,13 +262,17 @@ func (e *Engine) lead(ctx context.Context, key, skey string, p *pending, r Reque
 
 	// The questions are asked one at a time, and the person may have answered one of them "and don't ask again" while this one waited
 	// (a team of eight asks several at once): the rules may settle it now.
-	if nv := again(); nv.kind != vAsk {
+	nv := again()
+	if nv.kind != vAsk {
 		p.canceled = false
 		if nv.kind == vAllow {
 			return Decision{Allow: true, Reason: settledEarlier + nv.reason}
 		}
 		return Decision{Reason: settledEarlier + nv.reason}
 	}
+	// Still a question, but of the policy as it is now: an ask rule added while it
+	// waited decides who may answer it.
+	v = nv
 	// Or the person refused, or did not answer, a question it is the same as (another URL of one host) while it waited.
 	if ed, ok := e.pr.earlier(skey); ok {
 		p.canceled = false
@@ -398,11 +405,16 @@ func (e *Engine) settles(r Request, rem []Rule) bool {
 		}
 		extra = append(extra, c)
 	}
-	sess, prof := e.snapshotWith(r.Role, extra)
+	sess, profs := e.snapshotWith(r.Role, extra)
 	if e.evaluate(sess, r).kind != vAllow {
 		return false
 	}
-	return prof == nil || e.evaluate(prof, r).kind == vAllow
+	for _, prof := range profs {
+		if e.evaluate(prof, r).kind != vAllow {
+			return false
+		}
+	}
+	return true
 }
 
 // rememberRules are the rules a yes "and don't ask again" for the session would add

@@ -934,16 +934,31 @@ func (c ServerConfig) Redacted() ServerConfig {
 // userinfo, path, query, fragment. Servers such as hosted MCP gateways embed
 // secrets in the path.
 func redactURL(raw string) string {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || u.Host == "" {
-		if strings.Contains(raw, "${") { // an unexpanded template is safe to show
-			return raw
+	// An unexpanded template (${HOST}) may stand anywhere, the host included; each is set aside as a plain word for parsing, so
+	// the same parts are dropped from a templated URL as from any other, and the templates of what is kept are shown as written.
+	s, refs := strings.TrimSpace(raw), []string(nil)
+	for {
+		i := strings.Index(s, "${")
+		if i < 0 {
+			break
 		}
+		j := strings.IndexByte(s[i:], '}')
+		if j < 0 {
+			break
+		}
+		refs = append(refs, s[i:i+j+1])
+		s = s[:i] + fmt.Sprintf("sleipnirtmpl%d", len(refs)-1) + s[i+j+1:]
+	}
+	u, err := url.Parse(s)
+	if err != nil || u.Host == "" || strings.Contains(u.Host, "${") {
 		return "(invalid url)"
 	}
 	out := u.Scheme + "://" + u.Host
 	if (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
 		out += "/..."
+	}
+	for i := len(refs) - 1; i >= 0; i-- { // last first, so tmpl1 is not taken for the start of tmpl10
+		out = strings.ReplaceAll(out, fmt.Sprintf("sleipnirtmpl%d", i), refs[i])
 	}
 	return out
 }

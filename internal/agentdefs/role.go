@@ -96,7 +96,9 @@ func allReadOnly(tools []string) bool {
 // adds denials and may choose a stricter mode, and the engine judges the role
 // under both the session and the profile and keeps the more severe answer.
 //
-//   - A read-only role (or permissionMode: plan) gets plan mode.
+//   - A read-only role (or permissionMode: plan) gets plan mode, and its tool
+//     list carves no exceptions out of it. permissionMode default or
+//     accept-edits is that mode, which a stricter session mode still overrides.
 //   - An explicit tool allowlist denies the classes it leaves out: shell
 //     commands, file writes, web access and MCP tools.
 //   - An entry that narrows a tool, either with a pattern ("Bash(git diff:*)",
@@ -113,8 +115,12 @@ func allReadOnly(tools []string) bool {
 // time.
 func (d Def) Profile() perm.RoleProfile {
 	var p perm.RoleProfile
-	if d.ReadOnly || d.PermissionMode == string(perm.ModePlan) {
+	readOnly := d.ReadOnly || d.PermissionMode == string(perm.ModePlan)
+	switch {
+	case readOnly:
 		p.Mode = perm.ModePlan
+	case d.PermissionMode == string(perm.ModeAcceptEdits) || d.PermissionMode == string(perm.ModeDefault):
+		p.Mode = perm.Mode(d.PermissionMode) // the engine keeps the stricter of this and the session's mode
 	}
 	if len(d.Tools) > 0 {
 		var listed [classMCP + 1]bool // classes the allowlist mentions at all
@@ -134,7 +140,14 @@ func (d Def) Profile() perm.RoleProfile {
 		}
 		if narrowed {
 			p.Mode = perm.ModePlan
-			p.Allow = append(p.Allow, carve...)
+			if readOnly {
+				// A role declared read-only gets no exceptions from its tool list: an entry such as Bash(git:*) narrows
+				// what it may call, and must not lift plan mode for a command that writes. It verifies as the built-in
+				// read-only roles do.
+				p.Allow = append(p.Allow, perm.ReadOnlyAllow...)
+			} else {
+				p.Allow = append(p.Allow, carve...)
+			}
 		}
 		if !listed[classShell] {
 			p.Deny = append(p.Deny, "Bash")

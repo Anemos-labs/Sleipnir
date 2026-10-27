@@ -61,6 +61,14 @@ func TestScheduleAddEditPauseRemove(t *testing.T) {
 	if j.ID != "j1" || j.Next == "" || j.Mode != "plan" || j.Model != "openai/gpt-x" || j.Created == "" {
 		t.Errorf("added %+v", j)
 	}
+	// "default" is stored as such: a job with no mode would choose bypass when it runs with nobody to answer.
+	noMode := good
+	noMode.Mode = ""
+	if j2 := rg.addJob(noMode); j2.Mode != "default" {
+		t.Errorf("a job without a mode was stored as %q", j2.Mode)
+	} else if w := rg.do(req{method: "DELETE", path: "/api/schedule/jobs/" + j2.ID, header: map[string]string{"X-Confirm": rg.confirm("job.remove")}}); w.Code >= 300 {
+		t.Fatalf("removing the extra job: %d %s", w.Code, w.Body.String())
+	}
 	edit := good
 	edit.Goal, edit.Cron = "summarise the closed issues", "@daily"
 	if w := rg.do(req{method: "PUT", path: "/api/schedule/jobs/j1", body: edit}); w.Code != http.StatusPreconditionRequired {
@@ -145,7 +153,7 @@ func TestRunNowStreamsAndRecords(t *testing.T) {
 			end = f.Result
 		}
 	}
-	if end == nil || end.Exit != 0 || !strings.Contains(text.String(), "argv: run|--quiet|--cwd|"+rg.project+"|--budget-usd|2|--|check CI") {
+	if end == nil || end.Exit != 0 || !strings.Contains(text.String(), "argv: run|--quiet|--cwd|"+rg.project+"|--mode|default|--budget-usd|2|--|check CI") {
 		t.Fatalf("output %q end %+v", text.String(), end)
 	}
 	if !strings.Contains(text.String(), "key seen: [redacted]") || strings.Contains(text.String(), key) {

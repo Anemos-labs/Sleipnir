@@ -653,7 +653,11 @@ func link(state, goos string, n Need, target string) error {
 		}
 		var body string
 		if goos == "windows" {
-			body = "@echo off\r\n\"" + t + "\" %*\r\n"
+			b, err := batchLauncher(t)
+			if err != nil {
+				return err
+			}
+			body = b
 		} else {
 			body = "#!/bin/sh\nexec '" + strings.ReplaceAll(t, "'", `'\''`) + "' \"$@\"\n"
 		}
@@ -670,6 +674,16 @@ func link(state, goos string, n Need, target string) error {
 		}
 	}
 	return nil
+}
+
+// batchLauncher is the .cmd launcher of target. A batch file expands "%" (and "!" under delayed expansion) inside quotes too,
+// so the path is written with "%" doubled and delayed expansion off: the program run is the one that was found and
+// confirmed, not one that variables in its directory names spell. A path that a quoted batch word cannot hold is refused.
+func batchLauncher(target string) (string, error) {
+	if strings.ContainsAny(target, "\"\r\n\x00") {
+		return "", fmt.Errorf("%q cannot be started from a launcher: its path holds a quote or a line break", target)
+	}
+	return "@echo off\r\nsetlocal DisableDelayedExpansion\r\n\"" + strings.ReplaceAll(target, "%", "%%") + "\" %*\r\n", nil
 }
 
 // InstallNeed runs one install method of n, writing what it prints to out, and

@@ -475,6 +475,11 @@ func inlineScript(prog string, args []string) (string, int) {
 		}
 		return args[next], inlineFound
 	case base == "eval":
+		// eval takes no options but accepts "--" and consumes it: the script is
+		// what follows.
+		if len(args) > 0 && args[0] == "--" {
+			args = args[1:]
+		}
 		if len(args) == 0 {
 			return "", inlineNone
 		}
@@ -560,6 +565,15 @@ var interpreterInline = map[string]string{
 	"lua": "e", "Rscript": "e", "deno": "", "bun": "", "tclsh": "",
 }
 
+// interpreterValueOpts are, per interpreter, the short options that take a value:
+// attached (-Wignore) or, when the letter ends the argument, the next argument
+// (-W ignore). Letters inside a value are the value's, not options: python
+// -Wc reads its program from stdin, it does not run inline code.
+var interpreterValueOpts = map[string]string{
+	"python": "WXQ", "perl": "IMmxiCdD0l", "ruby": "IrCEFxKTWi0", "node": "rC", "php": "cdzt",
+	"lua": "l", "Rscript": "", "deno": "", "bun": "r", "tclsh": "",
+}
+
 var scriptExts = []string{".py", ".pl", ".rb", ".js", ".mjs", ".cjs", ".ts", ".php", ".lua", ".R", ".tcl"}
 
 // ReadsCodeFromStdin reports whether prog with args runs what arrives on its standard input as a program: a shell with no script
@@ -605,7 +619,7 @@ func readsCodeFromStdin(prog string, args []string) bool {
 		if cflag {
 			return false
 		}
-		if next < len(args) && args[next] != "-" {
+		if next < len(args) && args[next] != "-" && !stdinDevice(args[next]) {
 			return false // a script file: stdin is data
 		}
 		return true
@@ -614,14 +628,16 @@ func readsCodeFromStdin(prog string, args []string) bool {
 	case base == "xargs":
 		return xargsRunsShell(args)
 	case base == "source" || base == ".":
-		return len(args) > 0 && (args[0] == "/dev/stdin" || args[0] == "/dev/fd/0" || args[0] == "-")
+		return len(args) > 0 && (stdinDevice(args[0]) || args[0] == "-")
 	}
 	name := interpreterName(base)
 	letters, ok := interpreterInline[name]
 	if !ok {
 		return false
 	}
-	for _, a := range args {
+	values := interpreterValueOpts[name]
+	for i := 0; i < len(args); i++ {
+		a := args[i]
 		switch {
 		case a == "-":
 			return true
@@ -630,8 +646,17 @@ func readsCodeFromStdin(prog string, args []string) bool {
 		case name == "deno" && (a == "eval" || a == "--version"):
 			return false
 		case len(a) > 1 && a[0] == '-' && a[1] != '-':
-			if strings.ContainsAny(a[1:], letters) && letters != "" {
-				return false
+			for j := 1; j < len(a); j++ {
+				c := a[j]
+				if letters != "" && strings.IndexByte(letters, c) >= 0 {
+					return false
+				}
+				if strings.IndexByte(values, c) >= 0 {
+					if j == len(a)-1 {
+						i++ // the value is the next argument
+					}
+					break
+				}
 			}
 		case len(a) > 0 && a[0] != '-':
 			for _, ext := range scriptExts {
@@ -689,4 +714,9 @@ func xargsRunsShell(args []string) bool {
 		}
 	}
 	return false
+}
+
+// stdinDevice reports whether a script operand names the standard input.
+func stdinDevice(p string) bool {
+	return p == "/dev/stdin" || p == "/dev/fd/0" || p == "/proc/self/fd/0"
 }

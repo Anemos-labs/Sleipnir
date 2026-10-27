@@ -102,19 +102,27 @@ func (c Cron) dayMatches(t time.Time) bool {
 func (c Cron) Next(t time.Time) (time.Time, bool) {
 	t = t.Truncate(time.Minute).Add(time.Minute)
 	limit := t.AddDate(5, 0, 0)
-	for t.Before(limit) {
+	// Every step moves the instant forward: a local time that a clock change skips or repeats can make the calendar answer the
+	// same instant (the hour after 01:00 on a night the clocks go forward), and the search then goes on a minute later. The step
+	// count is bounded as well: five years of whole days and hours is far below it.
+	for steps := 0; t.Before(limit) && steps < 1_000_000; steps++ {
+		var n time.Time
 		switch {
 		case c.mon&(1<<int(t.Month())) == 0:
-			t = time.Date(t.Year(), t.Month()+1, 1, 0, 0, 0, 0, t.Location())
+			n = time.Date(t.Year(), t.Month()+1, 1, 0, 0, 0, 0, t.Location())
 		case !c.dayMatches(t):
-			t = time.Date(t.Year(), t.Month(), t.Day()+1, 0, 0, 0, 0, t.Location())
+			n = time.Date(t.Year(), t.Month(), t.Day()+1, 0, 0, 0, 0, t.Location())
 		case c.hour&(1<<t.Hour()) == 0:
-			t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour()+1, 0, 0, 0, t.Location())
+			n = time.Date(t.Year(), t.Month(), t.Day(), t.Hour()+1, 0, 0, 0, t.Location())
 		case c.min&(1<<t.Minute()) == 0:
-			t = t.Add(time.Minute)
+			n = t.Add(time.Minute)
 		default:
 			return t, true
 		}
+		if !n.After(t) {
+			n = t.Add(time.Minute)
+		}
+		t = n
 	}
 	return time.Time{}, false
 }

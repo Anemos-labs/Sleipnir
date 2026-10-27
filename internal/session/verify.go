@@ -43,3 +43,22 @@ func runVerifyIn(ctx context.Context, dir, cmd string, wrap, env []string) (stri
 	}
 	return res.Output, res.ExitCode, res.Err
 }
+
+// queueVerifier is the integration queue's verify function for this session: the merged code of the agents runs under the same
+// sandbox and environment as their own commands (and as the done check, verifier), keeping the queue's timeout, output bound,
+// extra environment and cancellation. Nil when the session sets neither, which leaves the queue's default.
+func (s *Session) queueVerifier() workspace.VerifyFunc {
+	wrap, env := s.opts.ShellWrap, s.opts.ShellEnv
+	if len(wrap) == 0 && env == nil {
+		return nil
+	}
+	return func(ctx context.Context, req workspace.VerifyRequest) workspace.VerifyResult {
+		if req.Wrap == nil {
+			req.Wrap = wrap
+		}
+		if req.BaseEnv == nil {
+			req.BaseEnv = env
+		}
+		return workspace.RunShell(ctx, req)
+	}
+}

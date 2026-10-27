@@ -20,6 +20,7 @@ type githubFake struct {
 	threads, summary, runs string
 	calls                  []string
 	mergeErr               error
+	queued, stuck          bool // the PR is in a merge queue; dequeueing it does not take it out
 }
 
 func (f *githubFake) exec(_ context.Context, name string, args ...string) ([]byte, error) {
@@ -49,6 +50,18 @@ func (f *githubFake) exec(_ context.Context, name string, args ...string) ([]byt
 		return []byte(f.summary), nil
 	case strings.Contains(c, "pr list"):
 		return []byte(f.pr.URL), nil
+	case strings.Contains(c, "pr view") && strings.HasSuffix(c, "--jq .baseRefName"):
+		return []byte(f.pr.BaseRefName + "\n"), nil
+	case strings.Contains(c, "pr view") && strings.Contains(c, "isInMergeQueue"):
+		if f.queued {
+			return []byte(`{"id":"PR_1","state":"OPEN","isInMergeQueue":true,"autoMergeRequest":null}`), nil
+		}
+		return []byte(`{"id":"PR_1","state":"OPEN","isInMergeQueue":false,"autoMergeRequest":null}`), nil
+	case strings.Contains(c, "dequeuePullRequest"):
+		if !f.stuck {
+			f.queued = false
+		}
+		return []byte(`{}`), nil
 	case strings.Contains(c, "pr view"):
 		return json.Marshal(f.pr)
 	case strings.Contains(c, "api graphql"):
@@ -574,5 +587,36 @@ func TestDiscoveryRefusesAmbiguityAndHeadMismatch(t *testing.T) {
 				t.Fatalf("authorized mismatching discovery: %+v", c.State)
 			}
 		})
+	}
+}
+
+// Revoking a merge request takes the PR out of a merge queue and is believed only when GitHub shows nothing pending; a PR
+// retargeted after the request has it revoked.
+func TestRevokingAMergeIsConfirmedAndCoversTheQueue(t *testing.T) {
+	c, f := setup(t, Options{AutoMerge: true})
+	c.State.MergeEnabled, c.State.PR = true, f.pr.URL
+	f.queued = true
+	if err := c.Pause(context.Background()); err != nil || c.State.MergeEnabled {
+		t.Fatalf("pause of a queued PR: %v, still enabled %v", err, c.State.MergeEnabled)
+	}
+	if !strings.Contains(strings.Join(f.calls, "\n"), "dequeuePullRequest") {
+		t.Fatal("the PR was not taken out of the queue")
+	}
+	c.State.MergeEnabled, f.queued, f.stuck = true, true, true
+	if err := c.Pause(context.Background()); err == nil || !c.State.MergeEnabled {
+		t.Fatalf("a PR that stays queued was taken for revoked: %v", err)
+	}
+
+	c, f = setup(t, Options{AutoMerge: true})
+	if _, err := c.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	c.State.MergeEnabled = true
+	f.pr.BaseRefName = "release"
+	if _, err := c.Step(context.Background()); err == nil {
+		t.Fatal("a retargeted PR was accepted")
+	}
+	if !strings.Contains(strings.Join(f.calls, "\n"), "--disable-auto") || c.State.MergeEnabled {
+		t.Fatalf("the merge request of a retargeted PR was not revoked: %v", f.calls)
 	}
 }

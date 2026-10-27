@@ -345,6 +345,7 @@ func (s *service) handleInstall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	o, version, commit := s.o.Update, s.o.Version, s.o.Commit
+	o.Want = got.Latest // what was confirmed is what is installed
 	started, err := s.runs.Start(runner.Spec{
 		Path: []string{"update"}, Cmdline: "sleipnir update", Timeout: 10 * time.Minute,
 		Func: func(ctx context.Context, stdout, stderr io.Writer) int {

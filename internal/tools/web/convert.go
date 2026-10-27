@@ -128,11 +128,46 @@ func looksJSON(body []byte) bool {
 // (re-encoding through a map would lose both); anything else is returned as text.
 func prettyJSON(s string) string {
 	s = strings.TrimPrefix(s, string(rune(0xFEFF)))
+	// Indentation grows with nesting: a small deep document would become a large one. Past the budget it stays as it came.
+	if indentedSize(s) > max(4*len(s), 1<<20) {
+		return cleanText(s)
+	}
 	var buf bytes.Buffer
 	if err := json.Indent(&buf, []byte(s), "", "  "); err != nil {
 		return cleanText(s)
 	}
 	return strings.TrimSpace(buf.String()) // Indent keeps whatever surrounded the value
+}
+
+// indentedSize is about how many bytes json.Indent with a two-space indent makes of the valid JSON s, counted in one pass: every
+// element and closing bracket starts a line indented by its depth.
+func indentedSize(s string) int {
+	n, depth, inStr, esc := len(s), 0, false, false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case inStr:
+			switch {
+			case esc:
+				esc = false
+			case c == '\\':
+				esc = true
+			case c == '"':
+				inStr = false
+			}
+		case c == '"':
+			inStr = true
+		case c == '{' || c == '[':
+			depth++
+			n += 1 + 2*depth
+		case c == '}' || c == ']':
+			depth--
+			n += 1 + 2*max(depth, 0)
+		case c == ',':
+			n += 1 + 2*depth
+		}
+	}
+	return n
 }
 
 // cleanText makes text safe to hand to a model: LF line endings, no control

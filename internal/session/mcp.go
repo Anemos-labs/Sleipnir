@@ -164,11 +164,26 @@ func mcpEnv() map[string]string {
 	return env
 }
 
+// mcpFromRepository says whether the entry name of the loaded configuration arrived with the repository, and so needs the
+// person's approval of its exact definition. The origin is looked up by the loader's own spelling of the path (a name with a dot
+// or a bracket is quoted in it), and an entry whose origin is unknown is held to the project's terms: only a configuration the
+// caller handed over whole (no report) counts as the caller's word.
+func (s *Session) mcpFromRepository(name string) bool {
+	if s.cfgRep == nil {
+		return false
+	}
+	switch s.cfgRep.KindOf(config.Path("mcp", name)) {
+	case "defaults", "user", "env", "overrides":
+		return false
+	}
+	return true
+}
+
 // mcpServers reads the configured entries, split by where they came from.
 func (s *Session) mcpServers() (map[string]mcp.ServerConfig, []mcp.Issue) {
 	user, project := map[string]json.RawMessage{}, map[string]json.RawMessage{}
 	for name, raw := range s.cfg.MCP {
-		if s.cfgRep != nil && s.cfgRep.KindOf("mcp."+name) != "" && s.cfgRep.KindOf("mcp."+name) != "user" {
+		if s.mcpFromRepository(name) {
 			project[name] = raw // project, local: it arrived with the repository
 		} else {
 			user[name] = raw

@@ -11,3 +11,8 @@ const (
 
 // isSymlinkRefusal returns false where the platform has no recognized no-follow error.
 func isSymlinkRefusal(error) bool { return false }
+
+// ownedByOther reports false where file ownership is not a uid.
+func ownedByOther(os.FileInfo) bool { return false }
+
+const openScanFlags = os.O_RDONLY

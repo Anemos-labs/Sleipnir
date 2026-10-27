@@ -142,36 +142,65 @@ func (ex *expansion) render(tmpl string) (string, error) {
 			continue
 		}
 		if fence.Next(line) {
-			s, used := mdfile.Substitute(line, ex.args, mdfile.ArgsText)
-			ex.usedArgs = ex.usedArgs || used
+			s, err := ex.sub(line, mdfile.ArgsText, &out)
+			if err != nil {
+				return "", err
+			}
 			out.WriteString(s)
 			continue
 		}
 		if err := ex.line(line, &out); err != nil {
 			return "", err
 		}
+		if out.Len() > ex.r.opts.MaxPrompt {
+			return "", ex.tooLong()
+		}
 	}
 	return out.String(), nil
+}
+
+// sub substitutes the arguments into s, within what is left of the prompt's limit once out is written.
+func (ex *expansion) sub(s string, mode mdfile.ArgMode, out *strings.Builder) (string, error) {
+	room := ex.r.opts.MaxPrompt - out.Len()
+	if room <= 0 {
+		return "", ex.tooLong()
+	}
+	s, used, err := mdfile.SubstituteMax(s, ex.args, mode, room)
+	ex.usedArgs = ex.usedArgs || used
+	if err != nil {
+		return "", ex.tooLong()
+	}
+	return s, nil
+}
+
+// tooLong is the error of an expansion that grows past the prompt's limit.
+func (ex *expansion) tooLong() error {
+	return fmt.Errorf("the expanded prompt grows past the limit of %d bytes", ex.r.opts.MaxPrompt)
 }
 
 // line interprets one line outside a code fence.
 func (ex *expansion) line(line string, out *strings.Builder) error {
 	var lit strings.Builder
-	flush := func() {
+	flush := func() error {
 		if lit.Len() == 0 {
-			return
+			return nil
 		}
-		s, used := mdfile.Substitute(lit.String(), ex.args, mdfile.ArgsText)
-		ex.usedArgs = ex.usedArgs || used
+		s, err := ex.sub(lit.String(), mdfile.ArgsText, out)
+		if err != nil {
+			return err
+		}
 		out.WriteString(s)
 		lit.Reset()
+		return nil
 	}
 	for i := 0; i < len(line); {
 		c := line[i]
 		switch {
 		case c == '!' && i+1 < len(line) && line[i+1] == '`':
 			if end := strings.IndexByte(line[i+2:], '`'); end > 0 && strings.TrimSpace(line[i+2:i+2+end]) != "" {
-				flush()
+				if err := flush(); err != nil {
+					return err
+				}
 				res, err := ex.run(line[i+2 : i+2+end])
 				if err != nil {
 					return err
@@ -182,9 +211,13 @@ func (ex *expansion) line(line string, out *strings.Builder) error {
 			}
 		case c == '@' && (i == 0 || boundaryBefore(line[i-1])):
 			if tok := pathToken(line[i+1:]); tok != "" {
-				flush()
-				spec, used := mdfile.Substitute(tok, ex.args, mdfile.ArgsText)
-				ex.usedArgs = ex.usedArgs || used
+				if err := flush(); err != nil {
+					return err
+				}
+				spec, err := ex.sub(tok, mdfile.ArgsText, out)
+				if err != nil {
+					return err
+				}
 				ex.include(spec)
 				out.WriteString("@" + spec)
 				i += 1 + len(tok)
@@ -194,8 +227,7 @@ func (ex *expansion) line(line string, out *strings.Builder) error {
 		lit.WriteByte(c)
 		i++
 	}
-	flush()
-	return nil
+	return flush()
 }
 
 // boundaryBefore reports whether a mention may start right after b.
@@ -232,9 +264,16 @@ func (ex *expansion) run(cmd string) (string, error) {
 		return "", fmt.Errorf("it runs more than %d shell commands", ex.r.opts.MaxExecs)
 	}
 	ex.execs++
-	cmd, used := mdfile.Substitute(cmd, ex.args, mdfile.ArgsShell)
-	cmd = strings.TrimSpace(cmd) // a missing argument leaves no trailing space behind
+	cmd, used, err := mdfile.SubstituteMax(cmd, ex.args, mdfile.ArgsShell, ex.r.opts.MaxPrompt)
 	ex.usedArgs = ex.usedArgs || used
+	if err != nil {
+		return "", fmt.Errorf("its shell command %v", err)
+	}
+	// Without argument words nothing was inserted, so there is nothing to quote.
+	if used && len(mdfile.SplitArgs(ex.args)) > 0 && ex.r.opts.ExecPOSIX != nil && !ex.r.opts.ExecPOSIX() {
+		return "", errors.New("it puts arguments into a shell command, and arguments can be quoted safely only for a POSIX shell (sh, bash); this session's shell is not one")
+	}
+	cmd = strings.TrimSpace(cmd) // a missing argument leaves no trailing space behind
 
 	ctx, cancel := context.WithTimeout(ex.ctx, ex.r.opts.ExecTimeout)
 	defer cancel()

@@ -155,34 +155,46 @@ func segments(p string) (segs []string, abs bool) {
 
 // matchSegs matches path segments against pattern segments ("**" spans zero or
 // more segments; other segments use path.Match, so "*" and "?" stay within one).
+// Each pair of positions is decided once, from at most two others, so separated
+// globstars over a path that does not match cost the product of the two lengths,
+// not a combinatorial search.
 func matchSegs(p, s []string) bool {
-	for len(p) > 0 {
-		if p[0] == "**" {
-			for len(p) > 0 && p[0] == "**" {
-				p = p[1:]
-			}
-			if len(p) == 0 {
-				return true
-			}
-			for i := 0; i <= len(s); i++ {
-				if matchSegs(p, s[i:]) {
-					return true
-				}
-			}
+	memo := make([]int8, (len(p)+1)*(len(s)+1)) // 0 unknown, 1 match, 2 no match
+	var at func(i, j int) bool
+	at = func(i, j int) bool {
+		k := i*(len(s)+1) + j
+		if memo[k] != 0 {
+			return memo[k] == 1
+		}
+		ok := matchFrom(p, s, i, j, at)
+		memo[k] = 2
+		if ok {
+			memo[k] = 1
+		}
+		return ok
+	}
+	return at(0, 0)
+}
+
+// matchFrom is matchSegs of p[i:] against s[j:], deciding later positions through at.
+func matchFrom(p, s []string, i, j int, at func(i, j int) bool) bool {
+	for i < len(p) {
+		if p[i] == "**" {
+			// Either the globstar spans no more segments, or it takes one more: two transitions per position.
+			return at(i+1, j) || j < len(s) && at(i, j+1)
+		}
+		if j == len(s) {
 			return false
 		}
-		if len(s) == 0 {
-			return false
-		}
-		if p[0] != s[0] { // a segment spelled exactly like the name is that name: Next.js's [id] is a directory, not a class
-			ok, err := path.Match(p[0], s[0])
+		if p[i] != s[j] { // a segment spelled exactly like the name is that name: Next.js's [id] is a directory, not a class
+			ok, err := path.Match(p[i], s[j])
 			if err != nil || !ok {
 				return false
 			}
 		}
-		p, s = p[1:], s[1:]
+		i, j = i+1, j+1
 	}
-	return len(s) == 0
+	return j == len(s)
 }
 
 // scopeMatch reports whether the repo-relative slash path rel lies inside scope.

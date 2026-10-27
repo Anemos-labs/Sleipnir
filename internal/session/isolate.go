@@ -340,7 +340,7 @@ func (s *Session) buildIsolation(ctx context.Context) (*swarm.Isolation, error) 
 			}
 		}
 	}
-	q, err := workspace.NewQueue(ctx, mgr, workspace.QueueOptions{VerifyCmd: s.opts.Verify, Resume: p.resume != nil, OnEvent: onEvent})
+	q, err := workspace.NewQueue(ctx, mgr, workspace.QueueOptions{VerifyCmd: s.opts.Verify, Verify: s.queueVerifier(), Resume: p.resume != nil, OnEvent: onEvent})
 	if err != nil {
 		if errors.Is(err, workspace.ErrNoCommits) {
 			return nil, errors.New("worktree isolation starts every tree from a commit, and the repository has none yet: commit the project first")

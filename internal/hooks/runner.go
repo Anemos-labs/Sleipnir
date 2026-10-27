@@ -576,22 +576,22 @@ func (r *Runner) condEngine(cond string) (*perm.Engine, error) {
 // condRequest describes the tool call to the permission engine the way a tool
 // would: the shell command, the paths it touches, whether it writes.
 func (r *Runner) condRequest(ev Event) perm.Request {
+	if ev.req != nil {
+		req := *ev.req
+		req.Summary = "hook condition"
+		if req.Cwd == "" {
+			req.Cwd = r.Dir
+		}
+		return req
+	}
 	req := perm.Request{Agent: ev.Agent, Role: ev.Role, Tool: ev.Tool, Input: ev.Input, Cwd: ev.Cwd, Summary: "hook condition"}
 	if req.Cwd == "" {
 		req.Cwd = r.Dir
 	}
-	var in map[string]json.RawMessage
-	if json.Unmarshal(ev.Input, &in) == nil {
-		text := func(key string) string {
-			var s string
-			if raw, ok := in[key]; ok && json.Unmarshal(raw, &s) == nil {
-				return s
-			}
-			return ""
-		}
-		req.Command = text("command")
-		for _, key := range []string{"path", "file_path", "notebook_path"} {
-			if p := text(key); p != "" {
+	if in := inputObject(ev.Input); in != nil {
+		req.Command = inputText(in, "command")
+		for _, p := range []string{effectivePath(in), inputText(in, "notebook_path")} {
+			if p != "" {
 				if !filepath.IsAbs(p) {
 					p = filepath.Join(req.Cwd, p)
 				}
@@ -630,6 +630,7 @@ func (r *Runner) Prompter(next perm.Prompter) perm.Prompter {
 		}
 		res, err := r.Run(ctx, Event{
 			Name: PermissionRequest, Tool: req.Tool, Input: req.Input, Agent: req.Agent, Role: req.Role, Cwd: req.Cwd, Extra: extra,
+			req: &req,
 		})
 		if err == nil {
 			switch {

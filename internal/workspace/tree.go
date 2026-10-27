@@ -167,6 +167,18 @@ func (t *Tree) commitLocked(ctx context.Context, msg string) (string, error) {
 	if err := t.checkFileSizes(ctx); err != nil {
 		return "", err
 	}
+	// The commit moves whatever branch the tree's HEAD names, and HEAD is the
+	// agent's to rewrite (git symbolic-ref HEAD refs/heads/main): commit only on
+	// the tree's own branch.
+	if t.Branch != "" {
+		cur, err := t.repo.Branch(ctx)
+		if err != nil {
+			return "", err
+		}
+		if cur != t.Branch {
+			return "", fmt.Errorf("workspace: the tree of %s has %q checked out, not its branch %s; check out %s again to commit", t.Agent, cur, t.Branch, t.Branch)
+		}
+	}
 	sha, err := t.repo.CommitAllWith(ctx, t.m.withAgentTrailer(msg, t.Agent), t.author(), workCommit)
 	if err != nil {
 		return "", err

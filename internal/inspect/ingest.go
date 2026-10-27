@@ -181,7 +181,9 @@ func (s *Session) onSessionStart(raw json.RawMessage) {
 			}
 			if _, known := m.recorded[id]; known || len(m.recorded) < maxRecordedModels {
 				m.recorded[id] = rec
+				s.priceMu.Lock()
 				delete(s.prices, id) // a price memoised before this record is out of date
+				s.priceMu.Unlock()
 			}
 		}
 	}

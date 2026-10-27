@@ -294,7 +294,7 @@ func TestServerInlineTaskAndRoleOptions(t *testing.T) {
 	inline.ID = "inline-1"
 	req := f.rolloutReq(map[string]any{
 		"task": inline, "group": 1, "swarm": map[string]any{"agents": 4}, "capture": true, "target_price": "anthropic-sonnet",
-		"role_models": map[string]string{"manager": "big-model"}, "run_id": "my-run.1",
+		"role_models": map[string]string{"manager": "big-model", "reviewer": "anthropic/claude-x"}, "run_id": "my-run.1",
 	})
 	lines := stream(t, f.do("POST", "/v1/rollouts", testToken, req))
 	if lineType(lines[len(lines)-1]) != "done" {
@@ -308,7 +308,7 @@ func TestServerInlineTaskAndRoleOptions(t *testing.T) {
 	if err := json.Unmarshal([]byte(mustRead(t, filepath.Join(f.root, "my-run.1", "manifest.json"))), &mf); err != nil {
 		t.Fatal(err)
 	}
-	if mf.RunID != "my-run.1" || !mf.Config.Swarm || mf.Config.Agents != 4 || !mf.Config.Capture || mf.Config.TargetPrice != "anthropic-sonnet" || mf.Config.RoleModels["manager"] != "big-model" {
+	if mf.RunID != "my-run.1" || !mf.Config.Swarm || mf.Config.Agents != 4 || !mf.Config.Capture || mf.Config.TargetPrice != "anthropic-sonnet" || mf.Config.RoleModels["manager"] != "rl-policy/big-model" || mf.Config.RoleModels["reviewer"] != "rl-policy/anthropic/claude-x" {
 		t.Fatalf("manifest config: %+v", mf.Config)
 	}
 	// A swarm boolean works too, and reusing a run id resumes that run.

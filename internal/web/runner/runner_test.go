@@ -42,6 +42,14 @@ func TestRunnerModes(t *testing.T) {
 				t.Errorf("%v: %v, want 403 tty_only with a sentence", c.Path, err)
 			}
 		case "run", "net", "priv", "server":
+			if strings.Join(c.Path, " ") == "run" && plan != nil {
+				// With no mode, a run nobody can answer chooses bypass: it is confirmed like --mode bypass. The rest of the
+				// case is about what the command is otherwise.
+				if plan.Mode != "priv" {
+					t.Errorf("run without a mode: %s, want priv", plan.Mode)
+				}
+				plan.Mode = c.Mode
+			}
 			if err != nil || plan.Mode != c.Mode || strings.Join(plan.Args[:len(c.Path)], " ") != strings.Join(c.Path, " ") {
 				t.Errorf("%v: %+v %v", c.Path, plan, err)
 			}
@@ -322,7 +330,7 @@ func TestOutputAndTimeLimits(t *testing.T) {
 		t.Errorf("a long line: %+v", lines)
 	}
 	server := rg.start(map[string]any{"path": []string{"mock"}, "flags": map[string]any{"addr": "127.0.0.1:0"}}, nil)
-	slow := rg.start(map[string]any{"path": []string{"run"}, "pos": map[string]string{"PROMPT": "wait"}}, nil)
+	slow := rg.start(map[string]any{"path": []string{"run"}, "flags": map[string]any{"mode": "default"}, "pos": map[string]string{"PROMPT": "wait"}}, nil)
 	end := rg.wait(slow, 30*time.Second)
 	if end.Result.Canceled || end.Result.Exit == 0 || !strings.Contains(rg.waitLine(slow, "stopped after", time.Second), "4s") {
 		t.Errorf("a run past its limit: %+v %+v", end.Result, rg.lines(slow))

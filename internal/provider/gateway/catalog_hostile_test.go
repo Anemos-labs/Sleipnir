@@ -295,3 +295,23 @@ func TestFetchBoundsTheBodyAndReportsTheStatus(t *testing.T) {
 		t.Fatalf("status error: %v", err)
 	}
 }
+
+// The entries are decoded one by one and the count is checked first: an entry past the limit is never decoded (here it could
+// not be), and data that is no list is refused.
+func TestEntriesPastTheLimitAreNotDecoded(t *testing.T) {
+	var b strings.Builder
+	b.WriteString(`{"data":[`)
+	for i := 0; i < MaxCatalogueEntries; i++ {
+		b.WriteString(`{},`)
+	}
+	b.WriteString(`{"id":5}]}`)
+	if _, err := Parse([]byte(b.String())); err == nil || !strings.Contains(err.Error(), "refusing") {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := Parse([]byte(`{"data":{"id":"v/m"}}`)); err == nil {
+		t.Fatal("data that is no list was taken")
+	}
+	if e, err := Parse([]byte(`{"data":null}`)); err != nil || len(e) != 0 {
+		t.Fatalf("null data: %v %v", e, err)
+	}
+}

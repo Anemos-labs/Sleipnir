@@ -499,7 +499,7 @@ error).
 | Method | Path | Does | Confirmation |
 |---|---|---|---|
 | `GET` | `/api/cli` | `wire.CLISpec`: every command with its flags, positionals and mode, generated from `docs/CLI.md` | - |
-| `POST` | `/api/runs` | `wire.RunRequest` and `keep` (let the run continue when the page leaves): starts a run, `202 wire.RunStarted` | `run:<d16>` for a `priv` command, including any whose flags widen its privileges |
+| `POST` | `/api/runs` | `wire.RunRequest` and `keep` (let the run continue when the page leaves): starts a run, `202 wire.RunStarted` | `run:<d16>` for a `priv` command, including any whose flags widen its privileges, and a `run` with no `--mode` (with nobody to answer it would choose bypass) |
 | `GET` | `/api/runs` | `{runs: [wire.RunInfo]}`: running and recent runs | - |
 | `DELETE` | `/api/runs/{run}` | Stops a run | - |
 | `GET` | `/api/runs/{run}/output` | `?from=`: the lines a run sent, from a line number on: its first 20,000 lines and 4 MiB of text (a line is cut at 4 KiB), then one line saying how many were left out | - |

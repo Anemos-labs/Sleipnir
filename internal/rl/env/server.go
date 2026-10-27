@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -305,7 +306,25 @@ func (s *Server) recoverer(next http.Handler) http.Handler {
 // revealed either.
 func (s *Server) auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.o.Token == "" || r.URL.Path == "/healthz" {
+		if r.URL.Path == "/healthz" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if s.o.Token == "" {
+			// Without a token the server trusts this machine, not every web page open on it: a browser may send a
+			// cross-origin form or text POST without asking first, and a rollout runs the task's commands. A request
+			// a browser made (it names its origin) is refused, and a body must say it is JSON, which no page can send
+			// across origins unasked.
+			if r.Header.Get("Origin") != "" || (r.Header.Get("Sec-Fetch-Site") != "" && r.Header.Get("Sec-Fetch-Site") != "none") {
+				httpError(w, http.StatusForbidden, "requests from a web page need the server to be started with a token")
+				return
+			}
+			if r.Method != http.MethodGet && r.Method != http.MethodHead && r.ContentLength != 0 {
+				if mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mt != "application/json" {
+					httpError(w, http.StatusUnsupportedMediaType, "the request body must be sent as application/json")
+					return
+				}
+			}
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -364,6 +383,26 @@ type PolicyRequest struct {
 	BaseURL   string          `json:"base_url,omitempty"`
 	APIKeyEnv string          `json:"api_key_env,omitempty"`
 	Sampling  json.RawMessage `json:"sampling,omitempty"`
+}
+
+// PolicyProvider is the name the policy endpoint has inside a rollout's configuration (harness.PolicyProvider).
+const PolicyProvider = "rl-policy"
+
+// policyRoleModels pins the role models a request names to the policy endpoint: "provider/model" would otherwise make the
+// session build a client of that provider, with its credential, past the hosts and key variables checkPolicy allows. A model
+// id is taken whole ("vendor/model" is the policy's model of that id).
+func policyRoleModels(m map[string]string) map[string]string {
+	if len(m) == 0 {
+		return m
+	}
+	out := make(map[string]string, len(m))
+	for role, model := range m {
+		if model = strings.TrimSpace(model); model != "" && !strings.HasPrefix(model, PolicyProvider+"/") {
+			model = PolicyProvider + "/" + model
+		}
+		out[role] = model
+	}
+	return out
 }
 
 // checkPolicy decides whether the endpoint and key variable a request names may be
@@ -437,30 +476,35 @@ func (s *Server) resolveTask(raw json.RawMessage) (rl.Task, int, error) {
 		if t.Repo.URL != "" || t.Repo.Path == "" {
 			return rl.Task{}, http.StatusForbidden, errors.New("inline tasks must use a local repo.path on this server")
 		}
-		if !s.pathAllowed(t.Repo.Path) {
+		// The directory judged is the one the workspace will copy (a relative path is read against the workspaces' base,
+		// not this process's directory), and the task goes on with that directory, resolved, so nothing reads it again
+		// differently.
+		real, ok := s.pathAllowed(s.r.Workspaces.RepoPath(t.Repo.Path))
+		if !ok {
 			return rl.Task{}, http.StatusForbidden, fmt.Errorf("repo.path %q is outside the allowed repository roots", t.Repo.Path)
 		}
+		t.Repo.Path = real
 	}
 	return t, 0, nil
 }
 
 // pathAllowed requires successful absolute-path and symlink resolution before checking configured
 // root-prefix boundaries.
-func (s *Server) pathAllowed(p string) bool {
+func (s *Server) pathAllowed(p string) (string, bool) {
 	abs, err := filepath.Abs(p)
 	if err != nil {
-		return false
+		return "", false
 	}
 	real, err := filepath.EvalSymlinks(abs)
 	if err != nil {
-		return false
+		return "", false
 	}
 	for _, r := range s.roots {
 		if real == r || strings.HasPrefix(real, r+string(filepath.Separator)) {
-			return true
+			return real, true
 		}
 	}
-	return false
+	return "", false
 }
 
 // resolveUnder resolves rel below root, refusing anything that would leave it
@@ -677,7 +721,7 @@ func (s *Server) handleRollouts(w http.ResponseWriter, r *http.Request) {
 		Policy: PolicySpec{
 			Model: req.Policy.Model, BaseURL: req.Policy.BaseURL, APIKeyEnv: req.Policy.APIKeyEnv, Sampling: req.Policy.Sampling,
 		},
-		Capture: req.Capture, Swarm: swarm, Agents: agents, RoleModels: req.RoleModels, TargetPrice: req.TargetPrice,
+		Capture: req.Capture, Swarm: swarm, Agents: agents, RoleModels: policyRoleModels(req.RoleModels), TargetPrice: req.TargetPrice,
 		Seed: req.Seed, Force: req.Force,
 	}
 	if req.Rewards != "" {

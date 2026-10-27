@@ -43,8 +43,8 @@ func (Write) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	if r := k.decode(&a); r != nil {
 		return r, nil
 	}
-	if a.Path == "" {
-		a.Path = a.FilePath
+	if r := k.oneOf(&a.Path, a.FilePath); r != nil {
+		return r, nil
 	}
 	if a.Content == nil {
 		return k.fail(`content is required (use "" to create an empty file)`), nil

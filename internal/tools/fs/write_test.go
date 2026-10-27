@@ -475,3 +475,21 @@ func TestARefusedChangeShowsTheFileSoTheRetryNeedsNoRead(t *testing.T) {
 	}
 	mustErr(t, run(t, Edit{}, a, map[string]any{"path": "big.txt", "old_string": "0123", "new_string": "x", "replace_all": true}))
 }
+
+// A refused change to an unread file shows its content only when a read of it would be allowed.
+func TestARefusedChangeDoesNotShowAFileReadingWouldRefuse(t *testing.T) {
+	a := testEnv(t)
+	e, err := perm.NewEngine(perm.Config{Mode: perm.ModeBypass, Root: a.Root, Tmp: t.TempDir(), Deny: []string{"Read(./secret.txt)"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Perm = e
+	writeFile(t, filepath.Join(a.Cwd, "secret.txt"), "hunter2\n")
+	writeFile(t, filepath.Join(a.Cwd, "open.txt"), "visible\n")
+	text := mustErr(t, run(t, Write{}, a, map[string]any{"path": "secret.txt", "content": "x\n"}))
+	if strings.Contains(text, "hunter2") || strings.Contains(text, "now counts as read") {
+		t.Errorf("a file read would refuse was shown: %q", text)
+	}
+	text = mustErr(t, run(t, Write{}, a, map[string]any{"path": "open.txt", "content": "x\n"}))
+	contains(t, text, "now counts as read", "1\tvisible")
+}

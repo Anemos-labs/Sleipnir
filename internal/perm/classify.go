@@ -57,13 +57,10 @@ type Classification struct {
 // when the engine has no Prompter or is in bypass mode (Check refuses it then). Nothing is audited and no
 // rule is added.
 func (e *Engine) Classify(r Request) Classification {
-	sess, prof := e.snapshot(r.Role)
+	sess, profs := e.snapshot(r.Role)
 	v := e.evaluate(sess, r)
-	if prof != nil {
-		if pv := e.evaluate(prof, r); pv.kind > v.kind {
-			pv.reason = "role " + r.Role + ": " + pv.reason
-			v = pv
-		}
+	for _, prof := range profs {
+		v = withRole(v, e.evaluate(prof, r), r.Role)
 	}
 	c := Classification{Rule: v.rule, Origin: v.origin, Tier: v.tier, Why: v.reason}
 	if c.Tier == "" {

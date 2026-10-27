@@ -102,17 +102,39 @@ func curlUses(args []string, known func(string) ([]string, bool)) ([]pathUse, bo
 			if !strings.Contains(val, "=") {
 				read(val) // a cookie file; "name=value" is a cookie
 			}
-		case name == "-H" || name == "--header":
-			if strings.HasPrefix(val, "@") {
-				read(val[1:]) // a file of headers
+		case name == "-H" || name == "--header" || curlData[name]:
+			// The value is judged as curl sees it, after the shell's expansions: a
+			// variable that expands to "@/path" makes curl read and send that file.
+			vals, whole := known(val)
+			if !whole {
+				if expansionMayNameFile(name, val) {
+					return nil, false
+				}
+				vals = []string{val}
 			}
-		case curlData[name]:
-			for _, f := range curlDataFiles(name, val) {
-				read(f)
+			for _, v := range vals {
+				if name == "-H" || name == "--header" {
+					if strings.HasPrefix(v, "@") {
+						read(v[1:]) // a file of headers
+					}
+					continue
+				}
+				for _, f := range curlDataFiles(name, v) {
+					read(f)
+				}
 			}
 		case name == "-w" || name == "--write-out":
+			// %output{file} and %output{>>file} write the rest of the output to a file
+			// (curl 8.3); a format read from a file may hold them too, unseen here.
 			if strings.HasPrefix(val, "@") {
-				read(val[1:])
+				return nil, false
+			}
+			files, ok := curlWriteOutFiles(val)
+			if !ok {
+				return nil, false
+			}
+			for _, f := range files {
+				write(f)
 			}
 		}
 	}
@@ -252,4 +274,48 @@ func curlSet(words ...string) map[string]bool {
 		m[w] = true
 	}
 	return m
+}
+
+// expansionMayNameFile reports whether the shell's expansion of the unknown part
+// of an option value could make curl read a file: when the value, or for a form
+// field or --data-urlencode the part after its name, begins with an expansion
+// (which may produce "@file" or "<file"), or a --data-urlencode value holds an
+// expansion before its "@".
+func expansionMayNameFile(name, val string) bool {
+	start := val
+	switch name {
+	case "-F", "--form", "--data-urlencode":
+		if i := strings.IndexByte(val, '='); i >= 0 {
+			start = val[i+1:]
+		}
+		if name == "--data-urlencode" && strings.ContainsAny(val, "$`") {
+			return true // name@file: the "@" may come from the expansion
+		}
+	case "--form-string":
+		return false
+	}
+	return strings.HasPrefix(start, "$") || strings.HasPrefix(start, "`") || strings.HasPrefix(start, `"$`)
+}
+
+// curlWriteOutFiles returns the files a --write-out format writes through
+// %output{...}, and false when one of them is only known as curl runs.
+func curlWriteOutFiles(format string) ([]string, bool) {
+	var out []string
+	for {
+		i := strings.Index(format, "%output{")
+		if i < 0 {
+			return out, true
+		}
+		rest := format[i+len("%output{"):]
+		j := strings.IndexByte(rest, '}')
+		if j < 0 {
+			return nil, false
+		}
+		f := strings.TrimPrefix(rest[:j], ">>")
+		if f == "" || strings.ContainsAny(f, "$`%") {
+			return nil, false
+		}
+		out = append(out, f)
+		format = rest[j+1:]
+	}
 }

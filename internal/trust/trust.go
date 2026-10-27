@@ -20,6 +20,7 @@ package trust
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -47,6 +48,8 @@ const (
 	Skills   Kind = "skills"
 	Commands Kind = "commands"
 	Agents   Kind = "agents"
+	// Plugins are the project's own plugins (.sleipnir/plugins): their manifests name hooks and tool servers.
+	Plugins Kind = "plugins"
 )
 
 // What one scan looks at, at the most: a repository that has more than this to say is not a project one reads before one says yes.
@@ -103,7 +106,7 @@ func Scan(root, cwd, home string) (*Footprint, error) {
 		return nil, err
 	}
 	fp := &Footprint{Root: root, Cwd: cwd}
-	sc := &scanner{fp: fp, files: maxFiles, bytes: maxBytes}
+	sc := &scanner{fp: fp, files: maxFiles, bytes: maxBytes, root: realRoot}
 
 	// What the prompt would hold: the instruction files from the root down to cwd and what they import, as the loader renders
 	// them (comments and hidden characters are removed, so the text is what the model would read and a change to a comment that the
@@ -132,6 +135,7 @@ func Scan(root, cwd, home string) (*Footprint, error) {
 			sc.tree(r, brand+"/"+string(kind), kind)
 		}
 	}
+	sc.tree(r, ".sleipnir/plugins", Plugins)
 
 	sort.Slice(fp.Files, func(i, j int) bool {
 		if fp.Files[i].Path != fp.Files[j].Path {
@@ -144,6 +148,7 @@ func Scan(root, cwd, home string) (*Footprint, error) {
 }
 
 type scanner struct {
+	root    string // the project root, links resolved
 	fp      *Footprint
 	files   int   // how many more files may be added
 	bytes   int64 // how many more bytes may be read
@@ -167,7 +172,12 @@ func (s *scanner) file(r *os.Root, rel string, kind Kind) {
 	name := filepath.FromSlash(rel)
 	f, err := r.OpenFile(name, openFlags, 0)
 	if err != nil {
-		if _, lerr := r.Lstat(name); lerr == nil {
+		// Only a file that is certainly not there is left out. A path the root refuses (a parent that is a link out of the
+		// project) or cannot look at is one the loaders, which follow such links, may still read.
+		p := filepath.Join(s.root, name)
+		if _, lerr := r.Lstat(name); lerr == nil || !errors.Is(lerr, fs.ErrNotExist) || strings.Contains(p, "..") {
+			s.partial(rel) // a path that climbs is not looked up outside the root: it is counted as not covered
+		} else if _, serr := os.Stat(p); !errors.Is(serr, fs.ErrNotExist) {
 			s.partial(rel)
 		}
 		return
@@ -203,9 +213,49 @@ func (s *scanner) read(f *os.File, rel string, kind Kind, prefix []byte) {
 // file's own content and the link's target are both in its sum (one that leads out of the project, or to something that is not a
 // file, is a file the digest does not cover).
 func (s *scanner) tree(r *os.Root, dir string, kind Kind) {
-	if fi, err := r.Lstat(filepath.FromSlash(dir)); err != nil || !fi.IsDir() {
-		return // not there, or a link: the loaders refuse a directory that is one and leaves the project, and the one that stays is a file below
+	fi, err := r.Lstat(filepath.FromSlash(dir))
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return
+	case err != nil:
+		s.partial(dir)
+		return
+	case fi.Mode()&fs.ModeSymlink != 0:
+		s.linkedDir(r, dir, kind, 0)
+		return
+	case !fi.IsDir():
+		return
 	}
+	s.walk(r, dir, kind, 0)
+}
+
+// maxLinkDepth bounds how many directory links deep a scan follows (a link to its own parent is a cycle).
+const maxLinkDepth = 4
+
+// linkedDir covers a link to a directory, as the loaders follow one that stays in the project: the link's target is in the sum, and
+// what it leads to is walked. One that leads out of the project, or deeper than maxLinkDepth links, is not covered, and the
+// footprint says so.
+func (s *scanner) linkedDir(r *os.Root, p string, kind Kind, depth int) {
+	target, lerr := r.Readlink(filepath.FromSlash(p))
+	fi, serr := r.Stat(filepath.FromSlash(p))
+	switch {
+	case lerr != nil || serr != nil:
+		if !errors.Is(serr, fs.ErrNotExist) {
+			s.partial(p) // a link out of the project, or one that cannot be looked at
+		}
+		return
+	case !fi.IsDir():
+		return
+	case depth >= maxLinkDepth:
+		s.partial(p + " (links nested too deep)")
+		return
+	}
+	s.add(File{Path: p, Kind: kind, Sum: sumOf([]byte("dirlink\x00" + target))})
+	s.walk(r, p, kind, depth+1)
+}
+
+// walk adds every file under dir, which the walk enters even when it is a link (linkedDir).
+func (s *scanner) walk(r *os.Root, dir string, kind Kind, depth int) {
 	_ = fs.WalkDir(r.FS(), dir, func(p string, d fs.DirEntry, err error) error {
 		if s.visited++; s.visited > maxVisited {
 			s.partial(dir + " (more entries than a scan looks at)")
@@ -218,6 +268,10 @@ func (s *scanner) tree(r *os.Root, dir string, kind Kind) {
 		switch {
 		case d.IsDir():
 		case d.Type()&fs.ModeSymlink != 0:
+			if fi, err := r.Stat(filepath.FromSlash(p)); err == nil && fi.IsDir() {
+				s.linkedDir(r, p, kind, depth)
+				return nil
+			}
 			target, lerr := r.Readlink(filepath.FromSlash(p))
 			f, oerr := r.OpenFile(filepath.FromSlash(p), openFlags, 0)
 			if lerr != nil || oerr != nil {
@@ -266,7 +320,7 @@ func (f *Footprint) Describe() string {
 	for _, file := range f.Files {
 		label := Show(file.Path)
 		switch file.Kind {
-		case Skills, Commands, Agents:
+		case Skills, Commands, Agents, Plugins:
 			// the directory: ".claude/skills/review/SKILL.md" is one of the files of ".claude/skills"
 			parts := strings.SplitN(file.Path, "/", 3)
 			if len(parts) >= 2 {

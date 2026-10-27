@@ -53,13 +53,13 @@ func (x *exporter) sftEpisodes(work []*workEpisode) []*workEpisode {
 	var kept []*workEpisode
 	switch {
 	case x.o.Select == SelectBest:
-		kept = x.topPer(work, ok, rl.GroupKey, max(x.o.TopK, 1), "episode:not_best_of_group", func(a, b *workEpisode) bool {
+		kept = x.topPer(work, ok, x.groupOf, max(x.o.TopK, 1), "episode:not_best_of_group", func(a, b *workEpisode) bool {
 			return a.rank.Position < b.rank.Position
 		})
 	case x.o.TopK <= 0:
 		kept = ok
 	default:
-		kept = x.topPer(work, ok, func(ep *rl.Episode) string { return ep.TaskID }, x.o.TopK, "episode:below_top_k", func(a, b *workEpisode) bool {
+		kept = x.topPer(work, ok, x.taskOf, x.o.TopK, "episode:below_top_k", func(a, b *workEpisode) bool {
 			if a.ep.Reward.Total != b.ep.Reward.Total {
 				return a.ep.Reward.Total > b.ep.Reward.Total
 			}

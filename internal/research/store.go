@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -428,7 +429,29 @@ func Load(root, slug string) (*Run, error) {
 	if r.Slug != slug {
 		return nil, fmt.Errorf("research run %s: run.json names %q", slug, r.Slug)
 	}
+	if err := r.checkPageIDs(); err != nil {
+		return nil, fmt.Errorf("research run %s: %w", slug, err)
+	}
 	return &r, nil
+}
+
+// checkPageIDs refuses a ledger whose page ids could not have been written by the tool: an id becomes a file name and a link,
+// so one like "../x" or "javascript:x" read back from disk must not reach either.
+func (r *Run) checkPageIDs() error {
+	ok := func(id string) bool { return ValidPageID(id) && (special[id] == "" || id == "index") }
+	for _, p := range r.Pages {
+		if !ok(p.ID) {
+			return fmt.Errorf("page id %q is not valid", p.ID)
+		}
+	}
+	if r.Plan != nil {
+		for _, p := range r.Plan.Pages {
+			if !ok(p.ID) {
+				return fmt.Errorf("planned page id %q is not valid", p.ID)
+			}
+		}
+	}
+	return nil
 }
 
 // List reads every run of a project, newest first (by creation, then slug). Runs that cannot be read are left out.
@@ -541,12 +564,81 @@ func PagePath(root, slug, page string) string {
 	return filepath.Join(RunDir(root, slug), "pages", page+".md")
 }
 
-// ReadPage returns the Markdown of a written page, or "" when it has none.
+// maxPageFile bounds what is read of one page file: write_page accepts far less, so more is not a page the tool wrote.
+const maxPageFile = 4 << 20
+
+// openPages opens a run's pages directory as an os.Root, refusing a symlink at any step from the project root down
+// (.sleipnir, research, the run, pages): the research tool's authority is the ledger, and a link planted in the project must not
+// turn a page write or read into one of another file. Inside the root nothing resolves outside the pages directory.
+func openPages(root, slug string) (*os.Root, error) {
+	cur, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	for _, step := range []string{".sleipnir", "research", slug, "pages"} {
+		fi, err := cur.Lstat(step)
+		if err == nil && !fi.IsDir() {
+			err = fmt.Errorf("%s is not a directory", step)
+		}
+		var next *os.Root
+		if err == nil {
+			next, err = cur.OpenRoot(step)
+		}
+		cur.Close()
+		if err != nil {
+			return nil, err
+		}
+		cur = next
+	}
+	return cur, nil
+}
+
+// writePageFile replaces a page's Markdown through a temporary file in the confined pages directory.
+func writePageFile(root, slug, page string, data []byte) error {
+	if !ValidPageID(page) {
+		return fmt.Errorf("page id %q is not valid", page)
+	}
+	d, err := openPages(root, slug)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	tmp := ".tmp-" + page + ".md"
+	if err := d.WriteFile(tmp, data, 0o644); err != nil {
+		_ = d.Remove(tmp)
+		return err
+	}
+	if err := d.Rename(tmp, page+".md"); err != nil {
+		_ = d.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+// ReadPage returns the Markdown of a written page, or "" when it has none. Only a regular file in the run's own pages
+// directory is read (see openPages), and at most maxPageFile bytes of it.
 func ReadPage(root, slug, page string) string {
 	if !ValidPageID(page) {
 		return ""
 	}
-	b, err := os.ReadFile(PagePath(root, slug, page))
+	d, err := openPages(root, slug)
+	if err != nil {
+		return ""
+	}
+	defer d.Close()
+	name := page + ".md"
+	if fi, err := d.Lstat(name); err != nil || !fi.Mode().IsRegular() {
+		return ""
+	}
+	f, err := d.Open(name)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() {
+		return ""
+	}
+	b, err := io.ReadAll(io.LimitReader(f, maxPageFile))
 	if err != nil {
 		return ""
 	}

@@ -52,8 +52,8 @@ func DistillPrompt(objective, outcome string, verdicts []string) string {
 // ParseDrafts reads the lessons of a distillation answer: the first JSON object in text that has a "lessons" list, whatever
 // words or code fences are around it. Entries of an unknown kind or without text are dropped, the text is cleaned, and at
 // most MaxDrafts are kept. An answer without such an object is no drafts.
-func ParseDrafts(text string) []Draft {
-	for _, o := range goal.Objects(text) {
+func ParseDrafts(text string) (drafts []Draft) {
+	goal.EachObject(text, func(o json.RawMessage) bool {
 		var doc struct {
 			Lessons []struct {
 				Kind string `json:"kind"`
@@ -62,7 +62,7 @@ func ParseDrafts(text string) []Draft {
 		}
 		var probe map[string]json.RawMessage
 		if json.Unmarshal(o, &probe) != nil || probe["lessons"] == nil || json.Unmarshal(o, &doc) != nil {
-			continue
+			return true
 		}
 		var out []Draft
 		seen := map[string]bool{}
@@ -78,7 +78,8 @@ func ParseDrafts(text string) []Draft {
 				break
 			}
 		}
-		return out
-	}
-	return nil
+		drafts = out
+		return false
+	})
+	return drafts
 }

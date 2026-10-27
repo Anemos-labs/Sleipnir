@@ -75,6 +75,29 @@ func ReceiveKeys() []string {
 	return names
 }
 
+// NoStoredKeysEnv, set to 1 in a child Sleipnir's environment, tells it to load no key stored with `sleipnir login`: a parent that
+// passes a child no keys (a run it judged must not have them) also keeps it from reading them from the same home.
+const NoStoredKeysEnv = "SLEIPNIR_NO_STORED_KEYS"
+
+// DenyKeys marks cmd's environment so that the child Sleipnir loads no stored key (see NoStoredKeysEnv). cmd.Env nil means the
+// parent's environment, as for exec.
+func DenyKeys(cmd *exec.Cmd) {
+	if cmd.Env == nil {
+		cmd.Env = os.Environ()
+	}
+	cmd.Env = append(cmd.Env, NoStoredKeysEnv+"=1")
+}
+
+// StoredKeysDenied reports whether a parent asked this process to load no stored key, and forgets the request so that the
+// processes this one starts do not inherit it unasked.
+func StoredKeysDenied() bool {
+	v, ok := os.LookupEnv(NoStoredKeysEnv)
+	if ok {
+		_ = os.Unsetenv(NoStoredKeysEnv)
+	}
+	return ok && v == "1"
+}
+
 // PassKeys arranges for the child Sleipnir cmd starts to receive the held provider keys without its environment. Call it before
 // cmd.Start, and call the function it returns right after, with Start's error: it closes the parent's copy of the child's end and
 // writes the keys (in the background, given up after a few seconds) on a pipe the child reads at its start. With no key held it

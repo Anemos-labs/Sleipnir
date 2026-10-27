@@ -54,7 +54,7 @@ import path from 'node:path';
 import http from 'node:http';
 import zlib from 'node:zlib';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { TYPES } from './web-ui-dev.mjs';
+import { TYPES, readInside } from './web-ui-dev.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '..');
@@ -327,9 +327,9 @@ export class Browser {
    * A browser that hangs while it starts is a fault of the machine, not of the page: a new browser starts where it would not. The
    * default deadline leaves room for a fresh CI runner, where the first browser can take half a minute to start.
    */
-  static async launch(chromePath, { attempts = 3, deadline = 60000 } = {}) {
+  static async launch(chromePath, { attempts = 3, deadline = 60000, direct = [] } = {}) {
     for (let i = 1; ; i++) {
-      try { return await Browser.start(chromePath, deadline); } catch (e) {
+      try { return await Browser.start(chromePath, deadline, direct); } catch (e) {
         if (i >= attempts) throw e;
         process.stderr.write('chrome attempt ' + i + ' of ' + attempts + ' failed, starting another: ' + e.message.split('\n')[0] + '\n');
       }
@@ -340,12 +340,14 @@ export class Browser {
    * a browser that misses the deadline, exits or refuses is killed and its profile removed, and the error names the step it stopped at
    * and ends with the last lines of its stderr. A start that failed leaves no browser running to keep this process alive.
    */
-  static async start(chromePath, deadline) {
+  static async start(chromePath, deadline, direct = []) {
     const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'web-parity-'));
     const args = ['--headless', '--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--remote-debugging-port=0', '--user-data-dir=' + profile,
       '--force-device-scale-factor=1', '--force-color-profile=srgb', '--disable-lcd-text', '--disable-partial-raster', '--disable-checker-imaging', '--disable-threaded-animation', '--disable-threaded-scrolling', '--run-all-compositor-stages-before-draw', '--disable-background-timer-throttling', '--disable-renderer-backgrounding',
       '--disable-backgrounding-occluded-windows', '--no-first-run', '--no-default-browser-check', '--mute-audio',
-      '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1', 'about:blank'];
+      // Names resolve to nothing but 127.0.0.1, and every connection that is not to loopback or to the hosts compared goes to a proxy
+      // that is not there: a literal address in a reference page, a WebSocket included, reaches nothing outside.
+      '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1', '--proxy-server=http://127.0.0.1:9', '--proxy-bypass-list=' + ['127.0.0.1', ...direct].join(';'), 'about:blank'];
     const proc = spawn(chromePath, args, { stdio: ['ignore', 'ignore', 'pipe'] });
     const b = new Browser(proc, profile);
     // however this process ends (an exception, a closed pipe, a signal), no browser is left running and no profile behind
@@ -423,11 +425,12 @@ const KEYS = { Escape: [27, 'Escape'], Enter: [13, 'Enter'], Tab: [9, 'Tab'], Ar
 /** One page in its own browser context, with the virtual clock, the problem log and (for page A) the local font responder. */
 export class Page {
   static async open(browser, url, { width, height, mobile, fonts, mock, reducedMotion }) {
+    const origin = new URL(url).origin;
     const { browserContextId } = await browser.send('Target.createBrowserContext');
     const { targetId } = await browser.send('Target.createTarget', { url: 'about:blank', browserContextId });
     const { sessionId } = await browser.send('Target.attachToTarget', { targetId, flatten: true });
     const p = new Page(browser, sessionId, targetId, browserContextId);
-    p.problems = []; p.notes = []; p.loaded = null; p.width = width; p.height = height; p.mobile = mobile; p.fonts = fonts; p.mock = mock;
+    p.problems = []; p.notes = []; p.loaded = null; p.width = width; p.height = height; p.mobile = mobile; p.fonts = fonts; p.mock = mock; p.origin = origin;
     browser.handlers.set(sessionId, (m, a) => p.event(m, a));
     const s = (m, a) => p.send(m, a);
     await Promise.all([s('Page.enable'), s('Runtime.enable'), s('Log.enable'), s('Network.enable')]);
@@ -437,7 +440,9 @@ export class Page {
     await s('Emulation.setFocusEmulationEnabled', { enabled: true }).catch(() => {});
     if (reducedMotion) await s('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
     await s('Page.addScriptToEvaluateOnNewDocument', { source: CLOCK });
-    await s('Fetch.enable', { patterns: [{ urlPattern: 'https://fonts.googleapis.com/*' }, { urlPattern: 'https://fonts.gstatic.com/*' }] });
+    // Every request is paused: those to the page's own origin go on, the fonts are answered locally, the rest fail (navigations and
+    // redirects included).
+    await s('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
     const loaded = new Promise(r => { p.loaded = r; });
     await s('Page.navigate', { url });
     // the cap on the wait for the load event is cleared once it came, so that it does not keep the process alive for 30 s after the last page
@@ -463,6 +468,11 @@ export class Page {
    */
   async answer(a) {
     const u = new URL(a.request.url), id = a.requestId;
+    if (u.origin === this.origin) return this.send('Fetch.continueRequest', { requestId: id });
+    if (u.hostname !== 'fonts.googleapis.com' && u.hostname !== 'fonts.gstatic.com') {
+      this.problems.push('external request ' + a.request.url.slice(0, 120));
+      return this.send('Fetch.failRequest', { requestId: id, errorReason: 'BlockedByClient' });
+    }
     if (!this.mock) { this.problems.push('external request ' + a.request.url.slice(0, 120)); return this.send('Fetch.failRequest', { requestId: id, errorReason: 'BlockedByClient' }); }
     const cors = [{ name: 'Access-Control-Allow-Origin', value: '*' }, { name: 'Cache-Control', value: 'no-store' }];
     if (u.hostname === 'fonts.googleapis.com') {
@@ -557,10 +567,16 @@ export class Page {
 export function loadScenes(file, profile) {
   const doc = JSON.parse(fs.readFileSync(file, 'utf8')), def = doc.defaults || {}, out = [];
   const subst = (v, vars) => typeof v === 'string' ? v.replace(/\$\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m)) : Array.isArray(v) ? v.map(x => subst(x, vars)) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, subst(x, vars)])) : v;
+  const MAX_SCENES = 10000;
   for (const sc of doc.scenes) {
+    // The product of the lists is checked before it is built: a few short lists can multiply to more scenes than memory holds.
+    const n = Object.values(sc.each || {}).reduce((acc, vals) => acc * (Array.isArray(vals) ? vals.length : NaN), 1);
+    if (!(n <= MAX_SCENES) || out.length + n > MAX_SCENES) throw new Error(`scene ${JSON.stringify(String(sc.name)).slice(0, 80)}: "each" expands to more than ${MAX_SCENES} scenes, or is not lists`);
     const sets = sc.each ? Object.entries(sc.each).reduce((acc, [k, vals]) => acc.flatMap(a => vals.map(v => ({ ...a, [k]: v }))), [{}]) : [{}];
     for (const vars of sets) {
       const s = subst({ ...sc, each: undefined }, vars);
+      // A scene's name becomes the names of its picture files: it must be one plain file-name component.
+      if (typeof s.name !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._@=+,-]{0,159}$/.test(s.name) || s.name.includes('..')) throw new Error(`scene name ${JSON.stringify(String(s.name)).slice(0, 80)}: letters, digits and . _ @ = + , - only, no "..", at most 160`);
       out.push({
         name: s.name, steps: s.steps || [], query: s.query || '', viewports: s.viewports || def.viewports || [[1440, 900], [390, 844]],
         threshold: s.threshold != null ? s.threshold : def.threshold != null ? def.threshold : 0.5,
@@ -580,6 +596,7 @@ function startServer(file) {
   file = path.resolve(file);
   const web = path.join(repo, 'internal/web');
   const root = file.startsWith(web + path.sep) ? web : path.dirname(file);
+  const realRoot = fs.realpathSync(root);
   const srv = http.createServer((req, res) => {
     const send = (code, type, body) => { res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store' }); res.end(req.method === 'HEAD' ? undefined : body); };
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(405, 'text/plain; charset=utf-8', 'method not allowed\n');
@@ -587,7 +604,7 @@ function startServer(file) {
     try { rel = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch { return send(400, 'text/plain; charset=utf-8', 'bad request\n'); }
     const f = path.resolve(root, '.' + rel);
     if (rel.includes('\0') || (f !== root && !f.startsWith(root + path.sep))) return send(404, 'text/plain; charset=utf-8', 'not found\n');
-    fs.readFile(f, (err, buf) => err ? send(404, 'text/plain; charset=utf-8', 'not found\n') : send(200, TYPES[path.extname(f).toLowerCase()] || 'application/octet-stream', buf));
+    readInside(realRoot, f, (err, buf) => err ? send(404, 'text/plain; charset=utf-8', 'not found\n') : send(200, TYPES[path.extname(f).toLowerCase()] || 'application/octet-stream', buf));
   });
   return new Promise((resolve, reject) => {
     srv.once('error', reject);
@@ -708,7 +725,8 @@ async function main() {
     const s = await startServer(x); cleanup.push(() => s.srv.close()); return s.url;
   };
   urls.a = await asURL(opt.a, 'A'); urls.b = opt.self ? urls.a : await asURL(opt.b, 'B');
-  const browser = await Browser.launch(findChrome(opt.chrome));
+  const direct = [urls.a, urls.b].map(u => new URL(u).hostname).filter(h => h !== '127.0.0.1');
+  const browser = await Browser.launch(findChrome(opt.chrome), { direct });
   const bail = () => { browser.proc.kill('SIGKILL'); process.exit(130); }; process.once('SIGINT', bail); process.once('SIGTERM', bail);
   const results = new Array(jobs.length);
   console.log(`A ${opt.a}\nB ${opt.self ? 'A again (--self)' : opt.b}${opt.self || /^https?:/.test(opt.b) ? '' : ' (served at ' + urls.b + ')'}\n${jobs.length} scene runs, ${opt.jobs} at a time, threshold ${opt.threshold != null ? opt.threshold : 'per scene'}%, tolerance ${opt.tolerance}\n`);

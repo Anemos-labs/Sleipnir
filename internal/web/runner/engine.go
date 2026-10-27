@@ -487,6 +487,8 @@ func (r *Runs) child(ctx context.Context, x *run) int {
 	passed := func(error) {}
 	if x.spec.Net {
 		passed = sched.PassKeys(cmd) // on a pipe the child reads at its start, never in its environment
+	} else {
+		sched.DenyKeys(cmd) // nor the keys stored in the same home: a run denied keys gets none
 	}
 	err = cmd.Start()
 	passed(err)

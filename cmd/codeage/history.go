@@ -46,9 +46,17 @@ type report struct {
 	Warnings  []string  `json:"warnings"`
 }
 
+// gitSafe are the settings every read sets over the repository's own: the repository being read is not trusted, and its
+// configuration could otherwise name a program that verifying a signature, a file-system monitor or an external diff starts.
+var gitSafe = []string{
+	"-c", "log.showSignature=false", "-c", "gpg.program=false", "-c", "gpg.ssh.program=false", "-c", "gpg.x509.program=false",
+	"-c", "core.fsmonitor=false", "-c", "core.alternateRefsCommand=true", "-c", "diff.external=", "-c", "core.pager=cat",
+}
+
 // git reads history without interpreting path arguments in a shell or as pathspecs.
 func git(ctx context.Context, repo string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"--no-replace-objects", "--literal-pathspecs", "-C", repo}, args...)...)
+	pre := append(append([]string{}, gitSafe...), "--no-replace-objects", "--literal-pathspecs", "-C", repo)
+	cmd := exec.CommandContext(ctx, "git", append(pre, args...)...)
 	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0", "GIT_NO_LAZY_FETCH=1")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

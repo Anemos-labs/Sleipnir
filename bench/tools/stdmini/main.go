@@ -215,7 +215,12 @@ func build(o options, entries []entry) (string, error) {
 }
 
 func goList(pkgs []string) ([]listed, error) {
-	cmd := exec.Command("go", append([]string{"list", "-json=ImportPath,Dir,Standard"}, pkgs...)...)
+	for _, p := range pkgs {
+		if !validPkg(p) {
+			return nil, fmt.Errorf("%q is not a package path", p)
+		}
+	}
+	cmd := exec.Command("go", append([]string{"list", "-json=ImportPath,Dir,Standard", "--"}, pkgs...)...)
 	cmd.Env = cleanEnv()
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -234,6 +239,19 @@ func goList(pkgs []string) ([]listed, error) {
 	}
 	sort.Slice(res, func(i, j int) bool { return res[i].ImportPath < res[j].ImportPath })
 	return res, nil
+}
+
+// validPkg reports whether p is written as an import path (or the ... pattern of one), never as an option of go list.
+func validPkg(p string) bool {
+	if p == "" || p[0] == '-' || p[0] == '/' || strings.Contains(p, "//") {
+		return false
+	}
+	for _, r := range p {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("/._-~", r)) {
+			return false
+		}
+	}
+	return true
 }
 
 // cleanEnv is the environment of the go commands run here: the toolchain in PATH, no network, no toolchain switching.
