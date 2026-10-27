@@ -393,6 +393,7 @@ func (h *holdHooks) BeforeStop(ctx context.Context, agentID, role, final string,
 		return agent.StopOutcome{Veto: true, Reason: err.Error()}
 	}
 	if !h.s.cfg.HoldManager {
+		h.s.flushManagerEdits() // the turn is over: no more edits of the manager's are coming in it
 		return agent.StopOutcome{}
 	}
 	u := h.s.unfinishedWork()
@@ -402,6 +403,9 @@ func (h *holdHooks) BeforeStop(ctx context.Context, agentID, role, final string,
 			return agent.StopOutcome{}
 		}
 		u = h.s.unfinishedWork()
+	}
+	if u.empty() {
+		h.s.flushManagerEdits()
 	}
 	if u.empty() && h.s.docsPending() {
 		// The docs worker has not caught up with the last accepted work: the
