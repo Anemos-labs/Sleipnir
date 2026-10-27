@@ -161,3 +161,27 @@ func TestTheManagersOwnEditsStartADocsPassOnceTheySettle(t *testing.T) {
 		t.Fatalf("flushed edits: %+v", r2.sw.docs.pending)
 	}
 }
+
+// With worktree isolation the manager edits its own tree, and its changes reach the integration branch when they are flushed: the
+// files that flush integrates are the manager's edits auto-docs counts.
+func TestAnIsolatedManagersIntegratedEditsAreADocsChange(t *testing.T) {
+	r := newIsoRig(t, isoOpts{cfg: Config{MaxWorkers: 8, AutoDocs: true, Team: []string{"backend", "docs"}}, files: map[string]string{"api/x.go": "package api\n", "api/x_test.go": "package api\n"}},
+		func(context.Context, *rvCall) rvReply { return rvReply{Text: "done"} })
+	if _, err := r.sw.StartManager(); err != nil {
+		t.Fatal(err)
+	}
+	m := r.sw.get(r.sw.ManagerID())
+	for f, body := range map[string]string{"api/x.go": "package api\n// changed\n", "api/x_test.go": "package api\n// changed\n"} {
+		if err := writeFileString(filepath.Join(m.dir, f), body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := r.sw.flushManager(context.Background(), m); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.docs.mu.Lock()
+	defer r.sw.docs.mu.Unlock()
+	if got := strings.Join(r.sw.docs.edited, " "); got != "api/x.go" {
+		t.Fatalf("edits auto-docs counts = %q, want the product file alone", got)
+	}
+}

@@ -393,6 +393,7 @@ func (h *holdHooks) BeforeStop(ctx context.Context, agentID, role, final string,
 		return agent.StopOutcome{Veto: true, Reason: err.Error()}
 	}
 	if !h.s.cfg.HoldManager {
+		h.s.flushManagerEdits() // the turn is over: no more edits of the manager's are coming in it
 		return agent.StopOutcome{}
 	}
 	u := h.s.unfinishedWork()

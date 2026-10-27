@@ -29,7 +29,7 @@ func TestFailoverMovesToTheSecondaryAfterASustainedOutage(t *testing.T) {
 	down := &Error{Kind: ErrServer, Status: 503}
 	bad := &Error{Kind: ErrBadRequest, Status: 400}
 	now := time.Unix(1000, 0)
-	prim := &scripted{name: "prim", errs: []error{bad, down, down, down, down, down, nil}}
+	prim := &scripted{name: "prim", errs: []error{bad, down, bad, down, down, down, down, down, nil}}
 	sec := &scripted{name: "sec"}
 	var moves []bool
 	f := &Failover{Primary: prim, Secondary: sec, After: time.Minute, Retry: 10 * time.Minute, Now: func() time.Time { return now },
@@ -47,8 +47,15 @@ func TestFailoverMovesToTheSecondaryAfterASustainedOutage(t *testing.T) {
 	if _, err := do(); !errors.Is(err, bad) {
 		t.Fatalf("a bad request went elsewhere: %v", err)
 	}
-	if _, err := do(); !errors.Is(err, down) { // the outage begins
+	if _, err := do(); !errors.Is(err, down) { // an outage begins
 		t.Fatalf("an outage just begun: %v", err)
+	}
+	if _, err := do(); !errors.Is(err, bad) { // and ends: the endpoint answers
+		t.Fatalf("a bad request: %v", err)
+	}
+	now = now.Add(time.Hour)
+	if _, err := do(); !errors.Is(err, down) { // a new outage, which the old one's start does not age
+		t.Fatalf("an outage begun after the endpoint answered: %v", err)
 	}
 	now = now.Add(30 * time.Second)
 	if _, err := do(); !errors.Is(err, down) {
@@ -59,15 +66,15 @@ func TestFailoverMovesToTheSecondaryAfterASustainedOutage(t *testing.T) {
 		t.Fatalf("after a sustained outage: %q, %v", got, err)
 	}
 	now = now.Add(5 * time.Minute)
-	if got, _ := do(); got != "sec" || prim.calls != 4 {
+	if got, _ := do(); got != "sec" || prim.calls != 6 {
 		t.Fatalf("within Retry: %q, primary called %d times", got, prim.calls)
 	}
 	now = now.Add(6 * time.Minute) // past Retry: the primary is tried again, and is still out
-	if got, _ := do(); got != "sec" || prim.calls != 5 {
+	if got, _ := do(); got != "sec" || prim.calls != 7 {
 		t.Fatalf("past Retry with the primary still out: %q, primary called %d times", got, prim.calls)
 	}
 	now = now.Add(11 * time.Minute)
-	if got, _ := do(); got != "sec" || prim.calls != 6 {
+	if got, _ := do(); got != "sec" || prim.calls != 8 {
 		t.Fatalf("past Retry again: %q, primary called %d times", got, prim.calls)
 	}
 	now = now.Add(11 * time.Minute) // the primary is back

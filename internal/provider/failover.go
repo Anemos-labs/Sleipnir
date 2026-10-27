@@ -63,6 +63,11 @@ func (f *Failover) Do(ctx context.Context, req *Request, on func(Event)) (*Respo
 	}
 	pe, ok := AsError(err)
 	if !ok || pe.Outage() == NotOutage || ctx.Err() != nil {
+		if ok && pe.Outage() == NotOutage && ctx.Err() == nil {
+			f.mu.Lock()
+			f.failing = time.Time{} // the endpoint answered: the outage, if there was one, is over
+			f.mu.Unlock()
+		}
 		return resp, err
 	}
 	now := f.now()
