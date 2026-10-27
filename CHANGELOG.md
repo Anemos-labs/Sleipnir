@@ -22,6 +22,11 @@ they do not indicate whether a change has been released.
   and a docs pass sat unread in review for 13 minutes beside one, which
   held up the pass that followed it. Harness mail only; no prompt bytes
   change.
+- The verdict phase (no `idle_capacity` while the team waits on a review
+  or a docs pass) also covers a writer still running after its task was
+  accepted: it is finishing its turn and owns nothing open. A docs worker
+  whose pass had just been accepted counted as work in progress, and the
+  manager was told of idle writers during the review after all.
 - A parent whose pool starts again after a resume no longer keeps the line
   "the session was resumed: waiting to restart" while it runs. The line
   stayed on the running task, and a manager that read it mailed the pool's

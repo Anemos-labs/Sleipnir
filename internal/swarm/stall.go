@@ -593,7 +593,12 @@ func (s *Swarm) verdictPhase(snap *Snapshot, views map[string]memberView) bool {
 		if s.roles[v.role].ReadOnly {
 			continue
 		}
-		if t, ok := snap.Task(currentTask(snap, id)); ok && s.isDocsTask(t) {
+		task := currentTask(snap, id)
+		if task == "" {
+			// a writer finishing its turn after its task was accepted (or failed): not work the team waits on
+			continue
+		}
+		if t, ok := snap.Task(task); ok && s.isDocsTask(t) {
 			continue
 		}
 		return false
