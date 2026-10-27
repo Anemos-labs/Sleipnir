@@ -25,6 +25,13 @@ func TestARunnerRuleDoesNotCoverAProgramTheRunnerIsToldToRun(t *testing.T) {
 		{name: "cargo test", mode: ModeDefault, allow: []string{"Bash(cargo test:*)"}, req: bash("cargo test --all"), want: "allow"},
 		{name: "cargo test --config runner", mode: ModeDefault, allow: []string{"Bash(cargo test:*)"}, req: bash(`cargo test --config 'target.x.runner="sh"'`), want: "ask"},
 		{name: "npm test --script-shell", mode: ModeDefault, allow: []string{"Bash(npm test:*)"}, req: bash("npm test --script-shell=x"), want: "ask"},
+		// a configuration file sets script-shell and node-options as well as the options do; /dev/stdin is a file
+		{name: "npm test --userconfig", mode: ModeDefault, allow: []string{"Bash(npm test:*)"}, req: bash("npm test --userconfig=/dev/stdin"), want: "ask"},
+		{name: "npm test --userconfig apart", mode: ModeDefault, allow: []string{"Bash(npm test:*)"}, req: bash("npm test --userconfig ./x.npmrc"), want: "ask"},
+		{name: "npm run test --globalconfig", mode: ModeDefault, allow: []string{"Bash(npm run test:*)"}, req: bash("npm run test --globalconfig=./x"), want: "ask"},
+		{name: "pnpm test --userconfig", mode: ModeDefault, allow: []string{"Bash(pnpm test:*)"}, req: bash("pnpm test --userconfig=./x"), want: "ask"},
+		{name: "yarn test --globalconfig", mode: ModeDefault, allow: []string{"Bash(yarn test:*)"}, req: bash("yarn test --globalconfig ./x"), want: "ask"},
+		{name: "npm test with its own options", mode: ModeDefault, allow: []string{"Bash(npm test:*)"}, req: bash("npm test -- --watch=false"), want: "allow"},
 		{name: "node --test --require", mode: ModeDefault, allow: []string{"Bash(node --test:*)"}, req: bash("node --test --require ./x.js"), want: "ask"},
 		{name: "node --test", mode: ModeDefault, allow: []string{"Bash(node --test:*)"}, req: bash("node --test test/"), want: "allow"},
 		{name: "node --test with a built-in reporter", mode: ModeDefault, allow: []string{"Bash(node --test:*)"}, req: bash("node --test --test-reporter=spec test/"), want: "allow"},
