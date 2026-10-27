@@ -132,3 +132,33 @@ func TestTheSwarmHoldsItsManagerToThePolicyInPlanMode(t *testing.T) {
 		t.Errorf("go test is a rule and on the manager's own list: %+v", got["go test"])
 	}
 }
+
+// A read-only role is read-only whatever the session allows: while the session plans, its allow rules rank with the role's own read-only
+// profile, so a request a rule alone lets through is held to the role's policy (its research and check exceptions) all the same.
+func TestAReadOnlyRoleInPlanModeIsNotLoosenedByAllowRules(t *testing.T) {
+	root := t.TempDir()
+	eng, err := perm.NewEngine(perm.Config{Mode: perm.ModePlan, Root: root, Home: t.TempDir(), Allow: planExceptions})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	role := BuiltinRoles()["reviewer"]
+	if !role.ReadOnly {
+		t.Fatal("the reviewer role is no longer read-only: pick another read-only role")
+	}
+	rr := roleRequester{inner: eng, role: role, denyWrites: "the reviewer role is read-only (test)"}
+	if d := rr.Check(ctx, perm.Request{Tool: "bash", Command: "rm -rf build", Cwd: root}); d.Allow {
+		t.Errorf("a session rule let a read-only role run rm: %+v", d)
+	}
+	if d := rr.Check(ctx, perm.Request{Tool: "write", Writes: true, Paths: []string{root + "/docs/plan.md"}}); d.Allow {
+		t.Errorf("a session rule let a read-only role write: %+v", d)
+	}
+	if d := rr.Check(ctx, perm.Request{Tool: perm.ToolMemory, Summary: "remember: x"}); d.Allow {
+		t.Errorf("a read-only role changed the saved notes: %+v", d)
+	}
+	for _, cmd := range []string{"go test ./...", "git log --oneline", "git status && ls src | wc -l"} {
+		if d := rr.Check(ctx, perm.Request{Tool: "bash", Command: cmd, Cwd: root}); !d.Allow {
+			t.Errorf("%q is within a read-only role's own policy: %+v", cmd, d)
+		}
+	}
+}
