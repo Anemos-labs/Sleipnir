@@ -570,12 +570,14 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request, sess *Sess
 		s.fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	from, err := uintParam(r, "from", 0, 1<<62)
-	if err != nil {
-		s.fail(w, http.StatusBadRequest, err.Error())
-		return
+	if v := r.URL.Query().Get("from"); v != "" {
+		from, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || from < 0 {
+			s.fail(w, http.StatusBadRequest, "bad from parameter")
+			return
+		}
+		q.From = from
 	}
-	q.From = int64(from)
 	page, err := sess.Events(q)
 	if err != nil {
 		s.logf("inspect: events: %v", err)
