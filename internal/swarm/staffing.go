@@ -180,10 +180,13 @@ func (s *Swarm) noteAcceptedCheck(t Task) TaskCheck {
 	// Outside the board lock: they read the work tree. A review accepted after merges that changed tests and docs alone since
 	// it began covers them too: a tester's suite accepted while the review waited for its verdict is one.
 	stands := implementation && s.testsSinceReview()
-	reviewStands := false
+	// The merge count is read before the tree: a merge that lands while the tree is read leaves it behind, and the review
+	// then covers nothing past its generation.
+	reviewStands, treeMerges := false, 0
 	if role == ReviewerRole && t.Parent == "" && quorum == 1 {
 		s.review.mu.Lock()
 		base := s.review.trees[t.ID+"#"+strconv.FormatUint(t.Rev, 10)]
+		treeMerges = s.review.merges
 		s.review.mu.Unlock()
 		reviewStands = s.testsOnlySince(base)
 	}
@@ -207,7 +210,7 @@ func (s *Swarm) noteAcceptedCheck(t Task) TaskCheck {
 				if quorum == 1 {
 					g.reviewedTree = g.trees[t.ID+"#"+strconv.FormatUint(t.Rev, 10)]
 				}
-				if reviewStands && generation == covered {
+				if reviewStands && generation == covered && g.merges == treeMerges {
 					g.reviewed = g.merges
 				}
 			}

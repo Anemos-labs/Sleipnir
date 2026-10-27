@@ -786,6 +786,19 @@ func TestAReviewAcceptedAfterATestOnlyMergeCoversIt(t *testing.T) {
 	if got := r.sw.reviewPending(); got != "T6" {
 		t.Fatalf("review pending = %q, want T6", got)
 	}
+	// A merge that lands between the review's tree read and its acceptance stays due, whatever the tree showed.
+	rv = review("T7")
+	write("lru/late_test.go", "package lru\n")
+	r.sw.noteAccepted(Task{ID: "T8", Role: "tester"})
+	check := r.sw.noteAcceptedCheck(rv) // reads the tree: tests only since T7 began
+	write("lru/lru.go", "package lru\n\nfunc New() int { return 3 }\n")
+	r.sw.noteAccepted(Task{ID: "T9", Role: "backend"}) // lands before the acceptance publishes
+	if err := check(nil, rv); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.sw.reviewPending(); got != "T9" {
+		t.Fatalf("a merge that landed during the tree read = %q, want T9 due", got)
+	}
 }
 
 // A review with no work tree to read (no git repository) stands for no later merge.
