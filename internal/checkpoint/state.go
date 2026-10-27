@@ -225,7 +225,7 @@ func writeFileAtomic(path string, data []byte, mode fs.FileMode, own *owner) err
 		return err
 	}
 	chownPath(name, own)
-	if err := os.Chmod(name, mode); err != nil {
+	if err := os.Chmod(name, restorableMode(mode)); err != nil {
 		return err
 	}
 	if err := os.Rename(name, path); err != nil {

@@ -1567,10 +1567,54 @@ func TestWhatAnAgentCommitsItselfMeetsTheSameGuards(t *testing.T) {
 	if r.Outcome != OutcomeRejected || !strings.Contains(r.Reason, "too many to check") {
 		t.Fatalf("a change with more files than can be examined: %+v", r)
 	}
-	// with the size check off, only the count limit is moot: nothing to examine
+	// with the size check off the gitlink check still needs every entry, so the
+	// change is still refused unexamined
 	e.m.MaxFileBytes = -1
-	if r := e.submit(c, "c again"); !r.Merged() {
+	if r := e.submit(c, "c again"); r.Outcome != OutcomeRejected || !strings.Contains(r.Reason, "nested repositories") {
 		t.Fatalf("with the size limit disabled: %+v", r)
+	}
+}
+
+// A blob one commit adds and a later commit deletes is in the history a merge
+// keeps, although the final tree does not show it.
+func TestOversizedBlobInAnIntermediateCommitIsRefused(t *testing.T) {
+	e := newQueueEnv(t, QueueOptions{})
+	e.m.MaxFileBytes = 2000
+	a := e.agent("a")
+	edit(t, a, "dump.bin", strings.Repeat("x", 5000))
+	rawGit(t, a.Path, "add", "-A")
+	rawGit(t, a.Path, "commit", "-qm", "add a dump")
+	must(t, os.Remove(filepath.Join(a.Path, "dump.bin")))
+	edit(t, a, "ok.txt", "ok\n")
+	rawGit(t, a.Path, "add", "-A")
+	rawGit(t, a.Path, "commit", "-qm", "remove it again")
+	if r := e.submit(a, "a"); r.Outcome != OutcomeRejected || !strings.Contains(r.Reason, "dump.bin") {
+		t.Fatalf("an oversized blob in an intermediate commit: %+v", r)
+	}
+}
+
+// A submission with more commits than checkHistory examines one by one is refused while a size limit applies, and merges
+// when there is none (then nothing is checked commit by commit).
+func TestTooManyCommitsToCheckIsRefusedOnlyUnderASizeLimit(t *testing.T) {
+	old := maxCheckedCommits
+	maxCheckedCommits = 2
+	t.Cleanup(func() { maxCheckedCommits = old })
+	for _, limit := range []int64{2000, -1} {
+		e := newQueueEnv(t, QueueOptions{})
+		e.m.MaxFileBytes = limit
+		a := e.agent("a")
+		for i := 0; i < 3; i++ {
+			edit(t, a, fmt.Sprintf("f%d.txt", i), "x\n")
+			rawGit(t, a.Path, "add", "-A")
+			rawGit(t, a.Path, "commit", "-qm", fmt.Sprintf("c%d", i))
+		}
+		r := e.submit(a, "a")
+		if limit >= 0 && (r.Outcome != OutcomeRejected || !strings.Contains(r.Reason, "squash")) {
+			t.Fatalf("limit %d: three commits past a bound of two: %+v", limit, r)
+		}
+		if limit < 0 && !r.Merged() {
+			t.Fatalf("no size limit: %+v", r)
+		}
 	}
 }
 

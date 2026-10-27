@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -263,10 +264,29 @@ func (m *Manager) pruneOne(ctx context.Context, opts PruneOptions, e ownedEntry,
 			keep("cannot open: " + err.Error())
 			return
 		}
+		// The tree's .git file is the agent's to rewrite: a handle that it points at
+		// another repository's git directory would read, and salvage would commit
+		// into, that repository.
+		if !samePath(repo.GitDir(), admin) {
+			keep("its .git does not point at its registration")
+			return
+		}
 		st, err := repo.Status(ctx)
 		if err != nil {
 			keep("cannot read its state: " + err.Error())
 			return
+		}
+		// Commits made on a detached HEAD (or on HEAD moved off the tree's branch)
+		// are on no branch: removing the tree removes the HEAD and reflog that are
+		// their only reference.
+		if !opts.Force {
+			if n, err := m.headOnlyCommits(ctx, repo, mk.Branch); err != nil {
+				keep("cannot check its HEAD: " + err.Error())
+				return
+			} else if n > 0 {
+				keep(fmt.Sprintf("its HEAD holds %d commit(s) that are on no branch (Force discards them)", n))
+				return
+			}
 		}
 		if !st.Clean() && !opts.Force {
 			if !opts.Salvage {
@@ -331,14 +351,52 @@ func (m *Manager) pruneOne(ctx context.Context, opts PruneOptions, e ownedEntry,
 	}
 }
 
-// salvage commits a dead session's uncommitted work onto its branch.
+// headOnlyCommits counts the commits reachable from the tree's HEAD that no
+// branch, tag or session ref holds, when HEAD is not the tip of the tree's
+// branch (when it is, the branch check of pruneOne covers them).
+func (m *Manager) headOnlyCommits(ctx context.Context, repo *gitx.Repo, branch string) (int, error) {
+	head, err := repo.Head(ctx)
+	if err != nil && gitx.KindOf(err) != gitx.KindNotFound {
+		return 0, err // HEAD could not be read: the tree is kept
+	}
+	if err != nil || head == "" {
+		return 0, nil // no commit yet: nothing to lose
+	}
+	if branch != "" {
+		if tip, err := m.st.base.BranchSHA(ctx, branch); err == nil && tip == head {
+			return 0, nil
+		}
+	}
+	return m.uniqueCommits(ctx, head)
+}
+
+// salvage commits a dead session's uncommitted work onto its branch. It commits
+// only when the tree has that branch checked out, and it fails (so the tree is
+// kept) when what it recorded cannot stand for the work: a gitlink to a
+// repository .gitmodules does not declare records a commit id, not the nested
+// repository's content, which deleting the tree would destroy.
 func (m *Manager) salvage(ctx context.Context, repo *gitx.Repo, mk *marker) error {
+	if cur, err := repo.Branch(ctx); err != nil {
+		return err
+	} else if cur != mk.Branch {
+		return fmt.Errorf("workspace: the tree has %q checked out, not its branch %q", cur, mk.Branch)
+	}
 	if err := m.checkCommittable(ctx, repo, repo.Root()); err != nil {
 		return err
 	}
+	before, err := repo.Head(ctx)
+	if err != nil {
+		return err
+	}
 	msg := m.withAgentTrailer("Unfinished work of "+mk.Agent+", salvaged after its session ended", mk.Agent)
-	_, err := repo.CommitAllWith(ctx, msg, m.agentAuthor(mk.Agent), workCommit)
-	return err
+	after, err := repo.CommitAllWith(ctx, msg, m.agentAuthor(mk.Agent), workCommit)
+	if err != nil || after == "" || after == before {
+		return err
+	}
+	if before == "" {
+		return nil
+	}
+	return m.checkCommitted(ctx, repo, before, after)
 }
 
 // NestedRepoError lists the directories of a tree that are git repositories of
@@ -380,6 +438,13 @@ var maxCommittedEntries = 100000
 // .gitmodules does not declare. Once such a commit is on the integration branch it
 // is in the project's history for good.
 func (m *Manager) checkCommitted(ctx context.Context, repo *gitx.Repo, base, to string) error {
+	return m.checkEntries(ctx, repo, base, to, true)
+}
+
+// checkEntries is checkCommitted, with the gitlink check only when gitlinks is
+// set: an intermediate commit's gitlink is judged by the .gitmodules of the end
+// of the submission, which checkCommitted reads.
+func (m *Manager) checkEntries(ctx context.Context, repo *gitx.Repo, base, to string, gitlinks bool) error {
 	entries, truncated, err := repo.ChangedEntries(ctx, base, to, maxCommittedEntries)
 	if err != nil {
 		return err
@@ -389,7 +454,7 @@ func (m *Manager) checkCommitted(ctx context.Context, repo *gitx.Repo, base, to 
 	for _, e := range entries {
 		switch {
 		case e.Mode == "160000":
-			if e.OldMode != "160000" {
+			if gitlinks && e.OldMode != "160000" {
 				pointers = append(pointers, e.Path)
 			}
 		case limit >= 0 && e.Size > limit:
@@ -420,8 +485,60 @@ func (m *Manager) checkCommitted(ctx context.Context, repo *gitx.Repo, base, to 
 		sort.Strings(big)
 		return &TooLargeError{Files: big, Limit: limit, Committed: true}
 	}
-	if truncated && limit >= 0 {
+	// An incomplete listing proves nothing about the entries it left out, whether
+	// or not a size limit applies: the gitlink check needs every entry too.
+	if truncated && (gitlinks || limit >= 0) {
 		return &TooLargeError{Limit: limit, TooMany: maxCommittedEntries}
+	}
+	return nil
+}
+
+// maxCheckedCommits bounds how many commits of one submission checkHistory
+// examines one by one; a submission with more is refused unexamined (a variable so
+// that a test can lower it).
+var maxCheckedCommits = 1000
+
+// emptyTree is git's id of the tree with no entries, the parent of a root commit.
+const emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
+// checkHistory is checkCommitted for every commit of base..to on its own, not only
+// for the change from base to to: a merge keeps the intermediate commits, so a
+// blob added by one and deleted by the next is in the project's history although
+// the final tree does not show it. Each commit is judged against its first parent
+// (the content a merge's other parents bring is judged with their own commits),
+// for the size limit; whether a gitlink is declared is a question about the end
+// of the submission, which checkCommitted asks.
+func (m *Manager) checkHistory(ctx context.Context, repo *gitx.Repo, base, to string) error {
+	if err := m.checkCommitted(ctx, repo, base, to); err != nil {
+		return err
+	}
+	if m.maxFileBytes() < 0 {
+		return nil // no size limit: there is nothing to check commit by commit
+	}
+	res, err := repo.Git(ctx, "rev-list", "--parents", "--max-count="+strconv.Itoa(maxCheckedCommits+1), to, "--not", base)
+	if err != nil {
+		return err
+	}
+	var commits [][]string
+	for _, line := range strings.Split(strings.TrimSpace(res.Stdout), "\n") {
+		if f := strings.Fields(line); len(f) > 0 {
+			commits = append(commits, f)
+		}
+	}
+	if len(commits) > maxCheckedCommits {
+		return &TooLargeError{Limit: m.maxFileBytes(), TooManyCommits: maxCheckedCommits}
+	}
+	if len(commits) == 1 && len(commits[0]) == 2 && commits[0][1] == base {
+		return nil // the one commit is the change already checked
+	}
+	for _, c := range commits {
+		parent := emptyTree
+		if len(c) > 1 {
+			parent = c[1]
+		}
+		if err := m.checkEntries(ctx, repo, parent, c[0], false); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -441,6 +558,10 @@ func (m *Manager) checkCommittable(ctx context.Context, repo *gitx.Repo, root st
 	st, err := repo.StatusWith(ctx, gitx.StatusOptions{Untracked: "all", MaxBytes: 32 << 20})
 	if err != nil {
 		return err
+	}
+	// A listing cut short says nothing about the files it did not list.
+	if st.Truncated {
+		return &TooLargeError{Limit: limit, TooMany: max(1, len(st.Staged)+len(st.Unstaged)+len(st.Untracked))}
 	}
 	// Untracked files in a dependency store are not recorded (workCommit), so
 	// they are not examined either.
