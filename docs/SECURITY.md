@@ -198,6 +198,8 @@ What it does not stop, and what to do about it:
 * *Malice in the code it writes* (a script tag, a dependency, a weakened check). Review is the defence: a reviewer on another model,
   from another publisher, is unlikely to share the trigger. Give a team's reviewer slots a model other than the writers', or two
   models: a merge is then covered only once reviewers on two different models have each reviewed it (`docs/SWARM-PROTOCOL.md`).
+  This is a suggestion, not a default: a team whose reviewers share the writers' model while another model is on the team gets a
+  one-line tip when it starts, and a team on one model is never told anything.
 * *Weights and templates you download.* Take them from their publisher; a chat template is code that runs on every request.
 
 ### Reading public websites in accept-edits mode
