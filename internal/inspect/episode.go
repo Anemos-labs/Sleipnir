@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 )
 
 const maxEpisodeBytes = 4 << 20
@@ -48,8 +46,7 @@ func (s *Session) readEpisode() *episodeRead {
 	if s.dir == "" {
 		return nil
 	}
-	p := filepath.Join(s.dir, "episode.json")
-	fi, err := os.Lstat(p)
+	fi, err := s.fsys.lstat("episode.json")
 	if err != nil || !fi.Mode().IsRegular() || fi.Size() > maxEpisodeBytes {
 		return &episodeRead{}
 	}
@@ -60,7 +57,7 @@ func (s *Session) readEpisode() *episodeRead {
 	if same {
 		return nil // unchanged: keep what we have
 	}
-	f, err := openRegular(p)
+	f, err := s.fsys.open("episode.json")
 	if err != nil {
 		return &episodeRead{}
 	}

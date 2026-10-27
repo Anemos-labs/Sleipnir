@@ -75,11 +75,13 @@
   {"name":"user","arg":"bool","default":null,"repeatable":false,"desc":"write ~/.sleipnir/config.json instead of the project's"}
  ]},
 {"path":["inspect"],"usage":"sleipnir inspect [flags] [SESSION | DIR]","summary":"sleipnir inspect DIR serves the dashboard and prints its URL on stdout (with --token, the URL carries the token, which the page moves into a cookie).","positional":[{"name":"SESSION|DIR","required":false,"desc":"a session id (or the start of one), or a session directory; default: the newest session"}],"source":"docs/CLI.md § sleipnir inspect","mode":"tty_only","why":"inspect serves its own dashboard: use the Cache view here, or --json","when":[{"flag":"json","mode":"run"}],"flags":[
-  {"name":"addr","arg":"string","default":"127.0.0.1:8787","repeatable":false,"desc":"listen address; anything but a loopback address requires --token"},
+  {"name":"addr","arg":"string","default":"127.0.0.1:8787","repeatable":false,"desc":"listen address; anything but a loopback address requires --token and --tls-cert"},
   {"name":"interval","arg":"duration","default":"1s","repeatable":false,"desc":"how often live logs are polled"},
   {"name":"json","arg":"bool","default":null,"repeatable":false,"desc":"print the summary as JSON and exit (for scripts and CI)"},
   {"name":"open","arg":"bool","default":null,"repeatable":false,"desc":"open the dashboard in the default browser"},
   {"name":"session","arg":"string","default":null,"repeatable":false,"desc":"with --json on a directory of sessions: the session to summarise (its id from the list)"},
+  {"name":"tls-cert","arg":"string","default":null,"repeatable":false,"desc":"serve HTTPS with this PEM certificate (with --tls-key); required for a non-loopback --addr"},
+  {"name":"tls-key","arg":"string","default":null,"repeatable":false,"desc":"the PEM private key for --tls-cert"},
   {"name":"token","arg":"string","default":null,"repeatable":false,"desc":"access token (also read from $SLEIPNIR_INSPECT_TOKEN, which keeps it out of process listings); required for a non-loopback --addr"}
  ]},
 {"path":["login"],"usage":"sleipnir login [provider]","summary":"Asks which provider you have a key for and for the key, which it does not echo, and keeps it in ~/.sleipnir/auth.json (mode 0600).","positional":[{"name":"PROVIDER","required":false,"desc":"heimdallm, openrouter, openai, anthropic, chatgpt, ..."}],"source":"docs/CLI.md § sleipnir login","mode":"tty_only","why":"login needs a terminal: Settings › Connections shows the command to run","flags":[]},

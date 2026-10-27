@@ -2,7 +2,6 @@ package inspect
 
 import (
 	"io"
-	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -15,7 +14,7 @@ import (
 // else can name a file, which rules out traversal by construction. Files must be
 // regular (a symlink planted in a rollout directory is not followed).
 type blobStore struct {
-	root string
+	dir confinedDir
 
 	mu      sync.Mutex
 	checked time.Time
@@ -23,7 +22,7 @@ type blobStore struct {
 }
 
 // openBlobs constructs a blob reader rooted at the supplied directory without opening files yet.
-func openBlobs(root string) *blobStore { return &blobStore{root: root} }
+func openBlobs(root string) *blobStore { return &blobStore{dir: confine("", root)} }
 
 // available reports whether the blobs directory exists. The answer is cached
 // briefly so a session that creates blobs/ after we started is noticed.
@@ -37,7 +36,7 @@ func (b *blobStore) available() bool {
 		return b.present
 	}
 	b.checked = time.Now()
-	if fi, err := os.Stat(b.root); err == nil && fi.IsDir() {
+	if fi, err := b.dir.stat("."); err == nil && fi.IsDir() {
 		b.present = true
 	}
 	return b.present
@@ -57,12 +56,12 @@ func validHash(h string) bool {
 	return true
 }
 
-// path is the DirBlobs location of a validated hash.
+// path is the DirBlobs location of a validated hash, relative to the blobs directory.
 func (b *blobStore) path(h string) (string, bool) {
 	if b == nil || !validHash(h) {
 		return "", false
 	}
-	return filepath.Join(b.root, h[:2], h[2:4], h), true
+	return filepath.Join(h[:2], h[2:4], h), true
 }
 
 // size returns a blob's length.
@@ -74,7 +73,7 @@ func (b *blobStore) size(h string) (int64, bool) {
 	if !ok {
 		return 0, false
 	}
-	fi, err := os.Lstat(p)
+	fi, err := b.dir.lstat(p)
 	if err != nil || !fi.Mode().IsRegular() {
 		return 0, false
 	}
@@ -90,15 +89,15 @@ func (b *blobStore) read(h string, max int) ([]byte, int64, bool) {
 	if !ok {
 		return nil, 0, false
 	}
-	fi, err := os.Lstat(p)
-	if err != nil || !fi.Mode().IsRegular() {
-		return nil, 0, false
-	}
-	f, err := openRegular(p)
+	f, err := b.dir.open(p)
 	if err != nil {
 		return nil, 0, false
 	}
 	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, 0, false
+	}
 	data, err := io.ReadAll(io.LimitReader(f, int64(max)))
 	if err != nil {
 		return nil, 0, false

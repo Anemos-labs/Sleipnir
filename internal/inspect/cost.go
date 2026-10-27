@@ -70,6 +70,8 @@ type priceInfo struct {
 // ids and date suffixes are tolerated by cost.Table). An id neither knows gets cost.Fallback's
 // conservative prices and is reported as such.
 func (s *Session) priceFor(model string) *priceInfo {
+	s.priceMu.Lock()
+	defer s.priceMu.Unlock()
 	if p, ok := s.prices[model]; ok {
 		return p
 	}
@@ -231,6 +233,8 @@ func (s *Session) assumptionsLocked() []string {
 
 // pricesUsedLocked reports the prices applied, most used first.
 func (s *Session) pricesUsedLocked() []PriceUsed {
+	s.priceMu.Lock()
+	defer s.priceMu.Unlock()
 	out := make([]PriceUsed, 0, len(s.prices))
 	for _, p := range s.prices {
 		out = append(out, PriceUsed{

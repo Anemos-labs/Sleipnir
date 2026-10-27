@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -27,11 +28,13 @@ func init() { extraCommands["inspect"] = cmdInspect }
 // such as `sleipnir rl rollout` output.
 func cmdInspect(ctx context.Context, args []string) error {
 	fs := newFlagSet("inspect", flag.ContinueOnError)
-	addr := fs.String("addr", "127.0.0.1:8787", "listen address; anything but a loopback address requires --token")
+	addr := fs.String("addr", "127.0.0.1:8787", "listen address; anything but a loopback address requires --token and --tls-cert")
 	token := fs.String("token", harden.Secret("SLEIPNIR_INSPECT_TOKEN"), "access token (also read from $SLEIPNIR_INSPECT_TOKEN, which keeps it out of process listings); required for a non-loopback --addr")
 	open := fs.Bool("open", false, "open the dashboard in the default browser")
 	asJSON := fs.Bool("json", false, "print the summary as JSON and exit (for scripts and CI)")
 	session := fs.String("session", "", "with --json on a directory of sessions: the session to summarise (its id from the list)")
+	tlsCert := fs.String("tls-cert", "", "serve HTTPS with this PEM certificate (with --tls-key); required for a non-loopback --addr")
+	tlsKey := fs.String("tls-key", "", "the PEM private key for --tls-cert")
 	interval := fs.Duration("interval", time.Second, "how often live logs are polled")
 	fs.Usage = func() {
 		printHelp(os.Stderr, `usage: sleipnir inspect [flags] [SESSION | DIR]
@@ -44,7 +47,9 @@ sessions to browse, such as the output of `+"`sleipnir rl rollout`"+`. While the
 is still writing, the page follows the log live.
 
 The server answers GET only, binds to loopback by default, and loads nothing from
-the network.
+the network. To reach it from another machine, use an SSH tunnel to the loopback
+address, or serve HTTPS on another address with --token and --tls-cert/--tls-key:
+the token and the session data never cross the network in plain HTTP.
 
 flags:
 `)
@@ -90,11 +95,29 @@ flags:
 	if err != nil {
 		return err
 	}
+	if (*tlsCert == "") != (*tlsKey == "") {
+		return usageError(fs, "inspect: --tls-cert and --tls-key go together")
+	}
+	var tlsConf *tls.Config
+	if *tlsCert != "" {
+		cert, err := tls.LoadX509KeyPair(*tlsCert, *tlsKey)
+		if err != nil {
+			return fmt.Errorf("inspect: %w", err)
+		}
+		tlsConf = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
+	}
 	ln, err := inspect.Listen(*addr, *token)
 	if err != nil {
 		return err
 	}
-	u := inspectURL(ln.Addr(), *token)
+	if ta, ok := ln.Addr().(*net.TCPAddr); ok && !ta.IP.IsLoopback() && tlsConf == nil {
+		ln.Close()
+		return fmt.Errorf("inspect: refusing to serve on non-loopback address %s over plain HTTP: the token and the session data would cross the network unencrypted; pass --tls-cert and --tls-key, or use an SSH tunnel to a loopback address", ta)
+	}
+	if tlsConf != nil {
+		ln = tls.NewListener(ln, tlsConf)
+	}
+	u := inspectURL(ln.Addr(), *token, tlsConf != nil)
 	fmt.Fprintf(os.Stderr, "sleipnir inspect: serving %s\n", root)
 	fmt.Println(u)
 	if *token != "" {
@@ -133,7 +156,7 @@ func inspectJSON(root, id string) error {
 
 // inspectURL is the address to open: loopback names for wildcard binds, and the
 // token as a query parameter (the server turns it into a cookie and redirects).
-func inspectURL(a net.Addr, token string) string {
+func inspectURL(a net.Addr, token string, https bool) string {
 	host, port := "127.0.0.1", ""
 	if ta, ok := a.(*net.TCPAddr); ok {
 		port = fmt.Sprint(ta.Port)
@@ -146,7 +169,11 @@ func inspectURL(a net.Addr, token string) string {
 			host = ta.IP.String()
 		}
 	}
-	u := "http://" + host + ":" + port + "/"
+	scheme := "http://"
+	if https {
+		scheme = "https://"
+	}
+	u := scheme + host + ":" + port + "/"
 	if token != "" {
 		u += "?token=" + url.QueryEscape(token)
 	}

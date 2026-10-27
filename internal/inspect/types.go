@@ -752,6 +752,9 @@ type EventPage struct {
 	Next    uint64     `json:"next"`     // pass as since= to continue
 	LastSeq uint64     `json:"last_seq"` // newest event known
 	More    bool       `json:"more"`
+	// From is set when the scan budget ran out: the byte offset to resume at,
+	// passed back as from= with since=, so a run of unreadable lines is crossed.
+	From int64 `json:"from,omitempty"`
 }
 
 // EventQuery filters /api/events.
@@ -761,6 +764,7 @@ type EventQuery struct {
 	Limit int
 	Agent string
 	Type  string
+	From  int64 // resume scanning at this byte offset (a previous page's From)
 }
 
 // Digest is a session's one-line summary for the session list.

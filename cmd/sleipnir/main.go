@@ -48,8 +48,11 @@ func main() {
 	// runs) and they are moved like the rest, whatever their names.
 	harden.Process(harden.MoveKeys(append([]string{"HF_TOKEN"}, sched.ReceiveKeys()...)...))
 	// Keys the person stored with `sleipnir login`: held in memory beside the ones moved out of the environment.
-	if err := config.LoadStoredKeys(userHome()); err != nil {
-		fmt.Fprintln(os.Stderr, "sleipnir:", err)
+	// A parent that passed this process no keys (sched.DenyKeys) means none: the stored ones are not loaded either.
+	if !sched.StoredKeysDenied() {
+		if err := config.LoadStoredKeys(userHome()); err != nil {
+			fmt.Fprintln(os.Stderr, "sleipnir:", err)
+		}
 	}
 	cmd, args := defaultToChat(os.Args[1:], term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())))
 	if cmd == "" {

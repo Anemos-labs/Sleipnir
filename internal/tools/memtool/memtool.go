@@ -23,7 +23,10 @@ package memtool
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -292,12 +295,66 @@ func (t *Tool) write(was, notes []string, msg, change string) (*tools.Result, er
 
 // ReadNotes returns the notes of the file at path: its lines that start with "- ". A missing file holds none.
 func ReadNotes(path string) ([]string, error) {
-	b, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
+	_, notes, err := LoadNotes(path)
+	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
+	return notes, err
+}
+
+// MaxFileBytes bounds what is read of a notes file. The tool writes at most MaxBytes; a file longer than this was not written as
+// notes, and reading it all (a link to an endless device, say) would only cost memory.
+const MaxFileBytes = 1 << 20
+
+// LoadNotes reads the notes file at path: its bytes and its notes. A missing file holds none; anything but a regular file of at
+// most MaxFileBytes is an error (fs.ErrNotExist for a missing one).
+func LoadNotes(path string) ([]byte, []string, error) {
+	return loadNotes(func() (*os.File, os.FileInfo, error) {
+		fi, err := os.Stat(path)
+		if err != nil || !fi.Mode().IsRegular() {
+			return nil, fi, err
+		}
+		f, err := os.Open(path)
+		return f, fi, err
+	})
+}
+
+// LoadNotesIn is LoadNotes for rel inside the directory root: rel is resolved within root, so no link in it leads outside.
+func LoadNotesIn(root, rel string) ([]byte, []string, error) {
+	r, err := os.OpenRoot(root)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	defer r.Close()
+	return loadNotes(func() (*os.File, os.FileInfo, error) {
+		fi, err := r.Stat(rel)
+		if err != nil || !fi.Mode().IsRegular() {
+			return nil, fi, err
+		}
+		f, err := r.Open(rel)
+		return f, fi, err
+	})
+}
+
+// loadNotes reads what open opens (nil when the stat it made shows no regular file), bounded.
+func loadNotes(open func() (*os.File, os.FileInfo, error)) ([]byte, []string, error) {
+	f, fi, err := open()
+	if err != nil {
+		return nil, nil, err
+	}
+	if f == nil {
+		return nil, nil, fmt.Errorf("the notes file is not a regular file (%v)", fi.Mode().Type())
+	}
+	defer f.Close()
+	if st, err := f.Stat(); err != nil || !st.Mode().IsRegular() {
+		return nil, nil, errors.New("the notes file is not a regular file")
+	}
+	b, err := io.ReadAll(io.LimitReader(f, MaxFileBytes+1))
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(b) > MaxFileBytes {
+		return nil, nil, fmt.Errorf("the notes file is larger than %d bytes", MaxFileBytes)
 	}
 	var notes []string
 	for _, l := range strings.Split(string(b), "\n") {
@@ -305,7 +362,7 @@ func ReadNotes(path string) ([]string, error) {
 			notes = append(notes, strings.TrimSpace(n))
 		}
 	}
-	return notes, nil
+	return b, notes, nil
 }
 
 // CheckNotes returns notes as the tool would keep them, for an editor that replaces the whole list: each note made one line of

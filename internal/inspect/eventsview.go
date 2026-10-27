@@ -48,10 +48,13 @@ func (s *Session) Events(q EventQuery) (EventPage, error) {
 	if i >= 0 {
 		off = idx[i].off
 	}
+	if !q.Tail && q.From > off {
+		off = q.From // a previous page stopped scanning here
+	}
 	if off >= consumed {
 		return page, nil
 	}
-	f, err := openRegular(path)
+	f, err := s.openLog()
 	if err != nil {
 		return page, err
 	}
@@ -83,7 +86,7 @@ func (s *Session) Events(q EventQuery) (EventPage, error) {
 			break
 		}
 		if scanned > maxScanBytes {
-			page.More = true
+			page.More, page.From = true, lr.off
 			break
 		}
 	}

@@ -43,9 +43,10 @@ for t in tmux script go git; do command -v "$t" >/dev/null || { echo "record-rea
 
 BIN=$(pwd)/bin/sleipnir
 go build -o "$BIN" ./cmd/sleipnir
-tmp=/tmp/rec # a short, tidy path: it shows in the picture
-rm -rf "$tmp"
-mkdir -p "$tmp"
+# A short, tidy path (it shows in the picture), created fresh and private: a fixed
+# name in the shared /tmp could be planted by another user before the key is
+# written beneath it.
+tmp=$(mktemp -d /tmp/rec.XXXXXX)
 trap 'tmux kill-session -t sleipnir-rec 2>/dev/null || true; sleep 1; rm -rf "$tmp" 2>/dev/null || true' EXIT
 home=$tmp/home proj=$tmp/slug
 mkdir -p "$home/.sleipnir" "$proj"

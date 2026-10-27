@@ -36,6 +36,10 @@ type Options struct {
 	// uses the relative directory as both).
 	ID   string
 	Name string
+
+	// base is the inspection root a registry found dir under: reads are confined
+	// to it, so a directory swapped for a symlink after the scan leads nowhere.
+	base string
 }
 
 // fill supplies default inspection retention limits, prices, clock, and live-session window for
@@ -74,6 +78,7 @@ type Session struct {
 	opts  Options
 	dir   string
 	path  string
+	fsys  confinedDir // dir, for every read: see confinedDir
 	blobs *blobStore
 
 	tailMu sync.Mutex // serialises Tail and reset
@@ -96,22 +101,25 @@ type Session struct {
 	rev uint64
 
 	// Model state, rebuilt from scratch by reset.
-	meta     metaState
-	agents   map[string]*agent
-	order    []string
-	reqs     []*req
-	byID     map[string]*req
-	dropped  int
-	tot      Totals
-	cache    cacheAgg
-	costAgg  costAgg
-	comp     compAgg
-	anoms    []*anomaly
-	anomTot  AnomalyTotals
-	checked  int
-	swarm    swarmState
-	board    *boardTracker
-	rl       rlState
+	meta    metaState
+	agents  map[string]*agent
+	order   []string
+	reqs    []*req
+	byID    map[string]*req
+	dropped int
+	tot     Totals
+	cache   cacheAgg
+	costAgg costAgg
+	comp    compAgg
+	anoms   []*anomaly
+	anomTot AnomalyTotals
+	checked int
+	swarm   swarmState
+	board   *boardTracker
+	rl      rlState
+	// priceMu guards prices: priceFor memoises into it from views that hold only the
+	// read lock. Taken after the session lock, never before it.
+	priceMu  sync.Mutex
 	prices   map[string]*priceInfo
 	blobSize map[string]int64
 
@@ -152,16 +160,20 @@ func New(dir string, opts Options) (*Session, error) {
 	} else {
 		dir = filepath.Dir(dir)
 	}
-	f, err := openRegular(path)
+	fsys := confine(opts.base, dir)
+	f, err := fsys.open(filepath.Base(path))
 	if err != nil {
 		return nil, fmt.Errorf("inspect: cannot read %s: %w", filepath.Base(path), err)
 	}
 	f.Close()
-	s := &Session{opts: opts, dir: dir, path: path}
-	s.blobs = openBlobs(filepath.Join(dir, "blobs"))
+	s := &Session{opts: opts, dir: dir, path: path, fsys: fsys}
+	s.blobs = &blobStore{dir: fsys.sub("blobs")}
 	s.reset()
 	return s, nil
 }
+
+// openLog opens the event log for reading (see confinedDir).
+func (s *Session) openLog() (*os.File, error) { return s.fsys.open(filepath.Base(s.path)) }
 
 // Load reads the whole log once and returns the model. Call Tail to follow the
 // file while the session is still writing.
@@ -179,7 +191,7 @@ func LoadContext(ctx context.Context, dir string, opts Options, progress func(re
 	if err != nil {
 		return nil, err
 	}
-	fi, err := os.Stat(s.path)
+	fi, err := s.fsys.stat(filepath.Base(s.path))
 	if err != nil {
 		return nil, err
 	}
@@ -339,7 +351,7 @@ func (s *Session) tail(ctx context.Context, progress func(read, total int64)) (i
 	s.tailMu.Lock()
 	defer s.tailMu.Unlock()
 
-	f, err := openRegular(s.path)
+	f, err := s.openLog()
 	if err != nil {
 		return 0, err
 	}

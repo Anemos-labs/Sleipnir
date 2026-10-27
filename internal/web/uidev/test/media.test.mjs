@@ -67,3 +67,12 @@ test('CSV: quoted fields, doubled quotes, CRLF; TSV by tab; a table is escaped',
   assert.deepEqual(JSON.parse(JSON.stringify(M.parseCsv('a\tb\n1\t2\n', '\t'))), [['a', 'b'], ['1', '2']]);
   assert.match(M.tableHtml('h\n<b>x</b>\n', ','), /<td>&lt;b&gt;x&lt;\/b&gt;<\/td>/);
 });
+
+test('Markdown of many unclosed link openers renders in linear time', () => {
+  for (const t of ['[a'.repeat(30000), '[x]('.repeat(30000), '**a '.repeat(30000)]) {
+    const t0 = Date.now();
+    md(t);
+    assert.ok(Date.now() - t0 < 1000, 'took ' + (Date.now() - t0) + ' ms on ' + t.slice(0, 8));
+  }
+  assert.match(md('[a](b.md) and [c](https://e.com/y)'), /data-file="docs\/b\.md".*href="https:\/\/e\.com\/y"/);
+});

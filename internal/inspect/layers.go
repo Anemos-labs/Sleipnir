@@ -230,24 +230,56 @@ func fillText(rep *LayerReport, b *blobStore, j textJob) {
 	}
 }
 
+// maxSystemRefs bounds how many system-prompt references one preview examines.
+const maxSystemRefs = 1024
+
 // fillG0 shows the system prompt and the tool names, and diffs either if it changed.
 func fillG0(rep *LayerReport, b *blobStore, j textJob) {
 	li := &rep.Layers[0]
 	var sb strings.Builder
 	var bytes int64
-	for _, h := range j.system {
-		data, total, ok := b.read(h, layerTextMax)
-		if !ok {
+	// Each distinct blob is opened once, and once the preview is full the rest
+	// are only sized: a manifest that repeats one reference cannot multiply reads
+	// or the text built here.
+	type part struct {
+		text  string
+		total int64
+		ok    bool
+	}
+	seen := map[string]part{}
+	for i, h := range j.system {
+		if i >= maxSystemRefs {
+			li.TextCut = true
+			break
+		}
+		pt, known := seen[h]
+		if !known {
+			if sb.Len() < layerTextMax {
+				data, total, ok := b.read(h, layerTextMax)
+				pt = part{total: total, ok: ok}
+				var blk struct{ Text string }
+				switch {
+				case !ok:
+				case json.Unmarshal(data, &blk) == nil && blk.Text != "":
+					pt.text = blk.Text
+				default:
+					pt.text = string(data)
+				}
+			} else {
+				pt.total, pt.ok = b.size(h)
+			}
+			seen[h] = pt
+		}
+		if !pt.ok {
 			continue
 		}
-		bytes += total
-		var blk struct{ Text string }
-		if json.Unmarshal(data, &blk) == nil && blk.Text != "" {
-			sb.WriteString(blk.Text)
+		bytes += pt.total
+		if room := layerTextMax - sb.Len(); room > 0 {
+			sb.WriteString(pt.text[:min(len(pt.text), room)])
+			sb.WriteString("\n")
 		} else {
-			sb.Write(data)
+			li.TextCut = true
 		}
-		sb.WriteString("\n")
 	}
 	if j.tools != "" {
 		data, total, ok := b.read(j.tools, diffReadMax)

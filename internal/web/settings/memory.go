@@ -91,7 +91,8 @@ func (s *service) handleMemoryNotes(w http.ResponseWriter, r *http.Request) {
 	}
 	unlock := config.WriteLock(p)
 	defer unlock()
-	v, ok := fileVersion(os.ReadFile(p))
+	raw, _, rerr := memtool.LoadNotes(p)
+	v, ok := fileVersion(raw, rerr)
 	if !ok {
 		reply(w, nil, fail(http.StatusInternalServerError, "internal", "the notes file cannot be read"))
 		return
@@ -221,8 +222,7 @@ func (s *service) memoryView(tc *tabCtx) wire.MemoryView {
 	v := wire.MemoryView{Root: s.display(tc.root), Trusted: tc.trusted, Files: []wire.MemoryFile{}}
 
 	np := notesPath(home)
-	raw, rerr := os.ReadFile(np)
-	notes, _ := memtool.ReadNotes(np)
+	raw, notes, rerr := memtool.LoadNotes(np)
 	v.Notes = wire.MemoryNotes{Path: s.display(np), Notes: []string{}, On: on(plugin.MemoryTool), Max: memtool.MaxNotes, MaxLen: memtool.MaxNoteRunes}
 	v.Notes.Version, _ = fileVersion(raw, rerr)
 	for _, n := range notes {
@@ -230,9 +230,7 @@ func (s *service) memoryView(tc *tabCtx) wire.MemoryView {
 	}
 
 	if tc.root != "" {
-		pp := filepath.Join(tc.root, filepath.FromSlash(memory.ProjectNotes))
-		raw, rerr := os.ReadFile(pp)
-		notes, _ := memtool.ReadNotes(pp)
+		raw, notes, rerr := memtool.LoadNotesIn(tc.root, filepath.FromSlash(memory.ProjectNotes))
 		pn := &wire.MemoryNotes{Path: filepath.ToSlash(memory.ProjectNotes), Notes: []string{}, On: on(plugin.MemoryTool), Max: memtool.MaxNotes, MaxLen: memtool.MaxNoteRunes}
 		pn.Version, _ = fileVersion(raw, rerr)
 		for _, n := range notes {

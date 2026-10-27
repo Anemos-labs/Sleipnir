@@ -8,7 +8,7 @@ const MAX_ROWS = 1500;
 
 export function create() {
   const el = h('div', { class: 'stack-v' });
-  const st = { rows: [], last: 0, agent: '', type: '', text: '', follow: true, open: new Set(), busy: false, key: '' };
+  const st = { rows: [], last: 0, from: 0, agent: '', type: '', text: '', follow: true, open: new Set(), busy: false, key: '' };
   const agentSel = h('select', { 'aria-label': 'Agent', on: { change: e => { st.agent = e.target.value; reset(); } } });
   const typeSel = h('select', { 'aria-label': 'Event type', on: { change: e => { st.type = e.target.value; reset(); } } });
   const search = h('input', { type: 'search', placeholder: 'filter text…', 'aria-label': 'Filter text', on: { input: e => { st.text = e.target.value.toLowerCase(); render(); } } });
@@ -22,7 +22,7 @@ export function create() {
       list)));
   let sync = '';
 
-  function reset() { st.rows = []; st.last = 0; st.open.clear(); update(); }
+  function reset() { st.rows = []; st.last = 0; st.from = 0; st.open.clear(); update(); }
 
   async function update() {
     if (st.busy) return;
@@ -39,13 +39,19 @@ export function create() {
       }
       const params = { limit: 500, agent: st.agent, type: st.type };
       if (st.last) params.since = st.last;
+      if (st.last && st.from) params.from = st.from;
       const page = await api('events', params);
       if (page.events.length) {
         st.rows.push(...page.events);
         if (st.rows.length > MAX_ROWS) st.rows.splice(0, st.rows.length - MAX_ROWS);
       }
+      const before = [st.last, st.from];
       st.last = Math.max(st.last, page.next || 0);
-      if (page.more) { st.busy = false; return update(); }
+      st.from = page.from || 0;
+      // Follow on only when the page moved forward: a page that neither advanced the
+      // cursor nor skipped bytes would be fetched again forever.
+      const moved = st.last > before[0] || st.from > before[1];
+      if (page.more && moved) { st.busy = false; return update(); }
       render();
     } catch { /* the next poll retries */ } finally { st.busy = false; }
   }

@@ -683,11 +683,13 @@ sessions to browse, such as the output of `sleipnir rl rollout`. While the sessi
 is still writing, the page follows the log live.
 
 The server answers GET only, binds to loopback by default, and loads nothing from
-the network.
+the network. To reach it from another machine, use an SSH tunnel to the loopback
+address, or serve HTTPS on another address with --token and --tls-cert/--tls-key:
+the token and the session data never cross the network in plain HTTP.
 
 flags:
   -addr string
-        listen address; anything but a loopback address requires --token (default "127.0.0.1:8787")
+        listen address; anything but a loopback address requires --token and --tls-cert (default "127.0.0.1:8787")
   -interval duration
         how often live logs are polled (default 1s)
   -json
@@ -696,6 +698,10 @@ flags:
         open the dashboard in the default browser
   -session string
         with --json on a directory of sessions: the session to summarise (its id from the list)
+  -tls-cert string
+        serve HTTPS with this PEM certificate (with --tls-key); required for a non-loopback --addr
+  -tls-key string
+        the PEM private key for --tls-cert
   -token string
         access token (also read from $SLEIPNIR_INSPECT_TOKEN, which keeps it out of process listings); required for a non-loopback --addr
 ```

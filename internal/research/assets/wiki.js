@@ -107,19 +107,21 @@
       i = best + len;
     }
   }
+  // Search destinations are pages of this wiki: a relative link to a page, optionally with an anchor, never a scheme.
+  function safeURL(u) { return /^[a-z0-9][a-z0-9-]*\.html(#[^\s"<>]*)?$/.test(u) ? u : null; }
   function render() {
     var words = fold(input.value).split(/\s+/).filter(Boolean);
     list.textContent = '';
     results = [];
     if (!words.length) { list.appendChild(el('li', 'empty', 'Search pages, sections, sources and findings.')); return; }
-    W.entries.forEach(function (e) { var s = score(e, words); if (s) results.push({ e: e, s: s }); });
+    W.entries.forEach(function (e) { var s = safeURL(e.u) && score(e, words); if (s) results.push({ e: e, s: s }); });
     results.sort(function (a, b) { return b.s - a.s || a.e.t.localeCompare(b.e.t); });
     results = results.slice(0, 40);
     if (!results.length) { list.appendChild(el('li', 'empty', 'Nothing matches “' + input.value + '”.')); return; }
     sel = 0;
     results.forEach(function (r, i) {
       var li = el('li'), a = el('a');
-      a.href = r.e.u;
+      a.href = safeURL(r.e.u);
       a.appendChild(el('span', 'k', r.e.k));
       var t = el('span', 't'); mark(t, r.e.t, words); a.appendChild(t);
       var x = el('span', 'x'); mark(x, excerpt(r.e, words), words); a.appendChild(x);
