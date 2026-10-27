@@ -77,6 +77,14 @@ func (r *Run) msgHashesLocked(id string) ([]core.Hash, error) {
 			base = h
 			break
 		}
+		if err, ok := r.msgErr[cur]; ok {
+			// An ancestor that failed fails its descendants, without walking its chain again.
+			failure = err
+			if mm, ok := err.(*Mismatch); ok && mm.Req != id {
+				failure = &Mismatch{Req: id, Kind: mm.Kind, Detail: fmt.Sprintf("base request %q: %s", mm.Req, mm.Detail)}
+			}
+			break
+		}
 		q, ok := r.reqs[cur]
 		if !ok {
 			failure = &Mismatch{Req: id, Kind: KindBase, Detail: fmt.Sprintf("base request %q is not in the log", cur)}
@@ -102,21 +110,25 @@ func (r *Run) msgHashesLocked(id string) ([]core.Hash, error) {
 		if n := q.man.Keep + len(q.man.Add); n > maxMemoRefs-r.memoRefs {
 			// Every request keeps its own full list, so a log whose requests each add one message holds the square of its
 			// length: past the budget the log is refused rather than the memory taken.
-			return nil, &Mismatch{Req: q.id, Kind: KindBase, Detail: fmt.Sprintf("the message lists of the log's requests hold more than %d references in all", maxMemoRefs)}
+			return nil, r.failChain(chain[:i+1], &Mismatch{Req: q.id, Kind: KindBase, Detail: fmt.Sprintf("the message lists of the log's requests hold more than %d references in all", maxMemoRefs)})
 		}
 		msgs, err := q.man.Messages(base)
 		if err != nil {
-			mm := &Mismatch{Req: q.id, Kind: KindBase, Detail: err.Error()}
-			for _, c := range chain[:i+1] {
-				r.msgErr[c.id] = mm
-			}
-			return nil, mm
+			return nil, r.failChain(chain[:i+1], &Mismatch{Req: q.id, Kind: KindBase, Detail: err.Error()})
 		}
 		r.msgMemo[q.id] = msgs
 		r.memoRefs += len(msgs)
 		base = msgs
 	}
 	return base, nil
+}
+
+// failChain records mm as the answer for the requests of chain (a request and the descendants waiting on it), and returns it.
+func (r *Run) failChain(chain []*reqInfo, mm *Mismatch) *Mismatch {
+	for _, c := range chain {
+		r.msgErr[c.id] = mm
+	}
+	return mm
 }
 
 // Prompt returns the exact model-visible prompt of a model.request (model, tools,

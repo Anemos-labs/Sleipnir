@@ -541,7 +541,11 @@ func TestArgumentsAreNotPutIntoANonPOSIXShell(t *testing.T) {
 	if _, err := r.Expand(context.Background(), "none", ""); err != nil {
 		t.Errorf("none: %v", err)
 	}
-	if len(ran) != 1 || ran[0] != "echo hi" {
+	// Empty arguments insert nothing, so there is nothing to quote.
+	if _, err := r.Expand(context.Background(), "args", "  "); err != nil {
+		t.Errorf("args without words: %v", err)
+	}
+	if len(ran) != 2 || ran[0] != "echo hi" || ran[1] != "echo" {
 		t.Errorf("ran %q", ran)
 	}
 }

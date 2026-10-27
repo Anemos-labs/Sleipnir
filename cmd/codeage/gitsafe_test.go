@@ -28,7 +28,7 @@ func TestHistoryReadsDoNotRunTheRepositorysPrograms(t *testing.T) {
 		t.Fatal(err)
 	}
 	run("add", "f")
-	run("commit", "-qm", "c")
+	run("-c", "commit.gpgSign=false", "commit", "-qm", "c")
 	// A commit that carries a signature, so that showing it would verify it with gpg.program.
 	tree, err := exec.Command("git", "-C", repo, "rev-parse", "HEAD^{tree}").Output()
 	if err != nil {
@@ -50,8 +50,12 @@ func TestHistoryReadsDoNotRunTheRepositorysPrograms(t *testing.T) {
 	run("config", "log.showSignature", "true")
 	run("config", "gpg.program", prog)
 	run("config", "core.fsmonitor", prog)
-	if _, err := git(context.Background(), repo, "log", "-1", "--format=%H %G?"); err != nil && !strings.Contains(err.Error(), "exit") {
+	out, err := git(context.Background(), repo, "log", "-1", "--format=%H %s")
+	if err != nil {
 		t.Fatal(err)
+	}
+	if want := strings.TrimSpace(string(sha)) + " signed"; strings.TrimSpace(string(out)) != want {
+		t.Fatalf("log = %q, want %q", out, want)
 	}
 	if _, err := os.Stat(marker); err == nil {
 		t.Fatal("reading the history ran the repository's program")

@@ -42,3 +42,27 @@ func TestAProjectTeamIsNotReachedThroughALink(t *testing.T) {
 		t.Error("a team was saved outside the project")
 	}
 }
+
+// A project team file that is itself a link out of the project is neither listed nor found by name.
+func TestALinkedProjectTeamFileIsNotLoaded(t *testing.T) {
+	project, home := world(t)
+	victim := filepath.Join(t.TempDir(), "victim.json")
+	if err := os.WriteFile(victim, []byte(`{"slots":["backend"]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	teams := filepath.Join(project, ".sleipnir", "teams")
+	if err := os.MkdirAll(teams, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victim, filepath.Join(teams, "victim.json")); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range List(project, home) {
+		if e.Name == "victim" {
+			t.Errorf("listed %+v", e)
+		}
+	}
+	if p, err := Find("victim", project, home); err == nil {
+		t.Errorf("found %s", p)
+	}
+}

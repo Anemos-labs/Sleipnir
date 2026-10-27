@@ -153,8 +153,11 @@ func dnsName(h string) bool {
 // judged, and the client sends that name as it is.
 func ASCIIName(name string) (string, bool) {
 	name = strings.ToLower(name)
-	if name == "" || isASCII(name) {
-		return name, name != ""
+	if name == "" {
+		return name, false
+	}
+	if isASCII(name) {
+		return name, asciiLengths(name)
 	}
 	// The encoder's work grows with the square of a label's length, and a redirect's
 	// Location is the URL's to choose: a name or label longer than DNS allows (a label
@@ -166,6 +169,9 @@ func ASCIIName(name string) (string, bool) {
 	labels := strings.Split(folded, ".")
 	for i, l := range labels {
 		if isASCII(l) {
+			if len(l) > maxLabelLen {
+				return name, false
+			}
 			continue
 		}
 		if utf8.RuneCountInString(l) > maxLabelLen {
@@ -187,6 +193,20 @@ func ASCIIName(name string) (string, bool) {
 		return name, false
 	}
 	return out, true
+}
+
+// asciiLengths reports whether an ASCII name and each of its labels are within the
+// RFC 1035 lengths.
+func asciiLengths(name string) bool {
+	if len(name) > maxNameLen {
+		return false
+	}
+	for _, l := range strings.Split(name, ".") {
+		if len(l) > maxLabelLen {
+			return false
+		}
+	}
+	return true
 }
 
 // foldWidth maps the full-width forms of ASCII characters to ASCII and the ideographic

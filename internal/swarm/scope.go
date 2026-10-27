@@ -155,8 +155,9 @@ func segments(p string) (segs []string, abs bool) {
 
 // matchSegs matches path segments against pattern segments ("**" spans zero or
 // more segments; other segments use path.Match, so "*" and "?" stay within one).
-// Each pair of positions is decided once, so separated globstars over a path that
-// does not match cost the product of the two lengths, not a combinatorial search.
+// Each pair of positions is decided once, from at most two others, so separated
+// globstars over a path that does not match cost the product of the two lengths,
+// not a combinatorial search.
 func matchSegs(p, s []string) bool {
 	memo := make([]int8, (len(p)+1)*(len(s)+1)) // 0 unknown, 1 match, 2 no match
 	var at func(i, j int) bool
@@ -179,18 +180,8 @@ func matchSegs(p, s []string) bool {
 func matchFrom(p, s []string, i, j int, at func(i, j int) bool) bool {
 	for i < len(p) {
 		if p[i] == "**" {
-			for i < len(p) && p[i] == "**" {
-				i++
-			}
-			if i == len(p) {
-				return true
-			}
-			for k := j; k <= len(s); k++ {
-				if at(i, k) {
-					return true
-				}
-			}
-			return false
+			// Either the globstar spans no more segments, or it takes one more: two transitions per position.
+			return at(i+1, j) || j < len(s) && at(i, j+1)
 		}
 		if j == len(s) {
 			return false

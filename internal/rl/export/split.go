@@ -63,9 +63,9 @@ func (x *exporter) splitOf(ep *rl.Episode) string {
 	if len(x.splits) == 0 {
 		return ""
 	}
-	key, ok := x.splitKey[ep]
-	if !ok {
-		key = splitKeyOf(ep)
+	key := splitKeyOf(ep)
+	if id, ok := x.ident[ep]; ok {
+		key = id.split
 	}
 	h := sha256.Sum256([]byte(fmt.Sprintf("%d\x00%s", x.o.Seed, key)))
 	u := float64(binary.BigEndian.Uint64(h[:8])>>11) / float64(1<<53)

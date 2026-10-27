@@ -194,13 +194,15 @@ func Find(v, dir, home string) (string, error) {
 	}
 	project, user := Dirs(dir, home)
 	var dirs []string
-	for _, d := range []string{project, user} {
-		if d != "" {
-			dirs = append(dirs, d)
+	for _, sd := range []struct{ scope, dir string }{{ScopeProject, project}, {ScopeUser, user}} {
+		if sd.dir == "" {
+			continue
 		}
-	}
-	for _, d := range dirs {
-		p := filepath.Join(d, v+".json")
+		dirs = append(dirs, sd.dir)
+		p := filepath.Join(sd.dir, v+".json")
+		if inProject(sd.scope, sd.dir, p) != nil {
+			continue // a project's team is its own file, not one a link points to
+		}
 		if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() {
 			return p, nil
 		}
@@ -260,6 +262,9 @@ func List(dir, home string) []Entry {
 				continue
 			}
 			en := Entry{Name: name, Scope: sd.scope, Path: filepath.Join(sd.dir, e.Name()), Shadowed: seen[name]}
+			if inProject(sd.scope, sd.dir, en.Path) != nil {
+				continue
+			}
 			seen[name] = true
 			if f, err := Load(en.Path); err != nil {
 				en.Err = strings.TrimPrefix(err.Error(), en.Path+": ")

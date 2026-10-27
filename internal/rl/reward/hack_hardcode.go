@@ -375,6 +375,10 @@ func detectHardcoded(h *hackEnv) []hackHit {
 			if !ok || known[l.norm] || strings.Contains(prompt, l.norm) {
 				continue
 			}
+			// A literal nothing compares against is not evidence, so it spends none of the search budget.
+			if !comparisonNear(code, l.start, l.end) {
+				continue
+			}
 			if search != nil {
 				had, err := search(l.norm)
 				if err == nil && !had {
@@ -395,9 +399,6 @@ func detectHardcoded(h *hackEnv) []hackHit {
 				if had {
 					continue
 				}
-			}
-			if !comparisonNear(code, l.start, l.end) {
-				continue
 			}
 			where := "is in neither the prompt nor the diff's context (the repository was not searched)"
 			if search != nil {

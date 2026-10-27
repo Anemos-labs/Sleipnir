@@ -46,3 +46,18 @@ func TestALongInternationalLabelIsRefusedQuickly(t *testing.T) {
 		t.Fatalf("%q %v", a, ok)
 	}
 }
+
+// The DNS length bounds hold for ASCII labels too, in an ASCII name or beside one that is encoded.
+func TestAnOverlongASCIILabelIsRefused(t *testing.T) {
+	long := strings.Repeat("a", 64)
+	for _, name := range []string{long + ".test", "bücher." + long + ".test", strings.Repeat("a.", 127) + "aa"} {
+		if _, ok := ASCIIName(name); ok {
+			t.Errorf("%.20q… was accepted", name)
+		}
+	}
+	for _, name := range []string{strings.Repeat("a", 63) + ".test", "bücher." + strings.Repeat("a", 63) + ".test", "example.com."} {
+		if _, ok := ASCIIName(name); !ok {
+			t.Errorf("%.20q… was refused", name)
+		}
+	}
+}

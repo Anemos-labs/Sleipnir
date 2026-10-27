@@ -269,7 +269,8 @@ func (ex *expansion) run(cmd string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("its shell command %v", err)
 	}
-	if used && ex.r.opts.ExecPOSIX != nil && !ex.r.opts.ExecPOSIX() {
+	// Without argument words nothing was inserted, so there is nothing to quote.
+	if used && len(mdfile.SplitArgs(ex.args)) > 0 && ex.r.opts.ExecPOSIX != nil && !ex.r.opts.ExecPOSIX() {
 		return "", errors.New("it puts arguments into a shell command, and arguments can be quoted safely only for a POSIX shell (sh, bash); this session's shell is not one")
 	}
 	cmd = strings.TrimSpace(cmd) // a missing argument leaves no trailing space behind

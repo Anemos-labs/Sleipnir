@@ -30,3 +30,33 @@ func TestMessageListsOfALogAreBounded(t *testing.T) {
 		t.Fatalf("%d references held", r.memoRefs)
 	}
 }
+
+// Past the budget the refusal is remembered for the request and each descendant, so resolving them one by one does not walk
+// the uncached chain again.
+func TestARefusedChainIsRemembered(t *testing.T) {
+	defer func(n int) { maxMemoRefs = n }(maxMemoRefs)
+	maxMemoRefs = 1000
+	r := newRun(nil, nil)
+	prev := ""
+	for i := 0; i < 100; i++ {
+		id := fmt.Sprintf("r%d", i)
+		r.reqs[id] = &reqInfo{id: id, man: core.Manifest{Base: prev, Keep: i, Add: []core.Hash{core.HashBytes([]byte(id))}}}
+		prev = id
+	}
+	if _, err := r.msgHashes("r99"); err == nil {
+		t.Fatal("a long chain resolved")
+	}
+	for i := 0; i < 100; i++ {
+		id := fmt.Sprintf("r%d", i)
+		_, memo := r.msgMemo[id]
+		_, failed := r.msgErr[id]
+		if !memo && !failed {
+			t.Fatalf("%s is neither resolved nor refused", id)
+		}
+	}
+	// A descendant past the refusal fails from the cache: its walk stops at the first refused ancestor.
+	r.reqs["r100"] = &reqInfo{id: "r100", man: core.Manifest{Base: "r99", Keep: 100, Add: []core.Hash{core.HashBytes([]byte("r100"))}}}
+	if _, err := r.msgHashes("r100"); err == nil || !strings.Contains(err.Error(), "references in all") {
+		t.Fatalf("a descendant: %v", err)
+	}
+}
