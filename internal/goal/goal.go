@@ -76,10 +76,10 @@ type Verdict struct {
 // ParseVerdict reads a judge's answer: JSON, possibly with words around it or in a fence. An answer that cannot be read is "continue" with no
 // reason (the judge failing must not end work that is not done); ok says whether it was read.
 func ParseVerdict(text string) (v Verdict, ok bool) {
-	for _, o := range Objects(text) {
+	EachObject(text, func(o json.RawMessage) bool {
 		var c Verdict
 		if json.Unmarshal(o, &c) != nil {
-			continue
+			return true
 		}
 		switch c.Kind = strings.ToLower(strings.TrimSpace(c.Kind)); c.Kind {
 		case Done, Continue, Blocked:
@@ -97,20 +97,48 @@ func ParseVerdict(text string) (v Verdict, ok bool) {
 				c.Milestones[k].ID = oneLine(c.Milestones[k].ID, 8)
 				c.Milestones[k].Evidence = oneLine(c.Milestones[k].Evidence, 300)
 			}
-			return c, true
+			v, ok = c, true
+			return false
 		}
+		return true
+	})
+	if !ok {
+		return Verdict{Kind: Continue}, false
 	}
-	return Verdict{Kind: Continue}, false
+	return v, true
 }
 
 // Objects are the JSON objects in a judge's answer, in order: each "{" that starts one, so that braces in the words around it
-// ("{example}") or a second object do not hide it.
+// ("{example}") or a second object do not hide it. EachObject bounds the work.
 func Objects(text string) []json.RawMessage {
 	var out []json.RawMessage
-	for i := strings.IndexByte(text, '{'); i >= 0; {
+	EachObject(text, func(o json.RawMessage) bool { out = append(out, o); return true })
+	return out
+}
+
+// Bounds of EachObject: an answer is read up to maxObjectText bytes, decoding is tried at no more than maxObjectTries braces,
+// and at most maxObjects objects are handed over. Decoding at every brace of a long answer, and keeping each nested object as a
+// copy of its own, would otherwise cost the square of the answer's length.
+const (
+	maxObjectText  = 1 << 20
+	maxObjectTries = 256
+	maxObjects     = 32
+)
+
+// EachObject calls f with each JSON object of Objects in turn until f returns false.
+func EachObject(text string, f func(json.RawMessage) bool) {
+	if len(text) > maxObjectText {
+		text = text[:maxObjectText]
+	}
+	tries, found := 0, 0
+	for i := strings.IndexByte(text, '{'); i >= 0 && tries < maxObjectTries && found < maxObjects; {
+		tries++
 		var o json.RawMessage
 		if json.NewDecoder(strings.NewReader(text[i:])).Decode(&o) == nil && len(o) > 0 && o[0] == '{' {
-			out = append(out, o)
+			found++
+			if !f(o) {
+				return
+			}
 		}
 		next := strings.IndexByte(text[i+1:], '{')
 		if next < 0 {
@@ -118,7 +146,6 @@ func Objects(text string) []json.RawMessage {
 		}
 		i += next + 1
 	}
-	return out
 }
 
 // JudgeSystem is what the judge is told it is.

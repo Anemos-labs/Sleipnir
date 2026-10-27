@@ -308,6 +308,9 @@ func readPart(path string, input json.RawMessage) (key, what string) {
 // re-read the same way. The zero value is ready to use; it is not safe for concurrent use.
 type ReadCounter struct {
 	parts map[string]int
+	// live holds, by the last element of their path, the parts read since their file last changed: Changed visits only
+	// those (a file spelled two ways ends the same), never every part ever read.
+	live map[string]map[string]bool
 }
 
 // Read records one read call of path with the call's raw input. It returns the part's key, the words for an example ("/w/a.go
@@ -319,17 +322,30 @@ func (c *ReadCounter) Read(path string, input json.RawMessage) (part, what strin
 	}
 	part, what = readPart(path, input)
 	c.parts[part]++
+	if c.live == nil {
+		c.live = map[string]map[string]bool{}
+	}
+	b := baseOf(path)
+	if c.live[b] == nil {
+		c.live[b] = map[string]bool{}
+	}
+	c.live[b][part] = true
 	return part, what, c.parts[part]
 }
+
+// baseOf is the last element of a path as samePath compares it.
+func baseOf(p string) string { return path.Base(path.Clean(filepath.ToSlash(p))) }
 
 // Changed records that path was written: every part of it starts over. The same file is spelled relatively and absolutely by
 // the same model, so an absolute path matches a relative one when it ends with it; two relative paths are one file only when
 // they are equal ("a.go" and "src/a.go" are two).
 func (c *ReadCounter) Changed(path string) {
-	for part := range c.parts {
+	live := c.live[baseOf(path)]
+	for part := range live {
 		p, _, _ := strings.Cut(part, "\x00")
 		if samePath(p, path) {
 			c.parts[part] = 0
+			delete(live, part)
 		}
 	}
 }

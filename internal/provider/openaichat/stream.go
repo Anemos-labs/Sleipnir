@@ -274,6 +274,7 @@ type accumulator struct {
 	ttfb                time.Duration // when the first frame with content came, from the start of the request
 	textOpen            bool
 	leakChecked         bool // splitLeakedThinking has run or does not apply
+	leakScanned         int  // bytes of the text splitLeakedThinking has searched
 
 	promptIDs []int32
 	compIDs   []int32
@@ -356,15 +357,20 @@ func (a *accumulator) splitLeakedThinking(on func(provider.Event)) error {
 	if a.leakChecked || a.reasoning.Len() > 0 || len(a.details) > 0 {
 		return nil
 	}
+	// Only the text not searched yet is searched, with enough of the end before it for a marker split across fragments:
+	// a response of many small fragments and no marker would otherwise be searched whole after each of them.
 	s := a.text.String()
-	if strings.Contains(s, "<think>") {
+	from := max(a.leakScanned-len("</think>")+1, 0)
+	a.leakScanned = len(s)
+	if strings.Contains(s[from:], "<think>") {
 		a.leakChecked = true
 		return nil
 	}
-	i := strings.Index(s, "</think>")
+	i := strings.Index(s[from:], "</think>")
 	if i < 0 {
 		return nil
 	}
+	i += from
 	a.leakChecked = true
 	thought, answer := strings.TrimSpace(s[:i]), strings.TrimLeft(s[i+len("</think>"):], " \t\r\n")
 	if err := a.addThinking(len(thought)); err != nil {

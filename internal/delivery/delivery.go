@@ -241,6 +241,13 @@ func (c *Controller) Step(ctx context.Context) (Directive, error) {
 		return d, fmt.Errorf("cannot establish PR head repository and base branch identity")
 	}
 	if !strings.EqualFold(pr.HeadRepositoryOwner.Login+"/"+pr.HeadRepository.Name, pushRepo) || pr.BaseRefName != base {
+		// A PR retargeted after this workflow asked GitHub to merge it would merge where nothing authorized: the request
+		// is revoked before anything else.
+		if c.State.MergeEnabled && pr.State == "OPEN" {
+			if err := c.disableMerge(ctx); err != nil {
+				return d, err
+			}
+		}
 		return d, fmt.Errorf("PR does not match intended push repository %s and base branch %s; configure the checkout push remote and branch.<name>.gh-merge-base for a nondefault base, then restart delivery", pushRepo, base)
 	}
 	if c.State.PR == "" {
@@ -367,6 +374,12 @@ func (c *Controller) Step(ctx context.Context) (Directive, error) {
 			defer cancel()
 			return d, errors.Join(err, c.disableMerge(cleanup))
 		}
+		// GitHub's merge request names the head it may merge, not the base: the base is read again now that the request
+		// stands, and a PR retargeted meanwhile has it revoked (each later step checks the base again too).
+		b, err := c.Exec(ctx, "gh", "pr", "view", pr.URL, "--repo", c.State.Repo, "--json", "baseRefName", "--jq", ".baseRefName")
+		if err != nil || strings.TrimSpace(string(b)) != c.State.Base {
+			return d, errors.Join(fmt.Errorf("cannot confirm that %s still targets %s after requesting its merge; the request is revoked", pr.URL, c.State.Base), err, c.disableMerge(ctx))
+		}
 	}
 	d.Phase = "merging"
 	return c.finish(d)
@@ -485,15 +498,58 @@ func (c *Controller) Pause(ctx context.Context) error {
 	return c.Save()
 }
 
-// disableMerge revokes only an auto-merge request owned by this workflow.
+// disableMerge revokes only an auto-merge request owned by this workflow. A successful --disable-auto is not taken as proof:
+// for a PR already in a merge queue the command can succeed without touching the queue. The PR is looked at again, taken out
+// of the queue when it is in one, and the intent is cleared only once neither auto-merge nor the queue can still merge it.
 func (c *Controller) disableMerge(ctx context.Context) error {
 	if c.State.MergeEnabled {
 		if _, err := c.Exec(ctx, "gh", "pr", "merge", c.State.PR, "--disable-auto"); err != nil {
 			return err
 		}
+		pending, err := c.mergePending(ctx, true)
+		if err != nil {
+			return fmt.Errorf("cannot confirm that the merge request of %s was revoked: %w", c.State.PR, err)
+		}
+		if pending {
+			return fmt.Errorf("the merge request of %s is still pending after revoking it (auto-merge or the merge queue); disable it on GitHub", c.State.PR)
+		}
 		c.State.MergeEnabled = false
 	}
 	return c.Save()
+}
+
+// mergePending reports whether the PR can still be merged by a request already made: auto-merge on, or a place in the merge
+// queue. With dequeue it first takes the PR out of the queue when it is in one.
+func (c *Controller) mergePending(ctx context.Context, dequeue bool) (bool, error) {
+	var st struct {
+		ID               string          `json:"id"`
+		State            string          `json:"state"`
+		IsInMergeQueue   bool            `json:"isInMergeQueue"`
+		AutoMergeRequest json.RawMessage `json:"autoMergeRequest"`
+	}
+	view := func() error {
+		b, err := c.Exec(ctx, "gh", "pr", "view", c.State.PR, "--repo", c.State.Repo, "--json", "id,state,isInMergeQueue,autoMergeRequest")
+		if err != nil {
+			return err
+		}
+		return json.Unmarshal(b, &st)
+	}
+	if err := view(); err != nil {
+		return false, err
+	}
+	if st.IsInMergeQueue && dequeue && st.ID != "" {
+		if _, err := c.Exec(ctx, "gh", "api", "graphql", "-f", "query=mutation($id:ID!){dequeuePullRequest(input:{id:$id}){clientMutationId}}", "-f", "id="+st.ID); err != nil {
+			return true, err
+		}
+		if err := view(); err != nil {
+			return false, err
+		}
+	}
+	if st.State != "" && st.State != "OPEN" {
+		return false, nil // merged or closed: nothing is pending
+	}
+	auto := len(st.AutoMergeRequest) > 0 && string(st.AutoMergeRequest) != "null"
+	return auto || st.IsInMergeQueue, nil
 }
 
 // clip bounds evidence while retaining valid UTF-8.

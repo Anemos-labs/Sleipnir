@@ -33,6 +33,7 @@ func orderedMembers(raw []byte) ([]member, error) {
 		return nil, errors.New("not a JSON object")
 	}
 	var out []member
+	seen := map[string]bool{}
 	for dec.More() {
 		kt, err := dec.Token()
 		if err != nil {
@@ -46,6 +47,12 @@ func orderedMembers(raw []byte) ([]member, error) {
 		if err := dec.Decode(&v); err != nil {
 			return nil, err
 		}
+		if seen[key] {
+			// A repeated key is kept once (its first value, the one startString reads): each copy of "text" or
+			// "thinking" would otherwise carry the whole accumulated delta again when the block is rebuilt.
+			continue
+		}
+		seen[key] = true
 		out = append(out, member{key: key, val: v})
 	}
 	return out, nil

@@ -28,7 +28,7 @@ func cmdDemo(ctx context.Context, args []string) error {
 	scenario := fs.String("scenario", "", "what the team does: handbook (survey a handbook and summarise it, a second or two) | shop (build a small shop in git worktrees: mail, a cache that goes cold, a stuck agent, a cache break, a merge that is sent back; about twenty seconds; needs git and sh) (default: shop with the live cockpit on a terminal, handbook otherwise)")
 	scale := fs.Float64("scale", 1, "shop: stretch (above 1) or squeeze (below 1) the time it takes, and the lifetime of its cache with it")
 	topics := fs.Int("topics", 8, "handbook: documents to survey and summarise (an even number, 2-32)")
-	dir := fs.String("dir", "", "where to put the workspace and the recorded session (default: a temporary directory)")
+	dir := fs.String("dir", "", "where to put the workspace and the recorded session, in new subdirectories (default: a temporary directory)")
 	plain := fs.Bool("plain", false, "no cockpit, even on a terminal: print the report as text when the team is done")
 	noAnim := fs.Bool("no-anim", false, "with the cockpit: no animation, the horse stands")
 	view := fs.String("view", "cockpit", "with the cockpit: the screen to start on: cockpit, cache, mail or board (the keys o c m b change it)")

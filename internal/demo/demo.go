@@ -12,8 +12,10 @@ package demo
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -111,6 +113,9 @@ func Run(ctx context.Context, o Options) (*Report, error) {
 		}
 		dir = d
 	}
+	if err := freshDirs(dir, "handbook", "home", "session"); err != nil {
+		return nil, err
+	}
 	ws := filepath.Join(dir, "handbook")
 	if err := writeWorkspace(ws, o.Topics); err != nil {
 		return nil, err
@@ -169,6 +174,25 @@ func Run(ctx context.Context, o Options) (*Report, error) {
 	}
 	rep.print(out, res.Text)
 	return rep, nil
+}
+
+// freshDirs creates each of names in dir, none of which may exist yet. The demo trusts its workspace (its configuration, hooks
+// and MCP servers), runs git in it and keeps its approvals in its home: a tree someone else prepared under --dir could supply
+// all of that, or links that send the demo's writes elsewhere, so the demo only ever works in directories it made itself.
+func freshDirs(dir string, names ...string) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	for _, n := range names {
+		p := filepath.Join(dir, n)
+		if err := os.Mkdir(p, 0o755); err != nil {
+			if errors.Is(err, fs.ErrExist) {
+				return fmt.Errorf("demo: %s exists already: the demo builds its workspace in fresh directories; remove it or choose another --dir", p)
+			}
+			return err
+		}
+	}
+	return nil
 }
 
 // writeWorkspace creates the handbook the team works on.

@@ -92,7 +92,8 @@ func writeShop(root string) error {
 		{"add", "-A"},
 		{"commit", "-q", "-m", "the shop before the team: a catalogue, a cart and web, empty", "--no-gpg-sign"},
 	} {
-		cmd := exec.Command("git", append([]string{"-c", "user.name=Sleipnir demo", "-c", "user.email=demo@sleipnir.invalid", "-c", "init.defaultBranch=main"}, args...)...)
+		cmd := exec.Command("git", append([]string{"-c", "user.name=Sleipnir demo", "-c", "user.email=demo@sleipnir.invalid", "-c", "init.defaultBranch=main",
+			"-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"}, args...)...)
 		cmd.Dir = root
 		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null", "GIT_TERMINAL_PROMPT=0")
 		if out, err := cmd.CombinedOutput(); err != nil {

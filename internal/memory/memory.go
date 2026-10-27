@@ -129,12 +129,15 @@ type Source struct {
 	Text string
 	// Truncated reports that Text ends with a truncation note.
 	Truncated bool
+	// user records that the file was read from the user's own ~/.sleipnir (the loader's domain, not the shown path, which a
+	// project can spell too).
+	user bool
 }
 
 // FromUser reports whether the source is the user's own: ~/.sleipnir's instruction file, or a file that one imports (shown with a "~/"
 // path). Everything else came with the project.
 func (s Source) FromUser() bool {
-	return s.Scope == ScopeUser || (s.Scope == ScopeImport && strings.HasPrefix(s.Path, "~/"))
+	return s.Scope == ScopeUser || (s.Scope == ScopeImport && s.user)
 }
 
 // Opts says where to look.
@@ -212,6 +215,9 @@ func Load(opts Opts) ([]Source, error) {
 		return nil, err
 	}
 	defer ld.close()
+	if opts.NoNotes {
+		ld.excludeNotes()
+	}
 	if ld.user != nil {
 		ld.file(ld.user, "SLEIPNIR.md", ScopeUser, 0)
 		if !opts.NoNotes {
@@ -379,6 +385,21 @@ func isMissing(err error) bool {
 	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
 }
 
+// excludeNotes counts the notes files of the memory tool (the user's and the project's) as loaded already, by what they are
+// rather than by name: without the notes, an "@path" import or an instruction file linked to one does not bring it in either.
+func (ld *loader) excludeNotes() {
+	if ld.user != nil {
+		if fi, err := os.Stat(filepath.Join(ld.user.dir, "MEMORY.md")); err == nil {
+			ld.seen = append(ld.seen, fi)
+		}
+	}
+	if ld.proj != nil {
+		if fi, err := ld.proj.root.Stat(filepath.FromSlash(ProjectNotes)); err == nil {
+			ld.seen = append(ld.seen, fi)
+		}
+	}
+}
+
 // file loads one instruction file (rel is slash-separated, relative to d) and,
 // recursively, its imports.
 func (ld *loader) file(d *domain, rel, scope string, depth int) {
@@ -415,7 +436,7 @@ func (ld *loader) file(d *domain, rel, scope string, depth int) {
 	if strings.TrimSpace(text) == "" {
 		return // nothing to tell the model
 	}
-	src := Source{Path: name, Scope: scope, Text: text}
+	src := Source{Path: name, Scope: scope, Text: text, user: d.user}
 	if truncated {
 		src.Text += fileNote
 		src.Truncated = true
@@ -537,6 +558,9 @@ func unwrapPath(err error) error {
 func (ld *loader) display(d *domain, rel string) string {
 	if d.user {
 		return sanitize("~/.sleipnir/" + rel)
+	}
+	if strings.HasPrefix(rel, "~") {
+		return sanitize("./" + rel) // a project directory named "~" is not the user's home
 	}
 	return sanitize(rel)
 }

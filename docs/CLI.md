@@ -998,7 +998,7 @@ can be watched cooling. The recordings in the README are made from a session of 
 ```text
 Usage of demo:
   -dir string
-        where to put the workspace and the recorded session (default: a temporary directory)
+        where to put the workspace and the recorded session, in new subdirectories (default: a temporary directory)
   -no-anim
         with the cockpit: no animation, the horse stands
   -plain

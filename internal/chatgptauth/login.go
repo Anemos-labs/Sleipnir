@@ -34,6 +34,10 @@ type LoginIO struct {
 	Paste func() (string, error)
 	// Wait bounds the sign-in; zero is five minutes.
 	Wait time.Duration
+	// Confirm, when not nil, is shown the account the sign-in came back with before it is kept, and keeps it only when it
+	// answers true. The address the browser opens is visible to other programs of this machine (it is an argument of the
+	// opener), and one of them could answer the sign-in first with an account of its own: the person sees which account it is.
+	Confirm func(email, name string) (bool, error)
 }
 
 // OpenBrowser opens a URL with the system's own opener.
@@ -196,6 +200,15 @@ func Login(ctx context.Context, opts Options, lio LoginIO) (*Store, error) {
 	}
 	if prev.Subject != "" && prev.Subject != claims.Sub {
 		fmt.Fprintf(lio.Out, "Note: this is another ChatGPT account than the one that was signed in before (%s).\n", prev.Email)
+	}
+	if lio.Confirm != nil {
+		ok, err := lio.Confirm(claims.Email, claims.Name)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, errors.New("the account the sign-in came back with was not confirmed; nothing was kept")
+		}
 	}
 	c := connection{
 		Version: 1, HostID: prev.HostID, ClientID: issued, Subject: claims.Sub, Email: claims.Email, Name: claims.Name, SavedAt: opts.Now(),

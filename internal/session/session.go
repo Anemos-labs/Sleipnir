@@ -34,6 +34,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/delivery"
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/harden"
 	"github.com/anemos-labs/sleipnir/internal/hooks"
 	"github.com/anemos-labs/sleipnir/internal/kv"
 	"github.com/anemos-labs/sleipnir/internal/memory"
@@ -478,6 +479,11 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	}
 	if !plugs.On(plugin.Delivery) {
 		o.AutoFix, o.AutoMerge = false, false
+	}
+	// The variables the configuration names as provider keys are credentials whatever they are called: they leave the
+	// environment before any command could inherit them.
+	for _, p := range cfg.Providers {
+		harden.Register(p.APIKeyEnv)
 	}
 	s := &Session{opts: o, cfg: cfg, cfgRep: rep, trust: tinfo, plugins: plugs, asked: asked, deliveryOptions: delivery.Options{AutoFix: o.AutoFix, AutoMerge: o.AutoMerge}}
 	if o.Savepoints {

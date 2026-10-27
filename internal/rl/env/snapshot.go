@@ -768,7 +768,7 @@ func (m *Workspaces) runSetup(ctx context.Context, task rl.Task, s *snapshot, ke
 	pol := ExecPolicy{Network: true, Marker: marker, MaxOutput: m.opts.MaxOutput, Limits: m.opts.Limits, Grace: m.opts.KillGrace,
 		Mounts: &Mounts{RW: []string{s.dir}}}
 	var log bytes.Buffer
-	defer func() { _ = os.WriteFile(filepath.Join(s.dir, "setup.log"), log.Bytes(), 0o644) }()
+	defer func() { _ = writeInDir(s.dir, "setup.log", log.Bytes()) }()
 	defer sweepMarker(marker)
 	for _, cmd := range task.Setup {
 		res, err := m.sandbox.Exec(WithExecPolicy(ctx, pol), dir, env, cmd, m.opts.SetupTimeout)
@@ -888,4 +888,27 @@ func (m *Workspaces) checkSnapshot(ctx context.Context, s *snapshot) error {
 		return fmt.Errorf("%w (%s != %s)", errSnapshotTampered, hr.Tree[:12], s.meta.BaseTree[:12])
 	}
 	return nil
+}
+
+// writeInDir writes a new file name in dir that setup commands could write to: the name is removed first (a link setup left
+// there is not followed) and the file is created afresh through dir as a root, so nothing it holds can send the write
+// outside it.
+func writeInDir(dir, name string, data []byte) error {
+	r, err := os.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	if err := r.Remove(name); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	f, err := r.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
 }

@@ -27,6 +27,11 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err.Error(), "invalid_request")
 		return
 	}
+	if len(p.model) > maxModelLen {
+		// Every streamed chunk repeats the model: a long one would multiply into the whole response.
+		writeErr(w, 400, "the model id is too long", "invalid_request")
+		return
+	}
 
 	now := s.cfg.Now
 	started := now()
@@ -167,11 +172,18 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	fl, _ := w.(http.Flusher)
+	// gone is set once the client has left (a write failed, or the request ended): nothing more is encoded or written.
+	gone := false
 	send := func(v any) {
+		if gone || r.Context().Err() != nil {
+			gone = true
+			return
+		}
 		b, _ := json.Marshal(v)
-		w.Write([]byte("data: "))
-		w.Write(b)
-		w.Write([]byte("\n\n"))
+		if _, err := w.Write(append(append([]byte("data: "), b...), "\n\n"...)); err != nil {
+			gone = true
+			return
+		}
 		if fl != nil {
 			fl.Flush()
 		}
@@ -188,6 +200,9 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 	first := true
 	emit := func(d map[string]any) {
+		if gone {
+			return
+		}
 		if first {
 			d["role"] = "assistant"
 			first = false
@@ -353,3 +368,6 @@ func pause(ctx context.Context, d time.Duration) {
 
 // itoa formats an integer in base ten for mock wire output.
 func itoa(n int) string { return strconv.Itoa(n) }
+
+// maxModelLen bounds the model id of a request: real ids are short.
+const maxModelLen = 256

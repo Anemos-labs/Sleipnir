@@ -22,7 +22,7 @@ func Reach(ctx context.Context, hc *http.Client, baseURL string) *Error {
 		return nil
 	}
 	if hc == nil {
-		tr := &http.Transport{Proxy: http.ProxyFromEnvironment, OnProxyConnectResponse: CheckProxyConnect, TLSHandshakeTimeout: ReachTimeout}
+		tr := &http.Transport{Proxy: ProxyFromEnvironment, OnProxyConnectResponse: CheckProxyConnect, TLSHandshakeTimeout: ReachTimeout}
 		defer tr.CloseIdleConnections()
 		hc = &http.Client{Transport: tr}
 	}
