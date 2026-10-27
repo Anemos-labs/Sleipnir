@@ -314,7 +314,7 @@ func (s *Session) Loadout() ([]TeamSlot, map[string]string) {
 	} else if def != "" {
 		models["manager"] = def
 	}
-	for _, role := range []string{swarm.MailmanRoleName, CompactorRole, JudgeRole, EmbedderRole, RerankerRole} {
+	for _, role := range []string{swarm.MailmanRoleName, CompactorRole, JudgeRole, EmbedderRole, RerankerRole, FallbackRole} {
 		if r, ok := by[role]; ok && (strings.HasPrefix(r.From, "--role-model") || strings.HasPrefix(r.From, "models.roles") || role == swarm.MailmanRoleName) && r.Model != "" {
 			models[role] = r.Model
 		}

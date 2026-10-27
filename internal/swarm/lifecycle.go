@@ -258,6 +258,7 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 			s.review.mu.Lock()
 			s.review.landLocked("manager changes", []string{path}, 0)
 			s.review.mu.Unlock()
+			s.noteManagerEdit(path)
 		}
 	}
 	rm := s.modelFor(r.Name, m.slot)
