@@ -232,9 +232,10 @@ var argSnippets = []string{
 }
 
 // bash4Only are snippets whose expansion bash 3.2 (what macOS ships) does not do:
-// zero-padded and stepped brace sequences arrived in bash 4.0. Parse follows the
-// current bash, so these are only compared against a bash that has them.
-var bash4Only = map[string]bool{`{01..03}`: true, `{1..10..3}`: true}
+// zero-padded and stepped brace sequences arrived in bash 4.0, and bash 3.2 reads
+// $'\c?' as 0x1f rather than DEL and keeps the backslash after $'\c\\'. Parse
+// follows the current bash, so these are only compared against a bash that has them.
+var bash4Only = map[string]bool{`{01..03}`: true, `{1..10..3}`: true, `$'\c?'`: true, `$'\c\\x'`: true}
 
 // bashMajor is the major version of the bash at path, or 0 when it cannot be told.
 func bashMajor(bash string) int {
