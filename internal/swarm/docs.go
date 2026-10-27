@@ -151,7 +151,7 @@ func (s *Swarm) docsTick(now time.Time) {
 			continue
 		}
 		k.seen[t.ID] = t.Rev
-		if t.Status != StatusDone || s.isDocsTask(t) || t.Kind != TaskKindPlan && !s.implementationTask(t) {
+		if t.Status != StatusDone || s.isDocsTask(t) || t.Kind != TaskKindPlan && !s.implementationTask(t) || testsOnly(t.Files) {
 			continue
 		}
 		kind := "change"
@@ -363,4 +363,45 @@ func (s *Swarm) docsPending() bool {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	return k.open != "" || len(k.pending) > 0 && k.coded
+}
+
+// testsOnly reports whether every file a task's scope names is a test file (by the common conventions: a _test.go,
+// test_*.py, *_test.py, *.test.ts or *.spec.js name, or a path under a test, tests, __tests__, spec or testdata
+// directory). Such a change leaves no document stale, so it starts no docs pass. An empty scope, or a scope that names
+// a directory or a glob that is not a test pattern, is not tests only.
+func testsOnly(files []string) bool {
+	if len(files) == 0 {
+		return false
+	}
+	for _, f := range files {
+		if !testFile(f) {
+			return false
+		}
+	}
+	return true
+}
+
+func testFile(f string) bool {
+	f = filepath.ToSlash(strings.TrimSpace(f))
+	for _, dir := range strings.Split(path.Dir(f), "/") {
+		switch dir {
+		case "test", "tests", "__tests__", "spec", "testdata":
+			return true
+		}
+	}
+	base := path.Base(f)
+	if strings.ContainsAny(base, "*?[") || strings.HasPrefix(base, ".") || !strings.Contains(base, ".") {
+		return false
+	}
+	ext := path.Ext(base)
+	stem := strings.TrimSuffix(base, ext)
+	switch {
+	case ext == ".go" && strings.HasSuffix(stem, "_test"):
+		return true
+	case ext == ".py" && (strings.HasPrefix(stem, "test_") || strings.HasSuffix(stem, "_test")):
+		return true
+	case strings.HasSuffix(stem, ".test") || strings.HasSuffix(stem, ".spec") || strings.HasSuffix(stem, "_spec") || strings.HasSuffix(stem, "_test"):
+		return true
+	}
+	return false
 }

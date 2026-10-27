@@ -7,6 +7,16 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A task whose scope names test files alone (`*_test.go`, `test_*.py`,
+  `*.spec.ts`, a `tests/` directory) starts no docs catch-up: it leaves no
+  document stale. A docs pass over four new test files held a run's final
+  answer for the pass's whole length. Harness behavior only; no prompt
+  bytes change.
+- The manager's role pin says that a review round that finds no defect
+  (tests it would add, polish) ends the rounds: those go in the report as
+  remaining. A review that met every requirement and named three tests it
+  would add started a test-writing task, a second review and a docs pass,
+  and the run hit its limit. Same length as the sentence it replaces.
 - The duration a review is measured against (`review_overrun`) ends at
   the work's submission, not its acceptance: the wait in review for the
   manager's decision is the manager's time, not the work's. Two

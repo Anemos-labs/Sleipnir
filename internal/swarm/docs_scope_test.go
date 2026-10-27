@@ -40,3 +40,54 @@ func TestDocsCatchUpScopeNamesTheMarkdownBesideTheChange(t *testing.T) {
 		t.Fatalf("empty batch scope = %q", got)
 	}
 }
+
+// A change whose scope names test files alone leaves no document stale and starts no docs pass.
+func TestTestOnlyChangesStartNoDocsPass(t *testing.T) {
+	for in, want := range map[string]bool{
+		"lru/lru_test.go": true, "tests/api_test.py": true, "src/__tests__/app.test.tsx": true, "web/app.spec.ts": true,
+		"spec/models/user_spec.rb": true, "test_api.py": true, "testdata/golden.json": true,
+		"lru/lru.go": false, "lru/": false, "lru": false, "**/*_test.go": false, "README.md": false, "": false,
+	} {
+		if got := testFile(in); got != want {
+			t.Errorf("testFile(%q) = %v, want %v", in, got, want)
+		}
+	}
+	if testsOnly(nil) || testsOnly([]string{"lru/lru_test.go", "lru/lru.go"}) || !testsOnly([]string{"lru/lru_test.go", "tests/x_test.py"}) {
+		t.Fatal("testsOnly")
+	}
+	cfg := Config{MaxWorkers: 8, AutoDocs: true, Team: []string{"backend", "docs"}}
+	r := newRVRigWith(t, cfg, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	b := r.sw.Board
+	code, _ := b.CreateTask("mgr", TaskSpec{Title: "fix lru", Files: []string{"lru/lru.go"}})
+	tests, _ := b.CreateTask("mgr", TaskSpec{Title: "cover lru", Files: []string{"lru/conv_test.go"}})
+	for _, id := range []string{code.ID, tests.ID} {
+		if err := b.Assign("mgr", "be-1", id); err != nil {
+			t.Fatal(err)
+		}
+		if err := b.Submit("be-1", id, "done", "edited"); err != nil {
+			t.Fatal(err)
+		}
+		if err := b.Accept("mgr", id, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r.sw.docs.mu.Lock()
+	r.sw.docs.primed = true
+	r.sw.docs.mu.Unlock()
+	r.sw.docsTick(r.sw.deps.Now())
+	r.sw.docs.mu.Lock()
+	defer r.sw.docs.mu.Unlock()
+	var ids []string
+	for _, c := range r.sw.docs.pending {
+		ids = append(ids, c.task)
+	}
+	if open := r.sw.docs.open; open != "" {
+		if task, ok := b.Snapshot().Task(open); ok && !strings.Contains(task.Desc, code.ID) || strings.Contains(task.Desc, tests.ID) {
+			t.Fatalf("docs pass %q covers %q", open, task.Desc)
+		}
+		return
+	}
+	if strings.Join(ids, " ") != code.ID {
+		t.Fatalf("pending changes = %v, want only %s", ids, code.ID)
+	}
+}
