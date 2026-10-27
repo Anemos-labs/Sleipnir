@@ -8,6 +8,7 @@ package swarm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -715,5 +716,24 @@ func TestAManagersEditNamesTheSubmissionsWaitingOnIt(t *testing.T) {
 	}
 	if got := edit("write"); !strings.Contains(got, t5.ID+" (1 min)") || !strings.HasPrefix(got, t2.ID) {
 		t.Fatalf("edit line after a shell command: %q", got)
+	}
+	// Past holdListCap the line counts the rest; those are not noted, so once the named ones are decided the next
+	// edit names them.
+	var more []Task
+	for i := 0; i < holdListCap+1; i++ {
+		more = append(more, submit(fmt.Sprintf("module %d", i), "be-5", time.Duration(10+i)*time.Minute))
+	}
+	got := edit("write")
+	if !strings.HasSuffix(strings.SplitN(got, " wait in review", 2)[0], "and 4 more") {
+		t.Fatalf("edit line with %d waiting: %q", holdListCap+4, got)
+	}
+	for _, task := range more[1:] { // the six longest waits, which the line named
+		if err := b.Accept("mgr", task.ID, "ok"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	last := more[0]
+	if got := edit("write"); !strings.HasPrefix(got, last.ID+" (10 min), "+t2.ID+" (2 min)") {
+		t.Fatalf("the submission past the cap was not named once the ones before it were decided: %q", got)
 	}
 }

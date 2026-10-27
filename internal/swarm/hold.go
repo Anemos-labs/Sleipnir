@@ -306,7 +306,8 @@ func editsFiles(tool string) bool {
 // editLine is the line a manager's file edit carries while submissions wait for its decision (submissionsWaiting): the
 // waiting submissions with their waits, oldest first, and that a submission comes before the manager's own edits. Each
 // submission is named once, with the manager's next edit after it; a later edit names them all again only when a new one
-// has joined them. A manager that wrote verification tests of its own between acceptances kept four submissions waiting
+// has joined them (past holdListCap the line counts the rest, which later edits name once the ones before them are decided).
+// A manager that wrote verification tests of its own between acceptances kept four submissions waiting
 // six to seven minutes each, and the stall sweep's mail about each reached it after five.
 func (h *holdHooks) editLine() string {
 	now := h.s.deps.Now()
@@ -316,11 +317,13 @@ func (h *holdHooks) editLine() string {
 	if h.noted == nil {
 		h.noted = map[string]bool{}
 	}
+	// Only a named submission counts as noted: past holdListCap the line says "N more", and those are named by a later
+	// edit, once the ones before them are decided.
 	current, fresh := map[string]bool{}, false
-	for _, w := range waiting {
+	for i, w := range waiting {
 		key := w.ID + "#" + strconv.FormatUint(w.Rev, 10)
 		current[key] = true
-		if !h.noted[key] {
+		if !h.noted[key] && i < holdListCap {
 			h.noted[key], fresh = true, true
 		}
 	}
