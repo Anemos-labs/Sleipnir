@@ -137,14 +137,22 @@ func (s *Swarm) spawn(req SpawnReq) (SpawnResult, error) {
 			}
 		}
 		if req.Agent == "" {
+			// The first idle member, unless its model's endpoint was just out and an idle member on another model is free (steer.go).
 			for _, m := range s.poolMembers(req.Role) {
 				m.mu.Lock()
 				idle := m.life == lifeIdle
 				m.mu.Unlock()
-				if idle {
-					req.Agent = m.id
-					break
+				if !idle {
+					continue
 				}
+				if _, out := s.inOutage(m); out {
+					if free := s.freeElsewhere(m); len(free) > 0 {
+						req.Agent = free[0]
+						break
+					}
+				}
+				req.Agent = m.id
+				break
 			}
 		}
 		if ms := s.poolMembers(req.Role); req.Agent == "" && len(ms) > 0 {
@@ -213,6 +221,7 @@ func (s *Swarm) soloMember(req *SpawnReq) error {
 		return m.id + " is in a run"
 	}
 	var held []string
+	first := "" // the first free member whose model's endpoint was just out (steer.go): taken when no other is free
 	for _, m := range members {
 		why := busy(m)
 		switch {
@@ -221,10 +230,20 @@ func (s *Swarm) soloMember(req *SpawnReq) error {
 		case req.Agent != "" && m.id == req.Agent:
 			return nil
 		case req.Agent == "" && why == "":
-			req.Agent = m.id
-			return nil
+			if _, out := s.inOutage(m); !out {
+				req.Agent = m.id
+				return nil
+			}
+			if first == "" {
+				first = m.id
+			}
+			continue
 		}
 		held = append(held, why)
+	}
+	if first != "" {
+		req.Agent = first
+		return nil
 	}
 	if req.Agent != "" {
 		return nil // not a member of the role: spawnReuse answers for it

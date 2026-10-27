@@ -99,6 +99,9 @@ type member struct {
 	dirty     bool
 	flushT    *time.Timer
 	idleAt    time.Time
+	// outage is when its last run ended on an outage of its model's endpoint (provider.Error.Outage); zero after a run that
+	// ended any other way. The manager's assignments steer away from it for a while (steer.go).
+	outage    time.Time
 	gateTries int
 	stuckWarn bool
 	autoRuns  int
@@ -958,6 +961,8 @@ func (s *Swarm) finishRun(m *member, rs *runState, ctx context.Context, res *age
 
 	kind, why, count := classifyStop(err, reason, reasonCounts, ctx)
 	failed := kind == stopFailed || (kind == stopHarness && count)
+	var pe *provider.Error
+	outage := kind == stopFailed && errors.As(err, &pe) && pe.Outage() != provider.NotOutage
 	var line string
 	var again *pendingRestart // the automatic restart of the worker (restart.go), nil when there is none
 	tried := 0                // the automatic restarts already made, when the bound stops one more
@@ -1009,6 +1014,10 @@ func (s *Swarm) finishRun(m *member, rs *runState, ctx context.Context, res *age
 	m.run = nil
 	m.life = lifeIdle
 	m.idleAt = s.deps.Now()
+	m.outage = time.Time{}
+	if outage {
+		m.outage = m.idleAt
+	}
 	// A new message is a recovery trigger even if it arrived just before the
 	// failed run returned. Mail already present at reserve must not repeatedly
 	// restart a run that fails before it can drain its inbox (for example budget).
