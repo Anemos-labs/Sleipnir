@@ -40,6 +40,10 @@ type Config struct {
 	// StreamIdleTimeout aborts a stream that goes silent once it has started
 	// (keep-alive comments count as activity). Default 60s.
 	StreamIdleTimeout time.Duration
+	// StreamContentTimeout aborts a stream that carries nothing but keep-alive
+	// comments for that long, from its start or since its last content line: a
+	// gateway whose upstream hung. Default 10 minutes; negative disables it.
+	StreamContentTimeout time.Duration
 	// RequestTimeout bounds a non-streaming call (warm-ups, keep-alives) from the
 	// moment it is sent until its body is read. Default 10 minutes.
 	RequestTimeout time.Duration
@@ -89,6 +93,9 @@ func New(cfg Config) *Client {
 	}
 	if cfg.RequestTimeout <= 0 {
 		cfg.RequestTimeout = provider.DefaultRequestTimeout
+	}
+	if cfg.StreamContentTimeout == 0 {
+		cfg.StreamContentTimeout = provider.DefaultStreamContentTimeout
 	}
 	cfg.Limits = cfg.Limits.Normalized()
 	cfg.BaseURL = strings.TrimRight(cfg.BaseURL, "/")
@@ -187,11 +194,11 @@ func (c *Client) Do(ctx context.Context, req *provider.Request, on func(provider
 	// covers a server that accepts the connection and never answers, as well as one
 	// that stalls mid-stream. It cancels the derived context, so it records why:
 	// "the caller cancelled" and "the server went quiet" are handled differently.
-	first, idle, total := c.cfg.FirstByteTimeout, c.cfg.StreamIdleTimeout, c.cfg.Limits.MaxDuration
+	first, idle, total, content := c.cfg.FirstByteTimeout, c.cfg.StreamIdleTimeout, c.cfg.Limits.MaxDuration, c.cfg.StreamContentTimeout
 	if !stream {
-		first, idle, total = c.cfg.RequestTimeout, c.cfg.RequestTimeout, 0
+		first, idle, total, content = c.cfg.RequestTimeout, c.cfg.RequestTimeout, 0, 0
 	}
-	wd := provider.NewWatchdog(cancel, first, idle, total, req)
+	wd := provider.NewWatchdog(cancel, first, idle, total, req).WithContent(content)
 	wd.Start()
 	defer wd.Stop()
 

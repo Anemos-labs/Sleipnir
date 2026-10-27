@@ -25,6 +25,15 @@ const (
 	// DefaultRequestTimeout bounds a non-streaming call (warm-ups, keep-alives) from
 	// the moment it is sent until its body is read.
 	DefaultRequestTimeout = 10 * time.Minute
+	// DefaultStreamContentTimeout bounds how long a stream may go on with nothing
+	// but keep-alive comments: from the start until its first content line, and
+	// between two content lines after that. A gateway whose upstream has hung keeps
+	// sending ": keep-alive" every few seconds, which the first-byte and idle
+	// deadlines take for a response; two workers each sat twenty minutes in such a
+	// request, until the swarm's stuck-worker watchdog cut them, and answered in a
+	// minute when retried. Ten minutes is longer than a reasoning model thinks
+	// before its first delta. Zero disables it.
+	DefaultStreamContentTimeout = 10 * time.Minute
 	// MaxSilentAttempts is how many times one request may get no response at all
 	// (nothing within the first-byte deadline) before it stops being retried.
 	MaxSilentAttempts = 2
@@ -38,6 +47,7 @@ const (
 	WatchFirstByte                    // no byte arrived within the first-byte deadline
 	WatchIdle                         // the response went silent after it had started
 	WatchTotal                        // the response outlived its overall deadline
+	WatchContent                      // the response carried nothing but keep-alive comments for the content deadline
 )
 
 // Watchdog bounds one HTTP exchange with three deadlines, all armed from the
@@ -47,24 +57,29 @@ const (
 //
 //   - first: from the start until the first byte of the response body;
 //   - idle: after that, between two reads that returned data;
-//   - total: the whole exchange (zero: none).
+//   - total: the whole exchange (zero: none);
+//   - content (WithContent): between two SSE lines that are not comments, counted
+//     from the start (zero: none). Keep-alive comments (": ping") move the first
+//     and idle deadlines, as the connection is alive, but not this one.
 //
 // When one fires it records why and calls cancel, which aborts the request or the
 // body read in progress. Callers ask Why (or Failure) to tell "the server went
 // quiet" from "the caller cancelled": the derived context is cancelled in both
 // cases, and only the first is retried as a timeout.
 type Watchdog struct {
-	cancel             context.CancelFunc
-	first, idle, total time.Duration
-	req                *Request
+	cancel                      context.CancelFunc
+	first, idle, total, content time.Duration
+	req                         *Request
 
-	mu       sync.Mutex
-	timer    *time.Timer
-	totalT   *time.Timer
-	deadline time.Time
-	seen     bool
-	done     bool
-	why      WatchReason
+	mu              sync.Mutex
+	timer           *time.Timer
+	totalT          *time.Timer
+	contentT        *time.Timer
+	deadline        time.Time
+	contentDeadline time.Time
+	seen            bool
+	done            bool
+	why             WatchReason
 }
 
 // NewWatchdog builds a watchdog that calls cancel when a deadline passes. req (may
@@ -73,6 +88,14 @@ type Watchdog struct {
 // multiply one hung endpoint into a dozen hung minutes (see MaxSilentAttempts).
 func NewWatchdog(cancel context.CancelFunc, first, idle, total time.Duration, req *Request) *Watchdog {
 	return &Watchdog{cancel: cancel, first: first, idle: idle, total: total, req: req}
+}
+
+// WithContent sets the content deadline (see Watchdog), to call before Start. Zero leaves the stream unbounded in that respect.
+func (w *Watchdog) WithContent(d time.Duration) *Watchdog {
+	w.mu.Lock()
+	w.content = d
+	w.mu.Unlock()
+	return w
 }
 
 // Start arms the deadlines.
@@ -87,6 +110,34 @@ func (w *Watchdog) Start() {
 	if w.total > 0 {
 		w.totalT = time.AfterFunc(w.total, w.fireTotal)
 	}
+	if w.content > 0 {
+		w.contentDeadline = time.Now().Add(w.content)
+		w.contentT = time.AfterFunc(w.content, w.fireContent)
+	}
+}
+
+// fireContent runs when the content deadline may have passed; like fire, it re-arms itself for the time a content line bought.
+func (w *Watchdog) fireContent() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.done || w.why != WatchNone {
+		return
+	}
+	if rem := time.Until(w.contentDeadline); rem > 0 {
+		w.contentT.Reset(rem)
+		return
+	}
+	w.why = WatchContent
+	w.cancel()
+}
+
+// contentProgress records that a line that is not a comment arrived (or part of one): the content deadline starts over.
+func (w *Watchdog) contentProgress() {
+	w.mu.Lock()
+	if w.content > 0 {
+		w.contentDeadline = time.Now().Add(w.content)
+	}
+	w.mu.Unlock()
 }
 
 // fire runs when the current deadline may have passed. Progress moves the
@@ -150,6 +201,9 @@ func (w *Watchdog) Stop() {
 	if w.totalT != nil {
 		w.totalT.Stop()
 	}
+	if w.contentT != nil {
+		w.contentT.Stop()
+	}
 	seen := w.seen
 	w.mu.Unlock()
 	if seen && w.req != nil {
@@ -158,12 +212,14 @@ func (w *Watchdog) Stop() {
 }
 
 // Reader wraps the response body so that every read that returns data counts as
-// activity.
-func (w *Watchdog) Reader(r io.Reader) io.Reader { return &watchReader{r: r, w: w} }
+// activity, and every byte of a line that is not an SSE comment as content.
+func (w *Watchdog) Reader(r io.Reader) io.Reader { return &watchReader{r: r, w: w, lineStart: true} }
 
 type watchReader struct {
 	r io.Reader
 	w *Watchdog
+	// lineStart says the next byte begins a line; comment says the current line began with ':' (a keep-alive).
+	lineStart, comment bool
 }
 
 // Read forwards data and reports watchdog progress only when bytes were received.
@@ -171,8 +227,30 @@ func (a *watchReader) Read(p []byte) (int, error) {
 	n, err := a.r.Read(p)
 	if n > 0 {
 		a.w.progress()
+		if a.sawContent(p[:n]) {
+			a.w.contentProgress()
+		}
 	}
 	return n, err
+}
+
+// sawContent scans the bytes read for one that belongs to a line that is neither empty nor a comment, keeping the line state
+// across reads (a line may span two of them).
+func (a *watchReader) sawContent(b []byte) bool {
+	content := false
+	for _, c := range b {
+		switch {
+		case c == '\n':
+			a.lineStart = true
+		case c == '\r':
+		case a.lineStart:
+			a.lineStart, a.comment = false, c == ':'
+			content = content || !a.comment
+		case !a.comment:
+			content = true
+		}
+	}
+	return content
 }
 
 // Why reports which deadline fired, WatchNone if none did.
@@ -212,6 +290,8 @@ func (w *Watchdog) Failure(cause error) *Error {
 		}
 	case WatchIdle:
 		e.Message = "no data from the server for " + w.idle.String()
+	case WatchContent:
+		e.Message = "nothing but keep-alives from the server for " + w.content.String()
 	default:
 		e.Message = "the response was still running after " + w.total.String()
 	}
