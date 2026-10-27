@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The tester's role pin says that tests put in a package beside other tests
+  give every helper, type and test they add a prefix of the tester's own, so
+  a test file someone else adds to that package still compiles. A tester's
+  suite declared a `fakeClock` helper in a package where another test file
+  declared one too, and the package stopped building. About 40 tokens more
+  in the tester's role pin.
 - With one reviewer model, a merge after an accepted review leaves that
   review standing when the work tree has changed, since the review began,
   in test files and docs alone: the harness snapshots the git tree when a
