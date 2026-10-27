@@ -50,7 +50,7 @@ const (
 	// themselves (T1 waits for T2, T2 waits for T1).
 	StallBlockedCycle StallKind = "blocked_cycle"
 	// StallReviewStarved: a task has been in review for Config.StallTurns manager
-	// turns without the manager reading or deciding it.
+	// turns, or for reviewStarvedAfter, without the manager reading or deciding it.
 	StallReviewStarved StallKind = "review_starved"
 	// StallIdleCapacity: the manager of a configured team waits on the few workers
 	// still at work while at least half of the team, and two workers or more, have been
@@ -65,6 +65,11 @@ const (
 	// over and over finds what its first pass found; the reviewer is told to write the report with what it has.
 	StallReviewOverrun StallKind = "review_overrun"
 )
+
+// reviewStarvedAfter is how long a submission may wait in review, whatever the manager's turn count, before
+// StallReviewStarved holds: a manager that waits on a long review with long timeouts takes few turns, and a
+// docs pass or a fix that sits unread meanwhile holds up the pass that follows it.
+var reviewStarvedAfter = 5 * time.Minute
 
 // reviewOverrunFloor is the least a review may run before StallReviewOverrun can hold, whatever the work took.
 var reviewOverrunFloor = 10 * time.Minute
@@ -103,18 +108,24 @@ type stallState struct {
 	mu      sync.Mutex
 	active  map[string]Stall
 	raised  map[StallKind]int
-	orphans map[string]bool  // orphaned-task candidates of the previous sweep
-	review  map[string]int64 // "T3#rev": the manager's turn count when the review clock (re)started
-	waiting bool             // the manager's latest coordination call is wait
-	refused bool             // a manager wait was just refused (see waitRefused)
+	orphans map[string]bool        // orphaned-task candidates of the previous sweep
+	review  map[string]reviewClock // "T3#rev": when the review clock (re)started
+	waiting bool                   // the manager's latest coordination call is wait
+	refused bool                   // a manager wait was just refused (see waitRefused)
 	// since is when each active finding was first seen by escalateStalls, and escalated the findings it escalated.
 	since     map[string]time.Time
 	escalated map[string]bool
 }
 
+// reviewClock is when a submission's review clock (re)started: the manager's turn count and the time.
+type reviewClock struct {
+	turns int64
+	at    time.Time
+}
+
 // init makes the maps; the zero value is not ready for use.
 func (st *stallState) init() {
-	st.active, st.raised, st.orphans, st.review = map[string]Stall{}, map[StallKind]int{}, map[string]bool{}, map[string]int64{}
+	st.active, st.raised, st.orphans, st.review = map[string]Stall{}, map[StallKind]int{}, map[string]bool{}, map[string]reviewClock{}
 	st.since, st.escalated = map[string]time.Time{}, map[string]bool{}
 }
 
@@ -407,8 +418,9 @@ func (s *Swarm) stallFindings() []Stall {
 	// blocked_cycle
 	out = append(out, blockedCycles(snap, mgr)...)
 
-	// review_starved: the clock is the manager's own turn count.
+	// review_starved: the clock is the manager's own turn count, and the wall clock behind it.
 	if mv, ok := views[mgr]; ok && k > 0 {
+		now := s.deps.Now()
 		inReview := map[string]bool{}
 		for _, t := range snap.Tasks {
 			if t.Status != StatusReview {
@@ -418,12 +430,17 @@ func (s *Swarm) stallFindings() []Stall {
 			inReview[key] = true
 			since, ok := s.stalls.review[key]
 			if !ok {
-				s.stalls.review[key] = mv.turns
+				s.stalls.review[key] = reviewClock{turns: mv.turns, at: now}
 				continue
 			}
-			if n := mv.turns - since; n >= k {
+			n, waited := mv.turns-since.turns, now.Sub(since.at)
+			switch {
+			case n >= k:
 				out = append(out, Stall{Kind: StallReviewStarved, Task: t.ID, Agent: mgr, Notify: mgr,
 					Detail: fmt.Sprintf("%s has waited in review for %d manager turns", t.ID, n)})
+			case waited >= reviewStarvedAfter:
+				out = append(out, Stall{Kind: StallReviewStarved, Task: t.ID, Agent: mgr, Notify: mgr,
+					Detail: fmt.Sprintf("%s has waited in review for %d minutes", t.ID, int(waited/time.Minute))})
 			}
 		}
 		for key := range s.stalls.review {

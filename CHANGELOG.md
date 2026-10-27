@@ -7,6 +7,21 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The review gate's line to the manager names the merges since the accepted
+  review (`review: the merges since the accepted review (T3, T4) have not
+  been reviewed ... review that work (the accepted review stands for the
+  rest)`), so a second review covers that work and not the whole result
+  again. The manager's role pin says the same, and that a docs catch-up is
+  not reviewed, so a review does not wait for one. After a one-line fix
+  from the first review's findings, a manager waited out the docs pass and
+  then gave the reviewer the whole four-module result a second time. About
+  45 tokens more in the manager's role pin.
+- `review_starved` also holds by the clock: a submission that has waited
+  in review for 5 minutes is starved whatever the manager's turn count.
+  A manager waiting on a long review with long timeouts takes few turns,
+  and a docs pass sat unread in review for 13 minutes beside one, which
+  held up the pass that followed it. Harness mail only; no prompt bytes
+  change.
 - The stall sweep does not raise `idle_capacity` while every worker at work
   is a read-only role or on a docs task: the team then waits for a verdict
   on finished work, and idle writers are expected. Told of idle capacity

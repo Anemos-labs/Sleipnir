@@ -613,3 +613,44 @@ func TestStallReviewOverrunSparesAPlanningTask(t *testing.T) {
 	r.sw.stopRun(r.sw.get(id), "test over", false)
 	rvWait(t, "the reviewer to stop", func() bool { return r.idle(id) })
 }
+
+// A submission that waits in review for reviewStarvedAfter is starved whatever the manager's turn count: a manager
+// waiting on a long review with long timeouts takes few turns.
+func TestStallReviewStarvedByTheClock(t *testing.T) {
+	r := newRVRig(t, stallCfg(), gatedWorkers(nil))
+	if _, err := r.sw.StartManager(); err != nil {
+		t.Fatal(err)
+	}
+	b := r.sw.Board
+	task, _ := b.CreateTask("mgr", TaskSpec{Title: "docs catch-up"})
+	if err := b.Assign("mgr", "be-1", task.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Submit("be-1", task.ID, "done", "edited README.md"); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.sweepStalls() // the review clock starts
+	cur, _ := b.Snapshot().Task(task.ID)
+	key := task.ID + "#" + strconv.FormatUint(cur.Rev, 10)
+	backdate := func(d time.Duration) {
+		r.sw.stalls.mu.Lock()
+		c := r.sw.stalls.review[key]
+		c.at = r.sw.deps.Now().Add(-d)
+		r.sw.stalls.review[key] = c
+		r.sw.stalls.mu.Unlock()
+	}
+	backdate(4 * time.Minute)
+	r.sw.sweepStalls()
+	if _, ok := active(r, StallReviewStarved); ok {
+		t.Fatal("a four-minute wait with no manager turn was found starved")
+	}
+	backdate(6 * time.Minute)
+	r.sw.sweepStalls()
+	f, ok := active(r, StallReviewStarved)
+	if !ok || f.Task != task.ID || f.Detail != task.ID+" has waited in review for 6 minutes" {
+		t.Fatalf("finding = %+v, %v", f, ok)
+	}
+	if !nudged(r, "mgr") {
+		t.Error("the manager was not told")
+	}
+}

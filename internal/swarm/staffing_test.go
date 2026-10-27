@@ -617,3 +617,29 @@ func TestAnEmptyMergeIsNotDueAReview(t *testing.T) {
 		t.Fatalf("a merge that changed the tree is not due a review: %q", got)
 	}
 }
+
+// After an accepted review, the review line names the merges since it, so the next review covers them and not the
+// whole result again; before one, it covers everything merged.
+func TestReviewLineNamesTheMergesSinceTheAcceptedReview(t *testing.T) {
+	r := newRVRigWith(t, Config{MaxWorkers: 8, Team: []string{"backend", "reviewer"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	r.sw.noteAccepted(Task{ID: "T1", Role: "backend"})
+	if got := r.sw.reviewLine(r.sw.reviewPending()); !strings.Contains(got, "T1 and the work merged before it have not been reviewed") || !strings.Contains(got, "review the merged result against") {
+		t.Fatalf("first review line = %q", got)
+	}
+	review := Task{ID: "T2", Role: ReviewerRole}
+	if err := r.sw.reviewSubmission(review)(nil, review); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.noteAccepted(review)
+	if got := r.sw.reviewPending(); got != "" {
+		t.Fatalf("review pending after the accepted review: %q", got)
+	}
+	r.sw.noteAccepted(Task{ID: "T3", Role: "backend"})
+	r.sw.noteAccepted(Task{ID: "T4", Role: "backend"})
+	got := r.sw.reviewLine(r.sw.reviewPending())
+	for _, want := range []string{"the merges since the accepted review (T3, T4) have not been reviewed", "review that work (the accepted review stands for the rest) against"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("second review line = %q, want %q", got, want)
+		}
+	}
+}

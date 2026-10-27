@@ -234,14 +234,36 @@ func (s *Swarm) reviewPending() string {
 	return ""
 }
 
-// reviewLine is the review gate's sentence for the manager: what is unreviewed and what to do.
+// reviewLine is the review gate's sentence for the manager: what is unreviewed and what to do. After an accepted review it
+// names the merges since, so the next review covers them and not the whole result again.
 func (s *Swarm) reviewLine(last string) string {
-	if s.reviewQuorum() > 1 {
-		return "review: " + last + " and the work merged before it have not been reviewed by two reviewers on different models: before you report the goal met, " +
-			"give a review of the merged result against the agreement to each " + ReviewerRole + " slot that runs on a model the reviews so far did not (spawn role=" + ReviewerRole + " agent=<id>), and accept both reports"
+	what, subject := last+" and the work merged before it have", "the merged result"
+	if s.reviewedBefore() {
+		_, ids := s.review.unreviewedWork()
+		if len(ids) == 0 {
+			ids = []string{last}
+		}
+		plural := "s"
+		if len(ids) == 1 {
+			plural = ""
+		}
+		what = "the merge" + plural + " since the accepted review (" + strings.Join(ids, ", ") + ") " + map[bool]string{true: "have", false: "has"}[len(ids) > 1]
+		subject = "that work (the accepted review stands for the rest)"
 	}
-	return "review: " + last + " and the work merged before it have not been reviewed: before you report the goal met, create a task for the " +
-		ReviewerRole + " to review the merged result against the agreement (spawn role=" + ReviewerRole + "), and accept its report"
+	if s.reviewQuorum() > 1 {
+		return "review: " + what + " not been reviewed by two reviewers on different models: before you report the goal met, " +
+			"give a review of " + subject + " against the agreement to each " + ReviewerRole + " slot that runs on a model the reviews so far did not (spawn role=" + ReviewerRole + " agent=<id>), and accept both reports"
+	}
+	return "review: " + what + " not been reviewed: before you report the goal met, create a task for the " +
+		ReviewerRole + " to review " + subject + " against the agreement (spawn role=" + ReviewerRole + "), and accept its report"
+}
+
+// reviewedBefore reports whether an accepted review covers some merge of this run.
+func (s *Swarm) reviewedBefore() bool {
+	g := &s.review
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.reviewed > 0
 }
 
 // reviewQuorum is how many reviewers on different models must cover a merge before the goal may be reported met: two when the
