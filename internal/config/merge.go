@@ -133,7 +133,7 @@ func (m *merger) repoSupplied() bool { return m.kind == "project" || m.kind == "
 func unionList(have any, add []any) []any {
 	out, _ := have.([]any)
 	out = append([]any(nil), out...)
-	seen := make(map[string]bool, len(out)+len(add))
+	seen := make(map[string]bool, len(out))
 	key := func(v any) (string, bool) {
 		b, err := json.Marshal(v)
 		return string(b), err == nil
