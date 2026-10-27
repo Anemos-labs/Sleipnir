@@ -44,6 +44,14 @@ they do not indicate whether a change has been released.
   accepted: it is finishing its turn and owns nothing open. A docs worker
   whose pass had just been accepted counted as work in progress, and the
   manager was told of idle writers during the review after all.
+- A pool member whose `pool inspect` left conflict markers in its checkout
+  may now edit the conflicted files, and only those, until the merge is
+  concluded, in every pool phase; the inspect refusal names the repair and
+  says to inspect again. Reconciliation made members read-only outright, so
+  a member whose uncommitted draft conflicted with the combined result could
+  neither inspect ("repair checkout before confirming") nor repair ("members
+  change nothing while the pool reconciles"): it retried the inspect until
+  the repeat guard stopped it, and the pool went on without it.
 - A streaming model request that carries nothing but keep-alive comments
   for ten minutes, from its start or since its last content line, is ended
   as a timeout and retried (`nothing but keep-alives from the server for
@@ -347,6 +355,32 @@ they do not indicate whether a change has been released.
   `GET /api/sessions/{id}/team`; `wire.NewSessionRequest` has `teamName`. No
   prompt bytes change.
 
+- The duration a review is measured against (`review_overrun`) ends at
+  the work's submission, not its acceptance: the wait in review for the
+  manager's decision is the manager's time, not the work's. Two
+  submissions waited seven and six minutes for a manager that was
+  running tests of its own, and the review's bound grew from ten minutes
+  to sixteen. Harness mail only; no prompt bytes change.
+- The review gate's line to the manager names the merges since the accepted
+  review (`review: the merges since the accepted review (T3, T4) have not
+  been reviewed ... review that work (the accepted review stands for the
+  rest)`), so a second review covers that work and not the whole result
+  again. The manager's role pin says the same, and that a docs catch-up is
+  not reviewed, so a review does not wait for one. After a one-line fix
+  from the first review's findings, a manager waited out the docs pass and
+  then gave the reviewer the whole four-module result a second time. About
+  45 tokens more in the manager's role pin.
+- `review_starved` also holds by the clock: a submission that has waited
+  in review for 5 minutes is starved whatever the manager's turn count.
+  A manager waiting on a long review with long timeouts takes few turns,
+  and a docs pass sat unread in review for 13 minutes beside one, which
+  held up the pass that followed it. Harness mail only; no prompt bytes
+  change.
+- The verdict phase (no `idle_capacity` while the team waits on a review
+  or a docs pass) also covers a writer still running after its task was
+  accepted: it is finishing its turn and owns nothing open. A docs worker
+  whose pass had just been accepted counted as work in progress, and the
+  manager was told of idle writers during the review after all.
 - Agents save memory notes without asking. A change to the agents' notes
   (`~/.sleipnir/MEMORY.md`, or the project's `.sleipnir/MEMORY.local.md`) no
   longer waits for the person's approval; the protection of `~/.sleipnir` and
