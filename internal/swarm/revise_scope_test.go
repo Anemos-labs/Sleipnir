@@ -160,3 +160,19 @@ func TestRepeatingAWideningStopsNobody(t *testing.T) {
 		t.Fatalf("child: %s owner=%s", c.Status, c.Owner)
 	}
 }
+
+// On a task nobody holds yet, the update's answer has no owner to name: it says how the text could have been recorded instead.
+func TestAnUpdateOfAnUnclaimedTasksScopeNamesNoOwner(t *testing.T) {
+	r := newRVRig(t, Config{MaxWorkers: 1}, idleModel)
+	task, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "api", Role: "backend", Files: []string{"app/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "update", "id": task.ID, "files": []string{"app/**", "load/main.go"}, "text": "the load test too"})
+	if res.IsError || !strings.Contains(res.Text, "nobody holds "+task.ID+" yet; to change its requirements, revise with a description") || strings.Contains(res.Text, "mail it") {
+		t.Fatalf("update: %q", res.Text)
+	}
+	if got, _ := r.sw.Board.Snapshot().Task(task.ID); !slices.Equal(got.Files, []string{"app/**", "load/main.go"}) {
+		t.Fatalf("scope: %v", got.Files)
+	}
+}

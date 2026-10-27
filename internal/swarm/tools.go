@@ -359,6 +359,9 @@ func (t *taskTool) update(c *tools.Call, in taskIn) *tools.Result {
 				// scopes with update files and a reason, read the error as a refusal, and made the same change again with revise, which
 				// found nothing to widen, stopped both pools' workers and put the pools back to planning.
 				if len(in.Files) > 0 {
+					if task.Owner == "" {
+						return text("%s's scope set (%s). The text was not recorded: it is the progress line of %s's owner, and nobody holds %s yet; to change its requirements, revise with a description", in.ID, strings.Join(task.Files, ", "), in.ID, in.ID)
+					}
 					return text("%s's scope set (%s); its workers keep going. The text was not recorded: it is the progress line of %s's owner, %s; to tell %s something, mail it", in.ID, strings.Join(task.Files, ", "), in.ID, task.Owner, task.Owner)
 				}
 				return tools.Errorf("update's text is the progress line of %s's owner, %s. To change the task: files= widens or sets its scope (with update, or revise with only files), revise with a description changes its requirements; to tell %s something, mail it", in.ID, task.Owner, task.Owner)
