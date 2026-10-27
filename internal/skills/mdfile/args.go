@@ -107,8 +107,18 @@ const (
 // scanned again, so an argument that itself contains "$1" or "$ARGUMENTS" is
 // inserted verbatim rather than expanded.
 func Substitute(tmpl, args string, mode ArgMode) (out string, used bool) {
+	out, used, _ = SubstituteMax(tmpl, args, mode, 0)
+	return out, used
+}
+
+// SubstituteMax is Substitute with a bound on the output: it stops with an error before the output grows past max bytes, so that a
+// template that repeats a placeholder cannot multiply a long argument into a large allocation. max <= 0 is no bound.
+func SubstituteMax(tmpl, args string, mode ArgMode, max int) (out string, used bool, err error) {
 	if strings.IndexByte(tmpl, '$') < 0 {
-		return tmpl, false
+		if max > 0 && len(tmpl) > max {
+			return "", false, tooLong(max)
+		}
+		return tmpl, false, nil
 	}
 	words := SplitArgs(args)
 	raw := strings.TrimSpace(args)
@@ -134,15 +144,32 @@ func Substitute(tmpl, args string, mode ArgMode) (out string, used bool) {
 
 	const kw = "ARGUMENTS"
 	var b strings.Builder
-	b.Grow(len(tmpl) + len(raw))
+	grow := len(tmpl) + len(raw)
+	if max > 0 && grow > max {
+		grow = max
+	}
+	b.Grow(grow)
+	// fits says whether n more bytes keep the output within max; every append of a replacement asks first.
+	fits := func(n int) bool { return max <= 0 || b.Len()+n <= max }
+	put := func(r string) bool {
+		if !fits(len(r)) {
+			return false
+		}
+		b.WriteString(r)
+		return true
+	}
 	for i := 0; i < len(tmpl); {
 		j := strings.IndexByte(tmpl[i:], '$')
 		if j < 0 {
-			b.WriteString(tmpl[i:])
-			break
+			j = len(tmpl) - i
+		}
+		if !fits(j) {
+			return "", used, tooLong(max)
 		}
 		b.WriteString(tmpl[i : i+j])
-		i += j
+		if i += j; i == len(tmpl) {
+			break
+		}
 		rest := tmpl[i+1:]
 		idx, idxLen, isIdx := 0, 0, false
 		if strings.HasPrefix(rest, kw+"[") {
@@ -153,26 +180,41 @@ func Substitute(tmpl, args string, mode ArgMode) (out string, used bool) {
 		}
 		switch {
 		case strings.HasPrefix(rest, "$") && escapable(rest[1:]):
-			b.WriteByte('$') // "$$1": the second dollar's placeholder is copied as text below
+			if !put("$") { // "$$1": the second dollar's placeholder is copied as text below
+				return "", used, tooLong(max)
+			}
 			i += 2
 		case isIdx:
-			b.WriteString(one(idx))
+			if !put(one(idx)) {
+				return "", true, tooLong(max)
+			}
 			used = true
 			i += 1 + idxLen
 		case strings.HasPrefix(rest, kw) && !identChar(rest, len(kw)):
-			b.WriteString(all())
+			if !put(all()) {
+				return "", true, tooLong(max)
+			}
 			used = true
 			i += 1 + len(kw)
 		case rest != "" && rest[0] >= '1' && rest[0] <= '9' && (len(rest) == 1 || rest[1] < '0' || rest[1] > '9'):
-			b.WriteString(one(int(rest[0] - '1')))
+			if !put(one(int(rest[0] - '1'))) {
+				return "", true, tooLong(max)
+			}
 			used = true
 			i += 2
 		default:
-			b.WriteByte('$')
+			if !put("$") {
+				return "", used, tooLong(max)
+			}
 			i++
 		}
 	}
-	return b.String(), used
+	return b.String(), used, nil
+}
+
+// tooLong is the error of SubstituteMax past its bound.
+func tooLong(max int) error {
+	return fmt.Errorf("with its arguments put in, the text grows past %d bytes", max)
 }
 
 // escapable reports whether s begins a placeholder that "$$" may escape.

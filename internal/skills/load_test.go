@@ -210,3 +210,16 @@ func TestConcurrentUse(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// A skill that repeats a placeholder is refused once its text would grow past the bound.
+func TestLoadBoundsTheRenderedText(t *testing.T) {
+	w := newWorld(t)
+	w.proj(".claude", "rep", skillText("rep", "d")+strings.Repeat("$ARGUMENTS ", 4000))
+	c, _ := w.discover(true)
+	if _, err := c.Load("rep", strings.Repeat("x", 30000)); err == nil || !strings.Contains(err.Error(), "grows past") {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := c.Load("rep", "short"); err != nil {
+		t.Fatal(err)
+	}
+}

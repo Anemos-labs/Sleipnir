@@ -366,6 +366,26 @@ type PolicyRequest struct {
 	Sampling  json.RawMessage `json:"sampling,omitempty"`
 }
 
+// PolicyProvider is the name the policy endpoint has inside a rollout's configuration (harness.PolicyProvider).
+const PolicyProvider = "rl-policy"
+
+// policyRoleModels pins the role models a request names to the policy endpoint: "provider/model" would otherwise make the
+// session build a client of that provider, with its credential, past the hosts and key variables checkPolicy allows. A model
+// id is taken whole ("vendor/model" is the policy's model of that id).
+func policyRoleModels(m map[string]string) map[string]string {
+	if len(m) == 0 {
+		return m
+	}
+	out := make(map[string]string, len(m))
+	for role, model := range m {
+		if model = strings.TrimSpace(model); model != "" && !strings.HasPrefix(model, PolicyProvider+"/") {
+			model = PolicyProvider + "/" + model
+		}
+		out[role] = model
+	}
+	return out
+}
+
 // checkPolicy decides whether the endpoint and key variable a request names may be
 // used: see ServeOptions.PolicyHosts and PolicyKeyEnvs.
 func (s *Server) checkPolicy(p PolicyRequest) (int, error) {
@@ -677,7 +697,7 @@ func (s *Server) handleRollouts(w http.ResponseWriter, r *http.Request) {
 		Policy: PolicySpec{
 			Model: req.Policy.Model, BaseURL: req.Policy.BaseURL, APIKeyEnv: req.Policy.APIKeyEnv, Sampling: req.Policy.Sampling,
 		},
-		Capture: req.Capture, Swarm: swarm, Agents: agents, RoleModels: req.RoleModels, TargetPrice: req.TargetPrice,
+		Capture: req.Capture, Swarm: swarm, Agents: agents, RoleModels: policyRoleModels(req.RoleModels), TargetPrice: req.TargetPrice,
 		Seed: req.Seed, Force: req.Force,
 	}
 	if req.Rewards != "" {

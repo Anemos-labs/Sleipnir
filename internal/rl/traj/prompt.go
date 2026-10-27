@@ -45,6 +45,9 @@ type wireMsg struct {
 	Blocks []core.Block `json:"blocks"`
 }
 
+// maxMemoRefs bounds the message references the memoised lists of one Run hold (32 bytes each): ample for a long recorded run.
+var maxMemoRefs = 1 << 23
+
 // msgHashes resolves the full message hash list of a request through its Base
 // chain, without touching any blob. Results are memoised per request, so a whole
 // agent's chain is resolved in linear time.
@@ -96,6 +99,11 @@ func (r *Run) msgHashesLocked(id string) ([]core.Hash, error) {
 	}
 	for i := len(chain) - 1; i >= 0; i-- {
 		q := chain[i]
+		if n := q.man.Keep + len(q.man.Add); n > maxMemoRefs-r.memoRefs {
+			// Every request keeps its own full list, so a log whose requests each add one message holds the square of its
+			// length: past the budget the log is refused rather than the memory taken.
+			return nil, &Mismatch{Req: q.id, Kind: KindBase, Detail: fmt.Sprintf("the message lists of the log's requests hold more than %d references in all", maxMemoRefs)}
+		}
 		msgs, err := q.man.Messages(base)
 		if err != nil {
 			mm := &Mismatch{Req: q.id, Kind: KindBase, Detail: err.Error()}
@@ -105,6 +113,7 @@ func (r *Run) msgHashesLocked(id string) ([]core.Hash, error) {
 			return nil, mm
 		}
 		r.msgMemo[q.id] = msgs
+		r.memoRefs += len(msgs)
 		base = msgs
 	}
 	return base, nil

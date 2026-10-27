@@ -266,6 +266,9 @@ type exporter struct {
 	licenses  map[string]bool
 	roles     []string
 	splits    []splitBin
+	// splitKey is the key each working episode is split by, taken before its identity was redacted, so that redaction never
+	// moves an episode to another split.
+	splitKey map[*rl.Episode]string
 
 	// noted and candidate remember the steps already counted in DroppedByRole and
 	// CandidatesByRole: some formats test a step more than once.
@@ -468,6 +471,7 @@ func (x *exporter) run(srcs []Source) error {
 
 	x.work = work
 	rankWork(work)
+	x.redactIdentity(work)
 	switch x.o.Format {
 	case FormatSteps:
 		return x.writeSteps(work)
@@ -487,6 +491,22 @@ func (x *exporter) run(srcs []Source) error {
 		return x.writeCanonical(work)
 	}
 	return nil
+}
+
+// redactIdentity redacts the identifiers of the working episodes (the episode, its task and its group), which every record
+// carries: they are strings that leave the exporter like any other, and can hold what the redactor removes (a person's email
+// address in a task id). The redactor's replacements are stable, so episodes of one task or group still share it.
+func (x *exporter) redactIdentity(work []*workEpisode) {
+	if x.red == nil {
+		return
+	}
+	x.splitKey = make(map[*rl.Episode]string, len(work))
+	for _, we := range work {
+		x.splitKey[we.ep] = splitKeyOf(we.ep)
+		we.ep.ID, _ = x.redactText(we.ep.ID)
+		we.ep.TaskID, _ = x.redactText(we.ep.TaskID)
+		we.ep.Group, _ = x.redactText(we.ep.Group)
+	}
 }
 
 // workEpisode is an episode being exported: the caller's source and the clone the

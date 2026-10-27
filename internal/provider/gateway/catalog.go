@@ -15,6 +15,7 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -122,16 +123,32 @@ func Parse(body []byte) ([]Entry, error) {
 // ParseDetailed is Parse plus the list of entries that were left out.
 func ParseDetailed(body []byte) (entries []Entry, rejected []Rejection, err error) {
 	var env struct {
-		Data []rawModel `json:"data"`
+		Data json.RawMessage `json:"data"`
 	}
 	if err := json.Unmarshal(body, &env); err != nil {
 		return nil, nil, fmt.Errorf("gateway: bad catalogue: %s", provider.SanitizeText(err.Error(), 200))
 	}
-	if len(env.Data) > MaxCatalogueEntries {
-		return nil, nil, fmt.Errorf("gateway: the catalogue lists %d models (limit %d); refusing it", len(env.Data), MaxCatalogueEntries)
+	// The entries are decoded one at a time, and the count is checked before each: compact entries would otherwise
+	// each become a large typed value before the limit refused them all.
+	var data []rawModel
+	if d := bytes.TrimSpace(env.Data); len(d) > 0 && !bytes.Equal(d, []byte("null")) {
+		dec := json.NewDecoder(bytes.NewReader(d))
+		if tok, err := dec.Token(); err != nil || tok != json.Delim('[') {
+			return nil, nil, errors.New("gateway: bad catalogue: data is not a list")
+		}
+		for dec.More() {
+			if len(data) == MaxCatalogueEntries {
+				return nil, nil, fmt.Errorf("gateway: the catalogue lists more than %d models; refusing it", MaxCatalogueEntries)
+			}
+			var m rawModel
+			if err := dec.Decode(&m); err != nil {
+				return nil, nil, fmt.Errorf("gateway: bad catalogue: %s", provider.SanitizeText(err.Error(), 200))
+			}
+			data = append(data, m)
+		}
 	}
-	out := make([]Entry, 0, len(env.Data))
-	for _, m := range env.Data {
+	out := make([]Entry, 0, len(data))
+	for _, m := range data {
 		e, err := entryOf(m)
 		if err != nil {
 			rejected = append(rejected, Rejection{ID: provider.SanitizeText(m.ID, 80), Reason: err.Error()})

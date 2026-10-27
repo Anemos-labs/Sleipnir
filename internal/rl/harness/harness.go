@@ -55,7 +55,7 @@ import (
 
 // PolicyProvider is the name the policy endpoint has inside a rollout's
 // configuration. A bare model id (in RoleModels, say) resolves to it.
-const PolicyProvider = "rl-policy"
+const PolicyProvider = env.PolicyProvider
 
 // DefaultAllow are the permission rules rollouts add to accept-edits mode: the
 // build, test and version-control tooling a working agent needs, with every

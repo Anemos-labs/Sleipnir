@@ -88,6 +88,7 @@ func (s *Session) loadExtensions() {
 		Root: cmdOpts.Root, Home: cmdOpts.Home, TrustProject: cmdOpts.TrustProject, Extra: cmdOpts.Extra,
 		Builtins: append(commands.DefaultBuiltins(), "mode", "diff", "recon", "skill"),
 		Exec:     s.userShell, AllowRead: s.allowRead,
+		ExecPOSIX: func() bool { return s.shell == nil || s.shell.POSIX() },
 	})
 	ext.commands = reg
 	for _, w := range cwarns {

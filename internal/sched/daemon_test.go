@@ -317,3 +317,19 @@ func TestKeyPayload(t *testing.T) {
 		t.Errorf("parsed %v", got)
 	}
 }
+
+// A goal's escape sequences do not reach the daemon's log as they are.
+func TestTickLogsTheGoalSafely(t *testing.T) {
+	s := Store{Path: filepath.Join(t.TempDir(), "schedule.json")}
+	t0 := time.Date(2026, 10, 1, 8, 0, 0, 0, time.UTC)
+	if _, err := s.Add(Job{Cron: "*/30 * * * *", Goal: "tidy\x1b[2J\x1b]52;c;ZXZpbA==\x07 up"}, t0); err != nil {
+		t.Fatal(err)
+	}
+	var log bytes.Buffer
+	if err := Tick(context.Background(), s, t0.Add(31*time.Minute), func(context.Context, Job, time.Time) (string, string) { return "ok", "" }, &log); err != nil {
+		t.Fatal(err)
+	}
+	if strings.ContainsAny(log.String(), "\x1b\x07") || !strings.Contains(log.String(), "tidy") {
+		t.Errorf("log: %q", log.String())
+	}
+}

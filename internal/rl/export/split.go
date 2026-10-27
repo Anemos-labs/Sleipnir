@@ -63,9 +63,9 @@ func (x *exporter) splitOf(ep *rl.Episode) string {
 	if len(x.splits) == 0 {
 		return ""
 	}
-	key := ep.Env.Repo
-	if key == "" {
-		key = ep.TaskID
+	key, ok := x.splitKey[ep]
+	if !ok {
+		key = splitKeyOf(ep)
 	}
 	h := sha256.Sum256([]byte(fmt.Sprintf("%d\x00%s", x.o.Seed, key)))
 	u := float64(binary.BigEndian.Uint64(h[:8])>>11) / float64(1<<53)
@@ -75,4 +75,12 @@ func (x *exporter) splitOf(ep *rl.Episode) string {
 		}
 	}
 	return x.splits[len(x.splits)-1].name
+}
+
+// splitKeyOf is what an episode is split by: its repository, else its task.
+func splitKeyOf(ep *rl.Episode) string {
+	if ep.Env.Repo != "" {
+		return ep.Env.Repo
+	}
+	return ep.TaskID
 }

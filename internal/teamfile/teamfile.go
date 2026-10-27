@@ -250,6 +250,9 @@ func List(dir, home string) []Entry {
 		if sd.dir == "" {
 			continue
 		}
+		if inProject(sd.scope, sd.dir, sd.dir) != nil {
+			continue // a project's teams are its own files, not ones a link points to
+		}
 		ents, _ := os.ReadDir(sd.dir)
 		for _, e := range ents {
 			name, ok := strings.CutSuffix(e.Name(), ".json")
@@ -293,6 +296,9 @@ func Save(dir, home, scope, name string, f *File, overwrite bool) (string, error
 		return "", err
 	}
 	p := filepath.Join(d, name+".json")
+	if err := inProject(scope, d, p); err != nil {
+		return "", err
+	}
 	if fi, err := os.Lstat(p); err == nil {
 		if !fi.Mode().IsRegular() {
 			return "", fmt.Errorf("%s is not a regular file", p)
@@ -338,6 +344,9 @@ func Remove(dir, home, scope, name string) error {
 		return err
 	}
 	p := filepath.Join(d, name+".json")
+	if err := inProject(scope, d, p); err != nil {
+		return err
+	}
 	fi, err := os.Lstat(p)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -349,6 +358,19 @@ func Remove(dir, home, scope, name string) error {
 		return fmt.Errorf("%s is not a regular file", p)
 	}
 	return os.Remove(p)
+}
+
+// inProject refuses a project team's path p in the teams directory d that a link in the repository (.sleipnir or
+// .sleipnir/teams a link) takes outside the project: what is saved or removed for a project stays in it. The user's own
+// directory may be a link (a dotfiles checkout).
+func inProject(scope, d, p string) error {
+	if scope != ScopeProject {
+		return nil
+	}
+	if err := config.CheckProjectTarget(filepath.Dir(filepath.Dir(d)), p); err != nil {
+		return fmt.Errorf("%s: the project's teams directory leads outside the project", p)
+	}
+	return nil
 }
 
 // orUser is scope, with "" read as ScopeUser.

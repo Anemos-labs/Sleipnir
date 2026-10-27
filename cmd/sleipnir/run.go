@@ -264,6 +264,9 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	if *quiet && res != nil {
 		// --quiet prints only the final answer: the sink shows nothing, so the answer is written here
 		if ans := strings.TrimRight(res.Text, "\n"); strings.TrimSpace(ans) != "" {
+			if term.IsTerminal(int(os.Stdout.Fd())) {
+				ans = tools.SanitizeForTerminal(ans) // a pipe gets the answer as it is; a terminal does not act on what it holds
+			}
 			fmt.Fprintln(os.Stdout, ans)
 		}
 	}

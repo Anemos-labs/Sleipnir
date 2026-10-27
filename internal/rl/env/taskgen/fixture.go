@@ -367,6 +367,9 @@ func writeFiles(dir string, files map[string][]byte) error {
 		if p == "" || strings.HasPrefix(p, "/") || filepath.IsAbs(p) || filepath.VolumeName(p) != "" || strings.Contains(p, "..") {
 			return fmt.Errorf("unsafe path %q", p)
 		}
+		if gitControlPath(p) {
+			return fmt.Errorf("unsafe path %q: a fixture cannot hold git's own directory (its configuration would choose programs that staging runs)", p)
+		}
 		full := filepath.Join(dir, filepath.FromSlash(p))
 		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 			return err
@@ -380,6 +383,18 @@ func writeFiles(dir string, files map[string][]byte) error {
 		}
 	}
 	return nil
+}
+
+// gitControlPath reports whether a slash path has a component that names git's directory, as git or the file system reads it:
+// ".git" in any case, with trailing dots or spaces (Windows drops them), or its short 8.3 name "git~1".
+func gitControlPath(p string) bool {
+	for _, c := range strings.Split(strings.ReplaceAll(p, "\\", "/"), "/") {
+		c = strings.ToLower(strings.TrimRight(c, ". "))
+		if c == ".git" || c == "git~1" {
+			return true
+		}
+	}
+	return false
 }
 
 // fixturePatch is the reference solution as a patch: what turns start into start with the solution's files over it.

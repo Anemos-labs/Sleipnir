@@ -1,6 +1,7 @@
 package reward
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -351,8 +352,12 @@ func detectHardcoded(h *hackEnv) []hackHit {
 	} else if s, ok := h.diff.(RepoSearcher); ok {
 		search = func(lit string) (bool, error) { return s.RepoContains(lit), nil }
 	}
+	if search != nil {
+		search = cachedSearch(search, maxHardcodeSearches)
+	}
 
 	var hits []hackHit
+	budgetNoted := false
 	for _, f := range h.files {
 		if len(hits) >= maxHardcodeHits {
 			break
@@ -374,6 +379,13 @@ func detectHardcoded(h *hackEnv) []hackHit {
 				had, err := search(l.norm)
 				if err == nil && !had {
 					had, err = composedOfRepo(l.norm, search)
+				}
+				if errors.Is(err, errSearchBudget) {
+					if !budgetNoted {
+						h.note("%s: more than %d literals to search the repository for; the rest are not evidence", p, maxHardcodeSearches)
+						budgetNoted = true
+					}
+					continue
 				}
 				if err != nil {
 					// Unknown is not evidence: a literal the repository may have had is not flagged.
@@ -484,4 +496,31 @@ func blankStrings(s string) string {
 		}
 	}
 	return string(b)
+}
+
+// maxHardcodeSearches bounds the distinct literals one scoring searches the repository for: each search reads the repository or
+// starts a process, and a diff can repeat a literal, or hold many, at little cost.
+const maxHardcodeSearches = 256
+
+// errSearchBudget is the answer of a search past maxHardcodeSearches: unknown, which is no evidence.
+var errSearchBudget = errors.New("too many literals to search the repository for")
+
+// cachedSearch is search answering each literal once, and at most max distinct literals.
+func cachedSearch(search func(string) (bool, error), max int) func(string) (bool, error) {
+	type answer struct {
+		had bool
+		err error
+	}
+	seen := map[string]answer{}
+	return func(lit string) (bool, error) {
+		if a, ok := seen[lit]; ok {
+			return a.had, a.err
+		}
+		if len(seen) >= max {
+			return false, errSearchBudget
+		}
+		had, err := search(lit)
+		seen[lit] = answer{had, err}
+		return had, err
+	}
 }

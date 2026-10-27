@@ -10,6 +10,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/anemos-labs/sleipnir/internal/friction"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // init registers friction reporting with the process's standard output streams.
@@ -72,7 +73,7 @@ func printFriction(w io.Writer, rep friction.Report) {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "#\tSCORE\tCATEGORY\tCOUNT\tSESSIONS\tWASTED\tWHAT")
 	for i, f := range rep.Findings {
-		fmt.Fprintf(tw, "%d\t%.0f\t%s\t%d\t%d\t%d\t%s\n", i+1, f.Score, f.Category, f.Count, f.Sessions, f.Wasted, f.Key)
+		fmt.Fprintf(tw, "%d\t%.0f\t%s\t%d\t%d\t%d\t%s\n", i+1, f.Score, f.Category, f.Count, f.Sessions, f.Wasted, oneLineSafe(f.Key))
 	}
 	tw.Flush()
 	fmt.Fprintln(w, "\nscore = count x severity squared (1 a cost, 2 waste, 3 a stop) x (1 + requests wasted per occurrence); WASTED is model requests.")
@@ -81,12 +82,17 @@ func printFriction(w io.Writer, rep friction.Report) {
 		if i >= 5 {
 			break
 		}
-		fmt.Fprintf(w, "%d. %s: %s\n", i+1, f.Category, f.Key)
+		fmt.Fprintf(w, "%d. %s: %s\n", i+1, f.Category, oneLineSafe(f.Key))
 		if f.Hint != "" {
-			fmt.Fprintf(w, "   %s\n", f.Hint)
+			fmt.Fprintf(w, "   %s\n", oneLineSafe(f.Hint))
 		}
 		for _, e := range f.Examples {
-			fmt.Fprintf(w, "   %s seq %d: %s\n", e.Session, e.Seq, e.Detail)
+			fmt.Fprintf(w, "   %s seq %d: %s\n", oneLineSafe(e.Session), e.Seq, oneLineSafe(e.Detail))
 		}
 	}
+}
+
+// oneLineSafe is a string of a session log as the report prints it: nothing a terminal acts on, and on one line.
+func oneLineSafe(s string) string {
+	return strings.Join(strings.Fields(tools.SanitizeForTerminal(s)), " ")
 }

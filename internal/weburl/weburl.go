@@ -104,14 +104,43 @@ func Host(u *url.URL) string {
 	return h
 }
 
-// HostChecked is Host and whether the name is an IP address or a name whose ASCII form
-// could be made: a rule that allows a domain matches only such a name.
+// HostChecked is Host and whether the name is an IP address or a DNS name whose ASCII form
+// could be made: a rule that allows a domain matches only such a name. A scoped IPv6
+// literal ("fe80::1%25zone") is neither: its zone is text the URL chooses, and it must not
+// pass for a name under an allowed domain while the client connects to the address.
 func HostChecked(u *url.URL) (string, bool) {
 	h := strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
 	if net.ParseIP(h) != nil {
 		return h, true
 	}
-	return ASCIIName(h)
+	a, ok := ASCIIName(h)
+	return a, ok && dnsName(a)
+}
+
+// Bounds of a DNS name (RFC 1035): the whole name and each label, in ASCII.
+const (
+	maxNameLen  = 253
+	maxLabelLen = 63
+)
+
+// dnsName reports whether an ASCII host is spelled as a DNS name: labels of letters,
+// digits, "-" and "_" (used by service names), none empty, within the RFC 1035 lengths.
+func dnsName(h string) bool {
+	if h == "" || len(h) > maxNameLen {
+		return false
+	}
+	for _, l := range strings.Split(h, ".") {
+		if l == "" || len(l) > maxLabelLen {
+			return false
+		}
+		for i := 0; i < len(l); i++ {
+			c := l[i]
+			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '_') {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // ASCIIName is a domain name in the ASCII form DNS and HTTP use: lower case, each label
@@ -127,11 +156,20 @@ func ASCIIName(name string) (string, bool) {
 	if name == "" || isASCII(name) {
 		return name, name != ""
 	}
+	// The encoder's work grows with the square of a label's length, and a redirect's
+	// Location is the URL's to choose: a name or label longer than DNS allows (a label
+	// never encodes to fewer characters than it has) is refused before it is encoded.
+	if len(name) > maxNameLen*utf8.UTFMax {
+		return name, false
+	}
 	folded := strings.Map(foldWidth, name)
 	labels := strings.Split(folded, ".")
 	for i, l := range labels {
 		if isASCII(l) {
 			continue
+		}
+		if utf8.RuneCountInString(l) > maxLabelLen {
+			return name, false
 		}
 		for _, r := range l {
 			if r != '-' && !unicode.IsLetter(r) && !unicode.IsDigit(r) && !unicode.IsMark(r) {
@@ -139,12 +177,16 @@ func ASCIIName(name string) (string, bool) {
 			}
 		}
 		enc, good := punycode(l)
-		if !good {
+		if !good || len(enc)+4 > maxLabelLen {
 			return name, false
 		}
 		labels[i] = "xn--" + enc
 	}
-	return strings.Join(labels, "."), true
+	out := strings.Join(labels, ".")
+	if len(out) > maxNameLen {
+		return name, false
+	}
+	return out, true
 }
 
 // foldWidth maps the full-width forms of ASCII characters to ASCII and the ideographic

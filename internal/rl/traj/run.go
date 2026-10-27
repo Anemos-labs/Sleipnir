@@ -45,6 +45,7 @@ type Run struct {
 
 	mu       sync.Mutex
 	msgMemo  map[string][]core.Hash // request id -> full message hash list
+	memoRefs int                    // message references held in msgMemo, bounded by maxMemoRefs
 	msgErr   map[string]error
 	toolsMem map[core.Hash][]core.ToolSpec
 	sysMem   map[core.Hash]core.Block

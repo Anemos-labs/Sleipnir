@@ -18,7 +18,6 @@ import (
 	"golang.org/x/term"
 
 	"github.com/anemos-labs/sleipnir/internal/config"
-	"github.com/anemos-labs/sleipnir/internal/mcp"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/tui/state"
 )
@@ -196,55 +195,9 @@ func swarmSettings(cfg *config.Config, rep *config.Report) []string {
 	}
 }
 
-// redactedConfig is cfg as `config --json` prints it: the output ends up in bug
-// reports, and an MCP entry is where credentials live (headers, environment,
-// tokens in a URL, arguments), so its values are replaced by their names or by
-// counts; the rest of the configuration holds names of variables, never keys.
-func redactedConfig(cfg *config.Config) any {
-	if len(cfg.MCP) == 0 {
-		return cfg
-	}
-	b, err := json.Marshal(cfg)
-	if err != nil {
-		return cfg
-	}
-	var doc map[string]any
-	if json.Unmarshal(b, &doc) != nil {
-		return cfg
-	}
-	shown := map[string]any{}
-	servers, _ := mcp.ParseWith(cfg.MCP, mcp.ParseOptions{Scope: mcp.ScopeUser})
-	for name := range cfg.MCP {
-		c, ok := servers[name]
-		if !ok {
-			shown[name] = "(not a valid entry: see `sleipnir mcp list`)"
-			continue
-		}
-		c = c.Redacted()
-		e := map[string]any{"type": c.EffectiveType()}
-		if c.Command != "" {
-			e["command"] = c.Command
-		}
-		if n := len(c.Args); n > 0 {
-			e["args"] = fmt.Sprintf("(%d arguments, not shown)", n)
-		}
-		if c.URL != "" {
-			e["url"] = c.URL
-		}
-		if len(c.Env) > 0 {
-			e["env"] = c.Env
-		}
-		if len(c.Headers) > 0 {
-			e["headers"] = c.Headers
-		}
-		if c.Disabled {
-			e["disabled"] = true
-		}
-		shown[name] = e
-	}
-	doc["mcp"] = shown
-	return doc
-}
+// redactedConfig is cfg as `config --json` prints it: the output ends up in bug reports, so it is the configuration-wide redaction
+// (config.Redact): provider headers and options, hooks and MCP entries, and anything else that looks like a credential.
+func redactedConfig(cfg *config.Config) any { return config.Redact(cfg) }
 
 // cmdSessions lists recorded sessions, newest first; `sessions prune` deletes the old ones.
 func cmdSessions(_ context.Context, args []string) error {
