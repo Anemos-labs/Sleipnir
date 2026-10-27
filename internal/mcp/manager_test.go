@@ -674,19 +674,20 @@ func TestStableConnectionsResetTheFailureCount(t *testing.T) {
 	o.StableAfter = 50 * time.Millisecond
 	m := startManager(t, o)
 	env, _ := testEnv(newRecorder(true))
-	for i := 0; i < 5; i++ {
+	var st ServerStatus
+	for i := 1; i <= 5; i++ {
 		tl := findTool(t, m.Preview().Tools(), "__crash")
 		time.Sleep(120 * time.Millisecond) // long enough to count as stable
 		runTool(t, tl, env, `{}`)
-		waitState(t, m, "srv", StateReady)
+		// A crash may not have been noticed yet when its tool call returns (the state is still the old Ready): wait for its restart
+		// to have happened and the server to be ready again, so the next spell is timed from that connection. Timed from the old one,
+		// a slow restart left the next connection up for less than StableAfter, and the crashes counted as failures in a row (macOS
+		// CI). A server that had run out of failures would be failed for good, and never get there.
+		waitFor(t, fmt.Sprintf("restart %d, and the server ready again", i), func() bool {
+			st = statusOf(m, "srv")
+			return st.Restarts >= i && st.State == StateReady
+		})
 	}
-	// The last crash may not have been noticed yet when its tool call returned (the state is still the old Ready): wait for the fifth restart to
-	// have happened, and for the server to be ready again. A server that had run out of failures would be failed for good, and never get there.
-	var st ServerStatus
-	waitFor(t, "five restarts, and the server ready again", func() bool {
-		st = statusOf(m, "srv")
-		return st.Restarts >= 5 && st.State == StateReady
-	})
 	if st.State != StateReady {
 		t.Errorf("%+v: five crashes, each after a stable spell, must not exhaust MaxFailures=2", st)
 	}
