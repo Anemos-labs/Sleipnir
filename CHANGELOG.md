@@ -12,6 +12,18 @@ they do not indicate whether a change has been released.
   while the review waited for its verdict started a second review of four
   test files, which took sixteen minutes. Harness behavior only; no prompt
   bytes change.
+- A resumed team keeps in review a read-only role's handed-in result and a
+  pool parent whose members confirmed its reconciliation, as it already
+  kept merged work; the manager accepts or rejects them as before the stop.
+  They went back to todo, "waiting to restart": after a container restart a
+  finished review, its second-model complement and a confirmed pool parent
+  all waited to be redone while their results sat on the board.
+- A web request that waits out the three-minute start window while the
+  session is still starting is now refused with 503 `starting` ("send this
+  again shortly") instead of 409 `no_session` ("the session did not
+  start"). A resumed eighteen-agent team took six minutes to start after a
+  container restart, and a goal resumed in that time was told three times
+  that the session had not started.
 - The tester's role pin says that tests put in a package beside other tests
   give every helper, type and test they add a prefix of the tester's own, so
   a test file someone else adds to that package still compiles. A tester's
