@@ -92,3 +92,27 @@ func TestAQueuedTaskOffersNoFreeSlotAtTheWriterLimit(t *testing.T) {
 		t.Fatalf("live view lines %q offer a slot at the writer limit", lines)
 	}
 }
+
+// An idle member that a pool keeps does not make its role free: a spawn of another task there would find it held.
+func TestAnIdleMemberAPoolKeepsIsNotAFreeSlot(t *testing.T) {
+	r := newRVRigWith(t, Config{MaxWorkers: 8, PersistentPools: true, Team: []string{"backend", "frontend", "frontend", "tester", "reviewer"}},
+		func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	if _, err := r.sw.Spawn(SpawnReq{Role: "frontend", Title: "build the pages", Files: []string{"web/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	parent := r.sw.Board.Snapshot().Tasks[0]
+	if parent.Pool == nil {
+		t.Fatalf("the parent has no pool: %+v", parent)
+	}
+	rvWait(t, "the pool's members idle", func() bool {
+		for _, m := range parent.Pool.Members {
+			if !r.idle(m) {
+				return false
+			}
+		}
+		return true
+	})
+	if free := r.sw.freeWriters("backend"); len(free) != 0 {
+		t.Fatalf("free writers %v include members a pool keeps", free)
+	}
+}
