@@ -226,6 +226,8 @@ the review due. Until then the manager's hot view says so,
 its `wait` is refused once nothing else runs, and the manager's final answer is held. The agent bounds stop vetoes per run; configured
 persistent teams continue the same manager context until the board and review gate settle. The manager's pin asks for a scout when the code or an outside source is unknown, devops and the tester to start from
 the accepted agreement in parallel with the implementation, and the reviewer pass before the goal is reported met.
+While implementation submissions wait in review on a team with a reviewer slot, the manager's `wait` result names them and
+says to decide each from its evidence: testing them again is the reviewer's task over the merged result.
 
 **The manager answers routine questions first.** With `permissions.manager_approves` (default true; `--manager-approves`),
 a worker's permission question that the engine marks routine goes to the manager before the person

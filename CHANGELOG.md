@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- On a team with a reviewer slot, a manager's `wait` result ends, while
+  implementation submissions wait in review, with a line that names them
+  and says to decide each from its evidence (`T1, T2 in review: decide
+  each from its evidence ...`): testing them is the reviewer's task over
+  the merged result. A manager wrote probe tests for four submissions one
+  after another while every worker sat idle; they waited in review four
+  to eight minutes, and the reviewer it then spawned tested the same code
+  again. About 40 tokens more in the manager's wait result, only while
+  such submissions wait.
 - The auto-docs pass's brief tells the docs member to read the diff of
   the changed files rather than whole sources, and to leave testing and
   probing the code to the reviewer and the verifier: it runs a documented
