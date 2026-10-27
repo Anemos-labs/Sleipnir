@@ -109,6 +109,57 @@ type docsKeeper struct {
 	passes  int       // finished passes
 	retryAt time.Time // no new attempt before this
 	coded   bool      // an implementation task has been accepted: agreements alone may start a pass
+
+	// edited are the product files the manager changed by itself since the last pass took them (noteManagerEdit), and
+	// editedAt is when it last changed one: no task's acceptance covers those edits, so they become one change of their
+	// own once the manager has left them alone for docsEditQuiet, or once it means to finish (flushManagerEdits).
+	edited   []string
+	editedAt time.Time
+}
+
+// docsEditQuiet is how long the manager's own edits wait for more before they become a change: the edits of one piece of
+// work come in a burst, and a pass started in the middle of it would need another.
+const docsEditQuiet = 90 * time.Second
+
+// managerEdits is the change the manager's own edits are listed as.
+const managerEdits = "manager"
+
+// noteManagerEdit records a product file the manager changed by itself. Tests and documentation leave no document stale.
+// A manager that implemented two of four modules itself left their READMEs to a docs task it created by hand after the
+// last review, eight minutes after its edits, while the docs worker sat idle.
+func (s *Swarm) noteManagerEdit(p string) {
+	k := s.docs
+	if k == nil || p == "" || testFile(p) || docsFile(p) {
+		return
+	}
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.editedAt = s.deps.Now()
+	for _, f := range k.edited {
+		if f == p {
+			return
+		}
+	}
+	k.edited = append(k.edited, p)
+}
+
+// flushManagerEdits turns the manager's own edits into a pending change now: the manager means to finish, so no more
+// edits are coming.
+func (s *Swarm) flushManagerEdits() {
+	if k := s.docs; k != nil {
+		k.mu.Lock()
+		k.takeEditsLocked()
+		k.mu.Unlock()
+	}
+}
+
+// takeEditsLocked moves the manager's edits into pending as one change.
+func (k *docsKeeper) takeEditsLocked() {
+	if len(k.edited) == 0 {
+		return
+	}
+	k.pending = append(k.pending, docsChange{task: managerEdits, title: "edits the manager made itself", kind: "change", files: k.edited})
+	k.edited, k.coded = nil, true
 }
 
 // newDocsKeeper returns the keeper of a swarm whose team has a docs slot and asks
@@ -162,6 +213,9 @@ func (s *Swarm) docsTick(now time.Time) {
 		}
 		k.pending = append(k.pending, docsChange{task: t.ID, title: t.Title, kind: kind, files: t.Files})
 	}
+	if len(k.edited) > 0 && now.Sub(k.editedAt) >= docsEditQuiet {
+		k.takeEditsLocked()
+	}
 	if k.open != "" {
 		t, ok := snap.Task(k.open)
 		if ok && t.Status == StatusTodo && t.Owner == "" {
@@ -211,7 +265,13 @@ func (s *Swarm) docsTick(now time.Time) {
 		return
 	}
 	k.pending = k.pending[len(batch):]
-	k.open, k.last, k.waiting = task.ID, batch[len(batch)-1].task, ""
+	k.open, k.waiting = task.ID, ""
+	for i := len(batch) - 1; i >= 0; i-- {
+		if batch[i].task != managerEdits {
+			k.last = batch[i].task
+			break
+		}
+	}
 	k.mu.Unlock()
 	id, err := s.Spawn(SpawnReq{Role: DocsRole, Agent: agentID, TaskID: task.ID, By: "harness"})
 	if err != nil {
@@ -313,6 +373,8 @@ func (s *Swarm) DocsState() string {
 		parts = append(parts, fmt.Sprintf("%d agreement(s) pending until the first implementation task is accepted", len(k.pending)))
 	case len(k.pending) > 0:
 		parts = append(parts, fmt.Sprintf("%d change(s) pending", len(k.pending)))
+	case len(k.edited) > 0:
+		parts = append(parts, fmt.Sprintf("%d file(s) the manager edited wait for its edits to settle", len(k.edited)))
 	default:
 		parts = append(parts, "up to date")
 	}
@@ -352,9 +414,9 @@ func (s *Swarm) docsWillStart(snap *Snapshot) bool {
 	return false
 }
 
-// docsPending reports whether auto-docs still has work: a pass in progress, or pending
+// docsPending reports whether auto-docs still has work: a pass in progress, pending
 // changes that may start one (agreements alone, before any implementation task was
-// accepted, start nothing and hold nobody).
+// accepted, start nothing and hold nobody), or edits of the manager's not yet taken.
 func (s *Swarm) docsPending() bool {
 	k := s.docs
 	if k == nil {
@@ -362,7 +424,7 @@ func (s *Swarm) docsPending() bool {
 	}
 	k.mu.Lock()
 	defer k.mu.Unlock()
-	return k.open != "" || len(k.pending) > 0 && k.coded
+	return k.open != "" || len(k.pending) > 0 && k.coded || len(k.edited) > 0
 }
 
 // testsOnly reports whether every file a task's scope names is a test file (by the common conventions: a _test.go,

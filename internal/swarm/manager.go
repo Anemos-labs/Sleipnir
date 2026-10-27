@@ -41,6 +41,9 @@ func (s *Swarm) flushManager(ctx context.Context, m *member) error {
 	s.review.mu.Lock()
 	s.review.landLocked("manager changes", files, 0)
 	s.review.mu.Unlock()
+	for _, f := range files {
+		s.noteManagerEdit(f)
+	}
 	return s.syncManager(ctx, m)
 }
 
