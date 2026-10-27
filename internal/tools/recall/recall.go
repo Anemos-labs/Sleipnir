@@ -15,6 +15,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/kv"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
@@ -81,6 +82,14 @@ func (t *Tool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	if limit <= 0 || limit > env.Limits.MaxOutputChars {
 		limit = env.Limits.MaxOutputChars
 	}
+	// The policy is asked before anything is read: a rule that denies recall, or asks about it, holds for every source.
+	if d := env.Perm.Check(ctx, perm.Request{Agent: env.Agent, Role: env.Role, Tool: "recall", Input: c.Input, Summary: recallSummary(in)}); !d.Allow {
+		reason := strings.TrimSpace(d.Reason)
+		if reason == "" {
+			reason = "not allowed by the permission policy"
+		}
+		return tools.Errorf("permission denied (recall): %s", reason), nil
+	}
 	src, bad := t.source(env, in)
 	if bad != nil {
 		return bad, nil
@@ -97,6 +106,26 @@ func (t *Tool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 		return t.search(src, in), nil
 	}
 	return tools.Errorf("give one of: turns, handle, query"), nil
+}
+
+// recallSummary says what a recall call reads, for a question about it.
+func recallSummary(in input) string {
+	what := "recall"
+	switch {
+	case in.Handle != "":
+		what += " handle " + in.Handle
+	case in.Turns != "":
+		what += " turns " + in.Turns
+	case in.Query != "":
+		what += " " + strconv.Quote(in.Query)
+	}
+	if a := strings.TrimSpace(in.Agent); a != "" {
+		what += " of agent " + a
+	}
+	if s := strings.TrimSpace(in.Session); s != "" {
+		what += " in session " + s
+	}
+	return what
 }
 
 // source resolves agent and session to the turns a call reads: the caller's own by default.

@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 
@@ -93,23 +94,55 @@ func (r *Runner) payload(event string, ev Event) ([]byte, error) {
 }
 
 // shapeInput returns the tool input as a value to embed: the JSON as it is, with
-// file_path added for file tools that call it path. Input that is not valid JSON
-// is passed as a string rather than corrupting the payload.
+// file_path set, for file tools that call it path, to the file the tool acts on.
+// Input that is not valid JSON is passed as a string rather than corrupting the
+// payload.
 func shapeInput(tool string, input json.RawMessage) any {
 	if !json.Valid(input) {
 		return string(input)
 	}
 	switch normTool(tool) {
 	case "read", "write", "edit":
-		var obj map[string]json.RawMessage
-		if err := json.Unmarshal(input, &obj); err == nil && obj != nil {
-			if p, ok := obj["path"]; ok {
-				if _, has := obj["file_path"]; !has {
-					obj["file_path"] = p
-					return obj
-				}
+		if obj := inputObject(input); obj != nil {
+			if p := effectivePath(obj); p != "" {
+				obj["file_path"], _ = json.Marshal(p)
+				return obj
 			}
 		}
 	}
 	return json.RawMessage(input)
+}
+
+// inputObject decodes a tool input as the tools do: an object, or a JSON string that holds one (some providers send arguments
+// so). It is nil for anything else.
+func inputObject(input json.RawMessage) map[string]json.RawMessage {
+	raw := bytes.TrimSpace(input)
+	if len(raw) > 0 && raw[0] == '"' {
+		var s string
+		if json.Unmarshal(raw, &s) == nil {
+			raw = bytes.TrimSpace([]byte(s))
+		}
+	}
+	var obj map[string]json.RawMessage
+	if json.Unmarshal(raw, &obj) != nil {
+		return nil
+	}
+	return obj
+}
+
+// inputText is the string member key of in, "" when it is absent or not a string.
+func inputText(in map[string]json.RawMessage, key string) string {
+	var s string
+	if raw, ok := in[key]; ok && json.Unmarshal(raw, &s) == nil {
+		return s
+	}
+	return ""
+}
+
+// effectivePath is the file a file tool acts on, by the tools' own precedence: path when it is set, else file_path.
+func effectivePath(in map[string]json.RawMessage) string {
+	if p := inputText(in, "path"); p != "" {
+		return p
+	}
+	return inputText(in, "file_path")
 }

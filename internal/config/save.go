@@ -145,3 +145,21 @@ func marshalIndent(v any) ([]byte, error) {
 	}
 	return buf.Bytes(), nil
 }
+
+// CheckProjectTarget refuses a project or local configuration path that, through a link in the repository, resolves outside
+// the project root: a change meant for one project must not land in the user's own file or another project's. The links of the
+// user's own file (a dotfiles checkout) are not held to this; it is for the files a repository supplies.
+func CheckProjectTarget(root, path string) error {
+	if root == "" {
+		return errors.New("config: there is no project to write to")
+	}
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return fmt.Errorf("config: %s: %s", root, pathReason(err))
+	}
+	resolved := resolveExisting(path)
+	if rel, err := filepath.Rel(realRoot, resolved); err != nil || !filepath.IsLocal(rel) {
+		return fmt.Errorf("config: %s resolves to %s, outside the project; refusing to write through the link", path, resolved)
+	}
+	return nil
+}

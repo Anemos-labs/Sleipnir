@@ -405,11 +405,16 @@ func (e *Engine) settles(r Request, rem []Rule) bool {
 		}
 		extra = append(extra, c)
 	}
-	sess, prof := e.snapshotWith(r.Role, extra)
+	sess, profs := e.snapshotWith(r.Role, extra)
 	if e.evaluate(sess, r).kind != vAllow {
 		return false
 	}
-	return prof == nil || e.evaluate(prof, r).kind == vAllow
+	for _, prof := range profs {
+		if e.evaluate(prof, r).kind != vAllow {
+			return false
+		}
+	}
+	return true
 }
 
 // rememberRules are the rules a yes "and don't ask again" for the session would add

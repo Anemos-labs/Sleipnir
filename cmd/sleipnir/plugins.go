@@ -99,6 +99,11 @@ func cmdPlugins(ctx context.Context, args []string) error {
 	case *local:
 		target = config.LocalConfigPath(root)
 	}
+	if *project || *local {
+		if err := config.CheckProjectTarget(root, target); err != nil {
+			return fmt.Errorf("plugins: %w", err)
+		}
+	}
 	p := pluginCLI{out: os.Stdout, home: home, cwd: dir, root: root, trust: *trustProject, target: target, json: *asJSON}
 	switch sub {
 	case "list", "ls":

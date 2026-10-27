@@ -122,8 +122,16 @@ func (t *bashTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 
 	// The permission engine resolves relative paths in the command against the
 	// directory it will actually run in (the agent's tracked cwd, which persists
-	// across calls), not against the session root.
+	// across calls), not against the session root. It reads the command as POSIX
+	// shell; PowerShell and cmd.exe quote and escape otherwise, so a command for
+	// them is not taken to be what the engine read: it is high risk, asked about
+	// unless a rule allows it by name, and refused in plan mode.
+	var risk perm.Risk
+	if !sh.posix {
+		risk = perm.RiskHigh
+	}
 	dec := env.Perm.Check(ctx, perm.Request{
+		Risk:    risk,
 		Agent:   env.Agent,
 		Role:    env.Role,
 		Tool:    "bash",

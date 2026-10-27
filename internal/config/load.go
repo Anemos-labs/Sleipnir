@@ -352,15 +352,15 @@ func load(opts LoadOpts) (*Config, *Report, []*layer, error) {
 // project is trusted: it tells the caller that the URL a key is about to be sent to
 // was chosen by the repository.
 func markProjectBaseURLs(cfg *Config, m *merger, byPath map[string]*layer) {
+	fromProject := func(name, field string) bool {
+		l := byPath[m.originFor([]string{"providers", name, field})]
+		return l != nil && (l.kind == "project" || l.kind == "local")
+	}
 	for name, p := range cfg.Providers {
-		if p.BaseURL == "" {
-			continue // an entry without a URL: the origin lookup below would find its parent
-		}
-		src := m.originFor([]string{"providers", name, "base_url"})
-		if l := byPath[src]; l != nil && (l.kind == "project" || l.kind == "local") {
-			p.BaseURLFromProject = true
-			cfg.Providers[name] = p
-		}
+		// An entry without the field: the origin lookup would find its parent.
+		p.BaseURLFromProject = p.BaseURL != "" && fromProject(name, "base_url")
+		p.AuthFromProject = p.Auth != "" && fromProject(name, "auth")
+		cfg.Providers[name] = p
 	}
 }
 

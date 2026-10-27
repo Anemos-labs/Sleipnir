@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -55,8 +56,29 @@ func newMerger() *merger {
 	return &merger{tree: map[string]any{}, origins: map[string]string{}, sources: map[string]string{}}
 }
 
-// okey joins field-path segments with NUL separators for internal origin-map keys.
-func okey(segs []string) string { return strings.Join(segs, "\x00") }
+// okey joins field-path segments with NUL separators for internal origin-map keys. A segment is a key of the file, which may
+// hold a NUL itself: each is escaped first, so no two paths share a key and a null at one cannot drop another's origin.
+func okey(segs []string) string {
+	esc := make([]string, len(segs))
+	for i, s := range segs {
+		esc[i] = keyEscaper.Replace(s)
+	}
+	return strings.Join(esc, "\x00")
+}
+
+// unkey is the inverse of okey.
+func unkey(k string) []string {
+	segs := strings.Split(k, "\x00")
+	for i, s := range segs {
+		segs[i] = keyUnescaper.Replace(s)
+	}
+	return segs
+}
+
+var (
+	keyEscaper   = strings.NewReplacer(`\`, `\\`, "\x00", `\0`)
+	keyUnescaper = strings.NewReplacer(`\\`, `\`, `\0`, "\x00")
+)
 
 // opaque reports whether the value at segs is treated as a unit that replaces
 // rather than merges: entries of hooks and mcp, whose shape this package does
@@ -106,20 +128,33 @@ func (m *merger) repoSupplied() bool { return m.kind == "project" || m.kind == "
 
 // unionList appends the elements of add that are not already in have, keeping the
 // order (lower layers first).
+// Membership is a set of each element's JSON encoding (object keys sorted, so equal values encode alike), which keeps a list of
+// many rules linear to merge.
 func unionList(have any, add []any) []any {
 	out, _ := have.([]any)
 	out = append([]any(nil), out...)
+	seen := make(map[string]bool, len(out)+len(add))
+	key := func(v any) (string, bool) {
+		b, err := json.Marshal(v)
+		return string(b), err == nil
+	}
+	for _, h := range out {
+		if k, ok := key(h); ok {
+			seen[k] = true
+		}
+	}
 	for _, a := range add {
-		dup := false
-		for _, h := range out {
-			if reflect.DeepEqual(h, a) {
-				dup = true
-				break
-			}
+		k, ok := key(a)
+		if ok && seen[k] {
+			continue
 		}
-		if !dup {
-			out = append(out, deepCopy(a))
+		if !ok && slices.ContainsFunc(out, func(h any) bool { return reflect.DeepEqual(h, a) }) {
+			continue
 		}
+		if ok {
+			seen[k] = true
+		}
+		out = append(out, deepCopy(a))
 	}
 	return out
 }
@@ -229,7 +264,7 @@ func deepCopy(v any) any {
 func (m *merger) displayOrigins() map[string]string {
 	out := make(map[string]string, len(m.origins))
 	for k, src := range m.origins {
-		out[fmtPath(strings.Split(k, "\x00"))] = src
+		out[fmtPath(unkey(k))] = src
 	}
 	return out
 }

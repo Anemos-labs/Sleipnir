@@ -137,6 +137,7 @@ Settings that could send your API key to another host, run commands or widen wha
 | `providers.<name>.api_key_env` | chooses which environment variable is sent |
 | `providers.<name>.headers` | can add credentials or route requests |
 | `providers.<name>.options` | provider-specific behaviour, may hold URLs |
+| `providers.<name>.auth`, `.dialect` | choose which credential is sent and how; a ChatGPT sign-in is never sent on a project's choice, trusted or not |
 | `providers.<name>.allow_hosts`, `.allow_insecure_http` | say where your key may go: dropped from **every** project layer, trusted or not (section 6) |
 | `permissions.mode` | `bypass` and `yolo` turn off the prompts |
 | `permissions.allow` | pre-approves actions |
@@ -145,6 +146,10 @@ Settings that could send your API key to another host, run commands or widen wha
 | `mcp` | starts servers |
 | `tools.web_allow_private`, `tools.web_allow_hosts` | reaches internal networks |
 | `swarm.budget_usd` | the built-in cap on what a swarm may spend (section 6): a repository must not be able to lift it |
+| `permissions.manager_approves`, `permissions.manager_answers_after`, `.manager_answers_up_to` | let the manager answer for you (`manager_approves: false` is harmless) |
+| `plugins.enabled.<id>` | turning a plugin on; turning one off applies without trust, except `hooks`, which runs your own hooks |
+| `plugins.profile` | a profile that turns the hooks off (`minimal`); `standard`, `team` and `headless` apply without trust |
+| `plugins.settings.<id>` | a plugin's settings are written into the commands of its hooks and servers |
 
 Everything else in a project file applies without trust: `models`, `cache`, `swarm` (`isolation` and `mailman` reduce
 what an agent can reach or change nothing about it, and a project cannot choose where anything is written), the tool

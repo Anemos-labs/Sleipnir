@@ -50,6 +50,8 @@ func cmdInit(ctx context.Context, args []string) error {
 	path := config.ProjectConfigPath(root)
 	if *user {
 		path = config.UserConfigPath(home)
+	} else if err := config.CheckProjectTarget(root, path); err != nil {
+		return fmt.Errorf("init: %w", err)
 	}
 	if _, err := os.Stat(path); err == nil {
 		return fmt.Errorf("init: %s already exists; edit it, or use `sleipnir config` to inspect it", path)

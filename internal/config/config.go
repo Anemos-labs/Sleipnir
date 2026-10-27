@@ -143,6 +143,9 @@ type Provider struct {
 	// format. Callers that send the provider's key to BaseURL use it to refuse a
 	// repository-chosen host that the user has not allowed (AllowHosts).
 	BaseURLFromProject bool `json:"-"`
+	// AuthFromProject records, likewise, that a project-level file chose Auth: a ChatGPT sign-in is never sent on a
+	// repository's choice.
+	AuthFromProject bool `json:"-"`
 }
 
 // APIKey reads the provider's API key, at call time: from the environment or, when

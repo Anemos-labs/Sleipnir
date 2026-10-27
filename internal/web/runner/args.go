@@ -220,10 +220,18 @@ func judge(c *wire.CLICommand, parsed map[string][]string) (mode string, noKeys 
 			reasons = append(reasons, "--"+name+" lets the command do more than its mode allows")
 		}
 	}
+	modeGiven := false
 	for _, name := range modeFlags {
-		if v, ok := last(parsed, name); ok && slices.Contains(dangerousModes, strings.ToLower(v)) {
+		v, ok := last(parsed, name)
+		modeGiven = modeGiven || ok && v != ""
+		if ok && slices.Contains(dangerousModes, strings.ToLower(v)) {
 			reasons = append(reasons, "--"+name+" "+strings.ToLower(v)+" runs without asking")
 		}
+	}
+	if slices.Equal(c.Path, []string{"run"}) && !modeGiven && !on(parsed, "allow") {
+		// A run started from here has no terminal: with no mode and no --allow, sleipnir run chooses bypass for itself, as it
+		// does in a script (session.Options.Unattended). That is the same run as --mode bypass and needs the same confirmation.
+		reasons = append(reasons, "without --mode, a run nobody can answer chooses bypass: it runs without asking")
 	}
 	if addr, ok := effective(c, parsed, "addr"); ok && !loopback(addr) {
 		reasons = append(reasons, "--addr "+addr+" listens beyond this machine")

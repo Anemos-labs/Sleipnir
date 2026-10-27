@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode/utf8"
 )
 
@@ -72,7 +74,11 @@ type parser struct {
 	pos    int
 	depth  int
 	issues []Issue // warnings found while parsing (duplicate keys)
+	dups   int     // duplicate keys seen
 }
+
+// maxDupWarnings bounds the duplicate-key warnings of one file.
+const maxDupWarnings = 50
 
 // parseJSONC parses src. An empty document, or one holding only comments, is an
 // empty object: a freshly created config file is not an error.
@@ -100,23 +106,42 @@ func parseJSONC(file string, src []byte) (root *node, warnings []Issue, err erro
 	return n, p.issues, nil
 }
 
-// lineCol converts a byte offset to a 1-based line and column (in characters).
+// lineCol converts a byte offset to a 1-based line and column (in characters). The line starts of the last document asked about
+// are kept, so the many positions one file's diagnostics need cost a search each, not a scan of everything before them.
 func lineCol(src []byte, off int) (line, col int) {
 	if off < 0 || off > len(src) {
 		return 0, 0
 	}
-	line = 1
-	start := 0
-	if bytes.HasPrefix(src, []byte{0xEF, 0xBB, 0xBF}) {
+	starts := lineStarts(src)
+	i := sort.Search(len(starts), func(i int) bool { return starts[i] > off }) - 1
+	start := starts[i]
+	if i == 0 && bytes.HasPrefix(src, []byte{0xEF, 0xBB, 0xBF}) && off >= 3 {
 		start = 3 // the byte order mark is not a visible column
 	}
-	for i := 0; i < off; i++ {
-		if src[i] == '\n' {
-			line++
-			start = i + 1
+	return i + 1, utf8.RuneCount(src[start:off]) + 1
+}
+
+var lineCache struct {
+	sync.Mutex
+	src    []byte
+	starts []int
+}
+
+// lineStarts returns the offsets at which src's lines start (the first is 0).
+func lineStarts(src []byte) []int {
+	lineCache.Lock()
+	defer lineCache.Unlock()
+	if len(lineCache.src) == len(src) && (len(src) == 0 || &lineCache.src[0] == &src[0]) {
+		return lineCache.starts
+	}
+	starts := []int{0}
+	for i, b := range src {
+		if b == '\n' {
+			starts = append(starts, i+1)
 		}
 	}
-	return line, utf8.RuneCount(src[start:off]) + 1
+	lineCache.src, lineCache.starts = src, starts
+	return starts
 }
 
 // issueAt translates a source byte offset into a line and column and formats a configuration
@@ -453,7 +478,12 @@ func (p *parser) object() (*node, error) {
 			return nil, err
 		}
 		if _, dup := n.mem[key]; dup {
-			p.issues = append(p.issues, p.issueAt(keyOff, SeverityWarning, "duplicate key %q; the last one wins", key))
+			switch p.dups++; {
+			case p.dups <= maxDupWarnings:
+				p.issues = append(p.issues, p.issueAt(keyOff, SeverityWarning, "duplicate key %q; the last one wins", key))
+			case p.dups == maxDupWarnings+1:
+				p.issues = append(p.issues, p.issueAt(keyOff, SeverityWarning, "more duplicate keys follow; they are not listed"))
+			}
 		} else {
 			n.keys = append(n.keys, key)
 		}

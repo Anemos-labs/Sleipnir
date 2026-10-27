@@ -38,9 +38,12 @@ type cwdState struct {
 
 // wrapScript prefixes command with the trap that records the final directory.
 // The prefix stays on the command's first line so error messages keep their
-// line numbers. `>|` overrides a `set -C` the command may have enabled.
+// line numbers. `>|` overrides a `set -C` the command may have enabled. The
+// destination is spelled out in the trap itself rather than kept in a shell
+// variable, which the command could reassign to redirect the trap's write.
 func wrapScript(command, cwdFile string) string {
-	return "__sleipnir_cwd=" + shQuote(cwdFile) + `; trap 'pwd -P >|"$__sleipnir_cwd" 2>/dev/null' EXIT; ` + command
+	trap := "pwd -P >|" + shQuote(cwdFile) + " 2>/dev/null"
+	return "trap " + shQuote(trap) + " EXIT; " + command
 }
 
 // shQuote single-quotes s for a POSIX shell.

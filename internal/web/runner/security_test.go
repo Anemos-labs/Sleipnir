@@ -126,7 +126,7 @@ func TestRequestsThatWidenARunNeedAConfirmation(t *testing.T) {
 		"loopback":       {"path": []string{"mock"}, "flags": map[string]any{"addr": "127.0.0.1:0"}},
 		"localhost":      {"path": []string{"mock"}, "flags": map[string]any{"addr": "localhost:0"}},
 		"ipv6 loopback":  {"path": []string{"mock"}, "flags": map[string]any{"addr": "[::1]:0"}},
-		"trust off":      {"path": []string{"run"}, "flags": map[string]any{"trust-project": false}, "pos": map[string]string{"PROMPT": "x"}},
+		"trust off":      {"path": []string{"run"}, "flags": map[string]any{"trust-project": false, "mode": "default"}, "pos": map[string]string{"PROMPT": "x"}},
 		"a mode allowed": {"path": []string{"run"}, "flags": map[string]any{"mode": "plan"}, "pos": map[string]string{"PROMPT": "x"}},
 	} {
 		w := rg.do(req{method: "POST", path: "/api/runs", body: body})
@@ -167,9 +167,11 @@ func TestJudgeParsesEverySpelling(t *testing.T) {
 		{"-mode yolo", run, []string{"-mode", "yolo", "x"}, "priv", false},
 		{"--mode=Bypass", run, []string{"--mode=Bypass"}, "priv", false},
 		{"-trust-project=1", run, []string{"-trust-project=1"}, "priv", false},
-		{"--trust-project=false", run, []string{"--trust-project=false", "goal"}, "net", false},
+		{"--trust-project=false", run, []string{"--trust-project=false", "--mode=default", "goal"}, "net", false},
+		{"no mode: bypass by itself", run, []string{"goal"}, "priv", false},
+		{"no mode but --allow", run, []string{"--allow", "Bash(go:*)", "goal"}, "priv", false},
 		{"-allow after a word", run, []string{"goal", "-allow", "Bash(go:*)"}, "priv", false},
-		{"after --", run, []string{"--", "--mode=yolo"}, "net", false},
+		{"after --", run, []string{"--mode", "plan", "--", "--mode=yolo"}, "net", false},
 		{"-addr :8080", mock, []string{"-addr", ":8080"}, "priv", false},
 		{"--addr=[::1]:9", mock, []string{"--addr=[::1]:9"}, "server", false},
 		{"the default address", mock, nil, "server", false},

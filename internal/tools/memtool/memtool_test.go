@@ -292,3 +292,39 @@ func TestProjectNotesAreNotWrittenThroughALink(t *testing.T) {
 		})
 	}
 }
+
+// Reading and removing project notes are held to the same rule: nothing is read or replaced through a linked .sleipnir.
+func TestProjectNotesAreNotReadOrRemovedThroughALink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symbolic links need privileges on Windows")
+	}
+	dir := t.TempDir()
+	repo, elsewhere := filepath.Join(dir, "repo"), filepath.Join(dir, "elsewhere")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(elsewhere, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	other := filepath.Join(elsewhere, "MEMORY.local.md")
+	if err := os.WriteFile(other, []byte("- another project's secret note\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, filepath.Join(repo, ".sleipnir")); err != nil {
+		t.Fatal(err)
+	}
+	tool := NewScoped(filepath.Join(dir, "home", "MEMORY.md"), filepath.Join(repo, ".sleipnir", "MEMORY.local.md"))
+	for _, in := range []map[string]any{
+		{"action": "list"},
+		{"action": "list", "scope": "project"},
+		{"action": "remove", "scope": "project", "text": "secret"},
+	} {
+		r := run(t, tool, &recording{allow: true}, in)
+		if !r.IsError || !strings.Contains(r.Text, "is a link") || strings.Contains(r.Text, "secret note") {
+			t.Errorf("%v: %+v", in, r)
+		}
+	}
+	if b, _ := os.ReadFile(other); string(b) != "- another project's secret note\n" {
+		t.Errorf("the other file changed: %q", b)
+	}
+}

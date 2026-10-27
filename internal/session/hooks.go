@@ -99,10 +99,42 @@ func (h *hookAdapter) BeforeTool(ctx context.Context, c agent.ToolHookCall) agen
 	case res.Blocked || res.Decision == hooks.Deny || res.Stop:
 		out.Veto = true
 		out.Reason = firstNonEmpty(res.Reason, res.StopReason, "a hook blocked this call")
+	case res.Decision == hooks.Ask:
+		input := c.Input
+		if len(res.UpdatedInput) > 0 {
+			input, out.UpdatedInput = res.UpdatedInput, res.UpdatedInput
+		}
+		if why := h.askPerson(ctx, c, input, res.Reason); why != "" {
+			out.Veto, out.Reason, out.UpdatedInput = true, why, nil
+		}
 	case len(res.UpdatedInput) > 0:
 		out.UpdatedInput = res.UpdatedInput
 	}
 	return out
+}
+
+// askPerson puts a call a PreToolUse hook answered "ask" about to the person, with the input it will run with, whatever the
+// permission rules would say: the hook asked for a person's approval, and a rule that allows the call is no such approval. It
+// returns why the call may not run, "" when the person approved it. With no one to ask (no prompter, or bypass mode, which asks
+// nothing), the call is refused.
+func (h *hookAdapter) askPerson(ctx context.Context, c agent.ToolHookCall, input json.RawMessage, reason string) string {
+	ask := h.s.trackAsks(h.s.opts.Prompter)
+	if ask == nil || (h.s.Perm != nil && h.s.Perm.Mode() == perm.ModeBypass) {
+		return "a hook asks for approval of this call, and no one is available to give it"
+	}
+	summary := c.Tool + " (a hook asks for approval"
+	if reason != "" {
+		summary += ": " + clip(reason, 200)
+	}
+	summary += ")"
+	d := ask(ctx, perm.Request{Agent: c.Agent, Role: c.Role, Tool: c.Tool, Input: input, Summary: summary})
+	if d.Allow {
+		return ""
+	}
+	if why := strings.TrimSpace(d.Reason); why != "" {
+		return "not approved: " + why
+	}
+	return "not approved"
 }
 
 // AfterTool implements agent.Hooks.

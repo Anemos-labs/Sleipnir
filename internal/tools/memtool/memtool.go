@@ -118,11 +118,17 @@ func (t *Tool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 		return tools.Errorf(`scope is "user" or "project"`), nil
 	}
 	f := &Tool{path: file}
+	project := file != t.path
+	if project {
+		if err := CheckProjectPath(file); err != nil {
+			return tools.Errorf("memory: %v", err), nil
+		}
+	}
 	notes, err := f.read()
 	if err != nil {
 		return tools.Errorf("memory: %v", err), nil
 	}
-	return f.run(ctx, c, in, notes, file != t.path)
+	return f.run(ctx, c, in, notes, project)
 }
 
 // listAll lists the notes of both scopes, user first.
@@ -136,6 +142,9 @@ func (t *Tool) listAll() (*tools.Result, error) {
 			return &tools.Result{Text: "no notes yet"}, nil
 		}
 		return &tools.Result{Text: numbered(user)}, nil
+	}
+	if err := CheckProjectPath(t.project); err != nil {
+		return tools.Errorf("memory: %v", err), nil
 	}
 	proj, err := (&Tool{path: t.project}).read()
 	if err != nil {
@@ -223,6 +232,11 @@ func (t *Tool) run(ctx context.Context, c *tools.Call, in input, notes []string,
 		}
 		if r := t.authorize(ctx, c, "forget: "+strings.Join(gone, " | ")); r != nil {
 			return r, nil
+		}
+		if project {
+			if err := CheckProjectPath(t.path); err != nil { // again: the parent may have become a link while the person was asked
+				return tools.Errorf("memory: %v", err), nil
+			}
 		}
 		return t.write(notes, keep, fmt.Sprintf("removed %d note(s)", len(gone)), "removed")
 	}
