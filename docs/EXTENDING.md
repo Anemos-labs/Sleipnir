@@ -331,8 +331,10 @@ and nothing is sent:
 ```
 
 Read-only commands (`git log`, `echo`, `ls`) pass in `default` mode. At most 8 commands per expansion, 30 seconds
-each, 16 KiB of output each (longer is cut with a marker). Arguments substituted into a `!` command are single-quoted
-word by word, so an argument cannot add an operator to it.
+each, 16 KiB of output each (longer is cut with a marker). Arguments substituted into a `!` command are quoted for
+where the placeholder stands: single-quoted word by word outside quotes, escaped for the quotes inside `'$1'` or `"$1"`,
+so an argument cannot add an operator to it. A placeholder inside backquotes, `$'...'` or right after a backslash has no
+safe spelling and the expansion fails.
 
 **Literal regions.** Fenced code blocks are left alone: no include and no shell command inside them, so a command that
 documents this syntax does not run it (arguments are still substituted). Included files and command output are inserted

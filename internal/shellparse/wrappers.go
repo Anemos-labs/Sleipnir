@@ -2,6 +2,7 @@ package shellparse
 
 import (
 	"path"
+	"slices"
 	"strings"
 )
 
@@ -574,6 +575,26 @@ var interpreterValueOpts = map[string]string{
 	"lua": "l", "Rscript": "", "deno": "", "bun": "r", "tclsh": "",
 }
 
+// interpreterLongValueOpts are, per interpreter, the long options that take the next argument as their value when it is not
+// attached with "=" (node --require ./hook.js): that value is no script operand.
+var interpreterLongValueOpts = map[string][]string{
+	"python": {"--check-hash-based-pycs"},
+	"node": {"--require", "--import", "--loader", "--experimental-loader", "--input-type", "--conditions", "--env-file",
+		"--env-file-if-exists", "--title", "--inspect-port", "--debug-port", "--redirect-warnings", "--icu-data-dir",
+		"--openssl-config", "--tls-cipher-list", "--max-http-header-size", "--stack-trace-limit", "--watch-path",
+		"--experimental-config-file", "--disable-warning", "--secure-heap", "--secure-heap-min", "--heapsnapshot-signal",
+		"--diagnostic-dir", "--report-dir", "--report-directory", "--report-filename", "--report-signal", "--test-name-pattern",
+		"--test-reporter", "--test-reporter-destination", "--test-skip-pattern", "--test-concurrency", "--test-shard",
+		"--test-timeout", "--localstorage-file", "--trace-event-categories", "--trace-event-file-pattern", "--unhandled-rejections",
+		"--dns-result-order", "--policy-integrity", "--experimental-policy", "--snapshot-blob", "--cpu-prof-dir", "--cpu-prof-name",
+		"--heap-prof-dir", "--heap-prof-name", "--run"},
+	"ruby": {"--encoding", "--external-encoding", "--internal-encoding", "--enable", "--disable", "--dump", "--backtrace-limit",
+		"--parser", "--crash-report"},
+	"bun":  {"--preload", "--require", "--import", "--config", "--cwd", "--env-file", "--tsconfig-override", "--conditions", "--port", "--define", "--loader"},
+	"deno": {"--config", "--import-map", "--cert", "--location", "--seed", "--v8-flags", "--ext"},
+	"php":  {"--php-ini", "--define", "--zend-extension"},
+}
+
 var scriptExts = []string{".py", ".pl", ".rb", ".js", ".mjs", ".cjs", ".ts", ".php", ".lua", ".R", ".tcl"}
 
 // ReadsCodeFromStdin reports whether prog with args runs what arrives on its standard input as a program: a shell with no script
@@ -645,6 +666,10 @@ func readsCodeFromStdin(prog string, args []string) bool {
 			return false
 		case name == "deno" && (a == "eval" || a == "--version"):
 			return false
+		case strings.HasPrefix(a, "--") && !strings.Contains(a, "="):
+			if slices.Contains(interpreterLongValueOpts[name], a) {
+				i++ // the value is the next argument, not the script
+			}
 		case len(a) > 1 && a[0] == '-' && a[1] != '-':
 			for j := 1; j < len(a); j++ {
 				c := a[j]

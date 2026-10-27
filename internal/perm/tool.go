@@ -1,6 +1,9 @@
 package perm
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // tool judges a request from a tool other than the shell: its declared paths
 // are file accesses (writes when the request says it writes), and its network
@@ -15,8 +18,10 @@ func (ev *evaluator) tool() verdict {
 	}
 	tree, content := toolWalks(r.Tool)
 	if len(paths) > maxOperands {
+		// The paths past the bound would never be resolved, so no protection, rule or confinement would see them: no
+		// mode may let the request through (judge refuses a unit with tooMany first).
+		u.tooMany = fmt.Sprintf("the request names %d paths, more than the %d that can be checked; split it into smaller requests", len(paths), maxOperands)
 		paths = paths[:maxOperands]
-		u.dyn = "too many paths to check"
 	}
 	for _, p := range paths {
 		u.accesses = append(u.accesses, ev.resolve(pathUse{raw: p, write: r.Writes, tree: tree && !r.Writes, content: content && !r.Writes, literal: true}, cw)...)

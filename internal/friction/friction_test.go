@@ -3,8 +3,10 @@ package friction
 import (
 	"encoding/json"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
 )
@@ -443,5 +445,31 @@ func TestAFailedRequestAndAPausedGoalAreStops(t *testing.T) {
 	}
 	if rep.Findings[len(rep.Findings)-1].Category != Retried {
 		t.Errorf("the retries do not rank below the stops: %+v", rep.Findings)
+	}
+}
+
+// A write looks up the reads of its own file, not every read of a file with the same name: ten thousand reads of a.go in as many
+// directories followed by ten thousand writes to other a.go files are linear work, and leave every count as it was.
+func TestChangedDoesNotScanFilesThatOnlyShareTheName(t *testing.T) {
+	var c ReadCounter
+	const n = 20000
+	for i := 0; i < n; i++ {
+		p := "/w/d" + strconv.Itoa(i) + "/a.go"
+		c.Read(p, json.RawMessage(`{"path":"`+p+`"}`))
+	}
+	start := time.Now()
+	for i := 0; i < n; i++ {
+		c.Changed("/other/e" + strconv.Itoa(i) + "/a.go")
+		c.Changed("x" + strconv.Itoa(i) + "/a.go")
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Errorf("%d writes took %v", 2*n, d)
+	}
+	if _, _, got := c.Read("/w/d7/a.go", json.RawMessage(`{"path":"/w/d7/a.go"}`)); got != 2 {
+		t.Errorf("a write to another a.go reset /w/d7/a.go: the second read counts %d", got)
+	}
+	c.Changed("d7/a.go")
+	if _, _, got := c.Read("/w/d7/a.go", json.RawMessage(`{"path":"/w/d7/a.go"}`)); got != 1 {
+		t.Errorf("a write to d7/a.go did not reset /w/d7/a.go: %d", got)
 	}
 }

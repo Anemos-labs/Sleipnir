@@ -348,9 +348,9 @@ func (s *Store) applyTasks(tasks []*task) {
 	}
 	sort.SliceStable(dels, func(i, j int) bool { return depth(dels[i].it.key) > depth(dels[j].it.key) })
 	sort.SliceStable(puts, func(i, j int) bool { return depth(puts[i].it.key) < depth(puts[j].it.key) })
-	budget := maxRestoreBytes
+	w := newRestoreWork()
 	for _, t := range append(dels, puts...) {
-		if err := s.apply(t, &budget); err != nil {
+		if err := s.apply(t, w); err != nil {
 			t.res.Outcome, t.res.Detail = OutcomeFailed, err.Error()
 		} else {
 			t.res.Outcome = OutcomeDone

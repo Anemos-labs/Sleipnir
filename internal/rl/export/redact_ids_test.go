@@ -63,3 +63,28 @@ func TestRedactionDoesNotMergeTasks(t *testing.T) {
 		t.Fatalf("%d records redacted, %d without redaction", redacted.Records, plain.Records)
 	}
 }
+
+// The canonical record's free-text metadata (environment tags, image and limits, the outcome's claim and labels, reward notes)
+// is redacted like its steps, and the caller's episode keeps its own.
+func TestCanonicalRedactionCoversMetadata(t *testing.T) {
+	const addr = "jane.doe@privatecorp.io"
+	src, _ := leaky(t, false)
+	ep := *src.Episode
+	ep.Env.Tags = []string{"owner:" + addr, "plain"}
+	ep.Env.Image = "registry/" + addr
+	ep.Env.Limits = map[string]string{"contact": addr}
+	ep.Outcome.Claimed = "done, ask " + addr
+	ep.Outcome.Labels = []string{"by " + addr}
+	ep.Reward.Notes = []string{"graded for " + addr}
+	src.Episode = &ep
+	out, _ := run(t, []export.Source{src}, export.Options{Format: export.FormatCanonical, KeepFlat: true, DropFlagged: true, Redactor: newRedactor()})
+	if !strings.Contains(out, `"plain"`) {
+		t.Fatal("no tags in the output")
+	}
+	if strings.Contains(out, addr) {
+		t.Error("the address survived in the episode's metadata")
+	}
+	if src.Episode.Env.Tags[0] != "owner:"+addr || src.Episode.Env.Limits["contact"] != addr {
+		t.Error("the caller's episode was changed")
+	}
+}

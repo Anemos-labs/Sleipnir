@@ -153,15 +153,16 @@ func (x *exporter) writeCanonical(work []*workEpisode) error {
 // changed (the ids encode the original text).
 func (x *exporter) canonOf(we *workEpisode, tab *table) (*canonEpisode, error) {
 	ep := we.ep
-	if x.red != nil {
-		ep.Env.Repo, _ = x.redactText(ep.Env.Repo)
-	}
 	ce := &canonEpisode{Episode: *ep, Agents: make([]canonAgent, len(ep.Agents))}
 	ce.Episode.Agents = nil
+	x.redactMetadata(&ce.Episode)
 	for ai := range ep.Agents {
 		ag := &ep.Agents[ai]
 		ca := canonAgent{Agent: *ag, Steps: make([]canonStep, len(ag.Steps))}
 		ca.Agent.Steps = nil
+		if x.red != nil {
+			ca.Agent.Reward.Notes = x.redactList(ag.Reward.Notes)
+		}
 		var prevID string
 		var prevMsgs []core.Hash
 		for si := range ag.Steps {
@@ -214,6 +215,41 @@ func (x *exporter) canonOf(we *workEpisode, tab *table) (*canonEpisode, error) {
 		ce.Agents[ai] = ca
 	}
 	return ce, nil
+}
+
+// redactMetadata redacts, in place, the free-text metadata of an episode copy that the canonical record carries besides its
+// steps: the environment's repository, image, limits and tags, and the outcome's claim, labels and reward notes. Slices and maps
+// are replaced, never written through, so the source episode keeps its own.
+func (x *exporter) redactMetadata(ep *rl.Episode) {
+	if x.red == nil {
+		return
+	}
+	ep.Env.Repo, _ = x.redactText(ep.Env.Repo)
+	ep.Env.Image, _ = x.redactText(ep.Env.Image)
+	ep.Env.Tags = x.redactList(ep.Env.Tags)
+	if ep.Env.Limits != nil {
+		limits := make(map[string]string, len(ep.Env.Limits))
+		for k, v := range ep.Env.Limits {
+			v, _ = x.redactText(v)
+			limits[k] = v
+		}
+		ep.Env.Limits = limits
+	}
+	ep.Outcome.Claimed, _ = x.redactText(ep.Outcome.Claimed)
+	ep.Outcome.Labels = x.redactList(ep.Outcome.Labels)
+	ep.Reward.Notes = x.redactList(ep.Reward.Notes)
+}
+
+// redactList returns a redacted copy of ss (nil stays nil).
+func (x *exporter) redactList(ss []string) []string {
+	if ss == nil {
+		return nil
+	}
+	out := make([]string, len(ss))
+	for i, s := range ss {
+		out[i], _ = x.redactText(s)
+	}
+	return out
 }
 
 // normalizePrompt keeps exactly what the wire hash covers (model, tools, system,

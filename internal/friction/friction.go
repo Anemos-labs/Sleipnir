@@ -308,9 +308,11 @@ func readPart(path string, input json.RawMessage) (key, what string) {
 // re-read the same way. The zero value is ready to use; it is not safe for concurrent use.
 type ReadCounter struct {
 	parts map[string]int
-	// live holds, by the last element of their path, the parts read since their file last changed: Changed visits only
-	// those (a file spelled two ways ends the same), never every part ever read.
-	live map[string]map[string]bool
+	// live holds, by their cleaned path, the parts read since their file last changed; tails holds, by each relative tail of an
+	// absolute path in live ("a.go", "src/a.go" of "/w/src/a.go"), those absolute paths. Changed visits only the parts of the
+	// paths that name the written file, never every part ever read nor every file of the same name.
+	live  map[string]map[string]bool
+	tails map[string]map[string]bool
 }
 
 // Read records one read call of path with the call's raw input. It returns the part's key, the words for an example ("/w/a.go
@@ -319,35 +321,58 @@ type ReadCounter struct {
 func (c *ReadCounter) Read(path string, input json.RawMessage) (part, what string, n int) {
 	if c.parts == nil {
 		c.parts = map[string]int{}
+		c.live = map[string]map[string]bool{}
+		c.tails = map[string]map[string]bool{}
 	}
 	part, what = readPart(path, input)
 	c.parts[part]++
-	if c.live == nil {
-		c.live = map[string]map[string]bool{}
+	p := cleanSlash(path)
+	if c.live[p] == nil {
+		c.live[p] = map[string]bool{}
+		if isAbsSlash(p) {
+			for i := 0; i < len(p); i++ {
+				if p[i] == '/' && i+1 < len(p) {
+					t := p[i+1:]
+					if c.tails[t] == nil {
+						c.tails[t] = map[string]bool{}
+					}
+					c.tails[t][p] = true
+				}
+			}
+		}
 	}
-	b := baseOf(path)
-	if c.live[b] == nil {
-		c.live[b] = map[string]bool{}
-	}
-	c.live[b][part] = true
+	c.live[p][part] = true
 	return part, what, c.parts[part]
 }
 
-// baseOf is the last element of a path as samePath compares it.
-func baseOf(p string) string { return path.Base(path.Clean(filepath.ToSlash(p))) }
+// cleanSlash is a path as samePath compares it: cleaned, with forward slashes.
+func cleanSlash(p string) string { return path.Clean(filepath.ToSlash(p)) }
 
 // Changed records that path was written: every part of it starts over. The same file is spelled relatively and absolutely by
 // the same model, so an absolute path matches a relative one when it ends with it; two relative paths are one file only when
-// they are equal ("a.go" and "src/a.go" are two).
+// they are equal ("a.go" and "src/a.go" are two). These are the matches of samePath, found by lookup.
 func (c *ReadCounter) Changed(path string) {
-	live := c.live[baseOf(path)]
-	for part := range live {
-		p, _, _ := strings.Cut(part, "\x00")
-		if samePath(p, path) {
-			c.parts[part] = 0
-			delete(live, part)
+	p := cleanSlash(path)
+	c.reset(p)
+	if isAbsSlash(p) {
+		for i := 0; i < len(p); i++ {
+			if p[i] == '/' && i+1 < len(p) && !isAbsSlash(p[i+1:]) {
+				c.reset(p[i+1:])
+			}
 		}
+		return
 	}
+	for abs := range c.tails[p] {
+		c.reset(abs)
+	}
+}
+
+// reset starts over every part read of the cleaned path p.
+func (c *ReadCounter) reset(p string) {
+	for part := range c.live[p] {
+		c.parts[part] = 0
+	}
+	delete(c.live, p)
 }
 
 // samePath reports whether two paths a model used name one file: equal after cleaning, or an absolute path and a relative one

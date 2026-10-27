@@ -88,7 +88,10 @@ const (
 	// ArgsText inserts arguments as typed.
 	ArgsText ArgMode = iota
 	// ArgsShell inserts each word single-quoted, so that an argument can never
-	// add an operator ("; rm -rf ~") to a shell command it is substituted into.
+	// add an operator ("; rm -rf ~") to a shell command it is substituted into;
+	// inside quotes the template already has ('$1', "$1") the words are escaped
+	// for those quotes instead, and a placeholder where no spelling is known to
+	// stay literal (backquotes, $'...', after a backslash) fails the substitution.
 	ArgsShell
 )
 
@@ -122,22 +125,32 @@ func SubstituteMax(tmpl, args string, mode ArgMode, max int) (out string, used b
 	}
 	words := SplitArgs(args)
 	raw := strings.TrimSpace(args)
+	// In a shell command each placeholder is spelled for the quoting the template has reached there (shellCtx): the template's
+	// own text is followed as it is copied, and an argument never opens or closes a quote.
+	var sh shellCtx
+	var shErr error
+	shell := func(ws []string) string {
+		q, err := sh.quote(ws)
+		if err != nil && shErr == nil {
+			shErr = err
+		}
+		return q
+	}
 	all := func() string {
 		if mode != ArgsShell {
 			return raw
 		}
-		q := make([]string, len(words))
-		for i, w := range words {
-			q[i] = ShellQuote(w)
-		}
-		return strings.Join(q, " ")
+		return shell(words)
 	}
 	one := func(i int) string {
 		if i < 0 || i >= len(words) {
+			if mode == ArgsShell {
+				return shell(nil)
+			}
 			return ""
 		}
 		if mode == ArgsShell {
-			return ShellQuote(words[i])
+			return shell(words[i : i+1])
 		}
 		return words[i]
 	}
@@ -167,6 +180,9 @@ func SubstituteMax(tmpl, args string, mode ArgMode, max int) (out string, used b
 			return "", used, tooLong(max)
 		}
 		b.WriteString(tmpl[i : i+j])
+		if mode == ArgsShell {
+			sh.feed(tmpl[i : i+j])
+		}
 		if i += j; i == len(tmpl) {
 			break
 		}
@@ -182,6 +198,9 @@ func SubstituteMax(tmpl, args string, mode ArgMode, max int) (out string, used b
 		case strings.HasPrefix(rest, "$") && escapable(rest[1:]):
 			if !put("$") { // "$$1": the second dollar's placeholder is copied as text below
 				return "", used, tooLong(max)
+			}
+			if mode == ArgsShell {
+				sh.feed("$")
 			}
 			i += 2
 		case isIdx:
@@ -206,7 +225,13 @@ func SubstituteMax(tmpl, args string, mode ArgMode, max int) (out string, used b
 			if !put("$") {
 				return "", used, tooLong(max)
 			}
+			if mode == ArgsShell {
+				sh.feed("$")
+			}
 			i++
+		}
+		if shErr != nil {
+			return "", true, shErr
 		}
 	}
 	return b.String(), used, nil
