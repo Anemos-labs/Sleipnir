@@ -174,9 +174,10 @@ func (s *scanner) file(r *os.Root, rel string, kind Kind) {
 	if err != nil {
 		// Only a file that is certainly not there is left out. A path the root refuses (a parent that is a link out of the
 		// project) or cannot look at is one the loaders, which follow such links, may still read.
-		if _, lerr := r.Lstat(name); lerr == nil || !errors.Is(lerr, fs.ErrNotExist) || strings.Contains(name, "..") {
-			s.partial(rel) // a name that climbs is not looked up outside the root: it is counted as not covered
-		} else if _, serr := os.Stat(filepath.Join(s.root, name)); !errors.Is(serr, fs.ErrNotExist) {
+		p := filepath.Join(s.root, name)
+		if _, lerr := r.Lstat(name); lerr == nil || !errors.Is(lerr, fs.ErrNotExist) || strings.Contains(p, "..") {
+			s.partial(rel) // a path that climbs is not looked up outside the root: it is counted as not covered
+		} else if _, serr := os.Stat(p); !errors.Is(serr, fs.ErrNotExist) {
 			s.partial(rel)
 		}
 		return
