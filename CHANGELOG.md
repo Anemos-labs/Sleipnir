@@ -15,6 +15,15 @@ they do not indicate whether a change has been released.
   backend, the team's one backend slot, and the modules ran one after
   another while the frontend and devops slots stayed empty. About 35
   tokens more in that answer and line, only while they apply.
+- With persistent pools, a task returned to todo after its worker's
+  automatic restarts on it ran out is no longer started on that worker
+  again by the repair pass: the manager assigns it. The manager's line
+  now says the task returned to todo and asks for an assignment, instead
+  of saying it was retrying with its existing worker while also saying
+  the harness would not restart that worker. In a long team run five
+  workers whose model had no available endpoints were started on their
+  tasks again every few minutes without end, and the workers on another
+  model stayed idle.
 - `--role-model fallback=provider/model` (or `models.roles.fallback`)
   names a model that takes the requests of any other model of the session
   whose endpoint has been out for a minute, for ten minutes at a time. A
