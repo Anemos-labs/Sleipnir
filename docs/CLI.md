@@ -341,7 +341,7 @@ Usage of chat:
   -resume string
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
-        role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… turns the lesson memory on, reranker=… orders what it finds). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
+        role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… turns the lesson memory on, reranker=… orders what it finds, fallback=… takes the requests of a model whose endpoint has been out for a minute). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
   -swarm int
         chat as a team of a manager and N workers (config swarm.max_workers is the ceiling); on a terminal the default is 8 workers (a --team brings its own), --swarm 0 is a single agent
   -team NAME
@@ -496,7 +496,7 @@ flags:
   -resume string
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
-        for new sessions: role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… turns the lesson memory on, reranker=… orders what it finds). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
+        for new sessions: role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… turns the lesson memory on, reranker=… orders what it finds, fallback=… takes the requests of a model whose endpoint has been out for a minute). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
   -swarm int
         new sessions are a team of a manager and N workers (config swarm.max_workers is the ceiling); the default is 8 workers (a --team brings its own), --swarm 0 is a single agent
   -team NAME
@@ -605,7 +605,7 @@ flags:
   -resume string
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
-        role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… turns the lesson memory on, reranker=… orders what it finds). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
+        role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… turns the lesson memory on, reranker=… orders what it finds, fallback=… takes the requests of a model whose endpoint has been out for a minute). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
   -session-dir string
         directory for this run's recording (events.jsonl, blobs/, checkpoints/); default <state>/sessions/<id>, <state> being $SLEIPNIR_HOME or ~/.sleipnir
   -swarm int

@@ -7,6 +7,20 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `--role-model fallback=provider/model` (or `models.roles.fallback`)
+  names a model that takes the requests of any other model of the session
+  whose endpoint has been out for a minute, for ten minutes at a time. A
+  team's manager whose endpoint answered "No endpoints are currently
+  available" for five minutes failed, and the session ended as an error
+  with every task done and verified. No prompt bytes change; the
+  `--role-model` help names the new role.
+- Auto-docs counts the product files the manager edits by itself as a
+  change: once the manager has left them alone for 90 seconds, or when it
+  means to finish, they start a docs pass scoped to the Markdown beside
+  them. A manager that implemented two of four modules itself wrote their
+  docs task by hand after the last review, eight minutes after its edits,
+  while the docs worker sat idle. Harness behavior only; the live view's
+  docs line can say that the manager's edits wait to settle.
 - A review accepted after a merge that changed test files and docs alone
   since the review began covers that merge too. A tester's suite accepted
   while the review waited for its verdict started a second review of four
