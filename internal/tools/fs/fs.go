@@ -125,6 +125,9 @@ func (k *call) decode(dst any) *tools.Result {
 	if err := json.Unmarshal(raw, dst); err != nil {
 		return k.fail("%s", describeArgError(err, raw, dst))
 	}
+	if err := checkArgKeys(raw, dst); err != nil {
+		return k.fail("%s", err.Error())
+	}
 	return nil
 }
 

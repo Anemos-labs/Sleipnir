@@ -68,16 +68,9 @@ func Build(root string, r *Run, opts BuildOptions) (*BuildResult, error) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	for _, name := range names {
-		p := filepath.Join(tmp, filepath.FromSlash(name))
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			_ = os.RemoveAll(tmp)
-			return nil, err
-		}
-		if err := os.WriteFile(p, site.Files[name], 0o644); err != nil {
-			_ = os.RemoveAll(tmp)
-			return nil, err
-		}
+	if err := writeConfined(tmp, names, site.Files); err != nil {
+		_ = os.RemoveAll(tmp)
+		return nil, err
 	}
 	old := dir + ".old"
 	_ = os.RemoveAll(old)
@@ -93,6 +86,28 @@ func Build(root string, r *Run, opts BuildOptions) (*BuildResult, error) {
 	}
 	_ = os.RemoveAll(old)
 	return &BuildResult{Dir: dir, Pages: site.Pages, Indexed: site.Indexed, Report: site.Report}, nil
+}
+
+// writeConfined writes files into a new directory dir through an os.Root on it, so no name can place a file outside it.
+func writeConfined(dir string, names []string, files map[string][]byte) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	for _, name := range names {
+		p := filepath.FromSlash(name)
+		if err := root.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			return err
+		}
+		if err := root.WriteFile(p, files[name], 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Publish builds a run's wiki (slug "" is the active run) and records the build in its ledger, so that the run's phase moves on

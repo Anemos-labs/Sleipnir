@@ -25,6 +25,7 @@ const (
 // in the background, so opening a very large log never blocks a request.
 type entry struct {
 	id, name, dir string
+	base          string // the registry root dir was found under
 
 	mu       sync.Mutex
 	bytes    int64
@@ -153,7 +154,7 @@ func (r *registry) scan() error {
 			if id == "." {
 				name = filepath.Base(r.root)
 			}
-			e = &entry{id: id, name: name, dir: dir}
+			e = &entry{id: id, name: name, dir: dir, base: r.root}
 			r.entries[id] = e
 		}
 		e.mu.Lock()
@@ -213,7 +214,7 @@ func (e *entry) ensure(opts Options, wait time.Duration, logf func(string, ...an
 	if !e.loading {
 		e.loading, e.done = true, make(chan struct{})
 		o := opts
-		o.ID, o.Name = e.id, e.name
+		o.ID, o.Name, o.base = e.id, e.name, e.base
 		if e.id == "." {
 			o.ID = ""
 		}
@@ -330,7 +331,7 @@ func (r *registry) indexPending(ctx context.Context) {
 			continue
 		}
 		o := r.opts
-		o.ID, o.Name = e.id, e.name
+		o.ID, o.Name, o.base = e.id, e.name, e.base
 		s, err := LoadWith(e.dir, o)
 		if err != nil {
 			continue
@@ -428,7 +429,7 @@ func OpenSession(root, id string, opts Options) (*Session, error) {
 		return nil, errors.New("inspect: no such session under " + filepath.Base(r.root))
 	}
 	o := opts
-	o.ID, o.Name = e.id, e.name
+	o.ID, o.Name, o.base = e.id, e.name, e.base
 	if e.id == "." {
 		o.ID = ""
 	}

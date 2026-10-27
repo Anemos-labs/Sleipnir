@@ -1,6 +1,14 @@
 {
   "terminal_only": [
     {
+      "item": "inspect --tls-cert",
+      "reason": "the certificate the inspector serves with when it listens beyond this machine; it is a choice made where the inspector is started, and the page is what it serves"
+    },
+    {
+      "item": "inspect --tls-key",
+      "reason": "the private key of --tls-cert, for the same reason"
+    },
+    {
       "item": "chat --plain",
       "reason": "plain lines are how a pipe is served, not a setting: the page is always the full interface, and a chat without a terminal is `sleipnir chat --plain` run from a script"
     },

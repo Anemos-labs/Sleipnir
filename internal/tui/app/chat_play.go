@@ -324,6 +324,9 @@ func (p *chatPlayer) play() ([]svg.Frame, error) {
 	if p.o.Length > 0 {
 		end = p.o.From + p.o.Length
 	}
+	if limit := maxTranscriptMillis*time.Millisecond + time.Minute; end > limit {
+		return nil, fmt.Errorf("a playback of %v is longer than the %v one renders", end, limit)
+	}
 	var frames []svg.Frame
 	next := 0 // the next record to hand over
 	for i := 0; ; i++ {

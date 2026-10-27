@@ -42,6 +42,9 @@ type Options struct {
 	GOOS      string
 	GOARCH    string
 	Agent     string // the User-Agent
+	// Want, when set, is the only release tag Run installs: a caller that had a person confirm one release passes its tag, so a
+	// release published between that confirmation and Run's own look is refused rather than installed unseen.
+	Want string
 }
 
 // api uses a trimmed API override or the public GitHub API endpoint.

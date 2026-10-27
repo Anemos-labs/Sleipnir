@@ -570,6 +570,12 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request, sess *Sess
 		s.fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	from, err := uintParam(r, "from", 0, 1<<62)
+	if err != nil {
+		s.fail(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	q.From = int64(from)
 	page, err := sess.Events(q)
 	if err != nil {
 		s.logf("inspect: events: %v", err)

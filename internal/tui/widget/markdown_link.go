@@ -192,14 +192,18 @@ func (p *inlineParser) bareURL(i int) int {
 	for j < len(s) && s[j] != ' ' && s[j] != '\n' && s[j] != '<' && !(inBrackets && s[j] == ']') {
 		j++
 	}
+	// The parentheses are counted once and the counts kept as the end moves back, so
+	// trimming a long run of ")" stays linear.
+	opens, closes := strings.Count(s[i:j], "("), strings.Count(s[i:j], ")")
 	for j > i {
 		c := s[j-1]
 		if strings.IndexByte("?!.,:*_~'\";", c) >= 0 {
 			j--
 			continue
 		}
-		if c == ')' && strings.Count(s[i:j], "(") < strings.Count(s[i:j], ")") {
+		if c == ')' && opens < closes {
 			j--
+			closes--
 			continue
 		}
 		break

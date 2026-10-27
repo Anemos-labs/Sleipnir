@@ -171,6 +171,13 @@ func TestSafePaths(t *testing.T) {
 	if err := os.Symlink("/dev/zero", filepath.Join(e.root, "zero")); err != nil {
 		t.Fatal(err)
 	}
+	// Directory links inside the project that name a hidden or a refused directory under another spelling.
+	if err := os.Symlink(".git", filepath.Join(e.root, "alias")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("secrets", filepath.Join(e.root, "vault")); err != nil {
+		t.Fatal(err)
+	}
 	if runtime.GOOS != "windows" {
 		if err := mkfifo(filepath.Join(e.root, "fifo"), 0o644); err != nil {
 			t.Fatal(err)
@@ -191,6 +198,8 @@ func TestSafePaths(t *testing.T) {
 		{"sub/.git/HEAD", 403, "denied"},
 		{".env", 403, "denied"},
 		{"secrets/token.txt", 403, "denied"},
+		{"alias/config", 403, "denied"},
+		{"vault/token.txt", 403, "denied"},
 		{"a\x00b", 400, "bad_path"},
 		{"", 400, "bad_path"},
 		{"lib\\util.go", 400, "bad_path"},

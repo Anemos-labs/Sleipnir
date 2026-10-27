@@ -172,7 +172,7 @@ func TestBlobStoreReadsWhatDirBlobsWrote(t *testing.T) {
 	if !ok || total != int64(len(text)) || string(got) != string(text[:100]) {
 		t.Errorf("bounded read = %d bytes of %d, ok=%v", len(got), total, ok)
 	}
-	if p, _ := bs.path(string(h)); p != filepath.Join(dir, "blobs", string(h)[:2], string(h)[2:4], string(h)) {
+	if p, _ := bs.path(string(h)); filepath.Join(bs.dir.base, bs.dir.rel, p) != filepath.Join(dir, "blobs", string(h)[:2], string(h)[2:4], string(h)) {
 		t.Errorf("layout drifted from events.DirBlobs: %s", p)
 	}
 }
@@ -212,6 +212,7 @@ func TestBlobStoreRefusesUnsafeHashes(t *testing.T) {
 	}
 	// A symlink at a valid blob path is not followed.
 	p, _ := bs.path(valid)
+	p = filepath.Join(blobs, p)
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -403,7 +404,7 @@ func TestMissingBlobsAreTolerated(t *testing.T) {
 	}
 	s2.mu.RUnlock()
 	p, _ := s2.blobs.path(victim)
-	if err := os.Remove(p); err != nil {
+	if err := os.Remove(filepath.Join(s2.blobs.dir.base, s2.blobs.dir.rel, p)); err != nil {
 		t.Fatal(err)
 	}
 	rep2, _ = s2.Layers(r2[len(r2)-1].ID, true)
@@ -463,5 +464,37 @@ func TestRLFieldsWhenPresent(t *testing.T) {
 	}
 	if s := mustLoad(t, plain.dir); s.Episode() != nil || s.Summary().Totals.Requests != 1 {
 		t.Error("a corrupt episode.json must not break the session")
+	}
+}
+
+func TestEventsCrossARunOfUnreadableLines(t *testing.T) {
+	b := newEvb(t)
+	b.emit("a", "user.input", m{"text": "one"})
+	junk := strings.Repeat("x", 1<<20) + "\n"
+	for i := 0; i < maxScanBytes>>20+4; i++ {
+		b.raw(junk)
+	}
+	b.emit("a", "user.input", m{"text": "two"})
+	s := mustLoad(t, b.dir)
+	q := EventQuery{Since: 1, Limit: 10}
+	var got []uint64
+	for i := 0; i < 10; i++ {
+		page, err := s.Events(q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range page.Events {
+			got = append(got, e.Seq)
+		}
+		if !page.More {
+			break
+		}
+		if page.From <= q.From && page.Next <= q.Since {
+			t.Fatalf("page %d made no progress: %+v", i, page)
+		}
+		q.Since, q.From = page.Next, page.From
+	}
+	if len(got) != 1 || got[0] != 2 {
+		t.Fatalf("events after the unreadable run: %v", got)
 	}
 }

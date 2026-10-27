@@ -29,7 +29,7 @@ func TestKeysRoundTripThroughTheirNames(t *testing.T) {
 			t.Errorf("%+v is written %q and read back as %+v (%v)", k, name, got, err)
 		}
 	}
-	for _, bad := range []string{"", "ctrl+", "enterr", "ab", "ctrl+ab", "shift+shift+", "\xff", "paste"} {
+	for _, bad := range []string{"", "ctrl+", "enterr", "ab", "ctrl+ab", "shift+shift+", "\xff", "paste", "ctrl+ctrl+a", strings.Repeat("ctrl+", 20000) + "a"} {
 		if k, err := parseKey(bad); err == nil {
 			t.Errorf("%q is not a key and was read as %+v", bad, k)
 		}
@@ -94,6 +94,7 @@ func TestATranscriptThatIsNotOneIsAnErrorThatNamesWhy(t *testing.T) {
 		"time goes back": {transcriptLines(`{"t":5,"kind":"key","key":"a"}`, `{"t":4,"kind":"key","key":"b"}`),
 			"comes after a record at 5 ms"},
 		"negative time": {transcriptLines(`{"t":-1,"kind":"key","key":"a"}`), "-1 ms"},
+		"too late":      {transcriptLines(`{"t":99999999999,"kind":"key","key":"a"}`), "at most 15 minutes"},
 		"no attach":     {transcriptLines(`{"t":1,"kind":"attach"}`), "needs attach"},
 		"no event":      {transcriptLines(`{"t":1,"kind":"event"}`), "needs event"},
 		"no text":       {transcriptLines(`{"t":1,"kind":"text"}`), "needs text"},

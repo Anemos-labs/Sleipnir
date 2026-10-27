@@ -158,7 +158,10 @@ type ChatTranscript struct {
 // memory problem.
 const (
 	maxTranscriptRecords = 200_000
-	maxTranscriptBytes   = 64 << 20
+	// maxTranscriptMillis bounds a record's time: playback simulates every UI tick up to the last record, so a large
+	// timestamp in a small file would otherwise cost hours of simulated work and frames.
+	maxTranscriptMillis = 15 * 60 * 1000
+	maxTranscriptBytes  = 64 << 20
 )
 
 // loadChatTranscript reads the transcript at path.
@@ -232,8 +235,8 @@ func ReadChatTranscript(r io.Reader) (*ChatTranscript, error) {
 
 // check says what is wrong with a record, if anything.
 func (r *ChatRecord) check() error {
-	if r.T < 0 {
-		return fmt.Errorf("a %s at %d ms", r.Kind, r.T)
+	if r.T < 0 || r.T > maxTranscriptMillis {
+		return fmt.Errorf("a %s at %d ms (a transcript lasts at most %d minutes)", r.Kind, r.T, maxTranscriptMillis/60000)
 	}
 	need := func(ok bool, what string) error {
 		if !ok {
@@ -356,24 +359,25 @@ func FormatKey(k input.Key) string {
 
 // parseKey reads a key the way FormatKey writes it. A paste is not a key a transcript holds.
 func parseKey(s string) (input.Key, error) {
+	bad := fmt.Errorf("%q is not a key (a character, or a name such as enter, esc or space, with ctrl+, alt+ or shift+ in front)", s)
+	if len(s) > maxKeyName {
+		return input.Key{}, bad
+	}
 	var mod input.Mod
 	rest := s
-	for {
-		switch {
-		case strings.HasPrefix(rest, "ctrl+") && utf8.RuneCountInString(rest) > len("ctrl+"):
-			mod |= input.Ctrl
-			rest = rest[len("ctrl+"):]
-			continue
-		case strings.HasPrefix(rest, "alt+") && utf8.RuneCountInString(rest) > len("alt+"):
-			mod |= input.Alt
-			rest = rest[len("alt+"):]
-			continue
-		case strings.HasPrefix(rest, "shift+") && utf8.RuneCountInString(rest) > len("shift+"):
-			mod |= input.Shift
-			rest = rest[len("shift+"):]
-			continue
+	// Each modifier may appear once; what follows its "+" must not be empty (so
+	// "ctrl++" is ctrl and the plus key, and "ctrl+" is the key named so).
+	mods := []struct {
+		prefix string
+		mod    input.Mod
+	}{{"ctrl+", input.Ctrl}, {"alt+", input.Alt}, {"shift+", input.Shift}}
+	for range mods {
+		for _, m := range mods {
+			if mod&m.mod == 0 && strings.HasPrefix(rest, m.prefix) && len(rest) > len(m.prefix) {
+				mod |= m.mod
+				rest = rest[len(m.prefix):]
+			}
 		}
-		break
 	}
 	if sp, ok := specialByName[rest]; ok {
 		return input.SpecialKey(sp, mod), nil
@@ -384,5 +388,8 @@ func parseKey(s string) (input.Key, error) {
 	if r, n := utf8.DecodeRuneInString(rest); n == len(rest) && n > 0 && r != utf8.RuneError {
 		return input.RuneKey(r, mod), nil
 	}
-	return input.Key{}, fmt.Errorf("%q is not a key (a character, or a name such as enter, esc or space, with ctrl+, alt+ or shift+ in front)", s)
+	return input.Key{}, bad
 }
+
+// maxKeyName bounds a key field: the longest name with every modifier is far shorter.
+const maxKeyName = 64

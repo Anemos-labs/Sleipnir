@@ -386,12 +386,13 @@ func (s *service) diffOf(sess *session.Session, rel string, from, to point) (fil
 	}
 	fd.ld = checkpoint.DiffLines(oldData, newData)
 	fd.out.Added, fd.out.Removed, fd.out.Truncated = fd.ld.Added, fd.ld.Removed, fd.ld.Truncated
+	section := sections(oldData)
 	for _, h := range fd.ld.Hunks {
 		wh := wire.Hunk{OldStart: h.OldStart, OldLines: h.OldLines, NewStart: h.NewStart, NewLines: h.NewLines, Lines: make([]wire.HunkLine, 0, len(h.Lines))}
 		for _, l := range h.Lines {
 			wh.Lines = append(wh.Lines, wire.HunkLine{T: string(rune(l.Op)), S: l.Text})
 		}
-		wh.Section = section(oldData, h.OldStart)
+		wh.Section = section(h.OldStart)
 		fd.out.Hunks = append(fd.out.Hunks, wh)
 	}
 	return fd, true, nil
@@ -402,18 +403,26 @@ func isContentErr(err error) bool {
 	return errors.Is(err, checkpoint.ErrNotRegular) || errors.Is(err, checkpoint.ErrNotSaved) || errors.Is(err, checkpoint.ErrTooLarge)
 }
 
-// section is the hunk header's context, as git's default: the nearest line above the
-// hunk that starts with a letter, '_' or '$', cut at 80 bytes.
-func section(old []byte, oldStart int) string {
+// sections returns the hunk header's context for each old start, as git's default: the nearest line above the hunk that starts
+// with a letter, '_' or '$', cut at 80 bytes. The old file is split and scanned once, however many hunks ask.
+func sections(old []byte) func(oldStart int) string {
 	lines := bytes.Split(old, []byte("\n"))
-	for i := min(oldStart-2, len(lines)-1); i >= 0; i-- {
-		l := lines[i]
+	near := make([]int32, len(lines)) // the index of the nearest header line at or above each line, or -1
+	last := int32(-1)
+	for i, l := range lines {
 		if len(l) > 0 && (l[0] == '_' || l[0] == '$' || l[0] >= 'a' && l[0] <= 'z' || l[0] >= 'A' && l[0] <= 'Z') {
-			s := strings.TrimRight(string(trimToRune(l[:min(len(l), 80)])), " \t\r")
-			return s
+			last = int32(i)
 		}
+		near[i] = last
 	}
-	return ""
+	return func(oldStart int) string {
+		i := min(oldStart-2, len(lines)-1)
+		if i < 0 || near[i] < 0 {
+			return ""
+		}
+		l := lines[near[i]]
+		return strings.TrimRight(string(trimToRune(l[:min(len(l), 80)])), " \t\r")
+	}
 }
 
 // ---- reverting a hunk -----------------------------------------------------------------------
@@ -655,10 +664,7 @@ func reverseHunk(old, live []byte, h checkpoint.Hunk, mask bool) ([]byte, error)
 		return nil, errNoPlace
 	default:
 		best := -1
-		for i := 0; i+len(want) <= len(liveShown); i++ {
-			if !shownAt(liveShown, want, i) {
-				continue
-			}
+		for _, i := range matchesOf(liveShown, want) {
 			if best >= 0 && abs(i-nStart) == abs(best-nStart) {
 				return nil, errNoPlace // two places are as likely: refuse rather than guess
 			}
@@ -718,6 +724,39 @@ func shownAt(lines, want []string, i int) bool {
 		}
 	}
 	return true
+}
+
+// matchesOf returns every position at which lines, as hunks show them, hold want, in order. It is Knuth-Morris-Pratt over
+// lines, so a hunk is found in time linear in the file and the hunk, however repetitive the text.
+func matchesOf(lines, want []string) []int {
+	if len(want) == 0 || len(want) > len(lines) {
+		return nil
+	}
+	fail := make([]int, len(want))
+	for i, k := 1, 0; i < len(want); i++ {
+		for k > 0 && want[i] != want[k] {
+			k = fail[k-1]
+		}
+		if want[i] == want[k] {
+			k++
+		}
+		fail[i] = k
+	}
+	var out []int
+	for i, k := 0, 0; i < len(lines); i++ {
+		l := shownLine(lines[i])
+		for k > 0 && l != want[k] {
+			k = fail[k-1]
+		}
+		if l == want[k] {
+			k++
+		}
+		if k == len(want) {
+			out = append(out, i-len(want)+1)
+			k = fail[k-1]
+		}
+	}
+	return out
 }
 
 // keepLines splits text into lines that keep their terminators.

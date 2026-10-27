@@ -188,3 +188,19 @@ func TestInstallSaysWhenTheReleaseHasNoArchiveForThisMachine(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+// A release other than the one a person confirmed is not installed.
+func TestRunInstallsOnlyTheConfirmedRelease(t *testing.T) {
+	archive := tarGz(t, "sleipnir", []byte("#!/bin/sh\necho new\n"))
+	o, _ := release(t, "linux", archive, archive)
+	o.Want = "v0.1.9"
+	exe := filepath.Join(t.TempDir(), "sleipnir")
+	os.WriteFile(exe, []byte("old"), 0o755)
+	var out bytes.Buffer
+	if err := Run(context.Background(), &out, o, "v0.1.0", "abc1234", exe, false); err == nil || !strings.Contains(err.Error(), "confirm it again") {
+		t.Fatalf("a release other than the confirmed one: %v", err)
+	}
+	if got, _ := os.ReadFile(exe); string(got) != "old" {
+		t.Fatalf("the binary was replaced: %q", got)
+	}
+}

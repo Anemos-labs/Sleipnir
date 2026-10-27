@@ -92,14 +92,19 @@
     const u = unesc(raw).trim().replace(/^<|>$/g, ''), m = /^([A-Za-z][A-Za-z0-9+.-]*):/.exec(u);
     return { u, scheme: m ? m[1].toLowerCase() : '' };
   }
+  const MAX_INLINE = 20000;
   /** The inline markup of one escaped line run: code spans, images, links, emphasis, strike-through, hard breaks. */
   // a held piece (\u0000n\u0000) never enters an address or an alt text: those are written into attributes
   function inline(text, o) {
+    // a paragraph this long is shown as plain text: the markup's expressions are not linear on every input
+    if (text.length > MAX_INLINE) return esc(vis(text)).replace(/\n/g, '<br>');
     const keep = []; const hold = h => '\u0000' + (keep.push(h) - 1) + '\u0000';
     let s = vis(text).replace(/(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/g, (m, f, c) => hold('<code>' + esc(c.trim()) + '</code>'));
     s = esc(s.replace(/\\([\\`*_{}[\]()#+\-.!~|<>])/g, (m, c) => hold(esc(c))));
-    s = s.replace(/!\[([^\]\u0000]*)\]\(\s*([^)\s\u0000]+)(?:\s+&quot;[^&]*&quot;)?\s*\)/g, (m, alt, src) => hold(imageHtml(alt, src, o)));
-    s = s.replace(/\[([^\]]+)\]\(\s*([^)\s\u0000]+)(?:\s+&quot;[^&]*&quot;)?\s*\)/g, (m, lab, href) => hold(linkHtml(lab, href, o)));
+    // a label holds no "[" and an address no "(": each attempt then stops at the next one, so text of many unclosed openers costs
+    // linear time, not a scan to its end from each
+    s = s.replace(/!\[([^\][\u0000]*)\]\(\s*([^()\s\u0000]+)(?:\s+&quot;[^&]*&quot;)?\s*\)/g, (m, alt, src) => hold(imageHtml(alt, src, o)));
+    s = s.replace(/\[([^\][]+)\]\(\s*([^()\s\u0000]+)(?:\s+&quot;[^&]*&quot;)?\s*\)/g, (m, lab, href) => hold(linkHtml(lab, href, o)));
     s = s.replace(/&lt;((?:https?:\/\/|mailto:)[^\s&\u0000]+)&gt;/g, (m, u) => hold(linkHtml(u, u, o)));
     s = s.replace(/(^|[\s(])(https?:\/\/[^\s<\u0000]+[^\s<.,;:!?)'"\u0000])/g, (m, pre, u) => pre + hold(linkHtml(u, u, o)));
     s = s.replace(/(\*\*|__)(?=\S)([\s\S]*?\S)\1/g, '<strong>$2</strong>').replace(/(^|[^*\w])\*(?=\S)([^*]*?\S)\*(?!\*)/g, '$1<em>$2</em>').replace(/(^|[^_\w])_(?=\S)([^_]*?\S)_(?!\w)/g, '$1<em>$2</em>').replace(/~~(?=\S)([\s\S]*?\S)~~/g, '<del>$1</del>');

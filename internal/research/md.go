@@ -88,9 +88,21 @@ func renderMarkdown(src string, env mdEnv) (string, mdRefs) {
 	return r.b.String(), r.refs
 }
 
+// Rendering budgets: a table is padded to its header's width, so a wide header and many short rows would otherwise multiply a
+// small page into a huge one; and no page renders to more than maxRenderBytes of HTML.
+const (
+	maxTableCols   = 64
+	maxTableCells  = 1 << 14
+	maxRenderBytes = 16 << 20
+)
+
 // blocks renders a sequence of lines as blocks.
 func (r *mdRenderer) blocks(lines []string) {
 	for i := 0; i < len(lines); {
+		if r.b.Len() > maxRenderBytes {
+			r.b.WriteString("<p>[The rest of this page is too large to render.]</p>\n")
+			return
+		}
 		line := lines[i]
 		trim := strings.TrimSpace(line)
 		switch {
@@ -236,6 +248,9 @@ func (r *mdRenderer) table(lines []string, i int) int {
 		return out
 	}
 	head := cells(lines[i])
+	if len(head) > maxTableCols {
+		head = head[:maxTableCols]
+	}
 	var align []string
 	for _, c := range cells(lines[i+1]) {
 		switch {
@@ -259,10 +274,14 @@ func (r *mdRenderer) table(lines []string, i int) int {
 	}
 	r.b.WriteString("</tr></thead>\n<tbody>\n")
 	j := i + 2
+	shown := len(head)
 	for ; j < len(lines); j++ {
 		t := strings.TrimSpace(lines[j])
 		if t == "" || !strings.Contains(t, "|") {
 			break
+		}
+		if shown += len(head); shown > maxTableCells {
+			continue // past the budget the rest of the table is consumed, not rendered
 		}
 		r.cited = false
 		r.b.WriteString("<tr>")
@@ -275,6 +294,9 @@ func (r *mdRenderer) table(lines []string, i int) int {
 			r.b.WriteString("<td" + style(k) + ">" + r.inline(c) + "</td>")
 		}
 		r.b.WriteString("</tr>\n")
+	}
+	if shown > maxTableCells {
+		fmt.Fprintf(&r.b, "<tr><td colspan=\"%d\">[%d more rows not shown]</td></tr>\n", len(head), (shown-maxTableCells+len(head)-1)/len(head))
 	}
 	r.b.WriteString("</tbody></table></div>\n")
 	return j
