@@ -239,6 +239,16 @@ func (ev *evaluator) judge(u *unit) verdict {
 		return v
 	}
 	mode := ev.v.mode
+	if mode != ModeYolo { // persistence (persist.go): an Allow rule that names the file lets it through
+		for _, a := range all {
+			if why := ev.rs.persists(a); why != "" && ev.explicitAllowAccess(a) == nil {
+				if mode == ModePlan {
+					return deny(planReason(why))
+				}
+				return ask("persistence: "+why, ev.rememberAccess(a, u)).protected(TierGuarded)
+			}
+		}
+	}
 	if u.high != nil && mode != ModeYolo && !ev.overridesRisk(u) {
 		if mode == ModePlan {
 			return deny(planReason(u.high.why))
