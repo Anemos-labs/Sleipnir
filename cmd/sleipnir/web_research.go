@@ -16,7 +16,7 @@ import (
 func (t *webTab) researchAction(ctx context.Context, req wire.ResearchRequest) (map[string]any, error) {
 	s := t.readySession(ctx)
 	if s == nil {
-		return nil, errNoSession
+		return nil, t.noSession()
 	}
 	if msg, off := s.SlashOff("/research"); off {
 		return nil, werr(http.StatusConflict, "plugin_off", msg)

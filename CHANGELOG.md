@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A web request that waits out the three-minute start window while the
+  session is still starting is now refused with 503 `starting` ("send this
+  again shortly") instead of 409 `no_session` ("the session did not
+  start"). A resumed eighteen-agent team took six minutes to start after a
+  container restart, and a goal resumed in that time was told three times
+  that the session had not started.
 - A task whose scope names test files alone (`*_test.go`, `test_*.py`,
   `*.spec.ts`, a `tests/` directory) starts no docs catch-up: it leaves no
   document stale. A docs pass over four new test files held a run's final

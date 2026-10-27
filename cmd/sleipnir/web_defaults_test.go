@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -11,6 +14,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/gitx"
 	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
 // A team whose isolation nobody chose works in trees of its own in the root of a repository with a commit, and in a folder that the
@@ -142,5 +146,33 @@ func TestTheDefaultsSayWhetherTheIsolationWasNamed(t *testing.T) {
 	}
 	if d := defaults(""); !d.IsolationSet || d.Isolation != "none" {
 		t.Errorf("swarm.isolation none in the person's file: isolation %q, set %v", d.Isolation, d.IsolationSet)
+	}
+}
+
+// A request that outlasts startWait while the start goes on is told to send again, not that the session did not start: an
+// eighteen-agent team resumed after a container restart took six minutes to start, and a goal resumed in that time was refused three
+// times as "the session did not start". A start that ended without a session still says it did not start.
+func TestARequestThatOutlastsAStartIsToldItIsStillStarting(t *testing.T) {
+	tab := &webTab{starting: true}
+	tab.cond = sync.NewCond(&tab.mu)
+	var we *wire.Error
+	if err := tab.noSession(); !errors.As(err, &we) || we.Status != http.StatusServiceUnavailable || we.Code != "starting" || !strings.Contains(we.Msg, "send this again") {
+		t.Errorf("a start under way = %v, want 503 starting", err)
+	}
+	tab.starting, tab.restarting = false, true
+	if err := tab.noSession(); !errors.As(err, &we) || we.Code != "starting" {
+		t.Errorf("a restart under way = %v, want starting", err)
+	}
+	tab.restarting = false
+	if err := tab.noSession(); !errors.As(err, &we) || we.Status != http.StatusConflict || we.Code != "no_session" {
+		t.Errorf("a start that ended without a session = %v, want 409 no_session", err)
+	}
+	tab.startErr = "no key"
+	if err := tab.noSession(); !errors.As(err, &we) || we.Code != "no_session" || !strings.Contains(we.Msg, "no key") {
+		t.Errorf("a failed start = %v, want no_session with the reason", err)
+	}
+	tab.starting, tab.closed = true, true
+	if err := tab.noSession(); !errors.As(err, &we) || we.Code != "no_session" {
+		t.Errorf("a closed tab = %v, want no_session", err)
 	}
 }
