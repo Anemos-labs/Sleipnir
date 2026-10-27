@@ -60,10 +60,7 @@ func (e *Engine) Classify(r Request) Classification {
 	sess, prof := e.snapshot(r.Role)
 	v := e.evaluate(sess, r)
 	if prof != nil {
-		if pv := e.evaluate(prof, r); pv.kind > v.kind {
-			pv.reason = "role " + r.Role + ": " + pv.reason
-			v = pv
-		}
+		v = withRole(v, e.evaluate(prof, r), r.Role)
 	}
 	c := Classification{Rule: v.rule, Origin: v.origin, Tier: v.tier, Why: v.reason}
 	if c.Tier == "" {

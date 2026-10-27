@@ -216,7 +216,9 @@ func compileRule(r Rule, res *resolver) (*crule, error) {
 		case p == "" || p == "*":
 			c.blanket = true
 		case strings.HasPrefix(p, "domain:"):
-			c.domain = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(strings.TrimPrefix(p, "domain:")), "."))
+			// The Unicode full stops are dots before the root dot is trimmed, the order
+			// a request's host is normalized in (weburl.HostChecked).
+			c.domain = strings.ToLower(strings.TrimSuffix(unicodeDots.Replace(strings.TrimSpace(strings.TrimPrefix(p, "domain:"))), "."))
 			if rest, wild := strings.CutPrefix(c.domain, "*."); wild {
 				if a, ok := weburl.ASCIIName(rest); ok {
 					c.domain = "*." + a
@@ -239,6 +241,9 @@ func compileRule(r Rule, res *resolver) (*crule, error) {
 	}
 	return c, nil
 }
+
+// unicodeDots folds the label separators IDNA treats as full stops into ".".
+var unicodeDots = strings.NewReplacer("\u3002", ".", "\uff0e", ".", "\uff61", ".")
 
 // wildMatch reports whether s matches pattern, where "*" matches any run of
 // characters (including none and including "/").
@@ -278,10 +283,20 @@ func canonTool(n string) string {
 
 // nameMatches reports whether the rule's tool name covers the request's tool
 // (classOther and classWeb rules; the name may hold "*" wildcards).
+//
+// MCP tools (mcp__server__tool) are matched on their exposed name with its
+// separators: folding "_" and "-" away would let a rule for one server's tool
+// cover another (mcp__a_b__c and mcp__a__b_c are one name without them).
 func (c *crule) nameMatches(tool string) bool {
+	if isMCPName(tool) || isMCPName(c.Tool) {
+		return wildMatch(strings.ToLower(c.Tool), strings.ToLower(tool))
+	}
 	n := normTool(tool)
 	return wildMatch(c.name, n) || canonTool(c.name) == canonTool(n)
 }
+
+// isMCPName reports whether a tool name is an exposed MCP tool name.
+func isMCPName(name string) bool { return strings.HasPrefix(strings.ToLower(name), "mcp__") }
 
 // matchArgv reports whether argv satisfies a bash rule's tokens.
 func (c *crule) matchArgv(argv []string) bool {

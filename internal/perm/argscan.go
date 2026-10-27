@@ -121,6 +121,19 @@ func (sp *argSpec) denied(s *scanned) string {
 			return d
 		}
 	}
+	// GNU programs take any unambiguous beginning of a long option for the option
+	// (sort --out=f is --output=f), so a long option given that is the beginning
+	// of a denied one is denied too.
+	for f := range s.flags {
+		if !strings.HasPrefix(f, "--") || len(f) < 3 {
+			continue
+		}
+		for _, d := range sp.deny {
+			if strings.HasPrefix(d, "--") && !strings.HasSuffix(d, "*") && strings.HasPrefix(d, f) {
+				return f
+			}
+		}
+	}
 	return ""
 }
 
@@ -140,6 +153,9 @@ type pathUse struct {
 	// format: the operand of a source formatter (gofmt -w, prettier --write), which rewrites the files of its language below the
 	// operand into an equivalent layout (see formatter).
 	format bool
+	// literal: the path is a file tool's, used as written: no variable, tilde or
+	// glob in it is expanded (a shell operand's are).
+	literal bool
 }
 
 // analyse applies the spec to args: it returns the files the command reads, or

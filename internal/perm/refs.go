@@ -72,6 +72,11 @@ sub:
 		if len(ops) > 1 && strings.HasPrefix(ops[0], "refs/heads/") && queued(ops[0], false) {
 			return refuse("git symbolic-ref "+ops[0], ops[0])
 		}
+		// Pointing the tree's HEAD at a branch makes the next commit in the tree
+		// move that branch.
+		if len(ops) > 1 && ops[0] == "HEAD" && queued(ops[1], false) {
+			return refuse("git symbolic-ref HEAD "+ops[1], ops[1])
+		}
 	case "branch":
 		switch {
 		case hasShort(rest, "dD") || hasLong(rest, "--delete"):

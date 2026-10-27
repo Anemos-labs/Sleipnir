@@ -122,6 +122,14 @@ loop:
 	if over {
 		l.st.problem("brace expansion too large")
 	}
+	l.st.braceWords += len(vals)
+	for _, v := range vals {
+		l.st.braceBytes += len(v)
+	}
+	if l.st.braceWords > maxBraceTotal || l.st.braceBytes > maxBraceBytes {
+		l.st.problem("brace expansion too large")
+		return []token{tok}
+	}
 	if assign {
 		// NAME={a,b} is one assignment before the command word but two
 		// arguments after it; only the parser knows which, so keep both.
@@ -470,8 +478,19 @@ func (l *lexer) ansiC(w *wbuf) {
 			}
 		case 'c':
 			if i < l.end {
-				emit(l.src[i] & 0x1f)
+				// bash: \c? is DEL, and \c\\ is control-backslash, consuming both
+				// backslashes; any other byte is masked to its control character.
+				c := l.src[i]
 				i++
+				switch {
+				case c == '?':
+					emit(0x7f)
+				case c == '\\' && i < l.end && l.src[i] == '\\':
+					i++
+					emit(0x1c)
+				default:
+					emit(c & 0x1f)
+				}
 			} else {
 				emit('\\', 'c')
 			}

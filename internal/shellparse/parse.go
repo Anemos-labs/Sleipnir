@@ -533,6 +533,16 @@ func (p *parser) finish() {
 	}
 	p.scripts(&s)
 	p.stdinScripts(&s, c.bodies)
+	if len(c.words) == 0 && len(c.bodies) > 0 && p.last >= 0 {
+		// "{ bash; } <<EOF" and "while ...; do sh; done <<<cmd": the body feeds the
+		// compound command that ended last, and a command in it may run it as code.
+		for i := p.last; i < len(p.out); i++ {
+			if prog, args := p.out[i].EffectiveCommand(); readsCodeFromStdin(prog, args) {
+				p.st.problem("a heredoc or here-string feeds a compound command that may run it as shell code")
+				break
+			}
+		}
+	}
 	if p.depth == 0 && !p.nested && len(c.literal) > 0 && readsAsData(s) {
 		p.st.an.Literal = append(p.st.an.Literal, c.literal...)
 	}
@@ -548,6 +558,11 @@ func (p *parser) finish() {
 // emitted last, or every command of the compound command that ended last. It stays in its && chain, but is no ChainLink.
 func (p *parser) markLast() {
 	for i := max(p.last, 0); p.last >= 0 && i < len(p.out); i++ {
+		// Pipes after nested compounds visit the same commands again; each visit
+		// is charged to the input's work budget.
+		if !p.st.tick() {
+			return
+		}
 		p.out[i].Cond = true
 		p.out[i].ChainLink = false
 	}
@@ -631,7 +646,9 @@ func (p *parser) stdinScripts(s *Simple, bodies []string) {
 		return
 	}
 	prog, args := s.EffectiveCommand()
-	if !posixShells[stdBase(prog)] || !readsCodeFromStdin(prog, args) {
+	base := stdBase(prog)
+	source := base == "source" || base == "."
+	if !(posixShells[base] || source) || !readsCodeFromStdin(prog, args) {
 		return
 	}
 	for _, b := range bodies {
@@ -642,7 +659,9 @@ func (p *parser) stdinScripts(s *Simple, bodies []string) {
 		l := newLexer(b, p.st, p.depth+1)
 		toks, _ := l.lexUntil(false)
 		inner := parseTokens(p.st, b, toks, p.depth+1, false, true)
-		mark(inner, func(c *Simple) { c.Child = true })
+		if !source { // source runs it in this shell
+			mark(inner, func(c *Simple) { c.Child = true })
+		}
 		p.pending = append(p.pending, inner...)
 	}
 }

@@ -61,6 +61,11 @@ func loopbackHTTP(prog string, args []string) bool {
 				}
 				i++
 				val = args[i]
+				// The value is a word of its own: one the shell expands may split into
+				// more arguments (another URL among them) that nothing here has seen.
+				if strings.ContainsAny(val, "$`") {
+					return false
+				}
 			}
 			if !curlValue(name, val) {
 				return false
