@@ -765,7 +765,7 @@ func (t *webTab) Command(ctx context.Context, req wire.CommandRequest) (wire.Com
 	}
 	s := t.readySession(ctx)
 	if s == nil {
-		return wire.CommandResult{}, errNoSession
+		return wire.CommandResult{}, t.noSession()
 	}
 	name := strings.Fields(line)[0]
 	if !knownCommand(s, name) {
@@ -1171,8 +1171,8 @@ func (t *webTab) Interrupt(ctx context.Context, target string) error {
 
 // ---- exclusive sections ----------------------------------------------------------------------------------------------------
 
-// errNoSession is the refusal of a request to a tab whose session did not start (or whose start outlasted startWait): the tab's rows
-// say why.
+// errNoSession is the refusal of a request to a tab whose session did not start: the tab's rows say why. One whose start outlasted
+// startWait is refused with errStarting.
 var errNoSession = werr(http.StatusConflict, "no_session", "the session did not start: its rows say why")
 
 // startFailed says whether the tab's last start failed: it has no session and none is starting.
@@ -1182,11 +1182,20 @@ func (t *webTab) startFailed() bool {
 	return t.s == nil && !t.starting && !t.restarting && !t.closed
 }
 
-// noSession is errNoSession with the reason the last start failed, when the tab has one.
+// errStarting is the refusal of a request that waited startWait for a start still under way: a resumed team restores every agent's
+// conversation and checkout first, which took six minutes for an eighteen-agent session after a container restart. The request is
+// worth sending again; "did not start" sent a client that resumed the goal on that answer, and the person reading it, the wrong way.
+var errStarting = werr(http.StatusServiceUnavailable, "starting", "the session is still starting (a resumed team restores every agent first, which can take minutes): send this again shortly")
+
+// noSession is errNoSession with the reason the last start failed, when the tab has one, or errStarting while a start is still
+// under way.
 func (t *webTab) noSession() error {
 	t.mu.Lock()
-	why := t.startErr
+	why, starting := t.startErr, !t.closed && (t.starting || t.restarting)
 	t.mu.Unlock()
+	if starting {
+		return errStarting
+	}
 	if why == "" {
 		return errNoSession
 	}
@@ -1313,7 +1322,7 @@ func (t *webTab) Goal(ctx context.Context, req wire.GoalRequest) error {
 func (t *webTab) goalRoute(ctx context.Context, req wire.GoalRequest) (waits bool, err error) {
 	s := t.readySession(ctx)
 	if s == nil {
-		return false, errNoSession
+		return false, t.noSession()
 	}
 	return t.goalAction(ctx, s, req, true)
 }
@@ -1638,7 +1647,7 @@ func (t *webTab) SetEffort(ctx context.Context, req wire.EffortRequest) (wire.Ef
 	}
 	s := t.readySession(ctx)
 	if s == nil {
-		return wire.EffortResult{}, errNoSession
+		return wire.EffortResult{}, t.noSession()
 	}
 	t.sessMu.Lock()
 	s.SetEffort(lv)
