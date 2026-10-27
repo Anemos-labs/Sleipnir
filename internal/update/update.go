@@ -81,7 +81,19 @@ func (o Options) downloadClient() *http.Client {
 	}
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.ResponseHeaderTimeout = 30 * time.Second
-	return &http.Client{Transport: tr}
+	return &http.Client{Transport: tr, CheckRedirect: refuseInsecureRedirect}
+}
+
+// refuseInsecureRedirect keeps a release file on https across redirects: secureURL checks only the address the release names, and
+// a hop from it to plain http would drop TLS. A file first asked for over http (a test server's) may be sent anywhere.
+func refuseInsecureRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	if req.URL.Scheme != "https" && via[0].URL.Scheme == "https" {
+		return fmt.Errorf("refused a redirect from https to %s://%s", req.URL.Scheme, req.URL.Host)
+	}
+	return nil
 }
 
 // now uses an injected update clock or the system clock.

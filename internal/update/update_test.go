@@ -256,6 +256,36 @@ func TestInstallRefusesReleaseFilesOverPlainHTTP(t *testing.T) {
 	}
 }
 
+// A release file asked for over https is not followed to plain http; one asked for over http (a test server) may go anywhere.
+func TestDownloadsRefuseARedirectFromHTTPSToHTTP(t *testing.T) {
+	check := (Options{}).downloadClient().CheckRedirect
+	if check == nil {
+		t.Fatal("the default download client follows any redirect")
+	}
+	req := func(u string) *http.Request {
+		r, err := http.NewRequest(http.MethodGet, u, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	for _, c := range []struct {
+		from, to string
+		ok       bool
+	}{
+		{"https://github.com/a.tgz", "http://objects.example/a.tgz", false},
+		{"https://github.com/a.tgz", "https://objects.example/a.tgz", true},
+		{"http://127.0.0.1/a.tgz", "http://127.0.0.1/b.tgz", true},
+	} {
+		if err := check(req(c.to), []*http.Request{req(c.from)}); (err == nil) != c.ok {
+			t.Errorf("%s -> %s: err = %v", c.from, c.to, err)
+		}
+	}
+	if (Options{HTTP: http.DefaultClient}).downloadClient() != http.DefaultClient {
+		t.Error("an injected client was replaced")
+	}
+}
+
 // The new binary keeps the permissions of the one it replaces.
 func TestInstallKeepsTheBinarysPermissions(t *testing.T) {
 	if runtime.GOOS == "windows" {
