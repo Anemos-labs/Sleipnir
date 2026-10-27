@@ -47,3 +47,32 @@ func TestRepoPathIsReadAgainstTheWorkspaceBase(t *testing.T) {
 		t.Fatalf("%q", got)
 	}
 }
+
+// A page whose DNS name is rebound to this machine reaches a tokenless server as its own origin, and an old browser sends no Fetch
+// Metadata on a GET: the Host header, which names the page's host, is what gives it away. Loopback names still pass.
+func TestATokenlessServerRefusesAForeignHostHeader(t *testing.T) {
+	f := newServerFixture(t, func(o *ServeOptions) { o.Token = "" })
+	get := func(host string) int {
+		req, _ := http.NewRequest("GET", f.ts.URL+"/v1/runs/nothing-here", nil)
+		req.Host = host
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	for _, h := range []string{"evil.example", "evil.example:8080", "127.0.0.1.nip.io", "localhost.evil.example"} {
+		if c := get(h); c != http.StatusForbidden {
+			t.Errorf("Host %q: %d", h, c)
+		}
+	}
+	for _, h := range []string{"localhost", "LOCALHOST:9", "127.0.0.1:1234", "[::1]:80", "127.0.0.2"} {
+		if c := get(h); c == http.StatusForbidden {
+			t.Errorf("Host %q refused", h)
+		}
+	}
+	if !loopbackHostHeader("localhost.") || loopbackHostHeader("") || loopbackHostHeader("0.0.0.0") {
+		t.Error("loopbackHostHeader")
+	}
+}

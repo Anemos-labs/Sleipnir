@@ -1232,7 +1232,7 @@ func (ev *evaluator) highRisk(u *unit) *riskInfo {
 	case name == "git":
 		return ev.gitRisk(args)
 	}
-	return nil
+	return persistRisk(name, args)
 }
 
 // broad reports whether deleting or re-owning real would take in the whole
@@ -1358,6 +1358,8 @@ sub:
 				return &riskInfo{why: "deleting remote branch " + t[1:], markers: []string{":"}}
 			}
 		}
+	case "config", "credential":
+		return gitPersistRisk(sub, rest)
 	case "reset":
 		if !hasLong(rest, "--hard") {
 			return nil

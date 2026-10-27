@@ -13,6 +13,36 @@ they do not indicate whether a change has been released.
   "Resume this pool with its existing members". In a long team run a pool
   whose leader's model had no endpoints sat in planning for over half an
   hour, with its other member ready to agree.
+- On a team with a reviewer slot, a manager's `wait` result ends, while
+  implementation submissions wait in review, with a line that names them
+  and says to decide each from its evidence (`T1, T2 in review: decide
+  each from its evidence ...`): testing them is the reviewer's task over
+  the merged result. A manager wrote probe tests for four submissions one
+  after another while every worker sat idle; they waited in review four
+  to eight minutes, and the reviewer it then spawned tested the same code
+  again. About 40 tokens more in the manager's wait result, only while
+  such submissions wait.
+- The auto-docs pass's brief tells the docs member to read the diff of
+  the changed files rather than whole sources, and to leave testing and
+  probing the code to the reviewer and the verifier: it runs a documented
+  command only when the change altered it. A docs pass after a manager
+  fixed four modules itself ran every module's tests and wrote probe
+  programs, and took 500 s of a 969 s run; with this brief the same task
+  took 216 s of 538 s. About 45 tokens more in the brief.
+- A spawn queued behind the busy members of its role, and the live view's
+  line for such queued tasks, name the other writer roles with a free
+  slot or idle member (`free now: frontend, devops: one of them can take
+  T2 at once if it needs nothing only backend knows (spawn role=frontend
+  task=T2)`). Managers on two models gave four independent modules to
+  backend, the team's one backend slot, and the modules ran one after
+  another while the frontend and devops slots stayed empty. About 35
+  tokens more in that answer and line, only while they apply.
+- A team whose reviewers all run on a model its writers use, while the
+  team has another model too, gets a one-line tip when its manager starts:
+  a reviewer on another model catches what the writers' model misses,
+  including a backdoor in its weights. A suggestion, never a default; a
+  team on one model is told nothing. Harness behavior only (an info
+  notice); no prompt bytes change.
 - With persistent pools, a task returned to todo after its worker's
   automatic restarts on it ran out is no longer started on that worker
   again by the repair pass: the manager assigns it. The manager's line
@@ -29,6 +59,18 @@ they do not indicate whether a change has been released.
   available" for five minutes failed, and the session ended as an error
   with every task done and verified. No prompt bytes change; the
   `--role-model` help names the new role.
+- Persistence and credential dumps are high risk: asked about with
+  someone there, refused in bypass mode with the reason, denied in plan
+  mode. That covers writes to shell startup files, user services and login
+  items, `~/.local/bin`, `~/.gitconfig`, package index configuration and
+  `.pth` files outside the workspace, the commands `crontab`, `at`,
+  `systemctl enable`, `launchctl load`, `loginctl enable-linger` and
+  `git config --global` of a key that runs a program, and commands that
+  print a stored credential (`gh auth token`, `git credential fill`). A
+  backdoored model needs one of these to outlive its session or to take a
+  token, and a coding task almost never does. An Allow rule that names the
+  file or the exact command lifts it. Harness behavior only; no prompt
+  bytes change.
 - Auto-docs counts the product files the manager edits by itself as a
   change: once the manager has left them alone for 90 seconds, or when it
   means to finish, they start a docs pass scoped to the Markdown beside

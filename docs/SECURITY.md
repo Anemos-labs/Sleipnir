@@ -39,6 +39,9 @@ prompt, tool call and output verbatim.
 3. *A hostile or compromised endpoint*: a model gateway or a network on the path (redirects, huge streams, hostile headers).
 4. *Another agent* in a swarm that was injected.
 5. *A same-user process*, above all the commands the model itself runs: they start as children of the harness with your rights.
+6. *The model itself.* Open weights, a fine-tuned adapter or a GGUF chat template can carry a backdoor: the model behaves until a
+   trigger (a phrase, a date, a file name) appears, then acts against the person running it and hides it in a helpful answer. Assume
+   any model may, and judge what it does, never what it says (below, "A model that works against you").
 
 **Trusted:** you, your own config under `~/.sleipnir`, the operating system, the provider you chose (it sees everything
 you send it). **Not trusted:** model output, repository content, web content, tool output, mail, project-level config and
@@ -152,6 +155,52 @@ make a project's tool servers start without asking: each entry of a `.mcp.json` 
   workspace (the shared checkout, other agents' trees), in every mode, on resolved paths, for shell commands as well as file tools. That
   keeps cooperating agents apart and every merge accounted for. A path a shell computes at run time cannot be resolved before it runs
   and is left to the mode, as everywhere else, so a worker that is hostile and in `bypass` mode is not stopped by it: use a container.
+
+### A model that works against you
+
+A backdoored model ("sleeper agent") is trained to act on a trigger and to look normal otherwise; safety training does not reliably
+remove the behaviour (Hubinger et al., *Sleeper Agents*, 2024). Recent demonstrations: a LoRA fine-tune whose tool calls send the
+environment to an attacker's storage when the year is 2026 (*Sleeper Cell*, arXiv:2603.03371), and a chat template in a redistributed
+GGUF file that adds a hidden instruction when a phrase appears, which made a coding agent put an attacker's script tag in the app it
+built (arXiv:2602.04653). Nothing that reads the model's text can tell such a model apart before it acts, so the harness does not try:
+it limits what any model can do, in every mode, and asks or refuses the few actions a backdoor needs and a coding task does not.
+
+What holds whatever the model is, bypass mode included:
+
+* *Secrets it would send.* Provider keys leave the environment before any command starts, and other credential-looking variables are
+  scrubbed from what commands inherit (section 2), so "read the environment and post it" finds nothing worth having. `~/.ssh`,
+  `~/.aws`, `~/.gnupg` and gcloud credentials are hard-denied; token files (`~/.config/gh/hosts.yml`, `~/.netrc`, `.env`) need an Allow
+  rule; the commands that print a stored credential (`gh auth token`, `git credential fill`, `gcloud auth print-access-token`,
+  `security find-generic-password -w`, `secret-tool lookup`, ...) are in the high-risk class, so the token stays inside the tool that uses
+  it (`gh api`, `git push`) and out of the transcript, which the provider and the session log keep.
+* *Persistence.* What would run after the session is asked about, refused in bypass mode with the reason, and denied in plan mode
+  (`internal/perm/persist.go`): writes to shell and session startup files, `~/.config/systemd/user`, `~/.config/autostart`,
+  `~/Library/LaunchAgents`, `~/.local/bin` and `~/bin`, `~/.gitconfig`, editor and IPython startup files, package index configuration
+  (`pip.conf`, `.cargo/config.toml`, `.m2/settings.xml`, `.yarnrc`, ...), the cron and at spools, and a `.pth` or `sitecustomize.py` in a
+  `site-packages` outside the workspace; and the commands `crontab` (but `-l`), `at`, `systemctl enable|link|edit|...`, `systemd-run`,
+  `launchctl load|bootstrap|submit|enable`, `loginctl enable-linger`, `schtasks /create`, and `git config --global|--system|--file` of a
+  key that runs a program or rewrites where git fetches (`core.hooksPath`, `core.sshCommand`, `core.fsmonitor`, `alias.*`,
+  `credential.helper`, `url.*.insteadOf`, filters, ...). Reading those files is not affected. An Allow rule that names the file or the
+  exact command lets it through, a workspace chosen inside one of those places (`~/.config/nvim` as the project) is the project, and
+  yolo mode does not look. A coding task rarely touches any of them, so this costs an ordinary session nothing.
+* *Reach.* Read-only roles are read-only in the engine; an isolated writer cannot leave its tree; `.git` internals and system
+  directories cannot be written; recursive deletes of broad paths, `sudo` and forced pushes to shared branches are high risk.
+* *No clock in the prompt.* The prompt never carries the date (`AGENTS.md`: no timestamps in prompt text), so a trigger keyed to the year does not
+  see it unless the model runs `date`.
+
+What it does not stop, and what to do about it:
+
+* *Code an approved interpreter runs.* `python -c`, a test, a build script or a program the model wrote can do anything you can, and
+  the engine cannot read it. Bypass mode lets those run: that is what bypass means. The protections above cover the shell's view;
+  the wrapper in section 3 covers the rest.
+* *Exfiltration of what it may read.* The shell's network is not filtered. A backdoor can send the source code of the workspace, or
+  anything outside the hard-denied and guarded places, to a host of its choosing.
+* *Malice in the code it writes* (a script tag, a dependency, a weakened check). Review is the defence: a reviewer on another model,
+  from another publisher, is unlikely to share the trigger. Give a team's reviewer slots a model other than the writers', or two
+  models: a merge is then covered only once reviewers on two different models have each reviewed it (`docs/SWARM-PROTOCOL.md`).
+  This is a suggestion, not a default: a team whose reviewers share the writers' model while another model is on the team gets a
+  one-line tip when it starts, and a team on one model is never told anything.
+* *Weights and templates you download.* Take them from their publisher; a chat template is code that runs on every request.
 
 ### Reading public websites in accept-edits mode
 

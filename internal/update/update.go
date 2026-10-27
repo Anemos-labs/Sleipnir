@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -71,6 +72,30 @@ func (o Options) client() *http.Client {
 	return &http.Client{Timeout: 20 * time.Second}
 }
 
+// downloadClient is the client of a release's files: an injected client, or one whose wait for the answer's headers is bounded but
+// whose transfer is bounded only by the caller's context. A whole-request timeout of twenty seconds would cut off the archive (tens
+// of megabytes) on any connection slower than a few megabytes a second, and the update would fail every time there.
+func (o Options) downloadClient() *http.Client {
+	if o.HTTP != nil {
+		return o.HTTP
+	}
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.ResponseHeaderTimeout = 30 * time.Second
+	return &http.Client{Transport: tr, CheckRedirect: refuseInsecureRedirect}
+}
+
+// refuseInsecureRedirect keeps a release file on https across redirects: secureURL checks only the address the release names, and
+// a hop from it to plain http would drop TLS. A file first asked for over http (a test server's) may be sent anywhere.
+func refuseInsecureRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	if req.URL.Scheme != "https" && via[0].URL.Scheme == "https" {
+		return fmt.Errorf("refused a redirect from https to %s://%s", req.URL.Scheme, req.URL.Host)
+	}
+	return nil
+}
+
 // now uses an injected update clock or the system clock.
 func (o Options) now() time.Time {
 	if o.Now != nil {
@@ -119,6 +144,16 @@ type Status struct {
 // get fetches url with the options' client and user agent and returns the answer; a status other than 200, or an answer larger than
 // limit bytes, is an error.
 func (o Options) get(ctx context.Context, url string, limit int64) ([]byte, error) {
+	return o.fetch(ctx, o.client(), url, limit)
+}
+
+// download is get for a file of a release, with downloadClient.
+func (o Options) download(ctx context.Context, url string, limit int64) ([]byte, error) {
+	return o.fetch(ctx, o.downloadClient(), url, limit)
+}
+
+// fetch is get with the given client.
+func (o Options) fetch(ctx context.Context, hc *http.Client, url string, limit int64) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -129,7 +164,7 @@ func (o Options) get(ctx context.Context, url string, limit int64) ([]byte, erro
 		agent = "sleipnir-update"
 	}
 	req.Header.Set("User-Agent", agent)
-	resp, err := o.client().Do(req)
+	resp, err := hc.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -316,11 +351,18 @@ func Install(ctx context.Context, o Options, rel Release, exe string) error {
 	if archive == "" || sums == "" {
 		return fmt.Errorf("release %s has no %s for %s/%s (see %s)", rel.Tag, name, o.goos(), o.goarch(), rel.URL)
 	}
-	data, err := o.get(ctx, archive, 300<<20)
+	// The archive and the checksums that vouch for it come from the URLs the release names. Over plain http one man in the middle
+	// could change both alike, and the checksum would vouch for his binary: they are fetched over https, as the API was.
+	for _, u := range []string{archive, sums} {
+		if err := o.secureURL(u); err != nil {
+			return err
+		}
+	}
+	data, err := o.download(ctx, archive, maxArchive)
 	if err != nil {
 		return fmt.Errorf("downloading %s: %w", name, err)
 	}
-	sumFile, err := o.get(ctx, sums, 1<<20)
+	sumFile, err := o.download(ctx, sums, 1<<20)
 	if err != nil {
 		return fmt.Errorf("downloading checksums.txt: %w", err)
 	}
@@ -340,6 +382,40 @@ func Install(ctx context.Context, o Options, rel Release, exe string) error {
 	return replace(exe, exeBytes)
 }
 
+// maxArchive bounds a release archive.
+const maxArchive = 300 << 20
+
+// maxBinary bounds the binary an archive holds (a variable for the tests).
+var maxBinary = 300 << 20
+
+// secureURL refuses a release file that is not fetched over https. A release served by an API reached over plain http (a test
+// server) may name plain http files too: the files are as secure as the answer that named them.
+func (o Options) secureURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return fmt.Errorf("the release names a file at %q, which is not an address: nothing was installed", raw)
+	}
+	if u.Scheme == "https" {
+		return nil
+	}
+	if api, err := url.Parse(o.api()); err == nil && api.Scheme == "http" && u.Scheme == "http" {
+		return nil
+	}
+	return fmt.Errorf("the release names a file at %s over %s, not https: nothing was installed", u.Host, u.Scheme)
+}
+
+// readBinary reads the binary of an archive whole, or fails: a binary longer than maxBinary is not cut short and installed.
+func readBinary(r io.Reader, name, bin string) ([]byte, error) {
+	b, err := io.ReadAll(io.LimitReader(r, int64(maxBinary)+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > maxBinary {
+		return nil, fmt.Errorf("the %s of %s is larger than %d MiB: nothing was installed", bin, name, maxBinary>>20)
+	}
+	return b, nil
+}
+
 // checksumOf finds a named checksum entry, accepting an optional binary-file asterisk marker.
 func checksumOf(sums, name string) string {
 	for _, line := range strings.Split(sums, "\n") {
@@ -353,7 +429,6 @@ func checksumOf(sums, name string) string {
 
 // extract is the file bin of a .tar.gz or .zip archive.
 func extract(data []byte, name, bin string) ([]byte, error) {
-	const limit = 300 << 20
 	if strings.HasSuffix(name, ".zip") {
 		zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 		if err != nil {
@@ -366,7 +441,7 @@ func extract(data []byte, name, bin string) ([]byte, error) {
 					return nil, err
 				}
 				defer rc.Close()
-				return io.ReadAll(io.LimitReader(rc, limit))
+				return readBinary(rc, name, bin)
 			}
 		}
 		return nil, fmt.Errorf("%s holds no %s", name, bin)
@@ -385,7 +460,7 @@ func extract(data []byte, name, bin string) ([]byte, error) {
 			return nil, err
 		}
 		if h.Typeflag == tar.TypeReg && path.Base(h.Name) == bin {
-			return io.ReadAll(io.LimitReader(tr, limit))
+			return readBinary(tr, name, bin)
 		}
 	}
 }
@@ -407,7 +482,11 @@ func replace(exe string, content []byte) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Chmod(name, 0o755); err != nil {
+	mode := os.FileMode(0o755)
+	if fi, err := os.Stat(exe); err == nil && fi.Mode().Perm()&0o111 != 0 {
+		mode = fi.Mode().Perm() // the binary it replaces keeps its permissions (0750 for a group's install stays 0750)
+	}
+	if err := os.Chmod(name, mode); err != nil {
 		return err
 	}
 	if err := os.Rename(name, exe); err == nil {

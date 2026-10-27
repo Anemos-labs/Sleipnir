@@ -124,8 +124,14 @@
 // High risk (ask; plan mode denies; a blanket Bash(*) does not lift it): sudo and
 // friends, rm -rf of the workspace, home, "/", "*" or a parent, recursive chmod
 // 777, disk tools and dd to devices, force-pushing to main/master/shared
-// branches, git reset --hard on a shared branch, shutdown. Only an Allow rule
-// that is exact, or that names the risky flag, overrides the flag.
+// branches, git reset --hard on a shared branch, shutdown, and persistence
+// (persist.go): a cron or at job, an enabled service or login item, a global git
+// setting that runs a program, a command that prints a stored credential (gh auth
+// token). Only an Allow rule that is exact, or that names the risky flag,
+// overrides the flag. A write to a place whose contents run after the session (a
+// shell startup file, ~/.config/systemd/user, ~/.local/bin, ~/.gitconfig, a
+// package index configuration, a .pth file outside the workspace) is judged the
+// same way, and an Allow rule that names the file lifts it.
 //
 // Redirections count as file accesses: ">" writes its target, "<" reads it, and
 // "2>&1" or "> /dev/null" touch nothing. Relative paths follow cd, judged
@@ -201,7 +207,7 @@ const (
 	// ModePlan is read-only: anything that writes or executes is denied.
 	ModePlan Mode = "plan"
 	// ModeBypass gives full control and never asks: the very dangerous (the high-risk class: sudo, a recursive delete of the workspace,
-	// home or "/" or of a path only known when the command runs, a forced push to a shared branch, disk tools, shutdown) and whatever
+	// home or "/" or of a path only known when the command runs, a forced push to a shared branch, disk tools, shutdown, persistence) and whatever
 	// else would have asked are refused with the reason they were flagged and a request to do it a safer way. Hard denies and Deny
 	// rules still refuse.
 	ModeBypass Mode = "bypass"

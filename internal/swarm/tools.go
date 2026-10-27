@@ -780,7 +780,11 @@ func (t *spawnTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error)
 			if !t.s.queueSpawn(req, task.Rev) {
 				was = "was already queued"
 			}
-			return text("%s %s for the next free %s member (%s). The harness starts it then and tells you: do not spawn it again; use wait.", req.TaskID, was, busy.role, busy.held), nil
+			out := fmt.Sprintf("%s %s for the next free %s member (%s). The harness starts it then and tells you: do not spawn it on %s again; use wait.", req.TaskID, was, busy.role, busy.held, busy.role)
+			if line := spillLine(t.s.freeWriters(busy.role), busy.role, req.TaskID); line != "" {
+				out += " " + strings.ToUpper(line[:1]) + line[1:] + "."
+			}
+			return text("%s", out), nil
 		}
 	}
 	if err != nil {
@@ -864,6 +868,15 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		notify = m.notify
 	}
 
+	report := func(cur *Snapshot, digest []string, why string) string {
+		out := waitReport(cur, digest, why)
+		if c.Env.Role == "manager" {
+			if line := s.decideLine(cur); line != "" {
+				out += "\n" + line
+			}
+		}
+		return out
+	}
 	timedOut := false
 	for {
 		if ctx.Err() != nil {
@@ -883,20 +896,20 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		switch {
 		case s.budgetErr() != nil:
 			s.setSeen(me, cur)
-			return c.Env.Finish(waitReport(cur, digest, "the swarm budget is exhausted; nothing more will run"), false), nil
+			return c.Env.Finish(report(cur, digest, "the swarm budget is exhausted; nothing more will run"), false), nil
 		case len(in.Until) > 0 && allSettled(cur, in.Until):
 			s.setSeen(me, cur)
-			return c.Env.Finish(waitReport(cur, digest, "all awaited tasks settled"), false), nil
+			return c.Env.Finish(report(cur, digest, "all awaited tasks settled"), false), nil
 		case inReview != nil && len(newReviews(cur, in.Until, inReview)) > 0 && s.freeWorker(cur) != "":
 			s.setSeen(me, cur)
-			return c.Env.Finish(waitReport(cur, digest, strings.Join(newReviews(cur, in.Until, inReview), ", ")+
+			return c.Env.Finish(report(cur, digest, strings.Join(newReviews(cur, in.Until, inReview), ", ")+
 				" reached review while "+s.freeWorker(cur)+" is free: accept or reject it, give free workers the next work, then wait again for the rest"), false), nil
 		case len(in.Until) == 0 && len(digest) > 0 && (c.Env.Role == "manager" || concernsWorker(me, base, cur)):
 			s.setSeen(me, cur)
-			return c.Env.Finish(waitReport(cur, digest, ""), false), nil
+			return c.Env.Finish(report(cur, digest, ""), false), nil
 		case pending:
 			s.setSeen(me, cur)
-			return c.Env.Finish(waitReport(cur, digest, "mail arrived (delivered with this result)"), false), nil
+			return c.Env.Finish(report(cur, digest, "mail arrived (delivered with this result)"), false), nil
 		}
 		if reason := s.restartWaitReason(c.Env.Role); reason != "" {
 			s.setSeen(me, cur)
@@ -922,7 +935,7 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 					why += fmt.Sprintf("; no task has changed state for %s: waiting again will not change that. Look at what the workers are stuck on (agents, task list, what a verifier prints), tell them, or end the run and say what is stuck", q.Round(time.Minute))
 				}
 			}
-			return c.Env.Finish(waitReport(cur, digest, why), false), nil
+			return c.Env.Finish(report(cur, digest, why), false), nil
 		}
 		select {
 		case <-ctx.Done():
@@ -1213,6 +1226,33 @@ func diffSnapshots(a, b *Snapshot) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// decideLine is what a manager's wait result adds while implementation submissions wait in review in a team with a reviewer slot:
+// decide them from their evidence, since the reviewer's task over the merged result is where they are tested. A manager on a team
+// with a reviewer wrote probe tests for each of four submissions in turn, and they waited in review four to eight minutes while
+// every worker sat idle; the reviewer it then spawned tested the same code again. "" when none waits or the team has no reviewer.
+func (s *Swarm) decideLine(snap *Snapshot) string {
+	if !s.teamLimited() {
+		return ""
+	}
+	if slots, _ := TeamCounts(s.cfg.Team); slots[ReviewerRole] == 0 {
+		return ""
+	}
+	var ids []string
+	for _, t := range snap.Tasks {
+		if t.Status != StatusReview || t.Parent != "" || t.Kind == TaskKindPlan {
+			continue
+		}
+		if r := s.roleOf(t.Owner); r == ReviewerRole || r == DocsRole || r == "tester" {
+			continue
+		}
+		ids = append(ids, t.ID)
+	}
+	if len(ids) == 0 {
+		return ""
+	}
+	return strings.Join(ids, ", ") + " in review: decide each from its evidence (task get: the merge, the worker's test command and result) and accept or reject it; testing them yourself repeats the reviewer's task over the merged result."
 }
 
 func waitReport(s *Snapshot, digest []string, why string) string {

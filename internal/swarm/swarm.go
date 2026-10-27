@@ -645,6 +645,9 @@ func (s *Swarm) StartManager() (*agent.Agent, error) {
 	s.mu.Unlock()
 	m.setState(s, "running", "")
 	s.emit(events.TypeAgentSpawn, map[string]any{"id": id, "role": "manager", "model": m.model.ID})
+	if hint := s.reviewerModelHint(); hint != "" {
+		s.managerNotice(m, "info", hint)
+	}
 	return m.a, nil
 }
 

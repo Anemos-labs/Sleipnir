@@ -50,7 +50,10 @@ members are all busy spares none. A `spawn` of an existing task by the manager i
 queued: the answer names what holds the members (`be-1 leads T2, be-2 leads T3`), and the
 harness starts the task on the first member of the role that is free, on the supervisor's
 pass, and tells the manager; a queued task that is assigned, revised or closed meanwhile is
-dropped from the queue, and a resumed session starts with none. Any other caller is refused
+dropped from the queue, and a resumed session starts with none. When other roles that write code
+(not a read-only role, docs or the tester) have a slot or an idle member free, the answer and the live view's queued line
+name them (`free now: frontend, devops: one of them can take T2 at once if it needs nothing only backend knows (spawn
+role=frontend task=T2)`); a spawn of the task on one of them starts it there. Any other caller is refused
 with what to do (wait, or have the busy parent's leader take the work as a child).
 The first configured member leads, including after resume. `pool propose` records a
 shared agreement covering conventions, interfaces, work division and acceptance.
@@ -196,7 +199,8 @@ directory: `**/*.md` overlaps every directory a task holds or will claim, so a p
 task to close and, while it ran, keep every task scoped to a directory from being claimed. A pass that cannot start says
 why in the keeper's state (`pass T12 waiting to start: scope "*.md" overlaps T6 …`). The first pass waits for the first accepted implementation task: an agreement accepted before
 any code exists stays pending (and holds nobody) and is folded into that pass. It never interrupts a running docs worker; the docs worker's own tasks are not changes, and neither is a task whose scope names test files alone (`*_test.go`, `test_*.py`, `*.spec.ts`, a `tests/` directory): it leaves no document stale. The product files the manager edits by itself are a change of their own (`manager`) once it has left them alone for 90 seconds, or at once when it means to finish; its test and Markdown edits are none. The
-docs worker keeps README, `docs/` and `AGENTS.md` current; `AGENTS.md` is also the team's map of the project. The
+docs worker keeps README, `docs/` and `AGENTS.md` current; `AGENTS.md` is also the team's map of the project. Its brief
+has it read the diff of the changed files and leave testing the code to the reviewer and the verifier. The
 manager's pin says that documentation is automatic, every other worker's pin says to read `AGENTS.md` and to mail facts
 to the docs worker, and every hot view carries the keeper's state (`docs (auto): 2 change(s) pending`). A batch run's
 manager is held while a pass is pending. `--auto-docs=false` makes docs an ordinary role.
@@ -211,7 +215,9 @@ is due a review: every accepted implementation task of a writer (not an agreemen
 merge, and a task owned by a reviewer accepted after the last merge covers it. When the team's reviewer slots run on two or
 more different models, a merge is covered only once reviewers on two different models have each had a review accepted that
 covers it (independent vantages: one model's blind spots are another's findings); a second review by the same model does not
-count twice, and the gate's line asks for a review from the slot on the model that has not covered it yet. After an accepted review the
+count twice, and the gate's line asks for a review from the slot on the model that has not covered it yet. When the reviewers all
+run on a model a writer uses and the team has another model, the manager's start shows a one-line tip (an info notice, nothing
+in a prompt) that a reviewer on another model would catch what the writers' model misses; a team on one model gets none. After an accepted review the
 gate's line names the merges since it, and the next review covers that work alone (the accepted review stands for the rest).
 With one reviewer model, a merge after an accepted review whose work tree, compared with the tree that review began on, has
 changed in test files and docs alone (`*_test.go`, `test_*.py`, a `.test` or `.spec` suffix, a `test/`, `tests/`,
@@ -222,6 +228,8 @@ the review due. Until then the manager's hot view says so,
 its `wait` is refused once nothing else runs, and the manager's final answer is held. The agent bounds stop vetoes per run; configured
 persistent teams continue the same manager context until the board and review gate settle. The manager's pin asks for a scout when the code or an outside source is unknown, devops and the tester to start from
 the accepted agreement in parallel with the implementation, and the reviewer pass before the goal is reported met.
+While implementation submissions wait in review on a team with a reviewer slot, the manager's `wait` result names them and
+says to decide each from its evidence: testing them again is the reviewer's task over the merged result.
 
 **The manager answers routine questions first.** With `permissions.manager_approves` (default true; `--manager-approves`),
 a worker's permission question that the engine marks routine goes to the manager before the person
