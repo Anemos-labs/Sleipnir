@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- With persistent pools, a task returned to todo after its worker's
+  automatic restarts on it ran out is no longer started on that worker
+  again by the repair pass: the manager assigns it. The manager's line
+  now says the task returned to todo and asks for an assignment, instead
+  of saying it was retrying with its existing worker while also saying
+  the harness would not restart that worker. In a long team run five
+  workers whose model had no available endpoints were started on their
+  tasks again every few minutes without end, and the workers on another
+  model stayed idle.
 - A review accepted after a merge that changed test files and docs alone
   since the review began covers that merge too. A tester's suite accepted
   while the review waited for its verdict started a second review of four
