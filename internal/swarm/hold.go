@@ -403,6 +403,9 @@ func (h *holdHooks) BeforeStop(ctx context.Context, agentID, role, final string,
 		}
 		u = h.s.unfinishedWork()
 	}
+	if u.empty() {
+		h.s.flushManagerEdits()
+	}
 	if u.empty() && h.s.docsPending() {
 		// The docs worker has not caught up with the last accepted work: the
 		// harness starts or finishes that pass by itself, so the manager waits.

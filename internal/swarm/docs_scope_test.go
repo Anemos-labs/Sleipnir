@@ -103,3 +103,61 @@ func TestTestOnlyChangesStartNoDocsPass(t *testing.T) {
 		t.Fatalf("pending changes = %v, want only %s", ids, code.ID)
 	}
 }
+
+// The manager's own edits to product files start a docs pass of their own once they settle (or once the manager means to
+// finish): no task's acceptance covers them. Its test and documentation edits start none.
+func TestTheManagersOwnEditsStartADocsPassOnceTheySettle(t *testing.T) {
+	cfg := Config{MaxWorkers: 8, AutoDocs: true, Team: []string{"backend", "docs"}}
+	r := newRVRigWith(t, cfg, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	root := r.sw.deps.Root
+	if err := os.MkdirAll(filepath.Join(root, "wordfreq"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "wordfreq", "README.md"), []byte("# x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"wordfreq/wordfreq_test.go", "wordfreq/README.md", "docs/guide.md"} {
+		r.sw.noteManagerEdit(p)
+	}
+	if r.sw.docsPending() {
+		t.Fatal("test and documentation edits are a docs change")
+	}
+	for _, p := range []string{"wordfreq/wordfreq.go", "jsonpath/jsonpath.go", "wordfreq/wordfreq.go"} {
+		r.sw.noteManagerEdit(p)
+	}
+	if !r.sw.docsPending() {
+		t.Fatal("the manager's code edits leave nothing for auto-docs to do")
+	}
+	now := r.sw.deps.Now()
+	r.sw.docsTick(now)
+	r.sw.docs.mu.Lock()
+	open, pending := r.sw.docs.open, len(r.sw.docs.pending)
+	r.sw.docs.mu.Unlock()
+	if open != "" || pending != 0 {
+		t.Fatalf("a pass started while the manager was still editing: open %q, %d pending", open, pending)
+	}
+	r.sw.docsTick(now.Add(docsEditQuiet))
+	r.sw.docs.mu.Lock()
+	open, last, edited := r.sw.docs.open, r.sw.docs.last, len(r.sw.docs.edited)
+	r.sw.docs.mu.Unlock()
+	if open == "" || edited != 0 {
+		t.Fatalf("settled edits started no pass: open %q, %d edited", open, edited)
+	}
+	if last != "" {
+		t.Fatalf("last pass covered up to %q: the manager's edits are no task", last)
+	}
+	task, _ := r.sw.Board.Snapshot().Task(open)
+	if !strings.Contains(task.Desc, "wordfreq/wordfreq.go, jsonpath/jsonpath.go)") || !strings.Contains(strings.Join(task.Files, " "), "wordfreq/README.md") {
+		t.Fatalf("pass %q: %q, scope %v", task.Title, task.Desc, task.Files)
+	}
+
+	// A manager that means to finish has no more edits coming: they are a change at once.
+	r2 := newRVRigWith(t, cfg, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	r2.sw.noteManagerEdit("lru/lru.go")
+	r2.sw.flushManagerEdits()
+	r2.sw.docs.mu.Lock()
+	defer r2.sw.docs.mu.Unlock()
+	if len(r2.sw.docs.pending) != 1 || r2.sw.docs.pending[0].task != managerEdits || !r2.sw.docs.coded {
+		t.Fatalf("flushed edits: %+v", r2.sw.docs.pending)
+	}
+}
