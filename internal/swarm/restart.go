@@ -167,7 +167,7 @@ func openPoolOf(snap *Snapshot, agent string) string {
 func (s *Swarm) settleFailed(m *member, rs *runState, tasks map[string]uint64, kind stopKind, why string, count bool, err error) (*pendingRestart, int, string) {
 	p, tried := s.planRestart(m, rs, tasks, kind, why, count, err)
 	if p == nil {
-		return nil, tried, s.settleStopped(m, tasks, kind, why, count)
+		return nil, tried, s.settleStopped(m, tasks, kind, why, count, tried > 0)
 	}
 	rest := maps.Clone(tasks)
 	snap := s.Board.Snapshot()
@@ -187,7 +187,7 @@ func (s *Swarm) settleFailed(m *member, rs *runState, tasks map[string]uint64, k
 			rest[id] = tasks[id] // changed since the plan was made: settled as any other
 		}
 	}
-	notes := s.settleStopped(m, rest, kind, why, count)
+	notes := s.settleStopped(m, rest, kind, why, count, false)
 	if len(kept) == 0 && p.pool == "" {
 		return nil, 0, notes // the board changed under the stop: the worker holds none of it now
 	}

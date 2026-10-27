@@ -3,6 +3,7 @@ package swarm
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -11,7 +12,8 @@ import (
 )
 
 // repairTick retries failed assignments on their original worker. The supervisor
-// owns retryAt; cancellation, permission waits and budget exhaustion never restart work.
+// owns retryAt; cancellation, permission waits and budget exhaustion never restart work,
+// and neither does a stop after the worker's automatic restarts on the task ran out.
 func (s *Swarm) repairTick(now time.Time) {
 	if !s.cfg.PersistentPools || s.wk.heldNow() || s.alive() != nil || s.budgetErr() != nil {
 		return
@@ -24,6 +26,7 @@ func (s *Swarm) repairTick(now time.Time) {
 	for id, agent := range s.poolReserved {
 		reserved[id] = agent
 	}
+	handedBack := maps.Clone(s.handedBack)
 	s.mu.Unlock()
 	for _, t := range s.Board.Snapshot().Tasks {
 		// A pool child reserved for a member that was in a turn (reserveChild): the member's run has ended without claiming it.
@@ -34,6 +37,14 @@ func (s *Swarm) repairTick(now time.Time) {
 		} else if reserved[t.ID] != "" {
 			s.mu.Lock()
 			delete(s.poolReserved, t.ID) // claimed, revised or reassigned since
+			s.mu.Unlock()
+		}
+		if rev, ok := handedBack[t.ID]; ok && !forMember {
+			if rev == t.Rev {
+				continue // its worker's automatic restarts ran out on it: the manager assigns it (settleStopped)
+			}
+			s.mu.Lock()
+			delete(s.handedBack, t.ID) // assigned, revised or settled since
 			s.mu.Unlock()
 		}
 		if t.Status != StatusTodo || who == "" || now.Before(s.retryAt[t.ID]) {
