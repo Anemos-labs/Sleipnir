@@ -126,7 +126,7 @@ func (r *Repo) DiffTrees(ctx context.Context, a, b string, opts DiffOptions) (*D
 	}
 	d := &Diff{Base: a, To: b}
 
-	ns, err := bt.run(ctx, call{args: append(append([]string{"diff", "--name-status", "-z"}, common...), append([]string{"--end-of-options", a, b}, paths...)...), maxOut: 16 << 20, killOnCap: true})
+	ns, err := bt.run(ctx, call{args: append(append([]string{"diff", "--name-status", "-z"}, common...), append([]string{"--end-of-options", a, b}, paths...)...), maxOut: nameStatusCap, killOnCap: true})
 	if err != nil {
 		return nil, err
 	}
@@ -160,6 +160,10 @@ func (r *Repo) DiffTrees(ctx context.Context, a, b string, opts DiffOptions) (*D
 	d.Patch = string(patch)
 	return d, nil
 }
+
+// nameStatusCap bounds the captured output of `diff --name-status`; past it the
+// file list is incomplete and Diff.Truncated is set. A variable so tests can reach it.
+var nameStatusCap int64 = 16 << 20
 
 // parseNameStatus decodes `diff --name-status -z`.
 func parseNameStatus(data []byte, max int) ([]FileChange, bool) {
@@ -290,11 +294,16 @@ func cutAtFileBoundary(patch []byte, max int, files []FileChange) ([]byte, []str
 }
 
 // ChangedPaths lists the paths that differ between base and the work tree (or
-// opts.To), sorted, renames reported as delete plus add.
+// opts.To), sorted, renames reported as delete plus add. The list is complete or
+// the call fails with ErrTooLarge: callers decide on it (what a change touched,
+// whether it stays in bounds), and a list cut at its cap would hide the rest.
 func (r *Repo) ChangedPaths(ctx context.Context, base, to string) ([]string, error) {
 	d, err := r.Diff(ctx, base, DiffOptions{To: to, NoPatch: true, MaxFiles: 1 << 20})
 	if err != nil {
 		return nil, err
+	}
+	if d.Truncated {
+		return nil, &Error{Kind: KindTooLarge, Op: "diff", ExitCode: -1, Detail: "the list of changed files exceeds its cap"}
 	}
 	seen := map[string]bool{}
 	var out []string

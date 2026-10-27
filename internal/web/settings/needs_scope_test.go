@@ -29,3 +29,19 @@ func TestNeedScopesBindWhatRuns(t *testing.T) {
 		t.Error("two server entries that read the same in words share the install scope")
 	}
 }
+
+// A setup plan's scope keeps where each step and each argument ends: an argument holding the bytes a joined form would use as a
+// delimiter cannot make one plan read as another, with a step added.
+func TestInstallScopeKeepsSetupStepBoundaries(t *testing.T) {
+	n := plugin.Need{ID: "x"}
+	one := plugin.MethodStatus{ID: "m", Setup: [][]string{{"echo", "a\x01curl", "evil"}}}
+	two := plugin.MethodStatus{ID: "m", Setup: [][]string{{"echo", "a"}, {"curl", "evil"}}}
+	if installScope(n, one) == installScope(n, two) {
+		t.Error("one setup step and two steps share the install scope")
+	}
+	three := plugin.MethodStatus{ID: "m", Setup: [][]string{{"echo", "a\x00curl"}}}
+	four := plugin.MethodStatus{ID: "m", Setup: [][]string{{"echo", "a", "curl"}}}
+	if installScope(n, three) == installScope(n, four) {
+		t.Error("one argument and two share the install scope")
+	}
+}

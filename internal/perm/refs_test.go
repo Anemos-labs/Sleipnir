@@ -17,9 +17,11 @@ func TestAConfinedAgentMovesOnlyItsOwnBranch(t *testing.T) {
 	gitdir := filepath.Join(f.root, ".git")
 	wt := filepath.Join(gitdir, "worktrees", "be-1")
 	for p, body := range map[string]string{
-		filepath.Join(gitdir, "HEAD"): "ref: refs/heads/claude/work\n",
-		filepath.Join(wt, "HEAD"):     "ref: refs/heads/sleipnir/s1/be-1\n",
-		filepath.Join(mine, ".git"):   "gitdir: " + wt + "\n",
+		filepath.Join(gitdir, "HEAD"):   "ref: refs/heads/claude/work\n",
+		filepath.Join(wt, "HEAD"):       "ref: refs/heads/sleipnir/s1/be-1\n",
+		filepath.Join(mine, ".git"):     "gitdir: " + wt + "\n",
+		filepath.Join(wt, "commondir"):  "../..\n",
+		filepath.Join(gitdir, "config"): "[remote \"origin\"]\n\turl = https://example.com/o/r.git\n[remote \"self\"]\n\turl = " + f.root + "\n",
 	} {
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatal(err)
@@ -54,6 +56,15 @@ func TestAConfinedAgentMovesOnlyItsOwnBranch(t *testing.T) {
 		{"git push . --delete sleipnir/s1/be-2", true},
 		{"git push . :claude/work", true},
 		{"git -C sub update-ref refs/heads/claude/work HEAD", true},
+		// The same repository named another way than ".", and the long spellings of a branch copy.
+		{"git push " + f.root + " HEAD:claude/work", true},
+		{"git push ./ HEAD:claude/work", true},
+		{"git push file://" + f.root + " HEAD:refs/heads/sleipnir/s1/_integration", true},
+		{"git push self HEAD:claude/work", true},
+		{"git push upstream HEAD:claude/work", true}, // a remote whose URL the configuration does not give
+		{"git branch --copy --force HEAD claude/work", true},
+		{"git branch -C scratch sleipnir/s1/_integration", true},
+		{"git branch --copy sleipnir/s1/be-1 sleipnir/s1/be-2", true},
 
 		{"git update-ref refs/heads/sleipnir/s1/be-1 HEAD~1", false},
 		{"git update-ref refs/tags/v1 HEAD", false},
@@ -64,6 +75,9 @@ func TestAConfinedAgentMovesOnlyItsOwnBranch(t *testing.T) {
 		{"git branch -D scratch", false},
 		{"git branch -c sleipnir/s1/be-1 backup", false},
 		{"git push origin HEAD:feature", false},
+		{"git push origin HEAD:claude/work", false}, // origin is on another machine
+		{"git push git@example.com:o/r.git HEAD:claude/work", false},
+		{"git branch --copy --force sleipnir/s1/be-1 backup", false},
 		{"git fetch origin main:refs/remotes/origin/main", false},
 		{"git fetch origin", false},
 		{"git status", false},

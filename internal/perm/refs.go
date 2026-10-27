@@ -1,6 +1,7 @@
 package perm
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -94,19 +95,24 @@ sub:
 					return refuse("git branch -m "+strings.Join(ops, " "), b)
 				}
 			}
-		case hasShort(rest, "fC") || hasLong(rest, "--force"):
+		case hasShort(rest, "cC") || hasLong(rest, "--copy"):
+			// git branch -c [<old>] <new> writes <new>: the last operand, or the only one (a copy of the current branch).
 			if len(ops) > 0 {
-				t := ops[0]
-				if hasShort(rest, "C") && len(ops) > 1 {
-					t = ops[1]
-				}
+				t := ops[min(len(ops), 2)-1]
 				if queued(t, false) {
-					return refuse("git branch -f "+t, t)
+					return refuse("git branch --copy "+strings.Join(ops, " "), t)
 				}
+			}
+		case hasShort(rest, "f") || hasLong(rest, "--force"):
+			if len(ops) > 0 && queued(ops[0], false) {
+				return refuse("git branch -f "+ops[0], ops[0])
 			}
 		}
 	case "push", "fetch":
-		if len(ops) < 2 || (sub == "push" && ops[0] != ".") {
+		// git fetch writes this repository's refs whatever it fetches from; git push writes them when its destination is this
+		// repository, which a path, a file:// URL or a remote configured with one can name as well as ".". A destination that is
+		// not known to be another machine's is judged as this repository.
+		if len(ops) < 2 || (sub == "push" && !pushMayBeLocal(dir, ops[0])) {
 			return ""
 		}
 		if sub == "push" && (hasLong(rest, "--delete") || hasShort(rest, "d")) {
@@ -164,4 +170,102 @@ func withoutValue(args []string, opt string) []string {
 		out = append(out, args[k])
 	}
 	return out
+}
+
+// pushMayBeLocal reports whether the destination of git push, run in dir, may be a repository on this machine (and so this one,
+// whose refs every tree shares): ".", a path, a file:// URL, or a remote whose configured URL is one of those or cannot be read.
+// Only a URL of another scheme or an scp-like host:path is known to be elsewhere.
+func pushMayBeLocal(dir, dest string) bool {
+	if remoteURL(dest) {
+		return false
+	}
+	if dest == "." || dest == ".." || strings.ContainsAny(dest, "/\\") || strings.HasPrefix(dest, "file:") {
+		return true
+	}
+	urls, ok := remoteURLs(dir, dest)
+	if !ok || len(urls) == 0 {
+		return true
+	}
+	for _, u := range urls {
+		if !remoteURL(u) {
+			return true
+		}
+	}
+	return false
+}
+
+// remoteURL reports whether s names a repository on another machine: a URL of a scheme other than file, or an scp-like
+// [user@]host:path.
+func remoteURL(s string) bool {
+	if len(s) >= 5 && strings.EqualFold(s[:5], "file:") {
+		return false
+	}
+	if scheme, _, ok := strings.Cut(s, "://"); ok {
+		return scheme != ""
+	}
+	host, _, ok := strings.Cut(s, ":")
+	return ok && host != "" && !strings.ContainsAny(host, "/\\") && len(host) > 1 // C:\repo is a Windows path
+}
+
+// remoteURLs reads the url and pushurl of remote name from the configuration of the repository at dir. ok is false when it cannot
+// be established: no readable configuration, an include (which may set the URL elsewhere), or an insteadOf rewrite.
+func remoteURLs(dir, name string) (urls []string, ok bool) {
+	common, found := gitCommonDir(dir)
+	if !found {
+		return nil, false
+	}
+	b, err := os.ReadFile(filepath.Join(common, "config"))
+	if err != nil {
+		return nil, false
+	}
+	section := ""
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		lower := strings.ToLower(line)
+		if strings.Contains(lower, "insteadof") || strings.HasPrefix(lower, "[include") {
+			return nil, false
+		}
+		if strings.HasPrefix(line, "[") {
+			section = line
+			continue
+		}
+		if section != `[remote "`+name+`"]` {
+			continue
+		}
+		k, v, has := strings.Cut(line, "=")
+		if k = strings.ToLower(strings.TrimSpace(k)); has && (k == "url" || k == "pushurl") {
+			urls = append(urls, strings.Trim(strings.TrimSpace(v), `"`))
+		}
+	}
+	return urls, true
+}
+
+// gitCommonDir finds the git directory that holds the shared configuration and refs of the repository at dir, or of the linked
+// worktree at dir (its .git file names its own directory, whose commondir names the shared one).
+func gitCommonDir(dir string) (string, bool) {
+	g := filepath.Join(dir, ".git")
+	fi, err := os.Stat(g)
+	if err != nil {
+		return "", false
+	}
+	if fi.IsDir() {
+		return g, true
+	}
+	b, err := os.ReadFile(g)
+	if err != nil || !strings.HasPrefix(string(b), "gitdir:") {
+		return "", false
+	}
+	own := strings.TrimSpace(strings.TrimPrefix(string(b), "gitdir:"))
+	if !filepath.IsAbs(own) {
+		own = filepath.Join(dir, own)
+	}
+	c, err := os.ReadFile(filepath.Join(own, "commondir"))
+	if err != nil {
+		return own, true
+	}
+	common := strings.TrimSpace(string(c))
+	if !filepath.IsAbs(common) {
+		common = filepath.Join(own, common)
+	}
+	return filepath.Clean(common), true
 }

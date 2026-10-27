@@ -1,0 +1,51 @@
+package mdfile
+
+import (
+	"os/exec"
+	"strings"
+	"testing"
+)
+
+// A placeholder the template already quotes gets the argument escaped for those quotes, so the argument stays one literal
+// string whatever it holds; where no spelling is known to stay literal the substitution fails.
+func TestShellPlaceholdersFollowTheTemplatesQuotes(t *testing.T) {
+	const evil = `x' ; touch pwned ; echo '"$(id)"` + "`id`"
+	for _, tc := range []struct{ tmpl, args, want string }{
+		{"echo $1", "a;b", "echo 'a;b'"},
+		{"echo '$1'", `"it's"`, `echo 'it'\''s'`},
+		{`echo "$1"`, `'a"b$c'`, `echo "a\"b\$c"`},
+		{`git log --grep="$ARGUMENTS"`, `fix bug`, `git log --grep="fix bug"`},
+		{`echo "$(printf %s $1)"`, "a b", `echo "$(printf %s 'a')"`},
+		{"echo $$1 $1", "v", "echo $1 'v'"},
+		{"echo '$2'", "v", "echo ''"},
+	} {
+		got, _, err := SubstituteMax(tc.tmpl, tc.args, ArgsShell, 0)
+		if err != nil || got != tc.want {
+			t.Errorf("%q with %q = %q, %v; want %q", tc.tmpl, tc.args, got, err, tc.want)
+		}
+	}
+	for _, tmpl := range []string{"echo `echo $1`", "echo $'$1'", `echo \$1`, "echo \"`$1`\""} {
+		if got, _, err := SubstituteMax(tmpl, "v", ArgsShell, 0); err == nil {
+			t.Errorf("%q: substituted as %q; want an error", tmpl, got)
+		}
+	}
+	// What a POSIX shell makes of it: the argument comes out as the one literal string it was.
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh")
+	}
+	for _, tmpl := range []string{"printf %s $1", "printf %s '$1'", `printf %s "$1"`, `printf %s "pre-$1-post"`} {
+		cmd, _, err := SubstituteMax(tmpl, `"`+strings.ReplaceAll(evil, `"`, `\"`)+`"`, ArgsShell, 0)
+		if err != nil {
+			t.Fatalf("%q: %v", tmpl, err)
+		}
+		out, err := exec.Command(sh, "-c", cmd).Output()
+		want := evil
+		if strings.Contains(tmpl, "pre-") {
+			want = "pre-" + evil + "-post"
+		}
+		if err != nil || string(out) != want {
+			t.Errorf("%q ran as %q: printed %q (%v), want %q", tmpl, cmd, out, err, want)
+		}
+	}
+}

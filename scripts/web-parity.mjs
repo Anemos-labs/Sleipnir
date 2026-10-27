@@ -569,10 +569,16 @@ export function loadScenes(file, profile) {
   const subst = (v, vars) => typeof v === 'string' ? v.replace(/\$\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m)) : Array.isArray(v) ? v.map(x => subst(x, vars)) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, subst(x, vars)])) : v;
   const MAX_SCENES = 10000;
   for (const sc of doc.scenes) {
-    // The product of the lists is checked before it is built: a few short lists can multiply to more scenes than memory holds.
-    const n = Object.values(sc.each || {}).reduce((acc, vals) => acc * (Array.isArray(vals) ? vals.length : NaN), 1);
-    if (!(n <= MAX_SCENES) || out.length + n > MAX_SCENES) throw new Error(`scene ${JSON.stringify(String(sc.name)).slice(0, 80)}: "each" expands to more than ${MAX_SCENES} scenes, or is not lists`);
-    const sets = sc.each ? Object.entries(sc.each).reduce((acc, [k, vals]) => acc.flatMap(a => vals.map(v => ({ ...a, [k]: v }))), [{}]) : [{}];
+    // The lists are checked, and their product bounded, before anything is built: a few short lists can multiply to more scenes
+    // than memory holds. An empty list makes the product empty, so nothing is built at all; otherwise every partial product is at
+    // most the whole one.
+    const lists = Object.entries(sc.each || {});
+    const bad = () => new Error(`scene ${JSON.stringify(String(sc.name)).slice(0, 80)}: "each" expands to more than ${MAX_SCENES} scenes, or is not lists`);
+    if (lists.some(([, vals]) => !Array.isArray(vals))) throw bad();
+    if (lists.some(([, vals]) => vals.length === 0)) continue;
+    const n = lists.reduce((acc, [, vals]) => acc * vals.length, 1);
+    if (!(n <= MAX_SCENES) || out.length + n > MAX_SCENES) throw bad();
+    const sets = lists.reduce((acc, [k, vals]) => acc.flatMap(a => vals.map(v => ({ ...a, [k]: v }))), [{}]);
     for (const vars of sets) {
       const s = subst({ ...sc, each: undefined }, vars);
       // A scene's name becomes the names of its picture files: it must be one plain file-name component.

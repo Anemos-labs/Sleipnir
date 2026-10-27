@@ -2,6 +2,7 @@ package settings
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"sync"
@@ -216,23 +217,27 @@ func (s *service) startJob(id, method string) *needJob {
 }
 
 // installScope is the confirmation scope of running method m of need n: it covers the commands and the server entry it adds, the
-// entry as the structured name, command and arguments that are saved (the words shown lose where one argument ends).
+// entry as the structured name, command and arguments that are saved (the words shown lose where one argument ends). Every list
+// is hashed as its JSON encoding, which keeps where each command and each argument ends whatever bytes the arguments hold: two
+// different plans never share a scope.
 func installScope(n plugin.Need, m plugin.MethodStatus) string {
-	fields := map[string]string{"need": n.ID, "method": m.ID, "argv": strings.Join(m.Argv, "\x00"), "connect": m.Connect}
+	fields := map[string]string{"need": n.ID, "method": m.ID, "argv": jsonWords(m.Argv), "connect": m.Connect}
 	if m.Connect != "" && n.MCP != nil {
-		fields["mcp"] = strings.Join(append([]string{n.MCP.Name, n.MCP.Command}, n.MCP.Args...), "\x00")
+		fields["mcp"] = jsonWords(append([]string{n.MCP.Name, n.MCP.Command}, n.MCP.Args...))
 	}
 	if len(m.Setup) > 0 {
-		steps := make([]string, len(m.Setup))
-		for i, step := range m.Setup {
-			steps[i] = strings.Join(step, "\x00")
-		}
-		fields["setup"] = strings.Join(steps, "\x01")
+		fields["setup"] = jsonWords(m.Setup)
 	}
 	for _, name := range plugin.EnvNames(m.Env) {
-		fields["env:"+name] = strings.Join(m.Env[name], "\x00")
+		fields["env:"+name] = jsonWords(m.Env[name])
 	}
 	return "need.install:" + d16(fields)
+}
+
+// jsonWords is the JSON encoding of a list of arguments (or of commands), unambiguous where a joined string is not.
+func jsonWords(v any) string {
+	b, _ := json.Marshal(v) // string slices always encode
+	return string(b)
 }
 
 // confirmNeed checks the confirmation of a need's action; without one it answers 428 with the scope and what it does.

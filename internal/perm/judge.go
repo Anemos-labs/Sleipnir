@@ -523,6 +523,10 @@ func (ev *evaluator) decideTool(u *unit) verdict {
 		default:
 			res = ask(r.Tool+" changes state outside the file system; approval needed", ev.remember(u))
 		}
+	case len(u.accesses) == 0 && r.Tool == ToolMemory && mode == ModePlan:
+		// The memory tool names no path (its file is its own, and the protection of .sleipnir is not asked about it), but it
+		// replaces a notes file, and a project's notes and .gitignore are the project's files: plan mode changes nothing.
+		res = deny(planReason("memory changes the saved notes"))
 	case len(u.accesses) == 0 && strings.HasPrefix(normTool(r.Tool), "mcp"):
 		switch mode {
 		case ModeBypass, ModeYolo:
@@ -1002,6 +1006,12 @@ func (ev *evaluator) buildRemember(u *unit) []Rule {
 	if shellparse.ReadsCodeFromStdin(programBase(s.Program), s.Args) {
 		return nil
 	}
+	// Nor is an interpreter whose standard input is fed and whose words have a long option with its value not attached: whether
+	// the next word is that value or the script, and so whether the input is a program or data, is the interpreter's grammar,
+	// which the parser may not know, and a rule binds the words, not what arrives on the input.
+	if shellparse.InterpreterName(programBase(s.Program)) != "" && stdinFed(s) && slices.ContainsFunc(s.Args, detachedLongOption) {
+		return nil
+	}
 	argv := append([]string{s.Program}, s.Args...)
 	for _, w := range argv {
 		if strings.ContainsAny(w, "$`") {
@@ -1058,4 +1068,26 @@ func escapeGlob(p string) string {
 		return p
 	}
 	return strings.NewReplacer(`\`, `\\`, `*`, `\*`, `?`, `\?`, `[`, `\[`).Replace(p)
+}
+
+// stdinFed reports whether s reads its standard input from a pipe, a heredoc, a here-string or a file redirected to it.
+func stdinFed(s *shellparse.Simple) bool {
+	if s.Piped {
+		return true
+	}
+	for _, r := range s.Redirects {
+		op := strings.TrimLeft(r.Op, "0123456789")
+		if fd := r.Op[:len(r.Op)-len(op)]; fd != "" && strings.TrimLeft(fd, "0") != "" {
+			continue // another descriptor than standard input
+		}
+		if strings.HasPrefix(op, "<") {
+			return true
+		}
+	}
+	return false
+}
+
+// detachedLongOption reports whether a is a long option (--name) without an attached value (--name=value).
+func detachedLongOption(a string) bool {
+	return len(a) > 2 && strings.HasPrefix(a, "--") && !strings.Contains(a, "=")
 }

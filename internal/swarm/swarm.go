@@ -980,17 +980,30 @@ func (r roleRequester) Check(ctx context.Context, req perm.Request) perm.Decisio
 	}
 	if r.denyWrites != "" {
 		e, engine := r.inner.(*perm.Engine)
+		strict := r.strictShell
 		if engine && e.Mode() == perm.ModePlan {
 			// The session is planning: nothing is changed now, by anyone, and the engine's own refusal says so.
 			// The role's reason would send a manager off to spawn a worker for the change.
 			d := r.inner.Check(ctx, req)
-			if !d.Allow || r.planOnly == nil || r.planOnly.Check(ctx, req).Allow {
+			if !d.Allow {
 				return d
 			}
-			// Allowed by a rule alone: the agent's own policy below still applies.
+			// The session's plan mode ranks with the role's read-only profile, so the engine lets the session's allow rules
+			// through to the role as well: the agent's own read-only policy (plan mode with its research and check
+			// exceptions only) is asked on its own, and both must allow.
+			own := r.planOnly
+			if own == nil {
+				own = e.PlanOnly(perm.ReadOnlyAllow...)
+			}
+			if own != nil && own.Check(ctx, req).Allow {
+				return d
+			}
+			// Allowed by a rule alone: the agent's own policy below still applies, and the engine that allowed the
+			// command is not the one to judge it again.
+			strict = true
 		}
 		switch {
-		case req.Tool == "bash" && engine && !r.strictShell:
+		case req.Tool == "bash" && engine && !strict:
 			// The permission engine parses shell syntax and enforces the role's
 			// (plan) profile itself; a prefix allowlist here would only be a weaker,
 			// bypassable second opinion (and would deny the checks the profile allows).
@@ -1000,7 +1013,7 @@ func (r roleRequester) Check(ctx context.Context, req perm.Request) perm.Decisio
 			if !readOnlyCommand(req.Command) {
 				return perm.Decision{Allow: false, Reason: r.denyWrites + readOnlyShellHint}
 			}
-		case req.Writes:
+		case req.Writes, req.Tool == perm.ToolMemory: // the memory tool replaces a notes file without naming it as a write
 			return perm.Decision{Allow: false, Reason: r.denyWrites}
 		}
 	}
