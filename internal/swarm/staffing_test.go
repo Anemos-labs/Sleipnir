@@ -739,6 +739,68 @@ func TestATestOnlyMergeAfterTheReviewLeavesItStanding(t *testing.T) {
 	}
 }
 
+// A review accepted after a test-only merge that landed while it waited for its verdict covers that merge too; one accepted
+// after a merge that changed product code does not. A tester's suite accepted between the review's submission and its
+// acceptance started a second review of the test files.
+func TestAReviewAcceptedAfterATestOnlyMergeCoversIt(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, text string) {
+		t.Helper()
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("lru/lru.go", "package lru\n")
+	gitOut(t, root, "init", "-q")
+	gitOut(t, root, "add", "-A")
+	gitOut(t, root, "commit", "-qm", "init")
+	r := newRVRigWith(t, Config{MaxWorkers: 8, Team: []string{"backend", "tester", "reviewer"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} },
+		func(d *Deps) { d.Root = root })
+	review := func(id string) Task {
+		rv := Task{ID: id, Role: ReviewerRole}
+		r.sw.noteReviewBegan(rv)
+		if err := r.sw.reviewSubmission(rv)(nil, rv); err != nil {
+			t.Fatal(err)
+		}
+		return rv
+	}
+	write("lru/lru.go", "package lru\n\nfunc New() {}\n")
+	r.sw.noteAccepted(Task{ID: "T1", Role: "backend"})
+	rv := review("T2")
+	write("lru/zz_extra_test.go", "package lru\n")
+	r.sw.noteAccepted(Task{ID: "T3", Role: "tester"}) // while the review waits for its verdict
+	r.sw.noteAccepted(rv)
+	if got := r.sw.reviewPending(); got != "" {
+		t.Fatalf("a review accepted after a test-only merge left %q unreviewed", got)
+	}
+	write("lru/lru.go", "package lru\n\nfunc New() int { return 1 }\n")
+	r.sw.noteAccepted(Task{ID: "T4", Role: "backend"})
+	rv = review("T5")
+	write("lru/lru.go", "package lru\n\nfunc New() int { return 2 }\n")
+	r.sw.noteAccepted(Task{ID: "T6", Role: "backend"}) // product code, while the review waits
+	r.sw.noteAccepted(rv)
+	if got := r.sw.reviewPending(); got != "T6" {
+		t.Fatalf("review pending = %q, want T6", got)
+	}
+	// A merge that lands between the review's tree read and its acceptance stays due, whatever the tree showed.
+	rv = review("T7")
+	write("lru/late_test.go", "package lru\n")
+	r.sw.noteAccepted(Task{ID: "T8", Role: "tester"})
+	check := r.sw.noteAcceptedCheck(rv) // reads the tree: tests only since T7 began
+	write("lru/lru.go", "package lru\n\nfunc New() int { return 3 }\n")
+	r.sw.noteAccepted(Task{ID: "T9", Role: "backend"}) // lands before the acceptance publishes
+	if err := check(nil, rv); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.sw.reviewPending(); got != "T9" {
+		t.Fatalf("a merge that landed during the tree read = %q, want T9 due", got)
+	}
+}
+
 // A review with no work tree to read (no git repository) stands for no later merge.
 func TestATestOnlyMergeWithNoWorkTreeIsDueForReview(t *testing.T) {
 	r := newRVRigWith(t, Config{MaxWorkers: 8, Team: []string{"backend", "tester", "reviewer"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)

@@ -7,6 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A review accepted after a merge that changed test files and docs alone
+  since the review began covers that merge too. A tester's suite accepted
+  while the review waited for its verdict started a second review of four
+  test files, which took sixteen minutes. Harness behavior only; no prompt
+  bytes change.
 - A resumed team keeps in review a read-only role's handed-in result and a
   pool parent whose members confirmed its reconciliation, as it already
   kept merged work; the manager accepts or rejects them as before the stop.

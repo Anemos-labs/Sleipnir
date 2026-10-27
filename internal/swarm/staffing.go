@@ -177,8 +177,19 @@ func (s *Swarm) noteAcceptedCheck(t Task) TaskCheck {
 	if role == ReviewerRole {
 		model, quorum = s.memberModel(t.Owner), s.reviewQuorum()
 	}
-	// Outside the board lock: it reads the work tree.
+	// Outside the board lock: they read the work tree. A review accepted after merges that changed tests and docs alone since
+	// it began covers them too: a tester's suite accepted while the review waited for its verdict is one.
 	stands := implementation && s.testsSinceReview()
+	// The merge count is read before the tree: a merge that lands while the tree is read leaves it behind, and the review
+	// then covers nothing past its generation.
+	reviewStands, treeMerges := false, 0
+	if role == ReviewerRole && t.Parent == "" && quorum == 1 {
+		s.review.mu.Lock()
+		base := s.review.trees[t.ID+"#"+strconv.FormatUint(t.Rev, 10)]
+		treeMerges = s.review.merges
+		s.review.mu.Unlock()
+		reviewStands = s.testsOnlySince(base)
+	}
 	now := s.deps.Now()
 	return func(_ *Snapshot, t Task) error {
 		g := &s.review
@@ -198,6 +209,9 @@ func (s *Swarm) noteAcceptedCheck(t Task) TaskCheck {
 				g.reviewedTree = ""
 				if quorum == 1 {
 					g.reviewedTree = g.trees[t.ID+"#"+strconv.FormatUint(t.Rev, 10)]
+				}
+				if reviewStands && generation == covered && g.merges == treeMerges {
+					g.reviewed = g.merges
 				}
 			}
 		case implementation:
@@ -247,7 +261,13 @@ func (s *Swarm) testsSinceReview() bool {
 	g.mu.Lock()
 	base, ok := g.reviewedTree, g.reviewed > 0 && g.reviewed == g.merges
 	g.mu.Unlock()
-	if !ok || base == "" {
+	return ok && s.testsOnlySince(base)
+}
+
+// testsOnlySince reports whether the work tree has changed since tree base in test files and docs alone. An empty base, a tree
+// that cannot be read, or any other change is false.
+func (s *Swarm) testsOnlySince(base string) bool {
+	if base == "" {
 		return false
 	}
 	now := s.workTree()
