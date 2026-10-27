@@ -70,15 +70,16 @@ func refusedOption(args []string, names []string) string {
 
 // runnerRefused are, for a build or test runner, the options that make it run a program of the caller's choosing instead of the
 // project's own build and tests: go test -exec PROG runs the test binary through PROG, cargo --config can set a runner or a compiler
-// wrapper, npm --script-shell runs the scripts with another shell, node --require loads any module first (and --test-reporter a module that is not a built-in reporter), make SHELL=PROG runs every
-// recipe with PROG. A prefix rule names the runner (Bash(go test:*), the tests preset's and the read-only roles' rules, or the person's
+// wrapper, npm --script-shell runs the scripts with another shell (and --userconfig or --globalconfig names a configuration file,
+// /dev/stdin included, that sets script-shell or node-options itself), node --require loads any module first (and --test-reporter a
+// module that is not a built-in reporter), make SHELL=PROG runs every recipe with PROG. A prefix rule names the runner (Bash(go test:*), the tests preset's and the read-only roles' rules, or the person's
 // own), so a command with one of these options is not the command the rule allowed: it is judged as if no such rule existed.
 var runnerRefused = map[string][]string{
 	"go":     {"-exec", "--exec", "-toolexec", "--toolexec", "-vettool", "--vettool"},
 	"cargo":  {"--config", "-Z"},
-	"npm":    {"--script-shell", "--node-options"},
-	"pnpm":   {"--script-shell", "--node-options"},
-	"yarn":   {"--script-shell", "--node-options"},
+	"npm":    {"--script-shell", "--node-options", "--userconfig", "--globalconfig"},
+	"pnpm":   {"--script-shell", "--node-options", "--userconfig", "--globalconfig"},
+	"yarn":   {"--script-shell", "--node-options", "--userconfig", "--globalconfig"},
 	"node":   {"--require", "-r", "--import", "--loader", "--experimental-loader", "--env-file"},
 	"make":   {"SHELL", ".SHELLFLAGS", "MAKESHELL", "-f", "--file", "--makefile", "--eval", "-E"},
 	"gradle": {"-I", "--init-script"}, "gradlew": {"-I", "--init-script"},

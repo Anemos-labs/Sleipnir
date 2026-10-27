@@ -739,3 +739,48 @@ func spillLine(free []string, role, id string) string {
 	return fmt.Sprintf("free now: %s: one of them can take %s at once if it needs nothing only %s knows (spawn role=%s task=%s)",
 		strings.Join(free, ", "), id, role, free[0], id)
 }
+
+// reviewerModelHint is a one-line suggestion for a team whose reviewers all run on a model its writers use while the team has another
+// model as well: a reviewer on a model no writer runs on does not share the writers' blind spots, nor a backdoor trained into their
+// weights (docs/SECURITY.md). It is a suggestion and never a default: a team on a single model gets none (not everyone has two, or
+// wants them), and neither does one whose reviewers run on two models (the review quorum already asks for both) or on a model no
+// writer uses. "" when there is nothing to suggest.
+func (s *Swarm) reviewerModelHint() string {
+	writers, reviewers := map[string]bool{}, map[string]bool{}
+	all := map[string]string{} // model id -> how --role-model names it (provider/model)
+	for i, r := range s.cfg.Team {
+		rm := s.modelFor(r, i)
+		id := rm.Model.ID
+		all[id] = id
+		if rm.Provider != nil {
+			if name := rm.Provider.Profile().Name; name != "" {
+				all[id] = name + "/" + id
+			}
+		}
+		switch {
+		case r == ReviewerRole:
+			reviewers[id] = true
+		case !s.roles[r].ReadOnly:
+			writers[id] = true
+		}
+	}
+	if len(reviewers) != 1 || len(all) < 2 {
+		return ""
+	}
+	var rv string
+	for id := range reviewers {
+		rv = id
+	}
+	if !writers[rv] {
+		return ""
+	}
+	var others []string
+	for id, ref := range all {
+		if id != rv {
+			others = append(others, ref)
+		}
+	}
+	sort.Strings(others)
+	return fmt.Sprintf("tip: the reviewers run on %s, as writers do; a reviewer on another model (--role-model reviewer=%s) catches "+
+		"what the writers' model misses, a backdoor in its weights included", rv, others[0])
+}

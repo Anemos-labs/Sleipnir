@@ -31,6 +31,12 @@ they do not indicate whether a change has been released.
   backend, the team's one backend slot, and the modules ran one after
   another while the frontend and devops slots stayed empty. About 35
   tokens more in that answer and line, only while they apply.
+- A team whose reviewers all run on a model its writers use, while the
+  team has another model too, gets a one-line tip when its manager starts:
+  a reviewer on another model catches what the writers' model misses,
+  including a backdoor in its weights. A suggestion, never a default; a
+  team on one model is told nothing. Harness behavior only (an info
+  notice); no prompt bytes change.
 - With persistent pools, a task returned to todo after its worker's
   automatic restarts on it ran out is no longer started on that worker
   again by the repair pass: the manager assigns it. The manager's line
