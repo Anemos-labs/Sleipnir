@@ -22,6 +22,11 @@ they do not indicate whether a change has been released.
   and a docs pass sat unread in review for 13 minutes beside one, which
   held up the pass that followed it. Harness mail only; no prompt bytes
   change.
+- A parent whose pool starts again after a resume no longer keeps the line
+  "the session was resumed: waiting to restart" while it runs. The line
+  stayed on the running task, and a manager that read it mailed the pool's
+  leader five times in twenty minutes to claim the task it was already on.
+  The board's task line is the only output that changes.
 - The stall sweep does not raise `idle_capacity` while every worker at work
   is a read-only role or on a docs task: the team then waits for a verdict
   on finished work, and idle writers are expected. Told of idle capacity

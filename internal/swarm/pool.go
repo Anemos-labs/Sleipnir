@@ -144,7 +144,9 @@ func beginPoolIn(d *draft, id string, members []string) error {
 	if err := poolReady(d.Snapshot, t); err != nil {
 		return err
 	}
-	t.Owner, t.Status, t.Rev = members[0], StatusDoing, d.Version
+	// The line a resume left ("the session was resumed: waiting to restart") goes with the start: a manager that read it on a
+	// running parent mailed its leader five times to claim the task.
+	t.Owner, t.Status, t.Rev, t.Line = members[0], StatusDoing, d.Version, ""
 	// A pool with an accepted plan goes on with it when every member that starts it was in it: after a resume a member of the saved
 	// pool may be away (on a task of its own, or past the cap), and the plan and the child tasks it made stand without it. A pool
 	// still planning starts over unless its members are the same, as its votes were theirs.

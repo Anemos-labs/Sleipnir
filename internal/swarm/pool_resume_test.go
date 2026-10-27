@@ -66,6 +66,9 @@ func TestAResumedExecutingPoolKeepsItsMembersAndPlan(t *testing.T) {
 	}
 	snap := r.sw.Board.Snapshot()
 	got, _ := snap.Task(second.ID)
+	if got.Line != "" {
+		t.Errorf("the resumed parent's line is %q, want none: it is running", got.Line)
+	}
 	if got.Status != StatusDoing || got.Owner != lead || !slices.Equal(got.Pool.Members, second.Pool.Members) ||
 		got.Pool.Phase != "executing" || got.Pool.Revision != 2 || got.Pool.Agreement == "" {
 		t.Fatalf("the resumed parent: %+v, want its saved pool %v executing revision 2 with its agreement", got.Pool, second.Pool.Members)
