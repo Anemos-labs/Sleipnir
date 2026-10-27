@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- With one reviewer model, a merge after an accepted review leaves that
+  review standing when the work tree has changed, since the review began,
+  in test files and docs alone: the harness snapshots the git tree when a
+  review starts and compares it at each acceptance. A tester's suite
+  accepted after the review started a second review of the four new test
+  files, and the run hit its limit while that review ran. Harness
+  behavior only; no prompt bytes change.
 - A file edit of the manager's own while submissions wait for its decision
   carries a line naming them with their waits (`T3 (6 min) and T2 (2 min)
   wait in review. A submission comes before edits of your own ...`), once per
