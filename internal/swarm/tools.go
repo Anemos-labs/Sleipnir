@@ -780,7 +780,11 @@ func (t *spawnTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error)
 			if !t.s.queueSpawn(req, task.Rev) {
 				was = "was already queued"
 			}
-			return text("%s %s for the next free %s member (%s). The harness starts it then and tells you: do not spawn it again; use wait.", req.TaskID, was, busy.role, busy.held), nil
+			out := fmt.Sprintf("%s %s for the next free %s member (%s). The harness starts it then and tells you: do not spawn it again; use wait.", req.TaskID, was, busy.role, busy.held)
+			if line := spillLine(t.s.freeWriters(busy.role), busy.role, req.TaskID); line != "" {
+				out += " " + strings.ToUpper(line[:1]) + line[1:] + "."
+			}
+			return text("%s", out), nil
 		}
 	}
 	if err != nil {

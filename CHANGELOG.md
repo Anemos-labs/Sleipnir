@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A spawn queued behind the busy members of its role, and the live view's
+  line for such queued tasks, name the other writer roles with a free
+  slot or idle member (`free now: frontend, devops: one of them can take
+  T2 at once if it needs nothing only backend knows (spawn role=frontend
+  task=T2)`). Managers on two models gave four independent modules to
+  backend, the team's one backend slot, and the modules ran one after
+  another while the frontend and devops slots stayed empty. About 35
+  tokens more in that answer and line, only while they apply.
 - `--role-model fallback=provider/model` (or `models.roles.fallback`)
   names a model that takes the requests of any other model of the session
   whose endpoint has been out for a minute, for ten minutes at a time. A

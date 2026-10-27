@@ -536,6 +536,13 @@ func (s *Swarm) staffingLines(snap *Snapshot) []string {
 		out, roleLines = offerLines(ready, idle, held, slots, used, order)
 	}
 	q := queuedLines(waiting, maxStaffingLines-roleLines)
+	for i, r := range roleKeys(waiting) {
+		if i < len(q) && len(waiting[r]) > 0 {
+			if line := spillLine(s.freeWriters(r), r, waiting[r][0]); line != "" {
+				q[i] += "; " + line
+			}
+		}
+	}
 	out = append(out, q...)
 	if roleLines+len(q) < maxStaffingLines && openTask(snap) {
 		if line := unplannedLine(s.unplannedIdle(snap, idle, held, ready, waiting)); line != "" {
@@ -684,4 +691,48 @@ func roleKeys(m map[string][]string) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// freeWriters are the roles of the team, other than except, in team order, with a slot or an idle member free for a task now:
+// roles that write code, so neither a read-only role, nor docs, nor the tester, whose tasks are tests of their own. A task queued
+// behind the one member of its role can start on one of them. A manager that gave four independent modules to backend, the team's
+// one backend slot, ran them one after another while the frontend and devops slots stayed empty.
+func (s *Swarm) freeWriters(except string) []string {
+	if !s.teamLimited() {
+		return nil
+	}
+	slots, order := TeamCounts(s.cfg.Team)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	used, idle := map[string]int{}, map[string]bool{}
+	for _, m := range s.members {
+		if m.manager || m.service {
+			continue
+		}
+		used[m.role]++
+		m.mu.Lock()
+		if m.life == lifeIdle && m.task == "" {
+			idle[m.role] = true
+		}
+		m.mu.Unlock()
+	}
+	var out []string
+	for _, r := range order {
+		if r == except || r == DocsRole || r == "tester" || s.roles[r].ReadOnly {
+			continue
+		}
+		if slots[r] > used[r] || idle[r] {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// spillLine is what a queued task's spawn and the live view add when other writer roles are free (freeWriters): "" when none is.
+func spillLine(free []string, role, id string) string {
+	if len(free) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("free now: %s: one of them can take %s at once if it needs nothing only %s knows (spawn role=%s task=%s)",
+		strings.Join(free, ", "), id, role, free[0], id)
 }
