@@ -1,13 +1,17 @@
 package swarm
 
 import (
+	"context"
 	"fmt"
+	"path"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/gitx"
 )
 
 // Staffing and review: what the manager's live view says about capacity it leaves unused, and the review gate.
@@ -48,6 +52,11 @@ type reviewGate struct {
 	began map[string]time.Time
 	ended map[string]time.Time
 	took  map[int]time.Duration
+	// trees is the work tree each review ("T6#rev") began on (noteReviewBegan), and reviewedTree the tree of the review that
+	// last moved reviewed: what the accepted review read. A merge after it that changed tests and docs alone leaves it standing
+	// (testsSinceReview).
+	trees        map[string]string
+	reviewedTree string
 }
 
 // noteBegan records when a run first took on an assignment, for the duration of the work (took). Later runs of the same
@@ -168,6 +177,8 @@ func (s *Swarm) noteAcceptedCheck(t Task) TaskCheck {
 	if role == ReviewerRole {
 		model, quorum = s.memberModel(t.Owner), s.reviewQuorum()
 	}
+	// Outside the board lock: it reads the work tree.
+	stands := implementation && s.testsSinceReview()
 	now := s.deps.Now()
 	return func(_ *Snapshot, t Task) error {
 		g := &s.review
@@ -184,12 +195,105 @@ func (s *Swarm) noteAcceptedCheck(t Task) TaskCheck {
 			}
 			if covered := quorumCovered(g.byModel, quorum); covered > g.reviewed {
 				g.reviewed = covered
+				g.reviewedTree = ""
+				if quorum == 1 {
+					g.reviewedTree = g.trees[t.ID+"#"+strconv.FormatUint(t.Rev, 10)]
+				}
 			}
 		case implementation:
+			fresh := g.reviewed > 0 && g.reviewed == g.merges
 			g.landLocked(t.ID, t.Files, g.tookLocked(t, now))
+			if stands && fresh {
+				// Everything the tree gained since the accepted review began is tests and docs: the review stands for it.
+				g.reviewed = g.merges
+			}
 		}
 		return nil
 	}
+}
+
+// noteReviewBegan records the work tree a review began on, the first time a run of a reviewer holds the assignment: what an
+// accepted review read (reviewGate.trees). A tree that cannot be read (no git work tree) records nothing, and the review then
+// stands for no later merge.
+func (s *Swarm) noteReviewBegan(t Task) {
+	if s.deps.Root == "" || t.Parent != "" || s.reviewQuorum() != 1 {
+		return
+	}
+	key := t.ID + "#" + strconv.FormatUint(t.Rev, 10)
+	g := &s.review
+	g.mu.Lock()
+	_, seen := g.trees[key]
+	g.mu.Unlock()
+	if seen {
+		return
+	}
+	tree := s.workTree()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.trees == nil {
+		g.trees = map[string]string{}
+	}
+	if _, ok := g.trees[key]; !ok {
+		g.trees[key] = tree
+	}
+}
+
+// testsSinceReview reports whether every merge so far is reviewed and the work tree has changed, since the accepted review
+// began, in test files and docs alone (testFile, docsFile). A tester's suite that lands after the review then leaves the review
+// standing: a test cannot change what the product does, and the docs catch-up is not reviewed either. Any other change, a file
+// that cannot be classified, or a tree that cannot be read keeps the review due.
+func (s *Swarm) testsSinceReview() bool {
+	g := &s.review
+	g.mu.Lock()
+	base, ok := g.reviewedTree, g.reviewed > 0 && g.reviewed == g.merges
+	g.mu.Unlock()
+	if !ok || base == "" {
+		return false
+	}
+	now := s.workTree()
+	if now == "" {
+		return false
+	}
+	repo, err := gitx.Open(s.deps.Root)
+	if err != nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	changed, err := repo.ChangedPaths(ctx, base, now)
+	if err != nil {
+		return false
+	}
+	for _, p := range changed {
+		if !testFile(p) && !docsFile(p) {
+			return false
+		}
+	}
+	return true
+}
+
+// workTree is the id of a git tree holding the shared work tree as a commit would record it, or "" when it cannot be read.
+func (s *Swarm) workTree() string {
+	if s.deps.Root == "" {
+		return ""
+	}
+	repo, err := gitx.Open(s.deps.Root)
+	if err != nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	tree, err := repo.SnapshotTree(ctx)
+	if err != nil {
+		return ""
+	}
+	return tree
+}
+
+// docsFile reports whether a path is documentation the docs worker keeps (docsScope): a Markdown file, or a file under docs/.
+func docsFile(p string) bool {
+	p = strings.TrimSpace(p)
+	return strings.EqualFold(path.Ext(p), ".md") || strings.HasPrefix(p, "docs/")
 }
 
 // reviewSubmission records the merge generation before a review enters review status (a later acceptance cannot turn an
@@ -216,6 +320,41 @@ func (s *Swarm) reviewSubmission(t Task) TaskCheck {
 		}
 		return nil
 	}
+}
+
+// waitingSubmission is a submission the manager has not decided: a task in review that someone else submitted, and how
+// long ago. The wait runs from the submission the review gate saw (reviewGate.ended); one it did not see counts from now.
+type waitingSubmission struct {
+	ID     string
+	Rev    uint64
+	Waited time.Duration
+}
+
+// submissionsWaiting lists the submissions waiting for the manager's decision, longest wait first, then by task id. The
+// manager's own tasks are left out: nobody waits on the manager for those but the manager.
+func (s *Swarm) submissionsWaiting(snap *Snapshot, now time.Time) []waitingSubmission {
+	mgr := s.ManagerID()
+	g := &s.review
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	var out []waitingSubmission
+	for _, t := range snap.Tasks {
+		if t.Status != StatusReview || t.Owner == mgr {
+			continue
+		}
+		w := waitingSubmission{ID: t.ID, Rev: t.Rev}
+		if at, ok := g.ended[t.ID+"#"+strconv.FormatUint(t.Rev, 10)]; ok && now.After(at) {
+			w.Waited = now.Sub(at)
+		}
+		out = append(out, w)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Waited != out[j].Waited {
+			return out[i].Waited > out[j].Waited
+		}
+		return lessTaskID(out[i].ID, out[j].ID)
+	})
+	return out
 }
 
 // implementationTask reports whether a task represents code, rather than an agreement or a read-only report.

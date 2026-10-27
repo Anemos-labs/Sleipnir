@@ -2,6 +2,8 @@ package swarm
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -671,5 +673,84 @@ func TestWorkDurationEndsAtSubmission(t *testing.T) {
 	r.sw.noteAccepted(task)
 	if work, ids := g.unreviewedWork(); work < 13*time.Minute || work > 15*time.Minute || len(ids) != 1 || ids[0] != "T1" {
 		t.Fatalf("unreviewed work = %v %v", work, ids)
+	}
+}
+
+// A merge that changes test files and docs alone after an accepted review leaves that review standing: the work tree is compared
+// with the one the review began on. A change to anything else since then, an unreviewed merge before it, or no review yet keeps the
+// review due. A tester's suite accepted after the review started a second review of the four test files, and the run hit its
+// limit while that review ran.
+func TestATestOnlyMergeAfterTheReviewLeavesItStanding(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, text string) {
+		t.Helper()
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("lru/lru.go", "package lru\n")
+	write("lru/README.md", "# lru\n")
+	gitOut(t, root, "init", "-q")
+	gitOut(t, root, "add", "-A")
+	gitOut(t, root, "commit", "-qm", "init")
+	r := newRVRigWith(t, Config{MaxWorkers: 8, Team: []string{"backend", "tester", "reviewer"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} },
+		func(d *Deps) { d.Root = root })
+	// Tests alone with no review yet: the tests are the work, and are reviewed.
+	write("lru/lru_test.go", "package lru\n")
+	r.sw.noteAccepted(Task{ID: "T1", Role: "tester"})
+	if r.sw.reviewPending() != "T1" {
+		t.Fatal("a test-only merge with no review yet was not due for review")
+	}
+	write("lru/lru.go", "package lru\n\nfunc New() {}\n")
+	r.sw.noteAccepted(Task{ID: "T2", Role: "backend"})
+	review := Task{ID: "T3", Role: ReviewerRole}
+	r.sw.noteReviewBegan(review)
+	if err := r.sw.reviewSubmission(review)(nil, review); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.noteAccepted(review)
+	if got := r.sw.reviewPending(); got != "" {
+		t.Fatalf("review pending after the accepted review: %q", got)
+	}
+	// A tester's suite and a README after the review began: the review stands.
+	write("lru/zz_extra_test.go", "package lru\n")
+	write("lru/README.md", "# lru\n\nNew makes a cache.\n")
+	write("lru/testdata/golden.txt", "1\n")
+	r.sw.noteAccepted(Task{ID: "T4", Role: "tester"})
+	if got := r.sw.reviewPending(); got != "" {
+		t.Fatalf("a test-only merge after the accepted review is due for review: %q", got)
+	}
+	// Product code changed since the review began (a shell edit the task's scope does not show): due.
+	write("lru/lru.go", "package lru\n\nfunc New() int { return 1 }\n")
+	write("lru/more_test.go", "package lru\n")
+	r.sw.noteAccepted(Task{ID: "T5", Role: "tester"})
+	if got := r.sw.reviewPending(); got != "T5" {
+		t.Fatalf("a merge whose tree changed product code since the review = %q, want T5", got)
+	}
+	// Once a merge is unreviewed, a test-only one after it is due too.
+	write("lru/last_test.go", "package lru\n")
+	r.sw.noteAccepted(Task{ID: "T6", Role: "tester"})
+	if got := r.sw.reviewPending(); got != "T6" {
+		t.Fatalf("a test-only merge after an unreviewed one = %q, want T6", got)
+	}
+}
+
+// A review with no work tree to read (no git repository) stands for no later merge.
+func TestATestOnlyMergeWithNoWorkTreeIsDueForReview(t *testing.T) {
+	r := newRVRigWith(t, Config{MaxWorkers: 8, Team: []string{"backend", "tester", "reviewer"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	r.sw.noteAccepted(Task{ID: "T1", Role: "backend"})
+	review := Task{ID: "T2", Role: ReviewerRole}
+	r.sw.noteReviewBegan(review)
+	if err := r.sw.reviewSubmission(review)(nil, review); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.noteAccepted(review)
+	r.sw.noteAccepted(Task{ID: "T3", Role: "tester"})
+	if got := r.sw.reviewPending(); got != "T3" {
+		t.Fatalf("review pending = %q, want T3", got)
 	}
 }

@@ -212,7 +212,12 @@ merge, and a task owned by a reviewer accepted after the last merge covers it. W
 more different models, a merge is covered only once reviewers on two different models have each had a review accepted that
 covers it (independent vantages: one model's blind spots are another's findings); a second review by the same model does not
 count twice, and the gate's line asks for a review from the slot on the model that has not covered it yet. After an accepted review the
-gate's line names the merges since it, and the next review covers that work alone (the accepted review stands for the rest). Until then the manager's hot view says so,
+gate's line names the merges since it, and the next review covers that work alone (the accepted review stands for the rest).
+With one reviewer model, a merge after an accepted review whose work tree, compared with the tree that review began on, has
+changed in test files and docs alone (`*_test.go`, `test_*.py`, a `.test` or `.spec` suffix, a `test/`, `tests/`,
+`__tests__/`, `spec/` or `testdata/` directory, `*.md`, `docs/`) leaves that review standing: a test cannot change what the
+product does. Any other change since, a merge that was already unreviewed, no review yet, or a tree git cannot read keeps
+the review due. Until then the manager's hot view says so,
 its `wait` is refused once nothing else runs, and the manager's final answer is held. The agent bounds stop vetoes per run; configured
 persistent teams continue the same manager context until the board and review gate settle. The manager's pin asks for a scout when the code or an outside source is unknown, devops and the tester to start from
 the accepted agreement in parallel with the implementation, and the reviewer pass before the goal is reported met.
@@ -281,6 +286,14 @@ A sleep of a minute or more in the manager's shell (`sleep 1800; date`, counted
 in line and along `&&` chains, not in loops or the background) is a wait: it is
 refused with the same reason when a wait would be, and the stall sweep counts
 the manager as waiting while it runs.
+
+A file edit of the manager's own (`edit`, `write`, `apply_patch`) while
+submissions wait for its decision carries a line naming them with their waits,
+longest first (`T3 (6 min) and T2 (2 min) wait in review. A submission comes
+before edits of your own: decide it, then go on; a worker's next task waits on
+it.`). Each submission is named once, with the manager's next edit after it; a
+later edit names them all again only when a new one has joined them. The
+manager's own tasks in review are left out, and a shell command is not an edit.
 
 A restored team's idle workers that hold an unfinished task show
 `restored; waiting for T7 to restart`; the others are plainly idle and free for

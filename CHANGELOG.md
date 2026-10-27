@@ -7,6 +7,32 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The tester's role pin says that tests put in a package beside other tests
+  give every helper, type and test they add a prefix of the tester's own, so
+  a test file someone else adds to that package still compiles. A tester's
+  suite declared a `fakeClock` helper in a package where another test file
+  declared one too, and the package stopped building. About 40 tokens more
+  in the tester's role pin.
+- With one reviewer model, a merge after an accepted review leaves that
+  review standing when the work tree has changed, since the review began,
+  in test files and docs alone: the harness snapshots the git tree when a
+  review starts and compares it at each acceptance. A tester's suite
+  accepted after the review started a second review of the four new test
+  files, and the run hit its limit while that review ran. Harness
+  behavior only; no prompt bytes change.
+- A file edit of the manager's own while submissions wait for its decision
+  carries a line naming them with their waits (`T3 (6 min) and T2 (2 min)
+  wait in review. A submission comes before edits of your own ...`), once per
+  submission. A manager that wrote verification tests of its own between
+  acceptances kept four submissions waiting six to seven minutes each, and
+  the stall sweep's mail about each reached it after five. Tool-result text
+  only; no prompt bytes change.
+- The manager's role pin says that the tester's tests are not the manager's
+  to write (a second tester is spawned when the tester is busy and a slot is
+  free) and that a submission in review comes before edits of the manager's
+  own. A manager created a verification-test task and finished it itself,
+  with one tester slot used of eight. About 30 tokens more in the manager's
+  role pin.
 - A task whose scope names test files alone (`*_test.go`, `test_*.py`,
   `*.spec.ts`, a `tests/` directory) starts no docs catch-up: it leaves no
   document stale. A docs pass over four new test files held a run's final
