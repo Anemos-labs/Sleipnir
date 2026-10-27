@@ -181,7 +181,7 @@ func (s *Swarm) abandon(m *member, rs *runState) {
 	m.run, m.life = nil, lifeRetired
 	m.mu.Unlock()
 	rs.cancel()
-	line := s.settleStopped(m, tasks, stopFailed, "stuck: it did not stop when told to", true)
+	line := s.settleStopped(m, tasks, stopFailed, "stuck: it did not stop when told to", true, false)
 	s.Board.ClearAlertKey("stuck", stuckAlertKey(m.id, rs.id))
 	s.detach(m)
 	s.emitAs(m.id, "agent.abandon", map[string]any{"id": m.id})

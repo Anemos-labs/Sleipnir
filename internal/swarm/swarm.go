@@ -302,9 +302,12 @@ type Swarm struct {
 	// learned holds each agent's role-scoped notes of this session (at most maxLearned each), with the role it had when it
 	// wrote them, until a task of theirs is accepted and they go to Config.OnLearned. Guarded by mu.
 	learned map[string]learnedNotes
-	retryAt map[string]time.Time   // supervisor-owned repair backoff
-	queued  map[string]queuedSpawn // parents waiting for a free member of their role (spawnqueue.go), by task id; guarded by mu
-	members map[string]*member
+	retryAt map[string]time.Time // supervisor-owned repair backoff
+	// handedBack holds the tasks returned to todo after their worker's automatic restarts on them ran out, at the revision they
+	// were returned at: the repair does not start them on that worker again, they are the manager's to assign. Guarded by mu.
+	handedBack map[string]uint64
+	queued     map[string]queuedSpawn // parents waiting for a free member of their role (spawnqueue.go), by task id; guarded by mu
+	members    map[string]*member
 	// arriving (under mu) holds the IDs of agents that are being added to the team: the task is assigned to the agent before the
 	// agent is registered, and the stall sweep must not read that interval as an owner that left (arrive).
 	arriving map[string]bool
