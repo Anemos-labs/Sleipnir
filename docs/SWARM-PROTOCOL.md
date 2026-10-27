@@ -216,7 +216,8 @@ gate's line names the merges since it, and the next review covers that work alon
 With one reviewer model, a merge after an accepted review whose work tree, compared with the tree that review began on, has
 changed in test files and docs alone (`*_test.go`, `test_*.py`, a `.test` or `.spec` suffix, a `test/`, `tests/`,
 `__tests__/`, `spec/` or `testdata/` directory, `*.md`, `docs/`) leaves that review standing: a test cannot change what the
-product does. Any other change since, a merge that was already unreviewed, no review yet, or a tree git cannot read keeps
+product does. A review accepted after such a merge (a tester's suite accepted while the review waited for its verdict)
+covers it the same way. Any other change since, a merge that was already unreviewed, no review yet, or a tree git cannot read keeps
 the review due. Until then the manager's hot view says so,
 its `wait` is refused once nothing else runs, and the manager's final answer is held. The agent bounds stop vetoes per run; configured
 persistent teams continue the same manager context until the board and review gate settle. The manager's pin asks for a scout when the code or an outside source is unknown, devops and the tester to start from

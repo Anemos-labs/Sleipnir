@@ -7,6 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A review accepted after a merge that changed test files and docs alone
+  since the review began covers that merge too. A tester's suite accepted
+  while the review waited for its verdict started a second review of four
+  test files, which took sixteen minutes. Harness behavior only; no prompt
+  bytes change.
 - The tester's role pin says that tests put in a package beside other tests
   give every helper, type and test they add a prefix of the tester's own, so
   a test file someone else adds to that package still compiles. A tester's
