@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- When a pool leader's automatic restarts run out, the manager's line
+  names the way past a leader whose model keeps failing: excuse it with
+  `pool action=excuse`, and the next member leads. It used to say only
+  "Resume this pool with its existing members". In a long team run a pool
+  whose leader's model had no endpoints sat in planning for over half an
+  hour, with its other member ready to agree.
 - With persistent pools, a task returned to todo after its worker's
   automatic restarts on it ran out is no longer started on that worker
   again by the repair pass: the manager assigns it. The manager's line
