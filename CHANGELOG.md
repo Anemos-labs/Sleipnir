@@ -33,6 +33,15 @@ they do not indicate whether a change has been released.
   accepted: it is finishing its turn and owns nothing open. A docs worker
   whose pass had just been accepted counted as work in progress, and the
   manager was told of idle writers during the review after all.
+- A streaming model request that carries nothing but keep-alive comments
+  for ten minutes, from its start or since its last content line, is ended
+  as a timeout and retried (`nothing but keep-alives from the server for
+  10m0s`). The first-byte and idle deadlines took the comments for a
+  response, so a gateway whose upstream had hung held a worker until the
+  swarm's stuck-worker cut at twenty minutes: two workers sat that long
+  right after a resume and answered in a minute when retried. The three
+  streaming adapters take a `StreamContentTimeout` (negative disables it);
+  non-streaming calls are unchanged. Only that error text is new.
 - A parent whose pool starts again after a resume no longer keeps the line
   "the session was resumed: waiting to restart" while it runs. The line
   stayed on the running task, and a manager that read it mailed the pool's
