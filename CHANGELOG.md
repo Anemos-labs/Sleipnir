@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The auto-docs pass's brief tells the docs member to read the diff of
+  the changed files rather than whole sources, and to leave testing and
+  probing the code to the reviewer and the verifier: it runs a documented
+  command only when the change altered it. A docs pass after a manager
+  fixed four modules itself ran every module's tests and wrote probe
+  programs, and took 500 s of a 969 s run; with this brief the same task
+  took 216 s of 538 s. About 45 tokens more in the brief.
 - A spawn queued behind the busy members of its role, and the live view's
   line for such queued tasks, name the other writer roles with a free
   slot or idle member (`free now: frontend, devops: one of them can take
