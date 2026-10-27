@@ -42,7 +42,7 @@
   {"name":"once","arg":"bool","default":null,"repeatable":false,"desc":"start what is due now, wait for it, and exit (for cron or a systemd timer)"}
  ]},
 {"path":["demo"],"usage":"sleipnir demo [flags]","summary":"Runs a scripted team through the real harness against the built-in mock endpoint: no key, no network.","positional":[],"source":"docs/CLI.md § sleipnir demo","mode":"net","flags":[
-  {"name":"dir","arg":"string","default":null,"defaultNote":"a temporary directory","repeatable":false,"desc":"where to put the workspace and the recorded session (default: a temporary directory)"},
+  {"name":"dir","arg":"string","default":null,"defaultNote":"a temporary directory","repeatable":false,"desc":"where to put the workspace and the recorded session, in new subdirectories (default: a temporary directory)"},
   {"name":"no-anim","arg":"bool","default":null,"repeatable":false,"desc":"with the cockpit: no animation, the horse stands"},
   {"name":"plain","arg":"bool","default":null,"repeatable":false,"desc":"no cockpit, even on a terminal: print the report as text when the team is done"},
   {"name":"scale","arg":"float","default":1,"repeatable":false,"desc":"shop: stretch (above 1) or squeeze (below 1) the time it takes, and the lifetime of its cache with it"},

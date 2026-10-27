@@ -53,7 +53,7 @@ type HTTPEmbedder struct {
 func NewHTTPEmbedder(baseURL, apiKey, model string, headers map[string]string, client *http.Client) *HTTPEmbedder {
 	if client == nil {
 		client = &http.Client{Timeout: embedTimeout, Transport: &http.Transport{
-			Proxy:                  http.ProxyFromEnvironment,
+			Proxy:                  provider.ProxyFromEnvironment,
 			OnProxyConnectResponse: provider.CheckProxyConnect,
 			ForceAttemptHTTP2:      true,
 			TLSHandshakeTimeout:    15 * time.Second,

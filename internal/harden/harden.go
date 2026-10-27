@@ -143,6 +143,33 @@ func applyLocked(s settings) {
 	}
 }
 
+// Register declares names as credentials, whatever they look like: a provider's api_key_env names its key. In moving
+// mode (MoveKeys) each is taken out of the environment now and held, as MoveKeys does with the names it is given, so no
+// command started later inherits it; an ordinary variable a command needs (PATH, HOME, ...) is never taken. Without
+// moving mode it does nothing.
+func Register(names ...string) {
+	mu.Lock()
+	defer mu.Unlock()
+	if !moving {
+		return
+	}
+	for _, n := range names {
+		if n == "" || strings.ContainsAny(n, "=\x00") || essential[strings.ToUpper(n)] || listed(n, named) {
+			continue
+		}
+		named = append(named, n)
+		moveLocked(n)
+	}
+}
+
+// essential are the variables Register never takes out of the environment: commands need them, and a name in a
+// configuration file is not reason enough to take them.
+var essential = map[string]bool{
+	"PATH": true, "HOME": true, "USER": true, "LOGNAME": true, "SHELL": true, "TERM": true, "TMPDIR": true, "TMP": true,
+	"TEMP": true, "LANG": true, "LC_ALL": true, "PWD": true, "USERPROFILE": true, "SYSTEMROOT": true, "COMSPEC": true,
+	"PATHEXT": true, "APPDATA": true, "LOCALAPPDATA": true, "XDG_CONFIG_HOME": true, "XDG_RUNTIME_DIR": true,
+}
+
 // movableLocked reports whether Secret may take name out of the environment in
 // moving mode: the variable must look like a credential (or have been named to
 // MoveKeys). A caller that passes an ordinary name (PATH, HOME) by mistake gets its

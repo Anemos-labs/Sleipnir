@@ -174,3 +174,13 @@ func RedactURL(raw string) string {
 	}
 	return SanitizeText(strings.ToLower(u.Scheme)+"://"+u.Host+u.EscapedPath(), 512)
 }
+
+// ProxyFromEnvironment is http.ProxyFromEnvironment that never proxies a loopback host as IsLoopbackHost reads it. Plain http
+// carries a key only to such a host, on the understanding that it stays on this machine; the environment's own rule spells
+// hosts differently ("localhost." or "LOCALHOST" are not exempt there), and would send the key and the request to the proxy.
+func ProxyFromEnvironment(req *http.Request) (*url.URL, error) {
+	if req.URL != nil && IsLoopbackHost(req.URL.Hostname()) {
+		return nil, nil
+	}
+	return http.ProxyFromEnvironment(req)
+}

@@ -22,3 +22,13 @@ const (
 func isSymlinkRefusal(err error) bool {
 	return errors.Is(err, syscall.ELOOP) || errors.Is(err, syscall.EMLINK)
 }
+
+// ownedByOther reports whether fi is a file another user owns: a journal that someone else could read whatever its mode says.
+func ownedByOther(fi os.FileInfo) bool {
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	return ok && int(st.Uid) != os.Getuid()
+}
+
+// openScanFlags opens a log to read without waiting for a writer on a FIFO; a link to a log is followed (the person may name
+// one), and what it leads to must then be a regular file.
+const openScanFlags = os.O_RDONLY | syscall.O_NONBLOCK

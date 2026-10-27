@@ -295,14 +295,16 @@ const (
 
 // judgeInspection reads an evidence request out of a judge's answer, which may have words around it or a code fence, as a verdict
 // may (goal.ParseVerdict).
-func judgeInspection(text string) (evidenceRequest, bool) {
-	for _, o := range goal.Objects(text) {
-		var req evidenceRequest
-		if json.Unmarshal(o, &req) == nil && strings.EqualFold(strings.TrimSpace(req.Verdict), "inspect") {
-			return req, true
+func judgeInspection(text string) (req evidenceRequest, ok bool) {
+	goal.EachObject(text, func(o json.RawMessage) bool {
+		var r evidenceRequest
+		if json.Unmarshal(o, &r) == nil && strings.EqualFold(strings.TrimSpace(r.Verdict), "inspect") {
+			req, ok = r, true
+			return false
 		}
-	}
-	return evidenceRequest{}, false
+		return true
+	})
+	return req, ok
 }
 
 // goalTaskUnfinished distinguishes unresolved work from explicit dispositions.

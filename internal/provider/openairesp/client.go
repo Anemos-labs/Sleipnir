@@ -110,7 +110,7 @@ func New(cfg Config) *Client {
 // HTTP/2 connections.
 func newTransport() *http.Transport {
 	return &http.Transport{
-		Proxy:                  http.ProxyFromEnvironment,
+		Proxy:                  provider.ProxyFromEnvironment,
 		OnProxyConnectResponse: provider.CheckProxyConnect,
 		ForceAttemptHTTP2:      true,
 		MaxIdleConns:           256,

@@ -68,10 +68,10 @@ func runShop(ctx context.Context, o Options) (*Report, error) {
 		}
 		dir = d
 	}
-	ws := filepath.Join(dir, "shop")
-	if err := os.MkdirAll(ws, 0o755); err != nil {
+	if err := freshDirs(dir, "shop", "home", "session"); err != nil {
 		return nil, err
 	}
+	ws := filepath.Join(dir, "shop")
 	if err := writeShop(ws); err != nil {
 		return nil, fmt.Errorf("demo: the shop project needs git and sh: %w", err)
 	}

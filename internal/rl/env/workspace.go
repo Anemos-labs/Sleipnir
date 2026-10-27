@@ -310,18 +310,23 @@ type repoSource struct {
 	fingerprint string // content fingerprint (dir)
 }
 
+// RepoPath is the absolute path a task's repo.path names: relative paths are read against RepoBase (or the current
+// directory), as preparing the task's workspace reads them.
+func (m *Workspaces) RepoPath(p string) string {
+	if !filepath.IsAbs(p) {
+		base := m.opts.RepoBase
+		if base == "" {
+			base, _ = os.Getwd()
+		}
+		p = filepath.Join(base, p)
+	}
+	return filepath.Clean(p)
+}
+
 func (m *Workspaces) resolveSource(ctx context.Context, task rl.Task) (*repoSource, error) {
 	var pathErr error
 	if p := task.Repo.Path; p != "" {
-		abs := p
-		if !filepath.IsAbs(abs) {
-			base := m.opts.RepoBase
-			if base == "" {
-				base, _ = os.Getwd()
-			}
-			abs = filepath.Join(base, p)
-		}
-		abs = filepath.Clean(abs)
+		abs := m.RepoPath(p)
 		fi, err := os.Stat(abs)
 		switch {
 		case err == nil && fi.IsDir():

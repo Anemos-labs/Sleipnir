@@ -97,9 +97,24 @@ func (b Block) PlainText() string {
 	case BlockText, BlockThinking:
 		return b.Text
 	case BlockToolResult:
+		// One builder for the whole tree, walked without recursion: each text is copied once, however deep the results
+		// nest (a recorded turn can nest them as deep as it likes).
 		var sb strings.Builder
-		for _, c := range b.Result {
-			sb.WriteString(c.PlainText())
+		stack := [][]Block{b.Result}
+		for len(stack) > 0 {
+			top := stack[len(stack)-1]
+			if len(top) == 0 {
+				stack = stack[:len(stack)-1]
+				continue
+			}
+			c := top[0]
+			stack[len(stack)-1] = top[1:]
+			switch c.Kind {
+			case BlockText, BlockThinking:
+				sb.WriteString(c.Text)
+			case BlockToolResult:
+				stack = append(stack, c.Result)
+			}
 		}
 		return sb.String()
 	}

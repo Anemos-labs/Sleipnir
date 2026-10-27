@@ -164,8 +164,17 @@ func Open(dir, session string) (*Log, error) {
 		f.Close()
 		return nil, fmt.Errorf("events: %s is not a regular file", path)
 	}
+	// The journal holds the session's private events: it must be the user's own file, and private, before anything is
+	// written to it (a file another user planted in a shared directory would keep what it is told).
+	if ownedByOther(fi) {
+		f.Close()
+		return nil, fmt.Errorf("events: %s belongs to another user; refusing to write the session there", path)
+	}
 	if fi.Mode().Perm()&0o077 != 0 {
-		_ = f.Chmod(fi.Mode().Perm() &^ 0o077) // our file; best effort
+		if err := f.Chmod(fi.Mode().Perm() &^ 0o077); err != nil {
+			f.Close()
+			return nil, fmt.Errorf("events: %s cannot be made private: %w", path, err)
+		}
 	}
 	sc, err := scanLog(f)
 	if err != nil {
@@ -641,11 +650,17 @@ func (e *CorruptError) Is(target error) bool { return target == ErrCorruptLog }
 // cares can tell and one that does not can carry on with what it got. Memory use
 // is bounded by MaxEventBytes.
 func Scan(path string, fn func(Event) error) error {
-	f, err := os.Open(path)
+	f, err := os.OpenFile(path, openScanFlags, 0)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
+	// Only a regular file has an end: a device or a pipe in a log's place (or a link to one) would be read for ever.
+	if fi, err := f.Stat(); err != nil {
+		return err
+	} else if !fi.Mode().IsRegular() {
+		return fmt.Errorf("events: %s is not a regular file", path)
+	}
 	lr := newLineReader(f, maxLineBytes)
 	var bad, first int
 	for lineNo := 1; ; lineNo++ {
