@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/cost"
 )
 
@@ -103,7 +104,7 @@ func TestAReviewerOnTheWritersModelIsGivenAHintOnlyWhenAnotherModelIsThere(t *te
 	}{
 		{name: "one model", team: []string{"backend", "reviewer"}, want: ""},
 		{name: "writers on two models, the reviewer on one of theirs", team: []string{"backend", "frontend", "reviewer"},
-			slots: func(d *Deps) []RoleModel { return []RoleModel{{}, other(d, "front-model"), {}} }, want: "reviewer=front-model"},
+			slots: func(d *Deps) []RoleModel { return []RoleModel{{}, other(d, "front-model"), {}} }, want: "reviewer=rv/front-model"},
 		{name: "the reviewer on a model no writer uses", team: []string{"backend", "reviewer"},
 			slots: func(d *Deps) []RoleModel { return []RoleModel{{}, other(d, "review-model")} }, want: ""},
 		{name: "reviewers on two models", team: []string{"backend", "frontend", "reviewer", "reviewer"},
@@ -120,6 +121,35 @@ func TestAReviewerOnTheWritersModelIsGivenAHintOnlyWhenAnotherModelIsThere(t *te
 			got := r.sw.reviewerModelHint()
 			if c.want == "" && got != "" || c.want != "" && !strings.Contains(got, c.want) {
 				t.Errorf("hint = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// The hint reaches the person: the manager's start shows it as an info notice, and a team on one model shows none.
+func TestTheReviewerModelHintIsShownWhenTheManagerStarts(t *testing.T) {
+	reply := func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }
+	for _, c := range []struct {
+		name string
+		two  bool
+	}{{"writers on two models", true}, {"one model", false}} {
+		t.Run(c.name, func(t *testing.T) {
+			sink := &noticeSink{}
+			r := newRVRigWith(t, Config{MaxWorkers: 8, Team: []string{"backend", "frontend", "reviewer"}}, reply, func(d *Deps) {
+				d.NewSink = func(string) agent.Sink { return sink }
+				if c.two {
+					d.SlotModels = []RoleModel{{}, {Provider: d.Provider, Model: cost.Model{ID: "front-model", ContextTokens: 1_000_000, Cache: cost.OpenAICacheModel()}}, {}}
+				}
+			})
+			if _, err := r.sw.StartManager(); err != nil {
+				t.Fatal(err)
+			}
+			shown := false
+			for _, l := range sink.all() {
+				shown = shown || strings.Contains(l, " info: tip: the reviewers run on")
+			}
+			if shown != c.two {
+				t.Errorf("hint shown = %v, want %v; notices: %q", shown, c.two, sink.all())
 			}
 		})
 	}

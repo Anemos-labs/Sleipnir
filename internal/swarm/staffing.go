@@ -746,10 +746,17 @@ func spillLine(free []string, role, id string) string {
 // wants them), and neither does one whose reviewers run on two models (the review quorum already asks for both) or on a model no
 // writer uses. "" when there is nothing to suggest.
 func (s *Swarm) reviewerModelHint() string {
-	writers, reviewers, all := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	writers, reviewers := map[string]bool{}, map[string]bool{}
+	all := map[string]string{} // model id -> how --role-model names it (provider/model)
 	for i, r := range s.cfg.Team {
-		id := s.modelFor(r, i).Model.ID
-		all[id] = true
+		rm := s.modelFor(r, i)
+		id := rm.Model.ID
+		all[id] = id
+		if rm.Provider != nil {
+			if name := rm.Provider.Profile().Name; name != "" {
+				all[id] = name + "/" + id
+			}
+		}
 		switch {
 		case r == ReviewerRole:
 			reviewers[id] = true
@@ -768,9 +775,9 @@ func (s *Swarm) reviewerModelHint() string {
 		return ""
 	}
 	var others []string
-	for id := range all {
+	for id, ref := range all {
 		if id != rv {
-			others = append(others, id)
+			others = append(others, ref)
 		}
 	}
 	sort.Strings(others)
