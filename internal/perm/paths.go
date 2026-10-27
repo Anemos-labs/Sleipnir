@@ -1,7 +1,7 @@
 package perm
 
 import (
-	"os"
+	"errors"
 	"path/filepath"
 	"strings"
 
@@ -278,6 +278,6 @@ func dollarEntryExists(p string) bool {
 	if end >= 0 {
 		p = p[:i+end]
 	}
-	_, err := os.Lstat(p)
-	return err == nil
+	_, err := lstatAbs(p)
+	return err == nil || errors.Is(err, errNotAbs)
 }

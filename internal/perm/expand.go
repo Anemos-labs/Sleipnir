@@ -1,6 +1,7 @@
 package perm
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -321,7 +322,8 @@ func fragmentMeetsLink(w, cwd string) bool {
 				return true
 			}
 			for _, m := range ms {
-				if fi, err := os.Lstat(m); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+				fi, err := lstatAbs(m)
+				if errors.Is(err, errNotAbs) || err == nil && fi.Mode()&os.ModeSymlink != 0 {
 					return true
 				}
 			}
