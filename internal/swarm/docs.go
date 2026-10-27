@@ -348,7 +348,7 @@ func docsBrief(b []docsChange) string {
 		}
 		sb.WriteString("\n")
 	}
-	sb.WriteString("Keep three readers current: people (README, docs/), agents of later sessions (AGENTS.md: commands, layout, conventions, decisions), and this team (AGENTS.md is also its map, with a Capabilities section: one line per existing system, what it does, where it lives, its doc as path#heading). Change only what these changes made wrong or missing, in the documents that exist (your scope names the Markdown beside the changed code); a catch-up adds no README or AGENTS.md to a project that has none, which is a task of its own for the manager to create. Keep the pass short: read the change, fix the lines it made wrong, run only the commands you document, and finish with task done and a one-line summary of what you changed.")
+	sb.WriteString("Keep three readers current: people (README, docs/), agents of later sessions (AGENTS.md: commands, layout, conventions, decisions), and this team (AGENTS.md is also its map, with a Capabilities section: one line per existing system, what it does, where it lives, its doc as path#heading). Change only what these changes made wrong or missing, in the documents that exist (your scope names the Markdown beside the changed code); a catch-up adds no README or AGENTS.md to a project that has none, which is a task of its own for the manager to create. Keep the pass short: read the diff of the files above (git diff -- <files>, or git log -p when they are committed) rather than whole sources, fix the lines it made wrong, and finish with task done and a one-line summary of what you changed. Do not test or probe the code: the reviewer and the verifier do; run a documented command only when the change altered it.")
 	return sb.String()
 }
 

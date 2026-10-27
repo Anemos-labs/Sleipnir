@@ -199,7 +199,8 @@ directory: `**/*.md` overlaps every directory a task holds or will claim, so a p
 task to close and, while it ran, keep every task scoped to a directory from being claimed. A pass that cannot start says
 why in the keeper's state (`pass T12 waiting to start: scope "*.md" overlaps T6 …`). The first pass waits for the first accepted implementation task: an agreement accepted before
 any code exists stays pending (and holds nobody) and is folded into that pass. It never interrupts a running docs worker; the docs worker's own tasks are not changes, and neither is a task whose scope names test files alone (`*_test.go`, `test_*.py`, `*.spec.ts`, a `tests/` directory): it leaves no document stale. The product files the manager edits by itself are a change of their own (`manager`) once it has left them alone for 90 seconds, or at once when it means to finish; its test and Markdown edits are none. The
-docs worker keeps README, `docs/` and `AGENTS.md` current; `AGENTS.md` is also the team's map of the project. The
+docs worker keeps README, `docs/` and `AGENTS.md` current; `AGENTS.md` is also the team's map of the project. Its brief
+has it read the diff of the changed files and leave testing the code to the reviewer and the verifier. The
 manager's pin says that documentation is automatic, every other worker's pin says to read `AGENTS.md` and to mail facts
 to the docs worker, and every hot view carries the keeper's state (`docs (auto): 2 change(s) pending`). A batch run's
 manager is held while a pass is pending. `--auto-docs=false` makes docs an ordinary role.
