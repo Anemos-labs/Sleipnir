@@ -7,6 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- For ten minutes after a worker's run ends on an outage of its model's
+  endpoint (a status of 500 or more, a 429, or no answer), the manager's
+  spawn naming that worker is refused when a member of its role on another
+  model is free, and the refusal names that member. A spawn by role starts
+  that member instead.
 - When a pool leader's automatic restarts run out in a pool with more
   than one member, the manager's line names the way past a leader whose
   model keeps failing: excuse it with `pool action=excuse`, and the next

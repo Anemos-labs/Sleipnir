@@ -771,6 +771,18 @@ func (t *spawnTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error)
 			return tools.Errorf("only the manager assigns tasks, and a pool leader the children of the pool it leads while it executes: %v", err), nil
 		}
 	}
+	if m := t.s.get(req.Agent); m != nil && c.Env.Role == "manager" {
+		if at, out := t.s.inOutage(m); out {
+			if free := t.s.freeElsewhere(m); len(free) > 0 {
+				what := req.TaskID
+				if what == "" {
+					what = "the task"
+				}
+				return tools.Errorf("%s's last run ended %s ago on an outage of its model's endpoint (%s): give %s to a free %s member on another model (%s: spawn agent=%s), or wait until %s's model answers again",
+					m.id, t.s.deps.Now().Sub(at).Round(time.Second), m.model.ID, what, m.role, strings.Join(free, ", "), free[0], m.id), nil
+			}
+		}
+	}
 	r, err := t.s.spawn(req)
 	var busy *noSpareMember
 	if errors.As(err, &busy) && req.TaskID != "" && c.Env.Role == "manager" {
