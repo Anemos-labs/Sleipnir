@@ -123,11 +123,12 @@ func (t *bashTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 	// The permission engine resolves relative paths in the command against the
 	// directory it will actually run in (the agent's tracked cwd, which persists
 	// across calls), not against the session root. It reads the command as POSIX
-	// shell; PowerShell and cmd.exe quote and escape otherwise, so a command for
-	// them is not taken to be what the engine read: it is high risk, asked about
-	// unless a rule allows it by name, and refused in plan mode.
+	// shell; PowerShell and cmd.exe quote, escape and expand otherwise, so a command
+	// for them that holds anything but plain words is not taken to be what the
+	// engine read: it is high risk, asked about unless a rule allows it by name,
+	// and refused in plan mode.
 	var risk perm.Risk
-	if !sh.posix {
+	if !sh.posix && !plainWords(command) {
 		risk = perm.RiskHigh
 	}
 	dec := env.Perm.Check(ctx, perm.Request{
@@ -369,4 +370,18 @@ func (m *Manager) runForeground(ctx context.Context, env *tools.Env, sh shellInf
 		recordShown(env, dir, command, res.Text)
 	}
 	return res
+}
+
+// plainWords reports whether command is only words of letters, digits and
+// "-_./:=" separated by spaces: text every shell splits and reads the same way,
+// with nothing to quote, escape, expand, redirect or chain.
+func plainWords(command string) bool {
+	for _, r := range command {
+		switch {
+		case r == ' ', r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', strings.ContainsRune("-_./:=", r):
+		default:
+			return false
+		}
+	}
+	return true
 }
