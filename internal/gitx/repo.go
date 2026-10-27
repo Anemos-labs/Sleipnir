@@ -116,6 +116,11 @@ type revInfo struct {
 // revParse asks git where its directories are. workTree pins the work tree
 // ("" for bare probing).
 func (s *settings) revParse(ctx context.Context, dir, workTree string) (revInfo, error) {
+	// The answer is one path per line, so a path with a line break in it would be
+	// read as two answers (the second naming a repository of the path's choosing).
+	if strings.ContainsAny(dir, "\r\n") || strings.ContainsAny(workTree, "\r\n") {
+		return revInfo{}, newErr(KindInvalid, "rev-parse", "path %q contains a line break", dir)
+	}
 	out, err := s.exec(ctx, call{
 		dir: dir, workTree: workTree,
 		args: []string{"rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir", "--is-bare-repository"},
@@ -132,6 +137,9 @@ func (s *settings) revParse(ctx context.Context, dir, workTree string) (revInfo,
 			return r
 		}
 		return filepath.Clean(p)
+	}
+	if len(lines) != 3 {
+		return revInfo{}, &Error{Kind: KindOther, Op: "rev-parse", ExitCode: out.exit, Detail: "unexpected output: " + firstLines(out.text(), 4)}
 	}
 	return revInfo{gitDir: canon(lines[0]), commonDir: canon(lines[1]), bare: strings.TrimSpace(lines[2]) == "true"}, nil
 }
@@ -283,13 +291,26 @@ var deniedOptions = map[string][]string{
 
 var diffLike = []string{"--output", "--ext-diff", "--textconv", "--show-signature", "--open-files-in-pager"}
 
-// checkGitArgs applies the option rules of Git.
+// sequencerCommands resume or rewrite a stored todo list when given one of
+// sequencerResume: the list lives in the repository's own directory, and an exec
+// line in it runs a shell command, so Git refuses to resume one.
+var sequencerCommands = map[string]bool{"rebase": true, "cherry-pick": true, "revert": true}
+
+var sequencerResume = []string{"--continue", "--skip", "--edit-todo"}
+
+// checkGitArgs applies the option rules of Git. Every argument is checked, those
+// after "--" too: whether git reads "--" as the end of options or as the value of
+// the option before it depends on the subcommand's grammar, so a path that looks
+// like a denied option is refused rather than trusted to be a path.
 func checkGitArgs(args []string) error {
 	sub := args[0]
 	denied := deniedOptions[sub]
+	if sequencerCommands[sub] {
+		denied = append(append([]string(nil), denied...), sequencerResume...)
+	}
 	for _, a := range args[1:] {
 		if a == "--" {
-			return nil // what follows is paths
+			continue
 		}
 		if strings.HasPrefix(a, "--") {
 			name, _, _ := strings.Cut(a, "=")

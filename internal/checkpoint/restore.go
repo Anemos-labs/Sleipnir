@@ -441,14 +441,23 @@ func (s *Store) apply(t *task, budget *int64) error {
 	if err != nil {
 		return fmt.Errorf("refused: %v", err)
 	}
+	c, err := s.confine(it.key, abs)
+	if err != nil {
+		return fmt.Errorf("cannot open the project root: %s", reason(err))
+	}
+	defer c.close()
 	switch t.action {
 	case ActionDelete:
-		if err := os.Remove(abs); err != nil && !isMissing(err) {
+		if err := c.remove(); err != nil && !isMissing(err) {
 			return fmt.Errorf("cannot remove: %s", reason(err))
 		}
 		return nil
 	case ActionChmod:
-		if err := chmodNoFollow(abs, goMode(it.want.Mode)); err != nil {
+		mode := goMode(it.want.Mode)
+		if t.cur.Kind != kDir {
+			mode = restorableMode(mode)
+		}
+		if err := chmodNoFollow(abs, mode); err != nil {
 			return fmt.Errorf("cannot change permissions: %s", reason(err))
 		}
 		return nil
@@ -458,8 +467,17 @@ func (s *Store) apply(t *task, budget *int64) error {
 		if it.want.Size > s.maxBytes {
 			return fmt.Errorf("the saved file is larger than the %s cap", humanBytes(s.maxBytes))
 		}
-		data, err := s.readBlob(it.want.Blob, s.maxBytes)
+		// The rewind's budget is checked before the blob is read, and bounds the
+		// read: a manifest naming one large blob for many paths must not cost a read
+		// and a hash of it for each once nothing more may be written.
+		const budgetSpent = "this rewind has already written its limit of content; rewind again for the rest"
+		if it.want.Size > *budget {
+			return errors.New(budgetSpent)
+		}
+		data, err := s.readBlob(it.want.Blob, min(s.maxBytes, *budget))
 		switch {
+		case errors.Is(err, events.ErrBlobTooLarge) && *budget < s.maxBytes:
+			return errors.New(budgetSpent)
 		case errors.Is(err, events.ErrBlobTooLarge):
 			return fmt.Errorf("the saved content is larger than the %s cap", humanBytes(s.maxBytes))
 		case errors.Is(err, events.ErrBlobCorrupt):
@@ -471,21 +489,21 @@ func (s *Store) apply(t *task, budget *int64) error {
 			return errors.New("the saved content is corrupt (checksum mismatch)")
 		}
 		if int64(len(data)) > *budget {
-			return errors.New("this rewind has already written its limit of content; rewind again for the rest")
+			return errors.New(budgetSpent)
 		}
-		if err := s.prepare(abs, t.cur); err != nil {
+		if err := s.prepare(c, t.cur); err != nil {
 			return err
 		}
-		if err := writeFileAtomic(abs, data, goMode(it.want.Mode), it.want.Owner); err != nil {
+		if err := c.writeFile(data, goMode(it.want.Mode), it.want.Owner); err != nil {
 			return fmt.Errorf("cannot write: %s", reason(err))
 		}
 		*budget -= int64(len(data))
 		return nil
 	case ActionRelink:
-		if err := s.prepare(abs, t.cur); err != nil {
+		if err := s.prepare(c, t.cur); err != nil {
 			return err
 		}
-		if err := symlinkAtomic(it.want.Target, abs, it.want.Owner); err != nil {
+		if err := c.symlink(it.want.Target, it.want.Owner); err != nil {
 			return fmt.Errorf("cannot create symlink: %s", reason(err))
 		}
 		return nil
@@ -528,12 +546,12 @@ func (s *Store) readBlob(h core.Hash, max int64) ([]byte, error) {
 // prepare makes room for a file or symlink at abs: parents are created, and a
 // directory that is in the way is removed if (and only if) it is empty. A
 // populated directory is somebody's data and is never removed.
-func (s *Store) prepare(abs string, cur state) error {
-	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+func (s *Store) prepare(c *confined, cur state) error {
+	if err := c.mkdirParents(); err != nil {
 		return fmt.Errorf("cannot create parent directory: %s", reason(err))
 	}
 	if cur.Kind == kDir {
-		if err := os.Remove(abs); err != nil {
+		if err := c.remove(); err != nil {
 			return errors.New("a directory with contents is in the way")
 		}
 	}
@@ -605,11 +623,8 @@ func (s *Store) commitRestore(idx int, satisfied map[string]bool, rewound bool) 
 	}
 	changed := map[*checkpoint]bool{}
 	for _, cp := range s.cps[idx:] {
-		for key := range satisfied {
-			if cp.index[key] != nil {
-				cp.remove(key)
-				changed[cp] = true
-			}
+		if cp.removeAll(satisfied) {
+			changed[cp] = true
 		}
 	}
 	var firstErr error

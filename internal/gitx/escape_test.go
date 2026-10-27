@@ -54,6 +54,14 @@ func TestGitEscapeHatchRefusesWhatRunsProgramsOrWritesElsewhere(t *testing.T) {
 		{"diff", "--output=" + out, "HEAD"},
 		{"read-tree", "--index-output=" + out, "HEAD"},
 		{"apply", "--unsafe-paths", "p.patch"},
+		// "--" may be read as an option's value, so what follows it is checked too
+		{"diff", "--no-index", "--", "--output=" + out, "a.txt", "b.txt"},
+		// a stored todo list may hold exec lines
+		{"rebase", "--continue"},
+		{"rebase", "--skip"},
+		{"rebase", "--edit-todo"},
+		{"cherry-pick", "--continue"},
+		{"revert", "--skip"},
 		// NUL cannot be passed to a process at all
 		{"status", "a\x00b"},
 	}
@@ -74,7 +82,7 @@ func TestGitEscapeHatchRefusesWhatRunsProgramsOrWritesElsewhere(t *testing.T) {
 		{"rev-parse", "--show-toplevel"},
 		{"log", "--oneline", "-1"},
 		{"log", "-S", "alpha", "--format=%H"},
-		{"log", "--format=%H", "--", "--output"}, // after -- it is a path
+		{"log", "--format=%H", "--", "a.txt"},
 		{"status", "--porcelain"},
 		{"diff", "--stat", "HEAD"},
 		{"diff", "--output-indicator-new=+", "HEAD"},

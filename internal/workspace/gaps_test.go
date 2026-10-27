@@ -547,3 +547,45 @@ func TestAdoptingADeadOwnersTreeClearsItsStaleIndexLock(t *testing.T) {
 	}
 	must(t, os.Remove(liveLock))
 }
+
+// Commits made on a detached HEAD are on no branch: the tree's HEAD and reflog are
+// their only reference, so a prune without Force keeps the tree.
+func TestPruneKeepsATreeWhoseDetachedHeadHoldsCommits(t *testing.T) {
+	dir := newRepo(t)
+	repo := openRepo(t, dir)
+	m := newManager(t, repo)
+	detached := mustCreate(t, m, "detached", CreateOptions{Detach: true})
+	edit(t, detached, "work.txt", "work\n")
+	rawGit(t, detached.Path, "add", "-A")
+	rawGit(t, detached.Path, "commit", "-qm", "work on no branch")
+	orphan(t, detached)
+
+	fresh := &Manager{Repo: repo, Dir: m.Dir, Prefix: "sleipnir/s1", Clock: testClock()}
+	rep, err := fresh.Prune(tctx(t), PruneOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exists(filepath.Join(detached.Path, "work.txt")) {
+		t.Fatalf("a tree whose HEAD holds the only reference to a commit was removed: %+v", rep)
+	}
+	if len(rep.Kept) != 1 || !strings.Contains(rep.Kept[0].Reason, "on no branch") {
+		t.Fatalf("Kept: %+v", rep.Kept)
+	}
+}
+
+// A .git that the agent replaced with a symlink is not written through: deleting
+// the tree replaces the link, and what it pointed at is untouched.
+func TestDeletingATreeDoesNotWriteThroughItsGitSymlink(t *testing.T) {
+	dir := newRepo(t)
+	repo := openRepo(t, dir)
+	m := newManager(t, repo)
+	tr := mustCreate(t, m, "linked")
+	victim := filepath.Join(t.TempDir(), "victim")
+	must(t, os.WriteFile(victim, []byte("precious\n"), 0o644))
+	must(t, os.Remove(filepath.Join(tr.Path, ".git")))
+	must(t, os.Symlink(victim, filepath.Join(tr.Path, ".git")))
+	_ = tr.Remove(tctx(t), true)
+	if got, err := os.ReadFile(victim); err != nil || string(got) != "precious\n" {
+		t.Fatalf("the file the .git symlink named was overwritten: %q, %v", got, err)
+	}
+}

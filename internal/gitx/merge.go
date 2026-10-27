@@ -21,7 +21,10 @@ type MergeOptions struct {
 	// fast-forward.
 	NoFF   bool
 	FFOnly bool
-	Author Author
+	// KeepIgnored refuses a merge that would replace an ignored file in the work
+	// tree with a tracked one (git's default overwrites it).
+	KeepIgnored bool
+	Author      Author
 }
 
 // MergeResult reports what a merge did.
@@ -73,12 +76,27 @@ func (r *Repo) Merge(ctx context.Context, opts MergeOptions) (*MergeResult, erro
 	default:
 		args = append(args, "--ff")
 	}
+	if opts.KeepIgnored {
+		args = append(args, "--no-overwrite-ignore")
+	}
 	args = append(args, "--end-of-options", opts.Ref)
+	config := []string{conflictStyleDiff3}
+	// branch.<current>.mergeOptions adds options to every merge on that branch
+	// (-F <file> reads a file of the repository's choosing into the message); the
+	// options of this merge are the ones above, so the current branch's are
+	// emptied for this command.
+	head, err := r.run(ctx, call{args: []string{"symbolic-ref", "--quiet", "HEAD"}, okExit: []int{1}})
+	if err != nil {
+		return nil, err
+	}
+	if branch, ok := strings.CutPrefix(head.trimmed(), "refs/heads/"); ok && head.exit == 0 {
+		config = append(config, "branch."+branch+".mergeOptions=")
+	}
 	b, err := r.begin(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out, err := b.run(ctx, call{args: args, env: idEnv, config: []string{conflictStyleDiff3}, okExit: []int{1}, mutating: true, timeout: 5 * r.s.timeout})
+	out, err := b.run(ctx, call{args: args, env: idEnv, config: config, okExit: []int{1}, mutating: true, timeout: 5 * r.s.timeout})
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +161,11 @@ func (r *Repo) Rebase(ctx context.Context, o RebaseOptions) (*MergeResult, error
 	}
 	args := []string{"rebase", "--no-autosquash", "--no-autostash", "--no-verify", "--no-rebase-merges", "--empty=drop", "--no-gpg-sign",
 		"--onto", o.Onto, o.Upstream, o.Branch}
-	out, err := b.run(ctx, call{args: args, env: idEnv, config: []string{conflictStyleDiff3}, okExit: []int{1}, mutating: true, timeout: 5 * r.s.timeout})
+	// rebase.instructionFormat shapes the todo lines git writes and then executes;
+	// a format that expands to a newline could add an exec line, so the subject
+	// alone is used whatever the repository configures.
+	config := []string{conflictStyleDiff3, "rebase.instructionFormat=%s"}
+	out, err := b.run(ctx, call{args: args, env: idEnv, config: config, okExit: []int{1}, mutating: true, timeout: 5 * r.s.timeout})
 	if err != nil {
 		return nil, err
 	}

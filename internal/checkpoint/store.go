@@ -197,6 +197,20 @@ func (c *checkpoint) remove(key string) {
 	c.files = slices.DeleteFunc(c.files, func(r *fileRec) bool { return r.Path == key })
 }
 
+// removeAll deletes every path of keys in one pass over the records, and reports
+// whether any was there.
+func (c *checkpoint) removeAll(keys map[string]bool) bool {
+	n := len(c.index)
+	for key := range keys {
+		delete(c.index, key)
+	}
+	if len(c.index) == n {
+		return false
+	}
+	c.files = slices.DeleteFunc(c.files, func(r *fileRec) bool { return keys[r.Path] })
+	return true
+}
+
 // cpDoc is the on-disk form of one checkpoint. Each checkpoint has its own file
 // so persisting a Before rewrites only that checkpoint, not the whole history.
 type cpDoc struct {
@@ -1083,6 +1097,10 @@ type planned struct {
 // what makes a rewind across several checkpoints land on the oldest state.
 func (s *Store) planLocked(idx int) []*planned {
 	byKey := map[string]*planned{}
+	// Membership sets beside the ordered lists: a manifest may list many names, and
+	// a search of the growing list for each would be quadratic.
+	type seenSets struct{ agents, dirs map[string]bool }
+	seen := map[*planned]*seenSets{}
 	var order []*planned
 	for _, cp := range s.cps[idx:] {
 		for _, r := range cp.files {
@@ -1091,14 +1109,18 @@ func (s *Store) planLocked(idx int) []*planned {
 				p = &planned{key: r.Path, want: r.Pre}
 				byKey[r.Path] = p
 				order = append(order, p)
+				seen[p] = &seenSets{agents: map[string]bool{}, dirs: map[string]bool{}}
 			}
+			ss := seen[p]
 			for _, a := range r.Agents {
-				if !slices.Contains(p.agents, a) {
+				if !ss.agents[a] {
+					ss.agents[a] = true
 					p.agents = append(p.agents, a)
 				}
 			}
 			for _, d := range r.NewDirs {
-				if !slices.Contains(p.newDirs, d) {
+				if !ss.dirs[d] {
+					ss.dirs[d] = true
 					p.newDirs = append(p.newDirs, d)
 				}
 			}

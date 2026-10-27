@@ -2,6 +2,7 @@ package gitx
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -82,8 +83,12 @@ func (b *batch) snapshotTree(ctx context.Context) (string, error) {
 // reads the content. A copy that has the time of the copying says no entry is
 // racy, and a rewrite of that kind, made after the index was written, is missed by
 // the snapshot.
+//
+// Only a regular file is copied, and only as many bytes as it had when opened: a
+// repository whose index is a device or a FIFO cannot make the copy endless or
+// make it wait.
 func copyIndex(dst *os.File, src string) (time.Time, error) {
-	f, err := os.Open(src)
+	f, err := openRegular(src, false)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return time.Time{}, os.Remove(dst.Name()) // let git create it: an empty file is an invalid index
@@ -95,9 +100,50 @@ func copyIndex(dst *os.File, src string) (time.Time, error) {
 	if err != nil {
 		return time.Time{}, err
 	}
-	_, err = io.Copy(dst, f)
+	_, err = io.CopyN(dst, f, fi.Size())
 	return fi.ModTime(), err
 }
+
+// openRegular opens path for reading without waiting on a FIFO and fails unless
+// what it opened is a regular file. With noFollow, a symlink at the end of the
+// path is refused rather than followed.
+func openRegular(path string, noFollow bool) (*os.File, error) {
+	flags := os.O_RDONLY | noWaitFlag
+	if noFollow {
+		flags |= noFollowFlag
+	}
+	if noWaitFlag == 0 || (noFollow && noFollowFlag == 0) {
+		var fi os.FileInfo
+		var err error
+		if noFollow {
+			fi, err = os.Lstat(path)
+		} else {
+			fi, err = os.Stat(path)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if !fi.Mode().IsRegular() {
+			return nil, &os.PathError{Op: "open", Path: path, Err: errNotRegular}
+		}
+	}
+	f, err := os.OpenFile(path, flags, 0)
+	if err != nil {
+		return nil, err
+	}
+	fi, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		f.Close()
+		return nil, &os.PathError{Op: "open", Path: path, Err: errNotRegular}
+	}
+	return f, nil
+}
+
+var errNotRegular = errors.New("not a regular file")
 
 // gitPath resolves a path inside this repository's git directory, honoring
 // per-worktree files (index, HEAD) and the shared common directory.

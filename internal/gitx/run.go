@@ -116,6 +116,18 @@ func newSettings(opts []Option) (settings, error) {
 			p = abs
 		}
 		s.git = p
+	} else if !filepath.IsAbs(s.git) {
+		// A relative path would be resolved again in each command's working
+		// directory (a repository the harness does not trust), so it is pinned once,
+		// here, to the binary it names now.
+		p, err := exec.LookPath(s.git)
+		if err == nil {
+			p, err = filepath.Abs(p)
+		}
+		if err != nil {
+			return s, &Error{Kind: KindNoGit, Op: "lookup", ExitCode: -1, Detail: "git executable " + s.git + " not found", Err: err}
+		}
+		s.git = p
 	}
 	if err := checkVersion(s.git); err != nil {
 		return s, err
@@ -140,6 +152,9 @@ func hardenedConfig() []string {
 		// (arbitrary command) URLs and ssh/proxy helpers.
 		"protocol.ext.allow=never",
 		"protocol.allow=never",
+		// core.alternateRefsCommand is a shell command git runs while it walks the
+		// references of an alternate object store; "true" lists none.
+		"core.alternateRefsCommand=true",
 		"credential.helper=",
 		"core.askPass=",
 		"core.sshCommand=",
@@ -232,6 +247,11 @@ func (s *settings) baseEnv() []string {
 		"GIT_EDITOR=:", "GIT_SEQUENCE_EDITOR=:",
 		"GIT_PAGER=cat", "GIT_MERGE_AUTOEDIT=no",
 		"GIT_NO_REPLACE_OBJECTS=1",
+		// An empty allow-list outranks every protocol.<name>.allow a repository sets,
+		// so no transport (and no upload-pack command it would run) can start, and a
+		// read of a missing object never begins a lazy fetch from a promisor remote.
+		"GIT_ALLOW_PROTOCOL=",
+		"GIT_NO_LAZY_FETCH=1",
 	)
 	if s.hermetic {
 		env = append(env, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)

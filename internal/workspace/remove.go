@@ -95,7 +95,10 @@ func (m *Manager) deleteTree(ctx context.Context, p, admin string, force bool) e
 		if gfi, err := os.Lstat(gitFile); err == nil && gfi.IsDir() {
 			_ = os.RemoveAll(gitFile) // a replacement repository planted by the agent
 		}
-		_ = os.WriteFile(gitFile, []byte("gitdir: "+admin+"\n"), 0o644)
+		// The pointer is written to a new file and renamed over .git: writing .git in
+		// place would follow a symlink an agent left there and overwrite whatever it
+		// names, while a rename replaces the link itself.
+		_ = replaceGitPointer(p, gitFile, admin)
 	}
 	err := m.st.base.WorktreeRemove(ctx, p, force)
 	if err == nil || !force {
@@ -235,4 +238,25 @@ func (m *Manager) removeLocked(ctx context.Context, t *Tree, force bool) error {
 	// Observers are told with no lock of ours held.
 	m.emit(EventRemove, t.Agent, "", map[string]any{"path": t.Path, "branch": t.Branch, "force": force})
 	return errors.Join(errs...)
+}
+
+// replaceGitPointer makes gitFile, inside the tree directory dir, a regular file
+// pointing at admin, by renaming a new file over whatever entry is there.
+func replaceGitPointer(dir, gitFile, admin string) error {
+	tmp, err := os.CreateTemp(dir, ".git-pointer-*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	_, werr := tmp.WriteString("gitdir: " + admin + "\n")
+	if cerr := tmp.Close(); werr == nil {
+		werr = cerr
+	}
+	if werr == nil {
+		werr = os.Rename(name, gitFile)
+	}
+	if werr != nil {
+		_ = os.Remove(name)
+	}
+	return werr
 }

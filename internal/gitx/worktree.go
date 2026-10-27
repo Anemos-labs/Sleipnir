@@ -99,10 +99,13 @@ func (r *Repo) WorktreeAdd(ctx context.Context, o WorktreeAddOptions) error {
 	if err := validateRev("worktree add", o.Commit); err != nil {
 		return err
 	}
-	args := []string{"worktree", "add", "--quiet"}
-	if o.NoCheckout {
-		args = append(args, "--no-checkout")
-	}
+	// The files are never checked out by `worktree add` itself: it checks them out
+	// in a child git that reads the new worktree's configuration (an includeIf on
+	// its directory, its config.worktree), which no scan made from here has seen,
+	// so a filter defined only there would run. The tree is created empty and then
+	// populated through a handle opened on it (populate), whose scan sees what the
+	// checkout sees.
+	args := []string{"worktree", "add", "--quiet", "--no-checkout"}
 	if o.Force {
 		args = append(args, "--force")
 	}
@@ -133,6 +136,12 @@ func (r *Repo) WorktreeAdd(ctx context.Context, o WorktreeAddOptions) error {
 			}
 			return err
 		}
+		if err := r.populate(ctx, o); err != nil {
+			if k := KindOf(err); k != KindCanceled && k != KindTimeout {
+				r.dropNewBranch(ctx, o.Branch, tip)
+			}
+			return err
+		}
 		return nil
 	case o.Detach:
 		args = append(args, "--detach")
@@ -140,8 +149,35 @@ func (r *Repo) WorktreeAdd(ctx context.Context, o WorktreeAddOptions) error {
 		return newErr(KindInvalid, "worktree add", "either Branch or Detach is required")
 	}
 	args = append(args, "--", o.Path, o.Commit)
-	_, err := r.run(ctx, call{args: args, mutating: true, timeout: 10 * r.s.timeout})
-	return err
+	if _, err := r.run(ctx, call{args: args, mutating: true, timeout: 10 * r.s.timeout}); err != nil {
+		return err
+	}
+	return r.populate(ctx, o)
+}
+
+// populate checks out the files of a worktree WorktreeAdd has just created empty,
+// unless o.NoCheckout asked for an empty tree. The checkout runs through a handle
+// on the new worktree, so the drivers it neutralizes are those of the
+// configuration the new worktree reads. A worktree that cannot be populated is
+// removed again, as `worktree add` removes one whose checkout failed (not after a
+// cancellation or a timeout, which leave the caller to clean up).
+func (r *Repo) populate(ctx context.Context, o WorktreeAddOptions) error {
+	if o.NoCheckout {
+		return nil
+	}
+	w, err := r.Reopen(ctx, o.Path)
+	if err == nil {
+		err = w.ResetHard(ctx, "HEAD")
+	}
+	if err != nil {
+		if k := KindOf(err); k != KindCanceled && k != KindTimeout {
+			cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
+			defer cancel()
+			_, _ = r.run(cctx, call{args: []string{"worktree", "remove", "--force", "--", o.Path}, mutating: true})
+		}
+		return err
+	}
+	return nil
 }
 
 // dropNewBranch takes back a branch WorktreeAdd made, at tip, for a worktree that could not be made. It
@@ -162,12 +198,45 @@ func (r *Repo) WorktreeRemove(ctx context.Context, path string, force bool) erro
 		return newErr(KindInvalid, "worktree remove", "path %q must be absolute", path)
 	}
 	args := []string{"worktree", "remove"}
+	var ov []kv
 	if force {
 		args = append(args, "--force")
+	} else {
+		// Without --force git checks that the tree is clean with a status run inside
+		// it, and that status reads the worktree's own configuration. Its drivers are
+		// neutralized too: the overrides travel in the environment, which the child
+		// inherits.
+		base, err := r.s.driverOverrides(ctx, r.runDir(), r.pin(), r.gitDir)
+		if err != nil {
+			return err
+		}
+		ov = append(ov, base...)
+		if w, err := r.Reopen(ctx, path); err == nil && !w.bare {
+			own, err := r.s.driverOverrides(ctx, w.runDir(), w.pin(), w.gitDir)
+			if err != nil {
+				return err
+			}
+			ov = mergeOverrides(ov, own)
+		}
 	}
 	args = append(args, "--", path)
-	_, err := r.run(ctx, call{args: args, mutating: true})
+	_, err := r.run(ctx, call{args: args, mutating: true, overrides: ov})
 	return err
+}
+
+// mergeOverrides returns a followed by the entries of b whose keys a lacks.
+func mergeOverrides(a, b []kv) []kv {
+	seen := make(map[string]bool, len(a))
+	for _, o := range a {
+		seen[o.k] = true
+	}
+	for _, o := range b {
+		if !seen[o.k] {
+			seen[o.k] = true
+			a = append(a, o)
+		}
+	}
+	return a
 }
 
 // ValidateBranchName checks a branch name against git's ref rules plus our own

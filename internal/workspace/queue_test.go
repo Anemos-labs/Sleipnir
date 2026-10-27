@@ -1567,10 +1567,29 @@ func TestWhatAnAgentCommitsItselfMeetsTheSameGuards(t *testing.T) {
 	if r.Outcome != OutcomeRejected || !strings.Contains(r.Reason, "too many to check") {
 		t.Fatalf("a change with more files than can be examined: %+v", r)
 	}
-	// with the size check off, only the count limit is moot: nothing to examine
+	// with the size check off the gitlink check still needs every entry, so the
+	// change is still refused unexamined
 	e.m.MaxFileBytes = -1
-	if r := e.submit(c, "c again"); !r.Merged() {
+	if r := e.submit(c, "c again"); r.Outcome != OutcomeRejected || !strings.Contains(r.Reason, "nested repositories") {
 		t.Fatalf("with the size limit disabled: %+v", r)
+	}
+}
+
+// A blob one commit adds and a later commit deletes is in the history a merge
+// keeps, although the final tree does not show it.
+func TestOversizedBlobInAnIntermediateCommitIsRefused(t *testing.T) {
+	e := newQueueEnv(t, QueueOptions{})
+	e.m.MaxFileBytes = 2000
+	a := e.agent("a")
+	edit(t, a, "dump.bin", strings.Repeat("x", 5000))
+	rawGit(t, a.Path, "add", "-A")
+	rawGit(t, a.Path, "commit", "-qm", "add a dump")
+	must(t, os.Remove(filepath.Join(a.Path, "dump.bin")))
+	edit(t, a, "ok.txt", "ok\n")
+	rawGit(t, a.Path, "add", "-A")
+	rawGit(t, a.Path, "commit", "-qm", "remove it again")
+	if r := e.submit(a, "a"); r.Outcome != OutcomeRejected || !strings.Contains(r.Reason, "dump.bin") {
+		t.Fatalf("an oversized blob in an intermediate commit: %+v", r)
 	}
 }
 
