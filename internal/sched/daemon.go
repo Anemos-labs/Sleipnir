@@ -75,9 +75,13 @@ func Args(j Job) []string {
 	if j.Dir != "" {
 		args = append(args, "--cwd", j.Dir)
 	}
-	if j.Mode != "" {
-		args = append(args, "--mode", j.Mode)
+	// The mode is always given: a run with none and nobody to answer it would choose bypass for itself, and a job is scheduled
+	// under the policy it says (empty is the default mode).
+	mode := j.Mode
+	if mode == "" {
+		mode = "default"
 	}
+	args = append(args, "--mode", mode)
 	if j.BudgetUSD > 0 {
 		args = append(args, "--budget-usd", fmt.Sprint(j.BudgetUSD))
 	}

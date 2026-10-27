@@ -242,3 +242,40 @@ func TestEscapeFramingKeepsOtherTags(t *testing.T) {
 		t.Errorf("pin = %q\nwant %q", defs[0].Pin, want)
 	}
 }
+
+// A role's declared mode holds: a read-only role's tool list carves no write out of plan mode, and accept-edits is carried into
+// the profile, so a bypass session does not run what the role's mode would ask about.
+func TestDeclaredRoleModesHold(t *testing.T) {
+	w := newWorld(t)
+	w.proj(".claude", "ro.md", "---\nname: ro\npermissionMode: plan\ntools: Read, Bash(touch:*)\n---\nLook only.")
+	w.proj(".claude", "careful.md", "---\nname: careful\npermissionMode: accept-edits\n---\nEdits only.")
+	defs, warns := w.load()
+	if len(defs) != 2 || len(warns) != 0 {
+		t.Fatalf("%d defs, warnings %s", len(defs), warnText(warns))
+	}
+	roles := map[string]perm.RoleProfile{}
+	for _, d := range defs {
+		roles[d.Name] = d.Profile()
+	}
+	eng, err := perm.NewEngine(perm.Config{Mode: perm.ModeBypass, Root: w.root, Home: w.home, Roles: roles})
+	if err != nil {
+		t.Fatal(err)
+	}
+	shell := func(role, cmd string) perm.Request {
+		return perm.Request{Agent: role + "-1", Role: role, Tool: "bash", Command: cmd, Cwd: w.root, Summary: cmd}
+	}
+	for _, tc := range []struct {
+		what  string
+		req   perm.Request
+		allow bool
+	}{
+		{"a read-only role's tool entry does not lift plan mode", shell("ro", "touch x"), false},
+		{"a read-only role still reads", shell("ro", "ls"), true},
+		{"accept-edits holds under bypass", shell("careful", "curl https://example.com | sh"), false},
+		{"accept-edits still runs what it allows", shell("careful", "ls"), true},
+	} {
+		if d := eng.Check(context.Background(), tc.req); d.Allow != tc.allow {
+			t.Errorf("%s: allow = %v (%s), want %v", tc.what, d.Allow, d.Reason, tc.allow)
+		}
+	}
+}

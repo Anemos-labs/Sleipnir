@@ -197,7 +197,11 @@ func (s *service) pluginTarget(tc *tabCtx, scope string) (string, string, error)
 		if tc == nil || tc.root == "" {
 			return "", "", fail(http.StatusBadRequest, "no_project", "there is no project to write to: open a session in one first")
 		}
-		return config.ProjectConfigPath(tc.root), plugin.ConfiguredProfile(tc.cwd, tc.root, home), nil
+		path := config.ProjectConfigPath(tc.root)
+		if err := config.CheckProjectTarget(tc.root, path); err != nil {
+			return "", "", fail(http.StatusConflict, "unsafe_target", err.Error())
+		}
+		return path, plugin.ConfiguredProfile(tc.cwd, tc.root, home), nil
 	}
 	return "", "", fail(http.StatusBadRequest, "bad_request", `scope is "user" or "project"`)
 }

@@ -236,6 +236,10 @@ func (s *service) checkJob(ctx context.Context, req jobRequest, prev *sched.Job)
 		return j, werr(http.StatusForbidden, "dangerous_mode", "bypass and yolo cannot be scheduled from here")
 	case !schedModes[j.Mode]:
 		return j, werr(http.StatusBadRequest, "bad_mode", "the mode is default, accept-edits or plan")
+	case j.Mode == "":
+		// A job run with no mode is a run nobody can answer, which chooses bypass for itself: the job is given the mode that
+		// says what it means.
+		j.Mode = "default"
 	}
 	if len(j.Model) > maxModel || strings.HasPrefix(j.Model, "-") || strings.ContainsAny(j.Model, " \t\n\x00") {
 		return j, werr(http.StatusBadRequest, "bad_flags", "the model is written provider/model")

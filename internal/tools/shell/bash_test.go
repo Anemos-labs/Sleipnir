@@ -1474,3 +1474,16 @@ func TestEndAgentEndsAGroupThatHasNotJoinedLingeringYet(t *testing.T) {
 		}
 	}
 }
+
+// The EXIT trap writes only to its own temp file, whatever the command assigns.
+func TestCwdTrapDestinationCannotBeRedirected(t *testing.T) {
+	h := newHarness(t)
+	victim := filepath.Join(h.root, "victim")
+	if err := os.WriteFile(victim, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.bash(h.env("a"), "__sleipnir_cwd=victim; cwdFile=victim; true")
+	if b, _ := os.ReadFile(victim); string(b) != "keep" {
+		t.Fatalf("victim = %q, want it untouched", b)
+	}
+}

@@ -469,8 +469,8 @@ func buildChat(ref ModelRef, p config.Provider, base, key string, o ProviderOpti
 // planEndpoint is where a ChatGPT sign-in is sent: the provider's own address, and nowhere an environment variable or a project file
 // names, because the token that goes there is the person's plan.
 func planEndpoint(p config.Provider) (string, error) {
-	if p.BaseURLFromProject {
-		return "", errors.New("a project file cannot say where a ChatGPT sign-in is sent")
+	if p.BaseURLFromProject || p.AuthFromProject {
+		return "", errors.New("a project file cannot say where a ChatGPT sign-in is sent, nor choose to send it")
 	}
 	if p.BaseURL == "" {
 		return "", errors.New("the ChatGPT provider has no base_url")

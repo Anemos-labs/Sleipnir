@@ -16,8 +16,11 @@ var sensitivePaths = [][]string{
 	{"providers", "*", "api_key_env"},        // chooses which environment variable is sent
 	{"providers", "*", "headers"},            // can add credentials or route requests
 	{"providers", "*", "options"},            // provider-specific behaviour, may hold URLs
+	{"providers", "*", "auth"},               // chooses which credential is sent (a ChatGPT sign-in)
+	{"providers", "*", "dialect"},            // chooses how, and so which credential store, a request is signed
 	{"permissions", "mode"},                  // "bypass" and "yolo" turn off the prompts
 	{"permissions", "allow"},                 // pre-approves actions
+	{"permissions", "manager_approves"},      // the older spelling of plugins.enabled.manager-approves
 	{"permissions", "manager_answers_after"}, // lets the manager answer questions the person was meant to
 	{"permissions", "manager_answers_up_to"},
 	{"permissions", "roles", "*", "mode"},
@@ -26,16 +29,32 @@ var sensitivePaths = [][]string{
 	{"mcp"},                        // starts servers
 	{"tools", "web_allow_private"}, // reaches internal networks
 	{"tools", "web_allow_hosts"},
-	{"swarm", "budget_usd"},     // a repository could lift the built-in cap on what a swarm may spend
-	{"plugins", "enabled", "*"}, // turning a plugin on (an installed one runs code); turning one off is not risky (harmlessValue)
+	{"swarm", "budget_usd"},      // a repository could lift the built-in cap on what a swarm may spend
+	{"plugins", "enabled", "*"},  // turning a plugin on (an installed one runs code); turning one off is not risky (harmlessValue)
+	{"plugins", "settings", "*"}, // a plugin's settings are written into the commands of its hooks and servers
+	{"plugins", "profile"},       // a profile turns plugins off, the user's hooks among them (harmlessValue)
 }
 
+// hooksPlugin is the plugin that runs the user's hooks: a repository that turns it off turns off the user's own guards.
+const hooksPlugin = "hooks"
+
+// harmlessProfiles are the profiles that leave the hooks on (plugin.Profiles): only these may a project file choose untrusted.
+var harmlessProfiles = map[string]bool{"standard": true, "team": true, "headless": true}
+
 // harmlessValue reports whether the value v at a sensitive path segs is in fact
-// harmless: a project file may always turn a plugin off.
+// harmless: a project file may always turn a plugin off, except the one that runs
+// the user's hooks, and may turn off the manager's approvals.
 func harmlessValue(segs []string, v any) bool {
-	if len(segs) == 3 && segs[0] == "plugins" && segs[1] == "enabled" {
+	switch {
+	case len(segs) == 3 && segs[0] == "plugins" && segs[1] == "enabled":
+		b, ok := v.(bool)
+		return ok && !b && segs[2] != hooksPlugin
+	case len(segs) == 2 && segs[0] == "permissions" && segs[1] == "manager_approves":
 		b, ok := v.(bool)
 		return ok && !b
+	case len(segs) == 2 && segs[0] == "plugins" && segs[1] == "profile":
+		p, ok := v.(string)
+		return ok && (p == "" || harmlessProfiles[p])
 	}
 	return false
 }

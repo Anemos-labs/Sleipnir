@@ -110,8 +110,8 @@ func (Edit) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	if r := k.decode(&a); r != nil {
 		return r, nil
 	}
-	if a.Path == "" {
-		a.Path = a.FilePath
+	if r := k.oneOf(&a.Path, a.FilePath); r != nil {
+		return r, nil
 	}
 	specs, msg := a.specs()
 	if msg != "" {
@@ -250,8 +250,19 @@ func applyOne(cur string, sp editSpec, disp string) (string, int, string) {
 	if len(starts) > 1 && !sp.all {
 		return "", 0, explainAmbiguous(text, starts, strings.Count(text, old), disp)
 	}
+	// The result is sized before any of it is built: a replace-all, or a chain
+	// of them, must not grow the text past what the tools ever hold in memory.
+	count := 1
+	if sp.all {
+		count = strings.Count(text, old)
+	}
+	grow := int64(len(repl)+strings.Count(repl, "\n")) - int64(len(old))
+	if size := int64(len(cur)) + int64(count)*grow; size > maxFileBytes {
+		return "", 0, fmt.Sprintf("the edit would make %s %s, over the %s limit; nothing was written", disp, humanBytes(size), humanBytes(maxFileBytes))
+	}
 	var spans []span
 	if sp.all {
+		spans = make([]span, 0, count)
 		for i := 0; ; {
 			j := strings.Index(text[i:], old)
 			if j < 0 {

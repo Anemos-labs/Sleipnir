@@ -1,6 +1,10 @@
 package mdfile
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
 
 // Warning reports something the loaders noticed while discovering definitions:
 // a file that could not be loaded, a name collision, a value that was
@@ -24,10 +28,10 @@ type Warning struct {
 func (w Warning) String() string {
 	s := w.Msg
 	if w.Name != "" {
-		s = fmt.Sprintf("[%s] %s", w.Name, s)
+		s = fmt.Sprintf("[%s] %s", oneLine(w.Name), s)
 	}
 	if w.Path != "" {
-		s = w.Path + ": " + s
+		s = oneLine(w.Path) + ": " + s
 	}
 	if w.Skipped {
 		s += " (skipped)"
@@ -37,10 +41,19 @@ func (w Warning) String() string {
 
 // Warnf builds an advisory Warning.
 func Warnf(path, name, format string, args ...any) Warning {
-	return Warning{Path: path, Name: name, Msg: fmt.Sprintf(format, args...)}
+	return Warning{Path: oneLine(path), Name: oneLine(name), Msg: fmt.Sprintf(format, args...)}
 }
 
 // Skipf builds a Warning for a definition that was not loaded.
 func Skipf(path, name, format string, args ...any) Warning {
-	return Warning{Path: path, Name: name, Msg: fmt.Sprintf(format, args...), Skipped: true}
+	return Warning{Path: oneLine(path), Name: oneLine(name), Msg: fmt.Sprintf(format, args...), Skipped: true}
+}
+
+// oneLine quotes a path or name that holds a line break, so a file name cannot start a line of its own in a warning: a directory
+// named "x\nwarning: ..." shows as the quoted string it is.
+func oneLine(s string) string {
+	if strings.ContainsAny(s, "\n\r\v\f\u0085\u2028\u2029") {
+		return strconv.Quote(s)
+	}
+	return s
 }

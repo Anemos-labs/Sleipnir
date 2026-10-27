@@ -297,7 +297,7 @@ func TestSec_S24_ResultsOverBudgetSpillBehindARecallHandle(t *testing.T) {
 	var first, second []string
 	var recalled string
 	handleRe := regexp.MustCompile(`out_[0-9a-f]{16,}`)
-	r := newLimRig(t, func(c *agent.Config) { c.MaxTurnResultChars = 10_000 }, fts, func(c *mock.Call) mock.Reply {
+	r := newLimRig(t, func(c *agent.Config) { c.MaxTurnResultChars, c.Perm = 10_000, perm.AllowAll{} }, fts, func(c *mock.Call) mock.Reply {
 		mu.Lock()
 		defer mu.Unlock()
 		tm := toolMessages(c)

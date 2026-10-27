@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -399,6 +400,22 @@ type NetOptions struct {
 	dial   func(ctx context.Context, network, address string) (net.Conn, error)
 }
 
+// proxyAddr is the host:port net/http dials for a proxy URL.
+func proxyAddr(u *url.URL) string {
+	port := u.Port()
+	if port == "" {
+		switch u.Scheme {
+		case "https":
+			port = "443"
+		case "socks5", "socks5h":
+			port = "1080"
+		default:
+			port = "80"
+		}
+	}
+	return net.JoinHostPort(u.Hostname(), port)
+}
+
 // newHTTPClient builds the client of one HTTP transport. It never follows a
 // redirect to another origin: net/http strips Authorization on cross-domain
 // redirects but forwards every other header, which is exactly where an
@@ -423,12 +440,28 @@ func newHTTPClient(n NetOptions) *http.Client {
 	}
 	switch {
 	case n.Proxy != nil:
-		tr.DialContext = g.dial
+		// Connections to a proxy the selector chose are dialed plainly; a request it sends direct is dialed under the address
+		// policy, the caller's Dial when there is one, as it would be without a proxy.
+		policy := g.dialContext
+		if n.Dial != nil {
+			policy = n.Dial
+		}
+		var proxies sync.Map // host:port of each proxy the selector returned
+		tr.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+			if _, ok := proxies.Load(address); ok {
+				return g.dial(ctx, network, address)
+			}
+			return policy(ctx, network, address)
+		}
 		tr.Proxy = func(r *http.Request) (*url.URL, error) {
 			if err := g.vetOnly(r.Context(), r.URL.Hostname()); err != nil {
 				return nil, err
 			}
-			return n.Proxy(r)
+			u, err := n.Proxy(r)
+			if u != nil {
+				proxies.Store(proxyAddr(u), true)
+			}
+			return u, err
 		}
 	case n.Dial != nil:
 		tr.DialContext = n.Dial

@@ -201,6 +201,7 @@ func TestPayloadFilePathAliasAndSessionDefaults(t *testing.T) {
 		{"edit", `{"path": "src/a.go", "old_string": "a", "new_string": "b"}`, true},
 		{"read", `{"path": "src/a.go"}`, true},
 		{"read", `{"file_path": "src/a.go"}`, true},
+		{"edit", `{"path": "src/a.go", "file_path": "elsewhere.go"}`, true},
 		{"grep", `{"pattern": "x", "path": "src"}`, false},
 		{"bash", `{"command": "ls"}`, false},
 	} {

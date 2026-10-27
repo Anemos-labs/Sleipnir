@@ -350,6 +350,7 @@ func TerminalPrompter(in io.Reader, out io.Writer) perm.Prompter {
 // Questions are serialised as TerminalPrompter's are.
 func LinePrompter(answer func(ctx context.Context, show func()) (string, error), out io.Writer) perm.Prompter {
 	var mu sync.Mutex
+	out = termSafe{out} // the summary carries what the model chose: no escape sequence of it reaches the terminal
 	return func(ctx context.Context, r perm.Request) perm.Decision {
 		mu.Lock()
 		defer mu.Unlock()
