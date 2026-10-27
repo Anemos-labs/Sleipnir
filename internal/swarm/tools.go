@@ -354,7 +354,13 @@ func (t *taskTool) update(c *tools.Call, in taskIn) *tools.Result {
 	if in.Text != "" {
 		if c.Env.Role == "manager" {
 			if task, ok := s.Board.Snapshot().Task(in.ID); ok && task.Owner != me {
-				// update's text is the owner's progress line; the manager's own changes have their actions
+				// update's text is the owner's progress line; the manager's own changes have their actions. When files came with it
+				// the scope has changed by now, and an error would read as if it had not: in a team run the manager widened two pools'
+				// scopes with update files and a reason, read the error as a refusal, and made the same change again with revise, which
+				// found nothing to widen, stopped both pools' workers and put the pools back to planning.
+				if len(in.Files) > 0 {
+					return text("%s's scope set (%s); its workers keep going. The text was not recorded: it is the progress line of %s's owner, %s; to tell %s something, mail it", in.ID, strings.Join(task.Files, ", "), in.ID, task.Owner, task.Owner)
+				}
 				return tools.Errorf("update's text is the progress line of %s's owner, %s. To change the task: files= widens or sets its scope (with update, or revise with only files), revise with a description changes its requirements; to tell %s something, mail it", in.ID, task.Owner, task.Owner)
 			}
 		}

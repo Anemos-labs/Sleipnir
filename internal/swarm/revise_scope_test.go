@@ -120,3 +120,43 @@ func TestTheManagersTextUpdateSaysWhatToDoInstead(t *testing.T) {
 		t.Fatalf("the manager's text update: %q", res.Text)
 	}
 }
+
+// A manager's update with files and a reason widens the scope and says so, and a revise that repeats the scope the task already
+// has stops nobody. In a team run the update's reason made it answer with an error after the scope had changed; the manager made
+// the same change with revise, which found nothing to widen, stopped both pools' workers and put the pools back to planning.
+func TestRepeatingAWideningStopsNobody(t *testing.T) {
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"backend", "backend"}}, idleModel)
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "backend", Files: []string{"app/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	parent := r.sw.Board.Snapshot().Tasks[0]
+	lead := parent.Pool.Members[0]
+	if err := r.sw.Board.poolUpdate("mgr", parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	child, err := r.sw.Board.CreateTask(lead, TaskSpec{Parent: parent.ID, Title: "api", Role: "backend", Files: []string{"app/api.py"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.sw.Board.assignTask(assignReq{by: lead, agent: lead, id: child.ID}); err != nil {
+		t.Fatal(err)
+	}
+	files := []string{"app/**", "load/main.go"}
+	res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "update", "id": parent.ID, "files": files, "text": "the child needs load/main.go"})
+	if res.IsError || !strings.Contains(res.Text, "scope set (app/**, load/main.go); its workers keep going") || !strings.Contains(res.Text, "not recorded") {
+		t.Fatalf("update: %q", res.Text)
+	}
+	res = r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "revise", "id": parent.ID, "files": files, "text": "the child needs load/main.go"})
+	if res.IsError || !strings.Contains(res.Text, "nothing changed and its workers keep going") {
+		t.Fatalf("revise: %q", res.Text)
+	}
+	sn := r.sw.Board.Snapshot()
+	p, _ := sn.Task(parent.ID)
+	c, _ := sn.Task(child.ID)
+	if p.Status != StatusDoing || p.Pool.Phase != "executing" || !slices.Equal(p.Files, files) {
+		t.Fatalf("parent: %s %s %v", p.Status, p.Pool.Phase, p.Files)
+	}
+	if c.Status != StatusDoing || c.Owner != lead {
+		t.Fatalf("child: %s owner=%s", c.Status, c.Owner)
+	}
+}

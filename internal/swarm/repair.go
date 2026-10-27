@@ -394,7 +394,10 @@ func (t *taskTool) widenInPlace(c *tools.Call, in taskIn, task Task) *tools.Resu
 		}
 	}
 	if added == 0 {
-		return nil
+		// the same scope again: as a revise it would change nothing but stop the workers. In a team run it came after an update
+		// had already widened the scope, and put two pools back to planning.
+		return text("%s's scope already is %s; nothing changed and its workers keep going. To change its requirements, revise with a description; to tell its owner something, mail it.",
+			in.ID, strings.Join(task.Files, ", "))
 	}
 	// a planning task, or one a read-only role's agent holds, is held to the read-only check, as when it was assigned (a task's role
 	// is only the one suggested for it; its owner is who works on it), judged on the board the scope change is made against
