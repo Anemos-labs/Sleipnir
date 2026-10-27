@@ -468,6 +468,10 @@ func TestAFailedPoolLeaderIsRestartedBeforeTheManagerIsAsked(t *testing.T) {
 	}
 	rvWait(t, "the last failed run", func() bool { _, f := ends(r, lead); return f == maxAutoRestarts+1 && r.idle(lead) })
 	rvWait(t, "the manager to be asked", func() bool { return harnessMail(r, "Pool leader stopped on "+parent.ID)["mgr"] == 1 })
+	// The harness does not restart the leader again, so the line names the way past a leader whose model keeps failing.
+	if harnessMail(r, "excuse it (pool action=excuse id="+parent.ID+" member="+lead+" text=<why>) and the next member leads.")["mgr"] != 1 {
+		t.Error("the manager's line does not say it may excuse the leader")
+	}
 	// The line of what was tried is a mail of its own, sent when the stop is settled, after the pool leader's: it is waited for, not
 	// assumed to be there already (on a loaded CI runner it was not, and the test failed on main).
 	rvWait(t, "the manager to be told what was tried", func() bool { return mailSent(r, "The harness restarted "+lead+" automatically twice") == 1 })

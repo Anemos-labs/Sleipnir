@@ -1225,7 +1225,13 @@ func (s *Swarm) settleStopped(m *member, tasks map[string]uint64, kind stopKind,
 	for _, id := range sortedKeys(tasks) {
 		if task, ok := s.Board.Snapshot().Task(id); ok && task.Pool != nil {
 			if !quiet {
-				s.notify(s.ManagerID(), "request", "Pool leader stopped on "+id+": "+why+". Resume this pool with its existing members.")
+				line := "Pool leader stopped on " + id + ": " + why + ". Resume this pool with its existing members."
+				if exhausted && len(task.Pool.Members) > 1 {
+					// The harness does not restart the leader on it again: a leader whose model keeps failing holds the pool until the
+					// manager excuses it, and the next member leads.
+					line = fmt.Sprintf("Pool leader stopped on %s: %s. The harness does not restart %s on it again: resume this pool with its existing members, or, if the failure is %s's own (its model or provider), excuse it (pool action=excuse id=%s member=%s text=<why>) and the next member leads.", id, why, m.id, m.id, id, m.id)
+				}
+				s.notify(s.ManagerID(), "request", line)
 			}
 			continue
 		}

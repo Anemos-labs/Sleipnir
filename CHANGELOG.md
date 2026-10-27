@@ -7,6 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- When a pool leader's automatic restarts run out in a pool with more
+  than one member, the manager's line names the way past a leader whose
+  model keeps failing: excuse it with `pool action=excuse`, and the next
+  member leads. It used to say only "Resume this pool with its existing
+  members".
 - On a team with a reviewer slot, a manager's `wait` result ends, while
   implementation submissions wait in review, with a line that names them
   and says to decide each from its evidence (`T1, T2 in review: decide

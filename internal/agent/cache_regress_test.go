@@ -278,6 +278,7 @@ type cxOpts struct {
 	gate     agent.Gate
 	hotMode  kv.HotMode
 	sink     agent.Sink // what the person is told; nil means nothing
+	blocking bool       // Config.BlockingCompaction: each fold finishes before the next request
 }
 
 func cxAgent(t *testing.T, o cxOpts) (*agent.Agent, *events.MemLog) {
@@ -320,6 +321,7 @@ func cxAgent(t *testing.T, o cxOpts) (*agent.Agent, *events.MemLog) {
 		Params: core.Params{MaxTokens: 512, Thinking: "adaptive"},
 		Events: emitter, Planner: o.planner, NoCompaction: o.noCompct, SessionID: "review",
 		Hot: o.hot, AffinityShards: o.shards, MaxSteps: o.steps, Gate: o.gate, HotMode: o.hotMode, Sink: o.sink,
+		BlockingCompaction: o.blocking,
 	}
 	if o.roleText != "" {
 		cfg.RoleL = kv.NewLayer("role:"+o.role, kv.KindRole, 1, []kv.Segment{{Key: o.role, Text: o.roleText, Vol: kv.VolEpoch}})
@@ -1273,13 +1275,15 @@ func TestCacheEcon_ColdAgentAboveTheHardLimitStillFolds(t *testing.T) {
 	}
 	pl := tokenPlanner()
 	pl.SoftThreadTokens, pl.HardThreadTokens, pl.MinThreadTokens = 1500, 3000, 800
-	a, log := cxAgent(t, cxOpts{prov: prov, planner: pl, now: clk.Now, steps: 130, toolOut: func(json.RawMessage) *tools.Result {
+	// Blocking compaction: the bound below is on the policy (a cold agent above the hard limit folds), not on how soon a
+	// background job is scheduled. In the background the run outpaced its job on a slow runner (Windows CI): the patch was
+	// ready several steps late and the thread ended ~4.7k tokens against the 4.5k bound.
+	a, log := cxAgent(t, cxOpts{prov: prov, planner: pl, now: clk.Now, steps: 130, blocking: true, toolOut: func(json.RawMessage) *tools.Result {
 		return &tools.Result{Text: strings.Repeat("ok line\n", 25)}
 	}})
 	if _, err := a.Run(context.Background(), "do the work"); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(50 * time.Millisecond)
 	thread := a.Thread().Snapshot().Tokens(core.NewBytesEstimator())
 	commits := cxCount(log, events.TypeCompactCommit, "")
 	forks := cxCount(log, events.TypeCompactPatch, `"stage":"request"`)
