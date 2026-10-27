@@ -372,9 +372,12 @@ func (r *Repo) checkNoMarkers(ctx context.Context) error {
 		if err != nil {
 			continue
 		}
-		f, err := os.Open(p)
+		// Not a FIFO (the open would wait for a writer forever, holding the tree's
+		// lock) and not through a symlink: a link's markers are in its target text,
+		// which git records, not in what it points at.
+		f, err := openRegular(p, true)
 		if err != nil {
-			continue // deleted: a valid resolution
+			continue // deleted (a valid resolution), or not a file that can hold markers
 		}
 		data, _ := io.ReadAll(io.LimitReader(f, 8<<20))
 		f.Close()

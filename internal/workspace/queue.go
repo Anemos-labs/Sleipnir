@@ -615,7 +615,7 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 
 	// 1b. What the agent committed itself meets the guards that what we commit for it
 	// does: nothing oversized or unexplained enters the project's history.
-	if err := m.checkCommitted(ctx, hist, mb, theirs); err != nil {
+	if err := m.checkHistory(ctx, hist, mb, theirs); err != nil {
 		var tl *TooLargeError
 		var nr *NestedRepoError
 		switch {
@@ -722,6 +722,19 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 	}
 	res.Commits, _ = hist.CountCommits(ctx, mb, theirs)
 
+	// 3b. Scope and refused files again, on what integrating actually changed. A
+	// rebase replays commit by commit and drops the ones whose change is already on
+	// the tip, so the result can change a path the submission's own difference
+	// (step 2) does not show: a commit undoing a change that a dropped commit made.
+	if why := q.outOfBounds(s, res.Files); why != "" {
+		q.setPhase(entry, "rolling back")
+		if rerr := q.rollbackTo(ctx, prev); rerr != nil {
+			return nil, rerr
+		}
+		res.After = prev
+		return q.reject(res, why), nil
+	}
+
 	// 4. Verify the combined result.
 	cmd := s.VerifyCmd
 	if cmd == "" {
@@ -794,6 +807,23 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 		"strategy": q.opts.Strategy.String(), "verified": cmd != "",
 	})
 	return res, nil
+}
+
+// outOfBounds returns why the integration changes files may not be changed by s
+// ("" when none), by the same rules step 2 of integrate applies to the
+// submission's own difference.
+func (q *Queue) outOfBounds(s Submission, files []string) string {
+	if s.Refuse != nil {
+		if out, why := refused(files, s.Refuse); len(out) > 0 {
+			return fmt.Sprintf("changed %d file(s) it may not change: %s%s", len(out), strings.Join(firstN(why, 8), "; "), moreFiles(out, 8))
+		}
+	}
+	if s.EnforceScope && len(s.Scope) > 0 {
+		if out := OutOfScopeForMerge(files, s.Scope); len(out) > 0 {
+			return fmt.Sprintf("changed %d file(s) outside its scope: %s%s", len(out), strings.Join(firstN(out, 8), ", "), moreFiles(out, 8))
+		}
+	}
+	return ""
 }
 
 // publishTimeout bounds the move of the integration branch, a single ref update
@@ -1345,7 +1375,9 @@ func (q *Queue) fastForward(ctx context.Context, expectedTip string) (*FastForwa
 		if err := r.UpdateBranch(mctx, branch, tip, head, "sleipnir: fast-forward to the integration tip"); err != nil {
 			return nil, err
 		}
-	} else if _, err := r.Merge(mctx, gitx.MergeOptions{Ref: tip, FFOnly: true}); err != nil {
+	} else if _, err := r.Merge(mctx, gitx.MergeOptions{Ref: tip, FFOnly: true, KeepIgnored: true}); err != nil {
+		// The status check above leaves ignored files out; a tracked file of the tip
+		// that would replace one is refused by git (KeepIgnored), not overwritten.
 		return nil, err
 	}
 	q.emit(EventFastForward, "", "", map[string]any{"branch": branch, "from": head, "to": tip})

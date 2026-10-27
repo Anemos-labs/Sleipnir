@@ -112,10 +112,19 @@ type TooLargeError struct {
 	// TooMany, when non-zero, means the change touches more than this many files and
 	// was refused unexamined.
 	TooMany int
+	// TooManyCommits, when non-zero, means the submission holds more than this many
+	// commits and was refused unexamined.
+	TooManyCommits int
 }
 
 func (e *TooLargeError) Error() string {
+	if e.TooManyCommits > 0 {
+		return fmt.Sprintf("workspace: the submission holds more than %d commits, too many to check one by one: squash them", e.TooManyCommits)
+	}
 	if e.TooMany > 0 {
+		if e.Limit < 0 {
+			return fmt.Sprintf("workspace: the change touches more than %d files, too many to check for nested repositories", e.TooMany)
+		}
 		return fmt.Sprintf("workspace: the change touches more than %d files, too many to check against the %d byte limit", e.TooMany, e.Limit)
 	}
 	list := e.Files
