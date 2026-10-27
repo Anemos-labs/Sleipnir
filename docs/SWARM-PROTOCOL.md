@@ -282,6 +282,14 @@ in line and along `&&` chains, not in loops or the background) is a wait: it is
 refused with the same reason when a wait would be, and the stall sweep counts
 the manager as waiting while it runs.
 
+A file edit of the manager's own (`edit`, `write`, `apply_patch`) while
+submissions wait for its decision carries a line naming them with their waits,
+longest first (`T3 (6 min) and T2 (2 min) wait in review. A submission comes
+before edits of your own: decide it, then go on; a worker's next task waits on
+it.`). Each submission is named once, with the manager's next edit after it; a
+later edit names them all again only when a new one has joined them. The
+manager's own tasks in review are left out, and a shell command is not an edit.
+
 A restored team's idle workers that hold an unfinished task show
 `restored; waiting for T7 to restart`; the others are plainly idle and free for
 new work. When a standing goal sends the manager of a team on, the continuation

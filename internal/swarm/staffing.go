@@ -218,6 +218,41 @@ func (s *Swarm) reviewSubmission(t Task) TaskCheck {
 	}
 }
 
+// waitingSubmission is a submission the manager has not decided: a task in review that someone else submitted, and how
+// long ago. The wait runs from the submission the review gate saw (reviewGate.ended); one it did not see counts from now.
+type waitingSubmission struct {
+	ID     string
+	Rev    uint64
+	Waited time.Duration
+}
+
+// submissionsWaiting lists the submissions waiting for the manager's decision, longest wait first, then by task id. The
+// manager's own tasks are left out: nobody waits on the manager for those but the manager.
+func (s *Swarm) submissionsWaiting(snap *Snapshot, now time.Time) []waitingSubmission {
+	mgr := s.ManagerID()
+	g := &s.review
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	var out []waitingSubmission
+	for _, t := range snap.Tasks {
+		if t.Status != StatusReview || t.Owner == mgr {
+			continue
+		}
+		w := waitingSubmission{ID: t.ID, Rev: t.Rev}
+		if at, ok := g.ended[t.ID+"#"+strconv.FormatUint(t.Rev, 10)]; ok && now.After(at) {
+			w.Waited = now.Sub(at)
+		}
+		out = append(out, w)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Waited != out[j].Waited {
+			return out[i].Waited > out[j].Waited
+		}
+		return lessTaskID(out[i].ID, out[j].ID)
+	})
+	return out
+}
+
 // implementationTask reports whether a task represents code, rather than an agreement or a read-only report.
 func (s *Swarm) implementationTask(t Task) bool {
 	role := t.Role

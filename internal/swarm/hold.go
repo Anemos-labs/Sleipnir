@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -224,6 +225,9 @@ type holdHooks struct {
 
 	// settled is how much of holdSettleMax the guard has already spent waiting.
 	settled atomic.Int64
+	// noted are the submissions ("T3#rev") an edit of the manager's has carried a line about (editLine).
+	notedMu sync.Mutex
+	noted   map[string]bool
 }
 
 var (
@@ -257,6 +261,11 @@ func (h *holdHooks) BeforeTool(ctx context.Context, c agent.ToolHookCall) agent.
 	if o.Veto {
 		return o
 	}
+	if editsFiles(c.Tool) {
+		if line := h.editLine(); line != "" {
+			o.Context = strings.TrimSpace(o.Context + "\n" + line)
+		}
+	}
 	if c.Tool == "bash" {
 		var in struct {
 			Command string `json:"command"`
@@ -283,6 +292,75 @@ func (h *holdHooks) BeforeTool(ctx context.Context, c agent.ToolHookCall) agent.
 		}
 	}
 	return o
+}
+
+// editsFiles reports whether a tool call changes files: the manager doing work of its own.
+func editsFiles(tool string) bool {
+	switch tool {
+	case "edit", "write", "apply_patch":
+		return true
+	}
+	return false
+}
+
+// editLine is the line a manager's file edit carries while submissions wait for its decision (submissionsWaiting): the
+// waiting submissions with their waits, oldest first, and that a submission comes before the manager's own edits. Each
+// submission is named once, with the manager's next edit after it; a later edit names them all again only when a new one
+// has joined them. A manager that wrote verification tests of its own between acceptances kept four submissions waiting
+// six to seven minutes each, and the stall sweep's mail about each reached it after five.
+func (h *holdHooks) editLine() string {
+	now := h.s.deps.Now()
+	waiting := h.s.submissionsWaiting(h.s.Board.Snapshot(), now)
+	h.notedMu.Lock()
+	defer h.notedMu.Unlock()
+	if h.noted == nil {
+		h.noted = map[string]bool{}
+	}
+	current, fresh := map[string]bool{}, false
+	for _, w := range waiting {
+		key := w.ID + "#" + strconv.FormatUint(w.Rev, 10)
+		current[key] = true
+		if !h.noted[key] {
+			h.noted[key], fresh = true, true
+		}
+	}
+	for key := range h.noted {
+		if !current[key] {
+			delete(h.noted, key)
+		}
+	}
+	if !fresh {
+		return ""
+	}
+	names := make([]string, 0, len(waiting))
+	for i, w := range waiting {
+		if i == holdListCap {
+			names = append(names, fmt.Sprintf("%d more", len(waiting)-i))
+			break
+		}
+		switch m := int(w.Waited / time.Minute); {
+		case m >= 1:
+			names = append(names, fmt.Sprintf("%s (%d min)", w.ID, m))
+		default:
+			names = append(names, w.ID)
+		}
+	}
+	verb := "waits"
+	if len(waiting) > 1 {
+		verb = "wait"
+	}
+	return joinNames(names) + " " + verb + " in review. A submission comes before edits of your own: decide it, then go on; a worker's next task waits on it."
+}
+
+// joinNames joins ids for a sentence: "T3", "T3 and T4", "T3, T4 and T5".
+func joinNames(names []string) string {
+	switch len(names) {
+	case 0:
+		return ""
+	case 1:
+		return names[0]
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
 // AfterTool delegates to wrapped hooks when present and otherwise returns an empty outcome.
