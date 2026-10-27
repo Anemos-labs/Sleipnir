@@ -7,6 +7,18 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Persistence and credential dumps are high risk: asked about with
+  someone there, refused in bypass mode with the reason, denied in plan
+  mode. That covers writes to shell startup files, user services and login
+  items, `~/.local/bin`, `~/.gitconfig`, package index configuration and
+  `.pth` files outside the workspace, the commands `crontab`, `at`,
+  `systemctl enable`, `launchctl load`, `loginctl enable-linger` and
+  `git config --global` of a key that runs a program, and commands that
+  print a stored credential (`gh auth token`, `git credential fill`). A
+  backdoored model needs one of these to outlive its session or to take a
+  token, and a coding task almost never does. An Allow rule that names the
+  file or the exact command lifts it. Harness behavior only; no prompt
+  bytes change.
 - A review accepted after a merge that changed test files and docs alone
   since the review began covers that merge too. A tester's suite accepted
   while the review waited for its verdict started a second review of four
