@@ -356,6 +356,9 @@ func (m *Manager) pruneOne(ctx context.Context, opts PruneOptions, e ownedEntry,
 // branch (when it is, the branch check of pruneOne covers them).
 func (m *Manager) headOnlyCommits(ctx context.Context, repo *gitx.Repo, branch string) (int, error) {
 	head, err := repo.Head(ctx)
+	if err != nil && gitx.KindOf(err) != gitx.KindNotFound {
+		return 0, err // HEAD could not be read: the tree is kept
+	}
 	if err != nil || head == "" {
 		return 0, nil // no commit yet: nothing to lose
 	}
@@ -509,6 +512,9 @@ func (m *Manager) checkHistory(ctx context.Context, repo *gitx.Repo, base, to st
 	if err := m.checkCommitted(ctx, repo, base, to); err != nil {
 		return err
 	}
+	if m.maxFileBytes() < 0 {
+		return nil // no size limit: there is nothing to check commit by commit
+	}
 	res, err := repo.Git(ctx, "rev-list", "--parents", "--max-count="+strconv.Itoa(maxCheckedCommits+1), to, "--not", base)
 	if err != nil {
 		return err
@@ -522,8 +528,8 @@ func (m *Manager) checkHistory(ctx context.Context, repo *gitx.Repo, base, to st
 	if len(commits) > maxCheckedCommits {
 		return &TooLargeError{Limit: m.maxFileBytes(), TooManyCommits: maxCheckedCommits}
 	}
-	if m.maxFileBytes() < 0 || (len(commits) == 1 && len(commits[0]) == 2 && commits[0][1] == base) {
-		return nil // no size limit, or the one commit is the change already checked
+	if len(commits) == 1 && len(commits[0]) == 2 && commits[0][1] == base {
+		return nil // the one commit is the change already checked
 	}
 	for _, c := range commits {
 		parent := emptyTree

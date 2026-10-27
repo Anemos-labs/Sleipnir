@@ -60,23 +60,29 @@ func TestRebaseIgnoresTheRepositorysInstructionFormat(t *testing.T) {
 // message; Merge uses only the options it was given.
 func TestMergeIgnoresTheBranchsMergeOptions(t *testing.T) {
 	skipWithoutUnix(t)
-	dir := newRepo(t)
-	secret := filepath.Join(t.TempDir(), "secret")
-	writeFile(t, secret, "private-token-text\n")
-	rawGit(t, dir, "checkout", "-q", "-b", "side")
-	writeFile(t, filepath.Join(dir, "side.txt"), "side\n")
-	rawGit(t, dir, "add", "-A")
-	rawGit(t, dir, "commit", "-qm", "side")
-	rawGit(t, dir, "checkout", "-q", "main")
-	appendConfig(t, dir, "[branch \"main\"]\n\tmergeOptions = -F "+secret+"\n")
+	// A branch name may hold "=", where a -c key=value override would be split.
+	for _, branch := range []string{"main", "a=b"} {
+		t.Run(branch, func(t *testing.T) {
+			dir := newRepo(t)
+			secret := filepath.Join(t.TempDir(), "secret")
+			writeFile(t, secret, "private-token-text\n")
+			rawGit(t, dir, "checkout", "-q", "-B", branch)
+			rawGit(t, dir, "checkout", "-q", "-b", "side")
+			writeFile(t, filepath.Join(dir, "side.txt"), "side\n")
+			rawGit(t, dir, "add", "-A")
+			rawGit(t, dir, "commit", "-qm", "side")
+			rawGit(t, dir, "checkout", "-q", branch)
+			appendConfig(t, dir, "[branch \""+branch+"\"]\n\tmergeOptions = -F "+secret+"\n")
 
-	r := openRepo(t, dir)
-	ctx := ctxT(t)
-	if _, err := r.Merge(ctx, MergeOptions{Ref: "side", NoFF: true, Message: "merge side"}); err != nil {
-		t.Fatal(err)
-	}
-	if msg := rawGit(t, dir, "log", "-1", "--format=%B"); strings.Contains(msg, "private-token-text") || !strings.Contains(msg, "merge side") {
-		t.Fatalf("merge message = %q", msg)
+			r := openRepo(t, dir)
+			ctx := ctxT(t)
+			if _, err := r.Merge(ctx, MergeOptions{Ref: "side", NoFF: true, Message: "merge side"}); err != nil {
+				t.Fatal(err)
+			}
+			if msg := rawGit(t, dir, "log", "-1", "--format=%B"); strings.Contains(msg, "private-token-text") || !strings.Contains(msg, "merge side") {
+				t.Fatalf("merge message = %q", msg)
+			}
+		})
 	}
 }
 

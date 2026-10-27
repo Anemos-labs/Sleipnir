@@ -3,6 +3,7 @@ package checkpoint
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -58,6 +59,40 @@ func (c *confined) mkdirParents() error {
 		return c.root.MkdirAll(d, 0o755)
 	}
 	return nil
+}
+
+// chmod changes the path's mode, refusing a symlink (as chmodNoFollow).
+func (c *confined) chmod(mode fs.FileMode) error {
+	if c.root == nil {
+		return chmodNoFollow(c.abs, mode)
+	}
+	fi, err := c.root.Lstat(c.rel)
+	if err != nil {
+		return err
+	}
+	if fi.Mode()&fs.ModeSymlink != 0 {
+		return errors.New("the path is a symlink")
+	}
+	return c.root.Chmod(c.rel, mode)
+}
+
+// mkdirAll creates the path as a directory, with any missing parents.
+func (c *confined) mkdirAll() error {
+	if c.root == nil {
+		return os.MkdirAll(c.abs, 0o755)
+	}
+	return c.root.MkdirAll(c.rel, 0o755)
+}
+
+// chown gives the path the recorded owner, best effort (as chownPath).
+func (c *confined) chown(own *owner) {
+	if c.root == nil {
+		chownPath(c.abs, own)
+		return
+	}
+	if own != nil {
+		_ = c.root.Lchown(c.rel, own.UID, own.GID)
+	}
 }
 
 // tmpName is a fresh name beside the path for a file that is renamed over it.

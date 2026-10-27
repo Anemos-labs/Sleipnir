@@ -211,7 +211,13 @@ func (r *Repo) WorktreeRemove(ctx context.Context, path string, force bool) erro
 			return err
 		}
 		ov = append(ov, base...)
-		if w, err := r.Reopen(ctx, path); err == nil && !w.bare {
+		// A tree that is gone, or no longer a repository, has no configuration of its
+		// own (git reports it); any other failure to open it would skip the scan.
+		w, err := r.Reopen(ctx, path)
+		if err != nil && KindOf(err) != KindNotFound && KindOf(err) != KindNotARepo {
+			return err
+		}
+		if err == nil && !w.bare {
 			own, err := r.s.driverOverrides(ctx, w.runDir(), w.pin(), w.gitDir)
 			if err != nil {
 				return err

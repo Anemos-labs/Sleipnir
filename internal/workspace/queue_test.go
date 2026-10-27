@@ -1593,6 +1593,31 @@ func TestOversizedBlobInAnIntermediateCommitIsRefused(t *testing.T) {
 	}
 }
 
+// A submission with more commits than checkHistory examines one by one is refused while a size limit applies, and merges
+// when there is none (then nothing is checked commit by commit).
+func TestTooManyCommitsToCheckIsRefusedOnlyUnderASizeLimit(t *testing.T) {
+	old := maxCheckedCommits
+	maxCheckedCommits = 2
+	t.Cleanup(func() { maxCheckedCommits = old })
+	for _, limit := range []int64{2000, -1} {
+		e := newQueueEnv(t, QueueOptions{})
+		e.m.MaxFileBytes = limit
+		a := e.agent("a")
+		for i := 0; i < 3; i++ {
+			edit(t, a, fmt.Sprintf("f%d.txt", i), "x\n")
+			rawGit(t, a.Path, "add", "-A")
+			rawGit(t, a.Path, "commit", "-qm", fmt.Sprintf("c%d", i))
+		}
+		r := e.submit(a, "a")
+		if limit >= 0 && (r.Outcome != OutcomeRejected || !strings.Contains(r.Reason, "squash")) {
+			t.Fatalf("limit %d: three commits past a bound of two: %+v", limit, r)
+		}
+		if limit < 0 && !r.Merged() {
+			t.Fatalf("no size limit: %+v", r)
+		}
+	}
+}
+
 // A file a submission changed only to what the tip already holds does not count against its scope or its refused files:
 // b, branched before a reformatted the shared file, ran the same formatter on it. A different change to that file still
 // rejects b.

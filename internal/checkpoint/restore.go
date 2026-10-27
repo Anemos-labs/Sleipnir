@@ -457,7 +457,7 @@ func (s *Store) apply(t *task, budget *int64) error {
 		if t.cur.Kind != kDir {
 			mode = restorableMode(mode)
 		}
-		if err := chmodNoFollow(abs, mode); err != nil {
+		if err := c.chmod(mode); err != nil {
 			return fmt.Errorf("cannot change permissions: %s", reason(err))
 		}
 		return nil
@@ -509,15 +509,15 @@ func (s *Store) apply(t *task, budget *int64) error {
 		return nil
 	case ActionMkdir:
 		if t.cur.Kind != kAbsent && t.cur.Kind != kDir {
-			if err := os.Remove(abs); err != nil {
+			if err := c.remove(); err != nil {
 				return fmt.Errorf("cannot remove what is in the way: %s", reason(err))
 			}
 		}
-		if err := os.MkdirAll(abs, 0o755); err != nil {
+		if err := c.mkdirAll(); err != nil {
 			return fmt.Errorf("cannot create directory: %s", reason(err))
 		}
-		chownPath(abs, it.want.Owner)
-		if err := chmodNoFollow(abs, goMode(it.want.Mode)); err != nil {
+		c.chown(it.want.Owner)
+		if err := c.chmod(goMode(it.want.Mode)); err != nil {
 			return fmt.Errorf("cannot change permissions: %s", reason(err))
 		}
 		return nil

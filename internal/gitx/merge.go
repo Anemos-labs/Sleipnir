@@ -89,14 +89,17 @@ func (r *Repo) Merge(ctx context.Context, opts MergeOptions) (*MergeResult, erro
 	if err != nil {
 		return nil, err
 	}
+	// Passed as GIT_CONFIG_KEY/VALUE rather than -c key=value: a branch name may
+	// hold "=", which -c would split the key at.
+	var ov []kv
 	if branch, ok := strings.CutPrefix(head.trimmed(), "refs/heads/"); ok && head.exit == 0 {
-		config = append(config, "branch."+branch+".mergeOptions=")
+		ov = append(ov, kv{"branch." + branch + ".mergeOptions", ""})
 	}
 	b, err := r.begin(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out, err := b.run(ctx, call{args: args, env: idEnv, config: config, okExit: []int{1}, mutating: true, timeout: 5 * r.s.timeout})
+	out, err := b.run(ctx, call{args: args, env: idEnv, config: config, overrides: ov, okExit: []int{1}, mutating: true, timeout: 5 * r.s.timeout})
 	if err != nil {
 		return nil, err
 	}
