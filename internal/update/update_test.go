@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -202,5 +203,74 @@ func TestRunInstallsOnlyTheConfirmedRelease(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(exe); string(got) != "old" {
 		t.Fatalf("the binary was replaced: %q", got)
+	}
+}
+
+// The archive is tens of megabytes: its transfer is bounded by the caller's context, not by the twenty seconds an API answer gets.
+func TestReleaseFilesAreNotCutOffByTheAPITimeout(t *testing.T) {
+	c := Options{}.downloadClient()
+	if c.Timeout != 0 {
+		t.Fatalf("a download has a whole-request timeout of %v", c.Timeout)
+	}
+	tr, ok := c.Transport.(*http.Transport)
+	if !ok || tr.ResponseHeaderTimeout <= 0 {
+		t.Fatalf("a download waits for its headers without bound: %#v", c.Transport)
+	}
+	if (Options{}).client().Timeout == 0 {
+		t.Fatal("an API request lost its timeout")
+	}
+}
+
+// A binary larger than the bound is refused, not cut short and installed.
+func TestInstallRefusesABinaryLargerThanTheBound(t *testing.T) {
+	defer func(n int) { maxBinary = n }(maxBinary)
+	maxBinary = 8
+	archive := tarGz(t, "sleipnir", []byte("0123456789"))
+	o, _ := release(t, "linux", archive, archive)
+	rel, _ := Latest(context.Background(), o)
+	exe := filepath.Join(t.TempDir(), "sleipnir")
+	os.WriteFile(exe, []byte("old"), 0o755)
+	if err := Install(context.Background(), o, rel, exe); err == nil || !strings.Contains(err.Error(), "larger than") {
+		t.Fatalf("err = %v", err)
+	}
+	if got, _ := os.ReadFile(exe); string(got) != "old" {
+		t.Errorf("a cut binary was installed: %q", got)
+	}
+}
+
+// A release reached over https whose files are named over plain http is refused: one man in the middle could change the archive
+// and checksums.txt alike.
+func TestInstallRefusesReleaseFilesOverPlainHTTP(t *testing.T) {
+	o := Options{API: "https://api.github.com", GOOS: "linux", GOARCH: "amd64"}
+	name := ArchiveName(o, "v0.2.0")
+	for _, assets := range [][2]string{
+		{"http://example.test/a.tgz", "https://example.test/sums"},
+		{"https://example.test/a.tgz", "http://example.test/sums"},
+		{"ftp://example.test/a.tgz", "https://example.test/sums"},
+	} {
+		rel := Release{Tag: "v0.2.0", Assets: []Asset{{Name: name, URL: assets[0]}, {Name: "checksums.txt", URL: assets[1]}}}
+		err := Install(context.Background(), o, rel, filepath.Join(t.TempDir(), "sleipnir"))
+		if err == nil || !strings.Contains(err.Error(), "not https") {
+			t.Errorf("%v: err = %v", assets, err)
+		}
+	}
+}
+
+// The new binary keeps the permissions of the one it replaces.
+func TestInstallKeepsTheBinarysPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no permission bits")
+	}
+	archive := tarGz(t, "sleipnir", []byte("#!/bin/sh\necho new\n"))
+	o, _ := release(t, "linux", archive, archive)
+	rel, _ := Latest(context.Background(), o)
+	exe := filepath.Join(t.TempDir(), "sleipnir")
+	os.WriteFile(exe, []byte("old"), 0o750)
+	os.Chmod(exe, 0o750)
+	if err := Install(context.Background(), o, rel, exe); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Stat(exe); err != nil || fi.Mode().Perm() != 0o750 {
+		t.Fatalf("mode = %v (%v)", fi.Mode().Perm(), err)
 	}
 }

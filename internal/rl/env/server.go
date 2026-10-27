@@ -314,7 +314,13 @@ func (s *Server) auth(next http.Handler) http.Handler {
 			// Without a token the server trusts this machine, not every web page open on it: a browser may send a
 			// cross-origin form or text POST without asking first, and a rollout runs the task's commands. A request
 			// a browser made (it names its origin) is refused, and a body must say it is JSON, which no page can send
-			// across origins unasked.
+			// across origins unasked. A page whose DNS name was rebound to this machine is same-origin to itself, and
+			// a browser that sends no Fetch Metadata does not say so on a GET: its Host header names that page's
+			// host, not this machine, and is refused.
+			if !loopbackHostHeader(r.Host) {
+				httpError(w, http.StatusForbidden, "unexpected Host header: without a token the server answers to localhost and loopback addresses only")
+				return
+			}
 			if r.Header.Get("Origin") != "" || (r.Header.Get("Sec-Fetch-Site") != "" && r.Header.Get("Sec-Fetch-Site") != "none") {
 				httpError(w, http.StatusForbidden, "requests from a web page need the server to be started with a token")
 				return
@@ -343,6 +349,21 @@ func (s *Server) auth(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// loopbackHostHeader reports whether a Host header names this machine by a loopback name or address ("localhost",
+// "127.0.0.1:8080", "[::1]:80"), without asking DNS: the name a rebound page sends is the attacker's, whatever it resolves to now.
+func loopbackHostHeader(hostport string) bool {
+	host := hostport
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		host = h
+	}
+	host = strings.ToLower(strings.TrimSuffix(strings.Trim(host, "[]"), "."))
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // httpError sends the supplied HTTP status and a JSON error object, ignoring response-write
