@@ -612,12 +612,12 @@ func queuedLines(waiting map[string][]string, room int) []string {
 		if len(out) >= room {
 			break
 		}
-		who := "member"
+		who, again := "member", "do not spawn them again"
 		if r != "" {
-			who = r + " member"
+			who, again = r+" member", "do not spawn them on "+r+" again"
 		}
-		out = append(out, fmt.Sprintf("%s queued for the next free %s: the harness starts them; do not spawn them again (wait)",
-			strings.Join(waiting[r], ", "), who))
+		out = append(out, fmt.Sprintf("%s queued for the next free %s: the harness starts them; %s (wait)",
+			strings.Join(waiting[r], ", "), who, again))
 	}
 	return out
 }
@@ -698,10 +698,11 @@ func roleKeys(m map[string][]string) []string {
 // behind the one member of its role can start on one of them. A manager that gave four independent modules to backend, the team's
 // one backend slot, ran them one after another while the frontend and devops slots stayed empty.
 func (s *Swarm) freeWriters(except string) []string {
-	if !s.teamLimited() {
-		return nil
+	if !s.teamLimited() || !s.isolated() && s.activeWriters() >= s.cfg.MaxWriters {
+		return nil // at the writer limit no writer is admitted, whatever its role's slots
 	}
 	slots, order := TeamCounts(s.cfg.Team)
+	snap := s.Board.Snapshot()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	used, idle := map[string]int{}, map[string]bool{}
@@ -711,10 +712,12 @@ func (s *Swarm) freeWriters(except string) []string {
 		}
 		used[m.role]++
 		m.mu.Lock()
-		if m.life == lifeIdle && m.task == "" {
+		free := m.life == lifeIdle && m.task == ""
+		m.mu.Unlock()
+		// An idle member that a pool keeps, or that owns an open solo task, is not free for another task (spawn's busy).
+		if free && poolHolder(snap, m.id) == "" && soloTaskOf(snap, m.id, "") == "" {
 			idle[m.role] = true
 		}
-		m.mu.Unlock()
 	}
 	var out []string
 	for _, r := range order {

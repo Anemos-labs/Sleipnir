@@ -55,3 +55,40 @@ func TestAQueuedTaskNamesTheFreeSlotsOfOtherWriterRoles(t *testing.T) {
 		return cur.Owner != "" && r.sw.roleOf(cur.Owner) == "devops"
 	})
 }
+
+// At the writer limit no role's free slot is offered: a spawn there is refused whatever the role.
+func TestAQueuedTaskOffersNoFreeSlotAtTheWriterLimit(t *testing.T) {
+	block := make(chan struct{})
+	t.Cleanup(func() { close(block) })
+	r := newRVRigWith(t, Config{MaxWorkers: 8, MaxWriters: 1, PersistentPools: true, Team: []string{"backend", "frontend", "devops", "tester", "reviewer"}},
+		func(ctx context.Context, c *rvCall) rvReply {
+			if c.Agent == "be-1" {
+				select {
+				case <-block:
+				case <-ctx.Done():
+				}
+			}
+			return rvReply{Text: "noted"}
+		}, nil)
+	b := r.sw.Board
+	var ids []string
+	for _, m := range []string{"lru", "svc"} {
+		task, err := b.CreateTask("mgr", TaskSpec{Title: m, Role: "backend", Files: []string{m + "/**"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, task.ID)
+	}
+	for i, id := range ids {
+		res := r.callTool(context.Background(), "spawn", "mgr", "manager", map[string]any{"role": "backend", "task": id})
+		if res.IsError {
+			t.Fatalf("spawn %s: %s", id, res.Text)
+		}
+		if i == 1 && (!strings.Contains(res.Text, "is queued") || strings.Contains(res.Text, "Free now")) {
+			t.Fatalf("a queued spawn at the writer limit: %q", res.Text)
+		}
+	}
+	if lines := strings.Join(r.sw.staffingLines(b.Snapshot()), "\n"); strings.Contains(lines, "free now") {
+		t.Fatalf("live view lines %q offer a slot at the writer limit", lines)
+	}
+}
