@@ -514,8 +514,11 @@ func TestApplyPatchOperationsSeeEarlierOnes(t *testing.T) {
 		writeFile(t, filepath.Join(env.Cwd, "same.txt"), "x\n")
 		p := filepath.Join(env.Cwd, "same.txt")
 		before, _ := os.Stat(p)
-		text := mustOK(t, run(t, ApplyPatch{}, env, map[string]any{"patch": patchText("*** Update File: same.txt", "@@", "-x", "+x")}))
-		contains(t, text, "No changes")
+		res := run(t, ApplyPatch{}, env, map[string]any{"patch": patchText("*** Update File: same.txt", "@@", "-x", "+x")})
+		contains(t, mustOK(t, res), "No changes")
+		if !res.Unchanged {
+			t.Error("a patch that leaves every file identical is not marked Unchanged")
+		}
 		after, _ := os.Stat(p)
 		if !after.ModTime().Equal(before.ModTime()) {
 			t.Errorf("no-op patch touched the file")

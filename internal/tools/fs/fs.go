@@ -106,6 +106,13 @@ func (k *call) fail(format string, args ...any) *tools.Result {
 // ok completes a filesystem call through its environment with a successful result.
 func (k *call) ok(text string) *tools.Result { return k.env.Finish(text, false) }
 
+// same is ok for a call that succeeded without changing any file (tools.Result.Unchanged).
+func (k *call) same(text string) *tools.Result {
+	r := k.env.Finish(text, false)
+	r.Unchanged = true
+	return r
+}
+
 // oneOf settles the file a call names when it may spell it path or file_path: path, else file_path. Two spellings that name
 // different files are refused, so a hook or rule that looked at one of them cannot have been looking at another file.
 func (k *call) oneOf(path *string, alias string) *tools.Result {

@@ -16,7 +16,7 @@ func TestRejectDuringFailedFinalAnswerRestartsWorker(t *testing.T) {
 		if c.Role != "reviewer" {
 			return rvReply{Text: "ok"}
 		}
-		if c.Sees("T1 was sent back by the manager: check the missing case") {
+		if c.Sees("T1 was sent back by the manager") && c.Sees("check the missing case") {
 			return rvReply{Text: "checked the missing case"}
 		}
 		if c.Assistants == 0 {

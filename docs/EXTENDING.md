@@ -203,11 +203,12 @@ directory above (a skill of yours with the same name replaces one, with a warnin
 | `spec` | the design tree, a specification, vertical slices and milestones a reviewer can check |
 | `code-review` | a spec axis and a standards axis, and the change's one safety fact proved by running code |
 | `prototype` | settling a design question by building variants and looking |
+| `landing-page-design` | a landing page or project website: one primary action, page structure, real copy, a default visual system, a ship checklist |
 | `plain-writing` | documentation and messages without filler or machine-generated tells |
 
 The role prompts say when each role loads which, so a team uses them without being asked: the manager and the
 architect load `spec` (the architect also `codebase-design`), the backend, frontend and tester `tdd` and `diagnose`,
-devops `diagnose`, the frontend `prototype`, the reviewer `code-review` and docs `plain-writing`; the constitution
+devops `diagnose`, the frontend `prototype` (and `landing-page-design` for a site), the reviewer `code-review` and docs `plain-writing`; the constitution
 points every agent at `diagnose` for a hard bug. `tools.builtin_skills = false` leaves every built-in skill out (the
 role prompts still name them, and the `skill` tool answers such a request with the skills that exist).
 

@@ -633,6 +633,41 @@ func TestRejectReachesTheWorkerOrPoolsTheTask(t *testing.T) {
 	}
 }
 
+// A reject without feedback is refused and leaves the task in review: a worker sent back with nothing to act on guesses. A
+// long brief reaches the worker whole, lines and all: what to keep and how the fix is proved come at its end, past any cut
+// the task's one-line status makes.
+func TestRejectNeedsFeedbackAndDeliversItWhole(t *testing.T) {
+	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
+	r.sw.StartManager()
+	id, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "work", By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, "T1 in review", func() bool {
+		tk, _ := r.sw.Board.Snapshot().Task("T1")
+		return tk.Status == StatusReview && r.idle(id)
+	})
+	reject := func(text string) *tools.Result {
+		return r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "reject", "id": "T1", "text": text})
+	}
+	if res := reject("  "); !res.IsError || !strings.Contains(res.Text, "what will show it is fixed") {
+		t.Fatalf("a reject without feedback: %v %q", res.IsError, res.Text)
+	}
+	if tk, _ := r.sw.Board.Snapshot().Task("T1"); tk.Status != StatusReview {
+		t.Fatalf("a refused reject moved T1 to %s", tk.Status)
+	}
+	brief := "Symptom: go test ./api fails in TestPaginate with an off-by-one on the last page.\n" +
+		strings.Repeat("The handler computes the page count from the total and the size. ", 8) + "\n" +
+		"Keep: the cursor encoding and the new tests in api/page_test.go.\n" +
+		"Done when: go test ./api passes and a 10-item list with size 3 has 4 pages."
+	if res := reject(brief); res.IsError {
+		t.Fatalf("reject: %s", res.Text)
+	}
+	rvWait(t, "the worker to read the end of the brief", func() bool {
+		return r.prov.sawEver("Done when: go test ./api passes and a 10-item list with size 3 has 4 pages.")
+	})
+}
+
 // A refused Spawn creates nothing: no task, no agent, no id consumed.
 func TestRefusedSpawnLeavesNothingBehind(t *testing.T) {
 	r := newRVRig(t, Config{MaxWriters: 1, MaxWorkers: 2}, func(ctx context.Context, c *rvCall) rvReply {

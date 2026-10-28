@@ -27,9 +27,10 @@ const maxParallelTools = 8
 // other call is answered with an error that tells the model to issue fewer, so each
 // call still has its result and the thread stays valid. And the results together
 // may put at most MaxTurnResultChars into the next request: see budgetResults.
-func (a *Agent) runTools(ctx context.Context, calls []core.Block) (results []core.Block, exitFailed []bool) {
+func (a *Agent) runTools(ctx context.Context, calls []core.Block) (results []core.Block, exitFailed, unchanged []bool) {
 	results = make([]core.Block, len(calls))
 	exitFailed = make([]bool, len(calls))
+	unchanged = make([]bool, len(calls))
 	run := len(calls)
 	if limit := a.cfg.MaxToolCallsPerTurn; limit > 0 && run > limit {
 		run = limit
@@ -53,7 +54,7 @@ func (a *Agent) runTools(ctx context.Context, calls []core.Block) (results []cor
 				go func(k int) {
 					defer wg.Done()
 					defer func() { <-sem }()
-					results[k], exitFailed[k] = a.runOne(ctx, calls[k])
+					results[k], exitFailed[k], unchanged[k] = a.runOne(ctx, calls[k])
 					a.notePending(k, results[k])
 				}(k)
 			}
@@ -61,7 +62,7 @@ func (a *Agent) runTools(ctx context.Context, calls []core.Block) (results []cor
 			i = j
 			continue
 		}
-		results[i], exitFailed[i] = a.runOne(ctx, calls[i])
+		results[i], exitFailed[i], unchanged[i] = a.runOne(ctx, calls[i])
 		a.notePending(i, results[i])
 		i++
 	}
@@ -69,7 +70,7 @@ func (a *Agent) runTools(ctx context.Context, calls []core.Block) (results []cor
 		results[i] = a.refuseCall(calls[i], len(calls), run)
 	}
 	a.budgetResults(results, len(calls)-run)
-	return results, exitFailed
+	return results, exitFailed, unchanged
 }
 
 // refusalText is the result text of a call that was not run because its turn asked for asked calls and at most limit are run.
@@ -185,8 +186,9 @@ func (a *Agent) env() *tools.Env {
 	}).Defaults()
 }
 
-// runOne executes one call, never panicking and never returning an empty result.
-func (a *Agent) runOne(ctx context.Context, call core.Block) (out core.Block, exitFailed bool) {
+// runOne executes one call, never panicking and never returning an empty result. unchanged reports a call that succeeded
+// and changed nothing (tools.Result.Unchanged), which the repeat guard counts when it is repeated.
+func (a *Agent) runOne(ctx context.Context, call core.Block) (out core.Block, exitFailed, unchanged bool) {
 	start := time.Now()
 	name := a.toolNameFor(call.ToolName)
 	if tool, in, ok := actionCall(a.cfg.Tools.Get, call.ToolName, call.Input); ok {
@@ -208,6 +210,7 @@ func (a *Agent) runOne(ctx context.Context, call core.Block) (out core.Block, ex
 		out = a.finishResult(call, res, time.Since(start))
 		// a command that failed is not a tool error: the model reads what it printed, and the repeat guard counts it
 		exitFailed = res != nil && !res.IsError && res.Failed()
+		unchanged = res != nil && !res.IsError && res.Unchanged
 	}()
 
 	switch {
