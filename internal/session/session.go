@@ -319,6 +319,8 @@ type Session struct {
 	researchPinned string
 	researchText   string
 	researchSite   *researchRender
+	// scan is the project's deep scans (nil when the scan plugin is off).
+	scan *scanState
 	// barrier is shared by the agents and the swarm's done check when Options.Savepoints is set (Savepoint).
 	barrier *agent.SavepointBarrier
 	// savepoints counts the savepoints written (Savepoint), under mu.
@@ -1028,6 +1030,10 @@ func (s *Session) build(ctx context.Context) error {
 			t := research.NewTool(s.research, rd)
 			t.Fonts, t.OnBuild = s.researchFonts, s.researchBuilt
 			reg.Register(t)
+			return nil
+		},
+		plugin.Scan: func(*plugin.Scope) error {
+			reg.Register(s.newScanTool())
 			return nil
 		},
 		plugin.Recall: func(*plugin.Scope) error {

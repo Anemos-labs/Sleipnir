@@ -246,6 +246,15 @@
   },
   {
    "group": "conversation",
+   "name": "/scan",
+   "kind": "slash",
+   "live": false,
+   "effects": [
+    "act:command"
+   ]
+  },
+  {
+   "group": "conversation",
    "name": "/new",
    "kind": "slash",
    "live": true,
@@ -1504,6 +1513,15 @@
   },
   {
    "group": "the program (sleipnir ...)",
+   "name": "sleipnir scan",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:scan"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
    "name": "sleipnir schedule",
    "kind": "program",
    "live": true,
@@ -1811,6 +1829,7 @@
    "/resume",
    "/rewind",
    "/roles",
+   "/scan",
    "/sessions",
    "/skills",
    "/stats",
@@ -2536,6 +2555,7 @@
    "run",
    "swarm",
    "research",
+   "scan",
    "schedule",
    "schedule add",
    "schedule rm",
@@ -2767,6 +2787,20 @@
     "modeWith": {
      "export": "priv"
     }
+   },
+   "scan": {
+    "mode": "run",
+    "positionals": [
+     "SCAN"
+    ],
+    "flags": [
+     "cwd",
+     "depth",
+     "json",
+     "report",
+     "start"
+    ],
+    "modeWith": {}
    },
    "schedule": {
     "mode": "run",

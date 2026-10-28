@@ -283,6 +283,7 @@ Look at a session, or measure:
   sim       simulate cache policies: what layering buys, and where it stops
   recon     print the project survey that seeds the shared prompt layer
   research  deep research runs: list, status, build the wiki, export it
+  scan      deep scans: list, status, rewrite the report
   rl        the RL environment: rollout, eval, report, export (rl help)
   mock      the built-in mock provider, for demos and tests
   version   print version
