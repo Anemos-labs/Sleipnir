@@ -489,9 +489,7 @@ func TestEmptyNamedDriverRunsNothing(t *testing.T) {
 	writeFile(t, filepath.Join(dir, ".gitattributes"), "* filter=\n")
 	rawGit(t, dir, "add", "-A")
 	rawGit(t, dir, "commit", "-qm", "attrs")
-	f, _ := os.OpenFile(filepath.Join(dir, ".git", "config"), os.O_APPEND|os.O_WRONLY, 0o644)
-	f.WriteString("[filter \"\"]\n\tclean = " + quoteCfg("touch "+filepath.Join(markers, "empty")+"; cat") + "\n")
-	f.Close()
+	appendConfig(t, dir, "[filter \"\"]\n\tclean = "+quoteCfg("touch "+filepath.Join(markers, "empty")+"; cat")+"\n")
 	writeFile(t, filepath.Join(dir, "y.txt"), "payload\n")
 	if _, err := openRepo(t, dir).SnapshotTree(ctxT(t)); err != nil {
 		t.Fatal(err)

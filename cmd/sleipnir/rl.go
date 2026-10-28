@@ -314,18 +314,31 @@ func openOutput(path string, def io.Writer) (io.Writer, func(ok bool) error, err
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, nil, err
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0o600)
 	if err != nil {
 		return nil, nil, err
 	}
-	// The mode of OpenFile is for a new file: one that was there keeps its own until it is set here, before anything is written.
-	if err := f.Chmod(0o600); err != nil {
+	// The mode of OpenFile is for a new file: a regular file that was there keeps its own until it is set here, before it is
+	// emptied and anything is written, so one whose mode cannot be set keeps its contents. A device (/dev/null) is written as is.
+	fi, err := f.Stat()
+	if err != nil {
 		f.Close()
 		return nil, nil, err
 	}
+	regular := fi.Mode().IsRegular()
+	if regular {
+		if err := f.Chmod(0o600); err != nil {
+			f.Close()
+			return nil, nil, err
+		}
+		if err := f.Truncate(0); err != nil {
+			f.Close()
+			return nil, nil, err
+		}
+	}
 	return f, func(ok bool) error {
 		err := f.Close()
-		if !ok {
+		if !ok && regular { // a device is never removed
 			os.Remove(path)
 		}
 		return err

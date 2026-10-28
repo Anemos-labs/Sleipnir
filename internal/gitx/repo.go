@@ -386,7 +386,12 @@ func (r *Repo) Git(ctx context.Context, args ...string) (*Result, error) {
 		if err != nil {
 			return nil, err
 		}
-		c.overrides = ov
+		// overrides that are set skip run's driver scan: the drivers are neutralised here as well
+		dov, err := r.s.driverOverrides(ctx, r.runDir(), r.pin(), r.gitDir)
+		if err != nil {
+			return nil, err
+		}
+		c.overrides = append(dov, ov...)
 	case "rebase":
 		c.config = []string{rebaseFormat}
 	}

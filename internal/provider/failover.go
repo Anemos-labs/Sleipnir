@@ -110,7 +110,7 @@ func (f *Failover) secondary(ctx context.Context, req *Request, on func(Event)) 
 	resp, err := f.Secondary.Do(ctx, req, on)
 	if err == nil && resp != nil && resp.CostUSD == nil && f.SecondaryPrice != nil {
 		usd := f.SecondaryPrice(resp.Usage)
-		resp.CostUSD = &usd
+		resp.CostUSD, resp.CostEstimated = &usd, true
 	}
 	return resp, err
 }

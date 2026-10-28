@@ -306,7 +306,14 @@ func coveredBy(rule string, entries []string) bool {
 		if !strings.Contains(e, "(") {
 			return true
 		}
-		prefix := strings.TrimSuffix(strings.TrimSuffix(ruleArg(e), "*"), ":")
+		arg := ruleArg(e)
+		if !strings.HasSuffix(arg, "*") { // an exact command covers that command alone
+			if pat != "" && pat == arg {
+				return true
+			}
+			continue
+		}
+		prefix := strings.TrimSuffix(strings.TrimSuffix(arg, "*"), ":")
 		if pat != "" && (pat == prefix || strings.HasPrefix(pat, prefix+" ") || strings.HasPrefix(pat, prefix+":")) {
 			return true
 		}

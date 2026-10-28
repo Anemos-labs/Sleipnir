@@ -60,3 +60,25 @@ func TestReplayGalleryDrawsTheChatFromItsTranscript(t *testing.T) {
 		}
 	}
 }
+
+// A link already in the gallery's directory that leads out of it is refused, not written through.
+func TestReplayGalleryRefusesALinkOut(t *testing.T) {
+	if testing.Short() {
+		t.Skip("it draws every recording of the gallery")
+	}
+	root := filepath.Join("..", "..")
+	dir, outside := t.TempDir(), filepath.Join(t.TempDir(), "target")
+	if err := os.WriteFile(outside, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, "chat.svg")); err != nil {
+		t.Skip(err)
+	}
+	var out, errs bytes.Buffer
+	if err := renderGallery(&out, &errs, filepath.Join(root, "docs", "media", "showcase", "events.jsonl"), filepath.Join(root, "docs", "media", "gallery.json"), dir); err == nil {
+		t.Error("the gallery wrote through a link that leads out of its directory")
+	}
+	if b, _ := os.ReadFile(outside); string(b) != "keep" {
+		t.Errorf("the link's target was overwritten: %q", b)
+	}
+}

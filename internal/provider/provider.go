@@ -148,6 +148,8 @@ type Response struct {
 	// CostUSD is the exact charge when the gateway reports one (Heimdallm's
 	// usage.cost); nil otherwise.
 	CostUSD *float64
+	// CostEstimated says CostUSD is not a gateway's charge but a price worked out here (a failover's secondary at its own price).
+	CostEstimated bool
 	// Provider names the upstream that served the request, when known.
 	Provider string
 	// Tokens is the token trace of the call when Request.Capture was honoured.

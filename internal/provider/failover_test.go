@@ -99,7 +99,7 @@ func TestFailoverPricesTheSecondary(t *testing.T) {
 	}
 	now = now.Add(2 * time.Minute)
 	resp, err := f.Do(context.Background(), &Request{}, nil)
-	if err != nil || resp.Model != "sec" || resp.CostUSD == nil || *resp.CostUSD != 0.25 {
+	if err != nil || resp.Model != "sec" || resp.CostUSD == nil || *resp.CostUSD != 0.25 || !resp.CostEstimated {
 		t.Fatalf("secondary answer %+v, %v", resp, err)
 	}
 }

@@ -31,7 +31,12 @@ they do not indicate whether a change has been released.
   install of a plugin need is confirmed on the commands it links and the
   places it finds them and is refused when its commands can't be shown
   whole, project plugin settings are written within the project, and the
-  Run settings line quotes every value for the shell.
+  Run settings line quotes every value for the shell. The install dialog
+  names the commands it links and where it looks for them, and shows an
+  empty argument as `''`. A failover secondary's estimated price is not
+  recorded as a gateway charge. `rl export -o` to a device writes it as
+  is, and an existing output file keeps its contents until its mode is
+  set.
 - A project can keep a rubric in `.sleipnir/rubric.md`: standing
   criteria of good work that the goal judge holds every goal in the
   project to, beside the goal's own requirements. It is read once when a

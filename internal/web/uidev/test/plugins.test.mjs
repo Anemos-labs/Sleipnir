@@ -230,6 +230,17 @@ test('a plugin that is on lists the programs it uses: Locate sends the typed pat
   assert.deepEqual(L.errors, []);
 });
 
+test('an install dialog keeps an empty argument and names what the install links: its commands and where it looks for them', async () => {
+  const c = catalogue();
+  c.needs = [{ id: 'tl', plugin: 'skills', title: 'Tool', found: false, commands: ['tool', 'tool-helper'], paths: { unix: ['/opt/tool/bin/tool'], darwin: ['/Applications/Tool.app/tool'] },
+    methods: [{ id: 'm', title: 'pip', argv: ['pip', '', 'install', 'tool'], available: true, scope: 'need.install:0123456789abcdef' }] }];
+  const L = await page(c); await show(L, 'plugins');
+  L.$('[data-need="tl"] [data-ninst]').click(); await L.settle();
+  assert.equal(L.$('#overlayHost .plg-cmd').textContent, "pip '' install tool", 'an empty argument is shown as one');
+  assert.match(L.$('#overlayHost').textContent, /puts on the PATH of every session: tool, tool-helper, looked for in darwin: \/Applications\/Tool\.app\/tool; unix: \/opt\/tool\/bin\/tool\./);
+  assert.deepEqual(L.errors, []);
+});
+
 test('a need\'s text from the server is text', async () => {
   const EVIL = '<img src=x onerror="window.__pwn=1">"\'&', c = catalogue();
   c.needs = [{ id: 'x', plugin: 'skills', title: EVIL, description: EVIL, homepage: EVIL, found: false, methods: [{ id: 'm', title: EVIL, argv: [EVIL], available: false, reason: EVIL }], install: { method: 'm', running: false, output: EVIL, error: EVIL } }];

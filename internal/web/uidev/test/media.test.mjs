@@ -69,6 +69,10 @@ test('Markdown tables: a document draws a bounded number of cells, however wide 
   assert.equal((h.match(/<th>/g) || []).length, 60);
   assert.match(h, /more rows not shown/);
   assert.doesNotMatch(md('| a | b |\n|-|-|\n| 1 | 2 |\n'), /not shown/);
+  /* header-only tables count too: many of them draw no more cells than the budget */
+  const heads = ('|' + 'h|'.repeat(60) + '\n|' + '-|'.repeat(60) + '\n\n').repeat(1000), hh = md(heads);
+  assert.ok((hh.match(/<th>/g) || []).length <= 20000, 'too many header cells drawn');
+  assert.match(hh, /A table not shown/);
 });
 
 test('CSV: quoted fields, doubled quotes, CRLF; TSV by tab; a table is escaped', () => {

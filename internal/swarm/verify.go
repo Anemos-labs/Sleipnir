@@ -343,7 +343,7 @@ func changedFiles(ctx context.Context, dir string) []string {
 		return nil
 	}
 	st, err := repo.StatusWith(cctx, gitx.StatusOptions{Untracked: "all"})
-	if err != nil {
+	if err != nil || st.Truncated { // a list cut short would leave changed packages out
 		return nil
 	}
 	seen := map[string]bool{}

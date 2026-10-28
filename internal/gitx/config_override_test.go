@@ -109,6 +109,29 @@ func TestMergeIgnoresTheBranchsMergeOptions(t *testing.T) {
 	}
 }
 
+// The generic Repo.Git merge on a named branch neutralizes the repository's merge drivers as well as its mergeOptions.
+func TestGenericMergeNeutralizesMergeDrivers(t *testing.T) {
+	skipWithoutUnix(t)
+	dir := newRepo(t)
+	markers := t.TempDir()
+	rawGit(t, dir, "checkout", "-q", "-B", "main")
+	writeFile(t, filepath.Join(dir, ".gitattributes"), "f.txt merge=x\n")
+	writeFile(t, filepath.Join(dir, "f.txt"), "base\n")
+	rawGit(t, dir, "add", "-A")
+	rawGit(t, dir, "commit", "-qm", "base")
+	rawGit(t, dir, "checkout", "-q", "-b", "side")
+	writeFile(t, filepath.Join(dir, "f.txt"), "side\n")
+	rawGit(t, dir, "commit", "-qam", "side")
+	rawGit(t, dir, "checkout", "-q", "main")
+	writeFile(t, filepath.Join(dir, "f.txt"), "main\n")
+	rawGit(t, dir, "commit", "-qam", "main")
+	appendConfig(t, dir, "[user]\n\tname = t\n\temail = t@example.com\n[merge \"x\"]\n\tdriver = "+quoteCfg("touch "+filepath.Join(markers, "driver")+"; cp %B %A")+"\n")
+	_, _ = openRepo(t, dir).Git(ctxT(t), "merge", "--no-ff", "-m", "merge side", "side") // a conflict is the expected outcome
+	if ents, _ := os.ReadDir(markers); len(ents) != 0 {
+		t.Fatal("the repository's merge driver ran")
+	}
+}
+
 // core.alternateRefsCommand runs while git walks an alternate's references.
 func TestAlternateRefsCommandDoesNotRun(t *testing.T) {
 	skipWithoutUnix(t)

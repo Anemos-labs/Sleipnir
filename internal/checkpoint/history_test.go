@@ -83,6 +83,9 @@ func TestContentAtRefusesUnsafePaths(t *testing.T) {
 	if err := os.Symlink(filepath.Join(outside, "secret"), e.abs("link.txt")); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Symlink("ok.txt", e.abs("inside.txt")); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Symlink("loop2", e.abs("loop1")); err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +105,7 @@ func TestContentAtRefusesUnsafePaths(t *testing.T) {
 		}
 	}
 	// A symlink at the end of the path is not followed, even inside the root.
-	for _, p := range []string{"link.txt", "loop1"} {
+	for _, p := range []string{"link.txt", "inside.txt", "loop1"} {
 		b, ok, err := e.s.CurrentContent(p)
 		if !errors.Is(err, ErrNotRegular) || len(b) != 0 || !ok {
 			t.Errorf("CurrentContent(%s) = %q %v %v, want ErrNotRegular", p, b, ok, err)

@@ -3,6 +3,7 @@ package settings
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -22,19 +23,23 @@ import (
 
 // needRow is a need as the page sees it.
 type needRow struct {
-	ID          string          `json:"id"`
-	Plugin      string          `json:"plugin"`
-	Title       string          `json:"title"`
-	Description string          `json:"description,omitempty"`
-	Homepage    string          `json:"homepage,omitempty"`
-	Required    bool            `json:"required"`
-	Server      bool            `json:"server"` // a tool server: it is connected, not located
-	Found       bool            `json:"found"`
-	Path        string          `json:"path,omitempty"`
-	Via         string          `json:"via,omitempty"`
-	Version     string          `json:"version,omitempty"`
-	Methods     []methodRow     `json:"methods"`
-	Install     *needInstallRow `json:"install,omitempty"`
+	ID          string `json:"id"`
+	Plugin      string `json:"plugin"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	Homepage    string `json:"homepage,omitempty"`
+	Required    bool   `json:"required"`
+	Server      bool   `json:"server"` // a tool server: it is connected, not located
+	Found       bool   `json:"found"`
+	Path        string `json:"path,omitempty"`
+	Via         string `json:"via,omitempty"`
+	Version     string `json:"version,omitempty"`
+	// Commands are the programs an install puts on the PATH, and Paths the places it finds them in, by operating system: what
+	// an install's confirmation covers besides the commands it runs.
+	Commands []string            `json:"commands,omitempty"`
+	Paths    map[string][]string `json:"paths,omitempty"`
+	Methods  []methodRow         `json:"methods"`
+	Install  *needInstallRow     `json:"install,omitempty"`
 }
 
 // methodRow is an install method with the exact command it runs.
@@ -161,6 +166,17 @@ func (s *service) needRowOf(st plugin.NeedStatus) needRow {
 		Homepage: provider.SanitizeText(st.Homepage, 200), Required: st.Required, Server: st.MCP != nil, Found: st.Found,
 		Path: provider.SanitizeText(st.Path, 400), Via: st.Via, Version: provider.SanitizeText(st.Version, 120), Methods: []methodRow{},
 	}
+	for _, c := range st.Commands {
+		row.Commands = append(row.Commands, provider.SanitizeText(c, 200))
+	}
+	for goos, pats := range st.Paths {
+		if row.Paths == nil {
+			row.Paths = map[string][]string{}
+		}
+		for _, p := range pats {
+			row.Paths[goos] = append(row.Paths[goos], provider.SanitizeText(p, 400))
+		}
+	}
 	for _, m := range st.Methods {
 		mr := methodRow{ID: m.ID, Title: provider.SanitizeText(m.Title, 120), Connect: provider.SanitizeText(m.Connect, 400),
 			Note: provider.SanitizeText(m.Note, 400), Available: m.Available, Reason: provider.SanitizeText(m.Reason, 200)}
@@ -182,7 +198,7 @@ func (s *service) needRowOf(st plugin.NeedStatus) needRow {
 		for _, a := range m.Argv {
 			mr.Argv = append(mr.Argv, provider.SanitizeText(a, 200))
 		}
-		if mr.Available && !shownWhole(m) {
+		if mr.Available && !shownWhole(st.Need, m) {
 			mr.Available, mr.Reason = false, "its commands cannot be shown whole for you to confirm"
 		}
 		mr.Scope = installScope(st.Need, m)
@@ -243,10 +259,22 @@ func installScope(n plugin.Need, m plugin.MethodStatus) string {
 	return "need.install:" + d16(fields)
 }
 
-// shownWhole reports whether every argument of m's commands reads on the page exactly as it runs: none is cut short or loses a
-// character to sanitising.
-func shownWhole(m plugin.MethodStatus) bool {
+// shownWhole reports whether every argument of m's commands, and every command and default location of n that the install links,
+// reads on the page exactly as it is used: none is cut short or loses a character to sanitising.
+func shownWhole(n plugin.Need, m plugin.MethodStatus) bool {
 	words := slices.Clone(m.Argv)
+	for _, c := range n.Commands {
+		if provider.SanitizeText(c, 200) != c {
+			return false
+		}
+	}
+	for _, pats := range n.Paths {
+		for _, p := range pats {
+			if provider.SanitizeText(p, 400) != p {
+				return false
+			}
+		}
+	}
 	for _, step := range m.Setup {
 		words = append(words, step...)
 	}
@@ -272,6 +300,21 @@ func shownWords(argv []string) string {
 		out[i] = a
 	}
 	return strings.Join(out, " ")
+}
+
+// pathsText is where an install looks for the commands it links, by operating system (" (looked for in darwin: …; unix: …)"),
+// or "" when the need names no default location.
+func pathsText(paths map[string][]string) string {
+	var parts []string
+	for _, goos := range slices.Sorted(maps.Keys(paths)) {
+		if len(paths[goos]) > 0 {
+			parts = append(parts, goos+": "+strings.Join(paths[goos], ", "))
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " (looked for in " + strings.Join(parts, "; ") + ")"
 }
 
 // jsonWords is the JSON encoding of a list of arguments (or of commands), unambiguous where a joined string is not.
@@ -391,7 +434,7 @@ func (s *service) handleNeedInstall(w http.ResponseWriter, r *http.Request) {
 	case !method.Available:
 		reply(w, nil, fail(http.StatusConflict, "unavailable", provider.SanitizeText(method.Reason, 200)))
 		return
-	case !shownWhole(*method):
+	case !shownWhole(n.Need, *method):
 		// what is confirmed is what runs: a command the page would show cut short or with characters left out is not run
 		reply(w, nil, fail(http.StatusConflict, "unavailable", "its commands cannot be shown whole for you to confirm"))
 		return
@@ -408,6 +451,9 @@ func (s *service) handleNeedInstall(w http.ResponseWriter, r *http.Request) {
 	}
 	if method.Connect != "" {
 		reasons = append(reasons, method.Connect)
+	}
+	if len(n.Commands) > 0 {
+		reasons = append(reasons, "then puts on the PATH of the commands every session runs: "+strings.Join(n.Commands, ", ")+pathsText(n.Paths))
 	}
 	if !s.confirmNeed(w, r, installScope(n.Need, *method), reasons) {
 		return
