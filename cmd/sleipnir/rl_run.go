@@ -374,7 +374,25 @@ func (rf *rigFlags) build(h env.Harness, out, tasksFile string, stderr io.Writer
 			blobsDir = d
 		}
 	}
-	ws, err := rf.workspaces(stderr, out, blobsDir)
+	protect := []string{out, blobsDir}
+	if tasksFile != "" {
+		// The tasks' own repositories hold their future (later commits, the reference): hidden from confined commands
+		// wherever they are, not only under the directory relative ones resolve against, which is hidden already.
+		tasks, err := env.LoadTasks(tasksFile)
+		if err != nil {
+			return nil, err
+		}
+		wd, _ := os.Getwd()
+		for _, t := range tasks {
+			if p := t.Repo.Path; p != "" {
+				if !filepath.IsAbs(p) {
+					p = filepath.Join(wd, p)
+				}
+				protect = append(protect, filepath.Clean(p))
+			}
+		}
+	}
+	ws, err := rf.workspaces(stderr, protect...)
 	if err != nil {
 		return nil, err
 	}
@@ -780,7 +798,7 @@ func rlServe(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	err = env.Serve(ctx, *addr, rg.Runner, env.ServeOptions{
 		Root: *runs, Token: token, Tasks: tasks, RepoRoots: splitList(*repoRoots), RewardsDir: *rewardsDir,
 		PolicyHosts: splitList(*policyHosts), PolicyKeyEnvs: splitList(*policyKeyEnvs),
-		MaxRuns: *maxRuns, MaxGroup: *maxGroup, Concurrency: rf.concurrency,
+		MaxRuns: *maxRuns, MaxGroup: *maxGroup, Concurrency: rf.concurrency, Budget: rf.budget(stderr),
 		NewScorer: func(path string) (env.Scorer, error) {
 			cfg, err := reward.LoadConfig(path)
 			if err != nil {

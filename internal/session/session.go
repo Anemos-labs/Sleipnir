@@ -140,6 +140,10 @@ type Options struct {
 	Owners     swarm.PathOwners
 	Verify     string // command the harness runs before a worker's task may leave "doing"
 	RoleModels map[string]string
+	// DefinitionModel, when set, rewrites the model: of a loaded agent definition before it is resolved. A definition comes
+	// with the project; an embedder that pins which endpoints a session may reach (an RL rollout, whose credentials belong
+	// to the operator) maps it onto an allowed provider here. Nil keeps the definition's model.
+	DefinitionModel func(model string) string
 	// Team, when set, is the team's composition: one slot per entry, a role named as
 	// often as it has slots, each slot on its own model or ("") its role's
 	// (--role-model given more than once for a role, or with a bare role). Without it
@@ -1246,7 +1250,11 @@ func (s *Session) build(ctx context.Context) error {
 			if d.Model == "" || o.RoleModels[d.Name] != "" {
 				continue
 			}
-			mr, err := ResolveModel(s.cfg, d.Model)
+			ref := d.Model
+			if o.DefinitionModel != nil {
+				ref = o.DefinitionModel(ref)
+			}
+			mr, err := ResolveModel(s.cfg, ref)
 			if err != nil {
 				return fmt.Errorf("role %s: model %s: %w", d.Name, d.Model, err)
 			}

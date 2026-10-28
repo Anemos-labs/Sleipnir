@@ -135,8 +135,18 @@ func TestPrepareIDRejectsUnsafeIDs(t *testing.T) {
 			t.Errorf("id %q accepted", id)
 		}
 	}
-	if got := StableID("fix/odd id", 2, "abc123"); got != "fix_odd_id-s2-abc123" {
+	if got := StableID("fix/odd id", 2, "abc123"); !strings.HasPrefix(got, "fix_odd_id-") || !strings.HasSuffix(got, "-s2-abc123") || labelRe.MatchString(got) {
 		t.Errorf("StableID = %q", got)
+	}
+	if got := StableID("plain", 2, "abc123"); got != "plain-s2-abc123" {
+		t.Errorf("StableID of a plain name = %q", got)
+	}
+	// Names that the replacement or the cut would make equal stay apart.
+	if a, b := StableID("fix/odd", 0, "r"), StableID("fix_odd", 0, "r"); a == b {
+		t.Errorf("fix/odd and fix_odd share the workspace %q", a)
+	}
+	if a, b := StableID(strings.Repeat("t", 200)+"1", 0, "r"), StableID(strings.Repeat("t", 200)+"2", 0, "r"); a == b || len(a) > maxWorkspaceID {
+		t.Errorf("long task names: %q %q", a, b)
 	}
 	// A run tag too long for the id is replaced by a digest: no panic, a valid id, distinct tags kept apart.
 	long1, long2 := StableID("task", 1, strings.Repeat("a", 300)), StableID("task", 1, strings.Repeat("a", 299)+"b")

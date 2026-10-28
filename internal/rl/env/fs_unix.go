@@ -33,3 +33,6 @@ func chmodDirNoFollow(path string, mode fs.FileMode) error {
 	}
 	return os.Chmod(path, mode.Perm())
 }
+
+// openNoWait is the flag that makes opening a FIFO fail or return at once instead of waiting for a writer.
+const openNoWait = syscall.O_NONBLOCK

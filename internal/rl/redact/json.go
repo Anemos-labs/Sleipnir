@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"regexp"
+	"strings"
 )
 
 // JSON redacts the string values of a JSON document. Keys, numbers, literals and
@@ -99,12 +100,21 @@ var secretKeyRE = regexp.MustCompile(`(?i)` + kvKeyword + `$`)
 // strings: {"db_password": "hunter2hunter2"} has nothing secret-looking in the
 // value alone. The key itself is never modified.
 func (r *Redactor) jsonValue(raw []byte, start int, s string) (string, bool) {
+	key := keyBefore(raw, start)
 	if r.enabled[KindSecret] && len(s) >= 12 && !tokenRE.MatchString(s) {
-		if key := keyBefore(raw, start); key != "" && secretKeyRE.MatchString(key) && kvValueOK(s, true, key, ":") && !r.allowed(s, s) {
+		if key != "" && secretKeyRE.MatchString(key) && kvValueOK(s, true, key, ":") && !r.allowed(s, s) {
 			r.mu.Lock()
 			r.stats[KindSecret]++
 			r.mu.Unlock()
 			return r.token(KindSecret, s), true
+		}
+	}
+	if strings.EqualFold(key, "authorization") || strings.EqualFold(key, "proxy-authorization") {
+		// The header rules read "Authorization: Basic ..." as one line; in JSON the name is the key, so it is put back in
+		// front of the value for them.
+		head := key + ": "
+		if out, ok := r.Changed(head + s); ok && strings.HasPrefix(out, head) {
+			return strings.TrimPrefix(out, head), true
 		}
 	}
 	return r.Changed(s)

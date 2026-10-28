@@ -128,14 +128,32 @@ func Seal(ctx context.Context, g *env.Git, gitDir, rev, dest string, opts SealOp
 		if _, err := dst(index, nil, "read-tree", tree); err != nil {
 			return "", fmt.Errorf("seal: %w", err)
 		}
-		// Mode 0 removes a path from the index; one that is not there stays absent.
+		// Mode 0 removes a path from the index; one that is not there stays absent. The index holds files only, so a
+		// directory is removed as every file under it.
+		listed, err := g.RunEnv(ctx, "", index, nil, 256<<20, "--git-dir="+tmp, "ls-files", "-z")
+		if err != nil {
+			return "", fmt.Errorf("seal: %w", err)
+		}
 		var info bytes.Buffer
 		zero := strings.Repeat("0", len(tree))
+		removed := map[string]bool{}
+		remove := func(p string) {
+			if !removed[p] {
+				removed[p] = true
+				fmt.Fprintf(&info, "0 %s\t%s\x00", zero, p)
+			}
+		}
 		for _, p := range opts.Remove {
 			if p == "" || strings.ContainsAny(p, "\x00\n") {
 				return "", fmt.Errorf("seal: cannot remove %q", p)
 			}
-			fmt.Fprintf(&info, "0 %s\t%s\x00", zero, p)
+			remove(p)
+			dir := strings.TrimSuffix(p, "/") + "/"
+			for _, f := range bytes.Split(listed, []byte{0}) {
+				if len(f) > 0 && strings.HasPrefix(string(f), dir) {
+					remove(string(f))
+				}
+			}
 		}
 		if _, err := dst(index, info.Bytes(), "update-index", "-z", "--index-info"); err != nil {
 			return "", fmt.Errorf("seal: removing paths: %w", err)

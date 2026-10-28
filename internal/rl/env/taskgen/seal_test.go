@@ -177,6 +177,15 @@ func TestSealRemovesPaths(t *testing.T) {
 	if out, err := exec.Command("find", filepath.Join(dest, "objects"), "-type", "f", "-path", "*/objects/??/*").Output(); err == nil && strings.Count(string(out), "\n") != 1 {
 		t.Errorf("loose objects besides the commit:\n%s", out)
 	}
+	// A directory is removed with everything under it.
+	dirDest := filepath.Join(t.TempDir(), "d.git")
+	commit, err = Seal(context.Background(), newGit(t), filepath.Join(f.Dir, ".git"), start, dirDest, SealOptions{Remove: []string{"dir"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if files := f.git("--git-dir="+dirDest, "ls-tree", "-r", "--name-only", commit); files != "a.txt\nold/only.txt" {
+		t.Errorf("sealed tree without dir: %q", files)
+	}
 	for _, bad := range []string{"", "a\nb"} {
 		if _, err := Seal(context.Background(), newGit(t), filepath.Join(f.Dir, ".git"), start, filepath.Join(t.TempDir(), "x.git"), SealOptions{Remove: []string{bad}}); err == nil {
 			t.Errorf("removing %q was accepted", bad)

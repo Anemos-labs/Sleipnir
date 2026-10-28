@@ -396,12 +396,13 @@ func matchPrefix(pat, ps []string, reseed bool) bool {
 
 // segMatch matches one path segment: "*" any run, "?" one character, "[...]"
 // a class. A malformed pattern falls back to literal comparison so a typo cannot
-// silently disable protection.
+// silently disable protection. A class negated with "!" is negated, as the
+// verifier's protected patterns read it (path.Match knows only "^").
 func segMatch(pat, s string) bool {
 	if pat == "**" {
 		return true
 	}
-	ok, err := path.Match(pat, s)
+	ok, err := path.Match(strings.ReplaceAll(pat, "[!", "[^"), s)
 	if err != nil {
 		return pat == s
 	}

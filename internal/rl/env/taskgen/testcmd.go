@@ -30,6 +30,20 @@ func shq(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
+// shword is s as one shell word: as it is when it holds only characters no shell reads as syntax (a package path such as
+// ./internal/x), and single-quoted otherwise, so a directory name from a repository never becomes a command.
+func shword(s string) string {
+	if s == "" {
+		return shq(s)
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("-_./+@%:,=", r)) {
+			return shq(s)
+		}
+	}
+	return s
+}
+
 var goTestFuncRe = regexp.MustCompile(`(?m)^func (Test[A-Za-z0-9_]*)\s*\(\s*\w+\s+\*testing\.T\s*\)`)
 var goTopLevelRe = regexp.MustCompile(`(?m)^(?:func|type|var|const)\s`)
 
@@ -245,7 +259,9 @@ func planGo(ctx context.Context, r *repo, parent, commit string, files []hiddenF
 	if parsedAll && len(names) <= 40 {
 		cmd += " -run " + shq("^("+strings.Join(names, "|")+")$")
 	}
-	cmd += " " + strings.Join(pkgs, " ")
+	for _, p := range pkgs {
+		cmd += " " + shword(p) // a package is a repository path: data, never shell syntax
+	}
 	setup := "go mod download"
 	if mod != "." && mod != "" {
 		cmd = "cd " + shq(mod) + " && " + cmd

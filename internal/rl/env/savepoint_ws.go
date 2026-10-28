@@ -88,7 +88,8 @@ func (m *Workspaces) PrepareID(ctx context.Context, task rl.Task, id string) (*W
 // tag of the run (for example a hash of its output directory), so two runs of
 // the same task never share a workspace. A run tag too long to leave room for
 // the task is replaced by a digest of it (distinct tags stay distinct), and a
-// long task name is cut.
+// task name that had to be changed (a character replaced, a long name cut)
+// carries a digest of the original: two tasks never share a workspace.
 func StableID(task string, sample int, run string) string {
 	id := labelRe.ReplaceAllString(task, "_")
 	tag := labelRe.ReplaceAllString(run, "_")
@@ -97,8 +98,10 @@ func StableID(task string, sample int, run string) string {
 		tag = hex.EncodeToString(h[:8])
 	}
 	suffix := fmt.Sprintf("-s%d-%s", sample, tag)
-	if len(id)+len(suffix) > maxWorkspaceID {
-		id = id[:max(maxWorkspaceID-len(suffix), 0)]
+	if id != task || len(id)+len(suffix) > maxWorkspaceID {
+		h := sha256.Sum256([]byte(task))
+		digest := "-" + hex.EncodeToString(h[:4])
+		id = id[:max(min(len(id), maxWorkspaceID-len(suffix)-len(digest)), 0)] + digest
 	}
 	return id + suffix
 }
