@@ -159,7 +159,7 @@ func (p pluginCLI) setup(ctx context.Context, id, method string, yes bool, in io
 	}
 	if steps := append(envSteps(pick.Env), joinSteps(append(append([][]string{}, pick.Setup...), pick.Argv))...); len(steps) > 0 {
 		// escaped, not cleaned: what is approved is every character that runs
-		fmt.Fprintf(p.out, "This runs, as you:\n  %s\n", tools.EscapeForTerminal(strings.Join(steps, "\n  ")))
+		fmt.Fprintf(p.out, "This runs, as you (a backslash shown doubled, a control character as an escape):\n  %s\n", tools.EscapeForTerminal(strings.Join(steps, "\n  ")))
 	}
 	if pick.Connect != "" {
 		fmt.Fprintf(p.out, "It %s.\n", tools.SanitizeForTerminal(pick.Connect))

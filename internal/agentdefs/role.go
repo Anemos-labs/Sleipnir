@@ -299,16 +299,26 @@ func truncate(s string, n int) string {
 // pattern whose words rule's pattern starts with ("Bash(go:*)" and "Bash(go *)" cover "Bash(go test:*)", "Bash(g:*)" does not).
 func coveredBy(rule string, entries []string) bool {
 	name, pat := normTool(toolName(rule)), ruleArg(rule)
+	// A qualifier other than ":workspace" (which only narrows its prefix) reaches past the prefix: "python:venv-tests" runs
+	// .venv/bin/python too. Only a blanket entry or the same rule covers it.
+	_, qual, qualified := strings.Cut(pat, ":")
+	wide := qualified && qual != "*" && qual != "workspace"
 	for _, e := range entries {
-		if normTool(toolName(e)) != name && !(classOf(e) == classShell && classOf(rule) == classShell) {
+		if normTool(toolName(e)) != name && !(commandTool(e) && commandTool(rule)) {
 			continue
 		}
 		if !strings.Contains(e, "(") {
 			return true
 		}
 		arg := ruleArg(e)
-		if arg == "" || arg == "*" || arg == ":*" { // a blanket entry covers every command
+		if arg == "" || arg == "*" || (arg == ":*" && commandTool(e)) { // a blanket entry covers every command
 			return true
+		}
+		if wide {
+			if pat == arg {
+				return true
+			}
+			continue
 		}
 		if !strings.HasSuffix(arg, "*") { // an exact command covers that command alone
 			if pat != "" && pat == arg {
@@ -320,6 +330,16 @@ func coveredBy(rule string, entries []string) bool {
 		if pat != "" && (pat == prefix || strings.HasPrefix(pat, prefix+" ") || strings.HasPrefix(pat, prefix+":")) {
 			return true
 		}
+	}
+	return false
+}
+
+// commandTool reports whether entry names a tool that runs a shell command (Bash, Shell, ...): those cover one another's
+// commands. BashOutput and KillShell are shell tools that run nothing.
+func commandTool(entry string) bool {
+	switch normTool(toolName(entry)) {
+	case "bash", "shell", "sh", "exec", "run", "runcommand", "terminal", "cmd":
+		return true
 	}
 	return false
 }
