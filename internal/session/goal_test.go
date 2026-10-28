@@ -8,7 +8,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
@@ -273,6 +275,54 @@ func TestAJudgesContinueAfterASearchStands(t *testing.T) {
 	}
 	if _, next := s.GoalTurn(context.Background(), g, nil); g.Done || !strings.Contains(next, "missing: run the migration") || calls != 2 {
 		t.Errorf("a continue after a search: next %q done=%v calls=%d", next, g.Done, calls)
+	}
+}
+
+// A judge request that fails in a way repeating may cure is sent again, so a dropped connection partway through a judgment
+// neither pauses the goal nor throws away the evidence requests already answered; a failure repeating cannot cure is not repeated.
+func TestAJudgeRequestThatFailsOnTheWayIsSentAgain(t *testing.T) {
+	defer func(base time.Duration) { agent.RetryBase = base }(agent.RetryBase)
+	agent.RetryBase = time.Millisecond
+	calls := 0
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if !strings.Contains(c.System, "You judge whether a coding agent") {
+			return mock.Reply{Text: "Completed the objective"}
+		}
+		switch calls++; calls {
+		case 1:
+			return mock.Reply{Text: `{"verdict":"inspect","query":"migration applied","offset":0}`}
+		case 2, 3:
+			return mock.Reply{Fault: &mock.Fault{Status: 502, Message: "bad gateway"}}
+		}
+		if !strings.Contains(c.LastUser(), "migration applied") {
+			t.Errorf("the evidence answered before the failure was lost:\n%s", c.LastUser())
+		}
+		return mock.Reply{Text: `{"verdict":"done","reason":"the migration applied","left":[]}`}
+	})
+	s, err := session.New(context.Background(), opts(t, newRepo(t), client, model))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	g := goal.New("apply the migration")
+	s.SaveGoal(g)
+	s.Log.Emit("ts-2", events.TypeTurnAppend, core.Turn{Role: core.RoleUser, Blocks: []core.Block{core.ToolResult("m1", false, core.Text("migration applied"))}})
+	if _, err := s.Run(context.Background(), goal.Start(g)); err != nil {
+		t.Fatal(err)
+	}
+	if note, next := s.GoalTurn(context.Background(), g, nil); !g.Done || next != "" || g.Paused != "" || calls != 4 {
+		t.Fatalf("after two failed requests: note %q next %q done=%v paused %q calls=%d", note, next, g.Done, g.Paused, calls)
+	}
+	_ = s.Log.Flush()
+	retries := 0
+	_ = events.Scan(filepath.Join(s.Dir, "events.jsonl"), func(e events.Event) error {
+		if e.Type == events.TypeModelError && strings.Contains(string(e.Data), "goal:judge") {
+			retries++
+		}
+		return nil
+	})
+	if retries != 2 {
+		t.Errorf("%d judge retries in the log, want 2", retries)
 	}
 }
 

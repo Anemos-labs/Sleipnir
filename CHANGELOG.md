@@ -7,6 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A goal judge request that fails with a network error, a timeout, a
+  5xx or a rate limit is sent again, up to four times with a growing
+  wait, and each retry is a `model.error` event. Before, one dropped
+  connection paused the goal and discarded the judgment's evidence
+  requests.
 - A goal judge whose first answer is "continue", given before any
   evidence request, is sent back once to search the archive for each
   item it names as missing. Whatever it answers next stands, whether
