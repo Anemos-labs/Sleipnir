@@ -189,14 +189,16 @@
     const P = ui.pageHead(sc, root, S0 || SL.sessions.active, 'schedule', params, { title: 'Schedule', purpose: 'Goals that run on their own at set times, as sessions without a terminal (<span class="mono">sleipnir schedule</span>). Nobody is there to answer, so an action that needs approval is refused.' });
     P.fill({ 'schedule.daemon': '<section class="panel"><div class="ph"><h2 title="sleipnir daemon">Scheduler</h2><div class="r dmn"></div></div></section>',
       'schedule.jobs': '<section class="panel"><div class="ph"><h2>Jobs</h2><div class="r jn"></div></div><div class="setcard jobs"></div></section>',
-      'schedule.add': '<section class="panel"><div class="ph"><h2 class="addh">Add a job</h2><div class="r"><span class="mono addm">schedule add</span></div></div><div class="setcard"><div class="fld"><label for="sCron" title="a cron expression">when</label><div class="fc"><input id="sCron" type="text" value="0 9 * * 1-5" autocomplete="off" spellcheck="false"><small class="hint" id="sNext"></small></div></div><div class="fld"><label for="sGoal">goal</label><div class="fc"><textarea id="sGoal" rows="2" placeholder="what the run should do, judged on evidence"></textarea></div></div><div class="fld"><div class="fl"><label for="sDir" title="--cwd">folder</label>' + ui.help(ui.folder.helpText, 'the folder') + '</div><div class="fc">' + ui.folder.html('', SD) + '</div></div><div class="fld"><label for="sMode" title="--mode">permissions</label><div class="fc"><select id="sMode"><option value="">default</option><option>accept-edits</option><option>plan</option></select><small class="hint">bypass and yolo cannot be scheduled from here</small></div></div><div class="fld"><label for="sModel" title="--model">model</label><div class="fc"><select id="sModel"></select></div></div><div class="fld"><label for="sBudget" title="--budget-usd">budget ($)</label><div class="fc"><input id="sBudget" type="text" value="1" inputmode="decimal"></div></div><div class="row2"><button class="btn pri" type="button" id="sAdd">Add the job</button><button class="btn" type="button" id="sCancel" hidden>Cancel</button></div></div></section>',
+      'schedule.add': '<section class="panel"><div class="ph"><h2 class="addh">Add a job</h2><div class="r"><span class="mono addm">schedule add</span></div></div><div class="setcard"><div class="fld"><label for="sCron" title="a cron expression">when</label><div class="fc"><input id="sCron" type="text" value="0 9 * * 1-5" autocomplete="off" spellcheck="false"><small class="hint" id="sNext"></small></div></div><div class="fld"><label for="sGoal">goal</label><div class="fc"><textarea id="sGoal" rows="2" placeholder="what the run should do, judged on evidence"></textarea></div></div><div class="fld"><div class="fl"><label for="sDir" title="--cwd">folder</label>' + ui.help(ui.folder.helpText, 'the folder') + '</div><div class="fc">' + ui.folder.html('', SD) + '</div></div><div class="fld"><label for="sMode" title="--mode">permissions</label><div class="fc"><select id="sMode"><option value="">default</option><option>accept-edits</option><option>plan</option></select><small class="hint" id="sModeHint"></small></div></div><div class="fld"><label for="sModel" title="--model">model</label><div class="fc"><select id="sModel"></select></div></div><div class="fld"><label for="sBudget" title="--budget-usd">budget ($)</label><div class="fc"><input id="sBudget" type="text" value="1" inputmode="decimal"></div></div><div class="row2"><button class="btn pri" type="button" id="sAdd">Add the job</button><button class="btn" type="button" id="sCancel" hidden>Cancel</button></div></div></section>',
       'schedule.log': '<section class="panel"><div class="ph"><h2>Log</h2><div class="r lgh"></div></div><div class="slog"><div class="term" tabindex="0"><div class="tl dim">A job’s output shows here: press Log on a job, or Run now.</div></div></div></section>' });
     const q = s => $(s, root), S = () => SCH();
     ui.helpMount(root, sc); fm = ui.folder.mount(root, sc, dirSt, { ids: SD, projects: () => arr(X().projects), make: false, onState() {} });
     const nextOf = j => { const n = st.next.get(j.cron); return j.next ? hm(j.next) : n && n.ok ? hm(n.next) : '–'; };
     /** the directory and model lists (the server's projects and catalogue); what is chosen stays chosen, or prefer = {dir, model} */
     function fillSelects(prefer) {
-      const box = $('#sDir', root), want = prefer ? prefer.dir : box.value.trim() ? null : projects()[0];   // a job being edited has its folder; a new one starts in the first project
+      const box = $('#sDir', root), here = SL.sessions && SL.sessions.active && SL.sessions.active.meta ? SL.sessions.active.meta.cwd : '', ps = projects();
+      // a job being edited has its folder; a new one starts in the active session's project, else in the first project
+      const want = prefer ? prefer.dir : box.value.trim() ? null : here && ps.includes(here) ? here : ps[0];
       if (want != null && want !== box.value) { box.value = dirSt.cwd = want; box.dispatchEvent(new Event('input', { bubbles: true })); }
       const md = $('#sModel', root), mcur = prefer ? prefer.model : md.value, ms = models(); if (mcur && !ms.includes(mcur)) ms.unshift(mcur);
       md.innerHTML = '<option value="">the default model</option>' + ms.map(m => '<option value="' + esc(m) + '"' + (m === mcur ? ' selected' : '') + '>' + esc(m) + '</option>').join('');
@@ -213,7 +215,7 @@
       q('.addh').textContent = j ? 'edit ' + id : 'Add a job'; q('.addm').textContent = j ? 'schedule edit' : 'schedule add'; q('#sAdd').textContent = j ? 'Save ' + id : 'Add the job'; q('#sCancel').hidden = !j;
       $('#sCron', root).value = j ? j.cron : $('#sCron', root).value; if (j) { $('#sGoal', root).value = j.goal; $('#sBudget', root).value = String(j.budgetUsd); $('#sMode', root).value = j.mode || ''; }
       fillSelects(j ? { dir: j.dir || '', model: j.model || '' } : null);
-      nextHint();
+      modeHint(); nextHint();
     }
     function showLogText(j, l) {
       const term = $('.term', root); term.innerHTML = '';
@@ -248,6 +250,10 @@
     /** the line under the cron field: the next run, or what is wrong (the format is added when the server's error does not already say it) */
     function hintHtml(c) { const fmt = 'five fields (minute hour day month weekday) or @hourly @daily @weekly', e = c && c.error ? String(c.error) : '';
       return c && c.ok ? '<span class="ok">✓ next run ' + esc(hm(c.next)) + '</span>' : '<span class="err">✗ ' + (!e ? 'not a cron expression: ' + fmt : /five fields/i.test(e) ? esc(e) : esc(e) + ': ' + fmt) + '</span>'; }
+    /** what the chosen mode lets an unattended run do: nobody is there to say yes, so default mode refuses builds and tests too */
+    const MODE_HINT = { '': 'refuses edits, builds, tests and any command that needs a yes: nobody is there to give one',
+      'accept-edits': 'edits inside the project, builds and tests; anything else that needs a yes is refused', plan: 'read-only: reports, changes nothing' };
+    function modeHint() { const h = $('#sModeHint', root); if (h) h.textContent = (MODE_HINT[$('#sMode', root).value] || '') + ' · bypass and yolo cannot be scheduled from here'; }
     function nextHint() {
       const v = $('#sCron', root).value.trim(), hint = $('#sNext', root), have = st.next.get(v);
       if (have) { hint.innerHTML = hintHtml(have); return Promise.resolve(have.ok); }
@@ -287,9 +293,10 @@
       if (t.closest('#sCancel')) { setForm(null); return; }
       if (t.closest('#sAdd')) submit();
     });
+    sc.listen(root, 'change', e => { if (e.target.id === 'sMode') modeHint(); });
     sc.listen(root, 'input', e => { if (e.target.id === 'sCron') nextHint(); else if (e.target.id === 'dmEvery') st.every = e.target.value.trim(); });
     sc.on('models-changed', () => fillSelects());
     sc.on('data', w => { if (w === 'schedule') draw(); else if (w === 'projects' || w === 'models') fillSelects(); });
-    fillSelects(); draw(); nextHint(); if (S().logs.length) showLog(S().logs[0].job); if (SL.data) SL.data.forPage('schedule', { loud: true });
+    fillSelects(); draw(); modeHint(); nextHint(); if (S().logs.length) showLog(S().logs[0].job); if (SL.data) SL.data.forPage('schedule', { loud: true });
   } });
 })(SL);
