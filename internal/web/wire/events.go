@@ -407,8 +407,8 @@ type Diff struct {
 }
 
 // Goal is the standing goal's state: S is active, paused, met or cleared. Objective is the goal's text, Turns the continuation turns
-// used out of Max, Paused why it is paused and Reason the judge's last reason. Spec is the spec file the goal names and Milestones the
-// checkpoints the judge rules on one by one, with its last ruling.
+// used out of Max, Paused why it is paused and Reason the judge's last reason. Spec is the spec file the goal names, Rubric the project's
+// rubric file the judge also holds it to, and Milestones the checkpoints the judge rules on one by one, with its last ruling.
 type Goal struct {
 	Base
 	S          string          `json:"s"`
@@ -418,6 +418,7 @@ type Goal struct {
 	Paused     string          `json:"paused,omitempty"`
 	Reason     string          `json:"reason,omitempty"`
 	Spec       string          `json:"spec,omitempty"`
+	Rubric     string          `json:"rubric,omitempty"`
 	Milestones []GoalMilestone `json:"milestones,omitempty"`
 }
 

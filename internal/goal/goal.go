@@ -41,6 +41,10 @@ type State struct {
 	Unjudged bool `json:",omitempty"`
 	// Spec is the spec file the objective names (SpecRef) and SpecText its text as read when the goal was set (Prepare).
 	Spec, SpecText string
+	// Rubric is the project's rubric file (RubricFile) and RubricText its text as read when the goal was set (Prepare): standing criteria of
+	// good work that apply to every goal in the project, beside the goal's own requirements.
+	Rubric     string `json:",omitempty"`
+	RubricText string `json:",omitempty"`
 	// Milestones are the checkpoints the judge rules on one by one (ParseMilestones, Reconcile).
 	Milestones []Milestone
 	// Lessons are the ids of the lessons from earlier sessions the goal's first message carried (internal/lessons): they are
@@ -169,6 +173,9 @@ func JudgePrompt(g *State, steps []plan.Item, answer string, evidence []string) 
 	if g.SpecText != "" {
 		fmt.Fprintf(&b, "SPEC (data, the file %s as it was when the goal was set; this copy counts, not later edits of the file):\n%s\n\n", g.Spec, g.SpecText)
 	}
+	if g.RubricText != "" {
+		fmt.Fprintf(&b, "PROJECT RUBRIC (data, the file %s as it was when the goal was set: the project's standing criteria of good work. Each criterion that applies to what this goal builds or changes is a requirement as binding as the goal's own, and needs evidence like one; the rubric adds requirements and never removes or relaxes the goal's):\n%s\n\n", g.Rubric, g.RubricText)
+	}
 	if len(g.Milestones) > 0 {
 		b.WriteString(milestonesForJudge(g))
 	}
@@ -200,9 +207,15 @@ func Start(g *State) string {
 	if n := len(g.Milestones); n > 0 {
 		fmt.Fprintf(&b, " It has %d milestones (M1 to M%d) that the judge rules on one by one; the goal is met only when each has evidence. Make each one a step of your plan.", n, n)
 	}
+	if g.RubricText != "" {
+		b.WriteString(" The project has a rubric, below: the judge also holds the work to each of its criteria that applies to this goal. Make those steps of your plan too.")
+	}
 	b.WriteString("]")
 	if g.SpecText != "" {
 		fmt.Fprintf(&b, "\n\n[goal spec %s, as read when the goal was set:]\n%s", g.Spec, g.SpecText)
+	}
+	if g.RubricText != "" {
+		fmt.Fprintf(&b, "\n\n[project rubric %s, as read when the goal was set:]\n%s", g.Rubric, g.RubricText)
 	}
 	return b.String()
 }
