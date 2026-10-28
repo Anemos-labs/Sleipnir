@@ -12,8 +12,9 @@ type shellCtx struct {
 	stack []shellFrame
 	prev  byte
 	esc   bool
-	// word is the unquoted word being read in a $( ); unsure is set for good once one of them is "case": a pattern's ")" there
-	// does not end the substitution, which this tracker cannot tell, so no placeholder after it is spelled for a guessed context.
+	// word is the unquoted word being read in a $( ); unsure is set for good once one of them is "case", or a ${ opens there: a
+	// pattern's ")" (or one in ${v:-)}) does not end the substitution, which this tracker cannot tell, so no placeholder after it is
+	// spelled for a guessed context.
 	word   []byte
 	unsure bool
 }
@@ -49,7 +50,10 @@ func (c *shellCtx) step(ch byte) {
 	}
 	top := &c.stack[len(c.stack)-1]
 	if top.kind == 'n' && top.sub {
-		if ch >= 'a' && ch <= 'z' {
+		if ch == '{' && prev == '$' {
+			c.unsure = true
+		}
+		if strings.IndexByte(" \t\n;&|()<>", ch) < 0 { // a word ends only where the shell ends one: ignore-case is not case
 			c.word = append(c.word, ch)
 		} else {
 			if string(c.word) == "case" {

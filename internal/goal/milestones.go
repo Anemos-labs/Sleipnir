@@ -275,19 +275,6 @@ func readSpec(ref, dir, root string) (string, error) {
 	if err != nil || !filepath.IsLocal(rel) {
 		return "", ErrSpecOutside
 	}
-	// the file named is the file read: a link in the project (SPEC.md -> .env) would put whatever it reaches in front of the model
-	// under the name the person chose
-	if realRoot, err := filepath.EvalSymlinks(root); err == nil {
-		if real, err := filepath.EvalSymlinks(p); err == nil {
-			realRel, err := filepath.Rel(realRoot, real)
-			if err != nil || !filepath.IsLocal(realRel) {
-				return "", ErrSpecOutside
-			}
-			if realRel != filepath.Clean(rel) {
-				return "", ErrSpecLinked
-			}
-		}
-	}
 	r, err := os.OpenRoot(root)
 	if err != nil {
 		return "", err
@@ -303,9 +290,26 @@ func readSpec(ref, dir, root string) (string, error) {
 		return "", err
 	}
 	defer f.Close()
-	if st, err := f.Stat(); err != nil {
+	st, err := f.Stat()
+	if err != nil {
 		return "", err
-	} else if st.IsDir() {
+	}
+	// the file named is the file read: a link in the project (SPEC.md -> .env) would put whatever it reaches in front of the model
+	// under the name the person chose. The path is resolved after the open and must name, without a link, the very file opened.
+	if realRoot, err := filepath.EvalSymlinks(root); err == nil {
+		real, err := filepath.EvalSymlinks(p)
+		if err != nil {
+			return "", ErrSpecLinked
+		}
+		realRel, err := filepath.Rel(realRoot, real)
+		if err != nil || !filepath.IsLocal(realRel) {
+			return "", ErrSpecOutside
+		}
+		if lst, err := os.Lstat(real); realRel != filepath.Clean(rel) || err != nil || !os.SameFile(lst, st) {
+			return "", ErrSpecLinked
+		}
+	}
+	if st.IsDir() {
 		return "", errors.New("it is a directory")
 	}
 	b, err := io.ReadAll(io.LimitReader(f, MaxSpecBytes+1))

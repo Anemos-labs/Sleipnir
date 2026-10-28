@@ -175,7 +175,7 @@ func (t *tailer) open() (ok bool, err error) {
 		// a FIFO or a device would block the open or never end: a log is a file
 		return false, fmt.Errorf("%s is not a regular file", t.path)
 	}
-	f, err := os.Open(t.path)
+	f, err := os.OpenFile(t.path, readFlags, 0)
 	if err != nil {
 		if (t.opt.WaitForFile || t.opened) && errors.Is(err, fs.ErrNotExist) {
 			return false, nil

@@ -627,3 +627,19 @@ func TestUpdateRefusesAnotherBranch(t *testing.T) {
 		t.Fatalf("Update on another branch: %v", err)
 	}
 }
+
+// A detached tree whose HEAD was pointed at a branch commits nothing: the commit would move that branch.
+func TestDetachedTreeRefusesToCommitOnABranch(t *testing.T) {
+	dir := newRepo(t)
+	m := newManager(t, openRepo(t, dir))
+	d := mustCreate(t, m, "detached", CreateOptions{Detach: true})
+	rawGit(t, d.Path, "checkout", "-q", "-b", "taken")
+	edit(t, d, "x.txt", "x\n")
+	if _, err := d.Commit(tctx(t), "x"); err == nil || !strings.Contains(err.Error(), "detach HEAD again") {
+		t.Fatalf("Commit on a branch from a detached tree: %v", err)
+	}
+	rawGit(t, d.Path, "checkout", "-q", "--detach")
+	if _, err := d.Commit(tctx(t), "x"); err != nil {
+		t.Fatalf("Commit once detached again: %v", err)
+	}
+}

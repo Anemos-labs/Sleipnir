@@ -50,15 +50,16 @@ func (t *Tree) check() error {
 	return nil
 }
 
-// onOwnBranchLocked refuses to act (what: "commit", "update") while the tree's HEAD names another branch than its own. A commit
+// onOwnBranchLocked refuses to act (what: "commit", "update") while the tree's HEAD names another branch than its own (any branch, for a
+// detached tree). A commit
 // or a merge moves whatever branch HEAD names, and HEAD is the agent's to rewrite (git symbolic-ref HEAD refs/heads/main).
 func (t *Tree) onOwnBranchLocked(ctx context.Context, what string) error {
-	if t.Branch == "" {
-		return nil
-	}
 	cur, err := t.repo.Branch(ctx)
 	if err != nil {
 		return err
+	}
+	if t.Branch == "" && cur != "" { // a detached tree that checked out a branch would move that branch
+		return fmt.Errorf("workspace: the detached tree of %s has %q checked out; detach HEAD again (git checkout --detach) to %s", t.Agent, cur, what)
 	}
 	if cur != t.Branch {
 		return fmt.Errorf("workspace: the tree of %s has %q checked out, not its branch %s; check out %s again to %s", t.Agent, cur, t.Branch, t.Branch, what)

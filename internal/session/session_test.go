@@ -870,6 +870,17 @@ func TestTextSinkDropsBlankLinesThatOnlyOpenAMessage(t *testing.T) {
 	}
 }
 
+// The white space kept before a message's first words is bounded, even when it arrives in one piece.
+func TestTextSinkBoundsLeadingWhiteSpace(t *testing.T) {
+	var out, log strings.Builder
+	sink := session.NewTextSink(&out, &log, "main", false)
+	sink.Text("main", strings.Repeat(" ", 1<<20))
+	sink.Text("main", "x")
+	if n := out.Len(); n > 8<<10 || !strings.HasSuffix(out.String(), "x") {
+		t.Fatalf("answer of %d bytes", n)
+	}
+}
+
 // Text that reaches the terminal is data: an escape sequence in a model's answer
 // (say, an OSC 52 clipboard write a web page talked it into) must not arrive as one.
 func TestTextSinkStripsTerminalEscapes(t *testing.T) {

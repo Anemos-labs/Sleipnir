@@ -304,7 +304,7 @@ func currentText(paths []string) string {
 	if fi, err := os.Stat(paths[0]); err != nil || !fi.Mode().IsRegular() {
 		return ""
 	}
-	f, err := os.Open(paths[0])
+	f, err := os.OpenFile(paths[0], readFlags, 0)
 	if err != nil {
 		return ""
 	}

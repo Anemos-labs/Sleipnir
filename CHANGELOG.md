@@ -9,9 +9,11 @@ they do not indicate whether a change has been released.
 
 - Harness hardening from a security review, third part. A workspace
   verifier no longer gets environment variables whose value looks like a
-  secret, and on Windows its command is wrapped like elsewhere. `restart`
-  hands provider keys to the restarted children on a pipe, not in their
-  environment. A review assessment runs read-only (plan mode) when
+  secret (proxy settings such as `HTTPS_PROXY` are exempt from the value
+  check, since they routinely hold a credential the commands need), and on
+  Windows its command is wrapped like elsewhere. `restart` hands provider
+  keys to the restarted children on a pipe, not in their environment (on
+  Windows, which has no such pipe, they stay in the environment). A review assessment runs read-only (plan mode) when
   auto-fix is off. Approval prompts show the whole command with control
   characters escaped. A goal spec reached through a symbolic link is
   refused, and a workspace update refuses a tree checked out on another

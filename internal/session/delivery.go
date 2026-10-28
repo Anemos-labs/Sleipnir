@@ -221,10 +221,8 @@ func (s *Session) deliveryExec(dir string) delivery.Exec {
 	}
 }
 
-// runPlanTurn runs one turn in plan mode, whatever the session's mode, and puts the mode back after it.
+// runPlanTurn runs one turn that may only read (perm.ReadOnly), whatever the session's mode and rules; the mode itself is left
+// alone, so a change the person makes meanwhile stays.
 func (s *Session) runPlanTurn(ctx context.Context, goal string) (*Result, error) {
-	prev := s.Perm.Mode()
-	s.Perm.SetMode(perm.ModePlan)
-	defer s.Perm.SetMode(prev)
-	return s.runTurn(ctx, goal)
+	return s.runTurn(perm.ReadOnly(ctx), goal)
 }

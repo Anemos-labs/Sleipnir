@@ -144,3 +144,31 @@ func TestReadOnlyRolesRunTheProjectsTestsAndLints(t *testing.T) {
 		}
 	}
 }
+
+// A ReadOnly context holds a turn to what plan mode allows on its own, whatever the session's mode and allow rules, and leaves the
+// session's mode alone.
+func TestReadOnlyRefusesWhatOnlyTheModeOrARuleAllows(t *testing.T) {
+	root := t.TempDir()
+	e, err := NewEngine(Config{Mode: ModeBypass, Root: root, Home: t.TempDir(), Allow: []string{"Edit(docs/plan.md)", "Bash(rm:*)"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := ReadOnly(context.Background())
+	plan := Request{Tool: "write", Writes: true, Paths: []string{root + "/docs/plan.md"}}
+	rm := Request{Tool: "bash", Command: "rm -rf build", Cwd: root}
+	other := Request{Tool: "write", Writes: true, Paths: []string{root + "/main.go"}}
+	if !e.Check(context.Background(), plan).Allow || !e.Check(context.Background(), other).Allow {
+		t.Fatal("bypass and the rules should allow the writes outside a read-only turn")
+	}
+	for _, r := range []Request{plan, rm, other} {
+		if d := e.Check(ctx, r); d.Allow {
+			t.Errorf("a read-only turn allowed %+v: %s", r, d.Reason)
+		}
+	}
+	if d := e.Check(ctx, Request{Tool: "bash", Command: "git status", Cwd: root}); !d.Allow {
+		t.Errorf("a read-only turn refused a read: %+v", d)
+	}
+	if e.Mode() != ModeBypass {
+		t.Errorf("the session's mode changed: %q", e.Mode())
+	}
+}

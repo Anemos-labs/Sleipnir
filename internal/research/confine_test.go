@@ -77,3 +77,11 @@ func TestBareAddressIsALinkOfItself(t *testing.T) {
 		t.Errorf("bare address: %s", out)
 	}
 }
+
+// An address in a link's label is the label's text: a link does not nest inside another.
+func TestAddressInALinkLabelIsText(t *testing.T) {
+	out, _ := renderMarkdown("[see https://a.example/x](https://b.example/y)", mdEnv{})
+	if strings.Count(out, "<a ") != 1 || !strings.Contains(out, `>see https://a.example/x</a>`) {
+		t.Errorf("label address: %s", out)
+	}
+}

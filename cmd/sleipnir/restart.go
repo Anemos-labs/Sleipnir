@@ -223,7 +223,8 @@ func looksLikeFlagValue(typed []string, word string) bool {
 
 // runAgain starts `sleipnir chat` with args as a child that has this process's terminal, waits for it, and ends this process with its
 // status. first, when there is one, is a command run the same way before it (`login`): what it says, and a Ctrl-C at its prompt, are its
-// own, and the chat comes back either way. The children get the provider keys this process holds out of the environment (sched.PassKeys).
+// own, and the chat comes back either way. The children get the provider keys this process holds through sched.PassKeys: on a pipe on
+// Unix, in their environment on Windows.
 // Ctrl-C is theirs: it is ignored here.
 func runAgain(args, first []string) {
 	self, err := os.Executable()
@@ -244,7 +245,7 @@ func runChildren(self string, args, first []string) (int, error) {
 	child := func(args []string) error {
 		cmd := exec.Command(self, args...)
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-		started := sched.PassKeys(cmd) // on a pipe the child reads at its start, never in its environment
+		started := sched.PassKeys(cmd) // on a pipe the child reads at its start (in its environment on Windows)
 		err := cmd.Start()
 		started(err)
 		if err != nil {

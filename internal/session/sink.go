@@ -79,8 +79,8 @@ func (s *TextSink) Text(a, d string) {
 	defer s.mu.Unlock()
 	if !s.said[a] {
 		if strings.TrimSpace(d) == "" { // only the new piece is looked at: what was kept before is white space too
-			if len(s.lead[a]) < maxLead {
-				s.lead[a] += d
+			if room := maxLead - len(s.lead[a]); room > 0 {
+				s.lead[a] += d[:min(room, len(d))] // one large piece is bounded too
 			}
 			return
 		}

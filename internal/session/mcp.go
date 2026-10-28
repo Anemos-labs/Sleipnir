@@ -674,7 +674,7 @@ func readSmallRegular(path string, max int64) ([]byte, error) {
 	if !fi.Mode().IsRegular() {
 		return nil, fmt.Errorf("%s is not a regular file", path)
 	}
-	f, err := os.Open(path)
+	f, err := os.OpenFile(path, readFlags, 0)
 	if err != nil {
 		return nil, err
 	}

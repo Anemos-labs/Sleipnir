@@ -102,3 +102,17 @@ func TestCmdArgumentProcessHelper(t *testing.T) {
 	}
 	os.Exit(2)
 }
+
+// A wrapper in front of cmd /C keeps its own arguments and gets cmd's part spelled as without one: AutoRun off, the script raw.
+func TestConfigureShellThroughAWrapper(t *testing.T) {
+	cmd := exec.Command(`C:\\tools\\sandbox.exe`, "--net", "off", "--", "cmd", "/C", `echo "a&b"`)
+	ConfigureShell(cmd)
+	want := `C:\\tools\\sandbox.exe --net off -- cmd /D /S /C "echo "a&b""`
+	if cmd.SysProcAttr == nil || cmd.SysProcAttr.CmdLine != want {
+		t.Fatalf("command line %+v, want %q", cmd.SysProcAttr, want)
+	}
+	other := exec.Command(`C:\\tools\\sandbox.exe`, "--", "powershell", "/C", "x")
+	if ConfigureShell(other); other.SysProcAttr != nil {
+		t.Errorf("a wrapper over another program was changed: %+v", other.SysProcAttr)
+	}
+}

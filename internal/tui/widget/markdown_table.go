@@ -78,7 +78,7 @@ func mdTableStarts(lines []string, i int) bool {
 		return false
 	}
 	align, ok := mdDelimRow(lines[i+1])
-	return ok && len(mdSplitRow(lines[i])) == len(align)
+	return ok && len(align) <= mdMaxTableCols && len(mdSplitRow(lines[i])) == len(align)
 }
 
 // mdTableInterrupts reports whether lines[i], a line after the first of a paragraph, ends the paragraph by being the header of
@@ -108,7 +108,7 @@ func mdTableAt(lines []string, i int) (*mdTable, int, bool) {
 		if _, ok := mdFenceOpen(ln); ok {
 			break
 		}
-		if (len(t.rows)+2)*len(align) > mdMaxTableCells {
+		if (len(t.rows)+3)*len(align) > mdMaxTableCells { // the header, the rows kept, this one and the row that says more
 			// every row is as wide as the header: past the budget the rows left are said to be there, not drawn
 			more := make([]string, len(align))
 			more[0] = "…"
@@ -127,13 +127,17 @@ func mdTableAt(lines []string, i int) (*mdTable, int, bool) {
 		for len(row) < len(align) {
 			row = append(row, "")
 		}
-		t.rows = append(t.rows, row[:len(align)])
+		t.rows = append(t.rows, append([]string(nil), row[:len(align)]...)) // not the cells past the header's, which are not drawn
 	}
 	return t, j, true
 }
 
-// mdMaxTableCells bounds the cells of one table, header included.
-const mdMaxTableCells = 20000
+// mdMaxTableCells bounds the cells of one table, header included; mdMaxTableCols its columns: a wider header is not a table but
+// text, since laying out its columns would take the terminal far longer than the screen can show of them.
+const (
+	mdMaxTableCells = 20000
+	mdMaxTableCols  = 2000
+)
 
 // table renders a pipe table with the Table widget: cells keep their inline formatting, columns are as wide as their widest
 // cell, and when that is too wide the widest columns are cut with an ellipsis. No column is ever dropped: a table is data, and

@@ -244,10 +244,13 @@ func TestNonStreamingCallsHaveTheirOwnTimeout(t *testing.T) {
 		}
 	})
 	start = time.Now()
-	_, err = New(Config{Name: "t", BaseURL: s3.URL, RequestTimeout: 150 * time.Millisecond, Limits: provider.StreamLimits{MaxDuration: 400 * time.Millisecond}}).Do(context.Background(), req, nil)
-	if err == nil {
-		t.Fatal("a trickling body was read for ever")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second) // a regression fails here rather than hang the suite
+	defer cancel()
+	_, err = New(Config{Name: "t", BaseURL: s3.URL, RequestTimeout: 150 * time.Millisecond, Limits: provider.StreamLimits{MaxDuration: 400 * time.Millisecond}}).Do(ctx, req, nil)
+	if ctx.Err() != nil {
+		t.Fatalf("a trickling body was read until the test's own deadline: %v", err)
 	}
+	wantProviderError(t, err, provider.ErrTimeout, true)
 	if d := time.Since(start); d > 3*time.Second {
 		t.Errorf("a trickling body took %v", d)
 	}

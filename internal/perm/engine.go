@@ -145,6 +145,9 @@ type Engine struct {
 	persisted         map[Rule]bool // rules already handed to Config.Persist
 	granted           []string      // the allow rules added while the session ran (what the person said yes to), in order
 	confined          map[string]rootPair
+
+	readOnlyOnce sync.Once
+	readOnly     *Engine // PlanOnly(ReadOnlyAllow...), built on the first ReadOnly check
 }
 
 // Confine binds an agent to one directory of the workspace (a git worktree of its
@@ -483,6 +486,11 @@ func (e *Engine) snapshotWith(role string, extra []*crule) (sess *view, profs []
 
 // Check implements Requester.
 func (e *Engine) Check(ctx context.Context, r Request) Decision {
+	if reason, refused := e.refusedReadOnly(ctx, r); refused {
+		d := Decision{Reason: "read-only turn: " + reason}
+		e.audit(Audit{Kind: "decide", Request: r, Reason: d.Reason, Decision: d, By: "policy"})
+		return d
+	}
 	judge := func() verdict {
 		sess, profs := e.snapshot(r.Role)
 		v := e.evaluate(sess, r)
@@ -577,6 +585,30 @@ func (e *Engine) Rules(a Action) []string {
 // withTests is the allow list and the build and test rules in one new slice.
 func withTests(allow, tests []*crule) []*crule {
 	return append(append(make([]*crule, 0, len(allow)+len(tests)), allow...), tests...)
+}
+
+// readOnlyKey marks a context made by ReadOnly.
+type readOnlyKey struct{}
+
+// ReadOnly is a context under which Engine.Check allows a request only when plan mode with nothing but ReadOnlyAllow allows it too
+// (PlanOnly): whatever the session's mode and the rules the person added (Edit(src/**), Bash(make:*)), what may change the workspace
+// is refused, and the session's own judgment still applies on top. It holds one turn to reading, such as the assessment of an
+// outside review when auto-fix is off, without touching the session's mode, which the person may change while the turn runs.
+func ReadOnly(ctx context.Context) context.Context {
+	return context.WithValue(ctx, readOnlyKey{}, true)
+}
+
+// refusedReadOnly reports whether ctx was made by ReadOnly and plan mode with ReadOnlyAllow alone refuses r, and why.
+func (e *Engine) refusedReadOnly(ctx context.Context, r Request) (string, bool) {
+	if on, _ := ctx.Value(readOnlyKey{}).(bool); !on {
+		return "", false
+	}
+	e.readOnlyOnce.Do(func() { e.readOnly = e.PlanOnly(ReadOnlyAllow...) })
+	if e.readOnly == nil {
+		return "the permission rules could not be built again", true
+	}
+	d := e.readOnly.Check(context.WithValue(ctx, readOnlyKey{}, false), r)
+	return d.Reason, !d.Allow
 }
 
 // refusalsOnlyKey marks a context made by RefusalsOnly.

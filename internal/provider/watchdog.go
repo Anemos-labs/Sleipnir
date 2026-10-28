@@ -282,18 +282,19 @@ func (w *Watchdog) Failure(cause error) *Error {
 	switch why {
 	case WatchFirstByte:
 		e.Message = "no response from the server within " + w.first.String()
-		if w.req != nil {
-			if n := int(atomic.AddInt32(&w.req.silent, 1)); n >= MaxSilentAttempts {
-				e.NoRetry = true
-				e.Message += fmt.Sprintf(" (%d attempts of this request got no response; not retrying)", n)
-			}
-		}
 	case WatchIdle:
 		e.Message = "no data from the server for " + w.idle.String()
 	case WatchContent:
 		e.Message = "nothing but keep-alives from the server for " + w.content.String()
 	default:
 		e.Message = "the response was still running after " + w.total.String()
+	}
+	// an attempt that got no byte at all is silent whichever deadline ended it (a total shorter than the first-byte wait)
+	if w.req != nil && (why == WatchFirstByte || !w.Received()) {
+		if n := int(atomic.AddInt32(&w.req.silent, 1)); n >= MaxSilentAttempts {
+			e.NoRetry = true
+			e.Message += fmt.Sprintf(" (%d attempts of this request got no response; not retrying)", n)
+		}
 	}
 	return e
 }

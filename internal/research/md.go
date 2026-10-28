@@ -72,12 +72,13 @@ var (
 
 // mdRenderer renders one page.
 type mdRenderer struct {
-	env   mdEnv
-	refs  mdRefs
-	seen  map[string]bool
-	ids   map[string]int
-	b     strings.Builder
-	cited bool // the current block cited a source
+	env    mdEnv
+	refs   mdRefs
+	seen   map[string]bool
+	ids    map[string]int
+	b      strings.Builder
+	cited  bool // the current block cited a source
+	inLink bool // a link's label is being rendered: a bare address in it is text, an <a> does not nest
 }
 
 // renderMarkdown renders a page's Markdown as HTML and reports what it refers to.
@@ -543,7 +544,7 @@ func (r *mdRenderer) inline(s string) string {
 				i += n + end + n
 				continue
 			}
-		case c == 'h' && (strings.HasPrefix(s[i:], "https://") || strings.HasPrefix(s[i:], "http://")) && (i == 0 || !isWord(s[i-1])):
+		case c == 'h' && !r.inLink && (strings.HasPrefix(s[i:], "https://") || strings.HasPrefix(s[i:], "http://")) && (i == 0 || !isWord(s[i-1])):
 			end := i
 			for end < len(s) && !strings.ContainsRune(" \t<>\"')]", rune(s[end])) {
 				end++
@@ -651,7 +652,12 @@ var special = map[string]string{
 
 // link renders an ordinary link. Only web, mail and relative addresses are links; anything else (javascript:) is text.
 func (r *mdRenderer) link(label, href string) string {
-	return r.linkHTML(label, func() string { return r.inline(label) }, href)
+	return r.linkHTML(label, func() string {
+		outer := r.inLink
+		r.inLink = true
+		defer func() { r.inLink = outer }()
+		return r.inline(label)
+	}, href)
 }
 
 // linkHTML is link with the label's markup made by labelHTML: a bare address is its own label, shown as it is (parsed as Markdown

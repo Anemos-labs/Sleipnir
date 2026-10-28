@@ -1114,6 +1114,15 @@ func readOnlyCommand(cmd string) bool {
 	switch prog {
 	case "ls", "cat", "head", "tail", "wc", "pwd", "echo", "grep", "diff", "stat", "file":
 		return true
+	}
+	// an argument that starts with a glob character can expand to a file named like an option ([-]o is -o when a file -o is
+	// there), which the checks below never see: none of these programs gets one
+	for _, a := range args {
+		if a != "" && strings.IndexByte("*?[", a[0]) >= 0 {
+			return false
+		}
+	}
+	switch prog {
 	case "tree":
 		// -o writes the listing to a file; -R with -H writes an index into every directory
 		return !clustered("oR") && !abbreviated("--output")
