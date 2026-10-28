@@ -95,6 +95,9 @@ func startBox(t *testing.T, dir string, network bool) *Box {
 	if testing.Short() {
 		t.Skip("starts a container")
 	}
+	if runtime.GOOS == "windows" {
+		t.Skip("a sandbox needs a Unix host: it mounts the project at the same path inside")
+	}
 	ctx := context.Background()
 	if err := Available(ctx); err != nil {
 		t.Skip("no container engine: ", err)
