@@ -471,16 +471,47 @@ func (s *Session) GoalJudged(ctx context.Context, g *goal.State, turnErr error) 
 // GoalResume takes the pause off g and returns a note for the person and the message that sends the agent on ("" when there is
 // none). A goal paused on a turn that was not judged (it was interrupted or failed, the chat was restarted, or the judge could not be
 // asked) is judged first: the judge's last verdict predates that turn, and its "not met yet" would send the agent to redo work it may
-// have done since; j is that judgment (zero when there was none). g is changed.
+// have done since; j is that judgment (zero when there was none). While the team's board has unfinished tasks the judge is not asked,
+// since it could not find the goal met, and the continuation names those tasks instead of the stale verdict. g is changed.
 func (s *Session) GoalResume(ctx context.Context, g *goal.State) (note, next string, j GoalJudgment) {
 	unjudged := g.Unjudged
 	g.Paused, g.Repeats, g.Unjudged = "", 0, false
 	g.Max = g.Turns + goal.MaxTurns
 	if unjudged {
+		if open := s.unfinishedGoalTasks(); len(open) > 0 {
+			// The judge's verdict could only be "not met": a goal is not met while its board has unfinished work (JudgeGoal). Asking
+			// it costs minutes of evidence reads before the team goes on; the last verdict is stale, so the continuation leaves it out.
+			g.Turns++
+			why := "the board still has unfinished tasks (" + strings.Join(open, ", ") + "); the judge rules once they are done"
+			return "goal resumed without a judgment: " + why, s.GoalContinuation(g, goal.Verdict{Kind: goal.Continue, Reason: why}), j
+		}
 		return s.GoalJudged(ctx, g, nil)
 	}
 	g.Turns++
 	return "", s.GoalContinuation(g, goal.Verdict{Kind: goal.Continue, Reason: g.Reason}), j
+}
+
+// unfinishedGoalTasks are the ids of the team's tasks that keep a goal from being met (goalTaskUnfinished), at most maxListed of them
+// and then "+N more"; nil without a team.
+func (s *Session) unfinishedGoalTasks() []string {
+	if s.Swarm == nil {
+		return nil
+	}
+	const maxListed = 5
+	snapshot := s.Swarm.Board.Snapshot()
+	var ids []string
+	n := 0
+	for _, task := range snapshot.Tasks {
+		if goalTaskUnfinished(task, snapshot) {
+			if n++; n <= maxListed {
+				ids = append(ids, task.ID)
+			}
+		}
+	}
+	if n > maxListed {
+		ids = append(ids, fmt.Sprintf("+%d more", n-maxListed))
+	}
+	return ids
 }
 
 // GoalContinuation is the message that sends the agent on after verdict v (goal.Continuation), with, for the manager of a team, the

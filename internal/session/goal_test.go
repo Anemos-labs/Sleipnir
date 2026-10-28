@@ -18,6 +18,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/swarm"
 )
 
 // A standing goal is judged on evidence and sent on with what is missing: the agent says it is done having run nothing, the judge says that is
@@ -755,4 +756,42 @@ func TestAJudgeModelsDoneIsConfirmedOnTheSessionsModel(t *testing.T) {
 // pushedBack says a judge call is the harness asking a judge to search before its verdict of continue stands.
 func pushedBack(c *mock.Call) bool {
 	return strings.Contains(c.LastUser(), "Your verdict came before any evidence request")
+}
+
+// A team's goal paused on an unjudged turn while its board still has unfinished tasks is sent on without asking the judge: it could
+// not find the goal met (a goal is not met while the board has unfinished work), and in a team trial the judge spent eight minutes of
+// evidence reads on such a resume before the manager could go on. The continuation names the open tasks, not the stale verdict.
+func TestResumingATeamGoalWithUnfinishedTasksSkipsTheJudge(t *testing.T) {
+	calls := 0
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if strings.Contains(c.System, "You judge whether a coding agent") {
+			calls++
+			return mock.Reply{Text: `{"verdict":"continue","reason":"judged","left":[]}`}
+		}
+		return mock.Reply{Text: "planning"}
+	})
+	o := opts(t, newRepo(t), client, model)
+	o.Swarm = true
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	g := goal.New("build the API")
+	s.SaveGoal(g)
+	if _, err := s.Swarm.Board.CreateTask("mgr", swarm.TaskSpec{Title: "plan the contracts", Role: "architect"}); err != nil {
+		t.Fatal(err)
+	}
+	g.Reason = "a verdict from before the pause"
+	g.Paused, g.Unjudged = "the chat was restarted", true
+	note, next, j := s.GoalResume(context.Background(), g)
+	if calls != 0 || j.Judged {
+		t.Fatalf("the judge was asked %d times (judged=%v)", calls, j.Judged)
+	}
+	if g.Paused != "" || g.Unjudged || g.Done {
+		t.Fatalf("the goal after the resume: %+v", g)
+	}
+	if !strings.Contains(note, "unfinished tasks (T1)") || !strings.Contains(next, "Not met yet: the board still has unfinished tasks (T1)") || strings.Contains(next, "before the pause") {
+		t.Fatalf("the resume: note %q next %q", note, next)
+	}
 }
