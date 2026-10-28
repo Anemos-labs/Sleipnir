@@ -7,12 +7,6 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
-- Resuming a goal that paused on a turn the judge did not rule on (the
-  turn was interrupted, failed or ran out of budget, the chat was restarted, or the judge
-  could not be asked) now judges it first. Before, resume re-sent the
-  judge's last "not met yet", from before that turn's work. A goal
-  paused by the person between turns, or by a verdict, resumes as
-  before.
 - The goal judge's evidence search lists tool output (commands, reads,
   edits, merges) before the records of coordination tools (task, pool,
   mail, wait, spawn, plan, note, memory), each newest first. Those
@@ -21,6 +15,12 @@ they do not indicate whether a change has been released.
   proves the claims. The result line counts both groups, and offsets
   count down the combined order.
 
+- Resuming a goal that paused on a turn the judge did not rule on (the
+  turn was interrupted, failed or ran out of budget, the chat was restarted, or the judge
+  could not be asked) now judges it first. Before, resume re-sent the
+  judge's last "not met yet", from before that turn's work. A goal
+  paused by the person between turns, or by a verdict, resumes as
+  before.
 - `sleipnir scan --start --diff BASE` creates a review of the change from BASE to HEAD (docs/SCAN.md): only the files the
   change wrote are mapped and hunted, a lead needs a trace step on a line the change made, and findings.json gains `base`
   and `changes`. Every finding in findings.json gains an `anchor`: in a review the last trace step on a changed line, where
