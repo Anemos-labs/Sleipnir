@@ -251,6 +251,9 @@ func TestNonStreamingCallsHaveTheirOwnTimeout(t *testing.T) {
 		t.Fatalf("a trickling body was read until the test's own deadline: %v", err)
 	}
 	wantProviderError(t, err, provider.ErrTimeout, true)
+	if !strings.Contains(err.Error(), "still running after 400ms") {
+		t.Errorf("a trickling body did not stop at the total deadline: %v", err)
+	}
 	if d := time.Since(start); d > 3*time.Second {
 		t.Errorf("a trickling body took %v", d)
 	}
