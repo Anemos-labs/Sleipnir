@@ -305,7 +305,10 @@ func readSpec(ref, dir, root string) (string, error) {
 		if err != nil || !filepath.IsLocal(realRel) {
 			return "", ErrSpecOutside
 		}
-		if lst, err := os.Lstat(real); realRel != filepath.Clean(rel) || err != nil || !os.SameFile(lst, st) {
+		if realRel != filepath.Clean(rel) {
+			return "", ErrSpecLinked
+		}
+		if lst, err := r.Lstat(rel); err != nil || !os.SameFile(lst, st) {
 			return "", ErrSpecLinked
 		}
 	}
