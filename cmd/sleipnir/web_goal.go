@@ -59,6 +59,7 @@ func goalCommandTo(ctx context.Context, s *session.Session, gp **goal.State, arg
 			fmt.Fprintf(out, "  [%s] %s\n", st.Status, tools.SanitizeForTerminal(st.Step))
 		}
 		writeMilestones(g, out)
+		writeRubric(g, out)
 		return ""
 	case "clear":
 		*gp = nil
@@ -100,6 +101,7 @@ func goalCommandTo(ctx context.Context, s *session.Session, gp **goal.State, arg
 	if len(ng.Milestones) > 0 {
 		fmt.Fprintf(out, "%d milestones, each ruled on by the judge%s\n", len(ng.Milestones), specNote(ng))
 	}
+	writeRubric(ng, out)
 	return s.GoalStart(context.Background(), *gp)
 }
 
@@ -109,6 +111,13 @@ func specNote(g *goal.State) string {
 		return ""
 	}
 	return ", from the goal and " + tools.SanitizeForTerminal(g.Spec)
+}
+
+// writeRubric says that the judge also holds the goal to the project's rubric, when it has one.
+func writeRubric(g *goal.State, out io.Writer) {
+	if g.Rubric != "" {
+		fmt.Fprintf(out, "rubric %s: the judge also holds the work to each of its criteria that applies\n", tools.SanitizeForTerminal(g.Rubric))
+	}
 }
 
 // writeMilestones writes a goal's milestones as /goal shows them: met ones with the judge's evidence.
