@@ -313,7 +313,9 @@ free (be-2, be-3, fe-1)`) and asks for what is missing to be split among them.
 ## 3. The board
 
 Tasks: `id`, `kind` (work by default, or plan), `title`, `desc`, `status`, `owner`, `role`, `deps`, `files` (scope), `line` (latest one-line progress),
-`result` (what the worker said), `evidence` (what the harness observed), `agreement` (a proposed contract),
+`result` (what the worker said, one line), `report` (a read-only worker's whole report, up to 4000 characters and 40
+lines, kept while the task is in review or done and shown by `task get` only), `evidence` (what the harness observed),
+`agreement` (a proposed contract),
 `agreements` (accepted prerequisite contracts inherited at assignment), `attempts`, `rev`, `closure` (the typed reason
 a done or failed task closed, below) and `blocked_on` (the task a blocked task waits for, when its owner named one).
 Statuses: `todo -> doing -> review -> done`, with `blocked` and `failed` as side states.

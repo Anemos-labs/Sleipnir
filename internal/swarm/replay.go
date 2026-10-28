@@ -39,6 +39,7 @@ func ReplayBoard(evs []events.Event) (*Snapshot, error) {
 			Owner      string            `json:"owner"`
 			Line       string            `json:"line"`
 			Result     string            `json:"result"`
+			Report     string            `json:"report"`
 			Evid       string            `json:"evidence"`
 			Agreement  string            `json:"agreement"`
 			Agreements []TaskAgreement   `json:"agreements"`
@@ -79,7 +80,7 @@ func ReplayBoard(evs []events.Event) (*Snapshot, error) {
 						if i, ok := taskAt[id]; ok {
 							t := snap.Tasks[i]
 							t.Status, t.Owner, t.Line, t.Rev = StatusTodo, m.Owners[id], m.Line, m.Version
-							t.BlockedOn = ""
+							t.BlockedOn, t.Report = "", ""
 							snap.Tasks[i] = t
 						}
 					}
@@ -92,6 +93,7 @@ func ReplayBoard(evs []events.Event) (*Snapshot, error) {
 				t = snap.Tasks[i]
 			}
 			t.ID, t.Status, t.Owner, t.Line, t.Result, t.Evidence = m.Task, TaskStatus(m.Status), m.Owner, m.Line, m.Result, m.Evid
+			t.Report = m.Report
 			t.Attempts, t.Rev, t.Files = m.Att, m.Rev, m.Files
 			t.VerificationFailures = m.Verify
 			t.Agreement, t.Agreements = m.Agreement, m.Agreements

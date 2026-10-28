@@ -15,6 +15,11 @@ const maxGitMeta = 1 << 20
 // regular file (following links), and at most maxGitMeta bytes, so a link to a device or a pipe neither blocks the check nor fills
 // memory.
 func readGitMeta(p string) ([]byte, error) {
+	p, err := filepath.Abs(p)
+	if err != nil {
+		return nil, err
+	}
+	p = rootedPath(p)
 	if fi, err := os.Stat(p); err != nil {
 		return nil, err
 	} else if !fi.Mode().IsRegular() {
