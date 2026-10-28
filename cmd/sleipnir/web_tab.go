@@ -1427,14 +1427,16 @@ func (t *webTab) goalAction(ctx context.Context, s *session.Session, req wire.Go
 			return false, werr(http.StatusConflict, "not_paused", "the goal is not paused")
 		}
 		_, _, _, err := t.enqueue(queued{text: "/goal resume", op: func(ctx context.Context, s *session.Session) {
-			next, err := t.goals.Resume(s)
+			next, err := t.goals.Resume(ctx, s)
 			if err != nil {
 				return
 			}
 			webAction(s, "goal", "resume")
 			t.emit(goalWire(t.goals.State()))
 			t.publishMeta()
-			t.turn(ctx, s, next, "", false)
+			if next != "" {
+				t.turn(ctx, s, next, "", false)
+			}
 		}})
 		return err == nil, err
 	}

@@ -75,7 +75,14 @@ func goalCommandTo(s *session.Session, gp **goal.State, arg string, out io.Write
 			fmt.Fprintln(out, "no goal to resume")
 			return ""
 		}
-		return resumeGoal(s, g)
+		note, next := s.GoalResume(context.Background(), g)
+		if note != "" {
+			fmt.Fprintln(out, note)
+		}
+		if g.Done {
+			*gp = nil
+		}
+		return next
 	}
 	arg, err := s.ResearchGoal(arg)
 	if err != nil {
@@ -120,15 +127,6 @@ func writeMilestones(g *goal.State, out io.Writer) {
 			fmt.Fprintf(out, "      evidence: %s\n", tools.SanitizeForTerminal(m.Evidence))
 		}
 	}
-}
-
-// resumeGoal takes the pause off a goal and returns the continuation that sends the agent on: a goal that ran out of continuations
-// gets as many again.
-func resumeGoal(s *session.Session, g *goal.State) string {
-	g.Paused, g.Repeats = "", 0
-	g.Max = g.Turns + goal.MaxTurns
-	g.Turns++
-	return s.GoalContinuation(g, goal.Verdict{Kind: goal.Continue, Reason: g.Reason})
 }
 
 // goalEvent is what the web's goal loop reports while it runs a turn: Kind "ran" (a run of the session returned: Result, Err),
@@ -226,8 +224,9 @@ func (g *goalLoop) Pause(s *session.Session, why string) error {
 	return nil
 }
 
-// Resume takes the pause off the goal and returns the continuation to send.
-func (g *goalLoop) Resume(s *session.Session) (string, error) {
+// Resume takes the pause off the goal and returns the continuation to send ("" when there is none: a goal judged met, or paused again,
+// on resuming). A goal its judge could not be asked about is judged first (session.GoalResume).
+func (g *goalLoop) Resume(ctx context.Context, s *session.Session) (string, error) {
 	st := g.State()
 	switch {
 	case st == nil:
@@ -235,7 +234,10 @@ func (g *goalLoop) Resume(s *session.Session) (string, error) {
 	case st.Paused == "":
 		return "", errNotPaused
 	}
-	next := resumeGoal(s, st)
+	_, next := s.GoalResume(ctx, st)
+	if st.Done {
+		st = nil
+	}
 	g.set(s, st)
 	return next, nil
 }

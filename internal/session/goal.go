@@ -445,6 +445,7 @@ func (s *Session) GoalJudged(ctx context.Context, g *goal.State, turnErr error) 
 	v, worked, err := s.JudgeGoal(ctx, g)
 	if err != nil {
 		j.Err = err
+		g.Unjudged = true
 		return pause("the judge could not be asked (" + short(tools.SanitizeForTerminal(err.Error()), 100) + ")")
 	}
 	j.Judged, j.Verdict = true, v
@@ -464,6 +465,21 @@ func (s *Session) GoalJudged(ctx context.Context, g *goal.State, turnErr error) 
 		reason = "the judge's answer could not be read"
 	}
 	return fmt.Sprintf("goal not met yet: %s (continuation %d of %d)", reason, g.Turns, g.Max), s.GoalContinuation(g, v), j
+}
+
+// GoalResume takes the pause off g and returns a note for the person and the message that sends the agent on ("" when there is
+// none). A goal paused because its judge could not be asked is judged first: the turns since its last verdict were never judged, and
+// that verdict's "not met yet" would send the agent to redo work it may have done since. g is changed.
+func (s *Session) GoalResume(ctx context.Context, g *goal.State) (note, next string) {
+	unjudged := g.Unjudged
+	g.Paused, g.Repeats, g.Unjudged = "", 0, false
+	g.Max = g.Turns + goal.MaxTurns
+	if unjudged {
+		note, next, _ = s.GoalJudged(ctx, g, nil)
+		return note, next
+	}
+	g.Turns++
+	return "", s.GoalContinuation(g, goal.Verdict{Kind: goal.Continue, Reason: g.Reason})
 }
 
 // GoalContinuation is the message that sends the agent on after verdict v (goal.Continuation), with, for the manager of a team, the

@@ -7,6 +7,10 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Resuming a goal that paused because its judge could not be asked
+  now judges it first. Before, resume re-sent the judge's last "not met
+  yet", though the turns since that verdict had never been judged. A
+  goal paused for any other reason resumes as before.
 - A goal judge request that fails with a network error, a timeout, a
   5xx or a rate limit is sent again, up to four times with a growing
   wait (or the server's `Retry-After`, when longer), and each retry is

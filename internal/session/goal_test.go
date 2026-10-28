@@ -334,6 +334,80 @@ func TestAJudgeRequestThatFailsOnTheWayIsSentAgain(t *testing.T) {
 	}
 }
 
+// A goal paused because its judge could not be asked is judged when it is resumed, not sent on with the verdict before the pause:
+// the work since that verdict was never judged. In a team run a resume after such a pause re-sent "not met yet" from two hours
+// earlier, and the manager re-proved four finished items a second time.
+func TestResumingAGoalWhoseJudgeFailedJudgesItFirst(t *testing.T) {
+	calls := 0
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if !strings.Contains(c.System, "You judge whether a coding agent") {
+			return mock.Reply{Text: "Completed the objective"}
+		}
+		switch calls++; calls {
+		case 1:
+			return mock.Reply{Text: `{"verdict":"inspect","query":"migration applied","offset":0}`}
+		case 2:
+			return mock.Reply{Text: `{"verdict":"continue","reason":"no record of the migration","left":["run the migration"]}`}
+		case 3:
+			return mock.Reply{Fault: &mock.Fault{Status: 400, Message: "bad request"}}
+		}
+		return mock.Reply{Text: `{"verdict":"done","reason":"the migration applied","left":[]}`}
+	})
+	s, err := session.New(context.Background(), opts(t, newRepo(t), client, model))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	g := goal.New("apply the migration")
+	s.SaveGoal(g)
+	if _, err := s.Run(context.Background(), goal.Start(g)); err != nil {
+		t.Fatal(err)
+	}
+	if _, next := s.GoalTurn(context.Background(), g, nil); !strings.Contains(next, "run the migration") {
+		t.Fatalf("the first verdict did not send the agent on: %q", next)
+	}
+	if _, err := s.Run(context.Background(), "apply it"); err != nil {
+		t.Fatal(err)
+	}
+	if s.GoalTurn(context.Background(), g, nil); !g.Unjudged || !strings.HasPrefix(g.Paused, "the judge could not be asked") {
+		t.Fatalf("a judge that failed: paused %q unjudged=%v", g.Paused, g.Unjudged)
+	}
+	note, next := s.GoalResume(context.Background(), g)
+	if calls != 4 || !g.Done || next != "" || g.Paused != "" || g.Unjudged || note != "goal met: the migration applied" {
+		t.Errorf("the resume: note %q next %q done=%v paused %q unjudged=%v judge calls=%d", note, next, g.Done, g.Paused, g.Unjudged, calls)
+	}
+}
+
+// A goal paused for any other reason is sent on when it is resumed with what the judge last found missing, and no judge is asked.
+func TestResumingAGoalPausedByThePersonSendsItOn(t *testing.T) {
+	calls := 0
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if !strings.Contains(c.System, "You judge whether a coding agent") {
+			return mock.Reply{Text: "Completed the objective"}
+		}
+		if calls++; calls == 1 {
+			return mock.Reply{Text: `{"verdict":"inspect","query":"migration applied","offset":0}`}
+		}
+		return mock.Reply{Text: `{"verdict":"continue","reason":"no record of the migration","left":["run the migration"]}`}
+	})
+	s, err := session.New(context.Background(), opts(t, newRepo(t), client, model))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	g := goal.New("apply the migration")
+	s.SaveGoal(g)
+	if _, err := s.Run(context.Background(), goal.Start(g)); err != nil {
+		t.Fatal(err)
+	}
+	s.GoalTurn(context.Background(), g, nil)
+	g.Paused = "paused by you"
+	note, next := s.GoalResume(context.Background(), g)
+	if calls != 2 || note != "" || g.Paused != "" || !strings.Contains(next, "Not met yet: no record of the migration") {
+		t.Errorf("the resume: note %q next %q paused %q judge calls=%d", note, next, g.Paused, calls)
+	}
+}
+
 // A judge's evidence request is read when it comes in a code fence or with words around it, as a verdict is; an answer that is
 // neither is asked for again, and a judge that keeps answering so pauses the goal instead of sending the agent on with no reason. In
 // a team trial five of seventeen verdicts were "continue" with no reason, each sending the manager on with nothing to do.
