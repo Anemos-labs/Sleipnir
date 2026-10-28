@@ -7,6 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `--sandbox docker` (or `docker=IMAGE`) on `sleipnir chat` and `sleipnir run`, and the *sandbox* field of the web page's
+  New session dialog, run every shell command of a session inside a container of its own, with the project mounted at its
+  own path, no network unless `--sandbox-network`, every capability dropped and none of the host's environment. Without the
+  flag nothing changes. The program now recognizes a hidden first argument, `__sandbox-exec`, which a sandboxed session's
+  commands use to enter the container.
 - A manager's `task update` with files and a text on a task another
   agent owns sets the scope and answers that it did, noting that the text
   was not recorded. It used to answer with an error after the scope had

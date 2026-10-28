@@ -43,6 +43,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/research"
+	"github.com/anemos-labs/sleipnir/internal/sandbox"
 	"github.com/anemos-labs/sleipnir/internal/skills"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
@@ -214,6 +215,12 @@ type Options struct {
 	// ShellWrap is an argv prefix every shell command runs under (a network-less
 	// namespace for RL rollouts).
 	ShellWrap []string
+	// Sandbox, when enabled, runs every shell command of the session (the agents',
+	// the verification's) inside one container of its own (--sandbox): the project
+	// and the team's trees are mounted at their own paths, the network is off
+	// unless Sandbox.Network, and the harness, its keys and its files stay outside.
+	// It is started as the session opens and removed when it closes.
+	Sandbox sandbox.Spec
 	// Meta is recorded on the session.start event (run provenance: task, sample,
 	// seed, policy and sampling of an RL rollout).
 	Meta map[string]any
@@ -306,6 +313,7 @@ type Session struct {
 	// research is the project's research runs and researchTool the tool over them (nil when the research plugin is off);
 	// researchPinned and researchText are the published kickoff run whose context is in the shared layer.
 	research       *research.Store
+	box            *sandbox.Box // the container commands run in (Options.Sandbox); nil when they run on the host
 	webReader      *web.Reader
 	researchFonts  iofs.FS
 	researchPinned string
@@ -615,6 +623,18 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	s.logCheckpoints() // web_access.go: each checkpoint that begins or changes is a "checkpoint" log event
 
 	// Detect the command shell for shared runtime guidance before building agents.
+	if o.Sandbox.Enabled() {
+		if err := s.startSandbox(ctx); err != nil {
+			s.Log.Close()
+			return nil, err
+		}
+		o = s.opts
+		defer func() {
+			if !built {
+				s.stopSandbox() // a session that failed to open leaves no container behind
+			}
+		}()
+	}
 	shOpts := shell.Options{BaseEnv: o.ShellEnv, Wrap: o.ShellWrap, Tmp: s.tmp}
 	if o.ShellEnv == nil {
 		// Programs a plugin needs that were located or found outside PATH (plugin.PrepareNeeds).
@@ -1650,8 +1670,8 @@ func (s *Session) Options() Options {
 	if s.opts.ShellEnv == nil {
 		o.ShellEnv = nil // nil inherits the process's environment; an empty copy would be an empty environment
 	}
-	if s.opts.ShellWrap == nil {
-		o.ShellWrap = nil
+	if s.opts.ShellWrap == nil || s.opts.Sandbox.Enabled() {
+		o.ShellWrap = nil // a sandbox's wrapper belongs to its container: a session rebuilt from these options starts its own
 	}
 	if o.RoleModels != nil {
 		rm := make(map[string]string, len(o.RoleModels))
@@ -1772,6 +1792,7 @@ func (s *Session) Close() error {
 	if s.shell != nil {
 		s.shell.Shutdown()
 	}
+	s.stopSandbox()
 	s.closeMCP()
 	if started && s.hookAdapter != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
