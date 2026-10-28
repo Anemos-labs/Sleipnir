@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A project can keep a rubric in `.sleipnir/rubric.md`: standing
+  criteria of good work that the goal judge holds every goal in the
+  project to, beside the goal's own requirements. It is read once when a
+  goal is set, sent with the goal's first message, and given to the judge
+  as data that adds requirements and never relaxes the goal's. The
+  judge's request and the first message of a goal change only in a
+  project that has one; `/goal`, its web sheet and the goal event name
+  the rubric file.
 - Resuming a team's goal after an unjudged pause (an interruption, a
   failed turn, a restart) no longer asks the judge while the task board
   still has unfinished tasks, since the judge could not find the goal met

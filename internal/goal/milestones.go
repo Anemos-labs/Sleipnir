@@ -192,10 +192,14 @@ var (
 
 // Prepare is New for a goal that may name a spec file (SpecRef): the file is read now, relative to dir and inside root (dir when root is
 // ""), and its text is kept with the goal, so that the judge holds the work to the spec as it was set and not as an agent may have edited
-// it since. The milestones are those of the objective, then those of the spec.
+// it since. The milestones are those of the objective, then those of the spec. The project's rubric (RubricFile under root), when there is
+// one, is read and kept the same way.
 func Prepare(objective, dir, root string) (*State, error) {
 	g := New(objective)
 	g.Milestones = ParseMilestones(g.Objective, 1)
+	if err := g.readRubric(dir, root); err != nil {
+		return nil, err
+	}
 	ref := SpecRef(g.Objective)
 	if ref == "" {
 		return g, nil
@@ -214,6 +218,33 @@ func Prepare(objective, dir, root string) (*State, error) {
 	}
 	return g, nil
 }
+
+// RubricFile is where a project keeps its rubric, relative to the project root: the standing criteria of good work that the judge holds
+// every goal in the project to, beside the goal's own requirements.
+const RubricFile = ".sleipnir/rubric.md"
+
+// readRubric keeps the project's rubric with the goal when root (dir when root is "") has one: a missing file is no rubric, an empty one
+// too, and one that cannot be read or is larger than MaxSpecBytes is an error, since a goal set without the criteria its project asks for
+// would be judged by a lower bar than the person set.
+func (g *State) readRubric(dir, root string) error {
+	if root == "" {
+		root = dir
+	}
+	text, err := readSpec(RubricFile, root, root)
+	switch {
+	case errors.Is(err, errNoSuchFile):
+		return nil
+	case err != nil:
+		return fmt.Errorf("rubric %s: %w", RubricFile, err)
+	}
+	if text != "" {
+		g.Rubric, g.RubricText = RubricFile, text
+	}
+	return nil
+}
+
+// errNoSuchFile is readSpec's error for a file that does not exist.
+var errNoSuchFile = errors.New("no such file")
 
 // readSpec reads a spec file named by ref, relative to dir, inside root: through os.Root, so that neither ".." nor a symbolic link
 // takes it out of the project.
@@ -237,7 +268,7 @@ func readSpec(ref, dir, root string) (string, error) {
 	f, err := r.Open(rel)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
-		return "", errors.New("no such file")
+		return "", errNoSuchFile
 	case err != nil && strings.Contains(err.Error(), "escapes"):
 		return "", ErrSpecOutside
 	case err != nil:

@@ -214,3 +214,68 @@ func TestNoMilestonesNoChange(t *testing.T) {
 		t.Errorf("judge prompt: %q", p)
 	}
 }
+
+// Prepare keeps the project's rubric as it was when the goal was set; the agent's first message and the judge's request carry it, a project
+// without one sets goals as before, and a rubric that cannot be read stops the goal from being set below the project's bar.
+func TestPrepareKeepsTheProjectRubric(t *testing.T) {
+	root := t.TempDir()
+	sub := filepath.Join(root, "cmd")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if g, err := Prepare("Fix the parser.", sub, root); err != nil || g.Rubric != "" || g.RubricText != "" {
+		t.Fatalf("no rubric: %+v %v", g, err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, ".sleipnir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, filepath.FromSlash(RubricFile))
+	if err := os.WriteFile(path, []byte("  \n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if g, err := Prepare("Fix the parser.", sub, root); err != nil || g.Rubric != "" {
+		t.Fatalf("an empty rubric: %+v %v", g, err)
+	}
+	rubric := "- Every exported function has a test.\n- The CHANGELOG names each user-visible change.\n"
+	if err := os.WriteFile(path, []byte(rubric), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	g, err := Prepare("Fix the parser.", sub, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.Rubric != RubricFile || !strings.Contains(g.RubricText, "CHANGELOG names") {
+		t.Fatalf("rubric %q text %q", g.Rubric, g.RubricText)
+	}
+	if err := os.WriteFile(path, []byte("- anything goes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if s := Start(g); !strings.Contains(s, "project rubric "+RubricFile) || !strings.Contains(s, "exported function has a test") || Plain(s) != g.Objective {
+		t.Errorf("Start: %q (plain %q)", s, Plain(s))
+	}
+	if p := JudgePrompt(g, nil, "fixed", nil); !strings.Contains(p, "PROJECT RUBRIC") || !strings.Contains(p, "never removes or relaxes") || !strings.Contains(p, "exported function has a test") {
+		t.Errorf("judge prompt: %q", p)
+	}
+	if p := JudgePrompt(New("Fix the parser."), nil, "fixed", nil); strings.Contains(p, "RUBRIC") {
+		t.Errorf("a goal without a rubric: %q", p)
+	}
+
+	if err := os.WriteFile(path, []byte(strings.Repeat("x", MaxSpecBytes+1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Prepare("Fix the parser.", sub, root); !errors.Is(err, ErrSpecTooBig) || !strings.Contains(err.Error(), "rubric") {
+		t.Errorf("a rubric too large: %v", err)
+	}
+	outside := filepath.Join(t.TempDir(), "rubric.md")
+	if err := os.WriteFile(outside, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, path); err == nil {
+		if _, err := Prepare("Fix the parser.", sub, root); !errors.Is(err, ErrSpecOutside) {
+			t.Errorf("a rubric linked out of the project: %v", err)
+		}
+	}
+}
