@@ -747,7 +747,7 @@ func (pl *patchPlan) commit() *tools.Result {
 		}
 	}
 	if len(acts) == 0 {
-		return k.ok("No changes: the patch leaves every file identical.")
+		return k.same("No changes: the patch leaves every file identical.")
 	}
 
 	for _, a := range acts {

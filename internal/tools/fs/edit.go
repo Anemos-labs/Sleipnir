@@ -156,7 +156,7 @@ func (Edit) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 		return k.fail("%s", emsg), nil
 	}
 	if updated == orig {
-		return k.ok(fmt.Sprintf("No change: the edits leave %s identical.", disp)), nil
+		return k.same(fmt.Sprintf("No change: the edits leave %s identical.", disp)), nil
 	}
 	final := make([]byte, 0, len(bom)+len(updated))
 	final = append(final, bom...)

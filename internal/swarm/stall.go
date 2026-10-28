@@ -228,9 +228,11 @@ func (s *Swarm) waitRefused() {
 // successful call of a tool that is neither read-only nor a coordination tool, or a
 // task call that reports on the work. Reading, listing, waiting and mail are not, and
 // neither is a shell command that only reads and prints (shellReadsOnly): a worker that
-// reads the code one `cat` or `sed -n` at a time is reading, whatever tool it reads with.
+// reads the code one `cat` or `sed -n` at a time is reading, whatever tool it reads with. A write that changed nothing
+// (tools.Result.Unchanged: the content the file already had, edits that leave it identical) is not progress either: a
+// worker that rewrites the same file with the same bytes succeeds every time and moves nothing.
 func (s *Swarm) progressCall(call core.Block, res *tools.Result) bool {
-	if res == nil || res.IsError {
+	if res == nil || res.IsError || res.Unchanged {
 		return false
 	}
 	switch call.ToolName {

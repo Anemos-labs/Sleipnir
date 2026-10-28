@@ -161,8 +161,11 @@ func TestWriteNoChange(t *testing.T) {
 	withHooks(env, h)
 	mustOK(t, run(t, Read{}, env, map[string]any{"path": "f.txt"}))
 	before, _ := os.Stat(p)
-	text := mustOK(t, run(t, Write{}, env, map[string]any{"path": "f.txt", "content": "same\n"}))
-	contains(t, text, "No change")
+	res := run(t, Write{}, env, map[string]any{"path": "f.txt", "content": "same\n"})
+	contains(t, mustOK(t, res), "No change")
+	if !res.Unchanged {
+		t.Error("an identical write is not marked Unchanged")
+	}
 	after, _ := os.Stat(p)
 	if !after.ModTime().Equal(before.ModTime()) {
 		t.Errorf("an identical write must not touch the file")
@@ -171,6 +174,9 @@ func TestWriteNoChange(t *testing.T) {
 		if strings.HasPrefix(l, "guard.") || strings.HasPrefix(l, "snap:") {
 			t.Errorf("guard/snapshot must not run for a no-op: %v", h.Log())
 		}
+	}
+	if res := run(t, Write{}, env, map[string]any{"path": "f.txt", "content": "other\n"}); res.IsError || res.Unchanged {
+		t.Errorf("a write that changes the file: error %v, unchanged %v", res.IsError, res.Unchanged)
 	}
 }
 

@@ -221,3 +221,32 @@ func TestRepeatGuardRefusalsAreOfOneKindAndRecent(t *testing.T) {
 		t.Fatalf("a later burst was told %d times, want once", told)
 	}
 }
+
+// A write that succeeds and changes nothing counts like a failure: the same write gives the same nothing every time. A write
+// that changes something, however often it is sent, is not counted.
+func TestRepeatGuardCountsWritesThatChangeNothing(t *testing.T) {
+	var g repeatGuard
+	write := callOf("write", `{"path":"a.go","content":"package a\n"}`)
+	same := worked("No change: a.go already has exactly this content.")
+	var notes []string
+	var stop error
+	for i := 0; i < repeatStop && stop == nil; i++ {
+		var note string
+		note, stop = g.observeAll("be-1", []core.Block{write}, []core.Block{same}, nil, []bool{true})
+		if note != "" {
+			notes = append(notes, note)
+		}
+	}
+	if len(notes) != 1 || !strings.Contains(notes[0], "changed nothing each time") {
+		t.Fatalf("notes = %q, want one about a write that changes nothing", notes)
+	}
+	if !errors.Is(stop, ErrStuck) || !strings.Contains(stop.Error(), "write changed nothing 8 times") {
+		t.Fatalf("stop = %v", stop)
+	}
+	var h repeatGuard
+	for i := 0; i < 3*repeatWindow; i++ {
+		if note, stop := h.observeAll("be-1", []core.Block{write}, []core.Block{worked("Wrote a.go")}, nil, []bool{false}); note != "" || stop != nil {
+			t.Fatalf("a write that changed the file was counted: %q %v", note, stop)
+		}
+	}
+}

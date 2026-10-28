@@ -168,7 +168,7 @@ func exitOf(res *tools.Result) (code int, known bool) {
 
 // editedBy lists the paths a successful edit call changed, nil for any other call.
 func editedBy(call core.Block, res *tools.Result) []string {
-	if res == nil || res.IsError {
+	if res == nil || res.IsError || res.Unchanged { // a write that left every file as it was edited nothing
 		return nil
 	}
 	switch call.ToolName {
