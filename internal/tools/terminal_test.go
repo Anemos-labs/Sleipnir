@@ -217,6 +217,8 @@ func TestEscapeForTerminalHidesNothing(t *testing.T) {
 		"a" + u(0xE0041) + "b":         "a\\U000e0041b",
 		"a\xffb":                       "a\\xffb",
 		"caf" + u(0xe9):                "caf" + u(0xe9),
+		`echo \x0d`:                    `echo \\x0d`,
+		"echo \r":                      `echo \x0d`,
 	} {
 		got := EscapeForTerminal(in)
 		if got != want {

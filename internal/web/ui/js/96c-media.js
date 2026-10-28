@@ -154,13 +154,14 @@
       }
       if (TROW.test(l) && i + 1 < lines.length && TSEP.test(lines[i + 1]) && l.indexOf('|') >= 0) {
         // every row is drawn as wide as the header: the cells drawn are bounded per document (o.cells), past which a table stops
-        flush(); const head = cellsOf(l).slice(0, MAX_COLS), al = cellsOf(lines[i + 1]).map(c => (/^:-+:$/.test(c) ? 'c' : /-+:$/.test(c) ? 'r' : '')); i += 2; const rows = [];
+        flush(); const hc = cellsOf(l), head = hc.slice(0, MAX_COLS), hidCols = hc.length - head.length, al = cellsOf(lines[i + 1]).map(c => (/^:-+:$/.test(c) ? 'c' : /-+:$/.test(c) ? 'r' : '')); i += 2; const rows = [];
         // a header past the budget draws nothing of its table: every row of it is counted as not shown
         let cut = 0; const drawn = (o.cells || 0) + head.length <= MAX_CELLS; if (drawn) o.cells = (o.cells || 0) + head.length;
         while (i < lines.length && lines[i].trim() && lines[i].indexOf('|') >= 0) { if (!drawn || o.cells + head.length > MAX_CELLS) { cut++; i++; continue; } o.cells += head.length; rows.push(cellsOf(lines[i++])); }
         const td = (c, j, tag) => '<' + tag + (al[j] ? ' class="' + al[j] + '"' : '') + '>' + inline(c || '', o) + '</' + tag + '>';
         if (drawn) h += '<div class="pv-scroll"><table class="tbl"><thead><tr>' + head.map((c, j) => td(c, j, 'th')).join('') + '</tr></thead><tbody>' + rows.map(r => '<tr>' + head.map((x, j) => td(r[j], j, 'td')).join('') + '</tr>').join('') + '</tbody></table></div>';
         h += (!drawn ? '<p class="dim">A table not shown: the preview draws at most ' + MAX_CELLS + ' table cells</p>' : cut ? '<p class="dim">' + cut + ' more row' + (cut === 1 ? '' : 's') + ' not shown: the preview draws at most ' + MAX_CELLS + ' table cells</p>' : '');
+        if (drawn && hidCols > 0) h += '<p class="dim">' + hidCols + ' more column' + (hidCols === 1 ? '' : 's') + ' not shown: the preview draws a table at most ' + MAX_COLS + ' columns wide</p>';
         continue;
       }
       if ((m = LI.exec(l)) && (!para.length || m[4].trim())) {

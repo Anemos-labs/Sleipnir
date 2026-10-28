@@ -146,7 +146,8 @@ type Response struct {
 	// RawUsage is the provider's usage object verbatim, for audit.
 	RawUsage json.RawMessage
 	// CostUSD is the exact charge when the gateway reports one (Heimdallm's
-	// usage.cost); nil otherwise.
+	// usage.cost), or a price worked out here when CostEstimated is set; nil
+	// otherwise.
 	CostUSD *float64
 	// CostEstimated says CostUSD is not a gateway's charge but a price worked out here (a failover's secondary at its own price).
 	CostEstimated bool

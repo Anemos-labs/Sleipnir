@@ -127,6 +127,9 @@ func TestGenericMergeNeutralizesMergeDrivers(t *testing.T) {
 	rawGit(t, dir, "commit", "-qam", "main")
 	appendConfig(t, dir, "[user]\n\tname = t\n\temail = t@example.com\n[merge \"x\"]\n\tdriver = "+quoteCfg("touch "+filepath.Join(markers, "driver")+"; cp %B %A")+"\n")
 	_, _ = openRepo(t, dir).Git(ctxT(t), "merge", "--no-ff", "-m", "merge side", "side") // a conflict is the expected outcome
+	if u := rawGit(t, dir, "ls-files", "-u", "--", "f.txt"); strings.TrimSpace(u) == "" {
+		t.Fatal("the merge did not reach f.txt's conflict")
+	}
 	if ents, _ := os.ReadDir(markers); len(ents) != 0 {
 		t.Fatal("the repository's merge driver ran")
 	}

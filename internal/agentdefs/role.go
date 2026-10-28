@@ -296,7 +296,7 @@ func truncate(s string, n int) string {
 }
 
 // coveredBy reports whether one of entries allows at least what rule allows: the same tool, as a whole tool or with a
-// pattern whose words rule's pattern starts with ("Bash(go:*)" covers "Bash(go test:*)", "Bash(g:*)" does not).
+// pattern whose words rule's pattern starts with ("Bash(go:*)" and "Bash(go *)" cover "Bash(go test:*)", "Bash(g:*)" does not).
 func coveredBy(rule string, entries []string) bool {
 	name, pat := normTool(toolName(rule)), ruleArg(rule)
 	for _, e := range entries {
@@ -307,13 +307,16 @@ func coveredBy(rule string, entries []string) bool {
 			return true
 		}
 		arg := ruleArg(e)
+		if arg == "" || arg == "*" || arg == ":*" { // a blanket entry covers every command
+			return true
+		}
 		if !strings.HasSuffix(arg, "*") { // an exact command covers that command alone
 			if pat != "" && pat == arg {
 				return true
 			}
 			continue
 		}
-		prefix := strings.TrimSuffix(strings.TrimSuffix(arg, "*"), ":")
+		prefix := strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(arg, "*"), ":")) // "go:*" and "go *" alike
 		if pat != "" && (pat == prefix || strings.HasPrefix(pat, prefix+" ") || strings.HasPrefix(pat, prefix+":")) {
 			return true
 		}

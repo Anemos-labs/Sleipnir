@@ -180,9 +180,10 @@ func Invisible(r rune) bool {
 
 // EscapeForTerminal returns s with everything that SanitizeForTerminal would remove or change written out as an escape instead
 // (\x1b, \r, ‮, \xff for a byte that is not UTF-8), so that nothing of s is hidden from a reader who must approve exactly
-// what it says: a command shown for approval. Newline and tab stay; every other character is unchanged.
+// what it says: a command shown for approval. A backslash is doubled, so an escape never reads the same as the text it
+// stands for. Newline and tab stay; every other character is unchanged.
 func EscapeForTerminal(s string) string {
-	if !needsTerminalCleaning(s) {
+	if !needsTerminalCleaning(s) && !strings.Contains(s, `\`) {
 		return s
 	}
 	var b strings.Builder
@@ -193,6 +194,8 @@ func EscapeForTerminal(s string) string {
 			fmt.Fprintf(&b, `\x%02x`, s[i])
 		case r == '\n' || r == '\t':
 			b.WriteRune(r)
+		case r == '\\':
+			b.WriteString(`\\`)
 		case r < 0x20 || r == 0x7f:
 			fmt.Fprintf(&b, `\x%02x`, r)
 		case (r >= 0x80 && r <= 0x9f) || r == 0x2028 || r == 0x2029 || Invisible(r):
