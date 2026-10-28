@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/goal"
@@ -81,15 +82,10 @@ func callLabel(data []byte) (id, label string) {
 var coordinationTools = map[string]bool{"task": true, "pool": true, "mail": true, "wait": true, "spawn": true, "plan": true, "note": true, "memory": true}
 
 // coordinationTool reports whether a call label (callLabel) or tool name names a coordination tool. The name is read as the agent
-// dispatches it: a model's chat format or namespace left on it is cut ("task<|channel|>…", "functions.task"), and "task.get" is
-// "task"'s.
+// dispatches it (agent.BareToolName: "functions.task", "'task'", "task<|channel|>…" are the task tool), and "task.get" is "task"'s.
 func coordinationTool(label string) bool {
 	name, _, _ := strings.Cut(strings.TrimSpace(label), " ")
-	name, _, _ = strings.Cut(name, "<|")
-	for _, ns := range []string{"functions.", "function.", "tools.", "tool."} {
-		name = strings.TrimPrefix(name, ns)
-	}
-	name, _, _ = strings.Cut(name, ".")
+	name, _, _ = strings.Cut(agent.BareToolName(name), ".")
 	return coordinationTools[name]
 }
 

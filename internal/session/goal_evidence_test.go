@@ -217,18 +217,20 @@ func TestGoalEvidenceListsTheNewestFirst(t *testing.T) {
 // wrote; anything else is tool output.
 func TestCoordinationToolsAreKnownByTheDispatchedName(t *testing.T) {
 	for label, want := range map[string]bool{
-		"task get T7": true, "task.get T7": true, "functions.task.get T7": true, "tools.mail send": true, "task<|channel|>commentary": true,
+		"task get T7": true, "task.get T7": true, "functions.task.get T7": true, "tools.mail send": true, "task<|channel|>commentary": true, "'task' get T7": true, "`mail`": true,
 		"pool.agree": true, "bash go test ./...": false, "functions.bash ls": false, "read internal/cp/ws.go": false, "taskify": false, "": false,
 	} {
 		if got := coordinationTool(label); got != want {
 			t.Errorf("coordinationTool(%q) = %v, want %v", label, got, want)
 		}
 	}
-	calls := map[string]string{"p1": "functions.task.get T7"}
-	result := events.Event{Type: events.TypeTurnAppend, Data: []byte(`{"role":"user","blocks":[{"kind":"tool_result","tool_id":"p1","content":[{"kind":"text","text":"T7 done"}]}]}`)}
-	call := events.Event{Type: events.TypeToolCall, Data: []byte(`{"id":"p1","name":"functions.task.get","input":{}}`)}
-	if !relayed(result, calls) || !relayed(call, calls) {
-		t.Error("a prefixed task call or its result was taken for tool output")
+	for _, name := range []string{"functions.task.get", "'task'"} {
+		calls := map[string]string{"p1": name + " T7"}
+		result := events.Event{Type: events.TypeTurnAppend, Data: []byte(`{"role":"user","blocks":[{"kind":"tool_result","tool_id":"p1","content":[{"kind":"text","text":"T7 done"}]}]}`)}
+		call := events.Event{Type: events.TypeToolCall, Data: fmt.Appendf(nil, `{"id":"p1","name":%q,"input":{}}`, name)}
+		if !relayed(result, calls) || !relayed(call, calls) {
+			t.Errorf("a task call written %s, or its result, was taken for tool output", name)
+		}
 	}
 }
 
