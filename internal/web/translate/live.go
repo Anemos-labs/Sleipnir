@@ -49,6 +49,9 @@ func (t *Translator) response(e events.Event, ts float64, at int64) {
 		t.put(&ReqX{Req: wire.Req{ID: uiID(hid), Ratio: ratio, P: prompt, O: c(p.Usage.Output)}, Mark: t.markOfResponse(hid)}, ts, 0, nil)
 	}
 	t.sendUse(hid, ts, false)
+	if a, ok := t.st.AgentLite(hid); ok && a.Task != "" {
+		t.syncTask(a.Task, ts, false) // the task it holds paid for the request
+	}
 	if !side {
 		t.sendLayers(hid, ts, false)
 		t.sendWarm(hid)

@@ -37,6 +37,13 @@ they do not indicate whether a change has been released.
   recorded as a gateway charge. `rl export -o` to a device writes it as
   is, and an existing output file keeps its contents until its mode is
   set.
+- Every task now shows what the agents that held it spent on it: the
+  responses of its holders while they held it, every attempt and owner
+  together, side requests included, and the number of main requests. The
+  terminal's Board view ends each task's row with the figure, the web
+  board's cards show it with the request count on hover, and the page's
+  `task` event carries `cost`, `plan` and `reqs`. A task event is sent
+  again when its figure changes. Prompts are unchanged.
 - A manager's first file edit in each top-level directory, while a
   writer role of its team has a free slot or an idle member, names those
   roles and says that work bigger than a handoff is a task for one of

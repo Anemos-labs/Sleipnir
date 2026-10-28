@@ -321,7 +321,9 @@
         "merge": "merged",
         "commit": "0123456789ab",
         "seq": 79,
-        "updated": "2026-01-02T03:04:27Z"
+        "updated": "2026-01-02T03:04:27Z",
+        "cost_usd": 0.024,
+        "requests": 2
       },
       {
         "id": "T2",
@@ -333,7 +335,9 @@
         "files": ["web/orders/**"],
         "rev": 11,
         "seq": 19,
-        "updated": "2026-01-02T03:04:07.01Z"
+        "updated": "2026-01-02T03:04:07.01Z",
+        "cost_usd": 0.007,
+        "requests": 2
       },
       {
         "id": "T3",
@@ -345,7 +349,9 @@
         "result": "surveyed",
         "rev": 32,
         "seq": 80,
-        "updated": "2026-01-02T03:04:27.5Z"
+        "updated": "2026-01-02T03:04:27.5Z",
+        "cost_usd": 0.004,
+        "requests": 1
       }
     ],
     "counts": {"todo": 0, "running": 1, "verifying": 1, "merged": 1, "failed": 0},
