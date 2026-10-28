@@ -425,3 +425,42 @@ func TestCommandPrefixReportsACacheItCannotCreate(t *testing.T) {
 		t.Errorf("warnings %q: want the cache that cannot be created", m.Warnings())
 	}
 }
+
+// A command's Hide directories are hidden after everything is re-exposed, so a re-exposed parent does not show them; one
+// that holds the command's own tree stays.
+func TestConfinementHidesSource(t *testing.T) {
+	root := t.TempDir()
+	ro, tree := filepath.Join(root, "ro"), filepath.Join(root, "work", "tree")
+	src := filepath.Join(ro, "repo")
+	for _, d := range []string{src, tree} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := Confinement{Available: true, Bwrap: "/usr/bin/bwrap", RO: []string{ro}}
+	line := strings.Join(c.argv(Mounts{RW: []string{tree}, Hide: []string{src, filepath.Join(root, "work")}}, false, nil, nil), " ")
+	i, j := strings.Index(line, "--ro-bind "+ro+" "), strings.Index(line, "--tmpfs "+src)
+	if i < 0 || j < i {
+		t.Errorf("the source must be hidden after its re-exposed parent:\n%s", line)
+	}
+	if strings.Contains(line, "--tmpfs "+filepath.Join(root, "work")+" ") {
+		t.Errorf("a directory holding the command's tree must not be hidden:\n%s", line)
+	}
+}
+
+// A linked worktree's git directory names its common directory, which holds the history: both are the repository's.
+func TestGitDirsLinkedWorktree(t *testing.T) {
+	root := t.TempDir()
+	gd := filepath.Join(root, "main", ".git", "worktrees", "wt")
+	if err := os.MkdirAll(gd, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(gd, "commondir"), []byte("../..\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := gitDirs(filepath.Join(root, "wt"), gd)
+	want := []string{filepath.Join(root, "wt"), gd, filepath.Join(root, "main", ".git")}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("gitDirs = %v, want %v", got, want)
+	}
+}

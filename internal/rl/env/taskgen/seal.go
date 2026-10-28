@@ -143,15 +143,21 @@ func Seal(ctx context.Context, g *env.Git, gitDir, rev, dest string, opts SealOp
 				fmt.Fprintf(&info, "0 %s\t%s\x00", zero, p)
 			}
 		}
+		dirs := map[string]bool{}
 		for _, p := range opts.Remove {
 			if p == "" || strings.ContainsAny(p, "\x00\n") {
 				return "", fmt.Errorf("seal: cannot remove %q", p)
 			}
 			remove(p)
-			dir := strings.TrimSuffix(p, "/") + "/"
-			for _, f := range bytes.Split(listed, []byte{0}) {
-				if len(f) > 0 && strings.HasPrefix(string(f), dir) {
-					remove(string(f))
+			dirs[strings.TrimSuffix(p, "/")] = true
+		}
+		// One pass over the index: a file goes when any directory above it does.
+		for _, b := range bytes.Split(listed, []byte{0}) {
+			f := string(b)
+			for i := strings.IndexByte(f, '/'); i > 0; i = nextSlash(f, i) {
+				if dirs[f[:i]] {
+					remove(f)
+					break
 				}
 			}
 		}
@@ -266,4 +272,12 @@ func sealTask(ctx context.Context, g *env.Git, gitDir string, t *rl.Task, dir, a
 	}
 	t.Repo.Commit = commit
 	return nil
+}
+
+// nextSlash returns the index of the next "/" in s after i, or -1.
+func nextSlash(s string, i int) int {
+	if j := strings.IndexByte(s[i+1:], '/'); j >= 0 {
+		return i + 1 + j
+	}
+	return -1
 }

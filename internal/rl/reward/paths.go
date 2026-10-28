@@ -394,6 +394,31 @@ func matchPrefix(pat, ps []string, reseed bool) bool {
 	return false
 }
 
+// caretNegation rewrites the "!" that opens a class as "^". A "!" anywhere else,
+// including a literal one inside a class as in "[a[!b]", is left alone.
+func caretNegation(pat string) string {
+	b := []byte(pat)
+	in := false
+	for i := 0; i < len(b); i++ {
+		switch {
+		case b[i] == '\\' && i+1 < len(b):
+			i++
+		case !in && b[i] == '[':
+			in = true
+			if i+1 < len(b) && (b[i+1] == '!' || b[i+1] == '^') {
+				b[i+1] = '^'
+				i++
+			}
+			if i+1 < len(b) && b[i+1] == ']' {
+				i++ // a "]" first in a class is a member
+			}
+		case in && b[i] == ']':
+			in = false
+		}
+	}
+	return string(b)
+}
+
 // segMatch matches one path segment: "*" any run, "?" one character, "[...]"
 // a class. A malformed pattern falls back to literal comparison so a typo cannot
 // silently disable protection. A class negated with "!" is negated, as the
@@ -402,7 +427,7 @@ func segMatch(pat, s string) bool {
 	if pat == "**" {
 		return true
 	}
-	ok, err := path.Match(strings.ReplaceAll(pat, "[!", "[^"), s)
+	ok, err := path.Match(caretNegation(pat), s)
 	if err != nil {
 		return pat == s
 	}

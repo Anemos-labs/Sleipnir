@@ -19,8 +19,24 @@ func (r *Redactor) JSON(raw json.RawMessage) json.RawMessage {
 	n := len(raw)
 	var out []byte
 	last := 0
+	// arrays holds, for each open array or object, the key an array is the value of ("" for an object or an
+	// anonymous array), so an element of {"Authorization": ["Basic ..."]} keeps its header name.
+	var arrays []string
+	pending := ""
 	for i := 0; i < n; {
 		if raw[i] != '"' {
+			switch raw[i] {
+			case '[':
+				arrays = append(arrays, pending)
+				pending = ""
+			case '{':
+				arrays = append(arrays, "")
+				pending = ""
+			case ']', '}':
+				if len(arrays) > 0 {
+					arrays = arrays[:len(arrays)-1]
+				}
+			}
 			i++
 			continue
 		}
@@ -34,10 +50,19 @@ func (r *Redactor) JSON(raw json.RawMessage) json.RawMessage {
 			j++
 		}
 		end := j + 1 // one past the closing quote
-		if end > n || isJSONKey(raw, end) {
+		if end > n {
 			i = end
 			continue
 		}
+		if isJSONKey(raw, end) {
+			pending = ""
+			if err := json.Unmarshal(raw[i:end], &pending); err != nil {
+				pending = ""
+			}
+			i = end
+			continue
+		}
+		pending = ""
 		var s string
 		if escaped {
 			if err := json.Unmarshal(raw[i:end], &s); err != nil {
@@ -47,7 +72,11 @@ func (r *Redactor) JSON(raw json.RawMessage) json.RawMessage {
 		} else {
 			s = string(raw[i+1 : j])
 		}
-		red, changed := r.jsonValue(raw, i, s)
+		elemKey := ""
+		if len(arrays) > 0 {
+			elemKey = arrays[len(arrays)-1]
+		}
+		red, changed := r.jsonValue(raw, i, s, elemKey)
 		if changed {
 			if out == nil {
 				out = make([]byte, 0, n+64)
@@ -98,8 +127,9 @@ var secretKeyRE = regexp.MustCompile(`(?i)` + kvKeyword + `$`)
 // jsonValue redacts one string value. On top of the text rules it uses the
 // object key as context, because in JSON the key and the value are separate
 // strings: {"db_password": "hunter2hunter2"} has nothing secret-looking in the
-// value alone. The key itself is never modified.
-func (r *Redactor) jsonValue(raw []byte, start int, s string) (string, bool) {
+// value alone. The key itself is never modified. arrayKey is the key of the
+// array s is an element of, if any.
+func (r *Redactor) jsonValue(raw []byte, start int, s, arrayKey string) (string, bool) {
 	key := keyBefore(raw, start)
 	if r.enabled[KindSecret] && len(s) >= 12 && !tokenRE.MatchString(s) {
 		if key != "" && secretKeyRE.MatchString(key) && kvValueOK(s, true, key, ":") && !r.allowed(s, s) {
@@ -109,15 +139,25 @@ func (r *Redactor) jsonValue(raw []byte, start int, s string) (string, bool) {
 			return r.token(KindSecret, s), true
 		}
 	}
-	if strings.EqualFold(key, "authorization") || strings.EqualFold(key, "proxy-authorization") {
+	header := key
+	if header == "" {
+		header = arrayKey // headers serialized as lists: {"Authorization": ["Basic ..."]}
+	}
+	if head, ok := authHeads[strings.ToLower(header)]; ok {
 		// The header rules read "Authorization: Basic ..." as one line; in JSON the name is the key, so it is put back in
-		// front of the value for them.
-		head := key + ": "
+		// front of the value for them, in the spelling the rules recognize.
 		if out, ok := r.Changed(head + s); ok && strings.HasPrefix(out, head) {
 			return strings.TrimPrefix(out, head), true
 		}
 	}
 	return r.Changed(s)
+}
+
+// authHeads maps the lower-cased credential header names to the line prefix the
+// header rules recognize.
+var authHeads = map[string]string{
+	"authorization":       "Authorization: ",
+	"proxy-authorization": "Proxy-Authorization: ",
 }
 
 // keyBefore returns the object key whose value starts at raw[start], or "" when

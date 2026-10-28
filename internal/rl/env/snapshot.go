@@ -711,7 +711,7 @@ func (m *Workspaces) buildSnapshot(ctx context.Context, task rl.Task, src *repoS
 	// 3. setup
 	started := time.Now()
 	if len(task.Setup) > 0 {
-		if err := m.runSetup(ctx, task, s, key); err != nil {
+		if err := m.runSetup(ctx, task, s, key, src.local); err != nil {
 			return nil, Infra("setup", err)
 		}
 	}
@@ -773,8 +773,9 @@ func (m *Workspaces) buildSnapshot(ctx context.Context, task rl.Task, src *repoS
 }
 
 // runSetup executes the task's setup commands, with network access, inside the
-// half-built snapshot. Their result is what every rollout then starts from.
-func (m *Workspaces) runSetup(ctx context.Context, task rl.Task, s *snapshot, key string) error {
+// half-built snapshot. Their result is what every rollout then starts from. hide
+// are the host directories of the task's repository, which setup sees empty.
+func (m *Workspaces) runSetup(ctx context.Context, task rl.Task, s *snapshot, key string, hide []string) error {
 	tmpDir := filepath.Join(s.dir, "setup-tmp")
 	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
 		return err
@@ -794,7 +795,7 @@ func (m *Workspaces) runSetup(ctx context.Context, task rl.Task, s *snapshot, ke
 	}
 	// Confined, setup sees only the snapshot being built (tree, home, its own tmp).
 	pol := ExecPolicy{Network: true, Marker: marker, MaxOutput: m.opts.MaxOutput, Limits: m.opts.Limits, Grace: m.opts.KillGrace,
-		Mounts: &Mounts{RW: []string{s.dir}}}
+		Mounts: &Mounts{RW: []string{s.dir}, Hide: hide}}
 	var log bytes.Buffer
 	defer func() { _ = writeInDir(s.dir, "setup.log", log.Bytes()) }()
 	defer sweepMarker(marker)

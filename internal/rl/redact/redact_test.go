@@ -551,9 +551,21 @@ func TestRepoSourcesStayUntouched(t *testing.T) {
 // value.
 func TestJSONAuthorizationValue(t *testing.T) {
 	r := testRedactor()
-	out := string(r.JSON([]byte(`{"headers":{"Authorization":"Basic dXNlcjpodW50ZXIyaHVudGVyMg=="}}`)))
-	if strings.Contains(out, "dXNlcjpodW50ZXIy") {
-		t.Errorf("the credential survives: %s", out)
+	for _, doc := range []string{
+		`{"headers":{"Authorization":"Basic dXNlcjpodW50ZXIyaHVudGVyMg=="}}`,
+		`{"headers":{"AuThOrIzAtIoN":"Basic dXNlcjpodW50ZXIyaHVudGVyMg=="}}`,
+		`{"headers":{"Authorization":["Basic dXNlcjpodW50ZXIyaHVudGVyMg=="]}}`,
+		`{"headers":{"proxy-authorization":["x", "Basic dXNlcjpodW50ZXIyaHVudGVyMg=="]}}`,
+	} {
+		out := string(r.JSON([]byte(doc)))
+		if strings.Contains(out, "dXNlcjpodW50ZXIy") {
+			t.Errorf("the credential survives: %s", out)
+		}
+	}
+	// An array under another key is not read as a header.
+	doc := `{"names":["Basic dXNlcjpodW50ZXIyaHVudGVyMg"],"Authorization":"x"}`
+	if out := string(r.JSON([]byte(doc))); !strings.Contains(out, "dXNlcjpodW50ZXIy") {
+		t.Errorf("a value outside a header was redacted: %s", out)
 	}
 }
 

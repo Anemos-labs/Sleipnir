@@ -12,12 +12,13 @@ they do not indicate whether a change has been released.
   rollout whose task leaves them open, and a blank `role_models` entry runs
   its role on the policy instead of the configuration's default model. A
   rollout's repository agent definitions run their `model:` on the policy
-  endpoint. Protected patterns are limited to 1,024 bytes and 64 segments.
+  endpoint (with an injected policy client, on that client). Protected patterns are limited to 1,024 bytes and 64 segments.
   Mutation tasks protect `testdata`, `tests` and `test` directories at any
   depth. A workspace id of a task whose name had to be changed carries a
   digest of the original name, so two tasks never share one. Rollouts hide
   the repositories their tasks name from confined commands wherever they
-  are, and `rl taskgen chain` and `rebuild` hide their blob store and sealed
+  are (including inline tasks, `file://` sources and a linked worktree's
+  git directories), and `rl taskgen chain` and `rebuild` hide their blob store and sealed
   starts. Exports redact the policy's checkpoint and sampling settings,
   consent, the outcome in every format, and warnings, and drop token ids of
   steps whose prompt could not be read for redaction.

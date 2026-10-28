@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -117,6 +118,7 @@ type Workspaces struct {
 
 	mu       sync.Mutex
 	loaded   map[string]*snapshot
+	sources  map[string][]string // snapshot key: its source's host directories (repoSource.local)
 	flights  map[string]*flight
 	failures map[string]failure
 	gen      map[string]int
@@ -175,7 +177,7 @@ func NewWorkspaces(o WorkspaceOptions) (*Workspaces, error) {
 	}
 	m := &Workspaces{
 		opts: o, root: root, tmp: filepath.Join(root, "tmp"), git: g,
-		baseEnv: o.BaseEnv, loaded: map[string]*snapshot{}, flights: map[string]*flight{},
+		baseEnv: o.BaseEnv, loaded: map[string]*snapshot{}, sources: map[string][]string{}, flights: map[string]*flight{},
 		failures: map[string]failure{}, gen: map[string]int{}, mirrors: map[string]*sync.Mutex{},
 	}
 	m.baseCtx, m.cancel = context.WithCancel(context.Background())
@@ -277,7 +279,7 @@ func (m *Workspaces) Confined() bool { return m.local != nil && m.local.confine.
 // mounts are the directories the workspace's commands may use: its tree, HOME
 // and TMPDIR, and the snapshot objects its git reads through alternates.
 func (w *Workspace) mounts() Mounts {
-	mt := Mounts{RW: []string{w.Root, w.Home, w.Tmp}}
+	mt := Mounts{RW: []string{w.Root, w.Home, w.Tmp}, Hide: w.mgr.sourceDirs(w.snap)}
 	if w.snap != nil && w.snap.base != "" {
 		mt.RO = append(mt.RO, w.snap.base)
 	}
@@ -285,8 +287,8 @@ func (w *Workspace) mounts() Mounts {
 }
 
 // mountsFor are the directories a checkout's commands may use (see Workspace.mounts).
-func (co *checkout) mountsFor(snap *snapshot) *Mounts {
-	mt := &Mounts{RW: []string{co.tree, co.home, co.tmp}}
+func (m *Workspaces) mountsFor(co *checkout, snap *snapshot) *Mounts {
+	mt := &Mounts{RW: []string{co.tree, co.home, co.tmp}, Hide: m.sourceDirs(snap)}
 	if snap != nil && snap.base != "" {
 		mt.RO = append(mt.RO, snap.base)
 	}
@@ -308,6 +310,9 @@ type repoSource struct {
 	commit      string // resolved full id (git)
 	ident       string // stable identity of the repository
 	fingerprint string // content fingerprint (dir)
+	// local are the host directories the repository lives in (its tree, git directory and common directory, or the path
+	// of a file URL): commands see them empty, as the history they hold reaches past the task's commit.
+	local []string
 }
 
 // RepoPath is the absolute path a task's repo.path names: relative paths are read against RepoBase (or the current
@@ -339,13 +344,13 @@ func (m *Workspaces) resolveSource(ctx context.Context, task rl.Task) (*repoSour
 				if err != nil {
 					return nil, Infra("resolve commit", fmt.Errorf("repo %s: commit %q: %w", p, task.Repo.Commit, err))
 				}
-				return &repoSource{kind: "git", gitDir: gd, commit: sha, ident: real}, nil
+				return &repoSource{kind: "git", gitDir: gd, commit: sha, ident: real, local: gitDirs(real, gd)}, nil
 			}
 			fp, err := dirFingerprint(ctx, real)
 			if err != nil {
 				return nil, Infra("fingerprint "+p, err)
 			}
-			return &repoSource{kind: "dir", dir: real, ident: real, fingerprint: fp}, nil
+			return &repoSource{kind: "dir", dir: real, ident: real, fingerprint: fp, local: []string{real}}, nil
 		case err == nil:
 			pathErr = fmt.Errorf("repo path %q is not a directory", p)
 		default:
@@ -363,7 +368,32 @@ func (m *Workspaces) resolveSource(ctx context.Context, task rl.Task) (*repoSour
 	if err != nil {
 		return nil, Infra("resolve commit", fmt.Errorf("repo %s: commit %q: %w", task.Repo.URL, task.Repo.Commit, err))
 	}
-	return &repoSource{kind: "git", gitDir: gd, commit: sha, ident: normalizeRepoURL(task.Repo.URL)}, nil
+	src := &repoSource{kind: "git", gitDir: gd, commit: sha, ident: normalizeRepoURL(task.Repo.URL)}
+	if u, err := url.Parse(task.Repo.URL); err == nil && u.Scheme == "file" && u.Path != "" {
+		local := filepath.Clean(filepath.FromSlash(u.Path))
+		if real, err := filepath.EvalSymlinks(local); err == nil {
+			local = real
+		}
+		src.local = []string{local}
+		if lgd, ok := m.git.GitDirOf(ctx, local); ok {
+			src.local = gitDirs(local, lgd)
+		}
+	}
+	return src, nil
+}
+
+// gitDirs are the directories a repository at dir with git directory gd occupies: dir, gd and, for a linked worktree, the
+// common directory its commondir file names.
+func gitDirs(dir, gd string) []string {
+	out := []string{dir, gd}
+	if b, err := os.ReadFile(filepath.Join(gd, "commondir")); err == nil {
+		c := strings.TrimSpace(string(b))
+		if !filepath.IsAbs(c) {
+			c = filepath.Join(gd, c)
+		}
+		out = append(out, filepath.Clean(c))
+	}
+	return out
 }
 
 // ensureMirror maintains one bare mirror per URL under Root, so a thousand tasks
@@ -486,8 +516,21 @@ func (m *Workspaces) snapshotFor(ctx context.Context, task rl.Task) (*snapshot, 
 			}
 			return nil, Infra("snapshot check", err)
 		}
+		m.mu.Lock()
+		m.sources[snap.key] = src.local
+		m.mu.Unlock()
 		return snap, nil
 	}
+}
+
+// sourceDirs are the host directories of the repository snap was built from (repoSource.local).
+func (m *Workspaces) sourceDirs(snap *snapshot) []string {
+	if snap == nil {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.sources[snap.key]
 }
 
 func (m *Workspaces) getOrBuild(ctx context.Context, key string, task rl.Task, src *repoSource) (*snapshot, error) {
