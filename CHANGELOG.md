@@ -14,6 +14,12 @@ they do not indicate whether a change has been released.
   read-only inside and `.git` cannot be renamed away, a home directory (or the root) is never mounted, and a sandboxed
   session resumes sandboxed. The program now recognizes a hidden first argument, `__sandbox-exec`, which a sandboxed
   session's commands use to enter the container.
+- A goal judge whose first answer is "continue", given before any
+  evidence request, is sent back once to search the archive for each
+  item it names as missing. Whatever it answers next stands, whether
+  or not it searched.
+  The page a judge is first shown holds only the newest records, so a
+  verdict on it alone could call finished work missing.
 - With auto-docs, a task resolved as no longer needed (`task resolve`)
   whose work did not merge in this run is no longer a docs change: it
   starts no catch-up pass, is not listed in one, and does not count as

@@ -147,7 +147,8 @@ func (s *Session) judgeOn(ctx context.Context, g *goal.State, j judgeRunner, ans
 	unread := 0 // answers in a row that were neither an evidence request nor a verdict
 	served := 0 // evidence requests answered
 	var asked judgeAsked
-	for round := 0; round < judgeRounds+judgeRereads+1; round++ {
+	pressed := false // a verdict of continue before any evidence request was sent back once to search first
+	for round := 0; round < judgeRounds+judgeRereads+2; round++ {
 		if window := j.m.ContextTokens; window > 0 {
 			tokens := est.Tokens(goal.JudgeSystem) + judgeMaxTokens
 			for _, message := range prompt.Messages {
@@ -179,6 +180,13 @@ func (s *Session) judgeOn(ctx context.Context, g *goal.State, j judgeRunner, ans
 		req, inspect := judgeInspection(response)
 		if !inspect {
 			if pv, ok := goal.ParseVerdict(response); ok {
+				if pv.Kind == goal.Continue && served == 0 && !pressed {
+					pressed = true
+					prompt.Messages = append(prompt.Messages,
+						core.Message{Role: core.RoleAssistant, Blocks: []core.Block{core.Text(response)}},
+						core.Message{Role: core.RoleUser, Blocks: []core.Block{core.Text(judgeSearchFirst)}})
+					continue
+				}
 				return pv, nil
 			}
 			// An answer that is neither (cut off, or not JSON) is asked for again: read as "continue" with no reason, it sent the
@@ -212,6 +220,11 @@ func (s *Session) judgeOn(ctx context.Context, g *goal.State, j judgeRunner, ans
 	}
 	return goal.Verdict{Kind: goal.Continue}, fmt.Errorf("evidence inspection limit reached; completion remains unproven")
 }
+
+// judgeSearchFirst sends back a verdict of continue that came before any evidence request: the page a judge is first shown is only
+// the newest records, so a verdict on it alone can call finished work missing when the evidence is older. It is sent once; whatever
+// the judge answers next stands, searched or not.
+const judgeSearchFirst = `Your verdict came before any evidence request, and the page you were shown holds only the newest records. Before you name anything as missing, search the archive for each item of your "left" ({"verdict":"inspect","query":"literal search text","offset":0}) and read what matches; then give your verdict.`
 
 // judgeRounds is how many evidence requests a judge is answered. Each answer says how many are left, and the last one asks for
 // the verdict: a judge that was never told the limit re-read the same records for 24 rounds (25 minutes on a slow model) and its
