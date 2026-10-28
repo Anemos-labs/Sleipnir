@@ -881,3 +881,32 @@ func TestTheSessionIsToldBothSidesOfARename(t *testing.T) {
 		}
 	}
 }
+
+// A file someone else edits while the result is applied is not one the apply accounts for: the patch still applies around the
+// other edit, but the session is not told of the file, so nothing the apply did not write is credited to it.
+func TestAFileEditedDuringTheApplyIsNotReportedAsApplied(t *testing.T) {
+	sc := script{"be-1": {act(writeCall("long.txt", "one\n2\n3\n4\n5\n6\n7\n8\n9\n10\n"), writeCall("b.txt", "bravo edited\n")), act(doneCall("T1", "edited long and b"))}}
+	r := newIsoRig(t, isoOpts{verify: true, files: map[string]string{"long.txt": "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n"}}, sc.fn())
+	var got []string
+	r.iso.Applying = func() func([]string) {
+		if err := writeFileString(r.repo+"/long.txt", "1\n2\n3\n4\n5\n6\n7\n8\n9\nten\n"); err != nil {
+			t.Fatal(err)
+		}
+		return func(files []string) { got = files }
+	}
+	r.sw.StartManager()
+	r.mustSpawn("backend", "edit long and b")
+	r.waitStatus("T1", StatusReview)
+	if res := r.accept("T1"); res.IsError {
+		t.Fatal(res.Text)
+	}
+	if rep := r.finish(); !rep.Applied {
+		t.Fatalf("%+v", rep)
+	}
+	if text := readText(t, r.repo+"/long.txt"); text != "one\n2\n3\n4\n5\n6\n7\n8\n9\nten\n" {
+		t.Fatalf("long.txt = %q, want the patch applied around the other edit", text)
+	}
+	if strings.Join(got, ",") != "b.txt" {
+		t.Fatalf("the session was told %q, want only b.txt", got)
+	}
+}

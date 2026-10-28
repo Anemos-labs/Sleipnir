@@ -1,9 +1,11 @@
 package swarm
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
@@ -710,7 +712,7 @@ func (s *Swarm) integrateLockedTip(ctx context.Context, commit bool, expectedTip
 	applied := func() {}
 	if iso.Applying != nil {
 		if fn := iso.Applying(); fn != nil {
-			applied = func() { fn(changed) }
+			applied = func() { fn(atTip(ctx, repo, rep.Tip, changed)) }
 		}
 	}
 	if commit {
@@ -772,6 +774,31 @@ func (s *Swarm) integrateLockedTip(ctx context.Context, commit bool, expectedTip
 	}
 	s.emit(events.TypeSwarmIntegration, map[string]any{"branch": rep.Branch, "tip": rep.Tip, "applied": true, "files": firstN(rep.Files, 50)})
 	return rep
+}
+
+// atTip returns the paths whose file in the checkout is what the integration tip holds (or, for a path the tip does not have, is
+// absent too): what the apply alone accounts for. A path someone else also changed during the apply is left out, and with more paths
+// than are worth comparing none are returned.
+func atTip(ctx context.Context, repo *gitx.Repo, tip string, paths []string) []string {
+	if len(paths) > 200 {
+		return nil
+	}
+	var out []string
+	for _, p := range paths {
+		want, err := repo.Show(ctx, tip, p)
+		if err != nil && gitx.KindOf(err) != gitx.KindNotFound {
+			continue
+		}
+		have, rerr := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(p)))
+		switch {
+		case err != nil && errors.Is(rerr, fs.ErrNotExist): // gone at the tip and in the checkout
+		case err == nil && rerr == nil && bytes.Equal(want, have):
+		default:
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
 }
 
 // applyCommits moves the user's branch to the integration tip, and calls applied once it has.
