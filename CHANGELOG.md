@@ -7,6 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A goal judge whose first answer is "continue", given before any
+  evidence request, is sent back once to search the archive for each
+  item it names as missing, and its verdict after that search stands.
+  The page a judge is first shown holds only the newest records, so a
+  verdict on it alone could call finished work missing.
 - With auto-docs, a task resolved as no longer needed (`task resolve`)
   whose work did not merge in this run is no longer a docs change: it
   starts no catch-up pass, is not listed in one, and does not count as

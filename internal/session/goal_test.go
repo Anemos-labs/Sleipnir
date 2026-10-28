@@ -28,6 +28,9 @@ func TestAGoalIsJudgedOnEvidenceAndSentOnWithWhatIsMissing(t *testing.T) {
 		if strings.Contains(c.System, "You judge whether a coding agent") {
 			mu.Lock()
 			defer mu.Unlock()
+			if pushedBack(c) { // asked to search first: it stands by its verdict
+				return mock.Reply{Text: `{"verdict":"continue","reason":"nothing was run to show the build works","left":["run go build"]}`}
+			}
 			judged = append(judged, c.LastUser())
 			if len(judged) == 1 {
 				return mock.Reply{Text: `{"verdict":"continue","reason":"nothing was run to show the build works","left":["run go build"]}`}
@@ -197,6 +200,74 @@ func TestJudgeSearchesWorkerEvidenceWithoutRepeatingWork(t *testing.T) {
 	note, next := s.GoalTurn(context.Background(), g, nil)
 	if !g.Done || next != "" || calls != 2 {
 		t.Fatalf("judge repeated completed work: %s %s calls=%d", note, next, calls)
+	}
+}
+
+// A judge whose "continue" comes before any evidence request is sent back once to search for what it names as missing, and what it
+// finds decides the verdict. In a team run a judge answered "continue" on the newest page alone, saying the archive held no record of
+// four items it had never searched for; the archive held hundreds.
+func TestAJudgesContinueWithoutASearchIsSentBackToSearch(t *testing.T) {
+	var seen []string // what the judge was shown, each call
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if !strings.Contains(c.System, "You judge whether a coding agent") {
+			return mock.Reply{Text: "Completed the objective"}
+		}
+		seen = append(seen, c.LastUser())
+		switch len(seen) {
+		case 1:
+			return mock.Reply{Text: `{"verdict":"continue","reason":"no record of the migration","left":["run the migration"]}`}
+		case 2:
+			return mock.Reply{Text: `{"verdict":"inspect","query":"migration applied","offset":0}`}
+		}
+		return mock.Reply{Text: `{"verdict":"done","reason":"the migration applied","left":[]}`}
+	})
+	s, err := session.New(context.Background(), opts(t, newRepo(t), client, model))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	g := goal.New("apply the migration")
+	s.SaveGoal(g)
+	s.Log.Emit("ts-2", events.TypeTurnAppend, core.Turn{Role: core.RoleUser, Blocks: []core.Block{core.ToolResult("m1", false, core.Text("migration applied"))}})
+	if _, err := s.Run(context.Background(), goal.Start(g)); err != nil {
+		t.Fatal(err)
+	}
+	note, next := s.GoalTurn(context.Background(), g, nil)
+	if !g.Done || next != "" || len(seen) != 3 {
+		t.Fatalf("after a continue with no search: note %q next %q done=%v calls=%d", note, next, g.Done, len(seen))
+	}
+	if !strings.Contains(seen[1], "search the archive for each item") {
+		t.Errorf("the judge was not sent back to search:\n%s", seen[1])
+	}
+	if !strings.Contains(seen[2], "migration applied") {
+		t.Errorf("the judge's search was not served:\n%s", seen[2])
+	}
+}
+
+// A judge that searched and still finds the goal unmet is believed: its "continue" is not sent back.
+func TestAJudgesContinueAfterASearchStands(t *testing.T) {
+	calls := 0
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if !strings.Contains(c.System, "You judge whether a coding agent") {
+			return mock.Reply{Text: "Completed the objective"}
+		}
+		if calls++; calls == 1 {
+			return mock.Reply{Text: `{"verdict":"inspect","query":"migration applied","offset":0}`}
+		}
+		return mock.Reply{Text: `{"verdict":"continue","reason":"no record of the migration","left":["run the migration"]}`}
+	})
+	s, err := session.New(context.Background(), opts(t, newRepo(t), client, model))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	g := goal.New("apply the migration")
+	s.SaveGoal(g)
+	if _, err := s.Run(context.Background(), goal.Start(g)); err != nil {
+		t.Fatal(err)
+	}
+	if _, next := s.GoalTurn(context.Background(), g, nil); g.Done || !strings.Contains(next, "missing: run the migration") || calls != 2 {
+		t.Errorf("a continue after a search: next %q done=%v calls=%d", next, g.Done, calls)
 	}
 }
 
@@ -459,7 +530,10 @@ func TestAJudgeModelsDoneIsConfirmedOnTheSessionsModel(t *testing.T) {
 		}
 		mu.Lock()
 		defer mu.Unlock()
-		judgedBy[c.Model]++
+		if pushedBack(c) {
+			return mock.Reply{Text: `{"verdict":"continue","reason":"no test ran","left":["run go test"]}`}
+		}
+		judgedBy[c.Model]++ // judgments, not the push-back on one
 		if c.Model == "acme/judge" {
 			return mock.Reply{Text: `{"verdict":"done","reason":"the build passed (record 3)","left":[]}`}
 		}
@@ -509,4 +583,9 @@ func TestAJudgeModelsDoneIsConfirmedOnTheSessionsModel(t *testing.T) {
 	if judgedBy["acme/judge"] != 2 || judgedBy["acme/main"] != 2 {
 		t.Errorf("judgments per model: %v", judgedBy)
 	}
+}
+
+// pushedBack says a judge call is the harness asking a judge to search before its verdict of continue stands.
+func pushedBack(c *mock.Call) bool {
+	return strings.Contains(c.LastUser(), "Your verdict came before any evidence request")
 }
