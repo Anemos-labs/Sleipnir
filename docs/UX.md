@@ -150,7 +150,8 @@ says when the log has more. With no session hosted, the page opens the New sessi
 The left rail switches views: the Cockpit (the team as a horse whose eight legs are the eight roles of the team, the stalls, the
 gantt, the task board, the merge queue, mail and the governor), the Workspace (Files, Changes, Checkpoints), Cache, Mail,
 Board, Replay, Sessions, Schedule, Tools and Settings. The Radio rail on the right is the conversation with the manager, which is the
-only agent the person talks to, and a read-only feed of what the team does. Agent drawers, opened from a stall or a gantt row,
+only agent the person talks to, and a read-only feed of what the team does. An agent's words are drawn as Markdown, as the
+terminal draws them: typed as plain text while they stream, then rendered once the message is whole. Agent drawers, opened from a stall or a gantt row,
 are read-only.
 
 In the Workspace, a click on a line number of a diff or of a whole file comments that line (a removed line too); the number of

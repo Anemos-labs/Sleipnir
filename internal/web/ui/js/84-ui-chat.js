@@ -20,6 +20,10 @@
   const todAt = (S, e) => e && e.at ? hms(e.at) : tod(S.meta.t0, e ? e.t : 0);
   U.todAt = todAt; ui.todAt = todAt;
   const OPEN = { providers: 'Open Providers', models: 'Open Models' };
+  /** An agent's words as the terminal draws them: Markdown (SL.media.md escapes every piece of text it is given), plain text when the
+   *  renderer is not loaded. */
+  const prose = t => SL.media && SL.media.md ? SL.media.md(t, {}) : esc(t);
+  ui.prose = prose;
 
   /* ---------- rows ---------- */
   /** The picture under a tool row that read or wrote an image of the project (as the file is now), in a session that has a workspace. A
@@ -33,7 +37,7 @@
     const T = todAt(S, e), at = ' data-ag="' + esc(e.ag || '') + '"' + (e.task ? ' data-task="' + esc(e.task) + '"' : '');
     switch (e.k) {
       case 'you': return '<div class="msg you" data-ag="you"><div class="who">You <time>' + T + '</time></div><span class="' + (e.text.charAt(0) === '/' ? 'code' : '') + '">' + chip(e.text) + '</span></div>';
-      case 'say': { const who = e.ag === 'mgr' ? 'Manager' : e.ag, col = agCol(e.ag); return '<div class="msg ' + (e.ag === 'mgr' ? 'mgr' : 'agsay') + '"' + at + ' style="--c:' + col + '"><div class="who">' + esc(who) + ' <time>' + T + '</time></div><span class="mt" ' + (e.stream ? 'data-full="' + esc(e.text) + '" data-t0="' + nm(e.t) + '" data-rate="' + nm(e.rate, 70) + '"' : '') + '>' + (e.stream ? '' : esc(e.text)) + '</span></div>'; }
+      case 'say': { const who = e.ag === 'mgr' ? 'Manager' : e.ag, col = agCol(e.ag); return '<div class="msg ' + (e.ag === 'mgr' ? 'mgr' : 'agsay') + '"' + at + ' style="--c:' + col + '"><div class="who">' + esc(who) + ' <time>' + T + '</time></div><div class="mt md" ' + (e.stream ? 'data-full="' + esc(e.text) + '" data-t0="' + nm(e.t) + '" data-rate="' + nm(e.rate, 70) + '"' : '') + '>' + (e.stream ? '' : prose(e.text)) + '</div></div>'; }
       case 'sys': return '<div class="msg sys"' + (e.ag ? at : '') + '><span class="sg">' + esc(e.glyph || '◇') + '</span><span>' + esc(e.text) + (e.plan ? ' <span class="dim">' + nm(S.plan.length) + ' steps, see Goal plan</span>' : '') + (own(OPEN, e.open) ? ' <button class="btn sm" type="button" data-open-page="' + esc(e.open) + '">' + esc(OPEN[e.open]) + '</button>' : '') + '</span></div>';
       case 'tool': {
         if (e.refused) return '<div class="msg tool refused"' + at + '><span class="tg bad">⊘</span><span class="tb"><b>' + esc(e.name) + '</b> ' + esc(e.arg || '') + ' <span class="bad">refused</span><span class="rsn">' + esc(e.reason || '') + '</span></span></div>';
@@ -164,7 +168,7 @@
     /* ---------- per-frame: streaming text ---------- */
     function frameFn(dt, vt, S) {
       if (!S || !S.m) return;
-      [TR, FD].forEach(L => { for (let i = L.stream.length - 1; i >= 0; i--) { const r = L.stream[i], el = r.t; if (!el || el.dataset.full == null) continue; const growing = !!(r.e.mid && !r.e.done), full = r.e.mid ? r.e.text : el.dataset.full; const [s, typedAll] = ui.typed(full, +el.dataset.t0, +el.dataset.rate, vt), done = typedAll && !growing; const t = s + (done ? '' : '▍'); if (el._t !== t) { el._t = t; el.textContent = t; if (L.stick) toEdge(L); } if (done) { r.done = true; L.stream.splice(i, 1); } } });
+      [TR, FD].forEach(L => { for (let i = L.stream.length - 1; i >= 0; i--) { const r = L.stream[i], el = r.t; if (!el || el.dataset.full == null) continue; const growing = !!(r.e.mid && !r.e.done), full = r.e.mid ? r.e.text : el.dataset.full; const [s, typedAll] = ui.typed(full, +el.dataset.t0, +el.dataset.rate, vt), done = typedAll && !growing; const t = s + (done ? '' : '▍'); if (el._t !== t) { el._t = t; el.textContent = t; if (L.stick) toEdge(L); } if (done) { if (el.classList.contains('md')) { el.innerHTML = prose(full); el._t = null; if (L.stick) toEdge(L); } r.done = true; L.stream.splice(i, 1); } } });
     }
 
     /* ---------- plan box ---------- */
