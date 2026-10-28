@@ -36,7 +36,9 @@ type Store struct {
 	mu     sync.Mutex
 	runs   map[string]*Run
 	active string
-	now    func() time.Time
+	// bound is set when the session's goal drives the active scan (Bind): calls naming another scan then go to it.
+	bound bool
+	now   func() time.Time
 	// OnChange, when set, is called with a copy of a scan after every change is written (the report is rewritten from it).
 	OnChange func(r *Run)
 }
@@ -88,6 +90,18 @@ func (s *Store) Create(commit, depth, focus string, inv Inventory) (*Run, error)
 	s.active = slug
 	s.changed(r)
 	return cloneRun(r), nil
+}
+
+// Bind opens the scan a session's goal drives: calls that name another scan go to it from now on, since the agents of that
+// goal work on this scan only.
+func (s *Store) Bind(slug string) (*Run, error) {
+	r, err := s.Open(slug)
+	if err == nil {
+		s.mu.Lock()
+		s.bound = true
+		s.mu.Unlock()
+	}
+	return r, err
 }
 
 // Open loads a scan and makes it the active one.
@@ -150,14 +164,18 @@ func (s *Store) slugLocked(slug string) (string, error) {
 	return "", fmt.Errorf("no scan is open and %d are unfinished: name one with scan (%s)", len(open), strings.Join(open, ", "))
 }
 
-// Resolve is the scan a call means. A call naming a scan that does not exist goes to the one a call naming none would, with
-// a note, rather than being refused.
+// Resolve is the scan a call means. A call naming a scan that does not exist, or another scan than the one the session works
+// on, goes to the one a call naming none would, with a note, rather than being refused: a scan's agents never write to an
+// older scan of the same project, whose lead numbers mean other things.
 func (s *Store) Resolve(slug string) (used, note string, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if slug == "" {
 		used, err = s.slugLocked("")
 		return used, "", err
+	}
+	if s.bound && slug != s.active {
+		return s.active, fmt.Sprintf("(this session works on %s: the call went there, and %s was left as it is; leave scan out)", s.active, slug), nil
 	}
 	if _, lerr := s.loadLocked(slug); lerr == nil {
 		return slug, "", nil

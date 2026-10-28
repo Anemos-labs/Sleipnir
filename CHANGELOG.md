@@ -7,6 +7,9 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A session whose goal is a deep scan works on that scan: the `scan` tool's calls that name another scan of the project
+  (an older unfinished one, whose lead numbers mean other things) go to the session's scan, with a note. A reproducer's
+  marker may be followed by a colon (`SLEIPNIR-REPRODUCED: rows`).
 - A goal judge request that fails with a network error, a timeout, a
   5xx or a rate limit is sent again, up to four times with a growing
   wait (or the server's `Retry-After`, when longer), and each retry is

@@ -612,7 +612,7 @@ func TestHasMarker(t *testing.T) {
 	for out, want := range map[string]bool{
 		MarkerReproduced + "\n":               true,
 		"  " + MarkerReproduced + " L1\n":     true,
-		"x\n" + MarkerReproduced + ": rows\n": false,
+		"x\n" + MarkerReproduced + ": rows\n": true,
 		"saw " + MarkerReproduced + "\n":      false,
 		MarkerReproduced + "X\n":              false,
 	} {
@@ -646,6 +646,54 @@ func TestCloneTakesOnlyRemoteRepositories(t *testing.T) {
 	for in, want := range map[string]string{"https://github.com/Owner/Repo.git": "Owner-Repo", "git@github.com:a/b": "a-b", "https://host/x": "x"} {
 		if got := CloneName(in); got != want {
 			t.Errorf("CloneName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// A session works on the scan its goal names: an older unfinished scan of the same project numbers its leads differently, and
+// a call that names it goes to the session's scan instead, with a note.
+func TestASessionStaysOnItsScan(t *testing.T) {
+	root := t.TempDir()
+	inv := Inventory{Files: []File{{Path: "a.go", Lang: "go", Lines: 1}}}
+	old, err := NewStore(root).Create(strings.Repeat("ab", 20), "survey", "", inv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cur, err := NewStore(root).Create(strings.Repeat("cd", 20), "survey", "", inv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := NewStore(root)
+	if _, _, err := st.Resolve(""); err == nil || !strings.Contains(err.Error(), "2 are unfinished") {
+		t.Fatalf("two unfinished scans and none named: %v", err)
+	}
+	goal := Objective(cur, filepath.Join(root, filepath.FromSlash(BriefPath(cur.Slug))))
+	slug := ObjectiveSlug(goal)
+	if slug != cur.Slug {
+		t.Fatalf("ObjectiveSlug(%q) = %q, want %q", goal, slug, cur.Slug)
+	}
+	// a scan opened without a goal (the newest one created, a person's /scan status) still lets a call name another
+	if _, err := st.Open(slug); err != nil {
+		t.Fatal(err)
+	}
+	if used, note, err := st.Resolve(old.Slug); err != nil || used != old.Slug || note != "" {
+		t.Fatalf("an unbound session naming the older scan: %q %q %v", used, note, err)
+	}
+	if _, err := st.Bind(slug); err != nil {
+		t.Fatal(err)
+	}
+	used, note, err := st.Resolve(old.Slug)
+	if err != nil || used != cur.Slug || !strings.Contains(note, "left as it is") {
+		t.Fatalf("a call naming the older scan: %q %q %v", used, note, err)
+	}
+	for objective, want := range map[string]string{
+		"Deep scan.\n\nSpec: .sleipnir/scan/" + cur.Slug + "/BRIEF.md":           cur.Slug,
+		"Deep scan.\n\nSpec: C:\\p\\.sleipnir\\scan\\" + cur.Slug + "\\BRIEF.md": cur.Slug,
+		"Research.\n\nSpec: .sleipnir/research/x/BRIEF.md":                       "",
+		"see .sleipnir/scan/" + cur.Slug + "/BRIEF.md":                           "",
+	} {
+		if got := ObjectiveSlug(objective); got != want {
+			t.Errorf("ObjectiveSlug(%q) = %q, want %q", objective, got, want)
 		}
 	}
 }

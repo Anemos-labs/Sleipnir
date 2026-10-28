@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -95,6 +96,16 @@ func Objective(r *Run, spec string) string {
 	}
 	return fmt.Sprintf("Deep scan (%s) of %s at commit %s: map all of it, hunt it for holes, and report only what is verified%s. Read the brief and follow its protocol with the whole team; do not change the project.\n\nSpec: %s",
 		d.ID, what, short(r.Commit), proofNote(d), spec)
+}
+
+var objectiveRE = regexp.MustCompile(`(?m)^Spec: (?:.*[\\/])?\.sleipnir[\\/]scan[\\/]([a-z0-9][a-z0-9-]{0,62})[\\/]BRIEF\.md\s*$`)
+
+// ObjectiveSlug is the scan an objective written by Objective drives, or "".
+func ObjectiveSlug(objective string) string {
+	if m := objectiveRE.FindStringSubmatch(objective); m != nil {
+		return m[1]
+	}
+	return ""
 }
 
 // WriteBrief writes the scan's brief, and the ignore file that keeps every scan out of the project's commits.
