@@ -372,7 +372,7 @@ func TestResumingAGoalWhoseJudgeFailedJudgesItFirst(t *testing.T) {
 	if s.GoalTurn(context.Background(), g, nil); !g.Unjudged || !strings.HasPrefix(g.Paused, "the judge could not be asked") {
 		t.Fatalf("a judge that failed: paused %q unjudged=%v", g.Paused, g.Unjudged)
 	}
-	note, next := s.GoalResume(context.Background(), g)
+	note, next, _ := s.GoalResume(context.Background(), g)
 	if calls != 4 || !g.Done || next != "" || g.Paused != "" || g.Unjudged || note != "goal met: the migration applied" {
 		t.Errorf("the resume: note %q next %q done=%v paused %q unjudged=%v judge calls=%d", note, next, g.Done, g.Paused, g.Unjudged, calls)
 	}
@@ -403,7 +403,7 @@ func TestResumingAGoalAfterAnInterruptedTurnJudgesItFirst(t *testing.T) {
 	if s.GoalTurn(context.Background(), g, context.Canceled); g.Paused != "you interrupted it" || !g.Unjudged || calls != 0 {
 		t.Fatalf("an interrupted turn: paused %q unjudged=%v judge calls=%d", g.Paused, g.Unjudged, calls)
 	}
-	if note, next := s.GoalResume(context.Background(), g); !g.Done || next != "" || calls != 2 {
+	if note, next, _ := s.GoalResume(context.Background(), g); !g.Done || next != "" || calls != 2 {
 		t.Errorf("the resume: note %q next %q done=%v judge calls=%d", note, next, g.Done, calls)
 	}
 }
@@ -432,7 +432,7 @@ func TestResumingAGoalPausedByThePersonSendsItOn(t *testing.T) {
 	}
 	s.GoalTurn(context.Background(), g, nil)
 	g.Paused = "paused by you"
-	note, next := s.GoalResume(context.Background(), g)
+	note, next, _ := s.GoalResume(context.Background(), g)
 	if calls != 2 || note != "" || g.Paused != "" || !strings.Contains(next, "Not met yet: no record of the migration") {
 		t.Errorf("the resume: note %q next %q paused %q judge calls=%d", note, next, g.Paused, calls)
 	}

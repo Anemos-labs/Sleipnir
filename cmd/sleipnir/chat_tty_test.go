@@ -68,7 +68,7 @@ func TestEveryCommandOfThePaletteIsAnswered(t *testing.T) {
 			continue
 		}
 		var out strings.Builder
-		if _, ok := (&sessionHost{s: s}).programCommand("/"+c.name, &out); ok {
+		if _, ok := (&sessionHost{s: s}).programCommand(context.Background(), "/"+c.name, &out); ok {
 			continue // a command of the terminal program, answered by the host (restart.go): /swarm alone says its usage
 		}
 		slashTo(context.Background(), s, "/"+c.name, &out, &out)

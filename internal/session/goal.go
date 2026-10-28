@@ -471,17 +471,16 @@ func (s *Session) GoalJudged(ctx context.Context, g *goal.State, turnErr error) 
 // GoalResume takes the pause off g and returns a note for the person and the message that sends the agent on ("" when there is
 // none). A goal paused on a turn that was not judged (it was interrupted or failed, the chat was restarted, or the judge could not be
 // asked) is judged first: the judge's last verdict predates that turn, and its "not met yet" would send the agent to redo work it may
-// have done since. g is changed.
-func (s *Session) GoalResume(ctx context.Context, g *goal.State) (note, next string) {
+// have done since; j is that judgment (zero when there was none). g is changed.
+func (s *Session) GoalResume(ctx context.Context, g *goal.State) (note, next string, j GoalJudgment) {
 	unjudged := g.Unjudged
 	g.Paused, g.Repeats, g.Unjudged = "", 0, false
 	g.Max = g.Turns + goal.MaxTurns
 	if unjudged {
-		note, next, _ = s.GoalJudged(ctx, g, nil)
-		return note, next
+		return s.GoalJudged(ctx, g, nil)
 	}
 	g.Turns++
-	return "", s.GoalContinuation(g, goal.Verdict{Kind: goal.Continue, Reason: g.Reason})
+	return "", s.GoalContinuation(g, goal.Verdict{Kind: goal.Continue, Reason: g.Reason}), j
 }
 
 // GoalContinuation is the message that sends the agent on after verdict v (goal.Continuation), with, for the manager of a team, the

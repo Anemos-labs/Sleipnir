@@ -37,7 +37,7 @@ func judgeTurn(ctx context.Context, s *session.Session, gp **goal.State, turnErr
 // goalCommandTo is /goal ARG: with text it sets the goal and returns the message that starts on it; alone it writes where the goal
 // stands; pause, resume and clear are what they say (resume returns the continuation to send). What it says goes to out, and the
 // goal is saved in the session's log whatever it did.
-func goalCommandTo(s *session.Session, gp **goal.State, arg string, out io.Writer) (send string) {
+func goalCommandTo(ctx context.Context, s *session.Session, gp **goal.State, arg string, out io.Writer) (send string) {
 	g := *gp
 	defer func() { s.SaveGoal(*gp) }()
 	switch strings.ToLower(arg) {
@@ -75,7 +75,7 @@ func goalCommandTo(s *session.Session, gp **goal.State, arg string, out io.Write
 			fmt.Fprintln(out, "no goal to resume")
 			return ""
 		}
-		note, next := s.GoalResume(context.Background(), g)
+		note, next, _ := s.GoalResume(ctx, g)
 		if note != "" {
 			fmt.Fprintln(out, note)
 		}
@@ -225,8 +225,9 @@ func (g *goalLoop) Pause(s *session.Session, why string) error {
 }
 
 // Resume takes the pause off the goal and returns the continuation to send ("" when there is none: a goal judged met, or paused again,
-// on resuming). A goal its judge could not be asked about is judged first (session.GoalResume).
-func (g *goalLoop) Resume(ctx context.Context, s *session.Session) (string, error) {
+// on resuming). A goal paused on a turn that was not judged is judged first (session.GoalResume), and that judgment is reported
+// through emit as a turn's is; the goal's state is reported either way.
+func (g *goalLoop) Resume(ctx context.Context, s *session.Session, emit func(goalEvent)) (string, error) {
 	st := g.State()
 	switch {
 	case st == nil:
@@ -234,11 +235,16 @@ func (g *goalLoop) Resume(ctx context.Context, s *session.Session) (string, erro
 	case st.Paused == "":
 		return "", errNotPaused
 	}
-	_, next := s.GoalResume(ctx, st)
+	note, next, j := s.GoalResume(ctx, st)
+	shown := cloneGoal(st)
 	if st.Done {
 		st = nil
 	}
 	g.set(s, st)
+	if j.Judged || j.Err != nil {
+		emit(goalEvent{Kind: "judged", Note: note, Judgment: j})
+	}
+	emit(goalEvent{Kind: "state", Goal: shown})
 	return next, nil
 }
 
