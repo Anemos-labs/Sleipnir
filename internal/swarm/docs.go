@@ -87,9 +87,13 @@ func docsDirOf(entry string) string {
 	return path.Dir(e)
 }
 
-// unneeded reports whether a task was closed as no longer needed (task resolve): nothing of it landed, so it leaves no document
-// stale. In a team run a task resolved as a duplicate of the one that did the work was listed in a catch-up pass beside it.
-func unneeded(t Task) bool { return t.Closure.Kind() == CloseUnneeded }
+// unneeded reports whether a task was closed as no longer needed (task resolve) without its change reaching the shared tree in
+// this run (landed): such a task leaves no document stale. In a team run a task resolved as a duplicate of the one that did the
+// work was listed in a catch-up pass beside it. A task resolved after its work merged (in review, under isolation) is still a
+// change: its code ships.
+func unneeded(t Task, landed map[string]bool) bool {
+	return t.Closure.Kind() == CloseUnneeded && !landed[t.ID]
+}
 
 // docsRetry is how long the keeper waits before it tries again to start a catch-up
 // task that could not be started (no free slot, a scope overlap, the budget).
@@ -190,13 +194,14 @@ func (s *Swarm) docsTick(now time.Time) {
 		return
 	}
 	snap := s.Board.Snapshot()
+	landed := s.review.landedIDs()
 	k.mu.Lock()
 	if !k.primed {
 		// What was done before the keeper first looked (a resumed session) is not news.
 		for _, t := range snap.Tasks {
 			if t.Status == StatusDone || t.Status == StatusFailed {
 				k.seen[t.ID] = t.Rev
-				k.coded = k.coded || t.Status == StatusDone && s.implementationTask(t)
+				k.coded = k.coded || t.Status == StatusDone && s.implementationTask(t) && !unneeded(t, landed)
 			}
 		}
 		k.primed = true
@@ -206,7 +211,7 @@ func (s *Swarm) docsTick(now time.Time) {
 			continue
 		}
 		k.seen[t.ID] = t.Rev
-		if t.Status != StatusDone || s.isDocsTask(t) || t.Kind != TaskKindPlan && !s.implementationTask(t) || testsOnly(t.Files) || unneeded(t) {
+		if t.Status != StatusDone || s.isDocsTask(t) || t.Kind != TaskKindPlan && !s.implementationTask(t) || testsOnly(t.Files) || unneeded(t, landed) {
 			continue
 		}
 		kind := "change"
@@ -402,13 +407,14 @@ func (s *Swarm) docsWillStart(snap *Snapshot) bool {
 	if s.docsPending() {
 		return true
 	}
+	landed := s.review.landedIDs()
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	if !k.primed {
 		return false // what was done before the keeper first looks is not news to it (docsTick)
 	}
 	for _, t := range snap.Tasks {
-		if rev, seen := k.seen[t.ID]; t.Status != StatusDone || (seen && rev == t.Rev) || s.isDocsTask(t) || testsOnly(t.Files) || unneeded(t) {
+		if rev, seen := k.seen[t.ID]; t.Status != StatusDone || (seen && rev == t.Rev) || s.isDocsTask(t) || testsOnly(t.Files) || unneeded(t, landed) {
 			continue
 		}
 		if s.implementationTask(t) || t.Kind == TaskKindPlan && k.coded {
