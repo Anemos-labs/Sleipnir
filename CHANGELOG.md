@@ -12,6 +12,13 @@ they do not indicate whether a change has been released.
   wait (or the server's `Retry-After`, when longer), and each retry is
   a `model.error` event. Before, one dropped connection paused the
   goal and discarded the judgment's evidence requests.
+- A read-only worker (a reviewer, a scout) that stops on its task with
+  no answer text is mailed once or twice for its report before its task
+  is submitted, instead of reaching review with an empty result. A
+  reviewer whose last turn was reasoning alone reached review with
+  nothing to read, and its manager spent four minutes recalling the
+  reviewer's history for the verdict before it mailed for it. About 35
+  tokens in that mail, only when it is sent.
 - The web page has a Deep scan view (`g d`, docs/SCAN.md): the project's scans, a scan's findings with their traces,
   verdicts and reproductions, its attack surface and shard map, the report exported as CSV, JSON, PDF, Markdown or SARIF,
   and a form that scans the project or a repository it clones (https or ssh, hooks and symbolic links off) into
