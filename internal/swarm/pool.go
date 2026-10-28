@@ -777,6 +777,9 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		Action, ID, Text, Member string
 		Revision                 int
 	}
+	if r := t.s.refuseService(c.Env.Role); r != nil {
+		return r, nil
+	}
 	if r := decode(c.Input, &in); r != nil {
 		return r, nil
 	}

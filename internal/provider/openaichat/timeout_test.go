@@ -230,6 +230,27 @@ func TestNonStreamingCallsHaveTheirOwnTimeout(t *testing.T) {
 	})
 	_, err = New(Config{Name: "t", BaseURL: s2.URL, RequestTimeout: 150 * time.Millisecond}).Do(context.Background(), req, nil)
 	wantProviderError(t, err, provider.ErrTimeout, true)
+	// A body that trickles a byte at a time keeps the idle timer quiet, and stops at the response's wall time all the same.
+	s3 := newScripted(t, func(w http.ResponseWriter, fl http.Flusher, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(20 * time.Millisecond):
+				fmt.Fprint(w, " ")
+				fl.Flush()
+			}
+		}
+	})
+	start = time.Now()
+	_, err = New(Config{Name: "t", BaseURL: s3.URL, RequestTimeout: 150 * time.Millisecond, Limits: provider.StreamLimits{MaxDuration: 400 * time.Millisecond}}).Do(context.Background(), req, nil)
+	if err == nil {
+		t.Fatal("a trickling body was read for ever")
+	}
+	if d := time.Since(start); d > 3*time.Second {
+		t.Errorf("a trickling body took %v", d)
+	}
 }
 
 func TestWarmRequestsAreBoundedToo(t *testing.T) {

@@ -270,8 +270,8 @@ func TestReportedReviewBlockerPreventsMerge(t *testing.T) {
 	c, f := setup(t, Options{AutoMerge: true})
 	f.summary = `{"comments":[{"body":"Possible regression"}]}`
 	d, err := c.Step(context.Background())
-	if err != nil || !d.AssessReview {
-		t.Fatalf("review not requested: %+v %v", d, err)
+	if err != nil || !d.AssessReview || !d.ReadOnly {
+		t.Fatalf("review not requested as a read-only turn with auto-fix off: %+v %v", d, err)
 	}
 	if err := c.RecordReview("I have inspected it."); err != nil {
 		t.Fatal(err)

@@ -549,7 +549,7 @@ func (r *mdRenderer) inline(s string) string {
 				end++
 			}
 			raw := strings.TrimRight(s[i:end], ".,;:!?")
-			b.WriteString(r.link(raw, raw))
+			b.WriteString(r.linkHTML(raw, func() string { return html.EscapeString(raw) }, raw))
 			i += len(raw)
 			continue
 		}
@@ -651,6 +651,12 @@ var special = map[string]string{
 
 // link renders an ordinary link. Only web, mail and relative addresses are links; anything else (javascript:) is text.
 func (r *mdRenderer) link(label, href string) string {
+	return r.linkHTML(label, func() string { return r.inline(label) }, href)
+}
+
+// linkHTML is link with the label's markup made by labelHTML: a bare address is its own label, shown as it is (parsed as Markdown
+// it would be a bare address again, without end).
+func (r *mdRenderer) linkHTML(label string, labelHTML func() string, href string) string {
 	u, err := url.Parse(href)
 	if err != nil || (u.Scheme != "" && u.Scheme != "http" && u.Scheme != "https" && u.Scheme != "mailto") {
 		return html.EscapeString(label)
@@ -660,7 +666,7 @@ func (r *mdRenderer) link(label, href string) string {
 	if ext {
 		attrs = ` class="ext" rel="noopener noreferrer" target="_blank"`
 	}
-	return `<a href="` + html.EscapeString(href) + `"` + attrs + `>` + r.inline(label) + `</a>`
+	return `<a href="` + html.EscapeString(href) + `"` + attrs + `>` + labelHTML() + `</a>`
 }
 
 var reTags = regexp.MustCompile(`<[^>]*>`)

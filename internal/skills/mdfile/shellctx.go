@@ -12,6 +12,10 @@ type shellCtx struct {
 	stack []shellFrame
 	prev  byte
 	esc   bool
+	// word is the unquoted word being read in a $( ); unsure is set for good once one of them is "case": a pattern's ")" there
+	// does not end the substitution, which this tracker cannot tell, so no placeholder after it is spelled for a guessed context.
+	word   []byte
+	unsure bool
 }
 
 // shellFrame is one quoting context: kind is 'n' (unquoted), 's' ('...'), 'd' ("..."), 'a' ($'...') or 'b' (`...`); sub marks
@@ -23,7 +27,7 @@ type shellFrame struct {
 }
 
 // errShellContext refuses a placeholder whose quoting context has no literal spelling.
-var errShellContext = errors.New("puts an argument inside backquotes, $'...' or right after a backslash, where it cannot be quoted safely; write the placeholder unquoted or inside plain quotes ('$1', \"$1\")")
+var errShellContext = errors.New("puts an argument inside backquotes, $'...', after a case inside $( ) or right after a backslash, where it cannot be quoted safely; write the placeholder unquoted or inside plain quotes ('$1', \"$1\")")
 
 // feed advances the context over the template text s, copied to the command as it is.
 func (c *shellCtx) feed(s string) {
@@ -44,6 +48,16 @@ func (c *shellCtx) step(ch byte) {
 		return
 	}
 	top := &c.stack[len(c.stack)-1]
+	if top.kind == 'n' && top.sub {
+		if ch >= 'a' && ch <= 'z' {
+			c.word = append(c.word, ch)
+		} else {
+			if string(c.word) == "case" {
+				c.unsure = true
+			}
+			c.word = c.word[:0]
+		}
+	}
 	push := func(f shellFrame) { c.stack = append(c.stack, f) }
 	pop := func() {
 		if len(c.stack) > 1 {
@@ -105,7 +119,7 @@ func (c *shellCtx) quote(words []string) (string, error) {
 	if len(c.stack) == 0 {
 		c.stack = []shellFrame{{kind: 'n'}}
 	}
-	if c.esc {
+	if c.esc || c.unsure || (string(c.word) == "case" && c.stack[len(c.stack)-1].sub) {
 		return "", errShellContext
 	}
 	for _, f := range c.stack {

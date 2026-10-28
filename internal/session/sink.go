@@ -78,10 +78,13 @@ func (s *TextSink) Text(a, d string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.said[a] {
-		s.lead[a] += d
-		if strings.TrimSpace(s.lead[a]) == "" {
+		if strings.TrimSpace(d) == "" { // only the new piece is looked at: what was kept before is white space too
+			if len(s.lead[a]) < maxLead {
+				s.lead[a] += d
+			}
 			return
 		}
+		s.lead[a] += d
 		d = trimBlankLines(s.lead[a])
 		delete(s.lead, a)
 		s.said[a] = true
@@ -89,6 +92,10 @@ func (s *TextSink) Text(a, d string) {
 	fmt.Fprint(s.out, d)
 	s.midLine = !strings.HasSuffix(d, "\n")
 }
+
+// maxLead bounds the white space kept before an agent's first words: past it, more of it is not kept (a response of nothing but
+// white space would otherwise be copied again with every piece).
+const maxLead = 4 << 10
 
 // trimBlankLines drops the lines at the start of s that hold nothing but white space, and keeps the
 // indentation of the first line that does.
@@ -369,6 +376,10 @@ func LinePrompter(answer func(ctx context.Context, show func()) (string, error),
 				fmt.Fprintf(out, "\nSleipnir asks: %s\n  use them? [y]es this time / [r]emember until they change / [n]o: ", indentLines(r.Summary))
 			default:
 				fmt.Fprintf(out, "\n%s wants to: %s\n", who, r.Summary)
+				if r.Command != "" && r.Command != r.Summary {
+					// the summary is the model's words: what is approved is the command, shown whole
+					fmt.Fprintf(out, "  $ %s\n", indentLines(tools.EscapeForTerminal(r.Command)))
+				}
 				for _, a := range perm.Answers(r) {
 					fmt.Fprintf(out, "  %d %s\n", a.Key, a.Label)
 				}

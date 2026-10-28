@@ -294,7 +294,7 @@ func (c *Client) Do(ctx context.Context, req *provider.Request, on func(provider
 	// server went quiet" are handled differently.
 	first, idle, total, content := c.cfg.FirstByteTimeout, c.cfg.StreamIdleTimeout, c.cfg.Limits.MaxDuration, c.cfg.StreamContentTimeout
 	if !stream {
-		first, idle, total, content = c.cfg.RequestTimeout, c.cfg.RequestTimeout, 0, 0
+		first, idle, total, content = c.cfg.RequestTimeout, c.cfg.RequestTimeout, c.cfg.Limits.MaxDuration, 0 // MaxDuration bounds every response, a body that trickles too
 	}
 	wd := provider.NewWatchdog(cancel, first, idle, total, req).WithContent(content)
 	wd.Start()

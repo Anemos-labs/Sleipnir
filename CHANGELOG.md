@@ -7,6 +7,23 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Harness hardening from a security review, third part. A workspace
+  verifier no longer gets environment variables whose value looks like a
+  secret, and on Windows its command is wrapped like elsewhere. `restart`
+  hands provider keys to the restarted children on a pipe, not in their
+  environment. A review assessment runs read-only (plan mode) when
+  auto-fix is off. Approval prompts show the whole command with control
+  characters escaped. A goal spec reached through a symbolic link is
+  refused, and a workspace update refuses a tree checked out on another
+  branch. `.mcp.json` must be a regular file of at most 1 MiB, and a
+  workspace marker one of at most 64 KiB. A non-streaming provider
+  response is bounded by the request's maximum duration, and ChatGPT
+  sign-in and gateway fetches honour the proxy settings. The swarm
+  mailman refuses service tools, `tree -o`/`-R` and abbreviated or
+  clustered git options are no longer read-only, and the governor drops
+  cancelled waiters from every queue. Project team files skip symbolic
+  links, research slugs stop after 10000 tries, friction tails are capped
+  at 32, and the terminal views bound table and cell sizes.
 - Permission, configuration and web hardening from a security review. In
   `default` mode a git command that reads the repository asks when the
   repository's own configuration names a program git would run for it

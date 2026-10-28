@@ -188,6 +188,7 @@ func SpecRef(objective string) string {
 var (
 	ErrSpecOutside = errors.New("the spec file is outside the project")
 	ErrSpecTooBig  = fmt.Errorf("the spec file is larger than %d KiB", MaxSpecBytes>>10)
+	ErrSpecLinked  = errors.New("the spec file is a symbolic link, or is reached through one: name the file itself")
 )
 
 // Prepare is New for a goal that may name a spec file (SpecRef): the file is read now, relative to dir and inside root (dir when root is
@@ -273,6 +274,19 @@ func readSpec(ref, dir, root string) (string, error) {
 	rel, err := filepath.Rel(root, p)
 	if err != nil || !filepath.IsLocal(rel) {
 		return "", ErrSpecOutside
+	}
+	// the file named is the file read: a link in the project (SPEC.md -> .env) would put whatever it reaches in front of the model
+	// under the name the person chose
+	if realRoot, err := filepath.EvalSymlinks(root); err == nil {
+		if real, err := filepath.EvalSymlinks(p); err == nil {
+			realRel, err := filepath.Rel(realRoot, real)
+			if err != nil || !filepath.IsLocal(realRel) {
+				return "", ErrSpecOutside
+			}
+			if realRel != filepath.Clean(rel) {
+				return "", ErrSpecLinked
+			}
+		}
 	}
 	r, err := os.OpenRoot(root)
 	if err != nil {

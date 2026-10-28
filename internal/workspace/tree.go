@@ -50,6 +50,22 @@ func (t *Tree) check() error {
 	return nil
 }
 
+// onOwnBranchLocked refuses to act (what: "commit", "update") while the tree's HEAD names another branch than its own. A commit
+// or a merge moves whatever branch HEAD names, and HEAD is the agent's to rewrite (git symbolic-ref HEAD refs/heads/main).
+func (t *Tree) onOwnBranchLocked(ctx context.Context, what string) error {
+	if t.Branch == "" {
+		return nil
+	}
+	cur, err := t.repo.Branch(ctx)
+	if err != nil {
+		return err
+	}
+	if cur != t.Branch {
+		return fmt.Errorf("workspace: the tree of %s has %q checked out, not its branch %s; check out %s again to %s", t.Agent, cur, t.Branch, t.Branch, what)
+	}
+	return nil
+}
+
 // author is the identity of commits made on behalf of this tree's agent.
 func (t *Tree) author() gitx.Author {
 	return t.m.agentAuthor(t.Agent)
@@ -167,17 +183,8 @@ func (t *Tree) commitLocked(ctx context.Context, msg string) (string, error) {
 	if err := t.checkFileSizes(ctx); err != nil {
 		return "", err
 	}
-	// The commit moves whatever branch the tree's HEAD names, and HEAD is the
-	// agent's to rewrite (git symbolic-ref HEAD refs/heads/main): commit only on
-	// the tree's own branch.
-	if t.Branch != "" {
-		cur, err := t.repo.Branch(ctx)
-		if err != nil {
-			return "", err
-		}
-		if cur != t.Branch {
-			return "", fmt.Errorf("workspace: the tree of %s has %q checked out, not its branch %s; check out %s again to commit", t.Agent, cur, t.Branch, t.Branch)
-		}
+	if err := t.onOwnBranchLocked(ctx, "commit"); err != nil {
+		return "", err
 	}
 	sha, err := t.repo.CommitAllWith(ctx, t.m.withAgentTrailer(msg, t.Agent), t.author(), workCommit)
 	if err != nil {
@@ -238,6 +245,10 @@ func (t *Tree) Update(ctx context.Context, ref string) (*Conflict, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if err := t.check(); err != nil {
+		return nil, err
+	}
+	// the merge moves whatever branch HEAD names: only the tree's own, clean or not
+	if err := t.onOwnBranchLocked(ctx, "update"); err != nil {
 		return nil, err
 	}
 	// git refuses to merge over uncommitted changes, and the agent's work must not

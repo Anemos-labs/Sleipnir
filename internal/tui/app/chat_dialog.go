@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 	"github.com/anemos-labs/sleipnir/internal/tui/input"
 	"github.com/anemos-labs/sleipnir/internal/tui/widget"
@@ -171,7 +172,8 @@ func (k *chatLook) requestBody(r perm.Request, call *toolRun, inner int, cwd, cu
 		if cmd == "" {
 			cmd = what
 		}
-		lines := textLines(cmd)
+		// the command as it runs, nothing of it left out: what the terminal would act on is written out, not removed
+		lines := textLines(tools.EscapeForTerminal(cmd))
 		for i, l := range lines {
 			pre := "  "
 			if i == 0 {
@@ -296,6 +298,10 @@ func (k *chatLook) changeBody(tool string, r perm.Request, call *toolRun, inner 
 // whole file as added; "" for a file that is not there, is not text, or is too big to be worth reading for a preview.
 func currentText(paths []string) string {
 	if len(paths) == 0 {
+		return ""
+	}
+	// a FIFO or a device is not opened at all: opening one can wait for a writer, and this runs on the loop that takes the answer
+	if fi, err := os.Stat(paths[0]); err != nil || !fi.Mode().IsRegular() {
 		return ""
 	}
 	f, err := os.Open(paths[0])

@@ -108,6 +108,21 @@ func mdTableAt(lines []string, i int) (*mdTable, int, bool) {
 		if _, ok := mdFenceOpen(ln); ok {
 			break
 		}
+		if (len(t.rows)+2)*len(align) > mdMaxTableCells {
+			// every row is as wide as the header: past the budget the rows left are said to be there, not drawn
+			more := make([]string, len(align))
+			more[0] = "…"
+			t.rows = append(t.rows, more)
+			for j++; j < len(lines) && !mdBlank(lines[j]) && strings.Contains(lines[j], "|"); j++ {
+				if _, _, ok := mdATX(lines[j]); ok {
+					break
+				}
+				if _, ok := mdFenceOpen(lines[j]); ok {
+					break
+				}
+			}
+			break
+		}
 		row := mdSplitRow(ln)
 		for len(row) < len(align) {
 			row = append(row, "")
@@ -116,6 +131,9 @@ func mdTableAt(lines []string, i int) (*mdTable, int, bool) {
 	}
 	return t, j, true
 }
+
+// mdMaxTableCells bounds the cells of one table, header included.
+const mdMaxTableCells = 20000
 
 // table renders a pipe table with the Table widget: cells keep their inline formatting, columns are as wide as their widest
 // cell, and when that is too wide the widest columns are cut with an ellipsis. No column is ever dropped: a table is data, and

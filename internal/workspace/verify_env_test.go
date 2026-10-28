@@ -15,6 +15,14 @@ func TestVerifyEnvScrubsKeyComponents(t *testing.T) {
 			}
 		})
 	}
+	// by value, whatever the name, and the names the shell withholds that the list above does not spell
+	for _, kv := range []string{"DATABASE_URL=postgres://app:s3cretS@db/app", "MYSQL_PWD=x", "SESSION_COOKIES=a=b", "UPSTREAM=ghp_" + strings.Repeat("a", 36)} {
+		for _, variable := range verifyEnv([]string{kv}, VerifyRequest{}) {
+			if variable == kv {
+				t.Errorf("%s reached the verifier", kv)
+			}
+		}
+	}
 	for _, name := range []string{"PATH", "KEYBOARD_LAYOUT", "MONKEY_HOME", "HARMLESS_SETTING"} {
 		t.Run(name, func(t *testing.T) {
 			want := name + "=keep-me"

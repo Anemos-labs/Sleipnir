@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/anemos-labs/sleipnir/internal/plugin"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -218,7 +219,7 @@ func (s *Session) mcpServers() (map[string]mcp.ServerConfig, []mcp.Issue) {
 	// and its entries need approval like the project's own.
 	var issues []mcp.Issue
 	if s.opts.TrustProject {
-		if b, err := os.ReadFile(filepath.Join(s.opts.Root, ".mcp.json")); err == nil {
+		if b, err := readSmallRegular(filepath.Join(s.opts.Root, ".mcp.json"), maxMCPJSON); err == nil {
 			var doc map[string]json.RawMessage
 			if json.Unmarshal(b, &doc) == nil {
 				if inner, ok := doc["mcpServers"]; ok {
@@ -659,4 +660,34 @@ func MCPTest(ctx context.Context, home, dir string, names []string, trustProject
 	res.Tools = snapshotToolNames(mgr.Snapshot())
 	sort.Strings(res.Refused)
 	return res, nil
+}
+
+// maxMCPJSON bounds a project's .mcp.json: a file of tool server entries is a few KB.
+const maxMCPJSON = 1 << 20
+
+// readSmallRegular reads path when it is a regular file (not a link, a FIFO or a device) of at most max bytes.
+func readSmallRegular(path string, max int64) ([]byte, error) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", path)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	if fi, err = f.Stat(); err != nil || !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", path)
+	}
+	b, err := io.ReadAll(io.LimitReader(f, max+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > max {
+		return nil, fmt.Errorf("%s is larger than %d bytes", path, max)
+	}
+	return b, nil
 }

@@ -128,9 +128,12 @@ type Directive struct {
 	Prompt        string
 	AssessReview  bool
 	AssessRelease bool
-	Wait          time.Duration
-	Done          bool
-	Phase         string
+	// ReadOnly says the turn may inspect but not change anything (a review assessed while auto-fix is off): the host runs it in
+	// plan mode.
+	ReadOnly bool
+	Wait     time.Duration
+	Done     bool
+	Phase    string
 }
 
 // checkoutIdentity derives authorization from Git configuration, never PR text.
@@ -313,7 +316,7 @@ func (c *Controller) Step(ctx context.Context) (Directive, error) {
 			return d, err
 		}
 		if c.State.ReviewVerdict == "pending" || c.State.AutoFix {
-			d.AssessReview = true
+			d.AssessReview, d.ReadOnly = true, !c.State.AutoFix
 			d.Phase = "reviewing"
 			authority := "Auto-fix is disabled; inspect and report blockers without changing code or resolving findings."
 			if c.State.AutoFix {

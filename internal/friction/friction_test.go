@@ -473,3 +473,25 @@ func TestChangedDoesNotScanFilesThatOnlyShareTheName(t *testing.T) {
 		t.Errorf("a write to d7/a.go did not reset /w/d7/a.go: %d", got)
 	}
 }
+
+// An absolute path is indexed by its last components only, and a change forgets what it reset: a path of many short
+// components costs no more than its last few, and a log of many changes of one name does not visit every path read before.
+func TestReadCounterIndexIsBounded(t *testing.T) {
+	var c ReadCounter
+	deep := "/" + strings.Repeat("d/", 5000) + "a.go"
+	c.Read(deep, nil)
+	if len(c.tails) != maxTails {
+		t.Errorf("%d tails indexed, want %d", len(c.tails), maxTails)
+	}
+	if _, _, n := c.Read(deep, nil); n != 2 {
+		t.Fatalf("re-read counted %d", n)
+	}
+	c.Changed("a.go")
+	if _, _, n := c.Read(deep, nil); n != 1 {
+		t.Errorf("a change of the file's tail did not start it over: %d", n)
+	}
+	c.Changed(deep)
+	if len(c.tails) != 0 || len(c.live) != 0 {
+		t.Errorf("a change left %d tails and %d live paths", len(c.tails), len(c.live))
+	}
+}

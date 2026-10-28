@@ -285,8 +285,15 @@ func (s *Store) Create(question, depth, mode, project string) (*Run, error) {
 	base := Slugify(question)
 	slug := base
 	for n := 2; ; n++ {
-		if _, err := os.Stat(RunDir(s.root, slug)); errors.Is(err, os.ErrNotExist) {
+		_, err := os.Stat(RunDir(s.root, slug))
+		if errors.Is(err, os.ErrNotExist) {
 			break
+		}
+		if err != nil {
+			return nil, err // not a name that is taken: a directory that cannot be looked in, which no other name changes
+		}
+		if n > 10000 {
+			return nil, fmt.Errorf("research: no free name for %q", base)
 		}
 		slug = fmt.Sprintf("%s-%d", base, n)
 	}

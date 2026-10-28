@@ -309,6 +309,12 @@ func portable(data []byte, ws, root string) ([]byte, error) {
 		if real, err := filepath.EvalSymlinks(set.path); err == nil && real != set.path {
 			names = append(names, real)
 		}
+		// the data is JSON: a path with a backslash (Windows) is written there with each one doubled, and is named that way too
+		for _, n := range names {
+			if q, _ := json.Marshal(n); strings.Contains(n, `\`) {
+				names = append(names, string(q[1:len(q)-1]))
+			}
+		}
 		data = replacePaths(data, names, set.as)
 	}
 	if m := machinePath.Find(data); m != nil {
@@ -330,7 +336,7 @@ func replacePaths(data []byte, names []string, as string) []byte {
 }
 
 // machinePath is a path under the places a machine keeps what is its own: temporary files, homes, user directories.
-var machinePath = regexp.MustCompile(`/(tmp|var|private|Users|home|root)/[^"\s\\]*`)
+var machinePath = regexp.MustCompile(`/(tmp|var|private|Users|home|root)/[^"\s\\]*|(?i)[a-z]:\\\\(Users|Windows\\\\Temp|Temp)\\\\[^"\s]*`)
 
 // ---- the recorder ----
 

@@ -744,6 +744,7 @@ func TestMailmanOnlyDeliversMail(t *testing.T) {
 		{"note", map[string]any{"text": "a fact"}},
 		{"wait", map[string]any{"timeout_sec": 3}},
 		{"spawn", map[string]any{"role": "backend", "task": "T1"}},
+		{"pool", map[string]any{"action": "get", "id": "T1"}},
 	} {
 		res := r.callTool(context.Background(), tc.tool, "mm-1", "mailman", tc.args)
 		if !res.IsError || (!strings.Contains(res.Text, "only delivers mail") && !strings.Contains(res.Text, "only the manager")) {

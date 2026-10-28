@@ -79,8 +79,14 @@ func (t *Term) attachMark(r rune) {
 	if c.text == "" {
 		c.text = " "
 	}
+	if len(c.text) >= maxCellText {
+		return // a cell shows one character and its marks: past a few, more of them are dropped, not copied in again
+	}
 	c.text += string(r)
 }
+
+// maxCellText bounds the bytes of one cell: a character with the combining marks a script stacks on it fits many times over.
+const maxCellText = 64
 
 // lineFeed clears pending wrap and moves down one row, scrolling at the bottom edge.
 func (t *Term) lineFeed() {

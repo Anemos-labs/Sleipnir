@@ -152,7 +152,12 @@ func (s *Session) Run(ctx context.Context, objective string) (*Result, error) {
 			return result, nil
 		}
 		if d.Prompt != "" {
-			result, err = s.runTurn(ctx, d.Prompt)
+			if d.ReadOnly {
+				// remote review text steers this turn: with auto-fix off it holds no authority to change code
+				result, err = s.runPlanTurn(ctx, d.Prompt)
+			} else {
+				result, err = s.runTurn(ctx, d.Prompt)
+			}
 			if err != nil {
 				return result, err
 			}
@@ -214,4 +219,12 @@ func (s *Session) deliveryExec(dir string) delivery.Exec {
 		}
 		return out, err
 	}
+}
+
+// runPlanTurn runs one turn in plan mode, whatever the session's mode, and puts the mode back after it.
+func (s *Session) runPlanTurn(ctx context.Context, goal string) (*Result, error) {
+	prev := s.Perm.Mode()
+	s.Perm.SetMode(perm.ModePlan)
+	defer s.Perm.SetMode(prev)
+	return s.runTurn(ctx, goal)
 }

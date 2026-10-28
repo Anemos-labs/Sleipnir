@@ -141,6 +141,16 @@ func TestPrepareKeepsTheSpecAsSet(t *testing.T) {
 		if _, err := Prepare("x\nSpec: link.md", root, root); !errors.Is(err, ErrSpecOutside) {
 			t.Errorf("a link out of the project: %v", err)
 		}
+		// nor to a file of the project the person did not name (a guarded .env)
+		if err := os.WriteFile(filepath.Join(root, ".env"), []byte("TOKEN=x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(".env", filepath.Join(root, "inner.md")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Prepare("x\nSpec: inner.md", root, root); !errors.Is(err, ErrSpecLinked) {
+			t.Errorf("a link to another file of the project: %v", err)
+		}
 	}
 	if _, err := Prepare("x\nSpec: ../SPEC.md", root, root); err == nil {
 		t.Error("a missing spec was accepted")

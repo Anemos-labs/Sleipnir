@@ -24,7 +24,8 @@ func TestShellPlaceholdersFollowTheTemplatesQuotes(t *testing.T) {
 			t.Errorf("%q with %q = %q, %v; want %q", tc.tmpl, tc.args, got, err, tc.want)
 		}
 	}
-	for _, tmpl := range []string{"echo `echo $1`", "echo $'$1'", `echo \$1`, "echo \"`$1`\""} {
+	// a case pattern's ")" inside $( ) does not end the substitution: no placeholder after a case there is spelled for a guess
+	for _, tmpl := range []string{"echo `echo $1`", "echo $'$1'", `echo \$1`, "echo \"`$1`\"", `echo "$(case x in x) echo $1;; esac)"`, `echo "$(case x in x) :;; esac) $1"`} {
 		if got, _, err := SubstituteMax(tmpl, "v", ArgsShell, 0); err == nil {
 			t.Errorf("%q: substituted as %q; want an error", tmpl, got)
 		}
