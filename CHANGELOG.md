@@ -7,6 +7,9 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A session whose goal is a deep scan works on that scan: the `scan` tool's calls that name another scan of the project
+  (an older unfinished one, whose lead numbers mean other things) go to the session's scan, with a note. A reproducer's
+  marker may be followed by a colon (`SLEIPNIR-REPRODUCED: rows`).
 - The web page has a Deep scan view (`g d`, docs/SCAN.md): the project's scans, a scan's findings with their traces,
   verdicts and reproductions, its attack surface and shard map, the report exported as CSV, JSON, PDF, Markdown or SARIF,
   and a form that scans the project or a repository it clones (https or ssh, hooks and symbolic links off) into

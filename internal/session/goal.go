@@ -16,6 +16,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/kv"
 	"github.com/anemos-labs/sleipnir/internal/plan"
 	"github.com/anemos-labs/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/scan"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
@@ -464,6 +465,11 @@ func (s *Session) noteObjective(g *goal.State) {
 	s.mu.Lock()
 	s.objective = g.Objective
 	s.mu.Unlock()
+	if slug := scan.ObjectiveSlug(g.Objective); slug != "" && s.scan != nil {
+		if _, err := s.scan.store.Open(slug); err != nil {
+			s.notice("", "scan: "+err.Error())
+		}
+	}
 }
 
 // goalObjective is the objective of the session's standing goal, "" when it never had one.

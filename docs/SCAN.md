@@ -68,6 +68,9 @@ The agents read the code and record what they find:
 
 Phases overlap: a shard is hunted as soon as it is mapped, a lead verified as soon as it is filed. A shard is closed with `hunt` only once each of its sinks is in a lead or named in the hunt note with the reason it is safe.
 
+A session whose goal is a scan (from `/scan`, the web page or `sleipnir scan`) works on that scan: an agent's call naming another
+scan of the project, such as an older unfinished one, goes to the session's scan with a note.
+
 ## Depths
 
 | Depth | Shards | Verifiers per lead | Defender | Reproduced from |
