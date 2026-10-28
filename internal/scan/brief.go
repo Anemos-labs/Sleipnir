@@ -57,7 +57,7 @@ func Brief(r *Run) string {
 	w("### 2. Hunt\n\nFor each mapped shard: claim it for the hunt, and from every entry point it has (and those of other shards that reach it), follow the input. ")
 	w("Look for injection of any kind, path traversal, SSRF, broken or missing authorization (IDOR, tenancy), authentication flaws, unsafe deserialization, secrets in code, weak crypto, races on shared state, unbounded resource use, and logic errors that break an invariant the code relies on. ")
 	w("Check whether the framework, a middleware or a caller already handles it before filing. File each lead with `scan lead`: the title, the category, the claim (what an attacker does and gets), the trace, the impact, reachability and exploitability, the points it goes through, and a fix. ")
-	w("Close the shard with `scan hunt` and a note of what you checked, leads or not.\n\n")
+	w("Close the shard with `scan hunt` and a note of what you checked, leads or not. Every sink of the shard is either in a lead's points or named in that note (P#) with the guard that makes it safe: the harness refuses a note that skips one.\n\n")
 	w("### 3. Verify\n\n%d %s that did not file a lead rule on it", d.Verifiers, plural(d.Verifiers, "agent", "agents"))
 	if d.Defender {
 		w(", one of them as the defender")

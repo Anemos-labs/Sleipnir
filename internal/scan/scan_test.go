@@ -377,6 +377,15 @@ func TestAScanFromMapToReport(t *testing.T) {
 	for _, s := range r.Shards {
 		mustOK(t, tl, "mapper", map[string]any{"action": "map", "shard": s.ID, "summary": "HTTP server with two routes; /ping shells out to ping with the host from the query string, /health answers ok. Nothing is authenticated."})
 	}
+	// a shard is not closed past a sink that no lead goes through and the note does not name
+	r, _ = st.Snapshot("")
+	sinkShard := ""
+	for _, pt := range r.Points {
+		if pt.ID == "P2" {
+			sinkShard = pt.Shard
+		}
+	}
+	mustFail(t, tl, "hunter", map[string]any{"action": "hunt", "shard": sinkShard, "note": "followed /ping and /health to their handlers, nothing to file here"}, "P2")
 	// the filer files with a trace; the harness computes the severity
 	lead := mustOK(t, tl, "hunter", map[string]any{"action": "lead", "title": "Command injection in /ping", "category": "command-injection",
 		"claim": "Anyone can run shell commands on the server by sending host=x;id to GET /ping.", "trace": pingTrace,

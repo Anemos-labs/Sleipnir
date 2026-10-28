@@ -66,7 +66,7 @@ The agents read the code and record what they find:
 | Prove | testers, anyone but the filer | `prove` (a bash reproducer) |
 | Report | the manager | `report`, then `status` says done |
 
-Phases overlap: a shard is hunted as soon as it is mapped, a lead verified as soon as it is filed.
+Phases overlap: a shard is hunted as soon as it is mapped, a lead verified as soon as it is filed. A shard is closed with `hunt` only once each of its sinks is in a lead or named in the hunt note with the reason it is safe.
 
 ## Depths
 

@@ -548,6 +548,9 @@ func (t *Tool) hunt(in input, agent string) (string, error) {
 		if s.Claimed != "" && s.Claimed != agent && s.Hunted == "" {
 			return fmt.Errorf("%s is claimed by %s", s.ID, s.Claimed)
 		}
+		if missed := unaccounted(r, s.ID, note); len(missed) > 0 {
+			return fmt.Errorf("%s has sinks no lead goes through and the note does not name: %s. For each, file a lead through it, or name it in the note (%s) with the guard or the missing input that makes it safe", s.ID, strings.Join(missed, ", "), missed[0])
+		}
 		s.Hunted, s.HuntedBy, s.Claimed = note, agent, ""
 		nl := 0
 		for _, l := range r.Leads {
@@ -559,6 +562,28 @@ func (t *Tool) hunt(in input, agent string) (string, error) {
 		return nil
 	})
 	return out, err
+}
+
+// unaccounted lists the sinks of a shard that no lead goes through and that a hunt note does not name: a sink is either
+// filed or ruled safe in writing, so a hunter cannot read past one and close the shard.
+func unaccounted(r *Run, shard, note string) []string {
+	used := map[string]bool{}
+	for _, l := range r.Leads {
+		for _, p := range l.Points {
+			used[p] = true
+		}
+	}
+	named := map[string]bool{}
+	for _, w := range strings.FieldsFunc(note, func(c rune) bool { return !(c == 'P' || c >= '0' && c <= '9') }) {
+		named[w] = true
+	}
+	var out []string
+	for _, p := range r.Points {
+		if p.Shard == shard && p.Lane == LaneSink && !used[p.ID] && !named[p.ID] {
+			out = append(out, p.ID)
+		}
+	}
+	return out
 }
 
 func (t *Tool) lead(ctx context.Context, in input, agent string) (string, error) {
