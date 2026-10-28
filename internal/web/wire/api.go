@@ -287,10 +287,14 @@ type NewSessionRequest struct {
 	TrustProject bool     `json:"trustProject"`
 	NoMcp        bool     `json:"noMcp,omitempty"`
 	// NoMemory starts the session without the global memory (--no-memory).
-	NoMemory   bool              `json:"noMemory,omitempty"`
-	GoalText   string            `json:"goalText,omitempty"`
-	Effort     string            `json:"effort,omitempty"`
-	RoleModels map[string]string `json:"roleModels,omitempty"`
+	NoMemory bool `json:"noMemory,omitempty"`
+	// Sandbox runs the session's commands in a container (--sandbox: docker or docker=IMAGE; "" runs them on the host), and
+	// SandboxNetwork lets them use the network there (--sandbox-network).
+	Sandbox        string            `json:"sandbox,omitempty"`
+	SandboxNetwork bool              `json:"sandboxNetwork,omitempty"`
+	GoalText       string            `json:"goalText,omitempty"`
+	Effort         string            `json:"effort,omitempty"`
+	RoleModels     map[string]string `json:"roleModels,omitempty"`
 	// Team is the team's composition, one entry per worker slot (--role-model given per slot); empty is the default team of
 	// one worker per role. Swarm then equals its length.
 	Team []TeamSlot `json:"team,omitempty"`

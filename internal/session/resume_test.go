@@ -653,13 +653,16 @@ func TestLatestStartIsTheLastRecordedStart(t *testing.T) {
 	l.Emit("", events.TypeSessionStart, map[string]any{"swarm": true, "team": []session.TeamSlot{{Role: "backend"}, {Role: "tester"}}})
 	l.Emit("mgr", events.TypeAgentSnapshot, map[string]any{"blob": "x"})
 	l.Emit("", events.TypeSessionStart, map[string]any{"swarm": true, "verify": "sh gate.sh", "resumed": true,
-		"team": []session.TeamSlot{{Role: "backend", Model: "p/x"}, {Role: "tester"}}})
+		"team": []session.TeamSlot{{Role: "backend", Model: "p/x"}, {Role: "tester"}}, "sandbox": "docker=node:22", "sandbox_network": true})
 	if err := l.Close(); err != nil {
 		t.Fatal(err)
 	}
 	got := session.LatestStart(dir)
 	if want := []session.TeamSlot{{Role: "backend", Model: "p/x"}, {Role: "tester"}}; got.Verify != "sh gate.sh" || !slices.Equal(got.Team, want) {
 		t.Errorf("LatestStart = %+v, want the second start's verify command and team", got)
+	}
+	if got.Sandbox != "docker=node:22" || !got.SandboxNetwork {
+		t.Errorf("LatestStart = %+v, want the sandbox the session ran in (a resume runs in it again)", got)
 	}
 	if got := session.LatestStart(t.TempDir()); got.Verify != "" || got.Team != nil {
 		t.Errorf("LatestStart of a directory with no log = %+v", got)

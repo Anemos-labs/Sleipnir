@@ -195,7 +195,7 @@ func (s *Session) RoleModels() []RoleModel {
 	return out
 }
 
-// StartFlags are the `sleipnir chat` flags that reproduce this session's shape (a team and its size, the verifier, isolation, tool servers, trust,
+// StartFlags are the `sleipnir chat` flags that reproduce this session's shape (a team and its size, the verifier, isolation, the sandbox, tool servers, trust,
 // the budget, the compaction share, the roles named by flags), for a restart that changes one thing and keeps the rest.
 func (s *Session) StartFlags() []string {
 	o := s.opts
@@ -236,6 +236,12 @@ func (s *Session) StartFlags() []string {
 	}
 	if o.NoMemory {
 		f = append(f, "--no-memory")
+	}
+	if o.Sandbox.Enabled() {
+		f = append(f, "--sandbox", o.Sandbox.String())
+		if o.Sandbox.Network {
+			f = append(f, "--sandbox-network")
+		}
 	}
 	if o.TrustProject {
 		f = append(f, "--trust-project")

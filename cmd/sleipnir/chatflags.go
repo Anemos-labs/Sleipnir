@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/sandbox"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
@@ -24,6 +25,8 @@ type chatFlagSet struct {
 	swarmN                   *int
 	trust, verbose, noMCP    *bool
 	noMemory                 *bool
+	sandbox                  *string
+	sandboxNetwork           *bool
 	trainingLogs             *bool
 	budget                   *float64
 	compactAt                *int
@@ -54,6 +57,7 @@ func registerChatFlags(fs *flag.FlagSet) *chatFlagSet {
 	f.compactAt = fs.Int("compact-at", 0, compactAtHelp)
 	f.noMCP = fs.Bool("no-mcp", false, "start no MCP tool servers")
 	f.noMemory = fs.Bool("no-memory", false, noMemoryHelp)
+	f.sandbox, f.sandboxNetwork = sandboxFlags(fs)
 	f.trainingLogs = fs.Bool("training-logs", false, trainingLogsHelp)
 	f.verify = fs.String("verify", "", "swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge). {dirs} in it stands for the directories the task may touch (./... without a scope), so that each task is verified on its own work: 'go test {dirs}'")
 	f.isolation, f.commit = isolationFlags(fs)
@@ -82,6 +86,7 @@ type chatFlags struct {
 	verbose    bool
 	noMCP      bool
 	noMemory   bool
+	sandbox    sandbox.Spec
 	training   bool
 	budget     float64
 	commit     bool
@@ -112,6 +117,9 @@ func (f *chatFlagSet) values(fs *flag.FlagSet) (chatFlags, error) {
 		model: *f.model, cwd: *f.cwd, mode: *f.mode, verify: *f.verify, isolation: *f.isolation,
 		workers: *f.swarmN, trust: *f.trust, verbose: *f.verbose, noMCP: *f.noMCP, noMemory: *f.noMemory, training: *f.trainingLogs, budget: *f.budget, compactAt: *f.compactAt, commit: *f.commit,
 		mailman: f.mailman(), autoDocs: f.autoDocs(), managerApproves: f.managerApproves(), resume: spec, allow: append([]string(nil), (*f.allow)...), plain: *f.plain, noAnim: *f.noAnim,
+	}
+	if out.sandbox, err = sandboxSpec(*f.sandbox, *f.sandboxNetwork); err != nil {
+		return chatFlags{}, err
 	}
 	if out.roleModels, out.team, err = f.roleModels.split(); err != nil {
 		return chatFlags{}, err
@@ -194,7 +202,7 @@ func (f chatFlags) options() session.Options {
 	}
 	return chatOptions(session.Options{AutoFix: f.autoFix, AutoMerge: f.autoMerge,
 		Cwd: f.cwd, Model: f.model, Mode: perm.Mode(f.mode), Swarm: team, Workers: workers,
-		TrustProject: f.trust, BudgetUSD: f.budget, CompactAtPercent: f.compactAt, Resume: f.resume, NoMCP: f.noMCP, NoMemory: f.noMemory, TrainingLogs: f.training,
+		TrustProject: f.trust, BudgetUSD: f.budget, CompactAtPercent: f.compactAt, Resume: f.resume, NoMCP: f.noMCP, NoMemory: f.noMemory, Sandbox: f.sandbox, TrainingLogs: f.training,
 		Verify: f.verify, Isolation: f.isolation, Commit: f.commit, Mailman: f.mailman, AutoDocs: f.autoDocs, ManagerApproves: f.managerApproves,
 		ManagerAnswersAfter: f.managerAnswersAfter, ManagerAnswersUpTo: f.managerAnswersUpTo, RoleModels: rm,
 		Team: append([]session.TeamSlot(nil), f.team...), DefaultTeam: true, Allow: expandAllow(f.allow),
@@ -214,7 +222,7 @@ type newSessionRequest struct {
 
 // argsFor renders the New session dialog's request as chat arguments, in the order the dialog's command line shows them: --cwd,
 // --model, --mode, --swarm, --team, --isolation, --verify, --commit, --mailman, --auto-docs=false, --manager-approves=false, --manager-answers-after, --manager-answers-up-to, --budget-usd, --compact-at,
-// --allow, --trust-project, --no-mcp, --no-memory, then --role-model: the role models in the order of the roles' names, then the team's slots in team order (with --team, none: the
+// --allow, --trust-project, --no-mcp, --no-memory, --sandbox, --sandbox-network, then --role-model: the role models in the order of the roles' names, then the team's slots in team order (with --team, none: the
 // saved team brings its slots and the models of its other roles). The name, the first goal and the effort are not chat flags: the host applies them
 // once the session has started.
 func argsFor(req wire.NewSessionRequest) []string {
@@ -278,6 +286,12 @@ func argsFor(req wire.NewSessionRequest) []string {
 	if req.NoMemory {
 		a = append(a, "--no-memory")
 	}
+	if req.Sandbox != "" {
+		a = append(a, "--sandbox", req.Sandbox)
+		if req.SandboxNetwork {
+			a = append(a, "--sandbox-network")
+		}
+	}
 	roles := make([]string, 0, len(req.RoleModels))
 	for role := range req.RoleModels {
 		// with a team, a worker role's model is its slots' (below); only the harness's own roles keep one here
@@ -314,4 +328,28 @@ func commandLine(args []string) string {
 		out[i] = a
 	}
 	return strings.Join(out, " ")
+}
+
+// sandboxHelp and sandboxNetworkHelp are the help of --sandbox and --sandbox-network.
+const (
+	sandboxHelp        = "run every shell command of the session inside a container of its own: docker (image " + sandbox.DefaultImage + ") or docker=IMAGE. The project is mounted at its own path, the network is off, capabilities are dropped and the harness, its keys and the rest of the machine stay outside; edits are still made by the agents' file tools"
+	sandboxNetworkHelp = "with --sandbox: let commands in the container use the network (to install dependencies); it is off otherwise"
+)
+
+// sandboxFlags defines --sandbox and --sandbox-network on fs (chat, run).
+func sandboxFlags(fs *flag.FlagSet) (spec *string, network *bool) {
+	return fs.String("sandbox", "", sandboxHelp), fs.Bool("sandbox-network", false, sandboxNetworkHelp)
+}
+
+// sandboxSpec reads --sandbox and --sandbox-network; the network flag without a sandbox is an error, not a quiet no-op.
+func sandboxSpec(v string, network bool) (sandbox.Spec, error) {
+	spec, err := sandbox.Parse(v)
+	if err != nil {
+		return sandbox.Spec{}, err
+	}
+	if network && !spec.Enabled() {
+		return sandbox.Spec{}, errors.New("--sandbox-network needs --sandbox")
+	}
+	spec.Network = network
+	return spec, nil
 }
