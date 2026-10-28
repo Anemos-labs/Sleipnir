@@ -21,8 +21,9 @@ const ExecCommand = "__sandbox-exec"
 var passEnv = []string{"TERM", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "NO_COLOR", "FORCE_COLOR", "CLICOLOR", "CI", "PAGER",
 	"GIT_PAGER", "GIT_TERMINAL_PROMPT", "DEBIAN_FRONTEND", "PYTHONUNBUFFERED"}
 
-// pidDir is where, inside the container, each command writes the process id the helper signals to stop it.
-const pidDir = "/tmp/.sleipnir-sandbox"
+// IDVar is the variable each command runs with inside the container, set to the id of its run: the processes it starts inherit
+// it, so the helper finds all of them to stop the command.
+const IDVar = "SLEIPNIR_SANDBOX_RUN"
 
 // ExecMain is the exec helper: args are CONTAINER -- PROGRAM ARGS... It runs PROGRAM inside the container from the helper's own
 // working directory (the shell tool starts it where the command is to run), with the variables of passEnv, its standard
@@ -77,8 +78,8 @@ func ExecMain(args []string) int {
 	}
 }
 
-// ExecArgs is the docker command line (after "docker") that runs prog inside container name from directory wd: the process
-// writes its id where stopInside finds it under id, then becomes prog, so that the id is prog's.
+// ExecArgs is the docker command line (after "docker") that runs prog inside container name from directory wd, with the
+// formatting variables of environ and the run's id (IDVar), by which stopInside finds its processes.
 func ExecArgs(name, wd, id string, environ, prog []string) []string {
 	args := []string{"exec", "--interactive", "--workdir", wd}
 	for _, kv := range environ {
@@ -93,17 +94,18 @@ func ExecArgs(name, wd, id string, environ, prog []string) []string {
 			}
 		}
 	}
-	script := `mkdir -p ` + pidDir + ` 2>/dev/null; echo $$ > ` + pidDir + `/` + id + ` 2>/dev/null; exec "$@"`
-	args = append(args, name, "sh", "-c", script, "sleipnir-sandbox")
+	args = append(args, "--env", IDVar+"="+id, name)
 	return append(args, prog...)
 }
 
-// stopInside sends SIGTERM to the command started under id and to its process group, then SIGKILL after a grace period.
+// stopInside sends SIGTERM to every process of the command started under id (each carries the id in its environment, and its
+// process group goes with it), then SIGKILL to what is left after a grace period. Nothing is written in the container to find
+// them, so nothing is left behind when a command ends normally.
 func stopInside(bin, name, id string) {
-	f := pidDir + "/" + id
-	script := `p=$(cat ` + f + ` 2>/dev/null) || exit 0; kill -TERM -"$p" 2>/dev/null; kill -TERM "$p" 2>/dev/null; ` +
-		`i=0; while kill -0 "$p" 2>/dev/null && [ $i -lt 20 ]; do sleep 0.1; i=$((i+1)); done; ` +
-		`kill -KILL -"$p" 2>/dev/null; kill -KILL "$p" 2>/dev/null; rm -f ` + f
+	find := `ps() { for d in /proc/[0-9]*; do tr '\000' '\n' < "$d/environ" 2>/dev/null | grep -qx "` + IDVar + `=` + id + `" && echo "${d#/proc/}"; done; }; `
+	script := find + `for p in $(ps); do kill -TERM -"$p" 2>/dev/null; kill -TERM "$p" 2>/dev/null; done; ` +
+		`i=0; while [ -n "$(ps)" ] && [ $i -lt 20 ]; do sleep 0.1; i=$((i+1)); done; ` +
+		`for p in $(ps); do kill -KILL -"$p" 2>/dev/null; kill -KILL "$p" 2>/dev/null; done`
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = exec.CommandContext(ctx, bin, "exec", name, "sh", "-c", script).Run()

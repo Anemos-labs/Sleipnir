@@ -445,6 +445,16 @@ func New(ctx context.Context, o Options) (*Session, error) {
 			o.Team = append([]TeamSlot(nil), prior.Team...)
 			o.Workers = max(o.Workers, len(o.Team))
 		}
+		if prior := LatestStart(dir); !o.Sandbox.Enabled() && prior.Sandbox != "" {
+			// a session that ran its commands in a sandbox resumes in one: resuming it on the host would quietly drop the confinement
+			// its commands were started under
+			spec, err := sandbox.Parse(prior.Sandbox)
+			if err != nil {
+				return nil, fmt.Errorf("the session ran in the sandbox %q, which cannot be started again: %w", prior.Sandbox, err)
+			}
+			spec.Network = prior.SandboxNetwork
+			o.Sandbox = spec
+		}
 		if prior := inspectLog(dir); prior.isolated && prior.recovery {
 			if prior.id == "" || prior.id == "." || prior.id == ".." || strings.ContainsAny(prior.id, "/\\\x00\r\n") {
 				return nil, errors.New("invalid session id in isolation recovery metadata")
@@ -1547,6 +1557,12 @@ func (s *Session) runTurn(ctx context.Context, goal string) (*Result, error) {
 		}
 		if s.mailmanOn() {
 			start["mailman"] = true
+		}
+		if s.box != nil {
+			start["sandbox"] = s.box.Spec.String() // a resume runs in one again
+			if s.box.Spec.Network {
+				start["sandbox_network"] = true
+			}
 		}
 		if len(s.opts.Team) > 0 && s.opts.Swarm {
 			start["team"] = s.opts.Team // a custom composition: a resume keeps it

@@ -86,6 +86,9 @@ func ResumedAsTeam(home, root, spec string) (team, known bool) {
 type LastStart struct {
 	Verify string
 	Team   []TeamSlot
+	// Sandbox is the container the session's commands ran in (--sandbox, as Spec.String gives it), "" for none.
+	Sandbox        string
+	SandboxNetwork bool
 }
 
 // LatestStart reads the latest session.start of the session log in dir (the zero LastStart when there is none).
@@ -94,11 +97,13 @@ func LatestStart(dir string) LastStart {
 	scanHead(dir, func(e events.Event) bool {
 		if e.Type == events.TypeSessionStart {
 			var d struct {
-				Verify string     `json:"verify"`
-				Team   []TeamSlot `json:"team"`
+				Verify         string     `json:"verify"`
+				Team           []TeamSlot `json:"team"`
+				Sandbox        string     `json:"sandbox"`
+				SandboxNetwork bool       `json:"sandbox_network"`
 			}
 			_ = json.Unmarshal(e.Data, &d)
-			ls = LastStart{Verify: d.Verify, Team: d.Team}
+			ls = LastStart{Verify: d.Verify, Team: d.Team, Sandbox: d.Sandbox, SandboxNetwork: d.SandboxNetwork}
 		}
 		return true
 	})

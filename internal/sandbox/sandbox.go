@@ -207,6 +207,9 @@ func RunArgs(name, image string, network bool, paths []string, workdir string, l
 	for _, p := range paths {
 		args = append(args, "--volume", p+":"+p)
 	}
+	for _, p := range readOnlyGuards(paths) {
+		args = append(args, "--volume", p+":"+p+":ro")
+	}
 	if workdir != "" {
 		args = append(args, "--workdir", workdir)
 	}
@@ -235,15 +238,78 @@ func mountPaths(mounts []string) ([]string, error) {
 		if abs == "/" || strings.ContainsAny(abs, ":,") {
 			return nil, fmt.Errorf("the sandbox cannot mount %s", abs)
 		}
+		if err := refuseHome(abs); err != nil {
+			return nil, err
+		}
 		if err := os.MkdirAll(abs, 0o755); err != nil {
 			return nil, err
 		}
 		add(filepath.Clean(abs))
 		if real, err := filepath.EvalSymlinks(abs); err == nil {
+			if err := refuseHome(real); err != nil {
+				return nil, err
+			}
 			add(real)
 		}
 	}
 	return out, nil
+}
+
+// refuseHome refuses a directory that is the user's home or holds it: mounted, it would hand the commands the keys, the ssh
+// configuration and the harness's own credentials kept there. Without a home to compare with, it refuses (fails closed).
+func refuseHome(dir string) error {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return fmt.Errorf("the sandbox cannot tell where your home directory is, so it mounts nothing: %v", err)
+	}
+	homes := []string{filepath.Clean(home)}
+	if real, err := filepath.EvalSymlinks(home); err == nil {
+		homes = append(homes, real)
+	}
+	d := filepath.Clean(dir)
+	for _, h := range homes {
+		if h == d || strings.HasPrefix(h, d+string(filepath.Separator)) {
+			return fmt.Errorf("the sandbox will not mount %s: it holds your home directory (%s), with its keys and credentials. Run the session from a project directory", dir, h)
+		}
+	}
+	return nil
+}
+
+// gitGuards are the files of a repository that make the host's git run a program (core.fsmonitor, core.hooksPath and the
+// filters in the configuration, the hooks themselves). Inside the container they are mounted read-only over the project, so a
+// command there cannot plant something that runs on the host the next time git runs there.
+var gitGuards = []string{"config", "config.worktree", "hooks", "info"}
+
+// readOnlyGuards are the read-only mounts over each path's git directory, for the guards that exist (docker would make a missing
+// one, as root, on the host).
+func readOnlyGuards(paths []string) []string {
+	var out []string
+	for _, p := range paths {
+		gd := filepath.Join(p, ".git")
+		if fi, err := os.Lstat(gd); err != nil || !fi.IsDir() {
+			continue
+		}
+		for _, g := range gitGuards {
+			if _, err := os.Lstat(filepath.Join(gd, g)); err == nil {
+				out = append(out, filepath.Join(gd, g))
+			}
+		}
+		if ents, err := os.ReadDir(filepath.Join(gd, "worktrees")); err == nil {
+			for _, e := range ents {
+				for _, g := range []string{"config.worktree"} {
+					if f := filepath.Join(gd, "worktrees", e.Name(), g); fileExists(f) {
+						out = append(out, f)
+					}
+				}
+			}
+		}
+	}
+	return out
+}
+
+func fileExists(p string) bool {
+	_, err := os.Lstat(p)
+	return err == nil
 }
 
 // ensureImage pulls image when the engine does not have it yet.

@@ -215,3 +215,58 @@ func TestCloseRemovesTheContainer(t *testing.T) {
 		t.Fatalf("a second Close: %v", err)
 	}
 }
+
+// The home directory, or a directory that holds it, is never mounted: the keys and credentials kept there would be inside.
+func TestMountRefusesTheHomeDirectory(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if _, err := mountPaths([]string{home}); err == nil {
+		t.Fatal("the home directory was mounted")
+	}
+	if _, err := mountPaths([]string{filepath.Dir(home)}); err == nil {
+		t.Fatal("a directory holding the home directory was mounted")
+	}
+	proj := filepath.Join(home, "src", "app")
+	if got, err := mountPaths([]string{proj}); err != nil || len(got) == 0 {
+		t.Fatalf("a project below home: %v %v", got, err)
+	}
+}
+
+// The files of a repository that make the host's git run programs are mounted read-only over the project, when they exist.
+func TestRunArgsGuardTheGitDirectory(t *testing.T) {
+	dir := t.TempDir()
+	for _, p := range []string{".git/hooks", ".git/info"} {
+		if err := os.MkdirAll(filepath.Join(dir, p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".git/config"), []byte("[core]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	line := strings.Join(RunArgs("n", "img", false, []string{dir}, dir, DefaultLimits, 1, 1, 1), " ")
+	for _, g := range []string{"config", "hooks", "info"} {
+		p := filepath.Join(dir, ".git", g)
+		if !strings.Contains(line, "--volume "+p+":"+p+":ro") {
+			t.Errorf("%s is not read-only: %s", p, line)
+		}
+	}
+	if strings.Contains(line, "config.worktree") {
+		t.Errorf("a guard that does not exist is mounted (docker would create it as root): %s", line)
+	}
+}
+
+func TestGitConfigIsReadOnlyInside(t *testing.T) {
+	dir, _ := filepath.EvalSymlinks(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(dir, ".git", "hooks"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".git", "config"), []byte("[core]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	b := startBox(t, dir, false)
+	out, err := helper(b, dir, "sh", "-c", `echo "[core] fsmonitor = evil" >> .git/config && echo WROTE; touch .git/hooks/pre-commit && echo HOOK; touch src.txt && echo OK`).CombinedOutput()
+	s := string(out)
+	if strings.Contains(s, "WROTE") || strings.Contains(s, "HOOK") || !strings.Contains(s, "OK") {
+		t.Fatalf("the git guards are writable inside (or the project is not): %v\n%s", err, s)
+	}
+}
