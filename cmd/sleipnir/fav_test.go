@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"slices"
 	"strings"
@@ -79,11 +80,11 @@ func TestFavCommandSaysWhatItDid(t *testing.T) {
 	home := s.Home()
 	h := &sessionHost{s: s}
 	var out strings.Builder
-	if _, ok := h.programCommand("/fav", &out); !ok || !strings.Contains(out.String(), "usage: /fav") {
+	if _, ok := h.programCommand(context.Background(), "/fav", &out); !ok || !strings.Contains(out.String(), "usage: /fav") {
 		t.Errorf("no model named and none known: %q", out.String())
 	}
 	out.Reset()
-	if _, ok := h.programCommand("/fav heimdallm/qwen/qwen3.8-27b", &out); !ok || !strings.HasPrefix(out.String(), "starred heimdallm/qwen/qwen3.8-27b") {
+	if _, ok := h.programCommand(context.Background(), "/fav heimdallm/qwen/qwen3.8-27b", &out); !ok || !strings.HasPrefix(out.String(), "starred heimdallm/qwen/qwen3.8-27b") {
 		t.Errorf("starred: %q", out.String())
 	}
 	if favs := favoritesOnDisk(t, home); !slices.Equal(favs, []string{"heimdallm/qwen/qwen3.8-27b"}) {
@@ -94,7 +95,7 @@ func TestFavCommandSaysWhatItDid(t *testing.T) {
 		t.Errorf("the line chat unstars with the same words: %q", out.String())
 	}
 	out.Reset()
-	if _, ok := h.programCommand("/fav a b", &out); !ok || !strings.Contains(out.String(), "usage: /fav") {
+	if _, ok := h.programCommand(context.Background(), "/fav a b", &out); !ok || !strings.Contains(out.String(), "usage: /fav") {
 		t.Errorf("two names: %q", out.String())
 	}
 }

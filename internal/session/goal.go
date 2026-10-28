@@ -433,8 +433,9 @@ func (s *Session) GoalJudged(ctx context.Context, g *goal.State, turnErr error) 
 	if g == nil || g.Paused != "" || g.Done {
 		return "", "", j
 	}
+	// Each of these pauses leaves the turn unjudged: resuming judges it first (GoalResume).
 	pause := func(why string) (string, string, GoalJudgment) {
-		g.Paused = why
+		g.Paused, g.Unjudged = why, true
 		return "goal paused: " + why + ". /goal resume goes on, /goal clear drops it", "", j
 	}
 	switch {
@@ -465,6 +466,21 @@ func (s *Session) GoalJudged(ctx context.Context, g *goal.State, turnErr error) 
 		reason = "the judge's answer could not be read"
 	}
 	return fmt.Sprintf("goal not met yet: %s (continuation %d of %d)", reason, g.Turns, g.Max), s.GoalContinuation(g, v), j
+}
+
+// GoalResume takes the pause off g and returns a note for the person and the message that sends the agent on ("" when there is
+// none). A goal paused on a turn that was not judged (it was interrupted or failed, the chat was restarted, or the judge could not be
+// asked) is judged first: the judge's last verdict predates that turn, and its "not met yet" would send the agent to redo work it may
+// have done since; j is that judgment (zero when there was none). g is changed.
+func (s *Session) GoalResume(ctx context.Context, g *goal.State) (note, next string, j GoalJudgment) {
+	unjudged := g.Unjudged
+	g.Paused, g.Repeats, g.Unjudged = "", 0, false
+	g.Max = g.Turns + goal.MaxTurns
+	if unjudged {
+		return s.GoalJudged(ctx, g, nil)
+	}
+	g.Turns++
+	return "", s.GoalContinuation(g, goal.Verdict{Kind: goal.Continue, Reason: g.Reason}), j
 }
 
 // GoalContinuation is the message that sends the agent on after verdict v (goal.Continuation), with, for the manager of a team, the
@@ -553,7 +569,7 @@ func (s *Session) LoadGoal() *goal.State {
 	if last != nil && last.Objective != "" && !last.Done {
 		s.noteObjective(last)
 		if last.Paused == "" {
-			last.Paused = "the chat was restarted"
+			last.Paused, last.Unjudged = "the chat was restarted", true // a turn may have been cut short, and was not judged
 		}
 		return last
 	}

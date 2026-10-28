@@ -36,6 +36,9 @@ type State struct {
 	Reason    string // what the judge said last
 	Repeats   int    // consecutive turns without progress
 	Done      bool   // the judge found it met
+	// Unjudged says the goal paused on a turn the judge did not rule on (interrupted, failed, cut short by a restart, or a judge that
+	// could not be asked): what the judge said last predates it.
+	Unjudged bool `json:",omitempty"`
 	// Spec is the spec file the objective names (SpecRef) and SpecText its text as read when the goal was set (Prepare).
 	Spec, SpecText string
 	// Milestones are the checkpoints the judge rules on one by one (ParseMilestones, Reconcile).
