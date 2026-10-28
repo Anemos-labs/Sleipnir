@@ -87,6 +87,10 @@ func docsDirOf(entry string) string {
 	return path.Dir(e)
 }
 
+// unneeded reports whether a task was closed as no longer needed (task resolve): nothing of it landed, so it leaves no document
+// stale. In a team run a task resolved as a duplicate of the one that did the work was listed in a catch-up pass beside it.
+func unneeded(t Task) bool { return t.Closure.Kind() == CloseUnneeded }
+
 // docsRetry is how long the keeper waits before it tries again to start a catch-up
 // task that could not be started (no free slot, a scope overlap, the budget).
 const docsRetry = 30 * time.Second
@@ -202,7 +206,7 @@ func (s *Swarm) docsTick(now time.Time) {
 			continue
 		}
 		k.seen[t.ID] = t.Rev
-		if t.Status != StatusDone || s.isDocsTask(t) || t.Kind != TaskKindPlan && !s.implementationTask(t) || testsOnly(t.Files) {
+		if t.Status != StatusDone || s.isDocsTask(t) || t.Kind != TaskKindPlan && !s.implementationTask(t) || testsOnly(t.Files) || unneeded(t) {
 			continue
 		}
 		kind := "change"
@@ -404,7 +408,7 @@ func (s *Swarm) docsWillStart(snap *Snapshot) bool {
 		return false // what was done before the keeper first looks is not news to it (docsTick)
 	}
 	for _, t := range snap.Tasks {
-		if rev, seen := k.seen[t.ID]; t.Status != StatusDone || (seen && rev == t.Rev) || s.isDocsTask(t) || testsOnly(t.Files) {
+		if rev, seen := k.seen[t.ID]; t.Status != StatusDone || (seen && rev == t.Rev) || s.isDocsTask(t) || testsOnly(t.Files) || unneeded(t) {
 			continue
 		}
 		if s.implementationTask(t) || t.Kind == TaskKindPlan && k.coded {

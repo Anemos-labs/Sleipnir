@@ -7,6 +7,9 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- With auto-docs, a task resolved as no longer needed (`task resolve`)
+  is no longer a docs change: it starts no catch-up pass and is not listed
+  in one, since nothing of it landed.
 - A manager's `task update` with files and a text on a task another
   agent owns sets the scope and answers that it did, noting that the text
   was not recorded. It used to answer with an error after the scope had
