@@ -697,3 +697,84 @@ func TestASessionStaysOnItsScan(t *testing.T) {
 		}
 	}
 }
+
+// A review covers the files a change wrote: the inventory holds only them, a lead needs a step on a line the change made, and
+// a finding is anchored on the last such step.
+func TestAReviewCoversWhatTheChangeWrote(t *testing.T) {
+	root, base := gitRepo(t, map[string]string{
+		"server/handler.go": "package server\n\nimport \"net/http\"\n\nfunc Ping(w http.ResponseWriter, r *http.Request) {\n\tw.Write([]byte(\"pong\"))\n}\n",
+		"server/other.go":   "package server\n\nfunc Other() int { return 1 }\n",
+	})
+	changed := "package server\n\nimport (\n\t\"net/http\"\n\t\"os/exec\"\n)\n\nfunc Ping(w http.ResponseWriter, r *http.Request) {\n\thost := r.URL.Query().Get(\"host\")\n\tout, _ := exec.Command(\"sh\", \"-c\", \"ping -c1 \"+host).Output()\n\tw.Write(out)\n}\n"
+	if err := os.WriteFile(filepath.Join(root, "server", "handler.go"), []byte(changed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"add", "-A"}, {"-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "ping host"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	repo, err := gitx.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := NewStore(root)
+	if _, err := StartReview(context.Background(), st, repo, "standard", "HEAD"); err == nil || !strings.Contains(err.Error(), "no change") {
+		t.Fatalf("a review of nothing: %v", err)
+	}
+	r, err := StartReview(context.Background(), st, repo, "standard", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.IsReview() || r.Base != base || !strings.HasPrefix(r.Slug, "review-") || len(r.Inventory.Files) != 1 || r.Inventory.Files[0].Path != "server/handler.go" {
+		t.Fatalf("review: %+v", r)
+	}
+	if len(r.Changes) != 1 || !r.Changed("server/handler.go", 10, 10) || r.Changed("server/handler.go", 1, 2) {
+		t.Fatalf("changes: %+v", r.Changes)
+	}
+	if b := Brief(r); !strings.Contains(b, "review of a change") || !strings.Contains(b, "`server/handler.go`: ") {
+		t.Errorf("brief: %s", b)
+	}
+	if g := Objective(r, ""); !strings.HasPrefix(g, "Review (standard) of the change") || ObjectiveSlug(g) != r.Slug {
+		t.Errorf("objective: %s", g)
+	}
+	tl := NewTool(st, func(c string) Code { return CodeAt(repo, c) })
+	lead := map[string]any{"action": "lead", "title": "Command injection in Ping", "category": "command-injection",
+		"claim":  "Anyone can run shell commands on the server by sending host=x;id to the ping handler.",
+		"impact": "critical", "reach": "external", "exploit": "trivial"}
+	lead["trace"] = []map[string]any{{"file": "server/handler.go", "line": 1, "quote": "package server", "note": "the package, untouched by the change"}}
+	mustFail(t, tl, "hunter", lead, "a line the change added or modified")
+	lead["trace"] = []map[string]any{
+		{"file": "server/handler.go", "line": 9, "quote": `host := r.URL.Query().Get("host")`, "note": "host from the query string"},
+		{"file": "server/handler.go", "line": 10, "quote": `exec.Command("sh", "-c", "ping -c1 "+host)`, "note": "into a shell"},
+	}
+	mustOK(t, tl, "hunter", lead)
+	r, _ = st.Snapshot("")
+	f := FindingOf(r, r.Lead("L1"))
+	if f.Anchor == nil || f.Anchor.Line != 10 {
+		t.Fatalf("anchor: %+v", f.Anchor)
+	}
+	if doc := FindingsDoc(r); doc["base"] != base {
+		t.Errorf("findings.json without the base: %v", doc["base"])
+	}
+	if !strings.Contains(StatusText(r), "Lines the change wrote") {
+		t.Errorf("status: %s", StatusText(r))
+	}
+}
+
+func TestParseDiff(t *testing.T) {
+	out := "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -3,0 +4,2 @@\n+x\n+y\n@@ -9 +11 @@\n-a\n+b\n@@ -20,3 +22,0 @@\n-c\n" +
+		"diff --git a/gone.go b/gone.go\n--- a/gone.go\n+++ /dev/null\n@@ -1 +0,0 @@\n-x\n" +
+		"diff --git \"a/sp ace.go\" \"b/sp ace.go\"\n--- \"a/sp ace.go\"\n+++ \"b/sp ace.go\"\n@@ -1 +1 @@\n-a\n+b\n" +
+		// an added line "++ b/other.go" is rendered as "+++ b/other.go": it is content, and the next hunk is still b.go's
+		"diff --git a/b.go b/b.go\n--- a/b.go\n+++ b/b.go\n@@ -1,0 +2 @@\n+++ b/other.go\n@@ -7 +8 @@\n-a\n+b\n" +
+		"diff --git a/t ab.go b/t ab.go\n--- a/t ab.go\t\n+++ b/t ab.go\t\n@@ -1 +1 @@\n-a\n+b\n"
+	got := parseDiff(out)
+	if len(got) != 4 || got[0].File != "a.go" || len(got[0].Lines) != 2 || got[0].Lines[0] != [2]int{4, 5} || got[0].Lines[1] != [2]int{11, 11} ||
+		got[1].File != "sp ace.go" || got[2].File != "b.go" || len(got[2].Lines) != 2 || got[2].Lines[1] != [2]int{8, 8} ||
+		got[3].File != "t ab.go" {
+		t.Fatalf("parseDiff: %+v", got)
+	}
+}

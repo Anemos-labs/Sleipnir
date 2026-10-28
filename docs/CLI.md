@@ -694,12 +694,17 @@ only what verifiers confirmed and, from the depth's bar up, a reproducer showed 
 Without SCAN it lists the scans, newest first; with SCAN it shows where the scan stands. --start creates a
 scan of HEAD (of DIR, the positional, when given) and prints the goal that drives it, for a headless team:
   sleipnir swarm 12 --sandbox docker "$(sleipnir scan --start)"
+--start --diff BASE reviews a change instead: the files HEAD changed since BASE (a commit or a branch, from
+their merge base), with leads only where a step of the trace is on a line the change wrote:
+  sleipnir swarm 8 --sandbox docker "$(sleipnir scan --start --diff origin/main)"
 
 flags:
   -cwd string
         the project (default: the current directory)
   -depth string
         with --start: survey, standard or deep (default "standard")
+  -diff BASE
+        with --start: review the change from BASE (a commit or branch) to HEAD instead of the whole repository
   -json
         machine-readable output
   -report

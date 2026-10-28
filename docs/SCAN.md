@@ -84,6 +84,20 @@ and confirms only when it finds none. A lead is confirmed when enough verifiers 
 among them; it is rejected once as many reject it as the depth asks to confirm it. A confirmed lead the depth wants
 reproduced is *unproven* until a reproducer shows it, and is reported apart from the findings.
 
+## Reviewing a change
+
+`sleipnir scan --start --diff BASE` makes a review instead of a scan: the change from BASE (a commit or a branch; the review
+starts from their merge base, so commits BASE gained since do not count) to HEAD. Its inventory and shards hold only the files
+the change added or modified, and `scan lead` refuses a lead with no step of its trace on a line the change wrote: a review
+reports the holes a change brings in, widens or leaves open in the code it rewrote, not the rest of the repository. Every other
+rule (checked quotes, verifiers, the defender, reproducers) is the same. A review is named `review-…`, its findings.json carries
+`base` and `changes` (the line ranges at HEAD), and each finding an `anchor`: the last step of its trace on a changed line, where
+a pull request review comments on it. SARIF results are located at the anchor too.
+
+```text
+sleipnir swarm 8 --sandbox docker "$(sleipnir scan --start --diff origin/main)"
+```
+
 ## Reproducers
 
 `scan prove` runs a bash script in a fresh copy of the code at the commit (a detached worktree under the scan's directory,

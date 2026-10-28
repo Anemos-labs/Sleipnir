@@ -52,6 +52,19 @@ var testFile = regexp.MustCompile(`(_test\.go$|\.test\.[jt]sx?$|\.spec\.[jt]sx?$
 // TakeInventory lists the files of the commit the scan reads (below focus, a directory of the repository, when set) and the
 // functions in them. Only what git has at that commit counts: the work tree may hold anything, the commit is what was pinned.
 func TakeInventory(ctx context.Context, repo *gitx.Repo, commit, focus string) (Inventory, error) {
+	return takeInventory(ctx, repo, commit, focus, nil)
+}
+
+// inventory is the inventory of only the given files of the commit (a change's), in the order git lists them.
+func inventory(ctx context.Context, repo *gitx.Repo, commit string, files []string) (Inventory, error) {
+	only := map[string]bool{}
+	for _, f := range files {
+		only[f] = true
+	}
+	return takeInventory(ctx, repo, commit, "", only)
+}
+
+func takeInventory(ctx context.Context, repo *gitx.Repo, commit, focus string, only map[string]bool) (Inventory, error) {
 	args := []string{"ls-tree", "-r", "-z", "-l", "--end-of-options", commit}
 	if focus = strings.Trim(path.Clean("/"+focus), "/"); focus != "" {
 		args = append(args, "--", focus)
@@ -63,7 +76,7 @@ func TakeInventory(ctx context.Context, repo *gitx.Repo, commit, focus string) (
 	inv := Inventory{Skipped: map[string]int{}}
 	for _, ent := range strings.Split(res.Stdout, "\x00") {
 		meta, p, ok := strings.Cut(ent, "\t")
-		if !ok {
+		if !ok || only != nil && !only[p] {
 			continue
 		}
 		f := strings.Fields(meta) // mode type object size

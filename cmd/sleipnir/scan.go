@@ -32,6 +32,9 @@ only what verifiers confirmed and, from the depth's bar up, a reproducer showed 
 Without SCAN it lists the scans, newest first; with SCAN it shows where the scan stands. --start creates a
 scan of HEAD (of DIR, the positional, when given) and prints the goal that drives it, for a headless team:
   sleipnir swarm 12 --sandbox docker "$(sleipnir scan --start)"
+--start --diff BASE reviews a change instead: the files HEAD changed since BASE (a commit or a branch, from
+their merge base), with leads only where a step of the trace is on a line the change wrote:
+  sleipnir swarm 8 --sandbox docker "$(sleipnir scan --start --diff origin/main)"
 
 flags:
 `
@@ -48,6 +51,7 @@ func cmdScan(ctx context.Context, args []string) error {
 	asJSON := fs.Bool("json", false, "machine-readable output")
 	start := fs.Bool("start", false, "create a scan of the repository at HEAD (below the positional DIR, when given) and print the goal that drives it")
 	depth := fs.String("depth", scan.DefaultDepth, "with --start: survey, standard or deep")
+	diff := fs.String("diff", "", "with --start: review the change from `BASE` (a commit or branch) to HEAD instead of the whole repository")
 	pos, err := parseInterspersed(fs, args)
 	if err != nil {
 		return err
@@ -66,12 +70,23 @@ func cmdScan(ctx context.Context, args []string) error {
 	}
 	project, _ := config.FindRoot(dir)
 	root := scanRoot(project)
+	diffSet := false
+	fs.Visit(func(f *flag.Flag) { diffSet = diffSet || f.Name == "diff" })
+	if diffSet && !*start {
+		return errors.New("scan: --diff goes with --start")
+	}
+	if diffSet && *diff == "" {
+		return errors.New("scan: --diff needs a BASE")
+	}
 	if *start {
 		focus := ""
 		if len(pos) == 1 {
 			focus = pos[0]
 		}
-		return scanStartCLI(ctx, os.Stdout, root, *depth, focus)
+		if diffSet && focus != "" {
+			return errors.New("scan: --diff reviews the whole change: leave DIR out")
+		}
+		return scanStartCLI(ctx, os.Stdout, root, *depth, focus, *diff)
 	}
 	if len(pos) == 0 {
 		if *report {
@@ -97,9 +112,9 @@ func cmdScan(ctx context.Context, args []string) error {
 	return nil
 }
 
-// scanStartCLI creates a scan of HEAD and prints its goal (the scan tool of the session that runs it finds it as the project's
-// only unfinished scan).
-func scanStartCLI(ctx context.Context, out io.Writer, root, depth, focus string) error {
+// scanStartCLI creates a scan of HEAD, or a review of the change from base to HEAD, and prints its goal (the session that runs
+// it opens the scan its goal names).
+func scanStartCLI(ctx context.Context, out io.Writer, root, depth, focus, base string) error {
 	if _, ok := scan.DepthByID(depth); !ok {
 		return fmt.Errorf("scan: unknown depth %q (%s)", depth, strings.Join(scan.DepthIDs(), ", "))
 	}
@@ -113,7 +128,12 @@ func scanStartCLI(ctx context.Context, out io.Writer, root, depth, focus string)
 			return fmt.Errorf("scan: %s is not a directory of the repository", focus)
 		}
 	}
-	r, err := scan.Start(ctx, scan.NewStore(root), repo, depth, focus)
+	var r *scan.Run
+	if base != "" {
+		r, err = scan.StartReview(ctx, scan.NewStore(root), repo, depth, base)
+	} else {
+		r, err = scan.Start(ctx, scan.NewStore(root), repo, depth, focus)
+	}
 	if err != nil {
 		return fmt.Errorf("scan: %w", err)
 	}
