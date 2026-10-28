@@ -9,7 +9,8 @@ they do not indicate whether a change has been released.
 
 - A goal judge request that fails with a network error, a timeout, a
   5xx or a rate limit is sent again, up to four times with a growing
-  wait, and each retry is a `model.error` event. Before, one dropped
+  wait (or the server's `Retry-After`, when longer), and each retry is
+  a `model.error` event. Before, one dropped
   connection paused the goal and discarded the judgment's evidence
   requests.
 - A goal judge whose first answer is "continue", given before any

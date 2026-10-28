@@ -279,11 +279,13 @@ func TestAJudgesContinueAfterASearchStands(t *testing.T) {
 }
 
 // A judge request that fails in a way repeating may cure is sent again, so a dropped connection partway through a judgment
-// neither pauses the goal nor throws away the evidence requests already answered; a failure repeating cannot cure is not repeated.
+// neither pauses the goal nor throws away the evidence requests already answered; after a rate limit it waits as long as the server
+// asked.
 func TestAJudgeRequestThatFailsOnTheWayIsSentAgain(t *testing.T) {
 	defer func(base time.Duration) { agent.RetryBase = base }(agent.RetryBase)
 	agent.RetryBase = time.Millisecond
 	calls := 0
+	var limited time.Time
 	client, model := startMock(t, func(c *mock.Call) mock.Reply {
 		if !strings.Contains(c.System, "You judge whether a coding agent") {
 			return mock.Reply{Text: "Completed the objective"}
@@ -291,8 +293,14 @@ func TestAJudgeRequestThatFailsOnTheWayIsSentAgain(t *testing.T) {
 		switch calls++; calls {
 		case 1:
 			return mock.Reply{Text: `{"verdict":"inspect","query":"migration applied","offset":0}`}
-		case 2, 3:
+		case 2:
 			return mock.Reply{Fault: &mock.Fault{Status: 502, Message: "bad gateway"}}
+		case 3:
+			limited = time.Now()
+			return mock.Reply{Fault: &mock.Fault{Status: 429, Message: "slow down", RetryAfter: time.Second}} // the header is in whole seconds
+		}
+		if waited := time.Since(limited); waited < time.Second {
+			t.Errorf("the retry after a rate limit came %v after it, before the %v the server asked for", waited, time.Second)
 		}
 		if !strings.Contains(c.LastUser(), "migration applied") {
 			t.Errorf("the evidence answered before the failure was lost:\n%s", c.LastUser())
@@ -311,7 +319,7 @@ func TestAJudgeRequestThatFailsOnTheWayIsSentAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	if note, next := s.GoalTurn(context.Background(), g, nil); !g.Done || next != "" || g.Paused != "" || calls != 4 {
-		t.Fatalf("after two failed requests: note %q next %q done=%v paused %q calls=%d", note, next, g.Done, g.Paused, calls)
+		t.Fatalf("after a 502 and a 429: note %q next %q done=%v paused %q calls=%d", note, next, g.Done, g.Paused, calls)
 	}
 	_ = s.Log.Flush()
 	retries := 0

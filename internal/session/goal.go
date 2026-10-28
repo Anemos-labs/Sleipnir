@@ -117,8 +117,8 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 // away every evidence request before it.
 const judgeAttempts = 4
 
-// judgeDo sends one judge request, again after a growing wait while it fails in a way that repeating may cure. Each retry is a
-// model.error in the log, as an agent's is.
+// judgeDo sends one judge request, again after a growing wait (or the wait the server asked for, when longer) while it fails in a
+// way that repeating may cure. Each retry is a model.error in the log, as an agent's is.
 func (s *Session) judgeDo(ctx context.Context, j judgeRunner, req *provider.Request) (*provider.Response, error) {
 	for attempt := 0; ; attempt++ {
 		resp, err := j.p.Do(ctx, req, nil)
@@ -127,6 +127,9 @@ func (s *Session) judgeDo(ctx context.Context, j judgeRunner, req *provider.Requ
 			return resp, err
 		}
 		delay := agent.RetryBase << attempt
+		if after := min(pe.RetryAfter, agent.MaxRetryAfter); after > delay {
+			delay = after // a server that says how long to wait is believed, up to the cap an agent's retries use
+		}
 		s.Log.Emit("", events.TypeModelError, map[string]any{
 			"req": req.Label, "kind": pe.Kind.String(), "status": pe.Status, "attempt": attempt + 1, "delay_ms": delay.Milliseconds(),
 		})
