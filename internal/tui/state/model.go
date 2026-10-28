@@ -217,6 +217,14 @@ func (s *State) onResponse(e events.Event, t time.Time) {
 	a.CostUSD += cost
 	a.ListUSD += list
 	a.Plan = a.Plan || plan
+	if tk := s.tasks[a.Task]; tk != nil && a.Task != "" { // the task it holds pays for its requests
+		tk.CostUSD += cost
+		tk.ListUSD += list
+		tk.Plan = tk.Plan || plan
+		if !side {
+			tk.Requests++
+		}
+	}
 	a.SavedUSD += saved
 	if !priced {
 		a.UnpricedReadTokens = min(a.UnpricedReadTokens+u.CacheRead, maxTokens)

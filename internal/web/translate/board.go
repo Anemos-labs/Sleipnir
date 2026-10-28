@@ -23,7 +23,7 @@ type taskOut struct {
 	lastCol string // the last column that was not a failure's
 }
 
-// syncTask sends a task event when the task's column, title, owner, deps, scope or closure changed, and a note when its owner
+// syncTask sends a task event when the task's column, title, owner, deps, scope, closure or spend changed, and a note when its owner
 // submitted it. force sends it whatever it says. A task the board failed stays in the todo column with Failed set and its closure; one
 // that was superseded or canceled keeps the column it had.
 func (t *Translator) syncTask(id string, ts float64, force bool) {
@@ -68,7 +68,8 @@ func (t *Translator) syncTask(id string, ts float64, force bool) {
 		scope = strings.Join(tk.Files, ", ")
 	}
 	ev := &TaskX{Task: wire.Task{ID: id, Parent: tk.Parent, PoolPhase: tk.PoolPhase, PoolMembers: tk.PoolMembers, Title: line(tk.Title, capArg), Owner: uiID(tk.Owner), Deps: tk.Deps, Scope: line(scope, capPath), S: col,
-		Closure: line(closure, capID)}, Failed: tk.State == state.TaskFailed, Attempts: tk.Attempts, Blocked: tk.Status == "blocked"}
+		Closure: line(closure, capID)}, Failed: tk.State == state.TaskFailed, Attempts: tk.Attempts, Blocked: tk.Status == "blocked",
+		Cost: tk.Spend().Shown(), Plan: tk.Plan, Reqs: tk.Requests}
 	if len(ev.Deps) == 0 {
 		ev.Deps = nil
 	}
@@ -97,7 +98,7 @@ func (t *Translator) syncTask(id string, ts float64, force bool) {
 // sameTask reports whether two task events say the same thing.
 func sameTask(a, b *TaskX) bool {
 	return a.ID == b.ID && a.Title == b.Title && a.Owner == b.Owner && a.Scope == b.Scope && a.S == b.S && a.Closure == b.Closure &&
-		a.Failed == b.Failed && a.Attempts == b.Attempts && a.Blocked == b.Blocked && reflect.DeepEqual(a.Deps, b.Deps) && a.Parent == b.Parent && a.PoolPhase == b.PoolPhase && reflect.DeepEqual(a.PoolMembers, b.PoolMembers)
+		a.Failed == b.Failed && a.Attempts == b.Attempts && a.Blocked == b.Blocked && a.Cost == b.Cost && a.Plan == b.Plan && a.Reqs == b.Reqs && reflect.DeepEqual(a.Deps, b.Deps) && a.Parent == b.Parent && a.PoolPhase == b.PoolPhase && reflect.DeepEqual(a.PoolMembers, b.PoolMembers)
 }
 
 // closureKind is the kind of a closure written as kind or kind(target).

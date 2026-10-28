@@ -5,13 +5,13 @@
 │                                                                         ✓ T1 ✓ T2 ✓ T3 ✓ T4      │
 │                                                                         ✓ T5 ✓ T6 ✓ T7           │
 ├─ tasks ──────────────────────────────────────────────────┬─ merge queue ─────────────────────────┤
-│ ✓ T1   sc-1   Survey topic 1 (docs/topic-1.md)           │ no worktree isolation in this run:    │
-│ ✓ T2   sc-2   Survey topic 2 (docs/topic-2.md)           │ work is written to the checkout       │
-│ ✓ T3   sc-3   Survey topic 3 (docs/topic-3.md)           │ directly                              │
-│ ✓ T4   sc-4   Survey topic 4 (docs/topic-4.md)           │                                       │
-│ ✓ T5   dc-1   Write the summaries for topics 1, 2 [topi… │                                       │
-│ ✓ T6   dc-2   Write the summaries for topics 3, 4 [topi… │                                       │
-│ ✓ T7   rv-1   Review every summary against the conventi… │                                       │
+│ ✓ T1   sc-1   Survey topic 1 (docs/topic-1.md)     $0.02 │ no worktree isolation in this run:    │
+│ ✓ T2   sc-2   Survey topic 2 (docs/topic-2.md)     $0.02 │ work is written to the checkout       │
+│ ✓ T3   sc-3   Survey topic 3 (docs/topic-3.md)     $0.02 │ directly                              │
+│ ✓ T4   sc-4   Survey topic 4 (docs/topic-4.md)     $0.02 │                                       │
+│ ✓ T5   dc-1   Write the summaries for topics 1, …  $0.03 │                                       │
+│ ✓ T6   dc-2   Write the summaries for topics 3, …  $0.03 │                                       │
+│ ✓ T7   rv-1   Review every summary against the c…  $0.02 │                                       │
 ├──────────────────────────────────────────────────────────┴───────────────────────────────────────┤
 │                                                                                                  │
 │                                                                                                  │
