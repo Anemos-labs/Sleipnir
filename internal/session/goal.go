@@ -222,9 +222,8 @@ func (s *Session) judgeOn(ctx context.Context, g *goal.State, j judgeRunner, ans
 }
 
 // judgeSearchFirst sends back a verdict of continue that came before any evidence request: the page a judge is first shown is only
-// the newest records. In a team run a judge answered at once that no evidence for four finished remainders was retrievable and that
-// its searches came back empty, having searched nothing; the archive held hundreds of matching records, and the manager was sent
-// to redo work that was done.
+// the newest records, so a verdict on it alone can call finished work missing when the evidence is older. It is sent once; whatever
+// the judge answers next stands, searched or not.
 const judgeSearchFirst = `Your verdict came before any evidence request, and the page you were shown holds only the newest records. Before you name anything as missing, search the archive for each item of your "left" ({"verdict":"inspect","query":"literal search text","offset":0}) and read what matches; then give your verdict.`
 
 // judgeRounds is how many evidence requests a judge is answered. Each answer says how many are left, and the last one asks for

@@ -204,8 +204,7 @@ func TestJudgeSearchesWorkerEvidenceWithoutRepeatingWork(t *testing.T) {
 }
 
 // A judge whose "continue" comes before any evidence request is sent back once to search for what it names as missing, and what it
-// finds decides the verdict. In a team run a judge answered "continue" on the newest page alone, saying the archive held no record of
-// four items it had never searched for; the archive held hundreds.
+// finds decides the verdict, though the record it needs is older than the page it was first shown.
 func TestAJudgesContinueWithoutASearchIsSentBackToSearch(t *testing.T) {
 	var seen []string // what the judge was shown, each call
 	client, model := startMock(t, func(c *mock.Call) mock.Reply {
@@ -229,12 +228,18 @@ func TestAJudgesContinueWithoutASearchIsSentBackToSearch(t *testing.T) {
 	g := goal.New("apply the migration")
 	s.SaveGoal(g)
 	s.Log.Emit("ts-2", events.TypeTurnAppend, core.Turn{Role: core.RoleUser, Blocks: []core.Block{core.ToolResult("m1", false, core.Text("migration applied"))}})
+	for i := 0; i < 30; i++ { // newer records push it off the first page
+		s.Log.Emit("ts-2", events.TypeTurnAppend, core.Turn{Role: core.RoleUser, Blocks: []core.Block{core.ToolResult(fmt.Sprintf("n%d", i), false, core.Text("unrelated output"))}})
+	}
 	if _, err := s.Run(context.Background(), goal.Start(g)); err != nil {
 		t.Fatal(err)
 	}
 	note, next := s.GoalTurn(context.Background(), g, nil)
 	if !g.Done || next != "" || len(seen) != 3 {
 		t.Fatalf("after a continue with no search: note %q next %q done=%v calls=%d", note, next, g.Done, len(seen))
+	}
+	if strings.Contains(seen[0], "migration applied") {
+		t.Errorf("the record is on the first page, so no search is needed to find it:\n%s", seen[0])
 	}
 	if !strings.Contains(seen[1], "search the archive for each item") {
 		t.Errorf("the judge was not sent back to search:\n%s", seen[1])
