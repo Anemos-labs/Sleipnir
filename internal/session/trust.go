@@ -48,7 +48,7 @@ type trustInfo struct {
 	// Changed is how the files differ from what was trusted, when the answer that was remembered no longer applies.
 	Changed string
 	// pinned is the footprint the person's yes covers when it was remembered or confirmed by digest (renewTrust checks that the ledger
-	// holds it); renewTrust moves it along with the session's own edits of instruction files. mu guards it.
+	// holds it); trustWrite and renewTrust move it along with the session's own edits of instruction files. mu guards it.
 	mu     sync.Mutex
 	pinned *trust.Footprint
 }
@@ -137,33 +137,52 @@ func resolveTrust(ctx context.Context, o *Options) (*trustInfo, error) {
 	return info, nil
 }
 
-// renewTrust keeps the person's remembered yes current with the instruction files this session itself wrote (paths, relative to
-// the project root: what a merge applied to the checkout, a note the memory tool saved). The harness keeps AGENTS.md for the agents of
-// later sessions, and a yes voided by its own edits would leave them out of exactly those sessions. It renews only when every file
-// that differs from the trusted footprint is an instruction file (text in the prompt, never settings, tool servers, hooks, skills
-// or plugins) and one of paths, and when the ledger still holds the yes for the footprint the session started from (a `sleipnir trust
-// forget`, or any other change, stands). Anything else is left to the question at the next start.
-func (s *Session) renewTrust(paths []string, by string) {
+// trustWrite is called before the session writes files that may be instruction files (a merge of the team's results, a note of the
+// memory tool), and returns the renewal to call with the files once they are written. The harness keeps AGENTS.md for the agents of
+// later sessions, and a yes voided by its own edits would leave them out of exactly those sessions. The renewal does nothing unless
+// the project's files, before the write, were still the ones the person's yes covers: a change made before it is not the session's
+// doing, even in a file the session then writes too.
+func (s *Session) trustWrite() func(paths []string, by string) {
+	none := func([]string, string) {}
 	t := s.trust
 	if t == nil {
-		return
+		return none
 	}
 	t.mu.Lock()
+	from := t.pinned
+	t.mu.Unlock()
+	if from == nil {
+		return none
+	}
+	if before, err := trust.Scan(s.opts.Root, s.opts.Cwd, s.opts.Home); err != nil || before.Digest != from.Digest {
+		return none
+	}
+	return func(paths []string, by string) { s.renewTrust(from, paths, by) }
+}
+
+// renewTrust renews the person's yes for the files as they are now, when the session started the write from from (still the pinned
+// footprint: a renewal in between leaves this one to the next), every file that differs from it is an instruction file (text in the
+// prompt, never settings, tool servers, hooks, skills or plugins) and one of paths (relative to the project root), and the ledger
+// still holds the yes (a `sleipnir trust forget`, or any other change, stands). Anything else is left to the question at the next
+// start.
+func (s *Session) renewTrust(from *trust.Footprint, paths []string, by string) {
+	t := s.trust
+	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.pinned == nil {
+	if t.pinned != from {
 		return
 	}
 	cur, err := trust.Scan(s.opts.Root, s.opts.Cwd, s.opts.Home)
-	if err != nil || cur.Partial || cur.Empty() || cur.Digest == t.pinned.Digest {
+	if err != nil || cur.Partial || cur.Empty() || cur.Digest == from.Digest {
 		return
 	}
 	ledger := trust.OpenLedger(TrustLedgerPath(s.opts.Home))
-	if st, _ := ledger.Check(s.opts.Cwd, t.pinned); st != trust.Trusted {
+	if st, _ := ledger.Check(s.opts.Cwd, from); st != trust.Trusted {
 		t.pinned = nil // the person's answer changed since the start: theirs to give again
 		return
 	}
-	changes := trust.Changes(trust.EntryOf(t.pinned), cur)
-	if !instructionChanges(changes, t.pinned, cur, paths) {
+	changes := trust.Changes(trust.EntryOf(from), cur)
+	if !instructionChanges(changes, from, cur, paths) {
 		return
 	}
 	if err := RememberTrust(s.opts.Home, s.opts.Cwd, cur, s.opts.Now()); err != nil {

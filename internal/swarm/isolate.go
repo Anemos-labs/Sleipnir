@@ -82,9 +82,10 @@ type Isolation struct {
 	// tools call before a write and the function told after it. Nil keeps the
 	// session's shared ones (which are rooted at the shared checkout).
 	Checkpoints func(agent, dir string) (tools.Snapshotter, func(agent, path string))
-	// Applied is told the files (relative to the repository root) each time results reach the user's checkout, as commits or as
-	// changes to the working tree. Nil tells nobody.
-	Applied func(files []string)
+	// Applying is called before results are applied to the user's checkout (as commits or as changes to the working tree); the
+	// function it returns is told the files (relative to the repository root, both sides of a rename) once they are applied. Nil
+	// tells nobody.
+	Applying func() (applied func(files []string))
 }
 
 // isolationCardText is the part of the isolation card that is the same in every session (isolationCard adds the session's integration
@@ -697,12 +698,23 @@ func (s *Swarm) integrateLockedTip(ctx context.Context, commit bool, expectedTip
 	if err != nil {
 		return s.notApplied(rep, iso, "could not compute the result: "+cleanText(err.Error(), 200))
 	}
+	changed := []string{}
 	for _, f := range d.Files {
 		rep.Files = append(rep.Files, f.Path)
+		changed = append(changed, f.Path)
+		if f.OldPath != "" {
+			changed = append(changed, f.OldPath)
+		}
 	}
 	sort.Strings(rep.Files)
+	applied := func() {}
+	if iso.Applying != nil {
+		if fn := iso.Applying(); fn != nil {
+			applied = func() { fn(changed) }
+		}
+	}
 	if commit {
-		return s.applyCommits(ctx, rep, iso)
+		return s.applyCommits(ctx, rep, iso, applied)
 	}
 	if d.Empty() { // commits that add up to no change
 		s.apply.applied = rep.Tip
@@ -752,9 +764,7 @@ func (s *Swarm) integrateLockedTip(ctx context.Context, commit bool, expectedTip
 	}
 	s.noteApplied(rep, "")
 	s.apply.pending = nil
-	if iso.Applied != nil {
-		iso.Applied(rep.Files)
-	}
+	applied()
 	rep.Applied = true
 	rep.Message = appliedMessage(rep, rep.Files, "")
 	if err := s.saveIntegration(); err != nil {
@@ -764,8 +774,8 @@ func (s *Swarm) integrateLockedTip(ctx context.Context, commit bool, expectedTip
 	return rep
 }
 
-// applyCommits moves the user's branch to the integration tip.
-func (s *Swarm) applyCommits(ctx context.Context, rep *IntegrationReport, iso *Isolation) *IntegrationReport {
+// applyCommits moves the user's branch to the integration tip, and calls applied once it has.
+func (s *Swarm) applyCommits(ctx context.Context, rep *IntegrationReport, iso *Isolation, applied func()) *IntegrationReport {
 	if iso.SaveIntegration != nil {
 		repo := iso.Manager.Repository()
 		head, err := repo.Head(ctx)
@@ -790,9 +800,7 @@ func (s *Swarm) applyCommits(ctx context.Context, rep *IntegrationReport, iso *I
 	}
 	s.noteApplied(rep, res.Branch)
 	s.apply.pending = nil
-	if iso.Applied != nil {
-		iso.Applied(rep.Files)
-	}
+	applied()
 	rep.Applied, rep.Committed = true, true
 	rep.Message = appliedMessage(rep, rep.Files, res.Branch)
 	if err := s.saveIntegration(); err != nil {

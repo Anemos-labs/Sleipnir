@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -460,10 +461,12 @@ func TestApplyMergedTellsWhatIsNewAndAFailureOnce(t *testing.T) {
 func (r *isoRig) recordApplied() func() string {
 	var mu sync.Mutex
 	var got []string
-	r.iso.Applied = func(files []string) {
-		mu.Lock()
-		defer mu.Unlock()
-		got = append(got, strings.Join(files, ","))
+	r.iso.Applying = func() func([]string) {
+		return func(files []string) {
+			mu.Lock()
+			defer mu.Unlock()
+			got = append(got, strings.Join(files, ","))
+		}
 	}
 	return func() string {
 		mu.Lock()
@@ -854,5 +857,27 @@ func TestClaimingTheTaskYouAreOnChangesNothing(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatalf("be-1 was handed its assignment %d times, want 1", n)
+	}
+}
+
+// A rename reaches the checkout as two paths, and the session is told both: the file that is gone counts as changed as much as the
+// one that arrived.
+func TestTheSessionIsToldBothSidesOfARename(t *testing.T) {
+	for _, commit := range []bool{false, true} {
+		sc := script{"be-1": {act(writeCall("z.txt", "alpha\n"), rvToolCall{"sneakrm", map[string]any{"path": "a.txt"}}), act(doneCall("T1", "moved a"))}}
+		r := newIsoRig(t, isoOpts{verify: true, commit: commit}, sc.fn())
+		applied := r.recordApplied()
+		r.sw.StartManager()
+		r.mustSpawn("backend", "move a to z")
+		r.waitStatus("T1", StatusReview)
+		if res := r.accept("T1"); res.IsError {
+			t.Fatal(res.Text)
+		}
+		if rep := r.finish(); !rep.Applied {
+			t.Fatalf("commit %v: %+v", commit, rep)
+		}
+		if got := strings.Split(applied(), "|"); len(got) != 1 || !slices.Contains(strings.Split(got[0], ","), "a.txt") || !slices.Contains(strings.Split(got[0], ","), "z.txt") {
+			t.Fatalf("commit %v: the session was told %q, want a.txt and z.txt", commit, got)
+		}
 	}
 }

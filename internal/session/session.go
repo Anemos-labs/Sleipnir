@@ -1063,8 +1063,9 @@ func (s *Session) build(ctx context.Context) error {
 			if o.TrustProject {
 				proj = filepath.Join(o.Root, filepath.FromSlash(memory.ProjectNotes))
 			}
-			reg.Register(memtool.NewScoped(filepath.Join(o.Home, ".sleipnir", "MEMORY.md"), proj).OnProjectSave(func() {
-				s.renewTrust([]string{memory.ProjectNotes}, "a note the memory tool saved")
+			reg.Register(memtool.NewScoped(filepath.Join(o.Home, ".sleipnir", "MEMORY.md"), proj).OnProjectSave(func() func() {
+				renew := s.trustWrite()
+				return func() { renew([]string{memory.ProjectNotes}, "a note the memory tool saved") }
 			}))
 			return nil
 		},

@@ -54,8 +54,9 @@ const MetaChange = "memory_change"
 // Tool is the memory tool over the user's notes file and, when a project is known, the project's.
 type Tool struct {
 	path, project string
-	// saved is told after a note of the project's was added or removed (nil tells nobody).
-	saved func()
+	// saving is called before a note of the project's is added or removed, and the function it returns once the notes file changed
+	// (nil tells nobody).
+	saving func() (saved func())
 }
 
 // New returns the tool for the user's notes file at path (the directory is created on the first note), without project notes.
@@ -67,9 +68,10 @@ func NewScoped(userPath, projectPath string) *Tool {
 	return &Tool{path: userPath, project: projectPath}
 }
 
-// OnProjectSave has fn told after each note of the project's is added or removed, and returns t.
-func (t *Tool) OnProjectSave(fn func()) *Tool {
-	t.saved = fn
+// OnProjectSave has fn called before each add or remove of a project note, and the function fn returns called once the write changed
+// the notes file; it returns t.
+func (t *Tool) OnProjectSave(fn func() func()) *Tool {
+	t.saving = fn
 	return t
 }
 
@@ -138,9 +140,13 @@ func (t *Tool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	if err != nil {
 		return tools.Errorf("memory: %v", err), nil
 	}
+	var saved func()
+	if project && t.saving != nil && (in.Action == "add" || in.Action == "remove") {
+		saved = t.saving()
+	}
 	res, err := f.run(ctx, c, in, notes, project)
-	if project && t.saved != nil && err == nil && res != nil && !res.IsError && (in.Action == "add" || in.Action == "remove") {
-		t.saved()
+	if saved != nil && err == nil && res != nil && !res.IsError && res.Meta[MetaChange] != nil {
+		saved()
 	}
 	return res, err
 }
