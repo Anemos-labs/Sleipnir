@@ -674,6 +674,41 @@ flags:
 ```
 <!-- /flags -->
 
+### `sleipnir scan`
+
+`sleipnir scan [SCAN]` lists the project's deep scans with their depth, phase and numbers, or shows where one scan
+stands: what is mapped and hunted, the leads and their verdicts, and what it needs next. `--report` rewrites the scan's
+report (`REPORT.md`, `findings.json`, `findings.sarif`, `map.json`) from its ledger. Scans are started in the chat or the
+web page with `/scan` (`docs/SCAN.md`).
+
+<!-- flags: scan -->
+```text
+usage: sleipnir scan [SCAN] [flags]
+
+The deep scans of a project (docs/SCAN.md). A scan is started in the chat or the web page:
+/scan [survey|standard|deep] [DIR] has a team map the repository at HEAD, hunt it for holes, and report
+only what verifiers confirmed and, from the depth's bar up, a reproducer showed in the sandbox
+(start the session with --sandbox docker). Each scan keeps its ledger and its report under
+.sleipnir/scan/SCAN.
+
+Without SCAN it lists the scans, newest first; with SCAN it shows where the scan stands. --start creates a
+scan of HEAD (of DIR, the positional, when given) and prints the goal that drives it, for a headless team:
+  sleipnir swarm 12 --sandbox docker "$(sleipnir scan --start)"
+
+flags:
+  -cwd string
+        the project (default: the current directory)
+  -depth string
+        with --start: survey, standard or deep (default "standard")
+  -json
+        machine-readable output
+  -report
+        rewrite SCAN's report (REPORT.md, findings.json, findings.sarif, map.json) from its ledger and print where it is
+  -start
+        create a scan of the repository at HEAD (below the positional DIR, when given) and print the goal that drives it
+```
+<!-- /flags -->
+
 ### `sleipnir inspect`
 
 `sleipnir inspect DIR` serves the dashboard and prints its URL on stdout (with `--token`, the URL carries the token, which

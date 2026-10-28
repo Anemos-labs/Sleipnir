@@ -924,6 +924,16 @@ func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string
 			return failed(err, msg)
 		}
 		return res, nil
+	case "/scan":
+		goalText, msg := s.ScanCommand(ctx, arg)
+		res.Output = msg
+		if goalText == "" {
+			return res, nil
+		}
+		if _, err := t.goalAction(ctx, s, wire.GoalRequest{Action: "set", Text: goalText}, false); err != nil {
+			return failed(err, msg)
+		}
+		return res, nil
 	case "/new", "/clear":
 		if err := t.Restart(ctx, wire.RestartRequest{Kind: "new", Fresh: true}); err != nil {
 			return failed(err, "")

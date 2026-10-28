@@ -28,6 +28,7 @@ const (
 	Recon           = "recon"
 	UpdateCheck     = "update-check"
 	Research        = "research"
+	Scan            = "scan"
 	RolePrefix      = "role:"
 	ViewPrefix      = "view:"
 )
@@ -108,6 +109,9 @@ func Builtin() []Manifest {
 		{ID: Research, Title: "Deep research", Description: "/research: a team researches a question on the web, every quote checked on its page, and publishes a wiki; /goal --research researches before building",
 			Category: CatTeam, Requires: []string{Web, Goal},
 			Contributes: []Contribution{{KindTool, "research"}, {KindSlash, "research"}, {KindCLI, "research"}, {KindView, "research"}, {KindNav, "research"}, {KindPrompt, "research context"}}},
+		{ID: Scan, Title: "Deep scan", Description: "/scan: a team maps a whole repository at a pinned commit, hunts it for holes, and reports only what verifiers confirmed and the sandbox reproduced",
+			Category: CatTeam, Off: true, Requires: []string{Goal},
+			Contributes: []Contribution{{KindTool, "scan"}, {KindSlash, "scan"}, {KindCLI, "scan"}}},
 		{ID: UpdateCheck, Title: "Update check", Description: "say in the chat when a newer release is out", Category: CatTeam},
 	}
 	for _, r := range WorkerRoles {

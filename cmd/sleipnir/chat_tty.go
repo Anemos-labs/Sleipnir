@@ -424,6 +424,15 @@ func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandRes
 			return app.CommandResult{}, true
 		}
 		return app.CommandResult{Send: goalCommandTo(h.s, &h.goal, goalText, out)}, true
+	case "/scan":
+		goalText, msg := h.s.ScanCommand(context.Background(), strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "/scan")))
+		if msg != "" {
+			fmt.Fprintln(out, msg)
+		}
+		if goalText == "" {
+			return app.CommandResult{}, true
+		}
+		return app.CommandResult{Send: goalCommandTo(h.s, &h.goal, goalText, out)}, true
 	case "/verbose":
 		if v, ok := onOff("/verbose"); ok {
 			fmt.Fprintf(out, "verbose: %s (notices and tool errors %s)\n", v, map[string]string{"on": "are shown", "off": "show only warnings"}[v])
@@ -594,6 +603,7 @@ var chatCommands = []chatCommand{
 	{"delivery", "[fix|merge|both|off|resume]", "GitHub automation for one objective"},
 	{"goal", "[text|pause|resume|clear]", "keep working until a goal is met, judged on evidence (--research=DEPTH researches first)"},
 	{"research", "[quick|standard|deep] QUESTION", "a team researches the question on the web and publishes a wiki; alone, the runs; status|build|open|export RUN"},
+	{"scan", "[survey|standard|deep] [DIR]", "a team maps the repository at HEAD, hunts it for holes and reports what it proved; alone, the scans; status|report SCAN"},
 	{"plugins", "[enable|disable|reset ID]", "the plugins of this session: list them, or switch one on or off (it applies when the team starts again)"},
 	{"status", "", "model, mode, session, budget and cost at a glance"},
 	{"permissions", "", "the mode and the rules in force, among them what you allowed this session"},

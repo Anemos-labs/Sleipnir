@@ -432,6 +432,68 @@ type ResearchRequest struct {
 	Dir      string `json:"dir,omitempty"`
 }
 
+// ScanRun is one deep scan of the project, for the Deep scan view.
+type ScanRun struct {
+	Slug      string `json:"slug"`
+	Commit    string `json:"commit"`
+	Depth     string `json:"depth"`
+	Focus     string `json:"focus,omitempty"`
+	Phase     string `json:"phase"`
+	Created   string `json:"created"` // RFC 3339
+	Team      int    `json:"team"`    // the agents the scan asks for
+	Problems  int    `json:"problems"`
+	Files     int    `json:"files"`
+	Funcs     int    `json:"funcs"`
+	Lines     int    `json:"lines"`
+	Shards    int    `json:"shards"`
+	Mapped    int    `json:"mapped"`
+	Hunted    int    `json:"hunted"`
+	Points    int    `json:"points"`
+	Edges     int    `json:"edges"`
+	Leads     int    `json:"leads"`
+	Open      int    `json:"open"`
+	Confirmed int    `json:"confirmed"`
+	Unproven  int    `json:"unproven"`
+	Rejected  int    `json:"rejected"`
+	// BySeverity counts the confirmed findings.
+	BySeverity map[string]int `json:"bySeverity"`
+	Active     bool           `json:"active"` // the scan the session works on now
+}
+
+// ScanDepth is a depth a scan can have, with what it asks for.
+type ScanDepth struct {
+	ID         string `json:"id"`
+	Title      string `json:"title"`
+	About      string `json:"about"`
+	ShardFuncs int    `json:"shardFuncs"`
+	ShardLines int    `json:"shardLines"`
+	Verifiers  int    `json:"verifiers"`
+	Defender   bool   `json:"defender"`
+	ProveFrom  string `json:"proveFrom,omitempty"`
+}
+
+// ScanRequest starts a scan (/scan DEPTH [DIR]), drafts or opens an issue for a finding, or sets the goal that fixes one.
+type ScanRequest struct {
+	Action string `json:"action"` // start, issue-draft, issue or fix
+	Depth  string `json:"depth,omitempty"`
+	Focus  string `json:"focus,omitempty"`
+	Slug   string `json:"slug,omitempty"`
+	Lead   string `json:"lead,omitempty"`
+	// Title and Body are the issue as the person edited it (issue).
+	Title string `json:"title,omitempty"`
+	Body  string `json:"body,omitempty"`
+	// AutoFix and AutoMerge carry a fix through its pull request (fix).
+	AutoFix   bool `json:"autoFix,omitempty"`
+	AutoMerge bool `json:"autoMerge,omitempty"`
+}
+
+// ScanCloneRequest clones a repository for a scan: the clone is made with git's hooks and symbolic links off, and the scan is
+// created in it, ready for a session started there.
+type ScanCloneRequest struct {
+	URL   string `json:"url"`
+	Depth string `json:"depth,omitempty"`
+}
+
 // ModeRequest sets the permission mode (default, accept-edits, plan, bypass or yolo); bypass and yolo need an X-Confirm id.
 type ModeRequest struct {
 	Mode string `json:"mode"`
