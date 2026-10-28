@@ -269,7 +269,7 @@ func (g *goalLoop) Turn(ctx context.Context, s *session.Session, prompt string, 
 			return err
 		}
 		if cur.Paused == "" && errors.Is(err, agent.ErrBudget) {
-			cur.Paused = budgetReached
+			cur.Paused, cur.Unjudged = budgetReached, true // the turn's work is judged on resume (session.GoalResume)
 			g.set(s, cur)
 			emit(goalEvent{Kind: "state", Goal: cloneGoal(cur)})
 			return err
