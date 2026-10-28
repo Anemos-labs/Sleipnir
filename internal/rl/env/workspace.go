@@ -666,6 +666,17 @@ func (m *Workspaces) Attach(ctx context.Context, task rl.Task, dir string) (*Wor
 	if err != nil {
 		return nil, err
 	}
+	// Commands in the tree see the task's repository empty, except a directory that holds the tree: a tree inside the repository
+	// would show the rest of it, history included.
+	real := root
+	if r, err := filepath.EvalSymlinks(root); err == nil {
+		real = r
+	}
+	for _, s := range m.sourceDirs(snap) {
+		if within(s, root) || within(s, real) {
+			return nil, fmt.Errorf("attach %s: the directory lies in the task's repository %s, which its commands must not see", root, s)
+		}
+	}
 	in := root
 	if task.Repo.Subdir != "" {
 		in = filepath.Join(root, filepath.FromSlash(task.Repo.Subdir))

@@ -352,6 +352,11 @@ func TestSegMatchNegation(t *testing.T) {
 		{"[a[!b]", "b", true},
 		{"[a[!b]", "c", false},
 		{"x[!.]y", "x.y", false},
+		{"[!z-a]*.go", "a.go", false}, // the verifier reads z-a as a-z
+		{"[!z-a]*.go", "_.go", true},
+		{"[z-a]*.go", "m.go", true},
+		{"[]a]", "]", true},
+		{`[\]]`, "]", true},
 	} {
 		if got := segMatch(c.pat, c.s); got != c.want {
 			t.Errorf("segMatch(%q, %q) = %v, want %v", c.pat, c.s, got, c.want)
