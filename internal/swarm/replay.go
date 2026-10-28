@@ -80,7 +80,7 @@ func ReplayBoard(evs []events.Event) (*Snapshot, error) {
 						if i, ok := taskAt[id]; ok {
 							t := snap.Tasks[i]
 							t.Status, t.Owner, t.Line, t.Rev = StatusTodo, m.Owners[id], m.Line, m.Version
-							t.BlockedOn = ""
+							t.BlockedOn, t.Report = "", ""
 							snap.Tasks[i] = t
 						}
 					}

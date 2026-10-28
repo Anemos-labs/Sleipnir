@@ -14,8 +14,11 @@ they do not indicate whether a change has been released.
   was cut to 120 characters ("No bl…"), and a manager recalled the
   reviewer's history for the verdict. A read-only worker's `task done`
   answer no longer asks it for a final summary, which saves it a turn.
-  Prompt bytes: the board is unchanged; `task get` on such a task carries
-  the report, up to about 1000 tokens.
+  A read-only planner's text is kept the same way beside its agreement.
+  Prompt bytes: the board's line for such a task gains the 30-character
+  pointer when the report is longer than the line; `task get` on it
+  carries the report, at most 4000 characters and 40 lines. No pin or
+  tool spec changed.
 - RL pipeline hardening from a security review. `sleipnir rl serve` now
   applies `--budget-usd`, `--max-requests` and `--max-steps` to every HTTP
   rollout whose task leaves them open, and a blank `role_models` entry runs

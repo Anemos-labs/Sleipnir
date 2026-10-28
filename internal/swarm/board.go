@@ -1467,7 +1467,7 @@ func (b *Board) RestoreKeeping(prev *Snapshot, owners map[string]string, keep ma
 					break
 				}
 				t.Status, t.Owner, t.Line, t.Rev = StatusTodo, owners[t.ID], resumedLine, d.Version
-				t.BlockedOn = ""
+				t.BlockedOn, t.Report = "", ""
 				back = append(back, t.ID)
 			}
 			tasks[i] = t
