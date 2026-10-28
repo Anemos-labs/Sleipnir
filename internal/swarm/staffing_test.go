@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -814,5 +815,58 @@ func TestATestOnlyMergeWithNoWorkTreeIsDueForReview(t *testing.T) {
 	r.sw.noteAccepted(Task{ID: "T3", Role: "tester"})
 	if got := r.sw.reviewPending(); got != "T3" {
 		t.Fatalf("review pending = %q, want T3", got)
+	}
+}
+
+// A manager of a configured team that reads alone, run after run of requests, while nothing is on the board and every worker waits,
+// is told so in its live view once it has made more than emptyBoardAfter requests in the run; the count starts again with its next
+// run, and a task on the board ends it.
+func TestAManagerThatReadsAloneWhileTheTeamWaitsIsToldToDelegate(t *testing.T) {
+	const line = "nothing is on the board and all 3 workers are idle"
+	var mu sync.Mutex
+	var saw []bool // per manager request of the current run: whether its live view had the line
+	reads := emptyBoardAfter + 2
+	r := newRVRig(t, Config{MaxWorkers: 8, Team: []string{"backend", "devops", "tester"}}, func(ctx context.Context, c *rvCall) rvReply {
+		if c.Agent != "mgr" {
+			return rvReply{Text: "noted"}
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		saw = append(saw, c.Sees(line))
+		if len(saw) <= reads {
+			return rvReply{Tools: []rvToolCall{{Name: "read", Args: map[string]any{"path": "SPEC.md"}}}}
+		}
+		return rvReply{Text: "mapped"}
+	})
+	run := func() []bool {
+		mu.Lock()
+		saw = nil
+		mu.Unlock()
+		if _, err := r.sw.RunManager(context.Background(), "build the product"); err != nil {
+			t.Fatal(err)
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(saw)
+	}
+	got := run()
+	if len(got) != reads+1 {
+		t.Fatalf("the manager made %d requests, want %d", len(got), reads+1)
+	}
+	for i, has := range got {
+		if want := i >= emptyBoardAfter; has != want {
+			t.Fatalf("request %d of the run: line shown %v, want %v (all: %v)", i+1, has, want, got)
+		}
+	}
+	if again := run(); again[0] {
+		t.Fatalf("a new run starts with the line already shown: %v", again)
+	}
+	if _, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "write the API", Role: "backend"}); err != nil {
+		t.Fatal(err)
+	}
+	for i, has := range run() {
+		if has {
+			t.Fatalf("request %d shows the line with a task on the board", i+1)
+		}
 	}
 }

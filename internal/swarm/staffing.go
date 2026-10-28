@@ -565,6 +565,66 @@ func (s *Swarm) staffingLines(snap *Snapshot) []string {
 	return out
 }
 
+// emptyBoardAfter is how many requests the manager of a configured team makes in one run, with no open task on the board and no
+// worker at work, before its live view says that the team waits on it (emptyBoardLine).
+const emptyBoardAfter = 6
+
+// soloRun counts the manager's requests in its current run while the board has no open task and no worker runs. mu guards it.
+type soloRun struct {
+	mu sync.Mutex
+	n  int
+}
+
+// reset starts the count again, for a new run of the manager.
+func (c *soloRun) reset() {
+	c.mu.Lock()
+	c.n = 0
+	c.mu.Unlock()
+}
+
+// emptyBoardLine is the manager's live-view line for a run that reads and plans alone while the whole team waits: more than
+// emptyBoardAfter requests with no open task and no worker at work. A manager that maps the whole code base before its first task
+// spends the team's time on reading each worker does for its own task. The staffing lines say nothing then, since nothing is open.
+// The count starts again with each run of the manager (runManager) and whenever a task is open or a worker runs; "" while it is below the bound,
+// and for a team that does not limit roles.
+func (s *Swarm) emptyBoardLine(snap *Snapshot) string {
+	if !s.teamLimited() {
+		return ""
+	}
+	busy := openTask(snap) || s.workerRunning()
+	s.solo.mu.Lock()
+	defer s.solo.mu.Unlock()
+	if busy {
+		s.solo.n = 0
+		return ""
+	}
+	s.solo.n++
+	if s.solo.n <= emptyBoardAfter {
+		return ""
+	}
+	return fmt.Sprintf("nothing is on the board and all %d workers are idle after %d requests of yours in this run: unless this request is one you "+
+		"handle yourself, create its tasks now (task create, one area each, with dependencies) and spawn them; each worker reads the code "+
+		"its task touches, so you need only enough of it to scope the tasks", len(s.cfg.Team), s.solo.n-1)
+}
+
+// workerRunning reports whether a member other than the manager and the service agents is at work.
+func (s *Swarm) workerRunning() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, m := range s.members {
+		if m.manager || m.service {
+			continue
+		}
+		m.mu.Lock()
+		running := m.life == lifeRunning
+		m.mu.Unlock()
+		if running {
+			return true
+		}
+	}
+	return false
+}
+
 // unplannedIdle returns, by role, the idle members nothing is planned for: not kept by a pool (held), owning no open task, and of
 // a role with no ready unowned task and no queued spawn. The docs worker is left out when the harness keeps it at work (AutoDocs).
 func (s *Swarm) unplannedIdle(snap *Snapshot, idle map[string][]string, held map[string]string, ready []Task, waiting map[string][]string) map[string][]string {
