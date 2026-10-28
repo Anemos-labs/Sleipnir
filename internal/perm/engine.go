@@ -506,7 +506,7 @@ func (e *Engine) Check(ctx context.Context, r Request) Decision {
 		e.audit(Audit{Kind: "decide", Request: r, Reason: d.Reason, Decision: d, By: "policy"})
 		return d
 	}
-	if refusalsOnly(ctx) {
+	if refusalsOnly(ctx) && !v.askRule {
 		return Decision{Allow: true, Reason: "not asked (only a refusal applies): " + v.reason}
 	}
 	// A question the person refused, or that nobody answered, earlier in the session is answered with that, before the manager could
@@ -584,7 +584,8 @@ type refusalsOnlyKey struct{}
 
 // RefusalsOnly is a context under which Engine.Check never asks: a request it would put
 // to a person (or refuse only because nobody can be asked) is let through, and only a
-// refusal stands (a deny rule, a protection, the mode). It is for a step that follows
+// refusal stands (a deny rule, a protection, the mode), and so does a question an ask rule
+// of the user's puts, which is asked as usual. It is for a step that follows
 // from a request already approved, such as a redirect that stays on the site the fetch
 // was allowed to reach, which must still honour a rule that refuses where it leads.
 func RefusalsOnly(ctx context.Context) context.Context {

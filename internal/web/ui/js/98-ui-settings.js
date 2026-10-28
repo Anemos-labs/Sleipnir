@@ -202,8 +202,9 @@
   }
   /** `sleipnir chat ...` as the Run settings page shows it: what a restart would start (a flag that is on by default and is off here says --flag=false) */
   function runLine(M, defs) {
-    const d = defs || {}, flag = (k, name) => M[k] ? ' --' + name : (d[k] ? ' --' + name + '=false' : '');
-    return 'sleipnir chat --model ' + M.model + ' --mode ' + M.mode + ' --swarm ' + M.swarm + ' --isolation ' + M.isolation + (M.verify ? ' --verify "' + M.verify + '"' : '') + (M.budget ? ' --budget-usd ' + M.budget : '') + flag('commit', 'commit') + flag('mailman', 'mailman') + (M.autoDocs === false ? ' --auto-docs=false' : '') + (M.managerApproves === false ? ' --manager-approves=false' : '') + flag('noMcp', 'no-mcp') + flag('noMemory', 'no-memory') + flag('trustProject', 'trust-project');
+    // every value is quoted for the shell the line is pasted into: a model's name comes from a provider's catalogue
+    const d = defs || {}, q = a => { a = String(a == null ? '' : a); return /^[A-Za-z0-9_@%+=:,./-]+$/.test(a) ? a : "'" + a.replace(/'/g, "'\\''") + "'"; }, flag = (k, name) => M[k] ? ' --' + name : (d[k] ? ' --' + name + '=false' : '');
+    return 'sleipnir chat --model ' + q(M.model) + ' --mode ' + q(M.mode) + ' --swarm ' + q(M.swarm) + ' --isolation ' + q(M.isolation) + (M.verify ? ' --verify ' + q(M.verify) : '') + (M.budget ? ' --budget-usd ' + q(M.budget) : '') + flag('commit', 'commit') + flag('mailman', 'mailman') + (M.autoDocs === false ? ' --auto-docs=false' : '') + (M.managerApproves === false ? ' --manager-approves=false' : '') + flag('noMcp', 'no-mcp') + flag('noMemory', 'no-memory') + flag('trustProject', 'trust-project');
   }
   /** a team size the server takes: 0 (a single agent) or at least 8 (one worker of each role), at most max when there is one; a value
    *  in between goes to 8, or to 0 when dir says the person is counting down */

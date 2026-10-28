@@ -699,7 +699,7 @@ func gitBranch(dir string) (name string, ok bool) {
 		return "", false
 	}
 	if !fi.IsDir() { // worktree or submodule: .git is a file "gitdir: <path>"
-		b, err := os.ReadFile(head)
+		b, err := readGitMeta(head)
 		if err != nil || !strings.HasPrefix(string(b), "gitdir:") {
 			return "", false
 		}
@@ -709,7 +709,7 @@ func gitBranch(dir string) (name string, ok bool) {
 		}
 		head = g
 	}
-	b, err := os.ReadFile(filepath.Join(head, "HEAD"))
+	b, err := readGitMeta(filepath.Join(head, "HEAD"))
 	if err != nil {
 		return "", false
 	}

@@ -19,6 +19,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 	"github.com/anemos-labs/sleipnir/internal/tui/state"
 )
 
@@ -109,19 +110,28 @@ func cmdInit(ctx context.Context, args []string) error {
 	}
 	fmt.Fprintf(os.Stderr, "wrote %s\n", path)
 	if !*user {
-		agents := filepath.Join(root, "AGENTS.md")
-		if _, err := os.Stat(agents); os.IsNotExist(err) {
-			body := "# Project instructions\n\nSleipnir reads this file into the prompt that every agent shares, when it is run with --trust-project.\nKeep it short: the commands and conventions an agent cannot work out from the code.\n\n- Build: \n- Test: \n- Lint: \n- Conventions and things to avoid: \n\n## Capabilities\n\nOne line per system the project already has: what it does, where it lives, and the doc that explains it (path#heading).\nAgents check this list before they build something new.\n\n- \n"
-			if err := os.WriteFile(agents, []byte(body), 0o644); err == nil {
-				fmt.Fprintf(os.Stderr, "wrote %s\n", agents)
+		// The checkout may be someone else's: both files are written inside it, never through a link that leads out, and
+		// AGENTS.md only when there is nothing of that name.
+		if r, err := os.OpenRoot(root); err == nil {
+			agents := filepath.Join(root, "AGENTS.md")
+			if _, err := r.Lstat("AGENTS.md"); os.IsNotExist(err) {
+				body := "# Project instructions\n\nSleipnir reads this file into the prompt that every agent shares, when it is run with --trust-project.\nKeep it short: the commands and conventions an agent cannot work out from the code.\n\n- Build: \n- Test: \n- Lint: \n- Conventions and things to avoid: \n\n## Capabilities\n\nOne line per system the project already has: what it does, where it lives, and the doc that explains it (path#heading).\nAgents check this list before they build something new.\n\n- \n"
+				if f, err := r.OpenFile("AGENTS.md", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644); err == nil {
+					_, werr := f.WriteString(body)
+					if f.Close() == nil && werr == nil {
+						fmt.Fprintf(os.Stderr, "wrote %s\n", agents)
+					}
+				}
 			}
-		}
-		ignore := filepath.Join(root, ".gitignore")
-		if b, _ := os.ReadFile(ignore); !strings.Contains(string(b), ".sleipnir/config.local.json") {
-			if f, err := os.OpenFile(ignore, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
-				fmt.Fprintln(f, "\n# Sleipnir local settings\n.sleipnir/config.local.json")
-				f.Close()
+			if fi, err := r.Lstat(".gitignore"); err != nil || fi.Mode().IsRegular() {
+				if b, _ := r.ReadFile(".gitignore"); !strings.Contains(string(b), ".sleipnir/config.local.json") {
+					if f, err := r.OpenFile(".gitignore", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+						fmt.Fprintln(f, "\n# Sleipnir local settings\n.sleipnir/config.local.json")
+						f.Close()
+					}
+				}
 			}
+			r.Close()
 		}
 	}
 	if !*user {
@@ -269,6 +279,9 @@ func printSessions(out, errw io.Writer, dir string, n int) error {
 		if r.resumable {
 			mark = "↺"
 		}
+		// What a recording says is text an earlier run took in: one line, without terminal controls.
+		clean := func(s string) string { return strings.Join(strings.Fields(tools.SanitizeForTerminal(s)), " ") }
+		r.id, r.model, r.prompt = clean(r.id), clean(r.model), clean(r.prompt)
 		model := fmt.Sprintf("%-28s ", r.model)
 		if width > 0 && width < 110 {
 			model = "" // the widest column: a narrow terminal keeps the id, the cost and what was asked

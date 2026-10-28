@@ -69,14 +69,20 @@ sub:
 		if len(ops) > 0 && strings.HasPrefix(ops[0], "refs/heads/") && queued(ops[0], hasShort(rest, "d")) {
 			return refuse("git update-ref "+ops[0], ops[0])
 		}
+		// Through a symbolic ref, git writes the branch it points at.
+		if len(ops) > 0 && !hasLong(rest, "--no-deref") {
+			if t := symrefTarget(dir, ops[0]); t != "" && strings.HasPrefix(t, "refs/heads/") && queued(t, hasShort(rest, "d")) {
+				return refuse("git update-ref "+ops[0]+" (pointing at "+t+")", t)
+			}
+		}
 	case "symbolic-ref":
 		if len(ops) > 1 && strings.HasPrefix(ops[0], "refs/heads/") && queued(ops[0], false) {
 			return refuse("git symbolic-ref "+ops[0], ops[0])
 		}
-		// Pointing the tree's HEAD at a branch makes the next commit in the tree
-		// move that branch.
-		if len(ops) > 1 && ops[0] == "HEAD" && queued(ops[1], false) {
-			return refuse("git symbolic-ref HEAD "+ops[1], ops[1])
+		// Pointing a ref at a branch makes a write through it move that branch: the tree's HEAD with the next commit, any other
+		// with git update-ref.
+		if len(ops) > 1 && queued(ops[1], false) {
+			return refuse("git symbolic-ref "+ops[0]+" "+ops[1], ops[1])
 		}
 	case "branch":
 		switch {
@@ -214,7 +220,7 @@ func remoteURLs(dir, name string) (urls []string, ok bool) {
 	if !found {
 		return nil, false
 	}
-	b, err := os.ReadFile(filepath.Join(common, "config"))
+	b, err := readGitMeta(filepath.Join(common, "config"))
 	if err != nil {
 		return nil, false
 	}
@@ -240,6 +246,31 @@ func remoteURLs(dir, name string) (urls []string, ok bool) {
 	return urls, true
 }
 
+// symrefTarget follows ref through the symbolic refs of the repository at dir and returns the ref it ends at, or "" when ref is not
+// a symbolic ref there (HEAD is the tree's own, and judged by what it names).
+func symrefTarget(dir, ref string) string {
+	common, ok := gitCommonDir(dir)
+	if !ok || ref == "HEAD" || !strings.HasPrefix(ref, "refs/") {
+		return ""
+	}
+	cur := ""
+	for n := 0; n < 5; n++ {
+		if strings.Contains(ref, "..") {
+			return cur
+		}
+		b, err := readGitMeta(filepath.Join(common, filepath.FromSlash(ref)))
+		if err != nil {
+			return cur
+		}
+		next, sym := strings.CutPrefix(strings.TrimSpace(string(b)), "ref: ")
+		if !sym {
+			return cur
+		}
+		ref, cur = next, next
+	}
+	return cur
+}
+
 // gitCommonDir finds the git directory that holds the shared configuration and refs of the repository at dir, or of the linked
 // worktree at dir (its .git file names its own directory, whose commondir names the shared one).
 func gitCommonDir(dir string) (string, bool) {
@@ -251,7 +282,7 @@ func gitCommonDir(dir string) (string, bool) {
 	if fi.IsDir() {
 		return g, true
 	}
-	b, err := os.ReadFile(g)
+	b, err := readGitMeta(g)
 	if err != nil || !strings.HasPrefix(string(b), "gitdir:") {
 		return "", false
 	}
@@ -259,7 +290,7 @@ func gitCommonDir(dir string) (string, bool) {
 	if !filepath.IsAbs(own) {
 		own = filepath.Join(dir, own)
 	}
-	c, err := os.ReadFile(filepath.Join(own, "commondir"))
+	c, err := readGitMeta(filepath.Join(own, "commondir"))
 	if err != nil {
 		return own, true
 	}

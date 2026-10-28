@@ -26,33 +26,43 @@ func appendConfig(t *testing.T, dir, text string) {
 // into two, the second an exec; Rebase replays with the subject alone.
 func TestRebaseIgnoresTheRepositorysInstructionFormat(t *testing.T) {
 	skipWithoutUnix(t)
-	dir := newRepo(t)
-	marker := filepath.Join(t.TempDir(), "exec-ran")
-	rawGit(t, dir, "checkout", "-q", "-b", "side")
-	writeFile(t, filepath.Join(dir, "side.txt"), "side\n")
-	rawGit(t, dir, "add", "-A")
-	rawGit(t, dir, "commit", "-qm", "side")
-	rawGit(t, dir, "checkout", "-q", "main")
-	writeFile(t, filepath.Join(dir, "main.txt"), "main\n")
-	rawGit(t, dir, "add", "-A")
-	rawGit(t, dir, "commit", "-qm", "main")
-	appendConfig(t, dir, "[rebase]\n\tinstructionFormat = "+quoteCfg("%s%nexec touch "+marker)+"\n")
+	// The typed helper and the generic Repo.Git alike.
+	for _, generic := range []bool{false, true} {
+		dir := newRepo(t)
+		marker := filepath.Join(t.TempDir(), "exec-ran")
+		rawGit(t, dir, "checkout", "-q", "-b", "side")
+		writeFile(t, filepath.Join(dir, "side.txt"), "side\n")
+		rawGit(t, dir, "add", "-A")
+		rawGit(t, dir, "commit", "-qm", "side")
+		rawGit(t, dir, "checkout", "-q", "main")
+		writeFile(t, filepath.Join(dir, "main.txt"), "main\n")
+		rawGit(t, dir, "add", "-A")
+		rawGit(t, dir, "commit", "-qm", "main")
+		appendConfig(t, dir, "[rebase]\n\tinstructionFormat = "+quoteCfg("%s%nexec touch "+marker)+"\n")
 
-	r := openRepo(t, dir)
-	ctx := ctxT(t)
-	side, err := r.ResolveRef(ctx, "side")
-	if err != nil {
-		t.Fatal(err)
-	}
-	mb, err := r.MergeBase(ctx, "main", "side")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := r.Rebase(ctx, RebaseOptions{Onto: "main", Upstream: mb, Branch: side}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(marker); err == nil {
-		t.Fatal("the exec line of the repository's instruction format ran")
+		r := openRepo(t, dir)
+		ctx := ctxT(t)
+		side, err := r.ResolveRef(ctx, "side")
+		if err != nil {
+			t.Fatal(err)
+		}
+		mb, err := r.MergeBase(ctx, "main", "side")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if generic {
+			appendConfig(t, dir, "[user]\n\tname = t\n\temail = t@example.com\n") // the generic call brings no identity
+			rawGit(t, dir, "checkout", "-q", "side")
+			_, err = r.Git(ctx, "rebase", "-i", "--onto", "main", mb)
+		} else {
+			_, err = r.Rebase(ctx, RebaseOptions{Onto: "main", Upstream: mb, Branch: side})
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(marker); err == nil {
+			t.Fatalf("generic=%v: the exec line of the repository's instruction format ran", generic)
+		}
 	}
 }
 
@@ -81,6 +91,19 @@ func TestMergeIgnoresTheBranchsMergeOptions(t *testing.T) {
 			}
 			if msg := rawGit(t, dir, "log", "-1", "--format=%B"); strings.Contains(msg, "private-token-text") || !strings.Contains(msg, "merge side") {
 				t.Fatalf("merge message = %q", msg)
+			}
+			// The generic Repo.Git merge too, which brings no identity of its own.
+			appendConfig(t, dir, "[user]\n\tname = t\n\temail = t@example.com\n")
+			rawGit(t, dir, "checkout", "-q", "side")
+			writeFile(t, filepath.Join(dir, "side2.txt"), "side\n")
+			rawGit(t, dir, "add", "-A")
+			rawGit(t, dir, "commit", "-qm", "side2")
+			rawGit(t, dir, "checkout", "-q", branch)
+			if _, err := r.Git(ctx, "merge", "--no-ff", "-m", "merge side2", "side"); err != nil {
+				t.Fatal(err)
+			}
+			if msg := rawGit(t, dir, "log", "-1", "--format=%B"); strings.Contains(msg, "private-token-text") || !strings.Contains(msg, "merge side2") {
+				t.Fatalf("generic merge message = %q", msg)
 			}
 		})
 	}

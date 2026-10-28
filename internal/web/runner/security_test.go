@@ -156,7 +156,7 @@ func TestJudgeParsesEverySpelling(t *testing.T) {
 		}
 		return c
 	}
-	run, mock, doctor := lookup("run"), lookup("mock"), lookup("doctor")
+	run, swarm, mock, doctor := lookup("run"), lookup("swarm"), lookup("mock"), lookup("doctor")
 	for _, tc := range []struct {
 		name   string
 		c      *wire.CLICommand
@@ -169,6 +169,9 @@ func TestJudgeParsesEverySpelling(t *testing.T) {
 		{"-trust-project=1", run, []string{"-trust-project=1"}, "priv", false},
 		{"--trust-project=false", run, []string{"--trust-project=false", "--mode=default", "goal"}, "net", false},
 		{"no mode: bypass by itself", run, []string{"goal"}, "priv", false},
+		{"a swarm with no mode: bypass by itself", swarm, []string{"2", "goal"}, "priv", false},
+		{"a swarm with a mode", swarm, []string{"--mode", "default", "2", "goal"}, "net", false},
+		{"a configuration file named false", run, []string{"--mode", "default", "--mcp-config", "false", "goal"}, "priv", false},
 		{"no mode but --allow", run, []string{"--allow", "Bash(go:*)", "goal"}, "priv", false},
 		{"-allow after a word", run, []string{"goal", "-allow", "Bash(go:*)"}, "priv", false},
 		{"after --", run, []string{"--mode", "plan", "--", "--mode=yolo"}, "net", false},

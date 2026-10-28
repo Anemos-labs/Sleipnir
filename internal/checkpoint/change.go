@@ -121,6 +121,9 @@ func ProposeFrom(tool string, input []byte, current func(path string) Current) (
 			switch n := strings.Count(text, *e.Old); {
 			case *e.Old == "" || n == 0 || (n > 1 && !e.ReplaceAll):
 				applied = false
+			case len(text)+grown(n, e.ReplaceAll, len(*e.New)-len(*e.Old)) > maxDiffBytes:
+				// A chain of replacements can multiply the text: past what a preview diffs, each is shown on its own.
+				applied = false
 			case e.ReplaceAll:
 				text = strings.ReplaceAll(text, *e.Old, *e.New)
 			default:
@@ -302,4 +305,12 @@ func RewindNote(rep RestoreReport, how string) string {
 	}
 	return "Notice from the harness: the person rewound the project's files to checkpoint " + rep.ID + " (" + cleanText(how, 60) + "). These were put back as they were before the edits you made after it, so they no longer hold those edits: " +
 		strings.Join(files, ", ") + ". Read them again before you rely on what you remember of them."
+}
+
+// grown is how much a replacement changes a text's length: by delta for each of the n matches it replaces (all, or the first).
+func grown(n int, all bool, delta int) int {
+	if !all {
+		n = 1
+	}
+	return n * delta
 }

@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/anemos-labs/sleipnir/internal/chatgptauth"
 	"github.com/anemos-labs/sleipnir/internal/config"
@@ -206,7 +207,12 @@ func mergeMaps[V any](base, over map[string]V) map[string]V {
 func ResolveModel(cfg *config.Config, ref string) (ModelRef, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" && cfg != nil {
-		ref = cfg.Models.Default
+		ref = strings.TrimSpace(cfg.Models.Default)
+	}
+	// A model id is printed in banners and reports: one a project's file chose must not carry terminal controls or
+	// invisible characters, and no model's id holds any.
+	if strings.IndexFunc(ref, func(r rune) bool { return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) }) >= 0 {
+		return ModelRef{}, fmt.Errorf("the model %q holds a control or invisible character", ref)
 	}
 	if ref == "" {
 		return ModelRef{}, fmt.Errorf("%w. Recommended start: run `sleipnir login` (Heimdallm is the recommended provider), then `sleipnir`, which asks the provider which models it has.\nOr pass --model provider/model, set SLEIPNIR_MODEL, or write a model into your config with `sleipnir init --user --model provider/model`", ErrNoModel)

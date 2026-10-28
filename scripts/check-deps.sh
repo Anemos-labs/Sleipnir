@@ -39,6 +39,8 @@ command -v go >/dev/null 2>&1 || die "the go command is needed"
 [ -f "$dir/go.mod" ] || die "$dir/go.mod does not exist"
 allow=$(cd "$(dirname "$allow")" && pwd)/$(basename "$allow")
 cd "$dir"
+# The module is checked by itself: a go.work would make further local modules "main" ones, which the checks below skip.
+export GOWORK=off
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT INT TERM

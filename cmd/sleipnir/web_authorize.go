@@ -247,6 +247,7 @@ func (t *webTab) recheckTrust(f chatFlags, base baseline, dir string, p *privile
 		if err != nil {
 			return nil
 		}
+		p.Trust = cur.Digest // the confirmation covers the files as this scan read them, which are the ones recorded
 		return cur
 	case !base.trusted || dir != cleanDir(base.cwd):
 		return nil // nothing to trust here, or files the trust ledger holds as the person trusted them

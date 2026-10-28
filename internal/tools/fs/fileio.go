@@ -73,7 +73,7 @@ func (k *call) readFile(path, disp string, max int64) ([]byte, iofs.FileInfo, *t
 	if fi.Size() > max {
 		return nil, nil, k.fail("%s is %s, larger than the %s limit for this tool; use grep or the shell for a file this size", disp, humanBytes(fi.Size()), humanBytes(max))
 	}
-	f, ofi, err := openRegular(path)
+	f, ofi, err := openRegularFlags(path, noFollow) // resolved and authorized: a link here now was swapped in since
 	if err != nil {
 		if errors.Is(err, errNotRegular) { // replaced by something else since the Stat above
 			return nil, nil, k.fail("%s is not a regular file (%s)", disp, fileKind(ofi.Mode()))
@@ -100,8 +100,11 @@ var errNotRegular = errors.New("not a regular file")
 // on a FIFO with no writer waits until one shows up, for ever, with nothing able
 // to cancel it. Opening with noWait fails at once instead, and a file that is
 // not regular is closed unread (the FileInfo says what it was).
-func openRegular(path string) (*os.File, iofs.FileInfo, error) {
-	f, err := os.OpenFile(path, os.O_RDONLY|noWait, 0)
+func openRegular(path string) (*os.File, iofs.FileInfo, error) { return openRegularFlags(path, 0) }
+
+// openRegularFlags is openRegular with further open flags (noFollow).
+func openRegularFlags(path string, flags int) (*os.File, iofs.FileInfo, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|noWait|flags, 0)
 	if err != nil {
 		return nil, nil, err
 	}

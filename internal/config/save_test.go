@@ -327,3 +327,31 @@ func TestConcurrentSavesNeverProduceATornFile(t *testing.T) {
 		t.Fatalf("leftover temp files: %v", entries)
 	}
 }
+
+// A project's file is written within the project: a directory of the project that is a link out of it takes no write, and a
+// file inside is saved as Save saves it.
+func TestSaveWithinStaysInTheProject(t *testing.T) {
+	root, outside := t.TempDir(), t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, ".sleipnir")); err != nil {
+		t.Skip("no symlinks:", err)
+	}
+	path := ProjectConfigPath(root)
+	if err := SaveWithin(root, path, map[string]any{"models": map[string]any{"default": "a/b"}}); err == nil {
+		t.Error("a write through a link out of the project succeeded")
+	}
+	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+		t.Errorf("the write landed outside the project: %v", entries)
+	}
+	if err := os.Remove(filepath.Join(root, ".sleipnir")); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveWithin(root, path, map[string]any{"models": map[string]any{"default": "a/b"}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, path); !strings.Contains(got, `"a/b"`) {
+		t.Errorf("saved %s", got)
+	}
+	if err := SaveWithin(root, filepath.Join(outside, "config.json"), map[string]any{}); err == nil {
+		t.Error("a path outside the project was accepted")
+	}
+}

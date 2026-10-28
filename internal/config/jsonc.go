@@ -118,13 +118,32 @@ func lineCol(src []byte, off int) (line, col int) {
 	if i == 0 && bytes.HasPrefix(src, []byte{0xEF, 0xBB, 0xBF}) && off >= 3 {
 		start = 3 // the byte order mark is not a visible column
 	}
-	return i + 1, utf8.RuneCount(src[start:off]) + 1
+	return i + 1, columnOf(src, start, off)
 }
 
 var lineCache struct {
 	sync.Mutex
 	src    []byte
 	starts []int
+	// The last column counted: a later offset on the same line is counted on from it, so many diagnostics on one long line
+	// do not each count the line from its start.
+	colSrc           []byte
+	colStart, colOff int
+	col              int
+}
+
+// columnOf is the 1-based character column of off on the line that starts at start.
+func columnOf(src []byte, start, off int) int {
+	lineCache.Lock()
+	defer lineCache.Unlock()
+	c := &lineCache
+	from, col := start, 1
+	if len(src) > 0 && len(c.colSrc) == len(src) && &c.colSrc[0] == &src[0] && c.colStart == start && c.colOff <= off {
+		from, col = c.colOff, c.col
+	}
+	col += utf8.RuneCount(src[from:off])
+	c.colSrc, c.colStart, c.colOff, c.col = src, start, off, col
+	return col
 }
 
 // lineStarts returns the offsets at which src's lines start (the first is 0).

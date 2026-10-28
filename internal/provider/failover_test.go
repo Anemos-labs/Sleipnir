@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 type scripted struct {
@@ -83,5 +85,21 @@ func TestFailoverMovesToTheSecondaryAfterASustainedOutage(t *testing.T) {
 	}
 	if len(moves) != 2 || !moves[0] || moves[1] {
 		t.Fatalf("switches = %v, want [true false]", moves)
+	}
+}
+
+// An answer from the secondary is charged at the secondary's price when it carries no exact charge of its own.
+func TestFailoverPricesTheSecondary(t *testing.T) {
+	now := time.Unix(1000, 0)
+	prim := &scripted{name: "prim", errs: []error{&Error{Kind: ErrServer, Status: 503}, &Error{Kind: ErrServer, Status: 503}}}
+	f := &Failover{Primary: prim, Secondary: &scripted{name: "sec"}, After: time.Minute, Retry: time.Hour, Now: func() time.Time { return now },
+		SecondaryPrice: func(core.Usage) float64 { return 0.25 }}
+	if _, err := f.Do(context.Background(), &Request{}, nil); err == nil {
+		t.Fatal("an outage just begun went to the secondary")
+	}
+	now = now.Add(2 * time.Minute)
+	resp, err := f.Do(context.Background(), &Request{}, nil)
+	if err != nil || resp.Model != "sec" || resp.CostUSD == nil || *resp.CostUSD != 0.25 {
+		t.Fatalf("secondary answer %+v, %v", resp, err)
 	}
 }

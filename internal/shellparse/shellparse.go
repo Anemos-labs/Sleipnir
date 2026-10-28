@@ -189,8 +189,10 @@ type state struct {
 	arith int // the arithmetic expansions read, across nested parses
 	// arithOn counts those given to a command (Simple.Arith)
 	arithOn int
-	// braceWords and braceBytes are what brace expansion produced so far.
+	// braceWords and braceBytes are what brace expansion produced so far; braceSpent
+	// is set once an expansion went past a bound, and no word is expanded after it.
 	braceWords, braceBytes int
+	braceSpent             bool
 }
 
 // problem records only the first parse problem and marks the analysis incomplete.

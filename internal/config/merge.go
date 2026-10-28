@@ -47,13 +47,15 @@ func (l *layer) positionAt(is *Issue, preferKey bool) {
 type merger struct {
 	tree    map[string]any
 	origins map[string]string // path (segments joined by \x00) -> source
+	// under counts the origin records strictly below each path, so forget leaves a path nothing was recorded under at once.
+	under   map[string]int
 	sources map[string]string // top-level key -> source
 	kind    string            // kind of the layer being merged
 }
 
 // newMerger initializes independent maps for merged values, origins, and source texts.
 func newMerger() *merger {
-	return &merger{tree: map[string]any{}, origins: map[string]string{}, sources: map[string]string{}}
+	return &merger{tree: map[string]any{}, origins: map[string]string{}, under: map[string]int{}, sources: map[string]string{}}
 }
 
 // okey joins field-path segments with NUL separators for internal origin-map keys. A segment is a key of the file, which may
@@ -217,15 +219,34 @@ func (m *merger) record(p []string, v any, source string) {
 		}
 		return
 	}
-	m.origins[okey(p)] = source
+	key := okey(p)
+	if _, ok := m.origins[key]; !ok {
+		m.count(p, 1)
+	}
+	m.origins[key] = source
+}
+
+// count adds n to the records under each path above p.
+func (m *merger) count(p []string, n int) {
+	for i := 0; i < len(p); i++ {
+		m.under[okey(p[:i])] += n
+	}
 }
 
 // forget drops origin records at and below p.
 func (m *merger) forget(p []string) {
 	key := okey(p)
+	if _, ok := m.origins[key]; ok {
+		delete(m.origins, key)
+		m.count(p, -1)
+	}
+	if m.under[key] == 0 {
+		return
+	}
 	for k := range m.origins {
-		if k == key || strings.HasPrefix(k, key+"\x00") {
+		if strings.HasPrefix(k, key+"\x00") {
 			delete(m.origins, k)
+			m.count(unkey(k), -1)
 		}
 	}
 }

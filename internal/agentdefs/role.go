@@ -97,8 +97,10 @@ func allReadOnly(tools []string) bool {
 // under both the session and the profile and keeps the more severe answer.
 //
 //   - A read-only role (or permissionMode: plan) gets plan mode, and its tool
-//     list carves no exceptions out of it. permissionMode default or
-//     accept-edits is that mode, which a stricter session mode still overrides.
+//     list carves no exceptions out of it. permissionMode accept-edits is that
+//     mode, which a stricter session mode still overrides. permissionMode
+//     default inherits the session's mode, as an omitted one does (Claude
+//     Code's reading: the parent's mode wins), so the loader stores it as "".
 //   - An explicit tool allowlist denies the classes it leaves out: shell
 //     commands, file writes, web access and MCP tools.
 //   - An entry that narrows a tool, either with a pattern ("Bash(git diff:*)",
@@ -143,8 +145,18 @@ func (d Def) Profile() perm.RoleProfile {
 			if readOnly {
 				// A role declared read-only gets no exceptions from its tool list: an entry such as Bash(git:*) narrows
 				// what it may call, and must not lift plan mode for a command that writes. It verifies as the built-in
-				// read-only roles do.
-				p.Allow = append(p.Allow, perm.ReadOnlyAllow...)
+				// read-only roles do, within what its list names: a read-only exception (Bash(go test:*), WebFetch) only
+				// where an entry covers it, and the list's own web entries, which read and write nothing.
+				for _, r := range perm.ReadOnlyAllow {
+					if coveredBy(r, d.Tools) {
+						p.Allow = append(p.Allow, r)
+					}
+				}
+				for _, t := range carve {
+					if classOf(t) == classWeb {
+						p.Allow = append(p.Allow, t)
+					}
+				}
 			} else {
 				p.Allow = append(p.Allow, carve...)
 			}
@@ -281,4 +293,32 @@ func truncate(s string, n int) string {
 		return s[:n]
 	}
 	return s
+}
+
+// coveredBy reports whether one of entries allows at least what rule allows: the same tool, as a whole tool or with a
+// pattern whose words rule's pattern starts with ("Bash(go:*)" covers "Bash(go test:*)", "Bash(g:*)" does not).
+func coveredBy(rule string, entries []string) bool {
+	name, pat := normTool(toolName(rule)), ruleArg(rule)
+	for _, e := range entries {
+		if normTool(toolName(e)) != name && !(classOf(e) == classShell && classOf(rule) == classShell) {
+			continue
+		}
+		if !strings.Contains(e, "(") {
+			return true
+		}
+		prefix := strings.TrimSuffix(strings.TrimSuffix(ruleArg(e), "*"), ":")
+		if pat != "" && (pat == prefix || strings.HasPrefix(pat, prefix+" ") || strings.HasPrefix(pat, prefix+":")) {
+			return true
+		}
+	}
+	return false
+}
+
+// ruleArg is a tool rule's parenthesised pattern ("go test:*" of "Bash(go test:*)"), or "".
+func ruleArg(rule string) string {
+	_, rest, ok := strings.Cut(rule, "(")
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(rest), ")"))
 }

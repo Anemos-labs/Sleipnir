@@ -10,6 +10,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // The needs subcommands of `sleipnir plugins` (plugin.Need): the same list, Locate and Install as the web page's Plugins view.
@@ -157,10 +158,10 @@ func (p pluginCLI) setup(ctx context.Context, id, method string, yes bool, in io
 		return fmt.Errorf("plugins: %s: %s", pick.Title, pick.Reason)
 	}
 	if steps := append(envSteps(pick.Env), joinSteps(append(append([][]string{}, pick.Setup...), pick.Argv))...); len(steps) > 0 {
-		fmt.Fprintf(p.out, "This runs, as you:\n  %s\n", strings.Join(steps, "\n  "))
+		fmt.Fprintf(p.out, "This runs, as you:\n  %s\n", tools.SanitizeForTerminal(strings.Join(steps, "\n  ")))
 	}
 	if pick.Connect != "" {
-		fmt.Fprintf(p.out, "It %s.\n", pick.Connect)
+		fmt.Fprintf(p.out, "It %s.\n", tools.SanitizeForTerminal(pick.Connect))
 	}
 	if !yes {
 		fmt.Fprint(p.out, "go ahead? [y/N] ")

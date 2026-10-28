@@ -363,3 +363,13 @@ func TestPluginFilesExpandTheDirectoryAndSettings(t *testing.T) {
 		t.Errorf("expanded = %s", got)
 	}
 }
+
+// An untrusted project may turn off a built-in plugin, but not the hooks plugin or an external one, whose hooks may be the
+// user's guards.
+func TestProjectMayNotTurnOffGuards(t *testing.T) {
+	for id, keep := range map[string]bool{Hooks: true, "acme-guard": true, Mailman: false, RolePrefix + "docs": false} {
+		if got := config.KeepEnabledAgainstProject(id); got != keep {
+			t.Errorf("%s: kept=%v, want %v", id, got, keep)
+		}
+	}
+}

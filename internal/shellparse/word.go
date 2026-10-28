@@ -115,12 +115,13 @@ loop:
 		tok.arith = append([]string(nil), l.exprs[mark:]...)
 		l.exprs = l.exprs[:mark]
 	}
-	if noBrace || !hasBraceCandidate(&w) {
+	if noBrace || l.st.braceSpent || !hasBraceCandidate(&w) {
 		return []token{tok}
 	}
 	vals, over := braceExpand(w.v, w.m)
 	if over {
 		l.st.problem("brace expansion too large")
+		l.st.braceSpent = true
 	}
 	l.st.braceWords += len(vals)
 	for _, v := range vals {
@@ -128,6 +129,7 @@ loop:
 	}
 	if l.st.braceWords > maxBraceTotal || l.st.braceBytes > maxBraceBytes {
 		l.st.problem("brace expansion too large")
+		l.st.braceSpent = true
 		return []token{tok}
 	}
 	if assign {

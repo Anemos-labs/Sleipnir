@@ -1487,3 +1487,13 @@ func TestCwdTrapDestinationCannotBeRedirected(t *testing.T) {
 		t.Fatalf("victim = %q, want it untouched", b)
 	}
 }
+
+// A plain-words command for PowerShell or cmd.exe is read as POSIX only when its name means there what it means here:
+// "type secrets.txt" prints the file there.
+func TestSamePosixMeaning(t *testing.T) {
+	for cmd, want := range map[string]bool{"go test ./...": true, "git status": true, "type secrets.txt": false, "TYPE x": false, "del a.txt": false, "": true} {
+		if got := samePosixMeaning(cmd); got != want {
+			t.Errorf("samePosixMeaning(%q) = %v, want %v", cmd, got, want)
+		}
+	}
+}

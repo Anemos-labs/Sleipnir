@@ -377,7 +377,20 @@ func (r *Repo) Git(ctx context.Context, args ...string) (*Result, error) {
 	if err := checkGitArgs(args); err != nil {
 		return nil, err
 	}
-	out, err := r.run(ctx, call{args: args, mutating: true})
+	// The typed helpers' protections hold here too: a merge without the current branch's mergeOptions, a rebase with
+	// the safe instruction format.
+	c := call{args: args, mutating: true}
+	switch args[0] {
+	case "merge":
+		ov, err := r.noBranchMergeOptions(ctx)
+		if err != nil {
+			return nil, err
+		}
+		c.overrides = ov
+	case "rebase":
+		c.config = []string{rebaseFormat}
+	}
+	out, err := r.run(ctx, c)
 	res := &Result{}
 	if out != nil {
 		res = &Result{Stdout: out.text(), Stderr: out.stderr, ExitCode: out.exit, Truncated: out.truncated}

@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -114,7 +115,48 @@ func HostChecked(u *url.URL) (string, bool) {
 		return h, true
 	}
 	a, ok := ASCIIName(h)
+	if ip := inetAton(a); ip != nil {
+		// "127.1", "2130706433", "0x7f.0.0.1": a system resolver reads these as the address, so rules see it spelled as one.
+		return ip.String(), true
+	}
 	return a, ok && dnsName(a)
+}
+
+// inetAton parses the numeric IPv4 forms inet_aton accepts besides the dotted quad: one to four parts, each decimal, octal
+// (a leading 0) or hexadecimal (0x), the last filling the bytes the others leave. It is nil for anything else.
+func inetAton(h string) net.IP {
+	parts := strings.Split(h, ".")
+	if len(parts) > 4 {
+		return nil
+	}
+	vals := make([]uint64, len(parts))
+	for i, p := range parts {
+		base, digits := 10, p
+		switch {
+		case len(p) > 2 && (p[:2] == "0x" || p[:2] == "0X"):
+			base, digits = 16, p[2:]
+		case len(p) > 1 && p[0] == '0':
+			base, digits = 8, p[1:]
+		}
+		v, err := strconv.ParseUint(digits, base, 32)
+		if digits == "" || err != nil {
+			return nil
+		}
+		vals[i] = v
+	}
+	var n uint64
+	for i, v := range vals[:len(vals)-1] {
+		if v > 0xff {
+			return nil
+		}
+		n |= v << (8 * (3 - i))
+	}
+	last := vals[len(vals)-1]
+	if last >= 1<<(8*(5-len(vals))) {
+		return nil
+	}
+	n |= last
+	return net.IPv4(byte(n>>24), byte(n>>16), byte(n>>8), byte(n)).To4()
 }
 
 // Bounds of a DNS name (RFC 1035): the whole name and each label, in ASCII.

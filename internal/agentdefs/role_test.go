@@ -78,6 +78,11 @@ func TestProfileRules(t *testing.T) {
 		{"web and one mcp tool", Def{Tools: []string{"Read", "WebFetch", "mcp__x__y"}}, perm.ModePlan, "mcp__x__y", "Bash,Edit"},
 		{"sleipnir names", Def{Tools: []string{"read", "web_fetch", "apply_patch", "bash"}}, "", "", "mcp__*"},
 		{"plan mode", Def{PermissionMode: "plan"}, perm.ModePlan, "", ""},
+		// A read-only role that narrows a tool keeps only the read-only exceptions its list covers: git alone does not
+		// bring the test runners or the web, go does bring go's.
+		{"read only with git", Def{Tools: []string{"Read", "Bash(git log:*)"}, ReadOnly: true}, perm.ModePlan, "", "Edit,WebFetch,WebSearch,mcp__*"},
+		{"read only with go", Def{Tools: []string{"Read", "Bash(go:*)", "WebFetch(domain:go.dev)"}, ReadOnly: true}, perm.ModePlan, "Bash(go test:*),Bash(go vet:*),WebFetch(domain:go.dev)", "Edit,mcp__*"},
+		{"read only with the web", Def{Tools: []string{"Read", "WebFetch", "Bash(git log:*)"}, ReadOnly: true}, perm.ModePlan, "WebFetch", "Edit,mcp__*"},
 		{"disallowed", Def{DisallowedTools: []string{"Write", "Bash(rm:*)"}}, "", "", "Write,Bash(rm:*)"},
 	}
 	for _, tc := range tests {

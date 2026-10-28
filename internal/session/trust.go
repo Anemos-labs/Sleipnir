@@ -16,6 +16,8 @@ import (
 const (
 	// trustFlag: --trust-project said so for this run.
 	trustFlag = "flag"
+	// trustConfirmed: the caller confirmed exactly these files with the person (Options.TrustDigest).
+	trustConfirmed = "confirmed"
 	// trustRemembered: the person said yes before, to exactly these files (internal/trust).
 	trustRemembered = "remembered"
 	// trustAsked: the person was asked at the start and said yes for this session.
@@ -62,12 +64,20 @@ func RememberTrust(home, cwd string, fp *trust.Footprint, now time.Time) error {
 // resolveTrust decides whether the session may use what the project itself says (its instruction files, its settings, its skills):
 // the flag says so for one run; an answer that the person gave before holds for exactly the files they saw (a changed file voids it, and
 // they are told which); a chat asks when it has nothing else to go by, and a run, a swarm or a rollout, which have no one to ask, go
-// without. On "yes" it sets o.TrustProject. The notices are for the person (the sink exists, the log does not yet).
+// without. Trust confirmed for files of a digest (Options.TrustDigest) holds while they keep it. On "yes" it sets o.TrustProject. The notices are for the person (the sink exists, the log does not yet).
 func resolveTrust(ctx context.Context, o *Options) (*trustInfo, error) {
-	if o.TrustProject {
+	if o.TrustProject && o.TrustDigest == "" {
 		return &trustInfo{How: trustFlag}, nil
 	}
 	fp, err := trust.Scan(o.Root, o.Cwd, o.Home)
+	if o.TrustProject {
+		if err == nil && fp.Digest == o.TrustDigest {
+			return &trustInfo{How: trustConfirmed, Digest: fp.Digest, Files: len(fp.Files)}, nil
+		}
+		// the files changed after the person confirmed them: what they hold now is decided as for any other start
+		o.TrustProject = false
+		sayTrust(o, "warn", "this project's files changed after you confirmed them, so that answer does not cover them")
+	}
 	if err != nil || fp.Empty() {
 		return nil, nil // nothing that trust would unlock, or nowhere to look: the same as before
 	}

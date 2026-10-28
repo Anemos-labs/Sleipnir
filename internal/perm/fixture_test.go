@@ -235,3 +235,40 @@ func checkClassifyEqualsCheck(t *testing.T, f fixture, c tc, roles map[string]Ro
 		t.Errorf("without a prompter: Classify = %s, Check = %v (%q)", pl.Verdict, plainDecision.Allow, plainDecision.Reason)
 	}
 }
+
+// Under RefusalsOnly a routine question is let through, but one an ask rule of the user's puts is still asked.
+func TestRefusalsOnlyKeepsAskRules(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeDefault, Ask: []string{"WebFetch(domain:example.com)"}})
+	ctx := RefusalsOnly(bg)
+	if d := e.Check(ctx, f.request(fetch("https://example.com/x"))); d.Allow {
+		t.Errorf("an ask rule was skipped: %+v", d)
+	}
+	if d := e.Check(ctx, f.request(fetch("https://example.org/x"))); !d.Allow {
+		t.Errorf("a routine question was asked: %+v", d)
+	}
+}
+
+// A read-only git command is not read-only in a repository whose configuration names a program git runs for it.
+func TestGitReadsAskWhenTheRepositoryNamesAHelper(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeDefault})
+	if d := e.Check(bg, f.request(rq{tool: "Bash", cmd: "git status", cwd: "{root}"})); !d.Allow {
+		t.Fatalf("git status in a plain repository: %+v", d)
+	}
+	for _, cfg := range []string{"[core]\n\tfsmonitor = ./hook.sh\n", "[filter \"x\"]\n\tclean = ./run\n", "[include]\n\tpath = other\n",
+		"[diff \"x\"]\n\ttextconv = ./conv\n"} {
+		if err := os.WriteFile(filepath.Join(f.root, ".git", "config"), []byte(cfg), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if d := e.Check(bg, f.request(rq{tool: "Bash", cmd: "git status", cwd: "{root}/src"})); d.Allow {
+			t.Errorf("%q: git status was allowed: %+v", cfg, d)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(f.root, ".git", "config"), []byte("[core]\n\tfsmonitor = false\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if d := e.Check(bg, f.request(rq{tool: "Bash", cmd: "git status", cwd: "{root}"})); !d.Allow {
+		t.Errorf("fsmonitor = false: %+v", d)
+	}
+}

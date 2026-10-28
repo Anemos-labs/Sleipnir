@@ -59,7 +59,8 @@ test('how a provider\'s key is told, and what button its row gets', () => {
 test('the Run settings: the command line says what a restart would start, the stepper is clamped to 0 or 8 and up, and to the ceiling', () => {
   const { SL } = setup(), S = SL.toolkit.settings, M = session().meta;
   M.swarm = 8; M.verify = 'go test {dirs}'; M.budget = 5; M.commit = true; M.trustProject = false;
-  assert.equal(S.runLine(M, {}), 'sleipnir chat --model a/m --mode default --swarm 8 --isolation worktree --verify "go test {dirs}" --budget-usd 5 --commit');
+  assert.equal(S.runLine(M, {}), "sleipnir chat --model a/m --mode default --swarm 8 --isolation worktree --verify 'go test {dirs}' --budget-usd 5 --commit");
+  assert.ok(S.runLine(Object.assign({}, M, { model: 'x/$(touch pwned)', verify: "go test $(id) 'a'" }), {}).startsWith("sleipnir chat --model 'x/$(touch pwned)' --mode default --swarm 8 --isolation worktree --verify 'go test $(id) '\\''a'\\'''"), 'every value is quoted for the shell');
   assert.ok(S.runLine(Object.assign({}, M, { commit: false, mailman: false }), { mailman: true, commit: false }).endsWith('--mailman=false'), 'off against a default of on');
   assert.deepEqual([S.clampWorkers('99', 10), S.clampWorkers('-3', 10), S.clampWorkers('x', 10), S.clampWorkers('9', 10), S.clampWorkers('99', 0)], [10, 0, 0, 9, 99]);
   assert.deepEqual([S.clampWorkers('1', 0, 1), S.clampWorkers('7', 0, -1), S.clampWorkers('5', 0)], [8, 0, 8], 'a team has at least 8 workers: counting up from 0 gives 8, down from 8 gives 0');

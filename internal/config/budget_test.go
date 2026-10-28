@@ -51,3 +51,35 @@ func TestSwarmBudgetDefaultsToACapAThatOnlyTheUserCanChange(t *testing.T) {
 		t.Errorf("the environment sets the budget: %v %v", cfg.Swarm.BudgetUSD, err)
 	}
 }
+
+// An untrusted project cannot take a protected setting away by replacing the section that holds it: swarm: null would
+// otherwise bring back the default budget over the user's own, and plugins.enabled: null the user's plugin choices.
+func TestUntrustedProjectCannotReplaceAProtectedSection(t *testing.T) {
+	p := newProj(t)
+	p.user(`{"swarm": {"budget_usd": 5}, "plugins": {"enabled": {"hooks": true}}}`)
+	p.project(`{"swarm": null, "plugins": {"enabled": null}}`)
+	cfg, rep, err := p.load(func(o *LoadOpts) { o.UntrustedProject = true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Swarm.BudgetUSD != 5 {
+		t.Errorf("the user's budget was replaced: %v", cfg.Swarm.BudgetUSD)
+	}
+	if v, ok := cfg.Plugins.Enabled["hooks"]; !ok || !v {
+		t.Errorf("the user's plugin choices were replaced: %v", cfg.Plugins.Enabled)
+	}
+	if len(rep.ProjectRisks) < 2 {
+		t.Errorf("the replacements are not reported: %+v", rep.ProjectRisks)
+	}
+	// The older spelling of push-progress needs trust to turn on, not to turn off.
+	p = newProj(t)
+	p.project(`{"swarm": {"push_progress": true}}`)
+	if cfg, _, _ := p.load(func(o *LoadOpts) { o.UntrustedProject = true }); cfg.Swarm.PushProgress != nil {
+		t.Errorf("an untrusted project turned push_progress on")
+	}
+	p = newProj(t)
+	p.project(`{"swarm": {"push_progress": false}}`)
+	if cfg, _, _ := p.load(func(o *LoadOpts) { o.UntrustedProject = true }); cfg.Swarm.PushProgress == nil || *cfg.Swarm.PushProgress {
+		t.Errorf("an untrusted project could not turn push_progress off")
+	}
+}

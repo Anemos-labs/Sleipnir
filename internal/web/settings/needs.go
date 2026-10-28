@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -180,6 +182,9 @@ func (s *service) needRowOf(st plugin.NeedStatus) needRow {
 		for _, a := range m.Argv {
 			mr.Argv = append(mr.Argv, provider.SanitizeText(a, 200))
 		}
+		if mr.Available && !shownWhole(m) {
+			mr.Available, mr.Reason = false, "its commands cannot be shown whole for you to confirm"
+		}
 		mr.Scope = installScope(st.Need, m)
 		row.Methods = append(row.Methods, mr)
 	}
@@ -220,8 +225,12 @@ func (s *service) startJob(id, method string) *needJob {
 // entry as the structured name, command and arguments that are saved (the words shown lose where one argument ends). Every list
 // is hashed as its JSON encoding, which keeps where each command and each argument ends whatever bytes the arguments hold: two
 // different plans never share a scope.
+//
+// It also covers what the install links once it ends: the commands whose launchers it puts on the PATH, the default locations it
+// finds them in, and the arguments that check a found file, so a manifest changed after the confirmation needs another.
 func installScope(n plugin.Need, m plugin.MethodStatus) string {
-	fields := map[string]string{"need": n.ID, "method": m.ID, "argv": jsonWords(m.Argv), "connect": m.Connect}
+	fields := map[string]string{"need": n.ID, "method": m.ID, "argv": jsonWords(m.Argv), "connect": m.Connect,
+		"commands": jsonWords(n.Commands), "paths": jsonWords(n.Paths), "version": jsonWords(n.VersionArgs)}
 	if m.Connect != "" && n.MCP != nil {
 		fields["mcp"] = jsonWords(append([]string{n.MCP.Name, n.MCP.Command}, n.MCP.Args...))
 	}
@@ -232,6 +241,37 @@ func installScope(n plugin.Need, m plugin.MethodStatus) string {
 		fields["env:"+name] = jsonWords(m.Env[name])
 	}
 	return "need.install:" + d16(fields)
+}
+
+// shownWhole reports whether every argument of m's commands reads on the page exactly as it runs: none is cut short or loses a
+// character to sanitising.
+func shownWhole(m plugin.MethodStatus) bool {
+	words := slices.Clone(m.Argv)
+	for _, step := range m.Setup {
+		words = append(words, step...)
+	}
+	for _, argv := range m.Env {
+		words = append(words, argv...)
+	}
+	for _, a := range words {
+		if provider.SanitizeText(a, 200) != a {
+			return false
+		}
+	}
+	return true
+}
+
+// shownWords is a command as the person confirms it: its arguments apart, one that is empty or holds a space or a quote quoted,
+// so the words say where each argument ends.
+func shownWords(argv []string) string {
+	out := make([]string, len(argv))
+	for i, a := range argv {
+		if a == "" || strings.ContainsAny(a, " \t\"'\\") {
+			a = strconv.Quote(a)
+		}
+		out[i] = a
+	}
+	return strings.Join(out, " ")
 }
 
 // jsonWords is the JSON encoding of a list of arguments (or of commands), unambiguous where a joined string is not.
@@ -351,16 +391,20 @@ func (s *service) handleNeedInstall(w http.ResponseWriter, r *http.Request) {
 	case !method.Available:
 		reply(w, nil, fail(http.StatusConflict, "unavailable", provider.SanitizeText(method.Reason, 200)))
 		return
+	case !shownWhole(*method):
+		// what is confirmed is what runs: a command the page would show cut short or with characters left out is not run
+		reply(w, nil, fail(http.StatusConflict, "unavailable", "its commands cannot be shown whole for you to confirm"))
+		return
 	}
 	reasons := []string{}
 	for _, name := range plugin.EnvNames(method.Env) {
-		reasons = append(reasons, "runs, as you, to set "+name+": "+strings.Join(method.Env[name], " "))
+		reasons = append(reasons, "runs, as you, to set "+name+": "+shownWords(method.Env[name]))
 	}
 	for _, step := range method.Setup {
-		reasons = append(reasons, "runs, as you: "+strings.Join(step, " "))
+		reasons = append(reasons, "runs, as you: "+shownWords(step))
 	}
 	if len(method.Argv) > 0 {
-		reasons = append(reasons, "runs, as you: "+strings.Join(method.Argv, " "))
+		reasons = append(reasons, "runs, as you: "+shownWords(method.Argv))
 	}
 	if method.Connect != "" {
 		reasons = append(reasons, method.Connect)

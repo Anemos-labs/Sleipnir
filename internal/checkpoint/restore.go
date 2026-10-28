@@ -8,6 +8,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
@@ -633,9 +634,12 @@ func (s *Store) removeCreatedDirs(tasks []*task, dry bool) []FileResult {
 		case dry:
 			res.Outcome, res.Detail = OutcomePlanned, "directory created by an edit; removed if empty"
 		default:
-			if entries, err := os.ReadDir(abs); err == nil && len(entries) > 0 {
+			// rmdir, never unlink: if something replaced the directory since Lstat, a file there stays.
+			if entries, err := os.ReadDir(abs); err != nil {
+				res.Outcome, res.Detail = OutcomeUnchanged, "left in place: cannot read it: "+reason(err)
+			} else if len(entries) > 0 {
 				res.Outcome, res.Detail = OutcomeUnchanged, "left in place: it is not empty"
-			} else if err := os.Remove(abs); err != nil {
+			} else if err := syscall.Rmdir(abs); err != nil {
 				res.Outcome, res.Detail = OutcomeFailed, "cannot remove: "+reason(err)
 			} else {
 				res.Outcome = OutcomeDone

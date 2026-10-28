@@ -243,7 +243,9 @@ func (s *Session) StartFlags() []string {
 			f = append(f, "--sandbox-network")
 		}
 	}
-	if o.TrustProject {
+	if o.TrustProject && (s.trust == nil || s.trust.How == trustFlag || s.trust.How == trustConfirmed) {
+		// trust that was asked for or remembered covers the files as they were: the next start resolves it again rather than
+		// trusting whatever they hold by then
 		f = append(f, "--trust-project")
 	}
 	if o.BudgetUSD > 0 {

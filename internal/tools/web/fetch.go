@@ -508,8 +508,8 @@ func (e *redirectRefusedError) Error() string {
 // hopCheck asks the permission engine about a redirect exactly as it would be asked
 // about a first fetch of its URL (a rule that allows it lets it through, a deny rule
 // refuses it, otherwise it is a question, refused when nobody can answer). A redirect
-// that stays on the site (cross false) is never a question: only a refusal stops it
-// (perm.RefusalsOnly).
+// that stays on the site (cross false) is a question only where an ask rule makes it
+// one: otherwise only a refusal stops it (perm.RefusalsOnly).
 func hopCheck(env *tools.Env) hopFunc {
 	return func(ctx context.Context, from, to *url.URL, cross bool) error {
 		in, err := json.Marshal(map[string]string{"url": to.String()})

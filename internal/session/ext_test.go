@@ -353,3 +353,12 @@ func TestDefinitionModelEmptyUsesSessionProvider(t *testing.T) {
 	}
 	s.Close()
 }
+
+// A model id with a terminal control or an invisible character is refused before anything prints it.
+func TestResolveModelRefusesControls(t *testing.T) {
+	for _, ref := range []string{"mock/x\x1b]52;c;aGk=\x07", "mock/a\u202eb", "mock/a\nb"} {
+		if _, err := session.ResolveModel(nil, ref); err == nil {
+			t.Errorf("%q was accepted", ref)
+		}
+	}
+}

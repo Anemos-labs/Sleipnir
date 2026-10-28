@@ -62,6 +62,15 @@ test('invisible and bidirectional characters stay visible in rendered text', () 
   assert.match(md('safe‮evil'), /⟨U\+202E⟩/);
 });
 
+test('Markdown tables: a document draws a bounded number of cells, however wide the header and however many its rows', () => {
+  const wide = '|' + 'h|'.repeat(5000) + '\n|' + '-|'.repeat(5000) + '\n' + '|\n'.repeat(5000);
+  const h = md(wide);
+  assert.ok((h.match(/<td>/g) || []).length <= 20000, 'too many cells drawn');
+  assert.equal((h.match(/<th>/g) || []).length, 60);
+  assert.match(h, /more rows not shown/);
+  assert.doesNotMatch(md('| a | b |\n|-|-|\n| 1 | 2 |\n'), /not shown/);
+});
+
 test('CSV: quoted fields, doubled quotes, CRLF; TSV by tab; a table is escaped', () => {
   assert.deepEqual(JSON.parse(JSON.stringify(M.parseCsv('a,b\r\n"x,y","q""z"\n1,2', ','))), [['a', 'b'], ['x,y', 'q"z'], ['1', '2']]);
   assert.deepEqual(JSON.parse(JSON.stringify(M.parseCsv('a\tb\n1\t2\n', '\t'))), [['a', 'b'], ['1', '2']]);

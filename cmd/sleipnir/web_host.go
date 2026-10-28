@@ -999,6 +999,12 @@ func (h *webHostImpl) gateNewSession(w http.ResponseWriter, r *http.Request, p p
 			return "", nil, false
 		}
 		fp = f
+		if f.Digest != p.Trust {
+			// the files changed since the request's privileges were read: the confirmation covers them as they are now, which
+			// are the ones remembered
+			p.Trust = f.Digest
+			scope = newSessionScope(p)
+		}
 		confirm := r.Header.Get(web.ConfirmHeader)
 		h.mu.Lock()
 		issued, known := h.trustIDs[confirm]

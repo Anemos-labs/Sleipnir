@@ -147,9 +147,13 @@ Settings that could send your API key to another host, run commands or widen wha
 | `tools.web_allow_private`, `tools.web_allow_hosts` | reaches internal networks |
 | `swarm.budget_usd` | the built-in cap on what a swarm may spend (section 6): a repository must not be able to lift it |
 | `permissions.manager_approves`, `permissions.manager_answers_after`, `.manager_answers_up_to` | let the manager answer for you (`manager_approves: false` is harmless) |
-| `plugins.enabled.<id>` | turning a plugin on; turning one off applies without trust, except `hooks`, which runs your own hooks |
+| `swarm.push_progress` | the older spelling of `plugins.enabled.push-progress`: pushes with your credentials (`false` is harmless) |
+| `plugins.enabled.<id>` | turning a plugin on; turning a built-in one off applies without trust, except `hooks`, which runs your own hooks, and turning off an installed external plugin needs trust too, since its hooks may be your guards |
 | `plugins.profile` | a profile that turns the hooks off (`minimal`); `standard`, `team` and `headless` apply without trust |
 | `plugins.settings.<id>` | a plugin's settings are written into the commands of its hooks and servers |
+
+A project file that replaces a section holding one of these keys with `null` or another value that is not an object
+(`"swarm": null`, `"plugins": {"enabled": null}`) is ignored the same way: it would take your own setting with it.
 
 Everything else in a project file applies without trust: `models`, `cache`, `swarm` (`isolation` and `mailman` reduce
 what an agent can reach or change nothing about it, and a project cannot choose where anything is written), the tool
@@ -532,7 +536,7 @@ of what steps 4 and 5 would decide; see `docs/SECURITY.md`.
 
 | Mode | Behaviour |
 |---|---|
-| `default` | Reads inside the workspace and read-only shell commands are allowed; everything else asks |
+| `default` | Reads inside the workspace and read-only shell commands are allowed; everything else asks. A read-only git command asks too in a repository whose own configuration names a program git would run (`core.fsmonitor`, a filter, a diff driver, a gpg program, or an include) |
 | `accept-edits` | Also writes inside the workspace (file tools, redirections, `mkdir`, `touch`, `cp`, `mv`, `rm`, `rmdir`, `tee` on workspace paths) and the commands that build, check and test a project, a Python virtual environment of the workspace included (`go test`, `npm test`, `cargo build`, `pytest`, `make test`, `.venv/bin/pip install`… the `--allow tests` list), and reads of public websites with `web_fetch` and `web_search` (a host on this machine, the local network or a cloud metadata service still asks; the host is judged without DNS, see SECURITY.md); `ask` and `deny` rules still win |
 | `plan` | Read-only. Writes, network access and commands that are not provably read-only are refused with a message that says to present a plan. An `allow` rule still carves an exception (say `Edit(docs/plan.md)`) |
 | `bypass` | Full control, and it never asks: what would have been a question is refused with the reason it was flagged and a request to do it a safer way. That is the very dangerous (the high-risk class: `sudo`, a recursive delete of the workspace, home or `/`, or of a path only known when the command runs such as `rm -rf "$DIR"`, a forced push to a shared branch, disk tools, shutdown, and persistence: a write to a shell startup file, a user service or login item, `~/.local/bin`, `~/.gitconfig` or a package index configuration, a cron or `at` job, `systemctl enable`, a global git setting that runs a program, a command that prints a stored credential such as `gh auth token`; see SECURITY.md) and the paths an `ask` rule names (the built-in ones guard `.sleipnir/`, `.claude/` and git hooks, whose contents steer later sessions). Hard denies, `deny` rules and guarded paths without an `allow` rule refuse as always. A file whose name is only known when the command runs is allowed, or refused when a `deny` rule may cover it; it never asks (`cat "$F"`; see SECURITY.md) |
