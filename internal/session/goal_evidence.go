@@ -77,13 +77,18 @@ func callLabel(data []byte) (id, label string) {
 }
 
 // coordinationTools are the tools whose calls and results carry what agents wrote to each other (task text and evidence lines,
-// mail, plans, notes) rather than what ran. A search lists them after tool output: in a long team run they made up 17 to 20 of the
-// first 20 matches for nearly every query, each a restatement of a claim whose proof was further down.
+// mail, plans, notes) rather than what ran. A search lists them after tool output, which holds the proof of what they claim.
 var coordinationTools = map[string]bool{"task": true, "pool": true, "mail": true, "wait": true, "spawn": true, "plan": true, "note": true, "memory": true}
 
-// coordinationTool reports whether a call label (callLabel) or tool name names a coordination tool; "task.get" is "task"'s.
+// coordinationTool reports whether a call label (callLabel) or tool name names a coordination tool. The name is read as the agent
+// dispatches it: a model's chat format or namespace left on it is cut ("task<|channel|>…", "functions.task"), and "task.get" is
+// "task"'s.
 func coordinationTool(label string) bool {
-	name, _, _ := strings.Cut(label, " ")
+	name, _, _ := strings.Cut(strings.TrimSpace(label), " ")
+	name, _, _ = strings.Cut(name, "<|")
+	for _, ns := range []string{"functions.", "function.", "tools.", "tool."} {
+		name = strings.TrimPrefix(name, ns)
+	}
 	name, _, _ = strings.Cut(name, ".")
 	return coordinationTools[name]
 }
@@ -121,6 +126,7 @@ type matches struct {
 	ring []string
 }
 
+// add records a match: n counts every match added, and ring keeps the newest keep of them (keep is positive).
 func (m *matches) add(line string, keep int) {
 	if i := m.n % keep; i == len(m.ring) {
 		m.ring = append(m.ring, line)

@@ -10,10 +10,10 @@ they do not indicate whether a change has been released.
 - The goal judge's evidence search lists tool output (commands, reads,
   edits, merges) before the records of coordination tools (task, pool,
   mail, wait, spawn, plan, note, memory), each newest first. Those
-  records restate what agents claimed, and in a team's log they filled
-  most of the first page of a search, ahead of the tool output that
-  proves the claims. The result line counts both groups, and offsets
-  count down the combined order.
+  records restate what agents claimed; the tool output holds the proof.
+  The result line counts both groups, and offsets count down the
+  combined order. A tool name is classified as the agent dispatches it,
+  so "functions.task.get" is the task tool's.
 - Resuming a goal that paused on a turn the judge did not rule on (the
   turn was interrupted, failed or ran out of budget, the chat was restarted, or the judge
   could not be asked) now judges it first. Before, resume re-sent the

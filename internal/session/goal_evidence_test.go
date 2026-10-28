@@ -213,6 +213,25 @@ func TestGoalEvidenceListsTheNewestFirst(t *testing.T) {
 	}
 }
 
+// A coordination tool is known by the name the agent dispatches, whatever namespace or chat format a model left on the name it
+// wrote; anything else is tool output.
+func TestCoordinationToolsAreKnownByTheDispatchedName(t *testing.T) {
+	for label, want := range map[string]bool{
+		"task get T7": true, "task.get T7": true, "functions.task.get T7": true, "tools.mail send": true, "task<|channel|>commentary": true,
+		"pool.agree": true, "bash go test ./...": false, "functions.bash ls": false, "read internal/cp/ws.go": false, "taskify": false, "": false,
+	} {
+		if got := coordinationTool(label); got != want {
+			t.Errorf("coordinationTool(%q) = %v, want %v", label, got, want)
+		}
+	}
+	calls := map[string]string{"p1": "functions.task.get T7"}
+	result := events.Event{Type: events.TypeTurnAppend, Data: []byte(`{"role":"user","blocks":[{"kind":"tool_result","tool_id":"p1","content":[{"kind":"text","text":"T7 done"}]}]}`)}
+	call := events.Event{Type: events.TypeToolCall, Data: []byte(`{"id":"p1","name":"functions.task.get","input":{}}`)}
+	if !relayed(result, calls) || !relayed(call, calls) {
+		t.Error("a prefixed task call or its result was taken for tool output")
+	}
+}
+
 // A search lists tool output before the records of coordination tools, which restate what agents claimed: in a long team run
 // task and mail results filled the first page for nearly every query, and the command that proved the claim was pages down.
 func TestGoalEvidenceListsToolOutputBeforeCoordination(t *testing.T) {
