@@ -50,7 +50,10 @@ func RepoContains(ctx context.Context, g *Git, task rl.Task, base, text string) 
 		if rev == "" {
 			rev = "HEAD"
 		}
-		_, err := g.Run(ctx, "", nil, "--git-dir="+gd, "grep", "-q", "-i", "-F", "-I", "-e", text, rev, "--")
+		if strings.HasPrefix(rev, "-") {
+			return false, fmt.Errorf("repo.commit %q is not a revision", rev) // git grep would read it as an option
+		}
+		_, err := g.Run(ctx, "", nil, "--git-dir="+gd, "grep", "-q", "-i", "-F", "-I", "--no-textconv", "-e", text, rev, "--")
 		var ge *GitError
 		switch {
 		case err == nil:

@@ -98,7 +98,7 @@ func (x *exporter) dpoSteps(work []*workEpisode) error {
 			r, err := x.renderStep(c, true)
 			if err != nil {
 				x.stats.drop("step:no_prompt")
-				x.stats.warn(c.st.ID + ": " + err.Error())
+				x.warn(c.st.ID + ": " + err.Error())
 				continue
 			}
 			rw, _ := rewardOf(c.we.ep, c.ag, c.st)
@@ -250,7 +250,7 @@ func (x *exporter) dpoEpisodes(work []*workEpisode) error {
 		cv, err := x.renderChain(chain, true)
 		if err != nil {
 			x.stats.drop("step:no_prompt")
-			x.stats.warn(chain[0].st.ID + ": " + err.Error())
+			x.warn(chain[0].st.ID + ": " + err.Error())
 			continue
 		}
 		p, err := x.promptFor(we, chain[0].st)

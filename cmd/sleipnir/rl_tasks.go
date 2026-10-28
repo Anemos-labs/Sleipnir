@@ -706,7 +706,7 @@ func taskgenChain(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	if err != nil {
 		return fmt.Errorf("rl taskgen chain: %w", err)
 	}
-	ws, err := rf.workspaces(stderr)
+	ws, err := rf.workspaces(stderr, blobsDir) // the hidden files and reference solutions it writes are no test's to read
 	if err != nil {
 		return fmt.Errorf("rl taskgen chain: %w", err)
 	}
@@ -1047,7 +1047,7 @@ func taskgenRebuild(ctx context.Context, args []string, stdout, stderr io.Writer
 	if sealDir == "" {
 		sealDir = filepath.Join(filepath.Dir(*out), "starts")
 	}
-	ws, err := rf.workspaces(stderr)
+	ws, err := rf.workspaces(stderr, blobsDir, sealDir) // the hidden files, the references and the sealed starts
 	if err != nil {
 		return fmt.Errorf("rl taskgen rebuild: %w", err)
 	}

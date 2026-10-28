@@ -321,3 +321,35 @@ func TestConfigModelsRolesPickTheModelOfARole(t *testing.T) {
 		t.Errorf("--role-model must beat models.roles: flag=%d other=%d", flagCalls.Load(), otherCalls.Load())
 	}
 }
+
+// A definition's model mapped to "" runs the role on the session's own provider, so the model it names is never resolved or
+// built.
+func TestDefinitionModelEmptyUsesSessionProvider(t *testing.T) {
+	repo := newRepo(t)
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	writeFile(t, filepath.Join(repo, ".sleipnir", "agents", "auditor.md"),
+		"---\nname: auditor\ndescription: reads the code\nmodel: keyless/some-model\n---\nYou audit code.\n")
+	t.Setenv("SLEIPNIR_TEST_UNSET_KEY", "")
+	withKeyless := func(o *session.Options) {
+		o.Config = config.Defaults()
+		o.Config.Providers = map[string]config.Provider{
+			"keyless": {Dialect: config.DialectAnthropic, BaseURL: "https://example.invalid", APIKeyEnv: "SLEIPNIR_TEST_UNSET_KEY"},
+		}
+	}
+	o := opts(t, repo, client, model)
+	o.Swarm, o.TrustProject = true, true
+	withKeyless(&o)
+	if s, err := session.New(context.Background(), o); err == nil {
+		s.Close()
+		t.Fatal("a provider without its key must fail without a mapping")
+	}
+	o = opts(t, repo, client, model)
+	o.Swarm, o.TrustProject = true, true
+	withKeyless(&o)
+	o.DefinitionModel = func(string) string { return "" }
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatalf("the role must run on the session's provider: %v", err)
+	}
+	s.Close()
+}

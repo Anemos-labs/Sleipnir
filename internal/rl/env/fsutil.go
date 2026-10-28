@@ -42,6 +42,10 @@ func gitLike(name string) bool {
 	return n == ".git" || n == "git~1" || strings.HasPrefix(n, ".git:")
 }
 
+// GitLikeName is gitLike for other packages that write repository paths: whether a path component could be read as git's
+// control directory by git or by the file system.
+func GitLikeName(name string) bool { return gitLike(name) }
+
 // validRelPath rejects anything that is not a plain, canonical, relative,
 // slash-separated path that stays inside its base directory and avoids git's
 // control names.

@@ -356,8 +356,15 @@ func (x *exporter) roleTeacherOK(c stepCtx) bool {
 
 // ruleMatch returns the name of the first drop rule matching the step, or "".
 func (x *exporter) ruleMatch(c stepCtx) string {
+	ep := c.we.ep
+	if task := x.taskOf(ep); task != ep.TaskID {
+		// A rule names the task as the operator knows it, not as redaction rewrote it for the output.
+		orig := *ep
+		orig.TaskID = task
+		ep = &orig
+	}
 	for _, r := range x.o.Drop {
-		if r.Match(c.we.ep, c.ag, c.st) {
+		if r.Match(ep, c.ag, c.st) {
 			return r.Name
 		}
 	}

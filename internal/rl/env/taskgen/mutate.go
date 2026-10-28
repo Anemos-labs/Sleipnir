@@ -126,10 +126,14 @@ func Mutate(ctx context.Context, repoPath string, opts MutateOptions) ([]rl.Task
 	if err != nil {
 		return nil, rep, err
 	}
-	hasTests := map[string]bool{} // language -> the repository has tests at all
+	hasTests := map[string]bool{}   // language -> the repository has tests at all
+	goTestDirs := map[string]bool{} // directories holding a Go test, found in one pass
 	for _, f := range files {
 		if l, k := Classify(f); k == Test {
 			hasTests[l] = true
+		}
+		if strings.HasSuffix(f, "_test.go") {
+			goTestDirs[path.Dir(f)] = true
 		}
 	}
 	langOK := func(l string) bool {
@@ -149,7 +153,7 @@ func Mutate(ctx context.Context, repoPath string, opts MutateOptions) ([]rl.Task
 		if len(opts.Files) > 0 && !matchAny(opts.Files, f) {
 			continue
 		}
-		if lang == Go && !dirHasSuffixFile(files, path.Dir(f), "_test.go") {
+		if lang == Go && !goTestDirs[path.Dir(f)] {
 			continue // no test can fail
 		}
 		src, err := r.show(ctx, commit, f)
@@ -381,9 +385,9 @@ func protectedTestGlobs(lang string) []string {
 	g := []string{".github/**", ".gitlab-ci.yml", ".circleci/**"}
 	switch lang {
 	case Go:
-		return append(g, "*_test.go", "testdata/**", "go.mod", "go.sum")
+		return append(g, "*_test.go", "**/testdata/**", "go.mod", "go.sum") // a package's testdata sits beside it, at any depth
 	case Python:
-		return append(g, "test_*.py", "*_test.py", "conftest.py", "tests/**", "test/**", "pytest.ini", "tox.ini", "setup.cfg", "pyproject.toml")
+		return append(g, "test_*.py", "*_test.py", "conftest.py", "**/tests/**", "**/test/**", "pytest.ini", "tox.ini", "setup.cfg", "pyproject.toml")
 	}
 	return g
 }
@@ -423,7 +427,7 @@ func tryMutation(ctx context.Context, r *repo, commit, authorDate, repoDir strin
 		case mod != "." && dir != mod:
 			rel = "./" + strings.TrimPrefix(dir, mod+"/")
 		}
-		cmd = "go test -count=1 " + rel
+		cmd = "go test -count=1 " + shword(rel)
 		setup = []string{"go mod download"}
 		if mod != "." {
 			cmd = "cd " + shq(mod) + " && " + cmd

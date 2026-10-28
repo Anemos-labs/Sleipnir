@@ -151,18 +151,3 @@ func GoMutations(file string, src []byte) ([]Mutation, error) {
 	}
 	return dedup, nil
 }
-
-// goPackageDirHasTests reports whether any of the repository files listed in
-// files is a Go test in dir.
-func dirHasSuffixFile(files []string, dir, suffix string) bool {
-	prefix := dir + "/"
-	if dir == "." {
-		prefix = ""
-	}
-	for _, f := range files {
-		if strings.HasPrefix(f, prefix) && strings.HasSuffix(f, suffix) && !strings.Contains(strings.TrimPrefix(f, prefix), "/") {
-			return true
-		}
-	}
-	return false
-}

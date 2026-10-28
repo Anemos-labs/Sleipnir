@@ -396,8 +396,9 @@ func (r *Redactor) once(s string) (string, map[string]int) {
 		if sp.start < last || sp.end <= sp.start {
 			continue
 		}
-		// A span that reaches into a masked token would re-redact the token itself.
-		if strings.IndexByte(work[sp.start:sp.end], 0) >= 0 {
+		// A span that reaches into a masked token would re-redact the token itself. A private key is the exception: text
+		// shaped like a token inside its block must not keep the key material around it.
+		if sp.kind != KindPrivateKey && strings.IndexByte(work[sp.start:sp.end], 0) >= 0 {
 			continue
 		}
 		if r.allowed(s[sp.start:sp.end], sp.secret) {

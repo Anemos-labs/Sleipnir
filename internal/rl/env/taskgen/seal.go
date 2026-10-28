@@ -128,14 +128,38 @@ func Seal(ctx context.Context, g *env.Git, gitDir, rev, dest string, opts SealOp
 		if _, err := dst(index, nil, "read-tree", tree); err != nil {
 			return "", fmt.Errorf("seal: %w", err)
 		}
-		// Mode 0 removes a path from the index; one that is not there stays absent.
+		// Mode 0 removes a path from the index; one that is not there stays absent. The index holds files only, so a
+		// directory is removed as every file under it.
+		listed, err := g.RunEnv(ctx, "", index, nil, 256<<20, "--git-dir="+tmp, "ls-files", "-z")
+		if err != nil {
+			return "", fmt.Errorf("seal: %w", err)
+		}
 		var info bytes.Buffer
 		zero := strings.Repeat("0", len(tree))
+		removed := map[string]bool{}
+		remove := func(p string) {
+			if !removed[p] {
+				removed[p] = true
+				fmt.Fprintf(&info, "0 %s\t%s\x00", zero, p)
+			}
+		}
+		dirs := map[string]bool{}
 		for _, p := range opts.Remove {
 			if p == "" || strings.ContainsAny(p, "\x00\n") {
 				return "", fmt.Errorf("seal: cannot remove %q", p)
 			}
-			fmt.Fprintf(&info, "0 %s\t%s\x00", zero, p)
+			remove(p)
+			dirs[strings.TrimSuffix(p, "/")] = true
+		}
+		// One pass over the index: a file goes when any directory above it does.
+		for _, b := range bytes.Split(listed, []byte{0}) {
+			f := string(b)
+			for i := strings.IndexByte(f, '/'); i > 0; i = nextSlash(f, i) {
+				if dirs[f[:i]] {
+					remove(f)
+					break
+				}
+			}
 		}
 		if _, err := dst(index, info.Bytes(), "update-index", "-z", "--index-info"); err != nil {
 			return "", fmt.Errorf("seal: removing paths: %w", err)
@@ -248,4 +272,12 @@ func sealTask(ctx context.Context, g *env.Git, gitDir string, t *rl.Task, dir, a
 	}
 	t.Repo.Commit = commit
 	return nil
+}
+
+// nextSlash returns the index of the next "/" in s after i, or -1.
+func nextSlash(s string, i int) int {
+	if j := strings.IndexByte(s[i+1:], '/'); j >= 0 {
+		return i + 1 + j
+	}
+	return -1
 }

@@ -205,7 +205,10 @@ needs Python 3.8 or later and nothing outside its standard library, and a POSIX 
   pytest configuration copied to the hidden `.sleipnir/suite/pytest.ini` (`-c` with `--rootdir .`), so options an
   agent writes into `pyproject.toml`, `setup.cfg` or `tox.ini` are not the ones the tests run with; and
   `cargo test --offline --no-fail-fast --tests`. `conftest.py`, `pytest.ini`, `sitecustomize.py`, `usercustomize.py`
-  and `.cargo` directories are protected with them. The tests themselves are the generator's to hide or protect.
+  and `.cargo` directories are protected with them. The tests themselves are the generator's to hide or protect. The
+  tests run in the same process as the code they test and their report is written there, so the score is only as
+  sound as that code: a solution that rewrites the report, prints Cargo's result lines, or shadows the test runner is
+  not stopped by the scorer, and the reward's hack detectors are what flag edits of that kind.
 * **Score.** (Σ<sub>u</sub> w<sub>u</sub> · passed<sub>u</sub>/|u| ÷ Σ<sub>u</sub> w<sub>u</sub>) × (kept guards ÷
   guards, 1 without guards), computed exactly, so a reference that passes everything scores exactly 1 and a start on
   which every unit's test fails exactly 0. A test that no report mentions has failed; a skipped one too; one reported
