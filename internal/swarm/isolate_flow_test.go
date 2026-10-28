@@ -403,6 +403,7 @@ func TestApplyMergedTellsWhatIsNewAndAFailureOnce(t *testing.T) {
 		"fe-1": {act(writeCall("b.txt", "bravo edited\n")), act(doneCall("T2", "edited b"))},
 	}
 	r := newIsoRig(t, isoOpts{verify: true, tweak: func(d *Deps) { d.NewSink = func(string) agent.Sink { return sink } }}, sc.fn())
+	applied := r.recordApplied()
 	r.sw.StartManager()
 	mgr := r.sw.get(r.sw.ManagerID())
 	count := func(sub string) int {
@@ -449,6 +450,26 @@ func TestApplyMergedTellsWhatIsNewAndAFailureOnce(t *testing.T) {
 	if !rep.Applied || strings.Join(rep.Files, ",") != "a.txt,b.txt" || !strings.Contains(rep.Message, "Applied 2 file(s)") {
 		t.Fatalf("the account of the whole run: %+v", rep)
 	}
+	if got := applied(); got != "a.txt|b.txt" {
+		t.Fatalf("the session was told of the applications %q, want each one's files once", got)
+	}
+}
+
+// recordApplied has the rig's isolation keep what it is told reached the checkout, and returns them: one entry per application,
+// its files joined by ",", the entries by "|".
+func (r *isoRig) recordApplied() func() string {
+	var mu sync.Mutex
+	var got []string
+	r.iso.Applied = func(files []string) {
+		mu.Lock()
+		defer mu.Unlock()
+		got = append(got, strings.Join(files, ","))
+	}
+	return func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return strings.Join(got, "|")
+	}
 }
 
 // Commit mode moves the user's branch to the integration tip when the checkout is
@@ -457,6 +478,7 @@ func TestCommitModeFastForwardsACleanCheckoutAndRefusesADirtyOne(t *testing.T) {
 	for _, dirty := range []bool{false, true} {
 		sc := script{"be-1": {act(writeCall("a.txt", "alpha committed by the swarm\n")), act(doneCall("T1", "edited a"))}}
 		r := newIsoRig(t, isoOpts{verify: true, commit: true}, sc.fn())
+		applied := r.recordApplied()
 		r.sw.StartManager()
 		r.mustSpawn("backend", "edit a")
 		r.waitStatus("T1", StatusReview)
@@ -479,10 +501,16 @@ func TestCommitModeFastForwardsACleanCheckoutAndRefusesADirtyOne(t *testing.T) {
 			if got := readText(t, r.repo+"/a.txt"); got != "alpha\n" {
 				t.Fatalf("a.txt = %q", got)
 			}
+			if got := applied(); got != "" {
+				t.Fatalf("a refused fast-forward told the session %q reached the checkout", got)
+			}
 			continue
 		}
 		if !rep.Applied || !rep.Committed {
 			t.Fatalf("clean checkout: %+v", rep)
+		}
+		if got := applied(); got != "a.txt" {
+			t.Fatalf("the session was told %q reached the checkout, want a.txt", got)
 		}
 		if got := readText(t, r.repo+"/a.txt"); got != "alpha committed by the swarm\n" {
 			t.Fatalf("a.txt = %q", got)

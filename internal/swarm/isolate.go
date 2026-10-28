@@ -82,6 +82,9 @@ type Isolation struct {
 	// tools call before a write and the function told after it. Nil keeps the
 	// session's shared ones (which are rooted at the shared checkout).
 	Checkpoints func(agent, dir string) (tools.Snapshotter, func(agent, path string))
+	// Applied is told the files (relative to the repository root) each time results reach the user's checkout, as commits or as
+	// changes to the working tree. Nil tells nobody.
+	Applied func(files []string)
 }
 
 // isolationCardText is the part of the isolation card that is the same in every session (isolationCard adds the session's integration
@@ -749,6 +752,9 @@ func (s *Swarm) integrateLockedTip(ctx context.Context, commit bool, expectedTip
 	}
 	s.noteApplied(rep, "")
 	s.apply.pending = nil
+	if iso.Applied != nil {
+		iso.Applied(rep.Files)
+	}
 	rep.Applied = true
 	rep.Message = appliedMessage(rep, rep.Files, "")
 	if err := s.saveIntegration(); err != nil {
@@ -784,6 +790,9 @@ func (s *Swarm) applyCommits(ctx context.Context, rep *IntegrationReport, iso *I
 	}
 	s.noteApplied(rep, res.Branch)
 	s.apply.pending = nil
+	if iso.Applied != nil {
+		iso.Applied(rep.Files)
+	}
 	rep.Applied, rep.Committed = true, true
 	rep.Message = appliedMessage(rep, rep.Files, res.Branch)
 	if err := s.saveIntegration(); err != nil {
