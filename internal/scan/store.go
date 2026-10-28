@@ -36,7 +36,9 @@ type Store struct {
 	mu     sync.Mutex
 	runs   map[string]*Run
 	active string
-	now    func() time.Time
+	// bound is set when the session's goal drives the active scan (Bind): calls naming another scan then go to it.
+	bound bool
+	now   func() time.Time
 	// OnChange, when set, is called with a copy of a scan after every change is written (the report is rewritten from it).
 	OnChange func(r *Run)
 }
@@ -88,6 +90,18 @@ func (s *Store) Create(commit, depth, focus string, inv Inventory) (*Run, error)
 	s.active = slug
 	s.changed(r)
 	return cloneRun(r), nil
+}
+
+// Bind opens the scan a session's goal drives: calls that name another scan go to it from now on, since the agents of that
+// goal work on this scan only.
+func (s *Store) Bind(slug string) (*Run, error) {
+	r, err := s.Open(slug)
+	if err == nil {
+		s.mu.Lock()
+		s.bound = true
+		s.mu.Unlock()
+	}
+	return r, err
 }
 
 // Open loads a scan and makes it the active one.
@@ -160,7 +174,7 @@ func (s *Store) Resolve(slug string) (used, note string, err error) {
 		used, err = s.slugLocked("")
 		return used, "", err
 	}
-	if s.active != "" && slug != s.active {
+	if s.bound && slug != s.active {
 		return s.active, fmt.Sprintf("(this session works on %s: the call went there, and %s was left as it is; leave scan out)", s.active, slug), nil
 	}
 	if _, lerr := s.loadLocked(slug); lerr == nil {

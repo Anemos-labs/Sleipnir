@@ -672,7 +672,14 @@ func TestASessionStaysOnItsScan(t *testing.T) {
 	if slug != cur.Slug {
 		t.Fatalf("ObjectiveSlug(%q) = %q, want %q", goal, slug, cur.Slug)
 	}
+	// a scan opened without a goal (the newest one created, a person's /scan status) still lets a call name another
 	if _, err := st.Open(slug); err != nil {
+		t.Fatal(err)
+	}
+	if used, note, err := st.Resolve(old.Slug); err != nil || used != old.Slug || note != "" {
+		t.Fatalf("an unbound session naming the older scan: %q %q %v", used, note, err)
+	}
+	if _, err := st.Bind(slug); err != nil {
 		t.Fatal(err)
 	}
 	used, note, err := st.Resolve(old.Slug)

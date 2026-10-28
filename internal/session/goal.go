@@ -466,7 +466,7 @@ func (s *Session) noteObjective(g *goal.State) {
 	s.objective = g.Objective
 	s.mu.Unlock()
 	if slug := scan.ObjectiveSlug(g.Objective); slug != "" && s.scan != nil {
-		if _, err := s.scan.store.Open(slug); err != nil {
+		if _, err := s.scan.store.Bind(slug); err != nil {
 			s.notice("", "scan: "+err.Error())
 		}
 	}
