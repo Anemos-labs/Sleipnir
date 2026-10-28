@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -100,6 +101,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	autoDocs := autoDocsFlag(fs)
 	managerApproves := managerApprovesFlag(fs)
 	allow := allowFlags(fs)
+	effort := fs.String("effort", "", "reasoning effort of the requests: default | none | minimal | low | medium | high | xhigh | max; each model uses its closest supported level, as /effort does (unset: the provider's own default, or what a resumed session had)")
 	askTimeout := fs.Duration("ask-timeout", 0, "refuse a question to the person that nobody answers within this time, and tell the worker (default: wait for the person); for a run that is left alone")
 	fs.Usage = func() {
 		if name == "swarm" {
@@ -134,6 +136,10 @@ func runCommand(ctx context.Context, name string, args []string) error {
 
 	if *askTimeout < 0 {
 		return fmt.Errorf("%s: --ask-timeout must not be negative", name)
+	}
+	*effort = strings.ToLower(strings.TrimSpace(*effort))
+	if *effort != "" && !slices.Contains(effortLevels, *effort) {
+		return usageError(fs, name+": --effort is one of "+strings.Join(effortLevels, ", "))
 	}
 	if *noMCP && len(*mcpConfigs) > 0 {
 		return usageError(fs, name+": --mcp-config names servers that --no-mcp would not start; give one of them")
@@ -196,6 +202,10 @@ func runCommand(ctx context.Context, name string, args []string) error {
 		return err
 	}
 	defer s.Close()
+	if *effort != "" {
+		// After New, so that it also replaces the preference a resumed session restores.
+		s.SetEffort(*effort)
+	}
 	unattended, bypassed := "", ""
 	if !interactive {
 		unattended = noOneToAskNote(s.Perm.Mode(), *allow) // the effective mode: a configured one when --mode is not given
