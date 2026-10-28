@@ -602,7 +602,7 @@ func (s *Swarm) emptyBoardLine(snap *Snapshot) string {
 	if s.solo.n <= emptyBoardAfter {
 		return ""
 	}
-	return fmt.Sprintf("nothing is on the board and all %d workers are idle after %d requests of yours in this run: unless this request is one you "+
+	return fmt.Sprintf("nothing is on the board and none of the team's %d worker slots is at work after %d requests of yours in this run: unless this request is one you "+
 		"handle yourself, create its tasks now (task create, one area each, with dependencies) and spawn them; each worker reads the code "+
 		"its task touches, so you need only enough of it to scope the tasks", len(s.cfg.Team), s.solo.n-1)
 }

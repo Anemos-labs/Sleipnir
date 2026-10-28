@@ -822,7 +822,7 @@ func TestATestOnlyMergeWithNoWorkTreeIsDueForReview(t *testing.T) {
 // is told so in its live view once it has made more than emptyBoardAfter requests in the run; the count starts again with its next
 // run, and a task on the board ends it.
 func TestAManagerThatReadsAloneWhileTheTeamWaitsIsToldToDelegate(t *testing.T) {
-	const line = "nothing is on the board and all 3 workers are idle"
+	const line = "nothing is on the board and none of the team's 3 worker slots is at work"
 	var mu sync.Mutex
 	var saw []bool // per manager request of the current run: whether its live view had the line
 	reads := emptyBoardAfter + 2

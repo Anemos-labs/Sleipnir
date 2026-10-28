@@ -9,7 +9,7 @@ they do not indicate whether a change has been released.
 
 - The manager of a configured team is told in its live view when it has
   made more than six requests in one run with nothing on the board and
-  every worker idle: unless the request is one it handles itself, it should
+  no worker at work: unless the request is one it handles itself, it should
   create the tasks and spawn them, since each worker reads the code its own
   task touches. The staffing lines said nothing while no task was open, so a
   manager could map a whole code base alone, re-reading the same files,
