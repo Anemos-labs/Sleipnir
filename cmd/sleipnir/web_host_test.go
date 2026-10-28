@@ -508,6 +508,9 @@ func TestWebHostGoalLoopJudgesAndContinues(t *testing.T) {
 		if strings.Contains(c.System, "You judge whether") {
 			mu.Lock()
 			defer mu.Unlock()
+			if strings.Contains(c.LastUser(), "Your verdict came before any evidence request") {
+				return mock.Reply{Text: `{"verdict":"continue","reason":"no build ran","left":["run the build"]}`} // it stands by its verdict
+			}
 			if judged++; judged == 1 {
 				return mock.Reply{Text: `{"verdict":"continue","reason":"no build ran","left":["run the build"]}`}
 			}
