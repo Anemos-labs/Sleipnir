@@ -87,6 +87,12 @@
     ['research.runs', 'Research runs', 'every run of the project: its phase, its evidence, its wiki and the export', 0, 0, 7, 12, 3, 3, 'list'],
     ['research.new', 'New research', 'a question and a depth: the team researches it into a wiki', 7, 0, 5, 12, 3, 3],
   ]);
+  page('scan', { title: 'Deep scan', view: 'scan', wrap: 'scanv' }, [
+    ['scan.runs', 'Scans', 'every deep scan of the project: its phase, its numbers, its findings by severity', 0, 0, 4, 12, 3, 3, 'list'],
+    ['scan.findings', 'Findings', 'the selected scan\'s findings, with their traces, verdicts and reproductions; open an issue or fix one', 4, 0, 8, 12, 4, 3, 'list'],
+    ['scan.surface', 'Attack surface and map', 'the points of the attack surface by lane, and the shards with their maps', 0, 12, 8, 10, 4, 3],
+    ['scan.new', 'New scan', 'this project or a repository cloned for it, and a depth', 8, 12, 4, 10, 3, 3],
+  ]);
   page('memory', { title: 'Memory', view: 'memory', wrap: 'memv' }, [
     ['memory.notes', 'Agent notes', 'the notes the agents saved for later sessions: edit, remove, add', 0, 0, 6, 9, 3, 3, 'list'],
     ['memory.lessons', 'Lessons', 'what earlier goals taught, with their record', 6, 0, 6, 9, 3, 3, 'list'],

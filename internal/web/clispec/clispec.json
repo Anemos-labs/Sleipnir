@@ -824,6 +824,13 @@
   {"name":"verbose","arg":"bool","default":null,"repeatable":false,"desc":"print notices and tool errors"},
   {"name":"verify","arg":"string","default":null,"repeatable":false,"desc":"swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge). {dirs} in it stands for the directories the task may touch (./... without a scope), so that each task is verified on its own work: 'go test {dirs}'"}
  ]},
+{"path":["scan"],"usage":"sleipnir scan [SCAN] [flags]","summary":"sleipnir scan [SCAN] lists the project's deep scans with their depth, phase and numbers, or shows where one scan stands: what is mapped and hunted, the leads and their verdicts, and what it needs next.","positional":[{"name":"SCAN","required":false,"desc":"a scan's name, as `sleipnir scan` lists it; none: list the scans"}],"source":"docs/CLI.md § sleipnir scan","mode":"run","flags":[
+  {"name":"cwd","arg":"string","default":null,"defaultNote":"the current directory","repeatable":false,"desc":"the project (default: the current directory)"},
+  {"name":"depth","arg":"string","default":"standard","repeatable":false,"desc":"with --start: survey, standard or deep"},
+  {"name":"json","arg":"bool","default":null,"repeatable":false,"desc":"machine-readable output"},
+  {"name":"report","arg":"bool","default":null,"repeatable":false,"desc":"rewrite SCAN's report (REPORT.md, findings.json, findings.sarif, map.json) from its ledger and print where it is"},
+  {"name":"start","arg":"bool","default":null,"repeatable":false,"desc":"create a scan of the repository at HEAD (below the positional DIR, when given) and print the goal that drives it"}
+ ]},
 {"path":["schedule"],"usage":"sleipnir schedule [list]","summary":"Lists the scheduled goals with the next and the last run.","positional":[],"source":"docs/CLI.md § sleipnir schedule","mode":"run","flags":[]},
 {"path":["schedule","add"],"usage":"sleipnir schedule add --cron EXPR [flags] <goal>","summary":"Adds a goal to run on a schedule; a run is a headless sleipnir run in --cwd with the job's model, mode and budget (US$1 by default).","positional":[{"name":"GOAL","required":true,"desc":"the goal the scheduled run works on","variadic":true}],"source":"docs/CLI.md § sleipnir schedule","mode":"priv","why":"it adds a job the daemon runs unattended: it asks for a confirmation first; bypass and yolo cannot be scheduled from here","when":[{"flag":"mode","values":["bypass","yolo"],"mode":"tty_only"}],"parent":"schedule","flags":[
   {"name":"budget-usd","arg":"float","default":1,"repeatable":false,"desc":"stop a run at this many dollars (0: no limit)"},
@@ -915,6 +922,7 @@
 {"cmd":"/delivery","args":"[mode]","desc":"next objective: fix | merge | both | off | resume","group":"conversation","paletteArgs":"[fix|merge|both|off|resume]","paletteDesc":"GitHub automation for one objective"},
 {"cmd":"/goal","args":"TEXT","desc":"work until it is met, judged on evidence (/goal: status)","group":"conversation","paletteArgs":"[text|pause|resume|clear]","paletteDesc":"keep working until a goal is met, judged on evidence (--research=DEPTH researches first)"},
 {"cmd":"/research","args":"[d] Q","desc":"research Q on the web into a wiki (/research: the runs)","group":"conversation","paletteArgs":"[quick|standard|deep] QUESTION","paletteDesc":"a team researches the question on the web and publishes a wiki; alone, the runs; status|build|open|export RUN"},
+{"cmd":"/scan","args":"[d] [DIR]","desc":"map and hunt the repo, report what it proves (/scan: list)","group":"conversation","paletteArgs":"[survey|standard|deep] [DIR]","paletteDesc":"a team maps the repository at HEAD, hunts it for holes and reports what it proved; alone, the scans; status|report SCAN"},
 {"cmd":"/new","args":"","desc":"start again, empty (same model and mode)","group":"conversation","paletteDesc":"start the conversation again, empty (the same model and mode)"},
 {"cmd":"/clear","args":"","desc":"the same as /new","group":"conversation","paletteDesc":"the same as /new"},
 {"cmd":"/resume","args":"[id]","desc":"pick an earlier session from a menu, and continue it","group":"conversation","paletteArgs":"[id]","paletteDesc":"continue an earlier session: the newest of this project, or one of the earlier ones listed as you type"},

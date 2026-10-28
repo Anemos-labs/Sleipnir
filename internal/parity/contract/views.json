@@ -21,6 +21,10 @@
       "reason": "lists the project's research runs with their phases and evidence, opens a run's wiki in a browser tab, exports it and starts a run from a form; the terminal has /research and `sleipnir research`, which list, report, build and export the same runs as text, and the wiki opens from its index.html"
     },
     {
+      "item": "scan",
+      "reason": "lists the project's deep scans with their phases, shows a scan's findings with their traces, verdicts and reproductions, its attack surface and shard map, exports the report, and starts a scan of the project or of a repository it clones; the terminal has /scan and `sleipnir scan`, which list, report on and start the same scans as text, and the report files are written beside the ledger"
+    },
+    {
       "item": "memory",
       "reason": "lists the agents' notes, every place an instruction file is read from with whether a session reads it, and the lessons, and edits them in place; the terminal reads and edits the same files in an editor (~/.sleipnir/MEMORY.md, ~/.sleipnir/SLEIPNIR.md, the project's AGENTS.md, CLAUDE.md and SLEIPNIR.md), and the agents change their notes with the memory tool, each change put to the person"
     },
