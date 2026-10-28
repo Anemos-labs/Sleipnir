@@ -300,6 +300,9 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 					extra = append(extra, t)
 				}
 				extra = append(extra, s.staffingLines(snap)...)
+				if line := s.emptyBoardLine(snap); line != "" {
+					extra = append(extra, line)
+				}
 				if last := s.reviewPending(); last != "" {
 					extra = append(extra, s.reviewLine(last))
 				}
