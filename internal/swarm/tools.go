@@ -406,7 +406,11 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		} else if vr := s.verifyFor(ctx, task, s.deps.Workdir, task.Files); !vr.ok {
 			return tools.Errorf("pool result failed verification: %s", vr.out)
 		}
-		if err := s.Board.submitAgreementAt(me, task.ID, task.Rev, in.Text, evidence, task.Pool.Agreement, taskGateCheck(task), poolComplete, s.poolCurrent, s.reviewSubmission(task)); err != nil {
+		result, report := in.Text, ""
+		if task.Kind == TaskKindPlan {
+			result, report = readOnlyReport(task.ID, in.Text)
+		}
+		if err := s.Board.submitReportAt(me, task.ID, task.Rev, result, report, evidence, task.Pool.Agreement, taskGateCheck(task), poolComplete, s.poolCurrent, s.reviewSubmission(task)); err != nil {
 			return tools.Errorf("%v", err)
 		}
 		return text("%s consolidated pool result is in review", task.ID)
@@ -415,7 +419,8 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		if !s.roles[c.Env.Role].ReadOnly {
 			return tools.Errorf("a planning task can only be submitted by a read-only role")
 		}
-		if err := s.Board.submitAgreementAt(me, task.ID, task.Rev, in.Text, "read-only planning; manager reviews the agreement", in.Agreement, taskGateCheck(task), s.reviewSubmission(task)); err != nil {
+		result, report := readOnlyReport(task.ID, in.Text)
+		if err := s.Board.submitReportAt(me, task.ID, task.Rev, result, report, "read-only planning; manager reviews the agreement", in.Agreement, taskGateCheck(task), s.reviewSubmission(task)); err != nil {
 			return tools.Errorf("%v", err)
 		}
 		return text("%s is in review. Its agreement requires the manager's acceptance; stop now.", task.ID)
@@ -445,7 +450,11 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		return &tools.Result{IsError: true, Text: fmt.Sprintf("Not done: verification `%s` failed (exit %d). Fix the failures and call done again.%s\n%s",
 			cmd, vr.code, s.isolatedVerifyHint(m), tail)}
 	}
-	result := oneLine(in.Text, 120)
+	result, report := oneLine(in.Text, 120), ""
+	readOnly := s.roles[c.Env.Role].ReadOnly
+	if readOnly {
+		result, report = readOnlyReport(task.ID, in.Text)
+	}
 	if result == "" {
 		result = "completed"
 	}
@@ -473,10 +482,13 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		}
 		summary = out.evidence + "; " + summary
 	}
-	if err := s.Board.submitAgreementAt(me, in.ID, task.Rev, result, summary, in.Agreement, taskGateCheck(task), s.reviewSubmission(task)); err != nil {
+	if err := s.Board.submitReportAt(me, in.ID, task.Rev, result, report, summary, in.Agreement, taskGateCheck(task), s.reviewSubmission(task)); err != nil {
 		return tools.Errorf("%v", err)
 	}
 	s.Leases.ReleaseAll(me)
+	if readOnly && report != "" {
+		return text("%s is now in review (%s). Your text is the report the manager reads; stop now.", in.ID, summary)
+	}
 	if note := s.poolChildInReview(me, task); note != "" {
 		return text("%s is now in review (%s). %s Give your final one-paragraph summary and stop.", in.ID, summary, note)
 	}

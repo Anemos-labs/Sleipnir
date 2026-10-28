@@ -15,6 +15,18 @@ they do not indicate whether a change has been released.
   judge's request and the first message of a goal change only in a
   project that has one; `/goal`, its web sheet and the goal event name
   the rubric file.
+- A read-only worker's submission (a review's findings, a scout's
+  answer) keeps its whole text, up to 4000 characters and 40 lines, as
+  the task's `report`, shown by `task get`. The board's one-line result
+  names `task get` when the report holds more than it. Before, the text
+  was cut to 120 characters ("No bl…"), and a manager recalled the
+  reviewer's history for the verdict. A read-only worker's `task done`
+  answer no longer asks it for a final summary, which saves it a turn.
+  A read-only planner's text is kept the same way beside its agreement.
+  Prompt bytes: the board's line for such a task gains the 30-character
+  pointer when the report is longer than the line; `task get` on it
+  carries the report, at most 4000 characters and 40 lines. No pin or
+  tool spec changed.
 - RL pipeline hardening from a security review. `sleipnir rl serve` now
   applies `--budget-usd`, `--max-requests` and `--max-steps` to every HTTP
   rollout whose task leaves them open, and a blank `role_models` entry runs
