@@ -57,6 +57,11 @@ type TaskX struct {
 	Failed   bool `json:"failed,omitempty"`
 	Attempts int  `json:"attempts,omitempty"`
 	Blocked  bool `json:"blocked,omitempty"`
+	// Cost is what the agents that held the task spent on it in US dollars (with Plan, partly at the list price of what a subscription
+	// plan covered), and Reqs its main requests.
+	Cost float64 `json:"cost,omitempty"`
+	Plan bool    `json:"plan,omitempty"`
+	Reqs int     `json:"reqs,omitempty"`
 }
 
 // MailX is a mail event with Tok, the estimated size of the text in tokens, and Digest, the number of messages a mailman's digest

@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Every task now shows what the agents that held it spent on it: the
+  responses of its holders while they held it, every attempt and owner
+  together, side requests included, and the number of main requests. The
+  terminal's Board view ends each task's row with the figure, the web
+  board's cards show it with the request count on hover, and the page's
+  `task` event carries `cost`, `plan` and `reqs`. A task event is sent
+  again when its figure changes. Prompts are unchanged.
 - A project can keep a rubric in `.sleipnir/rubric.md`: standing
   criteria of good work that the goal judge holds every goal in the
   project to, beside the goal's own requirements. It is read once when a

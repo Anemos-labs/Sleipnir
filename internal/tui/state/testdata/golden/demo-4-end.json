@@ -508,7 +508,9 @@
         "evidence": "no files edited; no tests run",
         "rev": 6,
         "seq": 142,
-        "updated": "2026-09-30T20:52:28.535089559Z"
+        "updated": "2026-09-30T20:52:28.535089559Z",
+        "cost_usd": 0.016791999999999998,
+        "requests": 3
       },
       {
         "id": "T2",
@@ -521,7 +523,9 @@
         "evidence": "no files edited; no tests run",
         "rev": 8,
         "seq": 145,
-        "updated": "2026-09-30T20:52:28.535114926Z"
+        "updated": "2026-09-30T20:52:28.535114926Z",
+        "cost_usd": 0.016488,
+        "requests": 3
       },
       {
         "id": "T3",
@@ -534,7 +538,9 @@
         "evidence": "no files edited; no tests run",
         "rev": 10,
         "seq": 148,
-        "updated": "2026-09-30T20:52:28.535134363Z"
+        "updated": "2026-09-30T20:52:28.535134363Z",
+        "cost_usd": 0.016503999999999998,
+        "requests": 3
       },
       {
         "id": "T4",
@@ -547,7 +553,9 @@
         "evidence": "no files edited; no tests run",
         "rev": 12,
         "seq": 151,
-        "updated": "2026-09-30T20:52:28.535152754Z"
+        "updated": "2026-09-30T20:52:28.535152754Z",
+        "cost_usd": 0.016472,
+        "requests": 3
       },
       {
         "id": "T5",
@@ -561,7 +569,9 @@
         "evidence": "edited 2 (topic-1.md, topic-2.md); no tests run",
         "rev": 28,
         "seq": 260,
-        "updated": "2026-09-30T20:52:28.697561617Z"
+        "updated": "2026-09-30T20:52:28.697561617Z",
+        "cost_usd": 0.032128,
+        "requests": 5
       },
       {
         "id": "T6",
@@ -575,7 +585,9 @@
         "evidence": "edited 2 (topic-3.md, topic-4.md); no tests run",
         "rev": 30,
         "seq": 263,
-        "updated": "2026-09-30T20:52:28.697587098Z"
+        "updated": "2026-09-30T20:52:28.697587098Z",
+        "cost_usd": 0.03194,
+        "requests": 5
       },
       {
         "id": "T7",
@@ -588,7 +600,9 @@
         "evidence": "no files edited; no tests run",
         "rev": 39,
         "seq": 303,
-        "updated": "2026-09-30T20:52:29.116409262Z"
+        "updated": "2026-09-30T20:52:29.116409262Z",
+        "cost_usd": 0.0161,
+        "requests": 3
       }
     ],
     "counts": {"todo": 0, "running": 0, "verifying": 0, "merged": 7, "failed": 0}
