@@ -56,6 +56,14 @@ func clipRunes(s string, n int) string {
 	return s
 }
 
+// tailRunes is the last n runes of s, marking the cut.
+func tailRunes(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return "…" + string(r[len(r)-n+1:])
+	}
+	return s
+}
+
 // maxRefusedKept bounds the refusals remembered for the end-of-run hint.
 const maxRefusedKept = 8
 
