@@ -311,12 +311,16 @@ func readBoundedIn(root, rel string, limit int64) ([]byte, error) {
 	return readBoundedWith(func() (*os.File, error) {
 		// A root follows a link at the end that stays inside it, whatever the flags: it is refused before the open, and what
 		// opened must be the file that was not a link.
+		// A path that is not there yet is not opened at all: a link made there in between would be followed.
 		pre, lerr := r.Lstat(rel)
-		if lerr == nil && pre.Mode()&fs.ModeSymlink != 0 {
+		if lerr != nil {
+			return nil, lerr
+		}
+		if pre.Mode()&fs.ModeSymlink != 0 {
 			return nil, fmt.Errorf("%w: it is a symlink", errUnusable)
 		}
 		f, err := r.OpenFile(rel, openReadFlags, 0)
-		if err == nil && lerr == nil {
+		if err == nil {
 			if fi, serr := f.Stat(); serr != nil || !os.SameFile(pre, fi) {
 				f.Close()
 				return nil, fmt.Errorf("%w: it changed while it was opened", errUnusable)
