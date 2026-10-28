@@ -482,8 +482,8 @@ func (s *Session) GoalResume(ctx context.Context, g *goal.State) (note, next str
 			// The judge's verdict could only be "not met": a goal is not met while its board has unfinished work (JudgeGoal). Asking
 			// it costs minutes of evidence reads before the team goes on; the last verdict is stale, so the continuation leaves it out.
 			g.Turns++
-			why := "the board still has unfinished tasks (" + strings.Join(open, ", ") + "); the judge rules once they are done"
-			return "goal resumed without a judgment: " + why, s.GoalContinuation(g, goal.Verdict{Kind: goal.Continue, Reason: why}), j
+			why := "the board still has unfinished tasks (" + strings.Join(open, ", ") + ")"
+			return "goal resumed without judging the interrupted turn: " + why, s.GoalContinuation(g, goal.Verdict{Kind: goal.Continue, Reason: why}), j
 		}
 		return s.GoalJudged(ctx, g, nil)
 	}

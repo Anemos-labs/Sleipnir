@@ -791,7 +791,7 @@ func TestResumingATeamGoalWithUnfinishedTasksSkipsTheJudge(t *testing.T) {
 	if g.Paused != "" || g.Unjudged || g.Done {
 		t.Fatalf("the goal after the resume: %+v", g)
 	}
-	if !strings.Contains(note, "unfinished tasks (T1)") || !strings.Contains(next, "Not met yet: the board still has unfinished tasks (T1)") || strings.Contains(next, "before the pause") {
+	if !strings.Contains(note, "unfinished tasks (T1)") || !strings.Contains(next, "Not met yet: the board still has unfinished tasks (T1)\n") || strings.Contains(next, "before the pause") {
 		t.Fatalf("the resume: note %q next %q", note, next)
 	}
 }
