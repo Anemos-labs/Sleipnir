@@ -1,0 +1,334 @@
+package scan
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+)
+
+// Dir is where the scans of a project live.
+func Dir(root string) string { return filepath.Join(root, ".sleipnir", "scan") }
+
+// RunDir is the directory of one scan.
+func RunDir(root, slug string) string { return filepath.Join(Dir(root), slug) }
+
+// BriefPath is the scan's brief, relative to the project root.
+func BriefPath(slug string) string {
+	return filepath.ToSlash(filepath.Join(".sleipnir", "scan", slug, "BRIEF.md"))
+}
+
+var slugRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+
+// ValidSlug reports whether slug can name a scan.
+func ValidSlug(slug string) bool { return slugRE.MatchString(slug) }
+
+// Store is the scans of one project, loaded on demand and written back after every change. One session holds one, so every
+// agent of a team writes the same ledger.
+type Store struct {
+	root   string
+	mu     sync.Mutex
+	runs   map[string]*Run
+	active string
+	now    func() time.Time
+	// OnChange, when set, is called with a copy of a scan after every change is written (the report is rewritten from it).
+	OnChange func(r *Run)
+}
+
+// NewStore returns the store of the scans under root.
+func NewStore(root string) *Store {
+	return &Store{root: root, runs: map[string]*Run{}, now: time.Now}
+}
+
+// Root is the project root.
+func (s *Store) Root() string { return s.root }
+
+// Create starts a scan of commit at depth, over the inventory the harness took, and makes it the active one.
+func (s *Store) Create(commit, depth, focus string, inv Inventory) (*Run, error) {
+	d, ok := DepthByID(depth)
+	if !ok {
+		return nil, errDepth(depth)
+	}
+	if len(inv.Files) == 0 {
+		return nil, errors.New("there is nothing to scan: the commit has no source files (below the focus)")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now().UTC()
+	base := "scan-" + now.Format("20060102-1504")
+	if len(commit) >= 7 {
+		base += "-" + commit[:7]
+	}
+	slug := base
+	for n := 2; ; n++ {
+		if _, err := os.Stat(RunDir(s.root, slug)); errors.Is(err, os.ErrNotExist) {
+			break
+		}
+		slug = fmt.Sprintf("%s-%d", base, n)
+	}
+	r := &Run{Slug: slug, Commit: commit, Depth: d.ID, Focus: focus, Created: now.Format(time.RFC3339), Inventory: inv,
+		Shards: MakeShards(inv, d)}
+	fb, err := json.Marshal(inv.Functions)
+	if err != nil {
+		return nil, err
+	}
+	if err := WriteAtomic(filepath.Join(RunDir(s.root, slug), "functions.json"), append(fb, '\n')); err != nil {
+		return nil, err
+	}
+	if err := s.saveLocked(r); err != nil {
+		return nil, err
+	}
+	s.runs[slug] = r
+	s.active = slug
+	s.changed(r)
+	return cloneRun(r), nil
+}
+
+// Open loads a scan and makes it the active one.
+func (s *Store) Open(slug string) (*Run, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r, err := s.loadLocked(slug)
+	if err != nil {
+		return nil, err
+	}
+	s.active = slug
+	return cloneRun(r), nil
+}
+
+// Snapshot is a copy of a scan as it is now.
+func (s *Store) Snapshot(slug string) (*Run, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if slug == "" {
+		var err error
+		if slug, err = s.slugLocked(""); err != nil {
+			return nil, err
+		}
+	}
+	r, err := s.loadLocked(slug)
+	if err != nil {
+		return nil, err
+	}
+	return cloneRun(r), nil
+}
+
+// Active is the scan calls that name none mean, or "".
+func (s *Store) Active() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.active
+}
+
+// slugLocked is the scan a call means: the one it names, else the active one, else the project's only unfinished scan.
+func (s *Store) slugLocked(slug string) (string, error) {
+	if slug != "" {
+		return slug, nil
+	}
+	if s.active != "" {
+		return s.active, nil
+	}
+	var open []string
+	for _, r := range List(s.root) {
+		if Check(r).Phase != PhaseDone {
+			open = append(open, r.Slug)
+		}
+	}
+	switch len(open) {
+	case 0:
+		return "", errors.New("no scan is open: start one with /scan")
+	case 1:
+		s.active = open[0]
+		return open[0], nil
+	}
+	return "", fmt.Errorf("no scan is open and %d are unfinished: name one with scan (%s)", len(open), strings.Join(open, ", "))
+}
+
+// Resolve is the scan a call means. A call naming a scan that does not exist goes to the one a call naming none would, with
+// a note, rather than being refused.
+func (s *Store) Resolve(slug string) (used, note string, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if slug == "" {
+		used, err = s.slugLocked("")
+		return used, "", err
+	}
+	if _, lerr := s.loadLocked(slug); lerr == nil {
+		return slug, "", nil
+	} else if ValidSlug(slug) {
+		if _, serr := os.Stat(filepath.Join(RunDir(s.root, slug), "scan.json")); serr == nil {
+			return "", "", lerr
+		}
+	}
+	used, err = s.slugLocked("")
+	if err != nil {
+		return "", "", fmt.Errorf("no scan %q, and %w", slug, err)
+	}
+	return used, fmt.Sprintf("(there is no scan %q: this went to %s, the scan this session works on; leave scan out)", slug, used), nil
+}
+
+func (s *Store) loadLocked(slug string) (*Run, error) {
+	if !ValidSlug(slug) {
+		return nil, fmt.Errorf("no scan %q", slug)
+	}
+	if r, ok := s.runs[slug]; ok {
+		return r, nil
+	}
+	r, err := Load(s.root, slug)
+	if err != nil {
+		return nil, err
+	}
+	s.runs[slug] = r
+	return r, nil
+}
+
+// Load reads a scan from disk, without a store.
+func Load(root, slug string) (*Run, error) {
+	if !ValidSlug(slug) {
+		return nil, fmt.Errorf("no scan %q", slug)
+	}
+	b, err := os.ReadFile(filepath.Join(RunDir(root, slug), "scan.json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("no scan %q", slug)
+	}
+	if err != nil {
+		return nil, err
+	}
+	var r Run
+	if err := json.Unmarshal(b, &r); err != nil {
+		return nil, fmt.Errorf("scan %s: %w", slug, err)
+	}
+	if r.Slug != slug {
+		return nil, fmt.Errorf("scan %s: scan.json names %q", slug, r.Slug)
+	}
+	if fb, err := os.ReadFile(filepath.Join(RunDir(root, slug), "functions.json")); err == nil {
+		_ = json.Unmarshal(fb, &r.Inventory.Functions)
+	}
+	return &r, nil
+}
+
+// List reads every scan of a project, newest first.
+func List(root string) []*Run {
+	ents, err := os.ReadDir(Dir(root))
+	if err != nil {
+		return nil
+	}
+	var out []*Run
+	for _, e := range ents {
+		if !e.IsDir() || !ValidSlug(e.Name()) {
+			continue
+		}
+		if r, err := Load(root, e.Name()); err == nil {
+			out = append(out, r)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Created != out[j].Created {
+			return out[i].Created > out[j].Created
+		}
+		return out[i].Slug > out[j].Slug
+	})
+	return out
+}
+
+// Update runs fn on the scan under the store's lock and writes it back when fn succeeds; a failed fn leaves the scan as it was.
+func (s *Store) Update(slug string, fn func(r *Run) error) (*Run, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	slug, err := s.slugLocked(slug)
+	if err != nil {
+		return nil, err
+	}
+	r, err := s.loadLocked(slug)
+	if err != nil {
+		return nil, err
+	}
+	before, _ := json.Marshal(r)
+	restore := func() {
+		var back Run
+		_ = json.Unmarshal(before, &back)
+		back.Inventory.Functions = r.Inventory.Functions
+		*r = back
+	}
+	if err := fn(r); err != nil {
+		restore()
+		return nil, err
+	}
+	r.Version++
+	if err := s.saveLocked(r); err != nil {
+		restore()
+		return nil, err
+	}
+	s.changed(r)
+	return cloneRun(r), nil
+}
+
+// View runs fn on the scan under the store's lock, changing nothing.
+func (s *Store) View(slug string, fn func(r *Run) error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	slug, err := s.slugLocked(slug)
+	if err != nil {
+		return err
+	}
+	r, err := s.loadLocked(slug)
+	if err != nil {
+		return err
+	}
+	return fn(r)
+}
+
+func (s *Store) changed(r *Run) {
+	if s.OnChange != nil {
+		s.OnChange(cloneRun(r))
+	}
+}
+
+func (s *Store) saveLocked(r *Run) error {
+	b, err := json.MarshalIndent(r, "", " ")
+	if err != nil {
+		return err
+	}
+	return WriteAtomic(filepath.Join(RunDir(s.root, r.Slug), "scan.json"), append(b, '\n'))
+}
+
+// cloneRun is a deep copy of a scan; the functions, which never change, are shared.
+func cloneRun(r *Run) *Run {
+	b, _ := json.Marshal(r)
+	var c Run
+	_ = json.Unmarshal(b, &c)
+	c.Inventory.Functions = r.Inventory.Functions
+	return &c
+}
+
+// WriteAtomic writes data to path through a temporary file in the same directory.
+func WriteAtomic(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
+	if err != nil {
+		return err
+	}
+	name := f.Name()
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		os.Remove(name)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(name)
+		return err
+	}
+	if err := os.Rename(name, path); err != nil {
+		os.Remove(name)
+		return err
+	}
+	return nil
+}

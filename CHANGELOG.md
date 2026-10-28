@@ -10,9 +10,24 @@ they do not indicate whether a change has been released.
 - A goal judge request that fails with a network error, a timeout, a
   5xx or a rate limit is sent again, up to four times with a growing
   wait (or the server's `Retry-After`, when longer), and each retry is
-  a `model.error` event. Before, one dropped
-  connection paused the goal and discarded the judgment's evidence
-  requests.
+  a `model.error` event. Before, one dropped connection paused the
+  goal and discarded the judgment's evidence requests.
+- The web page has a Deep scan view (`g d`, docs/SCAN.md): the project's scans, a scan's findings with their traces,
+  verdicts and reproductions, its attack surface and shard map, the report exported as CSV, JSON, PDF, Markdown or SARIF,
+  and a form that scans the project or a repository it clones (https or ssh, hooks and symbolic links off) into
+  `~/sleipnir-scans`. A confirmed finding can be written up and opened as a GitHub issue, after the person reads it, or
+  handed to the team as a fix goal. A scan's report now also writes `findings.csv` and `report.html`.
+- A `scan` plugin, off by default, adds `/scan`, `sleipnir scan` and the `scan` tool (docs/SCAN.md): a team maps a whole
+  repository at a pinned commit, hunts it for holes, and reports what verifiers confirmed and a sandboxed reproducer
+  showed. With the plugin off nothing changes; turning it on adds the `scan` tool to every agent's tool list, so the tools
+  layer of the cached prefix is written once more.
+- `--sandbox docker` (or `docker=IMAGE`) on `sleipnir chat` and `sleipnir run`, and the *sandbox* field of the web page's
+  New session dialog, run every shell command of a session inside a container of its own, with the project mounted at its
+  own path, no network unless `--sandbox-network`, every capability dropped and none of the host's environment but a fixed
+  allowlist of named variables. Without the flag nothing changes. The repository's `.git/config`, hooks and `info` are
+  read-only inside and `.git` cannot be renamed away, a home directory (or the root) is never mounted, and a sandboxed
+  session resumes sandboxed. The program now recognizes a hidden first argument, `__sandbox-exec`, which a sandboxed
+  session's commands use to enter the container.
 - A goal judge whose first answer is "continue", given before any
   evidence request, is sent back once to search the archive for each
   item it names as missing. Whatever it answers next stands, whether
