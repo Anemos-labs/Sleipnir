@@ -7,6 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A goal judge request that fails with a network error, a timeout, a
+  5xx or a rate limit is sent again, up to four times with a growing
+  wait (or the server's `Retry-After`, when longer), and each retry is
+  a `model.error` event. Before, one dropped connection paused the
+  goal and discarded the judgment's evidence requests.
 - A read-only worker (a reviewer, a scout) that stops on its task with
   no answer text is mailed once or twice for its report before its task
   is submitted, instead of reaching review with an empty result. A
