@@ -6,13 +6,13 @@
 │                                                          ✓ T4 ✓ T5 ✓ T6      │
 │                                                          ✓ T7                │
 ├─ tasks ──────────────────────────────────────┬─ merge queue ─────────────────┤
-│ ✓ T1   sc-1   Survey topic 1 (docs/topic-1.… │ no worktree isolation in this │
-│ ✓ T2   sc-2   Survey topic 2 (docs/topic-2.… │ run: work is written to the   │
-│ ✓ T3   sc-3   Survey topic 3 (docs/topic-3.… │ checkout directly             │
-│ ✓ T4   sc-4   Survey topic 4 (docs/topic-4.… │                               │
-│ ✓ T5   dc-1   Write the summaries for topic… │                               │
-│ ✓ T6   dc-2   Write the summaries for topic… │                               │
-│ ✓ T7   rv-1   Review every summary against … │                               │
+│ ✓ T1   sc-1   Survey topic 1 (docs/t…  $0.02 │ no worktree isolation in this │
+│ ✓ T2   sc-2   Survey topic 2 (docs/t…  $0.02 │ run: work is written to the   │
+│ ✓ T3   sc-3   Survey topic 3 (docs/t…  $0.02 │ checkout directly             │
+│ ✓ T4   sc-4   Survey topic 4 (docs/t…  $0.02 │                               │
+│ ✓ T5   dc-1   Write the summaries fo…  $0.03 │                               │
+│ ✓ T6   dc-2   Write the summaries fo…  $0.03 │                               │
+│ ✓ T7   rv-1   Review every summary a…  $0.02 │                               │
 ├──────────────────────────────────────────────┴───────────────────────────────┤
 │                                                                              │
 │                                                                              │

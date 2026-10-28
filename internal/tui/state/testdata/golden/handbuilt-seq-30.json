@@ -236,7 +236,9 @@
         "files": ["orders/**"],
         "rev": 10,
         "seq": 16,
-        "updated": "2026-01-02T03:04:07Z"
+        "updated": "2026-01-02T03:04:07Z",
+        "cost_usd": 0.004,
+        "requests": 1
       },
       {
         "id": "T2",
@@ -248,7 +250,9 @@
         "files": ["web/orders/**"],
         "rev": 11,
         "seq": 19,
-        "updated": "2026-01-02T03:04:07.01Z"
+        "updated": "2026-01-02T03:04:07.01Z",
+        "cost_usd": 0.004,
+        "requests": 1
       },
       {"id": "T3", "title": "survey the api", "owner": "sc-1", "role": "scout", "status": "doing", "state": "running", "rev": 12, "seq": 22, "updated": "2026-01-02T03:04:07.02Z"}
     ],

@@ -31,7 +31,7 @@
   }
   ui.sparkBars = sparkBars;
   /** The board's additions: a ✗ mark on a failed card (its closure as the title), `try N` when a task took more
-   *  than one attempt; todo's count gives failed tasks apart (`3 + 1 ✗`). Returns {failed, blocked}. Runs after ui.board.update on the same board. */
+   *  than one attempt, what was spent on it; todo's count gives failed tasks apart (`3 + 1 ✗`). Returns {failed, blocked}. Runs after ui.board.update on the same board. */
   ui.boardMarks = function (B, m) {
     let failed = 0, blocked = 0, todoFailed = 0;
     m.torder.forEach(id => {
@@ -41,6 +41,9 @@
       if (isF && tow) { if (!mk2) { mk2 = document.createElement('span'); mk2.className = 'bad fmark'; mk2.textContent = '✗'; tow.appendChild(mk2); } mk2.title = 'failed: ' + (t.closure || 'closed'); } else if (mk2) mk2.remove();
       let tr = n.querySelector('.tmark'); const nTry = t.attempts > 1 ? 'try ' + t.attempts : '';
       if (nTry && tow) { if (!tr) { tr = document.createElement('span'); tr.className = 'dim tmark'; tow.appendChild(tr); } tr.textContent = nTry; } else if (tr) tr.remove();
+      /* what the agents that held it spent on it, and in how many requests: where a team's money and turns went */
+      let cm = n.querySelector('.cmark'); const spent = t.cost > 0 ? (t.onPlan ? '≈' : '') + SL.u.fmtUsd(t.cost) : '';
+      if (spent && tow) { if (!cm) { cm = document.createElement('span'); cm.className = 'dim cmark'; tow.appendChild(cm); } cm.textContent = spent; cm.title = spent + ' spent on ' + id + ' in ' + t.reqs + ' request' + (t.reqs === 1 ? '' : 's') + (t.onPlan ? ' (' + SL.u.PLAN_HELP + ')' : ''); } else if (cm) cm.remove();
     });
     /* a failed task stays in todo with its ✗: the head counts it apart, so that the count still accounts for every card of the column */
     if (todoFailed) { const c = B.host.querySelector('[data-col="todo"] .cnt'); if (c) { const left = Math.max(0, (+c.textContent || 0) - todoFailed); c.innerHTML = left + ' <span class="bad">+ ' + todoFailed + ' ✗</span>'; c.title = left + ' to do, ' + todoFailed + ' failed'; } }

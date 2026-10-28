@@ -55,7 +55,16 @@ type Task struct {
 	Commit               string    `json:"commit,omitempty"` // the integration commit, 12 characters
 	Seq                  uint64    `json:"seq,omitempty"`    // the seq of the board.op that last changed it
 	Updated              time.Time `json:"updated,omitzero"`
+	// CostUSD, ListUSD and Plan are what the responses of the agents that held the task came to while they held it, every attempt
+	// and owner together, as an agent's are (Spend); Requests counts its main requests. They say where a team's money and turns went.
+	CostUSD  float64 `json:"cost_usd,omitempty"`
+	ListUSD  float64 `json:"list_usd,omitempty"`
+	Plan     bool    `json:"plan,omitempty"`
+	Requests int     `json:"requests,omitempty"`
 }
+
+// Spend is the task's figure: what the agents that held it spent on it.
+func (t *Task) Spend() Spend { return Spend{Billed: t.CostUSD, List: t.ListUSD, Plan: t.Plan} }
 
 // TaskCounts is the number of tasks in each column, and how many of them are blocked.
 type TaskCounts struct {

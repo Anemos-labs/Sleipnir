@@ -11,7 +11,7 @@ import (
 )
 
 // boardView is the task board and the merge queue with the room the cockpit cannot give them: the columns, then every task with
-// who holds it, what it waits for and how many attempts it took, beside the queue that verifies the finished work before it is
+// who holds it, what it waits for, how many attempts it took and what was spent on it, beside the queue that verifies the finished work before it is
 // merged.
 func boardView(s Scene) []cell.Line {
 	sn := s.Snap
@@ -132,6 +132,9 @@ func taskTable(s Scene, w, limit int) []cell.Line {
 			tail = fmt.Sprintf("try %d", t.Attempts)
 		case t.Result != "" && t.State == state.TaskMerged:
 			tail = ""
+		}
+		if sp := t.Spend(); sp.Shown() > 0 { // what the agents that held it spent on it
+			tail = strings.TrimPrefix(tail+" · "+widget.Spend(sp.Shown(), sp.Plan), " · ")
 		}
 		title := clean(t.Title)
 		if t.Parent != "" {
