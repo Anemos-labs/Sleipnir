@@ -11,8 +11,9 @@ import (
 // ConfigureShell preserves the script in a cmd /C invocation without applying
 // CommandLineToArgvW escaping, which cmd.exe does not understand. It disables
 // AutoRun and wraps the raw script for cmd's /S quote handling. The invocation
-// may end a wrapper's argv (wrapper args... cmd /C script): the wrapper's own
-// arguments are escaped as usual and cmd's part is spelled the same way. Other
+// may end a wrapper's argv (wrapper args... cmd /C script): the wrapper parses
+// its own command line and builds cmd's, so every argument is escaped for it as
+// usual, the script included, and only AutoRun is turned off (cmd /D /C). Other
 // commands are unchanged. An explicit command line takes precedence, and other
 // process attributes are preserved. Call before starting the command.
 func ConfigureShell(cmd *exec.Cmd) {
@@ -20,21 +21,24 @@ func ConfigureShell(cmd *exec.Cmd) {
 	if n < 3 || !strings.EqualFold(cmd.Args[n-2], "/c") {
 		return
 	}
-	shell := cmd.Path
 	if n > 3 {
-		shell = cmd.Args[n-3]
+		if isCmd(cmd.Args[n-3]) && (cmd.SysProcAttr == nil || cmd.SysProcAttr.CmdLine == "") {
+			cmd.Args = append(append(cmd.Args[:n-2:n-2], "/D"), cmd.Args[n-2:]...)
+		}
+		return
 	}
-	if strings.TrimSuffix(strings.ToLower(filepath.Base(shell)), ".exe") != "cmd" {
+	if !isCmd(cmd.Path) {
 		return
 	}
 	if cmd.SysProcAttr == nil {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
 	if cmd.SysProcAttr.CmdLine == "" {
-		line := syscall.EscapeArg(cmd.Path)
-		for _, a := range cmd.Args[1 : n-2] { // the wrapper's arguments and cmd itself
-			line += " " + syscall.EscapeArg(a)
-		}
-		cmd.SysProcAttr.CmdLine = line + ` /D /S /C "` + cmd.Args[n-1] + `"`
+		cmd.SysProcAttr.CmdLine = syscall.EscapeArg(cmd.Path) + ` /D /S /C "` + cmd.Args[2] + `"`
 	}
+}
+
+// isCmd reports whether path names cmd.exe.
+func isCmd(path string) bool {
+	return strings.TrimSuffix(strings.ToLower(filepath.Base(path)), ".exe") == "cmd"
 }

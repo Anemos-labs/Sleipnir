@@ -296,7 +296,11 @@ func readSpec(ref, dir, root string) (string, error) {
 	}
 	// the file named is the file read: a link in the project (SPEC.md -> .env) would put whatever it reaches in front of the model
 	// under the name the person chose. The path is resolved after the open and must name, without a link, the very file opened.
-	if realRoot, err := filepath.EvalSymlinks(root); err == nil {
+	{
+		realRoot, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			return "", err // the project cannot be resolved now (moved away): nothing says the file read is the file named
+		}
 		real, err := filepath.EvalSymlinks(p)
 		if err != nil {
 			return "", ErrSpecLinked

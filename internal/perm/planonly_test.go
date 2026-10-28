@@ -172,3 +172,25 @@ func TestReadOnlyRefusesWhatOnlyTheModeOrARuleAllows(t *testing.T) {
 		t.Errorf("the session's mode changed: %q", e.Mode())
 	}
 }
+
+// A hold applies to every check while it lasts, whatever the context, and the mode stays.
+func TestHoldReadOnlyHoldsEveryCheck(t *testing.T) {
+	root := t.TempDir()
+	e, err := NewEngine(Config{Mode: ModeBypass, Root: root, Home: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := Request{Tool: "write", Writes: true, Paths: []string{root + "/main.go"}}
+	release := e.HoldReadOnly()
+	if d := e.Check(context.Background(), w); d.Allow {
+		t.Fatalf("a write was allowed under a hold: %+v", d)
+	}
+	release()
+	release() // a second release changes nothing
+	if d := e.Check(context.Background(), w); !d.Allow {
+		t.Fatalf("the hold outlived its release: %+v", d)
+	}
+	if e.Mode() != ModeBypass {
+		t.Errorf("the session's mode changed: %q", e.Mode())
+	}
+}

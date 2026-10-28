@@ -879,6 +879,17 @@ func TestTextSinkBoundsLeadingWhiteSpace(t *testing.T) {
 	if n := out.Len(); n > 8<<10 || !strings.HasSuffix(out.String(), "x") {
 		t.Fatalf("answer of %d bytes", n)
 	}
+	sink.Response("main", nil, 0)
+	out.Reset()
+	// many blank lines, then an indented first line: the indentation stays
+	for i := 0; i < 5000; i++ {
+		sink.Text("main", "\n")
+	}
+	sink.Text("main", "    ")
+	sink.Text("main", "x\n")
+	if got := out.String(); got != "    x\n" {
+		t.Fatalf("answer = %q", got)
+	}
 }
 
 // Text that reaches the terminal is data: an escape sequence in a model's answer

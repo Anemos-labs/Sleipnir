@@ -642,7 +642,15 @@ func (r *mdRenderer) wikiLink(body string) string {
 	if frag != "" {
 		href += "#" + url.PathEscape(frag)
 	}
-	return `<a class="wl" href="` + html.EscapeString(href) + `">` + r.inline(text) + `</a>`
+	return `<a class="wl" href="` + html.EscapeString(href) + `">` + r.labelHTML(text) + `</a>`
+}
+
+// labelHTML renders a link's label: a bare address in it is text, an <a> does not nest.
+func (r *mdRenderer) labelHTML(label string) string {
+	outer := r.inLink
+	r.inLink = true
+	defer func() { r.inLink = outer }()
+	return r.inline(label)
 }
 
 // special are the pages the builder makes itself, which any page may link to.
@@ -652,12 +660,7 @@ var special = map[string]string{
 
 // link renders an ordinary link. Only web, mail and relative addresses are links; anything else (javascript:) is text.
 func (r *mdRenderer) link(label, href string) string {
-	return r.linkHTML(label, func() string {
-		outer := r.inLink
-		r.inLink = true
-		defer func() { r.inLink = outer }()
-		return r.inline(label)
-	}, href)
+	return r.linkHTML(label, func() string { return r.labelHTML(label) }, href)
 }
 
 // linkHTML is link with the label's markup made by labelHTML: a bare address is its own label, shown as it is (parsed as Markdown

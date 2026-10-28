@@ -679,7 +679,8 @@ func readSmallRegular(path string, max int64) ([]byte, error) {
 		return nil, err
 	}
 	defer f.Close()
-	if fi, err = f.Stat(); err != nil || !fi.Mode().IsRegular() {
+	// the file opened is the one looked at: a link put in its place meanwhile is followed by the open, and caught here
+	if st, err := f.Stat(); err != nil || !st.Mode().IsRegular() || !os.SameFile(fi, st) {
 		return nil, fmt.Errorf("%s is not a regular file", path)
 	}
 	b, err := io.ReadAll(io.LimitReader(f, max+1))

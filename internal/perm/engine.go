@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -146,8 +147,9 @@ type Engine struct {
 	granted           []string      // the allow rules added while the session ran (what the person said yes to), in order
 	confined          map[string]rootPair
 
-	readOnlyOnce sync.Once
-	readOnly     *Engine // PlanOnly(ReadOnlyAllow...), built on the first ReadOnly check
+	readOnlyOnce  sync.Once
+	readOnly      *Engine      // PlanOnly(ReadOnlyAllow...), built on the first ReadOnly check
+	readOnlyHolds atomic.Int32 // HoldReadOnly calls not yet released
 }
 
 // Confine binds an agent to one directory of the workspace (a git worktree of its
@@ -598,9 +600,18 @@ func ReadOnly(ctx context.Context) context.Context {
 	return context.WithValue(ctx, readOnlyKey{}, true)
 }
 
-// refusedReadOnly reports whether ctx was made by ReadOnly and plan mode with ReadOnlyAllow alone refuses r, and why.
+// HoldReadOnly holds every check of the engine to what ReadOnly allows until release is called, whatever context it comes with: the
+// work a read-only turn hands on (a swarm's workers run under their own contexts) is held as well. Holds nest; the mode is untouched.
+func (e *Engine) HoldReadOnly() (release func()) {
+	e.readOnlyHolds.Add(1)
+	var once sync.Once
+	return func() { once.Do(func() { e.readOnlyHolds.Add(-1) }) }
+}
+
+// refusedReadOnly reports whether ctx was made by ReadOnly, or a HoldReadOnly is in force, and plan mode with ReadOnlyAllow alone
+// refuses r, and why.
 func (e *Engine) refusedReadOnly(ctx context.Context, r Request) (string, bool) {
-	if on, _ := ctx.Value(readOnlyKey{}).(bool); !on {
+	if on, _ := ctx.Value(readOnlyKey{}).(bool); !on && e.readOnlyHolds.Load() == 0 {
 		return "", false
 	}
 	e.readOnlyOnce.Do(func() { e.readOnly = e.PlanOnly(ReadOnlyAllow...) })

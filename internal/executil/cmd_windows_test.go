@@ -103,16 +103,43 @@ func TestCmdArgumentProcessHelper(t *testing.T) {
 	os.Exit(2)
 }
 
-// A wrapper in front of cmd /C keeps its own arguments and gets cmd's part spelled as without one: AutoRun off, the script raw.
+// A wrapper in front of cmd /C parses its own command line: it receives every argument, the script included, exactly, and cmd gets
+// AutoRun turned off.
 func TestConfigureShellThroughAWrapper(t *testing.T) {
-	cmd := exec.Command(`C:\\tools\\sandbox.exe`, "--net", "off", "--", "cmd", "/C", `echo "a&b"`)
+	script := `echo "a&b" ^& echo c`
+	cmd := exec.Command(`C:\tools\sandbox.exe`, "--net", "off", "--", "cmd", "/C", script)
 	ConfigureShell(cmd)
-	want := `C:\\tools\\sandbox.exe --net off -- cmd /D /S /C "echo "a&b""`
-	if cmd.SysProcAttr == nil || cmd.SysProcAttr.CmdLine != want {
-		t.Fatalf("command line %+v, want %q", cmd.SysProcAttr, want)
+	want := []string{`C:\tools\sandbox.exe`, "--net", "off", "--", "cmd", "/D", "/C", script}
+	if !reflect.DeepEqual(cmd.Args, want) || (cmd.SysProcAttr != nil && cmd.SysProcAttr.CmdLine != "") {
+		t.Fatalf("args %q, attrs %+v; want %q", cmd.Args, cmd.SysProcAttr, want)
 	}
-	other := exec.Command(`C:\\tools\\sandbox.exe`, "--", "powershell", "/C", "x")
-	if ConfigureShell(other); other.SysProcAttr != nil {
-		t.Errorf("a wrapper over another program was changed: %+v", other.SysProcAttr)
+	if ConfigureShell(cmd); len(cmd.Args) != len(want) {
+		t.Errorf("a second call changed the args again: %q", cmd.Args)
+	}
+	other := exec.Command(`C:\tools\sandbox.exe`, "--", "powershell", "/C", "x")
+	if ConfigureShell(other); other.SysProcAttr != nil || len(other.Args) != 5 {
+		t.Errorf("a wrapper over another program was changed: %q %+v", other.Args, other.SysProcAttr)
+	}
+
+	// what a wrapper that parses its command line the usual way receives
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SLEIPNIR_ARGUMENT_FIXTURE", "1")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	wrapped := exec.CommandContext(ctx, exe, "-test.run=^TestCmdArgumentProcessHelper$", "--", "cmd", "/C", script)
+	ConfigureShell(wrapped)
+	out, err := wrapped.CombinedOutput()
+	if err != nil {
+		t.Fatalf("wrapper: %v; output=%q", err, out)
+	}
+	var got []string
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("decode output %q: %v", out, err)
+	}
+	if w := []string{"cmd", "/D", "/C", script}; !reflect.DeepEqual(got, w) {
+		t.Fatalf("the wrapper received %q, want %q", got, w)
 	}
 }

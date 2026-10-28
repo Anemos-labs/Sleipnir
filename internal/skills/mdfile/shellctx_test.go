@@ -19,6 +19,9 @@ func TestShellPlaceholdersFollowTheTemplatesQuotes(t *testing.T) {
 		{"echo $$1 $1", "v", "echo $1 'v'"},
 		{"echo '$2'", "v", "echo ''"},
 		{`echo "$(printf %s ignore-case)" $1`, "v", `echo "$(printf %s ignore-case)" 'v'`},
+		{"echo a # it's \"\necho \"$1\"", "v", "echo a # it's \"\necho \"v\""},
+		{"echo a#'b' $1", "v", "echo a#'b' 'v'"},
+		{`echo $# "$1"`, "v", `echo $# "v"`},
 	} {
 		got, _, err := SubstituteMax(tc.tmpl, tc.args, ArgsShell, 0)
 		if err != nil || got != tc.want {
@@ -27,7 +30,7 @@ func TestShellPlaceholdersFollowTheTemplatesQuotes(t *testing.T) {
 	}
 	// a case pattern's ")" inside $( ) does not end the substitution: no placeholder after a case there is spelled for a guess
 	for _, tmpl := range []string{"echo `echo $1`", "echo $'$1'", `echo \$1`, "echo \"`$1`\"", `echo "$(case x in x) echo $1;; esac)"`, `echo "$(case x in x) :;; esac) $1"`,
-		`echo "$( : ${v:-)}; case x in x) printf '%s' "$1";; esac)"`} {
+		`echo "$( : ${v:-)}; case x in x) printf '%s' "$1";; esac)"`, "echo \"$( :; \\\ncase x in x) printf %s $1;; esac)\"", "echo hi # $1"} {
 		if got, _, err := SubstituteMax(tmpl, "v", ArgsShell, 0); err == nil {
 			t.Errorf("%q: substituted as %q; want an error", tmpl, got)
 		}

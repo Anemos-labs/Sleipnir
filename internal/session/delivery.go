@@ -222,7 +222,11 @@ func (s *Session) deliveryExec(dir string) delivery.Exec {
 }
 
 // runPlanTurn runs one turn that may only read (perm.ReadOnly), whatever the session's mode and rules; the mode itself is left
-// alone, so a change the person makes meanwhile stays.
+// alone, so a change the person makes meanwhile stays. The engine is held read-only for the turn too, so a swarm's workers, which run
+// under their own contexts, cannot write on its behalf.
 func (s *Session) runPlanTurn(ctx context.Context, goal string) (*Result, error) {
+	if s.Perm != nil {
+		defer s.Perm.HoldReadOnly()()
+	}
 	return s.runTurn(perm.ReadOnly(ctx), goal)
 }
