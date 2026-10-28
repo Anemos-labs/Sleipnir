@@ -13,6 +13,10 @@ they do not indicate whether a change has been released.
   flag nothing changes. The repository's `.git/config`, hooks and `info` are read-only inside, a home directory is never
   mounted, and a sandboxed session resumes sandboxed. The program now recognizes a hidden first argument, `__sandbox-exec`, which a sandboxed session's
   commands use to enter the container.
+- With auto-docs, a task resolved as no longer needed (`task resolve`)
+  whose work did not merge in this run is no longer a docs change: it
+  starts no catch-up pass, is not listed in one, and does not count as
+  accepted code. A task resolved after its work merged is still one.
 - A `write`, `edit` or `apply_patch` that leaves every file as it was
   (the result starting "No change") is marked unchanged. It no longer
   counts as progress for the stall sweep or as an edited file in a task's
