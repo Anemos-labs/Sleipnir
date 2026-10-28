@@ -228,6 +228,23 @@ func TestProgressCallShell(t *testing.T) {
 	}
 }
 
+// A write that changed nothing is not progress, and not an edit in the evidence: a worker that rewrites a file with the
+// bytes it already holds succeeds every time and moves nothing.
+func TestUnchangedWriteIsNotProgress(t *testing.T) {
+	s := &Swarm{}
+	write := core.Block{ToolName: "write", Input: json.RawMessage(`{"path":"a.go","content":"package a\n"}`)}
+	if !s.progressCall(write, &tools.Result{Text: "Wrote a.go"}) {
+		t.Fatal("a write that changed the file is not progress")
+	}
+	same := &tools.Result{Text: "No change: a.go already has exactly this content.", Unchanged: true}
+	if s.progressCall(write, same) {
+		t.Error("a write that changed nothing is progress")
+	}
+	if got := editedBy(write, same); got != nil {
+		t.Errorf("a write that changed nothing is recorded as an edit of %v", got)
+	}
+}
+
 func TestStallManagerWaitingOnIdle(t *testing.T) {
 	t.Run("seeded: the manager waits while nobody works", func(t *testing.T) {
 		r := newRVRig(t, stallCfg(), gatedWorkers(nil))
