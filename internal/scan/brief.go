@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -15,12 +16,22 @@ func Brief(r *Run) string {
 	c := rep.Counts
 	var b strings.Builder
 	w := func(format string, args ...any) { fmt.Fprintf(&b, format, args...) }
-	w("# Deep scan %s\n\n", r.Slug)
-	w("Commit `%s`", short(r.Commit))
+	if r.IsReview() {
+		w("# Review %s\n\n", r.Slug)
+		w("The change from `%s` to `%s`", short(r.Base), short(r.Commit))
+	} else {
+		w("# Deep scan %s\n\n", r.Slug)
+		w("Commit `%s`", short(r.Commit))
+	}
 	if r.Focus != "" {
 		w(", below `%s`", r.Focus)
 	}
 	w(" · %s depth: %s.\n\n", d.Title, d.Summary)
+	if r.IsReview() {
+		w("This is a **review of a change**, not of the whole repository. The shards hold only the files the change added or modified; read what they call and what calls them wherever it is, at the same commit. ")
+		w("A lead must have a step of its trace on a line the change wrote (the harness refuses one that does not): a hole the change brings in, widens or leaves open in the code it rewrote. ")
+		w("Holes elsewhere are out of scope here. The lines the change wrote, at `%s`:\n\n%s\n", short(r.Commit), changeList(r, 0))
+	}
 	w("The harness counted %d files, %d functions and %d lines (complexity %d), and split them into %d shards of at most %d functions or %d lines. ",
 		c.Files, c.Funcs, c.Lines, c.Complexity, c.Shards, d.ShardFuncs, d.ShardLines)
 	w("The work is sized by that, not by a clock: this scan wants a team of about %d agents, every shard in someone's hands.\n\n", r.Team())
@@ -93,8 +104,43 @@ func Objective(r *Run, spec string) string {
 	if r.Focus != "" {
 		what = "`" + r.Focus + "`"
 	}
+	if r.IsReview() {
+		return fmt.Sprintf("Review (%s) of the change from %s to %s: map the files it wrote, hunt it for the holes it brings in, and report only what is verified%s. Read the brief and follow its protocol with the whole team; do not change the project.\n\nSpec: %s",
+			d.ID, short(r.Base), short(r.Commit), proofNote(d), spec)
+	}
 	return fmt.Sprintf("Deep scan (%s) of %s at commit %s: map all of it, hunt it for holes, and report only what is verified%s. Read the brief and follow its protocol with the whole team; do not change the project.\n\nSpec: %s",
 		d.ID, what, short(r.Commit), proofNote(d), spec)
+}
+
+// changeList is the files a reviewed change made with their line ranges, one per line, at most limit files (0: all).
+func changeList(r *Run, limit int) string {
+	var b strings.Builder
+	for i, c := range r.Changes {
+		if limit > 0 && i == limit {
+			fmt.Fprintf(&b, "- and %d more files\n", len(r.Changes)-limit)
+			break
+		}
+		var rs []string
+		for _, l := range c.Lines {
+			if l[0] == l[1] {
+				rs = append(rs, fmt.Sprint(l[0]))
+			} else {
+				rs = append(rs, fmt.Sprintf("%d-%d", l[0], l[1]))
+			}
+		}
+		fmt.Fprintf(&b, "- `%s`: %s\n", oneLine(c.File), strings.Join(rs, ", "))
+	}
+	return b.String()
+}
+
+var objectiveRE = regexp.MustCompile(`(?m)^Spec: (?:.*[\\/])?\.sleipnir[\\/]scan[\\/]([a-z0-9][a-z0-9-]{0,62})[\\/]BRIEF\.md\s*$`)
+
+// ObjectiveSlug is the scan an objective written by Objective drives, or "".
+func ObjectiveSlug(objective string) string {
+	if m := objectiveRE.FindStringSubmatch(objective); m != nil {
+		return m[1]
+	}
+	return ""
 }
 
 // WriteBrief writes the scan's brief, and the ignore file that keeps every scan out of the project's commits.

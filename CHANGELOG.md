@@ -16,6 +16,44 @@ they do not indicate whether a change has been released.
   answer no longer asks it for a final summary, which saves it a turn.
   Prompt bytes: the board is unchanged; `task get` on such a task carries
   the report, up to about 1000 tokens.
+- Resuming a team's goal after an unjudged pause (an interruption, a
+  failed turn, a restart) no longer asks the judge while the task board
+  still has unfinished tasks, since the judge could not find the goal met
+  then. The continuation names the open tasks instead of the verdict from
+  before the pause, and the judge rules again at the end of the turn. A
+  goal with nothing left open on the board is judged first, as before.
+- The manager of a configured team is told in its live view when it has
+  made more than six requests in one run with nothing on the board and
+  no worker at work: unless the request is one it handles itself, it should
+  create the tasks and spawn them, since each worker reads the code its own
+  task touches. The staffing lines said nothing while no task was open, so a
+  manager could map a whole code base alone, re-reading the same files,
+  while the team waited.
+- The goal judge's evidence search lists tool output (commands, reads,
+  edits, merges) before the records of coordination tools (task, pool,
+  mail, wait, spawn, plan, note, memory), each newest first. Those
+  records restate what agents claimed; the tool output holds the proof.
+  The result line counts both groups, and offsets count down the
+  combined order. A tool name is classified as the agent dispatches it,
+  so "functions.task.get" is the task tool's.
+- Resuming a goal that paused on a turn the judge did not rule on (the
+  turn was interrupted, failed or ran out of budget, the chat was restarted, or the judge
+  could not be asked) now judges it first. Before, resume re-sent the
+  judge's last "not met yet", from before that turn's work. A goal
+  paused by the person between turns, or by a verdict, resumes as
+  before.
+- `sleipnir scan --start --diff BASE` creates a review of the change from BASE to HEAD (docs/SCAN.md): only the files the
+  change wrote are mapped and hunted, a lead needs a trace step on a line the change made, and findings.json gains `base`
+  and `changes`. Every finding in findings.json gains an `anchor`: in a review the last trace step on a changed line, where
+  the review's SARIF result is located; in a scan the sink, as before.
+- A session whose goal is a deep scan works on that scan: the `scan` tool's calls that name another scan of the project
+  (an older unfinished one, whose lead numbers mean other things) go to the session's scan, with a note. A reproducer's
+  marker may be followed by a colon (`SLEIPNIR-REPRODUCED: rows`).
+- A goal judge request that fails with a network error, a timeout, a
+  5xx or a rate limit is sent again, up to four times with a growing
+  wait (or the server's `Retry-After`, when longer), and each retry is
+  a `model.error` event. Before, one dropped connection paused the
+  goal and discarded the judgment's evidence requests.
 - A read-only worker (a reviewer, a scout) that stops on its task with
   no answer text is mailed once or twice for its report before its task
   is submitted, instead of reaching review with an empty result. A

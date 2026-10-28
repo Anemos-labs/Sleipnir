@@ -17,7 +17,11 @@ func TestATaskWhoseWorkerRanOutOfRestartsIsLeftToTheManager(t *testing.T) {
 		clock.Advance(restartBackoff << (n - 1))
 		r.sw.superviseOnce(clock.Now())
 		want := n + 1
-		rvWait(t, fmt.Sprintf("failed run %d", want), func() bool { e, _ := ends(r, id); return e == want && r.idle(id) })
+		// The next restart is due from the clock as it stands once it is logged; the supervisor passes over one not yet logged.
+		rvWait(t, fmt.Sprintf("failed run %d", want), func() bool {
+			e, _ := ends(r, id)
+			return e == want && r.idle(id) && (n == maxAutoRestarts || scheduledOf(r, id))
+		})
 	}
 	rvWait(t, "the manager's line", func() bool { return mailSent(r, "does not restart it again") == 1 })
 	line := "T1 returned to todo after attempt 3: " + id + " stopped (step limit reached); assign it with spawn, to another worker if the failure is " + id + "'s own (its model or provider). The harness restarted " + id + " automatically twice on this work, and does not restart it again."

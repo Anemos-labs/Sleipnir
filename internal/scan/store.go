@@ -36,7 +36,9 @@ type Store struct {
 	mu     sync.Mutex
 	runs   map[string]*Run
 	active string
-	now    func() time.Time
+	// bound is set when the session's goal drives the active scan (Bind): calls naming another scan then go to it.
+	bound bool
+	now   func() time.Time
 	// OnChange, when set, is called with a copy of a scan after every change is written (the report is rewritten from it).
 	OnChange func(r *Run)
 }
@@ -51,6 +53,11 @@ func (s *Store) Root() string { return s.root }
 
 // Create starts a scan of commit at depth, over the inventory the harness took, and makes it the active one.
 func (s *Store) Create(commit, depth, focus string, inv Inventory) (*Run, error) {
+	return s.create(commit, depth, focus, inv, "", nil)
+}
+
+// create is Create, for a review of the change from base when base is set.
+func (s *Store) create(commit, depth, focus string, inv Inventory, base string, changes []Change) (*Run, error) {
 	d, ok := DepthByID(depth)
 	if !ok {
 		return nil, errDepth(depth)
@@ -61,19 +68,22 @@ func (s *Store) Create(commit, depth, focus string, inv Inventory) (*Run, error)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now().UTC()
-	base := "scan-" + now.Format("20060102-1504")
-	if len(commit) >= 7 {
-		base += "-" + commit[:7]
+	name := "scan-" + now.Format("20060102-1504")
+	if base != "" {
+		name = "review-" + now.Format("20060102-1504")
 	}
-	slug := base
+	if len(commit) >= 7 {
+		name += "-" + commit[:7]
+	}
+	slug := name
 	for n := 2; ; n++ {
 		if _, err := os.Stat(RunDir(s.root, slug)); errors.Is(err, os.ErrNotExist) {
 			break
 		}
-		slug = fmt.Sprintf("%s-%d", base, n)
+		slug = fmt.Sprintf("%s-%d", name, n)
 	}
 	r := &Run{Slug: slug, Commit: commit, Depth: d.ID, Focus: focus, Created: now.Format(time.RFC3339), Inventory: inv,
-		Shards: MakeShards(inv, d)}
+		Shards: MakeShards(inv, d), Base: base, Changes: changes}
 	fb, err := json.Marshal(inv.Functions)
 	if err != nil {
 		return nil, err
@@ -88,6 +98,18 @@ func (s *Store) Create(commit, depth, focus string, inv Inventory) (*Run, error)
 	s.active = slug
 	s.changed(r)
 	return cloneRun(r), nil
+}
+
+// Bind opens the scan a session's goal drives: calls that name another scan go to it from now on, since the agents of that
+// goal work on this scan only.
+func (s *Store) Bind(slug string) (*Run, error) {
+	r, err := s.Open(slug)
+	if err == nil {
+		s.mu.Lock()
+		s.bound = true
+		s.mu.Unlock()
+	}
+	return r, err
 }
 
 // Open loads a scan and makes it the active one.
@@ -150,14 +172,18 @@ func (s *Store) slugLocked(slug string) (string, error) {
 	return "", fmt.Errorf("no scan is open and %d are unfinished: name one with scan (%s)", len(open), strings.Join(open, ", "))
 }
 
-// Resolve is the scan a call means. A call naming a scan that does not exist goes to the one a call naming none would, with
-// a note, rather than being refused.
+// Resolve is the scan a call means. A call naming a scan that does not exist, or another scan than the one the session works
+// on, goes to the one a call naming none would, with a note, rather than being refused: a scan's agents never write to an
+// older scan of the same project, whose lead numbers mean other things.
 func (s *Store) Resolve(slug string) (used, note string, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if slug == "" {
 		used, err = s.slugLocked("")
 		return used, "", err
+	}
+	if s.bound && slug != s.active {
+		return s.active, fmt.Sprintf("(this session works on %s: the call went there, and %s was left as it is; leave scan out)", s.active, slug), nil
 	}
 	if _, lerr := s.loadLocked(slug); lerr == nil {
 		return slug, "", nil

@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/events"
@@ -16,6 +18,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/kv"
 	"github.com/anemos-labs/sleipnir/internal/plan"
 	"github.com/anemos-labs/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/scan"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
@@ -110,6 +113,35 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 }
 
 // judgeRunner is one model a goal is judged on: its client, its description and the label of its requests.
+// judgeAttempts is how many times one judge request is sent when the failure is one that repeating may cure (a network error,
+// a timeout, a 5xx or a rate limit). A judgment is many requests long; one dropped connection near its end paused the goal and threw
+// away every evidence request before it.
+const judgeAttempts = 4
+
+// judgeDo sends one judge request, again while it fails in a way that repeating may cure, after the longer of a growing wait and
+// the wait the server asked for, capped at agent.MaxRetryAfter. Each retry is a model.error in the log, as an agent's is.
+func (s *Session) judgeDo(ctx context.Context, j judgeRunner, req *provider.Request) (*provider.Response, error) {
+	for attempt := 0; ; attempt++ {
+		resp, err := j.p.Do(ctx, req, nil)
+		pe, ok := provider.AsError(err)
+		if err == nil || !ok || !pe.Retryable() || attempt == judgeAttempts-1 || ctx.Err() != nil {
+			return resp, err
+		}
+		delay := agent.RetryBase << attempt
+		if after := min(pe.RetryAfter, agent.MaxRetryAfter); after > delay {
+			delay = after // a server that says how long to wait is believed, up to the cap an agent's retries use
+		}
+		s.Log.Emit("", events.TypeModelError, map[string]any{
+			"req": req.Label, "kind": pe.Kind.String(), "status": pe.Status, "attempt": attempt + 1, "delay_ms": delay.Milliseconds(),
+		})
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+}
+
 type judgeRunner struct {
 	p     provider.Provider
 	m     cost.Model
@@ -163,7 +195,7 @@ func (s *Session) judgeOn(ctx context.Context, g *goal.State, j judgeRunner, ans
 		if budget := s.Budget(); budget > 0 && s.Cost() >= budget {
 			return goal.Verdict{Kind: goal.Continue}, fmt.Errorf("session budget reached during evidence inspection")
 		}
-		resp, e := j.p.Do(ctx, &provider.Request{Prompt: prompt, Label: j.label, NoStream: true}, nil)
+		resp, e := s.judgeDo(ctx, j, &provider.Request{Prompt: prompt, Label: j.label, NoStream: true})
 		if e != nil {
 			return goal.Verdict{Kind: goal.Continue}, e
 		}
@@ -401,8 +433,9 @@ func (s *Session) GoalJudged(ctx context.Context, g *goal.State, turnErr error) 
 	if g == nil || g.Paused != "" || g.Done {
 		return "", "", j
 	}
+	// Each of these pauses leaves the turn unjudged: resuming judges it first (GoalResume).
 	pause := func(why string) (string, string, GoalJudgment) {
-		g.Paused = why
+		g.Paused, g.Unjudged = why, true
 		return "goal paused: " + why + ". /goal resume goes on, /goal clear drops it", "", j
 	}
 	switch {
@@ -435,6 +468,52 @@ func (s *Session) GoalJudged(ctx context.Context, g *goal.State, turnErr error) 
 	return fmt.Sprintf("goal not met yet: %s (continuation %d of %d)", reason, g.Turns, g.Max), s.GoalContinuation(g, v), j
 }
 
+// GoalResume takes the pause off g and returns a note for the person and the message that sends the agent on ("" when there is
+// none). A goal paused on a turn that was not judged (it was interrupted or failed, the chat was restarted, or the judge could not be
+// asked) is judged first: the judge's last verdict predates that turn, and its "not met yet" would send the agent to redo work it may
+// have done since; j is that judgment (zero when there was none). While the team's board has unfinished tasks the judge is not asked,
+// since it could not find the goal met, and the continuation names those tasks instead of the stale verdict. g is changed.
+func (s *Session) GoalResume(ctx context.Context, g *goal.State) (note, next string, j GoalJudgment) {
+	unjudged := g.Unjudged
+	g.Paused, g.Repeats, g.Unjudged = "", 0, false
+	g.Max = g.Turns + goal.MaxTurns
+	if unjudged {
+		if open := s.unfinishedGoalTasks(); len(open) > 0 {
+			// The judge's verdict could only be "not met": a goal is not met while its board has unfinished work (JudgeGoal). Asking
+			// it costs minutes of evidence reads before the team goes on; the last verdict is stale, so the continuation leaves it out.
+			g.Turns++
+			why := "the board still has unfinished tasks (" + strings.Join(open, ", ") + ")"
+			return "goal resumed without judging the interrupted turn: " + why, s.GoalContinuation(g, goal.Verdict{Kind: goal.Continue, Reason: why}), j
+		}
+		return s.GoalJudged(ctx, g, nil)
+	}
+	g.Turns++
+	return "", s.GoalContinuation(g, goal.Verdict{Kind: goal.Continue, Reason: g.Reason}), j
+}
+
+// unfinishedGoalTasks are the ids of the team's tasks that keep a goal from being met (goalTaskUnfinished), at most maxListed of them
+// and then "+N more"; nil without a team.
+func (s *Session) unfinishedGoalTasks() []string {
+	if s.Swarm == nil {
+		return nil
+	}
+	const maxListed = 5
+	snapshot := s.Swarm.Board.Snapshot()
+	var ids []string
+	n := 0
+	for _, task := range snapshot.Tasks {
+		if goalTaskUnfinished(task, snapshot) {
+			if n++; n <= maxListed {
+				ids = append(ids, task.ID)
+			}
+		}
+	}
+	if n > maxListed {
+		ids = append(ids, fmt.Sprintf("+%d more", n-maxListed))
+	}
+	return ids
+}
+
 // GoalContinuation is the message that sends the agent on after verdict v (goal.Continuation), with, for the manager of a team, the
 // workers that are free (swarm.FreeCapacity).
 func (s *Session) GoalContinuation(g *goal.State, v goal.Verdict) string {
@@ -464,6 +543,11 @@ func (s *Session) noteObjective(g *goal.State) {
 	s.mu.Lock()
 	s.objective = g.Objective
 	s.mu.Unlock()
+	if slug := scan.ObjectiveSlug(g.Objective); slug != "" && s.scan != nil {
+		if _, err := s.scan.store.Bind(slug); err != nil {
+			s.notice("", "scan: "+err.Error())
+		}
+	}
 }
 
 // goalObjective is the objective of the session's standing goal, "" when it never had one.
@@ -516,7 +600,7 @@ func (s *Session) LoadGoal() *goal.State {
 	if last != nil && last.Objective != "" && !last.Done {
 		s.noteObjective(last)
 		if last.Paused == "" {
-			last.Paused = "the chat was restarted"
+			last.Paused, last.Unjudged = "the chat was restarted", true // a turn may have been cut short, and was not judged
 		}
 		return last
 	}

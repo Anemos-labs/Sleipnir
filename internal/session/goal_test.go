@@ -8,7 +8,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
@@ -16,6 +18,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/swarm"
 )
 
 // A standing goal is judged on evidence and sent on with what is missing: the agent says it is done having run nothing, the judge says that is
@@ -273,6 +276,166 @@ func TestAJudgesContinueAfterASearchStands(t *testing.T) {
 	}
 	if _, next := s.GoalTurn(context.Background(), g, nil); g.Done || !strings.Contains(next, "missing: run the migration") || calls != 2 {
 		t.Errorf("a continue after a search: next %q done=%v calls=%d", next, g.Done, calls)
+	}
+}
+
+// A judge request that fails in a way repeating may cure is sent again, so a dropped connection partway through a judgment
+// neither pauses the goal nor throws away the evidence requests already answered; after a rate limit it waits as long as the server
+// asked.
+func TestAJudgeRequestThatFailsOnTheWayIsSentAgain(t *testing.T) {
+	defer func(base time.Duration) { agent.RetryBase = base }(agent.RetryBase)
+	agent.RetryBase = time.Millisecond
+	calls := 0
+	var limited time.Time
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if !strings.Contains(c.System, "You judge whether a coding agent") {
+			return mock.Reply{Text: "Completed the objective"}
+		}
+		switch calls++; calls {
+		case 1:
+			return mock.Reply{Text: `{"verdict":"inspect","query":"migration applied","offset":0}`}
+		case 2:
+			return mock.Reply{Fault: &mock.Fault{Status: 502, Message: "bad gateway"}}
+		case 3:
+			limited = time.Now()
+			return mock.Reply{Fault: &mock.Fault{Status: 429, Message: "slow down", RetryAfter: time.Second}} // the header is in whole seconds
+		}
+		if waited := time.Since(limited); waited < time.Second {
+			t.Errorf("the retry after a rate limit came %v after it, before the %v the server asked for", waited, time.Second)
+		}
+		if !strings.Contains(c.LastUser(), "migration applied") {
+			t.Errorf("the evidence answered before the failure was lost:\n%s", c.LastUser())
+		}
+		return mock.Reply{Text: `{"verdict":"done","reason":"the migration applied","left":[]}`}
+	})
+	s, err := session.New(context.Background(), opts(t, newRepo(t), client, model))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	g := goal.New("apply the migration")
+	s.SaveGoal(g)
+	s.Log.Emit("ts-2", events.TypeTurnAppend, core.Turn{Role: core.RoleUser, Blocks: []core.Block{core.ToolResult("m1", false, core.Text("migration applied"))}})
+	if _, err := s.Run(context.Background(), goal.Start(g)); err != nil {
+		t.Fatal(err)
+	}
+	if note, next := s.GoalTurn(context.Background(), g, nil); !g.Done || next != "" || g.Paused != "" || calls != 4 {
+		t.Fatalf("after a 502 and a 429: note %q next %q done=%v paused %q calls=%d", note, next, g.Done, g.Paused, calls)
+	}
+	_ = s.Log.Flush()
+	retries := 0
+	_ = events.Scan(filepath.Join(s.Dir, "events.jsonl"), func(e events.Event) error {
+		if e.Type == events.TypeModelError && strings.Contains(string(e.Data), "goal:judge") {
+			retries++
+		}
+		return nil
+	})
+	if retries != 2 {
+		t.Errorf("%d judge retries in the log, want 2", retries)
+	}
+}
+
+// A goal paused because its judge could not be asked is judged when it is resumed, not sent on with the verdict before the pause:
+// the work since that verdict was never judged. In a team run a resume after such a pause re-sent "not met yet" from two hours
+// earlier, and the manager re-proved four finished items a second time.
+func TestResumingAGoalWhoseJudgeFailedJudgesItFirst(t *testing.T) {
+	calls := 0
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if !strings.Contains(c.System, "You judge whether a coding agent") {
+			return mock.Reply{Text: "Completed the objective"}
+		}
+		switch calls++; calls {
+		case 1:
+			return mock.Reply{Text: `{"verdict":"inspect","query":"migration applied","offset":0}`}
+		case 2:
+			return mock.Reply{Text: `{"verdict":"continue","reason":"no record of the migration","left":["run the migration"]}`}
+		case 3:
+			return mock.Reply{Fault: &mock.Fault{Status: 400, Message: "bad request"}}
+		}
+		return mock.Reply{Text: `{"verdict":"done","reason":"the migration applied","left":[]}`}
+	})
+	s, err := session.New(context.Background(), opts(t, newRepo(t), client, model))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	g := goal.New("apply the migration")
+	s.SaveGoal(g)
+	if _, err := s.Run(context.Background(), goal.Start(g)); err != nil {
+		t.Fatal(err)
+	}
+	if _, next := s.GoalTurn(context.Background(), g, nil); !strings.Contains(next, "run the migration") {
+		t.Fatalf("the first verdict did not send the agent on: %q", next)
+	}
+	if _, err := s.Run(context.Background(), "apply it"); err != nil {
+		t.Fatal(err)
+	}
+	if s.GoalTurn(context.Background(), g, nil); !g.Unjudged || !strings.HasPrefix(g.Paused, "the judge could not be asked") {
+		t.Fatalf("a judge that failed: paused %q unjudged=%v", g.Paused, g.Unjudged)
+	}
+	note, next, _ := s.GoalResume(context.Background(), g)
+	if calls != 4 || !g.Done || next != "" || g.Paused != "" || g.Unjudged || note != "goal met: the migration applied" {
+		t.Errorf("the resume: note %q next %q done=%v paused %q unjudged=%v judge calls=%d", note, next, g.Done, g.Paused, g.Unjudged, calls)
+	}
+}
+
+// A goal paused on an interrupted turn is judged when it is resumed: the turn ran work the judge never saw.
+func TestResumingAGoalAfterAnInterruptedTurnJudgesItFirst(t *testing.T) {
+	calls := 0
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if !strings.Contains(c.System, "You judge whether a coding agent") {
+			return mock.Reply{Text: "Completed the objective"}
+		}
+		if calls++; calls == 1 {
+			return mock.Reply{Text: `{"verdict":"inspect","query":"migration applied","offset":0}`}
+		}
+		return mock.Reply{Text: `{"verdict":"done","reason":"the migration applied","left":[]}`}
+	})
+	s, err := session.New(context.Background(), opts(t, newRepo(t), client, model))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	g := goal.New("apply the migration")
+	s.SaveGoal(g)
+	if _, err := s.Run(context.Background(), goal.Start(g)); err != nil {
+		t.Fatal(err)
+	}
+	if s.GoalTurn(context.Background(), g, context.Canceled); g.Paused != "you interrupted it" || !g.Unjudged || calls != 0 {
+		t.Fatalf("an interrupted turn: paused %q unjudged=%v judge calls=%d", g.Paused, g.Unjudged, calls)
+	}
+	if note, next, _ := s.GoalResume(context.Background(), g); !g.Done || next != "" || calls != 2 {
+		t.Errorf("the resume: note %q next %q done=%v judge calls=%d", note, next, g.Done, calls)
+	}
+}
+
+// A goal the person paused between turns is sent on when it is resumed with what the judge last found missing, and no judge is asked.
+func TestResumingAGoalPausedByThePersonSendsItOn(t *testing.T) {
+	calls := 0
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if !strings.Contains(c.System, "You judge whether a coding agent") {
+			return mock.Reply{Text: "Completed the objective"}
+		}
+		if calls++; calls == 1 {
+			return mock.Reply{Text: `{"verdict":"inspect","query":"migration applied","offset":0}`}
+		}
+		return mock.Reply{Text: `{"verdict":"continue","reason":"no record of the migration","left":["run the migration"]}`}
+	})
+	s, err := session.New(context.Background(), opts(t, newRepo(t), client, model))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	g := goal.New("apply the migration")
+	s.SaveGoal(g)
+	if _, err := s.Run(context.Background(), goal.Start(g)); err != nil {
+		t.Fatal(err)
+	}
+	s.GoalTurn(context.Background(), g, nil)
+	g.Paused = "paused by you"
+	note, next, _ := s.GoalResume(context.Background(), g)
+	if calls != 2 || note != "" || g.Paused != "" || !strings.Contains(next, "Not met yet: no record of the migration") {
+		t.Errorf("the resume: note %q next %q paused %q judge calls=%d", note, next, g.Paused, calls)
 	}
 }
 
@@ -593,4 +756,42 @@ func TestAJudgeModelsDoneIsConfirmedOnTheSessionsModel(t *testing.T) {
 // pushedBack says a judge call is the harness asking a judge to search before its verdict of continue stands.
 func pushedBack(c *mock.Call) bool {
 	return strings.Contains(c.LastUser(), "Your verdict came before any evidence request")
+}
+
+// A team's goal paused on an unjudged turn while its board still has unfinished tasks is sent on without asking the judge: it could
+// not find the goal met (a goal is not met while the board has unfinished work), and in a team trial the judge spent eight minutes of
+// evidence reads on such a resume before the manager could go on. The continuation names the open tasks, not the stale verdict.
+func TestResumingATeamGoalWithUnfinishedTasksSkipsTheJudge(t *testing.T) {
+	calls := 0
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if strings.Contains(c.System, "You judge whether a coding agent") {
+			calls++
+			return mock.Reply{Text: `{"verdict":"continue","reason":"judged","left":[]}`}
+		}
+		return mock.Reply{Text: "planning"}
+	})
+	o := opts(t, newRepo(t), client, model)
+	o.Swarm = true
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	g := goal.New("build the API")
+	s.SaveGoal(g)
+	if _, err := s.Swarm.Board.CreateTask("mgr", swarm.TaskSpec{Title: "plan the contracts", Role: "architect"}); err != nil {
+		t.Fatal(err)
+	}
+	g.Reason = "a verdict from before the pause"
+	g.Paused, g.Unjudged = "the chat was restarted", true
+	note, next, j := s.GoalResume(context.Background(), g)
+	if calls != 0 || j.Judged {
+		t.Fatalf("the judge was asked %d times (judged=%v)", calls, j.Judged)
+	}
+	if g.Paused != "" || g.Unjudged || g.Done {
+		t.Fatalf("the goal after the resume: %+v", g)
+	}
+	if !strings.Contains(note, "unfinished tasks (T1)") || !strings.Contains(next, "Not met yet: the board still has unfinished tasks (T1)\n") || strings.Contains(next, "before the pause") {
+		t.Fatalf("the resume: note %q next %q", note, next)
+	}
 }

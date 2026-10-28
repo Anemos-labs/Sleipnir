@@ -412,16 +412,21 @@ func repairToolName(has func(string) bool, name string) string {
 	if has(name) {
 		return name
 	}
-	cand := name
-	if i := strings.Index(cand, "<|"); i >= 0 {
-		cand = cand[:i]
-	}
-	cand = strings.Trim(cand, " \t\r\n.:;,\"'`")
-	for _, ns := range []string{"functions.", "function.", "tools.", "tool."} {
-		cand = strings.TrimPrefix(cand, ns)
-	}
-	if cand != "" && cand != name && has(cand) {
+	if cand := BareToolName(name); cand != "" && cand != name && has(cand) {
 		return cand
+	}
+	return name
+}
+
+// BareToolName is a tool name with what repairToolName cuts cut away: a model's chat format after the name, the punctuation around it,
+// and a namespace before it. It is the name the dispatcher runs when that is a tool.
+func BareToolName(name string) string {
+	if i := strings.Index(name, "<|"); i >= 0 {
+		name = name[:i]
+	}
+	name = strings.Trim(name, " \t\r\n.:;,\"'`")
+	for _, ns := range []string{"functions.", "function.", "tools.", "tool."} {
+		name = strings.TrimPrefix(name, ns)
 	}
 	return name
 }

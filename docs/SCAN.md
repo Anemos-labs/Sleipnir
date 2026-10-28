@@ -68,6 +68,9 @@ The agents read the code and record what they find:
 
 Phases overlap: a shard is hunted as soon as it is mapped, a lead verified as soon as it is filed. A shard is closed with `hunt` only once each of its sinks is in a lead or named in the hunt note with the reason it is safe.
 
+A session whose goal is a scan (from `/scan`, the web page or `sleipnir scan`) works on that scan: an agent's call naming another
+scan of the project, such as an older unfinished one, goes to the session's scan with a note.
+
 ## Depths
 
 | Depth | Shards | Verifiers per lead | Defender | Reproduced from |
@@ -80,6 +83,20 @@ The *defender* is a verifier who argues the lead is false (the guard the filer m
 and confirms only when it finds none. A lead is confirmed when enough verifiers confirm it, more than reject it, a defender
 among them; it is rejected once as many reject it as the depth asks to confirm it. A confirmed lead the depth wants
 reproduced is *unproven* until a reproducer shows it, and is reported apart from the findings.
+
+## Reviewing a change
+
+`sleipnir scan --start --diff BASE` makes a review instead of a scan: the change from BASE (a commit or a branch; the review
+starts from their merge base, so commits BASE gained since do not count) to HEAD. Its inventory and shards hold only the files
+the change added or modified, and `scan lead` refuses a lead with no step of its trace on a line the change wrote: a review
+reports the holes a change brings in, widens or leaves open in the code it rewrote, not the rest of the repository. Every other
+rule (checked quotes, verifiers, the defender, reproducers) is the same. A review is named `review-…`, its findings.json carries
+`base` and `changes` (the line ranges at HEAD), and each finding an `anchor`: the last step of its trace on a changed line, where
+a pull request review comments on it. SARIF results are located at the anchor too.
+
+```text
+sleipnir swarm 8 --sandbox docker "$(sleipnir scan --start --diff origin/main)"
+```
 
 ## Reproducers
 

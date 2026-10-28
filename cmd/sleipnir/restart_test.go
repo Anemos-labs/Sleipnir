@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -51,27 +52,27 @@ func TestParseBudget(t *testing.T) {
 func TestProgramCommandsAnswerWithoutASession(t *testing.T) {
 	h := &sessionHost{} // /verbose, /anim and the usage of /swarm never touch the session
 	var out bytes.Buffer
-	res, ok := h.programCommand("/verbose", &out)
+	res, ok := h.programCommand(context.Background(), "/verbose", &out)
 	if !ok || res.Verbose != "on" {
 		t.Errorf("/verbose: %+v %v", res, ok)
 	}
-	res, _ = h.programCommand("/verbose off", &out)
+	res, _ = h.programCommand(context.Background(), "/verbose off", &out)
 	if res.Verbose != "off" {
 		t.Errorf("/verbose off: %+v", res)
 	}
-	res, _ = h.programCommand("/anim off", &out)
+	res, _ = h.programCommand(context.Background(), "/anim off", &out)
 	if res.Anim != "off" {
 		t.Errorf("/anim off: %+v", res)
 	}
 	out.Reset()
-	if res, _ = h.programCommand("/anim maybe", &out); res.Anim != "" || !strings.Contains(out.String(), "usage: /anim [on|off]") {
+	if res, _ = h.programCommand(context.Background(), "/anim maybe", &out); res.Anim != "" || !strings.Contains(out.String(), "usage: /anim [on|off]") {
 		t.Errorf("/anim maybe: %+v %q", res, out.String())
 	}
 	out.Reset()
-	if res, _ = h.programCommand("/swarm", &out); res.Restart != nil || !strings.Contains(out.String(), "usage: /swarm <workers>") {
+	if res, _ = h.programCommand(context.Background(), "/swarm", &out); res.Restart != nil || !strings.Contains(out.String(), "usage: /swarm <workers>") {
 		t.Errorf("/swarm alone: %+v %q", res, out.String())
 	}
-	if _, ok := h.programCommand("/cost", &out); ok {
+	if _, ok := h.programCommand(context.Background(), "/cost", &out); ok {
 		t.Error("/cost is not a program command")
 	}
 }
@@ -132,31 +133,31 @@ func TestRolesShowsTheTableAndRestartsToChangeOne(t *testing.T) {
 	t.Setenv("TOGETHER_API_KEY", "k") // a role's model is checked before the chat is ended: its provider needs a key
 	solo := &sessionHost{s: chatSession(t, false, nil)}
 	var out strings.Builder
-	if _, ok := solo.programCommand("/roles", &out); !ok || !strings.Contains(out.String(), "default") || !strings.Contains(out.String(), "compactor") || !strings.Contains(out.String(), "no compactor model is set") {
+	if _, ok := solo.programCommand(context.Background(), "/roles", &out); !ok || !strings.Contains(out.String(), "default") || !strings.Contains(out.String(), "compactor") || !strings.Contains(out.String(), "no compactor model is set") {
 		t.Errorf("solo table:\n%s", out.String())
 	}
 	out.Reset()
-	if res, _ := solo.programCommand("/roles worker=a/b", &out); res.Restart != nil || !strings.Contains(out.String(), "single agent") {
+	if res, _ := solo.programCommand(context.Background(), "/roles worker=a/b", &out); res.Restart != nil || !strings.Contains(out.String(), "single agent") {
 		t.Errorf("a single agent has no workers: %+v %q", res, out.String())
 	}
 	out.Reset()
-	if res, _ := solo.programCommand("/roles compactor=ollama/qwen3:8b", &out); !contains(res.Restart, "compactor=ollama/qwen3:8b") || !contains(res.Restart, "--role-model") {
+	if res, _ := solo.programCommand(context.Background(), "/roles compactor=ollama/qwen3:8b", &out); !contains(res.Restart, "compactor=ollama/qwen3:8b") || !contains(res.Restart, "--role-model") {
 		t.Errorf("the compactor can be named: %+v %q", res, out.String())
 	}
 	out.Reset()
-	if res, _ := solo.programCommand("/roles nonsense", &out); res.Restart != nil || !strings.Contains(out.String(), "usage: /roles") {
+	if res, _ := solo.programCommand(context.Background(), "/roles nonsense", &out); res.Restart != nil || !strings.Contains(out.String(), "usage: /roles") {
 		t.Errorf("usage: %+v %q", res, out.String())
 	}
 	swarm := &sessionHost{s: chatSessionWith(t, false, nil, func(o *session.Options) {
 		o.Swarm, o.Workers = true, 3
 	}, nil)}
 	out.Reset()
-	swarm.programCommand("/roles", &out)
+	swarm.programCommand(context.Background(), "/roles", &out)
 	if !strings.Contains(out.String(), "manager") || !strings.Contains(out.String(), "backend") || !strings.Contains(out.String(), "the session's model") {
 		t.Errorf("a team's table names its roles and where each came from:\n%s", out.String())
 	}
 	out.Reset()
-	res, _ := swarm.programCommand("/roles backend=together/a", &out)
+	res, _ := swarm.programCommand(context.Background(), "/roles backend=together/a", &out)
 	if !contains(res.Restart, "backend=together/a") || !contains(res.Restart, "--role-model") {
 		t.Errorf("changing a worker's model restarts with the flag: %v", res.Restart)
 	}
@@ -203,7 +204,7 @@ func TestModelOfThePlanNeedsASignInBeforeTheChatEnds(t *testing.T) {
 	t.Setenv("TOGETHER_API_KEY", "k")
 	team := &sessionHost{s: chatSessionWith(t, false, nil, func(o *session.Options) { o.Swarm, o.Workers = true, 3 }, nil)}
 	var out strings.Builder
-	res, ok := team.programCommand("/model chatgpt/some-model", &out)
+	res, ok := team.programCommand(context.Background(), "/model chatgpt/some-model", &out)
 	if !ok || res.Restart != nil || !strings.Contains(out.String(), "/login chatgpt") {
 		t.Errorf("not signed in: nothing restarts, and the way to sign in is named: %v %q", res.Restart, out.String())
 	}
@@ -219,7 +220,7 @@ func TestModelInATeamStartsItAgainOnTheNewModel(t *testing.T) {
 		o.RoleModels = map[string]string{"scout": "together/small"}
 	}, nil)}
 	var out strings.Builder
-	res, ok := team.programCommand("/model together/big", &out)
+	res, ok := team.programCommand(context.Background(), "/model together/big", &out)
 	if !ok || !contains(res.Restart, "--model") || !contains(res.Restart, "together/big") || !contains(res.Restart, "--swarm") || !contains(res.Restart, "scout=together/small") {
 		t.Fatalf("the team restarts on the new model, a team, with its roles: %v\n%s", res.Restart, out.String())
 	}
@@ -227,19 +228,19 @@ func TestModelInATeamStartsItAgainOnTheNewModel(t *testing.T) {
 		t.Errorf("one --model, the new one: %v", res.Restart)
 	}
 	out.Reset()
-	if res, ok = team.programCommand("/model groq/zzz", &out); !ok || res.Restart != nil || !strings.Contains(out.String(), "model:") {
+	if res, ok = team.programCommand(context.Background(), "/model groq/zzz", &out); !ok || res.Restart != nil || !strings.Contains(out.String(), "model:") {
 		t.Errorf("a reference that cannot be used ends nothing: %v %q", res.Restart, out.String())
 	}
 	out.Reset()
-	if res, ok = team.programCommand("/roles scout=groq/zzz", &out); !ok || res.Restart != nil || !strings.Contains(out.String(), "roles: scout=groq/zzz") {
+	if res, ok = team.programCommand(context.Background(), "/roles scout=groq/zzz", &out); !ok || res.Restart != nil || !strings.Contains(out.String(), "roles: scout=groq/zzz") {
 		t.Errorf("a role's model that cannot be used ends nothing: %v %q", res.Restart, out.String())
 	}
 	// a single agent moves its own conversation, which is slashTo's, and without an argument /model only says which model it is
 	solo := &sessionHost{s: chatSession(t, false, nil)}
-	if _, ok := solo.programCommand("/model together/big", &out); ok {
+	if _, ok := solo.programCommand(context.Background(), "/model together/big", &out); ok {
 		t.Error("a single agent's /model is not a restart")
 	}
-	if _, ok := team.programCommand("/model", &out); ok {
+	if _, ok := team.programCommand(context.Background(), "/model", &out); ok {
 		t.Error("/model alone only shows the model")
 	}
 }
@@ -252,27 +253,27 @@ func TestLoginInTheChatLeavesItToSignInAndComesBack(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 	solo := &sessionHost{s: chatSession(t, false, nil)}
 	var out strings.Builder
-	res, ok := solo.programCommand("/login groq", &out)
+	res, ok := solo.programCommand(context.Background(), "/login groq", &out)
 	if !ok || res.Restart == nil || !contains(res.Restart, "--mode") || count(res.Restart, "--swarm") != 1 || !reflect.DeepEqual(solo.first, []string{"login", "groq"}) ||
 		!strings.Contains(out.String(), "comes back where you were") {
 		t.Errorf("/login groq: restart %v, first %v\n%s", res.Restart, solo.first, out.String())
 	}
 	for _, line := range []string{"/login chatgpt", "/login"} { // the plan, and the menu that asks
 		solo.first, out = nil, strings.Builder{}
-		if res, ok = solo.programCommand(line, &out); !ok || res.Restart == nil || len(solo.first) == 0 || solo.first[0] != "login" {
+		if res, ok = solo.programCommand(context.Background(), line, &out); !ok || res.Restart == nil || len(solo.first) == 0 || solo.first[0] != "login" {
 			t.Errorf("%s: restart %v, first %v\n%s", line, res.Restart, solo.first, out.String())
 		}
 	}
 	// a name that takes no key, and too many words, end nothing
 	for line, want := range map[string]string{"/login nonsense": "not a provider that takes a key", "/login a b": "usage: /login [provider]"} {
 		solo.first, out = nil, strings.Builder{}
-		if res, ok = solo.programCommand(line, &out); !ok || res.Restart != nil || solo.first != nil || !strings.Contains(out.String(), want) {
+		if res, ok = solo.programCommand(context.Background(), line, &out); !ok || res.Restart != nil || solo.first != nil || !strings.Contains(out.String(), want) {
 			t.Errorf("%s: restart %v, first %v, said %q (want %q)", line, res.Restart, solo.first, out.String(), want)
 		}
 	}
 	team := &sessionHost{s: chatSessionWith(t, false, nil, func(o *session.Options) { o.Swarm, o.Workers = true, 3 }, nil)}
 	out = strings.Builder{}
-	if res, ok = team.programCommand("/login", &out); !ok || !contains(res.Restart, "--swarm") || contains(res.Restart, "--resume") || !strings.Contains(out.String(), "comes back where you were") {
+	if res, ok = team.programCommand(context.Background(), "/login", &out); !ok || !contains(res.Restart, "--swarm") || contains(res.Restart, "--resume") || !strings.Contains(out.String(), "comes back where you were") {
 		t.Errorf("a team comes back as a team (with nothing to resume yet: it has not finished a turn): %v\n%s", res.Restart, out.String())
 	}
 }
@@ -335,7 +336,7 @@ func TestResumeWithNothingToResumeStaysInTheChat(t *testing.T) {
 	h := &sessionHost{s: chatSession(t, false, nil)}
 	for _, line := range []string{"/resume", "/resume nosuchid"} {
 		var out strings.Builder
-		res, ok := h.programCommand(line, &out)
+		res, ok := h.programCommand(context.Background(), line, &out)
 		if !ok || res.Restart != nil || !strings.Contains(out.String(), "resume:") {
 			t.Errorf("%s: handled %v, restart %v, said %q", line, ok, res.Restart, out.String())
 		}
@@ -347,7 +348,7 @@ func TestGoalCommandSetsPausesResumesAndClears(t *testing.T) {
 	h := &sessionHost{s: chatSession(t, false, nil)}
 	run := func(line string) (app.CommandResult, string) {
 		var out strings.Builder
-		res, ok := h.programCommand(line, &out)
+		res, ok := h.programCommand(context.Background(), line, &out)
 		if !ok {
 			t.Fatalf("%s was not handled", line)
 		}
@@ -379,7 +380,7 @@ func TestGoalCommandReadsASpecAndListsItsMilestones(t *testing.T) {
 	h := &sessionHost{s: chatSession(t, false, nil)}
 	run := func(line string) (app.CommandResult, string) {
 		var out strings.Builder
-		res, ok := h.programCommand(line, &out)
+		res, ok := h.programCommand(context.Background(), line, &out)
 		if !ok {
 			t.Fatalf("%s was not handled", line)
 		}

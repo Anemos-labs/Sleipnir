@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/anemos-labs/sleipnir/internal/goal"
 	"github.com/anemos-labs/sleipnir/internal/scan"
 )
 
@@ -64,6 +65,12 @@ func TestScanViewReadsTheProjectsScans(t *testing.T) {
 	}
 	if _, _, err := s.ScanIssue(r.Slug, "L1"); err == nil || !strings.Contains(err.Error(), "still being verified") {
 		t.Errorf("an open lead was written up: %v", err)
+	}
+	// a session started on the scan's goal (from the page or a shell) works on that scan
+	s.scan.store = scan.NewStore(dir)
+	s.noteObjective(&goal.State{Objective: scan.Objective(r, "")})
+	if got := s.scan.store.Active(); got != r.Slug {
+		t.Errorf("the goal's scan is not the session's: %q", got)
 	}
 	if _, err := s.ScanDetail("../../etc"); err == nil {
 		t.Error("a path was read as a scan")

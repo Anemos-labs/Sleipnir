@@ -101,10 +101,10 @@ func (p *Prover) Prove(ctx context.Context, root string, r *Run, lead, by, scrip
 	return pr, nil
 }
 
-// hasMarker reports whether a line of the output starts with the marker, as a word of its own (a note may follow it).
+// hasMarker reports whether a line of the output starts with the marker, as a word of its own (a note may follow it, after a colon or not).
 func hasMarker(out, marker string) bool {
 	for _, l := range strings.Split(out, "\n") {
-		if f := strings.Fields(l); len(f) > 0 && f[0] == marker {
+		if f := strings.Fields(l); len(f) > 0 && strings.TrimRight(f[0], ":;,.") == marker {
 			return true
 		}
 	}

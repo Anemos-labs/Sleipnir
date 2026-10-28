@@ -11,6 +11,10 @@ type Run struct {
 	Depth   string `json:"depth"`
 	Focus   string `json:"focus,omitempty"`
 	Created string `json:"created,omitempty"`
+	// Base is set when the scan reviews a change: the commit the change starts from (Commit is where it ends), and Changes the
+	// lines it added or modified. A review's leads each have a step on one of those lines.
+	Base    string   `json:"base,omitempty"`
+	Changes []Change `json:"changes,omitempty"`
 
 	Inventory Inventory `json:"inventory"`
 	Shards    []Shard   `json:"shards"`

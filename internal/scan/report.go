@@ -59,13 +59,15 @@ type Finding struct {
 	Verdicts []Verdict `json:"verdicts,omitempty"`
 	Proofs   []Proof   `json:"proofs,omitempty"`
 	Reason   string    `json:"reject_reason,omitempty"`
+	// Anchor is where the finding shows on the code: in a review, the last step of its trace on a line the change made.
+	Anchor *Cite `json:"anchor,omitempty"`
 }
 
 // FindingOf is a lead as the report gives it.
 func FindingOf(r *Run, l *Lead) Finding {
 	f := Finding{ID: l.ID, Title: l.Title, Category: l.Category, Severity: l.Severity(), Status: l.Status(r.DepthInfo()), Impact: l.Impact,
 		Reach: l.Reachability(), Exploit: l.Exploitability(), Claim: l.Claim, Trace: l.Trace, Points: l.Points, Fix: l.Fix, By: l.By,
-		Verdicts: l.Verdicts, Proofs: l.Proofs}
+		Verdicts: l.Verdicts, Proofs: l.Proofs, Anchor: r.Anchor(l)}
 	if f.Status == LeadRejected {
 		f.Reason = l.RejectReason()
 	}
@@ -91,8 +93,12 @@ func Findings(r *Run) []Finding {
 // FindingsDoc is findings.json.
 func FindingsDoc(r *Run) map[string]any {
 	rep := Check(r)
-	return map[string]any{"scan": r.Slug, "commit": r.Commit, "depth": r.Depth, "focus": r.Focus, "phase": rep.Phase,
+	doc := map[string]any{"scan": r.Slug, "commit": r.Commit, "depth": r.Depth, "focus": r.Focus, "phase": rep.Phase,
 		"counts": rep.Counts, "findings": Findings(r)}
+	if r.IsReview() {
+		doc["base"], doc["changes"] = r.Base, r.Changes
+	}
+	return doc
 }
 
 // MapDoc is map.json: the shards with their maps, the points and the edges, in the node and edge shape code graphs use
@@ -150,7 +156,7 @@ func sarifLevel(sev string) string {
 var securitySeverity = map[string]string{SevCritical: "9.5", SevHigh: "8.0", SevMedium: "5.5", SevLow: "2.0"}
 
 // SARIF is findings.sarif (SARIF 2.1.0): the confirmed and unproven findings, located at their trace's last step (the sink),
-// with the whole trace as a code flow.
+// or in a review at the last step on a changed line, with the whole trace as a code flow.
 func SARIF(r *Run) map[string]any {
 	rules := []any{}
 	seen := map[string]bool{}
@@ -174,11 +180,16 @@ func SARIF(r *Run) map[string]any {
 		for _, s := range f.Trace {
 			flow = append(flow, map[string]any{"location": loc(s.Cite, s.Note)})
 		}
-		sink := f.Trace[len(f.Trace)-1]
+		at := f.Trace[len(f.Trace)-1]
+		for _, s := range f.Trace {
+			if f.Anchor != nil && s.Cite == *f.Anchor {
+				at = s
+			}
+		}
 		results = append(results, map[string]any{
 			"ruleId": rule, "level": sarifLevel(f.Severity),
 			"message":             map[string]any{"text": f.Title + ": " + f.Claim},
-			"locations":           []any{loc(sink.Cite, sink.Note)},
+			"locations":           []any{loc(at.Cite, at.Note)},
 			"codeFlows":           []any{map[string]any{"threadFlows": []any{map[string]any{"locations": flow}}}},
 			"partialFingerprints": map[string]any{"sleipnirScan/v1": fingerprint(f)},
 			"properties": map[string]any{"security-severity": securitySeverity[f.Severity], "status": f.Status, "reachability": f.Reach,
@@ -217,8 +228,13 @@ func Markdown(r *Run) string {
 	c := rep.Counts
 	var b strings.Builder
 	w := func(format string, args ...any) { fmt.Fprintf(&b, format, args...) }
-	w("# Deep scan %s\n\n", r.Slug)
-	w("Commit `%s`", short(r.Commit))
+	if r.IsReview() {
+		w("# Review %s\n\n", r.Slug)
+		w("Change `%s`..`%s` (%d files)", short(r.Base), short(r.Commit), len(r.Changes))
+	} else {
+		w("# Deep scan %s\n\n", r.Slug)
+		w("Commit `%s`", short(r.Commit))
+	}
 	if r.Focus != "" {
 		w(" · focus `%s`", r.Focus)
 	}
