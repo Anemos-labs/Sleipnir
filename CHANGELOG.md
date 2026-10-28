@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Resuming a team's goal after an unjudged pause (an interruption, a
+  failed turn, a restart) no longer asks the judge while the task board
+  still has unfinished tasks, since the judge could not find the goal met
+  then. The continuation names the open tasks instead of the verdict from
+  before the pause, and the judge rules again at the end of the turn. A
+  goal with nothing left open on the board is judged first, as before.
 - The manager of a configured team is told in its live view when it has
   made more than six requests in one run with nothing on the board and
   no worker at work: unless the request is one it handles itself, it should

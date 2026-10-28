@@ -226,7 +226,8 @@ func (g *goalLoop) Pause(s *session.Session, why string) error {
 
 // Resume takes the pause off the goal and returns the continuation to send ("" when there is none: a goal judged met, or paused again,
 // on resuming). A goal paused on a turn that was not judged is judged first (session.GoalResume), and that judgment is reported
-// through emit as a turn's is; the goal's state is reported either way.
+// through emit as a turn's is, as is the note that says why it was not (a board with unfinished tasks); the goal's state is reported
+// either way.
 func (g *goalLoop) Resume(ctx context.Context, s *session.Session, emit func(goalEvent)) (string, error) {
 	st := g.State()
 	switch {
@@ -241,7 +242,7 @@ func (g *goalLoop) Resume(ctx context.Context, s *session.Session, emit func(goa
 		st = nil
 	}
 	g.set(s, st)
-	if j.Judged || j.Err != nil {
+	if j.Judged || j.Err != nil || note != "" { // a note without a judgment says why none was asked
 		emit(goalEvent{Kind: "judged", Note: note, Judgment: j})
 	}
 	emit(goalEvent{Kind: "state", Goal: shown})
