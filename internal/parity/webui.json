@@ -53,6 +53,11 @@
    "nav": false
   },
   {
+   "name": "scan",
+   "title": "Deep scan",
+   "nav": true
+  },
+  {
    "name": "schedule",
    "title": "Schedule",
    "nav": true
@@ -125,6 +130,14 @@
    "tab": null,
    "label": "Research",
    "key": "w",
+   "radio": false
+  },
+  {
+   "id": "scan",
+   "view": "scan",
+   "tab": null,
+   "label": "Deep scan",
+   "key": "d",
    "radio": false
   },
   {
@@ -698,6 +711,15 @@
    "live": true,
    "effects": [
     "view:research"
+   ]
+  },
+  {
+   "group": "go to",
+   "name": "Deep scan",
+   "kind": "view",
+   "live": true,
+   "effects": [
+    "view:scan"
    ]
   },
   {

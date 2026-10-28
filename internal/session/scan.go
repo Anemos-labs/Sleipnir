@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -14,6 +15,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"github.com/anemos-labs/sleipnir/internal/scan"
 	"github.com/anemos-labs/sleipnir/internal/tools"
+	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
 // scanState is the session's deep scans: the store, the repository they read, and a reader of each scanned commit.
@@ -172,12 +174,6 @@ func (s *Session) StartScan(ctx context.Context, depth, focus string) (string, e
 	if !s.pluginOn(plugin.Goal) {
 		return "", errors.New("a scan is driven as a goal, and the goal plugin is off: /plugins enable goal")
 	}
-	if depth == "" {
-		depth = scan.DefaultDepth
-	}
-	if _, ok := scan.DepthByID(depth); !ok {
-		return "", fmt.Errorf("unknown depth %q (%s)", depth, strings.Join(scan.DepthIDs(), ", "))
-	}
 	if focus != "" {
 		abs := focus
 		if !filepath.IsAbs(abs) {
@@ -193,19 +189,8 @@ func (s *Session) StartScan(ctx context.Context, depth, focus string) (string, e
 	if err != nil {
 		return "", err
 	}
-	head, err := repo.Head(ctx)
+	r, err := scan.Start(ctx, s.scan.store, repo, depth, focus)
 	if err != nil {
-		return "", fmt.Errorf("the repository has no commit to scan: %w", err)
-	}
-	inv, err := scan.TakeInventory(ctx, repo, head, focus)
-	if err != nil {
-		return "", err
-	}
-	r, err := s.scan.store.Create(head, depth, focus, inv)
-	if err != nil {
-		return "", err
-	}
-	if err := scan.WriteBrief(s.opts.Root, r); err != nil {
 		return "", err
 	}
 	if s.box == nil && r.DepthInfo().ProveFrom != "" {
@@ -241,4 +226,166 @@ func (s *Session) scanList() string {
 	}
 	b.WriteString("/scan status SCAN shows one; the report is .sleipnir/scan/SCAN/REPORT.md")
 	return b.String()
+}
+
+// ScanRuns are the project's scans with their numbers, for the Deep scan view.
+func (s *Session) ScanRuns() []wire.ScanRun {
+	out := []wire.ScanRun{}
+	if s.scan == nil {
+		return out
+	}
+	active := s.scan.store.Active()
+	for _, r := range scan.List(s.opts.Root) {
+		rep := scan.Check(r)
+		c := rep.Counts
+		out = append(out, wire.ScanRun{Slug: r.Slug, Commit: r.Commit, Depth: r.Depth, Focus: r.Focus, Phase: rep.Phase, Created: r.Created,
+			Team: r.Team(), Problems: rep.Blocking(), Files: c.Files, Funcs: c.Funcs, Lines: c.Lines, Shards: c.Shards, Mapped: c.Mapped,
+			Hunted: c.Hunted, Points: c.Points, Edges: c.Edges, Leads: c.Leads, Open: c.Open, Confirmed: c.Confirmed, Unproven: c.Unproven,
+			Rejected: c.Rejected, BySeverity: c.BySeverity, Active: r.Slug == active})
+	}
+	return out
+}
+
+// ScanDepths are the depths a scan can have, for the forms that start one.
+func ScanDepths() []wire.ScanDepth {
+	out := make([]wire.ScanDepth, 0, len(scan.Depths))
+	for _, d := range scan.Depths {
+		out = append(out, wire.ScanDepth{ID: d.ID, Title: d.Title, About: d.Summary, ShardFuncs: d.ShardFuncs, ShardLines: d.ShardLines,
+			Verifiers: d.Verifiers, Defender: d.Defender, ProveFrom: d.ProveFrom})
+	}
+	return out
+}
+
+// maxScanProblems is the most of a scan's open problems ScanDetail lists.
+const maxScanProblems = 40
+
+// scanRun is a scan of the project by name, for the view's calls.
+func (s *Session) scanRun(slug string) (*scan.Run, error) {
+	if s.scan == nil {
+		return nil, errors.New("the scan plugin is off: /plugins enable scan")
+	}
+	if !scan.ValidSlug(slug) {
+		return nil, fmt.Errorf("%q is not a scan", slug)
+	}
+	return s.scan.store.Snapshot(slug)
+}
+
+// ScanDetail is one scan as the Deep scan view shows it: what it still needs, its findings with their traces, verdicts and
+// reproductions, its shards with their maps, the attack surface and the edges.
+func (s *Session) ScanDetail(slug string) (map[string]any, error) {
+	r, err := s.scanRun(slug)
+	if err != nil {
+		return nil, err
+	}
+	rep := scan.Check(r)
+	problems := rep.Problems
+	if len(problems) > maxScanProblems {
+		problems = problems[:maxScanProblems]
+	}
+	type shard struct {
+		ID         string `json:"id"`
+		Files      int    `json:"files"`
+		First      string `json:"first"`
+		Funcs      int    `json:"funcs"`
+		Lines      int    `json:"lines"`
+		Complexity int    `json:"complexity"`
+		Claimed    string `json:"claimed,omitempty"`
+		Map        string `json:"map,omitempty"`
+		MappedBy   string `json:"mappedBy,omitempty"`
+		Hunt       string `json:"hunt,omitempty"`
+		HuntedBy   string `json:"huntedBy,omitempty"`
+	}
+	shards := make([]shard, 0, len(r.Shards))
+	for _, sh := range r.Shards {
+		x := shard{ID: sh.ID, Files: len(sh.Files), Funcs: sh.Funcs, Lines: sh.Lines, Complexity: sh.Complexity, Claimed: sh.Claimed,
+			Map: sh.Mapped, MappedBy: sh.MappedBy, Hunt: sh.Hunted, HuntedBy: sh.HuntedBy}
+		if len(sh.Files) > 0 {
+			x.First = sh.Files[0]
+		}
+		shards = append(shards, x)
+	}
+	d := r.DepthInfo()
+	return map[string]any{"slug": r.Slug, "commit": r.Commit, "depth": r.Depth, "focus": r.Focus, "created": r.Created, "team": r.Team(),
+		"verifiers": d.Verifiers, "defender": d.Defender, "proveFrom": d.ProveFrom, "sandbox": s.box != nil,
+		"phase": rep.Phase, "counts": rep.Counts, "problems": problems, "moreProblems": len(rep.Problems) - len(problems),
+		"findings": scan.Findings(r), "shards": shards, "points": r.Points, "edges": scan.MapDoc(r)["edges"],
+		"reportDir": scan.RunDir(s.opts.Root, r.Slug)}, nil
+}
+
+// ScanIssue writes a finding up as an issue for the project's tracker; the person reads and edits it before it is opened.
+func (s *Session) ScanIssue(slug, lead string) (title, body string, err error) {
+	r, err := s.scanRun(slug)
+	if err != nil {
+		return "", "", err
+	}
+	return scan.Issue(r, r.Lead(lead))
+}
+
+// maxIssueBody is the longest issue body OpenScanIssue sends (GitHub takes 65536 characters).
+const maxIssueBody = 60000
+
+// OpenScanIssue opens the issue the person approved on the project's GitHub repository, with gh on this machine (its own login
+// and the project's remote), and returns its address.
+func (s *Session) OpenScanIssue(ctx context.Context, title, body string) (string, error) {
+	title = strings.TrimSpace(title)
+	if title == "" || strings.TrimSpace(body) == "" {
+		return "", errors.New("an issue needs a title and a body")
+	}
+	if len(title) > 256 || len(body) > maxIssueBody {
+		return "", errors.New("the issue is too long for GitHub")
+	}
+	if _, err := exec.LookPath("gh"); err != nil {
+		return "", errors.New("opening an issue needs the GitHub CLI (gh) on this machine, logged in: copy the issue instead")
+	}
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "gh", "issue", "create", "--title", title, "--body-file", "-")
+	cmd.Dir = s.opts.Root
+	cmd.Stdin = strings.NewReader(body)
+	out, err := cmd.CombinedOutput()
+	text := strings.TrimSpace(string(out))
+	if err != nil {
+		if len(text) > 400 {
+			text = text[:400]
+		}
+		return "", fmt.Errorf("gh issue create: %s", tools.SanitizeForTerminal(text))
+	}
+	lines := strings.Split(text, "\n")
+	return strings.TrimSpace(lines[len(lines)-1]), nil
+}
+
+// ScanFix is the goal that has the team fix a finding.
+func (s *Session) ScanFix(slug, lead string) (string, error) {
+	if !s.pluginOn(plugin.Goal) {
+		return "", errors.New("a fix is driven as a goal, and the goal plugin is off: /plugins enable goal")
+	}
+	r, err := s.scanRun(slug)
+	if err != nil {
+		return "", err
+	}
+	return scan.FixObjective(r, r.Lead(lead))
+}
+
+// ScanExport renders a scan's report in one format from its ledger: json (findings.json), csv, html (the page that prints to
+// PDF), md (REPORT.md) or sarif.
+func (s *Session) ScanExport(slug, format string) (data []byte, name string, err error) {
+	r, err := s.scanRun(slug)
+	if err != nil {
+		return nil, "", err
+	}
+	switch format {
+	case "json":
+		data, err = json.MarshalIndent(scan.FindingsDoc(r), "", " ")
+	case "sarif":
+		data, err = json.MarshalIndent(scan.SARIF(r), "", " ")
+	case "csv":
+		data = scan.CSV(r)
+	case "html":
+		data = []byte(scan.HTML(r))
+	case "md":
+		data = []byte(scan.Markdown(r))
+	default:
+		return nil, "", fmt.Errorf("unknown format %q", format)
+	}
+	return data, r.Slug, err
 }

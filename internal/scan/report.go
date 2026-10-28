@@ -17,7 +17,8 @@ const (
 )
 
 // WriteReport writes the scan's report files from its ledger as it is now: the Markdown report, the findings as JSON and as
-// SARIF, and the map. It is called after every change, so the report can be read while the scan runs.
+// SARIF, the map, the findings as CSV and the report as a page that prints to PDF. It is called after every change, so the
+// report can be read while the scan runs.
 func WriteReport(root string, r *Run) error {
 	dir := RunDir(root, r.Slug)
 	f, err := json.MarshalIndent(FindingsDoc(r), "", " ")
@@ -32,7 +33,7 @@ func WriteReport(root string, r *Run) error {
 	if err != nil {
 		return err
 	}
-	for name, data := range map[string][]byte{ReportFile: []byte(Markdown(r)), FindingsFile: append(f, '\n'), SARIFFile: append(s, '\n'), MapFile: append(m, '\n')} {
+	for name, data := range map[string][]byte{ReportFile: []byte(Markdown(r)), FindingsFile: append(f, '\n'), SARIFFile: append(s, '\n'), MapFile: append(m, '\n'), CSVFile: CSV(r), HTMLFile: []byte(HTML(r))} {
 		if err := WriteAtomic(filepath.Join(dir, name), data); err != nil {
 			return err
 		}

@@ -7,6 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The web page has a Deep scan view (`g d`, docs/SCAN.md): the project's scans, a scan's findings with their traces,
+  verdicts and reproductions, its attack surface and shard map, the report exported as CSV, JSON, PDF, Markdown or SARIF,
+  and a form that scans the project or a repository it clones (https or ssh, hooks and symbolic links off) into
+  `~/sleipnir-scans`. A confirmed finding can be written up and opened as a GitHub issue, after the person reads it, or
+  handed to the team as a fix goal. A scan's report now also writes `findings.csv` and `report.html`.
 - A `scan` plugin, off by default, adds `/scan`, `sleipnir scan` and the `scan` tool (docs/SCAN.md): a team maps a whole
   repository at a pinned commit, hunts it for holes, and reports what verifiers confirmed and a sandboxed reproducer
   showed. With the plugin off nothing changes; turning it on adds the `scan` tool to every agent's tool list, so the tools

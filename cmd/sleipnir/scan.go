@@ -107,30 +107,15 @@ func scanStartCLI(ctx context.Context, out io.Writer, root, depth, focus string)
 	if err != nil {
 		return fmt.Errorf("scan: %s is not a git repository: %w", root, err)
 	}
-	head, err := repo.Head(ctx)
-	if err != nil {
-		return fmt.Errorf("scan: the repository has no commit: %w", err)
-	}
 	if focus != "" {
 		focus = filepath.ToSlash(filepath.Clean(focus))
 		if !filepath.IsLocal(focus) {
 			return fmt.Errorf("scan: %s is not a directory of the repository", focus)
 		}
 	}
-	inv, err := scan.TakeInventory(ctx, repo, head, focus)
+	r, err := scan.Start(ctx, scan.NewStore(root), repo, depth, focus)
 	if err != nil {
 		return fmt.Errorf("scan: %w", err)
-	}
-	st := scan.NewStore(root)
-	r, err := st.Create(head, depth, focus, inv)
-	if err != nil {
-		return fmt.Errorf("scan: %w", err)
-	}
-	if err := scan.WriteBrief(root, r); err != nil {
-		return err
-	}
-	if err := scan.WriteReport(root, r); err != nil {
-		return err
 	}
 	_, err = fmt.Fprintln(out, scan.Objective(r, filepath.Join(root, filepath.FromSlash(scan.BriefPath(r.Slug)))))
 	return err

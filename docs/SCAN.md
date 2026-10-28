@@ -14,6 +14,22 @@ reading.
 sleipnir scan [SCAN]      the same from a shell (--json, --report)
 ```
 
+The web page has a **Deep scan** view of its own (`g d`): the project's scans with their phase and numbers, the selected scan's
+findings (each opens with its trace, its verdicts and its reproductions), the attack surface by lane and the shards with their
+maps, and a form that starts a scan of the project or of a repository. For a repository it clones it into a new folder of
+`~/sleipnir-scans` (https and ssh only, without submodules, with git's hooks, fsmonitor and symbolic links off, so that nothing
+in the clone runs on the host or points a host tool outside it), creates the scan there, and opens the New session dialog filled
+in with a sandboxed team of the scan's size and its goal. The findings card exports the report as CSV, JSON or PDF (the report
+laid out for print; the browser saves it), and as Markdown or SARIF.
+
+On a confirmed finding the person can act:
+
+- **Open issue…** writes the finding up (the claim, the cited trace, how it was checked, the reproducer, the fix) for the person
+  to read and edit, then opens it on the project's GitHub repository with `gh` on the machine, or copies it. Nothing is sent
+  until the person presses Open.
+- **Fix…** sets a goal for the team: fix the cause on the trace, add a regression test that fails without the fix, and run the
+  reproducer again to show it no longer reproduces; optionally with a pull request driven through CI and review, and merged.
+
 A scan is driven as a goal: `/scan` writes a brief (the protocol, below) and sets the goal that points at it, and the goal's
 judge holds the team to the brief's milestones on the evidence of the `scan` tool's own reports.
 
@@ -86,5 +102,6 @@ harm, and *inconclusive* otherwise (including a timeout: 5 minutes by default, 3
 .sleipnir/scan/SCAN/scan.json      the ledger
 .sleipnir/scan/SCAN/functions.json the inventory's functions (written once)
 .sleipnir/scan/SCAN/BRIEF.md       the protocol the goal points at
-.sleipnir/scan/SCAN/REPORT.md      the report, with findings.json, findings.sarif and map.json
+.sleipnir/scan/SCAN/REPORT.md      the report, with findings.json, findings.sarif, map.json, findings.csv and
+                                   report.html (the report as a page that prints to PDF)
 ```

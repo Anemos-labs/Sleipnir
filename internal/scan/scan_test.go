@@ -2,6 +2,7 @@ package scan
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -460,6 +461,37 @@ func TestAScanFromMapToReport(t *testing.T) {
 	_ = json.Unmarshal(mb, &m)
 	if len(m.Edges) != 2 || m.Edges[0].Confidence != "EXTRACTED" || m.Edges[1].Confidence != "INFERRED" {
 		t.Errorf("map edges: %s", mb)
+	} // a confirmed finding is written up for the tracker and handed to a fix goal, both with its trace
+	title, body, err := Issue(r, r.Lead("L1"))
+	if err != nil || title != "CRITICAL: Command injection in /ping" {
+		t.Fatalf("issue: %q %v", title, err)
+	}
+	for _, want := range []string{"`server/handler.go:15`", "Confirmed by 2 reviewers", "guard that would make it false", "## Suggested fix", r.Slug} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the issue lacks %q:\n%s", want, body)
+		}
+	}
+	goal, err := FixObjective(r, r.Lead("L1"))
+	if err != nil || !strings.Contains(goal, "Fix finding L1") || !strings.Contains(goal, "regression test") || !strings.Contains(goal, "server/handler.go:15") {
+		t.Fatalf("fix goal: %v\n%s", err, goal)
+	}
+	// the exports: one CSV row per lead, a page that escapes what the agents wrote
+	rows, err := csv.NewReader(strings.NewReader(string(CSV(r)))).ReadAll()
+	if err != nil || len(rows) != 2 || rows[0][0] != "id" || rows[1][0] != "L1" || rows[1][2] != "critical" || rows[1][8] != "server/handler.go" {
+		t.Fatalf("findings.csv: %v %q", err, rows)
+	}
+	page := HTML(r)
+	if !strings.Contains(page, "Command injection in /ping") || !strings.Contains(page, "&#34;ping -c1 &#34;+host") || strings.Contains(page, "<script") {
+		t.Errorf("report.html:\n%s", page)
+	}
+	for _, name := range []string{CSVFile, HTMLFile} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Errorf("the report did not write %s: %v", name, err)
+		}
+	}
+	r.Leads = append(r.Leads, Lead{ID: "L2", Title: "maybe"})
+	if _, _, err := Issue(r, r.Lead("L2")); err == nil || !strings.Contains(err.Error(), "still being verified") {
+		t.Fatalf("an open lead was written up: %v", err)
 	}
 }
 
@@ -577,6 +609,34 @@ func TestHasMarker(t *testing.T) {
 	} {
 		if got := hasMarker(out, MarkerReproduced); got != want {
 			t.Errorf("hasMarker(%q) = %v, want %v", out, got, want)
+		}
+	}
+}
+
+// A spreadsheet never runs a cell an agent wrote as a formula.
+func TestCSVCellsAreNotFormulas(t *testing.T) {
+	for in, want := range map[string]string{"=HYPERLINK(1)": "'=HYPERLINK(1)", "+1": "'+1", "-x": "'-x", "@SUM": "'@SUM", "plain": "plain", "": ""} {
+		if got := csvCell(in); got != want {
+			t.Errorf("csvCell(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// Only https and ssh repositories are cloned: no local path, file://, transport helper or option.
+func TestCloneTakesOnlyRemoteRepositories(t *testing.T) {
+	for _, ok := range []string{"https://github.com/owner/repo", "https://gitlab.com/a/b/c.git", "ssh://git@host/owner/repo.git", "git@github.com:owner/repo.git"} {
+		if err := CheckURL(ok); err != nil {
+			t.Errorf("CheckURL(%q): %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"", "/home/me/repo", "file:///etc", "ext::sh -c id", "fd::3", "--upload-pack=x", "http://host/owner/repo", "https://host", "https://host/ a", "git@host:repo;id"} {
+		if err := CheckURL(bad); err == nil {
+			t.Errorf("CheckURL(%q) accepted it", bad)
+		}
+	}
+	for in, want := range map[string]string{"https://github.com/Owner/Repo.git": "Owner-Repo", "git@github.com:a/b": "a-b", "https://host/x": "x"} {
+		if got := CloneName(in); got != want {
+			t.Errorf("CloneName(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
