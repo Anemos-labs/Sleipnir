@@ -17,12 +17,14 @@ they do not indicate whether a change has been released.
   its lines, up to 2000 characters; it used to be cut to 400 characters
   on one line. The `task` tool's description asks for feedback that says
   what is wrong and how it was seen, what to keep, and what will show it
-  is fixed (prompt bytes of the `task` tool change).
+  is fixed. The `task` tool's description grows by 104 bytes, so the tools
+  layer of every agent's cached prefix is written once more.
 - A rigor plan task asks for a plan an implementer can code from without
   the planner's research (every design decision settled, the file and
   function of each step, terms defined), and a rigor plan review checks
   for exactly that. The frontend role prompt names the new built-in
-  `landing-page-design` skill for a landing page or project website.
+  `landing-page-design` skill for a landing page or project website; the
+  frontend's role layer and the skills listing (one line) change once.
 - A manager's `task update` with files and a text on a task another
   agent owns sets the scope and answers that it did, noting that the text
   was not recorded. It used to answer with an error after the scope had
