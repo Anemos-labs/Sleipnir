@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -220,11 +221,15 @@ func TestCloseRemovesTheContainer(t *testing.T) {
 func TestMountRefusesTheHomeDirectory(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	if _, err := mountPaths([]string{home}); err == nil {
 		t.Fatal("the home directory was mounted")
 	}
 	if _, err := mountPaths([]string{filepath.Dir(home)}); err == nil {
 		t.Fatal("a directory holding the home directory was mounted")
+	}
+	if runtime.GOOS == "windows" {
+		return // a drive path (C:\\...) is never mounted, so there is no project below home to allow
 	}
 	proj := filepath.Join(home, "src", "app")
 	if got, err := mountPaths([]string{proj}); err != nil || len(got) == 0 {
