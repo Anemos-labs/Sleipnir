@@ -378,7 +378,37 @@ func TestResumingAGoalWhoseJudgeFailedJudgesItFirst(t *testing.T) {
 	}
 }
 
-// A goal paused for any other reason is sent on when it is resumed with what the judge last found missing, and no judge is asked.
+// A goal paused on an interrupted turn is judged when it is resumed: the turn ran work the judge never saw.
+func TestResumingAGoalAfterAnInterruptedTurnJudgesItFirst(t *testing.T) {
+	calls := 0
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if !strings.Contains(c.System, "You judge whether a coding agent") {
+			return mock.Reply{Text: "Completed the objective"}
+		}
+		if calls++; calls == 1 {
+			return mock.Reply{Text: `{"verdict":"inspect","query":"migration applied","offset":0}`}
+		}
+		return mock.Reply{Text: `{"verdict":"done","reason":"the migration applied","left":[]}`}
+	})
+	s, err := session.New(context.Background(), opts(t, newRepo(t), client, model))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	g := goal.New("apply the migration")
+	s.SaveGoal(g)
+	if _, err := s.Run(context.Background(), goal.Start(g)); err != nil {
+		t.Fatal(err)
+	}
+	if s.GoalTurn(context.Background(), g, context.Canceled); g.Paused != "you interrupted it" || !g.Unjudged || calls != 0 {
+		t.Fatalf("an interrupted turn: paused %q unjudged=%v judge calls=%d", g.Paused, g.Unjudged, calls)
+	}
+	if note, next := s.GoalResume(context.Background(), g); !g.Done || next != "" || calls != 2 {
+		t.Errorf("the resume: note %q next %q done=%v judge calls=%d", note, next, g.Done, calls)
+	}
+}
+
+// A goal the person paused between turns is sent on when it is resumed with what the judge last found missing, and no judge is asked.
 func TestResumingAGoalPausedByThePersonSendsItOn(t *testing.T) {
 	calls := 0
 	client, model := startMock(t, func(c *mock.Call) mock.Reply {

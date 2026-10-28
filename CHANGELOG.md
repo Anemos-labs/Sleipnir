@@ -7,10 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
-- Resuming a goal that paused because its judge could not be asked
-  now judges it first. Before, resume re-sent the judge's last "not met
-  yet", though the turns since that verdict had never been judged. A
-  goal paused for any other reason resumes as before.
+- Resuming a goal that paused on a turn the judge did not rule on (the
+  turn was interrupted or failed, the chat was restarted, or the judge
+  could not be asked) now judges it first. Before, resume re-sent the
+  judge's last "not met yet", from before that turn's work. A goal
+  paused by the person between turns, or by a verdict, resumes as
+  before.
 - A goal judge request that fails with a network error, a timeout, a
   5xx or a rate limit is sent again, up to four times with a growing
   wait (or the server's `Retry-After`, when longer), and each retry is
