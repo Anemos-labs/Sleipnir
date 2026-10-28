@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A docs catch-up for a change in a directory without Markdown names the
+  `*.md` files of the nearest directory above it that has some: a change
+  to `svc/ratelimit/**` names `svc/README.md`. A docs worker scoped
+  without it mailed the manager to widen its scope and waited a minute
+  for an answer that never came. Prompt bytes: the catch-up task's scope
+  line names the added files. No pin or tool spec changed.
 - A manager's first file edit in each top-level directory, while a
   writer role of its team has a free slot or an idle member, names those
   roles and says that work bigger than a handoff is a task for one of
