@@ -8,7 +8,7 @@ they do not indicate whether a change has been released.
 ## Compatibility changes
 
 - Resuming a goal that paused on a turn the judge did not rule on (the
-  turn was interrupted or failed, the chat was restarted, or the judge
+  turn was interrupted, failed or ran out of budget, the chat was restarted, or the judge
   could not be asked) now judges it first. Before, resume re-sent the
   judge's last "not met yet", from before that turn's work. A goal
   paused by the person between turns, or by a verdict, resumes as
