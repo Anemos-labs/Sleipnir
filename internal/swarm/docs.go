@@ -37,7 +37,9 @@ const DocsTaskTitle = "docs: catch up"
 var docsScope = []string{"*.md", "docs/**"}
 
 // docsScopeFor is docsScope plus the Markdown files that exist beside the changed code: for each file or directory a change's
-// scope names, the *.md files of its directory (a module's README is what its change made stale). Named files, never globs, so a
+// scope names, the *.md files of its directory (a module's README is what its change made stale), or, when that directory has none,
+// of the nearest directory above it that has some (svc/README.md for a change to svc/ratelimit/: a docs worker scoped without it
+// mailed the manager for it and waited a minute for an answer that never came). The root's Markdown is in docsScope. Named files, never globs, so a
 // later code task on that directory collides with those files alone and only while the pass runs. Entries whose directory cannot
 // be told (a glob with no literal directory) add nothing.
 func (s *Swarm) docsScopeFor(b []docsChange) []string {
@@ -53,8 +55,16 @@ func (s *Swarm) docsScopeFor(b []docsChange) []string {
 			if dir == "" || dir == "." || dir == "docs" || seen[dir] {
 				continue
 			}
-			seen[dir] = true
-			matches, _ := filepath.Glob(filepath.Join(root, filepath.FromSlash(dir), "*.md"))
+			var matches []string
+			for d := dir; d != "." && d != "docs"; d = path.Dir(d) {
+				if d != dir && seen[d] {
+					break // searched already, from another change: its Markdown is in, or it and those above have none
+				}
+				seen[d] = true
+				if matches, _ = filepath.Glob(filepath.Join(root, filepath.FromSlash(d), "*.md")); len(matches) > 0 {
+					break
+				}
+			}
 			sort.Strings(matches)
 			for _, m := range matches {
 				if rel, err := filepath.Rel(root, m); err == nil && filepath.IsLocal(rel) {

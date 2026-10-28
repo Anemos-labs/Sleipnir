@@ -194,7 +194,9 @@ worker is never run concurrently on that identity.
 **Auto-docs.** With `swarm.auto_docs` (default true) and a docs slot, the harness keeps the docs worker at work: every
 task the board closes as done that the docs worker did not do becomes a pending change, and when a docs worker is idle
 (or the docs slot is free) the harness gives it one `docs: catch up` task listing every pending change, scoped to
-`*.md` (the Markdown at the root) and `docs/**`. Markdown inside a code directory stays with the role that owns that
+`*.md` (the Markdown at the root) and `docs/**`, plus, by name, the Markdown beside each change: the `*.md` files of the
+directory its scope names, or, when that directory has none, of the nearest directory above it that has some
+(`svc/README.md` for a change to `svc/ratelimit/**`). Other Markdown inside a code directory stays with the role that owns that
 directory: `**/*.md` overlaps every directory a task holds or will claim, so a pass scoped so would wait for every code
 task to close and, while it ran, keep every task scoped to a directory from being claimed. A pass that cannot start says
 why in the keeper's state (`pass T12 waiting to start: scope "*.md" overlaps T6 …`). The first pass waits for the first accepted implementation task: an agreement accepted before
