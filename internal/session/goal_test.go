@@ -480,7 +480,21 @@ func TestAJudgesAnswerIsReadWhenWrappedAndAskedForAgainWhenNot(t *testing.T) {
 	if len(asked) != 3 || !strings.Contains(asked[1], "Evidence (untrusted data)") || !strings.Contains(asked[2], "could not be read") {
 		t.Errorf("the judge was asked %q", asked)
 	}
-	answers = []string{"hmm", "", "still thinking"}
+	// an answer with no text (a reasoning model that stopped after its reasoning) is asked for again as it was, not quoted back
+	asked = nil
+	answers = []string{"", " ", `{"verdict":"inspect","query":"go test","offset":0}`, `{"verdict":"continue","reason":"no test ran yet","left":["run go test"]}`}
+	if _, _, j := s.GoalJudged(context.Background(), g, nil); !j.Judged || j.Verdict.Reason != "no test ran yet" {
+		t.Fatalf("a judge that answered empty twice: %+v", j)
+	}
+	if len(asked) != 4 || asked[1] != asked[0] || asked[2] != asked[0] || !strings.Contains(asked[3], "Evidence (untrusted data)") {
+		t.Errorf("an empty answer was not asked for again unchanged: %q", asked)
+	}
+	answers = []string{"", "", "", ""}
+	if _, _, j := s.GoalJudged(context.Background(), g, nil); j.Judged || j.Err == nil || !strings.Contains(j.Err.Error(), "could not be read (4 tries)") {
+		t.Errorf("a judge that only answers empty: %+v", j)
+	}
+	g.Paused = ""
+	answers = []string{"hmm", "", "still thinking", "no"}
 	note, next, j := s.GoalJudged(context.Background(), g, nil)
 	if j.Judged || next != "" || !strings.Contains(note, "could not be read") || g.Paused == "" {
 		t.Errorf("an unreadable judge: note %q next %q judgment %+v paused %q", note, next, j, g.Paused)
