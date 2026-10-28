@@ -13,6 +13,14 @@ they do not indicate whether a change has been released.
   judge's last "not met yet", from before that turn's work. A goal
   paused by the person between turns, or by a verdict, resumes as
   before.
+- The goal judge's evidence search lists tool output (commands, reads,
+  edits, merges) before the records of coordination tools (task, pool,
+  mail, wait, spawn, plan, note, memory), each newest first. Those
+  records restate what agents claimed, and in a team's log they filled
+  most of the first page of a search, ahead of the tool output that
+  proves the claims. The result line counts both groups, and offsets
+  count down the combined order.
+
 - `sleipnir scan --start --diff BASE` creates a review of the change from BASE to HEAD (docs/SCAN.md): only the files the
   change wrote are mapped and hunted, a lead needs a trace step on a line the change made, and findings.json gains `base`
   and `changes`. Every finding in findings.json gains an `anchor`: in a review the last trace step on a changed line, where
