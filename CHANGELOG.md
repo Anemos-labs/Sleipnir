@@ -14,7 +14,6 @@ they do not indicate whether a change has been released.
   most of the first page of a search, ahead of the tool output that
   proves the claims. The result line counts both groups, and offsets
   count down the combined order.
-
 - Resuming a goal that paused on a turn the judge did not rule on (the
   turn was interrupted, failed or ran out of budget, the chat was restarted, or the judge
   could not be asked) now judges it first. Before, resume re-sent the
