@@ -199,7 +199,19 @@ func (t *Tool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 		}
 		return env.Finish("research "+in.Action+": "+err.Error(), true), nil
 	}
-	return env.Finish(text, false), nil
+	res := env.Finish(text, false)
+	res.Recorded = records(in.Action)
+	return res, nil
+}
+
+// records reports whether a call of action adds to the run's ledger: the plan, a citation, a note, a snippet, a review round, a
+// gap, a page, a page's review or a build of the wiki. Searching, listing, reading and checking only read it.
+func records(action string) bool {
+	switch action {
+	case "plan", "cite", "note", "snippet", "review_round", "gap", "write_page", "review_page", "build":
+		return true
+	}
+	return false
 }
 
 // status reports the run's phase, its numbers against its depth and what to do next.

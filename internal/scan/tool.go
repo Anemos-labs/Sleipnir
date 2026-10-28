@@ -202,7 +202,21 @@ func (t *Tool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 		}
 		return env.Finish("scan "+in.Action+": "+msg, true), nil
 	}
-	return env.Finish(text, false), nil
+	res := env.Finish(text, false)
+	res.Recorded = records(in)
+	return res, nil
+}
+
+// records reports whether a call of action in adds to the scan's ledger: a shard taken, a point, an edge, a map, a hunt note, a
+// lead, a verdict, a reproducer or the report. The listings and the status only read it.
+func records(in input) bool {
+	switch in.Action {
+	case "point", "edge", "map", "hunt", "lead", "verdict", "prove", "report":
+		return true
+	case "shards":
+		return in.Claim != ""
+	}
+	return false
 }
 
 func (t *Tool) view(in input, fn func(r *Run) string) (string, error) {
