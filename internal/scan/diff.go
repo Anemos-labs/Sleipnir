@@ -70,13 +70,19 @@ func Diff(ctx context.Context, repo *gitx.Repo, base, head string) ([]Change, er
 }
 
 // parseDiff reads a unified diff with no context lines: each file's "+++ b/path" header, then its hunks' "+start,count" ranges.
+// A "+++ " line counts as a header only between a file's "diff --git" line and its first hunk, so an added line that begins
+// with "++ " is not taken for one.
 func parseDiff(out string) []Change {
 	var cs []Change
 	var cur *Change
+	header := false
 	for _, l := range strings.Split(out, "\n") {
 		switch {
-		case strings.HasPrefix(l, "+++ "):
-			p := strings.TrimPrefix(l, "+++ ")
+		case strings.HasPrefix(l, "diff --git "):
+			cur, header = nil, true
+		case header && strings.HasPrefix(l, "+++ "):
+			// git ends an unquoted path that has a space with a tab
+			p := strings.TrimSuffix(strings.TrimPrefix(l, "+++ "), "\t")
 			cur = nil
 			if p == "/dev/null" {
 				continue
@@ -85,6 +91,7 @@ func parseDiff(out string) []Change {
 			cs = append(cs, Change{File: strings.TrimPrefix(p, "b/")})
 			cur = &cs[len(cs)-1]
 		case strings.HasPrefix(l, "@@ ") && cur != nil:
+			header = false
 			f := strings.Fields(l)
 			if len(f) < 3 || !strings.HasPrefix(f[2], "+") {
 				continue

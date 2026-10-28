@@ -70,15 +70,20 @@ func cmdScan(ctx context.Context, args []string) error {
 	}
 	project, _ := config.FindRoot(dir)
 	root := scanRoot(project)
-	if *diff != "" && !*start {
+	diffSet := false
+	fs.Visit(func(f *flag.Flag) { diffSet = diffSet || f.Name == "diff" })
+	if diffSet && !*start {
 		return errors.New("scan: --diff goes with --start")
+	}
+	if diffSet && *diff == "" {
+		return errors.New("scan: --diff needs a BASE")
 	}
 	if *start {
 		focus := ""
 		if len(pos) == 1 {
 			focus = pos[0]
 		}
-		if *diff != "" && focus != "" {
+		if diffSet && focus != "" {
 			return errors.New("scan: --diff reviews the whole change: leave DIR out")
 		}
 		return scanStartCLI(ctx, os.Stdout, root, *depth, focus, *diff)

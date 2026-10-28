@@ -128,7 +128,7 @@ func changeList(r *Run, limit int) string {
 				rs = append(rs, fmt.Sprintf("%d-%d", l[0], l[1]))
 			}
 		}
-		fmt.Fprintf(&b, "- `%s`: %s\n", c.File, strings.Join(rs, ", "))
+		fmt.Fprintf(&b, "- `%s`: %s\n", oneLine(c.File), strings.Join(rs, ", "))
 	}
 	return b.String()
 }

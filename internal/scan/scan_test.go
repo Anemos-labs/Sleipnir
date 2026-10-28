@@ -767,10 +767,14 @@ func TestAReviewCoversWhatTheChangeWrote(t *testing.T) {
 func TestParseDiff(t *testing.T) {
 	out := "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -3,0 +4,2 @@\n+x\n+y\n@@ -9 +11 @@\n-a\n+b\n@@ -20,3 +22,0 @@\n-c\n" +
 		"diff --git a/gone.go b/gone.go\n--- a/gone.go\n+++ /dev/null\n@@ -1 +0,0 @@\n-x\n" +
-		"diff --git \"a/sp ace.go\" \"b/sp ace.go\"\n--- \"a/sp ace.go\"\n+++ \"b/sp ace.go\"\n@@ -1 +1 @@\n-a\n+b\n"
+		"diff --git \"a/sp ace.go\" \"b/sp ace.go\"\n--- \"a/sp ace.go\"\n+++ \"b/sp ace.go\"\n@@ -1 +1 @@\n-a\n+b\n" +
+		// an added line "++ b/other.go" is rendered as "+++ b/other.go": it is content, and the next hunk is still b.go's
+		"diff --git a/b.go b/b.go\n--- a/b.go\n+++ b/b.go\n@@ -1,0 +2 @@\n+++ b/other.go\n@@ -7 +8 @@\n-a\n+b\n" +
+		"diff --git a/t ab.go b/t ab.go\n--- a/t ab.go\t\n+++ b/t ab.go\t\n@@ -1 +1 @@\n-a\n+b\n"
 	got := parseDiff(out)
-	if len(got) != 2 || got[0].File != "a.go" || len(got[0].Lines) != 2 || got[0].Lines[0] != [2]int{4, 5} || got[0].Lines[1] != [2]int{11, 11} ||
-		got[1].File != "sp ace.go" {
+	if len(got) != 4 || got[0].File != "a.go" || len(got[0].Lines) != 2 || got[0].Lines[0] != [2]int{4, 5} || got[0].Lines[1] != [2]int{11, 11} ||
+		got[1].File != "sp ace.go" || got[2].File != "b.go" || len(got[2].Lines) != 2 || got[2].Lines[1] != [2]int{8, 8} ||
+		got[3].File != "t ab.go" {
 		t.Fatalf("parseDiff: %+v", got)
 	}
 }
