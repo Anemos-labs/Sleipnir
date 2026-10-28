@@ -385,12 +385,12 @@ func writeFiles(dir string, files map[string][]byte) error {
 	return nil
 }
 
-// gitControlPath reports whether a slash path has a component that names git's directory, as git or the file system reads it:
-// ".git" in any case, with trailing dots or spaces (Windows drops them), or its short 8.3 name "git~1".
+// gitControlPath reports whether a slash path has a component that names git's directory, as git or the file system reads it
+// (env.GitLikeName): ".git" in any case, with trailing dots or spaces (Windows drops them), its short 8.3 name "git~1", an
+// alternate data stream of it, or with code points HFS+ ignores.
 func gitControlPath(p string) bool {
 	for _, c := range strings.Split(strings.ReplaceAll(p, "\\", "/"), "/") {
-		c = strings.ToLower(strings.TrimRight(c, ". "))
-		if c == ".git" || c == "git~1" {
+		if env.GitLikeName(c) {
 			return true
 		}
 	}

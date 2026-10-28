@@ -83,6 +83,8 @@ type ServeOptions struct {
 	// no symlinks out), and NewScorer turns it into a Scorer for that request.
 	RewardsDir string
 	NewScorer  func(rewardsPath string) (Scorer, error)
+	// Budget fills what a rollout's task leaves open (RolloutOpts.Budget): the operator's per-rollout caps.
+	Budget rl.Budget
 	// ShutdownTimeout bounds graceful shutdown of in-flight requests (default 30 s).
 	ShutdownTimeout time.Duration
 	// Logf receives diagnostics; nil discards them.
@@ -113,6 +115,11 @@ func Serve(ctx context.Context, addr string, r *Runner, opts ServeOptions) error
 		ln, err = net.Listen("tcp", addr)
 		if err != nil {
 			return err
+		}
+		// The name was looked up again to listen: what was bound decides, not what the check resolved.
+		if opts.Token == "" && !loopbackAddr(ln.Addr().String()) {
+			ln.Close()
+			return fmt.Errorf("%w (%s bound %s)", ErrNeedToken, addr, ln.Addr())
 		}
 	} else if opts.Token == "" && !loopbackAddr(ln.Addr().String()) {
 		return fmt.Errorf("%w (%s)", ErrNeedToken, ln.Addr())
@@ -418,7 +425,10 @@ func policyRoleModels(m map[string]string) map[string]string {
 	}
 	out := make(map[string]string, len(m))
 	for role, model := range m {
-		if model = strings.TrimSpace(model); model != "" && !strings.HasPrefix(model, PolicyProvider+"/") {
+		if model = strings.TrimSpace(model); model == "" {
+			continue // a blank model would resolve to the configuration's default; the role runs on the policy as the rest do
+		}
+		if !strings.HasPrefix(model, PolicyProvider+"/") {
 			model = PolicyProvider + "/" + model
 		}
 		out[role] = model
@@ -743,7 +753,7 @@ func (s *Server) handleRollouts(w http.ResponseWriter, r *http.Request) {
 			Model: req.Policy.Model, BaseURL: req.Policy.BaseURL, APIKeyEnv: req.Policy.APIKeyEnv, Sampling: req.Policy.Sampling,
 		},
 		Capture: req.Capture, Swarm: swarm, Agents: agents, RoleModels: policyRoleModels(req.RoleModels), TargetPrice: req.TargetPrice,
-		Seed: req.Seed, Force: req.Force,
+		Seed: req.Seed, Force: req.Force, Budget: s.o.Budget,
 	}
 	if req.Rewards != "" {
 		opts.Extra = map[string]any{"rewards": req.Rewards}

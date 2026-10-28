@@ -232,11 +232,13 @@ func buildEnv(s EnvSpec, goos string) []string {
 	return list
 }
 
-// sanitizePath keeps the absolute, existing directories of p that nobody but
-// their owner can write to and that lie outside the denied roots. A relative
-// entry (including ".") would let a repository file shadow a tool; a
-// world-writable entry would let any local user, including a sibling rollout,
-// plant one.
+// sanitizePath keeps the absolute, existing directories of p that are not
+// world-writable and that lie outside the denied roots. A relative entry
+// (including ".") would let a repository file shadow a tool; a world-writable
+// entry would let any local user, including a sibling rollout, plant one. A
+// group-writable directory is kept: that is how package managers share their
+// bin directories (Homebrew's admin group, a per-user group), and a member of
+// the group is trusted with what it installs there.
 //
 // On Windows (goos) the mode bits say nothing: Go reports every directory as
 // 0777 and access is decided by ACLs, which are not inspected, so there only

@@ -86,7 +86,8 @@ func lexPython(src []byte) []pyTok {
 			emit(pyName, s, i)
 		case c >= '0' && c <= '9' || c == '.' && i+1 < len(src) && src[i+1] >= '0' && src[i+1] <= '9':
 			s := i
-			for i < len(src) && (isPyIdentChar(src[i]) || src[i] == '.' || (src[i] == '+' || src[i] == '-') && (src[i-1] == 'e' || src[i-1] == 'E') && !strings.HasPrefix(strings.ToLower(string(src[s:i])), "0x")) {
+			hex := i+1 < len(src) && src[i] == '0' && (src[i+1] == 'x' || src[i+1] == 'X') // an exponent sign never follows a hex digit
+			for i < len(src) && (isPyIdentChar(src[i]) || src[i] == '.' || (src[i] == '+' || src[i] == '-') && (src[i-1] == 'e' || src[i-1] == 'E') && !hex) {
 				i++
 			}
 			emit(pyNumber, s, i)

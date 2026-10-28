@@ -152,7 +152,7 @@ func BuildManifest(p *Prompt, prev ManifestState, req string, put BlobPutter) (M
 // Messages resolves the manifest's full message hash list given the message
 // list of its base request.
 func (m Manifest) Messages(base []Hash) ([]Hash, error) {
-	if m.Keep > len(base) {
+	if m.Keep < 0 || m.Keep > len(base) {
 		return nil, fmt.Errorf("manifest keeps %d messages of a base that has %d", m.Keep, len(base))
 	}
 	out := make([]Hash, 0, m.Keep+len(m.Add))
