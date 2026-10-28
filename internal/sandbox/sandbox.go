@@ -207,8 +207,12 @@ func RunArgs(name, image string, network bool, paths []string, workdir string, l
 	for _, p := range paths {
 		args = append(args, "--volume", p+":"+p)
 	}
-	for _, p := range readOnlyGuards(paths) {
-		args = append(args, "--volume", p+":"+p+":ro")
+	for _, g := range gitMounts(paths) {
+		v := g.path + ":" + g.path
+		if g.readOnly {
+			v += ":ro"
+		}
+		args = append(args, "--volume", v)
 	}
 	if workdir != "" {
 		args = append(args, "--workdir", workdir)
@@ -235,10 +239,7 @@ func mountPaths(mounts []string) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		if abs == "/" || strings.ContainsAny(abs, ":,") {
-			return nil, fmt.Errorf("the sandbox cannot mount %s", abs)
-		}
-		if err := refuseHome(abs); err != nil {
+		if err := checkMountable(abs); err != nil {
 			return nil, err
 		}
 		if err := os.MkdirAll(abs, 0o755); err != nil {
@@ -246,13 +247,22 @@ func mountPaths(mounts []string) ([]string, error) {
 		}
 		add(filepath.Clean(abs))
 		if real, err := filepath.EvalSymlinks(abs); err == nil {
-			if err := refuseHome(real); err != nil {
+			if err := checkMountable(real); err != nil {
 				return nil, err
 			}
 			add(real)
 		}
 	}
 	return out, nil
+}
+
+// checkMountable refuses the root, a path docker would read as more than one field of --volume, and a directory that is the
+// home directory or holds it.
+func checkMountable(p string) error {
+	if filepath.Dir(p) == p || strings.ContainsAny(p, ":,") {
+		return fmt.Errorf("the sandbox cannot mount %s", p)
+	}
+	return refuseHome(p)
 }
 
 // refuseHome refuses a directory that is the user's home or holds it: mounted, it would hand the commands the keys, the ssh
@@ -268,7 +278,7 @@ func refuseHome(dir string) error {
 	}
 	d := filepath.Clean(dir)
 	for _, h := range homes {
-		if h == d || strings.HasPrefix(h, d+string(filepath.Separator)) {
+		if h == d || strings.HasPrefix(h, strings.TrimSuffix(d, string(filepath.Separator))+string(filepath.Separator)) {
 			return fmt.Errorf("the sandbox will not mount %s: it holds your home directory (%s), with its keys and credentials. Run the session from a project directory", dir, h)
 		}
 	}
@@ -280,26 +290,41 @@ func refuseHome(dir string) error {
 // command there cannot plant something that runs on the host the next time git runs there.
 var gitGuards = []string{"config", "config.worktree", "hooks", "info"}
 
-// readOnlyGuards are the read-only mounts over each path's git directory, for the guards that exist (docker would make a missing
-// one, as root, on the host).
-func readOnlyGuards(paths []string) []string {
-	var out []string
+// gitMount is a mount over a path's git directory: the directory itself, mounted again so that it is a mount point (which a
+// command inside cannot rename away and replace with a copy it controls), and the guards over it, read-only.
+type gitMount struct {
+	path     string
+	readOnly bool
+}
+
+// gitMounts are the mounts over each path's git directory. A repository's .git directory is mounted read-write as itself, and
+// the guards that exist read-only over it (docker would make a missing one, as root, on the host); a linked worktree's .git
+// file, which names the git directory, is mounted read-only.
+func gitMounts(paths []string) []gitMount {
+	var out []gitMount
 	for _, p := range paths {
 		gd := filepath.Join(p, ".git")
-		if fi, err := os.Lstat(gd); err != nil || !fi.IsDir() {
+		fi, err := os.Lstat(gd)
+		if err != nil {
 			continue
 		}
+		if fi.Mode().IsRegular() {
+			out = append(out, gitMount{gd, true})
+			continue
+		}
+		if !fi.IsDir() {
+			continue
+		}
+		out = append(out, gitMount{gd, false})
 		for _, g := range gitGuards {
 			if _, err := os.Lstat(filepath.Join(gd, g)); err == nil {
-				out = append(out, filepath.Join(gd, g))
+				out = append(out, gitMount{filepath.Join(gd, g), true})
 			}
 		}
 		if ents, err := os.ReadDir(filepath.Join(gd, "worktrees")); err == nil {
 			for _, e := range ents {
-				for _, g := range []string{"config.worktree"} {
-					if f := filepath.Join(gd, "worktrees", e.Name(), g); fileExists(f) {
-						out = append(out, f)
-					}
+				if f := filepath.Join(gd, "worktrees", e.Name(), "config.worktree"); fileExists(f) {
+					out = append(out, gitMount{f, true})
 				}
 			}
 		}

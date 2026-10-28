@@ -9,10 +9,11 @@ they do not indicate whether a change has been released.
 
 - `--sandbox docker` (or `docker=IMAGE`) on `sleipnir chat` and `sleipnir run`, and the *sandbox* field of the web page's
   New session dialog, run every shell command of a session inside a container of its own, with the project mounted at its
-  own path, no network unless `--sandbox-network`, every capability dropped and none of the host's environment. Without the
-  flag nothing changes. The repository's `.git/config`, hooks and `info` are read-only inside, a home directory is never
-  mounted, and a sandboxed session resumes sandboxed. The program now recognizes a hidden first argument, `__sandbox-exec`, which a sandboxed session's
-  commands use to enter the container.
+  own path, no network unless `--sandbox-network`, every capability dropped and none of the host's environment but a fixed
+  allowlist of named variables. Without the flag nothing changes. The repository's `.git/config`, hooks and `info` are
+  read-only inside and `.git` cannot be renamed away, a home directory (or the root) is never mounted, and a sandboxed
+  session resumes sandboxed. The program now recognizes a hidden first argument, `__sandbox-exec`, which a sandboxed
+  session's commands use to enter the container.
 - With auto-docs, a task resolved as no longer needed (`task resolve`)
   whose work did not merge in this run is no longer a docs change: it
   starts no catch-up pass, is not listed in one, and does not count as

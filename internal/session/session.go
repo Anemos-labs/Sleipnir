@@ -1516,6 +1516,7 @@ func (s *Session) runTurn(ctx context.Context, goal string) (*Result, error) {
 	s.turn++
 	turn := s.turn
 	after := s.interrupted
+	box := s.box // Close clears it under s.mu
 	s.interrupted = false
 	s.mu.Unlock()
 	defer s.flushCheckpoints()
@@ -1558,9 +1559,9 @@ func (s *Session) runTurn(ctx context.Context, goal string) (*Result, error) {
 		if s.mailmanOn() {
 			start["mailman"] = true
 		}
-		if s.box != nil {
-			start["sandbox"] = s.box.Spec.String() // a resume runs in one again
-			if s.box.Spec.Network {
+		if box != nil {
+			start["sandbox"] = box.Spec.String() // a resume runs in one again
+			if box.Spec.Network {
 				start["sandbox_network"] = true
 			}
 		}

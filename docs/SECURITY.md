@@ -477,13 +477,13 @@ services use for untrusted repositories: the agent loop outside, commands stream
 
 | | |
 |---|---|
-| Files | the project root (and the team's worktrees directory) mounted read-write at their own paths; nothing else of the host. `/tmp` and `HOME` are an in-memory filesystem. A directory that is your home, or holds it, is refused |
-| Git | the repository's `.git/config`, `config.worktree`, `hooks` and `info` are mounted read-only over the project, so a command cannot set `core.fsmonitor`, `core.hooksPath` or a hook that your own `git` on the host would then run. The rest of `.git` (refs, objects, the index) stays writable for commits made inside; after running code you do not trust, treat the clone as you would the code, or scan a fresh clone |
+| Files | the project root (and the team's worktrees directory) mounted read-write at their own paths; nothing else of the host. `/tmp` and `HOME` are an in-memory filesystem. A directory that is your home or holds it, the root, or a link to either, is refused |
+| Git | the repository's `.git/config`, `config.worktree`, `hooks` and `info` are mounted read-only over the project, and `.git` itself is a mount point of its own, so that it cannot be renamed away and replaced by a copy; a linked worktree's `.git` file is read-only. A command therefore cannot set `core.fsmonitor`, `core.hooksPath` or a hook that your own `git` on the host would then run (the harness's own git calls turn hooks and fsmonitor off in any case). The rest of `.git` (refs, objects, the index) stays writable for commits made inside; after running code you do not trust, treat the clone as you would the code, or scan a fresh clone |
 | Network | none (`--network none`) unless `--sandbox-network`, which a session needs only to install dependencies |
 | Privileges | the host user's uid and gid, every capability dropped, `no-new-privileges`, an init that reaps orphans |
 | Image | any image with `bash` on its PATH (the bash tool runs bash); one without it, such as alpine, is refused as the session starts |
 | Limits | 2048 processes, 8 GB of memory, 4 GB of `/tmp` |
-| Environment | none of the host's: only the formatting variables (`TERM`, `LANG`, `NO_COLOR`, `CI`, ...) cross over |
+| Environment | none of the host's but a fixed allowlist of named variables (`TERM`, `LANG`, `TZ`, `NO_COLOR`, `CI`, the pager and prompt switches, ...); no key, token or path of the host crosses over |
 | Resume | a session that ran in a sandbox resumes in the same one (its image and network setting are recorded in the session's start), whatever the resume asks |
 | Lifetime | started as the session opens (a session that asked for a sandbox and cannot have one does not start), removed when it closes; a container whose owning process died is removed by the next sandboxed session on the host |
 

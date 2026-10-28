@@ -79,7 +79,7 @@ func ExecMain(args []string) int {
 }
 
 // ExecArgs is the docker command line (after "docker") that runs prog inside container name from directory wd, with the
-// formatting variables of environ and the run's id (IDVar), by which stopInside finds its processes.
+// allowlisted variables of environ (passEnv) and the run's id (IDVar), by which stopInside finds its processes.
 func ExecArgs(name, wd, id string, environ, prog []string) []string {
 	args := []string{"exec", "--interactive", "--workdir", wd}
 	for _, kv := range environ {

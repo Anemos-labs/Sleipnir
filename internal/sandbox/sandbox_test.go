@@ -72,7 +72,7 @@ func TestRunArgsConfine(t *testing.T) {
 	}
 }
 
-// Only the formatting variables cross into the container: a key or a host PATH does not.
+// Only the allowlisted variables cross into the container: a key or a host PATH does not.
 func TestExecArgsPassOnlyFormatting(t *testing.T) {
 	a := ExecArgs("box", "/w", "id1", []string{"TERM=xterm", "PATH=/host/bin", "OPENAI_API_KEY=sk-x", "HOME=/home/me", "NO_COLOR=1"}, []string{"bash", "-c", "true"})
 	line := strings.Join(a, " ")
@@ -105,7 +105,10 @@ func startBox(t *testing.T, dir string, network bool) *Box {
 	}
 	b, err := Start(ctx, Spec{Engine: "docker", Image: img, Network: network}, []string{dir}, dir, Limits{PIDs: 256, Memory: "512m", Tmp: "64m"})
 	if err != nil {
-		t.Skip("the sandbox did not start here: ", err)
+		if strings.Contains(err.Error(), "could not be pulled") {
+			t.Skip("the test image is not available here: ", err)
+		}
+		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = b.Close() })
 	return b
@@ -249,6 +252,9 @@ func TestRunArgsGuardTheGitDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	line := strings.Join(RunArgs("n", "img", false, []string{dir}, dir, DefaultLimits, 1, 1, 1), " ")
+	if gd := filepath.Join(dir, ".git"); !strings.Contains(line, "--volume "+gd+":"+gd+" ") {
+		t.Errorf("the git directory is not a mount point of its own (a command could rename it away): %s", line)
+	}
 	for _, g := range []string{"config", "hooks", "info"} {
 		p := filepath.Join(dir, ".git", g)
 		if !strings.Contains(line, "--volume "+p+":"+p+":ro") {
@@ -269,9 +275,36 @@ func TestGitConfigIsReadOnlyInside(t *testing.T) {
 		t.Fatal(err)
 	}
 	b := startBox(t, dir, false)
-	out, err := helper(b, dir, "sh", "-c", `echo "[core] fsmonitor = evil" >> .git/config && echo WROTE; touch .git/hooks/pre-commit && echo HOOK; touch src.txt && echo OK`).CombinedOutput()
+	out, err := helper(b, dir, "sh", "-c", `echo "[core] fsmonitor = evil" >> .git/config && echo WROTE; touch .git/hooks/pre-commit && echo HOOK; mv .git .git.old && echo MOVED; touch src.txt && echo OK`).CombinedOutput()
 	s := string(out)
-	if strings.Contains(s, "WROTE") || strings.Contains(s, "HOOK") || !strings.Contains(s, "OK") {
+	if strings.Contains(s, "WROTE") || strings.Contains(s, "HOOK") || strings.Contains(s, "MOVED") || !strings.Contains(s, "OK") {
 		t.Fatalf("the git guards are writable inside (or the project is not): %v\n%s", err, s)
+	}
+}
+
+// A linked worktree's .git file names its git directory: it is read-only inside, so a command cannot point the host's git at a
+// directory it made.
+func TestRunArgsGuardALinkedWorktreesGitFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".git"), []byte("gitdir: /elsewhere/.git/worktrees/w\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	line := strings.Join(RunArgs("n", "img", false, []string{dir}, dir, DefaultLimits, 1, 1, 1), " ")
+	if gf := filepath.Join(dir, ".git"); !strings.Contains(line, "--volume "+gf+":"+gf+":ro") {
+		t.Errorf("the .git file is writable: %s", line)
+	}
+}
+
+// A project that is a symbolic link to the root is refused like the root itself.
+func TestMountRefusesALinkToTheRoot(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symbolic links to the root are a unix case")
+	}
+	link := filepath.Join(t.TempDir(), "proj")
+	if err := os.Symlink("/", link); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := mountPaths([]string{link}); err == nil {
+		t.Fatalf("a link to / was mounted: %v", got)
 	}
 }
