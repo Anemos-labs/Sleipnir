@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/events"
@@ -111,6 +113,35 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 }
 
 // judgeRunner is one model a goal is judged on: its client, its description and the label of its requests.
+// judgeAttempts is how many times one judge request is sent when the failure is one that repeating may cure (a network error,
+// a timeout, a 5xx or a rate limit). A judgment is many requests long; one dropped connection near its end paused the goal and threw
+// away every evidence request before it.
+const judgeAttempts = 4
+
+// judgeDo sends one judge request, again while it fails in a way that repeating may cure, after the longer of a growing wait and
+// the wait the server asked for, capped at agent.MaxRetryAfter. Each retry is a model.error in the log, as an agent's is.
+func (s *Session) judgeDo(ctx context.Context, j judgeRunner, req *provider.Request) (*provider.Response, error) {
+	for attempt := 0; ; attempt++ {
+		resp, err := j.p.Do(ctx, req, nil)
+		pe, ok := provider.AsError(err)
+		if err == nil || !ok || !pe.Retryable() || attempt == judgeAttempts-1 || ctx.Err() != nil {
+			return resp, err
+		}
+		delay := agent.RetryBase << attempt
+		if after := min(pe.RetryAfter, agent.MaxRetryAfter); after > delay {
+			delay = after // a server that says how long to wait is believed, up to the cap an agent's retries use
+		}
+		s.Log.Emit("", events.TypeModelError, map[string]any{
+			"req": req.Label, "kind": pe.Kind.String(), "status": pe.Status, "attempt": attempt + 1, "delay_ms": delay.Milliseconds(),
+		})
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+}
+
 type judgeRunner struct {
 	p     provider.Provider
 	m     cost.Model
@@ -164,7 +195,7 @@ func (s *Session) judgeOn(ctx context.Context, g *goal.State, j judgeRunner, ans
 		if budget := s.Budget(); budget > 0 && s.Cost() >= budget {
 			return goal.Verdict{Kind: goal.Continue}, fmt.Errorf("session budget reached during evidence inspection")
 		}
-		resp, e := j.p.Do(ctx, &provider.Request{Prompt: prompt, Label: j.label, NoStream: true}, nil)
+		resp, e := s.judgeDo(ctx, j, &provider.Request{Prompt: prompt, Label: j.label, NoStream: true})
 		if e != nil {
 			return goal.Verdict{Kind: goal.Continue}, e
 		}
