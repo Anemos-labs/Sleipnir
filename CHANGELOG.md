@@ -13,6 +13,10 @@ they do not indicate whether a change has been released.
   judge's last "not met yet", from before that turn's work. A goal
   paused by the person between turns, or by a verdict, resumes as
   before.
+- `sleipnir scan --start --diff BASE` creates a review of the change from BASE to HEAD (docs/SCAN.md): only the files the
+  change wrote are mapped and hunted, a lead needs a trace step on a line the change made, and findings.json gains `base`
+  and `changes`. Every finding in findings.json gains an `anchor`: in a review the last trace step on a changed line, where
+  the review's SARIF result is located; in a scan the sink, as before.
 - A session whose goal is a deep scan works on that scan: the `scan` tool's calls that name another scan of the project
   (an older unfinished one, whose lead numbers mean other things) go to the session's scan, with a note. A reproducer's
   marker may be followed by a colon (`SLEIPNIR-REPRODUCED: rows`).

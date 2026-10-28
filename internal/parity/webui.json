@@ -2818,6 +2818,7 @@
     "flags": [
      "cwd",
      "depth",
+     "diff",
      "json",
      "report",
      "start"

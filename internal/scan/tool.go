@@ -228,12 +228,19 @@ func StatusText(r *Run) string {
 	c := rep.Counts
 	var b strings.Builder
 	w := func(format string, args ...any) { fmt.Fprintf(&b, format, args...) }
-	w("Deep scan %s (%s) of commit %s", r.Slug, d.ID, short(r.Commit))
+	if r.IsReview() {
+		w("Review %s (%s) of the change from %s to %s", r.Slug, d.ID, short(r.Base), short(r.Commit))
+	} else {
+		w("Deep scan %s (%s) of commit %s", r.Slug, d.ID, short(r.Commit))
+	}
 	if r.Focus != "" {
 		w(" below %s", r.Focus)
 	}
 	w("\nPhase: %s · team wanted: %d agents\n", rep.Phase, r.Team())
 	w("Inventory: %d files, %d functions, %d lines, complexity %d, in %d shards\n", c.Files, c.Funcs, c.Lines, c.Complexity, c.Shards)
+	if r.IsReview() {
+		w("Lines the change wrote (a lead needs a step on one):\n%s", changeList(r, 20))
+	}
 	w("Mapped %d/%d · hunted %d/%d · points %d (entry %d, boundary %d, access %d, sink %d, config %d) · edges %d (%d inferred)\n",
 		c.Mapped, c.Shards, c.Hunted, c.Shards, c.Points, c.Lanes[LaneEntry], c.Lanes[LaneBoundary], c.Lanes[LaneAccess], c.Lanes[LaneSink], c.Lanes[LaneConfig], c.Edges, c.Inferred)
 	w("Leads %d: %d open, %d confirmed, %d unproven, %d rejected · reproductions %d (%d reproduced)\n", c.Leads, c.Open, c.Confirmed, c.Unproven, c.Rejected, c.Proofs, c.Reproduced)
@@ -658,6 +665,9 @@ func (t *Tool) lead(ctx context.Context, in input, agent string) (string, error)
 			return "", fmt.Errorf("no point %s", p)
 		}
 		l.Points = append(l.Points, strings.ToUpper(p))
+	}
+	if snap.IsReview() && snap.Anchor(&l) == nil {
+		return "", fmt.Errorf("this scan reviews the change from %s: a lead needs a step of its trace on a line the change added or modified (scan status lists them). A hole the change did not touch is for a scan of the whole repository", short(snap.Base))
 	}
 	sink := l.Trace[len(l.Trace)-1]
 	l.Shard = snap.ShardOf(sink.File)

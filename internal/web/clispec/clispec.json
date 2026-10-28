@@ -827,6 +827,7 @@
 {"path":["scan"],"usage":"sleipnir scan [SCAN] [flags]","summary":"sleipnir scan [SCAN] lists the project's deep scans with their depth, phase and numbers, or shows where one scan stands: what is mapped and hunted, the leads and their verdicts, and what it needs next.","positional":[{"name":"SCAN","required":false,"desc":"a scan's name, as `sleipnir scan` lists it; none: list the scans"}],"source":"docs/CLI.md § sleipnir scan","mode":"run","flags":[
   {"name":"cwd","arg":"string","default":null,"defaultNote":"the current directory","repeatable":false,"desc":"the project (default: the current directory)"},
   {"name":"depth","arg":"string","default":"standard","repeatable":false,"desc":"with --start: survey, standard or deep"},
+  {"name":"diff","arg":"string","default":null,"repeatable":false,"desc":"with --start: review the change from BASE (a commit or branch) to HEAD instead of the whole repository"},
   {"name":"json","arg":"bool","default":null,"repeatable":false,"desc":"machine-readable output"},
   {"name":"report","arg":"bool","default":null,"repeatable":false,"desc":"rewrite SCAN's report (REPORT.md, findings.json, findings.sarif, map.json) from its ledger and print where it is"},
   {"name":"start","arg":"bool","default":null,"repeatable":false,"desc":"create a scan of the repository at HEAD (below the positional DIR, when given) and print the goal that drives it"}
