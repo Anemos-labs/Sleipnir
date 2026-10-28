@@ -404,7 +404,8 @@ func ScrubText(s string) string {
 	s = userPassword.ReplaceAllString(s, "${1}:"+Hidden)
 	return secretFlagValue.ReplaceAllStringFunc(s, func(m string) string {
 		sub := secretFlagValue.FindStringSubmatch(m)
-		if strings.HasPrefix(sub[3], "-") || sub[3] == Hidden || strings.HasPrefix(sub[3], "(set") {
+		// A word after a space that starts with "-" is the next flag; one after "=" is the value, whatever it starts with.
+		if sub[2] != "=" && strings.HasPrefix(sub[3], "-") || sub[3] == Hidden || strings.HasPrefix(sub[3], "(set") {
 			return m // the next flag, or already withheld
 		}
 		return sub[1] + sub[2] + Hidden

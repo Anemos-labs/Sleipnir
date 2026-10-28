@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"fmt"
 	"strings"
 	"unicode/utf8"
 )
@@ -175,4 +176,38 @@ func Invisible(r rune) bool {
 		return false
 	}
 	return true
+}
+
+// EscapeForTerminal returns s with everything that SanitizeForTerminal would remove or change written out as an escape instead
+// (\x1b, \r, ‮, \xff for a byte that is not UTF-8), so that nothing of s is hidden from a reader who must approve exactly
+// what it says: a command shown for approval. A backslash is doubled, so an escape never reads the same as the text it
+// stands for. Newline and tab stay; every other character is unchanged.
+func EscapeForTerminal(s string) string {
+	if !needsTerminalCleaning(s) && !strings.Contains(s, `\`) {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		r, n := utf8.DecodeRuneInString(s[i:])
+		switch {
+		case r == utf8.RuneError && n <= 1:
+			fmt.Fprintf(&b, `\x%02x`, s[i])
+		case r == '\n' || r == '\t':
+			b.WriteRune(r)
+		case r == '\\':
+			b.WriteString(`\\`)
+		case r < 0x20 || r == 0x7f:
+			fmt.Fprintf(&b, `\x%02x`, r)
+		case (r >= 0x80 && r <= 0x9f) || r == 0x2028 || r == 0x2029 || Invisible(r):
+			if r > 0xffff {
+				fmt.Fprintf(&b, `\U%08x`, r)
+			} else {
+				fmt.Fprintf(&b, `\u%04x`, r)
+			}
+		default:
+			b.WriteString(s[i : i+n])
+		}
+		i += n
+	}
+	return b.String()
 }

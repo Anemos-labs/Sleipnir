@@ -2033,10 +2033,23 @@ func (t *webTab) RemoveRule(ctx context.Context, req wire.RuleRequest) (wire.Rul
 	case found.Fixed:
 		return wire.RuleResult{}, werr(http.StatusConflict, "fixed", "built in or from a file: change it there")
 	}
-	if found.Effect != string(perm.Allow) {
-		// taking back a deny or ask rule lets through what it held: it raises privilege
-		scope := "rules.remove:" + t.id + ":" + d16(map[string]any{"effect": found.Effect, "rule": found.Rule})
-		if err := authorize(ctx, scope, []string{"no longer " + found.Effect + " " + found.Rule}); err != nil {
+	// The engine takes the rule's text back from every action it was added to, so the
+	// confirmation names each deny or ask rule of that text, not only the one selected:
+	// taking back a deny or ask rule lets through what it held, which raises privilege.
+	var lifted []string
+	for _, r := range rules {
+		if r.Rule == found.Rule && !r.Fixed && r.Effect != string(perm.Allow) && !slices.Contains(lifted, r.Effect) {
+			lifted = append(lifted, r.Effect)
+		}
+	}
+	if len(lifted) > 0 {
+		slices.Sort(lifted)
+		scope := "rules.remove:" + t.id + ":" + d16(map[string]any{"effects": lifted, "rule": found.Rule})
+		lines := make([]string, len(lifted))
+		for i, e := range lifted {
+			lines[i] = "no longer " + e + " " + found.Rule
+		}
+		if err := authorize(ctx, scope, lines); err != nil {
 			return wire.RuleResult{}, err
 		}
 	}

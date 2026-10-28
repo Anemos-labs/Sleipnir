@@ -90,6 +90,9 @@ func TestHTTPHookDoesNotFollowRedirects(t *testing.T) {
 	defer srv.Close()
 	r := httpRunner(t, srv.URL, nil)
 	run(t, r, Event{Name: PreToolUse, Tool: "bash", Input: json.RawMessage(`{"command": "echo private"}`)})
+	// A supplied client that would follow redirects does not either.
+	r.HTTPClient = &http.Client{}
+	run(t, r, Event{Name: PreToolUse, Tool: "bash", Input: json.RawMessage(`{"command": "echo private"}`)})
 	if elsewhere.Load() != 0 {
 		t.Fatal("the payload was replayed to another host through a redirect")
 	}

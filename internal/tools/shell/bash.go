@@ -124,11 +124,11 @@ func (t *bashTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 	// directory it will actually run in (the agent's tracked cwd, which persists
 	// across calls), not against the session root. It reads the command as POSIX
 	// shell; PowerShell and cmd.exe quote, escape and expand otherwise, so a command
-	// for them that holds anything but plain words is not taken to be what the
-	// engine read: it is high risk, asked about unless a rule allows it by name,
+	// for them that holds anything but plain words, or that starts with a name they
+	// read otherwise (samePosixMeaning), is not taken to be what the engine read: it is high risk, asked about unless a rule allows it by name,
 	// and refused in plan mode.
 	var risk perm.Risk
-	if !sh.posix && !plainWords(command) {
+	if !sh.posix && (!plainWords(command) || !samePosixMeaning(command)) {
 		risk = perm.RiskHigh
 	}
 	dec := env.Perm.Check(ctx, perm.Request{
@@ -384,4 +384,21 @@ func plainWords(command string) bool {
 		}
 	}
 	return true
+}
+
+// windowsOwnMeaning are command names that PowerShell or cmd.exe run as something other than what the POSIX reading of
+// the engine assumes: "type" prints a file there (a shell builtin that reads nothing here), "r" repeats the last command,
+// "start" launches a program, and the aliases of PowerShell's item and content cmdlets read, write or delete files.
+var windowsOwnMeaning = map[string]bool{
+	"type": true, "gc": true, "sc": true, "ac": true, "ni": true, "ri": true, "rni": true, "mi": true, "cpi": true,
+	"iex": true, "icm": true, "r": true, "h": true, "start": true, "saps": true, "call": true,
+	"iwr": true, "irm": true, "curl": true, "wget": true,
+	"del": true, "erase": true, "rd": true, "copy": true, "move": true, "ren": true, "md": true,
+}
+
+// samePosixMeaning reports whether a plain-words command means for PowerShell and cmd.exe what it means for a POSIX
+// shell: its command name is not one they give a meaning of their own (windowsOwnMeaning).
+func samePosixMeaning(command string) bool {
+	f := strings.Fields(command)
+	return len(f) == 0 || !windowsOwnMeaning[strings.ToLower(f[0])]
 }

@@ -208,6 +208,10 @@ type Options struct {
 	// callers set it explicitly: a hostile repository's AGENTS.md is a prompt
 	// injection vector.
 	TrustProject bool
+	// TrustDigest, with TrustProject, is the digest of the project's files (trust.Footprint) that the person confirmed: the
+	// session trusts them only while they still have it, and otherwise resolves trust as if TrustProject were unset. Empty, the
+	// files are trusted whatever they hold.
+	TrustDigest string
 
 	// UI.
 	Sink    agent.Sink
@@ -274,6 +278,7 @@ type Session struct {
 	// fallbackRef its provider/model; nil when none is named.
 	fallbackP     provider.Provider
 	fallbackModel string
+	fallbackPrice cost.Price // what the fallback's tokens cost (zero on a plan)
 	fallbackRef   string
 	// lessons is the lesson memory (buildLessons), nil when no embedder model is named or the session has no global memory.
 	lessons *lessonMemory
@@ -765,7 +770,7 @@ func (s *Session) buildFallback() error {
 	if err != nil {
 		return fmt.Errorf("fallback model %s: %w", ref, err)
 	}
-	s.fallbackP, s.fallbackModel, s.fallbackRef = p, m.ID, mr.String()
+	s.fallbackP, s.fallbackModel, s.fallbackRef, s.fallbackPrice = p, m.ID, mr.String(), m.Price
 	return nil
 }
 
@@ -778,7 +783,7 @@ func (s *Session) clientFor(ref ModelRef) (provider.Provider, cost.Model, error)
 	}
 	if err == nil && s.fallbackP != nil && ref.String() != s.fallbackRef {
 		name, to := ref.String(), s.fallbackRef
-		p = &provider.Failover{Primary: p, Secondary: s.fallbackP, SecondaryModel: s.fallbackModel, After: FallbackAfter, Retry: FallbackRetry,
+		p = &provider.Failover{Primary: p, Secondary: s.fallbackP, SecondaryModel: s.fallbackModel, SecondaryPrice: s.fallbackPrice.USD, After: FallbackAfter, Retry: FallbackRetry,
 			OnSwitch: func(toFallback bool, cause error) {
 				if toFallback {
 					s.notice("", fmt.Sprintf("%s has been out for %s (%v): its requests go to the fallback model %s, and %s is tried again in %s", name, FallbackAfter, cause, to, name, FallbackRetry))

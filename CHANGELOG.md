@@ -7,6 +7,36 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Permission, configuration and web hardening from a security review. In
+  `default` mode a git command that reads the repository asks when the
+  repository's own configuration names a program git would run for it
+  (`core.fsmonitor`, a filter, a diff `textconv` or external driver,
+  `gpg.program`) or includes another file. `update-ref` and `symbolic-ref`
+  are checked through symbolic refs, a detached curl value with glob
+  characters is refused, and an ask rule is still asked where only refusals
+  apply. An untrusted project's configuration can no longer turn off hooks
+  or external plugins, replace a section that holds a protected setting with
+  a non-object value, or set `swarm.push_progress` to true. Model ids with
+  control or invisible characters are refused. `run --quiet --json` prints
+  only the JSON. Hook approvals are keyed by a new digest, so a hook that
+  was approved before is asked about once more. `sleipnir init` refuses an
+  `AGENTS.md` or `.gitignore` that is a symlink, and `rl export` writes its
+  file with mode 0600. A terminal restart of a session whose project trust
+  was asked for or remembered decides trust again instead of passing
+  `--trust-project`, and `session.Options.TrustDigest` makes trust hold
+  only while the project's files keep the digest the person confirmed (the
+  web interface sets it). In the web interface, removing a rule asks for
+  confirmation when it also takes back a deny or ask rule of the same text,
+  a `swarm` run with no mode needs the same confirmation as `run`, an
+  install of a plugin need is confirmed on the commands it links and the
+  places it finds them and is refused when its commands can't be shown
+  whole, project plugin settings are written within the project, and the
+  Run settings line quotes every value for the shell. The install dialog
+  names the commands it links and where it looks for them, and shows an
+  empty argument as `''`. A failover secondary's estimated price is not
+  recorded as a gateway charge. `rl export -o` to a device writes it as
+  is, and an existing output file keeps its contents until its mode is
+  set.
 - A docs catch-up for a change in a directory without Markdown names the
   `*.md` files of the nearest directory above it that has some: a change
   to `svc/ratelimit/**` names `svc/README.md`. A docs worker scoped

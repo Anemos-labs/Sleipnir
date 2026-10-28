@@ -17,11 +17,12 @@ func TestAConfinedAgentMovesOnlyItsOwnBranch(t *testing.T) {
 	gitdir := filepath.Join(f.root, ".git")
 	wt := filepath.Join(gitdir, "worktrees", "be-1")
 	for p, body := range map[string]string{
-		filepath.Join(gitdir, "HEAD"):   "ref: refs/heads/claude/work\n",
-		filepath.Join(wt, "HEAD"):       "ref: refs/heads/sleipnir/s1/be-1\n",
-		filepath.Join(mine, ".git"):     "gitdir: " + wt + "\n",
-		filepath.Join(wt, "commondir"):  "../..\n",
-		filepath.Join(gitdir, "config"): "[remote \"origin\"]\n\turl = https://example.com/o/r.git\n[remote \"self\"]\n\turl = " + f.root + "\n",
+		filepath.Join(gitdir, "HEAD"):                   "ref: refs/heads/claude/work\n",
+		filepath.Join(wt, "HEAD"):                       "ref: refs/heads/sleipnir/s1/be-1\n",
+		filepath.Join(mine, ".git"):                     "gitdir: " + wt + "\n",
+		filepath.Join(wt, "commondir"):                  "../..\n",
+		filepath.Join(gitdir, "refs", "heads", "alias"): "ref: refs/heads/claude/work\n",
+		filepath.Join(gitdir, "config"):                 "[remote \"origin\"]\n\turl = https://example.com/o/r.git\n[remote \"self\"]\n\turl = " + f.root + "\n",
 	} {
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatal(err)
@@ -65,9 +66,13 @@ func TestAConfinedAgentMovesOnlyItsOwnBranch(t *testing.T) {
 		{"git branch --copy --force HEAD claude/work", true},
 		{"git branch -C scratch sleipnir/s1/_integration", true},
 		{"git branch --copy sleipnir/s1/be-1 sleipnir/s1/be-2", true},
+		{"git update-ref refs/heads/alias HEAD", true}, // a symbolic ref pointing at the checkout's branch
+		{"git symbolic-ref refs/heads/other refs/heads/claude/work", true},
+		{"git symbolic-ref refs/tags/x refs/heads/sleipnir/s1/_integration", true},
 
 		{"git update-ref refs/heads/sleipnir/s1/be-1 HEAD~1", false},
 		{"git update-ref refs/tags/v1 HEAD", false},
+		{"git update-ref --no-deref refs/heads/alias HEAD", false},
 		{"git update-ref -m sync refs/heads/sleipnir/s1/be-1 HEAD", false},
 		{"git push . --delete scratch", false},
 		{"git branch scratch", false},

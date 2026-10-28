@@ -224,7 +224,7 @@ func (e *entry) ensure(opts Options, wait time.Duration, logf func(string, ...an
 				e.total.Store(total)
 			})
 			if err != nil && logf != nil {
-				logf("inspect: loading %s: %v", e.name, err)
+				logf("inspect: loading %q: %v", e.name, err)
 			}
 			e.mu.Lock()
 			e.sess, e.err, e.loading = s, err, false
@@ -296,7 +296,7 @@ func (r *registry) tailAll() {
 	for _, e := range es {
 		if s := e.loaded(); s != nil {
 			if _, err := s.Tail(); err != nil {
-				r.logf("inspect: tailing %s: %v", e.name, err)
+				r.logf("inspect: tailing %q: %v", e.name, err)
 			}
 		}
 	}

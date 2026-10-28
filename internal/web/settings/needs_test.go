@@ -180,3 +180,39 @@ func TestInstallRunsOnlyADeclaredMethodAndConnectsTheServer(t *testing.T) {
 		t.Errorf("config = %s", b)
 	}
 }
+
+// A confirmation covers what the install links when it ends (the commands and where they are found), and a command the page
+// cannot show whole is not run from it.
+func TestInstallIsConfirmedOnEverythingItChanges(t *testing.T) {
+	n := plugin.Need{ID: "tool", Commands: []string{"tool"}}
+	m := plugin.MethodStatus{ID: "brew", Argv: []string{"brew", "install", "tool"}, Available: true}
+	other := n
+	other.Commands = []string{"tool", "git"}
+	if installScope(n, m) == installScope(other, m) {
+		t.Error("a need that links another command shares the confirmation")
+	}
+	other = n
+	other.Paths = map[string][]string{"unix": {"/tmp/*/tool"}}
+	if installScope(n, m) == installScope(other, m) {
+		t.Error("a need found somewhere else shares the confirmation")
+	}
+	if !shownWhole(plugin.Need{}, m) {
+		t.Error("a plain command is not shown whole")
+	}
+	for _, a := range []string{strings.Repeat("x", 300), "a\x1b[2Kb", "a‮b"} {
+		long := m
+		long.Setup = [][]string{{"sh", "-c", a}}
+		if shownWhole(plugin.Need{}, long) {
+			t.Errorf("%q is shown whole", a)
+		}
+	}
+	if shownWhole(plugin.Need{Commands: []string{"to\x1b[2Kol"}}, m) || shownWhole(plugin.Need{Paths: map[string][]string{"unix": {"/opt/\x1b[2K/tool"}}}, m) {
+		t.Error("a linked command or a default location that loses characters is shown whole")
+	}
+	if got := pathsText(map[string][]string{"unix": {"/opt/tool"}, "darwin": {"/a", "/b"}}); got != " (looked for in darwin: /a, /b; unix: /opt/tool)" {
+		t.Errorf("pathsText = %q", got)
+	}
+	if got := shownWords([]string{"sh", "-c", "echo hi", ""}); got != `sh -c "echo hi" ""` {
+		t.Errorf("shownWords = %s", got)
+	}
+}

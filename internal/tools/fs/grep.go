@@ -208,7 +208,7 @@ func (g Grep) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 		return k.fail("search timed out or was cancelled; narrow path or pattern"), nil
 	}
 
-	opts := searchOpts{re: re, mode: mode, multiline: a.Multiline, before: before, after: after}
+	opts := searchOpts{re: re, mode: mode, multiline: a.Multiline, before: before, after: after, maxRecs: limit + 1}
 	out := &grepOutput{k: k, mode: mode, lineNumbers: lineNumbers, limit: limit, context: before > 0 || after > 0}
 	searchFiles(k.ctx, files, opts, out.consume)
 	if k.ctx.Err() != nil && !out.full {
@@ -424,6 +424,7 @@ type searchOpts struct {
 	multiline bool
 	before    int
 	after     int
+	maxRecs   int // lines one file may contribute: more than the output limit are never printed
 }
 
 type lineRec struct {
@@ -541,13 +542,13 @@ func searchLines(res fileResult, data []byte, o searchOpts) fileResult {
 			if o.mode == "files_with_matches" {
 				return res
 			}
-			if o.mode == "content" {
+			if o.mode == "content" && (o.maxRecs <= 0 || len(matchLines) < o.maxRecs) {
 				matchLines = append(matchLines, lineNo)
 			}
 		}
 	}
 	if o.mode == "content" && len(matchLines) > 0 {
-		res.recs = buildRecords(data, matchLines, o.before, o.after)
+		res.recs = buildRecords(data, matchLines, o.before, o.after, o.maxRecs)
 	}
 	return res
 }
@@ -582,14 +583,15 @@ func searchMultiline(res fileResult, data []byte, o searchOpts) fileResult {
 	}
 	res.matches = len(matchLines)
 	if o.mode == "content" && len(matchLines) > 0 {
-		res.recs = buildRecords(data, matchLines, o.before, o.after)
+		res.recs = buildRecords(data, matchLines, o.before, o.after, o.maxRecs)
 	}
 	return res
 }
 
 // buildRecords turns match line numbers (ascending) into the lines to print:
-// each match plus its context, with overlapping and touching windows merged.
-func buildRecords(data []byte, matchLines []int, before, after int) []lineRec {
+// each match plus its context, with overlapping and touching windows merged, at
+// most max of them (0: all).
+func buildRecords(data []byte, matchLines []int, before, after, max int) []lineRec {
 	lines := bytes.Split(data, []byte{'\n'})
 	if n := len(lines); n > 0 && len(lines[n-1]) == 0 {
 		lines = lines[:n-1]
@@ -609,6 +611,9 @@ func buildRecords(data []byte, matchLines []int, before, after int) []lineRec {
 			to = len(lines)
 		}
 		for l := from; l <= to; l++ {
+			if max > 0 && len(recs) >= max {
+				return recs // the output stops before these: a file of matching lines costs no more than the limit
+			}
 			recs = append(recs, lineRec{n: l, text: string(bytes.TrimSuffix(lines[l-1], []byte{'\r'})), match: isMatch[l]})
 		}
 		if to+1 > next {

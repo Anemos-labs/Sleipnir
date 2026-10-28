@@ -3,6 +3,7 @@ package weburl
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"regexp"
 	"strings"
@@ -160,5 +161,24 @@ func TestParseInternationalisedHosts(t *testing.T) {
 	}
 	if _, err := Parse("https://bü$cher.test/"); err == nil {
 		t.Error("a host IDNA refuses must be refused")
+	}
+}
+
+// The numeric IPv4 forms a system resolver reads as an address are named by that address, so an IP rule sees them.
+func TestHostCheckedNumericIPv4(t *testing.T) {
+	for in, want := range map[string]string{
+		"127.1": "127.0.0.1", "2130706433": "127.0.0.1", "0x7f.0.0.1": "127.0.0.1", "0177.0.0.1": "127.0.0.1",
+		"10.1.257": "10.1.1.1", "169.254.43518": "169.254.169.254",
+	} {
+		u, _ := url.Parse("http://" + in + "/x")
+		if got, ok := HostChecked(u); got != want || !ok {
+			t.Errorf("HostChecked(%s) = %q %v, want %q", in, got, ok, want)
+		}
+	}
+	for _, in := range []string{"example.com", "1.2.3.4.5", "0x", "08.1", "256.1.1.1", "1.2.65536"} {
+		u, _ := url.Parse("http://" + in + "/x")
+		if got, _ := HostChecked(u); net.ParseIP(got) != nil && got != in {
+			t.Errorf("HostChecked(%s) = %q, read as an address", in, got)
+		}
 	}
 }

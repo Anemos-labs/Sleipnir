@@ -517,10 +517,19 @@ func ignoreBeside(p string) error {
 	if os.IsNotExist(err) {
 		return os.WriteFile(gi, []byte(".gitignore\n"+name+"\n"), 0o644)
 	}
+	// The last line about the name decides, as in git: a later "!name" undoes an earlier "name", and the name is then
+	// listed again at the end.
+	ignored := false
 	for _, l := range strings.Split(string(b), "\n") {
-		if strings.TrimSpace(l) == name || strings.TrimSpace(l) == "/"+name {
-			return nil
+		switch strings.TrimSpace(l) {
+		case name, "/" + name:
+			ignored = true
+		case "!" + name, "!/" + name:
+			ignored = false
 		}
+	}
+	if ignored {
+		return nil
 	}
 	f, err := os.OpenFile(gi, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {

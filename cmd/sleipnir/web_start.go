@@ -213,6 +213,17 @@ func (t *webTab) startGen(spec startSpec) error {
 		if root == "" {
 			root = rootOf(o.Cwd)
 		}
+		if o.TrustProject {
+			// files the person confirmed are trusted while they hold what was confirmed, not whatever they hold when the session
+			// loads them
+			t.mu.Lock()
+			if fp := spec.trusted; fp != nil {
+				o.TrustDigest = fp.Digest
+			} else if t.trusted != nil && t.trustedDir == cleanDir(o.Cwd) {
+				o.TrustDigest = t.trusted.Digest
+			}
+			t.mu.Unlock()
+		}
 		o.Sink, o.NewSink, o.Prompter = t.calls.wrap(tr.Sink()), func(id string) agent.Sink { return t.calls.wrap(tr.NewSink(id)) }, t.prompter(root)
 		if o.AskTimeout == 0 {
 			o.AskTimeout = t.h.askTimeout

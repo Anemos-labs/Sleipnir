@@ -79,12 +79,14 @@ func (h Hook) String() string {
 // the same event, matcher and action share a key, so an approval given to one
 // covers the other and identical hooks from several files run once.
 func (h Hook) Key() string {
-	hdr := make([]string, 0, len(h.Headers))
+	hdr := make([][2]string, 0, len(h.Headers))
 	for k, v := range h.Headers {
-		hdr = append(hdr, k+"\x00"+v)
+		hdr = append(hdr, [2]string{k, v})
 	}
-	sort.Strings(hdr)
-	sum := sha256.Sum256([]byte(strings.Join([]string{h.Event, h.Matcher, h.Type, h.Command, h.URL, h.If, strings.Join(hdr, "\x01")}, "\x02")))
+	sort.Slice(hdr, func(i, j int) bool { return hdr[i][0] < hdr[j][0] })
+	// JSON keeps each field's bounds: no text of one field can pass for the end of another.
+	b, _ := json.Marshal([]any{h.Event, h.Matcher, h.Type, h.Command, h.URL, h.If, hdr})
+	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
 }
 

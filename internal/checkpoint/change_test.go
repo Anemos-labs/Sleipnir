@@ -78,3 +78,21 @@ func TestFingerprintSurvivesReopen(t *testing.T) {
 		t.Fatalf("f.txt = %+v", r)
 	}
 }
+
+// A chain of replace_all edits that would multiply the text past what a preview diffs is shown edit by edit instead.
+func TestProposeBoundsAChainOfReplacements(t *testing.T) {
+	cur := func(string) (string, bool) { return strings.Repeat("a", 64), true }
+	edits := make([]map[string]any, 40)
+	for i := range edits {
+		edits[i] = map[string]any{"old_string": "a", "new_string": "aa", "replace_all": true}
+	}
+	in, _ := json.Marshal(map[string]any{"path": "x.txt", "edits": edits})
+	got, ok := Propose("edit", in, cur)
+	if !ok {
+		t.Fatal("no preview")
+	}
+	b, _ := json.Marshal(got)
+	if len(b) > 8<<20 {
+		t.Fatalf("the preview is %d bytes", len(b))
+	}
+}

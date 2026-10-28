@@ -85,15 +85,9 @@ func (r *Repo) Merge(ctx context.Context, opts MergeOptions) (*MergeResult, erro
 	// (-F <file> reads a file of the repository's choosing into the message); the
 	// options of this merge are the ones above, so the current branch's are
 	// emptied for this command.
-	head, err := r.run(ctx, call{args: []string{"symbolic-ref", "--quiet", "HEAD"}, okExit: []int{1}})
+	ov, err := r.noBranchMergeOptions(ctx)
 	if err != nil {
 		return nil, err
-	}
-	// Passed as GIT_CONFIG_KEY/VALUE rather than -c key=value: a branch name may
-	// hold "=", which -c would split the key at.
-	var ov []kv
-	if branch, ok := strings.CutPrefix(head.trimmed(), "refs/heads/"); ok && head.exit == 0 {
-		ov = append(ov, kv{"branch." + branch + ".mergeOptions", ""})
 	}
 	b, err := r.begin(ctx)
 	if err != nil {
@@ -167,7 +161,7 @@ func (r *Repo) Rebase(ctx context.Context, o RebaseOptions) (*MergeResult, error
 	// rebase.instructionFormat shapes the todo lines git writes and then executes;
 	// a format that expands to a newline could add an exec line, so the subject
 	// alone is used whatever the repository configures.
-	config := []string{conflictStyleDiff3, "rebase.instructionFormat=%s"}
+	config := []string{conflictStyleDiff3, rebaseFormat}
 	out, err := b.run(ctx, call{args: args, env: idEnv, config: config, okExit: []int{1}, mutating: true, timeout: 5 * r.s.timeout})
 	if err != nil {
 		return nil, err
@@ -274,3 +268,21 @@ func clip(s string, n int) string {
 	}
 	return s[:n] + "\n[... output truncated ...]"
 }
+
+// noBranchMergeOptions is the override that empties branch.<current>.mergeOptions for one command: those options apply to
+// every merge on the branch (-F <file> reads a file of the repository's choosing into the message). It is passed as
+// GIT_CONFIG_KEY/VALUE rather than -c key=value, since a branch name may hold "=", which -c would split the key at.
+func (r *Repo) noBranchMergeOptions(ctx context.Context) ([]kv, error) {
+	head, err := r.run(ctx, call{args: []string{"symbolic-ref", "--quiet", "HEAD"}, okExit: []int{1}})
+	if err != nil {
+		return nil, err
+	}
+	if branch, ok := strings.CutPrefix(head.trimmed(), "refs/heads/"); ok && head.exit == 0 {
+		return []kv{{"branch." + branch + ".mergeOptions", ""}}, nil
+	}
+	return nil, nil
+}
+
+// rebaseFormat is the instruction format of every rebase: a format that expands to a newline could add an exec line to the
+// todo list git writes and then executes, so the subject alone is used whatever the repository configures.
+const rebaseFormat = "rebase.instructionFormat=%s"

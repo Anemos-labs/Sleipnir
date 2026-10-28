@@ -30,6 +30,7 @@ var sensitivePaths = [][]string{
 	{"tools", "web_allow_private"}, // reaches internal networks
 	{"tools", "web_allow_hosts"},
 	{"swarm", "budget_usd"},      // a repository could lift the built-in cap on what a swarm may spend
+	{"swarm", "push_progress"},   // the older spelling of plugins.enabled.push-progress: pushes with the user's credentials
 	{"plugins", "enabled", "*"},  // turning a plugin on (an installed one runs code); turning one off is not risky (harmlessValue)
 	{"plugins", "settings", "*"}, // a plugin's settings are written into the commands of its hooks and servers
 	{"plugins", "profile"},       // a profile turns plugins off, the user's hooks among them (harmlessValue)
@@ -41,15 +42,21 @@ const hooksPlugin = "hooks"
 // harmlessProfiles are the profiles that leave the hooks on (plugin.Profiles): only these may a project file choose untrusted.
 var harmlessProfiles = map[string]bool{"standard": true, "team": true, "headless": true}
 
+// KeepEnabledAgainstProject reports whether a project file needs trust to turn plugin id off. Without it, only the plugin
+// that runs the user's hooks is kept; the plugin package, which knows the plugins, also keeps every external one, whose
+// hooks may be the user's guards.
+var KeepEnabledAgainstProject = func(id string) bool { return id == hooksPlugin }
+
 // harmlessValue reports whether the value v at a sensitive path segs is in fact
-// harmless: a project file may always turn a plugin off, except the one that runs
-// the user's hooks, and may turn off the manager's approvals.
+// harmless: a project file may turn a plugin off, except one that may hold the
+// user's guards (KeepEnabledAgainstProject), and may turn off the manager's
+// approvals and the pushing of progress.
 func harmlessValue(segs []string, v any) bool {
 	switch {
 	case len(segs) == 3 && segs[0] == "plugins" && segs[1] == "enabled":
 		b, ok := v.(bool)
-		return ok && !b && segs[2] != hooksPlugin
-	case len(segs) == 2 && segs[0] == "permissions" && segs[1] == "manager_approves":
+		return ok && !b && !KeepEnabledAgainstProject(segs[2])
+	case len(segs) == 2 && (segs[0] == "permissions" && segs[1] == "manager_approves" || segs[0] == "swarm" && segs[1] == "push_progress"):
 		b, ok := v.(bool)
 		return ok && !b
 	case len(segs) == 2 && segs[0] == "plugins" && segs[1] == "profile":
@@ -92,6 +99,19 @@ func matchPath(patterns [][]string, segs []string) bool {
 
 // isSensitive reports whether segs is exactly one of the sensitive paths.
 func isSensitive(segs []string) bool { return matchPath(sensitivePaths, segs) }
+
+// holdsSensitive reports whether a sensitive path lies strictly under segs.
+func holdsSensitive(segs []string) bool {
+	for _, pat := range sensitivePaths {
+		if len(pat) <= len(segs) {
+			continue
+		}
+		if matchPath([][]string{pat[:len(segs)]}, segs) {
+			return true
+		}
+	}
+	return false
+}
 
 // UserOnlyPaths lists the settings Load honours only in the user-level file, as
 // dotted paths with "*" for any name (documentation and tests).
@@ -146,7 +166,10 @@ func (l *layer) collectRisks(drop bool) []Issue {
 	walk = func(m map[string]any, segs []string) {
 		for _, k := range sortedKeys(m) {
 			p := cloneSegs(segs, k)
-			if isSensitive(p) && !harmlessValue(p, m[k]) {
+			_, object := m[k].(map[string]any)
+			// null, or any value that is not an object, in place of a section that holds a sensitive setting replaces the
+			// whole section, the user's choices in it included (swarm: null restores the default budget).
+			if isSensitive(p) && !harmlessValue(p, m[k]) || !object && holdsSensitive(p) {
 				is := Issue{Severity: SeverityWarning, Source: l.source, Path: fmtPath(p), segs: p}
 				is.Message = "is security-sensitive and comes from a project file; project files can be untrusted"
 				if drop {

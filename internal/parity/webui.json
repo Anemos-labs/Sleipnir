@@ -2556,7 +2556,7 @@
   "settingsButton": true
  },
  "runLine": {
-  "line": "sleipnir chat --model a/m --mode plan --swarm 8 --isolation worktree --verify \"v\" --budget-usd 5 --commit --mailman --no-mcp --no-memory --trust-project",
+  "line": "sleipnir chat --model a/m --mode plan --swarm 8 --isolation worktree --verify v --budget-usd 5 --commit --mailman --no-mcp --no-memory --trust-project",
   "flags": [
    "budget-usd",
    "commit",

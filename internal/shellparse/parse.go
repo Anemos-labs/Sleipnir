@@ -525,6 +525,8 @@ func (p *parser) finish() {
 	}
 	if prob := peel(&s); prob != "" {
 		p.st.problem(prob)
+	} else if _, _, prob := s.effective(); prob != "" {
+		p.st.problem(prob)
 	}
 	if len(c.words) > 0 && s.Program == "" {
 		// "" is a command name the shell cannot run; whatever follows it is not

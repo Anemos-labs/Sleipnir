@@ -195,7 +195,7 @@ func judge(c *wire.CLICommand, parsed map[string][]string) (mode string, noKeys 
 	mode = c.Mode
 	for _, rule := range c.When {
 		v, ok := last(parsed, rule.Flag)
-		if !ok || v == "false" || v == "" {
+		if !ok || !set(c, rule.Flag, v) {
 			continue
 		}
 		if len(rule.Values) > 0 && !slices.Contains(rule.Values, strings.ToLower(v)) {
@@ -210,13 +210,13 @@ func judge(c *wire.CLICommand, parsed map[string][]string) (mode string, noKeys 
 		return mode, false, nil
 	}
 	for _, name := range keyRouteFlags {
-		if on(parsed, name) {
+		if on(c, parsed, name) {
 			noKeys = true
 			reasons = append(reasons, "--"+name+" names an endpoint or a key of its own: the command runs without your keys")
 		}
 	}
 	for _, name := range wideningFlags {
-		if on(parsed, name) {
+		if on(c, parsed, name) {
 			reasons = append(reasons, "--"+name+" lets the command do more than its mode allows")
 		}
 	}
@@ -228,9 +228,10 @@ func judge(c *wire.CLICommand, parsed map[string][]string) (mode string, noKeys 
 			reasons = append(reasons, "--"+name+" "+strings.ToLower(v)+" runs without asking")
 		}
 	}
-	if slices.Equal(c.Path, []string{"run"}) && !modeGiven && !on(parsed, "allow") {
-		// A run started from here has no terminal: with no mode and no --allow, sleipnir run chooses bypass for itself, as it
-		// does in a script (session.Options.Unattended). That is the same run as --mode bypass and needs the same confirmation.
+	if (slices.Equal(c.Path, []string{"run"}) || slices.Equal(c.Path, []string{"swarm"})) && !modeGiven && !on(c, parsed, "allow") {
+		// A run started from here has no terminal: with no mode and no --allow, sleipnir run (and swarm, the same command with a
+		// team) chooses bypass for itself, as it does in a script (session.Options.Unattended). That is the same run as --mode
+		// bypass and needs the same confirmation.
 		reasons = append(reasons, "without --mode, a run nobody can answer chooses bypass: it runs without asking")
 	}
 	if addr, ok := effective(c, parsed, "addr"); ok && !loopback(addr) {
@@ -252,10 +253,28 @@ func last(parsed map[string][]string, name string) (string, bool) {
 }
 
 // on reports whether a flag is set to something: a bool that is true, or a value that is not empty.
-func on(parsed map[string][]string, name string) bool {
+func on(c *wire.CLICommand, parsed map[string][]string, name string) bool {
 	for _, v := range parsed[name] {
-		if v = strings.TrimSpace(v); v != "" && v != "false" {
+		if set(c, name, v) {
 			return true
+		}
+	}
+	return false
+}
+
+// set reports whether v sets the flag name to something: "false" turns off only a bool (parseArgv spells every bool true or
+// false), and is a value like any other for a flag that takes one (a file named false).
+func set(c *wire.CLICommand, name, v string) bool {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return false
+	}
+	if v != "false" {
+		return true
+	}
+	for _, f := range c.Flags {
+		if f.Name == name {
+			return f.Arg != "bool"
 		}
 	}
 	return false

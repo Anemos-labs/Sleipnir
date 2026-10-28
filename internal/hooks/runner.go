@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/tools/fs"
 )
 
 // Defaults for the zero value of a Runner.
@@ -83,8 +84,8 @@ type Runner struct {
 	// AllowHTTP enables hooks of type "http". They send the payload (tool inputs
 	// and results) to a URL, so they are off by default.
 	AllowHTTP bool
-	// HTTPClient is used for http hooks; nil means a client that follows no
-	// redirects.
+	// HTTPClient is used for http hooks (nil: a plain client). Its transport is used,
+	// its redirect policy is not: an http hook never follows a redirect.
 	HTTPClient *http.Client
 
 	// FailClosed makes a hook that fails (crashes, times out, prints invalid JSON)
@@ -564,7 +565,9 @@ func (r *Runner) condEngine(cond string) (*perm.Engine, error) {
 	if r.engines == nil {
 		r.engines = map[string]*perm.Engine{}
 	}
-	e, err := perm.NewEngine(perm.Config{Mode: perm.ModeBypass, Root: r.Dir, Deny: []string{cond}})
+	// The condition is also an allow rule, which lifts the protections a specific allow rule lifts (a .env file, say): the
+	// session may allow what they guard, and a hook about it must still see the call.
+	e, err := perm.NewEngine(perm.Config{Mode: perm.ModeBypass, Root: r.Dir, Allow: []string{cond}, Deny: []string{cond}})
 	if err != nil {
 		r.engines[cond] = nil
 		return nil, err
@@ -590,7 +593,16 @@ func (r *Runner) condRequest(ev Event) perm.Request {
 	}
 	if in := inputObject(ev.Input); in != nil {
 		req.Command = inputText(in, "command")
-		for _, p := range []string{effectivePath(in), inputText(in, "notebook_path")} {
+		paths := []string{effectivePath(in), inputText(in, "notebook_path")}
+		if t := normTool(ev.Tool); t == "applypatch" || t == "patch" {
+			// The patch names its files inside its text: every file it adds, changes, deletes or moves to.
+			if ops, err := fs.ParsePatch(inputText(in, "patch")); err == nil {
+				for _, op := range ops {
+					paths = append(paths, op.Path, op.Move)
+				}
+			}
+		}
+		for _, p := range paths {
 			if p != "" {
 				if !filepath.IsAbs(p) {
 					p = filepath.Join(req.Cwd, p)

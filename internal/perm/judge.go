@@ -1013,13 +1013,16 @@ func (ev *evaluator) buildRemember(u *unit) []Rule {
 	}
 	// A rule is the command's words. One with a variable in it would match whatever the variable holds the next time, and a program
 	// that reads its code from standard input (python3 - <<'PY') would be allowed with any code: neither is remembered.
-	if shellparse.ReadsCodeFromStdin(programBase(s.Program), s.Args) {
+	// Both are judged on the program a wrapper runs as well (sudo python3 -, env X=1 node -), the one that reads the input.
+	inner, innerArgs := s.EffectiveCommand()
+	if shellparse.ReadsCodeFromStdin(programBase(s.Program), s.Args) || shellparse.ReadsCodeFromStdin(programBase(inner), innerArgs) {
 		return nil
 	}
 	// Nor is an interpreter whose standard input is fed and whose words have a long option with its value not attached: whether
 	// the next word is that value or the script, and so whether the input is a program or data, is the interpreter's grammar,
 	// which the parser may not know, and a rule binds the words, not what arrives on the input.
-	if shellparse.InterpreterName(programBase(s.Program)) != "" && stdinFed(s) && slices.ContainsFunc(s.Args, detachedLongOption) {
+	if stdinFed(s) && (shellparse.InterpreterName(programBase(s.Program)) != "" && slices.ContainsFunc(s.Args, detachedLongOption) ||
+		shellparse.InterpreterName(programBase(inner)) != "" && slices.ContainsFunc(innerArgs, detachedLongOption)) {
 		return nil
 	}
 	argv := append([]string{s.Program}, s.Args...)

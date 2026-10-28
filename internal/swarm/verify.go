@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"slices"
@@ -14,6 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/anemos-labs/sleipnir/internal/gitx"
 	"github.com/anemos-labs/sleipnir/internal/workspace"
 )
 
@@ -332,26 +332,35 @@ func (s *Swarm) interruptedVerification(ctx context.Context) verifyResult {
 	return verifyResult{infra: true, err: fmt.Errorf("verification timed out after %s", s.cfg.VerifyTimeout)}
 }
 
-// changedFiles is the paths git reports as changed in dir (modified, added, untracked), or nil when it cannot say.
+// changedFiles is the paths git reports as changed in dir (modified, added, untracked), or nil when it cannot say. It asks
+// through gitx: the repository is the agents' work, and its configuration must not choose a program (core.fsmonitor) that
+// runs before verification is confined.
 func changedFiles(ctx context.Context, dir string) []string {
 	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(cctx, "git", "-C", dir, "status", "--porcelain", "-z", "--untracked-files=all").Output()
+	repo, err := gitx.Open(dir)
 	if err != nil {
 		return nil
 	}
-	var files []string
-	recs := strings.Split(string(out), "\x00")
-	for i := 0; i < len(recs); i++ {
-		r := recs[i]
-		if len(r) < 4 {
-			continue
-		}
-		files = append(files, r[3:])
-		if r[0] == 'R' || r[0] == 'C' { // a rename carries its source as the next record
-			i++
-		}
+	st, err := repo.StatusWith(cctx, gitx.StatusOptions{Untracked: "all"})
+	if err != nil || st.Truncated { // a list cut short would leave changed packages out
+		return nil
 	}
+	seen := map[string]bool{}
+	for _, c := range append(append([]gitx.Change(nil), st.Staged...), st.Unstaged...) {
+		seen[c.Path] = true
+	}
+	for _, p := range st.Untracked {
+		seen[p] = true
+	}
+	for _, c := range st.Conflicted {
+		seen[c.Path] = true
+	}
+	files := make([]string, 0, len(seen))
+	for p := range seen {
+		files = append(files, p)
+	}
+	sort.Strings(files)
 	return files
 }
 

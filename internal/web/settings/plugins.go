@@ -187,23 +187,24 @@ func rowOf(st *plugin.Status) pluginRow {
 	return row
 }
 
-// pluginTarget is the configuration file a write of scope goes to, and the profile its minimal difference is measured against.
-func (s *service) pluginTarget(tc *tabCtx, scope string) (string, string, error) {
+// pluginTarget is the configuration file a write of scope goes to, the profile its minimal difference is measured against, and
+// the project root a project's file is written within ("" for the user's own file).
+func (s *service) pluginTarget(tc *tabCtx, scope string) (string, string, string, error) {
 	home := s.homeOf(tc)
 	switch scope {
 	case "", "user":
-		return config.UserConfigPath(home), plugin.ConfiguredProfile(home, home, home), nil
+		return config.UserConfigPath(home), plugin.ConfiguredProfile(home, home, home), "", nil
 	case "project":
 		if tc == nil || tc.root == "" {
-			return "", "", fail(http.StatusBadRequest, "no_project", "there is no project to write to: open a session in one first")
+			return "", "", "", fail(http.StatusBadRequest, "no_project", "there is no project to write to: open a session in one first")
 		}
 		path := config.ProjectConfigPath(tc.root)
 		if err := config.CheckProjectTarget(tc.root, path); err != nil {
-			return "", "", fail(http.StatusConflict, "unsafe_target", err.Error())
+			return "", "", "", fail(http.StatusConflict, "unsafe_target", err.Error())
 		}
-		return path, plugin.ConfiguredProfile(tc.cwd, tc.root, home), nil
+		return path, plugin.ConfiguredProfile(tc.cwd, tc.root, home), tc.root, nil
 	}
-	return "", "", fail(http.StatusBadRequest, "bad_request", `scope is "user" or "project"`)
+	return "", "", "", fail(http.StatusBadRequest, "bad_request", `scope is "user" or "project"`)
 }
 
 // pluginFor resolves the {id} of a write against the current catalogue: 404 for an unknown plugin, 409 for a core one.
@@ -256,7 +257,7 @@ func (s *service) writePlugin(w http.ResponseWriter, r *http.Request, scope stri
 		reply(w, nil, err)
 		return
 	}
-	path, profile, err := s.pluginTarget(tc, scope)
+	path, profile, root, err := s.pluginTarget(tc, scope)
 	if err != nil {
 		reply(w, nil, err)
 		return
@@ -265,7 +266,13 @@ func (s *service) writePlugin(w http.ResponseWriter, r *http.Request, scope stri
 		def := st.Default
 		enabled = &def
 	}
-	if err := plugin.Save(path, profile, st.ID, enabled, settings); err != nil {
+	save := plugin.Save
+	if root != "" {
+		save = func(path, profile, id string, enabled *bool, settings map[string]any) error {
+			return plugin.SaveWithin(root, path, profile, id, enabled, settings)
+		}
+	}
+	if err := save(path, profile, st.ID, enabled, settings); err != nil {
 		web.Logf(r, "plugin choice not saved")
 		reply(w, nil, fail(http.StatusUnprocessableEntity, "rejected", "the configuration file could not be changed (it does not load: see `sleipnir config`)"))
 		return
@@ -294,12 +301,16 @@ func (s *service) handlePluginProfile(w http.ResponseWriter, r *http.Request) {
 		reply(w, nil, err)
 		return
 	}
-	path, _, err := s.pluginTarget(tc, req.Scope)
+	path, _, root, err := s.pluginTarget(tc, req.Scope)
 	if err != nil {
 		reply(w, nil, err)
 		return
 	}
-	if err := plugin.SaveProfile(path, req.Profile); err != nil {
+	save := plugin.SaveProfile
+	if root != "" {
+		save = func(path, profile string) error { return plugin.SaveProfileWithin(root, path, profile) }
+	}
+	if err := save(path, req.Profile); err != nil {
 		web.Logf(r, "plugin profile not saved")
 		reply(w, nil, fail(http.StatusUnprocessableEntity, "rejected", "the configuration file could not be changed (it does not load: see `sleipnir config`)"))
 		return

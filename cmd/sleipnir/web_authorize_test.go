@@ -84,6 +84,15 @@ func TestPrivilegeIsConfirmedWhereItTakesEffect(t *testing.T) {
 	r.needsConfirm("POST", path+"/rules", wire.RuleRequest{Effect: "allow", Rule: "tests"})
 	r.json("POST", path+"/rules", wire.RuleRequest{Effect: "deny", Rule: "Bash(rm:*)"}, 200, nil)
 	r.needsConfirm("POST", path+"/rules/remove", wire.RuleRequest{Effect: "deny", Rule: "Bash(rm:*)"})
+	// the engine takes the text back from every action, so removing the allow takes the deny too
+	add := r.needsConfirm("POST", path+"/rules", wire.RuleRequest{Effect: "allow", Rule: "Bash(rm:*)"})
+	if code, body := r.do("POST", path+"/rules", wire.RuleRequest{Effect: "allow", Rule: "Bash(rm:*)"}, web.ConfirmHeader, r.confirmFor(add)); code != 200 {
+		t.Fatalf("the confirmed allow rule = %d %s", code, body)
+	}
+	r.needsConfirm("POST", path+"/rules/remove", wire.RuleRequest{Effect: "allow", Rule: "Bash(rm:*)"})
+	if !slices.Contains(r.h.tab(tab.ID).session().Perm.Rules(perm.Deny), "Bash(rm:*)") {
+		t.Error("removing the allow rule took back the deny rule of the same text without its confirmation")
+	}
 
 	r.needsConfirm("POST", path+"/command", wire.CommandRequest{Line: "/restart --mode yolo"})
 	r.needsConfirm("POST", path+"/command", wire.CommandRequest{Line: "/swarm 8 --verify 'sh x.sh'"})

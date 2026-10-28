@@ -311,7 +311,7 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 	}
 	a.emit(events.TypeModelResponse, a.responsePayload(withList(map[string]any{
 		"req": reqID, "id": resp.ID, "model": resp.Model, "provider": resp.Provider,
-		"usage": u, "cost_usd": usd, "gateway_cost": resp.CostUSD != nil,
+		"usage": u, "cost_usd": usd, "gateway_cost": resp.CostUSD != nil && !resp.CostEstimated,
 		"hit_ratio": u.HitRatio(), "expected_read": expected, "missed": missed, "anomaly": anomaly,
 		"expected_cold": expectedCold, "hot_mode": caps.HotMode.String(),
 		"stop": resp.Stop, "ttfb_ms": resp.TTFB.Milliseconds(), "total_ms": resp.Total.Milliseconds(),

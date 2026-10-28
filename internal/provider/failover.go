@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/core"
 )
 
 // Failover sends requests to Primary and, once Primary has been in an outage (Error.Outage) for After, to Secondary: the
@@ -21,6 +23,10 @@ type Failover struct {
 	Primary, Secondary Provider
 	// SecondaryModel is the model id Secondary's requests name in place of the one the caller wrote for Primary.
 	SecondaryModel string
+	// SecondaryPrice, when set, prices a usage record of Secondary in dollars. The caller prices responses at Primary's
+	// prices unless one carries its exact charge, so an answer from Secondary is given that charge here: a fallback that
+	// bills where Primary is a plan (or cheaper) is then counted against the budget at its own price.
+	SecondaryPrice func(core.Usage) float64
 	After, Retry   time.Duration
 	// Now is the clock (time.Now when nil).
 	Now func() time.Time
@@ -101,5 +107,10 @@ func (f *Failover) secondary(ctx context.Context, req *Request, on func(Event)) 
 		r.Prompt = &p
 		req = &r
 	}
-	return f.Secondary.Do(ctx, req, on)
+	resp, err := f.Secondary.Do(ctx, req, on)
+	if err == nil && resp != nil && resp.CostUSD == nil && f.SecondaryPrice != nil {
+		usd := f.SecondaryPrice(resp.Usage)
+		resp.CostUSD, resp.CostEstimated = &usd, true
+	}
+	return resp, err
 }
