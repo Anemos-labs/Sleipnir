@@ -176,8 +176,9 @@ func (s *Session) judgeOn(ctx context.Context, g *goal.State, j judgeRunner, ans
 		prompt.Messages[0].Blocks = append(prompt.Messages[0].Blocks, core.Text("Current task board (status only, not proof of correctness):\n"+board.String()))
 	}
 	est := core.NewBytesEstimator()
-	unread := 0 // answers in a row that were neither an evidence request nor a verdict
-	served := 0 // evidence requests answered
+	unread := 0  // answers in a row that were neither an evidence request nor a verdict
+	empties := 0 // answers in a row with no text at all
+	served := 0  // evidence requests answered
 	var asked judgeAsked
 	pressed := false // a verdict of continue before any evidence request was sent back once to search first
 	for round := 0; round < judgeRounds+judgeRereads+2; round++ {
@@ -222,16 +223,33 @@ func (s *Session) judgeOn(ctx context.Context, g *goal.State, j judgeRunner, ans
 				return pv, nil
 			}
 			// An answer that is neither (cut off, or not JSON) is asked for again: read as "continue" with no reason, it sent the
-			// agent on with nothing to do.
-			if unread++; unread > judgeRereads {
-				return goal.Verdict{Kind: goal.Continue}, fmt.Errorf("the judge's answer could not be read (%d tries)", unread)
+			// agent on with nothing to do. What it was is logged, so that a judge that cannot be read can be told why.
+			// An answer with no text at all (a reasoning model that ended after its reasoning) is asked for again as it was: there is
+			// nothing to quote back, and the next sample usually answers.
+			empty := strings.TrimSpace(response) == ""
+			if empty {
+				empties++
+			} else {
+				unread++
+			}
+			s.Log.Emit("", "goal.unread", map[string]any{
+				"try": unread + empties, "empty": empty, "stop": string(resp.Stop), "output_tokens": resp.Usage.OutputTokens,
+				"reasoning_tokens": resp.Usage.ReasoningTokens, "chars": len(response), "head": clipRunes(response, 400),
+				"tail": tailRunes(response, 200), "blocks": judgeBlocks(resp.Turn),
+			})
+			switch {
+			case empty && empties <= judgeEmpties:
+				round-- // a resample is not a round of the inspection
+				continue
+			case empty || unread > judgeRereads:
+				return goal.Verdict{Kind: goal.Continue}, fmt.Errorf("the judge's answer could not be read (%d tries)", unread+empties)
 			}
 			prompt.Messages = append(prompt.Messages,
 				core.Message{Role: core.RoleAssistant, Blocks: []core.Block{core.Text(response)}},
 				core.Message{Role: core.RoleUser, Blocks: []core.Block{core.Text(judgeReread)}})
 			continue
 		}
-		unread = 0
+		unread, empties = 0, 0
 		if served == judgeRounds {
 			// It was told none were left and asked again: the answer it owes is a verdict.
 			break
@@ -335,6 +353,8 @@ const judgeMaxTokens = 4000
 // judgment fails (and the goal pauses); judgeReread is what it is told each time.
 const (
 	judgeRereads = 2
+	// judgeEmpties is how many answers in a row with no text are asked for again unchanged, beside judgeRereads.
+	judgeEmpties = 3
 	judgeReread  = `Your answer could not be read. Reply with one JSON object only: an evidence request {"verdict":"inspect",...} or a final verdict {"verdict":"done|continue|blocked","reason":"...","left":[...]}.`
 )
 
@@ -605,4 +625,21 @@ func (s *Session) LoadGoal() *goal.State {
 		return last
 	}
 	return nil
+}
+
+// judgeBlocks names the blocks of a judge's answer, a tool call with its name and the start of its input, for the log of an answer
+// that could not be read.
+func judgeBlocks(t core.Turn) []string {
+	var out []string
+	for _, b := range t.Blocks {
+		switch b.Kind {
+		case core.BlockToolUse:
+			out = append(out, string(b.Kind)+" "+b.ToolName+" "+clipRunes(string(b.Input), 200))
+		case core.BlockThinking:
+			out = append(out, string(b.Kind)+" "+tailRunes(b.Text, 200))
+		default:
+			out = append(out, string(b.Kind))
+		}
+	}
+	return out
 }
