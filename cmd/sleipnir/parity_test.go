@@ -325,7 +325,7 @@ func TestParityChatFlagsAreTheCodes(t *testing.T) {
 	writeTeam(t, filepath.Join(home, ".sleipnir", "teams"), "crew.json", `{"slots":["architect","scout","backend","frontend","devops","tester","docs","reviewer"]}`)
 	zero, usd, off, share := 8, 5.0, false, 40
 	args := argsFor(wire.NewSessionRequest{Cwd: "/p", Model: "a/m", Mode: "plan", Swarm: &zero, Isolation: "worktree", Verify: "go test {dirs}", Commit: true,
-		Mailman: true, AutoDocs: &off, ManagerApproves: &off, ManagerAnswersAfter: "10m", ManagerAnswersUpTo: "high", Budget: &usd, CompactAt: &share, Rules: []string{"tests"}, TrustProject: true, NoMcp: true, NoMemory: true, RoleModels: map[string]string{"backend": "a/w"}})
+		Mailman: true, AutoDocs: &off, ManagerApproves: &off, ManagerAnswersAfter: "10m", ManagerAnswersUpTo: "high", Budget: &usd, CompactAt: &share, Rules: []string{"tests"}, TrustProject: true, NoMcp: true, NoMemory: true, RoleModels: map[string]string{"backend": "a/w"}, Sandbox: "docker", SandboxNetwork: true})
 	// the same request with a team loaded from the saved teams, as it came: --team in place of the --role-model values
 	named := argsFor(wire.NewSessionRequest{Cwd: "/p", Model: "a/m", Swarm: &zero, Team: []wire.TeamSlot{{Role: "backend", Model: "a/w"}}, RoleModels: map[string]string{"judge": "a/j"}, TeamName: "crew"})
 	var made []string

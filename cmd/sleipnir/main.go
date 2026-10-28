@@ -28,6 +28,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/provider/probe"
+	"github.com/anemos-labs/sleipnir/internal/sandbox"
 	"github.com/anemos-labs/sleipnir/internal/sched"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/tools"
@@ -47,6 +48,11 @@ func main() {
 	// needs on an inherited pipe, never in the environment: sched.ReceiveKeys reads them (the argument is evaluated before Process
 	// runs) and they are moved like the rest, whatever their names.
 	harden.Process(harden.MoveKeys(append([]string{"HF_TOKEN"}, sched.ReceiveKeys()...)...))
+	// A sandboxed session's shell commands re-enter the program as the exec helper, which only sends the command into the
+	// session's container: it loads no key and is no command a person types (internal/sandbox).
+	if len(os.Args) > 1 && os.Args[1] == sandbox.ExecCommand {
+		os.Exit(sandbox.ExecMain(os.Args[2:]))
+	}
 	// Keys the person stored with `sleipnir login`: held in memory beside the ones moved out of the environment.
 	// A parent that passed this process no keys (sched.DenyKeys) means none: the stored ones are not loaded either.
 	if !sched.StoredKeysDenied() {

@@ -295,7 +295,7 @@ function dialogInventory(SL, chatFlags) {
   /* a checkbox's text may hold markup of its own (a span that keeps a flag on one line): its text is what counts */
   const checks = [...ns.body.matchAll(/<label class="chk"><input type="checkbox" data-k="([A-Za-z]+)"[^>]*> ([\s\S]*?)<\/label>/g)].map(m => m[1] + ' ' + m[2].replace(/<[^>]*>/g, '').trim());
   const full = { resume: '20260101-000000-abcdef', cwd: '/p', model: 'a/m', mode: 'plan', swarm: 8, autoDocs: false, managerApproves: false, mgrAfter: '10m', mgrUpTo: 'high', isolation: 'worktree', verify: 'v', commit: true, mailman: true, mailmanDefault: false,
-    budget: '5', compactAt: 40, compactAtBase: 25, roleModels: { backend: 'a/w' }, rules: ['tests'], trustProject: true, noMcp: true, noMemory: true, goalText: '' };
+    budget: '5', compactAt: 40, compactAtBase: 25, roleModels: { backend: 'a/w' }, rules: ['tests'], trustProject: true, noMcp: true, noMemory: true, sandbox: 'docker', sandboxNetwork: true, goalText: '' };
   const line = ui.dialogs.cliLine(full), lineOff = ui.dialogs.cliLine(Object.assign({}, full, { mailman: false, mailmanDefault: true }));
   /* a team loaded from the saved teams, and left as it came, is --team NAME in place of its --role-model values */
   const lineNamed = ui.dialogs.cliLine(Object.assign({}, full, { teamName: 'crew' }));

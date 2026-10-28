@@ -342,6 +342,10 @@ Usage of chat:
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
         role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… turns the lesson memory on, reranker=… orders what it finds, fallback=… takes the requests of a model whose endpoint has been out for a minute). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
+  -sandbox string
+        run every shell command of the session inside a container of its own: docker (image buildpack-deps:bookworm) or docker=IMAGE. The project is mounted at its own path, the network is off, capabilities are dropped and the harness, its keys and the rest of the machine stay outside; edits are still made by the agents' file tools
+  -sandbox-network
+        with --sandbox: let commands in the container use the network (to install dependencies); it is off otherwise
   -swarm int
         chat as a team of a manager and N workers (config swarm.max_workers is the ceiling); on a terminal the default is 8 workers (a --team brings its own), --swarm 0 is a single agent
   -team NAME
@@ -606,6 +610,10 @@ flags:
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
         role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… turns the lesson memory on, reranker=… orders what it finds, fallback=… takes the requests of a model whose endpoint has been out for a minute). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
+  -sandbox string
+        run every shell command of the session inside a container of its own: docker (image buildpack-deps:bookworm) or docker=IMAGE. The project is mounted at its own path, the network is off, capabilities are dropped and the harness, its keys and the rest of the machine stay outside; edits are still made by the agents' file tools
+  -sandbox-network
+        with --sandbox: let commands in the container use the network (to install dependencies); it is off otherwise
   -session-dir string
         directory for this run's recording (events.jsonl, blobs/, checkpoints/); default <state>/sessions/<id>, <state> being $SLEIPNIR_HOME or ~/.sleipnir
   -swarm int

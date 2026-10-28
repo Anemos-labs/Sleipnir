@@ -91,6 +91,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	noMCP := fs.Bool("no-mcp", false, "start no MCP tool servers")
 	mcpConfigs := mcpConfigFlags(fs)
 	noMemory := fs.Bool("no-memory", false, noMemoryHelp)
+	sandboxFlag, sandboxNet := sandboxFlags(fs)
 	trainingLogs := fs.Bool("training-logs", false, trainingLogsHelp)
 	resume := resumeFlags(fs)
 	roleFlag := &roleModelFlag{}
@@ -153,9 +154,13 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	if err := checkTeamSize(*swarmN); err != nil {
 		return usageError(fs, name+": "+err.Error())
 	}
+	box, err := sandboxSpec(*sandboxFlag, *sandboxNet)
+	if err != nil {
+		return usageError(fs, name+": "+err.Error())
+	}
 	interactive := term.IsTerminal(int(os.Stdin.Fd()))
 	team, workers := teamOf(*swarmN)
-	o := session.Options{AutoFix: *autoFix, AutoMerge: *autoMerge,
+	o := session.Options{Sandbox: box, AutoFix: *autoFix, AutoMerge: *autoMerge,
 		AskTimeout: *askTimeout,
 		Cwd:        *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: team, Workers: workers,
 		MaxSteps: *maxSteps, FixedSteps: *maxSteps > 0, BudgetUSD: *budget, Verify: *verify, NoRecon: *noRecon, TrustProject: *trust,
