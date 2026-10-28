@@ -195,11 +195,27 @@ func (s *Swarm) retryChangedScope(m *member, checked Task) {
 // submitSettledTask submits an implicit completion only for the checked scope,
 // arranging another worker run if a scope update made the result obsolete.
 func (s *Swarm) submitSettledTask(m *member, checked Task, result, evidence string) bool {
-	if err := s.Board.SubmitAt(m.id, checked.ID, checked.Rev, result, evidence, taskGateCheck(checked), s.reviewSubmission(checked)); err != nil {
+	report := ""
+	if m.readOnly {
+		result, report = readOnlyReport(checked.ID, result)
+	}
+	if err := s.Board.submitReportAt(m.id, checked.ID, checked.Rev, result, report, evidence, "", taskGateCheck(checked), s.reviewSubmission(checked)); err != nil {
 		s.retryChangedScope(m, checked)
 		return false
 	}
 	return true
+}
+
+// readOnlyReport splits what a read-only worker submitted into the board's one-line result and the whole report task get shows.
+// A reviewer's findings and a scout's answer are its deliverable: cut to the line, they sent managers to recall the worker's
+// history for the verdict. The line names task get when the report holds more than it.
+func readOnlyReport(id, text string) (result, report string) {
+	report = strings.TrimSpace(text)
+	result = oneLine(report, 120)
+	if result != oneLine(report, 0) {
+		result += " (whole report: task get " + id + ")"
+	}
+	return result, report
 }
 
 // verificationFailureNotice gives the manager the exhausted retry budget and

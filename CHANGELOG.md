@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A read-only worker's submission (a review's findings, a scout's
+  answer) keeps its whole text, up to 4000 characters and 40 lines, as
+  the task's `report`, shown by `task get`. The board's one-line result
+  names `task get` when the report holds more than it. Before, the text
+  was cut to 120 characters ("No bl…"), and a manager recalled the
+  reviewer's history for the verdict. A read-only worker's `task done`
+  answer no longer asks it for a final summary, which saves it a turn.
+  Prompt bytes: the board is unchanged; `task get` on such a task carries
+  the report, up to about 1000 tokens.
 - A read-only worker (a reviewer, a scout) that stops on its task with
   no answer text is mailed once or twice for its report before its task
   is submitted, instead of reaching review with an empty result. A
