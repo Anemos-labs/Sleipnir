@@ -39,6 +39,23 @@ func TestDocsCatchUpScopeNamesTheMarkdownBesideTheChange(t *testing.T) {
 	if got := strings.Join(r.sw.docsScopeFor(nil), " "); got != "*.md docs/**" {
 		t.Fatalf("empty batch scope = %q", got)
 	}
+
+	// A change in a directory without Markdown names the nearest directory above it that has some: a module's README sits at the
+	// module's root, not beside every package. A docs worker scoped without svc/README.md for a change to svc/ratelimit/ mailed
+	// the manager to widen its scope.
+	for _, f := range []string{"svc/ratelimit/README.md", "lru/NOTES.md"} {
+		if err := os.Remove(filepath.Join(root, f)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(root, "svc", "internal", "store"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	batch = []docsChange{{task: "T1", files: []string{"svc/ratelimit/**"}}, {task: "T2", files: []string{"svc/internal/store/db.go"}}, {task: "T3", files: []string{"cmd/tool/main.go"}}}
+	got = strings.Join(r.sw.docsScopeFor(batch), " ")
+	if want := "*.md docs/** svc/README.md"; got != want {
+		t.Fatalf("scope = %q, want %q", got, want)
+	}
 }
 
 // A change whose scope names test files alone leaves no document stale and starts no docs pass.
