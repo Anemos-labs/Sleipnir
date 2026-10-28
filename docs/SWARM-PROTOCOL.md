@@ -392,7 +392,9 @@ worker: done(text)          --> the HARNESS runs the gate:
                               pass  -> review (result = the model's text; evidence = what the harness observed)
                               fail  -> doing (the verifier output is returned to the worker for up to two repair retries)
 worker stops without done   the same gate runs on its behalf; on failure the worker is sent back to work with the
-                            output (twice at most), then the task returns to todo and the manager is told once
+                            output (twice at most), then the task returns to todo and the manager is told once;
+                            a read-only worker whose last answer had no text is first asked for its report (twice
+                            at most), since that report is all the manager decides on
 manager: accept             done    (re-runs the verifier when configured; a task cannot become done without a pass;
                                      an implementation task whose harness evidence reports no edited file, in a
                                      shared or an isolated run, is refused unless its isolated merge carried a change

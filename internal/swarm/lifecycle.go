@@ -1089,6 +1089,22 @@ func currentTask(snap *Snapshot, agentID string) string {
 	return best
 }
 
+// askForReport asks a read-only worker that stopped on t with no answer text for its report, at most maxGateTries times, and
+// reports whether it asked. A read-only task's deliverable is its report: submitted empty, it reaches the manager with nothing
+// to decide on. A reviewer whose last turn was reasoning alone stopped so, and its manager spent four minutes recalling the
+// reviewer's history for the verdict before it mailed for it.
+func (s *Swarm) askForReport(m *member, t Task) bool {
+	m.mu.Lock()
+	m.gateTries++
+	tries := m.gateTries
+	m.mu.Unlock()
+	if tries > maxGateTries {
+		return false
+	}
+	s.notify(m.id, "request", "You stopped on "+t.ID+" without a report: your last answer had no text. Post your findings and verdict with task done (text=...); the manager decides from that text alone.")
+	return true
+}
+
 // settleClean gates the tasks a worker left in doing after a normal stop. It
 // returns a line for the manager, if there is anything to tell.
 func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uint64, res *agent.Result) string {
@@ -1112,15 +1128,18 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 			}
 			continue
 		}
+		summary := ""
+		if res != nil {
+			summary = strings.TrimSpace(res.Text)
+		}
+		if summary == "" && m.readOnly && ctx.Err() == nil && s.askForReport(m, t) {
+			continue
+		}
 		vr := s.verifyFor(ctx, t, m.dir, t.Files)
 		vcmd := ExpandVerify(s.cfg.VerifyCmd, m.dir, t.Files)
 		if ctx.Err() != nil { // the swarm is stopping: nothing failed
 			s.Board.Requeue(m.id, id, rev, "interrupted", false, s.cfg.MaxAttempts)
 			continue
-		}
-		summary := ""
-		if res != nil {
-			summary = strings.TrimSpace(res.Text)
 		}
 		evid := m.ev.SummaryFor(id)
 		if vr.ok && m.tree != nil {

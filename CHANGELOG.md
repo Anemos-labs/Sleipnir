@@ -10,6 +10,13 @@ they do not indicate whether a change has been released.
 - A session whose goal is a deep scan works on that scan: the `scan` tool's calls that name another scan of the project
   (an older unfinished one, whose lead numbers mean other things) go to the session's scan, with a note. A reproducer's
   marker may be followed by a colon (`SLEIPNIR-REPRODUCED: rows`).
+- A read-only worker (a reviewer, a scout) that stops on its task with
+  no answer text is mailed once or twice for its report before its task
+  is submitted, instead of reaching review with an empty result. A
+  reviewer whose last turn was reasoning alone reached review with
+  nothing to read, and its manager spent four minutes recalling the
+  reviewer's history for the verdict before it mailed for it. About 35
+  tokens in that mail, only when it is sent.
 - The web page has a Deep scan view (`g d`, docs/SCAN.md): the project's scans, a scan's findings with their traces,
   verdicts and reproductions, its attack surface and shard map, the report exported as CSV, JSON, PDF, Markdown or SARIF,
   and a form that scans the project or a repository it clones (https or ssh, hooks and symbolic links off) into

@@ -74,8 +74,10 @@ type rvToolCall struct {
 type rvReply struct {
 	Text  string
 	Tools []rvToolCall
-	Usage core.Usage
-	Err   error
+	// Thinking, set with no Text and no Tools, is the whole answer: a turn of reasoning alone, with no text.
+	Thinking string
+	Usage    core.Usage
+	Err      error
 }
 
 type rvProvider struct {
@@ -106,7 +108,10 @@ func (p *rvProvider) Do(ctx context.Context, req *provider.Request, on func(prov
 	}
 	n := p.n.Add(1)
 	turn := core.Turn{Role: core.RoleAssistant, Origin: core.OriginModel, Model: "rv-1"}
-	if r.Text != "" || len(r.Tools) == 0 {
+	if r.Thinking != "" {
+		turn.Blocks = append(turn.Blocks, core.Block{Kind: core.BlockThinking, Text: r.Thinking})
+	}
+	if r.Text != "" || len(r.Tools) == 0 && r.Thinking == "" {
 		txt := r.Text
 		if txt == "" {
 			txt = "ok"
