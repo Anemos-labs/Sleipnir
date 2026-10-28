@@ -304,6 +304,13 @@ it.`). Each submission is named once, with the manager's next edit after it; a
 later edit names them all again only when a new one has joined them. The
 manager's own tasks in review are left out, and a shell command is not an edit.
 
+On a team roster, the manager's first file edit in each top-level directory,
+while a writer role (not docs, the tester or a read-only role) has a free slot
+or an idle member, carries a line naming those roles: `Writer slots are free
+(backend, frontend). Work in wordfreq/ bigger than a handoff is a task for one
+of them (task create, then spawn), running beside the rest while you decide and
+review; keep to yourself only what is smaller.` Nothing is refused.
+
 A restored team's idle workers that hold an unfinished task show
 `restored; waiting for T7 to restart`; the others are plainly idle and free for
 new work. When a standing goal sends the manager of a team on, the continuation
