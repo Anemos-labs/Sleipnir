@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A manager's first file edit in each top-level directory, while a
+  writer role of its team has a free slot or an idle member, names those
+  roles and says that work bigger than a handoff is a task for one of
+  them. A manager with seven free slots wrote two of four independent
+  modules itself and ran the other two one after the other on one
+  backend member (2435 s, against 1020 s when each module had its own
+  worker). Prompt bytes: on such an edit, a 201-character line plus the
+  directory and the free roles' names, at most once per directory. No
+  pin or tool spec changed.
 - A read-only worker's submission (a review's findings, a scout's
   answer) keeps its whole text, up to 4000 characters and 40 lines, as
   the task's `report`, shown by `task get`. The board's one-line result
