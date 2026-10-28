@@ -177,25 +177,34 @@ func TestArchiveSearchSeesTheEndsOfALongTurn(t *testing.T) {
 }
 
 // The index is small however big the turns are (S08, C-09): it must not keep the turn
-// text alive behind a substring.
+// text alive behind a substring. What a turn adds is the heap's growth between two
+// counts of turns, so what the archive allocates once (and whatever else the runtime
+// holds at the time) cancels out; a retained body would add its whole ~180 KB.
 func TestArchiveIndexDoesNotRetainTurnBodies(t *testing.T) {
 	a := NewArchive(secRevNullBlobs{})
 	body := strings.Repeat("build output line with details and more words\n", 4000) // ~180 KB
-	var before, after runtime.MemStats
-	runtime.GC()
-	runtime.ReadMemStats(&before)
-	const n = 300
-	for i := 1; i <= n; i++ {
-		if err := a.Put("be-1", turnOf(i, fmt.Sprintf("turn %d %s", i, body))); err != nil {
-			t.Fatal(err)
+	put := func(from, to int) {
+		for i := from; i <= to; i++ {
+			if err := a.Put("be-1", turnOf(i, fmt.Sprintf("turn %d %s", i, body))); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
-	runtime.GC()
-	runtime.ReadMemStats(&after)
+	heap := func() int64 {
+		var m runtime.MemStats
+		runtime.GC()
+		runtime.ReadMemStats(&m)
+		return int64(m.HeapAlloc)
+	}
+	const first, n = 50, 300
+	put(1, first)
+	before := heap()
+	put(first+1, first+n)
+	after := heap()
 	runtime.KeepAlive(a)
-	per := (int64(after.HeapAlloc) - int64(before.HeapAlloc)) / n
+	per := (after - before) / n
 	t.Logf("%d turns of %d KB: index %d bytes/turn", n, len(body)>>10, per)
-	if per > 2048 {
+	if per > 8<<10 {
 		t.Fatalf("the index holds %d bytes per turn of %d KB: it is keeping turn text", per, len(body)>>10)
 	}
 }
