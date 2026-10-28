@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -228,6 +229,8 @@ type holdHooks struct {
 	// noted are the submissions ("T3#rev") an edit of the manager's has carried a line about (editLine).
 	notedMu sync.Mutex
 	noted   map[string]bool
+	// handed are the top-level directories a manager's edit has carried the free-slot line about (handoffLine).
+	handed map[string]bool
 }
 
 var (
@@ -263,6 +266,9 @@ func (h *holdHooks) BeforeTool(ctx context.Context, c agent.ToolHookCall) agent.
 	}
 	if editsFiles(c.Tool) {
 		if line := h.editLine(); line != "" {
+			o.Context = strings.TrimSpace(o.Context + "\n" + line)
+		}
+		if line := h.handoffLine(c.Input); line != "" {
 			o.Context = strings.TrimSpace(o.Context + "\n" + line)
 		}
 	}
@@ -353,6 +359,57 @@ func (h *holdHooks) editLine() string {
 		verb = "wait"
 	}
 	return joinNames(names) + " " + verb + " in review. A submission comes before edits of your own: decide it, then go on; a worker's next task waits on it."
+}
+
+// handoffLine is the line a manager's file edit carries while writer roles have a free slot or an idle member (freeWriters): a
+// part of the goal bigger than a handoff runs beside the rest on one of them. It is said once for each top-level directory the
+// manager edits in, so a manager that keeps to small fixes hears it at most once a module. A manager with seven free slots wrote two
+// of four independent modules itself and gave the other two to one backend member, one after the other: 2435 s, against 1020 s
+// for a run whose manager gave each module its own worker.
+func (h *holdHooks) handoffLine(input json.RawMessage) string {
+	var in struct {
+		Path string `json:"path"`
+	}
+	if json.Unmarshal(input, &in) != nil || in.Path == "" {
+		return ""
+	}
+	dir := topDir(h.s.deps.Workdir, in.Path)
+	h.notedMu.Lock()
+	seen := h.handed[dir]
+	h.notedMu.Unlock()
+	if seen {
+		return ""
+	}
+	free := h.s.freeWriters("")
+	if len(free) == 0 {
+		return ""
+	}
+	h.notedMu.Lock()
+	if h.handed == nil {
+		h.handed = map[string]bool{}
+	}
+	h.handed[dir] = true
+	h.notedMu.Unlock()
+	where := dir
+	if dir == "." {
+		where = "the top of the tree"
+	}
+	return fmt.Sprintf("Writer slots are free (%s). Work in %s bigger than a handoff is a task for one of them (task create, then spawn), "+
+		"running beside the rest while you decide and review; keep to yourself only what is smaller.", strings.Join(free, ", "), where)
+}
+
+// topDir is the first directory of path under the work tree ("." for a file at its top), for an absolute or a relative path.
+func topDir(workdir, path string) string {
+	if filepath.IsAbs(path) && workdir != "" {
+		if rel, err := filepath.Rel(workdir, path); err == nil && !strings.HasPrefix(rel, "..") {
+			path = rel
+		}
+	}
+	path = filepath.ToSlash(filepath.Clean(path))
+	if i := strings.IndexByte(path, '/'); i > 0 {
+		return path[:i] + "/"
+	}
+	return "."
 }
 
 // joinNames joins ids for a sentence: "T3", "T3 and T4", "T3, T4 and T5".
