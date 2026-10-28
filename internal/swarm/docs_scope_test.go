@@ -185,3 +185,75 @@ func TestAnIsolatedManagersIntegratedEditsAreADocsChange(t *testing.T) {
 		t.Fatalf("edits auto-docs counts = %q, want the product file alone", got)
 	}
 }
+
+// A task resolved as no longer needed landed nothing: it starts no docs pass and is not listed in one.
+func TestAResolvedTaskStartsNoDocsPass(t *testing.T) {
+	cfg := Config{MaxWorkers: 8, AutoDocs: true, Team: []string{"backend", "docs"}}
+	r := newRVRigWith(t, cfg, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	b := r.sw.Board
+	code, _ := b.CreateTask("mgr", TaskSpec{Title: "ws hub", Files: []string{"cp/ws.go"}})
+	dup, _ := b.CreateTask("mgr", TaskSpec{Title: "ws hub (solo)", Files: []string{"cp/ws.go"}})
+	if err := b.Assign("mgr", "be-1", code.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Submit("be-1", code.ID, "done", "edited"); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Accept("mgr", code.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.resolve("mgr", dup.ID, "duplicate of "+code.ID); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.docs.mu.Lock()
+	r.sw.docs.primed = true
+	cur, _ := b.Snapshot().Task(code.ID)
+	r.sw.docs.seen[code.ID] = cur.Rev // the accepted change is known already: only the resolved one is new
+	r.sw.docs.coded = true
+	r.sw.docs.mu.Unlock()
+	if r.sw.docsWillStart(b.Snapshot()) {
+		t.Fatal("a resolved task made the pre-tick check say a docs pass is due")
+	}
+	r.sw.docsTick(r.sw.deps.Now())
+	r.sw.docs.mu.Lock()
+	if len(r.sw.docs.pending) != 0 || r.sw.docs.open != "" {
+		t.Fatalf("a resolved task became a docs change: pending %v, open %q", r.sw.docs.pending, r.sw.docs.open)
+	}
+	r.sw.docs.mu.Unlock()
+
+	// A task resolved after its work merged (under isolation a submission merges before review) ships that work: it is a change.
+	merged, _ := b.CreateTask("mgr", TaskSpec{Title: "ws topics", Files: []string{"cp/topics.go"}})
+	if err := b.Assign("mgr", "be-1", merged.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Submit("be-1", merged.ID, "done", "edited"); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.review.mu.Lock()
+	r.sw.review.landLocked(merged.ID, []string{"cp/topics.go"}, 0)
+	r.sw.review.mu.Unlock()
+	if err := b.resolve("mgr", merged.ID, "superseded after merge"); err != nil {
+		t.Fatal(err)
+	}
+	if !r.sw.docsWillStart(b.Snapshot()) {
+		t.Fatal("a task resolved after its work merged does not start a docs pass")
+	}
+}
+
+// A resumed session's resolved implementation task does not count as accepted code: an agreement accepted later still waits for
+// the first implementation to land before it starts a pass.
+func TestAResolvedTaskDoesNotPrimeAutoDocsAsCoded(t *testing.T) {
+	cfg := Config{MaxWorkers: 8, AutoDocs: true, Team: []string{"backend", "docs"}}
+	r := newRVRigWith(t, cfg, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	b := r.sw.Board
+	dup, _ := b.CreateTask("mgr", TaskSpec{Title: "ws hub", Files: []string{"cp/ws.go"}})
+	if err := b.resolve("mgr", dup.ID, "not needed"); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.docsTick(r.sw.deps.Now()) // primes on the resumed board
+	r.sw.docs.mu.Lock()
+	defer r.sw.docs.mu.Unlock()
+	if r.sw.docs.coded {
+		t.Fatal("a resolved implementation task primed the keeper as coded")
+	}
+}

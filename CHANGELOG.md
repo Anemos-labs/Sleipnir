@@ -7,6 +7,10 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- With auto-docs, a task resolved as no longer needed (`task resolve`)
+  whose work did not merge in this run is no longer a docs change: it
+  starts no catch-up pass, is not listed in one, and does not count as
+  accepted code. A task resolved after its work merged is still one.
 - A `write`, `edit` or `apply_patch` that leaves every file as it was
   (the result starting "No change") is marked unchanged. It no longer
   counts as progress for the stall sweep or as an edited file in a task's

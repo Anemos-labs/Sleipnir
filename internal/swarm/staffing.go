@@ -115,6 +115,19 @@ func (g *reviewGate) unreviewedWork() (time.Duration, []string) {
 	return longest, ids
 }
 
+// landedIDs is the set of tasks whose change reached the shared tree in this run.
+func (g *reviewGate) landedIDs() map[string]bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	out := make(map[string]bool, len(g.landedID))
+	for _, id := range g.landedID {
+		if id != "" {
+			out[id] = true
+		}
+	}
+	return out
+}
+
 // landLocked counts a change that reached the shared tree as the next merge: id names it, scopes are the files (or globs) it may
 // have touched, none when that is not known, and took is how long its work ran. g.mu is held.
 func (g *reviewGate) landLocked(id string, scopes []string, took time.Duration) {
