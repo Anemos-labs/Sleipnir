@@ -224,7 +224,7 @@ func Prepare(objective, dir, root string) (*State, error) {
 const RubricFile = ".sleipnir/rubric.md"
 
 // readRubric keeps the project's rubric with the goal when root (dir when root is "") has one: a missing file is no rubric, an empty one
-// too, and one that cannot be read or is larger than MaxSpecBytes is an error, since a goal set without the criteria its project asks for
+// too, and one that cannot be read (a dangling link among them) or is larger than MaxSpecBytes is an error, since a goal set without the criteria its project asks for
 // would be judged by a lower bar than the person set.
 func (g *State) readRubric(dir, root string) error {
 	if root == "" {
@@ -232,8 +232,10 @@ func (g *State) readRubric(dir, root string) error {
 	}
 	text, err := readSpec(RubricFile, root, root)
 	switch {
-	case errors.Is(err, errNoSuchFile):
+	case errors.Is(err, errNoSuchFile) && !rubricEntryExists(root):
 		return nil
+	case errors.Is(err, errNoSuchFile):
+		return fmt.Errorf("rubric %s: a link to a file that does not exist", RubricFile)
 	case err != nil:
 		return fmt.Errorf("rubric %s: %w", RubricFile, err)
 	}
@@ -241,6 +243,18 @@ func (g *State) readRubric(dir, root string) error {
 		g.Rubric, g.RubricText = RubricFile, text
 	}
 	return nil
+}
+
+// rubricEntryExists says whether root has an entry at RubricFile of any kind, a dangling symbolic link included: a project that put one
+// there means to have a rubric, so a link that leads nowhere is an unreadable rubric and not the absence of one.
+func rubricEntryExists(root string) bool {
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return false
+	}
+	defer r.Close()
+	_, err = r.Lstat(filepath.FromSlash(RubricFile))
+	return err == nil
 }
 
 // errNoSuchFile is readSpec's error for a file that does not exist.

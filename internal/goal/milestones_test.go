@@ -277,5 +277,14 @@ func TestPrepareKeepsTheProjectRubric(t *testing.T) {
 		if _, err := Prepare("Fix the parser.", sub, root); !errors.Is(err, ErrSpecOutside) {
 			t.Errorf("a rubric linked out of the project: %v", err)
 		}
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink("RUBRIC-missing.md", path); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Prepare("Fix the parser.", sub, root); err == nil || !strings.Contains(err.Error(), "rubric") {
+			t.Errorf("a dangling rubric link was taken for no rubric: %v", err)
+		}
 	}
 }
