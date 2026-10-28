@@ -116,7 +116,9 @@ func (s *Swarm) createRigorous(by string, spec TaskSpec, rigor string) ([]Task, 
 	plan, err := s.Board.CreateTask(by, TaskSpec{
 		Title: "Plan: " + title, Role: planner, Kind: TaskKindPlan, Deps: spec.Deps, Files: spec.Files,
 		Desc: "Research and plan this work before anyone implements it. Read the code it touches and what exists already (AGENTS.md Capabilities); " +
-			"your agreement is the plan the implementer inherits: the approach, the files and interfaces it changes, the risks, and how to verify it (the tests to run or add).\n\nThe work:\n" + what,
+			"your agreement is the plan the implementer inherits: the approach, the files and interfaces it changes, the risks, and how to verify it (the tests to run or add). " +
+			"The implementer reads the plan without your research, so settle every design decision in it (data shapes, signatures, error handling, libraries), " +
+			"name the file and function of each step rather than \"update the service\", and define each term the code does not already define.\n\nThe work:\n" + what,
 	})
 	if err != nil {
 		return undo(err)
@@ -127,6 +129,8 @@ func (s *Swarm) createRigorous(by string, spec TaskSpec, rigor string) ([]Task, 
 		rv, err := s.Board.CreateTask(by, TaskSpec{
 			Title: "Review plan: " + title, Role: ReviewerRole, Kind: TaskKindPlan, Deps: []string{plan.ID}, Files: spec.Files,
 			Desc: "Check the plan in " + plan.ID + "'s agreement before anyone implements it: is it right, complete and the simplest that works, does it reuse what exists, can it be verified? " +
+				"Read it as the implementer will, with nothing but the plan and the code: name each design decision it leaves to the implementer (a data shape, a signature, " +
+				"an error policy, a library), each step too vague to code without guessing, and each term it uses without defining. " +
 				"Your agreement is the verdict: the amendments the implementer must follow, one per line, as acceptance criteria (\"none\" when the plan stands). A plan that cannot work: say so first, and why.\n\nThe work:\n" + what,
 		})
 		if err != nil {

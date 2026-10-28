@@ -84,7 +84,7 @@ func (Write) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 		}
 		content, notes = matchExistingStyle(current, content)
 		if bytes.Equal(current, content) {
-			return k.ok(fmt.Sprintf("No change: %s already has exactly this content.", disp)), nil
+			return k.same(fmt.Sprintf("No change: %s already has exactly this content.", disp)), nil
 		}
 		existing = fi
 	case errors.Is(err, iofs.ErrNotExist):

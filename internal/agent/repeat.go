@@ -27,6 +27,11 @@ import (
 // with the same output (a poll, a re-read) is not a sign of being stuck, and one that fails
 // differently each time is not repetition. A failure is a tool error, or a command that exited
 // with a status other than 0.
+//
+// A write that succeeds and changes nothing (tools.Result.Unchanged: the content the file already
+// has, edits that leave it identical) counts like a failure. It is not a poll: nothing outside it
+// moves, so the same write gives the same nothing every time, and a model that sends it again
+// believes it is working while the file stays as it was.
 
 const (
 	repeatWindow = 20
@@ -80,6 +85,12 @@ func (g *repeatGuard) observe(agentID string, calls, results []core.Block) (note
 // did; it may be shorter than calls. Such a failure counts like any other, except that what a command prints about how long it
 // took ("FAIL x 0.004s", "(0.02s)") is not part of how it failed: the same test failing again is the same failure.
 func (g *repeatGuard) observeExits(agentID string, calls, results []core.Block, exitFailed []bool) (note string, stop error) {
+	return g.observeAll(agentID, calls, results, exitFailed, nil)
+}
+
+// observeAll is observeExits that also counts the calls that succeeded without changing anything: unchanged says, per call,
+// that one did (it may be shorter than calls).
+func (g *repeatGuard) observeAll(agentID string, calls, results []core.Block, exitFailed, unchanged []bool) (note string, stop error) {
 	for i, call := range calls {
 		if i >= len(results) {
 			break
@@ -128,7 +139,8 @@ func (g *repeatGuard) observeExits(agentID string, calls, results []core.Block, 
 		}
 		key := ""
 		byExit := i < len(exitFailed) && exitFailed[i] && !results[i].IsError
-		if results[i].IsError || byExit {
+		same := i < len(unchanged) && unchanged[i] && !results[i].IsError
+		if results[i].IsError || byExit || same {
 			text := results[i].PlainText()
 			if byExit {
 				text = durationRe.ReplaceAllString(text, "#")
@@ -156,6 +168,8 @@ func (g *repeatGuard) observeExits(agentID string, calls, results []core.Block, 
 		}
 		name := safeToolName(call.ToolName)
 		switch {
+		case n >= repeatStop && stop == nil && same:
+			stop = fmt.Errorf("agent %s: %w: %s changed nothing %d times", agentID, ErrStuck, name, n)
 		case n >= repeatStop && stop == nil:
 			stop = fmt.Errorf("agent %s: %w: %s failed the same way %d times", agentID, ErrStuck, name, n)
 		case n == repeatNudge && !g.nudged[key]:
@@ -163,6 +177,11 @@ func (g *repeatGuard) observeExits(agentID string, calls, results []core.Block, 
 				g.nudged = map[string]bool{}
 			}
 			g.nudged[key] = true
+			if same {
+				note = fmt.Sprintf("[harness] %s has now been sent %d times with the same arguments and changed nothing each time: the file already "+
+					"holds that content. Read the file to see what it holds, then change what is still wrong, or move on to the next step.", name, n)
+				break
+			}
 			note = fmt.Sprintf("[harness] %s has now failed the same way %d times with the same arguments. Repeating it will not change the result: "+
 				"try another approach, or stop and say what is blocking you.", name, n)
 		}
