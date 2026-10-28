@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A read-only worker (a reviewer, a scout) that stops on its task with
+  no answer text is mailed once or twice for its report before its task
+  is submitted, instead of reaching review with an empty result. A
+  reviewer whose last turn was reasoning alone reached review with
+  nothing to read, and its manager spent four minutes recalling the
+  reviewer's history for the verdict before it mailed for it. About 35
+  tokens in that mail, only when it is sent.
 - A goal judge whose first answer is "continue", given before any
   evidence request, is sent back once to search the archive for each
   item it names as missing. Whatever it answers next stands, whether
