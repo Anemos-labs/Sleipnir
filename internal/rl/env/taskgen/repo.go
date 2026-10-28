@@ -63,7 +63,7 @@ type fileChange struct {
 // changes lists what commit changed relative to parent, without rename
 // detection: every path stands alone.
 func (r *repo) changes(ctx context.Context, parent, commit string) ([]fileChange, error) {
-	raw, err := r.git(ctx, "diff-tree", "-r", "-z", "--no-renames", "--raw", parent, commit)
+	raw, err := r.git(ctx, "diff-tree", "-r", "-z", "--no-renames", "--raw", "--end-of-options", parent, commit)
 	if err != nil {
 		return nil, err
 	}

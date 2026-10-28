@@ -302,7 +302,7 @@ func (x *exporter) writeSteps(work []*workEpisode) error {
 		r, err := x.renderStep(c, true)
 		if err != nil {
 			x.stats.drop("step:no_prompt")
-			x.stats.warn(c.st.ID + ": " + err.Error())
+			x.warn(c.st.ID + ": " + err.Error())
 			return nil
 		}
 		reward, comps := rewardOf(c.we.ep, c.ag, c.st)
@@ -371,7 +371,7 @@ func (x *exporter) writeKTO(work []*workEpisode) error {
 		r, err := x.renderStep(c, true)
 		if err != nil {
 			x.stats.drop("step:no_prompt")
-			x.stats.warn(c.st.ID + ": " + err.Error())
+			x.warn(c.st.ID + ": " + err.Error())
 			return nil
 		}
 		reward, _ := rewardOf(c.we.ep, c.ag, c.st)

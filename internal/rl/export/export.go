@@ -233,11 +233,18 @@ func (s *Stats) drop(reason string) {
 	s.Drops[reason]++
 }
 
-// warn retains at most the first 20 export warnings.
+// warn retains at most the first 20 export warnings. Exporter code warns through exporter.warn, which redacts first.
 func (s *Stats) warn(msg string) {
 	if len(s.Warnings) < 20 {
 		s.Warnings = append(s.Warnings, msg)
 	}
+}
+
+// warn records an export warning after redaction: a warning names a step id and carries a resolver's error (a path under
+// someone's home directory), and the statistics leave the exporter as its records do.
+func (x *exporter) warn(msg string) {
+	msg, _ = x.redactText(msg)
+	x.stats.warn(msg)
 }
 
 // bump initializes a counter map if needed and adds n to the selected key.
@@ -511,6 +518,13 @@ func (x *exporter) redactIdentity(work []*workEpisode) {
 			c.Parent, _ = x.redactText(c.Parent)
 			we.ep.Fork = &c
 		}
+		// The episode metadata every format copies: the policy (its checkpoint and sampling settings), consent and
+		// the outcome. Slices and raw JSON are replaced, never written through.
+		we.ep.Policy.Checkpoint, _ = x.redactText(we.ep.Policy.Checkpoint)
+		we.ep.Policy.Sampling, _ = x.redactRaw(we.ep.Policy.Sampling)
+		we.ep.Provenance.Consent, _ = x.redactText(we.ep.Provenance.Consent)
+		we.ep.Outcome.Claimed, _ = x.redactText(we.ep.Outcome.Claimed)
+		we.ep.Outcome.Labels = x.redactList(we.ep.Outcome.Labels)
 	}
 }
 

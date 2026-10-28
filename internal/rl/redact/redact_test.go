@@ -546,3 +546,37 @@ func TestRepoSourcesStayUntouched(t *testing.T) {
 		}
 	}
 }
+
+// A Basic credential under an Authorization key is found in JSON, where the header name is the key and not part of the
+// value.
+func TestJSONAuthorizationValue(t *testing.T) {
+	r := testRedactor()
+	for _, doc := range []string{
+		`{"headers":{"Authorization":"Basic dXNlcjpodW50ZXIyaHVudGVyMg=="}}`,
+		`{"headers":{"AuThOrIzAtIoN":"Basic dXNlcjpodW50ZXIyaHVudGVyMg=="}}`,
+		`{"headers":{"Authorization":["Basic dXNlcjpodW50ZXIyaHVudGVyMg=="]}}`,
+		`{"headers":{"proxy-authorization":["x", "Basic dXNlcjpodW50ZXIyaHVudGVyMg=="]}}`,
+	} {
+		out := string(r.JSON([]byte(doc)))
+		if strings.Contains(out, "dXNlcjpodW50ZXIy") {
+			t.Errorf("the credential survives: %s", out)
+		}
+	}
+	// An array under another key is not read as a header.
+	doc := `{"names":["Basic dXNlcjpodW50ZXIyaHVudGVyMg"],"Authorization":"x"}`
+	if out := string(r.JSON([]byte(doc))); !strings.Contains(out, "dXNlcjpodW50ZXIy") {
+		t.Errorf("a value outside a header was redacted: %s", out)
+	}
+}
+
+// Text shaped like a redaction token inside a private key block does not keep the key material around it.
+func TestPrivateKeyWithTokenInside(t *testing.T) {
+	r := testRedactor()
+	key := "-----BEGIN RSA PRIVATE KEY-----\nProc-Type: ⟦redacted:email:abcdef⟧\n" +
+		"MIIEowIBAAKCAQEAu1SU1LfVLPHCozMxH2Mo4lgOEePzNm0tRgeLezV6ffAt0gunVTLw7onLRnrq0/IzW7yWR7QkrmBL7jTKEn5u\n" +
+		"-----END RSA PRIVATE KEY-----"
+	out, _ := r.Changed(key)
+	if strings.Contains(out, "MIIEowIBAAKCAQEAu1SU1LfVLPHCozMxH2Mo4lgOEePzNm0tRgeLezV6ffAt0gunVTLw7onLRnrq0") {
+		t.Errorf("the key material survives:\n%s", out)
+	}
+}

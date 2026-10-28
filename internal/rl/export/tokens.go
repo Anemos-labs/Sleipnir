@@ -76,7 +76,7 @@ func (x *exporter) traceUsable(c stepCtx) (*core.TokenTrace, string) {
 	if x.red != nil {
 		p, err := x.promptFor(c.we, c.st)
 		if err != nil {
-			x.stats.warn(c.st.ID + ": " + err.Error())
+			x.warn(c.st.ID + ": " + err.Error())
 			return nil, "no_prompt"
 		}
 		if _, changed := x.redactPrompt(p); changed {

@@ -459,6 +459,9 @@ func listCommits(ctx context.Context, r *repo, tip string, opts GitOptions, rep 
 		if len(parents) != 1 {
 			continue // root commits have nothing to start from
 		}
+		if !objectID(f[0]) || !objectID(parents[0]) {
+			continue // a subject that spelled the record separators: not a commit Git listed
+		}
 		date, err := time.Parse(time.RFC3339, f[2])
 		if err != nil {
 			continue
@@ -790,3 +793,17 @@ func deriveBudget(sourceFiles, lines int, override rl.Budget) rl.Budget {
 
 // clamp bounds v to the inclusive interval from lo to hi; callers must supply lo <= hi.
 func clamp(v, lo, hi int) int { return max(lo, min(hi, v)) }
+
+// objectID reports whether s is a full hexadecimal object id (SHA-1 or SHA-256), the only thing the history scan passes to
+// Git as a revision: a forged record cannot hand it an option.
+func objectID(s string) bool {
+	if len(s) != 40 && len(s) != 64 {
+		return false
+	}
+	for _, c := range s {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
+}

@@ -254,7 +254,19 @@ func (h *Harness) options(spec env.RunSpec, cfg *config.Config, p provider.Provi
 		FixedSteps:    true, // the step budget is part of the task
 		ContextWindow: firstPositive(spec.Budget.ContextWindow, h.ContextTokens),
 		TrustProject:  !h.IgnoreRepoInstructions,
-		NoWeb:         !task.Network, Offline: true,
+		// The task's repository may bring agent definitions; a model one names runs on the policy endpoint, never on a
+		// provider of the operator's configuration with the operator's credential (a "vendor/model" id is taken whole).
+		// With an injected policy client there is no endpoint to name, and the role runs on that client.
+		DefinitionModel: func(m string) string {
+			if h.NewProvider != nil {
+				return ""
+			}
+			if strings.HasPrefix(m, PolicyProvider+"/") {
+				return m
+			}
+			return PolicyProvider + "/" + m
+		},
+		NoWeb: !task.Network, Offline: true,
 		// A rollout is a closed, reproducible episode: no tool servers, whatever the
 		// task's repository or the user's configuration says.
 		NoMCP:    true,

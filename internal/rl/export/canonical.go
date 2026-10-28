@@ -184,9 +184,9 @@ func (x *exporter) canonOf(we *workEpisode, tab *table) (*canonEpisode, error) {
 			p, err := x.promptFor(we, c.st)
 			if err != nil {
 				x.stats.drop("step:no_prompt")
-				x.stats.warn(st.ID + ": " + err.Error())
-				if tchanged {
-					cs.Step.Tokens = nil
+				x.warn(st.ID + ": " + err.Error())
+				if tchanged || x.red != nil {
+					cs.Step.Tokens = nil // the prompt's ids encode a prompt the redactor could not read
 				}
 				ca.Steps[si] = cs
 				continue
@@ -218,7 +218,7 @@ func (x *exporter) canonOf(we *workEpisode, tab *table) (*canonEpisode, error) {
 }
 
 // redactMetadata redacts, in place, the free-text metadata of an episode copy that the canonical record carries besides its
-// steps: the environment's repository, image, limits and tags, and the outcome's claim, labels and reward notes. Slices and maps
+// steps: the environment's repository, image, limits and tags, and the reward notes. Slices and maps
 // are replaced, never written through, so the source episode keeps its own.
 func (x *exporter) redactMetadata(ep *rl.Episode) {
 	if x.red == nil {
@@ -235,9 +235,7 @@ func (x *exporter) redactMetadata(ep *rl.Episode) {
 		}
 		ep.Env.Limits = limits
 	}
-	ep.Outcome.Claimed, _ = x.redactText(ep.Outcome.Claimed)
-	ep.Outcome.Labels = x.redactList(ep.Outcome.Labels)
-	ep.Reward.Notes = x.redactList(ep.Reward.Notes)
+	ep.Reward.Notes = x.redactList(ep.Reward.Notes) // the outcome, policy and consent are redactIdentity's, for every format
 }
 
 // redactList returns a redacted copy of ss (nil stays nil).

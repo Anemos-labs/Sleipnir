@@ -15,6 +15,21 @@ they do not indicate whether a change has been released.
   judge's request and the first message of a goal change only in a
   project that has one; `/goal`, its web sheet and the goal event name
   the rubric file.
+- RL pipeline hardening from a security review. `sleipnir rl serve` now
+  applies `--budget-usd`, `--max-requests` and `--max-steps` to every HTTP
+  rollout whose task leaves them open, and a blank `role_models` entry runs
+  its role on the policy instead of the configuration's default model. A
+  rollout's repository agent definitions run their `model:` on the policy
+  endpoint (with an injected policy client, on that client). Protected patterns are limited to 1,024 bytes and 64 segments.
+  Mutation tasks protect `testdata`, `tests` and `test` directories at any
+  depth. A workspace id of a task whose name had to be changed carries a
+  digest of the original name, so two tasks never share one. Rollouts hide
+  the repositories their tasks name from confined commands wherever they
+  are (including inline tasks, `file://` sources and a linked worktree's
+  git directories), and `rl taskgen chain` and `rebuild` hide their blob store and sealed
+  starts. Exports redact the policy's checkpoint and sampling settings,
+  consent, the outcome in every format, and warnings, and drop token ids of
+  steps whose prompt could not be read for redaction.
 - Resuming a team's goal after an unjudged pause (an interruption, a
   failed turn, a restart) no longer asks the judge while the task board
   still has unfinished tasks, since the judge could not find the goal met

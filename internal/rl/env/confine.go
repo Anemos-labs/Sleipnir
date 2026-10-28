@@ -71,9 +71,13 @@ type Confinement struct {
 // Mounts are the directories one command may use beyond the read-only view:
 // its own tree, HOME and TMPDIR (writable) and, for a workspace exported from
 // a snapshot, the snapshot's object store that the workspace's git reads
-// through alternates (read-only).
+// through alternates (read-only). Hide are directories the command sees
+// empty even where the read-only view or a re-exposed directory would show
+// them: the host copy of the task's repository, whose history holds the
+// task's future.
 type Mounts struct {
 	RW, RO []string
+	Hide   []string
 }
 
 // DefaultHidden are the directories every confined command sees empty: user
@@ -224,8 +228,24 @@ func (c Confinement) argv(m Mounts, network bool, env []string, inner []string) 
 		}
 		a = append(a, flag, b.path, b.path)
 	}
+	// Last, so no re-exposed parent shows them again; a directory holding one of the command's own mounts stays.
+	for _, h := range sortByDepth(existing(m.Hide)) {
+		if dirExists(h) && !holdsMount(h, m) {
+			a = append(a, "--tmpfs", h)
+		}
+	}
 	a = append(a, "--")
 	return append(a, inner...)
+}
+
+// holdsMount reports whether dir is, or lies above, one of m's own directories.
+func holdsMount(dir string, m Mounts) bool {
+	for _, p := range append(append([]string(nil), m.RW...), m.RO...) {
+		if within(dir, absOrEmpty(p)) {
+			return true
+		}
+	}
+	return false
 }
 
 // binds collects the re-exposed directories, deepest last so a writable

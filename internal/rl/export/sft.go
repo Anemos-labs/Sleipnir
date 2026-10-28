@@ -203,7 +203,7 @@ func (x *exporter) sftStep(c stepCtx) error {
 	r, err := x.renderStep(c, false)
 	if err != nil {
 		x.stats.drop("step:no_prompt")
-		x.stats.warn(c.st.ID + ": " + err.Error())
+		x.warn(c.st.ID + ": " + err.Error())
 		return nil
 	}
 	msgs := append(append([]json.RawMessage(nil), r.prompt.Messages...), r.completion)
@@ -223,7 +223,7 @@ func (x *exporter) sftPacked(unit, ok []stepCtx) error {
 	cv, err := x.renderChain(unit, false)
 	if err != nil {
 		x.stats.drop("step:no_prompt")
-		x.stats.warn(unit[0].st.ID + ": " + err.Error())
+		x.warn(unit[0].st.ID + ": " + err.Error())
 		return nil
 	}
 	selected := map[string]bool{}

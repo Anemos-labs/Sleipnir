@@ -138,6 +138,7 @@ func (m *Workspaces) exportCommit(ctx context.Context, gitDir, commit, dst strin
 	}()
 
 	br := bufio.NewReaderSize(outR, 1<<20)
+	var total int64
 	ensured := map[string]bool{}
 	files := make([]string, 0, len(blobs))
 	var loopErr error
@@ -153,10 +154,22 @@ func (m *Workspaces) exportCommit(ctx context.Context, gitDir, commit, dst strin
 			break
 		}
 		size, err := strconv.ParseInt(f[2], 10, 64)
-		if err != nil {
+		if err != nil || size < 0 {
 			loopErr = fmt.Errorf("bad cat-file header %q", header)
 			break
 		}
+		// The sizes are the repository's: a link target longer than any path, or a tree that expands one blob many times
+		// over, is refused before it is read or written.
+		switch {
+		case e.mode == "120000" && size > maxLinkTarget:
+			loopErr = &limitError{msg: fmt.Sprintf("symlink %q has a %d-byte target (limit %d)", e.path, size, maxLinkTarget)}
+		case total+size > maxExportBytes:
+			loopErr = &limitError{msg: fmt.Sprintf("commit %s expands to more than %d bytes", commit[:min(12, len(commit))], int64(maxExportBytes))}
+		}
+		if loopErr != nil {
+			break
+		}
+		total += size
 		if dir := path.Dir(e.path); dir != "." && !ensured[dir] {
 			if err := ensureDirIn(root, dir); err != nil {
 				loopErr = err
@@ -266,6 +279,10 @@ type hashResult struct {
 const (
 	defaultMaxFiles     = 500_000
 	defaultMaxFileBytes = 256 << 20
+	// maxLinkTarget bounds a symlink's target when a commit is exported: no system takes a longer path.
+	maxLinkTarget = 4096
+	// maxExportBytes bounds what exporting one commit writes, every reference to a blob counted.
+	maxExportBytes = 16 << 30
 )
 
 // hashTree turns the content of a work tree into a git tree object, without
@@ -383,9 +400,16 @@ func (m *Workspaces) hashTree(ctx context.Context, o hashOpts) (hashResult, erro
 					r.skip = fmt.Sprintf("file is larger than %d bytes", o.MaxFileBytes)
 					return
 				}
-				f, err := root.Open(p)
+				// Not blocking, and checked on the descriptor: a background job can swap the file for a FIFO after the
+				// Lstat, and a FIFO without a writer would hold the capture for ever.
+				f, err := root.OpenFile(p, os.O_RDONLY|openNoWait, 0)
 				if err != nil {
 					r.skip = "cannot open: " + err.Error()
+					return
+				}
+				if ofi, err := f.Stat(); err != nil || !ofi.Mode().IsRegular() || ofi.Size() != fi.Size() {
+					_ = f.Close()
+					r.skip = "changed while it was being read"
 					return
 				}
 				r.mode = "100644"
@@ -687,13 +711,17 @@ func (m *Workspaces) buildSnapshot(ctx context.Context, task rl.Task, src *repoS
 	// 3. setup
 	started := time.Now()
 	if len(task.Setup) > 0 {
-		if err := m.runSetup(ctx, task, s, key); err != nil {
+		if err := m.runSetup(ctx, task, s, key, src.local); err != nil {
 			return nil, Infra("setup", err)
 		}
 	}
 	setupMs := time.Since(started).Milliseconds()
 
-	// 4. the baseline: what the tree holds now, which is what diffs are against
+	// 4. the baseline: what the tree holds now, which is what diffs are against. Setup could write beside the tree, so a
+	// base.git it left behind (its config can name programs git runs) is removed, not reused.
+	if err := removeAllNoFollow(s.base); err != nil {
+		return nil, Infra("snapshot", err)
+	}
 	if err := m.git.initBare(ctx, s.base); err != nil {
 		return nil, Infra("snapshot", err)
 	}
@@ -720,7 +748,7 @@ func (m *Workspaces) buildSnapshot(ctx context.Context, task rl.Task, src *repoS
 		Files: hr.Files, Skipped: hr.Skipped, Git: m.git.Version(ctx),
 	}
 	raw, _ := json.MarshalIndent(s.meta, "", "  ")
-	if err := os.WriteFile(filepath.Join(tmpDir, "snapshot.json"), raw, 0o644); err != nil {
+	if err := writeInDir(tmpDir, "snapshot.json", raw); err != nil { // setup could write here: never through its links
 		return nil, Infra("snapshot", err)
 	}
 	if err := os.Rename(tmpDir, final); err != nil {
@@ -745,8 +773,9 @@ func (m *Workspaces) buildSnapshot(ctx context.Context, task rl.Task, src *repoS
 }
 
 // runSetup executes the task's setup commands, with network access, inside the
-// half-built snapshot. Their result is what every rollout then starts from.
-func (m *Workspaces) runSetup(ctx context.Context, task rl.Task, s *snapshot, key string) error {
+// half-built snapshot. Their result is what every rollout then starts from. hide
+// are the host directories of the task's repository, which setup sees empty.
+func (m *Workspaces) runSetup(ctx context.Context, task rl.Task, s *snapshot, key string, hide []string) error {
 	tmpDir := filepath.Join(s.dir, "setup-tmp")
 	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
 		return err
@@ -766,7 +795,7 @@ func (m *Workspaces) runSetup(ctx context.Context, task rl.Task, s *snapshot, ke
 	}
 	// Confined, setup sees only the snapshot being built (tree, home, its own tmp).
 	pol := ExecPolicy{Network: true, Marker: marker, MaxOutput: m.opts.MaxOutput, Limits: m.opts.Limits, Grace: m.opts.KillGrace,
-		Mounts: &Mounts{RW: []string{s.dir}}}
+		Mounts: &Mounts{RW: []string{s.dir}, Hide: hide}}
 	var log bytes.Buffer
 	defer func() { _ = writeInDir(s.dir, "setup.log", log.Bytes()) }()
 	defer sweepMarker(marker)
@@ -793,6 +822,10 @@ func (m *Workspaces) runSetup(ctx context.Context, task rl.Task, s *snapshot, ke
 // can be found in it.
 func (m *Workspaces) makeAgentRepo(ctx context.Context, s *snapshot, baseTree string) error {
 	gd := filepath.Join(s.tree, ".git")
+	// Setup ran in the tree: whatever .git it left (a directory of links, a file) is not built on.
+	if err := removeAllNoFollow(gd); err != nil {
+		return err
+	}
 	if _, err := m.git.Run(ctx, "", nil, "init", "--quiet", "--template=", s.tree); err != nil {
 		return err
 	}
@@ -801,7 +834,7 @@ func (m *Workspaces) makeAgentRepo(ctx context.Context, s *snapshot, baseTree st
 	}
 	// The baseline objects live in the snapshot's object store; alternates make
 	// them readable without copying them into every workspace.
-	if err := os.WriteFile(filepath.Join(gd, "objects", "info", "alternates"), []byte(s.altObjects()+"\n"), 0o644); err != nil {
+	if err := writeInDir(filepath.Join(gd, "objects", "info"), "alternates", []byte(s.altObjects()+"\n")); err != nil {
 		return err
 	}
 	date := "2000-01-01T00:00:00+0000"
