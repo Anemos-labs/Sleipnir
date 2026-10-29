@@ -958,6 +958,13 @@ func (s *Swarm) Finish(ctx context.Context) *IntegrationReport {
 		}
 	}
 	for _, t := range iso.Manager.Trees() {
+		if t.Agent == gateTreeID { // a checkout of the tip: nobody's work is in it
+			s.gateMu.Lock()
+			_ = t.Remove(ctx, true)
+			s.gateTree = nil
+			s.gateMu.Unlock()
+			continue
+		}
 		if m := s.get(t.Agent); m != nil && m.isActive() {
 			rep.Kept = append(rep.Kept, t.Agent+": still stopping")
 			continue

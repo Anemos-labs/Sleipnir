@@ -430,11 +430,11 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 	if m != nil {
 		ev = m.ev
 	}
-	if vr := s.verifyFor(ctx, task, c.Env.Cwd, task.Files); !vr.ok {
+	if vr, gdir := s.gateFor(ctx, task, m, c.Env.Cwd); !vr.ok {
 		if vr.infra {
 			return tools.Errorf("Not done yet: verification could not run (%v). Try again in a moment; if it keeps failing, block the task and tell the manager.", cleanText(vr.err.Error(), 200))
 		}
-		cmd := ExpandVerify(s.cfg.VerifyCmd, c.Env.Cwd, task.Files)
+		cmd := ExpandVerify(s.cfg.VerifyCmd, gdir, task.Files)
 		next, applied := s.recordVerificationFailure(task, cmd, vr)
 		if !applied {
 			return tools.Errorf("%s changed assignment, scope, or status while verification ran; inspect it and retry if needed", in.ID)

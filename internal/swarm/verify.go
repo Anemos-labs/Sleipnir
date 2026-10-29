@@ -60,6 +60,69 @@ func (s *Swarm) verifyFor(ctx context.Context, t Task, dir string, files []strin
 	return vr
 }
 
+// gateTreeID names the harness's checkout of the integration tip that a read-only member's gate runs in.
+const gateTreeID = "review-gate"
+
+// gateDir is where the gate of a task the member finishes runs: dir, the member's own checkout, except for a read-only member
+// of an isolated team. That member has no tree, and its checkout is the person's, which holds none of the integrated work
+// until delivery: a reviewer's done in a greenfield team failed `go vet ./...` there three times in 47 minutes ("does not
+// contain main module") while the code it had reviewed passed on the integration branch. Its gate runs in a checkout of
+// the integration tip instead, refreshed for each run; release ends the hold on that checkout.
+func (s *Swarm) gateDir(ctx context.Context, m *member, dir string) (string, func(), error) {
+	if m == nil || !m.readOnly || m.tree != nil || !s.isolated() || s.cfg.VerifyCmd == "" {
+		return dir, func() {}, nil
+	}
+	iso := s.deps.Isolation
+	tip := iso.Queue.Tip()
+	if tip == "" {
+		return dir, func() {}, nil
+	}
+	s.gateMu.Lock()
+	t, err := s.gateTreeAt(ctx, tip)
+	if err != nil {
+		s.gateMu.Unlock()
+		return "", nil, fmt.Errorf("checkout of the integration tip for the gate: %w", err)
+	}
+	out := t.Path
+	if sub := iso.Subdir; sub != "" {
+		if d := filepath.Join(t.Path, filepath.FromSlash(sub)); isDir(d) {
+			out = d
+		}
+	}
+	return out, s.gateMu.Unlock, nil
+}
+
+// gateTreeAt returns the gate's checkout with tip checked out and nothing else in it. Called with gateMu held.
+func (s *Swarm) gateTreeAt(ctx context.Context, tip string) (*workspace.Tree, error) {
+	ctx, cancel := context.WithTimeout(ctx, gitTimeout)
+	defer cancel()
+	if s.gateTree == nil {
+		t, err := s.deps.Isolation.Manager.Create(ctx, gateTreeID, workspace.CreateOptions{Base: tip, Detach: true, Reuse: true})
+		if err != nil {
+			return nil, err
+		}
+		s.gateTree = t
+	}
+	repo := s.gateTree.Repo()
+	if err := repo.ResetHard(ctx, tip); err != nil {
+		return nil, err
+	}
+	if err := repo.CleanUntracked(ctx); err != nil {
+		return nil, err
+	}
+	return s.gateTree, nil
+}
+
+// gateFor is verifyFor in the directory gateDir picks; it returns that directory with the result.
+func (s *Swarm) gateFor(ctx context.Context, t Task, m *member, dir string) (verifyResult, string) {
+	at, release, err := s.gateDir(ctx, m, dir)
+	if err != nil {
+		return verifyResult{infra: true, err: err}, dir
+	}
+	defer release()
+	return s.verifyFor(ctx, t, at, t.Files), at
+}
+
 // EventVerifyRun is the log event of one run of the verification gate: {task, rev,
 // agent, cmd, exit_code, ok, ms, timed_out, infra, output (the blob of the output's tail,
 // at most maxVerifyRunOutput bytes), bytes (the whole output's size)}. History and the

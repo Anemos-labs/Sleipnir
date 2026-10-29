@@ -370,10 +370,13 @@ type Swarm struct {
 	merged     map[string]mergeRec
 	bounces    map[string]int
 	treeAgents map[string]bool // agents that ever had a tree of their own
-	apply      applyState
-	finishMu   sync.Mutex
-	finished   *IntegrationReport
-	left       string // what the manager's last run left unfinished (see Unfinished)
+	// gateMu serializes the gates that run in gateTree, the harness's checkout of the integration tip (gateDir).
+	gateMu   sync.Mutex
+	gateTree *workspace.Tree
+	apply    applyState
+	finishMu sync.Mutex
+	finished *IntegrationReport
+	left     string // what the manager's last run left unfinished (see Unfinished)
 }
 
 // New builds a swarm. Call Start before spawning.
