@@ -17,6 +17,10 @@ they do not indicate whether a change has been released.
   keep their requests until the budget itself is spent, as before. A
   run used to go on starting work until the budget was spent, then stop
   every worker mid-edit and refuse the manager's report too.
+- A team manager's `task deliver` first names any new, untracked files in the
+  manager's checkout that the integration does not have, and commits them only
+  when the manager calls `deliver` again. Probe inputs the manager wrote beside
+  the code were committed to the person's branch with the rest of the delivery.
 - A remembered trust answer (from `sleipnir trust` or the web interface)
   now follows the instruction files the trusted session writes itself:
   when a merge of the team or a project
