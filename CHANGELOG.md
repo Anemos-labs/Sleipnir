@@ -7,6 +7,9 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- After an isolated team run, `sleipnir run`'s "changed:" line also counts
+  the files the integration brought into the checkout. A team that delivered
+  23 files ended with "no file was changed".
 - In an isolated team run, a read-only worker's `task done` (a reviewer's)
   now runs the `--verify` command in a harness checkout of the integration
   branch's tip, not in the person's checkout. Until delivery the person's
