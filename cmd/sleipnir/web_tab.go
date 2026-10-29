@@ -101,6 +101,7 @@ type webTab struct {
 	queue      []queued
 	nq         int
 	active     bool
+	goalTurn   bool // the running turn is the goal's (its start, a resume or a continuation), not a message the person typed: Send steers it
 	excl       int
 	cancel     context.CancelFunc // cancels the running item
 	cancelOp   context.CancelFunc // cancels a running compaction
@@ -453,9 +454,20 @@ func (t *webTab) turn(ctx context.Context, s *session.Session, prompt, display s
 	}
 	t.emit(&wire.Turn{S: "start"})
 	t.publishMeta()
-	err := t.goals.Turn(ctx, s, prompt, func(e goalEvent) { t.goalEvent(s, e) })
+	t.mu.Lock()
+	t.goalTurn = !echo
+	t.mu.Unlock()
+	err := t.goals.Turn(ctx, s, prompt, func(e goalEvent) {
+		if e.Kind == "next" {
+			t.mu.Lock()
+			t.goalTurn = true
+			t.mu.Unlock()
+		}
+		t.goalEvent(s, e)
+	})
 	_ = err
 	t.mu.Lock()
+	t.goalTurn = false
 	t.ends = append(t.ends, func() {
 		t.emit(&wire.Final{}, &wire.Turn{S: "end"})
 		t.publishRoster()
@@ -606,6 +618,9 @@ func (t *webTab) Send(ctx context.Context, req wire.MessageRequest) (wire.SendRe
 	if t.startFailed() {
 		return wire.SendResult{}, t.noSession() // nothing would ever run it: the tab has no session until it starts again
 	}
+	if t.steersContinuation(ctx, req) {
+		return wire.SendResult{Steered: true}, nil
+	}
 	it := queued{autoFix: req.AutoFix, autoMerge: req.AutoMerge, text: oneLineCLI(display, 200), prompt: req.Text, display: display, echo: true}
 	id, pos, now, err := t.enqueue(it)
 	if err != nil {
@@ -615,6 +630,19 @@ func (t *webTab) Send(ctx context.Context, req wire.MessageRequest) (wire.SendRe
 		return wire.SendResult{ID: id}, nil
 	}
 	return wire.SendResult{Queued: true, Position: pos, ID: id}, nil
+}
+
+// steersContinuation delivers a message as a steer when the running turn is the goal's own: the next turn may be
+// hours away (a team's manager runs one continuation while its members work), and the goal yields to the person only between turns.
+// A message that changes delivery or is too long for a steer, and one sent during the person's own turn, waits in the queue as before.
+func (t *webTab) steersContinuation(ctx context.Context, req wire.MessageRequest) bool {
+	if req.AutoFix || req.AutoMerge || utf8.RuneCountInString(strings.TrimSpace(req.Text)) > maxSteerLen {
+		return false
+	}
+	t.mu.Lock()
+	on := t.goalTurn && t.active && len(t.queue) == 0
+	t.mu.Unlock()
+	return on && t.Steer(ctx, req.Text) == nil
 }
 
 // kind is what a queued item is, as wire.QueuedLine says it: a message, a slash command, or an action of the host.
