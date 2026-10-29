@@ -26,6 +26,9 @@ they do not indicate whether a change has been released.
   cancelled waiters from every queue. Project team files skip symbolic
   links, research slugs stop after 10000 tries, friction tails are capped
   at 32, and the terminal views bound table and cell sizes.
+- After an isolated team run, `sleipnir run`'s "changed:" line also counts
+  the files the integration brought into the checkout. A team that delivered
+  23 files ended with "no file was changed".
 - The last 10% of the swarm budget is kept for finishing the work in
   hand. When the spend reaches it, no new worker run starts (spawn,
   queued start, handover, automatic restart or retry are refused with a
