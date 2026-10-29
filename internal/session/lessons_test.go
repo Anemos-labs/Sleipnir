@@ -104,3 +104,57 @@ func TestAMetGoalTeachesTheNextSessionsGoal(t *testing.T) {
 		t.Errorf("a session without memory: lessons on %v, %d embeddings, first message %q", off.LessonsOn(), after-before, firsts[2])
 	}
 }
+
+// Without an embedder the lesson memory is on and finds lessons by keyword; a credential the distiller copied into a lesson is
+// withheld before the lesson is saved.
+func TestLessonMemoryWithoutAnEmbedderScrubsSecrets(t *testing.T) {
+	repo := newRepo(t)
+	home := t.TempDir()
+	t.Setenv("SLEIPNIR_HOME", "")
+	token := "ghp_" + strings.Repeat("a1B2c3D4e5", 4)[:36]
+	var firsts []string
+	srv := mock.New(mock.Config{Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}}, func(c *mock.Call) mock.Reply {
+		switch {
+		case strings.Contains(c.System, "You extract reusable lessons"):
+			return mock.Reply{Text: `{"lessons":[{"kind":"strategy","text":"Run the project build before its tests so a broken build fails fast; the token ` + token + ` was used."}]}`}
+		case strings.Contains(c.System, "You judge whether a coding agent"):
+			return mock.Reply{Text: `{"verdict":"done","reason":"the build passed","left":[]}`}
+		}
+		return mock.Reply{Text: "it builds"}
+	})
+	ts := srv.Start()
+	t.Cleanup(ts.Close)
+	cfg := config.Defaults()
+	cfg.Providers = map[string]config.Provider{"gw": {BaseURL: ts.URL}}
+	start := func() *session.Session {
+		t.Helper()
+		s, err := session.New(context.Background(), session.Options{
+			Cwd: repo, Root: repo, Home: home, Dir: t.TempDir(), Config: cfg, Offline: true,
+			Model: "gw/acme/main", Mode: perm.ModeBypass, NoWeb: true, TrustProject: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { s.Close() })
+		g := goal.New("make sure the project build passes")
+		s.SaveGoal(g)
+		first := s.GoalStart(context.Background(), g)
+		firsts = append(firsts, first)
+		if _, err := s.Run(context.Background(), first); err != nil {
+			t.Fatal(err)
+		}
+		s.GoalTurn(context.Background(), g, nil)
+		return s
+	}
+	if s := start(); !s.LessonsOn() {
+		t.Fatal("the lesson memory is off without an embedder")
+	}
+	b, err := os.ReadFile(filepath.Join(home, ".sleipnir", "lessons.json"))
+	if err != nil || !strings.Contains(string(b), "fails fast") || strings.Contains(string(b), token) {
+		t.Fatalf("the store after a met goal: %s %v", b, err)
+	}
+	start()
+	if !strings.Contains(firsts[1], lessons.RenderHeader) || !strings.Contains(firsts[1], "fails fast") {
+		t.Errorf("the next goal starts without the lesson: %q", firsts[1])
+	}
+}

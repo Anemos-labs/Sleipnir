@@ -218,7 +218,8 @@
     mailman: 'A small extra agent boils bursts of worker messages down to a digest, so the manager is not flooded. It runs on the <span class="mono">mailman</span> role model. Teams only.',
     trustProject: 'Use this project’s own instructions (AGENTS.md), skills, hooks, allow rules and tool servers. Only for code you trust: you are shown the files first.',
     noMcp: 'Do not start MCP tool servers (extra tools a project or your configuration adds).',
-    noMemory: 'Start without the global memory: the notes agents saved in <span class="mono">~/.sleipnir/MEMORY.md</span> in earlier sessions are not shown to this session, and nothing it learns is saved there. Goals skip the lesson memory too (the embedder role), neither reading nor adding lessons.',
+    noMemory: 'Start without the global memory: the notes agents saved in <span class="mono">~/.sleipnir/MEMORY.md</span> in earlier sessions are not shown to this session, and nothing it learns is saved there. Goals skip the lesson memory too, neither reading nor adding lessons.',
+    embedder: 'Goals start with the lessons of earlier goals that bear on them, and add what they teach (<span class="mono">~/.sleipnir/lessons.json</span>). <b>keywords only</b>: lessons are found by the words they share with the goal. An embeddings model finds them by meaning as well (the <span class="mono">embedder</span> role). The list holds the embedding models of the providers that have a key.',
     sandbox: 'Run every command of the session (the agents’, the verification’s) inside a Docker container of its own instead of on this machine: <span class="mono">docker</span> uses a Debian image with the usual build tools, <span class="mono">docker=IMAGE</span> another image. The project is mounted at its own path; the network is off, capabilities are dropped, and the harness, its keys and the rest of the machine stay outside. Empty: commands run here. Needs Docker.',
     sandboxNetwork: 'Let the sandbox’s commands use the network, to install dependencies. Off by default.',
     allow: 'By default the session asks before it runs a command or edits a file. A rule here answers yes in advance, for this session only. A rule is a tool name, or a tool name with a pattern: <span class="mono">Tool(pattern)</span>. Click an example to add it. Not used in bypass and yolo, which never ask.',
@@ -280,6 +281,8 @@
     if (seed && seed.swarm != null && seed.single == null) st.single = +seed.swarm === 0;   // a seed that names a size: 0 is a single agent
     if (seed && seed.isolation != null && seed.isoAuto == null) st.isoAuto = false;          // ... and one that names the isolation chose it
     const models = () => { const l = D.models.map(m => m.ref); if (st.model && l.indexOf(st.model) < 0) l.unshift(st.model); return l; };
+    /** the lesson memory's search: keywords only, or an embeddings model of a provider with a key (the embedder role's model) */
+    const embedderOpts = () => { const cur = (st.roleModels || {}).embedder || '', l = (D.embedders || []).slice(); if (cur && l.indexOf(cur) < 0) l.unshift(cur); return '<option value=""' + (cur ? '' : ' selected') + '>keywords only</option>' + l.map(r => '<option value="' + esc(r) + '"' + (r === cur ? ' selected' : '') + '>' + esc(r) + '</option>').join(''); };
     /** under the model list when it is empty: no provider has a key yet (the server lists only the models a key can use), and where to add one */
     const noModelHint = () => models().length ? '' : 'No model to choose: no provider has a key yet. <button class="lnk" type="button" data-ns-providers>Add one in Settings › Providers</button>';
     /* the list shows its first model when none is chosen: that model is the one that starts (the catalogue may come after the seed, which would otherwise leave the model empty) */
@@ -309,6 +312,7 @@
       '</div><div><h3 class="lab nsh">Permissions and limits</h3>' +
       field('pre-approve actions (--allow)', '<div class="nsd nsquiet" id="nsRuleOff" role="status" hidden>' + NS_HELP.quiet + '</div><fieldset class="nsfs" id="nsRuleSet"><div class="field-row" style="margin:0"><input id="nsRule" type="text" placeholder="tests, Bash(go test:*)" aria-label="Allow rule" spellcheck="false" autocomplete="off"><button class="btn sm" type="button" id="nsAddRule">Add</button></div><div class="nserr err" id="nsRuleErr" role="alert" hidden></div><div id="nsRules" class="tags"></div><div class="chips" id="nsRuleEx">' + ruleEx + '</div></fieldset>', '', help('allow', 'a pre-approved action')) +
       field('trust, tools and memory', opt('trustProject', '--trust-project', '--trust-project') + opt('noMcp', '--no-mcp', '--no-mcp') + opt('noMemory', '--no-memory', '--no-memory')) +
+      field('lesson memory (--role-model embedder=…)', '<select id="nsEmbedder" aria-label="Lesson memory search">' + embedderOpts() + '</select>', '', help('embedder', 'the lesson memory')) +
       field('sandbox (--sandbox)', inp('nsSandbox', st.sandbox, 'aria-label="sandbox" placeholder="empty: commands run on this machine; docker or docker=IMAGE" spellcheck="false" autocomplete="off"') + opt('sandboxNetwork', '--sandbox-network', '--sandbox-network'), '', help('sandbox', 'the sandbox')) +
       field('budget (--budget-usd)', inp('nsBudget', st.budget, 'inputmode="decimal" aria-label="Budget in dollars"'), '', help('budget', 'the budget')) +
       field('compaction at (--compact-at)', '<div class="nscompact"><input id="nsCompact" type="range" min="10" max="90" step="1" value="' + (st.compactAt != null ? st.compactAt : st.compactAtBase || 25) + '" aria-label="Compaction share, percent of each model’s context window"><span class="nscv"><output id="nsCompactOut" for="nsCompact"></output><button type="button" class="btn sm" id="nsCompactReset" hidden>default</button></span></div>', '', help('compactAt', 'the compaction share')) +
@@ -368,6 +372,7 @@
           $('#nsStart', b).disabled = tm.short;
           $('#nsRules', b).innerHTML = st.rules.map((r, i) => '<span class="tag">' + esc(r) + ' <button type="button" data-rr="' + i + '" aria-label="remove ' + esc(r) + '">×</button></span>').join('');
           $('#nsGitRow', b).hidden = folder.describe(fstate()).git !== 'offer'; paintVerify();
+          $('#nsEmbedder', b).disabled = !!st.noMemory;   // no memory: no lessons to search
           $('#nsRuleSet', b).disabled = quiet(); $('#nsRuleOff', b).hidden = !quiet();
           /* the compaction share: the slider at the share (the default's place when none was chosen), what it means beside it, and a way back to the default */
           const cs = $('#nsCompact', b), cpos = String(st.compactAt != null ? st.compactAt : st.compactAtBase || 25), ctext = dialogs.compactAtText(st);
@@ -382,11 +387,11 @@
         const addRule = v => { v = String(v).trim(); if (!v || quiet()) return true; const bad = ruleProblem(v); ruleErr(bad); if (bad) return false; if (!st.rules.includes(v)) st.rules.push(v); return true; };
         // Checkbox input precedes change; repainting here would restore the old checked state before change reads it.
         sc.listen(b, 'input', e => { const t = e.target; if (t.dataset.k) return; if (t.id === 'nsName') st.name = t.value; else if (t.id === 'nsVerify') st.verify = t.value; else if (t.id === 'nsBudget') st.budget = t.value.trim(); else if (t.id === 'nsSandbox') st.sandbox = t.value.trim(); else if (t.id === 'nsCompact') st.compactAt = Math.round(Number(t.value)); else if (t.id === 'nsGoal') st.goalText = t.value; else if (t.id === 'nsRule') ruleErr(''); paint(); });
-        sc.listen(b, 'change', e => { const t = e.target; if (t.id === 'nsModel') st.model = t.value; else if (t.dataset.tmodel) { const r = t.dataset.tmodel; st.slotModels = st.slotModels || {}; if (st.perSlot) delete st.perSlot[r]; st.slotModels[r] = t.value; } else if (t.dataset.tslot) setSlotModel(st, t.dataset.tslot, +t.dataset.ti, t.value); else if (t.dataset.k) st[t.dataset.k] = t.checked; paint(); });
+        sc.listen(b, 'change', e => { const t = e.target; if (t.id === 'nsModel') st.model = t.value; else if (t.id === 'nsEmbedder') { st.roleModels = Object.assign({}, st.roleModels); if (t.value) st.roleModels.embedder = t.value; else delete st.roleModels.embedder; } else if (t.dataset.tmodel) { const r = t.dataset.tmodel; st.slotModels = st.slotModels || {}; if (st.perSlot) delete st.perSlot[r]; st.slotModels[r] = t.value; } else if (t.dataset.tslot) setSlotModel(st, t.dataset.tslot, +t.dataset.ti, t.value); else if (t.dataset.k) st[t.dataset.k] = t.checked; paint(); });
         sc.on('models-changed', () => {
           adopt();
           $('#nsModel', b).innerHTML = models().map(r => '<option' + (r === st.model ? ' selected' : '') + '>' + esc(r) + '</option>').join('');
-          $('#nsModelHint', b).innerHTML = noModelHint();
+          $('#nsModelHint', b).innerHTML = noModelHint(); $('#nsEmbedder', b).innerHTML = embedderOpts();
           $('#nsTeamRows', b)._k = null;
           paint();
         });
