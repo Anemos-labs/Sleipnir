@@ -7,12 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
-- A worker's `task claim` of a top-level task of a role with more than one
-  member is refused with a message for a worker: the manager starts that
-  task with `spawn`, and the worker takes a child task of its pool or waits
-  for an assignment. It used to tell the worker to use `spawn`, which only
-  the manager has. A `spawn` or a handover that is refused this way keeps
-  the message it had.
+- With persistent pools, a worker's `task claim` of a top-level task that
+  is neither solo nor in a pool yet, of a role with more than one member,
+  is refused with a message for a worker: the manager starts that task with
+  `spawn`, and the worker goes on with its current task or pool, then takes
+  a child task of a pool of its role that executes, or waits for an
+  assignment. It used to tell the worker to start the task with `spawn`,
+  which only the manager may do (a pool leader uses `spawn` for its pool's
+  children). A solo task stays claimable. A `spawn` or a handover that is
+  refused this way keeps the message it had.
 
 - The web API adds `GET /api/sandbox` (whether a session can have a
   sandbox here, and why not) and `GET /api/scan/clone/progress` (how far a

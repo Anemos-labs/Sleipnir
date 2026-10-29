@@ -126,8 +126,8 @@ func TestSoloTaskStaysSoloWhenStartedAgain(t *testing.T) {
 	}
 }
 
-// A worker that claims a top-level task of its pooled role is told that the manager starts it and what to do instead, not to use
-// spawn, which it does not have.
+// A worker that claims a top-level task of its pooled role is told that the manager starts it and what to do instead, not to start
+// it with spawn, which only the manager may do.
 func TestAWorkersClaimOfAPoolParentSaysTheManagerStartsIt(t *testing.T) {
 	r, _ := newSoloRig(t)
 	task, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "build the API", Role: "backend", Files: []string{"api/**"}})
