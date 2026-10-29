@@ -265,18 +265,9 @@ func (t *webTab) recheckTrust(f chatFlags, base baseline, dir string, p *privile
 	}
 	p.Trust = cur.Digest
 	if prev != nil && prevDir == dir {
-		p.Changed = trust.DescribeChanges(trust.Changes(entryOf(prev), cur))
+		p.Changed = trust.DescribeChanges(trust.Changes(trust.EntryOf(prev), cur))
 	}
 	return cur
-}
-
-// entryOf is a footprint as the trust ledger records it, to name how other files differ from it.
-func entryOf(fp *trust.Footprint) trust.Entry {
-	files := make(map[string]string, len(fp.Files))
-	for _, f := range fp.Files {
-		files[f.Path] = f.Sum[:min(16, len(f.Sum))]
-	}
-	return trust.Entry{Digest: fp.Digest, Files: files}
 }
 
 // noteTrust records the project files that this tab's session uses as the person trusted them: the footprint they confirmed with

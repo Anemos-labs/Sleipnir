@@ -26,6 +26,17 @@ they do not indicate whether a change has been released.
   cancelled waiters from every queue. Project team files skip symbolic
   links, research slugs stop after 10000 tries, friction tails are capped
   at 32, and the terminal views bound table and cell sizes.
+- A remembered trust answer (from `sleipnir trust` or the web interface)
+  now follows the instruction files the trusted session writes itself:
+  when a merge of the team or a project
+  note of the memory tool changes only instruction files (AGENTS.md and the
+  other Markdown the prompt loads, never settings, tool servers, skills,
+  commands, agents or plugins), the ledger is renewed for the new content
+  and a notice names the files. Before, the docs worker's own edits of
+  AGENTS.md voided the answer, and later sessions left the file out. A
+  change the session did not write, or one to any other kind of file, still
+  waits for the question at the next start; `sleipnir trust forget` undoes
+  the answer as before.
 - Permission, configuration and web hardening from a security review. In
   `default` mode a git command that reads the repository asks when the
   repository's own configuration names a program git would run for it

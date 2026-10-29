@@ -365,7 +365,10 @@ func (s *Session) buildIsolation(ctx context.Context) (*swarm.Isolation, error) 
 		}
 	}
 	return &swarm.Isolation{Manager: mgr, Queue: q, Commit: p.commit, Subdir: p.subdir, Checkpoints: s.treeCheckpoints,
-		Resumable: true, CheckoutBranch: branch, SaveIntegration: func(state swarm.IntegrationState) error {
+		Resumable: true, CheckoutBranch: branch, Applying: func() func([]string) {
+			renew := s.trustWrite()
+			return func(files []string) { renew(files, "the team's merge") }
+		}, SaveIntegration: func(state swarm.IntegrationState) error {
 			if _, err := s.Log.Emit("swarm", integrationStateEvent, state); err != nil {
 				return err
 			}

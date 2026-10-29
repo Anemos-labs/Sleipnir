@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -403,6 +404,7 @@ func TestApplyMergedTellsWhatIsNewAndAFailureOnce(t *testing.T) {
 		"fe-1": {act(writeCall("b.txt", "bravo edited\n")), act(doneCall("T2", "edited b"))},
 	}
 	r := newIsoRig(t, isoOpts{verify: true, tweak: func(d *Deps) { d.NewSink = func(string) agent.Sink { return sink } }}, sc.fn())
+	applied := r.recordApplied()
 	r.sw.StartManager()
 	mgr := r.sw.get(r.sw.ManagerID())
 	count := func(sub string) int {
@@ -449,6 +451,28 @@ func TestApplyMergedTellsWhatIsNewAndAFailureOnce(t *testing.T) {
 	if !rep.Applied || strings.Join(rep.Files, ",") != "a.txt,b.txt" || !strings.Contains(rep.Message, "Applied 2 file(s)") {
 		t.Fatalf("the account of the whole run: %+v", rep)
 	}
+	if got := applied(); got != "a.txt|b.txt" {
+		t.Fatalf("the session was told of the applications %q, want each one's files once", got)
+	}
+}
+
+// recordApplied has the rig's isolation keep what it is told reached the checkout, and returns them: one entry per application,
+// its files joined by ",", the entries by "|".
+func (r *isoRig) recordApplied() func() string {
+	var mu sync.Mutex
+	var got []string
+	r.iso.Applying = func() func([]string) {
+		return func(files []string) {
+			mu.Lock()
+			defer mu.Unlock()
+			got = append(got, strings.Join(files, ","))
+		}
+	}
+	return func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return strings.Join(got, "|")
+	}
 }
 
 // Commit mode moves the user's branch to the integration tip when the checkout is
@@ -457,6 +481,7 @@ func TestCommitModeFastForwardsACleanCheckoutAndRefusesADirtyOne(t *testing.T) {
 	for _, dirty := range []bool{false, true} {
 		sc := script{"be-1": {act(writeCall("a.txt", "alpha committed by the swarm\n")), act(doneCall("T1", "edited a"))}}
 		r := newIsoRig(t, isoOpts{verify: true, commit: true}, sc.fn())
+		applied := r.recordApplied()
 		r.sw.StartManager()
 		r.mustSpawn("backend", "edit a")
 		r.waitStatus("T1", StatusReview)
@@ -479,10 +504,16 @@ func TestCommitModeFastForwardsACleanCheckoutAndRefusesADirtyOne(t *testing.T) {
 			if got := readText(t, r.repo+"/a.txt"); got != "alpha\n" {
 				t.Fatalf("a.txt = %q", got)
 			}
+			if got := applied(); got != "" {
+				t.Fatalf("a refused fast-forward told the session %q reached the checkout", got)
+			}
 			continue
 		}
 		if !rep.Applied || !rep.Committed {
 			t.Fatalf("clean checkout: %+v", rep)
+		}
+		if got := applied(); got != "a.txt" {
+			t.Fatalf("the session was told %q reached the checkout, want a.txt", got)
 		}
 		if got := readText(t, r.repo+"/a.txt"); got != "alpha committed by the swarm\n" {
 			t.Fatalf("a.txt = %q", got)
@@ -826,5 +857,56 @@ func TestClaimingTheTaskYouAreOnChangesNothing(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatalf("be-1 was handed its assignment %d times, want 1", n)
+	}
+}
+
+// A rename reaches the checkout as two paths, and the session is told both: the file that is gone counts as changed as much as the
+// one that arrived.
+func TestTheSessionIsToldBothSidesOfARename(t *testing.T) {
+	for _, commit := range []bool{false, true} {
+		sc := script{"be-1": {act(writeCall("z.txt", "alpha\n"), rvToolCall{"sneakrm", map[string]any{"path": "a.txt"}}), act(doneCall("T1", "moved a"))}}
+		r := newIsoRig(t, isoOpts{verify: true, commit: commit}, sc.fn())
+		applied := r.recordApplied()
+		r.sw.StartManager()
+		r.mustSpawn("backend", "move a to z")
+		r.waitStatus("T1", StatusReview)
+		if res := r.accept("T1"); res.IsError {
+			t.Fatal(res.Text)
+		}
+		if rep := r.finish(); !rep.Applied {
+			t.Fatalf("commit %v: %+v", commit, rep)
+		}
+		if got := strings.Split(applied(), "|"); len(got) != 1 || !slices.Contains(strings.Split(got[0], ","), "a.txt") || !slices.Contains(strings.Split(got[0], ","), "z.txt") {
+			t.Fatalf("commit %v: the session was told %q, want a.txt and z.txt", commit, got)
+		}
+	}
+}
+
+// A file someone else edits while the result is applied is not one the apply accounts for: the patch still applies around the
+// other edit, but the session is not told of the file, so nothing the apply did not write is credited to it.
+func TestAFileEditedDuringTheApplyIsNotReportedAsApplied(t *testing.T) {
+	sc := script{"be-1": {act(writeCall("long.txt", "one\n2\n3\n4\n5\n6\n7\n8\n9\n10\n"), writeCall("b.txt", "bravo edited\n")), act(doneCall("T1", "edited long and b"))}}
+	r := newIsoRig(t, isoOpts{verify: true, files: map[string]string{"long.txt": "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n"}}, sc.fn())
+	var got []string
+	r.iso.Applying = func() func([]string) {
+		if err := writeFileString(r.repo+"/long.txt", "1\n2\n3\n4\n5\n6\n7\n8\n9\nten\n"); err != nil {
+			t.Fatal(err)
+		}
+		return func(files []string) { got = files }
+	}
+	r.sw.StartManager()
+	r.mustSpawn("backend", "edit long and b")
+	r.waitStatus("T1", StatusReview)
+	if res := r.accept("T1"); res.IsError {
+		t.Fatal(res.Text)
+	}
+	if rep := r.finish(); !rep.Applied {
+		t.Fatalf("%+v", rep)
+	}
+	if text := readText(t, r.repo+"/long.txt"); text != "one\n2\n3\n4\n5\n6\n7\n8\n9\nten\n" {
+		t.Fatalf("long.txt = %q, want the patch applied around the other edit", text)
+	}
+	if strings.Join(got, ",") != "b.txt" {
+		t.Fatalf("the session was told %q, want only b.txt", got)
 	}
 }

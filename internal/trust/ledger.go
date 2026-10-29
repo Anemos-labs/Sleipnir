@@ -93,13 +93,18 @@ func (l *Ledger) Remember(cwd string, fp *Footprint, now time.Time) error {
 	case fp.Partial:
 		return fmt.Errorf("%wit has more files than can be read here (%d files and %d MB at the most)", ErrNotRememberable, maxFiles, maxBytes>>20)
 	}
+	e := EntryOf(fp)
+	e.Saved = now.UTC().Format("2006-01-02")
+	return l.update(func(m map[string]Entry) { m[cwd] = e })
+}
+
+// EntryOf is a footprint as the ledger records it (without the day), to name how other files differ from it.
+func EntryOf(fp *Footprint) Entry {
 	files := make(map[string]string, len(fp.Files))
 	for _, f := range fp.Files {
-		files[f.Path] = f.Sum[:16]
+		files[f.Path] = f.Sum[:min(16, len(f.Sum))]
 	}
-	return l.update(func(m map[string]Entry) {
-		m[cwd] = Entry{Digest: fp.Digest, Files: files, Saved: now.UTC().Format("2006-01-02")}
-	})
+	return Entry{Digest: fp.Digest, Files: files}
 }
 
 // Forget removes what was said about cwd and reports whether there was anything.
