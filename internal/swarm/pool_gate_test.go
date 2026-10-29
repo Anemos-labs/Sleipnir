@@ -85,3 +85,28 @@ func TestAPoolResultThatFailsVerificationExecutesAgain(t *testing.T) {
 		t.Fatalf("the leader could not create the fix: %s", res.Text)
 	}
 }
+
+// A failure the gate found in a revision the pool has since replaced leaves the newer revision and its votes alone.
+func TestAPoolGateFailureOnAnOlderRevisionKeepsTheNewerOne(t *testing.T) {
+	r, parent, call := poolGateRig(t, "fixed\nBROKEN again\n")
+	gate := r.sw.cfg.Verify
+	r.sw.cfg.Verify = func(ctx context.Context, dir, cmd string) (string, int, error) {
+		// The leader reconciles again while the gate runs; one member confirms the new revision.
+		if err := r.sw.Board.poolUpdate("mgr", parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error {
+			p.Revision++
+			p.Votes, p.Inspected = []string{parent.Owner}, []string{parent.Owner}
+			return nil
+		}); err != nil {
+			t.Error(err)
+		}
+		return gate(ctx, dir, cmd)
+	}
+	before, _ := r.sw.Board.Snapshot().Task(parent.ID)
+	if res := call(parent.Owner, "task", map[string]any{"action": "done", "id": parent.ID, "text": "combined"}); !res.IsError || strings.Contains(res.Text, "executes again") {
+		t.Fatalf("a stale failure reset the pool: %s", res.Text)
+	}
+	after, _ := r.sw.Board.Snapshot().Task(parent.ID)
+	if after.Pool.Phase != "reconciling" || after.Pool.Revision != before.Pool.Revision+1 || len(after.Pool.Votes) != 1 {
+		t.Fatalf("the newer revision was reset: %+v", *after.Pool)
+	}
+}

@@ -1248,7 +1248,7 @@ func (s *Swarm) poolGateFailed(by string, t Task, vr verifyResult) *tools.Result
 	tail, _ := tools.Truncate(vr.out, 3000)
 	rev := 0
 	err := s.Board.poolUpdate(by, t.ID, func(_ *Snapshot, _ *Task, p *PoolState) error {
-		if p.Phase != "reconciling" {
+		if p.Phase != "reconciling" || p.Revision != t.Pool.Revision { // a reconcile while the gate ran is a result it did not judge
 			return nil
 		}
 		p.Phase = "executing"
