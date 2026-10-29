@@ -26,6 +26,10 @@ they do not indicate whether a change has been released.
   cancelled waiters from every queue. Project team files skip symbolic
   links, research slugs stop after 10000 tries, friction tails are capped
   at 32, and the terminal views bound table and cell sizes.
+- A team manager's `task deliver` first names any new, untracked files in the
+  manager's checkout that the integration does not have, and commits them only
+  when the manager calls `deliver` again. Probe inputs the manager wrote beside
+  the code were committed to the person's branch with the rest of the delivery.
 - A remembered trust answer (from `sleipnir trust` or the web interface)
   now follows the instruction files the trusted session writes itself:
   when a merge of the team or a project
