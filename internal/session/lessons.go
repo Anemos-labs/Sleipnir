@@ -17,8 +17,8 @@ import (
 )
 
 // EmbedderRole and RerankerRole are the names under which models.roles and --role-model give the models of the lesson memory
-// (internal/lessons): an embeddings model, which turns the memory on, and an optional reranker that orders what the embeddings
-// found. Like the compactor they are not agents. A session started with --no-memory uses neither.
+// (internal/lessons): an optional embeddings model, which finds lessons by meaning as well as by keyword, and an optional
+// reranker that orders what was found. Like the compactor they are not agents. A session started with --no-memory uses neither.
 const (
 	EmbedderRole = "embedder"
 	RerankerRole = "reranker"
@@ -36,8 +36,16 @@ const (
 // lessonMemory is a session's lesson memory: the store under ~/.sleipnir and the endpoints that embed and rerank.
 type lessonMemory struct {
 	store *lessons.Store
-	emb   *lessons.HTTPEmbedder
+	emb   *lessons.HTTPEmbedder // nil without an embedder: lessons are found by keyword alone
 	rr    *lessons.HTTPReranker // nil without a reranker
+}
+
+// embedder is m's embedder as the store takes it: a nil interface, not a nil pointer, without one.
+func (m *lessonMemory) embedder() lessons.Embedder {
+	if m.emb == nil {
+		return nil
+	}
+	return m.emb
 }
 
 // roleRef is the model a non-agent role is named with: --role-model first, then models.roles.
@@ -48,18 +56,20 @@ func (s *Session) roleRef(role string) string {
 	return s.cfg.Models.Roles[role]
 }
 
-// buildLessons turns the lesson memory on when the embedder role names a model, the session has the global memory and the lessons
-// plugin is on.
+// buildLessons turns the lesson memory on when the session has the global memory and the lessons plugin is on. Lessons are
+// found by keyword, and by meaning too when the embedder role names a model.
 func (s *Session) buildLessons() error {
-	ref := s.roleRef(EmbedderRole)
-	if ref == "" || s.opts.NoMemory || !s.pluginOn(plugin.Lessons) {
+	if s.opts.NoMemory || !s.pluginOn(plugin.Lessons) {
 		return nil
 	}
-	base, key, headers, model, err := s.rawEndpoint(ref)
-	if err != nil {
-		return fmt.Errorf("embedder model %s: %w", ref, err)
+	m := &lessonMemory{store: lessons.NewStore(filepath.Join(stateRoot(s.opts.Home), "lessons.json"))}
+	if ref := s.roleRef(EmbedderRole); ref != "" {
+		base, key, headers, model, err := s.rawEndpoint(ref)
+		if err != nil {
+			return fmt.Errorf("embedder model %s: %w", ref, err)
+		}
+		m.emb = lessons.NewHTTPEmbedder(base, key, model, headers, nil)
 	}
-	m := &lessonMemory{store: lessons.NewStore(filepath.Join(stateRoot(s.opts.Home), "lessons.json")), emb: lessons.NewHTTPEmbedder(base, key, model, headers, nil)}
 	if rref := s.roleRef(RerankerRole); rref != "" {
 		base, key, headers, model, err := s.rawEndpoint(rref)
 		if err != nil {
@@ -113,7 +123,7 @@ func (s *Session) GoalStart(ctx context.Context, g *goal.State) string {
 	if m.rr != nil {
 		k = lessonsCandidates
 	}
-	found, err := m.store.RetrieveIn(ctx, m.emb, g.Objective, lore.Key(s.opts.Root), k)
+	found, err := m.store.RetrieveIn(ctx, m.embedder(), g.Objective, lore.Key(s.opts.Root), k)
 	if err == nil && m.rr != nil {
 		found, err = lessons.Rerank(ctx, m.rr, g.Objective, found, lessonsShown)
 	}
@@ -152,8 +162,11 @@ func (s *Session) goalEnded(ctx context.Context, g *goal.State, won bool, outcom
 		if drafts, err = s.distill(ctx, g, outcome); err == nil && len(drafts) > 0 {
 			for i := range drafts {
 				drafts[i].Project = lore.Key(s.opts.Root)
+				// Lessons reach every later goal in every project: a credential the model copied into one does not.
+				drafts[i].Text = config.ScrubText(drafts[i].Text)
+				drafts[i].Task = config.ScrubText(drafts[i].Task)
 			}
-			added, merged, err = m.store.Add(ctx, m.emb, drafts)
+			added, merged, err = m.store.Add(ctx, m.embedder(), drafts)
 		}
 	}
 	s.chargeLessons()
@@ -202,7 +215,10 @@ func (s *Session) chargeLessons() {
 	if s.lessons == nil {
 		return
 	}
-	usd := s.lessons.emb.TakeUsage().Cost
+	var usd float64
+	if s.lessons.emb != nil {
+		usd = s.lessons.emb.TakeUsage().Cost
+	}
 	if s.lessons.rr != nil {
 		usd += s.lessons.rr.TakeUsage().Cost
 	}

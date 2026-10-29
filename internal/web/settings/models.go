@@ -105,7 +105,7 @@ func (s *service) commentsNote() string {
 // favourites, why some catalogues could not be read, and the roles, role models and effort levels of the tab.
 func (s *service) modelsView(res catalog.Result, f catalog.Filter, cfg *config.Config, tc *tabCtx) wire.ModelsView {
 	fav := catalog.Favorites(cfg)
-	v := wire.ModelsView{Models: []wire.ModelRow{}, Favs: []string{}, RoleModels: map[string]string{}, FetchedAt: res.AsOf.UnixMilli()}
+	v := wire.ModelsView{Models: []wire.ModelRow{}, Favs: []string{}, RoleModels: map[string]string{}, Embedders: []string{}, FetchedAt: res.AsOf.UnixMilli()}
 	if cfg != nil {
 		v.Favs = append(v.Favs, cfg.Models.Favorites...)
 	}
@@ -114,6 +114,9 @@ func (s *service) modelsView(res catalog.Result, f catalog.Filter, cfg *config.C
 		row := res.Rows[i]
 		if s.needsKey(cfg, row.Provider, keyless) {
 			continue
+		}
+		if e.IsEmbedding() {
+			v.Embedders = append(v.Embedders, row.Ref)
 		}
 		if !f.Keep(e, fav) {
 			continue
@@ -129,6 +132,7 @@ func (s *service) modelsView(res catalog.Result, f catalog.Filter, cfg *config.C
 		}
 		return v.Models[i].Ref < v.Models[j].Ref
 	})
+	sort.Strings(v.Embedders)
 	refs := make([]string, 0, len(v.Models))
 	for _, m := range v.Models {
 		refs = append(refs, m.Ref)
