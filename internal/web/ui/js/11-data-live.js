@@ -120,7 +120,7 @@
       D.models.forEach(m => { m.fav = G.favs.has(m.ref); });
       if (Array.isArray(v.roles) && v.roles.length) { const r = {}; v.roles.forEach(x => { r[x.name] = { code: x.code, ro: !!x.ro, desc: x.desc || '' }; }); if (!r.manager) r.manager = ROLES.manager; D.roles = r; }
       if (Array.isArray(v.roleOrder) && v.roleOrder.length) D.roleOrder = v.roleOrder.slice();
-      D.roleModels = Object.assign({}, v.roleModels || {}); G.roleModels = Object.assign({}, D.roleModels);
+      D.roleModels = Object.assign({}, v.roleModels || {}); G.roleModels = Object.assign({}, D.roleModels); D.embedders = (v.embedders || []).slice();
       D.efforts = (v.efforts || []).slice(); D.modelErrors = (v.errors || []).slice(); D.suggested = typeof v.suggested === 'string' ? v.suggested : ''; D.modelsNote = v.configNote || '';
       SL.bus.emit('models-changed');
     },

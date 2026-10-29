@@ -74,6 +74,16 @@ func (e Entry) IsChat() bool {
 	return e.Modality == "" || strings.HasSuffix(e.Modality, "->text")
 }
 
+// IsEmbedding reports whether the model turns text into vectors (an OpenAI-compatible POST /embeddings): its modality ends in
+// "->embeddings", or, in a catalogue that does not say, its id names an embedding model ("text-embedding-3-small", "nomic-embed-text").
+func (e Entry) IsEmbedding() bool {
+	m := strings.ToLower(e.Modality)
+	if m != "" {
+		return strings.HasSuffix(m, "->embeddings") || strings.HasSuffix(m, "->embedding")
+	}
+	return strings.Contains(strings.ToLower(e.Model.ID), "embed")
+}
+
 // has reports exact membership in a provider capability list.
 func has(list []string, s string) bool {
 	for _, x := range list {

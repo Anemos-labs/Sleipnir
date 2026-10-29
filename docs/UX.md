@@ -32,17 +32,20 @@ disagrees, the agent is sent on with what it found missing. Only "done" is
 checked twice, so the second judgment costs a request at most once per claimed
 completion.
 
-A lesson memory turns on when the `embedder` role names an embeddings model
-(`models.roles.embedder` or `--role-model embedder=provider/model`, any
-OpenAI-compatible `/embeddings` endpoint). A goal's first message then carries
-up to five lessons from earlier goals whose tasks are closest to its objective,
-and when the goal is met or given up on, the lessons it was shown are credited
-or debited and up to three new ones are distilled from the judge's verdicts and
-saved in `~/.sleipnir/lessons.json`. Lessons are ranked by similarity and by how
-often they helped; ones that keep failing are dropped. An optional `reranker`
-role (a `/rerank` endpoint) orders the closest twelve before five are shown.
-No model is built in: both are whatever you name. A session started with
-`--no-memory` uses neither.
+Standing goals keep a lesson memory (the Lesson memory plugin, on by default).
+A goal's first message carries up to five lessons from earlier goals that bear
+on its objective, and when the goal is met or given up on, the lessons it was
+shown are credited or debited and up to three new ones are distilled from the
+judge's verdicts, with any credential in them withheld, and saved in
+`~/.sleipnir/lessons.json`. Lessons are found by the content words they share
+with the objective, rare words counting most; when the `embedder` role names an
+embeddings model (`models.roles.embedder` or `--role-model
+embedder=provider/model`, any OpenAI-compatible `/embeddings` endpoint) they
+are found by meaning as well, and a lesson's relevance is the higher of the two.
+Lessons are ranked by relevance and by how often they helped; ones that keep
+failing are dropped. An optional `reranker` role (a `/rerank` endpoint) orders
+the closest twelve before five are shown. No model is built in: both are
+whatever you name. A session started with `--no-memory` keeps no lessons.
 
 Escape or Ctrl+C during a turn cancels it. `/goal pause` and `/goal clear`
 interrupt first, then update goal state after the running turn has stopped.

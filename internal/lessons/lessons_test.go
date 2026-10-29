@@ -650,3 +650,76 @@ func TestRetrieveRanksTheSameProjectFirst(t *testing.T) {
 		}
 	}
 }
+
+// Without an embedder, lessons are saved without vectors and found by the content words they share with the task: a lesson
+// about the task's subject is found, one about something else is not, and a draft that says what a lesson says in nearly
+// the same words merges into it.
+func TestKeywordMemoryWithoutAnEmbedder(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	drafts := []Draft{
+		{Kind: Strategy, Text: "Apply database migrations inside a transaction so a failed migration rolls back.", Task: "add a postgres schema migration"},
+		{Kind: Pitfall, Text: "Flexbox gaps collapse in the sidebar when the grid template has no minmax.", Task: "style the settings page"},
+	}
+	added, merged, err := s.Add(ctx, nil, drafts)
+	if err != nil || added != 2 || merged != 0 {
+		t.Fatalf("Add without an embedder: added %d merged %d err %v", added, merged, err)
+	}
+	for _, l := range mustLoad(t, s) {
+		if l.Vec != nil {
+			t.Errorf("a lesson saved without an embedder has a vector: %+v", l)
+		}
+	}
+	got, err := s.Retrieve(ctx, nil, "Write the database migration that adds an orders table to postgres", 5)
+	if err != nil || len(got) != 1 || !strings.Contains(got[0].Text, "migrations") {
+		t.Fatalf("keyword retrieval: %+v %v", got, err)
+	}
+	if got, _ := s.Retrieve(ctx, nil, "Translate the README into German", 5); len(got) != 0 {
+		t.Errorf("an unrelated task found %+v", got)
+	}
+	_, merged, err = s.Add(ctx, nil, []Draft{{Kind: Strategy, Text: "Apply database migrations inside one transaction so a failed migration rolls back."}})
+	if err != nil || merged != 1 || len(mustLoad(t, s)) != 2 {
+		t.Errorf("a near-duplicate was not merged: merged %d, %d lessons, err %v", merged, len(mustLoad(t, s)), err)
+	}
+}
+
+// With an embedder, a lesson whose own words are in the task is found even when its vector is far from the task's.
+func TestKeywordFindsWhatTheEmbeddingsMiss(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	emb := &bagEmbedder{}
+	if _, _, err := s.Add(ctx, emb, []Draft{{Kind: Pitfall, Text: "vitest jsdom canvas"}}); err != nil {
+		t.Fatal(err)
+	}
+	task := "the vitest suite fails on canvas calls under jsdom " + strings.Repeat("and many other words about the rest of the objective ", 6)
+	got, err := s.Retrieve(ctx, emb, task, 5)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("Retrieve = %+v, %v", got, err)
+	}
+	if c := cosine(normalize(mustEmbed(t, emb, task)), got[0].Vec); c >= MinSimilarity {
+		t.Fatalf("the test needs a cosine below MinSimilarity, got %.2f", c)
+	}
+}
+
+func mustEmbed(t *testing.T, e Embedder, s string) []float32 {
+	t.Helper()
+	v, err := e.Embed(context.Background(), []string{s})
+	if err != nil || len(v) != 1 {
+		t.Fatal(v, err)
+	}
+	return v[0]
+}
+
+func TestTerms(t *testing.T) {
+	got := terms("Run the Tests! Postgres migrations, 2024 x CSS-grid")
+	for _, w := range []string{"postgre", "migration", "css", "grid"} {
+		if !got[w] {
+			t.Errorf("terms lacks %q: %v", w, got)
+		}
+	}
+	for _, w := range []string{"run", "the", "test", "2024", "x"} {
+		if got[w] {
+			t.Errorf("terms keeps %q: %v", w, got)
+		}
+	}
+}
