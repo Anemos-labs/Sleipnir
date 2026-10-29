@@ -16,7 +16,7 @@ func TestAVerifyRunsTemporaryFilesGoWithIt(t *testing.T) {
 		t.Skip("POSIX shell")
 	}
 	parent := t.TempDir()
-	res := RunShell(context.Background(), VerifyRequest{Dir: t.TempDir(), Cmd: `d=$(mktemp -d) && echo bin > "$d/server" && echo "$d"`,
+	res := RunShell(context.Background(), VerifyRequest{Dir: t.TempDir(), Cmd: `d=$(mktemp -d "$TMPDIR/build.XXXXXX") && echo bin > "$d/server" && echo "$d"`,
 		BaseEnv: []string{"PATH=" + os.Getenv("PATH"), "TMPDIR=" + parent}})
 	if res.Err != nil || res.ExitCode != 0 {
 		t.Fatalf("run: %+v", res)
