@@ -655,6 +655,31 @@ func TestRunAskTimeoutMustNotBeNegative(t *testing.T) {
 	assertRun(t, r, 1, nil, []string{"--ask-timeout must not be negative"})
 }
 
+// A run left alone has no /effort to type: --effort sets the reasoning effort of its requests, and
+// without it none is sent, so the provider's own default holds.
+func TestRunEffortFlagSetsTheRequestsEffort(t *testing.T) {
+	m := startModel(t)
+	m.on("@think", say("thought"))
+	w := newWorld(t, m.url())
+	assertRun(t, w.run("", "run", "--effort", "LOW", "@think"), 0, []string{"thought"}, nil)
+	for _, e := range m.sentEfforts() {
+		if e != `"low"` {
+			t.Fatalf("with --effort low the requests carried %q", m.sentEfforts())
+		}
+	}
+	n := len(m.sentEfforts())
+	if n == 0 {
+		t.Fatal("the model got no request")
+	}
+	assertRun(t, w.run("", "run", "@think"), 0, []string{"thought"}, nil)
+	for _, e := range m.sentEfforts()[n:] {
+		if e != "" {
+			t.Fatalf("without --effort the requests carried %q", m.sentEfforts()[n:])
+		}
+	}
+	assertRun(t, w.run("", "run", "--effort", "medum", "@think"), 1, nil, []string{"--effort is one of default, none"})
+}
+
 // Ctrl-C while the question is open ends the run like any Ctrl-C: the question goes with it, nothing is written, the run says it was
 // interrupted and the log has its end. (Dogfood 4 left a swarm at a question for two hours; the Ctrl-C that finally came ended its
 // process with no end in its log.)
