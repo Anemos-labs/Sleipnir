@@ -276,6 +276,7 @@ type scriptedModel struct {
 	unscripted []string // goals that nothing scripted
 	stray      []string // goals that came with text in front of them: input that was not the goal's own
 	gates      []*gate
+	efforts    []string // the reasoning_effort member of each request, raw ("" when it was not sent)
 }
 
 func startModel(t *testing.T) *scriptedModel {
@@ -331,7 +332,17 @@ func (m *scriptedModel) toolResults() []string {
 	return append([]string(nil), m.results...)
 }
 
+// sentEfforts returns the reasoning_effort member of each request, in order.
+func (m *scriptedModel) sentEfforts() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]string(nil), m.efforts...)
+}
+
 func (m *scriptedModel) respond(c *mock.Call) mock.Reply {
+	m.mu.Lock()
+	m.efforts = append(m.efforts, string(c.Raw["reasoning_effort"]))
+	m.mu.Unlock()
 	last := c.Messages[len(c.Messages)-1]
 	if last.Role == "tool" {
 		// The second request of a turn that opened with a tool call.
