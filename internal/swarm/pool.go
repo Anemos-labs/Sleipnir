@@ -1236,3 +1236,30 @@ func pastTense(action string) string {
 	}
 	return "confirmed"
 }
+
+// poolGateFailed answers a pool result that failed its gate. A reconciling pool writes nothing and creates no child, so a
+// failure left there could not be repaired: in a team trial two leaders each spent half an hour between a done that failed
+// and an edit that was refused. The pool executes again at a new revision, where the leader creates the fix as a child,
+// accepts it and reconciles again.
+func (s *Swarm) poolGateFailed(by string, t Task, vr verifyResult) *tools.Result {
+	if vr.infra {
+		return tools.Errorf("Not done yet: verification could not run (%v). Try again in a moment; if it keeps failing, block the task and tell the manager.", cleanText(vr.err.Error(), 200))
+	}
+	tail, _ := tools.Truncate(vr.out, 3000)
+	rev := 0
+	err := s.Board.poolUpdate(by, t.ID, func(_ *Snapshot, _ *Task, p *PoolState) error {
+		if p.Phase != "reconciling" {
+			return nil
+		}
+		p.Phase = "executing"
+		p.Revision++
+		p.Votes, p.Inspected = nil, nil
+		rev = p.Revision
+		return nil
+	})
+	if err != nil || rev == 0 {
+		return &tools.Result{IsError: true, Text: fmt.Sprintf("Not done: the pool result failed verification (exit %d). Fix the failures and call done again.\n%s", vr.code, tail)}
+	}
+	s.wakePool(t.ID, fmt.Sprintf("The combined result failed verification (exit %d), so the pool executes again. The leader creates the fix as a child task (task create parent=%s), assigns and accepts it, then reconciles again.", vr.code, t.ID))
+	return &tools.Result{IsError: true, Text: fmt.Sprintf("Not done: the pool result failed verification (exit %d). %s executes again at revision %d so it can be repaired: create the fix as a child task (task create parent=%s), assign it (or task claim it), accept it, then pool reconcile and have every member confirm before task done.\n%s", vr.code, t.ID, rev, t.ID, tail)}
+}

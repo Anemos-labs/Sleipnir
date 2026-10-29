@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A pool whose combined result fails verification at `task done` executes
+  again at a new revision instead of staying reconciling, where no member
+  could write and the leader could not create a child to fix it. The
+  refusal names the steps: create the fix as a child task, accept it, then
+  reconcile again.
+
 - A worker can declare its assumptions with `task done` (`assumptions`: up
   to 8 one-line choices the task, its scope and its agreements left open).
   They are kept on the task while it is in review or done (`task get`, the
