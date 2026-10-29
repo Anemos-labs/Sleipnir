@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The web API adds `GET /api/sandbox` (whether a session can have a
+  sandbox here, and why not) and `GET /api/scan/clone/progress` (how far a
+  Deep scan clone is, followed by the new optional `progress` id of
+  `POST /api/scan/clone`). The New session dialog no longer starts a
+  session that asks for a sandbox this machine cannot start; it says why
+  under the sandbox field and offers to start without one.
+
 - In the web interface, a message sent while the goal's own turn runs (its
   start, a resume or a continuation) goes to that turn as a steer when
   nothing else waits in the queue, and `POST /api/sessions/{id}/messages`
