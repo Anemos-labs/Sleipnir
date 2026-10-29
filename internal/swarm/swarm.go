@@ -1094,9 +1094,45 @@ func readOnlyCommand(cmd string) bool {
 		}
 		return false
 	}
+	// abbreviated: a long option given by a prefix of its name (git and GNU getopt take any unambiguous one, --outp for --output)
+	abbreviated := func(deny ...string) bool {
+		for _, a := range args {
+			name, _, _ := strings.Cut(a, "=")
+			if len(name) < 3 || !strings.HasPrefix(name, "--") {
+				continue
+			}
+			for _, d := range deny {
+				if strings.HasPrefix(d, "--") && strings.HasPrefix(d, name) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	// clustered: a short option among others after one dash (-nO is -n -O)
+	clustered := func(letters string) bool {
+		for _, a := range args {
+			if len(a) > 1 && a[0] == '-' && a[1] != '-' && strings.ContainsAny(a[1:], letters) {
+				return true
+			}
+		}
+		return false
+	}
 	switch prog {
-	case "ls", "cat", "head", "tail", "wc", "pwd", "echo", "grep", "diff", "stat", "file", "tree":
+	case "ls", "cat", "head", "tail", "wc", "pwd", "echo", "grep", "diff", "stat", "file":
 		return true
+	}
+	// an argument that starts with a glob character can expand to a file named like an option ([-]o is -o when a file -o is
+	// there), which the checks below never see: none of these programs gets one
+	for _, a := range args {
+		if a != "" && strings.IndexByte("*?[", a[0]) >= 0 {
+			return false
+		}
+	}
+	switch prog {
+	case "tree":
+		// -o writes the listing to a file; -R with -H writes an index into every directory
+		return !clustered("oR") && !abbreviated("--output")
 	case "rg":
 		return !has("--pre", "--pre-glob", "--hostname-bin", "-z", "--search-zip")
 	case "find":
@@ -1107,7 +1143,8 @@ func readOnlyCommand(cmd string) bool {
 		}
 		switch args[0] {
 		case "status", "diff", "log", "show", "blame", "ls-files", "rev-parse", "grep", "shortlog", "describe":
-			return !has("--output", "-o", "--ext-diff", "--textconv", "--no-index", "--open-files-in-pager", "-O", "--exec")
+			deny := []string{"--output", "-o", "--ext-diff", "--textconv", "--no-index", "--open-files-in-pager", "-O", "--exec"}
+			return !has(deny...) && !abbreviated(deny...) && !clustered("oO")
 		}
 		return false
 	case "go":

@@ -25,6 +25,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/provider"
 )
 
 // What the issuer and the API are called, as documented.
@@ -68,7 +70,9 @@ func (o *Options) fill() {
 	}
 	if o.HTTP == nil {
 		// no redirects: a token request that is sent somewhere else is a token request sent to an attacker
-		o.HTTP = &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		// and a loopback endpoint's token is not handed to a proxy
+		o.HTTP = &http.Client{Timeout: 30 * time.Second, Transport: provider.ProxyTransport(),
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	}
 	if o.Now == nil {
 		o.Now = time.Now

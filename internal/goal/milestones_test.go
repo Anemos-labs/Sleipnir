@@ -141,6 +141,16 @@ func TestPrepareKeepsTheSpecAsSet(t *testing.T) {
 		if _, err := Prepare("x\nSpec: link.md", root, root); !errors.Is(err, ErrSpecOutside) {
 			t.Errorf("a link out of the project: %v", err)
 		}
+		// nor to a file of the project the person did not name (a guarded .env)
+		if err := os.WriteFile(filepath.Join(root, ".env"), []byte("TOKEN=x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(".env", filepath.Join(root, "inner.md")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Prepare("x\nSpec: inner.md", root, root); !errors.Is(err, ErrSpecLinked) {
+			t.Errorf("a link to another file of the project: %v", err)
+		}
 	}
 	if _, err := Prepare("x\nSpec: ../SPEC.md", root, root); err == nil {
 		t.Error("a missing spec was accepted")
@@ -153,6 +163,42 @@ func TestPrepareKeepsTheSpecAsSet(t *testing.T) {
 	}
 	if g, err := Prepare("no spec here", root, root); err != nil || g.Spec != "" || len(g.Milestones) != 0 {
 		t.Errorf("a plain goal: %+v %v", g, err)
+	}
+}
+
+// On a file system that ignores case, a spec named in another case than it has on disk is the file named, not a link.
+func TestSpecNamedInAnotherCaseIsRead(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "SPEC.md"), []byte("the spec"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "spec.md")); err != nil {
+		t.Skip("the file system tells case apart")
+	}
+	if text, err := readSpec("spec.md", root, root); err != nil || text != "the spec" {
+		t.Errorf("read %q, %v", text, err)
+	}
+}
+
+// A project moved away between the open of its spec and the check of the path is refused: nothing then says the file read is the
+// one named.
+func TestSpecIsRefusedWhenTheProjectMovesAway(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "project")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "SPEC.md"), []byte("the spec"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { specOpened = func() {} })
+	var moveErr error
+	specOpened = func() { moveErr = os.Rename(root, root+"-moved") }
+	text, err := readSpec("SPEC.md", root, root)
+	if moveErr != nil {
+		t.Skipf("the project cannot be moved while its spec is open (Windows): %v", moveErr)
+	}
+	if err == nil {
+		t.Errorf("read %q from a project that moved away", text)
 	}
 }
 

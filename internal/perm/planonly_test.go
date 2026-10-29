@@ -144,3 +144,96 @@ func TestReadOnlyRolesRunTheProjectsTestsAndLints(t *testing.T) {
 		}
 	}
 }
+
+// A ReadOnly context holds a turn to what plan mode allows on its own, whatever the session's mode and allow rules, and leaves the
+// session's mode alone.
+func TestReadOnlyRefusesWhatOnlyTheModeOrARuleAllows(t *testing.T) {
+	root := t.TempDir()
+	e, err := NewEngine(Config{Mode: ModeBypass, Root: root, Home: t.TempDir(), Allow: []string{"Edit(docs/plan.md)", "Bash(rm:*)"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := ReadOnly(context.Background())
+	plan := Request{Tool: "write", Writes: true, Paths: []string{root + "/docs/plan.md"}}
+	rm := Request{Tool: "bash", Command: "rm -rf build", Cwd: root}
+	other := Request{Tool: "write", Writes: true, Paths: []string{root + "/main.go"}}
+	if !e.Check(context.Background(), plan).Allow || !e.Check(context.Background(), other).Allow {
+		t.Fatal("bypass and the rules should allow the writes outside a read-only turn")
+	}
+	for _, r := range []Request{plan, rm, other} {
+		if d := e.Check(ctx, r); d.Allow {
+			t.Errorf("a read-only turn allowed %+v: %s", r, d.Reason)
+		}
+	}
+	if d := e.Check(ctx, Request{Tool: "bash", Command: "git status", Cwd: root}); !d.Allow {
+		t.Errorf("a read-only turn refused a read: %+v", d)
+	}
+	if e.Mode() != ModeBypass {
+		t.Errorf("the session's mode changed: %q", e.Mode())
+	}
+}
+
+// A hold applies to every check while it lasts, whatever the context, and the mode stays.
+func TestHoldReadOnlyHoldsEveryCheck(t *testing.T) {
+	root := t.TempDir()
+	e, err := NewEngine(Config{Mode: ModeBypass, Root: root, Home: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := Request{Tool: "write", Writes: true, Paths: []string{root + "/main.go"}}
+	release := e.HoldReadOnly()
+	if d := e.Check(context.Background(), w); d.Allow {
+		t.Fatalf("a write was allowed under a hold: %+v", d)
+	}
+	release()
+	release() // a second release changes nothing
+	if d := e.Check(context.Background(), w); !d.Allow {
+		t.Fatalf("the hold outlived its release: %+v", d)
+	}
+	if e.Mode() != ModeBypass {
+		t.Errorf("the session's mode changed: %q", e.Mode())
+	}
+}
+
+// A hold that begins while a request waits for its answer still holds it: an approval given during the read-only turn writes nothing.
+func TestHoldReadOnlyHoldsARequestAlreadyWaiting(t *testing.T) {
+	root := t.TempDir()
+	var e *Engine
+	var release func()
+	e, err := NewEngine(Config{Mode: ModeDefault, Root: root, Home: t.TempDir(), Prompter: func(context.Context, Request) Decision {
+		release = e.HoldReadOnly() // the read-only turn starts while the person is asked
+		return Decision{Allow: true, Reason: "approved"}
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := Request{Tool: "write", Writes: true, Paths: []string{root + "/main.go"}}
+	if d := e.Check(context.Background(), w); d.Allow {
+		t.Fatalf("a write approved during a hold was allowed: %+v", d)
+	}
+	release()
+}
+
+// An approval given to be remembered once a hold has begun is not remembered either: nothing outlives the read-only turn.
+func TestHoldReadOnlyRemembersNoApprovalGivenDuringIt(t *testing.T) {
+	root := t.TempDir()
+	var e *Engine
+	var persisted []Rule
+	release := func() {}
+	e, err := NewEngine(Config{Mode: ModeDefault, Root: root, Home: t.TempDir(), Persist: func(_ Scope, r Rule) { persisted = append(persisted, r) },
+		Prompter: func(context.Context, Request) Decision {
+			release = e.HoldReadOnly()
+			return Decision{Allow: true, Remember: ScopeProject}
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := Request{Tool: "write", Writes: true, Paths: []string{root + "/main.go"}}
+	if d := e.Check(context.Background(), w); d.Allow {
+		t.Fatalf("a write approved during a hold was allowed: %+v", d)
+	}
+	release()
+	if len(persisted) != 0 || len(e.Granted()) != 0 {
+		t.Errorf("an approval given during the hold was remembered: persisted %v, granted %v", persisted, e.Granted())
+	}
+}

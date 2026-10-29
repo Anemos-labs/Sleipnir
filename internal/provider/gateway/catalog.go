@@ -259,7 +259,7 @@ func perMillion(perToken string) (float64, error) {
 // MaxCatalogueBytes.
 func Fetch(ctx context.Context, hc *http.Client, baseURL string) ([]Entry, error) {
 	if hc == nil {
-		hc = &http.Client{Timeout: 30 * time.Second}
+		hc = &http.Client{Timeout: 30 * time.Second, Transport: provider.ProxyTransport()}
 	}
 	hc = provider.HardenClient(hc)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+"/models", nil)

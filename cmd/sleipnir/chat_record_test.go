@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -113,9 +114,15 @@ func TestPortableNamesNoPathOfThisMachine(t *testing.T) {
 	if want := `{"text":"/work/orders-api/orders/list.go and /work/chat/session and /work/orders-api"}`; string(got) != want {
 		t.Errorf("got %s\nwant %s", got, want)
 	}
+	// a Windows path is written in JSON with its backslashes doubled, and is replaced in that spelling
+	winWs, winRoot := `C:\Users\RUNNER~1\AppData\Local\Temp\rec\orders-api`, `C:\Users\RUNNER~1\AppData\Local\Temp\rec`
+	q, _ := json.Marshal(map[string]string{"text": winWs + `\orders\list.go`})
+	if got, err := portable(q, winWs, winRoot); err != nil || strings.Contains(string(got), "RUNNER") {
+		t.Errorf("a Windows path: %s %v", got, err)
+	}
 	for _, leak := range []string{
 		`{"text":"/home/alice/go/pkg/mod/x"}`, `{"text":"/Users/bob/src"}`, `{"text":"/var/folders/zz/T/x"}`, `{"text":"/root/.cache/go-build"}`,
-		`{"text":"/tmp/another-dir/x"}`, `{"text":"/private/var/x"}`,
+		`{"text":"/tmp/another-dir/x"}`, `{"text":"/private/var/x"}`, `{"text":"C:\\Users\\bob\\src"}`, `{"text":"c:\\temp\\x"}`,
 	} {
 		if _, err := portable([]byte(leak), ws, root); err == nil || !strings.Contains(err.Error(), "path of this machine") {
 			t.Errorf("%s was kept (%v)", leak, err)

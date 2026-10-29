@@ -69,3 +69,23 @@ func TestAWideTableIsBounded(t *testing.T) {
 		t.Error("the cut is not said")
 	}
 }
+
+// A bare address is a link labelled with itself: its label is not read as Markdown again, which would find the address again.
+func TestBareAddressIsALinkOfItself(t *testing.T) {
+	out, _ := renderMarkdown("see https://example.com/a_b_c, then [x](https://example.com)", mdEnv{})
+	if !strings.Contains(out, `<a href="https://example.com/a_b_c" class="ext" rel="noopener noreferrer" target="_blank">https://example.com/a_b_c</a>`) {
+		t.Errorf("bare address: %s", out)
+	}
+}
+
+// An address in a link's label is the label's text: a link does not nest inside another.
+func TestAddressInALinkLabelIsText(t *testing.T) {
+	out, _ := renderMarkdown("[see https://a.example/x](https://b.example/y)", mdEnv{})
+	if strings.Count(out, "<a ") != 1 || !strings.Contains(out, `>see https://a.example/x</a>`) {
+		t.Errorf("label address: %s", out)
+	}
+	out, _ = renderMarkdown("[[index|https://a.example/_draft_]]", mdEnv{})
+	if strings.Count(out, "<a ") != 1 || !strings.Contains(out, `>https://a.example/_draft_</a>`) {
+		t.Errorf("wiki label address: %s", out)
+	}
+}

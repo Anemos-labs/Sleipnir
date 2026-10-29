@@ -363,6 +363,11 @@ func (e *Engine) lead(ctx context.Context, key, skey string, p *pending, r Reque
 		d.Reason += declinedAdvice
 	}
 	e.pr.refuse(skey, d, gen)
+	if d.Allow {
+		if reason, refused := e.refusedReadOnly(ctx, r); refused { // a read-only turn began while the person was asked: nothing is remembered
+			return Decision{Reason: "read-only turn: " + reason, by: "policy"}
+		}
+	}
 	e.remember(d, v)
 	return d
 }

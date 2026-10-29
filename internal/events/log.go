@@ -164,6 +164,11 @@ func Open(dir, session string) (*Log, error) {
 		f.Close()
 		return nil, fmt.Errorf("events: %s is not a regular file", path)
 	}
+	// Where the open cannot refuse a link itself (Windows), the name must still be the file that was opened, not a link to it.
+	if lfi, err := os.Lstat(path); err != nil || lfi.Mode()&os.ModeSymlink != 0 || !os.SameFile(lfi, fi) {
+		f.Close()
+		return nil, fmt.Errorf("events: %s is a symlink; refusing to write through it", path)
+	}
 	// The journal holds the session's private events: it must be the user's own file, and private, before anything is
 	// written to it (a file another user planted in a shared directory would keep what it is told).
 	if ownedByOther(fi) {

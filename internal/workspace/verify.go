@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/executil"
+	"github.com/anemos-labs/sleipnir/internal/harden"
 )
 
 // VerifyRequest is one run of the verification command.
@@ -33,8 +34,9 @@ type VerifyRequest struct {
 	// BaseEnv, when non-nil, is the environment the command starts from instead
 	// of the process's own (secrets are removed from either).
 	BaseEnv []string
-	// Wrap is an argv prefix the shell runs under (Wrap... sh -c Cmd), for
-	// example a network or filesystem sandbox ending in "--". Ignored on Windows.
+	// Wrap is an argv prefix the shell runs under (Wrap... sh -c Cmd, or
+	// Wrap... cmd /C Cmd on Windows), for example a network or filesystem
+	// sandbox ending in "--", as the shell tool applies it.
 	Wrap []string
 }
 
@@ -95,7 +97,9 @@ func RunShell(ctx context.Context, req VerifyRequest) VerifyResult {
 	defer cancel()
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(tctx, "cmd", "/C", req.Cmd)
+		// the wrapper confines the command: it applies to cmd as it does to sh
+		argv := append(append([]string(nil), req.Wrap...), "cmd", "/C", req.Cmd)
+		cmd = exec.CommandContext(tctx, argv[0], argv[1:]...)
 	} else {
 		argv := append(append([]string(nil), req.Wrap...), "sh", "-c", req.Cmd)
 		cmd = exec.CommandContext(tctx, argv[0], argv[1:]...)
@@ -144,16 +148,18 @@ func RunShell(ctx context.Context, req VerifyRequest) VerifyResult {
 
 var secretEnvName = regexp.MustCompile(`(?i)(api[_-]?key|secret|token|password|passwd|credential|private[_-]?key|(^|[_-])key([_-]|$)|(^|[_-])(pass|passphrase|pat|auth|authorization)$|^ssh_auth_sock$)`)
 
-// verifyEnv builds the verifier's environment from base.
+// verifyEnv builds the verifier's environment from base: without git's own variables, the harness's, and what holds a credential.
+// req.Env is the caller's and is passed as it is.
 func verifyEnv(base []string, req VerifyRequest) []string {
 	out := make([]string, 0, len(base)+8)
 	for _, kv := range base {
-		name, _, ok := strings.Cut(kv, "=")
+		name, value, ok := strings.Cut(kv, "=")
 		if !ok || name == "" {
 			continue
 		}
 		up := strings.ToUpper(name)
-		if strings.HasPrefix(up, "GIT_") || secretEnvName.MatchString(name) ||
+		// the shell's own classifier, by name and by value (a password in a URL, a token's format), and the verifier's wider names
+		if strings.HasPrefix(up, "GIT_") || secretEnvName.MatchString(name) || harden.LooksSecret(name, value) ||
 			up == "PWD" || up == "TERM" || up == "NO_COLOR" || strings.HasPrefix(up, "SLEIPNIR_") {
 			continue
 		}

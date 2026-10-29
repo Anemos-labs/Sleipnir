@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -77,7 +78,7 @@ func writeMarker(adminDir string, mk marker) error {
 var errNoMarker = errors.New("workspace: no marker")
 
 func readMarker(adminDir string) (*marker, error) {
-	data, err := os.ReadFile(filepath.Join(adminDir, markerFile))
+	data, err := readMarkerFile(filepath.Join(adminDir, markerFile))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, errNoMarker
@@ -164,4 +165,31 @@ func (mk *marker) owner() ownerState {
 func atoi64(s string) int64 {
 	n, _ := strconv.ParseInt(s, 10, 64)
 	return n
+}
+
+// maxMarker bounds a marker: a few hundred bytes of JSON.
+const maxMarker = 64 << 10
+
+// readMarkerFile reads a marker that is a regular file (not a link, a FIFO or a device) of at most maxMarker bytes.
+func readMarkerFile(path string) ([]byte, error) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("workspace: the marker %s is not a regular file", path)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, maxMarker+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > maxMarker {
+		return nil, fmt.Errorf("workspace: corrupt marker: larger than %d bytes", maxMarker)
+	}
+	return b, nil
 }

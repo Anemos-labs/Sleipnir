@@ -66,3 +66,29 @@ func TestALinkedProjectTeamFileIsNotLoaded(t *testing.T) {
 		t.Errorf("found %s", p)
 	}
 }
+
+// Links in the project's teams directory to one of its own team files are not loaded each again: the file is listed once.
+func TestAliasesOfAProjectTeamAreNotListed(t *testing.T) {
+	project, home := world(t)
+	teams := filepath.Join(project, ".sleipnir", "teams")
+	if err := os.MkdirAll(teams, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(teams, "real.json"), []byte(`{"slots":["backend"]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 20 {
+		if err := os.Symlink("real.json", filepath.Join(teams, "alias"+string(rune('a'+i))+".json")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n := 0
+	for _, e := range List(project, home) {
+		if e.Scope == ScopeProject {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("%d project teams listed, want the one file", n)
+	}
+}

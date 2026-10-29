@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -260,6 +261,9 @@ func List(dir, home string) []Entry {
 			name, ok := strings.CutSuffix(e.Name(), ".json")
 			if !ok || e.IsDir() || !ValidName(name) {
 				continue
+			}
+			if sd.scope == ScopeProject && e.Type()&fs.ModeSymlink != 0 {
+				continue // a project's team is a file of its own: links to one file would each load it again
 			}
 			en := Entry{Name: name, Scope: sd.scope, Path: filepath.Join(sd.dir, e.Name()), Shadowed: seen[name]}
 			if inProject(sd.scope, sd.dir, en.Path) != nil {

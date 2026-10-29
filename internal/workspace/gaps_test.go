@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -587,5 +588,58 @@ func TestDeletingATreeDoesNotWriteThroughItsGitSymlink(t *testing.T) {
 	_ = tr.Remove(tctx(t), true)
 	if got, err := os.ReadFile(victim); err != nil || string(got) != "precious\n" {
 		t.Fatalf("the file the .git symlink named was overwritten: %q, %v", got, err)
+	}
+}
+
+// A marker is a small regular file: a link (to a device, a FIFO, a large file) is not read, and neither is a file past the bound.
+func TestReadMarkerIsBounded(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Symlink("/dev/zero", filepath.Join(dir, markerFile)); err == nil {
+		if _, err := readMarker(dir); err == nil || errors.Is(err, errNoMarker) {
+			t.Errorf("a marker that links to a device: %v", err)
+		}
+		os.Remove(filepath.Join(dir, markerFile))
+	}
+	if err := os.WriteFile(filepath.Join(dir, markerFile), []byte(strings.Repeat(" ", maxMarker+1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readMarker(dir); err == nil {
+		t.Error("an oversized marker was read")
+	}
+}
+
+// Update merges into the tree's own branch only: a clean tree whose HEAD was pointed at another branch moves nothing.
+func TestUpdateRefusesAnotherBranch(t *testing.T) {
+	e := newQueueEnv(t, QueueOptions{})
+	a, b := e.agent("a"), e.agent("b")
+	edit(t, b, "b.txt", "b\n")
+	if r := e.submit(b, "b"); !r.Merged() {
+		t.Fatalf("b: %+v", r)
+	}
+	if a.Branch == "" {
+		t.Skip("a tree without a branch of its own")
+	}
+	cmd := exec.Command("git", "-C", a.Path, "checkout", "-q", "-b", "other")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("checkout: %v %s", err, out)
+	}
+	if _, err := a.Update(tctx(t), e.q.Tip()); err == nil || !strings.Contains(err.Error(), "not its branch") {
+		t.Fatalf("Update on another branch: %v", err)
+	}
+}
+
+// A detached tree whose HEAD was pointed at a branch commits nothing: the commit would move that branch.
+func TestDetachedTreeRefusesToCommitOnABranch(t *testing.T) {
+	dir := newRepo(t)
+	m := newManager(t, openRepo(t, dir))
+	d := mustCreate(t, m, "detached", CreateOptions{Detach: true})
+	rawGit(t, d.Path, "checkout", "-q", "-b", "taken")
+	edit(t, d, "x.txt", "x\n")
+	if _, err := d.Commit(tctx(t), "x"); err == nil || !strings.Contains(err.Error(), "detach HEAD again") {
+		t.Fatalf("Commit on a branch from a detached tree: %v", err)
+	}
+	rawGit(t, d.Path, "checkout", "-q", "--detach")
+	if _, err := d.Commit(tctx(t), "x"); err != nil {
+		t.Fatalf("Commit once detached again: %v", err)
 	}
 }

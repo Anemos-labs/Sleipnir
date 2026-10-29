@@ -324,3 +324,14 @@ func TestAPlanWithoutTheOverviewGetsIt(t *testing.T) {
 		t.Error("the run is still in the plan phase")
 	}
 }
+
+// A runs directory that cannot be looked in fails Create at once: no other name would fare better.
+func TestCreateFailsWhereTheRunsCannotBeListed(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".sleipnir"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewStore(root).Create("A question", "quick", ModeReport, ""); err == nil {
+		t.Fatal("Create under a file succeeded")
+	}
+}

@@ -330,14 +330,11 @@ func (c *ReadCounter) Read(path string, input json.RawMessage) (part, what strin
 	if c.live[p] == nil {
 		c.live[p] = map[string]bool{}
 		if isAbsSlash(p) {
-			for i := 0; i < len(p); i++ {
-				if p[i] == '/' && i+1 < len(p) {
-					t := p[i+1:]
-					if c.tails[t] == nil {
-						c.tails[t] = map[string]bool{}
-					}
-					c.tails[t][p] = true
+			for _, t := range tailsOf(p) {
+				if c.tails[t] == nil {
+					c.tails[t] = map[string]bool{}
 				}
+				c.tails[t][p] = true
 			}
 		}
 	}
@@ -355,9 +352,9 @@ func (c *ReadCounter) Changed(path string) {
 	p := cleanSlash(path)
 	c.reset(p)
 	if isAbsSlash(p) {
-		for i := 0; i < len(p); i++ {
-			if p[i] == '/' && i+1 < len(p) && !isAbsSlash(p[i+1:]) {
-				c.reset(p[i+1:])
+		for _, t := range tailsOf(p) {
+			if !isAbsSlash(t) {
+				c.reset(t)
 			}
 		}
 		return
@@ -367,12 +364,42 @@ func (c *ReadCounter) Changed(path string) {
 	}
 }
 
-// reset starts over every part read of the cleaned path p.
+// reset starts over every part read of the cleaned path p, and forgets p in the tails index: a later change of the same name
+// visits only the paths read since.
 func (c *ReadCounter) reset(p string) {
+	if _, ok := c.live[p]; !ok {
+		return
+	}
 	for part := range c.live[p] {
 		c.parts[part] = 0
 	}
 	delete(c.live, p)
+	if isAbsSlash(p) {
+		for _, t := range tailsOf(p) {
+			if m := c.tails[t]; m != nil {
+				delete(m, p)
+				if len(m) == 0 {
+					delete(c.tails, t)
+				}
+			}
+		}
+	}
+}
+
+// maxTails is how many of an absolute path's last components can make a relative path that names the same file: a model names a
+// file by the last few, and a path of thousands of short ones would otherwise make every read and change hash each of its tails.
+const maxTails = 32
+
+// tailsOf are the relative tails of an absolute slash path, shortest first, at most maxTails of them ("a.go", "src/a.go" of
+// "/w/src/a.go").
+func tailsOf(p string) []string {
+	var out []string
+	for i := len(p) - 2; i >= 0 && len(out) < maxTails; i-- {
+		if p[i] == '/' {
+			out = append(out, p[i+1:])
+		}
+	}
+	return out
 }
 
 // samePath reports whether two paths a model used name one file: equal after cleaning, or an absolute path and a relative one

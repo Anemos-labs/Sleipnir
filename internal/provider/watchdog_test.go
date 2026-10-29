@@ -214,6 +214,22 @@ func TestWatchdogCountsSilentAttemptsOfOneRequest(t *testing.T) {
 	}
 }
 
+// A total deadline shorter than the first-byte wait that ends an attempt with no byte counts it as silent too.
+func TestWatchdogCountsASilentTotalTimeout(t *testing.T) {
+	req := &Request{}
+	for i := 1; i <= MaxSilentAttempts; i++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		wd := NewWatchdog(cancel, time.Hour, time.Hour, 20*time.Millisecond, req)
+		wd.Start()
+		waitDone(t, ctx, 3*time.Second)
+		e := wd.Failure(nil)
+		wd.Stop()
+		if wd.Why() != WatchTotal || e == nil || e.NoRetry != (i == MaxSilentAttempts) {
+			t.Fatalf("attempt %d: why %v, %+v", i, wd.Why(), e)
+		}
+	}
+}
+
 // Progress and the timers race by design; run them against each other.
 func TestWatchdogIsRaceFree(t *testing.T) {
 	var wg sync.WaitGroup

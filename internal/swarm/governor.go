@@ -213,10 +213,9 @@ func (g *Governor) refillLocked(now time.Time) {
 func (g *Governor) nextLocked() *waiter {
 	best := -1
 	for p := 0; p < numPrio; p++ {
-		g.trimLocked(p)
-		if len(g.qs[p]) > 0 {
+		g.trimLocked(p) // every queue: aging may pick a lower class, whose head must be a live waiter too
+		if best < 0 && len(g.qs[p]) > 0 {
 			best = p
-			break
 		}
 	}
 	if best < 0 {

@@ -175,10 +175,10 @@ func (s *Session) Classify(tool, arg string) (perm.Classification, error) {
 	return c, nil
 }
 
-// absPath makes a path the person typed absolute against the project root.
+// absPath makes a path absolute against the project root. The name is kept as it is, spaces included: what is classified is the
+// file a read of the same path opens.
 func (s *Session) absPath(p string) string {
-	p = strings.TrimSpace(p)
-	if p == "" {
+	if strings.TrimSpace(p) == "" {
 		return s.opts.Root
 	}
 	if filepath.IsAbs(p) {

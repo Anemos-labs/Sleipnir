@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"unicode/utf8"
 )
@@ -188,6 +189,7 @@ func SpecRef(objective string) string {
 var (
 	ErrSpecOutside = errors.New("the spec file is outside the project")
 	ErrSpecTooBig  = fmt.Errorf("the spec file is larger than %d KiB", MaxSpecBytes>>10)
+	ErrSpecLinked  = errors.New("the spec file is a symbolic link, or is reached through one: name the file itself")
 )
 
 // Prepare is New for a goal that may name a spec file (SpecRef): the file is read now, relative to dir and inside root (dir when root is
@@ -260,6 +262,9 @@ func rubricEntryExists(root string) bool {
 // errNoSuchFile is readSpec's error for a file that does not exist.
 var errNoSuchFile = errors.New("no such file")
 
+// specOpened runs between the open of a spec and the check of its path; a test moves the project away there.
+var specOpened = func() {}
+
 // readSpec reads a spec file named by ref, relative to dir, inside root: through os.Root, so that neither ".." nor a symbolic link
 // takes it out of the project.
 func readSpec(ref, dir, root string) (string, error) {
@@ -289,9 +294,35 @@ func readSpec(ref, dir, root string) (string, error) {
 		return "", err
 	}
 	defer f.Close()
-	if st, err := f.Stat(); err != nil {
+	st, err := f.Stat()
+	if err != nil {
 		return "", err
-	} else if st.IsDir() {
+	}
+	specOpened()
+	// the file named is the file read: a link in the project (SPEC.md -> .env) would put whatever it reaches in front of the model
+	// under the name the person chose. The path is resolved after the open and must name, without a link, the very file opened.
+	{
+		realRoot, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			return "", err // the project cannot be resolved now (moved away): nothing says the file read is the file named
+		}
+		real, err := filepath.EvalSymlinks(p)
+		if err != nil {
+			return "", ErrSpecLinked
+		}
+		realRel, err := filepath.Rel(realRoot, real)
+		if err != nil || !filepath.IsLocal(realRel) {
+			return "", ErrSpecOutside
+		}
+		// Windows resolves a name to the case it has on disk (spec.md is SPEC.md); the Lstat below still tells a link from the file
+		if named := filepath.Clean(rel); realRel != named && (runtime.GOOS != "windows" || !strings.EqualFold(realRel, named)) {
+			return "", ErrSpecLinked
+		}
+		if lst, err := r.Lstat(rel); err != nil || !os.SameFile(lst, st) {
+			return "", ErrSpecLinked
+		}
+	}
+	if st.IsDir() {
 		return "", errors.New("it is a directory")
 	}
 	b, err := io.ReadAll(io.LimitReader(f, MaxSpecBytes+1))

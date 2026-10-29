@@ -72,12 +72,13 @@ var (
 
 // mdRenderer renders one page.
 type mdRenderer struct {
-	env   mdEnv
-	refs  mdRefs
-	seen  map[string]bool
-	ids   map[string]int
-	b     strings.Builder
-	cited bool // the current block cited a source
+	env    mdEnv
+	refs   mdRefs
+	seen   map[string]bool
+	ids    map[string]int
+	b      strings.Builder
+	cited  bool // the current block cited a source
+	inLink bool // a link's label is being rendered: a bare address in it is text, an <a> does not nest
 }
 
 // renderMarkdown renders a page's Markdown as HTML and reports what it refers to.
@@ -549,7 +550,11 @@ func (r *mdRenderer) inline(s string) string {
 				end++
 			}
 			raw := strings.TrimRight(s[i:end], ".,;:!?")
-			b.WriteString(r.link(raw, raw))
+			if r.inLink { // the whole address as text: no <a> inside the link, nor emphasis out of its underscores
+				b.WriteString(html.EscapeString(raw))
+			} else {
+				b.WriteString(r.linkHTML(raw, func() string { return html.EscapeString(raw) }, raw))
+			}
 			i += len(raw)
 			continue
 		}
@@ -641,7 +646,15 @@ func (r *mdRenderer) wikiLink(body string) string {
 	if frag != "" {
 		href += "#" + url.PathEscape(frag)
 	}
-	return `<a class="wl" href="` + html.EscapeString(href) + `">` + r.inline(text) + `</a>`
+	return `<a class="wl" href="` + html.EscapeString(href) + `">` + r.labelHTML(text) + `</a>`
+}
+
+// labelHTML renders a link's label: a bare address in it is text, an <a> does not nest.
+func (r *mdRenderer) labelHTML(label string) string {
+	outer := r.inLink
+	r.inLink = true
+	defer func() { r.inLink = outer }()
+	return r.inline(label)
 }
 
 // special are the pages the builder makes itself, which any page may link to.
@@ -651,6 +664,12 @@ var special = map[string]string{
 
 // link renders an ordinary link. Only web, mail and relative addresses are links; anything else (javascript:) is text.
 func (r *mdRenderer) link(label, href string) string {
+	return r.linkHTML(label, func() string { return r.labelHTML(label) }, href)
+}
+
+// linkHTML is link with the label's markup made by labelHTML: a bare address is its own label, shown as it is (parsed as Markdown
+// it would be a bare address again, without end).
+func (r *mdRenderer) linkHTML(label string, labelHTML func() string, href string) string {
 	u, err := url.Parse(href)
 	if err != nil || (u.Scheme != "" && u.Scheme != "http" && u.Scheme != "https" && u.Scheme != "mailto") {
 		return html.EscapeString(label)
@@ -660,7 +679,7 @@ func (r *mdRenderer) link(label, href string) string {
 	if ext {
 		attrs = ` class="ext" rel="noopener noreferrer" target="_blank"`
 	}
-	return `<a href="` + html.EscapeString(href) + `"` + attrs + `>` + r.inline(label) + `</a>`
+	return `<a href="` + html.EscapeString(href) + `"` + attrs + `>` + labelHTML() + `</a>`
 }
 
 var reTags = regexp.MustCompile(`<[^>]*>`)

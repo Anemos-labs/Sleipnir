@@ -870,6 +870,36 @@ func TestTextSinkDropsBlankLinesThatOnlyOpenAMessage(t *testing.T) {
 	}
 }
 
+// The white space kept before a message's first words is bounded, even when it arrives in one piece.
+func TestTextSinkBoundsLeadingWhiteSpace(t *testing.T) {
+	var out, log strings.Builder
+	sink := session.NewTextSink(&out, &log, "main", false)
+	sink.Text("main", strings.Repeat(" ", 1<<20))
+	sink.Text("main", "x")
+	if n := out.Len(); n > 8<<10 || !strings.HasSuffix(out.String(), "x") {
+		t.Fatalf("answer of %d bytes", n)
+	}
+	sink.Response("main", nil, 0)
+	out.Reset()
+	// many blank lines, then an indented first line: the indentation stays
+	for i := 0; i < 5000; i++ {
+		sink.Text("main", "\n")
+	}
+	sink.Text("main", "    ")
+	sink.Text("main", "x\n")
+	if got := out.String(); got != "    x\n" {
+		t.Fatalf("answer = %q", got)
+	}
+	sink.Response("main", nil, 0)
+	out.Reset()
+	// the bound falls inside a no-break space: half of it kept would be a character, and the blank line content
+	sink.Text("main", strings.Repeat(" ", 4<<10-1)+"\u00a0")
+	sink.Text("main", "\nprint('ok')\n")
+	if got := out.String(); got != "print('ok')\n" {
+		t.Fatalf("answer = %q", got)
+	}
+}
+
 // Text that reaches the terminal is data: an escape sequence in a model's answer
 // (say, an OSC 52 clipboard write a web page talked it into) must not arrive as one.
 func TestTextSinkStripsTerminalEscapes(t *testing.T) {

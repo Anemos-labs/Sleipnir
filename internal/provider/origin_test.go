@@ -289,3 +289,16 @@ func TestHardenClientComposesWithTheCallersPolicyAndDoesNotMutateIt(t *testing.T
 		t.Fatal("HardenClient must return a copy")
 	}
 }
+
+// A loopback host in any spelling the harness accepts goes straight to this machine through ProxyTransport, proxy or not.
+func TestProxyTransportKeepsLoopbackLocal(t *testing.T) {
+	t.Setenv("HTTP_PROXY", "http://proxy.invalid:3128")
+	t.Setenv("HTTPS_PROXY", "http://proxy.invalid:3128")
+	tr := ProxyTransport().(*http.Transport)
+	for _, u := range []string{"http://localhost./v1/models", "http://LOCALHOST:8080/", "http://127.0.0.2/"} {
+		req, _ := http.NewRequest(http.MethodGet, u, nil)
+		if p, err := tr.Proxy(req); err != nil || p != nil {
+			t.Errorf("%s goes through %v (%v)", u, p, err)
+		}
+	}
+}

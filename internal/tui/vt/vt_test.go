@@ -2,6 +2,7 @@ package vt
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/tui/cell"
@@ -513,5 +514,14 @@ func TestWriteReturnsEverything(t *testing.T) {
 	}
 	if _, st := v.Cell(0, 0); !st.Has(cell.Bold) {
 		t.Error("a sequence split across two writes")
+	}
+}
+
+// A cell keeps a bounded run of combining marks: a stream of thousands on one letter is not copied into it again with each.
+func TestCombiningMarksPerCellAreBounded(t *testing.T) {
+	v := New(4, 1)
+	v.WriteString("e" + strings.Repeat("́", 10000))
+	if text, _ := v.Cell(0, 0); len(text) > maxCellText+4 || !strings.HasPrefix(text, "é") {
+		t.Errorf("cell holds %d bytes", len(text))
 	}
 }

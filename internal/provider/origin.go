@@ -184,3 +184,16 @@ func ProxyFromEnvironment(req *http.Request) (*url.URL, error) {
 	}
 	return http.ProxyFromEnvironment(req)
 }
+
+// ProxyTransport is a copy of http.DefaultTransport that picks its proxy with ProxyFromEnvironment, so every spelling of a
+// loopback host IsLoopbackHost accepts stays on this machine, and reports a refused proxy CONNECT as such (CheckProxyConnect).
+// A DefaultTransport that a program (a test) replaced with a RoundTripper of its own is returned as it is.
+func ProxyTransport() http.RoundTripper {
+	def, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return http.DefaultTransport
+	}
+	tr := def.Clone()
+	tr.Proxy, tr.OnProxyConnectResponse = ProxyFromEnvironment, CheckProxyConnect
+	return tr
+}

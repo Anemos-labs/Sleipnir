@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -170,12 +171,20 @@ func (t *tailer) open() (ok bool, err error) {
 	if t.f != nil {
 		return true, nil
 	}
-	f, err := os.Open(t.path)
+	if fi, err := os.Stat(t.path); err == nil && !fi.Mode().IsRegular() {
+		// a FIFO or a device would block the open or never end: a log is a file
+		return false, fmt.Errorf("%s is not a regular file", t.path)
+	}
+	f, err := os.OpenFile(t.path, readFlags, 0)
 	if err != nil {
 		if (t.opt.WaitForFile || t.opened) && errors.Is(err, fs.ErrNotExist) {
 			return false, nil
 		}
 		return false, err
+	}
+	if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() {
+		f.Close()
+		return false, fmt.Errorf("%s is not a regular file", t.path)
 	}
 	t.f, t.opened = f, true
 	return true, nil
