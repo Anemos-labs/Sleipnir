@@ -485,6 +485,15 @@ func (t *Translator) derive(e events.Event, ts float64, at int64) {
 		if json.Unmarshal(e.Data, &p) == nil {
 			t.sysRow("mgr", "⚠", fmt.Sprintf("⚠ budget reached: $%.2f of $%.2f spent; running workers were stopped", p.SpentUSD, p.BudgetUSD), "", "", ts, at)
 		}
+	case "swarm.budget_low":
+		var p struct {
+			BudgetUSD float64 `json:"budget_usd"`
+			SpentUSD  float64 `json:"spent_usd"`
+			Workers   int     `json:"workers"`
+		}
+		if json.Unmarshal(e.Data, &p) == nil {
+			t.sysRow("mgr", "⚠", fmt.Sprintf("⚠ budget nearly spent: $%.2f of $%.2f; nothing new starts and %d running worker(s) were asked to hand in", p.SpentUSD, p.BudgetUSD, max(p.Workers, 0)), "", "", ts, at)
+		}
 	case "agent.panic", "tool.panic", "supervisor.panic":
 		var p struct {
 			ID    string `json:"id"`

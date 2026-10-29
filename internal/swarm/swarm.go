@@ -345,6 +345,7 @@ type Swarm struct {
 	verifyRan, verifyFailed atomic.Int32 // runs of the verify command, and those that failed (VerifyRuns)
 	hseq                    atomic.Int64
 	budgetOnce              atomic.Bool
+	budgetLowOnce           atomic.Bool // the spend reached the budget's reserve (budgetLow)
 
 	wk      waker                    // waking an idle manager (wake.go)
 	mgrSeen atomic.Pointer[Snapshot] // the board as the manager's newest request showed it

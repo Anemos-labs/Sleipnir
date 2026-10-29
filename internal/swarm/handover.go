@@ -75,7 +75,7 @@ func (s *Swarm) Handover(ctx context.Context, req HandoverReq) (HandoverResult, 
 	if err := s.alive(); err != nil {
 		return HandoverResult{}, err
 	}
-	if err := s.budgetErr(); err != nil {
+	if err := s.startErr(); err != nil {
 		return HandoverResult{}, err
 	}
 	id := strings.TrimSpace(req.Task)
