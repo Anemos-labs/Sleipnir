@@ -452,13 +452,18 @@ func (t *webTab) turn(ctx context.Context, s *session.Session, prompt, display s
 		t.emit(&wire.Say{Who: "you", Text: clip(display, 16<<10)})
 		t.addHist(display)
 	}
-	t.emit(&wire.Turn{S: "start"})
-	t.publishMeta()
 	t.mu.Lock()
 	t.goalTurn = !echo
 	t.mu.Unlock()
+	t.emit(&wire.Turn{S: "start"})
+	t.publishMeta()
 	err := t.goals.Turn(ctx, s, prompt, func(e goalEvent) {
-		if e.Kind == "next" {
+		switch e.Kind {
+		case "ran": // no run reads a steer while the judge rules: a message then waits, and the goal yields to it
+			t.mu.Lock()
+			t.goalTurn = false
+			t.mu.Unlock()
+		case "next":
 			t.mu.Lock()
 			t.goalTurn = true
 			t.mu.Unlock()
@@ -642,7 +647,7 @@ func (t *webTab) steersContinuation(ctx context.Context, req wire.MessageRequest
 	t.mu.Lock()
 	on := t.goalTurn && t.active && len(t.queue) == 0
 	t.mu.Unlock()
-	return on && t.Steer(ctx, req.Text) == nil
+	return on && t.steer(ctx, req.Text, req.Display) == nil
 }
 
 // kind is what a queued item is, as wire.QueuedLine says it: a message, a slash command, or an action of the host.
@@ -1145,8 +1150,14 @@ func goalCommandStatus(s *session.Session, g *goal.State, out io.Writer) {
 }
 
 // Steer tells the running turn of the manager something without stopping it.
-func (t *webTab) Steer(ctx context.Context, text string) error {
+func (t *webTab) Steer(ctx context.Context, text string) error { return t.steer(ctx, text, "") }
+
+// steer is Steer with what the transcript shows when it differs from the text the agent reads (a message's display: a paste chip).
+func (t *webTab) steer(ctx context.Context, text, display string) error {
 	text = strings.TrimSpace(text)
+	if strings.TrimSpace(display) == "" {
+		display = text
+	}
 	switch {
 	case text == "":
 		return werr(http.StatusBadRequest, "empty", "/steer needs text: what the agent should read with its next step")
@@ -1169,7 +1180,7 @@ func (t *webTab) Steer(ctx context.Context, text string) error {
 		return werr(http.StatusConflict, "idle", "no turn is running: send it as a message")
 	}
 	_, _ = s.Log.Emit("", "user.steer", map[string]any{"text": text})
-	t.emit(&wire.Steer{To: "mgr", Text: clip(text, maxSteerLen)})
+	t.emit(&wire.Steer{To: "mgr", Text: clip(display, maxSteerLen)})
 	return nil
 }
 
