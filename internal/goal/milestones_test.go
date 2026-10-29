@@ -180,6 +180,27 @@ func TestSpecNamedInAnotherCaseIsRead(t *testing.T) {
 	}
 }
 
+// A project moved away between the open of its spec and the check of the path is refused: nothing then says the file read is the
+// one named.
+func TestSpecIsRefusedWhenTheProjectMovesAway(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "project")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "SPEC.md"), []byte("the spec"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { specOpened = func() {} })
+	specOpened = func() {
+		if err := os.Rename(root, root+"-moved"); err != nil {
+			t.Error(err)
+		}
+	}
+	if text, err := readSpec("SPEC.md", root, root); err == nil {
+		t.Errorf("read %q from a project that moved away", text)
+	}
+}
+
 // "done" stands only when the same verdict confirms every milestone with evidence; rulings update the milestones either way.
 func TestReconcileHoldsDoneToEveryMilestone(t *testing.T) {
 	g := New("x")
