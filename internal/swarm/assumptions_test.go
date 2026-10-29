@@ -64,7 +64,7 @@ func TestAssumptionsAreBoundedAndFollowTheTaskLifetime(t *testing.T) {
 	if err := b.Claim("rv-1", task.ID); err != nil {
 		t.Fatal(err)
 	}
-	in := []string{"two\nlines", "two lines", strings.Repeat("x", 3*maxAssumeRunes)}
+	in := []string{"two\nlines", "two lines", "-1 is a valid offset", "* --no-cache stays supported", strings.Repeat("x", 3*maxAssumeRunes)}
 	for i := range 2 * maxAssumptions {
 		in = append(in, "choice "+string(rune('a'+i)))
 	}
@@ -82,6 +82,9 @@ func TestAssumptionsAreBoundedAndFollowTheTaskLifetime(t *testing.T) {
 	}
 	if cur.Assumptions[0] != "two lines" || cur.Assumptions[1] == "two lines" {
 		t.Fatalf("duplicates were not merged: %q", cur.Assumptions)
+	}
+	if cur.Assumptions[1] != "-1 is a valid offset" || cur.Assumptions[2] != "--no-cache stays supported" {
+		t.Fatalf("a list marker was not told from the text: %q", cur.Assumptions[1:3])
 	}
 	replayed, err := ReplayBoard(log.All())
 	if err != nil {

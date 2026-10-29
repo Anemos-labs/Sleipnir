@@ -973,12 +973,18 @@ func (b *Board) submitReportAt(agent, id string, rev uint64, sub submission, che
 }
 
 // cleanAssumptions keeps the first maxAssumptions non-empty, distinct lines of in, each made one line of at most
-// maxAssumeRunes runes. It returns nil when nothing is left.
+// maxAssumeRunes runes without a leading list marker ("- ", "* ", "• "). It returns nil when nothing is left.
 func cleanAssumptions(in []string) []string {
 	var out []string
 	seen := map[string]bool{}
 	for _, a := range in {
-		a = strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(cleanText(a, maxAssumeRunes)), "-*• "))
+		a = strings.TrimSpace(cleanText(a, maxAssumeRunes))
+		for _, bullet := range []string{"- ", "* ", "• "} {
+			if rest, ok := strings.CutPrefix(a, bullet); ok {
+				a = strings.TrimSpace(rest) // a list marker, not part of the text: "-1 is valid" and "--no-cache" keep theirs
+				break
+			}
+		}
 		if a == "" || seen[a] {
 			continue
 		}

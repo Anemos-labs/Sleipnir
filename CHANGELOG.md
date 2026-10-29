@@ -11,12 +11,12 @@ they do not indicate whether a change has been released.
   to 8 one-line choices the task, its scope and its agreements left open).
   They are kept on the task while it is in review or done (`task get`, the
   board log and its replay), and the board digest the manager reads names
-  them beside the evidence, so a wrong default or a guessed interface is
-  rejected in review instead of surfacing in a dependent task. The swarm
-  constitution gains one line asking workers to list them (about 40 tokens,
-  written to the cache once a session), the manager's review guidance one
-  clause, and the `task` tool schema one optional property (about 45
-  tokens); both prompt layers are cache-key changes.
+  them beside the evidence, so the manager can find and reject a wrong
+  default or a guessed interface before dependent work builds on it. The
+  swarm constitution gains one line asking workers to list them (about 40
+  tokens), the manager's review guidance one clause, and the `task` tool
+  schema one optional property (about 45 tokens); both change the bytes of
+  stable prompt layers.
 - Harness hardening from a security review, third part. A workspace
   verifier no longer gets environment variables whose value looks like a
   secret (proxy settings such as `HTTPS_PROXY` are exempt from the value
