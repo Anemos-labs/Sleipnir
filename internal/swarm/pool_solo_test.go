@@ -126,6 +126,24 @@ func TestSoloTaskStaysSoloWhenStartedAgain(t *testing.T) {
 	}
 }
 
+// A worker that claims a top-level task of its pooled role is told that the manager starts it and what to do instead, not to use
+// spawn, which it does not have.
+func TestAWorkersClaimOfAPoolParentSaysTheManagerStartsIt(t *testing.T) {
+	r, _ := newSoloRig(t)
+	task, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "build the API", Role: "backend", Files: []string{"api/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := secRevCall(t, secRevTool(t, r.sw, "task"), "be-2", "backend", map[string]any{"action": "claim", "id": task.ID})
+	text := res.Text
+	if !res.IsError || !strings.Contains(text, task.ID+" is a top-level backend task: the manager starts it") || strings.Contains(text, "assign this parent") {
+		t.Fatalf("a worker's claim of a pool parent: %q", text)
+	}
+	if got, _ := r.sw.Board.Snapshot().Task(task.ID); got.Owner != "" {
+		t.Fatalf("the claim took the task: %+v", got)
+	}
+}
+
 // solo is for a top-level task: a child of a pool, or a parent that already has a pool, is refused.
 func TestSoloRefusesChildrenAndPooledParents(t *testing.T) {
 	r, _ := newSoloRig(t)

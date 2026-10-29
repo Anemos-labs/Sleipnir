@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A worker's `task claim` of a top-level task of a role with more than one
+  member is refused with a message for a worker: the manager starts that
+  task with `spawn`, and the worker takes a child task of its pool or waits
+  for an assignment. It used to tell the worker to use `spawn`, which only
+  the manager has. A `spawn` or a handover that is refused this way keeps
+  the message it had.
+
 - The web API adds `GET /api/sandbox` (whether a session can have a
   sandbox here, and why not) and `GET /api/scan/clone/progress` (how far a
   Deep scan clone is, followed by the new optional `progress` id of

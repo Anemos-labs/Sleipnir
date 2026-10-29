@@ -105,6 +105,14 @@ func claimedCards(s *Snapshot, agent string, candidate *Task) string {
 	return out.String()
 }
 
+// poolParentError refuses a top-level task of a role with more than one member to one member: it starts through spawn, as the
+// role's pool or as a solo task. Error is what the one assigning it reads; a worker's own claim says it in a worker's terms.
+type poolParentError struct{ id, role string }
+
+func (e poolParentError) Error() string {
+	return "assign this parent with spawn so every pool member plans together, or with spawn solo=true to give it to one member without the pool"
+}
+
 // claimCheck combines scope enforcement with a limit on protected assignment data.
 // It guards both claims and spawns, including reuse with older blocked tasks.
 func (s *Swarm) claimCheck(agent string, readOnly bool) TaskCheck {
@@ -113,7 +121,7 @@ func (s *Swarm) claimCheck(agent string, readOnly bool) TaskCheck {
 		if s.cfg.PersistentPools && t.Parent == "" && t.Pool == nil && !t.Solo {
 			counts, _ := TeamCounts(s.cfg.Team)
 			if counts[t.Role] > 1 {
-				return fmt.Errorf("assign this parent with spawn so every pool member plans together, or with spawn solo=true to give it to one member without the pool")
+				return poolParentError{id: t.ID, role: t.Role}
 			}
 		}
 		if check != nil {
