@@ -7,6 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The verification command runs with `TMPDIR` set to a directory of its
+  own inside the temporary directory it would have used, and that
+  directory is removed when the run ends. A `TMPDIR` the caller passes
+  still wins.
+
 - A pool whose combined result fails verification at `task done` executes
   again at a new revision instead of staying reconciling, where no member
   could write and the leader could not create a child to fix it. The

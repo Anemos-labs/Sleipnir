@@ -79,6 +79,7 @@ type VerifyFunc func(ctx context.Context, req VerifyRequest) VerifyResult
 // command is: bounded in time (process group killed), bounded in output,
 // credentials scrubbed from its environment, GIT_* removed (an inherited GIT_DIR
 // would point the tests' own git calls at the wrong repository), no terminal.
+// Its temporary files go in a directory of its own, removed when it ends.
 func RunShell(ctx context.Context, req VerifyRequest) VerifyResult {
 	res := VerifyResult{Cmd: req.Cmd, ExitCode: -1}
 	if strings.TrimSpace(req.Cmd) == "" {
@@ -109,7 +110,12 @@ func RunShell(ctx context.Context, req VerifyRequest) VerifyResult {
 	if base == nil {
 		base = os.Environ()
 	}
-	cmd.Env = verifyEnv(base, req)
+	env := verifyEnv(base, req)
+	if tmp := runTempDir(base); tmp != "" {
+		defer os.RemoveAll(tmp)
+		env = withTempDir(env, tmp, len(req.Env))
+	}
+	cmd.Env = env
 	cmd.Stdin = nil
 	buf := newTailBuffer(maxOut)
 	cmd.Stdout, cmd.Stderr = buf, buf // one writer: interleaving is preserved
@@ -144,6 +150,36 @@ func RunShell(ctx context.Context, req VerifyRequest) VerifyResult {
 		}
 	}
 	return res
+}
+
+// runTempDir makes the directory a run's temporary files go in, inside the temporary directory of base (its TMPDIR, or the
+// process's). Test helpers that build into os.MkdirTemp and never remove it left 290 copies of a 25 MB server binary in
+// /tmp over a day of a team's merge gates, until the disk was full. "" when it cannot be made.
+func runTempDir(base []string) string {
+	parent := ""
+	for _, kv := range base {
+		if v, ok := strings.CutPrefix(kv, "TMPDIR="); ok {
+			parent = v
+		}
+	}
+	dir, err := os.MkdirTemp(parent, "sleipnir-verify-")
+	if err != nil {
+		return ""
+	}
+	return dir
+}
+
+// withTempDir points env's temporary directory at dir, ahead of the caller's own last n entries (req.Env), which still win.
+func withTempDir(env []string, dir string, n int) []string {
+	names := []string{"TMPDIR"}
+	if runtime.GOOS == "windows" {
+		names = []string{"TMP", "TEMP"}
+	}
+	head, tail := env[:len(env)-n:len(env)-n], env[len(env)-n:]
+	for _, name := range names {
+		head = append(head, name+"="+dir)
+	}
+	return append(head, tail...)
 }
 
 var secretEnvName = regexp.MustCompile(`(?i)(api[_-]?key|secret|token|password|passwd|credential|private[_-]?key|(^|[_-])key([_-]|$)|(^|[_-])(pass|passphrase|pat|auth|authorization)$|^ssh_auth_sock$)`)
