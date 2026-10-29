@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/gitx"
@@ -103,10 +105,17 @@ func (h *webHostImpl) scanClone(w http.ResponseWriter, r *http.Request) {
 		}
 		dir = filepath.Join(base, scan.CloneName(req.URL)+"-"+strconv.Itoa(n))
 	}
-	if err := scan.Clone(r.Context(), req.URL, dir); err != nil {
+	if req.Progress != "" && !cloneProgressID.MatchString(req.Progress) {
+		writeErr(w, werr(http.StatusBadRequest, "bad_request", "progress is an id of 1 to 64 letters, digits and dashes"))
+		return
+	}
+	track := h.clones.begin(req.Progress)
+	defer track.end()
+	if err := scan.CloneProgress(r.Context(), req.URL, dir, track.line); err != nil {
 		writeErr(w, werr(http.StatusBadGateway, "clone_failed", err.Error()))
 		return
 	}
+	track.step("inventory", "Taking the inventory of the repository")
 	repo, err := gitx.Open(dir, gitx.WithMaxOutput(256<<20), gitx.WithTimeout(5*time.Minute))
 	if err != nil {
 		writeErr(w, werr(http.StatusBadGateway, "clone_failed", err.Error()))
@@ -119,6 +128,123 @@ func (h *webHostImpl) scanClone(w http.ResponseWriter, r *http.Request) {
 	}
 	ok(w, map[string]any{"ok": true, "dir": dir, "slug": run.Slug, "team": run.Team(), "shards": len(run.Shards),
 		"goal": scan.Objective(run, filepath.Join(dir, filepath.FromSlash(scan.BriefPath(run.Slug))))})
+}
+
+// cloneProgressID is the form of the id a page names a clone's progress by.
+var cloneProgressID = regexp.MustCompile(`^[A-Za-z0-9-]{1,64}$`)
+
+// gitPercent is the share git prints in a progress line ("Receiving objects:  42% (420/1000)").
+var gitPercent = regexp.MustCompile(`(\d{1,3})%`)
+
+// cloneTracker keeps how far each clone of POST /api/scan/clone that asked for it is, by the id the page chose, for GET
+// /api/scan/clone/progress. Its zero value is ready; an entry goes a little after its clone ends, and there are never more than
+// maxTrackedClones.
+type cloneTracker struct {
+	mu   sync.Mutex
+	runs map[string]*trackedClone
+}
+
+// trackedClone is a clone's progress and when it started.
+type trackedClone struct {
+	wire.CloneProgress
+	started time.Time
+}
+
+const (
+	maxTrackedClones = 32
+	cloneProgressTTL = 2 * time.Minute
+)
+
+// cloneTrack is one clone's entry; every method does nothing when the request asked for no progress.
+type cloneTrack struct {
+	t  *cloneTracker
+	id string
+}
+
+func (c *cloneTracker) begin(id string) cloneTrack {
+	if id == "" {
+		return cloneTrack{}
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.runs == nil {
+		c.runs = map[string]*trackedClone{}
+	}
+	if _, again := c.runs[id]; !again && len(c.runs) >= maxTrackedClones {
+		return cloneTrack{} // the page polls nothing it can trust: it shows only that the clone runs
+	}
+	c.runs[id] = &trackedClone{CloneProgress: wire.CloneProgress{Phase: "clone", Line: "Starting git clone", Percent: -1}, started: time.Now()}
+	return cloneTrack{t: c, id: id}
+}
+
+func (c *cloneTracker) get(id string) (wire.CloneProgress, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	p, ok := c.runs[id]
+	if !ok {
+		return wire.CloneProgress{}, false
+	}
+	out := p.CloneProgress
+	if !out.Done {
+		out.Seconds = int(time.Since(p.started) / time.Second)
+	}
+	return out, true
+}
+
+func (k cloneTrack) update(fn func(*trackedClone)) {
+	if k.t == nil {
+		return
+	}
+	k.t.mu.Lock()
+	defer k.t.mu.Unlock()
+	if p := k.t.runs[k.id]; p != nil {
+		fn(p)
+	}
+}
+
+// line takes a progress line of git's.
+func (k cloneTrack) line(l string) {
+	k.update(func(p *trackedClone) {
+		p.Line, p.Percent = clip(l, 200), -1
+		if m := gitPercent.FindStringSubmatch(l); m != nil {
+			p.Percent, _ = strconv.Atoi(m[1])
+		}
+	})
+}
+
+// step starts a phase of the work after the clone.
+func (k cloneTrack) step(phase, line string) {
+	k.update(func(p *trackedClone) { p.Phase, p.Line, p.Percent = phase, line, -1 })
+}
+
+// end marks the clone done (it answered, well or not) and forgets it a little later.
+func (k cloneTrack) end() {
+	if k.t == nil {
+		return
+	}
+	k.update(func(p *trackedClone) { p.Done = true })
+	time.AfterFunc(cloneProgressTTL, func() {
+		k.t.mu.Lock()
+		defer k.t.mu.Unlock()
+		if p := k.t.runs[k.id]; p != nil && p.Done {
+			delete(k.t.runs, k.id)
+		}
+	})
+}
+
+// scanCloneProgress is GET /api/scan/clone/progress?id=ID: how far the clone that named its progress ID is.
+func (h *webHostImpl) scanCloneProgress(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if !cloneProgressID.MatchString(id) {
+		writeErr(w, werr(http.StatusBadRequest, "bad_request", "id is 1 to 64 letters, digits and dashes"))
+		return
+	}
+	p, found := h.clones.get(id)
+	if !found {
+		writeErr(w, werr(http.StatusNotFound, "no_clone", "no clone is running under that id"))
+		return
+	}
+	ok(w, p)
 }
 
 // scanExports are the formats a scan's report is exported in: the file name and the content type of each. The page is the

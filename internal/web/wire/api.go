@@ -492,6 +492,27 @@ type ScanRequest struct {
 type ScanCloneRequest struct {
 	URL   string `json:"url"`
 	Depth string `json:"depth,omitempty"`
+	// Progress is an id the page chose (1 to 64 letters, digits and dashes) to follow the clone by, with GET
+	// /api/scan/clone/progress?id=; empty follows nothing.
+	Progress string `json:"progress,omitempty"`
+}
+
+// CloneProgress is how far a clone for a scan is: the phase (clone while git runs, inventory while the scan is created), git's
+// last progress line, its share in percent (-1 when the line has none), the seconds since it started and whether the request has
+// answered.
+type CloneProgress struct {
+	Phase   string `json:"phase"`
+	Line    string `json:"line"`
+	Percent int    `json:"percent"`
+	Seconds int    `json:"seconds"`
+	Done    bool   `json:"done,omitempty"`
+}
+
+// SandboxStatus says whether a session can have a sandbox on this machine (--sandbox docker): the docker command is installed
+// and its engine answers. Why says what is missing when it cannot.
+type SandboxStatus struct {
+	Available bool   `json:"available"`
+	Why       string `json:"why,omitempty"`
 }
 
 // ModeRequest sets the permission mode (default, accept-edits, plan, bypass or yolo); bypass and yolo need an X-Confirm id.

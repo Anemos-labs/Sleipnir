@@ -313,7 +313,7 @@
       field('pre-approve actions (--allow)', '<div class="nsd nsquiet" id="nsRuleOff" role="status" hidden>' + NS_HELP.quiet + '</div><fieldset class="nsfs" id="nsRuleSet"><div class="field-row" style="margin:0"><input id="nsRule" type="text" placeholder="tests, Bash(go test:*)" aria-label="Allow rule" spellcheck="false" autocomplete="off"><button class="btn sm" type="button" id="nsAddRule">Add</button></div><div class="nserr err" id="nsRuleErr" role="alert" hidden></div><div id="nsRules" class="tags"></div><div class="chips" id="nsRuleEx">' + ruleEx + '</div></fieldset>', '', help('allow', 'a pre-approved action')) +
       field('trust, tools and memory', opt('trustProject', '--trust-project', '--trust-project') + opt('noMcp', '--no-mcp', '--no-mcp') + opt('noMemory', '--no-memory', '--no-memory')) +
       field('lesson memory (--role-model embedder=…)', '<select id="nsEmbedder" aria-label="Lesson memory search">' + embedderOpts() + '</select>', '', help('embedder', 'the lesson memory')) +
-      field('sandbox (--sandbox)', inp('nsSandbox', st.sandbox, 'aria-label="sandbox" placeholder="empty: commands run on this machine; docker or docker=IMAGE" spellcheck="false" autocomplete="off"') + opt('sandboxNetwork', '--sandbox-network', '--sandbox-network'), '', help('sandbox', 'the sandbox')) +
+      field('sandbox (--sandbox)', inp('nsSandbox', st.sandbox, 'aria-label="sandbox" placeholder="empty: commands run on this machine; docker or docker=IMAGE" spellcheck="false" autocomplete="off"') + opt('sandboxNetwork', '--sandbox-network', '--sandbox-network') + '<div class="nserr err" id="nsBoxWhy" role="alert" hidden><span></span> <button type="button" class="lnk" data-ns-nobox>Start without the sandbox</button></div>', '', help('sandbox', 'the sandbox')) +
       field('budget (--budget-usd)', inp('nsBudget', st.budget, 'inputmode="decimal" aria-label="Budget in dollars"'), '', help('budget', 'the budget')) +
       field('compaction at (--compact-at)', '<div class="nscompact"><input id="nsCompact" type="range" min="10" max="90" step="1" value="' + (st.compactAt != null ? st.compactAt : st.compactAtBase || 25) + '" aria-label="Compaction share, percent of each model’s context window"><span class="nscv"><output id="nsCompactOut" for="nsCompact"></output><button type="button" class="btn sm" id="nsCompactReset" hidden>default</button></span></div>', '', help('compactAt', 'the compaction share')) +
       field('first goal (optional)', '<textarea id="nsGoal" rows="3" placeholder="e.g. add pagination to the orders endpoint, with tests" aria-label="Goal">' + esc(st.goalText) + '</textarea>', '', help('goal', 'the first goal')) +
@@ -378,8 +378,17 @@
           const cs = $('#nsCompact', b), cpos = String(st.compactAt != null ? st.compactAt : st.compactAtBase || 25), ctext = dialogs.compactAtText(st);
           if (cs.value !== cpos) cs.value = cpos; cs.setAttribute('aria-valuetext', ctext); $('#nsCompactOut', b).textContent = ctext; $('#nsCompactReset', b).hidden = st.compactAt == null;
           const rw = $('#nsResWhy', b); if (rw) { const on = !!RESEARCH_FIRST[st.research]; rw.hidden = !on; rw.className = 'hint' + (on && !st.goalText.trim() ? ' warm' : ''); rw.textContent = !on ? '' : st.goalText.trim() ? RESEARCH_FIRST[st.research] + ', then the team builds' : 'needs a first goal: there is nothing to research without one'; }
-          paintGate();
+          paintGate(); paintBox();
         };
+        /* a sandbox this machine cannot start is said under its field, with the way out, before the session fails on it */
+        let box = null;
+        const noBox = () => !!st.sandbox && !!box && !box.available;
+        const paintBox = () => {
+          const w = $('#nsBoxWhy', b); if (!w) return; w.hidden = !noBox();
+          const t = noBox() ? 'This machine cannot start a sandbox: ' + (box.why || 'the docker command does not answer') + '. Install Docker, or start without the sandbox: the commands then run on this machine.' : '';
+          if (w.firstChild.textContent !== t) w.firstChild.textContent = t;
+        };
+        if (SL.api) SL.api.get('/api/sandbox').then(r => { if (!sc.alive || !r || !r.ok || !r.data) return; box = r.data; paint(); });
         ui.helpMount(b, sc);
         fm = folder.mount(b, sc, st, { projects: () => D.extra.projects || [], onState: () => paint() }); paint();
         const ruleErr = msg => { const e = $('#nsRuleErr', b); e.hidden = !msg; e.textContent = msg || ''; };
@@ -397,6 +406,7 @@
         });
         sc.listen(b, 'click', e => {
           if (e.target.closest('[data-ns-providers]')) { close(); ui.settingsPage('providers'); return; }
+          if (e.target.closest('[data-ns-nobox]')) { st.sandbox = ''; st.sandboxNetwork = false; $('#nsSandbox', b).value = ''; const n = $('[data-k="sandboxNetwork"]', b); if (n) n.checked = false; paint(); return; }
           if (e.target.closest('#nsTeams')) {
             /* the library takes the dialog's place, and the dialog opens again as it was when the library closes, with the team loaded there */
             const s0 = fstate(), keep = cloneState(st); keep.cwd = s0 ? s0.path : st.cwd; keep.error = '';
@@ -426,6 +436,7 @@
           /* what was typed or chosen but not added yet is part of what starts (an allow rule in its field, a role and model picked) */
           const pending = $('#nsRule', b); if (!quiet() && !addRule(pending.value)) return; if (!quiet()) pending.value = '';
           const tm = teamOf(st); if (tm.short) { $('#nsTeamErr', b).hidden = false; return; }
+          if (noBox()) { ui.toast('No sandbox can start on this machine: install Docker, or start without the sandbox.', 'err'); $('#nsBoxWhy', b).scrollIntoView({ block: 'nearest' }); return; }
           starting = true;
           /* the folder is what the server says it is for the text in the box (asked now when it was not yet): a path that cannot start a session stops here */
           fm.ensure().then(state => {

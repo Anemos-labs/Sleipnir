@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The web API adds `GET /api/sandbox` (whether a session can have a
+  sandbox here, and why not) and `GET /api/scan/clone/progress` (how far a
+  Deep scan clone is, followed by the new optional `progress` id of
+  `POST /api/scan/clone`). The New session dialog no longer starts a
+  session that asks for a sandbox this machine cannot start; it says why
+  under the sandbox field and offers to start without one.
+
 - The verification command runs with its temporary directory (`TMPDIR`;
   `TMP` and `TEMP` on Windows) set to a directory of its own inside the
   one it would have used, and that directory is removed when the run

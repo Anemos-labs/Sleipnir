@@ -650,6 +650,22 @@ func TestCloneTakesOnlyRemoteRepositories(t *testing.T) {
 	}
 }
 
+// git's progress on standard error reaches the caller one update at a time: a carriage return ends an update, a newline a step,
+// and an update split across writes is joined.
+func TestCloneProgressSplitsGitsUpdates(t *testing.T) {
+	var got []string
+	p := &progressLines{fn: func(l string) { got = append(got, l) }}
+	for _, w := range []string{"Cloning into 'x'...\n", "Receiving objects:  10% (1/10)\r", "Receiving objects:  5", "0% (5/10)\r\r", "Resolving deltas: 100% (3/3), done.\n", "tail"} {
+		if n, err := p.Write([]byte(w)); err != nil || n != len(w) {
+			t.Fatalf("Write(%q) = %d, %v", w, n, err)
+		}
+	}
+	want := []string{"Cloning into 'x'...", "Receiving objects:  10% (1/10)", "Receiving objects:  50% (5/10)", "Resolving deltas: 100% (3/3), done."}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("lines = %q, want %q", got, want)
+	}
+}
+
 // A session works on the scan its goal names: an older unfinished scan of the same project numbers its leads differently, and
 // a call that names it goes to the session's scan instead, with a note.
 func TestASessionStaysOnItsScan(t *testing.T) {

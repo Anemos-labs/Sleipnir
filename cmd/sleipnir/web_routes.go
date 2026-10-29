@@ -66,6 +66,7 @@ func (h *webHostImpl) routes(srv *web.Server) {
 		ok(w, map[string]any{"projects": h.Projects(r.Context())})
 	}, web.RouteOpts{})
 	srv.HandleFunc("GET /api/fs/dirs", h.fsDirs, web.RouteOpts{})
+	srv.HandleFunc("GET /api/sandbox", h.sandboxStatus, web.RouteOpts{})
 	srv.HandleFunc("POST /api/sessions", h.newSession, web.RouteOpts{MaxBody: goalBodyMax})
 	srv.HandleFunc("POST /api/sessions/resume", h.resume, web.RouteOpts{})
 	h.teamsRoutes(srv) // the saved teams (web_teams.go)
@@ -323,6 +324,7 @@ func (h *webHostImpl) routes(srv *web.Server) {
 		ok(w, res)
 	})
 	srv.HandleFunc("POST /api/scan/clone", h.scanClone, web.RouteOpts{WriteTimeout: 20 * time.Minute})
+	srv.HandleFunc("GET /api/scan/clone/progress", h.scanCloneProgress, web.RouteOpts{})
 
 	// 11. Session settings.
 	h.tabRoute(srv, "POST /api/sessions/{id}/mode", web.RouteOpts{}, func(w http.ResponseWriter, r *http.Request, t *webTab) {

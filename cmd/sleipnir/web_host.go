@@ -113,6 +113,9 @@ type webHostImpl struct {
 	knownMu sync.Mutex // guards knownAt and known: the listing of the project folders a path being typed is compared with
 	knownAt time.Time
 	known   []string
+
+	clones  cloneTracker // how far each clone of the Deep scan page is (web_scan.go)
+	sandbox sandboxProbe // whether a container engine answers, asked at most every so often (web_sandbox.go)
 }
 
 // idemEntry is a request with a client id: claimed by the first request, which answers it (done is closed then); ok says that it

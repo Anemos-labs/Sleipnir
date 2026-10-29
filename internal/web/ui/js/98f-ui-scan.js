@@ -165,10 +165,11 @@
       'scan.new': '<section class="panel"><div class="ph"><h2>New scan</h2><div class="r"><span class="mono dim">/scan DEPTH [DIR]</span></div></div><form class="rs-new sc-new" autocomplete="off">' +
         '<div class="sc-src" role="radiogroup" aria-label="what to scan"><label class="chk"><input type="radio" name="scSrc" value="here" checked> this project</label><label class="chk"><input type="radio" name="scSrc" value="url"> a repository, cloned for the scan</label></div>' +
         '<div data-sc-here><label class="lab" for="scFocus">Folder (optional)</label><input id="scFocus" class="sc-in mono" placeholder="the whole repository; or e.g. server/api" spellcheck="false"></div>' +
-        '<div data-sc-url hidden><label class="lab" for="scUrl">Repository</label><input id="scUrl" class="sc-in mono" placeholder="https://github.com/owner/repo" spellcheck="false"><p class="dim sc-hint">Cloned into ~/sleipnir-scans with git’s hooks and symbolic links off. A new session opens there, its commands in a container with no network.</p></div>' +
+        '<div data-sc-url hidden><label class="lab" for="scUrl">Repository</label><input id="scUrl" class="sc-in mono" placeholder="https://github.com/owner/repo" spellcheck="false"><p class="dim sc-hint">Cloned into ~/sleipnir-scans with git’s hooks and symbolic links off. A new session opens there, its commands in a container with no network.</p><p class="sc-warn" data-sc-nobox hidden></p></div>' +
         '<div class="rs-depths" role="radiogroup" aria-label="depth"></div><div class="row2"><button class="btn pri" type="submit" id="scGo">Start the scan</button></div>' +
+        '<div class="sc-clone" data-sc-clone role="status" aria-live="polite" hidden><div class="sc-cbar"><i></i></div><div class="sc-cline"><b data-sc-cphase></b> <span class="mono dim" data-sc-cline></span> <span class="mono dim sc-ctime" data-sc-ctime></span></div></div>' +
         '<p class="stubnote">The work is sized by the code, not by a clock: the scan splits it into shards of so many functions and lines, and asks for one agent per two shards, from 8 to 32.</p></form></section>' });
-    const st = { runs: [], depths: [], on: true, sandbox: false, depth: 'standard', sel: (params && params.scan) || '', detail: null, seq: 0, dseq: 0, sig: '', dsig: '' };
+    const st = { runs: [], depths: [], on: true, sandbox: false, box: null, depth: 'standard', sel: (params && params.scan) || '', detail: null, seq: 0, dseq: 0, sig: '', dsig: '' };
     const S = () => SL.sessions.active;
     const list = $('.sc-list', root), det = $('.sc-detail', root), surf = $('.sc-surface', root), depths = $('.rs-depths', root);
     function paint() {
@@ -199,13 +200,45 @@
       if (!st.sel || !st.runs.some(x => x.slug === st.sel)) { const a = st.runs.find(x => x.active) || st.runs[0]; st.sel = a ? a.slug : ''; }
       paint(); loadDetail();
     }
+    /* whether this machine can give the scan's session its sandbox: said before the clone, not after the team is chosen */
+    async function loadBox() {
+      const r = await net.get('/api/sandbox'); if (!sc.alive || !r.ok || !r.data) return;
+      st.box = r.data; const w = $('[data-sc-nobox]', root); if (!w) return;
+      w.hidden = !!st.box.available;
+      w.textContent = st.box.available ? '' : 'No sandbox can start on this machine: ' + (st.box.why || 'the docker command does not answer') + '. Install it to scan in a container, or start the session without the sandbox from the New session dialog: its commands then run on this machine, and no lead can be reproduced.';
+    }
+    /* the clone's progress under the form while the request runs: git's own lines when the server follows them, the time either way */
+    function cloneStatus(url) {
+      const box = $('[data-sc-clone]', root), bar = box && $('.sc-cbar i', box), id = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      const t0 = Date.now(); let stopped = false, timer = 0;
+      const mmss = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+      const show = p => {
+        if (!box || stopped) return;
+        const phase = p && p.phase === 'inventory' ? 'Taking the inventory' : 'Cloning ' + url;
+        $('[data-sc-cphase]', box).textContent = phase + '…';
+        $('[data-sc-cline]', box).textContent = p && p.phase !== 'inventory' && p.line ? p.line : '';
+        $('[data-sc-ctime]', box).textContent = mmss(Math.round((Date.now() - t0) / 1000));
+        const pct = p && p.percent >= 0 ? p.percent : -1;
+        box.classList.toggle('sc-indet', pct < 0); if (bar) bar.style.width = pct < 0 ? '' : pct + '%';
+      };
+      let last = null;
+      const tick = async () => {
+        const r = await net.get('/api/scan/clone/progress?id=' + encodeURIComponent(id), { timeout: 5000 });
+        if (stopped || !sc.alive) return;
+        if (r.ok && r.data) last = r.data;
+        show(last); timer = sc.timeout(tick, 800);
+      };
+      if (box) { box.hidden = false; show(null); timer = sc.timeout(tick, 400); }
+      return { id, stop() { stopped = true; clearTimeout(timer); if (box) box.hidden = true; } };
+    }
     async function start(form) {
       const src = (form.querySelector('[name=scSrc]:checked') || {}).value, b = $('#scGo', root); b.disabled = true;
       try {
         if (src === 'url') {
           const url = $('#scUrl', root).value.trim(); if (!url) { $('#scUrl', root).focus(); return; }
-          ui.toast('cloning ' + url + '…', 'ok');
-          const r = await net.post('/api/scan/clone', { url, depth: st.depth }, { timeout: 20 * 60 * 1000 }); if (!sc.alive) return;
+          const prog = cloneStatus(url); b.textContent = 'Cloning…';
+          let r; try { r = await net.post('/api/scan/clone', { url, depth: st.depth, progress: prog.id }, { timeout: 20 * 60 * 1000 }); } finally { prog.stop(); b.textContent = 'Start the scan'; }
+          if (!sc.alive) return;
           if (!r.ok || !r.data) { net.fail(r, 'the repository was not cloned'); return; }
           const name = String(r.data.dir || '').split(/[\\/]/).pop();
           ui.dialogs.newSession({ name: 'scan ' + name, cwd: r.data.dir, sandbox: 'docker', swarm: r.data.team, goalText: r.data.goal });
@@ -231,6 +264,6 @@
     sc.listen(root, 'submit', e => { if (!e.target.closest('.sc-new')) return; e.preventDefault(); start(e.target.closest('.sc-new')); });
     sc.interval(load, 5000);
     sc.on('plugins-changed', load);
-    paint(); paintDetail(); load();
+    paint(); paintDetail(); load(); loadBox();
   } });
 })(SL);

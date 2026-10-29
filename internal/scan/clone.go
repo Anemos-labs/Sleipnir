@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
@@ -85,6 +86,12 @@ var cloneConfig = []string{
 
 // Clone clones the repository into dir for a scan, without its submodules and with cloneConfig. A dir that exists is refused.
 func Clone(ctx context.Context, raw, dir string) error {
+	return CloneProgress(ctx, raw, dir, nil)
+}
+
+// CloneProgress is Clone that hands each progress line git prints ("Receiving objects:  42% (420/1000), 1.20 MiB | 2.00 MiB/s")
+// to progress as it comes, so that a caller can show the person how far a long clone is. A nil progress is Clone.
+func CloneProgress(ctx context.Context, raw, dir string, progress func(line string)) error {
 	if err := CheckURL(raw); err != nil {
 		return err
 	}
@@ -101,6 +108,9 @@ func Clone(ctx context.Context, raw, dir string) error {
 		args = append(args, "-c", c)
 	}
 	args = append(args, "clone", "--no-recurse-submodules")
+	if progress != nil {
+		args = append(args, "--progress") // git prints its progress only to a terminal unless asked
+	}
 	for _, c := range cloneConfig {
 		args = append(args, "--config", c)
 	}
@@ -109,6 +119,9 @@ func Clone(ctx context.Context, raw, dir string) error {
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1")
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
+	if progress != nil {
+		cmd.Stderr = io.MultiWriter(&out, &progressLines{fn: progress})
+	}
 	if err := cmd.Run(); err != nil {
 		os.RemoveAll(dir)
 		msg := strings.TrimSpace(out.String())
@@ -121,6 +134,31 @@ func Clone(ctx context.Context, raw, dir string) error {
 		return fmt.Errorf("git clone: %v: %s", err, msg)
 	}
 	return nil
+}
+
+// progressLines splits what git writes on standard error into lines (git ends a progress update with a carriage return, a
+// finished step with a newline) and hands each non-empty one to fn.
+type progressLines struct {
+	fn  func(string)
+	buf []byte
+}
+
+func (p *progressLines) Write(b []byte) (int, error) {
+	p.buf = append(p.buf, b...)
+	for {
+		i := bytes.IndexAny(p.buf, "\r\n")
+		if i < 0 {
+			break
+		}
+		if line := strings.TrimSpace(string(p.buf[:i])); line != "" {
+			p.fn(line)
+		}
+		p.buf = p.buf[i+1:]
+	}
+	if len(p.buf) > 4096 { // a line that never ends is not progress
+		p.buf = p.buf[:0]
+	}
+	return len(b), nil
 }
 
 // Start takes the inventory of the repository at HEAD (below focus, a slash path in it, when set), creates the scan in the
