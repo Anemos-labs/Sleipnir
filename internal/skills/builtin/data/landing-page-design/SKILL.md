@@ -70,8 +70,9 @@ Every visual value comes from a scale, not from the moment.
 
 ## B1. Type
 
-- One typeface for the site (a monospace beside it only for code and numbers). A modern sans with real weights
-  (Geist, Manrope and the like) unless the brand says otherwise. Weights up to semibold or bold; no black weights.
+- One typeface for the site (a monospace beside it only for code and numbers), chosen for the product's voice, with real
+  weights. Avoid the faces every generated page uses (Inter, Roboto, Geist, Poppins, Space Grotesk, Fraunces) unless the
+  brand already uses them. Weights up to semibold or bold; no black weights.
 - Sizes on one scale, for example Tailwind's: 12, 14, 16, 18, 20, 24, 30, 36, 48, 60, 72 px, each with its line height.
   No one-off sizes (`text-[19px]`, `1.4rem`).
 - Body text at 16 px or more. Buttons 16 px semibold (14 px in a header).
@@ -84,7 +85,8 @@ Every visual value comes from a scale, not from the moment.
 - Radii from one scale. A shape nested in another with a gap under 32 px takes `inner radius = outer radius - gap`
   (square when that is 2 px or less).
 - A card's border goes all the way round or not at all.
-- Flat backgrounds; a gradient, if any, on hero text only. In dark mode use near-black greys (#000, #181818, #1F1F1F,
+- Flat backgrounds. No purple-to-blue gradients, gradient text, coloured glow shadows, side-stripe cards, cards inside
+  cards, or a rounded icon tile above every feature heading: these are the marks of a generated page. In dark mode use near-black greys (#000, #181818, #1F1F1F,
   #272727), not pure grey-blue.
 - One icon set throughout (Phosphor, Lucide, Solar or similar), at one stroke weight.
 
@@ -107,7 +109,8 @@ specific, never `alert()`). No dead links: a control is either wired or visibly 
 
 # Ship checklist
 
-Check each in a real browser, at phone and desktop widths, in light and dark mode when the site has both:
+Check each in a real browser, at phone and desktop widths, in light and dark mode when the site has both, and run the
+design-audit skill's audit until it reports no defects:
 
 - [ ] One offer, one audience, one primary action; nothing competes with it above the fold
 - [ ] The product is shown (screenshot, recording or demo), and each claim has its proof beside it
