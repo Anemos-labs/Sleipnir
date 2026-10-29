@@ -7,6 +7,16 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The last 10% of the swarm budget is kept for finishing the work in
+  hand. When the spend reaches it, no new worker run starts (spawn,
+  queued start, handover, automatic restart or retry are refused with a
+  message that names the budget), each running worker is asked once to
+  commit what works and call `task done`, and the manager is told to
+  decide what was handed in and report. A `swarm.budget_low` event
+  records it, and both interfaces show a line for it. Running agents
+  keep their requests until the budget itself is spent, as before. A
+  run used to go on starting work until the budget was spent, then stop
+  every worker mid-edit and refuse the manager's report too.
 - A manager's `task update` with files and a text on a task another
   agent owns sets the scope and answers that it did, noting that the text
   was not recorded. It used to answer with an error after the scope had

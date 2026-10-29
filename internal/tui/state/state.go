@@ -263,6 +263,8 @@ func (s *State) apply(e events.Event) {
 		s.onGovernor(e, t)
 	case "swarm.budget":
 		s.onBudget(e, t)
+	case "swarm.budget_low":
+		s.onBudgetLow(e, t)
 	case events.TypePermAsk:
 		s.onPermAsk(e, t)
 	case events.TypePermDecide:

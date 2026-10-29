@@ -106,7 +106,7 @@ func (s *Swarm) planRestart(m *member, rs *runState, tasks map[string]uint64, ki
 		return nil, 0
 	}
 	cause, ok := restartCauseOf(kind, count, err, rs.asked, s.cfg.FixedSteps)
-	if !ok || s.alive() != nil || s.budgetErr() != nil || s.wk.heldNow() {
+	if !ok || s.alive() != nil || s.startErr() != nil || s.wk.heldNow() {
 		return nil, 0
 	}
 	m.mu.Lock()
@@ -256,6 +256,9 @@ func (s *Swarm) startRestart(m *member, p *pendingRestart) {
 		return
 	case s.budgetErr() != nil:
 		s.dropRestart(m, p, "swarm budget exhausted")
+		return
+	case s.startErr() != nil:
+		s.dropRestart(m, p, "swarm budget nearly spent")
 		return
 	case s.wk.heldNow():
 		s.dropRestart(m, p, "interrupted")
