@@ -57,7 +57,7 @@ func TestARestoredBoardDropsTheReportsOfTasksItSendsBack(t *testing.T) {
 	if err := b.Claim("rv-1", task.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.submitReportAt("rv-1", task.ID, 0, "no blocking findings", "No blocking findings.\nNit: an unused field.", "", ""); err != nil {
+	if err := b.submitReportAt("rv-1", task.ID, 0, submission{result: "no blocking findings", report: "No blocking findings.\nNit: an unused field."}); err != nil {
 		t.Fatal(err)
 	}
 	if cur, _ := b.Snapshot().Task(task.ID); cur.Report == "" {

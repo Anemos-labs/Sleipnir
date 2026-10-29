@@ -4,5 +4,5 @@
 # regenerate: go test ./internal/agent -run TestGoldenConstitution -update   (read docs/BUILDING.md, "Changing prompt bytes", first)
 solo	text	19671	4918	678af883124e3ab7a2e683359a886cd1c5ba12cbefc34829328d70145e1efc3f
 solo	layer	19670	4918	e0c9d417fecfea66d840cbb3d4c83fb148f3288e1198d4c7802386478532f195
-swarm	text	21415	5354	d89d057babea53d6c1d1ccff791ca54c3ed358627f1fed7d42a93df542af9b8e
-swarm	layer	21414	5354	7992b8a67e140b2528a0cb2a6133700e26bea3ac14c8436556c79852882d9cd6
+swarm	text	21596	5399	0aaec2b4062e8421717a5be0824e84f5cef2dcf43d500237e765d5c410fb90bc
+swarm	layer	21595	5399	e9e069655d2a552db9f751ae3e413fa1f2fd521257270aaf575d44d0bd2b96cb
