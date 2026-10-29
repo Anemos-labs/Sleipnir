@@ -165,12 +165,18 @@ func (s *Store) captureFile(abs string, fi fs.FileInfo, st state) (state, []byte
 	if fi.Size() > s.maxBytes {
 		return tooLarge(fi.Size())
 	}
-	f, err := os.Open(abs)
+	// Without blocking or following a link: what Lstat saw may have been replaced by a pipe since, whose open would wait for
+	// a writer, and the open file is what is checked.
+	f, err := os.OpenFile(abs, openReadFlags, 0)
 	if err != nil {
 		st.Kind, st.Note = kUnsaved, "cannot read: "+reason(err)
 		return st, nil
 	}
 	defer f.Close()
+	if ofi, err := f.Stat(); err != nil || !ofi.Mode().IsRegular() {
+		st.Kind, st.Note = kUnsaved, "cannot read: it changed while it was saved"
+		return st, nil
+	}
 	// The file may grow between Lstat and read, so the cap is enforced on what
 	// was actually read as well.
 	data, err := io.ReadAll(io.LimitReader(f, s.maxBytes+1))
@@ -291,7 +297,48 @@ var errUnusable = errors.New("unusable file")
 // symlink at the end of the path or to wait on a FIFO. What it refuses is
 // reported as errUnusable.
 func readBounded(path string, limit int64) ([]byte, error) {
-	f, err := os.OpenFile(path, openReadFlags, 0)
+	return readBoundedWith(func() (*os.File, error) { return os.OpenFile(path, openReadFlags, 0) }, limit)
+}
+
+// readBoundedIn is readBounded of the file rel inside root, opened through it: no
+// directory on the way, replaced since the path was checked, leads out of root.
+func readBoundedIn(root, rel string, limit int64) ([]byte, error) {
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return readBoundedWith(func() (*os.File, error) {
+		// A root follows a link at the end that stays inside it, whatever the flags: it is refused before the open, and what
+		// opened must be the file that was not a link.
+		// A path that is not there yet is not opened at all: a link made there in between would be followed.
+		pre, lerr := r.Lstat(rel)
+		if lerr != nil {
+			return nil, lerr
+		}
+		if pre.Mode()&fs.ModeSymlink != 0 {
+			return nil, fmt.Errorf("%w: it is a symlink", errUnusable)
+		}
+		f, err := r.OpenFile(rel, openReadFlags, 0)
+		if err == nil {
+			if fi, serr := f.Stat(); serr != nil || !os.SameFile(pre, fi) {
+				f.Close()
+				return nil, fmt.Errorf("%w: it changed while it was opened", errUnusable)
+			}
+		}
+		if err != nil {
+			// A link at the end is refused as readBounded refuses it, wherever it points.
+			if fi, lerr := r.Lstat(rel); lerr == nil && fi.Mode()&fs.ModeSymlink != 0 {
+				return nil, fmt.Errorf("%w: it is a symlink", errUnusable)
+			}
+		}
+		return f, err
+	}, limit)
+}
+
+// readBoundedWith is readBounded of the file open opens.
+func readBoundedWith(open func() (*os.File, error), limit int64) ([]byte, error) {
+	f, err := open()
 	if err != nil {
 		if isSymlinkRefusal(err) {
 			return nil, fmt.Errorf("%w: it is a symlink", errUnusable)

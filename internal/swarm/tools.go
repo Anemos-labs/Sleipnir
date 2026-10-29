@@ -82,7 +82,7 @@ func (t *taskTool) Spec() core.ToolSpec {
 			"done (id, text = one-line result, optional agreement = full shared contract, at most 6000 bytes/40 lines: the harness verifies the work before review). Accepted agreements are inherited by dependent tasks and preserved through compaction. " +
 			"block (id, text = reason, optional target = the id of the task it waits for), resume (id), " +
 			"handover (id, text = a short summary for your successor: what is done, what is left, what you learned; the harness gives your task, your work and the summary to a fresh worker of your role; the manager may hand over a worker's task). Manager only: create (title, description, role, deps, files = scope, kind = work or plan; plans require a read-only role and an agreement, not code verification; rigor = plan adds a read-only plan task the work waits for and inherits, rigor = reviewed also a reviewer's check of that plan, for work that is risky or hard to undo), " +
-			"update files (amend the scope), accept (id: the task is done only after the harness's check), reject (id, text = feedback) or reopen, " +
+			"update files (amend the scope), accept (id: the task is done only after the harness's check), reject (id, text = feedback the worker can act on alone: what is wrong and how you saw it, what to keep, what will show it is fixed) or reopen, " +
 			"fail (id, reason = blocked_on, superseded, canceled, denied or verifier; target = the task id for blocked_on and superseded; text = one-line note).",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{
 "action":{"type":"string","enum":["create","list","get","claim","update","done","block","resume","handover","accept","reject","reopen","fail","revise","resolve","deliver"]},
@@ -406,7 +406,11 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		} else if vr := s.verifyFor(ctx, task, s.deps.Workdir, task.Files); !vr.ok {
 			return tools.Errorf("pool result failed verification: %s", vr.out)
 		}
-		if err := s.Board.submitAgreementAt(me, task.ID, task.Rev, in.Text, evidence, task.Pool.Agreement, taskGateCheck(task), poolComplete, s.poolCurrent, s.reviewSubmission(task)); err != nil {
+		result, report := in.Text, ""
+		if task.Kind == TaskKindPlan {
+			result, report = readOnlyReport(task.ID, in.Text)
+		}
+		if err := s.Board.submitReportAt(me, task.ID, task.Rev, result, report, evidence, task.Pool.Agreement, taskGateCheck(task), poolComplete, s.poolCurrent, s.reviewSubmission(task)); err != nil {
 			return tools.Errorf("%v", err)
 		}
 		return text("%s consolidated pool result is in review", task.ID)
@@ -415,7 +419,8 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		if !s.roles[c.Env.Role].ReadOnly {
 			return tools.Errorf("a planning task can only be submitted by a read-only role")
 		}
-		if err := s.Board.submitAgreementAt(me, task.ID, task.Rev, in.Text, "read-only planning; manager reviews the agreement", in.Agreement, taskGateCheck(task), s.reviewSubmission(task)); err != nil {
+		result, report := readOnlyReport(task.ID, in.Text)
+		if err := s.Board.submitReportAt(me, task.ID, task.Rev, result, report, "read-only planning; manager reviews the agreement", in.Agreement, taskGateCheck(task), s.reviewSubmission(task)); err != nil {
 			return tools.Errorf("%v", err)
 		}
 		return text("%s is in review. Its agreement requires the manager's acceptance; stop now.", task.ID)
@@ -445,7 +450,11 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		return &tools.Result{IsError: true, Text: fmt.Sprintf("Not done: verification `%s` failed (exit %d). Fix the failures and call done again.%s\n%s",
 			cmd, vr.code, s.isolatedVerifyHint(m), tail)}
 	}
-	result := oneLine(in.Text, 120)
+	result, report := oneLine(in.Text, 120), ""
+	readOnly := s.roles[c.Env.Role].ReadOnly
+	if readOnly {
+		result, report = readOnlyReport(task.ID, in.Text)
+	}
 	if result == "" {
 		result = "completed"
 	}
@@ -473,10 +482,13 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		}
 		summary = out.evidence + "; " + summary
 	}
-	if err := s.Board.submitAgreementAt(me, in.ID, task.Rev, result, summary, in.Agreement, taskGateCheck(task), s.reviewSubmission(task)); err != nil {
+	if err := s.Board.submitReportAt(me, in.ID, task.Rev, result, report, summary, in.Agreement, taskGateCheck(task), s.reviewSubmission(task)); err != nil {
 		return tools.Errorf("%v", err)
 	}
 	s.Leases.ReleaseAll(me)
+	if readOnly && report != "" {
+		return text("%s is now in review (%s). Your text is the report the manager reads; stop now.", in.ID, summary)
+	}
 	if note := s.poolChildInReview(me, task); note != "" {
 		return text("%s is now in review (%s). %s Give your final one-paragraph summary and stop.", in.ID, summary, note)
 	}
@@ -577,6 +589,10 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 		if task.Status != StatusReview {
 			return tools.Errorf("%s is %s: only a task in review can be sent back", in.ID, task.Status)
 		}
+		if strings.TrimSpace(in.Text) == "" {
+			return tools.Errorf("%s was not sent back: %s needs text, the feedback its worker acts on: what is wrong and how you saw it "+
+				"(the failing command, the file and line), what to keep, and what will show it is fixed", in.ID, in.Action)
+		}
 		owner := s.get(task.Owner)
 		if task.Owner == "" || owner == nil {
 			// Nobody to send it back to: return it to the pool.
@@ -598,7 +614,9 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 			})
 			s.wakePool(task.ID, "The manager rejected the combined result: "+cleanText(in.Text, 400)+". Repair existing children and reconcile again.")
 		}
-		s.notify(owner.id, "request", fmt.Sprintf("%s was sent back by the manager: %s. Fix it, then call task done again.", in.ID, cleanText(in.Text, 400)))
+		// The whole feedback, lines kept: the task's line holds only its first words, and a brief cut short loses what to keep and
+		// how the fix is proved, which is what spares the worker a second round.
+		s.notify(owner.id, "request", fmt.Sprintf("%s was sent back by the manager. Fix it, then call task done again. The feedback:\n%s", in.ID, cleanBlock(in.Text, maxDescRunes)))
 		return text("%s sent back to %s with feedback", in.ID, task.Owner)
 	default: // fail
 		if s.cfg.PersistentPools {

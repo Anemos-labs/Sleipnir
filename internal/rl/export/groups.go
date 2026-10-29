@@ -97,7 +97,7 @@ func (x *exporter) writeGroups(work []*workEpisode) error {
 				tr, ok, err := x.trajectoryOf(unit)
 				if err != nil {
 					x.stats.drop("step:no_prompt")
-					x.stats.warn(unit[0].st.ID + ": " + err.Error())
+					x.warn(unit[0].st.ID + ": " + err.Error())
 					continue
 				}
 				if ok {

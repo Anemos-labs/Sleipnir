@@ -120,3 +120,14 @@ func TestMCPEntryKeepsNamesAndWithholdsValues(t *testing.T) {
 		t.Errorf("entry: %s", b)
 	}
 }
+
+// A value given to a credential flag with "=" is withheld whatever it starts with; a word after a space that starts with "-"
+// is the next flag.
+func TestScrubTextAssignedFlagValue(t *testing.T) {
+	if out := ScrubText("tool --api-key=-s3cr3tvalue x"); strings.Contains(out, "s3cr3tvalue") {
+		t.Errorf("an assigned value survives: %s", out)
+	}
+	if out := ScrubText("tool --token --verbose"); !strings.Contains(out, "--verbose") {
+		t.Errorf("the next flag was withheld: %s", out)
+	}
+}

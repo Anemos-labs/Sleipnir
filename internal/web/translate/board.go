@@ -23,7 +23,7 @@ type taskOut struct {
 	lastCol string // the last column that was not a failure's
 }
 
-// syncTask sends a task event when the task's column, title, owner, deps, scope or closure changed, and a note when its owner
+// syncTask sends a task event when the task's column, title, owner, deps, scope, closure or spend changed, and a note when its owner
 // submitted it. force sends it whatever it says. A task the board failed stays in the todo column with Failed set and its closure; one
 // that was superseded or canceled keeps the column it had.
 func (t *Translator) syncTask(id string, ts float64, force bool) {
@@ -68,7 +68,8 @@ func (t *Translator) syncTask(id string, ts float64, force bool) {
 		scope = strings.Join(tk.Files, ", ")
 	}
 	ev := &TaskX{Task: wire.Task{ID: id, Parent: tk.Parent, PoolPhase: tk.PoolPhase, PoolMembers: tk.PoolMembers, Title: line(tk.Title, capArg), Owner: uiID(tk.Owner), Deps: tk.Deps, Scope: line(scope, capPath), S: col,
-		Closure: line(closure, capID)}, Failed: tk.State == state.TaskFailed, Attempts: tk.Attempts, Blocked: tk.Status == "blocked"}
+		Closure: line(closure, capID)}, Failed: tk.State == state.TaskFailed, Attempts: tk.Attempts, Blocked: tk.Status == "blocked",
+		Cost: tk.Spend().Shown(), Plan: tk.Plan, Reqs: tk.Requests}
 	if len(ev.Deps) == 0 {
 		ev.Deps = nil
 	}
@@ -97,7 +98,7 @@ func (t *Translator) syncTask(id string, ts float64, force bool) {
 // sameTask reports whether two task events say the same thing.
 func sameTask(a, b *TaskX) bool {
 	return a.ID == b.ID && a.Title == b.Title && a.Owner == b.Owner && a.Scope == b.Scope && a.S == b.S && a.Closure == b.Closure &&
-		a.Failed == b.Failed && a.Attempts == b.Attempts && a.Blocked == b.Blocked && reflect.DeepEqual(a.Deps, b.Deps) && a.Parent == b.Parent && a.PoolPhase == b.PoolPhase && reflect.DeepEqual(a.PoolMembers, b.PoolMembers)
+		a.Failed == b.Failed && a.Attempts == b.Attempts && a.Blocked == b.Blocked && a.Cost == b.Cost && a.Plan == b.Plan && a.Reqs == b.Reqs && reflect.DeepEqual(a.Deps, b.Deps) && a.Parent == b.Parent && a.PoolPhase == b.PoolPhase && reflect.DeepEqual(a.PoolMembers, b.PoolMembers)
 }
 
 // closureKind is the kind of a closure written as kind or kind(target).
@@ -704,7 +705,7 @@ func anomalyWhy(kind string) string { return inspect.AnomalyTitle(kind) }
 
 // goalKey is the identity of a goal event, for sending each state once whichever of the host and the log says it.
 func goalKey(g *wire.Goal) string {
-	k := g.S + "\x00" + g.Objective + "\x00" + strconv.Itoa(g.Turns) + "\x00" + strconv.Itoa(g.Max) + "\x00" + g.Paused + "\x00" + g.Reason + "\x00" + g.Spec
+	k := g.S + "\x00" + g.Objective + "\x00" + strconv.Itoa(g.Turns) + "\x00" + strconv.Itoa(g.Max) + "\x00" + g.Paused + "\x00" + g.Reason + "\x00" + g.Spec + "\x00" + g.Rubric
 	for _, m := range g.Milestones {
 		k += "\x00" + m.ID + "\x01" + m.Text + "\x01" + strconv.FormatBool(m.Met) + "\x01" + m.Evidence
 	}
@@ -727,6 +728,7 @@ func (t *Translator) goalState(e events.Event, ts float64, at int64) {
 			Reason    string
 			Done      bool
 			Spec      string
+			Rubric    string
 			// Milestones are goal.Milestone, keyed by its Go field names like the rest.
 			Milestones []struct {
 				ID, Text, Evidence string
@@ -753,7 +755,7 @@ func (t *Translator) goalState(e events.Event, ts float64, at int64) {
 			s = "paused"
 		}
 		g = &wire.Goal{S: s, Objective: line(p.Goal.Objective, capReason), Turns: max(p.Goal.Turns, 0), Max: max(p.Goal.Max, 0),
-			Paused: line(p.Goal.Paused, capReason), Reason: line(p.Goal.Reason, capReason), Spec: line(p.Goal.Spec, capReason)}
+			Paused: line(p.Goal.Paused, capReason), Reason: line(p.Goal.Reason, capReason), Spec: line(p.Goal.Spec, capReason), Rubric: line(p.Goal.Rubric, capReason)}
 		for i, m := range p.Goal.Milestones {
 			if i >= capMilestones {
 				break

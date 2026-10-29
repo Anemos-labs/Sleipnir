@@ -37,7 +37,7 @@ func judgeTurn(ctx context.Context, s *session.Session, gp **goal.State, turnErr
 // goalCommandTo is /goal ARG: with text it sets the goal and returns the message that starts on it; alone it writes where the goal
 // stands; pause, resume and clear are what they say (resume returns the continuation to send). What it says goes to out, and the
 // goal is saved in the session's log whatever it did.
-func goalCommandTo(s *session.Session, gp **goal.State, arg string, out io.Writer) (send string) {
+func goalCommandTo(ctx context.Context, s *session.Session, gp **goal.State, arg string, out io.Writer) (send string) {
 	g := *gp
 	defer func() { s.SaveGoal(*gp) }()
 	switch strings.ToLower(arg) {
@@ -59,6 +59,7 @@ func goalCommandTo(s *session.Session, gp **goal.State, arg string, out io.Write
 			fmt.Fprintf(out, "  [%s] %s\n", st.Status, tools.SanitizeForTerminal(st.Step))
 		}
 		writeMilestones(g, out)
+		writeRubric(g, out)
 		return ""
 	case "clear":
 		*gp = nil
@@ -75,7 +76,14 @@ func goalCommandTo(s *session.Session, gp **goal.State, arg string, out io.Write
 			fmt.Fprintln(out, "no goal to resume")
 			return ""
 		}
-		return resumeGoal(s, g)
+		note, next, _ := s.GoalResume(ctx, g)
+		if note != "" {
+			fmt.Fprintln(out, note)
+		}
+		if g.Done {
+			*gp = nil
+		}
+		return next
 	}
 	arg, err := s.ResearchGoal(arg)
 	if err != nil {
@@ -93,6 +101,7 @@ func goalCommandTo(s *session.Session, gp **goal.State, arg string, out io.Write
 	if len(ng.Milestones) > 0 {
 		fmt.Fprintf(out, "%d milestones, each ruled on by the judge%s\n", len(ng.Milestones), specNote(ng))
 	}
+	writeRubric(ng, out)
 	return s.GoalStart(context.Background(), *gp)
 }
 
@@ -102,6 +111,13 @@ func specNote(g *goal.State) string {
 		return ""
 	}
 	return ", from the goal and " + tools.SanitizeForTerminal(g.Spec)
+}
+
+// writeRubric says that the judge also holds the goal to the project's rubric, when it has one.
+func writeRubric(g *goal.State, out io.Writer) {
+	if g.Rubric != "" {
+		fmt.Fprintf(out, "rubric %s: the judge also holds the work to each of its criteria that applies\n", tools.SanitizeForTerminal(g.Rubric))
+	}
 }
 
 // writeMilestones writes a goal's milestones as /goal shows them: met ones with the judge's evidence.
@@ -120,15 +136,6 @@ func writeMilestones(g *goal.State, out io.Writer) {
 			fmt.Fprintf(out, "      evidence: %s\n", tools.SanitizeForTerminal(m.Evidence))
 		}
 	}
-}
-
-// resumeGoal takes the pause off a goal and returns the continuation that sends the agent on: a goal that ran out of continuations
-// gets as many again.
-func resumeGoal(s *session.Session, g *goal.State) string {
-	g.Paused, g.Repeats = "", 0
-	g.Max = g.Turns + goal.MaxTurns
-	g.Turns++
-	return s.GoalContinuation(g, goal.Verdict{Kind: goal.Continue, Reason: g.Reason})
 }
 
 // goalEvent is what the web's goal loop reports while it runs a turn: Kind "ran" (a run of the session returned: Result, Err),
@@ -226,8 +233,11 @@ func (g *goalLoop) Pause(s *session.Session, why string) error {
 	return nil
 }
 
-// Resume takes the pause off the goal and returns the continuation to send.
-func (g *goalLoop) Resume(s *session.Session) (string, error) {
+// Resume takes the pause off the goal and returns the continuation to send ("" when there is none: a goal judged met, or paused again,
+// on resuming). A goal paused on a turn that was not judged is judged first (session.GoalResume), and that judgment is reported
+// through emit as a turn's is, as is the note that says why it was not (a board with unfinished tasks); the goal's state is reported
+// either way.
+func (g *goalLoop) Resume(ctx context.Context, s *session.Session, emit func(goalEvent)) (string, error) {
 	st := g.State()
 	switch {
 	case st == nil:
@@ -235,8 +245,16 @@ func (g *goalLoop) Resume(s *session.Session) (string, error) {
 	case st.Paused == "":
 		return "", errNotPaused
 	}
-	next := resumeGoal(s, st)
+	note, next, j := s.GoalResume(ctx, st)
+	shown := cloneGoal(st)
+	if st.Done {
+		st = nil
+	}
 	g.set(s, st)
+	if j.Judged || j.Err != nil || note != "" { // a note without a judgment says why none was asked
+		emit(goalEvent{Kind: "judged", Note: note, Judgment: j})
+	}
+	emit(goalEvent{Kind: "state", Goal: shown})
 	return next, nil
 }
 
@@ -261,7 +279,7 @@ func (g *goalLoop) Turn(ctx context.Context, s *session.Session, prompt string, 
 			return err
 		}
 		if cur.Paused == "" && errors.Is(err, agent.ErrBudget) {
-			cur.Paused = budgetReached
+			cur.Paused, cur.Unjudged = budgetReached, true // the turn's work is judged on resume (session.GoalResume)
 			g.set(s, cur)
 			emit(goalEvent{Kind: "state", Goal: cloneGoal(cur)})
 			return err

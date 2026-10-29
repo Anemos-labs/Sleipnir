@@ -62,6 +62,21 @@ test('invisible and bidirectional characters stay visible in rendered text', () 
   assert.match(md('safe‮evil'), /⟨U\+202E⟩/);
 });
 
+test('Markdown tables: a document draws a bounded number of cells, however wide the header and however many its rows', () => {
+  const wide = '|' + 'h|'.repeat(5000) + '\n|' + '-|'.repeat(5000) + '\n' + '|\n'.repeat(5000);
+  const h = md(wide);
+  assert.ok((h.match(/<td>/g) || []).length <= 20000, 'too many cells drawn');
+  assert.equal((h.match(/<th>/g) || []).length, 60);
+  assert.match(h, /more rows not shown/);
+  assert.match(h, /4940 more columns not shown/);
+  assert.match(md('|' + 'h|'.repeat(61) + '\n|' + '-|'.repeat(61) + '\n|' + 'x|'.repeat(61) + '\n'), /1 more column not shown/, 'a cut column is reported even when the rows fit');
+  assert.doesNotMatch(md('| a | b |\n|-|-|\n| 1 | 2 |\n'), /not shown/);
+  /* header-only tables count too: many of them draw no more cells than the budget */
+  const heads = ('|' + 'h|'.repeat(60) + '\n|' + '-|'.repeat(60) + '\n\n').repeat(1000), hh = md(heads);
+  assert.ok((hh.match(/<th>/g) || []).length <= 20000, 'too many header cells drawn');
+  assert.match(hh, /A table not shown/);
+});
+
 test('CSV: quoted fields, doubled quotes, CRLF; TSV by tab; a table is escaped', () => {
   assert.deepEqual(JSON.parse(JSON.stringify(M.parseCsv('a,b\r\n"x,y","q""z"\n1,2', ','))), [['a', 'b'], ['x,y', 'q"z'], ['1', '2']]);
   assert.deepEqual(JSON.parse(JSON.stringify(M.parseCsv('a\tb\n1\t2\n', '\t'))), [['a', 'b'], ['1', '2']]);

@@ -1028,3 +1028,15 @@ func TestNpxIsPeeledOnlyWhenItInstallsNothing(t *testing.T) {
 		}
 	}
 }
+
+// A wrapper the parser cannot interpret under a privilege command leaves the parse incomplete, as it does on its own.
+func TestPrivilegedWrapperProblem(t *testing.T) {
+	for _, in := range []string{`sudo env -S 'rm -rf /' x`, `sudo -u root env -C /tmp rm x`, `doas nice env -S 'id' x`} {
+		if a := Parse(in); a.Parsed {
+			t.Errorf("%s: parsed, want a problem", in)
+		}
+	}
+	if a := Parse(`sudo env FOO=1 rm x`); !a.Parsed {
+		t.Errorf("a plain env under sudo must parse: %q", a.Problem)
+	}
+}

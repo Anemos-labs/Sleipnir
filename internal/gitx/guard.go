@@ -69,9 +69,10 @@ func (s *settings) driverOverrides(ctx context.Context, dir, workTree, gitDir st
 			continue
 		}
 		i := strings.LastIndexByte(rest, '.')
-		if i <= 0 {
+		if i < 0 {
 			continue // "section.variable": no subsection, so no driver name
 		}
+		// i == 0 is an empty subsection ([filter ""]): a driver named "", which an attribute can select as well.
 		name, variable := rest[:i], rest[i+1:]
 		switch section {
 		case "filter":

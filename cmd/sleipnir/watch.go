@@ -263,9 +263,19 @@ func renderGallery(stdout, stderr io.Writer, path, manifest, dir string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("replay: %w", err)
 	}
+	// Pictures are written through dir: a link already there that leads out of it is refused, not followed.
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return fmt.Errorf("replay: %w", err)
+	}
+	defer root.Close()
 	for _, r := range recs {
+		// A name is the manifest's: a file name in dir, never a path that leads elsewhere.
+		if r.Name == "" || r.Name == "." || r.Name == ".." || strings.ContainsAny(r.Name, `/\`) || filepath.Base(r.Name) != r.Name {
+			return fmt.Errorf("replay: recording name %q is not a file name", r.Name)
+		}
 		name := r.Name + ".svg"
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(docs[name]), 0o644); err != nil {
+		if err := root.WriteFile(name, []byte(docs[name]), 0o644); err != nil {
 			return fmt.Errorf("replay: %w", err)
 		}
 		fmt.Fprintf(stderr, "sleipnir replay: wrote %s (%d KB)\n", filepath.Join(dir, name), (len(docs[name])+1023)/1024)

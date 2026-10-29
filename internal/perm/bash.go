@@ -1032,7 +1032,13 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 	// name is the project's to choose, so it is never the system utility of the
 	// allowlist.
 	if u.dyn == "" && u.name != "" && !slices.Contains(s.Wrappers, "npx") {
-		if sa := analyseSafe(u.name, s.Args); sa.ok {
+		sa := analyseSafe(u.name, s.Args)
+		if sa.ok && u.name == "git" {
+			if why := ev.gitHelpers(cw, sa.chdir); why != "" {
+				sa = safeAnalysis{why: "git runs a program the repository chose: " + why}
+			}
+		}
+		if sa.ok {
 			u.class, uses, chdir = cmdSafe, sa.uses, sa.chdir
 		} else {
 			u.why = sa.why

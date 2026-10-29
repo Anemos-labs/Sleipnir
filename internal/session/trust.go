@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/config"
@@ -16,6 +18,8 @@ import (
 const (
 	// trustFlag: --trust-project said so for this run.
 	trustFlag = "flag"
+	// trustConfirmed: the caller confirmed exactly these files with the person (Options.TrustDigest).
+	trustConfirmed = "confirmed"
 	// trustRemembered: the person said yes before, to exactly these files (internal/trust).
 	trustRemembered = "remembered"
 	// trustAsked: the person was asked at the start and said yes for this session.
@@ -43,6 +47,10 @@ type trustInfo struct {
 	Saved string
 	// Changed is how the files differ from what was trusted, when the answer that was remembered no longer applies.
 	Changed string
+	// pinned is the footprint the person's yes covers when it was remembered or confirmed by digest (renewTrust checks that the ledger
+	// holds it); trustWrite and renewTrust move it along with the session's own edits of instruction files. mu guards it.
+	mu     sync.Mutex
+	pinned *trust.Footprint
 }
 
 // TrustLedgerPath is where the answers are kept: the user's state directory, never the project.
@@ -62,12 +70,21 @@ func RememberTrust(home, cwd string, fp *trust.Footprint, now time.Time) error {
 // resolveTrust decides whether the session may use what the project itself says (its instruction files, its settings, its skills):
 // the flag says so for one run; an answer that the person gave before holds for exactly the files they saw (a changed file voids it, and
 // they are told which); a chat asks when it has nothing else to go by, and a run, a swarm or a rollout, which have no one to ask, go
-// without. On "yes" it sets o.TrustProject. The notices are for the person (the sink exists, the log does not yet).
+// without. Trust confirmed for files of a digest (Options.TrustDigest) holds while they keep it. On "yes" it sets o.TrustProject. The notices are for the person (the sink exists, the log does not yet).
 func resolveTrust(ctx context.Context, o *Options) (*trustInfo, error) {
-	if o.TrustProject {
+	if o.TrustProject && o.TrustDigest == "" {
 		return &trustInfo{How: trustFlag}, nil
 	}
 	fp, err := trust.Scan(o.Root, o.Cwd, o.Home)
+	if o.TrustProject {
+		if err == nil && fp.Digest == o.TrustDigest {
+			// pinned too: renewTrust renews only while the ledger holds a yes for these files, which a confirmation remembers
+			return &trustInfo{How: trustConfirmed, Digest: fp.Digest, Files: len(fp.Files), pinned: fp}, nil
+		}
+		// the files changed after the person confirmed them: what they hold now is decided as for any other start
+		o.TrustProject = false
+		sayTrust(o, "warn", "this project's files changed after you confirmed them, so that answer does not cover them")
+	}
 	if err != nil || fp.Empty() {
 		return nil, nil // nothing that trust would unlock, or nowhere to look: the same as before
 	}
@@ -79,6 +96,7 @@ func resolveTrust(ctx context.Context, o *Options) (*trustInfo, error) {
 		o.TrustProject = true
 		info.How, info.Saved = trustRemembered, entry.Saved
 		info.Files = len(fp.Files)
+		info.pinned = fp
 		sayTrust(o, "info", fmt.Sprintf("using this project's own instructions and settings, as you trusted them on %s (`sleipnir trust forget` undoes it)", entry.Saved))
 		return info, nil
 	case trust.Changed:
@@ -104,6 +122,8 @@ func resolveTrust(ctx context.Context, o *Options) (*trustInfo, error) {
 		if err := RememberTrust(o.Home, o.Cwd, fp, o.Now()); err != nil {
 			info.How = trustAsked
 			sayTrust(o, "warn", "not remembered: "+err.Error())
+		} else {
+			info.pinned = fp
 		}
 	case d.Allow:
 		o.TrustProject = true
@@ -115,6 +135,84 @@ func resolveTrust(ctx context.Context, o *Options) (*trustInfo, error) {
 		info.How = trustDeclined
 	}
 	return info, nil
+}
+
+// trustWrite is called before the session writes files that may be instruction files (a merge of the team's results, a note of the
+// memory tool), and returns the renewal to call with the files once they are written. The harness keeps AGENTS.md for the agents of
+// later sessions, and a yes voided by its own edits would leave them out of exactly those sessions. The renewal does nothing unless
+// the project's files, before the write, were still the ones the person's yes covers: a change made before it is not the session's
+// doing, even in a file the session then writes too.
+func (s *Session) trustWrite() func(paths []string, by string) {
+	none := func([]string, string) {}
+	t := s.trust
+	if t == nil {
+		return none
+	}
+	t.mu.Lock()
+	from := t.pinned
+	t.mu.Unlock()
+	if from == nil {
+		return none
+	}
+	if before, err := trust.Scan(s.opts.Root, s.opts.Cwd, s.opts.Home); err != nil || before.Digest != from.Digest {
+		return none
+	}
+	return func(paths []string, by string) { s.renewTrust(from, paths, by) }
+}
+
+// renewTrust renews the person's yes for the files as they are now, when the session started the write from from (still the pinned
+// footprint: a renewal in between leaves this one to the next), every file that differs from it is an instruction file (text in the
+// prompt, never settings, tool servers, hooks, skills or plugins) and one of paths (relative to the project root), and the ledger
+// still holds the yes (a `sleipnir trust forget`, or any other change, stands). Anything else is left to the question at the next
+// start.
+func (s *Session) renewTrust(from *trust.Footprint, paths []string, by string) {
+	t := s.trust
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.pinned != from {
+		return
+	}
+	cur, err := trust.Scan(s.opts.Root, s.opts.Cwd, s.opts.Home)
+	if err != nil || cur.Partial || cur.Empty() || cur.Digest == from.Digest {
+		return
+	}
+	ledger := trust.OpenLedger(TrustLedgerPath(s.opts.Home))
+	if st, _ := ledger.Check(s.opts.Cwd, from); st != trust.Trusted {
+		t.pinned = nil // the person's answer changed since the start: theirs to give again
+		return
+	}
+	changes := trust.Changes(trust.EntryOf(from), cur)
+	if !instructionChanges(changes, from, cur, paths) {
+		return
+	}
+	if err := RememberTrust(s.opts.Home, s.opts.Cwd, cur, s.opts.Now()); err != nil {
+		s.notice("", "the project's trust was not renewed after "+by+": "+err.Error())
+		return
+	}
+	t.pinned = cur
+	s.noticeInfo("", fmt.Sprintf("kept this project trusted: %s by %s (instruction files only; `sleipnir trust forget` undoes it)", trust.DescribeChanges(changes), by))
+}
+
+// instructionChanges reports whether every change is to an instruction file (in the footprint before or after) named in paths.
+func instructionChanges(changes []trust.Change, before, after *trust.Footprint, paths []string) bool {
+	if len(changes) == 0 {
+		return false
+	}
+	kinds := map[string]trust.Kind{}
+	for _, fp := range []*trust.Footprint{before, after} {
+		for _, f := range fp.Files {
+			if k, ok := kinds[f.Path]; ok && k != f.Kind {
+				return false
+			}
+			kinds[f.Path] = f.Kind
+		}
+	}
+	for _, c := range changes {
+		if kinds[c.Path] != trust.Instructions || !slices.Contains(paths, c.Path) {
+			return false
+		}
+	}
+	return true
 }
 
 // sayTrust emits a session-wide trust notice when a sink is configured.

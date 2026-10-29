@@ -46,3 +46,11 @@ test('Add sends the folder in full (~ resolved by the server), and refuses one t
   await write(N, '/home/me/code/readme.txt'); await add(N);
   assert.equal(job(N), null); assert.match(N.$('#toasts').textContent, /a file/);
 });
+
+test('the permissions of a job say what an unattended run may do: default mode refuses builds and tests too', async () => {
+  const L = await open();
+  assert.match(L.$('#sModeHint').textContent, /^refuses edits, builds, tests/);
+  const m = L.$('#sMode'); m.value = 'accept-edits'; m.dispatchEvent(new FakeEvent('change', { bubbles: true })); await L.settle();
+  assert.match(L.$('#sModeHint').textContent, /^edits inside the project, builds and tests/);
+  assert.match(L.$('#sModeHint').textContent, /bypass and yolo cannot be scheduled from here$/);
+});

@@ -203,11 +203,12 @@ directory above (a skill of yours with the same name replaces one, with a warnin
 | `spec` | the design tree, a specification, vertical slices and milestones a reviewer can check |
 | `code-review` | a spec axis and a standards axis, and the change's one safety fact proved by running code |
 | `prototype` | settling a design question by building variants and looking |
+| `landing-page-design` | a landing page or project website: one primary action, page structure, real copy, a default visual system, a ship checklist |
 | `plain-writing` | documentation and messages without filler or machine-generated tells |
 
 The role prompts say when each role loads which, so a team uses them without being asked: the manager and the
 architect load `spec` (the architect also `codebase-design`), the backend, frontend and tester `tdd` and `diagnose`,
-devops `diagnose`, the frontend `prototype`, the reviewer `code-review` and docs `plain-writing`; the constitution
+devops `diagnose`, the frontend `prototype` (and `landing-page-design` for a site), the reviewer `code-review` and docs `plain-writing`; the constitution
 points every agent at `diagnose` for a hard bug. `tools.builtin_skills = false` leaves every built-in skill out (the
 role prompts still name them, and the `skill` tool answers such a request with the skills that exist).
 
@@ -372,7 +373,7 @@ secret-handling problems with file:line and a concrete fix. Do not modify files.
 | `tools` | list or comma string | Allowlist of tools; `*` means no restriction. Enforced at run time, see below |
 | `disallowedTools` | list of rules | Tool rules the role may never use (`WebFetch`, `Bash(rm:*)`) |
 | `model` | string | `provider/model` this role runs on (`inherit` or empty: the session's model). Applied; `--role-model role=model` overrides it |
-| `permissionMode` | string | `default`, `plan`, `accept-edits`/`acceptEdits`. Values that would loosen the session (`bypassPermissions`, `dontAsk`, `auto`) are ignored with a warning |
+| `permissionMode` | string | `default` (the session's mode, as when omitted), `plan`, `accept-edits`/`acceptEdits`. Values that would loosen the session (`bypassPermissions`, `dontAsk`, `auto`) are ignored with a warning |
 | `maxTurns` | integer | Steps of one window of an assignment, 1 to 1,000 (default 150): another follows while the worker makes new edits, unless the session keeps fixed step limits |
 | `priority` | integer | Order of this role's requests under contention: 0 interactive, 1 worker (default), 2 background |
 | `short` | string | Prefix of the agent ids (`sr` gives `sr-1`, `sr-2`), 2 to 4 lower-case letters or digits starting with a letter; derived from the name when absent or already used |

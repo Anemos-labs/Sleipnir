@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // An external plugin is a directory with a manifest and any of:
@@ -117,7 +119,9 @@ func LoadDir(dir string) (Manifest, error) {
 	if strings.HasPrefix(id, "core:") || strings.HasPrefix(id, ViewPrefix) || strings.HasPrefix(id, RolePrefix) {
 		return Manifest{}, fmt.Errorf("%s: id %q uses a namespace reserved for built-in plugins", ManifestFile, id)
 	}
-	m := Manifest{ID: id, Title: d.Title, Description: d.Description, Version: d.Version, Category: CatExternal,
+	// The manifest is the plugin author's text, and lists and prompts print it: on one line, without terminal controls.
+	line := func(s string) string { return strings.Join(strings.Fields(tools.SanitizeForTerminal(s)), " ") }
+	m := Manifest{ID: id, Title: line(d.Title), Description: line(d.Description), Version: line(d.Version), Category: CatExternal,
 		External: true, Dir: dir, Requires: d.Requires, Config: d.Config, Needs: d.Needs}
 	for _, n := range d.Needs {
 		if err := validNeed(n); err != nil {

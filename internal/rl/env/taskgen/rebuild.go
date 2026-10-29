@@ -865,9 +865,11 @@ sys.exit(10 if bad else 0)
 	for _, m := range mods {
 		e := shq(escapeModulePath(m))
 		fmt.Fprintf(&b, "if [ -n \"$c\" ]; then for d in \"$c\"/%s@* \"$c\"/cache/download/%s/@v; do if [ -e \"$d\" ]; then echo \"in the module cache: $d\"; leak=1; fi; done; fi\n", e, e)
-		fmt.Fprintf(&b, "for gp in $(printf '%%s' \"$p\" | tr ':' ' '); do if [ -e \"$gp\"/src/%s ]; then echo \"in GOPATH: $gp/src/%s\"; leak=1; fi; done\n", shq(m), m)
-		fmt.Fprintf(&b, "if [ -e vendor/%s ]; then echo 'vendored: vendor/%s'; leak=1; fi\n", shq(m), m)
-		fmt.Fprintf(&b, "if [ -f vendor/modules.txt ] && grep -Fq -e %s vendor/modules.txt; then echo 'listed in vendor/modules.txt: %s'; leak=1; fi\n", shq("# "+m+" "), m)
+		// The module path is go.mod's text: every message prints it as a quoted argument, never as part of the script.
+		q := shq(m)
+		fmt.Fprintf(&b, "for gp in $(printf '%%s' \"$p\" | tr ':' ' '); do if [ -e \"$gp\"/src/%s ]; then printf 'in GOPATH: %%s/src/%%s\\n' \"$gp\" %s; leak=1; fi; done\n", q, q)
+		fmt.Fprintf(&b, "if [ -e vendor/%s ]; then printf 'vendored: vendor/%%s\\n' %s; leak=1; fi\n", q, q)
+		fmt.Fprintf(&b, "if [ -f vendor/modules.txt ] && grep -Fq -e %s vendor/modules.txt; then printf 'listed in vendor/modules.txt: %%s\\n' %s; leak=1; fi\n", shq("# "+m+" "), q)
 	}
 	b.WriteString("[ \"$leak\" = 0 ] || exit 10")
 	return b.String()

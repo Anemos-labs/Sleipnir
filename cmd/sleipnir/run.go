@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -91,6 +92,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	noMCP := fs.Bool("no-mcp", false, "start no MCP tool servers")
 	mcpConfigs := mcpConfigFlags(fs)
 	noMemory := fs.Bool("no-memory", false, noMemoryHelp)
+	sandboxFlag, sandboxNet := sandboxFlags(fs)
 	trainingLogs := fs.Bool("training-logs", false, trainingLogsHelp)
 	resume := resumeFlags(fs)
 	roleFlag := &roleModelFlag{}
@@ -99,6 +101,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	autoDocs := autoDocsFlag(fs)
 	managerApproves := managerApprovesFlag(fs)
 	allow := allowFlags(fs)
+	effort := fs.String("effort", "", "reasoning effort of the requests: default | none | minimal | low | medium | high | xhigh | max; each model uses its closest supported level, as /effort does (unset: the provider's own default, or what a resumed session had)")
 	askTimeout := fs.Duration("ask-timeout", 0, "refuse a question to the person that nobody answers within this time, and tell the worker (default: wait for the person); for a run that is left alone")
 	fs.Usage = func() {
 		if name == "swarm" {
@@ -134,6 +137,10 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	if *askTimeout < 0 {
 		return fmt.Errorf("%s: --ask-timeout must not be negative", name)
 	}
+	*effort = strings.ToLower(strings.TrimSpace(*effort))
+	if *effort != "" && !slices.Contains(effortLevels, *effort) {
+		return usageError(fs, name+": --effort is one of "+strings.Join(effortLevels, ", "))
+	}
 	if *noMCP && len(*mcpConfigs) > 0 {
 		return usageError(fs, name+": --mcp-config names servers that --no-mcp would not start; give one of them")
 	}
@@ -153,9 +160,13 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	if err := checkTeamSize(*swarmN); err != nil {
 		return usageError(fs, name+": "+err.Error())
 	}
+	box, err := sandboxSpec(*sandboxFlag, *sandboxNet)
+	if err != nil {
+		return usageError(fs, name+": "+err.Error())
+	}
 	interactive := term.IsTerminal(int(os.Stdin.Fd()))
 	team, workers := teamOf(*swarmN)
-	o := session.Options{AutoFix: *autoFix, AutoMerge: *autoMerge,
+	o := session.Options{Sandbox: box, AutoFix: *autoFix, AutoMerge: *autoMerge,
 		AskTimeout: *askTimeout,
 		Cwd:        *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: team, Workers: workers,
 		MaxSteps: *maxSteps, FixedSteps: *maxSteps > 0, BudgetUSD: *budget, Verify: *verify, NoRecon: *noRecon, TrustProject: *trust,
@@ -191,6 +202,10 @@ func runCommand(ctx context.Context, name string, args []string) error {
 		return err
 	}
 	defer s.Close()
+	if *effort != "" {
+		// After New, so that it also replaces the preference a resumed session restores.
+		s.SetEffort(*effort)
+	}
 	unattended, bypassed := "", ""
 	if !interactive {
 		unattended = noOneToAskNote(s.Perm.Mode(), *allow) // the effective mode: a configured one when --mode is not given
@@ -261,8 +276,9 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	if !*asJSON {
 		printIntegration(os.Stderr, integ, *quiet)
 	}
-	if *quiet && res != nil {
-		// --quiet prints only the final answer: the sink shows nothing, so the answer is written here
+	if *quiet && res != nil && !*asJSON {
+		// --quiet prints only the final answer: the sink shows nothing, so the answer is written here. With --json the
+		// answer is in the result event, and stdout carries events only.
 		if ans := strings.TrimRight(res.Text, "\n"); strings.TrimSpace(ans) != "" {
 			if term.IsTerminal(int(os.Stdout.Fd())) {
 				ans = tools.SanitizeForTerminal(ans) // a pipe gets the answer as it is; a terminal does not act on what it holds
@@ -501,7 +517,7 @@ const trainingLogsHelp = "keep the full record a trajectory export reads (every 
 const noMemoryHelp = "start without the global memory: the notes in ~/.sleipnir/MEMORY.md and the lesson memory are neither shown to the agents nor saved"
 
 // roleModelHelp is the help of --role-model.
-const roleModelHelp = "role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… turns the lesson memory on, reranker=… orders what it finds, fallback=… takes the requests of a model whose endpoint has been out for a minute). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)"
+const roleModelHelp = "role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… adds search by meaning to the lesson memory, reranker=… orders what it finds, fallback=… takes the requests of a model whose endpoint has been out for a minute). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)"
 
 // finishRun ends an isolated run (see session.Session.Finish) even when the run was
 // cancelled: what passed verification is applied, not thrown away. It returns nil for

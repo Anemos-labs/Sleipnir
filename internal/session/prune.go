@@ -101,7 +101,16 @@ func RemoveStoredSession(ctx context.Context, dir string) (*workspace.PruneRepor
 	}
 	// Closing the lock before deleting it is needed on Windows. Mark the session
 	// first so a resume that already resolved this path cannot start in that gap.
-	if err := os.WriteFile(filepath.Join(dir, prunedMarker), nil, 0o600); err != nil {
+	// A new file, never one already there: a link of that name that a recording brought would have its target emptied.
+	marker := filepath.Join(dir, prunedMarker)
+	if err := os.Remove(marker); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return report, err
+	}
+	f, err := os.OpenFile(marker, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return report, err
+	}
+	if err := f.Close(); err != nil {
 		return report, err
 	}
 	unlock()

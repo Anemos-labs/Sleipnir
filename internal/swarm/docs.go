@@ -37,7 +37,9 @@ const DocsTaskTitle = "docs: catch up"
 var docsScope = []string{"*.md", "docs/**"}
 
 // docsScopeFor is docsScope plus the Markdown files that exist beside the changed code: for each file or directory a change's
-// scope names, the *.md files of its directory (a module's README is what its change made stale). Named files, never globs, so a
+// scope names, the *.md files of its directory (a module's README is what its change made stale), or, when that directory has none,
+// of the nearest directory above it that has some (svc/README.md for a change to svc/ratelimit/: a docs worker scoped without it
+// mailed the manager for it and waited a minute for an answer that never came). The root's Markdown is in docsScope. Named files, never globs, so a
 // later code task on that directory collides with those files alone and only while the pass runs. Entries whose directory cannot
 // be told (a glob with no literal directory) add nothing.
 func (s *Swarm) docsScopeFor(b []docsChange) []string {
@@ -53,8 +55,16 @@ func (s *Swarm) docsScopeFor(b []docsChange) []string {
 			if dir == "" || dir == "." || dir == "docs" || seen[dir] {
 				continue
 			}
-			seen[dir] = true
-			matches, _ := filepath.Glob(filepath.Join(root, filepath.FromSlash(dir), "*.md"))
+			var matches []string
+			for d := dir; d != "." && d != "docs"; d = path.Dir(d) {
+				if d != dir && seen[d] {
+					break // searched already, from another change: its Markdown is in, or it and those above have none
+				}
+				seen[d] = true
+				if matches, _ = filepath.Glob(filepath.Join(root, filepath.FromSlash(d), "*.md")); len(matches) > 0 {
+					break
+				}
+			}
 			sort.Strings(matches)
 			for _, m := range matches {
 				if rel, err := filepath.Rel(root, m); err == nil && filepath.IsLocal(rel) {
@@ -85,6 +95,14 @@ func docsDirOf(entry string) string {
 		return path.Clean(e)
 	}
 	return path.Dir(e)
+}
+
+// unneeded reports whether a task was closed as no longer needed (task resolve) without its change reaching the shared tree in
+// this run (landed): such a task leaves no document stale. In a team run a task resolved as a duplicate of the one that did the
+// work was listed in a catch-up pass beside it. A task resolved after its work merged (in review, under isolation) is still a
+// change: its code ships.
+func unneeded(t Task, landed map[string]bool) bool {
+	return t.Closure.Kind() == CloseUnneeded && !landed[t.ID]
 }
 
 // docsRetry is how long the keeper waits before it tries again to start a catch-up
@@ -186,13 +204,14 @@ func (s *Swarm) docsTick(now time.Time) {
 		return
 	}
 	snap := s.Board.Snapshot()
+	landed := s.review.landedIDs()
 	k.mu.Lock()
 	if !k.primed {
 		// What was done before the keeper first looked (a resumed session) is not news.
 		for _, t := range snap.Tasks {
 			if t.Status == StatusDone || t.Status == StatusFailed {
 				k.seen[t.ID] = t.Rev
-				k.coded = k.coded || t.Status == StatusDone && s.implementationTask(t)
+				k.coded = k.coded || t.Status == StatusDone && s.implementationTask(t) && !unneeded(t, landed)
 			}
 		}
 		k.primed = true
@@ -202,7 +221,7 @@ func (s *Swarm) docsTick(now time.Time) {
 			continue
 		}
 		k.seen[t.ID] = t.Rev
-		if t.Status != StatusDone || s.isDocsTask(t) || t.Kind != TaskKindPlan && !s.implementationTask(t) || testsOnly(t.Files) {
+		if t.Status != StatusDone || s.isDocsTask(t) || t.Kind != TaskKindPlan && !s.implementationTask(t) || testsOnly(t.Files) || unneeded(t, landed) {
 			continue
 		}
 		kind := "change"
@@ -398,13 +417,14 @@ func (s *Swarm) docsWillStart(snap *Snapshot) bool {
 	if s.docsPending() {
 		return true
 	}
+	landed := s.review.landedIDs()
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	if !k.primed {
 		return false // what was done before the keeper first looks is not news to it (docsTick)
 	}
 	for _, t := range snap.Tasks {
-		if rev, seen := k.seen[t.ID]; t.Status != StatusDone || (seen && rev == t.Rev) || s.isDocsTask(t) || testsOnly(t.Files) {
+		if rev, seen := k.seen[t.ID]; t.Status != StatusDone || (seen && rev == t.Rev) || s.isDocsTask(t) || testsOnly(t.Files) || unneeded(t, landed) {
 			continue
 		}
 		if s.implementationTask(t) || t.Kind == TaskKindPlan && k.coded {

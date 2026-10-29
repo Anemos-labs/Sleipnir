@@ -19,6 +19,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/goal"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/provider/openaichat"
@@ -508,6 +509,9 @@ func TestWebHostGoalLoopJudgesAndContinues(t *testing.T) {
 		if strings.Contains(c.System, "You judge whether") {
 			mu.Lock()
 			defer mu.Unlock()
+			if strings.Contains(c.LastUser(), "Your verdict came before any evidence request") {
+				return mock.Reply{Text: `{"verdict":"continue","reason":"no build ran","left":["run the build"]}`} // it stands by its verdict
+			}
 			if judged++; judged == 1 {
 				return mock.Reply{Text: `{"verdict":"continue","reason":"no build ran","left":["run the build"]}`}
 			}
@@ -554,6 +558,41 @@ func TestWebHostGoalLoopJudgesAndContinues(t *testing.T) {
 	})
 	if n != 2 {
 		t.Errorf("%d goal.judge events, want 2", n)
+	}
+}
+
+// Resuming a goal paused on a turn the judge did not rule on judges that turn first, and the page shows that judgment as it does a
+// turn's: a goal judged met is shown met with its verdict, and no turn runs.
+func TestWebHostResumeShowsTheJudgmentOfAnUnjudgedTurn(t *testing.T) {
+	project := webWorld(t)
+	var mu sync.Mutex
+	turns := 0
+	_, base := newWebModel(t, func(c *mock.Call) mock.Reply {
+		if strings.Contains(c.System, "You judge whether") {
+			return mock.Reply{Text: `{"verdict":"done","reason":"the build ran","left":[]}`}
+		}
+		if strings.Contains(c.System, "You extract reusable lessons") { // the lesson memory learning from the met goal, not a turn
+			return mock.Reply{Text: `{"lessons":[]}`}
+		}
+		mu.Lock()
+		turns++
+		mu.Unlock()
+		return mock.Reply{Text: "working on it"}
+	})
+	r := newWebRig(t, soloDefaults(project), base)
+	tab := r.ready("")
+	wt := r.h.tab(tab.ID)
+	wt.goals.set(wt.session(), &goal.State{Objective: "make it build", Max: goal.MaxTurns, Paused: "the chat was restarted", Unjudged: true})
+	r.json("POST", "/api/sessions/"+tab.ID+"/goal", wire.GoalRequest{Action: "resume"}, 200, nil)
+	r.waitEv(tab.ID, "verdict", map[string]any{"kind": "done", "text": "met: the build ran"})
+	r.waitEv(tab.ID, "goal", map[string]any{"s": "met"})
+	if wt.goals.State() != nil {
+		t.Error("the goal judged met on resume is still set")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if turns != 0 {
+		t.Errorf("%d turns ran after the goal was judged met", turns)
 	}
 }
 

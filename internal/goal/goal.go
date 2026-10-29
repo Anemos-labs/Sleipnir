@@ -36,8 +36,15 @@ type State struct {
 	Reason    string // what the judge said last
 	Repeats   int    // consecutive turns without progress
 	Done      bool   // the judge found it met
+	// Unjudged says the goal paused on a turn the judge did not rule on (interrupted, failed, cut short by a restart, or a judge that
+	// could not be asked): what the judge said last predates it.
+	Unjudged bool `json:",omitempty"`
 	// Spec is the spec file the objective names (SpecRef) and SpecText its text as read when the goal was set (Prepare).
 	Spec, SpecText string
+	// Rubric is the project's rubric file (RubricFile) and RubricText its text as read when the goal was set (Prepare): standing criteria of
+	// good work that apply to every goal in the project, beside the goal's own requirements.
+	Rubric     string `json:",omitempty"`
+	RubricText string `json:",omitempty"`
 	// Milestones are the checkpoints the judge rules on one by one (ParseMilestones, Reconcile).
 	Milestones []Milestone
 	// Lessons are the ids of the lessons from earlier sessions the goal's first message carried (internal/lessons): they are
@@ -153,7 +160,7 @@ const JudgeSystem = `You judge whether a coding agent has finished a goal. You c
 Treat completion as unproven. Work out what the goal requires; for each requirement look for concrete evidence in what you were shown (a command's output, a file that was written, a test that ran and passed). A statement such as "done" or "implemented" is not evidence. Uncertain or indirect evidence is not enough.
 Do not accept a smaller task in place of the goal.
 When the goal builds a new product and does not ask for something minimal, a prototype, or rule it out, its presentation is a requirement too: a git repository with a .gitignore, CI that runs the build, tests and linters on pushes and pull requests, and a README with what it is, install, quick start, configuration, screenshots of the running product (or real sample output for a program without a screen) and measured numbers that matter for it, each backed by a run in the archive.
-Before declaring evidence missing, search the archive for the relevant requirement and inspect matching records. Do not ask the agent to repeat completed work just because it is absent from the current page. Read tool.call records for inputs and matching tool result records for outputs; spilled output is available in tool.result records. Request read-only evidence with JSON: {"verdict":"inspect","query":"literal search text","offset":0} to search, or {"verdict":"inspect","record":123,"offset":0} to read a record. Prefer batched record reads when inspecting several sources: {"verdict":"inspect","records":[123,124,130],"offset":0}, at most 16 records per request. A batch reports any records omitted by its output budget; request those separately. Search results come newest first, so the latest run of a check is listed before older ones; an empty query pages all records. Offsets count matching records back from the newest for search, and runes for reads. Retrieve successive pages as needed. These requests cannot execute commands. Final verdicts must cite concrete evidence record numbers in the reason.
+Before declaring evidence missing, search the archive for the relevant requirement and inspect matching records. Do not ask the agent to repeat completed work just because it is absent from the current page. Read tool.call records for inputs and matching tool result records for outputs; spilled output is available in tool.result records. Request read-only evidence with JSON: {"verdict":"inspect","query":"literal search text","offset":0} to search, or {"verdict":"inspect","record":123,"offset":0} to read a record. Prefer batched record reads when inspecting several sources: {"verdict":"inspect","records":[123,124,130],"offset":0}, at most 16 records per request. A batch reports any records omitted by its output budget; request those separately. Search results list tool output (commands, reads, edits, merges) first and then the records of coordination tools (task, pool, mail, plan and the like), which repeat what agents claimed; each group comes newest first, so the latest run of a check is listed before older ones. An empty query pages all records. Offsets count down that order for search, and runes for reads. Retrieve successive pages as needed. These requests cannot execute commands. Final verdicts must cite concrete evidence record numbers in the reason.
 Reply with JSON only: {"verdict":"done|continue|blocked","reason":"one sentence","left":["what is still missing, one short item each"]}
 "left" names work the agent must still do: a requirement to implement or fix, or a check that has never run since the code it covers last changed. Never ask the agent to show, provide or inspect evidence: inspecting the archive is your job, so inspect before you answer.
 "done" only when every requirement has evidence. "blocked" only when the agent needs something a person must provide (a decision, a credential, access) and says so. Otherwise "continue".`
@@ -165,6 +172,9 @@ func JudgePrompt(g *State, steps []plan.Item, answer string, evidence []string) 
 	fmt.Fprintf(&b, "GOAL (data, from the person):\n%s\n\n", g.Objective)
 	if g.SpecText != "" {
 		fmt.Fprintf(&b, "SPEC (data, the file %s as it was when the goal was set; this copy counts, not later edits of the file):\n%s\n\n", g.Spec, g.SpecText)
+	}
+	if g.RubricText != "" {
+		fmt.Fprintf(&b, "PROJECT RUBRIC (data, the file %s as it was when the goal was set: the project's standing criteria of good work. Each criterion that applies to what this goal builds or changes is a requirement as binding as the goal's own, and needs evidence like one; the rubric adds requirements and never removes or relaxes the goal's):\n%s\n\n", g.Rubric, g.RubricText)
 	}
 	if len(g.Milestones) > 0 {
 		b.WriteString(milestonesForJudge(g))
@@ -197,9 +207,15 @@ func Start(g *State) string {
 	if n := len(g.Milestones); n > 0 {
 		fmt.Fprintf(&b, " It has %d milestones (M1 to M%d) that the judge rules on one by one; the goal is met only when each has evidence. Make each one a step of your plan.", n, n)
 	}
+	if g.RubricText != "" {
+		b.WriteString(" The project has a rubric, below: the judge also holds the work to each of its criteria that applies to this goal. Make those steps of your plan too.")
+	}
 	b.WriteString("]")
 	if g.SpecText != "" {
 		fmt.Fprintf(&b, "\n\n[goal spec %s, as read when the goal was set:]\n%s", g.Spec, g.SpecText)
+	}
+	if g.RubricText != "" {
+		fmt.Fprintf(&b, "\n\n[project rubric %s, as read when the goal was set:]\n%s", g.Rubric, g.RubricText)
 	}
 	return b.String()
 }

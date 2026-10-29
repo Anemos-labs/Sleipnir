@@ -295,6 +295,12 @@ func TestHookKeyIdentifiesBehaviour(t *testing.T) {
 			t.Errorf("a different %s must give a different key", name)
 		}
 	}
+	// A separator inside a field does not move the bound between two fields.
+	f := Hook{Event: Stop, Matcher: "Bash\x02command", Type: TypeCommand, Command: "x"}
+	g := Hook{Event: Stop, Matcher: "Bash", Type: "command\x02" + TypeCommand, Command: "x"}
+	if f.Key() == g.Key() {
+		t.Error("keys of different fields collide")
+	}
 	h1 := Hook{Type: TypeHTTP, URL: "https://x", Headers: map[string]string{"A": "1", "B": "2"}}
 	h2 := Hook{Type: TypeHTTP, URL: "https://x", Headers: map[string]string{"B": "2", "A": "1"}}
 	if h1.Key() != h2.Key() {

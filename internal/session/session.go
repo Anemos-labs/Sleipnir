@@ -43,6 +43,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/research"
+	"github.com/anemos-labs/sleipnir/internal/sandbox"
 	"github.com/anemos-labs/sleipnir/internal/skills"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
@@ -139,6 +140,11 @@ type Options struct {
 	Owners     swarm.PathOwners
 	Verify     string // command the harness runs before a worker's task may leave "doing"
 	RoleModels map[string]string
+	// DefinitionModel, when set, rewrites the model: of a loaded agent definition before it is resolved. A definition comes
+	// with the project; an embedder that pins which endpoints a session may reach (an RL rollout, whose credentials belong
+	// to the operator) maps it onto an allowed provider here. An empty result runs the role on the session's own provider
+	// and model. Nil keeps the definition's model.
+	DefinitionModel func(model string) string
 	// Team, when set, is the team's composition: one slot per entry, a role named as
 	// often as it has slots, each slot on its own model or ("") its role's
 	// (--role-model given more than once for a role, or with a bare role). Without it
@@ -202,6 +208,10 @@ type Options struct {
 	// callers set it explicitly: a hostile repository's AGENTS.md is a prompt
 	// injection vector.
 	TrustProject bool
+	// TrustDigest, with TrustProject, is the digest of the project's files (trust.Footprint) that the person confirmed: the
+	// session trusts them only while they still have it, and otherwise resolves trust as if TrustProject were unset. Empty, the
+	// files are trusted whatever they hold.
+	TrustDigest string
 
 	// UI.
 	Sink    agent.Sink
@@ -214,6 +224,12 @@ type Options struct {
 	// ShellWrap is an argv prefix every shell command runs under (a network-less
 	// namespace for RL rollouts).
 	ShellWrap []string
+	// Sandbox, when enabled, runs every shell command of the session (the agents',
+	// the verification's) inside one container of its own (--sandbox): the project
+	// and the team's trees are mounted at their own paths, the network is off
+	// unless Sandbox.Network, and the harness, its keys and its files stay outside.
+	// It is started as the session opens and removed when it closes.
+	Sandbox sandbox.Spec
 	// Meta is recorded on the session.start event (run provenance: task, sample,
 	// seed, policy and sampling of an RL rollout).
 	Meta map[string]any
@@ -262,8 +278,9 @@ type Session struct {
 	// fallbackRef its provider/model; nil when none is named.
 	fallbackP     provider.Provider
 	fallbackModel string
+	fallbackPrice cost.Price // what the fallback's tokens cost (zero on a plan)
 	fallbackRef   string
-	// lessons is the lesson memory (buildLessons), nil when no embedder model is named or the session has no global memory.
+	// lessons is the lesson memory (buildLessons), nil when the lessons plugin is off or the session has no global memory.
 	lessons *lessonMemory
 
 	// team is the team the swarm was built with (Team).
@@ -306,11 +323,14 @@ type Session struct {
 	// research is the project's research runs and researchTool the tool over them (nil when the research plugin is off);
 	// researchPinned and researchText are the published kickoff run whose context is in the shared layer.
 	research       *research.Store
+	box            *sandbox.Box // the container commands run in (Options.Sandbox); nil when they run on the host
 	webReader      *web.Reader
 	researchFonts  iofs.FS
 	researchPinned string
 	researchText   string
 	researchSite   *researchRender
+	// scan is the project's deep scans (nil when the scan plugin is off).
+	scan *scanState
 	// barrier is shared by the agents and the swarm's done check when Options.Savepoints is set (Savepoint).
 	barrier *agent.SavepointBarrier
 	// savepoints counts the savepoints written (Savepoint), under mu.
@@ -436,6 +456,16 @@ func New(ctx context.Context, o Options) (*Session, error) {
 			// a continued team keeps the composition it last started with (a /restart may have moved its slots), unless one is given now
 			o.Team = append([]TeamSlot(nil), prior.Team...)
 			o.Workers = max(o.Workers, len(o.Team))
+		}
+		if prior := LatestStart(dir); !o.Sandbox.Enabled() && prior.Sandbox != "" {
+			// a session that ran its commands in a sandbox resumes in one: resuming it on the host would quietly drop the confinement
+			// its commands were started under
+			spec, err := sandbox.Parse(prior.Sandbox)
+			if err != nil {
+				return nil, fmt.Errorf("the session ran in the sandbox %q, which cannot be started again: %w", prior.Sandbox, err)
+			}
+			spec.Network = prior.SandboxNetwork
+			o.Sandbox = spec
 		}
 		if prior := inspectLog(dir); prior.isolated && prior.recovery {
 			if prior.id == "" || prior.id == "." || prior.id == ".." || strings.ContainsAny(prior.id, "/\\\x00\r\n") {
@@ -615,6 +645,18 @@ func New(ctx context.Context, o Options) (*Session, error) {
 	s.logCheckpoints() // web_access.go: each checkpoint that begins or changes is a "checkpoint" log event
 
 	// Detect the command shell for shared runtime guidance before building agents.
+	if o.Sandbox.Enabled() {
+		if err := s.startSandbox(ctx); err != nil {
+			s.Log.Close()
+			return nil, err
+		}
+		o = s.opts
+		defer func() {
+			if !built {
+				s.stopSandbox() // a session that failed to open leaves no container behind
+			}
+		}()
+	}
 	shOpts := shell.Options{BaseEnv: o.ShellEnv, Wrap: o.ShellWrap, Tmp: s.tmp}
 	if o.ShellEnv == nil {
 		// Programs a plugin needs that were located or found outside PATH (plugin.PrepareNeeds).
@@ -728,7 +770,7 @@ func (s *Session) buildFallback() error {
 	if err != nil {
 		return fmt.Errorf("fallback model %s: %w", ref, err)
 	}
-	s.fallbackP, s.fallbackModel, s.fallbackRef = p, m.ID, mr.String()
+	s.fallbackP, s.fallbackModel, s.fallbackRef, s.fallbackPrice = p, m.ID, mr.String(), m.Price
 	return nil
 }
 
@@ -741,7 +783,7 @@ func (s *Session) clientFor(ref ModelRef) (provider.Provider, cost.Model, error)
 	}
 	if err == nil && s.fallbackP != nil && ref.String() != s.fallbackRef {
 		name, to := ref.String(), s.fallbackRef
-		p = &provider.Failover{Primary: p, Secondary: s.fallbackP, SecondaryModel: s.fallbackModel, After: FallbackAfter, Retry: FallbackRetry,
+		p = &provider.Failover{Primary: p, Secondary: s.fallbackP, SecondaryModel: s.fallbackModel, SecondaryPrice: s.fallbackPrice.USD, After: FallbackAfter, Retry: FallbackRetry,
 			OnSwitch: func(toFallback bool, cause error) {
 				if toFallback {
 					s.notice("", fmt.Sprintf("%s has been out for %s (%v): its requests go to the fallback model %s, and %s is tried again in %s", name, FallbackAfter, cause, to, name, FallbackRetry))
@@ -1000,6 +1042,10 @@ func (s *Session) build(ctx context.Context) error {
 			reg.Register(t)
 			return nil
 		},
+		plugin.Scan: func(*plugin.Scope) error {
+			reg.Register(s.newScanTool())
+			return nil
+		},
 		plugin.Recall: func(*plugin.Scope) error {
 			rt := recall.New(archive)
 			rt.Past = s.pastArchive
@@ -1017,7 +1063,10 @@ func (s *Session) build(ctx context.Context) error {
 			if o.TrustProject {
 				proj = filepath.Join(o.Root, filepath.FromSlash(memory.ProjectNotes))
 			}
-			reg.Register(memtool.NewScoped(filepath.Join(o.Home, ".sleipnir", "MEMORY.md"), proj))
+			reg.Register(memtool.NewScoped(filepath.Join(o.Home, ".sleipnir", "MEMORY.md"), proj).OnProjectSave(func() func() {
+				renew := s.trustWrite()
+				return func() { renew([]string{memory.ProjectNotes}, "a note the memory tool saved") }
+			}))
 			return nil
 		},
 		plugin.PlanTool: func(*plugin.Scope) error { reg.Register(plantool.New(plans)); return nil },
@@ -1210,7 +1259,14 @@ func (s *Session) build(ctx context.Context) error {
 			if d.Model == "" || o.RoleModels[d.Name] != "" {
 				continue
 			}
-			mr, err := ResolveModel(s.cfg, d.Model)
+			ref := d.Model
+			if o.DefinitionModel != nil {
+				if ref = o.DefinitionModel(ref); ref == "" {
+					deps.RoleModels[d.Name] = swarm.RoleModel{Provider: s.Provider, Model: s.Model}
+					continue
+				}
+			}
+			mr, err := ResolveModel(s.cfg, ref)
 			if err != nil {
 				return fmt.Errorf("role %s: model %s: %w", d.Name, d.Model, err)
 			}
@@ -1486,6 +1542,7 @@ func (s *Session) runTurn(ctx context.Context, goal string) (*Result, error) {
 	s.turn++
 	turn := s.turn
 	after := s.interrupted
+	box := s.box // Close clears it under s.mu
 	s.interrupted = false
 	s.mu.Unlock()
 	defer s.flushCheckpoints()
@@ -1527,6 +1584,12 @@ func (s *Session) runTurn(ctx context.Context, goal string) (*Result, error) {
 		}
 		if s.mailmanOn() {
 			start["mailman"] = true
+		}
+		if box != nil {
+			start["sandbox"] = box.Spec.String() // a resume runs in one again
+			if box.Spec.Network {
+				start["sandbox_network"] = true
+			}
 		}
 		if len(s.opts.Team) > 0 && s.opts.Swarm {
 			start["team"] = s.opts.Team // a custom composition: a resume keeps it
@@ -1650,8 +1713,8 @@ func (s *Session) Options() Options {
 	if s.opts.ShellEnv == nil {
 		o.ShellEnv = nil // nil inherits the process's environment; an empty copy would be an empty environment
 	}
-	if s.opts.ShellWrap == nil {
-		o.ShellWrap = nil
+	if s.opts.ShellWrap == nil || s.opts.Sandbox.Enabled() {
+		o.ShellWrap = nil // a sandbox's wrapper belongs to its container: a session rebuilt from these options starts its own
 	}
 	if o.RoleModels != nil {
 		rm := make(map[string]string, len(o.RoleModels))
@@ -1772,6 +1835,7 @@ func (s *Session) Close() error {
 	if s.shell != nil {
 		s.shell.Shutdown()
 	}
+	s.stopSandbox()
 	s.closeMCP()
 	if started && s.hookAdapter != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

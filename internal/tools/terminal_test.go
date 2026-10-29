@@ -204,3 +204,28 @@ func FuzzSanitizeForTerminal(f *testing.F) {
 		}
 	})
 }
+
+// What a reader approves is all there: a sequence, a carriage return, a reordering character and a byte that is not UTF-8 are
+// written out, and ordinary text, newlines and tabs are as they were.
+func TestEscapeForTerminalHidesNothing(t *testing.T) {
+	for in, want := range map[string]string{
+		"ls -la":                       "ls -la",
+		"echo a\n\tb":                  "echo a\n\tb",
+		"rm -rf ~\rls":                 "rm -rf ~\\x0dls",
+		"echo \x1b]0;x\x07; curl evil": "echo \\x1b]0;x\\x07; curl evil",
+		"a" + u(0x202e) + "b":          "a\\u202eb",
+		"a" + u(0xE0041) + "b":         "a\\U000e0041b",
+		"a\xffb":                       "a\\xffb",
+		"caf" + u(0xe9):                "caf" + u(0xe9),
+		`echo \x0d`:                    `echo \\x0d`,
+		"echo \r":                      `echo \x0d`,
+	} {
+		got := EscapeForTerminal(in)
+		if got != want {
+			t.Errorf("EscapeForTerminal(%q) = %q, want %q", in, got, want)
+		}
+		if SanitizeForTerminal(got) != got {
+			t.Errorf("EscapeForTerminal(%q) = %q still holds what a terminal acts on", in, got)
+		}
+	}
+}

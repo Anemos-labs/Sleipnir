@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/goal"
@@ -76,14 +77,73 @@ func callLabel(data []byte) (id, label string) {
 	return c.ID, strings.TrimSpace(c.Name + " " + in)
 }
 
+// coordinationTools are the tools whose calls and results carry what agents wrote to each other (task text and evidence lines,
+// mail, plans, notes) rather than what ran. A search lists them after tool output, which holds the proof of what they claim.
+var coordinationTools = map[string]bool{"task": true, "pool": true, "mail": true, "wait": true, "spawn": true, "plan": true, "note": true, "memory": true}
+
+// coordinationTool reports whether a call label (callLabel) or tool name names a coordination tool. The name is read as the agent
+// dispatches it (agent.BareToolName: "functions.task", "'task'", "task<|channel|>…" are the task tool), and "task.get" is "task"'s.
+func coordinationTool(label string) bool {
+	name, _, _ := strings.Cut(strings.TrimSpace(label), " ")
+	name, _, _ = strings.Cut(agent.BareToolName(name), ".")
+	return coordinationTools[name]
+}
+
+// relayed reports whether a record holds only coordination tools' calls or results (coordinationTools).
+func relayed(e events.Event, calls map[string]string) bool {
+	switch e.Type {
+	case events.TypeToolCall, events.TypeToolResult:
+		var d struct {
+			Name string `json:"name"`
+		}
+		return json.Unmarshal(e.Data, &d) == nil && coordinationTool(d.Name)
+	case events.TypeTurnAppend:
+		var t core.Turn
+		if json.Unmarshal(e.Data, &t) != nil {
+			return false
+		}
+		results := 0
+		for _, b := range t.Blocks {
+			if b.Kind == core.BlockToolResult {
+				if !coordinationTool(calls[b.ToolID]) {
+					return false
+				}
+				results++
+			}
+		}
+		return results > 0
+	}
+	return false
+}
+
+// matches keeps the newest keep search matches of one kind as the log is read, in a ring.
+type matches struct {
+	n    int
+	ring []string
+}
+
+// add records a match: n counts every match added, and ring keeps the newest keep of them (keep is positive).
+func (m *matches) add(line string, keep int) {
+	if i := m.n % keep; i == len(m.ring) {
+		m.ring = append(m.ring, line)
+	} else {
+		m.ring[i] = line
+	}
+	m.n++
+}
+
+// newest is the match back places before the newest; back is below keep.
+func (m *matches) newest(back, keep int) string { return m.ring[(m.n-1-back)%keep] }
+
 // resultMark stands in a shown tool call's line for the record of its result, which the log holds later; goalEvidence fills it
 // in once the scan has passed it.
 const resultMark = "\x00result:"
 
 // goalEvidence pages or searches the durable log through a fixed cutoff. A search
-// (an empty query pages every record) lists the newest matches first, so the last
-// test run and the last smoke check are what the judge sees before older ones; an
-// offset counts back from the newest. Search snippets include matches in the middle
+// (an empty query pages every record) lists tool output before coordination tools'
+// records (coordinationTools), each newest first, so the last test run and the last
+// smoke check are what the judge sees before older ones and before the task lines
+// that claim them; an offset counts down that order. Search snippets include matches in the middle
 // of long output, and record reads retain pagination rather than silently throwing
 // away the rest of a result.
 func (s *Session) goalEvidence(ctx context.Context, g *goal.State, cutoff uint64, req evidenceRequest) (string, error) {
@@ -114,10 +174,10 @@ func (s *Session) goalEvidence(ctx context.Context, g *goal.State, cutoff uint64
 	}
 	reading := len(wanted) > 0
 	var out strings.Builder
-	matched, shown, readRunes := 0, 0, 0
-	// A search lists the newest matches first: the last offset+20 matches are kept as the log is read, in a ring.
+	shown, readRunes := 0, 0
+	// A search lists tool output, then coordination: the last offset+20 matches of each are kept as the log is read.
 	keep := req.Offset + 20
-	var ring []string
+	var output, relay matches
 	calls := map[string]string{}   // tool call id -> callLabel
 	pending := map[string]bool{}   // the calls shown, whose result records are still to be found
 	results := map[string]uint64{} // a shown call's id -> the record of its result
@@ -206,16 +266,15 @@ func (s *Session) goalEvidence(ctx context.Context, g *goal.State, cutoff uint64
 		if at < 0 {
 			return nil
 		}
-		matched++
 		// Slice by runes so a match next to Unicode cannot produce invalid UTF-8.
 		start := max(0, len([]rune(folded[:at]))-80)
 		r := []rune(body)
 		snippet := string(r[start:min(start+300, len(r))])
 		line := fmt.Sprintf("record=%d agent=%s type=%s%s %s\n", e.Seq, e.Agent, e.Type, mark, strings.Join(strings.Fields(snippet), " "))
-		if i := (matched - 1) % keep; i == len(ring) {
-			ring = append(ring, line)
+		if relayed(e, calls) {
+			relay.add(line, keep)
 		} else {
-			ring[i] = line
+			output.add(line, keep)
 		}
 		return nil
 	})
@@ -228,11 +287,16 @@ func (s *Session) goalEvidence(ctx context.Context, g *goal.State, cutoff uint64
 		}
 	}
 	if !reading {
-		for back := req.Offset; back < matched && shown < 20; back++ {
-			out.WriteString(ring[(matched-1-back)%keep])
+		for back := req.Offset; back < output.n+relay.n && shown < 20; back++ {
+			if back < output.n {
+				out.WriteString(output.newest(back, keep))
+			} else {
+				out.WriteString(relay.newest(back-output.n, keep))
+			}
 			shown++
 		}
-		fmt.Fprintf(&out, "matching records=%d shown=%d offset=%d (newest first); next offset=%d\n", matched, shown, req.Offset, req.Offset+shown)
+		fmt.Fprintf(&out, "matching records=%d (%d tool output, then %d of coordination tools: task, pool, mail, plan…) shown=%d offset=%d (each newest first); next offset=%d\n",
+			output.n+relay.n, output.n, relay.n, shown, req.Offset, req.Offset+shown)
 	}
 	if shown == 0 {
 		out.WriteString("No matching evidence.\n")

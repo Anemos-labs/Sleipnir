@@ -459,7 +459,9 @@
         "evidence": "no files edited; no tests run",
         "rev": 6,
         "seq": 142,
-        "updated": "2026-09-30T20:52:28.535089559Z"
+        "updated": "2026-09-30T20:52:28.535089559Z",
+        "cost_usd": 0.016791999999999998,
+        "requests": 3
       },
       {
         "id": "T2",
@@ -472,7 +474,9 @@
         "evidence": "no files edited; no tests run",
         "rev": 8,
         "seq": 145,
-        "updated": "2026-09-30T20:52:28.535114926Z"
+        "updated": "2026-09-30T20:52:28.535114926Z",
+        "cost_usd": 0.016488,
+        "requests": 3
       },
       {
         "id": "T3",
@@ -485,7 +489,9 @@
         "evidence": "no files edited; no tests run",
         "rev": 10,
         "seq": 148,
-        "updated": "2026-09-30T20:52:28.535134363Z"
+        "updated": "2026-09-30T20:52:28.535134363Z",
+        "cost_usd": 0.016503999999999998,
+        "requests": 3
       },
       {
         "id": "T4",
@@ -498,7 +504,9 @@
         "evidence": "no files edited; no tests run",
         "rev": 12,
         "seq": 151,
-        "updated": "2026-09-30T20:52:28.535152754Z"
+        "updated": "2026-09-30T20:52:28.535152754Z",
+        "cost_usd": 0.016472,
+        "requests": 3
       },
       {
         "id": "T5",
@@ -510,7 +518,9 @@
         "files": ["summaries/topic-1.md", "summaries/topic-2.md"],
         "rev": 28,
         "seq": 160,
-        "updated": "2026-09-30T20:52:28.535289497Z"
+        "updated": "2026-09-30T20:52:28.535289497Z",
+        "cost_usd": 0.01434,
+        "requests": 2
       },
       {
         "id": "T6",
@@ -522,7 +532,9 @@
         "files": ["summaries/topic-3.md", "summaries/topic-4.md"],
         "rev": 30,
         "seq": 169,
-        "updated": "2026-09-30T20:52:28.537449267Z"
+        "updated": "2026-09-30T20:52:28.537449267Z",
+        "cost_usd": 0.014136,
+        "requests": 2
       }
     ],
     "counts": {"todo": 0, "running": 2, "verifying": 0, "merged": 4, "failed": 0}

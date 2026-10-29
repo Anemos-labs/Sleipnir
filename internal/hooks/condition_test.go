@@ -41,6 +41,10 @@ func TestIfConditions(t *testing.T) {
 		{"web other domain", "WebFetch(domain:example.com)", "web_fetch", `{"url": "https://other.org/page"}`, false},
 		{"mcp tool by name", "mcp__github__create_issue", "mcp__github__create_issue", `{}`, true},
 		{"mcp other tool", "mcp__github__create_issue", "mcp__github__list_issues", `{}`, false},
+		{"a file a patch changes", "Edit(secret/**)", "apply_patch", `{"patch": "*** Begin Patch\n*** Update File: secret/a.txt\n@@\n-a\n+b\n*** End Patch"}`, true},
+		{"a file a patch moves to", "Edit(secret/**)", "apply_patch", `{"patch": "*** Begin Patch\n*** Update File: a.txt\n*** Move to: secret/b.txt\n@@\n-a\n+b\n*** End Patch"}`, true},
+		{"a patch elsewhere", "Edit(secret/**)", "apply_patch", `{"patch": "*** Begin Patch\n*** Update File: a.txt\n@@\n-a\n+b\n*** End Patch"}`, false},
+		{"a guarded file the session may allow", "Read(.env)", "read", `{"path": ".env"}`, true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

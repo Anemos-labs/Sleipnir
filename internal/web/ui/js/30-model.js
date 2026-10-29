@@ -35,7 +35,7 @@
   /* ---------------- what comes from the server, made plain once (it is data: a log can name anything) ---------------- */
   const { safeId, okId } = SL.u, BAD = SL.u.BAD_ID;
   const ID_FIELDS = ['id', 'cid', 'qid', 'ag', 'from', 'to', 'owner', 'head', 'task', 'ch', 'mid', 'parent'], ID_LISTS = ['deps', 'left', 'agents', 'poolMembers'];
-  const NUM_FIELDS = ['rd', 'un', 'out', 'wr', 'ratio', 'p', 'o', 'rpm', 'r429', 'retries', 'inflight', 'queued', 'conflicts', 'bounced', 'read', 'expected', 'pct', 'ms', 'add', 'del', 'tok', 'ttl', 'turns', 'max', 'attempts', 'rate', 'reqSince', 'n', 'breaks', 'loud', 'compacts', 'mails'];
+  const NUM_FIELDS = ['rd', 'un', 'out', 'wr', 'ratio', 'p', 'o', 'rpm', 'r429', 'retries', 'inflight', 'queued', 'conflicts', 'bounced', 'read', 'expected', 'pct', 'ms', 'add', 'del', 'tok', 'ttl', 'turns', 'max', 'attempts', 'rate', 'reqSince', 'n', 'breaks', 'loud', 'compacts', 'mails', 'reqs'];
   const STATES = new Set(['think', 'tool', 'edit', 'wait', 'ask', 'idle', 'done', 'stuck']);
   const num = x => typeof x === 'number' && isFinite(x) ? x : (isFinite(+x) ? +x : 0);
   /** An id field: a finite number stays (a count such as a compaction's from and to shares the name), a string is made plain, any other value is BAD_ID. */
@@ -154,6 +154,7 @@
         T.parent = ev.parent || ''; T.poolPhase = ev.poolPhase || ''; T.poolMembers = Array.isArray(ev.poolMembers) ? ev.poolMembers.slice() : []; T.owner = ev.owner || null;   /* a handover moves the card's owner; a released task has none */
         if (ev.title) T.title = ev.title; T.deps = Array.isArray(ev.deps) ? ev.deps.slice() : []; T.scope = ev.scope || '';
         T.closure = ev.closure || ''; T.failed = !!ev.failed; T.attempts = typeof ev.attempts === 'number' ? ev.attempts : 0;
+        T.cost = typeof ev.cost === 'number' && isFinite(ev.cost) && ev.cost > 0 ? ev.cost : 0; T.onPlan = !!ev.plan; T.reqs = typeof ev.reqs === 'number' ? ev.reqs : 0;   /* what the agents that held it spent on it */
         break;
       }
       case 'plan': {
@@ -251,7 +252,7 @@
         break;
       }
       case 'diff': if (typeof ev.file === 'string' && !(ev.file in Object.prototype)) m.diff[ev.file] = ev; break;
-      case 'goal': m.goal = { state: ev.s, objective: ev.objective || '', turns: ev.turns || 0, max: ev.max || 0, paused: ev.paused || '', reason: ev.reason || '', spec: ev.spec || '', milestones: Array.isArray(ev.milestones) ? ev.milestones.map(x => ({ id: x.id || '', text: x.text || '', met: !!x.met, evidence: x.evidence || '' })) : [] }; break;   /* the whole goal: what it omits is empty */
+      case 'goal': m.goal = { state: ev.s, objective: ev.objective || '', turns: ev.turns || 0, max: ev.max || 0, paused: ev.paused || '', reason: ev.reason || '', spec: ev.spec || '', rubric: ev.rubric || '', milestones: Array.isArray(ev.milestones) ? ev.milestones.map(x => ({ id: x.id || '', text: x.text || '', met: !!x.met, evidence: x.evidence || '' })) : [] }; break;   /* the whole goal: what it omits is empty */
       case 'final': m.final = { t: ev.t, steps: m.steps }; m.turn = false; push(m, 'mgr', { k: 'final', t: ev.t }, ev); break;
       case 'steer': {
         const e = { k: 'steer', to: ev.to, text: ev.text, t: ev.t };

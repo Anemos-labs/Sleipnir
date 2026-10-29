@@ -14,6 +14,9 @@ func TestLoopbackCurlFileForms(t *testing.T) {
 		{"--write-out", "%output{stolen.txt}%{http_code}", false},
 		{"-w", "%output{>>stolen.txt}%{http_code}", false},
 		{"-w", "%{http_code}", true},
+		{"-H", "*", false}, // a workspace file named "--upload-file=x" would become an option
+		{"-d", "a?", false},
+		{"-H", "X-[ab]", false},
 	} {
 		if got := loopbackHTTP("curl", []string{tt.option, tt.value, "http://localhost:8080"}); got != tt.want {
 			t.Errorf("%s %q = %v, want %v", tt.option, tt.value, got, tt.want)

@@ -50,6 +50,7 @@ const (
 	maxLineRunes   = 140
 	maxResultRunes = 160
 	maxEvidRunes   = 320
+	maxReportRunes = 4000
 	maxNoteRunes   = 300
 	maxAlertRunes  = 160
 	maxPendingEvts = 4096
@@ -70,7 +71,10 @@ type Task struct {
 	Deps      []string   `json:"deps,omitempty"`
 	Line      string     `json:"line,omitempty"`   // latest one-line progress
 	Result    string     `json:"result,omitempty"` // what the worker said when it finished
-	Files     []string   `json:"files,omitempty"`  // the scope: paths the task may touch
+	// Report is a read-only worker's whole report (a review's findings, a scout's answer), kept while the task is in review or
+	// done. Result is one line of it; Report is shown by task get only, so the board every agent reads stays small.
+	Report string   `json:"report,omitempty"`
+	Files  []string `json:"files,omitempty"` // the scope: paths the task may touch
 	// Evidence is what the harness observed (edited files, the last test command
 	// and its exit status). Only the harness writes it.
 	Evidence string `json:"evidence,omitempty"`
@@ -339,6 +343,7 @@ func (d *draft) setTask(t Task) {
 	d.set("owner", t.Owner)
 	d.set("line", t.Line)
 	d.set("result", t.Result)
+	d.set("report", t.Report)
 	d.set("evidence", t.Evidence)
 	d.set("agreement", t.Agreement)
 	d.set("agreements", t.Agreements)
@@ -365,6 +370,9 @@ func (d *draft) put(i int, t Task) error {
 	}
 	if t.Status != StatusBlocked {
 		t.BlockedOn = ""
+	}
+	if t.Status != StatusReview && t.Status != StatusDone {
+		t.Report = ""
 	}
 	d.tasks()[i] = t
 	d.setTask(t)
@@ -910,6 +918,11 @@ func (b *Board) SubmitAt(agent, id string, rev uint64, result, evidence string, 
 // submitAgreementAt atomically submits a result and its optional contract for review.
 // Oversized contracts are rejected rather than silently losing constraints.
 func (b *Board) submitAgreementAt(agent, id string, rev uint64, result, evidence, agreement string, checks ...TaskCheck) error {
+	return b.submitReportAt(agent, id, rev, result, "", evidence, agreement, checks...)
+}
+
+// submitReportAt is submitAgreementAt that also keeps a read-only worker's whole report (Task.Report).
+func (b *Board) submitReportAt(agent, id string, rev uint64, result, report, evidence, agreement string, checks ...TaskCheck) error {
 	agreement, err := cleanAgreement(agreement)
 	if err != nil {
 		return err
@@ -936,6 +949,7 @@ func (b *Board) submitAgreementAt(agent, id string, rev uint64, result, evidence
 		t.Status, t.Line = StatusReview, ""
 		t.VerificationFailures = 0
 		t.Result, t.Evidence = cleanText(result, maxResultRunes), cleanText(evidence, maxEvidRunes)
+		t.Report = truncRunes(strings.TrimSpace(cleanBlock(report, 0)), maxReportRunes)
 		t.Agreement = agreement
 		return d.put(i, t)
 	})
@@ -1453,7 +1467,7 @@ func (b *Board) RestoreKeeping(prev *Snapshot, owners map[string]string, keep ma
 					break
 				}
 				t.Status, t.Owner, t.Line, t.Rev = StatusTodo, owners[t.ID], resumedLine, d.Version
-				t.BlockedOn = ""
+				t.BlockedOn, t.Report = "", ""
 				back = append(back, t.ID)
 			}
 			tasks[i] = t

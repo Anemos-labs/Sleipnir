@@ -341,7 +341,11 @@ Usage of chat:
   -resume string
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
-        role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… turns the lesson memory on, reranker=… orders what it finds, fallback=… takes the requests of a model whose endpoint has been out for a minute). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
+        role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… adds search by meaning to the lesson memory, reranker=… orders what it finds, fallback=… takes the requests of a model whose endpoint has been out for a minute). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
+  -sandbox string
+        run every shell command of the session inside a container of its own: docker (image buildpack-deps:bookworm) or docker=IMAGE. The project is mounted at its own path, the network is off, capabilities are dropped and the harness, its keys and the rest of the machine stay outside; edits are still made by the agents' file tools
+  -sandbox-network
+        with --sandbox: let commands in the container use the network (to install dependencies); it is off otherwise
   -swarm int
         chat as a team of a manager and N workers (config swarm.max_workers is the ceiling); on a terminal the default is 8 workers (a --team brings its own), --swarm 0 is a single agent
   -team NAME
@@ -496,7 +500,7 @@ flags:
   -resume string
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
-        for new sessions: role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… turns the lesson memory on, reranker=… orders what it finds, fallback=… takes the requests of a model whose endpoint has been out for a minute). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
+        for new sessions: role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… adds search by meaning to the lesson memory, reranker=… orders what it finds, fallback=… takes the requests of a model whose endpoint has been out for a minute). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
   -swarm int
         new sessions are a team of a manager and N workers (config swarm.max_workers is the ceiling); the default is 8 workers (a --team brings its own), --swarm 0 is a single agent
   -team NAME
@@ -576,6 +580,8 @@ flags:
         continue this project's newest session (same as --resume latest)
   -cwd string
         working directory (default: current)
+  -effort string
+        reasoning effort of the requests: default | none | minimal | low | medium | high | xhigh | max; each model uses its closest supported level, as /effort does (unset: the provider's own default, or what a resumed session had)
   -isolation string
         swarm: none | worktree (default: config swarm.isolation). worktree gives every writer a git worktree of its own; finished work is merged and verified through a queue and applied to your checkout at the end
   -json
@@ -605,7 +611,11 @@ flags:
   -resume string
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
-        role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… turns the lesson memory on, reranker=… orders what it finds, fallback=… takes the requests of a model whose endpoint has been out for a minute). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
+        role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… adds search by meaning to the lesson memory, reranker=… orders what it finds, fallback=… takes the requests of a model whose endpoint has been out for a minute). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
+  -sandbox string
+        run every shell command of the session inside a container of its own: docker (image buildpack-deps:bookworm) or docker=IMAGE. The project is mounted at its own path, the network is off, capabilities are dropped and the harness, its keys and the rest of the machine stay outside; edits are still made by the agents' file tools
+  -sandbox-network
+        with --sandbox: let commands in the container use the network (to install dependencies); it is off otherwise
   -session-dir string
         directory for this run's recording (events.jsonl, blobs/, checkpoints/); default <state>/sessions/<id>, <state> being $SLEIPNIR_HOME or ~/.sleipnir
   -swarm int
@@ -663,6 +673,46 @@ flags:
         render RUN's wiki into this directory of the project (an earlier export there is replaced)
   -json
         machine-readable output
+```
+<!-- /flags -->
+
+### `sleipnir scan`
+
+`sleipnir scan [SCAN]` lists the project's deep scans with their depth, phase and numbers, or shows where one scan
+stands: what is mapped and hunted, the leads and their verdicts, and what it needs next. `--report` rewrites the scan's
+report (`REPORT.md`, `findings.json`, `findings.sarif`, `map.json`) from its ledger. Scans are started in the chat or the
+web page with `/scan` (`docs/SCAN.md`).
+
+<!-- flags: scan -->
+```text
+usage: sleipnir scan [SCAN] [flags]
+
+The deep scans of a project (docs/SCAN.md). A scan is started in the chat or the web page:
+/scan [survey|standard|deep] [DIR] has a team map the repository at HEAD, hunt it for holes, and report
+only what verifiers confirmed and, from the depth's bar up, a reproducer showed in the sandbox
+(start the session with --sandbox docker). Each scan keeps its ledger and its report under
+.sleipnir/scan/SCAN.
+
+Without SCAN it lists the scans, newest first; with SCAN it shows where the scan stands. --start creates a
+scan of HEAD (of DIR, the positional, when given) and prints the goal that drives it, for a headless team:
+  sleipnir swarm 12 --sandbox docker "$(sleipnir scan --start)"
+--start --diff BASE reviews a change instead: the files HEAD changed since BASE (a commit or a branch, from
+their merge base), with leads only where a step of the trace is on a line the change wrote:
+  sleipnir swarm 8 --sandbox docker "$(sleipnir scan --start --diff origin/main)"
+
+flags:
+  -cwd string
+        the project (default: the current directory)
+  -depth string
+        with --start: survey, standard or deep (default "standard")
+  -diff BASE
+        with --start: review the change from BASE (a commit or branch) to HEAD instead of the whole repository
+  -json
+        machine-readable output
+  -report
+        rewrite SCAN's report (REPORT.md, findings.json, findings.sarif, map.json) from its ledger and print where it is
+  -start
+        create a scan of the repository at HEAD (below the positional DIR, when given) and print the goal that drives it
 ```
 <!-- /flags -->
 
@@ -2571,7 +2621,7 @@ flags:
 | `/compact [focus]` | fold the older thread now; the optional text says what to keep in view (a declared, priced rebase; `docs/EXTENDING.md` section 7) |
 | `/agents` | the team's agents and tasks written into the scrollback (`ctrl+g` is the cockpit); in a single-agent session it says so |
 | `/model [ref]` | show the model; with a reference (`provider/model`), move this conversation to it (a menu of every model of your providers opens after `/model `, typing filters it). A team starts again on the new model, with the manager's conversation (the workers start again) and the roles that name their own model kept; the reference is checked first, so a typo or a provider without a key ends nothing. `/roles role=model` checks its references the same way |
-| `/effort [level]` | inspect or change reasoning effort for subsequent agent requests without restarting; each model uses its closest supported level. `default` restores the provider default. The preference survives session resume; changing it may invalidate the message cache |
+| `/effort [level]` | inspect or change reasoning effort for subsequent agent requests without restarting; each model uses its closest supported level. `default` restores the provider default. The preference survives session resume; changing it may invalidate the message cache. A run left alone sets it with `sleipnir run --effort <level>` |
 | `/plan [prompt]` | switch to read-only mode; with a prompt, submit it for planning immediately. Bare `/plan` changes mode without sending a request. Delegated planning work is also instructed to remain read-only. Use `/mode accept-edits` when ready to implement |
 | `/fav [ref]` | star a model, or unstar it (the session's own when none is named): a starred model comes first in the `/model` menu and in `sleipnir models`, and is kept as `models.favorites` in your own configuration |
 | `/budget [usd\|off]` | show or set the dollar budget for the turns from now on |

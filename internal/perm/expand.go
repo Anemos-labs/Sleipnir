@@ -490,7 +490,7 @@ func gitMarker(p string) bool {
 		_, err := os.Stat(filepath.Join(p, "HEAD"))
 		return err == nil
 	}
-	b, err := os.ReadFile(p)
+	b, err := readGitMeta(p)
 	if err != nil || !strings.HasPrefix(string(b), "gitdir:") {
 		return false
 	}

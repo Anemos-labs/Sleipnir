@@ -121,7 +121,12 @@ func (s *Store) liveContent(key string) ([]byte, bool, error) {
 	if err != nil {
 		return nil, false, fmt.Errorf("%w: %v", ErrOutsideRoot, err)
 	}
-	b, err := readBounded(abs, s.maxBytes)
+	var b []byte
+	if rel, in := underRoot(s.realRoot, abs); in {
+		b, err = readBoundedIn(s.realRoot, rel, s.maxBytes)
+	} else {
+		b, err = readBounded(abs, s.maxBytes) // an absolute key a manifest recorded
+	}
 	switch {
 	case err == nil:
 		return b, true, nil
@@ -455,11 +460,11 @@ func (s *Store) AuthorshipAt(id, path string) (Authorship, error) {
 		out.Binary, out.Exact = true, true
 		return out, nil
 	}
+	if len(out.Content) > maxDiffBytes {
+		return out, nil // no authors, before a line of it is split
+	}
 	lines := splitLines(string(out.Content))
 	out.Lines = make([]LineAuthor, len(lines))
-	if len(out.Content) > maxDiffBytes {
-		return out, nil
-	}
 	if len(recs) == 0 {
 		out.Exact = true // nothing in the session wrote it: every line predates it
 		return out, nil

@@ -36,7 +36,7 @@
   /** The card of each category (83b-ui-dash.js, page plugins). */
   const cardOf = cat => 'plugins.' + cat;
   /** The plugin of a view that is not view:<its name> ('' for one no plugin owns). */
-  const VIEW_PLUGIN = { research: 'research', workspace: 'view:workspace', runner: 'view:tools', doctor: 'view:tools', schedule: 'view:tools', kit: '' };
+  const VIEW_PLUGIN = { research: 'research', scan: '', workspace: 'view:workspace', runner: 'view:tools', doctor: 'view:tools', schedule: 'view:tools', kit: '' };
   /** What a contribution kind is called on the page: [one, many]. */
   const KIND = {
     tool: ['tool', 'tools'], slash: ['command', 'commands'], cli: ['CLI command', 'CLI commands'], skill: ['skill', 'skills'], role: ['role', 'roles'],
@@ -193,9 +193,12 @@
   /** How a found need was found, in words. */
   const VIA = { located: 'located by you', path: 'on PATH', default: 'in its usual place', config: 'in your tool servers' };
   /** One command as one line, quoted as a shell would need it. */
-  const cmdText = argv => arr(argv).map(a => /[\s"'$`\\]/.test(a) ? "'" + String(a).replace(/'/g, "'\\''") + "'" : String(a)).join(' ');
+  const cmdText = argv => arr(argv).map(a => String(a) === '' || /[\s"'$`\\]/.test(a) ? "'" + String(a).replace(/'/g, "'\\''") + "'" : String(a)).join(' ');
   /** A method's commands, one line each: the variables it works out (NAME=$(command)), its setup steps, then its own. */
   const argvText = m => Object.keys(m.env || {}).sort().map(k => k + '=$(' + cmdText(m.env[k]) + ')').concat(arr(m.setup).concat([m.argv]).map(cmdText)).filter(Boolean).join('\n');
+  /** What an install links once it ends: the commands it puts on the PATH and the places it looks for them ('' for none). */
+  const linksHtml = n => arr(n.commands).length ? '<p>It then puts on the PATH of every session: <span class="mono">' + esc(arr(n.commands).join(', ')) + '</span>' +
+    (Object.keys(n.paths || {}).length ? ', looked for in ' + Object.keys(n.paths).sort().map(o => esc(o) + ': <span class="mono">' + esc(arr(n.paths[o]).join(', ')) + '</span>').join('; ') : '') + '.</p>' : '';
   /** "Programs it uses": one line per need of a plugin that is on, with Locate and Install for a missing one ('' when it has none). */
   function needsHtml(p, st) {
     const ns = P.needsOf(p.id); if (!ns.length || !(p.enabled || p.core)) return '';
@@ -333,7 +336,7 @@
     /** Install a need with one of its methods, after the person has read the exact command and pressed Run. */
     function install(id, mid) {
       const n = arr(P.cat && P.cat.needs).find(x => x.id === id), m = n && arr(n.methods).find(x => x.id === mid); if (!m || !m.available) return;
-      const cmd = argvText(m), detail = (cmd ? '<pre class="mono plg-cmd">' + esc(cmd) + '</pre>' : '') + (m.connect ? '<p>It then ' + esc(m.connect) + '; tool servers start with the next session.</p>' : '') + (m.note ? '<p class="dim">' + esc(m.note) + '</p>' : '');
+      const cmd = argvText(m), detail = (cmd ? '<pre class="mono plg-cmd">' + esc(cmd) + '</pre>' : '') + (m.connect ? '<p>It then ' + esc(m.connect) + '; tool servers start with the next session.</p>' : '') + linksHtml(n) + (m.note ? '<p class="dim">' + esc(m.note) + '</p>' : '');
       ui.confirm({ title: (n.server ? '' : 'Install ') + (n.title || id), kicker: 'runs on this machine', text: cmd ? 'Sleipnir will run this command on this machine, as you:' : 'Sleipnir will change your configuration:', detail, ok: cmd ? 'Run it' : 'Connect',
         run: () => P.installNeed(id, mid, m.scope).then(r => { if (!r.ok) fail(r, 'the install did not start'); }) });
     }

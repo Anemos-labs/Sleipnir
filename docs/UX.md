@@ -32,17 +32,20 @@ disagrees, the agent is sent on with what it found missing. Only "done" is
 checked twice, so the second judgment costs a request at most once per claimed
 completion.
 
-A lesson memory turns on when the `embedder` role names an embeddings model
-(`models.roles.embedder` or `--role-model embedder=provider/model`, any
-OpenAI-compatible `/embeddings` endpoint). A goal's first message then carries
-up to five lessons from earlier goals whose tasks are closest to its objective,
-and when the goal is met or given up on, the lessons it was shown are credited
-or debited and up to three new ones are distilled from the judge's verdicts and
-saved in `~/.sleipnir/lessons.json`. Lessons are ranked by similarity and by how
-often they helped; ones that keep failing are dropped. An optional `reranker`
-role (a `/rerank` endpoint) orders the closest twelve before five are shown.
-No model is built in: both are whatever you name. A session started with
-`--no-memory` uses neither.
+Standing goals keep a lesson memory (the Lesson memory plugin, on by default).
+A goal's first message carries up to five lessons from earlier goals that bear
+on its objective, and when the goal is met or given up on, the lessons it was
+shown are credited or debited and up to three new ones are distilled from the
+judge's verdicts, with any credential in them withheld, and saved in
+`~/.sleipnir/lessons.json`. Lessons are found by the content words they share
+with the objective, rare words counting most; when the `embedder` role names an
+embeddings model (`models.roles.embedder` or `--role-model
+embedder=provider/model`, any OpenAI-compatible `/embeddings` endpoint) they
+are found by meaning as well, and a lesson's relevance is the higher of the two.
+Lessons are ranked by relevance and by how often they helped; ones that keep
+failing are dropped. An optional `reranker` role (a `/rerank` endpoint) orders
+the closest twelve before five are shown. No model is built in: both are
+whatever you name. A session started with `--no-memory` keeps no lessons.
 
 Escape or Ctrl+C during a turn cancels it. `/goal pause` and `/goal clear`
 interrupt first, then update goal state after the running turn has stopped.
@@ -150,7 +153,8 @@ says when the log has more. With no session hosted, the page opens the New sessi
 The left rail switches views: the Cockpit (the team as a horse whose eight legs are the eight roles of the team, the stalls, the
 gantt, the task board, the merge queue, mail and the governor), the Workspace (Files, Changes, Checkpoints), Cache, Mail,
 Board, Replay, Sessions, Schedule, Tools and Settings. The Radio rail on the right is the conversation with the manager, which is the
-only agent the person talks to, and a read-only feed of what the team does. Agent drawers, opened from a stall or a gantt row,
+only agent the person talks to, and a read-only feed of what the team does. An agent's words are drawn as Markdown, as the
+terminal draws them: typed as plain text while they stream, then rendered once the message is whole. Agent drawers, opened from a stall or a gantt row,
 are read-only.
 
 In the Workspace, a click on a line number of a diff or of a whole file comments that line (a removed line too); the number of
@@ -192,7 +196,9 @@ On the task board every task is in the column of its own status, and a column's 
 parent's column is drawn inside the parent's card, open in todo, running and verify and folded in merged, behind a toggle that says
 how many it holds (`▾ 2 subtasks`); a subtask in another column is a card of that column marked with its parent (`↳ T124`), and the
 parent's card says where the others are (`+ 6 in todo · 1 merged`). A failed task stays in todo with its `✗` and is counted apart
-(`3 + 1 ✗`). Past eight merged tasks, the merged column is one line per task (id, owner, title, time of the merge), the newest merge
+(`3 + 1 ✗`). A card shows what the agents that held the task spent on it (`$0.04`, every attempt and owner together, side requests
+such as compaction included; `≈` marks usage a subscription plan covered) and names its number of requests on hover; the terminal's
+Board view ends each task's row with the same figure. A task that cost far more than its neighbours is where the team struggled. Past eight merged tasks, the merged column is one line per task (id, owner, title, time of the merge), the newest merge
 first, and an empty column is drawn narrower. The Cockpit's merge queue names the twelve newest merges and counts the earlier ones.
 The Board view's dependency graph draws every task when they fit its panel; otherwise the merged tasks that no unfinished task waits
 on are one node (`✓ 118 merged`), a column taller than the panel is wrapped into several, and a graph that still does not fit is

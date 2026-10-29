@@ -602,6 +602,14 @@ func TestAttach(t *testing.T) {
 	if err := w.Cleanup(); err != nil || !exists(dir) {
 		t.Fatalf("Cleanup of an attached workspace must not delete it: %v", err)
 	}
+	// A tree inside the task's own repository would show its commands the rest of it.
+	in := filepath.Join(r.Dir, "sub")
+	if err := os.MkdirAll(in, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Attach(ctxT(t), mathxTask(r, base), in); err == nil {
+		t.Fatal("a tree inside the task's repository was attached")
+	}
 }
 
 func TestConcurrentPrepareAcrossTasks(t *testing.T) {

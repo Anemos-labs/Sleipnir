@@ -49,10 +49,13 @@ func (r *Runner) postHook(ctx context.Context, h Hook, payload []byte, timeout t
 	for k, v := range h.Headers {
 		req.Header.Set(k, v)
 	}
-	client := r.HTTPClient
-	if client == nil {
-		client = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	// A supplied client keeps its transport, but never follows a redirect either.
+	client := &http.Client{}
+	if r.HTTPClient != nil {
+		c := *r.HTTPClient
+		client = &c
 	}
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	resp, err := client.Do(req)
 	if err != nil {
 		switch {

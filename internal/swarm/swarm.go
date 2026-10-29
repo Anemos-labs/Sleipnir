@@ -349,6 +349,7 @@ type Swarm struct {
 
 	wk      waker                    // waking an idle manager (wake.go)
 	mgrSeen atomic.Pointer[Snapshot] // the board as the manager's newest request showed it
+	solo    soloRun                  // the manager's requests in its current run while the team has nothing to do (emptyBoardLine)
 	mail    *mailroom                // mailman mode (mailman.go); nil when it is off
 	stalls  stallState               // the stall sweep's memory (stall.go)
 
@@ -712,6 +713,7 @@ func (s *Swarm) RunManager(ctx context.Context, goal string) (*agent.Result, err
 // framed (a wake note) that is queued for the manager's first step; goal is the
 // person's input, or "" for a run the harness started.
 func (s *Swarm) runManager(ctx context.Context, m *member, goal, mail string) (res *agent.Result, err error) {
+	s.solo.reset()
 	epoch := s.wk.epochNow()
 	stop := context.AfterFunc(ctx, func() {
 		s.wk.hold(epoch) // first: stopping the workers is an event the manager would be woken for

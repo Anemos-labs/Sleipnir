@@ -73,7 +73,8 @@ func TestProjectMaySetIsolationButCannotChooseWhereTreesLive(t *testing.T) {
 		}
 	}
 	for _, s := range SensitivePaths() {
-		if strings.HasPrefix(s, "swarm") && s != "swarm.budget_usd" { // the budget is the one: budget_test.go
+		// The budget (budget_test.go) and the older spelling of the push-progress plugin are the ones.
+		if strings.HasPrefix(s, "swarm") && s != "swarm.budget_usd" && s != "swarm.push_progress" {
 			t.Errorf("no other swarm setting is security-sensitive, got %s", s)
 		}
 	}

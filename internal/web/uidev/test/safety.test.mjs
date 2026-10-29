@@ -10,7 +10,7 @@ import vm from 'node:vm';
 import { context, load, fakeFetch, tick, plain } from './harness.mjs';
 
 const BASE = ['00-namespace.js', '00-util.js', 'api.js', '11-data-live.js', '20-clock.js', '30-model.js', '50-sessions.js', '60-actions.js', 'live.js'];
-const UI = ['84-ui-chat.js', '85-ui-approvals.js', '87b-ui-folder.js', '87-ui-sheets.js', '93-palette.js'];
+const UI = ['96b-ws-data.js', '96c-media.js', '84-ui-chat.js', '85-ui-approvals.js', '87b-ui-folder.js', '87-ui-sheets.js', '93-palette.js'];
 const IMG = '"><img src=x onerror=window.__pwn=1>', COVER = 'x" style="position:fixed;inset:0';
 const HOSTILE = [IMG, COVER, '__proto__', 'constructor', 'toString', 'a'.repeat(65), 'be 1', '', 7];
 /** markup that a hostile value broke out of: a tag it brought, or a tag of the page that is not only well-formed name="value" attributes
@@ -115,6 +115,19 @@ test('every row of the conversation stays plain markup with hostile ids and valu
     { k: 'feed', ag: IMG, g: 'toString', text: 'x', to: COVER }, { k: 'say', ag: COVER, text: 'x', stream: true, t: IMG, rate: COVER }, { k: 'mail', from: IMG, to: COVER, text: 'x' },
     { k: 'break', ag: IMG, kind: 'k', read: IMG, expected: 1, why: 'w' }, { k: 'compact', ag: IMG, from: 1, to: 1, pct: IMG, moment: IMG, mode: IMG }, { k: 'tool', ag: COVER, name: 'n', add: IMG, del: COVER }];
   direct.forEach(e => { const h = SL.chat.rowHtml(Object.assign({ t: 1 }, e), S, m); assert.ok(!broken(h), h); assert.ok(!/function|native code/.test(h), h); });
+});
+
+test('an agent\'s words are drawn as Markdown, as the terminal draws them, and stay escaped', async () => {
+  const { SL } = boot({ snaps: { a: snap('a', []) } });
+  await SL.live.start();
+  const S = SL.sessions.get('a'), m = SL.model.newModel(S);
+  const h = SL.chat.rowHtml({ k: 'say', ag: 'mgr', t: 1, text: 'Done on `fix/1`.\n\n- **Cause**: a non-global trim\n- Tests: 6/6\n\n' + IMG }, S, m);
+  assert.match(h, /<code>fix\/1<\/code>/);
+  assert.match(h, /<ul><li><strong>Cause<\/strong>: a non-global trim<\/li><li>Tests: 6\/6<\/li><\/ul>/);
+  assert.ok(!broken(h), h);
+  /* a message still being typed carries its source for the frame that types it, and gets its Markdown once it is whole */
+  const st = SL.chat.rowHtml({ k: 'say', ag: 'mgr', t: 1, stream: true, rate: 70, text: '**b**' }, S, m);
+  assert.match(st, /class="mt md" data-full="\*\*b\*\*"/);
 });
 
 test('a compaction row says what the cache did only when the moment is known, in the terminal\'s words, and the rows of the feed-style events are escaped text', async () => {

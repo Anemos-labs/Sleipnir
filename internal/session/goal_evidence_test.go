@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/goal"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
@@ -172,7 +173,7 @@ func TestGoalTaskGateDistinguishesDispositionFromUnfinishedWork(t *testing.T) {
 	}
 }
 
-// The judge's search lists the newest matches first, so the last run of a check is what it sees before the runs that came before
+// The judge's search lists the newest matches first (tool output and coordination each), so the last run of a check is what it sees before the runs that came before
 // it; offsets count back from the newest, and the rosters of earlier judgments are not search results. In a team trial the judge's
 // searches surfaced the first test runs of a long session and it asked again and again for "the final test run", which existed.
 func TestGoalEvidenceListsTheNewestFirst(t *testing.T) {
@@ -199,7 +200,7 @@ func TestGoalEvidenceListsTheNewestFirst(t *testing.T) {
 	}
 	first := func(got string) string { return strings.SplitN(got, "\n", 2)[0] }
 	got, err := s.goalEvidence(context.Background(), g, cutoff, evidenceRequest{Query: "passed"})
-	if err != nil || !strings.HasPrefix(first(got), fmt.Sprintf("record=%d ", runs[2])) || !strings.Contains(got, "matching records=3 shown=3") {
+	if err != nil || !strings.HasPrefix(first(got), fmt.Sprintf("record=%d ", runs[2])) || !strings.Contains(got, "matching records=3 (3 tool output, then 0 ") {
 		t.Fatalf("search, newest first: %s %v", got, err)
 	}
 	got, err = s.goalEvidence(context.Background(), g, cutoff, evidenceRequest{Query: "passed", Offset: 1})
@@ -209,6 +210,76 @@ func TestGoalEvidenceListsTheNewestFirst(t *testing.T) {
 	got, err = s.goalEvidence(context.Background(), g, cutoff, evidenceRequest{})
 	if err != nil || !strings.HasPrefix(first(got), fmt.Sprintf("record=%d ", runs[2])) || strings.Contains(got, "goal.evidence") {
 		t.Fatalf("the first page: %s %v", got, err)
+	}
+}
+
+// A coordination tool is known by the name the agent dispatches, whatever namespace or chat format a model left on the name it
+// wrote; anything else is tool output.
+func TestCoordinationToolsAreKnownByTheDispatchedName(t *testing.T) {
+	for label, want := range map[string]bool{
+		"task get T7": true, "task.get T7": true, "functions.task.get T7": true, "tools.mail send": true, "task<|channel|>commentary": true, "'task' get T7": true, "`mail`": true,
+		"pool.agree": true, "bash go test ./...": false, "functions.bash ls": false, "read internal/cp/ws.go": false, "taskify": false, "": false,
+	} {
+		if got := coordinationTool(label); got != want {
+			t.Errorf("coordinationTool(%q) = %v, want %v", label, got, want)
+		}
+	}
+	for _, name := range []string{"functions.task.get", "'task'"} {
+		calls := map[string]string{"p1": name + " T7"}
+		result := events.Event{Type: events.TypeTurnAppend, Data: []byte(`{"role":"user","blocks":[{"kind":"tool_result","tool_id":"p1","content":[{"kind":"text","text":"T7 done"}]}]}`)}
+		call := events.Event{Type: events.TypeToolCall, Data: fmt.Appendf(nil, `{"id":"p1","name":%q,"input":{}}`, name)}
+		if !relayed(result, calls) || !relayed(call, calls) {
+			t.Errorf("a task call written %s, or its result, was taken for tool output", name)
+		}
+	}
+}
+
+// A search lists tool output before the records of coordination tools, which restate what agents claimed: in a long team run
+// task and mail results filled the first page for nearly every query, and the command that proved the claim was pages down.
+func TestGoalEvidenceListsToolOutputBeforeCoordination(t *testing.T) {
+	dir := t.TempDir()
+	log, err := events.Open(dir, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer log.Close()
+	s := &Session{Dir: dir, Log: log, Blobs: events.NewMemBlobs()}
+	g := goal.New("ship")
+	s.SaveGoal(g)
+	call := func(agent, id, name, input string) uint64 {
+		seq, _ := log.Emit(agent, events.TypeToolCall, map[string]any{"id": id, "name": name, "input": map[string]any{"command": input}})
+		return seq
+	}
+	result := func(agent string, blocks ...core.Block) uint64 {
+		seq, _ := log.Emit(agent, events.TypeTurnAppend, core.Turn{Role: core.RoleUser, Blocks: blocks})
+		return seq
+	}
+	ran := call("be-1", "c1", "bash", "go test -run TestWsLiveUpdate ./internal/cp")
+	proof := result("be-1", core.ToolResult("c1", false, core.Text("--- PASS: TestWsLiveUpdate (0.02s)")))
+	call("mgr", "m0", "task", "get T7")
+	call("be-2", "c2", "read", "internal/cp/ws_test.go")
+	mixed := result("be-2", core.ToolResult("m0", false, core.Text("T7: TestWsLiveUpdate PASS")), core.ToolResult("c2", false, core.Text("func TestWsLiveUpdate(t *testing.T) {")))
+	var echoes []uint64
+	for i := range 25 {
+		id := fmt.Sprintf("t%d", i)
+		call("mgr", id, "task.get", "T7")
+		echoes = append(echoes, result("mgr", core.ToolResult(id, false, core.Text("T7 done: TestWsLiveUpdate PASS on :0"))))
+	}
+	cutoff, err := s.goalEvidenceCutoff()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.goalEvidence(context.Background(), g, cutoff, evidenceRequest{Query: "TestWsLiveUpdate"})
+	lines := strings.Split(got, "\n")
+	// The tool output, newest first: the read beside a task result, the test's output, the command that ran it.
+	if err != nil || len(lines) < 4 || !strings.HasPrefix(lines[0], fmt.Sprintf("record=%d ", mixed)) || !strings.HasPrefix(lines[1], fmt.Sprintf("record=%d ", proof)) ||
+		!strings.HasPrefix(lines[2], fmt.Sprintf("record=%d ", ran)) || !strings.HasPrefix(lines[3], fmt.Sprintf("record=%d ", echoes[24])) ||
+		!strings.Contains(got, "matching records=28 (3 tool output, then 25 of coordination tools") {
+		t.Fatalf("the first page does not lead with tool output:\n%s %v", got, err)
+	}
+	got, err = s.goalEvidence(context.Background(), g, cutoff, evidenceRequest{Query: "TestWsLiveUpdate", Offset: 20})
+	if err != nil || !strings.HasPrefix(got, fmt.Sprintf("record=%d ", echoes[7])) || !strings.Contains(got, "shown=8 offset=20") {
+		t.Fatalf("the second page does not go on down the coordination records:\n%s %v", got, err)
 	}
 }
 

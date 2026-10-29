@@ -6,6 +6,16 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/config"
 )
 
+// A project file that is not trusted may turn off a built-in plugin, but neither the hooks plugin nor an external one: either
+// may run the user's guards as hooks.
+func init() {
+	builtin := map[string]bool{}
+	for _, m := range Builtin() {
+		builtin[m.ID] = true
+	}
+	config.KeepEnabledAgainstProject = func(id string) bool { return id == Hooks || !builtin[id] }
+}
+
 // legacy maps settings that switched a feature on or off before plugins to
 // the plugin that now owns the feature. They keep working: a value set in a
 // layer counts as a choice of that layer, and the higher layer wins over a
@@ -115,6 +125,16 @@ func FromConfig(cfg *config.Config, rep *config.Report) Input {
 // row (removed), so the file holds one answer. enabled nil leaves the on/off
 // row alone; settings nil leaves the settings alone, an empty map removes them.
 func Save(path, profile, id string, enabled *bool, settings map[string]any) error {
+	return config.Save(path, choicePatch(profile, id, enabled, settings))
+}
+
+// SaveWithin is Save for a project's file (path, under root): config.SaveWithin keeps every read and write within root.
+func SaveWithin(root, path, profile, id string, enabled *bool, settings map[string]any) error {
+	return config.SaveWithin(root, path, choicePatch(profile, id, enabled, settings))
+}
+
+// choicePatch is the configuration patch of one plugin choice (Save).
+func choicePatch(profile, id string, enabled *bool, settings map[string]any) map[string]any {
 	patch := map[string]any{}
 	plugins := map[string]any{}
 	if enabled != nil {
@@ -140,16 +160,24 @@ func Save(path, profile, id string, enabled *bool, settings map[string]any) erro
 		}
 	}
 	patch["plugins"] = plugins
-	return config.Save(path, patch)
+	return patch
 }
 
 // SaveProfile writes the profile choice to the file at path ("" removes it).
-func SaveProfile(path, profile string) error {
+func SaveProfile(path, profile string) error { return config.Save(path, profilePatch(profile)) }
+
+// SaveProfileWithin is SaveProfile for a project's file (path, under root), as SaveWithin.
+func SaveProfileWithin(root, path, profile string) error {
+	return config.SaveWithin(root, path, profilePatch(profile))
+}
+
+// profilePatch is the configuration patch of a profile choice.
+func profilePatch(profile string) map[string]any {
 	var v any = profile
 	if profile == "" || profile == DefaultProfile {
 		v = nil
 	}
-	return config.Save(path, map[string]any{"plugins": map[string]any{"profile": v}})
+	return map[string]any{"plugins": map[string]any{"profile": v}}
 }
 
 // cut splits "section.key" at its first dot.

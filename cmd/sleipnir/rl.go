@@ -24,6 +24,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/rl/redact"
 	"github.com/anemos-labs/sleipnir/internal/rl/reward"
 	"github.com/anemos-labs/sleipnir/internal/rl/traj"
+	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // init registers the reinforcement-learning command group with the CLI dispatcher.
@@ -313,13 +314,31 @@ func openOutput(path string, def io.Writer) (io.Writer, func(ok bool) error, err
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, nil, err
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0o600)
 	if err != nil {
 		return nil, nil, err
 	}
+	// The mode of OpenFile is for a new file: a regular file that was there keeps its own until it is set here, before it is
+	// emptied and anything is written, so one whose mode cannot be set keeps its contents. A device (/dev/null) is written as is.
+	fi, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, nil, err
+	}
+	regular := fi.Mode().IsRegular()
+	if regular {
+		if err := f.Chmod(0o600); err != nil {
+			f.Close()
+			return nil, nil, err
+		}
+		if err := f.Truncate(0); err != nil {
+			f.Close()
+			return nil, nil, err
+		}
+	}
 	return f, func(ok bool) error {
 		err := f.Close()
-		if !ok {
+		if !ok && regular { // a device is never removed
 			os.Remove(path)
 		}
 		return err
@@ -694,6 +713,7 @@ func rlShow(_ context.Context, args []string, stdout, stderr io.Writer) error {
 }
 
 func printSummary(w io.Writer, s *env.Summary) {
+	w = termText{w} // a summary may be one somebody else's run wrote
 	state := "finished"
 	switch {
 	case s.Partial:
@@ -743,6 +763,7 @@ func showEpisode(dir string, asJSON bool, w io.Writer) error {
 		enc.SetIndent("", " ")
 		return enc.Encode(ep)
 	}
+	w = termText{w} // an episode is a recording, maybe somebody else's
 	fmt.Fprintf(w, "episode %s (group %s)\n", ep.ID, ep.Group)
 	fmt.Fprintf(w, "  policy %s   harness %s   renderer %s\n", ep.Policy.Model, ep.Harness.Version, ep.Harness.Renderer)
 	if v := ep.Outcome.Verifier; v != nil {
@@ -801,4 +822,16 @@ func floatLine(m map[string]float64) string {
 		parts[i] = fmt.Sprintf("%s=%.3g", k, m[k])
 	}
 	return strings.Join(parts, " ")
+}
+
+// termText writes what it is given without terminal controls (tools.SanitizeForTerminal): for the human-readable view of a
+// file that is not ours to trust. It reports the length it was given as written.
+type termText struct{ w io.Writer }
+
+// Write implements io.Writer.
+func (t termText) Write(p []byte) (int, error) {
+	if _, err := io.WriteString(t.w, tools.SanitizeForTerminal(string(p))); err != nil {
+		return 0, err
+	}
+	return len(p), nil
 }

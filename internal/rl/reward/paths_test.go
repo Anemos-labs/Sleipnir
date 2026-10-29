@@ -339,3 +339,27 @@ func TestConsecutiveDoubleStarsCollapse(t *testing.T) {
 		t.Error("collapsed ** pattern no longer matches")
 	}
 }
+
+// Only the "!" that opens a class negates it; a literal one inside a class stays a member.
+func TestSegMatchNegation(t *testing.T) {
+	for _, c := range []struct {
+		pat, s string
+		want   bool
+	}{
+		{"[!a]", "b", true},
+		{"[!a]", "a", false},
+		{"[a[!b]", "!", true},
+		{"[a[!b]", "b", true},
+		{"[a[!b]", "c", false},
+		{"x[!.]y", "x.y", false},
+		{"[!z-a]*.go", "a.go", false}, // the verifier reads z-a as a-z
+		{"[!z-a]*.go", "_.go", true},
+		{"[z-a]*.go", "m.go", true},
+		{"[]a]", "]", true},
+		{`[\]]`, "]", true},
+	} {
+		if got := segMatch(c.pat, c.s); got != c.want {
+			t.Errorf("segMatch(%q, %q) = %v, want %v", c.pat, c.s, got, c.want)
+		}
+	}
+}

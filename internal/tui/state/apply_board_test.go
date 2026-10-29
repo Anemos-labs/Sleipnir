@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/tui/state/statetest"
 )
 
 func taskByID(t testing.TB, sn *Snapshot, id string) Task {
@@ -354,5 +355,36 @@ func TestTaskRefReadsTheTaskIDOfASubmissionName(t *testing.T) {
 		if got := taskRef(in); got != want {
 			t.Errorf("taskRef(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// A task is charged what the agents that hold it spend while they hold it, side requests included, and counts their main requests;
+// the manager, which holds none, charges no task, and a worker that moves on charges its next task.
+func TestATaskIsChargedWhatItsHoldersSpend(t *testing.T) {
+	b, st := newB(), New()
+	apply(t, st, b.Emit("mgr", events.TypeBoardOp, taskOp("create", "T1", "todo", "", 1, map[string]any{"title": "one"})))
+	apply(t, st, b.Emit("mgr", events.TypeBoardOp, taskOp("create", "T2", "todo", "", 2, map[string]any{"title": "two"})))
+	apply(t, st, b.Spawn("be-1", "backend", "T1", "mgr"))
+	apply(t, st, b.Emit("mgr", events.TypeBoardOp, taskOp("assign", "T1", "doing", "be-1", 3, nil)))
+	apply(t, st, b.Request("mgr", "r0", "m", "pk"))
+	apply(t, st, b.Response("mgr", "r0", "m", 100, 0, 0, 10, 0.5))
+	for i, c := range []float64{0.01, 0.02} {
+		req := fmt.Sprintf("r%d", i+1)
+		apply(t, st, b.Request("be-1", req, "m", "pk"))
+		apply(t, st, b.Response("be-1", req, "m", 100, 0, 0, 10, c))
+	}
+	side := statetest.ResponsePayload("c1", "m", 100, 0, 0, 10, 0.004)
+	side["side"] = true
+	apply(t, st, b.Emit("be-1", events.TypeModelResponse, side))
+	got := taskByID(t, st.Snapshot(), "T1")
+	if got.Requests != 2 || got.CostUSD < 0.0339 || got.CostUSD > 0.0341 || got.Spend().Shown() != got.CostUSD {
+		t.Fatalf("T1 was charged %v in %d requests, want 0.034 in 2", got.CostUSD, got.Requests)
+	}
+	apply(t, st, b.Emit("be-1", events.TypeAgentState, map[string]any{"id": "be-1", "state": "running", "line": "starting", "task": "T2"}))
+	apply(t, st, b.Request("be-1", "r9", "m", "pk"))
+	apply(t, st, b.Response("be-1", "r9", "m", 100, 0, 0, 10, 0.03))
+	sn := st.Snapshot()
+	if t1, t2 := taskByID(t, sn, "T1"), taskByID(t, sn, "T2"); t1.Requests != 2 || t2.Requests != 1 || t2.CostUSD != 0.03 {
+		t.Fatalf("after the move: T1 %v in %d, T2 %v in %d", t1.CostUSD, t1.Requests, t2.CostUSD, t2.Requests)
 	}
 }

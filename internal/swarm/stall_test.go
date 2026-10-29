@@ -11,6 +11,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/scan"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
@@ -225,6 +226,41 @@ func TestProgressCallShell(t *testing.T) {
 	}
 	if s.progressCall(call("go test ./..."), &tools.Result{IsError: true, Text: "denied"}) {
 		t.Error("a refused command is progress")
+	}
+}
+
+// A read-only tool that adds to a record the harness keeps (a scan's points and leads, a research run's notes) is progress: a
+// scan's workers record through the scan tool and edit no file, and every one of them was reported as stalled.
+func TestRecordedCallIsProgress(t *testing.T) {
+	reg := tools.NewRegistry()
+	reg.Register(scan.NewTool(scan.NewStore(t.TempDir()), nil))
+	s := &Swarm{deps: Deps{Registry: reg}}
+	point := core.Block{ToolName: scan.ToolName, Input: json.RawMessage(`{"action":"point"}`)}
+	if !s.progressCall(point, &tools.Result{Text: "P1 recorded", Recorded: true}) {
+		t.Error("a recorded point is not progress")
+	}
+	if s.progressCall(core.Block{ToolName: scan.ToolName, Input: json.RawMessage(`{"action":"status"}`)}, &tools.Result{Text: "phase map"}) {
+		t.Error("reading a scan's status is progress")
+	}
+	if s.progressCall(point, &tools.Result{Text: "refused", IsError: true, Recorded: true}) {
+		t.Error("a failed call is progress")
+	}
+}
+
+// A write that changed nothing is not progress, and not an edit in the evidence: a worker that rewrites a file with the
+// bytes it already holds succeeds every time and moves nothing.
+func TestUnchangedWriteIsNotProgress(t *testing.T) {
+	s := &Swarm{}
+	write := core.Block{ToolName: "write", Input: json.RawMessage(`{"path":"a.go","content":"package a\n"}`)}
+	if !s.progressCall(write, &tools.Result{Text: "Wrote a.go"}) {
+		t.Fatal("a write that changed the file is not progress")
+	}
+	same := &tools.Result{Text: "No change: a.go already has exactly this content.", Unchanged: true}
+	if s.progressCall(write, same) {
+		t.Error("a write that changed nothing is progress")
+	}
+	if got := editedBy(write, same); got != nil {
+		t.Errorf("a write that changed nothing is recorded as an edit of %v", got)
 	}
 }
 

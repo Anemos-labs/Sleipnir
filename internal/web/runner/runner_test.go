@@ -42,11 +42,11 @@ func TestRunnerModes(t *testing.T) {
 				t.Errorf("%v: %v, want 403 tty_only with a sentence", c.Path, err)
 			}
 		case "run", "net", "priv", "server":
-			if strings.Join(c.Path, " ") == "run" && plan != nil {
+			if p := strings.Join(c.Path, " "); (p == "run" || p == "swarm") && plan != nil {
 				// With no mode, a run nobody can answer chooses bypass: it is confirmed like --mode bypass. The rest of the
 				// case is about what the command is otherwise.
 				if plan.Mode != "priv" {
-					t.Errorf("run without a mode: %s, want priv", plan.Mode)
+					t.Errorf("%s without a mode: %s, want priv", p, plan.Mode)
 				}
 				plan.Mode = c.Mode
 			}

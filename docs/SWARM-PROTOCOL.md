@@ -194,7 +194,9 @@ worker is never run concurrently on that identity.
 **Auto-docs.** With `swarm.auto_docs` (default true) and a docs slot, the harness keeps the docs worker at work: every
 task the board closes as done that the docs worker did not do becomes a pending change, and when a docs worker is idle
 (or the docs slot is free) the harness gives it one `docs: catch up` task listing every pending change, scoped to
-`*.md` (the Markdown at the root) and `docs/**`. Markdown inside a code directory stays with the role that owns that
+`*.md` (the Markdown at the root) and `docs/**`, plus, by name, the Markdown beside each change: the `*.md` files of the
+directory its scope names, or, when that directory has none, of the nearest directory above it that has some
+(`svc/README.md` for a change to `svc/ratelimit/**`). Other Markdown inside a code directory stays with the role that owns that
 directory: `**/*.md` overlaps every directory a task holds or will claim, so a pass scoped so would wait for every code
 task to close and, while it ran, keep every task scoped to a directory from being claimed. A pass that cannot start says
 why in the keeper's state (`pass T12 waiting to start: scope "*.md" overlaps T6 …`). The first pass waits for the first accepted implementation task: an agreement accepted before
@@ -304,6 +306,13 @@ it.`). Each submission is named once, with the manager's next edit after it; a
 later edit names them all again only when a new one has joined them. The
 manager's own tasks in review are left out, and a shell command is not an edit.
 
+On a team roster, the manager's first file edit in each top-level directory,
+while a writer role (not docs, the tester or a read-only role) has a free slot
+or an idle member, carries a line naming those roles: `Writer slots are free
+(backend, frontend). Work in wordfreq/ bigger than a handoff is a task for one
+of them (task create, then spawn), running beside the rest while you decide and
+review; keep to yourself only what is smaller.` Nothing is refused.
+
 A restored team's idle workers that hold an unfinished task show
 `restored; waiting for T7 to restart`; the others are plainly idle and free for
 new work. When a standing goal sends the manager of a team on, the continuation
@@ -313,7 +322,9 @@ free (be-2, be-3, fe-1)`) and asks for what is missing to be split among them.
 ## 3. The board
 
 Tasks: `id`, `kind` (work by default, or plan), `title`, `desc`, `status`, `owner`, `role`, `deps`, `files` (scope), `line` (latest one-line progress),
-`result` (what the worker said), `evidence` (what the harness observed), `agreement` (a proposed contract),
+`result` (what the worker said, one line), `report` (a read-only worker's whole report, up to 4000 characters and 40
+lines, kept while the task is in review or done and shown by `task get` only), `evidence` (what the harness observed),
+`agreement` (a proposed contract),
 `agreements` (accepted prerequisite contracts inherited at assignment), `attempts`, `rev`, `closure` (the typed reason
 a done or failed task closed, below) and `blocked_on` (the task a blocked task waits for, when its owner named one).
 Statuses: `todo -> doing -> review -> done`, with `blocked` and `failed` as side states.
@@ -392,7 +403,9 @@ worker: done(text)          --> the HARNESS runs the gate:
                               pass  -> review (result = the model's text; evidence = what the harness observed)
                               fail  -> doing (the verifier output is returned to the worker for up to two repair retries)
 worker stops without done   the same gate runs on its behalf; on failure the worker is sent back to work with the
-                            output (twice at most), then the task returns to todo and the manager is told once
+                            output (twice at most), then the task returns to todo and the manager is told once;
+                            a read-only worker whose last answer had no text is first asked for its report (twice
+                            at most), since that report is all the manager decides on
 manager: accept             done    (re-runs the verifier when configured; a task cannot become done without a pass;
                                      an implementation task whose harness evidence reports no edited file, in a
                                      shared or an isolated run, is refused unless its isolated merge carried a change

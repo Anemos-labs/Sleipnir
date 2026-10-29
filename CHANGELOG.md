@@ -17,6 +17,193 @@ they do not indicate whether a change has been released.
   keep their requests until the budget itself is spent, as before. A
   run used to go on starting work until the budget was spent, then stop
   every worker mid-edit and refuse the manager's report too.
+- A remembered trust answer (from `sleipnir trust` or the web interface)
+  now follows the instruction files the trusted session writes itself:
+  when a merge of the team or a project
+  note of the memory tool changes only instruction files (AGENTS.md and the
+  other Markdown the prompt loads, never settings, tool servers, skills,
+  commands, agents or plugins), the ledger is renewed for the new content
+  and a notice names the files. Before, the docs worker's own edits of
+  AGENTS.md voided the answer, and later sessions left the file out. A
+  change the session did not write, or one to any other kind of file, still
+  waits for the question at the next start; `sleipnir trust forget` undoes
+  the answer as before.
+- Permission, configuration and web hardening from a security review. In
+  `default` mode a git command that reads the repository asks when the
+  repository's own configuration names a program git would run for it
+  (`core.fsmonitor`, a filter, a diff `textconv` or external driver,
+  `gpg.program`) or includes another file. `update-ref` and `symbolic-ref`
+  are checked through symbolic refs, a detached curl value with glob
+  characters is refused, and an ask rule is still asked where only refusals
+  apply. An untrusted project's configuration can no longer turn off hooks
+  or external plugins, replace a section that holds a protected setting with
+  a non-object value, or set `swarm.push_progress` to true. Model ids with
+  control or invisible characters are refused. `run --quiet --json` prints
+  only the JSON. Hook approvals are keyed by a new digest, so a hook that
+  was approved before is asked about once more. `sleipnir init` refuses an
+  `AGENTS.md` or `.gitignore` that is a symlink, and `rl export` writes its
+  file with mode 0600. A terminal restart of a session whose project trust
+  was asked for or remembered decides trust again instead of passing
+  `--trust-project`, and `session.Options.TrustDigest` makes trust hold
+  only while the project's files keep the digest the person confirmed (the
+  web interface sets it). In the web interface, removing a rule asks for
+  confirmation when it also takes back a deny or ask rule of the same text,
+  a `swarm` run with no mode needs the same confirmation as `run`, an
+  install of a plugin need is confirmed on the commands it links and the
+  places it finds them and is refused when its commands can't be shown
+  whole, project plugin settings are written within the project, and the
+  Run settings line quotes every value for the shell. The install dialog
+  names the commands it links and where it looks for them, and shows an
+  empty argument as `''`. A failover secondary's estimated price is not
+  recorded as a gateway charge. `rl export -o` to a device writes it as
+  is, and an existing output file keeps its contents until its mode is
+  set.
+- A docs catch-up for a change in a directory without Markdown names the
+  `*.md` files of the nearest directory above it that has some: a change
+  to `svc/ratelimit/**` names `svc/README.md`. A docs worker scoped
+  without it mailed the manager to widen its scope and waited a minute
+  for an answer that never came. Prompt bytes: the catch-up task's scope
+  line names the added files. No pin or tool spec changed.
+- Every task now shows what the agents that held it spent on it: the
+  responses of its holders while they held it, every attempt and owner
+  together, side requests included, and the number of main requests. The
+  terminal's Board view ends each task's row with the figure, the web
+  board's cards show it with the request count on hover, and the page's
+  `task` event carries `cost`, `plan` and `reqs`. A task event is sent
+  again when its figure changes. Prompts are unchanged.
+- A manager's first file edit in each top-level directory, while a
+  writer role of its team has a free slot or an idle member, names those
+  roles and says that work bigger than a handoff is a task for one of
+  them. A manager with seven free slots wrote two of four independent
+  modules itself and ran the other two one after the other on one
+  backend member (2435 s, against 1020 s when each module had its own
+  worker). Prompt bytes: on such an edit, a 201-character line plus the
+  directory and the free roles' names, at most once per directory. No
+  pin or tool spec changed.
+- A project can keep a rubric in `.sleipnir/rubric.md`: standing
+  criteria of good work that the goal judge holds every goal in the
+  project to, beside the goal's own requirements. It is read once when a
+  goal is set, sent with the goal's first message, and given to the judge
+  as data that adds requirements and never relaxes the goal's. The
+  judge's request and the first message of a goal change only in a
+  project that has one; `/goal`, its web sheet and the goal event name
+  the rubric file.
+- A read-only worker's submission (a review's findings, a scout's
+  answer) keeps its whole text, up to 4000 characters and 40 lines, as
+  the task's `report`, shown by `task get`. The board's one-line result
+  names `task get` when the report holds more than it. Before, the text
+  was cut to 120 characters ("No bl…"), and a manager recalled the
+  reviewer's history for the verdict. A read-only worker's `task done`
+  answer no longer asks it for a final summary, which saves it a turn.
+  A read-only planner's text is kept the same way beside its agreement.
+  Prompt bytes: the board's line for such a task gains the 30-character
+  pointer when the report is longer than the line; `task get` on it
+  carries the report, at most 4000 characters and 40 lines. No pin or
+  tool spec changed.
+- RL pipeline hardening from a security review. `sleipnir rl serve` now
+  applies `--budget-usd`, `--max-requests` and `--max-steps` to every HTTP
+  rollout whose task leaves them open, and a blank `role_models` entry runs
+  its role on the policy instead of the configuration's default model. A
+  rollout's repository agent definitions run their `model:` on the policy
+  endpoint (with an injected policy client, on that client). Protected patterns are limited to 1,024 bytes and 64 segments.
+  Mutation tasks protect `testdata`, `tests` and `test` directories at any
+  depth. A workspace id of a task whose name had to be changed carries a
+  digest of the original name, so two tasks never share one. Rollouts hide
+  the repositories their tasks name from confined commands wherever they
+  are (including inline tasks, `file://` sources and a linked worktree's
+  git directories), and `rl taskgen chain` and `rebuild` hide their blob store and sealed
+  starts. Exports redact the policy's checkpoint and sampling settings,
+  consent, the outcome in every format, and warnings, and drop token ids of
+  steps whose prompt could not be read for redaction.
+- Resuming a team's goal after an unjudged pause (an interruption, a
+  failed turn, a restart) no longer asks the judge while the task board
+  still has unfinished tasks, since the judge could not find the goal met
+  then. The continuation names the open tasks instead of the verdict from
+  before the pause, and the judge rules again at the end of the turn. A
+  goal with nothing left open on the board is judged first, as before.
+- The manager of a configured team is told in its live view when it has
+  made more than six requests in one run with nothing on the board and
+  no worker at work: unless the request is one it handles itself, it should
+  create the tasks and spawn them, since each worker reads the code its own
+  task touches. The staffing lines said nothing while no task was open, so a
+  manager could map a whole code base alone, re-reading the same files,
+  while the team waited.
+- The goal judge's evidence search lists tool output (commands, reads,
+  edits, merges) before the records of coordination tools (task, pool,
+  mail, wait, spawn, plan, note, memory), each newest first. Those
+  records restate what agents claimed; the tool output holds the proof.
+  The result line counts both groups, and offsets count down the
+  combined order. A tool name is classified as the agent dispatches it,
+  so "functions.task.get" is the task tool's.
+- Resuming a goal that paused on a turn the judge did not rule on (the
+  turn was interrupted, failed or ran out of budget, the chat was restarted, or the judge
+  could not be asked) now judges it first. Before, resume re-sent the
+  judge's last "not met yet", from before that turn's work. A goal
+  paused by the person between turns, or by a verdict, resumes as
+  before.
+- `sleipnir scan --start --diff BASE` creates a review of the change from BASE to HEAD (docs/SCAN.md): only the files the
+  change wrote are mapped and hunted, a lead needs a trace step on a line the change made, and findings.json gains `base`
+  and `changes`. Every finding in findings.json gains an `anchor`: in a review the last trace step on a changed line, where
+  the review's SARIF result is located; in a scan the sink, as before.
+- A session whose goal is a deep scan works on that scan: the `scan` tool's calls that name another scan of the project
+  (an older unfinished one, whose lead numbers mean other things) go to the session's scan, with a note. A reproducer's
+  marker may be followed by a colon (`SLEIPNIR-REPRODUCED: rows`).
+- A goal judge request that fails with a network error, a timeout, a
+  5xx or a rate limit is sent again, up to four times with a growing
+  wait (or the server's `Retry-After`, when longer), and each retry is
+  a `model.error` event. Before, one dropped connection paused the
+  goal and discarded the judgment's evidence requests.
+- A read-only worker (a reviewer, a scout) that stops on its task with
+  no answer text is mailed once or twice for its report before its task
+  is submitted, instead of reaching review with an empty result. A
+  reviewer whose last turn was reasoning alone reached review with
+  nothing to read, and its manager spent four minutes recalling the
+  reviewer's history for the verdict before it mailed for it. About 35
+  tokens in that mail, only when it is sent.
+- The web page has a Deep scan view (`g d`, docs/SCAN.md): the project's scans, a scan's findings with their traces,
+  verdicts and reproductions, its attack surface and shard map, the report exported as CSV, JSON, PDF, Markdown or SARIF,
+  and a form that scans the project or a repository it clones (https or ssh, hooks and symbolic links off) into
+  `~/sleipnir-scans`. A confirmed finding can be written up and opened as a GitHub issue, after the person reads it, or
+  handed to the team as a fix goal. A scan's report now also writes `findings.csv` and `report.html`.
+- A `scan` plugin, off by default, adds `/scan`, `sleipnir scan` and the `scan` tool (docs/SCAN.md): a team maps a whole
+  repository at a pinned commit, hunts it for holes, and reports what verifiers confirmed and a sandboxed reproducer
+  showed. With the plugin off nothing changes; turning it on adds the `scan` tool to every agent's tool list, so the tools
+  layer of the cached prefix is written once more.
+- `--sandbox docker` (or `docker=IMAGE`) on `sleipnir chat` and `sleipnir run`, and the *sandbox* field of the web page's
+  New session dialog, run every shell command of a session inside a container of its own, with the project mounted at its
+  own path, no network unless `--sandbox-network`, every capability dropped and none of the host's environment but a fixed
+  allowlist of named variables. Without the flag nothing changes. The repository's `.git/config`, hooks and `info` are
+  read-only inside and `.git` cannot be renamed away, a home directory (or the root) is never mounted, and a sandboxed
+  session resumes sandboxed. The program now recognizes a hidden first argument, `__sandbox-exec`, which a sandboxed
+  session's commands use to enter the container.
+- A goal judge whose first answer is "continue", given before any
+  evidence request, is sent back once to search the archive for each
+  item it names as missing. Whatever it answers next stands, whether
+  or not it searched.
+  The page a judge is first shown holds only the newest records, so a
+  verdict on it alone could call finished work missing.
+- With auto-docs, a task resolved as no longer needed (`task resolve`)
+  whose work did not merge in this run is no longer a docs change: it
+  starts no catch-up pass, is not listed in one, and does not count as
+  accepted code. A task resolved after its work merged is still one.
+- A `write`, `edit` or `apply_patch` that leaves every file as it was
+  (the result starting "No change") is marked unchanged. It no longer
+  counts as progress for the stall sweep or as an edited file in a task's
+  evidence, and the repetition guard counts it like a failure: the fourth
+  identical write that changes nothing is told so, the eighth ends the run.
+- A manager's `task reject` (or `reopen` of a task in review) without
+  text is refused, and the worker now receives the whole feedback with
+  its lines, up to 2000 characters; it used to be cut to 400 characters
+  on one line. The `task` tool's description asks for feedback that says
+  what is wrong and how it was seen, what to keep, and what will show it
+  is fixed. The `task` tool's description grows by 104 bytes, so the tools
+  layer of every agent's cached prefix is written once more.
+- A rigor plan task asks for a plan an implementer can code from without
+  the planner's research (every design decision settled, the file and
+  function of each step, terms defined), and a rigor plan review checks
+  for exactly that. The frontend role prompt names the new built-in
+  `landing-page-design` skill for a landing page or project website; the
+  frontend's role layer and the skills listing (one line) change once.
 - A manager's `task update` with files and a text on a task another
   agent owns sets the scope and answers that it did, noting that the text
   was not recorded. It used to answer with an error after the scope had

@@ -955,12 +955,12 @@ func (a *Agent) toolBatch(ctx context.Context, calls []core.Block, left int) (st
 			a.beginPending(calls)
 		}
 	}
-	results, exitFailed := a.runTools(ctx, calls)
+	results, exitFailed, unchanged := a.runTools(ctx, calls)
 	blocks := results
 	if extra := a.takeInbox(); len(extra) > 0 {
 		blocks = append(blocks, extra...)
 	}
-	note, stuck := a.rep.observeExits(a.cfg.ID, calls, results, exitFailed)
+	note, stuck := a.rep.observeAll(a.cfg.ID, calls, results, exitFailed, unchanged)
 	guard := "repeat"
 	if tn := a.tests.observe(calls, results, exitFailed); tn != "" && note == "" {
 		note, guard = tn, "tests"

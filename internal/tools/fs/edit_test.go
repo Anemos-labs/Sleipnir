@@ -269,9 +269,12 @@ func TestEditBatchNoNetChange(t *testing.T) {
 	writeFile(t, p, "a\n")
 	mustOK(t, run(t, Read{}, env, map[string]any{"path": "f.txt"}))
 	before, _ := os.Stat(p)
-	text := mustOK(t, run(t, Edit{}, env, map[string]any{"path": "f.txt", "edits": []map[string]any{
-		{"old_string": "a", "new_string": "b"}, {"old_string": "b", "new_string": "a"}}}))
-	contains(t, text, "No change")
+	res := run(t, Edit{}, env, map[string]any{"path": "f.txt", "edits": []map[string]any{
+		{"old_string": "a", "new_string": "b"}, {"old_string": "b", "new_string": "a"}}})
+	contains(t, mustOK(t, res), "No change")
+	if !res.Unchanged {
+		t.Error("edits that leave the file identical are not marked Unchanged")
+	}
 	after, _ := os.Stat(p)
 	if !after.ModTime().Equal(before.ModTime()) {
 		t.Errorf("file touched although content is unchanged")

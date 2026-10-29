@@ -366,15 +366,15 @@ func (h *sessionHost) judgeGoal(ctx context.Context, err error, out *app.TurnRes
 }
 
 // goalCommand is /goal: with text it sets the goal and starts on it; alone it says where the goal stands; pause, resume and clear are what they say.
-func (h *sessionHost) goalCommand(f []string, line string, out io.Writer) app.CommandResult {
+func (h *sessionHost) goalCommand(ctx context.Context, f []string, line string, out io.Writer) app.CommandResult {
 	arg := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), f[0]))
-	return app.CommandResult{Send: goalCommandTo(h.s, &h.goal, arg, out)} // web_goal.go, shared with the web interface
+	return app.CommandResult{Send: goalCommandTo(ctx, h.s, &h.goal, arg, out)} // web_goal.go, shared with the web interface
 }
 
 // Command runs a slash command. Both of its streams are the one the program is given, so that they come back in the order they were
 // written and nothing reaches the terminal but through the program.
 func (h *sessionHost) Command(ctx context.Context, line string, out io.Writer) app.CommandResult {
-	if res, ok := h.programCommand(line, out); ok {
+	if res, ok := h.programCommand(ctx, line, out); ok {
 		return res
 	}
 	before := h.s.Model.ID
@@ -389,7 +389,7 @@ func (h *sessionHost) Command(ctx context.Context, line string, out io.Writer) a
 // programCommand runs the slash commands that act on the terminal program, not the session: /verbose and /anim change what is shown, and
 // /restart and /swarm start the chat again with other flags (the ones that decide the shape of a session: a swarm, its isolation, its
 // verifier, tool servers, trust), carrying the conversation over when it can be.
-func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandResult, bool) {
+func (h *sessionHost) programCommand(ctx context.Context, line string, out io.Writer) (app.CommandResult, bool) {
 	f := strings.Fields(line)
 	onOff := func(name string) (string, bool) {
 		if len(f) < 2 {
@@ -414,7 +414,7 @@ func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandRes
 		fmt.Fprintln(out, h.s.DeliveryCommand(strings.TrimSpace(strings.TrimPrefix(line, "/delivery"))))
 		return app.CommandResult{}, true
 	case "/goal":
-		return h.goalCommand(f, line, out), true
+		return h.goalCommand(ctx, f, line, out), true
 	case "/research":
 		goalText, msg := h.s.ResearchCommand(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "/research")))
 		if msg != "" {
@@ -423,7 +423,16 @@ func (h *sessionHost) programCommand(line string, out io.Writer) (app.CommandRes
 		if goalText == "" {
 			return app.CommandResult{}, true
 		}
-		return app.CommandResult{Send: goalCommandTo(h.s, &h.goal, goalText, out)}, true
+		return app.CommandResult{Send: goalCommandTo(ctx, h.s, &h.goal, goalText, out)}, true
+	case "/scan":
+		goalText, msg := h.s.ScanCommand(context.Background(), strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "/scan")))
+		if msg != "" {
+			fmt.Fprintln(out, msg)
+		}
+		if goalText == "" {
+			return app.CommandResult{}, true
+		}
+		return app.CommandResult{Send: goalCommandTo(ctx, h.s, &h.goal, goalText, out)}, true
 	case "/verbose":
 		if v, ok := onOff("/verbose"); ok {
 			fmt.Fprintf(out, "verbose: %s (notices and tool errors %s)\n", v, map[string]string{"on": "are shown", "off": "show only warnings"}[v])
@@ -594,6 +603,7 @@ var chatCommands = []chatCommand{
 	{"delivery", "[fix|merge|both|off|resume]", "GitHub automation for one objective"},
 	{"goal", "[text|pause|resume|clear]", "keep working until a goal is met, judged on evidence (--research=DEPTH researches first)"},
 	{"research", "[quick|standard|deep] QUESTION", "a team researches the question on the web and publishes a wiki; alone, the runs; status|build|open|export RUN"},
+	{"scan", "[survey|standard|deep] [DIR]", "a team maps the repository at HEAD, hunts it for holes and reports what it proved; alone, the scans; status|report SCAN"},
 	{"plugins", "[enable|disable|reset ID]", "the plugins of this session: list them, or switch one on or off (it applies when the team starts again)"},
 	{"status", "", "model, mode, session, budget and cost at a glance"},
 	{"permissions", "", "the mode and the rules in force, among them what you allowed this session"},

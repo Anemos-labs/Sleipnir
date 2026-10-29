@@ -113,6 +113,7 @@ func mergeOptions(base session.Options, f chatFlags, defaultCwd string) session.
 	out.Mode, out.Swarm, out.Workers, out.TrustProject = o.Mode, o.Swarm, o.Workers, o.TrustProject || base.TrustProject
 	out.BudgetUSD, out.Resume, out.NoMCP = o.BudgetUSD, o.Resume, o.NoMCP || base.NoMCP
 	out.NoMemory = o.NoMemory || base.NoMemory
+	out.Sandbox = o.Sandbox
 	out.TrainingLogs = o.TrainingLogs || base.TrainingLogs
 	out.CompactAtPercent = o.CompactAtPercent
 	out.Verify, out.Isolation, out.Commit, out.Mailman = o.Verify, o.Isolation, o.Commit, o.Mailman
@@ -211,6 +212,17 @@ func (t *webTab) startGen(spec startSpec) error {
 		root := o.Root
 		if root == "" {
 			root = rootOf(o.Cwd)
+		}
+		if o.TrustProject {
+			// files the person confirmed are trusted while they hold what was confirmed, not whatever they hold when the session
+			// loads them
+			t.mu.Lock()
+			if fp := spec.trusted; fp != nil {
+				o.TrustDigest = fp.Digest
+			} else if t.trusted != nil && t.trustedDir == cleanDir(o.Cwd) {
+				o.TrustDigest = t.trusted.Digest
+			}
+			t.mu.Unlock()
 		}
 		o.Sink, o.NewSink, o.Prompter = t.calls.wrap(tr.Sink()), func(id string) agent.Sink { return t.calls.wrap(tr.NewSink(id)) }, t.prompter(root)
 		if o.AskTimeout == 0 {

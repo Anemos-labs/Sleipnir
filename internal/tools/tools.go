@@ -52,6 +52,12 @@ type Result struct {
 	// FullChars is the length of the complete output FullRef holds.
 	FullChars int
 	Truncated bool
+	// Unchanged says the call succeeded and changed nothing: a write of the content a file already has, edits that leave it
+	// identical. Such a call is not progress, however often it succeeds (the stall sweep, the repetition guard).
+	Unchanged bool
+	// Recorded says the call added to a record the harness keeps for the task (a scan's points and leads, a research run's
+	// notes and pages): progress on the task, though the tool is read-only and changes no file of the project.
+	Recorded bool
 	// Meta carries structured details for logs and UIs (exit code, diff, ...).
 	Meta map[string]any
 }

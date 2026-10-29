@@ -394,14 +394,75 @@ func matchPrefix(pat, ps []string, reseed bool) bool {
 	return false
 }
 
+// caretNegation rewrites a class the way the verifier's protected patterns read it into
+// the syntax of path.Match: the "!" that opens a class becomes "^" (a "!" anywhere else,
+// as in "[a[!b]", stays a member), and a reversed range ("z-a") is turned around, as the
+// verifier turns it, where path.Match would read it as empty.
+func caretNegation(pat string) string {
+	p := []rune(pat)
+	out := make([]rune, 0, len(p))
+	for i := 0; i < len(p); i++ {
+		switch {
+		case p[i] == '\\' && i+1 < len(p):
+			out = append(out, p[i], p[i+1])
+			i++
+			continue
+		case p[i] != '[':
+			out = append(out, p[i])
+			continue
+		}
+		out = append(out, '[')
+		i++
+		if i < len(p) && (p[i] == '!' || p[i] == '^') {
+			out = append(out, '^')
+			i++
+		}
+		// Members are written escaped where path.Match would read them as syntax ("]" first in a class, a lone "-").
+		lit := func(r rune) []rune {
+			if r == ']' || r == '-' || r == '\\' || r == '^' {
+				return []rune{'\\', r}
+			}
+			return []rune{r}
+		}
+		for first := true; i < len(p); i++ {
+			if p[i] == ']' && !first {
+				out = append(out, ']')
+				break
+			}
+			first = false
+			lo := p[i]
+			if lo == '\\' && i+1 < len(p) {
+				i++
+				lo = p[i]
+			}
+			if i+2 < len(p) && p[i+1] == '-' && p[i+2] != ']' {
+				i += 2
+				hi := p[i]
+				if hi == '\\' && i+1 < len(p) {
+					i++
+					hi = p[i]
+				}
+				if hi < lo {
+					lo, hi = hi, lo
+				}
+				out = append(append(append(out, lit(lo)...), '-'), lit(hi)...)
+				continue
+			}
+			out = append(out, lit(lo)...)
+		}
+	}
+	return string(out)
+}
+
 // segMatch matches one path segment: "*" any run, "?" one character, "[...]"
 // a class. A malformed pattern falls back to literal comparison so a typo cannot
-// silently disable protection.
+// silently disable protection. A class negated with "!" is negated, as the
+// verifier's protected patterns read it (path.Match knows only "^").
 func segMatch(pat, s string) bool {
 	if pat == "**" {
 		return true
 	}
-	ok, err := path.Match(pat, s)
+	ok, err := path.Match(caretNegation(pat), s)
 	if err != nil {
 		return pat == s
 	}

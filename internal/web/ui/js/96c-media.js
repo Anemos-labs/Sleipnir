@@ -128,6 +128,7 @@
   }
   const HR = /^ {0,3}([-*_])(?:\s*\1){2,}\s*$/, ATX = /^ {0,3}(#{1,6})(?:\s+(.*?))?(?:\s+#+)?\s*$/, FENCE = /^ {0,3}(`{3,}|~{3,})\s*([^`\s]*)[^`]*$/, QUOTE = /^ {0,3}> ?/,
     LI = /^( {0,3})([-*+]|\d{1,9}[.)])(\s+|$)(.*)$/, TROW = /^\s*\|?.*\|.*$/, TSEP = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+  const MAX_CELLS = 20000;   // the table cells of one document (a table is at most MAX_COLS wide)
   const cellsOf = l => { let s = l.trim(); if (s.startsWith('|')) s = s.slice(1); if (s.endsWith('|') && !s.endsWith('\\|')) s = s.slice(0, -1); return s.split(/(?<!\\)\|/).map(c => c.trim()); };
   /** The blocks of Markdown text as HTML. o = {path, tab, at, v}: the file (for relative links and images) and the point it is read at. */
   function blocks(lines, o, depth) {
@@ -152,10 +153,15 @@
         h += '<blockquote>' + (depth < 8 ? blocks(q, o, depth + 1) : esc(q.join('\n'))) + '</blockquote>'; continue;
       }
       if (TROW.test(l) && i + 1 < lines.length && TSEP.test(lines[i + 1]) && l.indexOf('|') >= 0) {
-        flush(); const head = cellsOf(l), al = cellsOf(lines[i + 1]).map(c => (/^:-+:$/.test(c) ? 'c' : /-+:$/.test(c) ? 'r' : '')); i += 2; const rows = [];
-        while (i < lines.length && lines[i].trim() && lines[i].indexOf('|') >= 0) rows.push(cellsOf(lines[i++]));
+        // every row is drawn as wide as the header: the cells drawn are bounded per document (o.cells), past which a table stops
+        flush(); const hc = cellsOf(l), head = hc.slice(0, MAX_COLS), hidCols = hc.length - head.length, al = cellsOf(lines[i + 1]).map(c => (/^:-+:$/.test(c) ? 'c' : /-+:$/.test(c) ? 'r' : '')); i += 2; const rows = [];
+        // a header past the budget draws nothing of its table: every row of it is counted as not shown
+        let cut = 0; const drawn = (o.cells || 0) + head.length <= MAX_CELLS; if (drawn) o.cells = (o.cells || 0) + head.length;
+        while (i < lines.length && lines[i].trim() && lines[i].indexOf('|') >= 0) { if (!drawn || o.cells + head.length > MAX_CELLS) { cut++; i++; continue; } o.cells += head.length; rows.push(cellsOf(lines[i++])); }
         const td = (c, j, tag) => '<' + tag + (al[j] ? ' class="' + al[j] + '"' : '') + '>' + inline(c || '', o) + '</' + tag + '>';
-        h += '<div class="pv-scroll"><table class="tbl"><thead><tr>' + head.map((c, j) => td(c, j, 'th')).join('') + '</tr></thead><tbody>' + rows.map(r => '<tr>' + head.map((x, j) => td(r[j], j, 'td')).join('') + '</tr>').join('') + '</tbody></table></div>';
+        if (drawn) h += '<div class="pv-scroll"><table class="tbl"><thead><tr>' + head.map((c, j) => td(c, j, 'th')).join('') + '</tr></thead><tbody>' + rows.map(r => '<tr>' + head.map((x, j) => td(r[j], j, 'td')).join('') + '</tr>').join('') + '</tbody></table></div>';
+        h += (!drawn ? '<p class="dim">A table not shown: the preview draws at most ' + MAX_CELLS + ' table cells</p>' : cut ? '<p class="dim">' + cut + ' more row' + (cut === 1 ? '' : 's') + ' not shown: the preview draws at most ' + MAX_CELLS + ' table cells</p>' : '');
+        if (drawn && hidCols > 0) h += '<p class="dim">' + hidCols + ' more column' + (hidCols === 1 ? '' : 's') + ' not shown: the preview draws a table at most ' + MAX_COLS + ' columns wide</p>';
         continue;
       }
       if ((m = LI.exec(l)) && (!para.length || m[4].trim())) {
@@ -184,13 +190,13 @@
   media.md = function (text, o) {
     const ls = String(text == null ? '' : text).replace(/\r\n?/g, '\n').split('\n'); o = o || {}; let front = '';
     if (ls[0] === '---') { const e = ls.indexOf('---', 1); if (e > 0) { front = '<pre class="pv-code pv-front"><code>' + ls.slice(1, e).map(esc).join('\n') + '</code></pre>'; ls.splice(0, e + 1); } }
-    return front + blocks(ls, o, 0);
+    return front + blocks(ls, Object.assign({}, o, { cells: 0 }), 0);
   };
   media.mdHtml = (text, o) => '<div class="pv"><article class="pv-md">' + media.md(text, o) + '</article></div>';
 
   /* ================================================================ mermaid ============================================================ */
   const SRC = new Map(), DONE = new Map(), MAX_DONE = 60;   // source of each placeholder key; drawn diagrams by source (most recent last)
-  let frame = null, ready = false, seq = 0; const waiting = new Map(), queue = [];
+  let frame = null, ready = false, seq = 0; const waiting = new Map(), asked = new Set(), queue = [];   // asked: the sources sent or queued
   const keyOf = src => { let x = 2166136261; for (let i = 0; i < src.length; i++) x = Math.imul(x ^ src.charCodeAt(i), 16777619); return 'm' + (x >>> 0).toString(36) + src.length.toString(36); };
   /** The place of a diagram: drawn at once when this source was drawn before, else when the frame answers. */
   media.mermaidHtml = function (src) {
@@ -210,10 +216,11 @@
   if (typeof addEventListener === 'function') addEventListener('message', ev => {
     const d = ev.data; if (!frame || ev.source !== frame.contentWindow || !d || d.sl !== 'mermaid') return;
     if (d.ready) { ready = true; queue.splice(0).forEach(send); return; }
-    const src = waiting.get(d.id); if (src == null) return; waiting.delete(d.id);
+    const src = waiting.get(d.id); if (src == null) return; waiting.delete(d.id); asked.delete(src);
     const r = typeof d.svg === 'string' ? { svg: d.svg, w: +d.w || 600, h: +d.h || 400 } : { error: String(d.error || 'unknown error'), src };
     DONE.set(src, r); if (DONE.size > MAX_DONE) DONE.delete(DONE.keys().next().value);
-    fill();
+    // only the places of this source: a page of many diagrams is not searched again for each one drawn
+    document.querySelectorAll('.pv-mmd[data-mmd="' + keyOf(src) + '"]:not(.done)').forEach(el => { el.classList.add('done'); el.innerHTML = drawn(r); });
   });
   /** Draw every diagram place in the page that is not drawn yet. */
   function fill() {
@@ -221,8 +228,8 @@
       const src = SRC.get(el.dataset.mmd); if (src == null) return; const d = DONE.get(src);
       if (d) { el.classList.add('done'); el.innerHTML = drawn(d); return; }
       if (el._asked) return; el._asked = true;
-      if ([...waiting.values()].indexOf(src) >= 0 || queue.indexOf(src) >= 0) return;
-      boot(); if (ready) send(src); else queue.push(src);
+      if (asked.has(src)) return;
+      asked.add(src); boot(); if (ready) send(src); else queue.push(src);
     });
   }
   media.fill = fill;

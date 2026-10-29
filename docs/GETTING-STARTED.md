@@ -131,6 +131,24 @@ milestone with cited evidence; a "done" that leaves one out continues with the
 unconfirmed milestones as what is missing. `/goal` and the web Goal sheet show
 each milestone, open or met, with the judge's evidence.
 
+A project can keep a rubric: the standing criteria of good work that every
+goal in it is held to, beside the goal's own requirements. Write them to
+`.sleipnir/rubric.md` at the project root (at most 64 KiB) and commit it:
+
+```markdown
+- Every exported function has a test, and `go test ./...` passes.
+- Each user-visible change has a CHANGELOG entry.
+- A screen that changed has a fresh screenshot in the README.
+```
+
+The rubric is read when a goal is set, like a spec. The agent's first message
+carries it, and the judge treats each criterion that applies to what the goal
+builds or changes as a requirement that needs evidence; a criterion that does
+not apply to a goal (a release step for a one-line fix) is not asked of it.
+The rubric only adds requirements: it is read as data and never removes or
+relaxes what the goal asks. `/goal` and the web Goal sheet name the rubric a
+goal is held to. A goal is not set when the file exists but cannot be read.
+
 ## Review and control
 
 - Ctrl+G or `/agents`: live team view.

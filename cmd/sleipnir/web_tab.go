@@ -579,7 +579,7 @@ func goalWire(g *goal.State) *wire.Goal {
 	if g == nil {
 		return &wire.Goal{S: "cleared"}
 	}
-	ev := &wire.Goal{S: "active", Objective: clip(g.Objective, maxGoalLen), Turns: g.Turns, Max: g.Max, Paused: clip(g.Paused, 300), Reason: clip(g.Reason, 300), Spec: clip(g.Spec, 300)}
+	ev := &wire.Goal{S: "active", Objective: clip(g.Objective, maxGoalLen), Turns: g.Turns, Max: g.Max, Paused: clip(g.Paused, 300), Reason: clip(g.Reason, 300), Spec: clip(g.Spec, 300), Rubric: clip(g.Rubric, 300)}
 	for _, m := range g.Milestones {
 		ev.Milestones = append(ev.Milestones, wire.GoalMilestone{ID: m.ID, Text: m.Text, Met: m.Met, Evidence: m.Evidence})
 	}
@@ -924,6 +924,16 @@ func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string
 			return failed(err, msg)
 		}
 		return res, nil
+	case "/scan":
+		goalText, msg := s.ScanCommand(ctx, arg)
+		res.Output = msg
+		if goalText == "" {
+			return res, nil
+		}
+		if _, err := t.goalAction(ctx, s, wire.GoalRequest{Action: "set", Text: goalText}, false); err != nil {
+			return failed(err, msg)
+		}
+		return res, nil
 	case "/new", "/clear":
 		if err := t.Restart(ctx, wire.RestartRequest{Kind: "new", Fresh: true}); err != nil {
 			return failed(err, "")
@@ -1103,7 +1113,7 @@ func (t *webTab) runCommand(ctx context.Context, s *session.Session, line string
 // goalCommandStatus writes where the goal stands, as /goal alone does in the terminal.
 func goalCommandStatus(s *session.Session, g *goal.State, out io.Writer) {
 	gp := g
-	goalCommandTo(s, &gp, "", out)
+	goalCommandTo(context.Background(), s, &gp, "", out)
 }
 
 // Steer tells the running turn of the manager something without stopping it.
@@ -1417,14 +1427,14 @@ func (t *webTab) goalAction(ctx context.Context, s *session.Session, req wire.Go
 			return false, werr(http.StatusConflict, "not_paused", "the goal is not paused")
 		}
 		_, _, _, err := t.enqueue(queued{text: "/goal resume", op: func(ctx context.Context, s *session.Session) {
-			next, err := t.goals.Resume(s)
+			next, err := t.goals.Resume(ctx, s, func(e goalEvent) { t.goalEvent(s, e) })
 			if err != nil {
 				return
 			}
 			webAction(s, "goal", "resume")
-			t.emit(goalWire(t.goals.State()))
-			t.publishMeta()
-			t.turn(ctx, s, next, "", false)
+			if next != "" {
+				t.turn(ctx, s, next, "", false)
+			}
 		}})
 		return err == nil, err
 	}
@@ -2023,10 +2033,23 @@ func (t *webTab) RemoveRule(ctx context.Context, req wire.RuleRequest) (wire.Rul
 	case found.Fixed:
 		return wire.RuleResult{}, werr(http.StatusConflict, "fixed", "built in or from a file: change it there")
 	}
-	if found.Effect != string(perm.Allow) {
-		// taking back a deny or ask rule lets through what it held: it raises privilege
-		scope := "rules.remove:" + t.id + ":" + d16(map[string]any{"effect": found.Effect, "rule": found.Rule})
-		if err := authorize(ctx, scope, []string{"no longer " + found.Effect + " " + found.Rule}); err != nil {
+	// The engine takes the rule's text back from every action it was added to, so the
+	// confirmation names each deny or ask rule of that text, not only the one selected:
+	// taking back a deny or ask rule lets through what it held, which raises privilege.
+	var lifted []string
+	for _, r := range rules {
+		if r.Rule == found.Rule && !r.Fixed && r.Effect != string(perm.Allow) && !slices.Contains(lifted, r.Effect) {
+			lifted = append(lifted, r.Effect)
+		}
+	}
+	if len(lifted) > 0 {
+		slices.Sort(lifted)
+		scope := "rules.remove:" + t.id + ":" + d16(map[string]any{"effects": lifted, "rule": found.Rule})
+		lines := make([]string, len(lifted))
+		for i, e := range lifted {
+			lines[i] = "no longer " + e + " " + found.Rule
+		}
+		if err := authorize(ctx, scope, lines); err != nil {
 			return wire.RuleResult{}, err
 		}
 	}

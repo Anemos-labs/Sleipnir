@@ -396,21 +396,30 @@ func (s Simple) Effective() string {
 
 // EffectiveCommand is Effective with the arguments of the command that runs.
 func (s Simple) EffectiveCommand() (string, []string) {
+	prog, args, _ := s.effective()
+	return prog, args
+}
+
+// effective is EffectiveCommand with the problem met peeling a wrapper under a privilege command ("" when there is
+// none): the parse reports it, as it reports one met on the outer command.
+func (s Simple) effective() (string, []string, string) {
 	prog, args := s.Program, s.Args
 	for n := 0; n < 8; n++ {
 		spec, ok := privSpecs[stdBase(prog)]
 		if !ok {
-			return prog, args
+			return prog, args, ""
 		}
 		rest := skipPriv(spec, args)
 		if len(rest) == 0 {
-			return "", nil
+			return "", nil, ""
 		}
 		sub := Simple{Program: rest[0], Args: append([]string(nil), rest[1:]...)}
-		peel(&sub)
+		if prob := peel(&sub); prob != "" {
+			return sub.Program, sub.Args, prob
+		}
 		prog, args = sub.Program, sub.Args
 	}
-	return prog, args
+	return prog, args, "too many nested privilege commands"
 }
 
 // Inline scripts: commands whose argument is itself a shell command line.
@@ -673,6 +682,9 @@ func readsCodeFromStdin(prog string, args []string) bool {
 		case len(a) > 1 && a[0] == '-' && a[1] != '-':
 			for j := 1; j < len(a); j++ {
 				c := a[j]
+				if name == "python" && c == 'i' {
+					return true // inspect: after the inline code, module or script, python reads code from stdin
+				}
 				if letters != "" && strings.IndexByte(letters, c) >= 0 {
 					return false
 				}
@@ -715,6 +727,9 @@ func interpreterName(base string) string {
 	return ""
 }
 
+// xargsLongValueOpts are GNU xargs's long options that take a value, which may be the next word.
+var xargsLongValueOpts = []string{"--arg-file", "--delimiter", "--max-args", "--max-procs", "--max-lines", "--max-chars", "--process-slot-var", "--eof"}
+
 // xargsRunsShell reports whether xargs is invoked to run a shell or eval, which
 // turns its stdin into code.
 func xargsRunsShell(args []string) bool {
@@ -729,6 +744,8 @@ func xargsRunsShell(args []string) bool {
 				return posixShells[b] || b == "eval"
 			}
 			return false
+		case strings.HasPrefix(a, "--") && !strings.Contains(a, "=") && slices.Contains(xargsLongValueOpts, a):
+			i++ // its value is the next word, not the command
 		case strings.HasPrefix(a, "--"):
 		case len(a) == 2 && a[0] == '-' && strings.IndexByte(withValue, a[1]) >= 0:
 			i++

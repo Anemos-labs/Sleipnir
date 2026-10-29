@@ -78,6 +78,17 @@ func TestProfileRules(t *testing.T) {
 		{"web and one mcp tool", Def{Tools: []string{"Read", "WebFetch", "mcp__x__y"}}, perm.ModePlan, "mcp__x__y", "Bash,Edit"},
 		{"sleipnir names", Def{Tools: []string{"read", "web_fetch", "apply_patch", "bash"}}, "", "", "mcp__*"},
 		{"plan mode", Def{PermissionMode: "plan"}, perm.ModePlan, "", ""},
+		// A read-only role that narrows a tool keeps only the read-only exceptions its list covers: git alone does not
+		// bring the test runners or the web, go does bring go's.
+		{"read only with git", Def{Tools: []string{"Read", "Bash(git log:*)"}, ReadOnly: true}, perm.ModePlan, "", "Edit,WebFetch,WebSearch,mcp__*"},
+		{"read only with go", Def{Tools: []string{"Read", "Bash(go:*)", "WebFetch(domain:go.dev)"}, ReadOnly: true}, perm.ModePlan, "Bash(go test:*),Bash(go vet:*),WebFetch(domain:go.dev)", "Edit,mcp__*"},
+		{"read only with the web", Def{Tools: []string{"Read", "WebFetch", "Bash(git log:*)"}, ReadOnly: true}, perm.ModePlan, "WebFetch", "Edit,mcp__*"},
+		{"read only with an exact command", Def{Tools: []string{"Read", "Bash(go test)"}, ReadOnly: true}, perm.ModePlan, "", "Edit,WebFetch,WebSearch,mcp__*"},
+		{"read only with go and a space-star", Def{Tools: []string{"Read", "Bash(go *)"}, ReadOnly: true}, perm.ModePlan, "Bash(go test:*),Bash(go vet:*)", "Edit,WebFetch,WebSearch,mcp__*"},
+		{"read only with every command", Def{Tools: []string{"Read", "Bash(*)"}, ReadOnly: true}, perm.ModePlan, "Bash(go test:*),Bash(go vet:*),Bash(pytest:*),Bash(npm test:*),Bash(npm run test:*),Bash(pnpm test:*),Bash(yarn test:*),Bash(python -m pytest:*),Bash(python3 -m pytest:*),Bash(python -m unittest:*),Bash(python3 -m unittest:*),Bash(python:venv-tests),Bash(node --test:*),Bash(node --check:*),Bash(cargo test:*),Bash(cargo check:*),Bash(cargo clippy:workspace),Bash(make test),Bash(ruff check:workspace),Bash(ruff format --check:workspace),Bash(ruff format --diff:workspace),Bash(mypy:workspace),Bash(pyright:workspace),Bash(tsc --noEmit:workspace),Bash(eslint:workspace)", "Edit,WebFetch,WebSearch,mcp__*"},
+		{"read only with a python prefix", Def{Tools: []string{"Read", "Bash(python *)"}, ReadOnly: true}, perm.ModePlan, "Bash(python -m pytest:*),Bash(python -m unittest:*)", "Edit,WebFetch,WebSearch,mcp__*"},
+		{"read only with shell output", Def{Tools: []string{"Read", "BashOutput(*)"}, ReadOnly: true}, perm.ModePlan, "", "Edit,WebFetch,WebSearch,mcp__*"},
+		{"read only with a colon-star fetch", Def{Tools: []string{"Read", "WebFetch(:*)"}, ReadOnly: true}, perm.ModePlan, "WebFetch(:*)", "Bash,Edit,mcp__*"},
 		{"disallowed", Def{DisallowedTools: []string{"Write", "Bash(rm:*)"}}, "", "", "Write,Bash(rm:*)"},
 	}
 	for _, tc := range tests {

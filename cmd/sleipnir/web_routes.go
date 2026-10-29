@@ -286,6 +286,44 @@ func (h *webHostImpl) routes(srv *web.Server) {
 		t.serveResearch(w, r)
 	})
 
+	// 10c. Deep scan: the scans, one scan in full, starting one, a finding's issue and fix, and cloning a repository to scan.
+	h.tabRoute(srv, "GET /api/sessions/{id}/scan", web.RouteOpts{}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
+		runs, plugin, box := []wire.ScanRun{}, false, false
+		if s := t.session(); s != nil && s.ScanStore() != nil {
+			runs, plugin, box = s.ScanRuns(), true, s.Sandbox() != nil
+		}
+		ok(w, map[string]any{"runs": runs, "depths": session.ScanDepths(), "on": plugin, "sandbox": box})
+	})
+	h.tabRoute(srv, "GET /api/sessions/{id}/scan/{slug}", web.RouteOpts{}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
+		s := t.session()
+		if s == nil {
+			writeErr(w, t.noSession())
+			return
+		}
+		d, err := s.ScanDetail(r.PathValue("slug"))
+		if err != nil {
+			writeErr(w, werr(http.StatusNotFound, "no_scan", err.Error()))
+			return
+		}
+		ok(w, d)
+	})
+	h.tabRoute(srv, "GET /api/sessions/{id}/scan/{slug}/export/{format}", web.RouteOpts{}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
+		t.scanExport(w, r)
+	})
+	h.tabRoute(srv, "POST /api/sessions/{id}/scan", web.RouteOpts{MaxBody: goalBodyMax}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
+		var body wire.ScanRequest
+		if !web.DecodeJSON(w, r, &body) {
+			return
+		}
+		res, err := t.scanAction(r.Context(), body)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		ok(w, res)
+	})
+	srv.HandleFunc("POST /api/scan/clone", h.scanClone, web.RouteOpts{WriteTimeout: 20 * time.Minute})
+
 	// 11. Session settings.
 	h.tabRoute(srv, "POST /api/sessions/{id}/mode", web.RouteOpts{}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
 		var body wire.ModeRequest

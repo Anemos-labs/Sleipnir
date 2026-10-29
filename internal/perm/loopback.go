@@ -62,8 +62,10 @@ func loopbackHTTP(prog string, args []string) bool {
 				i++
 				val = args[i]
 				// The value is a word of its own: one the shell expands may split into
-				// more arguments (another URL among them) that nothing here has seen.
-				if strings.ContainsAny(val, "$`") {
+				// more arguments (another URL among them) that nothing here has seen, and
+				// a pattern may match file names of the workspace that read as options.
+				// The parser hands words over unquoted, so a quoted "*" is refused too.
+				if strings.ContainsAny(val, "$`*?[") {
 					return false
 				}
 			}

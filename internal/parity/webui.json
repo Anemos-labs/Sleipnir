@@ -53,6 +53,11 @@
    "nav": false
   },
   {
+   "name": "scan",
+   "title": "Deep scan",
+   "nav": true
+  },
+  {
    "name": "schedule",
    "title": "Schedule",
    "nav": true
@@ -125,6 +130,14 @@
    "tab": null,
    "label": "Research",
    "key": "w",
+   "radio": false
+  },
+  {
+   "id": "scan",
+   "view": "scan",
+   "tab": null,
+   "label": "Deep scan",
+   "key": "d",
    "radio": false
   },
   {
@@ -238,6 +251,15 @@
   {
    "group": "conversation",
    "name": "/research",
+   "kind": "slash",
+   "live": false,
+   "effects": [
+    "act:command"
+   ]
+  },
+  {
+   "group": "conversation",
+   "name": "/scan",
    "kind": "slash",
    "live": false,
    "effects": [
@@ -689,6 +711,15 @@
    "live": true,
    "effects": [
     "view:research"
+   ]
+  },
+  {
+   "group": "go to",
+   "name": "Deep scan",
+   "kind": "view",
+   "live": true,
+   "effects": [
+    "view:scan"
    ]
   },
   {
@@ -1504,6 +1535,15 @@
   },
   {
    "group": "the program (sleipnir ...)",
+   "name": "sleipnir scan",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:scan"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
    "name": "sleipnir schedule",
    "kind": "program",
    "live": true,
@@ -1811,6 +1851,7 @@
    "/resume",
    "/rewind",
    "/roles",
+   "/scan",
    "/sessions",
    "/skills",
    "/stats",
@@ -2347,6 +2388,8 @@
    "when you are away (--manager-answers-after, --manager-answers-up-to)",
    "pre-approve actions (--allow)",
    "trust, tools and memory",
+   "lesson memory (--role-model embedder=…)",
+   "sandbox (--sandbox)",
    "budget (--budget-usd)",
    "compaction at (--compact-at)",
    "first goal (optional)",
@@ -2359,7 +2402,8 @@
    "managerApproves manager answers routine questions (--manager-approves)",
    "trustProject --trust-project",
    "noMcp --no-mcp",
-   "noMemory --no-memory"
+   "noMemory --no-memory",
+   "sandboxNetwork --sandbox-network"
   ],
   "controlFlags": [
    "allow",
@@ -2378,6 +2422,8 @@
    "no-mcp",
    "no-memory",
    "role-model",
+   "sandbox",
+   "sandbox-network",
    "swarm",
    "team",
    "trust-project",
@@ -2394,6 +2440,7 @@
    "nsCwd",
    "nsDirList",
    "nsDirState",
+   "nsEmbedder",
    "nsGit",
    "nsGitRow",
    "nsGoal",
@@ -2408,6 +2455,7 @@
    "nsRuleOff",
    "nsRuleSet",
    "nsRules",
+   "nsSandbox",
    "nsStart",
    "nsSw",
    "nsTeamErr",
@@ -2417,7 +2465,7 @@
    "nsVerifyHints",
    "nsWarn"
   ],
-  "commandLine": "sleipnir chat --resume 20260101-000000-abcdef --cwd /p --model a/m --mode plan --swarm 8 --isolation worktree --verify v --commit --mailman --auto-docs=false --manager-approves=false --manager-answers-after 10m --manager-answers-up-to high --budget-usd 5 --compact-at 40 --role-model backend=a/w --allow tests --trust-project --no-mcp --no-memory",
+  "commandLine": "sleipnir chat --resume 20260101-000000-abcdef --cwd /p --model a/m --mode plan --swarm 8 --isolation worktree --verify v --commit --mailman --auto-docs=false --manager-approves=false --manager-answers-after 10m --manager-answers-up-to high --budget-usd 5 --compact-at 40 --role-model backend=a/w --allow tests --trust-project --no-mcp --no-memory --sandbox docker --sandbox-network",
   "flags": [
    "allow",
    "auto-docs",
@@ -2436,12 +2484,14 @@
    "no-memory",
    "resume",
    "role-model",
+   "sandbox",
+   "sandbox-network",
    "swarm",
    "team",
    "trust-project",
    "verify"
   ],
-  "commandLineNamed": "sleipnir chat --resume 20260101-000000-abcdef --cwd /p --model a/m --mode plan --swarm 8 --team crew --isolation worktree --verify v --commit --mailman --auto-docs=false --manager-approves=false --manager-answers-after 10m --manager-answers-up-to high --budget-usd 5 --compact-at 40 --allow tests --trust-project --no-mcp --no-memory",
+  "commandLineNamed": "sleipnir chat --resume 20260101-000000-abcdef --cwd /p --model a/m --mode plan --swarm 8 --team crew --isolation worktree --verify v --commit --mailman --auto-docs=false --manager-approves=false --manager-answers-after 10m --manager-answers-up-to high --budget-usd 5 --compact-at 40 --allow tests --trust-project --no-mcp --no-memory --sandbox docker --sandbox-network",
   "flagsMailmanOff": [
    "allow",
    "auto-docs",
@@ -2460,6 +2510,8 @@
    "no-memory",
    "resume",
    "role-model",
+   "sandbox",
+   "sandbox-network",
    "swarm",
    "trust-project",
    "verify"
@@ -2480,6 +2532,8 @@
    "no-mcp",
    "no-memory",
    "role-model",
+   "sandbox",
+   "sandbox-network",
    "swarm",
    "team",
    "trust-project",
@@ -2504,7 +2558,7 @@
   "settingsButton": true
  },
  "runLine": {
-  "line": "sleipnir chat --model a/m --mode plan --swarm 8 --isolation worktree --verify \"v\" --budget-usd 5 --commit --mailman --no-mcp --no-memory --trust-project",
+  "line": "sleipnir chat --model a/m --mode plan --swarm 8 --isolation worktree --verify v --budget-usd 5 --commit --mailman --no-mcp --no-memory --trust-project",
   "flags": [
    "budget-usd",
    "commit",
@@ -2525,6 +2579,7 @@
    "run",
    "swarm",
    "research",
+   "scan",
    "schedule",
    "schedule add",
    "schedule rm",
@@ -2631,6 +2686,8 @@
      "plain",
      "resume",
      "role-model",
+     "sandbox",
+     "sandbox-network",
      "swarm",
      "team",
      "training-logs",
@@ -2657,6 +2714,7 @@
      "context-window",
      "continue",
      "cwd",
+     "effort",
      "isolation",
      "json",
      "mailman",
@@ -2672,6 +2730,8 @@
      "quiet",
      "resume",
      "role-model",
+     "sandbox",
+     "sandbox-network",
      "session-dir",
      "swarm",
      "team",
@@ -2706,6 +2766,7 @@
      "context-window",
      "continue",
      "cwd",
+     "effort",
      "isolation",
      "json",
      "mailman",
@@ -2721,6 +2782,8 @@
      "quiet",
      "resume",
      "role-model",
+     "sandbox",
+     "sandbox-network",
      "session-dir",
      "team",
      "training-logs",
@@ -2750,6 +2813,21 @@
     "modeWith": {
      "export": "priv"
     }
+   },
+   "scan": {
+    "mode": "run",
+    "positionals": [
+     "SCAN"
+    ],
+    "flags": [
+     "cwd",
+     "depth",
+     "diff",
+     "json",
+     "report",
+     "start"
+    ],
+    "modeWith": {}
    },
    "schedule": {
     "mode": "run",

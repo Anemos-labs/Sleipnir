@@ -120,6 +120,13 @@ func foldRunes(s string) []rune {
 	return r
 }
 
+// maxGlobBytes and maxGlobSegments bound one pattern.
+const (
+	maxGlobBytes    = 1024
+	maxGlobSegments = 64
+)
+
+// compileGlob parses one protection pattern into lower-cased segments, or says why it cannot be used.
 func compileGlob(p string) (pathGlob, error) {
 	fail := func(msg string) (pathGlob, error) {
 		return pathGlob{}, fmt.Errorf("invalid glob %q: %s", p, msg)
@@ -132,6 +139,11 @@ func compileGlob(p string) (pathGlob, error) {
 	}
 	if strings.HasPrefix(p, "!") {
 		return fail("negation is not supported")
+	}
+	// Matching costs patterns x path segments x pattern segments for every prefix of a changed path: a pattern longer than
+	// any path it could be meant for only buys work.
+	if len(p) > maxGlobBytes || strings.Count(p, "/") >= maxGlobSegments {
+		return fail(fmt.Sprintf("longer than %d bytes or %d segments", maxGlobBytes, maxGlobSegments))
 	}
 	g := pathGlob{raw: p}
 	s := p

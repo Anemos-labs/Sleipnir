@@ -239,7 +239,8 @@ func evict(ls []Lesson, max int, fresh map[string]bool) []Lesson {
 // MaxTaskRunes); empty ones, ones of another kind and repeats within drafts are dropped. The rest are embedded in one call,
 // outside the lock, so a slow endpoint does not hold up other sessions. A draft whose text is that of a lesson of its kind,
 // or whose vector is within MergeSimilarity of one, is merged into it: the existing text stays and Last is refreshed.
-// Otherwise it is appended. added and merged count the two.
+// Otherwise it is appended. added and merged count the two. A nil emb saves lessons without vectors, found by keyword alone;
+// then a draft merges into a lesson of its kind whose content words are within KeywordMergeSimilarity of its own.
 func (s *Store) Add(ctx context.Context, emb Embedder, drafts []Draft) (added, merged int, err error) {
 	var ds []Draft
 	seen := map[string]bool{}
@@ -262,17 +263,19 @@ func (s *Store) Add(ctx context.Context, emb Embedder, drafts []Draft) (added, m
 	for i, d := range ds {
 		texts[i] = d.Text
 	}
-	raw, err := emb.Embed(ctx, texts)
-	if err != nil {
-		return 0, 0, err
-	}
-	if len(raw) != len(ds) {
-		return 0, 0, fmt.Errorf("lessons: %d vectors for %d lessons", len(raw), len(ds))
-	}
-	vecs := make([][]float32, len(raw))
-	for i, v := range raw {
-		if vecs[i] = normalize(v); vecs[i] == nil {
-			return 0, 0, fmt.Errorf("lessons: the embedding of %q is empty, zero or not finite", ds[i].Text)
+	vecs := make([][]float32, len(ds))
+	if emb != nil {
+		raw, err := emb.Embed(ctx, texts)
+		if err != nil {
+			return 0, 0, err
+		}
+		if len(raw) != len(ds) {
+			return 0, 0, fmt.Errorf("lessons: %d vectors for %d lessons", len(raw), len(ds))
+		}
+		for i, v := range raw {
+			if vecs[i] = normalize(v); vecs[i] == nil {
+				return 0, 0, fmt.Errorf("lessons: the embedding of %q is empty, zero or not finite", ds[i].Text)
+			}
 		}
 	}
 	err = s.locked(func() error {
@@ -291,10 +294,16 @@ func (s *Store) Add(ctx context.Context, emb Embedder, drafts []Draft) (added, m
 				}
 				if l.ID == id {
 					best, bestSim = j, 2 // the same lesson; its vector is renewed, in case the embedding model changed
-					ls[j].Vec = vecs[i]
+					if vecs[i] != nil {
+						ls[j].Vec = vecs[i]
+					}
 					break
 				}
-				if c := cosine(l.Vec, vecs[i]); c > bestSim {
+				c := cosine(l.Vec, vecs[i])
+				if emb == nil {
+					c = jaccard(terms(l.Text), terms(d.Text)) / KeywordMergeSimilarity * MergeSimilarity // on the scale of MergeSimilarity
+				}
+				if c > bestSim {
 					best, bestSim = j, c
 				}
 			}
@@ -323,12 +332,13 @@ func (s *Store) Retrieve(ctx context.Context, emb Embedder, task string, k int) 
 	return s.RetrieveIn(ctx, emb, task, "", k)
 }
 
-// RetrieveIn returns at most k lessons that bear on task, best first. A lesson's score is its cosine similarity to the task
-// times (0.5 + Utility()), so a lesson with a record of wins outranks an equally similar untried one, and times SameProject
-// when it was learned in project (a non-empty key), so what was learned here comes before what was learned elsewhere,
-// which still takes part. Lessons below MinSimilarity are left out whatever their utility or project, and equal scores are
-// ordered by ID. Nothing is marked: what was shown is reported later with Record. No lessons, k <= 0 or an empty task is
-// no embedding call.
+// RetrieveIn returns at most k lessons that bear on task, best first. A lesson's relevance is the higher of its cosine
+// similarity to the task and its keyword relevance (keywordIndex.relevance); with a nil emb it is the keyword relevance alone.
+// Its score is the relevance times (0.5 + Utility()), so a lesson with a record of wins outranks an equally relevant untried
+// one, and times SameProject when it was learned in project (a non-empty key), so what was learned here comes before what
+// was learned elsewhere, which still takes part. Lessons below MinSimilarity are left out whatever their utility or project,
+// and equal scores are ordered by ID. Nothing is marked: what was shown is reported later with Record. No lessons, k <= 0
+// or an empty task is no embedding call.
 func (s *Store) RetrieveIn(ctx context.Context, emb Embedder, task, project string, k int) ([]Lesson, error) {
 	task = Clean(task, maxQueryRunes)
 	if k <= 0 || task == "" {
@@ -338,24 +348,27 @@ func (s *Store) RetrieveIn(ctx context.Context, emb Embedder, task, project stri
 	if err != nil || len(ls) == 0 {
 		return nil, err
 	}
-	vs, err := emb.Embed(ctx, []string{task})
-	if err != nil {
-		return nil, err
+	var q []float32
+	if emb != nil {
+		vs, err := emb.Embed(ctx, []string{task})
+		if err != nil {
+			return nil, err
+		}
+		if len(vs) != 1 {
+			return nil, fmt.Errorf("lessons: %d vectors for one task", len(vs))
+		}
+		if q = normalize(vs[0]); q == nil {
+			return nil, errors.New("lessons: the embedding of the task is empty, zero or not finite")
+		}
 	}
-	if len(vs) != 1 {
-		return nil, fmt.Errorf("lessons: %d vectors for one task", len(vs))
-	}
-	q := normalize(vs[0])
-	if q == nil {
-		return nil, errors.New("lessons: the embedding of the task is empty, zero or not finite")
-	}
+	ix, qt := newKeywordIndex(ls), terms(task)
 	type scored struct {
 		l     Lesson
 		score float64
 	}
 	var hits []scored
-	for _, l := range ls {
-		if c := cosine(q, l.Vec); c >= MinSimilarity {
+	for i, l := range ls {
+		if c := max(cosine(q, l.Vec), ix.relevance(i, qt)); c >= MinSimilarity {
 			sc := c * (0.5 + l.Utility())
 			if project != "" && l.Project == project {
 				sc *= SameProject

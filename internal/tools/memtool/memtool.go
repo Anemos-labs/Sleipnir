@@ -52,7 +52,12 @@ const (
 const MetaChange = "memory_change"
 
 // Tool is the memory tool over the user's notes file and, when a project is known, the project's.
-type Tool struct{ path, project string }
+type Tool struct {
+	path, project string
+	// saving is called before a note of the project's is added or removed, and the function it returns once the notes file changed
+	// (nil tells nobody).
+	saving func() (saved func())
+}
 
 // New returns the tool for the user's notes file at path (the directory is created on the first note), without project notes.
 func New(path string) *Tool { return &Tool{path: path} }
@@ -61,6 +66,13 @@ func New(path string) *Tool { return &Tool{path: path} }
 // then refused with the reason).
 func NewScoped(userPath, projectPath string) *Tool {
 	return &Tool{path: userPath, project: projectPath}
+}
+
+// OnProjectSave has fn called before each add or remove of a project note, and the function fn returns called once the write changed
+// the notes file; it returns t.
+func (t *Tool) OnProjectSave(fn func() func()) *Tool {
+	t.saving = fn
+	return t
 }
 
 // Off returns the tool of a session started without the global memory: the same spec, so the tool list does not change, and every
@@ -128,7 +140,15 @@ func (t *Tool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	if err != nil {
 		return tools.Errorf("memory: %v", err), nil
 	}
-	return f.run(ctx, c, in, notes, project)
+	var saved func()
+	if project && t.saving != nil && (in.Action == "add" || in.Action == "remove") {
+		saved = t.saving()
+	}
+	res, err := f.run(ctx, c, in, notes, project)
+	if saved != nil && err == nil && res != nil && !res.IsError && res.Meta[MetaChange] != nil {
+		saved()
+	}
+	return res, err
 }
 
 // listAll lists the notes of both scopes, user first.
@@ -517,10 +537,19 @@ func ignoreBeside(p string) error {
 	if os.IsNotExist(err) {
 		return os.WriteFile(gi, []byte(".gitignore\n"+name+"\n"), 0o644)
 	}
+	// The last line about the name decides, as in git: a later "!name" undoes an earlier "name", and the name is then
+	// listed again at the end.
+	ignored := false
 	for _, l := range strings.Split(string(b), "\n") {
-		if strings.TrimSpace(l) == name || strings.TrimSpace(l) == "/"+name {
-			return nil
+		switch strings.TrimSpace(l) {
+		case name, "/" + name:
+			ignored = true
+		case "!" + name, "!/" + name:
+			ignored = false
 		}
+	}
+	if ignored {
+		return nil
 	}
 	f, err := os.OpenFile(gi, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {

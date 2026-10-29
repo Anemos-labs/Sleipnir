@@ -481,6 +481,24 @@ func TestTrustedFilterMayRunButOthersStillMayNot(t *testing.T) {
 	}
 }
 
+// A driver with an empty name ([filter ""]) is a driver git selects (filter= in the attributes), and is neutralized like any.
+func TestEmptyNamedDriverRunsNothing(t *testing.T) {
+	skipWithoutUnix(t)
+	dir := newRepo(t)
+	markers := t.TempDir()
+	writeFile(t, filepath.Join(dir, ".gitattributes"), "* filter=\n")
+	rawGit(t, dir, "add", "-A")
+	rawGit(t, dir, "commit", "-qm", "attrs")
+	appendConfig(t, dir, "[filter \"\"]\n\tclean = "+quoteCfg("touch "+filepath.Join(markers, "empty")+"; cat")+"\n")
+	writeFile(t, filepath.Join(dir, "y.txt"), "payload\n")
+	if _, err := openRepo(t, dir).SnapshotTree(ctxT(t)); err != nil {
+		t.Fatal(err)
+	}
+	if ents, _ := os.ReadDir(markers); len(ents) != 0 {
+		t.Fatalf("the empty-named filter ran")
+	}
+}
+
 func TestConfigScanLimits(t *testing.T) {
 	dir := newRepo(t)
 	var b strings.Builder

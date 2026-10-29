@@ -28,6 +28,7 @@ const (
 	Recon           = "recon"
 	UpdateCheck     = "update-check"
 	Research        = "research"
+	Scan            = "scan"
 	RolePrefix      = "role:"
 	ViewPrefix      = "view:"
 )
@@ -96,7 +97,7 @@ func Builtin() []Manifest {
 			Requires: []string{Swarm}},
 		{ID: Goal, Title: "Standing goals", Description: "/goal: work until a goal is met, judged on evidence", Category: CatTeam,
 			Contributes: []Contribution{{KindSlash, "goal"}, {KindEvent, "goal"}}},
-		{ID: Lessons, Title: "Lesson memory", Description: "what earlier goals taught, recalled at a goal's start (needs an embedder model: --role-model embedder=M)", Category: CatTeam,
+		{ID: Lessons, Title: "Lesson memory", Description: "what earlier goals taught, recalled at a goal's start by keyword, and by meaning with an embedder model (--role-model embedder=M)", Category: CatTeam,
 			Requires: []string{Goal}, Contributes: []Contribution{{KindPrompt, "lessons"}}},
 		{ID: Delivery, Title: "GitHub delivery", Description: "Auto-fix CI & reviews and Auto-merge for each objective (needs gh)", Category: CatTeam,
 			Contributes: []Contribution{{KindSlash, "delivery"}}},
@@ -108,6 +109,9 @@ func Builtin() []Manifest {
 		{ID: Research, Title: "Deep research", Description: "/research: a team researches a question on the web, every quote checked on its page, and publishes a wiki; /goal --research researches before building",
 			Category: CatTeam, Requires: []string{Web, Goal},
 			Contributes: []Contribution{{KindTool, "research"}, {KindSlash, "research"}, {KindCLI, "research"}, {KindView, "research"}, {KindNav, "research"}, {KindPrompt, "research context"}}},
+		{ID: Scan, Title: "Deep scan", Description: "/scan: a team maps a whole repository at a pinned commit, hunts it for holes, and reports only what verifiers confirmed and the sandbox reproduced",
+			Category: CatTeam, Off: true, Requires: []string{Goal},
+			Contributes: []Contribution{{KindTool, "scan"}, {KindSlash, "scan"}, {KindCLI, "scan"}}},
 		{ID: UpdateCheck, Title: "Update check", Description: "say in the chat when a newer release is out", Category: CatTeam},
 	}
 	for _, r := range WorkerRoles {
