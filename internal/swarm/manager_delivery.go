@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"sort"
 	"strings"
 
+	"github.com/anemos-labs/sleipnir/internal/gitx"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/skills/mdfile"
 	"github.com/anemos-labs/sleipnir/internal/tools"
@@ -25,6 +27,11 @@ func (t *taskTool) deliver(ctx context.Context, c *tools.Call, in taskIn) *tools
 	m := s.get(s.ManagerID())
 	if m == nil {
 		return tools.Errorf("manager is not running")
+	}
+	if fresh, err := s.managerNewFiles(ctx, m); err != nil {
+		return tools.Errorf("delivery needs repair: %v", err)
+	} else if !s.deliverConfirmed(fresh) {
+		return tools.Errorf("delivering would also commit these new files from your checkout, which the integration does not have: %s. Delete the ones you made for probes or scratch (put those in $TMPDIR), or call deliver again to include them", strings.Join(fresh, ", "))
 	}
 	if err := s.flushManager(ctx, m); err != nil {
 		return tools.Errorf("delivery needs repair: %v", err)
@@ -87,4 +94,50 @@ func (t *taskTool) deliver(ctx context.Context, c *tools.Call, in taskIn) *tools
 		return tools.Errorf("delivery report: %v", err)
 	}
 	return c.Env.Finish(string(b), false)
+}
+
+// managerNewFiles lists the untracked files in the manager's checkout that the integration lacks: a delivery commits
+// them with the rest. A manager that probed the final build wrote `echo null > n.json` beside the code and delivered
+// it to the person's branch, then deleted it from its checkout once the delivery report named it.
+func (s *Swarm) managerNewFiles(ctx context.Context, m *member) ([]string, error) {
+	iso := s.deps.Isolation
+	if m.tree == nil || iso == nil || iso.Queue == nil {
+		return nil, nil
+	}
+	repo := m.tree.Repo()
+	st, err := repo.StatusWith(ctx, gitx.StatusOptions{Untracked: "all"})
+	if err != nil {
+		return nil, err
+	}
+	if len(st.Untracked) == 0 {
+		return nil, nil
+	}
+	same := map[string]bool{}
+	if tip := iso.Queue.Tip(); tip != "" {
+		for _, p := range atTip(ctx, repo, tip, st.Untracked) {
+			same[p] = true
+		}
+	}
+	var fresh []string
+	for _, p := range st.Untracked {
+		if !same[p] {
+			fresh = append(fresh, p)
+		}
+	}
+	sort.Strings(fresh)
+	return fresh, nil
+}
+
+// deliverConfirmed reports whether new manager files may be delivered: there are none, or the last deliver named the
+// same ones and the manager called again.
+func (s *Swarm) deliverConfirmed(fresh []string) bool {
+	key := strings.Join(fresh, "\x00")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if key == "" || key == s.deliverAsked {
+		s.deliverAsked = ""
+		return true
+	}
+	s.deliverAsked = key
+	return false
 }

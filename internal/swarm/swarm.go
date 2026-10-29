@@ -360,6 +360,9 @@ type Swarm struct {
 	// (reserveChild); the repair pass starts the member on it if its run ends before it claims it. Guarded by mu.
 	poolReserved  map[string]string
 	handoverFault func(phase string) error
+	// deliverAsked is the list of new manager files the last deliver refused to commit unasked (manager_delivery.go);
+	// a deliver that finds the same list commits them. Guarded by mu.
+	deliverAsked string
 
 	// Worktree isolation (isolate.go): the harness's record of which task assignments
 	// reached the integration branch, how often each came back from the merge queue,
