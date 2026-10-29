@@ -234,6 +234,11 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		t0, _ := s.Board.Snapshot().Task(in.ID)
 		current := t0.Owner == me && t0.Status == StatusDoing && m != nil && m.currentTask() == in.ID
 		if err := s.Board.claim(me, in.ID, s.claimCheck(me, ro)); err != nil {
+			// Workers were told to start the parent with spawn, which only the manager may do, and claimed again.
+			var pe poolParentError
+			if errors.As(err, &pe) {
+				return tools.Errorf("%s is a top-level %s task: the manager starts it with spawn, as the %s pool or for one member with solo=true, and a worker does not claim it. Go on with the task or pool you are in (a pool still planning needs your vote); once a pool of your role executes, take one of its child tasks, or wait for an assignment.", pe.id, pe.role, pe.role), nil
+			}
 			return tools.Errorf("%v", err), nil
 		}
 		if !current {
