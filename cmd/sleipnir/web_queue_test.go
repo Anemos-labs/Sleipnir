@@ -3,9 +3,11 @@ package main
 import (
 	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
@@ -102,5 +104,63 @@ func TestWebHostQueuedLinesSendNowEditAndDrop(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	if m.asked("second line") >= 0 || m.asked("fourth") >= 0 {
 		t.Errorf("a line taken out of the queue reached the model: %q", m.seen)
+	}
+}
+
+// A message sent while the goal's own turn runs reaches that turn as a steer instead of waiting for its end, which for a team's manager
+// can be hours away; the transcript shows its display, the agent reads its text. A slash line still waits, and so does a message sent
+// while the judge rules on a turn: no run would read a steer then, so it queues and the goal yields to it.
+func TestWebHostAMessageDuringTheGoalsTurnSteersIt(t *testing.T) {
+	project := webWorld(t)
+	var mu sync.Mutex
+	judged := 0
+	judging, ruling := make(chan struct{}), make(chan struct{})
+	m, base := newWebModel(t, func(c *mock.Call) mock.Reply {
+		if strings.Contains(c.System, "You judge whether") {
+			if strings.Contains(c.LastUser(), "Your verdict came before any evidence request") {
+				return mock.Reply{Text: `{"verdict":"continue","reason":"no build ran","left":["run the build"]}`} // it stands by its verdict
+			}
+			mu.Lock()
+			judged++
+			n := judged
+			mu.Unlock()
+			if n == 1 {
+				close(judging)
+				<-ruling
+				return mock.Reply{Text: `{"verdict":"continue","reason":"no build ran","left":["run the build"]}`}
+			}
+			return mock.Reply{Text: `{"verdict":"done","reason":"the build ran","left":[]}`}
+		}
+		return mock.Reply{Text: "working on it"}
+	})
+	r := newWebRig(t, soloDefaults(project), base)
+	tab := r.ready("")
+	m.hold("make it build")
+	r.json("POST", "/api/sessions/"+tab.ID+"/goal", wire.GoalRequest{Action: "set", Text: "make it build"}, 200, nil)
+	r.waitEv(tab.ID, "turn", map[string]any{"s": "start"})
+	var res wire.SendResult
+	r.json("POST", "/api/sessions/"+tab.ID+"/messages", wire.MessageRequest{Text: "use make, not go build", Display: "[paste]"}, 200, &res)
+	if !res.Steered || res.Queued {
+		t.Fatalf("a message during the goal's turn = %+v, want steered", res)
+	}
+	r.waitEv(tab.ID, "steer", map[string]any{"text": "[paste]"})
+	var cmd wire.CommandResult
+	r.json("POST", "/api/sessions/"+tab.ID+"/command", wire.CommandRequest{Line: "/budget 3"}, 200, &cmd)
+	if !strings.HasPrefix(cmd.Output, "queued") {
+		t.Errorf("a slash line during the goal's turn: %q", cmd.Output)
+	}
+	r.json("POST", "/api/sessions/"+tab.ID+"/command", wire.CommandRequest{Line: "/queue clear"}, 200, &cmd)
+
+	m.release("make it build")
+	<-judging
+	var later wire.SendResult
+	r.json("POST", "/api/sessions/"+tab.ID+"/messages", wire.MessageRequest{Text: "while judging"}, 200, &later)
+	if later.Steered || !later.Queued {
+		t.Errorf("a message while the judge rules = %+v, want queued", later)
+	}
+	close(ruling)
+	r.waitEv(tab.ID, "goal", map[string]any{"s": "met"})
+	if m.asked("use make, not go build") < 0 || m.asked("while judging") < 0 {
+		t.Errorf("a message never reached the model: %q", m.seen)
 	}
 }

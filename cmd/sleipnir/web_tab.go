@@ -101,6 +101,7 @@ type webTab struct {
 	queue      []queued
 	nq         int
 	active     bool
+	goalTurn   bool // the running turn is the goal's (its start, a resume or a continuation), not a message the person typed: Send steers it
 	excl       int
 	cancel     context.CancelFunc // cancels the running item
 	cancelOp   context.CancelFunc // cancels a running compaction
@@ -451,11 +452,27 @@ func (t *webTab) turn(ctx context.Context, s *session.Session, prompt, display s
 		t.emit(&wire.Say{Who: "you", Text: clip(display, 16<<10)})
 		t.addHist(display)
 	}
+	t.mu.Lock()
+	t.goalTurn = !echo
+	t.mu.Unlock()
 	t.emit(&wire.Turn{S: "start"})
 	t.publishMeta()
-	err := t.goals.Turn(ctx, s, prompt, func(e goalEvent) { t.goalEvent(s, e) })
+	err := t.goals.Turn(ctx, s, prompt, func(e goalEvent) {
+		switch e.Kind {
+		case "ran": // no run reads a steer while the judge rules: a message then waits, and the goal yields to it
+			t.mu.Lock()
+			t.goalTurn = false
+			t.mu.Unlock()
+		case "next":
+			t.mu.Lock()
+			t.goalTurn = true
+			t.mu.Unlock()
+		}
+		t.goalEvent(s, e)
+	})
 	_ = err
 	t.mu.Lock()
+	t.goalTurn = false
 	t.ends = append(t.ends, func() {
 		t.emit(&wire.Final{}, &wire.Turn{S: "end"})
 		t.publishRoster()
@@ -606,6 +623,9 @@ func (t *webTab) Send(ctx context.Context, req wire.MessageRequest) (wire.SendRe
 	if t.startFailed() {
 		return wire.SendResult{}, t.noSession() // nothing would ever run it: the tab has no session until it starts again
 	}
+	if t.steersContinuation(ctx, req) {
+		return wire.SendResult{Steered: true}, nil
+	}
 	it := queued{autoFix: req.AutoFix, autoMerge: req.AutoMerge, text: oneLineCLI(display, 200), prompt: req.Text, display: display, echo: true}
 	id, pos, now, err := t.enqueue(it)
 	if err != nil {
@@ -615,6 +635,19 @@ func (t *webTab) Send(ctx context.Context, req wire.MessageRequest) (wire.SendRe
 		return wire.SendResult{ID: id}, nil
 	}
 	return wire.SendResult{Queued: true, Position: pos, ID: id}, nil
+}
+
+// steersContinuation delivers a message as a steer when the running turn is the goal's own: the next turn may be
+// hours away (a team's manager runs one continuation while its members work), and the goal yields to the person only between turns.
+// A message that changes delivery or is too long for a steer, and one sent during the person's own turn, waits in the queue as before.
+func (t *webTab) steersContinuation(ctx context.Context, req wire.MessageRequest) bool {
+	if req.AutoFix || req.AutoMerge || utf8.RuneCountInString(strings.TrimSpace(req.Text)) > maxSteerLen {
+		return false
+	}
+	t.mu.Lock()
+	on := t.goalTurn && t.active && len(t.queue) == 0
+	t.mu.Unlock()
+	return on && t.steer(ctx, req.Text, req.Display) == nil
 }
 
 // kind is what a queued item is, as wire.QueuedLine says it: a message, a slash command, or an action of the host.
@@ -1117,8 +1150,14 @@ func goalCommandStatus(s *session.Session, g *goal.State, out io.Writer) {
 }
 
 // Steer tells the running turn of the manager something without stopping it.
-func (t *webTab) Steer(ctx context.Context, text string) error {
+func (t *webTab) Steer(ctx context.Context, text string) error { return t.steer(ctx, text, "") }
+
+// steer is Steer with what the transcript shows when it differs from the text the agent reads (a message's display: a paste chip).
+func (t *webTab) steer(ctx context.Context, text, display string) error {
 	text = strings.TrimSpace(text)
+	if strings.TrimSpace(display) == "" {
+		display = text
+	}
 	switch {
 	case text == "":
 		return werr(http.StatusBadRequest, "empty", "/steer needs text: what the agent should read with its next step")
@@ -1141,7 +1180,7 @@ func (t *webTab) Steer(ctx context.Context, text string) error {
 		return werr(http.StatusConflict, "idle", "no turn is running: send it as a message")
 	}
 	_, _ = s.Log.Emit("", "user.steer", map[string]any{"text": text})
-	t.emit(&wire.Steer{To: "mgr", Text: clip(text, maxSteerLen)})
+	t.emit(&wire.Steer{To: "mgr", Text: clip(display, maxSteerLen)})
 	return nil
 }
 
