@@ -80,7 +80,11 @@ func (c *shellCtx) step(ch byte) {
 			c.word = c.word[:0]
 		}
 	}
-	push := func(f shellFrame) { c.stack = append(c.stack, f) }
+	opened := false // a $( ) began here: its first word is a new one, whatever the quotes around it (a # there starts a comment)
+	push := func(f shellFrame) {
+		c.stack = append(c.stack, f)
+		opened = opened || f.sub
+	}
 	closed := false // a quote or a $( ) ended here: the word it is part of goes on (x$(printf a)#b is one word)
 	pop := func() {
 		if len(c.stack) > 1 {
@@ -137,7 +141,7 @@ func (c *shellCtx) step(ch byte) {
 		}
 	}
 	if ch != '\\' {
-		c.inWord = closed || !sep || (top.kind != 'n' && top.kind != 'b')
+		c.inWord = !opened && (closed || !sep || (top.kind != 'n' && top.kind != 'b'))
 	}
 }
 
