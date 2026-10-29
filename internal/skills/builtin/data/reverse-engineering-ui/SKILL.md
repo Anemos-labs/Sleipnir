@@ -1,6 +1,6 @@
 ---
 name: reverse-engineering-ui
-description: Tear down a live website or web UI into an evidence-backed spec (layout, design tokens, components, states, interactions, network calls) and rebuild it as original code. Use when asked to clone or match a site or interface.
+description: Tear down a live site or web UI into an evidence-backed spec (layout, tokens, components, states, network) and rebuild it as original code. Use to clone or match one.
 ---
 # Reverse engineering a web UI
 

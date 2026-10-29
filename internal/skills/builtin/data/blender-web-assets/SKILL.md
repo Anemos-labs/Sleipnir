@@ -1,6 +1,6 @@
 ---
 name: blender-web-assets
-description: Make 3D assets for a website or app with Blender, such as hero renders, transparent product shots, turntable loops, icons and glTF/GLB models for three.js or model-viewer. Use for front-end visuals beyond CSS and SVG.
+description: 3D assets for a website or app made with Blender: hero renders, product shots, turntable loops, GLB models for three.js. Use for visuals beyond CSS and SVG.
 ---
 # 3D assets for the web, made in Blender
 
