@@ -43,6 +43,9 @@ func TestShellPlaceholdersFollowTheTemplatesQuotes(t *testing.T) {
 		t.Skip("no sh")
 	}
 	for _, tmpl := range []string{"printf %s $1", "printf %s '$1'", `printf %s "$1"`, `printf %s "pre-$1-post"`, `printf %s x$(:)#"$1"`, "printf %s \"$(# \"\nprintf %s $1)\""} {
+		if strings.Contains(tmpl, "$(#") && exec.Command(sh, "-c", "printf %s \"$(# \"\nprintf ok)\"").Run() != nil {
+			continue // this sh (bash 3.2, macOS's) cannot parse a comment holding a quote inside "$( )" at all
+		}
 		cmd, _, err := SubstituteMax(tmpl, `"`+strings.ReplaceAll(evil, `"`, `\"`)+`"`, ArgsShell, 0)
 		if err != nil {
 			t.Fatalf("%q: %v", tmpl, err)
