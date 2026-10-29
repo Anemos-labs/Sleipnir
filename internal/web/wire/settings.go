@@ -30,8 +30,11 @@ type ModelsView struct {
 	Roles      []RoleInfo        `json:"roles"`
 	RoleOrder  []string          `json:"roleOrder"`
 	RoleModels map[string]string `json:"roleModels"`
-	Efforts    []string          `json:"efforts"`
-	FetchedAt  int64             `json:"fetchedAt"`
+	// Embedders are the embedding models of the providers that have a key, by reference: what the embedder role (the lesson
+	// memory's search by meaning) can run on. The filter of Models does not narrow them.
+	Embedders []string `json:"embedders"`
+	Efforts   []string `json:"efforts"`
+	FetchedAt int64    `json:"fetchedAt"`
 }
 
 // RoleInfo is a role of the swarm: its name, short code, whether it is read-only, and what it is for.

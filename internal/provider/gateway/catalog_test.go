@@ -100,3 +100,23 @@ func TestAvLLMCatalogueGivesItsWindowAndNoPrices(t *testing.T) {
 		t.Error("a model the catalogue prices at zero is free, not unpriced")
 	}
 }
+
+// An embedding model is known by its modality, or, in a catalogue that gives none, by its id.
+func TestIsEmbedding(t *testing.T) {
+	for _, c := range []struct {
+		id, modality string
+		want         bool
+	}{
+		{"tencent/wemm-embedding-2b", "text+image->embeddings", true},
+		{"acme/chat", "text->text", false},
+		{"acme/embed-looking-chat", "text->text", false},
+		{"text-embedding-3-small", "", true},
+		{"nomic-embed-text", "", true},
+		{"gpt-5", "", false},
+	} {
+		e := Entry{Model: cost.Model{ID: c.id}, Modality: c.modality}
+		if got := e.IsEmbedding(); got != c.want {
+			t.Errorf("%s (%q): IsEmbedding = %v, want %v", c.id, c.modality, got, c.want)
+		}
+	}
+}
