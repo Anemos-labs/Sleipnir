@@ -13,6 +13,14 @@ import (
 // (or the janitor) cannot reopen the budget. It is enforced where it cannot be
 // evaded: the request governor asks before every request, and the moment the total
 // is over the line every running worker is stopped.
+//
+// The last part of the budget (budgetReserve) is kept for finishing the work in
+// hand. A hard stop at the line cuts workers off mid-edit and leaves the manager
+// unable to report, since its own requests are refused too. Once the spend reaches
+// the reserve, nothing new starts (startErr: no spawn, queued start, handover,
+// automatic restart or retry), each running worker is asked once to hand in what it
+// has, and the manager is told to decide what was handed in and report. Running
+// agents keep making requests until the line itself.
 
 // closeAgent closes a retired member's agent, and agentSpend reads what an agent has cost, what its plan-covered usage comes to at the
 // API list price and whether it had any (agent.Agent.PlanUsage). They are variables so that a test can stand between the two (detach
@@ -73,15 +81,30 @@ func (s *Swarm) AddRetiredListCost(list float64, plan bool) {
 	s.mu.Unlock()
 }
 
+// budgetReserve is the share of the swarm budget kept for finishing the work in hand: once the spend reaches the rest, nothing new
+// starts.
+const budgetReserve = 0.10
+
+// eventBudgetLow records that the spend reached the budget's reserve (payload: budget_usd, spent_usd, reserve_usd, workers = how
+// many running workers were asked to hand in). It is emitted once per swarm.
+const eventBudgetLow = "swarm.budget_low"
+
+// errBudgetLow marks a start refused because the budget's reserve is reached.
+var errBudgetLow = errors.New("swarm budget nearly spent")
+
 // budgetErr returns a non-nil error once the swarm budget is spent. The error wraps
 // agent.ErrBudget, so an agent whose request is refused ends its run as
-// budget-exhausted.
+// budget-exhausted. Reaching the reserve is not an error here (see startErr), but the
+// first check that sees it starts the wind-down.
 func (s *Swarm) budgetErr() error {
 	if s.cfg.BudgetUSD <= 0 {
 		return nil
 	}
 	tc := s.TotalCost()
 	if tc < s.cfg.BudgetUSD {
+		if tc >= s.cfg.BudgetUSD*(1-budgetReserve) {
+			s.budgetLow(tc)
+		}
 		return nil
 	}
 	s.budgetExceeded(tc)
@@ -101,6 +124,51 @@ func (s *Swarm) budgetExceeded(spent float64) {
 	s.goTracked(func() {
 		n := s.stopWorkers("swarm budget exhausted", false)
 		s.notifyManager(fmt.Sprintf("Swarm budget of %s is exhausted (%s spent): %d running worker(s) were stopped and their tasks returned to todo. Nothing more will run; report to the user.", cost.Dollars(s.cfg.BudgetUSD), cost.Dollars(spent), n))
+	})
+}
+
+// startErr is budgetErr for starting new work (a worker run, a successor, a restart or a retry): it also refuses once the spend has
+// reached the budget's reserve, which is kept for the runs already going and for the manager's report.
+func (s *Swarm) startErr() error {
+	if err := s.budgetErr(); err != nil {
+		return err
+	}
+	if !s.budgetLowOnce.Load() {
+		return nil
+	}
+	return fmt.Errorf("the swarm budget is nearly spent (%s of %s): its last %s is kept for finishing the work in hand, so no new worker starts. "+
+		"Decide the work handed in from its evidence, then report to the user what is done and what is left: %w",
+		cost.Dollars(s.TotalCost()), cost.Dollars(s.cfg.BudgetUSD), cost.Dollars(s.cfg.BudgetUSD*budgetReserve), errBudgetLow)
+}
+
+// budgetLow starts the wind-down, once: the running workers are asked to hand in what they have, and the manager is told what is
+// left of the budget and what to do with it.
+func (s *Swarm) budgetLow(spent float64) {
+	if !s.budgetLowOnce.CompareAndSwap(false, true) {
+		return
+	}
+	s.goTracked(func() {
+		left := cost.Dollars(max(s.cfg.BudgetUSD-spent, 0))
+		s.mu.Lock()
+		ms := make([]*member, 0, len(s.members))
+		for _, m := range s.members {
+			if !m.manager && !m.service {
+				ms = append(ms, m)
+			}
+		}
+		s.mu.Unlock()
+		n := 0
+		for _, m := range ms {
+			if m.isActive() && s.notify(m.id, "request", fmt.Sprintf("The swarm budget is nearly spent (%s left of %s). "+
+				"Bring your work to a state that builds and passes its tests, commit it, and call task done now with what is done and what is left. "+
+				"Do not start anything new.", left, cost.Dollars(s.cfg.BudgetUSD))) {
+				n++
+			}
+		}
+		s.emit(eventBudgetLow, map[string]any{"budget_usd": s.cfg.BudgetUSD, "spent_usd": spent, "reserve_usd": s.cfg.BudgetUSD * budgetReserve, "workers": n})
+		s.notifyManager(fmt.Sprintf("The swarm budget is nearly spent (%s of %s): no new worker starts, and %d running worker(s) were asked to hand in what they have. "+
+			"Decide what is handed in from its evidence, then report to the user what is done and what is left, before the last %s is spent.",
+			cost.Dollars(spent), cost.Dollars(s.cfg.BudgetUSD), n, left))
 	})
 }
 

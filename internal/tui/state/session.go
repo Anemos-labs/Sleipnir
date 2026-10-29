@@ -378,6 +378,20 @@ func (s *State) onBudget(e events.Event, t time.Time) {
 	s.line(e.Seq, t, "", FeedBudget, GlyphWarn, "the swarm budget of "+fmtUSD(s.totals.BudgetUSD)+" is spent: running workers were stopped", fmtUSD(s.totals.BudgetSpentUSD)+" spent")
 }
 
+// onBudgetLow shows that the swarm reached its budget's reserve: nothing new starts and the running workers were asked to hand in.
+func (s *State) onBudgetLow(e events.Event, t time.Time) {
+	var p struct {
+		BudgetUSD float64 `json:"budget_usd"`
+		SpentUSD  float64 `json:"spent_usd"`
+		Workers   int     `json:"workers"`
+	}
+	if !s.decode(e.Data, maxPayload, &p) {
+		return
+	}
+	s.line(e.Seq, t, "", FeedBudget, GlyphWarn, "the swarm budget of "+fmtUSD(usd(p.BudgetUSD))+" is nearly spent: nothing new starts and "+
+		strconv.Itoa(clampInt(p.Workers))+" running worker(s) were asked to hand in", fmtUSD(usd(p.SpentUSD))+" spent")
+}
+
 // permState is the permission dialog's state.
 type permState struct {
 	pending   []PermAsk
