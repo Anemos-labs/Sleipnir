@@ -533,6 +533,11 @@ func (e *Engine) Check(ctx context.Context, r Request) Decision {
 			if ctx.Err() != nil {
 				d, by = canceledDecision(ctx), "canceled"
 			}
+			if d.Allow {
+				if reason, refused := e.refusedReadOnly(ctx, r); refused { // a hold that began during the wait
+					d, by = Decision{Reason: "read-only turn: " + reason}, "policy"
+				}
+			}
 			e.audit(Audit{Kind: "decide", Request: r, Reason: d.Reason, Decision: d, By: by})
 			return d
 		}
@@ -550,6 +555,11 @@ func (e *Engine) Check(ctx context.Context, r Request) Decision {
 		by = d.by
 	}
 	d.by = ""
+	if d.Allow {
+		if reason, refused := e.refusedReadOnly(ctx, r); refused { // a hold that began while the person was asked
+			d, by = Decision{Reason: "read-only turn: " + reason}, "policy"
+		}
+	}
 	e.audit(Audit{Kind: "decide", Request: r, Reason: d.Reason, Decision: d, By: by})
 	return d
 }

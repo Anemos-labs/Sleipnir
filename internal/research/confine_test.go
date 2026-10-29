@@ -84,8 +84,8 @@ func TestAddressInALinkLabelIsText(t *testing.T) {
 	if strings.Count(out, "<a ") != 1 || !strings.Contains(out, `>see https://a.example/x</a>`) {
 		t.Errorf("label address: %s", out)
 	}
-	out, _ = renderMarkdown("[[index|https://a.example/x]]", mdEnv{})
-	if strings.Count(out, "<a ") != 1 || !strings.Contains(out, `>https://a.example/x</a>`) {
+	out, _ = renderMarkdown("[[index|https://a.example/_draft_]]", mdEnv{})
+	if strings.Count(out, "<a ") != 1 || !strings.Contains(out, `>https://a.example/_draft_</a>`) {
 		t.Errorf("wiki label address: %s", out)
 	}
 }

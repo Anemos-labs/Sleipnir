@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"unicode/utf8"
 )
@@ -309,7 +310,8 @@ func readSpec(ref, dir, root string) (string, error) {
 		if err != nil || !filepath.IsLocal(realRel) {
 			return "", ErrSpecOutside
 		}
-		if realRel != filepath.Clean(rel) {
+		// Windows resolves a name to the case it has on disk (spec.md is SPEC.md); the Lstat below still tells a link from the file
+		if named := filepath.Clean(rel); realRel != named && (runtime.GOOS != "windows" || !strings.EqualFold(realRel, named)) {
 			return "", ErrSpecLinked
 		}
 		if lst, err := r.Lstat(rel); err != nil || !os.SameFile(lst, st) {

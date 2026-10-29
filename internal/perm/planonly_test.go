@@ -194,3 +194,22 @@ func TestHoldReadOnlyHoldsEveryCheck(t *testing.T) {
 		t.Errorf("the session's mode changed: %q", e.Mode())
 	}
 }
+
+// A hold that begins while a request waits for its answer still holds it: an approval given during the read-only turn writes nothing.
+func TestHoldReadOnlyHoldsARequestAlreadyWaiting(t *testing.T) {
+	root := t.TempDir()
+	var e *Engine
+	var release func()
+	e, err := NewEngine(Config{Mode: ModeDefault, Root: root, Home: t.TempDir(), Prompter: func(context.Context, Request) Decision {
+		release = e.HoldReadOnly() // the read-only turn starts while the person is asked
+		return Decision{Allow: true, Reason: "approved"}
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := Request{Tool: "write", Writes: true, Paths: []string{root + "/main.go"}}
+	if d := e.Check(context.Background(), w); d.Allow {
+		t.Fatalf("a write approved during a hold was allowed: %+v", d)
+	}
+	release()
+}

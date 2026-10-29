@@ -49,7 +49,7 @@ func (c *shellCtx) step(ch byte) {
 	c.prev = ch
 	if c.comment {
 		if ch == '\n' {
-			c.comment, c.inWord = false, false
+			c.comment, c.inWord, c.word = false, false, c.word[:0]
 		}
 		return
 	}

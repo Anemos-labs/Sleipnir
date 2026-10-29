@@ -544,13 +544,17 @@ func (r *mdRenderer) inline(s string) string {
 				i += n + end + n
 				continue
 			}
-		case c == 'h' && !r.inLink && (strings.HasPrefix(s[i:], "https://") || strings.HasPrefix(s[i:], "http://")) && (i == 0 || !isWord(s[i-1])):
+		case c == 'h' && (strings.HasPrefix(s[i:], "https://") || strings.HasPrefix(s[i:], "http://")) && (i == 0 || !isWord(s[i-1])):
 			end := i
 			for end < len(s) && !strings.ContainsRune(" \t<>\"')]", rune(s[end])) {
 				end++
 			}
 			raw := strings.TrimRight(s[i:end], ".,;:!?")
-			b.WriteString(r.linkHTML(raw, func() string { return html.EscapeString(raw) }, raw))
+			if r.inLink { // the whole address as text: no <a> inside the link, nor emphasis out of its underscores
+				b.WriteString(html.EscapeString(raw))
+			} else {
+				b.WriteString(r.linkHTML(raw, func() string { return html.EscapeString(raw) }, raw))
+			}
 			i += len(raw)
 			continue
 		}

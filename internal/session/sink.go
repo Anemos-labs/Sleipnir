@@ -83,7 +83,11 @@ func (s *TextSink) Text(a, d string) {
 				s.lead[a], d = "", d[i+1:] // the lines it ends are blank, which trimBlankLines drops anyway: only the indentation after stays
 			}
 			if room := maxLead - len(s.lead[a]); room > 0 {
-				s.lead[a] += d[:min(room, len(d))] // one large piece is bounded too
+				n := min(room, len(d)) // one large piece is bounded too, at a whole character
+				for n < len(d) && n > 0 && !utf8.RuneStart(d[n]) {
+					n--
+				}
+				s.lead[a] += d[:n]
 			}
 			return
 		}

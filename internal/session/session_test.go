@@ -890,6 +890,14 @@ func TestTextSinkBoundsLeadingWhiteSpace(t *testing.T) {
 	if got := out.String(); got != "    x\n" {
 		t.Fatalf("answer = %q", got)
 	}
+	sink.Response("main", nil, 0)
+	out.Reset()
+	// the bound falls inside a no-break space: half of it kept would be a character, and the blank line content
+	sink.Text("main", strings.Repeat(" ", 4<<10-1)+"\u00a0")
+	sink.Text("main", "\nprint('ok')\n")
+	if got := out.String(); got != "print('ok')\n" {
+		t.Fatalf("answer = %q", got)
+	}
 }
 
 // Text that reaches the terminal is data: an escape sequence in a model's answer

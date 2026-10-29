@@ -166,6 +166,20 @@ func TestPrepareKeepsTheSpecAsSet(t *testing.T) {
 	}
 }
 
+// On a file system that ignores case, a spec named in another case than it has on disk is the file named, not a link.
+func TestSpecNamedInAnotherCaseIsRead(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "SPEC.md"), []byte("the spec"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "spec.md")); err != nil {
+		t.Skip("the file system tells case apart")
+	}
+	if text, err := readSpec("spec.md", root, root); err != nil || text != "the spec" {
+		t.Errorf("read %q, %v", text, err)
+	}
+}
+
 // "done" stands only when the same verdict confirms every milestone with evidence; rulings update the milestones either way.
 func TestReconcileHoldsDoneToEveryMilestone(t *testing.T) {
 	g := New("x")
