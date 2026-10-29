@@ -263,7 +263,11 @@ func runCommand(ctx context.Context, name string, args []string) error {
 		case !*quiet:
 			fmt.Fprintln(os.Stderr, "\n"+runSummary(os.Stderr, time.Since(start), res))
 			if s.Ckpt != nil {
-				fmt.Fprintln(os.Stderr, changedLine(s.Ckpt.List()))
+				var applied []string
+				if integ != nil && integ.Applied {
+					applied = integ.Files
+				}
+				fmt.Fprintln(os.Stderr, changedLine(s.Ckpt.List(), applied))
 			}
 			if s.Swarm != nil {
 				if l := verifyLine(*verify, s.Swarm.VerifyRuns); l != "" {
@@ -597,17 +601,25 @@ func verifyLine(cmd string, runs func() (ran, failed int)) string {
 }
 
 // changedLine is the line after a run's summary that says which files it changed (the checkpoints of the session know), or that it changed none:
-// a run that was refused its edits ends with a diagnosis, and a person reading the summary alone could not tell.
-func changedLine(list []checkpoint.Info) string {
+// a run that was refused its edits ends with a diagnosis, and a person reading the summary alone could not tell. applied are the files an
+// isolated team's integration brought into the checkout: its workers wrote in their own trees, so the session's checkpoints hold none of them,
+// and a greenfield team that delivered 23 files ended "no file was changed" right above the line that said so.
+func changedLine(list []checkpoint.Info, applied []string) string {
 	seen := map[string]bool{}
 	var files []string
+	add := func(f string) {
+		if !seen[f] {
+			seen[f] = true
+			files = append(files, f)
+		}
+	}
 	for _, cp := range list {
 		for _, f := range cp.Files {
-			if !seen[f] {
-				seen[f] = true
-				files = append(files, f)
-			}
+			add(f)
 		}
+	}
+	for _, f := range applied {
+		add(f)
 	}
 	switch n := len(files); {
 	case n == 0:

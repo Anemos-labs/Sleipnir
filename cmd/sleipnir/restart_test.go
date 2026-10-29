@@ -417,15 +417,18 @@ func TestCloneGoalCopiesTheMilestones(t *testing.T) {
 func TestChangedLineSaysWhatARunChanged(t *testing.T) {
 	cp := func(files ...string) checkpoint.Info { return checkpoint.Info{Files: files} }
 	for _, tc := range []struct {
-		list []checkpoint.Info
-		want string
+		list    []checkpoint.Info
+		applied []string // what an isolated team's integration brought into the checkout
+		want    string
 	}{
-		{nil, "   no file was changed"},
-		{[]checkpoint.Info{cp()}, "   no file was changed"},
-		{[]checkpoint.Info{cp("a.py"), cp("a.py", "b.py")}, "   changed: a.py, b.py"},
-		{[]checkpoint.Info{cp("1", "2", "3", "4", "5", "6", "7")}, "   changed: 1, 2, 3, 4, 5 and 2 more"},
+		{nil, nil, "   no file was changed"},
+		{[]checkpoint.Info{cp()}, nil, "   no file was changed"},
+		{[]checkpoint.Info{cp("a.py"), cp("a.py", "b.py")}, nil, "   changed: a.py, b.py"},
+		{[]checkpoint.Info{cp("1", "2", "3", "4", "5", "6", "7")}, nil, "   changed: 1, 2, 3, 4, 5 and 2 more"},
+		{nil, []string{"go.mod", "cmd/x/main.go"}, "   changed: go.mod, cmd/x/main.go"},
+		{[]checkpoint.Info{cp("AGENTS.md")}, []string{"AGENTS.md", "go.mod"}, "   changed: AGENTS.md, go.mod"},
 	} {
-		if got := changedLine(tc.list); got != tc.want {
+		if got := changedLine(tc.list, tc.applied); got != tc.want {
 			t.Errorf("%v: %q, want %q", tc.list, got, tc.want)
 		}
 	}
