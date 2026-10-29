@@ -79,7 +79,7 @@ func (t *taskTool) Spec() core.ToolSpec {
 		Name:         "task",
 		NoTreeWrites: true, // tree mutations use the verified integration bridge
 		Description: "Shared task board. Manager: deliver (text=commit message) verifies direct changes and commits the integrated result to the original checkout without creating a task; then use bash for push and PR commands. Manager: revise (id, text=reason, optional title, description, kind, files, deps) repairs a task in place; resolve (id, text=explanation) completes work no longer needed. Pool leaders: create with parent=id (inherits the parent's kind unless specified) and accept their child tasks. Actions: list, get (id: full task and agreement), claim (id), update (id, text = one-line status), " +
-			"done (id, text = one-line result, optional agreement = full shared contract, at most 6000 bytes/40 lines: the harness verifies the work before review). Accepted agreements are inherited by dependent tasks and preserved through compaction. " +
+			"done (id, text = one-line result, optional agreement = full shared contract, at most 6000 bytes/40 lines, optional assumptions = choices you made that the task left open, one line each, at most 8: the harness verifies the work before review). Accepted agreements are inherited by dependent tasks and preserved through compaction. " +
 			"block (id, text = reason, optional target = the id of the task it waits for), resume (id), " +
 			"handover (id, text = a short summary for your successor: what is done, what is left, what you learned; the harness gives your task, your work and the summary to a fresh worker of your role; the manager may hand over a worker's task). Manager only: create (title, description, role, deps, files = scope, kind = work or plan; plans require a read-only role and an agreement, not code verification; rigor = plan adds a read-only plan task the work waits for and inherits, rigor = reviewed also a reviewer's check of that plan, for work that is risky or hard to undo), " +
 			"update files (amend the scope), accept (id: the task is done only after the harness's check), reject (id, text = feedback the worker can act on alone: what is wrong and how you saw it, what to keep, what will show it is fixed) or reopen, " +
@@ -91,7 +91,7 @@ func (t *taskTool) Spec() core.ToolSpec {
 "kind":{"type":"string","enum":["work","plan"]},
 "rigor":{"type":"string","enum":["plan","reviewed"]},
 "deps":{"type":"array","items":{"type":"string"}},"files":{"type":"array","items":{"type":"string"}},
-"text":{"type":"string"},"agreement":{"type":"string"},
+"text":{"type":"string"},"agreement":{"type":"string"},"assumptions":{"type":"array","items":{"type":"string"}},
 "reason":{"type":"string","enum":["blocked_on","superseded","canceled","denied","verifier"]},"target":{"type":"string"}},"required":["action"]}`),
 	}
 }
@@ -100,6 +100,7 @@ type taskIn struct {
 	Action, ID, Title, Description, Role, Kind, Text, Agreement, Reason, Target, Parent, Rigor string
 	Deps                                                                                       idList
 	Files                                                                                      []string
+	Assumptions                                                                                []string
 }
 
 // readTask is task get, and pool get, which models reach for to read a pool's state: the whole task as JSON. A pool task's revision
@@ -410,7 +411,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		if task.Kind == TaskKindPlan {
 			result, report = readOnlyReport(task.ID, in.Text)
 		}
-		if err := s.Board.submitReportAt(me, task.ID, task.Rev, result, report, evidence, task.Pool.Agreement, taskGateCheck(task), poolComplete, s.poolCurrent, s.reviewSubmission(task)); err != nil {
+		if err := s.Board.submitReportAt(me, task.ID, task.Rev, submission{result: result, report: report, evidence: evidence, agreement: task.Pool.Agreement, assumptions: in.Assumptions}, taskGateCheck(task), poolComplete, s.poolCurrent, s.reviewSubmission(task)); err != nil {
 			return tools.Errorf("%v", err)
 		}
 		return text("%s consolidated pool result is in review", task.ID)
@@ -420,7 +421,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 			return tools.Errorf("a planning task can only be submitted by a read-only role")
 		}
 		result, report := readOnlyReport(task.ID, in.Text)
-		if err := s.Board.submitReportAt(me, task.ID, task.Rev, result, report, "read-only planning; manager reviews the agreement", in.Agreement, taskGateCheck(task), s.reviewSubmission(task)); err != nil {
+		if err := s.Board.submitReportAt(me, task.ID, task.Rev, submission{result: result, report: report, evidence: "read-only planning; manager reviews the agreement", agreement: in.Agreement, assumptions: in.Assumptions}, taskGateCheck(task), s.reviewSubmission(task)); err != nil {
 			return tools.Errorf("%v", err)
 		}
 		return text("%s is in review. Its agreement requires the manager's acceptance; stop now.", task.ID)
@@ -482,7 +483,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		}
 		summary = out.evidence + "; " + summary
 	}
-	if err := s.Board.submitReportAt(me, in.ID, task.Rev, result, report, summary, in.Agreement, taskGateCheck(task), s.reviewSubmission(task)); err != nil {
+	if err := s.Board.submitReportAt(me, in.ID, task.Rev, submission{result: result, report: report, evidence: summary, agreement: in.Agreement, assumptions: in.Assumptions}, taskGateCheck(task), s.reviewSubmission(task)); err != nil {
 		return tools.Errorf("%v", err)
 	}
 	s.Leases.ReleaseAll(me)
@@ -1238,6 +1239,9 @@ func diffSnapshots(a, b *Snapshot) []string {
 			}
 			if t.Evidence != "" && t.Status == StatusReview {
 				line += " [" + t.Evidence + "]"
+			}
+			if len(t.Assumptions) > 0 && t.Status == StatusReview {
+				line += " assumed: " + strings.Join(t.Assumptions, "; ")
 			}
 			out = append(out, line)
 		case t.Status == StatusTodo && existed && (old.Status == StatusDoing || old.Status == StatusBlocked || old.Status == StatusReview):

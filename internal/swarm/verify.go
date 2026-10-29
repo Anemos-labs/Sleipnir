@@ -262,7 +262,7 @@ func (s *Swarm) submitSettledTask(m *member, checked Task, result, evidence stri
 	if m.readOnly {
 		result, report = readOnlyReport(checked.ID, result)
 	}
-	if err := s.Board.submitReportAt(m.id, checked.ID, checked.Rev, result, report, evidence, "", taskGateCheck(checked), s.reviewSubmission(checked)); err != nil {
+	if err := s.Board.submitReportAt(m.id, checked.ID, checked.Rev, submission{result: result, report: report, evidence: evidence}, taskGateCheck(checked), s.reviewSubmission(checked)); err != nil {
 		s.retryChangedScope(m, checked)
 		return false
 	}

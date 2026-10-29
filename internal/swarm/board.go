@@ -51,6 +51,8 @@ const (
 	maxResultRunes = 160
 	maxEvidRunes   = 320
 	maxReportRunes = 4000
+	maxAssumptions = 8   // assumptions one submission may list
+	maxAssumeRunes = 200 // runes in one assumption
 	maxNoteRunes   = 300
 	maxAlertRunes  = 160
 	maxPendingEvts = 4096
@@ -73,8 +75,13 @@ type Task struct {
 	Result    string     `json:"result,omitempty"` // what the worker said when it finished
 	// Report is a read-only worker's whole report (a review's findings, a scout's answer), kept while the task is in review or
 	// done. Result is one line of it; Report is shown by task get only, so the board every agent reads stays small.
-	Report string   `json:"report,omitempty"`
-	Files  []string `json:"files,omitempty"` // the scope: paths the task may touch
+	Report string `json:"report,omitempty"`
+	// Assumptions are the choices the worker made where its task, scope and agreements did not settle the matter (a
+	// default picked, an interface guessed, a case left out), one line each, as submitted with task done. They are kept
+	// with Report's lifetime (review and done) and are shown to the manager with the task in review, so that a wrong guess
+	// is caught in review instead of by the task that depends on it.
+	Assumptions []string `json:"assumptions,omitempty"`
+	Files       []string `json:"files,omitempty"` // the scope: paths the task may touch
 	// Evidence is what the harness observed (edited files, the last test command
 	// and its exit status). Only the harness writes it.
 	Evidence string `json:"evidence,omitempty"`
@@ -344,6 +351,7 @@ func (d *draft) setTask(t Task) {
 	d.set("line", t.Line)
 	d.set("result", t.Result)
 	d.set("report", t.Report)
+	d.set("assumptions", t.Assumptions)
 	d.set("evidence", t.Evidence)
 	d.set("agreement", t.Agreement)
 	d.set("agreements", t.Agreements)
@@ -372,7 +380,7 @@ func (d *draft) put(i int, t Task) error {
 		t.BlockedOn = ""
 	}
 	if t.Status != StatusReview && t.Status != StatusDone {
-		t.Report = ""
+		t.Report, t.Assumptions = "", nil
 	}
 	d.tasks()[i] = t
 	d.setTask(t)
@@ -918,12 +926,20 @@ func (b *Board) SubmitAt(agent, id string, rev uint64, result, evidence string, 
 // submitAgreementAt atomically submits a result and its optional contract for review.
 // Oversized contracts are rejected rather than silently losing constraints.
 func (b *Board) submitAgreementAt(agent, id string, rev uint64, result, evidence, agreement string, checks ...TaskCheck) error {
-	return b.submitReportAt(agent, id, rev, result, "", evidence, agreement, checks...)
+	return b.submitReportAt(agent, id, rev, submission{result: result, evidence: evidence, agreement: agreement}, checks...)
 }
 
-// submitReportAt is submitAgreementAt that also keeps a read-only worker's whole report (Task.Report).
-func (b *Board) submitReportAt(agent, id string, rev uint64, result, report, evidence, agreement string, checks ...TaskCheck) error {
-	agreement, err := cleanAgreement(agreement)
+// submission is what a worker hands in with task done, besides the harness's evidence.
+type submission struct {
+	result, report, evidence, agreement string
+	assumptions                         []string
+}
+
+// submitReportAt is submitAgreementAt that also keeps a read-only worker's whole report (Task.Report) and the
+// assumptions the worker declared (Task.Assumptions).
+func (b *Board) submitReportAt(agent, id string, rev uint64, sub submission, checks ...TaskCheck) error {
+	result, report, evidence := sub.result, sub.report, sub.evidence
+	agreement, err := cleanAgreement(sub.agreement)
 	if err != nil {
 		return err
 	}
@@ -951,8 +967,27 @@ func (b *Board) submitReportAt(agent, id string, rev uint64, result, report, evi
 		t.Result, t.Evidence = cleanText(result, maxResultRunes), cleanText(evidence, maxEvidRunes)
 		t.Report = truncRunes(strings.TrimSpace(cleanBlock(report, 0)), maxReportRunes)
 		t.Agreement = agreement
+		t.Assumptions = cleanAssumptions(sub.assumptions)
 		return d.put(i, t)
 	})
+}
+
+// cleanAssumptions keeps the first maxAssumptions non-empty, distinct lines of in, each made one line of at most
+// maxAssumeRunes runes. It returns nil when nothing is left.
+func cleanAssumptions(in []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, a := range in {
+		a = strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(cleanText(a, maxAssumeRunes)), "-*• "))
+		if a == "" || seen[a] {
+			continue
+		}
+		seen[a] = true
+		if out = append(out, a); len(out) == maxAssumptions {
+			break
+		}
+	}
+	return out
 }
 
 // Accept marks a reviewed task done. Done is terminal: nothing changes it after.
@@ -1467,7 +1502,7 @@ func (b *Board) RestoreKeeping(prev *Snapshot, owners map[string]string, keep ma
 					break
 				}
 				t.Status, t.Owner, t.Line, t.Rev = StatusTodo, owners[t.ID], resumedLine, d.Version
-				t.BlockedOn, t.Report = "", ""
+				t.BlockedOn, t.Report, t.Assumptions = "", "", nil
 				back = append(back, t.ID)
 			}
 			tasks[i] = t
