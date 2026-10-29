@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- In the web interface, a message sent while the goal's own turn runs (its
+  start, a resume or a continuation) goes to that turn as a steer when
+  nothing else waits in the queue, and `POST /api/sessions/{id}/messages`
+  answers `steered: true` instead of queuing it. Before, it waited for the
+  goal's turn and its continuations to end. A message sent during a turn
+  the person started or while the judge rules on a turn, a slash line, a
+  line that sets `autoFix` or `autoMerge`, a line longer than 4,000
+  characters, and any message sent while another item waits still queue.
+
 - The verification command runs with its temporary directory (`TMPDIR`;
   `TMP` and `TEMP` on Windows) set to a directory of its own inside the
   one it would have used, and that directory is removed when the run

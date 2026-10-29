@@ -351,11 +351,13 @@ type MessageRequest struct {
 	ClientID  string `json:"clientId,omitempty"`
 }
 
-// SendResult says whether a message was delivered now or queued behind the running turn.
+// SendResult says whether a message was delivered now or queued behind the running turn. Steered is a message sent while the goal's
+// own turn runs: it went to that turn as a steer, and nothing waits (ID is empty).
 type SendResult struct {
 	Queued   bool   `json:"queued"`
 	Position int    `json:"position,omitempty"`
 	ID       string `json:"id"`
+	Steered  bool   `json:"steered,omitempty"`
 }
 
 // CommandRequest is a slash line the page has no handler for (custom commands, skills, MCP prompts, /mcp reconnect) or that the
