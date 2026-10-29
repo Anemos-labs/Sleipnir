@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -79,6 +80,8 @@ type VerifyFunc func(ctx context.Context, req VerifyRequest) VerifyResult
 // command is: bounded in time (process group killed), bounded in output,
 // credentials scrubbed from its environment, GIT_* removed (an inherited GIT_DIR
 // would point the tests' own git calls at the wrong repository), no terminal.
+// Its temporary files go in a directory of its own, removed when it ends (unless
+// req.Env names another temporary directory, which RunShell leaves alone).
 func RunShell(ctx context.Context, req VerifyRequest) VerifyResult {
 	res := VerifyResult{Cmd: req.Cmd, ExitCode: -1}
 	if strings.TrimSpace(req.Cmd) == "" {
@@ -109,7 +112,12 @@ func RunShell(ctx context.Context, req VerifyRequest) VerifyResult {
 	if base == nil {
 		base = os.Environ()
 	}
-	cmd.Env = verifyEnv(base, req)
+	env := verifyEnv(base, req)
+	if tmp := runTempDir(base, req.Dir); tmp != "" {
+		defer os.RemoveAll(tmp)
+		env = withTempDir(env, tmp, len(req.Env))
+	}
+	cmd.Env = env
 	cmd.Stdin = nil
 	buf := newTailBuffer(maxOut)
 	cmd.Stdout, cmd.Stderr = buf, buf // one writer: interleaving is preserved
@@ -144,6 +152,50 @@ func RunShell(ctx context.Context, req VerifyRequest) VerifyResult {
 		}
 	}
 	return res
+}
+
+// tempEnvNames are the variables that name the temporary directory, in the order the platform reads them.
+func tempEnvNames() []string {
+	if runtime.GOOS == "windows" {
+		return []string{"TMP", "TEMP"}
+	}
+	return []string{"TMPDIR"}
+}
+
+// runTempDir makes the directory a run's temporary files go in, inside the temporary directory base names (the first of
+// tempEnvNames it sets, relative to dir if it is relative), or the process's when it names none. "" when it cannot be made.
+func runTempDir(base []string, dir string) string {
+	parent := ""
+	for _, name := range tempEnvNames() {
+		for _, kv := range base {
+			if k, v, ok := strings.Cut(kv, "="); ok && strings.EqualFold(k, name) && v != "" {
+				parent = v // the last entry of a name wins, as it does for the command
+			}
+		}
+		if parent != "" {
+			break
+		}
+	}
+	if parent != "" && !filepath.IsAbs(parent) {
+		parent = filepath.Join(dir, parent)
+	}
+	tmp, err := os.MkdirTemp(parent, "sleipnir-verify-")
+	if err != nil {
+		return ""
+	}
+	if abs, err := filepath.Abs(tmp); err == nil {
+		tmp = abs
+	}
+	return tmp
+}
+
+// withTempDir points env's temporary directory at dir, ahead of the caller's own last n entries (req.Env), which still win.
+func withTempDir(env []string, dir string, n int) []string {
+	head, tail := env[:len(env)-n:len(env)-n], env[len(env)-n:]
+	for _, name := range tempEnvNames() {
+		head = append(head, name+"="+dir)
+	}
+	return append(head, tail...)
 }
 
 var secretEnvName = regexp.MustCompile(`(?i)(api[_-]?key|secret|token|password|passwd|credential|private[_-]?key|(^|[_-])key([_-]|$)|(^|[_-])(pass|passphrase|pat|auth|authorization)$|^ssh_auth_sock$)`)
