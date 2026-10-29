@@ -87,7 +87,7 @@ func (s *TextSink) Text(a, d string) {
 				for n < len(d) && n > 0 && !utf8.RuneStart(d[n]) {
 					n--
 				}
-				s.lead[a] += d[:n]
+				s.lead[a] += strings.Clone(d[:n]) // a copy: the piece kept must not hold the whole of a large one in memory
 			}
 			return
 		}

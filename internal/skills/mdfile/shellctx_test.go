@@ -22,6 +22,7 @@ func TestShellPlaceholdersFollowTheTemplatesQuotes(t *testing.T) {
 		{"echo a # it's \"\necho \"$1\"", "v", "echo a # it's \"\necho \"v\""},
 		{"echo a#'b' $1", "v", "echo a#'b' 'v'"},
 		{`echo $# "$1"`, "v", `echo $# "v"`},
+		{"echo x$(printf foo)#\"x\n$1\"", "v", "echo x$(printf foo)#\"x\nv\""},
 	} {
 		got, _, err := SubstituteMax(tc.tmpl, tc.args, ArgsShell, 0)
 		if err != nil || got != tc.want {
@@ -41,7 +42,7 @@ func TestShellPlaceholdersFollowTheTemplatesQuotes(t *testing.T) {
 	if err != nil {
 		t.Skip("no sh")
 	}
-	for _, tmpl := range []string{"printf %s $1", "printf %s '$1'", `printf %s "$1"`, `printf %s "pre-$1-post"`} {
+	for _, tmpl := range []string{"printf %s $1", "printf %s '$1'", `printf %s "$1"`, `printf %s "pre-$1-post"`, `printf %s x$(:)#"$1"`} {
 		cmd, _, err := SubstituteMax(tmpl, `"`+strings.ReplaceAll(evil, `"`, `\"`)+`"`, ArgsShell, 0)
 		if err != nil {
 			t.Fatalf("%q: %v", tmpl, err)
@@ -50,6 +51,9 @@ func TestShellPlaceholdersFollowTheTemplatesQuotes(t *testing.T) {
 		want := evil
 		if strings.Contains(tmpl, "pre-") {
 			want = "pre-" + evil + "-post"
+		}
+		if strings.Contains(tmpl, "#") { // the # after $( ) is part of the word, not a comment
+			want = "x#" + evil
 		}
 		if err != nil || string(out) != want {
 			t.Errorf("%q ran as %q: printed %q (%v), want %q", tmpl, cmd, out, err, want)

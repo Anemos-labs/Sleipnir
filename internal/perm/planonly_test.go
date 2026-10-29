@@ -213,3 +213,27 @@ func TestHoldReadOnlyHoldsARequestAlreadyWaiting(t *testing.T) {
 	}
 	release()
 }
+
+// An approval given to be remembered once a hold has begun is not remembered either: nothing outlives the read-only turn.
+func TestHoldReadOnlyRemembersNoApprovalGivenDuringIt(t *testing.T) {
+	root := t.TempDir()
+	var e *Engine
+	var persisted []Rule
+	release := func() {}
+	e, err := NewEngine(Config{Mode: ModeDefault, Root: root, Home: t.TempDir(), Persist: func(_ Scope, r Rule) { persisted = append(persisted, r) },
+		Prompter: func(context.Context, Request) Decision {
+			release = e.HoldReadOnly()
+			return Decision{Allow: true, Remember: ScopeProject}
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := Request{Tool: "write", Writes: true, Paths: []string{root + "/main.go"}}
+	if d := e.Check(context.Background(), w); d.Allow {
+		t.Fatalf("a write approved during a hold was allowed: %+v", d)
+	}
+	release()
+	if len(persisted) != 0 || len(e.Granted()) != 0 {
+		t.Errorf("an approval given during the hold was remembered: persisted %v, granted %v", persisted, e.Granted())
+	}
+}

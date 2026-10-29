@@ -81,9 +81,10 @@ func (c *shellCtx) step(ch byte) {
 		}
 	}
 	push := func(f shellFrame) { c.stack = append(c.stack, f) }
+	closed := false // a quote or a $( ) ended here: the word it is part of goes on (x$(printf a)#b is one word)
 	pop := func() {
 		if len(c.stack) > 1 {
-			c.stack = c.stack[:len(c.stack)-1]
+			c.stack, closed = c.stack[:len(c.stack)-1], true
 		}
 	}
 	switch top.kind {
@@ -136,7 +137,7 @@ func (c *shellCtx) step(ch byte) {
 		}
 	}
 	if ch != '\\' {
-		c.inWord = !sep || (top.kind != 'n' && top.kind != 'b')
+		c.inWord = closed || !sep || (top.kind != 'n' && top.kind != 'b')
 	}
 }
 
