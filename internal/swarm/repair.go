@@ -15,7 +15,7 @@ import (
 // owns retryAt; cancellation, permission waits and budget exhaustion never restart work,
 // and neither does a stop after the worker's automatic restarts on the task ran out.
 func (s *Swarm) repairTick(now time.Time) {
-	if !s.cfg.PersistentPools || s.wk.heldNow() || s.alive() != nil || s.budgetErr() != nil {
+	if !s.cfg.PersistentPools || s.wk.heldNow() || s.alive() != nil || s.startErr() != nil {
 		return
 	}
 	if s.retryAt == nil {

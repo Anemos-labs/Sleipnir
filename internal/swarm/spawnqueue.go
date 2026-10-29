@@ -63,7 +63,7 @@ func (s *Swarm) dropQueued(id string) {
 // queueTick starts the queued spawns whose role has a free member now, oldest first. It runs on the supervisor's pass and starts
 // nothing while the team is held (the person interrupted it), stopped, or over its budget.
 func (s *Swarm) queueTick(now time.Time) {
-	if s.wk.heldNow() || s.alive() != nil || s.budgetErr() != nil {
+	if s.wk.heldNow() || s.alive() != nil || s.startErr() != nil {
 		return
 	}
 	for _, q := range s.queuedTasks() {

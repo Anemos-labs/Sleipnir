@@ -81,7 +81,7 @@ func (s *Swarm) spawn(req SpawnReq) (SpawnResult, error) {
 	if err := s.alive(); err != nil {
 		return SpawnResult{}, err
 	}
-	if err := s.budgetErr(); err != nil {
+	if err := s.startErr(); err != nil {
 		return SpawnResult{}, err
 	}
 	if req.TaskID == "" && strings.TrimSpace(req.Title) == "" {
