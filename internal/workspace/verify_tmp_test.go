@@ -10,8 +10,7 @@ import (
 )
 
 // A verification run keeps its temporary files in a directory of its own inside the base environment's temporary directory,
-// and nothing of it is left when the run ends. In a team's day of merge gates, test helpers that built a server binary
-// into os.MkdirTemp and never removed it filled /tmp with 290 copies.
+// and nothing of it is left when the run ends.
 func TestAVerifyRunsTemporaryFilesGoWithIt(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX shell")
@@ -35,5 +34,30 @@ func TestAVerifyRunsTemporaryFilesGoWithIt(t *testing.T) {
 		BaseEnv: []string{"PATH=" + os.Getenv("PATH"), "TMPDIR=" + parent}})
 	if got := strings.TrimSpace(res.Output); got != own {
 		t.Fatalf("TMPDIR = %q, want the caller's %q", got, own)
+	}
+}
+
+// The run's directory is made where the base environment's own variables point, in the platform's order, a relative one
+// read from the command's directory.
+func TestARunsTemporaryDirectoryFollowsTheBaseEnvironment(t *testing.T) {
+	names := tempEnvNames()
+	parent := t.TempDir()
+	base := []string{names[0] + "=" + parent}
+	if len(names) > 1 {
+		base = append(base, names[1]+"="+t.TempDir())
+	}
+	got := runTempDir(base, t.TempDir())
+	defer os.RemoveAll(got)
+	if filepath.Dir(got) != parent {
+		t.Fatalf("run directory %q, want one inside %q", got, parent)
+	}
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "tmp"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got = runTempDir([]string{names[0] + "=tmp"}, dir)
+	defer os.RemoveAll(got)
+	if filepath.Dir(got) != filepath.Join(dir, "tmp") {
+		t.Fatalf("run directory %q, want one inside %q", got, filepath.Join(dir, "tmp"))
 	}
 }
