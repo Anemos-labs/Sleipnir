@@ -405,7 +405,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 			}
 			evidence = "pool reconciled; read-only planning; manager reviews the agreement"
 		} else if vr := s.verifyFor(ctx, task, s.deps.Workdir, task.Files); !vr.ok {
-			return tools.Errorf("pool result failed verification: %s", vr.out)
+			return s.poolGateFailed(me, task, vr)
 		}
 		result, report := in.Text, ""
 		if task.Kind == TaskKindPlan {
