@@ -1138,8 +1138,8 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 		if summary == "" && m.readOnly && ctx.Err() == nil && s.askForReport(m, t) {
 			continue
 		}
-		vr := s.verifyFor(ctx, t, m.dir, t.Files)
-		vcmd := ExpandVerify(s.cfg.VerifyCmd, m.dir, t.Files)
+		vr, gdir := s.gateFor(ctx, t, m, m.dir)
+		vcmd := ExpandVerify(s.cfg.VerifyCmd, gdir, t.Files)
 		if ctx.Err() != nil { // the swarm is stopping: nothing failed
 			s.Board.Requeue(m.id, id, rev, "interrupted", false, s.cfg.MaxAttempts)
 			continue

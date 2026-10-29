@@ -635,6 +635,39 @@ func TestAnIsolatedWriterIsToldHowToReadMergedWork(t *testing.T) {
 	}
 }
 
+// The person's checkout holds none of the integrated work until delivery, so a reviewer's done gated there failed on the
+// very code the team had already fixed; its gate runs in a checkout of the integration tip.
+func TestIsolatedReviewerGateRunsOnTheIntegratedWork(t *testing.T) {
+	sc := script{
+		"be-1": {act(writeCall("app.txt", "fixed\n")), act(doneCall("T1", "fixed app"))},
+		"rv-1": {act(doneCall("T2", "the fix is right"))},
+	}
+	r := newIsoRig(t, isoOpts{verify: true, files: map[string]string{"app.txt": "BROKEN\n"}}, sc.fn())
+	r.mustSpawn("backend", "fix app", "app.txt")
+	r.waitStatus("T1", StatusReview)
+	if result := r.accept("T1"); result.IsError {
+		t.Fatal(result.Text)
+	}
+	if got := readText(t, filepath.Join(r.repo, "app.txt")); got != "BROKEN\n" {
+		t.Fatalf("the person's checkout already has the fix (%q): the test proves nothing", got)
+	}
+	r.mustSpawn("reviewer", "Review T1")
+	r.waitStatus("T2", StatusReview)
+	if got := readText(t, filepath.Join(r.repo, "app.txt")); got != "BROKEN\n" {
+		t.Fatalf("the gate changed the person's checkout: %q", got)
+	}
+	gate := filepath.Join(r.trees, gateTreeID)
+	if got := readText(t, filepath.Join(gate, "app.txt")); got != "fixed\n" {
+		t.Fatalf("the gate's checkout is not the integration tip: %q", got)
+	}
+	if rep := r.finish(); len(rep.Kept) != 0 {
+		t.Fatalf("the gate's checkout was kept: %v", rep.Kept)
+	}
+	if fileExists(gate) {
+		t.Fatal("the gate's checkout outlived the run")
+	}
+}
+
 func TestIsolatedReviewerReadsIntegrationWithoutWaitingForCheckoutRefresh(t *testing.T) {
 	iso := newIsoRig(t, isoOpts{cfg: Config{MaxWriters: 1}}, func(ctx context.Context, c *rvCall) rvReply {
 		return rvReply{Text: "nothing to do"}
