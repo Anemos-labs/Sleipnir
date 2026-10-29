@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
+	"io/fs"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -96,6 +99,55 @@ func TestManagerDeliversWithoutInventingTasks(t *testing.T) {
 	if !result.IsError {
 		t.Fatal("worker delivered")
 	}
+}
+
+// A manager that probed the final build wrote its probe inputs beside the code, and the delivery committed them to the
+// person's branch. Delivery names the new files first; the manager's edits of tracked files go without asking.
+func TestManagerDeliveryNamesNewFilesBeforeCommittingThem(t *testing.T) {
+	r := newIsoRig(t, isoOpts{verify: true, files: map[string]string{"api/x.go": "package api\n"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "done"} })
+	if _, err := r.sw.StartManager(); err != nil {
+		t.Fatal(err)
+	}
+	m := r.sw.get(r.sw.ManagerID())
+	for rel, text := range map[string]string{"api/x.go": "package api\n// fixed\n", "n.json": "null\n", "probe/a.json": "[1,2,3]"} {
+		p := filepath.Join(m.dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := writeFileString(p, text); err != nil {
+			t.Fatal(err)
+		}
+	}
+	call := &tools.Call{Env: &tools.Env{Agent: "mgr", Role: "manager", Perm: perm.AllowAll{}}}
+	before := gitOut(t, r.repo, "rev-parse", "HEAD")
+	result := (&taskTool{r.sw}).deliver(context.Background(), call, taskIn{Text: "fix: x"})
+	if !result.IsError || !strings.Contains(result.Text, "n.json, probe/a.json.") || strings.Contains(result.Text, "x.go") {
+		t.Fatalf("the refusal does not name just the new files: %s", result.Text)
+	}
+	if gitOut(t, r.repo, "rev-parse", "HEAD") != before {
+		t.Fatal("the refused delivery moved the checkout")
+	}
+	if err := os.Remove(filepath.Join(m.dir, "n.json")); err != nil {
+		t.Fatal(err)
+	}
+	if result = (&taskTool{r.sw}).deliver(context.Background(), call, taskIn{Text: "fix: x"}); !result.IsError || !strings.Contains(result.Text, "probe/a.json.") {
+		t.Fatalf("a different set of new files was delivered on the strength of the first refusal: %s", result.Text)
+	}
+	if err := os.RemoveAll(filepath.Join(m.dir, "probe")); err != nil {
+		t.Fatal(err)
+	}
+	if result = (&taskTool{r.sw}).deliver(context.Background(), call, taskIn{Text: "fix: x"}); result.IsError {
+		t.Fatal(result.Text)
+	}
+	if got := readText(t, filepath.Join(r.repo, "api/x.go")); got != "package api\n// fixed\n" {
+		t.Fatalf("the manager's edit was not delivered: %q", got)
+	}
+	for _, rel := range []string{"n.json", "probe/a.json"} {
+		if _, err := os.Stat(filepath.Join(r.repo, filepath.FromSlash(rel))); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("%s reached the person's checkout: %v", rel, err)
+		}
+	}
+
 }
 
 func TestManagerDeliveryPreservesDirtyCheckoutAndPermissionDenials(t *testing.T) {
