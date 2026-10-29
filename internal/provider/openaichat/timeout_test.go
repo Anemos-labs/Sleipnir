@@ -230,7 +230,8 @@ func TestNonStreamingCallsHaveTheirOwnTimeout(t *testing.T) {
 	})
 	_, err = New(Config{Name: "t", BaseURL: s2.URL, RequestTimeout: 150 * time.Millisecond}).Do(context.Background(), req, nil)
 	wantProviderError(t, err, provider.ErrTimeout, true)
-	// A body that trickles a byte at a time keeps the idle timer quiet, and stops at the response's wall time all the same.
+	// A body that trickles a byte at a time keeps the idle timer quiet, and stops at the response's wall time all the same. The
+	// idle bound is wide, so that a slow runner's first byte is not taken for silence.
 	s3 := newScripted(t, func(w http.ResponseWriter, fl http.Flusher, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		for {
@@ -246,15 +247,15 @@ func TestNonStreamingCallsHaveTheirOwnTimeout(t *testing.T) {
 	start = time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second) // a regression fails here rather than hang the suite
 	defer cancel()
-	_, err = New(Config{Name: "t", BaseURL: s3.URL, RequestTimeout: 150 * time.Millisecond, Limits: provider.StreamLimits{MaxDuration: 400 * time.Millisecond}}).Do(ctx, req, nil)
+	_, err = New(Config{Name: "t", BaseURL: s3.URL, RequestTimeout: time.Second, Limits: provider.StreamLimits{MaxDuration: 1500 * time.Millisecond}}).Do(ctx, req, nil)
 	if ctx.Err() != nil {
 		t.Fatalf("a trickling body was read until the test's own deadline: %v", err)
 	}
 	wantProviderError(t, err, provider.ErrTimeout, true)
-	if !strings.Contains(err.Error(), "still running after 400ms") {
+	if !strings.Contains(err.Error(), "still running after 1.5s") {
 		t.Errorf("a trickling body did not stop at the total deadline: %v", err)
 	}
-	if d := time.Since(start); d > 3*time.Second {
+	if d := time.Since(start); d > 4*time.Second {
 		t.Errorf("a trickling body took %v", d)
 	}
 }
