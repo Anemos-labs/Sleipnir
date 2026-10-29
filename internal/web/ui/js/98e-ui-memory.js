@@ -108,7 +108,7 @@
     const L = st.v && st.v.lessons; if (!L) return '<section class="panel">' + head('Lessons') + '<p class="stubnote mem-pad">…</p></section>';
     const ls = arr(L.lessons);
     return '<section class="panel mem-lessons">' + head('Lessons', onChip(L.on, 'the Lesson memory plugin is off') + '<span class="mono dim">' + esc(L.path) + '</span>') +
-      '<p class="mem-about">What earlier goals taught: a strategy from a goal that was reached, a pitfall from one that was not. A goal is shown the few most like it when it starts; recall needs an embedder model (<span class="mono">--role-model embedder=MODEL</span>).</p>' +
+      '<p class="mem-about">What earlier goals taught: a strategy from a goal that was reached, a pitfall from one that was not. A goal is shown the few most like it when it starts; they are found by keyword, and by meaning too with an embedder model (<span class="mono">--role-model embedder=MODEL</span>).</p>' +
       (L.error ? '<p class="stubnote mem-pad err">' + esc(L.error) + '</p>' : '') +
       (ls.length ? '<ul class="mem-ll">' + ls.map(lessonHtml).join('') + '</ul>' : '<p class="stubnote mem-pad">No lessons yet. They are distilled when a goal ends, while the lesson memory is on.</p>') + '</section>';
   }

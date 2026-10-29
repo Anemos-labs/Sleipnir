@@ -280,7 +280,7 @@ type Session struct {
 	fallbackModel string
 	fallbackPrice cost.Price // what the fallback's tokens cost (zero on a plan)
 	fallbackRef   string
-	// lessons is the lesson memory (buildLessons), nil when no embedder model is named or the session has no global memory.
+	// lessons is the lesson memory (buildLessons), nil when the lessons plugin is off or the session has no global memory.
 	lessons *lessonMemory
 
 	// team is the team the swarm was built with (Team).

@@ -571,6 +571,9 @@ func TestWebHostResumeShowsTheJudgmentOfAnUnjudgedTurn(t *testing.T) {
 		if strings.Contains(c.System, "You judge whether") {
 			return mock.Reply{Text: `{"verdict":"done","reason":"the build ran","left":[]}`}
 		}
+		if strings.Contains(c.System, "You extract reusable lessons") { // the lesson memory learning from the met goal, not a turn
+			return mock.Reply{Text: `{"lessons":[]}`}
+		}
 		mu.Lock()
 		turns++
 		mu.Unlock()

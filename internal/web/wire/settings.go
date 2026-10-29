@@ -384,7 +384,7 @@ type MemoryFile struct {
 // MemoryLessons are the lessons distilled from earlier goals (~/.sleipnir/lessons.json).
 type MemoryLessons struct {
 	Path    string         `json:"path"`
-	On      bool           `json:"on"` // the lessons plugin is on (recall also needs an embedder model)
+	On      bool           `json:"on"` // the lessons plugin is on
 	Lessons []MemoryLesson `json:"lessons"`
 	Error   string         `json:"error,omitempty"`
 }
