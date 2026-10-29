@@ -17,6 +17,11 @@ they do not indicate whether a change has been released.
   keep their requests until the budget itself is spent, as before. A
   run used to go on starting work until the budget was spent, then stop
   every worker mid-edit and refuse the manager's report too.
+- In an isolated team run, a read-only worker's `task done` (a reviewer's)
+  now runs the `--verify` command in a harness checkout of the integration
+  branch's tip, not in the person's checkout. Until delivery the person's
+  checkout holds none of the integrated work, so the gate failed on code the
+  team had already fixed.
 - A team manager's `task deliver` first names any new, untracked files in the
   manager's checkout that the integration does not have, and commits them only
   when the manager calls `deliver` again. Probe inputs the manager wrote beside
