@@ -191,12 +191,13 @@ func TestSpecIsRefusedWhenTheProjectMovesAway(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { specOpened = func() {} })
-	specOpened = func() {
-		if err := os.Rename(root, root+"-moved"); err != nil {
-			t.Error(err)
-		}
+	var moveErr error
+	specOpened = func() { moveErr = os.Rename(root, root+"-moved") }
+	text, err := readSpec("SPEC.md", root, root)
+	if moveErr != nil {
+		t.Skipf("the project cannot be moved while its spec is open (Windows): %v", moveErr)
 	}
-	if text, err := readSpec("SPEC.md", root, root); err == nil {
+	if err == nil {
 		t.Errorf("read %q from a project that moved away", text)
 	}
 }
