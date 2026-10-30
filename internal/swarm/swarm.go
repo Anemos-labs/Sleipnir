@@ -213,10 +213,13 @@ type Deps struct {
 	Workdir string
 	Root    string
 	// Tmp is the session's scratch directory, the $TMPDIR of its commands (agent.Config.Tmp).
-	Tmp     string
-	Params  core.Params
-	Effort  *provider.EffortSetting
-	Planner kv.Planner
+	Tmp    string
+	Params core.Params
+	// DefaultMaxTokens, when set, gives each member the output limit for its own model in place of Params.MaxTokens (the
+	// session named none, and a role or slot model is not the session's).
+	DefaultMaxTokens func(cost.Model) int
+	Effort           *provider.EffortSetting
+	Planner          kv.Planner
 	// BlockingCompaction serializes each agent with its own automatic compactor.
 	BlockingCompaction bool
 	// KVPolicy tunes breakpoint placement for every agent (kv.Policy); zero is

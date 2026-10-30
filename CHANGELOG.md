@@ -14,6 +14,10 @@ they do not indicate whether a change has been released.
   thrown away whole; measured on Aider Polyglot with MiniMax M3, 5 of 44
   single-agent runs hit that limit. Smaller and guessed windows keep 16000.
   The limit only caps what the model may write: no prompt bytes change.
+  Each team member's default now follows its own role or slot model, a
+  request that moves to the fallback model or to a compactor model of its
+  own asks for no more than that model's maximum, and a model whose
+  catalogue entry reports no maximum gets the default (it got 8192).
 
 - Hardening from a CodeRabbit deep scan, outside the permission engine. A
   sandboxed session mounts its own isolation directory instead of its parent,

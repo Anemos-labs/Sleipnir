@@ -468,7 +468,7 @@ suspecting the endpoint.
 | `session_header` | bool | `false` | Send the session's routing key as an `X-Session-Id` header, so a gateway keeps a conversation on the engine that holds its cache |
 | `cache_key_body` | bool | `false` | Send the same key as `prompt_cache_key` in the body (OpenAI, Heimdallm) |
 | `system_role` | string | `system` | Role name of the system message; `developer` for OpenAI reasoning models |
-| `max_tokens_field` | string | `max_tokens` | `max_tokens` or `max_completion_tokens`, the request member that carries the output limit (32000 for a model whose known window is 128k tokens or more, 16000 otherwise, or the model's maximum if smaller) |
+| `max_tokens_field` | string | `max_tokens` | `max_tokens` or `max_completion_tokens`, the request member that carries the output limit (32000 for a model whose known window is 128k tokens or more, 16000 otherwise, or the model's maximum if smaller; each team member, the fallback model and a compactor model of its own by their own model) |
 | `reasoning_effort_field` | string | `reasoning_effort` | Any non-empty value lets the selected effort through as `reasoning_effort`; an explicit empty string disables it. No effort is sent until one is selected with `/effort`. The harness maps it to the closest level the model supports |
 | `cache_control_parts` | bool | `false` | Add `cache_control` markers to content parts at breakpoints, for gateways that front Anthropic models |
 | `extra_body` | object | none | Members merged into the top level of every request body. They replace members of the same name, so do not use it to change `model` or `messages` |

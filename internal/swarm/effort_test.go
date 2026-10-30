@@ -5,6 +5,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/provider"
 )
 
@@ -51,5 +52,37 @@ func TestEffortUpdatesExistingAndNewWorkersPerModel(t *testing.T) {
 	defer mu.Unlock()
 	if len(seen[first]) < 2 || seen[first][0] != "medium" || seen[first][1] != "max" || len(seen[second]) == 0 || seen[second][0] != "max" {
 		t.Fatalf("worker effort requests: %v", seen)
+	}
+}
+
+// With no limit named by the session, a member on a role model asks for that model's default, not the session model's.
+func TestMemberMaxTokensFollowTheMembersModel(t *testing.T) {
+	var mu sync.Mutex
+	seen := map[string]int{}
+	r := newRVRigWith(t, Config{MaxWriters: 4}, func(_ context.Context, c *rvCall) rvReply {
+		mu.Lock()
+		seen[c.Agent] = c.Prompt.Params.MaxTokens
+		mu.Unlock()
+		return rvReply{Text: "done"}
+	}, func(d *Deps) {
+		d.Model.ID, d.Model.MaxOutput = "big", 65536
+		d.Params.MaxTokens = 32000
+		model := d.Model
+		model.ID, model.MaxOutput = "small", 12000
+		d.RoleModels = map[string]RoleModel{"reviewer": {Provider: d.Provider, Model: model}}
+		d.DefaultMaxTokens = func(m cost.Model) int { return min(m.MaxOutput, 32000) }
+	})
+	if _, err := r.sw.StartManager(); err != nil {
+		t.Fatal(err)
+	}
+	id, err := r.sw.Spawn(SpawnReq{Role: "reviewer", Title: "review", By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, "reviewer idle", func() bool { return r.idle(id) })
+	mu.Lock()
+	defer mu.Unlock()
+	if seen[id] != 12000 {
+		t.Fatalf("reviewer asked for %d tokens, want its model's 12000 (all: %v)", seen[id], seen)
 	}
 }
