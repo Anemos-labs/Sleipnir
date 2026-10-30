@@ -2821,11 +2821,15 @@
      "SCAN"
     ],
     "flags": [
+     "compare",
      "cwd",
      "depth",
      "diff",
      "json",
+     "pull",
      "report",
+     "rerun",
+     "since",
      "start"
     ],
     "modeWith": {}
