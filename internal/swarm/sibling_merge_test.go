@@ -57,9 +57,11 @@ func TestAMergedPoolChildTellsItsSiblingsHowToBringItIn(t *testing.T) {
 	if got[merged.Owner] != 0 {
 		t.Errorf("the member whose work merged was told about it: %v", got)
 	}
-	want := "Call task claim on " + children[1].ID
-	if n := harnessMail(r.rvRig, want); n[children[1].Owner] != 1 {
-		t.Errorf("the notice does not say %q", want)
+	for _, c := range children[1:] {
+		want := "Call task claim on " + c.ID
+		if n := harnessMail(r.rvRig, want); n[c.Owner] != 1 {
+			t.Errorf("%s was not told %q: %v", c.Owner, want, n)
+		}
 	}
 	sib := children[1]
 	if res := r.callTool(context.Background(), "task", sib.Owner, "backend", map[string]any{"action": "claim", "id": sib.ID}); res.IsError {
