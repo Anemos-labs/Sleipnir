@@ -14,7 +14,9 @@ they do not indicate whether a change has been released.
   numbered M1, M2, ... in order. A team that names its manager's model
   (`--team`, `--role-model manager=…`) needs no `--model`: the session runs
   on the manager's model instead of failing with "no model configured", and
-  `sleipnir web`'s New session dialog starts on it.
+  `sleipnir web`'s New session dialog starts on it. A team's goal resumed
+  after an interruption before its manager made any task goes on without
+  judging the interrupted turn, as one with unfinished tasks does.
 
 - A scheduled job may have a change check: `sleipnir schedule add --check CMD`
   (and the `check` field of the web API's job requests and of the jobs it
