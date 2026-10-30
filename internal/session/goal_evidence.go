@@ -228,10 +228,8 @@ func (s *Session) goalEvidence(ctx context.Context, g *goal.State, cutoff uint64
 					Ref core.Hash `json:"ref"`
 				}
 				if json.Unmarshal(e.Data, &d) == nil && d.Ref != "" {
-					if blobs, ok := s.Blobs.(interface {
-						GetMax(core.Hash, int64) ([]byte, error)
-					}); ok {
-						b, err := blobs.GetMax(d.Ref, 8<<20)
+					if s.Blobs != nil {
+						b, err := s.Blobs.GetMax(d.Ref, 8<<20)
 						if err != nil {
 							body += "\nFull output unavailable: " + err.Error()
 						} else {

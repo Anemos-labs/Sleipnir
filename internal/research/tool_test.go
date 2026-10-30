@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -333,5 +334,24 @@ func TestCreateFailsWhereTheRunsCannotBeListed(t *testing.T) {
 	}
 	if _, err := NewStore(root).Create("A question", "quick", ModeReport, ""); err == nil {
 		t.Fatal("Create under a file succeeded")
+	}
+}
+
+// Create tries 10,000 names for a question and then says none is free, instead of looking forever.
+func TestCreateStopsWhenEveryNameIsTaken(t *testing.T) {
+	root := t.TempDir()
+	base := Slugify("A question")
+	for n := 1; n <= 10000; n++ {
+		slug := base
+		if n > 1 {
+			slug = fmt.Sprintf("%s-%d", base, n)
+		}
+		if err := os.MkdirAll(RunDir(root, slug), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err := NewStore(root).Create("A question", "quick", ModeReport, "")
+	if err == nil || !strings.Contains(err.Error(), "no free name") {
+		t.Fatalf("Create with every name taken: %v; want a refusal that no name is free", err)
 	}
 }

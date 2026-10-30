@@ -1237,10 +1237,10 @@ func pastTense(action string) string {
 	return "confirmed"
 }
 
-// poolGateFailed answers a pool result that failed its gate. A reconciling pool writes nothing and creates no child, so a
-// failure left there could not be repaired: in a team trial two leaders each spent half an hour between a done that failed
-// and an edit that was refused. The pool executes again at a new revision, where the leader creates the fix as a child,
-// accepts it and reconciles again.
+// poolGateFailed answers a pool result that failed its gate. A verification that could not run (infra) leaves the pool as
+// it is. Any other failure moves a pool still reconciling at the judged revision back to executing at a new revision,
+// since a reconciling pool writes nothing and creates no child: there, the leader creates the fix as a child, accepts it
+// and reconciles again. A pool in any other phase, or one reconciled again while the gate ran, is not reset.
 func (s *Swarm) poolGateFailed(by string, t Task, vr verifyResult) *tools.Result {
 	if vr.infra {
 		return tools.Errorf("Not done yet: verification could not run (%v). Try again in a moment; if it keeps failing, block the task and tell the manager.", cleanText(vr.err.Error(), 200))

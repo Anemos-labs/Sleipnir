@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // commit applies a patch the way agent.commit does: new notes/spine layers and the
@@ -478,4 +479,22 @@ func secRevOrigin(rng *rand.Rand) core.Origin {
 		return core.OriginUser
 	}
 	return core.OriginMail
+}
+
+// GetMax is Get with the size limit of events.Blobs.
+func (x secRevNullBlobs) GetMax(h core.Hash, max int64) ([]byte, error) {
+	b, err := x.Get(h)
+	if err == nil && int64(len(b)) > max {
+		return nil, events.ErrBlobTooLarge
+	}
+	return b, err
+}
+
+// GetMax is Get with the size limit of events.Blobs.
+func (x *secRevCountingBlobs) GetMax(h core.Hash, max int64) ([]byte, error) {
+	b, err := x.Get(h)
+	if err == nil && int64(len(b)) > max {
+		return nil, events.ErrBlobTooLarge
+	}
+	return b, err
 }

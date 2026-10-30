@@ -46,6 +46,17 @@ func (r readThrough) Get(h core.Hash) ([]byte, error) {
 	return r.past.Get(h)
 }
 
+// GetMax is Get with a size limit: the earlier session's store bounds its own read.
+func (r readThrough) GetMax(h core.Hash, max int64) ([]byte, error) {
+	if b, err := r.mem.GetMax(h, max); err == nil || errors.Is(err, events.ErrBlobTooLarge) {
+		return b, err
+	}
+	if r.past == nil {
+		return nil, events.ErrBlobNotFound
+	}
+	return r.past.GetMax(h, max)
+}
+
 // pastArchive is recall's Past: the archived turns of an agent of an earlier session of this project. spec is "last" (or
 // "latest") or a session id; only a session of the same project, other than this one, can be read. who "" is the agent the
 // person talked to (the manager, or the single agent).

@@ -665,3 +665,12 @@ func TestAQuietBoardIsNamedByTheWait(t *testing.T) {
 		t.Errorf("a wait after a long quiet: %q", got)
 	}
 }
+
+// GetMax is Get with the size limit of events.Blobs.
+func (x rvNullBlobs) GetMax(h core.Hash, max int64) ([]byte, error) {
+	b, err := x.Get(h)
+	if err == nil && int64(len(b)) > max {
+		return nil, events.ErrBlobTooLarge
+	}
+	return b, err
+}

@@ -1159,3 +1159,12 @@ func TestMinimalExtractorIgnoresAMalformedBreakdown(t *testing.T) {
 		t.Fatalf("verdict %+v", v)
 	}
 }
+
+// GetMax goes through Get, so the fake's behaviour applies to bounded reads too.
+func (c corruptBlobs) GetMax(h core.Hash, max int64) ([]byte, error) {
+	data, err := c.Get(h)
+	if err == nil && int64(len(data)) > max {
+		return nil, events.ErrBlobTooLarge
+	}
+	return data, err
+}

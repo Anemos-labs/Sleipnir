@@ -318,6 +318,9 @@ var errNoSuchFile = errors.New("no such file")
 // specOpened runs between the open of a spec and the check of its path; a test moves the project away there.
 var specOpened = func() {}
 
+// specChecked runs between the check of a spec's path and its open; a test puts a pipe in the file's place there.
+var specChecked = func() {}
+
 // readSpec reads a spec file named by ref, relative to dir, inside root: through os.Root, so that neither ".." nor a symbolic link
 // takes it out of the project.
 func readSpec(ref, dir, root string) (string, error) {
@@ -345,7 +348,10 @@ func readSpec(ref, dir, root string) (string, error) {
 	if fi, err := r.Stat(rel); err == nil && !fi.Mode().IsRegular() {
 		return "", fmt.Errorf("%s is not a regular file", ref) // opening a pipe would wait for a writer
 	}
-	f, err := r.Open(rel)
+	specChecked()
+	// Non-blocking, so a pipe put in the file's place after the check above cannot hold the open; the check of the opened
+	// file below refuses it.
+	f, err := r.OpenFile(rel, os.O_RDONLY|openNonblock, 0)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
 		return "", errNoSuchFile
@@ -385,6 +391,9 @@ func readSpec(ref, dir, root string) (string, error) {
 	}
 	if st.IsDir() {
 		return "", errors.New("it is a directory")
+	}
+	if !st.Mode().IsRegular() {
+		return "", fmt.Errorf("%s is not a regular file", ref)
 	}
 	b, err := io.ReadAll(io.LimitReader(f, MaxSpecBytes+1))
 	if err != nil {

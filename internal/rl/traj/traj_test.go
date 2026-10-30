@@ -1664,3 +1664,12 @@ func TestANestedBranchHasItsOwnFork(t *testing.T) {
 		t.Errorf("inherited/trainable per step: %v", got)
 	}
 }
+
+// GetMax is Get with the size limit of events.Blobs.
+func (x *tamper) GetMax(h core.Hash, max int64) ([]byte, error) {
+	b, err := x.Get(h)
+	if err == nil && int64(len(b)) > max {
+		return nil, events.ErrBlobTooLarge
+	}
+	return b, err
+}

@@ -3,6 +3,7 @@ package research
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -63,6 +64,22 @@ func TestExportStaysInsideTheProject(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(outside, "wiki")); err == nil {
 		t.Error("an export wrote outside the project through a link")
+	}
+}
+
+// A mark too large to be one an export wrote is refused before it is read whole, even when its header is right.
+func TestExportRefusesAnOversizedMark(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "docs", "wiki")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	big := markHeader + strings.Repeat("x\n", maxMarkBytes/2+1)
+	if err := os.WriteFile(filepath.Join(dir, exportMark), []byte(big), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Export(root, "docs/wiki", map[string][]byte{"index.html": []byte("new")}); err == nil {
+		t.Error("an export replaced a directory whose mark is larger than any export writes")
 	}
 }
 

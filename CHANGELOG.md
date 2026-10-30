@@ -7,6 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Follow-ups to CodeRabbit findings left unanswered. A goal's spec is opened
+  without waiting, so a pipe swapped in for it after the check is refused at
+  once. A research export reads an earlier export's mark only when it is a
+  regular file of at most 4 MiB. Recall reads an earlier session's result
+  through the same 256 MiB bound as the current session's.
 - A request that names no output limit gets 32000 tokens instead of 16000
   when the model's known window is 128k tokens or more (still capped by the
   model's own maximum). A reasoning model writing a large file could reason
