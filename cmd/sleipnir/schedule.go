@@ -66,7 +66,7 @@ func cmdSchedule(_ context.Context, args []string) error {
 				return errors.New("schedule add: no model is configured, so every run would fail: pass --model provider/model, or set models.default (sleipnir init --user --model provider/model)")
 			}
 		}
-		j, err := st.Add(sched.Job{Cron: o.cron, Goal: goal, Model: o.model, Dir: o.dir, Mode: o.mode, BudgetUSD: o.budget}, time.Now())
+		j, err := st.Add(sched.Job{Cron: o.cron, Goal: goal, Model: o.model, Dir: o.dir, Mode: o.mode, BudgetUSD: o.budget, Check: strings.TrimSpace(o.check)}, time.Now())
 		if err != nil {
 			return fmt.Errorf("schedule add: %w", err)
 		}
@@ -79,12 +79,12 @@ func cmdSchedule(_ context.Context, args []string) error {
 		}
 		return st.Remove(args[1])
 	}
-	return errors.New("usage: sleipnir schedule [list] | add --cron EXPR [--model M] [--cwd D] [--mode MODE] [--budget-usd N] <goal> | rm <id>")
+	return errors.New("usage: sleipnir schedule [list] | add --cron EXPR [--model M] [--cwd D] [--mode MODE] [--budget-usd N] [--check CMD] <goal> | rm <id>")
 }
 
 type addOpts struct {
-	cron, model, dir, mode string
-	budget                 float64
+	cron, model, dir, mode, check string
+	budget                        float64
 }
 
 // scheduleAddFlags registers schedule creation options with unattended permission and one-dollar
@@ -97,6 +97,7 @@ func scheduleAddFlags() (*flag.FlagSet, *addOpts) {
 	fs.StringVar(&o.dir, "cwd", "", "working directory of the run (default: the current directory)")
 	fs.StringVar(&o.mode, "mode", "", "permissions of the run: default | accept-edits | plan | bypass | yolo. The default refuses whatever needs a person to say yes, since nobody is there")
 	fs.Float64Var(&o.budget, "budget-usd", 1, "stop a run at this many dollars (0: no limit)")
+	fs.StringVar(&o.check, "check", "", `a shell command run in the folder before each due run, without a model; the run is skipped as "no change" while it prints what it printed before the last successful run (for example: git rev-parse origin/main)`)
 	return fs, &o
 }
 

@@ -39,6 +39,7 @@ const (
 	maxCron  = 100
 	maxGoal  = 4000
 	maxModel = 200
+	maxCheck = 1000
 )
 
 // schedModes are the permission modes a job may be given here (bypass and yolo are refused: nobody is there to see what they do).
@@ -84,6 +85,7 @@ func (s *service) jobOf(j sched.Job, now time.Time) wire.ScheduleJob {
 	out := wire.ScheduleJob{
 		ID: j.ID, Cron: j.Cron, Goal: runner.Clean(j.Goal), Dir: j.Dir, Model: j.Model, Mode: j.Mode, BudgetUSD: j.BudgetUSD,
 		Created: iso(j.Created), LastRun: iso(j.LastRun), LastExit: runner.Clean(j.LastExit), Paused: j.Paused,
+		Check: runner.Clean(j.Check),
 	}
 	if j.Log != "" {
 		out.Log = s.shortHome(j.Log)
@@ -200,6 +202,7 @@ type jobRequest struct {
 	Model     string   `json:"model,omitempty"`
 	Mode      string   `json:"mode,omitempty"`
 	BudgetUSD *float64 `json:"budgetUsd"`
+	Check     string   `json:"check,omitempty"`
 }
 
 // defaultBudget is the CLI's `schedule add --budget-usd`.
@@ -207,7 +210,7 @@ const defaultBudget = 1.0
 
 // checkJob validates a job request and returns the job it describes (prev is the job being edited, or nil).
 func (s *service) checkJob(ctx context.Context, req jobRequest, prev *sched.Job) (sched.Job, error) {
-	j := sched.Job{Cron: strings.TrimSpace(req.Cron), Goal: strings.TrimSpace(req.Goal), Dir: strings.TrimSpace(req.Dir), Model: strings.TrimSpace(req.Model), Mode: strings.TrimSpace(req.Mode)}
+	j := sched.Job{Cron: strings.TrimSpace(req.Cron), Goal: strings.TrimSpace(req.Goal), Dir: strings.TrimSpace(req.Dir), Model: strings.TrimSpace(req.Model), Mode: strings.TrimSpace(req.Mode), Check: strings.TrimSpace(req.Check)}
 	switch {
 	case req.BudgetUSD != nil:
 		j.BudgetUSD = *req.BudgetUSD // 0 is no limit, as --budget-usd 0
@@ -227,6 +230,9 @@ func (s *service) checkJob(ctx context.Context, req jobRequest, prev *sched.Job)
 	}
 	if utf8.RuneCountInString(j.Goal) > maxGoal || strings.ContainsRune(j.Goal, 0) {
 		return j, werr(http.StatusBadRequest, "empty", fmt.Sprintf("the goal is longer than %d characters", maxGoal))
+	}
+	if utf8.RuneCountInString(j.Check) > maxCheck || strings.ContainsAny(j.Check, "\x00\r\n") {
+		return j, werr(http.StatusBadRequest, "bad_check", fmt.Sprintf("the check is one command line of at most %d characters", maxCheck))
 	}
 	if math.IsNaN(j.BudgetUSD) || math.IsInf(j.BudgetUSD, 0) || j.BudgetUSD < 0 || j.BudgetUSD > 100000 {
 		return j, werr(http.StatusBadRequest, "bad_budget", "the budget is a number of dollars, 0 for no limit")
@@ -307,8 +313,8 @@ func (s *service) find(id string) (sched.Job, error) {
 	return sched.Job{}, werr(http.StatusNotFound, "not_found", "no such job")
 }
 
-// handleEditJob is PUT /api/schedule/jobs/{job} (confirmed for job.edit:<job>): the job's cron, goal, directory, model, mode and
-// budget; its id, creation and run records stay.
+// handleEditJob is PUT /api/schedule/jobs/{job} (confirmed for job.edit:<job>): the job's cron, goal, directory, model, mode,
+// budget and check; its id, creation and run records stay.
 func (s *service) handleEditJob(w http.ResponseWriter, r *http.Request) {
 	id, err := jobParam(r)
 	if err != nil {
@@ -333,7 +339,7 @@ func (s *service) handleEditJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	edited, err := s.store().Update(id, func(x *sched.Job) {
-		x.Cron, x.Goal, x.Dir, x.Model, x.Mode, x.BudgetUSD = j.Cron, j.Goal, j.Dir, j.Model, j.Mode, j.BudgetUSD
+		x.Cron, x.Goal, x.Dir, x.Model, x.Mode, x.BudgetUSD, x.Check = j.Cron, j.Goal, j.Dir, j.Model, j.Mode, j.BudgetUSD, j.Check
 	})
 	if err != nil {
 		s.jobError(w, r, err)

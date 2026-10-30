@@ -39,16 +39,18 @@ func TestScheduleAddEditPauseRemove(t *testing.T) {
 		st   int
 		code string
 	}{
-		"bad cron":   {func(j *wire.JobRequest) { j.Cron = "every day" }, 400, "bad_cron"},
-		"no goal":    {func(j *wire.JobRequest) { j.Goal = "  " }, 400, "empty"},
-		"budget":     {func(j *wire.JobRequest) { j.BudgetUSD = -1 }, 400, "bad_budget"},
-		"yolo":       {func(j *wire.JobRequest) { j.Mode = "yolo" }, 403, "dangerous_mode"},
-		"bypass":     {func(j *wire.JobRequest) { j.Mode = "bypass" }, 403, "dangerous_mode"},
-		"odd mode":   {func(j *wire.JobRequest) { j.Mode = "chaos" }, 400, "bad_mode"},
-		"no folder":  {func(j *wire.JobRequest) { j.Dir = filepath.Join(rg.state, "no", "such") }, 404, "no_dir"},
-		"a file":     {func(j *wire.JobRequest) { j.Dir = file }, 404, "no_dir"},
-		"relative":   {func(j *wire.JobRequest) { j.Dir = "proj" }, 400, "bad_path"},
-		"flag model": {func(j *wire.JobRequest) { j.Model = "--yolo" }, 400, "bad_flags"},
+		"bad cron":       {func(j *wire.JobRequest) { j.Cron = "every day" }, 400, "bad_cron"},
+		"no goal":        {func(j *wire.JobRequest) { j.Goal = "  " }, 400, "empty"},
+		"budget":         {func(j *wire.JobRequest) { j.BudgetUSD = -1 }, 400, "bad_budget"},
+		"yolo":           {func(j *wire.JobRequest) { j.Mode = "yolo" }, 403, "dangerous_mode"},
+		"bypass":         {func(j *wire.JobRequest) { j.Mode = "bypass" }, 403, "dangerous_mode"},
+		"odd mode":       {func(j *wire.JobRequest) { j.Mode = "chaos" }, 400, "bad_mode"},
+		"no folder":      {func(j *wire.JobRequest) { j.Dir = filepath.Join(rg.state, "no", "such") }, 404, "no_dir"},
+		"a file":         {func(j *wire.JobRequest) { j.Dir = file }, 404, "no_dir"},
+		"relative":       {func(j *wire.JobRequest) { j.Dir = "proj" }, 400, "bad_path"},
+		"flag model":     {func(j *wire.JobRequest) { j.Model = "--yolo" }, 400, "bad_flags"},
+		"two-line check": {func(j *wire.JobRequest) { j.Check = "git fetch\nrm -rf ." }, 400, "bad_check"},
+		"long check":     {func(j *wire.JobRequest) { j.Check = strings.Repeat("x", 1001) }, 400, "bad_check"},
 	} {
 		body := good
 		tc.mut(&body)
@@ -335,5 +337,33 @@ func TestAJobWithoutAnyModelIsRefused(t *testing.T) {
 	w = rg.do(req{method: "POST", path: "/api/schedule/jobs", raw: body, header: map[string]string{"X-Confirm": rg.confirm("job.add")}})
 	if w.Code != http.StatusCreated {
 		t.Errorf("a job with a model = %d %s", w.Code, w.Body.String())
+	}
+}
+
+// TestAJobsCheckIsKeptAndAnEditForgetsWhatItSaw: the change check is stored with the job and shown, and an edit that changes it
+// clears the value the old check printed, so the new check's first look runs the job.
+func TestAJobsCheckIsKeptAndAnEditForgetsWhatItSaw(t *testing.T) {
+	rg := newRig(t, nil)
+	body := wire.JobRequest{Cron: "@hourly", Goal: "triage new issues", Dir: rg.project, Mode: "plan", BudgetUSD: 1, Model: "openai/gpt-x", Check: " git rev-parse HEAD "}
+	if j := rg.addJob(body); j.Check != "git rev-parse HEAD" {
+		t.Fatalf("added %+v", j)
+	}
+	st := sched.Store{Path: filepath.Join(rg.state, "schedule.json")}
+	if _, err := st.Update("j1", func(j *sched.Job) { j.CheckSum = "seen" }); err != nil {
+		t.Fatal(err)
+	}
+	same := body
+	same.Goal = "triage the new issues"
+	rg.do(req{method: "PUT", path: "/api/schedule/jobs/j1", body: same, header: map[string]string{"X-Confirm": rg.confirm("job.edit:j1")}})
+	if jobs, _ := st.List(); jobs[0].CheckSum != "seen" {
+		t.Errorf("an edit that kept the check forgot its value: %+v", jobs[0])
+	}
+	same.Check = "git ls-remote origin refs/heads/main"
+	w := rg.do(req{method: "PUT", path: "/api/schedule/jobs/j1", body: same, header: map[string]string{"X-Confirm": rg.confirm("job.edit:j1")}})
+	if e := decode[wire.ScheduleJob](t, w); e.Check != same.Check {
+		t.Errorf("edit: %d %s", w.Code, w.Body.String())
+	}
+	if jobs, _ := st.List(); jobs[0].CheckSum != "" {
+		t.Errorf("a changed check kept the old value: %+v", jobs[0])
 	}
 }
