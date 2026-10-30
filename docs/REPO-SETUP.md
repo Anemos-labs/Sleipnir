@@ -4,12 +4,16 @@
 
 [ci.yml](../.github/workflows/ci.yml) checks formatting, dependency drift, generated
 documentation, prompt-change declarations, tests, builds, and security tooling.
-The required checks are `ci-gate` and `conventional title`, both reported by
-GitHub Actions. Windows session ownership, file permissions, and command execution tests are required; the broader Windows
+The required checks are `ci-gate`, `conventional title` and `coderabbit-gate`,
+all reported by GitHub Actions. Windows session ownership, file permissions, and command execution tests are required; the broader Windows
 suite is informational. See [platform limitations](SECURITY.md).
 
 [codeql.yml](../.github/workflows/codeql.yml) scans Go and workflows.
 [pr.yml](../.github/workflows/pr.yml) validates conventional pull request titles.
+[coderabbit.yml](../.github/workflows/coderabbit.yml) runs `coderabbit-gate`, described
+under [Agent workflow and review](#agent-workflow-and-review);
+[coderabbit-rerun.yml](../.github/workflows/coderabbit-rerun.yml) runs it again when a
+comment or CodeRabbit's check changes its outcome.
 [nightly.yml](../.github/workflows/nightly.yml) runs extended checks.
 
 ## Branch protection
@@ -44,8 +48,24 @@ repositories. Install its GitHub App for **Anemos-labs/Sleipnir only** and keep
 usage-based billing and paid agent features off. The repository's
 [configuration](../.coderabbit.yaml) enables reviews of ready PRs and incremental
 updates, with guidance for cache contracts, cancellation, trust boundaries, and
-terminal behavior. It disables decorative comments and automatic issue planning.
-Bot findings are advisory; required CI and resolved discussions govern merging.
+terminal behavior. It disables decorative comments, automatic issue planning and the automatic
+pause of reviews on busy branches.
+
+CodeRabbit findings must be addressed before a merge. Inline findings are review
+threads, which the main ruleset requires to be resolved. `coderabbit-gate` covers
+the rest:
+
+- It waits for CodeRabbit's `CodeRabbit` check on the head commit and fails while
+  that review is still running, so a pull request cannot merge before its review
+  arrives.
+- It passes, with a notice, when CodeRabbit did not review the commit: rate
+  limited, plan limit reached, paused, skipped or failed. It passes with a
+  warning when CodeRabbit reports nothing on the commit within ten minutes. An
+  unavailable reviewer never blocks a merge.
+- It fails while a finding outside the diff or a nitpick from any CodeRabbit
+  review has no answer. These findings have no thread. Answer each one with a
+  pull request comment that mentions `@coderabbitai` and names the finding's
+  file path, written after the review: what was fixed, or why it does not apply.
 
 Dependabot groups weekly Go-module and pinned-action updates. CodeQL,
 govulncheck, dependency review, actionlint, and zizmor provide independent checks.

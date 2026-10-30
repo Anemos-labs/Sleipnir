@@ -74,7 +74,7 @@ func TestRulesetRequiresJobsOfCI(t *testing.T) {
 		t.Error("required_status_checks must be strict: a branch has to be up to date with main before it merges")
 	}
 	jobs := map[string]bool{}
-	for _, file := range []string{"ci.yml", "pr.yml"} {
+	for _, file := range []string{"ci.yml", "pr.yml", "coderabbit.yml"} {
 		for _, j := range workflowNamed(t, file).Jobs {
 			if j.Name != "" && !strings.Contains(j.Name, "${{") {
 				jobs[j.Name] = true
@@ -87,17 +87,17 @@ func TestRulesetRequiresJobsOfCI(t *testing.T) {
 	}
 	sort.Strings(fixed)
 	jobList := strings.Join(fixed, ", ")
-	want := map[string]bool{"ci-gate": true, "conventional title": true}
+	want := map[string]bool{"ci-gate": true, "conventional title": true, "coderabbit-gate": true}
 	if len(p.Checks) != len(want) {
-		t.Errorf("the ruleset requires %+v; want the CI gate and conventional title checks", p.Checks)
+		t.Errorf("the ruleset requires %+v; want the CI gate, conventional title and CodeRabbit gate checks", p.Checks)
 	}
 	for _, c := range p.Checks {
 		if !want[c.Context] || c.IntegrationID != actionsAppID {
-			t.Errorf("unexpected required check %+v; require the CI gate and title from GitHub Actions", c)
+			t.Errorf("unexpected required check %+v; require the CI gate, title and CodeRabbit gate from GitHub Actions", c)
 		}
 		delete(want, c.Context)
 		if !jobs[c.Context] {
-			t.Errorf("required check %q has no job in ci.yml or pr.yml (fixed names: %s)", c.Context, jobList)
+			t.Errorf("required check %q has no job in ci.yml, pr.yml or coderabbit.yml (fixed names: %s)", c.Context, jobList)
 		}
 	}
 	if len(want) != 0 {

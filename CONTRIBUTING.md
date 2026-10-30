@@ -17,7 +17,8 @@ behavior, relevant validation, and any compatibility or cost implications.
 
 Use [AGENTS.md](AGENTS.md) for the branch-to-merge workflow. Read bot findings and
 CI results on the latest commit, fix valid issues, and resolve discussions with
-evidence. Required checks and main protection apply equally to human and agent
+evidence. CodeRabbit findings outside the diff and nitpicks are answered in a PR
+comment that mentions `@coderabbitai`; `coderabbit-gate` checks for the answer. Required checks and main protection apply equally to human and agent
 changes. Reviews do not authorize unrelated edits or paid services.
 
 - Add regression coverage for behavior changes. Test state and outcomes rather
