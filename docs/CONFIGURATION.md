@@ -468,7 +468,7 @@ suspecting the endpoint.
 | `session_header` | bool | `false` | Send the session's routing key as an `X-Session-Id` header, so a gateway keeps a conversation on the engine that holds its cache |
 | `cache_key_body` | bool | `false` | Send the same key as `prompt_cache_key` in the body (OpenAI, Heimdallm) |
 | `system_role` | string | `system` | Role name of the system message; `developer` for OpenAI reasoning models |
-| `max_tokens_field` | string | `max_tokens` | `max_tokens` or `max_completion_tokens`, the request member that carries the output limit (16000, or the model's maximum if smaller) |
+| `max_tokens_field` | string | `max_tokens` | `max_tokens` or `max_completion_tokens`, the request member that carries the output limit (32000 for a model whose known window is 128k tokens or more, 16000 otherwise, or the model's maximum if smaller) |
 | `reasoning_effort_field` | string | `reasoning_effort` | Any non-empty value lets the selected effort through as `reasoning_effort`; an explicit empty string disables it. No effort is sent until one is selected with `/effort`. The harness maps it to the closest level the model supports |
 | `cache_control_parts` | bool | `false` | Add `cache_control` markers to content parts at breakpoints, for gateways that front Anthropic models |
 | `extra_body` | object | none | Members merged into the top level of every request body. They replace members of the same name, so do not use it to change `model` or `messages` |
@@ -498,7 +498,7 @@ Every dialect also takes the timeouts below. A silent server is cut off, so no r
 | `no_thinking_replay` | bool | `false` | The gateway cannot take thinking blocks back; they are dropped from history instead of replayed |
 | `no_zero_max_tokens` | bool | `false` | The gateway rejects `max_tokens: 0`; cache warm-ups use `1` |
 | `session_header_name` | string | none | Header that carries the routing key (for example `X-Session-Id`); Anthropic itself ignores it |
-| `default_max_tokens` | integer | `8192` | Used only when a request carries no `max_tokens`. The harness always sets one (16000, or the model's maximum if smaller), so this rarely matters |
+| `default_max_tokens` | integer | `8192` | Used only when a request carries no `max_tokens`. The harness always sets one (32000 or 16000 by the model's window, or the model's maximum if smaller), so this rarely matters |
 | `thinking_display` | string | none | Value of `thinking.display`, sent only when a request carries a `thinking` object. Replay binding can require such an object after compaction |
 | `thinking_budget` | integer | `8192` | `budget_tokens` when thinking is requested on a model that uses a token budget instead of adaptive thinking. Clamped below the request's output limit; thinking is omitted when the limit cannot fit the minimum budget |
 | `extra_body` | object | none | Members merged into the request body. Naming a member the adapter owns (`model`, `max_tokens`, `stream`, `thinking`, `output_config`, `temperature`, `stop_sequences`, `metadata`, `tool_choice`, `tools`, `system`, `messages`) is an error |
