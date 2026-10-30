@@ -867,7 +867,13 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 			}
 			a.cfg.Sink.Notice(a.cfg.ID, "warn", fmt.Sprintf("the response reached the output limit (%d tokens): asking the model to carry on (%d of %d)",
 				a.cfg.Params.MaxTokens, cutoffs, maxCutoffRounds))
-			a.pushUser(core.OriginSystem, a.wrapUp([]core.Block{core.Text(cutoffNudge)}, limit-step-1))
+			nudge := cutoffNudge
+			if strings.TrimSpace(res.Text) == "" {
+				// All of it was reasoning: asked to continue, the model reasons again from the top and is cut off again, five
+				// minutes a round on a slow endpoint. It is told to act on what it has thought.
+				nudge = thinkingCutoffNudge
+			}
+			a.pushUser(core.OriginSystem, a.wrapUp([]core.Block{core.Text(nudge)}, limit-step-1))
 			continue
 		}
 		cutoffs = 0
@@ -1027,6 +1033,12 @@ const maxCutoffRounds = 2
 // happened; "do it with a tool call" is the way out of the commonest cause, a long description of what it is about to do.
 const cutoffNudge = "[harness] Your last response was cut off at the output limit before it was complete. Continue from where it stopped. " +
 	"If you were about to run a command or change a file, do it now with a tool call instead of writing it out."
+
+// thinkingCutoffNudge replaces cutoffNudge when the cut-off response held only reasoning: no answer text and no call. Reasoning
+// that planned the whole task at once does not finish by being continued; one step taken does.
+const thinkingCutoffNudge = "[harness] Your last response was cut off at the output limit while you were still reasoning: it held no answer and no tool call. " +
+	"Do not plan the whole task again. Take the next step now with one tool call (read one file, write one file or run one command), " +
+	"and keep your reasoning before it short; plan the rest as you go."
 
 // Close ends the agent's background work: it cancels the compaction job in flight,
 // waits for it (up to CloseGrace, so a provider that ignores its context cannot wedge

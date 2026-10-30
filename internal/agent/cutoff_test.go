@@ -186,3 +186,37 @@ func TestThePersonIsToldWhyTheTextStoppedAndWentOn(t *testing.T) {
 		t.Errorf("notices about the output limit = %q, want one warning that names the limit and the round", got)
 	}
 }
+
+// A response that is all reasoning and is cut off is not continued: asked to carry on, the model reasons again from the top and is
+// cut off again. It is told to take one step with a tool call.
+func TestAResponseCutOffWhileReasoningIsToldToTakeOneStep(t *testing.T) {
+	var mu sync.Mutex
+	var second []mock.Msg
+	requests := 0
+	r := newRig(t, rigOpts{noCompact: true}, func(c *mock.Call) mock.Reply {
+		mu.Lock()
+		defer mu.Unlock()
+		requests++
+		if requests == 1 {
+			return mock.Reply{Reasoning: "First the types, then the store, then every handler, then", Finish: "length"}
+		}
+		second = c.Messages
+		return mock.Reply{Text: "done."}
+	})
+	if _, err := r.agent.Run(context.Background(), "build it"); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 2 {
+		t.Fatalf("%d requests, want 2", requests)
+	}
+	last := second[len(second)-1]
+	if last.Role != "user" || !strings.Contains(last.Content, "while you were still reasoning") || !strings.Contains(last.Content, "one tool call") {
+		t.Errorf("the last message is %+v: a cut-off of reasoning alone asks for one step, not a continuation", last)
+	}
+	if strings.Contains(last.Content, "Continue from where it stopped") {
+		t.Errorf("the model was asked to continue its reasoning: %q", last.Content)
+	}
+	if got := nudges(t, r.agent); got != 1 {
+		t.Errorf("%d nudges in the thread, want 1", got)
+	}
+}
