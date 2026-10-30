@@ -19,7 +19,8 @@ import (
 const JobTimeout = time.Hour
 
 // Tick starts every job that is due at now, one after another, recording each start before the run so that a crash cannot start it
-// twice, and how it ended after. launch runs one job and says how it ended (an exit text, and the log file it wrote); logw receives
+// twice, and how it ended after. A job with a change check (Job.Check) runs only when the check printed something new; otherwise its
+// slot is recorded as "no change" (or "check failed: ...") and nothing is launched. launch runs one job and says how it ended (an exit text, and the log file it wrote); logw receives
 // one line when a job starts and one when it ends. A job removed while it ran is not recorded again. The caller holds the daemon lock.
 func Tick(ctx context.Context, st Store, now time.Time, launch func(context.Context, Job, time.Time) (exit, log string), logw io.Writer) error {
 	jobs, err := st.List()
@@ -33,9 +34,24 @@ func Tick(ctx context.Context, st Store, now time.Time, launch func(context.Cont
 		if err := record(st, j.ID, func(x *Job) { x.LastRun, x.LastExit = now, "running" }); err != nil {
 			return err
 		}
+		run, sum, skipped := gate(ctx, j)
+		if !run {
+			if err := record(st, j.ID, func(x *Job) { x.LastExit = skipped }); err != nil {
+				return err
+			}
+			fmt.Fprintf(logw, "sleipnir daemon: %s skipped: %s\n", j.ID, tools.SanitizeForTerminal(skipped))
+			continue
+		}
 		fmt.Fprintf(logw, "sleipnir daemon: %s starts: %s\n", j.ID, tools.SanitizeForTerminal(strings.Join(strings.Fields(j.Goal), " ")))
 		exit, log := launch(ctx, j, now)
-		if err := record(st, j.ID, func(x *Job) { x.LastExit, x.Log = exit, log }); err != nil {
+		if err := record(st, j.ID, func(x *Job) {
+			x.LastExit, x.Log = exit, log
+			// the value is kept only when the run did its work, and only for the check that printed it: a failed run is tried
+			// again at the next slot, and a check edited while the run went is looked at afresh
+			if sum != "" && exit == "ok" && x.Check == j.Check {
+				x.CheckSum = sum
+			}
+		}); err != nil {
 			return err
 		}
 		fmt.Fprintf(logw, "sleipnir daemon: %s ended: %s\n", j.ID, exit)
