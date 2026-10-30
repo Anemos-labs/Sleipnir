@@ -7,6 +7,18 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A request that names no output limit gets 32000 tokens instead of 16000
+  when the model's known window is 128k tokens or more (still capped by the
+  model's own maximum). A reasoning model writing a large file could reason
+  past 16000 tokens and be cut off with nothing but reasoning, which is
+  thrown away whole; measured on Aider Polyglot with MiniMax M3, 5 of 44
+  single-agent runs hit that limit. Smaller and guessed windows keep 16000.
+  The limit only caps what the model may write: no prompt bytes change.
+  Each team member's default now follows its own role or slot model, a
+  request that moves to the fallback model or to a compactor model of its
+  own asks for no more than that model's maximum, and a model whose
+  catalogue entry reports no maximum gets the default (it got 8192).
+
 - Hardening from a CodeRabbit deep scan, outside the permission engine. A
   sandboxed session mounts its own isolation directory instead of its parent,
   and runs a helper binary copied out of any mount; a repository whose `.git`

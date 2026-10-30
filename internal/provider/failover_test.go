@@ -13,12 +13,14 @@ type scripted struct {
 	name  string
 	errs  []error // the answers in turn; past the end, success
 	calls int
+	last  *Request
 }
 
 func (p *scripted) Profile() Profile { return Profile{Name: p.name} }
 
-func (p *scripted) Do(context.Context, *Request, func(Event)) (*Response, error) {
+func (p *scripted) Do(_ context.Context, req *Request, _ func(Event)) (*Response, error) {
 	p.calls++
+	p.last = req
 	if p.calls <= len(p.errs) && p.errs[p.calls-1] != nil {
 		return nil, p.errs[p.calls-1]
 	}
@@ -101,5 +103,30 @@ func TestFailoverPricesTheSecondary(t *testing.T) {
 	resp, err := f.Do(context.Background(), &Request{}, nil)
 	if err != nil || resp.Model != "sec" || resp.CostUSD == nil || *resp.CostUSD != 0.25 || !resp.CostEstimated {
 		t.Fatalf("secondary answer %+v, %v", resp, err)
+	}
+}
+
+// A limit sized for the primary asks the secondary for no more than its maximum; the caller's request is left as it was.
+func TestFailoverCapsTheOutputLimitAtTheSecondarysMaximum(t *testing.T) {
+	now := time.Unix(1000, 0)
+	prim := &scripted{name: "prim", errs: []error{&Error{Kind: ErrServer, Status: 503}, &Error{Kind: ErrServer, Status: 503}, &Error{Kind: ErrServer, Status: 503}}}
+	sec := &scripted{name: "sec"}
+	f := &Failover{Primary: prim, Secondary: sec, SecondaryModel: "small", SecondaryMaxOutput: 20000, After: time.Minute, Retry: time.Hour,
+		Now: func() time.Time { return now }}
+	_, _ = f.Do(context.Background(), &Request{Prompt: &core.Prompt{}}, nil)
+	now = now.Add(2 * time.Minute)
+	req := &Request{Prompt: &core.Prompt{Model: "big", Params: core.Params{MaxTokens: 32000}}}
+	if _, err := f.Do(context.Background(), req, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := sec.last.Prompt.Params.MaxTokens; got != 20000 || sec.last.Prompt.Model != "small" {
+		t.Fatalf("secondary asked for %d tokens of %q, want 20000 of small", got, sec.last.Prompt.Model)
+	}
+	if req.Prompt.Params.MaxTokens != 32000 || req.Prompt.Model != "big" {
+		t.Fatalf("the caller's request changed: %+v", req.Prompt)
+	}
+	small := &Request{Prompt: &core.Prompt{Model: "big", Params: core.Params{MaxTokens: 4096}}}
+	if _, err := f.Do(context.Background(), small, nil); err != nil || sec.last.Prompt.Params.MaxTokens != 4096 {
+		t.Fatalf("a limit within the secondary's maximum became %d (%v)", sec.last.Prompt.Params.MaxTokens, err)
 	}
 }
