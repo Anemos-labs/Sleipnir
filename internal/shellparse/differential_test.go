@@ -28,7 +28,7 @@ var differentialSnippets = []string{
 	`nohup mk1 a`, `time mk1`, `time -p mk1`, `exec mk1`, `A=1 env B=2 command mk1`, `nice mk1`, `timeout 5 mk1`, `stdbuf -oL mk1`,
 	// substitutions
 	`echo $(mk1)`, "echo `mk1`", `echo "$(mk1)"`, "echo \"`mk1`\"", `echo $(echo $(mk1))`, `echo "$(echo "$(mk1)")"`,
-	`echo ${x:-$(mk1)}`, `echo "${x:-$(mk1)}"`, `echo ${x:-"$(mk1)"}`, `echo $((1+$(mk1 >/dev/null; echo 2)))`, `x=$(mk1); echo $x`,
+	`echo ${x:-$(mk1)}`, `echo "${x:-$(mk1)}"`, `echo "${x:-'$(mk1)'}"`, `echo "${x:-'${y:-'$(mk1)'}'}"`, `echo ${x:-"$(mk1)"}`, `echo $((1+$(mk1 >/dev/null; echo 2)))`, `x=$(mk1); echo $x`,
 	`A=$(mk1) mk2`, `echo a$(mk1)b`, `echo $(mk1; mk2)`, `echo $(mk1 | mk2)`, `echo $( (mk1) )`, `echo $(echo a; mk1)`,
 	"echo `echo \\`mk1\\``", "echo `echo a; mk1`", `echo $(( $(mk1 >/dev/null; echo 1) + 1 ))`, `echo "a $(mk1) b $(mk2)"`,
 	`mk1 $(mk2) $(mk3)`, `$(echo mk1) a`, "`echo mk1` a",
@@ -39,7 +39,8 @@ var differentialSnippets = []string{
 	// heredocs
 	"cat <<EOF >/dev/null\n$(mk1)\nEOF", "cat <<EOF >/dev/null\n`mk1`\nEOF", "cat <<'EOF' >/dev/null\n$(mk1)\nEOF\nmk2",
 	"cat <<EOF | mk1\nbody\nEOF", "cat <<-EOF >/dev/null\n\t$(mk1)\n\tEOF", "mk1 <<EOF\nbody\nEOF\nmk2", "cat <<A <<B >/dev/null\n$(mk1)\nA\n$(mk2)\nB",
-	"bash <<EOF\nmk1\nEOF", "bash <<< 'mk1'", "bash -s <<EOF\nmk1\nmk2\nEOF", "cat <<EOF >/dev/null\n${x:-$(mk1)}\nEOF",
+	"bash <<EOF\nmk1\nEOF", "bash <<< 'mk1'", "cat <<EOF >/dev/null\nEO\\\nF\nmk1\nEOF", "cat <<EOF >/dev/null\nEOF\\\n\nmk1\nEOF",
+	"cat <<EOF >/dev/null\na\\\\\nEOF\nmk1", "bash -s <<EOF\nmk1\nmk2\nEOF", "cat <<EOF >/dev/null\n${x:-$(mk1)}\nEOF",
 	// control flow
 	`for i in 1 2; do mk1 $i; done`, `for i in $(mk1); do mk2; done`, `for i in a b; do mk1; done; mk2`, `while true; do mk1; break; done`,
 	`until false; do mk1; break; done`, `if true; then mk1; else mk2; fi`, `if mk1; then mk2; fi`, `if true; then mk1; elif true; then mk2; fi`,

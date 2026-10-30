@@ -324,6 +324,7 @@ func TestProtect(t *testing.T) {
 		{"dev sda write", acc("/dev/sda", true, false, false), tierHard},
 		{"dev shm write", acc("/dev/shm/x", true, false, false), tierNone},
 		{"proc environ", acc("/proc/self/environ", false, false, false), tierHard},
+		{"proc thread environ", acc("/proc/self/task/7/environ", false, false, false), tierHard},
 		{"tmp write is fine", acc("/tmp/x", true, false, false), tierNone},
 		{"workspace write is fine", acc(f.root+"/src/a.go", true, false, false), tierNone},
 	} {

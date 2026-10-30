@@ -211,7 +211,7 @@ func (l *lexer) dollar(w *wbuf, nested *[]Simple, dq bool) {
 		}
 		l.cmdSubst(w, nested)
 	case n == '{':
-		l.paramExp(w, nested)
+		l.paramExp(w, nested, dq)
 	case n == '\'' && !dq:
 		l.ansiC(w)
 	case n == '"' && !dq:
@@ -335,8 +335,10 @@ func (l *lexer) arith(w *wbuf, nested *[]Simple) bool {
 }
 
 // paramExp reads ${ ... } at l.pos, extracting substitutions in its operands
-// (${x:-$(cmd)} runs cmd).
-func (l *lexer) paramExp(w *wbuf, nested *[]Simple) {
+// (${x:-$(cmd)} runs cmd). dq is true inside double quotes, where bash keeps a
+// single quote in an operand as a literal character ("${x:-'$(cmd)'}" runs cmd),
+// so it does not hide what follows it.
+func (l *lexer) paramExp(w *wbuf, nested *[]Simple, dq bool) {
 	start := l.pos
 	l.pos += 2
 	if !l.enter() {
@@ -353,6 +355,10 @@ func (l *lexer) paramExp(w *wbuf, nested *[]Simple) {
 		case '\\':
 			l.pos += 2
 		case '\'':
+			if dq {
+				l.pos++
+				continue
+			}
 			if j := strings.IndexByte(l.src[l.pos+1:l.end], '\''); j < 0 {
 				l.pos = l.end
 			} else {
@@ -362,9 +368,9 @@ func (l *lexer) paramExp(w *wbuf, nested *[]Simple) {
 			l.pos++
 			l.dqBody(&scratch, nested)
 		case '$':
-			l.dollar(&scratch, nested, false)
+			l.dollar(&scratch, nested, dq)
 		case '`':
-			l.backtick(&scratch, nested, false)
+			l.backtick(&scratch, nested, dq)
 		default:
 			l.pos++
 		}

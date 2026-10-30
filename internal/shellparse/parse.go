@@ -575,6 +575,10 @@ func (p *parser) markLast() {
 func (p *parser) markList() {
 	own := p.own()
 	for i := p.listStart; i < len(p.out); i++ {
+		// as in markLast, nested compounds bring the same commands back: each visit is charged
+		if !p.st.tick() {
+			return
+		}
 		p.out[i].Cond = true
 		p.out[i].ChainLink = false
 		if own {

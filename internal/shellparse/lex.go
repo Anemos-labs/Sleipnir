@@ -260,6 +260,24 @@ func (l *lexer) readHeredocs(toks []token) []Simple {
 				line = l.src[l.pos : l.pos+eol]
 				l.pos += eol + 1
 			}
+			// In an unquoted heredoc bash removes backslash-newline before it compares
+			// a line with the delimiter: "EO\\\nF" ends the body, so the lines that
+			// follow are commands, not body text.
+			if !h.quoted && endsInEscape(line) {
+				var joined strings.Builder
+				for endsInEscape(line) && l.pos < l.end && l.st.tick() {
+					joined.WriteString(line[:len(line)-1])
+					line = l.src[l.pos:l.end]
+					if e := strings.IndexByte(line, '\n'); e >= 0 {
+						line = line[:e]
+						l.pos += e + 1
+					} else {
+						l.pos = l.end
+					}
+				}
+				joined.WriteString(line)
+				line = joined.String()
+			}
 			if h.strip {
 				line = strings.TrimLeft(line, "\t")
 			}
@@ -286,6 +304,16 @@ func (l *lexer) readHeredocs(toks []token) []Simple {
 		l.exprs = l.exprs[:mark]
 	}
 	return nested
+}
+
+// endsInEscape reports whether line ends in an unescaped backslash, one that
+// joins it with the next line.
+func endsInEscape(line string) bool {
+	n := 0
+	for i := len(line) - 1; i >= 0 && line[i] == '\\'; i-- {
+		n++
+	}
+	return n%2 == 1
 }
 
 // procSubst reads <(...) or >(...) at l.pos as one word token.

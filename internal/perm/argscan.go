@@ -247,7 +247,8 @@ var safeSpecs = map[string]*argSpec{
 	"cat":  {},
 	"head": {short: "nc", long: []string{"lines", "bytes"}},
 	"tail": {short: "ncs", long: []string{"lines", "bytes", "pid", "sleep-interval"}},
-	"wc":   {long: []string{"files0-from"}, pathVals: []string{"--files0-from"}},
+	// --files0-from reads the files a list names, paths the list's contents choose and no check sees
+	"wc":   {long: []string{"files0-from"}, deny: []string{"--files0-from"}},
 	"stat": {short: "c", long: []string{"format", "printf"}, namesOnly: true},
 	"file": {short: "mFePf", long: []string{"magic-file", "separator", "exclude", "parameter", "files-from"},
 		deny: []string{"-C", "--compile"}, pathVals: []string{"-f", "--files-from"}},
@@ -258,7 +259,7 @@ var safeSpecs = map[string]*argSpec{
 		deny: []string{"-o", "-l"}, tree: true, namesOnly: true},
 	"sort": {short: "kotTS", long: []string{"key", "output", "field-separator", "temporary-directory",
 		"buffer-size", "parallel", "batch-size", "compress-program", "files0-from", "random-source"},
-		deny: []string{"-o", "--output", "--compress-program", "-T", "--temporary-directory"}},
+		deny: []string{"-o", "--output", "--compress-program", "-T", "--temporary-directory", "--files0-from"}},
 	"uniq": {short: "fsw", long: []string{"skip-fields", "skip-chars", "check-chars"}, maxPos: 1},
 	"cut":  {short: "bcdf", long: []string{"bytes", "characters", "delimiter", "fields", "output-delimiter"}},
 	"tr":   {noPaths: true},

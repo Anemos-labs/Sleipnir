@@ -3,6 +3,7 @@ package perm
 import (
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,20 +49,39 @@ func readGitMeta(p string) ([]byte, error) {
 // (status, diff, log -p), a signature verifier, an external diff. An include is judged as naming one, since what it pulls in is not
 // read here. Such a repository may have come with the files being worked on; its git commands are then asked about.
 func gitHelperConfig(dir string) string {
-	var common string
+	var common, own string
 	for d := filepath.Clean(dir); ; d = filepath.Dir(d) {
-		if c, ok := gitCommonDir(d); ok {
-			common = c
+		if o, c, ok := gitDirs(d); ok {
+			common, own = c, o
 			break
 		}
 		if filepath.Dir(d) == d {
 			return ""
 		}
 	}
-	b, err := readGitMeta(filepath.Join(common, "config"))
-	if err != nil {
-		return ""
+	// The repository's configuration, and the per-worktree files git also reads when extensions.worktreeConfig is on. A file that
+	// is there but cannot be read (too large, not a regular file) may name a program as well as any other.
+	files := []string{filepath.Join(common, "config"), filepath.Join(common, "config.worktree")}
+	if own != "" && own != common {
+		files = append(files, filepath.Join(own, "config.worktree"))
 	}
+	for _, f := range files {
+		b, err := readGitMeta(f)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return "git configuration that could not be read (" + filepath.Base(f) + ": " + err.Error() + ")"
+		}
+		if why := gitConfigHelper(b); why != "" {
+			return why
+		}
+	}
+	return ""
+}
+
+// gitConfigHelper is gitHelperConfig for the text of one configuration file.
+func gitConfigHelper(b []byte) string {
 	section := ""
 	for _, line := range strings.Split(string(b), "\n") {
 		line = strings.TrimSpace(line)
