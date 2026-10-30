@@ -19,7 +19,9 @@ type Toolchain struct {
 	Manifest string
 	// Fetch is the command that downloads the dependencies the manifest names into the container's HOME, run from the project
 	// with the network on, before any command of the session. It is set only for a fetch that runs none of the project's code
-	// (go mod download, cargo fetch); a package manager that runs install scripts or builds packages to resolve them has none.
+	// and nothing the project's configuration names: go mod download (a module's settings cannot name a program or a proxy).
+	// cargo fetch has none: a project's .cargo/config.toml can name a credential provider, a program cargo runs. A package
+	// manager that runs install scripts or builds packages to resolve them has none either.
 	Fetch []string
 }
 
@@ -39,7 +41,7 @@ func Detect(dir string) Toolchain {
 		return Toolchain{Lang: "go", Image: "golang:" + goImageTag(filepath.Join(dir, "go.mod")) + "-bookworm", Manifest: "go.mod",
 			Fetch: []string{"go", "mod", "download"}}
 	case has("Cargo.toml"):
-		return Toolchain{Lang: "rust", Image: "rust:1-bookworm", Manifest: "Cargo.toml", Fetch: []string{"cargo", "fetch"}}
+		return Toolchain{Lang: "rust", Image: "rust:1-bookworm", Manifest: "Cargo.toml"}
 	case has("pom.xml"):
 		return Toolchain{Lang: "java", Image: "maven:3-eclipse-temurin-21", Manifest: "pom.xml"}
 	case has("build.gradle"), has("build.gradle.kts"):
@@ -77,7 +79,8 @@ func goImageTag(gomod string) string {
 	var goLine, toolchain string
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
-		fields := strings.Fields(sc.Text())
+		line, _, _ := strings.Cut(sc.Text(), "//")
+		fields := strings.Fields(line)
 		if len(fields) != 2 {
 			continue
 		}

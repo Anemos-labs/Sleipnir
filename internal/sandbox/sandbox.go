@@ -136,7 +136,7 @@ func Available(ctx context.Context) error {
 // in through Wrap and removes the container with Close.
 //
 // A spec that names no image gets the one for the language of the project in workdir (Detect). When that language has a
-// fetch that runs none of the project's code (go mod download, cargo fetch) and the spec keeps the network off, the container
+// fetch that runs none of the project's code (go mod download) and the spec keeps the network off, the container
 // starts on the network, the fetch fills the module cache in its HOME, and the container is then cut from the network before
 // Start returns: the session's commands build and test offline. A fetch that fails is reported in Fetched, not an error; a
 // container that cannot be cut from the network is removed and is one.

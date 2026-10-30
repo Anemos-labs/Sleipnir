@@ -41,8 +41,9 @@
       verify: [leads ? frac(ruled, leads) : 0, leads ? ruled + '/' + leads + ' leads ruled on' + (r.unproven ? ', ' + r.unproven + ' unproven' : '') : 'no lead filed yet'],
       report: [0, ''], done: [0, ''] };
     return PHASES.map(([id], i) => {
-      const [f, note] = own[id] || [0, ''];
-      return { f: done || i < at ? 1 : f, note, cur: !done && i === at };
+      const [f, note] = own[id] || [0, ''], cur = !done && i === at;
+      // the scan's own phase is not done, whatever its numbers say: a confirmed lead may still need its reproduction
+      return { f: done || i < at ? 1 : cur ? Math.min(f, 0.99) : f, note, cur };
     });
   }
   /** The steps of a scan, each with its own bar. */
@@ -248,7 +249,7 @@
       'scan.new': '<section class="panel"><div class="ph"><h2>New scan</h2><div class="r"><span class="mono dim">/scan DEPTH [DIR]</span></div></div><form class="rs-new sc-new" autocomplete="off">' +
         '<div class="sc-src" role="radiogroup" aria-label="what to scan"><label class="chk"><input type="radio" name="scSrc" value="here" checked> this project</label><label class="chk"><input type="radio" name="scSrc" value="url"> a repository, cloned for the scan</label></div>' +
         '<div data-sc-here><label class="lab" for="scFocus">Folder (optional)</label><input id="scFocus" class="sc-in mono" placeholder="the whole repository; or e.g. server/api" spellcheck="false"></div>' +
-        '<div data-sc-url hidden><label class="lab" for="scUrl">Repository</label><input id="scUrl" class="sc-in mono" placeholder="https://github.com/owner/repo" spellcheck="false"><p class="dim sc-hint">Cloned into ~/sleipnir-scans with git’s hooks and symbolic links off. A new session opens there, its commands in a container with the toolchain of the repository’s language and no network (a Go or Rust module’s dependencies are fetched first).</p><p class="sc-warn" data-sc-nobox hidden></p></div>' +
+        '<div data-sc-url hidden><label class="lab" for="scUrl">Repository</label><input id="scUrl" class="sc-in mono" placeholder="https://github.com/owner/repo" spellcheck="false"><p class="dim sc-hint">Cloned into ~/sleipnir-scans with git’s hooks and symbolic links off. A new session opens there, its commands in a container with the toolchain of the repository’s language and no network (a Go module’s dependencies are fetched first).</p><p class="sc-warn" data-sc-nobox hidden></p></div>' +
         '<div class="rs-depths" role="radiogroup" aria-label="depth"></div><div class="row2"><button class="btn pri" type="submit" id="scGo">Start the scan</button></div>' +
         '<div class="sc-clone" data-sc-clone role="status" aria-live="polite" hidden><div class="sc-cbar"><i></i></div><div class="sc-cline"><b data-sc-cphase></b> <span class="mono dim" data-sc-cline></span> <span class="mono dim sc-ctime" data-sc-ctime></span></div></div>' +
         '<p class="stubnote">The work is sized by the code, not by a clock: the scan splits it into shards of so many functions and lines, and asks for one agent per two shards, from 8 to 32.</p></form></section>' });

@@ -29,10 +29,12 @@ func TestDetectPicksTheLanguagesImage(t *testing.T) {
 		{map[string]string{"go.mod": "module x\n\ngo 1.24.2\n"}, "go", "golang:1.24-bookworm", true},
 		{map[string]string{"go.mod": "module x\n\ngo 1.22\n\ntoolchain go1.23.4\n"}, "go", "golang:1.23-bookworm", true},
 		{map[string]string{"go.mod": "module x\n"}, "go", "golang:1-bookworm", true},
+		{map[string]string{"go.mod": "module x\n\ngo 1.21 // the oldest we support\n"}, "go", "golang:1.21-bookworm", true},
 		// what a go.mod says goes into an image name only when it has the shape of a version
 		{map[string]string{"go.mod": "module x\n\ngo 1.22;curl\n"}, "go", "golang:1-bookworm", true},
 		{map[string]string{"go.mod": "module x\ngo 1.24\n", "package.json": "{}"}, "go", "golang:1.24-bookworm", true},
-		{map[string]string{"Cargo.toml": "[package]\n"}, "rust", "rust:1-bookworm", true},
+		// cargo fetch would run a credential provider a project's .cargo/config.toml names, with the network on
+		{map[string]string{"Cargo.toml": "[package]\n"}, "rust", "rust:1-bookworm", false},
 		{map[string]string{"pom.xml": "<project/>"}, "java", "maven:3-eclipse-temurin-21", false},
 		{map[string]string{"build.gradle.kts": ""}, "java", "gradle:jdk21", false},
 		{map[string]string{"requirements.txt": "flask\n"}, "python", "python:3-bookworm", false},

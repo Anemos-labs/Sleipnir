@@ -329,7 +329,7 @@ func (s *Session) ScanRuns() []wire.ScanRun {
 		rep := scan.Check(r)
 		c := rep.Counts
 		workers := 0
-		if r.Slug == active {
+		if r.Slug == active && rep.Phase != scan.PhaseDone {
 			workers = s.scanWorkers()
 		}
 		out = append(out, wire.ScanRun{Slug: r.Slug, Commit: r.Commit, Depth: r.Depth, Focus: r.Focus, Phase: rep.Phase, Created: r.Created,
@@ -340,12 +340,21 @@ func (s *Session) ScanRuns() []wire.ScanRun {
 	return out
 }
 
-// scanWorkers is how many workers this session's team runs (its --swarm size, or its team's slots), 0 for a single agent.
+// scanWorkers is how many workers this session's team runs, 0 for a single agent.
 func (s *Session) scanWorkers() int {
 	if s.Swarm == nil {
 		return 0
 	}
-	return s.Swarm.MaxWorkers()
+	return teamWorkers(len(s.team), s.Swarm.MaxWorkers())
+}
+
+// teamWorkers is the size of a team: its slots when it has them (the ceiling may be larger than a saved team), else the
+// --swarm size.
+func teamWorkers(slots, max int) int {
+	if slots > 0 {
+		return slots
+	}
+	return max
 }
 
 // ScanDepths are the depths a scan can have, for the forms that start one.
@@ -408,7 +417,7 @@ func (s *Session) ScanDetail(slug string) (map[string]any, error) {
 	}
 	d := r.DepthInfo()
 	workers := 0
-	if r.Slug == s.scan.store.Active() {
+	if r.Slug == s.scan.store.Active() && rep.Phase != scan.PhaseDone {
 		workers = s.scanWorkers()
 	}
 	return map[string]any{"slug": r.Slug, "commit": r.Commit, "depth": r.Depth, "focus": r.Focus, "created": r.Created, "team": r.Team(), "workers": workers,

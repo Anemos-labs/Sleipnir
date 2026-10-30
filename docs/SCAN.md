@@ -129,7 +129,7 @@ sleipnir swarm 8 --sandbox docker "$(sleipnir scan --start --diff origin/main)"
 `scan prove` runs a bash script in a fresh copy of the code at the commit (a detached worktree under the scan's directory,
 removed afterwards), inside the session's sandbox: no network unless the session has `--sandbox-network`, no host
 environment, no keys. `--sandbox docker` runs the image of the repository's language (Go, Rust, Java, Python, Ruby, Node), and
-a Go or Rust module's dependencies are fetched into the container before its network goes off, so a reproducer can build and
+a Go module's dependencies are fetched into the container before its network goes off, so a reproducer can build and
 run the code offline (see the sandbox in [SECURITY.md](SECURITY.md)). A session without a sandbox refuses to prove. The script prints, each on a line of its own and only when
 a check passes:
 
