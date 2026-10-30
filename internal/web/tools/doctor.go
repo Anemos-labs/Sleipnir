@@ -61,7 +61,7 @@ func (s *service) handleEndpoints(w http.ResponseWriter, r *http.Request) {
 			if keyEnv != "" {
 				key = "key from $" + keyEnv
 			}
-			where = fmt.Sprintf("%s (%s, %s)", mr.Provider, base, key)
+			where = fmt.Sprintf("%s (%s, %s)", mr.Provider, config.RedactURL(base), key)
 		}
 		out = append(out, wire.DoctorEndpoint{Ref: mr.String(), Where: runner.Clean(where)})
 	}

@@ -99,7 +99,7 @@
     // a paragraph this long is shown as plain text: the markup's expressions are not linear on every input
     if (text.length > MAX_INLINE) return esc(vis(text)).replace(/\n/g, '<br>');
     const keep = []; const hold = h => '\u0000' + (keep.push(h) - 1) + '\u0000';
-    let s = vis(text).replace(/(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/g, (m, f, c) => hold('<code>' + esc(c.trim()) + '</code>'));
+    let s = codeSpans(vis(text), c => hold('<code>' + esc(c.trim()) + '</code>'));
     s = esc(s.replace(/\\([\\`*_{}[\]()#+\-.!~|<>])/g, (m, c) => hold(esc(c))));
     // a label holds no "[" and an address no "(": each attempt then stops at the next one, so text of many unclosed openers costs
     // linear time, not a scan to its end from each
@@ -110,6 +110,35 @@
     s = s.replace(/(\*\*|__)(?=\S)([\s\S]*?\S)\1/g, '<strong>$2</strong>').replace(/(^|[^*\w])\*(?=\S)([^*]*?\S)\*(?!\*)/g, '$1<em>$2</em>').replace(/(^|[^_\w])_(?=\S)([^_]*?\S)_(?!\w)/g, '$1<em>$2</em>').replace(/~~(?=\S)([\s\S]*?\S)~~/g, '<del>$1</del>');
     s = s.replace(/( {2,}|\\)\n/g, '<br>');
     return s.replace(/\u0000(\d+)\u0000/g, (m, i) => keep[+i]).replace(/\u0000(\d+)\u0000/g, (m, i) => keep[+i]);
+  }
+  /** The code spans of text replaced by span(content): a run of backticks opens one that the next run of the same length closes. Each
+   *  run is looked at once (a pointer per run length), so text of many unclosed runs costs linear time, as an expression would not. */
+  function codeSpans(text, span) {
+    const runs = [];
+    for (let i = 0; i < text.length;) {
+      if (text.charCodeAt(i) !== 96) { i++; continue; }
+      let j = i; while (j < text.length && text.charCodeAt(j) === 96) j++;
+      runs.push([i, j - i]); i = j;
+    }
+    const byLen = new Map(), next = new Map();
+    runs.forEach((r, n) => { if (!byLen.has(r[1])) byLen.set(r[1], []); byLen.get(r[1]).push(n); });
+    let out = '', at = 0;
+    for (let n = 0; n < runs.length; n++) {
+      const [p, k] = runs[n];
+      if (p < at) continue;
+      const list = byLen.get(k); let q = next.get(k) || 0;
+      while (q < list.length && list[q] <= n) q++;
+      next.set(k, q);
+      if (q >= list.length) continue;
+      const close = runs[list[q]][0];
+      out += text.slice(at, p) + span(text.slice(p + k, close)); at = close + k;
+    }
+    return out + text.slice(at);
+  }
+  /** Whether a line is a table's separator row (| :-- | --: |), read cell by cell in one pass. */
+  function tableSep(l) {
+    let t = l.trim(); if (t.startsWith('|')) t = t.slice(1); if (t.endsWith('|')) t = t.slice(0, -1);
+    return t.split('|').every(c => /^:?-+:?$/.test(c.trim()));
   }
   /** A percent-encoded project path decoded (my%20shot.png names my shot.png); text that does not decode stays as it is. */
   const dec = s => { try { return decodeURIComponent(s); } catch (e) { return s; } };
@@ -127,7 +156,7 @@
     return t.scheme === 'http' || t.scheme === 'https' ? '<a class="pv-noimg" href="' + attr(t.u) + '" target="_blank" rel="noopener noreferrer">🖼 ' + (alt || attr(t.u)) + '</a>' : '<span class="pv-noimg">🖼 ' + (alt || attr(t.u)) + '</span>';
   }
   const HR = /^ {0,3}([-*_])(?:\s*\1){2,}\s*$/, ATX = /^ {0,3}(#{1,6})(?:\s+(.*?))?(?:\s+#+)?\s*$/, FENCE = /^ {0,3}(`{3,}|~{3,})\s*([^`\s]*)[^`]*$/, QUOTE = /^ {0,3}> ?/,
-    LI = /^( {0,3})([-*+]|\d{1,9}[.)])(\s+|$)(.*)$/, TROW = /^\s*\|?.*\|.*$/, TSEP = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+    LI = /^( {0,3})([-*+]|\d{1,9}[.)])(\s+|$)(.*)$/, TROW = /^\s*\|?.*\|.*$/;
   const MAX_CELLS = 20000;   // the table cells of one document (a table is at most MAX_COLS wide)
   const cellsOf = l => { let s = l.trim(); if (s.startsWith('|')) s = s.slice(1); if (s.endsWith('|') && !s.endsWith('\\|')) s = s.slice(0, -1); return s.split(/(?<!\\)\|/).map(c => c.trim()); };
   /** The blocks of Markdown text as HTML. o = {path, tab, at, v}: the file (for relative links and images) and the point it is read at. */
@@ -152,7 +181,8 @@
         flush(); const q = []; while (i < lines.length && lines[i].trim() && (QUOTE.test(lines[i]) || q.length)) { q.push(lines[i].replace(QUOTE, '')); i++; if (i < lines.length && !QUOTE.test(lines[i])) break; }
         h += '<blockquote>' + (depth < 8 ? blocks(q, o, depth + 1) : esc(q.join('\n'))) + '</blockquote>'; continue;
       }
-      if (TROW.test(l) && i + 1 < lines.length && TSEP.test(lines[i + 1]) && l.indexOf('|') >= 0) {
+      // the cheap tests first: the row expression is only tried on a line with a pipe, and the separator is read by tableSep
+      if (l.indexOf('|') >= 0 && i + 1 < lines.length && TROW.test(l) && tableSep(lines[i + 1])) {
         // every row is drawn as wide as the header: the cells drawn are bounded per document (o.cells), past which a table stops
         flush(); const hc = cellsOf(l), head = hc.slice(0, MAX_COLS), hidCols = hc.length - head.length, al = cellsOf(lines[i + 1]).map(c => (/^:-+:$/.test(c) ? 'c' : /-+:$/.test(c) ? 'r' : '')); i += 2; const rows = [];
         // a header past the budget draws nothing of its table: every row of it is counted as not shown

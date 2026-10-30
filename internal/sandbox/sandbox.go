@@ -253,6 +253,16 @@ func mountPaths(mounts []string) ([]string, error) {
 			add(real)
 		}
 	}
+	// A guard is mounted over itself from its host path, and docker follows a link there: a guard that is a link would put
+	// whatever it names (a directory of keys) into the container. Such a repository is not mounted at all.
+	for _, p := range out {
+		gd := filepath.Join(p, ".git")
+		for _, g := range gitGuards {
+			if fi, err := os.Lstat(filepath.Join(gd, g)); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+				return nil, fmt.Errorf("the sandbox will not mount %s: its .git/%s is a symbolic link", p, g)
+			}
+		}
+	}
 	return out, nil
 }
 

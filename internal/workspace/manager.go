@@ -631,6 +631,11 @@ func (m *Manager) adopt(ctx context.Context, agent, dest, base string) (*Tree, e
 	if err != nil {
 		return nil, err
 	}
+	// The tree's .git file is the tree's to change: the repository it opens must be the registration verified above, in this
+	// manager's repository, not one the file now points at.
+	if !samePath(repo.GitDir(), admin) || !samePath(repo.CommonDir(), m.st.base.CommonDir()) {
+		return nil, fmt.Errorf("%w: %s opens another repository than its registration", ErrForeign, dest)
+	}
 	if owner == ownerDead {
 		// A process that died in the middle of a git command leaves its lock file; git
 		// never removes one by itself, and the tree's index would refuse every write.

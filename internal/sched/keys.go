@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/harden"
 )
@@ -81,11 +82,20 @@ const NoStoredKeysEnv = "SLEIPNIR_NO_STORED_KEYS"
 
 // DenyKeys marks cmd's environment so that the child Sleipnir loads no stored key (see NoStoredKeysEnv). cmd.Env nil means the
 // parent's environment, as for exec.
+// A variable that looks like a credential is dropped from that environment as well: a key the parent never moved out of its own
+// (a name it did not know as a key) would otherwise reach the child that was to have none.
 func DenyKeys(cmd *exec.Cmd) {
 	if cmd.Env == nil {
 		cmd.Env = os.Environ()
 	}
-	cmd.Env = append(cmd.Env, NoStoredKeysEnv+"=1")
+	kept := cmd.Env[:0:0]
+	for _, kv := range cmd.Env {
+		if name, value, ok := strings.Cut(kv, "="); ok && harden.LooksSecret(name, value) {
+			continue
+		}
+		kept = append(kept, kv)
+	}
+	cmd.Env = append(kept, NoStoredKeysEnv+"=1")
 }
 
 // StoredKeysDenied reports whether a parent asked this process to load no stored key, and forgets the request so that the

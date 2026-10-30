@@ -265,7 +265,7 @@ func startChat(t *testing.T, o rigOpts) *chatRig {
 		clock = func() time.Time { r.mu.Lock(); defer r.mu.Unlock(); return r.now }
 	}
 	cfg := ChatConfig{Screen: r.scr, Keys: r.keys, Sizes: r.sizes, Tick: r.tickCh, Attach: r.attach, Link: r.link, Look: o.look, Now: clock,
-		MainAgent: o.mainAgent, Verbose: o.verbose, History: o.history, AnswerAfter: answerAfter, Bell: o.bell, RestartTo: o.restartTo, AnimAllowed: o.animAllowed,
+		MainAgent: o.mainAgent, Verbose: o.verbose, History: o.history, AnswerAfter: answerAfter, Bell: o.bell, RestartTo: o.restartTo, AnimAllowed: o.animAllowed, ReadCurrent: currentText,
 		CancelStart: func() { r.mu.Lock(); r.cancelled = true; r.mu.Unlock() }}
 	go func() {
 		end, err := RunChat(ctx, cfg)

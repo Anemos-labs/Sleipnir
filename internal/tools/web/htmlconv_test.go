@@ -352,3 +352,26 @@ func TestMDWriterInvariants(t *testing.T) {
 		}
 	}
 }
+
+// A long base URL repeated by every relative link, or quote prefixes repeated on every line, cannot make the Markdown outgrow its bound.
+func TestConversionOutputIsBounded(t *testing.T) {
+	base, _ := url.Parse("https://example.com/" + strings.Repeat("a", 4000) + "/")
+	page := "<html><body>" + strings.Repeat(`<a href="x">l</a> `, 20000) + "</body></html>"
+	text, _ := htmlToText(page, base)
+	if len(text) > maxMarkdown+64<<10 { // a line in progress may finish past it
+		t.Fatalf("%d bytes", len(text))
+	}
+	if strings.Contains(text, strings.Repeat("a", 4000)) == false {
+		t.Fatalf("a link under the bound was dropped")
+	}
+	long, _ := url.Parse("https://example.com/" + strings.Repeat("b", maxLinkURL) + "/")
+	text, _ = htmlToText(`<a href="x">kept</a>`, long)
+	if strings.Contains(text, "bbbb") || !strings.Contains(text, "kept") {
+		t.Fatalf("an overlong link: %q", text[:min(len(text), 80)])
+	}
+	quoted := "<blockquote>" + strings.Repeat("<blockquote>", 50) + "<pre>" + strings.Repeat("x\n", 300000) + "</pre></blockquote>"
+	text, _ = htmlToText(quoted, nil)
+	if len(text) > maxMarkdown+64<<10 { // a line in progress may finish past it
+		t.Fatalf("quoted: %d bytes", len(text))
+	}
+}

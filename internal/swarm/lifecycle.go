@@ -268,8 +268,11 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 	model, prov := rm.Model, rm.Provider
 	m.model = model
 	hooks := d.Hooks
-	if isMgr {
+	switch {
+	case isMgr:
 		hooks = &holdHooks{inner: d.Hooks, s: s, m: m}
+	case isSvc:
+		hooks = &serviceHooks{inner: d.Hooks, only: rr.only, role: r.Name}
 	}
 	cfg := agent.Config{
 		SnapshotEachStep: s.cfg.PersistentPools || s.isolated() && s.deps.Isolation.Resumable,

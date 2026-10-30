@@ -157,6 +157,10 @@ type ChatConfig struct {
 	// no pause): keys typed before that belong to the prompt, so that a line typed ahead can never answer a question.
 	QuitWindow  time.Duration
 	AnswerAfter time.Duration
+	// ReadCurrent reads what a file a write question is about holds now, so that the question shows what the write changes (nil:
+	// the whole content is shown as added). A recorded chat played back leaves it nil: the paths in a recording are not files of
+	// this machine to read.
+	ReadCurrent func(paths []string) string
 }
 
 // ChatEnd is how the chat ended, in the words the session's end reasons use.

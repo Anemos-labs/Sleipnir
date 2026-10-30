@@ -643,3 +643,18 @@ func TestDetachedTreeRefusesToCommitOnABranch(t *testing.T) {
 		t.Fatalf("Commit once detached again: %v", err)
 	}
 }
+
+// A tree whose .git file was pointed at another repository is not adopted: the registration verified is the repository used.
+func TestAdoptRefusesATreeWhoseGitFileNamesAnotherRepository(t *testing.T) {
+	dir := newRepo(t)
+	repo := openRepo(t, dir)
+	m := newManager(t, repo)
+	a := mustCreate(t, m, "a")
+	orphan(t, a)
+	other := newRepo(t)
+	writeFile(t, filepath.Join(a.Path, ".git"), "gitdir: "+filepath.Join(other, ".git")+"\n")
+	fresh := &Manager{Repo: repo, Dir: m.Dir, Prefix: "sleipnir/s1", Clock: testClock()}
+	if _, err := fresh.Create(tctx(t), "a", CreateOptions{Reuse: true}); err == nil {
+		t.Fatal("a tree opening another repository was adopted")
+	}
+}
