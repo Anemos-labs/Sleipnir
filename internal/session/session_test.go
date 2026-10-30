@@ -3,6 +3,7 @@ package session_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -1160,5 +1161,34 @@ func TestAnIdsOnlyCatalogueDoesNotWipeWhatIsKnown(t *testing.T) {
 	got := session.EnrichModel(context.Background(), t.TempDir(), srv.URL, m)
 	if got.ContextTokens != 8192 || got.Price != m.Price {
 		t.Errorf("enriched from a catalogue with nothing in it: %+v", got)
+	}
+}
+
+// A team whose manager has a model (--team, --role-model manager=…) starts with no --model and no configured default: the session
+// runs on the manager's model instead of failing with "no model configured".
+func TestATeamThatNamesItsManagerNeedsNoOtherModel(t *testing.T) {
+	srv := mock.New(mock.Config{}, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	ts := srv.Start()
+	t.Cleanup(ts.Close)
+	repo := newRepo(t)
+	o := opts(t, repo, nil, cost.Model{})
+	o.Provider, o.ModelInfo, o.Model = nil, nil, ""
+	cfg := config.Defaults()
+	cfg.Models.Default = ""
+	cfg.Providers = map[string]config.Provider{"teamhost": {Dialect: config.DialectOpenAIChat, BaseURL: ts.URL + "/v1"}}
+	o.Config, o.Offline = cfg, true
+	o.Swarm = true
+	o.RoleModels = map[string]string{"manager": "teamhost/lead-1"}
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatalf("a team with a manager model must start without --model: %v", err)
+	}
+	defer s.Close()
+	if s.Model.ID != "lead-1" {
+		t.Errorf("the session runs on the manager's model: %q", s.Model.ID)
+	}
+	o.Swarm, o.RoleModels, o.Dir = false, nil, t.TempDir()
+	if _, err := session.New(context.Background(), o); !errors.Is(err, session.ErrNoModel) {
+		t.Errorf("a single agent with no model still says none is configured: %v", err)
 	}
 }

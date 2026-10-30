@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A goal's milestones keep the IDs the person wrote when every milestone
+  has a distinct one (`### M0: Scaffold` is M0, not M1), so the goal's
+  text, the manager's plan and the judge's verdicts name each milestone
+  alike. A list where one has no number, or two share one, is still
+  numbered M1, M2, ... in order. A team that names its manager's model
+  (`--team`, `--role-model manager=…`) needs no `--model`: the session runs
+  on the manager's model instead of failing with "no model configured", and
+  `sleipnir web`'s New session dialog starts on it.
+
 - Deep scans can be rerun and compared. `sleipnir scan SCAN --rerun
   [--pull]`, `/scan rerun [SCAN]` and the **Rerun…** button of the Deep
   scan page create a new scan of the same code at HEAD, recorded as

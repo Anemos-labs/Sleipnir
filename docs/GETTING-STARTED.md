@@ -123,8 +123,10 @@ Milestones are read from a list under a `## Milestones` heading (or a
 `Milestones:` line), from headings nested under a `## Milestones` heading, or
 from headings that name one (`## Milestone 2: Web UI`, `### M2 - Web UI`). What
 is written under a milestone (indented lines, paragraphs, deeper headings) is
-kept as its acceptance details. Milestones may also be written in the goal
-itself. The spec is read
+kept as its acceptance details. Milestones are named M1, M2, ... in the order
+written, unless every one carries a distinct number of its own (`M0: Scaffold`,
+`Milestone 3 - Ship`): then the plan, the judge and the Goal sheet use those.
+Milestones may also be written in the goal itself. The spec is read
 once, when the goal is set: the judge holds the work to that copy, not to later
 edits of the file. The goal is met only when one verdict confirms every
 milestone with cited evidence; a "done" that leaves one out continues with the
