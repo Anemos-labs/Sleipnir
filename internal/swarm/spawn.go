@@ -130,6 +130,11 @@ func (s *Swarm) spawn(req SpawnReq) (SpawnResult, error) {
 				var one *onePoolMember
 				if errors.As(err, &one) {
 					// A pool of one plans with nobody: it would propose, agree with itself and make one child that repeats its parent.
+					if req.Agent != "" && req.Agent != one.id {
+						// The member the manager named cannot take it; the one that could is another. Starting that one instead
+						// answered "be-2 is still working" to a spawn of be-1, and the manager asked for be-1 six times.
+						return SpawnResult{}, namedNotFree(s.Board.Snapshot(), req, one.id)
+					}
 					req.Solo, req.Agent = true, one.id
 					return s.spawnReuse(req, files)
 				}
@@ -177,6 +182,21 @@ func (s *Swarm) spawn(req SpawnReq) (SpawnResult, error) {
 		return s.spawnReuse(req, files)
 	}
 	return started(s.spawnNew(req, files))
+}
+
+// namedNotFree is the refusal of a spawn that names a member (req.Agent) the role's pool could not take because it owns an open
+// task of its own, when other is the only member that could: it says what holds the named member and what the manager can do.
+func namedNotFree(snap *Snapshot, req SpawnReq, other string) error {
+	why := req.Agent + " is not free"
+	if id := soloTaskOf(snap, req.Agent, req.TaskID); id != "" {
+		t, _ := snap.Task(id)
+		why = fmt.Sprintf("%s owns %s (%s), which it works on alone", req.Agent, id, t.Status)
+		if t.Status == StatusReview {
+			why += fmt.Sprintf(": decide %s first (task accept or task reject), and %s is free for %s", id, req.Agent, req.TaskID)
+		}
+	}
+	return fmt.Errorf("%s; the only %s member that could take %s now is %s (spawn agent=%s task=%s), or leave out agent= and the task waits for the first free member",
+		why, req.Role, req.TaskID, other, other, req.TaskID)
 }
 
 // readyBeside lists the top-level tasks of role, other than id, that could start now: unassigned, outside any pool, their
