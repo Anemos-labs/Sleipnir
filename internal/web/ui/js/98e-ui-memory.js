@@ -101,7 +101,8 @@
       '<button class="btn sm" type="button" data-lesson-del="' + esc(l.id) + '">Remove</button></div>' +
       '<div class="mem-lm dim">' + (l.task ? '<span title="the goal it came from">from: ' + esc(l.task) + '</span>' : '') +
       '<span class="mono" title="goals it was shown to: reached / not reached">' + plural(l.uses, 'use') + ' · ' + l.wins + ' won · ' + l.losses + ' lost</span>' +
-      '<span class="mem-u" title="how often the goals it was shown to were reached (smoothed)"><i style="width:' + pct + '%"></i></span><span class="mono">' + pct + '%</span></div></li>';
+      '<span class="mem-u" title="how often the goals it was shown to were reached (smoothed)"><i style="width:' + pct + '%"></i></span><span class="mono">' + pct + '%</span></div>' +
+      (l.replaced ? '<div class="mem-lm dim mem-lr" title="an earlier lesson that the outcome of the goal this one came from showed wrong; goals are no longer shown it">replaced: <s>' + esc(l.replaced) + '</s></div>' : '') + '</li>';
   }
 
   function lessonsHtml(st) {

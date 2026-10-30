@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The model that distills a goal's lessons is shown the earlier lessons
+  the goal was shown and the others closest to its objective, with their
+  ids, and may answer `"replaces": "<id>"` for a lesson the outcome showed
+  wrong or outdated. The new lesson then takes its place in
+  `~/.sleipnir/lessons.json` and keeps the retired text in a new optional
+  `replaced` field, which the web Memory page shows struck through. Only
+  a lesson the model was shown can be replaced. The distillation request
+  is longer by those lessons; no cached prompt changes.
+
 - `recall`'s query ranks its hits by Okapi BM25 over the archived turns
   instead of by how many query words a turn contains: a word every turn
   has (and a stopword such as "the") decides nothing, a rare identifier

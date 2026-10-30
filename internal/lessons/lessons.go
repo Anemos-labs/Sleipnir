@@ -13,7 +13,9 @@
 //     holds at most MaxLessons lessons and MaxFileBytes bytes;
 //   - the rendered block says that lessons are data saved by the harness, may be wrong, and that the person's instructions win;
 //   - every change is a read-modify-write under an exclusive lock and an atomic replace, so two sessions on one machine do not
-//     lose each other's updates, and a file that does not parse is an error, never overwritten.
+//     lose each other's updates, and a file that does not parse is an error, never overwritten;
+//   - a new lesson retires an existing one only when the outcome it came from showed that lesson wrong, the model that
+//     distilled it was shown that lesson, and it says so (Draft.Replaces); the retired text stays on the new lesson.
 package lessons
 
 import (
@@ -63,6 +65,10 @@ type Lesson struct {
 	Losses  int       `json:"losses"`
 	Created time.Time `json:"created"`
 	Last    time.Time `json:"last"` // last time it was added again, merged into, or reported on
+	// Replaced is the text of the lesson this one retired when it was saved, because the outcome it was learned from showed
+	// that lesson wrong or outdated (Draft.Replaces). It is kept so a person can see what changed and restore it; it is never
+	// shown to a model.
+	Replaced string `json:"replaced,omitempty"`
 }
 
 // Utility is the Laplace-smoothed win rate of the lesson's outcome reports: 0.5 with none, toward 1 with wins, toward 0 with losses.
@@ -76,6 +82,22 @@ type Draft struct {
 	Text    string `json:"text"`
 	Task    string `json:"task,omitempty"`
 	Project string `json:"project,omitempty"` // the key of the project the goal ran in
+	// Replaces is the id of an existing lesson the outcome showed wrong or outdated, which this one corrects: saving the draft
+	// removes it. The caller keeps only ids of lessons the distilling model was shown (DistillPrompt's existing).
+	Replaces string `json:"replaces,omitempty"`
+}
+
+// validID reports whether id has the shape of a lesson id.
+func validID(id string) bool {
+	if len(id) != 12 {
+		return false
+	}
+	for _, r := range id {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // validKind reports whether k is one of the lesson kinds.

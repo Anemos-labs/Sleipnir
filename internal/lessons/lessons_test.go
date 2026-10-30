@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -448,7 +449,7 @@ func TestParseDrafts(t *testing.T) {
 }
 
 func TestDistillPrompt(t *testing.T) {
-	p := DistillPrompt("Fix \x1b[31mthe build\u202e", "failed: turns used up", []string{"continue: tests fail", "", "blocked: needs a key"})
+	p := DistillPrompt("Fix \x1b[31mthe build\u202e", "failed: turns used up", []string{"continue: tests fail", "", "blocked: needs a key"}, nil)
 	for _, want := range []string{"GOAL (data", "Fix the build", "OUTCOME (data", "failed: turns used up", "- continue: tests fail\n- blocked: needs a key\n", `{"lessons":[]}`} {
 		if !strings.Contains(p, want) {
 			t.Errorf("prompt lacks %q:\n%s", want, p)
@@ -461,7 +462,7 @@ func TestDistillPrompt(t *testing.T) {
 	for i := range many {
 		many[i] = fmt.Sprintf("verdict-%d", i)
 	}
-	p = DistillPrompt("g", "reached", many)
+	p = DistillPrompt("g", "reached", many, nil)
 	if strings.Contains(p, "verdict-17\n") || !strings.Contains(p, "verdict-18\n") || !strings.Contains(p, "verdict-29\n") {
 		t.Errorf("not the last %d verdicts:\n%s", maxVerdicts, p)
 	}
@@ -721,5 +722,55 @@ func TestTerms(t *testing.T) {
 		if got[w] {
 			t.Errorf("terms keeps %q: %v", w, got)
 		}
+	}
+}
+
+// A draft that names an existing lesson in Replaces retires it once the draft is saved, and keeps its text in Replaced; a draft
+// merged into the very lesson it names retires nothing, and an id that is no lesson, or not an id at all, is ignored.
+func TestSaveRetiresTheLessonADraftReplaces(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	old := Draft{Kind: Pitfall, Text: "Vite cannot proxy websocket upgrades in development, so test sockets against a production build."}
+	keep := Draft{Kind: Strategy, Text: "Pin the Node version in CI to the one in the engines field of package.json."}
+	if _, err := s.Save(ctx, nil, []Draft{old, keep}); err != nil {
+		t.Fatal(err)
+	}
+	oldID := lessonID(old.Kind, old.Text)
+	fix := Draft{Kind: Strategy, Text: "Vite proxies websocket upgrades in development when the proxy entry sets ws: true.", Replaces: strings.ToUpper(oldID)}
+	r, err := s.Save(ctx, nil, []Draft{fix, {Kind: Strategy, Text: "Read the changelog of a major upgrade before bumping it.", Replaces: "ffffffffffff"}, {Kind: Pitfall, Text: "Never trust a cached lockfile.", Replaces: "../x"}})
+	if err != nil || r != (Saved{Added: 3, Replaced: 1}) {
+		t.Fatalf("Save = %+v, %v", r, err)
+	}
+	ls := mustLoad(t, s)
+	if len(ls) != 4 || slices.ContainsFunc(ls, func(l Lesson) bool { return l.ID == oldID }) {
+		t.Fatalf("the replaced lesson is still kept: %+v", ls)
+	}
+	at := slices.IndexFunc(ls, func(l Lesson) bool { return l.ID == lessonID(fix.Kind, fix.Text) })
+	if at < 0 || ls[at].Replaced != old.Text {
+		t.Fatalf("the new lesson does not keep what it replaced: %+v", ls)
+	}
+	// A repeat of a lesson that names itself merges and retires nothing.
+	keepID := lessonID(keep.Kind, keep.Text)
+	if r, err := s.Save(ctx, nil, []Draft{{Kind: keep.Kind, Text: keep.Text, Replaces: keepID}}); err != nil || r != (Saved{Merged: 1}) {
+		t.Fatalf("self-replace: %+v, %v", r, err)
+	}
+	if !slices.ContainsFunc(mustLoad(t, s), func(l Lesson) bool { return l.ID == keepID }) {
+		t.Fatal("a lesson that replaced itself is gone")
+	}
+}
+
+// The distiller is shown the earlier lessons with their ids, and only when there are some; its "replaces" is read when it is an id.
+func TestDistillShowsEarlierLessonsAndReadsReplaces(t *testing.T) {
+	earlier := []Lesson{{ID: "0123456789ab", Kind: Pitfall, Text: "Old advice."}, {ID: "bad", Kind: Pitfall, Text: "Not shown."}}
+	p := DistillPrompt("g", "reached", nil, earlier)
+	if !strings.Contains(p, "EARLIER LESSONS") || !strings.Contains(p, "- 0123456789ab [pitfall] Old advice.") || strings.Contains(p, "Not shown") {
+		t.Fatalf("prompt:\n%s", p)
+	}
+	if p := DistillPrompt("g", "reached", nil, nil); strings.Contains(p, "EARLIER LESSONS") {
+		t.Fatalf("no earlier lessons, no section:\n%s", p)
+	}
+	ds := ParseDrafts(`{"lessons":[{"kind":"strategy","text":"New advice.","replaces":"0123456789AB"},{"kind":"pitfall","text":"Other.","replaces":"rm -rf"}]}`)
+	if len(ds) != 2 || ds[0].Replaces != "0123456789ab" || ds[1].Replaces != "" {
+		t.Fatalf("drafts: %+v", ds)
 	}
 }

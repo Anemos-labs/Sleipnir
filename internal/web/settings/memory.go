@@ -252,6 +252,7 @@ func (s *service) memoryView(tc *tabCtx) wire.MemoryView {
 		v.Lessons.Lessons = append(v.Lessons.Lessons, wire.MemoryLesson{
 			ID: l.ID, Kind: l.Kind, Text: provider.SanitizeText(l.Text, lessons.MaxTextRunes*4), Task: provider.SanitizeText(l.Task, lessons.MaxTaskRunes*4),
 			Uses: l.Uses, Wins: l.Wins, Losses: l.Losses, Utility: l.Utility(), Created: rfc3339(l.Created), Last: rfc3339(l.Last),
+			Replaced: provider.SanitizeText(l.Replaced, lessons.MaxTextRunes*4),
 		})
 	}
 	return v
