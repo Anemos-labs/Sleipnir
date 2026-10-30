@@ -3,6 +3,7 @@ package agent_test
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -184,5 +185,103 @@ func TestThePersonIsToldWhyTheTextStoppedAndWentOn(t *testing.T) {
 	}
 	if len(got) != 1 || !strings.HasPrefix(got[0], "warn: ") || !strings.Contains(got[0], "(512 tokens)") || !strings.Contains(got[0], "1 of 2") {
 		t.Errorf("notices about the output limit = %q, want one warning that names the limit and the round", got)
+	}
+}
+
+// A response that is all reasoning and is cut off is not continued: asked to carry on, the model reasons again from the top and is
+// cut off again. It is told to take one step with a tool call.
+func TestAResponseCutOffWhileReasoningIsToldToTakeOneStep(t *testing.T) {
+	var mu sync.Mutex
+	var second []mock.Msg
+	requests := 0
+	r := newRig(t, rigOpts{noCompact: true}, func(c *mock.Call) mock.Reply {
+		mu.Lock()
+		defer mu.Unlock()
+		requests++
+		if requests == 1 {
+			return mock.Reply{Reasoning: "First the types, then the store, then every handler, then", Finish: "length"}
+		}
+		second = c.Messages
+		return mock.Reply{Text: "done."}
+	})
+	if _, err := r.agent.Run(context.Background(), "build it"); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 2 {
+		t.Fatalf("%d requests, want 2", requests)
+	}
+	last := second[len(second)-1]
+	if last.Role != "user" || !strings.Contains(last.Content, "while you were still reasoning") || !strings.Contains(last.Content, "one tool call") {
+		t.Errorf("the last message is %+v: a cut-off of reasoning alone asks for one step, not a continuation", last)
+	}
+	if strings.Contains(last.Content, "Continue from where it stopped") {
+		t.Errorf("the model was asked to continue its reasoning: %q", last.Content)
+	}
+	if got := nudges(t, r.agent); got != 1 {
+		t.Errorf("%d nudges in the thread, want 1", got)
+	}
+}
+
+// A response that writes the same call over and over is stopped as it streams, none of it runs, and the model is told why.
+func TestAResponseThatRepeatsOneCallIsStoppedAndNoneOfItRuns(t *testing.T) {
+	var mu sync.Mutex
+	var second []mock.Msg
+	requests := 0
+	r := newRig(t, rigOpts{noCompact: true}, func(c *mock.Call) mock.Reply {
+		mu.Lock()
+		defer mu.Unlock()
+		requests++
+		if requests == 1 {
+			var calls []mock.ToolCall
+			for i := range 30 {
+				calls = append(calls, mock.ToolCall{ID: "c" + strconv.Itoa(i), Name: "echo", Args: `{"n":1}`})
+			}
+			return mock.Reply{Text: "checking", ToolCalls: calls}
+		}
+		second = c.Messages
+		return mock.Reply{Text: "done."}
+	})
+	res, err := r.agent.Run(context.Background(), "check it")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requests != 2 || res.Text != "done." {
+		t.Fatalf("%d requests, answer %q: want the stopped response and a second one", requests, res.Text)
+	}
+	for _, tr := range r.agent.Thread().Snapshot().Turns {
+		for _, b := range tr.Blocks {
+			if b.Kind == core.BlockToolUse || b.Kind == core.BlockToolResult {
+				t.Fatalf("a call of the stopped response is in the thread: %+v", b)
+			}
+		}
+	}
+	last := second[len(second)-1]
+	if last.Role != "user" || !strings.Contains(last.Content, "same tool call again and again") {
+		t.Errorf("the last message is %+v: the model is told its response was stopped and why", last)
+	}
+}
+
+// Distinct calls are not repeats, however many: only copies of one call (same tool, same arguments) stop a response.
+func TestManyDistinctCallsAreNotARepeat(t *testing.T) {
+	var mu sync.Mutex
+	requests := 0
+	r := newRig(t, rigOpts{noCompact: true}, func(c *mock.Call) mock.Reply {
+		mu.Lock()
+		defer mu.Unlock()
+		requests++
+		if requests == 1 {
+			var calls []mock.ToolCall
+			for i := range 10 {
+				calls = append(calls, mock.ToolCall{ID: "c" + strconv.Itoa(i), Name: "echo", Args: `{"n":` + strconv.Itoa(i%5) + `}`})
+			}
+			return mock.Reply{Text: "checking", ToolCalls: calls}
+		}
+		return mock.Reply{Text: "done."}
+	})
+	if _, err := r.agent.Run(context.Background(), "check it"); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 2 {
+		t.Errorf("%d requests, want 2: ten calls with two copies each ran", requests)
 	}
 }

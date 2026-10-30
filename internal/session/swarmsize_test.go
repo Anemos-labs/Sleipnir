@@ -8,8 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/session"
 )
@@ -105,6 +108,8 @@ func TestRoleModelForAnUnknownRoleIsRefused(t *testing.T) {
 	// The mailman is a role only while its mode is on.
 	if _, err := build(map[string]string{"mailman": "other/small"}, false); err == nil {
 		t.Error("a mailman model was accepted with the mailman off")
+	} else if !strings.Contains(err.Error(), "the mailman is off") {
+		t.Errorf("the refusal of a mailman model does not say the mailman is off: %v", err)
 	}
 	for _, roleModels := range []map[string]string{{"reviewer": "other/small"}, {"manager": "other/big", "backend": "other/small"}} {
 		s, err := build(roleModels, false)
@@ -168,5 +173,28 @@ func TestEveryWorkerOfATeamMayWriteAtOnce(t *testing.T) {
 			t.Errorf("a team of %d workers may have %d writers at once, want %d", workers, got, want)
 		}
 		s.Close()
+	}
+}
+
+// A team that names its manager's model has named the session's model: the manager is the session's own agent, so a
+// team file with models.manager (or --role-model manager=…) needs no --model beside it.
+func TestManagerRoleModelIsTheSessionModelWhenNoneIsNamed(t *testing.T) {
+	repo := newRepo(t)
+	agent.RetryBase = time.Millisecond
+	ts := mock.New(mock.Config{}, func(*mock.Call) mock.Reply { return mock.Reply{Text: "ok"} }).Start()
+	defer ts.Close()
+	cfg := config.Defaults()
+	cfg.Providers = map[string]config.Provider{"other": {BaseURL: ts.URL}}
+	o := session.Options{Cwd: repo, Root: repo, Home: t.TempDir(), Dir: t.TempDir(), Config: cfg,
+		Mode: perm.ModeBypass, NoWeb: true, TrustProject: true, Swarm: true, Workers: 8,
+		RoleModels: map[string]string{"manager": "other/big"}}
+	t.Setenv("SLEIPNIR_MODEL", "")
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatalf("a team naming its manager's model did not start: %v", err)
+	}
+	defer s.Close()
+	if got := s.ModelRef(); got != "other/big" {
+		t.Errorf("session model = %q, want the manager's other/big", got)
 	}
 }

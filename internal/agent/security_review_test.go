@@ -122,7 +122,8 @@ func TestSec_S24_PerTurnToolCallsAndResultBytesAreCapped(t *testing.T) {
 		if len(c.Messages) <= 2 {
 			var tcs []mock.ToolCall
 			for i := 0; i < calls; i++ {
-				tcs = append(tcs, mock.ToolCall{ID: fmt.Sprintf("c%d", i), Name: "read", Args: `{"path":"x"}`})
+				// distinct paths: copies of one call would stop the response as a repeat before any cap
+				tcs = append(tcs, mock.ToolCall{ID: fmt.Sprintf("c%d", i), Name: "read", Args: fmt.Sprintf(`{"path":"x%d"}`, i)})
 			}
 			return mock.Reply{Text: "reading everything", ToolCalls: tcs}
 		}
