@@ -41,7 +41,8 @@ func TestAReviewersWholeReportIsKeptForTheManager(t *testing.T) {
 	if _, err := b.SendBack("mgr", task.ID, "check the svc clock too"); err != nil {
 		t.Fatal(err)
 	}
-	if cur, _ := b.Snapshot().Task(task.ID); cur.Report != "" {
+	// The reviewer, sent on with the feedback, may already have reported again ("ok"): only the old report must be gone.
+	if cur, _ := b.Snapshot().Task(task.ID); cur.Report == report {
 		t.Fatalf("a task sent back keeps its old report: %q", cur.Report)
 	}
 }

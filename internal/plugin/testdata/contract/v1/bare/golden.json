@@ -1,0 +1,17 @@
+{
+  "manifest": {
+    "id": "bare",
+    "title": "bare",
+    "description": "an installed plugin",
+    "category": "external",
+    "external": true,
+    "dir": "\u003cDIR\u003e",
+    "api": 1
+  },
+  "hooks": null,
+  "mcp": null,
+  "problems": [
+    "warning: plugin.json: no \"api\": it is read as plugin API 1; write \"api\": 1 to say which contract it was written for"
+  ],
+  "state": "on"
+}

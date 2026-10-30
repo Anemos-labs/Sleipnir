@@ -1,0 +1,144 @@
+{
+  "manifest": {
+    "id": "release-kit",
+    "title": "Release kit",
+    "description": "release notes, a release command, a reviewer role, a hook and a tool server",
+    "category": "external",
+    "requires": [
+      "skills",
+      "commands"
+    ],
+    "contributes": [
+      {
+        "kind": "skill",
+        "name": "release-notes"
+      },
+      {
+        "kind": "slash",
+        "name": "release"
+      },
+      {
+        "kind": "role",
+        "name": "release-reviewer"
+      },
+      {
+        "kind": "hook",
+        "name": "hooks.json"
+      },
+      {
+        "kind": "mcp",
+        "name": "notes"
+      },
+      {
+        "kind": "web.card",
+        "name": "card"
+      }
+    ],
+    "config_schema": {
+      "type": "object",
+      "properties": {
+        "channel": {
+          "type": "string",
+          "title": "Channel",
+          "description": "where releases are announced",
+          "default": "#releases"
+        },
+        "dry_run": {
+          "type": "boolean",
+          "title": "Dry run",
+          "default": true
+        },
+        "level": {
+          "type": "string",
+          "title": "Level",
+          "default": "minor",
+          "enum": [
+            "patch",
+            "minor",
+            "major"
+          ]
+        },
+        "ratio": {
+          "type": "number",
+          "title": "Ratio",
+          "default": 0.5
+        },
+        "retries": {
+          "type": "integer",
+          "title": "Retries",
+          "default": 2
+        }
+      }
+    },
+    "needs": [
+      {
+        "id": "gh",
+        "title": "GitHub CLI",
+        "required": true,
+        "commands": [
+          "gh"
+        ],
+        "paths": {
+          "unix": [
+            "/opt/homebrew/bin/gh"
+          ]
+        },
+        "version_args": [
+          "--version"
+        ],
+        "install": [
+          {
+            "id": "brew",
+            "title": "Homebrew",
+            "os": [
+              "darwin"
+            ],
+            "run": [
+              "brew",
+              "install",
+              "gh"
+            ]
+          }
+        ]
+      }
+    ],
+    "external": true,
+    "dir": "\u003cDIR\u003e",
+    "version": "1.2.0",
+    "api": 1
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "<DIR>/check.sh minor"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '#releases 2 true from <DIR>'"
+          }
+        ]
+      }
+    ]
+  },
+  "mcp": {
+    "notes": {
+      "command": "<DIR>/server",
+      "args": [
+        "--channel",
+        "x"
+      ]
+    }
+  },
+  "problems": [],
+  "state": "on"
+}

@@ -15,6 +15,56 @@ they do not indicate whether a change has been released.
   After `;`, `||`, a cd in a subshell, or past the end of the chain, the
   start directory still counts, as before.
 
+- A new built-in plugin, `harness` (on in the standard profile), adds the
+  `sleipnir` tool to every agent's tool list (one cache write on the next
+  turn). The agent the person talks to (a single agent or a team's
+  manager) uses it to drive Sleipnir's own features when asked: `run` a
+  slash command (`/scan`, `/research`, `/goal`, `/delivery`, `/jobs stop`;
+  `/status`, `/cost`, `/skills`, `/mcp`, `/jobs`, `/agents` answer at
+  once, the others run when its turn ends), `schedule` goals, list, check,
+  install, enable, disable and remove `plugins`, and `reload`: the session
+  starts again with its conversation when the turn ends, so plugin and
+  configuration changes apply. In the web interface and the terminal chat
+  the agent is then told to go on, with any plugin that did not start.
+  Changes go through the permission
+  engine as changes of state: they ask in the default mode, pass in bypass
+  and yolo, and are refused in plan mode. Commands that raise what a
+  session may do or spend stay the person's. The manager's and the single
+  agent's role prompts say to use it; a built-in skill, `sleipnir-plugin`,
+  says how to write a plugin.
+- External plugins name the plugin API they are written for with `"api"`
+  in `plugin.json` (none: 1). Sleipnir reads API 1; a plugin of a newer API
+  is in error with a reason that says to update Sleipnir, and the plugins
+  that need it are pending. `internal/plugin/testdata/contract` holds
+  fixture plugins of each supported API with golden files, and
+  `TestPluginContract` fails a change that would read them differently.
+  Built-in plugin ids that are renamed keep working in `requires`
+  (`plugin.RenamedPlugins`). The Plugins page and `/plugins` mark a plugin
+  installed or updated since the session started as `restart`. A plugin's
+  slash command answers to its own name (`/today` for `standup:today`)
+  when no other command ends the same way, as the expansion already did.
+- A page frame whose coalescing key is longer than the hub's 128 bytes
+  (the diff of a file under a long path) is sent with a shortened key
+  instead of being dropped as an invalid event.
+- The model that distills a goal's lessons is shown the earlier lessons
+  the goal was shown and the others closest to its objective, with their
+  ids, and may answer `"replaces": "<id>"` for a lesson the outcome showed
+  wrong or outdated. The new lesson then takes its place in
+  `~/.sleipnir/lessons.json` and keeps the retired text in a new optional
+  `replaced` field, which the web Memory page shows struck through. Only
+  a lesson the model was shown can be replaced. The distillation request
+  is longer by those lessons; no cached prompt changes.
+
+- `recall`'s query ranks its hits by Okapi BM25 over the archived turns
+  instead of by how many query words a turn contains: a word every turn
+  has (and a stopword such as "the") decides nothing, a rare identifier
+  or error message decides much. `recall(query=…, session="all")`
+  searches the 12 most recent earlier sessions of the project together,
+  each hit naming its session, for what was decided or tried before when
+  the agent does not know which session it was in. Only a capped preview
+  of each turn is held while ranking. The `recall` tool's description and
+  schema change, so the tool block's prompt bytes change once.
+
 - When a pool child's work merges, the members working on its siblings in
   trees of their own get a harness notice naming the merged task and saying
   that `task claim` on their own task brings it into their checkout.

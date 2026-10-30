@@ -1,10 +1,12 @@
 package session
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -142,4 +144,60 @@ func pastAgents(dir string) []string {
 		return []string{"none"}
 	}
 	return out
+}
+
+// maxSearchSessions bounds how many earlier sessions recall(session="all") searches: the most recent ones of this project.
+const maxSearchSessions = 12
+
+// searchPast is recall's PastSearch: the turns of the most recent earlier sessions of this project that match query, ranked
+// together by kv.Rank, each hit scoped by its session's id. who "" searches the agent the person talked to in each session.
+// Only a capped preview of each turn is held while ranking, never the turns. n is how many sessions were searched.
+func (s *Session) searchPast(who, query string, limit int) (hits []kv.Hit, n int, err error) {
+	dirs := s.EarlierSessions(maxSearchSessions)
+	if len(dirs) == 0 {
+		return nil, 0, fmt.Errorf("no earlier session of this project to search")
+	}
+	var docs []kv.Doc
+	for _, dir := range dirs {
+		docs = append(docs, pastDocs(dir, strings.TrimSpace(who))...)
+	}
+	return kv.Rank(docs, query, limit), len(dirs), nil
+}
+
+// pastDocs are the searchable turns of the session at dir: those of who, or with who "" of its manager, else its single agent.
+// A turn logged more than once counts once, as its last copy.
+func pastDocs(dir, who string) []kv.Doc {
+	scope := filepath.Base(dir)
+	want := []string{who}
+	if who == "" {
+		want = []string{managerAgent, soloAgent}
+	}
+	byAgent := map[string][]kv.Doc{}
+	at := map[string]map[core.TurnID]int{}
+	_ = events.Scan(filepath.Join(dir, "events.jsonl"), func(e events.Event) error {
+		if e.Type != events.TypeTurnAppend || !slices.Contains(want, e.Agent) {
+			return nil
+		}
+		var t core.Turn
+		if json.Unmarshal(e.Data, &t) != nil || t.ID <= 0 {
+			return nil
+		}
+		if at[e.Agent] == nil {
+			at[e.Agent] = map[core.TurnID]int{}
+		}
+		d := kv.NewDoc(scope, t)
+		if i, ok := at[e.Agent][t.ID]; ok {
+			byAgent[e.Agent][i] = d
+			return nil
+		}
+		at[e.Agent][t.ID] = len(byAgent[e.Agent])
+		byAgent[e.Agent] = append(byAgent[e.Agent], d)
+		return nil
+	}) // a log cut short by a crash still gives the turns before the cut
+	for _, a := range want {
+		if len(byAgent[a]) > 0 {
+			return byAgent[a]
+		}
+	}
+	return nil
 }

@@ -1,0 +1,48 @@
+{
+  "manifest": {
+    "id": "tidy",
+    "title": "tidy",
+    "description": "the Claude Code layout: a name, hooks under a hooks key, servers directly in .mcp.json",
+    "category": "external",
+    "contributes": [
+      {
+        "kind": "skill",
+        "name": "tidy"
+      },
+      {
+        "kind": "hook",
+        "name": "hooks.json"
+      },
+      {
+        "kind": "mcp",
+        "name": "tidy"
+      }
+    ],
+    "external": true,
+    "dir": "\u003cDIR\u003e",
+    "version": "0.1.0",
+    "api": 1
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "<DIR>/fmt.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "mcp": {
+    "tidy": {
+      "command": "<DIR>/tidy-server"
+    }
+  },
+  "problems": [
+    "warning: plugin.json: no \"api\": it is read as plugin API 1; write \"api\": 1 to say which contract it was written for"
+  ],
+  "state": "on"
+}
