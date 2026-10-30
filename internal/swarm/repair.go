@@ -74,7 +74,12 @@ func (s *Swarm) repairTick(now time.Time) {
 // result and evidence leave the board and remain in the event log; old submissions
 // cannot pass the new revision.
 func (b *Board) revise(by, id string, spec TaskSpec, reason string) error {
-	return b.mutate(by, "requeue", func(d *draft) error {
+	return b.mutate(by, "requeue", reviseOp(id, spec, reason))
+}
+
+// reviseOp is the board change of revise, so that it can be tried (Board.try) before the task's workers are stopped.
+func reviseOp(id string, spec TaskSpec, reason string) func(d *draft) error {
+	return func(d *draft) error {
 		i := taskIdx(d.Snapshot, id)
 		if i < 0 {
 			return fmt.Errorf("no task %s", id)
@@ -139,7 +144,7 @@ func (b *Board) revise(by, id string, spec TaskSpec, reason string) error {
 		}
 		d.setNewTask(t)
 		return d.put(i, t)
-	})
+	}
 }
 
 // reviseTask stops the current owner before revising its assignment, and reopens
@@ -162,6 +167,22 @@ func (t *taskTool) reviseTask(ctx context.Context, c *tools.Call, in taskIn) *to
 	}
 	if r := t.widenInPlace(c, in, task); r != nil {
 		return r
+	}
+	if in.Files != nil {
+		files, err := s.normScopes(in.Files)
+		if err != nil {
+			return tools.Errorf("%v", err)
+		}
+		in.Files = files
+	}
+	// A change the board would refuse (a parent with an unfinished child, a bad dependency) is refused before anyone is
+	// stopped: stopping first cancelled a pool's three members mid-request for a resolve that then failed.
+	op := reviseOp(in.ID, TaskSpec{Title: in.Title, Desc: in.Description, Kind: in.Kind, Files: in.Files, Deps: in.Deps}, in.Text)
+	if in.Action == "resolve" {
+		op = resolveOp(in.ID, in.Text)
+	}
+	if err := s.Board.try(op); err != nil {
+		return tools.Errorf("%v (nothing changed and nobody was stopped)", err)
 	}
 	owners := []string{task.Owner}
 	if task.Pool != nil {
@@ -209,13 +230,6 @@ func (t *taskTool) reviseTask(ctx context.Context, c *tools.Call, in taskIn) *to
 			return tools.Errorf("%v", err)
 		}
 		return text("%s complete: no longer needed (%s)", in.ID, in.Text)
-	}
-	if in.Files != nil {
-		files, err := s.normScopes(in.Files)
-		if err != nil {
-			return tools.Errorf("%v", err)
-		}
-		in.Files = files
 	}
 	if err := s.Board.revise(c.Env.Agent, in.ID, TaskSpec{Title: in.Title, Desc: in.Description, Kind: in.Kind, Files: in.Files, Deps: in.Deps}, in.Text); err != nil {
 		return tools.Errorf("%v", err)
@@ -326,7 +340,12 @@ func (s *Swarm) childRevised(by string, child Task, why string) error {
 
 // resolve records an explicit disposition without representing abandoned work as verified.
 func (b *Board) resolve(by, id, reason string) error {
-	return b.mutate(by, "finish", func(d *draft) error {
+	return b.mutate(by, "finish", resolveOp(id, reason))
+}
+
+// resolveOp is the board change of resolve, so that it can be tried (Board.try) before the task's workers are stopped.
+func resolveOp(id, reason string) func(d *draft) error {
+	return func(d *draft) error {
 		i := taskIdx(d.Snapshot, id)
 		if i < 0 {
 			return fmt.Errorf("no task %s", id)
@@ -349,7 +368,7 @@ func (b *Board) resolve(by, id, reason string) error {
 		t.Closure = closeAs(CloseUnneeded)
 		t.Result = cleanText(reason, maxResultRunes)
 		return d.put(i, t)
-	})
+	}
 }
 
 // dependsOn detects transitive dependency cycles before a revision is published.
