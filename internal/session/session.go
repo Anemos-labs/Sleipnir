@@ -730,6 +730,10 @@ func (s *Session) buildProvider(ctx context.Context) error {
 		return nil
 	}
 	ref, err := ResolveModel(s.cfg, o.Model)
+	if errors.Is(err, ErrNoModel) && o.Swarm && strings.TrimSpace(o.RoleModels["manager"]) != "" {
+		// A team that names its manager's model (--team, --role-model manager=…) needs no other: the session runs on it.
+		ref, err = ResolveModel(s.cfg, o.RoleModels["manager"])
+	}
 	if err != nil {
 		return err
 	}
