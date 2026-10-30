@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/cost"
@@ -600,6 +601,7 @@ func (a *Agent) callOn(ctx context.Context, prov provider.Provider, req *provide
 		if err != nil {
 			return nil, err
 		}
+		began := time.Now()
 		resp, err := prov.Do(ctx, req, on)
 		if resp != nil {
 			rel(&resp.Usage, err)
@@ -646,6 +648,8 @@ func (a *Agent) callOn(ctx context.Context, prov provider.Provider, req *provide
 		}
 		a.emit(events.TypeModelError, map[string]any{
 			"req": req.Label, "kind": pe.Kind.String(), "status": pe.Status, "attempt": attempt + 1, "delay_ms": delay.Milliseconds(),
+			// What failed and after how long, so that a log tells a connection cut after minutes of streaming from a refusal at once.
+			"error": clipError(err.Error()), "after_ms": time.Since(began).Milliseconds(),
 		})
 		if on != nil {
 			on(provider.Event{Kind: provider.EvReset})
@@ -657,6 +661,18 @@ func (a *Agent) callOn(ctx context.Context, prov provider.Provider, req *provide
 		}
 	}
 	return nil, last
+}
+
+// clipError is an error's text as a retry's event keeps it: at most 300 bytes, cut at a rune boundary.
+func clipError(s string) string {
+	if len(s) <= 300 {
+		return s
+	}
+	cut := 300
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "…"
 }
 
 // backoff computes bounded exponential retry delay with jitter and honors a larger Retry-After

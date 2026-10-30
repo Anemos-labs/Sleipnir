@@ -73,6 +73,25 @@ func (g *reviewGate) noteBegan(id string, rev uint64, at time.Time) {
 	}
 }
 
+// restoreEnded records at, a submission's time read from the log on resume, as the end of the work of t's assignment: replace
+// overwrites the time reviewSubmission recorded (the resume's own), otherwise an end already recorded (the submission before an
+// acceptance) is kept. A zero at changes nothing.
+func (g *reviewGate) restoreEnded(t Task, at time.Time, replace bool) {
+	if at.IsZero() {
+		return
+	}
+	key := t.ID + "#" + strconv.FormatUint(t.Rev, 10)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.ended == nil {
+		g.ended = map[string]time.Time{}
+	}
+	if _, ok := g.ended[key]; ok && !replace {
+		return
+	}
+	g.ended[key] = at
+}
+
 // beganAt is when a run first held the assignment of task id at rev, false when none has.
 func (g *reviewGate) beganAt(id string, rev uint64) (time.Time, bool) {
 	g.mu.Lock()
@@ -558,7 +577,7 @@ func (s *Swarm) staffingLines(snap *Snapshot) []string {
 	}
 	out = append(out, q...)
 	if roleLines+len(q) < maxStaffingLines && openTask(snap) {
-		if line := unplannedLine(s.unplannedIdle(snap, idle, held, ready, waiting)); line != "" {
+		if line := unplannedLine(s.unplannedIdle(snap, idle, held, ready, waiting), s.freeSlots(slots, used, order, ready, waiting)); line != "" {
 			out = append(out, line)
 		}
 	}
@@ -649,9 +668,38 @@ func (s *Swarm) unplannedIdle(snap *Snapshot, idle map[string][]string, held map
 	return out
 }
 
+// freeSlots returns, by role, how many writer slots of the team have no member while nothing is planned for their role: no ready
+// or queued task of it. Most are slots the manager never started; a retired member's slot counts too, since a spawn would fill it.
+// Read-only roles are left out (the review gate asks for the reviewer when it is due), and so is docs while auto_docs gives it its
+// work; nothing is returned in a shared tree at its writer limit, where spawnNew would refuse the spawn. A manager that never staffed
+// a role does not see it among the idle members: in a team run a manager gave packaging and the docs site to backend members, one
+// after the other, while the devops, tester and both frontend slots had never run.
+func (s *Swarm) freeSlots(slots, used map[string]int, order []string, ready []Task, waiting map[string][]string) map[string]int {
+	if !s.isolated() && s.activeWriters() >= s.cfg.MaxWriters {
+		return nil
+	}
+	planned := map[string]bool{}
+	for _, t := range ready {
+		planned[t.Role] = true
+	}
+	for r := range waiting {
+		planned[r] = true
+	}
+	out := map[string]int{}
+	for _, r := range order {
+		n := slots[r] - used[r]
+		if n <= 0 || planned[r] || s.roles[r].ReadOnly || r == DocsRole && s.AutoDocs() {
+			continue
+		}
+		out[r] = n
+	}
+	return out
+}
+
 // unplannedLine is the live-view line that names the idle members nothing is planned for (unplannedIdle), by role in role order and
-// by id within a role, and tells the manager to plan independent work for them or leave them idle; "" when there are none.
-func unplannedLine(byRole map[string][]string) string {
+// by id within a role, and the free writer slots with nothing planned for their role (freeSlots), and tells the
+// manager to plan independent work for them or leave them idle; "" when there are none.
+func unplannedLine(byRole map[string][]string, free map[string]int) string {
 	var groups []string
 	first := ""
 	for _, r := range roleKeys(byRole) {
@@ -669,12 +717,33 @@ func unplannedLine(byRole map[string][]string) string {
 		}
 		groups = append(groups, group)
 	}
+	spawn := "agent=" + first
+	for _, r := range roleKeysCount(free) {
+		n := free[r]
+		slot := "slot"
+		if n > 1 {
+			slot = "slots"
+		}
+		groups = append(groups, fmt.Sprintf("%d %s %s free", n, r, slot))
+		if first == "" {
+			first, spawn = r, "role="+r
+		}
+	}
 	if len(groups) == 0 {
 		return ""
 	}
 	return fmt.Sprintf("idle with nothing planned for them: %s: plan the next independent work for them (task create with file scopes "+
-		"disjoint from the open tasks, then spawn agent=%s task=<id>), or leave them idle if nothing independent remains",
-		strings.Join(groups, "; "), first)
+		"disjoint from the open tasks, then spawn %s task=<id>), or leave them idle if nothing independent remains",
+		strings.Join(groups, "; "), spawn)
+}
+
+// roleKeysCount is roleKeys for a count by role: the roles in role order.
+func roleKeysCount(m map[string]int) []string {
+	keys := make(map[string][]string, len(m))
+	for r := range m {
+		keys[r] = nil
+	}
+	return roleKeys(keys)
 }
 
 // queuedLines tell the manager, per role and at most room lines, which ready tasks already wait in the spawn queue for a free member
