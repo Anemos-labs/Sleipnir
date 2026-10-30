@@ -342,11 +342,16 @@ func (t *webTab) carryOn(s *session.Session, c carryOn) {
 		if g := t.goals.State(); g == nil || g.Paused == "" {
 			return
 		}
-		if _, err := t.goalAction(t.ctx, s, wire.GoalRequest{Action: "resume"}, false); err != nil {
+		before, said := "", "the goal goes on: it was active when the models changed"
+		if c.reload {
+			text, why := reloadCarry(s, c.why)
+			before, said = text, "the goal goes on; "+why
+		}
+		if err := t.resumeGoal(before); err != nil {
 			t.sys("⚠", "could not resume the goal: "+err.Error())
 			return
 		}
-		t.sys("↺", "the goal goes on: it was active when the models changed")
+		t.sys("↺", said)
 	case c.turn && s.Resumed():
 		text, said := carryOnText, "the team goes on: it was working when the models changed"
 		if c.reload {

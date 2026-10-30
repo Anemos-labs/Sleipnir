@@ -1466,19 +1466,31 @@ func (t *webTab) goalAction(ctx context.Context, s *session.Session, req wire.Go
 		case g.Paused == "":
 			return false, werr(http.StatusConflict, "not_paused", "the goal is not paused")
 		}
-		_, _, _, err := t.enqueue(queued{text: "/goal resume", op: func(ctx context.Context, s *session.Session) {
-			next, err := t.goals.Resume(ctx, s, func(e goalEvent) { t.goalEvent(s, e) })
-			if err != nil {
-				return
-			}
-			webAction(s, "goal", "resume")
-			if next != "" {
-				t.turn(ctx, s, next, "", false)
-			}
-		}})
+		err := t.resumeGoal("")
 		return err == nil, err
 	}
 	return false, werr(http.StatusBadRequest, "bad_request", "the action is set, pause, resume or clear")
+}
+
+// resumeGoal queues the resume of the paused goal. before, when set, goes ahead of the goal's next prompt in the same turn (what a
+// reload the agent asked for tells it), or is a turn of its own when the goal ends as it resumes.
+func (t *webTab) resumeGoal(before string) error {
+	_, _, _, err := t.enqueue(queued{text: "/goal resume", op: func(ctx context.Context, s *session.Session) {
+		next, err := t.goals.Resume(ctx, s, func(e goalEvent) { t.goalEvent(s, e) })
+		if err != nil {
+			return
+		}
+		webAction(s, "goal", "resume")
+		switch {
+		case next != "" && before != "":
+			t.turn(ctx, s, before+"\n\n"+next, "", false)
+		case next != "":
+			t.turn(ctx, s, next, "", false)
+		case before != "": // the goal ended as it resumed (its last turn met it): the agent is still told
+			t.turn(ctx, s, before, "", false)
+		}
+	}})
+	return err
 }
 
 // ---- session settings ------------------------------------------------------------------------------------------------------

@@ -24,6 +24,22 @@ func IsGitSource(src string) bool {
 // The plugin stays off until it is turned on. An id already installed is
 // refused (Remove it first). Symbolic links in a copied directory are skipped.
 func Install(ctx context.Context, home, src string) (Manifest, error) {
+	return InstallWith(ctx, home, src, InstallOptions{})
+}
+
+// InstallOptions are what InstallWith adds to Install.
+type InstallOptions struct {
+	// Replace installs over a plugin of the same id. The installed copy is
+	// kept until the new one is fetched, read and checked, and is put back
+	// when the new one cannot take its place.
+	Replace bool
+	// Check, when set, reads the fetched copy (a directory) before it is
+	// installed; an error refuses it and leaves what is installed as it was.
+	Check func(dir string) error
+}
+
+// InstallWith is Install with options.
+func InstallWith(ctx context.Context, home, src string, o InstallOptions) (Manifest, error) {
 	base := UserDir(home)
 	if err := os.MkdirAll(base, 0o700); err != nil {
 		return Manifest{}, err
@@ -60,9 +76,30 @@ func Install(ctx context.Context, home, src string) (Manifest, error) {
 			return Manifest{}, fmt.Errorf("id %q is a built-in plugin's", m.ID)
 		}
 	}
+	if o.Check != nil {
+		if err := o.Check(stage); err != nil {
+			return Manifest{}, err
+		}
+	}
 	dst := filepath.Join(base, m.ID)
 	if _, err := os.Stat(dst); err == nil {
-		return Manifest{}, &InstalledError{ID: m.ID, Dir: dst}
+		if !o.Replace {
+			return Manifest{}, &InstalledError{ID: m.ID, Dir: dst}
+		}
+		old := filepath.Join(tmp, "old") // removed with tmp once the new copy is in place
+		if err := os.Rename(dst, old); err != nil {
+			return Manifest{}, err
+		}
+		if err := os.Rename(stage, dst); err != nil {
+			_ = os.Rename(old, dst)
+			return Manifest{}, err
+		}
+		m, err := LoadDir(dst)
+		if err != nil {
+			_ = os.RemoveAll(dst)
+			_ = os.Rename(old, dst)
+		}
+		return m, err
 	}
 	if err := os.Rename(stage, dst); err != nil {
 		return Manifest{}, err

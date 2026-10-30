@@ -129,11 +129,18 @@ func Check(dir string, known []string) (Manifest, []Problem) {
 		}
 	}
 	if m.Config != nil {
-		for name, f := range m.Config.Properties {
-			switch f.Type {
-			case "string", "number", "integer", "boolean":
+		names := make([]string, 0, len(m.Config.Properties))
+		for name := range m.Config.Properties {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			f := m.Config.Properties[name]
+			switch {
+			case f.Type == "string" || f.Type == "number" || f.Type == "integer" || f.Type == "boolean":
+			case len(f.Enum) > 0: // a choice, which the Plugins page shows whatever its type says
 			default:
-				add(true, ManifestFile, "setting %q has type %q; a setting is string, number, integer or boolean", name, f.Type)
+				add(true, ManifestFile, "setting %q has type %q; a setting is string, number, integer or boolean, or a choice with an enum list", name, f.Type)
 			}
 		}
 	}

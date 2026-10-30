@@ -459,13 +459,18 @@ func (t harnessTool) plugins(ctx context.Context, in harnessInput, cwd string, a
 		if r := ask(what); r != nil {
 			return r
 		}
-		m, err := plugin.Install(ctx, home, src)
-		var dup *plugin.InstalledError
-		if errors.As(err, &dup) && in.Replace {
-			if _, err = plugin.Remove(home, dup.ID); err == nil {
-				m, err = plugin.Install(ctx, home, src)
+		known := t.knownIDs()
+		check := func(dir string) error { // what is fetched is what is checked: a git source is read here for the first time
+			_, problems := plugin.Check(dir, known)
+			for _, p := range problems {
+				if p.Error {
+					return fmt.Errorf("%s is not ready:\n%s", src, checkReport(dir, known))
+				}
 			}
+			report = checkReport(dir, known)
+			return nil
 		}
+		m, err := plugin.InstallWith(ctx, home, src, plugin.InstallOptions{Replace: in.Replace, Check: check})
 		if err != nil {
 			return tools.Errorf("plugins install: %v", err)
 		}
@@ -496,11 +501,12 @@ func (t harnessTool) plugins(ctx context.Context, in harnessInput, cwd string, a
 			return r
 		}
 		if op == "remove" {
-			_ = t.toggle(id, "reset")
 			dir, err := plugin.Remove(home, id)
 			if err != nil {
 				return tools.Errorf("plugins remove: %v", err)
 			}
+			// The person's choice for it goes with it: a choice for a plugin that is not there is a warning at every start.
+			_ = config.Save(config.UserConfigPath(home), map[string]any{"plugins": map[string]any{"enabled": map[string]any{id: nil}}})
 			return &tools.Result{Text: "removed " + id + " (" + dir + "); reload to stop it in this session"}
 		}
 		if err := t.toggle(id, op); err != nil {

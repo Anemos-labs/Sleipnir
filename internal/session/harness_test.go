@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/tools"
@@ -57,11 +60,17 @@ func harnessSession(t *testing.T) (*session.Session, func(args map[string]any) *
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { s.Close() })
+	return s, harnessCaller(t, s)
+}
+
+// harnessCaller calls the sleipnir tool of s as the agent the person talks to.
+func harnessCaller(t *testing.T, s *session.Session) func(args map[string]any) *tools.Result {
+	t.Helper()
 	tool, ok := s.Registry.Get(session.HarnessToolName)
 	if !ok {
 		t.Fatalf("the standard profile has no %s tool: %v", session.HarnessToolName, specNames(s))
 	}
-	call := func(args map[string]any) *tools.Result {
+	return func(args map[string]any) *tools.Result {
 		t.Helper()
 		b, _ := json.Marshal(args)
 		res, err := tool.Run(context.Background(), &tools.Call{Name: session.HarnessToolName, Input: b, Env: &tools.Env{Agent: "main", Role: "worker", Perm: s.Perm, Cwd: s.Cwd()}})
@@ -70,7 +79,6 @@ func harnessSession(t *testing.T) (*session.Session, func(args map[string]any) *
 		}
 		return res
 	}
-	return s, call
 }
 
 func TestHarnessToolSchedulesGoals(t *testing.T) {
@@ -219,5 +227,41 @@ func TestHarnessToolInstallsAPluginOfItsOwn(t *testing.T) {
 	}
 	if c, ok := s2.Commands().Get("today"); !ok || c.Name != "standup:today" {
 		t.Errorf("the plugin's command answers to its own name too: %+v", c)
+	}
+
+	// Removing it takes the person's choice for it too, so the next start has no choice for a plugin that is not there.
+	call2 := harnessCaller(t, s2)
+	if res := call2(map[string]any{"action": "plugins", "op": "remove", "id": "standup"}); res.IsError {
+		t.Fatalf("remove: %+v", res)
+	}
+	if b, _ := os.ReadFile(config.UserConfigPath(s2.Home())); strings.Contains(string(b), "standup") {
+		t.Errorf("the person's configuration still names the removed plugin:\n%s", b)
+	}
+}
+
+// A plugin installed from a git repository is checked as it was fetched: one written for a newer plugin API is not installed.
+func TestHarnessToolChecksAPluginFromGit(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	s, call := harnessSession(t)
+	repo := filepath.Join(t.TempDir(), "later.git")
+	if err := os.MkdirAll(repo, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "plugin.json"), []byte(`{"id":"later","api":99}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"init", "-q"}, {"add", "."}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x"}} {
+		if out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	res := call(map[string]any{"action": "plugins", "op": "install", "source": repo})
+	if !res.IsError || !strings.Contains(res.Text, "not ready") || !strings.Contains(res.Text, "99") {
+		t.Fatalf("install of a newer API's plugin: %+v", res)
+	}
+	if _, err := os.Stat(filepath.Join(plugin.UserDir(s.Home()), "later")); err == nil {
+		t.Error("the refused plugin was installed")
 	}
 }

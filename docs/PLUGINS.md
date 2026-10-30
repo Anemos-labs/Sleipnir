@@ -179,8 +179,8 @@ hello/
   reserved, and a built-in id cannot be taken.
 - `api`: the plugin API the plugin is written for ([below](#updates-and-the-plugin-api)); 1 when it is left out.
 - `requires`: plugin ids that must be on; otherwise the plugin is pending.
-- `config`: the settings the Plugins page shows a form for (`string`, `number`, `integer`, `boolean`, and `enum` for a
-  choice). `sleipnir plugins set hello greeting=Hi` writes one from the terminal.
+- `config`: the settings the Plugins page shows a form for (`string`, `number`, `integer` or `boolean`; a setting with an
+  `enum` list is a choice of its values). `sleipnir plugins set hello greeting=Hi` writes one from the terminal.
 - `needs`: the programs and tool servers the plugin uses ([above](#programs-a-plugin-needs)), each
   `{"id", "title", "description", "homepage", "required", "commands": ["prog", "sibling"], "paths": {"darwin"|"linux"|"windows"|"unix": ["~/bin/prog", "/opt/prog-*/prog"]},
   "version_args": ["--version"], "mcp": {"name", "command", "args"}, "install": [{"id", "title", "os": ["darwin"], "env": {"NAME": ["cmd", "arg"]}, "setup": [["cmd", "arg"]], "run": ["brew", "install", "prog"], "connect": bool, "note"}]}`. `setup` are commands run in order before `run`, such as adding the package source it installs from; each must be safe to run again (`flatpak remote-add --if-not-exists`). `env` gives the method's commands environment variables, each read from the last `NAME=value` line its command prints; one already set in the environment is kept and its command not run.

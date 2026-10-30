@@ -60,7 +60,7 @@ tools.
 - `version`: raise it on every change you install with `replace`.
 - `requires`: plugin ids that must be on (`skills` for skills, `commands` for commands, `agents` for roles, `hooks` for hooks,
   `mcp` for tool servers).
-- `config`: settings the Plugins page shows a form for (`string`, `number`, `integer`, `boolean`, `enum`).
+- `config`: settings the Plugins page shows a form for (`string`, `number`, `integer`, `boolean`; an `enum` list makes a choice).
 - `needs`: leave it out unless the plugin runs a program the person may not have installed; check says what is wrong with one.
 
 In `hooks.json` and `mcp.json`, `${SLEIPNIR_PLUGIN_ROOT}` is the plugin's installed directory and `${setting:NAME}` a setting's

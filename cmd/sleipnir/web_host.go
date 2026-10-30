@@ -382,14 +382,29 @@ func publishFrame(hub *web.Hub, f wire.Frame) error {
 const maxFrameKey = 128
 
 // frameKey is a frame's coalescing key as the hub takes it: a key longer than the hub's bound (a diff of a file deep in a long path)
-// keeps its head and ends with a digest of the whole, so the frame is sent and still replaces only the frames of the same key.
+// keeps its head and ends with a digest of the whole, so the frame is sent and still replaces only the frames of the same key. A key
+// of the bound's length that already ends the way a shortened key does is shortened too, so no key is sent as another's short form.
 func frameKey(k string) string {
-	if len(k) <= maxFrameKey {
+	if len(k) < maxFrameKey || len(k) == maxFrameKey && !shortKeyTail(k) {
 		return k
 	}
 	sum := sha256.Sum256([]byte(k))
 	tail := "#" + hex.EncodeToString(sum[:16])
 	return k[:maxFrameKey-len(tail)] + tail
+}
+
+// shortKeyTail reports whether k ends as frameKey ends a key it shortens: "#" and 32 lowercase hex digits.
+func shortKeyTail(k string) bool {
+	const n = 1 + 32
+	if len(k) < n || k[len(k)-n] != '#' {
+		return false
+	}
+	for _, c := range k[len(k)-n+1:] {
+		if !('0' <= c && c <= '9' || 'a' <= c && c <= 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // Publish sends a frame to every page. A question whose ask could not be sent (too large for the stream, which the bridge checks

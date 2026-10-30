@@ -1,7 +1,9 @@
 package plugin
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"os"
 	"path/filepath"
@@ -191,7 +193,7 @@ func TestCheckFindsWhatWouldGoWrong(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write(ManifestFile, `{"id":"oops","api":1,"requries":["skills"],"requires":["no-such-plugin"],"config":{"type":"object","properties":{"n":{"type":"list"}}}}`)
+	write(ManifestFile, `{"id":"oops","api":1,"requries":["skills"],"requires":["no-such-plugin"],"config":{"type":"object","properties":{"z":{"type":"map"},"n":{"type":"list"},"pick":{"type":"enum","enum":["a","b"]}}}}`)
 	write("hooks.json", `{"SessionStart": [`)
 	write("skills/nodesc/SKILL.md", "---\nname: nodesc\n---\nbody\n")
 	write("commands/open.md", "---\ndescription: never closed\n")
@@ -205,5 +207,45 @@ func TestCheckFindsWhatWouldGoWrong(t *testing.T) {
 		if !strings.Contains(all, want) {
 			t.Errorf("missing %q in:\n%s", want, all)
 		}
+	}
+	if n, z := strings.Index(all, `setting "n"`), strings.Index(all, `setting "z"`); n < 0 || z < n {
+		t.Errorf("the settings are not reported in order of name:\n%s", all)
+	}
+	if strings.Contains(all, `setting "pick"`) {
+		t.Errorf("a choice (an enum list) is a setting the Plugins page shows:\n%s", all)
+	}
+}
+
+// A replacement takes the installed plugin's place only once it is fetched and checked: one that is refused leaves the installed
+// copy as it was.
+func TestReplaceKeepsTheInstalledPluginUntilTheNewOneIsReady(t *testing.T) {
+	home := t.TempDir()
+	src := t.TempDir()
+	write := func(version string) {
+		if err := os.WriteFile(filepath.Join(src, ManifestFile), []byte(`{"id":"keep","version":"`+version+`"}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("1.0.0")
+	if _, err := Install(context.Background(), home, src); err != nil {
+		t.Fatal(err)
+	}
+	write("2.0.0")
+	if _, err := Install(context.Background(), home, src); err == nil {
+		t.Fatal("a second install without Replace was not refused")
+	}
+	refuse := func(string) error { return errors.New("not ready") }
+	if _, err := InstallWith(context.Background(), home, src, InstallOptions{Replace: true, Check: refuse}); err == nil {
+		t.Fatal("a replacement its check refused was installed")
+	}
+	if m, err := LoadDir(filepath.Join(UserDir(home), "keep")); err != nil || m.Version != "1.0.0" {
+		t.Fatalf("after a refused replacement the installed plugin is %+v %v", m, err)
+	}
+	m, err := InstallWith(context.Background(), home, src, InstallOptions{Replace: true})
+	if err != nil || m.Version != "2.0.0" {
+		t.Fatalf("replace: %+v %v", m, err)
+	}
+	if ents, _ := os.ReadDir(UserDir(home)); len(ents) != 1 {
+		t.Errorf("the plugin directory holds %d entries after a replacement", len(ents))
 	}
 }
