@@ -2,7 +2,9 @@
  * (GET .../scan/SLUG: its findings with their traces, verdicts and reproductions, its attack surface and the shards' maps),
  * starts a scan of the project (POST .../scan {action: start}) or of a repository it clones first (POST /api/scan/clone, then the
  * New session dialog, filled in, starts a sandboxed team there), and acts on a finding when the person asks: an issue written up
- * for them to read and edit before it is opened, or a goal that has the team fix it.
+ * for them to read and edit before it is opened, or a goal that has the team fix it. A scan can be rerun (POST .../scan {action:
+ * rerun}: the same code at HEAD, optionally pulled first), and the selected scan is compared with an earlier one (GET
+ * .../scan/SLUG/compare?since=): its findings as new, fixed and unchanged.
  *
  * Everything a scan holds (titles, claims, quotes, notes, scripts, their output) was written by agents reading untrusted code:
  * it goes through esc() or textContent, never into a URL or an attribute unescaped. */
@@ -24,6 +26,9 @@
   const sevPill = s => '<span class="sc-sev sc-' + esc(SEV.includes(s) ? s : 'low') + '">' + esc(s || '?') + '</span>';
   /** Where a finding does harm: the last step of its trace. */
   const sinkOf = f => { const t = arr(f.trace); return t.length ? t[t.length - 1].file + ':' + t[t.length - 1].line : ''; };
+  /** The kinds of change between two scans, in the order the server gives them, with what each one means. */
+  const DELTAS = [['new', 'New', 'found by this scan, not by the earlier one'], ['fixed', 'Fixed', 'found by the earlier scan; this one, finished, did not find it again or its verifiers rejected it'],
+    ['pending', 'Not confirmed again yet', 'found by the earlier scan; this one is still running and has not confirmed it'], ['unchanged', 'Unchanged', 'found by both scans']];
   const proofWord = f => { const p = arr(f.proofs); if (!p.length) return ''; return p.some(x => x.outcome === 'reproduced') ? 'reproduced' : p[p.length - 1].outcome; };
 
   function runHtml(r, sel) {
@@ -31,7 +36,7 @@
     const steps = PHASES.map(([id, label, about], i) => '<li class="' + (i < at || done ? 'done' : i === at ? 'cur' : '') + '" title="' + esc(about) + '"><i></i><span>' + esc(label) + '</span></li>').join('');
     const sev = SEV.filter(s => r.bySeverity && r.bySeverity[s]).map(s => sevPill(s) + '<b class="mono">' + r.bySeverity[s] + '</b>').join(' ');
     return '<button type="button" class="sc-run' + (r.slug === sel ? ' sel' : '') + '" data-scan="' + esc(r.slug) + '">' +
-      '<span class="sc-rtop"><b class="mono">' + esc(r.slug) + '</b><span class="chip">' + esc(r.depth) + '</span>' + (r.active ? '<span class="chip rs-live">this session</span>' : '') + (done ? '<span class="chip rs-ok">done</span>' : '') + '</span>' +
+      '<span class="sc-rtop"><b class="mono">' + esc(r.slug) + '</b><span class="chip">' + esc(r.depth) + '</span>' + (r.active ? '<span class="chip rs-live">this session</span>' : '') + (r.previous ? '<span class="chip" title="a rerun of ' + esc(r.previous) + '">rerun</span>' : '') + (done ? '<span class="chip rs-ok">done</span>' : '') + '</span>' +
       '<span class="sc-rmeta mono dim">' + esc(short(r.commit)) + (r.focus ? ' · ' + esc(r.focus) : '') + ' · ' + plural(r.files, 'file') + ' · ' + plural(r.funcs, 'function') + ' · ' + plural(r.shards, 'shard') + ' · team of ' + r.team + '</span>' +
       '<ol class="rs-steps sc-steps">' + steps + '</ol>' +
       '<span class="sc-rnums">' + r.mapped + '/' + r.shards + ' mapped · ' + r.hunted + '/' + r.shards + ' hunted · ' + plural(r.leads, 'lead') + ' · ' + r.confirmed + ' confirmed' + (r.unproven ? ' · ' + r.unproven + ' unproven' : '') + (r.rejected ? ' · ' + r.rejected + ' rejected' : '') + '</span>' +
@@ -46,6 +51,31 @@
       (pw ? '<span class="chip ' + (pw === 'reproduced' ? 'rs-ok' : '') + '">' + esc(pw) + '</span>' : '') + (f.reject_reason ? '<span class="chip">' + esc(f.reject_reason) + '</span>' : '') + '</button>';
   }
 
+  /** The comparison of the selected scan with an earlier one: a picker of the scan to compare with, the counts, and a row per
+   * finding by kind. A new or unchanged finding opens as this scan has it; a fixed or pending one as the earlier scan had it. */
+  function compareHtml(d, cmp, runs, since, err) {
+    const others = arr(runs).filter(r => r.slug !== d.slug && r.created <= d.created);
+    if (!others.length) return '';
+    const sel = cmp ? cmp.old : since;
+    const opts = '<option value=""' + (!sel ? ' selected' : '') + '>' + (cmp || !err ? 'the scan it reruns, or the last one of the same code' : 'choose a scan') + '</option>' +
+      others.map(r => '<option value="' + esc(r.slug) + '"' + (r.slug === sel && since ? ' selected' : '') + '>' + esc(r.slug) + ' · ' + esc(short(r.commit)) + '</option>').join('');
+    const pick = '<label class="sc-cmpwith"><span class="dim">compared with</span> <select class="sc-in sc-cmpsel" data-sc-since aria-label="the scan to compare with">' + opts + '</select></label>';
+    if (!cmp) return '<section class="sc-cmp"><div class="sc-cmph"><h3>Changes</h3>' + pick + '</div>' + (err ? '<p class="dim">' + esc(err) + '</p>' : '<p class="dim">comparing…</p>') + '</section>';
+    const c = cmp.counts || {}, ds = arr(cmp.deltas);
+    const sum = DELTAS.filter(([k]) => c[k] || k !== 'pending').map(([k, label]) => '<span class="sc-dn sc-d-' + k + '"><b>' + (c[k] || 0) + '</b>' + esc(label.toLowerCase()) + '</span>').join('');
+    const groups = DELTAS.map(([k, title, about]) => {
+      const rows = ds.map((x, i) => [x, i]).filter(([x]) => x.kind === k);
+      if (!rows.length) return '';
+      const html = rows.map(([x, i]) => { const f = x.finding || {}; return '<button type="button" class="sc-f" data-sc-delta="' + i + '">' + sevPill(f.severity) + '<span class="mono sc-fid">' + esc(f.id) + '</span>' +
+        '<span class="sc-ft"><b>' + esc(f.title) + '</b><span class="mono dim">' + esc(f.category) + ' · ' + esc(sinkOf(f)) + '</span></span>' + (x.note && x.kind !== 'pending' || /^filed again/.test(x.note || '') ? '<span class="chip">' + esc(x.note) + '</span>' : '') + '</button>'; }).join('');
+      return k === 'unchanged' ? '<details class="sc-group"><summary><h3>' + esc(title) + ' <span class="dim">' + rows.length + '</span></h3> <span class="dim">' + esc(about) + '</span></summary>' + html + '</details>'
+        : '<section class="sc-group"><h3>' + esc(title) + ' <span class="dim">' + rows.length + '</span></h3><p class="dim">' + esc(about) + '</p>' + html + '</section>';
+    }).join('');
+    return '<section class="sc-cmp"><div class="sc-cmph"><h3>Changes since <span class="mono">' + esc(cmp.old) + '</span></h3>' + pick + '</div>' +
+      '<p class="dim sc-cmpc">commit <span class="mono">' + esc(short(cmp.oldCommit)) + '</span> → <span class="mono">' + esc(short(cmp.newCommit)) + '</span>' + (cmp.final ? '' : ' · this scan is still running: a finding it has not confirmed yet is not counted as fixed') + '</p>' +
+      '<div class="sc-dnums">' + sum + '</div>' + (groups || '<p class="dim">Neither scan has a finding.</p>') + '</section>';
+  }
+
   function detailHtml(d) {
     const c = d.counts || {}, fs = arr(d.findings);
     const head = '<div class="sc-dhead"><span class="mono">' + esc(d.slug) + '</span><span class="dim"> · commit <span class="mono">' + esc(short(d.commit)) + '</span>' + (d.focus ? ' · ' + esc(d.focus) : '') +
@@ -56,13 +86,13 @@
     const groups = STATUS.map(([st, title, about]) => {
       const list = fs.filter(f => f.status === st); if (!list.length) return '';
       const rows = list.map(findingRow).join('');
-      return st === 'rejected' ? '<details class="sc-group"><summary><h3>' + esc(title) + ' <span class="dim">' + list.length + '</span></h3><span class="dim">' + esc(about) + '</span></summary>' + rows + '</details>'
+      return st === 'rejected' ? '<details class="sc-group"><summary><h3>' + esc(title) + ' <span class="dim">' + list.length + '</span></h3> <span class="dim">' + esc(about) + '</span></summary>' + rows + '</details>'
         : '<section class="sc-group"><h3>' + esc(title) + ' <span class="dim">' + list.length + '</span></h3><p class="dim">' + esc(about) + '</p>' + rows + '</section>';
     }).join('') || '<p class="stubnote">No lead yet: the team maps the shards first, then hunts them. Findings appear here as soon as verifiers confirm them.</p>';
     const probs = arr(d.problems);
     const needs = d.phase === 'done' ? '' : '<details class="sc-needs"><summary>What the scan still needs <span class="dim">' + (probs.length + (d.moreProblems || 0)) + '</span></summary><ul>' +
       probs.map(p => '<li><span class="chip">' + esc(p.phase) + '</span> ' + esc(p.text) + '</li>').join('') + (d.moreProblems ? '<li class="dim">and ' + d.moreProblems + ' more</li>' : '') + '</ul></details>';
-    return head + nums + needs + groups + '<p class="dim sc-files">The report is rewritten as the scan goes: <span class="mono">' + esc(d.reportDir) + '</span> (REPORT.md, findings.json, findings.sarif, map.json).</p>';
+    return head + nums + needs + '<div data-sc-cmp></div>' + groups + '<p class="dim sc-files">The report is rewritten as the scan goes: <span class="mono">' + esc(d.reportDir) + '</span> (REPORT.md, findings.json, findings.sarif, map.json).</p>';
   }
 
   function surfaceHtml(d) {
@@ -104,8 +134,8 @@
   }
 
   /** The finding in full, with what the person can do with it: open an issue (written up, edited, then opened) or have the team fix it. */
-  function openFinding(S, d, f, reload) {
-    const v = arr(f.verdicts), p = arr(f.proofs), actionable = f.status === 'confirmed' || f.status === 'unproven';
+  function openFinding(S, d, f, reload, from) {
+    const v = arr(f.verdicts), p = arr(f.proofs), actionable = !from && (f.status === 'confirmed' || f.status === 'unproven');
     const trace = arr(f.trace).map((s, i) => '<li><div class="sc-step"><span class="mono">' + (i + 1) + '. ' + esc(s.file) + ':' + (s.line | 0) + '</span> ' + esc(s.note) + '</div><pre class="pre sc-q">' + esc(s.quote) + '</pre></li>').join('');
     const verdicts = v.map(x => '<li><b>' + esc(x.by) + '</b> <span class="dim">' + esc(x.role) + '</span> ' + (x.confirm ? '<span class="chip rs-ok">confirms</span>' : '<span class="chip">rejects: ' + esc(x.reason || '') + '</span>') + ' ' + esc(x.note) + '</li>').join('');
     const proofs = p.map(x => '<details class="sc-proof"><summary><b>' + esc(x.outcome) + '</b> <span class="dim">by ' + esc(x.by) + ', exit ' + (x.exit | 0) + ', ' + (x.seconds | 0) + 's' + (x.network ? ', with network' : '') + '</span></summary><h5>Script</h5><pre class="pre sc-q">' + esc(x.script) + '</pre><h5>Output</h5><pre class="pre sc-q">' + esc(x.output) + '</pre></details>').join('');
@@ -114,7 +144,7 @@
       '<p class="sc-meta">' + sevPill(f.severity) + ' <span class="mono">' + esc(f.category) + '</span> · reachability ' + esc(f.reach) + ' · exploitability ' + esc(f.exploit) + ' · impact ' + esc(f.impact) + ' · filed by ' + esc(f.by) + '</p>' +
       '<h4>Trace</h4><ol class="sc-trace">' + trace + '</ol>' + (verdicts ? '<h4>Verdicts</h4><ul class="sc-verdicts">' + verdicts + '</ul>' : '') + (proofs ? '<h4>Reproductions</h4>' + proofs : '') +
       (f.fix ? '<h4>Suggested fix</h4><p>' + esc(f.fix) + '</p>' : '') +
-      (actionable ? '<div class="row2 sc-acts"><button class="btn" type="button" data-sc-issue>Open issue…</button><button class="btn" type="button" data-sc-fix>Fix…</button></div>' : '<p class="stubnote">Only a confirmed finding can be written up or fixed.</p>') +
+      (actionable ? '<div class="row2 sc-acts"><button class="btn" type="button" data-sc-issue>Open issue…</button><button class="btn" type="button" data-sc-fix>Fix…</button></div>' : from ? '<p class="stubnote">As the earlier scan <span class="mono">' + esc(from) + '</span> found it.</p>' : '<p class="stubnote">Only a confirmed finding can be written up or fixed.</p>') +
       '<div class="sc-panel" data-sc-panel hidden></div></div>',
     onMount(body, sc) {
       const panel = $('[data-sc-panel]', body);
@@ -169,7 +199,7 @@
         '<div class="rs-depths" role="radiogroup" aria-label="depth"></div><div class="row2"><button class="btn pri" type="submit" id="scGo">Start the scan</button></div>' +
         '<div class="sc-clone" data-sc-clone role="status" aria-live="polite" hidden><div class="sc-cbar"><i></i></div><div class="sc-cline"><b data-sc-cphase></b> <span class="mono dim" data-sc-cline></span> <span class="mono dim sc-ctime" data-sc-ctime></span></div></div>' +
         '<p class="stubnote">The work is sized by the code, not by a clock: the scan splits it into shards of so many functions and lines, and asks for one agent per two shards, from 8 to 32.</p></form></section>' });
-    const st = { runs: [], depths: [], on: true, sandbox: false, box: null, depth: 'standard', sel: (params && params.scan) || '', detail: null, seq: 0, dseq: 0, sig: '', dsig: '' };
+    const st = { runs: [], depths: [], on: true, sandbox: false, box: null, depth: 'standard', sel: (params && params.scan) || '', detail: null, seq: 0, dseq: 0, sig: '', dsig: '', cmp: null, cmpErr: '', since: '', cseq: 0, csig: '' };
     const S = () => SL.sessions.active;
     const list = $('.sc-list', root), det = $('.sc-detail', root), surf = $('.sc-surface', root), depths = $('.rs-depths', root);
     function paint() {
@@ -183,13 +213,51 @@
       const d = st.detail, sig = JSON.stringify(d); if (sig === st.dsig) return; st.dsig = sig;
       if (det) det.innerHTML = d ? detailHtml(d) : '<p class="stubnote" style="padding:10px 12px;margin:0">' + (st.runs.length ? 'Pick a scan to see its findings.' : 'The findings of a scan appear here as verifiers confirm them.') + '</p>';
       if (surf) surf.innerHTML = d ? surfaceHtml(d) : '';
-      const ph = $('.sc-phase', root); if (ph) ph.innerHTML = d ? '<span class="chip' + (d.phase === 'done' ? ' rs-ok' : ' rs-live') + '">' + esc(d.phase) + '</span>' + exportHtml(S(), d.slug) : '';
+      const ph = $('.sc-phase', root); if (ph) ph.innerHTML = d ? '<span class="chip' + (d.phase === 'done' ? ' rs-ok' : ' rs-live') + '">' + esc(d.phase) + '</span>' +
+        '<button class="btn sm sc-rerun" type="button" data-sc-rerun title="scan the same code again at HEAD, then compare the two">Rerun…</button>' + exportHtml(S(), d.slug) : '';
+      st.csig = ''; paintCompare();
+    }
+    function paintCompare() {
+      const box = $('[data-sc-cmp]', root), d = st.detail; if (!box || !d) return;
+      const sig = JSON.stringify([st.cmp, st.cmpErr, st.since, st.runs.map(r => r.slug)]); if (sig === st.csig) return; st.csig = sig;
+      const focused = document.activeElement && document.activeElement.matches && document.activeElement.matches('[data-sc-since]');
+      box.innerHTML = compareHtml(d, st.cmp, st.runs, st.since, st.cmpErr);
+      if (focused) { const s = $('[data-sc-since]', box); if (s) s.focus(); }
+    }
+    async function loadCompare() {
+      const s = S(), d = st.detail; if (!s || !net || !d) return;
+      const mine = ++st.cseq, slug = d.slug;
+      if (!st.since && !d.previous && !st.runs.some(r => r.slug !== slug && r.created <= d.created && !r.review)) { st.cmp = null; st.cmpErr = ''; paintCompare(); return; }
+      const r = await net.get(net.tab(s, '/scan/' + encodeURIComponent(slug) + '/compare' + (st.since ? '?since=' + encodeURIComponent(st.since) : '')));
+      if (!sc.alive || mine !== st.cseq || !st.detail || st.detail.slug !== slug) return;
+      st.cmp = r.ok && r.data ? r.data : null; st.cmpErr = r.ok ? '' : (r.message || 'no earlier scan to compare with');
+      paintCompare();
+    }
+    /** Rerun the selected scan: the same code at HEAD, after a fast-forward from the remote when asked (a repository cloned for
+     * a scan is pulled by default, the project's own checkout is not). */
+    function rerunDialog(d) {
+      const cloned = /[\\/]sleipnir-scans[\\/]/.test(String(d.reportDir || ''));
+      ui.modal({ title: 'Rerun ' + d.slug, kicker: 'deep scan', body: '<div class="sc-dlg"><p>A new scan of the same code' + (d.focus ? ' (<span class="mono">' + esc(d.focus) + '</span>)' : '') + ' at ' + esc(d.depth) + ' depth, taken at the repository’s HEAD now' + (d.base ? ', reviewing the change from the same base' : '') + '. ' +
+        'Its brief lists what this scan found so that the team checks each finding again, and the two are compared: new, fixed and unchanged findings.</p>' +
+        '<label class="chk"><input type="checkbox" data-sc-pull' + (cloned ? ' checked' : '') + '> update the repository from its remote first (<span class="mono">git pull --ff-only</span>)</label>' +
+        '<div class="row2"><button class="btn pri" type="button" data-sc-rergo>Rerun the scan</button><span class="dim" data-sc-rersaid></span></div></div>',
+      onMount(body, msc) {
+        msc.listen(body, 'click', async e => {
+          const b = e.target.closest('[data-sc-rergo]'); if (!b) return;
+          const said = $('[data-sc-rersaid]', body); b.disabled = true; said.textContent = 'taking the inventory…';
+          const r = await net.post(net.tab(S(), '/scan'), { action: 'rerun', slug: d.slug, pull: !!$('[data-sc-pull]', body).checked }, { timeout: 15 * 60 * 1000 }); if (!msc.alive) return;
+          b.disabled = false;
+          if (!r.ok) { said.textContent = r.message || 'the scan was not rerun'; return; }
+          ui.toast(r.data && r.data.queued ? 'the rerun is queued after the current goal' : 'the rerun started: the team checks the earlier findings again', 'ok'); ui.closeModal();
+          st.sel = (r.data && r.data.slug) || ''; st.since = ''; st.sig = ''; load();
+        });
+      } });
     }
     function paintDepths() { if (depths) depths.innerHTML = st.depths.map(x => depthHtml(x, st.depth)).join(''); }
     async function loadDetail() {
       const s = S(); if (!s || !net || !st.sel) { st.detail = null; paintDetail(); return; }
       const mine = ++st.dseq, r = await net.get(net.tab(s, '/scan/' + encodeURIComponent(st.sel))); if (!sc.alive || mine !== st.dseq) return;
-      if (r.ok && r.data) { st.detail = r.data; paintDetail(); }
+      if (r.ok && r.data) { const fresh = !st.detail || st.detail.slug !== r.data.slug; st.detail = r.data; if (fresh) { st.cmp = null; st.cmpErr = ''; } paintDetail(); loadCompare(); }
     }
     async function load() {
       const s = S(); if (!s || !net) return; const mine = ++st.seq;
@@ -253,12 +321,20 @@
       const t = e.target;
       if (t.closest('[data-sc-plugins]')) { SL.views.show('plugins'); return; }
       if (t.closest('[data-sc-pdf]') && st.detail) { printReport(S(), st.detail.slug); return; }
-      const run = t.closest('[data-scan]'); if (run) { st.sel = run.dataset.scan; st.sig = ''; paint(); st.detail = null; st.dsig = ''; loadDetail(); return; }
+      if (t.closest('[data-sc-rerun]') && st.detail) { rerunDialog(st.detail); return; }
+      const dl = t.closest('[data-sc-delta]');
+      if (dl && st.cmp && st.detail) {
+        const x = arr(st.cmp.deltas)[dl.dataset.scDelta | 0]; if (!x) return;
+        const mine = x.kind === 'new' || x.kind === 'unchanged', f = mine ? arr(st.detail.findings).find(y => y.id === x.finding.id) || x.finding : x.finding;
+        openFinding(S(), st.detail, f, load, mine ? '' : st.cmp.old); return;
+      }
+      const run = t.closest('[data-scan]'); if (run) { st.sel = run.dataset.scan; st.sig = ''; paint(); st.detail = null; st.dsig = ''; st.since = ''; st.cmp = null; st.cmpErr = ''; loadDetail(); return; }
       const fl = t.closest('[data-lead]'); if (fl && st.detail) { const f = arr(st.detail.findings).find(x => x.id === fl.dataset.lead); if (f) openFinding(S(), st.detail, f, load); }
     });
     sc.listen(root, 'change', e => {
       const t = e.target;
       if (t.name === 'scDepth') { st.depth = t.value; paintDepths(); }
+      if (t.matches('[data-sc-since]')) { st.since = t.value; st.cmp = null; st.cmpErr = ''; st.csig = ''; paintCompare(); loadCompare(); }
       if (t.name === 'scSrc') { $('[data-sc-here]', root).hidden = t.value !== 'here'; $('[data-sc-url]', root).hidden = t.value !== 'url'; }
     });
     sc.listen(root, 'submit', e => { if (!e.target.closest('.sc-new')) return; e.preventDefault(); start(e.target.closest('.sc-new')); });

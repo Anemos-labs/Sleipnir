@@ -10,7 +10,13 @@ import (
 
 // Brief is the protocol of a scan, the spec of the goal that drives it: the team, the phases, the rules of evidence and the
 // milestones the judge confirms on the scan tool's own reports.
-func Brief(r *Run) string {
+func Brief(r *Run) string { return brief(r, nil) }
+
+// maxPreviousInBrief is the most of the previous scan's findings a rerun's brief lists.
+const maxPreviousInBrief = 60
+
+// brief is Brief, with the findings of the scan r reruns when prev is set.
+func brief(r *Run, prev *Run) string {
 	d := r.DepthInfo()
 	rep := Check(r)
 	c := rep.Counts
@@ -35,6 +41,9 @@ func Brief(r *Run) string {
 	w("The harness counted %d files, %d functions and %d lines (complexity %d), and split them into %d shards of at most %d functions or %d lines. ",
 		c.Files, c.Funcs, c.Lines, c.Complexity, c.Shards, d.ShardFuncs, d.ShardLines)
 	w("The work is sized by that, not by a clock: this scan wants a team of about %d agents, every shard in someone's hands.\n\n", r.Team())
+	if prev != nil {
+		writePrevious(&b, prev)
+	}
 	w("The `scan` tool keeps the ledger and is its only writer. `scan status` says, from the ledger alone, which phase the scan is in and what is missing: every agent starts there, and the manager reads it after every round of work. ")
 	w("Leave `scan` out of every call: the tool sends it to this scan (`%s`). The report (REPORT.md, findings.json, findings.sarif, map.json in .sleipnir/scan/%s/) is rewritten after every change.\n\n", r.Slug, r.Slug)
 
@@ -94,6 +103,33 @@ func Brief(r *Run) string {
 	return b.String()
 }
 
+// writePrevious is the part of a rerun's brief about the scan it reruns: its findings, for the hunters to check again.
+func writePrevious(b *strings.Builder, prev *Run) {
+	var was []Finding
+	for _, f := range Findings(prev) {
+		if reported(f) && len(f.Trace) > 0 {
+			was = append(was, f)
+		}
+	}
+	fmt.Fprintf(b, "This scan **reruns %s** (commit `%s`), so that the two can be compared: what is new, what was fixed, what is unchanged. ", prev.Slug, short(prev.Commit))
+	if len(was) == 0 {
+		b.WriteString("That scan confirmed no finding. Scan this commit as a new one.\n\n")
+		return
+	}
+	fmt.Fprintf(b, "It confirmed %d %s, listed here with where its sink was at that commit. ", len(was), plural(len(was), "finding", "findings"))
+	b.WriteString("The hunter of the shard that holds a finding's file checks it again at this commit, from its entry point: when it still holds, file it as a lead with its trace as it is now (same category, the sink's code quoted again), so that the comparison counts it as unchanged; when the code no longer allows it, name it in the hunt note with what changed. ")
+	b.WriteString("Old quotes are not evidence: every cite is checked against this commit. Look for new holes as in any scan.\n\n")
+	for i, f := range was {
+		if i == maxPreviousInBrief {
+			fmt.Fprintf(b, "- and %d more (`sleipnir scan %s`)\n", len(was)-i, prev.Slug)
+			break
+		}
+		s := f.Trace[len(f.Trace)-1]
+		fmt.Fprintf(b, "- %s %s, %s: %s (`%s:%d`)\n", f.ID, f.Severity, f.Category, oneLine(f.Title), oneLine(s.File), s.Line)
+	}
+	b.WriteString("\n")
+}
+
 // Objective is the text of the goal that drives a scan.
 func Objective(r *Run, spec string) string {
 	if spec == "" {
@@ -151,5 +187,9 @@ func WriteBrief(root string, r *Run) error {
 			return err
 		}
 	}
-	return WriteAtomic(filepath.Join(root, filepath.FromSlash(BriefPath(r.Slug))), []byte(Brief(r)))
+	var prev *Run
+	if r.Previous != "" {
+		prev, _ = Load(root, r.Previous)
+	}
+	return WriteAtomic(filepath.Join(root, filepath.FromSlash(BriefPath(r.Slug))), []byte(brief(r, prev)))
 }

@@ -460,6 +460,9 @@ type ScanRun struct {
 	// BySeverity counts the confirmed findings.
 	BySeverity map[string]int `json:"bySeverity"`
 	Active     bool           `json:"active"` // the scan the session works on now
+	// Previous is the scan this one reruns, and Review is set when the scan reviews a change rather than the whole code.
+	Previous string `json:"previous,omitempty"`
+	Review   bool   `json:"review,omitempty"`
 }
 
 // ScanDepth is a depth a scan can have, with what it asks for.
@@ -474,9 +477,10 @@ type ScanDepth struct {
 	ProveFrom  string `json:"proveFrom,omitempty"`
 }
 
-// ScanRequest starts a scan (/scan DEPTH [DIR]), drafts or opens an issue for a finding, or sets the goal that fixes one.
+// ScanRequest starts a scan (/scan DEPTH [DIR]), reruns one (/scan rerun SCAN), drafts or opens an issue for a finding, or sets
+// the goal that fixes one.
 type ScanRequest struct {
-	Action string `json:"action"` // start, issue-draft, issue or fix
+	Action string `json:"action"` // start, rerun, issue-draft, issue or fix
 	Depth  string `json:"depth,omitempty"`
 	Focus  string `json:"focus,omitempty"`
 	Slug   string `json:"slug,omitempty"`
@@ -487,6 +491,8 @@ type ScanRequest struct {
 	// AutoFix and AutoMerge carry a fix through its pull request (fix).
 	AutoFix   bool `json:"autoFix,omitempty"`
 	AutoMerge bool `json:"autoMerge,omitempty"`
+	// Pull fast-forwards the project from its upstream before the rerun (rerun).
+	Pull bool `json:"pull,omitempty"`
 }
 
 // ScanCloneRequest clones a repository for a scan: the clone is made with git's hooks and symbolic links off, and the scan is

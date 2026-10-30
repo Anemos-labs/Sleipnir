@@ -308,6 +308,19 @@ func (h *webHostImpl) routes(srv *web.Server) {
 		}
 		ok(w, d)
 	})
+	h.tabRoute(srv, "GET /api/sessions/{id}/scan/{slug}/compare", web.RouteOpts{}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
+		s := t.session()
+		if s == nil {
+			writeErr(w, t.noSession())
+			return
+		}
+		c, err := s.ScanCompare(r.PathValue("slug"), r.URL.Query().Get("since"))
+		if err != nil {
+			writeErr(w, werr(http.StatusNotFound, "no_comparison", err.Error()))
+			return
+		}
+		ok(w, c)
+	})
 	h.tabRoute(srv, "GET /api/sessions/{id}/scan/{slug}/export/{format}", web.RouteOpts{}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
 		t.scanExport(w, r)
 	})

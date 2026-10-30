@@ -38,6 +38,16 @@ func (t *webTab) scanAction(ctx context.Context, req wire.ScanRequest) (map[stri
 			return nil, err
 		}
 		return map[string]any{"ok": true, "queued": queued}, nil
+	case "rerun":
+		text, err := s.RerunScan(ctx, req.Slug, req.Pull)
+		if err != nil {
+			return nil, werr(http.StatusBadRequest, "bad_scan", err.Error())
+		}
+		queued, err := t.goalAction(ctx, s, wire.GoalRequest{Action: "set", Text: text}, true)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"ok": true, "queued": queued, "slug": s.ScanStore().Active()}, nil
 	case "issue-draft":
 		title, body, err := s.ScanIssue(req.Slug, req.Lead)
 		if err != nil {

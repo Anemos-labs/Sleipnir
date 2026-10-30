@@ -680,8 +680,9 @@ flags:
 
 `sleipnir scan [SCAN]` lists the project's deep scans with their depth, phase and numbers, or shows where one scan
 stands: what is mapped and hunted, the leads and their verdicts, and what it needs next. `--report` rewrites the scan's
-report (`REPORT.md`, `findings.json`, `findings.sarif`, `map.json`) from its ledger. Scans are started in the chat or the
-web page with `/scan` (`docs/SCAN.md`).
+report (`REPORT.md`, `findings.json`, `findings.sarif`, `map.json`) from its ledger. `--rerun` scans the same code again at
+HEAD and `--compare` says which findings are new, fixed and unchanged since an earlier scan. Scans are started in the chat or
+the web page with `/scan` (`docs/SCAN.md`).
 
 <!-- flags: scan -->
 ```text
@@ -699,8 +700,16 @@ scan of HEAD (of DIR, the positional, when given) and prints the goal that drive
 --start --diff BASE reviews a change instead: the files HEAD changed since BASE (a commit or a branch, from
 their merge base), with leads only where a step of the trace is on a line the change wrote:
   sleipnir swarm 8 --sandbox docker "$(sleipnir scan --start --diff origin/main)"
+SCAN --rerun creates a new scan of what SCAN scanned (the same depth and focus, or the same base for a
+review) at HEAD, and prints its goal; --pull fast-forwards the branch from its upstream first. SCAN
+--compare says which findings are new, fixed and unchanged since the scan SCAN reruns, the newest earlier
+scan of the same code, or the scan --since names:
+  sleipnir swarm 12 --sandbox docker "$(sleipnir scan SCAN --rerun --pull)"
+  sleipnir scan NEW --compare
 
 flags:
+  -compare
+        say which of SCAN's findings are new, fixed and unchanged since an earlier scan of the same code
   -cwd string
         the project (default: the current directory)
   -depth string
@@ -709,8 +718,14 @@ flags:
         with --start: review the change from BASE (a commit or branch) to HEAD instead of the whole repository
   -json
         machine-readable output
+  -pull
+        with --rerun: fast-forward the checked-out branch from its upstream first
   -report
         rewrite SCAN's report (REPORT.md, findings.json, findings.sarif, map.json) from its ledger and print where it is
+  -rerun
+        create a new scan of what SCAN scanned, at HEAD, and print the goal that drives it
+  -since OLD
+        with --compare: compare with the scan OLD instead of the one SCAN reruns or the newest earlier one
   -start
         create a scan of the repository at HEAD (below the positional DIR, when given) and print the goal that drives it
 ```
