@@ -224,6 +224,7 @@ func (g *Git) environ(extra []string) []string {
 		"GIT_PAGER":           "cat",
 		"GIT_ALLOW_PROTOCOL":  "file:https:http:ssh:git",
 		"GIT_ATTR_NOSYSTEM":   "1",
+		"GIT_NO_LAZY_FETCH":   "1", // a partial clone's missing object would fetch it with the repository's own remote.*.uploadpack
 		"GIT_AUTHOR_NAME":     "sleipnir", "GIT_AUTHOR_EMAIL": "sleipnir@localhost",
 		"GIT_COMMITTER_NAME": "sleipnir", "GIT_COMMITTER_EMAIL": "sleipnir@localhost",
 	}

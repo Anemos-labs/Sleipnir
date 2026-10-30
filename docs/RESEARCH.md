@@ -134,7 +134,8 @@ links it from the README and cites its pages where a design choice rests on it.
 | `.sleipnir/research/RUN/site/` | the built wiki |
 
 The ledger is written only by the research tool, under a lock, so agents in separate worktrees share one run. An export
-directory carries a `.sleipnir-research` mark; an export refuses a non-empty directory without it.
+directory carries a `.sleipnir-research` mark listing the files it wrote; an export refuses a non-empty directory without
+one, or one that holds a file the mark does not list.
 
 ## Turning it off
 

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -45,11 +46,39 @@ type Identity struct {
 	Renderer string `json:"renderer,omitempty"`
 }
 
+// maxRunSamples bounds the rollouts a manifest may declare: LoadRun looks for an episode of each.
+const maxRunSamples = 1 << 20
+
+// maxRunFile bounds one JSON file of a run directory.
+const maxRunFile = 256 << 20
+
+// readRunFile reads a JSON file of a run directory: a regular file (a link to a device would never end), at most maxRunFile bytes.
+func readRunFile(path string) ([]byte, error) {
+	if fi, err := os.Stat(path); err == nil && !fi.Mode().IsRegular() { // opening a pipe would wait for a writer
+		return nil, fmt.Errorf("%s is not a regular file", path)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	if fi, err := f.Stat(); err != nil {
+		return nil, err
+	} else if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", path)
+	}
+	b, err := io.ReadAll(io.LimitReader(f, maxRunFile+1))
+	if err == nil && len(b) > maxRunFile {
+		err = fmt.Errorf("%s is larger than %d bytes", path, maxRunFile)
+	}
+	return b, err
+}
+
 // LoadRun reads a run directory (what `rl rollout --out` wrote, finished or still running) back into a Report. The
 // numbers are recomputed from the episodes on disk, not copied from summary.json, so a run that was rescored
 // (`rl reward`) reports what it is now.
 func LoadRun(dir string) (Report, error) {
-	b, err := os.ReadFile(filepath.Join(dir, "manifest.json"))
+	b, err := readRunFile(filepath.Join(dir, "manifest.json"))
 	if err != nil {
 		return Report{}, fmt.Errorf("%s is not a run directory: %w", dir, err)
 	}
@@ -58,8 +87,16 @@ func LoadRun(dir string) (Report, error) {
 		return Report{}, fmt.Errorf("%s: manifest.json: %w", dir, err)
 	}
 	group := max(m.GroupSize, 1)
+	if int64(group)*int64(max(len(m.Tasks), 1)) > maxRunSamples {
+		return Report{}, fmt.Errorf("%s: manifest.json: %d tasks of %d samples is more than %d rollouts", dir, len(m.Tasks), group, maxRunSamples)
+	}
 	tasks := make([]rl.Task, len(m.Tasks))
+	ids := make(map[string]bool, len(m.Tasks))
 	for i, t := range m.Tasks {
+		if ids[t.ID] {
+			return Report{}, fmt.Errorf("%s: manifest.json: task %q is listed twice", dir, t.ID)
+		}
+		ids[t.ID] = true
 		tasks[i] = rl.Task{ID: t.ID, Kind: t.Kind, Repo: rl.RepoSpec{Path: t.Repo, Commit: t.Commit}, Tags: t.Tags, Team: t.Team, Budget: t.Budget}
 	}
 
@@ -69,7 +106,7 @@ func LoadRun(dir string) (Report, error) {
 	skips := skippedRollouts(dir)
 	for _, t := range tasks {
 		for s := 0; s < group; s++ {
-			raw, err := os.ReadFile(filepath.Join(dir, t.ID, strconv.Itoa(s), "episode.json"))
+			raw, err := readRunFile(filepath.Join(dir, t.ID, strconv.Itoa(s), "episode.json"))
 			if err != nil {
 				// A skipped rollout leaves no episode (its task requires a tool this machine lacks): the run's
 				// summary says so, and it is not one that has yet to run.
@@ -120,7 +157,7 @@ func LoadRun(dir string) (Report, error) {
 // skippedRollouts reads how many rollouts of each task the run's summary records as skipped for a missing tool, or nil
 // when there is no readable summary. Skipped rollouts write no episode, so the summary is the only record of them.
 func skippedRollouts(dir string) map[string]int {
-	b, err := os.ReadFile(filepath.Join(dir, "summary.json"))
+	b, err := readRunFile(filepath.Join(dir, "summary.json"))
 	if err != nil {
 		return nil
 	}

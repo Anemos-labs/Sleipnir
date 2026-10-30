@@ -593,3 +593,22 @@ func TestSnapshotNamesMatchTheProviderPattern(t *testing.T) {
 		}
 	}
 }
+
+// A credential the server was configured with is masked in a tool's description, and a tool whose schema holds one is left out.
+func TestSnapshotMasksConfiguredCredentials(t *testing.T) {
+	sv := st("s", mkTool("a", "Uses "+placeholder+" to log in.", `{"type":"object"}`),
+		mkTool("b", "Does b.", `{"type":"object","properties":{"x":{"type":"string","default":"`+placeholder+`"}}}`))
+	sv.red = newRedactor([]string{placeholder})
+	s := snapOf(SnapshotOptions{}, sv)
+	for _, tl := range s.tools {
+		if strings.Contains(tl.spec.Description, placeholder) || strings.Contains(string(tl.spec.InputSchema), placeholder) {
+			t.Errorf("%s shows the credential: %+v", tl.spec.Name, tl.spec)
+		}
+		if tl.tool == "b" {
+			t.Error("a tool whose schema holds the credential is offered")
+		}
+	}
+	if !hasWarning(s, "holds a credential") {
+		t.Errorf("no warning: %v", s.Warnings())
+	}
+}

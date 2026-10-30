@@ -209,6 +209,11 @@ func TestInstallIsConfirmedOnEverythingItChanges(t *testing.T) {
 	if shownWhole(plugin.Need{Commands: []string{"to\x1b[2Kol"}}, m) || shownWhole(plugin.Need{Paths: map[string][]string{"unix": {"/opt/\x1b[2K/tool"}}}, m) {
 		t.Error("a linked command or a default location that loses characters is shown whole")
 	}
+	long := m
+	long.Connect = "adds the \"srv\" tool server (srv " + strings.Repeat("--flag ", 80) + ") to your configuration"
+	if shownWhole(plugin.Need{}, long) {
+		t.Error("a tool server entry cut short is shown whole")
+	}
 	if got := pathsText(map[string][]string{"unix": {"/opt/tool"}, "darwin": {"/a", "/b"}}); got != " (looked for in darwin: /a, /b; unix: /opt/tool)" {
 		t.Errorf("pathsText = %q", got)
 	}

@@ -996,7 +996,24 @@ func (c *Client) GetPrompt(ctx context.Context, name string, args map[string]str
 	if err != nil {
 		return nil, err
 	}
-	return decodeGetPrompt(raw)
+	res, err := decodeGetPrompt(raw)
+	if err != nil {
+		return nil, err
+	}
+	// The expansion becomes the person's message to the model: a credential the server was configured with is masked in it, as in
+	// a tool's result.
+	red := c.opts.redact
+	res.Description = red.apply(res.Description)
+	for i := range res.Messages {
+		ct := &res.Messages[i].Content
+		ct.Text, ct.Description, ct.URI, ct.Title = red.apply(ct.Text), red.apply(ct.Description), red.apply(ct.URI), red.apply(ct.Title)
+		if ct.Resource != nil {
+			r := *ct.Resource
+			r.Text, r.URI = red.apply(r.Text), red.apply(r.URI)
+			ct.Resource = &r
+		}
+	}
+	return res, nil
 }
 
 // CallOptions tunes one tools/call.

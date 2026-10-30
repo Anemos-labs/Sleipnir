@@ -145,6 +145,11 @@ func (m *Workspaces) ensureStore(ctx context.Context, storeDir string, snap *sna
 		}
 	}
 	path := filepath.Join(storeDir, "objects", "info", "alternates")
+	for _, p := range []string{storeDir, filepath.Join(storeDir, "objects"), filepath.Join(storeDir, "objects", "info"), path} {
+		if fi, err := os.Lstat(p); err == nil && fi.Mode()&os.ModeSymlink != 0 { // the file is rewritten in place
+			return fmt.Errorf("%s is a symbolic link", p)
+		}
+	}
 	lines := []string{snap.altObjects()}
 	if b, err := os.ReadFile(path); err == nil {
 		for _, ln := range strings.Split(strings.TrimSpace(string(b)), "\n") {
