@@ -207,8 +207,9 @@ func Check(root string, r *Run) Report {
 		refs mdRefs
 	}
 	var scans []pageScan
+	env := checkEnv(r)
 	for _, pg := range r.Pages {
-		_, refs := renderMarkdown(ReadPage(root, r.Slug, pg.ID), checkEnv(r))
+		_, refs := renderMarkdown(ReadPage(root, r.Slug, pg.ID), env)
 		for _, l := range refs.Links {
 			if l != pg.ID {
 				inbound[l]++

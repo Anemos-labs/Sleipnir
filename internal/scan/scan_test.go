@@ -584,6 +584,9 @@ if [ -f marker.txt ]; then echo ` + MarkerReproduced + `; fi
 		t.Fatalf("a script that only prints the markers: %v", err)
 	}
 	slow := "sleep 30\nif true; then echo " + MarkerExercised + "; echo " + MarkerReproduced + "; fi\n"
+	if _, err := p.Prove(ctx, root, r, "../../x", "prover", good, time.Minute); err == nil {
+		t.Fatal("a lead id that leaves the scan directory was used as a path")
+	}
 	if pr, err := p.Prove(ctx, root, r, "L1", "prover", slow, time.Second); err != nil || pr.Outcome != ProofInconclusive {
 		t.Fatalf("a run that timed out: %+v %v", pr, err)
 	}
@@ -792,5 +795,18 @@ func TestParseDiff(t *testing.T) {
 		got[1].File != "sp ace.go" || got[2].File != "b.go" || len(got[2].Lines) != 2 || got[2].Lines[1] != [2]int{8, 8} ||
 		got[3].File != "t ab.go" {
 		t.Fatalf("parseDiff: %+v", got)
+	}
+}
+
+// Declarations whose closing line never comes cost a bounded amount of reading, not a read to the end of the file for each.
+func TestHeuristicFunctionsAreBounded(t *testing.T) {
+	src := []byte(strings.Repeat("def f\n  x\n", 100000))
+	start := time.Now()
+	heuristicFunctions("ruby", "a.rb", src)
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("took %s", d)
+	}
+	if got := heuristicFunctions("ruby", "b.rb", []byte("def a\n  if x\n  end\nend\ndef b\nend\n")); len(got) != 2 {
+		t.Fatalf("functions: %+v", got)
 	}
 }

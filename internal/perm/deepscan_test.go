@@ -20,6 +20,9 @@ func TestReviewedShellAnalysisGaps(t *testing.T) {
 	}
 	runCases(t, f, []tc{
 		{name: "sort --out is --output", mode: ModeDefault, req: bash("sort --out=x.txt main.go"), want: "ask"},
+		{name: "sort --files0-from reads the files a list names", mode: ModeDefault, req: bash("sort --files0-from=list.txt"), want: "ask"},
+		{name: "sort --files0 is --files0-from", mode: ModeDefault, req: bash("sort --files0=list.txt"), want: "ask"},
+		{name: "wc --files0-from reads the files a list names", mode: ModeDefault, req: bash("wc --files0-from list.txt"), want: "ask"},
 		{name: "npx --no is not the system utility", mode: ModeDefault, req: bash("npx --no cat main.go"), want: "ask"},
 		{name: "printf -v PATH steers later commands", mode: ModeDefault, req: bash("printf -v PATH %s /tmp; ls"), want: "ask"},
 		{name: "for PATH in steers later commands", mode: ModeDefault, req: bash("for PATH in /tmp; do ls; done"), want: "ask"},

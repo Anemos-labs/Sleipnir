@@ -145,6 +145,14 @@ type mdWriter struct {
 	bullet    string   // marker awaiting the first line of a list item
 }
 
+// maxMarkdown bounds the Markdown a conversion builds: links repeat a resolved base URL and blockquote prefixes repeat on every
+// line, so the output of a modest page can be far larger than the page. Writing stops at the bound; the fetch tool clips its result
+// much earlier anyway.
+const maxMarkdown = 16 << 20
+
+// maxLinkURL is the longest resolved link written; a longer one is dropped and its text kept.
+const maxLinkURL = 8 << 10
+
 // newMD initializes a Markdown writer at a blank line with the requested inline mode.
 func newMD(inline bool) *mdWriter { return &mdWriter{atLine: true, lastBlank: true, inline: inline} }
 
@@ -222,7 +230,7 @@ func (w *mdWriter) writePrefix() {
 
 // word writes one unbreakable token.
 func (w *mdWriter) word(s string) {
-	if s == "" {
+	if s == "" || w.sb.Len()+len(s) > maxMarkdown {
 		return
 	}
 	switch {
@@ -270,6 +278,9 @@ func (w *mdWriter) text(s string) {
 
 // rawLine writes a whole line verbatim (code, table rows).
 func (w *mdWriter) rawLine(s string) {
+	if w.sb.Len()+len(s) > maxMarkdown {
+		return
+	}
 	if w.inline {
 		w.word(s)
 		return
@@ -526,7 +537,11 @@ func (c *conv) resolveLink(href string) string {
 			return "" // in-page anchor spelled as a full URL
 		}
 	}
-	return linkURLEscaper.Replace(u.String())
+	out := linkURLEscaper.Replace(u.String())
+	if len(out) > maxLinkURL {
+		return ""
+	}
+	return out
 }
 
 // escapeLinkText escapes square brackets in link text unless they balance, in

@@ -381,7 +381,7 @@ func TestSecretsStayOutOfTextForms(t *testing.T) {
 
 func TestFingerprint(t *testing.T) {
 	base := ServerConfig{Command: "a", Args: []string{"x"}, Env: map[string]string{"A": "1", "B": "2"}}
-	same := ServerConfig{Command: "a", Args: []string{"x"}, Env: map[string]string{"B": "2", "A": "1"}, Trust: true, Scope: ScopeUser, Timeout: time.Minute, AllowTools: []string{"a"}}
+	same := ServerConfig{Command: "a", Args: []string{"x"}, Env: map[string]string{"B": "2", "A": "1"}, Trust: true, Scope: ScopeUser, Timeout: time.Minute}
 	if base.Fingerprint() != same.Fingerprint() {
 		t.Error("fingerprint must ignore map order and settings that do not decide what runs")
 	}
@@ -391,6 +391,9 @@ func TestFingerprint(t *testing.T) {
 		"env":     {Command: "a", Args: []string{"x"}, Env: map[string]string{"A": "1"}},
 		"url":     {URL: "https://h"},
 		"private": {Command: "a", Args: []string{"x"}, Env: base.Env, AllowPrivate: true},
+		// the filters decide which tools a session takes: widening them asks again
+		"allow tools": {Command: "a", Args: []string{"x"}, Env: base.Env, AllowTools: []string{"a"}},
+		"deny tools":  {Command: "a", Args: []string{"x"}, Env: base.Env, DenyTools: []string{"a"}},
 	} {
 		if c.Fingerprint() == base.Fingerprint() {
 			t.Errorf("%s change did not change the fingerprint", name)

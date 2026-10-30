@@ -8,6 +8,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 // exportMark is the file an export leaves in its directory, so a later export of the same wiki may replace it and nothing else.
@@ -30,8 +31,8 @@ func Export(root, dir string, files map[string][]byte) error {
 		ents, rerr := f.ReadDir(1)
 		f.Close()
 		if rerr == nil && len(ents) > 0 {
-			if _, err := pr.Stat(filepath.Join(dir, exportMark)); err != nil {
-				return fmt.Errorf("%s is not empty and is not an earlier export of a wiki: choose another directory", dir)
+			if err := onlyExported(pr, dir); err != nil {
+				return err
 			}
 			if err := pr.RemoveAll(dir); err != nil {
 				return err
@@ -57,5 +58,35 @@ func Export(root, dir string, files map[string][]byte) error {
 			return err
 		}
 	}
-	return pr.WriteFile(filepath.Join(dir, exportMark), []byte("a research wiki exported by sleipnir; a later export replaces this directory\n"), 0o644)
+	return pr.WriteFile(filepath.Join(dir, exportMark), []byte(markHeader+strings.Join(names, "\n")+"\n"), 0o644)
+}
+
+// markHeader opens exportMark; the names of the files the export wrote follow it, one a line.
+const markHeader = "a research wiki exported by sleipnir; a later export replaces the files listed here\n"
+
+// onlyExported checks that dir, a non-empty directory of the project, is an earlier export holding nothing else: its
+// exportMark lists every file in it. The mark alone is no authority, since anyone who can write to the project can write one.
+func onlyExported(pr *os.Root, dir string) error {
+	refuse := fmt.Errorf("%s is not empty and is not an earlier export of a wiki: choose another directory", dir)
+	b, err := pr.ReadFile(filepath.Join(dir, exportMark))
+	if err != nil || !strings.HasPrefix(string(b), markHeader) {
+		return refuse
+	}
+	listed := map[string]bool{exportMark: true}
+	for _, n := range strings.Split(strings.TrimPrefix(string(b), markHeader), "\n") {
+		listed[n] = true
+	}
+	return fs.WalkDir(pr.FS(), filepath.ToSlash(dir), func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel := strings.TrimPrefix(p, filepath.ToSlash(dir)+"/")
+		if !listed[rel] || !d.Type().IsRegular() {
+			return fmt.Errorf("%s holds %s, which no earlier export wrote: move it or choose another directory", dir, rel)
+		}
+		return nil
+	})
 }

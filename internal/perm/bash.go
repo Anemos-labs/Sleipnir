@@ -1347,6 +1347,26 @@ func (ev *evaluator) bareStar(p string) bool {
 	return ev.broad(realPath(filepath.Clean(w)))
 }
 
+// gitLong is hasLong with git's reading of a long option: any beginning of it names it (git reset --ha is --hard), so an
+// argument that begins one of names counts as that option.
+func gitLong(args []string, names ...string) bool {
+	for _, a := range args {
+		if a == "--" {
+			return false
+		}
+		n, _, _ := strings.Cut(a, "=")
+		if len(n) < 3 || !strings.HasPrefix(n, "--") {
+			continue
+		}
+		for _, name := range names {
+			if strings.HasPrefix(name, n) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (ev *evaluator) gitRisk(args []string) *riskInfo {
 	i := 0
 	elsewhere := false // the repository is chosen on the command line, not by the directory
@@ -1375,7 +1395,7 @@ sub:
 	sub, rest := args[i], args[i+1:]
 	switch sub {
 	case "push":
-		force := hasShort(rest, "f") || hasLong(rest, "--force", "--force-with-lease", "--force-if-includes", "--mirror")
+		force := hasShort(rest, "f") || gitLong(rest, "--force", "--force-with-lease", "--force-if-includes", "--mirror")
 		var targets []string
 		for _, a := range rest {
 			if strings.HasPrefix(a, "+") {
@@ -1389,7 +1409,7 @@ sub:
 			targets = targets[1:] // the first operand is the remote
 		}
 		mk := []string{"-f", "--force", "--mirror", "+"}
-		if hasLong(rest, "--mirror") {
+		if gitLong(rest, "--mirror") {
 			return &riskInfo{why: "git push --mirror overwrites the remote", markers: mk}
 		}
 		if force {
@@ -1407,7 +1427,7 @@ sub:
 				}
 			}
 		}
-		if hasLong(rest, "--delete") || hasShort(rest, "d") {
+		if gitLong(rest, "--delete") || hasShort(rest, "d") {
 			for _, t := range targets {
 				if sharedBranch(strings.TrimPrefix(t, "refs/heads/")) {
 					return &riskInfo{why: "deleting remote branch " + t, markers: []string{"--delete", "-d"}}
@@ -1423,7 +1443,7 @@ sub:
 	case "config", "credential":
 		return gitPersistRisk(sub, rest)
 	case "reset":
-		if !hasLong(rest, "--hard") {
+		if !gitLong(rest, "--hard") {
 			return nil
 		}
 		dirs := ev.riskDirs()

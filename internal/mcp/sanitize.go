@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"encoding/json"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -325,6 +326,42 @@ func newRedactor(secrets []string) *redactor {
 		pairs = append(pairs, s, "***")
 	}
 	return &redactor{rep: strings.NewReplacer(pairs...)}
+}
+
+// inJSON reports whether a configured secret is in a JSON document, in its text or in a string it decodes to: a secret
+// holding a quote or a backslash is escaped in the text.
+func (r *redactor) inJSON(doc []byte) bool {
+	if r == nil || r.rep == nil {
+		return false
+	}
+	if s := string(doc); r.apply(s) != s {
+		return true
+	}
+	var v any
+	if json.Unmarshal(doc, &v) != nil {
+		return false
+	}
+	var walk func(v any) bool
+	walk = func(v any) bool {
+		switch v := v.(type) {
+		case string:
+			return r.apply(v) != v
+		case []any:
+			for _, e := range v {
+				if walk(e) {
+					return true
+				}
+			}
+		case map[string]any:
+			for k, e := range v {
+				if r.apply(k) != k || walk(e) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	return walk(v)
 }
 
 // apply replaces configured secrets, leaving text unchanged for a nil or uninitialized redactor.

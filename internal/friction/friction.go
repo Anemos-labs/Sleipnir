@@ -14,6 +14,8 @@
 package friction
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -200,6 +202,10 @@ func Mine(paths []string, o Options) (Report, error) {
 		a.f.Severity = max(a.f.Severity, sev)
 		a.sessions[session] = true
 		if req != "" {
+			if len(req) > 64 { // only told apart: a long id from a log would be copied into every group's key
+				sum := sha256.Sum256([]byte(req))
+				req = hex.EncodeToString(sum[:16])
+			}
 			a.reqs[session+"\x00"+req] = true
 		}
 		if ex.Seq != 0 && len(a.f.Examples) < o.Examples {

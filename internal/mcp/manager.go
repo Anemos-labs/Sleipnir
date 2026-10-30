@@ -403,7 +403,7 @@ func (m *Manager) snapshot(adopt bool) *Snapshot {
 		s := m.servers[n]
 		s.mu.Lock()
 		if len(s.tools) > 0 {
-			in = append(in, serverTools{name: n, cfg: s.cfg, tools: append([]Tool(nil), s.tools...), remote: s.cfg.Remote()})
+			in = append(in, serverTools{name: n, cfg: s.cfg, tools: append([]Tool(nil), s.tools...), remote: s.cfg.Remote(), red: s.red})
 		}
 		s.mu.Unlock()
 	}

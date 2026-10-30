@@ -134,7 +134,14 @@ func parseRef(raw string) (ref, bool) {
 
 // repoKey canonicalises an address to "host/owner/repo", or "" when it does not
 // name a repository.
-func repoKey(host, p string) string {
+func repoKey(host, p string) string { return repoKeyNested(host, p, 0) }
+
+// repoKeyNested is repoKey for a path a module proxy nested depth times (proxy.golang.org/github.com/...): a proxy path that
+// names a proxy again is no repository past a few levels, and following it would re-split the path once per level.
+func repoKeyNested(host, p string, depth int) string {
+	if depth > 3 {
+		return ""
+	}
 	segs := splitSegs(strings.ToLower(p))
 	two := func(h string, s []string) string {
 		if len(s) < 2 {
@@ -169,11 +176,11 @@ func repoKey(host, p string) string {
 			for i, s := range segs {
 				dec[i] = strings.ReplaceAll(s, "!", "")
 			}
-			return repoKey(dec[0], strings.Join(dec[1:], "/"))
+			return repoKeyNested(dec[0], strings.Join(dec[1:], "/"), depth+1)
 		}
 	case "sourcegraph.com":
 		if len(segs) >= 3 {
-			return repoKey(segs[0], strings.Join(segs[1:], "/"))
+			return repoKeyNested(segs[0], strings.Join(segs[1:], "/"), depth+1)
 		}
 	}
 	return ""

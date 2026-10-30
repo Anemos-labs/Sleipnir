@@ -335,6 +335,10 @@ func (s *service) fileKind(root, rel string) (kind string, size int64, exists bo
 	if err != nil {
 		return "text", 0, false
 	}
+	// a tracked path under a directory link that leads out of the project says nothing of the file it reaches there
+	if d := resolved(filepath.Dir(abs)); d != resolved(root) && !strings.HasPrefix(d, resolved(root)+string(filepath.Separator)) {
+		return "other", 0, true
+	}
 	if !fi.Mode().IsRegular() {
 		return "other", 0, true
 	}

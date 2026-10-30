@@ -208,7 +208,7 @@ func TestBashAllowlist(t *testing.T) {
 		`docker run --env-file .env img`, `source .env`, `. ./.env`, `cat "$HOME/proj/.env"`, `cat {root}/.env`, `cat < .env`, `cd src && cat ../.env`,
 		`cat .e*`, `cat .env*`, `cat .en?`, `cat .{env,x}`, `cat $'\x2eenv'`, `c'a't .en'v'`,
 		// system
-		`cat /etc/shadow`, `cat /proc/self/environ`, `cat /proc/1/environ`, `cat /etc/sudoers`, `cat /etc/ssh/ssh_host_rsa_key`, `cat /etc/sudoers.d/x`,
+		`cat /etc/shadow`, `cat /proc/self/environ`, `cat /proc/1/environ`, `cat /proc/1/task/1/environ`, `cat /etc/sudoers`, `cat /etc/ssh/ssh_host_rsa_key`, `cat /etc/sudoers.d/x`,
 		// look-alikes that still name credentials
 		`ｒｍ -rf /`, `сat ~/.ssh/id_rsa`, `ｃａｔ ~/.ssh/id_rsa`,
 	}

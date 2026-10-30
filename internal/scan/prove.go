@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -26,6 +27,9 @@ const (
 
 // ProofScript is the file a reproducer is written to, in the copy of the code it runs in.
 const ProofScript = ".sleipnir-proof.sh"
+
+// leadIDRE is what a lead id looks like (L1, L12-3): a directory name of letters, digits and dashes.
+var leadIDRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,39}$`)
 
 // Prover runs reproducers: each in a fresh copy of the code at the scan's commit, made as a detached worktree under the scan's
 // directory, through Run (the session's sandbox). The copy is removed after the run, whatever the script did to it.
@@ -59,6 +63,10 @@ func (p *Prover) Prove(ctx context.Context, root string, r *Run, lead, by, scrip
 		timeout = DefaultProofTimeout
 	}
 	timeout = min(timeout, MaxProofTimeout)
+	// the lead names a directory: one read back from a scan record is checked like one the scan made
+	if !leadIDRE.MatchString(lead) {
+		return Proof{}, fmt.Errorf("%q is not a lead id", clip(lead, 40))
+	}
 	dir := filepath.Join(RunDir(root, r.Slug), "proofs", fmt.Sprintf("%s-%d", strings.ToLower(lead), time.Now().UnixNano()))
 	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
 		return Proof{}, err
@@ -73,7 +81,16 @@ func (p *Prover) Prove(ctx context.Context, root string, r *Run, lead, by, scrip
 			_ = os.RemoveAll(dir)
 		}
 	}()
-	if err := os.WriteFile(filepath.Join(dir, ProofScript), []byte(script), 0o755); err != nil {
+	// a new file: the checked-out code may have its own entry by that name, a link to somewhere else on the host
+	f, err := os.OpenFile(filepath.Join(dir, ProofScript), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o755)
+	if err != nil {
+		return Proof{}, fmt.Errorf("could not write the reproducer next to the code (the code has a %s of its own?): %w", ProofScript, err)
+	}
+	_, err = f.Write([]byte(script))
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
 		return Proof{}, err
 	}
 	start := time.Now()

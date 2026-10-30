@@ -39,7 +39,10 @@ type gitRunner func(ctx context.Context, args ...string) ([]byte, error)
 // never waiting for a password prompt.
 func commandGit(dir string) gitRunner {
 	return func(ctx context.Context, args ...string) ([]byte, error) {
-		cmd := exec.CommandContext(ctx, "git", args...)
+		// The person's credentials, but none of the programs a repository's own configuration can add to a push: no hooks (a
+		// pre-push hook), no fsmonitor, no ext:: transport. A push of the harness's branch needs none of them.
+		safe := []string{"-c", "core.hooksPath=" + os.DevNull, "-c", "core.fsmonitor=false", "-c", "protocol.ext.allow=never"}
+		cmd := exec.CommandContext(ctx, "git", append(safe, args...)...)
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=never")
 		out, err := cmd.CombinedOutput()

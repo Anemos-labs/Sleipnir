@@ -311,3 +311,30 @@ func TestMountRefusesALinkToTheRoot(t *testing.T) {
 		t.Fatalf("a link to / was mounted: %v", got)
 	}
 }
+
+// A git guard that is a link is refused: docker would mount what it names inside the container.
+func TestMountRefusesALinkedGitGuard(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symbolic links are a unix case here")
+	}
+	proj := filepath.Join(t.TempDir(), "proj")
+	if err := os.MkdirAll(filepath.Join(proj, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), filepath.Join(proj, ".git", "hooks")); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := mountPaths([]string{proj}); err == nil || !strings.Contains(err.Error(), "symbolic link") {
+		t.Fatalf("a repository with a linked hooks directory was mounted: %v, %v", got, err)
+	}
+	wt := filepath.Join(t.TempDir(), "proj")
+	if err := os.MkdirAll(filepath.Join(wt, ".git", "worktrees", "w"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(t.TempDir(), "key"), filepath.Join(wt, ".git", "worktrees", "w", "config.worktree")); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := mountPaths([]string{wt}); err == nil || !strings.Contains(err.Error(), "symbolic link") {
+		t.Fatalf("a repository with a linked worktree config was mounted: %v, %v", got, err)
+	}
+}

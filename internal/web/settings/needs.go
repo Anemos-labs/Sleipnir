@@ -259,9 +259,12 @@ func installScope(n plugin.Need, m plugin.MethodStatus) string {
 	return "need.install:" + d16(fields)
 }
 
-// shownWhole reports whether every argument of m's commands, and every command and default location of n that the install links,
-// reads on the page exactly as it is used: none is cut short or loses a character to sanitising.
+// shownWhole reports whether every argument of m's commands, the tool server entry it adds, and every command and default location
+// of n that the install links, reads on the page exactly as it is used: none is cut short or loses a character to sanitising.
 func shownWhole(n plugin.Need, m plugin.MethodStatus) bool {
+	if provider.SanitizeText(m.Connect, 400) != m.Connect { // the server entry it saves, which a later session starts
+		return false
+	}
 	words := slices.Clone(m.Argv)
 	for _, c := range n.Commands {
 		if provider.SanitizeText(c, 200) != c {

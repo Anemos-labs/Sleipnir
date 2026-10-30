@@ -61,9 +61,13 @@ func (c *confined) mkdirParents() error {
 	return nil
 }
 
-// chmod changes the path's mode, refusing a symlink (as chmodNoFollow).
+// chmod changes the path's mode, refusing a symlink (as chmodNoFollow). The set-ID bits are kept only on what is a directory
+// now: what the path was when the rewind was planned may have changed since.
 func (c *confined) chmod(mode fs.FileMode) error {
 	if c.root == nil {
+		if fi, err := os.Lstat(c.abs); err != nil || !fi.IsDir() {
+			mode = restorableMode(mode)
+		}
 		return chmodNoFollow(c.abs, mode)
 	}
 	fi, err := c.root.Lstat(c.rel)
@@ -72,6 +76,9 @@ func (c *confined) chmod(mode fs.FileMode) error {
 	}
 	if fi.Mode()&fs.ModeSymlink != 0 {
 		return errors.New("the path is a symlink")
+	}
+	if !fi.IsDir() {
+		mode = restorableMode(mode)
 	}
 	return c.root.Chmod(c.rel, mode)
 }

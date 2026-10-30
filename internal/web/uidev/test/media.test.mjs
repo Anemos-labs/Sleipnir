@@ -91,3 +91,12 @@ test('Markdown of many unclosed link openers renders in linear time', () => {
   }
   assert.match(md('[a](b.md) and [c](https://e.com/y)'), /data-file="docs\/b\.md".*href="https:\/\/e\.com\/y"/);
 });
+
+test('code spans and table rows cost linear time on text of many unclosed openers', () => {
+  assert.match(md('a `b` c ``d`e`` f'), /<code>b<\/code> c <code>d`e<\/code> f/);
+  assert.match(md('`` not closed `x`'), /`` not closed <code>x<\/code>/);
+  let t0 = Date.now();
+  md(Array.from({ length: 4000 }, (_, i) => '`'.repeat(1 + (i % 50))).join(' x '));
+  md(' '.repeat(60000) + '|\n' + ' '.repeat(60000) + '-' + ' '.repeat(60000) + 'x');
+  assert.ok(Date.now() - t0 < 2000, 'took ' + (Date.now() - t0) + ' ms');
+});

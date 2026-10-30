@@ -18,7 +18,12 @@ func init() { extraCommands["update"] = cmdUpdate }
 
 // updateOptions say where the last check of the releases is kept.
 func updateOptions() update.Options {
-	return update.Options{CachePath: filepath.Join(userHome(), ".sleipnir", "update.json"), Agent: "sleipnir/" + version}
+	o := update.Options{Agent: "sleipnir/" + version}
+	// without a home directory the check is not kept: a relative path would put it in whatever project the command runs in
+	if h := userHome(); filepath.IsAbs(h) {
+		o.CachePath = filepath.Join(h, ".sleipnir", "update.json")
+	}
+	return o
 }
 
 // updateChecks reports whether this build looks for newer releases by itself: a release (releaseBuild), not one built from source, and not when

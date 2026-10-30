@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"maps"
 	"os"
@@ -810,7 +811,7 @@ func atTip(ctx context.Context, repo *gitx.Repo, tip string, paths []string) []s
 		if err != nil && gitx.KindOf(err) != gitx.KindNotFound {
 			continue
 		}
-		have, rerr := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(p)))
+		have, rerr := checkoutContent(filepath.Join(repo.Root(), filepath.FromSlash(p)), len(want))
 		switch {
 		case err != nil && errors.Is(rerr, fs.ErrNotExist): // gone at the tip and in the checkout
 		case err == nil && rerr == nil && bytes.Equal(want, have):
@@ -820,6 +821,32 @@ func atTip(ctx context.Context, repo *gitx.Repo, tip string, paths []string) []s
 		out = append(out, p)
 	}
 	return out
+}
+
+// checkoutContent is what git would record for the file at p: a link's own text (git stores a symbolic link so), a regular file's
+// bytes. Nothing is followed and no more than limit+1 bytes are read, so a link to a device or an endless file costs nothing; a
+// special file is an error.
+func checkoutContent(p string, limit int) ([]byte, error) {
+	fi, err := os.Lstat(p)
+	if err != nil {
+		return nil, err
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		t, err := os.Readlink(p)
+		return []byte(t), err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, errors.New("not a regular file")
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() {
+		return nil, errors.New("not a regular file")
+	}
+	return io.ReadAll(io.LimitReader(f, int64(limit)+1))
 }
 
 // applyCommits moves the user's branch to the integration tip, and calls applied once it has.

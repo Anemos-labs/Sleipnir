@@ -98,6 +98,11 @@ func runsAnother(prog string, args []string) bool {
 	if prog == "make" {
 		// a command-line variable takes every assignment operator of make: SHELL:=PROG, SHELL::=, SHELL?=, SHELL+=, SHELL!=
 		for _, a := range args {
+			// and any variable runs a shell command when it is assigned with != (V!=CMD) or holds the shell function (V=$(shell CMD))
+			if eq := strings.IndexByte(a, '='); eq > 0 && !strings.HasPrefix(a, "-") &&
+				(a[eq-1] == '!' || strings.Contains(a, "$(shell") || strings.Contains(a, "${shell")) {
+				return true
+			}
 			for _, n := range refused {
 				if !strings.HasPrefix(n, "-") && strings.HasPrefix(a, n) && makeAssigns(a[len(n):]) {
 					return true

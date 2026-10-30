@@ -592,7 +592,8 @@ func (r *Runner) condRequest(ev Event) perm.Request {
 		req.Cwd = r.Dir
 	}
 	if in := inputObject(ev.Input); in != nil {
-		req.Command = inputText(in, "command")
+		// No Command: the permission engine reads a shell tool's command from Input itself, and would take a "command" field
+		// that another tool ignores for the operation, judging a file write as a shell command.
 		paths := []string{effectivePath(in), inputText(in, "notebook_path")}
 		if t := normTool(ev.Tool); t == "applypatch" || t == "patch" {
 			// The patch names its files inside its text: every file it adds, changes, deletes or moves to.

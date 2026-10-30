@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -437,7 +438,14 @@ func methodStatus(env NeedEnv, n OwnedNeed, m InstallMethod, all []OwnedNeed) (M
 		ms.Env[name] = append([]string{}, argv...)
 	}
 	if m.Connect {
-		ms.Connect = fmt.Sprintf("adds the %q tool server (%s) to your configuration", n.MCP.Name, strings.Join(append([]string{n.MCP.Command}, n.MCP.Args...), " "))
+		words := make([]string, 0, 1+len(n.MCP.Args))
+		for _, w := range append([]string{n.MCP.Command}, n.MCP.Args...) {
+			if w == "" || strings.ContainsAny(w, " \t\"'\\") {
+				w = strconv.Quote(w) // the words say where each argument ends
+			}
+			words = append(words, w)
+		}
+		ms.Connect = fmt.Sprintf("adds the %q tool server (%s) to your configuration", n.MCP.Name, strings.Join(words, " "))
 	}
 	for _, prog := range runsFirst(n.Need, m) {
 		if lookIn(env.goos(), prog, env.path()) == "" {

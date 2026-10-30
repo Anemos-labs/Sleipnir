@@ -494,7 +494,7 @@ func TestRuleHelpers(t *testing.T) {
 	})
 	t.Run("containsFold", func(t *testing.T) {
 		check(t, "containsFold", func(s string) bool { return containsFold(s, "authorization") },
-			[]string{"authorization", "AUTHORIZATION", "Authorization", "x-Authorization: y"}, []string{"", "aUtHoRiZaTiOn", "author"})
+			[]string{"authorization", "AUTHORIZATION", "Authorization", "x-Authorization: y", "aUtHoRiZaTiOn"}, []string{"", "author", "authorizatio", "authori-ation"})
 	})
 	t.Run("credentialValueOK", func(t *testing.T) {
 		check(t, "credentialValueOK", credentialValueOK,

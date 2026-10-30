@@ -195,6 +195,7 @@ type serverTools struct {
 	cfg    ServerConfig // expanded or not: only filters and the transport type are read
 	tools  []Tool
 	remote bool
+	red    *redactor // masks the credentials the server was configured with
 }
 
 // Why a tool loads on demand, in the order a note lists them.
@@ -504,9 +505,14 @@ func serverCandidates(sv serverTools, o SnapshotOptions, warn func(string, ...an
 			warn("server %q: tool %q excluded: its description %s", sv.name, label, why)
 			continue
 		}
+		desc = sv.red.apply(desc) // the model reads it, as it reads a result, where the credential is masked too
 		n, err := normalizeSchemaWithin(t.InputSchema, lim)
 		if err != nil {
 			warn("server %q: tool %q excluded: %v", sv.name, label, err)
+			continue
+		}
+		if sv.red.inJSON(n.schema) {
+			warn("server %q: tool %q excluded: its input schema holds a credential the server was configured with", sv.name, label)
 			continue
 		}
 		if n.injection != "" && !o.AllowSuspicious {

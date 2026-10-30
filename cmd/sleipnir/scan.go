@@ -231,11 +231,11 @@ func scanListCLI(out io.Writer, root string, asJSON bool) error {
 	fmt.Fprintln(tw, "SCAN\tDEPTH\tPHASE\tFILES\tFUNCTIONS\tMAPPED\tHUNTED\tLEADS\tCONFIRMED\tRERUNS")
 	for _, r := range runs {
 		c := scan.Check(r).Counts
-		prev := r.Previous
+		prev := oneLineSafe(r.Previous)
 		if prev == "" {
 			prev = "-"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d/%d\t%d/%d\t%d\t%d\t%s\n", r.Slug, r.Depth, scan.Check(r).Phase, c.Files, c.Funcs, c.Mapped, c.Shards,
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d/%d\t%d/%d\t%d\t%d\t%s\n", oneLineSafe(r.Slug), oneLineSafe(r.Depth), scan.Check(r).Phase, c.Files, c.Funcs, c.Mapped, c.Shards,
 			c.Hunted, c.Shards, c.Leads, c.Confirmed, prev)
 	}
 	return tw.Flush()

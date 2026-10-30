@@ -304,3 +304,26 @@ func TestInstallKeepsTheBinarysPermissions(t *testing.T) {
 		t.Fatalf("mode = %v (%v)", fi.Mode().Perm(), err)
 	}
 }
+
+// Remember writes a fresh file and renames it: a link left at the old temporary name is not written through.
+func TestRememberDoesNotWriteThroughALink(t *testing.T) {
+	dir := t.TempDir()
+	victim := filepath.Join(dir, "victim")
+	if err := os.WriteFile(victim, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cache := filepath.Join(dir, "c", "update.json")
+	if err := os.MkdirAll(filepath.Dir(cache), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victim, cache+".tmp"); err != nil {
+		t.Skip("no symlinks:", err)
+	}
+	Remember(Options{CachePath: cache}, Status{Latest: "v9.9.9"})
+	if b, _ := os.ReadFile(victim); string(b) != "keep" {
+		t.Fatalf("the link's target was written: %q", b)
+	}
+	if st, ok := Cached(Options{CachePath: cache}); !ok || st.Latest != "v9.9.9" {
+		t.Fatalf("not remembered: %+v %v", st, ok)
+	}
+}

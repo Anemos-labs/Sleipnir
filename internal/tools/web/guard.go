@@ -109,6 +109,13 @@ func (r hostRule) matches(host, port string) bool {
 		return false
 	}
 	if r.suffix {
+		// a wildcard names DNS names only: an IP literal's zone ("::ffff:10.0.0.1%x.example.com") is not a domain
+		if strings.ContainsAny(host, ":%") {
+			return false
+		}
+		if _, err := netip.ParseAddr(host); err == nil {
+			return false
+		}
 		return strings.HasSuffix(host, r.host)
 	}
 	return host == r.host

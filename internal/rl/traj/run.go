@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -353,11 +352,13 @@ func (r *Run) Events() []events.Event { return r.evs }
 // (~/.sleipnir-bench/work/ws/...) from the agent writing into the home's dotfiles.
 func (r *Run) WorkspaceRoots() []string {
 	var roots []string
+	seen := map[string]bool{}
 	add := func(p string) {
 		if p == "" {
 			return
 		}
-		if p = filepath.Clean(p); filepath.IsAbs(p) && p != "/" && !slices.Contains(roots, p) {
+		if p = filepath.Clean(p); filepath.IsAbs(p) && p != "/" && !seen[p] {
+			seen[p] = true
 			roots = append(roots, p)
 		}
 	}

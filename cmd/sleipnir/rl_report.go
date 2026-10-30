@@ -29,7 +29,7 @@ func loadReport(path string) (env.Report, error) {
 	if st.IsDir() {
 		return env.LoadRun(path)
 	}
-	b, err := os.ReadFile(path)
+	b, err := env.ReadRunFile(path)
 	if err != nil {
 		return env.Report{}, err
 	}
@@ -129,6 +129,7 @@ func firstOr(s, or string) string {
 
 // rlReport prints what a run (or several) measured: outcome with its interval, cost, cache, friction.
 func rlReport(_ context.Context, args []string, stdout, stderr io.Writer) error {
+	stdout = termText{stdout} // the reports' names and tags come from the run directories it reads
 	fs := newFlags("rl report", stderr, "rl report [flags] RUN_DIR|REPORT.json...")
 	format := fs.String("format", "table", "table | md | json (json is what rl compare reads: commit it as a baseline)")
 	byTag := fs.Bool("by-tag", false, "also break each run down by task tag")
@@ -360,6 +361,7 @@ type gateResult struct {
 // rlCompare compares two runs (or saved reports) over the tasks both ran, with paired bootstrap intervals, and applies
 // gates. It exits non-zero when a gate fails, so a script can refuse a regression.
 func rlCompare(_ context.Context, args []string, stdout, stderr io.Writer) error {
+	stdout = termText{stdout}
 	fs := newFlags("rl compare", stderr, "rl compare [flags] A B")
 	var gates gateFlag
 	fs.Var(&gates, "gate", "metric[:tolerance] that must not get worse (repeatable, or comma-separated): e.g. pass_at_1:0.05 or mean_usd:25%; fails only when the drop is bigger than the tolerance and the interval excludes zero")

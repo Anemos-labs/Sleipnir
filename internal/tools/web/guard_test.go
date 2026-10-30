@@ -228,6 +228,7 @@ func TestResolve(t *testing.T) {
 		{name: "empty host", host: "", errIs: errEmptyHost},
 		{name: "allowed by name", allow: []string{"docs.internal"}, host: "docs.internal", want: []string{"10.0.0.9"}},
 		{name: "allowed by wildcard", allow: []string{"*.corp.test"}, host: "a.corp.test", want: []string{"172.16.1.1"}},
+		{name: "a wildcard does not match an address's zone", allow: []string{"*.corp.test"}, host: "::ffff:10.0.0.1%a.corp.test", blocked: "private network"},
 		{name: "allowed by literal", allow: []string{"127.0.0.1"}, host: "127.0.0.1", want: []string{"127.0.0.1"}},
 		{name: "allowed by host:port", allow: []string{"ports.test:8080"}, host: "ports.test", port: "8080", want: []string{"10.9.9.9"}},
 		{name: "wrong port is still blocked", allow: []string{"ports.test:8080"}, host: "ports.test", port: "9090", blocked: "private network"},

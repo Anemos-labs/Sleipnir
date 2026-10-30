@@ -236,6 +236,10 @@ func tight(s string) string {
 	return b.String()
 }
 
+// maxCallBytes bounds how far splitCall looks for the closing parenthesis: the callers try it at every assertion in a diff, and
+// unbalanced text would otherwise make each try scan the rest of it.
+const maxCallBytes = 4 << 10
+
 // splitCall parses the argument list of a call whose opening parenthesis is at
 // s[open]. It returns the top-level, comma-separated arguments (trimmed) and the
 // index after the closing parenthesis.
@@ -246,7 +250,7 @@ func splitCall(s string, open int) (args []string, end int, ok bool) {
 	depth := 0
 	start := open + 1
 	var quote byte
-	for i := open; i < len(s); i++ {
+	for i := open; i < len(s) && i-open <= maxCallBytes; i++ {
 		c := s[i]
 		if quote != 0 {
 			if c == '\\' {

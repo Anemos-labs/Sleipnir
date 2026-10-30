@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestALedgerWithAnUnsafePageIDIsRefused(t *testing.T) {
@@ -87,5 +88,17 @@ func TestAddressInALinkLabelIsText(t *testing.T) {
 	out, _ = renderMarkdown("[[index|https://a.example/_draft_]]", mdEnv{})
 	if strings.Count(out, "<a ") != 1 || !strings.Contains(out, `>https://a.example/_draft_</a>`) {
 		t.Errorf("wiki label address: %s", out)
+	}
+}
+
+// Openers without closers render in time linear in the text: each looks for its closer once, not once per opener.
+func TestUnclosedOpenersRenderQuickly(t *testing.T) {
+	for _, open := range []string{"[", "[[", "`", "[x](", "*a"} {
+		src := strings.Repeat(open, 200000/len(open))
+		start := time.Now()
+		renderMarkdown(src, mdEnv{})
+		if d := time.Since(start); d > 5*time.Second {
+			t.Errorf("%q x %d took %v", open, len(src)/len(open), d)
+		}
 	}
 }

@@ -249,6 +249,18 @@ func TestRefusalsOnlyKeepsAskRules(t *testing.T) {
 	}
 }
 
+// Under RefusalsOnly a question the person already refused stays refused: only a new question goes unasked.
+func TestRefusalsOnlyKeepsEarlierRefusals(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeDefault, Prompter: func(context.Context, Request) Decision { return Decision{Reason: "no"} }})
+	if d := e.Check(bg, f.request(fetch("https://example.org/x"))); d.Allow {
+		t.Fatalf("the person refused: %+v", d)
+	}
+	if d := e.Check(RefusalsOnly(bg), f.request(fetch("https://example.org/x"))); d.Allow {
+		t.Errorf("a refused question was let through: %+v", d)
+	}
+}
+
 // A read-only git command is not read-only in a repository whose configuration names a program git runs for it.
 func TestGitReadsAskWhenTheRepositoryNamesAHelper(t *testing.T) {
 	f := newFixture(t)
@@ -270,5 +282,23 @@ func TestGitReadsAskWhenTheRepositoryNamesAHelper(t *testing.T) {
 	}
 	if d := e.Check(bg, f.request(rq{tool: "Bash", cmd: "git status", cwd: "{root}"})); !d.Allow {
 		t.Errorf("fsmonitor = false: %+v", d)
+	}
+	// the per-worktree configuration is git's too, and a configuration too large to read is not one known to name nothing
+	wt := filepath.Join(f.root, ".git", "config.worktree")
+	if err := os.WriteFile(wt, []byte("[core]\n\tfsmonitor = ./hook.sh\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if d := e.Check(bg, f.request(rq{tool: "Bash", cmd: "git status", cwd: "{root}"})); d.Allow {
+		t.Errorf("fsmonitor in config.worktree: git status was allowed: %+v", d)
+	}
+	if err := os.Remove(wt); err != nil {
+		t.Fatal(err)
+	}
+	big := "[core]\n" + strings.Repeat("\t# padding\n", maxGitMeta/10)
+	if err := os.WriteFile(filepath.Join(f.root, ".git", "config"), []byte(big), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if d := e.Check(bg, f.request(rq{tool: "Bash", cmd: "git status", cwd: "{root}"})); d.Allow {
+		t.Errorf("an oversized configuration: git status was allowed: %+v", d)
 	}
 }

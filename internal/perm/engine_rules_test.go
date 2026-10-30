@@ -106,6 +106,8 @@ func TestBashRulesAndModes(t *testing.T) {
 		{name: "force push plus refspec", req: bash("git push origin +main"), want: "ask"},
 		{name: "force push to feature branch is ordinary", req: bash("git push --force origin feature/x"), want: "ask", why: "not on the read-only list"},
 		{name: "force push allowed by prefix rule lacking the flag", allow: []string{"Bash(git push:*)"}, req: bash("git push --force origin main"), want: "ask", why: "high risk"},
+		{name: "an abbreviated force is force", allow: []string{"Bash(git push:*)"}, req: bash("git push --forc origin main"), want: "ask", why: "high risk"},
+		{name: "an abbreviated mirror is mirror", allow: []string{"Bash(git push:*)"}, req: bash("git push --mirr"), want: "ask", why: "high risk"},
 		{name: "force push allowed by rule naming the flag", allow: []string{"Bash(git push --force:*)"}, req: bash("git push --force origin main"), want: "allow"},
 		{name: "force push allowed by exact rule", allow: []string{"Bash(git push --force origin main)"}, req: bash("git push --force origin main"), want: "allow"},
 		{name: "plain push allowed by prefix rule", allow: []string{"Bash(git push:*)"}, req: bash("git push origin main"), want: "allow"},

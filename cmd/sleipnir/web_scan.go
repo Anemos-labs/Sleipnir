@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -110,8 +111,13 @@ func (h *webHostImpl) scanClone(w http.ResponseWriter, r *http.Request) {
 	}
 	dir := filepath.Join(base, scan.CloneName(req.URL))
 	for n := 2; ; n++ {
-		if _, err := os.Lstat(dir); errors.Is(err, os.ErrNotExist) {
+		_, err := os.Lstat(dir)
+		if errors.Is(err, os.ErrNotExist) {
 			break
+		}
+		if err != nil || n > 1000 { // a name the filesystem refuses (too long) is not taken: no suffix makes it work
+			writeErr(w, werr(http.StatusInternalServerError, "internal", fmt.Sprintf("no folder for the clone under %s: %v", base, err)))
+			return
 		}
 		dir = filepath.Join(base, scan.CloneName(req.URL)+"-"+strconv.Itoa(n))
 	}

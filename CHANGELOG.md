@@ -7,6 +7,48 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Hardening from a CodeRabbit deep scan, outside the permission engine. A
+  sandboxed session mounts its own isolation directory instead of its parent,
+  and runs a helper binary copied out of any mount; a repository whose `.git`
+  config, hooks, info or a linked worktree's config is a link is not
+  mounted. `file -C` (or a glob that can expand to it) is not a read-only
+  command. A web command run without keys gets no proxy password either. The mailman runs no tool but its mail. A worktree whose
+  `.git` file names another repository is not adopted. Web fetches stop at
+  16 MiB of Markdown, and a wildcard host rule no longer matches an IP
+  address. MCP: a tool server's fingerprint covers its tool filters, a
+  credential the server was configured with is masked in its tool
+  descriptions and prompt expansions, and a tool whose schema holds one,
+  JSON-escaped or not, is left out; installing a plugin's tool server needs its whole command line
+  shown. A research export replaces only a directory whose mark lists every
+  file in it (an older export's mark lists none: remove that directory
+  first), and research ledgers and briefs are written through the project
+  root. A goal never reads a credential file (`.env`, keys) as its spec, nor
+  a pipe as its rubric. Hook conditions read a shell command only from a
+  shell tool's call. A team file's slots may not start with `-`. Rewinds and
+  checkpoint writes go through the project root, and a restored mode keeps
+  set-ID bits on directories only. `rl` reports, listings and verification
+  print terminal-safe text; `LoadRun` refuses a manifest listing a task
+  twice or more than 2^20 rollouts and reads run files no larger than
+  256 MiB. A saved rollout's tree ids must be object ids. Repository
+  inspection does not lazily fetch missing objects (`GIT_NO_LAZY_FETCH`).
+  A command template's argument inside `"${x:-"$1"}"` is escaped for the
+  nested double quotes it is in. Prompt bytes: none change.
+
+- Permission checks read more of what the shell and the programs do. An
+  unquoted heredoc joins a backslash-newline before it looks for its
+  delimiter, as bash does, so lines after `EO\` `F` are commands. Inside
+  double quotes a single quote in `${x:-...}` no longer hides a command
+  substitution. A `make` prefix rule no longer
+  covers a command-line variable assigned with `!=` or holding
+  `$(shell ...)`. `sort` and `wc` with `--files0-from` ask. An abbreviated
+  git option (`git push --forc`, `git reset --ha`) counts as the option for
+  the high-risk check. `/proc/PID/task/TID/environ` is protected like
+  `/proc/PID/environ`. A git configuration that cannot be read, or a
+  `config.worktree` that names a program, makes read-only git commands ask.
+  Re-creating a virtual environment whose `bin` holds a link out of it
+  (with `--copies`, its interpreter links too) asks. A question the person refused stays refused where routine
+  questions are not asked (same-site redirects).
+
 - A `cd` that is a link of an `&&` chain moves the permission check of the
   chain's later links: they are judged in the directory it went to, since
   they run only when it succeeded. `cd build && cmake ..` and

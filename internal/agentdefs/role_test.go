@@ -290,3 +290,20 @@ func TestDeclaredRoleModesHold(t *testing.T) {
 		}
 	}
 }
+
+// A wildcard inside the command word covers that word alone, as a permission rule reads it: Bash(go*) is gofmt, not go test ./....
+func TestCoveredByReadsAWordWildcardAsOneWord(t *testing.T) {
+	for _, c := range []struct {
+		rule, entry string
+		want        bool
+	}{
+		{"Bash(go test:*)", "Bash(go*)", false},
+		{"Bash(go test:*)", "Bash(go:*)", true},
+		{"Bash(go test:*)", "Bash(go *)", true},
+		{"Bash(go*)", "Bash(go*)", true},
+	} {
+		if got := coveredBy(c.rule, []string{c.entry}); got != c.want {
+			t.Errorf("coveredBy(%s, %s) = %v, want %v", c.rule, c.entry, got, c.want)
+		}
+	}
+}

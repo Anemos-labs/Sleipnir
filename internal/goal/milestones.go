@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/anemos-labs/sleipnir/internal/skills/mdfile"
 )
 
 // Milestones are the checkpoints of a goal that the judge rules on one by one. They come from the goal's text and its spec file
@@ -330,11 +332,19 @@ func readSpec(ref, dir, root string) (string, error) {
 	if err != nil || !filepath.IsLocal(rel) {
 		return "", ErrSpecOutside
 	}
+	// the reference may come from text the goal quotes (a finding's reproducer), not from the person: a file that holds secrets is
+	// no spec
+	if why := mdfile.SensitivePath(filepath.ToSlash(rel)); why != "" {
+		return "", fmt.Errorf("the spec file is refused: %s", why)
+	}
 	r, err := os.OpenRoot(root)
 	if err != nil {
 		return "", err
 	}
 	defer r.Close()
+	if fi, err := r.Stat(rel); err == nil && !fi.Mode().IsRegular() {
+		return "", fmt.Errorf("%s is not a regular file", ref) // opening a pipe would wait for a writer
+	}
 	f, err := r.Open(rel)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
