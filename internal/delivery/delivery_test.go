@@ -643,3 +643,33 @@ func TestReviewTextKeepsTheEndOfALongReview(t *testing.T) {
 		t.Errorf("short body: %q", got)
 	}
 }
+
+// Removing markup leaves comparisons, autolinks and code alone.
+func TestReviewTextKeepsComparisonsAndCode(t *testing.T) {
+	in := "<b>Bound the loop</b> while elapsed < timeout && retries > 0, see <https://example.com/x>.\n`if a<b && c>d {` and\n```go\nfor i := 0; i<n && n>0; i++ {}\n```"
+	got := reviewText(in, 8000)
+	for _, want := range []string{"elapsed < timeout && retries > 0", "<https://example.com/x>", "`if a<b && c>d {`", "i<n && n>0"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("lost %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "<b>") {
+		t.Errorf("kept a tag: %s", got)
+	}
+}
+
+// Long reviews do not crowd out a comment that carries a finding, and the whole stays within its bound.
+func TestJoinSharesKeepsBothReviewsAndComments(t *testing.T) {
+	reviews := strings.Repeat("review text\n", 3*8000/12)
+	comments := "https://example.com/c/1\nOutside diff: close the file on the error path.\n"
+	got := joinShares(reviews, comments, 24000)
+	if !strings.Contains(got, "close the file on the error path") {
+		t.Error("the comment was crowded out by the reviews")
+	}
+	if n := len([]rune(got)); n > 24100 {
+		t.Errorf("%d runes; want about 24000", n)
+	}
+	if got := joinShares("r", strings.Repeat("c", 30000), 24000); !strings.HasPrefix(got, "r") || len([]rune(got)) > 24100 {
+		t.Errorf("short reviews with long comments: %d runes", len([]rune(got)))
+	}
+}

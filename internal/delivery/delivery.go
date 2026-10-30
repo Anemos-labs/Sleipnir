@@ -673,34 +673,64 @@ func (c *Controller) reviewSummary(ctx context.Context, pr string) (string, stri
 	if err = json.Unmarshal(b, &v); err != nil {
 		return "", "", err
 	}
-	// Reviews come first: they carry the findings, while comments are mostly summaries of the change.
-	var out strings.Builder
+	// Reviews and comments each have their own share of the room, so long reviews cannot crowd out a comment that
+	// carries a finding, nor a long run of comments the reviews.
+	var reviews, comments strings.Builder
 	for _, r := range v.Reviews {
 		if body := reviewText(r.Body, 8000); body != "" {
-			fmt.Fprintf(&out, "%s %s\n%s\n", r.State, r.SubmittedAt, body)
+			fmt.Fprintf(&reviews, "%s %s\n%s\n", r.State, r.SubmittedAt, body)
 		}
 	}
 	for _, r := range v.Comments {
 		if body := reviewText(r.Body, 6000); body != "" {
-			fmt.Fprintf(&out, "%s\n%s\n", r.URL, body)
+			fmt.Fprintf(&comments, "%s\n%s\n", r.URL, body)
 		}
 	}
-	return clip(out.String(), 24000), fmt.Sprintf("%x", sha256.Sum256(b)), nil
+	return joinShares(reviews.String(), comments.String(), 24000), fmt.Sprintf("%x", sha256.Sum256(b)), nil
+}
+
+// joinShares joins the reviews and the comments in at most about n runes. Each part gets half; a part that needs less
+// leaves the rest to the other. A part over its share keeps its beginning and its end, like reviewText.
+func joinShares(reviews, comments string, n int) string {
+	rl, cl := len([]rune(reviews)), len([]rune(comments))
+	rs, cs := n/2, n-n/2
+	switch {
+	case rl < rs:
+		cs = n - rl
+	case cl < cs:
+		rs = n - cl
+	}
+	return keepEnds(reviews, rs) + keepEnds(comments, cs)
 }
 
 var (
 	htmlComment = regexp.MustCompile(`(?s)<!--.*?-->`)
-	htmlTag     = regexp.MustCompile(`<[^<>\n]{1,1000}>`)
-	blankLines  = regexp.MustCompile(`\n[ \t]*(\n[ \t]*)+`)
+	// htmlTag is tag syntax (a name right after the bracket), so a comparison such as "a < b && c > d" and an
+	// autolink such as <https://example.com> stay.
+	htmlTag    = regexp.MustCompile(`</?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>\n]{0,1000})?/?>`)
+	codeSpan   = regexp.MustCompile("(?s)```.*?```|`[^`\n]+`")
+	blankLines = regexp.MustCompile(`\n[ \t]*(\n[ \t]*)+`)
 )
 
 // reviewText is a review or comment body as text for the agent: HTML comments and tags (images, folds, badges) are
-// removed, and a body longer than n runes keeps its beginning and its end. Review bots put their detailed findings
-// (outside the diff, nitpicks, the prompt that lists them) at the end of long bodies, where a plain cut loses them.
+// removed outside code, and a body longer than n runes keeps its beginning and its end. Review bots put their detailed
+// findings (outside the diff, nitpicks, the prompt that lists them) at the end of long bodies, where a plain cut loses
+// them.
 func reviewText(body string, n int) string {
 	s := htmlComment.ReplaceAllString(body, "")
-	s = htmlTag.ReplaceAllString(s, "")
-	s = strings.TrimSpace(blankLines.ReplaceAllString(s, "\n\n"))
+	var b strings.Builder
+	at := 0
+	for _, m := range codeSpan.FindAllStringIndex(s, -1) {
+		b.WriteString(htmlTag.ReplaceAllString(s[at:m[0]], ""))
+		b.WriteString(s[m[0]:m[1]])
+		at = m[1]
+	}
+	b.WriteString(htmlTag.ReplaceAllString(s[at:], ""))
+	return keepEnds(strings.TrimSpace(blankLines.ReplaceAllString(b.String(), "\n\n")), n)
+}
+
+// keepEnds is s when it has at most n runes, else its first third and its end with a marker between them.
+func keepEnds(s string, n int) string {
 	r := []rune(s)
 	if len(r) <= n {
 		return s
