@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -242,6 +243,20 @@ func evict(ls []Lesson, max int, fresh map[string]bool) []Lesson {
 // Otherwise it is appended. added and merged count the two. A nil emb saves lessons without vectors, found by keyword alone;
 // then a draft merges into a lesson of its kind whose content words are within KeywordMergeSimilarity of its own.
 func (s *Store) Add(ctx context.Context, emb Embedder, drafts []Draft) (added, merged int, err error) {
+	r, err := s.Save(ctx, emb, drafts)
+	return r.Added, r.Merged, err
+}
+
+// Saved counts what Save did with its drafts.
+type Saved struct {
+	Added, Merged int
+	Replaced      int // existing lessons a draft retired (Draft.Replaces)
+}
+
+// Save is Add that also retires lessons: a draft that names an existing lesson in Replaces, other than the one it was merged
+// into, removes it once the draft is saved, and the new or merged lesson keeps the retired text in Replaced. An id that is no
+// lesson is ignored.
+func (s *Store) Save(ctx context.Context, emb Embedder, drafts []Draft) (r Saved, err error) {
 	var ds []Draft
 	seen := map[string]bool{}
 	for _, d := range drafts {
@@ -249,6 +264,9 @@ func (s *Store) Add(ctx context.Context, emb Embedder, drafts []Draft) (added, m
 		d.Text = Clean(d.Text, MaxTextRunes)
 		d.Task = Clean(d.Task, MaxTaskRunes)
 		d.Project = Clean(d.Project, MaxTaskRunes)
+		if d.Replaces = strings.ToLower(strings.TrimSpace(d.Replaces)); !validID(d.Replaces) {
+			d.Replaces = ""
+		}
 		key := d.Kind + "\x00" + strings.ToLower(d.Text)
 		if !validKind(d.Kind) || d.Text == "" || seen[key] {
 			continue
@@ -257,7 +275,7 @@ func (s *Store) Add(ctx context.Context, emb Embedder, drafts []Draft) (added, m
 		ds = append(ds, d)
 	}
 	if len(ds) == 0 {
-		return 0, 0, nil
+		return Saved{}, nil
 	}
 	texts := make([]string, len(ds))
 	for i, d := range ds {
@@ -267,14 +285,14 @@ func (s *Store) Add(ctx context.Context, emb Embedder, drafts []Draft) (added, m
 	if emb != nil {
 		raw, err := emb.Embed(ctx, texts)
 		if err != nil {
-			return 0, 0, err
+			return Saved{}, err
 		}
 		if len(raw) != len(ds) {
-			return 0, 0, fmt.Errorf("lessons: %d vectors for %d lessons", len(raw), len(ds))
+			return Saved{}, fmt.Errorf("lessons: %d vectors for %d lessons", len(raw), len(ds))
 		}
 		for i, v := range raw {
 			if vecs[i] = normalize(v); vecs[i] == nil {
-				return 0, 0, fmt.Errorf("lessons: the embedding of %q is empty, zero or not finite", ds[i].Text)
+				return Saved{}, fmt.Errorf("lessons: the embedding of %q is empty, zero or not finite", ds[i].Text)
 			}
 		}
 	}
@@ -307,24 +325,31 @@ func (s *Store) Add(ctx context.Context, emb Embedder, drafts []Draft) (added, m
 					best, bestSim = j, c
 				}
 			}
+			at := best
 			if best >= 0 && bestSim >= MergeSimilarity {
 				ls[best].Last = now
 				if ls[best].Project != d.Project {
 					ls[best].Project = "" // learned in two projects: general
 				}
-				merged++
-				continue
+				r.Merged++
+			} else {
+				at = len(ls)
+				ls = append(ls, Lesson{ID: id, Kind: d.Kind, Text: d.Text, Task: d.Task, Project: d.Project, Vec: vecs[i], Created: now, Last: now})
+				fresh[id] = true
+				r.Added++
 			}
-			ls = append(ls, Lesson{ID: id, Kind: d.Kind, Text: d.Text, Task: d.Task, Project: d.Project, Vec: vecs[i], Created: now, Last: now})
-			fresh[id] = true
-			added++
+			if j := slices.IndexFunc(ls, func(l Lesson) bool { return l.ID == d.Replaces }); d.Replaces != "" && j >= 0 && j != at {
+				ls[at].Replaced = Clean(ls[j].Text, MaxTextRunes)
+				ls = slices.Delete(ls, j, j+1)
+				r.Replaced++
+			}
 		}
 		return s.write(ls, fresh)
 	})
 	if err != nil {
-		return 0, 0, err
+		return Saved{}, err
 	}
-	return added, merged, nil
+	return r, nil
 }
 
 // Retrieve is RetrieveIn without a project.

@@ -43,7 +43,12 @@ embeddings model (`models.roles.embedder` or `--role-model
 embedder=provider/model`, any OpenAI-compatible `/embeddings` endpoint) they
 are found by meaning as well, and a lesson's relevance is the higher of the two.
 Lessons are ranked by relevance and by how often they helped; ones that keep
-failing are dropped. An optional `reranker` role (a `/rerank` endpoint) orders
+failing are dropped. The model that distills a goal's lessons is shown the
+earlier lessons the goal was shown and the others closest to its objective
+(eight at most); when the outcome shows one of them wrong or outdated, the new
+lesson that corrects it replaces it, and keeps its text, which the Memory page
+shows struck through under the new lesson. Only a lesson the model was shown
+can be replaced. An optional `reranker` role (a `/rerank` endpoint) orders
 the closest twelve before five are shown. No model is built in: both are
 whatever you name. A session started with `--no-memory` keeps no lessons.
 

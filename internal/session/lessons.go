@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -31,6 +32,7 @@ const (
 	lessonsTimeout    = 30 * time.Second // retrieval at a goal's start
 	distillTimeout    = 90 * time.Second // recording and distilling at its end
 	distillMaxTokens  = 1500
+	lessonsEarlier    = 8 // earlier lessons the distiller is shown, which a new one may replace
 )
 
 // lessonMemory is a session's lesson memory: the store under ~/.sleipnir and the endpoints that embed and rerank.
@@ -153,20 +155,25 @@ func (s *Session) goalEnded(ctx context.Context, g *goal.State, won bool, outcom
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), distillTimeout)
 	defer cancel()
 	m := s.lessons
-	recorded := len(g.Lessons)
-	err := m.store.Record(g.Lessons, won)
+	shown := g.Lessons
+	err := m.store.Record(shown, won)
 	g.Lessons = nil
-	var added, merged int
+	var saved lessons.Saved
 	if err == nil {
+		earlier := m.related(ctx, g.Objective, lore.Key(s.opts.Root), shown)
 		var drafts []lessons.Draft
-		if drafts, err = s.distill(ctx, g, outcome); err == nil && len(drafts) > 0 {
+		if drafts, err = s.distill(ctx, g, outcome, earlier); err == nil && len(drafts) > 0 {
 			for i := range drafts {
 				drafts[i].Project = lore.Key(s.opts.Root)
 				// Lessons reach every later goal in every project: a credential the model copied into one does not.
 				drafts[i].Text = config.ScrubText(drafts[i].Text)
 				drafts[i].Task = config.ScrubText(drafts[i].Task)
+				// The model retires only a lesson it was shown, never one it guessed or was told the id of.
+				if !slices.ContainsFunc(earlier, func(l lessons.Lesson) bool { return l.ID == drafts[i].Replaces }) {
+					drafts[i].Replaces = ""
+				}
 			}
-			added, merged, err = m.store.Add(ctx, m.embedder(), drafts)
+			saved, err = m.store.Save(ctx, m.embedder(), drafts)
 		}
 	}
 	s.chargeLessons()
@@ -174,11 +181,34 @@ func (s *Session) goalEnded(ctx context.Context, g *goal.State, won bool, outcom
 		s.notice("", "lesson memory: "+short(provider.SanitizeText(err.Error(), 200), 200))
 		return
 	}
-	s.Log.Emit("", "lessons.learn", map[string]any{"won": won, "recorded": recorded, "added": added, "merged": merged})
+	s.Log.Emit("", "lessons.learn", map[string]any{"won": won, "recorded": len(shown), "added": saved.Added, "merged": saved.Merged, "replaced": saved.Replaced})
 }
 
-// distill asks the judge's model (else the session's) for the lessons of goal g.
-func (s *Session) distill(ctx context.Context, g *goal.State, outcome string) ([]lessons.Draft, error) {
+// related is what the distiller is shown of the lessons saved earlier, which a new lesson may replace: those the goal was shown
+// (that are still kept), then the others closest to its objective, at most lessonsEarlier. A memory that cannot be read gives
+// none: the goal's lessons are still distilled, only none can be replaced.
+func (m *lessonMemory) related(ctx context.Context, objective, project string, shown []string) []lessons.Lesson {
+	all, err := m.store.Load()
+	if err != nil || len(all) == 0 {
+		return nil
+	}
+	var out []lessons.Lesson
+	for _, l := range all {
+		if slices.Contains(shown, l.ID) {
+			out = append(out, l)
+		}
+	}
+	near, _ := m.store.RetrieveIn(ctx, m.embedder(), objective, project, lessonsEarlier)
+	for _, l := range near {
+		if len(out) < lessonsEarlier && !slices.ContainsFunc(out, func(o lessons.Lesson) bool { return o.ID == l.ID }) {
+			out = append(out, l)
+		}
+	}
+	return out[:min(len(out), lessonsEarlier)]
+}
+
+// distill asks the judge's model (else the session's) for the lessons of goal g, showing it the earlier lessons it may replace.
+func (s *Session) distill(ctx context.Context, g *goal.State, outcome string, earlier []lessons.Lesson) ([]lessons.Draft, error) {
 	p, m := s.Provider, s.Model
 	if s.judgeP != nil {
 		p, m = s.judgeP, s.judgeModel
@@ -187,7 +217,7 @@ func (s *Session) distill(ctx context.Context, g *goal.State, outcome string) ([
 		Model:    m.ID,
 		System:   []core.Block{core.Text(lessons.DistillSystem)},
 		Params:   core.Params{MaxTokens: distillMaxTokens},
-		Messages: []core.Message{{Role: core.RoleUser, Blocks: []core.Block{core.Text(lessons.DistillPrompt(g.Objective, outcome, g.Verdicts))}}},
+		Messages: []core.Message{{Role: core.RoleUser, Blocks: []core.Block{core.Text(lessons.DistillPrompt(g.Objective, outcome, g.Verdicts, earlier))}}},
 	}
 	resp, err := p.Do(ctx, &provider.Request{Prompt: prompt, Label: "lessons:distill", NoStream: true}, nil)
 	if err != nil {
