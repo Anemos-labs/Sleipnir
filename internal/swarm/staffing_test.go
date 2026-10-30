@@ -870,3 +870,32 @@ func TestAManagerThatReadsAloneWhileTheTeamWaitsIsToldToDelegate(t *testing.T) {
 		}
 	}
 }
+
+// Writer slots that were never started are named with the idle members while work is open and nothing is planned for their role:
+// a manager that never staffed devops, the tester or the frontend gave their work to backend members one after the other. A role
+// with a ready task, a read-only role and docs under auto_docs are left out.
+func TestTheLiveViewNamesSlotsNeverStarted(t *testing.T) {
+	r := newRVRigWith(t, Config{MaxWorkers: 8, Team: []string{"backend", "frontend", "frontend", "devops", "reviewer"}},
+		func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	id, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "server", Files: []string{"server/**"}, By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, id+" idle", func() bool { return r.idle(id) })
+	got := strings.Join(r.sw.staffingLines(r.sw.Board.Snapshot()), "\n")
+	want := "idle with nothing planned for them: 1 devops slot never started; 2 frontend slots never started: plan the next " +
+		"independent work for them (task create with file scopes disjoint from the open tasks, then spawn role=devops task=<id>)"
+	if !strings.Contains(got, want) {
+		t.Fatalf("live view lines %q lack %q", got, want)
+	}
+	if strings.Contains(got, "reviewer slot") {
+		t.Errorf("live view lines %q name the read-only reviewer slot", got)
+	}
+	if _, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "ui", Role: "frontend", Files: []string{"web/**"}}); err != nil {
+		t.Fatal(err)
+	}
+	got = strings.Join(r.sw.staffingLines(r.sw.Board.Snapshot()), "\n")
+	if strings.Contains(got, "frontend slots never started") || !strings.Contains(got, "1 devops slot never started") {
+		t.Errorf("live view lines %q: want the devops slot named and not the frontend, which has a ready task", got)
+	}
+}
