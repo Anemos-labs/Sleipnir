@@ -237,8 +237,9 @@ func (t *webTab) startGen(spec startSpec) error {
 		s, err = session.New(t.ctx, o)
 	}
 	if err == nil {
-		s.EnableWriteJournal() // the Workspace's per-line authorship covers the session from its first write
-		t.refreshView(s)       // the session takes no request yet
+		s.EnableWriteJournal()       // the Workspace's per-line authorship covers the session from its first write
+		s.SetHost(webHarnessHost{t}) // the sleipnir tool runs lines and reloads through the tab
+		t.refreshView(s)             // the session takes no request yet
 	}
 	t.mu.Lock()
 	if err == nil && t.closed {
@@ -347,30 +348,46 @@ func (t *webTab) carryOn(s *session.Session, c carryOn) {
 		}
 		t.sys("↺", "the goal goes on: it was active when the models changed")
 	case c.turn && s.Resumed():
-		text := carryOnText
+		text, said := carryOnText, "the team goes on: it was working when the models changed"
+		if c.reload {
+			text, said = reloadText, "started again with the changes the agent applied"
+			if c.why != "" {
+				text += " What changed: " + c.why + "."
+				said += ": " + c.why
+			}
+			if trouble := s.PluginTrouble(); trouble != "" {
+				text += " Did not start: " + trouble + ". Fix it, install it again with replace, and reload."
+				said += "; did not start: " + trouble
+			}
+		}
 		if s.Swarm != nil {
 			text += carryOnTeam
 		}
 		if _, _, _, err := t.enqueue(queued{text: "go on after the restart", prompt: text}); err != nil {
 			return
 		}
-		t.sys("↺", "the team goes on: it was working when the models changed")
+		t.sys("↺", said)
 	}
 }
 
 // carryOn is what a restart for a change of settings (a model, a role's model) takes up again in the next generation: the goal that was
 // active, or the turn that was running. Any other restart leaves the goal paused and the team waiting, as a resumed session does.
 type carryOn struct {
-	goal bool // a goal was active: it is resumed
-	turn bool // a turn or a worker was running, with no active goal: the agent is told to go on
+	goal   bool   // a goal was active: it is resumed
+	turn   bool   // a turn or a worker was running, with no active goal: the agent is told to go on
+	reload bool   // the agent asked for the restart (the sleipnir tool's reload): it is told why it is back
+	why    string // what the reload applies, in the agent's words
 }
 
 // restartCarries are the restart kinds that change only who works and what the agents run on (a saved team loaded is one): the
 // work they were doing goes on after them.
-var restartCarries = map[string]bool{"model": true, "roles": true, "team": true}
+var restartCarries = map[string]bool{"model": true, "roles": true, "team": true, "reload": true}
 
 // carryOnText is the message that sends the agent on after a restart for a change of models, when no goal does.
 const carryOnText = "The session was started again to change the models the agents run on, and your conversation carried over. Go on with the work you were doing."
+
+// reloadText is the message that sends the agent on after the reload it asked for.
+const reloadText = "The session was started again, as you asked (sleipnir reload), so that the plugin and configuration changes apply; your conversation carried over. Check that what you changed is there (sleipnir help, or try it), then go on with the person's request."
 
 // carryOnTeam is what carryOnText adds for a team's manager.
 const carryOnTeam = " The board carried over too: tasks that were in progress are back in todo, so assign them again."
@@ -582,6 +599,12 @@ func (t *webTab) restart(ctx context.Context, kind string, typed []string, fresh
 		g := t.goals.State()
 		carry.goal = g != nil && g.Paused == ""
 		carry.turn = !carry.goal && t.busy()
+		if kind == "reload" {
+			t.mu.Lock()
+			carry.reload, carry.why, carry.turn = true, t.reloadWhy, !carry.goal
+			t.reloadWhy = ""
+			t.mu.Unlock()
+		}
 	}
 	t.mu.Lock()
 	if t.restarting || t.starting || t.closed {

@@ -1,6 +1,6 @@
 ---
 name: reverse-engineering
-description: Work out how a closed-source product (app, website, API, file format, binary) works from evidence and turn it into a spec for an original rebuild. Use when asked to clone, replicate or understand a product without its source.
+description: Work out how a closed-source product (app, site, API, file format, binary) works from evidence, as a spec for an original rebuild. Use to clone or understand a product without its source.
 license: MIT (method informed by morluto/rea, Copyright (c) 2026 morluto)
 ---
 # Reverse engineering a product

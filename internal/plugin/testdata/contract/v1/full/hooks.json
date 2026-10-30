@@ -1,0 +1,8 @@
+{
+  "SessionStart": [
+    {"hooks": [{"type": "command", "command": "echo '${setting:channel} ${setting:retries} ${setting:dry_run} from ${SLEIPNIR_PLUGIN_ROOT}'"}]}
+  ],
+  "PreToolUse": [
+    {"matcher": "bash", "hooks": [{"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/check.sh ${setting:level}"}]}
+  ]
+}

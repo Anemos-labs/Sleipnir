@@ -62,12 +62,20 @@ func Install(ctx context.Context, home, src string) (Manifest, error) {
 	}
 	dst := filepath.Join(base, m.ID)
 	if _, err := os.Stat(dst); err == nil {
-		return Manifest{}, fmt.Errorf("a plugin %q is already installed in %s; remove it first", m.ID, dst)
+		return Manifest{}, &InstalledError{ID: m.ID, Dir: dst}
 	}
 	if err := os.Rename(stage, dst); err != nil {
 		return Manifest{}, err
 	}
 	return LoadDir(dst)
+}
+
+// InstalledError is Install's refusal of a plugin whose id is installed already.
+type InstalledError struct{ ID, Dir string }
+
+// Error says which plugin is there and what to do.
+func (e *InstalledError) Error() string {
+	return fmt.Sprintf("a plugin %q is already installed in %s; remove it first", e.ID, e.Dir)
 }
 
 // Remove deletes an installed plugin from the user's plugin directory.

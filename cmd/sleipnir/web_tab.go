@@ -88,6 +88,7 @@ type webTab struct {
 	name       string
 	gen        uint64
 	s          *session.Session
+	reloadWhy  string // what the reload the agent asked for applies (webHarnessHost.Reload), until the restart reads it
 	tr         seam.Translator
 	detach     func()
 	startedAt  time.Time

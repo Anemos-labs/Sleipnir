@@ -167,3 +167,62 @@ func TestExternalPluginAddsSkillsCommandsAndHooksOnlyWhenOn(t *testing.T) {
 		t.Error("the plugin's skill is listed once it is on")
 	}
 }
+
+// TestContractPluginsLoadInASession runs the plugin API contract fixtures (internal/plugin/testdata/contract) through a real
+// session, as a person who installed them and turned them on would: their skills are listed, their commands answer under the
+// plugin's name, and the session starts with their hooks. A change that breaks this breaks plugins people have installed.
+func TestContractPluginsLoadInASession(t *testing.T) {
+	repo := newRepo(t)
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	o := opts(t, repo, client, model)
+	src := filepath.Join("..", "plugin", "testdata", "contract", "v1")
+	for _, name := range []string{"full", "claude-layout", "bare"} {
+		copyFixture(t, filepath.Join(src, name), filepath.Join(o.Home, ".sleipnir", "plugins", name))
+	}
+	writeUserConfig(t, o.Home, `{"plugins":{"enabled":{"release-kit":true,"tidy":true,"bare":true}}}`)
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for _, id := range []string{"release-kit", "tidy", "bare"} {
+		if st, ok := s.Plugins().Get(id); !ok || st.State != "on" {
+			t.Errorf("%s: %+v", id, st)
+		}
+	}
+	shared := s.Shared.Text()
+	for _, want := range []string{"write release notes from the merged pull requests", "tidy the files you changed"} {
+		if !strings.Contains(shared, want) {
+			t.Errorf("the skill %q is not listed", want)
+		}
+	}
+	if _, ok := s.Commands().Get("release-kit:release"); !ok {
+		t.Error("the plugin's command is not there under its name")
+	}
+}
+
+// copyFixture copies a plugin fixture without its tool servers (nothing to start in a test) and its golden file.
+func copyFixture(t *testing.T, from, to string) {
+	t.Helper()
+	err := filepath.WalkDir(from, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(from, p)
+		switch d.Name() {
+		case "mcp.json", ".mcp.json", "golden.json":
+			return nil
+		}
+		if d.IsDir() {
+			return os.MkdirAll(filepath.Join(to, rel), 0o700)
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(to, rel), b, 0o600)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

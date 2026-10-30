@@ -1,0 +1,2 @@
+{"name": "Tidy", "description": "the Claude Code layout: a name, hooks under a hooks key, servers directly in .mcp.json", "version": "0.1.0",
+ "author": {"name": "someone"}, "license": "MIT"}

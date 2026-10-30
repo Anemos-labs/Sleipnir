@@ -89,7 +89,7 @@ A slash command that belongs to a plugin that is off answers with the plugin and
 
 | Category | Plugins |
 |---|---|
-| Tools | `fs`, `shell`, `web`, `recall`, `skill`, `memory`, `plan`, `mcp` |
+| Tools | `fs`, `shell`, `web`, `recall`, `skill`, `memory`, `plan`, `harness`, `mcp` |
 | Extensions | `skills`, `builtin-skills`, `commands`, `agents`, `hooks`, `instructions` |
 | Team | `swarm`, `mailman`, `auto-docs`, `manager-approves`, `push-progress`, `goal`, `lessons`, `delivery`, `recon`, `research`, `update-check`, and `role:architect` … `role:reviewer` (one per worker role) |
 | Interface | `view:cockpit`, `view:workspace`, `view:cache`, `view:mail`, `view:board`, `view:replay`, `view:sessions`, `view:tools`, `view:plugins`, `view:memory` |
@@ -164,6 +164,7 @@ hello/
   "title": "Hello",
   "description": "an example plugin: a skill, a command and a hook",
   "version": "1.0.0",
+  "api": 1,
   "requires": ["skills"],
   "config": {
     "type": "object",
@@ -176,6 +177,7 @@ hello/
 
 - `id` (or `name`): lower-case letters, digits and `- _ . :`, at most 64 characters. `core:`, `view:` and `role:` are
   reserved, and a built-in id cannot be taken.
+- `api`: the plugin API the plugin is written for ([below](#updates-and-the-plugin-api)); 1 when it is left out.
 - `requires`: plugin ids that must be on; otherwise the plugin is pending.
 - `config`: the settings the Plugins page shows a form for (`string`, `number`, `integer`, `boolean`, and `enum` for a
   choice). `sleipnir plugins set hello greeting=Hi` writes one from the terminal.
@@ -191,6 +193,46 @@ In `hooks.json` and `mcp.json`, `${SLEIPNIR_PLUGIN_ROOT}` (or `${CLAUDE_PLUGIN_R
 its skills, commands and agents join yours with your own files winning a name collision.
 
 A complete example is in [docs/examples/plugins/hello](examples/plugins/hello/).
+
+## Updates and the plugin API
+
+The plugin API is everything above: the manifest's fields, the directory's layout, the placeholders and the built-in plugin ids
+a plugin may require. It has a version, and a plugin says which one it was written for with `"api"`. Sleipnir reads every
+version from `plugin.MinAPIVersion` to `plugin.APIVersion` (today, 1 to 1) the same way in every release:
+
+- A change that would make a plugin of a supported version load differently gets a new API version; the older one keeps its
+  behaviour. `internal/plugin/testdata/contract/v<N>/` holds plugins that use every part of version N with golden files of what
+  Sleipnir reads from them, and `TestPluginContract` (with a session-level twin in `internal/session`) fails such a change. The
+  documented example plugin is held to the contract too.
+- A built-in plugin that is renamed keeps its old id working in `requires` (`plugin.RenamedPlugins`).
+- A plugin written for a newer API than the installed Sleipnir does not start: it is in error with "written for plugin API N;
+  this Sleipnir reads API M and older: update Sleipnir", and the plugins that need it are pending, rather than half working.
+- Fields the API does not know are ignored when a plugin loads, so a plugin may carry the fields of a newer API.
+
+Before installing, `plugins check` of the `sleipnir` tool (below) reads a plugin the way Sleipnir will and reports errors (a
+manifest that does not load, an API this Sleipnir does not read, a `requires` that names no plugin, a setting of an unknown type,
+a hooks or MCP file that does not parse, a skill without a description) and warnings (unknown fields, no `api`).
+
+## Plugins the agents write
+
+The `sleipnir` tool (plugin `harness`, on by default) lets the agent the person talks to (a single agent, or a team's manager)
+do what the person would do with slash commands, the Plugins page and the schedule, when the person asks for it:
+
+| Action | What it does |
+|---|---|
+| `help` | what the harness can do in this session, and the plugin changes a reload would apply |
+| `run` | a slash command: `/scan`, `/research`, `/goal`, `/delivery`, `/jobs stop ID` run when the agent's turn ends, as a line the person typed ahead; `/status`, `/cost`, `/skills`, `/mcp`, `/jobs`, `/agents` answer at once |
+| `schedule` | `list`, `add` (cron, goal, and optionally model, mode, budget and folder), `pause`, `resume`, `remove`: the jobs of `sleipnir schedule` |
+| `plugins` | `list`, `check`, `install` (a directory or git URL; `replace` installs a new version over the old), `enable`, `disable`, `reset`, `remove` |
+| `reload` | the session starts again when the turn ends, with its conversation, so plugin and configuration changes apply |
+
+The built-in skill `sleipnir-plugin` gives the agent the loop: write the plugin in its own directory, check it, install it,
+reload, try it. On the web page the reload restarts the tab and sends the agent on, naming any plugin that did not start; the
+terminal chat starts again and waits for the person's next message. Every change is a change of state to the permission
+engine: it asks in the default mode, passes in bypass and yolo, and is refused in plan mode. The permission mode and rules,
+models and roles, the team's shape, the budget, sign-in, project trust and starting the conversation over stay the person's. A
+scheduled job the tool adds runs in `default`, `accept-edits` or `plan` mode, never bypass or yolo. A headless run has no chat,
+so `run` and `reload` are refused there.
 
 Built-in plugins are Go: a manifest in `internal/plugin/builtin.go` and an activator registered with the kernel
 (`plugin.NewKernel`), which adds what the plugin contributes and registers, with `Scope.OnDispose`, how to undo it.

@@ -84,6 +84,7 @@ func chatOnTerminal(ctx context.Context, f chatTTY) error {
 		host.s = s
 		if err == nil {
 			host.goal = s.LoadGoal()
+			s.SetHost(ttyHarnessHost{h: host, link: link}) // the sleipnir tool's lines wait in the program's queue
 		}
 		startDone <- made{s, err}
 		if err != nil {

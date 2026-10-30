@@ -362,6 +362,7 @@ type Session struct {
 	refused   []refusedCommand
 
 	mu     sync.Mutex
+	host   Host // the program the session runs in (SetHost), under mu; nil for a headless run
 	effort provider.EffortSetting
 	// objective is the standing goal's objective as last saved or loaded (goal.go), under mu.
 	objective string
@@ -1070,6 +1071,7 @@ func (s *Session) build(ctx context.Context) error {
 			return nil
 		},
 		plugin.PlanTool: func(*plugin.Scope) error { reg.Register(plantool.New(plans)); return nil },
+		plugin.Harness:  func(*plugin.Scope) error { reg.Register(harnessTool{s}); return nil },
 		// MCP servers add their tools here, before the list is frozen: every agent of
 		// the session then sends the same tools array, byte for byte.
 		plugin.MCP: func(*plugin.Scope) error { s.startMCP(ctx, reg); return nil },
@@ -1514,7 +1516,7 @@ func soloRole() swarm.Role {
 	return swarm.Role{Name: "worker", Short: "w", Priority: agent.PrioInteractive, MaxSteps: 200, Pin: soloPin}
 }
 
-const soloPin = `You are working alone on the user's task, with no team to delegate to. Understand it, list its requirements, make the change with the smallest correct diff, and check your work by running the project's own build and tests (and the program itself when your change alters what its users see) before you report. When a test tool is missing, set it up inside the project (for Python, a virtual environment in .venv) rather than skipping the run. Say plainly what you did, what you verified and what remains.`
+const soloPin = `You are working alone on the user's task, with no team to delegate to. Understand it, list its requirements, make the change with the smallest correct diff, and check your work by running the project's own build and tests (and the program itself when your change alters what its users see) before you report. When a test tool is missing, set it up inside the project (for Python, a virtual environment in .venv) rather than skipping the run. Say plainly what you did, what you verified and what remains. When the user asks for something Sleipnir itself does (a schedule, a deep scan, research, a standing goal, turning a plugin on, or a plugin of its own), do it with the sleipnir tool (action help says what it can do).`
 
 // writeGuard routes post-write notifications to the checkpoint store so a rewind
 // can tell an agent's last write from a human's later edit.
