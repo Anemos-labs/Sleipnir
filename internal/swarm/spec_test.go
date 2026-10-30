@@ -743,7 +743,7 @@ func TestReadOnlyCommandControls(t *testing.T) {
 	}
 	for _, bad := range []string{"", "rm -rf .", "touch x", "sed -i s/a/b/ x", "tee out.txt", "cat a > b", "cat a >> b", "echo hi | sh", "ls && rm x", "ls; rm x", "ls\nrm x", "cat $(pwd)/x", "cat `pwd`",
 		"cat /etc/passwd", "cat ../secret", "cat ~/.ssh/id_rsa", "grep -r x /", "find / -name x", "git push", "git commit -am x", "git checkout main", "git branch -D x", "git -c core.pager=sh log",
-		"git diff --no-index /etc/a /etc/b", "git log --output=x", "git log --outp=x", "git grep -nO x", "tree -o out.txt", "tree [-]o README.md", "git log ?-output=x", "tree -aR -H . ", "tree --out=x", "file -C -m magic", "file -zC", "file --comp", "go build ./...", "go run main.go", "go install ./...", "go test -exec ./x ./...", "go test -coverprofile=c.out ./...", "rg --pre ./x foo",
+		"git diff --no-index /etc/a /etc/b", "git log --output=x", "git log --outp=x", "git grep -nO x", "tree -o out.txt", "tree [-]o README.md", "git log ?-output=x", "tree -aR -H . ", "tree --out=x", "file -C -m magic", "file -zC", "file --comp", "file [-]C -m magic", "go build ./...", "go run main.go", "go install ./...", "go test -exec ./x ./...", "go test -coverprofile=c.out ./...", "rg --pre ./x foo",
 		"find . -delete", "find . -exec rm {} ;", "npm install", "npm run build", "make", "make clean", "cargo build", "python x.py", "sh -c ls", "env ls"} {
 		if readOnlyCommand(bad) {
 			t.Errorf("%q must be refused", bad)

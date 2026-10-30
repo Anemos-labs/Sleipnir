@@ -32,3 +32,14 @@ func TestDenyKeysDropsCredentialLookingVariables(t *testing.T) {
 		t.Fatalf("env: %q", got)
 	}
 }
+
+// A proxy setting stays, as the child may need it, but not the password in its URL.
+func TestDenyKeysDropsProxyCredentials(t *testing.T) {
+	cmd := exec.Command("true")
+	cmd.Env = []string{"HTTPS_PROXY=https://user:pa55word@proxy:8080", "no_proxy=localhost"}
+	DenyKeys(cmd)
+	got := strings.Join(cmd.Env, " ")
+	if strings.Contains(got, "pa55word") || !strings.Contains(got, "HTTPS_PROXY=https://proxy:8080") || !strings.Contains(got, "no_proxy=localhost") {
+		t.Fatalf("env: %q", got)
+	}
+}

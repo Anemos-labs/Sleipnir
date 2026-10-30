@@ -10,14 +10,15 @@ they do not indicate whether a change has been released.
 - Hardening from a CodeRabbit deep scan, outside the permission engine. A
   sandboxed session mounts its own isolation directory instead of its parent,
   and runs a helper binary copied out of any mount; a repository whose `.git`
-  config, hooks or info is a link is not mounted. `file -C` is not a
-  read-only command. The mailman runs no tool but its mail. A worktree whose
+  config, hooks, info or a linked worktree's config is a link is not
+  mounted. `file -C` (or a glob that can expand to it) is not a read-only
+  command. A web command run without keys gets no proxy password either. The mailman runs no tool but its mail. A worktree whose
   `.git` file names another repository is not adopted. Web fetches stop at
   16 MiB of Markdown, and a wildcard host rule no longer matches an IP
   address. MCP: a tool server's fingerprint covers its tool filters, a
   credential the server was configured with is masked in its tool
-  descriptions and prompt expansions, and a tool whose schema holds one is
-  left out; installing a plugin's tool server needs its whole command line
+  descriptions and prompt expansions, and a tool whose schema holds one,
+  JSON-escaped or not, is left out; installing a plugin's tool server needs its whole command line
   shown. A research export replaces only a directory whose mark lists every
   file in it (an older export's mark lists none: remove that directory
   first), and research ledgers and briefs are written through the project

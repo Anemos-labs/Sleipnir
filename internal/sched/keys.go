@@ -2,6 +2,7 @@ package sched
 
 import (
 	"bytes"
+	"net/url"
 	"os"
 	"os/exec"
 	"regexp"
@@ -90,12 +91,27 @@ func DenyKeys(cmd *exec.Cmd) {
 	}
 	kept := cmd.Env[:0:0]
 	for _, kv := range cmd.Env {
-		if name, value, ok := strings.Cut(kv, "="); ok && harden.LooksSecret(name, value) {
+		name, value, ok := strings.Cut(kv, "=")
+		if ok && harden.LooksSecret(name, value) {
 			continue
+		}
+		if ok && strings.HasSuffix(strings.ToLower(name), "_proxy") {
+			kv = name + "=" + withoutUserinfo(value)
 		}
 		kept = append(kept, kv)
 	}
 	cmd.Env = append(kept, NoStoredKeysEnv+"=1")
+}
+
+// withoutUserinfo drops the user and password from a proxy URL: LooksSecret leaves proxy settings to the commands that need
+// the network, but the password in one is a credential a child denied keys must not get either.
+func withoutUserinfo(v string) string {
+	u, err := url.Parse(v)
+	if err != nil || u.User == nil {
+		return v
+	}
+	u.User = nil
+	return u.String()
 }
 
 // StoredKeysDenied reports whether a parent asked this process to load no stored key, and forgets the request so that the

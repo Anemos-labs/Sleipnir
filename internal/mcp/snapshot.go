@@ -511,7 +511,7 @@ func serverCandidates(sv serverTools, o SnapshotOptions, warn func(string, ...an
 			warn("server %q: tool %q excluded: %v", sv.name, label, err)
 			continue
 		}
-		if s := string(n.schema); sv.red.apply(s) != s {
+		if sv.red.inJSON(n.schema) {
 			warn("server %q: tool %q excluded: its input schema holds a credential the server was configured with", sv.name, label)
 			continue
 		}

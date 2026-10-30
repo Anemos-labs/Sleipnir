@@ -600,6 +600,12 @@ func TestSnapshotMasksConfiguredCredentials(t *testing.T) {
 		mkTool("b", "Does b.", `{"type":"object","properties":{"x":{"type":"string","default":"`+placeholder+`"}}}`))
 	sv.red = newRedactor([]string{placeholder})
 	s := snapOf(SnapshotOptions{}, sv)
+	quoted := placeholder + `"q`
+	esc := st("e", mkTool("c", "Does c.", `{"type":"object","properties":{"x":{"type":"string","default":"`+placeholder+`\"q"}}}`))
+	esc.red = newRedactor([]string{quoted})
+	for _, tl := range snapOf(SnapshotOptions{}, esc).tools {
+		t.Errorf("a schema holding a credential with a quote, escaped in JSON, is offered: %s", tl.tool)
+	}
 	for _, tl := range s.tools {
 		if strings.Contains(tl.spec.Description, placeholder) || strings.Contains(string(tl.spec.InputSchema), placeholder) {
 			t.Errorf("%s shows the credential: %+v", tl.spec.Name, tl.spec)

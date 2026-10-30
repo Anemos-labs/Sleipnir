@@ -216,3 +216,20 @@ func TestLoadRunRefusesWhatIsNotARunDirectory(t *testing.T) {
 		t.Errorf("error %v", err)
 	}
 }
+
+// A manifest's group size times its task count is bounded without the product wrapping around: a huge group would
+// otherwise pass the check and loop for ever.
+func TestLoadRunRefusesAnOverflowingGroupSize(t *testing.T) {
+	dir := t.TempDir()
+	m := Manifest{GroupSize: 1 << 62, Tasks: []ManifestTask{{ID: "a"}, {ID: "b"}, {ID: "c"}, {ID: "d"}}}
+	b, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadRun(dir); err == nil || !strings.Contains(err.Error(), "rollouts") {
+		t.Fatalf("LoadRun: %v", err)
+	}
+}

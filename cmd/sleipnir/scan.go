@@ -231,7 +231,7 @@ func scanListCLI(out io.Writer, root string, asJSON bool) error {
 	fmt.Fprintln(tw, "SCAN\tDEPTH\tPHASE\tFILES\tFUNCTIONS\tMAPPED\tHUNTED\tLEADS\tCONFIRMED\tRERUNS")
 	for _, r := range runs {
 		c := scan.Check(r).Counts
-		prev := r.Previous
+		prev := oneLineSafe(r.Previous)
 		if prev == "" {
 			prev = "-"
 		}

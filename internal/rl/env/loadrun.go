@@ -87,7 +87,7 @@ func LoadRun(dir string) (Report, error) {
 		return Report{}, fmt.Errorf("%s: manifest.json: %w", dir, err)
 	}
 	group := max(m.GroupSize, 1)
-	if int64(group)*int64(max(len(m.Tasks), 1)) > maxRunSamples {
+	if int64(group) > maxRunSamples/int64(max(len(m.Tasks), 1)) { // divided, as a product of a hostile size can wrap
 		return Report{}, fmt.Errorf("%s: manifest.json: %d tasks of %d samples is more than %d rollouts", dir, len(m.Tasks), group, maxRunSamples)
 	}
 	tasks := make([]rl.Task, len(m.Tasks))

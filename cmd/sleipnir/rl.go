@@ -486,12 +486,12 @@ func rlVerify(_ context.Context, args []string, stdout, stderr io.Writer) error 
 		run, err := traj.Open(s.Dir)
 		if err != nil {
 			unreadable++
-			fmt.Fprintf(stdout, "%s: cannot open the log: %v\n", s.Dir, err)
+			fmt.Fprintf(stdout, "%s: cannot open the log: %s\n", oneLineSafe(s.Dir), oneLineSafe(err.Error()))
 			continue
 		}
 		for _, m := range run.Verify() {
 			bad++
-			fmt.Fprintf(stdout, "%s: %s: %s: %s\n", s.Dir, oneLineSafe(m.Req), oneLineSafe(m.Kind), oneLineSafe(m.Detail))
+			fmt.Fprintf(stdout, "%s: %s: %s: %s\n", oneLineSafe(s.Dir), oneLineSafe(m.Req), oneLineSafe(m.Kind), oneLineSafe(m.Detail))
 		}
 	}
 	fmt.Fprintf(stdout, "verified %d rollouts: %d mismatches, %d unreadable\n", len(samples), bad, unreadable)
