@@ -217,4 +217,7 @@ func TestHarnessToolInstallsAPluginOfItsOwn(t *testing.T) {
 	if _, ok := s2.Commands().Get("standup:today"); !ok {
 		t.Error("the plugin's command is there")
 	}
+	if c, ok := s2.Commands().Get("today"); !ok || c.Name != "standup:today" {
+		t.Errorf("the plugin's command answers to its own name too: %+v", c)
+	}
 }

@@ -177,16 +177,17 @@ func (r *Registry) List() []Command {
 	return append([]Command(nil), r.cmds...)
 }
 
-// Get returns a command by exact name (case-insensitively).
+// Get returns a command by name as people type it (case-insensitively, with or without its slash): its full name, or the last
+// part of a namespaced one (a plugin's "standup:today" as "today") when no other command ends the same way.
 func (r *Registry) Get(name string) (Command, bool) {
 	if r == nil {
 		return Command{}, false
 	}
-	i, ok := r.byKey[strings.ToLower(name)]
-	if !ok {
+	c, err := r.find(name)
+	if err != nil || c == nil {
 		return Command{}, false
 	}
-	return r.cmds[i], true
+	return *c, true
 }
 
 // knownKeys are frontmatter fields that other harnesses define and this loader
