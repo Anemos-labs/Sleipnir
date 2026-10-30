@@ -19,7 +19,7 @@ they do not indicate whether a change has been released.
   `/proc/PID/environ`. A git configuration that cannot be read, or a
   `config.worktree` that names a program, makes read-only git commands ask.
   Re-creating a virtual environment whose `bin` holds a link out of it
-  asks. A question the person refused stays refused where routine
+  (with `--copies`, its interpreter links too) asks. A question the person refused stays refused where routine
   questions are not asked (same-site redirects).
 
 - A `cd` that is a link of an `&&` chain moves the permission check of the

@@ -137,6 +137,8 @@ func TestTheTestsPresetAllowsAProjectVirtualEnvironment(t *testing.T) {
 		{cmd: "python3 -m venv --clear .venv", want: "ask", why: "--clear"},
 		{cmd: "python3 -m venv src", want: "ask", why: "not a virtual environment"},
 		{cmd: "python3 -m venv .venv-act", want: "ask", why: "is not a virtual environment"},
+		// copying the interpreter writes through the link bin/python3 already is, to the base python outside
+		{cmd: "python3 -m venv --copies .venv", want: "ask", why: "is not a virtual environment"},
 		{cmd: "python3 -m venv " + r.f.outside + "/v", want: "ask", why: "outside the workspace"},
 		{cmd: "python3 -m venv ../venv", want: "deny", why: "isolation"}, // another place of the workspace than the worker's own tree
 		{cmd: "python3 -m venv a b", want: "ask", why: "one environment"},

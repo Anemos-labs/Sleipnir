@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/shellparse"
@@ -168,7 +169,10 @@ func (ev *evaluator) venvCreate(args []string, t venvTool, cw *cwdSet) *venvUse 
 	v.dir = dirs[0]
 	real, why := ev.venvDir(v.dir, cw)
 	if why == "" {
-		why = existingDir(real, v.dir)
+		// a creation that copies the interpreter (--copies, or Windows, where venv copies by default) writes through a link
+		// already at bin/python3, where one that makes links keeps it
+		copies := runtime.GOOS == "windows" || slices.Contains(args, "--copies") || slices.Contains(args, "--always-copy")
+		why = existingDir(real, v.dir, copies)
 	}
 	v.why = why
 	// It writes its own names in the directory (bin, lib, include, pyvenv.cfg), not into what is already below it (access.format).
@@ -178,7 +182,7 @@ func (ev *evaluator) venvCreate(args []string, t venvTool, cw *cwdSet) *venvUse 
 
 // existingDir is why an environment may not be created in a directory that is already there: it is not a directory, or it is one
 // that holds something other than an environment. "" when it does not exist, is empty, or is an environment already.
-func existingDir(real, shown string) string {
+func existingDir(real, shown string, copies bool) string {
 	fi, err := os.Lstat(real)
 	if err != nil {
 		return ""
@@ -190,7 +194,7 @@ func existingDir(real, shown string) string {
 	if len(names) == 0 {
 		return ""
 	}
-	if why := venvLayout(real, shown); why != "" {
+	if why := venvLayout(real, shown, !copies); why != "" {
 		return shown + " exists and is not a virtual environment"
 	}
 	return ""
@@ -229,7 +233,7 @@ func (ev *evaluator) ownEnv(prog string, script bool, cw *cwdSet) (dir, real, wh
 	}
 	real, why = ev.venvDir(dir, cw)
 	if why == "" {
-		why = venvLayout(real, dir)
+		why = venvLayout(real, dir, true)
 	}
 	if why != "" {
 		return dir, real, why
@@ -519,8 +523,9 @@ func (ev *evaluator) venvDir(dir string, cw *cwdSet) (string, string) {
 }
 
 // venvLayout is why the directory real (shown as written) is not a virtual environment that keeps what is installed inside it: it
-// has no pyvenv.cfg, or an entry of it, of its lib directories or their site-packages leads outside it. "" when it is one.
-func venvLayout(real, shown string) string {
+// has no pyvenv.cfg, or an entry of it, of its lib directories or their site-packages leads outside it. "" when it is one. With
+// interpLinks the interpreter links of its bin (python, python3, ...) may lead out of it, as they do by design to the base Python.
+func venvLayout(real, shown string, interpLinks bool) string {
 	if fi, err := os.Lstat(filepath.Join(real, "pyvenv.cfg")); err != nil || !fi.Mode().IsRegular() {
 		return shown + " is not a virtual environment (it has no pyvenv.cfg)"
 	}
@@ -544,8 +549,8 @@ func venvLayout(real, shown string) string {
 			return shown + "/" + bin + " has too many entries to check"
 		}
 		for _, n := range files {
-			if strings.HasPrefix(n, "python") {
-				continue // the interpreter links lead to the base Python by design; creation replaces the link itself
+			if interpLinks && strings.HasPrefix(n, "python") {
+				continue // they lead to the base Python by design; a creation that makes links keeps the link there
 			}
 			if escapes(filepath.Join(real, bin, n)) {
 				return bin + "/" + n + " of " + shown + " leads outside the environment"
