@@ -987,6 +987,13 @@ or `@hourly`, `@daily`, `@weekly`, in the local time zone. A run is a headless `
 nobody is there to answer a question, so the default mode refuses what needs a yes: give a job `--mode accept-edits` (or an `--allow` rule in the project's settings)
 for the changes it may make.
 
+`--check CMD` makes a job wake cheaply: before each due run the daemon runs `CMD` by the shell in the job's folder (no model, no provider key,
+one minute at most) and compares what it prints on standard output with what it printed before the last successful run. The same output skips
+the run and records `no change`; a check that exits non-zero records `check failed: ...` and skips the run too. The first look, and the first
+after the check is edited, always runs. The printed value is kept only when the run ends `ok`, so a failed run is tried again at the next slot.
+Pick a command that prints one small value that changes exactly when there is work: `git ls-remote origin refs/heads/main`, a count of open
+issues, the modification time of an inbox file. A run started by hand (the page's Run now) does not consult the check.
+
 <!-- flags: schedule -->
 ```text
 usage: sleipnir schedule [list]
@@ -996,6 +1003,8 @@ usage: sleipnir schedule [list]
 flags of add:
   -budget-usd float
         stop a run at this many dollars (0: no limit) (default 1)
+  -check string
+        a shell command run in the folder before each due run, without a model; the run is skipped as "no change" while it prints what it printed before the last successful run (for example: git rev-parse origin/main)
   -cron string
         when: five fields "minute hour day-of-month month day-of-week", or @hourly, @daily, @weekly (required)
   -cwd string

@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A scheduled job may have a change check: `sleipnir schedule add --check CMD`
+  (and the `check` field of the web API's job requests and of the jobs it
+  lists, "only when changed" on the Schedule page). Before each due run the
+  daemon runs `CMD` by the shell in the job's folder, with no model and no
+  provider key, and skips the run as `no change` while its standard output
+  is what it was before the last successful run; a failing check skips the
+  run as `check failed: ...`. Jobs without a check run as before. The job
+  file gains the optional fields `check` and `check_sum`.
+
 - With persistent pools, a worker's `task claim` of a top-level task that
   is neither solo nor in a pool yet, of a role with more than one member,
   is refused with a message for a worker: the manager starts that task with

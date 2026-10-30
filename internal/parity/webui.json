@@ -2843,6 +2843,7 @@
     ],
     "flags": [
      "budget-usd",
+     "check",
      "cron",
      "cwd",
      "mode",

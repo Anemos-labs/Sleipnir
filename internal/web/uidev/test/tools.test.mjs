@@ -33,8 +33,8 @@ test('the probe request: the model, the base URL, --deep', () => {
 test('times and exits of the jobs table read as the CLI prints them', () => {
   const { SL } = setup(), S = SL.toolkit.schedule;
   assert.equal(S.hm('2026-10-12 07:00'), '10/12 07:00'); assert.equal(S.hm('2026-10-12T07:00:11'), '10/12 07:00'); assert.equal(S.hm('never'), 'never'); assert.equal(S.hm(''), '–');
-  assert.deepEqual(plain([S.exitInfo('0'), S.exitInfo('ok'), S.exitInfo('-'), S.exitInfo(''), S.exitInfo('2'), S.exitInfo('timed out after 1h0m0s'), S.exitInfo('running')]),
-    [{ txt: 'ok', bad: false }, { txt: 'ok', bad: false }, { none: true, txt: '', bad: false }, { none: true, txt: '', bad: false }, { txt: 'exit 2', bad: true }, { txt: 'timed out after 1h0m0s', bad: true }, { txt: 'running', bad: false, run: true }]);
+  assert.deepEqual(plain([S.exitInfo('0'), S.exitInfo('ok'), S.exitInfo('-'), S.exitInfo(''), S.exitInfo('2'), S.exitInfo('timed out after 1h0m0s'), S.exitInfo('running'), S.exitInfo('no change'), S.exitInfo('check failed: exit status 1')]),
+    [{ txt: 'ok', bad: false }, { txt: 'ok', bad: false }, { none: true, txt: '', bad: false }, { none: true, txt: '', bad: false }, { txt: 'exit 2', bad: true }, { txt: 'timed out after 1h0m0s', bad: true }, { txt: 'running', bad: false, run: true }, { txt: 'no change', bad: false, skip: true }, { txt: 'check failed: exit status 1', bad: true }]);
 });
 
 const job = o => Object.assign({ id: 'j1', cron: '0 9 * * 1-5', goal: 'check', dir: '/p', model: '', mode: '', budgetUsd: 1, lastRun: '2026-10-09 07:00', lastExit: '0', next: '2026-10-12 07:00' }, o || {});
@@ -48,10 +48,13 @@ test('a job row: Run now, Edit, Pause or Resume, Log, Remove; a paused job says 
   assert.match(S.jobRow(job({ lastExit: '2' }), {}, 'x'), /class="err">✗ exit 2/); assert.match(S.jobRow(job({ lastRun: 'never', lastExit: '-' }), {}, 'x'), /class="dim">never/);
   const going = S.jobRow(job({ lastExit: 'running' }), {}, 'x'); assert.match(going, /class="warm">● running/); assert.match(going, /data-run="j1" disabled/, 'a job that is running now cannot be started again');
   assert.match(S.jobRow(job({ lastRun: '', lastExit: '' }), {}, 'x'), /<td>– <span/, 'a job that never ran shows a dash');
+  const quiet = S.jobRow(job({ lastExit: 'no change', check: 'git ls-remote origin main' }), {}, 'x');
+  assert.match(quiet, /class="dim">◌ no change/, 'a slot its check skipped is neither a success nor a failure'); assert.match(quiet, /when changed: git ls-remote origin main/);
+  assert.doesNotMatch(run, /when changed/, 'a job without a check says nothing about one');
 });
 
 test('a job row shows every field as text', () => {
-  const { SL } = setup(), h = SL.toolkit.schedule.jobRow(job({ id: 'j' + EVIL, cron: EVIL, goal: EVIL, dir: EVIL, model: EVIL, mode: EVIL, budgetUsd: EVIL, lastRun: EVIL, lastExit: EVIL }), { log: null }, EVIL);
+  const { SL } = setup(), h = SL.toolkit.schedule.jobRow(job({ id: 'j' + EVIL, cron: EVIL, goal: EVIL, dir: EVIL, model: EVIL, mode: EVIL, budgetUsd: EVIL, lastRun: EVIL, lastExit: EVIL, check: EVIL }), { log: null }, EVIL);
   assert.ok(!hasMarkup(h)); assert.deepEqual(plain(scriptAttrs(h)), []); assert.ok(h.includes('&lt;img'));
 });
 
@@ -72,7 +75,8 @@ test('the form of a job: what is checked before the server is asked, and the bod
   assert.deepEqual(plain(S.validateJob({ goal: 'g', budget: '0.5' }, true)), []);
   assert.deepEqual(plain(S.validateJob({ goal: 'g', budget: '0' }, true)), []); // 0 is no limit, as in the CLI
   assert.equal(S.validateJob({ goal: 'g', budget: '-1' }, true)[0].text, 'the budget is a number of dollars, 0 for no limit');
-  assert.deepEqual(plain(S.jobRequest({ cron: ' 0 9 * * * ', goal: ' go ', dir: '/p', model: '', mode: 'plan', budget: '0.5' })), { cron: '0 9 * * *', goal: 'go', dir: '/p', model: '', mode: 'plan', budgetUsd: 0.5 });
+  assert.deepEqual(plain(S.jobRequest({ cron: ' 0 9 * * * ', goal: ' go ', dir: '/p', model: '', mode: 'plan', budget: '0.5' })), { cron: '0 9 * * *', goal: 'go', dir: '/p', model: '', mode: 'plan', budgetUsd: 0.5, check: '' });
+  assert.equal(S.jobRequest({ cron: '@hourly', goal: 'g', budget: '1', check: '  git rev-parse HEAD ' }).check, 'git rev-parse HEAD');
 });
 
 /* the catalogue of Tools: a list grouped by task, one action a command, every command reachable */
