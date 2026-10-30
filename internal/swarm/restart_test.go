@@ -503,7 +503,8 @@ func TestAPoolMembersChildStaysItsOwnWhileItIsRestarted(t *testing.T) {
 	if _, err := r.sw.Spawn(SpawnReq{Agent: "be-2", TaskID: child.ID, By: parent.Owner}); err != nil {
 		t.Fatal(err)
 	}
-	rvWait(t, "the child's run to fail", func() bool { return r.idle("be-2") && pendingOf(r, "be-2") != nil })
+	// The restart is waited for once it is logged: the supervisor passes over one not yet logged, however due.
+	rvWait(t, "the child's run to fail", func() bool { return r.idle("be-2") && scheduledOf(r, "be-2") })
 	if c, _ := r.sw.Board.Snapshot().Task(child.ID); c.Status != StatusDoing || c.Owner != "be-2" || c.Attempts != 1 {
 		t.Fatalf("%s = %s/%s attempts=%d, want doing, be-2's, one attempt", child.ID, c.Status, c.Owner, c.Attempts)
 	}

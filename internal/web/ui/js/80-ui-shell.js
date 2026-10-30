@@ -2,7 +2,7 @@
  * It is mounted once, under the shell scope, and re-renders from the active session. Nothing here is view-specific.
  *
  * Each fact is said once. The header holds the goal and how long the session has run, what it spent against its budget, and the
- * team (how many workers are busy, and a warning only while rate limits slow it down). The cache rings (reuse, and how long the
+ * team (how many workers are busy, and a warning only while rate limits or provider errors slow it down). The cache rings (reuse, and how long the
  * cache stays warm) show only with the full cache detail (Settings › Appearance); otherwise that detail is the Cache view's cards
  * (cache.sum, cache.hit, cache.head) and the rate detail is the Cockpit's Governor card (gov). The session strip names the sessions,
  * and the spend of all of them only when there are several; the status bar says what the session is doing and its tokens, and the
@@ -74,7 +74,7 @@
       txt('teamLab', $('#teamLab'), nW ? 'manager + ' + nW + ' worker' + (nW === 1 ? '' : 's') : 'single agent');
       { const solo = !nW; $('#vAct').hidden = solo; if (!solo) { txt('act', $('#vActN'), String(calc.active(m))); txt('actOf', $('#vActOf'), 'of ' + nW); } }
       /* rate limits are said only while they slow the team down; the rates themselves are the Cockpit's Governor card */
-      { const r4 = m.r429 || 0, rt = m.retries || 0, slow = r4 + rt > 0, ge = $('#govTxt'), gt = slow ? 'slowed by rate limits: ' + (r4 ? r4 + ' refused (429) · ' : '') + rt + ' retr' + (rt === 1 ? 'y' : 'ies') : ''; ge.hidden = !slow; txt('gov', ge, gt); ge.title = slow ? 'the provider refused or delayed requests; the Governor card of the Cockpit shows requests per minute, 429s and retries' : ''; }
+      { const r4 = m.r429 || 0, rt = m.retries || 0, slow = r4 + rt > 0, ge = $('#govTxt'), gt = slow ? (r4 ? 'slowed by rate limits: ' + r4 + ' refused (429) · ' : 'slowed by provider errors: ') + rt + ' retr' + (rt === 1 ? 'y' : 'ies') : ''; ge.hidden = !slow; txt('gov', ge, gt); ge.title = slow ? (r4 ? 'the provider refused or delayed requests' : 'requests failed (network errors, 5xx) and were retried') + '; the Governor card of the Cockpit shows requests per minute, 429s and retries' : ''; }
       $('#vAct').parentNode.title = nW ? 'the team: ' + nW + ' worker slots · ' + calc.started(m) + ' started · ' + calc.active(m) + ' working now (not idle, not done)' : 'one agent: the manager works alone (no workers)';
       const cut = S.truncated ? '<span class="warm">showing the first ' + U.fmtN(S.truncated) + ' events: the log has more</span>' : '';
       const b = $('#banner'); if (S.loading) { const sec = Math.max(0, Math.ceil((S.loading.next - Date.now()) / 1000)); b.hidden = false; b.innerHTML = '<b>Not loaded</b><span class="warm">could not load ' + esc(S.name) + ': ' + (sec ? 'retrying in ' + sec + ' s' : 'retrying') + '</span><span class="dim">' + esc(S.loading.why) + '</span><span class="sp"></span>'; }
