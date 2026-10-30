@@ -730,10 +730,9 @@ func (s *Session) buildProvider(ctx context.Context) error {
 		return nil
 	}
 	ref, err := ResolveModel(s.cfg, o.Model)
-	if m := o.RoleModels["manager"]; errors.Is(err, ErrNoModel) && o.Model == "" && m != "" {
-		// A team that names its manager's model (--role-model manager=…, a team file's models.manager) has named the
-		// session's model: the manager is the session's own agent.
-		ref, err = ResolveModel(s.cfg, m)
+	if errors.Is(err, ErrNoModel) && o.Swarm && strings.TrimSpace(o.RoleModels["manager"]) != "" {
+		// A team that names its manager's model (--team, --role-model manager=…) needs no other: the session runs on it.
+		ref, err = ResolveModel(s.cfg, o.RoleModels["manager"])
 	}
 	if err != nil {
 		return err
