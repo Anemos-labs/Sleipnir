@@ -63,3 +63,15 @@
   .chhead>.dim{display:none}   /* lease, cost and hit stay on the stall and in the drawer */
   .qstrip{padding:5px 8px}.qstrip .qhd b{margin-top:1px}.qstrip .qcmd{margin:3px 0;padding:3px 7px}.qstrip .qwhy{margin-bottom:4px;line-height:1.25}.qopt{padding:2px 7px;line-height:1.2}.qmeter{margin-top:3px}
 }
+/* the steps of the work between two messages (a group, 84-ui-chat.js): one line that opens; a group of one step is that step's own row */
+.msg.agrp{display:flex;flex-direction:column;gap:4px;min-width:0}
+.msg.agrp.one>.agrp-h{display:none}
+.msg.agrp:not(.open)>.agrp-b{display:none}
+.agrp-h{display:flex;align-items:baseline;gap:7px;width:100%;min-width:0;padding:3px 8px;border:1px solid var(--line);border-radius:3px;background:var(--panel2);text-align:left;font:500 11.5px/1.3 var(--f-num);color:var(--fg2)}
+.agrp-h:hover{border-color:var(--line2);color:var(--fg)}
+.agrp-h .ag-c{flex:none;width:9px;color:var(--dim)}
+.agrp-h .ag-n{flex:none;color:var(--fg2)}.agrp-h .ag-n b{color:var(--bright)}
+.agrp-h .ag-s{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--dim)}.agrp-h .ag-s b{color:var(--fg2);font-weight:600}
+.agrp-h .ag-x{flex:none;font-weight:600}
+.agrp-h time{flex:none;font:400 10px var(--f-num);color:var(--dim)}
+.msg.agrp.open:not(.one)>.agrp-b{display:flex;flex-direction:column;gap:5px;padding:2px 0 2px 9px;margin-left:4px;border-left:1px dashed var(--line2)}

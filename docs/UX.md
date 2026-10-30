@@ -154,7 +154,10 @@ The left rail switches views: the Cockpit (the team as a horse whose eight legs 
 gantt, the task board, the merge queue, mail and the governor), the Workspace (Files, Changes, Checkpoints), Cache, Mail,
 Board, Replay, Sessions, Schedule, Tools and Settings. The Radio rail on the right is the conversation with the manager, which is the
 only agent the person talks to, and a read-only feed of what the team does. An agent's words are drawn as Markdown, as the
-terminal draws them: typed as plain text while they stream, then rendered once the message is whole. Agent drawers, opened from a stall or a gantt row,
+terminal draws them: typed as plain text while they stream, then rendered once the message is whole. The steps of the work between two
+messages (the manager's tool calls and notes, the code it writes, the lines about merges and answers) are one collapsed line that
+says how many there are and which tools ran (`▸ 6 steps  Read 3 · Edit 2 · Bash`), so that what the person and the manager say stays
+easy to find; a click opens the line, a single step keeps its own row, and `/verbose` opens every line the person did not close. Agent drawers, opened from a stall or a gantt row,
 are read-only.
 
 In the Workspace, a click on a line number of a diff or of a whole file comments that line (a removed line too); the number of
@@ -269,6 +272,14 @@ The header and the Radio rail stay where they are, but their parts can be hidden
 customised, `Customise header & rail` in Settings › Appearance and the rail's own `⋯` list the header's widgets (goal, budget, cache
 hit, prefix warmth, team) and the status bar's line and model, each ticked while it shows, and the rail's manager pane and team
 activity, which collapse to a line that opens them again or hide, and its composer, which hides.
+
+The conversation is a card too: `Manager chat` in `+ Add card` (or `Move the chat into a card` in the rail's `⋯`) puts the
+conversation, its questions, the goal plan, the team activity and the composer in a card of the page, which moves and resizes like any
+other, and the Radio rail closes while that page shows. On another page, or when the card leaves the page (its `to the rail ⇥`, its
+`×`), they are in the rail again. On a screen up to 900 pixels wide the chat stays in `Talk`. The questions that wait for you have a card of
+their own, `Questions for you` (in `+ Add card` or the rail's `⋯`): it holds the question box in its place on the grid, so a question
+never covers what the person is about to click, and says in one line when nothing waits; on a page without it, the questions are in the
+rail.
 
 The layout of every page is one document, kept for the person by the server in `~/.sleipnir/web-layout.json` (`/api/layout`,
 docs/WEB-API.md) so that it follows them from one browser to another, and cached in the browser so that the page has it at once and

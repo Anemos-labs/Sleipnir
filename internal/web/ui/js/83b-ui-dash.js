@@ -192,6 +192,12 @@
     ['settings', 'Settings', 'models, roles, budget, permissions and the rest'],
   ];
   VIEWS.forEach(([v, t, d]) => { BY_ID['v:' + v] = { id: 'v:' + v, page: null, kind: 'view', view: v, title: t, desc: d, minW: 3, minH: 4, w: 6, h: 9, fit: false, list: false }; });
+  /** The conversation with the manager as a card (kind chat): while a page holds it, the Radio rail's conversation, its plan, questions,
+   *  Team activity and composer are drawn in that card (ui.chatDock) and the rail closes; on any other page they are in the rail again. */
+  BY_ID.chat = { id: 'chat', page: null, kind: 'chat', title: 'Manager chat', desc: 'your conversation with the manager and the composer, in a card you move and size; the Radio rail closes while a page holds it', minW: 3, minH: 6, w: 4, h: 14, fit: false, list: false };
+  /** The questions that wait for you as a card (kind questions): while a page holds it, the rail's question box is drawn there instead,
+   *  in its place on the grid, so that a question never covers what the person is about to click. */
+  BY_ID.questions = { id: 'questions', page: null, kind: 'questions', title: 'Questions for you', desc: 'what an agent asks you before it acts (run a command, write a file), in a card you move and size instead of the rail', minW: 3, minH: 2, w: 4, h: 7, fit: false, list: false };
   /** The cards a Cockpit could hold in the first version: its panels (kind part) and the views of the rail (kind view). */
   const CATALOG = PAGES.cockpit.cards.map(id => BY_ID[id]).concat(VIEWS.map(([v]) => BY_ID['v:' + v]));
   /** The Cockpit's default layout. */
@@ -318,6 +324,7 @@
     const shown = new Set(visible(L).map(c => c.id)), out = [];
     L.filter(c => c.hidden).forEach(c => out.push({ id: c.id, group: 'Hidden on this page', card: BY_ID[c.id] }));
     Object.keys(PAGES).forEach(k => { const P = PAGES[k]; if (k === key || !P.view) return; P.cards.forEach(id => { if (!shown.has(id) && !out.some(o => o.id === id) && !isHome(key, id) && BY_ID[id].page === k) out.push({ id, group: P.group === P.title ? P.title : P.group + ' › ' + P.title, card: BY_ID[id] }); }); });
+    ['chat', 'questions'].forEach(id => { if (!shown.has(id)) out.push({ id, group: 'The conversation', card: BY_ID[id] }); });
     VIEWS.forEach(([v]) => { const id = 'v:' + v; if (!shown.has(id) && !L.some(c => c.id === id && !c.hidden)) out.push({ id, group: 'Whole views', card: BY_ID[id] }); });
     const on = v => !SL.plugins || SL.plugins.viewOn(v);   // a card of a view whose plugin is off is not offered
     return out.filter(o => !o.card || (o.card.kind === 'view' ? on(o.card.view) : !PAGES[o.card.page] || !PAGES[o.card.page].view || on(PAGES[o.card.page].view)));
@@ -520,7 +527,8 @@
       const t = esc(d.title);
       return '<div class="dc-edit"><span class="dc-grip" aria-hidden="true">⠿</span><b>' + t + '</b>' + (foreign && d.page ? '<span class="dc-from">' + esc(PAGES[d.page].title) + '</span>' : '') + '<span class="dc-size num"></span>' +
         '<button class="dc-menu" type="button" aria-haspopup="menu" aria-label="Options of the ' + t + ' card" title="Options of this card">⋯</button><button class="dc-x" type="button" aria-label="' + (foreign ? 'Remove' : 'Hide') + ' the ' + t + ' card" title="' + (foreign ? 'Remove this card from this page' : 'Hide this card: the Hidden tray brings it back') + '">×</button></div>' +
-        (d.kind === 'view' ? '<div class="dc-h"><h2>' + t + '</h2><button class="dc-open" type="button" title="Open the ' + t + ' view" aria-label="Open the ' + t + ' view">open ↗</button></div>' : '');
+        (d.kind === 'view' ? '<div class="dc-h"><h2>' + t + '</h2><button class="dc-open" type="button" title="Open the ' + t + ' view" aria-label="Open the ' + t + ' view">open ↗</button></div>' : '') +
+        (d.kind === 'chat' || d.kind === 'questions' ? '<div class="dc-h"><h2>' + t + '</h2><button class="dc-rail" type="button" title="Take this card off the page: what it holds goes back to the Radio rail" aria-label="Move the ' + t + ' back to the Radio rail">to the rail ⇥</button></div>' : '');
     }
     const RS = '<i class="dc-rs" data-rs="e" aria-hidden="true"></i><i class="dc-rs" data-rs="s" aria-hidden="true"></i><i class="dc-rs" data-rs="se" aria-hidden="true"></i>';
     function mountCard(c) {
@@ -530,7 +538,7 @@
         if (inst.mounter) { k.scope = SL.makeScope(body, 'card:' + c.id); try { inst.mounter(c.id, k.scope, body); } catch (e) { console.error(e); } }
         return;
       }
-      const el = U.mk('section', { class: 'dcard ' + (d.kind === 'view' ? 'dc-view' : cls(c.id)) + (home ? '' : ' dc-foreign'), 'data-card': c.id, 'aria-label': d.title }, chrome(d, !home) + RS);
+      const el = U.mk('section', { class: 'dcard ' + (d.kind === 'view' ? 'dc-view' : d.kind === 'chat' || d.kind === 'questions' ? 'dc-view dc-chatcard' : cls(c.id)) + (home ? '' : ' dc-foreign'), 'data-card': c.id, 'aria-label': d.title }, chrome(d, !home) + RS);
       grid.appendChild(el); const k = { el, body: null, scope: null, home, cancelDrag: null }; inst.cards[c.id] = k;
       if (home) {
         k.body = slot(c.id); el.insertBefore(k.body, el.querySelector('.dc-rs'));
@@ -667,6 +675,7 @@
       sc.listen(grid, 'click', e => {
         const x = e.target.closest('.dc-x'); if (x) { hideCard(x.closest('.dcard').dataset.card); return; }
         const mb = e.target.closest('.dc-menu'); if (mb) { cardMenu(mb, mb.closest('.dcard').dataset.card); return; }
+        const rb = e.target.closest('.dc-rail'); if (rb) { hideCard(rb.closest('.dcard').dataset.card); return; }
         const o = e.target.closest('.dc-open'); if (o) { const v = BY_ID[o.closest('.dcard').dataset.card].view; if (v === 'workspace' && ui.nav) ui.nav.go((S.ui.ws && S.ui.ws.tab) || 'files'); else SL.views.show(v); }
       });
       sc.listen(grid, 'keydown', e => {
@@ -703,6 +712,7 @@
   }
   /** Draw card d (of another page, or a whole view) into body, in the card's scope: its home view mounts there with only that card. */
   function mountForeign(cs, body, d, S) {
+    if (d.kind === 'chat' || d.kind === 'questions') { if (ui.chatDock) ui.chatDock[d.kind === 'chat' ? 'take' : 'takeQuestions'](cs, body); else body.innerHTML = '<p class="stubnote">this card is not available here</p>'; return; }
     if (d.kind === 'view') {
       const def = SL.views.V.reg[d.view], inner = U.mk('section', { class: 'cview v-' + d.view, 'data-view': d.view, 'aria-label': d.title }); body.appendChild(inner);
       if (def && SL.plugins && !SL.plugins.viewOn(d.view)) SL.plugins.placeholder(cs, inner, d.view);   // its plugin is off: the note, not the view
@@ -775,6 +785,11 @@
           items.push({ label: BY_ID[id].title + (st === 'shown' ? '' : ' · ' + st), sub: st === 'shown' ? (can ? 'collapse or hide it' : 'hide it') : 'show it again', check: st === 'shown', act: () => ui.chrome.set(id, st === 'shown' ? (can ? 'collapsed' : 'hidden') : 'shown') });
           if (can && st !== 'hidden') items.push({ label: 'Hide ' + BY_ID[id].title.toLowerCase(), act: () => ui.chrome.set(id, 'hidden') }); });
       }
+      if (only !== 'hud' && ui.chatDock) {
+        const can = !!M && !narrowQ(), cardItem = (id, docked, what) => (docked ? { label: 'Move the ' + what + ' back to the rail', sub: 'take the ' + BY_ID[id].title + ' card off this page', act: () => ui.chatDock.release(id) }
+          : { label: 'Move the ' + what + ' into a card', sub: can ? 'a ' + BY_ID[id].title + ' card on this page: move it, size it' : 'needs a page of cards on a wide screen', off: !can, act: () => { if (M) M.add(id); } });
+        items.push({ sep: 'Cards' }, cardItem('chat', ui.chatDock.docked, 'chat'), cardItem('questions', ui.chatDock.questionsDocked, 'questions'));
+      }
       items.push({ label: 'Show everything', act: () => { PAGES.hud.cards.concat(PAGES.rail.cards).forEach(id => { if (ui.chrome.state(id) !== 'shown') ui.chrome.set(id, 'shown'); }); ui.toast('the header and the rail show every part', 'ok'); } });
       return menu(btn, items, only === 'rail' ? 'Customise the Radio rail' : 'Customise the header and the rail');
     },
@@ -782,7 +797,7 @@
     mount(sh) {
       const head = document.querySelector('#rail .rail-h');
       if (head && !head.querySelector('.railcust')) { const b = U.mk('button', { class: 'railcust', type: 'button', 'aria-haspopup': 'menu', 'aria-label': 'Customise the Radio rail: collapse or hide its parts', title: 'Collapse or hide the parts of the rail' }, '⋯'); const tog = head.querySelector('.railtog'); head.insertBefore(b, tog || null); sh.listen(b, 'click', () => ui.chrome.menu(b, 'rail')); }
-      const rail = document.getElementById('rail'); if (rail) sh.listen(rail, 'click', e => { const s = e.target.closest && e.target.closest('.railstub'); if (s) ui.chrome.set(s.dataset.part, 'shown'); });
+      const rail = document.getElementById('chatBox') || document.getElementById('rail'); if (rail) sh.listen(rail, 'click', e => { const s = e.target.closest && e.target.closest('.railstub'); if (s) ui.chrome.set(s.dataset.part, 'shown'); });
       sh.on('layout-changed', () => ui.chrome.apply()); ui.chrome.apply();
     },
   };

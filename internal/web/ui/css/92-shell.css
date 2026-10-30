@@ -56,3 +56,18 @@
 .nvh{margin:4px 8px 1px;padding-top:4px}
 .nvt{padding:6px 2px}
 @media (max-height:820px) and (min-width:901px){.nvi{padding:3px 2px}.nvi .nvg{width:18px;height:18px}}
+/* the Manager chat card (ui.chatDock): in the rail the chat's box adds nothing to the layout; in a card it fills the card, and the rail
+   closes while a page holds it */
+.chatbox{display:contents}
+.dc-chat{background:var(--panel)}
+.dc-chat>.chatbox{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;min-width:0;overflow:hidden}
+.dc-chatcard .dc-h .dc-rail{margin-left:auto;font:600 11px var(--f-num);color:var(--fg2);padding:1px 6px;border:1px solid var(--line2);border-radius:3px;background:var(--panel2)}
+.dc-chatcard .dc-h .dc-rail:hover{color:var(--bright);border-color:var(--dim)}
+#app[data-chat="card"]{--rail:0px}
+#app[data-chat="card"] #rail{display:none}
+/* the Questions for you card: the question box fills it and scrolls; with no question it says so in one line */
+.dc-q{background:var(--panel);overflow:auto}
+.dc-q>#qSlot{flex:1 1 auto;min-height:0}
+.dc-q>#qSlot>.qstrip{flex:none;max-height:none;overflow:visible}
+.dc-q .qstrip .qblk{max-height:none}
+.dc-q>#qSlot:not(:has(.qstrip,.qdone))::before{content:"No question waits for you.";display:block;padding:8px 12px;font:italic 12px var(--f-ui);color:var(--dim)}
