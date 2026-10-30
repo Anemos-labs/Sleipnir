@@ -714,7 +714,9 @@ Layered, cheapest first:
    `**/*.md` and the file `web/package.json` are disjoint, and a path that does not exist yet keeps the directory
    reading. Scopes are
    **enforced at write time** by the lease guard: an edit outside the scope of the writer's task is rejected with a
-   message naming the scope, and raises a fixed-text alert. A worker cannot widen its own scope (only the manager can,
+   message naming the scope, and raises an alert in the manager's view that names the agent, the task and the file
+   (repository paths only, sanitised; one alert per agent, the newest refusal), so the manager can widen the scope
+   without first asking which file it was. A worker cannot widen its own scope (only the manager can,
    through `task update files`; a pool's leader can set the scope of a child of its pool nobody has claimed). An agent with no task, or whose task declares no scope, is not restricted.
 2. **Write leases** with a TTL and conflict alerts (visible in the hot view of the agents involved; the alert names the
    agents, never a file name, and goes away when the lease is released or expires).
@@ -1036,7 +1038,7 @@ touching the same repository-relative path raise the usual alert, which names th
 merge conflict. A scope still says which files a task may touch, and the merge queue enforces it on the commit. A dependency
 lockfile that a build tool regenerates (`Cargo.lock`, `package-lock.json`, `npm-shrinkwrap.json`, `pnpm-lock.yaml`,
 `yarn.lock`, `bun.lockb`, `go.sum`, `poetry.lock`, `uv.lock`, `Gemfile.lock`, `composer.lock`, at any depth) does not count
-against the scope: a documentation task that ran `cargo` still merges with the `Cargo.lock` the run rewrote. The lockfile is
+against either the task's own scope or a pool parent's scope: a documentation task that ran `cargo` still merges with the `Cargo.lock` the run rewrote. The lockfile is
 merged like any other file, so a conflicting change comes back as a conflict, and a path another role owns is still refused.
 
 **The manager is told** in its private notes (never a shared layer) that writers work in private worktrees, that the checkout does

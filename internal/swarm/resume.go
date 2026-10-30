@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/kv"
@@ -74,6 +75,9 @@ type ReviewOp struct {
 	Closure ClosureKind
 	Land    bool
 	Files   []string
+	// Began is when the task's current assignment was first started and At when the op was logged, zero when not known: the
+	// duration of the work a review is measured against (reviewOverrun) and the wait of a submission come back with them.
+	Began, At time.Time
 }
 
 // RestoreReviewGate replays, in log order, the changes that fed the review gate
@@ -97,10 +101,15 @@ func (s *Swarm) RestoreReviewGate(prev *Snapshot, ops []ReviewOp) {
 		if !ok {
 			continue
 		}
+		if !op.Began.IsZero() {
+			s.review.noteBegan(t.ID, t.Rev, op.Began)
+		}
 		switch op.Status {
 		case StatusReview:
 			_ = s.reviewSubmission(t)(nil, t)
+			s.review.restoreEnded(t, op.At, true)
 		case StatusDone:
+			s.review.restoreEnded(t, op.At, false)
 			if op.Closure == CloseVerified || op.Closure == CloseAgreed { // accepted, not resolved as unneeded
 				if op.Files != nil {
 					t.Files = op.Files // the scope it was accepted with, not one a later revision gave it

@@ -419,7 +419,7 @@ func (s *Swarm) ownedRefusal(role string) func(string) string {
 
 // submitRefusal is the merge queue's refusal of single files for task t, submitted by an agent of role: a path another role owns
 // (ownedRefusal), or, for a pool child whose parent declares a scope, a path outside the parent's scope (the lease guard's rule in
-// a shared tree, parentRefuses). Nil when neither applies.
+// a shared tree, parentRefuses), other than a dependency lockfile (workspace.IsLockfile). Nil when neither applies.
 func (s *Swarm) submitRefusal(role string, t Task) func(string) string {
 	owned := s.ownedRefusal(role)
 	var parent Task
@@ -435,7 +435,9 @@ func (s *Swarm) submitRefusal(role string, t Task) func(string) string {
 				return why
 			}
 		}
-		if !inScope(parent.Files, rel) {
+		// a lockfile the build tool rewrote is not held to the parent's scope, as it is not to the task's own (OutOfScopeForMerge):
+		// the child's cargo or npm run rewrites it whatever the scope says, and a revert comes back with the next build
+		if !inScope(parent.Files, rel) && !workspace.IsLockfile(rel) {
 			return displayPath(rel) + " is outside the scope of the parent " + parent.ID + " (" + strings.Join(shownScopes(parent.Files), ", ") + ")"
 		}
 		return ""

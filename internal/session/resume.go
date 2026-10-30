@@ -11,6 +11,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/events"
@@ -291,6 +292,7 @@ func (s *Session) restoreWorkers(prev *swarm.Snapshot, evs []events.Event) error
 	merges := map[string]swarm.RestoredMerge{}
 	var reviewOps []swarm.ReviewOp
 	scopes := map[string][]string{} // each task's files as the log last gave them
+	began := map[string]time.Time{} // when each task's current assignment was first started, for the review gate's durations
 	for _, a := range prev.Agents {
 		if a.ID != managerAgent && a.Role != "mailman" {
 			selected[a.ID] = true
@@ -307,6 +309,14 @@ func (s *Session) restoreWorkers(prev *swarm.Snapshot, evs []events.Event) error
 			if err := json.Unmarshal(e.Data, &op); err != nil {
 				return err
 			}
+			if op.Op == "requeue" && op.Task != "" {
+				delete(began, op.Task) // back on the board: the next assignment's work starts afresh
+			}
+			if op.Task != "" && op.Status == string(swarm.StatusDoing) {
+				if _, ok := began[op.Task]; !ok {
+					began[op.Task] = e.TS
+				}
+			}
 			if op.Op == "requeue" && op.Task != "" && op.Title != "" {
 				// A revision (a requeue that restates the task) lands what the task covered and what it covers now.
 				reviewOps = append(reviewOps, swarm.ReviewOp{Task: op.Task, Land: true, Files: append(slices.Clone(scopes[op.Task]), op.Files...)})
@@ -319,7 +329,8 @@ func (s *Session) restoreWorkers(prev *swarm.Snapshot, evs []events.Event) error
 			} else if op.Task != "" && op.Status == string(swarm.StatusDoing) {
 				delete(merges, op.Task)
 			} else if op.Op == "finish" && (op.Status == string(swarm.StatusReview) || op.Status == string(swarm.StatusDone)) {
-				reviewOps = append(reviewOps, swarm.ReviewOp{Task: op.Task, Status: swarm.TaskStatus(op.Status), Closure: op.Closure.Kind(), Files: op.Files})
+				reviewOps = append(reviewOps, swarm.ReviewOp{Task: op.Task, Status: swarm.TaskStatus(op.Status), Closure: op.Closure.Kind(), Files: op.Files,
+					Began: began[op.Task], At: e.TS})
 			}
 		case events.TypeTaskMerge:
 			var m struct {
