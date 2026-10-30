@@ -315,15 +315,26 @@ func (l *Leases) checkScopeAt(agent, path, rel string, relOK bool) error {
 		if !refused {
 			return nil
 		}
-		l.board.RaiseAlertKey("scope", "scope:"+agent, fmt.Sprintf("%s tried to write outside the scope of its task (%s)", safeToken(agent, 24), strings.Join(ids, ",")))
+		l.raiseScopeAlert(agent, rel, relOK, ids)
 		l.emit(agent, "scope", path, "")
 		return fmt.Errorf("%s is inside the scope of your task but outside the scope of its parent %s (%s). Edit only inside both; if the task needs more, ask the manager (mail)",
 			displayPath(path), parent.ID, strings.Join(shownScopes(parent.Files), ", "))
 	}
-	l.board.RaiseAlertKey("scope", "scope:"+agent, fmt.Sprintf("%s tried to write outside the scope of its task (%s)", safeToken(agent, 24), strings.Join(ids, ",")))
+	l.raiseScopeAlert(agent, rel, relOK, ids)
 	l.emit(agent, "scope", path, "")
 	return fmt.Errorf("%s is outside the scope of your task %s (scope: %s). Edit only inside your scope; if the task needs more, ask the manager to widen it (mail)",
 		displayPath(path), strings.Join(ids, ", "), strings.Join(shownScopes(scopes), ", "))
+}
+
+// raiseScopeAlert tells the manager (in its hot view) which agent tried to write which file outside the scope of which tasks,
+// so that it can widen the scope with task update instead of asking the worker what it tried to write. A path outside the
+// repository is not named.
+func (l *Leases) raiseScopeAlert(agent, rel string, relOK bool, ids []string) {
+	what := "outside the scope of its task"
+	if relOK && rel != "" {
+		what = safeToken(rel, 72) + " outside the scope of its task"
+	}
+	l.board.RaiseAlertKey("scope", "scope:"+agent, fmt.Sprintf("%s tried to write %s (%s)", safeToken(agent, 24), what, strings.Join(ids, ",")))
 }
 
 // shownScopes is a scope list as a refusal shows it: at most four entries, then an ellipsis.
