@@ -22,8 +22,8 @@ type shellCtx struct {
 	inWord, comment bool
 }
 
-// shellFrame is one quoting context: kind is 'n' (unquoted), 's' ('...'), 'd' ("..."), 'a' ($'...') or 'b' (`...`); sub marks
-// the unquoted text of a $( ) and parens counts the parentheses open inside it.
+// shellFrame is one quoting context: kind is 'n' (unquoted), 's' ('...'), 'd' ("..."), 'a' ($'...'), 'b' (`...`) or 'p' (a ${...}
+// inside double quotes); sub marks the unquoted text of a $( ) and parens counts the parentheses (braces in a 'p') open inside it.
 type shellFrame struct {
 	kind   byte
 	sub    bool
@@ -113,6 +113,27 @@ func (c *shellCtx) step(ch byte) {
 			push(shellFrame{kind: 'b'})
 		case ch == '(' && prev == '$':
 			push(shellFrame{kind: 'n', sub: true})
+		case ch == '{' && prev == '$':
+			push(shellFrame{kind: 'p'})
+		}
+	case 'p':
+		// A ${...} inside double quotes: its quotes nest (a " opens a new double-quoted part rather than closing the outer one,
+		// and a ' is a plain character), and its word is expanded as between double quotes.
+		switch {
+		case ch == '\\':
+			c.esc = true
+		case ch == '"':
+			push(shellFrame{kind: 'd'})
+		case ch == '`':
+			push(shellFrame{kind: 'b'})
+		case ch == '(' && prev == '$':
+			push(shellFrame{kind: 'n', sub: true})
+		case ch == '{':
+			top.parens++
+		case ch == '}' && top.parens > 0:
+			top.parens--
+		case ch == '}':
+			pop()
 		}
 	default: // 'n', 'b'
 		switch {
@@ -163,7 +184,7 @@ func (c *shellCtx) quote(words []string) (string, error) {
 	switch c.stack[len(c.stack)-1].kind {
 	case 's':
 		return strings.ReplaceAll(strings.Join(words, " "), "'", `'\''`), nil
-	case 'd':
+	case 'd', 'p': // inside "${x:-...}" the word is expanded as between double quotes
 		var b strings.Builder
 		for _, r := range strings.Join(words, " ") {
 			if r == '\\' || r == '"' || r == '$' || r == '`' {
