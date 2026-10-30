@@ -39,6 +39,7 @@ type externalDoc struct {
 	Title       string   `json:"title"`
 	Description string   `json:"description"`
 	Version     string   `json:"version"`
+	API         int      `json:"api"`
 	Requires    []string `json:"requires"`
 	Config      *Schema  `json:"config"`
 	Needs       []Need   `json:"needs"`
@@ -122,7 +123,10 @@ func LoadDir(dir string) (Manifest, error) {
 	// The manifest is the plugin author's text, and lists and prompts print it: on one line, without terminal controls.
 	line := func(s string) string { return strings.Join(strings.Fields(tools.SanitizeForTerminal(s)), " ") }
 	m := Manifest{ID: id, Title: line(d.Title), Description: line(d.Description), Version: line(d.Version), Category: CatExternal,
-		External: true, Dir: dir, Requires: d.Requires, Config: d.Config, Needs: d.Needs}
+		External: true, Dir: dir, Requires: renamedRequires(d.Requires), Config: d.Config, Needs: d.Needs, API: d.API}
+	if m.API == 0 {
+		m.API = 1 // the contract a plugin that names none was written for
+	}
 	for _, n := range d.Needs {
 		if err := validNeed(n); err != nil {
 			return Manifest{}, fmt.Errorf("%s: %w", ManifestFile, err)

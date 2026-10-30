@@ -3,6 +3,7 @@
   "title": "Hello",
   "description": "an example plugin: a skill, a command and a hook",
   "version": "1.0.0",
+  "api": 1,
   "config": {
     "type": "object",
     "properties": {

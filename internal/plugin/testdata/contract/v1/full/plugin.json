@@ -1,0 +1,22 @@
+{
+  "id": "release-kit",
+  "title": "Release kit",
+  "description": "release notes, a release command, a reviewer role, a hook and a tool server",
+  "version": "1.2.0",
+  "api": 1,
+  "requires": ["skills", "commands"],
+  "config": {
+    "type": "object",
+    "properties": {
+      "channel": {"type": "string", "title": "Channel", "description": "where releases are announced", "default": "#releases"},
+      "retries": {"type": "integer", "title": "Retries", "default": 2},
+      "ratio": {"type": "number", "title": "Ratio", "default": 0.5},
+      "dry_run": {"type": "boolean", "title": "Dry run", "default": true},
+      "level": {"type": "string", "title": "Level", "enum": ["patch", "minor", "major"], "default": "minor"}
+    }
+  },
+  "needs": [
+    {"id": "gh", "title": "GitHub CLI", "required": true, "commands": ["gh"], "paths": {"unix": ["/opt/homebrew/bin/gh"]},
+     "version_args": ["--version"], "install": [{"id": "brew", "title": "Homebrew", "os": ["darwin"], "run": ["brew", "install", "gh"]}]}
+  ]
+}

@@ -9,6 +9,7 @@ const (
 	SkillTool       = "skill"
 	MemoryTool      = "memory"
 	PlanTool        = "plan"
+	Harness         = "harness"
 	MCP             = "mcp"
 	Skills          = "skills"
 	BuiltinSkills   = "builtin-skills"
@@ -69,6 +70,7 @@ func Builtin() []Manifest {
 		tool(SkillTool, "Skill tool", "load a skill's instructions on demand", "skill"),
 		tool(MemoryTool, "Memory notes", "save short notes for later sessions (~/.sleipnir/MEMORY.md), after you approve them", "memory"),
 		tool(PlanTool, "Plan", "keep each agent's plan in front of it", "plan"),
+		tool(Harness, "Sleipnir tool", "the agent you talk to drives Sleipnir for you when you ask: deep scans, research, goals, schedules, plugins of its own, and a reload that applies them", "sleipnir"),
 		{ID: MCP, Title: "MCP servers", Description: "tool servers (Model Context Protocol) from the configuration", Category: CatTools,
 			Contributes: []Contribution{{KindMCP, "*"}, {KindSlash, "mcp"}}},
 

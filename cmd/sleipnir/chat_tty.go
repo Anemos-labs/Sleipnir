@@ -84,6 +84,7 @@ func chatOnTerminal(ctx context.Context, f chatTTY) error {
 		host.s = s
 		if err == nil {
 			host.goal = s.LoadGoal()
+			s.SetHost(ttyHarnessHost{h: host, link: link}) // the sleipnir tool's lines wait in the program's queue
 		}
 		startDone <- made{s, err}
 		if err != nil {
@@ -96,6 +97,7 @@ func chatOnTerminal(ctx context.Context, f chatTTY) error {
 			a.Models = host.menu.Choices
 		}
 		attach <- a
+		carryReload(s, link.Queue) // a reload the agent asked for: it is sent on, after the attach that lets the queue run
 	}()
 
 	var hist *input.History

@@ -28,6 +28,7 @@ const (
 	mNotice                      // a notice
 	mQuestion                    // a permission question that waits for its answer
 	mQuestionGone                // the question was cancelled by the turn that asked it
+	mLine                        // a slash line the session's agent asked to have run when the turn ends (Queue)
 )
 
 // chatMsg is what the adapters send. Which fields are set depends on the kind.
@@ -110,6 +111,12 @@ func (l *ChatLink) send(ctx context.Context, m chatMsg) bool {
 	case <-ctx.Done():
 		return false
 	}
+}
+
+// Queue hands the program a slash line to run when the running turn is over, as if the person had typed it ahead: the session's
+// agent asks for it through the sleipnir tool. It reports false when the program has ended.
+func (l *ChatLink) Queue(line string) bool {
+	return l.send(context.Background(), chatMsg{kind: mLine, text: line})
 }
 
 // ChatSink is the agent.Sink of a chat on a terminal. All methods are safe for concurrent use.

@@ -118,6 +118,9 @@ func Resolve(cat []Manifest, in Input) (*Set, []string) {
 		if cfg := in.Settings[m.ID]; len(cfg) > 0 {
 			st.Config = cfg
 		}
+		if why := apiError(m.API); m.External && st.Enabled && why != "" {
+			st.State, st.Reason = StateError, why // settle keeps it: the plugin does not start, and those that need it wait
+		}
 		s.list = append(s.list, st)
 		s.byID[m.ID] = st
 	}
@@ -353,6 +356,14 @@ func MarkRestart(running, next *Set) (*Set, bool) {
 			c = *r
 		} else if ok && (r.State == StateOn) != (st.State == StateOn) && !st.Live {
 			c.Reason = fmt.Sprintf("turns %s when the team starts again", map[bool]string{true: "on", false: "off"}[st.State == StateOn])
+			c.State = StateRestart
+			any = true
+		} else if !st.Live && st.State == StateOn && (!ok || r.External && r.Version != st.Version) {
+			// installed, or replaced by another version, since the session started: it runs what it had until then
+			c.Reason = "installed since this session started: it starts when the team starts again"
+			if ok {
+				c.Reason = "updated to " + st.Version + ": the new version starts when the team starts again"
+			}
 			c.State = StateRestart
 			any = true
 		}

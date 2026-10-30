@@ -39,6 +39,11 @@ func (m *chatModel) msg(x chatMsg) {
 		m.ask(x.q)
 	case mQuestionGone:
 		m.dropQuestion(x.q)
+	case mLine:
+		m.queue = append(m.queue, queued{text: x.text}) // as a line typed ahead: it runs when the turn ends
+		if !m.busy() {
+			m.drainQueue()
+		}
 	}
 }
 

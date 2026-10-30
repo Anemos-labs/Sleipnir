@@ -1,6 +1,6 @@
 ---
 name: engineering-rigor
-description: Principles for rigorous engineering: data shapes first, smallest correct diff, proof by running. Load for a change across several files, a hard-to-undo decision, or a fix that keeps failing.
+description: Rigorous engineering: data shapes first, smallest correct diff, proof by running. Load for a change across files, a hard-to-undo decision, or a fix that keeps failing.
 license: MIT
 author: Adapted from pstack poteto-mode by Lauren Tan (github.com/cursor/plugins), MIT licence
 ---

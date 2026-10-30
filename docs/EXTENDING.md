@@ -203,6 +203,7 @@ directory above (a skill of yours with the same name replaces one, with a warnin
 | `spec` | the design tree, a specification, vertical slices and milestones a reviewer can check |
 | `code-review` | a spec axis and a standards axis, and the change's one safety fact proved by running code |
 | `prototype` | settling a design question by building variants and looking |
+| `sleipnir-plugin` | writing, checking, installing and reloading a Sleipnir plugin of the agent's own ([PLUGINS.md](PLUGINS.md#plugins-the-agents-write)) |
 | `landing-page-design` | a landing page or project website: one primary action, page structure, real copy, a default visual system, a ship checklist |
 | `plain-writing` | documentation and messages without filler or machine-generated tells |
 

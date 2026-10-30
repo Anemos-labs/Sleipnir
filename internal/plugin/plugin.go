@@ -117,6 +117,8 @@ type Manifest struct {
 	External bool   `json:"external,omitempty"`
 	Dir      string `json:"dir,omitempty"`
 	Version  string `json:"version,omitempty"`
+	// API is the plugin API version an external plugin was written for (compat.go); 0 for a built-in plugin.
+	API int `json:"api,omitempty"`
 }
 
 // DefaultOn reports whether the plugin is on when no profile or layer says otherwise.
