@@ -594,6 +594,22 @@ func TestAResumedTeamStillOwesTheReviewOfWorkMergedBeforeTheStop(t *testing.T) {
 		if got := r.sw.review.landed[1]; len(got) != 1 || got[0] != "old.go" {
 			t.Fatalf("the acceptance landed %v, want [old.go]", got)
 		}
+	}) // The work's duration and the submission's time come back from the log: after a resume a review overrun was measured against
+	// work that "took 0 minutes to build", and every submission seemed to wait only since the resume.
+	t.Run("with the duration of the work", func(t *testing.T) {
+		r := newRVRigWith(t, cfg, idle, nil)
+		if err := r.sw.RestoreTeam(context.Background(), prev, nil, map[string]string{"be-1": "backend", "rv-1": ReviewerRole}, 0); err != nil {
+			t.Fatal(err)
+		}
+		began := time.Date(2026, 10, 30, 1, 50, 0, 0, time.UTC)
+		submitted := began.Add(40 * time.Minute)
+		r.sw.RestoreReviewGate(prev, []ReviewOp{
+			{Task: "T1", Status: StatusReview, Began: began, At: submitted},
+			{Task: "T1", Status: StatusDone, Closure: CloseVerified, Began: began, At: submitted.Add(5 * time.Minute)},
+		})
+		if work, ids := r.sw.review.unreviewedWork(); work != 40*time.Minute || len(ids) != 1 || ids[0] != "T1" {
+			t.Fatalf("unreviewed work after the resume: %v %v, want 40m0s for T1", work, ids)
+		}
 	})
 }
 
@@ -868,5 +884,46 @@ func TestAManagerThatReadsAloneWhileTheTeamWaitsIsToldToDelegate(t *testing.T) {
 		if has {
 			t.Fatalf("request %d shows the line with a task on the board", i+1)
 		}
+	}
+}
+
+// Free writer slots are named with the idle members while work is open and nothing is planned for their role: a manager that never
+// staffed devops, the tester or the frontend gave their work to backend members one after the other. A role with a ready task and
+// a read-only role are left out, and nothing is named in a shared tree at its writer limit, where the spawn would be refused.
+func TestTheLiveViewNamesFreeSlots(t *testing.T) {
+	r := newRVRigWith(t, Config{MaxWorkers: 8, Team: []string{"backend", "frontend", "frontend", "devops", "reviewer"}},
+		func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	id, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "server", Files: []string{"server/**"}, By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, id+" idle", func() bool { return r.idle(id) })
+	got := strings.Join(r.sw.staffingLines(r.sw.Board.Snapshot()), "\n")
+	want := "idle with nothing planned for them: 1 devops slot free; 2 frontend slots free: plan the next " +
+		"independent work for them (task create with file scopes disjoint from the open tasks, then spawn role=devops task=<id>)"
+	if !strings.Contains(got, want) {
+		t.Fatalf("live view lines %q lack %q", got, want)
+	}
+	if strings.Contains(got, "reviewer slot") {
+		t.Errorf("live view lines %q name the read-only reviewer slot", got)
+	}
+	if _, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "ui", Role: "frontend", Files: []string{"web/**"}}); err != nil {
+		t.Fatal(err)
+	}
+	got = strings.Join(r.sw.staffingLines(r.sw.Board.Snapshot()), "\n")
+	if strings.Contains(got, "frontend slots free") || !strings.Contains(got, "1 devops slot free") {
+		t.Errorf("live view lines %q: want the devops slot named and not the frontend, which has a ready task", got)
+	}
+	r.sw.cfg.MaxWriters = 1 // the backend member at work fills the shared tree's writer limit
+	m := r.sw.get(id)
+	m.mu.Lock()
+	m.life = lifeRunning
+	m.mu.Unlock()
+	got = strings.Join(r.sw.staffingLines(r.sw.Board.Snapshot()), "\n")
+	m.mu.Lock()
+	m.life = lifeIdle
+	m.mu.Unlock()
+	if strings.Contains(got, "slot free") {
+		t.Errorf("live view lines %q name a free slot at the writer limit", got)
 	}
 }

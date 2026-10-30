@@ -287,6 +287,7 @@ type ScheduleJob struct {
 	Log       string  `json:"log,omitempty"`
 	Next      string  `json:"next"`
 	Paused    bool    `json:"paused,omitempty"`
+	Check     string  `json:"check,omitempty"` // the change check run before each due run (sched.Job.Check)
 }
 
 // DaemonState is the schedule daemon: running here, running elsewhere (another process holds the lock), or stopped.
@@ -322,6 +323,7 @@ type JobRequest struct {
 	Model     string  `json:"model,omitempty"`
 	Mode      string  `json:"mode,omitempty"`
 	BudgetUSD float64 `json:"budgetUsd"`
+	Check     string  `json:"check,omitempty"`
 }
 
 // CronCheck is the validation of a cron expression and its next run.

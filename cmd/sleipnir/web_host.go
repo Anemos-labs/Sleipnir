@@ -911,6 +911,10 @@ func (h *webHostImpl) defaults() newSessionDefaults {
 	for k, v := range h.d.RoleModels {
 		d.RoleModels[k] = v
 	}
+	if d.Model == "" {
+		// a team that names its manager's model (--team, --role-model manager=…) starts on it, as the session does
+		d.Model = d.RoleModels["manager"]
+	}
 	for _, t := range h.d.Team {
 		d.Team = append(d.Team, wire.TeamSlot{Role: t.Role, Model: t.Model})
 	}

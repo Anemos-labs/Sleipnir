@@ -38,6 +38,25 @@ they do not indicate whether a change has been released.
 - A page frame whose coalescing key is longer than the hub's 128 bytes
   (the diff of a file under a long path) is sent with a shortened key
   instead of being dropped as an invalid event.
+- A goal's milestones keep the IDs the person wrote when every milestone
+  has a distinct one (`### M0: Scaffold` is M0, not M1), so the goal's
+  text, the manager's plan and the judge's verdicts name each milestone
+  alike. A list where one has no number, or two share one, is still
+  numbered M1, M2, ... in order. A team that names its manager's model
+  (`--team`, `--role-model manager=…`) needs no `--model`: the session runs
+  on the manager's model instead of failing with "no model configured", and
+  `sleipnir web`'s New session dialog starts on it. A team's goal resumed
+  after an interruption before its manager made any task goes on without
+  judging the interrupted turn, as one with unfinished tasks does.
+
+- A scheduled job may have a change check: `sleipnir schedule add --check CMD`
+  (and the `check` field of the web API's job requests and of the jobs it
+  lists, "only when changed" on the Schedule page). Before each due run the
+  daemon runs `CMD` by the shell in the job's folder, with no model and no
+  provider key, and skips the run as `no change` while its standard output
+  is what it was before the last successful run; a failing check skips the
+  run as `check failed: ...`. Jobs without a check run as before. The job
+  file gains the optional fields `check` and `check_sum`.
 
 - Deep scans can be rerun and compared. `sleipnir scan SCAN --rerun
   [--pull]`, `/scan rerun [SCAN]` and the **Rerun…** button of the Deep

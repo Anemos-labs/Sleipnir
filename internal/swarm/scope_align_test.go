@@ -288,4 +288,9 @@ func TestTheMergeQueueHoldsAPoolChildToItsParentsScope(t *testing.T) {
 	if res := submit("be-3", "docs/pkg"); !res.Merged() {
 		t.Errorf("a change of the path the child names: %s %q", res.Outcome, res.Reason)
 	}
+	// The child's build rewrote the lockfile: in a team run the queue refused Cargo.lock twice, the worker reverted it and cargo
+	// wrote it again.
+	if res := submit("be-4", "Cargo.lock"); !res.Merged() {
+		t.Errorf("a rewritten lockfile outside the parent's scope: %s %q", res.Outcome, res.Reason)
+	}
 }
