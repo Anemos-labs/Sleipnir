@@ -293,6 +293,24 @@ func (s *Swarm) syncTree(ctx context.Context, m *member) (string, error) {
 	return "", nil
 }
 
+// tellSiblingsOfMerge tells the other members of t's pool who are working on a child of the same parent in a tree of their own that
+// t's work has landed, and how to bring it into their checkout: a child often builds on what a sibling just merged (the scaffold's
+// models, a shared module), and a worker who does not know reads the integration branch file by file instead.
+func (s *Swarm) tellSiblingsOfMerge(t Task, by string) {
+	if t.Parent == "" {
+		return
+	}
+	for _, sib := range s.Board.Snapshot().Tasks {
+		if sib.ID == t.ID || sib.Parent != t.Parent || sib.Status != StatusDoing || sib.Owner == "" || sib.Owner == by {
+			continue
+		}
+		if om := s.get(sib.Owner); om == nil || om.tree == nil {
+			continue
+		}
+		s.notify(sib.Owner, "info", fmt.Sprintf("%s (%s, a sibling of your %s) is merged into the integration branch. Call task claim on %s to bring it into your checkout, then re-read the files you build on.", t.ID, cleanText(t.Title, 80), sib.ID, sib.ID))
+	}
+}
+
 // integration is what one submission to the merge queue came to.
 type integration struct {
 	ok          bool   // the work is in the integration branch (or there was nothing to merge)
@@ -351,6 +369,7 @@ func (s *Swarm) integrate(ctx context.Context, m *member, t Task, message string
 		if res.Verify != nil && res.Verify.OK() {
 			note += " (verified)"
 		}
+		s.tellSiblingsOfMerge(t, m.id)
 		return integration{ok: true, evidence: note}
 	case workspace.OutcomeEmpty:
 		s.recordMerge(t, mergeRec{rev: t.Rev, commit: res.After, empty: true})
