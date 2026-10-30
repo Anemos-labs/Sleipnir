@@ -540,7 +540,7 @@ func (h *webHostImpl) newSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if body.Model == "" && body.Resume == "" && body.RoleModels["manager"] == "" && h.base.Model == "" && h.base.Provider == nil && noModelFor(h.base.Config, dir, h.base.Home, body.TrustProject) {
+	if body.Model == "" && body.Resume == "" && body.RoleModels["manager"] == "" && h.base.RoleModels["manager"] == "" && h.base.Model == "" && h.base.Provider == nil && noModelFor(h.base.Config, dir, h.base.Home, body.TrustProject) {
 		// the session would fail as it starts and leave a tab that can do nothing: say so before one opens
 		writeErr(w, werr(http.StatusUnprocessableEntity, "model", "choose a model: none is configured (sleipnir login stores a provider's key, and the Model list names what it serves)"))
 		return

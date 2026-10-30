@@ -22,6 +22,9 @@ test('the header: goal, spend and team in plain words; rate limits only while th
   assert.ok(L.$('#govTxt').hidden, 'no rate-limit line while nothing slows the team');
   const S = L.SL.sessions.active; S.m.r429 = 2; S.m.retries = 3; L.SL.loop.dirty = true; await L.step(2); await L.settle();
   assert.equal(L.$('#govTxt').hidden, false); assert.match(L.$('#govTxt').textContent, /slowed by rate limits: 2 refused \(429\) · 3 retries/);
+  // Retries with no 429 are network errors and 5xx answers, not rate limits: the line says so.
+  S.m.r429 = 0; S.m.retries = 1; L.SL.loop.dirty = true; await L.step(2); await L.settle();
+  assert.match(L.$('#govTxt').textContent, /^slowed by provider errors: 1 retry$/);
   assert.doesNotMatch(L.$('#statusLine').textContent, /\$\d/, 'the spend is the header\'s, not the status bar\'s');
   assert.equal(L.$('#sBud'), null, 'one session: the spend of every session is the header\'s');
 });
