@@ -15,6 +15,7 @@ package swarm
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1628,7 +1629,8 @@ func (b *Board) takeNotes(pick func(Note) bool) []Note {
 func (b *Board) RaiseAlert(kind, text string) { b.RaiseAlertKey(kind, "", text) }
 
 // RaiseAlertKey is RaiseAlert with a key that ClearAlertKey can remove it by (the
-// path of a contested file, the id of a stalled agent). Alerts expire after the
+// path of a contested file, the id of a stalled agent); a new text under the same kind
+// and key replaces the alert, as the live views show it. Alerts expire after the
 // board's AlertTTL, and only the newest few are kept.
 func (b *Board) RaiseAlertKey(kind, key, text string) {
 	text = cleanText(text, maxAlertRunes)
@@ -1644,7 +1646,11 @@ func (b *Board) RaiseAlertKey(kind, key, text string) {
 				return errNoChange
 			}
 		}
-		as := append(d.alerts(), Alert{Kind: kind, Text: text, Key: key, At: now})
+		as := d.alerts()
+		if key != "" { // a keyed alert replaces the one it updates (the newest file an agent tried to write)
+			as = slices.DeleteFunc(as, func(a Alert) bool { return a.Kind == kind && a.Key == key })
+		}
+		as = append(as, Alert{Kind: kind, Text: text, Key: key, At: now})
 		if over := len(as) - b.lim.MaxAlerts; over > 0 {
 			as = append([]Alert(nil), as[over:]...)
 		}

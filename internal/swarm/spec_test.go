@@ -70,9 +70,18 @@ func TestScopeIsEnforcedAtWriteTime(t *testing.T) {
 			t.Errorf("the refusal does not name the scope and the task: %v", err)
 		}
 	}
+	// One alert per agent, naming the newest file inside the repository it tried to write, so that the manager can widen
+	// the scope without asking which file it was; a path outside the repository is never named.
 	as := s.Board.Snapshot().Alerts
-	if len(as) != 1 || as[0].Kind != "scope" || strings.Contains(as[0].Text, "secret") || strings.Contains(as[0].Text, "workflows") {
-		t.Fatalf("alerts after scope violations: %+v (one alert, no path)", as)
+	if len(as) != 1 || as[0].Kind != "scope" || !strings.Contains(as[0].Text, "secret.txt") || !strings.Contains(as[0].Text, task.ID) ||
+		strings.Contains(as[0].Text, "workflows") || strings.Contains(as[0].Text, "other") {
+		t.Fatalf("alerts after scope violations: %+v (one alert, naming secret.txt)", as)
+	}
+	if err := s.Leases.BeforeWrite("dc-1", "/other/x.md"); err == nil {
+		t.Fatal("a write outside the repository was allowed")
+	}
+	if as := s.Board.Snapshot().Alerts; len(as) != 1 || strings.Contains(as[0].Text, "x.md") || strings.Contains(as[0].Text, "secret") {
+		t.Fatalf("alerts after a write outside the repository: %+v (one alert, no path)", as)
 	}
 	// Nobody else is restricted by dc-1's scope.
 	if err := s.Leases.BeforeWrite("be-9", "/repo/.github/workflows/release.yml"); err != nil {
