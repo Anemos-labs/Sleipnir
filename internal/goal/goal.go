@@ -205,7 +205,7 @@ func Start(g *State) string {
 	var b strings.Builder
 	b.WriteString(g.Objective + "\n\n[standing goal: before you begin, write what it requires as steps with the plan tool, and keep them current. The harness checks the goal against evidence after each turn and sends you on with what is missing until it is met.")
 	if n := len(g.Milestones); n > 0 {
-		fmt.Fprintf(&b, " It has %d milestones (M1 to M%d) that the judge rules on one by one; the goal is met only when each has evidence. Make each one a step of your plan.", n, n)
+		fmt.Fprintf(&b, " It has %d milestones (%s to %s) that the judge rules on one by one; the goal is met only when each has evidence. Make each one a step of your plan.", n, g.Milestones[0].ID, g.Milestones[n-1].ID)
 	}
 	if g.RubricText != "" {
 		b.WriteString(" The project has a rubric, below: the judge also holds the work to each of its criteria that applies to this goal. Make those steps of your plan too.")

@@ -334,3 +334,27 @@ func TestPrepareKeepsTheProjectRubric(t *testing.T) {
 		}
 	}
 }
+
+// Milestones the person numbered themselves keep those numbers, so that the goal's "M0: Scaffold" is M0 for the plan and the judge too
+// (not M1, which the goal's text gives to the next milestone); a list where some have no number, or two share one, is numbered from first.
+func TestMilestonesKeepTheNumbersThePersonWrote(t *testing.T) {
+	text := "# App\n## Milestones\n### M0: Scaffold (merge first)\n- **Done when:** verify passes\n### M1: Import\n### M2: Web UI\n"
+	got := ParseMilestones(text, 1)
+	if len(got) != 3 || got[0].ID != "M0" || got[0].Text != "Scaffold (merge first) — **Done when:** verify passes" || got[2].ID != "M2" {
+		t.Fatalf("own numbers: %+v", got)
+	}
+	g := New(text)
+	g.Milestones = got
+	if s := Start(g); !strings.Contains(s, "3 milestones (M0 to M2)") {
+		t.Errorf("the first turn names the milestones by their own IDs: %q", s)
+	}
+	if got := ParseMilestones("Milestones:\n- M0: a\n- b\n- M2: c\n", 1); got[0].ID != "M1" || got[1].ID != "M2" || got[2].ID != "M3" {
+		t.Errorf("one without a number: numbered from first: %+v", got)
+	}
+	if got := ParseMilestones("Milestones:\n- M1: a\n- M1: b\n", 1); got[0].ID != "M1" || got[1].ID != "M2" {
+		t.Errorf("two sharing a number: numbered from first: %+v", got)
+	}
+	if got := ParseMilestones("Milestones:\n- M01: a\n- Milestone 7 - b\n", 1); got[0].ID != "M1" || got[1].ID != "M7" {
+		t.Errorf("written forms: %+v", got)
+	}
+}

@@ -505,6 +505,13 @@ func (s *Session) GoalResume(ctx context.Context, g *goal.State) (note, next str
 			why := "the board still has unfinished tasks (" + strings.Join(open, ", ") + ")"
 			return "goal resumed without judging the interrupted turn: " + why, s.GoalContinuation(g, goal.Verdict{Kind: goal.Continue, Reason: why}), j
 		}
+		if s.Swarm != nil && len(s.Swarm.Board.Snapshot().Tasks) == 0 {
+			// The team was interrupted before its manager handed out any work (a restart during the first plan): there is nothing for
+			// the judge to read yet, and its evidence reads would hold the team for minutes. The next turn's end is judged as usual.
+			g.Turns++
+			why := "the team has no tasks yet: the manager's plan was interrupted"
+			return "goal resumed without judging the interrupted turn: " + why, s.GoalContinuation(g, goal.Verdict{Kind: goal.Continue, Reason: why}), j
+		}
 		return s.GoalJudged(ctx, g, nil)
 	}
 	g.Turns++

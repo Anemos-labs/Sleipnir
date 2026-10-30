@@ -176,3 +176,18 @@ func TestARequestThatOutlastsAStartIsToldItIsStillStarting(t *testing.T) {
 		t.Errorf("a closed tab = %v, want no_session", err)
 	}
 }
+
+// sleipnir web --team NAME with no --model: the New session dialog starts on the team's manager model, not on whatever model the
+// provider suggests, and an explicit --model still wins.
+func TestTheDefaultsStartOnTheTeamsManagerModel(t *testing.T) {
+	project := webWorld(t)
+	defaults := func(model string) newSessionDefaults {
+		return (&webHostImpl{d: webDefaults{Cwd: project, Model: model, RoleModels: map[string]string{"manager": "heimdallm/lead", "judge": "heimdallm/judge"}}}).defaults()
+	}
+	if d := defaults(""); d.Model != "heimdallm/lead" {
+		t.Errorf("no --model: the dialog's model is %q, want the manager's", d.Model)
+	}
+	if d := defaults("heimdallm/chosen"); d.Model != "heimdallm/chosen" {
+		t.Errorf("--model given: the dialog's model is %q", d.Model)
+	}
+}
