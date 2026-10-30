@@ -194,3 +194,12 @@ func (b *flakyBlobs) Get(h core.Hash) ([]byte, error) {
 	}
 	return b.Blobs.Get(h)
 }
+
+// GetMax goes through Get, so the fake's behaviour applies to bounded reads too.
+func (b *flakyBlobs) GetMax(h core.Hash, max int64) ([]byte, error) {
+	data, err := b.Get(h)
+	if err == nil && int64(len(data)) > max {
+		return nil, events.ErrBlobTooLarge
+	}
+	return data, err
+}

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/mcp/mcptest"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/testutil"
@@ -188,4 +189,13 @@ func toolNames(ts []tools.Tool) []string {
 		out = append(out, tl.Spec().Name)
 	}
 	return out
+}
+
+// GetMax is Get with the size limit of events.Blobs.
+func (x *memBlobs) GetMax(h core.Hash, max int64) ([]byte, error) {
+	b, err := x.Get(h)
+	if err == nil && int64(len(b)) > max {
+		return nil, events.ErrBlobTooLarge
+	}
+	return b, err
 }

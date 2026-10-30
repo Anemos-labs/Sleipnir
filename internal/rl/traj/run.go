@@ -389,15 +389,7 @@ func (r *Run) blob(h core.Hash) ([]byte, error) {
 	if h == "" {
 		return nil, errors.New("empty blob hash")
 	}
-	var b []byte
-	var err error
-	if g, ok := r.blobs.(interface {
-		GetMax(core.Hash, int64) ([]byte, error)
-	}); ok {
-		b, err = g.GetMax(h, maxBlobBytes)
-	} else {
-		b, err = r.blobs.Get(h)
-	}
+	b, err := r.blobs.GetMax(h, maxBlobBytes)
 	if err != nil {
 		if errors.Is(err, events.ErrBlobNotFound) {
 			return nil, fmt.Errorf("blob %s is missing", h.Short())

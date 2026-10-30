@@ -95,8 +95,11 @@ test('Markdown of many unclosed link openers renders in linear time', () => {
 test('code spans and table rows cost linear time on text of many unclosed openers', () => {
   assert.match(md('a `b` c ``d`e`` f'), /<code>b<\/code> c <code>d`e<\/code> f/);
   assert.match(md('`` not closed `x`'), /`` not closed <code>x<\/code>/);
+  // Below MAX_INLINE (20000), so the inline parser and its code-span scanner run on it rather than the plain fallback.
+  const runs = Array.from({ length: 650 }, (_, i) => '`'.repeat(1 + (i % 50))).join(' x ');
+  assert.ok(runs.length < 20000, 'the input is ' + runs.length + ' characters, past MAX_INLINE');
   let t0 = Date.now();
-  md(Array.from({ length: 4000 }, (_, i) => '`'.repeat(1 + (i % 50))).join(' x '));
+  assert.match(md(runs), /<code>/);
   md(' '.repeat(60000) + '|\n' + ' '.repeat(60000) + '-' + ' '.repeat(60000) + 'x');
   assert.ok(Date.now() - t0 < 2000, 'took ' + (Date.now() - t0) + ' ms');
 });

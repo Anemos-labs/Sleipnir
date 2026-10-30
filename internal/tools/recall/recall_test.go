@@ -204,3 +204,12 @@ func TestRecallAsksThePolicy(t *testing.T) {
 		t.Fatalf("%+v %v", res, err)
 	}
 }
+
+// GetMax goes through Get, so the fake's behaviour applies to bounded reads too.
+func (c *countingBlobs) GetMax(h core.Hash, max int64) ([]byte, error) {
+	data, err := c.Get(h)
+	if err == nil && int64(len(data)) > max {
+		return nil, events.ErrBlobTooLarge
+	}
+	return data, err
+}

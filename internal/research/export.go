@@ -3,6 +3,7 @@ package research
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -61,6 +62,26 @@ func Export(root, dir string, files map[string][]byte) error {
 	return pr.WriteFile(filepath.Join(dir, exportMark), []byte(markHeader+strings.Join(names, "\n")+"\n"), 0o644)
 }
 
+// maxMarkBytes bounds the mark an export reads back: far more than the names of any wiki's files, far less than memory.
+const maxMarkBytes = 4 << 20
+
+// readMark reads the mark at name: a regular file of at most maxMarkBytes. Anything else is no mark an export wrote.
+func readMark(pr *os.Root, name string) ([]byte, error) {
+	if fi, err := pr.Lstat(name); err != nil || !fi.Mode().IsRegular() {
+		return nil, errors.New("no regular mark") // a pipe would hold the open, a link leads elsewhere
+	}
+	f, err := pr.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, maxMarkBytes+1))
+	if err == nil && len(b) > maxMarkBytes {
+		err = errors.New("the mark is too large")
+	}
+	return b, err
+}
+
 // markHeader opens exportMark; the names of the files the export wrote follow it, one a line.
 const markHeader = "a research wiki exported by sleipnir; a later export replaces the files listed here\n"
 
@@ -68,7 +89,7 @@ const markHeader = "a research wiki exported by sleipnir; a later export replace
 // exportMark lists every file in it. The mark alone is no authority, since anyone who can write to the project can write one.
 func onlyExported(pr *os.Root, dir string) error {
 	refuse := fmt.Errorf("%s is not empty and is not an earlier export of a wiki: choose another directory", dir)
-	b, err := pr.ReadFile(filepath.Join(dir, exportMark))
+	b, err := readMark(pr, filepath.Join(dir, exportMark))
 	if err != nil || !strings.HasPrefix(string(b), markHeader) {
 		return refuse
 	}

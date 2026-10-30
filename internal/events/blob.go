@@ -20,6 +20,9 @@ import (
 type Blobs interface {
 	Put(data []byte) (core.Hash, error)
 	Get(h core.Hash) ([]byte, error)
+	// GetMax is Get that refuses a blob larger than max bytes (ErrBlobTooLarge), before reading it where the store can
+	// tell its size first. A reader whose input may have been swapped for a far larger file uses it to bound its memory.
+	GetMax(h core.Hash, max int64) ([]byte, error)
 	Has(h core.Hash) bool
 }
 
