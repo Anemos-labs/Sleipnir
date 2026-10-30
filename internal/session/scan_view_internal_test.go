@@ -10,6 +10,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/goal"
 	"github.com/anemos-labs/sleipnir/internal/scan"
+	"github.com/anemos-labs/sleipnir/internal/swarm"
 )
 
 // The Deep scan view's calls read the scans of the project: the list with its numbers, one scan in full, and its report in
@@ -74,5 +75,59 @@ func TestScanViewReadsTheProjectsScans(t *testing.T) {
 	}
 	if _, err := s.ScanDetail("../../etc"); err == nil {
 		t.Error("a path was read as a scan")
+	}
+}
+
+// The view shows the session's own team on the scan it runs, and not once that scan is done although it stays selected.
+func TestScanViewShowsTheSessionsTeamWhileTheScanRuns(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"init", "-q"}, {"add", "."}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	s := &Session{opts: Options{Root: dir, Cwd: dir}}
+	s.newScanTool()
+	repo, err := s.scanRepo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := scan.Start(context.Background(), s.scan.store, repo, "standard", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Swarm = swarm.New(swarm.Config{MaxWorkers: 24}, swarm.Deps{}, nil)
+	workers := func() (int, any) {
+		d, err := s.ScanDetail(r.Slug)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s.ScanRuns()[0].Workers, d["workers"]
+	}
+	if run, det := workers(); run != 24 || det != 24 {
+		t.Fatalf("a running scan shows a team of %d / %v, want the session's 24", run, det)
+	}
+	if _, err := s.scan.store.Update(r.Slug, func(r *scan.Run) error {
+		for i := range r.Shards {
+			r.Shards[i].Mapped, r.Shards[i].Hunted = "read", "checked"
+		}
+		r.Reported = &scan.Mark{Version: r.Version + 1}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if d, _ := s.ScanDetail(r.Slug); d["phase"] != scan.PhaseDone {
+		t.Fatalf("the scan is not done: %v", d["phase"])
+	}
+	if run, det := workers(); run != 0 || det != 0 {
+		t.Fatalf("a done scan shows the session's team: %d / %v", run, det)
 	}
 }
