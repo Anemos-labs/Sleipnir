@@ -52,6 +52,11 @@ func scrubEnv(base, pass, deny []string) []string {
 	return out
 }
 
+// ScrubEnv returns base ("K=V" entries) without the variables a hook would not receive: secret-looking names, values that hold a
+// URL with credentials, malformed entries, and the names in deny. Other unattended commands the person configures (a scheduled
+// job's change check) use it to get the same environment policy as a hook.
+func ScrubEnv(base, deny []string) []string { return scrubEnv(base, nil, deny) }
+
 // listed reports whether name matches an entry of list: case-insensitively,
 // with path.Match wildcards.
 func listed(name string, list []string) bool {

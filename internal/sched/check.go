@@ -8,9 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/harden"
+	"github.com/anemos-labs/sleipnir/internal/hooks"
 )
 
 // CheckTimeout bounds a job's change check: a check is meant to read one small value (a commit, a count, a date), and one that
@@ -32,20 +36,23 @@ const (
 // runCheck is RunCheck; tests replace it.
 var runCheck = RunCheck
 
-// RunCheck runs the change check of j (its Check command, by the shell, in its directory, without the held keys, stdin closed,
-// bounded by CheckTimeout) and returns a digest of what it printed on standard output. A check that exits non-zero, times out or
+// RunCheck runs the change check of j (its Check command, by the shell, in its directory, stdin closed, bounded by CheckTimeout) and
+// returns a digest of the first megabyte it printed on standard output. The check gets the environment a hook gets (hooks.ScrubEnv:
+// no provider key, held or not, and nothing that looks like a credential), and every process it started is ended when it returns. A check that exits non-zero, times out or
 // cannot start is an error that names the step and the last line of its standard error.
 func RunCheck(ctx context.Context, j Job) (string, error) {
 	cctx, cancel := context.WithTimeout(ctx, CheckTimeout)
 	defer cancel()
 	cmd := checkCommand(cctx, j.Check)
 	cmd.Dir = j.Dir
+	cmd.Env = hooks.ScrubEnv(os.Environ(), harden.Held())
 	var errb bytes.Buffer
 	h := sha256.New()
 	cmd.Stdout = &limitedWriter{w: h, n: maxCheckOutput}
 	cmd.Stderr = &limitedWriter{w: &errb, n: 4 << 10}
 	cmd.WaitDelay = 5 * time.Second
 	err := cmd.Run()
+	endGroup(cmd) // a background process the check left behind must not pile up, one per slot
 	switch {
 	case err == nil:
 		return hex.EncodeToString(h.Sum(nil)), nil

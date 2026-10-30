@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -119,5 +120,37 @@ func TestRunCheckDigestsStdoutInTheJobsDirectory(t *testing.T) {
 	_, err = RunCheck(context.Background(), Job{Dir: dir, Check: "echo out; echo 'no token' >&2; exit 4"})
 	if err == nil || err.Error() != "exit status 4: no token" {
 		t.Errorf("err %v", err)
+	}
+}
+
+// TestRunCheckEndsWhatItLeftBehindAndKeepsKeysOut: a process the check started in the background is gone once RunCheck returns, and
+// a variable that looks like a credential (a custom provider's key among them) is not in the check's environment.
+func TestRunCheckEndsWhatItLeftBehindAndKeepsKeysOut(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell commands")
+	}
+	dir := t.TempDir()
+	t.Setenv("MYCO_TOKEN", "sk-secret")
+	t.Setenv("SCHED_CHECK_PLAIN", "visible")
+	pidFile := filepath.Join(dir, "pid")
+	j := Job{Dir: dir, Check: `sleep 300 >/dev/null 2>&1 & echo $! > pid; echo "token=${MYCO_TOKEN:-none} plain=$SCHED_CHECK_PLAIN" > env`}
+	if _, err := RunCheck(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	env, _ := os.ReadFile(filepath.Join(dir, "env"))
+	if strings.TrimSpace(string(env)) != "token=none plain=visible" {
+		t.Errorf("the check's environment: %q", env)
+	}
+	b, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, _ := strconv.Atoi(strings.TrimSpace(string(b)))
+	deadline := time.Now().Add(5 * time.Second)
+	for alive(pid) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the background process %d outlived the check", pid)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }

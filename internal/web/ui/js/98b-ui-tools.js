@@ -213,7 +213,7 @@
     function setForm(j) {
       st.edit = j || null; const id = j ? j.id : null;
       q('.addh').textContent = j ? 'edit ' + id : 'Add a job'; q('.addm').textContent = j ? 'schedule edit' : 'schedule add'; q('#sAdd').textContent = j ? 'Save ' + id : 'Add the job'; q('#sCancel').hidden = !j;
-      $('#sCron', root).value = j ? j.cron : $('#sCron', root).value; if (j) { $('#sGoal', root).value = j.goal; $('#sBudget', root).value = String(j.budgetUsd); $('#sMode', root).value = j.mode || ''; $('#sCheck', root).value = j.check || ''; }
+      $('#sCron', root).value = j ? j.cron : $('#sCron', root).value; if (j) { $('#sGoal', root).value = j.goal; $('#sBudget', root).value = String(j.budgetUsd); $('#sMode', root).value = j.mode || ''; $('#sCheck', root).value = j.check || ''; } else { $('#sCheck', root).value = ''; }
       fillSelects(j ? { dir: j.dir || '', model: j.model || '' } : null);
       modeHint(); nextHint();
     }
