@@ -31,15 +31,44 @@
     ['pending', 'Not confirmed again yet', 'found by the earlier scan; this one is still running and has not confirmed it'], ['unchanged', 'Unchanged', 'found by both scans']];
   const proofWord = f => { const p = arr(f.proofs); if (!p.length) return ''; return p.some(x => x.outcome === 'reproduced') ? 'reproduced' : p[p.length - 1].outcome; };
 
+  /** How far each phase is, from 0 to 1, from the scan's own numbers: the phases overlap (a shard is hunted as soon as it is
+   * mapped, a lead verified as soon as it is filed), so each bar fills as its work is done, not when the phase before ends.
+   * The scan's phase is its least finished one; a phase before it is done, whatever its numbers say. */
+  function phaseProgress(r) {
+    const at = phaseAt(r.phase), done = r.phase === 'done', sh = r.shards | 0, leads = r.leads | 0, ruled = Math.max(0, leads - (r.open | 0));
+    const frac = (n, of) => (of > 0 ? Math.min(1, n / of) : 0);
+    const own = { map: [frac(r.mapped, sh), r.mapped + '/' + sh + ' shards mapped'], hunt: [frac(r.hunted, sh), r.hunted + '/' + sh + ' shards hunted'],
+      verify: [leads ? frac(ruled, leads) : 0, leads ? ruled + '/' + leads + ' leads ruled on' + (r.unproven ? ', ' + r.unproven + ' unproven' : '') : 'no lead filed yet'],
+      report: [0, ''], done: [0, ''] };
+    return PHASES.map(([id], i) => {
+      const [f, note] = own[id] || [0, ''];
+      return { f: done || i < at ? 1 : f, note, cur: !done && i === at };
+    });
+  }
+  /** The steps of a scan, each with its own bar. */
+  function stepsHtml(r) {
+    return phaseProgress(r).map((p, i) => {
+      const [, label, about] = PHASES[i], pct = Math.round(p.f * 100);
+      const cls = p.f >= 1 ? 'done' : p.cur || p.f > 0 ? 'cur' : '';
+      return '<li class="' + cls + '" title="' + esc(label + (p.note ? ': ' + p.note : '') + ' · ' + about) + '"><i style="--sc-p:' + (p.f >= 1 ? 100 : pct) + '%"></i><span>' + esc(label) +
+        (p.f > 0 && p.f < 1 ? ' <b class="sc-pct">' + pct + '%</b>' : '') + '</span></li>';
+    }).join('');
+  }
+  /** The team of a scan: the one this session runs it with, and what the scan asks for when that differs. */
+  function teamText(r) {
+    if (!r.workers) return 'asks for a team of ' + r.team;
+    return 'team of ' + r.workers + (r.workers !== r.team ? ' (the scan asks for ' + r.team + ')' : '');
+  }
+
   function runHtml(r, sel) {
-    const at = phaseAt(r.phase), done = r.phase === 'done';
-    const steps = PHASES.map(([id, label, about], i) => '<li class="' + (i < at || done ? 'done' : i === at ? 'cur' : '') + '" title="' + esc(about) + '"><i></i><span>' + esc(label) + '</span></li>').join('');
+    const done = r.phase === 'done';
+    const steps = stepsHtml(r);
     const sev = SEV.filter(s => r.bySeverity && r.bySeverity[s]).map(s => sevPill(s) + '<b class="mono">' + r.bySeverity[s] + '</b>').join(' ');
     return '<button type="button" class="sc-run' + (r.slug === sel ? ' sel' : '') + '" data-scan="' + esc(r.slug) + '">' +
       '<span class="sc-rtop"><b class="mono">' + esc(r.slug) + '</b><span class="chip">' + esc(r.depth) + '</span>' + (r.active ? '<span class="chip rs-live">this session</span>' : '') + (r.previous ? '<span class="chip" title="a rerun of ' + esc(r.previous) + '">rerun</span>' : '') + (done ? '<span class="chip rs-ok">done</span>' : '') + '</span>' +
-      '<span class="sc-rmeta mono dim">' + esc(short(r.commit)) + (r.focus ? ' · ' + esc(r.focus) : '') + ' · ' + plural(r.files, 'file') + ' · ' + plural(r.funcs, 'function') + ' · ' + plural(r.shards, 'shard') + ' · team of ' + r.team + '</span>' +
+      '<span class="sc-rmeta mono dim">' + esc(short(r.commit)) + (r.focus ? ' · ' + esc(r.focus) : '') + ' · ' + plural(r.files, 'file') + ' · ' + plural(r.funcs, 'function') + ' · ' + plural(r.shards, 'shard') + ' · ' + esc(teamText(r)) + '</span>' +
       '<ol class="rs-steps sc-steps">' + steps + '</ol>' +
-      '<span class="sc-rnums">' + r.mapped + '/' + r.shards + ' mapped · ' + r.hunted + '/' + r.shards + ' hunted · ' + plural(r.leads, 'lead') + ' · ' + r.confirmed + ' confirmed' + (r.unproven ? ' · ' + r.unproven + ' unproven' : '') + (r.rejected ? ' · ' + r.rejected + ' rejected' : '') + '</span>' +
+      '<span class="sc-rnums">' + r.mapped + '/' + r.shards + ' mapped · ' + r.hunted + '/' + r.shards + ' hunted · ' + plural(r.leads, 'lead') + (r.leads ? ' (' + Math.max(0, r.leads - (r.open | 0)) + ' ruled on)' : '') + ' · ' + r.confirmed + ' confirmed' + (r.unproven ? ' · ' + r.unproven + ' unproven' : '') + (r.rejected ? ' · ' + r.rejected + ' rejected' : '') + '</span>' +
       (sev ? '<span class="sc-rsev">' + sev + '</span>' : '') + '</button>';
   }
 
@@ -76,38 +105,62 @@
       '<div class="sc-dnums">' + sum + '</div>' + (groups || '<p class="dim">Neither scan has a finding.</p>') + '</section>';
   }
 
-  function detailHtml(d) {
+  /** The detail of a scan in parts, [key, html] each, so that a refresh repaints only the parts that changed (paintParts). */
+  function detailParts(d) {
     const c = d.counts || {}, fs = arr(d.findings);
     const head = '<div class="sc-dhead"><span class="mono">' + esc(d.slug) + '</span><span class="dim"> · commit <span class="mono">' + esc(short(d.commit)) + '</span>' + (d.focus ? ' · ' + esc(d.focus) : '') +
-      ' · ' + esc(d.depth) + ': ' + plural(d.verifiers, 'verifier') + ' per lead' + (d.defender ? ' with a defender' : '') + (d.proveFrom ? ', reproduced from ' + esc(d.proveFrom) + ' up' : '') + '</span>' +
+      ' · ' + esc(teamText(d)) + ' · ' + esc(d.depth) + ': ' + plural(d.verifiers, 'verifier') + ' per lead' + (d.defender ? ' with a defender' : '') + (d.proveFrom ? ', reproduced from ' + esc(d.proveFrom) + ' up' : '') + '</span>' +
       (d.proveFrom && !d.sandbox ? '<p class="sc-warn">This session has no sandbox, so nothing can be reproduced here: start one with <span class="mono">--sandbox docker</span> (the <b>sandbox</b> field of New session).</p>' : '') + '</div>';
     const nums = '<div class="sc-nums">' + [[c.files, 'files'], [c.funcs, 'functions'], [c.lines, 'lines'], [c.points, 'points'], [c.edges, 'edges'], [c.leads, 'leads'], [c.confirmed, 'confirmed'], [c.reproduced, 'reproduced']]
       .map(([n, w]) => '<span><b>' + (n || 0) + '</b>' + esc(w) + '</span>').join('') + '</div>';
     const groups = STATUS.map(([st, title, about]) => {
       const list = fs.filter(f => f.status === st); if (!list.length) return '';
       const rows = list.map(findingRow).join('');
-      return st === 'rejected' ? '<details class="sc-group"><summary><h3>' + esc(title) + ' <span class="dim">' + list.length + '</span></h3> <span class="dim">' + esc(about) + '</span></summary>' + rows + '</details>'
+      return st === 'rejected' ? '<details class="sc-group" data-sc-keep="rejected"><summary><h3>' + esc(title) + ' <span class="dim">' + list.length + '</span></h3> <span class="dim">' + esc(about) + '</span></summary>' + rows + '</details>'
         : '<section class="sc-group"><h3>' + esc(title) + ' <span class="dim">' + list.length + '</span></h3><p class="dim">' + esc(about) + '</p>' + rows + '</section>';
     }).join('') || '<p class="stubnote">No lead yet: the team maps the shards first, then hunts them. Findings appear here as soon as verifiers confirm them.</p>';
     const probs = arr(d.problems);
-    const needs = d.phase === 'done' ? '' : '<details class="sc-needs"><summary>What the scan still needs <span class="dim">' + (probs.length + (d.moreProblems || 0)) + '</span></summary><ul>' +
+    const needs = d.phase === 'done' ? '' : '<details class="sc-needs" data-sc-keep="needs"><summary>What the scan still needs <span class="dim">' + (probs.length + (d.moreProblems || 0)) + '</span></summary><ul>' +
       probs.map(p => '<li><span class="chip">' + esc(p.phase) + '</span> ' + esc(p.text) + '</li>').join('') + (d.moreProblems ? '<li class="dim">and ' + d.moreProblems + ' more</li>' : '') + '</ul></details>';
-    return head + nums + needs + '<div data-sc-cmp></div>' + groups + '<p class="dim sc-files">The report is rewritten as the scan goes: <span class="mono">' + esc(d.reportDir) + '</span> (REPORT.md, findings.json, findings.sarif, map.json).</p>';
+    return [['head', head], ['nums', nums], ['needs', needs], ['cmp', null], ['groups', groups],
+      ['files', '<p class="dim sc-files">The report is rewritten as the scan goes: <span class="mono">' + esc(d.reportDir) + '</span> (REPORT.md, findings.json, findings.sarif, map.json).</p>']];
   }
 
-  function surfaceHtml(d) {
+  /** The attack surface and the map in parts: each lane and the shards scroll on their own and fold, so that a large codebase's
+   * surface does not push its map out of reach. */
+  function surfaceParts(d) {
     const pts = arr(d.points), shards = arr(d.shards);
     const lanes = LANES.map(([id, title]) => {
       const ps = pts.filter(p => p.lane === id);
-      return '<div class="sc-lane"><h4>' + esc(title) + ' <span class="dim">' + ps.length + '</span></h4>' + (ps.length ? ps.map(p => '<div class="sc-pt" title="' + esc(p.note || '') + '"><span class="mono dim">' + esc(p.id) + '</span> ' + esc(p.title) +
-        '<span class="mono dim sc-loc">' + esc(p.file) + ':' + (p.line | 0) + '</span></div>').join('') : '<div class="dim sc-none">none yet</div>') + '</div>';
+      return '<div class="sc-lane"><h4>' + esc(title) + ' <span class="dim">' + ps.length + '</span></h4><div class="sc-lpts" data-sc-scroll>' + (ps.length ? ps.map(p => '<div class="sc-pt" title="' + esc(p.note || '') + '"><span class="mono dim">' + esc(p.id) + '</span> ' + esc(p.title) +
+        '<span class="mono dim sc-loc">' + esc(p.file) + ':' + (p.line | 0) + '</span></div>').join('') : '<div class="dim sc-none">none yet</div>') + '</div></div>';
     }).join('');
     const cells = shards.map(s => {
       const st = s.hunt ? 'hunted' : s.map ? 'mapped' : s.claimed ? 'claimed' : 'open';
       const tip = s.id + ' · ' + s.first + (s.files > 1 ? ' and ' + (s.files - 1) + ' more' : '') + ' · ' + s.funcs + ' functions, ' + s.lines + ' lines · ' + st + (s.claimed ? ' by ' + s.claimed : '') + (s.map ? '\n\n' + s.map : '');
       return '<span class="sc-cell sc-' + st + '" title="' + esc(tip) + '">' + esc(s.id) + '</span>';
     }).join('');
-    return '<div class="sc-lanes">' + lanes + '</div><h4 class="sc-sh">Shards <span class="dim">open · claimed · mapped · hunted</span></h4><div class="sc-cells">' + cells + '</div>';
+    const n = st => shards.filter(s => (s.hunt ? 'hunted' : s.map ? 'mapped' : s.claimed ? 'claimed' : 'open') === st).length;
+    return [['lanes', '<details class="sc-fold" data-sc-keep="lanes" open><summary><h4 class="sc-sh">Attack surface <span class="dim">' + plural(pts.length, 'point') + '</span></h4></summary><div class="sc-lanes">' + lanes + '</div></details>'],
+      ['shards', '<details class="sc-fold" data-sc-keep="shards" open><summary><h4 class="sc-sh">Shards <span class="dim">' + n('open') + ' open · ' + n('claimed') + ' claimed · ' + n('mapped') + ' mapped · ' + n('hunted') + ' hunted</span></h4></summary><div class="sc-cells" data-sc-scroll>' + cells + '</div></details>']];
+  }
+
+  /** Paint parts into box: a part keeps its element across refreshes and is repainted only when its HTML changed, with the
+   * folds (details[data-sc-keep]) it holds left open or shut as the person left them and its scrolled boxes where they were. A
+   * part whose html is null is left alone (another painter fills it); an empty one is hidden. */
+  function paintParts(box, parts) {
+    const keys = parts.map(p => p[0]).join(' ');
+    if (box.dataset.scParts !== keys) { box.dataset.scParts = keys; box.innerHTML = parts.map(([k]) => (k === 'cmp' ? '<div data-sc-cmp data-sc-part="cmp"></div>' : '<div class="sc-part" data-sc-part="' + k + '"></div>')).join(''); }
+    parts.forEach(([k, html]) => {
+      if (html === null) return;
+      const el = box.querySelector('[data-sc-part="' + k + '"]'); if (!el || el._scHtml === html) return;
+      const open = {}, scroll = [];
+      el.querySelectorAll('details[data-sc-keep]').forEach(x => { open[x.dataset.scKeep] = x.open; });
+      el.querySelectorAll('[data-sc-scroll]').forEach(x => scroll.push([x.scrollTop, x.scrollLeft]));
+      el._scHtml = html; el.innerHTML = html; el.hidden = !html;
+      el.querySelectorAll('details[data-sc-keep]').forEach(x => { if (x.dataset.scKeep in open) x.open = open[x.dataset.scKeep]; });
+      el.querySelectorAll('[data-sc-scroll]').forEach((x, i) => { if (scroll[i]) { x.scrollTop = scroll[i][0]; x.scrollLeft = scroll[i][1]; } });
+    });
   }
 
   /** The scan's report, rendered by the server from the ledger as it is now: a download per format, and PDF through the browser's print. */
@@ -195,7 +248,7 @@
       'scan.new': '<section class="panel"><div class="ph"><h2>New scan</h2><div class="r"><span class="mono dim">/scan DEPTH [DIR]</span></div></div><form class="rs-new sc-new" autocomplete="off">' +
         '<div class="sc-src" role="radiogroup" aria-label="what to scan"><label class="chk"><input type="radio" name="scSrc" value="here" checked> this project</label><label class="chk"><input type="radio" name="scSrc" value="url"> a repository, cloned for the scan</label></div>' +
         '<div data-sc-here><label class="lab" for="scFocus">Folder (optional)</label><input id="scFocus" class="sc-in mono" placeholder="the whole repository; or e.g. server/api" spellcheck="false"></div>' +
-        '<div data-sc-url hidden><label class="lab" for="scUrl">Repository</label><input id="scUrl" class="sc-in mono" placeholder="https://github.com/owner/repo" spellcheck="false"><p class="dim sc-hint">Cloned into ~/sleipnir-scans with git’s hooks and symbolic links off. A new session opens there, its commands in a container with no network.</p><p class="sc-warn" data-sc-nobox hidden></p></div>' +
+        '<div data-sc-url hidden><label class="lab" for="scUrl">Repository</label><input id="scUrl" class="sc-in mono" placeholder="https://github.com/owner/repo" spellcheck="false"><p class="dim sc-hint">Cloned into ~/sleipnir-scans with git’s hooks and symbolic links off. A new session opens there, its commands in a container with the toolchain of the repository’s language and no network (a Go or Rust module’s dependencies are fetched first).</p><p class="sc-warn" data-sc-nobox hidden></p></div>' +
         '<div class="rs-depths" role="radiogroup" aria-label="depth"></div><div class="row2"><button class="btn pri" type="submit" id="scGo">Start the scan</button></div>' +
         '<div class="sc-clone" data-sc-clone role="status" aria-live="polite" hidden><div class="sc-cbar"><i></i></div><div class="sc-cline"><b data-sc-cphase></b> <span class="mono dim" data-sc-cline></span> <span class="mono dim sc-ctime" data-sc-ctime></span></div></div>' +
         '<p class="stubnote">The work is sized by the code, not by a clock: the scan splits it into shards of so many functions and lines, and asks for one agent per two shards, from 8 to 32.</p></form></section>' });
@@ -211,8 +264,8 @@
     }
     function paintDetail() {
       const d = st.detail, sig = JSON.stringify(d); if (sig === st.dsig) return; st.dsig = sig;
-      if (det) det.innerHTML = d ? detailHtml(d) : '<p class="stubnote" style="padding:10px 12px;margin:0">' + (st.runs.length ? 'Pick a scan to see its findings.' : 'The findings of a scan appear here as verifiers confirm them.') + '</p>';
-      if (surf) surf.innerHTML = d ? surfaceHtml(d) : '';
+      if (det) paintParts(det, d ? detailParts(d) : [['empty', '<p class="stubnote" style="padding:10px 12px;margin:0">' + (st.runs.length ? 'Pick a scan to see its findings.' : 'The findings of a scan appear here as verifiers confirm them.') + '</p>']]);
+      if (surf) paintParts(surf, d ? surfaceParts(d) : []);
       const ph = $('.sc-phase', root); if (ph) ph.innerHTML = d ? '<span class="chip' + (d.phase === 'done' ? ' rs-ok' : ' rs-live') + '">' + esc(d.phase) + '</span>' +
         '<button class="btn sm sc-rerun" type="button" data-sc-rerun title="scan the same code again at HEAD, then compare the two">Rerun…</button>' + exportHtml(S(), d.slug) : '';
       st.csig = ''; paintCompare();

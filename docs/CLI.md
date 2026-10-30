@@ -343,7 +343,7 @@ Usage of chat:
   -role-model value
         role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… adds search by meaning to the lesson memory, reranker=… orders what it finds, fallback=… takes the requests of a model whose endpoint has been out for a minute). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
   -sandbox string
-        run every shell command of the session inside a container of its own: docker (image buildpack-deps:bookworm) or docker=IMAGE. The project is mounted at its own path, the network is off, capabilities are dropped and the harness, its keys and the rest of the machine stay outside; edits are still made by the agents' file tools
+        run every shell command of the session inside a container of its own: docker (an image for the project's language: golang for a go.mod, rust, node, python, ruby, a JDK, else buildpack-deps:bookworm; a Go or Rust module's dependencies are fetched before the network goes off) or docker=IMAGE. The project is mounted at its own path, the network is off, capabilities are dropped and the harness, its keys and the rest of the machine stay outside; edits are still made by the agents' file tools
   -sandbox-network
         with --sandbox: let commands in the container use the network (to install dependencies); it is off otherwise
   -swarm int
@@ -613,7 +613,7 @@ flags:
   -role-model value
         role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… adds search by meaning to the lesson memory, reranker=… orders what it finds, fallback=… takes the requests of a model whose endpoint has been out for a minute). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
   -sandbox string
-        run every shell command of the session inside a container of its own: docker (image buildpack-deps:bookworm) or docker=IMAGE. The project is mounted at its own path, the network is off, capabilities are dropped and the harness, its keys and the rest of the machine stay outside; edits are still made by the agents' file tools
+        run every shell command of the session inside a container of its own: docker (an image for the project's language: golang for a go.mod, rust, node, python, ruby, a JDK, else buildpack-deps:bookworm; a Go or Rust module's dependencies are fetched before the network goes off) or docker=IMAGE. The project is mounted at its own path, the network is off, capabilities are dropped and the harness, its keys and the rest of the machine stay outside; edits are still made by the agents' file tools
   -sandbox-network
         with --sandbox: let commands in the container use the network (to install dependencies); it is off otherwise
   -session-dir string

@@ -328,12 +328,24 @@ func (s *Session) ScanRuns() []wire.ScanRun {
 	for _, r := range scan.List(s.opts.Root) {
 		rep := scan.Check(r)
 		c := rep.Counts
+		workers := 0
+		if r.Slug == active {
+			workers = s.scanWorkers()
+		}
 		out = append(out, wire.ScanRun{Slug: r.Slug, Commit: r.Commit, Depth: r.Depth, Focus: r.Focus, Phase: rep.Phase, Created: r.Created,
-			Team: r.Team(), Problems: rep.Blocking(), Files: c.Files, Funcs: c.Funcs, Lines: c.Lines, Shards: c.Shards, Mapped: c.Mapped,
+			Team: r.Team(), Workers: workers, Problems: rep.Blocking(), Files: c.Files, Funcs: c.Funcs, Lines: c.Lines, Shards: c.Shards, Mapped: c.Mapped,
 			Hunted: c.Hunted, Points: c.Points, Edges: c.Edges, Leads: c.Leads, Open: c.Open, Confirmed: c.Confirmed, Unproven: c.Unproven,
 			Rejected: c.Rejected, BySeverity: c.BySeverity, Active: r.Slug == active, Previous: r.Previous, Review: r.IsReview()})
 	}
 	return out
+}
+
+// scanWorkers is how many workers this session's team runs (its --swarm size, or its team's slots), 0 for a single agent.
+func (s *Session) scanWorkers() int {
+	if s.Swarm == nil {
+		return 0
+	}
+	return s.Swarm.MaxWorkers()
 }
 
 // ScanDepths are the depths a scan can have, for the forms that start one.
@@ -395,7 +407,11 @@ func (s *Session) ScanDetail(slug string) (map[string]any, error) {
 		shards = append(shards, x)
 	}
 	d := r.DepthInfo()
-	return map[string]any{"slug": r.Slug, "commit": r.Commit, "depth": r.Depth, "focus": r.Focus, "created": r.Created, "team": r.Team(),
+	workers := 0
+	if r.Slug == s.scan.store.Active() {
+		workers = s.scanWorkers()
+	}
+	return map[string]any{"slug": r.Slug, "commit": r.Commit, "depth": r.Depth, "focus": r.Focus, "created": r.Created, "team": r.Team(), "workers": workers,
 		"verifiers": d.Verifiers, "defender": d.Defender, "proveFrom": d.ProveFrom, "sandbox": s.box != nil,
 		"phase": rep.Phase, "counts": rep.Counts, "problems": problems, "moreProblems": len(rep.Problems) - len(problems),
 		"findings": scan.Findings(r), "shards": shards, "points": r.Points, "edges": scan.MapDoc(r)["edges"],

@@ -436,27 +436,29 @@ type ResearchRequest struct {
 
 // ScanRun is one deep scan of the project, for the Deep scan view.
 type ScanRun struct {
-	Slug      string `json:"slug"`
-	Commit    string `json:"commit"`
-	Depth     string `json:"depth"`
-	Focus     string `json:"focus,omitempty"`
-	Phase     string `json:"phase"`
-	Created   string `json:"created"` // RFC 3339
-	Team      int    `json:"team"`    // the agents the scan asks for
-	Problems  int    `json:"problems"`
-	Files     int    `json:"files"`
-	Funcs     int    `json:"funcs"`
-	Lines     int    `json:"lines"`
-	Shards    int    `json:"shards"`
-	Mapped    int    `json:"mapped"`
-	Hunted    int    `json:"hunted"`
-	Points    int    `json:"points"`
-	Edges     int    `json:"edges"`
-	Leads     int    `json:"leads"`
-	Open      int    `json:"open"`
-	Confirmed int    `json:"confirmed"`
-	Unproven  int    `json:"unproven"`
-	Rejected  int    `json:"rejected"`
+	Slug    string `json:"slug"`
+	Commit  string `json:"commit"`
+	Depth   string `json:"depth"`
+	Focus   string `json:"focus,omitempty"`
+	Phase   string `json:"phase"`
+	Created string `json:"created"` // RFC 3339
+	Team    int    `json:"team"`    // the agents the scan asks for
+	// Workers is the team this session runs the scan with (its --swarm size), on the scan the session works on now; 0 otherwise.
+	Workers   int `json:"workers,omitempty"`
+	Problems  int `json:"problems"`
+	Files     int `json:"files"`
+	Funcs     int `json:"funcs"`
+	Lines     int `json:"lines"`
+	Shards    int `json:"shards"`
+	Mapped    int `json:"mapped"`
+	Hunted    int `json:"hunted"`
+	Points    int `json:"points"`
+	Edges     int `json:"edges"`
+	Leads     int `json:"leads"`
+	Open      int `json:"open"`
+	Confirmed int `json:"confirmed"`
+	Unproven  int `json:"unproven"`
+	Rejected  int `json:"rejected"`
 	// BySeverity counts the confirmed findings.
 	BySeverity map[string]int `json:"bySeverity"`
 	Active     bool           `json:"active"` // the scan the session works on now

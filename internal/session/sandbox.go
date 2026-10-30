@@ -58,7 +58,14 @@ func (s *Session) startSandbox(ctx context.Context) error {
 	if box.Spec.Network {
 		net = "network on"
 	}
-	s.notice("", fmt.Sprintf("commands run in the sandbox %s (%s, %s); the harness and its keys stay outside", box.Name, box.Spec.Image, net))
+	image := box.Spec.Image
+	if tc := box.Toolchain; tc.Lang != "" {
+		image += ", for the " + tc.Manifest + " of the project"
+	}
+	if box.Fetched != "" {
+		net += "; before the network went off, " + box.Fetched
+	}
+	s.notice("", fmt.Sprintf("commands run in the sandbox %s (%s, %s); the harness and its keys stay outside", box.Name, image, net))
 	return nil
 }
 

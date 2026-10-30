@@ -332,7 +332,7 @@ func commandLine(args []string) string {
 
 // sandboxHelp and sandboxNetworkHelp are the help of --sandbox and --sandbox-network.
 const (
-	sandboxHelp        = "run every shell command of the session inside a container of its own: docker (image " + sandbox.DefaultImage + ") or docker=IMAGE. The project is mounted at its own path, the network is off, capabilities are dropped and the harness, its keys and the rest of the machine stay outside; edits are still made by the agents' file tools"
+	sandboxHelp        = "run every shell command of the session inside a container of its own: docker (an image for the project's language: golang for a go.mod, rust, node, python, ruby, a JDK, else " + sandbox.DefaultImage + "; a Go or Rust module's dependencies are fetched before the network goes off) or docker=IMAGE. The project is mounted at its own path, the network is off, capabilities are dropped and the harness, its keys and the rest of the machine stay outside; edits are still made by the agents' file tools"
 	sandboxNetworkHelp = "with --sandbox: let commands in the container use the network (to install dependencies); it is off otherwise"
 )
 
