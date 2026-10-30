@@ -3,7 +3,6 @@ package perm
 import (
 	"bufio"
 	"io"
-	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -540,13 +539,12 @@ func venvLayout(real, shown string) string {
 	}
 	// creating the environment again rewrites the activation scripts and the interpreter links in its bin (Scripts on Windows)
 	for _, bin := range []string{"bin", "Scripts"} {
-		files, ok := listEntries(filepath.Join(real, bin), 256)
+		files, ok := listDir(filepath.Join(real, bin), 256)
 		if !ok {
 			return shown + "/" + bin + " has too many entries to check"
 		}
-		for _, e := range files {
-			n := e.Name()
-			if e.Type()&fs.ModeSymlink != 0 && strings.HasPrefix(n, "python") {
+		for _, n := range files {
+			if strings.HasPrefix(n, "python") {
 				continue // the interpreter links lead to the base Python by design; creation replaces the link itself
 			}
 			if escapes(filepath.Join(real, bin, n)) {
@@ -568,20 +566,6 @@ func venvLayout(real, shown string) string {
 		}
 	}
 	return ""
-}
-
-// listEntries is listDir with each entry's type.
-func listEntries(dir string, limit int) ([]fs.DirEntry, bool) {
-	f, err := os.Open(dir)
-	if err != nil {
-		return nil, true
-	}
-	defer f.Close()
-	entries, err := f.ReadDir(limit + 1)
-	if err != nil && err != io.EOF {
-		return nil, true
-	}
-	return entries, len(entries) <= limit
 }
 
 // listDir returns the names in dir, at most limit of them (ok false when there are more); a directory that cannot be read has none.
