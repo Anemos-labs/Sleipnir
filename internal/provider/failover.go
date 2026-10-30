@@ -23,6 +23,9 @@ type Failover struct {
 	Primary, Secondary Provider
 	// SecondaryModel is the model id Secondary's requests name in place of the one the caller wrote for Primary.
 	SecondaryModel string
+	// SecondaryMaxOutput, when positive, is Secondary's output maximum: a request that asks for more (a limit sized for
+	// Primary) asks for this much instead, since Secondary would refuse it.
+	SecondaryMaxOutput int
 	// SecondaryPrice, when set, prices a usage record of Secondary in dollars. The caller prices responses at Primary's
 	// prices unless one carries its exact charge, so an answer from Secondary is given that charge here: a fallback that
 	// bills where Primary is a plan (or cheaper) is then counted against the budget at its own price.
@@ -101,9 +104,16 @@ func (f *Failover) Do(ctx context.Context, req *Request, on func(Event)) (*Respo
 
 // secondary sends req to Secondary, for SecondaryModel: the prompt names the model it is for.
 func (f *Failover) secondary(ctx context.Context, req *Request, on func(Event)) (*Response, error) {
-	if req.Prompt != nil && f.SecondaryModel != "" && req.Prompt.Model != f.SecondaryModel {
+	rename := f.SecondaryModel != "" && req.Prompt != nil && req.Prompt.Model != f.SecondaryModel
+	clamp := f.SecondaryMaxOutput > 0 && req.Prompt != nil && req.Prompt.Params.MaxTokens > f.SecondaryMaxOutput
+	if rename || clamp {
 		r, p := *req, *req.Prompt
-		p.Model = f.SecondaryModel
+		if rename {
+			p.Model = f.SecondaryModel
+		}
+		if clamp {
+			p.Params.MaxTokens = f.SecondaryMaxOutput
+		}
 		r.Prompt = &p
 		req = &r
 	}

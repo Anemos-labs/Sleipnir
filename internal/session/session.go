@@ -276,10 +276,11 @@ type Session struct {
 	judgeRef   string
 	// fallbackP is the model every other model of the session falls back to while its endpoint is out (buildFallback),
 	// fallbackRef its provider/model; nil when none is named.
-	fallbackP     provider.Provider
-	fallbackModel string
-	fallbackPrice cost.Price // what the fallback's tokens cost (zero on a plan)
-	fallbackRef   string
+	fallbackP      provider.Provider
+	fallbackModel  string
+	fallbackPrice  cost.Price // what the fallback's tokens cost (zero on a plan)
+	fallbackMaxOut int        // the fallback model's output maximum (0: unknown)
+	fallbackRef    string
 	// lessons is the lesson memory (buildLessons), nil when the lessons plugin is off or the session has no global memory.
 	lessons *lessonMemory
 
@@ -776,7 +777,7 @@ func (s *Session) buildFallback() error {
 	if err != nil {
 		return fmt.Errorf("fallback model %s: %w", ref, err)
 	}
-	s.fallbackP, s.fallbackModel, s.fallbackRef, s.fallbackPrice = p, m.ID, mr.String(), m.Price
+	s.fallbackP, s.fallbackModel, s.fallbackRef, s.fallbackPrice, s.fallbackMaxOut = p, m.ID, mr.String(), m.Price, m.MaxOutput
 	return nil
 }
 
@@ -789,7 +790,7 @@ func (s *Session) clientFor(ref ModelRef) (provider.Provider, cost.Model, error)
 	}
 	if err == nil && s.fallbackP != nil && ref.String() != s.fallbackRef {
 		name, to := ref.String(), s.fallbackRef
-		p = &provider.Failover{Primary: p, Secondary: s.fallbackP, SecondaryModel: s.fallbackModel, SecondaryPrice: s.fallbackPrice.USD, After: FallbackAfter, Retry: FallbackRetry,
+		p = &provider.Failover{Primary: p, Secondary: s.fallbackP, SecondaryModel: s.fallbackModel, SecondaryMaxOutput: s.fallbackMaxOut, SecondaryPrice: s.fallbackPrice.USD, After: FallbackAfter, Retry: FallbackRetry,
 			OnSwitch: func(toFallback bool, cause error) {
 				if toFallback {
 					s.notice("", fmt.Sprintf("%s has been out for %s (%v): its requests go to the fallback model %s, and %s is tried again in %s", name, FallbackAfter, cause, to, name, FallbackRetry))
@@ -1107,7 +1108,7 @@ func (s *Session) build(ctx context.Context) error {
 	}
 	params := o.Params
 	if params.MaxTokens == 0 {
-		params.MaxTokens = min(s.Model.MaxOutput, 16000)
+		params.MaxTokens = defaultMaxTokens(s.Model)
 	}
 	shared := s.Shared
 
@@ -1143,7 +1144,7 @@ func (s *Session) build(ctx context.Context) error {
 			}
 			p := params
 			if o.Params.MaxTokens == 0 {
-				p.MaxTokens = min(s.Model.MaxOutput, 16000)
+				p.MaxTokens = defaultMaxTokens(s.Model)
 			}
 			return agent.New(agent.Config{
 				ID: "main", Role: role.Name, Model: s.Model, Provider: s.Provider, Compactor: comp, CompactorModel: compModel, CompactorHealth: health,
@@ -1230,7 +1231,7 @@ func (s *Session) build(ctx context.Context) error {
 		Const: constLayer, Shared: shared,
 		Events: s.Log, Blobs: s.Blobs, Archive: archive, Files: files, Perm: s.Perm,
 		Snap: s.Ckpt, Handles: handles,
-		Workdir: o.Cwd, Root: o.Root, Tmp: s.tmp, Params: params, Effort: &s.effort, Planner: planner, KVPolicy: kvPol, Est: est, Limits: limits, Now: o.Now,
+		Workdir: o.Cwd, Root: o.Root, Tmp: s.tmp, Params: params, DefaultMaxTokens: memberMaxTokens(o.Params), Effort: &s.effort, Planner: planner, KVPolicy: kvPol, Est: est, Limits: limits, Now: o.Now,
 		NewSink: o.NewSink, CaptureTokens: o.CaptureTokens, TrainingLogs: o.TrainingLogs, OnWrite: s.Ckpt.After, RunEnded: s.shell.EndAgent, Hooks: s.agentHooks(),
 		OutagePatience:     outagePatience(o.OutagePatience),
 		WaitUnreachable:    o.WaitUnreachable,
@@ -1967,4 +1968,29 @@ func (s *Session) testCommand() string {
 		}
 	}
 	return ""
+}
+
+// memberMaxTokens is how a team member's output limit follows its own model when the session names none: a role or slot model
+// can have a smaller maximum, or a larger window, than the session's. nil when the session names a limit, which every member keeps.
+func memberMaxTokens(p core.Params) func(cost.Model) int {
+	if p.MaxTokens != 0 {
+		return nil
+	}
+	return defaultMaxTokens
+}
+
+// defaultMaxTokens is the output limit of a request that names none: 16000, or the model's maximum if smaller. A model with a
+// known window of 128k tokens or more gets 32000: a reasoning model can think for more than 16000 tokens before it writes a
+// large file, and a response cut off at the limit with only reasoning in it is thrown away whole. A smaller or unknown window
+// keeps 16000, so that the prompt and the limit still fit in it.
+// A model whose maximum nothing reports (a catalogue entry with no max_completion_tokens) gets the limit itself.
+func defaultMaxTokens(m cost.Model) int {
+	limit := 16000
+	if !m.WindowGuessed && m.ContextTokens >= 128_000 {
+		limit = 32000
+	}
+	if m.MaxOutput <= 0 {
+		return limit
+	}
+	return min(m.MaxOutput, limit)
 }

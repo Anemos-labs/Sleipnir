@@ -373,6 +373,15 @@ func (a *Agent) propose(ctx context.Context, snap kv.Stack, reason string) (*rea
 
 // proposeFocus is propose with the user's own words about what matters (manual
 // /compact): they are typed by the person driving the agent, so they may steer the
+// compactorParams are the agent's request settings for a fork its compactor model answers: an output limit sized for the agent's
+// model asks no more than the compactor's maximum. The agent's own forks keep its settings.
+func compactorParams(p core.Params, m cost.Model, byCompactor bool) core.Params {
+	if byCompactor && m.MaxOutput > 0 && p.MaxTokens > m.MaxOutput {
+		p.MaxTokens = m.MaxOutput
+	}
+	return p
+}
+
 // compactor, unlike text the agent found in tool output.
 func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus string) (*readyPatch, error) {
 	prov, model, byCompactor, gen := a.compactorFor(snap)
@@ -386,7 +395,7 @@ func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus s
 		instr = strings.Replace(instr, "</compactor-task>", line+"</compactor-task>", 1)
 	}
 	p := kv.ForkPrompt(&snap, kv.RenderOpts{
-		Caps: a.caps(prof), Policy: a.cfg.KVPolicy, Params: a.requestParams(prov, model.ID),
+		Caps: a.caps(prof), Policy: a.cfg.KVPolicy, Params: compactorParams(a.requestParams(prov, model.ID), model, byCompactor),
 		CacheKey: a.cacheKey(&snap), Est: a.est,
 	}, instr)
 	if model.ID != "" {
@@ -415,7 +424,7 @@ func (a *Agent) proposeFocus(ctx context.Context, snap kv.Stack, reason, focus s
 		if err == nil || a.cfg.Effort == nil || attempt >= 2 || !a.cfg.Effort.Recover(prov, model.ID, p.Params.Effort, err) {
 			break
 		}
-		p.Params = a.requestParams(prov, model.ID)
+		p.Params = compactorParams(a.requestParams(prov, model.ID), model, byCompactor)
 		a.mu.Lock()
 		a.forkN++
 		label = fmt.Sprintf("%s.c%d", a.cfg.ID, a.forkN)

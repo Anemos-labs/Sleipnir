@@ -274,12 +274,16 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 	case isSvc:
 		hooks = &serviceHooks{inner: d.Hooks, only: rr.only, role: r.Name}
 	}
+	params := d.Params
+	if d.DefaultMaxTokens != nil {
+		params.MaxTokens = d.DefaultMaxTokens(model)
+	}
 	cfg := agent.Config{
 		SnapshotEachStep: s.cfg.PersistentPools || s.isolated() && s.deps.Isolation.Resumable,
 		ID:               id, Role: r.Name, Model: model, Provider: prov, Compactor: d.Compactor, CompactorModel: d.CompactorModel, CompactorHealth: d.CompactorHealth, Tools: d.Registry, ToolSpecs: d.ToolSpecs,
 		CaptureTokens: d.CaptureTokens, TrainingLogs: d.TrainingLogs,
 		Const: d.Const, Shared: s.currentShared(), RoleL: s.roleLay[r.Name], Notes: notes,
-		Params: d.Params, Effort: d.Effort, OutagePatience: d.OutagePatience, WaitUnreachable: d.WaitUnreachable,
+		Params: params, Effort: d.Effort, OutagePatience: d.OutagePatience, WaitUnreachable: d.WaitUnreachable,
 		Barrier: d.Barrier,
 		Hot: func(agentID string) []core.Block {
 			if isSvc {
