@@ -328,6 +328,13 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 		"transformations": resp.Transformations,
 	}, a.cfg.Model, list), resp))
 	a.cfg.Sink.Response(a.cfg.ID, resp, u.HitRatio())
+	if reps.tripped {
+		// The stream ended before the cancellation reached it (a fast endpoint sends the whole response at once): its cost is
+		// counted above, and its calls are dropped as a stopped response's are.
+		err = fmt.Errorf("%w (%s, %d times)", ErrRepeatedCalls, reps.name, repeatedCallLimit)
+		a.emit(events.TypeModelError, map[string]any{"req": reqID, "error": err.Error()})
+		return nil, 0, err
+	}
 	return resp, epoch, nil
 }
 
