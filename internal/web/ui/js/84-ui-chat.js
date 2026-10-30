@@ -73,12 +73,34 @@
    *  conversation, collapsed, never into the conversation itself. */
   const NOTICE_RE = /^(skills?|hooks?|commands?|agents?|roles?|mcp|config|plugins?|settings|output[- ]styles?|rules|permissions|trust)\b[^:]{0,240}:|^ignored security-sensitive settings|^--[a-z][a-z-]* (has no effect|is ignored)/i;
   function isNotice(e) { return e.k === 'sys' && !e.ag && !e.open && !e.plan && typeof e.text === 'string' && (e.text === 'starting…' || /^ready: /.test(e.text) || NOTICE_RE.test(e.text)); }
+  /** A row of the conversation that is a step of the work rather than something said: a tool call of the manager, a note, a state, the
+   *  scouts' lines, a mail, the code the manager writes and the harness's lines about the work (a merge, an answer, an interruption). Steps
+   *  that follow one another between two messages are drawn as one collapsed line (a group), so that what the person and the manager say
+   *  stays easy to find; a line of the harness with a button (Open Providers) is said, not grouped. */
+  function isStep(e) { return e.k === 'tool' || e.k === 'note' || e.k === 'st' || e.k === 'scouts' || e.k === 'mail' || e.k === 'stream' || (e.k === 'sys' && !e.open); }
+  /** What a group of steps says when it is closed: how many, and the tools by how often they were called ("Read 3 · Edit 2 · 1 merge"). */
+  function stepSum(g) {
+    const parts = Object.keys(g.tools).sort((a, b) => g.tools[b] - g.tools[a] || (a < b ? -1 : 1)).slice(0, 4).map(n => esc(n) + (g.tools[n] > 1 ? ' <b class="num">' + g.tools[n] + '</b>' : ''));
+    const more = Object.keys(g.tools).length - 4; if (more > 0) parts.push('+' + more + ' more');
+    if (g.notes) parts.push(g.notes + ' note' + (g.notes === 1 ? '' : 's'));
+    if (g.other) parts.push(g.other + ' update' + (g.other === 1 ? '' : 's'));
+    return parts.join(' · ');
+  }
+  /** The kind of step e is, for its group's summary. */
+  function stepKind(g, e) {
+    if (e.k === 'tool') { const n = String(e.name || 'tool'); g.tools[n] = (g.tools[n] || 0) + 1; if (e.refused) g.refused++; }
+    else if (e.k === 'stream') g.tools.Write = (g.tools.Write || 0) + 1;
+    else if (e.k === 'note') g.notes++; else g.other++;
+  }
+  /** The last step of a group in words, for the line's tooltip. */
+  const stepText = e => e.k === 'tool' ? e.name + ' ' + (e.arg || '') : e.k === 'stream' ? 'writing' : e.k === 'scouts' ? 'the scouts reported' : e.k === 'mail' ? e.from + ' → ' + e.to + ': ' + e.text : e.k === 'st' ? e.s + ' ' + (e.text || '') : String(e.text || '');
 
   function mount(sc) {
     const talk = $('#talk'), feed = $('#feed'), pill = $('#newPill');
     /** a log view over the manager's channel: its own rows, scroll position and typing state (the chat and the Team activity feed are two of them) */
-    const mkLog = (el, want, cap, none) => ({ el, want, cap, none, pos: 0, m: null, sid: null, mode: null, rows: [], stream: [], stick: true, newCount: 0, foldEl: null, nfold: 0, programmatic: false });
+    const mkLog = (el, want, cap, none) => ({ el, want, cap, none, pos: 0, m: null, sid: null, mode: null, rows: [], stream: [], stick: true, newCount: 0, foldEl: null, nfold: 0, programmatic: false, grp: null, groups: false });
     const TR = mkLog(talk, e => !isFeed(e) && !isNotice(e), ROW_CAP, 'Your conversation with the manager appears here. Write below what you want done and press Enter; / lists the commands.'), FD = mkLog(feed, isFeed, 90, 'What the workers do (their tool calls, edits, mail and merges) appears here once the manager hands them work.');
+    TR.groups = true;
 
     /* ---------- the logs ---------- */
     const atEdge = L => L.el.scrollHeight - L.el.scrollTop - L.el.clientHeight < 40;
@@ -89,8 +111,29 @@
       sc.listen(L.el, 'wheel', () => { L.programmatic = false; }, { passive: true });
     });
     sc.listen(pill, 'click', () => { TR.stick = true; TR.newCount = 0; pillUpdate(); toEdge(TR); });
+    /** The open group of steps of log L that row e joins: the last one when nothing was said since, else a new one at the end. */
+    function groupFor(L, e, S) {
+      if (L.grp && L.grp.el.parentNode === L.el) return L.grp;   /* every other row that is appended ends the group (L.grp = null) */
+      const el = mk('div', { class: 'msg agrp one' }), g = { el, n: 0, tools: {}, notes: 0, other: 0, refused: 0, first: e, last: e, t0: e, head: null, body: null };
+      el.innerHTML = '<button type="button" class="agrp-h" data-agrp aria-expanded="false"></button><div class="agrp-b"></div>';
+      g.head = $('.agrp-h', el); g.body = $('.agrp-b', el); el._g = g; L.el.appendChild(el); L.grp = g; paintGroup(g, S);
+      return g;
+    }
+    /** Whether group g shows its steps: what the person chose for it, else open with /verbose on and closed otherwise. */
+    const groupOpen = (g, S) => (typeof g.first.gOpen === 'boolean' ? g.first.gOpen : !!(S && S.ui && S.ui.verbose === true));
+    function paintGroup(g, S) {
+      const open = g.n < 2 || groupOpen(g, S), T = S ? todAt(S, g.t0) : '';
+      g.el.classList.toggle('one', g.n < 2); g.el.classList.toggle('open', open); g.head.setAttribute('aria-expanded', String(open));
+      const h = '<span class="ag-c" aria-hidden="true">' + (open ? '▾' : '▸') + '</span><span class="ag-n"><b class="num">' + g.n + '</b> steps</span><span class="ag-s">' + stepSum(g) + '</span>' + (g.refused ? '<span class="ag-x bad">' + g.refused + ' refused</span>' : '') + '<time>' + T + '</time>';
+      if (g.head._h !== h) { g.head._h = h; g.head.innerHTML = h; }
+      g.head.title = (open ? 'Hide' : 'Show') + ' these ' + g.n + ' steps · last: ' + clip1(stepText(g.last), 160);
+      g.head.setAttribute('aria-label', g.n + ' steps of the work: ' + g.head.textContent.replace(/^[▸▾]/, '') + '. ' + (open ? 'Hide them' : 'Show them'));
+    }
     function addRow(L, e, S, m) {
-      const el = frag(rowHtml(e, S, m)); if (!el) return null; const rec = { e, el }; L.el.appendChild(el); L.rows.push(rec);
+      const el = frag(rowHtml(e, S, m)); if (!el) return null; const rec = { e, el };
+      if (L.groups && isStep(e)) { const g = groupFor(L, e, S); g.body.appendChild(el); g.n++; g.last = e; stepKind(g, e); rec.g = g; paintGroup(g, S); }
+      else { L.el.appendChild(el); L.grp = null; }
+      L.rows.push(rec);
       if (e.k === 'stream' || (e.k === 'say' && e.stream)) { const t = $('.st,.mt', el); if (t) { rec.t = t; rec.done = false; L.stream.push(rec); } }
       if (e.k === 'sys' && e.open) $$('[data-open-page]', el).forEach(b => b.addEventListener('click', () => ui.settingsPage(b.dataset.openPage)));
       if (e.k === 'mgrdec') { rec.v = e.v; L.dec = rec; }
@@ -98,15 +141,15 @@
     }
     function foldOld(L) {
       const over = L.rows.length - L.cap; if (over <= 0) return;
-      const gone = L.rows.splice(0, over); gone.forEach(r => r.el.remove()); L.stream = L.stream.filter(r => L.rows.includes(r)); L.nfold += over;
+      const gone = L.rows.splice(0, over); gone.forEach(r => { r.el.remove(); if (r.g && !r.g.body.firstChild) { r.g.el.remove(); if (L.grp === r.g) L.grp = null; } }); L.stream = L.stream.filter(r => L.rows.includes(r)); L.nfold += over;
       if (!L.foldEl) { L.foldEl = mk('div', { class: 'msg foldmark' }); L.el.insertBefore(L.foldEl, L.el.firstChild); }
       L.foldEl.textContent = L.nfold + ' earlier rows folded (the log keeps them)';
     }
     /** Bring one log in line with the model: append new entries; rebuild after a session/model/cache-detail change. */
     function syncLog(L, S, m, force) {
       const list = m.chan.mgr || [], mode = SL.settings.cache;
-      if (force || L.m !== m || L.sid !== S.id || L.mode !== mode || list.length < L.pos) {
-        L.el.innerHTML = ''; L.rows = []; L.stream = []; L.dec = null; L.foldEl = null; L.nfold = 0; L.pos = 0; L.m = m; L.sid = S.id; L.mode = mode; L.newCount = 0;
+      if (force || L.m !== m || L.sid !== S.id || L.mode !== mode || list.length < L.pos || (L.groups && L.vb !== S.ui.verbose)) {
+        L.vb = S.ui.verbose; L.el.innerHTML = ''; L.rows = []; L.stream = []; L.dec = null; L.grp = null; L.foldEl = null; L.nfold = 0; L.pos = 0; L.m = m; L.sid = S.id; L.mode = mode; L.newCount = 0;
         let start = list.length; for (let n = 0, i = list.length - 1; i >= 0 && n < L.cap; i--) { start = i; if (L.want(list[i])) n++; }
         L.nfold = list.slice(0, start).filter(e => L.want(e)).length; L.pos = start;
         if (L.nfold) { L.foldEl = mk('div', { class: 'msg foldmark' }, L.nfold + ' earlier rows folded (the log keeps them)'); L.el.appendChild(L.foldEl); }
@@ -161,9 +204,9 @@
       feedTog.title = open ? 'Collapse Team activity' : 'Show Team activity';
     }
     sc.listen(feedTog, 'click', () => { const S = SL.sessions.active; S.ui.feedOpen = S.ui.feedOpen === false; feedHead(S); if (S.ui.feedOpen !== false) { FD.stick = true; toEdge(FD); } });
-    sc.listen(talk, 'click', e => { const c = e.target.closest('[data-cli]'); if (c) { ui.runCli([c.dataset.cli], null, true); return; } const r = e.target.closest('.msg.tool[data-file]'); if (r && !window.getSelection().toString()) { ui.ws.open(r.dataset.file, 'changes'); } });
+    sc.listen(talk, 'click', e => { const gh = e.target.closest('[data-agrp]'); if (gh) { const g = gh.parentNode._g, S = SL.sessions.active; if (g && g.n > 1) { g.first.gOpen = !groupOpen(g, S); paintGroup(g, S); } return; } const c = e.target.closest('[data-cli]'); if (c) { ui.runCli([c.dataset.cli], null, true); return; } const r = e.target.closest('.msg.tool[data-file]'); if (r && !window.getSelection().toString()) { ui.ws.open(r.dataset.file, 'changes'); } });
     sc.listen(feed, 'click', e => { const r = e.target.closest('.msg[data-ag]'); if (!r || window.getSelection().toString()) return; const id = (r.dataset.ag || '').split(' ')[0], S = SL.sessions.active; if (S && S.m && S.m.ag[id]) ui.openDrawer(id); });
-    sc.listen(document.getElementById('rail'), 'click', e => { const b = e.target.closest('#chHead [data-ch]'); if (!b) return; const S = SL.sessions.active, r = SL.act.interrupt('turn'); ui.toast(r.ok ? SL.interruptText(S) : (r.why || 'nothing to interrupt'), r.ok ? 'warm' : ''); });
+    sc.listen(document.getElementById('chatBox') || document.getElementById('rail'), 'click', e => { const b = e.target.closest('#chHead [data-ch]'); if (!b) return; const S = SL.sessions.active, r = SL.act.interrupt('turn'); ui.toast(r.ok ? SL.interruptText(S) : (r.why || 'nothing to interrupt'), r.ok ? 'warm' : ''); });
 
     /* ---------- per-frame: streaming text ---------- */
     function frameFn(dt, vt, S) {
@@ -331,6 +374,49 @@
     sc.on('cache-detail', () => { TR.m = null; FD.m = null; sync(true); });
     sc.on('files-ready', () => { if (SLASH.mode === 'file' && document.activeElement === inp) updateSlash(); });
     ui.chat = { sync, TR, FD };
+
+    /* ---------- the chat and the questions as cards: the Manager chat card and the Questions for you card of a page (83b-ui-dash.js)
+       hold the rail's conversation, or only its questions, while that page shows; on any other page they are in the rail ---------- */
+    const box = $('#chatBox'), qSlot = $('#qSlot'), app = $('#app');
+    /** What a card holds: the element it takes, where that element goes back to (its parent, before), the attribute of #app it sets,
+     *  the class of the card's body, and what a narrow screen says (the part then stays in Talk). */
+    const PARTS = {
+      chat: { el: box, home: () => $('#rail'), before: () => null, attr: 'data-chat', cls: 'dc-chat', what: 'chat' },
+      questions: { el: qSlot, home: () => box, before: () => $('#planBox'), attr: 'data-qcard', cls: 'dc-q', what: 'question box' },
+    };
+    const DK = { chat: null, questions: null };
+    const narrow = () => { try { return !!(window.matchMedia && window.matchMedia('(max-width: 900px)').matches); } catch (e) { return false; } };
+    /** Put part k back where the rail has it (when a card holds it). */
+    function giveBack(k) {
+      const P = PARTS[k]; if (!DK[k] || !P.el) return; DK[k] = null; const h = P.home(); if (h) h.insertBefore(P.el, P.before()); app.removeAttribute(P.attr);
+      [TR, FD].forEach(L => { L.stick = true; toEdge(L); }); SL.loop.dirty = true;   /* a moved node scrolls back to its top: the logs go to their end */
+    }
+    /** Draw part k in body, a card's body, for as long as the card's scope cs lives. A narrow screen keeps it in the rail (Talk), and only
+     *  one card holds it at a time: the card says so instead. */
+    function take(k, cs, body) {
+      const P = PARTS[k]; if (!P.el) return;
+      const note = t => { body.innerHTML = '<p class="stubnote" style="padding:10px 12px;margin:0">' + t + '</p>'; };
+      if (DK[k] && DK[k] !== body) { note('The ' + P.what + ' is in another card of this page.'); return; }
+      const dock = () => {
+        if (narrow()) { if (DK[k] === body) giveBack(k); note('On a narrow screen the ' + P.what + ' stays in Talk.'); return; }
+        if (DK[k] === body) return; body.innerHTML = ''; body.classList.add(P.cls); body.appendChild(P.el); DK[k] = body; app.setAttribute(P.attr, 'card');
+        [TR, FD].forEach(L => { L.stick = true; toEdge(L); }); SL.loop.dirty = true;
+      };
+      dock(); cs.listen(window, 'resize', dock);
+      cs.onUnmount(() => { if (DK[k] === body) giveBack(k); body.classList.remove(P.cls); });
+    }
+    ui.chatDock = {
+      /** Whether a card holds the chat now. */
+      get docked() { return !!DK.chat; },
+      /** Whether a card holds the questions now. */
+      get questionsDocked() { return !!DK.questions; },
+      /** The Manager chat card draws the chat in body (see take). */
+      take: (cs, body) => take('chat', cs, body),
+      /** The Questions for you card draws the question box in body (see take). */
+      takeQuestions: (cs, body) => take('questions', cs, body),
+      /** Take the card of part k (chat or questions; chat by default) off the page that shows it: the part goes back to the rail. */
+      release(k) { k = PARTS[k] ? k : 'chat'; if (DK[k] && ui.dash) ui.dash.remove(k); else giveBack(k); },
+    };
   }
   SL.chat = { mount, rowHtml, ROW_CAP, isNotice };
 })(SL);
