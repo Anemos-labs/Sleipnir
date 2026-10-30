@@ -1481,6 +1481,9 @@ func (s *Session) checkRoleModels(overrides map[string]string) error {
 		return nil
 	}
 	sort.Strings(bad)
+	if len(bad) == 1 && bad[0] == strconv.Quote(swarm.MailmanRoleName) && s.opts.Workers > 0 {
+		return errors.New("--role-model: the mailman is off in this session, so a mailman model would never be used: turn it on with --mailman, or leave its model out")
+	}
 	names := make([]string, 0, len(known))
 	for name := range known {
 		names = append(names, name)

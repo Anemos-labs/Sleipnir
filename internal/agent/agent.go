@@ -775,6 +775,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 	vetoes := 0       // Stop hooks that sent the agent back to work in this run
 	mailRounds := 0   // times a finished answer was reopened because mail arrived meanwhile
 	cutoffs := 0      // responses in a row that the output limit cut off
+	repeats := 0      // responses in a row stopped because they wrote the same call over and over
 	planNudges := 0   // times a finished answer was sent back because the plan still had open steps
 	verifyNudges := 0 // times a finished answer was sent back because code was changed and no test ran since
 	leakNudges := 0   // times an answer was sent back because it held the markup of a tool call and no call
@@ -846,9 +847,18 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 
 		phase = "model"
 		resp, epoch, err := a.request(ctx)
+		if errors.Is(err, ErrRepeatedCalls) && repeats < maxRepeatRounds {
+			// The generation was stopped while it wrote the same call over and over: nothing of it is kept, and the model is
+			// told why, so that the next response is not the same loop.
+			repeats++
+			a.cfg.Sink.Notice(a.cfg.ID, "warn", fmt.Sprintf("the response repeated the same tool call and was stopped: asking the model again (%d of %d)", repeats, maxRepeatRounds))
+			a.pushUser(core.OriginSystem, a.wrapUp([]core.Block{core.Text(repeatedCallsNudge)}, limit-step-1))
+			continue
+		}
 		if err != nil {
 			return res, err
 		}
+		repeats = 0
 		phase = "between"
 		res.Steps++
 		res.Usage = res.Usage.Add(resp.Usage)
@@ -867,7 +877,13 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 			}
 			a.cfg.Sink.Notice(a.cfg.ID, "warn", fmt.Sprintf("the response reached the output limit (%d tokens): asking the model to carry on (%d of %d)",
 				a.cfg.Params.MaxTokens, cutoffs, maxCutoffRounds))
-			a.pushUser(core.OriginSystem, a.wrapUp([]core.Block{core.Text(cutoffNudge)}, limit-step-1))
+			nudge := cutoffNudge
+			if strings.TrimSpace(res.Text) == "" {
+				// All of it was reasoning: asked to continue, the model reasons again from the top and is cut off again, five
+				// minutes a round on a slow endpoint. It is told to act on what it has thought.
+				nudge = thinkingCutoffNudge
+			}
+			a.pushUser(core.OriginSystem, a.wrapUp([]core.Block{core.Text(nudge)}, limit-step-1))
 			continue
 		}
 		cutoffs = 0
@@ -1027,6 +1043,19 @@ const maxCutoffRounds = 2
 // happened; "do it with a tool call" is the way out of the commonest cause, a long description of what it is about to do.
 const cutoffNudge = "[harness] Your last response was cut off at the output limit before it was complete. Continue from where it stopped. " +
 	"If you were about to run a command or change a file, do it now with a tool call instead of writing it out."
+
+// maxRepeatRounds is how many responses in a row one Run stops for repeating a call; one more ends the run with ErrRepeatedCalls.
+const maxRepeatRounds = 2
+
+// repeatedCallsNudge is what the model reads after a response that was stopped for repeating one call.
+const repeatedCallsNudge = "[harness] Your last response was stopped: it wrote the same tool call again and again in one response, and none of it ran. " +
+	"Make each call once. Take the next step with one or a few distinct calls, then read their results before you go on."
+
+// thinkingCutoffNudge replaces cutoffNudge when the cut-off response held only reasoning: no answer text and no call. Reasoning
+// that planned the whole task at once does not finish by being continued; one step taken does.
+const thinkingCutoffNudge = "[harness] Your last response was cut off at the output limit while you were still reasoning: it held no answer and no tool call. " +
+	"Do not plan the whole task again. Take the next step now with one tool call (read one file, write one file or run one command), " +
+	"and keep your reasoning before it short; plan the rest as you go."
 
 // Close ends the agent's background work: it cancels the compaction job in flight,
 // waits for it (up to CloseGrace, so a provider that ignores its context cannot wedge
