@@ -530,8 +530,19 @@ func TestRetriesRateLimitThenSucceeds(t *testing.T) {
 	if err != nil || res.Text != "finally" {
 		t.Fatalf("res=%+v err=%v", res, err)
 	}
-	if got := len(r.log.OfType(events.TypeModelError)); got != 2 {
+	errs := r.log.OfType(events.TypeModelError)
+	if got := len(errs); got != 2 {
 		t.Fatalf("retry events = %d, want 2", got)
+	}
+	// A retry's event says what failed and how long the attempt ran, so a log tells a cut stream from a refusal.
+	for _, e := range errs {
+		var d struct {
+			Error   string `json:"error"`
+			AfterMS *int64 `json:"after_ms"`
+		}
+		if err := json.Unmarshal(e.Data, &d); err != nil || !strings.Contains(d.Error, "slow down") || d.AfterMS == nil || *d.AfterMS < 0 {
+			t.Fatalf("retry event without the error and the attempt's duration: %s", e.Data)
+		}
 	}
 }
 
