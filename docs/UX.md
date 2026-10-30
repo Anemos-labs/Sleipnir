@@ -276,10 +276,10 @@ activity, which collapse to a line that opens them again or hide, and its compos
 The conversation is a card too: `Manager chat` in `+ Add card` (or `Move the chat into a card` in the rail's `⋯`) puts the
 conversation, its questions, the goal plan, the team activity and the composer in a card of the page, which moves and resizes like any
 other, and the Radio rail closes while that page shows. On another page, or when the card leaves the page (its `to the rail ⇥`, its
-`×`), they are in the rail again. On a screen up to 900 pixels wide the chat stays in `Talk`. `Float the questions over the page`, in the
-rail's `⋯`, takes the questions that wait for you out of the rail into a window over the page: it shows only while a question waits
-(and for the moment its answer is said), is dragged by its head and sized from its corner, and keeps its place and size in this
-browser; its `to the rail ⇥` puts the questions back.
+`×`), they are in the rail again. On a screen up to 900 pixels wide the chat stays in `Talk`. The questions that wait for you have a card of
+their own, `Questions for you` (in `+ Add card` or the rail's `⋯`): it holds the question box in its place on the grid, so a question
+never covers what the person is about to click, and says in one line when nothing waits; on a page without it, the questions are in the
+rail.
 
 The layout of every page is one document, kept for the person by the server in `~/.sleipnir/web-layout.json` (`/api/layout`,
 docs/WEB-API.md) so that it follows them from one browser to another, and cached in the browser so that the page has it at once and

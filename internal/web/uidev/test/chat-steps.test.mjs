@@ -2,8 +2,7 @@
 // work between two messages (the manager's tool calls, notes, the harness's lines about the work) are one collapsed line that says how
 // many there are and which tools ran, and opens on a click; a single step keeps its own row; /verbose opens every group. The chat is
 // also a card (Manager chat, 83b-ui-dash.js): while a page holds it, the rail's conversation and composer are drawn in the card and the
-// rail closes; taken off the page, they are back in the rail. The questions for you can float in a window that is dragged and sized,
-// and shows only while a question waits.
+// rail closes; taken off the page, they are back in the rail. The questions for you have a card of their own too (Questions for you).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { boot } from './pagedom.mjs';
@@ -60,15 +59,15 @@ test('the Manager chat card holds the conversation and the composer while a page
   assert.deepEqual(L.errors, []);
 });
 
-test('the questions for you can float in a window of their own, which shows only while one waits', async () => {
+test('the Questions for you card holds the question box while a page shows it, and gives it back to the rail', async () => {
   const L = await boot(), SL = L.SL, q = L.$('#qSlot');
-  SL.ui.chatDock.setFloating(true); await L.step(0.1);
-  const win = L.$('.qfloat');
-  assert.ok(win && q.parentNode === win, 'the question box is in the window');
-  assert.equal(win.hidden, !q.querySelector('.qstrip,.qdone'), 'it shows only while it has something to say');
-  q.innerHTML = ''; SL.sessions.active.touch(); await L.step(0.1);
-  assert.equal(win.hidden, true, 'nothing waits: the window takes no room');
-  SL.ui.chatDock.setFloating(false); await L.step(0.1);
+  SL.ui.dash.add('questions'); await L.settle(); await L.step(0.1);
+  const card = L.$('#views .dcard[data-card="questions"]');
+  assert.ok(card && q.parentNode.closest('.dcard') === card, 'the question box is in the card');
+  assert.equal(SL.ui.chatDock.questionsDocked, true);
+  assert.ok(L.$('#rail #talk'), 'the conversation stays in the rail');
+  card.querySelector('.dc-rail').click(); await L.settle(); await L.step(0.1);
   assert.equal(q.parentNode, L.$('#chatBox'), 'back in the rail');
+  assert.equal(q.nextSibling, L.$('#planBox'), 'in its place, above the plan');
   assert.deepEqual(L.errors, []);
 });

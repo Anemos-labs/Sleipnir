@@ -375,13 +375,16 @@
     sc.on('files-ready', () => { if (SLASH.mode === 'file' && document.activeElement === inp) updateSlash(); });
     ui.chat = { sync, TR, FD };
 
-    /* ---------- the chat as a card: the Manager chat card of a page (83b-ui-dash.js) holds the rail's conversation while it shows;
-       elsewhere it is in the rail. The questions for you can float in a window of their own (setFloating). ---------- */
+    /* ---------- the chat and the questions as cards: the Manager chat card and the Questions for you card of a page (83b-ui-dash.js)
+       hold the rail's conversation, or only its questions, while that page shows; on any other page they are in the rail ---------- */
     const box = $('#chatBox'), qSlot = $('#qSlot'), app = $('#app');
     /** What a card holds: the element it takes, where that element goes back to (its parent, before), the attribute of #app it sets,
      *  the class of the card's body, and what a narrow screen says (the part then stays in Talk). */
-    const PARTS = { chat: { el: box, home: () => $('#rail'), before: () => null, attr: 'data-chat', cls: 'dc-chat', what: 'chat' } };
-    const DK = { chat: null };
+    const PARTS = {
+      chat: { el: box, home: () => $('#rail'), before: () => null, attr: 'data-chat', cls: 'dc-chat', what: 'chat' },
+      questions: { el: qSlot, home: () => box, before: () => $('#planBox'), attr: 'data-qcard', cls: 'dc-q', what: 'question box' },
+    };
+    const DK = { chat: null, questions: null };
     const narrow = () => { try { return !!(window.matchMedia && window.matchMedia('(max-width: 900px)').matches); } catch (e) { return false; } };
     /** Put part k back where the rail has it (when a card holds it). */
     function giveBack(k) {
@@ -402,58 +405,17 @@
       dock(); cs.listen(window, 'resize', dock);
       cs.onUnmount(() => { if (DK[k] === body) giveBack(k); body.classList.remove(P.cls); });
     }
-    /* the questions for you in a floating window: it shows only while a question waits (or its answer is said), is dragged by its head
-       and sized from its corner, and keeps its place and size in this browser; a narrow screen keeps the questions in Talk */
-    const QF_KEY = 'sleipnir.web.qfloat', QF = (() => { try { const v = JSON.parse(localStorage.getItem(QF_KEY) || 'null'); if (v && typeof v === 'object') return { on: v.on === true, x: +v.x || null, y: +v.y || null, w: +v.w || 440, h: +v.h || null }; } catch (e) { /* unreadable: the default */ } return { on: false, x: null, y: null, w: 440, h: null }; })();
-    const qfSave = () => { try { localStorage.setItem(QF_KEY, JSON.stringify(QF)); } catch (e) { /* storage refused: kept for this page */ } };
-    let win = null;
-    /** The window within the viewport, at the person's place and size (by default at the top right, over the cards). */
-    function qfPlace() {
-      if (!win) return; const vw = window.innerWidth, vh = window.innerHeight, w = Math.max(300, Math.min(vw - 16, QF.w || 440));
-      win.style.width = w + 'px'; if (QF.h) win.style.height = Math.max(160, Math.min(vh - 16, QF.h)) + 'px';
-      const x = QF.x == null ? vw - w - 24 : QF.x, y = QF.y == null ? 140 : QF.y;
-      win.style.left = Math.max(8, Math.min(vw - w - 8, x)) + 'px'; win.style.top = Math.max(8, Math.min(vh - 60, y)) + 'px';
-    }
-    function qfWin() {
-      if (win) return win;
-      win = mk('section', { class: 'qfloat', 'aria-label': 'Questions for you', hidden: '' });
-      win.innerHTML = '<div class="qf-h" title="Drag to move; the corner sizes it"><span class="qf-g" aria-hidden="true">⠿</span><h2>Question for you</h2><button type="button" data-qf-rail title="Put the questions back in the Radio rail">to the rail ⇥</button></div>';
-      document.body.appendChild(win); const head = $('.qf-h', win);
-      sc.listen(win, 'click', e => { if (e.target.closest('[data-qf-rail]')) ui.chatDock.setFloating(false); });
-      sc.listen(head, 'pointerdown', e => {
-        if (e.button !== 0 || e.target.closest('button')) return; e.preventDefault(); const r = win.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
-        const mv = ev => { QF.x = ev.clientX - dx; QF.y = ev.clientY - dy; qfPlace(); };
-        const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); qfSave(); };
-        window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
-      });
-      /* a size the person gave it from the corner (resize: both) is kept */
-      sc.observe(win, () => { if (win.hidden || !win.offsetWidth) return; const w = win.offsetWidth, h = win.style.height ? win.offsetHeight : null; if (w !== QF.w || h !== QF.h) { QF.w = w; QF.h = h; qfSave(); } });
-      return win;
-    }
-    /** Whether the questions float now: the person asked for it, on a wide screen. */
-    const floats = () => QF.on && !narrow();
-    function qfApply() {
-      if (!qSlot) return;
-      if (floats()) { const w = qfWin(); if (qSlot.parentNode !== w) w.appendChild(qSlot); qfPlace(); }
-      else if (qSlot.parentNode === win) box.insertBefore(qSlot, $('#planBox'));
-      qfPaint();
-    }
-    /** The window shows only while it has something to say: a question that waits, or how the last one was answered. */
-    function qfPaint() { if (!win) return; const has = qSlot.parentNode === win && !!qSlot.querySelector('.qstrip,.qdone'); if (win.hidden === has) { win.hidden = !has; if (has) qfPlace(); } }
-    sc.update(() => qfPaint());
-    sc.listen(window, 'resize', () => { qfApply(); });
-    qfApply();
     ui.chatDock = {
       /** Whether a card holds the chat now. */
       get docked() { return !!DK.chat; },
-      /** Whether the questions float in their own window. */
-      get floating() { return floats(); },
+      /** Whether a card holds the questions now. */
+      get questionsDocked() { return !!DK.questions; },
       /** The Manager chat card draws the chat in body (see take). */
       take: (cs, body) => take('chat', cs, body),
-      /** Float the questions for you in a window of their own (true), or keep them in the rail (false); kept in this browser. */
-      setFloating(on) { QF.on = !!on; qfSave(); qfApply(); },
-      /** Take the Manager chat card off the page that shows it: the chat goes back to the rail. */
-      release() { if (DK.chat && ui.dash) ui.dash.remove('chat'); else giveBack('chat'); },
+      /** The Questions for you card draws the question box in body (see take). */
+      takeQuestions: (cs, body) => take('questions', cs, body),
+      /** Take the card of part k (chat or questions; chat by default) off the page that shows it: the part goes back to the rail. */
+      release(k) { k = PARTS[k] ? k : 'chat'; if (DK[k] && ui.dash) ui.dash.remove(k); else giveBack(k); },
     };
   }
   SL.chat = { mount, rowHtml, ROW_CAP, isNotice };
