@@ -433,6 +433,19 @@ func (b *Board) mutate(actor, op string, fn func(d *draft) error) error {
 	return nil
 }
 
+// try applies fn to a copy of the current snapshot and discards the result: it says whether mutate would accept the change now,
+// without publishing anything. An fn that returns errNoChange is accepted.
+func (b *Board) try(fn func(d *draft) error) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	cur := b.snap.Load()
+	d := &draft{Snapshot: &Snapshot{Version: cur.Version + 1, Tasks: cur.Tasks, Agents: cur.Agents, Notes: cur.Notes, Alerts: cur.Alerts}, b: b}
+	if err := fn(d); err != nil && !errors.Is(err, errNoChange) {
+		return err
+	}
+	return nil
+}
+
 // enqueueLocked queues a board event, dropping the oldest pending event when full. The caller must
 // hold the board lock; true grants it responsibility for flushing the queue.
 func (b *Board) enqueueLocked(actor string, data map[string]any) bool {

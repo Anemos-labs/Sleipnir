@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/tools"
@@ -654,5 +655,32 @@ func TestAPoolStartOnAFinishedTaskSaysItIsFinished(t *testing.T) {
 		if err := poolReady(sn, c.task); err == nil || err.Error() != c.want {
 			t.Errorf("poolReady(%s) = %v, want %q", c.task.ID, err, c.want)
 		}
+	}
+}
+
+// A resolve or revise the board refuses stops nobody: the refusal comes before the members are stopped. In a team run the
+// manager's resolve of a pool parent with an open child cancelled all three members mid-request and was then refused.
+func TestARefusedResolveStopsNobody(t *testing.T) {
+	r := newPoolRig(t)
+	id := r.parent.ID
+	r.executing()
+	r.must(r.task(r.lead, map[string]any{"action": "create", "parent": id, "title": "handlers", "files": []string{"app/handlers.go"}}), "create")
+	stopped := false
+	m := r.sw.get(r.second)
+	m.mu.Lock()
+	m.run = &runState{cancel: func() { stopped = true }}
+	m.mu.Unlock()
+	v := r.sw.Board.Snapshot().Version
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second) // stopping a running member would wait for it
+	defer cancel()
+	r.refused(r.callTool(ctx, "task", "mgr", "manager", map[string]any{"action": "resolve", "id": id, "text": "merged into T2"}),
+		"a resolve with an open child", "resolve child T2 first", "nobody was stopped")
+	r.refused(r.callTool(ctx, "task", "mgr", "manager", map[string]any{"action": "revise", "id": id, "text": "x", "deps": []string{"T9"}}),
+		"a revise with a bad dependency", "invalid dependency T9", "nobody was stopped")
+	if stopped {
+		t.Error("a refused change stopped a pool member")
+	}
+	if got := r.sw.Board.Snapshot().Version; got != v {
+		t.Errorf("a refused change moved the board from version %d to %d", v, got)
 	}
 }
