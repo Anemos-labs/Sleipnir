@@ -27,6 +27,11 @@ type Job struct {
 	Log      string    `json:"log,omitempty"` // the file the last run wrote
 	// Paused keeps the daemon from starting the job until it is resumed; it is listed, and can be run by hand.
 	Paused bool `json:"paused,omitempty"`
+	// Check is a shell command run in Dir before each due run (RunCheck): when it prints what it printed before the last
+	// successful run, the run is skipped as "no change" and no model is called. Empty: the job runs whenever it is due.
+	Check string `json:"check,omitempty"`
+	// CheckSum is the digest of what Check printed before the last successful run; a changed Check forgets it.
+	CheckSum string `json:"check_sum,omitempty"`
 }
 
 // ErrNoJob is the error of a change to a job that is not in the file.
@@ -102,7 +107,7 @@ func (s Store) Add(j Job, now time.Time) (Job, error) {
 			n = v
 		}
 	}
-	j.ID, j.Created = fmt.Sprintf("j%d", n+1), now
+	j.ID, j.Created, j.CheckSum = fmt.Sprintf("j%d", n+1), now, ""
 	return j, s.Save(append(jobs, j))
 }
 
@@ -158,6 +163,9 @@ func (s Store) Update(id string, fn func(*Job)) (Job, error) {
 		}
 		if strings.TrimSpace(j.Goal) == "" {
 			return errors.New("a job needs a goal")
+		}
+		if j.Check != before.Check {
+			j.CheckSum = "" // a new check has printed nothing yet: its first look runs the job
 		}
 		return nil
 	})
