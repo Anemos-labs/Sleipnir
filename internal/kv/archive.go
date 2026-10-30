@@ -181,68 +181,20 @@ func (a *Archive) RangeLimit(agent string, from, to core.TurnID, maxTurns, maxBy
 	return turns, more, nil
 }
 
-// Hit is a search result.
-type Hit struct {
-	Turn    core.TurnID
-	Score   int
-	Snippet string
-}
-
-// Search finds archived turns mentioning the query terms, best first. It looks at the
+// Search finds archived turns mentioning the query terms, best first (Rank). It looks at the
 // capped preview of each turn (its beginning and its end), not at the whole text.
 func (a *Archive) Search(agent, query string, limit int) []Hit {
-	terms := strings.Fields(strings.ToLower(query))
-	if len(terms) == 0 {
-		return nil
-	}
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	ix := a.byAgent[agent]
 	if ix == nil {
 		return nil
 	}
-	var hits []Hit
-	for _, e := range ix.entries {
-		pv := e.preview
-		score := 0
-		first := -1
-		for _, t := range terms {
-			if i := strings.Index(pv, t); i >= 0 {
-				score++
-				if first < 0 || i < first {
-					first = i
-				}
-			}
-		}
-		if score == 0 {
-			continue
-		}
-		lo := first - 60
-		if lo < 0 {
-			lo = 0
-		}
-		hi := first + 140
-		if hi > len(pv) {
-			hi = len(pv)
-		}
-		for lo > 0 && !utf8.RuneStart(pv[lo]) {
-			lo--
-		}
-		for hi < len(pv) && !utf8.RuneStart(pv[hi]) {
-			hi++
-		}
-		hits = append(hits, Hit{Turn: e.id, Score: score, Snippet: strings.Join(strings.Fields(pv[lo:hi]), " ")})
+	docs := make([]Doc, len(ix.entries))
+	for i, e := range ix.entries {
+		docs[i] = Doc{Turn: e.id, preview: e.preview}
 	}
-	sort.SliceStable(hits, func(i, j int) bool {
-		if hits[i].Score != hits[j].Score {
-			return hits[i].Score > hits[j].Score
-		}
-		return hits[i].Turn > hits[j].Turn // newer first on ties
-	})
-	if limit > 0 && len(hits) > limit {
-		hits = hits[:limit]
-	}
-	return hits
+	return Rank(docs, query, limit)
 }
 
 // Len reports how many turns are archived for an agent.

@@ -26,6 +26,10 @@ type Tool struct {
 	// id or "" for the agent the person talked to. It returns the archive and the agent key its turns are under. Nil: recall reads
 	// this session only.
 	Past func(session, agent string) (*kv.Archive, string, error)
+	// PastSearch searches the turns of the most recent earlier sessions of this project together (session "all"): agent as in
+	// Past. It returns at most limit hits, each scoped by its session's id, and how many sessions it searched. Nil: session
+	// "all" is refused.
+	PastSearch func(agent, query string, limit int) ([]kv.Hit, int, error)
 }
 
 // New returns a recall tool over an archive.
@@ -36,7 +40,7 @@ const schema = `{"type":"object","properties":{
 "handle":{"type":"string","description":"handle of truncated output, e.g. out_ab12cd34"},
 "query":{"type":"string","description":"search words in your archived turns"},
 "agent":{"type":"string","description":"another agent's id, to read its turns instead of yours (e.g. bk-2)"},
-"session":{"type":"string","description":"an earlier session of this project: last, or its id"},
+"session":{"type":"string","description":"an earlier session of this project: last, or its id; all (with query) searches every recent one"},
 "offset":{"type":"integer","description":"character offset when paging a handle"},
 "limit":{"type":"integer","description":"max characters to return"}}}`
 
@@ -48,7 +52,9 @@ func (t *Tool) Spec() core.ToolSpec {
 			"listed in <history>; handle=\"out_…\" to page through truncated tool output; query=\"words\" to search " +
 			"your archived turns. Output is capped; narrow the range or page with offset/limit. " +
 			"To ask what another agent found or decided, add agent=\"bk-2\" (a teammate in this session) or session=\"last\" " +
-			"(an earlier session of this project; agent defaults to the one the person talked to) to turns or query.",
+			"(an earlier session of this project; agent defaults to the one the person talked to) to turns or query. " +
+			"session=\"all\" with query searches the recent earlier sessions of this project together, for what was " +
+			"decided or tried before when you do not know which session it was in.",
 		InputSchema: json.RawMessage(schema),
 		ReadOnly:    true,
 	}
@@ -89,6 +95,9 @@ func (t *Tool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 			reason = "not allowed by the permission policy"
 		}
 		return tools.Errorf("permission denied (recall): %s", reason), nil
+	}
+	if strings.TrimSpace(in.Session) == "all" {
+		return t.searchAll(env, in), nil
 	}
 	src, bad := t.source(env, in)
 	if bad != nil {
@@ -254,6 +263,34 @@ func (t *Tool) search(src source, in input) *tools.Result {
 		fmt.Fprintf(&sb, "t%d (%d match): …%s…\n", h.Turn, h.Score, h.Snippet)
 	}
 	fmt.Fprintf(&sb, "Use recall(turns=\"tN\"%s) to read a hit in full.", src.args)
+	return &tools.Result{Text: sb.String()}
+}
+
+// searchAll serves session="all": a query over the recent earlier sessions of this project, ranked together.
+func (t *Tool) searchAll(env *tools.Env, in input) *tools.Result {
+	if t.PastSearch == nil {
+		return tools.Errorf("earlier sessions cannot be read here")
+	}
+	if in.Handle != "" || in.Turns != "" || strings.TrimSpace(in.Query) == "" {
+		return tools.Errorf("session=\"all\" takes a query; read a hit with turns and the session id it names")
+	}
+	agent := strings.TrimSpace(in.Agent)
+	hits, n, err := t.PastSearch(agent, in.Query, 8)
+	if err != nil {
+		return tools.Errorf("%v", err)
+	}
+	if len(hits) == 0 {
+		return &tools.Result{Text: fmt.Sprintf("no matches in the %d most recent earlier sessions of this project", n)}
+	}
+	var sb strings.Builder
+	for _, h := range hits {
+		fmt.Fprintf(&sb, "session %s t%d (%d match): …%s…\n", h.Scope, h.Turn, h.Score, h.Snippet)
+	}
+	args := ""
+	if agent != "" {
+		args = fmt.Sprintf(", agent=%q", agent)
+	}
+	fmt.Fprintf(&sb, "Searched the %d most recent earlier sessions. Use recall(turns=\"tN\", session=\"ID\"%s) to read a hit in full.", n, args)
 	return &tools.Result{Text: sb.String()}
 }
 
