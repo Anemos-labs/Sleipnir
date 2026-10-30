@@ -25,6 +25,7 @@ func TestACdInAnAndChainMovesTheLaterLinks(t *testing.T) {
 		// bash looks a bare operand up in $CDPATH first: CDPATH=.. makes "cd proj" from ~/proj stay in ~/proj
 		{name: "a CDPATH the line sets", mode: ModeBypass, req: bash("CDPATH=..; cd proj && grep -r x .."), want: "deny"},
 		{name: "an exported CDPATH the line sets", mode: ModeBypass, req: bash("export CDPATH=.. && cd proj && grep -r x .."), want: "deny"},
+		{name: "a CDPATH cd after a narrowing one", mode: ModeBypass, req: bash("cd ./src && CDPATH=../.. cd proj && cat ../.ssh/id_rsa"), want: "deny"},
 	})
 }
 

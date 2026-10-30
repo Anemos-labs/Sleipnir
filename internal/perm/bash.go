@@ -266,8 +266,13 @@ func (ev *evaluator) bash(cmd string) verdict {
 			use = chainCw
 		}
 		var cdFrom *cwdSet
-		if chained(s) && s.Program == "cd" && len(s.Wrappers) == 0 && !cdpathMayApply(s.Args, code) {
-			cdFrom = &cwdSet{dirs: slices.Clone(use.dirs), unknown: use.unknown}
+		if chained(s) && s.Program == "cd" && len(s.Wrappers) == 0 {
+			if cdpathMayApply(s.Args, code) {
+				// where it goes is not known here: the later links fall back to every directory the line may be in
+				chainCw, use = nil, cw
+			} else {
+				cdFrom = &cwdSet{dirs: slices.Clone(use.dirs), unknown: use.unknown}
+			}
 		}
 		if track && s.Loop != 0 && !entered[s.Loop] {
 			entered[s.Loop] = true
