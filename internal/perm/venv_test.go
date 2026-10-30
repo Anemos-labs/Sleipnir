@@ -111,6 +111,11 @@ func TestTheTestsPresetAllowsAProjectVirtualEnvironment(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	act := filepath.Join(r.wtA, ".venv-act") // creating it again would write its activation script through the link
+	makeVenv(t, act)
+	if err := os.Symlink(filepath.Join(r.f.outside, "profile"), filepath.Join(act, "bin/activate")); err != nil {
+		t.Fatal(err)
+	}
 	notVenv := filepath.Join(r.wtA, "fake")
 	if err := os.MkdirAll(filepath.Join(notVenv, "bin"), 0o755); err != nil {
 		t.Fatal(err)
@@ -131,6 +136,7 @@ func TestTheTestsPresetAllowsAProjectVirtualEnvironment(t *testing.T) {
 		{cmd: "python3 -m venv " + r.wtA, want: "ask", why: "workspace root"},
 		{cmd: "python3 -m venv --clear .venv", want: "ask", why: "--clear"},
 		{cmd: "python3 -m venv src", want: "ask", why: "not a virtual environment"},
+		{cmd: "python3 -m venv .venv-act", want: "ask", why: "is not a virtual environment"},
 		{cmd: "python3 -m venv " + r.f.outside + "/v", want: "ask", why: "outside the workspace"},
 		{cmd: "python3 -m venv ../venv", want: "deny", why: "isolation"}, // another place of the workspace than the worker's own tree
 		{cmd: "python3 -m venv a b", want: "ask", why: "one environment"},

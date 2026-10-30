@@ -7,6 +7,23 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Permission checks read more of what the shell and the programs do. An
+  unquoted heredoc joins a backslash-newline before it looks for its
+  delimiter, as bash does, so lines after `EO\` `F` are commands. Inside
+  double quotes a single quote in `${x:-...}` no longer hides a command
+  substitution. A command run through `npx --no` is matched and remembered
+  as `npx NAME ...`: a rule for the system's `git` no longer covers the
+  project's own `node_modules/.bin/git`. A `make` prefix rule no longer
+  covers a command-line variable assigned with `!=` or holding
+  `$(shell ...)`. `sort` and `wc` with `--files0-from` ask. An abbreviated
+  git option (`git push --forc`, `git reset --ha`) counts as the option for
+  the high-risk check. `/proc/PID/task/TID/environ` is protected like
+  `/proc/PID/environ`. A git configuration that cannot be read, or a
+  `config.worktree` that names a program, makes read-only git commands ask.
+  Re-creating a virtual environment whose `bin` holds a link out of it
+  asks. A question the person refused stays refused where routine
+  questions are not asked (same-site redirects).
+
 - A `cd` that is a link of an `&&` chain moves the permission check of the
   chain's later links: they are judged in the directory it went to, since
   they run only when it succeeded. `cd build && cmake ..` and

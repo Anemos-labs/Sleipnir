@@ -234,6 +234,9 @@ b"`, cmds: []cmd{c("echo", "ab")}},
 	{in: `bash <<< "rm -rf /"`, cmds: []cmd{c("bash"), c("rm", "-rf", "/")}},
 	{in: "sh -s <<EOF\nls\nEOF", cmds: []cmd{c("sh", "-s"), c("ls")}, flags: fHD},
 	{in: "cat <<EOF\nrm -rf /\nEOF", cmds: []cmd{c("cat")}, flags: fHD},
+	// an unquoted heredoc joins backslash-newline before it looks for the delimiter
+	{in: "cat <<EOF\nEO\\\nF\nrm -rf /\nEOF", cmds: []cmd{c("cat"), c("rm", "-rf", "/"), c("EOF")}, flags: fHD},
+	{in: "cat <<'EOF'\nEO\\\nF\nrm -rf /\nEOF", cmds: []cmd{c("cat")}, flags: fHD},
 
 	// --- substitutions ---
 	{in: `echo $(date)`, cmds: []cmd{c("echo", "$(date)"), c("date")}, flags: fCS},
@@ -253,6 +256,9 @@ b"`, cmds: []cmd{c("echo", "ab")}},
 	{in: `a $(b); c`, cmds: []cmd{anyArgs("a"), c("b"), c("c")}, flags: fCS},
 	{in: `echo ${x:-$(rm -rf /)}`, cmds: []cmd{anyArgs("echo"), c("rm", "-rf", "/")}, flags: fCS},
 	{in: `echo ${x:-"$(rm x)"}`, cmds: []cmd{anyArgs("echo"), c("rm", "x")}, flags: fCS},
+	// inside double quotes a single quote in the operand is a literal character, not quoting
+	{in: `echo "${x:-'$(rm x)'}"`, cmds: []cmd{anyArgs("echo"), c("rm", "x")}, flags: fCS},
+	{in: `echo ${x:-'$(rm x)'}`, cmds: []cmd{anyArgs("echo")}},
 	{in: `echo ${x}`, cmds: []cmd{c("echo", "${x}")}},
 	{in: `echo ${x:-a b}`, cmds: []cmd{c("echo", "${x:-a b}")}},
 	{in: `echo $((1+2))`, cmds: []cmd{c("echo", "$((1+2))")}},

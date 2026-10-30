@@ -160,7 +160,9 @@ func (rs *resolver) protectForm(f string, a access) protection {
 	}
 
 	if !a.nameOnly || a.write {
-		if len(segs) == 3 && segs[0] == "proc" && (segs[2] == "environ" || segs[2] == "mem") {
+		// /proc/PID/environ, and the same file again under each thread: /proc/PID/task/TID/environ.
+		if (len(segs) == 3 || len(segs) == 5 && segs[2] == "task") && segs[0] == "proc" &&
+			(segs[len(segs)-1] == "environ" || segs[len(segs)-1] == "mem") {
 			return protection{tierHard, shown + " exposes another process's secrets"}
 		}
 		for _, s := range hardSystemFiles {

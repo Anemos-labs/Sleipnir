@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/shellparse"
@@ -337,6 +338,15 @@ func (c *crule) coversRunner(s shellparse.Simple) bool {
 	return c.blanket || !c.anyArgs || !runsAnother(s.Program, s.Args)
 }
 
+// allowWords returns the words an allow rule is matched against. A command npx runs is the project's own program of that name
+// (node_modules/.bin/git), not the system's, so a rule for git does not cover it: it is matched, and remembered, as "npx git ...".
+func allowWords(s shellparse.Simple) (string, []string) {
+	if slices.Contains(s.Wrappers, "npx") {
+		return "npx", append([]string{s.Program}, s.Args...)
+	}
+	return s.Program, s.Args
+}
+
 // dynamicWord reports whether a word still holds shell syntax that the parser
 // did not resolve (variables, substitutions, globs, tildes, braces).
 func dynamicWord(w string) bool {
@@ -392,7 +402,8 @@ func (c *crule) matchCommand(s shellparse.Simple, restrict bool) bool {
 		return true
 	}
 	if !restrict { // the command as written (commandForms), without building it
-		return !dynamicProgram(s.Program) && c.matchWords(s.Program, s.Args)
+		prog, args := allowWords(s)
+		return !dynamicProgram(s.Program) && c.matchWords(prog, args)
 	}
 	for _, f := range commandForms(s, restrict) {
 		if c.matchArgv(f) {

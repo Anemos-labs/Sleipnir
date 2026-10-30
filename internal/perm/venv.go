@@ -537,6 +537,22 @@ func venvLayout(real, shown string) string {
 			return shown + "/" + n + " leads outside the environment"
 		}
 	}
+	// creating the environment again rewrites the activation scripts and the interpreter links in its bin (Scripts on Windows)
+	for _, bin := range []string{"bin", "Scripts"} {
+		files, ok := listDir(filepath.Join(real, bin), 256)
+		if !ok {
+			return shown + "/" + bin + " has too many entries to check"
+		}
+		for _, n := range files {
+			p := filepath.Join(real, bin, n)
+			if fi, err := os.Lstat(p); err == nil && fi.Mode()&os.ModeSymlink != 0 && strings.HasPrefix(n, "python") {
+				continue // the interpreter links lead to the base Python by design; creation replaces the link itself
+			}
+			if escapes(p) {
+				return bin + "/" + n + " of " + shown + " leads outside the environment"
+			}
+		}
+	}
 	for _, lib := range []string{"lib", "lib64"} {
 		vers, ok := listDir(filepath.Join(real, lib), 16)
 		if !ok {
