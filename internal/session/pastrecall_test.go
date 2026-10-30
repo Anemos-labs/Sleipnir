@@ -68,3 +68,39 @@ func TestPastArchiveReadsEarlierSessionsOfThisProject(t *testing.T) {
 		t.Fatalf("reading wrote into the earlier session: %v", err)
 	}
 }
+
+// recall session="all" searches the earlier sessions of this project together, the person's agent by default or a named one,
+// and never another project's sessions.
+func TestSearchPastSearchesEveryEarlierSessionOfThisProject(t *testing.T) {
+	t.Setenv("SLEIPNIR_HOME", "")
+	home, root := t.TempDir(), t.TempDir()
+	writePastSession(t, home, "20260101-000000-aaaa", root)
+	writePastSession(t, home, "20260102-000000-bbbb", t.TempDir()) // another project
+	writePastSession(t, home, "20260103-000000-cccc", root)
+	s := &Session{ID: "20260104-000000-dddd", opts: Options{Home: home, Root: root}}
+
+	hits, n, err := s.searchPast("", "sqlite restarts", 8)
+	if err != nil || n != 2 || len(hits) != 4 {
+		t.Fatalf("searchPast: %v, %d sessions, %+v", err, n, hits)
+	}
+	scopes := map[string]bool{}
+	for _, h := range hits[:2] {
+		if h.Turn != 2 {
+			t.Fatalf("the turn with both words should lead: %+v", hits)
+		}
+		scopes[h.Scope] = true
+	}
+	if !scopes["20260101-000000-aaaa"] || !scopes["20260103-000000-cccc"] {
+		t.Fatalf("scopes: %+v", hits)
+	}
+	if hits, _, _ := s.searchPast("bk-1", "migration lock", 8); len(hits) != 2 || hits[0].Snippet == "" {
+		t.Fatalf("by agent: %+v", hits)
+	}
+	if hits, _, _ := s.searchPast("bk-1", "sqlite", 8); len(hits) != 0 {
+		t.Fatalf("another agent's turns were searched: %+v", hits)
+	}
+	lone := &Session{ID: "20260104-000000-eeee", opts: Options{Home: home, Root: t.TempDir()}}
+	if _, _, err := lone.searchPast("", "sqlite", 8); err == nil {
+		t.Fatal("a project without earlier sessions should say so")
+	}
+}
