@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/rl"
@@ -453,15 +454,16 @@ func (b *builder) sharedPrefix() sharedInfo {
 		}
 		sp.leading = append([]core.Hash(nil), lead...)
 	}
-	key := string(sp.tools)
+	var key strings.Builder
+	key.WriteString(string(sp.tools))
 	for _, h := range sp.system {
-		key += "," + string(h)
+		key.WriteString("," + string(h))
 	}
-	key += "|"
+	key.WriteString("|")
 	for _, h := range sp.leading {
-		key += string(h) + ","
+		key.WriteString(string(h) + ",")
 	}
-	sp.id = "sp-" + core.HashString(key).Short()
+	sp.id = "sp-" + core.HashString(key.String()).Short()
 	return sp
 }
 

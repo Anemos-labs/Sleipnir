@@ -399,7 +399,7 @@ func lengthDropLine(st export.Stats) string {
 	parts := make([]string, len(roles))
 	for i, r := range roles {
 		d := st.DroppedByRole[r]
-		parts[i] = fmt.Sprintf("%s=%d/%d (%.1f%%)", r, d["prompt_too_long"]+d["sample_too_long"], st.CandidatesByRole[r], 100*rates[r])
+		parts[i] = fmt.Sprintf("%s=%d/%d (%.1f%%)", oneLineSafe(r), d["prompt_too_long"]+d["sample_too_long"], st.CandidatesByRole[r], 100*rates[r])
 	}
 	return strings.Join(parts, " ")
 }
@@ -416,7 +416,7 @@ func kvLine(m map[string]int) string {
 	sort.Strings(keys)
 	parts := make([]string, len(keys))
 	for i, k := range keys {
-		parts[i] = fmt.Sprintf("%s=%d", k, m[k])
+		parts[i] = fmt.Sprintf("%s=%d", oneLineSafe(k), m[k]) // keys come from recordings and task files
 	}
 	return strings.Join(parts, " ")
 }
@@ -486,12 +486,12 @@ func rlVerify(_ context.Context, args []string, stdout, stderr io.Writer) error 
 		run, err := traj.Open(s.Dir)
 		if err != nil {
 			unreadable++
-			fmt.Fprintf(stdout, "%s: cannot open the log: %v\n", s.Dir, err)
+			fmt.Fprintf(stdout, "%s: cannot open the log: %s\n", oneLineSafe(s.Dir), oneLineSafe(err.Error()))
 			continue
 		}
 		for _, m := range run.Verify() {
 			bad++
-			fmt.Fprintf(stdout, "%s: %s: %s: %s\n", s.Dir, m.Req, m.Kind, m.Detail)
+			fmt.Fprintf(stdout, "%s: %s: %s: %s\n", oneLineSafe(s.Dir), oneLineSafe(m.Req), oneLineSafe(m.Kind), oneLineSafe(m.Detail))
 		}
 	}
 	fmt.Fprintf(stdout, "verified %d rollouts: %d mismatches, %d unreadable\n", len(samples), bad, unreadable)

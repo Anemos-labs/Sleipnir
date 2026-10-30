@@ -326,6 +326,13 @@ func coveredBy(rule string, entries []string) bool {
 			}
 			continue
 		}
+		if !strings.HasSuffix(arg, ":*") && !strings.HasSuffix(arg, " *") {
+			// a wildcard inside the command word ("go*" is gofmt, govulncheck) covers that word and no arguments after it
+			if pat == arg {
+				return true
+			}
+			continue
+		}
 		prefix := strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(arg, "*"), ":")) // "go:*" and "go *" alike
 		if pat != "" && (pat == prefix || strings.HasPrefix(pat, prefix+" ") || strings.HasPrefix(pat, prefix+":")) {
 			return true

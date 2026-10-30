@@ -200,9 +200,12 @@ func lastSavepoint(dir, policy string, seed int64) *savepointRecord {
 // "rewound" ledger entry, and marks the kept prefix as recorded.
 func rewindTo(dir string, rec *savepointRecord) (unrecorded spend, err error) {
 	logPath := filepath.Join(dir, "events.jsonl")
-	fi, err := os.Stat(logPath)
+	fi, err := os.Lstat(logPath)
 	if err != nil {
 		return spend{}, err
+	}
+	if !fi.Mode().IsRegular() { // it is cut in place: a link would cut whatever it names
+		return spend{}, fmt.Errorf("%s is not a regular file", logPath)
 	}
 	from := recordedBytes(dir)
 	unrecorded = spendOfRange(logPath, min(from, fi.Size()), fi.Size())

@@ -190,12 +190,26 @@ func detectBearer(_ *Redactor, s, work string) []span {
 	return out
 }
 
-// containsFold is a cheap prefilter for a lower-case ASCII word: it accepts the
-// lower-case, upper-case and capitalised spellings, which covers every spelling
-// that occurs in practice; the regexes themselves are case-insensitive.
+// containsFold is a cheap prefilter for a lower-case ASCII word: it reports
+// whether s holds it in any mix of cases (HTTP header names are
+// case-insensitive, and so are the regexes it guards).
 func containsFold(s, word string) bool {
-	return strings.Contains(s, word) || strings.Contains(s, strings.ToUpper(word)) ||
-		strings.Contains(s, strings.ToUpper(word[:1])+word[1:])
+	first := word[0]
+	for i := 0; i+len(word) <= len(s); i++ {
+		if c := s[i]; c != first && c|0x20 != first {
+			continue
+		}
+		j := 1
+		for ; j < len(word); j++ {
+			if c := s[i+j]; c != word[j] && (c < 'A' || c > 'Z' || c|0x20 != word[j]) {
+				break
+			}
+		}
+		if j == len(word) {
+			return true
+		}
+	}
+	return false
 }
 
 // credentialValueOK rejects header values that are variables, placeholders,

@@ -580,6 +580,9 @@ func (m *Workspaces) diffTrees(ctx context.Context, gitDir, base, tree string, m
 	if base == tree {
 		return nil, nil
 	}
+	if !isSHA(base) || !isSHA(tree) { // a saved rollout supplies them; an option there would be git's (--output=FILE)
+		return nil, fmt.Errorf("diff trees: %q or %q is not an object id", base, tree)
+	}
 	out, err := m.git.RunEnv(ctx, "", nil, nil, max, "--git-dir="+gitDir, "diff-tree", "-r", "-p", "--binary", "--full-index",
 		"--no-renames", "--no-ext-diff", "--no-textconv", "--no-color", "--src-prefix=a/", "--dst-prefix=b/", base, tree)
 	if errors.Is(err, ErrOutputLimit) {

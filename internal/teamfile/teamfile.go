@@ -149,6 +149,9 @@ func (f *File) Check() error {
 		if role == "" || hasEq && model == "" {
 			return fmt.Errorf("slot %q: want role=model, or a role alone", s)
 		}
+		if strings.HasPrefix(role, "-") || strings.HasPrefix(model, "-") { // a loadout passes them on a command line
+			return fmt.Errorf("slot %q: a role or a model does not start with '-'", s)
+		}
 		if ServiceRole(role) {
 			return fmt.Errorf("slot %q: %s is not a worker; give its model under models", s, role)
 		}
@@ -173,9 +176,22 @@ func Load(p string) (*File, error) {
 	if !fi.Mode().IsRegular() || fi.Size() > MaxBytes {
 		return nil, fmt.Errorf("%s is not a regular file of at most %d bytes", p, MaxBytes)
 	}
-	b, err := os.ReadFile(p)
+	// the file is read once, from the descriptor that is checked, and no further than the bound: the name may have been
+	// replaced by a larger file or a device since the Stat above
+	fh, err := os.Open(p)
 	if err != nil {
 		return nil, err
+	}
+	defer fh.Close()
+	if fi, err := fh.Stat(); err != nil || !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file of at most %d bytes", p, MaxBytes)
+	}
+	b, err := io.ReadAll(io.LimitReader(fh, MaxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > MaxBytes {
+		return nil, fmt.Errorf("%s is not a regular file of at most %d bytes", p, MaxBytes)
 	}
 	f, err := Parse(b)
 	if err != nil {
@@ -323,16 +339,17 @@ func Save(dir, home, scope, name string, f *File, overwrite bool) (string, error
 	if err != nil {
 		return "", err
 	}
-	if _, err := tmp.Write(b); err != nil {
+	// the mode is set on the open file: a name in a directory others can write may name another file by the time a chmod by name runs
+	_, err = tmp.Write(b)
+	if err == nil {
+		err = tmp.Chmod(0o644)
+	}
+	if err != nil {
 		tmp.Close()
 		os.Remove(tmp.Name())
 		return "", err
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmp.Name())
-		return "", err
-	}
-	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
 		os.Remove(tmp.Name())
 		return "", err
 	}

@@ -1003,7 +1003,7 @@ func (c ServerConfig) GoString() string { return "mcp.ServerConfig" + c.String()
 
 // Fingerprint is a stable digest of everything that decides what running or
 // contacting this entry does: transport, command, args, env, cwd, url and
-// headers (as written, before expansion), and AllowPrivate. A caller that
+// headers (as written, before expansion), AllowPrivate and the tool filters. A caller that
 // remembers approvals should key them on it, so an edit to a previously
 // approved entry (a new commit changing the command) asks again.
 func (c ServerConfig) Fingerprint() string {
@@ -1016,7 +1016,11 @@ func (c ServerConfig) Fingerprint() string {
 		URL          string            `json:"url"`
 		Headers      map[string]string `json:"headers"`
 		AllowPrivate bool              `json:"allow_private"`
-	}{c.EffectiveType(), c.Command, c.Args, c.Env, c.Cwd, c.URL, c.Headers, c.AllowPrivate})
+		// the tool filters decide which of the server's tools a session takes; omitted when empty, so an entry without them keeps
+		// the digest it had before they were part of it
+		AllowTools []string `json:"allow_tools,omitempty"`
+		DenyTools  []string `json:"deny_tools,omitempty"`
+	}{c.EffectiveType(), c.Command, c.Args, c.Env, c.Cwd, c.URL, c.Headers, c.AllowPrivate, c.AllowTools, c.DenyTools})
 	return string(core.HashBytes(b))
 }
 

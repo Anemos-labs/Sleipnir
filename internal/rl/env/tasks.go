@@ -235,6 +235,10 @@ func validateOwns(t rl.Task) []*TaskError {
 		roles = append(roles, r)
 	}
 	sort.Strings(roles)
+	known := make(map[string]bool, len(t.Team.Roles))
+	for _, r := range t.Team.Roles {
+		known[r] = true
+	}
 	for _, r := range roles {
 		field := fmt.Sprintf("team.owns[%q]", r)
 		switch {
@@ -242,7 +246,7 @@ func validateOwns(t rl.Task) []*TaskError {
 			add(field, "the role name is empty or has surrounding white space")
 		case r == "manager":
 			add(field, "the manager does not write files: name the worker role that does")
-		case len(t.Team.Roles) > 0 && !slices.Contains(t.Team.Roles, r):
+		case len(t.Team.Roles) > 0 && !known[r]:
 			add(field, "role %q is not in team.roles", r)
 		}
 		globs := t.Team.Owns[r]

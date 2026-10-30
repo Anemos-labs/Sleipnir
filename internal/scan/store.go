@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -77,8 +78,17 @@ func (s *Store) create(commit, depth, focus string, inv Inventory, base string, 
 	}
 	slug := name
 	for n := 2; ; n++ {
-		if _, err := os.Stat(RunDir(s.root, slug)); errors.Is(err, os.ErrNotExist) {
+		_, err := os.Stat(RunDir(s.root, slug))
+		if errors.Is(err, os.ErrNotExist) {
 			break
+		}
+		// only a name that is taken is tried again: another error (a file where the scans directory should be) would hold for
+		// every name
+		if err != nil {
+			return nil, err
+		}
+		if n > 10000 {
+			return nil, fmt.Errorf("no free name for a scan after %d tries", n)
 		}
 		slug = fmt.Sprintf("%s-%d", name, n)
 	}
@@ -214,12 +224,40 @@ func (s *Store) loadLocked(slug string) (*Run, error) {
 	return r, nil
 }
 
+// maxRecord bounds a scan record read back from disk (scan.json, functions.json): they come with the project, so a link to a
+// device or a sparse file cannot make a load fill memory.
+const maxRecord = 256 << 20
+
+// readRecord reads the regular file at p, without following a final link, and at most maxRecord bytes.
+func readRecord(p string) ([]byte, error) {
+	fi, err := os.Lstat(p)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", filepath.Base(p))
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() || fi.Size() > maxRecord {
+		return nil, fmt.Errorf("%s is not a regular file of at most %d bytes", filepath.Base(p), maxRecord)
+	}
+	b, err := io.ReadAll(io.LimitReader(f, maxRecord+1))
+	if err == nil && len(b) > maxRecord {
+		err = fmt.Errorf("%s is larger than %d bytes", filepath.Base(p), maxRecord)
+	}
+	return b, err
+}
+
 // Load reads a scan from disk, without a store.
 func Load(root, slug string) (*Run, error) {
 	if !ValidSlug(slug) {
 		return nil, fmt.Errorf("no scan %q", slug)
 	}
-	b, err := os.ReadFile(filepath.Join(RunDir(root, slug), "scan.json"))
+	b, err := readRecord(filepath.Join(RunDir(root, slug), "scan.json"))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("no scan %q", slug)
 	}
@@ -233,7 +271,7 @@ func Load(root, slug string) (*Run, error) {
 	if r.Slug != slug {
 		return nil, fmt.Errorf("scan %s: scan.json names %q", slug, r.Slug)
 	}
-	if fb, err := os.ReadFile(filepath.Join(RunDir(root, slug), "functions.json")); err == nil {
+	if fb, err := readRecord(filepath.Join(RunDir(root, slug), "functions.json")); err == nil {
 		_ = json.Unmarshal(fb, &r.Inventory.Functions)
 	}
 	return &r, nil

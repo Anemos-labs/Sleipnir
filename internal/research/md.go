@@ -481,9 +481,41 @@ func (r *mdRenderer) paragraph(lines []string, i int) int {
 	return j
 }
 
+// closers finds the next closing delimiter of each kind in a run of text, remembering where it was: each opener looks for its
+// closer, and text full of openers with no closer would otherwise rescan its rest once per opener.
+type closers struct {
+	s    string
+	seen map[string][2]int // delimiter -> {searched from, found at (-1 for none)}
+}
+
+// after returns the offset from i of the first sep at or after i, or -1.
+func (f *closers) after(sep string, i int) int {
+	if f.seen == nil {
+		f.seen = map[string][2]int{}
+	}
+	if c, ok := f.seen[sep]; ok && c[0] <= i && (c[1] < 0 || c[1] >= i) {
+		if c[1] < 0 {
+			return -1
+		}
+		return c[1] - i
+	}
+	at := -1
+	if i <= len(f.s) {
+		if n := strings.Index(f.s[i:], sep); n >= 0 {
+			at = i + n
+		}
+	}
+	f.seen[sep] = [2]int{i, at}
+	if at < 0 {
+		return -1
+	}
+	return at - i
+}
+
 // inline renders a run of text: code spans, emphasis, links, wiki links and citations; everything else is escaped.
 func (r *mdRenderer) inline(s string) string {
 	var b strings.Builder
+	f := closers{s: s}
 	for i := 0; i < len(s); {
 		c := s[i]
 		switch {
@@ -493,19 +525,19 @@ func (r *mdRenderer) inline(s string) string {
 			continue
 		case c == '`':
 			n := run(s, i, '`')
-			if end := strings.Index(s[i+n:], strings.Repeat("`", n)); end >= 0 {
+			if end := f.after(strings.Repeat("`", n), i+n); end >= 0 {
 				b.WriteString("<code>" + html.EscapeString(strings.TrimSpace(s[i+n:i+n+end])) + "</code>")
 				i += n + end + n
 				continue
 			}
 		case c == '[' && strings.HasPrefix(s[i:], "[["):
-			if end := strings.Index(s[i+2:], "]]"); end >= 0 {
+			if end := f.after("]]", i+2); end >= 0 {
 				b.WriteString(r.wikiLink(s[i+2 : i+2+end]))
 				i += 2 + end + 2
 				continue
 			}
 		case c == '[':
-			if end := strings.IndexByte(s[i+1:], ']'); end >= 0 {
+			if end := f.after("]", i+1); end >= 0 {
 				label := s[i+1 : i+1+end]
 				after := i + 1 + end + 1
 				if reCiteIDs.MatchString(label) && (after >= len(s) || s[after] != '(') {
@@ -514,7 +546,7 @@ func (r *mdRenderer) inline(s string) string {
 					continue
 				}
 				if after < len(s) && s[after] == '(' {
-					if close := strings.IndexByte(s[after:], ')'); close >= 0 {
+					if close := f.after(")", after); close >= 0 {
 						href := strings.TrimSpace(s[after+1 : after+close])
 						if sp := strings.IndexAny(href, " \t"); sp >= 0 {
 							href = href[:sp] // a link title is dropped
@@ -531,7 +563,7 @@ func (r *mdRenderer) inline(s string) string {
 				break // snake_case is not emphasis
 			}
 			closer := strings.Repeat(string(c), n)
-			if end := strings.Index(s[i+n:], closer); end > 0 && s[i+n] != ' ' {
+			if end := f.after(closer, i+n); end > 0 && s[i+n] != ' ' {
 				inner := r.inline(s[i+n : i+n+end])
 				switch n {
 				case 1:

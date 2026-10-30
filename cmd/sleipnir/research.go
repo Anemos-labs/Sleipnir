@@ -141,7 +141,7 @@ func researchListCLI(out io.Writer, root string, asJSON bool) error {
 	for _, r := range runs {
 		rep := research.Check(root, r)
 		c := rep.Counts
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%d\t%d/%d\t%s\n", r.Slug, r.Depth, r.Mode, rep.Phase, c.Sources, c.Findings, c.Pages, c.Planned,
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%d\t%d/%d\t%s\n", oneLineSafe(r.Slug), oneLineSafe(r.Depth), oneLineSafe(r.Mode), rep.Phase, c.Sources, c.Findings, c.Pages, c.Planned,
 			clip(r.Question, 90))
 	}
 	return tw.Flush()

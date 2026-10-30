@@ -253,6 +253,14 @@ func mountPaths(mounts []string) ([]string, error) {
 			add(real)
 		}
 	}
+	// A guard (a linked worktree's config too) is mounted over itself from its host path, and docker follows a link there: a
+	// guard that is a link would put whatever it names (a directory of keys) into the container. Such a repository is not
+	// mounted at all.
+	for _, g := range gitMounts(out) {
+		if g.link {
+			return nil, fmt.Errorf("the sandbox will not mount %s: it is a symbolic link", g.path)
+		}
+	}
 	return out, nil
 }
 
@@ -295,6 +303,7 @@ var gitGuards = []string{"config", "config.worktree", "hooks", "info"}
 type gitMount struct {
 	path     string
 	readOnly bool
+	link     bool // a guard that is a symbolic link
 }
 
 // gitMounts are the mounts over each path's git directory. A repository's .git directory is mounted read-write as itself, and
@@ -309,32 +318,28 @@ func gitMounts(paths []string) []gitMount {
 			continue
 		}
 		if fi.Mode().IsRegular() {
-			out = append(out, gitMount{gd, true})
+			out = append(out, gitMount{gd, true, false})
 			continue
 		}
 		if !fi.IsDir() {
 			continue
 		}
-		out = append(out, gitMount{gd, false})
+		out = append(out, gitMount{gd, false, false})
 		for _, g := range gitGuards {
-			if _, err := os.Lstat(filepath.Join(gd, g)); err == nil {
-				out = append(out, gitMount{filepath.Join(gd, g), true})
+			if gi, err := os.Lstat(filepath.Join(gd, g)); err == nil {
+				out = append(out, gitMount{filepath.Join(gd, g), true, gi.Mode()&os.ModeSymlink != 0})
 			}
 		}
 		if ents, err := os.ReadDir(filepath.Join(gd, "worktrees")); err == nil {
 			for _, e := range ents {
-				if f := filepath.Join(gd, "worktrees", e.Name(), "config.worktree"); fileExists(f) {
-					out = append(out, gitMount{f, true})
+				f := filepath.Join(gd, "worktrees", e.Name(), "config.worktree")
+				if wi, err := os.Lstat(f); err == nil {
+					out = append(out, gitMount{f, true, wi.Mode()&os.ModeSymlink != 0})
 				}
 			}
 		}
 	}
 	return out
-}
-
-func fileExists(p string) bool {
-	_, err := os.Lstat(p)
-	return err == nil
 }
 
 // ensureImage pulls image when the engine does not have it yet.

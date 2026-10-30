@@ -304,9 +304,17 @@ func Remember(o Options, st Status) {
 	if err != nil || os.MkdirAll(filepath.Dir(o.CachePath), 0o700) != nil {
 		return
 	}
-	tmp := o.CachePath + ".tmp"
-	if os.WriteFile(tmp, b, 0o600) == nil {
-		_ = os.Rename(tmp, o.CachePath)
+	// a fresh file: a fixed name beside the cache could be a link left there to some other file
+	tmp, err := os.CreateTemp(filepath.Dir(o.CachePath), ".update-*.tmp")
+	if err != nil {
+		return
+	}
+	_, err = tmp.Write(b)
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil || os.Rename(tmp.Name(), o.CachePath) != nil {
+		_ = os.Remove(tmp.Name())
 	}
 }
 

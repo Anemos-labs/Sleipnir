@@ -243,6 +243,9 @@ var notFunc = map[string]bool{"if": true, "for": true, "while": true, "switch": 
 	"sizeof": true, "do": true, "new": true, "using": true, "lock": true, "fixed": true, "foreach": true, "elif": true, "synchronized": true,
 	"function": true, "typeof": true, "await": true, "delete": true}
 
+// heuristicWork bounds the lines heuristicFunctions reads for one file.
+const heuristicWork = 4 << 20
+
 // heuristicFunctions finds functions by the shape of their first line, and ends each where its body closes: at the brace that
 // matches the first one opened, or, in the languages that indent their blocks, at the next line indented no deeper.
 func heuristicFunctions(lang, file string, data []byte) []Func {
@@ -259,7 +262,11 @@ func heuristicFunctions(lang, file string, data []byte) []Func {
 	keyword := lang == "ruby" || lang == "elixir" || lang == "lua"
 	lines := strings.Split(string(data), "\n")
 	var out []Func
-	for i := 0; i < len(lines); i++ {
+	// Each body is found by reading on from its first line, and the bodies of the indented and keyword languages may overlap (or,
+	// without their closing line, run to the end of the file): the lines read are counted, and a file that costs more than
+	// heuristicWork of them keeps the functions found so far.
+	work := 0
+	for i := 0; i < len(lines) && work < heuristicWork; i++ {
 		m := re.FindStringSubmatch(lines[i])
 		if m == nil {
 			continue
@@ -279,10 +286,13 @@ func heuristicFunctions(lang, file string, data []byte) []Func {
 		case indented:
 			end = indentEnd(lines, i)
 		case keyword:
-			end = keywordEnd(lines, i)
+			var read int
+			end, read = keywordEnd(lines, i)
+			work += read
 		default:
 			end = braceEnd(lines, i)
 		}
+		work += max(end, i) - i + 1
 		if end < 0 {
 			continue // a declaration without a body
 		}
@@ -365,15 +375,16 @@ func indentEnd(lines []string, i int) int {
 }
 
 // keywordEnd is the line of the "end" that closes the block line i opens: the first one indented as deep as the opening line.
-func keywordEnd(lines []string, i int) int {
+// read is how many lines it looked at to find it.
+func keywordEnd(lines []string, i int) (end, read int) {
 	base := indentOf(lines[i])
 	for j := i + 1; j < len(lines); j++ {
 		t := strings.TrimSpace(lines[j])
 		if (t == "end" || strings.HasPrefix(t, "end ") || strings.HasPrefix(t, "end)")) && indentOf(lines[j]) <= base {
-			return j
+			return j, j - i
 		}
 	}
-	return indentEnd(lines, i)
+	return indentEnd(lines, i), len(lines) - i
 }
 
 func indentOf(l string) int {

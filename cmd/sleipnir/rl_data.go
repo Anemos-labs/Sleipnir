@@ -13,6 +13,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/rl"
+	"github.com/anemos-labs/sleipnir/internal/rl/env"
 	"github.com/anemos-labs/sleipnir/internal/rl/reward"
 	"github.com/anemos-labs/sleipnir/internal/rl/traj"
 )
@@ -135,7 +136,7 @@ func fileExists(p string) bool {
 // readEpisode reads and decodes episode.json from a run directory, attaching the filename to
 // decoding failures.
 func readEpisode(dir string) (*rl.Episode, error) {
-	b, err := os.ReadFile(filepath.Join(dir, "episode.json"))
+	b, err := env.ReadRunFile(filepath.Join(dir, "episode.json"))
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +150,7 @@ func readEpisode(dir string) (*rl.Episode, error) {
 // readTask reads and decodes task.json from a run directory, attaching the filename to decoding
 // failures.
 func readTask(dir string) (*rl.Task, error) {
-	b, err := os.ReadFile(filepath.Join(dir, "task.json"))
+	b, err := env.ReadRunFile(filepath.Join(dir, "task.json"))
 	if err != nil {
 		return nil, err
 	}

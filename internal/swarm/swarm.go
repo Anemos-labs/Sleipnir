@@ -1119,7 +1119,7 @@ func readOnlyCommand(cmd string) bool {
 		return false
 	}
 	switch prog {
-	case "ls", "cat", "head", "tail", "wc", "pwd", "echo", "grep", "diff", "stat", "file":
+	case "ls", "cat", "head", "tail", "wc", "pwd", "echo", "grep", "diff", "stat":
 		return true
 	}
 	// an argument that starts with a glob character can expand to a file named like an option ([-]o is -o when a file -o is
@@ -1130,6 +1130,9 @@ func readOnlyCommand(cmd string) bool {
 		}
 	}
 	switch prog {
+	case "file":
+		// -C (--compile) writes a compiled magic database
+		return !clustered("C") && !abbreviated("--compile")
 	case "tree":
 		// -o writes the listing to a file; -R with -H writes an index into every directory
 		return !clustered("oR") && !abbreviated("--output")

@@ -324,6 +324,7 @@ type Session struct {
 	// researchPinned and researchText are the published kickoff run whose context is in the shared layer.
 	research       *research.Store
 	box            *sandbox.Box // the container commands run in (Options.Sandbox); nil when they run on the host
+	boxCleanup     func()       // removes the private copy of the helper binary the sandbox runs, if one was made
 	webReader      *web.Reader
 	researchFonts  iofs.FS
 	researchPinned string

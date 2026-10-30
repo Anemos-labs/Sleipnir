@@ -358,3 +358,14 @@ func TestMilestonesKeepTheNumbersThePersonWrote(t *testing.T) {
 		t.Errorf("written forms: %+v", got)
 	}
 }
+
+// A spec reference can come from text the goal quotes, so a file that holds secrets is never read as one.
+func TestReadSpecRefusesSecretFiles(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("TOKEN=x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if text, err := readSpec(".env", root, root); err == nil || text != "" {
+		t.Errorf("readSpec(.env) = %q, %v", text, err)
+	}
+}

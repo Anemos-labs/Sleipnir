@@ -171,12 +171,23 @@ func cleanID(s string) string {
 	return s
 }
 
+// maxHandleBytes bounds the result a handle reads back: far more than a tool result is kept.
+const maxHandleBytes = 256 << 20
+
 func (t *Tool) handle(env *tools.Env, in input, limit int) *tools.Result {
 	ref, total, ok := env.Handles.Resolve(in.Handle)
 	if !ok || env.Blobs == nil {
 		return tools.Errorf("unknown handle %q", in.Handle)
 	}
-	raw, err := env.Blobs.Get(ref)
+	var raw []byte
+	var err error
+	if b, ok := env.Blobs.(interface {
+		GetMax(core.Hash, int64) ([]byte, error)
+	}); ok {
+		raw, err = b.GetMax(ref, maxHandleBytes) // the store's file may have been swapped for a far larger one
+	} else {
+		raw, err = env.Blobs.Get(ref)
+	}
 	if err != nil {
 		return tools.Errorf("handle %s is no longer available", in.Handle)
 	}

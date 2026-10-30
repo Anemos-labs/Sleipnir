@@ -455,7 +455,19 @@ func (s *Store) WriteFile(agent, path string, data []byte, expect core.Hash) (st
 		_ = s.DropUndo(doc.ID)
 		return "", err
 	}
-	if err := writeFileAtomic(abs, data, goMode(cur.Mode), cur.Owner); err != nil {
+	// The replacement goes through a root of the project, as a rewind's does: a directory on the way replaced after the checks
+	// above cannot lead it outside. The resolved path is the one written, as a write through a link inside the project writes its
+	// target.
+	ckey := key
+	if rel, err := filepath.Rel(s.realRoot, abs); err == nil && filepath.IsLocal(rel) {
+		ckey = filepath.ToSlash(rel)
+	}
+	c, err := s.confine(ckey, abs)
+	if err == nil {
+		err = c.writeFile(data, goMode(cur.Mode), cur.Owner)
+		c.close()
+	}
+	if err != nil {
 		_ = s.DropUndo(doc.ID)
 		return "", fmt.Errorf("checkpoint: cannot write %s: %s", key, reason(err))
 	}

@@ -5,10 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -299,7 +302,7 @@ func (s *Store) Create(question, depth, mode, project string) (*Run, error) {
 	}
 	r := &Run{Slug: slug, Question: question, Depth: d.ID, Mode: mode, Project: strings.TrimSpace(project),
 		Created: s.now().UTC().Format(time.RFC3339)}
-	if err := os.MkdirAll(filepath.Join(RunDir(s.root, slug), "pages"), 0o755); err != nil {
+	if err := mkdirIn(s.root, filepath.Join(".sleipnir", "research", slug, "pages")); err != nil {
 		return nil, err
 	}
 	if err := s.saveLocked(r); err != nil {
@@ -537,30 +540,53 @@ func (s *Store) saveLocked(r *Run) error {
 	if err != nil {
 		return err
 	}
-	return writeAtomic(filepath.Join(RunDir(s.root, r.Slug), "run.json"), append(b, '\n'))
+	return writeAtomic(s.root, filepath.Join(".sleipnir", "research", r.Slug, "run.json"), append(b, '\n'))
 }
 
-// writeAtomic writes data to path through a temporary file in the same directory.
-func writeAtomic(path string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	f, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
+// mkdirIn creates rel, a directory of the project at root, without following a link out of the project.
+func mkdirIn(root, rel string) error {
+	pr, err := os.OpenRoot(root)
 	if err != nil {
 		return err
 	}
-	name := f.Name()
+	defer pr.Close()
+	return pr.MkdirAll(rel, 0o755)
+}
+
+// writeAtomic writes data to rel, a file of the project at root, through a temporary file in the same directory. It goes
+// through an os.Root of the project, so a link planted in the project (.sleipnir/research to elsewhere) cannot lead it out.
+func writeAtomic(root, rel string, data []byte) error {
+	pr, err := os.OpenRoot(root)
+	if err != nil {
+		return err
+	}
+	defer pr.Close()
+	dir := filepath.Dir(rel)
+	if err := pr.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	var f *os.File
+	var name string
+	for range 100 {
+		name = filepath.Join(dir, ".tmp-"+strconv.FormatUint(rand.Uint64(), 36))
+		if f, err = pr.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600); !errors.Is(err, fs.ErrExist) {
+			break
+		}
+	}
+	if err != nil {
+		return err
+	}
 	if _, err := f.Write(data); err != nil {
 		f.Close()
-		os.Remove(name)
+		pr.Remove(name)
 		return err
 	}
 	if err := f.Close(); err != nil {
-		os.Remove(name)
+		pr.Remove(name)
 		return err
 	}
-	if err := os.Rename(name, path); err != nil {
-		os.Remove(name)
+	if err := pr.Rename(name, rel); err != nil {
+		pr.Remove(name)
 		return err
 	}
 	return nil

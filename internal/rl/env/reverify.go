@@ -163,7 +163,11 @@ func Reverify(ctx context.Context, dir string, ep *rl.Episode, task rl.Task, o R
 			if err != nil {
 				return res, fmt.Errorf("reverify: %w", err)
 			}
-			vo.Store, vo.OutDir = store, filepath.Join(dir, reverifyDir)
+			out := filepath.Join(dir, reverifyDir)
+			if fi, err := os.Lstat(out); err == nil && fi.Mode()&os.ModeSymlink != 0 { // its files are replaced there
+				return res, fmt.Errorf("reverify: %s is a symbolic link", out)
+			}
+			vo.Store, vo.OutDir = store, out
 		}
 		vr, err := VerifyPatch(ctx, task, patch, vo)
 		if err != nil {

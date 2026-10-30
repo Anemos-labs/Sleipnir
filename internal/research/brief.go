@@ -146,7 +146,7 @@ func Objective(r *Run, projectGoal, spec string) string {
 
 // WriteBrief writes the run's brief where its goal names it.
 func WriteBrief(root string, r *Run) error {
-	return writeAtomic(filepath.Join(root, filepath.FromSlash(BriefPath(r.Slug))), []byte(Brief(r)))
+	return writeAtomic(root, filepath.FromSlash(BriefPath(r.Slug)), []byte(Brief(r)))
 }
 
 // maxContextRunes bounds the context a published kickoff run gives every agent.

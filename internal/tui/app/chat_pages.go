@@ -19,8 +19,8 @@ import (
 func (m *chatModel) ask(q *question) {
 	opts, decisions := dialogOptions(q.req)
 	d := &dialog{q: q, opts: opts, decisions: decisions, armAt: m.clock().Add(m.c.AnswerAfter), shownAt: m.clock()}
-	if strings.EqualFold(q.req.Tool, "write") {
-		d.current = currentText(q.req.Paths)
+	if strings.EqualFold(q.req.Tool, "write") && m.c.ReadCurrent != nil {
+		d.current = m.c.ReadCurrent(q.req.Paths)
 	}
 	m.dialogs = append(m.dialogs, d)
 	if m.c.Bell != nil {
