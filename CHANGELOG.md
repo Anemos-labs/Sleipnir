@@ -38,6 +38,10 @@ they do not indicate whether a change has been released.
 - A page frame whose coalescing key is longer than the hub's 128 bytes
   (the diff of a file under a long path) is sent with a shortened key
   instead of being dropped as an invalid event.
+- When a pool child's work merges, the members working on its siblings in
+  trees of their own get a harness notice naming the merged task and saying
+  that `task claim` on their own task brings it into their checkout.
+
 - A goal's milestones keep the IDs the person wrote when every milestone
   has a distinct one (`### M0: Scaffold` is M0, not M1), so the goal's
   text, the manager's plan and the judge's verdicts name each milestone
