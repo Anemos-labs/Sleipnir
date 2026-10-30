@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A `cd` that is a link of an `&&` chain moves the permission check of the
+  chain's later links: they are judged in the directory it went to, since
+  they run only when it succeeded. `cd build && cmake ..` and
+  `cd src && grep -r x ..` in a project that sits directly in the home
+  directory are no longer refused as reading a tree that holds `~/.ssh`.
+  After `;`, `||`, a cd in a subshell, or past the end of the chain, the
+  start directory still counts, as before.
+
 - A new built-in plugin, `harness` (on in the standard profile), adds the
   `sleipnir` tool to every agent's tool list (one cache write on the next
   turn). The agent the person talks to (a single agent or a team's

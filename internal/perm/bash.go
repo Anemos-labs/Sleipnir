@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -223,6 +224,10 @@ func (ev *evaluator) bash(cmd string) verdict {
 	// An assignment in a link of an && chain (a && P=x && rm -rf "$P") has been made whenever a later command of the chain runs, so it
 	// is known there (chained). The chain may stop before it, so the names its links assigned are unknown once the line is past it.
 	chain, chainNames := 0, []string(nil)
+	// A cd that is a link of an && chain has succeeded whenever a later link runs: those links run in the directory it went to
+	// (chainCw) and nowhere else, so "cd build && cmake .." reads the project, not its parent. chainCd holds the cd's result
+	// until the next link starts.
+	var chainCw, chainCd *cwdSet
 	endChain := func() {
 		for _, n := range chainNames {
 			ev.forget(n, conflicted)
@@ -250,6 +255,24 @@ func (ev *evaluator) bash(cmd string) verdict {
 		if s.AndChain != chain {
 			endChain()
 			chain = s.AndChain
+			chainCw, chainCd = nil, nil
+		}
+		// The next link of the chain starts in the directory the cd went to: its substitutions, listed after it, ran before it.
+		if chainCd != nil && !s.Nested {
+			chainCw, chainCd = chainCd, nil
+		}
+		use := cw
+		if chainCw != nil {
+			use = chainCw
+		}
+		var cdFrom *cwdSet
+		if chained(s) && s.Program == "cd" && len(s.Wrappers) == 0 {
+			if cdpathMayApply(s.Args, code) {
+				// where it goes is not known here: the later links fall back to every directory the line may be in
+				chainCw, use = nil, cw
+			} else {
+				cdFrom = &cwdSet{dirs: slices.Clone(use.dirs), unknown: use.unknown}
+			}
 		}
 		if track && s.Loop != 0 && !entered[s.Loop] {
 			entered[s.Loop] = true
@@ -272,9 +295,19 @@ func (ev *evaluator) bash(cmd string) verdict {
 				}
 			}
 		}
-		v := ev.judgeWith(s, cw, ev.vars)
+		v := ev.judgeWith(s, use, ev.vars)
 		if before && v.kind != vDeny {
-			v = combine(v, ev.judgeAs(s, cw, withoutNames(ev.vars, hide), withoutKeys(ev.exported, unexp)))
+			v = combine(v, ev.judgeAs(s, use, withoutNames(ev.vars, hide), withoutKeys(ev.exported, unexp)))
+		}
+		if cdFrom != nil {
+			chainCd = ev.cdArgs(s.Args, cdFrom)
+		}
+		if use != cw {
+			// past the chain, the line may be in any directory a link of it went to
+			for _, d := range use.dirs {
+				cw.add(d)
+			}
+			cw.unknown = cw.unknown || use.unknown
 		}
 		if track && !s.Child {
 			if reassigns(s) {
@@ -287,10 +320,10 @@ func (ev *evaluator) bash(cmd string) verdict {
 				}
 			} else if unconditional(s) {
 				stmt = s
-				fresh, freshExp = ev.noteStatement(s, cw, conflicted)
+				fresh, freshExp = ev.noteStatement(s, use, conflicted)
 			} else if chained(s) {
 				stmt = s
-				fresh, freshExp = ev.noteStatement(s, cw, conflicted)
+				fresh, freshExp = ev.noteStatement(s, use, conflicted)
 				for _, env := range assignedBy(s) {
 					chainNames = append(chainNames, envName(env))
 				}
@@ -1132,24 +1165,7 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 func (ev *evaluator) trackCwd(u *unit, cw *cwdSet) {
 	switch u.name {
 	case "cd":
-		target := "~"
-		var operand []string
-		physical := false
-		for _, a := range u.simple.Args {
-			if a == "-P" {
-				physical = true
-			}
-			if a != "--" && a != "-P" && a != "-L" && a != "-e" && a != "-@" {
-				operand = append(operand, a)
-			}
-		}
-		if len(operand) == 1 {
-			target = operand[0]
-		} else if len(operand) > 1 {
-			cw.unknown = true
-			return
-		}
-		next := ev.cdToMode(cw, target, physical)
+		next := ev.cdArgs(u.simple.Args, cw)
 		for _, d := range next.dirs {
 			cw.add(d)
 		}
@@ -1157,6 +1173,46 @@ func (ev *evaluator) trackCwd(u *unit, cw *cwdSet) {
 	case "pushd", "popd", "chdir":
 		cw.unknown = true
 	}
+}
+
+// cdpathMayApply reports whether bash may look a cd's operand up in $CDPATH and land somewhere other than the directory cdArgs
+// computes: an operand that does not start with "/", "." or "~" (or none, or several) while CDPATH is set in the harness's
+// environment or the line names it.
+func cdpathMayApply(args []string, code string) bool {
+	if os.Getenv("CDPATH") == "" && !strings.Contains(code, "CDPATH") {
+		return false
+	}
+	var operand []string
+	for _, a := range args {
+		if a != "--" && a != "-P" && a != "-L" && a != "-e" && a != "-@" {
+			operand = append(operand, a)
+		}
+	}
+	if len(operand) != 1 {
+		return true
+	}
+	return !strings.HasPrefix(operand[0], "/") && !strings.HasPrefix(operand[0], ".") && !strings.HasPrefix(operand[0], "~")
+}
+
+// cdArgs returns the working directories after cd with args, run from cw.
+func (ev *evaluator) cdArgs(args []string, cw *cwdSet) *cwdSet {
+	target := "~"
+	var operand []string
+	physical := false
+	for _, a := range args {
+		if a == "-P" {
+			physical = true
+		}
+		if a != "--" && a != "-P" && a != "-L" && a != "-e" && a != "-@" {
+			operand = append(operand, a)
+		}
+	}
+	if len(operand) == 1 {
+		target = operand[0]
+	} else if len(operand) > 1 {
+		return &cwdSet{unknown: true}
+	}
+	return ev.cdToMode(cw, target, physical)
 }
 
 var diskTools = map[string]bool{
