@@ -620,3 +620,56 @@ func TestRevokingAMergeIsConfirmedAndCoversTheQueue(t *testing.T) {
 		t.Fatalf("the merge request of a retargeted PR was not revoked: %v", f.calls)
 	}
 }
+
+// A long bot review keeps the findings at its end, and its markup does not use up the room for them.
+func TestReviewTextKeepsTheEndOfALongReview(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("<!-- generated -->\n**Actionable comments posted: 1**\n")
+	for i := 0; i < 400; i++ {
+		b.WriteString(`<details><summary><picture><img src="https://example.com/i.svg" width="16"></picture> Inline comment</summary>a finding in the diff</details>` + "\n\n\n")
+	}
+	b.WriteString("Outside diff comments:\nReview comments at @internal/x.go:\n- Line 4: close the file on the error path.\n")
+	got := reviewText(b.String(), 8000)
+	if !strings.Contains(got, "close the file on the error path") || !strings.Contains(got, "Actionable comments posted") {
+		t.Errorf("the start or the end of the review was lost:\n%s", got)
+	}
+	if strings.Contains(got, "<picture>") || strings.Contains(got, "generated") {
+		t.Error("markup was kept")
+	}
+	if n := len([]rune(got)); n > 8100 {
+		t.Errorf("%d runes; want about 8000", n)
+	}
+	if got := reviewText("  <b>short</b>  ", 8000); got != "short" {
+		t.Errorf("short body: %q", got)
+	}
+}
+
+// Removing markup leaves comparisons, autolinks and code alone.
+func TestReviewTextKeepsComparisonsAndCode(t *testing.T) {
+	in := "<b>Bound the loop</b> while elapsed < timeout && retries > 0, see <https://example.com/x>.\n`if a<b && c>d {` and\n```go\nfor i := 0; i<n && n>0; i++ {}\n```"
+	got := reviewText(in, 8000)
+	for _, want := range []string{"elapsed < timeout && retries > 0", "<https://example.com/x>", "`if a<b && c>d {`", "i<n && n>0"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("lost %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "<b>") {
+		t.Errorf("kept a tag: %s", got)
+	}
+}
+
+// Long reviews do not crowd out a comment that carries a finding, and the whole stays within its bound.
+func TestJoinSharesKeepsBothReviewsAndComments(t *testing.T) {
+	reviews := strings.Repeat("review text\n", 3*8000/12)
+	comments := "https://example.com/c/1\nOutside diff: close the file on the error path.\n"
+	got := joinShares(reviews, comments, 24000)
+	if !strings.Contains(got, "close the file on the error path") {
+		t.Error("the comment was crowded out by the reviews")
+	}
+	if n := len([]rune(got)); n > 24100 {
+		t.Errorf("%d runes; want about 24000", n)
+	}
+	if got := joinShares("r", strings.Repeat("c", 30000), 24000); !strings.HasPrefix(got, "r") || len([]rune(got)) > 24100 {
+		t.Errorf("short reviews with long comments: %d runes", len([]rune(got)))
+	}
+}
