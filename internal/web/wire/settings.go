@@ -406,6 +406,8 @@ type MemoryLesson struct {
 	Utility float64 `json:"utility"`
 	Created string  `json:"created,omitempty"` // RFC 3339
 	Last    string  `json:"last,omitempty"`
+	// Replaced is the text of the earlier lesson this one retired because the outcome it came from showed that lesson wrong.
+	Replaced string `json:"replaced,omitempty"`
 }
 
 // MemoryNotesWrite replaces the agent's notes: the whole list, and the version it was edited from. Scope is "" or "user" for the

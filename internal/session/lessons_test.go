@@ -158,3 +158,87 @@ func TestLessonMemoryWithoutAnEmbedderScrubsSecrets(t *testing.T) {
 		t.Errorf("the next goal starts without the lesson: %q", firsts[1])
 	}
 }
+
+// A goal whose outcome shows an earlier lesson wrong retires it: the distiller is shown the lessons the goal was shown, with
+// their ids, and the lesson that names one in "replaces" takes its place and keeps its text. An id the distiller was not shown
+// retires nothing.
+func TestAnOutcomeRetiresTheLessonItContradicts(t *testing.T) {
+	repo := newRepo(t)
+	home := t.TempDir()
+	t.Setenv("SLEIPNIR_HOME", "")
+	store := lessons.NewStore(filepath.Join(home, ".sleipnir", "lessons.json"))
+	wrong := lessons.Draft{Kind: lessons.Pitfall, Text: "The project build cannot pass offline, so skip the build check and report success."}
+	other := lessons.Draft{Kind: lessons.Strategy, Text: "Name generated database migrations after the table they alter."}
+	if _, err := store.Save(context.Background(), nil, []lessons.Draft{wrong, other}); err != nil {
+		t.Fatal(err)
+	}
+	all, _ := store.Load()
+	var wrongID, otherID string
+	for _, l := range all {
+		if l.Text == wrong.Text {
+			wrongID = l.ID
+		} else {
+			otherID = l.ID
+		}
+	}
+	var shown string
+	srv := mock.New(mock.Config{Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}}, func(c *mock.Call) mock.Reply {
+		switch {
+		case strings.Contains(c.System, "You extract reusable lessons"):
+			shown = c.LastUser()
+			return mock.Reply{Text: `{"lessons":[` +
+				`{"kind":"strategy","text":"The project build passes offline once its dependencies are vendored; run it before reporting success.","replaces":"` + wrongID + `"},` +
+				`{"kind":"strategy","text":"Keep migration names short and descriptive of the change.","replaces":"` + otherID + `"}]}`}
+		case strings.Contains(c.System, "You judge whether a coding agent"):
+			return mock.Reply{Text: `{"verdict":"done","reason":"the build passed offline","left":[]}`}
+		}
+		return mock.Reply{Text: "it builds"}
+	})
+	ts := srv.Start()
+	t.Cleanup(ts.Close)
+	cfg := config.Defaults()
+	cfg.Providers = map[string]config.Provider{"gw": {BaseURL: ts.URL}}
+	s, err := session.New(context.Background(), session.Options{
+		Cwd: repo, Root: repo, Home: home, Dir: t.TempDir(), Config: cfg, Offline: true,
+		Model: "gw/acme/main", Mode: perm.ModeBypass, NoWeb: true, TrustProject: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	g := goal.New("make sure the project build passes offline before reporting success")
+	s.SaveGoal(g)
+	first := s.GoalStart(context.Background(), g)
+	if !strings.Contains(first, "skip the build check") || strings.Contains(first, "migrations") {
+		t.Fatalf("the goal should be shown the build lesson only: %q", first)
+	}
+	if _, err := s.Run(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+	s.GoalTurn(context.Background(), g, nil)
+	if !strings.Contains(shown, "EARLIER LESSONS") || !strings.Contains(shown, wrongID) || strings.Contains(shown, otherID) {
+		t.Fatalf("the distiller should be shown the lesson the goal was shown, and only it:\n%s", shown)
+	}
+	after, _ := store.Load()
+	var replaced string
+	for _, l := range after {
+		if l.ID == wrongID {
+			t.Fatalf("the contradicted lesson is still kept: %+v", after)
+		}
+		if strings.Contains(l.Text, "vendored") {
+			replaced = l.Replaced
+		}
+	}
+	if replaced != wrong.Text || !slicesHasID(after, otherID) {
+		t.Fatalf("after: %+v", after)
+	}
+}
+
+func slicesHasID(ls []lessons.Lesson, id string) bool {
+	for _, l := range ls {
+		if l.ID == id {
+			return true
+		}
+	}
+	return false
+}
