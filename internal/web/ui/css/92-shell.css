@@ -56,3 +56,25 @@
 .nvh{margin:4px 8px 1px;padding-top:4px}
 .nvt{padding:6px 2px}
 @media (max-height:820px) and (min-width:901px){.nvi{padding:3px 2px}.nvi .nvg{width:18px;height:18px}}
+/* the Manager chat card (ui.chatDock): in the rail the chat's box adds nothing to the layout; in a card it fills the card, and the rail
+   closes while a page holds it */
+.chatbox{display:contents}
+.dc-chat{background:var(--panel)}
+.dc-chat>.chatbox{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;min-width:0;overflow:hidden}
+.dc-chatcard .dc-h .dc-rail{margin-left:auto;font:600 11px var(--f-num);color:var(--fg2);padding:1px 6px;border:1px solid var(--line2);border-radius:3px;background:var(--panel2)}
+.dc-chatcard .dc-h .dc-rail:hover{color:var(--bright);border-color:var(--dim)}
+#app[data-chat="card"]{--rail:0px}
+#app[data-chat="card"] #rail{display:none}
+/* the questions for you in a floating window (ui.chatDock.setFloating): it shows only while a question waits, is dragged by its head and
+   sized from its corner; the person's place and size are kept */
+.qfloat{position:fixed;z-index:60;display:flex;flex-direction:column;min-width:300px;min-height:160px;max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);resize:both;overflow:hidden;background:var(--panel);border:1px solid var(--warm);border-radius:4px;box-shadow:0 12px 40px rgba(0,0,0,.55),0 0 24px var(--warm-a)}
+.qfloat[hidden]{display:none}
+.qf-h{display:flex;align-items:center;gap:8px;flex:none;padding:5px 8px 5px 10px;border-bottom:1px solid var(--line);background:var(--panel2);cursor:grab;touch-action:none;user-select:none}
+.qf-h:active{cursor:grabbing}
+.qf-h h2{margin:0;font:700 11.5px/1 var(--f-lab);letter-spacing:.16em;text-transform:uppercase;color:var(--warm)}
+.qf-h .qf-g{color:var(--dim)}
+.qf-h button{margin-left:auto;font:600 11px var(--f-num);color:var(--fg2);padding:1px 6px;border:1px solid var(--line2);border-radius:3px;background:var(--panel)}
+.qf-h button:hover{color:var(--bright);border-color:var(--dim)}
+.qfloat>#qSlot{flex:1 1 auto;min-height:0;overflow:auto}
+.qfloat>#qSlot>.qstrip{flex:none;max-height:none;overflow:visible;box-shadow:none;animation:none}
+.qfloat .qstrip .qblk{max-height:none}
