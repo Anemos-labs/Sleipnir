@@ -809,3 +809,33 @@ func TestResumingATeamGoalWithUnfinishedTasksSkipsTheJudge(t *testing.T) {
 		t.Fatalf("the resume: note %q next %q", note, next)
 	}
 }
+
+// A team interrupted before its manager made any task (a restart during the first plan) is sent on without asking the judge: there is
+// no work for it to read, and in a team trial each such resume held the manager for two minutes of evidence reads of an empty repository.
+func TestResumingATeamGoalBeforeAnyTaskSkipsTheJudge(t *testing.T) {
+	calls := 0
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if strings.Contains(c.System, "You judge whether a coding agent") {
+			calls++
+			return mock.Reply{Text: `{"verdict":"continue","reason":"judged","left":[]}`}
+		}
+		return mock.Reply{Text: "planning"}
+	})
+	o := opts(t, newRepo(t), client, model)
+	o.Swarm = true
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	g := goal.New("build the API")
+	s.SaveGoal(g)
+	g.Paused, g.Unjudged = "the chat was restarted", true
+	note, next, j := s.GoalResume(context.Background(), g)
+	if calls != 0 || j.Judged || g.Paused != "" || g.Unjudged || g.Done {
+		t.Fatalf("judge calls %d (judged=%v), goal %+v", calls, j.Judged, g)
+	}
+	if !strings.Contains(note, "no tasks yet") || !strings.Contains(next, "Not met yet: the team has no tasks yet") {
+		t.Fatalf("the resume: note %q next %q", note, next)
+	}
+}

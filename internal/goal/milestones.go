@@ -55,12 +55,16 @@ var (
 	listItem = regexp.MustCompile(`^([-*+]|\d{1,3}[.)])\s+(?:\[[ xX]\]\s+)?(.*)$`)
 	// ownID is an ID the person wrote in front of a milestone ("M3:", "**M3** -"), which the numbering replaces.
 	ownID = regexp.MustCompile(`(?i)^\**m\d{1,3}\**\s*[:.)\-–—]\s*`)
+	// writtenNumber is the number in an ID the person wrote ("M0", "Milestone 2"), which the milestone keeps when every one has its own.
+	writtenNumber = regexp.MustCompile(`(?i)^\**(?:milestone\s+|m)(\d{1,3})\b`)
 	// specLine is the line of a goal that names its spec file; specEnd is the same at the end of a goal typed on one line.
 	specLine = regexp.MustCompile("(?im)^[ \t]*spec[ \t]*:[ \t]*[`\"']?([^\\s`\"']+)[`\"']?[ \t]*$")
 	specEnd  = regexp.MustCompile("(?i)(?:^|\\s)spec[ \t]*:[ \t]*[`\"']?([^\\s`\"']+)[`\"']?\\s*$")
 )
 
-// ParseMilestones reads the milestones of text, in order, numbering them from first. At most MaxMilestones are returned in all.
+// ParseMilestones reads the milestones of text, in order, numbering them from first. At most MaxMilestones are returned in all. When the
+// person numbered every milestone themselves, with numbers that differ ("M0" to "M5"), the milestones keep those IDs, so that the plan,
+// the judge and the goal's text name each one alike.
 //
 // Three forms are read: a list under a milestones section ("## Milestones" or "Milestones:"); headings nested under a milestones
 // heading ("## Milestones" then "### Core API"), each with the lines under it as details; and headings that name a milestone themselves
@@ -75,7 +79,8 @@ func ParseMilestones(text string, first int) []Milestone {
 	// level is the heading level of the section (0 for a "Milestones:" line), item that of the heading the current milestone came from:
 	// a heading deeper than item is one of its details.
 	mode, level, item, details := outside, 0, 0, 0
-	add := func(text string) bool {
+	var written []string // the ID the person wrote for each milestone, "" for one without
+	add := func(text string, own string) bool {
 		if len(out) >= MaxMilestones {
 			return false
 		}
@@ -84,6 +89,7 @@ func ParseMilestones(text string, first int) []Milestone {
 			return true
 		}
 		out = append(out, Milestone{ID: fmt.Sprintf("M%d", first+len(out)), Text: text})
+		written = append(written, own)
 		details = 0
 		return true
 	}
@@ -119,7 +125,7 @@ func ParseMilestones(text string, first int) []Milestone {
 				mode, level, listed = inList, lv, -1
 				continue
 			case namedTitle.MatchString(title):
-				if !add(namedTitle.ReplaceAllString(title, "")) {
+				if !add(namedTitle.ReplaceAllString(title, ""), writtenID(title)) {
 					return out
 				}
 				if mode == outside || lv <= level {
@@ -128,7 +134,7 @@ func ParseMilestones(text string, first int) []Milestone {
 				mode, item, listed = inHeading, lv, -1
 				continue
 			case mode != outside && level > 0 && lv > level:
-				if !add(title) {
+				if !add(title, writtenID(title)) {
 					return out
 				}
 				mode, item, listed = inHeading, lv, -1
@@ -148,7 +154,7 @@ func ParseMilestones(text string, first int) []Milestone {
 		case raw[0] != ' ' && raw[0] != '\t':
 			if m := listItem.FindStringSubmatch(line); m != nil {
 				n := len(out)
-				if !add(m[2]) {
+				if !add(m[2], writtenID(m[2])) {
 					return out
 				}
 				listed = -1
@@ -165,7 +171,44 @@ func ParseMilestones(text string, first int) []Milestone {
 	for i := range out {
 		out[i].Text = oneLine(out[i].Text, MaxMilestoneRunes)
 	}
+	if ownIDs(written) {
+		for i := range out {
+			out[i].ID = written[i]
+		}
+	}
 	return out
+}
+
+// writtenID is the ID the person wrote at the start of a milestone ("M0: Scaffold" is M0, "Milestone 2 - API" is M2), "" when none.
+func writtenID(text string) string {
+	m := writtenNumber.FindStringSubmatch(strings.TrimSpace(text))
+	if m == nil {
+		return ""
+	}
+	n := strings.TrimLeft(m[1], "0")
+	if n == "" {
+		n = "0"
+	}
+	return "M" + n
+}
+
+// ownIDs reports whether every milestone has an ID the person wrote and no two share one.
+func ownIDs(written []string) bool {
+	seen := make(map[string]bool, len(written))
+	for _, id := range written {
+		if id == "" || seen[id] {
+			return false
+		}
+		seen[id] = true
+	}
+	return len(written) > 0
+}
+
+// renumber gives ms the IDs M<first>, M<first+1>, ... in order.
+func renumber(ms []Milestone, first int) {
+	for i := range ms {
+		ms[i].ID = fmt.Sprintf("M%d", first+i)
+	}
 }
 
 // SpecRef is the spec file a goal names, "Spec: PATH" on a line of its own or at the very end of the goal (the path may be quoted or in
@@ -217,6 +260,14 @@ func Prepare(objective, dir, root string) (*State, error) {
 			more = more[:room]
 		}
 		g.Milestones = append(g.Milestones, more...)
+		ids := make([]string, len(g.Milestones))
+		for i, m := range g.Milestones {
+			ids[i] = m.ID
+		}
+		if !ownIDs(ids) {
+			// the goal's own numbers and the spec's overlap: one sequence names them all
+			renumber(g.Milestones, 1)
+		}
 	}
 	return g, nil
 }
