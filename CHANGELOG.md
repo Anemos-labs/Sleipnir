@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A `cd` that is a link of an `&&` chain moves the permission check of the
+  chain's later links: they are judged in the directory it went to, since
+  they run only when it succeeded. `cd build && cmake ..` and
+  `cd src && grep -r x ..` in a project that sits directly in the home
+  directory are no longer refused as reading a tree that holds `~/.ssh`.
+  After `;`, `||`, a cd in a subshell, or past the end of the chain, the
+  start directory still counts, as before.
+
 - When a pool child's work merges, the members working on its siblings in
   trees of their own get a harness notice naming the merged task and saying
   that `task claim` on their own task brings it into their checkout.

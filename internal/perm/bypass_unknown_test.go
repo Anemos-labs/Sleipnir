@@ -313,7 +313,8 @@ func TestAnAndChainKnowsWhatItsLinksAssigned(t *testing.T) {
 		{`D=$(git rev-parse --show-toplevel) && rm -rf "$D"/*`, "deny"}, // empty when git fails: /*
 		{`true && D=$(git rev-parse --show-toplevel) && rm -rf "$D"/*`, "deny"},
 		{`cd {root} && D=$(git rev-parse --show-toplevel) && rm -rf "$D"/*`, "deny"},
-		{`cd x && D=$(git rev-parse --show-toplevel) && rm -rf "$D"/*`, "ask"}, // the repository around x is not known
+		{`cd x && D=$(git rev-parse --show-toplevel) && rm -rf "$D"/*`, "deny"}, // the chain runs on in x, inside the same repository
+		{`cd x; D=$(git rev-parse --show-toplevel) && rm -rf "$D"/*`, "ask"},    // x or the start directory
 	} {
 		d := e.Check(context.Background(), Request{Agent: "be-7", Tool: "Bash", Command: f.expand(c.cmd)})
 		if got := outcome(d); got != c.want {
