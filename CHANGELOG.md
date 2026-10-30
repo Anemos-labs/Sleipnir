@@ -11,9 +11,7 @@ they do not indicate whether a change has been released.
   unquoted heredoc joins a backslash-newline before it looks for its
   delimiter, as bash does, so lines after `EO\` `F` are commands. Inside
   double quotes a single quote in `${x:-...}` no longer hides a command
-  substitution. A command run through `npx --no` is matched and remembered
-  as `npx NAME ...`: a rule for the system's `git` no longer covers the
-  project's own `node_modules/.bin/git`. A `make` prefix rule no longer
+  substitution. A `make` prefix rule no longer
   covers a command-line variable assigned with `!=` or holding
   `$(shell ...)`. `sort` and `wc` with `--files0-from` ask. An abbreviated
   git option (`git push --forc`, `git reset --ha`) counts as the option for

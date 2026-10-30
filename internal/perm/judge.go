@@ -1025,8 +1025,7 @@ func (ev *evaluator) buildRemember(u *unit) []Rule {
 		shellparse.InterpreterName(programBase(inner)) != "" && slices.ContainsFunc(innerArgs, detachedLongOption)) {
 		return nil
 	}
-	prog, args := allowWords(*s)
-	argv := append([]string{prog}, args...)
+	argv := append([]string{s.Program}, s.Args...)
 	for _, w := range argv {
 		if strings.ContainsAny(w, "$`") {
 			return nil
