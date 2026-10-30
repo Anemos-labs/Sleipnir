@@ -775,7 +775,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 	vetoes := 0       // Stop hooks that sent the agent back to work in this run
 	mailRounds := 0   // times a finished answer was reopened because mail arrived meanwhile
 	cutoffs := 0      // responses in a row that the output limit cut off
-	repeats := 0      // responses stopped because they wrote the same call over and over
+	repeats := 0      // responses in a row stopped because they wrote the same call over and over
 	planNudges := 0   // times a finished answer was sent back because the plan still had open steps
 	verifyNudges := 0 // times a finished answer was sent back because code was changed and no test ran since
 	leakNudges := 0   // times an answer was sent back because it held the markup of a tool call and no call
@@ -858,6 +858,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 		if err != nil {
 			return res, err
 		}
+		repeats = 0
 		phase = "between"
 		res.Steps++
 		res.Usage = res.Usage.Add(resp.Usage)
@@ -1043,7 +1044,7 @@ const maxCutoffRounds = 2
 const cutoffNudge = "[harness] Your last response was cut off at the output limit before it was complete. Continue from where it stopped. " +
 	"If you were about to run a command or change a file, do it now with a tool call instead of writing it out."
 
-// maxRepeatRounds is how many responses one Run stops for repeating a call before the run ends with ErrRepeatedCalls.
+// maxRepeatRounds is how many responses in a row one Run stops for repeating a call; one more ends the run with ErrRepeatedCalls.
 const maxRepeatRounds = 2
 
 // repeatedCallsNudge is what the model reads after a response that was stopped for repeating one call.
