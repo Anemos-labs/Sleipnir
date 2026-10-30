@@ -17,6 +17,8 @@ reviews:
   auto_review:
     enabled: true
     auto_incremental_review: true
+    # A paused review leaves later commits unreviewed; coderabbit-gate waits for each review instead.
+    auto_pause_after_reviewed_commits: 0
     drafts: false
   path_instructions:
     - path: "**/*.go"

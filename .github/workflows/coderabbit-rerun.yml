@@ -1,0 +1,63 @@
+name: coderabbit rerun
+
+# A pull request comment and the end of CodeRabbit's check run can change what coderabbit-gate decides, but neither starts
+# a pull_request workflow, and a check of a workflow run on these events would land on main's commit instead of the pull
+# request's. This workflow runs the gate of the pull request's head commit again instead, when its last run did not pass.
+#
+# It runs in the context of the base repository and checks out nothing: it reads the pull request's number and head
+# commit from the event and asks GitHub to re-run a workflow run. The only write permission is actions.
+on:
+  issue_comment:
+    types: [created, edited]
+  check_run:
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  rerun:
+    name: rerun coderabbit-gate
+    if: >-
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request) ||
+      (github.event_name == 'check_run' && github.event.check_run.app.slug == 'coderabbitai')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write # re-runs a run of coderabbit.yml
+      pull-requests: read # the head commit of the pull request
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            let sha;
+            if (context.eventName === 'check_run') {
+              sha = context.payload.check_run.head_sha;
+            } else {
+              const {data: pr} = await github.rest.pulls.get({owner, repo, pull_number: context.payload.issue.number});
+              if (pr.state !== 'open') return;
+              sha = pr.head.sha;
+            }
+            const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            // A run still in progress reads comments and checks at its end; one about to finish is waited for, so a
+            // comment written while it decides is not missed.
+            for (let i = 0; i < 16; i++) {
+              const {data} = await github.rest.actions.listWorkflowRuns(
+                {owner, repo, workflow_id: 'coderabbit.yml', head_sha: sha, per_page: 20});
+              const last = data.workflow_runs.sort((a, b) => b.id - a.id)[0];
+              if (!last) {
+                core.info(`no coderabbit-gate run for ${sha.slice(0, 7)}`);
+                return;
+              }
+              if (last.status === 'completed') {
+                if (last.conclusion === 'success') {
+                  core.info(`coderabbit-gate passed on ${sha.slice(0, 7)}`);
+                  return;
+                }
+                await github.rest.actions.reRunWorkflow({owner, repo, run_id: last.id});
+                core.info(`re-ran ${last.html_url} (${last.conclusion})`);
+                return;
+              }
+              await sleep(30e3);
+            }
+            core.info('coderabbit-gate is still running; it reads the current state when it decides');
