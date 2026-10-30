@@ -233,9 +233,14 @@ func (t *taskTool) reviseTask(ctx context.Context, c *tools.Call, in taskIn) *to
 			return tools.Errorf("parent repair: %v", err)
 		}
 	}
-	s.review.mu.Lock()
-	s.review.landLocked(task.ID, append(slices.Clone(task.Files), in.Files...), 0) // what it covered and what it covers now
-	s.review.mu.Unlock()
+	// A task whose work had reached the shared tree (accepted, or in review under isolation) is a change of what is there: what
+	// it covered and what it covers now. A task revised while it was still being done landed nothing, and recording it as landed
+	// made a later resolve of it look like shipped code (auto-docs started a catch-up pass for a task that merged nothing).
+	if task.Status == StatusDone || task.Status == StatusReview {
+		s.review.mu.Lock()
+		s.review.landLocked(task.ID, append(slices.Clone(task.Files), in.Files...), 0)
+		s.review.mu.Unlock()
+	}
 	return text("%s revised in place; its existing worker will retry", in.ID)
 }
 

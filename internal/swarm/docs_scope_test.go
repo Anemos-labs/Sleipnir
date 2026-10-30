@@ -257,6 +257,34 @@ func TestAResolvedTaskStartsNoDocsPass(t *testing.T) {
 	}
 }
 
+// A task revised while it was being done, then resolved as no longer needed, landed nothing: the revision is not a merge, and
+// no docs pass starts for it. In a team run the manager narrowed a stalled task, later replaced it, and the docs worker was given
+// a catch-up pass for code that never merged.
+func TestARevisedThenResolvedTaskStartsNoDocsPass(t *testing.T) {
+	cfg := Config{MaxWorkers: 8, AutoDocs: true, Team: []string{"backend", "docs"}}
+	r := newRVRigWith(t, cfg, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	b := r.sw.Board
+	stalled, _ := b.CreateTask("mgr", TaskSpec{Title: "model, dsl and layout", Files: []string{"src/model/**", "src/dsl/**"}})
+	if err := b.Assign("mgr", "be-1", stalled.ID); err != nil {
+		t.Fatal(err)
+	}
+	if res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "revise", "id": stalled.ID, "title": "model only", "text": "narrow to the model"}); res.IsError {
+		t.Fatalf("revise: %s", res.Text)
+	}
+	if r.sw.review.landedIDs()[stalled.ID] {
+		t.Fatal("a revision of a task being done was counted as a change that reached the shared tree")
+	}
+	if err := b.resolve("mgr", stalled.ID, "superseded"); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.docs.mu.Lock()
+	r.sw.docs.primed, r.sw.docs.coded = true, true
+	r.sw.docs.mu.Unlock()
+	if r.sw.docsWillStart(b.Snapshot()) {
+		t.Fatal("a task revised and then resolved without merging made a docs pass due")
+	}
+}
+
 // A resumed session's resolved implementation task does not count as accepted code: an agreement accepted later still waits for
 // the first implementation to land before it starts a pass.
 func TestAResolvedTaskDoesNotPrimeAutoDocsAsCoded(t *testing.T) {
