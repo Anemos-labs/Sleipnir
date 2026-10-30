@@ -1107,7 +1107,7 @@ func (s *Session) build(ctx context.Context) error {
 	}
 	params := o.Params
 	if params.MaxTokens == 0 {
-		params.MaxTokens = min(s.Model.MaxOutput, 16000)
+		params.MaxTokens = defaultMaxTokens(s.Model)
 	}
 	shared := s.Shared
 
@@ -1143,7 +1143,7 @@ func (s *Session) build(ctx context.Context) error {
 			}
 			p := params
 			if o.Params.MaxTokens == 0 {
-				p.MaxTokens = min(s.Model.MaxOutput, 16000)
+				p.MaxTokens = defaultMaxTokens(s.Model)
 			}
 			return agent.New(agent.Config{
 				ID: "main", Role: role.Name, Model: s.Model, Provider: s.Provider, Compactor: comp, CompactorModel: compModel, CompactorHealth: health,
@@ -1967,4 +1967,16 @@ func (s *Session) testCommand() string {
 		}
 	}
 	return ""
+}
+
+// defaultMaxTokens is the output limit of a request that names none: 16000, or the model's maximum if smaller. A model with a
+// known window of 128k tokens or more gets 32000: a reasoning model can think for more than 16000 tokens before it writes a
+// large file, and a response cut off at the limit with only reasoning in it is thrown away whole. A smaller or unknown window
+// keeps 16000, so that the prompt and the limit still fit in it.
+func defaultMaxTokens(m cost.Model) int {
+	limit := 16000
+	if !m.WindowGuessed && m.ContextTokens >= 128_000 {
+		limit = 32000
+	}
+	return min(m.MaxOutput, limit)
 }
