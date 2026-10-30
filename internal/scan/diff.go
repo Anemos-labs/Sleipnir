@@ -136,6 +136,11 @@ func unquotePath(p string) string {
 // request's base branch: the review starts from where HEAD left it (their merge base), so a base that moved on since does not
 // show its own commits as the change's.
 func StartReview(ctx context.Context, st *Store, repo *gitx.Repo, depth, base string) (*Run, error) {
+	return startReview(ctx, st, repo, depth, base, "")
+}
+
+// startReview is StartReview, for a rerun of the review prev when prev is set.
+func startReview(ctx context.Context, st *Store, repo *gitx.Repo, depth, base, prev string) (*Run, error) {
 	if depth == "" {
 		depth = DefaultDepth
 	}
@@ -181,7 +186,7 @@ func StartReview(ctx context.Context, st *Store, repo *gitx.Repo, depth, base st
 			review = append(review, c)
 		}
 	}
-	r, err := st.create(head, depth, "", inv, from, review)
+	r, err := st.create(head, depth, "", inv, from, review, prev)
 	if err != nil {
 		return nil, err
 	}

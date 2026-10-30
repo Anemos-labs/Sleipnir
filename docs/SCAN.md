@@ -11,7 +11,10 @@ reading.
                           start a scan of the repository at HEAD (or of DIR in it)
 /scan status [SCAN]       where a scan stands and what it needs next
 /scan report [SCAN]       rewrite its report
-sleipnir scan [SCAN]      the same from a shell (--json, --report)
+/scan rerun [SCAN]        scan the same code again at HEAD
+/scan compare [SCAN] [SINCE]
+                          its findings as new, fixed and unchanged since an earlier scan
+sleipnir scan [SCAN]      the same from a shell (--json, --report, --rerun [--pull], --compare [--since OLD])
 ```
 
 The web page has a **Deep scan** view of its own (`g d`): the project's scans with their phase and numbers, the selected scan's
@@ -83,6 +86,29 @@ The *defender* is a verifier who argues the lead is false (the guard the filer m
 and confirms only when it finds none. A lead is confirmed when enough verifiers confirm it, more than reject it, a defender
 among them; it is rejected once as many reject it as the depth asks to confirm it. A confirmed lead the depth wants
 reproduced is *unproven* until a reproducer shows it, and is reported apart from the findings.
+
+## Rerunning and comparing
+
+Every scan stays in `.sleipnir/scan/` with its ledger and report, so the next one can be compared with it. A **rerun**
+(`/scan rerun SCAN`, `sleipnir scan SCAN --rerun`, or **Rerun…** on the page) creates a new scan of what SCAN scanned at the
+repository's HEAD now: the same depth and focus, or for a review, the change from the same base. The new scan names SCAN as its
+`previous`, and its brief lists SCAN's findings with where their sinks were, for the hunters to check each again at the new
+commit: one that still holds is filed again with its trace as it is now, one the code no longer allows is named in the hunt note.
+`--pull` (the page's *update from the remote first*, checked for a repository cloned for a scan) fast-forwards the checked-out
+branch from its upstream first, over https or ssh with git's hooks off; a branch that has diverged is left as it is and the rerun
+is refused.
+
+A **comparison** (`/scan compare`, `sleipnir scan SCAN --compare`, the Changes card on the page) sorts the findings (confirmed or
+unproven leads) of a scan and of an earlier one: the scan it reruns, else the newest earlier whole scan of the same focus, or the
+one `--since` names. A finding of one is a lead of the other when they have the same category and their sinks hold the same code
+(the fingerprint SARIF carries, so a line that moved still matches), or failing that when their traces share a step.
+
+| Kind | Meaning |
+|---|---|
+| new | the newer scan found it, the older did not |
+| fixed | the older scan found it; the newer one, finished, did not find it again, or its verifiers rejected it (the reason is given) |
+| not confirmed again yet | the older scan found it; the newer one is still running and has not confirmed it |
+| unchanged | both found it (a changed severity is noted) |
 
 ## Reviewing a change
 

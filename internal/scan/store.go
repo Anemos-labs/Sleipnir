@@ -53,11 +53,11 @@ func (s *Store) Root() string { return s.root }
 
 // Create starts a scan of commit at depth, over the inventory the harness took, and makes it the active one.
 func (s *Store) Create(commit, depth, focus string, inv Inventory) (*Run, error) {
-	return s.create(commit, depth, focus, inv, "", nil)
+	return s.create(commit, depth, focus, inv, "", nil, "")
 }
 
-// create is Create, for a review of the change from base when base is set.
-func (s *Store) create(commit, depth, focus string, inv Inventory, base string, changes []Change) (*Run, error) {
+// create is Create, for a review of the change from base when base is set, and for a rerun of the scan prev when prev is set.
+func (s *Store) create(commit, depth, focus string, inv Inventory, base string, changes []Change, prev string) (*Run, error) {
 	d, ok := DepthByID(depth)
 	if !ok {
 		return nil, errDepth(depth)
@@ -83,7 +83,7 @@ func (s *Store) create(commit, depth, focus string, inv Inventory, base string, 
 		slug = fmt.Sprintf("%s-%d", name, n)
 	}
 	r := &Run{Slug: slug, Commit: commit, Depth: d.ID, Focus: focus, Created: now.Format(time.RFC3339), Inventory: inv,
-		Shards: MakeShards(inv, d), Base: base, Changes: changes}
+		Shards: MakeShards(inv, d), Base: base, Changes: changes, Previous: prev}
 	fb, err := json.Marshal(inv.Functions)
 	if err != nil {
 		return nil, err

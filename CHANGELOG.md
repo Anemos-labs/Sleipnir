@@ -34,6 +34,17 @@ they do not indicate whether a change has been released.
   (`plugin.RenamedPlugins`). The Plugins page and `/plugins` mark a plugin
   installed or updated since the session started as `restart`.
 
+- Deep scans can be rerun and compared. `sleipnir scan SCAN --rerun
+  [--pull]`, `/scan rerun [SCAN]` and the **Rerun…** button of the Deep
+  scan page create a new scan of the same code at HEAD, recorded as
+  `previous` in its `scan.json`, whose brief lists the earlier findings for
+  the team to check again. `sleipnir scan SCAN --compare [--since OLD]`,
+  `/scan compare` and the page's Changes card sort the findings into new,
+  fixed and unchanged. The web API adds `GET
+  /api/sessions/{id}/scan/{slug}/compare` and the `rerun` action of `POST
+  /api/sessions/{id}/scan`; `sleipnir scan`'s table gains a `RERUNS`
+  column.
+
 - With persistent pools, a worker's `task claim` of a top-level task that
   is neither solo nor in a pool yet, of a role with more than one member,
   is refused with a message for a worker: the manager starts that task with

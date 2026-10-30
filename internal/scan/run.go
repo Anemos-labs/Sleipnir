@@ -15,6 +15,9 @@ type Run struct {
 	// lines it added or modified. A review's leads each have a step on one of those lines.
 	Base    string   `json:"base,omitempty"`
 	Changes []Change `json:"changes,omitempty"`
+	// Previous is the scan this one reruns: the same code, depth and focus, taken again at a later HEAD, so that the two can be
+	// compared (Compare) and the team re-checks what the previous scan found.
+	Previous string `json:"previous,omitempty"`
 
 	Inventory Inventory `json:"inventory"`
 	Shards    []Shard   `json:"shards"`

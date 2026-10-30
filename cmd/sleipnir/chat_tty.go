@@ -604,7 +604,7 @@ var chatCommands = []chatCommand{
 	{"delivery", "[fix|merge|both|off|resume]", "GitHub automation for one objective"},
 	{"goal", "[text|pause|resume|clear]", "keep working until a goal is met, judged on evidence (--research=DEPTH researches first)"},
 	{"research", "[quick|standard|deep] QUESTION", "a team researches the question on the web and publishes a wiki; alone, the runs; status|build|open|export RUN"},
-	{"scan", "[survey|standard|deep] [DIR]", "a team maps the repository at HEAD, hunts it for holes and reports what it proved; alone, the scans; status|report SCAN"},
+	{"scan", "[survey|standard|deep] [DIR]", "a team maps the repository at HEAD, hunts it for holes and reports what it proved; alone, the scans; status|report|rerun|compare SCAN"},
 	{"plugins", "[enable|disable|reset ID]", "the plugins of this session: list them, or switch one on or off (it applies when the team starts again)"},
 	{"status", "", "model, mode, session, budget and cost at a glance"},
 	{"permissions", "", "the mode and the rules in force, among them what you allowed this session"},
