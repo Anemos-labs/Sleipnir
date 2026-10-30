@@ -164,6 +164,11 @@ func (p *progressLines) Write(b []byte) (int, error) {
 // Start takes the inventory of the repository at HEAD (below focus, a slash path in it, when set), creates the scan in the
 // store, and writes its brief and first report.
 func Start(ctx context.Context, st *Store, repo *gitx.Repo, depth, focus string) (*Run, error) {
+	return start(ctx, st, repo, depth, focus, "")
+}
+
+// start is Start, for a rerun of the scan prev when prev is set.
+func start(ctx context.Context, st *Store, repo *gitx.Repo, depth, focus, prev string) (*Run, error) {
 	if depth == "" {
 		depth = DefaultDepth
 	}
@@ -178,7 +183,7 @@ func Start(ctx context.Context, st *Store, repo *gitx.Repo, depth, focus string)
 	if err != nil {
 		return nil, err
 	}
-	r, err := st.Create(head, depth, focus, inv)
+	r, err := st.create(head, depth, focus, inv, "", nil, prev)
 	if err != nil {
 		return nil, err
 	}

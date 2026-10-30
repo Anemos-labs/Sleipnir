@@ -117,7 +117,7 @@ func (s *Session) runInSandbox(ctx context.Context, dir string, argv []string, t
 }
 
 // scanUsage is the line /scan answers a wrong call with.
-const scanUsage = "usage: /scan [survey|standard|deep] [DIR] starts a deep scan of the repository (or of DIR in it) at HEAD; /scan lists the scans; /scan status|report [SCAN]"
+const scanUsage = "usage: /scan [survey|standard|deep] [DIR] starts a deep scan of the repository (or of DIR in it) at HEAD; /scan lists the scans; /scan status|report [SCAN]; /scan rerun [SCAN] scans the same code again at HEAD; /scan compare [SCAN] [SINCE] says what is new, fixed and unchanged"
 
 // ScanCommand runs /scan: it lists scans, reports on one, writes its report, or starts one. A start answers with the goal the
 // host sets; every other use answers with text only.
@@ -146,6 +146,35 @@ func (s *Session) ScanCommand(ctx context.Context, arg string) (goalText, out st
 			return "", "report: " + err.Error()
 		}
 		return "", "the report of " + r.Slug + ": " + filepath.Join(scan.RunDir(s.opts.Root, r.Slug), scan.ReportFile)
+	case "compare":
+		if len(f) > 3 {
+			return "", scanUsage
+		}
+		slug, since := "", ""
+		if len(f) > 1 {
+			slug = f[1]
+		}
+		if len(f) > 2 {
+			since = f[2]
+		}
+		c, err := s.ScanCompare(slug, since)
+		if err != nil {
+			return "", err.Error()
+		}
+		return "", tools.SanitizeForTerminal(strings.TrimRight(scan.CompareText(c), "\n"))
+	case "rerun":
+		if len(f) > 2 {
+			return "", scanUsage
+		}
+		slug := ""
+		if len(f) > 1 {
+			slug = f[1]
+		}
+		g, err := s.RerunScan(ctx, slug, false)
+		if err != nil {
+			return "", "scan not started: " + err.Error()
+		}
+		return g, ""
 	}
 	depth := scan.DefaultDepth
 	if _, ok := scan.DepthByID(f[0]); ok {
@@ -199,6 +228,67 @@ func (s *Session) StartScan(ctx context.Context, depth, focus string) (string, e
 	return scan.Objective(r, s.scanBriefSpec(r)), nil
 }
 
+// RerunScan creates a new scan of what the scan slug (the newest one when empty) scanned, at HEAD now, and returns the goal that
+// drives it. With pull, the checked-out branch is first fast-forwarded from its upstream (scan.Pull), so that a repository cloned
+// for a scan is scanned as it is now.
+func (s *Session) RerunScan(ctx context.Context, slug string, pull bool) (string, error) {
+	if s.scan == nil {
+		return "", errors.New("the scan plugin is off: /plugins enable scan")
+	}
+	if !s.pluginOn(plugin.Goal) {
+		return "", errors.New("a scan is driven as a goal, and the goal plugin is off: /plugins enable goal")
+	}
+	prev, err := s.scanOrNewest(slug)
+	if err != nil {
+		return "", err
+	}
+	if pull {
+		if _, err := scan.Pull(ctx, s.opts.Root); err != nil {
+			return "", fmt.Errorf("the repository was not updated, so the scan was not rerun: %w", err)
+		}
+	}
+	repo, err := s.scanRepo()
+	if err != nil {
+		return "", err
+	}
+	r, err := scan.Rerun(ctx, s.scan.store, repo, prev)
+	if err != nil {
+		return "", err
+	}
+	if r.Commit == prev.Commit {
+		s.notice("", fmt.Sprintf("scan %s reruns %s at the same commit %s: the comparison shows what this team finds that the last one did not", r.Slug, prev.Slug, r.Commit[:min(len(r.Commit), 12)]))
+	}
+	return scan.Objective(r, s.scanBriefSpec(r)), nil
+}
+
+// scanOrNewest is the scan slug names, or the project's newest scan when slug is empty.
+func (s *Session) scanOrNewest(slug string) (*scan.Run, error) {
+	if slug != "" {
+		return s.scanRun(slug)
+	}
+	runs := scan.List(s.opts.Root)
+	if len(runs) == 0 {
+		return nil, errors.New("no scans in this project: /scan starts one")
+	}
+	return runs[0], nil
+}
+
+// ScanCompare compares the scan slug (the newest one when empty) with the scan since, or with its baseline (the scan it reruns,
+// else the newest earlier scan of the same code) when since is empty.
+func (s *Session) ScanCompare(slug, since string) (scan.Comparison, error) {
+	if s.scan == nil {
+		return scan.Comparison{}, errors.New("the scan plugin is off: /plugins enable scan")
+	}
+	cur, err := s.scanOrNewest(slug)
+	if err != nil {
+		return scan.Comparison{}, err
+	}
+	if since != "" && !scan.ValidSlug(since) {
+		return scan.Comparison{}, fmt.Errorf("%q is not a scan", since)
+	}
+	return scan.CompareWith(s.opts.Root, cur.Slug, since)
+}
+
 // scanBriefSpec is the scan's brief as its goal names it (see briefSpec).
 func (s *Session) scanBriefSpec(r *scan.Run) string {
 	abs := filepath.Join(s.opts.Root, filepath.FromSlash(scan.BriefPath(r.Slug)))
@@ -241,7 +331,7 @@ func (s *Session) ScanRuns() []wire.ScanRun {
 		out = append(out, wire.ScanRun{Slug: r.Slug, Commit: r.Commit, Depth: r.Depth, Focus: r.Focus, Phase: rep.Phase, Created: r.Created,
 			Team: r.Team(), Problems: rep.Blocking(), Files: c.Files, Funcs: c.Funcs, Lines: c.Lines, Shards: c.Shards, Mapped: c.Mapped,
 			Hunted: c.Hunted, Points: c.Points, Edges: c.Edges, Leads: c.Leads, Open: c.Open, Confirmed: c.Confirmed, Unproven: c.Unproven,
-			Rejected: c.Rejected, BySeverity: c.BySeverity, Active: r.Slug == active})
+			Rejected: c.Rejected, BySeverity: c.BySeverity, Active: r.Slug == active, Previous: r.Previous, Review: r.IsReview()})
 	}
 	return out
 }
@@ -309,7 +399,7 @@ func (s *Session) ScanDetail(slug string) (map[string]any, error) {
 		"verifiers": d.Verifiers, "defender": d.Defender, "proveFrom": d.ProveFrom, "sandbox": s.box != nil,
 		"phase": rep.Phase, "counts": rep.Counts, "problems": problems, "moreProblems": len(rep.Problems) - len(problems),
 		"findings": scan.Findings(r), "shards": shards, "points": r.Points, "edges": scan.MapDoc(r)["edges"],
-		"reportDir": scan.RunDir(s.opts.Root, r.Slug)}, nil
+		"reportDir": scan.RunDir(s.opts.Root, r.Slug), "previous": r.Previous, "base": r.Base}, nil
 }
 
 // ScanIssue writes a finding up as an issue for the project's tracker; the person reads and edits it before it is opened.

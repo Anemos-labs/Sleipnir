@@ -35,6 +35,12 @@ scan of HEAD (of DIR, the positional, when given) and prints the goal that drive
 --start --diff BASE reviews a change instead: the files HEAD changed since BASE (a commit or a branch, from
 their merge base), with leads only where a step of the trace is on a line the change wrote:
   sleipnir swarm 8 --sandbox docker "$(sleipnir scan --start --diff origin/main)"
+SCAN --rerun creates a new scan of what SCAN scanned (the same depth and focus, or the same base for a
+review) at HEAD, and prints its goal; --pull fast-forwards the branch from its upstream first. SCAN
+--compare says which findings are new, fixed and unchanged since the scan SCAN reruns, the newest earlier
+scan of the same code, or the scan --since names:
+  sleipnir swarm 12 --sandbox docker "$(sleipnir scan SCAN --rerun --pull)"
+  sleipnir scan NEW --compare
 
 flags:
 `
@@ -52,6 +58,10 @@ func cmdScan(ctx context.Context, args []string) error {
 	start := fs.Bool("start", false, "create a scan of the repository at HEAD (below the positional DIR, when given) and print the goal that drives it")
 	depth := fs.String("depth", scan.DefaultDepth, "with --start: survey, standard or deep")
 	diff := fs.String("diff", "", "with --start: review the change from `BASE` (a commit or branch) to HEAD instead of the whole repository")
+	rerun := fs.Bool("rerun", false, "create a new scan of what SCAN scanned, at HEAD, and print the goal that drives it")
+	pull := fs.Bool("pull", false, "with --rerun: fast-forward the checked-out branch from its upstream first")
+	compare := fs.Bool("compare", false, "say which of SCAN's findings are new, fixed and unchanged since an earlier scan of the same code")
+	since := fs.String("since", "", "with --compare: compare with the scan `OLD` instead of the one SCAN reruns or the newest earlier one")
 	pos, err := parseInterspersed(fs, args)
 	if err != nil {
 		return err
@@ -78,6 +88,23 @@ func cmdScan(ctx context.Context, args []string) error {
 	if diffSet && *diff == "" {
 		return errors.New("scan: --diff needs a BASE")
 	}
+	sinceSet := false
+	fs.Visit(func(f *flag.Flag) { sinceSet = sinceSet || f.Name == "since" })
+	if *pull && !*rerun {
+		return errors.New("scan: --pull goes with --rerun")
+	}
+	if sinceSet && !*compare {
+		return errors.New("scan: --since goes with --compare")
+	}
+	if (*rerun || *compare) && len(pos) == 0 {
+		return errors.New("scan: --rerun and --compare need the SCAN")
+	}
+	if *rerun && (*start || *compare || *report) {
+		return errors.New("scan: --rerun goes alone with SCAN (and --pull)")
+	}
+	if *compare && (*start || *report) {
+		return errors.New("scan: --compare goes alone with SCAN (and --since, --json)")
+	}
 	if *start {
 		focus := ""
 		if len(pos) == 1 {
@@ -94,9 +121,23 @@ func cmdScan(ctx context.Context, args []string) error {
 		}
 		return scanListCLI(os.Stdout, root, *asJSON)
 	}
+	if *compare {
+		c, err := scan.CompareWith(root, pos[0], *since)
+		if err != nil {
+			return fmt.Errorf("scan: %w", err)
+		}
+		if *asJSON {
+			return writeJSON(os.Stdout, c)
+		}
+		fmt.Print(tools.SanitizeForTerminal(scan.CompareText(c)))
+		return nil
+	}
 	r, err := scan.Load(root, pos[0])
 	if err != nil {
 		return fmt.Errorf("scan: %w", err)
+	}
+	if *rerun {
+		return scanRerunCLI(ctx, os.Stdout, root, r, *pull)
 	}
 	if *report {
 		if err := scan.WriteReport(root, r); err != nil {
@@ -141,23 +182,44 @@ func scanStartCLI(ctx context.Context, out io.Writer, root, depth, focus, base s
 	return err
 }
 
+// scanRerunCLI creates a new scan of what prev scanned, at HEAD (after a fast-forward from the upstream with pull), and prints
+// its goal.
+func scanRerunCLI(ctx context.Context, out io.Writer, root string, prev *scan.Run, pull bool) error {
+	if pull {
+		if _, err := scan.Pull(ctx, root); err != nil {
+			return fmt.Errorf("scan: %w", err)
+		}
+	}
+	repo, err := gitx.Open(root, gitx.WithMaxOutput(256<<20), gitx.WithTimeout(5*time.Minute))
+	if err != nil {
+		return fmt.Errorf("scan: %s is not a git repository: %w", root, err)
+	}
+	r, err := scan.Rerun(ctx, scan.NewStore(root), repo, prev)
+	if err != nil {
+		return fmt.Errorf("scan: %w", err)
+	}
+	_, err = fmt.Fprintln(out, scan.Objective(r, filepath.Join(root, filepath.FromSlash(scan.BriefPath(r.Slug)))))
+	return err
+}
+
 // scanListCLI prints the scans of the project at root.
 func scanListCLI(out io.Writer, root string, asJSON bool) error {
 	runs := scan.List(root)
 	if asJSON {
 		type row struct {
-			Slug    string      `json:"slug"`
-			Commit  string      `json:"commit"`
-			Depth   string      `json:"depth"`
-			Focus   string      `json:"focus,omitempty"`
-			Created string      `json:"created"`
-			Phase   string      `json:"phase"`
-			Counts  scan.Counts `json:"counts"`
+			Slug     string      `json:"slug"`
+			Commit   string      `json:"commit"`
+			Depth    string      `json:"depth"`
+			Focus    string      `json:"focus,omitempty"`
+			Created  string      `json:"created"`
+			Phase    string      `json:"phase"`
+			Counts   scan.Counts `json:"counts"`
+			Previous string      `json:"previous,omitempty"`
 		}
 		rows := []row{}
 		for _, r := range runs {
 			rep := scan.Check(r)
-			rows = append(rows, row{r.Slug, r.Commit, r.Depth, r.Focus, r.Created, rep.Phase, rep.Counts})
+			rows = append(rows, row{r.Slug, r.Commit, r.Depth, r.Focus, r.Created, rep.Phase, rep.Counts, r.Previous})
 		}
 		return writeJSON(out, map[string]any{"scans": rows})
 	}
@@ -166,11 +228,15 @@ func scanListCLI(out io.Writer, root string, asJSON bool) error {
 		return nil
 	}
 	tw := tabwriter.NewWriter(out, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(tw, "SCAN\tDEPTH\tPHASE\tFILES\tFUNCTIONS\tMAPPED\tHUNTED\tLEADS\tCONFIRMED")
+	fmt.Fprintln(tw, "SCAN\tDEPTH\tPHASE\tFILES\tFUNCTIONS\tMAPPED\tHUNTED\tLEADS\tCONFIRMED\tRERUNS")
 	for _, r := range runs {
 		c := scan.Check(r).Counts
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d/%d\t%d/%d\t%d\t%d\n", r.Slug, r.Depth, scan.Check(r).Phase, c.Files, c.Funcs, c.Mapped, c.Shards,
-			c.Hunted, c.Shards, c.Leads, c.Confirmed)
+		prev := r.Previous
+		if prev == "" {
+			prev = "-"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d/%d\t%d/%d\t%d\t%d\t%s\n", r.Slug, r.Depth, scan.Check(r).Phase, c.Files, c.Funcs, c.Mapped, c.Shards,
+			c.Hunted, c.Shards, c.Leads, c.Confirmed, prev)
 	}
 	return tw.Flush()
 }

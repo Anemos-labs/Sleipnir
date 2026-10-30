@@ -22,7 +22,7 @@
     },
     {
       "item": "scan",
-      "reason": "lists the project's deep scans with their phases, shows a scan's findings with their traces, verdicts and reproductions, its attack surface and shard map, exports the report, and starts a scan of the project or of a repository it clones; the terminal has /scan and `sleipnir scan`, which list, report on and start the same scans as text, and the report files are written beside the ledger"
+      "reason": "lists the project's deep scans with their phases, shows a scan's findings with their traces, verdicts and reproductions, its attack surface and shard map, exports the report, reruns a scan and compares it with an earlier one (new, fixed and unchanged findings), and starts a scan of the project or of a repository it clones; the terminal has /scan and `sleipnir scan`, which list, report on, start, rerun and compare the same scans as text, and the report files are written beside the ledger"
     },
     {
       "item": "memory",
