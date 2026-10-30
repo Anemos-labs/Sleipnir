@@ -730,6 +730,11 @@ func (s *Session) buildProvider(ctx context.Context) error {
 		return nil
 	}
 	ref, err := ResolveModel(s.cfg, o.Model)
+	if m := o.RoleModels["manager"]; errors.Is(err, ErrNoModel) && o.Model == "" && m != "" {
+		// A team that names its manager's model (--role-model manager=…, a team file's models.manager) has named the
+		// session's model: the manager is the session's own agent.
+		ref, err = ResolveModel(s.cfg, m)
+	}
 	if err != nil {
 		return err
 	}
@@ -1477,6 +1482,9 @@ func (s *Session) checkRoleModels(overrides map[string]string) error {
 		return nil
 	}
 	sort.Strings(bad)
+	if len(bad) == 1 && bad[0] == strconv.Quote(swarm.MailmanRoleName) && s.opts.Workers > 0 {
+		return errors.New("--role-model: the mailman is off in this session, so a mailman model would never be used: turn it on with --mailman, or leave its model out")
+	}
 	names := make([]string, 0, len(known))
 	for name := range known {
 		names = append(names, name)
