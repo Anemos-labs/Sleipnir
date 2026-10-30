@@ -1002,9 +1002,10 @@ or `@hourly`, `@daily`, `@weekly`, in the local time zone. A run is a headless `
 nobody is there to answer a question, so the default mode refuses what needs a yes: give a job `--mode accept-edits` (or an `--allow` rule in the project's settings)
 for the changes it may make.
 
-`--check CMD` makes a job wake cheaply: before each due run the daemon runs `CMD` by the shell in the job's folder (no model, no provider key,
+`--check CMD` gives a job a change check: before each due run the daemon runs `CMD` by the shell in the job's folder (no model, no provider key,
 one minute at most, with the environment a hook gets) and compares the first MiB it prints on standard output with what it printed before the
-last successful run; anything it leaves running in the background is ended when it exits. The same output skips
+last successful run. On Unix, anything the check leaves running in the background is ended when it exits; on Windows the process tree
+is ended only when the check times out. The same output skips
 the run and records `no change`; a check that exits non-zero records `check failed: ...` and skips the run too. The first look, and the first
 after the check is edited, always runs. The printed value is kept only when the run ends `ok`, so a failed run is tried again at the next slot.
 Pick a command that prints one small value that changes exactly when there is work: `git ls-remote origin refs/heads/main`, a count of open
