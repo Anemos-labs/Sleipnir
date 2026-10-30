@@ -38,6 +38,9 @@ as durable evidence for standing-goal judgments. Auto-fix returns failed checks,
 unresolved review threads and changed review summaries (including CodeRabbit) to
 the manager. Findings are evidence to evaluate: valid findings are repaired;
 inapplicable findings need an explanation before their threads are resolved.
+Review bodies reach the manager as text, without HTML markup, reviews before
+comments; a long body keeps its beginning and its end, where review bots list
+findings outside the diff and nitpicks.
 The manager must explicitly clear review summaries; a blocked or missing verdict
 prevents auto-merge even when GitHub reports no open review thread.
 Repairs keep the existing task IDs and role pools. Conflicts are resolved by merging

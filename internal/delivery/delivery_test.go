@@ -620,3 +620,26 @@ func TestRevokingAMergeIsConfirmedAndCoversTheQueue(t *testing.T) {
 		t.Fatalf("the merge request of a retargeted PR was not revoked: %v", f.calls)
 	}
 }
+
+// A long bot review keeps the findings at its end, and its markup does not use up the room for them.
+func TestReviewTextKeepsTheEndOfALongReview(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("<!-- generated -->\n**Actionable comments posted: 1**\n")
+	for i := 0; i < 400; i++ {
+		b.WriteString(`<details><summary><picture><img src="https://example.com/i.svg" width="16"></picture> Inline comment</summary>a finding in the diff</details>` + "\n\n\n")
+	}
+	b.WriteString("Outside diff comments:\nReview comments at @internal/x.go:\n- Line 4: close the file on the error path.\n")
+	got := reviewText(b.String(), 8000)
+	if !strings.Contains(got, "close the file on the error path") || !strings.Contains(got, "Actionable comments posted") {
+		t.Errorf("the start or the end of the review was lost:\n%s", got)
+	}
+	if strings.Contains(got, "<picture>") || strings.Contains(got, "generated") {
+		t.Error("markup was kept")
+	}
+	if n := len([]rune(got)); n > 8100 {
+		t.Errorf("%d runes; want about 8000", n)
+	}
+	if got := reviewText("  <b>short</b>  ", 8000); got != "short" {
+		t.Errorf("short body: %q", got)
+	}
+}

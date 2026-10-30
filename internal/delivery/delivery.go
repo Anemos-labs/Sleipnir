@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -672,18 +673,40 @@ func (c *Controller) reviewSummary(ctx context.Context, pr string) (string, stri
 	if err = json.Unmarshal(b, &v); err != nil {
 		return "", "", err
 	}
+	// Reviews come first: they carry the findings, while comments are mostly summaries of the change.
 	var out strings.Builder
-	for _, r := range v.Comments {
-		if strings.TrimSpace(r.Body) != "" {
-			fmt.Fprintf(&out, "%s\n%s\n", r.URL, clip(r.Body, 6000))
+	for _, r := range v.Reviews {
+		if body := reviewText(r.Body, 8000); body != "" {
+			fmt.Fprintf(&out, "%s %s\n%s\n", r.State, r.SubmittedAt, body)
 		}
 	}
-	for _, r := range v.Reviews {
-		if strings.TrimSpace(r.Body) != "" {
-			fmt.Fprintf(&out, "%s %s\n%s\n", r.State, r.SubmittedAt, clip(r.Body, 6000))
+	for _, r := range v.Comments {
+		if body := reviewText(r.Body, 6000); body != "" {
+			fmt.Fprintf(&out, "%s\n%s\n", r.URL, body)
 		}
 	}
 	return clip(out.String(), 24000), fmt.Sprintf("%x", sha256.Sum256(b)), nil
+}
+
+var (
+	htmlComment = regexp.MustCompile(`(?s)<!--.*?-->`)
+	htmlTag     = regexp.MustCompile(`<[^<>\n]{1,1000}>`)
+	blankLines  = regexp.MustCompile(`\n[ \t]*(\n[ \t]*)+`)
+)
+
+// reviewText is a review or comment body as text for the agent: HTML comments and tags (images, folds, badges) are
+// removed, and a body longer than n runes keeps its beginning and its end. Review bots put their detailed findings
+// (outside the diff, nitpicks, the prompt that lists them) at the end of long bodies, where a plain cut loses them.
+func reviewText(body string, n int) string {
+	s := htmlComment.ReplaceAllString(body, "")
+	s = htmlTag.ReplaceAllString(s, "")
+	s = strings.TrimSpace(blankLines.ReplaceAllString(s, "\n\n"))
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	head := n / 3
+	return string(r[:head]) + "\n[... middle truncated; inspect the linked source ...]\n" + string(r[len(r)-(n-head):])
 }
 
 // mergeMethod selects a method allowed by the repository without changing settings.
