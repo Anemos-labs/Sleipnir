@@ -195,7 +195,7 @@ func TestHarnessToolInstallsAPluginOfItsOwn(t *testing.T) {
 	}
 
 	write("plugin.json", `{"id":"standup","api":1,"version":"1.1.0","description":"daily standup","requires":["skills","commands"]}`)
-	if res := call(map[string]any{"action": "plugins", "op": "install", "source": "plugins/standup"}); !res.IsError || !strings.Contains(res.Text, "already installed") {
+	if res := call(map[string]any{"action": "plugins", "op": "install", "source": "plugins/standup"}); !res.IsError || !strings.Contains(res.Text, "already installed") || !strings.Contains(res.Text, "replace: true") {
 		t.Errorf("a second install without replace is refused: %+v", res)
 	}
 	if res := call(map[string]any{"action": "plugins", "op": "install", "source": "plugins/standup", "replace": true}); res.IsError || !strings.Contains(res.Text, "1.1.0") {

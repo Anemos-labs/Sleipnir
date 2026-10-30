@@ -471,6 +471,10 @@ func (t harnessTool) plugins(ctx context.Context, in harnessInput, cwd string, a
 			return nil
 		}
 		m, err := plugin.InstallWith(ctx, home, src, plugin.InstallOptions{Replace: in.Replace, Check: check})
+		var dup *plugin.InstalledError
+		if errors.As(err, &dup) {
+			return tools.Errorf("plugins install: a plugin %q is already installed in %s; to update it, install again with replace: true (the installed copy stays if the new one is refused)", dup.ID, dup.Dir)
+		}
 		if err != nil {
 			return tools.Errorf("plugins install: %v", err)
 		}
