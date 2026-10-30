@@ -274,29 +274,36 @@ func symrefTarget(dir, ref string) string {
 // gitCommonDir finds the git directory that holds the shared configuration and refs of the repository at dir, or of the linked
 // worktree at dir (its .git file names its own directory, whose commondir names the shared one).
 func gitCommonDir(dir string) (string, bool) {
+	_, common, ok := gitDirs(dir)
+	return common, ok
+}
+
+// gitDirs is gitCommonDir that also returns the worktree's own git directory (its .git directory, or where its .git file points).
+func gitDirs(dir string) (own, common string, ok bool) {
 	g := filepath.Join(dir, ".git")
 	fi, err := os.Stat(g)
 	if err != nil {
-		return "", false
+		return "", "", false
 	}
 	if fi.IsDir() {
-		return g, true
+		return g, g, true
 	}
 	b, err := readGitMeta(g)
 	if err != nil || !strings.HasPrefix(string(b), "gitdir:") {
-		return "", false
+		return "", "", false
 	}
-	own := strings.TrimSpace(strings.TrimPrefix(string(b), "gitdir:"))
+	own = strings.TrimSpace(strings.TrimPrefix(string(b), "gitdir:"))
 	if !filepath.IsAbs(own) {
 		own = filepath.Join(dir, own)
 	}
+	own = filepath.Clean(own)
 	c, err := readGitMeta(filepath.Join(own, "commondir"))
 	if err != nil {
-		return own, true
+		return own, own, true
 	}
-	common := strings.TrimSpace(string(c))
+	common = strings.TrimSpace(string(c))
 	if !filepath.IsAbs(common) {
 		common = filepath.Join(own, common)
 	}
-	return filepath.Clean(common), true
+	return own, filepath.Clean(common), true
 }

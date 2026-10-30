@@ -51,8 +51,8 @@ func readGitMeta(p string) ([]byte, error) {
 func gitHelperConfig(dir string) string {
 	var common, own string
 	for d := filepath.Clean(dir); ; d = filepath.Dir(d) {
-		if c, ok := gitCommonDir(d); ok {
-			common, own = c, gitOwnDir(d)
+		if o, c, ok := gitDirs(d); ok {
+			common, own = c, o
 			break
 		}
 		if filepath.Dir(d) == d {
@@ -78,23 +78,6 @@ func gitHelperConfig(dir string) string {
 		}
 	}
 	return ""
-}
-
-// gitOwnDir returns the git directory of the worktree at dir (its .git directory, or where its .git file points), or "".
-func gitOwnDir(dir string) string {
-	g := filepath.Join(dir, ".git")
-	if fi, err := os.Stat(g); err == nil && fi.IsDir() {
-		return g
-	}
-	b, err := readGitMeta(g)
-	if err != nil || !strings.HasPrefix(string(b), "gitdir:") {
-		return ""
-	}
-	own := strings.TrimSpace(strings.TrimPrefix(string(b), "gitdir:"))
-	if !filepath.IsAbs(own) {
-		own = filepath.Join(dir, own)
-	}
-	return filepath.Clean(own)
 }
 
 // gitConfigHelper is gitHelperConfig for the text of one configuration file.
