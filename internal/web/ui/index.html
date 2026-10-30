@@ -70,18 +70,20 @@
     <div id="railSplit" class="rsplit" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize the Radio rail" aria-valuemin="280" aria-valuemax="640" aria-valuenow="344"></div>
     <div class="ph rail-h"><h2>Radio</h2><span class="rm" id="railModel">your conversation with the manager</span><button class="railtog" id="railTog" type="button" aria-expanded="true" aria-controls="rail" title="Collapse the Radio rail"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M5 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr">Collapse the Radio rail</span></button></div>
     <button class="railmin" id="railMin" type="button" aria-label="Open the Radio rail" aria-controls="rail"><span class="rmv">RADIO · TALK TO THE MANAGER</span><span class="rmb" id="railMinB" hidden></span></button>
-    <div id="qSlot"></div>
-    <div class="planbox" id="planBox"></div>
-    <div class="noticebar" id="noticeBar" hidden></div>
-    <div class="talkwrap"><div class="talk" id="talk" role="log" aria-label="Conversation" tabindex="0"></div><button class="newpill" id="newPill" type="button" hidden></button></div>
-    <section class="feedwrap" id="feedWrap" aria-label="Team activity"><button class="feedh" id="feedTog" type="button" aria-expanded="true" aria-controls="feed"><span class="ft">Team activity</span><span class="fq">read-only</span><span class="fc" aria-hidden="true">▾</span></button><div class="talk feed" id="feed" role="log" aria-label="Team activity, read-only" tabindex="0"></div></section>
-    <form class="composer" id="composer" autocomplete="off">
-      <div class="qd" id="queuedLines"></div>
-      <div class="delivery-controls" id="deliveryCtl" role="group" aria-label="GitHub automation for your next message" aria-describedby="deliveryWhy"><label id="autoFixLab" title="Sleipnir opens a pull request for the work of your next message, then fixes failing CI checks and review comments until they pass (needs the gh command signed in to GitHub)"><input type="checkbox" id="autoFixCI"> Auto-fix CI &amp; reviews</label><label id="autoMergeLab" title="Sleipnir merges that pull request on GitHub once its checks and the repository's rules pass (needs the gh command signed in to GitHub)"><input type="checkbox" id="autoMergePR"> Auto-merge</label><span class="dlv-why" id="deliveryWhy">GitHub, for your next message only: open a pull request, fix CI and reviews, merge when green.</span></div>
-      <div class="crow"><span class="pr" aria-hidden="true">❯</span><textarea id="input" rows="1" placeholder="Message Sleipnir, / for commands, @ for files" aria-label="Message Sleipnir"></textarea></div>
-      <div class="cbar"><button class="mode" type="button" id="modeBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="modeMenu" aria-label="Permission mode: default. Opens a menu."><span id="modeTxt">default</span><svg class="caret" viewBox="0 0 10 10" width="9" height="9" aria-hidden="true"><path d="M2 6.5L5 3.5l3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span class="hint" id="cHint">ctrl+t stats · / commands</span><span class="sp"></span><button class="send" type="submit" aria-label="Send" title="Send (Enter)">⏎</button></div>
-      <div class="slash" id="slash" hidden role="listbox" aria-label="Commands"></div>
-    </form>
+    <div id="chatBox" class="chatbox">
+      <div id="qSlot"></div>
+      <div class="planbox" id="planBox"></div>
+      <div class="noticebar" id="noticeBar" hidden></div>
+      <div class="talkwrap"><div class="talk" id="talk" role="log" aria-label="Conversation" tabindex="0"></div><button class="newpill" id="newPill" type="button" hidden></button></div>
+      <section class="feedwrap" id="feedWrap" aria-label="Team activity"><button class="feedh" id="feedTog" type="button" aria-expanded="true" aria-controls="feed"><span class="ft">Team activity</span><span class="fq">read-only</span><span class="fc" aria-hidden="true">▾</span></button><div class="talk feed" id="feed" role="log" aria-label="Team activity, read-only" tabindex="0"></div></section>
+      <form class="composer" id="composer" autocomplete="off">
+        <div class="qd" id="queuedLines"></div>
+        <div class="delivery-controls" id="deliveryCtl" role="group" aria-label="GitHub automation for your next message" aria-describedby="deliveryWhy"><label id="autoFixLab" title="Sleipnir opens a pull request for the work of your next message, then fixes failing CI checks and review comments until they pass (needs the gh command signed in to GitHub)"><input type="checkbox" id="autoFixCI"> Auto-fix CI &amp; reviews</label><label id="autoMergeLab" title="Sleipnir merges that pull request on GitHub once its checks and the repository's rules pass (needs the gh command signed in to GitHub)"><input type="checkbox" id="autoMergePR"> Auto-merge</label><span class="dlv-why" id="deliveryWhy">GitHub, for your next message only: open a pull request, fix CI and reviews, merge when green.</span></div>
+        <div class="crow"><span class="pr" aria-hidden="true">❯</span><textarea id="input" rows="1" placeholder="Message Sleipnir, / for commands, @ for files" aria-label="Message Sleipnir"></textarea></div>
+        <div class="cbar"><button class="mode" type="button" id="modeBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="modeMenu" aria-label="Permission mode: default. Opens a menu."><span id="modeTxt">default</span><svg class="caret" viewBox="0 0 10 10" width="9" height="9" aria-hidden="true"><path d="M2 6.5L5 3.5l3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span class="hint" id="cHint">ctrl+t stats · / commands</span><span class="sp"></span><button class="send" type="submit" aria-label="Send" title="Send (Enter)">⏎</button></div>
+        <div class="slash" id="slash" hidden role="listbox" aria-label="Commands"></div>
+      </form>
+    </div>
   </aside>
 
   <footer id="foot">
