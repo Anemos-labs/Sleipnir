@@ -871,10 +871,10 @@ func TestAManagerThatReadsAloneWhileTheTeamWaitsIsToldToDelegate(t *testing.T) {
 	}
 }
 
-// Writer slots that were never started are named with the idle members while work is open and nothing is planned for their role:
-// a manager that never staffed devops, the tester or the frontend gave their work to backend members one after the other. A role
-// with a ready task, a read-only role and docs under auto_docs are left out.
-func TestTheLiveViewNamesSlotsNeverStarted(t *testing.T) {
+// Free writer slots are named with the idle members while work is open and nothing is planned for their role: a manager that never
+// staffed devops, the tester or the frontend gave their work to backend members one after the other. A role with a ready task and
+// a read-only role are left out, and nothing is named in a shared tree at its writer limit, where the spawn would be refused.
+func TestTheLiveViewNamesFreeSlots(t *testing.T) {
 	r := newRVRigWith(t, Config{MaxWorkers: 8, Team: []string{"backend", "frontend", "frontend", "devops", "reviewer"}},
 		func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
 	id, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "server", Files: []string{"server/**"}, By: "mgr"})
@@ -883,7 +883,7 @@ func TestTheLiveViewNamesSlotsNeverStarted(t *testing.T) {
 	}
 	rvWait(t, id+" idle", func() bool { return r.idle(id) })
 	got := strings.Join(r.sw.staffingLines(r.sw.Board.Snapshot()), "\n")
-	want := "idle with nothing planned for them: 1 devops slot never started; 2 frontend slots never started: plan the next " +
+	want := "idle with nothing planned for them: 1 devops slot free; 2 frontend slots free: plan the next " +
 		"independent work for them (task create with file scopes disjoint from the open tasks, then spawn role=devops task=<id>)"
 	if !strings.Contains(got, want) {
 		t.Fatalf("live view lines %q lack %q", got, want)
@@ -895,7 +895,19 @@ func TestTheLiveViewNamesSlotsNeverStarted(t *testing.T) {
 		t.Fatal(err)
 	}
 	got = strings.Join(r.sw.staffingLines(r.sw.Board.Snapshot()), "\n")
-	if strings.Contains(got, "frontend slots never started") || !strings.Contains(got, "1 devops slot never started") {
+	if strings.Contains(got, "frontend slots free") || !strings.Contains(got, "1 devops slot free") {
 		t.Errorf("live view lines %q: want the devops slot named and not the frontend, which has a ready task", got)
+	}
+	r.sw.cfg.MaxWriters = 1 // the backend member at work fills the shared tree's writer limit
+	m := r.sw.get(id)
+	m.mu.Lock()
+	m.life = lifeRunning
+	m.mu.Unlock()
+	got = strings.Join(r.sw.staffingLines(r.sw.Board.Snapshot()), "\n")
+	m.mu.Lock()
+	m.life = lifeIdle
+	m.mu.Unlock()
+	if strings.Contains(got, "slot free") {
+		t.Errorf("live view lines %q name a free slot at the writer limit", got)
 	}
 }

@@ -558,7 +558,7 @@ func (s *Swarm) staffingLines(snap *Snapshot) []string {
 	}
 	out = append(out, q...)
 	if roleLines+len(q) < maxStaffingLines && openTask(snap) {
-		if line := unplannedLine(s.unplannedIdle(snap, idle, held, ready, waiting), s.unstartedSlots(slots, used, order, ready, waiting)); line != "" {
+		if line := unplannedLine(s.unplannedIdle(snap, idle, held, ready, waiting), s.freeSlots(slots, used, order, ready, waiting)); line != "" {
 			out = append(out, line)
 		}
 	}
@@ -649,12 +649,16 @@ func (s *Swarm) unplannedIdle(snap *Snapshot, idle map[string][]string, held map
 	return out
 }
 
-// unstartedSlots returns, by role, how many writer slots of the team have never been started while nothing is planned for their
-// role: no ready or queued task of it. Read-only roles are left out (the review gate asks for the reviewer when it is due), and so
-// is docs while auto_docs gives it its work. A manager that never staffed a role does not see it among the idle members: in a team
-// run a manager gave packaging and the docs site to backend members, one after the other, while the devops, tester and both
-// frontend slots had never run.
-func (s *Swarm) unstartedSlots(slots, used map[string]int, order []string, ready []Task, waiting map[string][]string) map[string]int {
+// freeSlots returns, by role, how many writer slots of the team have no member while nothing is planned for their role: no ready
+// or queued task of it. Most are slots the manager never started; a retired member's slot counts too, since a spawn would fill it.
+// Read-only roles are left out (the review gate asks for the reviewer when it is due), and so is docs while auto_docs gives it its
+// work; nothing is returned in a shared tree at its writer limit, where spawnNew would refuse the spawn. A manager that never staffed
+// a role does not see it among the idle members: in a team run a manager gave packaging and the docs site to backend members, one
+// after the other, while the devops, tester and both frontend slots had never run.
+func (s *Swarm) freeSlots(slots, used map[string]int, order []string, ready []Task, waiting map[string][]string) map[string]int {
+	if !s.isolated() && s.activeWriters() >= s.cfg.MaxWriters {
+		return nil
+	}
 	planned := map[string]bool{}
 	for _, t := range ready {
 		planned[t.Role] = true
@@ -674,9 +678,9 @@ func (s *Swarm) unstartedSlots(slots, used map[string]int, order []string, ready
 }
 
 // unplannedLine is the live-view line that names the idle members nothing is planned for (unplannedIdle), by role in role order and
-// by id within a role, and the writer slots never started with nothing planned for their role (unstartedSlots), and tells the
+// by id within a role, and the free writer slots with nothing planned for their role (freeSlots), and tells the
 // manager to plan independent work for them or leave them idle; "" when there are none.
-func unplannedLine(byRole map[string][]string, unstarted map[string]int) string {
+func unplannedLine(byRole map[string][]string, free map[string]int) string {
 	var groups []string
 	first := ""
 	for _, r := range roleKeys(byRole) {
@@ -695,13 +699,13 @@ func unplannedLine(byRole map[string][]string, unstarted map[string]int) string 
 		groups = append(groups, group)
 	}
 	spawn := "agent=" + first
-	for _, r := range roleKeysCount(unstarted) {
-		n := unstarted[r]
+	for _, r := range roleKeysCount(free) {
+		n := free[r]
 		slot := "slot"
 		if n > 1 {
 			slot = "slots"
 		}
-		groups = append(groups, fmt.Sprintf("%d %s %s never started", n, r, slot))
+		groups = append(groups, fmt.Sprintf("%d %s %s free", n, r, slot))
 		if first == "" {
 			first, spawn = r, "role="+r
 		}
