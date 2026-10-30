@@ -1,12 +1,18 @@
 package swarm
 
-import "testing"
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 // A pool child that merges tells the members working on its siblings in trees of their own how to bring it in. In a team trial a
 // backend worker whose sibling had just merged the scaffold spent 25 minutes reading the integration branch with git show, file by
 // file, because nothing said that claiming its own task again refreshes its checkout.
 func TestAMergedPoolChildTellsItsSiblingsHowToBringItIn(t *testing.T) {
-	r := newIsoRig(t, isoOpts{cfg: Config{PersistentPools: true, MaxWorkers: 3, Team: []string{"backend", "backend", "backend"}}}, idleModel)
+	pass := func(string) (string, int) { return "", 0 }
+	r := newIsoRig(t, isoOpts{cfg: Config{PersistentPools: true, MaxWorkers: 3, Team: []string{"backend", "backend", "backend"}}, queueVerify: pass}, idleModel)
 	r.mustSpawn("backend", "scaffold", "src/**")
 	parent := r.sw.Board.Snapshot().Tasks[0]
 	if parent.Pool == nil || len(parent.Pool.Members) != 3 {
@@ -32,7 +38,16 @@ func TestAMergedPoolChildTellsItsSiblingsHowToBringItIn(t *testing.T) {
 		}
 	}
 	merged := children[0]
-	r.sw.tellSiblingsOfMerge(merged, merged.Owner)
+	mm := r.sw.get(merged.Owner)
+	if err := os.MkdirAll(filepath.Join(mm.tree.Path, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(mm.tree.Path, "src", "p1.py"), []byte("BASE = 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if res := r.sw.integrate(context.Background(), mm, merged, "part one"); !res.ok {
+		t.Fatalf("the child did not merge: %+v", res)
+	}
 	got := harnessMail(r.rvRig, merged.ID+" (part ")
 	for _, c := range children[1:] {
 		if got[c.Owner] != 1 {
@@ -45,6 +60,13 @@ func TestAMergedPoolChildTellsItsSiblingsHowToBringItIn(t *testing.T) {
 	want := "Call task claim on " + children[1].ID
 	if n := harnessMail(r.rvRig, want); n[children[1].Owner] != 1 {
 		t.Errorf("the notice does not say %q", want)
+	}
+	sib := children[1]
+	if res := r.callTool(context.Background(), "task", sib.Owner, "backend", map[string]any{"action": "claim", "id": sib.ID}); res.IsError {
+		t.Fatalf("the sibling's claim: %s", res.Text)
+	}
+	if b, err := os.ReadFile(filepath.Join(r.sw.get(sib.Owner).tree.Path, "src", "p1.py")); err != nil || string(b) != "BASE = 1\n" {
+		t.Fatalf("the claim did not bring the merged work into the sibling's checkout: %q %v", b, err)
 	}
 	other, _ := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "unrelated", Role: "backend", Files: []string{"docs/**"}})
 	r.sw.tellSiblingsOfMerge(other, "mgr")
