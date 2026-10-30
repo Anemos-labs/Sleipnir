@@ -3,6 +3,7 @@ package agent_test
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -218,5 +219,69 @@ func TestAResponseCutOffWhileReasoningIsToldToTakeOneStep(t *testing.T) {
 	}
 	if got := nudges(t, r.agent); got != 1 {
 		t.Errorf("%d nudges in the thread, want 1", got)
+	}
+}
+
+// A response that writes the same call over and over is stopped as it streams, none of it runs, and the model is told why.
+func TestAResponseThatRepeatsOneCallIsStoppedAndNoneOfItRuns(t *testing.T) {
+	var mu sync.Mutex
+	var second []mock.Msg
+	requests := 0
+	r := newRig(t, rigOpts{noCompact: true}, func(c *mock.Call) mock.Reply {
+		mu.Lock()
+		defer mu.Unlock()
+		requests++
+		if requests == 1 {
+			var calls []mock.ToolCall
+			for i := range 30 {
+				calls = append(calls, mock.ToolCall{ID: "c" + strconv.Itoa(i), Name: "echo", Args: `{"n":1}`})
+			}
+			return mock.Reply{Text: "checking", ToolCalls: calls}
+		}
+		second = c.Messages
+		return mock.Reply{Text: "done."}
+	})
+	res, err := r.agent.Run(context.Background(), "check it")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requests != 2 || res.Text != "done." {
+		t.Fatalf("%d requests, answer %q: want the stopped response and a second one", requests, res.Text)
+	}
+	for _, tr := range r.agent.Thread().Snapshot().Turns {
+		for _, b := range tr.Blocks {
+			if b.Kind == core.BlockToolUse || b.Kind == core.BlockToolResult {
+				t.Fatalf("a call of the stopped response is in the thread: %+v", b)
+			}
+		}
+	}
+	last := second[len(second)-1]
+	if last.Role != "user" || !strings.Contains(last.Content, "same tool call again and again") {
+		t.Errorf("the last message is %+v: the model is told its response was stopped and why", last)
+	}
+}
+
+// Distinct calls are not repeats, however many: only copies of one call (same tool, same arguments) stop a response.
+func TestManyDistinctCallsAreNotARepeat(t *testing.T) {
+	var mu sync.Mutex
+	requests := 0
+	r := newRig(t, rigOpts{noCompact: true}, func(c *mock.Call) mock.Reply {
+		mu.Lock()
+		defer mu.Unlock()
+		requests++
+		if requests == 1 {
+			var calls []mock.ToolCall
+			for i := range 10 {
+				calls = append(calls, mock.ToolCall{ID: "c" + strconv.Itoa(i), Name: "echo", Args: `{"n":` + strconv.Itoa(i%5) + `}`})
+			}
+			return mock.Reply{Text: "checking", ToolCalls: calls}
+		}
+		return mock.Reply{Text: "done."}
+	})
+	if _, err := r.agent.Run(context.Background(), "check it"); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 2 {
+		t.Errorf("%d requests, want 2: ten calls with two copies each ran", requests)
 	}
 }

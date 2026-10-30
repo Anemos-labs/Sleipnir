@@ -196,13 +196,22 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 		req.BindingMode = "drop_block"
 	}
 	start := a.cfg.Now()
-	resp, err := a.call(ctx, req, a.cfg.Priority, func(e provider.Event) {
+	callCtx, cancelCall := context.WithCancel(ctx)
+	defer cancelCall()
+	var reps repeatWatch
+	resp, err := a.call(callCtx, req, a.cfg.Priority, func(e provider.Event) {
 		a.forward(e)
 		if e.Kind == provider.EvStart {
 			started(true)
 		}
+		if reps.observe(e) {
+			cancelCall()
+		}
 	})
 	started(err == nil)
+	if err != nil && reps.tripped && ctx.Err() == nil {
+		err = fmt.Errorf("%w (%s, %d times)", ErrRepeatedCalls, reps.name, repeatedCallLimit)
+	}
 	if err != nil {
 		a.emit(events.TypeModelError, map[string]any{"req": reqID, "error": err.Error()})
 		return nil, 0, err
