@@ -167,7 +167,7 @@ func (s *Store) captureFile(abs string, fi fs.FileInfo, st state) (state, []byte
 	}
 	// Without blocking or following a link: what Lstat saw may have been replaced by a pipe since, whose open would wait for
 	// a writer, and the open file is what is checked.
-	f, err := os.OpenFile(abs, openReadFlags, 0)
+	f, err := s.openCaptured(abs)
 	if err != nil {
 		st.Kind, st.Note = kUnsaved, "cannot read: "+reason(err)
 		return st, nil
@@ -376,4 +376,19 @@ func cleanText(s string, max int) string {
 		return string(r[:max])
 	}
 	return s
+}
+
+// openCaptured opens abs for capture. A path inside the project is opened through a root of it, so a directory on the way
+// replaced after the path was checked cannot lead the read outside; a recorded absolute path outside it is opened as it is.
+func (s *Store) openCaptured(abs string) (*os.File, error) {
+	rel, err := filepath.Rel(s.realRoot, abs)
+	if s.realRoot == "" || err != nil || !filepath.IsLocal(rel) {
+		return os.OpenFile(abs, openReadFlags, 0)
+	}
+	r, err := os.OpenRoot(s.realRoot)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return r.OpenFile(rel, openReadFlags, 0)
 }

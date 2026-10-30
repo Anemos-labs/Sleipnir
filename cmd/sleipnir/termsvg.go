@@ -85,6 +85,9 @@ func cmdTermSVG(_ context.Context, args []string) error {
 	return nil
 }
 
+// maxFrames bounds the screens a recording keeps: each is a copy of the whole grid.
+const maxFrames = 20000
+
 // recordedFrames plays what script wrote (data, with timing, its --log-timing) into a terminal emulator and takes a frame of it at most
 // every minStep, a wait longer than maxGap shortened to it. It returns the frames and the length of the recording. Output that comes
 // within a step of the last frame is on the screen at the next frame; when nothing comes for a step after it, it has a frame of its own at
@@ -110,9 +113,16 @@ func recordedFrames(data []byte, timing io.Reader, cols, rows int, maxGap, minSt
 		if d > maxGap {
 			d = maxGap
 		}
+		if len(frames) >= maxFrames {
+			return nil, 0, fmt.Errorf("term-svg: the recording changes the screen more than %d times", maxFrames)
+		}
 		if dirty && d >= minStep {
 			frames = append(frames, svg.Capture(term, at)) // the screen stood still from the last output until this one
 			last, dirty = at, false
+		}
+		if n == 0 { // nothing was written: the screen did not change, and needs no frame of its own
+			at += d
+			continue
 		}
 		at += d
 		term.Write(data[off : off+n])

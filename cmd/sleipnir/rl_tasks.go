@@ -115,7 +115,7 @@ func tasksStats(args []string, stdout, stderr io.Writer) error {
 			tags[g]++
 		}
 	}
-	fmt.Fprintf(stdout, "%s: %d tasks in %d repositories\n", file, len(tasks), len(repos))
+	fmt.Fprintf(stdout, "%s: %d tasks in %d repositories\n", oneLineSafe(file), len(tasks), len(repos))
 	fmt.Fprintf(stdout, "  kinds: %s\n  teams: %s\n  tags:  %s\n", kvLine(kinds), kvLine(teams), kvLine(tags))
 	return nil
 }

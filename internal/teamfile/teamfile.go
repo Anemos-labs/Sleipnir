@@ -149,6 +149,9 @@ func (f *File) Check() error {
 		if role == "" || hasEq && model == "" {
 			return fmt.Errorf("slot %q: want role=model, or a role alone", s)
 		}
+		if strings.HasPrefix(role, "-") || strings.HasPrefix(model, "-") { // a loadout passes them on a command line
+			return fmt.Errorf("slot %q: a role or a model does not start with '-'", s)
+		}
 		if ServiceRole(role) {
 			return fmt.Errorf("slot %q: %s is not a worker; give its model under models", s, role)
 		}

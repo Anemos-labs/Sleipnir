@@ -121,6 +121,9 @@ func readConnection(path string) (connection, error) {
 
 // write keeps the connection where it was, atomically and for its owner only.
 func writeConnection(path string, c connection) error {
+	if !filepath.IsAbs(path) { // no home directory was found: a relative path would put the tokens in the project
+		return fmt.Errorf("no home directory to keep the sign-in in (%s is not an absolute path)", path)
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}

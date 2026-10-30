@@ -52,8 +52,8 @@ const maxRunSamples = 1 << 20
 // maxRunFile bounds one JSON file of a run directory.
 const maxRunFile = 256 << 20
 
-// readRunFile reads a JSON file of a run directory: a regular file (a link to a device would never end), at most maxRunFile bytes.
-func readRunFile(path string) ([]byte, error) {
+// ReadRunFile reads a JSON file of a run directory: a regular file (a link to a device would never end), at most maxRunFile bytes.
+func ReadRunFile(path string) ([]byte, error) {
 	if fi, err := os.Stat(path); err == nil && !fi.Mode().IsRegular() { // opening a pipe would wait for a writer
 		return nil, fmt.Errorf("%s is not a regular file", path)
 	}
@@ -78,7 +78,7 @@ func readRunFile(path string) ([]byte, error) {
 // numbers are recomputed from the episodes on disk, not copied from summary.json, so a run that was rescored
 // (`rl reward`) reports what it is now.
 func LoadRun(dir string) (Report, error) {
-	b, err := readRunFile(filepath.Join(dir, "manifest.json"))
+	b, err := ReadRunFile(filepath.Join(dir, "manifest.json"))
 	if err != nil {
 		return Report{}, fmt.Errorf("%s is not a run directory: %w", dir, err)
 	}
@@ -106,7 +106,7 @@ func LoadRun(dir string) (Report, error) {
 	skips := skippedRollouts(dir)
 	for _, t := range tasks {
 		for s := 0; s < group; s++ {
-			raw, err := readRunFile(filepath.Join(dir, t.ID, strconv.Itoa(s), "episode.json"))
+			raw, err := ReadRunFile(filepath.Join(dir, t.ID, strconv.Itoa(s), "episode.json"))
 			if err != nil {
 				// A skipped rollout leaves no episode (its task requires a tool this machine lacks): the run's
 				// summary says so, and it is not one that has yet to run.
@@ -157,7 +157,7 @@ func LoadRun(dir string) (Report, error) {
 // skippedRollouts reads how many rollouts of each task the run's summary records as skipped for a missing tool, or nil
 // when there is no readable summary. Skipped rollouts write no episode, so the summary is the only record of them.
 func skippedRollouts(dir string) map[string]int {
-	b, err := readRunFile(filepath.Join(dir, "summary.json"))
+	b, err := ReadRunFile(filepath.Join(dir, "summary.json"))
 	if err != nil {
 		return nil
 	}

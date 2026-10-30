@@ -168,7 +168,14 @@ func namesTeam(typed []string) bool {
 // splitRoleModels writes each --role-model=v (or -role-model=v) the line holds as --role-model v, the one form the role handling reads.
 func splitRoleModels(typed []string) []string {
 	out := make([]string, 0, len(typed))
-	for _, a := range typed {
+	for i := 0; i < len(typed); i++ {
+		a := typed[i]
+		if (a == "--role-model" || a == "-role-model") && i+1 < len(typed) {
+			// the next word is the value, whatever it looks like: read as an option it would shift every word after it
+			out = append(out, "--role-model", typed[i+1])
+			i++
+			continue
+		}
 		if v, ok := strings.CutPrefix(strings.TrimPrefix(a, "-"), "-role-model="); ok {
 			out = append(out, "--role-model", v)
 			continue

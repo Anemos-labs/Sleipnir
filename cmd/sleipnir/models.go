@@ -384,7 +384,7 @@ func cmdFavorites(w io.Writer, args []string) error {
 	favs := slices.Clone(cfg.Models.Favorites)
 	if len(args) == 0 || args[0] == "list" {
 		for _, r := range favs {
-			fmt.Fprintln(w, r)
+			fmt.Fprintln(w, oneLineSafe(r)) // a project's configuration may list them
 		}
 		return nil
 	}

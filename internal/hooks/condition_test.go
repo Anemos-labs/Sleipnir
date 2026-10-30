@@ -45,6 +45,7 @@ func TestIfConditions(t *testing.T) {
 		{"a file a patch moves to", "Edit(secret/**)", "apply_patch", `{"patch": "*** Begin Patch\n*** Update File: a.txt\n*** Move to: secret/b.txt\n@@\n-a\n+b\n*** End Patch"}`, true},
 		{"a patch elsewhere", "Edit(secret/**)", "apply_patch", `{"patch": "*** Begin Patch\n*** Update File: a.txt\n@@\n-a\n+b\n*** End Patch"}`, false},
 		{"a guarded file the session may allow", "Read(.env)", "read", `{"path": ".env"}`, true},
+		{"a command field a write ignores does not make it a command", "Edit(src/**)", "write", `{"path": "src/a.go", "content": "x", "command": "ls"}`, true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

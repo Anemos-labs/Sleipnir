@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"net/http"
 	"os"
@@ -574,6 +575,20 @@ func currentOf(p string, paths []string, cwd string) checkpoint.Current {
 // maxCurrentContent is the largest current file a pending change is drawn against.
 const maxCurrentContent = 1 << 20
 
+// readCurrent reads target once, from the descriptor it checks, and no further than one byte past maxCurrentContent: the name may lead
+// to another file (a device that never ends) than the one checked.
+func readCurrent(target string) ([]byte, error) {
+	f, err := os.Open(target)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() {
+		return nil, errors.New("not a regular file")
+	}
+	return io.ReadAll(io.LimitReader(f, maxCurrentContent+1))
+}
+
 // currentContent is what the file at abs holds now, following a link as a write through it does: its text, or why it cannot be
 // shown (not a regular file, larger than 1 MiB, not text).
 func currentContent(abs string) checkpoint.Current {
@@ -593,7 +608,7 @@ func currentContent(abs string) checkpoint.Current {
 	case fi.Size() > maxCurrentContent:
 		return checkpoint.Current{Exists: true, Unshown: fmt.Sprintf("it is %d bytes, larger than a change is drawn against (%d)", fi.Size(), maxCurrentContent)}
 	}
-	b, err := os.ReadFile(target)
+	b, err := readCurrent(target)
 	switch {
 	case err != nil:
 		return checkpoint.Current{Exists: true, Unshown: "it cannot be read"}

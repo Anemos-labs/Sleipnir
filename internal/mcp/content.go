@@ -114,12 +114,20 @@ func renderResult(res *CallToolResult, blobs blobStore, attach bool, redact *red
 	}
 
 	textJSON := false
+	var want []byte // StructuredContent in canonical form, made once for every text item it is compared with
+	wantOK := len(res.StructuredContent) > 0
 	for _, c := range res.Content {
 		switch c.Type {
 		case "text":
 			add(c.Text)
-			if !textJSON && len(res.StructuredContent) > 0 && sameJSON(c.Text, res.StructuredContent) {
-				textJSON = true
+			if !textJSON && wantOK && looksJSON(c.Text) {
+				if want == nil {
+					var err error
+					if want, err = core.Canonical(res.StructuredContent); err != nil {
+						wantOK = false
+					}
+				}
+				textJSON = wantOK && sameJSON(c.Text, want)
 			}
 		case "image":
 			add(store("image", c.MIMEType, c.Data, c.BadData))
@@ -192,15 +200,19 @@ func mimeSuffix(m string) string {
 	return " (" + m + ")"
 }
 
-// sameJSON reports whether text is JSON equal to want, ignoring formatting.
-func sameJSON(text string, want json.RawMessage) bool {
+// looksJSON reports whether text may be a JSON object.
+func looksJSON(text string) bool {
 	text = strings.TrimSpace(text)
-	if text == "" || text[0] != '{' {
+	return text != "" && text[0] == '{'
+}
+
+// sameJSON reports whether text is JSON equal to want, which is already canonical (core.Canonical), ignoring formatting.
+func sameJSON(text string, want []byte) bool {
+	if !looksJSON(text) {
 		return false
 	}
-	a, err1 := core.Canonical(json.RawMessage(text))
-	b, err2 := core.Canonical(want)
-	return err1 == nil && err2 == nil && bytes.Equal(a, b)
+	a, err := core.Canonical(json.RawMessage(strings.TrimSpace(text)))
+	return err == nil && bytes.Equal(a, want)
 }
 
 // humanBytes formats sizes using bytes, KiB, or MiB for MCP content diagnostics.
