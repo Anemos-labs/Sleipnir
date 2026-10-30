@@ -17,6 +17,10 @@ they do not indicate whether a change has been released.
   of each turn is held while ranking. The `recall` tool's description and
   schema change, so the tool block's prompt bytes change once.
 
+- When a pool child's work merges, the members working on its siblings in
+  trees of their own get a harness notice naming the merged task and saying
+  that `task claim` on their own task brings it into their checkout.
+
 - A goal's milestones keep the IDs the person wrote when every milestone
   has a distinct one (`### M0: Scaffold` is M0, not M1), so the goal's
   text, the manager's plan and the judge's verdicts name each milestone
