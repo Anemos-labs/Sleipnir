@@ -227,8 +227,8 @@ do what the person would do with slash commands, the Plugins page and the schedu
 | `reload` | the session starts again when the turn ends, with its conversation, so plugin and configuration changes apply |
 
 The built-in skill `sleipnir-plugin` gives the agent the loop: write the plugin in its own directory, check it, install it,
-reload, try it. On the web page the reload restarts the tab and sends the agent on, naming any plugin that did not start; the
-terminal chat starts again and waits for the person's next message. Every change is a change of state to the permission
+reload, try it. On the web page and in the terminal chat the reload starts the session again and sends the agent on, naming any
+plugin that did not start. Every change is a change of state to the permission
 engine: it asks in the default mode, passes in bypass and yolo, and is refused in plan mode. The permission mode and rules,
 models and roles, the team's shape, the budget, sign-in, project trust and starting the conversation over stay the person's. A
 scheduled job the tool adds runs in `default`, `accept-edits` or `plan` mode, never bypass or yolo. A headless run has no chat,

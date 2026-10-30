@@ -16,9 +16,9 @@ they do not indicate whether a change has been released.
   once, the others run when its turn ends), `schedule` goals, list, check,
   install, enable, disable and remove `plugins`, and `reload`: the session
   starts again with its conversation when the turn ends, so plugin and
-  configuration changes apply. In the web interface the agent is then told
-  to go on, with any plugin that did not start; the terminal chat starts
-  again and waits for the person. Changes go through the permission
+  configuration changes apply. In the web interface and the terminal chat
+  the agent is then told to go on, with any plugin that did not start.
+  Changes go through the permission
   engine as changes of state: they ask in the default mode, pass in bypass
   and yolo, and are refused in plan mode. Commands that raise what a
   session may do or spend stay the person's. The manager's and the single
@@ -32,7 +32,12 @@ they do not indicate whether a change has been released.
   `TestPluginContract` fails a change that would read them differently.
   Built-in plugin ids that are renamed keep working in `requires`
   (`plugin.RenamedPlugins`). The Plugins page and `/plugins` mark a plugin
-  installed or updated since the session started as `restart`.
+  installed or updated since the session started as `restart`. A plugin's
+  slash command answers to its own name (`/today` for `standup:today`)
+  when no other command ends the same way, as the expansion already did.
+- A page frame whose coalescing key is longer than the hub's 128 bytes
+  (the diff of a file under a long path) is sent with a shortened key
+  instead of being dropped as an invalid event.
 
 - Deep scans can be rerun and compared. `sleipnir scan SCAN --rerun
   [--pull]`, `/scan rerun [SCAN]` and the **Rerun…** button of the Deep

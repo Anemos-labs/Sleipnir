@@ -374,8 +374,22 @@ func publishFrame(hub *web.Hub, f wire.Frame) error {
 	if err != nil {
 		return err
 	}
-	_, err = hub.Publish(seam.Topic, web.Event{Type: f.Type, Data: data, Critical: f.Critical, Coalescable: f.Coalescable && !f.Critical, Key: f.Key})
+	_, err = hub.Publish(seam.Topic, web.Event{Type: f.Type, Data: data, Critical: f.Critical, Coalescable: f.Coalescable && !f.Critical, Key: frameKey(f.Key)})
 	return err
+}
+
+// maxFrameKey is the longest coalescing key the hub takes (web.Hub.Publish refuses a longer one).
+const maxFrameKey = 128
+
+// frameKey is a frame's coalescing key as the hub takes it: a key longer than the hub's bound (a diff of a file deep in a long path)
+// keeps its head and ends with a digest of the whole, so the frame is sent and still replaces only the frames of the same key.
+func frameKey(k string) string {
+	if len(k) <= maxFrameKey {
+		return k
+	}
+	sum := sha256.Sum256([]byte(k))
+	tail := "#" + hex.EncodeToString(sum[:16])
+	return k[:maxFrameKey-len(tail)] + tail
 }
 
 // Publish sends a frame to every page. A question whose ask could not be sent (too large for the stream, which the bridge checks

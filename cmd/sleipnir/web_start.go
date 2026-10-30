@@ -350,17 +350,9 @@ func (t *webTab) carryOn(s *session.Session, c carryOn) {
 	case c.turn && s.Resumed():
 		text, said := carryOnText, "the team goes on: it was working when the models changed"
 		if c.reload {
-			text, said = reloadText, "started again with the changes the agent applied"
-			if c.why != "" {
-				text += " What changed: " + c.why + "."
-				said += ": " + c.why
-			}
-			if trouble := s.PluginTrouble(); trouble != "" {
-				text += " Did not start: " + trouble + ". Fix it, install it again with replace, and reload."
-				said += "; did not start: " + trouble
-			}
+			text, said = reloadCarry(s, c.why)
 		}
-		if s.Swarm != nil {
+		if s.Swarm != nil && !c.reload {
 			text += carryOnTeam
 		}
 		if _, _, _, err := t.enqueue(queued{text: "go on after the restart", prompt: text}); err != nil {
@@ -385,6 +377,24 @@ var restartCarries = map[string]bool{"model": true, "roles": true, "team": true,
 
 // carryOnText is the message that sends the agent on after a restart for a change of models, when no goal does.
 const carryOnText = "The session was started again to change the models the agents run on, and your conversation carried over. Go on with the work you were doing."
+
+// reloadCarry is the message that sends the agent on after the reload it asked for (why: what it said the reload applies), and the
+// line the person reads about it; both name the plugins the person turned on that did not start.
+func reloadCarry(s *session.Session, why string) (text, said string) {
+	text, said = reloadText, "started again with the changes the agent applied"
+	if why != "" {
+		text += " What changed: " + why + "."
+		said += ": " + why
+	}
+	if trouble := s.PluginTrouble(); trouble != "" {
+		text += " Did not start: " + trouble + ". Fix it, install it again with replace, and reload."
+		said += "; did not start: " + trouble
+	}
+	if s.Swarm != nil {
+		text += carryOnTeam
+	}
+	return text, said
+}
 
 // reloadText is the message that sends the agent on after the reload it asked for.
 const reloadText = "The session was started again, as you asked (sleipnir reload), so that the plugin and configuration changes apply; your conversation carried over. Check that what you changed is there (sleipnir help, or try it), then go on with the person's request."

@@ -97,6 +97,7 @@ func chatOnTerminal(ctx context.Context, f chatTTY) error {
 			a.Models = host.menu.Choices
 		}
 		attach <- a
+		carryReload(s, link.Queue) // a reload the agent asked for: it is sent on, after the attach that lets the queue run
 	}()
 
 	var hist *input.History

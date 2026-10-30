@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/session"
@@ -74,11 +75,37 @@ func (h ttyHarnessHost) Queue(line string) (string, error) {
 	return "queued: " + line + " runs when this turn ends, and the person sees what it says. End your turn now with what you started and why.", nil
 }
 
-// Reload queues /restart, which starts the chat again with its flags and this conversation. The terminal's chat does not send the
-// agent on after a restart: the person does, with their next message.
-func (h ttyHarnessHost) Reload(string) (string, error) {
+// reloadEnv carries a reload the agent asked for from the chat that ends to the one that starts in its place (runAgain passes the
+// environment on): what the reload applies, which the new chat tells the agent when it sends it on (carryReload).
+const reloadEnv = "SLEIPNIR_RELOAD_WHY"
+
+// Reload queues /restart, which starts the chat again with its flags and this conversation; the chat that starts sends the agent on
+// (carryReload).
+func (h ttyHarnessHost) Reload(why string) (string, error) {
+	if why == "" {
+		why = "changed settings"
+	}
+	if err := os.Setenv(reloadEnv, why); err != nil {
+		return "", err
+	}
 	if !h.link.Queue("/restart") {
+		os.Unsetenv(reloadEnv)
 		return "", errors.New("the chat has ended")
 	}
-	return "the chat starts again when this turn ends, with this conversation and the changes. End your turn now: tell the person what changed and that their next message goes on with it.", nil
+	return "the chat starts again when this turn ends, with this conversation and the changes; you are then told to go on. End your turn now with a line for the person on what changed.", nil
+}
+
+// carryReload sends the agent on in a chat that a reload it asked for started (reloadEnv), as the web page does; it reports whether
+// it did. The variable is cleared, so a later restart does not repeat it.
+func carryReload(s *session.Session, queue func(string) bool) bool {
+	why, ok := os.LookupEnv(reloadEnv)
+	if !ok {
+		return false
+	}
+	os.Unsetenv(reloadEnv)
+	if !s.Resumed() {
+		return false
+	}
+	text, _ := reloadCarry(s, why)
+	return queue(text)
 }
