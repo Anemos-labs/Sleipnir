@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -265,7 +266,7 @@ func (ev *evaluator) bash(cmd string) verdict {
 			use = chainCw
 		}
 		var cdFrom *cwdSet
-		if chained(s) && s.Program == "cd" && len(s.Wrappers) == 0 {
+		if chained(s) && s.Program == "cd" && len(s.Wrappers) == 0 && !cdpathMayApply(s.Args, code) {
 			cdFrom = &cwdSet{dirs: slices.Clone(use.dirs), unknown: use.unknown}
 		}
 		if track && s.Loop != 0 && !entered[s.Loop] {
@@ -1167,6 +1168,25 @@ func (ev *evaluator) trackCwd(u *unit, cw *cwdSet) {
 	case "pushd", "popd", "chdir":
 		cw.unknown = true
 	}
+}
+
+// cdpathMayApply reports whether bash may look a cd's operand up in $CDPATH and land somewhere other than the directory cdArgs
+// computes: an operand that does not start with "/", "." or "~" (or none, or several) while CDPATH is set in the harness's
+// environment or the line names it.
+func cdpathMayApply(args []string, code string) bool {
+	if os.Getenv("CDPATH") == "" && !strings.Contains(code, "CDPATH") {
+		return false
+	}
+	var operand []string
+	for _, a := range args {
+		if a != "--" && a != "-P" && a != "-L" && a != "-e" && a != "-@" {
+			operand = append(operand, a)
+		}
+	}
+	if len(operand) != 1 {
+		return true
+	}
+	return !strings.HasPrefix(operand[0], "/") && !strings.HasPrefix(operand[0], ".") && !strings.HasPrefix(operand[0], "~")
 }
 
 // cdArgs returns the working directories after cd with args, run from cw.

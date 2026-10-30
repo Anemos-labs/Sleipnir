@@ -22,5 +22,20 @@ func TestACdInAnAndChainMovesTheLaterLinks(t *testing.T) {
 		{name: "credentials stay protected from the new directory", mode: ModeBypass, req: bash("cd src && cat ../../.ssh/id_rsa"), want: "deny"},
 		{name: "a cd to home then a search of it", mode: ModeBypass, req: bash("cd src && cd .. && cd .. && grep -r x ."), want: "deny"},
 		{name: "a cd to the parent then a search", mode: ModeBypass, req: bash("cd .. && grep -r x ."), want: "deny"},
+		// bash looks a bare operand up in $CDPATH first: CDPATH=.. makes "cd proj" from ~/proj stay in ~/proj
+		{name: "a CDPATH the line sets", mode: ModeBypass, req: bash("CDPATH=..; cd proj && grep -r x .."), want: "deny"},
+		{name: "an exported CDPATH the line sets", mode: ModeBypass, req: bash("export CDPATH=.. && cd proj && grep -r x .."), want: "deny"},
+	})
+}
+
+// A CDPATH in the harness's environment reaches the commands' shell: a bare operand may go anywhere it lists, so the start
+// directory still counts; an operand that starts with "." or "/" is not looked up.
+func TestACdChainUnderCDPATH(t *testing.T) {
+	t.Setenv("CDPATH", "..")
+	f := newFixture(t)
+	runCases(t, f, []tc{
+		{name: "a bare operand", mode: ModeBypass, req: bash("cd src && grep -r x .."), want: "deny"},
+		{name: "a dot operand", mode: ModeBypass, req: bash("cd ./src && grep -r package .."), want: "allow"},
+		{name: "an absolute operand", mode: ModeBypass, req: bash("cd {root}/src && grep -r package .."), want: "allow"},
 	})
 }
