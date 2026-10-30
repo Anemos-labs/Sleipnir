@@ -7,6 +7,16 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `recall`'s query ranks its hits by Okapi BM25 over the archived turns
+  instead of by how many query words a turn contains: a word every turn
+  has (and a stopword such as "the") decides nothing, a rare identifier
+  or error message decides much. `recall(query=…, session="all")`
+  searches the 12 most recent earlier sessions of the project together,
+  each hit naming its session, for what was decided or tried before when
+  the agent does not know which session it was in. Only a capped preview
+  of each turn is held while ranking. The `recall` tool's description and
+  schema change, so the tool block's prompt bytes change once.
+
 - When a pool child's work merges, the members working on its siblings in
   trees of their own get a harness notice naming the merged task and saying
   that `task claim` on their own task brings it into their checkout.

@@ -743,7 +743,9 @@ chat it compacts the manager.
   in the archive and the model can page them back with `recall`.
   `recall` also reads other agents' turns: `agent="bk-2"` is a teammate in this session, and `session="last"` (or a
   session id from `sleipnir sessions`) an earlier session of the same project, its manager or single agent unless `agent`
-  names another. An earlier session is read from its log into memory; its folder is not written.
+  names another. An earlier session is read from its log into memory; its folder is not written. `session="all"` with a
+  `query` searches the 12 most recent earlier sessions of the project together, each hit naming the session to read it
+  from. Hits are ranked by BM25: rare words weigh more than words every turn has.
 * It is a declared, priced rebase: the next request re-writes the cached prefix once. Chat prints the outcome, for
   example (a thread of nine 1,600-token replies, with a stand-in model that could not produce a patch):
 

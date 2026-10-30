@@ -1052,7 +1052,7 @@ func (s *Session) build(ctx context.Context) error {
 		},
 		plugin.Recall: func(*plugin.Scope) error {
 			rt := recall.New(archive)
-			rt.Past = s.pastArchive
+			rt.Past, rt.PastSearch = s.pastArchive, s.searchPast
 			reg.Register(rt)
 			return nil
 		},

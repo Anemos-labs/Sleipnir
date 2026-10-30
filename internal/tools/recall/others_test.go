@@ -56,3 +56,31 @@ func TestRecallReadsAnEarlierSession(t *testing.T) {
 		t.Fatalf("bad session: %+v", res)
 	}
 }
+
+// session="all" goes through PastSearch with the query and agent, names each hit's session and how to read it; it needs a
+// query, and without PastSearch it is refused.
+func TestRecallSearchesAllEarlierSessions(t *testing.T) {
+	tool, env, _ := newTool(t, 2, text)
+	if res := call(t, tool, env, map[string]any{"query": "x", "session": "all"}); !res.IsError {
+		t.Fatalf("no PastSearch: %+v", res)
+	}
+	var gotAgent string
+	tool.PastSearch = func(agent, query string, limit int) ([]kv.Hit, int, error) {
+		gotAgent = agent
+		if query == "nothing" {
+			return nil, 3, nil
+		}
+		return []kv.Hit{{Scope: "20260101-000000-aaaa", Turn: 4, Score: 2, Snippet: "we chose sqlite for restarts"}}, 3, nil
+	}
+	res := call(t, tool, env, map[string]any{"query": "sqlite restarts", "session": "all", "agent": "bk-1"})
+	if res.IsError || gotAgent != "bk-1" || !strings.Contains(res.Text, "session 20260101-000000-aaaa t4") ||
+		!strings.Contains(res.Text, "3 most recent") || !strings.Contains(res.Text, `agent="bk-1"`) {
+		t.Fatalf("search: %+v", res)
+	}
+	if res := call(t, tool, env, map[string]any{"query": "nothing", "session": "all"}); res.IsError || !strings.Contains(res.Text, "no matches in the 3") {
+		t.Fatalf("no hits: %+v", res)
+	}
+	if res := call(t, tool, env, map[string]any{"turns": "t4", "session": "all"}); !res.IsError {
+		t.Fatalf("turns with all: %+v", res)
+	}
+}
