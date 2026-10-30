@@ -1036,7 +1036,7 @@ touching the same repository-relative path raise the usual alert, which names th
 merge conflict. A scope still says which files a task may touch, and the merge queue enforces it on the commit. A dependency
 lockfile that a build tool regenerates (`Cargo.lock`, `package-lock.json`, `npm-shrinkwrap.json`, `pnpm-lock.yaml`,
 `yarn.lock`, `bun.lockb`, `go.sum`, `poetry.lock`, `uv.lock`, `Gemfile.lock`, `composer.lock`, at any depth) does not count
-against the scope: a documentation task that ran `cargo` still merges with the `Cargo.lock` the run rewrote. The lockfile is
+against the scope, the task's own or a pool parent's: a documentation task that ran `cargo` still merges with the `Cargo.lock` the run rewrote. The lockfile is
 merged like any other file, so a conflicting change comes back as a conflict, and a path another role owns is still refused.
 
 **The manager is told** in its private notes (never a shared layer) that writers work in private worktrees, that the checkout does
