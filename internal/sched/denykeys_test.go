@@ -21,6 +21,7 @@ func TestDeniedKeysReachTheChildAndStopThere(t *testing.T) {
 		t.Fatal("the denial is inherited by what the child starts")
 	}
 }
+
 // A child denied keys gets none in its environment either, whatever the parent failed to move out of its own.
 func TestDenyKeysDropsCredentialLookingVariables(t *testing.T) {
 	cmd := exec.Command("true")
