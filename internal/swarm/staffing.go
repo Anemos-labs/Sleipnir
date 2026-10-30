@@ -73,6 +73,25 @@ func (g *reviewGate) noteBegan(id string, rev uint64, at time.Time) {
 	}
 }
 
+// restoreEnded records at, a submission's time read from the log on resume, as the end of the work of t's assignment: replace
+// overwrites the time reviewSubmission recorded (the resume's own), otherwise an end already recorded (the submission before an
+// acceptance) is kept. A zero at changes nothing.
+func (g *reviewGate) restoreEnded(t Task, at time.Time, replace bool) {
+	if at.IsZero() {
+		return
+	}
+	key := t.ID + "#" + strconv.FormatUint(t.Rev, 10)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.ended == nil {
+		g.ended = map[string]time.Time{}
+	}
+	if _, ok := g.ended[key]; ok && !replace {
+		return
+	}
+	g.ended[key] = at
+}
+
 // beganAt is when a run first held the assignment of task id at rev, false when none has.
 func (g *reviewGate) beganAt(id string, rev uint64) (time.Time, bool) {
 	g.mu.Lock()

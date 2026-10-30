@@ -594,6 +594,22 @@ func TestAResumedTeamStillOwesTheReviewOfWorkMergedBeforeTheStop(t *testing.T) {
 		if got := r.sw.review.landed[1]; len(got) != 1 || got[0] != "old.go" {
 			t.Fatalf("the acceptance landed %v, want [old.go]", got)
 		}
+	}) // The work's duration and the submission's time come back from the log: after a resume a review overrun was measured against
+	// work that "took 0 minutes to build", and every submission seemed to wait only since the resume.
+	t.Run("with the duration of the work", func(t *testing.T) {
+		r := newRVRigWith(t, cfg, idle, nil)
+		if err := r.sw.RestoreTeam(context.Background(), prev, nil, map[string]string{"be-1": "backend", "rv-1": ReviewerRole}, 0); err != nil {
+			t.Fatal(err)
+		}
+		began := time.Date(2026, 10, 30, 1, 50, 0, 0, time.UTC)
+		submitted := began.Add(40 * time.Minute)
+		r.sw.RestoreReviewGate(prev, []ReviewOp{
+			{Task: "T1", Status: StatusReview, Began: began, At: submitted},
+			{Task: "T1", Status: StatusDone, Closure: CloseVerified, Began: began, At: submitted.Add(5 * time.Minute)},
+		})
+		if work, ids := r.sw.review.unreviewedWork(); work != 40*time.Minute || len(ids) != 1 || ids[0] != "T1" {
+			t.Fatalf("unreviewed work after the resume: %v %v, want 40m0s for T1", work, ids)
+		}
 	})
 }
 
