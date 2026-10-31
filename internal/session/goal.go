@@ -67,6 +67,14 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 		s.Log.Emit("", judgeEvent, map[string]any{"verdict": v.Kind, "reason": v.Reason, "left": left, "judge": "scan ledger"})
 		return v, worked, nil
 	}
+	if v, ok := s.researchJudgment(g); ok {
+		left := v.Left
+		if left == nil {
+			left = []string{}
+		}
+		s.Log.Emit("", judgeEvent, map[string]any{"verdict": v.Kind, "reason": v.Reason, "left": left, "judge": "research ledger"})
+		return v, worked, nil
+	}
 	cutoff, err := s.goalEvidenceCutoff()
 	if err != nil {
 		return goal.Verdict{Kind: goal.Continue}, false, err
@@ -551,15 +559,31 @@ func (s *Session) unfinishedGoalTasks() []string {
 }
 
 // GoalContinuation is the message that sends the agent on after verdict v (goal.Continuation), with, for the manager of a team, the
-// workers that are free (swarm.FreeCapacity).
+// workers that are free (swarm.FreeCapacity), sized to what the verdict found missing.
 func (s *Session) GoalContinuation(g *goal.State, v goal.Verdict) string {
 	msg := goal.Continuation(g, s.GoalPlan(), v)
 	if s.Swarm != nil {
-		if line := s.Swarm.FreeCapacity(); line != "" {
+		if line := s.Swarm.FreeCapacity(leftCount(v.Left)); line != "" {
 			msg += "\n\n" + line
 		}
 	}
 	return msg
+}
+
+// leftCount is how many items a verdict's left list stands for: its entries, where a closing "and N more..." entry stands for N.
+func leftCount(left []string) int {
+	n := 0
+	for _, l := range left {
+		var more int
+		if _, err := fmt.Sscanf(strings.TrimSpace(l), "and %d more", &more); err == nil && more > 0 {
+			n += more
+			continue
+		}
+		if strings.TrimSpace(l) != "" {
+			n++
+		}
+	}
+	return n
 }
 
 // short retains at most n runes including an ellipsis when truncated; n must be positive.
