@@ -141,3 +141,70 @@ func TestGitReadsAskForAGitlinkGitmodulesDoesNotName(t *testing.T) {
 		t.Error("fsmonitor in a linked worktree's submodule repository was not seen")
 	}
 }
+
+// The bounds of the submodule check fail closed: a .gitmodules that cannot be read, an index too large to read, and more submodule
+// repositories than are checked.
+func TestSubmoduleCheckFailsClosedPastItsBounds(t *testing.T) {
+	mk := func(t *testing.T) string {
+		t.Helper()
+		repo := t.TempDir()
+		for _, n := range []string{"HEAD", "config"} {
+			p := filepath.Join(repo, ".git", n)
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, []byte("ref: refs/heads/main\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := os.WriteFile(filepath.Join(repo, ".git", "config"), []byte("[core]\n\tbare = false\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return repo
+	}
+	t.Run("plain", func(t *testing.T) {
+		if why := gitHelperConfig(mk(t)); why != "" {
+			t.Errorf("a repository with no submodules: %q", why)
+		}
+	})
+	t.Run("unreadable .gitmodules", func(t *testing.T) {
+		repo := mk(t)
+		if err := os.Mkdir(filepath.Join(repo, ".gitmodules"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if why := gitHelperConfig(repo); !strings.Contains(why, ".gitmodules") {
+			t.Errorf("a .gitmodules that is a directory: %q", why)
+		}
+	})
+	t.Run("oversized index", func(t *testing.T) {
+		repo := mk(t)
+		f, err := os.Create(filepath.Join(repo, ".git", "index"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Truncate(64<<20 + 1); err != nil {
+			t.Fatal(err)
+		}
+		f.Close()
+		if why := gitHelperConfig(repo); !strings.Contains(why, "does not name") {
+			t.Errorf("an index past the bound: %q", why)
+		}
+	})
+	t.Run("too many submodules", func(t *testing.T) {
+		repo := mk(t)
+		for i := 0; i <= maxSubmoduleConfigs; i++ {
+			m := filepath.Join(repo, ".git", "modules", "m"+strings.Repeat("x", i%7)+string(rune('a'+i%26))+string(rune('a'+i/26)))
+			if err := os.MkdirAll(m, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			for _, n := range []string{"HEAD", "config"} {
+				if err := os.WriteFile(filepath.Join(m, n), []byte("\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		if why := gitHelperConfig(repo); !strings.Contains(why, "more submodules") {
+			t.Errorf("%d submodule repositories: %q", maxSubmoduleConfigs+1, why)
+		}
+	})
+}
