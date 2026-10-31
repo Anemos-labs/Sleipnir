@@ -1,4 +1,4 @@
-/* 00-util.js: helpers shared by every module (SL.u). No state, no DOM side effects. */
+/* 00-util.js: helpers shared by every module (SL.u). No state; no DOM side effects but the element morph() is asked to update. */
 (function (SL) {
   'use strict';
   const NSV = 'http://www.w3.org/2000/svg';
@@ -99,6 +99,37 @@
   /** Is this key event part of an input method's composition (a CJK candidate being chosen)? Its Enter picks a candidate: it never
    *  sends, submits or runs a shortcut. */
   const composing = e => !!e && (e.isComposing === true || e.keyCode === 229);
-  SL.u = { composing, agCol, okId, safeId, BAD_ID, own, clip1, NSV, $, $$, esc, fmtK, fmtN, fmtUsd, PLAN_HELP, spendOf, fmtSpend, planTag, planOnly, budgetPct, fmtMs, splitArgs, pct, clock, mmss, tod, dur, clamp, hitCls, mk, sv, frag, rng, hash, uid, deepCopy, upperBound, makeBus, copy, ucfirst };
+  /** Make el's children match html without throwing away what did not change, for a view that repaints on a timer. A node the new
+   *  markup keeps (the same tag at the same place, or the same data-key anywhere among its siblings) stays the same node, with its
+   *  attributes and text brought up to date: nothing flashes, and an open fold, a focused field, a scrolled box, a hover and a selection
+   *  survive the refresh. What the person sets stays theirs once the element exists: a <details>' open state, and the value of a
+   *  field. An element marked data-morph-own is filled by another painter: it is kept, and what is inside it is left alone. */
+  const keyOf = n => (n.nodeType === 1 ? n.getAttribute('data-key') : null);
+  const sameNode = (a, b) => a.nodeType === b.nodeType && (a.nodeType !== 1 || (a.localName === b.localName && keyOf(a) === keyOf(b)));
+  function morphKids(dst, src) {
+    const want = Array.prototype.slice.call(src.childNodes), keyed = new Map();
+    Array.prototype.forEach.call(dst.childNodes, n => { const k = keyOf(n); if (k != null) keyed.set(k, n); });
+    want.forEach((w, i) => {
+      const cur = dst.childNodes[i] || null, k = keyOf(w);
+      const have = k != null ? (keyed.has(k) && sameNode(keyed.get(k), w) ? keyed.get(k) : null) : (cur && sameNode(cur, w) ? cur : null);
+      if (!have) { dst.insertBefore(w, cur); return; }
+      if (have !== cur) dst.insertBefore(have, cur);
+      morphNode(have, w);
+    });
+    while (dst.childNodes.length > want.length) dst.removeChild(dst.childNodes[want.length]);
+  }
+  function morphNode(a, w) {
+    if (a.nodeType !== 1) { if (a.data !== w.data) a.data = w.data; return; }
+    if (a.hasAttribute('data-morph-own')) return;
+    const mine = n => (n === 'open' && a.localName === 'details') || (n === 'value' && /^(input|textarea|select)$/.test(a.localName));
+    a.getAttributeNames().forEach(n => { if (!w.hasAttribute(n) && !mine(n)) a.removeAttribute(n); });
+    w.getAttributeNames().forEach(n => { const v = w.getAttribute(n); if (a.getAttribute(n) !== v && !mine(n)) a.setAttribute(n, v); });
+    morphKids(a, w);
+  }
+  function morph(el, html) {
+    const t = document.createElement('template'); t.innerHTML = html;
+    morphKids(el, t.content);
+  }
+  SL.u = { morph, composing, agCol, okId, safeId, BAD_ID, own, clip1, NSV, $, $$, esc, fmtK, fmtN, fmtUsd, PLAN_HELP, spendOf, fmtSpend, planTag, planOnly, budgetPct, fmtMs, splitArgs, pct, clock, mmss, tod, dur, clamp, hitCls, mk, sv, frag, rng, hash, uid, deepCopy, upperBound, makeBus, copy, ucfirst };
   SL.bus = makeBus();
 })(SL);
