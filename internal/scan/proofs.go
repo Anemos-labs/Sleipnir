@@ -50,7 +50,8 @@ func WriteProofs(root string, r *Run) error {
 	for _, f := range fs {
 		for i, p := range f.Proofs {
 			k := proofNumber(&f, i)
-			if k == 0 {
+			// the lead names a directory: one read back from a scan record is checked like one the scan made
+			if k == 0 || !leadIDRE.MatchString(f.ID) {
 				continue
 			}
 			rel := ProofDir(f.ID, k)
