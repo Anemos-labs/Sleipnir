@@ -614,7 +614,7 @@ var chatCommands = []chatCommand{
 	{"stats", "", "the stats page (ctrl+t): cost, cache, what it saved, the prompt's layers"},
 	{"context", "", "layer sizes of the current prompt"},
 	{"compact", "[focus]", "fold the older thread now"},
-	{"agents", "", "the team's agents and tasks (ctrl+g: the cockpit)"},
+	{"agents", "[stop ID]", "the team's agents and tasks (ctrl+g: the cockpit); stop a worker that is stuck: its task goes back to todo"},
 	{"steer", "TEXT", "tell the running turn something without stopping it: the agent reads it with its next step"},
 	{"queue", "[drop N|clear]", "the lines typed while a turn runs, sent when it is over: list them, drop one, or clear them"},
 	{"model", "[provider/model]", "show the model, or change it: a single agent moves its conversation (the prompt cache starts over), a team starts again on it"},

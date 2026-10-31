@@ -156,6 +156,15 @@
     if (why(S)) return refuse(S);
     return send(api().post(tab(S) + '/steer', { text }));
   });
+  /** Stop a worker that is stuck (`/agents stop ID`): its run ends, its task goes back to todo and the manager is told. The server's
+   *  line says what happened (or why nothing could be stopped); it is toasted. The manager's own turn is interrupted instead. */
+  act('stopAgent', (agent, sid) => {
+    const S = ses(sid); if (!S) return { ok: false }; agent = String(agent || '');
+    if (!agent || agent === 'mgr') return { ok: false, why: 'the manager is not stopped this way: interrupt its turn (Esc, or Stop)' };
+    if (S.replay) return { ok: false, why: 'go live first: a replay never changes the session' };
+    if (why(S)) return refuse(S);
+    return send(whenStarted(() => api().post(tab(S) + '/command', { line: '/agents stop ' + agent })), d => { const out = String((d && d.output) || '').trim(); if (out) toast(out, /^agents:/.test(out) ? 'warm' : 'ok'); });
+  });
   /** A line that waits for the turn (meta.queued) is taken out of the queue; the answer carries its whole text, which an edit puts back
    *  in the composer. A line still on its way to the server has no id yet. */
   act('dropQueued', (id, sid) => {

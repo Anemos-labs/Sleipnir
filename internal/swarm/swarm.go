@@ -124,6 +124,14 @@ type Config struct {
 	// review while the manager works on other things, is a finding (default 12;
 	// negative turns those two kinds off).
 	StallTurns int
+	// TaskTimeout is how long a worker may hold one assignment before the stall sweep names it (task_overrun): the worker is
+	// told to finish with what it has, hand the task over or block it (default 90 minutes; negative turns the kind off). A
+	// reviewer's task has its own bound (review_overrun).
+	TaskTimeout time.Duration
+	// StallStop is how long a finding about a worker's own run (claimed_no_progress, review_overrun, task_overrun) may hold
+	// after it was escalated to the manager before the harness stops the worker itself: its tasks go back to todo with the
+	// attempt counted (default 20 minutes; negative: the harness never stops a worker for a stall).
+	StallStop time.Duration
 
 	// HoldManager makes a final answer of the manager wait for the board: while
 	// workers are running or tasks are unreviewed, the manager's Stop is vetoed with a
