@@ -383,6 +383,9 @@ func Markdown(r *Run) string {
 		sort.Strings(ks)
 		w("Left out of the scan: %s.\n\n", strings.Join(ks, ", "))
 	}
+	if k := kindCounts(r.Inventory); k != "" {
+		w("Scanned besides the code a person wrote: %s.\n\n", k)
+	}
 	w("The attack surface point by point and the relations between places are in `%s`; every lead, with its trace, in `%s`.\n\n", MapFile, FindingsFile)
 	w("## Method\n\n%s\n", methodText(r))
 	return b.String()
@@ -392,7 +395,12 @@ func Markdown(r *Run) string {
 func methodText(r *Run) string {
 	d := r.DepthInfo()
 	var b strings.Builder
-	fmt.Fprintf(&b, "Every file tracked at the commit was listed, vendored, generated and binary files left out, and the code split into %d shards of at most %d functions or %d lines. ", len(r.Shards), d.ShardFuncs, d.ShardLines)
+	if r.Inventory.Skipped["binary"]+r.Inventory.Skipped["vendored or built"]+r.Inventory.Skipped["generated"] > 0 {
+		// a scan made when the inventory still left files out
+		fmt.Fprintf(&b, "Every file tracked at the commit was listed, vendored, generated and binary files left out, and the code split into %d shards of at most %d functions or %d lines. ", len(r.Shards), d.ShardFuncs, d.ShardLines)
+	} else {
+		fmt.Fprintf(&b, "Every file tracked at the commit was listed and scanned, vendored, generated, data and binary files included (a binary read with reverse-engineering tools), and split into %d shards of at most %d functions or %d lines. ", len(r.Shards), d.ShardFuncs, d.ShardLines)
+	}
 	b.WriteString("Each shard was read in full and mapped: its entry points, trust boundaries, access checks, sinks and security configuration, and how its parts connect. Each was then hunted by following input from where it enters to where it can do harm. ")
 	b.WriteString("Every quote in this report was checked against the file at the commit. ")
 	fmt.Fprintf(&b, "A lead becomes a finding when %d %s that did not file it confirm it", d.Verifiers, plural(d.Verifiers, "reviewer", "reviewers"))
@@ -463,3 +471,19 @@ func short(sha string) string {
 }
 
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// kindCounts is how many files of each kind the inventory holds besides the code a person wrote, as "3 binary, 10 data".
+func kindCounts(inv Inventory) string {
+	n := map[string]int{}
+	for _, f := range inv.Files {
+		if f.Kind != "" {
+			n[f.Kind]++
+		}
+	}
+	var ks []string
+	for k, c := range n {
+		ks = append(ks, fmt.Sprintf("%d %s", c, k))
+	}
+	sort.Strings(ks)
+	return strings.Join(ks, ", ")
+}
