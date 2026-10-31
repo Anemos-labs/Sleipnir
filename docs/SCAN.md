@@ -62,7 +62,7 @@ depend on a model:
   than the filer wrote it; a reproducer that prints a marker without a check is refused.
 - **Stopping.** A scan is sized by its code and it ends (see [When a scan ends](#when-a-scan-ends)): a lead budget, fewer
   leads verified once the hunt is over, settled leads that take no more verdicts, and a goal judged from the ledger.
-- **Report.** `REPORT.md`, `report.html`, `findings.json`, `findings.sarif` (SARIF 2.1.0, the trace as a code flow and the CVSS score as `security-severity`, for code
+- **Report.** `REPORT.md`, `report.html`, `findings.json`, `findings.sarif` (SARIF 2.1.0, the trace as a code flow and the CVSS score as `security-severity`, or the band's representative value when a cap lowered the severity, for code
   scanning) and `map.json` (nodes and edges in the shape code graphs such as graphify use; an edge is `EXTRACTED` when a checked
   quote backs it, else `INFERRED`) are rewritten after every change, so the report can be read while the scan runs (see
   [The report](#the-report)).

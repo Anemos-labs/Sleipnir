@@ -17,7 +17,9 @@ they do not indicate whether a change has been released.
   rank by severity, then score. `findings.json` gains `cvss` and `score`
   (and `impact` is omitted when empty), `findings.csv` gains `cvss_score`
   and `cvss_vector` as its last columns, `findings.sarif` reports the score
-  as `security-severity` with `cvss` and `cvssScore` properties, and the
+  as `security-severity` (or the band's representative value when the
+  severity is capped below the score's band) with `cvss` and `cvssScore`
+  properties, and the
   report, `report.html`, issues and the Deep scan view show the score and
   the vector. Ledgers written before keep their impact-based severity. The
   tool's schema and the scan brief changed, so the stable prompt layer of a

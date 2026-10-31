@@ -44,18 +44,18 @@ func (l *Lead) Exploitability() string {
 }
 
 // Vector is the lead's CVSS v3.1 base vector: the filer's, or a confirming verifier's correction when that scores lower. It is
-// empty for a lead filed before leads carried vectors.
+// empty for a lead filed before leads carried vectors, even when a verdict supplies one, so such a lead keeps its impact rule.
 func (l *Lead) Vector() string {
 	v := l.CVSS
 	best, ok := CVSSScore(v)
 	if !ok {
-		v = ""
+		return ""
 	}
 	for _, vd := range l.latestVerdicts() {
 		if !vd.Confirm || vd.CVSS == "" {
 			continue
 		}
-		if s, good := CVSSScore(vd.CVSS); good && (v == "" || s < best) {
+		if s, good := CVSSScore(vd.CVSS); good && s < best {
 			v, best = vd.CVSS, s
 		}
 	}

@@ -410,6 +410,12 @@ func methodText(r *Run) string {
 	}
 	b.WriteString(proofNote(d) + ". ")
 	b.WriteString("Severity is computed from a CVSS v3.1 base vector the reviewers agree on: the score comes from the specification's formula and the severity from its rating band (critical from 9.0, high from 7.0, medium from 4.0), and it is low at most when nothing reaches the code or no practical exploit was shown. ")
+	for i := range r.Leads {
+		if _, ok := r.Leads[i].Score(); !ok {
+			b.WriteString("A lead recorded without a vector keeps the earlier rule: its impact, one level lower when only an insider reaches the code and one lower when exploiting it is difficult. ")
+			break
+		}
+	}
 	fmt.Fprintf(&b, "The scan verifies at most %d leads; after every shard was hunted, only a few more, and a lead below critical filed past that point is recorded as not verified.", r.LeadBudget())
 	return b.String()
 }

@@ -95,6 +95,10 @@ func TestAVerifierCorrectsTheVectorOnlyDownward(t *testing.T) {
 	if l.Vector() != admin {
 		t.Fatalf("a higher correction, or a rejecting verifier's, changes nothing: %s", l.Vector())
 	}
+	l = Lead{Impact: SevMedium, Reach: ReachExternal, Exploit: ExploitTrivial, Verdicts: []Verdict{{By: "a", Confirm: true, CVSS: crit}}}
+	if l.Vector() != "" || l.Severity() != SevMedium {
+		t.Fatalf("a lead filed without a vector keeps its impact rule: %q %s", l.Vector(), l.Severity())
+	}
 }
 
 func TestFindingsRankByScoreWithinASeverity(t *testing.T) {
