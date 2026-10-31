@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"github.com/anemos-labs/sleipnir/internal/skills"
 	"github.com/anemos-labs/sleipnir/internal/skills/builtin"
+	"github.com/anemos-labs/sleipnir/internal/skills/mdfile"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
@@ -182,9 +184,41 @@ func (e *extensions) skillsSegment() string {
 // can make its next session do anything, so writes ask (in every mode, bypass
 // included) and an unattended session refuses.
 var protectedConfigDirs = []string{
-	"Edit(./.sleipnir/**)", "Edit(./.claude/**)",
+	"Edit(./.sleipnir/**)", "Edit(./.claude/**)", "Edit(./.agents/skills/**)",
 	"Edit(./.git/hooks/**)", "Edit(./.git/config)",
-	"Edit(~/.sleipnir/**)", "Edit(~/.claude/**)",
+	"Edit(~/.sleipnir/**)", "Edit(~/.claude/**)", "Edit(~/.agents/skills/**)",
+}
+
+// linkedConfigDirs are Ask rules for where the extension directories really
+// are when they are links: ~/.claude/skills or ~/.agents/skills linked into a
+// dotfiles checkout, a project's .claude/skills linked to another directory of
+// the project. The loaders follow those links, so a write that names the
+// target directly would plant a skill, command or agent definition for the
+// next session as surely as a write through the link; protectedConfigDirs
+// name only the link. The project's directories count only when it is
+// trusted, since they are not read otherwise.
+func linkedConfigDirs(root, home string, trustProject bool) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, kind := range []string{"skills", "commands", "agents"} {
+		srcs, _ := mdfile.Sources(kind, mdfile.Layout{Root: root, Home: home, TrustProject: trustProject})
+		for _, src := range srcs {
+			if src.Scope == mdfile.ScopeExtra || src.Real == "" || filepath.Clean(src.Real) == filepath.Clean(src.Dir) {
+				continue
+			}
+			rule := "Edit(" + escapeGlobPath(filepath.ToSlash(src.Real)) + "/**)"
+			if !seen[rule] {
+				seen[rule] = true
+				out = append(out, rule)
+			}
+		}
+	}
+	return out
+}
+
+// escapeGlobPath makes a literal path safe to use as a permission glob.
+func escapeGlobPath(p string) string {
+	return strings.NewReplacer(`\`, `\\`, `*`, `\*`, `?`, `\?`, `[`, `\[`).Replace(p)
 }
 
 // Commands returns the custom slash commands discovered at start (nil-safe).

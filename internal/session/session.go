@@ -863,7 +863,7 @@ func (s *Session) buildPerm() error {
 			roles[swarm.MailmanRoleName] = perm.RoleProfile{Mode: perm.ModePlan}
 		}
 	}
-	ask := append(append([]string(nil), protectedConfigDirs...), s.cfg.Permissions.Ask...)
+	ask := append(append(append([]string(nil), protectedConfigDirs...), linkedConfigDirs(o.Root, o.Home, o.TrustProject)...), s.cfg.Permissions.Ask...)
 	after, upTo, err := s.managerAnswers()
 	if err != nil {
 		return fmt.Errorf("permissions: %w", err)

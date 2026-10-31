@@ -7,6 +7,17 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Skills are also read from `.agents/skills/` (the directory the Agent Skills
+  convention shares between Codex, opencode, Gemini CLI and others): in a
+  trusted project after `.claude/skills/`, and in the home directory after
+  `~/.claude/skills/`. Within each scope a skill of the same name in
+  `.sleipnir` or `.claude` wins; project skills still come before the
+  home directory's, as they always have. Writes to `.agents/skills/` ask, as writes to `.claude/` do, and
+  the project's trust fingerprint covers them, so a project trusted before
+  with an `.agents/skills/` directory asks to be trusted again. An extension
+  directory that is a link (`~/.claude/skills` into a dotfiles checkout, say)
+  is now guarded at its target as well, since the loaders follow the link.
+
 - Commits, code and pull requests a team leaves in a project no longer name
   its agents or board tasks. `task done` takes an optional `commit` message
   (the project's convention, Conventional Commits when it has none) that
