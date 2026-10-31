@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"bytes"
 	"encoding/json"
 	"sort"
 	"strings"
@@ -309,10 +310,10 @@ func newRedactor(secrets []string) *redactor {
 		}
 		seen[s] = true
 		list = append(list, s)
-		// As it reads inside a JSON string (structured content is masked as serialized text): quotes, backslashes, control
-		// characters and HTML-sensitive runes are escaped there.
-		if b, err := json.Marshal(s); err == nil {
-			if e := string(b[1 : len(b)-1]); e != s && !seen[e] {
+		// As it reads inside a JSON string (structured content is masked as serialized text): quotes, backslashes and control
+		// characters are escaped there, and HTML-sensitive runes are by Go's encoder but need not be by a server's.
+		for _, e := range jsonForms(s) {
+			if e != s && !seen[e] {
 				seen[e] = true
 				list = append(list, e)
 			}
@@ -334,6 +335,21 @@ func newRedactor(secrets []string) *redactor {
 		pairs = append(pairs, s, "***")
 	}
 	return &redactor{rep: strings.NewReplacer(pairs...)}
+}
+
+// jsonForms is s as it reads inside a JSON string: with <, > and & escaped, as encoding/json writes them, and as they are.
+func jsonForms(s string) []string {
+	var out []string
+	for _, html := range []bool{true, false} {
+		var b bytes.Buffer
+		enc := json.NewEncoder(&b)
+		enc.SetEscapeHTML(html)
+		if enc.Encode(s) == nil {
+			q := strings.TrimSuffix(b.String(), "\n")
+			out = append(out, q[1:len(q)-1])
+		}
+	}
+	return out
 }
 
 // inJSON reports whether a configured secret is in a JSON document, in its text or in a string it decodes to: a secret

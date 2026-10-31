@@ -733,13 +733,14 @@ func (b *Bridge) shape(tab, id, root, task, scope string, r perm.Request) (q wir
 	if strings.EqualFold(r.Tool, "bash") && r.Command == "" {
 		// A request built without its command (one a hook asks about, with the input it rewrote) shows the command it runs, read from
 		// the input: the summary would say a command runs without saying which.
-		var in struct {
-			Command string `json:"command"`
-		}
-		if json.Unmarshal(r.Input, &in) != nil || strings.TrimSpace(in.Command) == "" {
+		// It is read as the shell tool reads it (shell.parseArgs): the key "command" exactly, the last one when it is given twice,
+		// not a "Command" encoding/json would match into a struct field.
+		var in map[string]json.RawMessage
+		var command string
+		if json.Unmarshal(r.Input, &in) != nil || json.Unmarshal(in["command"], &command) != nil || strings.TrimSpace(command) == "" {
 			return wire.Question{}, "the command to run cannot be read"
 		}
-		cmd, cmdName, cmdLimit = in.Command, "command", MaxCommand
+		cmd, cmdName, cmdLimit = command, "command", MaxCommand
 	}
 	if full := webText(r); kind == "web" && full != "" {
 		cmd = full // the URL or the query whole: the summary is cut, and a path or a query can carry data to an allowed host

@@ -275,8 +275,9 @@ try {
   await browser.close();
 }
 
-// plain drops terminal controls from text the audited page chose (escape sequences, other C0/C1 controls), keeping tabs.
-const plain = (t) => String(t).replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "");
+// plain drops terminal controls from text the audited page chose (escape sequences, other C0/C1 controls), keeping tabs, and makes
+// its line breaks blanks: what the page chose stays on its own line of the report and cannot add lines that read as findings.
+const plain = (t) => String(t).replace(/[\n\u2028\u2029]/g, " ").replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "");
 
 let defects = 0;
 for (const r of report) for (const k of Object.keys(r.findings)) if (DEFECTS.has(k)) defects += r.findings[k].count;

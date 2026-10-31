@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -45,9 +46,14 @@ func procStart(pid int) int64 {
 
 // configureCmd puts a verifier command in a session of its own: pid == process
 // group id, so killing -pid reaches everything it started, and it has no
-// controlling terminal.
-func configureCmd(cmd *exec.Cmd) {
+// controlling terminal. The returned stop is called once the group is gone
+// (after killGroup): a SIGKILL a cancellation scheduled and has not sent yet is
+// then never sent, since the group id could by then be another program's.
+func configureCmd(cmd *exec.Cmd) (stop func()) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	var mu sync.Mutex
+	var timer *time.Timer
+	stopped := false
 	cmd.Cancel = func() error {
 		if cmd.Process == nil {
 			return nil
@@ -56,10 +62,31 @@ func configureCmd(cmd *exec.Cmd) {
 		// leave running. What has not stopped shortly after is killed.
 		pid := cmd.Process.Pid
 		err := syscall.Kill(-pid, syscall.SIGTERM)
-		time.AfterFunc(termGrace, func() { _ = syscall.Kill(-pid, syscall.SIGKILL) })
+		mu.Lock()
+		defer mu.Unlock()
+		if !stopped {
+			timer = time.AfterFunc(termGrace, func() {
+				mu.Lock()
+				defer mu.Unlock()
+				if !stopped {
+					_ = lateKill(-pid, syscall.SIGKILL)
+				}
+			})
+		}
 		return err
 	}
+	return func() {
+		mu.Lock()
+		defer mu.Unlock()
+		stopped = true
+		if timer != nil {
+			timer.Stop()
+		}
+	}
 }
+
+// lateKill sends the SIGKILL a cancellation schedules (a variable for the test that it is not sent once the group is gone).
+var lateKill = syscall.Kill
 
 // termGrace is how long a process group has between SIGTERM and SIGKILL.
 const termGrace = 2 * time.Second

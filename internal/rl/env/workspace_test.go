@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -329,6 +330,28 @@ func TestSubdirWorkspace(t *testing.T) {
 	task.Repo.Subdir = "does/not/exist"
 	if _, err := m.Prepare(ctxT(t), task, "s1"); err == nil || !IsInfra(err) {
 		t.Fatalf("missing subdir: %v", err)
+	}
+}
+
+// Setup runs in the tree and could put a link where repo.subdir was: the snapshot checks the subdirectory again before it becomes a
+// rollout's root, and refuses one that now leads out of the tree.
+func TestSubdirMadeALinkOutBySetupIsRefused(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("setup is a POSIX shell command")
+	}
+	r := newFixtureRepo(t)
+	r.write("svc/api/main.go", "package main\n")
+	c := r.commit("mono")
+	task := mathxTask(r, c)
+	task.Repo.Subdir = "svc/api"
+	outside := t.TempDir()
+	task.Setup = []string{fmt.Sprintf("cd ../.. && rm -rf svc/api && ln -s %s svc/api", outside)}
+	m := newManager(t)
+	if w, err := m.Prepare(ctxT(t), task, "s0"); err == nil || !IsInfra(err) || !strings.Contains(err.Error(), "leads outside the repository") {
+		if w != nil {
+			_ = w.Cleanup()
+		}
+		t.Fatalf("a subdir setup made a link out of the tree: %v", err)
 	}
 }
 

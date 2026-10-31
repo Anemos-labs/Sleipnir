@@ -1150,3 +1150,22 @@ func TestCallOnAFinishedTransportDoesNotWaitLongerThanTheCaller(t *testing.T) {
 		t.Errorf("waited %v", d)
 	}
 }
+
+// A configured secret in a structured log message is masked however the server escapes it: with < and > left as they are, or with
+// letters written as \u escapes.
+func TestStructuredLogMessagesMaskASecretHoweverItIsEscaped(t *testing.T) {
+	const secret = `ab"cd<ef>gh-0123456789`
+	got := make(chan LogMessage, 4)
+	_, p := connectPeer(t, toolsCaps, ClientOptions{redact: newRedactor([]string{secret}), OnLog: func(m LogMessage) { got <- m }}, StreamOptions{})
+	for _, data := range []string{`{"echo":"ab\"cd<ef>gh-0123456789"}`, `{"echo":"ab\"cd<ef>gh-0123456789"}`} {
+		p.send(`{"jsonrpc":"2.0","method":"notifications/message","params":{"level":"info","data":` + data + `}}`)
+		select {
+		case m := <-got:
+			if strings.Contains(m.Text, "0123456789") || !strings.Contains(m.Text, "echo") {
+				t.Errorf("%s came out as %q", data, m.Text)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatal("no log message")
+		}
+	}
+}

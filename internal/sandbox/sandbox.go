@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -412,7 +413,14 @@ func gitMounts(paths []string) []gitMount {
 			}
 		}
 	}
-	return out
+	// A path is mounted once: the engine refuses two mounts on one destination (an included file that is also a guard, or one
+	// included by two projects).
+	seen := map[string]bool{}
+	return slices.DeleteFunc(out, func(m gitMount) bool {
+		dup := seen[m.path]
+		seen[m.path] = true
+		return dup
+	})
 }
 
 // projectIncludes are the files a git configuration file includes (include.path, includeIf.<cond>.path, and theirs, a few
@@ -451,7 +459,7 @@ func projectIncludes(config string, paths []string) []string {
 			if !ok || (section != "include" && section != "includeif") || !strings.EqualFold(strings.TrimSpace(k), "path") {
 				continue
 			}
-			v = strings.Trim(strings.TrimSpace(v), `"`)
+			v = gitConfigValue(strings.TrimLeft(v, " \t"))
 			if v == "" || strings.HasPrefix(v, "~") {
 				continue // the home directory is not mounted
 			}
@@ -461,8 +469,10 @@ func projectIncludes(config string, paths []string) []string {
 			v = filepath.Clean(v)
 			for _, p := range paths {
 				if v == p || strings.HasPrefix(v, p+string(filepath.Separator)) {
-					out = append(out, v)
-					walk(v, depth+1)
+					if !seen[v] {
+						out = append(out, v)
+						walk(v, depth+1)
+					}
 					break
 				}
 			}
@@ -470,6 +480,44 @@ func projectIncludes(config string, paths []string) []string {
 	}
 	walk(config, 0)
 	return out
+}
+
+// gitConfigValue is the value of a git configuration line as git reads it: double quotes are taken off and keep what is between
+// them, a backslash escapes the next character, and outside quotes a # or ; starts a comment and blanks at the end are dropped.
+func gitConfigValue(raw string) string {
+	var b strings.Builder
+	quoted, pending := false, ""
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		switch {
+		case c == '\\' && i+1 < len(raw):
+			i++
+			b.WriteString(pending)
+			pending = ""
+			switch raw[i] {
+			case 'n':
+				b.WriteByte('\n')
+			case 't':
+				b.WriteByte('\t')
+			case 'b':
+				b.WriteByte('\b')
+			default:
+				b.WriteByte(raw[i])
+			}
+		case c == '"':
+			b.WriteString(pending)
+			pending, quoted = "", !quoted
+		case !quoted && (c == '#' || c == ';'):
+			return b.String()
+		case !quoted && (c == ' ' || c == '\t'):
+			pending += string(c)
+		default:
+			b.WriteString(pending)
+			pending = ""
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
 }
 
 // readSmallRegular reads a regular file of at most max bytes.

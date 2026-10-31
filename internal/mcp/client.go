@@ -459,13 +459,29 @@ func (c *Client) logMessage(params json.RawMessage) {
 	if json.Unmarshal(params, &p) != nil {
 		return
 	}
-	text := string(p.Data)
+	text := canonicalJSON(p.Data)
 	var s string
 	if json.Unmarshal(p.Data, &s) == nil {
 		text = s
 	}
 	m := LogMessage{Level: cleanMeta(p.Level, 16), Logger: cleanMeta(p.Logger, 64), Text: c.clean(text)}
 	c.enqueue(func() { c.opts.OnLog(m) })
+}
+
+// canonicalJSON is structured log data written again by encoding/json: a server may escape any character of a string as it
+// likes (\u0074 for t), and the redactor knows a secret as encoding/json writes it. Data that does not decode is kept as sent.
+func canonicalJSON(raw json.RawMessage) string {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var v any
+	if dec.Decode(&v) != nil {
+		return string(raw)
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return string(raw)
+	}
+	return string(b)
 }
 
 // enqueue schedules a callback on the dispatcher. When the queue is full the

@@ -287,9 +287,10 @@ type Session struct {
 	// team is the team the swarm was built with (Team).
 	team []TeamSlot
 
-	lastPerm         string // the permission state last written to the log (keepPermissions)
-	restoredMode     string // what a resumed session got back (restorePermissions)
-	unattendedBypass bool   // bypass was chosen because nobody can answer (Options.Unattended)
+	lastPerm         string     // the permission state last written to the log (keepPermissions)
+	permMu           sync.Mutex // held while keepPermissions reads the permission state and writes it to the log
+	restoredMode     string     // what a resumed session got back (restorePermissions)
+	unattendedBypass bool       // bypass was chosen because nobody can answer (Options.Unattended)
 	restoredRules    int
 	// modelRef is the provider/model the session runs on (empty when the provider was given as a value).
 	modelRef string

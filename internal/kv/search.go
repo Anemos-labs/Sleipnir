@@ -56,17 +56,20 @@ const maxQueryTerms = 64
 func queryTerms(query string) []string {
 	var all, content []string
 	seen := map[string]bool{}
+	// The bound is on the words that are ranked: stopwords a query holds do not use it up while content words are left.
 	for _, t := range strings.Fields(strings.ToLower(query)) {
 		if seen[t] {
 			continue
 		}
-		if len(all) == maxQueryTerms {
+		if len(content) == maxQueryTerms {
 			break // a query is a few words; past this many, more terms only multiply the work over every turn
 		}
 		seen[t] = true
-		all = append(all, t)
-		if !stopwords[t] {
+		switch {
+		case !stopwords[t]:
 			content = append(content, t)
+		case len(all) < maxQueryTerms:
+			all = append(all, t)
 		}
 	}
 	if len(content) > 0 {

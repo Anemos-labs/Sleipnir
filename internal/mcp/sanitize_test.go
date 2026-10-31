@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -267,5 +268,31 @@ func TestURLQueryValuesAreSecrets(t *testing.T) {
 		if got := r.apply(echoed); strings.Contains(got, "value-0123456789") {
 			t.Errorf("%q: %s", echoed, got)
 		}
+	}
+}
+
+// A secret with HTML-sensitive runes and a quote is masked in JSON written without HTML escaping too.
+func TestRedactorMasksJSONWithoutHTMLEscapes(t *testing.T) {
+	secret := `tok"en<with>&more`
+	r := newRedactor([]string{secret})
+	if got := r.apply(`{"echo":"tok\"en<with>&more"}`); strings.Contains(got, "tok") {
+		t.Errorf("the secret survived: %s", got)
+	}
+}
+
+// A quoted argument that is cut keeps its closing quote within the limit, and is cut between escapes: the next argument of the
+// approval prompt cannot read as part of it.
+func TestQuotedWordKeepsItsClosingQuote(t *testing.T) {
+	for _, w := range []string{strings.Repeat("a", 300), strings.Repeat("\x1b", 300), strings.Repeat("é\"", 200), "short one"} {
+		got := quotedWord(w, 160)
+		if utf8.RuneCountInString(got) > 160 {
+			t.Errorf("%d runes, over 160: %q", utf8.RuneCountInString(got), got)
+		}
+		if _, err := strconv.Unquote(got); err != nil {
+			t.Errorf("%q is not one quoted word: %v", got, err)
+		}
+	}
+	if got := quotedWord("short one", 160); got != `"short one"` {
+		t.Errorf("an argument that fits is %q", got)
 	}
 }

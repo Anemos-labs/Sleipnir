@@ -274,7 +274,7 @@ func TestSymlinks(t *testing.T) {
 	if strings.Contains(text, "SECRET-CANARY") {
 		t.Errorf("a warning leaks file content:\n%s", text)
 	}
-	if !strings.Contains(text, "not a Markdown file") {
+	if !strings.Contains(text, `links to ".env", which is not a Markdown file`) {
 		t.Errorf("a link to a project file that is not Markdown was not reported:\n%s", text)
 	}
 	if c := strings.Count(text, "outside its allowed location"); c != 2 {

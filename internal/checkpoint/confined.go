@@ -61,6 +61,9 @@ func (c *confined) mkdirParents() error {
 	return nil
 }
 
+// chmodLooked runs between chmod's look at the path and its change of the mode: a test swaps the path there.
+var chmodLooked = func(rel string) {}
+
 // chmod changes the path's mode, refusing a symlink (as chmodNoFollow). The set-ID bits are kept only on what is a directory
 // now: what the path was when the rewind was planned may have changed since.
 func (c *confined) chmod(mode fs.FileMode) error {
@@ -80,6 +83,7 @@ func (c *confined) chmod(mode fs.FileMode) error {
 	if !fi.IsDir() {
 		mode = restorableMode(mode)
 	}
+	chmodLooked(c.rel)
 	if mode == restorableMode(mode) {
 		return c.root.Chmod(c.rel, mode)
 	}

@@ -109,7 +109,8 @@ func TestAnUnmatchedBacktickRunIsLiteral(t *testing.T) {
 		t.Errorf("rendered %s", out)
 	}
 	start := time.Now()
-	renderMarkdown(strings.Repeat("`", 200000)+"x", mdEnv{})
+	// after text, so the run is inline: a line that starts with backticks is a fence, which another parser reads
+	renderMarkdown("prefix "+strings.Repeat("`", 200000)+"x", mdEnv{})
 	if d := time.Since(start); d > 5*time.Second {
 		t.Errorf("a long backtick run took %v", d)
 	}

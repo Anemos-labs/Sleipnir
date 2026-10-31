@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // Describe renders the entry for an approval prompt: what starting or
@@ -74,14 +75,39 @@ func shownWord(w string, max int) string {
 		}
 	}
 	if !plain {
-		w = strconv.Quote(w)
+		return quotedWord(w, max)
 	}
 	w, _ = truncateRunes(w, max)
 	return w
 }
 
 // quotedWord is an argument for an approval prompt: always quoted, every non-printing rune escaped, cut to max runes with a marker.
+// A word that is cut keeps its closing quote, and is cut between escapes, never inside one: the next word must not read as part of it.
 func quotedWord(w string, max int) string {
-	q, _ := truncateRunes(strconv.Quote(w), max)
-	return q
+	q := strconv.Quote(w)
+	if max <= 0 || utf8.RuneCountInString(q) <= max {
+		return q
+	}
+	room := max - 2 - utf8.RuneCountInString(truncMarker) // the two quotes and the marker
+	if room < 1 {
+		q, _ = truncateRunes(q, max)
+		return q
+	}
+	var b strings.Builder
+	used := 0
+	for i, r := range w {
+		size := utf8.RuneLen(r)
+		if r == utf8.RuneError {
+			_, size = utf8.DecodeRuneInString(w[i:])
+		}
+		piece := strconv.Quote(w[i : i+size])
+		piece = piece[1 : len(piece)-1]
+		n := utf8.RuneCountInString(piece)
+		if used+n > room {
+			break
+		}
+		b.WriteString(piece)
+		used += n
+	}
+	return `"` + strings.TrimRight(b.String(), " ") + truncMarker + `"`
 }
