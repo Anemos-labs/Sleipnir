@@ -17,7 +17,7 @@ const (
 )
 
 // WriteReport writes the scan's report files from its ledger as it is now: the Markdown report, the findings as JSON and as
-// SARIF, the map, the findings as CSV and the report as a page that prints to PDF. It is called after every change, so the
+// SARIF, the map, the findings as CSV, the report as a page that prints to PDF, and the reproductions (WriteProofs). It is called after every change, so the
 // report can be read while the scan runs.
 func WriteReport(root string, r *Run) error {
 	dir := RunDir(root, r.Slug)
@@ -38,7 +38,7 @@ func WriteReport(root string, r *Run) error {
 			return err
 		}
 	}
-	return nil
+	return WriteProofs(root, r)
 }
 
 // Finding is a lead as the report gives it. A report says what was found and how it was checked, never which agent did what:
@@ -441,8 +441,10 @@ func writeFinding(b *strings.Builder, f Finding, d Depth) {
 	if f.Fix != "" {
 		w("**Remediation.** %s\n\n", strings.TrimSpace(f.Fix))
 	}
-	for _, p := range f.Proofs {
+	for i, p := range f.Proofs {
 		if p.Outcome == ProofReproduced && p.Independent {
+			d := ProofDir(f.ID, proofNumber(&f, i))
+			w("**Proof.** [%s](%s/%s)\n\n", d, d, ProofReadme)
 			w("<details><summary>Reproducer and its output</summary>\n\n")
 			writeFence(b, "", p.Script)
 			writeFence(b, "", p.Output)
