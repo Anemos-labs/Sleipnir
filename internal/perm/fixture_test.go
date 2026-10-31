@@ -302,3 +302,76 @@ func TestGitReadsAskWhenTheRepositoryNamesAHelper(t *testing.T) {
 		t.Errorf("an oversized configuration: git status was allowed: %+v", d)
 	}
 }
+
+// git status looks into checked-out submodules with each one's own configuration, and a value continued with a backslash runs on
+// past a line that looks like a section header.
+func TestGitReadsAskWhenASubmoduleOrAContinuedValueNamesAHelper(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeDefault})
+	write := func(p, s string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(s), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	status := func() Decision { return e.Check(bg, f.request(rq{tool: "Bash", cmd: "git status", cwd: "{root}"})) }
+	write(filepath.Join(f.root, ".git", "config"), "[core]\n\tbare = false\n[user]\n\tname = a \\\n[x]\n\tfsmonitor = ./hook.sh\n")
+	if d := status(); !d.Allow {
+		t.Errorf("a continued value in [user]: %+v", d)
+	}
+	write(filepath.Join(f.root, ".git", "config"), "[core]\n\tbare = false\n\tpager = less \\\n[x]\n\tfsmonitor = ./hook.sh\n")
+	if d := status(); d.Allow {
+		t.Errorf("fsmonitor in [core] after a continued value: git status was allowed: %+v", d)
+	}
+	// git ends a comment at the newline, a backslash at its end included
+	write(filepath.Join(f.root, ".git", "config"), "[user]\n\tname = a\n# note \\\n[core]\n\tfsmonitor = ./hook.sh\n")
+	if d := status(); d.Allow {
+		t.Errorf("fsmonitor after a comment that ends in a backslash: git status was allowed: %+v", d)
+	}
+	write(filepath.Join(f.root, ".git", "config"), "[core] # c \\\n\tfsmonitor = ./hook.sh\n")
+	if d := status(); d.Allow {
+		t.Errorf("fsmonitor after a header whose comment ends in a backslash: git status was allowed: %+v", d)
+	}
+	write(filepath.Join(f.root, ".git", "config"), "[core]\n\tbare = false\n")
+	// a submodule whose repository lives in .git/modules
+	mod := filepath.Join(f.root, ".git", "modules", "lib")
+	write(filepath.Join(mod, "HEAD"), "ref: refs/heads/main\n")
+	write(filepath.Join(mod, "config"), "[core]\n\tbare = false\n")
+	write(filepath.Join(f.root, ".gitmodules"), "[submodule \"lib\"]\n\tpath = lib\n\turl = ./lib\n")
+	write(filepath.Join(f.root, "lib", ".git"), "gitdir: ../.git/modules/lib\n")
+	if d := status(); !d.Allow {
+		t.Errorf("a plain submodule: %+v", d)
+	}
+	write(filepath.Join(mod, "config"), "[core]\n\tfsmonitor = ./hook.sh\n")
+	if d := status(); d.Allow {
+		t.Errorf("fsmonitor in a submodule's configuration: git status was allowed: %+v", d)
+	}
+	// the same repository found only under .git/modules, and a submodule with its own .git directory
+	if err := os.Remove(filepath.Join(f.root, ".gitmodules")); err != nil {
+		t.Fatal(err)
+	}
+	if d := status(); d.Allow {
+		t.Errorf("fsmonitor in .git/modules: git status was allowed: %+v", d)
+	}
+	// a nested submodule's repository, under its parent's own modules/
+	inner := filepath.Join(mod, "modules", "inner")
+	write(filepath.Join(inner, "HEAD"), "ref: refs/heads/main\n")
+	write(filepath.Join(inner, "config"), "[core]\n\tfsmonitor = ./hook.sh\n")
+	write(filepath.Join(mod, "config"), "[core]\n\tbare = false\n")
+	if d := status(); d.Allow {
+		t.Errorf("fsmonitor in a nested submodule's repository: git status was allowed: %+v", d)
+	}
+	if err := os.RemoveAll(inner); err != nil {
+		t.Fatal(err)
+	}
+	write(filepath.Join(mod, "config"), "[core]\n\tbare = false\n")
+	write(filepath.Join(f.root, ".gitmodules"), "[submodule \"vendor\"]\n\tpath = vendor/x\n")
+	write(filepath.Join(f.root, "vendor", "x", ".git", "HEAD"), "ref: refs/heads/main\n")
+	write(filepath.Join(f.root, "vendor", "x", ".git", "config"), "[diff \"x\"]\n\ttextconv = ./conv\n")
+	if d := status(); d.Allow {
+		t.Errorf("textconv in an embedded submodule repository: git status was allowed: %+v", d)
+	}
+}

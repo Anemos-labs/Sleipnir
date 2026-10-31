@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestPathGlobTreeOverlap(t *testing.T) {
@@ -347,5 +348,21 @@ func TestProtect(t *testing.T) {
 	rs3 := newResolver(f.home, "/", nil)
 	if got := rs3.protect(w2).tier; got != tierHard {
 		t.Errorf("a workspace of / must not open /usr/bin: tier %d", got)
+	}
+}
+
+// A pipe where a check expects a directory is not waited on: the decision comes back.
+func TestAGlobThroughAPipeDoesNotHoldTheCheck(t *testing.T) {
+	f := newFixture(t)
+	if err := mkfifo(filepath.Join(f.root, "pipe")); err != nil {
+		t.Skip("no FIFOs here:", err)
+	}
+	e := f.engine(t, Config{Mode: ModeDefault})
+	done := make(chan Decision, 1)
+	go func() { done <- e.Check(bg, f.request(rq{tool: "Bash", cmd: "ls pipe/*", cwd: "{root}"})) }()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the check waited on a FIFO")
 	}
 }

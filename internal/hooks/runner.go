@@ -106,12 +106,18 @@ type Runner struct {
 	KillGrace      time.Duration
 	PipeGrace      time.Duration
 
+	// AskRules, when set, are the ask rules of the permission engine the PermissionRequest hooks answer for (perm.Engine.Rules):
+	// a hook's "if" covers a request only where those rules would not ask, and Home is the home directory they are read with.
+	AskRules func() []string
+	Home     string
+
 	semOnce   sync.Once
 	sem       chan struct{}
 	mu        sync.Mutex
 	approveMu sync.Mutex
 	approved  map[string]bool
 	engines   map[string]*perm.Engine
+	covers    map[string]*perm.Engine // conditionCovers' engines
 }
 
 // maxStdout uses a positive configured stdout limit or the default capture limit.
@@ -214,6 +220,14 @@ func (r *Runner) timeoutFor(h Hook) time.Duration {
 	return min(t, limit)
 }
 
+// seenIdx is seen[key], or -1 when the key is not there.
+func seenIdx(seen map[string]int, key string) int {
+	if i, ok := seen[key]; ok {
+		return i
+	}
+	return -1
+}
+
 // failClosed prefers an explicit hook-level setting over the runner-wide failure policy.
 func (r *Runner) failClosed(h Hook) bool {
 	if h.FailClosed != nil {
@@ -276,7 +290,7 @@ func (r *Runner) Run(ctx context.Context, ev Event) (Result, error) {
 		slots     []slot
 		run       []Hook
 		untrusted []Hook
-		seen      = map[string]bool{}
+		seen      = map[string]int{} // behaviorKey -> index into run
 	)
 	for _, h := range matched {
 		s := slot{hook: h, idx: -1}
@@ -289,13 +303,19 @@ func (r *Runner) Run(ctx context.Context, ev Event) (Result, error) {
 		case h.Type == TypeHTTP && !r.AllowHTTP:
 			s.skipped = "not run: http hooks are disabled"
 			res.Errors = append(res.Errors, HookError{Hook: h.String(), Message: "http hooks are disabled (Runner.AllowHTTP is false); the hook was not run"})
-		case seen[h.behaviorKey()]:
+		case seenIdx(seen, h.behaviorKey()) >= 0:
 			// The same command configured twice (in two files, or under two matchers
 			// that both match) runs once per event. Hooks that were not allowed to run
-			// never reach here, so an untrusted copy cannot shadow a trusted one.
+			// never reach here, so an untrusted copy cannot shadow a trusted one. The
+			// copy that runs takes the stricter failure policy of the two: a copy that
+			// fails open must not drop a guard configured to fail closed.
 			s.skipped = "duplicate of a hook that runs for this event"
+			if i := seen[h.behaviorKey()]; r.failClosed(h) && !r.failClosed(run[i]) {
+				closed := true
+				run[i].FailClosed = &closed
+			}
 		default:
-			seen[h.behaviorKey()] = true
+			seen[h.behaviorKey()] = len(run)
 			s.idx = len(run)
 			run = append(run, h)
 		}
@@ -337,6 +357,17 @@ func (r *Runner) Run(ctx context.Context, ev Event) (Result, error) {
 		wg.Wait()
 	}
 
+	if event == PermissionRequest {
+		// A condition selects a hook when it matches any part of the request (one command of a compound line). Its "allow" speaks
+		// only for what the condition covers: when the rest of the request needs approval of its own, the answer is no opinion.
+		for i := range results {
+			if results[i].decision == Allow && results[i].hook.If != "" && !r.conditionCovers(ctx, results[i].hook, ev) {
+				results[i].decision, results[i].reason = "", ""
+				results[i].errs = append(results[i].errs, HookError{Hook: results[i].hook.String(),
+					Message: "its allow was not used: the \"if\" condition covers only part of the request"})
+			}
+		}
+	}
 	f := folder{event: event, maxContext: r.maxContext()}
 	for _, s := range slots {
 		if s.idx < 0 {
@@ -551,6 +582,47 @@ func (r *Runner) conditionHolds(ctx context.Context, h Hook, ev Event) bool {
 	return !d.Allow && strings.HasPrefix(d.Reason, "denied by rule ")
 }
 
+// conditionCovers reports whether the hook's condition, as an allow rule of a default-mode engine, lets the whole request through:
+// every part of it is either what the condition names or needs no approval.
+// The session's ask rules hold in that engine too: a part of the request the person asked to be asked about is not let through by a
+// condition that names another part.
+func (r *Runner) conditionCovers(ctx context.Context, h Hook, ev Event) bool {
+	var ask []string
+	if r.AskRules != nil {
+		ask = r.AskRules()
+	}
+	key := h.If + "\x00" + strings.Join(ask, "\x00")
+	eng, err := r.engine(&r.covers, key, func() (*perm.Engine, error) {
+		return perm.NewEngine(perm.Config{Mode: perm.ModeDefault, Root: r.Dir, Home: r.Home, Allow: []string{h.If}, Ask: ask})
+	})
+	if err != nil {
+		return false
+	}
+	return eng.Check(ctx, r.condRequest(ev)).Allow
+}
+
+// engine is a cached engine of m for cond, built by mk on first use; a build that failed stays failed.
+func (r *Runner) engine(m *map[string]*perm.Engine, cond string, mk func() (*perm.Engine, error)) (*perm.Engine, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if e, ok := (*m)[cond]; ok {
+		if e == nil {
+			return nil, fmt.Errorf("the condition %q cannot be evaluated", cond)
+		}
+		return e, nil
+	}
+	if *m == nil {
+		*m = map[string]*perm.Engine{}
+	}
+	e, err := mk()
+	if err != nil {
+		(*m)[cond] = nil
+		return nil, err
+	}
+	(*m)[cond] = e
+	return e, nil
+}
+
 // condEngine caches permission engines for hook conditions under lock, including failed parses,
 // using the condition as a deny rule for matching.
 func (r *Runner) condEngine(cond string) (*perm.Engine, error) {
@@ -647,6 +719,12 @@ func (r *Runner) Prompter(next perm.Prompter) perm.Prompter {
 		})
 		if err == nil {
 			switch {
+			case res.Stop:
+				reason := res.StopReason
+				if reason == "" {
+					reason = "no reason given"
+				}
+				return perm.Decision{Allow: false, Reason: "stopped by a hook: " + reason}
 			case res.Blocked || res.Decision == Deny:
 				reason := res.Reason
 				if reason == "" {
