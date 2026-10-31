@@ -324,6 +324,11 @@ func (l *loader) file(src mdfile.Source, path string, prefix []string, base stri
 		return []Warning{mdfile.Skipf(display, name, "too many commands (the limit is %d)", MaxCommands)}
 	}
 
+	// A definition that is a link must lead to a Markdown file: its text becomes a prompt, and a link to another file of the
+	// project (an .env, a key) would hand that file to the model without the read check a tool's read goes through.
+	if real, err := filepath.EvalSymlinks(path); err == nil && !strings.EqualFold(filepath.Ext(real), ".md") {
+		return []Warning{mdfile.Skipf(display, name, "the file links to %s, which is not a Markdown file; skipped", filepath.Base(real))}
+	}
 	parsed, err := mdfile.ReadDoc(path, mdfile.ReadOpts{MaxBytes: l.o.MaxFileBytes, Contain: src.Contain})
 	switch {
 	case errors.Is(err, mdfile.ErrEscapes):

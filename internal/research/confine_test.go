@@ -102,3 +102,15 @@ func TestUnclosedOpenersRenderQuickly(t *testing.T) {
 		}
 	}
 }
+
+// A backtick run with no closing run of its length is literal text, and a long one renders in one pass.
+func TestAnUnmatchedBacktickRunIsLiteral(t *testing.T) {
+	if out, _ := renderMarkdown("``x and `y`", mdEnv{}); !strings.Contains(out, "``x") || !strings.Contains(out, "<code>y</code>") {
+		t.Errorf("rendered %s", out)
+	}
+	start := time.Now()
+	renderMarkdown(strings.Repeat("`", 200000)+"x", mdEnv{})
+	if d := time.Since(start); d > 5*time.Second {
+		t.Errorf("a long backtick run took %v", d)
+	}
+}

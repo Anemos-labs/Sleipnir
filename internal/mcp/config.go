@@ -958,7 +958,12 @@ func redactURL(raw string) string {
 		out += "/..."
 	}
 	for i := len(refs) - 1; i >= 0; i-- { // last first, so tmpl1 is not taken for the start of tmpl10
-		out = strings.ReplaceAll(out, fmt.Sprintf("sleipnirtmpl%d", i), refs[i])
+		// Only the variable's name comes back: a default (${HOST:-key@host/path}) may hold the very text the redaction hides.
+		ref := refs[i]
+		if k := strings.IndexAny(ref[2:len(ref)-1], ":-"); k >= 0 {
+			ref = ref[:2+k] + "}"
+		}
+		out = strings.ReplaceAll(out, fmt.Sprintf("sleipnirtmpl%d", i), ref)
 	}
 	return out
 }
@@ -1060,6 +1065,15 @@ func (c ServerConfig) secrets() []string {
 		if u, err := url.Parse(c.URL); err == nil {
 			if u.RawQuery != "" {
 				out = append(out, u.RawQuery)
+				// each value too, as written and decoded: a server that echoes one parameter echoes it alone
+				for _, part := range strings.Split(u.RawQuery, "&") {
+					if _, v, ok := strings.Cut(part, "="); ok && v != "" {
+						out = append(out, v)
+						if d, err := url.QueryUnescape(v); err == nil && d != v {
+							out = append(out, d)
+						}
+					}
+				}
 			}
 			if u.User != nil {
 				if p, ok := u.User.Password(); ok {

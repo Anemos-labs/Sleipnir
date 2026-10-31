@@ -28,6 +28,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -521,7 +522,7 @@ func WriteProjectNotes(path string, notes []string) error {
 }
 
 // ignoreBeside makes git ignore the notes file at p with a .gitignore in its directory: created when missing, and given the
-// file's name when it does not list it yet. The file's name is matched exactly (a line of its own). A .gitignore the tool
+// file's name when it does not ignore it yet (the last line whose pattern matches the name decides, as in git). A .gitignore the tool
 // creates lists itself too, so the directory leaves no untracked file behind: a run with --commit needs a clean checkout, and
 // a resumed one was refused for it.
 func ignoreBeside(p string) error {
@@ -539,13 +540,17 @@ func ignoreBeside(p string) error {
 	}
 	// The last line about the name decides, as in git: a later "!name" undoes an earlier "name", and the name is then
 	// listed again at the end.
+	// A pattern counts as well as the name itself: "*.md" ignores it, and a later "!*.md" includes it again.
 	ignored := false
 	for _, l := range strings.Split(string(b), "\n") {
-		switch strings.TrimSpace(l) {
-		case name, "/" + name:
-			ignored = true
-		case "!" + name, "!/" + name:
-			ignored = false
+		l = strings.TrimSpace(l)
+		if l == "" || l[0] == '#' {
+			continue
+		}
+		neg := strings.HasPrefix(l, "!")
+		pat := strings.TrimPrefix(strings.TrimPrefix(l, "!"), "/")
+		if ok, _ := path.Match(pat, name); ok || pat == name {
+			ignored = !neg
 		}
 	}
 	if ignored {

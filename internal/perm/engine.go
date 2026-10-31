@@ -610,6 +610,29 @@ func (e *Engine) Rules(a Action) []string {
 	return out
 }
 
+// Added returns the rules of one action added while the session ran (AddRule), as text in the order they were added: what a
+// resumed session must get back, the restrictions with the grants.
+func (e *Engine) Added(a Action) []string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	var src []*crule
+	switch a {
+	case Ask:
+		src = e.ask
+	case Deny:
+		src = e.deny
+	default:
+		return append([]string(nil), e.granted...)
+	}
+	var out []string
+	for _, c := range src {
+		if c.runtime {
+			out = append(out, c.Rule.String())
+		}
+	}
+	return out
+}
+
 // withTests is the allow list and the build and test rules in one new slice.
 func withTests(allow, tests []*crule) []*crule {
 	return append(append(make([]*crule, 0, len(allow)+len(tests)), allow...), tests...)

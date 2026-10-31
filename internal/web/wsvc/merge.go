@@ -139,8 +139,8 @@ func blobText(sess *session.Session, h string) string {
 	if h == "" || sess.Blobs == nil {
 		return ""
 	}
-	b, err := sess.Blobs.Get(core.Hash(h))
-	if err != nil || len(b) > 1<<20 {
+	b, err := sess.Blobs.GetMax(core.Hash(h), 1<<20) // an output over the limit is not shown: it is not read either
+	if err != nil {
 		return ""
 	}
 	return string(b)

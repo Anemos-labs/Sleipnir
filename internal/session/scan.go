@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/gitx"
@@ -147,6 +148,9 @@ func (s *Session) runInSandbox(ctx context.Context, dir string, argv []string, t
 	args := append(append([]string(nil), wrap[1:]...), argv...)
 	cmd := exec.CommandContext(ctx, wrap[0], args...)
 	cmd.Dir = dir
+	// The helper stops the proof inside the container on SIGTERM; SIGKILL (the default) would leave it running there. WaitDelay
+	// kills the helper if it has not finished by then.
+	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
 	cmd.WaitDelay = 5 * time.Second
 	var w headTail
 	cmd.Stdout, cmd.Stderr = &w, &w

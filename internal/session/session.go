@@ -106,7 +106,7 @@ type Options struct {
 	// AskTimeout is how long a question to the person waits for its answer before it is refused (perm.Config.AskTimeout); zero waits.
 	AskTimeout time.Duration
 	// ManagerAnswersAfter, when positive, overrides permissions.manager_answers_after: in a team, how long a worker's question waits
-	// for the person before the manager answers it for them (perm.Config.Fallback). ManagerAnswersUpTo, when set, overrides
+	// for the person before the manager answers it for them (perm.Config.Fallback). Negative is never, whatever the configuration says. ManagerAnswersUpTo, when set, overrides
 	// permissions.manager_answers_up_to: the most dangerous kind of question it may answer.
 	ManagerAnswersAfter time.Duration
 	ManagerAnswersUpTo  perm.Danger

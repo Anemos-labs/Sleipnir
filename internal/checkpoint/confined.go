@@ -80,7 +80,20 @@ func (c *confined) chmod(mode fs.FileMode) error {
 	if !fi.IsDir() {
 		mode = restorableMode(mode)
 	}
-	return c.root.Chmod(c.rel, mode)
+	if mode == restorableMode(mode) {
+		return c.root.Chmod(c.rel, mode)
+	}
+	// Set-ID bits go only on the directory that was looked at: change the mode through a descriptor whose own type is checked, so
+	// a file swapped in for the directory after the Lstat does not get them.
+	f, err := c.root.OpenFile(c.rel, openReadFlags, 0)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if dfi, err := f.Stat(); err != nil || !dfi.IsDir() || !os.SameFile(fi, dfi) {
+		return errors.New("the path changed while it was restored")
+	}
+	return f.Chmod(mode)
 }
 
 // mkdirAll creates the path as a directory, with any missing parents.

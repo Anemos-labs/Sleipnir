@@ -111,8 +111,9 @@ func Host(u *url.URL) string {
 // pass for a name under an allowed domain while the client connects to the address.
 func HostChecked(u *url.URL) (string, bool) {
 	h := strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
-	if net.ParseIP(h) != nil {
-		return h, true
+	if ip := net.ParseIP(h); ip != nil {
+		// "0:0::1", "::ffff:127.0.0.1", "::0001": one address has many spellings, and a rule sees the one it is written in.
+		return ip.String(), true
 	}
 	a, ok := ASCIIName(h)
 	if ip := inetAton(a); ip != nil {

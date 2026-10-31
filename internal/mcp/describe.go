@@ -28,14 +28,17 @@ func (c ServerConfig) Describe() string {
 	}
 	if typ == TypeStdio {
 		b.WriteString("runs a local program: ")
-		cmd := []string{oneLine(c.Command, argRunes)}
+		// Each word is quoted as Go quotes it, which shows a newline, a tab, a control or an invisible character as an escape
+		// instead of folding or dropping it: the words read are the words run. A cut is marked.
+		cmd := []string{shownWord(c.Command, argRunes)}
 		for i, a := range c.Args {
 			if i == maxArgs {
 				break
 			}
-			cmd = append(cmd, strconv.Quote(oneLine(a, argRunes)))
+			cmd = append(cmd, quotedWord(a, argRunes))
 		}
-		b.WriteString(oneLine(strings.Join(cmd, " "), lineRunes))
+		line, _ := truncateRunes(strings.Join(cmd, " "), lineRunes)
+		b.WriteString(line)
 		if len(c.Args) > maxArgs {
 			fmt.Fprintf(&b, " (+%d more arguments)", len(c.Args)-maxArgs)
 		}
@@ -58,4 +61,27 @@ func (c ServerConfig) Describe() string {
 		b.WriteString("; reads your environment: $" + oneLine(strings.Join(refs, ", $"), argRunes))
 	}
 	return b.String()
+}
+
+// shownWord is a command word for an approval prompt: bare when it is plain (letters, digits and a few path characters), else
+// quoted with every non-printing rune escaped; cut to max runes with a marker.
+func shownWord(w string, max int) string {
+	plain := w != ""
+	for _, r := range w {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("-_./=:@+,", r)) {
+			plain = false
+			break
+		}
+	}
+	if !plain {
+		w = strconv.Quote(w)
+	}
+	w, _ = truncateRunes(w, max)
+	return w
+}
+
+// quotedWord is an argument for an approval prompt: always quoted, every non-printing rune escaped, cut to max runes with a marker.
+func quotedWord(w string, max int) string {
+	q, _ := truncateRunes(strconv.Quote(w), max)
+	return q
 }

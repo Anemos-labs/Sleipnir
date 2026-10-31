@@ -94,7 +94,7 @@ type chatFlags struct {
 	autoDocs   *bool
 	// managerApproves is --manager-approves: nil when the flag was not given.
 	managerApproves *bool
-	// managerAnswersAfter and managerAnswersUpTo are --manager-answers-after and --manager-answers-up-to (zero: not given).
+	// managerAnswersAfter and managerAnswersUpTo are --manager-answers-after and --manager-answers-up-to (zero: not given; negative: given as 0, never).
 	managerAnswersAfter time.Duration
 	managerAnswersUpTo  perm.Danger
 	roleModels          map[string]string
@@ -127,6 +127,7 @@ func (f *chatFlagSet) values(fs *flag.FlagSet) (chatFlags, error) {
 	if out.managerAnswersAfter = *f.managerAnswersAfter; out.managerAnswersAfter < 0 {
 		return chatFlags{}, fmt.Errorf("--manager-answers-after must not be negative")
 	}
+	out.managerAnswersAfter = managerAnswersGiven(fs, out.managerAnswersAfter)
 	if out.managerAnswersUpTo, err = perm.ParseDanger(*f.managerAnswersUpTo); err != nil {
 		return chatFlags{}, fmt.Errorf("--manager-answers-up-to: %w", err)
 	}

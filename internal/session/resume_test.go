@@ -668,3 +668,49 @@ func TestLatestStartIsTheLastRecordedStart(t *testing.T) {
 		t.Errorf("LatestStart of a directory with no log = %+v", got)
 	}
 }
+
+// The deny and ask rules added while the session ran come back with the grants, and a rule taken back stays taken back even when
+// the session is resumed before another turn ends.
+func TestResumeKeepsRestrictionsAndRevocations(t *testing.T) {
+	repo := newRepo(t)
+	dir := filepath.Join(t.TempDir(), "sessions", "20260101-000000-abcdee")
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	o := opts(t, repo, client, model)
+	o.Dir, o.Mode = dir, perm.ModeDefault
+	s1, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	add := func(a perm.Action, r string) {
+		rule, _ := perm.ParseRule(a, r)
+		s1.Perm.AddRule(perm.ScopeSession, rule)
+	}
+	add(perm.Allow, "Bash(go test:*)")
+	add(perm.Allow, "Bash(make:*)")
+	add(perm.Deny, "Bash(curl:*)")
+	add(perm.Ask, "Bash(git push:*)")
+	if _, err := s1.Run(context.Background(), "hi"); err != nil {
+		t.Fatal(err)
+	}
+	s1.Perm.RemoveRule("Bash(make:*)")
+	s1.SavePermissions()
+	if err := s1.Close(); err != nil {
+		t.Fatal(err)
+	}
+	o2 := opts(t, repo, client, model)
+	o2.Resume = dir
+	s2, err := session.New(context.Background(), o2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	if got := strings.Join(s2.Perm.Granted(), ","); got != "Bash(go test:*)" {
+		t.Errorf("grants after the resume: %s", got)
+	}
+	if got := s2.Perm.Added(perm.Deny); len(got) != 1 || got[0] != "Bash(curl:*)" {
+		t.Errorf("deny rules after the resume: %v", got)
+	}
+	if got := s2.Perm.Added(perm.Ask); len(got) != 1 || got[0] != "Bash(git push:*)" {
+		t.Errorf("ask rules after the resume: %v", got)
+	}
+}

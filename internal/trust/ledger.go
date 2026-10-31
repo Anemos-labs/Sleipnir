@@ -102,7 +102,7 @@ func (l *Ledger) Remember(cwd string, fp *Footprint, now time.Time) error {
 func EntryOf(fp *Footprint) Entry {
 	files := make(map[string]string, len(fp.Files))
 	for _, f := range fp.Files {
-		files[f.Path] = f.Sum[:min(16, len(f.Sum))]
+		files[f.Path] = f.Sum // whole: a prefix leaves room for a prepared file with the same one
 	}
 	return Entry{Digest: fp.Digest, Files: files}
 }
@@ -184,11 +184,11 @@ func Changes(prev Entry, fp *Footprint) []Change {
 	var out []Change
 	now := map[string]string{}
 	for _, f := range fp.Files {
-		now[f.Path] = f.Sum[:16]
+		now[f.Path] = f.Sum
 		switch old, ok := prev.Files[f.Path]; {
 		case !ok:
 			out = append(out, Change{f.Path, "added"})
-		case old != f.Sum[:16]:
+		case old != f.Sum: // an entry written with a 16-digit prefix reads as changed once, and is renewed whole
 			out = append(out, Change{f.Path, "changed"})
 		}
 	}

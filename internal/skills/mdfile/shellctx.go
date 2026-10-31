@@ -180,6 +180,9 @@ func (c *shellCtx) quote(words []string) (string, error) {
 			return "", errShellContext
 		}
 	}
+	if k := c.stack[len(c.stack)-1].kind; len(words) == 0 && k != 's' && k != 'd' && k != 'p' {
+		return "", nil // nothing is written unquoted: the shell's state, a word begun or not, is what it was
+	}
 	c.prev, c.inWord = 0, true
 	switch c.stack[len(c.stack)-1].kind {
 	case 's':

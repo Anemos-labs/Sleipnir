@@ -23,6 +23,7 @@ func TestShellPlaceholdersFollowTheTemplatesQuotes(t *testing.T) {
 		{"echo a#'b' $1", "v", "echo a#'b' 'v'"},
 		{`echo $# "$1"`, "v", `echo $# "v"`},
 		{"echo x$(printf foo)#\"x\n$1\"", "v", "echo x$(printf foo)#\"x\nv\""},
+		{"echo $2#'\necho $1", "v", "echo #'\necho 'v'"}, // a missing argument writes nothing: the # starts a comment, the quote in it is no quote
 	} {
 		got, _, err := SubstituteMax(tc.tmpl, tc.args, ArgsShell, 0)
 		if err != nil || got != tc.want {

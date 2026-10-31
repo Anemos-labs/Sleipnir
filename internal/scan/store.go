@@ -259,6 +259,9 @@ func Load(root, slug string) (*Run, error) {
 	if !ValidSlug(slug) {
 		return nil, fmt.Errorf("no scan %q", slug)
 	}
+	if err := insideRoot(root, RunDir(root, slug)); err != nil {
+		return nil, err
+	}
 	b, err := readRecord(filepath.Join(RunDir(root, slug), "scan.json"))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("no scan %q", slug)
@@ -438,4 +441,28 @@ func WriteAtomic(root, path string, data []byte) error {
 		return err
 	}
 	return nil
+}
+
+// insideRoot refuses a directory under root that a link in the project leads elsewhere: the scan records and proofs of a project
+// are its own, and a .sleipnir/scan that is a link must not read another project's ledger or make files outside it. A
+// directory that does not exist yet is judged by its nearest existing ancestor.
+func insideRoot(root, dir string) error {
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return err
+	}
+	p := dir
+	for {
+		if real, err := filepath.EvalSymlinks(p); err == nil {
+			if real != realRoot && !strings.HasPrefix(real, realRoot+string(filepath.Separator)) {
+				return fmt.Errorf("%s leads outside the project", dir)
+			}
+			return nil
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return nil
+		}
+		p = parent
+	}
 }

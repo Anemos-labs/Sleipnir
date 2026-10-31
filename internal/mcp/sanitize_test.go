@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -246,4 +247,25 @@ func FuzzClean(f *testing.F) {
 			}
 		}
 	})
+}
+
+// A secret holding a quote or a backslash is masked in serialized JSON too, where it reads escaped.
+func TestRedactorMasksTheJSONEscapedForm(t *testing.T) {
+	secret := `tok"en\with-quote`
+	r := newRedactor([]string{secret})
+	b, _ := json.Marshal(map[string]string{"echo": secret})
+	if got := r.apply(string(b)); strings.Contains(got, "tok") {
+		t.Errorf("the escaped secret survived: %s", got)
+	}
+}
+
+// A query parameter of a configured URL is a secret on its own, as written and decoded.
+func TestURLQueryValuesAreSecrets(t *testing.T) {
+	c := ServerConfig{URL: "https://gw.example.com/mcp?team=acme&key=plain%2Fvalue-0123456789"}
+	r := newRedactor(c.secrets())
+	for _, echoed := range []string{"echo plain%2Fvalue-0123456789", "echo plain/value-0123456789"} {
+		if got := r.apply(echoed); strings.Contains(got, "value-0123456789") {
+			t.Errorf("%q: %s", echoed, got)
+		}
+	}
 }

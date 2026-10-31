@@ -31,6 +31,8 @@ func TestAcceptEditsReadsPublicWebsites(t *testing.T) {
 		{name: "plan mode refuses a search", mode: ModePlan, req: webSearch("x"), want: "deny", why: "plan mode"},
 
 		{name: "a deny rule for the domain wins", mode: ModeAcceptEdits, deny: []string{"WebFetch(domain:example.com)"}, req: webFetch("https://example.com/x"), want: "deny", why: "denied by rule"},
+		{name: "a deny rule for an address covers its other spellings", mode: ModeAcceptEdits, deny: []string{"WebFetch(domain:2001:4860::8888)"}, req: webFetch("https://[2001:4860:0:0:0:0:0:8888]/x"), want: "deny", why: "denied by rule"},
+		{name: "a deny rule for a bracketed address covers the address", mode: ModeAcceptEdits, deny: []string{"WebFetch(domain:[2001:4860:0::8888])"}, req: webFetch("https://[2001:4860::8888]/x"), want: "deny", why: "denied by rule"},
 		{name: "a deny rule covers a subdomain", mode: ModeAcceptEdits, deny: []string{"WebFetch(domain:example.com)"}, req: webFetch("https://docs.example.com/x"), want: "deny"},
 		{name: "a deny rule on the search tool wins", mode: ModeAcceptEdits, deny: []string{"WebSearch"}, req: webSearch("x"), want: "deny", why: "denied by rule"},
 		{name: "an ask rule for the domain still asks", mode: ModeAcceptEdits, ask: []string{"WebFetch(domain:example.com)"}, req: webFetch("https://example.com/x"), want: "ask"},

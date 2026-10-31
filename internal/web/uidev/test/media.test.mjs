@@ -103,3 +103,13 @@ test('code spans and table rows cost linear time on text of many unclosed opener
   md(' '.repeat(60000) + '|\n' + ' '.repeat(60000) + '-' + ' '.repeat(60000) + 'x');
   assert.ok(Date.now() - t0 < 2000, 'took ' + (Date.now() - t0) + ' ms');
 });
+
+test('a long line that is almost a code fence fails in linear time', () => {
+  const t0 = Date.now();
+  md('```' + 'a'.repeat(40000) + '`');
+  md('```' + ' '.repeat(40000) + '`');
+  md('~~~' + 'a'.repeat(40000) + '`');
+  assert.ok(Date.now() - t0 < 1000, 'took ' + (Date.now() - t0) + ' ms');
+  assert.match(md('````go x\nfunc f() {}\n````\n'), /data-lang="go"/);
+  assert.doesNotMatch(md('```a`b\n'), /pv-code/);
+});

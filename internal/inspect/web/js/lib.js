@@ -133,8 +133,10 @@ export function niceTicks(max, n = 4) {
   const p = Math.pow(10, Math.floor(Math.log10(raw)));
   const f = raw / p;
   const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+  // a subnormal or non-finite max gives a step that does not advance: fall back to the two ends
+  if (!(step > 0) || !Number.isFinite(max) || max + step === max) return [0, max];
   const out = [];
-  for (let v = 0; v <= max + step * 0.999; v += step) out.push(+v.toFixed(10));
+  for (let v = 0; v <= max + step * 0.999 && out.length < 1000; v += step) out.push(+v.toFixed(10));
   return out;
 }
 

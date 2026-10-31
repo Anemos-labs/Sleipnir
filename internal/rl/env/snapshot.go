@@ -698,8 +698,16 @@ func (m *Workspaces) buildSnapshot(ctx context.Context, task rl.Task, src *repoS
 		return nil, Infra("materialize "+src.ident, err)
 	}
 	if task.Repo.Subdir != "" {
-		if fi, err := os.Stat(filepath.Join(s.tree, filepath.FromSlash(task.Repo.Subdir))); err != nil || !fi.IsDir() {
+		sub := filepath.Join(s.tree, filepath.FromSlash(task.Repo.Subdir))
+		if fi, err := os.Stat(sub); err != nil || !fi.IsDir() {
 			return nil, Infra("materialize "+src.ident, fmt.Errorf("repo.subdir %q does not exist at that commit", task.Repo.Subdir))
+		}
+		// The subdirectory becomes the rollout's workspace root, which the file tools authorize: a link in the repository must
+		// not make that root a directory outside the tree.
+		realTree, terr := filepath.EvalSymlinks(s.tree)
+		realSub, serr := filepath.EvalSymlinks(sub)
+		if terr != nil || serr != nil || (realSub != realTree && !strings.HasPrefix(realSub, realTree+string(filepath.Separator))) {
+			return nil, Infra("materialize "+src.ident, fmt.Errorf("repo.subdir %q leads outside the repository", task.Repo.Subdir))
 		}
 	}
 

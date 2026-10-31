@@ -49,6 +49,9 @@ var stopwords = func() map[string]bool {
 	return m
 }()
 
+// maxQueryTerms bounds the distinct words of a query that are ranked.
+const maxQueryTerms = 64
+
 // queryTerms are the distinct lower-cased words of query, without stopwords unless nothing else is left.
 func queryTerms(query string) []string {
 	var all, content []string
@@ -56,6 +59,9 @@ func queryTerms(query string) []string {
 	for _, t := range strings.Fields(strings.ToLower(query)) {
 		if seen[t] {
 			continue
+		}
+		if len(all) == maxQueryTerms {
+			break // a query is a few words; past this many, more terms only multiply the work over every turn
 		}
 		seen[t] = true
 		all = append(all, t)

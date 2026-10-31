@@ -108,3 +108,36 @@ func TestConfinedOperationsDoNotFollowAParentSwappedAfterResolving(t *testing.T)
 		t.Fatalf("the file outside the project changed: %q %v", b, fi)
 	}
 }
+
+// A directory keeps its recorded set-group-ID bit, applied through a descriptor of the directory itself; a file at the path does
+// not get it.
+func TestConfinedChmodKeepsSetIDOnlyOnTheDirectory(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(root+"/d", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(root+"/f", []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	for _, c := range []struct {
+		rel   string
+		setID bool
+	}{{"d", true}, {"f", false}} {
+		cf := &confined{root: r, rel: c.rel, abs: root + "/" + c.rel}
+		if err := cf.chmod(0o755 | fs.ModeSetgid); err != nil {
+			t.Fatalf("%s: %v", c.rel, err)
+		}
+		fi, err := os.Stat(root + "/" + c.rel)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := fi.Mode()&fs.ModeSetgid != 0; got && !c.setID { // a filesystem may drop the bit on the directory too
+			t.Errorf("%s: set-group-ID = %v, want %v", c.rel, got, c.setID)
+		}
+	}
+}

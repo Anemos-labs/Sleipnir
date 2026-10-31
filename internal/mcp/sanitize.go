@@ -309,6 +309,14 @@ func newRedactor(secrets []string) *redactor {
 		}
 		seen[s] = true
 		list = append(list, s)
+		// As it reads inside a JSON string (structured content is masked as serialized text): quotes, backslashes, control
+		// characters and HTML-sensitive runes are escaped there.
+		if b, err := json.Marshal(s); err == nil {
+			if e := string(b[1 : len(b)-1]); e != s && !seen[e] {
+				seen[e] = true
+				list = append(list, e)
+			}
+		}
 	}
 	if len(list) == 0 {
 		return nil

@@ -2,6 +2,7 @@ package kv
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
@@ -37,5 +38,16 @@ func TestRankAcrossScopes(t *testing.T) {
 	hits := Rank(docs, "websocket upgrade proxy", 0)
 	if len(hits) != 2 || hits[0].Scope != "s2" || hits[0].Turn != 7 || hits[1].Scope != "s1" {
 		t.Fatalf("hits = %+v", hits)
+	}
+}
+
+// A query of more distinct words than are ranked keeps the first maxQueryTerms of them.
+func TestQueryTermsAreBounded(t *testing.T) {
+	var words []string
+	for i := 0; i < 10*maxQueryTerms; i++ {
+		words = append(words, fmt.Sprintf("w%d", i))
+	}
+	if got := queryTerms(strings.Join(words, " ")); len(got) != maxQueryTerms || got[0] != "w0" {
+		t.Errorf("%d terms, first %q", len(got), got[0])
 	}
 }

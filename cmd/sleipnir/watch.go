@@ -280,7 +280,7 @@ func renderGallery(stdout, stderr io.Writer, path, manifest, dir string) error {
 		}
 		fmt.Fprintf(stderr, "sleipnir replay: wrote %s (%d KB)\n", filepath.Join(dir, name), (len(docs[name])+1023)/1024)
 		for _, s := range r.StillList() {
-			fmt.Fprintf(stdout, "still %s %s %g\n", r.Name, s.Name, s.At)
+			fmt.Fprintf(stdout, "still %s %s %g\n", oneLineSafe(r.Name), oneLineSafe(s.Name), s.At)
 		}
 	}
 	return nil
