@@ -732,14 +732,16 @@ var xargsLongValueOpts = []string{"--arg-file", "--delimiter", "--max-args", "--
 
 // xargsRunsShell reports whether xargs is invoked to run a shell or eval, which
 // turns its stdin into code.
-func xargsRunsShell(args []string) bool {
+func xargsRunsShell(args []string) bool { return xargsRunsShellAt(args, 0) }
+
+func xargsRunsShellAt(args []string, depth int) bool {
 	withValue := "nILPsdEa"
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
 		case a == "--":
 			i++
-			return i < len(args) && xargsUtilityRunsShell(args[i:], 0)
+			return i < len(args) && xargsUtilityRunsShell(args[i:], depth)
 		case strings.HasPrefix(a, "--") && !strings.Contains(a, "=") && slices.Contains(xargsLongValueOpts, a):
 			i++ // its value is the next word, not the command
 		case strings.HasPrefix(a, "--"):
@@ -747,7 +749,7 @@ func xargsRunsShell(args []string) bool {
 			i++
 		case len(a) > 1 && a[0] == '-':
 		default:
-			return xargsUtilityRunsShell(args[i:], 0)
+			return xargsUtilityRunsShell(args[i:], depth)
 		}
 	}
 	return false
@@ -768,6 +770,8 @@ func xargsUtilityRunsShell(words []string, depth int) bool {
 		return true
 	case b != "" && !plainName(b): // a name xargs fills in from its input (-I{} {} ...): any utility, a shell among them
 		return true
+	case b == "xargs": // xargs xargs sh -c, busybox xargs sh -c: the inner xargs runs what it reads, so its utility is judged too
+		return xargsRunsShellAt(words[1:], depth+1)
 	case b == "busybox": // busybox sh, busybox ash: the applet is the next word; without one, xargs's input names it
 		return len(words) == 1 || xargsUtilityRunsShell(words[1:], depth+1)
 	case isPrivileged(b):

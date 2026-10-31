@@ -17,6 +17,9 @@ func TestXargsRunsShellThroughWrappers(t *testing.T) {
 		{[]string{"-I{}", "busybox", "sh", "-c", "{}"}, true},
 		{[]string{"env", "busybox", "ash"}, true},
 		{[]string{"busybox", "grep", "x"}, false},
+		{[]string{"-I{}", "busybox", "xargs", "sh", "-c", "{}"}, true}, // the inner xargs runs the shell
+		{[]string{"xargs", "-0", "sh", "-c", "id"}, true},
+		{[]string{"busybox", "xargs", "grep", "x"}, false},
 		{[]string{"-I{}", "busybox", "{}", "-c", "id"}, true}, // the applet comes from the input
 		{[]string{"busybox"}, true},
 		{[]string{"-I{}", "{}", "-c", "id"}, true},

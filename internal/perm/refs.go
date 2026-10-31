@@ -128,6 +128,7 @@ sub:
 			}
 			if name, val, hasVal := strings.Cut(a, "="); strings.HasPrefix(a, "--") {
 				switch {
+				case name == "--force": // an option of its own, which git matches before any abbreviation: it creates no branch
 				case longPrefix(name, "--create", "--force-create", "--orphan"):
 					created = true
 					if !hasVal && k+1 < len(rest) {
@@ -211,7 +212,9 @@ sub:
 
 // operands are a git subcommand's arguments that are not options, everything after a bare -- included.
 // longPrefix reports whether name, a long option as written ("--orph"), is one of opts or an abbreviation of one: git accepts any
-// unambiguous prefix, and an ambiguous one fails, so taking it for each option it may abbreviate only refuses more.
+// unambiguous prefix and matches an exact option name first, so a caller handles the exact names that are also prefixes of opts
+// (--force of --force-create) before asking; an ambiguous prefix fails in git, so taking it for each option it may abbreviate
+// only refuses a command git would not run.
 func longPrefix(name string, opts ...string) bool {
 	if len(name) < 3 {
 		return false

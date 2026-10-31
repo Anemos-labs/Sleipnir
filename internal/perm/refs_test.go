@@ -104,6 +104,9 @@ func TestAConfinedAgentMovesOnlyItsOwnBranch(t *testing.T) {
 		{"git switch --create sleipnir/s1/new", true},
 		{"git switch --force-c=sleipnir/s1/new", true}, // an abbreviation, as git accepts it
 		{"git checkout --orph sleipnir/s1/new", true},
+		{"git checkout --force -q sleipnir/s1/_integration", true}, // --force is an option of its own, not --force-create
+		{"git switch --force --quiet claude/work", true},
+		{"git checkout --force scratch", false},
 		{"git switch -- sleipnir/s1/_integration", true}, // for switch, -- only ends the options
 		{"git switch --track origin/sleipnir/s1/new", true},
 		{"git checkout -t origin/sleipnir/s1/new", true},
