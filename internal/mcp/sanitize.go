@@ -329,7 +329,7 @@ func newRedactor(secrets []string) *redactor {
 		}
 		return list[i] < list[j]
 	})
-	pairs := make([]string, 0, 2*len(list))
+	var pairs []string
 	for _, s := range list {
 		pairs = append(pairs, s, "***")
 	}
