@@ -77,6 +77,11 @@ func brief(r *Run, prev *Run) string {
 	w("### 2. Hunt\n\nFor each mapped shard: claim it for the hunt, and from every entry point it has (and those of other shards that reach it), follow the input. ")
 	w("Look for injection of any kind, path traversal, SSRF, broken or missing authorization (IDOR, tenancy), authentication flaws, unsafe deserialization, secrets in code, weak crypto, races on shared state, unbounded resource use, and logic errors that break an invariant the code relies on. ")
 	w("Check whether the framework, a middleware or a caller already handles it before filing. File each lead with `scan lead`: the title, the category, the claim (what an attacker does and gets), the trace, the impact, reachability and exploitability, the points it goes through, and a fix. ")
+	w("Every file tracked at the commit is in a shard, including what no person wrote; a shard lists each such file with its kind. Read each for what it can hide: ")
+	w("a **binary** (executables, archives, images, compiled objects) with the reverse-engineering tools the sandbox has (file, strings, objdump, readelf, unzip, a disassembler or decompiler) for embedded secrets and keys, a build that does not match its source, a backdoor or a known-vulnerable component; ")
+	w("**vendored** code for a known-vulnerable version, a local patch to upstream, or a dependency the project calls unsafely; **generated** code and lock files for what the generator was fed and pinned dependencies with known holes; ")
+	w("**data** and **other** files (docs, templates, scripts) for secrets, unsafe defaults, templates that reach a sink and scripts that run; a **large** file in parts; a **symlink** for where it points; a **submodule** for the repository and commit it pins (in .gitmodules). ")
+	w("Quote a binary by a string it holds, as strings prints it, or cite the file that builds or loads it.\n\n")
 	w("Close the shard with `scan hunt` and a note of what you checked, leads or not. Every sink of the shard is either in a lead's points or named in that note (P#) with the guard that makes it safe: the harness refuses a note that skips one.\n\n")
 	w("### 3. Verify\n\n%d %s that did not file a lead rule on it", d.Verifiers, plural(d.Verifiers, "agent", "agents"))
 	if d.Defender {
