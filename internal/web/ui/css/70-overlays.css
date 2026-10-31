@@ -64,6 +64,9 @@
 .dr-h .r1{display:flex;align-items:baseline;gap:9px}
 .dr-h .did{font:700 24px/1 var(--f-num);color:var(--c);letter-spacing:-.03em}
 .dr-h .drole{font:700 12px var(--f-lab);letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+.dr-h .stopag{margin-left:auto;border:1px solid var(--err);padding:3px 8px;border-radius:2px;font:600 11px var(--f-num);color:var(--err);background:transparent;cursor:pointer}
+.dr-h .stopag:hover,.dr-h .stopag:focus-visible{background:var(--err);color:var(--bg)}
+.dr-h .stopag + .x{margin-left:0}
 .dr-h .x{margin-left:auto;border:1px solid var(--line2);padding:3px 8px;border-radius:2px;font:500 11px var(--f-num);color:var(--fg2)}
 .dr-h .r2{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px;font:500 11px var(--f-num);color:var(--fg2)}
 .dr-tabs{display:flex;border-bottom:1px solid var(--line);padding:0 8px}
