@@ -7,6 +7,17 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A worker that is stuck can be stopped. `/agents stop ID`, in the terminal
+  and the web interface, and a Stop button in a working agent's drawer of
+  the web interface, end its run: its tasks go back to `todo` with the
+  attempt counted, the harness does not restart it on them, and the manager
+  is told. The harness also stops a worker itself when a stall about its own
+  run (`claimed_no_progress`, `review_overrun`, or the new `task_overrun`: one
+  assignment held for more than 90 minutes) still holds 20 minutes after it
+  was escalated to the manager (`swarm.Config.TaskTimeout`, `StallStop`).
+  New harness mail (the `task_overrun` stall check and the stop notice); no
+  stable prompt bytes change.
+
 - `sleipnir mcp serve` makes Sleipnir an MCP server on stdio, so another
   harness (Claude Code, Codex, an editor) can start goals with Sleipnir's
   agents and teams (`sleipnir_start`), follow them (`sleipnir_status`,

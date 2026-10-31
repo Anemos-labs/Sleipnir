@@ -879,7 +879,7 @@ the pool task it leads, or, when it holds no task, its place in an open pool (a 
 The watchdog catches a worker that shows no sign of life; the repetition guard catches a model repeating one failing
 call. The stall sweep, on every supervisor tick, catches a team that is busy but not advancing. It reads the board,
 the roster and per-agent turn counters (a turn is one model response), never model text, so the same state gives the
-same findings; `idle_capacity` and `review_overrun` alone also read the clock (how long workers have been idle, how long a review and the work it reviews ran):
+same findings; `idle_capacity`, `review_overrun` and `task_overrun` alone also read the clock (how long workers have been idle, how long a review and the work it reviews ran, how long a worker has held its task):
 
 | Kind | Holds when | Told |
 |---|---|---|
@@ -889,6 +889,7 @@ same findings; `idle_capacity` and `review_overrun` alone also read the clock (h
 | `blocked_cycle` | blocked tasks' `blocked_on` targets lead back to themselves; one finding per cycle, named by its lowest task id | the manager |
 | `review_starved` | a task has waited in review for `StallTurns` manager turns, or for 5 minutes, without the manager naming it in a task call | the manager |
 | `review_overrun` | a running reviewer's task (not a planning task) has run, since its assignment began, longer than the work it reviews took to build: the longest of the merges no accepted review covers yet (each from the first run that held its task to its submission: the wait for the manager's decision is not build time), and at least 10 minutes. The bound follows the work, so a review of a day's work may take hours and a review of a fix may not | the reviewer (write the report with what it has: findings so far, what was checked and found fine, what was not reached) |
+| `task_overrun` | a running worker that is not a reviewer has held its current assignment (a doing task that is not a pool's) for longer than `TaskTimeout` (default 90 minutes), from when the assignment began, whatever it does meanwhile: a worker that keeps editing or re-running tests on a task it will not finish is busy by every other measure | the worker (finish with what works and name what is left, hand the task over, or block it on what it waits for) |
 | `idle_capacity` | in a configured team, the manager waits while at least one worker runs, a task is still open, and at least half of the workers, and two or more, have been idle for 15 minutes owning no open task (none reserved, in progress, blocked or in review), and the workers at work are not all read-only roles, on docs tasks, or finishing a turn with no open task (then the team waits for a verdict on finished work, and idle writers are expected); once raised it holds while that is so, whether or not the manager is still waiting | the manager (who is free, once; it decides whether the objective needs more than the open tasks) |
 
 `StallTurns` is `swarm.Config.StallTurns` (default 12; negative turns the two turn-based kinds off). A finding is
@@ -896,7 +897,7 @@ raised once while its condition holds: a `swarm.stall` event (`action: raise`) a
 ids and counts only) that says what would end it. When the condition no longer holds the finding clears itself
 (`action: clear`); it can be raised again only after that. The sweep recovers nothing on its own: it names the
 condition and the agent that can act (by handing a task over, failing it with a reason, resuming one side of a
-cycle, or reviewing). `Swarm.Stalls` lists the findings that hold, `Swarm.StallCounts` how many of each kind were
+cycle, or reviewing), with one exception below. `Swarm.Stalls` lists the findings that hold, `Swarm.StallCounts` how many of each kind were
 raised; `sleipnir friction` reports them under `swarm.stall`.
 
 The manager is the team's diagnosis owner. Every finding in the table that still holds ten minutes after it was raised
@@ -906,6 +907,19 @@ failed verifications and `blocked_on`, its last progress line quoted as the agen
 told, and the decisions that end that kind of stall (in a team of persistent pools, without a handover). A finding that
 clears and is raised later starts a new clock. Until a diagnosis reaches a running manager whole (not coalesced into a full inbox) nothing counts as escalated:
 a finding that is due waits, and the first sweep after the manager starts (or after a failed delivery) sends it.
+
+A finding about a worker's own run (`claimed_no_progress`, `review_overrun`, `task_overrun`) that still holds `StallStop`
+(default 20 minutes; negative turns it off) after it was escalated is ended by the harness: the worker's run is cancelled with
+the reason "stopped by the harness: KIND on TASK held for N minutes", its tasks go back to `todo` with the attempt counted (a
+task stopped `MaxAttempts` times fails), the harness does not restart the worker on them on its own, and the manager is told
+in one line. The diagnosis says so ahead of time. A `swarm.stall` event with `action: stop` (and `held_s`) and an
+`agent.stop` event (`by: harness`) record it; each finding stops its worker once. A run that ignores the cancellation is
+abandoned after `StuckGrace`, as a run the watchdog cancelled is. So no worker's task runs past roughly
+`TaskTimeout` + 10 minutes + `StallStop` (two hours by default) without the person or the manager choosing that.
+
+The person can stop a worker at any time: `/agents stop ID` in either interface, or ■ Stop in a working agent's drawer
+of the web interface (`Swarm.StopAgent`). It settles the run the same way, with the reason "stopped by the person" and an
+`agent.stop` event with `by: person`.
 
 Workers receive mail queued during a failed run when they restart, before their
 next model request. New mail received during the failed run can trigger one

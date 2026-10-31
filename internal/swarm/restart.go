@@ -106,7 +106,7 @@ func (s *Swarm) planRestart(m *member, rs *runState, tasks map[string]uint64, ki
 		return nil, 0
 	}
 	cause, ok := restartCauseOf(kind, count, err, rs.asked, s.cfg.FixedSteps)
-	if !ok || s.alive() != nil || s.startErr() != nil || s.wk.heldNow() {
+	if !ok || rs.stopped || s.alive() != nil || s.startErr() != nil || s.wk.heldNow() {
 		return nil, 0
 	}
 	m.mu.Lock()

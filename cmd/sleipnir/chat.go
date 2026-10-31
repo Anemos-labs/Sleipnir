@@ -327,7 +327,7 @@ a team, and the program
 /team [save|load]  saved teams: save this one, start again as one, share one
 /restart [flags]   start again with other flags: --no-mcp, --cwd DIR, ...
 /plugins [on|off]  the plugins: list them, or switch one (/plugins off web)
-/agents            the team's agents and tasks (ctrl+g: cockpit)
+/agents [stop ID]  the team's agents and tasks (ctrl+g: cockpit); stop one
 /steer TEXT        tell the running turn something, without stopping it
 /queue [drop N]    what waits for the turn: list, drop one, or clear all
 /verbose [on|off]  notices and tool errors
@@ -397,7 +397,7 @@ func slashTo(ctx context.Context, s *session.Session, line string, stdout, stder
 	case "/compact":
 		compactNow(ctx, s, strings.TrimSpace(strings.TrimPrefix(line, f[0])), stderr)
 	case "/agents":
-		printAgents(stderr, s)
+		agentsSlash(stderr, s, f[1:])
 	case "/steer":
 		text := strings.TrimSpace(strings.TrimPrefix(line, f[0]))
 		if text == "" {
@@ -710,6 +710,34 @@ func printContext(w io.Writer, s *session.Session) {
 
 // printAgents lists swarm agents in ID order, board tasks, and optional mailman totals;
 // single-agent sessions receive a brief explanation.
+// agentsSlash is /agents: the team's agents and tasks, or, with `stop ID`, stops a worker that is stuck (swarm.StopAgent): its run
+// ends, its task goes back to todo for the manager to give again, and the manager is told.
+func agentsSlash(w io.Writer, s *session.Session, args []string) {
+	switch {
+	case len(args) == 0:
+		printAgents(w, s)
+	case len(args) == 2 && strings.EqualFold(args[0], "stop"):
+		if s.Swarm == nil {
+			fmt.Fprintln(w, "agents: a single agent has no workers to stop: interrupt its turn instead (Esc, or Stop)")
+			return
+		}
+		id := args[1]
+		tasks, err := s.Swarm.StopAgent(id)
+		if err != nil {
+			fmt.Fprintln(w, "agents:", tools.SanitizeForTerminal(err.Error()))
+			return
+		}
+		if len(tasks) == 0 {
+			fmt.Fprintf(w, "stopped %s; the manager is told\n", firstText(id, 40))
+			return
+		}
+		fmt.Fprintf(w, "stopped %s; %s goes back to todo and the manager is told\n", firstText(id, 40), strings.Join(tasks, ", "))
+	default:
+		fmt.Fprintln(w, "usage: /agents lists the team's agents and tasks; /agents stop ID stops a worker that is stuck (its task goes back to todo)")
+	}
+}
+
+// printAgents writes the team's agents and tasks, one line each.
 func printAgents(w io.Writer, s *session.Session) {
 	if s.Swarm == nil {
 		fmt.Fprintln(w, "single agent session (start with --swarm N for a team)")

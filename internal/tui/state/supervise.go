@@ -30,7 +30,7 @@ const (
 
 // Stall is a supervision finding of the swarm (swarm.stall), open until cleared.
 type Stall struct {
-	// Kind is the finding: claimed_no_progress, manager_waiting_on_idle, orphaned_task, blocked_cycle, review_starved, idle_capacity or review_overrun.
+	// Kind is the finding: claimed_no_progress, manager_waiting_on_idle, orphaned_task, blocked_cycle, review_starved, idle_capacity, review_overrun or task_overrun.
 	Kind   string    `json:"kind"`
 	Agent  string    `json:"agent,omitempty"`
 	Task   string    `json:"task,omitempty"`
@@ -157,7 +157,11 @@ func (s *State) onStall(e events.Event, t time.Time) {
 			}
 			sv.stalls = append(sv.stalls, st)
 		}
-		s.line(e.Seq, t, st.Agent, FeedNote, GlyphWarn, "stalled: "+firstOf(st.Detail, strings.ReplaceAll(st.Kind, "_", " ")), st.Task)
+		what := "stalled: "
+		if p.Action == "stop" { // the harness stopped the worker the finding is about (swarm stopStalled)
+			what = firstOf(st.Agent, "a worker") + " stopped by the harness: "
+		}
+		s.line(e.Seq, t, st.Agent, FeedNote, GlyphWarn, what+firstOf(st.Detail, strings.ReplaceAll(st.Kind, "_", " ")), st.Task)
 	}
 }
 

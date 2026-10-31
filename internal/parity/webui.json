@@ -1681,6 +1681,7 @@
  "slash": {
   "handlers": {
    "/agents": [
+    "act:command",
     "view:cockpit"
    ],
    "/allow": [
