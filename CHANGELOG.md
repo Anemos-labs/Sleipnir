@@ -18,6 +18,27 @@ they do not indicate whether a change has been released.
   New harness mail (the `task_overrun` stall check and the stop notice); no
   stable prompt bytes change.
 
+- Teams stop filling every free slot near the end of a goal. The line a
+  standing goal adds for the manager of a team ("N of its M workers are
+  free") is sized to what the verdict left: with fewer items missing than
+  workers free, it asks for at most one task per item and says the other
+  workers stay free, and it always says never to make up work to fill a
+  slot. The manager pin says the same: an idle slot with no concrete open
+  work costs nothing. A deep research manager kept spawning researchers on
+  searches and re-reviews nobody needed, and the run never ended.
+- A goal that drives a report research run is judged from the run's
+  ledger, as deep scans are: met when `research status` says Done, with
+  the harness building the wiki when only the build is missing;
+  otherwise continue with the current phase's problems and the ledger
+  version, so a turn that changes nothing counts as no progress. A
+  kickoff run's goal is also the project's and stays with the model
+  judge. The research brief gains a "When the run ends" section, a
+  search made after every gather bar is met says that new sources no
+  longer move the run on, and the scan brief no longer asks to keep
+  every agent busy. Prompt bytes: the manager pin and the free-capacity
+  line change once; research and scan briefs are goal specs, outside the
+  cached layers. No tool spec changed.
+
 - `sleipnir mcp serve` makes Sleipnir an MCP server on stdio, so another
   harness (Claude Code, Codex, an editor) can start goals with Sleipnir's
   agents and teams (`sleipnir_start`), follow them (`sleipnir_status`,

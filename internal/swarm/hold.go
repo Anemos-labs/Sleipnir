@@ -175,7 +175,11 @@ const freeListCap = 8
 // FreeCapacity is a line for the manager that names the team's free workers, or "" when none is free. A standing goal adds it to
 // the message that sends the manager on (session.GoalContinuation): what the judge found missing is work for them, and a manager
 // sent on to "take the next concrete step" otherwise tends to take it alone while the team waits.
-func (s *Swarm) FreeCapacity() string {
+//
+// left is how many items the verdict found missing (0 when it named none). The line asks for one task per missing item, never more:
+// a manager told only that slots were free filled every one of them near the end of a run, with tasks the goal did not need (one
+// more search, one more review of a settled page), and each of those held the goal open for a turn of its own.
+func (s *Swarm) FreeCapacity(left int) string {
 	free, workers := s.freeWorkers()
 	if len(free) == 0 {
 		return ""
@@ -184,8 +188,26 @@ func (s *Swarm) FreeCapacity() string {
 	if len(free) > freeListCap {
 		names += fmt.Sprintf(" and %d more", len(free)-freeListCap)
 	}
-	return fmt.Sprintf("You lead a team, and %d of its %d workers are free (%s). Split what is missing by role into tasks and start "+
-		"them side by side with spawn; do yourself only what is smaller than a handoff.", len(free), workers, names)
+	const tail = " Never make up work to fill a slot: a free worker costs nothing, and a task the goal does not need keeps it from ending."
+	switch {
+	case left > 0 && left < len(free):
+		return fmt.Sprintf("You lead a team, and %d of its %d workers are free (%s). What is missing is %d %s: start at most %d %s with spawn, "+
+			"one for each item bigger than a handoff, do yourself what is smaller, and leave the other workers free.", len(free), workers, names,
+			left, pluralWord(left, "item", "items"), left, pluralWord(left, "task", "tasks")) + tail
+	case left > 0:
+		return fmt.Sprintf("You lead a team, and %d of its %d workers are free (%s). Split what is missing into tasks, one for each item bigger "+
+			"than a handoff, and start them side by side with spawn; do yourself only what is smaller than a handoff.", len(free), workers, names) + tail
+	}
+	return fmt.Sprintf("You lead a team, and %d of its %d workers are free (%s). Give a free worker a task only for a concrete part of what is "+
+		"missing that is bigger than a handoff, and start those side by side with spawn; do yourself what is smaller.", len(free), workers, names) + tail
+}
+
+// pluralWord is one when n is 1, else many.
+func pluralWord(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 // freeWorkers returns the team's workers that are idle and hold no open task (sorted), and how many workers the team has: the
