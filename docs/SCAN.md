@@ -41,9 +41,13 @@ judge holds the team to the brief's milestones on the evidence of the `scan` too
 The harness is the only writer of the ledger (`.sleipnir/scan/SCAN/scan.json`), through the `scan` tool. It does what must not
 depend on a model:
 
-- **Inventory.** Every file git tracks at the commit, minus vendored, built, generated, binary and oversized files (counted
-  under *left out*). Functions are found and scored for complexity: exactly for Go (`go/parser`, McCabe), by their usual
-  shapes for JavaScript, TypeScript, Python, Ruby, PHP, Rust, Kotlin, Swift, C-like languages and others. Configuration
+- **Inventory.** Every file git tracks at the commit, nothing left out. A file no person wrote is scanned too and marked by
+  its kind: `vendored` (vendor/, node_modules/, dist/...), `generated` (minified bundles, protobuf output, lock files),
+  `data`, `other` (text in no known language: docs, templates), `large` (over 1 MiB, scanned whole), `binary` (read with
+  the sandbox's reverse-engineering tools, quoted by the strings it holds), `symlink` and `submodule`. The report counts
+  them. Such files weigh a quarter of their lines in a shard, a binary a quarter of a shard. Functions are found and scored for complexity: exactly for Go (`go/parser`, McCabe), by their usual
+  shapes for JavaScript, TypeScript, Python, Ruby, PHP, Rust, Kotlin, Swift, C-like languages and others, in the code a
+  person wrote. Configuration
   files are kept for the config lane.
 - **Sizing.** The inventory is split into shards of at most N functions or M lines, files of one directory together. The
   work is sized by that, not by a clock: the scan asks for a team of one agent per two shards, between 8 and 32.

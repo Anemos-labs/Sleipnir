@@ -127,10 +127,15 @@ func TestInventoryCountsWhatThePersonWrote(t *testing.T) {
 			t.Errorf("%s is not in the inventory: %v", p, inv.Files)
 		}
 	}
-	for _, p := range []string{"vendor/lib/x.go", "web/app.min.js", "assets/logo.png", "docs/README.md", "package-lock.json", "server/data/fixture.json"} {
-		if _, ok := got[p]; ok {
-			t.Errorf("%s should be left out", p)
+	// nothing is left out: what no person wrote is scanned too, marked by kind
+	for p, kind := range map[string]string{"vendor/lib/x.go": KindVendored, "web/app.min.js": KindGenerated, "assets/logo.png": KindBinary,
+		"docs/README.md": KindOther, "package-lock.json": KindGenerated, "server/data/fixture.json": KindData, "server/handler.go": ""} {
+		if f, ok := got[p]; !ok || f.Kind != kind {
+			t.Errorf("%s: kind %q (listed %v), want %q", p, f.Kind, ok, kind)
 		}
+	}
+	if got["vendor/lib/x.go"].Funcs != 0 || got["assets/logo.png"].Lines != 0 || got["assets/logo.png"].Bytes == 0 {
+		t.Errorf("vendored functions or binary lines counted: %+v %+v", got["vendor/lib/x.go"], got["assets/logo.png"])
 	}
 	if !got["server/handler_test.go"].Test || got["server/handler.go"].Test {
 		t.Error("test files are not told apart")
@@ -152,14 +157,14 @@ func TestInventoryCountsWhatThePersonWrote(t *testing.T) {
 	if f := fn["tools/util.py:parse"]; f.Line != 1 || f.End != 6 || f.Complexity != 5 {
 		t.Errorf("parse = %+v, want lines 1-6, complexity 5 (if, for, if, and)", f)
 	}
-	if inv.Skipped["vendored or built"] != 1 || inv.Skipped["generated"] != 2 {
+	if len(inv.Skipped) != 0 {
 		t.Errorf("skipped = %v", inv.Skipped)
 	}
 	focused, err := TakeInventory(context.Background(), repo, commit, "web")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(focused.Files) != 1 || focused.Files[0].Path != "web/app.js" {
+	if len(focused.Files) != 2 || focused.Files[0].Path != "web/app.js" || focused.Files[1].Path != "web/app.min.js" {
 		t.Errorf("a focus on web/ gave %v", focused.Files)
 	}
 }
@@ -853,5 +858,52 @@ func TestHeuristicFunctionsAreBounded(t *testing.T) {
 	}
 	if got := heuristicFunctions("ruby", "b.rb", []byte("def a\n  if x\n  end\nend\ndef b\nend\n")); len(got) != 2 {
 		t.Fatalf("functions: %+v", got)
+	}
+}
+
+func TestNothingTrackedIsLeftOutOfTheShards(t *testing.T) {
+	inv := Inventory{Files: []File{
+		{Path: "app/main.go", Lang: "go", Lines: 400, Funcs: 20},
+		{Path: "bin/tool", Lang: KindBinary, Kind: KindBinary, Bytes: 5 << 20},
+		{Path: "bin/tool2", Lang: KindBinary, Kind: KindBinary, Bytes: 5 << 20},
+		{Path: "data/huge.sql", Lang: "sql", Kind: KindLarge, Bytes: 100 << 20},
+		{Path: "lib", Lang: KindSubmodule, Kind: KindSubmodule},
+		{Path: "vendor/x/x.go", Lang: "go", Kind: KindVendored, Lines: 4000},
+	}}
+	shards := MakeShards(inv, Depth{ShardFuncs: 1000, ShardLines: 2000})
+	n := 0
+	for _, s := range shards {
+		n += len(s.Files)
+		if s.Lines > 2000 {
+			t.Errorf("%s weighs %d lines", s.ID, s.Lines)
+		}
+		for _, f := range s.Files {
+			if f == "bin/tool" && s.Lines == 0 {
+				t.Errorf("a binary weighs nothing in %s", s.ID)
+			}
+		}
+	}
+	if n != len(inv.Files) {
+		t.Errorf("shards hold %d of %d files", n, len(inv.Files))
+	}
+	for p, want := range map[string]string{"site/index.html": KindOther, "web/big.js": KindLarge, "Dockerfile": "", ".env": "", "dist/a.js": KindVendored} {
+		size := 10
+		if p == "web/big.js" {
+			size = 2 << 20
+		}
+		if _, kind := classify(p, size); kind != want {
+			t.Errorf("classify(%s) = %q, want %q", p, kind, want)
+		}
+	}
+}
+
+func TestABinaryIsQuotedByAStringItHolds(t *testing.T) {
+	code := fakeCode{"bin/agent": "\x7fELF\x00\x01\x02garbage\x00build-id=opaque-test-value-42\x00\x03more\n\x00tail"}
+	if _, _, err := CheckCite(context.Background(), code, Cite{File: "bin/agent", Line: 1, Quote: "build-id=opaque-test-value-42"}); err != nil {
+		t.Fatalf("a string the binary holds: %v", err)
+	}
+	if _, _, err := CheckCite(context.Background(), code, Cite{File: "bin/agent", Line: 1, Quote: "not in the binary at all"}); err == nil ||
+		!strings.Contains(err.Error(), "as strings prints it") {
+		t.Fatalf("a quote that is not there: %v", err)
 	}
 }

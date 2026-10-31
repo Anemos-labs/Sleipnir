@@ -262,6 +262,9 @@ func HTML(r *Run) string {
 		sort.Strings(ks)
 		w("<p class=\"muted\">Left out of the scan: %s.</p>", e(strings.Join(ks, ", ")))
 	}
+	if k := kindCounts(r.Inventory); k != "" {
+		w("<p class=\"muted\">Scanned besides the code a person wrote: %s.</p>", e(k))
+	}
 	w("<p class=\"muted\">The attack surface point by point is in <span class=\"mono\">%s</span>, and every lead with its trace in <span class=\"mono\">%s</span>.</p></section>\n", MapFile, FindingsFile)
 	w("<section id=\"method\"><h2>Method</h2><p>%s</p></section>\n", e(methodText(r)))
 	w("<footer>Every quote in this report was checked against the file at commit <span class=\"mono\">%s</span>.</footer></body></html>\n", e(short(r.Commit)))

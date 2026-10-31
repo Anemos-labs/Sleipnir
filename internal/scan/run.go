@@ -43,7 +43,8 @@ type Inventory struct {
 	// Functions are kept in functions.json, written once when the scan starts: they never change, and scan.json is written
 	// after every call.
 	Functions []Func `json:"-"`
-	// Skipped counts the tracked files left out (vendored, generated, binary, too large), by reason.
+	// Skipped counts the tracked files left out, by reason. Every file is scanned now (File.Kind), so it holds only files git
+	// could not read; a scan made before kept its counts of vendored, generated, binary and too large files here.
 	Skipped map[string]int `json:"skipped,omitempty"`
 }
 
@@ -52,6 +53,9 @@ type File struct {
 	Path  string `json:"path"`
 	Lang  string `json:"lang"`
 	Lines int    `json:"lines"`
+	// Kind is what the file is when it is not code a person wrote (KindVendored, KindBinary...), and Bytes its size.
+	Kind  string `json:"kind,omitempty"`
+	Bytes int    `json:"bytes,omitempty"`
 	// Test is a test file: scanned for what it reveals, but a lead whose trace is only in tests is test-only.
 	Test bool `json:"test,omitempty"`
 	// Funcs and Complexity sum the file's functions.
