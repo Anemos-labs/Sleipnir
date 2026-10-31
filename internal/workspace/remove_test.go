@@ -485,7 +485,7 @@ func TestPruneSalvageForceAndAge(t *testing.T) {
 		t.Fatalf("salvaged untracked file: %q, %v", got, err)
 	}
 	c, _ := s.repo.CommitInfo(ctx, "sleipnir/s1/dirty-1")
-	if !strings.Contains(c.Subject, "salvage") || c.Author.Name != "dirty-1" {
+	if c.Subject != "Save unfinished work" || strings.Contains(c.Body, "dirty-1") || c.Author.Name != "dirty-1" {
 		t.Fatalf("salvage commit: %+v", c)
 	}
 	if !contains(branchNames(rep.BranchesKept), "sleipnir/s1/dirty-1") {

@@ -388,7 +388,7 @@ func (m *Manager) salvage(ctx context.Context, repo *gitx.Repo, mk *marker) erro
 	if err != nil {
 		return err
 	}
-	msg := m.withAgentTrailer("Unfinished work of "+mk.Agent+", salvaged after its session ended", mk.Agent)
+	msg := m.withAgentTrailer("Save unfinished work\n\nThe session that made these changes ended before they were finished.", mk.Agent)
 	after, err := repo.CommitAllWith(ctx, msg, m.agentAuthor(mk.Agent), workCommit)
 	if err != nil || after == "" || after == before {
 		return err

@@ -31,28 +31,41 @@ func commitSubject(title string) string {
 	return strings.TrimRight(truncRunes(s, commitSubjectMax), " .")
 }
 
-// taskCommitMessage is the message of the commit that records a worker's work on t:
-// the task's title as the subject, what the worker said it did as the body, and the
-// task id as a trailer for whoever has the run's board.
-func taskCommitMessage(t Task, summary string) string {
+// taskCommitMessage is the message of the commit that records a worker's work on t.
+// A message the worker wrote for the commit (task done's commit) is used as it is
+// when it names no team member or board task; otherwise the subject is the task's
+// title and the body what the worker said it did, without the sentences that name
+// the team (ids) or the board, which mean nothing to a reader of the history. The
+// task id rides along as a trailer for whoever has the run's board.
+func taskCommitMessage(t Task, summary, commit string, ids []string) string {
+	trailer := "Sleipnir-Task: " + t.ID
+	if msg := cleanBlock(commit, 4000); msg != "" && !mentionsRun(msg, ids) {
+		subject, body, _ := strings.Cut(msg, "\n")
+		if subject = strings.TrimRight(truncRunes(strings.TrimSpace(subject), commitSubjectMax), " ."); subject != "" {
+			if body = strings.TrimSpace(body); body != "" {
+				return subject + "\n\n" + body + "\n\n" + trailer
+			}
+			return subject + "\n\n" + trailer
+		}
+	}
 	subject := commitSubject(t.Title)
-	if subject == "" {
-		subject = "Work on " + t.ID
+	if subject == "" || mentionsRun(subject, ids) {
+		subject = "Update project files"
 	}
 	var b strings.Builder
 	b.WriteString(subject)
-	if body := cleanBlock(summary, 2000); body != "" && !strings.EqualFold(body, "completed") && !strings.EqualFold(body, subject) {
+	if body := scrubRunRefs(cleanBlock(summary, 2000), ids); body != "" && !strings.EqualFold(body, "completed") && !strings.EqualFold(body, subject) {
 		b.WriteString("\n\n" + body)
 	}
-	fmt.Fprintf(&b, "\n\nSleipnir-Task: %s", t.ID)
+	b.WriteString("\n\n" + trailer)
 	return b.String()
 }
 
-// handoverCommitMessage records the unfinished work of agent on t when it hands the
-// task over.
-func handoverCommitMessage(t Task, agent string) string {
+// handoverCommitMessage records the unfinished work on t when its worker hands the
+// task over. The worker is not named: the next commit continues the same change.
+func handoverCommitMessage(t Task) string {
 	subject := commitSubject("Work in progress: " + commitSubject(t.Title))
-	return fmt.Sprintf("%s\n\nUnfinished work handed over by %s.\n\nSleipnir-Task: %s", subject, agent, t.ID)
+	return fmt.Sprintf("%s\n\nUnfinished; continued by a later commit.\n\nSleipnir-Task: %s", subject, t.ID)
 }
 
 // filesCommitSubject names a change by the files it touches, for work that has no

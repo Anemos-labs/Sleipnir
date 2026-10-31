@@ -7,6 +7,21 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Commits, code and pull requests a team leaves in a project no longer name
+  its agents or board tasks. `task done` takes an optional `commit` message
+  (the project's convention, Conventional Commits when it has none) that
+  becomes the commit recording the task; without one, the subject is the
+  task's title and the body the worker's result minus the sentences naming
+  team members or task ids. Merge, handover and salvage commits describe the
+  work instead of naming the agent; the task and agent ids stay in the
+  `Sleipnir-Task:` and `Sleipnir-Agent:` trailers. In an isolated run,
+  `done` sends the worker back once when the lines its change adds name a
+  team member or a board task, `task deliver` refuses such a commit message,
+  and the constitution, the manager's role and the delivery prompt say so.
+  Prompt-cache change: the constitution and the task tool's schema change
+  bytes, so the first request of each agent after the upgrade misses the
+  cache once.
+
 - Deep scans end, and their report reads as an assessment. A scan verifies at
   most a budget of leads (4, 6 or 8 per shard by depth, at least 24); once
   every shard is hunted only a few late leads are verified (a tenth of those

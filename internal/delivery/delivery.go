@@ -212,7 +212,7 @@ func (c *Controller) Step(ctx context.Context) (Directive, error) {
 		}
 		matches := strings.Fields(string(b))
 		if len(matches) == 0 {
-			d.Prompt = "Create a pull request for this completed objective on its working branch. Commit and push the assembled verified work; reuse an existing matching PR. Do this directly without creating a worker task merely to open the PR."
+			d.Prompt = "Create a pull request for this completed objective on its working branch. Commit and push the assembled verified work; reuse an existing matching PR. Give it a title in the repository's commit convention (Conventional Commits when it has none) and a description of what the change does, why, and how it was verified, for a reader who never saw the team: no agent names, task ids or team chatter. Do this directly without creating a worker task merely to open the PR."
 			d.Phase = "opening"
 			return c.finish(d)
 		}
