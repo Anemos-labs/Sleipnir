@@ -42,7 +42,8 @@ func (s *Session) ClearGoalPlan() {
 
 // JudgeGoal checks completion against searchable durable tool evidence across
 // workers and turns. Inspection is read-only and bounded; failures never certify
-// completion. worked reports tool activity in the latest agent turn.
+// completion. worked reports tool activity in the latest agent turn. A goal that
+// drives a deep scan is judged from the scan's ledger instead (scanJudgment).
 //
 // The judge runs on the judge role's model (--role-model judge=M, else models.roles.judge) when one is named, else on the
 // session's own. A "done" from a named judge whose model is not the session's is confirmed by a second, independent judgment on
@@ -58,6 +59,14 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 		return goal.Verdict{Kind: goal.Continue}, false, fmt.Errorf("no agent to judge")
 	}
 	answer, worked := turnActivity(a.Stack().Thread.Turns)
+	if v, ok := s.scanJudgment(g); ok {
+		left := v.Left
+		if left == nil {
+			left = []string{}
+		}
+		s.Log.Emit("", judgeEvent, map[string]any{"verdict": v.Kind, "reason": v.Reason, "left": left, "judge": "scan ledger"})
+		return v, worked, nil
+	}
 	cutoff, err := s.goalEvidenceCutoff()
 	if err != nil {
 		return goal.Verdict{Kind: goal.Continue}, false, err

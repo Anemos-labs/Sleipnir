@@ -6,6 +6,8 @@ import "strings"
 // file and every report made from it are the same bytes for the same history.
 type Run struct {
 	Slug string `json:"slug"`
+	// Name is what the scan reads, as a report's title gives it: the project's folder name.
+	Name string `json:"name,omitempty"`
 	// Commit is the commit the scan reads: every citation is checked against it, whatever the work tree holds later.
 	Commit  string `json:"commit"`
 	Depth   string `json:"depth"`
@@ -170,6 +172,8 @@ const (
 	LeadConfirmed = "confirmed" // the verifiers confirmed it, and it is proven where the depth asks for proof
 	LeadUnproven  = "unproven"  // confirmed, but the depth wants a reproduction and none reproduced it yet
 	LeadRejected  = "rejected"  // the verifiers rejected it
+	LeadDisputed  = "disputed"  // ruled on by more verifiers than the depth asks for without them agreeing: settled, reported apart
+	LeadDeferred  = "deferred"  // recorded past the scan's stopping point (Run.intake): kept and reported, never verified
 )
 
 // Rejection reasons.
@@ -197,6 +201,10 @@ type Lead struct {
 	Proofs   []Proof   `json:"proofs,omitempty"`
 	// Duplicate is the lead this one repeats, when a verifier rejected it as a duplicate.
 	Duplicate string `json:"duplicate,omitempty"`
+	// Late says the lead was filed after every shard was hunted, and Deferred why it is not verified when the scan's stopping
+	// rules held it back (Run.intake).
+	Late     bool   `json:"late,omitempty"`
+	Deferred string `json:"deferred,omitempty"`
 }
 
 // Step is one step of a trace.

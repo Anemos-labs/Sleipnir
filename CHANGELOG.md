@@ -7,6 +7,28 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Deep scans end, and their report reads as an assessment. A scan verifies at
+  most a budget of leads (4, 6 or 8 per shard by depth, at least 24); once
+  every shard is hunted only a few late leads are verified (a tenth of those
+  the hunt filed, at least 3), and none once the last 3 were all rejected. A
+  lead below critical filed past that point is recorded as `deferred`: kept,
+  reported as not verified, never blocking. A settled lead takes no more
+  verdicts, and a lead ruled on by two more agents than the depth asks for
+  without agreeing is `disputed` and reported apart. The goal that drives a
+  scan is judged from the scan's ledger, not by a model: it is met when
+  `scan status` says done, and the harness writes the report itself when
+  only the report is missing. REPORT.md, report.html and the Deep scan view
+  lead with a summary (a headline, findings by severity and by category),
+  then an index and each finding with its facts, trace, verification and
+  remediation; the attack surface is summarised (map.json keeps every
+  point). Reports name no agent: verdicts are given by role, the agents' ids
+  are taken out of their notes, findings.json carries `confirms`, `rejects`,
+  `defended`, `reproduced` and a reproduction's `independent` in place of
+  `by`, and findings.csv's last column is `not_verified_because` instead of
+  `filed_by`. `by_severity` counts unproven findings too. The brief changes
+  (a section on when the scan ends), so a scan started after this change
+  has a different goal text; nothing else in a prompt changes.
+
 - Follow-ups to CodeRabbit findings left unanswered. A goal's spec is opened
   without waiting, so a pipe swapped in for it after the check is refused at
   once. A research export reads an earlier export's mark only when it is a
