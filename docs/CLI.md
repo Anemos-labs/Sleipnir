@@ -722,7 +722,7 @@ flags:
   -pull
         with --rerun: fast-forward the checked-out branch from its upstream first
   -report
-        rewrite SCAN's report (REPORT.md, findings.json, findings.sarif, map.json) from its ledger and print where it is
+        rewrite SCAN's report (REPORT.md, findings.json, findings.sarif, map.json, proofs/) from its ledger and print where it is
   -rerun
         create a new scan of what SCAN scanned, at HEAD, and print the goal that drives it
   -since OLD
