@@ -141,11 +141,16 @@ div.sc-tile{cursor:default}
 .sc-chip:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
 .sc-shown{font-size:11.5px;white-space:nowrap}
 .sc-rows{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:2px;min-width:0}
-.sc-row{all:unset;box-sizing:border-box;display:grid;grid-template-columns:76px 46px minmax(0,1fr) minmax(70px,auto) 150px;gap:10px;align-items:center;padding:6px 10px;border-top:1px solid var(--line);font:400 13px/1.35 var(--f-ui);color:var(--fg);cursor:pointer;min-width:0}
+.sc-row{all:unset;box-sizing:border-box;display:grid;grid-template-columns:106px 46px minmax(0,1fr) minmax(70px,auto) 150px;gap:10px;align-items:center;padding:6px 10px;border-top:1px solid var(--line);font:400 13px/1.35 var(--f-ui);color:var(--fg);cursor:pointer;min-width:0}
 .sc-row:first-child{border-top:0}
 .sc-row:hover{background:var(--panel2)}
 .sc-row:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 .sc-row .sc-sev{justify-self:start}
+.sc-sevc{display:inline-flex;align-items:center;gap:6px;justify-self:start;min-width:0}
+.sc-score{font-size:12px;color:var(--fg)}
+.sc-score.sc-capped{color:var(--dim);text-decoration:line-through}
+.sc-cvss{grid-column:1/-1}
+.sc-cvss a{color:var(--fg);word-break:break-all}
 .sc-rcat{font-size:12px;color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sc-st{font-size:12px;color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sc-st::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;background:var(--dim);vertical-align:1px}
@@ -155,4 +160,4 @@ div.sc-tile{cursor:default}
 .sc-facts dt{font:600 10px/1 var(--f-lab);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:4px}
 .sc-facts dd{margin:0;font-size:12.5px;overflow-wrap:anywhere}
 .sc-ver{margin:0;font-size:12.5px;line-height:1.5}
-@media (max-width:900px){.sc-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.sc-t-total{grid-column:1/-1}.sc-row{grid-template-columns:70px minmax(0,1fr);gap:4px 8px}.sc-row .sc-fid{display:none}.sc-rcat{display:none}.sc-row .sc-st{grid-column:2}}
+@media (max-width:900px){.sc-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.sc-t-total{grid-column:1/-1}.sc-row{grid-template-columns:100px minmax(0,1fr);gap:4px 8px}.sc-row .sc-fid{display:none}.sc-rcat{display:none}.sc-row .sc-st{grid-column:2}}

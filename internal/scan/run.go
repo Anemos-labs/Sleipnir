@@ -191,8 +191,11 @@ type Lead struct {
 	Category string `json:"category"`
 	Claim    string `json:"claim"`
 	// Trace runs from the entry point to the sink, each step a checked cite.
-	Trace   []Step `json:"trace"`
-	Impact  string `json:"impact"`
+	Trace []Step `json:"trace"`
+	// CVSS is the filer's CVSS v3.1 base vector, in the form ParseCVSS gives; the severity is computed from its score. Impact is
+	// the level a lead filed before leads carried vectors gave instead.
+	CVSS    string `json:"cvss,omitempty"`
+	Impact  string `json:"impact,omitempty"`
 	Reach   string `json:"reach"`
 	Exploit string `json:"exploit"`
 	// Points are the attack-surface points the trace goes through.
@@ -217,8 +220,8 @@ type Step struct {
 	Note string `json:"note"`
 }
 
-// Verdict is one verifier's ruling on a lead. A verifier may correct the reachability or exploitability it found; the lead's
-// severity then uses the most cautious of the corrections.
+// Verdict is one verifier's ruling on a lead. A verifier may correct the reachability, the exploitability or the CVSS vector it
+// found; the lead's severity then uses the most cautious of the corrections (the lowest-scoring vector).
 type Verdict struct {
 	By      string `json:"by"`
 	Role    string `json:"role"`
@@ -227,6 +230,7 @@ type Verdict struct {
 	Note    string `json:"note"`
 	Reach   string `json:"reach,omitempty"`
 	Exploit string `json:"exploit,omitempty"`
+	CVSS    string `json:"cvss,omitempty"`
 	// Cites back the verifier's argument: a guard the filer missed, a caller that cannot pass the input.
 	Cites []Cite `json:"cites,omitempty"`
 }

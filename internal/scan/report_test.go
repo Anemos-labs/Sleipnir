@@ -224,7 +224,7 @@ func TestASettledLeadTakesNoVerdict(t *testing.T) {
 	tl, _ := harness(t, "survey")
 	mustOK(t, tl, "hunter", map[string]any{"action": "lead", "title": "Command injection in /ping", "category": "command-injection",
 		"claim": "Anyone can run shell commands on the server by sending host=x;id to GET /ping.", "trace": pingTrace,
-		"impact": "critical", "reach": "external", "exploit": "trivial"})
+		"cvss": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "reach": "external", "exploit": "trivial"})
 	mustOK(t, tl, "v1", map[string]any{"action": "verdict", "id": "L1", "confirm": true, "note": "routes.go registers /ping with no middleware; host flows into sh -c"})
 	mustFail(t, tl, "v2", map[string]any{"action": "verdict", "id": "L1", "confirm": false, "reason": "wrong", "note": "I would rather argue about this one a bit more"}, "settled")
 }

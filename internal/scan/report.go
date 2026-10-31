@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -44,12 +45,16 @@ func WriteReport(root string, r *Run) error {
 // Finding is a lead as the report gives it. A report says what was found and how it was checked, never which agent did what:
 // a verdict is given by its role, and a reproduction by whether it was independent of the filer.
 type Finding struct {
-	ID       string         `json:"id"`
-	Title    string         `json:"title"`
-	Category string         `json:"category"`
-	Severity string         `json:"severity"`
-	Status   string         `json:"status"`
-	Impact   string         `json:"impact"`
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Category string `json:"category"`
+	Severity string `json:"severity"`
+	Status   string `json:"status"`
+	// CVSS is the CVSS v3.1 base vector the severity was computed from and Score its base score; both are absent for a lead
+	// filed before leads carried vectors, which gave an Impact level instead.
+	CVSS     string         `json:"cvss,omitempty"`
+	Score    *float64       `json:"score,omitempty"`
+	Impact   string         `json:"impact,omitempty"`
 	Reach    string         `json:"reach"`
 	Exploit  string         `json:"exploit"`
 	Claim    string         `json:"claim"`
@@ -80,6 +85,7 @@ type Ruling struct {
 	Note    string `json:"note"`
 	Reach   string `json:"reach,omitempty"`
 	Exploit string `json:"exploit,omitempty"`
+	CVSS    string `json:"cvss,omitempty"`
 	Cites   []Cite `json:"cites,omitempty"`
 }
 
@@ -105,12 +111,15 @@ func findingOf(r *Run, l *Lead, red func(string) string) Finding {
 	f := Finding{ID: l.ID, Title: red(l.Title), Category: l.Category, Severity: l.Severity(), Status: l.Status(r.DepthInfo()), Impact: l.Impact,
 		Reach: l.Reachability(), Exploit: l.Exploitability(), Claim: red(l.Claim), Points: l.Points, Fix: red(l.Fix),
 		Reproduced: l.Reproduced(), Late: l.Late, Deferred: l.Deferred, Anchor: r.Anchor(l)}
+	if score, ok := l.Score(); ok {
+		f.CVSS, f.Score = l.Vector(), &score
+	}
 	f.Confirms, f.Rejects, f.Defended = l.Tally()
 	for _, s := range l.Trace {
 		f.Trace = append(f.Trace, Step{Cite: s.Cite, Note: red(s.Note)})
 	}
 	for _, v := range l.latestVerdicts() {
-		f.Verdicts = append(f.Verdicts, Ruling{Role: v.Role, Confirm: v.Confirm, Reason: v.Reason, Note: red(v.Note), Reach: v.Reach, Exploit: v.Exploit, Cites: v.Cites})
+		f.Verdicts = append(f.Verdicts, Ruling{Role: v.Role, Confirm: v.Confirm, Reason: v.Reason, Note: red(v.Note), Reach: v.Reach, Exploit: v.Exploit, CVSS: v.CVSS, Cites: v.Cites})
 	}
 	for _, p := range l.Proofs {
 		f.Proofs = append(f.Proofs, Reproduction{Independent: p.By != l.By, Script: red(p.Script), Ready: p.Ready, Exercised: p.Exercised, Outcome: p.Outcome,
@@ -135,7 +144,7 @@ func Findings(r *Run) []Finding {
 		if order[out[i].Status] != order[out[j].Status] {
 			return order[out[i].Status] < order[out[j].Status]
 		}
-		return sevRank(out[i].Severity) < sevRank(out[j].Severity)
+		return worse(out[i], out[j])
 	})
 	return out
 }
@@ -202,7 +211,8 @@ func sarifLevel(sev string) string {
 	return "note"
 }
 
-// securitySeverity is the score GitHub code scanning sorts security results by.
+// securitySeverity is the score GitHub code scanning sorts security results by, for a finding without a CVSS score of its own
+// or one whose severity was capped below its score's band.
 var securitySeverity = map[string]string{SevCritical: "9.5", SevHigh: "8.0", SevMedium: "5.5", SevLow: "2.0"}
 
 // SARIF is findings.sarif (SARIF 2.1.0): the confirmed and unproven findings, located at their trace's last step (the sink),
@@ -242,8 +252,7 @@ func SARIF(r *Run) map[string]any {
 			"locations":           []any{loc(at.Cite, at.Note)},
 			"codeFlows":           []any{map[string]any{"threadFlows": []any{map[string]any{"locations": flow}}}},
 			"partialFingerprints": map[string]any{"sleipnirScan/v1": fingerprint(f)},
-			"properties": map[string]any{"security-severity": securitySeverity[f.Severity], "status": f.Status, "reachability": f.Reach,
-				"exploitability": f.Exploit, "reproduced": f.Status == LeadConfirmed && f.Reproduced, "lead": f.ID},
+			"properties":          sarifProperties(f),
 		})
 	}
 	return map[string]any{
@@ -321,7 +330,7 @@ func Markdown(r *Run) string {
 	} else {
 		w("## Index\n\n| ID | Severity | Finding | Category | Location | Status |\n|---|---|---|---|---|---|\n")
 		for _, f := range list {
-			w("| [%s](#%s) | %s | %s | %s | `%s` | %s |\n", f.ID, strings.ToLower(f.ID), title(f.Severity), cell(f.Title), f.Category, cell(Location(f)), StatusLabel(f))
+			w("| [%s](#%s) | %s | %s | %s | `%s` | %s |\n", f.ID, strings.ToLower(f.ID), SeverityLabel(f), cell(f.Title), f.Category, cell(Location(f)), StatusLabel(f))
 		}
 		w("\n## Findings\n\n")
 		for _, f := range list {
@@ -345,7 +354,7 @@ func Markdown(r *Run) string {
 		}
 		w("## Appendix %c. %s (%d)\n\n%s\n\n| ID | Severity | Lead | Category | Location | %s |\n|---|---|---|---|---|---|\n", appendix, heading, len(list), intro, "Note")
 		for _, f := range list {
-			w("| %s | %s | %s | %s | `%s` | %s |\n", f.ID, title(f.Severity), cell(f.Title), f.Category, cell(Location(f)), cell(why(f)))
+			w("| %s | %s | %s | %s | `%s` | %s |\n", f.ID, SeverityLabel(f), cell(f.Title), f.Category, cell(Location(f)), cell(why(f)))
 		}
 		w("\n")
 		appendix++
@@ -408,7 +417,13 @@ func methodText(r *Run) string {
 		b.WriteString(", one of them a defender who looks for the reason it is not real")
 	}
 	b.WriteString(proofNote(d) + ". ")
-	b.WriteString("Severity is computed from impact, reachability and exploitability: one level lower when only an insider reaches the code, one lower when exploiting it is difficult, and low at most when nothing reaches it or no practical exploit was shown. ")
+	b.WriteString("Severity is computed from a CVSS v3.1 base vector the reviewers agree on: the score comes from the specification's formula and the severity from its rating band (critical from 9.0, high from 7.0, medium from 4.0), and it is low at most when nothing reaches the code or no practical exploit was shown. ")
+	for i := range r.Leads {
+		if _, ok := r.Leads[i].Score(); !ok {
+			b.WriteString("A lead recorded without a vector keeps the earlier rule: its impact, one level lower when only an insider reaches the code and one lower when exploiting it is difficult. ")
+			break
+		}
+	}
 	fmt.Fprintf(&b, "The scan verifies at most %d leads; after every shard was hunted, only a few more, and a lead below critical filed past that point is recorded as not verified.", r.LeadBudget())
 	return b.String()
 }
@@ -426,8 +441,8 @@ func proofNote(d Depth) string {
 func writeFinding(b *strings.Builder, f Finding, d Depth) {
 	w := func(format string, args ...any) { fmt.Fprintf(b, format, args...) }
 	w("<a id=\"%s\"></a>\n### %s · %s\n\n", strings.ToLower(f.ID), f.ID, oneLine(f.Title))
-	w("| Severity | Status | Category | Location |\n|---|---|---|---|\n| **%s** | %s | %s | `%s` |\n\n", title(f.Severity), StatusLabel(f), f.Category, Location(f))
-	w("Reachability %s · exploitability %s · impact %s\n\n", f.Reach, f.Exploit, f.Impact)
+	w("| Severity | Status | Category | Location |\n|---|---|---|---|\n| **%s** | %s | %s | `%s` |\n\n", SeverityLabel(f), StatusLabel(f), f.Category, Location(f))
+	w("Reachability %s · exploitability %s · %s\n\n", f.Reach, f.Exploit, scoreMarkdown(f))
 	w("**Description.** %s\n\n", strings.TrimSpace(f.Claim))
 	w("**Trace**, from where the input comes in to where it does harm:\n\n")
 	for i, s := range f.Trace {
@@ -471,6 +486,81 @@ func short(sha string) string {
 }
 
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// sarifProperties are a finding's SARIF result properties: its CVSS score as GitHub's security-severity, unless a cap put the
+// severity below the score's band (then the band's representative score, so code scanning does not rank it above its severity).
+func sarifProperties(f Finding) map[string]any {
+	sev := securitySeverity[f.Severity]
+	p := map[string]any{"status": f.Status, "reachability": f.Reach, "exploitability": f.Exploit,
+		"reproduced": f.Status == LeadConfirmed && f.Reproduced, "lead": f.ID}
+	if f.Score != nil {
+		p["cvss"], p["cvssScore"] = f.CVSS, *f.Score
+		if CVSSBand(*f.Score) == f.Severity {
+			sev = strconv.FormatFloat(*f.Score, 'f', 1, 64)
+		}
+	}
+	p["security-severity"] = sev
+	return p
+}
+
+// ScoreLabel is a finding's score in plain text: "CVSS 9.8 (vector)", or the impact a finding without a vector gave.
+func ScoreLabel(f Finding) string {
+	if f.Score == nil {
+		return "impact " + f.Impact
+	}
+	s := fmt.Sprintf("CVSS %.1f (%s)", *f.Score, f.CVSS)
+	if CVSSBand(*f.Score) != f.Severity {
+		s += ", capped at " + f.Severity + ": " + capReason(f)
+	}
+	return s
+}
+
+// scoreMarkdown is ScoreLabel for REPORT.md, with the vector linked to FIRST's calculator.
+func scoreMarkdown(f Finding) string {
+	if f.Score == nil {
+		return "impact " + f.Impact
+	}
+	s := fmt.Sprintf("CVSS **%.1f** [`%s`](%s)", *f.Score, f.CVSS, CVSSCalculator(f.CVSS))
+	if CVSSBand(*f.Score) != f.Severity {
+		s += ", capped at " + f.Severity + ": " + capReason(f)
+	}
+	return s
+}
+
+// capReason says why a finding's severity is below its score's band.
+func capReason(f Finding) string {
+	if f.Reach == ReachUnreachable {
+		return "no path reaches the code"
+	}
+	return "no practical exploit was shown"
+}
+
+// worse orders findings worst first: by severity, then by CVSS score (a scored finding before an unscored one), then in the
+// order they were filed.
+func worse(a, b Finding) bool {
+	if x, y := sevRank(a.Severity), sevRank(b.Severity); x != y {
+		return x < y
+	}
+	if (a.Score != nil) != (b.Score != nil) {
+		return a.Score != nil
+	}
+	if a.Score != nil && *a.Score != *b.Score {
+		return *a.Score > *b.Score
+	}
+	return leadNum(a.ID) < leadNum(b.ID)
+}
+
+// SeverityLabel is a finding's severity with its CVSS score when it has one: "Critical 9.8", or "Low (capped, CVSS 9.8)" when
+// the severity was capped below the score's band.
+func SeverityLabel(f Finding) string {
+	switch {
+	case f.Score == nil:
+		return title(f.Severity)
+	case CVSSBand(*f.Score) != f.Severity:
+		return fmt.Sprintf("%s (capped, CVSS %.1f)", title(f.Severity), *f.Score)
+	}
+	return fmt.Sprintf("%s %.1f", title(f.Severity), *f.Score)
+}
 
 // kindCounts is how many files of each kind the inventory holds besides the code a person wrote, as "3 binary, 10 data".
 func kindCounts(inv Inventory) string {

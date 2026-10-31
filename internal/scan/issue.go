@@ -17,8 +17,12 @@ func Issue(r *Run, l *Lead) (title, body string, err error) {
 	w := func(format string, args ...any) { fmt.Fprintf(&b, format, args...) }
 	title = fmt.Sprintf("%s: %s", strings.ToUpper(f.Severity), f.Title)
 	w("%s\n\n", f.Claim)
-	w("| Severity | Category | Reachability | Exploitability |\n|---|---|---|---|\n| %s | %s | %s | %s |\n\n", f.Severity, f.Category, f.Reach, f.Exploit)
-	w("**Impact**: %s\n\n", oneLine(f.Impact))
+	w("| Severity | Category | Reachability | Exploitability |\n|---|---|---|---|\n| %s | %s | %s | %s |\n\n", SeverityLabel(f), f.Category, f.Reach, f.Exploit)
+	if f.Score != nil {
+		w("**Score**: %s\n\n", scoreMarkdown(f))
+	} else {
+		w("**Impact**: %s\n\n", oneLine(f.Impact))
+	}
 	w("## Where\n\nFrom where the input comes in to where it does harm, at commit `%s`:\n\n", short(r.Commit))
 	for i, s := range f.Trace {
 		w("%d. `%s:%d` %s\n\n", i+1, s.File, s.Line, oneLine(s.Note))
