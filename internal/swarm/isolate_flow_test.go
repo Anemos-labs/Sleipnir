@@ -910,3 +910,20 @@ func TestAFileEditedDuringTheApplyIsNotReportedAsApplied(t *testing.T) {
 		t.Fatalf("the session was told %q, want only b.txt", got)
 	}
 }
+
+// A worker that stops without task done is told once, like one that calls done, that
+// its change names a board task; its next stop goes through.
+func TestImplicitStopIsToldAboutRunReferences(t *testing.T) {
+	sc := script{
+		"be-1": {
+			act(writeCall("notes.txt", "// see task T12 for the reason\n")),
+		},
+	}
+	r := newIsoRig(t, isoOpts{cfg: Config{MaxWriters: 2}, verify: true}, sc.fn())
+	r.sw.StartManager()
+	r.mustSpawn("backend", "write notes", "notes.txt")
+	r.waitStatus("T1", StatusReview)
+	if !r.prov.sawEver("names team members or board tasks") {
+		t.Fatal("the worker was never told that its change names a board task")
+	}
+}

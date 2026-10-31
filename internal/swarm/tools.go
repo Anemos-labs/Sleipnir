@@ -474,7 +474,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		if notice := s.runRefNotice(ctx, m, task); notice != "" {
 			return &tools.Result{IsError: true, Text: notice}
 		}
-		out := s.integrate(ctx, m, task, taskCommitMessage(task, in.Text, in.Commit, s.roster()))
+		out := s.integrate(ctx, m, task, taskCommitMessage(task, in.Text, in.Commit, s.everyMember()))
 		if err := s.checkTaskGate(task); err != nil {
 			return tools.Errorf("%v", err)
 		}

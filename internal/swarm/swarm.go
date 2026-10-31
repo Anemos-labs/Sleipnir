@@ -312,8 +312,10 @@ type Swarm struct {
 	// runRefWarned holds the tasks whose worker was told, at the revision named, that its change names team members or
 	// board tasks (runRefNotice); the next done goes through, so the notice never holds a task. Guarded by mu.
 	runRefWarned map[string]uint64
-	queued       map[string]queuedSpawn // parents waiting for a free member of their role (spawnqueue.go), by task id; guarded by mu
-	members      map[string]*member
+	// teamIDs holds the id of every team member registered in the run, retired ones included (everyMember). Guarded by mu.
+	teamIDs map[string]bool
+	queued  map[string]queuedSpawn // parents waiting for a free member of their role (spawnqueue.go), by task id; guarded by mu
+	members map[string]*member
 	// arriving (under mu) holds the IDs of agents that are being added to the team: the task is assigned to the agent before the
 	// agent is registered, and the stall sweep must not read that interval as an owner that left (arrive).
 	arriving map[string]bool

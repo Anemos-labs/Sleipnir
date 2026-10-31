@@ -176,7 +176,7 @@ func (s *Swarm) runRefNotice(ctx context.Context, m *member, t Task) string {
 	if err != nil || d == nil {
 		return ""
 	}
-	leaks := findRunRefs(d.Patch, s.roster(), 8)
+	leaks := findRunRefs(d.Patch, s.everyMember(), 8)
 	if len(leaks) == 0 {
 		return ""
 	}
@@ -193,4 +193,17 @@ func (s *Swarm) runRefNotice(ctx context.Context, m *member, t Task) string {
 		b.WriteString("- " + l.String() + "\n")
 	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// everyMember lists, sorted, the id of every team member the run registered,
+// including those that have since retired: a successor may still name them.
+func (s *Swarm) everyMember() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ids := make([]string, 0, len(s.teamIDs))
+	for id := range s.teamIDs {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
 }

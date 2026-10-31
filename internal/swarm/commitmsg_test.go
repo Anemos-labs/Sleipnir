@@ -78,3 +78,18 @@ func TestFilesCommitSubject(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// A member that retired is still matched: its successor may name it.
+func TestEveryMemberKeepsRetiredIDs(t *testing.T) {
+	s := &Swarm{members: map[string]*member{}}
+	s.register(&member{id: "fe-1"}, nil)
+	s.register(&member{id: "mailman", service: true}, nil)
+	delete(s.members, "fe-1") // retired
+	ids := s.everyMember()
+	if len(ids) != 1 || ids[0] != "fe-1" {
+		t.Fatalf("everyMember = %v, want [fe-1]", ids)
+	}
+	if got := findRunRefs("+++ b/a.go\n@@ -0,0 +1 @@\n+// started by fe-1\n", ids, 5); len(got) != 1 {
+		t.Fatalf("a retired member's id should be found: %+v", got)
+	}
+}
