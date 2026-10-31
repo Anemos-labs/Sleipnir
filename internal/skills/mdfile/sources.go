@@ -64,11 +64,29 @@ type Source struct {
 // the former.
 var brands = []string{".sleipnir", ".claude"}
 
+// skillBrands add .agents for skills: the directory the Agent Skills convention
+// shares between harnesses (Codex, opencode, Gemini CLI and others read
+// .agents/skills), so a skill written once is found whichever harness runs. It
+// comes last, after the brands that name one harness. Commands and agent
+// definitions have no shared format, so they are not looked for there.
+var skillBrands = []string{".sleipnir", ".claude", ".agents"}
+
+// BrandsFor returns the hidden directory names that hold definitions of one
+// kind, highest precedence first.
+func BrandsFor(kind string) []string {
+	if kind == "skills" {
+		return skillBrands
+	}
+	return brands
+}
+
 // Sources lists the directories to read for one kind of definition ("skills",
 // "commands" or "agents"), highest precedence first:
 //
-//	<root>/.sleipnir/<kind>, <root>/.claude/<kind>,
-//	~/.sleipnir/<kind>, ~/.claude/<kind>, then the extras in the order given.
+//	<root>/.sleipnir/<kind>, <root>/.claude/<kind>, [<root>/.agents/skills,]
+//	~/.sleipnir/<kind>, ~/.claude/<kind>, [~/.agents/skills,] then the extras
+//
+// (.agents only for skills; see BrandsFor) in the order given.
 //
 // A repository directory is returned only when the project is trusted;
 // otherwise a Warning says it was left alone (only its existence is checked). A
@@ -81,7 +99,7 @@ func Sources(kind string, l Layout) ([]Source, []Warning) {
 
 	if l.Root != "" {
 		if realRoot, err := Canonical(l.Root); err == nil {
-			for _, b := range brands {
+			for _, b := range BrandsFor(kind) {
 				dir := filepath.Join(realRoot, b, kind)
 				label := b + "/" + kind
 				if !isDir(dir) {
@@ -107,7 +125,7 @@ func Sources(kind string, l Layout) ([]Source, []Warning) {
 	}
 	if home != "" {
 		if realHome, err := Canonical(home); err == nil {
-			for _, b := range brands {
+			for _, b := range BrandsFor(kind) {
 				dir := filepath.Join(realHome, b, kind)
 				if !isDir(dir) {
 					continue

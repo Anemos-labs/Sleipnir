@@ -182,9 +182,9 @@ func (e *extensions) skillsSegment() string {
 // can make its next session do anything, so writes ask (in every mode, bypass
 // included) and an unattended session refuses.
 var protectedConfigDirs = []string{
-	"Edit(./.sleipnir/**)", "Edit(./.claude/**)",
+	"Edit(./.sleipnir/**)", "Edit(./.claude/**)", "Edit(./.agents/skills/**)",
 	"Edit(./.git/hooks/**)", "Edit(./.git/config)",
-	"Edit(~/.sleipnir/**)", "Edit(~/.claude/**)",
+	"Edit(~/.sleipnir/**)", "Edit(~/.claude/**)", "Edit(~/.agents/skills/**)",
 }
 
 // Commands returns the custom slash commands discovered at start (nil-safe).

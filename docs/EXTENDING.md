@@ -12,7 +12,7 @@ packaged as one installable plugin: `docs/PLUGINS.md`.
 
 ## 0. The rules every extension follows
 
-**Where files live.** Skills, commands and agent definitions are looked for in four directories, in this order; the
+**Where files live.** Skills, commands and agent definitions are looked for in these directories, in this order; the
 first definition of a name wins and a collision is reported as a warning (the same directory reached twice, say one
 brand symlinked to the other, is not a collision):
 
@@ -24,7 +24,11 @@ brand symlinked to the other, is not a collision):
 | 4 | `~/.claude/<kind>/` | yours: always read |
 
 `<kind>` is `skills`, `commands` or `agents`. The `.claude` directories exist so files written for Claude Code work
-unchanged; `.sleipnir` wins when both have the same name. Instruction files have their own names (section 1), and hooks
+unchanged; `.sleipnir` wins when both have the same name. Skills are also read from `.agents/skills/`, the directory
+the Agent Skills convention shares between harnesses (Codex, opencode, Gemini CLI and others read it): after
+`.claude/skills/` in the project (repository trust, as above) and after `~/.claude/skills/` in your home directory, so
+a skill written once works in each harness you use. Commands and agent definitions have no shared format and are not
+read from `.agents`. Instruction files have their own names (section 1), and hooks
 live in the `hooks` key of a Sleipnir config file, not in `.claude/settings.json` (that file is never read).
 
 **Trust.** Anything that arrives with a repository is untrusted until you pass `--trust-project` (`chat`, `run`,
@@ -769,8 +773,8 @@ instructions or a hook that runs a command with your rights. Sleipnir therefore 
 yours, for every session:
 
 ```text
-Edit(./.sleipnir/**)   Edit(./.claude/**)   Edit(./.git/hooks/**)   Edit(./.git/config)
-Edit(~/.sleipnir/**)   Edit(~/.claude/**)
+Edit(./.sleipnir/**)   Edit(./.claude/**)   Edit(./.agents/skills/**)   Edit(./.git/hooks/**)   Edit(./.git/config)
+Edit(~/.sleipnir/**)   Edit(~/.claude/**)   Edit(~/.agents/skills/**)
 ```
 
 A write there **always asks, in every mode, `bypass` included** (`yolo`, which never asks, refuses it), and an unattended run refuses it

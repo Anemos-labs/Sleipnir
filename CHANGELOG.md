@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Skills are also read from `.agents/skills/` (the directory the Agent Skills
+  convention shares between Codex, opencode, Gemini CLI and others): in a
+  trusted project after `.claude/skills/`, and in the home directory after
+  `~/.claude/skills/`. A skill of the same name in `.sleipnir` or `.claude`
+  still wins. Writes to `.agents/skills/` ask, as writes to `.claude/` do, and
+  the project's trust fingerprint covers them, so a project trusted before
+  with an `.agents/skills/` directory asks to be trusted again.
+
 - Follow-ups to CodeRabbit findings left unanswered. A goal's spec is opened
   without waiting, so a pipe swapped in for it after the check is refused at
   once. A research export reads an earlier export's mark only when it is a
