@@ -777,6 +777,10 @@ Edit(./.sleipnir/**)   Edit(./.claude/**)   Edit(./.agents/skills/**)   Edit(./.
 Edit(~/.sleipnir/**)   Edit(~/.claude/**)   Edit(~/.agents/skills/**)
 ```
 
+When one of the extension directories (`skills`, `commands`, `agents` under `.claude`, `~/.claude`, `.agents` or
+`~/.agents`) is a link, its target is guarded the same way (`Edit(<target>/**)`): the loaders follow the link, so a
+dotfiles checkout that `~/.claude/skills` points into is as protected as the link itself.
+
 A write there **always asks, in every mode, `bypass` included** (`yolo`, which never asks, refuses it), and an unattended run refuses it
 (`approval required: rule Edit(./.sleipnir/**) requires approval for ".sleipnir/notes.txt"; an answer to it is not remembered`). It covers
 the file tools and shell redirections (`echo x > .sleipnir/notes.txt` asks). The question has no "don't ask again": a question that comes

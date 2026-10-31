@@ -20,8 +20,30 @@
   const phaseAt = p => Math.max(0, PHASES.findIndex(x => x[0] === p));
   const SEV = ['critical', 'high', 'medium', 'low'];
   const LANES = [['entry', 'Entry points'], ['boundary', 'Trust boundaries'], ['access', 'Access control'], ['sink', 'Sinks'], ['config', 'Configuration']];
-  const STATUS = [['confirmed', 'Findings', 'confirmed by agents that did not file them, and reproduced where the depth asks'], ['unproven', 'Unproven', 'confirmed, not yet reproduced in the sandbox: likely, not shown'],
-    ['open', 'Being verified', 'filed, waiting for enough verdicts'], ['rejected', 'Rejected', 'the verifiers showed why they are not real']];
+  /** The views of a scan's leads the report's filter offers: which statuses each one shows, and what it means. */
+  const VIEWS = [['findings', 'Findings', ['confirmed', 'unproven'], 'confirmed by reviewers that did not file them'], ['disputed', 'Disputed', ['disputed'], 'the reviewers did not agree'],
+    ['open', 'Being verified', ['open'], 'filed, waiting for enough verdicts'], ['deferred', 'Not verified', ['deferred'], 'recorded after the scan reached its stopping point'],
+    ['rejected', 'Rejected', ['rejected'], 'the reviewers showed why they are not real'], ['all', 'Every lead', null, 'every lead the scan recorded']];
+  /** A finding's status in the report's words. */
+  const statusLabel = f => ({ confirmed: f.reproduced ? 'Confirmed, reproduced' : 'Confirmed', unproven: 'Not reproduced', disputed: 'Disputed', open: 'Being verified', deferred: 'Not verified',
+    rejected: 'Rejected' + (f.reject_reason ? ': ' + f.reject_reason : '') })[f.status] || f.status;
+  const statusCls = s => (s === 'confirmed' ? 'done' : s === 'rejected' || s === 'deferred' ? 'off' : 'run');
+  const sevRank = s => { const i = SEV.indexOf(s); return i < 0 ? SEV.length : i; };
+  const leadNum = id => parseInt(String(id || '').replace(/^L/i, ''), 10) || 0;
+  /** Where a finding does harm: its anchor on the change in a review, else the last step of its trace. */
+  const locOf = f => (f.anchor ? f.anchor.file + ':' + f.anchor.line : sinkOf(f));
+  /** The verdicts by role, in order: Defender, Reviewer 1, Reviewer 2. A report never names an agent. */
+  const roleLabels = vs => { let n = 0; return arr(vs).map(v => (v.role === 'defender' ? 'Defender' : 'Reviewer ' + (++n))); };
+  /** How a finding was checked, in a sentence. */
+  function verification(f) {
+    const c = f.confirms | 0, r = f.rejects | 0, p = arr(f.proofs);
+    let s = !c && !r ? 'Not yet reviewed' : !r ? 'Confirmed by ' + plural(c, 'independent reviewer') : c + ' independent ' + (c === 1 ? 'reviewer' : 'reviewers') + ' confirmed it and ' + r + ' rejected it';
+    s += (f.defended ? ', one of them a defender who looked for the reason it is not real' : '') + '.';
+    if (f.reproduced) s += ' An independent reproducer showed the harm in the sandbox.';
+    else if (p.length) s += ' ' + plural(p.length, 'reproduction') + ' did not show the harm in the sandbox.';
+    else if (f.status === 'unproven') s += ' No reproduction was run.';
+    return s;
+  }
   const short = c => String(c || '').slice(0, 12);
   const sevPill = s => '<span class="sc-sev sc-' + esc(SEV.includes(s) ? s : 'low') + '">' + esc(s || '?') + '</span>';
   /** Where a finding does harm: the last step of its trace. */
@@ -73,12 +95,11 @@
       (sev ? '<span class="sc-rsev">' + sev + '</span>' : '') + '</button>';
   }
 
+  /** One row of the report's index: severity, id, title with its location, category, status. */
   function findingRow(f) {
-    const v = arr(f.verdicts), yes = v.filter(x => x.confirm).length, no = v.length - yes, pw = proofWord(f);
-    return '<button type="button" class="sc-f" data-lead="' + esc(f.id) + '" data-key="' + esc(f.id) + '">' + sevPill(f.severity) + '<span class="mono sc-fid">' + esc(f.id) + '</span>' +
-      '<span class="sc-ft"><b>' + esc(f.title) + '</b><span class="mono dim">' + esc(f.category) + ' · ' + esc(sinkOf(f)) + '</span></span>' +
-      '<span class="sc-fv mono" title="verdicts: confirm / reject">' + yes + '✓ ' + no + '✗</span>' +
-      (pw ? '<span class="chip ' + (pw === 'reproduced' ? 'rs-ok' : '') + '">' + esc(pw) + '</span>' : '') + (f.reject_reason ? '<span class="chip">' + esc(f.reject_reason) + '</span>' : '') + '</button>';
+    return '<button type="button" class="sc-row" data-lead="' + esc(f.id) + '" data-key="' + esc(f.id) + '">' + sevPill(f.severity) + '<span class="mono sc-fid">' + esc(f.id) + '</span>' +
+      '<span class="sc-ft"><b>' + esc(f.title) + '</b><span class="mono dim">' + esc(locOf(f)) + '</span></span><span class="sc-rcat">' + esc(f.category) + '</span>' +
+      '<span class="sc-st sc-st-' + statusCls(f.status) + '">' + esc(statusLabel(f)) + '</span></button>';
   }
 
   /** The comparison of the selected scan with an earlier one: a picker of the scan to compare with, the counts, and a row per
@@ -106,25 +127,64 @@
       '<div class="sc-dnums">' + sum + '</div>' + (groups || '<p class="dim">Neither scan has a finding.</p>') + '</section>';
   }
 
-  /** The detail of a scan in parts, [key, html] each, so that a part that comes or goes leaves the others in place (partsHtml). */
-  function detailParts(d) {
+  /** The leads the report's filter F lets through, worst first: its view (a set of statuses), the severities left on, a category
+   *  and the words searched for (in the id, the title, the category and the location). */
+  function filtered(fs, F) {
+    const view = (VIEWS.find(v => v[0] === F.view) || VIEWS[0])[2], q = String(F.q || '').trim().toLowerCase();
+    return fs.filter(f => (!view || view.includes(f.status)) && !F.off.includes(f.severity) && (!F.cat || f.category === F.cat) &&
+      (!q || (f.id + ' ' + f.title + ' ' + f.category + ' ' + locOf(f)).toLowerCase().includes(q)))
+      .sort((a, b) => sevRank(a.severity) - sevRank(b.severity) || leadNum(a.id) - leadNum(b.id));
+  }
+  /** The summary of the report: the headline, a tile per severity, the distribution, the categories and what became of the leads. */
+  function summaryHtml(d) {
+    const sm = d.summary || {}, by = sm.bySeverity || {}, un = sm.unproven || {}, total = sm.findings | 0, c = d.counts || {};
+    const tiles = SEV.map(s => '<button type="button" class="sc-tile sc-t-' + s + ((by[s] | 0) ? '' : ' zero') + '" data-sc-only="' + s + '" title="show only the ' + s + ' findings"><b>' + (by[s] | 0) + '</b><span>' + esc(s) + '</span>' +
+      ((un[s] | 0) ? '<small>' + un[s] + ' not reproduced</small>' : '') + '</button>').join('') +
+      '<div class="sc-tile sc-t-total"><b>' + total + '</b><span>findings</span>' + ((sm.reproduced | 0) ? '<small>' + sm.reproduced + ' reproduced</small>' : '') + '</div>';
+    const dist = total ? '<div class="sc-dist" role="img" aria-label="' + esc('findings by severity: ' + SEV.map(s => (by[s] | 0) + ' ' + s).join(', ')) + '">' +
+      SEV.filter(s => by[s]).map(s => '<i class="sc-b-' + s + '" style="flex:' + (by[s] | 0) + '" title="' + (by[s] | 0) + ' ' + s + '"></i>').join('') + '</div>' : '';
+    const cats = arr(sm.categories), top = cats.length ? cats[0].total : 1;
+    const catRows = cats.slice(0, 8).map(cc => '<button type="button" class="sc-crow" data-sc-cat="' + esc(cc.category) + '" title="show only ' + esc(cc.category) + '"><span>' + esc(cc.category) + '</span><span class="sc-cbar2" style="--w:' + Math.max(4, Math.round(cc.total * 100 / top)) + '%">' +
+      SEV.filter(s => cc.bySeverity && cc.bySeverity[s]).map(s => '<i class="sc-b-' + s + '" style="flex:' + cc.bySeverity[s] + '"></i>').join('') + '</span><b class="mono">' + cc.total + '</b></button>').join('');
+    const leads = [['Filed', c.leads | 0, 'all'], ['Confirmed by review', total, 'findings'], ['Disputed', sm.disputed | 0, 'disputed'], ['Being verified', sm.open | 0, 'open'], ['Not verified', sm.deferred | 0, 'deferred'], ['Rejected', sm.rejected | 0, 'rejected']]
+      .filter(([, n], i) => n || i < 2).map(([label, n, v]) => '<button type="button" class="sc-crow" data-sc-view="' + v + '"><span>' + esc(label) + '</span><span class="sc-cbar2" style="--w:' + Math.max(2, Math.round(n * 100 / Math.max(1, c.leads | 0))) + '%"><i class="sc-b-lead"></i></span><b class="mono">' + n + '</b></button>').join('');
+    return '<div class="sc-sum"><p class="sc-headline">' + esc(d.headline || '') + '</p><div class="sc-tiles">' + tiles + '</div>' + dist +
+      '<div class="sc-cols">' + (catRows ? '<div class="sc-card"><h4>By category' + (cats.length > 8 ? ' <span class="dim">top 8 of ' + cats.length + '</span>' : '') + '</h4>' + catRows + '</div>' : '') +
+      '<div class="sc-card"><h4>Leads</h4>' + leads + '</div></div></div>';
+  }
+  /** The report's filter bar: the words to find, a chip per severity, the view and the category, and how many leads it shows. */
+  function toolsHtml(d, F, shown) {
+    const fs = arr(d.findings), inView = st => fs.filter(f => !st || st.includes(f.status)).length;
+    const cats = [...new Set(fs.map(f => f.category))].sort();
+    return '<div class="sc-tools" role="search"><input class="sc-in sc-q" type="search" data-sc-q placeholder="find by id, title, file or category" aria-label="find a lead" spellcheck="false">' +
+      '<span class="sc-chips">' + SEV.map(s => '<button type="button" class="sc-chip sc-' + s + (F.off.includes(s) ? ' off' : '') + '" data-sc-sev="' + s + '" aria-pressed="' + !F.off.includes(s) + '">' + esc(s) + '</button>').join('') + '</span>' +
+      '<select class="sc-in sc-sel" data-sc-viewsel aria-label="which leads">' + VIEWS.map(([id, label, sts]) => '<option value="' + id + '"' + (F.view === id ? ' selected' : '') + '>' + esc(label) + ' (' + inView(sts) + ')</option>').join('') + '</select>' +
+      '<select class="sc-in sc-sel" data-sc-catsel aria-label="category"><option value="">every category</option>' + cats.map(c => '<option value="' + esc(c) + '"' + (F.cat === c ? ' selected' : '') + '>' + esc(c) + '</option>').join('') + '</select>' +
+      '<span class="sc-shown dim">' + shown + ' shown' + (F.q || F.off.length || F.cat ? ' · <button type="button" class="lnk" data-sc-clear>clear</button>' : '') + '</span></div>';
+  }
+
+  /** The detail of a scan in parts, [key, html] each, so that a part that comes or goes leaves the others in place (partsHtml): the
+   *  scan's facts, the report's summary, its filter and index of leads, what the scan still needs and the comparison. */
+  function detailParts(d, F) {
     const c = d.counts || {}, fs = arr(d.findings);
-    const head = '<div class="sc-dhead"><span class="mono">' + esc(d.slug) + '</span><span class="dim"> · commit <span class="mono">' + esc(short(d.commit)) + '</span>' + (d.focus ? ' · ' + esc(d.focus) : '') +
-      ' · ' + esc(teamText(d)) + ' · ' + esc(d.depth) + ': ' + plural(d.verifiers, 'verifier') + ' per lead' + (d.defender ? ' with a defender' : '') + (d.proveFrom ? ', reproduced from ' + esc(d.proveFrom) + ' up' : '') + '</span>' +
+    const head = '<div class="sc-dhead"><span class="dim">commit <span class="mono">' + esc(short(d.commit)) + '</span>' + (d.focus ? ' · ' + esc(d.focus) : '') +
+      ' · ' + esc(d.depth) + ': ' + plural(d.verifiers, 'reviewer') + ' per lead' + (d.defender ? ' with a defender' : '') + (d.proveFrom ? ', reproduced from ' + esc(d.proveFrom) + ' up' : '') +
+      ' · ' + [[c.files, 'file'], [c.lines, 'line'], [c.points, 'point'], [c.edges, 'edge']].map(([n, w]) => plural(n | 0, w).replace(/^\d+/, m => Number(m).toLocaleString('en-US'))).join(' · ') + ' · ' + esc(teamText(d)) + '</span>' +
       (d.proveFrom && !d.sandbox ? '<p class="sc-warn">This session has no sandbox, so nothing can be reproduced here: start one with <span class="mono">--sandbox docker</span> (the <b>sandbox</b> field of New session).</p>' : '') + '</div>';
-    const nums = '<div class="sc-nums">' + [[c.files, 'files'], [c.funcs, 'functions'], [c.lines, 'lines'], [c.points, 'points'], [c.edges, 'edges'], [c.leads, 'leads'], [c.confirmed, 'confirmed'], [c.reproduced, 'reproduced']]
-      .map(([n, w]) => '<span><b>' + (n || 0) + '</b>' + esc(w) + '</span>').join('') + '</div>';
-    const groups = STATUS.map(([st, title, about]) => {
-      const list = fs.filter(f => f.status === st); if (!list.length) return '';
-      const rows = list.map(findingRow).join('');
-      return st === 'rejected' ? '<details class="sc-group"><summary><h3>' + esc(title) + ' <span class="dim">' + list.length + '</span></h3> <span class="dim">' + esc(about) + '</span></summary>' + rows + '</details>'
-        : '<section class="sc-group"><h3>' + esc(title) + ' <span class="dim">' + list.length + '</span></h3><p class="dim">' + esc(about) + '</p>' + rows + '</section>';
-    }).join('') || '<p class="stubnote">No lead yet: the team maps the shards first, then hunts them. Findings appear here as soon as verifiers confirm them.</p>';
     const probs = arr(d.problems);
-    const needs = d.phase === 'done' ? '' : '<details class="sc-needs"><summary>What the scan still needs <span class="dim">' + (probs.length + (d.moreProblems || 0)) + '</span></summary><ul>' +
+    const needs = d.phase === 'done' ? '' : '<details class="sc-needs"><summary>What the scan still needs <span class="dim">' + (probs.length + (d.moreProblems || 0)) + '</span>' + intakeText(d) + '</summary><ul>' +
       probs.map(p => '<li><span class="chip">' + esc(p.phase) + '</span> ' + esc(p.text) + '</li>').join('') + (d.moreProblems ? '<li class="dim">and ' + d.moreProblems + ' more</li>' : '') + '</ul></details>';
-    return [['head', head], ['nums', nums], ['needs', needs], ['cmp', null], ['groups', groups],
-      ['files', '<p class="dim sc-files">The report is rewritten as the scan goes: <span class="mono">' + esc(d.reportDir) + '</span> (REPORT.md, findings.json, findings.sarif, map.json).</p>']];
+    if (!fs.length) return [['head', head], ['needs', needs], ['cmp', null], ['rows', '<p class="stubnote">No lead yet: the team maps the shards first, then hunts them. Findings appear here as soon as reviewers confirm them.</p>']];
+    const list = filtered(fs, F), more = list.length - F.limit;
+    const rows = list.length ? '<div class="sc-rows" role="list">' + list.slice(0, F.limit).map(findingRow).join('') + '</div>' + (more > 0 ? '<button type="button" class="btn sm sc-more2" data-sc-more>Show ' + Math.min(more, 100) + ' more of ' + more + '</button>' : '')
+      : '<p class="stubnote">No lead matches the filter.</p>';
+    return [['head', head], ['sum', summaryHtml(d)], ['needs', needs], ['cmp', null], ['tools', toolsHtml(d, F, list.length)], ['rows', rows],
+      ['files', '<p class="dim sc-files">The report is rewritten as the scan goes: <span class="mono">' + esc(d.reportDir) + '</span> (REPORT.md, report.html, findings.json, findings.sarif, map.json).</p>']];
+  }
+  /** Where the lead intake stands, after what the scan still needs: the budget, and the late leads once every shard is hunted. */
+  function intakeText(d) {
+    const i = d.intake; if (!i || !i.budget) return '';
+    return ' <span class="dim">· ' + i.verified + ' of a budget of ' + i.budget + ' leads verified' + (i.allowance ? (i.closed ? ' · no more late leads verified' : ' · ' + i.late + ' of ' + i.allowance + ' late leads') : '') + (i.deferred ? ' · ' + i.deferred + ' not verified' : '') + '</span>';
   }
 
   /** The attack surface and the map in parts: each lane and the shards scroll on their own and fold, so that a large codebase's
@@ -156,10 +216,9 @@
   function exportHtml(S, slug) {
     if (!S) return '';
     const a = (fmt, label, about) => '<a class="btn sm" href="' + esc(exportURL(S, slug, fmt)) + '" download title="' + esc(about) + '">' + esc(label) + '</a>';
-    return '<span class="sc-exp">' + a('csv', 'CSV', 'every lead, one row each, for a spreadsheet or a tracker') + a('json', 'JSON', 'findings.json: the findings with their traces, verdicts and reproductions') +
+    return '<span class="sc-exp"><a class="btn sm" href="' + esc(exportURL(S, slug, 'html')) + '" target="_blank" rel="noopener" title="the whole report as a document, in a new tab: summary, index, every finding, appendices">Full report ↗</a>' + a('csv', 'CSV', 'every lead, one row each, for a spreadsheet or a tracker') + a('json', 'JSON', 'findings.json: the findings with their traces, verdicts and reproductions') +
       '<button class="btn sm" type="button" data-sc-pdf title="the full report, laid out for print: choose Save as PDF in the print dialog">PDF</button>' +
-      '<details class="sc-more"><summary class="btn sm" title="more formats">⋯</summary><div class="sc-menu">' + a('md', 'Markdown', 'REPORT.md') + a('sarif', 'SARIF', 'findings.sarif, for code scanning') +
-      '<a class="btn sm" href="' + esc(exportURL(S, slug, 'html')) + '" target="_blank" rel="noopener" title="the printable report in a new tab">Open the report ↗</a></div></details></span>';
+      '<details class="sc-more"><summary class="btn sm" title="more formats">⋯</summary><div class="sc-menu">' + a('md', 'Markdown', 'REPORT.md') + a('sarif', 'SARIF', 'findings.sarif, for code scanning') + '</div></details></span>';
   }
   /** Print the report page in a frame of this page: the browser's dialog saves it as a PDF. */
   function printReport(S, slug) {
@@ -178,13 +237,17 @@
   function openFinding(S, d, f, reload, from) {
     const v = arr(f.verdicts), p = arr(f.proofs), actionable = !from && (f.status === 'confirmed' || f.status === 'unproven');
     const trace = arr(f.trace).map((s, i) => '<li><div class="sc-step"><span class="mono">' + (i + 1) + '. ' + esc(s.file) + ':' + (s.line | 0) + '</span> ' + esc(s.note) + '</div><pre class="pre sc-q">' + esc(s.quote) + '</pre></li>').join('');
-    const verdicts = v.map(x => '<li><b>' + esc(x.by) + '</b> <span class="dim">' + esc(x.role) + '</span> ' + (x.confirm ? '<span class="chip rs-ok">confirms</span>' : '<span class="chip">rejects: ' + esc(x.reason || '') + '</span>') + ' ' + esc(x.note) + '</li>').join('');
-    const proofs = p.map(x => '<details class="sc-proof"><summary><b>' + esc(x.outcome) + '</b> <span class="dim">by ' + esc(x.by) + ', exit ' + (x.exit | 0) + ', ' + (x.seconds | 0) + 's' + (x.network ? ', with network' : '') + '</span></summary><h5>Script</h5><pre class="pre sc-q">' + esc(x.script) + '</pre><h5>Output</h5><pre class="pre sc-q">' + esc(x.output) + '</pre></details>').join('');
-    ui.modal({ title: f.id + ' · ' + f.title, kicker: f.severity + ' · ' + f.status, wide: true, color: f.severity === 'critical' || f.severity === 'high' ? 'var(--err)' : 'var(--warm)', body:
-      '<div class="sc-dlg"><p class="sc-claim">' + esc(f.claim) + '</p>' +
-      '<p class="sc-meta">' + sevPill(f.severity) + ' <span class="mono">' + esc(f.category) + '</span> · reachability ' + esc(f.reach) + ' · exploitability ' + esc(f.exploit) + ' · impact ' + esc(f.impact) + ' · filed by ' + esc(f.by) + '</p>' +
-      '<h4>Trace</h4><ol class="sc-trace">' + trace + '</ol>' + (verdicts ? '<h4>Verdicts</h4><ul class="sc-verdicts">' + verdicts + '</ul>' : '') + (proofs ? '<h4>Reproductions</h4>' + proofs : '') +
-      (f.fix ? '<h4>Suggested fix</h4><p>' + esc(f.fix) + '</p>' : '') +
+    const labels = roleLabels(v);
+    const verdicts = v.map((x, i) => '<li><b>' + esc(labels[i]) + '</b> ' + (x.confirm ? '<span class="chip rs-ok">confirms</span>' : '<span class="chip">rejects: ' + esc(x.reason || '') + '</span>') + ' ' + esc(x.note) + '</li>').join('');
+    const proofs = p.map(x => '<details class="sc-proof"><summary><b>' + esc(x.outcome) + '</b> <span class="dim">' + (x.independent ? 'independent' : 'by the reviewer who filed it, so it does not count') + ', exit ' + (x.exit | 0) + ', ' + (x.seconds | 0) + 's' + (x.network ? ', with network' : '') + '</span></summary><h5>Script</h5><pre class="pre sc-q">' + esc(x.script) + '</pre><h5>Output</h5><pre class="pre sc-q">' + esc(x.output) + '</pre></details>').join('');
+    ui.modal({ title: f.id + ' · ' + f.title, kicker: f.severity + ' · ' + statusLabel(f), wide: true, color: f.severity === 'critical' ? 'var(--err)' : f.severity === 'high' ? 'var(--c-rv)' : 'var(--warm)', body:
+      '<div class="sc-dlg"><dl class="sc-facts"><div><dt>Severity</dt><dd>' + sevPill(f.severity) + '</dd></div><div><dt>Status</dt><dd><span class="sc-st sc-st-' + statusCls(f.status) + '">' + esc(statusLabel(f)) + '</span></dd></div>' +
+      '<div><dt>Category</dt><dd>' + esc(f.category) + '</dd></div><div><dt>Location</dt><dd class="mono">' + esc(locOf(f)) + '</dd></div><div><dt>Reachability</dt><dd>' + esc(f.reach) + '</dd></div>' +
+      '<div><dt>Exploitability</dt><dd>' + esc(f.exploit) + '</dd></div><div><dt>Impact</dt><dd>' + esc(f.impact) + '</dd></div></dl>' +
+      '<h4>Description</h4><p class="sc-claim">' + esc(f.claim) + '</p>' +
+      '<h4>Trace</h4><ol class="sc-trace">' + trace + '</ol><h4>Verification</h4><p class="sc-ver">' + esc(verification(f)) + '</p>' + (verdicts ? '<ul class="sc-verdicts">' + verdicts + '</ul>' : '') + (proofs ? '<h4>Reproductions</h4>' + proofs : '') +
+      (f.deferred ? '<h4>Not verified</h4><p>' + esc(f.deferred) + '.</p>' : '') +
+      (f.fix ? '<h4>Remediation</h4><p>' + esc(f.fix) + '</p>' : '') +
       (actionable ? '<div class="row2 sc-acts"><button class="btn" type="button" data-sc-issue>Open issue…</button><button class="btn" type="button" data-sc-fix>Fix…</button></div>' : from ? '<p class="stubnote">As the earlier scan <span class="mono">' + esc(from) + '</span> found it.</p>' : '<p class="stubnote">Only a confirmed finding can be written up or fixed.</p>') +
       '<div class="sc-panel" data-sc-panel hidden></div></div>',
     onMount(body, sc) {
@@ -231,7 +294,7 @@
   SL.views.register({ name: 'scan', title: 'Deep scan', mount(sc, root, params, S0) {
     const P = ui.pageHead(sc, root, S0 || SL.sessions.active, 'scan', params, { title: 'Deep scan', purpose: 'A team reads a whole repository at one commit: it maps every shard, records the attack surface and how the parts connect, follows the input to the sinks, and reports only what agents that did not file a lead confirmed and, from the depth’s bar up, a script reproduced in the sandbox.', action: { label: '+ New scan', title: 'scan this project, or a repository cloned for it' }, onAction: () => { const u = $('#scUrl', root); if (u) u.focus(); } });
     P.fill({ 'scan.runs': '<section class="panel"><div class="ph"><h2>Scans</h2><div class="r"><span class="sc-count dim"></span></div></div><div class="sc-list"></div></section>',
-      'scan.findings': '<section class="panel"><div class="ph"><h2>Findings</h2><div class="r"><span class="sc-phase"></span></div></div><div class="sc-detail"></div></section>',
+      'scan.findings': '<section class="panel"><div class="ph"><h2>Report</h2><div class="r"><span class="sc-phase"></span></div></div><div class="sc-detail"></div></section>',
       'scan.surface': '<section class="panel"><div class="ph"><h2>Attack surface and map</h2></div><div class="sc-surface"></div></section>',
       'scan.new': '<section class="panel"><div class="ph"><h2>New scan</h2><div class="r"><span class="mono dim">/scan DEPTH [DIR]</span></div></div><form class="rs-new sc-new" autocomplete="off">' +
         '<div class="sc-src" role="radiogroup" aria-label="what to scan"><label class="chk"><input type="radio" name="scSrc" value="here" checked> this project</label><label class="chk"><input type="radio" name="scSrc" value="url"> a repository, cloned for the scan</label></div>' +
@@ -240,7 +303,9 @@
         '<div class="rs-depths" role="radiogroup" aria-label="depth"></div><div class="row2"><button class="btn pri" type="submit" id="scGo">Start the scan</button></div>' +
         '<div class="sc-clone" data-sc-clone role="status" aria-live="polite" hidden><div class="sc-cbar"><i></i></div><div class="sc-cline"><b data-sc-cphase></b> <span class="mono dim" data-sc-cline></span> <span class="mono dim sc-ctime" data-sc-ctime></span></div></div>' +
         '<p class="stubnote">The work is sized by the code, not by a clock: the scan splits it into shards of so many functions and lines, and asks for one agent per two shards, from 8 to 32.</p></form></section>' });
-    const st = { runs: [], depths: [], on: true, sandbox: false, box: null, depth: 'standard', sel: (params && params.scan) || '', detail: null, seq: 0, dseq: 0, sig: '', dsig: '', cmp: null, cmpErr: '', since: '', cseq: 0, csig: '' };
+    const st = { runs: [], depths: [], on: true, sandbox: false, box: null, depth: 'standard', sel: (params && params.scan) || '', detail: null, seq: 0, dseq: 0, sig: '', dsig: '', cmp: null, cmpErr: '', since: '', cseq: 0, csig: '',
+      F: { q: '', off: [], view: 'findings', cat: '', limit: 60 } };
+    const PAGE = 60, resetF = () => { st.F = { q: '', off: [], view: 'findings', cat: '', limit: PAGE }; const q = $('[data-sc-q]', root); if (q) q.value = ''; };
     const S = () => SL.sessions.active;
     const list = $('.sc-list', root), det = $('.sc-detail', root), surf = $('.sc-surface', root), depths = $('.rs-depths', root);
     function paint() {
@@ -251,8 +316,8 @@
         : st.runs.length ? st.runs.map(r => runHtml(r, st.sel)).join('') : '<p class="stubnote" style="padding:10px 12px;margin:0">No scan yet. Start one from New scan: this project at its HEAD, or a repository cloned for it.</p>');
     }
     function paintDetail() {
-      const d = st.detail, sig = JSON.stringify(d); if (sig === st.dsig) return; st.dsig = sig;
-      if (det) U.morph(det, d ? partsHtml(detailParts(d)) : '<p class="stubnote" style="padding:10px 12px;margin:0">' + (st.runs.length ? 'Pick a scan to see its findings.' : 'The findings of a scan appear here as verifiers confirm them.') + '</p>');
+      const d = st.detail, sig = JSON.stringify([d, st.F]); if (sig === st.dsig) return; st.dsig = sig;
+      if (det) U.morph(det, d ? partsHtml(detailParts(d, st.F)) : '<p class="stubnote" style="padding:10px 12px;margin:0">' + (st.runs.length ? 'Pick a scan to see its findings.' : 'The findings of a scan appear here as verifiers confirm them.') + '</p>');
       if (surf) U.morph(surf, d ? partsHtml(surfaceParts(d)) : '');
       const ph = $('.sc-phase', root); if (ph) U.morph(ph, d ? '<span class="chip' + (d.phase === 'done' ? ' rs-ok' : ' rs-live') + '">' + esc(d.phase) + '</span>' +
         '<button class="btn sm sc-rerun" type="button" data-sc-rerun title="scan the same code again at HEAD, then compare the two">Rerun…</button>' + exportHtml(S(), d.slug) : '');
@@ -296,7 +361,7 @@
     async function loadDetail() {
       const s = S(); if (!s || !net || !st.sel) { st.detail = null; paintDetail(); return; }
       const mine = ++st.dseq, r = await net.get(net.tab(s, '/scan/' + encodeURIComponent(st.sel))); if (!sc.alive || mine !== st.dseq) return;
-      if (r.ok && r.data) { const fresh = !st.detail || st.detail.slug !== r.data.slug; st.detail = r.data; if (fresh) { st.cmp = null; st.cmpErr = ''; } paintDetail(); loadCompare(); }
+      if (r.ok && r.data) { const fresh = !st.detail || st.detail.slug !== r.data.slug; st.detail = r.data; if (fresh) { st.cmp = null; st.cmpErr = ''; resetF(); } paintDetail(); loadCompare(); }
     }
     async function load() {
       const s = S(); if (!s || !net) return; const mine = ++st.seq;
@@ -368,11 +433,24 @@
         openFinding(S(), st.detail, f, load, mine ? '' : st.cmp.old); return;
       }
       const run = t.closest('[data-scan]'); if (run) { st.sel = run.dataset.scan; st.sig = ''; paint(); st.detail = null; st.dsig = ''; st.since = ''; st.cmp = null; st.cmpErr = ''; loadDetail(); return; }
-      const fl = t.closest('[data-lead]'); if (fl && st.detail) { const f = arr(st.detail.findings).find(x => x.id === fl.dataset.lead); if (f) openFinding(S(), st.detail, f, load); }
+      const fl = t.closest('[data-lead]'); if (fl && st.detail) { const f = arr(st.detail.findings).find(x => x.id === fl.dataset.lead); if (f) openFinding(S(), st.detail, f, load); return; }
+      /* the report's filter: a severity chip toggles, a tile shows that severity alone, a category or a row of the leads narrows the index */
+      const F = st.F, sv = t.closest('[data-sc-sev]'), only = t.closest('[data-sc-only]'), cat = t.closest('[data-sc-cat]'), view = t.closest('[data-sc-view]');
+      if (sv) { const s = sv.dataset.scSev; F.off = F.off.includes(s) ? F.off.filter(x => x !== s) : F.off.concat(s); }
+      else if (only) { const s = only.dataset.scOnly; F.off = F.off.length === SEV.length - 1 && !F.off.includes(s) ? [] : SEV.filter(x => x !== s); F.view = 'findings'; }
+      else if (cat) { F.cat = F.cat === cat.dataset.scCat ? '' : cat.dataset.scCat; F.view = 'findings'; }
+      else if (view) F.view = view.dataset.scView;
+      else if (t.closest('[data-sc-more]')) { F.limit += 100; paintDetail(); return; }
+      else if (t.closest('[data-sc-clear]')) resetF();
+      else return;
+      F.limit = PAGE; paintDetail();
     });
+    sc.listen(root, 'input', e => { if (!e.target.matches('[data-sc-q]')) return; st.F.q = e.target.value; st.F.limit = PAGE; paintDetail(); });
     sc.listen(root, 'change', e => {
       const t = e.target;
       if (t.name === 'scDepth') { st.depth = t.value; paintDepths(); }
+      if (t.matches('[data-sc-viewsel]')) { st.F.view = t.value; st.F.limit = PAGE; paintDetail(); }
+      if (t.matches('[data-sc-catsel]')) { st.F.cat = t.value; st.F.limit = PAGE; paintDetail(); }
       if (t.matches('[data-sc-since]')) { st.since = t.value; st.cmp = null; st.cmpErr = ''; st.csig = ''; paintCompare(); loadCompare(); }
       if (t.name === 'scSrc') { $('[data-sc-here]', root).hidden = t.value !== 'here'; $('[data-sc-url]', root).hidden = t.value !== 'url'; }
     });

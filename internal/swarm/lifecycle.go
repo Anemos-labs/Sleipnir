@@ -358,6 +358,12 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 func (s *Swarm) register(m *member, builtShared *kv.Layer) {
 	s.mu.Lock()
 	s.members[m.id] = m
+	if !m.service {
+		if s.teamIDs == nil {
+			s.teamIDs = map[string]bool{}
+		}
+		s.teamIDs[m.id] = true
+	}
 	cur := s.shared
 	s.mu.Unlock()
 	if cur != builtShared && cur != nil {
@@ -1159,7 +1165,11 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 			}
 			// Isolated run: the harness commits the tree and merges it on the worker's
 			// behalf, exactly as for a worker that calls done.
-			out := s.integrate(ctx, m, t, taskCommitMessage(t, summary))
+			if notice := s.runRefNotice(ctx, m, t); notice != "" {
+				s.notify(m.id, "request", "You stopped without finishing "+id+". "+notice)
+				continue
+			}
+			out := s.integrate(ctx, m, t, taskCommitMessage(t, summary, "", s.everyMember()))
 			if s.checkTaskGate(t) != nil {
 				s.retryChangedScope(m, t)
 				continue

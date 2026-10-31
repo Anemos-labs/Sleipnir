@@ -10,10 +10,50 @@ they do not indicate whether a change has been released.
 - Skills are also read from `.agents/skills/` (the directory the Agent Skills
   convention shares between Codex, opencode, Gemini CLI and others): in a
   trusted project after `.claude/skills/`, and in the home directory after
-  `~/.claude/skills/`. A skill of the same name in `.sleipnir` or `.claude`
-  still wins. Writes to `.agents/skills/` ask, as writes to `.claude/` do, and
+  `~/.claude/skills/`. Within each scope a skill of the same name in
+  `.sleipnir` or `.claude` wins; project skills still come before the
+  home directory's, as they always have. Writes to `.agents/skills/` ask, as writes to `.claude/` do, and
   the project's trust fingerprint covers them, so a project trusted before
-  with an `.agents/skills/` directory asks to be trusted again.
+  with an `.agents/skills/` directory asks to be trusted again. An extension
+  directory that is a link (`~/.claude/skills` into a dotfiles checkout, say)
+  is now guarded at its target as well, since the loaders follow the link.
+
+- Commits, code and pull requests a team leaves in a project no longer name
+  its agents or board tasks. `task done` takes an optional `commit` message
+  (the project's convention, Conventional Commits when it has none) that
+  becomes the commit recording the task; without one, the subject is the
+  task's title and the body the worker's result minus the sentences naming
+  team members or task ids. Merge, handover and salvage commits describe the
+  work instead of naming the agent; the task and agent ids stay in the
+  `Sleipnir-Task:` and `Sleipnir-Agent:` trailers. In an isolated run,
+  `done` sends the worker back once when the lines its change adds name a
+  team member or a board task, `task deliver` refuses such a commit message,
+  and the constitution, the manager's role and the delivery prompt say so.
+  Prompt-cache change: the constitution and the task tool's schema change
+  bytes, so the first request of each agent after the upgrade misses the
+  cache once.
+
+- Deep scans end, and their report reads as an assessment. A scan verifies at
+  most a budget of leads (4, 6 or 8 per shard by depth, at least 24); once
+  every shard is hunted only a few late leads are verified (a tenth of those
+  the hunt filed, at least 3), and none once the last 3 were all rejected. A
+  lead below critical filed past that point is recorded as `deferred`: kept,
+  reported as not verified, never blocking. A settled lead takes no more
+  verdicts, and a lead ruled on by two more agents than the depth asks for
+  without agreeing is `disputed` and reported apart. The goal that drives a
+  scan is judged from the scan's ledger, not by a model: it is met when
+  `scan status` says done, and the harness writes the report itself when
+  only the report is missing. REPORT.md, report.html and the Deep scan view
+  lead with a summary (a headline, findings by severity and by category),
+  then an index and each finding with its facts, trace, verification and
+  remediation; the attack surface is summarised (map.json keeps every
+  point). Reports name no agent: verdicts are given by role, the agents' ids
+  are taken out of their notes, findings.json carries `confirms`, `rejects`,
+  `defended`, `reproduced` and a reproduction's `independent` in place of
+  `by`, and findings.csv's last column is `not_verified_because` instead of
+  `filed_by`. `by_severity` counts unproven findings too. The brief changes
+  (a section on when the scan ends), so a scan started after this change
+  has a different goal text; nothing else in a prompt changes.
 
 - Follow-ups to CodeRabbit findings left unanswered. A goal's spec is opened
   without waiting, so a pipe swapped in for it after the check is refused at

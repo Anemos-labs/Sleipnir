@@ -434,6 +434,17 @@ own tree) the harness commits the tree and submits it to the merge queue, which 
 verifies the *merged* result. The task reaches review only when that succeeded (`merged`, or `empty`: nothing to merge),
 and `accept` requires that merge record instead of re-running the verifier in a checkout that does not have the work yet.
 
+**What the run leaves in the project.** Agent ids (`fe-1`), board task ids (`T12`) and team mail exist for one run; the
+project's history and files are read by people who never saw it. The commit that records a task uses the message the
+worker passes as `commit` in `task done` (the project's convention, Conventional Commits when it has none) unless that
+message names a team member or a board task; otherwise its subject is the task's title and its body the worker's
+result without the sentences that name the team or the board. The task id and, for commits authored by the person,
+the agent id ride along only as `Sleipnir-Task:` and `Sleipnir-Agent:` trailers, which the web blame reads. Merge,
+handover and salvage commits name the work, never the agent. Before the merge, `done` scans the lines the change adds
+(lockfiles excepted) for team member ids and unambiguous board references (`task T12`, `[T12]`) and sends the worker
+back once per assignment with each `path:line`; the next `done` goes through, so a reference the worker keeps on
+purpose never holds the task. `task deliver` refuses a commit message that names the team or the board.
+
 **The manager's own stop.** The manager's final answer is a stop like any other, and the harness decides whether the
 run may end (`swarm.Config.HoldManager`, set for every session that is not interactive: `run`, `swarm`, RL rollouts).
 While workers are running, or tasks are in review, doing, blocked or todo, a final answer is vetoed with one short

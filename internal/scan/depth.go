@@ -20,16 +20,18 @@ type Depth struct {
 	ProveFrom string
 	// Defender says one verifier argues against the lead (looks for the guard the filer missed) before it is confirmed.
 	Defender bool
+	// LeadsPerShard sizes the scan's lead budget (Run.LeadBudget): how many leads per shard are verified at most.
+	LeadsPerShard int
 }
 
 // Depths are the depths a scan can have.
 var Depths = []Depth{
 	{ID: "survey", Title: "Survey", Summary: "large shards, one verifier per lead, no reproduction required",
-		ShardFuncs: 120, ShardLines: 3000, Verifiers: 1},
+		ShardFuncs: 120, ShardLines: 3000, Verifiers: 1, LeadsPerShard: 4},
 	{ID: "standard", Title: "Standard", Summary: "medium shards, two verifiers per lead, critical and high findings reproduced in the sandbox",
-		ShardFuncs: 60, ShardLines: 1500, Verifiers: 2, ProveFrom: SevHigh, Defender: true},
+		ShardFuncs: 60, ShardLines: 1500, Verifiers: 2, ProveFrom: SevHigh, Defender: true, LeadsPerShard: 6},
 	{ID: "deep", Title: "Deep", Summary: "small shards, three verifiers per lead with a defender, every finding from medium up reproduced in the sandbox",
-		ShardFuncs: 30, ShardLines: 800, Verifiers: 3, ProveFrom: SevMedium, Defender: true},
+		ShardFuncs: 30, ShardLines: 800, Verifiers: 3, ProveFrom: SevMedium, Defender: true, LeadsPerShard: 8},
 }
 
 // DefaultDepth is the depth a scan gets when none is named.

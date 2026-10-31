@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/gitx"
+	"github.com/anemos-labs/sleipnir/internal/goal"
 	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"github.com/anemos-labs/sleipnir/internal/scan"
 	"github.com/anemos-labs/sleipnir/internal/tools"
@@ -426,8 +427,9 @@ func (s *Session) scanRun(slug string) (*scan.Run, error) {
 	return s.scan.store.Snapshot(slug)
 }
 
-// ScanDetail is one scan as the Deep scan view shows it: what it still needs, its findings with their traces, verdicts and
-// reproductions, its shards with their maps, the attack surface and the edges.
+// ScanDetail is one scan as the Deep scan view shows it: what it still needs, its report (the summary, the headline, the
+// findings with their traces, verdicts and reproductions), the lead intake, its shards with their maps, the attack surface and
+// the edges.
 func (s *Session) ScanDetail(slug string) (map[string]any, error) {
 	r, err := s.scanRun(slug)
 	if err != nil {
@@ -461,6 +463,8 @@ func (s *Session) ScanDetail(slug string) (map[string]any, error) {
 		shards = append(shards, x)
 	}
 	d := r.DepthInfo()
+	findings := scan.Findings(r)
+	sum := scan.Summarize(findings)
 	workers := 0
 	if r.Slug == s.scan.store.Active() && rep.Phase != scan.PhaseDone {
 		workers = s.scanWorkers()
@@ -468,7 +472,7 @@ func (s *Session) ScanDetail(slug string) (map[string]any, error) {
 	return map[string]any{"slug": r.Slug, "commit": r.Commit, "depth": r.Depth, "focus": r.Focus, "created": r.Created, "team": r.Team(), "workers": workers,
 		"verifiers": d.Verifiers, "defender": d.Defender, "proveFrom": d.ProveFrom, "sandbox": s.box != nil,
 		"phase": rep.Phase, "counts": rep.Counts, "problems": problems, "moreProblems": len(rep.Problems) - len(problems),
-		"findings": scan.Findings(r), "shards": shards, "points": r.Points, "edges": scan.MapDoc(r)["edges"],
+		"findings": findings, "summary": sum, "headline": sum.Headline(rep.Phase == scan.PhaseDone), "intake": r.Intake(), "shards": shards, "points": r.Points, "edges": scan.MapDoc(r)["edges"],
 		"reportDir": scan.RunDir(s.opts.Root, r.Slug), "previous": r.Previous, "base": r.Base}, nil
 }
 
@@ -548,4 +552,49 @@ func (s *Session) ScanExport(slug, format string) (data []byte, name string, err
 		return nil, "", fmt.Errorf("unknown format %q", format)
 	}
 	return data, r.Slug, err
+}
+
+// maxScanLeft is how many of a scan's problems a verdict judged from its ledger names as left.
+const maxScanLeft = 8
+
+// scanJudgment is the verdict of a goal that drives a deep scan, judged from the scan's ledger rather than by a model: the brief's
+// milestones are all the ledger's own measures, so the ledger is the evidence, and a model reading it can only add doubt that
+// keeps the team working past the end. The goal is met when the ledger says done; when only the report is missing, the harness
+// writes it, as the report action would. Otherwise the verdict is continue, with the ledger's problems as what is left and its
+// version in the reason, so that a turn that changes nothing in the ledger counts as no progress. ok is false when g does not
+// drive a scan of this session.
+func (s *Session) scanJudgment(g *goal.State) (v goal.Verdict, ok bool) {
+	slug := scan.ObjectiveSlug(g.Objective)
+	if slug == "" || s.scan == nil {
+		return goal.Verdict{}, false
+	}
+	r, err := s.scan.store.Snapshot(slug)
+	if err != nil {
+		return goal.Verdict{}, false
+	}
+	rep := scan.Check(r)
+	if rep.Phase == scan.PhaseReport {
+		if r, err = s.scan.store.Report(slug); err != nil {
+			return goal.Verdict{Kind: goal.Continue, Reason: "the scan's report could not be written: " + err.Error()}, true
+		}
+		rep = scan.Check(r)
+	}
+	c := rep.Counts
+	if rep.Phase == scan.PhaseDone {
+		v = goal.Verdict{Kind: goal.Done, Left: []string{}, Reason: fmt.Sprintf("the scan's ledger is done: %d of %d shards mapped and hunted, %d leads ruled on (%d confirmed, %d unproven, %d disputed, %d rejected, %d deferred), the report written",
+			c.Hunted, c.Shards, c.Leads-c.Open, c.Confirmed, c.Unproven, c.Disputed, c.Rejected, c.Deferred)}
+		for _, m := range g.Milestones {
+			v.Milestones = append(v.Milestones, goal.MilestoneVerdict{ID: m.ID, Met: true, Evidence: "scan status: done (ledger version " + fmt.Sprint(r.Version) + ")"})
+		}
+		return g.Reconcile(v), true
+	}
+	v = goal.Verdict{Kind: goal.Continue, Reason: fmt.Sprintf("the scan is in its %s phase with %d problems left (ledger version %d)", rep.Phase, rep.Blocking(), r.Version)}
+	for i, p := range rep.Problems {
+		if i == maxScanLeft {
+			v.Left = append(v.Left, fmt.Sprintf("and %d more: scan check lists them", len(rep.Problems)-i))
+			break
+		}
+		v.Left = append(v.Left, p.Text)
+	}
+	return v, true
 }

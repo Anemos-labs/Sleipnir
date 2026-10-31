@@ -92,6 +92,12 @@ func brief(r *Run, prev *Run) string {
 	}
 	w("### %d. Report\n\n`scan report` writes the report from the ledger and lists what is still missing. The scan is finished when `scan status` says done.\n\n", 4+boolInt(d.ProveFrom != ""))
 
+	w("## When the scan ends\n\n")
+	w("The scan is sized by the code and it ends; the harness holds the team to that:\n\n")
+	w("- **Budget.** At most %d leads are verified (%d per shard). Past that, a lead below critical is recorded as deferred: listed in the report as not verified, with nothing more to do for it.\n", r.LeadBudget(), d.LeadsPerShard)
+	w("- **Diminishing returns.** Once every shard is hunted, a few more leads are verified (a tenth of those the hunt filed, at least 3), and none once the last %d of them were all rejected. File what the hunt of a shard finds while you hunt it.\n", lateYieldWindow)
+	w("- **A settled lead is final.** A confirmed, unproven, rejected or deferred lead takes no more verdicts. A lead %d agents ruled on without agreeing is disputed and reported apart: do not argue it further.\n", d.disputeAfter())
+	w("- **The ledger decides.** The goal is met when `scan status` says done; the harness checks the ledger itself after each turn. When it says done, stop: there is nothing left to re-check.\n\n")
 	w("## Milestones\n\n")
 	w("- Map: `scan status` reports all %d shards mapped.\n", c.Shards)
 	w("- Hunt: `scan status` reports all %d shards hunted.\n", c.Shards)

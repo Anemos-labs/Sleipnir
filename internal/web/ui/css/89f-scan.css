@@ -13,9 +13,9 @@
 .sc-rsev{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;font-size:12px}
 .sc-sev{display:inline-block;padding:1px 6px;border-radius:2px;font:600 10px/1.5 var(--f-lab);letter-spacing:.06em;text-transform:uppercase;border:1px solid currentColor;flex:none}
 .sc-critical{color:var(--err)}
-.sc-high{color:var(--warm)}
-.sc-medium{color:var(--c-mgr)}
-.sc-low{color:var(--dim)}
+.sc-high{color:var(--c-rv)}
+.sc-medium{color:var(--warm)}
+.sc-low{color:var(--c-be)}
 .sc-detail{padding:10px 12px;display:flex;flex-direction:column;gap:10px;min-width:0}
 .sc-dhead{font-size:12.5px;line-height:1.5;overflow-wrap:anywhere}
 .sc-warn{margin:6px 0 0;padding:6px 8px;border:1px solid var(--warm-b);color:var(--warm);border-radius:2px;font-size:12px}
@@ -106,3 +106,53 @@ textarea.sc-in{resize:vertical;line-height:1.45}
 .sc-fold[open]>summary::before{transform:rotate(90deg)}
 .sc-lpts{display:flex;flex-direction:column;gap:4px;max-height:280px;overflow:auto;padding-right:2px}
 .sc-cells{max-height:300px;overflow:auto;align-content:flex-start}
+/* the report: its summary (headline, a tile per severity, the distribution, the categories and the leads), its filter and its index */
+.sc-sum{display:flex;flex-direction:column;gap:10px;min-width:0}
+.sc-headline{margin:0;font:500 14px/1.5 var(--f-ui);color:var(--bright);max-width:72ch}
+.sc-tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.sc-tile{all:unset;box-sizing:border-box;display:flex;flex-direction:column;gap:3px;padding:8px 10px;border:1px solid var(--line);border-top:2px solid var(--sc-c,var(--line2));border-radius:2px;background:var(--panel);min-width:0;cursor:pointer}
+button.sc-tile:hover{background:var(--panel2)}
+button.sc-tile:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.sc-tile b{font:600 22px/1 var(--f-num);color:var(--sc-c,var(--bright))}
+.sc-tile span{font:600 10.5px/1 var(--f-lab);letter-spacing:.1em;text-transform:uppercase;color:var(--fg2)}
+.sc-tile small{font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-tile.zero b{color:var(--faint)}
+div.sc-tile{cursor:default}
+.sc-t-critical{--sc-c:var(--err)}.sc-t-high{--sc-c:var(--c-rv)}.sc-t-medium{--sc-c:var(--warm)}.sc-t-low{--sc-c:var(--c-be)}.sc-t-total{--sc-c:var(--bright)}
+.sc-dist{display:flex;height:8px;gap:2px;border-radius:1px;overflow:hidden}
+.sc-dist i,.sc-cbar2 i{display:block;min-width:3px}
+.sc-b-critical{background:var(--err)}.sc-b-high{background:var(--c-rv)}.sc-b-medium{background:var(--warm)}.sc-b-low{background:var(--c-be)}.sc-b-lead{background:var(--line2);flex:1}
+.sc-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px}
+.sc-card{display:flex;flex-direction:column;gap:1px;padding:8px 10px;border:1px solid var(--line);border-radius:2px;min-width:0}
+.sc-card h4{margin:0 0 5px;font:600 10.5px var(--f-lab);letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.sc-crow{all:unset;box-sizing:border-box;display:grid;grid-template-columns:minmax(90px,38%) 1fr 34px;gap:8px;align-items:center;padding:2px 3px;border-radius:2px;font-size:12px;color:var(--fg2);cursor:pointer;min-width:0}
+.sc-crow:hover{background:var(--panel2);color:var(--bright)}
+.sc-crow:focus-visible{outline:2px solid var(--focus)}
+.sc-crow>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-crow b{font-size:11.5px;color:var(--fg);text-align:right;font-weight:500}
+.sc-cbar2{display:flex;height:7px;gap:1px;width:var(--w,100%);border-radius:1px;overflow:hidden}
+.sc-tools{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;padding-top:4px;border-top:1px solid var(--line)}
+.sc-q{flex:1 1 220px;width:auto;min-width:0}
+.sc-sel{width:auto;flex:0 1 auto;max-width:100%;padding:5px 6px;font-size:12px}
+.sc-chips{display:inline-flex;gap:4px;flex-wrap:wrap}
+.sc-chip{all:unset;box-sizing:border-box;padding:3px 8px;border:1px solid currentColor;border-radius:2px;font:600 10.5px/1.4 var(--f-lab);letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+.sc-chip.sc-critical{color:var(--err)}.sc-chip.sc-high{color:var(--c-rv)}.sc-chip.sc-medium{color:var(--warm)}.sc-chip.sc-low{color:var(--c-be)}
+.sc-chip.off{color:var(--faint);text-decoration:line-through;border-color:var(--line2)}
+.sc-chip:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+.sc-shown{font-size:11.5px;white-space:nowrap}
+.sc-rows{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:2px;min-width:0}
+.sc-row{all:unset;box-sizing:border-box;display:grid;grid-template-columns:76px 46px minmax(0,1fr) minmax(70px,auto) 150px;gap:10px;align-items:center;padding:6px 10px;border-top:1px solid var(--line);font:400 13px/1.35 var(--f-ui);color:var(--fg);cursor:pointer;min-width:0}
+.sc-row:first-child{border-top:0}
+.sc-row:hover{background:var(--panel2)}
+.sc-row:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.sc-row .sc-sev{justify-self:start}
+.sc-rcat{font-size:12px;color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-st{font-size:12px;color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-st::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;background:var(--dim);vertical-align:1px}
+.sc-st-done::before{background:var(--ok)}.sc-st-run::before{background:var(--warm)}.sc-st-off::before{background:var(--faint)}
+.sc-more2{align-self:flex-start}
+.sc-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px 14px;margin:0;padding:8px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.sc-facts dt{font:600 10px/1 var(--f-lab);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:4px}
+.sc-facts dd{margin:0;font-size:12.5px;overflow-wrap:anywhere}
+.sc-ver{margin:0;font-size:12.5px;line-height:1.5}
+@media (max-width:900px){.sc-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.sc-t-total{grid-column:1/-1}.sc-row{grid-template-columns:70px minmax(0,1fr);gap:4px 8px}.sc-row .sc-fid{display:none}.sc-rcat{display:none}.sc-row .sc-st{grid-column:2}}

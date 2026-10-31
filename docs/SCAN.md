@@ -55,9 +55,12 @@ depend on a model:
   practical exploit was shown. A verifier's more cautious correction wins.
 - **Rules of evidence.** A lead is ruled on only by agents that did not file it; a reproducer counts only when an agent other
   than the filer wrote it; a reproducer that prints a marker without a check is refused.
-- **Report.** `REPORT.md`, `findings.json`, `findings.sarif` (SARIF 2.1.0, the trace as a code flow, for code scanning) and
-  `map.json` (nodes and edges in the shape code graphs such as graphify use; an edge is `EXTRACTED` when a checked quote backs
-  it, else `INFERRED`) are rewritten after every change, so the report can be read while the scan runs.
+- **Stopping.** A scan is sized by its code and it ends (see [When a scan ends](#when-a-scan-ends)): a lead budget, fewer
+  leads verified once the hunt is over, settled leads that take no more verdicts, and a goal judged from the ledger.
+- **Report.** `REPORT.md`, `report.html`, `findings.json`, `findings.sarif` (SARIF 2.1.0, the trace as a code flow, for code
+  scanning) and `map.json` (nodes and edges in the shape code graphs such as graphify use; an edge is `EXTRACTED` when a checked
+  quote backs it, else `INFERRED`) are rewritten after every change, so the report can be read while the scan runs (see
+  [The report](#the-report)).
 
 The agents read the code and record what they find:
 
@@ -65,7 +68,7 @@ The agents read the code and record what they find:
 |---|---|---|
 | Map | scouts, the architect, anyone free | `shards claim`, `functions`, `point` (entry, boundary, access, sink, config), `edge`, `map` |
 | Hunt | backend, frontend, devops, any worker | `shards claim for=hunt`, `lead` (title, category, claim, trace from entry to sink, impact, reach, exploit, fix), `hunt` |
-| Verify | reviewers, testers, anyone but the filer | `show`, `verdict` (confirm, or reject as duplicate, mitigated, speculative, test-only, dead-code, unreachable, wrong) |
+| Verify | reviewers, testers, anyone but the filer | `show`, `verdict` on an open lead (confirm, or reject as duplicate, mitigated, speculative, test-only, dead-code, unreachable, wrong) |
 | Prove | testers, anyone but the filer | `prove` (a bash reproducer) |
 | Report | the manager | `report`, then `status` says done |
 
@@ -86,6 +89,45 @@ The *defender* is a verifier who argues the lead is false (the guard the filer m
 and confirms only when it finds none. A lead is confirmed when enough verifiers confirm it, more than reject it, a defender
 among them; it is rejected once as many reject it as the depth asks to confirm it. A confirmed lead the depth wants
 reproduced is *unproven* until a reproducer shows it, and is reported apart from the findings.
+
+## When a scan ends
+
+A team can always find one more thing to check. The harness ends a scan by rules the agents cannot argue with:
+
+- **A budget.** The scan verifies at most a set number of leads: 4 per shard at survey depth, 6 at standard, 8 at deep, and at
+  least 24. Past it, a lead below critical is recorded as **deferred**.
+- **Diminishing returns.** Once every shard is hunted, a lead is *late*. Only a few late leads are verified (a tenth of those
+  the hunt filed, at least 3), and none once the last 3 late leads ruled on were all rejected. A later lead below critical is
+  deferred.
+- **A settled lead is final.** A confirmed, unproven, rejected or deferred lead takes no more verdicts. A lead that two more
+  agents than the depth asks for (4 at standard depth, 5 at deep) ruled on without agreeing is **disputed**: settled,
+  and reported apart.
+- **The ledger decides.** The goal a scan runs under is judged from the scan's ledger, not by a model: it is met when
+  `scan status` says done, and when only the report is missing the harness writes it. Until then the agents are sent on with
+  the ledger's own list of what is missing, and a turn that changes nothing in the ledger counts as no progress.
+
+A deferred lead is kept in the ledger and listed in the report as *not verified*, with the reason: nothing more is done with
+it, and a critical lead is never deferred. `scan status` shows the intake: how many leads are verified against the budget,
+and the late leads against their allowance.
+
+## The report
+
+The report says what was found and how it was checked; it names no agent. Verdicts are given by role (reviewer, defender),
+a reproduction as independent or not, and agents' ids written into notes are replaced. It is laid out as an assessment:
+
+1. The scan's facts: the commit, the code's size, the depth and whether the scan is complete.
+2. A summary: a sentence, the findings by severity (and how many were not reproduced), and by category.
+3. An index of the findings and the disputed leads, worst first, with their location and status.
+4. Each finding: its severity, status, category, location, reachability, exploitability and impact; the description; the
+   trace with its quotes; how it was verified; the remediation; and the reproducer that showed it.
+5. Appendices: the leads still being verified, those not verified, the rejected ones with the reason, and the scope (the
+   counts, the attack surface by lane and the files with the largest one).
+6. The method.
+
+`report.html` is the same document as a page with no script: on a screen it uses the product's dark palette and filters the
+index and the findings by severity and status (checkboxes the stylesheet reads); printed, it is light and keeps every finding.
+The Deep scan view shows the report live: the summary (each tile, category and row of the leads narrows the index), an index
+filtered by words, severity, status and category, and each finding in full.
 
 ## Rerunning and comparing
 
