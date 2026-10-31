@@ -7,6 +7,16 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A deep scan leaves no tracked file out. Vendored, generated, data, large,
+  binary, symlink and submodule files are now in the inventory and its
+  shards, each marked with its kind (`File.Kind`, `File.Bytes` in
+  scan.json), so a scan of the same code makes more shards and asks for a
+  larger team. The brief tells hunters how to read each kind (a binary with
+  the sandbox's reverse-engineering tools), a quote on a binary is checked
+  as a string it holds, and the report counts the kinds where it said "left
+  out". `Inventory.Skipped` now only counts files git could not read; a scan
+  made before keeps its old counts. The scan brief changes; no stable prompt
+  bytes change.
 - A worker that is stuck can be stopped. `/agents stop ID`, in the terminal
   and the web interface, and a Stop button in a working agent's drawer of
   the web interface, end its run: its tasks go back to `todo` with the

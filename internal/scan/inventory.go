@@ -16,8 +16,24 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/gitx"
 )
 
-// maxFileBytes is the largest file the inventory reads: bigger ones are data or generated, not code a person wrote.
-const maxFileBytes = 1 << 20
+// maxFileBytes is the largest file the inventory splits into functions; a bigger one is scanned as a whole, of kind large.
+// maxReadBytes is the largest it reads at all: a bigger one is listed with its size only.
+const (
+	maxFileBytes = 1 << 20
+	maxReadBytes = 64 << 20
+)
+
+// File kinds: what a file is when it is not code a person wrote. Every tracked file is scanned; the kind says how to read it.
+const (
+	KindVendored  = "vendored"  // code the project does not own or build by hand: vendor/, node_modules/, dist/
+	KindGenerated = "generated" // written by a tool: minified bundles, protobuf output, lock files
+	KindData      = "data"      // data files: fixtures, JSON that is not configuration
+	KindLarge     = "large"     // over 1 MiB: scanned whole, its functions not split out
+	KindOther     = "other"     // text in no language the inventory knows: docs, templates, scripts without an extension
+	KindBinary    = "binary"    // not text: executables, archives, images, compiled objects
+	KindSymlink   = "symlink"   // a link: its target is what it holds
+	KindSubmodule = "submodule" // another repository, pinned at a commit
+)
 
 // langs maps a file extension to the language the inventory counts it as. "config" files have no functions but are read
 // for the config lane.
@@ -36,7 +52,7 @@ var langs = map[string]string{
 var configNames = map[string]bool{"dockerfile": true, "containerfile": true, "makefile": true, "procfile": true, ".env.example": true,
 	"docker-compose.yml": true, "nginx.conf": true, "caddyfile": true, "vagrantfile": true, "jenkinsfile": true}
 
-// skipDirs are directories of code the project does not own, or does not write by hand.
+// skipDirs are directories of code the project does not own, or does not write by hand: their files are of kind vendored.
 var skipDirs = []string{"vendor/", "node_modules/", "third_party/", "third-party/", "external/", "bower_components/", "dist/",
 	"build/", "out/", "target/", ".git/", ".sleipnir/", "__pycache__/", ".venv/", "venv/", "site-packages/", "Pods/", ".next/",
 	"coverage/", ".yarn/"}
@@ -73,75 +89,97 @@ func takeInventory(ctx context.Context, repo *gitx.Repo, commit, focus string, o
 	if err != nil {
 		return Inventory{}, err
 	}
-	inv := Inventory{Skipped: map[string]int{}}
+	inv := Inventory{}
 	for _, ent := range strings.Split(res.Stdout, "\x00") {
 		meta, p, ok := strings.Cut(ent, "\t")
 		if !ok || only != nil && !only[p] {
 			continue
 		}
 		f := strings.Fields(meta) // mode type object size
-		if len(f) < 4 || f[1] != "blob" || f[0] == "120000" {
-			if len(f) >= 2 && f[1] == "commit" {
-				inv.Skipped["submodule"]++
-			}
+		if len(f) < 2 {
+			continue
+		}
+		// nothing tracked is left out: what no person wrote, what is not code and what cannot be read as text are scanned
+		// too, marked by kind, so a hunter knows how to read them
+		switch {
+		case f[1] == "commit":
+			inv.Files = append(inv.Files, File{Path: p, Lang: KindSubmodule, Kind: KindSubmodule})
+			continue
+		case f[1] != "blob" || len(f) < 4:
+			continue
+		case f[0] == "120000":
+			inv.Files = append(inv.Files, File{Path: p, Lang: KindSymlink, Kind: KindSymlink, Lines: 1})
 			continue
 		}
 		size, _ := strconv.Atoi(f[3])
-		lang, reason := classify(p, size)
-		if reason != "" {
-			inv.Skipped[reason]++
+		lang, kind := classify(p, size)
+		file := File{Path: p, Lang: lang, Kind: kind, Bytes: size, Test: testFile.MatchString(p)}
+		if size > maxReadBytes {
+			// too big to count here: listed with its size, read in parts by whoever has its shard
+			file.Kind = KindLarge
+			inv.Files = append(inv.Files, file)
 			continue
 		}
 		data, err := repo.Show(ctx, commit, p)
 		if err != nil {
-			inv.Skipped["unreadable"]++
+			inv.Skipped = addSkip(inv.Skipped, "unreadable")
 			continue
 		}
 		if bytes.IndexByte(data[:min(len(data), 8000)], 0) >= 0 {
-			inv.Skipped["binary"]++
+			file.Lang, file.Kind = KindBinary, KindBinary
+			inv.Files = append(inv.Files, file)
 			continue
 		}
-		file := File{Path: p, Lang: lang, Lines: bytes.Count(data, []byte{'\n'}) + boolInt(len(data) > 0 && data[len(data)-1] != '\n'),
-			Test: testFile.MatchString(p)}
-		for _, fn := range Functions(lang, p, data) {
-			file.Funcs++
-			file.Complexity += fn.Complexity
-			inv.Functions = append(inv.Functions, fn)
+		file.Lines = bytes.Count(data, []byte{'\n'}) + boolInt(len(data) > 0 && data[len(data)-1] != '\n')
+		// functions are split out of code a person wrote, of a size a parser reads in a moment
+		if kind == "" && size <= maxFileBytes {
+			for _, fn := range Functions(lang, p, data) {
+				file.Funcs++
+				file.Complexity += fn.Complexity
+				inv.Functions = append(inv.Functions, fn)
+			}
 		}
 		inv.Files = append(inv.Files, file)
-	}
-	if len(inv.Skipped) == 0 {
-		inv.Skipped = nil
 	}
 	return inv, nil
 }
 
-// classify is a path's language, or why it is left out.
-func classify(p string, size int) (lang, skip string) {
+func addSkip(m map[string]int, reason string) map[string]int {
+	if m == nil {
+		m = map[string]int{}
+	}
+	m[reason]++
+	return m
+}
+
+// classify is a path's language (text when it has none the inventory knows) and its kind: empty for code a person wrote, else
+// what it is (vendored, generated, data, large, other).
+func classify(p string, size int) (lang, kind string) {
 	low := strings.ToLower(p)
+	base := strings.ToLower(path.Base(p))
+	lang = "text"
+	if configNames[base] || strings.HasPrefix(base, "dockerfile") || strings.HasPrefix(base, ".env") {
+		lang = "config"
+	} else if l, ok := langs[path.Ext(low)]; ok {
+		lang = l
+	}
 	for _, d := range skipDirs {
 		if strings.HasPrefix(low, strings.ToLower(d)) || strings.Contains(low, "/"+strings.ToLower(d)) {
-			return "", "vendored or built"
+			return lang, KindVendored
 		}
 	}
-	if generated.MatchString(p) {
-		return "", "generated"
+	switch {
+	case generated.MatchString(p):
+		return lang, KindGenerated
+	case lang == "config" && path.Ext(low) == ".json" && !strings.Contains(base, "config") && !strings.Contains(base, "settings") &&
+		base != "package.json" && base != "tsconfig.json" && base != "composer.json" && !strings.Contains(base, "policy"):
+		return lang, KindData
+	case size > maxFileBytes:
+		return lang, KindLarge
+	case lang == "text":
+		return lang, KindOther
 	}
-	if size > maxFileBytes {
-		return "", "too large"
-	}
-	base := strings.ToLower(path.Base(p))
-	if configNames[base] || strings.HasPrefix(base, "dockerfile") || strings.HasPrefix(base, ".env.") {
-		return "config", ""
-	}
-	if l, ok := langs[path.Ext(low)]; ok {
-		if l == "config" && path.Ext(low) == ".json" && !strings.Contains(base, "config") && !strings.Contains(base, "settings") &&
-			base != "package.json" && base != "tsconfig.json" && base != "composer.json" && !strings.Contains(base, "policy") {
-			return "", "data"
-		}
-		return l, ""
-	}
-	return "", "not code"
+	return lang, ""
 }
 
 // Functions finds the functions of one file: exactly for Go, by their usual shapes for the other languages.
@@ -414,7 +452,8 @@ const minShards = 8
 
 // MakeShards splits the inventory into shards of at most d's size, keeping files of one directory together where they fit:
 // the files are taken in path order, and a shard is closed when the next file would make it too big, or when the next file is
-// in another directory and the shard is already a third full. A config file weighs a quarter of its lines. A repository too
+// in another directory and the shard is already a third full. A config file, and one no person wrote (vendored, generated,
+// data, other), weighs a quarter of its lines; a binary, a submodule or a file too big to count a quarter of a shard. A repository too
 // small to fill minShards shards of d's size gets smaller ones (down to a file each), so the whole team can map it at once.
 func MakeShards(inv Inventory, d Depth) []Shard {
 	files := append([]File(nil), inv.Files...)
@@ -429,7 +468,11 @@ func MakeShards(inv Inventory, d Depth) []Shard {
 	var out []Shard
 	var cur Shard
 	weight := func(f File) int {
-		if f.Lang == "config" {
+		switch {
+		case f.Kind == KindBinary || f.Kind == KindSubmodule || f.Kind == KindLarge && f.Lines == 0:
+			// read with tools, not line by line: a binary is worth a quarter of a shard
+			return max(d.ShardLines/4, 1)
+		case f.Lang == "config" || f.Kind != "" && f.Kind != KindLarge:
 			return f.Lines / 4
 		}
 		return f.Lines

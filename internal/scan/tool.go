@@ -385,7 +385,11 @@ func shardText(r *Run, s *Shard) string {
 	fmt.Fprintf(&b, "%s: %d files, %d functions, %d lines, complexity %d. Claimed by %s.\n", s.ID, len(s.Files), s.Funcs, s.Lines, s.Complexity, s.Claimed)
 	for _, f := range s.Files {
 		if fi := r.File(f); fi != nil {
-			fmt.Fprintf(&b, "- %s (%s, %d lines, %d functions)\n", f, fi.Lang, fi.Lines, fi.Funcs)
+			if fi.Kind != "" {
+				fmt.Fprintf(&b, "- %s (%s, %s, %s)\n", f, fi.Kind, fi.Lang, fileSize(fi))
+			} else {
+				fmt.Fprintf(&b, "- %s (%s, %d lines, %d functions)\n", f, fi.Lang, fi.Lines, fi.Funcs)
+			}
 		}
 	}
 	if s.Mapped != "" {
@@ -1044,4 +1048,15 @@ func checkText(r *Run, offset int) string {
 		fmt.Fprintf(&b, "! [%s] %s\n", p.Phase, p.Text)
 	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// fileSize is a file's size as a shard lists it: its lines when it was counted, else its bytes.
+func fileSize(f *File) string {
+	if f.Lines > 0 && f.Kind != KindBinary {
+		return fmt.Sprintf("%d lines", f.Lines)
+	}
+	if f.Bytes > 0 {
+		return fmt.Sprintf("%d bytes", f.Bytes)
+	}
+	return "size unknown"
 }
