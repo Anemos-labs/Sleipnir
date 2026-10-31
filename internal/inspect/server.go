@@ -3,6 +3,7 @@ package inspect
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"embed"
@@ -18,6 +19,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -65,6 +67,8 @@ type Server struct {
 	tokenSum  [sha256.Size]byte
 	cookieVal []byte
 	hosts     map[string]bool // accepted Host names; nil accepts any (token-protected)
+	launchMu  sync.Mutex
+	launch    map[[sha256.Size]byte]time.Time // single-use launch codes (LaunchCode) and when each expires
 	mux       *http.ServeMux
 	logf      func(string, ...any)
 }
@@ -291,6 +295,49 @@ func (s *Server) tokenEqual(given string) bool {
 	return subtle.ConstantTimeCompare(sum[:], s.tokenSum[:]) == 1
 }
 
+// launchTTL is how long a launch code can be spent; maxLaunch bounds the codes outstanding.
+const (
+	launchTTL = 30 * time.Second
+	maxLaunch = 16
+)
+
+// LaunchCode returns a single-use code that a page URL accepts once, within launchTTL, in place of the token, or "" when
+// the server has no token or no randomness. It is for a program started with the address as an argument (a browser
+// opener): another local user can read process arguments, and a spent or stale code is worth nothing to them.
+func (s *Server) LaunchCode() string {
+	if !s.hasToken {
+		return ""
+	}
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return ""
+	}
+	code := hex.EncodeToString(b[:])
+	now := time.Now()
+	s.launchMu.Lock()
+	defer s.launchMu.Unlock()
+	if s.launch == nil {
+		s.launch = map[[sha256.Size]byte]time.Time{}
+	}
+	for k, exp := range s.launch {
+		if now.After(exp) || len(s.launch) >= maxLaunch {
+			delete(s.launch, k)
+		}
+	}
+	s.launch[sha256.Sum256([]byte(code))] = now.Add(launchTTL)
+	return code
+}
+
+// spendLaunch uses up a launch code, reporting whether it was known and still within its time.
+func (s *Server) spendLaunch(code string) bool {
+	key := sha256.Sum256([]byte(code))
+	s.launchMu.Lock()
+	defer s.launchMu.Unlock()
+	exp, ok := s.launch[key]
+	delete(s.launch, key)
+	return ok && time.Now().Before(exp)
+}
+
 // cookieEqual compares a supplied cookie against the stored bytes with constant-time comparison.
 func (s *Server) cookieEqual(given string) bool {
 	return subtle.ConstantTimeCompare([]byte(given), s.cookieVal) == 1
@@ -307,7 +354,7 @@ func (s *Server) authorized(w http.ResponseWriter, r *http.Request) bool {
 	if c, err := r.Cookie(cookieName); err == nil && s.cookieEqual(c.Value) {
 		return true
 	}
-	if t := r.URL.Query().Get("token"); t != "" && s.tokenEqual(t) {
+	if t := r.URL.Query().Get("token"); t != "" && (s.tokenEqual(t) || !strings.HasPrefix(r.URL.Path, "/api/") && s.spendLaunch(t)) {
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			return true
 		}

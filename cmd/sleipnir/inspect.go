@@ -127,7 +127,12 @@ flags:
 		fmt.Fprintf(os.Stderr, "sleipnir inspect: listening on %s, not only on loopback\n", ta)
 	}
 	if *open {
-		if err := openBrowser(u); err != nil {
+		// The opener gets a single-use launch code, not the token: its arguments are visible to other local users.
+		launch := u
+		if *token != "" {
+			launch = inspectURL(ln.Addr(), srv.LaunchCode(), tlsConf != nil)
+		}
+		if err := openBrowser(launch); err != nil {
 			fmt.Fprintf(os.Stderr, "sleipnir inspect: could not open a browser (%v); open the URL above\n", err)
 		}
 	}

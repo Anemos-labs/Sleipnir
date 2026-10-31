@@ -355,3 +355,33 @@ func TestCreateStopsWhenEveryNameIsTaken(t *testing.T) {
 		t.Fatalf("Create with every name taken: %v; want a refusal that no name is free", err)
 	}
 }
+
+// A Deny rule for the research tool refuses a change to the ledger, and leaves reading it alone.
+func TestDenyRuleRefusesLedgerChanges(t *testing.T) {
+	tool, _, r, root := newTestTool(t, "quick", "")
+	for _, mode := range []perm.Mode{perm.ModeDefault, perm.ModeBypass} {
+		e, err := perm.NewEngine(perm.Config{Root: root, Home: t.TempDir(), Mode: mode, Deny: []string{ToolName}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		run := func(args map[string]any) (*tools.Result, error) {
+			b, _ := json.Marshal(args)
+			return tool.Run(context.Background(), &tools.Call{Name: ToolName, Input: b, Env: &tools.Env{Agent: "a", Perm: e}})
+		}
+		res, err := run(map[string]any{"action": "note", "run": r.Slug, "text": "x", "sources": []string{"s1"}})
+		if err != nil || !res.IsError || !strings.Contains(res.Text, "permission denied") {
+			t.Fatalf("%s: a note under a research Deny rule: %v %+v", mode, err, res)
+		}
+		if res, err := run(map[string]any{"action": "status", "run": r.Slug}); err != nil || res.IsError {
+			t.Fatalf("%s: status under a research Deny rule: %v %+v", mode, err, res)
+		}
+	}
+	e, err := perm.NewEngine(perm.Config{Root: root, Home: t.TempDir(), Mode: perm.ModeDefault})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(map[string]any{"action": "plan", "run": r.Slug, "questions": []string{"q"}})
+	if res, _ := tool.Run(context.Background(), &tools.Call{Name: ToolName, Input: b, Env: &tools.Env{Agent: "a", Perm: e}}); strings.Contains(res.Text, "permission denied") {
+		t.Fatalf("a plan without a rule against research: %s", res.Text)
+	}
+}
