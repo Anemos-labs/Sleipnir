@@ -217,15 +217,10 @@ func Reportable(fs []Finding) []Finding {
 	return out
 }
 
-// bySeverity sorts findings worst first, then by id in the order they were filed.
+// bySeverity sorts findings worst first: by severity, then by CVSS score, then by id in the order they were filed.
 func bySeverity(fs []Finding) []Finding {
 	out := append([]Finding(nil), fs...)
-	sort.SliceStable(out, func(i, j int) bool {
-		if a, b := sevRank(out[i].Severity), sevRank(out[j].Severity); a != b {
-			return a < b
-		}
-		return leadNum(out[i].ID) < leadNum(out[j].ID)
-	})
+	sort.SliceStable(out, func(i, j int) bool { return worse(out[i], out[j]) })
 	return out
 }
 

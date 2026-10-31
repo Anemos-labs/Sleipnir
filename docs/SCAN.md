@@ -50,14 +50,19 @@ depend on a model:
 - **Citations.** Every point, edge, trace step and verdict quotes the code. The harness looks for the quote in the file at
   the pinned commit (white space aside, near the line named, then anywhere in the file) and refuses a quote it cannot find,
   answering with the lines that are there. A changed work tree changes nothing: the commit is what is read.
-- **Severity.** Computed from the impact, the reachability and the exploitability the agents give: one level lower when
-  only an insider reaches the code, one lower when exploiting it is difficult, low at most when nothing reaches it or no
-  practical exploit was shown. A verifier's more cautious correction wins.
+- **Severity.** Computed from the CVSS v3.1 base vector the agents give
+  (`CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H`). The harness checks the vector, computes its base score with the
+  specification's formula (including its Roundup), and takes the severity from the rating scale: critical from 9.0, high
+  from 7.0, medium from 4.0, low below (0.0, rated none by the scale, is reported as low). A lead is low at most when nothing
+  reaches the code or no practical exploit was shown, since a base score assumes the code is reached. A confirming verifier
+  may correct the vector, the reachability or the exploitability; the lowest-scoring vector and the most cautious tiers win.
+  Findings are ranked by severity, then by score. A ledger written before leads carried vectors keeps the earlier rule: the
+  impact level, one lower when only an insider reaches the code and one lower when exploiting it is difficult.
 - **Rules of evidence.** A lead is ruled on only by agents that did not file it; a reproducer counts only when an agent other
   than the filer wrote it; a reproducer that prints a marker without a check is refused.
 - **Stopping.** A scan is sized by its code and it ends (see [When a scan ends](#when-a-scan-ends)): a lead budget, fewer
   leads verified once the hunt is over, settled leads that take no more verdicts, and a goal judged from the ledger.
-- **Report.** `REPORT.md`, `report.html`, `findings.json`, `findings.sarif` (SARIF 2.1.0, the trace as a code flow, for code
+- **Report.** `REPORT.md`, `report.html`, `findings.json`, `findings.sarif` (SARIF 2.1.0, the trace as a code flow and the CVSS score as `security-severity`, for code
   scanning) and `map.json` (nodes and edges in the shape code graphs such as graphify use; an edge is `EXTRACTED` when a checked
   quote backs it, else `INFERRED`) are rewritten after every change, so the report can be read while the scan runs (see
   [The report](#the-report)).
@@ -67,7 +72,7 @@ The agents read the code and record what they find:
 | Phase | Who | Through |
 |---|---|---|
 | Map | scouts, the architect, anyone free | `shards claim`, `functions`, `point` (entry, boundary, access, sink, config), `edge`, `map` |
-| Hunt | backend, frontend, devops, any worker | `shards claim for=hunt`, `lead` (title, category, claim, trace from entry to sink, impact, reach, exploit, fix), `hunt` |
+| Hunt | backend, frontend, devops, any worker | `shards claim for=hunt`, `lead` (title, category, claim, trace from entry to sink, CVSS vector, reach, exploit, fix), `hunt` |
 | Verify | reviewers, testers, anyone but the filer | `show`, `verdict` on an open lead (confirm, or reject as duplicate, mitigated, speculative, test-only, dead-code, unreachable, wrong) |
 | Prove | testers, anyone but the filer | `prove` (a bash reproducer) |
 | Report | the manager | `report`, then `status` says done |
@@ -118,8 +123,8 @@ a reproduction as independent or not, and agents' ids written into notes are rep
 1. The scan's facts: the commit, the code's size, the depth and whether the scan is complete.
 2. A summary: a sentence, the findings by severity (and how many were not reproduced), and by category.
 3. An index of the findings and the disputed leads, worst first, with their location and status.
-4. Each finding: its severity, status, category, location, reachability, exploitability and impact; the description; the
-   trace with its quotes; how it was verified; the remediation; and the reproducer that showed it.
+4. Each finding: its severity, status, category, location, CVSS score and vector (linked to FIRST's calculator),
+   reachability and exploitability; the description; the trace with its quotes; how it was verified; the remediation; and the reproducer that showed it.
 5. Appendices: the leads still being verified, those not verified, the rejected ones with the reason, and the scope (the
    counts, the attack surface by lane and the files with the largest one).
 6. The method.

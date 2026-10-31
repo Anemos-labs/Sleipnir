@@ -43,19 +43,54 @@ func (l *Lead) Exploitability() string {
 	return v
 }
 
-// Severity is computed, never chosen: the impact, one level lower when only an insider reaches the code, one lower again when
-// exploiting it is difficult, and low at most when no path reaches it or no practical exploit was shown.
+// Vector is the lead's CVSS v3.1 base vector: the filer's, or a confirming verifier's correction when that scores lower. It is
+// empty for a lead filed before leads carried vectors.
+func (l *Lead) Vector() string {
+	v := l.CVSS
+	best, ok := CVSSScore(v)
+	if !ok {
+		v = ""
+	}
+	for _, vd := range l.latestVerdicts() {
+		if !vd.Confirm || vd.CVSS == "" {
+			continue
+		}
+		if s, good := CVSSScore(vd.CVSS); good && (v == "" || s < best) {
+			v, best = vd.CVSS, s
+		}
+	}
+	return v
+}
+
+// Score is the base score of the lead's vector, and false when it has none.
+func (l *Lead) Score() (float64, bool) {
+	v := l.Vector()
+	if v == "" {
+		return 0, false
+	}
+	return CVSSScore(v)
+}
+
+// Severity is computed, never chosen. With a CVSS vector it is the band of the vector's base score; without one (a lead filed
+// before leads carried vectors) it is the impact, one level lower when only an insider reaches the code and one lower again when
+// exploiting it is difficult. Either way it is low at most when no path reaches the code or no practical exploit was shown,
+// since a base score assumes the code is reached.
 func (l *Lead) Severity() string {
-	rank := sevRank(l.Impact)
-	if rank >= len(Severities) {
-		rank = len(Severities) - 1
-	}
 	reach, exploit := l.Reachability(), l.Exploitability()
-	if reach == ReachInternal {
-		rank++
-	}
-	if exploit == ExploitDifficult {
-		rank++
+	var rank int
+	if score, ok := l.Score(); ok {
+		rank = sevRank(CVSSBand(score))
+	} else {
+		rank = sevRank(l.Impact)
+		if rank >= len(Severities) {
+			rank = len(Severities) - 1
+		}
+		if reach == ReachInternal {
+			rank++
+		}
+		if exploit == ExploitDifficult {
+			rank++
+		}
 	}
 	if reach == ReachUnreachable || exploit == ExploitTheoretical {
 		rank = len(Severities) - 1

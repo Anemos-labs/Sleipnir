@@ -389,13 +389,13 @@ func TestAScanFromMapToReport(t *testing.T) {
 	// the filer files with a trace; the harness computes the severity
 	lead := mustOK(t, tl, "hunter", map[string]any{"action": "lead", "title": "Command injection in /ping", "category": "command-injection",
 		"claim": "Anyone can run shell commands on the server by sending host=x;id to GET /ping.", "trace": pingTrace,
-		"impact": "critical", "reach": "external", "exploit": "trivial", "points": []string{"P1", "P2"}, "fix": "exec ping with host as its own argument, after validating it"})
+		"cvss": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "reach": "external", "exploit": "trivial", "points": []string{"P1", "P2"}, "fix": "exec ping with host as its own argument, after validating it"})
 	if !strings.HasPrefix(lead, "L1 filed") || !strings.Contains(lead, "severity critical") {
 		t.Fatalf("lead: %s", lead)
 	}
 	mustFail(t, tl, "hunter2", map[string]any{"action": "lead", "title": "Same thing", "category": "command-injection",
 		"claim": "Anyone can run shell commands on the server through the ping handler.", "trace": pingTrace[2:],
-		"impact": "critical", "reach": "external", "exploit": "trivial"}, "same category and sink")
+		"cvss": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "reach": "external", "exploit": "trivial"}, "same category and sink")
 	mustFail(t, tl, "hunter", map[string]any{"action": "verdict", "id": "L1", "confirm": true, "note": "I checked my own trace and it holds up fine"}, "is yours")
 	mustFail(t, tl, "v1", map[string]any{"action": "verdict", "id": "L1", "confirm": false, "reason": "mitigated", "note": "there is a check somewhere upstream of this"}, "cites the guard")
 	out = mustOK(t, tl, "v1", map[string]any{"action": "verdict", "id": "L1", "confirm": true, "note": "routes.go registers /ping with no middleware; host flows into sh -c unescaped"})
@@ -434,7 +434,7 @@ func TestAScanFromMapToReport(t *testing.T) {
 	r, _ = st.Snapshot("")
 	dir := RunDir(st.Root(), r.Slug)
 	md, _ := os.ReadFile(filepath.Join(dir, ReportFile))
-	for _, want := range []string{"## Findings", "### L1 · Command injection in /ping", "| **Critical** | Confirmed, reproduced |", "`server/handler.go:15`", "| Entry points | 1 |"} {
+	for _, want := range []string{"## Findings", "### L1 · Command injection in /ping", "| **Critical 9.8** | Confirmed, reproduced |", "`server/handler.go:15`", "| Entry points | 1 |"} {
 		if !strings.Contains(string(md), want) {
 			t.Errorf("REPORT.md lacks %q:\n%s", want, md)
 		}
@@ -486,7 +486,8 @@ func TestAScanFromMapToReport(t *testing.T) {
 	}
 	// the exports: one CSV row per lead, a page that escapes what the agents wrote
 	rows, err := csv.NewReader(strings.NewReader(string(CSV(r)))).ReadAll()
-	if err != nil || len(rows) != 2 || rows[0][0] != "id" || rows[1][0] != "L1" || rows[1][2] != "critical" || rows[1][8] != "server/handler.go" {
+	if err != nil || len(rows) != 2 || rows[0][0] != "id" || rows[1][0] != "L1" || rows[1][2] != "critical" || rows[1][8] != "server/handler.go" ||
+		rows[1][len(rows[1])-2] != "9.8" || rows[1][len(rows[1])-1] != "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H" {
 		t.Fatalf("findings.csv: %v %q", err, rows)
 	}
 	page := HTML(r)
@@ -507,19 +508,19 @@ func TestAScanFromMapToReport(t *testing.T) {
 func TestOnlyTheFilerAmendsALeadAndOnlyBeforeAVerdict(t *testing.T) {
 	tl, _ := harness(t, "survey")
 	mustOK(t, tl, "hunter", map[string]any{"action": "lead", "title": "XSS in render", "category": "xss",
-		"claim":  "A name with markup is written into innerHTML, so a crafted name runs script in the page.",
-		"trace":  []map[string]any{{"file": "web/app.js", "line": 3, "quote": `el.innerHTML = "<b>" + name + "</b>";`, "note": "name goes into innerHTML"}},
-		"impact": "medium", "reach": "external", "exploit": "moderate"})
-	mustFail(t, tl, "other", map[string]any{"action": "lead", "id": "L1", "impact": "high"}, "only the filer")
-	out := mustOK(t, tl, "hunter", map[string]any{"action": "lead", "id": "L1", "reach": "internal"})
-	if !strings.Contains(out, "L1 amended") || !strings.Contains(out, "severity low") {
+		"claim": "A name with markup is written into innerHTML, so a crafted name runs script in the page.",
+		"trace": []map[string]any{{"file": "web/app.js", "line": 3, "quote": `el.innerHTML = "<b>" + name + "</b>";`, "note": "name goes into innerHTML"}},
+		"cvss":  "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "reach": "external", "exploit": "moderate"})
+	mustFail(t, tl, "other", map[string]any{"action": "lead", "id": "L1", "cvss": "AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}, "only the filer")
+	out := mustOK(t, tl, "hunter", map[string]any{"action": "lead", "id": "L1", "reach": "internal", "cvss": "av:n/ac:l/pr:h/ui:r/s:c/c:l/i:l/a:n"})
+	if !strings.Contains(out, "L1 amended") || !strings.Contains(out, "severity medium (CVSS 4.8, CVSS:3.1/AV:N/AC:L/PR:H/UI:R/S:C/C:L/I:L/A:N") {
 		t.Fatalf("amend: %s", out)
 	}
 	out = mustOK(t, tl, "v", map[string]any{"action": "verdict", "id": "L1", "confirm": true, "note": "render is called with the user's display name, unescaped"})
 	if !strings.Contains(out, "now confirmed") {
 		t.Fatalf("survey depth needs one verifier and no proof: %s", out)
 	}
-	mustFail(t, tl, "hunter", map[string]any{"action": "lead", "id": "L1", "impact": "high"}, "has verdicts")
+	mustFail(t, tl, "hunter", map[string]any{"action": "lead", "id": "L1", "cvss": "AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}, "has verdicts")
 }
 
 func TestProveRunsInACopyAndJudgesByTheMarkers(t *testing.T) {
@@ -761,8 +762,8 @@ func TestAReviewCoversWhatTheChangeWrote(t *testing.T) {
 	}
 	tl := NewTool(st, func(c string) Code { return CodeAt(repo, c) })
 	lead := map[string]any{"action": "lead", "title": "Command injection in Ping", "category": "command-injection",
-		"claim":  "Anyone can run shell commands on the server by sending host=x;id to the ping handler.",
-		"impact": "critical", "reach": "external", "exploit": "trivial"}
+		"claim": "Anyone can run shell commands on the server by sending host=x;id to the ping handler.",
+		"cvss":  "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "reach": "external", "exploit": "trivial"}
 	lead["trace"] = []map[string]any{{"file": "server/handler.go", "line": 1, "quote": "package server", "note": "the package, untouched by the change"}}
 	mustFail(t, tl, "hunter", lead, "a line the change added or modified")
 	lead["trace"] = []map[string]any{

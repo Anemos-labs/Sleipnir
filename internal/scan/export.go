@@ -19,7 +19,7 @@ const (
 
 // csvHeader names the columns of findings.csv.
 var csvHeader = []string{"id", "status", "severity", "category", "title", "reachability", "exploitability", "impact", "sink_file", "sink_line",
-	"entry_file", "entry_line", "confirms", "rejects", "defended", "reproduced", "reject_reason", "claim", "fix", "not_verified_because"}
+	"entry_file", "entry_line", "confirms", "rejects", "defended", "reproduced", "reject_reason", "claim", "fix", "not_verified_because", "cvss_score", "cvss_vector"}
 
 // CSV is findings.csv: one row per lead, in the report's order, for a spreadsheet or a tracker's import. A cell that a
 // spreadsheet would read as a formula is prefixed with a quote, since every cell was written by an agent reading untrusted code.
@@ -32,9 +32,13 @@ func CSV(r *Run) []byte {
 		if len(f.Trace) > 0 {
 			entry, sink = f.Trace[0].Cite, f.Trace[len(f.Trace)-1].Cite
 		}
+		score := ""
+		if f.Score != nil {
+			score = strconv.FormatFloat(*f.Score, 'f', 1, 64)
+		}
 		row := []string{f.ID, f.Status, f.Severity, f.Category, f.Title, f.Reach, f.Exploit, f.Impact, sink.File, strconv.Itoa(sink.Line),
 			entry.File, strconv.Itoa(entry.Line), strconv.Itoa(f.Confirms), strconv.Itoa(f.Rejects), strconv.FormatBool(f.Defended),
-			strconv.FormatBool(f.Reproduced), f.Reason, oneLine(f.Claim), oneLine(f.Fix), f.Deferred}
+			strconv.FormatBool(f.Reproduced), f.Reason, oneLine(f.Claim), oneLine(f.Fix), f.Deferred, score, f.CVSS}
 		for j := range row {
 			row[j] = csvCell(row[j])
 		}
@@ -179,7 +183,7 @@ func HTML(r *Run) string {
 		w("</div><div class=\"tablewrap\"><table class=\"idx\"><thead><tr><th>ID</th><th>Severity</th><th>Finding</th><th>Category</th><th>Location</th><th>Status</th></tr></thead><tbody>")
 		for _, f := range list {
 			w("<tr data-sev=\"%s\" data-st=\"%s\"><td class=\"mono\"><a href=\"#%s\">%s</a></td><td>%s</td><td><a href=\"#%s\">%s</a></td><td>%s</td><td class=\"mono loc\">%s</td><td>%s</td></tr>",
-				e(f.Severity), e(f.Status), e(strings.ToLower(f.ID)), e(f.ID), sevPill(f.Severity), e(strings.ToLower(f.ID)), e(oneLine(f.Title)), e(f.Category), e(Location(f)), statusChip(f))
+				e(f.Severity), e(f.Status), e(strings.ToLower(f.ID)), e(f.ID), sevPill(f.Severity)+scoreHTML(f), e(strings.ToLower(f.ID)), e(oneLine(f.Title)), e(f.Category), e(Location(f)), statusChip(f))
 		}
 		w("</tbody></table></div><p class=\"muted note-print\">Filters apply to the index and to the findings below; the printed report has every finding.</p>")
 	}
@@ -273,7 +277,16 @@ func writeHTMLFinding(b *strings.Builder, f Finding, d Depth) {
 		e(f.Severity), e(strings.ToLower(f.ID)), e(f.Severity), e(f.Status), e(f.ID), sevPill(f.Severity), e(oneLine(f.Title)))
 	w("<dl class=\"ff\"><div><dt>Status</dt><dd>%s</dd></div><div><dt>Category</dt><dd>%s</dd></div><div><dt>Location</dt><dd class=\"mono loc\">%s</dd></div>",
 		statusChip(f), e(f.Category), e(Location(f)))
-	w("<div><dt>Reachability</dt><dd>%s</dd></div><div><dt>Exploitability</dt><dd>%s</dd></div><div><dt>Impact</dt><dd>%s</dd></div></dl>", e(f.Reach), e(f.Exploit), e(f.Impact))
+	if f.Score != nil {
+		capped := ""
+		if CVSSBand(*f.Score) != f.Severity {
+			capped = "<br><span class=\"muted\">capped at " + e(f.Severity) + ": " + e(capReason(f)) + "</span>"
+		}
+		w("<div><dt>CVSS 3.1</dt><dd><b>%.1f</b> <a class=\"mono\" href=\"%s\">%s</a>%s</dd></div>", *f.Score, e(CVSSCalculator(f.CVSS)), e(f.CVSS), capped)
+	} else {
+		w("<div><dt>Impact</dt><dd>%s</dd></div>", e(f.Impact))
+	}
+	w("<div><dt>Reachability</dt><dd>%s</dd></div><div><dt>Exploitability</dt><dd>%s</dd></div></dl>", e(f.Reach), e(f.Exploit))
 	w("<h4>Description</h4><p>%s</p>", e(strings.TrimSpace(f.Claim)))
 	w("<h4>Trace</h4><ol class=\"trace\">")
 	for _, s := range f.Trace {
@@ -399,3 +412,15 @@ body:has(#ft-confirmed:not(:checked)) [data-st=confirmed],body:has(#ft-unproven:
 @media print{:root{color-scheme:light;--bg:#fff;--panel:#fff;--panel2:#f4f5f8;--line:#d9dce4;--line2:#c4c8d4;--fg:#1d2230;--fg2:#3b4254;--dim:#646b7e;--bright:#0d1220;--well:#f6f7f9;--accent:#5b3fc4;--link:#1d4ed8;--critical:#b42318;--high:#c2410c;--medium:#a16207;--low:#1d4ed8;--ok:#15803d;--lead:#9aa1b2;--lane:#0f766e}
 body{max-width:none;padding:0;font-size:11.5pt}.toc,.filters,.back,.note-print{display:none}.cover{background:none}.finding{break-inside:avoid-page}h2{break-after:avoid}.tablewrap{overflow:visible;border:0}.idx th{position:static}
 .repro[open] summary~*,.repro pre{display:block}}`
+
+// scoreHTML is a finding's CVSS score beside its severity pill in report.html, struck through when a cap put the severity below
+// the score's band; empty for a finding without a vector.
+func scoreHTML(f Finding) string {
+	if f.Score == nil {
+		return ""
+	}
+	if CVSSBand(*f.Score) != f.Severity {
+		return fmt.Sprintf(" <s class=\"mono muted\" title=\"capped at %s: %s\">%.1f</s>", f.Severity, capReason(f), *f.Score)
+	}
+	return fmt.Sprintf(" <b class=\"mono\">%.1f</b>", *f.Score)
+}

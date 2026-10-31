@@ -46,6 +46,18 @@
   }
   const short = c => String(c || '').slice(0, 12);
   const sevPill = s => '<span class="sc-sev sc-' + esc(SEV.includes(s) ? s : 'low') + '">' + esc(s || '?') + '</span>';
+  /** A finding's CVSS base score with one decimal, or '' for a finding filed without a vector. */
+  const scoreOf = f => typeof f.score === 'number' ? f.score.toFixed(1) : '';
+  /** A finding's severity pill with its CVSS score beside it. */
+  const sevScore = f => {
+    const sc = scoreOf(f), capped = sc && sevBand(f.score) !== f.severity;
+    return '<span class="sc-sevc">' + sevPill(f.severity) + (sc ? '<b class="mono sc-score' + (capped ? ' sc-capped' : '') + '" title="' +
+      (capped ? 'CVSS 3.1 base score ' + sc + ', capped at ' + esc(f.severity) + ': ' + (f.reach === 'unreachable' ? 'no path reaches the code' : 'no practical exploit was shown') : 'CVSS 3.1 base score') + '">' + sc + '</b>' : '') + '</span>';
+  };
+  /** The rating band of a CVSS base score, as the scan names its severities. */
+  const sevBand = s => s >= 9 ? 'critical' : s >= 7 ? 'high' : s >= 4 ? 'medium' : 'low';
+  /** Worst first: by severity, then by CVSS score (a scored finding before an unscored one), then in the order they were filed. */
+  const worse = (a, b) => sevRank(a.severity) - sevRank(b.severity) || (typeof b.score === 'number' ? b.score : -1) - (typeof a.score === 'number' ? a.score : -1) || leadNum(a.id) - leadNum(b.id);
   /** Where a finding does harm: the last step of its trace. */
   const sinkOf = f => { const t = arr(f.trace); return t.length ? t[t.length - 1].file + ':' + t[t.length - 1].line : ''; };
   /** The kinds of change between two scans, in the order the server gives them, with what each one means. */
@@ -97,7 +109,7 @@
 
   /** One row of the report's index: severity, id, title with its location, category, status. */
   function findingRow(f) {
-    return '<button type="button" class="sc-row" data-lead="' + esc(f.id) + '" data-key="' + esc(f.id) + '">' + sevPill(f.severity) + '<span class="mono sc-fid">' + esc(f.id) + '</span>' +
+    return '<button type="button" class="sc-row" data-lead="' + esc(f.id) + '" data-key="' + esc(f.id) + '">' + sevScore(f) + '<span class="mono sc-fid">' + esc(f.id) + '</span>' +
       '<span class="sc-ft"><b>' + esc(f.title) + '</b><span class="mono dim">' + esc(locOf(f)) + '</span></span><span class="sc-rcat">' + esc(f.category) + '</span>' +
       '<span class="sc-st sc-st-' + statusCls(f.status) + '">' + esc(statusLabel(f)) + '</span></button>';
   }
@@ -133,7 +145,7 @@
     const view = (VIEWS.find(v => v[0] === F.view) || VIEWS[0])[2], q = String(F.q || '').trim().toLowerCase();
     return fs.filter(f => (!view || view.includes(f.status)) && !F.off.includes(f.severity) && (!F.cat || f.category === F.cat) &&
       (!q || (f.id + ' ' + f.title + ' ' + f.category + ' ' + locOf(f)).toLowerCase().includes(q)))
-      .sort((a, b) => sevRank(a.severity) - sevRank(b.severity) || leadNum(a.id) - leadNum(b.id));
+      .sort(worse);
   }
   /** The summary of the report: the headline, a tile per severity, the distribution, the categories and what became of the leads. */
   function summaryHtml(d) {
@@ -241,9 +253,10 @@
     const verdicts = v.map((x, i) => '<li><b>' + esc(labels[i]) + '</b> ' + (x.confirm ? '<span class="chip rs-ok">confirms</span>' : '<span class="chip">rejects: ' + esc(x.reason || '') + '</span>') + ' ' + esc(x.note) + '</li>').join('');
     const proofs = p.map(x => '<details class="sc-proof"><summary><b>' + esc(x.outcome) + '</b> <span class="dim">' + (x.independent ? 'independent' : 'by the reviewer who filed it, so it does not count') + ', exit ' + (x.exit | 0) + ', ' + (x.seconds | 0) + 's' + (x.network ? ', with network' : '') + '</span></summary><h5>Script</h5><pre class="pre sc-q">' + esc(x.script) + '</pre><h5>Output</h5><pre class="pre sc-q">' + esc(x.output) + '</pre></details>').join('');
     ui.modal({ title: f.id + ' · ' + f.title, kicker: f.severity + ' · ' + statusLabel(f), wide: true, color: f.severity === 'critical' ? 'var(--err)' : f.severity === 'high' ? 'var(--c-rv)' : 'var(--warm)', body:
-      '<div class="sc-dlg"><dl class="sc-facts"><div><dt>Severity</dt><dd>' + sevPill(f.severity) + '</dd></div><div><dt>Status</dt><dd><span class="sc-st sc-st-' + statusCls(f.status) + '">' + esc(statusLabel(f)) + '</span></dd></div>' +
-      '<div><dt>Category</dt><dd>' + esc(f.category) + '</dd></div><div><dt>Location</dt><dd class="mono">' + esc(locOf(f)) + '</dd></div><div><dt>Reachability</dt><dd>' + esc(f.reach) + '</dd></div>' +
-      '<div><dt>Exploitability</dt><dd>' + esc(f.exploit) + '</dd></div><div><dt>Impact</dt><dd>' + esc(f.impact) + '</dd></div></dl>' +
+      '<div class="sc-dlg"><dl class="sc-facts"><div><dt>Severity</dt><dd>' + sevScore(f) + '</dd></div><div><dt>Status</dt><dd><span class="sc-st sc-st-' + statusCls(f.status) + '">' + esc(statusLabel(f)) + '</span></dd></div>' +
+      '<div><dt>Category</dt><dd>' + esc(f.category) + '</dd></div><div><dt>Location</dt><dd class="mono">' + esc(locOf(f)) + '</dd></div>' +
+      (f.cvss ? '<div class="sc-cvss"><dt>CVSS 3.1</dt><dd><a class="mono" target="_blank" rel="noopener noreferrer" href="' + esc('https://www.first.org/cvss/calculator/3.1#' + f.cvss) + '">' + esc(f.cvss) + '</a>' + (sevBand(f.score) !== f.severity ? ' <span class="dim">base score ' + scoreOf(f) + ', capped at ' + esc(f.severity) + ': ' + (f.reach === 'unreachable' ? 'no path reaches the code' : 'no practical exploit was shown') + '</span>' : '') + '</dd></div>' : '<div><dt>Impact</dt><dd>' + esc(f.impact) + '</dd></div>') +
+      '<div><dt>Reachability</dt><dd>' + esc(f.reach) + '</dd></div><div><dt>Exploitability</dt><dd>' + esc(f.exploit) + '</dd></div></dl>' +
       '<h4>Description</h4><p class="sc-claim">' + esc(f.claim) + '</p>' +
       '<h4>Trace</h4><ol class="sc-trace">' + trace + '</ol><h4>Verification</h4><p class="sc-ver">' + esc(verification(f)) + '</p>' + (verdicts ? '<ul class="sc-verdicts">' + verdicts + '</ul>' : '') + (proofs ? '<h4>Reproductions</h4>' + proofs : '') +
       (f.deferred ? '<h4>Not verified</h4><p>' + esc(f.deferred) + '.</p>' : '') +

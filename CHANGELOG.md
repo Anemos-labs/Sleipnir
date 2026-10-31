@@ -7,6 +7,22 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Deep scan severity is a CVSS v3.1 base score. The `scan` tool's `lead`
+  takes `cvss`, a base vector (`CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H`),
+  in place of `impact`; the harness validates it, computes the base score
+  with the specification's formula, and takes the severity from the rating
+  scale (critical from 9.0, high from 7.0, medium from 4.0). A lead nothing
+  reaches, or with no practical exploit, stays low at most. A confirming
+  `verdict` may correct the vector; the lowest-scoring one wins. Findings
+  rank by severity, then score. `findings.json` gains `cvss` and `score`
+  (and `impact` is omitted when empty), `findings.csv` gains `cvss_score`
+  and `cvss_vector` as its last columns, `findings.sarif` reports the score
+  as `security-severity` with `cvss` and `cvssScore` properties, and the
+  report, `report.html`, issues and the Deep scan view show the score and
+  the vector. Ledgers written before keep their impact-based severity. The
+  tool's schema and the scan brief changed, so the stable prompt layer of a
+  scan team changes once.
+
 - A worker that is stuck can be stopped. `/agents stop ID`, in the terminal
   and the web interface, and a Stop button in a working agent's drawer of
   the web interface, end its run: its tasks go back to `todo` with the
