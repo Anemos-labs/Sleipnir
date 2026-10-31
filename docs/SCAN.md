@@ -173,8 +173,8 @@ sleipnir swarm 8 --sandbox docker "$(sleipnir scan --start --diff origin/main)"
 
 ## Reproducers
 
-`scan prove` runs a bash script in a fresh copy of the code at the commit (a detached worktree under the scan's directory,
-removed afterwards), inside the session's sandbox: no network unless the session has `--sandbox-network`, no host
+`scan prove` runs a bash script in a fresh copy of the code at the commit (a detached worktree under the scan's `work/`
+directory, removed afterwards), inside the session's sandbox: no network unless the session has `--sandbox-network`, no host
 environment, no keys. `--sandbox docker` runs the image of the repository's language (Go, Rust, Java, Python, Ruby, Node), and
 a Go module's dependencies are fetched into the container before its network goes off, so a reproducer can build and
 run the code offline (see the sandbox in [SECURITY.md](SECURITY.md)). A session without a sandbox refuses to prove. The script prints, each on a line of its own and only when
@@ -187,6 +187,11 @@ a check passes:
 The run is *reproduced* when it printed the last two and exited 0, *not reproduced* when it reached the target without the
 harm, and *inconclusive* otherwise (including a timeout: 5 minutes by default, 30 at most).
 
+Every run that reproduced is kept in the scan's `proofs/` directory, rewritten with the report: `proofs/README.md` indexes
+them, and each `proofs/LEAD-N/` (the lead's N-th reproduced run) holds `reproduce.sh`, its `output.txt`, `proof.json` and a `README.md` with the claim,
+the trace, the outcome and how to run it again, so a proof can be shared on its own. Like the report, they name no agent. A
+scan made before this layout gets its `proofs/` filled on its next report (`/scan report SCAN`, or `sleipnir scan --report SCAN`).
+
 ## Where it lives
 
 ```text
@@ -196,4 +201,5 @@ harm, and *inconclusive* otherwise (including a timeout: 5 minutes by default, 3
 .sleipnir/scan/SCAN/BRIEF.md       the protocol the goal points at
 .sleipnir/scan/SCAN/REPORT.md      the report, with findings.json, findings.sarif, map.json, findings.csv and
                                    report.html (the report as a page that prints to PDF)
+.sleipnir/scan/SCAN/proofs/        every reproduced run, self-contained (see Reproducers)
 ```

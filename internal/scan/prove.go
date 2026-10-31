@@ -67,7 +67,8 @@ func (p *Prover) Prove(ctx context.Context, root string, r *Run, lead, by, scrip
 	if !leadIDRE.MatchString(lead) {
 		return Proof{}, fmt.Errorf("%q is not a lead id", clip(lead, 40))
 	}
-	dir := filepath.Join(RunDir(root, r.Slug), "proofs", fmt.Sprintf("%s-%d", strings.ToLower(lead), time.Now().UnixNano()))
+	// the copy goes under work/, not proofs/: proofs/ holds the evidence the report writes (WriteProofs)
+	dir := filepath.Join(RunDir(root, r.Slug), "work", fmt.Sprintf("%s-%d", strings.ToLower(lead), time.Now().UnixNano()))
 	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
 		return Proof{}, err
 	}

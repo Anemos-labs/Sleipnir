@@ -832,7 +832,7 @@
   {"name":"diff","arg":"string","default":null,"repeatable":false,"desc":"with --start: review the change from BASE (a commit or branch) to HEAD instead of the whole repository"},
   {"name":"json","arg":"bool","default":null,"repeatable":false,"desc":"machine-readable output"},
   {"name":"pull","arg":"bool","default":null,"repeatable":false,"desc":"with --rerun: fast-forward the checked-out branch from its upstream first"},
-  {"name":"report","arg":"bool","default":null,"repeatable":false,"desc":"rewrite SCAN's report (REPORT.md, findings.json, findings.sarif, map.json) from its ledger and print where it is"},
+  {"name":"report","arg":"bool","default":null,"repeatable":false,"desc":"rewrite SCAN's report (REPORT.md, findings.json, findings.sarif, map.json, proofs/) from its ledger and print where it is"},
   {"name":"rerun","arg":"bool","default":null,"repeatable":false,"desc":"create a new scan of what SCAN scanned, at HEAD, and print the goal that drives it"},
   {"name":"since","arg":"string","default":null,"repeatable":false,"desc":"with --compare: compare with the scan OLD instead of the one SCAN reruns or the newest earlier one"},
   {"name":"start","arg":"bool","default":null,"repeatable":false,"desc":"create a scan of the repository at HEAD (below the positional DIR, when given) and print the goal that drives it"}

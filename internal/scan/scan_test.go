@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -575,6 +576,49 @@ if [ -f marker.txt ]; then echo ` + MarkerReproduced + `; fi
 	}
 	if _, err := os.Stat(filepath.Join(root, "marker.txt")); !os.IsNotExist(err) {
 		t.Error("the reproducer wrote into the project")
+	}
+	// the copy is gone; the report writes the reproduction into the scan's proofs directory, self-contained and without
+	// agent names, so it can be shared
+	r.Leads = append(r.Leads, Lead{ID: "L1", Title: "Command injection | in ping", Category: "injection", Claim: "host reaches the shell",
+		Trace: []Step{{Cite: Cite{File: "server/handler.go", Line: 3}, Note: "host goes to sh -c"}}, By: "hunter-7"})
+	pr.By = "prover-9"
+	// a run that did not reproduce is not a proof: it stays in the ledger, not in proofs/
+	r.Leads[0].Proofs = append(r.Leads[0].Proofs, Proof{By: "prover-9", Script: "true", Outcome: ProofInconclusive, Exit: 1}, pr)
+	for i := range r.DepthInfo().Verifiers {
+		r.Leads[0].Verdicts = append(r.Leads[0].Verdicts, Verdict{By: "verifier-" + strconv.Itoa(i), Role: RoleVerifier, Confirm: true, Note: "holds"})
+	}
+	r.Leads[0].Verdicts = append(r.Leads[0].Verdicts, Verdict{By: "defender-1", Role: RoleDefender, Confirm: true, Note: "no guard"})
+	if err := WriteReport(root, r); err != nil {
+		t.Fatal(err)
+	}
+	ev := filepath.Join(RunDir(root, r.Slug), filepath.FromSlash(ProofDir("L1", 1)))
+	if b, err := os.ReadFile(filepath.Join(ev, ProofScriptOut)); err != nil || string(b) != good {
+		t.Errorf("script not kept: %q %v", b, err)
+	}
+	if b, err := os.ReadFile(filepath.Join(ev, ProofOutput)); err != nil || !strings.Contains(string(b), MarkerReproduced) {
+		t.Errorf("output not kept: %q %v", b, err)
+	}
+	if b, err := os.ReadFile(filepath.Join(ev, ProofReadme)); err != nil || !strings.Contains(string(b), r.Commit) ||
+		!strings.Contains(string(b), "server/handler.go:3") || !strings.Contains(string(b), "independent") {
+		t.Errorf("readme: %s %v", b, err)
+	}
+	var rec struct{ Lead, Commit, Outcome string }
+	b, err := os.ReadFile(filepath.Join(ev, ProofRecord))
+	if err != nil || json.Unmarshal(b, &rec) != nil || rec.Lead != "L1" || rec.Commit != r.Commit || rec.Outcome != ProofReproduced {
+		t.Errorf("record: %s %v", b, err)
+	}
+	if strings.Contains(string(b), "prover-9") || strings.Contains(string(b), "hunter-7") {
+		t.Errorf("the record names an agent: %s", b)
+	}
+	if idx, err := os.ReadFile(filepath.Join(RunDir(root, r.Slug), ProofsDir, ProofReadme)); err != nil ||
+		!strings.Contains(string(idx), "(l1-1/README.md)") || !strings.Contains(string(idx), `Command injection \| in ping`) {
+		t.Errorf("index: %s %v", idx, err)
+	}
+	if md, _ := os.ReadFile(filepath.Join(RunDir(root, r.Slug), ReportFile)); !strings.Contains(string(md), "(proofs/l1-1/README.md)") {
+		t.Error("the report does not link the proof")
+	}
+	if es, err := os.ReadDir(filepath.Join(RunDir(root, r.Slug), ProofsDir)); err != nil || len(es) != 2 {
+		t.Errorf("proofs dir holds %d entries (%v), want the index and the proof", len(es), err)
 	}
 	notRepro := "echo " + MarkerExercised + " >/dev/null; grep -q host server/handler.go && echo " + MarkerExercised + "\nif false; then echo " + MarkerReproduced + "; fi\n"
 	if pr, err := p.Prove(ctx, root, r, "L1", "prover", notRepro, time.Minute); err != nil || pr.Outcome != ProofNotReproduce {
