@@ -33,6 +33,7 @@ commands:
   approve NAME [--yes]                remember a project entry for this project (shows what it would run and asks first)
   revoke NAME                         forget an approval
   test [NAME...] [--trust-project]    start the servers and list the tools they offer (project entries still need approval)
+  serve [flags]                       be an MCP server on stdio, so another harness can hand goals to Sleipnir (docs/MCP.md)
 `
 
 // cmdMCP inspects and manages MCP servers without starting a session.
@@ -42,6 +43,9 @@ func cmdMCP(ctx context.Context, args []string) error {
 		return nil
 	}
 	sub, rest := args[0], args[1:]
+	if sub == "serve" {
+		return cmdMCPServe(ctx, rest)
+	}
 	fs := newFlagSet("mcp "+sub, flag.ContinueOnError)
 	trust := fs.Bool("trust-project", false, "read the project's configuration (.sleipnir/config.json, .mcp.json)")
 	yes := fs.Bool("yes", false, "approve without asking (scripts: you have read `sleipnir mcp list`)")

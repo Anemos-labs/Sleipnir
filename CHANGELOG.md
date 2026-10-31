@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `sleipnir mcp serve` makes Sleipnir an MCP server on stdio, so another
+  harness (Claude Code, Codex, an editor) can start goals with Sleipnir's
+  agents and teams (`sleipnir_start`), follow them (`sleipnir_status`,
+  `sleipnir_wait`), cancel them and list them. Each goal is a `sleipnir run
+  --json` child. The permission mode is a ceiling the server's flags set, and
+  the allow rules, project trust and directory are the server's, never the
+  caller's. No prompt bytes change.
+
 - Skills are also read from `.agents/skills/` (the directory the Agent Skills
   convention shares between Codex, opencode, Gemini CLI and others): in a
   trusted project after `.claude/skills/`, and in the home directory after

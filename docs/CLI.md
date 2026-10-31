@@ -148,6 +148,7 @@ commands:
   approve NAME [--yes]                remember a project entry for this project (shows what it would run and asks first)
   revoke NAME                         forget an approval
   test [NAME...] [--trust-project]    start the servers and list the tools they offer (project entries still need approval)
+  serve [flags]                       be an MCP server on stdio, so another harness can hand goals to Sleipnir (docs/MCP.md)
 ```
 <!-- /flags -->
 

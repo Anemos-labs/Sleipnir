@@ -1,6 +1,7 @@
 # MCP tool servers
 
-Sleipnir is a client of the Model Context Protocol: it can connect to external tool servers (a local process over
+Sleipnir is a client of the Model Context Protocol, and it can also be a server: [Sleipnir as a tool server](#sleipnir-as-a-tool-server)
+lets another harness hand goals to Sleipnir's agents and teams. As a client, Sleipnir can connect to external tool servers (a local process over
 stdio, or a remote server over streamable HTTP or the older HTTP+SSE transport) and give their tools to the model next
 to the built-in ones. This page is what you need to use it; the package documentation (`internal/mcp/doc.go`) has the
 protocol details and the threat model.
@@ -153,6 +154,42 @@ restarts one that gave up, and a server's **prompts** appear as slash commands (
 replaced by their names.
 
 RL rollouts (`sleipnir rl ...`) never start MCP servers: an episode is closed and reproducible.
+
+## Sleipnir as a tool server
+
+`sleipnir mcp serve` is an MCP server on stdin and stdout. Another harness or agentic development environment (Claude
+Code, Codex, an editor) adds it like any other server and can then give a goal to one Sleipnir agent, or to a team
+where a manager plans, delegates to workers, reviews and verifies, and follow it to the end. The calling agent keeps
+its own tools; Sleipnir is one more thing it can delegate to.
+
+```json
+{ "mcpServers": { "sleipnir": { "command": "sleipnir", "args": ["mcp", "serve", "--allow", "tests"] } } }
+```
+
+With Claude Code: `claude mcp add sleipnir -- sleipnir mcp serve --allow tests`.
+
+| tool | what it does |
+|---|---|
+| `sleipnir_start` | starts a goal in the background and returns its job id at once. `goal` is required; `cwd`, `model`, `workers` (0 for one agent, 8 or more for a team), `team` (a saved team), `role_models`, `mode`, `verify`, `isolation`, `budget_usd` and `resume` mean what the `sleipnir run` flags of the same names mean |
+| `sleipnir_status` | the job's state (`running`, `done`, `failed`, `cancelled`), its tool-call count, its recent activity and, once it has ended, its result: the final answer, steps, cost, session id and directory, and the tail of stderr when it failed |
+| `sleipnir_wait` | blocks until the job ends or `timeout_seconds` pass (default 300, at most 1800), then reports as `sleipnir_status` does |
+| `sleipnir_cancel` | ends a running job as Ctrl-C ends `sleipnir run`: work a team verified is applied first |
+| `sleipnir_jobs` | the jobs of this server and its limits |
+
+Each goal runs as `sleipnir run --json`, with the goal written to its standard input. The activity is a digest of that
+stream, one line per tool call, message and notice (the newest 400 are kept), so a report costs the caller only what it
+asks for: `events` caps the lines (default 20), and `after` set to an earlier report's `last_seq` returns only what
+came since. A team run can take hours; a caller waits in steps. Activity and results are what Sleipnir's agents wrote:
+the caller should treat them as data.
+
+**Limits are the server's.** The model that calls the tools is not you, so everything that widens what a run may do is
+fixed by the flags the server was started with: `--mode` is a ceiling (default `bypass`, which is what an unattended
+`sleipnir run` uses; a call may ask for a stricter mode, never a wider one), `--allow` rules and `--trust-project` apply
+to every run, a run's `cwd` must be inside the server's `--cwd` (default: the directory it was started in), and
+`--max-jobs` (default 4) bounds the runs at once. A run has no one to answer its questions, so in the default mode what
+would ask is refused; `bypass` still refuses the high-risk class and protected paths (see [Configuration](CONFIGURATION.md)).
+The provider keys reach each run on an inherited pipe, not in its environment, as they do for the web interface's runner.
+When the client disconnects, the server cancels the runs that are still going and waits for them to end.
 
 ## Limits
 

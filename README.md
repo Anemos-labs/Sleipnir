@@ -124,6 +124,10 @@ sleipnir swarm 8 "implement the API and client" --verify "go test {dirs}"
 sleipnir --continue
 ```
 
+Other harnesses can delegate to Sleipnir too: `sleipnir mcp serve` is an MCP server whose tools start a goal, follow
+it and read its result, so Claude Code, Codex or an editor can hand work to a Sleipnir team
+([Sleipnir as a tool server](docs/MCP.md#sleipnir-as-a-tool-server)).
+
 See the [CLI reference](docs/CLI.md).
 
 ## Safety
