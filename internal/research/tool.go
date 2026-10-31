@@ -511,7 +511,23 @@ func (t *Tool) search(ctx context.Context, env *tools.Env, in input) (string, er
 		b.WriteString("(" + n + ")\n")
 	}
 	b.WriteString("Open the promising results with web_fetch, then cite each page you use with exact quotes.")
+	if line := pastGatherLine(Check(t.store.root, r).Phase); line != "" {
+		b.WriteString("\n" + line)
+	}
 	return b.String(), nil
+}
+
+// pastGatherLine is what a search made after the gather phase is over says, "" while the run still gathers. A team whose manager
+// kept every worker busy went on searching past the bars, and the run did not end: the line tells the agent that new sources no
+// longer move the run on, so it finishes its task with what the ledger has.
+func pastGatherLine(phase string) string {
+	switch phase {
+	case PhasePlan, PhaseGather:
+		return ""
+	case PhaseDone:
+		return "The run is done: every bar is met and the wiki is published. Nothing more is needed from a search; finish your task with what you have."
+	}
+	return "Every gather bar of this run is met (it is in its " + phase + " phase): new sources no longer move it on. Search only for a claim a page or a review needs; otherwise finish your task with what the ledger has (research status says what is left)."
 }
 
 // firstNonEmpty returns the first of its arguments that is not empty.

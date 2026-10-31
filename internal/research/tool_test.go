@@ -112,7 +112,7 @@ func TestSearchRunsOnce(t *testing.T) {
 	tool, fr, _, _ := newTestTool(t, "quick", ModeReport)
 	fr.backend = true
 	out := must(t, tool, "sc-1", map[string]any{"action": "search", "query": "storm wikipedia generation"})
-	if !strings.Contains(out, "arxiv.org/abs/2402.14207") {
+	if !strings.Contains(out, "arxiv.org/abs/2402.14207") || strings.Contains(out, "gather bar") {
 		t.Fatalf("search: %s", out)
 	}
 	if out, isErr := call(t, tool, "sc-2", map[string]any{"action": "search", "query": "STORM  Wikipedia generation"}); !isErr || !strings.Contains(out, "already made") {
@@ -162,6 +162,10 @@ func TestFullRun(t *testing.T) {
 	out := must(t, tool, "mgr", map[string]any{"action": "status"})
 	if !strings.Contains(out, "Phase: write") {
 		t.Fatalf("after gathering: %s", out)
+	}
+	fr.backend = true // a search past the bars says that new sources no longer move the run on
+	if out := must(t, tool, "sc-T1", map[string]any{"action": "search", "query": "one more angle on research agents"}); !strings.Contains(out, "Every gather bar of this run is met") {
+		t.Fatalf("search after gathering: %s", out)
 	}
 	cites := func(ids ...string) string {
 		var b strings.Builder
