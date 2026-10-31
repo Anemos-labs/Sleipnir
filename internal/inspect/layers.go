@@ -100,13 +100,17 @@ func (s *Session) Layers(id string, withText bool) (LayerReport, bool) {
 		case 1, 2, 3, 4:
 			name := layerKey(i)
 			li.Source = "recorded"
+			prevSection, looked := "", false // the previous request's hash of this layer, looked up once however often it repeats
 			for _, sec := range r.sections {
 				if sec.name == name {
 					li.Hash, li.Breakpoint, present = shortHash(sec.hash), sec.bp, true
 					if withText {
 						j := textJob{idx: i, label: LayerKeys[i], hash: sec.hash}
 						if prev != nil {
-							j.prevHash = prev.sectionHash(name)
+							if !looked {
+								prevSection, looked = prev.sectionHash(name), true
+							}
+							j.prevHash = prevSection
 						}
 						jobs = append(jobs, j)
 					}

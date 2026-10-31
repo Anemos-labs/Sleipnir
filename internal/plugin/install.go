@@ -165,9 +165,11 @@ func copyTree(src, dst string) error {
 	})
 }
 
-// copyFile copies one regular file, keeping its executable bit.
+// copyFile copies one regular file, keeping its executable bit. The walk saw a regular file, but the name may have been
+// swapped since: what was opened is judged again, without waiting on a FIFO, so a device or a pipe put there is refused
+// rather than streamed into the plugin.
 func copyFile(from, to string) error {
-	in, err := os.Open(from)
+	in, err := os.OpenFile(from, os.O_RDONLY|openNonblock, 0)
 	if err != nil {
 		return err
 	}
@@ -175,6 +177,9 @@ func copyFile(from, to string) error {
 	fi, err := in.Stat()
 	if err != nil {
 		return err
+	}
+	if !fi.Mode().IsRegular() {
+		return errors.New(from + " is not a regular file")
 	}
 	out, err := os.OpenFile(to, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, fi.Mode().Perm()&0o700|0o600)
 	if err != nil {

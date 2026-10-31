@@ -1489,9 +1489,9 @@ func TestCwdTrapDestinationCannotBeRedirected(t *testing.T) {
 }
 
 // A plain-words command for PowerShell or cmd.exe is read as POSIX only when its name means there what it means here:
-// "type secrets.txt" prints the file there.
+// "type secrets.txt" prints the file there, and "cat -Path:secrets.txt" binds a path to Get-Content.
 func TestSamePosixMeaning(t *testing.T) {
-	for cmd, want := range map[string]bool{"go test ./...": true, "git status": true, "type secrets.txt": false, "TYPE x": false, "del a.txt": false, "": true} {
+	for cmd, want := range map[string]bool{"go test ./...": true, "git status": true, "type secrets.txt": false, "TYPE x": false, "del a.txt": false, "cat -Path:secrets.txt": false, "go test -run=X:Y": true, "": true} {
 		if got := samePosixMeaning(cmd); got != want {
 			t.Errorf("samePosixMeaning(%q) = %v, want %v", cmd, got, want)
 		}

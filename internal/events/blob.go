@@ -201,9 +201,28 @@ func (d *DirBlobs) GetMax(h core.Hash, max int64) ([]byte, error) {
 	}
 	if got := core.HashBytes(b); got != h {
 		d.forget(h) // Put must look at the file again rather than trust an earlier check
-		return nil, fmt.Errorf("%w: %s holds %d bytes that hash to %s", ErrBlobCorrupt, h.Short(), len(b), got.Short())
+		return nil, &corruptError{read: int64(len(b)), msg: fmt.Sprintf("%s: %s holds %d bytes that hash to %s", ErrBlobCorrupt, h.Short(), len(b), got.Short())}
 	}
 	return b, nil
+}
+
+// corruptError is the ErrBlobCorrupt of a blob that was read in full and hashed wrong: it keeps how much was read (ReadBytes).
+type corruptError struct {
+	read int64
+	msg  string
+}
+
+func (e *corruptError) Error() string { return e.msg }
+func (e *corruptError) Unwrap() error { return ErrBlobCorrupt }
+
+// ReadBytes reports how many bytes the read that failed with err took in before it failed: the size of a corrupt blob that
+// was read and hashed, 0 for any other error. A caller with a byte budget charges it, so failing reads are not free.
+func ReadBytes(err error) int64 {
+	var c *corruptError
+	if errors.As(err, &c) {
+		return c.read
+	}
+	return 0
 }
 
 // readBlobFile reads a regular file of at most max bytes without following a

@@ -825,7 +825,14 @@ func (m *Workspaces) runSetup(ctx context.Context, task rl.Task, s *snapshot, ke
 // can be found in it.
 func (m *Workspaces) makeAgentRepo(ctx context.Context, s *snapshot, baseTree string) error {
 	gd := filepath.Join(s.tree, ".git")
-	// Setup ran in the tree: whatever .git it left (a directory of links, a file) is not built on.
+	// Setup ran in the tree, and the tree's parent was writable to it: the tree itself must still be a directory, not a link
+	// setup put in its place, before anything below it is removed or written from the host.
+	if fi, err := os.Lstat(s.tree); err != nil {
+		return err
+	} else if !fi.IsDir() {
+		return fmt.Errorf("setup replaced the tree %s with something that is not a directory", s.tree)
+	}
+	// Whatever .git setup left (a directory of links, a file) is not built on.
 	if err := removeAllNoFollow(gd); err != nil {
 		return err
 	}

@@ -34,7 +34,7 @@ func WriteReport(root string, r *Run) error {
 		return err
 	}
 	for name, data := range map[string][]byte{ReportFile: []byte(Markdown(r)), FindingsFile: append(f, '\n'), SARIFFile: append(s, '\n'), MapFile: append(m, '\n'), CSVFile: CSV(r), HTMLFile: []byte(HTML(r))} {
-		if err := WriteAtomic(filepath.Join(dir, name), data); err != nil {
+		if err := WriteAtomic(root, filepath.Join(dir, name), data); err != nil {
 			return err
 		}
 	}

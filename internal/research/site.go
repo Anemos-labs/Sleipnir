@@ -61,39 +61,45 @@ func Build(root string, r *Run, opts BuildOptions) (*BuildResult, error) {
 		return nil, err
 	}
 	dir := SiteDir(root, r.Slug)
-	tmp := dir + ".new"
-	_ = os.RemoveAll(tmp)
+	// Every step is taken in the run's directory, opened without following a link from the project root down (openRun): a link
+	// planted in the project cannot point the removals and renames below at another directory.
+	run, err := openRun(root, r.Slug)
+	if err != nil {
+		return nil, err
+	}
+	defer run.Close()
+	const tmp, old, cur = "site.new", "site.old", "site"
+	_ = run.RemoveAll(tmp)
 	names := make([]string, 0, len(site.Files))
 	for name := range site.Files {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	if err := writeConfined(tmp, names, site.Files); err != nil {
-		_ = os.RemoveAll(tmp)
+	if err := writeConfined(run, tmp, names, site.Files); err != nil {
+		_ = run.RemoveAll(tmp)
 		return nil, err
 	}
-	old := dir + ".old"
-	_ = os.RemoveAll(old)
-	if _, err := os.Stat(dir); err == nil {
-		if err := os.Rename(dir, old); err != nil {
-			_ = os.RemoveAll(tmp)
+	_ = run.RemoveAll(old)
+	if _, err := run.Lstat(cur); err == nil {
+		if err := run.Rename(cur, old); err != nil {
+			_ = run.RemoveAll(tmp)
 			return nil, err
 		}
 	}
-	if err := os.Rename(tmp, dir); err != nil {
-		_ = os.Rename(old, dir)
+	if err := run.Rename(tmp, cur); err != nil {
+		_ = run.Rename(old, cur)
 		return nil, err
 	}
-	_ = os.RemoveAll(old)
+	_ = run.RemoveAll(old)
 	return &BuildResult{Dir: dir, Pages: site.Pages, Indexed: site.Indexed, Report: site.Report}, nil
 }
 
-// writeConfined writes files into a new directory dir through an os.Root on it, so no name can place a file outside it.
-func writeConfined(dir string, names []string, files map[string][]byte) error {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+// writeConfined writes files into a new directory dir of parent through an os.Root on it, so no name can place a file outside it.
+func writeConfined(parent *os.Root, dir string, names []string, files map[string][]byte) error {
+	if err := parent.Mkdir(dir, 0o755); err != nil {
 		return err
 	}
-	root, err := os.OpenRoot(dir)
+	root, err := parent.OpenRoot(dir)
 	if err != nil {
 		return err
 	}

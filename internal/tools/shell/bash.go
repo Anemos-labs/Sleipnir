@@ -397,8 +397,16 @@ var windowsOwnMeaning = map[string]bool{
 }
 
 // samePosixMeaning reports whether a plain-words command means for PowerShell and cmd.exe what it means for a POSIX
-// shell: its command name is not one they give a meaning of their own (windowsOwnMeaning).
+// shell: its command name is not one they give a meaning of their own (windowsOwnMeaning), and no word is a
+// colon-bound parameter.
 func samePosixMeaning(command string) bool {
 	f := strings.Fields(command)
+	for _, w := range f {
+		// -Path:secret is a POSIX flag the engine reads no file in, and a parameter bound to a path for PowerShell (cat,
+		// ls and the rest name cmdlets there)
+		if name, _, _ := strings.Cut(w, "="); strings.HasPrefix(w, "-") && strings.Contains(name, ":") {
+			return false
+		}
+	}
 	return len(f) == 0 || !windowsOwnMeaning[strings.ToLower(f[0])]
 }

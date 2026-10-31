@@ -182,18 +182,20 @@ func (a *Archive) RangeLimit(agent string, from, to core.TurnID, maxTurns, maxBy
 }
 
 // Search finds archived turns mentioning the query terms, best first (Rank). It looks at the
-// capped preview of each turn (its beginning and its end), not at the whole text.
+// capped preview of each turn (its beginning and its end), not at the whole text. The previews are taken under the lock
+// and ranked after it is released: a long query must not hold up the turns being archived meanwhile.
 func (a *Archive) Search(agent, query string, limit int) []Hit {
 	a.mu.RLock()
-	defer a.mu.RUnlock()
 	ix := a.byAgent[agent]
 	if ix == nil {
+		a.mu.RUnlock()
 		return nil
 	}
 	docs := make([]Doc, len(ix.entries))
 	for i, e := range ix.entries {
 		docs[i] = Doc{Turn: e.id, preview: e.preview}
 	}
+	a.mu.RUnlock()
 	return Rank(docs, query, limit)
 }
 

@@ -250,7 +250,8 @@ try {
         await page.goto(url, { waitUntil: "networkidle", timeout: 30000 });
         // Scroll through once so reveal-on-scroll content has its chance, then come back to the top.
         await page.evaluate(async () => {
-          for (let y = 0; y < document.body.scrollHeight; y += innerHeight / 2) { scrollTo(0, y); await new Promise((r) => setTimeout(r, 60)); }
+          // At most 200 steps (100 screens): a page that makes itself endlessly tall must not hold the audit.
+          for (let y = 0, n = 0; y < document.body.scrollHeight && n < 200; y += innerHeight / 2, n++) { scrollTo(0, y); await new Promise((r) => setTimeout(r, 60)); }
           scrollTo(0, 0);
         });
         await page.waitForTimeout(opt.wait);

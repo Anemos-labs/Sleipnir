@@ -29,11 +29,17 @@ func newHookRunner(cfg *config.Config, sessionID, root string) (*hooks.Runner, [
 	if len(cfg.Hooks) == 0 {
 		return nil, nil
 	}
+	var warns []string
 	set, err := hooks.ParseAs(hooks.OriginUser, "config", cfg.Hooks)
 	if err != nil {
-		return nil, []string{"hooks: not used: " + err.Error()}
+		// One malformed group (a trusted project's, say) must not take the user's guards with it: the groups that parse
+		// on their own are kept, and only the others are dropped.
+		valid, dropped := validHookGroups(cfg.Hooks)
+		warns = append(warns, fmt.Sprintf("hooks: %d malformed hook group(s) not used: %s", dropped, err.Error()))
+		if set, err = hooks.ParseAs(hooks.OriginUser, "config", valid); err != nil {
+			return nil, []string{"hooks: not used: " + err.Error()}
+		}
 	}
-	var warns []string
 	for _, w := range set.Warnings() {
 		warns = append(warns, "hooks: "+w)
 	}
@@ -54,6 +60,33 @@ func newHookRunner(cfg *config.Config, sessionID, root string) (*hooks.Runner, [
 		}
 	}
 	return &hooks.Runner{Set: set, Dir: root, SessionID: sessionID, DenyEnv: deny, MaxConcurrent: 8}, warns
+}
+
+// validHookGroups returns the hook configuration with only the groups that parse on their own, and how many were left out.
+// An event whose value is not a list of groups is left out whole.
+func validHookGroups(m map[string]json.RawMessage) (map[string]json.RawMessage, int) {
+	out := map[string]json.RawMessage{}
+	dropped := 0
+	for key, raw := range m {
+		var groups []json.RawMessage
+		if err := json.Unmarshal(raw, &groups); err != nil {
+			dropped++
+			continue
+		}
+		var keep []json.RawMessage
+		for _, g := range groups {
+			one, _ := json.Marshal([]json.RawMessage{g})
+			if _, err := hooks.ParseAs(hooks.OriginUser, "config", map[string]json.RawMessage{key: one}); err != nil {
+				dropped++
+				continue
+			}
+			keep = append(keep, g)
+		}
+		if len(keep) > 0 {
+			out[key], _ = json.Marshal(keep)
+		}
+	}
+	return out, dropped
 }
 
 // hookAdapter implements agent.Hooks over a hooks.Runner, and records what hooks

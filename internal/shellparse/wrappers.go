@@ -739,11 +739,7 @@ func xargsRunsShell(args []string) bool {
 		switch {
 		case a == "--":
 			i++
-			if i < len(args) {
-				b := stdBase(args[i])
-				return posixShells[b] || b == "eval"
-			}
-			return false
+			return i < len(args) && xargsUtilityRunsShell(args[i:], 0)
 		case strings.HasPrefix(a, "--") && !strings.Contains(a, "=") && slices.Contains(xargsLongValueOpts, a):
 			i++ // its value is the next word, not the command
 		case strings.HasPrefix(a, "--"):
@@ -751,9 +747,33 @@ func xargsRunsShell(args []string) bool {
 			i++
 		case len(a) > 1 && a[0] == '-':
 		default:
-			b := stdBase(a)
-			return posixShells[b] || b == "eval"
+			return xargsUtilityRunsShell(args[i:], 0)
 		}
+	}
+	return false
+}
+
+// xargsUtilityRunsShell reports whether the utility xargs runs (words: the utility and its arguments) is a shell or eval, seen
+// through the wrappers unwrap understands and privilege wrappers. A wrapper it cannot read is judged as running one: xargs then
+// turns its input into code.
+func xargsUtilityRunsShell(words []string, depth int) bool {
+	if len(words) == 0 {
+		return false
+	}
+	b := stdBase(words[0])
+	switch {
+	case posixShells[b] || b == "eval":
+		return true
+	case depth >= 8: // as peel
+		return true
+	case isPrivileged(b):
+		return xargsUtilityRunsShell(skipPriv(privSpecs[b], words[1:]), depth+1)
+	case wrapperSet[b]:
+		rest, _, _, prob := unwrap(b, words[1:])
+		if prob != "" {
+			return true
+		}
+		return xargsUtilityRunsShell(rest, depth+1)
 	}
 	return false
 }

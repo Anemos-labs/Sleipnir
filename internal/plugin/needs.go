@@ -331,12 +331,23 @@ func defaultPath(goos string, n Need) string {
 		matches, _ := filepath.Glob(p)
 		sort.Strings(matches)
 		for i := len(matches) - 1; i >= 0; i-- {
+			if matches[i] != p && inCheckout(matches[i]) {
+				continue // a wildcard stands for where a release unpacks, not for a repository someone cloned there
+			}
 			if isExecutable(goos, matches[i]) {
 				return matches[i]
 			}
 		}
 	}
 	return ""
+}
+
+// inCheckout reports whether the directory of a program a wildcard location matched is a repository checkout (it holds
+// .git). A release archive unpacks no .git; a cloned project whose name the wildcard happens to match (~/blender-scripts
+// with its own blender file) would otherwise be linked in and run as the program the user was asked about.
+func inCheckout(p string) bool {
+	_, err := os.Lstat(filepath.Join(filepath.Dir(p), ".git"))
+	return err == nil
 }
 
 // expandPath expands ~ and ${VAR} in a declared location; a variable that is not set drops the location.

@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -151,7 +152,19 @@ func sameDir(a, b string) bool {
 // readConfigFile reads a configuration file, refusing anything that is not a
 // reasonably sized regular file.
 func readConfigFile(path string) ([]byte, error) {
-	fi, err := os.Stat(path)
+	// One descriptor is checked and read, with the read held to the limit: a file replaced after a check of its name
+	// (by a device or a larger file) cannot make the read unbounded.
+	if fi, err := os.Stat(path); err != nil {
+		return nil, err
+	} else if !fi.Mode().IsRegular() {
+		return nil, errors.New("not a regular file") // before the open, which would wait on a named pipe
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	fi, err := f.Stat()
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +174,11 @@ func readConfigFile(path string) ([]byte, error) {
 	if fi.Size() > maxFileSize {
 		return nil, fmt.Errorf("file is larger than %d KB", maxFileSize>>10)
 	}
-	return os.ReadFile(path)
+	b, err := io.ReadAll(io.LimitReader(f, maxFileSize+1))
+	if err == nil && len(b) > maxFileSize {
+		return nil, fmt.Errorf("file is larger than %d KB", maxFileSize>>10)
+	}
+	return b, err
 }
 
 // pathReason removes the outer filesystem path wrapper from a nonnil error for concise

@@ -3,6 +3,7 @@ package gitx
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -100,9 +101,17 @@ func copyIndex(dst *os.File, src string) (time.Time, error) {
 	if err != nil {
 		return time.Time{}, err
 	}
+	if fi.Size() > maxIndexBytes {
+		return time.Time{}, fmt.Errorf("the index is %d bytes; a snapshot copies one of at most %d", fi.Size(), int64(maxIndexBytes))
+	}
 	_, err = io.CopyN(dst, f, fi.Size())
 	return fi.ModTime(), err
 }
+
+// maxIndexBytes is the largest index a snapshot copies. An index records a path, a hash and a stat per tracked file: 1 GiB is
+// several million files, far past any repository a snapshot is taken of, and a sparse file of that logical size is refused
+// before its holes become blocks on disk.
+const maxIndexBytes = 1 << 30
 
 // openRegular opens path for reading without waiting on a FIFO and fails unless
 // what it opened is a regular file. With noFollow, a symlink at the end of the

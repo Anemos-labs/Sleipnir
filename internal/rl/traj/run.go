@@ -141,19 +141,51 @@ func OpenWith(evs []events.Event, blobs events.Blobs) *Run {
 	return newRun(append([]events.Event(nil), evs...), blobs)
 }
 
+// maxEventLine is the longest events.jsonl line a run is read with; the journal writes none longer.
+const maxEventLine = events.MaxEventBytes
+
 // readEvents parses events.jsonl. It returns the events, whether the final line
 // was torn (cut off by a crash, and so dropped), and the numbers of any earlier
 // lines that were skipped because they did not parse.
 func readEvents(path string) (evs []events.Event, torn bool, bad []int, err error) {
+	// Only a regular file has an end: a device or a pipe in the log's place (or a link to one) would be read for ever.
+	if fi, err := os.Stat(path); err != nil {
+		return nil, false, nil, err
+	} else if !fi.Mode().IsRegular() {
+		return nil, false, nil, fmt.Errorf("%s is not a regular file", path)
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, false, nil, err
 	}
 	defer f.Close()
+	if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() {
+		return nil, false, nil, fmt.Errorf("%s is not a regular file", path)
+	}
 	rd := bufio.NewReaderSize(f, 1<<20)
+	// readLine reads one line, keeping at most maxEventLine bytes of it: a longer one (a sparse file's holes) is read through
+	// and comes back empty-handed as too long, never held whole.
+	readLine := func() (line []byte, long bool, err error) {
+		for {
+			frag, err := rd.ReadSlice('\n')
+			if !long && len(line)+len(frag) <= maxEventLine {
+				line = append(line, frag...)
+			} else {
+				line, long = nil, true
+			}
+			if err != bufio.ErrBufferFull {
+				return line, long, err
+			}
+		}
+	}
 	lineNo, lastBad := 0, 0
 	for {
-		line, rerr := rd.ReadBytes('\n')
+		line, long, rerr := readLine()
+		if long {
+			lineNo++
+			bad = append(bad, lineNo)
+			lastBad = lineNo
+		}
 		if len(line) > 0 {
 			lineNo++
 			if t := bytes.TrimSpace(line); len(t) > 0 {

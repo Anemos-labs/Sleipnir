@@ -183,7 +183,7 @@ func ObjectiveSlug(objective string) string {
 func WriteBrief(root string, r *Run) error {
 	ign := filepath.Join(Dir(root), ".gitignore")
 	if _, err := os.Stat(ign); err != nil {
-		if err := WriteAtomic(ign, []byte("# deep scans: ledgers, reports and reproducer copies, never committed\n*\n")); err != nil {
+		if err := WriteAtomic(root, ign, []byte("# deep scans: ledgers, reports and reproducer copies, never committed\n*\n")); err != nil {
 			return err
 		}
 	}
@@ -191,5 +191,5 @@ func WriteBrief(root string, r *Run) error {
 	if r.Previous != "" {
 		prev, _ = Load(root, r.Previous)
 	}
-	return WriteAtomic(filepath.Join(root, filepath.FromSlash(BriefPath(r.Slug))), []byte(brief(r, prev)))
+	return WriteAtomic(root, filepath.Join(root, filepath.FromSlash(BriefPath(r.Slug))), []byte(brief(r, prev)))
 }

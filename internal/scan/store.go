@@ -1,6 +1,8 @@
 package scan
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -98,7 +100,7 @@ func (s *Store) create(commit, depth, focus string, inv Inventory, base string, 
 	if err != nil {
 		return nil, err
 	}
-	if err := WriteAtomic(filepath.Join(RunDir(s.root, slug), "functions.json"), append(fb, '\n')); err != nil {
+	if err := WriteAtomic(s.root, filepath.Join(RunDir(s.root, slug), "functions.json"), append(fb, '\n')); err != nil {
 		return nil, err
 	}
 	if err := s.saveLocked(r); err != nil {
@@ -359,7 +361,7 @@ func (s *Store) saveLocked(r *Run) error {
 	if err != nil {
 		return err
 	}
-	return WriteAtomic(filepath.Join(RunDir(s.root, r.Slug), "scan.json"), append(b, '\n'))
+	return WriteAtomic(s.root, filepath.Join(RunDir(s.root, r.Slug), "scan.json"), append(b, '\n'))
 }
 
 // cloneRun is a deep copy of a scan; the functions, which never change, are shared.
@@ -371,27 +373,49 @@ func cloneRun(r *Run) *Run {
 	return &c
 }
 
-// WriteAtomic writes data to path through a temporary file in the same directory.
-func WriteAtomic(path string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
+// WriteAtomic writes data to path, which is inside the project root, through a temporary file in the same directory. Every
+// step goes through the root (os.Root): a directory on the way (.sleipnir, the scan directory, the run's) that a link
+// replaced cannot take the write, or the rename over a report, outside the project.
+func WriteAtomic(root, path string, data []byte) error {
+	rel, err := filepath.Rel(root, path)
+	if err != nil || !filepath.IsLocal(rel) {
+		return fmt.Errorf("%s is not inside %s", path, root)
 	}
-	f, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
+	r, err := os.OpenRoot(root)
 	if err != nil {
 		return err
 	}
-	name := f.Name()
+	defer r.Close()
+	dir := filepath.Dir(rel)
+	if err := r.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	var f *os.File
+	var name string
+	for range 100 {
+		var b [8]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			return err
+		}
+		name = filepath.Join(dir, ".tmp-"+hex.EncodeToString(b[:]))
+		if f, err = r.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600); !errors.Is(err, os.ErrExist) {
+			break
+		}
+	}
+	if err != nil {
+		return err
+	}
 	if _, err := f.Write(data); err != nil {
 		f.Close()
-		os.Remove(name)
+		r.Remove(name)
 		return err
 	}
 	if err := f.Close(); err != nil {
-		os.Remove(name)
+		r.Remove(name)
 		return err
 	}
-	if err := os.Rename(name, path); err != nil {
-		os.Remove(name)
+	if err := r.Rename(name, rel); err != nil {
+		r.Remove(name)
 		return err
 	}
 	return nil
