@@ -843,10 +843,42 @@ func loopAssignments(cmds []shellparse.Simple, ints map[string]int) (map[int][]s
 	return names, all
 }
 
-// printfAssigns reports whether a printf may set a variable: printf -v NAME does, and so may one whose first word is only known when
-// the line runs (a variable, a substitution, a glob). printf 'date\n' > "$F" sets nothing.
+// printfAssigns reports whether a printf may set a variable: printf -v NAME does, a format with a %n conversion stores a count in
+// the variable its argument names, and so may one whose format is only known when the line runs (a variable, a substitution, a
+// glob). printf 'date\n' > "$F" sets nothing.
 func printfAssigns(args []string) bool {
-	return len(args) > 0 && (strings.HasPrefix(args[0], "-v") || strings.ContainsAny(args[0], "$`*?["))
+	if len(args) == 0 {
+		return false
+	}
+	if strings.HasPrefix(args[0], "-v") || strings.ContainsAny(args[0], "$`*?[") {
+		return true
+	}
+	format := args[0]
+	if format == "--" && len(args) > 1 {
+		format = args[1]
+	}
+	return printfStoresCount(format)
+}
+
+// printfStoresCount reports whether a printf format holds a %n conversion (flags, width and precision allowed between), which
+// assigns the number of bytes printed so far to a variable.
+func printfStoresCount(format string) bool {
+	for i := 0; i < len(format); i++ {
+		if format[i] != '%' {
+			continue
+		}
+		j := i + 1
+		for j < len(format) && strings.IndexByte("-+ #0123456789.*'", format[j]) >= 0 {
+			j++
+		}
+		if j < len(format) && format[j] == 'n' {
+			return true
+		}
+		if j < len(format) && format[j] == '%' {
+			i = j
+		}
+	}
+	return false
 }
 
 // unconditional reports whether the statement s certainly runs when the line runs, in the line's own shell: the parser did not mark
@@ -943,8 +975,8 @@ var evalBuiltins = map[string]bool{
 
 // arithmeticMarkers show that a command line evaluates variable contents as
 // arithmetic, which runs command substitutions hidden in array subscripts:
-// x='a[$(cmd)]'; echo $((x)) runs cmd.
-var arithmeticMarkers = []string{"((", "[[", "let ", "declare -i", "typeset -i", " -eq ", " -ne ", " -lt ", " -gt ", " -le ", " -ge "}
+// x='a[$(cmd)]'; echo $((x)) runs cmd, and so does the legacy form echo $[x].
+var arithmeticMarkers = []string{"((", "$[", "[[", "let ", "declare -i", "typeset -i", " -eq ", " -ne ", " -lt ", " -gt ", " -le ", " -ge "}
 
 // looksLikeSubstitution reports text such as $(cmd) or `cmd`; an arithmetic
 // expansion $((1+1)) is not one.

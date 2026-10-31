@@ -412,3 +412,24 @@ func TestDefaultEnvironmentIsTheProcessesOwnScrubbed(t *testing.T) {
 		t.Errorf("environment:\n%s", b)
 	}
 }
+
+// The same command configured twice runs once, and the copy that runs keeps the stricter failure policy: a copy that fails open
+// listed first does not drop a guard configured to fail closed.
+func TestADuplicateHookKeepsTheStricterFailurePolicy(t *testing.T) {
+	r := newRunner(t, settings(t, PreToolUse,
+		group{hooks: []hookSpec{cmdHook("exit 1").failClosed(false)}},
+		group{matcher: "*", hooks: []hookSpec{cmdHook("exit 1").failClosed(true)}}))
+	res := run(t, r, Event{Name: PreToolUse, Tool: "bash"})
+	if !res.Blocked {
+		t.Fatalf("a failing fail-closed guard was dropped as a duplicate: %s", errorText(res))
+	}
+	ran := 0
+	for _, x := range res.Runs {
+		if x.Skipped == "" {
+			ran++
+		}
+	}
+	if ran != 1 {
+		t.Errorf("the command ran %d times, want once", ran)
+	}
+}

@@ -766,6 +766,8 @@ func xargsUtilityRunsShell(words []string, depth int) bool {
 		return true
 	case depth >= 8: // as peel
 		return true
+	case b == "busybox": // busybox sh, busybox ash: the applet is the next word
+		return xargsUtilityRunsShell(words[1:], depth+1)
 	case isPrivileged(b):
 		return xargsUtilityRunsShell(skipPriv(privSpecs[b], words[1:]), depth+1)
 	case wrapperSet[b]:

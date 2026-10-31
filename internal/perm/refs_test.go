@@ -87,6 +87,19 @@ func TestAConfinedAgentMovesOnlyItsOwnBranch(t *testing.T) {
 		{"git fetch origin", false},
 		{"git status", false},
 		{"git log --oneline -3", false},
+		// attaching the tree to a queued branch would make it the tree's own for every later command
+		{"git checkout sleipnir/s1/_integration", true},
+		{"git switch claude/work", true},
+		{"git checkout -B sleipnir/s1/_integration", true},
+		{"git switch -c sleipnir/s1/new", true},
+		{"git checkout -bsleipnir/s1/new", true},
+		{"git switch --orphan=sleipnir/s1/new", true},
+		{"git checkout sleipnir/s1/be-1", false},
+		{"git checkout -b scratch", false},
+		{"git switch -c scratch sleipnir/s1/_integration", false}, // a new branch starting there moves nothing
+		{"git checkout sleipnir/s1/_integration -- main.go", false},
+		{"git checkout -- main.go", false},
+		{"git checkout --detach sleipnir/s1/_integration", false},
 	}
 	for _, tc := range cases {
 		r := f.request(bash(tc.cmd))

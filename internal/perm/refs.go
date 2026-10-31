@@ -3,6 +3,7 @@ package perm
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -113,6 +114,32 @@ sub:
 			if len(ops) > 0 && queued(ops[0], false) {
 				return refuse("git branch -f "+ops[0], ops[0])
 			}
+		}
+	case "checkout", "switch":
+		// The tree's own branch is exempt because it is the tree's: attaching the tree to a queued branch would make that branch its
+		// own for every later command, so the switch itself is refused. -b/-B/-c/-C name a branch the command creates or resets.
+		for k := 0; k < len(rest); k++ {
+			a := rest[k]
+			if a == "--" {
+				break
+			}
+			for _, f := range []string{"-b", "-B", "-c", "-C", "--orphan"} {
+				if a == f && k+1 < len(rest) && queued(rest[k+1], true) {
+					return refuse("git "+sub+" "+f+" "+rest[k+1], rest[k+1])
+				}
+				if v, ok := strings.CutPrefix(a, f); ok && v != "" && !strings.HasPrefix(f, "--") && queued(v, true) {
+					return refuse("git "+sub+" "+a, v)
+				}
+				if v, ok := strings.CutPrefix(a, f+"="); ok && strings.HasPrefix(f, "--") && queued(v, true) {
+					return refuse("git "+sub+" "+a, v)
+				}
+			}
+		}
+		if hasShort(rest, "bBcC") || hasLong(rest, "--orphan") || hasLong(rest, "--detach") || slices.Contains(rest, "--") {
+			return ""
+		}
+		if ops := operands(rest); len(ops) > 0 && queued(ops[0], false) {
+			return refuse("git "+sub+" "+ops[0], ops[0])
 		}
 	case "push", "fetch":
 		// git fetch writes this repository's refs whatever it fetches from; git push writes them when its destination is this

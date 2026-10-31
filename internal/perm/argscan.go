@@ -205,8 +205,17 @@ func (sp *argSpec) analyse(args []string) (uses []pathUse, why string) {
 	}
 	for _, f := range sp.pathVals {
 		for _, v := range s.values(f) {
-			if v != "" {
-				uses = append(uses, pathUse{raw: v})
+			if v == "" {
+				continue
+			}
+			uses = append(uses, pathUse{raw: v})
+			// A value may be a search list (file -m a:b); each entry is read.
+			if strings.ContainsRune(v, ':') {
+				for _, piece := range strings.Split(v, ":") {
+					if piece != "" {
+						uses = append(uses, pathUse{raw: piece})
+					}
+				}
 			}
 		}
 	}
@@ -251,7 +260,7 @@ var safeSpecs = map[string]*argSpec{
 	"wc":   {long: []string{"files0-from"}, deny: []string{"--files0-from"}},
 	"stat": {short: "c", long: []string{"format", "printf"}, namesOnly: true},
 	"file": {short: "mFePf", long: []string{"magic-file", "separator", "exclude", "parameter", "files-from"},
-		deny: []string{"-C", "--compile"}, pathVals: []string{"-f", "--files-from"}},
+		deny: []string{"-C", "--compile"}, pathVals: []string{"-f", "--files-from", "-m", "--magic-file"}},
 	"du": {short: "dtBX", long: []string{"max-depth", "threshold", "block-size", "exclude", "exclude-from",
 		"files0-from", "time-style"}, pathVals: []string{"-X", "--exclude-from", "--files0-from"}, tree: true, namesOnly: true},
 	"df": {short: "txB", long: []string{"type", "exclude-type", "block-size"}, namesOnly: true},

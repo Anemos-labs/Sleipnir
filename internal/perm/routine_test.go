@@ -93,3 +93,36 @@ func TestTheDelegateSettlesRoutineQuestionsOnly(t *testing.T) {
 		t.Errorf("rules after the delegate's answers: %q", got)
 	}
 }
+
+// The manager answers for the policy in force when it was asked: a deny rule added or a stricter mode chosen during the wait wins
+// over its yes, and a question that is no longer routine goes to the person.
+func TestADelegatedYesIsJudgedAgainAfterTheWait(t *testing.T) {
+	f := newFixture(t)
+	for _, c := range []struct {
+		name   string
+		change func(*Engine)
+		want   string
+		asked  bool
+	}{
+		{"nothing changed", func(*Engine) {}, "allow", false},
+		{"a deny rule added", func(e *Engine) { e.AddRule(ScopeSession, Rule{Action: Deny, Tool: "Bash", Pattern: "python3:*"}) }, "deny", false},
+		{"plan mode chosen", func(e *Engine) { e.SetMode(ModePlan) }, "deny", false},
+		{"an ask rule added", func(e *Engine) { e.AddRule(ScopeSession, Rule{Action: Ask, Tool: "Bash", Pattern: "python3:*"}) }, "allow", true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var e *Engine
+			asked := false
+			e = f.engine(t, Config{Mode: ModeAcceptEdits,
+				Prompter: func(context.Context, Request) Decision { asked = true; return Decision{Allow: true} },
+				Delegate: func(context.Context, Request) (Decision, string) {
+					c.change(e)
+					return Decision{Allow: true, Reason: "approved by the manager"}, "manager"
+				},
+			})
+			d := e.Check(bg, Request{Agent: "be-1", Tool: "Bash", Command: "python3 tools/gen.py", Cwd: f.root})
+			if got := outcome(d); got != c.want || asked != c.asked {
+				t.Errorf("= %s (%s), person asked %v; want %s, asked %v", got, d.Reason, asked, c.want, c.asked)
+			}
+		})
+	}
+}

@@ -272,7 +272,7 @@ func (ev *evaluator) ownInterpreter(real, name, shown string) string {
 	case ev.rs.inWorkspace(target):
 		return shown + " runs a program of the workspace, not an installed python"
 	}
-	f, err := os.Open(target)
+	f, err := openNoWait(target)
 	if err != nil {
 		return notOwn
 	}
@@ -575,7 +575,7 @@ func venvLayout(real, shown string, interpLinks bool) string {
 
 // listDir returns the names in dir, at most limit of them (ok false when there are more); a directory that cannot be read has none.
 func listDir(dir string, limit int) ([]string, bool) {
-	f, err := os.Open(dir)
+	f, err := openNoWait(dir)
 	if err != nil {
 		return nil, true
 	}
@@ -598,7 +598,7 @@ func ownScript(real, name, shown string) (interp, why string) {
 	if err != nil || !fi.Mode().IsRegular() {
 		return "", notOwn
 	}
-	f, err := os.Open(p)
+	f, err := openNoWait(p)
 	if err != nil {
 		return "", notOwn
 	}
