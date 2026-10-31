@@ -538,10 +538,26 @@ func (e *Engine) Check(ctx context.Context, r Request) Decision {
 					d, by = Decision{Reason: "read-only turn: " + reason}, "policy"
 				}
 			}
+			// The manager answered for the policy in force when it was asked. A mode switch or a rule added during the wait is
+			// honoured: what is now refused stays refused, and what is no longer routine goes to the person.
+			again := v
+			if d.Allow {
+				again = judge()
+			}
+			switch {
+			case d.Allow && again.kind == vDeny:
+				d, by = Decision{Reason: "the policy changed while the manager was asked: " + again.reason}, "policy"
+			case d.Allow && again.kind == vAsk && e.Mode() == ModeBypass: // bypass asks nothing, the person included
+				d, by = Decision{Reason: bypassRefusal(again.reason)}, "policy"
+			case d.Allow && again.kind == vAsk && !again.routine:
+				v = again
+				goto person
+			}
 			e.audit(Audit{Kind: "decide", Request: r, Reason: d.Reason, Decision: d, By: by})
 			return d
 		}
 	}
+person:
 	d := e.resolveAsk(ctx, r, v, judge)
 	by := "user"
 	switch {

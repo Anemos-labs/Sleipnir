@@ -105,7 +105,7 @@ func TestBashAllowlist(t *testing.T) {
 		`echo hi | tee out.txt`, `cat main.go &> out`, `ls >| out`, `echo x > ../x`, `echo x > /tmp/x`,
 		// dynamic or opaque
 		`echo $(date)`, "echo `date`", `echo "$(date)"`, `cat $(echo main.go)`, `echo ${x:-$(date)}`,
-		`x='a[$(touch pwned)]'; echo $((x))`, `unset 'a[$(touch pwned)]'`, `declare 'a[$(touch pwned)]=1'`, `read 'a[$(touch pwned)]' <<< x`,
+		`x='a[$(touch pwned)]'; echo $((x))`, `x='a[$(touch pwned)]'; echo $[x]`, `file -m ~/notes.txt main.go`, `file -m main.go:~/notes.txt main.go`, `file --magic-f main.go:$HOME/notes.txt main.go`, `file --magic-f ~/notes.txt main.go`, `unset 'a[$(touch pwned)]'`, `declare 'a[$(touch pwned)]=1'`, `read 'a[$(touch pwned)]' <<< x`,
 		`printf -v 'a[$(touch pwned)]' x`, `[[ 'a[$(touch pwned)]' -eq 1 ]]`, `test -v 'a[$(touch pwned)]'`, "let 'a[`touch pwned`]=1'",
 		`x='a[$(touch pwned)]'; [[ $x -eq 1 ]]`, `echo 'a[$(touch pwned)]' | while read x; do echo $((x)); done`, `export 'a[$(touch pwned)]=1'`,
 		`echo $((1+1)) '$(date)'`, `printf '%s\n' '$(date)'`,

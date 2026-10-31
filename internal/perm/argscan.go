@@ -84,11 +84,15 @@ func (sp *argSpec) scan(args []string) scanned {
 			endOpts = true
 		case strings.HasPrefix(a, "--"):
 			name, val, hasVal := strings.Cut(a, "=")
-			if !hasVal && inList(sp.long, name[2:]) && i+1 < len(args) {
+			full := sp.longName(name) // an abbreviation is kept as written too, for the options denied by their own name
+			if !hasVal && inList(sp.long, full[2:]) && i+1 < len(args) {
 				val = args[i+1]
 				i++
 			}
 			s.flags[name] = append(s.flags[name], val)
+			if full != name {
+				s.flags[full] = append(s.flags[full], val)
+			}
 		default:
 			for j := 1; j < len(a); j++ {
 				flag := "-" + string(a[j])
@@ -106,6 +110,27 @@ func (sp *argSpec) scan(args []string) scanned {
 		}
 	}
 	return s
+}
+
+// longName is the long option name ("--magic-f") abbreviates: GNU programs take any unambiguous beginning of a long option for the
+// option, so a value-taking one of the spec's, the only one it begins, is that option, and its separate value is read as its value.
+func (sp *argSpec) longName(name string) string {
+	if len(name) < 3 || inList(sp.long, name[2:]) {
+		return name
+	}
+	full := ""
+	for _, l := range sp.long {
+		if strings.HasPrefix(l, name[2:]) {
+			if full != "" {
+				return name // ambiguous: the program refuses it
+			}
+			full = l
+		}
+	}
+	if full == "" {
+		return name
+	}
+	return "--" + full
 }
 
 // denied returns the first disqualifying option that was given.
@@ -205,8 +230,17 @@ func (sp *argSpec) analyse(args []string) (uses []pathUse, why string) {
 	}
 	for _, f := range sp.pathVals {
 		for _, v := range s.values(f) {
-			if v != "" {
-				uses = append(uses, pathUse{raw: v})
+			if v == "" {
+				continue
+			}
+			uses = append(uses, pathUse{raw: v})
+			// A value may be a search list (file -m a:b); each entry is read.
+			if strings.ContainsRune(v, ':') {
+				for _, piece := range strings.Split(v, ":") {
+					if piece != "" {
+						uses = append(uses, pathUse{raw: piece})
+					}
+				}
 			}
 		}
 	}
@@ -251,7 +285,7 @@ var safeSpecs = map[string]*argSpec{
 	"wc":   {long: []string{"files0-from"}, deny: []string{"--files0-from"}},
 	"stat": {short: "c", long: []string{"format", "printf"}, namesOnly: true},
 	"file": {short: "mFePf", long: []string{"magic-file", "separator", "exclude", "parameter", "files-from"},
-		deny: []string{"-C", "--compile"}, pathVals: []string{"-f", "--files-from"}},
+		deny: []string{"-C", "--compile"}, pathVals: []string{"-f", "--files-from", "-m", "--magic-file"}},
 	"du": {short: "dtBX", long: []string{"max-depth", "threshold", "block-size", "exclude", "exclude-from",
 		"files0-from", "time-style"}, pathVals: []string{"-X", "--exclude-from", "--files0-from"}, tree: true, namesOnly: true},
 	"df": {short: "txB", long: []string{"type", "exclude-type", "block-size"}, namesOnly: true},
