@@ -154,6 +154,7 @@ class El extends Target {
   get className() { return this._attrs.get('class') || ''; } set className(v) { this.setAttribute('class', v); }
   get id() { return this._attrs.get('id') || ''; } set id(v) { this.setAttribute('id', v); }
   get hidden() { return this._attrs.has('hidden'); } set hidden(v) { this._bool('hidden', v); }
+  get open() { return this._attrs.has('open'); } set open(v) { this._bool('open', v); }
   get disabled() { return this._attrs.has('disabled'); } set disabled(v) { this._bool('disabled', v); }
   get title() { return this._attrs.get('title') || ''; } set title(v) { this.setAttribute('title', v); }
   get type() { return this._attrs.get('type') || (this.localName === 'input' ? 'text' : this.localName === 'button' ? 'submit' : ''); } set type(v) { this.setAttribute('type', v); }
@@ -203,6 +204,7 @@ class El extends Target {
   setAttribute(n, v) { n = String(n).toLowerCase(); v = String(v); if (this._attrs.get(n) !== v) { this._attrs.set(n, v); if (n === 'value' && /^(input|textarea)$/.test(this.localName)) this._value = v; this._log('attr ' + n); } }
   removeAttribute(n) { n = String(n).toLowerCase(); if (this._attrs.delete(n)) this._log('attr ' + n); }
   hasAttribute(n) { return this._attrs.has(String(n).toLowerCase()); }
+  getAttributeNames() { return Array.from(this._attrs.keys()); }
   matches(sel) { return matches(this, sel); }
   closest(sel) { for (let n = this; n && n.nodeType === 1; n = n.parentNode) if (matches(n, sel)) return n; return null; }
   _walk(fn) { for (const c of this.childNodes) { if (c.nodeType !== 1) continue; if (fn(c) === true || c._walk(fn)) return true; } return false; }

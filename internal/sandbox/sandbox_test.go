@@ -30,7 +30,7 @@ func TestParse(t *testing.T) {
 	}{
 		{"", Spec{}, false},
 		{"none", Spec{}, false},
-		{"docker", Spec{Engine: "docker", Image: DefaultImage}, false},
+		{"docker", Spec{Engine: "docker"}, false},
 		{"docker=node:22-bookworm", Spec{Engine: "docker", Image: "node:22-bookworm"}, false},
 		{"docker=ghcr.io/acme/dev@sha256:abc", Spec{Engine: "docker", Image: "ghcr.io/acme/dev@sha256:abc"}, false},
 		{"podman", Spec{}, true},
@@ -45,8 +45,11 @@ func TestParse(t *testing.T) {
 			t.Fatalf("Parse(%q) = %+v, want %+v", c.in, got, c.want)
 		}
 	}
-	if s := (Spec{Engine: "docker", Image: DefaultImage}).String(); s != "docker" {
-		t.Fatalf("String of the default = %q", s)
+	if s := (Spec{Engine: "docker"}).String(); s != "docker" {
+		t.Fatalf("String of the chosen image = %q", s)
+	}
+	if s := (Spec{Engine: "docker", Image: DefaultImage}).String(); s != "docker="+DefaultImage {
+		t.Fatalf("String of a named default image = %q: it would read back as the image chosen for the project", s)
 	}
 	if s := (Spec{Engine: "docker", Image: "alpine:3"}).String(); s != "docker=alpine:3" {
 		t.Fatalf("String = %q", s)
@@ -90,7 +93,7 @@ func TestExecArgsPassOnlyFormatting(t *testing.T) {
 }
 
 // startBox starts a real sandbox over dir, or skips when no container engine answers.
-func startBox(t *testing.T, dir string, network bool) *Box {
+func startBox(t *testing.T, dir string, network bool, image ...string) *Box {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("starts a container")
@@ -106,6 +109,9 @@ func startBox(t *testing.T, dir string, network bool) *Box {
 	if img == "" {
 		img = "alpine:3.20"
 	}
+	if len(image) > 0 {
+		img = image[0] // "" is the image chosen for the project
+	}
 	b, err := Start(ctx, Spec{Engine: "docker", Image: img, Network: network}, []string{dir}, dir, Limits{PIDs: 256, Memory: "512m", Tmp: "64m"})
 	if err != nil {
 		if strings.Contains(err.Error(), "could not be pulled") {
@@ -115,6 +121,11 @@ func startBox(t *testing.T, dir string, network bool) *Box {
 	}
 	t.Cleanup(func() { _ = b.Close() })
 	return b
+}
+
+// runIn runs argv in the box from dir.
+func runIn(b *Box, dir string, argv ...string) ([]byte, error) {
+	return exec.Command("docker", append([]string{"exec", "--workdir", dir, b.Name}, argv...)...).CombinedOutput()
 }
 
 func TestHasLooksInsideTheContainer(t *testing.T) {

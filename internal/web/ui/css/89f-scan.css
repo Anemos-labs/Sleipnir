@@ -95,3 +95,14 @@ textarea.sc-in{resize:vertical;line-height:1.45}
 .sc-d-new b{color:var(--err)}
 .sc-d-fixed b{color:var(--ok)}
 .sc-d-pending b{color:var(--warm)}
+.sc-steps li i{background:linear-gradient(90deg,var(--warm) var(--sc-p,0%),var(--line2) var(--sc-p,0%))}
+.sc-steps li.done i{background:var(--ok)}
+.sc-pct{font:600 9.5px/1 var(--f-num);letter-spacing:0;color:var(--fg2)}
+.sc-part[hidden]{display:none}
+.sc-detail>.sc-part{display:flex;flex-direction:column;gap:10px;min-width:0}
+.sc-fold>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.sc-fold>summary::-webkit-details-marker{display:none}
+.sc-fold>summary::before{content:'▸';font-size:10px;color:var(--dim);transition:transform .15s}
+.sc-fold[open]>summary::before{transform:rotate(90deg)}
+.sc-lpts{display:flex;flex-direction:column;gap:4px;max-height:280px;overflow:auto;padding-right:2px}
+.sc-cells{max-height:300px;overflow:auto;align-content:flex-start}

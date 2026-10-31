@@ -23,15 +23,15 @@ import (
 	"time"
 )
 
-// DefaultImage is the image a sandbox runs when none is named: a Debian with git, curl, a C toolchain and the common
-// libraries builds expect.
+// DefaultImage is the image a sandbox runs for a project of no language Detect knows: a Debian with git, curl, a C toolchain
+// and the common libraries builds expect.
 const DefaultImage = "buildpack-deps:bookworm"
 
 // Label marks every container a sandbox starts, so that one left by a process that died can be found and removed.
 const Label = "io.sleipnir.sandbox"
 
 // Spec is what a session's sandbox is: the container engine (only docker), its image, and whether its commands may use the
-// network. The zero Spec is no sandbox.
+// network. The zero Spec is no sandbox. An empty Image is chosen from the project when the sandbox starts (Detect).
 type Spec struct {
 	Engine  string `json:"engine,omitempty"`
 	Image   string `json:"image,omitempty"`
@@ -41,19 +41,19 @@ type Spec struct {
 // Enabled reports whether the spec asks for a sandbox.
 func (s Spec) Enabled() bool { return s.Engine != "" }
 
-// String is the spec as --sandbox takes it: docker, or docker=IMAGE when the image is not the default.
+// String is the spec as --sandbox takes it: docker, or docker=IMAGE when an image was named.
 func (s Spec) String() string {
 	if !s.Enabled() {
 		return ""
 	}
-	if s.Image == "" || s.Image == DefaultImage {
+	if s.Image == "" {
 		return s.Engine
 	}
 	return s.Engine + "=" + s.Image
 }
 
-// Parse reads a --sandbox value: "" or "none" is no sandbox, "docker" a container of DefaultImage, "docker=IMAGE" one of
-// IMAGE. The network stays off; the caller sets Network from --sandbox-network.
+// Parse reads a --sandbox value: "" or "none" is no sandbox, "docker" a container of the image for the project's language
+// (Detect, when it starts), "docker=IMAGE" one of IMAGE. The network stays off; the caller sets Network from --sandbox-network.
 func Parse(v string) (Spec, error) {
 	v = strings.TrimSpace(v)
 	if v == "" || v == "none" || v == "off" {
@@ -65,7 +65,7 @@ func Parse(v string) (Spec, error) {
 	}
 	image = strings.TrimSpace(image)
 	if image == "" {
-		image = DefaultImage
+		return Spec{Engine: engine}, nil
 	}
 	if err := checkImage(image); err != nil {
 		return Spec{}, err
@@ -108,7 +108,12 @@ type Box struct {
 	Spec Spec
 	// Mounts are the host directories mounted at the same path inside.
 	Mounts []string
-	docker string
+	// Toolchain is what Detect chose, when the spec named no image; its Lang is "" otherwise.
+	Toolchain Toolchain
+	// Fetched says what happened to the dependency fetch before the network went off: "" when none ran, else the command and
+	// how it ended.
+	Fetched string
+	docker  string
 }
 
 // Available reports whether a container engine answers: the docker command is on PATH and its daemon replies.
@@ -129,6 +134,12 @@ func Available(ctx context.Context) error {
 // Start starts the sandbox of a session: it pulls the image when it is missing, then runs a container that does nothing but
 // wait, with each of mounts bound at its own path (read-write) and workdir as its working directory. The caller sends commands
 // in through Wrap and removes the container with Close.
+//
+// A spec that names no image gets the one for the language of the project in workdir (Detect). When that language has a
+// fetch that runs none of the project's code (go mod download) and the spec keeps the network off, the container
+// starts on the network, the fetch fills the module cache in its HOME, and the container is then cut from the network before
+// Start returns: the session's commands build and test offline. A fetch that fails is reported in Fetched, not an error; a
+// container that cannot be cut from the network is removed and is one.
 func Start(ctx context.Context, spec Spec, mounts []string, workdir string, lim Limits) (*Box, error) {
 	if !spec.Enabled() {
 		return nil, errors.New("no sandbox was asked for")
@@ -144,8 +155,13 @@ func Start(ctx context.Context, spec Spec, mounts []string, workdir string, lim 
 	}
 	bin, _ := exec.LookPath("docker")
 	image := spec.Image
+	var tc Toolchain
 	if image == "" {
-		image = DefaultImage
+		tc = Detect(workdir)
+		image = tc.Image
+	}
+	if err := checkImage(image); err != nil {
+		return nil, err
 	}
 	if err := ensureImage(ctx, bin, image); err != nil {
 		return nil, err
@@ -164,19 +180,69 @@ func Start(ctx context.Context, spec Spec, mounts []string, workdir string, lim 
 		return nil, err
 	}
 	name := "sleipnir-sbx-" + randomHex(6)
-	args := RunArgs(name, image, spec.Network, paths, workdir, lim, os.Getuid(), os.Getgid(), os.Getpid())
+	fetch := len(tc.Fetch) > 0 && !spec.Network && workdir != ""
+	args := RunArgs(name, image, spec.Network || fetch, paths, workdir, lim, os.Getuid(), os.Getgid(), os.Getpid())
 	rctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	if out, err := exec.CommandContext(rctx, bin, args...).CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("the sandbox did not start: %s", firstLine(out, err))
 	}
-	b := &Box{Name: name, Spec: Spec{Engine: spec.Engine, Image: image, Network: spec.Network}, Mounts: paths, docker: bin}
+	b := &Box{Name: name, Spec: Spec{Engine: spec.Engine, Image: image, Network: spec.Network}, Mounts: paths, Toolchain: tc, docker: bin}
 	// HOME is on the in-memory /tmp: tools that write caches there (go, npm, pip) find it, and nothing of the host's home is inside.
 	if out, err := exec.CommandContext(rctx, bin, "exec", name, "mkdir", "-p", "/tmp/home").CombinedOutput(); err != nil {
 		_ = b.Close()
 		return nil, fmt.Errorf("the sandbox did not start: %s", firstLine(out, err))
 	}
+	if fetch {
+		b.Fetched = b.fetch(ctx, workdir, tc.Fetch)
+		dctx, dcancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
+		err := b.offline(dctx)
+		dcancel()
+		if err != nil {
+			_ = b.Close()
+			return nil, fmt.Errorf("the sandbox could not be cut from the network after fetching the dependencies, so it was removed: %w", err)
+		}
+	}
 	return b, nil
+}
+
+// fetchTimeout bounds the dependency fetch of a sandbox that starts.
+const fetchTimeout = 10 * time.Minute
+
+// fetch runs argv in the container from dir and says how it ended, for the session's notice.
+func (b *Box) fetch(ctx context.Context, dir string, argv []string) string {
+	fctx, cancel := context.WithTimeout(ctx, fetchTimeout)
+	defer cancel()
+	cmd := strings.Join(argv, " ")
+	out, err := exec.CommandContext(fctx, b.docker, append([]string{"exec", "--workdir", dir, b.Name}, argv...)...).CombinedOutput()
+	switch {
+	case fctx.Err() == context.DeadlineExceeded:
+		return cmd + " stopped after " + fetchTimeout.String()
+	case err != nil:
+		return cmd + " failed: " + firstLine(out, err)
+	}
+	return cmd + " fetched the dependencies"
+}
+
+// offline disconnects the container from every network it is on, and checks that none is left.
+func (b *Box) offline(ctx context.Context) error {
+	out, err := exec.CommandContext(ctx, b.docker, "inspect", "--format", "{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}", b.Name).Output()
+	if err != nil {
+		return fmt.Errorf("docker inspect: %s", firstLine(out, err))
+	}
+	for _, n := range strings.Fields(string(out)) {
+		if o, err := exec.CommandContext(ctx, b.docker, "network", "disconnect", "--force", n, b.Name).CombinedOutput(); err != nil {
+			return fmt.Errorf("docker network disconnect %s: %s", n, firstLine(o, err))
+		}
+	}
+	out, err = exec.CommandContext(ctx, b.docker, "inspect", "--format", "{{len .NetworkSettings.Networks}}", b.Name).Output()
+	if err != nil {
+		return fmt.Errorf("docker inspect: %s", firstLine(out, err))
+	}
+	if n := strings.TrimSpace(string(out)); n != "0" {
+		return fmt.Errorf("the container is still on %s networks", n)
+	}
+	return nil
 }
 
 // Has reports whether prog is on the container's PATH.

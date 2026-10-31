@@ -470,8 +470,14 @@ Call `harden.Process()` first thing in `main` (`cmd/sleipnir` does). It never fa
 ### `--sandbox docker`: a container per session
 
 `sleipnir chat --sandbox docker` (and `run`, and the New session dialog's *sandbox* field) runs every shell command of the
-session, the agents' and the verification's, inside one container of its own; `--sandbox docker=IMAGE` picks the image (default
-`buildpack-deps:bookworm`). The harness stays outside: the model's keys, the session's recording, the file and web tools,
+session, the agents' and the verification's, inside one container of its own; `--sandbox docker=IMAGE` picks the image. Plain
+`docker` picks one for the language of the project, from the manifest at its top: `golang:X.Y-bookworm` for a `go.mod` (its
+`toolchain` or `go` line), `rust:1-bookworm` for a `Cargo.toml`, a Maven or Gradle JDK image, `python:3-bookworm`,
+`ruby:3-bookworm`, `node:lts-bookworm`, else `buildpack-deps:bookworm`. For Go, whose fetch runs none of the project's code and
+nothing its configuration names (`go mod download`), the container starts on the network, fetches the modules into its in-memory `HOME`, and is
+disconnected from every network before the session's first command; a container that cannot be disconnected is removed and the
+session does not start. Builds and tests then run offline. Other languages' package managers run install scripts, build
+packages or run programs the project's configuration names (cargo's credential providers), so nothing is fetched for them: use `--sandbox-network` when the session must install dependencies. The harness stays outside: the model's keys, the session's recording, the file and web tools,
 hooks and MCP servers run on the host, and each command is sent in with `docker exec`. This is the pattern hosted review
 services use for untrusted repositories: the agent loop outside, commands streamed into the sandbox.
 
@@ -479,7 +485,7 @@ services use for untrusted repositories: the agent loop outside, commands stream
 |---|---|
 | Files | the project root (and the team's worktrees directory) mounted read-write at their own paths; nothing else of the host. `/tmp` and `HOME` are an in-memory filesystem. A directory that is your home or holds it, the root, or a link to either, is refused |
 | Git | the repository's `.git/config`, `config.worktree`, `hooks` and `info` are mounted read-only over the project, and `.git` itself is a mount point of its own, so that it cannot be renamed away and replaced by a copy; a linked worktree's `.git` file is read-only. A command therefore cannot set `core.fsmonitor`, `core.hooksPath` or a hook that your own `git` on the host would then run (the harness's own git calls turn hooks and fsmonitor off in any case). The rest of `.git` (refs, objects, the index) stays writable for commits made inside; after running code you do not trust, treat the clone as you would the code, or scan a fresh clone |
-| Network | none (`--network none`) unless `--sandbox-network`, which a session needs only to install dependencies |
+| Network | none (`--network none`, or disconnected after the Go module fetch above) unless `--sandbox-network`, which a session needs only to install dependencies |
 | Privileges | the host user's uid and gid, every capability dropped, `no-new-privileges`, an init that reaps orphans |
 | Image | any image with `bash` on its PATH (the bash tool runs bash); one without it, such as alpine, is refused as the session starts |
 | Limits | 2048 processes, 8 GB of memory, 4 GB of `/tmp` |
