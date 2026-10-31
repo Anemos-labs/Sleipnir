@@ -3,6 +3,7 @@ package research
 import (
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -27,7 +28,7 @@ func Brief(r *Run) string {
 	}
 	w("## Team\n\n")
 	w("- **Manager**: runs the protocol below and does not research alone. Delegates each phase as tasks, %d research tracks in parallel, and reads `research status` between phases.\n", d.Tracks)
-	w("- **Researchers** (scouts, or any role with free slots): one track each. The research tool needs no write permission, so read-only roles research and cite.\n")
+	w("- **Researchers** (scouts, or any other role): one track each, as many researchers as there are tracks or gaps open and no more. The research tool needs no write permission, so read-only roles research and cite.\n")
 	w("- **Writers** (the docs role, or any writer): write pages from the findings. One of them is the editor who makes terms, tone and links consistent across pages at the end.\n")
 	if d.Reviewers > 0 {
 		w("- **Fact-checkers** (reviewers): check each page against the quotes of the sources it cites. A page is reviewed by %d %s who did not write it.\n", d.Reviewers, plural(d.Reviewers, "agent", "agents"))
@@ -62,7 +63,7 @@ func Brief(r *Run) string {
 		w("Each gap is researchable. The next round researches the gaps (assign them to the researchers whose tracks they fall in) and closes each with `research gap` and the findings that answer it, or as unanswerable with the reason. %s research runs %d rounds.\n\n", d.Title, d.Rounds)
 	}
 	w("### %d. Write\n\n", 3+boolInt(d.Rounds > 1))
-	w("Writers write pages with `research write_page` from the findings (`research findings` with a track or query) and the sources' quotes. Pages are written in parallel, one writer per page: any free worker can write one, not only the docs role, so a wiki of %d pages takes about as long as its longest page. Then the editor reads them all and makes them one wiki (terms, tone, links, no repetition). ", d.MinPages+1)
+	w("Writers write pages with `research write_page` from the findings (`research findings` with a track or query) and the sources' quotes. Pages are written in parallel, one writer per page: any free worker can write one, not only the docs role (but never two writers on one page), so a wiki of %d pages takes about as long as its longest page. Then the editor reads them all and makes them one wiki (terms, tone, links, no repetition). ", d.MinPages+1)
 	w("Each page: %s words, every paragraph that states facts cites them ([S12] after the sentence), at least %d distinct sources, links to the pages it relates to ([[page-id]]), and is linked from at least one page. ", d.Words, d.MinCites)
 	w("The overview (`index`) answers the question directly in its first paragraph, then summarizes the main findings with links to the pages that develop them.\n\n")
 	step := 4 + boolInt(d.Rounds > 1)
@@ -81,6 +82,15 @@ func Brief(r *Run) string {
 	}
 	w("\n\n")
 
+	w("## When the run ends\n\n")
+	w("The bars above are the end of the run, not a floor to build on; the harness holds the team to that:\n\n")
+	w("- **Work only what `research status` lists.** Each task answers a problem it names (a track short of its sources, an open gap, a page not written, a review missing). When it lists fewer problems than there are workers, the other workers stay idle: do not open new tracks, pages, searches or reviews to keep them busy.\n")
+	w("- **A met bar is met.** A track that has its sources and findings needs no more; a page that passed its reviews is not reviewed again; a closed gap stays closed.\n")
+	if r.Mode != ModeKickoff {
+		w("- **The ledger decides.** The goal is met when `research status` says Done; the harness checks the ledger itself after each turn, and builds the wiki when only the build is missing. When it says Done, resolve any task still open as no longer needed and stop.\n\n")
+	} else {
+		w("- When `research status` says Done, the research is over: resolve any research task still open as no longer needed, and give the workers it held to the build.\n\n")
+	}
 	w("## Source policy\n\n")
 	w("- Prefer primary sources: official documentation and specifications, the project's own repository and changelog, papers, maintainers' posts, data. Use secondary sources to find primary ones.\n")
 	w("- Avoid content farms, SEO listicles and aggregators that cite nobody; a forum answer is evidence of practice, not of fact.\n")
@@ -142,6 +152,21 @@ func Objective(r *Run, projectGoal, spec string) string {
 	b.WriteString("## The project\n\n")
 	b.WriteString(strings.TrimSpace(projectGoal))
 	return b.String()
+}
+
+// objectiveRE finds the run a report run's goal drives, from the spec line Objective ends it with.
+var objectiveRE = regexp.MustCompile(`(?m)^Spec: (?:.*[\\/])?\.sleipnir[\\/]research[\\/]([a-z0-9][a-z0-9-]{0,62})[\\/]BRIEF\.md\s*$`)
+
+// ObjectiveSlug is the run a report run's goal (written by Objective) drives, or "". A kickoff run's goal is also the project's,
+// which its ledger cannot judge, so it names none.
+func ObjectiveSlug(objective string) string {
+	if !strings.HasPrefix(objective, "Deep research (") {
+		return ""
+	}
+	if m := objectiveRE.FindStringSubmatch(objective); m != nil {
+		return m[1]
+	}
+	return ""
 }
 
 // WriteBrief writes the run's brief where its goal names it.
