@@ -547,6 +547,8 @@ func (e *Engine) Check(ctx context.Context, r Request) Decision {
 			switch {
 			case d.Allow && again.kind == vDeny:
 				d, by = Decision{Reason: "the policy changed while the manager was asked: " + again.reason}, "policy"
+			case d.Allow && again.kind == vAsk && e.Mode() == ModeBypass: // bypass asks nothing, the person included
+				d, by = Decision{Reason: bypassRefusal(again.reason)}, "policy"
 			case d.Allow && again.kind == vAsk && !again.routine:
 				v = again
 				goto person

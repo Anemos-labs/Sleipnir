@@ -850,14 +850,15 @@ func printfAssigns(args []string) bool {
 	if len(args) == 0 {
 		return false
 	}
-	if strings.HasPrefix(args[0], "-v") || strings.ContainsAny(args[0], "$`*?[") {
+	if strings.HasPrefix(args[0], "-v") {
 		return true
 	}
 	format := args[0]
 	if format == "--" && len(args) > 1 {
 		format = args[1]
 	}
-	return printfStoresCount(format)
+	// a format the line computes ($F, a glob) may hold a %n whichever word it is
+	return strings.ContainsAny(format, "$`*?[") || printfStoresCount(format)
 }
 
 // printfStoresCount reports whether a printf format holds a %n conversion (flags, width and precision allowed between), which

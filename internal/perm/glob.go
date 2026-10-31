@@ -597,5 +597,9 @@ func expandGlob(pattern string, budget *int) (matches []string, ok bool) {
 // openNoWait opens p for reading without waiting on a FIFO's writer: a check runs before any supervisor of the command does, so an
 // operand naming a pipe must not hold it. The caller still checks what it opened (a directory to list, a regular file to read).
 func openNoWait(p string) (*os.File, error) {
-	return os.OpenFile(p, os.O_RDONLY|noWaitFlag, 0)
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return nil, err
+	}
+	return os.OpenFile(rootedPath(abs), os.O_RDONLY|noWaitFlag, 0) // the same absolute path, in the form scanners read as rooted
 }

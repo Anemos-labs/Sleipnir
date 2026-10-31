@@ -326,6 +326,15 @@ func TestGitReadsAskWhenASubmoduleOrAContinuedValueNamesAHelper(t *testing.T) {
 	if d := status(); d.Allow {
 		t.Errorf("fsmonitor in [core] after a continued value: git status was allowed: %+v", d)
 	}
+	// git ends a comment at the newline, a backslash at its end included
+	write(filepath.Join(f.root, ".git", "config"), "[user]\n\tname = a\n# note \\\n[core]\n\tfsmonitor = ./hook.sh\n")
+	if d := status(); d.Allow {
+		t.Errorf("fsmonitor after a comment that ends in a backslash: git status was allowed: %+v", d)
+	}
+	write(filepath.Join(f.root, ".git", "config"), "[core] # c \\\n\tfsmonitor = ./hook.sh\n")
+	if d := status(); d.Allow {
+		t.Errorf("fsmonitor after a header whose comment ends in a backslash: git status was allowed: %+v", d)
+	}
 	write(filepath.Join(f.root, ".git", "config"), "[core]\n\tbare = false\n")
 	// a submodule whose repository lives in .git/modules
 	mod := filepath.Join(f.root, ".git", "modules", "lib")
@@ -346,6 +355,17 @@ func TestGitReadsAskWhenASubmoduleOrAContinuedValueNamesAHelper(t *testing.T) {
 	}
 	if d := status(); d.Allow {
 		t.Errorf("fsmonitor in .git/modules: git status was allowed: %+v", d)
+	}
+	// a nested submodule's repository, under its parent's own modules/
+	inner := filepath.Join(mod, "modules", "inner")
+	write(filepath.Join(inner, "HEAD"), "ref: refs/heads/main\n")
+	write(filepath.Join(inner, "config"), "[core]\n\tfsmonitor = ./hook.sh\n")
+	write(filepath.Join(mod, "config"), "[core]\n\tbare = false\n")
+	if d := status(); d.Allow {
+		t.Errorf("fsmonitor in a nested submodule's repository: git status was allowed: %+v", d)
+	}
+	if err := os.RemoveAll(inner); err != nil {
+		t.Fatal(err)
 	}
 	write(filepath.Join(mod, "config"), "[core]\n\tbare = false\n")
 	write(filepath.Join(f.root, ".gitmodules"), "[submodule \"vendor\"]\n\tpath = vendor/x\n")

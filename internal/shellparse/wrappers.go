@@ -766,8 +766,10 @@ func xargsUtilityRunsShell(words []string, depth int) bool {
 		return true
 	case depth >= 8: // as peel
 		return true
-	case b == "busybox": // busybox sh, busybox ash: the applet is the next word
-		return xargsUtilityRunsShell(words[1:], depth+1)
+	case b != "" && !plainName(b): // a name xargs fills in from its input (-I{} {} ...): any utility, a shell among them
+		return true
+	case b == "busybox": // busybox sh, busybox ash: the applet is the next word; without one, xargs's input names it
+		return len(words) == 1 || xargsUtilityRunsShell(words[1:], depth+1)
 	case isPrivileged(b):
 		return xargsUtilityRunsShell(skipPriv(privSpecs[b], words[1:]), depth+1)
 	case wrapperSet[b]:
@@ -778,6 +780,19 @@ func xargsUtilityRunsShell(words []string, depth int) bool {
 		return xargsUtilityRunsShell(rest, depth+1)
 	}
 	return false
+}
+
+// plainName reports whether a utility's name is spelled out: letters, digits and . _ + -, the characters of a command's name.
+func plainName(b string) bool {
+	if b == "" {
+		return false
+	}
+	for _, c := range b {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune("._+-", c)) {
+			return false
+		}
+	}
+	return true
 }
 
 // stdinDevice reports whether a script operand names the standard input.

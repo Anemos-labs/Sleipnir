@@ -106,6 +106,11 @@ type Runner struct {
 	KillGrace      time.Duration
 	PipeGrace      time.Duration
 
+	// AskRules, when set, are the ask rules of the permission engine the PermissionRequest hooks answer for (perm.Engine.Rules):
+	// a hook's "if" covers a request only where those rules would not ask, and Home is the home directory they are read with.
+	AskRules func() []string
+	Home     string
+
 	semOnce   sync.Once
 	sem       chan struct{}
 	mu        sync.Mutex
@@ -579,9 +584,16 @@ func (r *Runner) conditionHolds(ctx context.Context, h Hook, ev Event) bool {
 
 // conditionCovers reports whether the hook's condition, as an allow rule of a default-mode engine, lets the whole request through:
 // every part of it is either what the condition names or needs no approval.
+// The session's ask rules hold in that engine too: a part of the request the person asked to be asked about is not let through by a
+// condition that names another part.
 func (r *Runner) conditionCovers(ctx context.Context, h Hook, ev Event) bool {
-	eng, err := r.engine(&r.covers, h.If, func() (*perm.Engine, error) {
-		return perm.NewEngine(perm.Config{Mode: perm.ModeDefault, Root: r.Dir, Allow: []string{h.If}})
+	var ask []string
+	if r.AskRules != nil {
+		ask = r.AskRules()
+	}
+	key := h.If + "\x00" + strings.Join(ask, "\x00")
+	eng, err := r.engine(&r.covers, key, func() (*perm.Engine, error) {
+		return perm.NewEngine(perm.Config{Mode: perm.ModeDefault, Root: r.Dir, Home: r.Home, Allow: []string{h.If}, Ask: ask})
 	})
 	if err != nil {
 		return false

@@ -198,6 +198,21 @@ func TestPrompterConditionMustCoverTheWholeRequest(t *testing.T) {
 	}
 }
 
+// The session's ask rules hold where the hook's condition is judged: a hook for make deploy does not approve the git status the
+// person asked to be asked about.
+func TestPrompterConditionKeepsTheSessionsAskRules(t *testing.T) {
+	allow := heredoc(`{"hookSpecificOutput":{"decision":{"behavior":"allow"}}}`)
+	r := newRunner(t, settings(t, PermissionRequest, group{hooks: []hookSpec{cmdHook(allow).when("Bash(make deploy:*)")}}))
+	r.AskRules = func() []string { return []string{"Bash(git status)"} }
+	ask := r.Prompter(nil)
+	if d := ask(context.Background(), bashReq(r, "make deploy && git status")); d.Allow {
+		t.Errorf("a hook for make deploy approved a git status an ask rule names: %+v", d)
+	}
+	if d := ask(context.Background(), bashReq(r, "make deploy")); !d.Allow {
+		t.Errorf("the hook did not answer for make deploy: %+v", d)
+	}
+}
+
 // continue:false from one hook wins over another hook's allow.
 func TestPrompterHonoursAHooksStop(t *testing.T) {
 	allow := heredoc(`{"hookSpecificOutput":{"decision":{"behavior":"allow"}}}`)

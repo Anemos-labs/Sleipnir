@@ -108,6 +108,10 @@ func TestADelegatedYesIsJudgedAgainAfterTheWait(t *testing.T) {
 		{"a deny rule added", func(e *Engine) { e.AddRule(ScopeSession, Rule{Action: Deny, Tool: "Bash", Pattern: "python3:*"}) }, "deny", false},
 		{"plan mode chosen", func(e *Engine) { e.SetMode(ModePlan) }, "deny", false},
 		{"an ask rule added", func(e *Engine) { e.AddRule(ScopeSession, Rule{Action: Ask, Tool: "Bash", Pattern: "python3:*"}) }, "allow", true},
+		{"bypass chosen with an ask rule", func(e *Engine) {
+			e.SetMode(ModeBypass)
+			e.AddRule(ScopeSession, Rule{Action: Ask, Tool: "Bash", Pattern: "python3:*"})
+		}, "ask", false}, // the bypass refusal: refused, and nobody asked
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			var e *Engine

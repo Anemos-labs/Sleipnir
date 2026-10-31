@@ -1,6 +1,7 @@
 package perm
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"io/fs"
@@ -116,9 +117,13 @@ func submoduleHelperConfig(top, common string, depth int, budget *int) string {
 	}
 	// The repositories git keeps for submodules, checked out or not: .git/modules/<name>, nested as modules/<name>/modules/...
 	var why string
-	_ = filepath.WalkDir(filepath.Join(common, "modules"), func(p string, d fs.DirEntry, err error) error {
+	mods := filepath.Join(common, "modules")
+	_ = filepath.WalkDir(mods, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || why != "" {
 			return filepath.SkipDir
+		}
+		if d.IsDir() && p != mods && d.Name() != "modules" && isGitDir(filepath.Dir(p)) {
+			return filepath.SkipDir // inside a repository, only its own modules/ holds more repositories
 		}
 		if d.IsDir() && d.Name() != "modules" && isGitDir(p) {
 			why = check(p, p, "")
@@ -167,7 +172,7 @@ func gitmodulesPaths(b []byte) []string {
 // indexHasGitlink reports whether a git index holds an entry of mode 160000 (a submodule), by its encoded mode bytes. An index that
 // cannot be read holds none here: git status then has no submodule to look into either.
 func indexHasGitlink(p string) bool {
-	f, err := openNoWait(rootedPath(p))
+	f, err := openNoWait(p)
 	if err != nil {
 		return false
 	}
@@ -175,11 +180,15 @@ func indexHasGitlink(p string) bool {
 	if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() {
 		return false
 	}
-	b, err := io.ReadAll(io.LimitReader(f, 64<<20))
+	const maxIndex = 64 << 20
+	b, err := io.ReadAll(io.LimitReader(f, maxIndex+1))
 	if err != nil {
 		return false
 	}
-	return strings.Contains(string(b), "\x00\x00\xe0\x00")
+	if len(b) > maxIndex { // too large to read here: judged as holding one, so the check asks
+		return true
+	}
+	return bytes.Contains(b, []byte("\x00\x00\xe0\x00"))
 }
 
 // repoHelperConfig is gitHelperConfig for one repository: own is its per-worktree directory, common its shared one.
@@ -264,24 +273,39 @@ func (ev *evaluator) gitHelpers(cw *cwdSet, chdir string) string {
 	return ""
 }
 
+// gitLineContinues reports whether raw ends in a backslash that escapes the newline, and whether a double quote is then open. A
+// backslash in a comment (from an unquoted # or ;) does not: git ends a comment at the newline, so the next line is read on its own.
+func gitLineContinues(raw string, quoted bool) (cont, quote bool) {
+	for i := 0; i < len(raw); i++ {
+		switch c := raw[i]; {
+		case c == '\\':
+			if i == len(raw)-1 {
+				return true, quoted
+			}
+			i++ // the character it escapes
+		case c == '"':
+			quoted = !quoted
+		case (c == '#' || c == ';') && !quoted:
+			return false, false
+		}
+	}
+	return false, quoted
+}
+
 // gitConfigLines are the logical lines of a git configuration file, trimmed, without blank and comment lines: a value continued
 // with a backslash at the end of a line is joined with the lines it runs on to, as git reads it, so a line inside the value that
 // looks like a section header is not taken for one.
 func gitConfigLines(b []byte) []string {
 	var out []string
-	cur := ""
+	cur, quoted := "", false
 	for _, raw := range strings.Split(string(b), "\n") {
 		raw = strings.TrimSuffix(raw, "\r")
-		n := 0
-		for n < len(raw) && raw[len(raw)-1-n] == '\\' {
-			n++
-		}
-		if n%2 == 1 { // an odd run of backslashes: the last escapes the newline
-			cur += raw[:len(raw)-1]
+		if cont, q := gitLineContinues(raw, quoted); cont {
+			cur, quoted = cur+raw[:len(raw)-1], q
 			continue
 		}
 		line := strings.TrimSpace(cur + raw)
-		cur = ""
+		cur, quoted = "", false
 		if line == "" || line[0] == '#' || line[0] == ';' {
 			continue
 		}
