@@ -335,7 +335,7 @@ func (h *handover) workState() (handoverState, error) {
 	if err != nil {
 		return st, fmt.Errorf("could not read %s's tree: %w", pm.id, err)
 	}
-	if _, err := pm.tree.Commit(ctx, handoverCommitMessage(h.task, pm.id)); err != nil {
+	if _, err := pm.tree.Commit(ctx, handoverCommitMessage(h.task)); err != nil {
 		return st, fmt.Errorf("could not record %s's work (%v); resolve that in its tree, or fail the task", pm.id, err)
 	}
 	head, err := pm.tree.Head(ctx)

@@ -23,16 +23,53 @@ func TestCommitSubjectDropsBoardID(t *testing.T) {
 }
 
 func TestTaskCommitMessageDescribesTheChange(t *testing.T) {
-	msg := taskCommitMessage(Task{ID: "T7", Title: "T7: add a dark theme"}, "Added a dark theme toggle\nthat follows the system setting.")
+	msg := taskCommitMessage(Task{ID: "T7", Title: "T7: add a dark theme"}, "Added a dark theme toggle\nthat follows the system setting.", "", nil)
 	want := "Add a dark theme\n\nAdded a dark theme toggle\nthat follows the system setting.\n\nSleipnir-Task: T7"
 	if msg != want {
 		t.Fatalf("message:\n%s\nwant:\n%s", msg, want)
 	}
-	if got := taskCommitMessage(Task{ID: "T2", Title: "Write the README"}, "completed"); got != "Write the README\n\nSleipnir-Task: T2" {
+	if got := taskCommitMessage(Task{ID: "T2", Title: "Write the README"}, "completed", "", nil); got != "Write the README\n\nSleipnir-Task: T2" {
 		t.Fatalf("a bare \"completed\" should not become the body: %q", got)
 	}
-	if got := handoverCommitMessage(Task{ID: "T2", Title: "write the README"}, "w1"); !strings.HasPrefix(got, "Work in progress: Write the README\n") || strings.Contains(strings.SplitN(got, "\n", 2)[0], "T2") {
+	if got := handoverCommitMessage(Task{ID: "T2", Title: "write the README"}); !strings.HasPrefix(got, "Work in progress: Write the README\n") || strings.Contains(strings.SplitN(got, "\n", 2)[0], "T2") {
 		t.Fatalf("handover message: %q", got)
+	}
+}
+
+func TestTaskCommitMessageKeepsTheRunOut(t *testing.T) {
+	ids := []string{"manager", "fe-1", "be-2"}
+	task := Task{ID: "T4", Title: "add CSV export"}
+
+	got := taskCommitMessage(task, "Added CSV export in report.go. Told be-2 about the new column. Unblocks T5.\nTested with go test ./...", "", ids)
+	want := "Add CSV export\n\nAdded CSV export in report.go.\nTested with go test ./...\n\nSleipnir-Task: T4"
+	if got != want {
+		t.Fatalf("message:\n%s\nwant:\n%s", got, want)
+	}
+
+	own := "feat(report): add CSV export\n\nThe report command writes CSV with --format csv."
+	if got := taskCommitMessage(task, "done", own, ids); got != own+"\n\nSleipnir-Task: T4" {
+		t.Fatalf("the worker's own message should be used: %q", got)
+	}
+	if got := taskCommitMessage(task, "", "feat: finish fe-1's export for T4", ids); !strings.HasPrefix(got, "Add CSV export\n") {
+		t.Fatalf("a message naming the run should fall back to the title: %q", got)
+	}
+	if got := handoverCommitMessage(Task{ID: "T2", Title: "write the README"}); strings.Contains(got, "fe-") || strings.Contains(got, "handed over by") {
+		t.Fatalf("handover message names the worker: %q", got)
+	}
+}
+
+func TestFindRunRefs(t *testing.T) {
+	patch := "diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -10,2 +10,4 @@\n const a = 1\n+// wired by fe-1, see task T3\n+function pick<T1, T2>(a: T1): T2 {}\n+const safe = \"safe-1\" + fe10\n" +
+		"diff --git a/package-lock.json b/package-lock.json\n--- a/package-lock.json\n+++ b/package-lock.json\n@@ -1 +1 @@\n+\"fe-1\"\n"
+	leaks := findRunRefs(patch, []string{"manager", "fe-1"}, 5)
+	if len(leaks) != 1 || leaks[0].Path != "src/app.ts" || leaks[0].Line != 11 {
+		t.Fatalf("leaks = %+v, want only src/app.ts:11", leaks)
+	}
+	if got := findRunRefs("+++ b/a.go\n@@ -0,0 +1 @@\n+// see [T12]\n", nil, 5); len(got) != 1 {
+		t.Fatalf("a bracketed board id should be found without a roster: %+v", got)
+	}
+	if got := findRunRefs("+++ b/a.go\n@@ -0,0 +1 @@\n+// the manager decides\n", []string{"manager"}, 5); len(got) != 0 {
+		t.Fatalf("an id that is an ordinary word should not be looked for: %+v", got)
 	}
 }
 

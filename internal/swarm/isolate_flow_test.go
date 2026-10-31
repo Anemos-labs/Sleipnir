@@ -39,20 +39,20 @@ func TestSameFileConflictIsSentBackAndResolved(t *testing.T) {
 	var r *isoRig
 	sc := script{
 		"be-1": {
-			act(writeCall("shared.txt", "line one\nline two by be-1\nline three\n")),
+			act(writeCall("shared.txt", "line one\nline two by the backend\nline three\n")),
 			func(*rvCall) rvReply { // finish after fe-1 has written too
 				poll(10*time.Second, func() bool { return r.cwd("fe-1") != "" })
 				return rvReply{Tools: []rvToolCall{doneCall("T1", "changed line two")}}
 			},
 		},
 		"fe-1": {
-			act(writeCall("shared.txt", "line one\nline two by fe-1\nline three\n")),
+			act(writeCall("shared.txt", "line one\nline two by the frontend\nline three\n")),
 			func(*rvCall) rvReply { // finish second: be-1's task is merged and in review
 				poll(10*time.Second, func() bool { return r.task("T1").Status == StatusReview })
 				return rvReply{Tools: []rvToolCall{doneCall("T2", "changed line two")}}
 			},
 			act(catCall("shared.txt")), // the conflict came back as the result of done
-			act(writeCall("shared.txt", "line one\nline two by be-1 and fe-1\nline three\n")),
+			act(writeCall("shared.txt", "line one\nline two by both\nline three\n")),
 			act(doneCall("T2", "resolved together with be-1")),
 		},
 	}
@@ -76,7 +76,7 @@ func TestSameFileConflictIsSentBackAndResolved(t *testing.T) {
 			t.Fatalf("fe-1 was never told %q", want)
 		}
 	}
-	if got := r.sawText("fe-1", "shared.txt"); !strings.Contains(got, "<<<<<<<") || !strings.Contains(got, "line two by be-1") || !strings.Contains(got, "line two by fe-1") {
+	if got := r.sawText("fe-1", "shared.txt"); !strings.Contains(got, "<<<<<<<") || !strings.Contains(got, "line two by the backend") || !strings.Contains(got, "line two by the frontend") {
 		t.Fatalf("fe-1's tree should hold both versions in conflict markers after the bounce:\n%s", got)
 	}
 	// Advisory only: two writers on one file raised an alert that names the agents and
@@ -94,7 +94,7 @@ func TestSameFileConflictIsSentBackAndResolved(t *testing.T) {
 	if !rep.Applied {
 		t.Fatalf("report %+v", rep)
 	}
-	if got := readText(t, r.repo+"/shared.txt"); got != "line one\nline two by be-1 and fe-1\nline three\n" {
+	if got := readText(t, r.repo+"/shared.txt"); got != "line one\nline two by both\nline three\n" {
 		t.Fatalf("the user's checkout has %q", got)
 	}
 }

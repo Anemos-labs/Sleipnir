@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -681,11 +682,13 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 	default:
 		// The merge commit stays in the project's history: name the work it brings
 		// in by its own commit message when there is one, not only by who did it.
-		msg := "Merge " + s.Agent
+		// The agent is named by the trailer, not in the subject: its id means nothing
+		// to a reader of the project's history.
+		msg := "Merge work in progress"
 		if subject, _, _ := strings.Cut(strings.TrimSpace(s.Message), "\n"); strings.TrimSpace(subject) != "" {
 			msg = "Merge \"" + oneLine(subject, 100) + "\""
-		} else if t := oneLine(s.Task, 100); t != "" {
-			msg += ": " + t
+		} else if t := oneLine(taskTitle(s.Task), 100); t != "" {
+			msg = "Merge \"" + t + "\""
 		}
 		out, err = repo.Merge(ctx, gitx.MergeOptions{Ref: theirs, Message: q.m.withAgentTrailer(msg, s.Agent), NoFF: q.opts.NoFF, Author: q.author()})
 	}
@@ -1023,9 +1026,9 @@ func (q *Queue) commitSubmission(ctx context.Context, s Submission) (sha, reject
 		}
 		msg := s.Message
 		if strings.TrimSpace(msg) == "" {
-			msg = "sleipnir: " + s.Agent
-			if task := oneLine(s.Task, 100); task != "" {
-				msg += ": " + task
+			msg = "Save work in progress"
+			if task := oneLine(taskTitle(s.Task), 100); task != "" {
+				msg = task
 			}
 		}
 		if _, err := t.commitLocked(ctx, msg); err != nil {
@@ -1435,4 +1438,13 @@ func (q *Queue) Close(ctx context.Context) error {
 		return nil
 	}
 	return q.m.removeTree(ctx, t, true)
+}
+
+// leadingBoardID matches the board id a submission's task label starts with ("T12: ").
+var leadingBoardID = regexp.MustCompile(`^\s*(?:\[T\d+\]\s*|T\d+\s*[:\-–—]\s*)`)
+
+// taskTitle is a submission's task label without its board id, which means nothing
+// outside the run that made it.
+func taskTitle(label string) string {
+	return strings.TrimSpace(leadingBoardID.ReplaceAllString(label, ""))
 }

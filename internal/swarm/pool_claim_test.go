@@ -33,7 +33,7 @@ func TestPoolChildClaimReceivesMergedFoundation(t *testing.T) {
 	if err := writeFileString(filepath.Join(members[0].dir, "a.txt"), "accepted foundation\n"); err != nil {
 		t.Fatal(err)
 	}
-	if result := r.sw.integrate(context.Background(), members[0], foundation, taskCommitMessage(foundation, "")); !result.ok {
+	if result := r.sw.integrate(context.Background(), members[0], foundation, taskCommitMessage(foundation, "", "", nil)); !result.ok {
 		t.Fatalf("foundation merge: %+v", result)
 	}
 	if err := r.sw.Board.Submit(members[0].id, foundation.ID, "foundation ready", "verified"); err != nil {
