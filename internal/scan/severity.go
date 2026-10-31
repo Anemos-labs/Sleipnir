@@ -115,17 +115,24 @@ func (l *Lead) Attempts() int {
 	return n
 }
 
-// Status is where the lead stands at depth d. It is rejected once as many verifiers reject it as the depth asks to confirm
-// it, or once more reject than confirm after that many have ruled; it is confirmed once enough confirm, more than reject, a
-// defender among them when the depth has one; a confirmed lead the depth wants reproduced is unproven until a proof
-// reproduces it. Anything else is open.
+// Status is where the lead stands at depth d. A deferred lead stays deferred. It is rejected once as many verifiers reject it
+// as the depth asks to confirm it, or once more reject than confirm after that many have ruled; it is confirmed once enough
+// confirm, more than reject, a defender among them when the depth has one; a confirmed lead the depth wants reproduced is
+// unproven until a proof reproduces it. A lead that is none of these after Depth.disputeAfter agents ruled on it is disputed;
+// anything else is open.
 func (l *Lead) Status(d Depth) string {
+	if l.Deferred != "" {
+		return LeadDeferred
+	}
 	c, r, defended := l.Tally()
 	need := max(d.Verifiers, 1)
 	if r >= need || (c+r >= need && r > c) {
 		return LeadRejected
 	}
 	if c < need || c <= r || (d.Defender && !defended) {
+		if c+r >= d.disputeAfter() {
+			return LeadDisputed
+		}
 		return LeadOpen
 	}
 	if d.needsProof(l.Severity()) && !l.Reproduced() {

@@ -41,46 +41,96 @@ func WriteReport(root string, r *Run) error {
 	return nil
 }
 
-// Finding is a lead as the report gives it.
+// Finding is a lead as the report gives it. A report says what was found and how it was checked, never which agent did what:
+// a verdict is given by its role, and a reproduction by whether it was independent of the filer.
 type Finding struct {
-	ID       string    `json:"id"`
-	Title    string    `json:"title"`
-	Category string    `json:"category"`
-	Severity string    `json:"severity"`
-	Status   string    `json:"status"`
-	Impact   string    `json:"impact"`
-	Reach    string    `json:"reach"`
-	Exploit  string    `json:"exploit"`
-	Claim    string    `json:"claim"`
-	Trace    []Step    `json:"trace"`
-	Points   []string  `json:"points,omitempty"`
-	Fix      string    `json:"fix,omitempty"`
-	By       string    `json:"by"`
-	Verdicts []Verdict `json:"verdicts,omitempty"`
-	Proofs   []Proof   `json:"proofs,omitempty"`
-	Reason   string    `json:"reject_reason,omitempty"`
+	ID       string         `json:"id"`
+	Title    string         `json:"title"`
+	Category string         `json:"category"`
+	Severity string         `json:"severity"`
+	Status   string         `json:"status"`
+	Impact   string         `json:"impact"`
+	Reach    string         `json:"reach"`
+	Exploit  string         `json:"exploit"`
+	Claim    string         `json:"claim"`
+	Trace    []Step         `json:"trace"`
+	Points   []string       `json:"points,omitempty"`
+	Fix      string         `json:"fix,omitempty"`
+	Verdicts []Ruling       `json:"verdicts,omitempty"`
+	Proofs   []Reproduction `json:"proofs,omitempty"`
+	Reason   string         `json:"reject_reason,omitempty"`
+	// Confirms and Rejects count the verifiers' latest verdicts; Defended says a defender confirmed; Reproduced says an
+	// independent reproducer showed the harm.
+	Confirms   int  `json:"confirms"`
+	Rejects    int  `json:"rejects"`
+	Defended   bool `json:"defended,omitempty"`
+	Reproduced bool `json:"reproduced,omitempty"`
+	// Late says the lead was filed after every shard was hunted; Deferred why it was not verified.
+	Late     bool   `json:"late,omitempty"`
+	Deferred string `json:"deferred,omitempty"`
 	// Anchor is where the finding shows on the code: in a review, the last step of its trace on a line the change made.
 	Anchor *Cite `json:"anchor,omitempty"`
 }
 
-// FindingOf is a lead as the report gives it.
-func FindingOf(r *Run, l *Lead) Finding {
-	f := Finding{ID: l.ID, Title: l.Title, Category: l.Category, Severity: l.Severity(), Status: l.Status(r.DepthInfo()), Impact: l.Impact,
-		Reach: l.Reachability(), Exploit: l.Exploitability(), Claim: l.Claim, Trace: l.Trace, Points: l.Points, Fix: l.Fix, By: l.By,
-		Verdicts: l.Verdicts, Proofs: l.Proofs, Anchor: r.Anchor(l)}
+// Ruling is one verifier's latest verdict as a report gives it: its role and what it found, not who gave it.
+type Ruling struct {
+	Role    string `json:"role"`
+	Confirm bool   `json:"confirm"`
+	Reason  string `json:"reason,omitempty"`
+	Note    string `json:"note"`
+	Reach   string `json:"reach,omitempty"`
+	Exploit string `json:"exploit,omitempty"`
+	Cites   []Cite `json:"cites,omitempty"`
+}
+
+// Reproduction is one run of a reproducer as a report gives it. Independent says it was written by an agent other than the
+// filer: only such a run proves a lead.
+type Reproduction struct {
+	Independent bool   `json:"independent"`
+	Script      string `json:"script"`
+	Ready       bool   `json:"ready"`
+	Exercised   bool   `json:"exercised"`
+	Outcome     string `json:"outcome"`
+	Exit        int    `json:"exit"`
+	Output      string `json:"output"`
+	Network     bool   `json:"network,omitempty"`
+	Seconds     int    `json:"seconds"`
+	At          string `json:"at,omitempty"`
+}
+
+// FindingOf is a lead as the report gives it, with the agents' names taken out of its text (Run.redactor).
+func FindingOf(r *Run, l *Lead) Finding { return findingOf(r, l, r.redactor()) }
+
+func findingOf(r *Run, l *Lead, red func(string) string) Finding {
+	f := Finding{ID: l.ID, Title: red(l.Title), Category: l.Category, Severity: l.Severity(), Status: l.Status(r.DepthInfo()), Impact: l.Impact,
+		Reach: l.Reachability(), Exploit: l.Exploitability(), Claim: red(l.Claim), Points: l.Points, Fix: red(l.Fix),
+		Reproduced: l.Reproduced(), Late: l.Late, Deferred: l.Deferred, Anchor: r.Anchor(l)}
+	f.Confirms, f.Rejects, f.Defended = l.Tally()
+	for _, s := range l.Trace {
+		f.Trace = append(f.Trace, Step{Cite: s.Cite, Note: red(s.Note)})
+	}
+	for _, v := range l.latestVerdicts() {
+		f.Verdicts = append(f.Verdicts, Ruling{Role: v.Role, Confirm: v.Confirm, Reason: v.Reason, Note: red(v.Note), Reach: v.Reach, Exploit: v.Exploit, Cites: v.Cites})
+	}
+	for _, p := range l.Proofs {
+		f.Proofs = append(f.Proofs, Reproduction{Independent: p.By != l.By, Script: red(p.Script), Ready: p.Ready, Exercised: p.Exercised, Outcome: p.Outcome,
+			Exit: p.Exit, Output: red(p.Output), Network: p.Network, Seconds: p.Seconds, At: p.At})
+	}
 	if f.Status == LeadRejected {
 		f.Reason = l.RejectReason()
 	}
 	return f
 }
 
-// Findings are the scan's leads as the report gives them: confirmed first, then unproven, open and rejected, each by severity.
+// Findings are the scan's leads as the report gives them: confirmed first, then unproven, disputed, open, deferred and
+// rejected, each by severity.
 func Findings(r *Run) []Finding {
 	out := make([]Finding, 0, len(r.Leads))
+	red := r.redactor()
 	for i := range r.Leads {
-		out = append(out, FindingOf(r, &r.Leads[i]))
+		out = append(out, findingOf(r, &r.Leads[i], red))
 	}
-	order := map[string]int{LeadConfirmed: 0, LeadUnproven: 1, LeadOpen: 2, LeadRejected: 3}
+	order := map[string]int{LeadConfirmed: 0, LeadUnproven: 1, LeadDisputed: 2, LeadOpen: 3, LeadDeferred: 4, LeadRejected: 5}
 	sort.SliceStable(out, func(i, j int) bool {
 		if order[out[i].Status] != order[out[j].Status] {
 			return order[out[i].Status] < order[out[j].Status]
@@ -193,7 +243,7 @@ func SARIF(r *Run) map[string]any {
 			"codeFlows":           []any{map[string]any{"threadFlows": []any{map[string]any{"locations": flow}}}},
 			"partialFingerprints": map[string]any{"sleipnirScan/v1": fingerprint(f)},
 			"properties": map[string]any{"security-severity": securitySeverity[f.Severity], "status": f.Status, "reachability": f.Reach,
-				"exploitability": f.Exploit, "reproduced": f.Status == LeadConfirmed && anyReproduced(f.Proofs, f.By), "lead": f.ID},
+				"exploitability": f.Exploit, "reproduced": f.Status == LeadConfirmed && f.Reproduced, "lead": f.ID},
 		})
 	}
 	return map[string]any{
@@ -212,117 +262,146 @@ func fingerprint(f Finding) string {
 	return f.Category + ":" + sink.File + ":" + strings.Join(normLines(sink.Quote), " ")
 }
 
-func anyReproduced(ps []Proof, filer string) bool {
-	for _, p := range ps {
-		if p.Outcome == ProofReproduced && p.By != filer {
-			return true
-		}
-	}
-	return false
-}
-
-// Markdown is REPORT.md.
+// Markdown is REPORT.md: the report as a document, a summary first and the findings by severity with an index, each with
+// its facts, its trace, how it was checked and the fix; then the leads that are not findings, the scope and the method.
 func Markdown(r *Run) string {
 	d := r.DepthInfo()
 	rep := Check(r)
 	c := rep.Counts
+	fs := Findings(r)
+	sum := Summarize(fs)
+	done := rep.Phase == PhaseDone
 	var b strings.Builder
 	w := func(format string, args ...any) { fmt.Fprintf(&b, format, args...) }
+	cell := func(s string) string { return strings.ReplaceAll(oneLine(s), "|", "\\|") }
 	if r.IsReview() {
-		w("# Review %s\n\n", r.Slug)
-		w("Change `%s`..`%s` (%d files)", short(r.Base), short(r.Commit), len(r.Changes))
+		w("# Security review of a change: %s\n\n", coverTitle(r))
 	} else {
-		w("# Deep scan %s\n\n", r.Slug)
-		w("Commit `%s`", short(r.Commit))
+		w("# Security assessment: %s\n\n", coverTitle(r))
+	}
+	w("| | |\n|---|---|\n")
+	if r.IsReview() {
+		w("| Change | `%s`..`%s` (%d files) |\n", short(r.Base), short(r.Commit), len(r.Changes))
+	} else {
+		w("| Commit | `%s` |\n", short(r.Commit))
 	}
 	if r.Focus != "" {
-		w(" · focus `%s`", r.Focus)
+		w("| Scope | `%s` |\n", r.Focus)
 	}
-	w(" · %s depth (%s) · phase **%s**\n\n", d.Title, d.Summary, rep.Phase)
-	if rep.Phase != PhaseDone {
-		w("> This scan is still running: the report is rewritten after every change, and only confirmed findings are final.\n\n")
+	w("| Code | %s files, %s functions, %s lines |\n", thousands(c.Files), thousands(c.Funcs), thousands(c.Lines))
+	w("| Depth | %s: %s |\n", d.Title, d.Summary)
+	if done {
+		w("| Status | Complete |\n")
+	} else {
+		w("| Status | In progress (%s): only confirmed findings are final |\n", rep.Phase)
 	}
-	w("| Scanned | Mapped | Hunted | Points | Edges | Leads | Confirmed | Unproven | Rejected |\n|---|---|---|---|---|---|---|---|---|\n")
-	w("| %d files, %d functions, %d lines | %d/%d shards | %d/%d shards | %d | %d (%d inferred) | %d | %d | %d | %d |\n\n",
-		c.Files, c.Funcs, c.Lines, c.Mapped, c.Shards, c.Hunted, c.Shards, c.Points, c.Edges, c.Inferred, c.Leads, c.Confirmed, c.Unproven, c.Rejected)
-	fs := Findings(r)
-	section := func(title, status, intro string, full bool) {
-		var list []Finding
+	w("| Reference | `%s` |\n\n", r.Slug)
+
+	w("## Summary\n\n%s\n\n", sum.Headline(done))
+	w("| Severity | Findings | Not reproduced |\n|---|--:|--:|\n")
+	for _, sev := range Severities {
+		w("| %s | %d | %d |\n", title(sev), sum.BySeverity[sev], sum.Unproven[sev])
+	}
+	w("| **Total** | **%d** | **%d** |\n\n", sum.Findings, sumMap(sum.Unproven))
+	if len(sum.Categories) > 0 {
+		w("### By category\n\n| Category | Critical | High | Medium | Low | Total |\n|---|--:|--:|--:|--:|--:|\n")
+		for _, cc := range sum.Categories {
+			w("| %s | %d | %d | %d | %d | %d |\n", cc.Category, cc.BySeverity[SevCritical], cc.BySeverity[SevHigh], cc.BySeverity[SevMedium], cc.BySeverity[SevLow], cc.Total)
+		}
+		w("\n")
+	}
+
+	list := bySeverity(Reportable(fs))
+	if len(list) == 0 {
+		w("## Findings\n\nNo lead has been confirmed")
+		if !done {
+			w(" yet")
+		}
+		w(".\n\n")
+	} else {
+		w("## Index\n\n| ID | Severity | Finding | Category | Location | Status |\n|---|---|---|---|---|---|\n")
+		for _, f := range list {
+			w("| [%s](#%s) | %s | %s | %s | `%s` | %s |\n", f.ID, strings.ToLower(f.ID), title(f.Severity), cell(f.Title), f.Category, cell(Location(f)), StatusLabel(f))
+		}
+		w("\n## Findings\n\n")
+		for _, f := range list {
+			writeFinding(&b, f, d)
+		}
+	}
+
+	rest := func(status string) []Finding {
+		var out []Finding
 		for _, f := range fs {
 			if f.Status == status {
-				list = append(list, f)
+				out = append(out, f)
 			}
 		}
+		return bySeverity(out)
+	}
+	appendix := 'A'
+	table := func(heading, intro string, list []Finding, why func(Finding) string) {
 		if len(list) == 0 {
 			return
 		}
-		w("## %s (%d)\n\n%s\n\n", title, len(list), intro)
+		w("## Appendix %c. %s (%d)\n\n%s\n\n| ID | Severity | Lead | Category | Location | %s |\n|---|---|---|---|---|---|\n", appendix, heading, len(list), intro, "Note")
 		for _, f := range list {
-			if !full {
-				line := fmt.Sprintf("- **%s** %s (%s, %s)", f.ID, f.Title, f.Severity, f.Category)
-				if f.Reason != "" {
-					line += ": rejected as " + f.Reason
-				}
-				w("%s\n", line)
-				continue
-			}
-			writeFinding(&b, f)
+			w("| %s | %s | %s | %s | `%s` | %s |\n", f.ID, title(f.Severity), cell(f.Title), f.Category, cell(Location(f)), cell(why(f)))
 		}
 		w("\n")
+		appendix++
 	}
-	section("Findings", LeadConfirmed, "Confirmed by agents that did not file them"+proofNote(d)+".", true)
-	section("Unproven", LeadUnproven, "Confirmed by the verifiers, but not reproduced in the sandbox: treat as likely, not shown.", true)
-	section("Still being verified", LeadOpen, "Filed, not yet ruled on by enough verifiers.", false)
-	section("Rejected", LeadRejected, "Leads the verifiers rejected, with the reason.", false)
-	if c.Leads == 0 {
-		w("## Findings\n\nNo lead has been filed yet.\n\n")
-	}
-	w("## Attack surface\n\n")
-	if len(r.Points) == 0 {
-		w("No point is recorded yet.\n\n")
-	}
+	table("Being verified", "Filed and not yet ruled on by enough reviewers: not findings yet.", rest(LeadOpen), func(f Finding) string {
+		return fmt.Sprintf("%d of %d confirmations", f.Confirms, d.Verifiers)
+	})
+	table("Not verified", "Recorded after the scan reached its stopping point (its budget, or the end of the hunt), and kept unreviewed: leads to triage, not findings.", rest(LeadDeferred), func(f Finding) string { return f.Deferred })
+	table("Rejected leads", "Leads the reviewers showed are not real, with the reason.", rest(LeadRejected), func(f Finding) string {
+		if f.Reason == "" {
+			return "rejected"
+		}
+		return f.Reason
+	})
+
+	w("## Appendix %c. Scope and coverage\n\n", appendix)
+	w("| Measure | Count |\n|---|--:|\n| Files | %s |\n| Functions | %s |\n| Lines | %s |\n| Shards mapped | %d of %d |\n| Shards hunted | %d of %d |\n",
+		thousands(c.Files), thousands(c.Funcs), thousands(c.Lines), c.Mapped, c.Shards, c.Hunted, c.Shards)
 	for _, lane := range Lanes {
-		var ps []Point
-		for _, p := range r.Points {
-			if p.Lane == lane {
-				ps = append(ps, p)
-			}
-		}
-		if len(ps) == 0 {
-			continue
-		}
-		w("### %s (%d)\n\n", laneTitle[lane], len(ps))
-		for _, p := range ps {
-			w("- **%s** %s: `%s:%d`", p.ID, p.Title, p.File, p.Line)
-			if p.Note != "" {
-				w(": %s", oneLine(p.Note))
-			}
-			w("\n")
+		w("| %s | %s |\n", laneTitle[lane], thousands(c.Lanes[lane]))
+	}
+	w("| Relations between places | %s (%s inferred) |\n| Leads filed | %s |\n\n", thousands(c.Edges), thousands(c.Inferred), thousands(c.Leads))
+	if hot := hotFiles(r, 10); len(hot) > 0 {
+		w("Files with the largest attack surface:\n\n| File | Points | Entry | Sinks |\n|---|--:|--:|--:|\n")
+		for _, h := range hot {
+			w("| `%s` | %d | %d | %d |\n", cell(h.File), h.Total, h.Lanes[LaneEntry], h.Lanes[LaneSink])
 		}
 		w("\n")
 	}
-	w("## Map\n\n")
-	for _, s := range r.Shards {
-		if s.Mapped == "" {
-			continue
-		}
-		w("- **%s** %s (%d functions): %s\n", s.ID, shardSpan(s), s.Funcs, oneLine(s.Mapped))
-	}
-	w("\n## Method\n\nThe harness listed every tracked file at the commit, left out vendored, generated and binary files, counted the functions and their branches, ")
-	w("and split the code into %d shards. Agents mapped each shard, recorded the attack surface and the relations between places, and hunted each shard for holes. ", len(r.Shards))
-	w("Every quote in this report was checked by the harness against the file at the commit. A lead becomes a finding when %d %s that did not file it confirm it", d.Verifiers, plural(d.Verifiers, "agent", "agents"))
-	if d.Defender {
-		w(", one of them a defender who looked for the reason it is not real")
-	}
-	w("%s. Severity is computed from impact, reachability and exploitability: one level lower when only an insider reaches the code, one lower when exploiting it is difficult, low at most when nothing reaches it or no practical exploit was shown.\n", proofNote(d))
 	if len(r.Inventory.Skipped) > 0 {
 		var ks []string
 		for k, n := range r.Inventory.Skipped {
 			ks = append(ks, fmt.Sprintf("%d %s", n, k))
 		}
 		sort.Strings(ks)
-		w("\nLeft out: %s.\n", strings.Join(ks, ", "))
+		w("Left out of the scan: %s.\n\n", strings.Join(ks, ", "))
 	}
+	w("The attack surface point by point and the relations between places are in `%s`; every lead, with its trace, in `%s`.\n\n", MapFile, FindingsFile)
+	w("## Method\n\n%s\n", methodText(r))
+	return b.String()
+}
+
+// methodText is how the scan worked and what makes a lead a finding, in a paragraph.
+func methodText(r *Run) string {
+	d := r.DepthInfo()
+	var b strings.Builder
+	fmt.Fprintf(&b, "Every file tracked at the commit was listed, vendored, generated and binary files left out, and the code split into %d shards of at most %d functions or %d lines. ", len(r.Shards), d.ShardFuncs, d.ShardLines)
+	b.WriteString("Each shard was read in full and mapped: its entry points, trust boundaries, access checks, sinks and security configuration, and how its parts connect. Each was then hunted by following input from where it enters to where it can do harm. ")
+	b.WriteString("Every quote in this report was checked against the file at the commit. ")
+	fmt.Fprintf(&b, "A lead becomes a finding when %d %s that did not file it confirm it", d.Verifiers, plural(d.Verifiers, "reviewer", "reviewers"))
+	if d.Defender {
+		b.WriteString(", one of them a defender who looks for the reason it is not real")
+	}
+	b.WriteString(proofNote(d) + ". ")
+	b.WriteString("Severity is computed from impact, reachability and exploitability: one level lower when only an insider reaches the code, one lower when exploiting it is difficult, and low at most when nothing reaches it or no practical exploit was shown. ")
+	fmt.Fprintf(&b, "The scan verifies at most %d leads; after every shard was hunted, only a few more, and a lead below critical filed past that point is recorded as not verified.", r.LeadBudget())
 	return b.String()
 }
 
@@ -335,34 +414,43 @@ func proofNote(d Depth) string {
 	return fmt.Sprintf(", and, from %s up, reproduced by a script run in the sandbox", d.ProveFrom)
 }
 
-func writeFinding(b *strings.Builder, f Finding) {
+// writeFinding writes one finding of REPORT.md: its facts, the description, the trace, how it was checked, and the fix.
+func writeFinding(b *strings.Builder, f Finding, d Depth) {
 	w := func(format string, args ...any) { fmt.Fprintf(b, format, args...) }
-	w("### %s · %s · %s\n\n", f.ID, strings.ToUpper(f.Severity), f.Title)
-	w("%s · reachability %s · exploitability %s · impact %s\n\n", f.Category, f.Reach, f.Exploit, f.Impact)
-	w("%s\n\n", f.Claim)
-	w("**Trace**\n\n")
+	w("<a id=\"%s\"></a>\n### %s · %s\n\n", strings.ToLower(f.ID), f.ID, oneLine(f.Title))
+	w("| Severity | Status | Category | Location |\n|---|---|---|---|\n| **%s** | %s | %s | `%s` |\n\n", title(f.Severity), StatusLabel(f), f.Category, Location(f))
+	w("Reachability %s · exploitability %s · impact %s\n\n", f.Reach, f.Exploit, f.Impact)
+	w("**Description.** %s\n\n", strings.TrimSpace(f.Claim))
+	w("**Trace**, from where the input comes in to where it does harm:\n\n")
 	for i, s := range f.Trace {
-		w("%d. `%s:%d` %s\n\n", i+1, s.File, s.Line, s.Note)
-		w("   ```\n")
-		for _, l := range strings.Split(s.Quote, "\n") {
-			w("   %s\n", l)
-		}
-		w("   ```\n\n")
+		w("%d. `%s:%d` %s\n\n", i+1, s.File, s.Line, oneLine(s.Note))
+		writeFence(b, "   ", s.Quote)
 	}
-	for _, v := range f.Verdicts {
+	w("**Verification.** %s\n\n", Verification(f, d))
+	labels := RoleLabels(f.Verdicts)
+	for i, v := range f.Verdicts {
 		verdict := "confirms"
 		if !v.Confirm {
 			verdict = "rejects (" + v.Reason + ")"
 		}
-		w("- %s, %s, %s: %s\n", v.By, v.Role, verdict, oneLine(v.Note))
+		w("- %s %s: %s\n", labels[i], verdict, oneLine(v.Note))
 	}
-	for _, p := range f.Proofs {
-		w("- Reproduction by %s: **%s** (exit %d, app ready %v, target exercised %v, %ds)\n", p.By, p.Outcome, p.Exit, p.Ready, p.Exercised, p.Seconds)
+	if len(f.Verdicts) > 0 {
+		w("\n")
 	}
 	if f.Fix != "" {
-		w("\n**Fix**: %s\n", f.Fix)
+		w("**Remediation.** %s\n\n", strings.TrimSpace(f.Fix))
 	}
-	w("\n")
+	for _, p := range f.Proofs {
+		if p.Outcome == ProofReproduced && p.Independent {
+			w("<details><summary>Reproducer and its output</summary>\n\n")
+			writeFence(b, "", p.Script)
+			writeFence(b, "", p.Output)
+			w("</details>\n\n")
+			break
+		}
+	}
+	w("[Back to the index](#index)\n\n---\n\n")
 }
 
 func short(sha string) string {

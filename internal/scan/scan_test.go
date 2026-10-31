@@ -434,7 +434,7 @@ func TestAScanFromMapToReport(t *testing.T) {
 	r, _ = st.Snapshot("")
 	dir := RunDir(st.Root(), r.Slug)
 	md, _ := os.ReadFile(filepath.Join(dir, ReportFile))
-	for _, want := range []string{"## Findings (1)", "L1 · CRITICAL · Command injection in /ping", "`server/handler.go:15`", "GET /ping", "Entry points (1)"} {
+	for _, want := range []string{"## Findings", "### L1 · Command injection in /ping", "| **Critical** | Confirmed, reproduced |", "`server/handler.go:15`", "| Entry points | 1 |"} {
 		if !strings.Contains(string(md), want) {
 			t.Errorf("REPORT.md lacks %q:\n%s", want, md)
 		}

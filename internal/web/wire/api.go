@@ -459,7 +459,7 @@ type ScanRun struct {
 	Confirmed int `json:"confirmed"`
 	Unproven  int `json:"unproven"`
 	Rejected  int `json:"rejected"`
-	// BySeverity counts the confirmed findings.
+	// BySeverity counts the findings: the confirmed leads and the unproven ones.
 	BySeverity map[string]int `json:"bySeverity"`
 	Active     bool           `json:"active"` // the scan the session works on now
 	// Previous is the scan this one reruns, and Review is set when the scan reviews a change rather than the whole code.

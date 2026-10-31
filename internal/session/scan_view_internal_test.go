@@ -58,7 +58,7 @@ func TestScanViewReadsTheProjectsScans(t *testing.T) {
 	if err != nil || d["phase"] != scan.PhaseMap || len(d["findings"].([]scan.Finding)) != 1 {
 		t.Fatalf("detail: %v %+v", err, d)
 	}
-	for format, want := range map[string]string{"json": `"findings"`, "csv": "id,status,severity", "html": "<!doctype html>", "md": "# Deep scan", "sarif": `"2.1.0"`} {
+	for format, want := range map[string]string{"json": `"findings"`, "csv": "id,status,severity", "html": "<!doctype html>", "md": "# Security assessment", "sarif": `"2.1.0"`} {
 		data, slug, err := s.ScanExport(r.Slug, format)
 		if err != nil || slug != r.Slug || !strings.Contains(string(data), want) {
 			t.Errorf("export %s: %v %q", format, err, data)
@@ -129,5 +129,57 @@ func TestScanViewShowsTheSessionsTeamWhileTheScanRuns(t *testing.T) {
 	}
 	if run, det := workers(); run != 0 || det != 0 {
 		t.Fatalf("a done scan shows the session's team: %d / %v", run, det)
+	}
+}
+
+// A goal that drives a scan is judged from the scan's ledger: it goes on with the ledger's problems while there are any, the
+// harness writes the report when only the report is missing, and the goal is met, every milestone with it, once the ledger is done.
+func TestAScanGoalIsJudgedFromItsLedger(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"init", "-q"}, {"add", "."}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	s := &Session{opts: Options{Root: dir, Cwd: dir}}
+	s.newScanTool()
+	repo, err := s.scanRepo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := scan.Start(context.Background(), s.scan.store, repo, "standard", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := &goal.State{Objective: scan.Objective(r, ""), Milestones: []goal.Milestone{{ID: "M1", Text: "Map"}, {ID: "M2", Text: "Report"}}}
+	if _, ok := s.scanJudgment(&goal.State{Objective: "build a todo app"}); ok {
+		t.Fatal("a goal that is not a scan was judged from a ledger")
+	}
+	v, ok := s.scanJudgment(g)
+	if !ok || v.Kind != goal.Continue || !strings.Contains(v.Reason, "map phase") || len(v.Left) == 0 || !strings.Contains(v.Left[0], "S1 is not mapped") {
+		t.Fatalf("an unmapped scan: %v %+v", ok, v)
+	}
+	if _, err := s.scan.store.Update(r.Slug, func(r *scan.Run) error {
+		for i := range r.Shards {
+			r.Shards[i].Mapped, r.Shards[i].Hunted = "read", "checked"
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	v, ok = s.scanJudgment(g)
+	if !ok || v.Kind != goal.Done || g.MetCount() != 2 || !strings.Contains(v.Reason, "ledger is done") {
+		t.Fatalf("a scan with only its report missing: %+v, %d milestones met", v, g.MetCount())
+	}
+	if _, err := os.Stat(filepath.Join(scan.RunDir(dir, r.Slug), scan.ReportFile)); err != nil {
+		t.Errorf("the report was not written: %v", err)
 	}
 }

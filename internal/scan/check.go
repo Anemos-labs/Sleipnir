@@ -42,9 +42,11 @@ type Counts struct {
 	Confirmed  int            `json:"confirmed"`
 	Unproven   int            `json:"unproven"`
 	Rejected   int            `json:"rejected"`
+	Disputed   int            `json:"disputed"`
+	Deferred   int            `json:"deferred"`
 	Proofs     int            `json:"proofs"`
 	Reproduced int            `json:"reproduced"`
-	// BySeverity counts the confirmed findings.
+	// BySeverity counts the findings: the confirmed leads and the unproven ones, as a report counts them.
 	BySeverity map[string]int `json:"by_severity"`
 }
 
@@ -128,6 +130,7 @@ func Check(r *Run) Report {
 			add(PhaseVerify, l.ID, "%s (%s, %s) needs %s, from agents other than %s", l.ID, l.Severity(), clip(l.Title, 60), strings.Join(need, " and "), l.By)
 		case LeadUnproven:
 			c.Unproven++
+			c.BySeverity[l.Severity()]++
 			if l.Attempts() == 0 {
 				add(PhaseVerify, l.ID, "%s (%s, %s) is confirmed and must be reproduced in the sandbox at %s depth, by an agent other than %s: scan prove", l.ID, l.Severity(), clip(l.Title, 60), d.ID, l.By)
 			} else {
@@ -138,6 +141,11 @@ func Check(r *Run) Report {
 			c.BySeverity[l.Severity()]++
 		case LeadRejected:
 			c.Rejected++
+		case LeadDisputed:
+			c.Disputed++
+			warn(PhaseVerify, l.ID, "%s (%s) is disputed: %d confirm and %d reject, and it takes no more verdicts; it is reported apart", l.ID, l.Severity(), conf, rej)
+		case LeadDeferred:
+			c.Deferred++
 		}
 	}
 	if !blocked(rep, PhaseVerify) && (r.Reported == nil || r.Reported.Version != r.Version) {
