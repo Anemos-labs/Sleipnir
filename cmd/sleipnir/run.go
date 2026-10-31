@@ -214,7 +214,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 		bypassed = unattendedBypassNote
 	}
 	if !*quiet && !*asJSON {
-		fmt.Fprintln(os.Stderr, wrapFor(os.Stderr, fmt.Sprintf("sleipnir %s · %s%s · session %s", version, s.Model.ID, budgetLabel(s), s.ID)))
+		fmt.Fprintln(os.Stderr, wrapFor(os.Stderr, fmt.Sprintf("sleipnir %s · %s%s · session %s", version, tools.SanitizeForTerminal(s.Model.ID), budgetLabel(s), s.ID)))
 		for _, n := range []string{unattended, bypassed} {
 			if n != "" {
 				fmt.Fprintln(os.Stderr, wrapFor(os.Stderr, n))

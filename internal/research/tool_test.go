@@ -355,3 +355,47 @@ func TestCreateStopsWhenEveryNameIsTaken(t *testing.T) {
 		t.Fatalf("Create with every name taken: %v; want a refusal that no name is free", err)
 	}
 }
+
+// A Deny rule for the research tool refuses a change to the ledger, and leaves reading it alone.
+func TestDenyRuleRefusesLedgerChanges(t *testing.T) {
+	tool, _, r, root := newTestTool(t, "quick", "")
+	for _, mode := range []perm.Mode{perm.ModeDefault, perm.ModeBypass} {
+		e, err := perm.NewEngine(perm.Config{Root: root, Home: t.TempDir(), Mode: mode, Deny: []string{ToolName}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		run := func(args map[string]any) (*tools.Result, error) {
+			b, _ := json.Marshal(args)
+			return tool.Run(context.Background(), &tools.Call{Name: ToolName, Input: b, Env: &tools.Env{Agent: "a", Perm: e}})
+		}
+		for _, args := range []map[string]any{
+			{"action": "note", "run": r.Slug, "text": "x", "sources": []string{"s1"}},
+			{"action": "search", "run": r.Slug, "query": "q"}, // a search logs its query in the ledger
+		} {
+			res, err := run(args)
+			if err != nil || !res.IsError || !strings.Contains(res.Text, "permission denied") {
+				t.Fatalf("%s: a %s under a research Deny rule: %v %+v", mode, args["action"], err, res)
+			}
+		}
+		if got, err := Load(root, r.Slug); err != nil || len(got.Queries) != 0 {
+			t.Fatalf("%s: a refused search was logged: %v %+v", mode, err, got)
+		}
+		if res, err := run(map[string]any{"action": "status", "run": r.Slug}); err != nil || res.IsError {
+			t.Fatalf("%s: status under a research Deny rule: %v %+v", mode, err, res)
+		}
+	}
+	e, err := perm.NewEngine(perm.Config{Root: root, Home: t.TempDir(), Mode: perm.ModeDefault})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(map[string]any{"action": "plan", "run": r.Slug, "scope": "s",
+		"perspectives": []map[string]string{{"name": "a", "concerns": "x"}, {"name": "b", "concerns": "y"}},
+		"tracks":       []map[string]any{{"title": "One", "questions": []string{"q1", "q2"}}, {"title": "Two", "questions": []string{"q3", "q4"}}, {"title": "Three", "questions": []string{"q5", "q6"}}},
+		"pages":        []map[string]any{{"id": "stores", "title": "Stores", "summary": "s"}}})
+	if res, err := tool.Run(context.Background(), &tools.Call{Name: ToolName, Input: b, Env: &tools.Env{Agent: "a", Perm: e}}); err != nil || res.IsError {
+		t.Fatalf("a plan without a rule against research: %v %+v", err, res)
+	}
+	if got, err := Load(root, r.Slug); err != nil || got.Plan == nil {
+		t.Fatalf("the allowed plan was not saved: %v %+v", err, got)
+	}
+}

@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
@@ -154,6 +155,12 @@ func (t *Tool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 			return env.Finish("research "+in.Action+": "+err.Error(), true), nil
 		}
 	}
+	// A search is not progress (records), but it logs its query in the ledger, so a rule against research refuses it too.
+	if records(in.Action) || in.Action == "search" {
+		if res := authorize(ctx, c, env, in.Action); res != nil {
+			return res, nil
+		}
+	}
 	switch in.Action {
 	case "status":
 		text, err = t.status(in)
@@ -202,6 +209,23 @@ func (t *Tool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	res := env.Finish(text, false)
 	res.Recorded = records(in.Action)
 	return res, nil
+}
+
+// authorize asks the permission engine about a call that changes the run's ledger or pages. The request names no path (the
+// store is the tool's own), so only the person's rules for the research tool decide: a Deny of it refuses the change, as for
+// any other tool.
+func authorize(ctx context.Context, c *tools.Call, env *tools.Env, action string) *tools.Result {
+	d := env.Perm.Check(ctx, perm.Request{
+		Agent: env.Agent, Role: env.Role, Tool: c.Name, Summary: "research " + action, Input: c.Input,
+	})
+	if d.Allow {
+		return nil
+	}
+	reason := strings.TrimSpace(d.Reason)
+	if reason == "" {
+		reason = "not allowed by the permission policy"
+	}
+	return tools.Errorf("research %s: permission denied: %s", action, reason)
 }
 
 // records reports whether a call of action adds to the run's ledger: the plan, a citation, a note, a snippet, a review round, a

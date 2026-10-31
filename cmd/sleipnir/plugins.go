@@ -104,7 +104,10 @@ func cmdPlugins(ctx context.Context, args []string) error {
 			return fmt.Errorf("plugins: %w", err)
 		}
 	}
-	p := pluginCLI{out: os.Stdout, home: home, cwd: dir, root: root, trust: *trustProject, target: target, json: *asJSON}
+	p := pluginCLI{out: termText{os.Stdout}, home: home, cwd: dir, root: root, trust: *trustProject, target: target, json: *asJSON}
+	if *project || *local {
+		p.within = root
+	}
 	switch sub {
 	case "list", "ls":
 		return p.list()
@@ -181,6 +184,24 @@ type pluginCLI struct {
 	home, cwd, root string
 	trust, json     bool
 	target          string
+	within          string // the project root a --project or --local target is written within, "" for the user file
+}
+
+// save writes a plugin choice to the target file, through the project root for a project target (plugin.SaveWithin), so a
+// project link replaced after the target was checked cannot take the write outside the project.
+func (p pluginCLI) save(profile, id string, enabled *bool, settings map[string]any) error {
+	if p.within != "" {
+		return plugin.SaveWithin(p.within, p.target, profile, id, enabled, settings)
+	}
+	return plugin.Save(p.target, profile, id, enabled, settings)
+}
+
+// saveProfile is save for the profile choice.
+func (p pluginCLI) saveProfile(profile string) error {
+	if p.within != "" {
+		return plugin.SaveProfileWithin(p.within, p.target, profile)
+	}
+	return plugin.SaveProfile(p.target, profile)
 }
 
 // load resolves the plugin set for the directory.
@@ -308,7 +329,7 @@ func (p pluginCLI) toggle(verb string, ids []string) error {
 		default:
 			v = st.Default
 		}
-		if err := plugin.Save(p.target, profile, id, &v, nil); err != nil {
+		if err := p.save(profile, id, &v, nil); err != nil {
 			return fmt.Errorf("plugins: %w", err)
 		}
 	}
@@ -350,7 +371,7 @@ func (p pluginCLI) profile(args []string) error {
 	if _, ok := plugin.ProfileByID(args[0]); !ok {
 		return fmt.Errorf("plugins: no profile %q", args[0])
 	}
-	if err := plugin.SaveProfile(p.target, args[0]); err != nil {
+	if err := p.saveProfile(args[0]); err != nil {
 		return fmt.Errorf("plugins: %w", err)
 	}
 	fmt.Fprintf(p.out, "profile: %s (written to %s)\n", args[0], p.target)
@@ -382,7 +403,7 @@ func (p pluginCLI) set(id string, kvs []string) error {
 		}
 		cur[k] = parseSetting(v)
 	}
-	if err := plugin.Save(p.target, "", id, nil, cur); err != nil {
+	if err := p.save("", id, nil, cur); err != nil {
 		return fmt.Errorf("plugins: %w", err)
 	}
 	fmt.Fprintf(p.out, "%s settings written to %s\n", id, p.target)

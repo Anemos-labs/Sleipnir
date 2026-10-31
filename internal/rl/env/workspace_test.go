@@ -761,3 +761,20 @@ func TestResourceLimitsApplyToVerifierCommands(t *testing.T) {
 		t.Fatalf("file size limit not enforced: %v pass=%v\n%s", err, res.Pass, res.Log)
 	}
 }
+
+// A setup that puts a link in the tree's place gets no snapshot: the host does not hash, and so does not copy into the baseline,
+// what the link leads to.
+func TestSetupThatReplacesTheTreeWithALinkIsRefused(t *testing.T) {
+	r, base := mathxRepo(t)
+	host := t.TempDir()
+	mustWrite(t, filepath.Join(host, "secret.txt"), "host file\n")
+	task := mathxTask(r, base)
+	task.Setup = []string{fmt.Sprintf(`d=$(pwd); cd .. && mv "$d" "$d.gone" && ln -s %s "$d"`, host)}
+	for _, mode := range []string{ModeExport, ModeClone} { // clone mode makes no agent repository, which checked it too
+		_, err := newManager(t, func(o *WorkspaceOptions) { o.Mode = mode }).Prepare(ctxT(t), task, "s0")
+		// refused at the snapshot, before the baseline is hashed, not later
+		if err == nil || !strings.Contains(err.Error(), "snapshot: setup replaced the tree") {
+			t.Fatalf("%s: Prepare after setup replaced the tree with a link: %v; want a refusal before the baseline", mode, err)
+		}
+	}
+}

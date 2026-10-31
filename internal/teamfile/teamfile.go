@@ -13,6 +13,8 @@ package teamfile
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -324,7 +326,13 @@ func Save(dir, home, scope, name string, f *File, overwrite bool) (string, error
 	if err := inProject(scope, d, p); err != nil {
 		return "", err
 	}
-	if fi, err := os.Lstat(p); err == nil {
+	r, rd, err := openTeams(scope, d, true)
+	if err != nil {
+		return "", err
+	}
+	defer r.Close()
+	rp := filepath.Join(rd, name+".json")
+	if fi, err := r.Lstat(rp); err == nil {
 		if !fi.Mode().IsRegular() {
 			return "", fmt.Errorf("%s is not a regular file", p)
 		}
@@ -332,10 +340,7 @@ func Save(dir, home, scope, name string, f *File, overwrite bool) (string, error
 			return p, ErrExists
 		}
 	}
-	if err := os.MkdirAll(d, 0o755); err != nil {
-		return "", err
-	}
-	tmp, err := os.CreateTemp(d, "."+name+".*.tmp")
+	tmp, tn, err := createTemp(r, rd, "."+name+".")
 	if err != nil {
 		return "", err
 	}
@@ -346,18 +351,63 @@ func Save(dir, home, scope, name string, f *File, overwrite bool) (string, error
 	}
 	if err != nil {
 		tmp.Close()
-		os.Remove(tmp.Name())
+		r.Remove(tn)
 		return "", err
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmp.Name())
+		r.Remove(tn)
 		return "", err
 	}
-	if err := os.Rename(tmp.Name(), p); err != nil {
-		os.Remove(tmp.Name())
+	if err := r.Rename(tn, rp); err != nil {
+		r.Remove(tn)
 		return "", err
 	}
 	return p, nil
+}
+
+// openTeams opens the root that the teams directory d is reached through, and d's name in it. A project's root is the
+// project itself, so a directory on the way (.sleipnir, .sleipnir/teams) that is swapped for a link after inProject looked
+// cannot take a write or a removal outside it; the user's root is d (which may itself be a link, a dotfiles checkout). With
+// mk the directory is made first.
+func openTeams(scope, d string, mk bool) (*os.Root, string, error) {
+	if scope != ScopeProject {
+		if mk {
+			if err := os.MkdirAll(d, 0o755); err != nil {
+				return nil, "", err
+			}
+		}
+		r, err := os.OpenRoot(d)
+		return r, ".", err
+	}
+	r, err := os.OpenRoot(filepath.Dir(filepath.Dir(d)))
+	if err != nil {
+		return nil, "", err
+	}
+	rd := filepath.Join(filepath.Base(filepath.Dir(d)), filepath.Base(d))
+	if mk {
+		if err := r.MkdirAll(rd, 0o755); err != nil {
+			r.Close()
+			return nil, "", err
+		}
+	}
+	return r, rd, nil
+}
+
+// createTemp makes a new file named prefix and a random suffix in dir of r, the way os.CreateTemp does by host path.
+func createTemp(r *os.Root, dir, prefix string) (*os.File, string, error) {
+	for range 100 {
+		var b [8]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			return nil, "", err
+		}
+		n := filepath.Join(dir, prefix+hex.EncodeToString(b[:])+".tmp")
+		f, err := r.OpenFile(n, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+		if errors.Is(err, os.ErrExist) {
+			continue
+		}
+		return f, n, err
+	}
+	return nil, "", errors.New("could not make a temporary file for the team")
 }
 
 // Remove deletes the team name of scope.
@@ -373,7 +423,16 @@ func Remove(dir, home, scope, name string) error {
 	if err := inProject(scope, d, p); err != nil {
 		return err
 	}
-	fi, err := os.Lstat(p)
+	r, rd, err := openTeams(scope, d, false)
+	if errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("no team %s is saved for the %s", name, map[string]string{ScopeProject: "project", ScopeUser: "user"}[orUser(scope)])
+	}
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	rp := filepath.Join(rd, name+".json")
+	fi, err := r.Lstat(rp)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("no team %s is saved for the %s", name, map[string]string{ScopeProject: "project", ScopeUser: "user"}[orUser(scope)])
@@ -383,7 +442,7 @@ func Remove(dir, home, scope, name string) error {
 	if !fi.Mode().IsRegular() {
 		return fmt.Errorf("%s is not a regular file", p)
 	}
-	return os.Remove(p)
+	return r.Remove(rp)
 }
 
 // inProject refuses a project team's path p in the teams directory d that a link in the repository (.sleipnir or

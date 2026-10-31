@@ -491,10 +491,12 @@ func cmdDoctor(ctx context.Context, args []string) error {
 		client = c
 		where = fmt.Sprintf("%s (key from %s)", spec.baseURL, envLabel(spec))
 	}
-	fmt.Fprint(os.Stderr, wrapBlockFor(os.Stderr, fmt.Sprintf("probing %s at %s\n", probeModel, where)))
+	// The model and endpoint may come from a project's configuration, and the report quotes what the endpoint said: what is
+	// shown goes through the terminal sanitizer.
+	fmt.Fprint(os.Stderr, wrapBlockFor(os.Stderr, tools.SanitizeForTerminal(fmt.Sprintf("probing %s at %s\n", probeModel, where))))
 	rep, err := probe.Run(ctx, probe.Config{
 		Provider: client, Model: probeModel, Deep: *deep, Headers: rec.get, CacheKey: !*noKey, Capture: *capture,
-		Log: func(s string) { fmt.Fprintln(os.Stderr, wrapBlockFor(os.Stderr, s)) },
+		Log: func(s string) { fmt.Fprintln(os.Stderr, wrapBlockFor(os.Stderr, tools.SanitizeForTerminal(s))) },
 	})
 	if err != nil && rep == nil {
 		return err
@@ -507,7 +509,7 @@ func cmdDoctor(ctx context.Context, args []string) error {
 		}
 	} else {
 		fmt.Println()
-		fmt.Print(wrapBlockFor(os.Stdout, rep.Text()))
+		fmt.Print(wrapBlockFor(os.Stdout, tools.SanitizeForTerminal(rep.Text())))
 	}
 	if err != nil {
 		return err

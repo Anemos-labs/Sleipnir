@@ -483,7 +483,7 @@ func (s *Store) apply(t *task, w *restoreWork) error {
 		}
 		data, err := s.readBlob(it.want.Blob, min(s.maxBytes, *budget))
 		// What is read and hashed is spent whatever follows, so failing records cannot repeat the work without bound.
-		*budget -= int64(len(data))
+		*budget -= int64(len(data)) + events.ReadBytes(err) // a corrupt blob was read and hashed too
 		switch {
 		case errors.Is(err, events.ErrBlobTooLarge) && *budget < s.maxBytes:
 			return w.fail(it.want.Blob, errors.New(budgetSpent)) // the budget only shrinks: the blob will not fit later either
@@ -639,7 +639,7 @@ func (s *Store) removeCreatedDirs(tasks []*task, dry bool) []FileResult {
 				res.Outcome, res.Detail = OutcomeUnchanged, "left in place: cannot read it: "+reason(err)
 			} else if len(entries) > 0 {
 				res.Outcome, res.Detail = OutcomeUnchanged, "left in place: it is not empty"
-			} else if err := syscall.Rmdir(abs); err != nil {
+			} else if err := s.rmdirKey(key, abs); err != nil {
 				res.Outcome, res.Detail = OutcomeFailed, "cannot remove: "+reason(err)
 			} else {
 				res.Outcome = OutcomeDone
@@ -648,6 +648,26 @@ func (s *Store) removeCreatedDirs(tasks []*task, dry bool) []FileResult {
 		out = append(out, res)
 	}
 	return out
+}
+
+// rmdirKey removes the empty directory of key (resolved to abs). An in-project key is removed through the project root, opened
+// at its parent, so a project directory replaced by a link since the checks cannot take the removal outside the project; it is
+// removed only while it is a directory there.
+func (s *Store) rmdirKey(key, abs string) error {
+	c, err := s.confine(key, abs)
+	if err != nil {
+		return err
+	}
+	defer c.close()
+	if c.root == nil {
+		return syscall.Rmdir(abs) // rmdir, never unlink: if something replaced the directory since Lstat, a file there stays
+	}
+	parent, err := c.root.OpenRoot(filepath.Dir(c.rel))
+	if err != nil {
+		return err
+	}
+	defer parent.Close()
+	return rmdirIn(parent, filepath.Base(c.rel))
 }
 
 // commitRestore forgets the paths that were rewound and, for a complete rewind,

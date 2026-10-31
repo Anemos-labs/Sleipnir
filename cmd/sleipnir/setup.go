@@ -105,7 +105,13 @@ func cmdInit(ctx context.Context, args []string) error {
 			patch["models"] = map[string]any{"default": *model}
 		}
 	}
-	if err := config.Save(path, patch); err != nil {
+	save := func() error { return config.Save(path, patch) }
+	if !*user {
+		// The project file is written through the project root: a directory of the checkout replaced by a link after the
+		// check above cannot take the write outside it.
+		save = func() error { return config.SaveWithin(root, path, patch) }
+	}
+	if err := save(); err != nil {
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "wrote %s\n", path)

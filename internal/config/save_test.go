@@ -355,3 +355,28 @@ func TestSaveWithinStaysInTheProject(t *testing.T) {
 		t.Error("a path outside the project was accepted")
 	}
 }
+
+// A project's file that is a link to another file of the project is saved where the link leads, and the link stays.
+func TestSaveWithinFollowsALinkInsideTheProject(t *testing.T) {
+	root := t.TempDir()
+	path := ProjectConfigPath(root)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	shared := filepath.Join(root, "shared.json")
+	if err := os.WriteFile(shared, []byte(`{"models": {"default": "x/y"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(shared, path); err != nil {
+		t.Skip("no symlinks:", err)
+	}
+	if err := SaveWithin(root, path, map[string]any{"models": map[string]any{"default": "a/b"}}); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Lstat(path); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("the link was replaced: %v %v", fi, err)
+	}
+	if got := readFile(t, shared); !strings.Contains(got, `"a/b"`) {
+		t.Errorf("the link's target holds %s", got)
+	}
+}

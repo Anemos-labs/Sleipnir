@@ -420,12 +420,43 @@ func (s *Store) loadLocked(slug string) (*Run, error) {
 	return r, nil
 }
 
+// maxLedgerFile bounds what is read of a run's run.json.
+const maxLedgerFile = 64 << 20
+
+// readLedger reads a run's run.json through the run's directory (openRun): a regular file of at most maxLedgerFile bytes, so a
+// link planted in the project neither leads the read to another project's run nor to a device that never ends.
+func readLedger(root, slug string) ([]byte, error) {
+	run, err := openRun(root, slug)
+	if err != nil {
+		return nil, err
+	}
+	defer run.Close()
+	if fi, err := run.Lstat("run.json"); err != nil {
+		return nil, err
+	} else if !fi.Mode().IsRegular() {
+		return nil, errors.New("run.json is not a regular file")
+	}
+	f, err := run.OpenFile("run.json", os.O_RDONLY|openNonblock, 0) // a pipe swapped in since is refused, not waited on
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() {
+		return nil, errors.New("run.json is not a regular file")
+	}
+	b, err := io.ReadAll(io.LimitReader(f, maxLedgerFile+1))
+	if err == nil && len(b) > maxLedgerFile {
+		return nil, fmt.Errorf("run.json is larger than %d MB", maxLedgerFile>>20)
+	}
+	return b, err
+}
+
 // Load reads a run from disk, without a store.
 func Load(root, slug string) (*Run, error) {
 	if !ValidSlug(slug) {
 		return nil, fmt.Errorf("no research run %q", slug)
 	}
-	b, err := os.ReadFile(filepath.Join(RunDir(root, slug), "run.json"))
+	b, err := readLedger(root, slug)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("no research run %q", slug)
 	}
@@ -604,11 +635,24 @@ const maxPageFile = 4 << 20
 // (.sleipnir, research, the run, pages): the research tool's authority is the ledger, and a link planted in the project must not
 // turn a page write or read into one of another file. Inside the root nothing resolves outside the pages directory.
 func openPages(root, slug string) (*os.Root, error) {
+	return openSteps(root, ".sleipnir", "research", slug, "pages")
+}
+
+// openRun opens a run's directory as openPages opens its pages directory.
+func openRun(root, slug string) (*os.Root, error) {
+	if !ValidSlug(slug) {
+		return nil, fmt.Errorf("no research run %q", slug)
+	}
+	return openSteps(root, ".sleipnir", "research", slug)
+}
+
+// openSteps opens the directory root/steps... as an os.Root, refusing a symlink at any step.
+func openSteps(root string, steps ...string) (*os.Root, error) {
 	cur, err := os.OpenRoot(root)
 	if err != nil {
 		return nil, err
 	}
-	for _, step := range []string{".sleipnir", "research", slug, "pages"} {
+	for _, step := range steps {
 		fi, err := cur.Lstat(step)
 		if err == nil && !fi.IsDir() {
 			err = fmt.Errorf("%s is not a directory", step)

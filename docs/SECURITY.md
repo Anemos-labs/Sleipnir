@@ -552,8 +552,11 @@ do not inspect dependencies or sandbox an approved test.
   protections, and worker confinement. Required Windows tests exercise local paths and real file tools; UNC root handling is
   checked without a network share. Permission-rule patterns use forward slashes (`Read(C:/project/src/**)`); backslashes escape
   glob characters. Device namespaces, alternate streams, drive-relative paths, and names ending in dots or spaces are refused.
-  Windows system-directory protection and shell analysis remain incomplete. Run the harness inside WSL2 or a Linux container
-  for the Linux permission and hardening path.
+  Windows system-directory protection and shell analysis remain incomplete. Session recordings (the journal and its blobs)
+  are created with modes 0700 and 0600, which Windows does not enforce, and a journal's owner is not checked there: their
+  privacy is the access list of the directory they are written in. A user profile's access list is private by default;
+  record into a shared folder only if its access list is private too. Run the harness inside WSL2 or a Linux container for the Linux permission and
+  hardening path.
 * **Everywhere.** A same-user process can read what the user can read. The harness cannot change that; sandboxing does.
 
 ## 5. The web interface (`sleipnir web`)

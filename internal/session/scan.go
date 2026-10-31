@@ -88,6 +88,48 @@ func (s *Session) scanCode(commit string) scan.Code {
 	return c
 }
 
+// proofKeep is how much of a proof's output the host keeps from each end: the container's memory limit bounds the program,
+// not the stream it writes, and a proof's markers are read at its start (ready) and its end (reproduced).
+const proofKeep = 4 << 20
+
+// headTail keeps the first and the last proofKeep bytes written to it. The tail is let grow to twice that before it is cut,
+// so a stream of small writes is not copied once per write.
+type headTail struct {
+	mu         sync.Mutex
+	head, tail []byte
+	total      int64
+}
+
+func (w *headTail) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	n := len(p)
+	w.total += int64(n)
+	if room := proofKeep - len(w.head); room > 0 {
+		k := min(room, len(p))
+		w.head, p = append(w.head, p[:k]...), p[k:]
+	}
+	w.tail = append(w.tail, p...)
+	if len(w.tail) > 2*proofKeep {
+		w.tail = append(w.tail[:0], w.tail[len(w.tail)-proofKeep:]...)
+	}
+	return n, nil
+}
+
+func (w *headTail) bytes() []byte {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	tail := w.tail
+	if len(tail) > proofKeep {
+		tail = tail[len(tail)-proofKeep:]
+	}
+	out := append([]byte(nil), w.head...)
+	if dropped := w.total - int64(len(w.head)+len(tail)); dropped > 0 {
+		out = fmt.Appendf(out, "\n[%d bytes of output not kept]\n", dropped)
+	}
+	return append(out, tail...)
+}
+
 type failCode struct{ err error }
 
 func (f failCode) Read(context.Context, string) ([]byte, error) { return nil, f.err }
@@ -105,7 +147,10 @@ func (s *Session) runInSandbox(ctx context.Context, dir string, argv []string, t
 	cmd := exec.CommandContext(ctx, wrap[0], args...)
 	cmd.Dir = dir
 	cmd.WaitDelay = 5 * time.Second
-	out, err := cmd.CombinedOutput()
+	var w headTail
+	cmd.Stdout, cmd.Stderr = &w, &w
+	err := cmd.Run()
+	out := w.bytes()
 	if ctx.Err() == context.DeadlineExceeded {
 		return out, -1, nil
 	}

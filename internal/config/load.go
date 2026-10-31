@@ -9,6 +9,8 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+
+	"github.com/anemos-labs/sleipnir/internal/skills/mdfile"
 )
 
 // LoadOpts says where configuration comes from.
@@ -161,7 +163,16 @@ func readConfigFile(path string) ([]byte, error) {
 	if fi.Size() > maxFileSize {
 		return nil, fmt.Errorf("file is larger than %d KB", maxFileSize>>10)
 	}
-	return os.ReadFile(path)
+	// The name is opened again: the read is checked and bounded on that descriptor (mdfile.ReadFile), so a file swapped in
+	// after the check above, a device or a larger file, cannot make it unbounded.
+	f, err := mdfile.ReadFile(path, mdfile.ReadOpts{MaxBytes: maxFileSize})
+	if err != nil {
+		return nil, err
+	}
+	if f.Truncated {
+		return nil, fmt.Errorf("file is larger than %d KB", maxFileSize>>10)
+	}
+	return f.Data, nil
 }
 
 // pathReason removes the outer filesystem path wrapper from a nonnil error for concise
