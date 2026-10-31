@@ -53,7 +53,7 @@ func cmdScan(ctx context.Context, args []string) error {
 		printFlags(fs)
 	}
 	cwd := fs.String("cwd", "", "the project (default: the current directory)")
-	report := fs.Bool("report", false, "rewrite SCAN's report (REPORT.md, findings.json, findings.sarif, map.json) from its ledger and print where it is")
+	report := fs.Bool("report", false, "rewrite SCAN's report (REPORT.md, findings.json, findings.sarif, map.json, proofs/) from its ledger and print where it is")
 	asJSON := fs.Bool("json", false, "machine-readable output")
 	start := fs.Bool("start", false, "create a scan of the repository at HEAD (below the positional DIR, when given) and print the goal that drives it")
 	depth := fs.String("depth", scan.DefaultDepth, "with --start: survey, standard or deep")
