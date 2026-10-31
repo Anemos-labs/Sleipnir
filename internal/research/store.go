@@ -436,11 +436,14 @@ func readLedger(root, slug string) ([]byte, error) {
 	} else if !fi.Mode().IsRegular() {
 		return nil, errors.New("run.json is not a regular file")
 	}
-	f, err := run.Open("run.json")
+	f, err := run.OpenFile("run.json", os.O_RDONLY|openNonblock, 0) // a pipe swapped in since is refused, not waited on
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
+	if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() {
+		return nil, errors.New("run.json is not a regular file")
+	}
 	b, err := io.ReadAll(io.LimitReader(f, maxLedgerFile+1))
 	if err == nil && len(b) > maxLedgerFile {
 		return nil, fmt.Errorf("run.json is larger than %d MB", maxLedgerFile>>20)

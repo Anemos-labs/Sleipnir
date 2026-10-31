@@ -24,7 +24,9 @@ var ErrPromptBlocked = errors.New("blocked by a hook")
 // newHookRunner builds the hook runner from the configuration. Only settings
 // the user controls reach it: config.Load drops a project's hooks unless the
 // project is trusted, so everything in cfg.Hooks is vouched for. A configuration
-// that does not parse disables hooks and says why; it never stops the session.
+// that does not parse keeps the groups that parse on their own and leaves out the
+// others, saying which; when none parses, hooks are off and it says why. It never
+// stops the session.
 func newHookRunner(cfg *config.Config, sessionID, root string) (*hooks.Runner, []string) {
 	if len(cfg.Hooks) == 0 {
 		return nil, nil

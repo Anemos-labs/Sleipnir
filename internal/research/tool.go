@@ -155,7 +155,8 @@ func (t *Tool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 			return env.Finish("research "+in.Action+": "+err.Error(), true), nil
 		}
 	}
-	if records(in.Action) {
+	// A search is not progress (records), but it logs its query in the ledger, so a rule against research refuses it too.
+	if records(in.Action) || in.Action == "search" {
 		if res := authorize(ctx, c, env, in.Action); res != nil {
 			return res, nil
 		}

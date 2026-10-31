@@ -63,6 +63,14 @@ func SaveWithin(root, path string, patch map[string]any) error {
 	target := path
 	if real, err := filepath.EvalSymlinks(path); err == nil {
 		target = real
+		// A file of the project that is a link to another file of the project is saved where it leads, as Save does: the
+		// new file replaces the target, not the link. What the link leads to is named inside the root, which refuses it
+		// if it is not there.
+		if realRoot, err := filepath.EvalSymlinks(root); err == nil {
+			if trel, err := filepath.Rel(realRoot, real); err == nil && filepath.IsLocal(trel) {
+				rel = trel
+			}
+		}
 	}
 	defer WriteLock(target)()
 	return save(rootFiles{r}, path, rel, patch)

@@ -30,6 +30,7 @@ found, so the audit can gate a script or CI job. Audit every route you built or 
 | Rule | What it means |
 |---|---|
 | `script-error`, `load-failed` | An uncaught exception, a console error or a failed request. Fix this first: it often causes the defects below. |
+| `scroll-incomplete` | The page is over 100 screens tall, so the audit stopped scrolling: what is revealed only further down was not checked. Check that part another way, or make the page shorter. |
 | `empty-graphic` | A chart-sized `svg` or `canvas` that draws no data marks. Axes and labels with no bars count as empty. |
 | `content-hidden-at-rest` | Over 20% of the text stays invisible after load and a full scroll: a reveal animation that never ran. |
 | `horizontal-overflow` | The page is wider than the viewport, so the phone scrolls sideways. |

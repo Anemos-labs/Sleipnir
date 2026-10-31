@@ -721,7 +721,11 @@ func (m *Workspaces) buildSnapshot(ctx context.Context, task rl.Task, src *repoS
 	setupMs := time.Since(started).Milliseconds()
 
 	// 4. the baseline: what the tree holds now, which is what diffs are against. Setup could write beside the tree, so a
-	// base.git it left behind (its config can name programs git runs) is removed, not reused.
+	// base.git it left behind (its config can name programs git runs) is removed, not reused; and the tree must still be a
+	// directory, not a link setup put in its place, before the host hashes what is under it.
+	if err := treeIsDir(s); err != nil {
+		return nil, Infra("snapshot", err)
+	}
 	if err := removeAllNoFollow(s.base); err != nil {
 		return nil, Infra("snapshot", err)
 	}
@@ -818,6 +822,16 @@ func (m *Workspaces) runSetup(ctx context.Context, task rl.Task, s *snapshot, ke
 	return nil
 }
 
+// treeIsDir reports an error unless the snapshot's tree is a directory itself (not a link to one).
+func treeIsDir(s *snapshot) error {
+	if fi, err := os.Lstat(s.tree); err != nil {
+		return err
+	} else if !fi.IsDir() {
+		return fmt.Errorf("setup replaced the tree %s with something that is not a directory", s.tree)
+	}
+	return nil
+}
+
 // makeAgentRepo gives the tree a repository of its own with a single commit
 // holding the baseline, so the agent can use git normally (status, diff,
 // commit, stash) and `git diff` shows exactly the agent's change. The history
@@ -827,10 +841,8 @@ func (m *Workspaces) makeAgentRepo(ctx context.Context, s *snapshot, baseTree st
 	gd := filepath.Join(s.tree, ".git")
 	// Setup ran in the tree, and the tree's parent was writable to it: the tree itself must still be a directory, not a link
 	// setup put in its place, before anything below it is removed or written from the host.
-	if fi, err := os.Lstat(s.tree); err != nil {
+	if err := treeIsDir(s); err != nil {
 		return err
-	} else if !fi.IsDir() {
-		return fmt.Errorf("setup replaced the tree %s with something that is not a directory", s.tree)
 	}
 	// Whatever .git setup left (a directory of links, a file) is not built on.
 	if err := removeAllNoFollow(gd); err != nil {

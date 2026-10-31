@@ -2,6 +2,7 @@ package inspect
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -752,5 +753,42 @@ func TestServeOverARealSocketAndShutDown(t *testing.T) {
 	}
 	if _, err := client.Get(base + "/healthz"); err == nil {
 		t.Error("still serving after shutdown")
+	}
+}
+
+// A launch code stands in for the token once, on a page and within its time; the API never takes one, and the codes kept
+// stay bounded.
+func TestLaunchCodeIsSpentOnceOnAPage(t *testing.T) {
+	dir, _ := synthDir(t, synthCfg{Workers: 1, Steps: 8})
+	if code := newTestServer(t, dir, nil).LaunchCode(); code != "" {
+		t.Errorf("a server without a token handed out a launch code %q", code)
+	}
+	srv := newTestServer(t, dir, func(c *Config) { c.Token = "s3cret-token" })
+	h := srv.Handler()
+	code := srv.LaunchCode()
+	if rec := do(t, h, "GET", "/api/summary?token="+code, nil); rec.Code != http.StatusUnauthorized {
+		t.Errorf("a launch code on the API = %d, want 401", rec.Code)
+	}
+	if rec := do(t, h, "GET", "/?token="+code, nil); rec.Code != http.StatusSeeOther || len(rec.Result().Cookies()) != 1 {
+		t.Errorf("a launch code on a page = %d, want the redirect that sets the cookie", rec.Code)
+	}
+	if rec := do(t, h, "GET", "/?token="+code, nil); rec.Code != http.StatusUnauthorized {
+		t.Errorf("a spent launch code = %d, want 401", rec.Code)
+	}
+	stale := srv.LaunchCode()
+	srv.launchMu.Lock()
+	srv.launch[sha256.Sum256([]byte(stale))] = time.Now().Add(-time.Second)
+	srv.launchMu.Unlock()
+	if rec := do(t, h, "GET", "/?token="+stale, nil); rec.Code != http.StatusUnauthorized {
+		t.Errorf("an expired launch code = %d, want 401", rec.Code)
+	}
+	for range 3 * maxLaunch {
+		srv.LaunchCode()
+	}
+	srv.launchMu.Lock()
+	n := len(srv.launch)
+	srv.launchMu.Unlock()
+	if n > maxLaunch {
+		t.Errorf("%d launch codes kept, want at most %d", n, maxLaunch)
 	}
 }

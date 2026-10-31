@@ -154,7 +154,8 @@ func readEvents(path string) (evs []events.Event, torn bool, bad []int, err erro
 	} else if !fi.Mode().IsRegular() {
 		return nil, false, nil, fmt.Errorf("%s is not a regular file", path)
 	}
-	f, err := os.Open(path)
+	// Opened without waiting: a pipe put in the log's place after the check above is refused below instead of hanging the read.
+	f, err := os.OpenFile(path, os.O_RDONLY|openNonblock, 0)
 	if err != nil {
 		return nil, false, nil, err
 	}

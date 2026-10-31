@@ -667,13 +667,7 @@ func (s *Store) rmdirKey(key, abs string) error {
 		return err
 	}
 	defer parent.Close()
-	name := filepath.Base(c.rel)
-	if fi, err := parent.Lstat(name); err != nil {
-		return err
-	} else if !fi.IsDir() {
-		return errors.New("it is no longer a directory")
-	}
-	return parent.Remove(name)
+	return rmdirIn(parent, filepath.Base(c.rel))
 }
 
 // commitRestore forgets the paths that were rewound and, for a complete rewind,
