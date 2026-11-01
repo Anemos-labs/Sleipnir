@@ -171,6 +171,18 @@ func (s *Swarm) flushManagerEdits() {
 	}
 }
 
+// addPendingLocked adds c to the changes waiting for a pass. A task accepted again before a pass took its first
+// acceptance (a repair, a reopened review) replaces its entry, so one pass reads it once, at its latest scope.
+func (k *docsKeeper) addPendingLocked(c docsChange) {
+	for i := range k.pending {
+		if k.pending[i].task == c.task {
+			k.pending[i] = c
+			return
+		}
+	}
+	k.pending = append(k.pending, c)
+}
+
 // takeEditsLocked moves the manager's edits into pending as one change.
 func (k *docsKeeper) takeEditsLocked() {
 	if len(k.edited) == 0 {
@@ -230,7 +242,7 @@ func (s *Swarm) docsTick(now time.Time) {
 		} else {
 			k.coded = true
 		}
-		k.pending = append(k.pending, docsChange{task: t.ID, title: t.Title, kind: kind, files: t.Files})
+		k.addPendingLocked(docsChange{task: t.ID, title: t.Title, kind: kind, files: t.Files})
 	}
 	if len(k.edited) > 0 && now.Sub(k.editedAt) >= docsEditQuiet {
 		k.takeEditsLocked()
