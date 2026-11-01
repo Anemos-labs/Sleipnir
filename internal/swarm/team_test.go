@@ -191,6 +191,70 @@ func TestAutoDocsRetriesTheSamePassWhenItCannotStart(t *testing.T) {
 	}
 }
 
+// A pass its worker keeps stopping on (the docs model has no capacity) waits longer each time before it is handed out again,
+// instead of going straight back to the same worker: without an attempt bound one pass was handed out fifteen times in 75 minutes.
+func TestAutoDocsBacksOffAPassItsWorkerKeepsStoppingOn(t *testing.T) {
+	cfg := Config{MaxWorkers: 8, AutoDocs: true, Team: []string{"backend", "docs"}}
+	r := newRVRigWith(t, cfg, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	now := r.sw.deps.Now()
+	r.sw.docsTick(now)
+	r.sw.Board.Restore(&Snapshot{Tasks: []Task{{ID: "T1", Title: "add the cart endpoint", Status: StatusDone, Role: "backend", Files: []string{"api/"}}}})
+	r.sw.docsTick(now)
+	var pass Task
+	for _, tk := range r.sw.Board.Snapshot().Tasks {
+		if strings.HasPrefix(tk.Title, DocsTaskTitle) {
+			pass = tk
+		}
+	}
+	if pass.ID == "" || pass.Owner == "" {
+		t.Fatalf("no pass started: %+v", r.sw.Board.Snapshot().Tasks)
+	}
+	owner := pass.Owner
+	stop := func(at time.Time) time.Time {
+		t.Helper()
+		rvWait(t, owner+" idle", func() bool { return r.idle(owner) })
+		// what a stopped run leaves on a board without an attempt bound: the pass back in todo, the attempt counted
+		snap := r.sw.Board.Snapshot()
+		for i, tk := range snap.Tasks {
+			if tk.ID == pass.ID {
+				tk.Status, tk.Owner, tk.LastOwner = StatusTodo, "", owner
+				tk.Attempts++
+				tk.Rev = snap.Version + 1
+				tk.Line = "stopped with an error: provider: server (http 503)"
+				snap.Tasks[i] = tk
+			}
+		}
+		r.sw.Board.Restore(snap)
+		r.sw.docsTick(at)
+		return at
+	}
+	handed := func() bool {
+		cur, _ := r.sw.Board.Snapshot().Task(pass.ID)
+		return cur.Status != StatusTodo
+	}
+	for n := 1; n <= 3; n++ {
+		at := stop(now)
+		if handed() {
+			t.Fatalf("stop %d: the pass went straight back to its worker", n)
+		}
+		if st := r.sw.DocsState(); !strings.Contains(st, "trying again in "+docsBackoff(n).String()) {
+			t.Errorf("stop %d: state %q", n, st)
+		}
+		r.sw.docsTick(at.Add(docsBackoff(n) - time.Second))
+		if handed() {
+			t.Fatalf("stop %d: handed out before its wait of %s", n, docsBackoff(n))
+		}
+		now = at.Add(docsBackoff(n))
+		r.sw.docsTick(now)
+		if !handed() {
+			t.Fatalf("stop %d: not handed out after its wait of %s", n, docsBackoff(n))
+		}
+	}
+	if docsBackoff(1) != docsRetry || docsBackoff(2) != 2*docsRetry || docsBackoff(40) != docsBackoffMax {
+		t.Errorf("backoff %s %s %s", docsBackoff(1), docsBackoff(2), docsBackoff(40))
+	}
+}
+
 // Same-ID repairs must become fresh documentation work after acceptance, including
 // legacy tasks whose first accepted revision is zero.
 func TestAutoDocsTracksAcceptedRevisions(t *testing.T) {

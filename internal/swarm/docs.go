@@ -109,6 +109,21 @@ func unneeded(t Task, landed map[string]bool) bool {
 // task that could not be started (no free slot, a scope overlap, the budget).
 const docsRetry = 30 * time.Second
 
+// docsBackoffMax bounds how long a pass that keeps stopping waits before it is handed out again (docsBackoff).
+const docsBackoffMax = 30 * time.Minute
+
+// docsBackoff is how long a pass waits after its worker stopped on it for the nth time: docsRetry, doubled for each stop after
+// the first, at most docsBackoffMax. A pass whose worker stops on every attempt (its model has no capacity, its provider is
+// down) went straight back to the same worker: in a team run without an attempt bound (persistent pools) one pass was handed
+// out fifteen times in 75 minutes, each run failing the same way after five minutes of retries.
+func docsBackoff(n int) time.Duration {
+	d := docsRetry
+	for i := 1; i < n && d < docsBackoffMax; i++ {
+		d *= 2
+	}
+	return min(d, docsBackoffMax)
+}
+
 // docsChange is one change waiting for the docs worker.
 type docsChange struct {
 	task, title, kind string
@@ -126,6 +141,7 @@ type docsKeeper struct {
 	last    string    // the last task a finished pass covered
 	passes  int       // finished passes
 	retryAt time.Time // no new attempt before this
+	stopped uint64    // the revision of open whose stop retryAt already waits out
 	coded   bool      // an implementation task has been accepted: agreements alone may start a pass
 
 	// edited are the product files the manager changed by itself since the last pass took them (noteManagerEdit), and
@@ -251,7 +267,13 @@ func (s *Swarm) docsTick(now time.Time) {
 		t, ok := snap.Task(k.open)
 		if ok && t.Status == StatusTodo && t.Owner == "" {
 			// The pass went back to the board (its run was refused, interrupted or handed
-			// back): it is the docs worker's again as soon as one is idle.
+			// back): it is the docs worker's again as soon as one is idle, after a wait that
+			// grows with each time a worker stopped on it.
+			if t.Attempts > 0 && t.Rev != k.stopped {
+				k.stopped = t.Rev
+				k.retryAt = now.Add(docsBackoff(t.Attempts))
+				k.waiting = cleanText(fmt.Sprintf("its worker stopped %d time(s) (%s); trying again in %s", t.Attempts, t.Line, docsBackoff(t.Attempts)), 160)
+			}
 			open, due := k.open, !now.Before(k.retryAt)
 			k.mu.Unlock()
 			if agentID, busy := s.docsWorker(); due && !busy {
