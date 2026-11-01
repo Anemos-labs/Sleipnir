@@ -522,6 +522,16 @@ func TestReadSmallIsBounded(t *testing.T) {
 	if got := readSmall(root, "small.go", 100); got != "package s\n" {
 		t.Errorf("a cap above the size: %q", got)
 	}
+	// a link in the project that leads out of it reads nothing
+	outside := filepath.Join(t.TempDir(), "secret.go")
+	if err := os.WriteFile(outside, []byte("package secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "link.go")); err == nil {
+		if got := readSmall(root, "link.go", 100); got != "" {
+			t.Errorf("a link out of the project read %q", got)
+		}
+	}
 	if err := os.Mkdir(filepath.Join(root, "dir.go"), 0o755); err != nil {
 		t.Fatal(err)
 	}

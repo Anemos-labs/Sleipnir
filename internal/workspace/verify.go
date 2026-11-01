@@ -121,7 +121,7 @@ func RunShell(ctx context.Context, req VerifyRequest) VerifyResult {
 	cmd.Stdin = nil
 	buf := newTailBuffer(maxOut)
 	cmd.Stdout, cmd.Stderr = buf, buf // one writer: interleaving is preserved
-	configureCmd(cmd)
+	stopCancel := configureCmd(cmd)
 	executil.ConfigureShell(cmd)
 	cmd.WaitDelay = 3 * time.Second
 
@@ -131,6 +131,7 @@ func RunShell(ctx context.Context, req VerifyRequest) VerifyResult {
 	if cmd.Process != nil {
 		killGroup(cmd.Process.Pid) // reap background children the command left behind
 	}
+	stopCancel() // the group is gone: a SIGKILL a cancellation scheduled must not reach a group that reuses its id
 	res.Output, res.Truncated = buf.String()
 	if cmd.ProcessState != nil {
 		res.ExitCode = cmd.ProcessState.ExitCode()

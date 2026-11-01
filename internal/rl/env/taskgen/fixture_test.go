@@ -252,3 +252,25 @@ func TestWriteFilesRefusesAbsolutePaths(t *testing.T) {
 		t.Errorf("a relative path is fine: %v", err)
 	}
 }
+
+// A fixture whose id is not a task id is refused before anything under RepoRoot is touched: the id names the directory a fixture
+// replaces there, and ".git" or "." is not one to remove.
+func TestFromFixtureWithABadIDLeavesRepoRootAlone(t *testing.T) {
+	for _, id := range []string{".git", "-x"} {
+		root, repos := t.TempDir(), t.TempDir()
+		dir := writeFixture(t, root, id, nil)
+		keep := filepath.Join(repos, id, "keep")
+		if err := os.MkdirAll(filepath.Dir(keep), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(keep, []byte("keep"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := FromFixture(context.Background(), dir, FixtureOptions{RepoRoot: repos, HiddenBlobs: fixtureBlobs(t)}); err == nil {
+			t.Errorf("a fixture with the id %q was built", id)
+		}
+		if b, err := os.ReadFile(keep); err != nil || string(b) != "keep" {
+			t.Errorf("id %q: RepoRoot/%s/keep was changed: %q, %v", id, id, b, err)
+		}
+	}
+}

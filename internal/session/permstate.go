@@ -14,7 +14,18 @@ func (s *Session) keepPermissions() {
 	if s.Perm == nil || s.Log == nil {
 		return
 	}
+	// The state is read and written in one step: two changes saved at once (a rule added from the web while another is taken back)
+	// write their states in the order they were read, so the last one in the log is the state after both.
+	s.permMu.Lock()
+	defer s.permMu.Unlock()
 	st := map[string]any{"mode": string(s.Perm.Mode()), "allow": s.Perm.Granted()}
+	// The deny and ask rules added while the session ran come back with the grants: a resume must not lift a restriction.
+	if d := s.Perm.Added(perm.Deny); len(d) > 0 {
+		st["deny"] = d
+	}
+	if a := s.Perm.Added(perm.Ask); len(a) > 0 {
+		st["ask"] = a
+	}
 	b, _ := json.Marshal(st)
 	s.mu.Lock()
 	same := s.lastPerm == string(b)
@@ -28,14 +39,21 @@ func (s *Session) keepPermissions() {
 // restorePermissions gives a resumed session the rules its log ends with. A mode the person chose on this command line (anything but the default)
 // wins over the one in the log, and bypass and yolo are never brought back: they are said again, on purpose, each time.
 func (s *Session) restorePermissions() {
-	var last struct {
+	type state struct {
 		Mode  string   `json:"mode"`
 		Allow []string `json:"allow"`
+		Deny  []string `json:"deny"`
+		Ask   []string `json:"ask"`
 	}
+	var last state
 	found := false
 	_ = events.Scan(filepath.Join(s.Dir, "events.jsonl"), func(e events.Event) error {
-		if e.Type == events.TypePermState && json.Unmarshal(e.Data, &last) == nil {
-			found = true
+		if e.Type == events.TypePermState {
+			// a state that does not decode is skipped: the last one that does stands, not a half-read mix of the two
+			var st state
+			if json.Unmarshal(e.Data, &st) == nil {
+				last, found = st, true
+			}
 		}
 		return nil
 	})
@@ -46,13 +64,22 @@ func (s *Session) restorePermissions() {
 		s.Perm.SetMode(m)
 		s.restoredMode = last.Mode
 	}
-	for _, r := range last.Allow {
-		if rule, err := perm.ParseRule(perm.Allow, r); err == nil {
-			s.Perm.AddRule(perm.ScopeSession, rule)
-			s.restoredRules++
+	for _, set := range []struct {
+		a     perm.Action
+		rules []string
+	}{{perm.Deny, last.Deny}, {perm.Ask, last.Ask}, {perm.Allow, last.Allow}} {
+		for _, r := range set.rules {
+			if rule, err := perm.ParseRule(set.a, r); err == nil {
+				s.Perm.AddRule(perm.ScopeSession, rule)
+				s.restoredRules++
+			}
 		}
 	}
 }
+
+// SavePermissions writes the permission state into the log now, not at the end of the turn: a rule taken back must stay taken
+// back for a session resumed before the turn ends.
+func (s *Session) SavePermissions() { s.keepPermissions() }
 
 // RestoredPermissions says what a resumed session got back from its log: the mode (when it was not the default) and how many allow rules.
 func (s *Session) RestoredPermissions() (mode string, rules int) {

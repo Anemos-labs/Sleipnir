@@ -376,7 +376,7 @@ func printExportStats(w io.Writer, st export.Stats, out string) {
 		fmt.Fprintf(w, "  teacher steps skipped (not in --teacher): %s\n", kvLine(st.TeacherSkipped))
 	}
 	for _, x := range st.Warnings {
-		fmt.Fprintf(w, "  warning: %s\n", x)
+		fmt.Fprintf(w, "  warning: %s\n", oneLineSafe(x))
 	}
 }
 
@@ -641,7 +641,7 @@ func rlReward(_ context.Context, args []string, stdout, stderr io.Writer) error 
 		if hasHack(ep) {
 			hacks++
 		}
-		fmt.Fprintf(tw, "%s\t%.3f\t%.3f\t%s\n", ep.ID, was, ep.Reward.Total, strings.Join(ep.Flags, ","))
+		fmt.Fprintf(tw, "%s\t%.3f\t%.3f\t%s\n", oneLineSafe(ep.ID), was, ep.Reward.Total, oneLineSafe(strings.Join(ep.Flags, ",")))
 		if !*dry {
 			if err := writeJSONFile(filepath.Join(s.Dir, "episode.json"), ep); err != nil {
 				return fmt.Errorf("rl reward: %s: %w", ep.ID, err)
@@ -721,7 +721,7 @@ func printSummary(w io.Writer, s *env.Summary) {
 	case s.Interrupted:
 		state = "interrupted"
 	}
-	fmt.Fprintf(w, "run %s: %s; %d tasks x %d samples\n", s.RunID, state, s.Tasks, s.Group)
+	fmt.Fprintf(w, "run %s: %s; %d tasks x %d samples\n", oneLineSafe(s.RunID), state, s.Tasks, s.Group)
 	fmt.Fprintf(w, "  rollouts %d: %d completed (%d resumed), %d infra errors, %d cancelled, %d pending", s.Rollouts, s.Completed, s.Resumed, s.Infra, s.Cancelled, s.Pending)
 	if s.Capped > 0 {
 		fmt.Fprintf(w, ", %d not run (spend cap)", s.Capped)
@@ -738,18 +738,18 @@ func printSummary(w io.Writer, s *env.Summary) {
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 		fmt.Fprintln(tw, "TASK\tSAMPLES\tPASSED\tPASS%\tREWARD\tCOST")
 		for _, t := range s.PerTask {
-			fmt.Fprintf(tw, "%s\t%d\t%d\t%.0f\t%.3f\t$%.4f\n", t.ID, t.Samples, t.Passed, 100*t.PassRate, t.MeanReward, t.MeanCostUSD)
+			fmt.Fprintf(tw, "%s\t%d\t%d\t%.0f\t%.3f\t$%.4f\n", oneLineSafe(t.ID), t.Samples, t.Passed, 100*t.PassRate, t.MeanReward, t.MeanCostUSD)
 		}
 		tw.Flush()
 	}
 	for _, e := range s.Skips {
-		fmt.Fprintf(w, "skipped: %s (%d rollouts): %s\n", e.Task, e.Rollouts, e.Reason)
+		fmt.Fprintf(w, "skipped: %s (%d rollouts): %s\n", oneLineSafe(e.Task), e.Rollouts, oneLineSafe(e.Reason))
 	}
 	for _, e := range s.InfraErrors {
-		fmt.Fprintf(w, "infra: %s/%d after %d attempts: %s\n", e.Task, e.Sample, e.Attempts, e.Message)
+		fmt.Fprintf(w, "infra: %s/%d after %d attempts: %s\n", oneLineSafe(e.Task), e.Sample, e.Attempts, oneLineSafe(e.Message))
 	}
 	for _, x := range s.Warnings {
-		fmt.Fprintf(w, "warning: %s\n", x)
+		fmt.Fprintf(w, "warning: %s\n", oneLineSafe(x))
 	}
 }
 

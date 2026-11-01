@@ -46,6 +46,9 @@ func (g *gitCode) Read(ctx context.Context, file string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s is not a file of the scanned commit", file)
 	}
+	if len(b) > maxCiteFile { // a source file worth citing is far smaller; a huge blob would be split and cached whole
+		return nil, fmt.Errorf("%s is larger than %d MiB; cite a source file", file, maxCiteFile>>20)
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if len(g.order) >= codeCacheFiles {
@@ -59,6 +62,7 @@ func (g *gitCode) Read(ctx context.Context, file string) ([]byte, error) {
 
 // Quote bounds.
 const (
+	maxCiteFile   = 4 << 20 // bytes of a file a citation is checked against
 	maxQuoteLines = 15
 	maxQuoteRunes = 1200
 	minQuoteRunes = 6

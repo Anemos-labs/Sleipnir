@@ -80,6 +80,22 @@ func TestDescribeChangesNamesAFewAndCountsTheRest(t *testing.T) {
 	}
 }
 
+// An entry written when sums were kept as their first 16 digits: the files whose sum still starts with that prefix are not reported
+// as changed, so the one that did change is named, not lost among the others after the first three.
+func TestChangesOfALegacyEntryNameTheFileThatChanged(t *testing.T) {
+	sum := func(c byte) string { return strings.Repeat(string(c), 64) }
+	fp := &Footprint{Files: []File{{Path: "a", Sum: sum('1')}, {Path: "b", Sum: sum('2')}, {Path: "c", Sum: sum('3')}, {Path: "d", Sum: sum('4')}, {Path: "e", Sum: sum('5')}}}
+	prev := Entry{Files: map[string]string{"a": sum('1')[:16], "b": sum('2')[:16], "c": sum('3')[:16], "d": sum('4')[:16], "e": sum('9')[:16]}}
+	if got := DescribeChanges(Changes(prev, fp)); got != "e changed" {
+		t.Errorf("DescribeChanges = %q, want only e changed", got)
+	}
+	// a whole sum is compared whole: a stored sum that only starts the same is a change
+	prev = Entry{Files: map[string]string{"a": sum('1')[:16] + strings.Repeat("0", 48)}}
+	if got := Changes(prev, &Footprint{Files: fp.Files[:1]}); len(got) != 1 || got[0].What != "changed" {
+		t.Errorf("Changes = %v, want a changed", got)
+	}
+}
+
 func TestRememberRefusesAFootprintThatIsEmpty(t *testing.T) {
 	p := &project{t: t, root: realDir(t), home: realDir(t)}
 	if err := OpenLedger(filepath.Join(t.TempDir(), "trust.json")).Remember(p.root, p.scan(), time.Now()); err == nil {

@@ -100,6 +100,14 @@ func cmdChat(ctx context.Context, args []string) error {
 	if err != nil {
 		return usageError(fs, "chat: "+err.Error())
 	}
+	if *cf.managerAnswersAfter < 0 {
+		return usageError(fs, "chat: --manager-answers-after must not be negative")
+	}
+	answersAfter := managerAnswersGiven(fs, *cf.managerAnswersAfter)
+	answersUpTo, err := perm.ParseDanger(*cf.managerAnswersUpTo)
+	if err != nil {
+		return usageError(fs, "chat: --manager-answers-up-to: "+err.Error())
+	}
 	checkForUpdateInBackground()
 	// Nothing says which model to use: ask the provider what it has, once (pick.go).
 	asking := bufio.NewReader(os.Stdin)
@@ -112,8 +120,8 @@ func cmdChat(ctx context.Context, args []string) error {
 			Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: team, Workers: workers,
 			TrustProject: *trust, BudgetUSD: *budget, CompactAtPercent: *cf.compactAt, Resume: spec, NoMCP: *noMCP, NoMemory: *cf.noMemory, Sandbox: box, TrainingLogs: *cf.trainingLogs,
 			Verify: *verify, Isolation: *isolation, Commit: *commit, Mailman: mailman(), AutoDocs: autoDocs(), ManagerApproves: managerApproves(),
-			RoleModels: roleModels,
-			Team:       append([]session.TeamSlot(nil), teamSlots...), DefaultTeam: true, Allow: expandAllow(*allow),
+			ManagerAnswersAfter: answersAfter, ManagerAnswersUpTo: answersUpTo, RoleModels: roleModels,
+			Team: append([]session.TeamSlot(nil), teamSlots...), DefaultTeam: true, Allow: expandAllow(*allow),
 		})
 	}
 	if !*plain && app.CanDrawChat(os.Stdin, os.Stdout, os.Getenv) {

@@ -106,7 +106,7 @@ type Options struct {
 	// AskTimeout is how long a question to the person waits for its answer before it is refused (perm.Config.AskTimeout); zero waits.
 	AskTimeout time.Duration
 	// ManagerAnswersAfter, when positive, overrides permissions.manager_answers_after: in a team, how long a worker's question waits
-	// for the person before the manager answers it for them (perm.Config.Fallback). ManagerAnswersUpTo, when set, overrides
+	// for the person before the manager answers it for them (perm.Config.Fallback). Negative is never, whatever the configuration says. ManagerAnswersUpTo, when set, overrides
 	// permissions.manager_answers_up_to: the most dangerous kind of question it may answer.
 	ManagerAnswersAfter time.Duration
 	ManagerAnswersUpTo  perm.Danger
@@ -287,9 +287,10 @@ type Session struct {
 	// team is the team the swarm was built with (Team).
 	team []TeamSlot
 
-	lastPerm         string // the permission state last written to the log (keepPermissions)
-	restoredMode     string // what a resumed session got back (restorePermissions)
-	unattendedBypass bool   // bypass was chosen because nobody can answer (Options.Unattended)
+	lastPerm         string     // the permission state last written to the log (keepPermissions)
+	permMu           sync.Mutex // held while keepPermissions reads the permission state and writes it to the log
+	restoredMode     string     // what a resumed session got back (restorePermissions)
+	unattendedBypass bool       // bypass was chosen because nobody can answer (Options.Unattended)
 	restoredRules    int
 	// modelRef is the provider/model the session runs on (empty when the provider was given as a value).
 	modelRef string

@@ -34,13 +34,26 @@ type ReadOpts struct {
 	// must lie inside. This is the defence against a repository that commits a
 	// symlink named SKILL.md pointing at ~/.ssh/id_ed25519.
 	Contain string
+	// Ext, when not empty, is the extension (".md") the file's real path must end in, in any case. It is checked on the file that
+	// was opened, like Contain: a link swapped for one to an .env between a check and the read fails the read.
+	Ext string
+}
+
+// ExtError reports a file whose real path does not have the extension ReadOpts.Ext asks for.
+type ExtError struct {
+	Real string // the path the file resolved to
+	Ext  string // the extension asked for
+}
+
+func (e *ExtError) Error() string {
+	return fmt.Sprintf("the file resolves to %q, which is not a %s file", filepath.Base(e.Real), e.Ext)
 }
 
 // File is what ReadFile returns.
 type File struct {
 	Data      []byte
 	Truncated bool
-	// Real is the path with symlinks resolved; set only when Contain was given.
+	// Real is the path with symlinks resolved; set only when Contain or Ext was given.
 	Real string
 }
 
@@ -70,12 +83,15 @@ func ReadFile(path string, o ReadOpts) (File, error) {
 		return File{}, ErrNotRegular
 	}
 	var real string
-	if o.Contain != "" {
+	if o.Contain != "" || o.Ext != "" {
 		if real, err = filepath.EvalSymlinks(path); err != nil {
 			return File{}, err
 		}
-		if !Within(o.Contain, real) {
+		if o.Contain != "" && !Within(o.Contain, real) {
 			return File{}, ErrEscapes
+		}
+		if o.Ext != "" && !strings.EqualFold(filepath.Ext(real), o.Ext) {
+			return File{}, &ExtError{Real: real, Ext: o.Ext}
 		}
 		rfi, err := os.Stat(real)
 		if err != nil {
@@ -135,7 +151,7 @@ type Parsed struct {
 	Hidden Hidden
 	// Truncated says the file exceeded the size cap.
 	Truncated bool
-	// Real is the file's symlink-free path (set when Contain was given).
+	// Real is the file's symlink-free path (set when Contain or Ext was given).
 	Real string
 }
 

@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -396,6 +397,13 @@ func gitMounts(paths []string) []gitMount {
 				out = append(out, gitMount{filepath.Join(gd, g), true, gi.Mode()&os.ModeSymlink != 0})
 			}
 		}
+		// A file the configuration includes from inside the project is configuration the host's git reads as much as
+		// .git/config itself (a core.sshCommand for the progress push): it is guarded the same way.
+		for _, inc := range projectIncludes(filepath.Join(gd, "config"), paths) {
+			if ii, err := os.Lstat(inc); err == nil && !ii.IsDir() {
+				out = append(out, gitMount{inc, true, ii.Mode()&os.ModeSymlink != 0})
+			}
+		}
 		if ents, err := os.ReadDir(filepath.Join(gd, "worktrees")); err == nil {
 			for _, e := range ents {
 				f := filepath.Join(gd, "worktrees", e.Name(), "config.worktree")
@@ -405,7 +413,123 @@ func gitMounts(paths []string) []gitMount {
 			}
 		}
 	}
+	// A path is mounted once: the engine refuses two mounts on one destination (an included file that is also a guard, or one
+	// included by two projects).
+	seen := map[string]bool{}
+	return slices.DeleteFunc(out, func(m gitMount) bool {
+		dup := seen[m.path]
+		seen[m.path] = true
+		return dup
+	})
+}
+
+// projectIncludes are the files a git configuration file includes (include.path, includeIf.<cond>.path, and theirs, a few
+// levels deep) that lie inside one of the mounted paths. A file outside them is not mounted into the container at all.
+func projectIncludes(config string, paths []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	var walk func(file string, depth int)
+	walk = func(file string, depth int) {
+		if depth > 4 || seen[file] {
+			return
+		}
+		seen[file] = true
+		b, err := readSmallRegular(file, 1<<20)
+		if err != nil {
+			return
+		}
+		section := ""
+		for _, line := range strings.Split(strings.ReplaceAll(string(b), "\\\n", ""), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || line[0] == '#' || line[0] == ';' {
+				continue
+			}
+			if line[0] == '[' {
+				end := strings.IndexByte(line, ']')
+				if end < 0 {
+					continue
+				}
+				section = strings.ToLower(strings.SplitN(strings.TrimSpace(line[1:end])+" ", " ", 2)[0])
+				section = strings.SplitN(section, ".", 2)[0]
+				if line = strings.TrimSpace(line[end+1:]); line == "" {
+					continue
+				}
+			}
+			k, v, ok := strings.Cut(line, "=")
+			if !ok || (section != "include" && section != "includeif") || !strings.EqualFold(strings.TrimSpace(k), "path") {
+				continue
+			}
+			v = gitConfigValue(strings.TrimLeft(v, " \t"))
+			if v == "" || strings.HasPrefix(v, "~") {
+				continue // the home directory is not mounted
+			}
+			if !filepath.IsAbs(v) {
+				v = filepath.Join(filepath.Dir(file), v)
+			}
+			v = filepath.Clean(v)
+			for _, p := range paths {
+				if v == p || strings.HasPrefix(v, p+string(filepath.Separator)) {
+					if !seen[v] {
+						out = append(out, v)
+						walk(v, depth+1)
+					}
+					break
+				}
+			}
+		}
+	}
+	walk(config, 0)
 	return out
+}
+
+// gitConfigValue is the value of a git configuration line as git reads it: double quotes are taken off and keep what is between
+// them, a backslash escapes the next character, and outside quotes a # or ; starts a comment and blanks at the end are dropped.
+func gitConfigValue(raw string) string {
+	var b strings.Builder
+	quoted, pending := false, ""
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		switch {
+		case c == '\\' && i+1 < len(raw):
+			i++
+			b.WriteString(pending)
+			pending = ""
+			switch raw[i] {
+			case 'n':
+				b.WriteByte('\n')
+			case 't':
+				b.WriteByte('\t')
+			case 'b':
+				b.WriteByte('\b')
+			default:
+				b.WriteByte(raw[i])
+			}
+		case c == '"':
+			b.WriteString(pending)
+			pending, quoted = "", !quoted
+		case !quoted && (c == '#' || c == ';'):
+			return b.String()
+		case !quoted && (c == ' ' || c == '\t'):
+			pending += string(c)
+		default:
+			b.WriteString(pending)
+			pending = ""
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
+}
+
+// readSmallRegular reads a regular file of at most max bytes.
+func readSmallRegular(p string, max int64) ([]byte, error) {
+	fi, err := os.Stat(p)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() || fi.Size() > max {
+		return nil, errors.New("not a small regular file")
+	}
+	return os.ReadFile(p)
 }
 
 // ensureImage pulls image when the engine does not have it yet.

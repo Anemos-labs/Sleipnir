@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -102,7 +103,7 @@ func (l *Ledger) Remember(cwd string, fp *Footprint, now time.Time) error {
 func EntryOf(fp *Footprint) Entry {
 	files := make(map[string]string, len(fp.Files))
 	for _, f := range fp.Files {
-		files[f.Path] = f.Sum[:min(16, len(f.Sum))]
+		files[f.Path] = f.Sum // whole: a prefix leaves room for a prepared file with the same one
 	}
 	return Entry{Digest: fp.Digest, Files: files}
 }
@@ -179,16 +180,21 @@ type Change struct {
 	What string
 }
 
-// Changes says how the footprint differs from what the entry trusted, by path.
+// legacySumLen is the length of the sums an entry was written with before they were kept whole: the first 16 hex digits.
+const legacySumLen = 16
+
+// Changes says how the footprint differs from what the entry trusted, by path. It only describes a difference: whether the
+// project is still trusted is the footprint's digest, made from the whole sums. A file of an entry written with the 16-digit
+// prefix of its sum is unchanged when its sum still starts with it, so the file that did change is not lost among the others.
 func Changes(prev Entry, fp *Footprint) []Change {
 	var out []Change
 	now := map[string]string{}
 	for _, f := range fp.Files {
-		now[f.Path] = f.Sum[:16]
+		now[f.Path] = f.Sum
 		switch old, ok := prev.Files[f.Path]; {
 		case !ok:
 			out = append(out, Change{f.Path, "added"})
-		case old != f.Sum[:16]:
+		case old != f.Sum && !(len(old) == legacySumLen && len(f.Sum) > legacySumLen && strings.HasPrefix(f.Sum, old)):
 			out = append(out, Change{f.Path, "changed"})
 		}
 	}

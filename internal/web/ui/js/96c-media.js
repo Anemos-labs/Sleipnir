@@ -155,7 +155,13 @@
     // a picture from elsewhere is not fetched (the page loads nothing from another origin): its address is a link
     return t.scheme === 'http' || t.scheme === 'https' ? '<a class="pv-noimg" href="' + attr(t.u) + '" target="_blank" rel="noopener noreferrer">🖼 ' + (alt || attr(t.u)) + '</a>' : '<span class="pv-noimg">🖼 ' + (alt || attr(t.u)) + '</span>';
   }
-  const HR = /^ {0,3}([-*_])(?:\s*\1){2,}\s*$/, ATX = /^ {0,3}(#{1,6})(?:\s+(.*?))?(?:\s+#+)?\s*$/, FENCE = /^ {0,3}(`{3,}|~{3,})\s*([^`\s]*)[^`]*$/, QUOTE = /^ {0,3}> ?/,
+  /* a fence opening: the run of backticks or tildes, then an info string without a backtick, whose first word is the language. Done in
+     two steps, each linear: the one expression it was took time quadratic in a long line's length to fail at its end */
+  const fenceRe = {
+    exec(l) { const m = /^ {0,3}(`{3,}|~{3,})/.exec(l); if (!m) return null; const rest = l.slice(m[0].length); if (rest.includes('`')) return null; return [l, m[1], /^\s*([^\s]*)/.exec(rest)[1]]; },
+    test(l) { return this.exec(l) !== null; },
+  };
+  const HR = /^ {0,3}([-*_])(?:\s*\1){2,}\s*$/, ATX = /^ {0,3}(#{1,6})(?:\s+(.*?))?(?:\s+#+)?\s*$/, FENCE = fenceRe, QUOTE = /^ {0,3}> ?/,
     LI = /^( {0,3})([-*+]|\d{1,9}[.)])(\s+|$)(.*)$/, TROW = /^\s*\|?.*\|.*$/;
   const MAX_CELLS = 20000;   // the table cells of one document (a table is at most MAX_COLS wide)
   const cellsOf = l => { let s = l.trim(); if (s.startsWith('|')) s = s.slice(1); if (s.endsWith('|') && !s.endsWith('\\|')) s = s.slice(0, -1); return s.split(/(?<!\\)\|/).map(c => c.trim()); };

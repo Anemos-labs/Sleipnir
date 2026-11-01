@@ -2048,6 +2048,7 @@ func (t *webTab) addRules(ctx context.Context, effect string, given []string, or
 	for _, r := range parsed {
 		s.Perm.AddRule(perm.ScopeSession, r.pr)
 	}
+	s.SavePermissions()
 	webAction(s, "rule", string(act)+" "+strings.Join(given, " "))
 	for _, g := range given {
 		g = strings.TrimSpace(g)
@@ -2111,6 +2112,7 @@ func (t *webTab) RemoveRule(ctx context.Context, req wire.RuleRequest) (wire.Rul
 	t.mu.Lock()
 	delete(t.origins, found.Effect+" "+rule)
 	t.mu.Unlock()
+	s.SavePermissions()
 	webAction(s, "rule removed", rule)
 	t.sys("◇", "rule removed: "+clip(rule, maxRuleLen))
 	t.publishMeta()

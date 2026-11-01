@@ -322,7 +322,7 @@ Usage of chat:
   -mailman
         swarm: route worker mail through a mailman agent that digests bursts (default: config swarm.mailman; --mailman=false turns it off for this run). Its model: --role-model mailman=<model>
   -manager-answers-after duration
-        swarm: a worker's question the person has not answered in this long is answered by the manager for them, if it is no more dangerous than --manager-answers-up-to; the person's question is withdrawn and says who answered (default: config permissions.manager_answers_after; 0 waits for the person)
+        swarm: a worker's question the person has not answered in this long is answered by the manager for them, if it is no more dangerous than --manager-answers-up-to; the person's question is withdrawn and says who answered (default: config permissions.manager_answers_after; 0 waits for the person, whatever the configuration says)
   -manager-answers-up-to string
         swarm: the most dangerous question the manager answers after --manager-answers-after: low (routine: inside the workspace, nothing guarded), medium (also the network, files outside the workspace, commands that cannot be checked beforehand) or high (also the high-risk class, guarded paths and your ask rules) (default: config permissions.manager_answers_up_to, else medium)
   -manager-approves
@@ -481,7 +481,7 @@ flags:
   -mailman
         swarm: route worker mail through a mailman agent that digests bursts (default: config swarm.mailman; --mailman=false turns it off for this run). Its model: --role-model mailman=<model>
   -manager-answers-after duration
-        swarm: a worker's question the person has not answered in this long is answered by the manager for them, if it is no more dangerous than --manager-answers-up-to; the person's question is withdrawn and says who answered (default: config permissions.manager_answers_after; 0 waits for the person)
+        swarm: a worker's question the person has not answered in this long is answered by the manager for them, if it is no more dangerous than --manager-answers-up-to; the person's question is withdrawn and says who answered (default: config permissions.manager_answers_after; 0 waits for the person, whatever the configuration says)
   -manager-answers-up-to string
         swarm: the most dangerous question the manager answers after --manager-answers-after: low (routine: inside the workspace, nothing guarded), medium (also the network, files outside the workspace, commands that cannot be checked beforehand) or high (also the high-risk class, guarded paths and your ask rules) (default: config permissions.manager_answers_up_to, else medium)
   -manager-approves

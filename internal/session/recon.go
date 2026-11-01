@@ -432,7 +432,13 @@ var (
 // readSmall reads at most max bytes from a regular file relative to root, returning the bytes read
 // or an empty string when it cannot open or inspect the file. max must be nonnegative.
 func readSmall(root, rel string, max int64) string {
-	f, err := os.Open(filepath.Join(root, rel))
+	// Through a root at the project: a link in the project that leads out of it reads nothing, as an unreadable file does.
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return ""
+	}
+	defer r.Close()
+	f, err := r.OpenFile(filepath.FromSlash(rel), readFlags, 0)
 	if err != nil {
 		return ""
 	}

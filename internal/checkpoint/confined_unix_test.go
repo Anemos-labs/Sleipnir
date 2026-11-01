@@ -5,6 +5,7 @@ package checkpoint
 import (
 	"io/fs"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -106,5 +107,65 @@ func TestConfinedOperationsDoNotFollowAParentSwappedAfterResolving(t *testing.T)
 	fi, _ := os.Stat(outside + "/x.txt")
 	if string(b) != "host" || fi == nil || fi.Mode().Perm() != 0o600 {
 		t.Fatalf("the file outside the project changed: %q %v", b, fi)
+	}
+}
+
+// A directory keeps its recorded set-group-ID bit, applied through a descriptor of the directory itself; a file at the path does
+// not get it.
+func TestConfinedChmodKeepsSetIDOnlyOnTheDirectory(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(root+"/d", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(root+"/f", []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	// whether this filesystem keeps the bit on a directory at all: where it does, the directory must have it
+	keepsSetgid := false
+	if err := os.Mkdir(root+"/probe", 0o755); err == nil && os.Chmod(root+"/probe", 0o755|fs.ModeSetgid) == nil {
+		fi, err := os.Stat(root + "/probe")
+		keepsSetgid = err == nil && fi.Mode()&fs.ModeSetgid != 0
+	}
+	for _, c := range []struct {
+		rel   string
+		setID bool
+	}{{"d", true}, {"f", false}} {
+		cf := &confined{root: r, rel: c.rel, abs: root + "/" + c.rel}
+		if err := cf.chmod(0o755 | fs.ModeSetgid); err != nil {
+			t.Fatalf("%s: %v", c.rel, err)
+		}
+		fi, err := os.Stat(root + "/" + c.rel)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := fi.Mode()&fs.ModeSetgid != 0; got != c.setID && (got || keepsSetgid) {
+			t.Errorf("%s: set-group-ID = %v, want %v", c.rel, got, c.setID)
+		}
+	}
+
+	// the directory swapped for another after the look: the bit is not put on what is there now
+	if err := os.Mkdir(root+"/e", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	chmodLooked = func(rel string) {
+		if rel == "e" {
+			// made before the old one goes, so it is another inode, not the old one's number again
+			_ = os.Mkdir(root+"/e2", 0o755)
+			_ = os.Remove(root + "/e")
+			_ = os.Rename(root+"/e2", root+"/e")
+		}
+	}
+	t.Cleanup(func() { chmodLooked = func(string) {} })
+	cf := &confined{root: r, rel: "e", abs: root + "/e"}
+	if err := cf.chmod(0o755 | fs.ModeSetgid); err == nil || !strings.Contains(err.Error(), "path changed") {
+		t.Errorf("a directory swapped after the look: %v", err)
+	}
+	if fi, err := os.Stat(root + "/e"); err != nil || fi.Mode()&fs.ModeSetgid != 0 {
+		t.Errorf("the directory swapped in got the bit: %v %v", fi, err)
 	}
 }

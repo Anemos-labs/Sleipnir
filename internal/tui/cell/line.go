@@ -82,6 +82,9 @@ type glyph struct {
 	style Style
 }
 
+// maxGlyphBytes bounds the text of one glyph: a base rune and the combining marks drawn with it.
+const maxGlyphBytes = 64
+
 func glyphs(l Line) []glyph {
 	var out []glyph
 	for _, sp := range l {
@@ -94,7 +97,11 @@ func glyphs(l Line) []glyph {
 				t, w = "�", 1
 			}
 			if w == 0 && len(out) > 0 && out[len(out)-1].style == sp.Style {
-				out[len(out)-1].text += t // a mark belongs to the rune before it
+				// A mark belongs to the rune before it. A cell holds a few: past maxGlyphBytes the rest of a run is dropped, so a
+				// long run of marks costs one pass instead of a copy of the growing glyph per mark.
+				if len(out[len(out)-1].text)+len(t) <= maxGlyphBytes {
+					out[len(out)-1].text += t
+				}
 				continue
 			}
 			if w == 0 {

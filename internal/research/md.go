@@ -530,6 +530,11 @@ func (r *mdRenderer) inline(s string) string {
 				i += n + end + n
 				continue
 			}
+			// A run with no closing run of its length is literal text as a whole: retried one backtick on, each shorter run
+			// would search the rest of the text again.
+			b.WriteString(s[i : i+n])
+			i += n
+			continue
 		case c == '[' && strings.HasPrefix(s[i:], "[["):
 			if end := f.after("]]", i+2); end >= 0 {
 				b.WriteString(r.wikiLink(s[i+2 : i+2+end]))

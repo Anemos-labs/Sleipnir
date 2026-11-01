@@ -3,7 +3,9 @@ package main
 import (
 	"slices"
 	"testing"
+	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
@@ -43,5 +45,26 @@ func TestTeamSizeCountsWorkersNotTheManager(t *testing.T) {
 	}
 	if _, chat := teamOf(3); workers != chat {
 		t.Errorf("rl swarm:3 asks for %d workers and chat --swarm 3 for %d", workers, chat)
+	}
+}
+
+// A restart keeps when the manager answers for the person: a wait, a 0 given (never, over the configuration's wait) and the level,
+// each read back by the chat flags as the session had it.
+func TestARestartKeepsWhenTheManagerAnswers(t *testing.T) {
+	projectDir(t)
+	for _, c := range []struct {
+		after time.Duration
+		upTo  perm.Danger
+	}{{-1, ""}, {5 * time.Minute, perm.DangerHigh}, {0, perm.DangerLow}} {
+		s := chatSessionWith(t, false, nil, func(o *session.Options) {
+			o.Swarm, o.Workers, o.ManagerAnswersAfter, o.ManagerAnswersUpTo = true, 8, c.after, c.upTo
+		}, nil)
+		cf, err := parseChatFlags(s.StartFlags())
+		if err != nil {
+			t.Fatalf("%v: %v", s.StartFlags(), err)
+		}
+		if o := cf.options(); o.ManagerAnswersAfter != c.after || o.ManagerAnswersUpTo != c.upTo {
+			t.Errorf("after %v up to %q came back as %v up to %q from %v", c.after, c.upTo, o.ManagerAnswersAfter, o.ManagerAnswersUpTo, s.StartFlags())
+		}
 	}
 }

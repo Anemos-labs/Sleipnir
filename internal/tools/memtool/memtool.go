@@ -28,6 +28,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -520,8 +521,43 @@ func WriteProjectNotes(path string, notes []string) error {
 	return WriteNotes(path, notes)
 }
 
+// ignoreLineMatches judges one line of a .gitignore against a file name in its directory, as git does: leading blanks are part of
+// the pattern and trailing ones are not, a backslash escapes a leading ! or #, a pattern ending in / names directories only, one
+// with a / inside names a path below the directory, and a leading **/ matches in any directory, this one too. sure is false for a
+// line it cannot judge (a malformed pattern).
+func ignoreLineMatches(line, name string) (match, neg, sure bool) {
+	line = strings.TrimSuffix(line, "\r")
+	for strings.HasSuffix(line, " ") && !strings.HasSuffix(line, "\\ ") {
+		line = line[:len(line)-1]
+	}
+	if line == "" || line[0] == '#' {
+		return false, false, true
+	}
+	if neg = line[0] == '!'; neg {
+		line = line[1:]
+	}
+	if strings.HasPrefix(line, "\\!") || strings.HasPrefix(line, "\\#") {
+		line = line[1:]
+	}
+	if line == "" || strings.HasSuffix(line, "/") {
+		return false, neg, true
+	}
+	line = strings.TrimPrefix(line, "/")
+	for strings.HasPrefix(line, "**/") {
+		line = line[3:]
+	}
+	if strings.Contains(line, "/") {
+		return false, neg, true
+	}
+	ok, err := path.Match(line, name)
+	if err != nil {
+		return false, neg, false
+	}
+	return ok, neg, true
+}
+
 // ignoreBeside makes git ignore the notes file at p with a .gitignore in its directory: created when missing, and given the
-// file's name when it does not list it yet. The file's name is matched exactly (a line of its own). A .gitignore the tool
+// file's name when it does not ignore it yet (the last line whose pattern matches the name decides, as in git). A .gitignore the tool
 // creates lists itself too, so the directory leaves no untracked file behind: a run with --commit needs a clean checkout, and
 // a resumed one was refused for it.
 func ignoreBeside(p string) error {
@@ -539,12 +575,16 @@ func ignoreBeside(p string) error {
 	}
 	// The last line about the name decides, as in git: a later "!name" undoes an earlier "name", and the name is then
 	// listed again at the end.
+	// A pattern counts as well as the name itself: "*.md" ignores it, and a later "!*.md" includes it again.
+	// A line read wrong only ever adds the name once more: a pattern this cannot judge does not count as ignoring it, and a
+	// negation it cannot judge counts as taking it back.
 	ignored := false
 	for _, l := range strings.Split(string(b), "\n") {
-		switch strings.TrimSpace(l) {
-		case name, "/" + name:
-			ignored = true
-		case "!" + name, "!/" + name:
+		match, neg, sure := ignoreLineMatches(l, name)
+		switch {
+		case sure && match:
+			ignored = !neg
+		case !sure && neg:
 			ignored = false
 		}
 	}

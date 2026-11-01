@@ -3,11 +3,13 @@ package session_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
@@ -666,5 +668,102 @@ func TestLatestStartIsTheLastRecordedStart(t *testing.T) {
 	}
 	if got := session.LatestStart(t.TempDir()); got.Verify != "" || got.Team != nil {
 		t.Errorf("LatestStart of a directory with no log = %+v", got)
+	}
+}
+
+// The deny and ask rules added while the session ran come back with the grants, and a rule taken back stays taken back even when
+// the session is resumed before another turn ends.
+func TestResumeKeepsRestrictionsAndRevocations(t *testing.T) {
+	repo := newRepo(t)
+	dir := filepath.Join(t.TempDir(), "sessions", "20260101-000000-abcdee")
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	o := opts(t, repo, client, model)
+	o.Dir, o.Mode = dir, perm.ModeDefault
+	s1, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	add := func(a perm.Action, r string) {
+		rule, _ := perm.ParseRule(a, r)
+		s1.Perm.AddRule(perm.ScopeSession, rule)
+	}
+	add(perm.Allow, "Bash(go test:*)")
+	add(perm.Allow, "Bash(make:*)")
+	add(perm.Deny, "Bash(curl:*)")
+	add(perm.Ask, "Bash(git push:*)")
+	if _, err := s1.Run(context.Background(), "hi"); err != nil {
+		t.Fatal(err)
+	}
+	s1.Perm.RemoveRule("Bash(make:*)")
+	s1.SavePermissions()
+	if err := s1.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// a state at the end of the log that does not decode is passed over: the one before it stands whole
+	l, err := events.Open(dir, filepath.Base(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.Emit("", events.TypePermState, map[string]any{"mode": "plan", "allow": 5})
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	o2 := opts(t, repo, client, model)
+	o2.Resume = dir
+	s2, err := session.New(context.Background(), o2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	if got := strings.Join(s2.Perm.Granted(), ","); got != "Bash(go test:*)" {
+		t.Errorf("grants after the resume: %s", got)
+	}
+	if got := s2.Perm.Added(perm.Deny); len(got) != 1 || got[0] != "Bash(curl:*)" {
+		t.Errorf("deny rules after the resume: %v", got)
+	}
+	if got := s2.Perm.Added(perm.Ask); len(got) != 1 || got[0] != "Bash(git push:*)" {
+		t.Errorf("ask rules after the resume: %v", got)
+	}
+}
+
+// Changes saved at once (the web adds a rule while another request takes one back) end with a state in the log that has all of
+// them: the state is read and written in one step, so an older reading cannot be written after a newer one.
+func TestPermissionsSavedAtOnceEndWithTheLastState(t *testing.T) {
+	repo := newRepo(t)
+	dir := filepath.Join(t.TempDir(), "sessions", "20260101-000000-abcdef")
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	o := opts(t, repo, client, model)
+	o.Dir, o.Mode = dir, perm.ModeDefault
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const n = 16
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			rule, _ := perm.ParseRule(perm.Allow, fmt.Sprintf("Bash(tool%d:*)", i))
+			s.Perm.AddRule(perm.ScopeSession, rule)
+			s.SavePermissions()
+		}()
+	}
+	wg.Wait()
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var last struct {
+		Allow []string `json:"allow"`
+	}
+	_ = events.Scan(filepath.Join(dir, "events.jsonl"), func(e events.Event) error {
+		if e.Type == events.TypePermState {
+			last.Allow = nil
+			_ = json.Unmarshal(e.Data, &last)
+		}
+		return nil
+	})
+	if len(last.Allow) != n {
+		t.Errorf("the last permission state in the log has %d of the %d rules: %v", len(last.Allow), n, last.Allow)
 	}
 }

@@ -122,9 +122,9 @@ func listJobs(w io.Writer, st sched.Store, now time.Time) error {
 		}
 		last := "never"
 		if !j.LastRun.IsZero() {
-			last = j.LastRun.Format("01-02 15:04") + " " + j.LastExit
+			last = j.LastRun.Format("01-02 15:04") + " " + oneLineSafe(j.LastExit)
 		}
-		goal := strings.Join(strings.Fields(j.Goal), " ")
+		goal := oneLineSafe(j.Goal)
 		if len(goal) > 60 {
 			goal = goal[:59] + "…"
 		}

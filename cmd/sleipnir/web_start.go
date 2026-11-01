@@ -119,7 +119,7 @@ func mergeOptions(base session.Options, f chatFlags, defaultCwd string) session.
 	out.Verify, out.Isolation, out.Commit, out.Mailman = o.Verify, o.Isolation, o.Commit, o.Mailman
 	out.RoleModels, out.Allow, out.Interactive = o.RoleModels, o.Allow, true
 	out.Team, out.AutoDocs, out.DefaultTeam, out.ManagerApproves = o.Team, o.AutoDocs, o.DefaultTeam, o.ManagerApproves
-	if o.ManagerAnswersAfter > 0 { // otherwise sleipnir web's own flags (base), else the configuration
+	if o.ManagerAnswersAfter != 0 { // otherwise sleipnir web's own flags (base), else the configuration; negative is never
 		out.ManagerAnswersAfter = o.ManagerAnswersAfter
 	}
 	if o.ManagerAnswersUpTo != "" {

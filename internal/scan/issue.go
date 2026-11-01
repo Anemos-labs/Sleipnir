@@ -103,10 +103,17 @@ func reproducing(l *Lead) *Proof {
 
 // writeFence writes text in a code fence long enough that no line of it closes the fence.
 func writeFence(b *strings.Builder, indent, text string) {
-	fence := "```"
-	for strings.Contains(text, fence) {
-		fence += "`"
+	// One backtick more than the longest run in the text, found in one pass.
+	longest, cur := 0, 0
+	for i := 0; i < len(text); i++ {
+		if text[i] == '`' {
+			cur++
+			longest = max(longest, cur)
+		} else {
+			cur = 0
+		}
 	}
+	fence := strings.Repeat("`", max(3, longest+1))
 	fmt.Fprintf(b, "%s%s\n", indent, fence)
 	for _, l := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
 		fmt.Fprintf(b, "%s%s\n", indent, l)
