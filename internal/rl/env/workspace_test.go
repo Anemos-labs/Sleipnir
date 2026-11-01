@@ -333,6 +333,31 @@ func TestSubdirWorkspace(t *testing.T) {
 	}
 }
 
+// A repo.subdir that the commit itself makes a link out of the tree is refused before setup runs.
+func TestSubdirCommittedAsALinkOutIsRefused(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks")
+	}
+	r := newFixtureRepo(t)
+	r.write("README.md", "mono\n")
+	if err := os.MkdirAll(filepath.Join(r.Dir, "svc"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), filepath.Join(r.Dir, "svc", "api")); err != nil {
+		t.Skip(err)
+	}
+	c := r.commit("mono")
+	task := mathxTask(r, c)
+	task.Repo.Subdir = "svc/api"
+	m := newManager(t)
+	if w, err := m.Prepare(ctxT(t), task, "s0"); err == nil || !IsInfra(err) {
+		if w != nil {
+			_ = w.Cleanup()
+		}
+		t.Fatalf("a subdir committed as a link out of the tree: %v", err)
+	}
+}
+
 // Setup runs in the tree and could put a link where repo.subdir was: the snapshot checks the subdirectory again before it becomes a
 // rollout's root, and refuses one that now leads out of the tree.
 func TestSubdirMadeALinkOutBySetupIsRefused(t *testing.T) {
