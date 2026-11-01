@@ -141,7 +141,7 @@ type docsKeeper struct {
 	last    string    // the last task a finished pass covered
 	passes  int       // finished passes
 	retryAt time.Time // no new attempt before this
-	stopped uint64    // the revision of open whose stop retryAt already waits out
+	stops   int       // the counted stops of open (its Attempts) that retryAt already waits out
 	coded   bool      // an implementation task has been accepted: agreements alone may start a pass
 
 	// edited are the product files the manager changed by itself since the last pass took them (noteManagerEdit), and
@@ -269,8 +269,8 @@ func (s *Swarm) docsTick(now time.Time) {
 			// The pass went back to the board (its run was refused, interrupted or handed
 			// back): it is the docs worker's again as soon as one is idle, after a wait that
 			// grows with each time a worker stopped on it.
-			if t.Attempts > 0 && t.Rev != k.stopped {
-				k.stopped = t.Rev
+			if t.Attempts > k.stops { // a new counted stop; a return that counted none (handed back, interrupted) waits for nothing
+				k.stops = t.Attempts
 				k.retryAt = now.Add(docsBackoff(t.Attempts))
 				k.waiting = cleanText(fmt.Sprintf("its worker stopped %d time(s) (%s); trying again in %s", t.Attempts, t.Line, docsBackoff(t.Attempts)), 160)
 			}
@@ -294,7 +294,7 @@ func (s *Swarm) docsTick(now time.Time) {
 		if ok && t.Status == StatusDone {
 			k.passes++
 		}
-		k.open, k.waiting = "", ""
+		k.open, k.waiting, k.stops = "", "", 0
 	}
 	if len(k.pending) == 0 || !k.coded || now.Before(k.retryAt) {
 		k.mu.Unlock()
@@ -318,7 +318,7 @@ func (s *Swarm) docsTick(now time.Time) {
 		return
 	}
 	k.pending = k.pending[len(batch):]
-	k.open, k.waiting = task.ID, ""
+	k.open, k.waiting, k.stops = task.ID, "", 0
 	for i := len(batch) - 1; i >= 0; i-- {
 		if batch[i].task != managerEdits {
 			k.last = batch[i].task
