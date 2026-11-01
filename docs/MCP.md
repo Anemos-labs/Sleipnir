@@ -166,11 +166,26 @@ its own tools; Sleipnir is one more thing it can delegate to.
 { "mcpServers": { "sleipnir": { "command": "sleipnir", "args": ["mcp", "serve", "--allow", "tests"] } } }
 ```
 
-With Claude Code: `claude mcp add sleipnir -- sleipnir mcp serve --allow tests`.
+With Claude Code: `claude mcp add --scope user sleipnir -- sleipnir mcp serve --allow tests`.
+
+That one entry works from every project and from clients that have no project folder (Claude Desktop): the caller
+passes the folder of each run as `sleipnir_start`'s `cwd`, an absolute path (or `~/...`), and sets `create` to make
+a new folder for a greenfield project. The folder must be inside one of the server's **roots**:
+
+| flags | roots | folder used when a call names none |
+|---|---|---|
+| none | your home directory | the directory the server was started in, if it is under your home; else none, so a call must name one |
+| `--root DIR` (repeatable) | those directories | the directory the server was started in, if it is inside one; else none |
+| `--cwd DIR` alone | that directory only (runs stay in one project, as before `--root`) | `DIR` |
+| `--root A --cwd DIR` | `A` | `DIR`, which must be inside a root |
+
+A relative `cwd` is resolved against the default folder, and is refused when there is none. A path whose existing part
+leads outside every root (through `..` or a symlink) is refused, and so is a folder that does not exist unless `create`
+is set. `sleipnir_jobs` lists the roots and the default folder, so a caller can see where it may work.
 
 | tool | what it does |
 |---|---|
-| `sleipnir_start` | starts a goal in the background and returns its job id at once. `goal` is required; `cwd`, `model`, `workers` (0 for one agent, 8 or more for a team), `team` (a saved team), `role_models`, `mode`, `verify`, `isolation`, `budget_usd` and `resume` mean what the `sleipnir run` flags of the same names mean |
+| `sleipnir_start` | starts a goal in the background and returns its job id at once. `goal` is required, and `cwd` (the project folder, see above) should be passed on every call; `create`, `model`, `workers` (0 for one agent, 8 or more for a team), `team` (a saved team), `role_models`, `mode`, `verify`, `isolation`, `budget_usd` and `resume` mean what the `sleipnir run` flags of the same names mean |
 | `sleipnir_status` | the job's state (`running`, `done`, `failed`, `cancelled`), its tool-call count, its recent activity and, once it has ended, its result: the final answer, steps, cost, session id and directory, and the tail of stderr when it failed |
 | `sleipnir_wait` | blocks until the job ends or `timeout_seconds` pass (default 300, at most 1800), then reports as `sleipnir_status` does |
 | `sleipnir_cancel` | ends a running job as Ctrl-C ends `sleipnir run`: work a team verified is applied first |
@@ -185,7 +200,7 @@ the caller should treat them as data.
 **Limits are the server's.** The model that calls the tools is not you, so everything that widens what a run may do is
 fixed by the flags the server was started with: `--mode` is a ceiling (default `bypass`, which is what an unattended
 `sleipnir run` uses; a call may ask for a stricter mode, never a wider one), `--allow` rules and `--trust-project` apply
-to every run, a run's `cwd` must be inside the server's `--cwd` (default: the directory it was started in), and
+to every run, a run's `cwd` must be inside one of the server's roots (`--root`, default your home directory; or `--cwd` alone), and
 `--max-jobs` (default 4) bounds the runs at once. A run has no one to answer its questions, so in the default mode what
 would ask is refused; `bypass` still refuses the high-risk class and protected paths (see [Configuration](CONFIGURATION.md)).
 The provider keys reach each run on an inherited pipe, not in its environment, as they do for the web interface's runner.

@@ -24,8 +24,8 @@
 // choice that widens what a job may do is the server's, fixed by the flags it
 // was started with, never the caller's: the permission mode is a ceiling (a
 // call may ask for a stricter one), the --allow rules and project trust are the
-// server's own, and a job's directory must be inside the server's root. A
-// caller picks the goal, the model, the team size or saved team, a verify
+// server's own, and a job's directory must be inside one of the server's roots. A
+// caller picks the job's directory (and may have it made, for a new project), the goal, the model, the team size or saved team, a verify
 // command, the isolation, a budget and a session to resume.
 //
 // The provider keys reach a child on an inherited pipe (sched.PassKeys), as

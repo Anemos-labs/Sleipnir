@@ -58,8 +58,9 @@ func newTestServer(t *testing.T, kind string, cfg Config) *Server {
 		t.Fatal(err)
 	}
 	cfg.Exe = exe
-	if cfg.Root == "" {
-		cfg.Root = t.TempDir()
+	if len(cfg.Roots) == 0 {
+		cfg.Roots = []string{t.TempDir()}
+		cfg.Dir = cfg.Roots[0]
 	}
 	cfg.Env = append(os.Environ(), fakeEnv+"="+kind)
 	s, err := New(cfg)
@@ -239,7 +240,7 @@ func TestArgsKeepTheServersLimits(t *testing.T) {
 	}
 	outside := t.TempDir()
 	real, _ := filepath.EvalSymlinks(root)
-	cfg := Config{Root: real, Mode: "accept-edits", Allow: []string{"tests"}, TrustProject: true}
+	cfg := Config{Roots: []string{real}, Dir: real, Mode: "accept-edits", Allow: []string{"tests"}, TrustProject: true}
 
 	args, dir, err := Args(cfg, StartArgs{Goal: "g", Cwd: "sub", Workers: 8, Model: "heimdallm/x", Mode: "plan", Verify: "go test {dirs}", Isolation: "worktree", BudgetUSD: 2.5, RoleModel: []string{"manager=heimdallm/y"}})
 	if err != nil {
@@ -272,8 +273,81 @@ func TestArgsKeepTheServersLimits(t *testing.T) {
 			t.Errorf("%+v: err = %v, want %q", tc.a, err, tc.want)
 		}
 	}
-	if _, err := New(Config{Exe: "x", Root: root, Mode: "everything"}); err == nil {
+	if _, err := New(Config{Exe: "x", Roots: []string{root}, Mode: "everything"}); err == nil {
 		t.Error("an unknown ceiling is refused")
+	}
+}
+
+// A server with several roots and no default directory runs each call in the
+// folder it names, makes a new one when asked, and refuses one outside.
+func TestResolveDirPicksAFolderPerRun(t *testing.T) {
+	a, b, outside := t.TempDir(), t.TempDir(), t.TempDir()
+	ra, _ := filepath.EvalSymlinks(a)
+	rb, _ := filepath.EvalSymlinks(b)
+	if err := os.Mkdir(filepath.Join(ra, "app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(ra, "escape")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ra, "file"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := New(Config{Exe: "x", Roots: []string{a, b, a}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := s.cfg
+	if !slices.Equal(cfg.Roots, []string{ra, rb}) || cfg.Dir != "" {
+		t.Fatalf("roots %q dir %q", cfg.Roots, cfg.Dir)
+	}
+	for _, tc := range []struct {
+		cwd    string
+		create bool
+		want   string
+	}{
+		{filepath.Join(ra, "app"), false, filepath.Join(ra, "app")},
+		{rb, false, rb},
+		{filepath.Join(rb, "new", "tool"), true, filepath.Join(rb, "new", "tool")},
+	} {
+		got, err := resolveDir(cfg, tc.cwd, tc.create)
+		if err != nil || got != tc.want {
+			t.Errorf("%s: %q, %v; want %q", tc.cwd, got, err, tc.want)
+		}
+	}
+	if fi, err := os.Stat(filepath.Join(rb, "new", "tool")); err != nil || !fi.IsDir() {
+		t.Errorf("create did not make the folder: %v", err)
+	}
+	for _, tc := range []struct {
+		cwd    string
+		create bool
+		want   string
+	}{
+		{"", false, "cwd is required"},
+		{"app", false, "relative"},
+		{outside, false, "outside"},
+		{filepath.Join(outside, "new"), true, "outside"},
+		{filepath.Join(ra, "escape"), false, "outside"},
+		{filepath.Join(ra, "escape", "new"), true, "outside"},
+		{filepath.Join(ra, "missing"), false, "create"},
+		{filepath.Join(ra, "file"), false, "not a directory"},
+	} {
+		if _, err := resolveDir(cfg, tc.cwd, tc.create); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: err = %v, want %q", tc.cwd, err, tc.want)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(outside, "new")); err == nil {
+		t.Error("a folder was made outside the roots")
+	}
+	t.Setenv("HOME", ra)
+	if got, err := resolveDir(cfg, "~/app", false); err != nil || got != filepath.Join(ra, "app") {
+		t.Errorf("~/app: %q, %v", got, err)
+	}
+	if _, err := New(Config{Exe: "x", Roots: []string{a}, Dir: b}); err == nil || !strings.Contains(err.Error(), "outside") {
+		t.Errorf("a default directory outside the roots: %v", err)
+	}
+	if _, err := New(Config{Exe: "x"}); err == nil {
+		t.Error("a server with no root is refused")
 	}
 }
 
