@@ -340,6 +340,7 @@ func TestResolveDirPicksAFolderPerRun(t *testing.T) {
 		t.Error("a folder was made outside the roots")
 	}
 	t.Setenv("HOME", ra)
+	t.Setenv("USERPROFILE", ra) // os.UserHomeDir on Windows
 	if got, err := resolveDir(cfg, "~/app", false); err != nil || got != filepath.Join(ra, "app") {
 		t.Errorf("~/app: %q, %v", got, err)
 	}
