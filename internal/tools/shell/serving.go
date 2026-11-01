@@ -3,7 +3,6 @@ package shell
 import (
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -197,7 +196,7 @@ func (e jobError) Error() string { return string(e) }
 // errNoJob is StopJob's error for an id the Manager does not know.
 func errNoJob(id string) error {
 	id = clip(strings.TrimSpace(id), 40)
-	if n, err := strconv.Atoi(strings.TrimPrefix(id, StrayPrefix)); err == nil && n > 0 && strings.HasPrefix(id, StrayPrefix) {
+	if isStrayID(id) {
 		return jobError("no stray process group " + id + " (it may have ended)")
 	}
 	return jobError("no background job " + id)

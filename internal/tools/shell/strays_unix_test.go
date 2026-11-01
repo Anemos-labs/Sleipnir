@@ -4,6 +4,7 @@ package shell
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"syscall"
@@ -51,7 +52,7 @@ func TestStraysAreListedAndStoppedByTheirID(t *testing.T) {
 	if !ok || hs.Agent != "w2" || !hs.Pipes {
 		t.Fatalf("the stray holding its pipes: %+v (all: %+v)", hs, got)
 	}
-	if !memberOf(d.Procs, detached, "sleep 601") || !memberOf(hs.Procs, holding, "sleep 602") {
+	if _, err := os.Stat("/proc/self/stat"); err == nil && (!memberOf(d.Procs, detached, "sleep 601") || !memberOf(hs.Procs, holding, "sleep 602")) { // the processes are listed where /proc is
 		t.Errorf("the live processes are not listed: %+v / %+v", d.Procs, hs.Procs)
 	}
 
@@ -103,6 +104,9 @@ func TestJobOutputReadsTheTailWithoutMovingTheAgentsCursor(t *testing.T) {
 	}
 	if out := h.output(h.env("w1"), id).Text; !strings.Contains(out, "line1") {
 		t.Errorf("the agent's next read lost output a person read: %q", out)
+	}
+	if _, _, err := h.m.JobOutput("p4242", 0); err == nil || !strings.Contains(err.Error(), "not a job") {
+		t.Errorf("a stray's output: %v", err)
 	}
 	if _, _, err := h.m.JobOutput("job_999", 0); err == nil {
 		t.Error("an unknown job has no error")

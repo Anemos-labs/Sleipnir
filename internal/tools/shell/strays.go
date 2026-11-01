@@ -84,10 +84,10 @@ func (m *Manager) Strays() []StrayInfo {
 // stopStray ends the stray process group id names (StrayPrefix + its group id): SIGTERM, then SIGKILL after the kill grace.
 // ok is false when id does not name a stray the Manager knows.
 func (m *Manager) stopStray(id string) (ok bool) {
-	n, err := strconv.Atoi(strings.TrimPrefix(id, StrayPrefix))
-	if !strings.HasPrefix(id, StrayPrefix) || err != nil || n <= 0 {
+	if !isStrayID(id) {
 		return false
 	}
+	n, _ := strconv.Atoi(strings.TrimPrefix(id, StrayPrefix))
 	m.mu.Lock()
 	var holder *proc
 	for p := range m.procs {
@@ -97,6 +97,14 @@ func (m *Manager) stopStray(id string) (ok bool) {
 		}
 	}
 	_, lingers := m.lingering[n]
+	if lingers {
+		for p := range m.procs {
+			if p.pid == n && !p.leaderDone() {
+				lingers = false // the recorded group is gone and a newer command of the Manager has its id now
+				break
+			}
+		}
+	}
 	delete(m.lingering, n)
 	m.mu.Unlock()
 	switch {
@@ -124,6 +132,9 @@ func (m *Manager) JobOutput(id string, max int) (text string, omitted int64, err
 	}
 	j := m.job(strings.TrimSpace(id))
 	if j == nil {
+		if isStrayID(strings.TrimSpace(id)) {
+			return "", 0, jobError(clip(strings.TrimSpace(id), 40) + " is a stray process group, not a job: the harness keeps no output of it")
+		}
 		return "", 0, errNoJob(id)
 	}
 	from := int64(0)
@@ -144,4 +155,10 @@ func (m *Manager) JobCommand(id string) (string, error) {
 		return "", errNoJob(id)
 	}
 	return j.command, nil
+}
+
+// isStrayID reports whether id has the form of a stray's id: StrayPrefix and a positive group id.
+func isStrayID(id string) bool {
+	n, err := strconv.Atoi(strings.TrimPrefix(id, StrayPrefix))
+	return strings.HasPrefix(id, StrayPrefix) && err == nil && n > 0
 }

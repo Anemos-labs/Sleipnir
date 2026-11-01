@@ -149,7 +149,7 @@
       function update(S2, m) {
         if (!m) return; const mg = m.ag.mgr; fillCard(RC, mg, calc.agent(mg), true, m);
         if (!nW) { const n = (S2 || S).meta.swarm || 0, solo = $('.solo', stallsEl); if (solo && solo.dataset.slots !== String(n)) stallsEl.innerHTML = soloHtml(n); }
-        if (!nW) { const log = (m.chan.mgr || []).filter(e => e.k === 'tool').slice(-6).reverse(); $('.sololog', body).innerHTML = log.map(e => '<li' + (e.tid ? ' class="tdrow" data-ag="' + esc(e.ag || 'mgr') + '" data-tid="' + esc(e.tid) + '" title="the whole command and its output"' : '') + '><span class="tb"><b>' + esc(e.name) + '</b> ' + esc(e.arg || '') + (e.out ? ' <span class="dim">' + esc(e.out) + '</span>' : '') + '</span></li>').join('') || '<li class="dim">The manager\u2019s first steps show here once it has something to do: give it a goal in the composer.</li>'; }
+        if (!nW) { const log = (m.chan.mgr || []).filter(e => e.k === 'tool').slice(-6).reverse(), sl = $('.sololog', body), sh = log.map(e => '<li' + (e.tid ? ' class="tdrow" data-ag="' + esc(e.ag || 'mgr') + '" data-tid="' + esc(e.tid) + '" title="the whole command and its output"' : '') + '><span class="tb"><b>' + esc(e.name) + '</b> ' + esc(e.arg || '') + (e.out ? ' <span class="dim">' + esc(e.out) + '</span>' : '') + '</span></li>').join('') || '<li class="dim">The manager\u2019s first steps show here once it has something to do: give it a goal in the composer.</li>'; if (sl && sl._h !== sh) { sl._h = sh; sl.innerHTML = sh; } }
         workers.forEach(w => { const A = m.ag[w.id]; fillCard(ST[w.id], A, calc.agent(A), A.spawned, m); });
       }
       function frame(dt, vt, S2) {

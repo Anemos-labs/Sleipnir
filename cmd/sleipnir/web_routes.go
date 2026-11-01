@@ -79,7 +79,7 @@ func (h *webHostImpl) routes(srv *web.Server) {
 		ok(w, snap)
 	})
 	h.tabRoute(srv, "GET /api/sessions/{id}/tools/{agent}/{tid}", web.RouteOpts{WriteTimeout: time.Minute}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
-		d, err := t.toolDetail(r.PathValue("agent"), r.PathValue("tid"))
+		d, err := t.toolDetail(r.Context(), r.PathValue("agent"), r.PathValue("tid"))
 		if err != nil {
 			writeErr(w, err)
 			return

@@ -2,6 +2,7 @@ package translate
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"strconv"
@@ -27,12 +28,12 @@ const (
 // ErrNoToolCall is ToolDetail's error when the log holds no call of that agent with that id.
 var ErrNoToolCall = errors.New("no such tool call in the session's log")
 
-// ToolDetail reads one tool call from a session's log (path, an events.jsonl) and its blob store (nil: none): its whole
+// ToolDetail reads one tool call (it stops when ctx is done) from a session's log (path, an events.jsonl) and its blob store (nil: none): its whole
 // arguments, the whole command or path it names, and its whole output, the complete one from the blob store when the agent was
 // shown a shortened result. agent is the call's agent as the page names it (mgr for the main agent) and tid the call's id, as a
 // tool row (wire.Tool) carries them. When an id was used more than once by the agent, the last call wins. root is the project
 // directory, against which the paths the call names are shown. The text is bounded by DetailMaxInput and DetailMaxOutput.
-func ToolDetail(path string, blobs events.Blobs, root, agent, tid string) (wire.ToolDetail, error) {
+func ToolDetail(ctx context.Context, path string, blobs events.Blobs, root, agent, tid string) (wire.ToolDetail, error) {
 	var (
 		d     wire.ToolDetail
 		found bool
@@ -43,6 +44,9 @@ func ToolDetail(path string, blobs events.Blobs, root, agent, tid string) (wire.
 	)
 	needle := []byte(tid)
 	err := events.Scan(path, func(e events.Event) error {
+		if err := ctx.Err(); err != nil {
+			return err // the page that asked is gone
+		}
 		if uiID(e.Agent) != agent || !bytes.Contains(e.Data, needle) {
 			return nil
 		}
@@ -112,7 +116,7 @@ func ToolDetail(path string, blobs events.Blobs, root, agent, tid string) (wire.
 	}
 	in := decodeInput(raw)
 	d.Name = displayName(d.Tool)
-	d.Arg = argOf(root, d.Tool, &in, "")
+	d.Arg, _ = headTail(argOf(root, d.Tool, &in, ""), DetailMaxInput)
 	d.Input = indentInput(raw)
 	if ref != "" && blobs != nil && events.ValidHash(ref) {
 		if b, err := blobs.GetMax(ref, detailMaxBlob); err == nil {
