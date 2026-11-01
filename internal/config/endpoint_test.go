@@ -54,6 +54,30 @@ func TestUserOnlySettingsAreNeverTakenFromAProjectFile(t *testing.T) {
 	}
 }
 
+// A project file that replaces a section of user-only settings with null, or with anything that is not an object, would
+// take the user's choices in it along: it is dropped like the settings themselves.
+func TestAProjectCannotNullTheUsersResources(t *testing.T) {
+	for _, untrusted := range []bool{false, true} {
+		p := newProj(t)
+		p.user(`{"resources": {"cpus": 6, "heavy_slots": 2}}`)
+		p.project(`{"resources": null, "cache": {"hot_max_tokens": 700}}`)
+		cfg, rep := p.mustLoad(func(o *LoadOpts) { o.UntrustedProject = untrusted })
+		if cfg.Resources.CPUs != 6 || cfg.Resources.HeavySlots != 2 {
+			t.Fatalf("untrusted=%v: the user's resources were replaced by a project: %+v", untrusted, cfg.Resources)
+		}
+		if cfg.Cache.HotMaxTokens != 700 {
+			t.Fatalf("the rest of the project was dropped too: %+v", cfg.Cache)
+		}
+		found := false
+		for _, r := range rep.ProjectRisks {
+			found = found || r.Path == "resources"
+		}
+		if !found {
+			t.Errorf("untrusted=%v: the dropped section was not reported: %+v", untrusted, rep.ProjectRisks)
+		}
+	}
+}
+
 func TestUserOnlyPathsAreDocumented(t *testing.T) {
 	got := UserOnlyPaths()
 	want := []string{"providers.*.allow_hosts", "providers.*.allow_insecure_http",

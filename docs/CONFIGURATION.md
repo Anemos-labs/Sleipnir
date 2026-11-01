@@ -434,7 +434,8 @@ using it keeps a machine that answers:
 
 - **Heavy commands take turns.** A foreground `bash` command that runs a build, a test suite, an install or a bundler
   (`go test`, `cargo build`, `npm ci`, `npm run build`, `npx vitest`, `pytest`, `make`, `./scripts/test.sh`, ... a
-  lexical guess that errs towards light) and every verification run (`swarm` done checks and the integration queue)
+  lexical guess that errs towards light; a command that runs a program rather than builds one, such as `go run`,
+  `cargo run`, `dotnet run` or `docker compose up`, is light, while `docker compose build` is heavy) and every verification run (`swarm` done checks and the integration queue)
   takes one of `heavy_slots` slots before it starts. The slots are files under `<state>/run/slots/` locked by the
   operating system: a slot whose holder died is free again at once. A command that waits says so live
   (`[sleipnir: waiting for a free slot: ...]`) and in its result (`[waited 42s before starting: ...]`); the wait is not

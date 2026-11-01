@@ -34,21 +34,21 @@ var heavyAlways = set(
 
 // heavySub are programs that are heavy when their first argument (the subcommand) is one of these.
 var heavySub = map[string]map[string]bool{
-	"go":         set("build", "test", "install", "vet", "run", "generate"),
-	"cargo":      set("build", "b", "test", "t", "check", "c", "clippy", "run", "r", "bench", "install", "doc", "nextest", "rustc"),
+	"go":         set("build", "test", "install", "vet", "generate"),
+	"cargo":      set("build", "b", "test", "t", "check", "c", "clippy", "bench", "install", "doc", "nextest", "rustc"),
 	"npm":        set("install", "i", "ci", "add", "test", "t", "tst", "rebuild", "pack", "publish"),
 	"pnpm":       set("install", "i", "add", "test", "t", "rebuild", "pack", "publish"),
 	"yarn":       set("install", "add", "test", "pack", "publish"),
 	"bun":        set("install", "i", "add", "test", "build"),
 	"deno":       set("test", "compile", "bundle", "check"),
-	"dotnet":     set("build", "test", "publish", "run", "pack", "restore"),
-	"swift":      set("build", "test", "run"),
+	"dotnet":     set("build", "test", "publish", "pack", "restore"),
+	"swift":      set("build", "test"),
 	"zig":        set("build", "test", "build-exe", "build-lib"),
 	"mix":        set("compile", "test", "deps.get", "deps.compile", "release"),
 	"flutter":    set("build", "test", "pub"),
 	"dart":       set("test", "compile"),
-	"docker":     set("build", "buildx", "compose"),
-	"podman":     set("build", "compose"),
+	"docker":     set("build", "buildx"),
+	"podman":     set("build"),
 	"pip":        set("install", "wheel", "download"),
 	"pip3":       set("install", "wheel", "download"),
 	"uv":         set("sync", "pip", "build"),
@@ -122,6 +122,12 @@ func heavyProgram(name string, args []string) bool {
 			}
 		}
 		return false
+	case (name == "docker" || name == "podman") && sub == "compose", name == "docker-compose" || name == "podman-compose":
+		// "compose build" builds images; "compose up" runs a stack, which would hold a slot as long as it runs
+		if sub == "compose" {
+			sub, _ = firstWord(rest)
+		}
+		return sub == "build"
 	case strings.HasSuffix(name, ".sh") || strings.HasSuffix(name, ".bash") || strings.HasSuffix(name, ".ps1"):
 		return heavyScript.MatchString(strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(name, ".sh"), ".bash"), ".ps1"))
 	}

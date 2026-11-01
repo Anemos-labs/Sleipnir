@@ -25,6 +25,8 @@ func TestHeavy(t *testing.T) {
 		"timeout 300 go build ./...",
 		"FOO=1 nice -n 5 cargo clippy",
 		"docker build -t x .",
+		"docker compose build api",
+		"docker-compose build",
 		"dotnet test",
 		"gradle assemble",
 		"./gradlew build",
@@ -48,6 +50,12 @@ func TestHeavy(t *testing.T) {
 		"grep -r test .",
 		"./scripts/serve.sh",
 		"go mod tidy",
+		"go run ./cmd/server",
+		"cargo run --release",
+		"dotnet run",
+		"swift run",
+		"docker compose up",
+		"docker-compose up -d",
 	}
 	for _, c := range heavy {
 		if !Heavy(c) {
