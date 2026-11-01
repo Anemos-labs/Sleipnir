@@ -1157,7 +1157,7 @@ func TestStructuredLogMessagesMaskASecretHoweverItIsEscaped(t *testing.T) {
 	const secret = `ab"cd<ef>gh-0123456789`
 	got := make(chan LogMessage, 4)
 	_, p := connectPeer(t, toolsCaps, ClientOptions{redact: newRedactor([]string{secret}), OnLog: func(m LogMessage) { got <- m }}, StreamOptions{})
-	for _, data := range []string{`{"echo":"ab\"cd<ef>gh-0123456789"}`, `{"echo":"ab\"cd<ef>gh-0123456789"}`} {
+	for _, data := range []string{`{"echo":"ab\"cd<ef>gh-0123456789"}`, `{"echo":"\u0061b\"cd\u003cef\u003egh-0123456789"}`} {
 		p.send(`{"jsonrpc":"2.0","method":"notifications/message","params":{"level":"info","data":` + data + `}}`)
 		select {
 		case m := <-got:
