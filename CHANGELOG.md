@@ -7,6 +7,23 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Parts that talk to each other are built against one contract and judged
+  end to end. When a user interface and its API, or a client and a service,
+  are built by different workers, the architect's agreement names one
+  machine-readable contract file (an OpenAPI document, a JSON Schema, shared
+  types or a protobuf schema) with every endpoint, status code, error body
+  and the sign-in flow from a signed-out start; the backend keeps it and tests
+  its real responses against it, the frontend calls the API only through types
+  taken from it, and the tester runs an end-to-end smoke test against the
+  merged result with the real server. The goal judge counts a requirement a
+  user reaches across such parts as met only with an end-to-end run newer than
+  the last change to either side, starting signed out when there is sign-in;
+  unit tests of each side alone no longer satisfy it. Prompt change: the
+  manager, architect, backend, frontend and tester role pins, the judge's
+  system prompt, its milestone section, a goal's first message when it has
+  milestones, and the spec skill each gain these sentences, which re-prices
+  those layers once.
+
 - Agents' commands share the machine (`internal/machine`, the new
   `resources` configuration section). Builds, test runs, installs and
   verification runs take one of a few machine-wide slots (files locked under
