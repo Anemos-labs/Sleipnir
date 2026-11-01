@@ -78,6 +78,14 @@ func (h *webHostImpl) routes(srv *web.Server) {
 		}
 		ok(w, snap)
 	})
+	h.tabRoute(srv, "GET /api/sessions/{id}/tools/{agent}/{tid}", web.RouteOpts{WriteTimeout: time.Minute}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
+		d, err := t.toolDetail(r.Context(), r.PathValue("agent"), r.PathValue("tid"))
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		ok(w, d)
+	})
 	h.tabRoute(srv, "PATCH /api/sessions/{id}", web.RouteOpts{MaxBody: 4 << 10}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
 		var body struct {
 			Name string `json:"name"`

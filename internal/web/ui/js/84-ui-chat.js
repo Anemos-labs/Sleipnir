@@ -33,6 +33,48 @@
     if ((k !== 'image' && k !== 'svg') || !S || S.id == null || S.id === '' || S.placeholder || S.recorded || S.follow || S.readOnly || !SL.api) return '';
     return M.thumbHtml(M.rawUrl(S.id, f, 'live', String(nm(e.t))), f);
   }
+  /** Whether a tool row can open the whole call (ui.toolDetail): it has the call's id and its tab is a live session the server reads. */
+  const detailable = (e, S) => !!(e && e.tid && e.ag && S && S.id != null && S.id !== '' && !S.placeholder && !S.recorded && !S.follow && !S.replay && SL.api);
+  /** The whole of one tool call, read from the session's log (GET /api/sessions/{id}/tools/{agent}/{tid}): the full command or path,
+   *  its full output, its arguments as JSON. The rows show a line of each; this is where the rest is. */
+  ui.toolDetail = {
+    open(S, ag, tid, e) {
+      if (!S || !ag || !tid) return;
+      const head = (e && e.name ? esc(e.name) + ' ' : '') + '<span class="dim">' + esc(ag) + ' · ' + esc(tid) + '</span>';
+      ui.modal({ title: 'Tool call', kicker: ag, desc: 'the whole command and its whole output', wide: true, color: agCol(ag), cls: 'tooldet',
+        body: '<div class="tdh">' + head + '</div><p class="stubnote tdload">reading the session’s log…</p>',
+        onMount(b, sc) {
+          SL.api.get(SL.api.tab(S.id) + '/tools/' + SL.api.seg(ag) + '/' + SL.api.seg(tid), { timeout: 60000 }).then(r => {
+            if (!sc.alive) return;
+            if (!r.ok) { $('.tdload', b).textContent = r.message || 'the call could not be read'; return; }
+            b.innerHTML = detailHtml(r.data || {});
+          });
+          sc.listen(b, 'click', ev => {
+            const c = ev.target.closest('[data-copy]'); if (!c) return; const pre = $('pre[data-k="' + c.dataset.copy + '"]', b); if (!pre) return;
+            U.copy(pre.textContent).then(ok => ui.toast(ok ? 'copied' : 'the clipboard is not available here', ok ? 'ok' : 'warm'));
+          });
+        } });
+    }
+  };
+  /** The body of the Tool call dialog from a wire.ToolDetail. */
+  function detailHtml(d) {
+    const st = d.running ? '<span class="tag warm">running</span>' : d.refused ? '<span class="tag err">refused</span>' : d.error ? '<span class="tag err">failed</span>' : '<span class="tag ok">ok</span>';
+    const facts = [st, d.ms ? '<span class="num">' + (d.ms < 1000 ? nm(d.ms) + ' ms' : (nm(d.ms) / 1000).toFixed(1) + ' s') + '</span>' : '', d.at ? '<span class="num">' + hms(d.at) + '</span>' : '', d.chars ? '<span class="num">' + U.fmtN(nm(d.chars)) + ' characters of output</span>' : ''].filter(Boolean).join('<span class="dim"> · </span>');
+    const block = (k, label, text, cls) => '<div class="tdsec"><div class="tdl"><h3 class="lab">' + label + '</h3><button class="btn sm" type="button" data-copy="' + k + '">Copy</button></div><pre class="tdpre ' + (cls || '') + '" data-k="' + k + '">' + esc(text) + '</pre></div>';
+    const what = d.tool === 'bash' ? 'command' : /^(read|write|edit|ls)$/.test(d.tool || '') ? 'path' : 'call';
+    let h = '<div class="tdh"><b>' + esc(d.name || d.tool || 'tool') + '</b> <span class="dim">' + esc(d.agent || '') + ' · ' + esc(d.tid || '') + '</span><span class="sp"></span>' + facts + '</div>';
+    if (d.arg) h += block('arg', what, d.arg, 'cmd');
+    h += d.hasOutput ? block('out', 'output' + (d.full ? ' <span class="dim">(complete; the agent was shown a shortened copy)</span>' : '') + (d.cut ? ' <span class="warm">(' + U.fmtN(nm(d.cut)) + ' bytes of the middle not shown)</span>' : ''), d.output || '(no output)', d.error ? 'err' : '') : '<p class="stubnote">' + (d.running ? 'No output yet: the call is still running.' : 'The log holds no output for this call.') + '</p>';
+    if (d.input) h += '<details class="tdsec"><summary class="lab">arguments (JSON)</summary><pre class="tdpre" data-k="in">' + esc(d.input) + '</pre></details>';
+    return h;
+  }
+  /** Opens the Tool call dialog of a clicked tool row (its ⤢, or the row itself when it opens no file); true when it did. */
+  ui.toolDetailClick = function (ev, S) {
+    const t = ev.target; if (!t || !t.closest) return false;
+    const btn = t.closest('[data-tooldet]'), row = t.closest('.msg.tool[data-tid],.tdrow[data-tid]');
+    if (!row || (!btn && (row.dataset.file || (window.getSelection && window.getSelection().toString()) || t.closest('a,button,img')))) return false;
+    const b = $('.tb > b', row) || $('b', row); ui.toolDetail.open(S || SL.sessions.active, row.dataset.ag, row.dataset.tid, { name: b ? b.textContent : '' }); return true;
+  };
   function rowHtml(e, S, m) {
     const T = todAt(S, e), at = ' data-ag="' + esc(e.ag || '') + '"' + (e.task ? ' data-task="' + esc(e.task) + '"' : '');
     switch (e.k) {
@@ -40,9 +82,10 @@
       case 'say': { const who = e.ag === 'mgr' ? 'Manager' : e.ag, col = agCol(e.ag); return '<div class="msg ' + (e.ag === 'mgr' ? 'mgr' : 'agsay') + '"' + at + ' style="--c:' + col + '"><div class="who">' + esc(who) + ' <time>' + T + '</time></div><div class="mt md" ' + (e.stream ? 'data-full="' + esc(e.text) + '" data-t0="' + nm(e.t) + '" data-rate="' + nm(e.rate, 70) + '"' : '') + '>' + (e.stream ? '' : prose(e.text)) + '</div></div>'; }
       case 'sys': return '<div class="msg sys"' + (e.ag ? at : '') + '><span class="sg">' + esc(e.glyph || '◇') + '</span><span>' + esc(e.text) + (e.plan ? ' <span class="dim">' + nm(S.plan.length) + ' steps, see Goal plan</span>' : '') + (own(OPEN, e.open) ? ' <button class="btn sm" type="button" data-open-page="' + esc(e.open) + '">' + esc(OPEN[e.open]) + '</button>' : '') + '</span></div>';
       case 'tool': {
-        if (e.refused) return '<div class="msg tool refused"' + at + '><span class="tg bad">⊘</span><span class="tb"><b>' + esc(e.name) + '</b> ' + esc(e.arg || '') + ' <span class="bad">refused</span><span class="rsn">' + esc(e.reason || '') + '</span></span></div>';
+        const dt = detailable(e, S), tida = dt ? ' data-tid="' + esc(e.tid) + '"' : '', db = dt ? '<button class="tdet-b" type="button" data-tooldet title="the whole command and its whole output" aria-label="Show the whole call and its output">⤢</button>' : '';
+        if (e.refused) return '<div class="msg tool refused' + (dt ? ' detailable' : '') + '"' + at + tida + '><span class="tg bad">⊘</span><span class="tb"><b>' + esc(e.name) + '</b> ' + esc(e.arg || '') + ' <span class="bad">refused</span><span class="rsn">' + esc(e.reason || '') + '</span></span>' + db + '</div>';
         const fl = e.file ? ' data-file="' + esc(e.file) + '"' : '';
-        return '<div class="msg tool' + (e.file ? ' openable' : '') + '"' + at + fl + (e.file ? ' title="open ' + esc(e.file) + ' in the Workspace"' : '') + '><span class="tg">' + TOOL_GLYPH(e.name) + '</span><span class="tb"><b>' + esc(e.name) + '</b> ' + esc(e.arg || '') + (nm(e.add) ? ' <span class="ok">+' + nm(e.add) + '</span>' + (nm(e.del) ? ' <span class="err">−' + nm(e.del) + '</span>' : '') : '') + (e.out ? '<span class="out">' + esc(e.out) + '</span>' : '') + thumb(e, S) + '</span><span class="ts ok">✓</span></div>';
+        return '<div class="msg tool' + (e.file ? ' openable' : dt ? ' detailable' : '') + '"' + at + fl + tida + (e.file ? ' title="open ' + esc(e.file) + ' in the Workspace"' : dt ? ' title="the whole command and its output"' : '') + '><span class="tg">' + TOOL_GLYPH(e.name) + '</span><span class="tb"><b>' + esc(e.name) + '</b> ' + esc(e.arg || '') + (nm(e.add) ? ' <span class="ok">+' + nm(e.add) + '</span>' + (nm(e.del) ? ' <span class="err">−' + nm(e.del) + '</span>' : '') : '') + (e.out ? '<span class="out">' + esc(e.out) + '</span>' : '') + thumb(e, S) + '</span>' + db + '<span class="ts ' + (e.ok === false ? 'err">✗' : 'ok">✓') + '</span></div>';
       }
       case 'feed': return '<div class="msg live" data-g="' + esc(e.g || '') + '"' + at + (e.to ? ' data-to="' + esc(e.to) + '"' : '') + ' style="--c:' + agCol(e.ag) + '"><span class="lid">' + esc(e.ag) + '</span><span class="lg ' + (e.g === 'ask' ? 'warm' : e.g === 'done' ? 'ok' : e.g === 'x' ? 'bad' : '') + '">' + (own(FEED_G, e.g) || '·') + '</span><span>' + esc(e.text) + '</span></div>';
       case 'note': return '<div class="msg note"' + at + '><span class="lg ' + (e.g === 'done' ? 'ok' : '') + '">' + (own(FEED_G, e.g) || '·') + '</span><span>' + esc(e.text) + '</span></div>';
@@ -210,7 +253,7 @@
       feedTog.title = open ? 'Collapse Team activity' : 'Show Team activity';
     }
     sc.listen(feedTog, 'click', () => { const S = SL.sessions.active; S.ui.feedOpen = S.ui.feedOpen === false; feedHead(S); if (S.ui.feedOpen !== false) { FD.stick = true; toEdge(FD); } });
-    sc.listen(talk, 'click', e => { const gh = e.target.closest('[data-agrp]'); if (gh) { const g = gh.parentNode._g, S = SL.sessions.active; if (g && g.n > 1) { g.first.gOpen = !groupOpen(g, S); paintGroup(g, S); } return; } const c = e.target.closest('[data-cli]'); if (c) { ui.runCli([c.dataset.cli], null, true); return; } const r = e.target.closest('.msg.tool[data-file]'); if (r && !window.getSelection().toString()) { ui.ws.open(r.dataset.file, 'changes'); } });
+    sc.listen(talk, 'click', e => { if (ui.toolDetailClick(e)) return; const gh = e.target.closest('[data-agrp]'); if (gh) { const g = gh.parentNode._g, S = SL.sessions.active; if (g && g.n > 1) { g.first.gOpen = !groupOpen(g, S); paintGroup(g, S); } return; } const c = e.target.closest('[data-cli]'); if (c) { ui.runCli([c.dataset.cli], null, true); return; } const r = e.target.closest('.msg.tool[data-file]'); if (r && !window.getSelection().toString()) { ui.ws.open(r.dataset.file, 'changes'); } });
     sc.listen(feed, 'click', e => { const r = e.target.closest('.msg[data-ag]'); if (!r || window.getSelection().toString()) return; const id = (r.dataset.ag || '').split(' ')[0], S = SL.sessions.active; if (S && S.m && S.m.ag[id]) ui.openDrawer(id); });
     sc.listen(document.getElementById('chatBox') || document.getElementById('rail'), 'click', e => { const b = e.target.closest('#chHead [data-ch]'); if (!b) return; const S = SL.sessions.active;
       if (b.dataset.ch === 'stopall') { ui.confirm({ title: 'Stop all', text: 'Stop <b>' + esc(S.name) + '</b>? ' + SL.stopAsk(S), ok: 'Stop all', danger: true, run: () => { const r2 = SL.act.stopAll(); if (r2 && r2.ok === false) ui.toast(r2.why || 'nothing was running', 'warm'); } }); return; }

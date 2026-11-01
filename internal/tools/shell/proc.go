@@ -44,6 +44,8 @@ type procSpec struct {
 	merge  bool   // give stdout and stderr one shared pipe (exact ordering, no labels)
 	agent  string // the agent that ran it (Manager.EndAgent)
 	job    bool   // a background job (run_in_background), which outlives its agent's run
+	// command is the command as the agent wrote it, kept to name what a process it left behind came from (Manager.Strays).
+	command string
 }
 
 // proc is one running shell process and the pumps draining its output.
@@ -76,6 +78,9 @@ type proc struct {
 	job   bool   // procSpec.job
 	// memNote says why the memory guard stopped the command (killMemory), for its result.
 	memNote atomic.Pointer[string]
+	// command and started name the command and when it began, for Manager.Strays.
+	command string
+	started time.Time
 }
 
 // startProc launches the process and its pumps. The caller must have called
@@ -139,6 +144,8 @@ func (m *Manager) startProc(sp procSpec) (*proc, error) {
 		alive:     groupAlive,
 		agent:     sp.agent,
 		job:       sp.job,
+		command:   sp.command,
+		started:   time.Now(),
 	}
 	m.track(p)
 

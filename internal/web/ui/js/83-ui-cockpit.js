@@ -149,7 +149,7 @@
       function update(S2, m) {
         if (!m) return; const mg = m.ag.mgr; fillCard(RC, mg, calc.agent(mg), true, m);
         if (!nW) { const n = (S2 || S).meta.swarm || 0, solo = $('.solo', stallsEl); if (solo && solo.dataset.slots !== String(n)) stallsEl.innerHTML = soloHtml(n); }
-        if (!nW) { const log = (m.chan.mgr || []).filter(e => e.k === 'tool').slice(-6).reverse(); $('.sololog', body).innerHTML = log.map(e => '<li><b>' + esc(e.name) + '</b> ' + esc(e.arg || '') + (e.out ? ' <span class="dim">' + esc(e.out) + '</span>' : '') + '</li>').join('') || '<li class="dim">The manager\u2019s first steps show here once it has something to do: give it a goal in the composer.</li>'; }
+        if (!nW) { const log = (m.chan.mgr || []).filter(e => e.k === 'tool').slice(-6).reverse(), sl = $('.sololog', body), sh = log.map(e => '<li' + (e.tid ? ' class="tdrow" data-ag="' + esc(e.ag || 'mgr') + '" data-tid="' + esc(e.tid) + '" title="the whole command and its output"' : '') + '><span class="tb"><b>' + esc(e.name) + '</b> ' + esc(e.arg || '') + (e.out ? ' <span class="dim">' + esc(e.out) + '</span>' : '') + '</span></li>').join('') || '<li class="dim">The manager\u2019s first steps show here once it has something to do: give it a goal in the composer.</li>'; if (sl && sl._h !== sh) { sl._h = sh; sl.innerHTML = sh; } }
         workers.forEach(w => { const A = m.ag[w.id]; fillCard(ST[w.id], A, calc.agent(A), A.spawned, m); });
       }
       function frame(dt, vt, S2) {
@@ -238,7 +238,7 @@
     return (sc, body, S) => {
       body.innerHTML = '<section class="panel p-board" aria-label="Task board"><div class="ph"><h2>Task board</h2><div class="r"><span class="bsum"></span><span>drag disabled</span></div></div><div class="bcols"></div></section>';
       const B = ui.board.make(sc, $('.bcols', body), false), bsum = $('.bsum', body);
-      sc.listen(body, 'click', e => { const a = e.target.closest('[data-alerts]'); if (a) { const S2 = SL.sessions.active; ui.alertsPop(a, S2, S2.m); } });
+      sc.listen(body, 'click', e => { if (e.target.closest('.sololog') && ui.toolDetailClick && ui.toolDetailClick(e)) return; const a = e.target.closest('[data-alerts]'); if (a) { const S2 = SL.sessions.active; ui.alertsPop(a, S2, S2.m); } });
       const update = (S2, m) => { if (!m) return; const cnt = ui.board.update(B, m, S2), bx = ui.boardMarks(B, m); bsum.textContent = ((cnt.merged || 0) - (cnt.resolved || 0)) + ' merged · ' + Math.max(0, (cnt.verify || 0) - (bx.failedIn.verify || 0)) + ' verify · ' + Math.max(0, (cnt.running || 0) - (bx.failedIn.running || 0)) + ' running' + (cnt.resolved ? ' · ' + cnt.resolved + ' resolved' : '') + ui.boardExtra(bx); ui.alertsSlot(bsum, m); };
       sc.update(update); update(S, S.m);
     };

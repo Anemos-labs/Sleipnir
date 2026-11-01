@@ -154,14 +154,15 @@ func (m *Manager) startJob(env *tools.Env, sh shellInfo, command, dir string, ti
 		j.addURL(u)
 	})
 	p, err := m.startProc(procSpec{
-		path:  sh.path,
-		args:  append(append([]string(nil), sh.flags...), command),
-		dir:   dir,
-		env:   m.env(env.Agent, dir),
-		sink:  sniff,
-		merge: m.opts.MergeStreams,
-		agent: env.Agent,
-		job:   true,
+		path:    sh.path,
+		args:    append(append([]string(nil), sh.flags...), command),
+		dir:     dir,
+		env:     m.env(env.Agent, dir),
+		sink:    sniff,
+		merge:   m.opts.MergeStreams,
+		agent:   env.Agent,
+		job:     true,
+		command: command,
 	})
 	if err != nil {
 		m.end()

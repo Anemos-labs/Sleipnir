@@ -251,7 +251,7 @@ func (m *Manager) untrack(p *proc) {
 		delete(m.lingering, g)
 	}
 	if lingers && !m.closed {
-		m.lingering[p.pid] = lingerer{agent: p.agent, job: p.job}
+		m.lingering[p.pid] = lingerer{agent: p.agent, job: p.job, command: p.command, started: p.started}
 	}
 	m.mu.Unlock()
 }
@@ -259,8 +259,10 @@ func (m *Manager) untrack(p *proc) {
 // lingerer says who left a lingering process group: the agent whose command started it, and whether that command was a
 // background job.
 type lingerer struct {
-	agent string
-	job   bool
+	agent   string
+	job     bool
+	command string    // the command that started the group (proc.command)
+	started time.Time // when that command began
 }
 
 // EndAgent ends what agent's finished foreground commands left running: a server started with "server &" or

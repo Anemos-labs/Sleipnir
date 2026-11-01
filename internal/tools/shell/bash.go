@@ -318,14 +318,15 @@ func (m *Manager) runForeground(ctx context.Context, env *tools.Env, sh shellInf
 	sk := newFGSink(env.Out, m.opts.CaptureBytes)
 	began := env.Now()
 	p, err := m.startProc(procSpec{
-		path:   sh.path,
-		args:   append(append([]string(nil), sh.flags...), script),
-		dir:    dir,
-		env:    m.env(env.Agent, dir),
-		sink:   sk,
-		maxOut: m.opts.MaxOutputBytes,
-		merge:  m.opts.MergeStreams,
-		agent:  env.Agent,
+		path:    sh.path,
+		args:    append(append([]string(nil), sh.flags...), script),
+		dir:     dir,
+		env:     m.env(env.Agent, dir),
+		sink:    sk,
+		maxOut:  m.opts.MaxOutputBytes,
+		merge:   m.opts.MergeStreams,
+		agent:   env.Agent,
+		command: command,
 	})
 	if err != nil {
 		return fail(env, "bash: could not start the command: %v", err)

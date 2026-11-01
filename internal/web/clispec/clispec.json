@@ -963,7 +963,7 @@
 {"cmd":"/queue","args":"[drop N]","desc":"what waits for the turn: list, drop one, or clear all","group":"a team, and the program","paletteArgs":"[drop N|clear]","paletteDesc":"the lines typed while a turn runs, sent when it is over: list them, drop one, or clear them"},
 {"cmd":"/verbose","args":"[on|off]","desc":"notices and tool errors","group":"a team, and the program","paletteArgs":"[on|off]","paletteDesc":"show or hide notices and tool errors"},
 {"cmd":"/anim","args":"[on|off]","desc":"motion","group":"a team, and the program","paletteArgs":"[on|off]","paletteDesc":"turn the motion on or off"},
-{"cmd":"/jobs","args":"[stop ID]","desc":"background jobs (dev servers) and their local addresses","group":"a team, and the program","paletteArgs":"[stop ID]","paletteDesc":"the background jobs the agents started (dev servers, watchers) with the local addresses they serve; stop one"},
+{"cmd":"/jobs","args":"[stop ID]","desc":"background jobs (dev servers) and their local addresses","group":"a team, and the program","paletteArgs":"[stop ID | log ID]","paletteDesc":"the background jobs the agents started (dev servers, watchers) with the local addresses they serve, and the processes their finished commands left running; stop one, or read a job's output"},
 {"cmd":"/cwd","args":"","desc":"the directory this session works in","group":"a team, and the program","paletteDesc":"the directory this session works in"},
 {"cmd":"/recon","args":"","desc":"the project map in the shared layer","group":"what the model knows","paletteDesc":"show the project map pinned in the shared layer"},
 {"cmd":"/skills","args":"","desc":"the skills the model can load","group":"what the model knows","paletteDesc":"list the skills the model can load"},

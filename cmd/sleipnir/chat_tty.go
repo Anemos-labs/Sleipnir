@@ -637,7 +637,7 @@ var chatCommands = []chatCommand{
 	{"swarm", "<n> [flags]", "start again as a manager and n workers: /swarm 8 --verify \"go test {dirs}\" --isolation worktree"},
 	{"team", "[list|save NAME|load NAME|show NAME|rm NAME]", "saved teams (loadouts): save this team, start again as a saved one, or print one to share"},
 	{"sessions", "", "the newest sessions; resume one with sleipnir --resume <id>"},
-	{"jobs", "[stop ID]", "the background jobs the agents started (dev servers, watchers) with the local addresses they serve; stop one"},
+	{"jobs", "[stop ID | log ID]", "the background jobs the agents started (dev servers, watchers) with the local addresses they serve, and the processes their finished commands left running; stop one, or read a job's output"},
 	{"cwd", "", "the directory this session works in"},
 	{"mode", "<m>", "default | accept-edits | plan | bypass | yolo"},
 	{"plan", "[prompt]", "switch to read-only mode; with a prompt, start planning it"},
