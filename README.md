@@ -13,6 +13,22 @@ Sleipnir is a terminal and browser coding agent for local and hosted models. It
 runs as a single agent, or as a team where a manager divides a task among
 specialist workers, reviews what they produce, and verifies it before calling it done.
 
+### Benchmark
+
+[Aider Polyglot](https://github.com/Aider-AI/polyglot-benchmark), 60 tasks in six languages. Each harness ran
+with the same model on the same endpoint, given the same prompt, and was graded by the same tests.
+
+| Muse Spark Open | Pass rate | $ per solved task | Cache hit rate | Median time |
+|---|---|---|---|---|
+| **Sleipnir** | **96.7%** | **0.0093** | **90%** | **304s** |
+| Claude Code | 92.7% | 0.0157 | 79% | 461s |
+| opencode | 89.1% | 0.0147 | 85% | 400s |
+| aider | 70.3% | 0.0155 | 47% | 1066s |
+
+On DeepSeek V4.1 Flash, Sleipnir, opencode and Claude Code tie at about 96%, and Sleipnir and opencode are the cheapest.
+Single-agent mode, 145 to 180 runs per harness and model. The method, the per-language results and the caveats are in
+[Benchmarks](docs/BENCHMARKS.md#against-other-harnesses).
+
 **Contents:** [Install](#install) · [First run](#first-run) · [How the team works](#how-the-team-works) ·
 [Goals](#goals) · [Browser interface](#browser-interface) · [Automation](#automation) ·
 [Safety](#safety) · [Documentation](#documentation) · [Development](#development)
