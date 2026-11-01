@@ -1047,3 +1047,37 @@ func TestAReusedWorkerContinuesTheDraftOfTheOneThatStopped(t *testing.T) {
 		t.Errorf("the reused be-2 read a.txt as %q, want be-1's draft", got)
 	}
 }
+
+// And when a worker with a tree of its own claims the task itself: the claim's answer names the draft's files.
+func TestAWorkerThatClaimsTheTaskContinuesTheDraftOfTheOneThatStopped(t *testing.T) {
+	var answered bool
+	var mu sync.Mutex
+	sc := script{
+		"be-1": {act(writeCall("a.txt", "half of T1\n")), func(*rvCall) rvReply { return rvReply{Err: errors.New("provider: server (http 503): no endpoints")} }},
+		"be-2": {
+			act(writeCall("c.txt", "other work\n")), act(doneCall("T2", "edited c")),
+			act(rvToolCall{"task", map[string]any{"action": "claim", "id": "T1"}}),
+			func(c *rvCall) rvReply {
+				mu.Lock()
+				answered = c.Sees("Files it changed: a.txt")
+				mu.Unlock()
+				return act(catCall("a.txt"))(c)
+			},
+			act(doneCall("T1", "finished a")),
+		},
+	}
+	r := newIsoRig(t, isoOpts{cfg: Config{MaxWriters: 4, MaxAttempts: 2}}, sc.fn())
+	r.sw.StartManager()
+	r.mustSpawn("backend", "edit a", "a.txt")
+	r.waitStatus("T1", StatusTodo)
+	r.mustSpawn("backend", "edit c", "c.txt")
+	r.waitStatus("T1", StatusReview)
+	if got := r.sawText("be-2", "a.txt"); got != "half of T1\n" {
+		t.Errorf("be-2 read a.txt as %q after its claim, want be-1's draft", got)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !answered {
+		t.Error("the claim's answer does not name the draft's files")
+	}
+}

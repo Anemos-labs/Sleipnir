@@ -1442,15 +1442,18 @@ func (s *Swarm) inheritDraft(ctx context.Context, m *member, t Task) string {
 	}
 	head, err := pm.tree.Head(gctx)
 	if err != nil {
-		return ""
+		return fmt.Sprintf("%s worked on %s before you, and the harness could not find its recorded draft (%s); ask the manager before you start over.", pm.id, t.ID, cleanText(err.Error(), 160))
 	}
 	if had, err := m.tree.Repo().IsAncestor(gctx, head, "HEAD"); err != nil || had {
 		return ""
 	}
 	var files []string
-	tip := s.deps.Isolation.Queue.Tip()
-	if base, err := pm.tree.Repo().MergeBase(gctx, head, tip); err == nil {
-		files, _ = pm.tree.Repo().ChangedPaths(gctx, base, head)
+	base, err := pm.tree.Repo().MergeBase(gctx, head, s.deps.Isolation.Queue.Tip())
+	if err == nil {
+		files, err = pm.tree.Repo().ChangedPaths(gctx, base, head)
+	}
+	if err != nil {
+		return fmt.Sprintf("%s worked on %s before you and left a draft at commit %s, which the harness could not inspect (%s); merge it yourself before you start over.", pm.id, t.ID, short(head), cleanText(err.Error(), 160))
 	}
 	if len(files) == 0 {
 		return "" // its branch holds only what is integrated
