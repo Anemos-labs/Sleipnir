@@ -14,7 +14,9 @@ import (
 // provides a parent already in the job, so the real command inherits membership
 // atomically before any repository code runs. The parent never executes code.
 // Cancellation and normal completion both terminate every remaining job member.
-func runVerifyCommand(cmd *exec.Cmd) error {
+// The command starts this way whatever the machine budget's Start would do: its
+// priority is the normal one.
+func runVerifyCommand(cmd *exec.Cmd, _ func(*exec.Cmd) error) error {
 	job, err := windows.CreateJobObject(nil, nil)
 	if err != nil {
 		return fmt.Errorf("create verification job: %w", err)

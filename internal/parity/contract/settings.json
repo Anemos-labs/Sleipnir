@@ -93,6 +93,26 @@
       "reason": "a provider entry is written in the user's configuration file in both interfaces; its effect is in both: the first-run model picker of the terminal and the New session dialog of the page start on the model it names"
     },
     {
+      "item": "resources.cpus",
+      "reason": "the machine share of the agents' commands: set in the user's configuration file or a SLEIPNIR_RESOURCES_* variable in both interfaces (a project file cannot set it); Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
+    },
+    {
+      "item": "resources.heavy_slots",
+      "reason": "the machine share of the agents' commands: set in the user's configuration file or a SLEIPNIR_RESOURCES_* variable in both interfaces (a project file cannot set it); Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
+    },
+    {
+      "item": "resources.memory_reserve_mb",
+      "reason": "the machine share of the agents' commands: set in the user's configuration file or a SLEIPNIR_RESOURCES_* variable in both interfaces (a project file cannot set it); Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
+    },
+    {
+      "item": "resources.priority",
+      "reason": "the machine share of the agents' commands: set in the user's configuration file or a SLEIPNIR_RESOURCES_* variable in both interfaces (a project file cannot set it); Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
+    },
+    {
+      "item": "resources.unlimited",
+      "reason": "the machine share of the agents' commands: set in the user's configuration file or a SLEIPNIR_RESOURCES_* variable in both interfaces (a project file cannot set it); Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
+    },
+    {
       "item": "swarm.max_concurrent_requests",
       "reason": "a request limit of the swarm: a file or SLEIPNIR_SWARM_MAX_CONCURRENT_REQUESTS in both interfaces; the governor line of the HUD shows its effect and Configuration its value"
     },

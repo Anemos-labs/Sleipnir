@@ -16,6 +16,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/executil"
 	"github.com/anemos-labs/sleipnir/internal/harden"
+	"github.com/anemos-labs/sleipnir/internal/machine"
 )
 
 // VerifyRequest is one run of the verification command.
@@ -39,6 +40,10 @@ type VerifyRequest struct {
 	// Wrap... cmd /C Cmd on Windows), for example a network or filesystem
 	// sandbox ending in "--", as the shell tool applies it.
 	Wrap []string
+	// Machine is the share of the computer the command lives in: a verification run is a build and a test run, so it waits
+	// for a heavy slot (the wait is not part of Timeout), is told how many workers to start and runs at low priority. Nil
+	// limits nothing.
+	Machine *machine.Budget
 }
 
 // VerifyResult is what the verifier did.
@@ -96,6 +101,12 @@ func RunShell(ctx context.Context, req VerifyRequest) VerifyResult {
 	if maxOut <= 0 {
 		maxOut = 64 << 10
 	}
+	adm, err := req.Machine.Admit(ctx, true, nil)
+	if err != nil {
+		res.Err = err
+		return res
+	}
+	defer adm.Release()
 	tctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	var cmd *exec.Cmd
@@ -126,7 +137,7 @@ func RunShell(ctx context.Context, req VerifyRequest) VerifyResult {
 	cmd.WaitDelay = 3 * time.Second
 
 	start := time.Now()
-	err := runVerifyCommand(cmd)
+	err = runVerifyCommand(cmd, req.Machine.Start)
 	res.Duration = time.Since(start)
 	if cmd.Process != nil {
 		killGroup(cmd.Process.Pid) // reap background children the command left behind
@@ -221,6 +232,7 @@ func verifyEnv(base []string, req VerifyRequest) []string {
 	out = append(out,
 		"TERM=dumb", "NO_COLOR=1", "GIT_TERMINAL_PROMPT=0", "PAGER=cat", "GIT_PAGER=cat",
 		"PWD="+req.Dir, "SLEIPNIR_WORKSPACE="+req.Dir, "SLEIPNIR_AGENT="+req.Agent, "SLEIPNIR_TASK="+req.Task)
+	out = req.Machine.Env(out) // the worker counts, unless the environment chose its own; req.Env comes last and still wins
 	return append(out, req.Env...)
 }
 

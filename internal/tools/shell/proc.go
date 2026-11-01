@@ -22,6 +22,7 @@ const (
 	killShutdown             // Manager.Shutdown
 	killRequested            // bash_kill
 	killOutput               // the command produced more output than allowed
+	killMemory               // the machine ran low on memory and this command used the most (Manager.guardMemory)
 )
 
 // exitStatus is how a process ended. code follows the shell convention: the
@@ -73,6 +74,8 @@ type proc struct {
 	alive func(pgid int) bool
 	agent string // procSpec.agent
 	job   bool   // procSpec.job
+	// memNote says why the memory guard stopped the command (killMemory), for its result.
+	memNote atomic.Pointer[string]
 }
 
 // startProc launches the process and its pumps. The caller must have called
@@ -105,7 +108,7 @@ func (m *Manager) startProc(sp procSpec) (*proc, error) {
 		}
 	}
 	cmd.Stdout, cmd.Stderr = outW, errW // stdin stays nil: /dev/null
-	err = cmd.Start()
+	err = m.opts.Machine.Start(cmd)     // at low priority unless the person chose otherwise
 	outW.Close()
 	if errW != outW {
 		errW.Close()

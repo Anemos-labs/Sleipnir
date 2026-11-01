@@ -69,11 +69,16 @@ func harmlessValue(segs []string, v any) bool {
 // userOnlyPaths are settings that only the user's own file may make. A project
 // file that carries one has it dropped, whether or not the project is trusted:
 // they are how the user tells the harness "this provider's key may go to that
-// host", and a repository must not be able to say that on the user's behalf. (The
+// host" and "this much of my machine is the agents'", and a repository must not be able to say that on the user's behalf. (The
 // sensitive paths above are what a trusted project may set; these it never can.)
 var userOnlyPaths = [][]string{
 	{"providers", "*", "allow_hosts"},
 	{"providers", "*", "allow_insecure_http"},
+	{"resources", "cpus"},
+	{"resources", "heavy_slots"},
+	{"resources", "memory_reserve_mb"},
+	{"resources", "priority"},
+	{"resources", "unlimited"},
 }
 
 // matchPath reports whether segs is exactly one of the patterns ("*" matches any

@@ -89,6 +89,8 @@ type Config struct {
 	Cache       Cache               `json:"cache"`
 	Swarm       Swarm               `json:"swarm"`
 	Tools       Tools               `json:"tools"`
+	// Resources is the share of the machine the agents' commands may use (internal/machine).
+	Resources Resources `json:"resources"`
 	// Plugins switches the harness's plugins on and off (internal/plugin,
 	// docs/PLUGINS.md).
 	Plugins Plugins `json:"plugins"`
@@ -339,6 +341,22 @@ type Tools struct {
 	// BuiltinSkills offers the skills that ship with Sleipnir to the skill tool
 	// (skills.BuiltinNames). A skill of the same name elsewhere replaces one.
 	BuiltinSkills bool `json:"builtin_skills"`
+}
+
+// Resources is the share of the computer the agents' commands live in, across every agent and every Sleipnir process of
+// the user (internal/machine, docs/CONFIGURATION.md). Zero values are computed from the machine's size. Only the user's own
+// file sets it: how much of the machine agents may take is not a repository's choice.
+type Resources struct {
+	// CPUs is how many cores the agents' commands may use together (0: all but a quarter, at least two, left free).
+	CPUs int `json:"cpus"`
+	// HeavySlots is how many builds, test runs and installs run at once on the machine (0: one per four CPUs, at least one).
+	HeavySlots int `json:"heavy_slots"`
+	// MemoryReserveMB is the memory in MiB kept free for the rest of the machine (0: 15% of it, between 1 and 8 GiB).
+	MemoryReserveMB int `json:"memory_reserve_mb"`
+	// Priority of the agents' commands: "low" (the default) or "normal".
+	Priority string `json:"priority,omitempty"`
+	// Unlimited turns every limit off.
+	Unlimited bool `json:"unlimited"`
 }
 
 // DefaultTimeout is DefaultTimeoutSec as a duration.
