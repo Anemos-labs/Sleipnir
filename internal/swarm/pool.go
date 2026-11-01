@@ -558,7 +558,7 @@ func (s *Swarm) startPool(req SpawnReq, files []string) (string, error) {
 // syncPlanners brings the integration tip into the trees of a planning pool's members before they are woken: they plan by
 // reading their own checkout, and a member whose tree was made before the scaffold merged found no scaffold there, so it read
 // the merge commit file by file with git show and tried the leader's tree, which isolation refuses. A member that is not free
-// (it holds a task of its own) keeps its checkout as it is: its next claim brings the merged work in.
+// (it holds a task of its own, or runs) keeps its checkout as it is: its next claim brings the merged work in.
 func (s *Swarm) syncPlanners(t Task) {
 	sn := s.Board.Snapshot()
 	for _, id := range t.Pool.Members {
@@ -566,13 +566,14 @@ func (s *Swarm) syncPlanners(t Task) {
 		if m == nil || m.tree == nil || soloTaskOf(sn, id, t.ID) != "" {
 			continue
 		}
-		m.mu.Lock()
-		idle := m.life == lifeIdle
-		m.mu.Unlock()
-		if !idle {
+		// The reservation keeps a mail wake from starting the member on this checkout while git updates it (wake finds it
+		// busy and the pool's wake below starts it), and its context ends with the session.
+		rs, ctx, ok := s.reserve(m)
+		if !ok {
 			continue
 		}
-		note, err := s.syncTree(context.Background(), m)
+		note, err := s.syncTree(ctx, m)
+		s.unreserve(m, rs)
 		switch {
 		case err != nil:
 			s.notify(id, "info", fmt.Sprintf("The harness could not bring the merged work into your tree before planning %s (%s): read the integration branch, or merge it into your tree before you implement.", t.ID, cleanText(err.Error(), 160)))
