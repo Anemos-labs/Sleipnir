@@ -1409,3 +1409,67 @@ func checkoutDirty(st *gitx.Status, m *workspace.Manager) []string {
 	}
 	return slices.Sorted(maps.Keys(seen))
 }
+
+// inheritDraft brings into m's tree the work that t's last owner left in a tree of its own, and returns a note for m ("" when
+// there was none to bring). A worker whose run stopped on an error (its model's endpoint gone for longer than its retries) leaves
+// its draft on its branch, and the task goes back to todo: without this, the worker it goes to next starts from the integration
+// branch and redoes it. In a team build an HTTP API of 36 files was stranded on the branch of a worker whose model went away,
+// and the backend worker the manager gave the task to began it again from nothing. The draft is recorded in the last owner's
+// tree under the task (wipCommitMessage) and merged like integrated work. Nothing is brought while the last owner is running or
+// holds another task (its tree is then that task's), or when its branch has nothing beyond what m's tree already has.
+func (s *Swarm) inheritDraft(ctx context.Context, m *member, t Task) string {
+	if m.tree == nil || t.LastOwner == "" || t.LastOwner == m.id {
+		return ""
+	}
+	pm := s.get(t.LastOwner)
+	if pm == nil || pm.tree == nil || pm.tree.Repo() == nil {
+		return ""
+	}
+	for _, o := range s.Board.Snapshot().Tasks {
+		if o.Owner == pm.id && o.ID != t.ID && (o.Status == StatusDoing || o.Status == StatusBlocked || o.Status == StatusReview) {
+			return ""
+		}
+	}
+	rs, _, ok := s.reserve(pm)
+	if !ok {
+		return ""
+	}
+	defer s.unreserve(pm, rs)
+	gctx, cancel := context.WithTimeout(ctx, gitTimeout)
+	defer cancel()
+	if _, err := pm.tree.Commit(gctx, wipCommitMessage(t)); err != nil {
+		return fmt.Sprintf("%s worked on %s before you, and the harness could not record its draft (%s); ask the manager before you start over.", pm.id, t.ID, cleanText(err.Error(), 160))
+	}
+	head, err := pm.tree.Head(gctx)
+	if err != nil {
+		return ""
+	}
+	if had, err := m.tree.Repo().IsAncestor(gctx, head, "HEAD"); err != nil || had {
+		return ""
+	}
+	var files []string
+	tip := s.deps.Isolation.Queue.Tip()
+	if base, err := pm.tree.Repo().MergeBase(gctx, head, tip); err == nil {
+		files, _ = pm.tree.Repo().ChangedPaths(gctx, base, head)
+	}
+	if len(files) == 0 {
+		return "" // its branch holds only what is integrated
+	}
+	c, err := m.tree.UpdateRecording(gctx, head, s.wipMessage(m))
+	if err != nil {
+		return fmt.Sprintf("%s worked on %s before you and left a draft at commit %s, which the harness could not merge into your tree (%s); merge it yourself before you start over.", pm.id, t.ID, short(head), cleanText(err.Error(), 160))
+	}
+	list := make([]string, 0, 30)
+	for _, f := range firstN(files, 30) {
+		list = append(list, cleanText(f, maxScopeLen))
+	}
+	if n := len(files) - len(list); n > 0 {
+		list = append(list, fmt.Sprintf("(+%d more)", n))
+	}
+	note := fmt.Sprintf("%s worked on %s before you and stopped without finishing; its draft (commit %s) is merged into your tree. Files it changed: %s. Continue from it: read what is there and finish it, do not start over.", pm.id, t.ID, short(head), strings.Join(list, ", "))
+	if c != nil {
+		note += " The merge left conflicts in your tree: " + conflictHunks(c)
+	}
+	s.emitAs(m.id, "agent.inherit", map[string]any{"id": m.id, "task": t.ID, "from": pm.id, "commit": head, "files": len(files)})
+	return note
+}

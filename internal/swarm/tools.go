@@ -266,6 +266,11 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			} else if note != "" {
 				return text("%s is yours. %s Resolve these conflicts before implementing.", in.ID, note), nil
 			}
+			if t1, ok := s.Board.Snapshot().Task(in.ID); ok && !current {
+				if note := s.inheritDraft(ctx, m, t1); note != "" {
+					return text("%s is yours; your checkout now includes integrated work. %s", in.ID, note), nil
+				}
+			}
 			if had {
 				if current {
 					return text("%s is already yours and the task you are on; your checkout already had all integrated work, so nothing changed. Carry on with it.", in.ID), nil

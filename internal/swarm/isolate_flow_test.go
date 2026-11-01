@@ -7,6 +7,7 @@ package swarm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -975,5 +976,74 @@ func TestClaimingAnotherTaskRecordsTheDraftUnderItsOwnTask(t *testing.T) {
 	log := gitOut(t, r.cwd("be-1"), "log", "--format=%s|%(trailers:key=Sleipnir-Task,valueonly,separator=)", "-n", "5")
 	if !strings.Contains(log, "Work in progress: Edit a|T1") || strings.Contains(log, "Polish c") {
 		t.Fatalf("the draft should be recorded under T1, log:\n%s", log)
+	}
+}
+
+// A task whose worker stopped without finishing goes to the next worker with the draft the first one left in its tree: in a
+// team build the first worker's model went away, the manager gave its HTTP API task to another backend worker, and that one
+// began the 36 files again from the integration branch.
+func TestTheNextWorkerOnATaskContinuesTheDraftOfTheOneThatStopped(t *testing.T) {
+	var told, listed bool
+	var mu sync.Mutex
+	sc := script{
+		"be-1": {act(writeCall("a.txt", "half of T1\n")), func(*rvCall) rvReply { return rvReply{Err: errors.New("provider: server (http 503): no endpoints")} }},
+		"be-2": {
+			func(c *rvCall) rvReply {
+				mu.Lock()
+				told, listed = c.Sees("be-1 worked on T1 before you"), c.Sees("Files it changed: a.txt")
+				mu.Unlock()
+				return act(catCall("a.txt"))(c)
+			},
+			act(doneCall("T1", "finished a")),
+		},
+	}
+	// Two attempts: the harness does not restart be-1 in place (that would spend the manager's last one), and the task goes back.
+	r := newIsoRig(t, isoOpts{cfg: Config{MaxWriters: 4, MaxAttempts: 2}}, sc.fn())
+	r.sw.StartManager()
+	r.mustSpawn("backend", "edit a", "a.txt")
+	r.waitStatus("T1", StatusTodo)
+	if tk := r.task("T1"); tk.Status != StatusTodo || tk.LastOwner != "be-1" {
+		t.Fatalf("T1 = %+v, want todo with last owner be-1", tk)
+	}
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: "T1", By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	r.waitStatus("T1", StatusReview)
+	if got := r.sawText("be-2", "a.txt"); got != "half of T1\n" {
+		t.Errorf("be-2 read a.txt as %q, want be-1's draft", got)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !told || !listed {
+		t.Errorf("be-2's assignment does not say be-1's draft is in its tree (told=%v, files listed=%v)", told, listed)
+	}
+	log := gitOut(t, r.cwd("be-2"), "log", "--format=%s|%(trailers:key=Sleipnir-Task,valueonly,separator=)", "-n", "6")
+	if !strings.Contains(log, "Work in progress: Edit a|T1") {
+		t.Errorf("be-1's draft was not recorded under T1, log:\n%s", log)
+	}
+}
+
+// The same holds when the manager gives the task to a worker it already has (spawn reuse): its tree gets the draft too.
+func TestAReusedWorkerContinuesTheDraftOfTheOneThatStopped(t *testing.T) {
+	sc := script{
+		"be-1": {act(writeCall("a.txt", "half of T1\n")), func(*rvCall) rvReply { return rvReply{Err: errors.New("provider: server (http 503): no endpoints")} }},
+		"be-2": {
+			act(writeCall("c.txt", "other work\n")), act(doneCall("T2", "edited c")), func(*rvCall) rvReply { return rvReply{Text: "T2 done"} },
+			act(catCall("a.txt")), act(doneCall("T1", "finished a")),
+		},
+	}
+	r := newIsoRig(t, isoOpts{cfg: Config{MaxWriters: 4, MaxAttempts: 2}}, sc.fn())
+	r.sw.StartManager()
+	r.mustSpawn("backend", "edit a", "a.txt")
+	r.waitStatus("T1", StatusTodo)
+	r.mustSpawn("backend", "edit c", "c.txt")
+	r.waitStatus("T2", StatusReview)
+	rvWait(t, "be-2 to be idle", func() bool { return r.idle("be-2") })
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: "T1", Agent: "be-2", By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	r.waitStatus("T1", StatusReview)
+	if got := r.sawText("be-2", "a.txt"); got != "half of T1\n" {
+		t.Errorf("the reused be-2 read a.txt as %q, want be-1's draft", got)
 	}
 }
