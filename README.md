@@ -25,7 +25,8 @@ with the same model on the same endpoint, given the same prompt, and was graded 
 | opencode | 89.1% | 0.0147 | 85% | 400s |
 | aider | 70.3% | 0.0155 | 47% | 1066s |
 
-On DeepSeek V4.1 Flash, Sleipnir, opencode and Claude Code tie at about 96%, and Sleipnir and opencode are the cheapest.
+On DeepSeek V4.1 Flash, Sleipnir, opencode and Claude Code finish within two points of each other (95.0% to 96.7%),
+and Sleipnir and opencode are the cheapest.
 Single-agent mode, 145 to 180 runs per harness and model. The method, the per-language results and the caveats are in
 [Benchmarks](docs/BENCHMARKS.md#against-other-harnesses).
 

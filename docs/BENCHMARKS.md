@@ -102,8 +102,8 @@ on the same endpoint (Heimdall staging), the same prompt and the same grading.
 | aider | 71.7% | 0.00054 | 41% | 306s | 180 |
 
 Comparing task by task on Muse, Sleipnir solved 10 tasks that Claude Code missed, against 3 the other way, and 11 that
-opencode missed, against 2. On DeepSeek those pairs are even (7 against 6, 6 against 8), so the three agents' difference
-there is noise.
+opencode missed, against 2. On DeepSeek those pairs are near-ties (7 against 6, 6 against 8), and these runs do not
+separate the three agents there.
 
 | Pass rate by language, Muse | C++ | Go | Java | JavaScript | Python | Rust |
 |---|---|---|---|---|---|---|
@@ -138,7 +138,7 @@ there is noise.
   repository map.
 - DeepSeek rep 1 ran into endpoint rate limits (HTTP 429). Those account for nearly all of the three agents' rep-1
   failures; reps 2 and 3 had none. The table includes rep 1.
-- Muse was taken offline after 555 of 720 runs. Reps 1 and 2 are complete for every harness, and rep 3 is partial.
+- Muse was taken offline after 595 of 720 runs (the four row counts above). Reps 1 and 2 are complete for every harness, and rep 3 is partial.
 - aider first sent non-streaming requests, which the test machine's egress proxy cut after 300 silent seconds.
   opencode's request timeout caps a whole request rather than a silence. Both were corrected, and every result of the
   affected harness was re-run.
