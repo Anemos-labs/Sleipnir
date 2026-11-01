@@ -177,7 +177,7 @@
     /** Stop the run of a session: the server answers 409 idle when nothing was running, and that is said as it is. */
     async function stopRun(S) {
       const r = await net.post('/api/sessions/' + encodeURIComponent(S.id) + '/stop');
-      if (r.ok) ui.toast(SL.stopText(S), 'warm');
+      if (r.ok) ui.toast(String((r.data && r.data.line) || SL.stopText(S)), 'warm');
       else if (r.code === 'idle') ui.toast(r.message || 'nothing was running', 'warm');
       else if (r.code === 'no_api') { const x = SL.act.interrupt('turn', S.id); ui.toast(x.ok ? SL.stopText(S) : (x.why || 'nothing was running'), 'warm'); }
       else net.fail(r, 'the run could not be stopped');

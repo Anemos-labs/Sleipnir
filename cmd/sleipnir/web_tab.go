@@ -624,6 +624,9 @@ func (t *webTab) Send(ctx context.Context, req wire.MessageRequest) (wire.SendRe
 	if t.startFailed() {
 		return wire.SendResult{}, t.noSession() // nothing would ever run it: the tab has no session until it starts again
 	}
+	if line, ok := t.stopAsked(req.Text, display); ok {
+		return wire.SendResult{Steered: true, Stopped: line}, nil
+	}
 	if t.steersContinuation(ctx, req) {
 		return wire.SendResult{Steered: true}, nil
 	}
@@ -1165,6 +1168,9 @@ func (t *webTab) steer(ctx context.Context, text, display string) error {
 	case utf8.RuneCountInString(text) > maxSteerLen:
 		return werr(http.StatusBadRequest, "empty", "the steer is longer than 4,000 characters")
 	}
+	if _, ok := t.stopAsked(text, display); ok {
+		return nil
+	}
 	t.mu.Lock()
 	running, s := t.active && t.cancel != nil, t.s
 	t.mu.Unlock()
@@ -1183,6 +1189,24 @@ func (t *webTab) steer(ctx context.Context, text, display string) error {
 	_, _ = s.Log.Emit("", "user.steer", map[string]any{"text": text})
 	t.emit(&wire.Steer{To: "mgr", Text: clip(display, maxSteerLen)})
 	return nil
+}
+
+// stopAsked stops the whole team at once when a message of the person's asks for it (session.StopRequest), instead of queueing the
+// message behind the running turn or handing it to the manager: the manager's turn ends, every worker stops, the open tasks are
+// canceled and nothing starts until the person writes again (swarm.StopAll). The message is shown as the person's, and the stop
+// as the row of its swarm.stop event. It returns the line that says what was stopped, and whether it stopped the team.
+func (t *webTab) stopAsked(text, display string) (string, bool) {
+	t.mu.Lock()
+	s := t.s
+	t.mu.Unlock()
+	if s == nil || s.Swarm == nil || !session.StopRequest(text) {
+		return "", false
+	}
+	if strings.TrimSpace(display) == "" {
+		display = text
+	}
+	t.emit(&wire.Steer{To: "mgr", Text: clip(display, maxSteerLen)})
+	return s.StopTeam(text)
 }
 
 // mainAgent is the harness id of the agent the person talks to.
@@ -1217,6 +1241,24 @@ func (t *webTab) Interrupt(ctx context.Context, target string) error {
 	t.h.bridge.CancelAgent(t.id, mainAgent(s), approvals.ByCanceled)
 	t.emit(&wire.Interrupt{ID: "turn"})
 	return nil
+}
+
+// StopAll stops the run of the tab (POST /api/sessions/{id}/stop). A team is stopped as a whole (session.StopTeam): the manager's
+// turn ends, every worker stops, the open tasks are canceled and nothing starts until the person writes again, whether or not a turn
+// was running (the workers of an idle manager are a run too). It returns the line that says what was stopped. A single agent's turn
+// is interrupted, as Interrupt does; with nothing running that is 409 idle.
+func (t *webTab) StopAll(ctx context.Context) (string, error) {
+	t.mu.Lock()
+	s, running := t.s, t.active && t.cancel != nil
+	t.mu.Unlock()
+	if s == nil || s.Swarm == nil {
+		return "", t.Interrupt(ctx, "turn")
+	}
+	line, _ := s.StopTeam("")
+	if running {
+		t.h.bridge.CancelAgent(t.id, mainAgent(s), approvals.ByCanceled) // the manager's questions go with its turn, as on an interrupt
+	}
+	return line, nil
 }
 
 // ---- exclusive sections ----------------------------------------------------------------------------------------------------

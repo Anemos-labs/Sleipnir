@@ -33,10 +33,11 @@
   /** The board's additions: a ✗ mark on a failed card (its closure as the title), `try N` when a task took more
    *  than one attempt, what was spent on it; todo's count gives failed tasks apart (`3 + 1 ✗`). Returns {failed, blocked}. Runs after ui.board.update on the same board. */
   ui.boardMarks = function (B, m) {
-    let failed = 0, blocked = 0, todoFailed = 0;
+    let failed = 0, blocked = 0;
+    const failedIn = {}; // failed tasks by the column they stay in: todo, or the column a canceled or superseded task had
     m.torder.forEach(id => {
       const t = m.tasks[id], n = B.nodes[id]; if (!t || !n) return; const tow = n.querySelector('.tcr .tow');
-      const isF = !!t.failed, isB = /^blocked_on/.test(t.closure || ''); if (isF) { failed++; if (t.st === 'todo') todoFailed++; } if (isB) blocked++;
+      const isF = !!t.failed, isB = /^blocked_on/.test(t.closure || ''); if (isF) { failed++; failedIn[t.st] = (failedIn[t.st] || 0) + 1; } if (isB) blocked++;
       let mk2 = n.querySelector('.fmark');
       if (isF && tow) { if (!mk2) { mk2 = document.createElement('span'); mk2.className = 'bad fmark'; mk2.textContent = '✗'; tow.appendChild(mk2); } mk2.title = 'failed: ' + (t.closure || 'closed'); } else if (mk2) mk2.remove();
       let tr = n.querySelector('.tmark'); const nTry = t.attempts > 1 ? 'try ' + t.attempts : '';
@@ -45,9 +46,10 @@
       let cm = n.querySelector('.cmark'); const spent = t.cost > 0 ? (t.onPlan ? '≈' : '') + SL.u.fmtUsd(t.cost) : '';
       if (spent && tow) { if (!cm) { cm = document.createElement('span'); cm.className = 'dim cmark'; tow.appendChild(cm); } cm.textContent = spent; cm.title = spent + ' spent on ' + id + ' in ' + t.reqs + ' request' + (t.reqs === 1 ? '' : 's') + (t.onPlan ? ' (' + SL.u.PLAN_HELP + ')' : ''); } else if (cm) cm.remove();
     });
-    /* a failed task stays in todo with its ✗: the head counts it apart, so that the count still accounts for every card of the column */
-    if (todoFailed) { const c = B.host.querySelector('[data-col="todo"] .cnt'); if (c) { const left = Math.max(0, (+c.textContent || 0) - todoFailed); c.innerHTML = left + ' <span class="bad">+ ' + todoFailed + ' ✗</span>'; c.title = left + ' to do, ' + todoFailed + ' failed'; } }
-    return { failed, blocked };
+    /* a failed task stays in todo with its ✗, and a canceled one (the person stopped the team) in the column it had: the head counts
+     *  them apart, so that the count still accounts for every card of the column and a canceled task is not counted as running */
+    Object.keys(failedIn).forEach(col => { const n = failedIn[col], c = B.host.querySelector('[data-col="' + col + '"] .cnt'); if (!c) return; const left = Math.max(0, (+c.textContent || 0) - n); c.innerHTML = left + ' <span class="bad">+ ' + n + ' ✗</span>'; c.title = left + (col === 'todo' ? ' to do, ' : ' ' + col + ', ') + n + ' failed'; });
+    return { failed, blocked, failedIn };
   };
   /** The words added to a board summary: " (N blocked)", " · N failed". */
   ui.boardExtra = x => (x.blocked ? ' (' + x.blocked + ' blocked)' : '') + (x.failed ? ' · ' + x.failed + ' failed' : '');
@@ -237,7 +239,7 @@
       body.innerHTML = '<section class="panel p-board" aria-label="Task board"><div class="ph"><h2>Task board</h2><div class="r"><span class="bsum"></span><span>drag disabled</span></div></div><div class="bcols"></div></section>';
       const B = ui.board.make(sc, $('.bcols', body), false), bsum = $('.bsum', body);
       sc.listen(body, 'click', e => { const a = e.target.closest('[data-alerts]'); if (a) { const S2 = SL.sessions.active; ui.alertsPop(a, S2, S2.m); } });
-      const update = (S2, m) => { if (!m) return; const cnt = ui.board.update(B, m, S2), bx = ui.boardMarks(B, m); bsum.textContent = ((cnt.merged || 0) - (cnt.resolved || 0)) + ' merged · ' + (cnt.verify || 0) + ' verify · ' + (cnt.running || 0) + ' running' + (cnt.resolved ? ' · ' + cnt.resolved + ' resolved' : '') + ui.boardExtra(bx); ui.alertsSlot(bsum, m); };
+      const update = (S2, m) => { if (!m) return; const cnt = ui.board.update(B, m, S2), bx = ui.boardMarks(B, m); bsum.textContent = ((cnt.merged || 0) - (cnt.resolved || 0)) + ' merged · ' + Math.max(0, (cnt.verify || 0) - (bx.failedIn.verify || 0)) + ' verify · ' + Math.max(0, (cnt.running || 0) - (bx.failedIn.running || 0)) + ' running' + (cnt.resolved ? ' · ' + cnt.resolved + ' resolved' : '') + ui.boardExtra(bx); ui.alertsSlot(bsum, m); };
       sc.update(update); update(S, S.m);
     };
   }

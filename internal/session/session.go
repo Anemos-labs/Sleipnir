@@ -409,6 +409,9 @@ type Result struct {
 	// cost.Model.Plan): a summary shows CostUSD+ListUSD marked as the plan's. Budgets count CostUSD only.
 	ListUSD float64
 	Plan    bool
+	// Stopped is set when the message was a request to stop the team (StopRequest): the harness stopped the whole team instead of
+	// running the manager, and this is the line that says what it stopped.
+	Stopped string
 }
 
 // New builds a session.

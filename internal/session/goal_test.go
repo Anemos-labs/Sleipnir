@@ -839,3 +839,35 @@ func TestResumingATeamGoalBeforeAnyTaskSkipsTheJudge(t *testing.T) {
 		t.Fatalf("the resume: note %q next %q", note, next)
 	}
 }
+
+// A stop that comes while the judge runs pauses the goal: a continuation would start a manager run, and that would lift the
+// person's stop.
+func TestAStopWhileTheJudgeRunsPausesTheGoal(t *testing.T) {
+	var s *session.Session
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if strings.Contains(c.System, "You judge whether a coding agent") {
+			s.Swarm.StopAll("stop all your agents") // the person stops the team while the judge reads
+			return mock.Reply{Text: `{"verdict":"continue","reason":"the API has no tests","left":["write the tests"]}`}
+		}
+		return mock.Reply{Text: "planning"}
+	})
+	o := opts(t, newRepo(t), client, model)
+	o.Swarm = true
+	var err error
+	if s, err = session.New(context.Background(), o); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	g := goal.New("build the API")
+	s.SaveGoal(g)
+	if _, err := s.Run(context.Background(), goal.Start(g)); err != nil {
+		t.Fatal(err)
+	}
+	note, next, _ := s.GoalJudged(context.Background(), g, nil)
+	if next != "" || g.Paused != "you stopped the team" || !strings.Contains(note, "goal paused") {
+		t.Fatalf("a stop during the judge: note %q, next %q, paused %q", note, next, g.Paused)
+	}
+	if !s.Swarm.Stopped() {
+		t.Fatal("the stop was lifted")
+	}
+}

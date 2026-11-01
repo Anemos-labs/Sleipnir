@@ -70,6 +70,11 @@ func (s *Session) DeliveryCommand(arg string) string {
 // Waiting on remote checks consumes no model requests. The process owns the loop,
 // so disconnecting a browser does not cancel it; cancellation pauses it.
 func (s *Session) Run(ctx context.Context, objective string) (*Result, error) {
+	if s.Swarm != nil && StopRequest(objective) {
+		// The person asked the team to stop: the harness stops it (StopTeam), and the manager is not run on the request.
+		line, _ := s.StopTeam(objective)
+		return &Result{Stopped: line, SessionID: s.ID, Dir: s.Dir}, nil
+	}
 	s.mu.Lock()
 	o := s.deliveryOptions
 	s.deliveryOptions = delivery.Options{}

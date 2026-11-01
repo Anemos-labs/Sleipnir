@@ -356,6 +356,7 @@ type Supervision struct {
 	Wakes      int    `json:"wakes,omitempty"`
 	WakePaused int    `json:"wake_paused,omitempty"`
 	WakeLimits int    `json:"wake_limits,omitempty"`
+	Stops      int    `json:"stops,omitempty"` // the person stopped the whole team (swarm.stop)
 	LastHold   string `json:"last_hold,omitempty"`
 	LastWake   string `json:"last_wake,omitempty"`
 }

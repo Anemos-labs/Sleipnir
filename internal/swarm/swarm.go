@@ -364,6 +364,7 @@ type Swarm struct {
 	budgetLowOnce           atomic.Bool // the spend reached the budget's reserve (budgetLow)
 
 	wk      waker                    // waking an idle manager (wake.go)
+	halt    teamStop                 // the person stopped the team (halt.go)
 	mgrSeen atomic.Pointer[Snapshot] // the board as the manager's newest request showed it
 	solo    soloRun                  // the manager's requests in its current run while the team has nothing to do (emptyBoardLine)
 	mail    *mailroom                // mailman mode (mailman.go); nil when it is off
@@ -728,6 +729,7 @@ func (s *Swarm) RunManager(ctx context.Context, goal string) (*agent.Result, err
 		return nil, errors.New("the manager is already running")
 	}
 	s.HumanInput()
+	s.LiftStop() // the person wrote again: what they ask for may start (halt.go)
 	return s.runManager(ctx, m, goal, "")
 }
 
@@ -742,12 +744,17 @@ func (s *Swarm) runManager(ctx context.Context, m *member, goal, mail string) (r
 		s.stopWorkers("interrupted", false)
 	})
 	defer stop()
+	// The person's stop (StopAll) ends the turn as an interrupt does; it stops the workers itself, so the turn has a context of its own,
+	// which the stop above does not watch.
+	turnCtx, endTurn := context.WithCancel(ctx)
+	defer endTurn()
+	defer s.setManagerTurn(endTurn)()
 	// A run the harness started (a wake, which comes with a note as mail) can be ended by a person's goal without stopping the workers: it has a
 	// context of its own.
-	runCtx := ctx
+	runCtx := turnCtx
 	if mail != "" {
 		var end context.CancelFunc
-		runCtx, end = context.WithCancel(ctx)
+		runCtx, end = context.WithCancel(turnCtx)
 		defer end()
 		s.wk.setRun(end)
 		defer s.wk.setRun(nil)
@@ -766,7 +773,7 @@ func (s *Swarm) runManager(ctx context.Context, m *member, goal, mail string) (r
 		}()
 		res, err = m.a.Run(runCtx, goal)
 		lastVersion, unchanged := uint64(0), 0
-		for s.cfg.PersistentPools && runCtx.Err() == nil && s.budgetErr() == nil {
+		for s.cfg.PersistentPools && runCtx.Err() == nil && s.budgetErr() == nil && !s.Stopped() {
 			if err != nil && !errors.Is(err, agent.ErrStepLimit) {
 				break
 			}

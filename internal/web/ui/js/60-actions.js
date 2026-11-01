@@ -140,7 +140,18 @@
   /** What Stop the run says: the goal is named only when one was running. */
   SL.stopText = S => 'stopped' + (goalRuns(S) ? ': the goal is paused' : '');
   /** What the Stop the run confirmation says will happen. */
-  SL.stopAsk = S => 'Every agent is interrupted' + (goalRuns(S) ? ' and the goal is paused' : '') + '.';
+  SL.stopAsk = S => (isTeam(S) ? 'Every agent stops, the manager included, the open tasks are canceled, and nothing starts until you write again' : 'Its turn is interrupted') + (goalRuns(S) ? '; the goal is paused' : '') + '.';
+  /** Is S a team (a manager with workers, or slots for them)? */
+  const isTeam = S => !!(S && ((S.meta && S.meta.swarm > 0) || (S.roster && S.roster.length > 1)));
+  /** Stop the run of S (POST /stop): a team stops as a whole, whether or not its manager has a turn running (the workers of an idle
+   *  manager are a run too): every worker, the manager's turn and the open tasks, and nothing starts until the person writes again.
+   *  The server's line says what was stopped; it is toasted. A single agent's turn is interrupted. */
+  act('stopAll', sid => {
+    const S = ses(sid); if (!S) return { ok: false };
+    if (S.replay) return { ok: false, why: 'go live first: a replay never changes the session' };
+    if (why(S)) return refuse(S);
+    return send(whenStarted(() => api().post(tab(S) + '/stop')), d => toast(String((d && d.line) || SL.stopText(S)), 'warm'), r => { if (r && r.code === 'idle') { toast(r.message || 'nothing was running', 'warm'); return true; } return false; });
+  });
   /** Interrupt the running turn (Esc): the manager's turn stops, the workers with it, and the goal is paused. The person talks to the manager only, so no single worker can be interrupted. */
   act('interrupt', (target, sid) => {
     const S = ses(sid); if (!S) return { ok: false };
@@ -211,7 +222,7 @@
     const busy = SL.calc.turnRunning(S.wm) || S.meta.running === true, local = busy ? { id: '', text: display, local: true } : null;
     if (local) { S.ui.queued.push(local); S.touch(); }
     const body = { text: full, clientId: api().cid() }; if (opt && opt.autoFix) body.autoFix = true; if (opt && opt.autoMerge) body.autoMerge = true; if (full !== display) body.display = display;
-    return send(whenStarted(() => api().post(tab(S) + '/messages', body)), res => { if (local && !(res && res.queued)) { const i = S.ui.queued.indexOf(local); if (i >= 0) { S.ui.queued.splice(i, 1); S.touch(); } } },
+    return send(whenStarted(() => api().post(tab(S) + '/messages', body)), res => { if (res && res.stopped) toast(String(res.stopped), 'warm'); /* the message asked the team to stop: the harness stopped it */ if (local && !(res && res.queued)) { const i = S.ui.queued.indexOf(local); if (i >= 0) { S.ui.queued.splice(i, 1); S.touch(); } } },
       () => { if (local) { const i = S.ui.queued.indexOf(local); if (i >= 0) { S.ui.queued.splice(i, 1); S.touch(); } } return false; });
   });
   /** A slash line the page has no handler for (custom commands, skills, MCP prompts, /mcp reconnect): the server runs it. */

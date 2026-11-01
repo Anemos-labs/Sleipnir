@@ -269,7 +269,7 @@ func (s *State) apply(e events.Event) {
 		s.onPermAsk(e, t)
 	case events.TypePermDecide:
 		s.onPermDecide(e, t)
-	case events.TypeSwarmHold, events.TypeSwarmUnfinished, events.TypeSwarmWake, events.TypeSwarmWakePaused, events.TypeSwarmWakeLimit, "swarm.shutdown":
+	case events.TypeSwarmHold, events.TypeSwarmUnfinished, events.TypeSwarmWake, events.TypeSwarmWakePaused, events.TypeSwarmWakeLimit, events.TypeSwarmStop, "swarm.shutdown":
 		s.onSupervision(e, t)
 	case events.TypeSwarmStall:
 		s.onStall(e, t)

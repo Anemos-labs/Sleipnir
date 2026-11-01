@@ -282,6 +282,10 @@ func runTurn(parent context.Context, intr *interrupts, s *session.Session, goal 
 	var err error
 	intr.run(parent, func(ctx context.Context) { res, err = s.Run(ctx, goal) })
 	fmt.Fprintln(os.Stdout)
+	if res != nil && res.Stopped != "" {
+		fmt.Fprintln(os.Stderr, res.Stopped) // the message asked the team to stop, and the harness stopped it (session.StopRequest)
+		return
+	}
 	if res != nil {
 		fmt.Fprintf(os.Stderr, "── %s · %d steps · %s · cache hit %.0f%%\n",
 			time.Since(start).Round(time.Second), res.Steps, spentText(res.CostUSD, res.ListUSD, res.Plan), res.Usage.HitRatio()*100)
@@ -719,11 +723,19 @@ func printContext(w io.Writer, s *session.Session) {
 // printAgents lists swarm agents in ID order, board tasks, and optional mailman totals;
 // single-agent sessions receive a brief explanation.
 // agentsSlash is /agents: the team's agents and tasks, or, with `stop ID`, stops a worker that is stuck (swarm.StopAgent): its run
-// ends, its task goes back to todo for the manager to give again, and the manager is told.
+// ends, its task goes back to todo for the manager to give again, and the manager is told. `stop all` stops the whole team
+// (session.StopTeam): the manager's turn, every worker and the open tasks, and nothing starts until the person writes again.
 func agentsSlash(w io.Writer, s *session.Session, args []string) {
 	switch {
 	case len(args) == 0:
 		printAgents(w, s)
+	case len(args) == 2 && strings.EqualFold(args[0], "stop") && strings.EqualFold(args[1], "all"):
+		line, ok := s.StopTeam("")
+		if !ok {
+			fmt.Fprintln(w, "agents: a single agent has no team to stop: interrupt its turn instead (Esc, or Stop)")
+			return
+		}
+		fmt.Fprintln(w, line)
 	case len(args) == 2 && strings.EqualFold(args[0], "stop"):
 		if s.Swarm == nil {
 			fmt.Fprintln(w, "agents: a single agent has no workers to stop: interrupt its turn instead (Esc, or Stop)")
@@ -741,7 +753,7 @@ func agentsSlash(w io.Writer, s *session.Session, args []string) {
 		}
 		fmt.Fprintf(w, "stopped %s; %s goes back to todo and the manager is told\n", firstText(id, 40), strings.Join(tasks, ", "))
 	default:
-		fmt.Fprintln(w, "usage: /agents lists the team's agents and tasks; /agents stop ID stops a worker that is stuck (its task goes back to todo)")
+		fmt.Fprintln(w, "usage: /agents lists the team's agents and tasks; /agents stop ID stops a worker that is stuck (its task goes back to todo); /agents stop all stops the whole team (every worker, the manager's turn, and the open tasks)")
 	}
 }
 
