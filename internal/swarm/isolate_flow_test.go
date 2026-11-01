@@ -706,6 +706,11 @@ func testActiveClaimRefresh(t *testing.T, resume bool) {
 	if got := readText(t, filepath.Join(r.cwd("be-1"), "a.txt")); got != "preserved draft\n" {
 		t.Fatalf("refresh lost the worker's draft: %q", got)
 	}
+	// The commit that recorded the draft before the merge reads as history: the task's work in progress, not the agent.
+	log := gitOut(t, r.cwd("be-1"), "log", "--format=%s", "-n", "5")
+	if strings.Contains(log, "sleipnir: work by") || !strings.Contains(log, "Work in progress: Edit a") {
+		t.Fatalf("the draft's commit should name the task's work, log:\n%s", log)
+	}
 }
 
 // Isolation changes no byte a worker sends before its own tool results: the tool list
@@ -925,5 +930,50 @@ func TestImplicitStopIsToldAboutRunReferences(t *testing.T) {
 	r.waitStatus("T1", StatusReview)
 	if !r.prov.sawEver("names team members or board tasks") {
 		t.Fatal("the worker was never told that its change names a board task")
+	}
+}
+
+// A worker that claims another task while its checkout holds a draft of the task it is on records that draft under the
+// task it belongs to, not the one it claims.
+func TestClaimingAnotherTaskRecordsTheDraftUnderItsOwnTask(t *testing.T) {
+	waiting, proceed := make(chan struct{}), make(chan struct{})
+	claimed := make(chan struct{})
+	sc := script{
+		"be-1": {
+			act(writeCall("a.txt", "draft of T1\n")),
+			func(c *rvCall) rvReply {
+				close(waiting)
+				<-proceed
+				return act(rvToolCall{"task", map[string]any{"action": "claim", "id": "T3"}})(c)
+			},
+			func(c *rvCall) rvReply {
+				close(claimed)
+				return rvReply{Text: "claimed"}
+			},
+		},
+		"fe-1": {act(writeCall("b.txt", "merged dependency\n")), act(doneCall("T2", "edited b"))},
+	}
+	r := newIsoRig(t, isoOpts{verify: true}, sc.fn())
+	r.sw.StartManager()
+	r.mustSpawn("backend", "edit a", "a.txt")
+	select {
+	case <-waiting:
+	case <-time.After(5 * time.Second):
+		t.Fatal("worker did not reach its claim")
+	}
+	r.mustSpawn("frontend", "edit b", "b.txt")
+	r.waitStatus("T2", StatusReview)
+	if _, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "polish c", Role: "backend", Files: []string{"c.txt"}}); err != nil {
+		t.Fatal(err)
+	}
+	close(proceed)
+	select {
+	case <-claimed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the claim did not finish")
+	}
+	log := gitOut(t, r.cwd("be-1"), "log", "--format=%s|%(trailers:key=Sleipnir-Task,valueonly,separator=)", "-n", "5")
+	if !strings.Contains(log, "Work in progress: Edit a|T1") || strings.Contains(log, "Polish c") {
+		t.Fatalf("the draft should be recorded under T1, log:\n%s", log)
 	}
 }

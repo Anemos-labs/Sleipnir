@@ -274,6 +274,20 @@ func (s *Swarm) retireTree(m *member) {
 	}
 }
 
+// wipMessage is the message of the commit that records a member's uncommitted work before the integrated work is merged
+// into its tree: the work in progress on its task. When the task's own commit later finds nothing left to record, this is
+// the commit the merge queue takes, so it must read as project history: an evaluation engine landed as two commits named
+// "sleipnir: work by be-1". With no current task the tree's default applies.
+func (s *Swarm) wipMessage(m *member) string {
+	m.mu.Lock()
+	id := m.task
+	m.mu.Unlock()
+	if t, ok := s.Board.Snapshot().Task(id); ok && id != "" {
+		return wipCommitMessage(t)
+	}
+	return ""
+}
+
 // syncTree brings the integration tip into a member's tree, so it sees the work that
 // has been merged since. It returns a note for the worker when the tree is left in a
 // conflicted state (the markers are in its files) and the error when git failed.
@@ -281,10 +295,19 @@ func (s *Swarm) syncTree(ctx context.Context, m *member) (string, error) {
 	if m.tree == nil {
 		return "", nil
 	}
+	return s.syncTreeRecording(ctx, m, s.wipMessage(m))
+}
+
+// syncTreeRecording is syncTree with the message of the commit that records the tree's uncommitted work, for a caller that
+// named it before the member's task changed (a claim of another task records the draft of the one it leaves).
+func (s *Swarm) syncTreeRecording(ctx context.Context, m *member, wip string) (string, error) {
+	if m.tree == nil {
+		return "", nil
+	}
 	tip := s.deps.Isolation.Queue.Tip()
 	uctx, cancel := context.WithTimeout(ctx, gitTimeout)
 	defer cancel()
-	c, err := m.tree.Update(uctx, tip)
+	c, err := m.tree.UpdateRecording(uctx, tip, wip)
 	if err != nil {
 		return "", err
 	}
@@ -487,7 +510,7 @@ func (s *Swarm) conflictBounce(ctx context.Context, m *member, qc *workspace.Con
 	sb.WriteString("Not done: your changes conflict with work that was already merged. ")
 	uctx, cancel := context.WithTimeout(ctx, gitTimeout)
 	defer cancel()
-	upd, err := m.tree.Update(uctx, s.deps.Isolation.Queue.Tip())
+	upd, err := m.tree.UpdateRecording(uctx, s.deps.Isolation.Queue.Tip(), s.wipMessage(m))
 	switch {
 	case err != nil:
 		sb.WriteString("The harness could not bring the integrated work into your tree (" + cleanText(err.Error(), 160) + "). ")
@@ -535,7 +558,7 @@ func (s *Swarm) verifyBounce(ctx context.Context, m *member, vr *workspace.Verif
 	uctx, cancel := context.WithTimeout(ctx, gitTimeout)
 	defer cancel()
 	state := "The integration branch is now merged into your tree: reproduce the failure there, fix it, and call task done again."
-	if upd, err := m.tree.Update(uctx, s.deps.Isolation.Queue.Tip()); err != nil {
+	if upd, err := m.tree.UpdateRecording(uctx, s.deps.Isolation.Queue.Tip(), s.wipMessage(m)); err != nil {
 		state = "The harness could not bring the integration branch into your tree (" + cleanText(err.Error(), 160) + "); fix what the output points at and call task done again."
 	} else if upd != nil {
 		state = "The integration branch is now merged into your tree and conflicts with your changes: " + conflictHunks(upd)

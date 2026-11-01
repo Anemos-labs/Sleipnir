@@ -243,6 +243,13 @@ func (t *Tree) Dirty(ctx context.Context) (bool, error) {
 // abandon with AbortUpdate. This is the "rebase task" of the queue's conflict
 // path: the agent that finished later resolves against what already landed.
 func (t *Tree) Update(ctx context.Context, ref string) (*Conflict, error) {
+	return t.UpdateRecording(ctx, ref, "")
+}
+
+// UpdateRecording is Update with the message of the commit that records uncommitted work before the merge. That commit
+// stays in the project's history when the task's own commit finds nothing left to record, so the caller names the work
+// it belongs to; an empty wip gives Commit's default.
+func (t *Tree) UpdateRecording(ctx context.Context, ref, wip string) (*Conflict, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if err := t.check(); err != nil {
@@ -259,7 +266,7 @@ func (t *Tree) Update(ctx context.Context, ref string) (*Conflict, error) {
 		return nil, err
 	}
 	if !clean {
-		if _, err := t.commitLocked(ctx, "sleipnir: work by "+t.Agent); err != nil {
+		if _, err := t.commitLocked(ctx, wip); err != nil {
 			return nil, err
 		}
 	}
