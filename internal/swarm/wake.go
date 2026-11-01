@@ -156,7 +156,7 @@ func (s *Swarm) fireWake() {
 // another run of it is active), something is new to it, and the bound on automatic
 // runs is not reached.
 func (s *Swarm) tryWake() {
-	if s.alive() != nil || s.budgetErr() != nil {
+	if s.alive() != nil || s.budgetErr() != nil || s.Stopped() {
 		return
 	}
 	m := s.get(s.ManagerID())

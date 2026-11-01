@@ -12,6 +12,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/swarm"
 	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 	"github.com/anemos-labs/sleipnir/internal/tui/input"
 	"github.com/anemos-labs/sleipnir/internal/tui/state"
@@ -711,7 +712,8 @@ func (m *chatModel) submit(text string) {
 		m.quit(ChatQuit)
 		return
 	}
-	if m.running != nil && m.running.kind == runTurn && (text == "/goal pause" || text == "/goal clear") {
+	if m.running != nil && m.running.kind == runTurn && (text == "/goal pause" || text == "/goal clear" || swarm.StopRequest(text)) {
+		// A request to stop the team (swarm.StopRequest) is not typed ahead either: the turn ends now, and the host stops the team.
 		// Stop immediately, then change goal state after Turn and its judge have
 		// returned. Calling the host concurrently would race with the judge.
 		m.queue = append([]queued{{text: text}}, m.queue...)

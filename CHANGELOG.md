@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `POST /api/sessions/{id}/stop` (the web interface's Stop the run) stops a
+  team as a whole instead of interrupting the manager's turn: every worker
+  stops whether or not a turn runs, the open tasks are canceled, and nothing
+  starts until the next message; it answers `{"ok":true,"line":"..."}`. A
+  single agent's turn is interrupted as before. A message that only asks the
+  team to stop ("stop", "stop all your agents") does the same and is not
+  delivered to the manager; `wire.SendResult` gains `stopped`, and the log
+  gains the `swarm.stop` event. No prompt layer changes.
+
 - Deep scan severity is a CVSS v3.1 base score. The `scan` tool's `lead`
   takes `cvss`, a base vector (`CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H`),
   in place of `impact`; the harness validates it, computes the base score

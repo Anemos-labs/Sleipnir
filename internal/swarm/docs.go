@@ -200,7 +200,7 @@ func (s *Swarm) AutoDocs() bool { return s.docs != nil }
 // worker to do it.
 func (s *Swarm) docsTick(now time.Time) {
 	k := s.docs
-	if k == nil {
+	if k == nil || s.Stopped() { // the person stopped the team (halt.go)
 		return
 	}
 	snap := s.Board.Snapshot()

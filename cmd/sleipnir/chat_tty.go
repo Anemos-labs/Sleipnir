@@ -359,6 +359,10 @@ func (h *sessionHost) Turn(ctx context.Context, goal string) app.TurnResult {
 		out.Message = tools.SanitizeForTerminal(err.Error()) + "\n" + hint
 	}
 	h.judgeGoal(ctx, err, &out)
+	if res != nil && res.Stopped != "" {
+		// the message asked the team to stop, and the harness stopped it (session.StopRequest); the goal's note follows
+		out.Note = strings.TrimSpace(res.Stopped + "\n" + out.Note)
+	}
 	return out
 }
 

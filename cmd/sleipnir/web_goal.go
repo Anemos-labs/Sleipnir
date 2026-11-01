@@ -284,7 +284,7 @@ func (g *goalLoop) Turn(ctx context.Context, s *session.Session, prompt string, 
 			emit(goalEvent{Kind: "state", Goal: cloneGoal(cur)})
 			return err
 		}
-		if err == nil && cur.Paused == "" {
+		if err == nil && cur.Paused == "" && (res == nil || res.Stopped == "") {
 			emit(goalEvent{Kind: "judging"})
 		}
 		wasPaused, prev := cur.Paused != "", cur

@@ -921,6 +921,18 @@ The person can stop a worker at any time: `/agents stop ID` in either interface,
 of the web interface (`Swarm.StopAgent`). It settles the run the same way, with the reason "stopped by the person" and an
 `agent.stop` event with `by: person`.
 
+The person can also stop the whole team (`Swarm.StopAll`): `/agents stop all` in either interface, ■ Stop all or Stop the run
+in the web interface (`POST /api/sessions/{id}/stop`), or a message that does nothing but ask for it ("stop", "stop all your
+agents", "STOP ALL TASKS": `swarm.StopRequest`, which leaves steering such as "stop the agents from writing tests", a negation
+or the stop of one named agent to the manager). The stop does not depend on the manager: its turn ends, every running worker is
+stopped without an attempt counted, the restarts that wait and the queued spawns are called off, every open task (`todo`,
+`doing`, `review`, `blocked`) is failed with the closure `canceled` and the note "stopped by the person", and the docs pass and
+the review gate let go of the work merged before the stop. Until the person's next goal, nothing starts: a worker run of any
+kind is refused, as are an automatic manager run, `spawn` (`ErrStopped`) and the task actions that start or reopen work; the
+stop guard does not veto the manager's answer, and a standing goal pauses ("you stopped the team"). A `swarm.stop` event
+records the stop (`phase: stopped`, with `workers`, `canceled`, `queued`, `turn`) and its end (`phase: lifted`), and the manager
+gets one harness note with what was stopped and the person's words.
+
 Workers receive mail queued during a failed run when they restart, before their
 next model request. New mail received during the failed run can trigger one
 restart, subject to the existing peer-mail wake limit. Previously unread mail
@@ -932,7 +944,7 @@ submission, while submitted work and newer task assignments remain intact.
 
 Every operation is an event: `agent.spawn` and `agent.assign` (a reused worker), `agent.state` (status changes),
 `agent.end`, `agent.panic`, `board.op`, `mail.send`/`mail.deliver`/`mail.drop`, `lease` (acquire, conflict, scope,
-owner, overlap, release), `governor` (rate-limit episodes), `swarm.budget_low` (the budget's reserve reached), `swarm.budget`, `swarm.hold`/`swarm.unfinished` (the manager's stop guard),
+owner, overlap, release), `governor` (rate-limit episodes), `swarm.budget_low` (the budget's reserve reached), `swarm.budget`, `swarm.hold`/`swarm.unfinished` (the manager's stop guard), `swarm.stop` (the person stopped the team),
 `swarm.wake`/`swarm.wake.paused` (waking an idle manager), `swarm.wake_limit` (peer mail stopped waking a worker),
 `swarm.stall` (a named stall raised or cleared, section 10), `swarm.restart` (an automatic restart of a worker whose run
 failed: `scheduled`, `start`, `dropped`, `exhausted`; section 10), `swarm.handover` (a handover's `begin`, `done` or `abort`,

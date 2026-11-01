@@ -476,6 +476,8 @@ func (s *Session) GoalJudged(ctx context.Context, g *goal.State, turnErr error) 
 		return "goal paused: " + why + ". /goal resume goes on, /goal clear drops it", "", j
 	}
 	switch {
+	case s.Swarm != nil && s.Swarm.Stopped():
+		return pause("you stopped the team")
 	case errors.Is(turnErr, context.Canceled):
 		return pause("you interrupted it")
 	case turnErr != nil:

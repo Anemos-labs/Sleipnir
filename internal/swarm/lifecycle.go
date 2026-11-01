@@ -611,6 +611,10 @@ func (s *Swarm) reserve(m *member) (*runState, context.Context, bool) {
 	root := s.rootCtx
 	s.wg.Add(1)
 	s.mu.Unlock()
+	if s.Stopped() { // the person stopped the team: no run starts, whatever asks for one (halt.go)
+		s.wg.Done()
+		return nil, nil, false
+	}
 
 	m.mu.Lock()
 	if m.life != lifeIdle {

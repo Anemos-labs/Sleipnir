@@ -145,7 +145,7 @@ func (s *Swarm) unfinishedWork() unfinishedWork {
 		case StatusBlocked:
 			u.blocked = append(u.blocked, id)
 		case StatusFailed:
-			if s.cfg.PersistentPools {
+			if s.cfg.PersistentPools && t.Closure.Kind() != CloseCanceled { // canceled work is settled: nobody repairs it
 				u.todo = append(u.todo, id)
 			}
 		case StatusTodo:
@@ -465,7 +465,7 @@ func (h *holdHooks) BeforeStop(ctx context.Context, agentID, role, final string,
 	ending := func() bool {
 		return ctx.Err() != nil || h.s.isClosed() || h.s.budgetErr() != nil || h.s.agentBudgetSpent(h.m)
 	}
-	if ending() {
+	if ending() || h.s.Stopped() { // the person stopped the team: the answer they get is the one to give (halt.go)
 		return agent.StopOutcome{}
 	}
 	if err := h.s.flushManager(ctx, h.m); err != nil {

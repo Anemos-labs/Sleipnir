@@ -190,11 +190,17 @@
       return '<div class="tsteps" role="img" aria-label="' + esc(T.id + ' ' + T.title + ': ' + (T.st === 'merged' ? 'merged' : T.st === 'todo' ? 'waits' + (deps.length ? ' for ' + deps.join(' ') : '') : asks ? 'asks you' : names[Math.min(4, idx - 1)])) + '"><span class="tt" data-task="' + esc(T.id) + '"><b>' + esc(T.id) + '</b> ' + esc(T.title) + '</span><ol>' + names.map((n, i) => { const done = i + 1 < idx || idx === 5, cur = i + 1 === idx && idx < 5; return '<li class="' + (done ? 'done' : cur ? 'cur' + (asks ? ' ask' : '') : '') + '"><i aria-hidden="true">' + (done ? '✓' : cur ? (asks ? '?' : '●') : '·') + '</i>' + n + '</li>'; }).join('') + '</ol>' + (T.st === 'todo' && deps.length ? '<span class="dim tw">waits for ' + esc(deps.join(' ')) + '</span>' : '') + '</div>';
     }
     ui.thread = thread;
-    /** the line that interrupts the running turn: shown only while a turn runs (what the manager does is the status bar's) */
+    /** the workers of S at work now (spawned, and neither idle, done nor failed) */
+    const workersAtWork = m => Object.keys((m && m.ag) || {}).filter(id => { const A = m.ag[id]; return id !== 'mgr' && A && A.spawned && !['idle', 'done', 'failed'].includes(A.state); }).length;
+    /** the line that interrupts the running turn, and stops the whole team: shown while a turn runs or a worker is at work (what the
+     *  manager does is the status bar's). Stop all is there without a turn too: the workers of an idle manager are a run of their own. */
     function chHead(S, m) {
       let hd = $('#chHead'); if (!hd) { hd = mk('div', { id: 'chHead', class: 'chhead' }); talk.parentNode.parentNode.insertBefore(hd, $('#qSlot')); }
-      const run = !S.readOnly && turnBusy(S); hd.hidden = !run;
-      const h = run ? '<span class="dim">the manager is working on your message</span><span class="sp"></span><button class="btn sm" type="button" data-ch="turn" title="interrupt the turn and pause the goal">Interrupt turn <kbd>esc</kbd></button>' : '';
+      const live = !S.readOnly && !S.replay, run = live && turnBusy(S), n = live ? workersAtWork(m) : 0; hd.hidden = !run && !n;
+      const what = run ? 'the manager is working on your message' + (n ? ' · ' + n + (n === 1 ? ' worker' : ' workers') + ' at work' : '') : n + (n === 1 ? ' worker is' : ' workers are') + ' at work';
+      const h = run || n ? '<span class="dim">' + what + '</span><span class="sp"></span>' +
+        (n ? '<button class="btn sm" type="button" data-ch="stopall" title="stop every agent, the manager included, and cancel the open tasks: nothing starts until you write again">■ Stop all</button>' : '') +
+        (run ? '<button class="btn sm" type="button" data-ch="turn" title="interrupt the turn and pause the goal">Interrupt turn <kbd>esc</kbd></button>' : '') : '';
       if (hd._h !== h) { hd._h = h; hd.innerHTML = h; }
     }
     /** the Team activity section: read-only, collapsible; it never takes an input */
@@ -206,7 +212,9 @@
     sc.listen(feedTog, 'click', () => { const S = SL.sessions.active; S.ui.feedOpen = S.ui.feedOpen === false; feedHead(S); if (S.ui.feedOpen !== false) { FD.stick = true; toEdge(FD); } });
     sc.listen(talk, 'click', e => { const gh = e.target.closest('[data-agrp]'); if (gh) { const g = gh.parentNode._g, S = SL.sessions.active; if (g && g.n > 1) { g.first.gOpen = !groupOpen(g, S); paintGroup(g, S); } return; } const c = e.target.closest('[data-cli]'); if (c) { ui.runCli([c.dataset.cli], null, true); return; } const r = e.target.closest('.msg.tool[data-file]'); if (r && !window.getSelection().toString()) { ui.ws.open(r.dataset.file, 'changes'); } });
     sc.listen(feed, 'click', e => { const r = e.target.closest('.msg[data-ag]'); if (!r || window.getSelection().toString()) return; const id = (r.dataset.ag || '').split(' ')[0], S = SL.sessions.active; if (S && S.m && S.m.ag[id]) ui.openDrawer(id); });
-    sc.listen(document.getElementById('chatBox') || document.getElementById('rail'), 'click', e => { const b = e.target.closest('#chHead [data-ch]'); if (!b) return; const S = SL.sessions.active, r = SL.act.interrupt('turn'); ui.toast(r.ok ? SL.interruptText(S) : (r.why || 'nothing to interrupt'), r.ok ? 'warm' : ''); });
+    sc.listen(document.getElementById('chatBox') || document.getElementById('rail'), 'click', e => { const b = e.target.closest('#chHead [data-ch]'); if (!b) return; const S = SL.sessions.active;
+      if (b.dataset.ch === 'stopall') { ui.confirm({ title: 'Stop all', text: 'Stop <b>' + esc(S.name) + '</b>? ' + SL.stopAsk(S), ok: 'Stop all', danger: true, run: () => { const r2 = SL.act.stopAll(); if (r2 && r2.ok === false) ui.toast(r2.why || 'nothing was running', 'warm'); } }); return; }
+      const r = SL.act.interrupt('turn'); ui.toast(r.ok ? SL.interruptText(S) : (r.why || 'nothing to interrupt'), r.ok ? 'warm' : ''); });
 
     /* ---------- per-frame: streaming text ---------- */
     function frameFn(dt, vt, S) {

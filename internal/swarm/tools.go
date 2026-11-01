@@ -186,6 +186,12 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			return tools.Errorf("task %s requires id: use the task ID from your assignment or call task with action=list to find it, then retry with id set", in.Action), nil
 		}
 	}
+	if s.Stopped() {
+		switch in.Action {
+		case "create", "claim", "resume", "handover", "reopen", "revise":
+			return tools.Errorf("task %s refused: %s", in.Action, ErrStopped.Error()), nil
+		}
+	}
 	switch in.Action {
 	case "deliver":
 		return t.deliver(ctx, c, in), nil

@@ -358,6 +358,9 @@ type SendResult struct {
 	Position int    `json:"position,omitempty"`
 	ID       string `json:"id"`
 	Steered  bool   `json:"steered,omitempty"`
+	// Stopped is set when the message asked the team to stop (session.StopRequest): the harness stopped the whole team instead of
+	// delivering it, and this is the line that says what it stopped.
+	Stopped string `json:"stopped,omitempty"`
 }
 
 // CommandRequest is a slash line the page has no handler for (custom commands, skills, MCP prompts, /mcp reconnect) or that the
