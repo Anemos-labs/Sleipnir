@@ -139,6 +139,7 @@ Settings that could send your API key to another host, run commands or widen wha
 | `providers.<name>.options` | provider-specific behaviour, may hold URLs |
 | `providers.<name>.auth`, `.dialect` | choose which credential is sent and how; a ChatGPT sign-in is never sent on a project's choice, trusted or not |
 | `providers.<name>.allow_hosts`, `.allow_insecure_http` | say where your key may go: dropped from **every** project layer, trusted or not (section 6) |
+| `resources.*` | how much of your machine the agents' commands may take: dropped from **every** project layer, trusted or not (section 6) |
 | `permissions.mode` | `bypass` and `yolo` turn off the prompts |
 | `permissions.allow` | pre-approves actions |
 | `permissions.roles.<role>.mode`, `.allow` | the same, per role |
@@ -422,6 +423,51 @@ without a scheme (`docs.example/*`) matches every scheme. A redirect that leaves
 from https down to http) is a request of its own: it is decided by the same rules, asks when none applies, and is refused
 when nobody can be asked. A redirect that stays on the site (adding `www.`, an upgrade to https, another path) is not asked
 about, but a deny rule that covers it refuses it.
+
+### `resources`
+
+A team of agents runs many commands at once, and the compilers, test runners and bundlers they call each size
+themselves for a machine of their own: one worker per core and whatever memory they find. Eight agents building at once
+ask for eight times the machine. `resources` keeps every agent's commands, and those of every other Sleipnir process
+that uses the same state directory (`~/.sleipnir`, or `$SLEIPNIR_HOME`), inside one share of the computer, so the person
+using it keeps a machine that answers:
+
+- **Heavy commands take turns.** A foreground `bash` command that runs a build, a test suite, an install or a bundler
+  (`go test`, `cargo build`, `npm ci`, `npm run build`, `npx vitest`, `pytest`, `make`, `./scripts/test.sh`, ... a
+  lexical guess that errs towards light; a command that runs a program rather than builds one, such as `go run`,
+  `cargo run`, `dotnet run` or `docker compose up`, is light, while `docker compose build` is heavy) and every verification run (`swarm` done checks and the integration queue)
+  takes one of `heavy_slots` slots before it starts. The slots are files under `<state>/run/slots/` locked by the
+  operating system: a slot whose holder died is free again at once. A command that waits says so live
+  (`[sleipnir: waiting for a free slot: ...]`) and in its result (`[waited 42s before starting: ...]`); the wait is not
+  part of its timeout. Background jobs (`run_in_background`) take no slot: they are servers more often than builds.
+- **Commands are told how many workers to start.** `SLEIPNIR_JOBS`, `CARGO_BUILD_JOBS`, `CMAKE_BUILD_PARALLEL_LEVEL`,
+  `GOMAXPROCS`, `GOFLAGS=-p=N`, `PYTEST_XDIST_AUTO_NUM_WORKERS`, `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`,
+  `MKL_NUM_THREADS`, `RAYON_NUM_THREADS`, `VITEST_MAX_THREADS`, `VITEST_MAX_FORKS`, `UV_CONCURRENT_BUILDS` and
+  `BUNDLE_JOBS` are set to `cpus / heavy_slots` unless the environment sets them already. `MAKEFLAGS` is left alone (a
+  `-j` there would run a serial Makefile in parallel); the runtime context asks agents to pass `$SLEIPNIR_JOBS` to tools
+  that only take a flag (`make -j`, `ninja -j`, `playwright --workers`, `jest --maxWorkers`).
+- **Commands run at low priority.** Nice 10 and the lowest best-effort I/O priority on Linux (inherited by everything
+  the command starts, from its first instruction), nice 10 on other Unix systems, the below-normal priority class on
+  Windows (verification runs on Windows keep the normal one).
+- **Memory is guarded** (Linux, where `/proc/meminfo` and the cgroup's `memory.max` are read). A heavy command waits, at
+  most two minutes, while free memory is below `memory_reserve_mb`. When free memory falls below half of it, the
+  agents' command (or background job, or process a finished command left running) whose processes hold the most
+  resident memory, at least 64 MiB, is stopped, one at a time with a pause of five seconds; its result says why
+  (`[stopped by Sleipnir: the machine was running out of memory ...]`) and a job's status reads
+  `killed (the machine was running out of memory)`.
+
+| Key | Type | Default | Applied | Meaning |
+|---|---|---|---|---|
+| `cpus` | integer | all but a quarter of the cores, at least two left free | at start | Cores the agents' commands may use together. The cores are those the harness may run on, within its cgroup's CPU limit |
+| `heavy_slots` | integer | `cpus / 4`, at least 1 | at start | Builds, test runs, installs and verification runs at once on the machine |
+| `memory_reserve_mb` | integer | 15% of the memory, between 1024 and 8192, at most half of it | at start | Memory kept free for the rest of the machine (MiB) |
+| `priority` | `"low"` or `"normal"` | `"low"` | at start | Scheduling and I/O priority of the agents' commands |
+| `unlimited` | boolean | `false` | at start | Turns every limit above off |
+
+On a 24-core machine with 32 GiB the defaults are 18 CPUs, 4 slots of 4 workers and 4.8 GiB kept free; on an 8-core
+laptop, 6 CPUs and one slot of 6 workers. Only your user file sets `resources`: a project file's is dropped, trusted or
+not, and `SLEIPNIR_RESOURCES_CPUS` and the like work as for every section. A command run inside a container sandbox
+(`--sandbox`) takes its slot and its worker counts, but its priority is the container's.
 
 ### Recording and training data
 

@@ -69,12 +69,21 @@ func harmlessValue(segs []string, v any) bool {
 // userOnlyPaths are settings that only the user's own file may make. A project
 // file that carries one has it dropped, whether or not the project is trusted:
 // they are how the user tells the harness "this provider's key may go to that
-// host", and a repository must not be able to say that on the user's behalf. (The
+// host" and "this much of my machine is the agents'", and a repository must not be able to say that on the user's behalf. (The
 // sensitive paths above are what a trusted project may set; these it never can.)
 var userOnlyPaths = [][]string{
 	{"providers", "*", "allow_hosts"},
 	{"providers", "*", "allow_insecure_http"},
+	{"resources", "cpus"},
+	{"resources", "heavy_slots"},
+	{"resources", "memory_reserve_mb"},
+	{"resources", "priority"},
+	{"resources", "unlimited"},
 }
+
+// userOnlySections are the sections made only of user-only settings: a project file cannot replace one as a whole either.
+// (A provider entry is not one: a trusted project may remove a provider, and its allow_hosts goes with it.)
+var userOnlySections = [][]string{{"resources"}}
 
 // matchPath reports whether segs is exactly one of the patterns ("*" matches any
 // one segment).
@@ -101,8 +110,11 @@ func matchPath(patterns [][]string, segs []string) bool {
 func isSensitive(segs []string) bool { return matchPath(sensitivePaths, segs) }
 
 // holdsSensitive reports whether a sensitive path lies strictly under segs.
-func holdsSensitive(segs []string) bool {
-	for _, pat := range sensitivePaths {
+func holdsSensitive(segs []string) bool { return holdsUnder(sensitivePaths, segs) }
+
+// holdsUnder reports whether one of patterns lies strictly under segs.
+func holdsUnder(patterns [][]string, segs []string) bool {
+	for _, pat := range patterns {
 		if len(pat) <= len(segs) {
 			continue
 		}
@@ -131,7 +143,10 @@ func (l *layer) dropUserOnly() []Issue {
 	walk = func(m map[string]any, segs []string) {
 		for _, k := range sortedKeys(m) {
 			p := cloneSegs(segs, k)
-			if matchPath(userOnlyPaths, p) {
+			_, object := m[k].(map[string]any)
+			// null, or any value that is not an object, in place of a section made only of user-only settings would replace the
+			// whole section, the user's own choices in it included ("resources": null).
+			if matchPath(userOnlyPaths, p) || !object && matchPath(userOnlySections, p) {
 				is := Issue{Severity: SeverityWarning, Source: l.source, Path: fmtPath(p), segs: p}
 				is.Message = "can only be set in your user configuration file (~/.sleipnir/config.json); a project file cannot grant it, trusted or not, so it was ignored"
 				l.position(&is)

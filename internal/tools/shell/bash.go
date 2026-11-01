@@ -18,6 +18,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/machine"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
@@ -288,6 +289,32 @@ func (m *Manager) runForeground(ctx context.Context, env *tools.Env, sh shellInf
 		}
 	}
 
+	// A build or a test run waits for its share of the machine; the wait is not part of its timeout.
+	wctx, stopWait := context.WithCancel(ctx)
+	go func() {
+		select {
+		case <-m.stop: // Shutdown waits for this command: it must not wait for a slot
+			stopWait()
+		case <-wctx.Done():
+		}
+	}()
+	adm, err := m.opts.Machine.Admit(wctx, machine.Heavy(command), func(why string) {
+		if env.Out != nil {
+			env.Out("stderr", "[sleipnir: "+why+"]\n")
+		}
+	})
+	stopWait()
+	if err != nil {
+		if ctx.Err() == nil {
+			return env.Finish("[cancelled while waiting to start: the harness is shutting down]", true)
+		}
+		return env.Finish("[cancelled while waiting to start]", true)
+	}
+	defer adm.Release()
+	if adm.Note != "" {
+		note = strings.TrimSpace(note + "\n" + adm.Note)
+	}
+
 	sk := newFGSink(env.Out, m.opts.CaptureBytes)
 	began := env.Now()
 	p, err := m.startProc(procSpec{
@@ -342,6 +369,10 @@ func (m *Manager) runForeground(ctx context.Context, env *tools.Env, sh shellInf
 		marks = append(marks, "[cancelled: the harness is shutting down]")
 	case killOutput:
 		marks = append(marks, "[killed: output exceeded "+humanBytes(m.opts.MaxOutputBytes)+"]")
+	case killMemory:
+		if n := p.memNote.Load(); n != nil {
+			marks = append(marks, *n)
+		}
 	}
 	if exited {
 		marks = append(marks, fmt.Sprintf("[exit code %d]", st.code))

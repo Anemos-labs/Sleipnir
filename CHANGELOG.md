@@ -7,6 +7,20 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Agents' commands share the machine (`internal/machine`, the new
+  `resources` configuration section). Builds, test runs, installs and
+  verification runs take one of a few machine-wide slots (files locked under
+  `<state>/run/slots/`, shared by every Sleipnir process of the same state
+  directory) and may wait before they start; every command is told how many
+  workers to start (`SLEIPNIR_JOBS`, `CARGO_BUILD_JOBS`, `GOMAXPROCS`,
+  `GOFLAGS=-p=N` and others, unless already set) and runs at low priority
+  (nice 10, lowest best-effort I/O class); on Linux the command holding the
+  most memory is stopped when free memory falls below half the reserve.
+  `resources.unlimited` restores the old behaviour. Prompt change: the shared
+  runtime context gains one sentence (`shell.MachineGuidance`, the same on
+  every machine) while a budget is in force, which re-prices the shared layer
+  once.
+
 - The web interface shows a tool call whole: `GET /api/sessions/{id}/tools/{agent}/{tid}`
   (`wire.ToolDetail`) reads one call from the session's log, with its whole command and
   output; a tool row's `⤢` opens it. `/jobs` also lists strays, the process groups an

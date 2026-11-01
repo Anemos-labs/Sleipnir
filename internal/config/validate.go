@@ -65,6 +65,7 @@ func (c *Config) Validate() []Issue {
 	v.models(c)
 	v.permissions(c.Permissions)
 	v.cache(c.Cache)
+	v.resources(c.Resources)
 	v.swarm(c.Swarm)
 	v.tools(c.Tools)
 	for _, k := range sortedKeys(c.Extra) {
@@ -303,6 +304,16 @@ func (v *validator) cache(c Cache) {
 	}
 	v.nonNegative(seg("cache", "hot_max_tokens"), c.HotMaxTokens)
 	v.nonNegative(seg("cache", "affinity_shards"), c.AffinityShards)
+}
+
+// resources validates the machine share: counts are not negative and the priority is one of the two.
+func (v *validator) resources(r Resources) {
+	v.nonNegative(seg("resources", "cpus"), r.CPUs)
+	v.nonNegative(seg("resources", "heavy_slots"), r.HeavySlots)
+	v.nonNegative(seg("resources", "memory_reserve_mb"), r.MemoryReserveMB)
+	if r.Priority != "" && r.Priority != "low" && r.Priority != "normal" {
+		v.err(seg("resources", "priority"), "must be \"low\" or \"normal\", got %q", r.Priority)
+	}
 }
 
 // swarm validates concurrency limits, isolation mode, and a finite nonnegative dollar budget.

@@ -37,6 +37,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/harden"
 	"github.com/anemos-labs/sleipnir/internal/hooks"
 	"github.com/anemos-labs/sleipnir/internal/kv"
+	"github.com/anemos-labs/sleipnir/internal/machine"
 	"github.com/anemos-labs/sleipnir/internal/memory"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/plan"
@@ -359,6 +360,8 @@ type Session struct {
 	hooks       *hooks.Runner
 	hookAdapter *hookAdapter
 	shell       *shell.Manager
+	// machine is the share of the computer the agents' commands and verification runs live in (resources configuration).
+	machine *machine.Budget
 
 	// refused are the commands that were refused for want of anyone to ask (permaudit.go), for the hint a run prints at its end.
 	refusedMu sync.Mutex
@@ -664,7 +667,10 @@ func New(ctx context.Context, o Options) (*Session, error) {
 			}
 		}()
 	}
-	shOpts := shell.Options{BaseEnv: o.ShellEnv, Wrap: o.ShellWrap, Tmp: s.tmp}
+	// One share of the machine for every agent's commands and every verification run, shared through slot files with the
+	// other Sleipnir processes of the same state directory.
+	s.machine = machine.New(machineSettings(s.cfg.Resources), filepath.Join(stateRoot(o.Home), "run", "slots"))
+	shOpts := shell.Options{BaseEnv: o.ShellEnv, Wrap: o.ShellWrap, Tmp: s.tmp, Machine: s.machine}
 	if o.ShellEnv == nil {
 		// Programs a plugin needs that were located or found outside PATH (plugin.PrepareNeeds).
 		if bin := plugin.PrepareNeeds(stateRoot(o.Home), plugs); bin != "" {
@@ -707,6 +713,11 @@ func newID(t time.Time) string {
 }
 
 // stateRoot is where sessions are stored: $SLEIPNIR_HOME, else ~/.sleipnir.
+// machineSettings are the machine-share settings of the resources configuration.
+func machineSettings(r config.Resources) machine.Settings {
+	return machine.Settings{CPUs: r.CPUs, HeavySlots: r.HeavySlots, MemoryReserveMB: r.MemoryReserveMB, Priority: r.Priority, Unlimited: r.Unlimited}
+}
+
 func stateRoot(home string) string {
 	if v := os.Getenv("SLEIPNIR_HOME"); v != "" {
 		return v

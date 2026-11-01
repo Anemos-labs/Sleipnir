@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/harden"
+	"github.com/anemos-labs/sleipnir/internal/machine"
 )
 
 // Options tunes a Manager. The zero value is what production uses.
@@ -58,6 +59,12 @@ type Options struct {
 	// DrainGrace is how long a finished command waits for its output pipes to
 	// close before treating leftover background processes as strays (default 250ms).
 	DrainGrace time.Duration
+	// Machine is the share of the computer the commands live in (internal/machine): a heavy foreground command waits for a
+	// slot, every command is told how many workers to start and runs at low priority, and the command using the most memory is
+	// stopped when the machine is about to run out. Nil limits nothing.
+	Machine *machine.Budget
+	// MemoryCheck is how often the memory guard looks at the machine's free memory (default 1s).
+	MemoryCheck time.Duration
 }
 
 func (o Options) withDefaults() Options {
@@ -78,6 +85,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.DrainGrace <= 0 {
 		o.DrainGrace = 250 * time.Millisecond
+	}
+	if o.MemoryCheck <= 0 {
+		o.MemoryCheck = time.Second
 	}
 	return o
 }
@@ -107,6 +117,9 @@ type Manager struct {
 	// view. Shutdown ends them, and EndAgent the ones its agent's foreground commands left.
 	lingering map[int]lingerer
 	wg        sync.WaitGroup // processes being supervised
+	// watches says the memory guard can run (Options.Machine watches memory); guarding that it runs now: it is started with
+	// the first process and ends when the Manager has none left, so an idle Manager holds no goroutine.
+	watches, guarding bool
 }
 
 // NewManager returns a Manager. Options are optional; when several are given
@@ -151,14 +164,22 @@ func NewManager(opts ...Options) *Manager {
 		if x.DrainGrace != 0 {
 			o.DrainGrace = x.DrainGrace
 		}
+		if x.Machine != nil {
+			o.Machine = x.Machine
+		}
+		if x.MemoryCheck != 0 {
+			o.MemoryCheck = x.MemoryCheck
+		}
 	}
-	return &Manager{
+	m := &Manager{
 		opts:  o.withDefaults(),
 		stop:  make(chan struct{}),
 		jobs:  map[string]*job{},
 		cwds:  map[string]cwdState{},
 		procs: map[*proc]struct{}{}, lingering: map[int]lingerer{},
 	}
+	m.watches = probesGroup && m.opts.Machine.Watches()
+	return m
 }
 
 var errShutDown = errors.New("the shell manager has been shut down")
@@ -199,6 +220,10 @@ func (m *Manager) end() { m.wg.Done() }
 func (m *Manager) track(p *proc) {
 	m.mu.Lock()
 	m.procs[p] = struct{}{}
+	if m.watches && !m.guarding {
+		m.guarding = true
+		go m.guardMemory()
+	}
 	m.mu.Unlock()
 }
 
@@ -412,12 +437,19 @@ func (m *Manager) RuntimeContext() string {
 		guidance = "Check its supported syntax before using shell-specific features."
 	}
 	text := prefix + dialect + ".\nThe bash tool runs commands directly in this shell; send commands without an extra shell wrapper. " + guidance
+	if m.opts.Machine != nil {
+		text += "\n" + MachineGuidance
+	}
 	if m.opts.Tmp != "" {
 		// The directory itself is not named: its path holds the session's id, and this text is shared by every session.
 		text += "\n" + ScratchGuidance
 	}
 	return text
 }
+
+// MachineGuidance is the runtime context's sentence about the machine's share (Options.Machine). It names no number, so that the
+// text is the same on every machine.
+const MachineGuidance = "The machine is shared with other agents and its owner: builds and test runs take turns and may wait before they start, and commands are told how many workers to start ($SLEIPNIR_JOBS, also set in the variables cargo, go, cmake and pytest read). Pass $SLEIPNIR_JOBS to a tool that only takes a flag (make -j, ninja -j, playwright --workers, jest --maxWorkers) instead of letting it use every core."
 
 // ScratchGuidance is the runtime context's sentence about scratch files, in a session whose commands get a TMPDIR of their own
 // (Options.Tmp). The permission engine allows writes there and asks before a write elsewhere outside the workspace, naming the directory.
@@ -455,6 +487,7 @@ func (m *Manager) env(agent, dir string) []string {
 	if len(m.opts.Path) > 0 {
 		env = withPath(env, m.opts.Path)
 	}
+	env = m.opts.Machine.Env(env)
 	if m.opts.Tmp == "" {
 		return env
 	}

@@ -83,6 +83,9 @@ func (j *job) statusText() string {
 		if reason == killTimeout {
 			return "killed (timed out)"
 		}
+		if reason == killMemory {
+			return "killed (the machine was running out of memory)"
+		}
 		return "killed"
 	}
 	return fmt.Sprintf("exited %d", exit)
