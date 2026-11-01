@@ -706,6 +706,11 @@ func testActiveClaimRefresh(t *testing.T, resume bool) {
 	if got := readText(t, filepath.Join(r.cwd("be-1"), "a.txt")); got != "preserved draft\n" {
 		t.Fatalf("refresh lost the worker's draft: %q", got)
 	}
+	// The commit that recorded the draft before the merge reads as history: the task's work in progress, not the agent.
+	log := gitOut(t, r.cwd("be-1"), "log", "--format=%s", "-n", "5")
+	if strings.Contains(log, "sleipnir: work by") || !strings.Contains(log, "Work in progress: Edit a") {
+		t.Fatalf("the draft's commit should name the task's work, log:\n%s", log)
+	}
 }
 
 // Isolation changes no byte a worker sends before its own tool results: the tool list
