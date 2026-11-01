@@ -372,6 +372,9 @@ func (s *Swarm) spawnReuse(req SpawnReq, files []string) (SpawnResult, error) {
 	} else if note != "" {
 		start.brief += "\n" + note
 	}
+	if note := s.inheritDraft(ctx, m, task); note != "" {
+		start.brief += "\n" + note
+	}
 	s.launch(m, rs, ctx, start)
 	return SpawnResult{Agent: m.id}, nil
 }
@@ -530,7 +533,11 @@ func (s *Swarm) spawnNew(req SpawnReq, files []string) (string, error) {
 	m.task = task.ID
 	m.mu.Unlock()
 	s.emit(events.TypeAgentSpawn, map[string]any{"id": id, "role": role.Name, "task": task.ID, "by": req.By, "parent": req.By, "model": m.model.ID})
-	s.launch(m, rs, ctx, runStart{brief: taskCard(task, id, false), kickoff: true}) // the notes hold the card since the spawn
+	brief := taskCard(task, id, false)
+	if note := s.inheritDraft(ctx, m, task); note != "" {
+		brief += "\n" + note
+	}
+	s.launch(m, rs, ctx, runStart{brief: brief, kickoff: true}) // the notes hold the card since the spawn
 	return id, nil
 }
 
