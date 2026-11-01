@@ -232,6 +232,41 @@ func TestAutoDocsTracksAcceptedRevisions(t *testing.T) {
 	}
 }
 
+// A task accepted again before a pass took its first acceptance is one change, at its latest scope: in a build, a task the
+// review reopened was listed twice in one pass ("docs: catch up (T11, T12, T11)") and the docs worker read it twice.
+func TestAutoDocsListsATaskAcceptedTwiceOnce(t *testing.T) {
+	r := newRVRigWith(t, Config{MaxWorkers: 8, AutoDocs: true, Team: []string{"backend", "docs"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	now := r.sw.deps.Now()
+	r.sw.docsTick(now)
+	r.sw.docs.retryAt = now.Add(docsRetry) // hold dispatch: the test reads what the keeper collected
+	other := Task{ID: "T2", Title: "add page", Status: StatusDone, Role: "backend"}
+	task := Task{ID: "T1", Title: "add endpoint", Status: StatusDone, Role: "backend"}
+	r.sw.Board.Restore(&Snapshot{Tasks: []Task{task, other}})
+	r.sw.docsTick(now)
+	task.Files = []string{"api/repaired.go"}
+	if err := r.sw.Board.revise("mgr", task.ID, TaskSpec{Files: task.Files}, "repair endpoint"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.claim("be-1", task.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	repaired, _ := r.sw.Board.Snapshot().Task(task.ID)
+	if err := r.sw.Board.submitAgreementAt("be-1", task.ID, repaired.Rev, "repaired", "", "", func(*Snapshot, Task) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.Accept("mgr", task.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.docsTick(now)
+	got := r.sw.docs.pending
+	if len(got) != 2 || docsSummary(got) != "T1, T2" {
+		t.Fatalf("pending = %+v, want T1 once and T2", got)
+	}
+	if len(got[0].files) != 1 || got[0].files[0] != task.Files[0] {
+		t.Errorf("T1 kept its first scope %v, want %v", got[0].files, task.Files)
+	}
+}
+
 // The roles that write and run tests know to set up a missing runner inside the project, and the manager carries the user's words
 // into the tasks and holds the goal until the tests have run.
 func TestPinsCarryVerificationAndTheUsersWords(t *testing.T) {
